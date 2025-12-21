@@ -219,7 +219,7 @@ jobs:
           sudo apt-get install -y \
             build-essential clang flex bison g++ gawk \
             gcc-multilib g++-multilib gettext git libncurses5-dev \
-            libssl-dev python3-distutils rsync unzip zlib1g-dev wget
+            libssl-dev python3-setuptools python3-dev rsync unzip zlib1g-dev wget
 
       - name: Cache OpenWrt SDK
         uses: actions/cache@v4
