@@ -58,7 +58,8 @@ jobs:
         run: |
           # Full architecture matrix for OpenWrt
           # Format: target/subtarget -> SDK name mapping
-          ALL_TARGETS=$(cat << 'EOF'
+          
+          cat > /tmp/matrix.json << 'MATRIX_EOF'
           {
             "include": [
               {
@@ -159,20 +160,23 @@ jobs:
               }
             ]
           }
-          EOF
-          )
+          MATRIX_EOF
           
           INPUT_ARCHS="${{ github.event.inputs.architectures }}"
           if [[ -z "$INPUT_ARCHS" || "$INPUT_ARCHS" == "all" ]]; then
-            MATRIX="$ALL_TARGETS"
+            MATRIX=$(cat /tmp/matrix.json | jq -c '.')
           else
             # Filter matrix based on input
-            MATRIX=$(echo "$ALL_TARGETS" | jq -c --arg archs "$INPUT_ARCHS" '
+            MATRIX=$(cat /tmp/matrix.json | jq -c --arg archs "$INPUT_ARCHS" '
               .include |= map(select(.target as $t | $archs | split(",") | map(gsub("^\\s+|\\s+$";"")) | any(. == $t or . == "all")))
             ')
           fi
           
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          # Use delimiter for multiline output
+          echo "matrix<<EOF" >> $GITHUB_OUTPUT
+          echo "$MATRIX" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
           echo "📋 Build matrix:"
           echo "$MATRIX" | jq '.'
 

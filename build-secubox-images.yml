@@ -46,8 +46,8 @@ jobs:
         run: |
           DEVICE="${{ github.event.inputs.device }}"
           
-          # Define all devices
-          ALL_DEVICES=$(cat << 'EOF'
+          # Define all devices in a file to avoid heredoc issues
+          cat > /tmp/devices.json << 'DEVICES_EOF'
           [
             {
               "device": "espressobin-v7",
@@ -85,17 +85,20 @@ jobs:
               "description": "MOCHAbin (Quad-core A72, 10G)"
             }
           ]
-          EOF
-          )
+          DEVICES_EOF
           
           # Filter based on input
           if [[ "$DEVICE" == "all" ]]; then
-            MATRIX="{\"include\": $ALL_DEVICES}"
+            MATRIX=$(jq -c '{"include": .}' /tmp/devices.json)
           else
-            MATRIX=$(echo "$ALL_DEVICES" | jq -c "{\"include\": [.[] | select(.device == \"$DEVICE\")]}")
+            MATRIX=$(jq -c --arg dev "$DEVICE" '{"include": [.[] | select(.device == $dev)]}' /tmp/devices.json)
           fi
           
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          # Use delimiter for multiline output
+          echo "matrix<<EOF" >> $GITHUB_OUTPUT
+          echo "$MATRIX" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
           echo "📋 Build matrix:"
           echo "$MATRIX" | jq '.'
 
