@@ -298,6 +298,7 @@ jobs:
             "luci-app-network-modes"
             "luci-app-client-guardian"
             "luci-app-system-hub"
+            "luci-app-cdn-cache"
           )
           
           # Create package directory
