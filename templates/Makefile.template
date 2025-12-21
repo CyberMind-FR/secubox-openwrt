@@ -1,0 +1,128 @@
+# SecuBox LuCI Application Makefile Template
+# Copyright (C) 2025 CyberMind.fr
+# SPDX-License-Identifier: Apache-2.0
+
+include $(TOPDIR)/rules.mk
+
+# ============================================
+# Package Information
+# ============================================
+PKG_NAME:=luci-app-TEMPLATE-dashboard
+PKG_VERSION:=1.0.0
+PKG_RELEASE:=1
+
+PKG_LICENSE:=Apache-2.0
+PKG_MAINTAINER:=Gandalf <contact@cybermind.fr>
+
+# ============================================
+# LuCI Configuration
+# ============================================
+LUCI_TITLE:=LuCI TEMPLATE Dashboard
+LUCI_DESCRIPTION:=Dashboard for TEMPLATE on OpenWrt
+LUCI_DEPENDS:=+luci-base +TEMPLATE
+LUCI_PKGARCH:=all
+
+# Optional: Extra dependencies
+# +luci-lib-jsonc +rpcd +uhttpd
+
+include $(TOPDIR)/feeds/luci/luci.mk
+
+# ============================================
+# Package Definition
+# ============================================
+define Package/$(PKG_NAME)
+  SECTION:=luci
+  CATEGORY:=LuCI
+  SUBMENU:=3. Applications
+  TITLE:=$(LUCI_TITLE)
+  DEPENDS:=$(LUCI_DEPENDS)
+  PKGARCH:=$(LUCI_PKGARCH)
+endef
+
+define Package/$(PKG_NAME)/description
+$(LUCI_DESCRIPTION)
+
+Features:
+- Real-time status monitoring
+- Configuration management
+- Interactive dashboard
+- System integration
+endef
+
+# ============================================
+# Installation
+# ============================================
+define Package/$(PKG_NAME)/install
+	# JavaScript views
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/TEMPLATE
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/TEMPLATE/*.js \
+		$(1)/www/luci-static/resources/view/TEMPLATE/
+	
+	# API and CSS
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/TEMPLATE
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/TEMPLATE/*.js \
+		$(1)/www/luci-static/resources/TEMPLATE/
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/TEMPLATE/*.css \
+		$(1)/www/luci-static/resources/TEMPLATE/
+	
+	# Menu configuration
+	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
+	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/$(PKG_NAME).json \
+		$(1)/usr/share/luci/menu.d/
+	
+	# ACL configuration
+	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
+	$(INSTALL_DATA) ./root/usr/share/rpcd/acl.d/$(PKG_NAME).json \
+		$(1)/usr/share/rpcd/acl.d/
+	
+	# RPCD backend
+	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
+	$(INSTALL_BIN) ./root/usr/libexec/rpcd/TEMPLATE \
+		$(1)/usr/libexec/rpcd/
+	
+	# UCI default config (optional)
+	$(INSTALL_DIR) $(1)/etc/config
+	$(INSTALL_CONF) ./root/etc/config/TEMPLATE \
+		$(1)/etc/config/
+	
+	# UCI defaults (optional - runs on first install)
+	# $(INSTALL_DIR) $(1)/etc/uci-defaults
+	# $(INSTALL_BIN) ./root/etc/uci-defaults/$(PKG_NAME) \
+	#	$(1)/etc/uci-defaults/
+endef
+
+# ============================================
+# Post-installation
+# ============================================
+define Package/$(PKG_NAME)/postinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] || {
+	# Reload rpcd to register new methods
+	/etc/init.d/rpcd reload 2>/dev/null || true
+	
+	# Clear LuCI cache
+	rm -rf /tmp/luci-modulecache 2>/dev/null || true
+	rm -rf /tmp/luci-indexcache* 2>/dev/null || true
+	
+	echo "$(PKG_NAME) installed successfully"
+}
+exit 0
+endef
+
+define Package/$(PKG_NAME)/postrm
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] || {
+	# Reload rpcd
+	/etc/init.d/rpcd reload 2>/dev/null || true
+	
+	# Clear LuCI cache
+	rm -rf /tmp/luci-modulecache 2>/dev/null || true
+	rm -rf /tmp/luci-indexcache* 2>/dev/null || true
+}
+exit 0
+endef
+
+# ============================================
+# Build
+# ============================================
+$(eval $(call BuildPackage,$(PKG_NAME)))
