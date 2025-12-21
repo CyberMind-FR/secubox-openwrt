@@ -34,51 +34,82 @@ env:
 
 jobs:
   # ============================================
+  # Generate build matrix based on input
+  # ============================================
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Set build matrix
+        id: set-matrix
+        run: |
+          DEVICE="${{ github.event.inputs.device }}"
+          
+          # Define all devices
+          ALL_DEVICES=$(cat << 'EOF'
+          [
+            {
+              "device": "espressobin-v7",
+              "target": "mvebu",
+              "subtarget": "cortexa53",
+              "profile": "globalscale_espressobin",
+              "description": "ESPRESSObin V7 (1-2GB DDR4)"
+            },
+            {
+              "device": "espressobin-ultra",
+              "target": "mvebu",
+              "subtarget": "cortexa53",
+              "profile": "globalscale_espressobin-ultra",
+              "description": "ESPRESSObin Ultra (PoE, WiFi)"
+            },
+            {
+              "device": "sheeva64",
+              "target": "mvebu",
+              "subtarget": "cortexa53",
+              "profile": "globalscale_sheeva64",
+              "description": "Sheeva64 (Plug computer)"
+            },
+            {
+              "device": "sheeva64-wifi",
+              "target": "mvebu",
+              "subtarget": "cortexa53",
+              "profile": "globalscale_sheeva64",
+              "description": "Sheeva64 WiFi (802.11ac + BT)"
+            },
+            {
+              "device": "mochabin",
+              "target": "mvebu",
+              "subtarget": "cortexa72",
+              "profile": "globalscale_mochabin",
+              "description": "MOCHAbin (Quad-core A72, 10G)"
+            }
+          ]
+          EOF
+          )
+          
+          # Filter based on input
+          if [[ "$DEVICE" == "all" ]]; then
+            MATRIX="{\"include\": $ALL_DEVICES}"
+          else
+            MATRIX=$(echo "$ALL_DEVICES" | jq -c "{\"include\": [.[] | select(.device == \"$DEVICE\")]}")
+          fi
+          
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "📋 Build matrix:"
+          echo "$MATRIX" | jq '.'
+
+  # ============================================
   # Build firmware images for GlobalScale devices
   # ============================================
   build-image:
+    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - device: espressobin-v7
-            target: mvebu
-            subtarget: cortexa53
-            profile: globalscale_espressobin
-            description: "ESPRESSObin V7 (1-2GB DDR4)"
-            enabled: ${{ github.event.inputs.device == 'espressobin-v7' || github.event.inputs.device == 'all' }}
-          
-          - device: espressobin-ultra
-            target: mvebu
-            subtarget: cortexa53
-            profile: globalscale_espressobin-ultra
-            description: "ESPRESSObin Ultra (PoE, WiFi)"
-            enabled: ${{ github.event.inputs.device == 'espressobin-ultra' || github.event.inputs.device == 'all' }}
-          
-          - device: sheeva64
-            target: mvebu
-            subtarget: cortexa53
-            profile: globalscale_sheeva64
-            description: "Sheeva64 (Plug computer)"
-            enabled: ${{ github.event.inputs.device == 'sheeva64' || github.event.inputs.device == 'all' }}
-          
-          - device: sheeva64-wifi
-            target: mvebu
-            subtarget: cortexa53
-            profile: globalscale_sheeva64
-            description: "Sheeva64 WiFi (802.11ac + BT)"
-            enabled: ${{ github.event.inputs.device == 'sheeva64-wifi' || github.event.inputs.device == 'all' }}
-          
-          - device: mochabin
-            target: mvebu
-            subtarget: cortexa72
-            profile: globalscale_mochabin
-            description: "MOCHAbin (Quad-core A72, 10G)"
-            enabled: ${{ github.event.inputs.device == 'mochabin' || github.event.inputs.device == 'all' }}
-
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+    
     name: ${{ matrix.description }}
-    if: ${{ matrix.enabled != 'false' }}
 
     steps:
       - name: Checkout SecuBox packages
@@ -318,7 +349,7 @@ jobs:
   # Create combined release for all devices
   # ============================================
   release:
-    needs: build-image
+    needs: [setup, build-image]
     runs-on: ubuntu-latest
     if: github.event.inputs.device == 'all'
     
