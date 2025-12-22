@@ -1,0 +1,192 @@
+#!/bin/sh
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+get_status() {
+    json_init
+    
+    local enabled interface
+    config_load bandwidth
+    config_get enabled global enabled "0"
+    config_get interface global interface "br-lan"
+    
+    json_add_boolean "enabled" "$enabled"
+    json_add_string "interface" "$interface"
+    
+    # Get current bandwidth stats
+    local rx_bytes tx_bytes
+    rx_bytes=$(cat /sys/class/net/$interface/statistics/rx_bytes 2>/dev/null || echo 0)
+    tx_bytes=$(cat /sys/class/net/$interface/statistics/tx_bytes 2>/dev/null || echo 0)
+    
+    json_add_int "rx_bytes" "$rx_bytes"
+    json_add_int "tx_bytes" "$tx_bytes"
+    
+    # Check if QoS is active
+    local qos_active=0
+    tc qdisc show dev $interface 2>/dev/null | grep -qE "(cake|fq_codel|htb)" && qos_active=1
+    json_add_boolean "qos_active" "$qos_active"
+    
+    json_dump
+}
+
+get_classes() {
+    config_load bandwidth
+    json_init
+    json_add_array "classes"
+    
+    _add_class() {
+        local name priority rate ceil desc
+        config_get name "$1" name ""
+        config_get priority "$1" priority "5"
+        config_get rate "$1" rate "10"
+        config_get ceil "$1" ceil "100"
+        config_get desc "$1" description ""
+        
+        json_add_object ""
+        json_add_string "id" "$1"
+        json_add_string "name" "$name"
+        json_add_int "priority" "$priority"
+        json_add_int "rate" "$rate"
+        json_add_int "ceil" "$ceil"
+        json_add_string "description" "$desc"
+        json_close_object
+    }
+    config_foreach _add_class class
+    
+    json_close_array
+    json_dump
+}
+
+get_quotas() {
+    config_load bandwidth
+    json_init
+    json_add_array "quotas"
+    
+    _add_quota() {
+        local daily monthly throttle action
+        config_get daily "$1" daily_limit "0"
+        config_get monthly "$1" monthly_limit "0"
+        config_get throttle "$1" throttle_speed "1000"
+        config_get action "$1" action "throttle"
+        
+        json_add_object ""
+        json_add_string "id" "$1"
+        json_add_int "daily_limit" "$daily"
+        json_add_int "monthly_limit" "$monthly"
+        json_add_int "throttle_speed" "$throttle"
+        json_add_string "action" "$action"
+        json_close_object
+    }
+    config_foreach _add_quota quota
+    
+    json_close_array
+    json_dump
+}
+
+get_media() {
+    config_load bandwidth
+    json_init
+    json_add_array "media"
+    
+    _add_media() {
+        local name class
+        config_get name "$1" name ""
+        config_get class "$1" class ""
+        
+        json_add_object ""
+        json_add_string "id" "$1"
+        json_add_string "name" "$name"
+        json_add_string "class" "$class"
+        json_close_object
+    }
+    config_foreach _add_media media
+    
+    json_close_array
+    json_dump
+}
+
+get_clients() {
+    json_init
+    json_add_array "clients"
+    
+    # Parse DHCP leases
+    if [ -f /tmp/dhcp.leases ]; then
+        while read expires mac ip hostname clientid; do
+            # Get current bandwidth for this client
+            local rx=0 tx=0
+            
+            json_add_object ""
+            json_add_string "mac" "$mac"
+            json_add_string "ip" "$ip"
+            json_add_string "hostname" "${hostname:-unknown}"
+            json_add_int "rx_bytes" "$rx"
+            json_add_int "tx_bytes" "$tx"
+            json_close_object
+        done < /tmp/dhcp.leases
+    fi
+    
+    json_close_array
+    json_dump
+}
+
+get_stats() {
+    json_init
+    
+    local interface
+    config_load bandwidth
+    config_get interface global interface "br-lan"
+    
+    # TC statistics
+    json_add_object "tc"
+    local tc_stats=$(tc -s qdisc show dev $interface 2>/dev/null)
+    json_add_string "raw" "$tc_stats"
+    json_close_object
+    
+    # Interface statistics
+    json_add_object "interface"
+    json_add_int "rx_bytes" "$(cat /sys/class/net/$interface/statistics/rx_bytes 2>/dev/null || echo 0)"
+    json_add_int "tx_bytes" "$(cat /sys/class/net/$interface/statistics/tx_bytes 2>/dev/null || echo 0)"
+    json_add_int "rx_packets" "$(cat /sys/class/net/$interface/statistics/rx_packets 2>/dev/null || echo 0)"
+    json_add_int "tx_packets" "$(cat /sys/class/net/$interface/statistics/tx_packets 2>/dev/null || echo 0)"
+    json_close_object
+    
+    json_dump
+}
+
+apply_qos() {
+    local interface download upload
+    config_load bandwidth
+    config_get interface global interface "br-lan"
+    config_get download global default_download "100000"
+    config_get upload global default_upload "50000"
+    
+    # Clear existing
+    tc qdisc del dev $interface root 2>/dev/null
+    tc qdisc del dev $interface ingress 2>/dev/null
+    
+    # Apply CAKE qdisc
+    tc qdisc add dev $interface root cake bandwidth ${download}kbit
+    
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "message" "QoS applied with ${download}kbit download"
+    json_dump
+}
+
+case "$1" in
+    list)
+        echo '{"status":{},"classes":{},"quotas":{},"media":{},"clients":{},"stats":{},"apply_qos":{}}'
+        ;;
+    call)
+        case "$2" in
+            status) get_status ;;
+            classes) get_classes ;;
+            quotas) get_quotas ;;
+            media) get_media ;;
+            clients) get_clients ;;
+            stats) get_stats ;;
+            apply_qos) apply_qos ;;
+            *) echo '{"error":"Unknown method"}' ;;
+        esac
+        ;;
+esac

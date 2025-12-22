@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bandwidth Manager - Demo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; min-height: 100vh; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { background: linear-gradient(135deg, #7c3aed, #a855f7); padding: 32px; border-radius: 16px; margin-bottom: 24px; }
+        .header h1 { font-size: 32px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .stat { background: #1e293b; padding: 24px; border-radius: 12px; text-align: center; }
+        .stat-value { font-size: 36px; font-weight: 700; color: #a855f7; }
+        .stat-label { color: #94a3b8; margin-top: 8px; }
+        .section { background: #1e293b; padding: 24px; border-radius: 12px; margin-bottom: 16px; }
+        .section-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .class-item { display: flex; align-items: center; gap: 16px; padding: 12px; background: #0f172a; border-radius: 8px; margin-bottom: 8px; }
+        .class-name { width: 120px; font-weight: 600; }
+        .class-bar { flex: 1; height: 8px; background: #334155; border-radius: 4px; overflow: hidden; }
+        .class-fill { height: 100%; background: linear-gradient(90deg, #7c3aed, #a855f7); transition: width 0.3s; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; background: #7c3aed20; color: #a855f7; }
+        .gauge { width: 200px; height: 200px; margin: 0 auto; position: relative; }
+        .gauge-bg { fill: none; stroke: #334155; stroke-width: 20; }
+        .gauge-fill { fill: none; stroke: url(#gradient); stroke-width: 20; stroke-linecap: round; transform: rotate(-90deg); transform-origin: center; transition: stroke-dasharray 0.5s; }
+        .gauge-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+        .gauge-value { font-size: 48px; font-weight: 700; color: #a855f7; }
+        .gauge-label { color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚡ Bandwidth Manager</h1>
+            <p>QoS, Quotas & Real-time Media Detection for OpenWrt</p>
+        </div>
+        
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value" id="download">0</div>
+                <div class="stat-label">Download (Mbps)</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="upload">0</div>
+                <div class="stat-label">Upload (Mbps)</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="clients">12</div>
+                <div class="stat-label">Active Clients</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="quota">67%</div>
+                <div class="stat-label">Quota Used</div>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="section">
+                <div class="section-title">📊 QoS Classes</div>
+                <div class="class-item">
+                    <span class="class-name">Real-time</span>
+                    <span class="badge">P1</span>
+                    <div class="class-bar"><div class="class-fill" style="width: 30%"></div></div>
+                    <span style="color: #94a3b8; font-size: 13px">30%</span>
+                </div>
+                <div class="class-item">
+                    <span class="class-name">Interactive</span>
+                    <span class="badge">P2</span>
+                    <div class="class-bar"><div class="class-fill" style="width: 20%"></div></div>
+                    <span style="color: #94a3b8; font-size: 13px">20%</span>
+                </div>
+                <div class="class-item">
+                    <span class="class-name">Streaming</span>
+                    <span class="badge">P3</span>
+                    <div class="class-bar"><div class="class-fill" style="width: 20%"></div></div>
+                    <span style="color: #94a3b8; font-size: 13px">20%</span>
+                </div>
+                <div class="class-item">
+                    <span class="class-name">Browsing</span>
+                    <span class="badge">P4</span>
+                    <div class="class-bar"><div class="class-fill" style="width: 15%"></div></div>
+                    <span style="color: #94a3b8; font-size: 13px">15%</span>
+                </div>
+                <div class="class-item">
+                    <span class="class-name">Bulk</span>
+                    <span class="badge">P6</span>
+                    <div class="class-bar"><div class="class-fill" style="width: 5%"></div></div>
+                    <span style="color: #94a3b8; font-size: 13px">5%</span>
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">🎯 Media Detection</div>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                    <div style="padding: 16px; background: #0f172a; border-radius: 8px; border-left: 4px solid #22c55e;">
+                        <div style="font-size: 24px; margin-bottom: 4px;">📞</div>
+                        <div style="font-weight: 600;">VoIP</div>
+                        <div style="color: #94a3b8; font-size: 12px;">Real-time class</div>
+                    </div>
+                    <div style="padding: 16px; background: #0f172a; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                        <div style="font-size: 24px; margin-bottom: 4px;">🎮</div>
+                        <div style="font-weight: 600;">Gaming</div>
+                        <div style="color: #94a3b8; font-size: 12px;">Interactive class</div>
+                    </div>
+                    <div style="padding: 16px; background: #0f172a; border-radius: 8px; border-left: 4px solid #ef4444;">
+                        <div style="font-size: 24px; margin-bottom: 4px;">📺</div>
+                        <div style="font-weight: 600;">Streaming</div>
+                        <div style="color: #94a3b8; font-size: 12px;">Streaming class</div>
+                    </div>
+                    <div style="padding: 16px; background: #0f172a; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                        <div style="font-size: 24px; margin-bottom: 4px;">📥</div>
+                        <div style="font-weight: 600;">Downloads</div>
+                        <div style="color: #94a3b8; font-size: 12px;">Bulk class</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Simulate live data
+        function updateStats() {
+            document.getElementById('download').textContent = (Math.random() * 50 + 50).toFixed(1);
+            document.getElementById('upload').textContent = (Math.random() * 20 + 10).toFixed(1);
+        }
+        setInterval(updateStats, 1000);
+        updateStats();
+    </script>
+</body>
+</html>

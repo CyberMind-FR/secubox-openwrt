@@ -1,0 +1,14 @@
+{
+    "luci-app-media-flow": {
+        "description": "Media Flow",
+        "read": {
+            "ubus": {
+                "luci.media-flow": ["status", "services", "protocols", "flows", "stats"]
+            },
+            "uci": ["mediaflow"]
+        },
+        "write": {
+            "uci": ["mediaflow"]
+        }
+    }
+}

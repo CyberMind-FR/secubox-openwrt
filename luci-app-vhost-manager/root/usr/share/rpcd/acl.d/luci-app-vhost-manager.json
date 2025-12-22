@@ -1,0 +1,17 @@
+{
+    "luci-app-vhost-manager": {
+        "description": "VHost Manager",
+        "read": {
+            "ubus": {
+                "luci.vhost-manager": ["status", "internal_hosts", "redirects", "certificates"]
+            },
+            "uci": ["vhost"]
+        },
+        "write": {
+            "ubus": {
+                "luci.vhost-manager": ["apply_config"]
+            },
+            "uci": ["vhost"]
+        }
+    }
+}

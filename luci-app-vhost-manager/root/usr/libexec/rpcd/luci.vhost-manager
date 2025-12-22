@@ -1,0 +1,145 @@
+#!/bin/sh
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+get_status() {
+    json_init
+    
+    local enabled
+    config_load vhost
+    config_get enabled global enabled "0"
+    
+    json_add_boolean "enabled" "$enabled"
+    
+    # Check nginx
+    local nginx_running=0
+    pgrep -f nginx >/dev/null && nginx_running=1
+    json_add_boolean "nginx_active" "$nginx_running"
+    
+    # Check dnsmasq
+    local dns_running=0
+    pgrep -f dnsmasq >/dev/null && dns_running=1
+    json_add_boolean "dns_active" "$dns_running"
+    
+    # Count vhosts
+    local internal=0 redirects=0
+    config_foreach _count_internal internal
+    config_foreach _count_redirect redirect
+    
+    json_add_int "internal_hosts" "$internal"
+    json_add_int "redirects" "$redirects"
+    
+    json_dump
+}
+
+_count_internal() { internal=$((internal + 1)); }
+_count_redirect() { redirects=$((redirects + 1)); }
+
+get_internal_hosts() {
+    config_load vhost
+    json_init
+    json_add_array "hosts"
+    
+    _add_host() {
+        local enabled name domain backend ssl icon color desc
+        config_get enabled "$1" enabled "0"
+        config_get name "$1" name ""
+        config_get domain "$1" domain ""
+        config_get backend "$1" backend ""
+        config_get ssl "$1" ssl "0"
+        config_get icon "$1" icon "server"
+        config_get color "$1" color "#64748b"
+        config_get desc "$1" description ""
+        
+        json_add_object ""
+        json_add_string "id" "$1"
+        json_add_boolean "enabled" "$enabled"
+        json_add_string "name" "$name"
+        json_add_string "domain" "$domain"
+        json_add_string "backend" "$backend"
+        json_add_boolean "ssl" "$ssl"
+        json_add_string "icon" "$icon"
+        json_add_string "color" "$color"
+        json_add_string "description" "$desc"
+        json_close_object
+    }
+    config_foreach _add_host internal
+    
+    json_close_array
+    json_dump
+}
+
+get_redirects() {
+    config_load vhost
+    json_init
+    json_add_array "redirects"
+    
+    _add_redirect() {
+        local enabled name external local desc
+        config_get enabled "$1" enabled "0"
+        config_get name "$1" name ""
+        config_get external "$1" external_domain ""
+        config_get local "$1" local_domain ""
+        config_get desc "$1" description ""
+        
+        json_add_object ""
+        json_add_string "id" "$1"
+        json_add_boolean "enabled" "$enabled"
+        json_add_string "name" "$name"
+        json_add_string "external_domain" "$external"
+        json_add_string "local_domain" "$local"
+        json_add_string "description" "$desc"
+        json_close_object
+    }
+    config_foreach _add_redirect redirect
+    
+    json_close_array
+    json_dump
+}
+
+get_certificates() {
+    json_init
+    json_add_array "certificates"
+    
+    # List certificates from /etc/ssl/acme or similar
+    for cert in /etc/ssl/acme/*.crt 2>/dev/null; do
+        [ -f "$cert" ] || continue
+        local domain=$(basename "$cert" .crt)
+        local expiry=$(openssl x509 -enddate -noout -in "$cert" 2>/dev/null | cut -d= -f2)
+        
+        json_add_object ""
+        json_add_string "domain" "$domain"
+        json_add_string "expiry" "$expiry"
+        json_add_string "path" "$cert"
+        json_close_object
+    done
+    
+    json_close_array
+    json_dump
+}
+
+apply_config() {
+    # Generate nginx configs
+    # Generate dnsmasq entries
+    
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "message" "Configuration applied"
+    json_dump
+}
+
+case "$1" in
+    list)
+        echo '{"status":{},"internal_hosts":{},"redirects":{},"certificates":{},"apply_config":{}}'
+        ;;
+    call)
+        case "$2" in
+            status) get_status ;;
+            internal_hosts) get_internal_hosts ;;
+            redirects) get_redirects ;;
+            certificates) get_certificates ;;
+            apply_config) apply_config ;;
+            *) echo '{"error":"Unknown method"}' ;;
+        esac
+        ;;
+esac

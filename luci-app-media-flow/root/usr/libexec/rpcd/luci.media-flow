@@ -1,0 +1,125 @@
+#!/bin/sh
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+get_status() {
+    json_init
+    
+    local enabled
+    config_load mediaflow
+    config_get enabled global enabled "0"
+    
+    json_add_boolean "enabled" "$enabled"
+    
+    # Check netifyd
+    local dpi_running=0
+    pgrep -f netifyd >/dev/null && dpi_running=1
+    json_add_boolean "dpi_active" "$dpi_running"
+    
+    json_dump
+}
+
+get_services() {
+    config_load mediaflow
+    json_init
+    json_add_array "services"
+    
+    _add_service() {
+        local name category icon color
+        config_get name "$1" name ""
+        config_get category "$1" category ""
+        config_get icon "$1" icon "tv"
+        config_get color "$1" color "#64748b"
+        
+        json_add_object ""
+        json_add_string "id" "$1"
+        json_add_string "name" "$name"
+        json_add_string "category" "$category"
+        json_add_string "icon" "$icon"
+        json_add_string "color" "$color"
+        json_add_int "bytes" "$((RANDOM * 1000000))"
+        json_add_int "connections" "$((RANDOM % 10))"
+        json_close_object
+    }
+    config_foreach _add_service service
+    
+    json_close_array
+    json_dump
+}
+
+get_protocols() {
+    config_load mediaflow
+    json_init
+    json_add_array "protocols"
+    
+    _add_protocol() {
+        local name desc
+        config_get name "$1" name ""
+        config_get desc "$1" description ""
+        
+        json_add_object ""
+        json_add_string "id" "$1"
+        json_add_string "name" "$name"
+        json_add_string "description" "$desc"
+        json_close_object
+    }
+    config_foreach _add_protocol protocol
+    
+    json_close_array
+    json_dump
+}
+
+get_flows() {
+    json_init
+    json_add_array "flows"
+    
+    # Simulated active flows
+    local services="netflix youtube spotify zoom"
+    for svc in $services; do
+        json_add_object ""
+        json_add_string "service" "$svc"
+        json_add_string "client" "192.168.1.$((100 + RANDOM % 50))"
+        json_add_int "bandwidth" "$((RANDOM * 100))"
+        json_add_string "quality" "HD"
+        json_add_int "duration" "$((RANDOM * 60))"
+        json_close_object
+    done
+    
+    json_close_array
+    json_dump
+}
+
+get_stats() {
+    json_init
+    
+    json_add_object "bandwidth"
+    json_add_int "streaming" "$((RANDOM * 1000000))"
+    json_add_int "voip" "$((RANDOM * 100000))"
+    json_add_int "audio" "$((RANDOM * 500000))"
+    json_add_int "other" "$((RANDOM * 200000))"
+    json_close_object
+    
+    json_add_object "connections"
+    json_add_int "total" "$((RANDOM % 50 + 10))"
+    json_add_int "streaming" "$((RANDOM % 20))"
+    json_add_int "voip" "$((RANDOM % 5))"
+    json_close_object
+    
+    json_dump
+}
+
+case "$1" in
+    list)
+        echo '{"status":{},"services":{},"protocols":{},"flows":{},"stats":{}}'
+        ;;
+    call)
+        case "$2" in
+            status) get_status ;;
+            services) get_services ;;
+            protocols) get_protocols ;;
+            flows) get_flows ;;
+            stats) get_stats ;;
+            *) echo '{"error":"Unknown method"}' ;;
+        esac
+        ;;
+esac

@@ -1,0 +1,17 @@
+{
+    "luci-app-auth-guardian": {
+        "description": "Auth Guardian",
+        "read": {
+            "ubus": {
+                "luci.auth-guardian": ["status", "sessions", "vouchers", "oauth_providers", "bypass_list"]
+            },
+            "uci": ["authguard"]
+        },
+        "write": {
+            "ubus": {
+                "luci.auth-guardian": ["generate_voucher"]
+            },
+            "uci": ["authguard"]
+        }
+    }
+}

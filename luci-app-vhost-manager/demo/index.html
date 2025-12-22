@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VHost Manager - Demo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; min-height: 100vh; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { background: linear-gradient(135deg, #059669, #10b981); padding: 32px; border-radius: 16px; margin-bottom: 24px; }
+        .services { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .service { background: #1e293b; padding: 24px; border-radius: 12px; border-left: 4px solid; }
+        .service-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .service-icon { font-size: 36px; }
+        .service-name { font-size: 20px; font-weight: 600; }
+        .service-domain { background: #0f172a; padding: 12px; border-radius: 8px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="font-size: 32px; margin-bottom: 8px;">🌐 VHost Manager</h1>
+            <p style="opacity: 0.9;">Virtual Hosts & Local SaaS Gateway</p>
+        </div>
+        <div class="services">
+            <div class="service" style="border-color: #0082c9;">
+                <div class="service-header"><span class="service-icon">☁️</span><span class="service-name">Nextcloud</span></div>
+                <div class="service-domain"><span style="color: #10b981;">🔒 https://cloud.local.lan</span><br><span style="color: #64748b;">→ 192.168.1.10:80</span></div>
+            </div>
+            <div class="service" style="border-color: #fc6d26;">
+                <div class="service-header"><span class="service-icon">💻</span><span class="service-name">GitLab</span></div>
+                <div class="service-domain"><span style="color: #10b981;">🔒 https://git.local.lan</span><br><span style="color: #64748b;">→ 192.168.1.11:80</span></div>
+            </div>
+            <div class="service" style="border-color: #00a4dc;">
+                <div class="service-header"><span class="service-icon">🎬</span><span class="service-name">Jellyfin</span></div>
+                <div class="service-domain"><span style="color: #10b981;">🔒 https://media.local.lan</span><br><span style="color: #64748b;">→ 192.168.1.12:8096</span></div>
+            </div>
+            <div class="service" style="border-color: #41bdf5;">
+                <div class="service-header"><span class="service-icon">🏠</span><span class="service-name">Home Assistant</span></div>
+                <div class="service-domain"><span style="color: #10b981;">🔒 https://home.local.lan</span><br><span style="color: #64748b;">→ 192.168.1.13:8123</span></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

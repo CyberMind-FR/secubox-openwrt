@@ -1,0 +1,147 @@
+#!/bin/sh
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+SESSIONS_FILE="/tmp/authguard_sessions.json"
+VOUCHERS_FILE="/tmp/authguard_vouchers.json"
+
+get_status() {
+    json_init
+    
+    local enabled auth_method
+    config_load authguard
+    config_get enabled global enabled "0"
+    config_get auth_method global auth_method "splash"
+    
+    json_add_boolean "enabled" "$enabled"
+    json_add_string "auth_method" "$auth_method"
+    
+    # Count active sessions
+    local sessions=0
+    [ -f "$SESSIONS_FILE" ] && sessions=$(cat "$SESSIONS_FILE" | grep -c "active" || echo 0)
+    json_add_int "active_sessions" "$sessions"
+    
+    # Check nodogsplash
+    local nds_running=0
+    pgrep -f nodogsplash >/dev/null && nds_running=1
+    json_add_boolean "captive_portal_active" "$nds_running"
+    
+    json_dump
+}
+
+get_sessions() {
+    json_init
+    json_add_array "sessions"
+    
+    # Parse nodogsplash clients if available
+    if command -v ndsctl >/dev/null 2>&1; then
+        ndsctl json 2>/dev/null | jsonfilter -e '@.clients[*]' 2>/dev/null | while read client; do
+            json_add_object ""
+            json_add_string "data" "$client"
+            json_close_object
+        done
+    fi
+    
+    # Also check DHCP leases for MAC addresses
+    if [ -f /tmp/dhcp.leases ]; then
+        while read expires mac ip hostname clientid; do
+            json_add_object ""
+            json_add_string "mac" "$mac"
+            json_add_string "ip" "$ip"
+            json_add_string "hostname" "${hostname:-unknown}"
+            json_add_string "status" "connected"
+            json_close_object
+        done < /tmp/dhcp.leases
+    fi
+    
+    json_close_array
+    json_dump
+}
+
+get_vouchers() {
+    json_init
+    json_add_array "vouchers"
+    
+    if [ -f "$VOUCHERS_FILE" ]; then
+        cat "$VOUCHERS_FILE"
+    else
+        # Generate sample vouchers
+        for i in 1 2 3 4 5; do
+            json_add_object ""
+            json_add_string "code" "WIFI-$(head -c 4 /dev/urandom | hexdump -e '"%08x"' | tr '[:lower:]' '[:upper:]')"
+            json_add_string "status" "unused"
+            json_add_int "validity" "86400"
+            json_add_int "created" "$(date +%s)"
+            json_close_object
+        done
+    fi
+    
+    json_close_array
+    json_dump
+}
+
+get_oauth_providers() {
+    config_load authguard
+    json_init
+    json_add_array "providers"
+    
+    _add_provider() {
+        local enabled
+        config_get enabled "$1" enabled "0"
+        
+        json_add_object ""
+        json_add_string "id" "$1"
+        json_add_boolean "enabled" "$enabled"
+        json_close_object
+    }
+    config_foreach _add_provider oauth
+    
+    json_close_array
+    json_dump
+}
+
+get_bypass_list() {
+    config_load authguard
+    json_init
+    json_add_array "mac"
+    config_list_foreach whitelist mac _add_item
+    json_close_array
+    json_add_array "ip"
+    config_list_foreach whitelist ip _add_item
+    json_close_array
+    json_add_array "domain"
+    config_list_foreach whitelist domain _add_item
+    json_close_array
+    json_dump
+}
+
+_add_item() {
+    json_add_string "" "$1"
+}
+
+generate_voucher() {
+    local code="WIFI-$(head -c 4 /dev/urandom | hexdump -e '"%08x"' | tr '[:lower:]' '[:upper:]')"
+    
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "code" "$code"
+    json_add_int "validity" "86400"
+    json_dump
+}
+
+case "$1" in
+    list)
+        echo '{"status":{},"sessions":{},"vouchers":{},"oauth_providers":{},"bypass_list":{},"generate_voucher":{}}'
+        ;;
+    call)
+        case "$2" in
+            status) get_status ;;
+            sessions) get_sessions ;;
+            vouchers) get_vouchers ;;
+            oauth_providers) get_oauth_providers ;;
+            bypass_list) get_bypass_list ;;
+            generate_voucher) generate_voucher ;;
+            *) echo '{"error":"Unknown method"}' ;;
+        esac
+        ;;
+esac
