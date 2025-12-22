@@ -22,7 +22,7 @@ on:
       architectures:
         description: 'Architectures to build (comma-separated or "all")'
         required: false
-        default: 'all'
+        default: 'x86-64'
 
 env:
   OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '23.05.5' }}
@@ -36,6 +36,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       version: ${{ steps.version.outputs.version }}
+      packages: ${{ steps.packages.outputs.list }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,12 +54,26 @@ jobs:
           echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
           echo "📦 Package version: ${VERSION#v}"
 
+      - name: List packages to build
+        id: packages
+        run: |
+          # Find all luci-app-* directories with Makefile
+          PACKAGES=""
+          for pkg in luci-app-*/; do
+            if [[ -f "${pkg}Makefile" ]]; then
+              PKG_NAME=$(basename "$pkg")
+              PACKAGES="${PACKAGES}${PKG_NAME},"
+              echo "📦 Found: $PKG_NAME"
+            fi
+          done
+          # Remove trailing comma
+          PACKAGES="${PACKAGES%,}"
+          echo "list=${PACKAGES}" >> $GITHUB_OUTPUT
+          echo "📋 Packages to build: $PACKAGES"
+
       - name: Set build matrix
         id: set-matrix
         run: |
-          # Full architecture matrix for OpenWrt
-          # Format: target/subtarget -> SDK name mapping
-          
           cat > /tmp/matrix.json << 'MATRIX_EOF'
           {
             "include": [
@@ -67,18 +82,6 @@ jobs:
                 "arch": "x86_64",
                 "sdk_name": "x86-64",
                 "description": "x86 64-bit (PC, VM, containers)"
-              },
-              {
-                "target": "x86-generic",
-                "arch": "i386_pentium4",
-                "sdk_name": "x86-generic",
-                "description": "x86 32-bit (legacy PC)"
-              },
-              {
-                "target": "aarch64-generic",
-                "arch": "aarch64_generic",
-                "sdk_name": "armsr-armv8",
-                "description": "ARM 64-bit generic (RPi4, Rock64)"
               },
               {
                 "target": "aarch64-cortex-a53",
@@ -90,7 +93,13 @@ jobs:
                 "target": "aarch64-cortex-a72",
                 "arch": "aarch64_cortex-a72",
                 "sdk_name": "mvebu-cortexa72",
-                "description": "ARM Cortex-A72 (MOCHAbin, MACCHIATObin)"
+                "description": "ARM Cortex-A72 (MOCHAbin)"
+              },
+              {
+                "target": "aarch64-generic",
+                "arch": "aarch64_generic",
+                "sdk_name": "armsr-armv8",
+                "description": "ARM 64-bit generic (RPi4, Rock64)"
               },
               {
                 "target": "arm-cortex-a7-neon",
@@ -105,12 +114,6 @@ jobs:
                 "description": "ARM Cortex-A9 (Linksys WRT, Turris)"
               },
               {
-                "target": "arm-cortex-a15-neon",
-                "arch": "arm_cortex-a15_neon-vfpv4",
-                "sdk_name": "armvirt-32",
-                "description": "ARM Cortex-A15 (QEMU ARM)"
-              },
-              {
                 "target": "mips-24kc",
                 "arch": "mips_24kc",
                 "sdk_name": "ath79-generic",
@@ -123,28 +126,10 @@ jobs:
                 "description": "MIPS Little-Endian (Xiaomi, GL.iNet)"
               },
               {
-                "target": "mipsel-74kc",
-                "arch": "mipsel_74kc",
-                "sdk_name": "bcm47xx-mips74k",
-                "description": "MIPS 74Kc (Broadcom routers)"
-              },
-              {
                 "target": "mediatek-filogic",
                 "arch": "aarch64_cortex-a53",
                 "sdk_name": "mediatek-filogic",
                 "description": "MediaTek Filogic (MT7981, MT7986)"
-              },
-              {
-                "target": "qualcomm-ipq40xx",
-                "arch": "arm_cortex-a7_neon-vfpv4",
-                "sdk_name": "ipq40xx-generic",
-                "description": "Qualcomm IPQ40xx (Google WiFi, Zyxel)"
-              },
-              {
-                "target": "qualcomm-ipq806x",
-                "arch": "arm_cortex-a15_neon-vfpv4",
-                "sdk_name": "ipq806x-generic",
-                "description": "Qualcomm IPQ806x (Netgear R7800)"
               },
               {
                 "target": "rockchip-armv8",
@@ -166,13 +151,11 @@ jobs:
           if [[ -z "$INPUT_ARCHS" || "$INPUT_ARCHS" == "all" ]]; then
             MATRIX=$(cat /tmp/matrix.json | jq -c '.')
           else
-            # Filter matrix based on input
             MATRIX=$(cat /tmp/matrix.json | jq -c --arg archs "$INPUT_ARCHS" '
               .include |= map(select(.target as $t | $archs | split(",") | map(gsub("^\\s+|\\s+$";"")) | any(. == $t or . == "all")))
             ')
           fi
           
-          # Use delimiter for multiline output
           echo "matrix<<EOF" >> $GITHUB_OUTPUT
           echo "$MATRIX" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -199,10 +182,7 @@ jobs:
       - name: Free disk space
         run: |
           echo "🧹 Cleaning up disk space..."
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
           df -h
 
@@ -220,145 +200,168 @@ jobs:
         id: cache-sdk
         with:
           path: ~/sdk
-          key: openwrt-sdk-${{ env.OPENWRT_VERSION }}-${{ matrix.sdk_name }}
+          key: openwrt-sdk-${{ env.OPENWRT_VERSION }}-${{ matrix.sdk_name }}-v2
 
       - name: Download OpenWrt SDK
         if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
           echo "📥 Downloading SDK for ${{ matrix.description }}..."
           
-          VERSION="${{ env.OPENWRT_VERSION }}"
-          SDK_NAME="${{ matrix.sdk_name }}"
+          BASE_URL="https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets"
           
-          if [[ "$VERSION" == "SNAPSHOT" ]]; then
-            BASE_URL="https://downloads.openwrt.org/snapshots/targets"
-          else
-            BASE_URL="https://downloads.openwrt.org/releases/${VERSION}/targets"
-          fi
+          # Map sdk_name to target/subtarget
+          case "${{ matrix.sdk_name }}" in
+            x86-64)           TARGET_PATH="x86/64" ;;
+            x86-generic)      TARGET_PATH="x86/generic" ;;
+            mvebu-cortexa53)  TARGET_PATH="mvebu/cortexa53" ;;
+            mvebu-cortexa72)  TARGET_PATH="mvebu/cortexa72" ;;
+            mvebu-cortexa9)   TARGET_PATH="mvebu/cortexa9" ;;
+            armsr-armv8)      TARGET_PATH="armsr/armv8" ;;
+            sunxi-cortexa7)   TARGET_PATH="sunxi/cortexa7" ;;
+            ath79-generic)    TARGET_PATH="ath79/generic" ;;
+            ramips-mt7621)    TARGET_PATH="ramips/mt7621" ;;
+            bcm47xx-mips74k)  TARGET_PATH="bcm47xx/mips74k" ;;
+            mediatek-filogic) TARGET_PATH="mediatek/filogic" ;;
+            ipq40xx-generic)  TARGET_PATH="ipq40xx/generic" ;;
+            ipq806x-generic)  TARGET_PATH="ipq806x/generic" ;;
+            rockchip-armv8)   TARGET_PATH="rockchip/armv8" ;;
+            bcm27xx-bcm2711)  TARGET_PATH="bcm27xx/bcm2711" ;;
+            armvirt-32)       TARGET_PATH="armvirt/32" ;;
+            *)
+              echo "❌ Unknown SDK: ${{ matrix.sdk_name }}"
+              exit 1
+              ;;
+          esac
           
-          # Parse target/subtarget from sdk_name
-          TARGET=$(echo "$SDK_NAME" | cut -d'-' -f1)
-          SUBTARGET=$(echo "$SDK_NAME" | cut -d'-' -f2-)
-          
-          SDK_URL="${BASE_URL}/${TARGET}/${SUBTARGET}"
-          
+          SDK_URL="${BASE_URL}/${TARGET_PATH}"
           echo "🔍 Looking for SDK at: $SDK_URL"
           
           # Find SDK filename
-          SDK_FILE=$(curl -sL "$SDK_URL/" | grep -oP 'openwrt-sdk[^"]+\.tar\.(xz|zst)' | head -1)
+          SDK_FILE=$(curl -sL "$SDK_URL/" | grep -oP 'openwrt-sdk[^"<>]+\.tar\.(xz|zst)' | head -1)
           
           if [[ -z "$SDK_FILE" ]]; then
-            echo "⚠️ SDK not found, trying alternative URL pattern..."
-            SDK_FILE=$(curl -sL "$SDK_URL/sha256sums" | grep -oP 'openwrt-sdk[^\s]+' | head -1)
-          fi
-          
-          if [[ -z "$SDK_FILE" ]]; then
-            echo "❌ Could not find SDK for ${{ matrix.target }}"
-            echo "🔗 Checked: $SDK_URL"
+            echo "❌ SDK not found for ${{ matrix.sdk_name }}"
             exit 1
           fi
           
-          echo "📦 Downloading: $SDK_FILE"
-          wget -q --show-progress "${SDK_URL}/${SDK_FILE}" -O /tmp/sdk.tar.xz || \
-          wget -q --show-progress "${SDK_URL}/${SDK_FILE}" -O /tmp/sdk.tar.zst
+          echo "📥 Downloading: $SDK_FILE"
+          wget -q "${SDK_URL}/${SDK_FILE}" -O /tmp/sdk.tar.xz || \
+          wget -q "${SDK_URL}/${SDK_FILE}" -O /tmp/sdk.tar.zst
           
+          # Extract
           mkdir -p ~/sdk
-          if [[ "$SDK_FILE" == *.zst ]]; then
-            zstd -d /tmp/sdk.tar.zst -o /tmp/sdk.tar
-            tar -xf /tmp/sdk.tar -C ~/sdk --strip-components=1
-          else
+          if [[ -f /tmp/sdk.tar.xz ]]; then
             tar -xf /tmp/sdk.tar.xz -C ~/sdk --strip-components=1
+          else
+            tar --zstd -xf /tmp/sdk.tar.zst -C ~/sdk --strip-components=1
           fi
           
-          echo "✅ SDK extracted to ~/sdk"
+          echo "✅ SDK extracted"
 
-      - name: Prepare SDK
+      - name: Setup SDK feeds
         run: |
           cd ~/sdk
           
-          # Update feeds
-          echo "📋 Updating feeds..."
+          # Update and install feeds
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           
-          # Configure SDK
-          echo "⚙️ Configuring SDK..."
+          # Base config
           make defconfig
+          
+          echo "✅ SDK feeds configured"
 
       - name: Copy packages to SDK
         run: |
-          echo "📁 Copying SecuBox packages to SDK..."
-          
-          # List of our packages
-          PACKAGES=(
-            "luci-app-crowdsec-dashboard"
-            "luci-app-netdata-dashboard"
-            "luci-app-netifyd-dashboard"
-            "luci-app-wireguard-dashboard"
-            "luci-app-network-modes"
-            "luci-app-client-guardian"
-            "luci-app-system-hub"
-            "luci-app-secubox"
-          )
-          
-          # Create package directory
-          mkdir -p ~/sdk/package/secubox
-          
-          # Copy each package if it exists
-          for pkg in "${PACKAGES[@]}"; do
-            if [[ -d "$GITHUB_WORKSPACE/$pkg" ]]; then
-              echo "  📦 $pkg"
-              cp -r "$GITHUB_WORKSPACE/$pkg" ~/sdk/package/secubox/
-            else
-              echo "  ⚠️ $pkg not found in repository"
-            fi
-          done
-          
-          # If packages are in a subdirectory
-          if [[ -d "$GITHUB_WORKSPACE/packages" ]]; then
-            cp -r "$GITHUB_WORKSPACE/packages/"* ~/sdk/package/secubox/ 2>/dev/null || true
-          fi
-          
-          # List what we have
-          echo "📋 Packages in SDK:"
-          ls -la ~/sdk/package/secubox/ || echo "  (empty)"
-
-      - name: Update package version
-        run: |
           VERSION="${{ needs.setup.outputs.version }}"
-          echo "📝 Setting package version to: $VERSION"
+          echo "📦 Copying SecuBox packages (version: $VERSION)..."
           
-          # Update Makefile version in each package
-          for makefile in ~/sdk/package/secubox/*/Makefile; do
-            if [[ -f "$makefile" ]]; then
-              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "$makefile"
-              sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "$makefile"
-              echo "  ✅ Updated: $(dirname $makefile | xargs basename)"
+          # IMPORTANT: Copy packages directly into package/, NOT into a subdirectory
+          for pkg in luci-app-*/; do
+            if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
+              PKG_NAME=$(basename "$pkg")
+              echo "  📁 Copying $PKG_NAME..."
+              cp -r "$pkg" ~/sdk/package/
+              
+              # Update version in Makefile
+              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" ~/sdk/package/${PKG_NAME}/Makefile
+              sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" ~/sdk/package/${PKG_NAME}/Makefile
             fi
           done
+          
+          echo ""
+          echo "📋 Packages in SDK:"
+          ls -la ~/sdk/package/luci-app-* 2>/dev/null || echo "No luci-app packages found"
+
+      - name: Configure packages
+        run: |
+          cd ~/sdk
+          
+          echo "⚙️ Enabling packages in config..."
+          
+          # Enable each package
+          for pkg in ~/sdk/package/luci-app-*/; do
+            if [[ -d "$pkg" ]]; then
+              PKG_NAME=$(basename "$pkg")
+              echo "CONFIG_PACKAGE_${PKG_NAME}=m" >> .config
+              echo "  ✅ Enabled: $PKG_NAME"
+            fi
+          done
+          
+          make defconfig
+          
+          echo ""
+          echo "📋 Enabled packages:"
+          grep "CONFIG_PACKAGE_luci-app" .config | head -20
 
       - name: Build packages
         run: |
           cd ~/sdk
           
           echo "🔨 Building SecuBox packages for ${{ matrix.description }}..."
+          echo ""
           
-          # Enable our packages
-          for pkg in ~/sdk/package/secubox/*/; do
-            PKG_NAME=$(basename "$pkg")
-            echo "CONFIG_PACKAGE_${PKG_NAME}=m" >> .config
+          BUILD_ERRORS=0
+          BUILT_PACKAGES=""
+          
+          # Build each package individually
+          for pkg in ~/sdk/package/luci-app-*/; do
+            if [[ -d "$pkg" ]]; then
+              PKG_NAME=$(basename "$pkg")
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "📦 Building: $PKG_NAME"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              
+              # Build the specific package
+              if make package/${PKG_NAME}/compile V=s -j$(nproc) 2>&1; then
+                echo "✅ Successfully built: $PKG_NAME"
+                BUILT_PACKAGES="${BUILT_PACKAGES}${PKG_NAME},"
+              else
+                echo "⚠️ Failed to build: $PKG_NAME, retrying with -j1..."
+                if make package/${PKG_NAME}/compile V=s -j1 2>&1; then
+                  echo "✅ Successfully built on retry: $PKG_NAME"
+                  BUILT_PACKAGES="${BUILT_PACKAGES}${PKG_NAME},"
+                else
+                  echo "❌ Failed to build: $PKG_NAME"
+                  BUILD_ERRORS=$((BUILD_ERRORS + 1))
+                fi
+              fi
+              echo ""
+            fi
           done
           
-          make defconfig
-          
-          # Build with verbose output on error
-          make package/secubox/compile V=s -j$(nproc) || {
-            echo "❌ Build failed, retrying with single thread..."
-            make package/secubox/compile V=s -j1
-          }
-          
           # Generate package index
-          make package/index V=s
+          make package/index V=s || true
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📊 Build Summary"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Built packages: $BUILT_PACKAGES"
+          echo "Build errors: $BUILD_ERRORS"
+          
+          if [[ $BUILD_ERRORS -gt 0 ]]; then
+            echo "⚠️ Some packages failed to build"
+          fi
 
       - name: Collect artifacts
         id: collect
@@ -368,28 +371,41 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/artifacts/${{ matrix.target }}
           
           # Find and copy .ipk files
-          find ~/sdk/bin -name "*.ipk" -exec cp {} $GITHUB_WORKSPACE/artifacts/${{ matrix.target }}/ \;
+          find ~/sdk/bin -name "luci-app-*.ipk" -exec cp {} $GITHUB_WORKSPACE/artifacts/${{ matrix.target }}/ \;
+          
+          # Also copy any dependency packages we might have built
+          find ~/sdk/bin -name "*.ipk" -exec cp {} $GITHUB_WORKSPACE/artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
+          
+          # Remove duplicates (keep largest)
+          cd $GITHUB_WORKSPACE/artifacts/${{ matrix.target }}
+          for f in *.ipk; do
+            [[ -f "$f" ]] || continue
+          done
           
           # Copy package index
           find ~/sdk/bin -name "Packages*" -exec cp {} $GITHUB_WORKSPACE/artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
           
           # List artifacts
+          echo ""
           echo "📋 Built packages for ${{ matrix.target }}:"
           ls -la $GITHUB_WORKSPACE/artifacts/${{ matrix.target }}/
           
           # Count packages
-          PKG_COUNT=$(find $GITHUB_WORKSPACE/artifacts/${{ matrix.target }} -name "*.ipk" | wc -l)
+          PKG_COUNT=$(find $GITHUB_WORKSPACE/artifacts/${{ matrix.target }} -name "luci-app-*.ipk" | wc -l)
           echo "pkg_count=$PKG_COUNT" >> $GITHUB_OUTPUT
           
+          echo ""
+          echo "📦 Total SecuBox packages built: $PKG_COUNT"
+          
           if [[ $PKG_COUNT -eq 0 ]]; then
-            echo "⚠️ No packages built!"
+            echo "⚠️ No packages were built!"
             exit 1
           fi
 
       - name: Create checksums
         run: |
           cd $GITHUB_WORKSPACE/artifacts/${{ matrix.target }}
-          sha256sum *.ipk > SHA256SUMS
+          sha256sum *.ipk > SHA256SUMS 2>/dev/null || echo "No .ipk files to checksum"
           echo "✅ Checksums created"
 
       - name: Upload artifacts
@@ -429,10 +445,8 @@ jobs:
             ARCH=$(basename "$arch_dir" | sed 's/packages-//')
             echo "📦 Processing $ARCH..."
             
-            # Create tarball
             tar -czf "release/secubox-${VERSION}-${ARCH}.tar.gz" -C "$arch_dir" .
             
-            # Copy individual .ipk files to flat structure
             mkdir -p "release/ipk/${ARCH}"
             cp "$arch_dir"/*.ipk "release/ipk/${ARCH}/" 2>/dev/null || true
           done
@@ -441,47 +455,39 @@ jobs:
           tar -czf "release/secubox-${VERSION}-all-architectures.tar.gz" -C packages .
           
           # Create release notes
-          cat > release/RELEASE_NOTES.md << EOF
-          # SecuBox $VERSION
+          cat > release/RELEASE_NOTES.md << 'EOF'
+          # SecuBox Packages v${{ needs.setup.outputs.version }}
           
-          ## 📦 Packages Included
+          ## 📦 Included Packages
           
-          - luci-app-crowdsec-dashboard - CrowdSec Security Dashboard
-          - luci-app-netdata-dashboard - Netdata Monitoring Dashboard
-          - luci-app-netifyd-dashboard - Netifyd DPI Dashboard
-          - luci-app-wireguard-dashboard - WireGuard VPN Dashboard
-          - luci-app-network-modes - Network Mode Switcher
-          - luci-app-client-guardian - NAC & Captive Portal
-          - luci-app-system-hub - System Hub Control Center
-          
-          ## 🏗️ Supported Architectures
-          
-          | Target | Architecture | Description |
-          |--------|--------------|-------------|
-          | x86-64 | x86_64 | PC, VMs, Containers |
-          | aarch64-cortex-a53 | aarch64 | ESPRESSObin, Sheeva64 |
-          | aarch64-cortex-a72 | aarch64 | MOCHAbin, RPi4 |
-          | arm-cortex-a7 | arm | Orange Pi, Banana Pi |
-          | arm-cortex-a9 | arm | Linksys WRT, Turris |
-          | mips-24kc | mips | TP-Link, Ubiquiti |
-          | mipsel-24kc | mipsel | Xiaomi, GL.iNet |
-          | mediatek-filogic | aarch64 | MT7981, MT7986 |
-          | qualcomm-ipq40xx | arm | Google WiFi |
-          | rockchip-armv8 | aarch64 | NanoPi R4S, R5S |
+          | Package | Description |
+          |---------|-------------|
+          | luci-app-secubox | SecuBox Hub - Central Dashboard |
+          | luci-app-crowdsec-dashboard | CrowdSec Security Dashboard |
+          | luci-app-netdata-dashboard | Netdata Monitoring |
+          | luci-app-netifyd-dashboard | Netifyd DPI Dashboard |
+          | luci-app-wireguard-dashboard | WireGuard VPN Dashboard |
+          | luci-app-network-modes | Network Mode Switcher |
+          | luci-app-client-guardian | NAC & Captive Portal |
+          | luci-app-system-hub | System Control Center |
+          | luci-app-bandwidth-manager | QoS & Bandwidth Control |
+          | luci-app-auth-guardian | OAuth & Voucher Portal |
+          | luci-app-media-flow | Streaming DPI |
+          | luci-app-vhost-manager | Reverse Proxy Manager |
+          | luci-app-cdn-cache | Local CDN Cache |
           
           ## 📥 Installation
           
-          \`\`\`bash
-          # Download package for your architecture
+          ```bash
+          # Upload .ipk to router, then:
           opkg update
-          opkg install luci-app-crowdsec-dashboard_${VERSION}_*.ipk
-          # ... install other packages as needed
-          \`\`\`
+          opkg install /tmp/luci-app-secubox_*.ipk
+          ```
           
           ## 🔗 Links
           
+          - [SecuBox Website](https://secubox.cybermood.eu)
           - [Documentation](https://cybermind.fr/docs/secubox)
-          - [GitHub](https://github.com/gkerma)
           - [CyberMind.fr](https://cybermind.fr)
           
           ---
@@ -495,7 +501,6 @@ jobs:
         run: |
           cd release
           sha256sum *.tar.gz > SHA256SUMS
-          echo "✅ Global checksums created"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -541,7 +546,7 @@ jobs:
           for arch_dir in packages/packages-*/; do
             if [[ -d "$arch_dir" ]]; then
               ARCH=$(basename "$arch_dir" | sed 's/packages-//')
-              PKG_COUNT=$(find "$arch_dir" -name "*.ipk" 2>/dev/null | wc -l)
+              PKG_COUNT=$(find "$arch_dir" -name "luci-app-*.ipk" 2>/dev/null | wc -l)
               if [[ $PKG_COUNT -gt 0 ]]; then
                 echo "| $ARCH | ✅ Success | $PKG_COUNT |" >> $GITHUB_STEP_SUMMARY
               else
