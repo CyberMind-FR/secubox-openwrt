@@ -22,7 +22,7 @@ on:
       architectures:
         description: 'Architectures to build (comma-separated or "all")'
         required: false
-        default: 'x86-64'
+        default: 'aarch64-cortex-a72'
 
 env:
   OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '23.05.5' }}
