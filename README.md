@@ -413,17 +413,42 @@ Packages are compiled automatically when:
 
 1. Go to **Actions** → **Build OpenWrt Packages**
 2. Click **Run workflow**
-3. Select:
-   - **OpenWrt version**: 23.05.5, 22.03.7, or SNAPSHOT
+3. Select build options:
+   - **Package name**: Choose a specific package or leave empty for all packages
+   - **OpenWrt version**: 23.05.5, 24.10.0, or SNAPSHOT
    - **Architectures**: `all` or comma-separated list
 
+#### Build All Packages
+
+Leave "Package name" empty and select architectures:
+
 ```bash
-# Examples
-all                                    # All architectures
+# Architecture examples
+all                                    # All supported architectures
 x86-64                                 # x86_64 only
-aarch64-cortex-a53,aarch64-cortex-a72  # GlobalScale devices
+aarch64-cortex-a53,aarch64-cortex-a72  # ARM64 devices
 mips-24kc,mipsel-24kc                  # MIPS routers
 ```
+
+#### Build Single Package
+
+Select a specific package from the dropdown to build only that module:
+
+- `luci-app-secubox` - Central Hub
+- `luci-app-system-hub` - System Control Center
+- `luci-app-crowdsec-dashboard` - CrowdSec Security
+- `luci-app-netdata-dashboard` - System Monitoring
+- `luci-app-netifyd-dashboard` - DPI & Traffic Analysis
+- `luci-app-wireguard-dashboard` - WireGuard VPN
+- `luci-app-network-modes` - Network Configuration
+- `luci-app-client-guardian` - NAC & Captive Portal
+- `luci-app-auth-guardian` - Authentication System
+- `luci-app-bandwidth-manager` - QoS & Quotas
+- `luci-app-media-flow` - Media Detection
+- `luci-app-cdn-cache` - CDN Proxy Cache
+- `luci-app-vhost-manager` - Virtual Hosts
+
+**Use case**: Quickly test a single module after making changes, without waiting for all packages to build.
 
 ### Download Artifacts
 

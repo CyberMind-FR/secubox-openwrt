@@ -9,6 +9,25 @@ on:
     branches: [main, master]
   workflow_dispatch:
     inputs:
+      package_name:
+        description: 'Package to build (leave empty for all packages)'
+        required: false
+        type: choice
+        options:
+          - ''
+          - 'luci-app-secubox'
+          - 'luci-app-crowdsec-dashboard'
+          - 'luci-app-netdata-dashboard'
+          - 'luci-app-netifyd-dashboard'
+          - 'luci-app-wireguard-dashboard'
+          - 'luci-app-network-modes'
+          - 'luci-app-client-guardian'
+          - 'luci-app-system-hub'
+          - 'luci-app-bandwidth-manager'
+          - 'luci-app-auth-guardian'
+          - 'luci-app-media-flow'
+          - 'luci-app-vhost-manager'
+          - 'luci-app-cdn-cache'
       openwrt_version:
         description: 'OpenWrt version'
         required: true
@@ -53,6 +72,13 @@ jobs:
           fi
           echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
           echo "📦 Package version: ${VERSION#v}"
+
+          PACKAGE_NAME="${{ github.event.inputs.package_name }}"
+          if [[ -n "$PACKAGE_NAME" ]]; then
+            echo "🎯 Building single package: $PACKAGE_NAME"
+          else
+            echo "📦 Building all packages"
+          fi
 
       - name: Set build matrix
         id: set-matrix
@@ -281,20 +307,38 @@ jobs:
       - name: Copy packages to SDK
         run: |
           VERSION="${{ needs.setup.outputs.version }}"
-          echo "📦 Copying packages (version: $VERSION)..."
-          
-          for pkg in luci-app-*/; do
-            if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
-              PKG_NAME=$(basename "$pkg")
-              echo "  📁 $PKG_NAME"
-              cp -r "$pkg" sdk/package/
-              
+          PACKAGE_NAME="${{ github.event.inputs.package_name }}"
+
+          if [[ -n "$PACKAGE_NAME" ]]; then
+            echo "📦 Copying single package: $PACKAGE_NAME (version: $VERSION)..."
+
+            if [[ -d "$PACKAGE_NAME" && -f "${PACKAGE_NAME}/Makefile" ]]; then
+              echo "  📁 $PACKAGE_NAME"
+              cp -r "$PACKAGE_NAME" sdk/package/
+
               # Update version
-              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "sdk/package/${PKG_NAME}/Makefile"
-              sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "sdk/package/${PKG_NAME}/Makefile"
+              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "sdk/package/${PACKAGE_NAME}/Makefile"
+              sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "sdk/package/${PACKAGE_NAME}/Makefile"
+            else
+              echo "❌ Package $PACKAGE_NAME not found or missing Makefile"
+              exit 1
             fi
-          done
-          
+          else
+            echo "📦 Copying all packages (version: $VERSION)..."
+
+            for pkg in luci-app-*/; do
+              if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
+                PKG_NAME=$(basename "$pkg")
+                echo "  📁 $PKG_NAME"
+                cp -r "$pkg" sdk/package/
+
+                # Update version
+                sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "sdk/package/${PKG_NAME}/Makefile"
+                sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "sdk/package/${PKG_NAME}/Makefile"
+              fi
+            done
+          fi
+
           echo ""
           echo "📋 Packages in SDK:"
           ls -d sdk/package/luci-app-*/ 2>/dev/null || echo "None"
@@ -464,38 +508,46 @@ jobs:
       - name: Create combined archives
         run: |
           VERSION="${{ needs.setup.outputs.version }}"
+          PACKAGE_NAME="${{ github.event.inputs.package_name }}"
           mkdir -p release
-          
-          echo "📁 Creating combined archives..."
-          
+
+          # Determine prefix for archives
+          if [[ -n "$PACKAGE_NAME" ]]; then
+            PREFIX="${PACKAGE_NAME}"
+            echo "📁 Creating archives for single package: $PACKAGE_NAME..."
+          else
+            PREFIX="secubox"
+            echo "📁 Creating combined archives..."
+          fi
+
           # Per-architecture archives
           for dir in packages/packages-*/; do
             [[ -d "$dir" ]] || continue
-            
+
             ARCH=$(basename "$dir" | sed 's/packages-//')
             echo "📦 $ARCH"
-            
+
             # Copy .ipk files to release
             mkdir -p "release/${ARCH}"
             cp "$dir"/*.ipk "release/${ARCH}/" 2>/dev/null || true
-            
+
             # Create archive
             if ls "release/${ARCH}"/*.ipk >/dev/null 2>&1; then
-              tar -czf "release/secubox-${VERSION}-${ARCH}.tar.gz" -C "release/${ARCH}" .
+              tar -czf "release/${PREFIX}-${VERSION}-${ARCH}.tar.gz" -C "release/${ARCH}" .
             fi
           done
-          
+
           # Create all-in-one archive
-          tar -czf "release/secubox-${VERSION}-all-architectures.tar.gz" -C packages .
-          
+          tar -czf "release/${PREFIX}-${VERSION}-all-architectures.tar.gz" -C packages .
+
           # Checksums
           cd release
           sha256sum *.tar.gz > SHA256SUMS 2>/dev/null || true
-          
+
           echo ""
           echo "📋 Release contents:"
           ls -la
-          
+
           echo ""
           echo "📊 Package count per architecture:"
           for dir in */; do
@@ -558,15 +610,17 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: SecuBox ${{ needs.setup.outputs.version }}
+          name: ${{ github.event.inputs.package_name && format('{0} {1}', github.event.inputs.package_name, needs.setup.outputs.version) || format('SecuBox {0}', needs.setup.outputs.version) }}
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', needs.setup.outputs.version) }}
           body: |
-            ## 📦 SecuBox Packages v${{ needs.setup.outputs.version }}
-            
-            Pre-built LuCI packages for OpenWrt ${{ env.OPENWRT_VERSION }}.
-            
+            ## 📦 ${{ github.event.inputs.package_name && format('{0} Package', github.event.inputs.package_name) || 'SecuBox Packages' }} v${{ needs.setup.outputs.version }}
+
+            Pre-built LuCI package${{ github.event.inputs.package_name && '' || 's' }} for OpenWrt ${{ env.OPENWRT_VERSION }}.
+
+            ${{ github.event.inputs.package_name && format('🎯 **Single package build**: {0}', github.event.inputs.package_name) || '' }}
+
             ### ✅ Built Packages
-            
+
             ${{ steps.list-packages.outputs.packages }}
             
             ### 📥 Installation
@@ -622,6 +676,8 @@ jobs:
 
       - name: Generate summary
         run: |
+          PACKAGE_NAME="${{ github.event.inputs.package_name }}"
+
           echo "# 📊 SecuBox Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
@@ -629,6 +685,13 @@ jobs:
           echo "| Version | ${{ needs.setup.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
           echo "| OpenWrt | ${{ env.OPENWRT_VERSION }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Triggered by | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+
+          if [[ -n "$PACKAGE_NAME" ]]; then
+            echo "| Package | 🎯 $PACKAGE_NAME (single package build) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Package | 📦 All packages |" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
           
           echo "## Build Results" >> $GITHUB_STEP_SUMMARY
