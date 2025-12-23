@@ -1,0 +1,665 @@
+/* VHost Manager Dashboard Styles */
+
+:root {
+    --vh-primary: #06b6d4;
+    --vh-secondary: #0891b2;
+    --vh-dark: #0a0f14;
+    --vh-darker: #050810;
+    --vh-light: #15181f;
+    --vh-border: #202530;
+    --vh-success: #10b981;
+    --vh-warning: #f59e0b;
+    --vh-danger: #ef4444;
+    --vh-info: #3b82f6;
+    --vh-gradient: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+}
+
+/* Main Container */
+.vhost-manager-container {
+    background: linear-gradient(135deg, var(--vh-dark) 0%, var(--vh-darker) 100%);
+    border-radius: 12px;
+    padding: 24px;
+    margin: 16px 0;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Header */
+.vhost-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--vh-border);
+}
+
+.vhost-title {
+    font-size: 24px;
+    font-weight: 700;
+    background: var(--vh-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.vhost-title::before {
+    content: "🌐";
+    font-size: 28px;
+    -webkit-text-fill-color: initial;
+}
+
+/* Stats Grid */
+.vhost-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.vh-stat-card {
+    background: var(--vh-light);
+    border: 1px solid var(--vh-border);
+    border-radius: 8px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.vh-stat-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--vh-gradient);
+}
+
+.vh-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.2);
+}
+
+.vh-stat-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #999;
+    margin-bottom: 8px;
+}
+
+.vh-stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    background: var(--vh-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.vh-stat-icon {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    font-size: 32px;
+    opacity: 0.3;
+}
+
+/* Virtual Hosts List */
+.vhost-list {
+    display: grid;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.vhost-item {
+    background: var(--vh-light);
+    border: 1px solid var(--vh-border);
+    border-radius: 8px;
+    padding: 20px;
+    transition: all 0.2s;
+}
+
+.vhost-item:hover {
+    border-color: var(--vh-primary);
+    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.2);
+}
+
+.vhost-item.active {
+    border-left: 4px solid var(--vh-primary);
+}
+
+.vhost-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.vhost-domain {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--vh-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.vhost-domain::before {
+    content: "🔗";
+    font-size: 20px;
+}
+
+.vhost-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.vhost-status.online {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--vh-success);
+}
+
+.vhost-status.offline {
+    background: rgba(156, 163, 175, 0.2);
+    color: #9ca3af;
+}
+
+.vhost-status.error {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--vh-danger);
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.status-dot.online {
+    animation: pulse-status 2s infinite;
+}
+
+@keyframes pulse-status {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.vhost-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.vhost-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.detail-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #666;
+    letter-spacing: 0.5px;
+}
+
+.detail-value {
+    font-size: 14px;
+    color: #fff;
+    font-weight: 500;
+}
+
+.vhost-actions {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--vh-border);
+}
+
+/* SSL Certificate Badge */
+.ssl-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.ssl-badge.valid {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--vh-success);
+}
+
+.ssl-badge.expired {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--vh-warning);
+}
+
+.ssl-badge.none {
+    background: rgba(156, 163, 175, 0.2);
+    color: #9ca3af;
+}
+
+.ssl-badge::before {
+    content: "🔒";
+    font-size: 12px;
+}
+
+/* Service Redirects */
+.redirect-list {
+    display: grid;
+    gap: 12px;
+}
+
+.redirect-item {
+    background: var(--vh-light);
+    border: 1px solid var(--vh-border);
+    border-radius: 6px;
+    padding: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.redirect-route {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'Courier New', monospace;
+}
+
+.redirect-from {
+    color: var(--vh-warning);
+    font-weight: 600;
+}
+
+.redirect-arrow {
+    color: #666;
+    font-size: 20px;
+}
+
+.redirect-to {
+    color: var(--vh-success);
+    font-weight: 600;
+}
+
+.redirect-type {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.redirect-type.proxy {
+    background: rgba(6, 182, 212, 0.2);
+    color: var(--vh-primary);
+}
+
+.redirect-type.dns {
+    background: rgba(139, 92, 246, 0.2);
+    color: #8b5cf6;
+}
+
+/* Service Templates */
+.service-templates {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.service-template {
+    background: var(--vh-light);
+    border: 1px solid var(--vh-border);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.service-template:hover {
+    border-color: var(--vh-primary);
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+}
+
+.service-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+}
+
+.service-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.service-desc {
+    font-size: 11px;
+    color: #999;
+}
+
+/* Nginx/HAProxy Config Preview */
+.config-preview {
+    background: var(--vh-dark);
+    border: 1px solid var(--vh-border);
+    border-radius: 6px;
+    padding: 16px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    overflow-x: auto;
+    margin-top: 16px;
+}
+
+.config-line {
+    color: #ccc;
+    line-height: 1.6;
+}
+
+.config-keyword {
+    color: var(--vh-primary);
+    font-weight: 600;
+}
+
+.config-value {
+    color: var(--vh-success);
+}
+
+.config-comment {
+    color: #666;
+    font-style: italic;
+}
+
+/* Let's Encrypt Setup */
+.acme-setup {
+    background: var(--vh-light);
+    border: 1px solid var(--vh-border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.acme-status {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.acme-icon {
+    font-size: 32px;
+}
+
+.acme-info {
+    flex: 1;
+}
+
+.acme-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.acme-subtitle {
+    font-size: 13px;
+    color: #999;
+}
+
+.acme-domains {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.domain-tag {
+    padding: 6px 12px;
+    background: var(--vh-dark);
+    border: 1px solid var(--vh-border);
+    border-radius: 6px;
+    font-size: 12px;
+    color: #fff;
+    font-family: 'Courier New', monospace;
+}
+
+.domain-tag.verified {
+    border-color: var(--vh-success);
+    background: rgba(16, 185, 129, 0.1);
+}
+
+/* Action Buttons */
+.vh-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+}
+
+.vh-btn-primary {
+    background: var(--vh-gradient);
+    color: white;
+}
+
+.vh-btn-primary:hover {
+    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4);
+    transform: translateY(-1px);
+}
+
+.vh-btn-secondary {
+    background: var(--vh-light);
+    color: #ccc;
+    border: 1px solid var(--vh-border);
+}
+
+.vh-btn-secondary:hover {
+    background: var(--vh-border);
+}
+
+.vh-btn-danger {
+    background: var(--vh-danger);
+    color: white;
+}
+
+.vh-btn-danger:hover {
+    background: #dc2626;
+}
+
+.vh-btn-icon {
+    font-size: 14px;
+}
+
+/* Form Elements */
+.vh-form-group {
+    margin-bottom: 20px;
+}
+
+.vh-label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #ccc;
+    font-size: 14px;
+}
+
+.vh-input {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--vh-light);
+    border: 1px solid var(--vh-border);
+    border-radius: 6px;
+    color: #fff;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.vh-input:focus {
+    outline: none;
+    border-color: var(--vh-primary);
+    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1);
+}
+
+.vh-select {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--vh-light);
+    border: 1px solid var(--vh-border);
+    border-radius: 6px;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+/* Info Boxes */
+.vh-info-box {
+    background: var(--vh-light);
+    border-left: 4px solid var(--vh-info);
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 20px;
+    display: flex;
+    gap: 12px;
+}
+
+.vh-info-box.warning {
+    border-left-color: var(--vh-warning);
+}
+
+.vh-info-box.danger {
+    border-left-color: var(--vh-danger);
+}
+
+.vh-info-box.success {
+    border-left-color: var(--vh-success);
+}
+
+.vh-info-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.vh-info-content {
+    flex: 1;
+}
+
+.vh-info-title {
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.vh-info-text {
+    font-size: 13px;
+    color: #999;
+    line-height: 1.5;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .vhost-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .service-templates {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    }
+
+    .vhost-details {
+        grid-template-columns: 1fr;
+    }
+
+    .redirect-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .redirect-route {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .redirect-arrow {
+        transform: rotate(90deg);
+    }
+}
+
+/* Loading State */
+.vh-loading {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+}
+
+.vh-loading::before {
+    content: "⚙️";
+    font-size: 48px;
+    display: block;
+    margin-bottom: 16px;
+    animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Empty State */
+.vh-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: #666;
+}
+
+.vh-empty::before {
+    content: "🏠";
+    font-size: 64px;
+    display: block;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.vh-empty-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #999;
+    margin-bottom: 8px;
+}
+
+.vh-empty-text {
+    font-size: 14px;
+    color: #666;
+}
