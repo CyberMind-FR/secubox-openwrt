@@ -1,0 +1,555 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# WireGuard Dashboard RPCD backend
+# Copyright (C) 2024 CyberMind.fr - Gandalf
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+WG_CMD="/usr/bin/wg"
+
+# Check if wireguard-tools is available
+check_wg() {
+	if [ ! -x "$WG_CMD" ]; then
+		echo '{"error": "wireguard-tools not installed"}'
+		exit 0
+	fi
+}
+
+# Get overall status
+get_status() {
+	json_init
+	
+	# Check if wg command exists
+	if [ ! -x "$WG_CMD" ]; then
+		json_add_boolean "installed" 0
+		json_add_string "error" "wireguard-tools not installed"
+		json_dump
+		return
+	fi
+	
+	json_add_boolean "installed" 1
+	
+	# Get all interfaces
+	local interfaces=$($WG_CMD show interfaces 2>/dev/null)
+	local iface_count=0
+	local peer_count=0
+	local total_rx=0
+	local total_tx=0
+	local active_peers=0
+	
+	json_add_array "interfaces"
+	
+	for iface in $interfaces; do
+		iface_count=$((iface_count + 1))
+		
+		# Get interface details
+		local pubkey=$($WG_CMD show $iface public-key 2>/dev/null)
+		local port=$($WG_CMD show $iface listen-port 2>/dev/null)
+		local fwmark=$($WG_CMD show $iface fwmark 2>/dev/null)
+		
+		# Get interface IP from network config
+		local ip=$(ip -4 addr show $iface 2>/dev/null | grep -oP 'inet \K[\d.]+')
+		
+		# Check if interface is up
+		local state="down"
+		if ip link show $iface 2>/dev/null | grep -q "UP"; then
+			state="up"
+		fi
+		
+		json_add_object
+		json_add_string "name" "$iface"
+		json_add_string "public_key" "$pubkey"
+		json_add_int "listen_port" "${port:-0}"
+		json_add_string "ip_address" "${ip:-N/A}"
+		json_add_string "state" "$state"
+		json_add_string "fwmark" "${fwmark:-off}"
+		
+		# Count peers for this interface
+		local iface_peers=$($WG_CMD show $iface peers 2>/dev/null | wc -l)
+		json_add_int "peer_count" "$iface_peers"
+		peer_count=$((peer_count + iface_peers))
+		
+		# Get transfer totals for interface
+		local transfer=$($WG_CMD show $iface transfer 2>/dev/null)
+		local iface_rx=0
+		local iface_tx=0
+		echo "$transfer" | while read peer rx tx; do
+			iface_rx=$((iface_rx + rx))
+			iface_tx=$((iface_tx + tx))
+		done
+		
+		json_close_object
+	done
+	
+	json_close_array
+	
+	# Calculate totals from all interfaces
+	for iface in $interfaces; do
+		local transfer=$($WG_CMD show $iface transfer 2>/dev/null)
+		while read peer rx tx; do
+			[ -n "$rx" ] && total_rx=$((total_rx + rx))
+			[ -n "$tx" ] && total_tx=$((total_tx + tx))
+		done << EOF
+$transfer
+EOF
+		
+		# Check for recent handshakes (within last 3 minutes = 180 seconds)
+		local handshakes=$($WG_CMD show $iface latest-handshakes 2>/dev/null)
+		local now=$(date +%s)
+		while read peer hs; do
+			if [ -n "$hs" ] && [ "$hs" != "0" ]; then
+				local age=$((now - hs))
+				if [ $age -lt 180 ]; then
+					active_peers=$((active_peers + 1))
+				fi
+			fi
+		done << EOF
+$handshakes
+EOF
+	done
+	
+	json_add_int "interface_count" "$iface_count"
+	json_add_int "total_peers" "$peer_count"
+	json_add_int "active_peers" "$active_peers"
+	json_add_int "total_rx" "$total_rx"
+	json_add_int "total_tx" "$total_tx"
+	
+	# Uptime - get from first interface creation
+	local uptime=0
+	for iface in $interfaces; do
+		if [ -d "/sys/class/net/$iface" ]; then
+			# Approximate from interface stats
+			uptime=$(cat /proc/uptime | cut -d. -f1)
+			break
+		fi
+	done
+	json_add_int "uptime" "$uptime"
+	
+	json_dump
+}
+
+# Get all interfaces with details
+get_interfaces() {
+	json_init
+	json_add_array "interfaces"
+	
+	local interfaces=$($WG_CMD show interfaces 2>/dev/null)
+	
+	for iface in $interfaces; do
+		local pubkey=$($WG_CMD show $iface public-key 2>/dev/null)
+		local privkey_exists="yes"
+		local port=$($WG_CMD show $iface listen-port 2>/dev/null)
+		local fwmark=$($WG_CMD show $iface fwmark 2>/dev/null)
+		
+		# Get IP addresses
+		local ipv4=$(ip -4 addr show $iface 2>/dev/null | grep -oP 'inet \K[\d./]+')
+		local ipv6=$(ip -6 addr show $iface 2>/dev/null | grep -oP 'inet6 \K[a-f0-9:/]+' | head -1)
+		
+		# Interface state
+		local state="down"
+		local mtu=1420
+		if ip link show $iface 2>/dev/null | grep -q "UP"; then
+			state="up"
+			mtu=$(cat /sys/class/net/$iface/mtu 2>/dev/null || echo 1420)
+		fi
+		
+		# Get RX/TX bytes from /sys
+		local rx_bytes=$(cat /sys/class/net/$iface/statistics/rx_bytes 2>/dev/null || echo 0)
+		local tx_bytes=$(cat /sys/class/net/$iface/statistics/tx_bytes 2>/dev/null || echo 0)
+		
+		json_add_object
+		json_add_string "name" "$iface"
+		json_add_string "public_key" "$pubkey"
+		json_add_boolean "private_key_set" 1
+		json_add_int "listen_port" "${port:-0}"
+		json_add_string "fwmark" "${fwmark:-off}"
+		json_add_string "ipv4_address" "${ipv4:-N/A}"
+		json_add_string "ipv6_address" "${ipv6:-N/A}"
+		json_add_string "state" "$state"
+		json_add_int "mtu" "$mtu"
+		json_add_int "rx_bytes" "$rx_bytes"
+		json_add_int "tx_bytes" "$tx_bytes"
+		json_close_object
+	done
+	
+	json_close_array
+	json_dump
+}
+
+# Get all peers with details
+get_peers() {
+	json_init
+	json_add_array "peers"
+	
+	local interfaces=$($WG_CMD show interfaces 2>/dev/null)
+	
+	for iface in $interfaces; do
+		local peers=$($WG_CMD show $iface peers 2>/dev/null)
+		local endpoints=$($WG_CMD show $iface endpoints 2>/dev/null)
+		local allowed_ips=$($WG_CMD show $iface allowed-ips 2>/dev/null)
+		local handshakes=$($WG_CMD show $iface latest-handshakes 2>/dev/null)
+		local transfer=$($WG_CMD show $iface transfer 2>/dev/null)
+		local psk=$($WG_CMD show $iface preshared-keys 2>/dev/null)
+		local keepalive=$($WG_CMD show $iface persistent-keepalive 2>/dev/null)
+		
+		local now=$(date +%s)
+		
+		for peer in $peers; do
+			# Get endpoint
+			local endpoint=$(echo "$endpoints" | grep "^$peer" | awk '{print $2}')
+			
+			# Get allowed IPs
+			local ips=$(echo "$allowed_ips" | grep "^$peer" | cut -f2-)
+			
+			# Get latest handshake
+			local hs=$(echo "$handshakes" | grep "^$peer" | awk '{print $2}')
+			local hs_ago=0
+			local status="inactive"
+			if [ -n "$hs" ] && [ "$hs" != "0" ]; then
+				hs_ago=$((now - hs))
+				if [ $hs_ago -lt 180 ]; then
+					status="active"
+				elif [ $hs_ago -lt 600 ]; then
+					status="idle"
+				fi
+			fi
+			
+			# Get transfer
+			local rx=0
+			local tx=0
+			local tr=$(echo "$transfer" | grep "^$peer")
+			if [ -n "$tr" ]; then
+				rx=$(echo "$tr" | awk '{print $2}')
+				tx=$(echo "$tr" | awk '{print $3}')
+			fi
+			
+			# Get preshared key status
+			local has_psk=0
+			if echo "$psk" | grep -q "^$peer.*[^(none)]"; then
+				has_psk=1
+			fi
+			
+			# Get keepalive
+			local ka=$(echo "$keepalive" | grep "^$peer" | awk '{print $2}')
+			
+			# Truncate public key for display name
+			local short_key=$(echo "$peer" | cut -c1-8)
+			
+			json_add_object
+			json_add_string "interface" "$iface"
+			json_add_string "public_key" "$peer"
+			json_add_string "short_key" "$short_key"
+			json_add_string "endpoint" "${endpoint:-(none)}"
+			json_add_string "allowed_ips" "${ips:-N/A}"
+			json_add_int "latest_handshake" "${hs:-0}"
+			json_add_int "handshake_ago" "$hs_ago"
+			json_add_string "status" "$status"
+			json_add_int "rx_bytes" "${rx:-0}"
+			json_add_int "tx_bytes" "${tx:-0}"
+			json_add_boolean "preshared_key" "$has_psk"
+			json_add_int "keepalive" "${ka:-0}"
+			json_close_object
+		done
+	done
+	
+	json_close_array
+	json_dump
+}
+
+# Get traffic statistics
+get_traffic() {
+	json_init
+	
+	local interfaces=$($WG_CMD show interfaces 2>/dev/null)
+	local total_rx=0
+	local total_tx=0
+	
+	json_add_array "interfaces"
+	
+	for iface in $interfaces; do
+		local iface_rx=0
+		local iface_tx=0
+		
+		# Get per-peer transfer
+		local transfer=$($WG_CMD show $iface transfer 2>/dev/null)
+		
+		json_add_object
+		json_add_string "name" "$iface"
+		
+		json_add_array "peers"
+		while read peer rx tx; do
+			if [ -n "$peer" ]; then
+				json_add_object
+				json_add_string "public_key" "$peer"
+				json_add_string "short_key" "$(echo $peer | cut -c1-8)"
+				json_add_int "rx_bytes" "${rx:-0}"
+				json_add_int "tx_bytes" "${tx:-0}"
+				json_close_object
+				
+				iface_rx=$((iface_rx + ${rx:-0}))
+				iface_tx=$((iface_tx + ${tx:-0}))
+			fi
+		done << EOF
+$transfer
+EOF
+		json_close_array
+		
+		json_add_int "total_rx" "$iface_rx"
+		json_add_int "total_tx" "$iface_tx"
+		json_close_object
+		
+		total_rx=$((total_rx + iface_rx))
+		total_tx=$((total_tx + iface_tx))
+	done
+	
+	json_close_array
+	
+	json_add_int "total_rx" "$total_rx"
+	json_add_int "total_tx" "$total_tx"
+	
+	json_dump
+}
+
+# Get configuration info (sanitized - no private keys)
+get_config() {
+	json_init
+	json_add_array "interfaces"
+	
+	local interfaces=$($WG_CMD show interfaces 2>/dev/null)
+	
+	for iface in $interfaces; do
+		json_add_object
+		json_add_string "name" "$iface"
+		json_add_string "public_key" "$($WG_CMD show $iface public-key 2>/dev/null)"
+		json_add_int "listen_port" "$($WG_CMD show $iface listen-port 2>/dev/null || echo 0)"
+		
+		# Get UCI config if available
+		local uci_proto=$(uci -q get network.$iface.proto)
+		local uci_addr=$(uci -q get network.$iface.addresses)
+		
+		json_add_string "uci_proto" "${uci_proto:-N/A}"
+		json_add_string "uci_addresses" "${uci_addr:-N/A}"
+		
+		# Peers config
+		json_add_array "peers"
+		local peers=$($WG_CMD show $iface peers 2>/dev/null)
+		local allowed=$($WG_CMD show $iface allowed-ips 2>/dev/null)
+		local endpoints=$($WG_CMD show $iface endpoints 2>/dev/null)
+		local keepalive=$($WG_CMD show $iface persistent-keepalive 2>/dev/null)
+		
+		for peer in $peers; do
+			local ips=$(echo "$allowed" | grep "^$peer" | cut -f2-)
+			local ep=$(echo "$endpoints" | grep "^$peer" | awk '{print $2}')
+			local ka=$(echo "$keepalive" | grep "^$peer" | awk '{print $2}')
+			
+			json_add_object
+			json_add_string "public_key" "$peer"
+			json_add_string "allowed_ips" "${ips:-N/A}"
+			json_add_string "endpoint" "${ep:-(none)}"
+			json_add_int "keepalive" "${ka:-0}"
+			json_close_object
+		done
+		json_close_array
+		
+		json_close_object
+	done
+	
+	json_close_array
+	json_dump
+}
+
+# Generate QR code for peer (requires qrencode)
+generate_qr() {
+	read input
+	json_load "$input"
+	json_get_var iface interface
+	json_get_var peer_key peer
+	
+	json_init
+	
+	if [ ! -x "/usr/bin/qrencode" ]; then
+		json_add_string "error" "qrencode not installed"
+		json_dump
+		return
+	fi
+	
+	# Get interface details
+	local server_pubkey=$($WG_CMD show $iface public-key 2>/dev/null)
+	local server_port=$($WG_CMD show $iface listen-port 2>/dev/null)
+	local server_ip=$(ip -4 addr show $iface 2>/dev/null | grep -oP 'inet \K[\d.]+')
+	
+	# Get peer allowed IPs
+	local allowed_ips=$($WG_CMD show $iface allowed-ips 2>/dev/null | grep "^$peer_key" | cut -f2)
+	
+	# Generate config content (peer side view)
+	local config="[Interface]
+Address = ${allowed_ips}
+PrivateKey = <PEER_PRIVATE_KEY>
+
+[Peer]
+PublicKey = ${server_pubkey}
+Endpoint = <SERVER_PUBLIC_IP>:${server_port}
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25"
+	
+	json_add_string "config_template" "$config"
+	json_add_string "server_pubkey" "$server_pubkey"
+	json_add_int "server_port" "${server_port:-51820}"
+	json_add_string "peer_allowed_ips" "$allowed_ips"
+	
+	json_dump
+}
+
+# Get bandwidth history (if vnstat available)
+get_bandwidth_history() {
+	json_init
+	
+	local interfaces=$($WG_CMD show interfaces 2>/dev/null)
+	
+	json_add_array "history"
+	
+	for iface in $interfaces; do
+		if [ -x "/usr/bin/vnstat" ]; then
+			# Get hourly data from vnstat if available
+			local vnstat_data=$(vnstat -i $iface --json h 2>/dev/null)
+			if [ -n "$vnstat_data" ]; then
+				json_add_object
+				json_add_string "interface" "$iface"
+				json_add_string "source" "vnstat"
+				# Parse vnstat JSON here
+				json_close_object
+			fi
+		fi
+		
+		# Fallback: get current stats from /sys
+		local rx=$(cat /sys/class/net/$iface/statistics/rx_bytes 2>/dev/null || echo 0)
+		local tx=$(cat /sys/class/net/$iface/statistics/tx_bytes 2>/dev/null || echo 0)
+		
+		json_add_object
+		json_add_string "interface" "$iface"
+		json_add_string "source" "sysfs"
+		json_add_int "rx_bytes" "$rx"
+		json_add_int "tx_bytes" "$tx"
+		json_add_int "timestamp" "$(date +%s)"
+		json_close_object
+	done
+	
+	json_close_array
+	json_dump
+}
+
+# Get endpoint geolocation (simplified, based on IP ranges)
+get_endpoint_info() {
+	read input
+	json_load "$input"
+	json_get_var endpoint endpoint
+	
+	json_init
+	
+	# Extract IP from endpoint
+	local ip=$(echo "$endpoint" | cut -d: -f1)
+	
+	if [ -z "$ip" ] || [ "$ip" = "(none)" ]; then
+		json_add_string "error" "No endpoint"
+		json_dump
+		return
+	fi
+	
+	json_add_string "ip" "$ip"
+	
+	# Check if private IP
+	case "$ip" in
+		10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.2[0-9].*|172.3[01].*|192.168.*)
+			json_add_string "type" "private"
+			json_add_string "location" "Local Network"
+			;;
+		127.*)
+			json_add_string "type" "loopback"
+			json_add_string "location" "Localhost"
+			;;
+		*)
+			json_add_string "type" "public"
+			json_add_string "location" "Internet"
+			# Could integrate with GeoIP service here
+			;;
+	esac
+	
+	# Reverse DNS lookup
+	local hostname=$(nslookup "$ip" 2>/dev/null | grep "name = " | awk '{print $NF}' | sed 's/\.$//')
+	json_add_string "hostname" "${hostname:-N/A}"
+	
+	json_dump
+}
+
+# Check connectivity to peer
+ping_peer() {
+	read input
+	json_load "$input"
+	json_get_var peer_ip ip
+	
+	json_init
+	
+	if [ -z "$peer_ip" ]; then
+		json_add_string "error" "No IP provided"
+		json_dump
+		return
+	fi
+	
+	# Single ping with 2 second timeout
+	local result=$(ping -c 1 -W 2 "$peer_ip" 2>/dev/null)
+	local rc=$?
+	
+	if [ $rc -eq 0 ]; then
+		local rtt=$(echo "$result" | grep "time=" | sed 's/.*time=\([0-9.]*\).*/\1/')
+		json_add_boolean "reachable" 1
+		json_add_string "rtt_ms" "$rtt"
+	else
+		json_add_boolean "reachable" 0
+		json_add_string "rtt_ms" "N/A"
+	fi
+	
+	json_add_string "target" "$peer_ip"
+	json_dump
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_qr":{"interface":"str","peer":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"}}'
+		;;
+	call)
+		case "$2" in
+			status)
+				get_status
+				;;
+			interfaces)
+				get_interfaces
+				;;
+			peers)
+				get_peers
+				;;
+			traffic)
+				get_traffic
+				;;
+			config)
+				get_config
+				;;
+			generate_qr)
+				generate_qr
+				;;
+			bandwidth_history)
+				get_bandwidth_history
+				;;
+			endpoint_info)
+				get_endpoint_info
+				;;
+			ping_peer)
+				ping_peer
+				;;
+			*)
+				echo '{"error": "Unknown method"}'
+				;;
+		esac
+		;;
+esac

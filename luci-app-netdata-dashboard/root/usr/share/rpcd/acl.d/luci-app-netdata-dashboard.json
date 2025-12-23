@@ -1,0 +1,17 @@
+{
+	"luci-app-netdata-dashboard": {
+		"description": "Grant access to LuCI Netdata Dashboard",
+		"read": {
+			"ubus": {
+				"netdata": [ "stats", "cpu", "memory", "disk", "network", "processes", "sensors", "system" ],
+				"system": [ "info", "board" ],
+				"luci-rpc": [ "getNetdataStats" ],
+				"file": [ "read", "stat" ]
+			},
+			"uci": [ "netdata-dashboard" ]
+		},
+		"write": {
+			"uci": [ "netdata-dashboard" ]
+		}
+	}
+}

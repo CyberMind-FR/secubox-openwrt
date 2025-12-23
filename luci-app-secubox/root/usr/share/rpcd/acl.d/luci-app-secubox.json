@@ -1,0 +1,7 @@
+{
+    "luci-app-secubox": {
+        "description": "SecuBox Dashboard",
+        "read": {"ubus": {"luci.secubox": ["status", "modules"]}},
+        "write": {}
+    }
+}

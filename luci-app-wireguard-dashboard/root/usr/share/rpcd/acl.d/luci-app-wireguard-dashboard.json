@@ -1,0 +1,20 @@
+{
+	"luci-app-wireguard-dashboard": {
+		"description": "Grant access to LuCI WireGuard Dashboard",
+		"read": {
+			"ubus": {
+				"wireguard-dashboard": [ "status", "interfaces", "peers", "traffic", "config" ],
+				"system": [ "info", "board" ],
+				"file": [ "read", "stat", "exec" ]
+			},
+			"uci": [ "network", "wireguard-dashboard" ],
+			"file": {
+				"/etc/config/network": [ "read" ],
+				"/usr/bin/wg": [ "exec" ]
+			}
+		},
+		"write": {
+			"uci": [ "wireguard-dashboard" ]
+		}
+	}
+}

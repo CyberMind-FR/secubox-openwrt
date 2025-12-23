@@ -1,0 +1,463 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Netdata Dashboard RPCD backend
+# Copyright (C) 2024 CyberMind.fr - Gandalf
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+# Get CPU statistics
+get_cpu() {
+	json_init
+	
+	# Read /proc/stat
+	local cpu_line=$(head -1 /proc/stat)
+	local user=$(echo "$cpu_line" | awk '{print $2}')
+	local nice=$(echo "$cpu_line" | awk '{print $3}')
+	local system=$(echo "$cpu_line" | awk '{print $4}')
+	local idle=$(echo "$cpu_line" | awk '{print $5}')
+	local iowait=$(echo "$cpu_line" | awk '{print $6}')
+	local irq=$(echo "$cpu_line" | awk '{print $7}')
+	local softirq=$(echo "$cpu_line" | awk '{print $8}')
+	
+	local total=$((user + nice + system + idle + iowait + irq + softirq))
+	local used=$((total - idle - iowait))
+	
+	json_add_int "user" "$user"
+	json_add_int "nice" "$nice"
+	json_add_int "system" "$system"
+	json_add_int "idle" "$idle"
+	json_add_int "iowait" "$iowait"
+	json_add_int "irq" "$irq"
+	json_add_int "softirq" "$softirq"
+	json_add_int "total" "$total"
+	json_add_int "used" "$used"
+	
+	# CPU count
+	local cpu_count=$(grep -c "^processor" /proc/cpuinfo)
+	json_add_int "cores" "$cpu_count"
+	
+	# Load average
+	local load1=$(cat /proc/loadavg | awk '{print $1}')
+	local load5=$(cat /proc/loadavg | awk '{print $2}')
+	local load15=$(cat /proc/loadavg | awk '{print $3}')
+	json_add_string "load1" "$load1"
+	json_add_string "load5" "$load5"
+	json_add_string "load15" "$load15"
+	
+	# CPU frequency if available
+	if [ -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]; then
+		local freq=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq)
+		json_add_int "frequency" "$freq"
+	fi
+	
+	# Per-core stats
+	json_add_array "per_core"
+	grep "^cpu[0-9]" /proc/stat | while read line; do
+		json_add_object
+		local core_user=$(echo "$line" | awk '{print $2}')
+		local core_system=$(echo "$line" | awk '{print $4}')
+		local core_idle=$(echo "$line" | awk '{print $5}')
+		json_add_int "user" "$core_user"
+		json_add_int "system" "$core_system"
+		json_add_int "idle" "$core_idle"
+		json_close_object
+	done
+	json_close_array
+	
+	json_dump
+}
+
+# Get memory statistics
+get_memory() {
+	json_init
+	
+	local meminfo="/proc/meminfo"
+	
+	local total=$(grep "^MemTotal:" "$meminfo" | awk '{print $2}')
+	local free=$(grep "^MemFree:" "$meminfo" | awk '{print $2}')
+	local available=$(grep "^MemAvailable:" "$meminfo" | awk '{print $2}')
+	local buffers=$(grep "^Buffers:" "$meminfo" | awk '{print $2}')
+	local cached=$(grep "^Cached:" "$meminfo" | awk '{print $2}')
+	local swap_total=$(grep "^SwapTotal:" "$meminfo" | awk '{print $2}')
+	local swap_free=$(grep "^SwapFree:" "$meminfo" | awk '{print $2}')
+	local slab=$(grep "^Slab:" "$meminfo" | awk '{print $2}')
+	
+	local used=$((total - free - buffers - cached))
+	local swap_used=$((swap_total - swap_free))
+	
+	json_add_int "total" "$total"
+	json_add_int "free" "$free"
+	json_add_int "available" "${available:-$free}"
+	json_add_int "used" "$used"
+	json_add_int "buffers" "$buffers"
+	json_add_int "cached" "$cached"
+	json_add_int "slab" "${slab:-0}"
+	json_add_int "swap_total" "$swap_total"
+	json_add_int "swap_free" "$swap_free"
+	json_add_int "swap_used" "$swap_used"
+	
+	# Calculate percentages
+	if [ "$total" -gt 0 ]; then
+		local pct_used=$((used * 100 / total))
+		local pct_cached=$((cached * 100 / total))
+		local pct_buffers=$((buffers * 100 / total))
+		json_add_int "pct_used" "$pct_used"
+		json_add_int "pct_cached" "$pct_cached"
+		json_add_int "pct_buffers" "$pct_buffers"
+	fi
+	
+	json_dump
+}
+
+# Get disk statistics
+get_disk() {
+	json_init
+	json_add_array "filesystems"
+	
+	df -k 2>/dev/null | tail -n +2 | while read line; do
+		local fs=$(echo "$line" | awk '{print $1}')
+		local size=$(echo "$line" | awk '{print $2}')
+		local used=$(echo "$line" | awk '{print $3}')
+		local avail=$(echo "$line" | awk '{print $4}')
+		local pct=$(echo "$line" | awk '{print $5}' | tr -d '%')
+		local mount=$(echo "$line" | awk '{print $6}')
+		
+		# Skip pseudo filesystems
+		case "$fs" in
+			tmpfs|devtmpfs|none|overlay) continue ;;
+		esac
+		
+		json_add_object
+		json_add_string "filesystem" "$fs"
+		json_add_int "size" "$size"
+		json_add_int "used" "$used"
+		json_add_int "available" "$avail"
+		json_add_int "pct_used" "${pct:-0}"
+		json_add_string "mount" "$mount"
+		json_close_object
+	done
+	
+	json_close_array
+	
+	# Disk I/O stats from /proc/diskstats
+	json_add_array "iostats"
+	cat /proc/diskstats 2>/dev/null | while read line; do
+		local dev=$(echo "$line" | awk '{print $3}')
+		# Only show real disks, not partitions
+		case "$dev" in
+			sd[a-z]|nvme[0-9]n[0-9]|mmcblk[0-9])
+				local reads=$(echo "$line" | awk '{print $4}')
+				local read_sectors=$(echo "$line" | awk '{print $6}')
+				local writes=$(echo "$line" | awk '{print $8}')
+				local write_sectors=$(echo "$line" | awk '{print $10}')
+				
+				json_add_object
+				json_add_string "device" "$dev"
+				json_add_int "reads" "$reads"
+				json_add_int "read_bytes" "$((read_sectors * 512))"
+				json_add_int "writes" "$writes"
+				json_add_int "write_bytes" "$((write_sectors * 512))"
+				json_close_object
+				;;
+		esac
+	done
+	json_close_array
+	
+	json_dump
+}
+
+# Get network statistics
+get_network() {
+	json_init
+	json_add_array "interfaces"
+	
+	cat /proc/net/dev 2>/dev/null | tail -n +3 | while read line; do
+		local iface=$(echo "$line" | awk -F: '{print $1}' | tr -d ' ')
+		local stats=$(echo "$line" | awk -F: '{print $2}')
+		
+		# Skip loopback
+		[ "$iface" = "lo" ] && continue
+		
+		local rx_bytes=$(echo "$stats" | awk '{print $1}')
+		local rx_packets=$(echo "$stats" | awk '{print $2}')
+		local rx_errors=$(echo "$stats" | awk '{print $3}')
+		local rx_dropped=$(echo "$stats" | awk '{print $4}')
+		local tx_bytes=$(echo "$stats" | awk '{print $9}')
+		local tx_packets=$(echo "$stats" | awk '{print $10}')
+		local tx_errors=$(echo "$stats" | awk '{print $11}')
+		local tx_dropped=$(echo "$stats" | awk '{print $12}')
+		
+		# Get IP address
+		local ip=$(ip -4 addr show "$iface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+		
+		# Get link status
+		local operstate="unknown"
+		[ -f "/sys/class/net/$iface/operstate" ] && operstate=$(cat "/sys/class/net/$iface/operstate")
+		
+		# Get speed if available
+		local speed=0
+		[ -f "/sys/class/net/$iface/speed" ] && speed=$(cat "/sys/class/net/$iface/speed" 2>/dev/null || echo 0)
+		
+		json_add_object
+		json_add_string "name" "$iface"
+		json_add_string "ip" "${ip:-N/A}"
+		json_add_string "state" "$operstate"
+		json_add_int "speed" "${speed:-0}"
+		json_add_int "rx_bytes" "$rx_bytes"
+		json_add_int "rx_packets" "$rx_packets"
+		json_add_int "rx_errors" "$rx_errors"
+		json_add_int "rx_dropped" "$rx_dropped"
+		json_add_int "tx_bytes" "$tx_bytes"
+		json_add_int "tx_packets" "$tx_packets"
+		json_add_int "tx_errors" "$tx_errors"
+		json_add_int "tx_dropped" "$tx_dropped"
+		json_close_object
+	done
+	
+	json_close_array
+	
+	# Connection tracking
+	if [ -f /proc/sys/net/netfilter/nf_conntrack_count ]; then
+		local conntrack_count=$(cat /proc/sys/net/netfilter/nf_conntrack_count)
+		local conntrack_max=$(cat /proc/sys/net/netfilter/nf_conntrack_max)
+		json_add_int "conntrack_count" "$conntrack_count"
+		json_add_int "conntrack_max" "$conntrack_max"
+	fi
+	
+	json_dump
+}
+
+# Get process statistics
+get_processes() {
+	json_init
+	
+	# Process counts
+	local total=$(ls -1 /proc | grep -c "^[0-9]")
+	local running=$(grep -c "^R" /proc/*/stat 2>/dev/null || echo 0)
+	local sleeping=$(grep -c "^S" /proc/*/stat 2>/dev/null || echo 0)
+	
+	json_add_int "total" "$total"
+	json_add_int "running" "$running"
+	json_add_int "sleeping" "$sleeping"
+	
+	# Top processes by CPU/memory
+	json_add_array "top"
+	
+	ps -w 2>/dev/null | tail -n +2 | head -20 | while read line; do
+		local pid=$(echo "$line" | awk '{print $1}')
+		local user=$(echo "$line" | awk '{print $2}')
+		local vsz=$(echo "$line" | awk '{print $3}')
+		local stat=$(echo "$line" | awk '{print $4}')
+		local cmd=$(echo "$line" | awk '{for(i=5;i<=NF;i++) printf "%s ", $i; print ""}' | head -c 50)
+		
+		json_add_object
+		json_add_int "pid" "$pid"
+		json_add_string "user" "$user"
+		json_add_int "vsz" "$vsz"
+		json_add_string "state" "$stat"
+		json_add_string "cmd" "$cmd"
+		json_close_object
+	done
+	
+	json_close_array
+	
+	json_dump
+}
+
+# Get sensor data (temperature, etc.)
+get_sensors() {
+	json_init
+	json_add_array "temperatures"
+	
+	# Check thermal zones
+	for zone in /sys/class/thermal/thermal_zone*/temp; do
+		[ -f "$zone" ] || continue
+		local temp=$(cat "$zone" 2>/dev/null)
+		local type_file=$(dirname "$zone")/type
+		local type="unknown"
+		[ -f "$type_file" ] && type=$(cat "$type_file")
+		
+		json_add_object
+		json_add_string "sensor" "$type"
+		json_add_int "temp" "$temp"
+		json_add_int "temp_c" "$((temp / 1000))"
+		json_close_object
+	done
+	
+	# Check hwmon sensors
+	for sensor in /sys/class/hwmon/hwmon*/temp*_input; do
+		[ -f "$sensor" ] || continue
+		local temp=$(cat "$sensor" 2>/dev/null)
+		local label_file="${sensor%_input}_label"
+		local label="hwmon"
+		[ -f "$label_file" ] && label=$(cat "$label_file")
+		
+		json_add_object
+		json_add_string "sensor" "$label"
+		json_add_int "temp" "$temp"
+		json_add_int "temp_c" "$((temp / 1000))"
+		json_close_object
+	done
+	
+	json_close_array
+	json_dump
+}
+
+# Get system information
+get_system() {
+	json_init
+	
+	# Hostname
+	json_add_string "hostname" "$(cat /proc/sys/kernel/hostname)"
+	
+	# Kernel
+	json_add_string "kernel" "$(uname -r)"
+	json_add_string "arch" "$(uname -m)"
+	
+	# Uptime
+	local uptime_sec=$(cat /proc/uptime | cut -d' ' -f1 | cut -d'.' -f1)
+	local days=$((uptime_sec / 86400))
+	local hours=$(((uptime_sec % 86400) / 3600))
+	local minutes=$(((uptime_sec % 3600) / 60))
+	json_add_int "uptime_seconds" "$uptime_sec"
+	json_add_string "uptime_formatted" "${days}d ${hours}h ${minutes}m"
+	
+	# OpenWrt version
+	if [ -f /etc/openwrt_release ]; then
+		. /etc/openwrt_release
+		json_add_string "distro" "${DISTRIB_ID:-OpenWrt}"
+		json_add_string "version" "${DISTRIB_RELEASE:-unknown}"
+		json_add_string "target" "${DISTRIB_TARGET:-unknown}"
+	fi
+	
+	# Model
+	if [ -f /tmp/sysinfo/model ]; then
+		json_add_string "model" "$(cat /tmp/sysinfo/model)"
+	elif [ -f /proc/device-tree/model ]; then
+		json_add_string "model" "$(cat /proc/device-tree/model | tr -d '\0')"
+	fi
+	
+	# Boot time
+	local boot_time=$(($(date +%s) - uptime_sec))
+	json_add_int "boot_time" "$boot_time"
+	
+	json_dump
+}
+
+# Get all stats combined (for dashboard overview)
+get_stats() {
+	json_init
+	
+	# Quick CPU usage calculation
+	local cpu1=$(head -1 /proc/stat)
+	sleep 0.1
+	local cpu2=$(head -1 /proc/stat)
+	
+	local idle1=$(echo "$cpu1" | awk '{print $5}')
+	local total1=$(echo "$cpu1" | awk '{sum=0; for(i=2;i<=8;i++) sum+=$i; print sum}')
+	local idle2=$(echo "$cpu2" | awk '{print $5}')
+	local total2=$(echo "$cpu2" | awk '{sum=0; for(i=2;i<=8;i++) sum+=$i; print sum}')
+	
+	local idle_diff=$((idle2 - idle1))
+	local total_diff=$((total2 - total1))
+	local cpu_pct=0
+	[ "$total_diff" -gt 0 ] && cpu_pct=$(((total_diff - idle_diff) * 100 / total_diff))
+	
+	json_add_int "cpu_percent" "$cpu_pct"
+	
+	# Memory
+	local mem_total=$(grep "^MemTotal:" /proc/meminfo | awk '{print $2}')
+	local mem_free=$(grep "^MemFree:" /proc/meminfo | awk '{print $2}')
+	local mem_buffers=$(grep "^Buffers:" /proc/meminfo | awk '{print $2}')
+	local mem_cached=$(grep "^Cached:" /proc/meminfo | awk '{print $2}')
+	local mem_used=$((mem_total - mem_free - mem_buffers - mem_cached))
+	local mem_pct=$((mem_used * 100 / mem_total))
+	
+	json_add_int "memory_total" "$mem_total"
+	json_add_int "memory_used" "$mem_used"
+	json_add_int "memory_percent" "$mem_pct"
+	
+	# Load
+	local load=$(cat /proc/loadavg | awk '{print $1}')
+	json_add_string "load" "$load"
+	
+	# Uptime
+	local uptime=$(cat /proc/uptime | cut -d' ' -f1 | cut -d'.' -f1)
+	json_add_int "uptime" "$uptime"
+	
+	# Network totals
+	local net_rx=0
+	local net_tx=0
+	while read line; do
+		local iface=$(echo "$line" | awk -F: '{print $1}' | tr -d ' ')
+		[ "$iface" = "lo" ] && continue
+		local rx=$(echo "$line" | awk -F: '{print $2}' | awk '{print $1}')
+		local tx=$(echo "$line" | awk -F: '{print $2}' | awk '{print $9}')
+		net_rx=$((net_rx + rx))
+		net_tx=$((net_tx + tx))
+	done < <(cat /proc/net/dev | tail -n +3)
+	
+	json_add_int "network_rx" "$net_rx"
+	json_add_int "network_tx" "$net_tx"
+	
+	# Process count
+	local procs=$(ls -1 /proc | grep -c "^[0-9]")
+	json_add_int "processes" "$procs"
+	
+	# Temperature (first available)
+	local temp=0
+	for zone in /sys/class/thermal/thermal_zone*/temp; do
+		[ -f "$zone" ] && { temp=$(cat "$zone" 2>/dev/null); break; }
+	done
+	json_add_int "temperature" "$((temp / 1000))"
+	
+	# Connections
+	local connections=0
+	[ -f /proc/sys/net/netfilter/nf_conntrack_count ] && connections=$(cat /proc/sys/net/netfilter/nf_conntrack_count)
+	json_add_int "connections" "$connections"
+	
+	# Disk usage (root)
+	local disk_pct=$(df / 2>/dev/null | tail -1 | awk '{print $5}' | tr -d '%')
+	json_add_int "disk_percent" "${disk_pct:-0}"
+	
+	json_dump
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		echo '{"stats":{},"cpu":{},"memory":{},"disk":{},"network":{},"processes":{},"sensors":{},"system":{}}'
+		;;
+	call)
+		case "$2" in
+			stats)
+				get_stats
+				;;
+			cpu)
+				get_cpu
+				;;
+			memory)
+				get_memory
+				;;
+			disk)
+				get_disk
+				;;
+			network)
+				get_network
+				;;
+			processes)
+				get_processes
+				;;
+			sensors)
+				get_sensors
+				;;
+			system)
+				get_system
+				;;
+			*)
+				echo '{"error": "Unknown method"}'
+				;;
+		esac
+		;;
+esac

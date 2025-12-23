@@ -1,0 +1,698 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Network Modes Dashboard RPCD backend
+# Copyright (C) 2024 CyberMind.fr - Gandalf
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG_FILE="/etc/config/network-modes"
+BACKUP_DIR="/etc/network-modes-backup"
+
+# Get current status
+get_status() {
+	json_init
+	
+	# Current mode
+	local current_mode=$(uci -q get network-modes.config.current_mode || echo "router")
+	local last_change=$(uci -q get network-modes.config.last_change || echo "Never")
+	
+	json_add_string "current_mode" "$current_mode"
+	json_add_string "last_change" "$last_change"
+	
+	# Get mode details
+	local mode_name=$(uci -q get network-modes.$current_mode.name || echo "$current_mode")
+	local mode_desc=$(uci -q get network-modes.$current_mode.description || echo "")
+	json_add_string "mode_name" "$mode_name"
+	json_add_string "mode_description" "$mode_desc"
+	
+	# System info
+	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || hostname)"
+	json_add_int "uptime" "$(cat /proc/uptime | cut -d. -f1)"
+	
+	# Network interfaces status
+	json_add_array "interfaces"
+	for iface in $(ip -o link show | awk -F': ' '{print $2}' | grep -v "^lo$"); do
+		local state="down"
+		ip link show $iface 2>/dev/null | grep -q "UP" && state="up"
+		local ip=$(ip -4 addr show $iface 2>/dev/null | grep -oP 'inet \K[\d.]+' | head -1)
+		local mac=$(ip link show $iface 2>/dev/null | grep -oP 'link/ether \K[a-f0-9:]+')
+		
+		json_add_object
+		json_add_string "name" "$iface"
+		json_add_string "state" "$state"
+		json_add_string "ip" "${ip:-N/A}"
+		json_add_string "mac" "${mac:-N/A}"
+		json_close_object
+	done
+	json_close_array
+	
+	# WiFi status
+	local wifi_enabled=0
+	[ -d /sys/class/net/wlan0 ] && wifi_enabled=1
+	json_add_boolean "wifi_available" "$wifi_enabled"
+	
+	# WireGuard status
+	local wg_enabled=0
+	command -v wg >/dev/null 2>&1 && wg_enabled=1
+	json_add_boolean "wireguard_available" "$wg_enabled"
+	
+	# Services status
+	json_add_object "services"
+	json_add_boolean "firewall" "$(pgrep -x fw4 >/dev/null && echo 1 || echo 0)"
+	json_add_boolean "dnsmasq" "$(pgrep -x dnsmasq >/dev/null && echo 1 || echo 0)"
+	json_add_boolean "netifyd" "$(pgrep -x netifyd >/dev/null && echo 1 || echo 0)"
+	json_add_boolean "nginx" "$(pgrep -x nginx >/dev/null && echo 1 || echo 0)"
+	json_add_boolean "squid" "$(pgrep -x squid >/dev/null && echo 1 || echo 0)"
+	json_close_object
+	
+	json_dump
+}
+
+# Get all modes configuration
+get_modes() {
+	json_init
+	json_add_array "modes"
+	
+	local current_mode=$(uci -q get network-modes.config.current_mode || echo "router")
+	
+	# Sniffer mode
+	json_add_object
+	json_add_string "id" "sniffer"
+	json_add_string "name" "$(uci -q get network-modes.sniffer.name || echo 'Sniffer / Passthrough')"
+	json_add_string "description" "$(uci -q get network-modes.sniffer.description)"
+	json_add_string "icon" "🔍"
+	json_add_boolean "active" "$([ "$current_mode" = "sniffer" ] && echo 1 || echo 0)"
+	json_add_string "bridge_interface" "$(uci -q get network-modes.sniffer.bridge_interface)"
+	json_add_boolean "netifyd_enabled" "$(uci -q get network-modes.sniffer.netifyd_enabled || echo 0)"
+	json_add_boolean "promiscuous" "$(uci -q get network-modes.sniffer.promiscuous || echo 0)"
+	json_close_object
+	
+	# Access Point mode
+	json_add_object
+	json_add_string "id" "accesspoint"
+	json_add_string "name" "$(uci -q get network-modes.accesspoint.name || echo 'Access Point')"
+	json_add_string "description" "$(uci -q get network-modes.accesspoint.description)"
+	json_add_string "icon" "📶"
+	json_add_boolean "active" "$([ "$current_mode" = "accesspoint" ] && echo 1 || echo 0)"
+	json_add_string "wifi_channel" "$(uci -q get network-modes.accesspoint.wifi_channel)"
+	json_add_string "wifi_htmode" "$(uci -q get network-modes.accesspoint.wifi_htmode)"
+	json_add_int "wifi_txpower" "$(uci -q get network-modes.accesspoint.wifi_txpower || echo 20)"
+	json_add_boolean "roaming_enabled" "$(uci -q get network-modes.accesspoint.roaming_enabled || echo 0)"
+	json_add_boolean "band_steering" "$(uci -q get network-modes.accesspoint.band_steering || echo 0)"
+	json_close_object
+	
+	# Relay mode
+	json_add_object
+	json_add_string "id" "relay"
+	json_add_string "name" "$(uci -q get network-modes.relay.name || echo 'Relay / Extender')"
+	json_add_string "description" "$(uci -q get network-modes.relay.description)"
+	json_add_string "icon" "🔄"
+	json_add_boolean "active" "$([ "$current_mode" = "relay" ] && echo 1 || echo 0)"
+	json_add_boolean "wireguard_enabled" "$(uci -q get network-modes.relay.wireguard_enabled || echo 0)"
+	json_add_string "wireguard_interface" "$(uci -q get network-modes.relay.wireguard_interface)"
+	json_add_boolean "mtu_optimization" "$(uci -q get network-modes.relay.mtu_optimization || echo 0)"
+	json_add_boolean "mss_clamping" "$(uci -q get network-modes.relay.mss_clamping || echo 0)"
+	json_close_object
+	
+	# Router mode
+	json_add_object
+	json_add_string "id" "router"
+	json_add_string "name" "$(uci -q get network-modes.router.name || echo 'Router')"
+	json_add_string "description" "$(uci -q get network-modes.router.description)"
+	json_add_string "icon" "🌐"
+	json_add_boolean "active" "$([ "$current_mode" = "router" ] && echo 1 || echo 0)"
+	json_add_string "wan_protocol" "$(uci -q get network-modes.router.wan_protocol)"
+	json_add_boolean "nat_enabled" "$(uci -q get network-modes.router.nat_enabled || echo 1)"
+	json_add_boolean "firewall_enabled" "$(uci -q get network-modes.router.firewall_enabled || echo 1)"
+	json_add_boolean "proxy_enabled" "$(uci -q get network-modes.router.proxy_enabled || echo 0)"
+	json_add_string "proxy_type" "$(uci -q get network-modes.router.proxy_type)"
+	json_add_boolean "https_frontend" "$(uci -q get network-modes.router.https_frontend || echo 0)"
+	json_add_string "frontend_type" "$(uci -q get network-modes.router.frontend_type)"
+	json_close_object
+	
+	json_close_array
+	json_dump
+}
+
+# Get sniffer mode configuration
+get_sniffer_config() {
+	json_init
+	
+	json_add_string "mode" "sniffer"
+	json_add_string "name" "Sniffer / Passthrough Mode"
+	json_add_string "description" "Transparent Ethernet bridge without IP for passive network analysis"
+	
+	# Current settings
+	json_add_string "bridge_interface" "$(uci -q get network-modes.sniffer.bridge_interface || echo 'br-lan')"
+	json_add_string "capture_interface" "$(uci -q get network-modes.sniffer.capture_interface || echo 'eth0')"
+	json_add_boolean "netifyd_enabled" "$(uci -q get network-modes.sniffer.netifyd_enabled || echo 1)"
+	json_add_boolean "promiscuous" "$(uci -q get network-modes.sniffer.promiscuous || echo 1)"
+	
+	# Available interfaces for bridging
+	json_add_array "available_interfaces"
+	for iface in $(ls /sys/class/net/ | grep -v "^lo$"); do
+		json_add_string "" "$iface"
+	done
+	json_close_array
+	
+	# Netifyd status
+	local netifyd_running=0
+	pgrep -x netifyd >/dev/null && netifyd_running=1
+	json_add_boolean "netifyd_running" "$netifyd_running"
+	
+	# Sample config preview
+	json_add_string "config_preview" "# /etc/config/network bridge config
+config interface 'lan'
+    option proto 'none'
+    option type 'bridge'
+    option ifname 'eth0 eth1'
+    option delegate '0'"
+	
+	json_dump
+}
+
+# Get access point mode configuration
+get_ap_config() {
+	json_init
+	
+	json_add_string "mode" "accesspoint"
+	json_add_string "name" "Access Point Mode"
+	json_add_string "description" "WiFi Access Point with advanced optimizations"
+	
+	# Current settings
+	json_add_string "upstream_interface" "$(uci -q get network-modes.accesspoint.upstream_interface || echo 'eth0')"
+	json_add_boolean "dhcp_client" "$(uci -q get network-modes.accesspoint.dhcp_client || echo 1)"
+	json_add_string "wifi_channel" "$(uci -q get network-modes.accesspoint.wifi_channel || echo 'auto')"
+	json_add_string "wifi_htmode" "$(uci -q get network-modes.accesspoint.wifi_htmode || echo 'VHT80')"
+	json_add_int "wifi_txpower" "$(uci -q get network-modes.accesspoint.wifi_txpower || echo 20)"
+	
+	# WiFi tweaks
+	json_add_object "wifi_tweaks"
+	json_add_boolean "roaming_80211r" "$(uci -q get network-modes.accesspoint.roaming_enabled || echo 0)"
+	json_add_boolean "rrm_80211k" "$(uci -q get network-modes.accesspoint.rrm_enabled || echo 0)"
+	json_add_boolean "wnm_80211v" "$(uci -q get network-modes.accesspoint.wnm_enabled || echo 0)"
+	json_add_boolean "band_steering" "$(uci -q get network-modes.accesspoint.band_steering || echo 0)"
+	json_add_boolean "airtime_fairness" "$(uci -q get network-modes.accesspoint.airtime_fairness || echo 0)"
+	json_add_boolean "beamforming" "$(uci -q get network-modes.accesspoint.beamforming || echo 1)"
+	json_close_object
+	
+	# Available channels
+	json_add_array "available_channels_2g"
+	for ch in 1 6 11; do
+		json_add_int "" "$ch"
+	done
+	json_close_array
+	
+	json_add_array "available_channels_5g"
+	for ch in 36 40 44 48 149 153 157 161; do
+		json_add_int "" "$ch"
+	done
+	json_close_array
+	
+	# HT modes
+	json_add_array "available_htmodes"
+	json_add_string "" "HT20"
+	json_add_string "" "HT40"
+	json_add_string "" "VHT40"
+	json_add_string "" "VHT80"
+	json_add_string "" "VHT160"
+	json_add_string "" "HE40"
+	json_add_string "" "HE80"
+	json_add_string "" "HE160"
+	json_close_array
+	
+	# WiFi info
+	local wifi_phy=""
+	local wifi_driver=""
+	if [ -d /sys/class/ieee80211/phy0 ]; then
+		wifi_phy="phy0"
+		wifi_driver=$(cat /sys/class/ieee80211/phy0/device/uevent 2>/dev/null | grep DRIVER | cut -d= -f2)
+	fi
+	json_add_string "wifi_phy" "$wifi_phy"
+	json_add_string "wifi_driver" "$wifi_driver"
+	
+	json_dump
+}
+
+# Get relay mode configuration  
+get_relay_config() {
+	json_init
+	
+	json_add_string "mode" "relay"
+	json_add_string "name" "Relay / Extender Mode"
+	json_add_string "description" "Network relay with LAN optimization and WireGuard tunneling"
+	
+	# Current settings
+	json_add_string "relay_interface" "$(uci -q get network-modes.relay.relay_interface || echo 'wlan0')"
+	json_add_string "lan_interface" "$(uci -q get network-modes.relay.lan_interface || echo 'eth0')"
+	
+	# WireGuard settings
+	json_add_object "wireguard"
+	json_add_boolean "enabled" "$(uci -q get network-modes.relay.wireguard_enabled || echo 0)"
+	json_add_string "interface" "$(uci -q get network-modes.relay.wireguard_interface || echo 'wg0')"
+	json_add_int "mtu" "$(uci -q get network-modes.relay.wireguard_mtu || echo 1420)"
+	json_add_boolean "persistent_keepalive" "$(uci -q get network-modes.relay.persistent_keepalive || echo 1)"
+	json_close_object
+	
+	# Optimization settings
+	json_add_object "optimizations"
+	json_add_boolean "mtu_optimization" "$(uci -q get network-modes.relay.mtu_optimization || echo 1)"
+	json_add_boolean "mss_clamping" "$(uci -q get network-modes.relay.mss_clamping || echo 1)"
+	json_add_boolean "tcp_optimization" "$(uci -q get network-modes.relay.tcp_optimization || echo 1)"
+	json_add_int "conntrack_max" "$(uci -q get network-modes.relay.conntrack_max || echo 16384)"
+	json_close_object
+	
+	# Relayd status
+	local relayd_installed=0
+	opkg list-installed 2>/dev/null | grep -q "^relayd" && relayd_installed=1
+	json_add_boolean "relayd_available" "$relayd_installed"
+	
+	# WireGuard interfaces
+	json_add_array "wg_interfaces"
+	if command -v wg >/dev/null 2>&1; then
+		for wgiface in $(wg show interfaces 2>/dev/null); do
+			json_add_string "" "$wgiface"
+		done
+	fi
+	json_close_array
+	
+	json_dump
+}
+
+# Get router mode configuration
+get_router_config() {
+	json_init
+	
+	json_add_string "mode" "router"
+	json_add_string "name" "Router Mode"
+	json_add_string "description" "Full router with WAN, proxy, and HTTPS frontends"
+	
+	# WAN settings
+	json_add_object "wan"
+	json_add_string "interface" "$(uci -q get network-modes.router.wan_interface || echo 'eth1')"
+	json_add_string "protocol" "$(uci -q get network-modes.router.wan_protocol || echo 'dhcp')"
+	json_add_boolean "nat_enabled" "$(uci -q get network-modes.router.nat_enabled || echo 1)"
+	json_close_object
+	
+	# LAN settings
+	json_add_object "lan"
+	json_add_string "interface" "$(uci -q get network-modes.router.lan_interface || echo 'br-lan')"
+	json_add_string "ip_address" "$(uci -q get network.lan.ipaddr || echo '192.168.1.1')"
+	json_add_string "netmask" "$(uci -q get network.lan.netmask || echo '255.255.255.0')"
+	json_close_object
+	
+	# Firewall
+	json_add_object "firewall"
+	json_add_boolean "enabled" "$(uci -q get network-modes.router.firewall_enabled || echo 1)"
+	json_add_boolean "syn_flood" "$(uci -q get firewall.@defaults[0].syn_flood || echo 1)"
+	json_add_string "input" "$(uci -q get firewall.@zone[0].input || echo 'ACCEPT')"
+	json_add_string "output" "$(uci -q get firewall.@zone[0].output || echo 'ACCEPT')"
+	json_add_string "forward" "$(uci -q get firewall.@zone[0].forward || echo 'REJECT')"
+	json_close_object
+	
+	# Proxy settings
+	json_add_object "proxy"
+	json_add_boolean "enabled" "$(uci -q get network-modes.router.proxy_enabled || echo 0)"
+	json_add_string "type" "$(uci -q get network-modes.router.proxy_type || echo 'squid')"
+	json_add_int "port" "$(uci -q get network-modes.router.proxy_port || echo 3128)"
+	json_add_boolean "transparent" "$(uci -q get network-modes.router.proxy_transparent || echo 0)"
+	json_add_boolean "dns_over_https" "$(uci -q get network-modes.router.dns_over_https || echo 0)"
+	json_close_object
+	
+	# HTTPS Frontend settings
+	json_add_object "https_frontend"
+	json_add_boolean "enabled" "$(uci -q get network-modes.router.https_frontend || echo 0)"
+	json_add_string "type" "$(uci -q get network-modes.router.frontend_type || echo 'nginx')"
+	json_add_int "http_port" "$(uci -q get network-modes.router.frontend_http_port || echo 80)"
+	json_add_int "https_port" "$(uci -q get network-modes.router.frontend_https_port || echo 443)"
+	json_add_boolean "letsencrypt" "$(uci -q get network-modes.router.letsencrypt || echo 0)"
+	json_close_object
+	
+	# Virtual hosts
+	json_add_array "virtual_hosts"
+	local idx=0
+	while true; do
+		local domain=$(uci -q get network-modes.@vhost[$idx].domain)
+		[ -z "$domain" ] && break
+		
+		json_add_object
+		json_add_string "domain" "$domain"
+		json_add_string "backend" "$(uci -q get network-modes.@vhost[$idx].backend)"
+		json_add_int "port" "$(uci -q get network-modes.@vhost[$idx].port || echo 80)"
+		json_add_boolean "ssl" "$(uci -q get network-modes.@vhost[$idx].ssl || echo 0)"
+		json_close_object
+		
+		idx=$((idx + 1))
+	done
+	json_close_array
+	
+	# Available protocols
+	json_add_array "available_wan_protocols"
+	json_add_string "" "dhcp"
+	json_add_string "" "static"
+	json_add_string "" "pppoe"
+	json_add_string "" "pptp"
+	json_add_string "" "l2tp"
+	json_close_array
+	
+	json_dump
+}
+
+# Apply mode change
+apply_mode() {
+	read input
+	json_load "$input"
+	json_get_var mode mode
+	
+	json_init
+	
+	# Validate mode
+	case "$mode" in
+		sniffer|accesspoint|relay|router)
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Invalid mode: $mode"
+			json_dump
+			return
+			;;
+	esac
+	
+	# Backup current config
+	mkdir -p "$BACKUP_DIR"
+	local backup_file="$BACKUP_DIR/backup_$(date +%Y%m%d_%H%M%S).tar.gz"
+	tar -czf "$backup_file" /etc/config/network /etc/config/wireless /etc/config/firewall /etc/config/dhcp 2>/dev/null
+	
+	# Update current mode
+	uci set network-modes.config.current_mode="$mode"
+	uci set network-modes.config.last_change="$(date '+%Y-%m-%d %H:%M:%S')"
+	uci commit network-modes
+	
+	json_add_boolean "success" 1
+	json_add_string "mode" "$mode"
+	json_add_string "message" "Mode changed to $mode. Please reboot or apply network changes."
+	json_add_string "backup" "$backup_file"
+	
+	json_dump
+}
+
+# Update mode settings
+update_settings() {
+	read input
+	json_load "$input"
+	json_get_var mode mode
+	
+	json_init
+	
+	case "$mode" in
+		sniffer)
+			json_get_var bridge_interface bridge_interface
+			json_get_var netifyd_enabled netifyd_enabled
+			json_get_var promiscuous promiscuous
+			
+			[ -n "$bridge_interface" ] && uci set network-modes.sniffer.bridge_interface="$bridge_interface"
+			[ -n "$netifyd_enabled" ] && uci set network-modes.sniffer.netifyd_enabled="$netifyd_enabled"
+			[ -n "$promiscuous" ] && uci set network-modes.sniffer.promiscuous="$promiscuous"
+			;;
+		accesspoint)
+			json_get_var wifi_channel wifi_channel
+			json_get_var wifi_htmode wifi_htmode
+			json_get_var wifi_txpower wifi_txpower
+			json_get_var roaming_enabled roaming_enabled
+			json_get_var band_steering band_steering
+			
+			[ -n "$wifi_channel" ] && uci set network-modes.accesspoint.wifi_channel="$wifi_channel"
+			[ -n "$wifi_htmode" ] && uci set network-modes.accesspoint.wifi_htmode="$wifi_htmode"
+			[ -n "$wifi_txpower" ] && uci set network-modes.accesspoint.wifi_txpower="$wifi_txpower"
+			[ -n "$roaming_enabled" ] && uci set network-modes.accesspoint.roaming_enabled="$roaming_enabled"
+			[ -n "$band_steering" ] && uci set network-modes.accesspoint.band_steering="$band_steering"
+			;;
+		relay)
+			json_get_var wireguard_enabled wireguard_enabled
+			json_get_var wireguard_interface wireguard_interface
+			json_get_var mtu_optimization mtu_optimization
+			json_get_var mss_clamping mss_clamping
+			
+			[ -n "$wireguard_enabled" ] && uci set network-modes.relay.wireguard_enabled="$wireguard_enabled"
+			[ -n "$wireguard_interface" ] && uci set network-modes.relay.wireguard_interface="$wireguard_interface"
+			[ -n "$mtu_optimization" ] && uci set network-modes.relay.mtu_optimization="$mtu_optimization"
+			[ -n "$mss_clamping" ] && uci set network-modes.relay.mss_clamping="$mss_clamping"
+			;;
+		router)
+			json_get_var wan_protocol wan_protocol
+			json_get_var nat_enabled nat_enabled
+			json_get_var firewall_enabled firewall_enabled
+			json_get_var proxy_enabled proxy_enabled
+			json_get_var proxy_type proxy_type
+			json_get_var https_frontend https_frontend
+			json_get_var frontend_type frontend_type
+			
+			[ -n "$wan_protocol" ] && uci set network-modes.router.wan_protocol="$wan_protocol"
+			[ -n "$nat_enabled" ] && uci set network-modes.router.nat_enabled="$nat_enabled"
+			[ -n "$firewall_enabled" ] && uci set network-modes.router.firewall_enabled="$firewall_enabled"
+			[ -n "$proxy_enabled" ] && uci set network-modes.router.proxy_enabled="$proxy_enabled"
+			[ -n "$proxy_type" ] && uci set network-modes.router.proxy_type="$proxy_type"
+			[ -n "$https_frontend" ] && uci set network-modes.router.https_frontend="$https_frontend"
+			[ -n "$frontend_type" ] && uci set network-modes.router.frontend_type="$frontend_type"
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Invalid mode"
+			json_dump
+			return
+			;;
+	esac
+	
+	uci commit network-modes
+	
+	json_add_boolean "success" 1
+	json_add_string "message" "Settings updated for $mode mode"
+	json_dump
+}
+
+# Add virtual host
+add_vhost() {
+	read input
+	json_load "$input"
+	json_get_var domain domain
+	json_get_var backend backend
+	json_get_var port port
+	json_get_var ssl ssl
+	
+	json_init
+	
+	if [ -z "$domain" ] || [ -z "$backend" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Domain and backend are required"
+		json_dump
+		return
+	fi
+	
+	uci add network-modes vhost
+	uci set network-modes.@vhost[-1].domain="$domain"
+	uci set network-modes.@vhost[-1].backend="$backend"
+	uci set network-modes.@vhost[-1].port="${port:-80}"
+	uci set network-modes.@vhost[-1].ssl="${ssl:-0}"
+	uci commit network-modes
+	
+	json_add_boolean "success" 1
+	json_add_string "message" "Virtual host $domain added"
+	json_dump
+}
+
+# Generate config for current mode
+generate_config() {
+	read input
+	json_load "$input"
+	json_get_var mode mode
+	
+	json_init
+	
+	local config=""
+	
+	case "$mode" in
+		sniffer)
+			local bridge=$(uci -q get network-modes.sniffer.bridge_interface || echo "br-lan")
+			config="# Sniffer Mode Configuration
+# /etc/config/network
+
+config interface 'loopback'
+    option proto 'static'
+    option ipaddr '127.0.0.1'
+    option netmask '255.0.0.0'
+    option device 'lo'
+
+config device
+    option name '$bridge'
+    option type 'bridge'
+    list ports 'eth0'
+    list ports 'eth1'
+
+config interface 'lan'
+    option device '$bridge'
+    option proto 'none'
+
+# Disable DHCP
+# /etc/config/dhcp
+config dhcp 'lan'
+    option ignore '1'
+
+# Enable promiscuous mode
+# Run: ip link set eth0 promisc on
+# Run: ip link set eth1 promisc on"
+			;;
+		accesspoint)
+			local channel=$(uci -q get network-modes.accesspoint.wifi_channel || echo "auto")
+			local htmode=$(uci -q get network-modes.accesspoint.wifi_htmode || echo "VHT80")
+			local txpower=$(uci -q get network-modes.accesspoint.wifi_txpower || echo "20")
+			config="# Access Point Mode Configuration
+# /etc/config/network
+
+config interface 'lan'
+    option proto 'dhcp'
+    option device 'eth0'
+
+# /etc/config/wireless
+
+config wifi-device 'radio0'
+    option type 'mac80211'
+    option channel '$channel'
+    option htmode '$htmode'
+    option txpower '$txpower'
+    option country 'FR'
+
+config wifi-iface 'default_radio0'
+    option device 'radio0'
+    option network 'lan'
+    option mode 'ap'
+    option ssid 'OpenWrt-AP'
+    option encryption 'sae-mixed'
+    option key 'your_password'
+    option ieee80211r '1'
+    option ft_over_ds '1'
+    option ieee80211k '1'
+    option ieee80211v '1'
+    option bss_transition '1'"
+			;;
+		relay)
+			local wg_iface=$(uci -q get network-modes.relay.wireguard_interface || echo "wg0")
+			config="# Relay Mode Configuration
+# /etc/config/network
+
+config interface 'lan'
+    option proto 'static'
+    option ipaddr '192.168.1.1'
+    option netmask '255.255.255.0'
+    option device 'br-lan'
+
+config interface 'wwan'
+    option proto 'dhcp'
+    option device 'wlan0'
+
+config interface '$wg_iface'
+    option proto 'wireguard'
+    option listen_port '51820'
+    list addresses '10.0.0.1/24'
+
+# /etc/config/firewall - MSS clamping
+config rule
+    option name 'MSS-Clamping'
+    option src '*'
+    option dest '*'
+    option proto 'tcp'
+    option extra '-m tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu'"
+			;;
+		router)
+			local wan_proto=$(uci -q get network-modes.router.wan_protocol || echo "dhcp")
+			config="# Router Mode Configuration
+# /etc/config/network
+
+config interface 'wan'
+    option proto '$wan_proto'
+    option device 'eth1'
+
+config interface 'lan'
+    option proto 'static'
+    option device 'br-lan'
+    option ipaddr '192.168.1.1'
+    option netmask '255.255.255.0'
+
+# /etc/config/firewall
+
+config defaults
+    option syn_flood '1'
+    option input 'ACCEPT'
+    option output 'ACCEPT'
+    option forward 'REJECT'
+
+config zone
+    option name 'wan'
+    option input 'REJECT'
+    option output 'ACCEPT'
+    option forward 'REJECT'
+    option masq '1'
+    option mtu_fix '1'
+    list network 'wan'
+
+config zone
+    option name 'lan'
+    option input 'ACCEPT'
+    option output 'ACCEPT'
+    option forward 'ACCEPT'
+    list network 'lan'
+
+config forwarding
+    option src 'lan'
+    option dest 'wan'"
+			;;
+	esac
+	
+	json_add_string "config" "$config"
+	json_add_string "mode" "$mode"
+	json_dump
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		echo '{"status":{},"modes":{},"sniffer_config":{},"ap_config":{},"relay_config":{},"router_config":{},"apply_mode":{"mode":"str"},"update_settings":{"mode":"str"},"add_vhost":{"domain":"str","backend":"str","port":"int","ssl":"bool"},"generate_config":{"mode":"str"}}'
+		;;
+	call)
+		case "$2" in
+			status)
+				get_status
+				;;
+			modes)
+				get_modes
+				;;
+			sniffer_config)
+				get_sniffer_config
+				;;
+			ap_config)
+				get_ap_config
+				;;
+			relay_config)
+				get_relay_config
+				;;
+			router_config)
+				get_router_config
+				;;
+			apply_mode)
+				apply_mode
+				;;
+			update_settings)
+				update_settings
+				;;
+			add_vhost)
+				add_vhost
+				;;
+			generate_config)
+				generate_config
+				;;
+			*)
+				echo '{"error": "Unknown method"}'
+				;;
+		esac
+		;;
+esac

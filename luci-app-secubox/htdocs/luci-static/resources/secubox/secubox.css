@@ -1,0 +1,32 @@
+/**
+ * SecuBox Dashboard Styles
+ * Copyright (C) 2025 CyberMind.fr
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+:root {
+  --sb-primary: #3b82f6;
+  --sb-primary-dark: #1e40af;
+  --sb-success: #22c55e;
+  --sb-warning: #f59e0b;
+  --sb-danger: #ef4444;
+  --sb-bg: #0f172a;
+  --sb-bg-card: #1e293b;
+  --sb-border: #334155;
+  --sb-text: #f1f5f9;
+  --sb-text-muted: #94a3b8;
+}
+
+.secubox-dashboard {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* SecuBox brand colors for each module */
+.sb-color-crowdsec { --module-color: #22c55e; }
+.sb-color-netdata { --module-color: #00ab44; }
+.sb-color-netifyd { --module-color: #8b5cf6; }
+.sb-color-wireguard { --module-color: #06b6d4; }
+.sb-color-network-modes { --module-color: #f97316; }
+.sb-color-client-guardian { --module-color: #ef4444; }
+.sb-color-system-hub { --module-color: #6366f1; }
+.sb-color-cdn-cache { --module-color: #06b6d4; }

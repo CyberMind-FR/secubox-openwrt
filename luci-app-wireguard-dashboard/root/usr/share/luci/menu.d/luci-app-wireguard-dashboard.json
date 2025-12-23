@@ -1,0 +1,45 @@
+{
+	"admin/secubox/network/wireguard": {
+		"title": "WireGuard",
+		"order": 10,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-wireguard-dashboard"],
+			"uci": {"wireguard": true}
+		}
+	},
+	"admin/secubox/network/wireguard/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "wireguard/overview"
+		}
+	},
+	"admin/secubox/network/wireguard/peers": {
+		"title": "Peers",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "wireguard/peers"
+		}
+	},
+	"admin/secubox/network/wireguard/qrcodes": {
+		"title": "QR Codes",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "wireguard/qrcodes"
+		}
+	},
+	"admin/secubox/network/wireguard/settings": {
+		"title": "Settings",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "wireguard/settings"
+		}
+	}
+}

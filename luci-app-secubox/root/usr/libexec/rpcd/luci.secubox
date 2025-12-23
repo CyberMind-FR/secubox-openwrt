@@ -1,0 +1,110 @@
+#!/bin/sh
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+MODULES="crowdsec netdata netifyd wireguard network-modes client-guardian system-hub cdn-cache traffic-shaper"
+
+_is_installed() {
+    case "$1" in
+        crowdsec) [ -f "/etc/config/crowdsec" ] || [ -x "/usr/bin/crowdsec" ] ;;
+        netdata) [ -f "/etc/config/netdata" ] || [ -x "/usr/sbin/netdata" ] || [ -x "/opt/netdata/usr/sbin/netdata" ] ;;
+        netifyd) [ -f "/etc/config/netifyd" ] || [ -x "/usr/sbin/netifyd" ] ;;
+        wireguard) [ -x "/usr/bin/wg" ] ;;
+        network-modes|system-hub) return 0 ;;
+        client-guardian) [ -f "/etc/config/nodogsplash" ] || [ -x "/usr/bin/nodogsplash" ] ;;
+        cdn-cache) [ -f "/etc/nginx/nginx.conf" ] || [ -f "/etc/squid/squid.conf" ] ;;
+        traffic-shaper) [ -f "/etc/config/sqm" ] || tc qdisc show 2>/dev/null | grep -qE "(cake|fq_codel)" ;;
+        *) return 1 ;;
+    esac
+}
+
+_is_running() {
+    case "$1" in
+        crowdsec) pgrep -f "crowdsec" >/dev/null 2>&1 ;;
+        netdata) pgrep -f "netdata" >/dev/null 2>&1 ;;
+        netifyd) pgrep -f "netifyd" >/dev/null 2>&1 ;;
+        wireguard) [ -n "$(wg show 2>/dev/null)" ] ;;
+        network-modes|system-hub) return 0 ;;
+        client-guardian) pgrep -f "nodogsplash" >/dev/null 2>&1 ;;
+        cdn-cache) pgrep -f "nginx" >/dev/null 2>&1 || pgrep -f "squid" >/dev/null 2>&1 ;;
+        traffic-shaper) tc qdisc show 2>/dev/null | grep -qE "(cake|fq_codel)" ;;
+        *) return 1 ;;
+    esac
+}
+
+get_status() {
+    local hostname=$(cat /proc/sys/kernel/hostname)
+    local uptime=$(cut -d. -f1 /proc/uptime)
+    local load=$(cut -d' ' -f1-3 /proc/loadavg)
+    local mem_total=$(awk '/MemTotal/{print $2}' /proc/meminfo)
+    local mem_free=$(awk '/MemAvailable/{print $2}' /proc/meminfo)
+    [ -z "$mem_free" ] && mem_free=$(awk '/MemFree/{print $2}' /proc/meminfo)
+    local mem_pct=$(( (mem_total - mem_free) * 100 / mem_total ))
+    
+    local total=0 installed=0 running=0
+    for mod in $MODULES; do
+        total=$((total + 1))
+        if _is_installed "$mod"; then
+            installed=$((installed + 1))
+            _is_running "$mod" && running=$((running + 1))
+        fi
+    done
+    
+    json_init
+    json_add_string "version" "2.0.0"
+    json_add_string "hostname" "$hostname"
+    json_add_int "uptime" "$uptime"
+    json_add_string "load" "$load"
+    json_add_int "memory_percent" "$mem_pct"
+    json_add_int "modules_total" "$total"
+    json_add_int "modules_installed" "$installed"
+    json_add_int "modules_running" "$running"
+    json_dump
+}
+
+get_modules() {
+    json_init
+    json_add_array "modules"
+    
+    _add_module() {
+        local id="$1" name="$2" desc="$3" cat="$4" color="$5" icon="$6"
+        local inst=0 run=0
+        _is_installed "$id" && inst=1
+        _is_running "$id" && run=1
+        
+        json_add_object ""
+        json_add_string "id" "$id"
+        json_add_string "name" "$name"
+        json_add_string "description" "$desc"
+        json_add_string "category" "$cat"
+        json_add_string "color" "$color"
+        json_add_string "icon" "$icon"
+        json_add_boolean "installed" "$inst"
+        json_add_boolean "running" "$run"
+        json_close_object
+    }
+    
+    _add_module "crowdsec" "CrowdSec" "Protection collaborative contre les intrusions" "security" "#6366f1" "shield"
+    _add_module "netdata" "Netdata" "Monitoring système en temps réel" "monitoring" "#00ab44" "activity"
+    _add_module "netifyd" "Netifyd" "Analyse DPI du trafic réseau" "security" "#06b6d4" "search"
+    _add_module "wireguard" "WireGuard" "VPN moderne et performant" "network" "#88171a" "lock"
+    _add_module "network-modes" "Network Modes" "Configuration réseau simplifiée" "network" "#3b82f6" "globe"
+    _add_module "client-guardian" "Client Guardian" "Contrôle accès et portail captif" "security" "#f59e0b" "users"
+    _add_module "system-hub" "System Hub" "Centre de contrôle système" "system" "#64748b" "server"
+    _add_module "cdn-cache" "CDN Cache" "Cache proxy optimisation bande passante" "network" "#22c55e" "database"
+    _add_module "traffic-shaper" "Traffic Shaper" "Gestion QoS, priorités et quotas" "network" "#a855f7" "sliders"
+    
+    json_close_array
+    json_dump
+}
+
+case "$1" in
+    list) echo '{"status":{},"modules":{}}' ;;
+    call)
+        case "$2" in
+            status) get_status ;;
+            modules) get_modules ;;
+            *) echo '{"error":"Unknown method"}' ;;
+        esac
+        ;;
+esac

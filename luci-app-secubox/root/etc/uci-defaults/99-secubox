@@ -1,0 +1,16 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# SecuBox UCI Defaults
+# Copyright (C) 2025 CyberMind.fr
+
+# Set proper permissions
+chmod +x /usr/libexec/rpcd/secubox 2>/dev/null || true
+
+# Reload rpcd to register new methods
+/etc/init.d/rpcd reload 2>/dev/null || true
+
+# Clear LuCI cache to show new menus
+rm -rf /tmp/luci-modulecache 2>/dev/null || true
+rm -rf /tmp/luci-indexcache* 2>/dev/null || true
+
+exit 0

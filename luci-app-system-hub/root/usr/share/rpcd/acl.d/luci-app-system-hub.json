@@ -1,0 +1,43 @@
+{
+	"luci-app-system-hub": {
+		"description": "Grant access to System Hub central control dashboard",
+		"read": {
+			"ubus": {
+				"system-hub": [
+					"status",
+					"components",
+					"health",
+					"remote",
+					"logs",
+					"schedules"
+				]
+			},
+			"uci": [ "system-hub" ],
+			"file": {
+				"/etc/system-hub/*": [ "read" ],
+				"/var/log/system-hub.log": [ "read" ],
+				"/proc/cpuinfo": [ "read" ],
+				"/proc/meminfo": [ "read" ],
+				"/proc/loadavg": [ "read" ],
+				"/proc/uptime": [ "read" ],
+				"/sys/class/thermal/thermal_zone*/temp": [ "read" ]
+			}
+		},
+		"write": {
+			"ubus": {
+				"system-hub": [
+					"collect_diagnostics",
+					"generate_report",
+					"start_remote_session",
+					"manage_component",
+					"upload_diagnostic"
+				]
+			},
+			"uci": [ "system-hub" ],
+			"file": {
+				"/etc/system-hub/reports/*": [ "write" ],
+				"/etc/system-hub/diagnostics/*": [ "write" ]
+			}
+		}
+	}
+}

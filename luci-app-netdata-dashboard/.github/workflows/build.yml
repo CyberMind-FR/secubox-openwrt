@@ -1,0 +1,126 @@
+name: Build luci-app-netdata-dashboard
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  # MUST match PKG_NAME:= in Makefile exactly
+  PKG_NAME: luci-app-netdata-dashboard
+  OPENWRT_VERSION: '23.05.5'
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Verify PKG_NAME matches Makefile
+        run: |
+          MAKEFILE_PKG=$(grep "^PKG_NAME:=" Makefile | cut -d= -f2)
+          if [ "$MAKEFILE_PKG" != "${{ env.PKG_NAME }}" ]; then
+            echo "❌ PKG_NAME mismatch: Makefile=$MAKEFILE_PKG, Workflow=${{ env.PKG_NAME }}"
+            exit 1
+          fi
+          echo "✅ PKG_NAME verified: $MAKEFILE_PKG"
+
+      - name: Check structure
+        run: |
+          test -f Makefile
+          find . -name "*.json" -exec python3 -m json.tool {} \; >/dev/null
+
+  build:
+    name: Build ${{ matrix.arch }}
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            target: x86
+            subtarget: 64
+          - arch: aarch64_cortex-a53
+            target: mvebu
+            subtarget: cortexa53
+          - arch: aarch64_cortex-a72
+            target: mvebu
+            subtarget: cortexa72
+          - arch: arm_cortex-a9_vfpv3-d16
+            target: mvebu
+            subtarget: cortexa9
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib gettext git libncurses5-dev libssl-dev \
+            python3-setuptools rsync unzip zlib1g-dev file wget xsltproc
+
+      - name: Download and extract SDK
+        run: |
+          SDK_BASE="https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/${{ matrix.target }}/${{ matrix.subtarget }}"
+          wget -q "${SDK_BASE}/sha256sums"
+          SDK_FILE=$(grep -E "openwrt-sdk.*\.tar\.(xz|zst)" sha256sums | head -1 | awk '{print $NF}' | tr -d '*')
+          [ -z "$SDK_FILE" ] && { echo "SDK not found"; exit 1; }
+          
+          echo "Downloading $SDK_FILE..."
+          wget -q "${SDK_BASE}/${SDK_FILE}"
+          
+          case "$SDK_FILE" in
+            *.tar.xz) tar -xJf "$SDK_FILE" ;;
+            *.tar.zst) tar --zstd -xf "$SDK_FILE" ;;
+            *) tar -xf "$SDK_FILE" ;;
+          esac
+          
+          SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*" -print -quit)
+          [ -z "$SDK_DIR" ] && { echo "SDK dir not found"; exit 1; }
+          mv "$SDK_DIR" sdk
+
+      - name: Setup feeds and build
+        run: |
+          cd sdk
+          grep -q "^src-git luci" feeds.conf.default || \
+            echo "src-git luci https://github.com/openwrt/luci.git;openwrt-23.05" >> feeds.conf.default
+          
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          
+          mkdir -p "package/${{ env.PKG_NAME }}"
+          rsync -av --exclude='.git' --exclude='sdk' --exclude='*.tar.*' ../. "package/${{ env.PKG_NAME }}/"
+          
+          make defconfig
+          make "package/${{ env.PKG_NAME }}/compile" V=s -j$(nproc) || \
+            make "package/${{ env.PKG_NAME }}/compile" V=s -j1
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PKG_NAME }}-${{ matrix.arch }}
+          path: sdk/bin/**/*.ipk
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*.ipk
+          generate_release_notes: true

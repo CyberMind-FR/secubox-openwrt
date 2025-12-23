@@ -1,0 +1,25 @@
+{
+	"luci-app-network-modes": {
+		"description": "Grant access to LuCI Network Modes Dashboard",
+		"read": {
+			"ubus": {
+				"network-modes": [ "status", "modes", "sniffer_config", "ap_config", "relay_config", "router_config", "generate_config" ],
+				"system": [ "info", "board" ],
+				"network.interface": [ "status", "dump" ],
+				"iwinfo": [ "info", "scan" ],
+				"file": [ "read", "stat" ]
+			},
+			"uci": [ "network", "wireless", "firewall", "dhcp", "network-modes" ],
+			"file": {
+				"/etc/config/*": [ "read" ],
+				"/sys/class/net/*": [ "read" ]
+			}
+		},
+		"write": {
+			"ubus": {
+				"network-modes": [ "apply_mode", "update_settings", "add_vhost" ]
+			},
+			"uci": [ "network-modes" ]
+		}
+	}
+}

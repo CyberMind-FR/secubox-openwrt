@@ -1,0 +1,29 @@
+{
+	"admin/secubox/monitoring/netdata": {
+		"title": "Netdata",
+		"order": 10,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-netdata-dashboard"],
+			"uci": {"netdata": true}
+		}
+	},
+	"admin/secubox/monitoring/netdata/dashboard": {
+		"title": "Dashboard",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "netdata/dashboard"
+		}
+	},
+	"admin/secubox/monitoring/netdata/settings": {
+		"title": "Settings",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "netdata/settings"
+		}
+	}
+}

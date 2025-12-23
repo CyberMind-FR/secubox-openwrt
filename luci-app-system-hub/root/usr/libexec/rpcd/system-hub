@@ -1,0 +1,753 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# System Hub - Central Control & Remote Assistance RPCD Backend
+# Copyright (C) 2024 CyberMind.fr - Gandalf
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG_FILE="/etc/config/system-hub"
+LOG_FILE="/var/log/system-hub.log"
+REPORTS_DIR="/etc/system-hub/reports"
+DIAG_DIR="/etc/system-hub/diagnostics"
+
+# Logging function
+log_event() {
+	local level="$1"
+	local message="$2"
+	local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+	echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+}
+
+# Get system overview status
+get_status() {
+	json_init
+	
+	local enabled=$(uci -q get system-hub.config.enabled || echo "1")
+	json_add_boolean "enabled" "$enabled"
+	
+	# System info
+	json_add_object "system"
+	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || hostname)"
+	json_add_string "model" "$(cat /tmp/sysinfo/model 2>/dev/null || echo 'Unknown')"
+	json_add_string "architecture" "$(uname -m)"
+	json_add_string "kernel" "$(uname -r)"
+	json_add_string "openwrt_version" "$(cat /etc/openwrt_release 2>/dev/null | grep DISTRIB_RELEASE | cut -d= -f2 | tr -d \"\')"
+	json_add_int "uptime" "$(cat /proc/uptime | cut -d. -f1)"
+	json_add_string "local_time" "$(date '+%Y-%m-%d %H:%M:%S')"
+	json_close_object
+	
+	# CPU info
+	json_add_object "cpu"
+	local load1=$(cat /proc/loadavg | awk '{print $1}')
+	local load5=$(cat /proc/loadavg | awk '{print $2}')
+	local load15=$(cat /proc/loadavg | awk '{print $3}')
+	local cores=$(grep -c processor /proc/cpuinfo)
+	local usage=$(top -bn1 | grep "CPU:" | awk '{print 100-$8}' | head -1)
+	[ -z "$usage" ] && usage=$(awk '/^cpu / {print 100-($5*100/($2+$3+$4+$5+$6+$7+$8))}' /proc/stat)
+	json_add_string "load_1m" "$load1"
+	json_add_string "load_5m" "$load5"
+	json_add_string "load_15m" "$load15"
+	json_add_int "cores" "$cores"
+	json_add_int "usage_percent" "${usage%.*}"
+	json_close_object
+	
+	# Memory info
+	json_add_object "memory"
+	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+	local mem_free=$(grep MemFree /proc/meminfo | awk '{print $2}')
+	local mem_available=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+	local mem_buffers=$(grep Buffers /proc/meminfo | awk '{print $2}')
+	local mem_cached=$(grep "^Cached:" /proc/meminfo | awk '{print $2}')
+	local mem_used=$((mem_total - mem_free - mem_buffers - mem_cached))
+	local mem_percent=$((mem_used * 100 / mem_total))
+	json_add_int "total_kb" "$mem_total"
+	json_add_int "used_kb" "$mem_used"
+	json_add_int "free_kb" "$mem_free"
+	json_add_int "available_kb" "$mem_available"
+	json_add_int "usage_percent" "$mem_percent"
+	json_close_object
+	
+	# Storage info
+	json_add_object "storage"
+	local disk_info=$(df / | tail -1)
+	local disk_total=$(echo "$disk_info" | awk '{print $2}')
+	local disk_used=$(echo "$disk_info" | awk '{print $3}')
+	local disk_free=$(echo "$disk_info" | awk '{print $4}')
+	local disk_percent=$(echo "$disk_info" | awk '{print $5}' | tr -d '%')
+	json_add_int "total_kb" "$disk_total"
+	json_add_int "used_kb" "$disk_used"
+	json_add_int "free_kb" "$disk_free"
+	json_add_int "usage_percent" "$disk_percent"
+	json_close_object
+	
+	# Temperature (if available)
+	local temp=""
+	if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+		temp=$(($(cat /sys/class/thermal/thermal_zone0/temp) / 1000))
+	fi
+	json_add_int "temperature" "${temp:-0}"
+	
+	# Network summary
+	json_add_object "network"
+	local wan_status=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.up' 2>/dev/null)
+	local wan_ip=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
+	local lan_ip=$(ubus call network.interface.lan status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
+	json_add_boolean "wan_up" "${wan_status:-0}"
+	json_add_string "wan_ip" "${wan_ip:-N/A}"
+	json_add_string "lan_ip" "${lan_ip:-N/A}"
+	local clients=$(cat /proc/net/arp | grep -v "IP address" | wc -l)
+	json_add_int "connected_clients" "$clients"
+	json_close_object
+	
+	# Component summary
+	local installed=0
+	local running=0
+	local issues=0
+	config_load system-hub
+	config_foreach count_components component
+	
+	json_add_object "components"
+	json_add_int "installed" "$installed"
+	json_add_int "running" "$running"
+	json_add_int "issues" "$issues"
+	json_close_object
+	
+	# Remote status
+	json_add_object "remote"
+	local remote_enabled=$(uci -q get system-hub.remote.enabled || echo "0")
+	local rustdesk_enabled=$(uci -q get system-hub.remote.rustdesk_enabled || echo "0")
+	local rustdesk_id=$(uci -q get system-hub.remote.rustdesk_id || echo "")
+	json_add_boolean "enabled" "$remote_enabled"
+	json_add_boolean "rustdesk_enabled" "$rustdesk_enabled"
+	json_add_string "rustdesk_id" "$rustdesk_id"
+	json_add_boolean "session_active" "0"
+	json_close_object
+	
+	# Last health check
+	json_add_string "last_health_check" "$(stat -c %Y $REPORTS_DIR/health_latest.json 2>/dev/null | xargs -I{} date -d @{} '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo 'Never')"
+	
+	json_dump
+}
+
+count_components() {
+	local status=$(uci -q get system-hub.$1.status)
+	local service=$(uci -q get system-hub.$1.service)
+	
+	[ "$status" = "installed" ] && installed=$((installed + 1))
+	
+	if [ -n "$service" ] && /etc/init.d/$service enabled 2>/dev/null; then
+		if /etc/init.d/$service running 2>/dev/null; then
+			running=$((running + 1))
+		else
+			issues=$((issues + 1))
+		fi
+	fi
+}
+
+# Get all components with status
+get_components() {
+	json_init
+	json_add_array "components"
+	
+	config_load system-hub
+	config_foreach output_component component
+	
+	json_close_array
+	json_dump
+}
+
+output_component() {
+	local section="$1"
+	local service=$(uci -q get system-hub.$section.service)
+	local status=$(uci -q get system-hub.$section.status)
+	
+	# Check if service is running
+	local is_running=0
+	local is_enabled=0
+	if [ -n "$service" ] && [ "$status" = "installed" ]; then
+		/etc/init.d/$service enabled 2>/dev/null && is_enabled=1
+		/etc/init.d/$service running 2>/dev/null && is_running=1
+	fi
+	
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$(uci -q get system-hub.$section.name)"
+	json_add_string "description" "$(uci -q get system-hub.$section.description)"
+	json_add_string "package" "$(uci -q get system-hub.$section.package)"
+	json_add_string "service" "$service"
+	json_add_string "icon" "$(uci -q get system-hub.$section.icon)"
+	json_add_string "color" "$(uci -q get system-hub.$section.color)"
+	json_add_string "category" "$(uci -q get system-hub.$section.category)"
+	json_add_string "status" "$status"
+	json_add_string "version" "$(uci -q get system-hub.$section.version)"
+	json_add_boolean "enabled" "$is_enabled"
+	json_add_boolean "running" "$is_running"
+	json_add_string "web_port" "$(uci -q get system-hub.$section.web_port)"
+	json_add_string "roadmap_date" "$(uci -q get system-hub.$section.roadmap_date)"
+	json_close_object
+}
+
+# Get health report
+get_health() {
+	json_init
+	
+	# Overall score
+	local score=100
+	local issues=""
+	
+	# CPU health
+	local cpu_usage=$(awk '/^cpu / {print int(100-($5*100/($2+$3+$4+$5+$6+$7+$8)))}' /proc/stat)
+	local cpu_warning=$(uci -q get system-hub.health.cpu_warning || echo 80)
+	local cpu_critical=$(uci -q get system-hub.health.cpu_critical || echo 95)
+	local cpu_status="ok"
+	if [ "$cpu_usage" -ge "$cpu_critical" ]; then
+		cpu_status="critical"
+		score=$((score - 30))
+		issues="$issues CPU critical ($cpu_usage%);"
+	elif [ "$cpu_usage" -ge "$cpu_warning" ]; then
+		cpu_status="warning"
+		score=$((score - 15))
+		issues="$issues CPU warning ($cpu_usage%);"
+	fi
+	
+	# Memory health
+	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+	local mem_free=$(grep MemFree /proc/meminfo | awk '{print $2}')
+	local mem_buffers=$(grep Buffers /proc/meminfo | awk '{print $2}')
+	local mem_cached=$(grep "^Cached:" /proc/meminfo | awk '{print $2}')
+	local mem_used=$((mem_total - mem_free - mem_buffers - mem_cached))
+	local mem_percent=$((mem_used * 100 / mem_total))
+	local mem_warning=$(uci -q get system-hub.health.memory_warning || echo 80)
+	local mem_critical=$(uci -q get system-hub.health.memory_critical || echo 95)
+	local mem_status="ok"
+	if [ "$mem_percent" -ge "$mem_critical" ]; then
+		mem_status="critical"
+		score=$((score - 25))
+		issues="$issues Memory critical ($mem_percent%);"
+	elif [ "$mem_percent" -ge "$mem_warning" ]; then
+		mem_status="warning"
+		score=$((score - 10))
+		issues="$issues Memory warning ($mem_percent%);"
+	fi
+	
+	# Disk health
+	local disk_percent=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+	local disk_warning=$(uci -q get system-hub.health.disk_warning || echo 80)
+	local disk_critical=$(uci -q get system-hub.health.disk_critical || echo 95)
+	local disk_status="ok"
+	if [ "$disk_percent" -ge "$disk_critical" ]; then
+		disk_status="critical"
+		score=$((score - 25))
+		issues="$issues Disk critical ($disk_percent%);"
+	elif [ "$disk_percent" -ge "$disk_warning" ]; then
+		disk_status="warning"
+		score=$((score - 10))
+		issues="$issues Disk warning ($disk_percent%);"
+	fi
+	
+	# Temperature health
+	local temp=0
+	local temp_status="ok"
+	if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+		temp=$(($(cat /sys/class/thermal/thermal_zone0/temp) / 1000))
+		local temp_warning=$(uci -q get system-hub.health.temperature_warning || echo 70)
+		local temp_critical=$(uci -q get system-hub.health.temperature_critical || echo 85)
+		if [ "$temp" -ge "$temp_critical" ]; then
+			temp_status="critical"
+			score=$((score - 20))
+			issues="$issues Temperature critical (${temp}°C);"
+		elif [ "$temp" -ge "$temp_warning" ]; then
+			temp_status="warning"
+			score=$((score - 10))
+			issues="$issues Temperature warning (${temp}°C);"
+		fi
+	fi
+	
+	# Services health
+	local services_ok=0
+	local services_failed=0
+	for svc in network dnsmasq firewall uhttpd; do
+		if /etc/init.d/$svc enabled 2>/dev/null; then
+			if /etc/init.d/$svc running 2>/dev/null; then
+				services_ok=$((services_ok + 1))
+			else
+				services_failed=$((services_failed + 1))
+				score=$((score - 5))
+				issues="$issues Service $svc not running;"
+			fi
+		fi
+	done
+	
+	# Network health
+	local wan_up=0
+	local wan_status=$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@.up' 2>/dev/null)
+	[ "$wan_status" = "true" ] && wan_up=1
+	local net_status="ok"
+	if [ "$wan_up" = "0" ]; then
+		net_status="critical"
+		score=$((score - 20))
+		issues="$issues WAN down;"
+	fi
+	
+	# Ensure score is not negative
+	[ "$score" -lt 0 ] && score=0
+	
+	# Determine overall status
+	local overall="healthy"
+	[ "$score" -lt 80 ] && overall="warning"
+	[ "$score" -lt 50 ] && overall="critical"
+	
+	json_add_int "score" "$score"
+	json_add_string "status" "$overall"
+	json_add_string "issues" "$issues"
+	json_add_string "timestamp" "$(date '+%Y-%m-%d %H:%M:%S')"
+	
+	json_add_object "cpu"
+	json_add_int "usage" "$cpu_usage"
+	json_add_string "status" "$cpu_status"
+	json_close_object
+	
+	json_add_object "memory"
+	json_add_int "usage" "$mem_percent"
+	json_add_string "status" "$mem_status"
+	json_close_object
+	
+	json_add_object "disk"
+	json_add_int "usage" "$disk_percent"
+	json_add_string "status" "$disk_status"
+	json_close_object
+	
+	json_add_object "temperature"
+	json_add_int "value" "$temp"
+	json_add_string "status" "$temp_status"
+	json_close_object
+	
+	json_add_object "services"
+	json_add_int "running" "$services_ok"
+	json_add_int "failed" "$services_failed"
+	json_close_object
+	
+	json_add_object "network"
+	json_add_boolean "wan_up" "$wan_up"
+	json_add_string "status" "$net_status"
+	json_close_object
+	
+	# Recommendations
+	json_add_array "recommendations"
+	[ "$cpu_status" != "ok" ] && json_add_string "" "Réduire la charge CPU en désactivant des services non essentiels"
+	[ "$mem_status" != "ok" ] && json_add_string "" "Libérer de la mémoire ou augmenter le swap"
+	[ "$disk_status" != "ok" ] && json_add_string "" "Nettoyer les fichiers temporaires et logs anciens"
+	[ "$temp_status" != "ok" ] && json_add_string "" "Améliorer la ventilation ou réduire la charge"
+	[ "$net_status" != "ok" ] && json_add_string "" "Vérifier la connexion WAN et les paramètres réseau"
+	json_close_array
+	
+	json_dump
+}
+
+# Get remote assistance config
+get_remote() {
+	json_init
+	
+	json_add_boolean "enabled" "$(uci -q get system-hub.remote.enabled || echo 0)"
+	json_add_boolean "rustdesk_enabled" "$(uci -q get system-hub.remote.rustdesk_enabled || echo 0)"
+	json_add_string "rustdesk_server" "$(uci -q get system-hub.remote.rustdesk_server)"
+	json_add_string "rustdesk_id" "$(uci -q get system-hub.remote.rustdesk_id)"
+	json_add_boolean "allow_unattended" "$(uci -q get system-hub.remote.allow_unattended || echo 0)"
+	json_add_boolean "require_approval" "$(uci -q get system-hub.remote.require_approval || echo 1)"
+	json_add_boolean "notify_on_connect" "$(uci -q get system-hub.remote.notify_on_connect || echo 1)"
+	json_add_int "session_timeout" "$(uci -q get system-hub.remote.session_timeout || echo 3600)"
+	
+	# Check if RustDesk is installed and running
+	local rustdesk_installed=0
+	local rustdesk_running=0
+	which rustdesk >/dev/null 2>&1 && rustdesk_installed=1
+	pgrep -x rustdesk >/dev/null 2>&1 && rustdesk_running=1
+	json_add_boolean "rustdesk_installed" "$rustdesk_installed"
+	json_add_boolean "rustdesk_running" "$rustdesk_running"
+	
+	# Support info
+	json_add_object "support"
+	json_add_string "provider" "$(uci -q get system-hub.support.provider)"
+	json_add_string "email" "$(uci -q get system-hub.support.email)"
+	json_add_string "phone" "$(uci -q get system-hub.support.phone)"
+	json_add_string "website" "$(uci -q get system-hub.support.website)"
+	json_add_string "ticket_url" "$(uci -q get system-hub.support.ticket_url)"
+	json_close_object
+	
+	json_dump
+}
+
+# Collect diagnostic data
+collect_diagnostics() {
+	read input
+	json_load "$input"
+	json_get_var include_logs include_logs
+	json_get_var include_config include_config
+	json_get_var include_network include_network
+	json_get_var anonymize anonymize
+	
+	json_init
+	
+	local diag_file="$DIAG_DIR/diagnostic_$(date +%Y%m%d_%H%M%S).tar.gz"
+	local temp_dir="/tmp/system-hub-diag-$$"
+	mkdir -p "$temp_dir"
+	
+	# System info
+	{
+		echo "=== System Info ==="
+		echo "Date: $(date)"
+		echo "Hostname: $(hostname)"
+		echo "Model: $(cat /tmp/sysinfo/model 2>/dev/null)"
+		echo "Kernel: $(uname -a)"
+		echo "OpenWrt: $(cat /etc/openwrt_release)"
+		echo ""
+		echo "=== Uptime ==="
+		uptime
+		echo ""
+		echo "=== Memory ==="
+		free
+		cat /proc/meminfo
+		echo ""
+		echo "=== Disk ==="
+		df -h
+		echo ""
+		echo "=== CPU ==="
+		cat /proc/cpuinfo
+		echo ""
+		echo "=== Processes ==="
+		ps w
+	} > "$temp_dir/system_info.txt"
+	
+	# Logs
+	if [ "$include_logs" = "1" ]; then
+		{
+			echo "=== System Log ==="
+			logread | tail -500
+			echo ""
+			echo "=== Kernel Log ==="
+			dmesg | tail -200
+		} > "$temp_dir/logs.txt"
+		
+		# Component logs
+		[ -f /var/log/crowdsec.log ] && tail -200 /var/log/crowdsec.log > "$temp_dir/crowdsec.log"
+		[ -f /var/log/netifyd.log ] && tail -200 /var/log/netifyd.log > "$temp_dir/netifyd.log"
+		[ -f /var/log/system-hub.log ] && tail -200 /var/log/system-hub.log > "$temp_dir/system-hub.log"
+	fi
+	
+	# Network info
+	if [ "$include_network" = "1" ]; then
+		{
+			echo "=== Interfaces ==="
+			ip addr
+			echo ""
+			echo "=== Routes ==="
+			ip route
+			echo ""
+			echo "=== ARP ==="
+			cat /proc/net/arp
+			echo ""
+			echo "=== Connections ==="
+			netstat -tuln 2>/dev/null || ss -tuln
+			echo ""
+			echo "=== Firewall ==="
+			iptables -L -n -v 2>/dev/null
+			echo ""
+			echo "=== WiFi ==="
+			iwinfo 2>/dev/null || iw dev 2>/dev/null
+		} > "$temp_dir/network.txt"
+	fi
+	
+	# Config (anonymized if requested)
+	if [ "$include_config" = "1" ]; then
+		mkdir -p "$temp_dir/config"
+		for conf in network wireless firewall dhcp system; do
+			if [ -f "/etc/config/$conf" ]; then
+				if [ "$anonymize" = "1" ]; then
+					# Remove passwords and sensitive data
+					sed -e 's/option key .*/option key *****/g' \
+					    -e 's/option password .*/option password *****/g' \
+					    -e 's/option private_key .*/option private_key *****/g' \
+					    -e 's/option preshared_key .*/option preshared_key *****/g' \
+					    "/etc/config/$conf" > "$temp_dir/config/$conf"
+				else
+					cp "/etc/config/$conf" "$temp_dir/config/"
+				fi
+			fi
+		done
+	fi
+	
+	# Packages list
+	opkg list-installed > "$temp_dir/packages.txt"
+	
+	# Create archive
+	tar -czf "$diag_file" -C "$temp_dir" .
+	rm -rf "$temp_dir"
+	
+	local file_size=$(stat -c%s "$diag_file")
+	
+	json_add_boolean "success" 1
+	json_add_string "file" "$diag_file"
+	json_add_int "size" "$file_size"
+	json_add_string "timestamp" "$(date '+%Y-%m-%d %H:%M:%S')"
+	
+	log_event "info" "Diagnostic collected: $diag_file"
+	
+	json_dump
+}
+
+# Generate health report
+generate_report() {
+	json_init
+	
+	local report_file="$REPORTS_DIR/health_$(date +%Y%m%d_%H%M%S).json"
+	
+	# Get health data and save
+	get_health > "$report_file"
+	
+	# Also save as latest
+	cp "$report_file" "$REPORTS_DIR/health_latest.json"
+	
+	json_add_boolean "success" 1
+	json_add_string "file" "$report_file"
+	json_add_string "timestamp" "$(date '+%Y-%m-%d %H:%M:%S')"
+	
+	log_event "info" "Health report generated: $report_file"
+	
+	json_dump
+}
+
+# Get unified logs from all components
+get_logs() {
+	read input
+	json_load "$input"
+	json_get_var limit limit
+	json_get_var source source
+	json_get_var level level
+	
+	[ -z "$limit" ] && limit=100
+	
+	json_init
+	json_add_array "logs"
+	
+	# System log
+	if [ -z "$source" ] || [ "$source" = "system" ]; then
+		logread | tail -n $limit | while read line; do
+			local ts=$(echo "$line" | awk '{print $1" "$2" "$3}')
+			local msg=$(echo "$line" | cut -d' ' -f4-)
+			local lvl="info"
+			echo "$line" | grep -qi "error\|fail\|critical" && lvl="error"
+			echo "$line" | grep -qi "warn" && lvl="warning"
+			
+			json_add_object
+			json_add_string "timestamp" "$ts"
+			json_add_string "source" "system"
+			json_add_string "level" "$lvl"
+			json_add_string "message" "$msg"
+			json_close_object
+		done
+	fi
+	
+	# Component logs
+	for logfile in /var/log/system-hub.log /var/log/crowdsec.log /var/log/client-guardian.log; do
+		if [ -f "$logfile" ]; then
+			local src=$(basename "$logfile" .log)
+			[ -z "$source" ] || [ "$source" = "$src" ] && tail -n $((limit / 3)) "$logfile" | while read line; do
+				json_add_object
+				json_add_string "timestamp" "$(echo "$line" | sed -n 's/\[\([^]]*\)\].*/\1/p')"
+				json_add_string "source" "$src"
+				json_add_string "level" "$(echo "$line" | sed -n 's/.*\] \[\([^]]*\)\].*/\1/p')"
+				json_add_string "message" "$(echo "$line" | sed 's/.*\] \[.*\] //')"
+				json_close_object
+			done
+		fi
+	done
+	
+	json_close_array
+	json_dump
+}
+
+# Start remote session
+start_remote_session() {
+	read input
+	json_load "$input"
+	json_get_var type type
+	
+	json_init
+	
+	case "$type" in
+		rustdesk)
+			if which rustdesk >/dev/null 2>&1; then
+				rustdesk --service &
+				sleep 2
+				local id=$(rustdesk --get-id 2>/dev/null)
+				json_add_boolean "success" 1
+				json_add_string "type" "rustdesk"
+				json_add_string "id" "$id"
+				json_add_string "message" "RustDesk session started"
+				log_event "info" "Remote session started: RustDesk ID $id"
+			else
+				json_add_boolean "success" 0
+				json_add_string "error" "RustDesk not installed"
+			fi
+			;;
+		ssh)
+			json_add_boolean "success" 1
+			json_add_string "type" "ssh"
+			json_add_string "host" "$(ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address')"
+			json_add_int "port" "22"
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Unknown session type"
+			;;
+	esac
+	
+	json_dump
+}
+
+# Update component
+manage_component() {
+	read input
+	json_load "$input"
+	json_get_var component component
+	json_get_var action action
+	
+	json_init
+	
+	local service=$(uci -q get system-hub.$component.service)
+	
+	if [ -z "$service" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Component not found"
+		json_dump
+		return
+	fi
+	
+	case "$action" in
+		start)
+			/etc/init.d/$service start 2>&1
+			json_add_boolean "success" 1
+			json_add_string "message" "Service $service started"
+			log_event "info" "Component $component started"
+			;;
+		stop)
+			/etc/init.d/$service stop 2>&1
+			json_add_boolean "success" 1
+			json_add_string "message" "Service $service stopped"
+			log_event "info" "Component $component stopped"
+			;;
+		restart)
+			/etc/init.d/$service restart 2>&1
+			json_add_boolean "success" 1
+			json_add_string "message" "Service $service restarted"
+			log_event "info" "Component $component restarted"
+			;;
+		enable)
+			/etc/init.d/$service enable 2>&1
+			json_add_boolean "success" 1
+			json_add_string "message" "Service $service enabled"
+			;;
+		disable)
+			/etc/init.d/$service disable 2>&1
+			json_add_boolean "success" 1
+			json_add_string "message" "Service $service disabled"
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Unknown action"
+			;;
+	esac
+	
+	json_dump
+}
+
+# Upload diagnostic file
+upload_diagnostic() {
+	read input
+	json_load "$input"
+	json_get_var file file
+	
+	json_init
+	
+	local upload_url=$(uci -q get system-hub.diagnostics.upload_url)
+	local upload_token=$(uci -q get system-hub.diagnostics.upload_token)
+	
+	if [ -z "$upload_url" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Upload URL not configured"
+		json_dump
+		return
+	fi
+	
+	if [ ! -f "$file" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "File not found"
+		json_dump
+		return
+	fi
+	
+	# Upload via curl
+	local response=$(curl -s -X POST \
+		-H "Authorization: Bearer $upload_token" \
+		-F "file=@$file" \
+		-F "hostname=$(hostname)" \
+		"$upload_url" 2>&1)
+	
+	if [ $? -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "File uploaded successfully"
+		json_add_string "response" "$response"
+		log_event "info" "Diagnostic uploaded: $file"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Upload failed: $response"
+	fi
+	
+	json_dump
+}
+
+# Get schedules
+get_schedules() {
+	json_init
+	json_add_array "schedules"
+	
+	config_load system-hub
+	config_foreach output_schedule schedule
+	
+	json_close_array
+	json_dump
+}
+
+output_schedule() {
+	json_add_object
+	json_add_string "id" "$1"
+	json_add_string "name" "$(uci -q get system-hub.$1.name)"
+	json_add_boolean "enabled" "$(uci -q get system-hub.$1.enabled || echo 0)"
+	json_add_string "type" "$(uci -q get system-hub.$1.type)"
+	json_add_string "cron" "$(uci -q get system-hub.$1.cron)"
+	json_close_object
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		echo '{"status":{},"components":{},"health":{},"remote":{},"logs":{"limit":"int","source":"str","level":"str"},"schedules":{},"collect_diagnostics":{"include_logs":"bool","include_config":"bool","include_network":"bool","anonymize":"bool"},"generate_report":{},"start_remote_session":{"type":"str"},"manage_component":{"component":"str","action":"str"},"upload_diagnostic":{"file":"str"}}'
+		;;
+	call)
+		case "$2" in
+			status) get_status ;;
+			components) get_components ;;
+			health) get_health ;;
+			remote) get_remote ;;
+			logs) get_logs ;;
+			schedules) get_schedules ;;
+			collect_diagnostics) collect_diagnostics ;;
+			generate_report) generate_report ;;
+			start_remote_session) start_remote_session ;;
+			manage_component) manage_component ;;
+			upload_diagnostic) upload_diagnostic ;;
+			*) echo '{"error": "Unknown method"}' ;;
+		esac
+		;;
+esac
