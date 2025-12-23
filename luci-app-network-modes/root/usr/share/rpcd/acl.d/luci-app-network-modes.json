@@ -3,7 +3,18 @@
 		"description": "Grant access to LuCI Network Modes Dashboard",
 		"read": {
 			"ubus": {
-				"network-modes": [ "status", "modes", "sniffer_config", "ap_config", "relay_config", "router_config", "generate_config" ],
+				"network-modes": [
+					"status",
+					"modes",
+					"get_current_mode",
+					"get_available_modes",
+					"preview_changes",
+					"sniffer_config",
+					"ap_config",
+					"relay_config",
+					"router_config",
+					"generate_config"
+				],
 				"system": [ "info", "board" ],
 				"network.interface": [ "status", "dump" ],
 				"iwinfo": [ "info", "scan" ],
@@ -17,9 +28,16 @@
 		},
 		"write": {
 			"ubus": {
-				"network-modes": [ "apply_mode", "update_settings", "add_vhost" ]
+				"network-modes": [
+					"set_mode",
+					"apply_mode",
+					"confirm_mode",
+					"rollback",
+					"update_settings",
+					"add_vhost"
+				]
 			},
-			"uci": [ "network-modes" ]
+			"uci": [ "network", "wireless", "firewall", "dhcp", "network-modes" ]
 		}
 	}
 }

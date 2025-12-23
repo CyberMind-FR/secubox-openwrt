@@ -359,41 +359,175 @@ get_router_config() {
 	json_dump
 }
 
-# Apply mode change
+# Apply mode change (with actual network reconfiguration and rollback timer)
 apply_mode() {
-	read input
-	json_load "$input"
-	json_get_var mode mode
-	
 	json_init
-	
-	# Validate mode
-	case "$mode" in
-		sniffer|accesspoint|relay|router)
-			;;
-		*)
-			json_add_boolean "success" 0
-			json_add_string "error" "Invalid mode: $mode"
-			json_dump
-			return
-			;;
-	esac
-	
+
+	local pending_mode=$(uci -q get network-modes.config.pending_mode || echo "")
+
+	if [ -z "$pending_mode" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Aucun mode en attente. Utilisez set_mode d'abord."
+		json_dump
+		return
+	fi
+
+	local current_mode=$(uci -q get network-modes.config.current_mode || echo "router")
+
 	# Backup current config
 	mkdir -p "$BACKUP_DIR"
 	local backup_file="$BACKUP_DIR/backup_$(date +%Y%m%d_%H%M%S).tar.gz"
 	tar -czf "$backup_file" /etc/config/network /etc/config/wireless /etc/config/firewall /etc/config/dhcp 2>/dev/null
-	
+
+	# Apply network configuration based on mode
+	case "$pending_mode" in
+		router)
+			# Router mode: NAT, DHCP server, firewall
+			# WAN interface
+			uci delete network.wan 2>/dev/null
+			uci set network.wan=interface
+			uci set network.wan.proto='dhcp'
+			uci set network.wan.device='eth1'
+
+			# LAN interface
+			uci set network.lan=interface
+			uci set network.lan.proto='static'
+			uci set network.lan.device='eth0'
+			uci set network.lan.ipaddr='192.168.1.1'
+			uci set network.lan.netmask='255.255.255.0'
+
+			# DHCP server
+			uci set dhcp.lan=dhcp
+			uci set dhcp.lan.interface='lan'
+			uci set dhcp.lan.start='100'
+			uci set dhcp.lan.limit='150'
+			uci set dhcp.lan.leasetime='12h'
+
+			# Firewall zones
+			uci set firewall.@zone[0]=zone
+			uci set firewall.@zone[0].name='lan'
+			uci set firewall.@zone[0].input='ACCEPT'
+			uci set firewall.@zone[0].output='ACCEPT'
+			uci set firewall.@zone[0].forward='ACCEPT'
+
+			uci set firewall.@zone[1]=zone
+			uci set firewall.@zone[1].name='wan'
+			uci set firewall.@zone[1].input='REJECT'
+			uci set firewall.@zone[1].output='ACCEPT'
+			uci set firewall.@zone[1].forward='REJECT'
+			uci set firewall.@zone[1].masq='1'
+			uci set firewall.@zone[1].mtu_fix='1'
+			;;
+
+		accesspoint)
+			# Access Point mode: Bridge, no NAT, DHCP client
+			# Delete WAN
+			uci delete network.wan 2>/dev/null
+
+			# Bridge LAN
+			uci set network.lan=interface
+			uci set network.lan.proto='dhcp'
+			uci set network.lan.type='bridge'
+			uci set network.lan.ifname='eth0 eth1'
+
+			# Disable DHCP server
+			uci set dhcp.lan.ignore='1'
+
+			# Disable firewall
+			uci set firewall.@zone[0].input='ACCEPT'
+			uci set firewall.@zone[0].forward='ACCEPT'
+			uci delete firewall.@zone[1] 2>/dev/null
+			;;
+
+		relay)
+			# Repeater mode: STA + AP relay
+			# Client interface (sta)
+			uci set network.wwan=interface
+			uci set network.wwan.proto='dhcp'
+
+			# AP interface
+			uci set network.lan=interface
+			uci set network.lan.proto='static'
+			uci set network.lan.ipaddr='192.168.2.1'
+			uci set network.lan.netmask='255.255.255.0'
+
+			# Relay with relayd
+			uci set network.stabridge=interface
+			uci set network.stabridge.proto='relay'
+			uci set network.stabridge.network='lan wwan'
+			;;
+
+		bridge)
+			# Pure L2 bridge: all interfaces bridged, DHCP client
+			uci delete network.wan 2>/dev/null
+
+			# Bridge all interfaces
+			uci set network.lan=interface
+			uci set network.lan.proto='dhcp'
+			uci set network.lan.type='bridge'
+			uci set network.lan.bridge_empty='1'
+
+			# Disable DHCP server
+			uci set dhcp.lan.ignore='1'
+
+			# Disable firewall
+			uci delete firewall.@zone[1] 2>/dev/null
+			;;
+	esac
+
+	# Commit all changes
+	uci commit network
+	uci commit dhcp
+	uci commit firewall
+
 	# Update current mode
-	uci set network-modes.config.current_mode="$mode"
+	uci set network-modes.config.current_mode="$pending_mode"
 	uci set network-modes.config.last_change="$(date '+%Y-%m-%d %H:%M:%S')"
+	uci set network-modes.config.rollback_timer="120"
 	uci commit network-modes
-	
+
+	# Start rollback timer (2 minutes) in background
+	(
+		for i in $(seq 120 -1 0); do
+			echo "$i" > /tmp/network-mode-rollback.remaining
+			sleep 1
+		done
+
+		# Timer expired, rollback
+		logger -t network-modes "Rollback timer expired, reverting to $current_mode"
+
+		cd /
+		tar -xzf "$backup_file" 2>/dev/null
+		/etc/init.d/network reload 2>&1
+		/etc/init.d/firewall reload 2>&1
+		/etc/init.d/dnsmasq reload 2>&1
+
+		uci set network-modes.config.current_mode="$current_mode"
+		uci delete network-modes.config.pending_mode 2>/dev/null
+		uci set network-modes.config.last_change="$(date '+%Y-%m-%d %H:%M:%S') (auto-rollback)"
+		uci commit network-modes
+
+		rm -f /tmp/network-mode-rollback.pid
+		rm -f /tmp/network-mode-rollback.remaining
+	) &
+
+	echo $! > /tmp/network-mode-rollback.pid
+
+	# Apply network changes NOW (async to not block RPC)
+	(
+		sleep 2
+		/etc/init.d/network reload 2>&1
+		/etc/init.d/firewall reload 2>&1
+		/etc/init.d/dnsmasq reload 2>&1
+	) &
+
 	json_add_boolean "success" 1
-	json_add_string "mode" "$mode"
-	json_add_string "message" "Mode changed to $mode. Please reboot or apply network changes."
+	json_add_string "mode" "$pending_mode"
+	json_add_string "previous_mode" "$current_mode"
+	json_add_string "message" "Mode $pending_mode appliqué. Confirmez dans les 2 minutes ou rollback automatique."
 	json_add_string "backup" "$backup_file"
-	
+	json_add_int "rollback_seconds" 120
+
 	json_dump
 }
 
@@ -653,10 +787,320 @@ config forwarding
 	json_dump
 }
 
+# Get current mode details
+get_current_mode() {
+	json_init
+
+	local current_mode=$(uci -q get network-modes.config.current_mode || echo "router")
+	local last_change=$(uci -q get network-modes.config.last_change || echo "Never")
+	local pending_mode=$(uci -q get network-modes.config.pending_mode || echo "")
+	local rollback_timer=$(uci -q get network-modes.config.rollback_timer || echo "0")
+
+	json_add_string "current_mode" "$current_mode"
+	json_add_string "mode_name" "$(uci -q get network-modes.$current_mode.name || echo "$current_mode")"
+	json_add_string "description" "$(uci -q get network-modes.$current_mode.description || echo "")"
+	json_add_string "last_change" "$last_change"
+	json_add_string "pending_mode" "$pending_mode"
+	json_add_int "rollback_timer" "$rollback_timer"
+
+	# Check if rollback is active
+	if [ -f "/tmp/network-mode-rollback.pid" ]; then
+		json_add_boolean "rollback_active" 1
+		local remaining=$(cat /tmp/network-mode-rollback.remaining 2>/dev/null || echo "0")
+		json_add_int "rollback_remaining" "$remaining"
+	else
+		json_add_boolean "rollback_active" 0
+		json_add_int "rollback_remaining" 0
+	fi
+
+	json_dump
+}
+
+# Get available modes
+get_available_modes() {
+	json_init
+	json_add_array "modes"
+
+	local current_mode=$(uci -q get network-modes.config.current_mode || echo "router")
+
+	# Router mode
+	json_add_object
+	json_add_string "id" "router"
+	json_add_string "name" "Router"
+	json_add_string "description" "Mode routeur complet avec NAT, DHCP et firewall"
+	json_add_string "icon" "🌐"
+	json_add_boolean "current" "$([ "$current_mode" = "router" ] && echo 1 || echo 0)"
+	json_add_array "features"
+	json_add_string "" "NAT activé"
+	json_add_string "" "Serveur DHCP"
+	json_add_string "" "Firewall (zones WAN/LAN)"
+	json_add_string "" "Proxy optionnel"
+	json_close_array
+	json_close_object
+
+	# Access Point mode
+	json_add_object
+	json_add_string "id" "accesspoint"
+	json_add_string "name" "Access Point"
+	json_add_string "description" "Point d'accès WiFi en mode bridge, pas de NAT"
+	json_add_string "icon" "📶"
+	json_add_boolean "current" "$([ "$current_mode" = "accesspoint" ] && echo 1 || echo 0)"
+	json_add_array "features"
+	json_add_string "" "Bridge WAN+LAN"
+	json_add_string "" "Pas de DHCP (mode client)"
+	json_add_string "" "Pas de firewall"
+	json_add_string "" "Optimisations WiFi 802.11r/k/v"
+	json_close_array
+	json_close_object
+
+	# Repeater/Relay mode
+	json_add_object
+	json_add_string "id" "relay"
+	json_add_string "name" "Repeater"
+	json_add_string "description" "Client WiFi + Répéteur AP avec optimisations"
+	json_add_string "icon" "🔄"
+	json_add_boolean "current" "$([ "$current_mode" = "relay" ] && echo 1 || echo 0)"
+	json_add_array "features"
+	json_add_string "" "Client WiFi (sta0)"
+	json_add_string "" "AP répéteur (ap0)"
+	json_add_string "" "WireGuard optionnel"
+	json_add_string "" "Optimisations MTU/MSS"
+	json_close_array
+	json_close_object
+
+	# Bridge mode
+	json_add_object
+	json_add_string "id" "bridge"
+	json_add_string "name" "Bridge"
+	json_add_string "description" "Bridge Layer 2 pur, DHCP client"
+	json_add_string "icon" "🔗"
+	json_add_boolean "current" "$([ "$current_mode" = "bridge" ] && echo 1 || echo 0)"
+	json_add_array "features"
+	json_add_string "" "Bridge transparent L2"
+	json_add_string "" "Toutes interfaces bridgées"
+	json_add_string "" "DHCP client"
+	json_add_string "" "Pas de firewall"
+	json_close_array
+	json_close_object
+
+	json_close_array
+	json_dump
+}
+
+# Set mode (prepare for switch)
+set_mode() {
+	read input
+	json_load "$input"
+	json_get_var target_mode mode
+
+	json_init
+
+	# Validate mode
+	case "$target_mode" in
+		router|accesspoint|relay|bridge)
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Mode invalide: $target_mode"
+			json_dump
+			return
+			;;
+	esac
+
+	local current_mode=$(uci -q get network-modes.config.current_mode || echo "router")
+
+	if [ "$current_mode" = "$target_mode" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Déjà en mode $target_mode"
+		json_dump
+		return
+	fi
+
+	# Store pending mode
+	uci set network-modes.config.pending_mode="$target_mode"
+	uci set network-modes.config.pending_since="$(date '+%Y-%m-%d %H:%M:%S')"
+	uci commit network-modes
+
+	json_add_boolean "success" 1
+	json_add_string "current_mode" "$current_mode"
+	json_add_string "target_mode" "$target_mode"
+	json_add_string "message" "Mode $target_mode préparé. Utilisez preview_changes puis apply_mode."
+
+	json_dump
+}
+
+# Preview changes before applying
+preview_changes() {
+	json_init
+
+	local current_mode=$(uci -q get network-modes.config.current_mode || echo "router")
+	local pending_mode=$(uci -q get network-modes.config.pending_mode || echo "")
+
+	if [ -z "$pending_mode" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Aucun changement de mode en attente"
+		json_dump
+		return
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "current_mode" "$current_mode"
+	json_add_string "target_mode" "$pending_mode"
+
+	# Changes array
+	json_add_array "changes"
+
+	case "$pending_mode" in
+		router)
+			json_add_object
+			json_add_string "file" "/etc/config/network"
+			json_add_string "change" "WAN: proto dhcp, NAT enabled"
+			json_close_object
+			json_add_object
+			json_add_string "file" "/etc/config/network"
+			json_add_string "change" "LAN: static IP, DHCP server enabled"
+			json_close_object
+			json_add_object
+			json_add_string "file" "/etc/config/firewall"
+			json_add_string "change" "Zones: WAN, LAN, forwarding rules"
+			json_close_object
+			;;
+		accesspoint)
+			json_add_object
+			json_add_string "file" "/etc/config/network"
+			json_add_string "change" "Bridge: br-lan (WAN+LAN)"
+			json_close_object
+			json_add_object
+			json_add_string "file" "/etc/config/network"
+			json_add_string "change" "DHCP: client mode"
+			json_close_object
+			json_add_object
+			json_add_string "file" "/etc/config/firewall"
+			json_add_string "change" "Firewall: disabled"
+			json_close_object
+			;;
+		relay)
+			json_add_object
+			json_add_string "file" "/etc/config/wireless"
+			json_add_string "change" "WiFi STA: client mode on wlan0"
+			json_close_object
+			json_add_object
+			json_add_string "file" "/etc/config/wireless"
+			json_add_string "change" "WiFi AP: repeater mode on wlan1"
+			json_close_object
+			json_add_object
+			json_add_string "file" "/etc/config/network"
+			json_add_string "change" "Relay: relayd between sta0 and ap0"
+			json_close_object
+			;;
+		bridge)
+			json_add_object
+			json_add_string "file" "/etc/config/network"
+			json_add_string "change" "Bridge: all interfaces to br-lan"
+			json_close_object
+			json_add_object
+			json_add_string "file" "/etc/config/network"
+			json_add_string "change" "DHCP: client only"
+			json_close_object
+			json_add_object
+			json_add_string "file" "/etc/config/firewall"
+			json_add_string "change" "Firewall: disabled"
+			json_close_object
+			;;
+	esac
+
+	json_close_array
+
+	# Warnings
+	json_add_array "warnings"
+	json_add_string "" "La connexion réseau sera interrompue pendant la reconfiguration"
+	json_add_string "" "Vous devrez peut-être reconnecter via la nouvelle IP"
+	json_add_string "" "Un rollback automatique de 2 minutes sera activé"
+	json_add_string "" "Vous devez confirmer le changement avant expiration"
+	json_close_array
+
+	json_dump
+}
+
+# Confirm mode change (cancel rollback timer)
+confirm_mode() {
+	json_init
+
+	local current_mode=$(uci -q get network-modes.config.current_mode || echo "router")
+
+	# Stop rollback timer
+	if [ -f "/tmp/network-mode-rollback.pid" ]; then
+		local pid=$(cat /tmp/network-mode-rollback.pid)
+		kill $pid 2>/dev/null
+		rm -f /tmp/network-mode-rollback.pid
+		rm -f /tmp/network-mode-rollback.remaining
+
+		# Clear pending mode
+		uci delete network-modes.config.pending_mode 2>/dev/null
+		uci delete network-modes.config.pending_since 2>/dev/null
+		uci set network-modes.config.rollback_timer="0"
+		uci commit network-modes
+
+		json_add_boolean "success" 1
+		json_add_string "message" "Mode $current_mode confirmé, rollback annulé"
+		json_add_string "mode" "$current_mode"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Aucun rollback actif"
+	fi
+
+	json_dump
+}
+
+# Rollback to previous mode
+rollback() {
+	json_init
+
+	# Stop any active rollback timer
+	if [ -f "/tmp/network-mode-rollback.pid" ]; then
+		local pid=$(cat /tmp/network-mode-rollback.pid)
+		kill $pid 2>/dev/null
+		rm -f /tmp/network-mode-rollback.pid
+		rm -f /tmp/network-mode-rollback.remaining
+	fi
+
+	# Get backup file
+	local latest_backup=$(ls -t "$BACKUP_DIR"/backup_*.tar.gz 2>/dev/null | head -1)
+
+	if [ -z "$latest_backup" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Aucune sauvegarde disponible"
+		json_dump
+		return
+	fi
+
+	# Restore backup
+	cd /
+	tar -xzf "$latest_backup" 2>/dev/null
+
+	# Reload network services
+	/etc/init.d/network reload 2>&1
+	/etc/init.d/firewall reload 2>&1
+	/etc/init.d/dnsmasq reload 2>&1
+
+	# Update UCI
+	local previous_mode=$(uci -q get network-modes.config.current_mode || echo "router")
+	uci delete network-modes.config.pending_mode 2>/dev/null
+	uci set network-modes.config.last_change="$(date '+%Y-%m-%d %H:%M:%S') (rollback)"
+	uci commit network-modes
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Configuration restaurée depuis la sauvegarde"
+	json_add_string "mode" "$previous_mode"
+	json_add_string "backup_file" "$latest_backup"
+
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"modes":{},"sniffer_config":{},"ap_config":{},"relay_config":{},"router_config":{},"apply_mode":{"mode":"str"},"update_settings":{"mode":"str"},"add_vhost":{"domain":"str","backend":"str","port":"int","ssl":"bool"},"generate_config":{"mode":"str"}}'
+		echo '{"status":{},"modes":{},"get_current_mode":{},"get_available_modes":{},"set_mode":{"mode":"str"},"preview_changes":{},"apply_mode":{},"confirm_mode":{},"rollback":{},"sniffer_config":{},"ap_config":{},"relay_config":{},"router_config":{},"update_settings":{"mode":"str"},"add_vhost":{"domain":"str","backend":"str","port":"int","ssl":"bool"},"generate_config":{"mode":"str"}}'
 		;;
 	call)
 		case "$2" in
@@ -665,6 +1109,27 @@ case "$1" in
 				;;
 			modes)
 				get_modes
+				;;
+			get_current_mode)
+				get_current_mode
+				;;
+			get_available_modes)
+				get_available_modes
+				;;
+			set_mode)
+				set_mode
+				;;
+			preview_changes)
+				preview_changes
+				;;
+			apply_mode)
+				apply_mode
+				;;
+			confirm_mode)
+				confirm_mode
+				;;
+			rollback)
+				rollback
 				;;
 			sniffer_config)
 				get_sniffer_config
@@ -677,9 +1142,6 @@ case "$1" in
 				;;
 			router_config)
 				get_router_config
-				;;
-			apply_mode)
-				apply_mode
 				;;
 			update_settings)
 				update_settings
