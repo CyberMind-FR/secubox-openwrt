@@ -47,6 +47,64 @@ Auto-detection and status monitoring for all SecuBox modules:
 - **CDN Cache** - Local caching proxy
 - **Virtual Host Manager** - Virtual host configuration
 
+## LuCI Menu Structure
+
+The SecuBox hub organizes all modules into a hierarchical menu structure in LuCI:
+
+```
+SecuBox
+├── Dashboard                  (Main overview and system health)
+├── Modules                    (Module management view)
+├── Security & Monitoring
+│   ├── CrowdSec              (Collaborative threat intelligence)
+│   ├── Netdata               (Real-time system monitoring)
+│   ├── Netifyd               (Deep packet inspection)
+│   ├── Client Guardian       (Network access control & captive portal)
+│   └── Auth Guardian         (Advanced authentication system)
+├── Network Management
+│   ├── WireGuard             (Modern VPN with QR codes)
+│   ├── Network Modes         (Network topology configuration)
+│   ├── Bandwidth Manager     (QoS and bandwidth quotas)
+│   ├── Media Flow            (Media traffic detection & optimization)
+│   └── Traffic Shaper        (Advanced traffic shaping)
+└── System & Performance
+    ├── System Hub            (Unified control center)
+    ├── CDN Cache             (Local caching proxy)
+    └── Virtual Host Manager  (Virtual host configuration)
+```
+
+### Menu Registration
+
+The hub defines three category parent menus that other SecuBox modules register under:
+
+- **`admin/secubox/security`** - Security & Monitoring modules
+- **`admin/secubox/network`** - Network Management modules
+- **`admin/secubox/system`** - System & Performance modules
+
+Each module automatically appears in the appropriate category when installed.
+
+### Troubleshooting Menu Issues
+
+If modules don't appear in the menu after installation:
+
+1. **Restart services:**
+   ```bash
+   /etc/init.d/rpcd restart
+   /etc/init.d/uhttpd restart
+   ```
+
+2. **Clear browser cache:** Press `Ctrl+Shift+R` to force reload
+
+3. **Verify menu files exist:**
+   ```bash
+   ls -la /usr/share/luci/menu.d/luci-app-*.json
+   ```
+
+4. **Check ACL permissions:**
+   ```bash
+   ls -la /usr/share/rpcd/acl.d/luci-app-*.json
+   ```
+
 ## RPCD API Methods
 
 The hub provides a comprehensive RPC API via ubus:
