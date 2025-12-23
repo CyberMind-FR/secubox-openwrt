@@ -14,8 +14,8 @@ detect_modules() {
 
 	for script in $scripts; do
 		if [ -x "/usr/libexec/rpcd/$script" ]; then
-			# Convert script name to module ID (remove -dashboard suffix)
-			local module_id=$(echo "$script" | sed 's/-dashboard$//')
+			# Convert script name to module ID (remove -dashboard suffix, convert dashes to underscores)
+			local module_id=$(echo "$script" | sed 's/-dashboard$//' | sed 's/-/_/g')
 			modules="$modules $module_id"
 		fi
 	done
