@@ -91,11 +91,13 @@ Network intelligence dashboard with DPI for OpenWrt.
 Configure different network operation modes with one click.
 
 **Features:**
-- 🔍 **Sniffer Mode**: Transparent bridge for traffic analysis
-- 📶 **Access Point**: WiFi AP with 802.11r/k/v roaming
-- 🔄 **Relay/Extender**: Network relay with WireGuard
-- 🌐 **Router Mode**: Full router with proxy and HTTPS frontend
-- 🎛️ One-click mode switching with auto-backup
+- 🔍 **Sniffer Bridge Mode**: Transparent inline bridge for traffic analysis with Netifyd DPI
+- 👁️ **Sniffer Passive Mode**: Out-of-band monitoring via SPAN/TAP for zero-impact forensics
+- 📶 **Access Point**: WiFi AP with 802.11r/k/v roaming and band steering
+- 🔄 **Relay/Extender**: Network relay with WireGuard VPN and MTU optimization
+- 🌐 **Router Mode**: Full router with proxy, HTTPS frontend, and virtual hosts
+- 🎛️ One-click mode switching with automatic backup
+- 📊 Real-time interface and service status monitoring
 
 [View Details](luci-app-network-modes/README.md)
 
