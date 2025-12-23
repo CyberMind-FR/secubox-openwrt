@@ -152,14 +152,27 @@ jobs:
       - name: Copy SecuBox packages
         if: ${{ github.event.inputs.include_secubox == 'true' }}
         run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 COPYING SECUBOX PACKAGES"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+
           mkdir -p openwrt/package/secubox
-          
+
+          PKG_COUNT=0
           for pkg in luci-app-*/; do
             if [[ -d "$pkg" ]]; then
-              echo "📦 Adding $pkg"
+              PKG_NAME=$(basename "$pkg")
+              echo "  ✅ $PKG_NAME"
               cp -r "$pkg" openwrt/package/secubox/
+              PKG_COUNT=$((PKG_COUNT + 1))
             fi
           done
+
+          echo ""
+          echo "📊 Total: $PKG_COUNT SecuBox packages copied"
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
       - name: Generate SecuBox config
         run: |
@@ -292,39 +305,150 @@ jobs:
       - name: Download packages
         run: |
           cd openwrt
-          make download -j$(nproc) V=s || make download -j1 V=s
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📥 DOWNLOADING PACKAGES"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "Downloading source packages and dependencies..."
+          echo "This may take several minutes depending on network speed."
+          echo ""
+
+          if make download -j$(nproc) V=s; then
+            echo ""
+            echo "✅ All packages downloaded successfully"
+          else
+            echo ""
+            echo "⚠️  Parallel download failed, retrying with single thread..."
+            make download -j1 V=s
+          fi
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
       - name: Build firmware
         run: |
           cd openwrt
-          
-          echo "🔨 Building firmware for ${{ matrix.description }}..."
-          echo "⏱️ This may take 1-2 hours..."
-          
-          make -j$(nproc) V=s 2>&1 | tee build.log || {
-            echo "❌ Build failed, retrying with single thread..."
-            make -j1 V=s 2>&1 | tee build-retry.log
-          }
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔨 BUILDING FIRMWARE"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "📋 Build Information:"
+          echo "  • Device: ${{ matrix.description }}"
+          echo "  • Profile: ${{ matrix.profile }}"
+          echo "  • Target: ${{ matrix.target }}/${{ matrix.subtarget }}"
+          echo "  • OpenWrt: ${{ env.OPENWRT_VERSION }}"
+          echo "  • CPU Cores: $(nproc)"
+          echo "  • Estimated Time: 1-2 hours"
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+
+          START_TIME=$(date +%s)
+
+          if make -j$(nproc) V=s 2>&1 | tee build.log; then
+            END_TIME=$(date +%s)
+            DURATION=$((END_TIME - START_TIME))
+            MINUTES=$((DURATION / 60))
+            SECONDS=$((DURATION % 60))
+
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "✅ BUILD SUCCESSFUL"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "⏱️  Build Time: ${MINUTES}m ${SECONDS}s"
+            echo "📁 Output: bin/targets/${{ matrix.target }}/${{ matrix.subtarget }}/"
+            echo ""
+          else
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "⚠️  PARALLEL BUILD FAILED - RETRYING WITH SINGLE THREAD"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "This is often caused by race conditions in parallel builds."
+            echo "Retrying with -j1 (single thread) for better stability..."
+            echo ""
+
+            if make -j1 V=s 2>&1 | tee build-retry.log; then
+              END_TIME=$(date +%s)
+              DURATION=$((END_TIME - START_TIME))
+              MINUTES=$((DURATION / 60))
+              SECONDS=$((DURATION % 60))
+
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "✅ BUILD SUCCESSFUL (after retry)"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo ""
+              echo "⏱️  Total Build Time: ${MINUTES}m ${SECONDS}s"
+              echo "📁 Output: bin/targets/${{ matrix.target }}/${{ matrix.subtarget }}/"
+              echo ""
+            else
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "❌ BUILD FAILED"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo ""
+              echo "📋 Last 50 lines of build log:"
+              echo ""
+              tail -50 build-retry.log
+              exit 1
+            fi
+          fi
 
       - name: Prepare artifacts
+        id: prepare
         run: |
           mkdir -p artifacts
-          
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 Collecting Firmware Images"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
           # Copy firmware images
-          find openwrt/bin/targets -name "*.img.gz" -exec cp {} artifacts/ \;
-          find openwrt/bin/targets -name "*.bin" -exec cp {} artifacts/ \;
-          find openwrt/bin/targets -name "*sysupgrade*" -exec cp {} artifacts/ \;
-          find openwrt/bin/targets -name "*factory*" -exec cp {} artifacts/ \;
-          
+          IMG_COUNT=0
+          for pattern in "*.img.gz" "*.bin" "*sysupgrade*" "*factory*"; do
+            while IFS= read -r file; do
+              if [[ -f "$file" ]]; then
+                cp "$file" artifacts/
+                echo "  ✅ $(basename "$file")"
+                IMG_COUNT=$((IMG_COUNT + 1))
+              fi
+            done < <(find openwrt/bin/targets -name "$pattern" 2>/dev/null)
+          done
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 Collecting SecuBox Packages"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
           # Copy packages
           mkdir -p artifacts/packages
-          find openwrt/bin/packages -name "luci-app-*secubox*.ipk" -exec cp {} artifacts/packages/ \; 2>/dev/null || true
-          find openwrt/bin/packages -name "luci-app-*dashboard*.ipk" -exec cp {} artifacts/packages/ \; 2>/dev/null || true
-          
+          PKG_COUNT=0
+          for pattern in "luci-app-*secubox*.ipk" "luci-app-*dashboard*.ipk" "luci-app-*guardian*.ipk" "luci-app-*modes*.ipk" "luci-app-*hub*.ipk"; do
+            while IFS= read -r file; do
+              if [[ -f "$file" ]]; then
+                cp "$file" artifacts/packages/
+                echo "  ✅ $(basename "$file")"
+                PKG_COUNT=$((PKG_COUNT + 1))
+              fi
+            done < <(find openwrt/bin/packages -name "$pattern" 2>/dev/null)
+          done
+
           # Generate checksums
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔐 Generating Checksums"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
           cd artifacts
-          sha256sum * > SHA256SUMS 2>/dev/null || true
-          
+          sha256sum *.* > SHA256SUMS 2>/dev/null || true
+          if [[ -d packages ]] && [[ -n "$(ls -A packages)" ]]; then
+            (cd packages && sha256sum *.ipk > SHA256SUMS 2>/dev/null || true)
+          fi
+
           # Create info file
           cat > BUILD_INFO.txt << EOF
           SecuBox Firmware Build
@@ -336,10 +460,25 @@ jobs:
           SecuBox: ${{ github.event.inputs.include_secubox }}
           Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)
           Commit: ${{ github.sha }}
+
+          Firmware Images: $IMG_COUNT
+          SecuBox Packages: $PKG_COUNT
           EOF
-          
-          echo "📦 Artifacts:"
-          ls -la
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📋 Artifact Summary"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Device: ${{ matrix.description }}"
+          echo "Firmware images: $IMG_COUNT files"
+          echo "SecuBox packages: $PKG_COUNT files"
+          echo ""
+          echo "📁 Contents:"
+          ls -lh
+
+          # Export counts for summary
+          echo "img_count=$IMG_COUNT" >> $GITHUB_OUTPUT
+          echo "pkg_count=$PKG_COUNT" >> $GITHUB_OUTPUT
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -347,6 +486,66 @@ jobs:
           name: secubox-${{ matrix.device }}-${{ env.OPENWRT_VERSION }}
           path: artifacts/
           retention-days: 30
+
+      - name: Generate build summary
+        if: always()
+        run: |
+          echo "# 🎯 Build Complete: ${{ matrix.description }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## 📊 Build Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Device | ${{ matrix.description }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Profile | \`${{ matrix.profile }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | ${{ matrix.target }}/${{ matrix.subtarget }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| OpenWrt Version | ${{ env.OPENWRT_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SecuBox Included | ${{ github.event.inputs.include_secubox }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Time | $(date -u +%Y-%m-%d\ %H:%M:%S\ UTC) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## 📦 Generated Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Type | Count | Files |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Firmware Images | ${{ steps.prepare.outputs.img_count }} | \`*.img.gz\`, \`*sysupgrade*\`, \`*factory*\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| SecuBox Packages | ${{ steps.prepare.outputs.pkg_count }} | \`luci-app-*.ipk\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## 📥 Download Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Artifact Name:** \`secubox-${{ matrix.device }}-${{ env.OPENWRT_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To download:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Go to the **Summary** page of this workflow run" >> $GITHUB_STEP_SUMMARY
+          echo "2. Scroll to the **Artifacts** section at the bottom" >> $GITHUB_STEP_SUMMARY
+          echo "3. Click on \`secubox-${{ matrix.device }}-${{ env.OPENWRT_VERSION }}\` to download" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ -f artifacts/BUILD_INFO.txt ]]; then
+            echo "## 📄 Build Details" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat artifacts/BUILD_INFO.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "## 📋 Firmware Files" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          ls -lh artifacts/*.{img.gz,bin} 2>/dev/null | awk '{print $9, "(" $5 ")"}' | sed 's|artifacts/||' || echo "No firmware images found"
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ -d artifacts/packages ]] && [[ -n "$(ls -A artifacts/packages 2>/dev/null)" ]]; then
+            echo "## 📦 SecuBox Packages" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            ls -1 artifacts/packages/*.ipk 2>/dev/null | xargs -I{} basename {} || echo "No packages"
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
 
   # ============================================
   # Create combined release for all devices
@@ -430,3 +629,122 @@ jobs:
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================
+  # Final summary of all builds
+  # ============================================
+  summary:
+    needs: [setup, build-image]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          pattern: secubox-*
+        continue-on-error: true
+
+      - name: Generate final summary
+        run: |
+          echo "# 🏗️ SecuBox Firmware Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## ⚙️ Build Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| OpenWrt Version | ${{ env.OPENWRT_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SecuBox Included | ${{ github.event.inputs.include_secubox }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target Device | ${{ github.event.inputs.device }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Workflow Run | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## 📦 Generated Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ -d all-artifacts ]]; then
+            ARTIFACT_COUNT=$(find all-artifacts -type d -mindepth 1 -maxdepth 1 | wc -l)
+
+            if [[ $ARTIFACT_COUNT -gt 0 ]]; then
+              echo "✅ **$ARTIFACT_COUNT artifact(s) available for download**" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Device | Artifact Name | Firmware Images | Packages |" >> $GITHUB_STEP_SUMMARY
+              echo "|--------|---------------|-----------------|----------|" >> $GITHUB_STEP_SUMMARY
+
+              for artifact_dir in all-artifacts/secubox-*/; do
+                if [[ -d "$artifact_dir" ]]; then
+                  ARTIFACT_NAME=$(basename "$artifact_dir")
+                  DEVICE=$(echo "$ARTIFACT_NAME" | sed 's/secubox-//' | sed "s/-${{ env.OPENWRT_VERSION }}//")
+
+                  # Count files
+                  IMG_COUNT=$(find "$artifact_dir" -maxdepth 1 \( -name "*.img.gz" -o -name "*.bin" -o -name "*sysupgrade*" -o -name "*factory*" \) 2>/dev/null | wc -l)
+                  PKG_COUNT=$(find "$artifact_dir/packages" -name "*.ipk" 2>/dev/null | wc -l)
+
+                  echo "| $DEVICE | \`$ARTIFACT_NAME\` | $IMG_COUNT | $PKG_COUNT |" >> $GITHUB_STEP_SUMMARY
+                fi
+              done
+
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### 📥 How to Download" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "1. Navigate to the **Summary** tab of this workflow run" >> $GITHUB_STEP_SUMMARY
+              echo "2. Scroll to the **Artifacts** section at the bottom of the page" >> $GITHUB_STEP_SUMMARY
+              echo "3. Click on the artifact name to download the ZIP file" >> $GITHUB_STEP_SUMMARY
+              echo "4. Extract the ZIP to access firmware images and packages" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+
+              echo "### 📋 Artifact Contents" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "Each artifact contains:" >> $GITHUB_STEP_SUMMARY
+              echo "- **Firmware images**: \`*.img.gz\`, \`*sysupgrade.bin\`, \`*factory.bin\`" >> $GITHUB_STEP_SUMMARY
+              echo "- **SecuBox packages**: \`luci-app-*.ipk\` (in \`packages/\` subdirectory)" >> $GITHUB_STEP_SUMMARY
+              echo "- **Checksums**: \`SHA256SUMS\` for verification" >> $GITHUB_STEP_SUMMARY
+              echo "- **Build info**: \`BUILD_INFO.txt\` with build details" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+
+              # List detailed contents of first artifact as example
+              FIRST_ARTIFACT=$(find all-artifacts -type d -mindepth 1 -maxdepth 1 | head -1)
+              if [[ -n "$FIRST_ARTIFACT" ]]; then
+                echo "### 📄 Example: $(basename "$FIRST_ARTIFACT")" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "Firmware Images:" >> $GITHUB_STEP_SUMMARY
+                find "$FIRST_ARTIFACT" -maxdepth 1 -type f \( -name "*.img.gz" -o -name "*.bin" \) -exec basename {} \; 2>/dev/null | sort || echo "  (none)"
+                echo "" >> $GITHUB_STEP_SUMMARY
+                if [[ -d "$FIRST_ARTIFACT/packages" ]]; then
+                  echo "SecuBox Packages:" >> $GITHUB_STEP_SUMMARY
+                  find "$FIRST_ARTIFACT/packages" -name "*.ipk" -exec basename {} \; 2>/dev/null | sort || echo "  (none)"
+                fi
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+
+              echo "### 🔐 Verification" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "After downloading, verify file integrity:" >> $GITHUB_STEP_SUMMARY
+              echo '```bash' >> $GITHUB_STEP_SUMMARY
+              echo "# Extract artifact" >> $GITHUB_STEP_SUMMARY
+              echo "unzip secubox-*.zip" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "# Verify checksums" >> $GITHUB_STEP_SUMMARY
+              echo "sha256sum -c SHA256SUMS" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+
+            else
+              echo "⚠️ **No artifacts were generated**" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "Check the build logs above for errors." >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ **No artifacts found**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This may indicate that all builds failed. Check individual job logs for details." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📚 For installation instructions, see the [SecuBox documentation](https://github.com/gkerma/secubox)" >> $GITHUB_STEP_SUMMARY
