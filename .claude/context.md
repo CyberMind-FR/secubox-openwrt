@@ -4,7 +4,7 @@
 
 **Name**: SecuBox  
 **Type**: Modular security suite for OpenWrt routers  
-**Version**: 2.0.0  
+**Version**: 1.0.0  
 **Author**: CyberMind.fr (Gandalf)  
 **License**: Apache-2.0  
 
@@ -84,7 +84,7 @@ luci-app-{module-name}/
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-{module-name}
-PKG_VERSION:=2.0.0
+PKG_VERSION:=1.0.0
 PKG_RELEASE:=1
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
