@@ -237,8 +237,30 @@ jobs:
             echo "✅ Removed telephony and routing from feeds.conf.default"
           fi
 
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          echo "🔄 Updating feeds..."
+          if ! ./scripts/feeds update -a 2>&1 | tee feed-update.log; then
+            echo "⚠️ Feed update had errors:"
+            tail -30 feed-update.log
+            echo "Continuing anyway..."
+          fi
+
+          echo "📦 Installing feeds..."
+          if ! ./scripts/feeds install -a 2>&1 | tee feed-install.log; then
+            echo "⚠️ Feed install had warnings, checking directories..."
+          fi
+
+          # Verify feeds were created
+          echo "🔍 Verifying feeds..."
+          for feed in packages luci; do
+            if [[ -d "feeds/$feed" ]]; then
+              FEED_SIZE=$(du -sh "feeds/$feed" 2>/dev/null | cut -f1 || echo "?")
+              echo "  ✅ feeds/$feed ($FEED_SIZE)"
+            else
+              echo "  ❌ feeds/$feed missing!"
+              ls -la feeds/ || echo "feeds directory doesn't exist"
+              exit 1
+            fi
+          done
 
           # Final cleanup of unwanted feeds
           rm -f feeds/telephony.index feeds/routing.index 2>/dev/null || true

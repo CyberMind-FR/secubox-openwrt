@@ -251,42 +251,87 @@ jobs:
             echo "✅ Removed telephony and routing from feeds.conf.default"
           fi
 
-          # Use GitHub mirrors - only essential feeds
+          # Use GitHub mirrors - only essential feeds for SDK
           cat > feeds.conf << 'FEEDS'
-          src-git base https://github.com/openwrt/openwrt.git;openwrt-23.05
           src-git packages https://github.com/openwrt/packages.git;openwrt-23.05
           src-git luci https://github.com/openwrt/luci.git;openwrt-23.05
           FEEDS
 
           echo "📋 feeds.conf:"
           cat feeds.conf
+          echo ""
 
           # Update feeds individually with error handling
-          echo ""
           echo "🔄 Updating feeds..."
-          
+
           FEEDS_OK=0
-          
-          for feed in base packages luci; do
+          REQUIRED_FEEDS=2
+
+          for feed in packages luci; do
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "Updating feed: $feed"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+            FEED_SUCCESS=0
             for attempt in 1 2 3; do
-              if ./scripts/feeds update $feed 2>&1; then
-                echo "  ✅ $feed updated"
-                FEEDS_OK=$((FEEDS_OK + 1))
-                break
+              echo "Attempt $attempt of 3..."
+              if ./scripts/feeds update $feed 2>&1 | tee feed-update-${feed}.log; then
+                if [[ -d "feeds/$feed" ]]; then
+                  echo "  ✅ $feed updated successfully"
+                  FEEDS_OK=$((FEEDS_OK + 1))
+                  FEED_SUCCESS=1
+                  break
+                else
+                  echo "  ⚠️ Feed directory not created, retrying..."
+                fi
+              else
+                echo "  ⚠️ Update command failed, retrying..."
               fi
-              echo "  ⚠️ Attempt $attempt failed, retrying..."
               sleep $((10 * attempt))
             done
+
+            if [[ $FEED_SUCCESS -eq 0 ]]; then
+              echo "  ❌ Failed to update $feed after 3 attempts"
+              echo "Last attempt log:"
+              tail -20 feed-update-${feed}.log 2>/dev/null || echo "No log available"
+            fi
           done
-          
+
           echo ""
-          echo "📊 Feeds updated: $FEEDS_OK/3"
-          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📊 Feeds Status: $FEEDS_OK/$REQUIRED_FEEDS updated"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          # Verify feeds exist before continuing
+          if [[ $FEEDS_OK -lt $REQUIRED_FEEDS ]]; then
+            echo ""
+            echo "❌ ERROR: Not all required feeds were updated successfully"
+            echo "SDK feeds directory contents:"
+            ls -la feeds/ || echo "feeds directory doesn't exist"
+            exit 1
+          fi
+
           # Install feeds
           echo ""
           echo "📦 Installing feeds..."
-          ./scripts/feeds install -a 2>&1 || true
+          if ! ./scripts/feeds install -a 2>&1 | tee feed-install.log; then
+            echo "⚠️ Feed installation had errors, checking if critical..."
+            # Continue anyway as some warnings are normal
+          fi
+
+          # Verify critical directories exist
+          echo ""
+          echo "🔍 Verifying feed installation..."
+          for feed in packages luci; do
+            if [[ -d "feeds/$feed" ]]; then
+              FEED_SIZE=$(du -sh "feeds/$feed" 2>/dev/null | cut -f1)
+              echo "  ✅ feeds/$feed exists ($FEED_SIZE)"
+            else
+              echo "  ❌ feeds/$feed is missing!"
+              exit 1
+            fi
+          done
           
           # Verify luci.mk exists
           if [[ -f "feeds/luci/luci.mk" ]]; then
