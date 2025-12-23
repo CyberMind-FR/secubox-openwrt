@@ -1,231 +1,539 @@
-# SecuBox OpenWrt CI/CD
+# SecuBox - Security Suite for OpenWrt
 
 [![Build OpenWrt Packages](https://github.com/gkerma/secubox/actions/workflows/build-openwrt-packages.yml/badge.svg)](https://github.com/gkerma/secubox/actions/workflows/build-openwrt-packages.yml)
 [![Test & Validate](https://github.com/gkerma/secubox/actions/workflows/test-validate.yml/badge.svg)](https://github.com/gkerma/secubox/actions/workflows/test-validate.yml)
+[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
 ## 🎯 Overview
 
-Ce dépôt contient les workflows GitHub Actions pour compiler automatiquement les packages SecuBox LuCI pour **toutes les architectures OpenWrt supportées**.
+SecuBox is a comprehensive security and network management suite for OpenWrt, providing a unified ecosystem of specialized dashboards and tools. All modules are compiled automatically for multiple OpenWrt architectures via GitHub Actions.
 
-## 📦 Packages Compilés
+---
 
-| Package | Description |
-|---------|-------------|
-| `luci-app-crowdsec-dashboard` | Dashboard CrowdSec |
-| `luci-app-netdata-dashboard` | Dashboard Netdata |
-| `luci-app-netifyd-dashboard` | Dashboard Netifyd DPI |
-| `luci-app-wireguard-dashboard` | Dashboard WireGuard VPN |
-| `luci-app-network-modes` | Modes réseau (Router/Bridge/AP) |
-| `luci-app-client-guardian` | NAC & Portail Captif |
-| `luci-app-system-hub` | Centre de contrôle unifié |
+## 📦 SecuBox Modules
 
-## 🏗️ Architectures Supportées
+### 🎛️ Core Control
+
+#### **luci-app-secubox** - SecuBox Central Hub
+Unified security dashboard providing central management for all SecuBox components.
+
+**Features:**
+- Centralized dashboard for all modules
+- Integrated monitoring and management
+- Unified navigation interface
+
+[View Details](luci-app-secubox/README.md)
+
+---
+
+#### **luci-app-system-hub** - System Control Center
+Central control and remote assistance dashboard for OpenWrt.
+
+**Features:**
+- 🧩 Component management (start/stop/restart all services)
+- 💚 Health monitoring with score (0-100) and recommendations
+- 🖥️ Remote assistance via RustDesk integration
+- 🔍 Diagnostic collection with anonymization
+- 📋 Unified logs from all components
+- 📅 Scheduled tasks (health reports, backups)
+
+[View Details](luci-app-system-hub/README.md)
+
+---
+
+### 🔒 Security & Monitoring
+
+#### **luci-app-crowdsec-dashboard** - Collaborative Security
+Modern dashboard for CrowdSec intrusion prevention on OpenWrt.
+
+**Features:**
+- 🛡️ Real-time ban monitoring and alerts
+- 📊 Decision management (view, search, ban/unban IPs)
+- 📈 Metrics dashboard (engine stats, parsers, scenarios)
+- 🌍 Geographic threat visualization
+- ⚡ Auto-refresh with dark cybersecurity theme
+
+[View Details](luci-app-crowdsec-dashboard/README.md)
+
+---
+
+#### **luci-app-netdata-dashboard** - Real-time Monitoring
+System monitoring dashboard with live metrics visualization.
+
+**Features:**
+- 📊 CPU, memory, disk, network monitoring
+- 🌡️ Temperature sensor readings
+- ⚙️ Process monitor with resource usage
+- 🎨 Animated gauges and sparklines
+- 🔄 2-second auto-refresh
+
+[View Details](luci-app-netdata-dashboard/README.md)
+
+---
+
+### 🌐 Network Intelligence
+
+#### **luci-app-netifyd-dashboard** - Deep Packet Inspection
+Network intelligence dashboard with DPI for OpenWrt.
+
+**Features:**
+- 🔍 Application detection (Netflix, YouTube, Zoom, etc.)
+- 📡 Protocol identification (HTTP, HTTPS, DNS, QUIC)
+- 🔄 Live network flow tracking
+- 💻 Automatic device discovery
+- 📊 Traffic categorization (Web, Streaming, Gaming, VoIP)
+
+[View Details](luci-app-netifyd-dashboard/README.md)
+
+---
+
+#### **luci-app-network-modes** - Network Configuration
+Configure different network operation modes with one click.
+
+**Features:**
+- 🔍 **Sniffer Mode**: Transparent bridge for traffic analysis
+- 📶 **Access Point**: WiFi AP with 802.11r/k/v roaming
+- 🔄 **Relay/Extender**: Network relay with WireGuard
+- 🌐 **Router Mode**: Full router with proxy and HTTPS frontend
+- 🎛️ One-click mode switching with auto-backup
+
+[View Details](luci-app-network-modes/README.md)
+
+---
+
+### 🔐 VPN & Access Control
+
+#### **luci-app-wireguard-dashboard** - VPN Management
+Modern WireGuard VPN monitoring dashboard.
+
+**Features:**
+- 🔐 Tunnel status monitoring
+- 👥 Peer management (active/idle/inactive)
+- 📊 Per-peer traffic statistics
+- ⚙️ Configuration visualization
+- 🔒 Secure (private keys never exposed)
+
+[View Details](luci-app-wireguard-dashboard/README.md)
+
+---
+
+#### **luci-app-client-guardian** - Network Access Control
+NAC system with captive portal, quarantine, and parental controls.
+
+**Features:**
+- 🔍 Real-time client detection and monitoring
+- 🏠 Zone management (LAN, IoT, Guest, Quarantine)
+- ⏳ Default quarantine policy for new clients
+- 🚪 Modern captive portal with authentication
+- 👨‍👩‍👧‍👦 Parental controls (time limits, content filtering)
+- 🔔 SMS/Email alerts for security events
+
+[View Details](luci-app-client-guardian/README.md)
+
+---
+
+#### **luci-app-auth-guardian** - Authentication System
+Comprehensive authentication and session management.
+
+**Features:**
+- 🎨 Customizable captive portal
+- 🔑 OAuth integration (Google, GitHub, Facebook, Twitter)
+- 🎟️ Voucher system with time/bandwidth limits
+- 🍪 Secure session management
+- ⏭️ MAC/IP/Domain bypass rules
+
+[View Details](luci-app-auth-guardian/README.md)
+
+---
+
+### 📊 Bandwidth & Traffic
+
+#### **luci-app-bandwidth-manager** - QoS & Quotas
+Advanced bandwidth management with automatic media detection.
+
+**Features:**
+- 🎯 8 configurable QoS priority classes
+- 📊 Daily and monthly bandwidth quotas
+- 🎬 Automatic media detection (VoIP, Gaming, Streaming)
+- ⏰ Time-based scheduling (peak/off-peak)
+- 👥 Per-client statistics and controls
+
+[View Details](luci-app-bandwidth-manager/README.md)
+
+---
+
+#### **luci-app-media-flow** - Media Traffic Detection
+Advanced streaming and media traffic monitoring.
+
+**Features:**
+- 🎬 Real-time streaming service detection
+- 📡 Protocol identification (RTSP, HLS, DASH, RTP)
+- 📞 VoIP/Video call monitoring
+- 📊 Per-service bandwidth tracking
+- 📈 Quality of experience metrics
+
+**Supported Services:**
+- Netflix, YouTube, Twitch, Disney+
+- Spotify, Apple Music, Tidal
+- Zoom, Teams, Google Meet, WebEx
+
+[View Details](luci-app-media-flow/README.md)
+
+---
+
+### 🚀 Performance & Services
+
+#### **luci-app-cdn-cache** - Bandwidth Optimization
+Local CDN cache proxy for bandwidth savings.
+
+**Features:**
+- 💾 Smart caching of frequently accessed content
+- 📊 Real-time hit ratio and bandwidth savings stats
+- 📋 Configurable policies by domain/extension
+- 🔧 Automatic purge and preload capabilities
+- 📈 Statistical graphs and trends
+
+**Cache Policies:**
+- Windows Update, Linux Repos
+- Static content (JS, CSS, images)
+- Configurable TTL per content type
+
+[View Details](luci-app-cdn-cache/README.md)
+
+---
+
+#### **luci-app-vhost-manager** - Virtual Hosts
+Virtual host and local SaaS gateway management.
+
+**Features:**
+- 🏠 Internal virtual hosts with custom domains
+- ↪️ External service redirection
+- 🔒 SSL/TLS with Let's Encrypt or self-signed
+- ⚙️ Automatic nginx reverse proxy configuration
+
+**Supported Services:**
+- Nextcloud, GitLab, Jellyfin
+- Home Assistant and more
+
+[View Details](luci-app-vhost-manager/README.md)
+
+---
+
+## 🏗️ Supported Architectures
+
+SecuBox packages are automatically compiled for all major OpenWrt architectures:
 
 ### ARM 64-bit (AArch64)
-
-| Target | Architecture | Devices |
-|--------|--------------|---------|
-| `aarch64-cortex-a53` | Cortex-A53 | **ESPRESSObin**, **Sheeva64**, BananaPi R64 |
-| `aarch64-cortex-a72` | Cortex-A72 | **MOCHAbin**, Raspberry Pi 4, NanoPi R4S |
-| `aarch64-generic` | Generic ARMv8 | Rock64, Pine64, QEMU ARM64 |
-| `mediatek-filogic` | MT7981/MT7986 | GL.iNet MT3000, BananaPi R3 |
-| `rockchip-armv8` | RK3328/RK3399 | NanoPi R4S, R5S, FriendlyARM |
-| `bcm27xx-bcm2711` | BCM2711 | Raspberry Pi 4, Compute Module 4 |
+| Target | Devices |
+|--------|---------|
+| `aarch64-cortex-a53` | ESPRESSObin, Sheeva64, BananaPi R64 |
+| `aarch64-cortex-a72` | MOCHAbin, Raspberry Pi 4, NanoPi R4S |
+| `aarch64-generic` | Rock64, Pine64, QEMU ARM64 |
+| `mediatek-filogic` | GL.iNet MT3000, BananaPi R3 |
+| `rockchip-armv8` | NanoPi R4S/R5S, FriendlyARM |
+| `bcm27xx-bcm2711` | Raspberry Pi 4, Compute Module 4 |
 
 ### ARM 32-bit
-
-| Target | Architecture | Devices |
-|--------|--------------|---------|
-| `arm-cortex-a7-neon` | Cortex-A7 | Orange Pi, BananaPi, Allwinner |
-| `arm-cortex-a9-neon` | Cortex-A9 | Linksys WRT, Turris Omnia |
-| `arm-cortex-a15-neon` | Cortex-A15 | QEMU ARM |
-| `qualcomm-ipq40xx` | IPQ40xx | Google WiFi, Zyxel NBG6617 |
-| `qualcomm-ipq806x` | IPQ806x | Netgear R7800, R7500 |
+| Target | Devices |
+|--------|---------|
+| `arm-cortex-a7-neon` | Orange Pi, BananaPi, Allwinner |
+| `arm-cortex-a9-neon` | Linksys WRT, Turris Omnia |
+| `qualcomm-ipq40xx` | Google WiFi, Zyxel NBG6617 |
+| `qualcomm-ipq806x` | Netgear R7800, R7500 |
 
 ### MIPS
-
-| Target | Architecture | Devices |
-|--------|--------------|---------|
-| `mips-24kc` | MIPS 24Kc | TP-Link Archer, Ubiquiti |
-| `mipsel-24kc` | MIPS LE 24Kc | Xiaomi, GL.iNet, Netgear |
-| `mipsel-74kc` | MIPS LE 74Kc | Broadcom BCM47xx |
+| Target | Devices |
+|--------|---------|
+| `mips-24kc` | TP-Link Archer, Ubiquiti |
+| `mipsel-24kc` | Xiaomi, GL.iNet, Netgear |
+| `mipsel-74kc` | Broadcom BCM47xx |
 
 ### x86
+| Target | Devices |
+|--------|---------|
+| `x86-64` | PC, VMs, Docker, Proxmox |
+| `x86-generic` | Legacy PC, old Atom |
 
-| Target | Architecture | Devices |
-|--------|--------------|---------|
-| `x86-64` | x86_64 | PC, VMs, Docker, Proxmox |
-| `x86-generic` | i386 | Legacy PC, old Atom |
+---
 
-## 🚀 Utilisation
-
-### Compilation Automatique
-
-Les packages sont compilés automatiquement lors de :
-
-1. **Push sur `main`/`master`** : Compilation de test
-2. **Pull Request** : Validation et test
-3. **Tag `v*`** : Création de release avec tous les packages
-
-### Compilation Manuelle
-
-1. Aller dans **Actions** → **Build OpenWrt Packages**
-2. Cliquer sur **Run workflow**
-3. Sélectionner :
-   - **OpenWrt version** : 23.05.5, 22.03.7, ou SNAPSHOT
-   - **Architectures** : `all` ou liste séparée par virgules
-
-```
-# Exemples d'architectures
-all                                    # Toutes les architectures
-x86-64                                 # Uniquement x86_64
-aarch64-cortex-a53,aarch64-cortex-a72  # GlobalScale devices
-mips-24kc,mipsel-24kc                  # MIPS routeurs
-```
-
-### Téléchargement des Artifacts
-
-1. Aller dans **Actions** → Sélectionner un workflow
-2. Cliquer sur le run souhaité
-3. Télécharger les **Artifacts** en bas de page
-
-Les artifacts sont organisés par architecture :
-```
-packages-x86-64/
-  ├── luci-app-crowdsec-dashboard_1.0.0-1_all.ipk
-  ├── luci-app-netdata-dashboard_1.0.0-1_all.ipk
-  ├── ...
-  └── SHA256SUMS
-```
-
-## 📁 Structure du Dépôt
+## 📁 Repository Structure
 
 ```
 secubox/
 ├── .github/
 │   └── workflows/
-│       ├── build-openwrt-packages.yml    # Build principal
-│       └── test-validate.yml              # Tests & validation
-├── luci-app-crowdsec-dashboard/
-│   ├── Makefile
-│   ├── htdocs/luci-static/resources/
-│   │   ├── view/crowdsec/                # JavaScript views
-│   │   └── crowdsec/                     # API & CSS
-│   └── root/
-│       ├── etc/config/                   # UCI config
-│       └── usr/
-│           ├── libexec/rpcd/             # RPCD backend
-│           └── share/
-│               ├── luci/menu.d/          # Menu JSON
-│               └── rpcd/acl.d/           # ACL JSON
-├── luci-app-netdata-dashboard/
-├── luci-app-netifyd-dashboard/
-├── luci-app-wireguard-dashboard/
-├── luci-app-network-modes/
-├── luci-app-client-guardian/
-├── luci-app-system-hub/
-└── README.md
+│       ├── build-openwrt-packages.yml    # Multi-arch build CI
+│       ├── build-secubox-images.yml      # Custom image builder
+│       └── test-validate.yml             # Tests & validation
+├── luci-app-secubox/                     # Central hub
+├── luci-app-system-hub/                  # System control center
+├── luci-app-crowdsec-dashboard/          # CrowdSec security
+├── luci-app-netdata-dashboard/           # System monitoring
+├── luci-app-netifyd-dashboard/           # DPI & traffic analysis
+├── luci-app-wireguard-dashboard/         # WireGuard VPN
+├── luci-app-network-modes/               # Network configuration
+├── luci-app-client-guardian/             # NAC & captive portal
+├── luci-app-auth-guardian/               # Authentication
+├── luci-app-bandwidth-manager/           # QoS & quotas
+├── luci-app-media-flow/                  # Media detection
+├── luci-app-cdn-cache/                   # CDN proxy cache
+├── luci-app-vhost-manager/               # Virtual hosts
+├── makefiles/                            # Reference makefiles
+├── secubox-tools/                        # Repair & debug tools
+└── templates/                            # Package templates
 ```
 
-## 🔧 Créer un Nouveau Package
-
-1. Copier le template :
-```bash
-cp -r templates/luci-app-template luci-app-nouveau
+### Package Structure (Standard LuCI App)
 ```
-
-2. Éditer `Makefile` :
-```makefile
-PKG_NAME:=luci-app-nouveau
-PKG_VERSION:=1.0.0
-LUCI_TITLE:=Mon Nouveau Dashboard
-LUCI_DEPENDS:=+luci-base +nouveau-backend
-```
-
-3. Créer les fichiers requis :
-```bash
-luci-app-nouveau/
-├── Makefile
+luci-app-*/
+├── Makefile                              # OpenWrt package definition
+├── README.md                             # Module documentation
 ├── htdocs/luci-static/resources/
-│   ├── view/nouveau/
-│   │   └── overview.js
-│   └── nouveau/
-│       ├── api.js
-│       └── dashboard.css
+│   ├── view/*/                           # JavaScript UI views
+│   └── */
+│       ├── api.js                        # RPC API client
+│       └── dashboard.css                 # Module styles
 └── root/
-    └── usr/share/
-        ├── luci/menu.d/luci-app-nouveau.json
-        └── rpcd/acl.d/luci-app-nouveau.json
+    ├── etc/config/                       # UCI configuration
+    └── usr/
+        ├── libexec/rpcd/                 # RPCD backend (shell/exec)
+        └── share/
+            ├── luci/menu.d/              # Menu JSON
+            └── rpcd/acl.d/               # ACL permissions JSON
 ```
 
-4. Commit et push :
+---
+
+## 🚀 Installation
+
+### Option 1: From Pre-built Packages
+
+Download the latest packages from [GitHub Releases](https://github.com/gkerma/secubox/releases):
+
 ```bash
-git add luci-app-nouveau/
-git commit -m "feat: add luci-app-nouveau"
-git push
+# Install individual modules
+opkg update
+opkg install luci-app-secubox_*.ipk
+
+# Or install specific modules
+opkg install luci-app-system-hub_*.ipk
+opkg install luci-app-crowdsec-dashboard_*.ipk
+opkg install luci-app-client-guardian_*.ipk
 ```
 
-## 🏷️ Créer une Release
+### Option 2: Build from Source
 
 ```bash
-# Créer un tag versionné
-git tag -a v1.2.0 -m "Release 1.2.0"
+# Clone into OpenWrt SDK package directory
+cd ~/openwrt-sdk/package/
+git clone https://github.com/gkerma/secubox.git
+
+# Build all packages
+cd ~/openwrt-sdk/
+make package/secubox/luci-app-secubox/compile V=s
+make package/secubox/luci-app-system-hub/compile V=s
+# ... etc for other modules
+```
+
+### Option 3: Add to OpenWrt Feed
+
+Add to `feeds.conf.default`:
+```
+src-git secubox https://github.com/gkerma/secubox.git
+```
+
+Then:
+```bash
+./scripts/feeds update secubox
+./scripts/feeds install -a -p secubox
+make menuconfig  # Select modules under LuCI > Applications
+make V=s
+```
+
+---
+
+## 🔧 Development
+
+### Create a New Module
+
+```bash
+# Copy template
+cp -r templates/luci-app-template luci-app-newmodule
+
+# Edit Makefile
+cd luci-app-newmodule
+vi Makefile  # Update PKG_NAME, PKG_VERSION, LUCI_TITLE, LUCI_DEPENDS
+
+# Create required files
+mkdir -p htdocs/luci-static/resources/{view/newmodule,newmodule}
+mkdir -p root/usr/{libexec/rpcd,share/{luci/menu.d,rpcd/acl.d}}
+
+# Implement your module...
+```
+
+### Test Locally
+
+```bash
+# Build package
+make package/luci-app-newmodule/compile V=s
+
+# Package will be in bin/packages/<arch>/base/
+scp bin/packages/*/base/luci-app-newmodule_*.ipk root@router:/tmp/
+
+# Install on router
+ssh root@router
+opkg install /tmp/luci-app-newmodule_*.ipk
+/etc/init.d/rpcd restart
+```
+
+### Run Tests
+
+```bash
+# Lint and validate
+shellcheck luci-app-*/root/usr/libexec/rpcd/*
+jsonlint luci-app-*/root/usr/share/luci/menu.d/*.json
+jsonlint luci-app-*/root/usr/share/rpcd/acl.d/*.json
+
+# Or use GitHub Actions workflow
+git push  # Triggers test-validate.yml
+```
+
+---
+
+## 🤖 CI/CD
+
+### Automated Builds
+
+Packages are compiled automatically when:
+- **Push to main/master**: Test compilation
+- **Pull Request**: Validation and testing
+- **Tag `v*`**: Release creation with all architectures
+
+### Manual Build
+
+1. Go to **Actions** → **Build OpenWrt Packages**
+2. Click **Run workflow**
+3. Select:
+   - **OpenWrt version**: 23.05.5, 22.03.7, or SNAPSHOT
+   - **Architectures**: `all` or comma-separated list
+
+```bash
+# Examples
+all                                    # All architectures
+x86-64                                 # x86_64 only
+aarch64-cortex-a53,aarch64-cortex-a72  # GlobalScale devices
+mips-24kc,mipsel-24kc                  # MIPS routers
+```
+
+### Download Artifacts
+
+1. Go to **Actions** → Select workflow run
+2. Click on the run
+3. Download **Artifacts** at bottom of page
+
+Artifacts are organized by architecture:
+```
+packages-x86-64/
+  ├── luci-app-secubox_1.0.0-1_all.ipk
+  ├── luci-app-system-hub_1.0.0-1_all.ipk
+  ├── luci-app-crowdsec-dashboard_1.0.0-1_all.ipk
+  ├── ...
+  └── SHA256SUMS
+```
+
+---
+
+## 📊 OpenWrt Compatibility
+
+| Version | Status | Notes |
+|---------|--------|-------|
+| 24.10.x | 🔜 Planned | Awaiting release |
+| 23.05.x | ✅ Supported | **Recommended** |
+| 22.03.x | ✅ Supported | LTS |
+| 21.02.x | ⚠️ Partial | End of support |
+| SNAPSHOT | ✅ Supported | Unstable |
+
+---
+
+## 🧰 SecuBox Tools
+
+### secubox-repair.sh
+Automated repair tool for all SecuBox modules.
+
+**Features:**
+- Auto-detect and fix Makefile issues
+- Generate missing RPCD files
+- Validate package structure
+- Batch repair all modules
+
+```bash
+./secubox-tools/secubox-repair.sh
+```
+
+### secubox-debug.sh
+Debug and diagnostic tool for development.
+
+**Features:**
+- Validate package structure
+- Check dependencies
+- Test RPCD backends
+- Generate diagnostic reports
+
+```bash
+./secubox-tools/secubox-debug.sh luci-app-module-name
+```
+
+---
+
+## 🏷️ Creating Releases
+
+```bash
+# Create versioned tag
+git tag -a v1.2.0 -m "Release 1.2.0: Add new features"
 git push origin v1.2.0
 ```
 
-La release sera créée automatiquement avec :
-- Archives `.tar.gz` par architecture
-- Archive globale toutes architectures
-- Checksums SHA256
-- Notes de release générées
+The release will be created automatically with:
+- Individual `.tar.gz` archives per architecture
+- Global archive with all architectures
+- SHA256 checksums
+- Auto-generated release notes
 
-## ⚙️ Configuration CI
+---
 
-### Variables d'Environnement
+## 🔗 Links
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENWRT_VERSION` | `23.05.5` | Version OpenWrt SDK |
+- **Documentation**: [CyberMind SecuBox](https://cybermind.fr/secubox)
+- **Website**: [CyberMind.fr](https://cybermind.fr)
+- **OpenWrt SDK**: [Documentation](https://openwrt.org/docs/guide-developer/using_the_sdk)
+- **LuCI Development**: [Wiki](https://github.com/openwrt/luci/wiki)
+- **Issue Tracker**: [GitHub Issues](https://github.com/gkerma/secubox/issues)
 
-### Secrets Requis
-
-Aucun secret requis pour la compilation. Le `GITHUB_TOKEN` par défaut suffit pour créer les releases.
-
-### Cache
-
-Le SDK OpenWrt est mis en cache par architecture pour accélérer les builds suivants.
-
-## 🧪 Tests & Validation
-
-Le workflow `test-validate.yml` vérifie :
-
-- ✅ Structure des Makefiles (champs requis)
-- ✅ Syntaxe JSON (menu, ACL)
-- ✅ Syntaxe JavaScript (views)
-- ✅ Scripts shell (shellcheck)
-- ✅ Permissions des fichiers
-- ✅ Build test sur x86_64
-
-## 📊 Matrice de Compatibilité
-
-| OpenWrt | Status | Notes |
-|---------|--------|-------|
-| 24.10.x | 🔜 Prévu | En attente release |
-| 23.05.x | ✅ Supporté | Recommandé |
-| 22.03.x | ✅ Supporté | LTS |
-| 21.02.x | ⚠️ Partiel | Fin de support |
-| SNAPSHOT | ✅ Supporté | Instable |
-
-## 🔗 Liens
-
-- [OpenWrt SDK Documentation](https://openwrt.org/docs/guide-developer/using_the_sdk)
-- [LuCI Development Guide](https://github.com/openwrt/luci/wiki)
-- [CyberMind.fr](https://cybermind.fr)
-- [SecuBox Project](https://cybermind.fr/secubox)
+---
 
 ## 📄 License
 
 Apache-2.0 © 2025 CyberMind.fr
+
+Individual modules may have additional licensing terms - see each module's README.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+## 👤 Author
+
+**Gandalf** - [CyberMind.fr](https://cybermind.fr)
 
 ---
 
