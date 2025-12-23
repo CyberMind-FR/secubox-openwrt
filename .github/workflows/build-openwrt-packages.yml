@@ -244,13 +244,14 @@ jobs:
 
           echo "📝 Configuring feeds with GitHub mirrors..."
 
-          # FIRST: Remove telephony from feeds.conf.default to prevent it from being indexed
+          # FIRST: Remove unwanted feeds from feeds.conf.default to prevent indexing errors
           if [[ -f "feeds.conf.default" ]]; then
             sed -i '/telephony/d' feeds.conf.default
-            echo "✅ Removed telephony from feeds.conf.default"
+            sed -i '/routing/d' feeds.conf.default
+            echo "✅ Removed telephony and routing from feeds.conf.default"
           fi
 
-          # Use GitHub mirrors - only essential feeds (no telephony)
+          # Use GitHub mirrors - only essential feeds
           cat > feeds.conf << 'FEEDS'
           src-git base https://github.com/openwrt/openwrt.git;openwrt-23.05
           src-git packages https://github.com/openwrt/packages.git;openwrt-23.05
@@ -306,9 +307,9 @@ jobs:
           LUCI_MK
           fi
           
-          # Final cleanup of telephony feed (if somehow it still got created)
-          rm -f feeds/telephony.index 2>/dev/null || true
-          rm -rf feeds/telephony 2>/dev/null || true
+          # Final cleanup of unwanted feeds (if somehow they still got created)
+          rm -f feeds/telephony.index feeds/routing.index 2>/dev/null || true
+          rm -rf feeds/telephony feeds/routing 2>/dev/null || true
 
           make defconfig
           echo "✅ SDK configured"

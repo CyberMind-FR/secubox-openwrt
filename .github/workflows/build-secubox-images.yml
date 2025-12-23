@@ -150,10 +150,11 @@ jobs:
         run: |
           cd openwrt
 
-          # Remove telephony from feeds.conf.default BEFORE updating feeds
+          # Remove unwanted feeds from feeds.conf.default BEFORE updating feeds
           if [[ -f "feeds.conf.default" ]]; then
             sed -i '/telephony/d' feeds.conf.default
-            echo "✅ Removed telephony from feeds.conf.default"
+            sed -i '/routing/d' feeds.conf.default
+            echo "✅ Removed telephony and routing from feeds.conf.default"
           fi
 
           ./scripts/feeds update -a
@@ -311,9 +312,9 @@ jobs:
         run: |
           cd openwrt
 
-          # Final cleanup of telephony feed (if somehow it still got created)
-          rm -f feeds/telephony.index 2>/dev/null || true
-          rm -rf feeds/telephony 2>/dev/null || true
+          # Final cleanup of unwanted feeds (if somehow they still got created)
+          rm -f feeds/telephony.index feeds/routing.index 2>/dev/null || true
+          rm -rf feeds/telephony feeds/routing 2>/dev/null || true
 
           make defconfig
 
