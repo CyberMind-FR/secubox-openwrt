@@ -303,6 +303,17 @@ jobs:
       - name: Make defconfig
         run: |
           cd openwrt
+
+          # Clean up telephony feed to avoid indexing errors
+          rm -f feeds/telephony.index 2>/dev/null || true
+          rm -rf feeds/telephony 2>/dev/null || true
+
+          # Remove telephony from feeds.conf.default if it exists
+          if [[ -f "feeds.conf.default" ]]; then
+            sed -i '/telephony/d' feeds.conf.default
+            echo "✅ Removed telephony from feeds.conf.default"
+          fi
+
           make defconfig
 
       - name: Download packages

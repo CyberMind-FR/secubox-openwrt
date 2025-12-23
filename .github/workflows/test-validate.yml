@@ -231,6 +231,14 @@ jobs:
           cd ~/sdk
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+
+          # Clean up telephony feed to avoid indexing errors
+          rm -f feeds/telephony.index 2>/dev/null || true
+          rm -rf feeds/telephony 2>/dev/null || true
+          if [[ -f "feeds.conf.default" ]]; then
+            sed -i '/telephony/d' feeds.conf.default
+          fi
+
           make defconfig
 
       - name: Copy packages
@@ -260,7 +268,14 @@ jobs:
               echo "✅ Enabled: $PKG_NAME"
             fi
           done
-          
+
+          # Clean up telephony feed before defconfig
+          rm -f feeds/telephony.index 2>/dev/null || true
+          rm -rf feeds/telephony 2>/dev/null || true
+          if [[ -f "feeds.conf.default" ]]; then
+            sed -i '/telephony/d' feeds.conf.default
+          fi
+
           make defconfig
 
       - name: Build packages

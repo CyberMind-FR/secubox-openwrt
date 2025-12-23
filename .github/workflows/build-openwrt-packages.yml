@@ -303,7 +303,13 @@ jobs:
           # Clean up any stale feed references
           rm -f feeds/telephony.index 2>/dev/null || true
           rm -rf feeds/telephony 2>/dev/null || true
-          
+
+          # Remove telephony from feeds.conf.default if it exists
+          if [[ -f "feeds.conf.default" ]]; then
+            sed -i '/telephony/d' feeds.conf.default
+            echo "✅ Removed telephony from feeds.conf.default"
+          fi
+
           make defconfig
           echo "✅ SDK configured"
 
