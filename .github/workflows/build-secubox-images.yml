@@ -377,6 +377,9 @@ jobs:
             echo "⏱️  Build Time: ${MINUTES}m ${SECONDS}s"
             echo "📁 Output: bin/targets/${{ matrix.target }}/${{ matrix.subtarget }}/"
             echo ""
+            echo "📦 Generated Files:"
+            ls -lh "bin/targets/${{ matrix.target }}/${{ matrix.subtarget }}/" 2>/dev/null | grep -v "^total" | grep -v "^d" | head -20 || echo "  (no files found)"
+            echo ""
           else
             echo ""
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -401,6 +404,9 @@ jobs:
               echo "⏱️  Total Build Time: ${MINUTES}m ${SECONDS}s"
               echo "📁 Output: bin/targets/${{ matrix.target }}/${{ matrix.subtarget }}/"
               echo ""
+              echo "📦 Generated Files:"
+              ls -lh "bin/targets/${{ matrix.target }}/${{ matrix.subtarget }}/" 2>/dev/null | grep -v "^total" | grep -v "^d" | head -20 || echo "  (no files found)"
+              echo ""
             else
               echo ""
               echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -423,17 +429,47 @@ jobs:
           echo "📦 Collecting Firmware Images"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          # Copy firmware images
+          # List what was actually built
+          echo "🔍 Searching for firmware images in:"
+          echo "   openwrt/bin/targets/${{ matrix.target }}/${{ matrix.subtarget }}/"
+          echo ""
+
+          if [[ -d "openwrt/bin/targets/${{ matrix.target }}/${{ matrix.subtarget }}" ]]; then
+            echo "📂 Directory contents:"
+            ls -lh "openwrt/bin/targets/${{ matrix.target }}/${{ matrix.subtarget }}/" | grep -v "^total" | grep -v "^d" || echo "  (empty)"
+            echo ""
+          fi
+
+          # Copy firmware images (all common patterns)
           IMG_COUNT=0
-          for pattern in "*.img.gz" "*.bin" "*sysupgrade*" "*factory*"; do
+          TARGET_DIR="openwrt/bin/targets/${{ matrix.target }}/${{ matrix.subtarget }}"
+
+          if [[ -d "$TARGET_DIR" ]]; then
+            # Find all firmware image files (not directories, not packages)
             while IFS= read -r file; do
               if [[ -f "$file" ]]; then
-                cp "$file" artifacts/
-                echo "  ✅ $(basename "$file")"
-                IMG_COUNT=$((IMG_COUNT + 1))
+                # Skip certain files
+                case "$(basename "$file")" in
+                  *.ipk|*.manifest|*.json|sha256sums|*.buildinfo|packages)
+                    continue
+                    ;;
+                  *)
+                    cp "$file" artifacts/
+                    echo "  ✅ $(basename "$file") ($(du -h "$file" | cut -f1))"
+                    IMG_COUNT=$((IMG_COUNT + 1))
+                    ;;
+                esac
               fi
-            done < <(find openwrt/bin/targets -name "$pattern" 2>/dev/null)
-          done
+            done < <(find "$TARGET_DIR" -maxdepth 1 -type f 2>/dev/null)
+          else
+            echo "⚠️  Warning: Target directory not found: $TARGET_DIR"
+          fi
+
+          if [[ $IMG_COUNT -eq 0 ]]; then
+            echo ""
+            echo "⚠️  WARNING: No firmware images found!"
+            echo "This could indicate a build failure or unexpected output location."
+          fi
 
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
