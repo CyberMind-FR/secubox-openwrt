@@ -4,7 +4,9 @@
       "Bash(done)",
       "Bash(ls:*)",
       "Bash(find:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(mkdir:*)",
+      "Bash(shellcheck:*)"
     ]
   }
 }

@@ -64,6 +64,31 @@ var callDiagnostics = rpc.declare({
 	expect: { }
 });
 
+var callSystemHealth = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_system_health',
+	expect: { }
+});
+
+var callAlerts = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_alerts',
+	expect: { alerts: [] }
+});
+
+var callQuickAction = rpc.declare({
+	object: 'luci.secubox',
+	method: 'quick_action',
+	params: ['action'],
+	expect: { }
+});
+
+var callDashboardData = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_dashboard_data',
+	expect: { }
+});
+
 function formatUptime(seconds) {
 	if (!seconds) return '0s';
 	var d = Math.floor(seconds / 86400);
@@ -72,6 +97,14 @@ function formatUptime(seconds) {
 	if (d > 0) return d + 'd ' + h + 'h';
 	if (h > 0) return h + 'h ' + m + 'm';
 	return m + 'm';
+}
+
+function formatBytes(bytes) {
+	if (!bytes) return '0 B';
+	var k = 1024;
+	var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+	var i = Math.floor(Math.log(bytes) / Math.log(k));
+	return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
 }
 
 return baseclass.extend({
@@ -84,5 +117,10 @@ return baseclass.extend({
 	restartModule: callRestartModule,
 	getHealth: callHealth,
 	getDiagnostics: callDiagnostics,
-	formatUptime: formatUptime
+	getSystemHealth: callSystemHealth,
+	getAlerts: callAlerts,
+	quickAction: callQuickAction,
+	getDashboardData: callDashboardData,
+	formatUptime: formatUptime,
+	formatBytes: formatBytes
 });

@@ -1,7 +1,30 @@
 {
     "luci-app-secubox": {
         "description": "SecuBox Dashboard",
-        "read": {"ubus": {"luci.secubox": ["status", "modules"]}},
-        "write": {}
+        "read": {
+            "ubus": {
+                "luci.secubox": [
+                    "status",
+                    "modules",
+                    "modules_by_category",
+                    "module_info",
+                    "health",
+                    "diagnostics",
+                    "get_system_health",
+                    "get_alerts",
+                    "get_dashboard_data"
+                ]
+            }
+        },
+        "write": {
+            "ubus": {
+                "luci.secubox": [
+                    "start_module",
+                    "stop_module",
+                    "restart_module",
+                    "quick_action"
+                ]
+            }
+        }
     }
 }
