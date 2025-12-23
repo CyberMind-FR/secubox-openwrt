@@ -46,6 +46,9 @@ on:
 env:
   OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '23.05.5' }}
 
+permissions:
+  contents: write
+
 jobs:
   # ============================================
   # Setup and determine build matrix

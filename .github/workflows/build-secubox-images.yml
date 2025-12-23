@@ -32,6 +32,9 @@ on:
 env:
   OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version }}
 
+permissions:
+  contents: write
+
 jobs:
   # ============================================
   # Generate build matrix based on input
