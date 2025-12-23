@@ -1,0 +1,35 @@
+{
+    "luci-app-vhost-manager": {
+        "description": "Grant access to VHost Manager",
+        "read": {
+            "ubus": {
+                "luci.vhost-manager": [
+                    "status",
+                    "get_vhosts",
+                    "get_vhost",
+                    "get_certificates",
+                    "test_config"
+                ]
+            },
+            "uci": ["vhost_manager", "nginx"],
+            "file": {
+                "/etc/nginx/conf.d/*": ["read"],
+                "/etc/acme/*": ["read"]
+            }
+        },
+        "write": {
+            "ubus": {
+                "luci.vhost-manager": [
+                    "add_vhost",
+                    "delete_vhost",
+                    "request_certificate",
+                    "reload_nginx"
+                ]
+            },
+            "uci": ["vhost_manager", "nginx"],
+            "file": {
+                "/etc/nginx/conf.d/*": ["write"]
+            }
+        }
+    }
+}
