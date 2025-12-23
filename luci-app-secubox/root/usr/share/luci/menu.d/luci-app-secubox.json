@@ -13,5 +13,20 @@
         "title": "Modules",
         "order": 20,
         "action": {"type": "view", "path": "secubox/modules"}
+    },
+    "admin/secubox/security": {
+        "title": "Security & Monitoring",
+        "order": 30,
+        "action": {"type": "firstchild"}
+    },
+    "admin/secubox/network": {
+        "title": "Network Management",
+        "order": 40,
+        "action": {"type": "firstchild"}
+    },
+    "admin/secubox/system": {
+        "title": "System & Performance",
+        "order": 50,
+        "action": {"type": "firstchild"}
     }
 }
