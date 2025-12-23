@@ -1,0 +1,267 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# CrowdSec Dashboard RPCD backend
+# Copyright (C) 2024 CyberMind.fr - Gandalf
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CSCLI="/usr/bin/cscli"
+
+# Check if cscli exists
+check_cscli() {
+	if [ ! -x "$CSCLI" ]; then
+		echo '{"error": "cscli not found"}'
+		exit 1
+	fi
+}
+
+# Get decisions list
+get_decisions() {
+	check_cscli
+	local output
+	output=$($CSCLI decisions list -o json 2>/dev/null)
+	if [ -z "$output" ] || [ "$output" = "null" ]; then
+		echo '[]'
+	else
+		echo "$output"
+	fi
+}
+
+# Get alerts list
+get_alerts() {
+	local limit="${1:-50}"
+	check_cscli
+	local output
+	output=$($CSCLI alerts list -o json --limit "$limit" 2>/dev/null)
+	if [ -z "$output" ] || [ "$output" = "null" ]; then
+		echo '[]'
+	else
+		echo "$output"
+	fi
+}
+
+# Get metrics
+get_metrics() {
+	check_cscli
+	local output
+	output=$($CSCLI metrics -o json 2>/dev/null)
+	if [ -z "$output" ]; then
+		echo '{}'
+	else
+		echo "$output"
+	fi
+}
+
+# Get bouncers
+get_bouncers() {
+	check_cscli
+	local output
+	output=$($CSCLI bouncers list -o json 2>/dev/null)
+	if [ -z "$output" ] || [ "$output" = "null" ]; then
+		echo '[]'
+	else
+		echo "$output"
+	fi
+}
+
+# Get machines
+get_machines() {
+	check_cscli
+	local output
+	output=$($CSCLI machines list -o json 2>/dev/null)
+	if [ -z "$output" ] || [ "$output" = "null" ]; then
+		echo '[]'
+	else
+		echo "$output"
+	fi
+}
+
+# Get hub status
+get_hub() {
+	check_cscli
+	local output
+	output=$($CSCLI hub list -o json 2>/dev/null)
+	if [ -z "$output" ]; then
+		echo '{}'
+	else
+		echo "$output"
+	fi
+}
+
+# Get service status
+get_status() {
+	json_init
+	
+	# CrowdSec service
+	if pgrep -x crowdsec >/dev/null 2>&1; then
+		json_add_string "crowdsec" "running"
+	else
+		json_add_string "crowdsec" "stopped"
+	fi
+	
+	# Bouncer service
+	if pgrep -f "crowdsec-firewall-bouncer" >/dev/null 2>&1; then
+		json_add_string "bouncer" "running"
+	else
+		json_add_string "bouncer" "stopped"
+	fi
+	
+	# Version
+	local version
+	version=$($CSCLI version 2>/dev/null | grep "version:" | awk '{print $2}')
+	json_add_string "version" "${version:-unknown}"
+	
+	# Uptime
+	local uptime_sec
+	uptime_sec=$(cat /proc/uptime | cut -d' ' -f1 | cut -d'.' -f1)
+	json_add_int "uptime" "$uptime_sec"
+	
+	json_dump
+}
+
+# Add ban
+add_ban() {
+	local ip="$1"
+	local duration="${2:-4h}"
+	local reason="${3:-manual ban from dashboard}"
+	
+	check_cscli
+	
+	if [ -z "$ip" ]; then
+		echo '{"success": false, "error": "IP required"}'
+		return 1
+	fi
+	
+	local result
+	result=$($CSCLI decisions add --ip "$ip" --duration "$duration" --reason "$reason" 2>&1)
+	
+	if [ $? -eq 0 ]; then
+		echo '{"success": true}'
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+		json_dump
+	fi
+}
+
+# Remove ban
+remove_ban() {
+	local ip="$1"
+	
+	check_cscli
+	
+	if [ -z "$ip" ]; then
+		echo '{"success": false, "error": "IP required"}'
+		return 1
+	fi
+	
+	local result
+	result=$($CSCLI decisions delete --ip "$ip" 2>&1)
+	
+	if [ $? -eq 0 ]; then
+		echo '{"success": true}'
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+		json_dump
+	fi
+}
+
+# Get aggregated stats for dashboard
+get_dashboard_stats() {
+	check_cscli
+	
+	json_init
+	
+	# Count decisions
+	local decisions_count
+	decisions_count=$($CSCLI decisions list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	json_add_int "total_decisions" "${decisions_count:-0}"
+	
+	# Count alerts (last 24h)
+	local alerts_count
+	alerts_count=$($CSCLI alerts list -o json --since 24h 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	json_add_int "alerts_24h" "${alerts_count:-0}"
+	
+	# Count bouncers
+	local bouncers_count
+	bouncers_count=$($CSCLI bouncers list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	json_add_int "bouncers" "${bouncers_count:-0}"
+	
+	# Top scenarios (from alerts)
+	local scenarios
+	scenarios=$($CSCLI alerts list -o json --limit 100 2>/dev/null | \
+		jsonfilter -e '@[*].scenario' 2>/dev/null | \
+		sort | uniq -c | sort -rn | head -5 | \
+		awk '{print "{\"scenario\":\"" $2 "\",\"count\":" $1 "}"}' | \
+		tr '\n' ',' | sed 's/,$//')
+	
+	json_add_string "top_scenarios_raw" "[$scenarios]"
+	
+	# Top countries (from decisions)
+	local countries
+	countries=$($CSCLI decisions list -o json 2>/dev/null | \
+		jsonfilter -e '@[*].country' 2>/dev/null | \
+		sort | uniq -c | sort -rn | head -10 | \
+		awk '{print "{\"country\":\"" $2 "\",\"count\":" $1 "}"}' | \
+		tr '\n' ',' | sed 's/,$//')
+	
+	json_add_string "top_countries_raw" "[$countries]"
+	
+	json_dump
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{}}'
+		;;
+	call)
+		case "$2" in
+			decisions)
+				get_decisions
+				;;
+			alerts)
+				read -r input
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				get_alerts "${limit:-50}"
+				;;
+			metrics)
+				get_metrics
+				;;
+			bouncers)
+				get_bouncers
+				;;
+			machines)
+				get_machines
+				;;
+			hub)
+				get_hub
+				;;
+			status)
+				get_status
+				;;
+			ban)
+				read -r input
+				ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+				duration=$(echo "$input" | jsonfilter -e '@.duration' 2>/dev/null)
+				reason=$(echo "$input" | jsonfilter -e '@.reason' 2>/dev/null)
+				add_ban "$ip" "$duration" "$reason"
+				;;
+			unban)
+				read -r input
+				ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+				remove_ban "$ip"
+				;;
+			stats)
+				get_dashboard_stats
+				;;
+			*)
+				echo '{"error": "Unknown method"}'
+				;;
+		esac
+		;;
+esac

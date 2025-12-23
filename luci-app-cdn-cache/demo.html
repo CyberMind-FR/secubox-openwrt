@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SecuBox CDN Cache Dashboard - Demo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+:root {
+  --cdn-primary: #06b6d4;
+  --cdn-primary-dark: #0891b2;
+  --cdn-success: #22c55e;
+  --cdn-warning: #f59e0b;
+  --cdn-danger: #ef4444;
+  --cdn-bg: #0f172a;
+  --cdn-bg-card: #1e293b;
+  --cdn-border: #334155;
+  --cdn-text: #f1f5f9;
+  --cdn-text-muted: #94a3b8;
+  --cdn-text-dim: #64748b;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; background: var(--cdn-bg); color: var(--cdn-text); min-height: 100vh; }
+
+.demo-banner {
+  background: linear-gradient(90deg, #06b6d4, #0891b2);
+  color: white; text-align: center; padding: 10px;
+  font-size: 13px; font-weight: 600;
+}
+
+.container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+.header {
+  background: linear-gradient(135deg, #0891b2, #06b6d4, #22d3ee);
+  color: white; padding: 30px; border-radius: 16px; margin-bottom: 24px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.header-left h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+.header-left p { opacity: 0.9; font-size: 14px; }
+.status-badge {
+  display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+  background: rgba(34,197,94,0.2); border-radius: 20px; font-weight: 600; font-size: 13px;
+}
+.status-dot { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+.nav-tabs {
+  display: flex; gap: 4px; background: var(--cdn-bg-card); padding: 6px;
+  border-radius: 12px; margin-bottom: 24px; border: 1px solid var(--cdn-border);
+}
+.nav-tab {
+  padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500;
+  color: var(--cdn-text-muted); cursor: pointer; transition: all 0.2s;
+}
+.nav-tab:hover { color: var(--cdn-text); }
+.nav-tab.active { background: var(--cdn-primary); color: white; }
+
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px; }
+.stat-card {
+  background: var(--cdn-bg-card); border: 1px solid var(--cdn-border);
+  border-radius: 12px; padding: 20px;
+}
+.stat-icon { font-size: 28px; margin-bottom: 12px; }
+.stat-value { font-size: 32px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-bottom: 4px; }
+.stat-value.primary { color: var(--cdn-primary); }
+.stat-value.success { color: var(--cdn-success); }
+.stat-label { font-size: 13px; color: var(--cdn-text-muted); }
+.stat-sub { font-size: 12px; color: var(--cdn-text-dim); margin-top: 8px; }
+
+.main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+
+.section {
+  background: var(--cdn-bg-card); border: 1px solid var(--cdn-border);
+  border-radius: 12px; padding: 24px;
+}
+.section-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+
+.chart { height: 200px; display: flex; align-items: flex-end; gap: 6px; margin-bottom: 12px; }
+.chart-bar {
+  flex: 1; background: linear-gradient(180deg, #06b6d4, #0891b2);
+  border-radius: 4px 4px 0 0; transition: height 0.5s;
+}
+.chart-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--cdn-text-dim); }
+
+.savings-box {
+  background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(16,185,129,0.05));
+  border: 1px solid rgba(34,197,94,0.2); border-radius: 12px; padding: 24px; text-align: center;
+}
+.savings-value { font-size: 48px; font-weight: 800; color: var(--cdn-success); font-family: 'JetBrains Mono', monospace; }
+.savings-label { font-size: 14px; color: var(--cdn-text-muted); margin-top: 4px; }
+
+.cache-usage { margin-top: 20px; }
+.cache-bar { background: var(--cdn-border); border-radius: 8px; height: 16px; overflow: hidden; margin: 12px 0; }
+.cache-fill { height: 100%; background: linear-gradient(90deg, #06b6d4, #22d3ee); border-radius: 8px; }
+.cache-info { display: flex; justify-content: space-between; font-size: 13px; color: var(--cdn-text-muted); }
+
+.domains-list { list-style: none; }
+.domain-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 0; border-bottom: 1px solid var(--cdn-border);
+}
+.domain-item:last-child { border-bottom: none; }
+.domain-name { font-weight: 500; }
+.domain-stats { display: flex; gap: 16px; font-size: 13px; color: var(--cdn-text-muted); }
+
+.policy-card {
+  background: var(--cdn-bg); border-left: 3px solid var(--cdn-success);
+  border-radius: 0 8px 8px 0; padding: 14px; margin-bottom: 10px;
+}
+.policy-name { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.policy-details { font-size: 12px; color: var(--cdn-text-muted); display: flex; gap: 12px; flex-wrap: wrap; }
+.policy-tag { background: rgba(6,182,212,0.15); color: var(--cdn-primary); padding: 2px 8px; border-radius: 4px; }
+
+@media (max-width: 1024px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .main-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .stats-grid { grid-template-columns: 1fr; }
+  .header { flex-direction: column; text-align: center; gap: 16px; }
+}
+  </style>
+</head>
+<body>
+
+<div class="demo-banner">
+  🎮 Demo Interactive — SecuBox CDN Cache Dashboard pour OpenWrt
+</div>
+
+<div class="container">
+  <header class="header">
+    <div class="header-left">
+      <h1>📦 CDN Cache Dashboard</h1>
+      <p>Proxy cache local pour optimisation de bande passante</p>
+    </div>
+    <div class="status-badge">
+      <span class="status-dot"></span>
+      <span>Actif — Port 3128</span>
+    </div>
+  </header>
+
+  <nav class="nav-tabs">
+    <div class="nav-tab active">Overview</div>
+    <div class="nav-tab">Cache</div>
+    <div class="nav-tab">Policies</div>
+    <div class="nav-tab">Statistics</div>
+    <div class="nav-tab">Maintenance</div>
+    <div class="nav-tab">Settings</div>
+  </nav>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon">🎯</div>
+      <div class="stat-value primary">73%</div>
+      <div class="stat-label">Hit Ratio</div>
+      <div class="stat-sub">18,432 hits / 6,821 misses</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">💾</div>
+      <div class="stat-value">847 MB</div>
+      <div class="stat-label">Cache utilisé</div>
+      <div class="stat-sub">42% de 2 GB</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">📊</div>
+      <div class="stat-value">25,253</div>
+      <div class="stat-label">Requêtes totales</div>
+      <div class="stat-sub">1,247 fichiers en cache</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">⏱️</div>
+      <div class="stat-value">3j 14h</div>
+      <div class="stat-label">Uptime</div>
+      <div class="stat-sub">PID: 2847</div>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <div>
+      <div class="section" style="margin-bottom: 24px;">
+        <div class="section-title">📈 Économies de Bande Passante (24h)</div>
+        <div class="chart" id="bandwidth-chart"></div>
+        <div class="chart-labels">
+          <span>-24h</span>
+          <span>-18h</span>
+          <span>-12h</span>
+          <span>-6h</span>
+          <span>Now</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">🌐 Top Domaines en Cache</div>
+        <ul class="domains-list">
+          <li class="domain-item">
+            <span class="domain-name">download.microsoft.com</span>
+            <div class="domain-stats">
+              <span>📁 234 fichiers</span>
+              <span>💾 412 MB</span>
+            </div>
+          </li>
+          <li class="domain-item">
+            <span class="domain-name">archive.ubuntu.com</span>
+            <div class="domain-stats">
+              <span>📁 189 fichiers</span>
+              <span>💾 298 MB</span>
+            </div>
+          </li>
+          <li class="domain-item">
+            <span class="domain-name">cdn.jsdelivr.net</span>
+            <div class="domain-stats">
+              <span>📁 567 fichiers</span>
+              <span>💾 45 MB</span>
+            </div>
+          </li>
+          <li class="domain-item">
+            <span class="domain-name">fonts.googleapis.com</span>
+            <div class="domain-stats">
+              <span>📁 89 fichiers</span>
+              <span>💾 12 MB</span>
+            </div>
+          </li>
+          <li class="domain-item">
+            <span class="domain-name">play.googleapis.com</span>
+            <div class="domain-stats">
+              <span>📁 45 fichiers</span>
+              <span>💾 78 MB</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div>
+      <div class="section" style="margin-bottom: 24px;">
+        <div class="section-title">💰 Total Économisé</div>
+        <div class="savings-box">
+          <div class="savings-value">1.8 GB</div>
+          <div class="savings-label">Bande passante économisée ce mois</div>
+        </div>
+        <div class="cache-usage">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-size: 13px; color: var(--cdn-text-muted);">Utilisation cache</span>
+            <span style="font-weight: 600;">42%</span>
+          </div>
+          <div class="cache-bar">
+            <div class="cache-fill" style="width: 42%;"></div>
+          </div>
+          <div class="cache-info">
+            <span>847 MB utilisés</span>
+            <span>1.15 GB libres</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">📋 Policies Actives</div>
+        <div class="policy-card">
+          <div class="policy-name">Windows Update</div>
+          <div class="policy-details">
+            <span class="policy-tag">.exe</span>
+            <span class="policy-tag">.msu</span>
+            <span class="policy-tag">.cab</span>
+            <span>7 jours</span>
+          </div>
+        </div>
+        <div class="policy-card">
+          <div class="policy-name">Linux Repos</div>
+          <div class="policy-details">
+            <span class="policy-tag">.deb</span>
+            <span class="policy-tag">.rpm</span>
+            <span>3 jours</span>
+          </div>
+        </div>
+        <div class="policy-card">
+          <div class="policy-name">Static Content</div>
+          <div class="policy-details">
+            <span class="policy-tag">.js</span>
+            <span class="policy-tag">.css</span>
+            <span class="policy-tag">.woff</span>
+            <span>1 jour</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Animated chart
+const chart = document.getElementById('bandwidth-chart');
+const data = [45, 62, 38, 71, 55, 89, 42, 67, 78, 53, 91, 64, 72, 48, 85, 59, 93, 41, 76, 68, 54, 87, 61, 79];
+
+data.forEach((value, i) => {
+  const bar = document.createElement('div');
+  bar.className = 'chart-bar';
+  bar.style.height = '0px';
+  chart.appendChild(bar);
+  
+  setTimeout(() => {
+    bar.style.height = (value * 1.8) + 'px';
+  }, i * 50);
+});
+
+// Tab switching
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+
+// Live update simulation
+setInterval(() => {
+  const hitRatio = document.querySelector('.stat-value.primary');
+  const current = parseInt(hitRatio.textContent);
+  const change = Math.random() > 0.5 ? 1 : -1;
+  const newValue = Math.max(65, Math.min(85, current + change));
+  hitRatio.textContent = newValue + '%';
+}, 5000);
+</script>
+
+</body>
+</html>

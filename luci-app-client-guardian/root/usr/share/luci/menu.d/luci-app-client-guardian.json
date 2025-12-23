@@ -1,0 +1,45 @@
+{
+	"admin/secubox/security/client-guardian": {
+		"title": "Client Guardian",
+		"order": 30,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-client-guardian"],
+			"uci": {"client_guardian": true}
+		}
+	},
+	"admin/secubox/security/client-guardian/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "client-guardian/overview"
+		}
+	},
+	"admin/secubox/security/client-guardian/clients": {
+		"title": "Clients",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "client-guardian/clients"
+		}
+	},
+	"admin/secubox/security/client-guardian/captive": {
+		"title": "Captive Portal",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "client-guardian/captive"
+		}
+	},
+	"admin/secubox/security/client-guardian/settings": {
+		"title": "Settings",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "client-guardian/settings"
+		}
+	}
+}

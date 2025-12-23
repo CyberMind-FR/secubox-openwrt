@@ -1,0 +1,24 @@
+# Build artifacts
+*.ipk
+*.o
+*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+tmp/
+*.tmp
+*.log
+
+# Build directories
+build/
+ipkg-*/

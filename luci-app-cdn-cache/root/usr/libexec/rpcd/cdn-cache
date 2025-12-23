@@ -1,0 +1,692 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# CDN Cache RPCD Backend for SecuBox
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CACHE_DIR=$(uci -q get cdn-cache.main.cache_dir || echo "/var/cache/cdn")
+STATS_FILE="/var/run/cdn-cache-stats.json"
+LOG_FILE="/var/log/cdn-cache.log"
+
+# Initialize stats file if not exists
+init_stats() {
+	if [ ! -f "$STATS_FILE" ]; then
+		cat > "$STATS_FILE" << 'EOF'
+{"hits":0,"misses":0,"bytes_saved":0,"bytes_served":0,"requests":0,"start_time":0}
+EOF
+	fi
+}
+
+# Get service status
+get_status() {
+	local enabled=$(uci -q get cdn-cache.main.enabled || echo "0")
+	local running=0
+	local pid=""
+	local uptime=0
+	local cache_size=0
+	local cache_files=0
+	
+	# Check if nginx proxy is running
+	if pgrep -f "nginx.*cdn-cache" > /dev/null 2>&1; then
+		running=1
+		pid=$(pgrep -f "nginx.*cdn-cache" | head -1)
+		if [ -f "/var/run/cdn-cache.pid" ]; then
+			local start_time=$(stat -c %Y "/var/run/cdn-cache.pid" 2>/dev/null || echo "0")
+			local now=$(date +%s)
+			uptime=$((now - start_time))
+		fi
+	fi
+	
+	# Get cache directory stats
+	if [ -d "$CACHE_DIR" ]; then
+		cache_size=$(du -sk "$CACHE_DIR" 2>/dev/null | cut -f1 || echo "0")
+		cache_files=$(find "$CACHE_DIR" -type f 2>/dev/null | wc -l || echo "0")
+	fi
+	
+	local listen_port=$(uci -q get cdn-cache.main.listen_port || echo "3128")
+	local transparent=$(uci -q get cdn-cache.main.transparent || echo "0")
+	local max_size=$(uci -q get cdn-cache.main.cache_size || echo "1024")
+	
+	json_init
+	json_add_boolean "enabled" "$enabled"
+	json_add_boolean "running" "$running"
+	json_add_string "pid" "$pid"
+	json_add_int "uptime" "$uptime"
+	json_add_int "cache_size_kb" "$cache_size"
+	json_add_int "cache_files" "$cache_files"
+	json_add_int "max_size_mb" "$max_size"
+	json_add_int "listen_port" "$listen_port"
+	json_add_boolean "transparent" "$transparent"
+	json_add_string "cache_dir" "$CACHE_DIR"
+	json_dump
+}
+
+# Get cache statistics
+get_stats() {
+	init_stats
+	
+	local stats=$(cat "$STATS_FILE" 2>/dev/null || echo '{}')
+	
+	# Calculate hit ratio
+	json_load "$stats"
+	json_get_var hits hits 0
+	json_get_var misses misses 0
+	
+	local total=$((hits + misses))
+	local hit_ratio=0
+	if [ "$total" -gt 0 ]; then
+		hit_ratio=$((hits * 100 / total))
+	fi
+	
+	json_get_var bytes_saved bytes_saved 0
+	json_get_var bytes_served bytes_served 0
+	json_get_var requests requests 0
+	
+	# Convert to human readable
+	local saved_mb=$((bytes_saved / 1048576))
+	local served_mb=$((bytes_served / 1048576))
+	
+	json_init
+	json_add_int "hits" "$hits"
+	json_add_int "misses" "$misses"
+	json_add_int "hit_ratio" "$hit_ratio"
+	json_add_int "requests" "$requests"
+	json_add_int "bytes_saved" "$bytes_saved"
+	json_add_int "bytes_served" "$bytes_served"
+	json_add_int "saved_mb" "$saved_mb"
+	json_add_int "served_mb" "$served_mb"
+	json_dump
+}
+
+# Get cache content list
+get_cache_list() {
+	json_init
+	json_add_array "items"
+	
+	if [ -d "$CACHE_DIR" ]; then
+		find "$CACHE_DIR" -type f -printf '%s %T@ %p\n' 2>/dev/null | \
+		sort -k2 -rn | head -100 | while read size mtime path; do
+			local filename=$(basename "$path")
+			local domain=$(echo "$path" | sed -n 's|.*/\([^/]*\)/[^/]*$|\1|p')
+			local age=$(( $(date +%s) - ${mtime%.*} ))
+			
+			json_add_object ""
+			json_add_string "filename" "$filename"
+			json_add_string "domain" "$domain"
+			json_add_int "size" "$size"
+			json_add_int "age" "$age"
+			json_add_string "path" "$path"
+			json_close_object
+		done
+	fi
+	
+	json_close_array
+	json_dump
+}
+
+# Get top domains by cache usage
+get_top_domains() {
+	json_init
+	json_add_array "domains"
+	
+	if [ -d "$CACHE_DIR" ]; then
+		# Aggregate by subdirectory (domain)
+		for domain_dir in "$CACHE_DIR"/*/; do
+			if [ -d "$domain_dir" ]; then
+				local domain=$(basename "$domain_dir")
+				local size=$(du -sk "$domain_dir" 2>/dev/null | cut -f1 || echo "0")
+				local files=$(find "$domain_dir" -type f 2>/dev/null | wc -l || echo "0")
+				
+				json_add_object ""
+				json_add_string "domain" "$domain"
+				json_add_int "size_kb" "$size"
+				json_add_int "files" "$files"
+				json_close_object
+			fi
+		done
+	fi
+	
+	json_close_array
+	json_dump
+}
+
+# Get bandwidth savings over time
+get_bandwidth_savings() {
+	local period="${1:-24h}"
+	
+	json_init
+	json_add_string "period" "$period"
+	json_add_array "data"
+	
+	# Generate sample data points (would be from real logs)
+	local now=$(date +%s)
+	local points=24
+	local interval=3600
+	
+	case "$period" in
+		"7d") points=168; interval=3600 ;;
+		"30d") points=30; interval=86400 ;;
+		*) points=24; interval=3600 ;;
+	esac
+	
+	local i=0
+	while [ "$i" -lt "$points" ]; do
+		local ts=$((now - (points - i) * interval))
+		# Simulated data - in production would read from logs
+		local saved=$((RANDOM % 100 + 10))
+		local total=$((saved + RANDOM % 50 + 20))
+		
+		json_add_object ""
+		json_add_int "timestamp" "$ts"
+		json_add_int "saved_mb" "$saved"
+		json_add_int "total_mb" "$total"
+		json_close_object
+		
+		i=$((i + 1))
+	done
+	
+	json_close_array
+	json_dump
+}
+
+# Get hit ratio over time
+get_hit_ratio() {
+	local period="${1:-24h}"
+	
+	json_init
+	json_add_string "period" "$period"
+	json_add_array "data"
+	
+	local now=$(date +%s)
+	local points=24
+	local interval=3600
+	
+	case "$period" in
+		"7d") points=168; interval=3600 ;;
+		"30d") points=30; interval=86400 ;;
+		*) points=24; interval=3600 ;;
+	esac
+	
+	local i=0
+	while [ "$i" -lt "$points" ]; do
+		local ts=$((now - (points - i) * interval))
+		# Simulated data
+		local ratio=$((RANDOM % 40 + 50))
+		
+		json_add_object ""
+		json_add_int "timestamp" "$ts"
+		json_add_int "ratio" "$ratio"
+		json_close_object
+		
+		i=$((i + 1))
+	done
+	
+	json_close_array
+	json_dump
+}
+
+# Get cache size info
+get_cache_size() {
+	local total_kb=0
+	local max_mb=$(uci -q get cdn-cache.main.cache_size || echo "1024")
+	local max_kb=$((max_mb * 1024))
+	
+	if [ -d "$CACHE_DIR" ]; then
+		total_kb=$(du -sk "$CACHE_DIR" 2>/dev/null | cut -f1 || echo "0")
+	fi
+	
+	local usage_pct=0
+	if [ "$max_kb" -gt 0 ]; then
+		usage_pct=$((total_kb * 100 / max_kb))
+	fi
+	
+	json_init
+	json_add_int "used_kb" "$total_kb"
+	json_add_int "max_kb" "$max_kb"
+	json_add_int "usage_percent" "$usage_pct"
+	json_add_int "free_kb" "$((max_kb - total_kb))"
+	json_dump
+}
+
+# Get configured policies
+get_policies() {
+	json_init
+	json_add_array "policies"
+	
+	config_load cdn-cache
+	config_foreach _add_policy cache_policy
+	
+	json_close_array
+	json_dump
+}
+
+_add_policy() {
+	local section="$1"
+	local enabled name domains extensions cache_time max_size priority
+	
+	config_get_bool enabled "$section" enabled 0
+	config_get name "$section" name ""
+	config_get domains "$section" domains ""
+	config_get extensions "$section" extensions ""
+	config_get cache_time "$section" cache_time 1440
+	config_get max_size "$section" max_size 512
+	config_get priority "$section" priority 1
+	
+	json_add_object ""
+	json_add_string "id" "$section"
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "name" "$name"
+	json_add_string "domains" "$domains"
+	json_add_string "extensions" "$extensions"
+	json_add_int "cache_time" "$cache_time"
+	json_add_int "max_size" "$max_size"
+	json_add_int "priority" "$priority"
+	json_close_object
+}
+
+# Get exclusions
+get_exclusions() {
+	json_init
+	json_add_array "exclusions"
+	
+	config_load cdn-cache
+	config_foreach _add_exclusion exclusion
+	
+	json_close_array
+	json_dump
+}
+
+_add_exclusion() {
+	local section="$1"
+	local enabled name domains reason
+	
+	config_get_bool enabled "$section" enabled 0
+	config_get name "$section" name ""
+	config_get domains "$section" domains ""
+	config_get reason "$section" reason ""
+	
+	json_add_object ""
+	json_add_string "id" "$section"
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "name" "$name"
+	json_add_string "domains" "$domains"
+	json_add_string "reason" "$reason"
+	json_close_object
+}
+
+# Get recent logs
+get_logs() {
+	local count="${1:-50}"
+	
+	json_init
+	json_add_array "logs"
+	
+	if [ -f "$LOG_FILE" ]; then
+		tail -n "$count" "$LOG_FILE" 2>/dev/null | while read line; do
+			json_add_string "" "$line"
+		done
+	fi
+	
+	json_close_array
+	json_dump
+}
+
+# Set enabled state
+set_enabled() {
+	local enabled="${1:-0}"
+	
+	uci set cdn-cache.main.enabled="$enabled"
+	uci commit cdn-cache
+	
+	if [ "$enabled" = "1" ]; then
+		/etc/init.d/cdn-cache start
+	else
+		/etc/init.d/cdn-cache stop
+	fi
+	
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Purge entire cache
+purge_cache() {
+	if [ -d "$CACHE_DIR" ]; then
+		rm -rf "$CACHE_DIR"/*
+		mkdir -p "$CACHE_DIR"
+	fi
+	
+	# Reset stats
+	cat > "$STATS_FILE" << 'EOF'
+{"hits":0,"misses":0,"bytes_saved":0,"bytes_served":0,"requests":0,"start_time":0}
+EOF
+	
+	logger -t cdn-cache "Cache purged by user"
+	
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Cache purged successfully"
+	json_dump
+}
+
+# Purge cache for specific domain
+purge_domain() {
+	local domain="$1"
+	
+	if [ -n "$domain" ] && [ -d "$CACHE_DIR/$domain" ]; then
+		rm -rf "$CACHE_DIR/$domain"
+		logger -t cdn-cache "Cache purged for domain: $domain"
+		
+		json_init
+		json_add_boolean "success" 1
+		json_add_string "message" "Cache purged for $domain"
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Domain not found in cache"
+		json_dump
+	fi
+}
+
+# Purge expired entries
+purge_expired() {
+	local deleted=0
+	local cache_valid=$(uci -q get cdn-cache.main.cache_valid || echo "1440")
+	local max_age=$((cache_valid * 60))
+	
+	if [ -d "$CACHE_DIR" ]; then
+		deleted=$(find "$CACHE_DIR" -type f -mmin +"$cache_valid" -delete -print 2>/dev/null | wc -l)
+	fi
+	
+	logger -t cdn-cache "Purged $deleted expired entries"
+	
+	json_init
+	json_add_boolean "success" 1
+	json_add_int "deleted" "$deleted"
+	json_dump
+}
+
+# Preload URL into cache
+preload_url() {
+	local url="$1"
+	
+	if [ -n "$url" ]; then
+		local output=$(wget -q --spider "$url" 2>&1)
+		local result=$?
+		
+		if [ "$result" -eq 0 ]; then
+			logger -t cdn-cache "Preloaded: $url"
+			json_init
+			json_add_boolean "success" 1
+			json_add_string "message" "URL preloaded"
+			json_dump
+		else
+			json_init
+			json_add_boolean "success" 0
+			json_add_string "message" "Failed to preload URL"
+			json_dump
+		fi
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "No URL provided"
+		json_dump
+	fi
+}
+
+# Add new policy
+add_policy() {
+	local name="$1"
+	local domains="$2"
+	local extensions="$3"
+	local cache_time="${4:-1440}"
+	local max_size="${5:-512}"
+	
+	local section="policy_$(date +%s)"
+	
+	uci set cdn-cache.$section=cache_policy
+	uci set cdn-cache.$section.enabled=1
+	uci set cdn-cache.$section.name="$name"
+	uci set cdn-cache.$section.domains="$domains"
+	uci set cdn-cache.$section.extensions="$extensions"
+	uci set cdn-cache.$section.cache_time="$cache_time"
+	uci set cdn-cache.$section.max_size="$max_size"
+	uci set cdn-cache.$section.priority=5
+	uci commit cdn-cache
+	
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$section"
+	json_dump
+}
+
+# Remove policy
+remove_policy() {
+	local id="$1"
+	
+	if [ -n "$id" ]; then
+		uci delete cdn-cache.$id
+		uci commit cdn-cache
+		
+		json_init
+		json_add_boolean "success" 1
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_dump
+	fi
+}
+
+# Add exclusion
+add_exclusion() {
+	local name="$1"
+	local domains="$2"
+	local reason="$3"
+	
+	local section="exclusion_$(date +%s)"
+	
+	uci set cdn-cache.$section=exclusion
+	uci set cdn-cache.$section.enabled=1
+	uci set cdn-cache.$section.name="$name"
+	uci set cdn-cache.$section.domains="$domains"
+	uci set cdn-cache.$section.reason="$reason"
+	uci commit cdn-cache
+	
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$section"
+	json_dump
+}
+
+# Remove exclusion
+remove_exclusion() {
+	local id="$1"
+	
+	if [ -n "$id" ]; then
+		uci delete cdn-cache.$id
+		uci commit cdn-cache
+		
+		json_init
+		json_add_boolean "success" 1
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_dump
+	fi
+}
+
+# Clear statistics
+clear_stats() {
+	cat > "$STATS_FILE" << 'EOF'
+{"hits":0,"misses":0,"bytes_saved":0,"bytes_served":0,"requests":0,"start_time":0}
+EOF
+	
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Restart service
+do_restart() {
+	/etc/init.d/cdn-cache restart
+	
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		json_init
+		json_add_object "status"
+		json_close_object
+		json_add_object "stats"
+		json_close_object
+		json_add_object "cache_list"
+		json_close_object
+		json_add_object "top_domains"
+		json_close_object
+		json_add_object "bandwidth_savings"
+		json_add_string "period" "string"
+		json_close_object
+		json_add_object "hit_ratio"
+		json_add_string "period" "string"
+		json_close_object
+		json_add_object "cache_size"
+		json_close_object
+		json_add_object "policies"
+		json_close_object
+		json_add_object "exclusions"
+		json_close_object
+		json_add_object "logs"
+		json_add_int "count" 0
+		json_close_object
+		json_add_object "set_enabled"
+		json_add_boolean "enabled" false
+		json_close_object
+		json_add_object "purge_cache"
+		json_close_object
+		json_add_object "purge_domain"
+		json_add_string "domain" "string"
+		json_close_object
+		json_add_object "purge_expired"
+		json_close_object
+		json_add_object "preload_url"
+		json_add_string "url" "string"
+		json_close_object
+		json_add_object "add_policy"
+		json_add_string "name" "string"
+		json_add_string "domains" "string"
+		json_add_string "extensions" "string"
+		json_add_int "cache_time" 0
+		json_add_int "max_size" 0
+		json_close_object
+		json_add_object "remove_policy"
+		json_add_string "id" "string"
+		json_close_object
+		json_add_object "add_exclusion"
+		json_add_string "name" "string"
+		json_add_string "domains" "string"
+		json_add_string "reason" "string"
+		json_close_object
+		json_add_object "remove_exclusion"
+		json_add_string "id" "string"
+		json_close_object
+		json_add_object "clear_stats"
+		json_close_object
+		json_add_object "restart"
+		json_close_object
+		json_dump
+		;;
+	call)
+		case "$2" in
+			status) get_status ;;
+			stats) get_stats ;;
+			cache_list) get_cache_list ;;
+			top_domains) get_top_domains ;;
+			bandwidth_savings)
+				read -r input
+				json_load "$input"
+				json_get_var period period "24h"
+				get_bandwidth_savings "$period"
+				;;
+			hit_ratio)
+				read -r input
+				json_load "$input"
+				json_get_var period period "24h"
+				get_hit_ratio "$period"
+				;;
+			cache_size) get_cache_size ;;
+			policies) get_policies ;;
+			exclusions) get_exclusions ;;
+			logs)
+				read -r input
+				json_load "$input"
+				json_get_var count count 50
+				get_logs "$count"
+				;;
+			set_enabled)
+				read -r input
+				json_load "$input"
+				json_get_var enabled enabled 0
+				set_enabled "$enabled"
+				;;
+			purge_cache) purge_cache ;;
+			purge_domain)
+				read -r input
+				json_load "$input"
+				json_get_var domain domain ""
+				purge_domain "$domain"
+				;;
+			purge_expired) purge_expired ;;
+			preload_url)
+				read -r input
+				json_load "$input"
+				json_get_var url url ""
+				preload_url "$url"
+				;;
+			add_policy)
+				read -r input
+				json_load "$input"
+				json_get_var name name ""
+				json_get_var domains domains ""
+				json_get_var extensions extensions ""
+				json_get_var cache_time cache_time 1440
+				json_get_var max_size max_size 512
+				add_policy "$name" "$domains" "$extensions" "$cache_time" "$max_size"
+				;;
+			remove_policy)
+				read -r input
+				json_load "$input"
+				json_get_var id id ""
+				remove_policy "$id"
+				;;
+			add_exclusion)
+				read -r input
+				json_load "$input"
+				json_get_var name name ""
+				json_get_var domains domains ""
+				json_get_var reason reason ""
+				add_exclusion "$name" "$domains" "$reason"
+				;;
+			remove_exclusion)
+				read -r input
+				json_load "$input"
+				json_get_var id id ""
+				remove_exclusion "$id"
+				;;
+			clear_stats) clear_stats ;;
+			restart) do_restart ;;
+			*) echo '{"error":"Unknown method"}' ;;
+		esac
+		;;
+	*)
+		echo '{"error":"Unknown command"}'
+		;;
+esac

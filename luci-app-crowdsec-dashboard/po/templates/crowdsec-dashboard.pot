@@ -1,0 +1,110 @@
+# CrowdSec Dashboard LuCI Application
+# Copyright (C) 2024 CyberMind.fr
+# This file is distributed under the Apache-2.0 license.
+#
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Project-Id-Version: luci-app-crowdsec-dashboard\n"
+
+msgid "CrowdSec Dashboard"
+msgstr ""
+
+msgid "Overview"
+msgstr ""
+
+msgid "Decisions"
+msgstr ""
+
+msgid "Alerts"
+msgstr ""
+
+msgid "Metrics"
+msgstr ""
+
+msgid "Active Bans"
+msgstr ""
+
+msgid "Alerts (24h)"
+msgstr ""
+
+msgid "Bouncers"
+msgstr ""
+
+msgid "Ban Rate"
+msgstr ""
+
+msgid "Top Scenarios"
+msgstr ""
+
+msgid "Top Countries"
+msgstr ""
+
+msgid "Active Decisions"
+msgstr ""
+
+msgid "Recent Alerts"
+msgstr ""
+
+msgid "Add IP Ban"
+msgstr ""
+
+msgid "IP Address"
+msgstr ""
+
+msgid "Duration"
+msgstr ""
+
+msgid "Reason"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Add Ban"
+msgstr ""
+
+msgid "Unban"
+msgstr ""
+
+msgid "Unban Selected"
+msgstr ""
+
+msgid "Search IP, scenario, country..."
+msgstr ""
+
+msgid "No active decisions"
+msgstr ""
+
+msgid "No matching decisions found"
+msgstr ""
+
+msgid "No recent alerts"
+msgstr ""
+
+msgid "No alerts recorded"
+msgstr ""
+
+msgid "Load More Alerts"
+msgstr ""
+
+msgid "Hub Components"
+msgstr ""
+
+msgid "Registered Bouncers"
+msgstr ""
+
+msgid "Registered Machines"
+msgstr ""
+
+msgid "Installed Collections"
+msgstr ""
+
+msgid "Acquisition Sources"
+msgstr ""
+
+msgid "Raw Prometheus Metrics"
+msgstr ""
+
+msgid "Grant access to LuCI CrowdSec Dashboard"
+msgstr ""

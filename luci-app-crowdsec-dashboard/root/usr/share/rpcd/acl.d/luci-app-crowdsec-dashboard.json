@@ -1,0 +1,19 @@
+{
+	"luci-app-crowdsec-dashboard": {
+		"description": "Grant access to LuCI CrowdSec Dashboard",
+		"read": {
+			"ubus": {
+				"crowdsec": [ "decisions", "alerts", "metrics", "bouncers", "machines", "hub", "status" ],
+				"luci-rpc": [ "getCrowdsecData" ],
+				"file": [ "read", "stat" ]
+			},
+			"uci": [ "crowdsec", "crowdsec-dashboard" ]
+		},
+		"write": {
+			"ubus": {
+				"crowdsec": [ "ban", "unban", "refresh" ]
+			},
+			"uci": [ "crowdsec-dashboard" ]
+		}
+	}
+}

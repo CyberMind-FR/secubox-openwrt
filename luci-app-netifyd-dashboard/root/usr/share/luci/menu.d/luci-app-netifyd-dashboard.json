@@ -1,0 +1,45 @@
+{
+	"admin/secubox/security/netifyd": {
+		"title": "Netifyd",
+		"order": 20,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-netifyd-dashboard"],
+			"uci": {"netifyd": true}
+		}
+	},
+	"admin/secubox/security/netifyd/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "netifyd/overview"
+		}
+	},
+	"admin/secubox/security/netifyd/applications": {
+		"title": "Applications",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "netifyd/applications"
+		}
+	},
+	"admin/secubox/security/netifyd/flows": {
+		"title": "Flows",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "netifyd/flows"
+		}
+	},
+	"admin/secubox/security/netifyd/settings": {
+		"title": "Settings",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "netifyd/settings"
+		}
+	}
+}

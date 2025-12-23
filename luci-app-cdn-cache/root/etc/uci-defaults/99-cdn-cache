@@ -1,0 +1,25 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# CDN Cache UCI Defaults
+# Copyright (C) 2025 CyberMind.fr
+
+# Create cache directory
+mkdir -p /var/cache/cdn
+chmod 755 /var/cache/cdn
+
+# Create log directory
+mkdir -p /var/log/cdn-cache
+chmod 755 /var/log/cdn-cache
+
+# Set proper permissions on RPCD script
+chmod +x /usr/libexec/rpcd/cdn-cache 2>/dev/null || true
+
+# Initialize stats file
+if [ ! -f /var/run/cdn-cache-stats.json ]; then
+    echo '{"hits":0,"misses":0,"bytes_saved":0,"bytes_served":0,"requests":0,"start_time":0}' > /var/run/cdn-cache-stats.json
+fi
+
+# Reload rpcd to register new methods
+/etc/init.d/rpcd reload 2>/dev/null || true
+
+exit 0

@@ -1,0 +1,192 @@
+#!/bin/sh /etc/rc.common
+# SPDX-License-Identifier: Apache-2.0
+# CDN Cache Proxy Init Script
+# Copyright (C) 2025 CyberMind.fr
+
+START=90
+STOP=10
+USE_PROCD=1
+
+CONF_FILE="/var/etc/cdn-cache-nginx.conf"
+PID_FILE="/var/run/cdn-cache.pid"
+
+validate_section() {
+	uci_load_validate cdn-cache main "$1" "$2" \
+		'enabled:bool:0' \
+		'cache_dir:string:/var/cache/cdn' \
+		'cache_size:uinteger:1024' \
+		'max_object_size:uinteger:512' \
+		'cache_valid:uinteger:1440' \
+		'listen_port:port:3128' \
+		'transparent:bool:0' \
+		'log_level:string:warn'
+}
+
+generate_nginx_config() {
+	local cache_dir="$1"
+	local cache_size="$2"
+	local max_object="$3"
+	local cache_valid="$4"
+	local listen_port="$5"
+	
+	mkdir -p "$(dirname $CONF_FILE)"
+	mkdir -p "$cache_dir"
+	mkdir -p /var/log/cdn-cache
+	
+	cat > "$CONF_FILE" << EOF
+# CDN Cache Nginx Configuration
+# Auto-generated - Do not edit
+
+worker_processes auto;
+pid $PID_FILE;
+error_log /var/log/cdn-cache/error.log $log_level;
+
+events {
+    worker_connections 1024;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    
+    log_format cache '\$time_local|\$remote_addr|\$request|\$status|\$body_bytes_sent|\$upstream_cache_status|\$host';
+    access_log /var/log/cdn-cache/access.log cache;
+    
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    
+    # Cache zone configuration
+    proxy_cache_path $cache_dir levels=1:2 keys_zone=cdn_cache:64m 
+                     max_size=${cache_size}m inactive=7d use_temp_path=off;
+    proxy_temp_path $cache_dir/temp;
+    
+    # Cache settings
+    proxy_cache_valid 200 ${cache_valid}m;
+    proxy_cache_valid 301 302 10m;
+    proxy_cache_valid 404 1m;
+    proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+    proxy_cache_lock on;
+    proxy_cache_lock_timeout 5s;
+    
+    # Upstream settings
+    proxy_connect_timeout 10s;
+    proxy_read_timeout 60s;
+    proxy_send_timeout 60s;
+    proxy_buffering on;
+    proxy_buffer_size 16k;
+    proxy_buffers 8 32k;
+    proxy_max_temp_file_size ${max_object}m;
+    
+    # Resolver for dynamic upstream
+    resolver 8.8.8.8 8.8.4.4 valid=300s ipv6=off;
+    resolver_timeout 5s;
+    
+    server {
+        listen $listen_port;
+        server_name _;
+        
+        # Health check endpoint
+        location /cdn-cache-health {
+            return 200 'OK';
+            add_header Content-Type text/plain;
+        }
+        
+        # Stats endpoint
+        location /cdn-cache-stats {
+            stub_status;
+            allow 127.0.0.1;
+            deny all;
+        }
+        
+        # Proxy all requests
+        location / {
+            proxy_pass http://\$host\$request_uri;
+            proxy_cache cdn_cache;
+            proxy_cache_key \$scheme\$host\$request_uri;
+            
+            # Add cache status header
+            add_header X-Cache-Status \$upstream_cache_status;
+            add_header X-Cache-Date \$upstream_http_date;
+            
+            # Forward headers
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            
+            # Cache specific content types aggressively
+            proxy_cache_valid 200 301 302 ${cache_valid}m;
+            
+            # Bypass cache for certain requests
+            proxy_cache_bypass \$http_pragma \$http_authorization;
+            proxy_no_cache \$http_pragma \$http_authorization;
+        }
+        
+        # Special handling for update services
+        location ~* \.(exe|msu|cab|msi|deb|rpm|apk|pkg\.tar\.zst)$ {
+            proxy_pass http://\$host\$request_uri;
+            proxy_cache cdn_cache;
+            proxy_cache_key \$scheme\$host\$request_uri;
+            proxy_cache_valid 200 10080m;
+            add_header X-Cache-Status \$upstream_cache_status;
+            proxy_set_header Host \$host;
+        }
+        
+        # Static content with longer cache
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+            proxy_pass http://\$host\$request_uri;
+            proxy_cache cdn_cache;
+            proxy_cache_key \$scheme\$host\$request_uri;
+            proxy_cache_valid 200 1440m;
+            add_header X-Cache-Status \$upstream_cache_status;
+            proxy_set_header Host \$host;
+        }
+    }
+}
+EOF
+}
+
+start_service() {
+	validate_section main start_cdn_cache
+}
+
+start_cdn_cache() {
+	[ "$2" = 0 ] || {
+		echo "Validation failed" >&2
+		return 1
+	}
+	
+	[ "$enabled" = "1" ] || {
+		echo "CDN Cache is disabled"
+		return 0
+	}
+	
+	generate_nginx_config "$cache_dir" "$cache_size" "$max_object_size" \
+		"$cache_valid" "$listen_port"
+	
+	procd_open_instance cdn-cache
+	procd_set_param command /usr/sbin/nginx -c "$CONF_FILE" -g "daemon off;"
+	procd_set_param respawn
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param pidfile "$PID_FILE"
+	procd_close_instance
+	
+	logger -t cdn-cache "CDN Cache proxy started on port $listen_port"
+}
+
+stop_service() {
+	logger -t cdn-cache "CDN Cache proxy stopped"
+}
+
+reload_service() {
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger "cdn-cache"
+}

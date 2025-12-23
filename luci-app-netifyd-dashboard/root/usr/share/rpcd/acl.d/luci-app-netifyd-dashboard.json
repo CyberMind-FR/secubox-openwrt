@@ -1,0 +1,17 @@
+{
+	"luci-app-netifyd-dashboard": {
+		"description": "Grant access to LuCI Netifyd Dashboard",
+		"read": {
+			"ubus": {
+				"netifyd": [ "status", "flows", "applications", "protocols", "devices", "stats" ],
+				"system": [ "info", "board" ],
+				"luci-rpc": [ "getNetifydStats" ],
+				"file": [ "read", "stat" ]
+			},
+			"uci": [ "netifyd", "netifyd-dashboard" ]
+		},
+		"write": {
+			"uci": [ "netifyd-dashboard" ]
+		}
+	}
+}

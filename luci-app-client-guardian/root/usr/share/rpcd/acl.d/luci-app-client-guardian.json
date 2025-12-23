@@ -1,0 +1,26 @@
+{
+	"luci-app-client-guardian": {
+		"description": "Grant access to LuCI Client Guardian Dashboard",
+		"read": {
+			"ubus": {
+				"client-guardian": [ "status", "clients", "zones", "parental", "portal", "alerts", "logs" ],
+				"system": [ "info", "board" ],
+				"network.interface": [ "status", "dump" ],
+				"file": [ "read", "stat" ]
+			},
+			"uci": [ "network", "dhcp", "firewall", "client-guardian" ],
+			"file": {
+				"/etc/config/*": [ "read" ],
+				"/tmp/dhcp.leases": [ "read" ],
+				"/proc/net/arp": [ "read" ],
+				"/var/log/client-guardian.log": [ "read" ]
+			}
+		},
+		"write": {
+			"ubus": {
+				"client-guardian": [ "approve_client", "ban_client", "quarantine_client", "update_client", "update_zone", "update_portal", "send_test_alert" ]
+			},
+			"uci": [ "client-guardian" ]
+		}
+	}
+}
