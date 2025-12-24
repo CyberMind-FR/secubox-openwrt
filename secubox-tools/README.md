@@ -26,14 +26,23 @@ Build and test packages locally without pushing to GitHub. Automatically downloa
 # Build for specific architecture
 ./secubox-tools/local-build.sh build --arch aarch64-cortex-a72
 
+# Build firmware image for MOCHAbin
+./secubox-tools/local-build.sh build-firmware mochabin
+
+# Build firmware image for ESPRESSObin V7
+./secubox-tools/local-build.sh build-firmware espressobin-v7
+
 # Full validation + build
 ./secubox-tools/local-build.sh full
 
 # Clean build artifacts
 ./secubox-tools/local-build.sh clean
+
+# Clean everything including OpenWrt source
+./secubox-tools/local-build.sh clean-all
 ```
 
-**Supported Architectures:**
+**Supported Architectures (for package building):**
 - `x86-64` - PC, VMs (default)
 - `aarch64-cortex-a53` - ARM Cortex-A53 (ESPRESSObin)
 - `aarch64-cortex-a72` - ARM Cortex-A72 (MOCHAbin, RPi4)
@@ -41,13 +50,23 @@ Build and test packages locally without pushing to GitHub. Automatically downloa
 - `mips-24kc` - MIPS 24Kc (TP-Link)
 - `mipsel-24kc` - MIPS LE (Xiaomi, GL.iNet)
 
+**Supported Devices (for firmware building):**
+- `espressobin-v7` - ESPRESSObin V7 (1-2GB DDR4)
+- `espressobin-ultra` - ESPRESSObin Ultra (PoE, WiFi)
+- `sheeva64` - Sheeva64 (Plug computer)
+- `mochabin` - MOCHAbin (Quad-core A72, 10G)
+- `x86-64` - x86_64 Generic PC
+
 **Environment Variables:**
 - `OPENWRT_VERSION` - OpenWrt version (default: 23.05.5)
 - `SDK_DIR` - SDK directory (default: ./sdk)
 - `BUILD_DIR` - Build output directory (default: ./build)
 - `CACHE_DIR` - Download cache directory (default: ./cache)
+- `OPENWRT_DIR` - OpenWrt source directory for firmware builds (default: ./openwrt)
 
-**Output:** Built packages are placed in `build/<arch>/` with SHA256 checksums.
+**Output:**
+- Built packages are placed in `build/<arch>/` with SHA256 checksums
+- Firmware images are placed in `build/firmware/<device>/` with checksums and build info
 
 **Dependencies:**
 ```bash
@@ -62,15 +81,18 @@ sudo apt-get install -y shellcheck nodejs
 ```
 
 **Features:**
-- Downloads and caches OpenWrt SDK for faster subsequent builds
+- **Package Building**: Downloads and caches OpenWrt SDK for faster builds
+- **Firmware Building**: Downloads full OpenWrt source and builds custom firmware images
 - Configures feeds (packages, luci) automatically
 - Validates packages before building
 - Builds .ipk packages with verbose output
+- Builds complete firmware images (.img.gz, *sysupgrade.bin, etc.)
 - Collects artifacts with checksums
 - Supports single package or all packages
-- Multiple architecture support
+- Multiple architecture and device support
+- Device profile verification before building
 
-**Example Workflow:**
+**Example Workflow - Package Building:**
 ```bash
 # 1. Make changes to a module
 vim luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/overview.js
@@ -83,6 +105,23 @@ scp build/x86-64/*.ipk root@192.168.1.1:/tmp/
 ssh root@192.168.1.1
 opkg install /tmp/luci-app-system-hub*.ipk
 /etc/init.d/rpcd restart
+```
+
+**Example Workflow - Firmware Building:**
+```bash
+# 1. Build firmware for MOCHAbin with SecuBox pre-installed
+./secubox-tools/local-build.sh build-firmware mochabin
+
+# 2. Flash to device
+# Firmware images are in: build/firmware/mochabin/
+# - openwrt-*-sysupgrade.bin (for upgrading existing OpenWrt)
+# - openwrt-*-factory.bin (for initial installation)
+# - SHA256SUMS (checksums for verification)
+# - BUILD_INFO.txt (build details)
+# - packages/ (SecuBox .ipk files)
+
+# 3. Clean up after building (optional)
+./secubox-tools/local-build.sh clean-all  # Removes OpenWrt source (saves ~20GB)
 ```
 
 ### Validation Tools

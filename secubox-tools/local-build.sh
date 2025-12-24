@@ -26,11 +26,21 @@ OPENWRT_VERSION="${OPENWRT_VERSION:-23.05.5}"
 SDK_DIR="${SDK_DIR:-./sdk}"
 BUILD_DIR="${BUILD_DIR:-./build}"
 CACHE_DIR="${CACHE_DIR:-./cache}"
+OPENWRT_DIR="${OPENWRT_DIR:-./openwrt}"
 
 # Default architecture
 ARCH="x86-64"
 ARCH_NAME="x86_64"
 SDK_PATH="x86/64"
+
+# Device profiles for firmware building
+declare -A DEVICE_PROFILES=(
+    ["espressobin-v7"]="mvebu:cortexa53:globalscale_espressobin:ESPRESSObin V7 (1-2GB DDR4)"
+    ["espressobin-ultra"]="mvebu:cortexa53:globalscale_espressobin-ultra:ESPRESSObin Ultra (PoE, WiFi)"
+    ["sheeva64"]="mvebu:cortexa53:globalscale_sheeva64:Sheeva64 (Plug computer)"
+    ["mochabin"]="mvebu:cortexa72:globalscale_mochabin:MOCHAbin (Quad-core A72, 10G)"
+    ["x86-64"]="x86:64:generic:x86_64 Generic PC"
+)
 
 # Helper functions
 print_header() {
@@ -768,6 +778,426 @@ run_build() {
     return 0
 }
 
+# ============================================
+# Firmware Image Building Functions
+# ============================================
+
+# Parse device profile
+parse_device_profile() {
+    local device="$1"
+
+    if [[ -z "${DEVICE_PROFILES[$device]}" ]]; then
+        print_error "Unknown device: $device"
+        print_info "Available devices: ${!DEVICE_PROFILES[*]}"
+        return 1
+    fi
+
+    local profile="${DEVICE_PROFILES[$device]}"
+    IFS=':' read -r TARGET SUBTARGET PROFILE_NAME DESCRIPTION <<< "$profile"
+
+    export FW_TARGET="$TARGET"
+    export FW_SUBTARGET="$SUBTARGET"
+    export FW_PROFILE="$PROFILE_NAME"
+    export FW_DESCRIPTION="$DESCRIPTION"
+    export FW_DEVICE="$device"
+
+    return 0
+}
+
+# Download OpenWrt source
+download_openwrt_source() {
+    print_header "Downloading OpenWrt Source"
+
+    if [[ -d "$OPENWRT_DIR/.git" ]]; then
+        print_info "OpenWrt source already exists, checking version..."
+        cd "$OPENWRT_DIR"
+        local current_version=$(git describe --tags 2>/dev/null || echo "unknown")
+        if [[ "$current_version" == "v${OPENWRT_VERSION}" ]]; then
+            print_success "Using existing OpenWrt $OPENWRT_VERSION"
+            cd - > /dev/null
+            return 0
+        else
+            print_info "Version mismatch (current: $current_version), re-cloning..."
+            cd - > /dev/null
+            rm -rf "$OPENWRT_DIR"
+        fi
+    fi
+
+    print_info "Cloning OpenWrt $OPENWRT_VERSION..."
+
+    if [[ "$OPENWRT_VERSION" == "SNAPSHOT" ]]; then
+        git clone --depth 1 https://github.com/openwrt/openwrt.git "$OPENWRT_DIR"
+    else
+        git clone --depth 1 --branch "v${OPENWRT_VERSION}" \
+            https://github.com/openwrt/openwrt.git "$OPENWRT_DIR"
+    fi
+
+    print_success "OpenWrt source downloaded"
+    return 0
+}
+
+# Setup OpenWrt feeds for firmware build
+setup_openwrt_feeds() {
+    print_header "Setting up OpenWrt Feeds"
+
+    cd "$OPENWRT_DIR"
+
+    # Remove unwanted feeds
+    if [[ -f "feeds.conf.default" ]]; then
+        sed -i '/telephony/d' feeds.conf.default
+        sed -i '/routing/d' feeds.conf.default
+        print_success "Removed telephony and routing from feeds.conf.default"
+    fi
+
+    # Update feeds
+    print_info "Updating feeds (this may take a few minutes)..."
+    if ! ./scripts/feeds update -a 2>&1 | tee feed-update.log; then
+        print_warning "Feed update had errors, continuing..."
+    fi
+
+    # Install feeds
+    print_info "Installing feeds..."
+    if ! ./scripts/feeds install -a 2>&1 | tee feed-install.log; then
+        print_warning "Feed install had warnings, checking directories..."
+    fi
+
+    # Verify feeds
+    for feed in packages luci; do
+        if [[ -d "feeds/$feed" ]]; then
+            local feed_size=$(du -sh "feeds/$feed" 2>/dev/null | cut -f1)
+            print_success "feeds/$feed ($feed_size)"
+        else
+            print_error "feeds/$feed missing!"
+            cd - > /dev/null
+            return 1
+        fi
+    done
+
+    cd - > /dev/null
+    print_success "OpenWrt feeds configured"
+    return 0
+}
+
+# Copy SecuBox packages to OpenWrt
+copy_secubox_to_openwrt() {
+    print_header "Copying SecuBox Packages to OpenWrt"
+
+    cd "$OPENWRT_DIR"
+
+    mkdir -p package/secubox
+
+    local pkg_count=0
+    for pkg in ../../luci-app-*/; do
+        if [[ -d "$pkg" ]]; then
+            local pkg_name=$(basename "$pkg")
+            echo "  ✅ $pkg_name"
+            cp -r "$pkg" package/secubox/
+
+            # Fix Makefile include path
+            if [[ -f "package/secubox/$pkg_name/Makefile" ]]; then
+                sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' \
+                    "package/secubox/$pkg_name/Makefile"
+            fi
+
+            pkg_count=$((pkg_count + 1))
+        fi
+    done
+
+    cd - > /dev/null
+
+    print_success "Copied $pkg_count SecuBox packages"
+    return 0
+}
+
+# Generate firmware configuration
+generate_firmware_config() {
+    print_header "Generating Firmware Configuration"
+
+    cd "$OPENWRT_DIR"
+
+    print_info "Device: $FW_DESCRIPTION"
+    print_info "Target: $FW_TARGET/$FW_SUBTARGET"
+    print_info "Profile: $FW_PROFILE"
+
+    # Base configuration
+    cat > .config << EOF
+# Target
+CONFIG_TARGET_${FW_TARGET}=y
+CONFIG_TARGET_${FW_TARGET}_${FW_SUBTARGET}=y
+CONFIG_TARGET_${FW_TARGET}_${FW_SUBTARGET}_DEVICE_${FW_PROFILE}=y
+
+# Image building (REQUIRED for firmware generation)
+CONFIG_TARGET_MULTI_PROFILE=n
+CONFIG_TARGET_ALL_PROFILES=n
+CONFIG_TARGET_PER_DEVICE_ROOTFS=y
+
+# Image settings
+CONFIG_TARGET_ROOTFS_SQUASHFS=y
+CONFIG_TARGET_ROOTFS_EXT4FS=y
+CONFIG_TARGET_KERNEL_PARTSIZE=32
+CONFIG_TARGET_ROOTFS_PARTSIZE=512
+
+# Base packages
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_luci-ssl=y
+CONFIG_PACKAGE_luci-app-opkg=y
+CONFIG_PACKAGE_luci-theme-openwrt-2020=y
+
+# Networking essentials
+CONFIG_PACKAGE_curl=y
+CONFIG_PACKAGE_wget-ssl=y
+CONFIG_PACKAGE_iptables=y
+CONFIG_PACKAGE_ip6tables=y
+
+# USB support
+CONFIG_PACKAGE_kmod-usb-core=y
+CONFIG_PACKAGE_kmod-usb3=y
+CONFIG_PACKAGE_kmod-usb-storage=y
+
+# Filesystem
+CONFIG_PACKAGE_kmod-fs-ext4=y
+CONFIG_PACKAGE_kmod-fs-vfat=y
+
+# SecuBox packages
+CONFIG_PACKAGE_luci-app-system-hub=y
+CONFIG_PACKAGE_luci-app-network-modes=y
+CONFIG_PACKAGE_luci-app-wireguard-dashboard=y
+CONFIG_PACKAGE_luci-app-crowdsec-dashboard=y
+CONFIG_PACKAGE_luci-app-netdata-dashboard=y
+CONFIG_PACKAGE_luci-app-netifyd-dashboard=y
+CONFIG_PACKAGE_luci-app-client-guardian=y
+
+# WireGuard
+CONFIG_PACKAGE_wireguard-tools=y
+CONFIG_PACKAGE_kmod-wireguard=y
+CONFIG_PACKAGE_qrencode=y
+EOF
+
+    # Device-specific packages
+    case "$FW_DEVICE" in
+        mochabin)
+            cat >> .config << EOF
+
+# MOCHAbin specific - 10G networking
+CONFIG_PACKAGE_kmod-sfp=y
+CONFIG_PACKAGE_kmod-phy-marvell-10g=y
+EOF
+            ;;
+        espressobin-ultra|sheeva64)
+            cat >> .config << EOF
+
+# WiFi support
+CONFIG_PACKAGE_kmod-mt76=y
+CONFIG_PACKAGE_kmod-mac80211=y
+EOF
+            ;;
+    esac
+
+    # Run defconfig
+    make defconfig
+
+    cd - > /dev/null
+
+    print_success "Configuration generated"
+    return 0
+}
+
+# Verify firmware configuration
+verify_firmware_config() {
+    print_header "Verifying Firmware Configuration"
+
+    cd "$OPENWRT_DIR"
+
+    # Check device profile
+    if grep -q "CONFIG_TARGET_${FW_TARGET}_${FW_SUBTARGET}_DEVICE_${FW_PROFILE}=y" .config; then
+        print_success "Device profile correctly configured"
+    else
+        print_error "Device profile not found in .config!"
+        print_info "Searching for available profiles..."
+        find "target/$FW_TARGET/$FW_SUBTARGET" -name "*.mk" -exec grep -l "DEVICE_NAME" {} \; 2>/dev/null | head -5
+        cd - > /dev/null
+        return 1
+    fi
+
+    # Check image generation
+    if grep -q "CONFIG_TARGET_ROOTFS_SQUASHFS=y" .config; then
+        print_success "SQUASHFS image generation enabled"
+    fi
+
+    if grep -q "CONFIG_TARGET_ROOTFS_EXT4FS=y" .config; then
+        print_success "EXT4 image generation enabled"
+    fi
+
+    # Show relevant config
+    echo ""
+    print_info "Device configuration:"
+    grep "^CONFIG_TARGET_" .config | head -10
+
+    cd - > /dev/null
+
+    print_success "Configuration verified"
+    return 0
+}
+
+# Build firmware image
+build_firmware_image() {
+    print_header "Building Firmware Image"
+
+    cd "$OPENWRT_DIR"
+
+    print_info "Device: $FW_DESCRIPTION"
+    print_info "Target: $FW_TARGET/$FW_SUBTARGET"
+    print_info "Profile: $FW_PROFILE"
+    print_info "CPU Cores: $(nproc)"
+    echo ""
+
+    local start_time=$(date +%s)
+
+    # Download packages first
+    print_info "Downloading packages..."
+    if ! make download -j$(nproc) V=s; then
+        print_warning "Parallel download failed, retrying single-threaded..."
+        make download -j1 V=s
+    fi
+
+    echo ""
+    print_header "Compiling Firmware (This may take 1-2 hours)"
+    echo ""
+
+    # Build with explicit PROFILE
+    if make -j$(nproc) PROFILE="$FW_PROFILE" V=s 2>&1 | tee build.log; then
+        local end_time=$(date +%s)
+        local duration=$((end_time - start_time))
+        local minutes=$((duration / 60))
+        local seconds=$((duration % 60))
+
+        print_success "Build completed in ${minutes}m ${seconds}s"
+    else
+        print_error "Parallel build failed, retrying single-threaded..."
+        if make -j1 PROFILE="$FW_PROFILE" V=s 2>&1 | tee build-retry.log; then
+            local end_time=$(date +%s)
+            local duration=$((end_time - start_time))
+            local minutes=$((duration / 60))
+            local seconds=$((duration % 60))
+
+            print_success "Build completed in ${minutes}m ${seconds}s (after retry)"
+        else
+            print_error "Build failed!"
+            echo ""
+            echo "Last 50 lines of build log:"
+            tail -50 build-retry.log
+            cd - > /dev/null
+            return 1
+        fi
+    fi
+
+    cd - > /dev/null
+    return 0
+}
+
+# Collect firmware artifacts
+collect_firmware_artifacts() {
+    print_header "Collecting Firmware Artifacts"
+
+    local target_dir="$OPENWRT_DIR/bin/targets/$FW_TARGET/$FW_SUBTARGET"
+    local output_dir="$BUILD_DIR/firmware/$FW_DEVICE"
+
+    mkdir -p "$output_dir"
+
+    # Find and copy firmware images
+    local img_count=0
+    if [[ -d "$target_dir" ]]; then
+        echo "📂 Files in target directory:"
+        ls -lh "$target_dir" | grep -v "^total" | grep -v "^d"
+        echo ""
+
+        while IFS= read -r file; do
+            case "$(basename "$file")" in
+                *.ipk|*.manifest|*.json|sha256sums|*.buildinfo|packages)
+                    continue
+                    ;;
+                *)
+                    cp "$file" "$output_dir/"
+                    print_success "$(basename "$file") ($(du -h "$file" | cut -f1))"
+                    img_count=$((img_count + 1))
+                    ;;
+            esac
+        done < <(find "$target_dir" -maxdepth 1 -type f 2>/dev/null)
+    fi
+
+    # Copy packages
+    mkdir -p "$output_dir/packages"
+    find "$OPENWRT_DIR/bin/packages" -name "luci-app-*.ipk" -exec cp {} "$output_dir/packages/" \; 2>/dev/null || true
+
+    local pkg_count=$(find "$output_dir/packages" -name "*.ipk" 2>/dev/null | wc -l)
+
+    # Generate checksums
+    cd "$output_dir"
+    sha256sum *.* > SHA256SUMS 2>/dev/null || true
+    if [[ -d packages && -n "$(ls -A packages 2>/dev/null)" ]]; then
+        (cd packages && sha256sum *.ipk > SHA256SUMS 2>/dev/null || true)
+    fi
+    cd - > /dev/null
+
+    # Create build info
+    cat > "$output_dir/BUILD_INFO.txt" << EOF
+SecuBox Firmware Build
+======================
+Device: $FW_DESCRIPTION
+Profile: $FW_PROFILE
+Target: $FW_TARGET/$FW_SUBTARGET
+OpenWrt: $OPENWRT_VERSION
+Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+Firmware Images: $img_count
+SecuBox Packages: $pkg_count
+EOF
+
+    echo ""
+    print_success "Firmware images: $img_count"
+    print_success "SecuBox packages: $pkg_count"
+    print_success "Artifacts saved to: $output_dir"
+
+    echo ""
+    print_info "Contents:"
+    ls -lh "$output_dir"
+
+    return 0
+}
+
+# Run firmware build
+run_firmware_build() {
+    local device="$1"
+
+    if [[ -z "$device" ]]; then
+        print_error "Device not specified"
+        print_info "Usage: $0 build-firmware <device>"
+        print_info "Available devices: ${!DEVICE_PROFILES[*]}"
+        return 1
+    fi
+
+    # Parse device profile
+    parse_device_profile "$device" || return 1
+
+    # Check dependencies
+    check_dependencies
+
+    # Build firmware
+    download_openwrt_source || return 1
+    setup_openwrt_feeds || return 1
+    copy_secubox_to_openwrt || return 1
+    generate_firmware_config || return 1
+    verify_firmware_config || return 1
+    build_firmware_image || return 1
+    collect_firmware_artifacts || return 1
+
+    print_header "Firmware Build Complete!"
+    print_success "Device: $FW_DESCRIPTION"
+    print_success "Location: $BUILD_DIR/firmware/$FW_DEVICE/"
+
+    return 0
+}
+
 # Show usage
 show_usage() {
     cat << EOF
@@ -782,17 +1212,26 @@ COMMANDS:
     build                       Build all packages for x86_64
     build <package>             Build single package
     build --arch <arch>         Build for specific architecture
+    build-firmware <device>     Build full firmware image for device
     full                        Run validation then build
     clean                       Clean build directories
+    clean-all                   Clean all build directories including OpenWrt source
     help                        Show this help message
 
-ARCHITECTURES:
+ARCHITECTURES (for package building):
     x86-64                      PC, VMs (default)
     aarch64-cortex-a53          ARM Cortex-A53 (ESPRESSObin)
     aarch64-cortex-a72          ARM Cortex-A72 (MOCHAbin, RPi4)
     aarch64-generic             Generic ARM64
     mips-24kc                   MIPS 24Kc (TP-Link)
     mipsel-24kc                 MIPS LE (Xiaomi, GL.iNet)
+
+DEVICES (for firmware building):
+    espressobin-v7              ESPRESSObin V7 (1-2GB DDR4)
+    espressobin-ultra           ESPRESSObin Ultra (PoE, WiFi)
+    sheeva64                    Sheeva64 (Plug computer)
+    mochabin                    MOCHAbin (Quad-core A72, 10G)
+    x86-64                      x86_64 Generic PC
 
 EXAMPLES:
     # Validate all packages
@@ -807,17 +1246,27 @@ EXAMPLES:
     # Build for specific architecture
     $0 build --arch aarch64-cortex-a72
 
+    # Build firmware image for MOCHAbin
+    $0 build-firmware mochabin
+
+    # Build firmware image for ESPRESSObin V7
+    $0 build-firmware espressobin-v7
+
     # Full validation and build
     $0 full
 
     # Clean build artifacts
     $0 clean
 
+    # Clean everything including OpenWrt source
+    $0 clean-all
+
 ENVIRONMENT VARIABLES:
     OPENWRT_VERSION             OpenWrt version (default: 23.05.5)
     SDK_DIR                     SDK directory (default: ./sdk)
     BUILD_DIR                   Build output directory (default: ./build)
     CACHE_DIR                   Download cache directory (default: ./cache)
+    OPENWRT_DIR                 OpenWrt source directory for firmware builds (default: ./openwrt)
 
 EOF
 }
@@ -861,6 +1310,17 @@ main() {
             run_build "$single_package"
             ;;
 
+        build-firmware)
+            local device="$1"
+            if [[ -z "$device" ]]; then
+                print_error "Device not specified"
+                print_info "Usage: $0 build-firmware <device>"
+                print_info "Available devices: ${!DEVICE_PROFILES[*]}"
+                exit 1
+            fi
+            run_firmware_build "$device"
+            ;;
+
         full)
             run_validation && run_build
             ;;
@@ -869,6 +1329,12 @@ main() {
             print_header "Cleaning Build Directories"
             rm -rf "$SDK_DIR" "$BUILD_DIR"
             print_success "Build directories cleaned"
+            ;;
+
+        clean-all)
+            print_header "Cleaning All Build Directories"
+            rm -rf "$SDK_DIR" "$BUILD_DIR" "$OPENWRT_DIR" "$CACHE_DIR"
+            print_success "All build directories cleaned (SDK, build, OpenWrt source, cache)"
             ;;
 
         help|--help|-h)
