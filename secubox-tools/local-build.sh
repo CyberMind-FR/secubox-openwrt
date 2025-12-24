@@ -366,20 +366,25 @@ setup_sdk_feeds() {
         print_success "Removed telephony and routing from feeds.conf.default"
     fi
 
-    # Use GitHub mirrors
-    cat > feeds.conf << 'FEEDS'
+    # Create local feed for SecuBox packages outside of SDK
+    local local_feed_dir="$(pwd)/../local-feed"
+    mkdir -p "$local_feed_dir"
+
+    # Use GitHub mirrors + local feed
+    cat > feeds.conf << FEEDS
 src-git packages https://github.com/openwrt/packages.git;openwrt-23.05
 src-git luci https://github.com/openwrt/luci.git;openwrt-23.05
+src-link secubox $local_feed_dir
 FEEDS
 
-    print_info "feeds.conf configured"
+    print_info "feeds.conf configured with local SecuBox feed at $local_feed_dir"
 
     # Update feeds
     echo "🔄 Updating feeds..."
     local feeds_ok=0
-    local required_feeds=2
+    local required_feeds=3
 
-    for feed in packages luci; do
+    for feed in packages luci secubox; do
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "Updating feed: $feed"
@@ -426,16 +431,36 @@ FEEDS
         print_warning "Feed installation had errors, checking if critical..."
     fi
 
+    # Install critical dependencies explicitly
+    echo ""
+    echo "📦 Installing LuCI and build dependencies..."
+    for dep in lua liblua luci-base lucihttp rpcd rpcd-mod-rrdns cgi-io libiwinfo ucode libucode rpcd-mod-luci; do
+        echo "  Installing $dep..."
+        ./scripts/feeds install "$dep" 2>&1 | grep -v "WARNING:" || true
+    done
+
+    # Build essential dependencies first
+    echo ""
+    echo "🔨 Building essential dependencies..."
+    for dep in lua liblua lucihttp rpcd cgi-io; do
+        echo "  Building $dep..."
+        make package/feeds/*/${dep}/compile V=s -j1 2>&1 | tail -5 || true
+    done
+
     # Verify feeds
     echo ""
     echo "🔍 Verifying feed installation..."
-    for feed in packages luci; do
+    for feed in packages luci secubox; do
         if [[ -d "feeds/$feed" ]]; then
             local feed_size=$(du -sh "feeds/$feed" 2>/dev/null | cut -f1)
             print_success "feeds/$feed exists ($feed_size)"
         else
-            print_error "feeds/$feed is missing!"
-            return 1
+            if [[ "$feed" == "secubox" ]]; then
+                print_warning "feeds/$feed is empty (will be populated)"
+            else
+                print_error "feeds/$feed is missing!"
+                return 1
+            fi
         fi
     done
 
@@ -468,57 +493,110 @@ LUCI_MK
     return 0
 }
 
-# Copy packages to SDK
+# Copy packages to SDK feed
 copy_packages() {
     local single_package="$1"
 
-    print_header "Copying Packages to SDK"
+    print_header "Copying Packages to SecuBox Feed"
+
+    cd "$SDK_DIR"
+
+    # Use the local feed directory (outside SDK)
+    local feed_dir="../local-feed"
+    mkdir -p "$feed_dir"
 
     if [[ -n "$single_package" ]]; then
         print_info "Copying single package: $single_package"
 
-        if [[ -d "../$single_package" && -f "../${single_package}/Makefile" ]]; then
+        if [[ -d "../../$single_package" && -f "../../${single_package}/Makefile" ]]; then
             echo "  📁 $single_package"
-            cp -r "../$single_package" "$SDK_DIR/package/"
+            cp -r "../../$single_package" "$feed_dir/"
+
+            # Fix Makefile include path for feed structure
+            sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "$feed_dir/$single_package/Makefile"
+            echo "    ✓ Fixed Makefile include path"
         else
             print_error "Package $single_package not found or missing Makefile"
+            cd - > /dev/null
             return 1
         fi
     else
         print_info "Copying all packages"
 
-        for pkg in ../luci-app-*/; do
+        for pkg in ../../luci-app-*/; do
             if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
                 local pkg_name=$(basename "$pkg")
                 echo "  📁 $pkg_name"
-                cp -r "$pkg" "$SDK_DIR/package/"
+                cp -r "$pkg" "$feed_dir/"
+
+                # Fix Makefile include path for feed structure
+                sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "$feed_dir/$pkg_name/Makefile"
+                echo "    ✓ Fixed Makefile include path"
             fi
         done
     fi
 
     echo ""
-    print_info "Packages in SDK:"
-    ls -d "$SDK_DIR/package/luci-app-"*/ 2>/dev/null || echo "None"
+    print_info "Packages in feed:"
+    ls -d "$feed_dir/luci-app-"*/ 2>/dev/null || echo "None"
 
-    print_success "Packages copied"
+    # Update the secubox feed
+    echo ""
+    echo "🔄 Updating SecuBox feed index..."
+    ./scripts/feeds update secubox
+
+    # Install packages from secubox feed
+    echo ""
+    echo "📦 Installing packages from SecuBox feed..."
+    if [[ -n "$single_package" ]]; then
+        echo "  Installing $single_package..."
+        ./scripts/feeds install "$single_package"
+    else
+        for pkg in "$feed_dir"/luci-app-*/; do
+            if [[ -d "$pkg" ]]; then
+                local pkg_name=$(basename "$pkg")
+                echo "  Installing $pkg_name..."
+                ./scripts/feeds install "$pkg_name" 2>&1 | grep -v "WARNING:" || true
+            fi
+        done
+    fi
+
+    cd - > /dev/null
+
+    print_success "Packages copied and installed to feed"
     return 0
 }
 
 # Configure packages
 configure_packages() {
+    local single_package="$1"
+
     print_header "Configuring Packages"
 
     cd "$SDK_DIR"
 
     echo "⚙️ Enabling packages..."
 
-    for pkg in package/luci-app-*/; do
-        if [[ -d "$pkg" ]]; then
-            local pkg_name=$(basename "$pkg")
-            echo "CONFIG_PACKAGE_${pkg_name}=m" >> .config
-            print_success "$pkg_name enabled"
+    if [[ -n "$single_package" ]]; then
+        # Enable only the specified package
+        if [[ -d "feeds/secubox/$single_package" ]]; then
+            echo "CONFIG_PACKAGE_${single_package}=m" >> .config
+            print_success "$single_package enabled"
+        else
+            print_error "Package $single_package not found in feed"
+            cd - > /dev/null
+            return 1
         fi
-    done
+    else
+        # Enable all SecuBox packages from feed
+        for pkg in feeds/secubox/luci-app-*/; do
+            if [[ -d "$pkg" ]]; then
+                local pkg_name=$(basename "$pkg")
+                echo "CONFIG_PACKAGE_${pkg_name}=m" >> .config
+                print_success "$pkg_name enabled"
+            fi
+        done
+    fi
 
     make defconfig
 
@@ -530,6 +608,8 @@ configure_packages() {
 
 # Build packages
 build_packages() {
+    local single_package="$1"
+
     print_header "Building Packages"
 
     cd "$SDK_DIR"
@@ -539,11 +619,24 @@ build_packages() {
     local built_list=""
     local failed_list=""
 
-    for pkg in package/luci-app-*/; do
-        [[ -d "$pkg" ]] || continue
+    # Determine which packages to build
+    local packages_to_build=()
+    if [[ -n "$single_package" ]]; then
+        if [[ -d "feeds/secubox/$single_package" ]]; then
+            packages_to_build=("$single_package")
+        else
+            print_error "Package $single_package not found in feed"
+            cd - > /dev/null
+            return 1
+        fi
+    else
+        for pkg in feeds/secubox/luci-app-*/; do
+            [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
+        done
+    fi
 
-        local pkg_name=$(basename "$pkg")
-
+    # Build packages
+    for pkg_name in "${packages_to_build[@]}"; do
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "📦 Building: $pkg_name"
@@ -551,12 +644,14 @@ build_packages() {
 
         # Show package contents for debugging
         echo "📁 Package contents:"
-        ls -la "$pkg"
+        ls -la "feeds/secubox/$pkg_name"
 
         # Build with timeout (10 minutes per package)
         local build_log="/tmp/build-${pkg_name}.log"
 
-        if timeout 600 make "package/${pkg_name}/compile" V=s -j"$(nproc)" > "$build_log" 2>&1; then
+        # Build from feed (skip dependency checks for architecture-independent packages)
+        # These packages are just JavaScript/shell scripts - no compilation needed
+        if timeout 600 make "package/feeds/secubox/${pkg_name}/compile" V=s -j1 NO_DEPS=1 > "$build_log" 2>&1; then
             # Check if .ipk was created
             local ipk_file=$(find bin -name "${pkg_name}*.ipk" 2>/dev/null | head -1)
 
@@ -663,8 +758,8 @@ run_build() {
     download_sdk || return 1
     setup_sdk_feeds || return 1
     copy_packages "$single_package" || return 1
-    configure_packages || return 1
-    build_packages || return 1
+    configure_packages "$single_package" || return 1
+    build_packages "$single_package" || return 1
     collect_artifacts || return 1
 
     print_header "Build Complete!"

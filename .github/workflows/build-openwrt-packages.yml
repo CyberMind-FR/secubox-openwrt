@@ -374,6 +374,11 @@ jobs:
               # Update version
               sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "sdk/package/${PACKAGE_NAME}/Makefile"
               sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "sdk/package/${PACKAGE_NAME}/Makefile"
+
+              # Fix Makefile include path for SDK environment
+              # Change from ../../luci.mk to $(TOPDIR)/feeds/luci/luci.mk
+              sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "sdk/package/${PACKAGE_NAME}/Makefile"
+              echo "    ✓ Fixed Makefile include path"
             else
               echo "❌ Package $PACKAGE_NAME not found or missing Makefile"
               exit 1
@@ -390,6 +395,11 @@ jobs:
                 # Update version
                 sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "sdk/package/${PKG_NAME}/Makefile"
                 sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "sdk/package/${PKG_NAME}/Makefile"
+
+                # Fix Makefile include path for SDK environment
+                # Change from ../../luci.mk to $(TOPDIR)/feeds/luci/luci.mk
+                sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "sdk/package/${PKG_NAME}/Makefile"
+                echo "    ✓ Fixed Makefile include path"
               fi
             done
           fi

@@ -198,12 +198,20 @@ jobs:
               PKG_NAME=$(basename "$pkg")
               echo "  ✅ $PKG_NAME"
               cp -r "$pkg" openwrt/package/secubox/
+
+              # Fix Makefile include path for direct package integration
+              # Change from ../../luci.mk to $(TOPDIR)/feeds/luci/luci.mk
+              if [[ -f "openwrt/package/secubox/$PKG_NAME/Makefile" ]]; then
+                sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "openwrt/package/secubox/$PKG_NAME/Makefile"
+                echo "    ✓ Fixed Makefile include path"
+              fi
+
               PKG_COUNT=$((PKG_COUNT + 1))
             fi
           done
 
           echo ""
-          echo "📊 Total: $PKG_COUNT SecuBox packages copied"
+          echo "📊 Total: $PKG_COUNT SecuBox packages copied and fixed"
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
