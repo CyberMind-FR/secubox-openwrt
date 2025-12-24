@@ -455,6 +455,9 @@ jobs:
 
           START_TIME=$(date +%s)
 
+          # Ensure staging directories exist to prevent opkg lock file errors
+          mkdir -p build_dir/target-*/root*/tmp 2>/dev/null || true
+
           # Build with explicit profile specification to ensure images are generated
           if make -j$(nproc) PROFILE="${{ matrix.profile }}" V=s 2>&1 | tee build.log; then
             END_TIME=$(date +%s)
@@ -482,6 +485,9 @@ jobs:
             echo "This is often caused by race conditions in parallel builds."
             echo "Retrying with -j1 (single thread) for better stability..."
             echo ""
+
+            # Ensure staging directories exist before retry
+            mkdir -p build_dir/target-*/root*/tmp 2>/dev/null || true
 
             if make -j1 PROFILE="${{ matrix.profile }}" V=s 2>&1 | tee build-retry.log; then
               END_TIME=$(date +%s)

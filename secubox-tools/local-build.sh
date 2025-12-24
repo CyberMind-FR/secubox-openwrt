@@ -1068,6 +1068,11 @@ build_firmware_image() {
     print_header "Compiling Firmware (This may take 1-2 hours)"
     echo ""
 
+    # Create necessary directories to avoid opkg lock file errors
+    # Find all root directories and ensure tmp subdirectories exist
+    find build_dir -type d -name "root.orig-*" -exec mkdir -p {}/tmp \; 2>/dev/null || true
+    find build_dir -type d -name "root-*" -exec mkdir -p {}/tmp \; 2>/dev/null || true
+
     # Build with explicit PROFILE
     if make -j$(nproc) PROFILE="$FW_PROFILE" V=s 2>&1 | tee build.log; then
         local end_time=$(date +%s)
@@ -1078,6 +1083,11 @@ build_firmware_image() {
         print_success "Build completed in ${minutes}m ${seconds}s"
     else
         print_error "Parallel build failed, retrying single-threaded..."
+
+        # Ensure staging directories exist before retry
+        find build_dir -type d -name "root.orig-*" -exec mkdir -p {}/tmp \; 2>/dev/null || true
+        find build_dir -type d -name "root-*" -exec mkdir -p {}/tmp \; 2>/dev/null || true
+
         if make -j1 PROFILE="$FW_PROFILE" V=s 2>&1 | tee build-retry.log; then
             local end_time=$(date +%s)
             local duration=$((end_time - start_time))

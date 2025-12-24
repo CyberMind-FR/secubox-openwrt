@@ -2,3 +2,8 @@
 secubox-tools/sdk/
 secubox-tools/cache/
 secubox-tools/build/
+secubox-tools/openwrt/
+secubox-tools/local-feed/
+
+# IDE settings
+.vscode/
