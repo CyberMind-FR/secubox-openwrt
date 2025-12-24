@@ -1,0 +1,4 @@
+# Build artifacts from local-build.sh
+secubox-tools/sdk/
+secubox-tools/cache/
+secubox-tools/build/
