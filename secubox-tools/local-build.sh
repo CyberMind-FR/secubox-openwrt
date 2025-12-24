@@ -1107,10 +1107,13 @@ collect_firmware_artifacts() {
     # Find and copy firmware images
     local img_count=0
     if [[ -d "$target_dir" ]]; then
-        echo "📂 Files in target directory:"
-        ls -lh "$target_dir" | grep -v "^total" | grep -v "^d"
+        echo "🔍 Target directory: $target_dir"
+        echo ""
+        echo "📂 All files in target directory:"
+        ls -lh "$target_dir" 2>/dev/null | grep -v "^total" || echo "  (empty)"
         echo ""
 
+        echo "📦 Copying firmware images..."
         while IFS= read -r file; do
             case "$(basename "$file")" in
                 *.ipk|*.manifest|*.json|sha256sums|*.buildinfo|packages)
@@ -1123,6 +1126,61 @@ collect_firmware_artifacts() {
                     ;;
             esac
         done < <(find "$target_dir" -maxdepth 1 -type f 2>/dev/null)
+    else
+        print_error "Target directory not found: $target_dir"
+    fi
+
+    if [[ $img_count -eq 0 ]]; then
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        print_warning "No firmware images found!"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+
+        # Diagnostic information
+        echo "🔍 Diagnostic Information:"
+        echo ""
+
+        if [[ -d "$OPENWRT_DIR/bin/targets" ]]; then
+            echo "📂 Available targets:"
+            find "$OPENWRT_DIR/bin/targets" -type d -mindepth 2 -maxdepth 2 2>/dev/null | sed 's|.*/bin/targets/||' || echo "  (none)"
+            echo ""
+        fi
+
+        if [[ -f "$OPENWRT_DIR/build.log" ]]; then
+            echo "📋 Checking build log for errors..."
+            if grep -i "error\|failed\|cannot" "$OPENWRT_DIR/build.log" | tail -10 | grep -v "warning" > /tmp/fw-errors.txt 2>/dev/null && [[ -s /tmp/fw-errors.txt ]]; then
+                echo "Recent errors found:"
+                cat /tmp/fw-errors.txt
+                rm -f /tmp/fw-errors.txt
+            else
+                echo "  No obvious errors in build log"
+            fi
+            echo ""
+        fi
+
+        if [[ -d "$target_dir" ]]; then
+            local all_files=$(find "$target_dir" -type f 2>/dev/null | wc -l)
+            echo "🎯 Target directory analysis:"
+            echo "  Total files: $all_files"
+            if [[ $all_files -gt 0 ]]; then
+                echo "  File types:"
+                find "$target_dir" -type f 2>/dev/null -exec basename {} \; | sed 's/.*\./  ./' | sort -u
+            fi
+        fi
+
+        echo ""
+        print_warning "This usually means:"
+        echo "  1. Device profile was not properly selected"
+        echo "  2. Build completed but only packages were built, not images"
+        echo "  3. Device profile name doesn't match OpenWrt $OPENWRT_VERSION"
+        echo ""
+        print_info "To debug:"
+        echo "  1. Check: $OPENWRT_DIR/.config for CONFIG_TARGET settings"
+        echo "  2. Review: $OPENWRT_DIR/build.log for errors"
+        echo "  3. Verify profile exists: find $OPENWRT_DIR/target/$FW_TARGET/$FW_SUBTARGET -name '*.mk'"
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     fi
 
     # Copy packages
@@ -1161,6 +1219,71 @@ EOF
     echo ""
     print_info "Contents:"
     ls -lh "$output_dir"
+
+    return 0
+}
+
+# Debug firmware configuration
+debug_firmware_build() {
+    local device="$1"
+
+    if [[ -z "$device" ]]; then
+        print_error "Device not specified"
+        print_info "Usage: $0 debug-firmware <device>"
+        print_info "Available devices: ${!DEVICE_PROFILES[*]}"
+        return 1
+    fi
+
+    # Parse device profile
+    parse_device_profile "$device" || return 1
+
+    print_header "Firmware Build Debug Information"
+
+    echo "Device Configuration:"
+    echo "  Device: $FW_DEVICE"
+    echo "  Description: $FW_DESCRIPTION"
+    echo "  Target: $FW_TARGET"
+    echo "  Subtarget: $FW_SUBTARGET"
+    echo "  Profile: $FW_PROFILE"
+    echo ""
+
+    if [[ -d "$OPENWRT_DIR" ]]; then
+        print_info "OpenWrt source exists at: $OPENWRT_DIR"
+
+        if [[ -f "$OPENWRT_DIR/.config" ]]; then
+            echo ""
+            echo "Current .config settings:"
+            grep "^CONFIG_TARGET_" "$OPENWRT_DIR/.config" | head -20
+
+            echo ""
+            echo "Checking device profile..."
+            if grep -q "CONFIG_TARGET_${FW_TARGET}_${FW_SUBTARGET}_DEVICE_${FW_PROFILE}=y" "$OPENWRT_DIR/.config"; then
+                print_success "Device profile is configured"
+            else
+                print_error "Device profile NOT configured!"
+            fi
+
+            echo ""
+            echo "Available device profiles for $FW_TARGET/$FW_SUBTARGET:"
+            find "$OPENWRT_DIR/target/$FW_TARGET/$FW_SUBTARGET" -name "*.mk" 2>/dev/null | \
+                xargs grep -l "DEVICE_NAME" 2>/dev/null | head -10
+        else
+            print_warning "No .config file found - run build-firmware first"
+        fi
+
+        echo ""
+        if [[ -d "$OPENWRT_DIR/bin/targets/$FW_TARGET/$FW_SUBTARGET" ]]; then
+            echo "Build output directory exists:"
+            echo "  Path: $OPENWRT_DIR/bin/targets/$FW_TARGET/$FW_SUBTARGET"
+            echo "  Files:"
+            ls -lh "$OPENWRT_DIR/bin/targets/$FW_TARGET/$FW_SUBTARGET" 2>/dev/null | grep -v "^total" | head -20
+        else
+            print_warning "Build output directory doesn't exist yet"
+        fi
+    else
+        print_warning "OpenWrt source not downloaded yet"
+        print_info "Run: $0 build-firmware $device"
+    fi
 
     return 0
 }
@@ -1213,6 +1336,7 @@ COMMANDS:
     build <package>             Build single package
     build --arch <arch>         Build for specific architecture
     build-firmware <device>     Build full firmware image for device
+    debug-firmware <device>     Debug firmware build (check config without building)
     full                        Run validation then build
     clean                       Clean build directories
     clean-all                   Clean all build directories including OpenWrt source
@@ -1251,6 +1375,9 @@ EXAMPLES:
 
     # Build firmware image for ESPRESSObin V7
     $0 build-firmware espressobin-v7
+
+    # Debug firmware build configuration
+    $0 debug-firmware mochabin
 
     # Full validation and build
     $0 full
@@ -1319,6 +1446,17 @@ main() {
                 exit 1
             fi
             run_firmware_build "$device"
+            ;;
+
+        debug-firmware)
+            local device="$1"
+            if [[ -z "$device" ]]; then
+                print_error "Device not specified"
+                print_info "Usage: $0 debug-firmware <device>"
+                print_info "Available devices: ${!DEVICE_PROFILES[*]}"
+                exit 1
+            fi
+            debug_firmware_build "$device"
             ;;
 
         full)
