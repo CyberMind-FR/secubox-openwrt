@@ -1,144 +1,97 @@
 'use strict';
 'require view';
-'require dom';
-'require poll';
 'require ui';
+'require system-hub/api as API';
 
-var api = L.require('system-hub.api');
-
-return view.extend({
+return L.view.extend({
 	load: function() {
-		return api.callGetLogs(100, null, null);
+		return API.getLogs(100, '');
 	},
 
-	render: function(data) {
-		var logs = data.logs || [];
-		var self = this;
-
-		var view = E('div', { 'class': 'system-hub-dashboard' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
-			
-			E('div', { 'class': 'sh-card' }, [
-				E('div', { 'class': 'sh-card-header' }, [
-					E('div', { 'class': 'sh-card-title' }, [ E('span', { 'class': 'sh-card-title-icon' }, '📋'), 'Logs Unifiés' ]),
-					E('div', { 'class': 'sh-card-badge' }, 'Tous composants')
-				]),
-				E('div', { 'class': 'sh-card-body' }, [
-					// Filters
-					E('div', { 'style': 'display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;' }, [
-						E('select', { 'class': 'sh-select', 'id': 'filter-source', 'style': 'width: auto; min-width: 120px;', 'change': L.bind(this.filterLogs, this) }, [
-							E('option', { 'value': '' }, 'Toutes sources'),
-							E('option', { 'value': 'system' }, 'system'),
-							E('option', { 'value': 'crowdsec' }, 'crowdsec'),
-							E('option', { 'value': 'netifyd' }, 'netifyd'),
-							E('option', { 'value': 'client-guardian' }, 'client-guardian'),
-							E('option', { 'value': 'system-hub' }, 'system-hub')
-						]),
-						E('select', { 'class': 'sh-select', 'id': 'filter-level', 'style': 'width: auto; min-width: 100px;', 'change': L.bind(this.filterLogs, this) }, [
-							E('option', { 'value': '' }, 'Tous niveaux'),
-							E('option', { 'value': 'info' }, '📝 info'),
-							E('option', { 'value': 'warning' }, '⚠️ warning'),
-							E('option', { 'value': 'error' }, '🚨 error')
-						]),
-						E('input', { 
-							'type': 'text', 
-							'class': 'sh-input', 
-							'id': 'filter-search',
-							'placeholder': 'Rechercher...',
-							'style': 'flex: 1; min-width: 200px;',
-							'keyup': L.bind(this.filterLogs, this)
-						}),
-						E('button', { 'class': 'sh-btn', 'click': L.bind(this.reloadLogs, this) }, '🔄 Rafraîchir'),
-						E('button', { 'class': 'sh-btn', 'click': L.bind(this.exportLogs, this) }, '📥 Exporter')
-					]),
-					
-					// Logs
-					E('div', { 'class': 'sh-log-list', 'id': 'logs-container' }, 
-						this.renderLogs(logs)
-					)
-				])
-			])
+	render: function(logs) {
+		var v = E('div', { 'class': 'cbi-map' }, [
+			E('h2', {}, _('System Logs')),
+			E('div', { 'class': 'cbi-map-descr' }, _('View and filter system logs'))
 		]);
 
-		return view;
-	},
+		var section = E('div', { 'class': 'cbi-section' });
 
-	renderLogs: function(logs) {
-		if (!logs || logs.length === 0) {
-			return E('div', { 'style': 'text-align: center; padding: 40px; color: #707080;' }, [
-				E('div', { 'style': 'font-size: 40px; margin-bottom: 12px;' }, '📋'),
-				E('div', {}, 'Aucun log disponible')
-			]);
-		}
+		// Filter controls
+		var controlsDiv = E('div', { 'style': 'margin-bottom: 15px; display: flex; gap: 10px; align-items: center;' });
 
-		return logs.map(function(log) {
-			return E('div', { 'class': 'sh-log-item', 'data-source': log.source, 'data-level': log.level }, [
-				E('div', { 'class': 'sh-log-time' }, log.timestamp || 'N/A'),
-				E('div', { 'class': 'sh-log-source' }, log.source || 'system'),
-				E('div', { 'class': 'sh-log-level ' + (log.level || 'info') }, log.level || 'info'),
-				E('div', { 'class': 'sh-log-message' }, log.message)
-			]);
+		var filterInput = E('input', {
+			'type': 'text',
+			'class': 'cbi-input-text',
+			'placeholder': _('Filter logs...'),
+			'style': 'flex: 1;'
 		});
-	},
 
-	filterLogs: function() {
-		var source = document.getElementById('filter-source').value;
-		var level = document.getElementById('filter-level').value;
-		var search = document.getElementById('filter-search').value.toLowerCase();
-		var items = document.querySelectorAll('.sh-log-item');
-
-		items.forEach(function(item) {
-			var itemSource = item.dataset.source;
-			var itemLevel = item.dataset.level;
-			var itemText = item.textContent.toLowerCase();
-			var show = true;
-
-			if (source && itemSource !== source) show = false;
-			if (level && itemLevel !== level) show = false;
-			if (search && !itemText.includes(search)) show = false;
-
-			item.style.display = show ? '' : 'none';
-		});
-	},
-
-	reloadLogs: function() {
-		var self = this;
-		ui.showModal(_('Chargement'), [
-			E('p', {}, 'Chargement des logs...'),
-			E('div', { 'class': 'spinning' })
+		var linesSelect = E('select', { 'class': 'cbi-input-select' }, [
+			E('option', { 'value': '50' }, '50 lines'),
+			E('option', { 'value': '100', 'selected': '' }, '100 lines'),
+			E('option', { 'value': '200' }, '200 lines'),
+			E('option', { 'value': '500' }, '500 lines'),
+			E('option', { 'value': '1000' }, '1000 lines')
 		]);
 
-		api.callGetLogs(100, null, null).then(function(data) {
-			var container = document.getElementById('logs-container');
-			dom.content(container, self.renderLogs(data.logs || []));
-			ui.hideModal();
-			self.filterLogs();
-		});
-	},
+		var refreshBtn = E('button', {
+			'class': 'cbi-button cbi-button-action',
+			'click': L.bind(function() {
+				this.refreshLogs(filterInput.value, parseInt(linesSelect.value));
+			}, this)
+		}, _('Refresh'));
 
-	exportLogs: function() {
-		var items = document.querySelectorAll('.sh-log-item');
-		var csv = 'Timestamp,Source,Level,Message\n';
-
-		items.forEach(function(item) {
-			if (item.style.display !== 'none') {
-				var time = item.querySelector('.sh-log-time').textContent;
-				var source = item.querySelector('.sh-log-source').textContent;
-				var level = item.querySelector('.sh-log-level').textContent;
-				var message = item.querySelector('.sh-log-message').textContent.replace(/"/g, '""');
-				csv += '"' + time + '","' + source + '","' + level + '","' + message + '"\n';
+		var clearBtn = E('button', {
+			'class': 'cbi-button cbi-button-neutral',
+			'click': function() {
+				filterInput.value = '';
 			}
+		}, _('Clear Filter'));
+
+		controlsDiv.appendChild(filterInput);
+		controlsDiv.appendChild(linesSelect);
+		controlsDiv.appendChild(refreshBtn);
+		controlsDiv.appendChild(clearBtn);
+
+		section.appendChild(controlsDiv);
+
+		// Log display
+		var logContainer = E('div', { 'id': 'log-container' });
+		section.appendChild(logContainer);
+
+		// Initial render
+		this.renderLogs(logContainer, logs);
+
+		v.appendChild(section);
+
+		return v;
+	},
+
+	renderLogs: function(container, logs) {
+		var logsText = logs.length > 0 ? logs.join('\n') : _('No logs available');
+
+		L.dom.content(container, [
+			E('pre', {
+				'style': 'background: #000; color: #0f0; padding: 15px; overflow: auto; max-height: 600px; font-size: 11px; font-family: monospace; border-radius: 5px;'
+			}, logsText)
+		]);
+	},
+
+	refreshLogs: function(filter, lines) {
+		ui.showModal(_('Loading Logs'), [
+			E('p', { 'class': 'spinning' }, _('Fetching logs...'))
+		]);
+
+		API.getLogs(lines, filter).then(L.bind(function(logs) {
+			ui.hideModal();
+			var container = document.getElementById('log-container');
+			if (container) {
+				this.renderLogs(container, logs);
+			}
+		}, this)).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Failed to load logs: ') + err.message), 'error');
 		});
-
-		var blob = new Blob([csv], { type: 'text/csv' });
-		var url = URL.createObjectURL(blob);
-		var a = document.createElement('a');
-		a.href = url;
-		a.download = 'system-hub-logs-' + new Date().toISOString().slice(0, 10) + '.csv';
-		a.click();
-		URL.revokeObjectURL(url);
-
-		ui.addNotification(null, E('p', {}, '✅ Logs exportés!'), 'success');
 	},
 
 	handleSaveApply: null,

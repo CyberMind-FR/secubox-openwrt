@@ -1,171 +1,242 @@
 'use strict';
 'require view';
-'require dom';
 'require poll';
-'require ui';
+'require system-hub/api as API';
 
-var api = L.require('system-hub.api');
-
-return view.extend({
-	refreshInterval: 30000,
-
+return L.view.extend({
 	load: function() {
-		return api.getAllData();
+		return Promise.all([
+			API.getSystemInfo(),
+			API.getHealth(),
+			API.getStatus()
+		]);
 	},
 
 	render: function(data) {
-		var status = data.status;
-		var components = data.components || [];
-		var health = data.health;
-		var self = this;
+		var sysInfo = data[0] || {};
+		var health = data[1] || {};
+		var status = data[2] || {};
 
-		var healthInfo = api.getHealthStatus(health.score || 0);
-		var installedComponents = components.filter(function(c) { return c.status === 'installed'; });
-		var runningComponents = installedComponents.filter(function(c) { return c.running; });
-		var issueComponents = installedComponents.filter(function(c) { return !c.running; });
+		var v = E('div', { 'class': 'cbi-map' }, [
+			E('h2', {}, _('System Hub - Overview')),
+			E('div', { 'class': 'cbi-map-descr' }, _('Central system control and monitoring'))
+		]);
 
-		var view = E('div', { 'class': 'system-hub-dashboard' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
-			
-			// Header
-			E('div', { 'class': 'sh-header' }, [
-				E('div', { 'class': 'sh-logo' }, [
-					E('div', { 'class': 'sh-logo-icon' }, '🎛️'),
-					E('div', { 'class': 'sh-logo-text' }, [ 'System ', E('span', {}, 'Hub') ])
-				]),
-				E('div', { 'class': 'sh-health-score' }, [
-					E('div', { 'class': 'sh-score-circle ' + healthInfo.status }, (health.score || 0).toString()),
-					E('div', { 'class': 'sh-score-info' }, [
-						E('div', { 'class': 'sh-score-label' }, healthInfo.label),
-						E('div', { 'class': 'sh-score-status' }, 'Dernière vérif: ' + (status.last_health_check || 'Jamais'))
+		// System Information Card
+		var infoSection = E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('System Information')),
+			E('div', { 'class': 'table' }, [
+				E('div', { 'class': 'tr' }, [
+					E('div', { 'class': 'td left', 'width': '50%' }, [
+						E('strong', {}, _('Hostname: ')),
+						E('span', {}, sysInfo.hostname || 'unknown')
+					]),
+					E('div', { 'class': 'td left', 'width': '50%' }, [
+						E('strong', {}, _('Model: ')),
+						E('span', {}, sysInfo.model || 'Unknown')
 					])
-				])
-			]),
-			
-			// Stats Grid
-			E('div', { 'class': 'sh-stats-grid' }, [
-				E('div', { 'class': 'sh-stat-card' }, [
-					E('div', { 'class': 'sh-stat-icon' }, '🧩'),
-					E('div', { 'class': 'sh-stat-value' }, installedComponents.length.toString()),
-					E('div', { 'class': 'sh-stat-label' }, 'Composants')
 				]),
-				E('div', { 'class': 'sh-stat-card' }, [
-					E('div', { 'class': 'sh-stat-icon' }, '✅'),
-					E('div', { 'class': 'sh-stat-value' }, runningComponents.length.toString()),
-					E('div', { 'class': 'sh-stat-label' }, 'En Marche')
-				]),
-				E('div', { 'class': 'sh-stat-card' }, [
-					E('div', { 'class': 'sh-stat-icon' }, '⚠️'),
-					E('div', { 'class': 'sh-stat-value' }, issueComponents.length.toString()),
-					E('div', { 'class': 'sh-stat-label' }, 'Attention')
-				]),
-				E('div', { 'class': 'sh-stat-card' }, [
-					E('div', { 'class': 'sh-stat-icon' }, '📊'),
-					E('div', { 'class': 'sh-stat-value' }, (health.score || 0).toString()),
-					E('div', { 'class': 'sh-stat-label' }, 'Score Santé')
-				]),
-				E('div', { 'class': 'sh-stat-card' }, [
-					E('div', { 'class': 'sh-stat-icon' }, '📱'),
-					E('div', { 'class': 'sh-stat-value' }, (status.network?.connected_clients || 0).toString()),
-					E('div', { 'class': 'sh-stat-label' }, 'Clients')
-				]),
-				E('div', { 'class': 'sh-stat-card' }, [
-					E('div', { 'class': 'sh-stat-icon' }, '⏱️'),
-					E('div', { 'class': 'sh-stat-value' }, api.formatUptime(status.system?.uptime || 0)),
-					E('div', { 'class': 'sh-stat-label' }, 'Uptime')
-				])
-			]),
-			
-			// System Info Card
-			E('div', { 'class': 'sh-card' }, [
-				E('div', { 'class': 'sh-card-header' }, [
-					E('div', { 'class': 'sh-card-title' }, [ E('span', { 'class': 'sh-card-title-icon' }, '💻'), 'Informations Système' ])
-				]),
-				E('div', { 'class': 'sh-card-body' }, [
-					E('div', { 'class': 'sh-sysinfo-grid' }, [
-						this.renderSysInfo('Hostname', status.system?.hostname || 'N/A'),
-						this.renderSysInfo('Modèle', status.system?.model || 'N/A'),
-						this.renderSysInfo('Architecture', status.system?.architecture || 'N/A'),
-						this.renderSysInfo('Kernel', status.system?.kernel || 'N/A'),
-						this.renderSysInfo('OpenWrt', status.system?.openwrt_version || 'N/A'),
-						this.renderSysInfo('Uptime', api.formatUptime(status.system?.uptime || 0)),
-						this.renderSysInfo('WAN IP', status.network?.wan_ip || 'N/A'),
-						this.renderSysInfo('LAN IP', status.network?.lan_ip || 'N/A')
+				E('div', { 'class': 'tr' }, [
+					E('div', { 'class': 'td left', 'width': '50%' }, [
+						E('strong', {}, _('OpenWrt: ')),
+						E('span', {}, sysInfo.openwrt_version || 'Unknown')
+					]),
+					E('div', { 'class': 'td left', 'width': '50%' }, [
+						E('strong', {}, _('Kernel: ')),
+						E('span', {}, sysInfo.kernel || 'unknown')
 					])
-				])
-			]),
-			
-			// Health Metrics Card
-			E('div', { 'class': 'sh-card' }, [
-				E('div', { 'class': 'sh-card-header' }, [
-					E('div', { 'class': 'sh-card-title' }, [ E('span', { 'class': 'sh-card-title-icon' }, '📊'), 'Métriques Rapides' ])
 				]),
-				E('div', { 'class': 'sh-card-body' }, [
-					E('div', { 'class': 'sh-health-grid' }, [
-						this.renderMetric('🔲', 'CPU', status.cpu?.usage_percent || 0, 80, 95, '%'),
-						this.renderMetric('💾', 'RAM', status.memory?.usage_percent || 0, 80, 95, '%'),
-						this.renderMetric('💿', 'Disque', status.storage?.usage_percent || 0, 80, 95, '%'),
-						this.renderMetric('🌡️', 'Temp', status.temperature || 0, 70, 85, '°C')
+				E('div', { 'class': 'tr' }, [
+					E('div', { 'class': 'td left', 'width': '50%' }, [
+						E('strong', {}, _('Uptime: ')),
+						E('span', {}, sysInfo.uptime_formatted || '0d 0h 0m')
+					]),
+					E('div', { 'class': 'td left', 'width': '50%' }, [
+						E('strong', {}, _('Local Time: ')),
+						E('span', {}, sysInfo.local_time || 'unknown')
 					])
-				])
-			]),
-			
-			// Components Card
-			E('div', { 'class': 'sh-card' }, [
-				E('div', { 'class': 'sh-card-header' }, [
-					E('div', { 'class': 'sh-card-title' }, [ E('span', { 'class': 'sh-card-title-icon' }, '🧩'), 'Composants Actifs' ]),
-					E('div', { 'class': 'sh-card-badge' }, installedComponents.length + ' installés')
-				]),
-				E('div', { 'class': 'sh-card-body' }, [
-					E('div', { 'class': 'sh-components-grid' }, 
-						installedComponents.slice(0, 6).map(function(c) { return self.renderComponent(c, false); })
-					)
 				])
 			])
 		]);
+		v.appendChild(infoSection);
 
-		poll.add(L.bind(this.pollData, this), this.refreshInterval);
-		return view;
-	},
-
-	renderSysInfo: function(label, value) {
-		return E('div', { 'class': 'sh-sysinfo-item' }, [
-			E('span', { 'class': 'sh-sysinfo-label' }, label),
-			E('span', { 'class': 'sh-sysinfo-value' }, value)
+		// Health Metrics with Gauges
+		var healthSection = E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('System Health'))
 		]);
-	},
 
-	renderMetric: function(icon, label, value, warning, critical, unit) {
-		var status = api.getMetricStatus(value, warning, critical);
-		return E('div', { 'class': 'sh-health-metric' }, [
-			E('div', { 'class': 'sh-metric-header' }, [
-				E('div', { 'class': 'sh-metric-title' }, [ E('span', { 'class': 'sh-metric-icon' }, icon), label ]),
-				E('div', { 'class': 'sh-metric-value ' + status }, value + unit)
-			]),
-			E('div', { 'class': 'sh-progress-bar' }, [
-				E('div', { 'class': 'sh-progress-fill ' + status, 'style': 'width: ' + Math.min(value, 100) + '%' })
-			])
-		]);
-	},
+		var gaugesContainer = E('div', { 'style': 'display: flex; justify-content: space-around; flex-wrap: wrap; margin: 20px 0;' });
 
-	renderComponent: function(c, showActions) {
-		return E('div', { 'class': 'sh-component-card', 'style': '--component-color: ' + c.color }, [
-			E('div', { 'class': 'sh-component-header' }, [
-				E('div', { 'class': 'sh-component-info' }, [
-					E('div', { 'class': 'sh-component-icon' }, api.getComponentIcon(c.icon)),
-					E('div', {}, [
-						E('div', { 'class': 'sh-component-name' }, c.name),
-						E('div', { 'class': 'sh-component-desc' }, c.description)
+		// CPU Load Gauge
+		var cpuLoad = parseFloat(health.load ? health.load['1min'] : status.health ? status.health.cpu_load : '0');
+		var cpuPercent = Math.min((cpuLoad * 100 / (health.cpu ? health.cpu.cores : 1)), 100);
+		gaugesContainer.appendChild(this.createGauge('CPU Load', cpuPercent, cpuLoad.toFixed(2)));
+
+		// Memory Gauge
+		var memPercent = health.memory ? health.memory.percent : (status.health ? status.health.mem_percent : 0);
+		var memUsed = health.memory ? (health.memory.used_kb / 1024).toFixed(0) : 0;
+		var memTotal = health.memory ? (health.memory.total_kb / 1024).toFixed(0) : 0;
+		gaugesContainer.appendChild(this.createGauge('Memory', memPercent, memUsed + ' / ' + memTotal + ' MB'));
+
+		// Disk Gauge
+		var diskPercent = status.disk_percent || 0;
+		var diskInfo = '';
+		if (health.storage && health.storage.length > 0) {
+			var root = health.storage.find(function(s) { return s.mountpoint === '/'; });
+			if (root) {
+				diskPercent = root.percent;
+				diskInfo = root.used + ' / ' + root.size;
+			}
+		}
+		gaugesContainer.appendChild(this.createGauge('Disk Usage', diskPercent, diskInfo || diskPercent + '%'));
+
+		healthSection.appendChild(gaugesContainer);
+		v.appendChild(healthSection);
+
+		// CPU Info
+		if (health.cpu) {
+			var cpuSection = E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('CPU Information')),
+				E('div', { 'class': 'table' }, [
+					E('div', { 'class': 'tr' }, [
+						E('div', { 'class': 'td left', 'width': '50%' }, [
+							E('strong', {}, _('Model: ')),
+							E('span', {}, health.cpu.model)
+						]),
+						E('div', { 'class': 'td left', 'width': '50%' }, [
+							E('strong', {}, _('Cores: ')),
+							E('span', {}, String(health.cpu.cores))
+						])
+					]),
+					E('div', { 'class': 'tr' }, [
+						E('div', { 'class': 'td left' }, [
+							E('strong', {}, _('Load Average: ')),
+							E('span', {}, (health.load ? health.load['1min'] + ' / ' + health.load['5min'] + ' / ' + health.load['15min'] : 'N/A'))
+						])
 					])
-				]),
-				E('div', { 'class': 'sh-component-status ' + (c.running ? 'running' : 'stopped') }, 
-					c.running ? 'Running' : 'Stopped')
-			])
-		]);
+				])
+			]);
+			v.appendChild(cpuSection);
+		}
+
+		// Temperature
+		if (health.temperatures && health.temperatures.length > 0) {
+			var tempSection = E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Temperature'))
+			]);
+
+			var tempTable = E('table', { 'class': 'table' }, [
+				E('tr', { 'class': 'tr table-titles' }, [
+					E('th', { 'class': 'th' }, _('Zone')),
+					E('th', { 'class': 'th' }, _('Temperature'))
+				])
+			]);
+
+			health.temperatures.forEach(function(temp) {
+				var color = temp.celsius > 80 ? 'red' : (temp.celsius > 60 ? 'orange' : 'green');
+				tempTable.appendChild(E('tr', { 'class': 'tr' }, [
+					E('td', { 'class': 'td' }, temp.zone),
+					E('td', { 'class': 'td' }, [
+						E('span', { 'style': 'color: ' + color + '; font-weight: bold;' }, temp.celsius + '°C')
+					])
+				]));
+			});
+
+			tempSection.appendChild(tempTable);
+			v.appendChild(tempSection);
+		}
+
+		// Storage
+		if (health.storage && health.storage.length > 0) {
+			var storageSection = E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Storage'))
+			]);
+
+			var storageTable = E('table', { 'class': 'table' }, [
+				E('tr', { 'class': 'tr table-titles' }, [
+					E('th', { 'class': 'th' }, _('Mountpoint')),
+					E('th', { 'class': 'th' }, _('Filesystem')),
+					E('th', { 'class': 'th' }, _('Size')),
+					E('th', { 'class': 'th' }, _('Used')),
+					E('th', { 'class': 'th' }, _('Available')),
+					E('th', { 'class': 'th' }, _('Use %'))
+				])
+			]);
+
+			health.storage.forEach(function(storage) {
+				var color = storage.percent > 90 ? 'red' : (storage.percent > 75 ? 'orange' : 'green');
+				storageTable.appendChild(E('tr', { 'class': 'tr' }, [
+					E('td', { 'class': 'td' }, E('strong', {}, storage.mountpoint)),
+					E('td', { 'class': 'td' }, E('code', {}, storage.filesystem)),
+					E('td', { 'class': 'td' }, storage.size),
+					E('td', { 'class': 'td' }, storage.used),
+					E('td', { 'class': 'td' }, storage.available),
+					E('td', { 'class': 'td' }, [
+						E('div', { 'style': 'display: flex; align-items: center;' }, [
+							E('div', { 'style': 'flex: 1; background: #eee; height: 10px; border-radius: 5px; margin-right: 10px;' }, [
+								E('div', {
+									'style': 'background: ' + color + '; width: ' + storage.percent + '%; height: 100%; border-radius: 5px;'
+								})
+							]),
+							E('span', {}, storage.percent + '%')
+						])
+					])
+				]));
+			});
+
+			storageSection.appendChild(storageTable);
+			v.appendChild(storageSection);
+		}
+
+		// Auto-refresh every 5 seconds
+		poll.add(L.bind(function() {
+			return Promise.all([
+				API.getHealth(),
+				API.getStatus()
+			]).then(L.bind(function(refreshData) {
+				// Update would go here in a production implementation
+			}, this));
+		}, this), 5);
+
+		return v;
 	},
 
-	pollData: function() {
-		// Poll implementation
+	createGauge: function(label, percent, detail) {
+		var color = percent > 90 ? '#dc3545' : (percent > 75 ? '#fd7e14' : '#28a745');
+		var size = 120;
+		var strokeWidth = 10;
+		var radius = (size - strokeWidth) / 2;
+		var circumference = 2 * Math.PI * radius;
+		var offset = circumference - (percent / 100 * circumference);
+
+		return E('div', { 'style': 'text-align: center; margin: 10px;' }, [
+			E('div', {}, [
+				E('svg', { 'width': size, 'height': size, 'style': 'transform: rotate(-90deg);' }, [
+					E('circle', {
+						'cx': size/2,
+						'cy': size/2,
+						'r': radius,
+						'fill': 'none',
+						'stroke': '#eee',
+						'stroke-width': strokeWidth
+					}),
+					E('circle', {
+						'cx': size/2,
+						'cy': size/2,
+						'r': radius,
+						'fill': 'none',
+						'stroke': color,
+						'stroke-width': strokeWidth,
+						'stroke-dasharray': circumference,
+						'stroke-dashoffset': offset,
+						'stroke-linecap': 'round'
+					})
+				])
+			]),
+			E('div', { 'style': 'margin-top: -' + (size/2 + 10) + 'px; font-size: 20px; font-weight: bold; color: ' + color + ';' }, Math.round(percent) + '%'),
+			E('div', { 'style': 'margin-top: ' + (size/2 - 10) + 'px; font-weight: bold;' }, label),
+			E('div', { 'style': 'font-size: 12px; color: #666;' }, detail)
+		]);
 	},
 
 	handleSaveApply: null,

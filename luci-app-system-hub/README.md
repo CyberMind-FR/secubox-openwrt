@@ -1,279 +1,445 @@
-# luci-app-system-hub
+# System Hub - Central Control Dashboard
 
-**Central Control & Remote Assistance Dashboard for OpenWrt**
+Central system control and monitoring dashboard for OpenWrt with comprehensive system management capabilities.
 
-🎛️ System Hub est un méta-dashboard centralisé pour OpenWrt permettant de gérer tous vos composants, surveiller la santé du système, et offrir une assistance à distance via RustDesk.
+## Features
 
-![System Hub Dashboard](https://cybermind.fr/images/system-hub-hero.png)
+### System Monitoring
+- Real-time system information (hostname, model, uptime, kernel version)
+- System health metrics with visual gauges (CPU, RAM, Disk)
+- CPU load average (1min, 5min, 15min)
+- Memory usage detailed breakdown
+- Storage monitoring for all mount points
+- Temperature monitoring (thermal zones)
 
-## ✨ Fonctionnalités
+### Service Management
+- List all system services with status
+- Start/Stop/Restart services
+- Enable/Disable service autostart
+- Real-time service status (running/stopped)
+- Batch service management
 
-### 🧩 Gestion des Composants
-- **Vue unifiée** de tous les composants installés
-- **Actions rapides** : Start, Stop, Restart, Enable, Disable
-- **État en temps réel** : Running, Stopped, Issues
-- **Roadmap** : Composants planifiés pour le futur
-- **Catégories** : Sécurité, Monitoring, Réseau, VPN, Automation
+### System Logs
+- View system logs with configurable line count (50-1000 lines)
+- Real-time log filtering
+- Search logs by keyword
+- Terminal-style log display
 
-### 💚 Rapports de Santé
-- **Score global** : 0-100 avec status healthy/warning/critical
-- **Métriques** : CPU, RAM, Disque, Température, Réseau, Services
-- **Seuils configurables** : Warning et Critical par métrique
-- **Recommandations** automatiques basées sur l'état
-- **Génération de rapports** PDF/Email
-- **Historique** des health checks
+### Backup & Restore
+- Create system configuration backup (tar.gz)
+- Download backup archive
+- Restore configuration from backup
+- System reboot functionality
 
-### 🖥️ Assistance Remote (RustDesk)
-- **ID unique** pour le support à distance
-- **Approbation requise** pour chaque connexion
-- **Session timeout** configurable
-- **Notifications** de connexion
-- **Accès sans surveillance** (optionnel)
-- **Contact support** intégré
-
-### 🔍 Collecte de Diagnostics
-- **Logs système** : syslog, kernel, composants
-- **Configuration** : network, wireless, firewall
-- **Infos réseau** : interfaces, routes, ARP, connexions
-- **Hardware** : CPU, mémoire, stockage
-- **Anonymisation** des données sensibles
-- **Archive compressée** (.tar.gz)
-- **Envoi au support** en un clic
-
-### 📋 Logs Unifiés
-- **Agrégation** de tous les logs composants
-- **Filtres** : source, niveau, recherche texte
-- **Export CSV** pour analyse externe
-- **Temps réel** avec rafraîchissement auto
-- **Niveaux** : info, warning, error
-
-### 📅 Tâches Planifiées
-- **Rapport santé quotidien** (6h00)
-- **Sauvegarde hebdomadaire** (dimanche 3h00)
-- **Nettoyage logs** (retention 30 jours)
-- **Cron jobs** personnalisables
-
-## 🧩 Composants Supportés
-
-### Installés (Actuels)
-
-| Composant | Description | Catégorie |
-|-----------|-------------|-----------|
-| **CrowdSec** | Cybersécurité collaborative | 🔒 Security |
-| **Netdata** | Monitoring temps réel | 📊 Monitoring |
-| **Netifyd** | Deep Packet Inspection | 🌐 Network |
-| **WireGuard** | VPN moderne | 🔐 VPN |
-| **Network Modes** | Multi-mode réseau | 🔀 Network |
-| **Client Guardian** | NAC & Portail Captif | 🛡️ Security |
-
-### Roadmap (Planifiés)
-
-| Composant | Description | Prévu |
-|-----------|-------------|-------|
-| **AdGuard Home** | Blocage publicités DNS | Q1 2025 |
-| **Prometheus** | Métriques & Alerting | Q1 2025 |
-| **Tailscale** | Mesh VPN zero-config | Q1 2025 |
-| **Grafana** | Visualisation avancée | Q2 2025 |
-| **Home Assistant** | Domotique intégrée | Q2 2025 |
-| **ntopng** | Analyse trafic avancée | Q2 2025 |
-
-## 📦 Installation
-
-### Prérequis
+## Installation
 
 ```bash
 opkg update
-opkg install luci-base rpcd luci-lib-jsonc
-```
-
-### Installation optionnelle
-
-```bash
-# Pour RustDesk
-opkg install rustdesk
-
-# Pour les emails
-opkg install msmtp
-
-# Pour les diagnostics avancés
-opkg install curl
-```
-
-### Installation du package
-
-```bash
-# Depuis les sources
-git clone https://github.com/gkerma/luci-app-system-hub.git
-cd luci-app-system-hub
-make install
-
-# Redémarrer rpcd
+opkg install luci-app-system-hub
 /etc/init.d/rpcd restart
+/etc/init.d/uhttpd restart
 ```
 
-## 🏗️ Architecture
+## Dependencies
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                       System Hub Dashboard                        │
-│  ┌──────────┬──────────┬────────┬───────────┬──────────┬──────┐ │
-│  │ Overview │Components│ Health │ Assistance│Diagnostic│ Logs │ │
-│  └──────────┴──────────┴────────┴───────────┴──────────┴──────┘ │
-├──────────────────────────────────────────────────────────────────┤
-│                          RPCD Backend                             │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │ status | components | health | remote | diagnostics | logs │  │
-│  └────────────────────────────────────────────────────────────┘  │
-├──────────────────────────────────────────────────────────────────┤
-│                      Component Integration                        │
-│  ┌──────────┬──────────┬──────────┬──────────┬──────────────┐   │
-│  │ CrowdSec │ Netdata  │ Netifyd  │WireGuard │Client Guardian│   │
-│  └──────────┴──────────┴──────────┴──────────┴──────────────┘   │
-├──────────────────────────────────────────────────────────────────┤
-│                      Remote Assistance                            │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │                   RustDesk Integration                      │  │
-│  │            ID: 847 293 156 | Session Control                │  │
-│  └────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-```
+- **luci-base**: LuCI framework
+- **rpcd**: RPC daemon
+- **coreutils**: Core utilities
+- **coreutils-base64**: Base64 encoding/decoding
 
-## 🔧 Configuration
+## Usage
 
-### Fichier UCI `/etc/config/system-hub`
+### Web Interface
+
+Navigate to **System → System Hub** in LuCI.
+
+#### Overview Tab
+- System information cards
+- Health metrics with visual gauges:
+  - CPU Load (percentage based on cores)
+  - Memory Usage (percentage with MB breakdown)
+  - Disk Usage (percentage with size info)
+- CPU details (model, cores, load average)
+- Temperature monitoring (color-coded: green < 60°C, orange < 80°C, red ≥ 80°C)
+- Storage details for all mount points
+
+#### Services Tab
+- List of all system services
+- Status indicators (running/stopped)
+- Autostart status (enabled/disabled)
+- Action buttons:
+  - Start (for stopped services)
+  - Stop (for running services)
+  - Restart (for all services)
+  - Enable/Disable autostart
+
+#### System Logs Tab
+- Log viewer with filter controls
+- Configurable line count (50, 100, 200, 500, 1000)
+- Keyword filtering
+- Refresh logs on demand
+- Terminal-style display (black background, green text)
+
+#### Backup & Restore Tab
+- Create and download configuration backup
+- Upload and restore backup file
+- System reboot with confirmation
+
+### Command Line
+
+#### Get System Status
 
 ```bash
-# Configuration globale
-config system-hub 'config'
-    option enabled '1'
-    option dashboard_refresh '30'
-    option auto_health_check '1'
-    option health_check_interval '3600'
-    option debug_mode '0'
-
-# Remote Assistance
-config remote 'remote'
-    option enabled '1'
-    option rustdesk_enabled '1'
-    option rustdesk_id '847293156'
-    option require_approval '1'
-    option notify_on_connect '1'
-
-# Seuils de santé
-config health 'health'
-    option enabled '1'
-    option cpu_warning '80'
-    option cpu_critical '95'
-    option memory_warning '80'
-    option memory_critical '95'
-    option disk_warning '80'
-    option disk_critical '95'
-
-# Diagnostics
-config diagnostics 'diagnostics'
-    option collect_logs '1'
-    option collect_config '1'
-    option anonymize_sensitive '1'
-    option upload_enabled '0'
-
-# Support
-config support 'support'
-    option provider 'CyberMind.fr'
-    option email 'support@cybermind.fr'
-    option ticket_url 'https://cybermind.fr/support'
-
-# Composant
-config component 'crowdsec'
-    option name 'CrowdSec'
-    option service 'crowdsec'
-    option status 'installed'
-    option category 'security'
+ubus call luci.system-hub status
 ```
 
-## 📊 API RPCD
+#### Get System Information
 
-| Méthode | Description | Paramètres |
-|---------|-------------|------------|
-| `status` | État global du système | - |
-| `components` | Liste tous les composants | - |
-| `health` | Rapport de santé complet | - |
-| `remote` | Config assistance remote | - |
-| `logs` | Logs unifiés | `limit`, `source`, `level` |
-| `schedules` | Tâches planifiées | - |
-| `collect_diagnostics` | Générer archive | `include_logs`, `anonymize` |
-| `generate_report` | Créer rapport santé | - |
-| `start_remote_session` | Démarrer RustDesk | `type` |
-| `manage_component` | Contrôler un service | `component`, `action` |
-| `upload_diagnostic` | Envoyer au support | `file` |
-
-## 🎨 Thème
-
-- **Couleur principale** : Indigo gradient (#6366f1 → #8b5cf6)
-- **Fond** : Dark mode (#0a0a0f, #12121a)
-- **Status** : Green (ok), Amber (warning), Red (critical)
-- **Font** : Inter (UI), JetBrains Mono (données)
-
-## 📁 Structure du Package
-
-```
-luci-app-system-hub/
-├── Makefile
-├── README.md
-├── htdocs/luci-static/resources/
-│   ├── system-hub/
-│   │   ├── api.js
-│   │   └── dashboard.css
-│   └── view/system-hub/
-│       ├── overview.js
-│       ├── components.js
-│       ├── health.js
-│       ├── remote.js
-│       ├── diagnostics.js
-│       ├── logs.js
-│       └── settings.js
-└── root/
-    ├── etc/
-    │   ├── config/system-hub
-    │   └── system-hub/
-    │       ├── reports/
-    │       └── diagnostics/
-    └── usr/
-        ├── libexec/rpcd/system-hub
-        └── share/
-            ├── luci/menu.d/luci-app-system-hub.json
-            └── rpcd/acl.d/luci-app-system-hub.json
+```bash
+ubus call luci.system-hub get_system_info
 ```
 
-## 🔐 Sécurité
+Output:
+```json
+{
+  "hostname": "openwrt",
+  "model": "Raspberry Pi 4 Model B",
+  "board": "rpi-4",
+  "openwrt_version": "OpenWrt 23.05.0",
+  "kernel": "5.15.134",
+  "architecture": "aarch64",
+  "uptime_seconds": 86400,
+  "uptime_formatted": "1d 0h 0m",
+  "local_time": "2025-12-24 10:30:00"
+}
+```
 
-- **Approbation requise** pour sessions remote
-- **Anonymisation** des configs dans les diagnostics
-- **Logs sensibles** masqués (passwords, keys)
-- **ACL** granulaires par méthode API
-- **Timeout** des sessions remote
+#### Get System Health
 
-## 🛣️ Roadmap
+```bash
+ubus call luci.system-hub get_health
+```
 
-- [x] Vue d'ensemble système
-- [x] Gestion des composants
-- [x] Rapports de santé
-- [x] Intégration RustDesk
-- [x] Collecte diagnostics
-- [x] Logs unifiés
-- [ ] Application mobile
-- [ ] API REST externe
-- [ ] Webhooks/Alertes
-- [ ] Backup/Restore auto
-- [ ] Multi-routeurs
+Output:
+```json
+{
+  "cpu": {
+    "model": "ARM Cortex-A72",
+    "cores": 4
+  },
+  "load": {
+    "1min": "0.25",
+    "5min": "0.30",
+    "15min": "0.28"
+  },
+  "memory": {
+    "total_kb": 4096000,
+    "free_kb": 2048000,
+    "available_kb": 3072000,
+    "used_kb": 1024000,
+    "buffers_kb": 512000,
+    "cached_kb": 1536000,
+    "percent": 25
+  },
+  "storage": [
+    {
+      "filesystem": "/dev/mmcblk0p2",
+      "size": "29G",
+      "used": "5.2G",
+      "available": "22G",
+      "percent": 19,
+      "mountpoint": "/"
+    }
+  ],
+  "temperatures": [
+    {
+      "zone": "thermal_zone0",
+      "celsius": 45
+    }
+  ]
+}
+```
 
-## 📄 Licence
+#### List Services
 
-Apache-2.0 - Voir [LICENSE](LICENSE)
+```bash
+ubus call luci.system-hub list_services
+```
 
-## 👤 Auteur
+#### Manage Service
 
-**Gandalf** - [CyberMind.fr](https://cybermind.fr)
+```bash
+# Start a service
+ubus call luci.system-hub service_action '{"service":"network","action":"start"}'
 
----
+# Stop a service
+ubus call luci.system-hub service_action '{"service":"network","action":"stop"}'
 
-*Votre centre de contrôle OpenWrt* 🎛️
+# Restart a service
+ubus call luci.system-hub service_action '{"service":"network","action":"restart"}'
+
+# Enable autostart
+ubus call luci.system-hub service_action '{"service":"network","action":"enable"}'
+
+# Disable autostart
+ubus call luci.system-hub service_action '{"service":"network","action":"disable"}'
+```
+
+#### Get Logs
+
+```bash
+# Get last 100 lines
+ubus call luci.system-hub get_logs '{"lines":100,"filter":""}'
+
+# Get last 500 lines with filter
+ubus call luci.system-hub get_logs '{"lines":500,"filter":"error"}'
+```
+
+#### Create Backup
+
+```bash
+ubus call luci.system-hub backup_config
+```
+
+Returns backup data in base64 format with size and filename.
+
+#### Restore Configuration
+
+```bash
+# Encode backup file to base64
+DATA=$(base64 < backup.tar.gz | tr -d '\n')
+
+# Restore
+ubus call luci.system-hub restore_config "{\"data\":\"$DATA\"}"
+```
+
+#### Reboot System
+
+```bash
+ubus call luci.system-hub reboot
+```
+
+System will reboot after 3 seconds.
+
+#### Get Storage Details
+
+```bash
+ubus call luci.system-hub get_storage
+```
+
+## ubus API Reference
+
+### status()
+
+Get comprehensive system status overview.
+
+**Returns:**
+```json
+{
+  "hostname": "openwrt",
+  "model": "Device Model",
+  "uptime": 86400,
+  "health": {
+    "cpu_load": "0.25",
+    "mem_total_kb": 4096000,
+    "mem_used_kb": 1024000,
+    "mem_percent": 25
+  },
+  "disk_percent": 19,
+  "service_count": 42
+}
+```
+
+### get_system_info()
+
+Get detailed system information.
+
+### get_health()
+
+Get comprehensive health metrics including CPU, memory, storage, and temperature.
+
+### list_services()
+
+List all system services with status.
+
+**Returns:**
+```json
+{
+  "services": [
+    {
+      "name": "network",
+      "enabled": true,
+      "running": true
+    },
+    {
+      "name": "firewall",
+      "enabled": true,
+      "running": true
+    }
+  ]
+}
+```
+
+### service_action(service, action)
+
+Perform action on a service.
+
+**Parameters:**
+- `service`: Service name (required)
+- `action`: Action to perform (start|stop|restart|enable|disable)
+
+**Returns:**
+```json
+{
+  "success": true,
+  "message": "Service network start successful"
+}
+```
+
+### get_logs(lines, filter)
+
+Get system logs.
+
+**Parameters:**
+- `lines`: Number of lines to retrieve (default: 100)
+- `filter`: Filter logs by keyword (optional)
+
+**Returns:**
+```json
+{
+  "logs": [
+    "Dec 24 10:30:00 kernel: ...",
+    "Dec 24 10:30:01 daemon.info dnsmasq[123]: ..."
+  ]
+}
+```
+
+### backup_config()
+
+Create system configuration backup.
+
+**Returns:**
+```json
+{
+  "success": true,
+  "data": "H4sIAAAAAAAAA...",
+  "size": 12345,
+  "filename": "backup-20251224-103000.tar.gz"
+}
+```
+
+### restore_config(data)
+
+Restore system configuration from backup.
+
+**Parameters:**
+- `data`: Base64-encoded backup data
+
+**Returns:**
+```json
+{
+  "success": true,
+  "message": "Configuration restored successfully. Reboot required."
+}
+```
+
+### reboot()
+
+Reboot the system (3-second delay).
+
+**Returns:**
+```json
+{
+  "success": true,
+  "message": "System reboot initiated"
+}
+```
+
+### get_storage()
+
+Get detailed storage information for all mount points.
+
+## System Information Sources
+
+- Hostname: `/proc/sys/kernel/hostname`
+- Model: `/tmp/sysinfo/model`, `/proc/device-tree/model`
+- Uptime: `/proc/uptime`
+- OpenWrt version: `/etc/openwrt_release`
+- Kernel: `uname -r`
+- CPU info: `/proc/cpuinfo`
+- Load average: `/proc/loadavg`
+- Memory: `/proc/meminfo`
+- Storage: `df -h`
+- Temperature: `/sys/class/thermal/thermal_zone*/temp`
+- Services: `/etc/init.d/*`
+
+## Gauge Visualization
+
+The overview page displays three circular gauges:
+
+### CPU Load Gauge
+- Percentage calculated from 1-minute load average divided by core count
+- Green: < 75%
+- Orange: 75-90%
+- Red: > 90%
+
+### Memory Gauge
+- Percentage of memory used
+- Shows "Used MB / Total MB"
+- Color-coded like CPU
+
+### Disk Gauge
+- Percentage of root filesystem used
+- Shows "Used / Total Size"
+- Color-coded like CPU
+
+## Security Considerations
+
+- Service actions require write permissions in ACL
+- Backup data contains sensitive configuration
+- Reboot action is irreversible
+- Log filtering does not sanitize sensitive data in logs
+
+## Troubleshooting
+
+### Services Not Showing
+
+Check if services exist:
+```bash
+ls /etc/init.d/
+```
+
+### Health Metrics Not Accurate
+
+Verify system files are accessible:
+```bash
+cat /proc/meminfo
+cat /proc/loadavg
+df -h
+```
+
+### Backup Creation Fails
+
+Ensure sysupgrade is available:
+```bash
+which sysupgrade
+```
+
+### Temperature Not Displayed
+
+Check thermal zones:
+```bash
+ls /sys/class/thermal/thermal_zone*/temp
+```
+
+## License
+
+Apache-2.0
+
+## Maintainer
+
+SecuBox Project <support@secubox.com>
+
+## Version
+
+1.0.0
