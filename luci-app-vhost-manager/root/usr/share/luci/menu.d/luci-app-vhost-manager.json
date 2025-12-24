@@ -1,27 +1,44 @@
 {
-    "admin/services/vhost": {
-        "title": "VHost Manager",
-        "order": 75,
-        "action": {"type": "firstchild"}
-    },
-    "admin/services/vhost/overview": {
-        "title": "Overview",
-        "order": 10,
-        "action": {"type": "view", "path": "vhost-manager/overview"}
-    },
-    "admin/services/vhost/internal": {
-        "title": "Internal Hosts",
-        "order": 20,
-        "action": {"type": "view", "path": "vhost-manager/internal"}
-    },
-    "admin/services/vhost/redirects": {
-        "title": "External Redirects",
-        "order": 30,
-        "action": {"type": "view", "path": "vhost-manager/redirects"}
-    },
-    "admin/services/vhost/ssl": {
-        "title": "SSL Certificates",
-        "order": 40,
-        "action": {"type": "view", "path": "vhost-manager/ssl"}
-    }
+	"admin/secubox/services/vhosts": {
+		"title": "VHost Manager",
+		"order": 40,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-vhost-manager"]
+		}
+	},
+	"admin/secubox/services/vhosts/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "vhost-manager/overview"
+		}
+	},
+	"admin/secubox/services/vhosts/vhosts": {
+		"title": "Virtual Hosts",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "vhost-manager/vhosts"
+		}
+	},
+	"admin/secubox/services/vhosts/certificates": {
+		"title": "SSL Certificates",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "vhost-manager/certificates"
+		}
+	},
+	"admin/secubox/services/vhosts/logs": {
+		"title": "Access Logs",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "vhost-manager/logs"
+		}
+	}
 }

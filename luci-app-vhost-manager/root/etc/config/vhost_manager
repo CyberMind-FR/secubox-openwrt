@@ -1,0 +1,17 @@
+
+config global 'global'
+	option enabled '1'
+	option auto_reload '1'
+	option log_retention '30'
+
+# Example virtual host configuration
+# Uncomment and modify for your needs
+#
+# config vhost 'example'
+# 	option domain 'example.com'
+# 	option backend 'http://192.168.1.100:8080'
+# 	option ssl '1'
+# 	option auth '0'
+# 	option auth_user 'admin'
+# 	option auth_pass 'password'
+# 	option websocket '1'

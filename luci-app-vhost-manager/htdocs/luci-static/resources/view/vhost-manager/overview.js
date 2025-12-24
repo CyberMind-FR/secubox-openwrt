@@ -1,54 +1,133 @@
 'use strict';
 'require view';
-'require vhost-manager.api as api';
+'require poll';
+'require ui';
+'require vhost-manager/api as API';
 
-return view.extend({
-    load: function() {
-        return Promise.all([api.getStatus(), api.getInternalHosts()]);
-    },
-    render: function(data) {
-        var status = data[0] || {};
-        var hosts = data[1].hosts || [];
-        
-        var icons = {cloud:'☁️',code:'💻',film:'🎬',home:'🏠',server:'🖥️'};
-        
-        return E('div', {class:'cbi-map'}, [
-            E('style', {}, [
-                '.vh{font-family:system-ui,sans-serif}',
-                '.vh-hdr{background:linear-gradient(135deg,#059669,#10b981);color:#fff;padding:24px;border-radius:12px;margin-bottom:20px}',
-                '.vh-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}',
-                '.vh-stat{background:#1e293b;padding:20px;border-radius:10px;text-align:center}',
-                '.vh-stat-val{font-size:28px;font-weight:700;color:#10b981}',
-                '.vh-hosts{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}'
-            ].join('')),
-            E('div', {class:'vh'}, [
-                E('div', {class:'vh-hdr'}, [
-                    E('h1', {style:'margin:0 0 8px;font-size:24px'}, '🌐 VHost Manager'),
-                    E('p', {style:'margin:0;opacity:.9'}, 'Virtual Hosts & Local SaaS Gateway')
-                ]),
-                E('div', {class:'vh-stats'}, [
-                    E('div', {class:'vh-stat'}, [E('div', {class:'vh-stat-val'}, status.nginx_active ? '✓' : '✗'), E('div', {style:'color:#94a3b8;margin-top:4px'}, 'Nginx')]),
-                    E('div', {class:'vh-stat'}, [E('div', {class:'vh-stat-val'}, status.dns_active ? '✓' : '✗'), E('div', {style:'color:#94a3b8;margin-top:4px'}, 'DNS')]),
-                    E('div', {class:'vh-stat'}, [E('div', {class:'vh-stat-val'}, status.internal_hosts || 0), E('div', {style:'color:#94a3b8;margin-top:4px'}, 'Internal Hosts')]),
-                    E('div', {class:'vh-stat'}, [E('div', {class:'vh-stat-val'}, status.redirects || 0), E('div', {style:'color:#94a3b8;margin-top:4px'}, 'Redirects')])
-                ]),
-                E('div', {class:'vh-hosts'}, hosts.filter(function(h) { return h.enabled; }).map(function(h) {
-                    return E('div', {style:'background:#1e293b;padding:20px;border-radius:12px;border-left:4px solid '+h.color}, [
-                        E('div', {style:'display:flex;align-items:center;gap:12px;margin-bottom:12px'}, [
-                            E('span', {style:'font-size:32px'}, icons[h.icon] || '🖥️'),
-                            E('div', {}, [
-                                E('div', {style:'font-weight:600;color:#f1f5f9;font-size:18px'}, h.name),
-                                E('div', {style:'color:#94a3b8;font-size:13px'}, h.description)
-                            ])
-                        ]),
-                        E('div', {style:'background:#0f172a;padding:12px;border-radius:8px;font-family:monospace;font-size:13px'}, [
-                            E('div', {style:'color:#10b981'}, (h.ssl ? '🔒 https://' : '🔓 http://') + h.domain),
-                            E('div', {style:'color:#64748b;margin-top:4px'}, '→ ' + h.backend)
-                        ])
-                    ]);
-                }))
-            ])
-        ]);
-    },
-    handleSaveApply:null,handleSave:null,handleReset:null
+return L.view.extend({
+	load: function() {
+		return Promise.all([
+			API.getStatus(),
+			API.listVHosts(),
+			API.listCerts()
+		]);
+	},
+
+	render: function(data) {
+		var status = data[0] || {};
+		var vhosts = data[1] || [];
+		var certs = data[2] || [];
+
+		var v = E('div', { 'class': 'cbi-map' }, [
+			E('h2', {}, _('VHost Manager - Overview')),
+			E('div', { 'class': 'cbi-map-descr' }, _('Nginx reverse proxy and SSL certificate management'))
+		]);
+
+		// Status section
+		var statusSection = E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('System Status')),
+			E('div', { 'class': 'table' }, [
+				E('div', { 'class': 'tr' }, [
+					E('div', { 'class': 'td left', 'width': '33%' }, [
+						E('strong', {}, _('Nginx: ')),
+						E('span', {}, status.nginx_running ? 
+							E('span', { 'style': 'color: green' }, '● ' + _('Running')) : 
+							E('span', { 'style': 'color: red' }, '● ' + _('Stopped'))
+						),
+						E('br'),
+						E('small', {}, _('Version: ') + (status.nginx_version || 'unknown'))
+					]),
+					E('div', { 'class': 'td left', 'width': '33%' }, [
+						E('strong', {}, _('ACME/SSL: ')),
+						E('span', {}, status.acme_available ? 
+							E('span', { 'style': 'color: green' }, '✓ ' + _('Available')) : 
+							E('span', { 'style': 'color: orange' }, '✗ ' + _('Not installed'))
+						),
+						E('br'),
+						E('small', {}, status.acme_version || 'N/A')
+					]),
+					E('div', { 'class': 'td left', 'width': '33%' }, [
+						E('strong', {}, _('Virtual Hosts: ')),
+						E('span', { 'style': 'font-size: 1.5em; color: #0088cc' }, String(status.vhost_count || 0))
+					])
+				])
+			])
+		]);
+		v.appendChild(statusSection);
+
+		// Quick stats
+		var sslCount = 0;
+		var authCount = 0;
+		var wsCount = 0;
+		
+		vhosts.forEach(function(vhost) {
+			if (vhost.ssl) sslCount++;
+			if (vhost.auth) authCount++;
+			if (vhost.websocket) wsCount++;
+		});
+
+		var statsSection = E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('Virtual Hosts Summary')),
+			E('div', { 'class': 'table' }, [
+				E('div', { 'class': 'tr' }, [
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, '🔒 SSL Enabled: '),
+						E('span', {}, String(sslCount))
+					]),
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, '🔐 Auth Protected: '),
+						E('span', {}, String(authCount))
+					]),
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, '🔌 WebSocket: '),
+						E('span', {}, String(wsCount))
+					]),
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, '📜 Certificates: '),
+						E('span', {}, String(certs.length))
+					])
+				])
+			])
+		]);
+		v.appendChild(statsSection);
+
+		// Recent vhosts
+		if (vhosts.length > 0) {
+			var vhostSection = E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Virtual Hosts'))
+			]);
+
+			var table = E('table', { 'class': 'table' }, [
+				E('tr', { 'class': 'tr table-titles' }, [
+					E('th', { 'class': 'th' }, _('Domain')),
+					E('th', { 'class': 'th' }, _('Backend')),
+					E('th', { 'class': 'th' }, _('Features')),
+					E('th', { 'class': 'th' }, _('SSL Expires'))
+				])
+			]);
+
+			vhosts.slice(0, 10).forEach(function(vhost) {
+				var features = [];
+				if (vhost.ssl) features.push('🔒 SSL');
+				if (vhost.auth) features.push('🔐 Auth');
+				if (vhost.websocket) features.push('🔌 WS');
+
+				table.appendChild(E('tr', { 'class': 'tr' }, [
+					E('td', { 'class': 'td' }, vhost.domain),
+					E('td', { 'class': 'td' }, vhost.backend),
+					E('td', { 'class': 'td' }, features.join(' ')),
+					E('td', { 'class': 'td' }, vhost.ssl_expires || 'N/A')
+				]));
+			});
+
+			vhostSection.appendChild(table);
+			v.appendChild(vhostSection);
+		}
+
+		return v;
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

@@ -1,17 +1,39 @@
 {
-    "luci-app-vhost-manager": {
-        "description": "VHost Manager",
-        "read": {
-            "ubus": {
-                "luci.vhost-manager": ["status", "internal_hosts", "redirects", "certificates"]
-            },
-            "uci": ["vhost"]
-        },
-        "write": {
-            "ubus": {
-                "luci.vhost-manager": ["apply_config"]
-            },
-            "uci": ["vhost"]
-        }
-    }
+	"luci-app-vhost-manager": {
+		"description": "Grant access to LuCI VHost Manager",
+		"read": {
+			"ubus": {
+				"luci.vhost-manager": [
+					"status",
+					"list_vhosts",
+					"get_vhost",
+					"test_backend",
+					"list_certs",
+					"get_access_logs"
+				]
+			},
+			"uci": ["vhost_manager", "nginx"],
+			"file": {
+				"/etc/nginx/conf.d/*": ["read"],
+				"/etc/acme/*": ["read"],
+				"/var/log/nginx/*": ["read"]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.vhost-manager": [
+					"add_vhost",
+					"update_vhost",
+					"delete_vhost",
+					"request_cert",
+					"reload_nginx"
+				]
+			},
+			"uci": ["vhost_manager", "nginx"],
+			"file": {
+				"/etc/nginx/conf.d/*": ["write"],
+				"/etc/nginx/.htpasswd_*": ["write"]
+			}
+		}
+	}
 }
