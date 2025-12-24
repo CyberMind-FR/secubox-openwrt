@@ -54,6 +54,51 @@ find . -name "*.json" -exec jsonlint {} \;
 ./secubox-tools/secubox-debug.sh luci-app-<module-name>
 ```
 
+### Local Build (Replicates GitHub Actions)
+
+The `local-build.sh` script allows you to build and test packages locally, replicating the GitHub Actions workflows:
+
+```bash
+# Validate all packages (syntax, JSON, shell scripts)
+./secubox-tools/local-build.sh validate
+
+# Build all packages for x86_64
+./secubox-tools/local-build.sh build
+
+# Build single package
+./secubox-tools/local-build.sh build luci-app-system-hub
+
+# Build for specific architecture
+./secubox-tools/local-build.sh build --arch aarch64-cortex-a72
+
+# Full validation + build
+./secubox-tools/local-build.sh full
+
+# Clean build artifacts
+./secubox-tools/local-build.sh clean
+```
+
+Supported architectures:
+- `x86-64` - PC, VMs (default)
+- `aarch64-cortex-a53` - ARM Cortex-A53 (ESPRESSObin)
+- `aarch64-cortex-a72` - ARM Cortex-A72 (MOCHAbin, RPi4)
+- `aarch64-generic` - Generic ARM64
+- `mips-24kc` - MIPS 24Kc (TP-Link)
+- `mipsel-24kc` - MIPS LE (Xiaomi, GL.iNet)
+
+The script automatically:
+- Downloads and caches the OpenWrt SDK
+- Configures feeds (packages, luci)
+- Copies your packages to the SDK
+- Builds .ipk packages
+- Collects artifacts in `build/<arch>/`
+
+Environment variables:
+- `OPENWRT_VERSION` - OpenWrt version (default: 23.05.5)
+- `SDK_DIR` - SDK directory (default: ./sdk)
+- `BUILD_DIR` - Build output directory (default: ./build)
+- `CACHE_DIR` - Download cache directory (default: ./cache)
+
 ## Architecture
 
 ### LuCI Package Structure
@@ -412,10 +457,19 @@ Run the validation script to check all naming conventions:
 2. **Run validation checks** (CRITICAL):
    ```bash
    ./secubox-tools/validate-modules.sh
+   # Or use the local build tool:
+   ./secubox-tools/local-build.sh validate
    ```
 3. Test JSON syntax: `jsonlint <file>.json`
 4. Test shell scripts: `shellcheck <script>`
-5. Build package: `make package/luci-app-<name>/compile V=s`
+5. Build and test package locally (recommended):
+   ```bash
+   # Build single package
+   ./secubox-tools/local-build.sh build luci-app-<name>
+
+   # Or build with manual SDK:
+   make package/luci-app-<name>/compile V=s
+   ```
 6. Install on test router and verify functionality
 7. Run repair tool if needed: `./secubox-tools/secubox-repair.sh`
 8. Commit changes and push (triggers CI validation)

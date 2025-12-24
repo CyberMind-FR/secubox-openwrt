@@ -4,6 +4,87 @@ This directory contains utilities for validating, debugging, and maintaining Sec
 
 ## Tools Overview
 
+### Build and Test Tools
+
+#### local-build.sh
+
+**NEW!** Local build system that replicates GitHub Actions workflows.
+
+Build and test packages locally without pushing to GitHub. Automatically downloads and configures the OpenWrt SDK, builds packages, and collects artifacts.
+
+**Usage:**
+```bash
+# Validate all packages
+./secubox-tools/local-build.sh validate
+
+# Build all packages (x86_64)
+./secubox-tools/local-build.sh build
+
+# Build single package
+./secubox-tools/local-build.sh build luci-app-system-hub
+
+# Build for specific architecture
+./secubox-tools/local-build.sh build --arch aarch64-cortex-a72
+
+# Full validation + build
+./secubox-tools/local-build.sh full
+
+# Clean build artifacts
+./secubox-tools/local-build.sh clean
+```
+
+**Supported Architectures:**
+- `x86-64` - PC, VMs (default)
+- `aarch64-cortex-a53` - ARM Cortex-A53 (ESPRESSObin)
+- `aarch64-cortex-a72` - ARM Cortex-A72 (MOCHAbin, RPi4)
+- `aarch64-generic` - Generic ARM64
+- `mips-24kc` - MIPS 24Kc (TP-Link)
+- `mipsel-24kc` - MIPS LE (Xiaomi, GL.iNet)
+
+**Environment Variables:**
+- `OPENWRT_VERSION` - OpenWrt version (default: 23.05.5)
+- `SDK_DIR` - SDK directory (default: ./sdk)
+- `BUILD_DIR` - Build output directory (default: ./build)
+- `CACHE_DIR` - Download cache directory (default: ./cache)
+
+**Output:** Built packages are placed in `build/<arch>/` with SHA256 checksums.
+
+**Dependencies:**
+```bash
+# Required for building
+sudo apt-get install -y build-essential clang flex bison g++ gawk \
+    gcc-multilib g++-multilib gettext git libncurses5-dev \
+    libssl-dev python3-setuptools python3-dev rsync \
+    swig unzip zlib1g-dev file wget curl jq
+
+# Optional for validation
+sudo apt-get install -y shellcheck nodejs
+```
+
+**Features:**
+- Downloads and caches OpenWrt SDK for faster subsequent builds
+- Configures feeds (packages, luci) automatically
+- Validates packages before building
+- Builds .ipk packages with verbose output
+- Collects artifacts with checksums
+- Supports single package or all packages
+- Multiple architecture support
+
+**Example Workflow:**
+```bash
+# 1. Make changes to a module
+vim luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/overview.js
+
+# 2. Validate and build locally
+./secubox-tools/local-build.sh full
+
+# 3. Test on router
+scp build/x86-64/*.ipk root@192.168.1.1:/tmp/
+ssh root@192.168.1.1
+opkg install /tmp/luci-app-system-hub*.ipk
+/etc/init.d/rpcd restart
+```
+
 ### Validation Tools
 
 #### validate-modules.sh
@@ -134,7 +215,13 @@ This creates a symbolic link from `.git/hooks/pre-push` to `pre-push-validation.
 
 4. **Review and fix WARNINGS** (recommended)
 
-5. **Commit changes:**
+5. **Build and test locally** (recommended):
+   ```bash
+   ./secubox-tools/local-build.sh build luci-app-<module-name>
+   # Test on router if needed
+   ```
+
+6. **Commit changes:**
    ```bash
    git add luci-app-<module-name>
    git commit -m "feat: implement <module-name> module"
@@ -155,7 +242,12 @@ This creates a symbolic link from `.git/hooks/pre-push` to `pre-push-validation.
    ./secubox-tools/validate-module-generation.sh luci-app-<module-name>
    ```
 
-4. **Commit and push** (validation runs automatically)
+4. **Build and test locally** (recommended):
+   ```bash
+   ./secubox-tools/local-build.sh build luci-app-<module-name>
+   ```
+
+5. **Commit and push** (validation runs automatically)
 
 ### Before Committing Changes
 
@@ -164,6 +256,8 @@ Always run at least one validation tool before committing:
 1. **Run validation** (CRITICAL):
    ```bash
    ./secubox-tools/validate-modules.sh
+   # Or use local-build.sh for validation + build:
+   ./secubox-tools/local-build.sh full
    ```
 
 2. Fix any errors reported
@@ -173,7 +267,12 @@ Always run at least one validation tool before committing:
    shellcheck luci-app-*/root/usr/libexec/rpcd/*
    ```
 
-4. Commit changes
+4. **Test build locally** (recommended):
+   ```bash
+   ./secubox-tools/local-build.sh build
+   ```
+
+5. Commit changes
 
 ## Common Fixes
 
