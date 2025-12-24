@@ -1,37 +1,52 @@
 {
-    "admin/network/bandwidth": {
-        "title": "Bandwidth Manager",
-        "order": 80,
-        "action": {"type": "firstchild"}
-    },
-    "admin/network/bandwidth/overview": {
-        "title": "Overview",
-        "order": 10,
-        "action": {"type": "view", "path": "bandwidth-manager/overview"}
-    },
-    "admin/network/bandwidth/classes": {
-        "title": "QoS Classes",
-        "order": 20,
-        "action": {"type": "view", "path": "bandwidth-manager/classes"}
-    },
-    "admin/network/bandwidth/quotas": {
-        "title": "Quotas",
-        "order": 30,
-        "action": {"type": "view", "path": "bandwidth-manager/quotas"}
-    },
-    "admin/network/bandwidth/media": {
-        "title": "Media Detection",
-        "order": 40,
-        "action": {"type": "view", "path": "bandwidth-manager/media"}
-    },
-    "admin/network/bandwidth/clients": {
-        "title": "Clients",
-        "order": 50,
-        "action": {"type": "view", "path": "bandwidth-manager/clients"}
-    },
-    "admin/network/bandwidth/schedules": {
-        "title": "Schedules",
-        "order": 60,
-        "action": {"type": "view", "path": "bandwidth-manager/schedules"}
-    }
+	"admin/network/bandwidth-manager": {
+		"title": "Bandwidth Manager",
+		"order": 55,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-bandwidth-manager"]
+		}
+	},
+	"admin/network/bandwidth-manager/overview": {
+		"title": "Overview",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/overview"
+		}
+	},
+	"admin/network/bandwidth-manager/rules": {
+		"title": "QoS Rules",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/rules"
+		}
+	},
+	"admin/network/bandwidth-manager/quotas": {
+		"title": "Client Quotas",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/quotas"
+		}
+	},
+	"admin/network/bandwidth-manager/usage": {
+		"title": "Real-time Usage",
+		"order": 4,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/usage"
+		}
+	},
+	"admin/network/bandwidth-manager/settings": {
+		"title": "Settings",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/settings"
+		}
+	}
 }

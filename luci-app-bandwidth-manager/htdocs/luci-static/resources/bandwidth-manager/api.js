@@ -1,35 +1,81 @@
 'use strict';
-'require baseclass';
 'require rpc';
 
-var callStatus = rpc.declare({object:'luci.bandwidth-manager',method:'status',expect:{}});
-var callClasses = rpc.declare({object:'luci.bandwidth-manager',method:'classes',expect:{classes:[]}});
-var callQuotas = rpc.declare({object:'luci.bandwidth-manager',method:'quotas',expect:{quotas:[]}});
-var callMedia = rpc.declare({object:'luci.bandwidth-manager',method:'media',expect:{media:[]}});
-var callClients = rpc.declare({object:'luci.bandwidth-manager',method:'clients',expect:{clients:[]}});
-var callStats = rpc.declare({object:'luci.bandwidth-manager',method:'stats',expect:{}});
-var callApplyQos = rpc.declare({object:'luci.bandwidth-manager',method:'apply_qos'});
-
-function formatBytes(bytes) {
-    if (bytes === 0) return '0 B';
-    var k = 1024, sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    var i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-function formatSpeed(kbps) {
-    if (kbps >= 1000) return (kbps / 1000).toFixed(1) + ' Mbps';
-    return kbps + ' Kbps';
-}
-
-return baseclass.extend({
-    getStatus: callStatus,
-    getClasses: callClasses,
-    getQuotas: callQuotas,
-    getMedia: callMedia,
-    getClients: callClients,
-    getStats: callStats,
-    applyQos: callApplyQos,
-    formatBytes: formatBytes,
-    formatSpeed: formatSpeed
+var callStatus = rpc.declare({
+	object: 'luci.bandwidth-manager',
+	method: 'status',
+	expect: {}
 });
+
+var callListRules = rpc.declare({
+	object: 'luci.bandwidth-manager',
+	method: 'list_rules',
+	expect: { rules: [] }
+});
+
+var callAddRule = rpc.declare({
+	object: 'luci.bandwidth-manager',
+	method: 'add_rule',
+	params: ['name', 'type', 'target', 'limit_down', 'limit_up', 'priority'],
+	expect: {}
+});
+
+var callDeleteRule = rpc.declare({
+	object: 'luci.bandwidth-manager',
+	method: 'delete_rule',
+	params: ['rule_id'],
+	expect: {}
+});
+
+var callListQuotas = rpc.declare({
+	object: 'luci.bandwidth-manager',
+	method: 'list_quotas',
+	expect: { quotas: [] }
+});
+
+var callGetQuota = rpc.declare({
+	object: 'luci.bandwidth-manager',
+	method: 'get_quota',
+	params: ['mac'],
+	expect: {}
+});
+
+var callSetQuota = rpc.declare({
+	object: 'luci.bandwidth-manager',
+	method: 'set_quota',
+	params: ['mac', 'name', 'limit_mb', 'action', 'reset_day'],
+	expect: {}
+});
+
+var callResetQuota = rpc.declare({
+	object: 'luci.bandwidth-manager',
+	method: 'reset_quota',
+	params: ['mac'],
+	expect: {}
+});
+
+var callGetUsageRealtime = rpc.declare({
+	object: 'luci.bandwidth-manager',
+	method: 'get_usage_realtime',
+	expect: { clients: [] }
+});
+
+var callGetUsageHistory = rpc.declare({
+	object: 'luci.bandwidth-manager',
+	method: 'get_usage_history',
+	params: ['timeframe', 'mac'],
+	expect: { history: [] }
+});
+
+return {
+	getStatus: callStatus,
+	listRules: callListRules,
+	addRule: callAddRule,
+	deleteRule: callDeleteRule,
+	listQuotas: callListQuotas,
+	getQuota: callGetQuota,
+	setQuota: callSetQuota,
+	resetQuota: callResetQuota,
+	getUsageRealtime: callGetUsageRealtime,
+	getUsageHistory: callGetUsageHistory
+};

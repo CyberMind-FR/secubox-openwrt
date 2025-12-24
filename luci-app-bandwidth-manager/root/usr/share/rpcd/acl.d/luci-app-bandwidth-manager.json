@@ -1,17 +1,28 @@
 {
-    "luci-app-bandwidth-manager": {
-        "description": "Bandwidth Manager",
-        "read": {
-            "ubus": {
-                "luci.bandwidth-manager": ["status", "classes", "quotas", "media", "clients", "stats"]
-            },
-            "uci": ["bandwidth"]
-        },
-        "write": {
-            "ubus": {
-                "luci.bandwidth-manager": ["apply_qos"]
-            },
-            "uci": ["bandwidth"]
-        }
-    }
+	"luci-app-bandwidth-manager": {
+		"description": "Bandwidth Manager - QoS & Traffic Control",
+		"read": {
+			"ubus": {
+				"luci.bandwidth-manager": [
+					"status",
+					"list_rules",
+					"list_quotas",
+					"get_quota",
+					"get_usage_realtime",
+					"get_usage_history"
+				]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.bandwidth-manager": [
+					"add_rule",
+					"delete_rule",
+					"set_quota",
+					"reset_quota"
+				]
+			},
+			"uci": ["bandwidth"]
+		}
+	}
 }

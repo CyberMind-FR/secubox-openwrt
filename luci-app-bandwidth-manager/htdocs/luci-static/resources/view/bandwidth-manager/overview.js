@@ -1,69 +1,170 @@
 'use strict';
 'require view';
-'require bandwidth-manager.api as api';
+'require bandwidth-manager/api as API';
 
-return view.extend({
-    load: function() {
-        return Promise.all([api.getStatus(), api.getClasses(), api.getClients()]);
-    },
-    render: function(data) {
-        var status = data[0] || {};
-        var classes = data[1].classes || [];
-        var clients = data[2].clients || [];
-        
-        return E('div', {class:'cbi-map'}, [
-            E('style', {}, [
-                '.bw{font-family:system-ui,sans-serif}',
-                '.bw-hdr{background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;padding:24px;border-radius:12px;margin-bottom:20px}',
-                '.bw-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}',
-                '.bw-stat{background:#1e293b;padding:20px;border-radius:10px;text-align:center}',
-                '.bw-stat-val{font-size:28px;font-weight:700;color:#a855f7}',
-                '.bw-stat-lbl{font-size:12px;color:#94a3b8;margin-top:4px}',
-                '.bw-section{background:#1e293b;padding:20px;border-radius:10px;margin-bottom:16px}',
-                '.bw-section-title{font-size:16px;font-weight:600;color:#f1f5f9;margin-bottom:16px}',
-                '.bw-class{display:flex;align-items:center;gap:12px;padding:12px;background:#0f172a;border-radius:8px;margin-bottom:8px}',
-                '.bw-class-bar{height:8px;border-radius:4px;background:#334155;flex:1}',
-                '.bw-class-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#7c3aed,#a855f7)}',
-                '.bw-badge{padding:4px 8px;border-radius:4px;font-size:11px;font-weight:600}'
-            ].join('')),
-            E('div', {class:'bw'}, [
-                E('div', {class:'bw-hdr'}, [
-                    E('h1', {style:'margin:0 0 8px;font-size:24px'}, '⚡ Bandwidth Manager'),
-                    E('p', {style:'margin:0;opacity:.9'}, 'QoS, Quotas & Media Detection')
-                ]),
-                E('div', {class:'bw-stats'}, [
-                    E('div', {class:'bw-stat'}, [
-                        E('div', {class:'bw-stat-val'}, status.qos_active ? '✓' : '✗'),
-                        E('div', {class:'bw-stat-lbl'}, 'QoS Status')
-                    ]),
-                    E('div', {class:'bw-stat'}, [
-                        E('div', {class:'bw-stat-val'}, clients.length),
-                        E('div', {class:'bw-stat-lbl'}, 'Active Clients')
-                    ]),
-                    E('div', {class:'bw-stat'}, [
-                        E('div', {class:'bw-stat-val'}, api.formatBytes(status.rx_bytes || 0)),
-                        E('div', {class:'bw-stat-lbl'}, 'Downloaded')
-                    ]),
-                    E('div', {class:'bw-stat'}, [
-                        E('div', {class:'bw-stat-val'}, api.formatBytes(status.tx_bytes || 0)),
-                        E('div', {class:'bw-stat-lbl'}, 'Uploaded')
-                    ])
-                ]),
-                E('div', {class:'bw-section'}, [
-                    E('div', {class:'bw-section-title'}, '📊 QoS Classes'),
-                    E('div', {}, classes.map(function(c) {
-                        return E('div', {class:'bw-class'}, [
-                            E('span', {style:'width:100px;font-weight:600;color:#f1f5f9'}, c.name),
-                            E('span', {class:'bw-badge',style:'background:#7c3aed20;color:#a855f7'}, 'P'+c.priority),
-                            E('div', {class:'bw-class-bar'}, [
-                                E('div', {class:'bw-class-fill',style:'width:'+c.rate+'%'})
-                            ]),
-                            E('span', {style:'color:#94a3b8;font-size:12px'}, c.rate+'% / '+c.ceil+'%')
-                        ]);
-                    }))
-                ])
-            ])
-        ]);
-    },
-    handleSaveApply:null,handleSave:null,handleReset:null
+return L.view.extend({
+	load: function() {
+		return Promise.all([
+			API.getStatus(),
+			API.listRules(),
+			API.listQuotas()
+		]);
+	},
+
+	render: function(data) {
+		var status = data[0] || {};
+		var rules = data[1] || [];
+		var quotas = data[2] || [];
+
+		var v = E('div', { 'class': 'cbi-map' }, [
+			E('h2', {}, _('Bandwidth Manager - Overview')),
+			E('div', { 'class': 'cbi-map-descr' }, _('QoS rules, client quotas, and traffic control'))
+		]);
+
+		// System status
+		var statusSection = E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('System Status')),
+			E('div', { 'class': 'table' }, [
+				E('div', { 'class': 'tr' }, [
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, _('QoS Engine: ')),
+						status.qos_active ?
+							E('span', { 'style': 'color: green' }, '● ' + _('Active')) :
+							E('span', { 'style': 'color: red' }, '● ' + _('Inactive'))
+					]),
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, _('Interface: ')),
+						E('span', {}, status.interface || 'br-lan')
+					]),
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, _('SQM: ')),
+						status.sqm_enabled ?
+							E('span', { 'style': 'color: green' }, '✓ ' + _('Enabled')) :
+							E('span', {}, '✗ ' + _('Disabled'))
+					]),
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, _('Rules: ')),
+						E('span', { 'style': 'font-size: 1.3em; color: #0088cc' }, String(status.rule_count || 0))
+					])
+				])
+			])
+		]);
+		v.appendChild(statusSection);
+
+		// Traffic statistics
+		if (status.stats) {
+			var statsSection = E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Traffic Statistics')),
+				E('div', { 'class': 'table' }, [
+					E('div', { 'class': 'tr' }, [
+						E('div', { 'class': 'td left', 'width': '50%' }, [
+							E('strong', {}, '⬇ ' + _('Download: ')),
+							E('span', {}, this.formatBytes(status.stats.rx_bytes || 0))
+						]),
+						E('div', { 'class': 'td left', 'width': '50%' }, [
+							E('strong', {}, '⬆ ' + _('Upload: ')),
+							E('span', {}, this.formatBytes(status.stats.tx_bytes || 0))
+						])
+					]),
+					E('div', { 'class': 'tr' }, [
+						E('div', { 'class': 'td left', 'width': '50%' }, [
+							E('strong', {}, _('RX Packets: ')),
+							E('span', {}, String(status.stats.rx_packets || 0))
+						]),
+						E('div', { 'class': 'td left', 'width': '50%' }, [
+							E('strong', {}, _('TX Packets: ')),
+							E('span', {}, String(status.stats.tx_packets || 0))
+						])
+					])
+				])
+			]);
+			v.appendChild(statsSection);
+		}
+
+		// Active rules summary
+		if (rules.length > 0) {
+			var rulesSection = E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Active QoS Rules'))
+			]);
+
+			var rulesTable = E('table', { 'class': 'table' }, [
+				E('tr', { 'class': 'tr table-titles' }, [
+					E('th', { 'class': 'th' }, _('Name')),
+					E('th', { 'class': 'th' }, _('Type')),
+					E('th', { 'class': 'th' }, _('Target')),
+					E('th', { 'class': 'th' }, _('Download Limit')),
+					E('th', { 'class': 'th' }, _('Priority'))
+				])
+			]);
+
+			rules.slice(0, 5).forEach(function(rule) {
+				if (!rule.enabled)
+					return;
+
+				rulesTable.appendChild(E('tr', { 'class': 'tr' }, [
+					E('td', { 'class': 'td' }, rule.name),
+					E('td', { 'class': 'td' }, rule.type),
+					E('td', { 'class': 'td' }, rule.target),
+					E('td', { 'class': 'td' }, rule.limit_down > 0 ? rule.limit_down + ' kbit/s' : _('Unlimited')),
+					E('td', { 'class': 'td' }, String(rule.priority))
+				]));
+			});
+
+			rulesSection.appendChild(rulesTable);
+			v.appendChild(rulesSection);
+		}
+
+		// Client quotas summary
+		if (quotas.length > 0) {
+			var quotasSection = E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Client Quotas'))
+			]);
+
+			var quotasTable = E('table', { 'class': 'table' }, [
+				E('tr', { 'class': 'tr table-titles' }, [
+					E('th', { 'class': 'th' }, _('Client')),
+					E('th', { 'class': 'th' }, _('MAC')),
+					E('th', { 'class': 'th' }, _('Usage')),
+					E('th', { 'class': 'th' }, _('Limit')),
+					E('th', { 'class': 'th' }, _('Progress'))
+				])
+			]);
+
+			quotas.slice(0, 5).forEach(function(quota) {
+				var progressColor = quota.percent > 90 ? 'red' : (quota.percent > 75 ? 'orange' : 'green');
+
+				quotasTable.appendChild(E('tr', { 'class': 'tr' }, [
+					E('td', { 'class': 'td' }, quota.name || quota.mac),
+					E('td', { 'class': 'td' }, E('code', {}, quota.mac)),
+					E('td', { 'class': 'td' }, quota.used_mb + ' MB'),
+					E('td', { 'class': 'td' }, quota.limit_mb + ' MB'),
+					E('td', { 'class': 'td' }, [
+						E('div', { 'style': 'background: #eee; width: 100px; height: 10px; border-radius: 5px;' }, [
+							E('div', {
+								'style': 'background: ' + progressColor + '; width: ' + Math.min(quota.percent, 100) + '%; height: 100%; border-radius: 5px;'
+							})
+						]),
+						E('small', {}, quota.percent + '%')
+					])
+				]));
+			});
+
+			quotasSection.appendChild(quotasTable);
+			v.appendChild(quotasSection);
+		}
+
+		return v;
+	},
+
+	formatBytes: function(bytes) {
+		if (bytes === 0) return '0 B';
+		var k = 1024;
+		var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+		var i = Math.floor(Math.log(bytes) / Math.log(k));
+		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

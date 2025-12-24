@@ -1,192 +1,556 @@
 #!/bin/sh
+# Bandwidth Manager RPCD Backend
+# Provides QoS rules, client quotas, and traffic statistics
+
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
-get_status() {
-    json_init
-    
-    local enabled interface
-    config_load bandwidth
-    config_get enabled global enabled "0"
-    config_get interface global interface "br-lan"
-    
-    json_add_boolean "enabled" "$enabled"
-    json_add_string "interface" "$interface"
-    
-    # Get current bandwidth stats
-    local rx_bytes tx_bytes
-    rx_bytes=$(cat /sys/class/net/$interface/statistics/rx_bytes 2>/dev/null || echo 0)
-    tx_bytes=$(cat /sys/class/net/$interface/statistics/tx_bytes 2>/dev/null || echo 0)
-    
-    json_add_int "rx_bytes" "$rx_bytes"
-    json_add_int "tx_bytes" "$tx_bytes"
-    
-    # Check if QoS is active
-    local qos_active=0
-    tc qdisc show dev $interface 2>/dev/null | grep -qE "(cake|fq_codel|htb)" && qos_active=1
-    json_add_boolean "qos_active" "$qos_active"
-    
-    json_dump
+# Configuration paths
+CONFIG_FILE="/etc/config/bandwidth"
+USAGE_DB="/tmp/bandwidth_usage.db"
+IPTABLES_CHAIN="BW_TRACKING"
+
+# Initialize usage database
+init_usage_db() {
+	if [ ! -f "$USAGE_DB" ]; then
+		cat > "$USAGE_DB" << 'EOF'
+# MAC|Timestamp|RX_Bytes|TX_Bytes
+EOF
+	fi
 }
 
-get_classes() {
-    config_load bandwidth
-    json_init
-    json_add_array "classes"
-    
-    _add_class() {
-        local name priority rate ceil desc
-        config_get name "$1" name ""
-        config_get priority "$1" priority "5"
-        config_get rate "$1" rate "10"
-        config_get ceil "$1" ceil "100"
-        config_get desc "$1" description ""
-        
-        json_add_object ""
-        json_add_string "id" "$1"
-        json_add_string "name" "$name"
-        json_add_int "priority" "$priority"
-        json_add_int "rate" "$rate"
-        json_add_int "ceil" "$ceil"
-        json_add_string "description" "$desc"
-        json_close_object
-    }
-    config_foreach _add_class class
-    
-    json_close_array
-    json_dump
+# Get system status and global stats
+status() {
+	json_init
+
+	local enabled interface sqm_enabled
+	config_load bandwidth
+	config_get enabled global enabled "0"
+	config_get interface global interface "br-lan"
+	config_get sqm_enabled global sqm_enabled "0"
+
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "interface" "$interface"
+	json_add_boolean "sqm_enabled" "$sqm_enabled"
+
+	# Check QoS status
+	local qos_active=0
+	tc qdisc show dev "$interface" 2>/dev/null | grep -qE "(cake|htb|fq_codel)" && qos_active=1
+	json_add_boolean "qos_active" "$qos_active"
+
+	# Get interface stats
+	if [ -d "/sys/class/net/$interface" ]; then
+		local rx_bytes=$(cat /sys/class/net/$interface/statistics/rx_bytes 2>/dev/null || echo 0)
+		local tx_bytes=$(cat /sys/class/net/$interface/statistics/tx_bytes 2>/dev/null || echo 0)
+		local rx_packets=$(cat /sys/class/net/$interface/statistics/rx_packets 2>/dev/null || echo 0)
+		local tx_packets=$(cat /sys/class/net/$interface/statistics/tx_packets 2>/dev/null || echo 0)
+
+		json_add_object "stats"
+		json_add_int "rx_bytes" "$rx_bytes"
+		json_add_int "tx_bytes" "$tx_bytes"
+		json_add_int "rx_packets" "$rx_packets"
+		json_add_int "tx_packets" "$tx_packets"
+		json_close_object
+	fi
+
+	# Count rules and quotas
+	local rule_count=0
+	local quota_count=0
+	config_foreach count_section rule && rule_count=$?
+	config_foreach count_section quota && quota_count=$?
+
+	json_add_int "rule_count" "$rule_count"
+	json_add_int "quota_count" "$quota_count"
+
+	json_dump
 }
 
-get_quotas() {
-    config_load bandwidth
-    json_init
-    json_add_array "quotas"
-    
-    _add_quota() {
-        local daily monthly throttle action
-        config_get daily "$1" daily_limit "0"
-        config_get monthly "$1" monthly_limit "0"
-        config_get throttle "$1" throttle_speed "1000"
-        config_get action "$1" action "throttle"
-        
-        json_add_object ""
-        json_add_string "id" "$1"
-        json_add_int "daily_limit" "$daily"
-        json_add_int "monthly_limit" "$monthly"
-        json_add_int "throttle_speed" "$throttle"
-        json_add_string "action" "$action"
-        json_close_object
-    }
-    config_foreach _add_quota quota
-    
-    json_close_array
-    json_dump
+count_section() {
+	return $(( $? + 1 ))
 }
 
-get_media() {
-    config_load bandwidth
-    json_init
-    json_add_array "media"
-    
-    _add_media() {
-        local name class
-        config_get name "$1" name ""
-        config_get class "$1" class ""
-        
-        json_add_object ""
-        json_add_string "id" "$1"
-        json_add_string "name" "$name"
-        json_add_string "class" "$class"
-        json_close_object
-    }
-    config_foreach _add_media media
-    
-    json_close_array
-    json_dump
+# List all QoS rules
+list_rules() {
+	config_load bandwidth
+	json_init
+	json_add_array "rules"
+
+	_add_rule() {
+		local name type target limit_down limit_up priority enabled schedule
+		config_get name "$1" name ""
+		config_get type "$1" type "application"
+		config_get target "$1" target ""
+		config_get limit_down "$1" limit_down "0"
+		config_get limit_up "$1" limit_up "0"
+		config_get priority "$1" priority "5"
+		config_get enabled "$1" enabled "1"
+		config_get schedule "$1" schedule ""
+
+		json_add_object ""
+		json_add_string "id" "$1"
+		json_add_string "name" "$name"
+		json_add_string "type" "$type"
+		json_add_string "target" "$target"
+		json_add_int "limit_down" "$limit_down"
+		json_add_int "limit_up" "$limit_up"
+		json_add_int "priority" "$priority"
+		json_add_boolean "enabled" "$enabled"
+		json_add_string "schedule" "$schedule"
+		json_close_object
+	}
+
+	config_foreach _add_rule rule
+
+	json_close_array
+	json_dump
 }
 
-get_clients() {
-    json_init
-    json_add_array "clients"
-    
-    # Parse DHCP leases
-    if [ -f /tmp/dhcp.leases ]; then
-        while read expires mac ip hostname clientid; do
-            # Get current bandwidth for this client
-            local rx=0 tx=0
-            
-            json_add_object ""
-            json_add_string "mac" "$mac"
-            json_add_string "ip" "$ip"
-            json_add_string "hostname" "${hostname:-unknown}"
-            json_add_int "rx_bytes" "$rx"
-            json_add_int "tx_bytes" "$tx"
-            json_close_object
-        done < /tmp/dhcp.leases
-    fi
-    
-    json_close_array
-    json_dump
+# Add new QoS rule
+add_rule() {
+	read -r input
+	json_load "$input"
+
+	local name type target limit_down limit_up priority
+	json_get_var name name
+	json_get_var type type "application"
+	json_get_var target target
+	json_get_var limit_down limit_down "0"
+	json_get_var limit_up limit_up "0"
+	json_get_var priority priority "5"
+
+	json_cleanup
+
+	if [ -z "$name" ] || [ -z "$target" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Name and target are required"
+		json_dump
+		return 1
+	fi
+
+	# Generate unique ID
+	local rule_id="rule_$(date +%s)"
+
+	# Add to UCI config
+	uci -q batch << EOF
+set bandwidth.$rule_id=rule
+set bandwidth.$rule_id.name='$name'
+set bandwidth.$rule_id.type='$type'
+set bandwidth.$rule_id.target='$target'
+set bandwidth.$rule_id.limit_down='$limit_down'
+set bandwidth.$rule_id.limit_up='$limit_up'
+set bandwidth.$rule_id.priority='$priority'
+set bandwidth.$rule_id.enabled='1'
+commit bandwidth
+EOF
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "rule_id" "$rule_id"
+	json_add_string "message" "Rule created successfully"
+	json_dump
 }
 
-get_stats() {
-    json_init
-    
-    local interface
-    config_load bandwidth
-    config_get interface global interface "br-lan"
-    
-    # TC statistics
-    json_add_object "tc"
-    local tc_stats=$(tc -s qdisc show dev $interface 2>/dev/null)
-    json_add_string "raw" "$tc_stats"
-    json_close_object
-    
-    # Interface statistics
-    json_add_object "interface"
-    json_add_int "rx_bytes" "$(cat /sys/class/net/$interface/statistics/rx_bytes 2>/dev/null || echo 0)"
-    json_add_int "tx_bytes" "$(cat /sys/class/net/$interface/statistics/tx_bytes 2>/dev/null || echo 0)"
-    json_add_int "rx_packets" "$(cat /sys/class/net/$interface/statistics/rx_packets 2>/dev/null || echo 0)"
-    json_add_int "tx_packets" "$(cat /sys/class/net/$interface/statistics/tx_packets 2>/dev/null || echo 0)"
-    json_close_object
-    
-    json_dump
+# Delete QoS rule
+delete_rule() {
+	read -r input
+	json_load "$input"
+
+	local rule_id
+	json_get_var rule_id rule_id
+	json_cleanup
+
+	if [ -z "$rule_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Rule ID is required"
+		json_dump
+		return 1
+	fi
+
+	# Check if rule exists
+	if ! uci -q get bandwidth.$rule_id >/dev/null 2>&1; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Rule not found"
+		json_dump
+		return 1
+	fi
+
+	uci -q delete bandwidth.$rule_id
+	uci -q commit bandwidth
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Rule deleted successfully"
+	json_dump
 }
 
-apply_qos() {
-    local interface download upload
-    config_load bandwidth
-    config_get interface global interface "br-lan"
-    config_get download global default_download "100000"
-    config_get upload global default_upload "50000"
-    
-    # Clear existing
-    tc qdisc del dev $interface root 2>/dev/null
-    tc qdisc del dev $interface ingress 2>/dev/null
-    
-    # Apply CAKE qdisc
-    tc qdisc add dev $interface root cake bandwidth ${download}kbit
-    
-    json_init
-    json_add_boolean "success" 1
-    json_add_string "message" "QoS applied with ${download}kbit download"
-    json_dump
+# List all client quotas
+list_quotas() {
+	config_load bandwidth
+	json_init
+	json_add_array "quotas"
+
+	_add_quota() {
+		local mac name limit_mb used_mb action reset_day enabled
+		config_get mac "$1" mac ""
+		config_get name "$1" name ""
+		config_get limit_mb "$1" limit_mb "0"
+		config_get action "$1" action "throttle"
+		config_get reset_day "$1" reset_day "1"
+		config_get enabled "$1" enabled "1"
+
+		# Get current usage
+		used_mb=$(get_mac_usage "$mac")
+		local percent=0
+		if [ "$limit_mb" -gt 0 ]; then
+			percent=$(( (used_mb * 100) / limit_mb ))
+		fi
+
+		json_add_object ""
+		json_add_string "id" "$1"
+		json_add_string "mac" "$mac"
+		json_add_string "name" "$name"
+		json_add_int "limit_mb" "$limit_mb"
+		json_add_int "used_mb" "$used_mb"
+		json_add_int "percent" "$percent"
+		json_add_string "action" "$action"
+		json_add_int "reset_day" "$reset_day"
+		json_add_boolean "enabled" "$enabled"
+		json_close_object
+	}
+
+	config_foreach _add_quota quota
+
+	json_close_array
+	json_dump
 }
 
+# Get usage for a specific MAC address
+get_mac_usage() {
+	local mac="$1"
+	local total_bytes=0
+
+	# Get from iptables counters
+	if iptables -L $IPTABLES_CHAIN -n -v -x 2>/dev/null | grep -qi "$mac"; then
+		local bytes=$(iptables -L $IPTABLES_CHAIN -n -v -x 2>/dev/null | grep -i "$mac" | awk '{sum+=$2} END {print sum}')
+		total_bytes=${bytes:-0}
+	fi
+
+	# Convert to MB
+	echo $(( total_bytes / 1024 / 1024 ))
+}
+
+# Get quota details for specific client
+get_quota() {
+	read -r input
+	json_load "$input"
+
+	local mac
+	json_get_var mac mac
+	json_cleanup
+
+	if [ -z "$mac" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "MAC address is required"
+		json_dump
+		return 1
+	fi
+
+	config_load bandwidth
+	local found=0
+	local quota_id name limit_mb action reset_day
+
+	_find_quota() {
+		local this_mac
+		config_get this_mac "$1" mac ""
+		if [ "$this_mac" = "$mac" ]; then
+			quota_id="$1"
+			config_get name "$1" name ""
+			config_get limit_mb "$1" limit_mb "0"
+			config_get action "$1" action "throttle"
+			config_get reset_day "$1" reset_day "1"
+			found=1
+		fi
+	}
+
+	config_foreach _find_quota quota
+
+	if [ "$found" -eq 0 ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Quota not found for this MAC"
+		json_dump
+		return 1
+	fi
+
+	local used_mb=$(get_mac_usage "$mac")
+	local remaining_mb=$(( limit_mb - used_mb ))
+	[ "$remaining_mb" -lt 0 ] && remaining_mb=0
+
+	local percent=0
+	if [ "$limit_mb" -gt 0 ]; then
+		percent=$(( (used_mb * 100) / limit_mb ))
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "quota_id" "$quota_id"
+	json_add_string "mac" "$mac"
+	json_add_string "name" "$name"
+	json_add_int "limit_mb" "$limit_mb"
+	json_add_int "used_mb" "$used_mb"
+	json_add_int "remaining_mb" "$remaining_mb"
+	json_add_int "percent" "$percent"
+	json_add_string "action" "$action"
+	json_add_int "reset_day" "$reset_day"
+	json_dump
+}
+
+# Set or update quota
+set_quota() {
+	read -r input
+	json_load "$input"
+
+	local mac name limit_mb action reset_day
+	json_get_var mac mac
+	json_get_var name name ""
+	json_get_var limit_mb limit_mb "0"
+	json_get_var action action "throttle"
+	json_get_var reset_day reset_day "1"
+	json_cleanup
+
+	if [ -z "$mac" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "MAC address is required"
+		json_dump
+		return 1
+	fi
+
+	# Check if quota exists for this MAC
+	config_load bandwidth
+	local quota_id=""
+
+	_find_existing() {
+		local this_mac
+		config_get this_mac "$1" mac ""
+		if [ "$this_mac" = "$mac" ]; then
+			quota_id="$1"
+		fi
+	}
+
+	config_foreach _find_existing quota
+
+	if [ -z "$quota_id" ]; then
+		# Create new quota
+		quota_id="quota_$(date +%s)"
+		uci -q batch << EOF
+set bandwidth.$quota_id=quota
+set bandwidth.$quota_id.mac='$mac'
+set bandwidth.$quota_id.name='$name'
+set bandwidth.$quota_id.limit_mb='$limit_mb'
+set bandwidth.$quota_id.action='$action'
+set bandwidth.$quota_id.reset_day='$reset_day'
+set bandwidth.$quota_id.enabled='1'
+commit bandwidth
+EOF
+		local msg="Quota created successfully"
+	else
+		# Update existing quota
+		uci -q batch << EOF
+set bandwidth.$quota_id.name='$name'
+set bandwidth.$quota_id.limit_mb='$limit_mb'
+set bandwidth.$quota_id.action='$action'
+set bandwidth.$quota_id.reset_day='$reset_day'
+commit bandwidth
+EOF
+		local msg="Quota updated successfully"
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "quota_id" "$quota_id"
+	json_add_string "message" "$msg"
+	json_dump
+}
+
+# Reset quota counter for a client
+reset_quota() {
+	read -r input
+	json_load "$input"
+
+	local mac
+	json_get_var mac mac
+	json_cleanup
+
+	if [ -z "$mac" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "MAC address is required"
+		json_dump
+		return 1
+	fi
+
+	# Reset iptables counters for this MAC
+	iptables -Z $IPTABLES_CHAIN 2>/dev/null
+
+	# Remove from usage DB
+	if [ -f "$USAGE_DB" ]; then
+		sed -i "/^${mac}|/d" "$USAGE_DB"
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Quota counter reset for $mac"
+	json_dump
+}
+
+# Get real-time usage for all clients
+get_usage_realtime() {
+	json_init
+	json_add_array "clients"
+
+	# Parse DHCP leases for active clients
+	if [ -f /tmp/dhcp.leases ]; then
+		while read -r expires mac ip hostname clientid; do
+			local rx_bytes=0 tx_bytes=0
+
+			# Get current bytes from iptables
+			if iptables -L $IPTABLES_CHAIN -n -v -x 2>/dev/null | grep -qi "$mac"; then
+				rx_bytes=$(iptables -L $IPTABLES_CHAIN -n -v -x 2>/dev/null | grep -i "$mac" | awk '{print $2}' | head -1)
+				tx_bytes=$(iptables -L $IPTABLES_CHAIN -n -v -x 2>/dev/null | grep -i "$mac" | awk '{print $2}' | tail -1)
+			fi
+
+			# Get quota info if exists
+			config_load bandwidth
+			local has_quota=0 limit_mb=0 used_mb=0
+
+			_check_quota() {
+				local this_mac
+				config_get this_mac "$1" mac ""
+				if [ "$this_mac" = "$mac" ]; then
+					has_quota=1
+					config_get limit_mb "$1" limit_mb "0"
+					used_mb=$(get_mac_usage "$mac")
+				fi
+			}
+
+			config_foreach _check_quota quota
+
+			json_add_object ""
+			json_add_string "mac" "$mac"
+			json_add_string "ip" "$ip"
+			json_add_string "hostname" "${hostname:-unknown}"
+			json_add_int "rx_bytes" "${rx_bytes:-0}"
+			json_add_int "tx_bytes" "${tx_bytes:-0}"
+			json_add_boolean "has_quota" "$has_quota"
+			if [ "$has_quota" -eq 1 ]; then
+				json_add_int "limit_mb" "$limit_mb"
+				json_add_int "used_mb" "$used_mb"
+			fi
+			json_close_object
+		done < /tmp/dhcp.leases
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Get usage history
+get_usage_history() {
+	read -r input
+	json_load "$input"
+
+	local timeframe mac
+	json_get_var timeframe timeframe "24h"
+	json_get_var mac mac ""
+	json_cleanup
+
+	init_usage_db
+
+	json_init
+	json_add_array "history"
+
+	# Calculate time threshold
+	local now=$(date +%s)
+	local threshold=0
+	case "$timeframe" in
+		"1h") threshold=$(( now - 3600 )) ;;
+		"6h") threshold=$(( now - 21600 )) ;;
+		"24h") threshold=$(( now - 86400 )) ;;
+		"7d") threshold=$(( now - 604800 )) ;;
+		"30d") threshold=$(( now - 2592000 )) ;;
+		*) threshold=$(( now - 86400 )) ;;
+	esac
+
+	# Read usage database
+	if [ -f "$USAGE_DB" ]; then
+		while IFS='|' read -r db_mac timestamp rx_bytes tx_bytes; do
+			# Skip header line
+			[ "$db_mac" = "# MAC" ] && continue
+
+			# Filter by MAC if specified
+			if [ -n "$mac" ] && [ "$db_mac" != "$mac" ]; then
+				continue
+			fi
+
+			# Filter by timeframe
+			if [ "$timestamp" -lt "$threshold" ]; then
+				continue
+			fi
+
+			json_add_object ""
+			json_add_string "mac" "$db_mac"
+			json_add_int "timestamp" "$timestamp"
+			json_add_int "rx_bytes" "$rx_bytes"
+			json_add_int "tx_bytes" "$tx_bytes"
+			json_close_object
+		done < "$USAGE_DB"
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Main dispatcher
 case "$1" in
-    list)
-        echo '{"status":{},"classes":{},"quotas":{},"media":{},"clients":{},"stats":{},"apply_qos":{}}'
-        ;;
-    call)
-        case "$2" in
-            status) get_status ;;
-            classes) get_classes ;;
-            quotas) get_quotas ;;
-            media) get_media ;;
-            clients) get_clients ;;
-            stats) get_stats ;;
-            apply_qos) apply_qos ;;
-            *) echo '{"error":"Unknown method"}' ;;
-        esac
-        ;;
+	list)
+		cat << 'EOF'
+{
+	"status": {},
+	"list_rules": {},
+	"add_rule": { "name": "string", "type": "string", "target": "string", "limit_down": 0, "limit_up": 0, "priority": 5 },
+	"delete_rule": { "rule_id": "string" },
+	"list_quotas": {},
+	"get_quota": { "mac": "string" },
+	"set_quota": { "mac": "string", "name": "string", "limit_mb": 0, "action": "string", "reset_day": 1 },
+	"reset_quota": { "mac": "string" },
+	"get_usage_realtime": {},
+	"get_usage_history": { "timeframe": "24h", "mac": "" }
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status) status ;;
+			list_rules) list_rules ;;
+			add_rule) add_rule ;;
+			delete_rule) delete_rule ;;
+			list_quotas) list_quotas ;;
+			get_quota) get_quota ;;
+			set_quota) set_quota ;;
+			reset_quota) reset_quota ;;
+			get_usage_realtime) get_usage_realtime ;;
+			get_usage_history) get_usage_history ;;
+			*)
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "Unknown method: $2"
+				json_dump
+				;;
+		esac
+		;;
 esac
