@@ -1,14 +1,31 @@
 {
-    "luci-app-media-flow": {
-        "description": "Media Flow",
-        "read": {
-            "ubus": {
-                "luci.media-flow": ["status", "services", "protocols", "flows", "stats"]
-            },
-            "uci": ["mediaflow"]
-        },
-        "write": {
-            "uci": ["mediaflow"]
-        }
-    }
+	"luci-app-media-flow": {
+		"description": "Grant access to LuCI Media Flow Dashboard",
+		"read": {
+			"ubus": {
+				"luci.media-flow": [
+					"status",
+					"get_active_streams",
+					"get_stream_history",
+					"get_stats_by_service",
+					"get_stats_by_client",
+					"get_service_details",
+					"list_alerts"
+				],
+				"luci.netifyd-dashboard": [
+					"status",
+					"get_flows"
+				]
+			},
+			"uci": ["media_flow", "netifyd"]
+		},
+		"write": {
+			"ubus": {
+				"luci.media-flow": [
+					"set_alert"
+				]
+			},
+			"uci": ["media_flow"]
+		}
+	}
 }

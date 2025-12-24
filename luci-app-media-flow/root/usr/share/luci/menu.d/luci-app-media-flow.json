@@ -1,27 +1,53 @@
 {
-    "admin/network/media-flow": {
-        "title": "Media Flow",
-        "order": 85,
-        "action": {"type": "firstchild"}
-    },
-    "admin/network/media-flow/overview": {
-        "title": "Overview",
-        "order": 10,
-        "action": {"type": "view", "path": "media-flow/overview"}
-    },
-    "admin/network/media-flow/services": {
-        "title": "Services",
-        "order": 20,
-        "action": {"type": "view", "path": "media-flow/services"}
-    },
-    "admin/network/media-flow/flows": {
-        "title": "Active Flows",
-        "order": 30,
-        "action": {"type": "view", "path": "media-flow/flows"}
-    },
-    "admin/network/media-flow/protocols": {
-        "title": "Protocols",
-        "order": 40,
-        "action": {"type": "view", "path": "media-flow/protocols"}
-    }
+	"admin/secubox/monitoring/mediaflow": {
+		"title": "Media Flow",
+		"order": 30,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-media-flow"],
+			"uci": {"media_flow": true}
+		}
+	},
+	"admin/secubox/monitoring/mediaflow/dashboard": {
+		"title": "Dashboard",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "media-flow/dashboard"
+		}
+	},
+	"admin/secubox/monitoring/mediaflow/services": {
+		"title": "Services",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "media-flow/services"
+		}
+	},
+	"admin/secubox/monitoring/mediaflow/clients": {
+		"title": "Clients",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "media-flow/clients"
+		}
+	},
+	"admin/secubox/monitoring/mediaflow/history": {
+		"title": "History",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "media-flow/history"
+		}
+	},
+	"admin/secubox/monitoring/mediaflow/alerts": {
+		"title": "Alerts",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "media-flow/alerts"
+		}
+	}
 }

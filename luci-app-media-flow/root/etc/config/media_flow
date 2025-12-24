@@ -1,0 +1,11 @@
+config global 'global'
+	option enabled '1'
+	option history_retention '7'
+	option refresh_interval '5'
+
+# Example alert configuration
+# config alert 'netflix_limit'
+# 	option service 'Netflix'
+# 	option threshold_hours '4'
+# 	option action 'notify'
+# 	option enabled '1'
