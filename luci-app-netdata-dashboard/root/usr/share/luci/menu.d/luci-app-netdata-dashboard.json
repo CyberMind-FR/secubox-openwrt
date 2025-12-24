@@ -15,7 +15,7 @@
 		"order": 10,
 		"action": {
 			"type": "view",
-			"path": "netdata/dashboard"
+			"path": "netdata-dashboard/dashboard"
 		}
 	},
 	"admin/secubox/monitoring/netdata/settings": {
@@ -23,7 +23,7 @@
 		"order": 90,
 		"action": {
 			"type": "view",
-			"path": "netdata/settings"
+			"path": "netdata-dashboard/settings"
 		}
 	}
 }

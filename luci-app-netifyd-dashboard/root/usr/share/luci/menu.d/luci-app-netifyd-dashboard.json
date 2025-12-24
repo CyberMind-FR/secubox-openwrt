@@ -15,7 +15,7 @@
 		"order": 10,
 		"action": {
 			"type": "view",
-			"path": "netifyd/overview"
+			"path": "netifyd-dashboard/overview"
 		}
 	},
 	"admin/secubox/security/netifyd/applications": {
@@ -23,7 +23,7 @@
 		"order": 20,
 		"action": {
 			"type": "view",
-			"path": "netifyd/applications"
+			"path": "netifyd-dashboard/applications"
 		}
 	},
 	"admin/secubox/security/netifyd/flows": {
@@ -31,7 +31,7 @@
 		"order": 30,
 		"action": {
 			"type": "view",
-			"path": "netifyd/flows"
+			"path": "netifyd-dashboard/flows"
 		}
 	},
 	"admin/secubox/security/netifyd/settings": {
@@ -39,7 +39,7 @@
 		"order": 90,
 		"action": {
 			"type": "view",
-			"path": "netifyd/settings"
+			"path": "netifyd-dashboard/settings"
 		}
 	}
 }

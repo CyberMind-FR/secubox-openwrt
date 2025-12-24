@@ -15,7 +15,7 @@
 		"order": 10,
 		"action": {
 			"type": "view",
-			"path": "wireguard/overview"
+			"path": "wireguard-dashboard/overview"
 		}
 	},
 	"admin/secubox/network/wireguard/peers": {
@@ -23,7 +23,7 @@
 		"order": 20,
 		"action": {
 			"type": "view",
-			"path": "wireguard/peers"
+			"path": "wireguard-dashboard/peers"
 		}
 	},
 	"admin/secubox/network/wireguard/qrcodes": {
@@ -31,7 +31,7 @@
 		"order": 30,
 		"action": {
 			"type": "view",
-			"path": "wireguard/qrcodes"
+			"path": "wireguard-dashboard/qrcodes"
 		}
 	},
 	"admin/secubox/network/wireguard/settings": {
@@ -39,7 +39,7 @@
 		"order": 90,
 		"action": {
 			"type": "view",
-			"path": "wireguard/settings"
+			"path": "wireguard-dashboard/settings"
 		}
 	}
 }
