@@ -218,14 +218,19 @@ jobs:
       - name: Generate SecuBox config
         run: |
           cd openwrt
-          
+
           # Base configuration
           cat > .config << EOF
           # Target
           CONFIG_TARGET_${{ matrix.target }}=y
           CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}=y
           CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}_DEVICE_${{ matrix.profile }}=y
-          
+
+          # Image building (REQUIRED for firmware generation)
+          CONFIG_TARGET_MULTI_PROFILE=n
+          CONFIG_TARGET_ALL_PROFILES=n
+          CONFIG_TARGET_PER_DEVICE_ROOTFS=y
+
           # Image settings
           CONFIG_TARGET_ROOTFS_SQUASHFS=y
           CONFIG_TARGET_ROOTFS_EXT4FS=y
@@ -346,7 +351,60 @@ jobs:
           rm -f feeds/telephony.index feeds/routing.index 2>/dev/null || true
           rm -rf feeds/telephony feeds/routing 2>/dev/null || true
 
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "⚙️  Running make defconfig"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
           make defconfig
+
+      - name: Verify device profile configuration
+        run: |
+          cd openwrt
+
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔍 Verifying Device Profile Configuration"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "Target device: ${{ matrix.description }}"
+          echo "Profile: ${{ matrix.profile }}"
+          echo ""
+
+          # Check if device profile is properly set
+          if grep -q "CONFIG_TARGET_${{ matrix.target }}_${{ matrix.subtarget }}_DEVICE_${{ matrix.profile }}=y" .config; then
+            echo "✅ Device profile correctly configured"
+          else
+            echo "❌ ERROR: Device profile not found in .config!"
+            echo ""
+            echo "Searching for profile in available profiles..."
+            if [[ -f "target/${{ matrix.target }}/${{ matrix.subtarget }}/target.mk" ]]; then
+              echo "Available profiles in target/${{ matrix.target }}/${{ matrix.subtarget }}:"
+              find "target/${{ matrix.target }}/${{ matrix.subtarget }}" -name "*.mk" -exec grep -l "DEVICE_NAME" {} \; | head -10
+            fi
+            exit 1
+          fi
+
+          # Verify image building is enabled
+          echo ""
+          echo "Checking image generation settings..."
+          if grep -q "CONFIG_TARGET_ROOTFS_SQUASHFS=y" .config; then
+            echo "✅ SQUASHFS image generation enabled"
+          else
+            echo "⚠️  SQUASHFS not enabled"
+          fi
+
+          if grep -q "CONFIG_TARGET_ROOTFS_EXT4FS=y" .config; then
+            echo "✅ EXT4 image generation enabled"
+          else
+            echo "⚠️  EXT4 not enabled"
+          fi
+
+          # Show relevant config
+          echo ""
+          echo "📋 Relevant configuration:"
+          grep "^CONFIG_TARGET_" .config | head -20
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
       - name: Download packages
         run: |
@@ -393,7 +451,8 @@ jobs:
 
           START_TIME=$(date +%s)
 
-          if make -j$(nproc) V=s 2>&1 | tee build.log; then
+          # Build with explicit profile specification to ensure images are generated
+          if make -j$(nproc) PROFILE="${{ matrix.profile }}" V=s 2>&1 | tee build.log; then
             END_TIME=$(date +%s)
             DURATION=$((END_TIME - START_TIME))
             MINUTES=$((DURATION / 60))
@@ -420,7 +479,7 @@ jobs:
             echo "Retrying with -j1 (single thread) for better stability..."
             echo ""
 
-            if make -j1 V=s 2>&1 | tee build-retry.log; then
+            if make -j1 PROFILE="${{ matrix.profile }}" V=s 2>&1 | tee build-retry.log; then
               END_TIME=$(date +%s)
               DURATION=$((END_TIME - START_TIME))
               MINUTES=$((DURATION / 60))
@@ -497,8 +556,58 @@ jobs:
 
           if [[ $IMG_COUNT -eq 0 ]]; then
             echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "⚠️  WARNING: No firmware images found!"
-            echo "This could indicate a build failure or unexpected output location."
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "🔍 Diagnostic Information:"
+            echo ""
+
+            # Check if target directory structure exists
+            if [[ -d "openwrt/bin/targets" ]]; then
+              echo "📂 Available targets:"
+              find openwrt/bin/targets -type d -mindepth 2 -maxdepth 2 2>/dev/null | sed 's|openwrt/bin/targets/||' || echo "  (none)"
+              echo ""
+            fi
+
+            # Check build log for errors
+            if [[ -f "openwrt/build.log" ]]; then
+              echo "📋 Checking build log for errors..."
+              if grep -i "error\|failed\|cannot" openwrt/build.log | tail -10 | grep -v "warning" > /tmp/errors.txt 2>/dev/null; then
+                echo "Recent errors found:"
+                cat /tmp/errors.txt
+              else
+                echo "  No obvious errors in build log"
+              fi
+              echo ""
+            fi
+
+            # Check if device profile was actually built
+            echo "🎯 Checking if device profile was built:"
+            if [[ -d "$TARGET_DIR" ]]; then
+              ALL_FILES=$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)
+              echo "  Total files in target directory: $ALL_FILES"
+
+              if [[ $ALL_FILES -gt 0 ]]; then
+                echo "  Files present:"
+                ls -lh "$TARGET_DIR" | grep -v "^total" | grep -v "^d"
+              fi
+            else
+              echo "  ❌ Target directory doesn't exist: $TARGET_DIR"
+            fi
+            echo ""
+
+            echo "💡 This usually means:"
+            echo "  1. Device profile not properly selected in .config"
+            echo "  2. Build completed but only packages were built, not images"
+            echo "  3. Device profile name doesn't match OpenWrt version ${{ env.OPENWRT_VERSION }}"
+            echo ""
+            echo "🔧 Suggested actions:"
+            echo "  1. Check the 'Verify device profile configuration' step output"
+            echo "  2. Verify profile '${{ matrix.profile }}' exists for OpenWrt ${{ env.OPENWRT_VERSION }}"
+            echo "  3. Check if CONFIG_TARGET options are properly set in .config"
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           fi
 
           echo ""
@@ -561,6 +670,36 @@ jobs:
           # Export counts for summary
           echo "img_count=$IMG_COUNT" >> $GITHUB_OUTPUT
           echo "pkg_count=$PKG_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Save build logs and config
+        if: always()
+        run: |
+          mkdir -p artifacts/logs
+
+          # Save .config file
+          if [[ -f openwrt/.config ]]; then
+            cp openwrt/.config artifacts/logs/dotconfig
+            echo "✅ Saved .config as dotconfig"
+          fi
+
+          # Save build logs
+          if [[ -f openwrt/build.log ]]; then
+            cp openwrt/build.log artifacts/logs/
+            echo "✅ Saved build.log"
+          fi
+
+          if [[ -f openwrt/build-retry.log ]]; then
+            cp openwrt/build-retry.log artifacts/logs/
+            echo "✅ Saved build-retry.log"
+          fi
+
+          # Save make output
+          if [[ -f openwrt/logs ]]; then
+            cp -r openwrt/logs artifacts/logs/make-logs 2>/dev/null || true
+          fi
+
+          echo ""
+          echo "📋 Logs saved to artifacts/logs/ for debugging"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
