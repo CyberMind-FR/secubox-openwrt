@@ -1,110 +1,782 @@
 #!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# SecuBox Master RPCD Backend
+# Module discovery and unified status
+# Copyright (C) 2025 CyberMind.fr
+
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
-MODULES="crowdsec netdata netifyd wireguard network-modes client-guardian system-hub cdn-cache traffic-shaper"
+# Module registry - auto-detected from /usr/libexec/rpcd/
+detect_modules() {
+	local modules=""
+	local scripts="crowdsec-dashboard netdata-dashboard netifyd-dashboard wireguard-dashboard network-modes client-guardian system-hub bandwidth-manager auth-guardian media-flow vhost-manager cdn-cache traffic-shaper"
 
-_is_installed() {
-    case "$1" in
-        crowdsec) [ -f "/etc/config/crowdsec" ] || [ -x "/usr/bin/crowdsec" ] ;;
-        netdata) [ -f "/etc/config/netdata" ] || [ -x "/usr/sbin/netdata" ] || [ -x "/opt/netdata/usr/sbin/netdata" ] ;;
-        netifyd) [ -f "/etc/config/netifyd" ] || [ -x "/usr/sbin/netifyd" ] ;;
-        wireguard) [ -x "/usr/bin/wg" ] ;;
-        network-modes|system-hub) return 0 ;;
-        client-guardian) [ -f "/etc/config/nodogsplash" ] || [ -x "/usr/bin/nodogsplash" ] ;;
-        cdn-cache) [ -f "/etc/nginx/nginx.conf" ] || [ -f "/etc/squid/squid.conf" ] ;;
-        traffic-shaper) [ -f "/etc/config/sqm" ] || tc qdisc show 2>/dev/null | grep -qE "(cake|fq_codel)" ;;
-        *) return 1 ;;
-    esac
+	for script in $scripts; do
+		if [ -x "/usr/libexec/rpcd/$script" ]; then
+			# Convert script name to module ID (remove -dashboard suffix, convert dashes to underscores)
+			local module_id=$(echo "$script" | sed 's/-dashboard$//' | sed 's/-/_/g')
+			modules="$modules $module_id"
+		fi
+	done
+
+	echo "$modules"
 }
 
-_is_running() {
-    case "$1" in
-        crowdsec) pgrep -f "crowdsec" >/dev/null 2>&1 ;;
-        netdata) pgrep -f "netdata" >/dev/null 2>&1 ;;
-        netifyd) pgrep -f "netifyd" >/dev/null 2>&1 ;;
-        wireguard) [ -n "$(wg show 2>/dev/null)" ] ;;
-        network-modes|system-hub) return 0 ;;
-        client-guardian) pgrep -f "nodogsplash" >/dev/null 2>&1 ;;
-        cdn-cache) pgrep -f "nginx" >/dev/null 2>&1 || pgrep -f "squid" >/dev/null 2>&1 ;;
-        traffic-shaper) tc qdisc show 2>/dev/null | grep -qE "(cake|fq_codel)" ;;
-        *) return 1 ;;
-    esac
+MODULES=$(detect_modules)
+
+# Check if a module is installed
+check_module_installed() {
+	local module="$1"
+	local package config
+	
+	config_load secubox
+	config_get package "$module" package ""
+	config_get config "$module" config ""
+	
+	# Check if package is installed via opkg
+	if opkg list-installed | grep -q "^${package} "; then
+		echo "1"
+	# Or check if config file exists
+	elif [ -f "/etc/config/${config}" ]; then
+		echo "1"
+	else
+		echo "0"
+	fi
 }
 
+# Check if a module service is running
+check_module_running() {
+	local module="$1"
+	local config
+	
+	config_load secubox
+	config_get config "$module" config ""
+	
+	case "$module" in
+		crowdsec)
+			pgrep -f crowdsec > /dev/null 2>&1 && echo "1" || echo "0"
+			;;
+		netdata)
+			pgrep -f netdata > /dev/null 2>&1 && echo "1" || echo "0"
+			;;
+		netifyd)
+			pgrep -f netifyd > /dev/null 2>&1 && echo "1" || echo "0"
+			;;
+		wireguard)
+			[ -n "$(wg show 2>/dev/null)" ] && echo "1" || echo "0"
+			;;
+		cdn_cache)
+			pgrep -f "nginx.*cdn-cache" > /dev/null 2>&1 && echo "1" || echo "0"
+			;;
+		*)
+			# Generic check via init.d
+			if [ -x "/etc/init.d/${config}" ]; then
+				/etc/init.d/${config} running > /dev/null 2>&1 && echo "1" || echo "0"
+			else
+				echo "0"
+			fi
+			;;
+	esac
+}
+
+# Get overall system status
 get_status() {
-    local hostname=$(cat /proc/sys/kernel/hostname)
-    local uptime=$(cut -d. -f1 /proc/uptime)
-    local load=$(cut -d' ' -f1-3 /proc/loadavg)
-    local mem_total=$(awk '/MemTotal/{print $2}' /proc/meminfo)
-    local mem_free=$(awk '/MemAvailable/{print $2}' /proc/meminfo)
-    [ -z "$mem_free" ] && mem_free=$(awk '/MemFree/{print $2}' /proc/meminfo)
-    local mem_pct=$(( (mem_total - mem_free) * 100 / mem_total ))
-    
-    local total=0 installed=0 running=0
-    for mod in $MODULES; do
-        total=$((total + 1))
-        if _is_installed "$mod"; then
-            installed=$((installed + 1))
-            _is_running "$mod" && running=$((running + 1))
-        fi
-    done
-    
-    json_init
-    json_add_string "version" "2.0.0"
-    json_add_string "hostname" "$hostname"
-    json_add_int "uptime" "$uptime"
-    json_add_string "load" "$load"
-    json_add_int "memory_percent" "$mem_pct"
-    json_add_int "modules_total" "$total"
-    json_add_int "modules_installed" "$installed"
-    json_add_int "modules_running" "$running"
-    json_dump
+	local total=0
+	local installed=0
+	local running=0
+	
+	json_init
+	json_add_string "version" "1.0.0"
+	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || echo 'SecuBox')"
+	
+	# System info
+	local uptime=$(cat /proc/uptime | cut -d. -f1)
+	local load=$(cat /proc/loadavg | cut -d' ' -f1-3)
+	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+	local mem_free=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+	local mem_used=$((mem_total - mem_free))
+	local mem_pct=$((mem_used * 100 / mem_total))
+	
+	json_add_int "uptime" "$uptime"
+	json_add_string "load" "$load"
+	json_add_int "memory_total" "$mem_total"
+	json_add_int "memory_used" "$mem_used"
+	json_add_int "memory_percent" "$mem_pct"
+	
+	# Count modules
+	for module in $MODULES; do
+		total=$((total + 1))
+		local is_installed=$(check_module_installed "$module")
+		local is_running=$(check_module_running "$module")
+		
+		if [ "$is_installed" = "1" ]; then
+			installed=$((installed + 1))
+		fi
+		if [ "$is_running" = "1" ]; then
+			running=$((running + 1))
+		fi
+	done
+	
+	json_add_int "modules_total" "$total"
+	json_add_int "modules_installed" "$installed"
+	json_add_int "modules_running" "$running"
+	
+	json_dump
 }
 
+# Get detailed modules list
 get_modules() {
-    json_init
-    json_add_array "modules"
-    
-    _add_module() {
-        local id="$1" name="$2" desc="$3" cat="$4" color="$5" icon="$6"
-        local inst=0 run=0
-        _is_installed "$id" && inst=1
-        _is_running "$id" && run=1
-        
-        json_add_object ""
-        json_add_string "id" "$id"
-        json_add_string "name" "$name"
-        json_add_string "description" "$desc"
-        json_add_string "category" "$cat"
-        json_add_string "color" "$color"
-        json_add_string "icon" "$icon"
-        json_add_boolean "installed" "$inst"
-        json_add_boolean "running" "$run"
-        json_close_object
-    }
-    
-    _add_module "crowdsec" "CrowdSec" "Protection collaborative contre les intrusions" "security" "#6366f1" "shield"
-    _add_module "netdata" "Netdata" "Monitoring système en temps réel" "monitoring" "#00ab44" "activity"
-    _add_module "netifyd" "Netifyd" "Analyse DPI du trafic réseau" "security" "#06b6d4" "search"
-    _add_module "wireguard" "WireGuard" "VPN moderne et performant" "network" "#88171a" "lock"
-    _add_module "network-modes" "Network Modes" "Configuration réseau simplifiée" "network" "#3b82f6" "globe"
-    _add_module "client-guardian" "Client Guardian" "Contrôle accès et portail captif" "security" "#f59e0b" "users"
-    _add_module "system-hub" "System Hub" "Centre de contrôle système" "system" "#64748b" "server"
-    _add_module "cdn-cache" "CDN Cache" "Cache proxy optimisation bande passante" "network" "#22c55e" "database"
-    _add_module "traffic-shaper" "Traffic Shaper" "Gestion QoS, priorités et quotas" "network" "#a855f7" "sliders"
-    
-    json_close_array
-    json_dump
+	json_init
+	json_add_array "modules"
+	
+	config_load secubox
+	
+	for module in $MODULES; do
+		local name desc category icon color package config
+		
+		config_get name "$module" name "$module"
+		config_get desc "$module" description ""
+		config_get category "$module" category "other"
+		config_get icon "$module" icon "box"
+		config_get color "$module" color "#64748b"
+		config_get package "$module" package ""
+		config_get config "$module" config ""
+		
+		local is_installed=$(check_module_installed "$module")
+		local is_running=$(check_module_running "$module")
+		
+		json_add_object ""
+		json_add_string "id" "$module"
+		json_add_string "name" "$name"
+		json_add_string "description" "$desc"
+		json_add_string "category" "$category"
+		json_add_string "icon" "$icon"
+		json_add_string "color" "$color"
+		json_add_string "package" "$package"
+		json_add_string "config" "$config"
+		json_add_boolean "installed" "$is_installed"
+		json_add_boolean "running" "$is_running"
+		json_close_object
+	done
+	
+	json_close_array
+	json_dump
 }
 
+# Get modules by category
+get_modules_by_category() {
+	local category="$1"
+	
+	json_init
+	json_add_array "modules"
+	
+	config_load secubox
+	
+	for module in $MODULES; do
+		local mod_category
+		config_get mod_category "$module" category "other"
+		
+		if [ "$mod_category" = "$category" ]; then
+			local name desc icon color package config
+			
+			config_get name "$module" name "$module"
+			config_get desc "$module" description ""
+			config_get icon "$module" icon "box"
+			config_get color "$module" color "#64748b"
+			config_get package "$module" package ""
+			config_get config "$module" config ""
+			
+			local is_installed=$(check_module_installed "$module")
+			local is_running=$(check_module_running "$module")
+			
+			json_add_object ""
+			json_add_string "id" "$module"
+			json_add_string "name" "$name"
+			json_add_string "description" "$desc"
+			json_add_string "icon" "$icon"
+			json_add_string "color" "$color"
+			json_add_boolean "installed" "$is_installed"
+			json_add_boolean "running" "$is_running"
+			json_close_object
+		fi
+	done
+	
+	json_close_array
+	json_dump
+}
+
+# Get single module info
+get_module_info() {
+	local module="$1"
+	
+	config_load secubox
+	
+	local name desc category icon color package config
+	
+	config_get name "$module" name "$module"
+	config_get desc "$module" description ""
+	config_get category "$module" category "other"
+	config_get icon "$module" icon "box"
+	config_get color "$module" color "#64748b"
+	config_get package "$module" package ""
+	config_get config "$module" config ""
+	
+	local is_installed=$(check_module_installed "$module")
+	local is_running=$(check_module_running "$module")
+	
+	json_init
+	json_add_string "id" "$module"
+	json_add_string "name" "$name"
+	json_add_string "description" "$desc"
+	json_add_string "category" "$category"
+	json_add_string "icon" "$icon"
+	json_add_string "color" "$color"
+	json_add_string "package" "$package"
+	json_add_string "config" "$config"
+	json_add_boolean "installed" "$is_installed"
+	json_add_boolean "running" "$is_running"
+	json_dump
+}
+
+# Start a module
+start_module() {
+	local module="$1"
+	local config
+	
+	config_load secubox
+	config_get config "$module" config ""
+	
+	if [ -x "/etc/init.d/${config}" ]; then
+		/etc/init.d/${config} start
+		json_init
+		json_add_boolean "success" 1
+		json_add_string "message" "Module started"
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Init script not found"
+		json_dump
+	fi
+}
+
+# Stop a module
+stop_module() {
+	local module="$1"
+	local config
+	
+	config_load secubox
+	config_get config "$module" config ""
+	
+	if [ -x "/etc/init.d/${config}" ]; then
+		/etc/init.d/${config} stop
+		json_init
+		json_add_boolean "success" 1
+		json_add_string "message" "Module stopped"
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Init script not found"
+		json_dump
+	fi
+}
+
+# Restart a module
+restart_module() {
+	local module="$1"
+	local config
+	
+	config_load secubox
+	config_get config "$module" config ""
+	
+	if [ -x "/etc/init.d/${config}" ]; then
+		/etc/init.d/${config} restart
+		json_init
+		json_add_boolean "success" 1
+		json_add_string "message" "Module restarted"
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Init script not found"
+		json_dump
+	fi
+}
+
+# Get health report
+get_health() {
+	json_init
+	json_add_array "checks"
+	
+	# Check each installed module
+	for module in $MODULES; do
+		local is_installed=$(check_module_installed "$module")
+		
+		if [ "$is_installed" = "1" ]; then
+			local is_running=$(check_module_running "$module")
+			local name
+			
+			config_load secubox
+			config_get name "$module" name "$module"
+			
+			local status="ok"
+			local message="Running normally"
+			
+			if [ "$is_running" != "1" ]; then
+				status="warning"
+				message="Service not running"
+			fi
+			
+			json_add_object ""
+			json_add_string "module" "$module"
+			json_add_string "name" "$name"
+			json_add_string "status" "$status"
+			json_add_string "message" "$message"
+			json_close_object
+		fi
+	done
+	
+	json_close_array
+	
+	# Overall health
+	local overall="healthy"
+	# Could add more sophisticated health checks here
+	
+	json_add_string "overall" "$overall"
+	json_add_int "timestamp" "$(date +%s)"
+	
+	json_dump
+}
+
+# Generate diagnostics bundle
+get_diagnostics() {
+	json_init
+
+	# System info
+	json_add_object "system"
+	json_add_string "hostname" "$(uci -q get system.@system[0].hostname)"
+	json_add_string "model" "$(cat /tmp/sysinfo/model 2>/dev/null || echo 'Unknown')"
+	json_add_string "openwrt_version" "$(cat /etc/openwrt_release | grep DISTRIB_RELEASE | cut -d= -f2 | tr -d \"\')"
+	json_add_string "kernel" "$(uname -r)"
+	json_add_int "uptime" "$(cat /proc/uptime | cut -d. -f1)"
+	json_close_object
+
+	# Modules status
+	json_add_array "modules"
+	for module in $MODULES; do
+		local is_installed=$(check_module_installed "$module")
+		local is_running=$(check_module_running "$module")
+
+		json_add_object ""
+		json_add_string "id" "$module"
+		json_add_boolean "installed" "$is_installed"
+		json_add_boolean "running" "$is_running"
+		json_close_object
+	done
+	json_close_array
+
+	# Network interfaces
+	json_add_array "interfaces"
+	for iface in $(ls /sys/class/net/); do
+		local mac=$(cat /sys/class/net/$iface/address 2>/dev/null)
+		local state=$(cat /sys/class/net/$iface/operstate 2>/dev/null)
+
+		json_add_object ""
+		json_add_string "name" "$iface"
+		json_add_string "mac" "$mac"
+		json_add_string "state" "$state"
+		json_close_object
+	done
+	json_close_array
+
+	json_add_int "generated" "$(date +%s)"
+
+	json_dump
+}
+
+# Get system health metrics
+get_system_health() {
+	json_init
+
+	# CPU usage (based on load average)
+	local load=$(cat /proc/loadavg | cut -d' ' -f1)
+	local cpu_cores=$(grep -c processor /proc/cpuinfo)
+	local cpu_pct=$(awk "BEGIN {printf \"%.0f\", ($load / $cpu_cores) * 100}")
+
+	# Memory
+	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+	local mem_avail=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+	local mem_used=$((mem_total - mem_avail))
+	local mem_pct=$((mem_used * 100 / mem_total))
+
+	# Disk usage (root filesystem)
+	local disk_info=$(df / | tail -1)
+	local disk_total=$(echo "$disk_info" | awk '{print $2}')
+	local disk_used=$(echo "$disk_info" | awk '{print $3}')
+	local disk_pct=$(echo "$disk_info" | awk '{print $5}' | tr -d '%')
+
+	# Network stats (sum all interfaces)
+	local net_rx=0
+	local net_tx=0
+	for iface in $(ls /sys/class/net/ | grep -v lo); do
+		if [ -f "/sys/class/net/$iface/statistics/rx_bytes" ]; then
+			local rx=$(cat /sys/class/net/$iface/statistics/rx_bytes 2>/dev/null || echo 0)
+			local tx=$(cat /sys/class/net/$iface/statistics/tx_bytes 2>/dev/null || echo 0)
+			net_rx=$((net_rx + rx))
+			net_tx=$((net_tx + tx))
+		fi
+	done
+
+	# Uptime
+	local uptime=$(cat /proc/uptime | cut -d. -f1)
+
+	# Load averages
+	local load_1min=$(cat /proc/loadavg | cut -d' ' -f1)
+	local load_5min=$(cat /proc/loadavg | cut -d' ' -f2)
+	local load_15min=$(cat /proc/loadavg | cut -d' ' -f3)
+
+	json_add_object "cpu"
+	json_add_int "percent" "$cpu_pct"
+	json_add_int "cores" "$cpu_cores"
+	json_add_string "load_1min" "$load_1min"
+	json_add_string "load_5min" "$load_5min"
+	json_add_string "load_15min" "$load_15min"
+	json_close_object
+
+	json_add_object "memory"
+	json_add_int "percent" "$mem_pct"
+	json_add_int "total_kb" "$mem_total"
+	json_add_int "used_kb" "$mem_used"
+	json_add_int "available_kb" "$mem_avail"
+	json_close_object
+
+	json_add_object "disk"
+	json_add_int "percent" "$disk_pct"
+	json_add_int "total_kb" "$disk_total"
+	json_add_int "used_kb" "$disk_used"
+	json_close_object
+
+	json_add_object "network"
+	json_add_int "rx_bytes" "$net_rx"
+	json_add_int "tx_bytes" "$net_tx"
+	json_close_object
+
+	json_add_int "uptime" "$uptime"
+	json_add_int "timestamp" "$(date +%s)"
+
+	json_dump
+}
+
+# Get aggregated alerts from all modules
+get_alerts() {
+	json_init
+	json_add_array "alerts"
+
+	# Check each installed module for alerts via ubus
+	for module in $MODULES; do
+		local is_installed=$(check_module_installed "$module")
+
+		if [ "$is_installed" = "1" ]; then
+			# Try to call module's status method to get alerts
+			local module_script=$(echo "$module" | sed 's/_/-/g')
+			if [ -x "/usr/libexec/rpcd/${module_script}" ] || [ -x "/usr/libexec/rpcd/${module_script}-dashboard" ]; then
+				# Call via ubus if available
+				local alerts=$(ubus call "luci.${module_script//-/_}" status 2>/dev/null | jsonfilter -e '@.alerts[@]' 2>/dev/null)
+
+				if [ -n "$alerts" ]; then
+					# Module has alerts, add them
+					json_add_object ""
+					json_add_string "module" "$module"
+					json_add_string "message" "$alerts"
+					json_add_string "severity" "warning"
+					json_add_int "timestamp" "$(date +%s)"
+					json_close_object
+				fi
+			fi
+
+			# Check if module service is not running
+			local is_running=$(check_module_running "$module")
+			if [ "$is_running" != "1" ]; then
+				config_load secubox
+				local name
+				config_get name "$module" name "$module"
+
+				json_add_object ""
+				json_add_string "module" "$module"
+				json_add_string "message" "$name service is not running"
+				json_add_string "severity" "warning"
+				json_add_int "timestamp" "$(date +%s)"
+				json_close_object
+			fi
+		fi
+	done
+
+	json_close_array
+	json_add_int "count" "$(ubus call luci.secubox get_alerts 2>/dev/null | jsonfilter -e '@.alerts[*]' | wc -l || echo 0)"
+	json_add_int "timestamp" "$(date +%s)"
+
+	json_dump
+}
+
+# Execute quick actions
+quick_action() {
+	local action="$1"
+
+	json_init
+
+	case "$action" in
+		restart_rpcd)
+			/etc/init.d/rpcd restart >/dev/null 2>&1
+			json_add_boolean "success" 1
+			json_add_string "message" "RPCD service restarted"
+			;;
+		restart_uhttpd)
+			/etc/init.d/uhttpd restart >/dev/null 2>&1
+			json_add_boolean "success" 1
+			json_add_string "message" "uHTTPd service restarted"
+			;;
+		clear_cache)
+			sync
+			echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
+			json_add_boolean "success" 1
+			json_add_string "message" "System cache cleared"
+			;;
+		backup_config)
+			local backup_file="/tmp/backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+			sysupgrade -b "$backup_file" >/dev/null 2>&1
+			if [ -f "$backup_file" ]; then
+				json_add_boolean "success" 1
+				json_add_string "message" "Configuration backup created"
+				json_add_string "file" "$backup_file"
+			else
+				json_add_boolean "success" 0
+				json_add_string "message" "Backup failed"
+			fi
+			;;
+		restart_network)
+			/etc/init.d/network restart >/dev/null 2>&1
+			json_add_boolean "success" 1
+			json_add_string "message" "Network services restarted"
+			;;
+		restart_firewall)
+			/etc/init.d/firewall restart >/dev/null 2>&1
+			json_add_boolean "success" 1
+			json_add_string "message" "Firewall restarted"
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "message" "Unknown action: $action"
+			;;
+	esac
+
+	json_add_int "timestamp" "$(date +%s)"
+	json_dump
+}
+
+# Get all dashboard data in one call
+get_dashboard_data() {
+	json_init
+
+	# Get status info
+	local uptime=$(cat /proc/uptime | cut -d. -f1)
+	local load=$(cat /proc/loadavg | cut -d' ' -f1-3)
+	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+	local mem_free=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+	local mem_used=$((mem_total - mem_free))
+	local mem_pct=$((mem_used * 100 / mem_total))
+
+	json_add_object "status"
+	json_add_string "version" "1.0.0"
+	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || echo 'SecuBox')"
+	json_add_int "uptime" "$uptime"
+	json_add_string "load" "$load"
+	json_add_int "memory_total" "$mem_total"
+	json_add_int "memory_used" "$mem_used"
+	json_add_int "memory_percent" "$mem_pct"
+	json_close_object
+
+	# Get modules list
+	json_add_array "modules"
+	config_load secubox
+	for module in $MODULES; do
+		local name desc category icon color
+		config_get name "$module" name "$module"
+		config_get desc "$module" description ""
+		config_get category "$module" category "other"
+		config_get icon "$module" icon "box"
+		config_get color "$module" color "#64748b"
+
+		local is_installed=$(check_module_installed "$module")
+		local is_running=$(check_module_running "$module")
+
+		json_add_object ""
+		json_add_string "id" "$module"
+		json_add_string "name" "$name"
+		json_add_string "description" "$desc"
+		json_add_string "category" "$category"
+		json_add_string "icon" "$icon"
+		json_add_string "color" "$color"
+		json_add_boolean "installed" "$is_installed"
+		json_add_boolean "running" "$is_running"
+		json_close_object
+	done
+	json_close_array
+
+	# Count installed and running modules
+	local total=0 installed=0 running=0
+	for module in $MODULES; do
+		total=$((total + 1))
+		[ "$(check_module_installed "$module")" = "1" ] && installed=$((installed + 1))
+		[ "$(check_module_running "$module")" = "1" ] && running=$((running + 1))
+	done
+
+	json_add_object "counts"
+	json_add_int "total" "$total"
+	json_add_int "installed" "$installed"
+	json_add_int "running" "$running"
+	json_close_object
+
+	# Get system health
+	local cpu_cores=$(grep -c processor /proc/cpuinfo)
+	local load_val=$(cat /proc/loadavg | cut -d' ' -f1)
+	local cpu_pct=$(awk "BEGIN {printf \"%.0f\", ($load_val / $cpu_cores) * 100}")
+	local disk_pct=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+
+	json_add_object "health"
+	json_add_int "cpu_percent" "$cpu_pct"
+	json_add_int "memory_percent" "$mem_pct"
+	json_add_int "disk_percent" "$disk_pct"
+	json_close_object
+
+	# Get recent alerts (simplified)
+	json_add_array "alerts"
+	for module in $MODULES; do
+		local is_installed=$(check_module_installed "$module")
+		local is_running=$(check_module_running "$module")
+
+		if [ "$is_installed" = "1" ] && [ "$is_running" != "1" ]; then
+			config_load secubox
+			local name
+			config_get name "$module" name "$module"
+
+			json_add_object ""
+			json_add_string "module" "$module"
+			json_add_string "message" "$name is not running"
+			json_add_string "severity" "warning"
+			json_close_object
+		fi
+	done
+	json_close_array
+
+	json_add_int "timestamp" "$(date +%s)"
+	json_dump
+}
+
+# Main dispatcher
 case "$1" in
-    list) echo '{"status":{},"modules":{}}' ;;
-    call)
-        case "$2" in
-            status) get_status ;;
-            modules) get_modules ;;
-            *) echo '{"error":"Unknown method"}' ;;
-        esac
-        ;;
+	list)
+		json_init
+		json_add_object "status"
+		json_close_object
+		json_add_object "modules"
+		json_close_object
+		json_add_object "modules_by_category"
+		json_add_string "category" "string"
+		json_close_object
+		json_add_object "module_info"
+		json_add_string "module" "string"
+		json_close_object
+		json_add_object "start_module"
+		json_add_string "module" "string"
+		json_close_object
+		json_add_object "stop_module"
+		json_add_string "module" "string"
+		json_close_object
+		json_add_object "restart_module"
+		json_add_string "module" "string"
+		json_close_object
+		json_add_object "health"
+		json_close_object
+		json_add_object "diagnostics"
+		json_close_object
+		json_add_object "get_system_health"
+		json_close_object
+		json_add_object "get_alerts"
+		json_close_object
+		json_add_object "quick_action"
+		json_add_string "action" "string"
+		json_close_object
+		json_add_object "get_dashboard_data"
+		json_close_object
+		json_dump
+		;;
+	call)
+		case "$2" in
+			status)
+				get_status
+				;;
+			modules)
+				get_modules
+				;;
+			modules_by_category)
+				read -r input
+				json_load "$input"
+				json_get_var category category "security"
+				get_modules_by_category "$category"
+				;;
+			module_info)
+				read -r input
+				json_load "$input"
+				json_get_var module module ""
+				get_module_info "$module"
+				;;
+			start_module)
+				read -r input
+				json_load "$input"
+				json_get_var module module ""
+				start_module "$module"
+				;;
+			stop_module)
+				read -r input
+				json_load "$input"
+				json_get_var module module ""
+				stop_module "$module"
+				;;
+			restart_module)
+				read -r input
+				json_load "$input"
+				json_get_var module module ""
+				restart_module "$module"
+				;;
+			health)
+				get_health
+				;;
+			diagnostics)
+				get_diagnostics
+				;;
+			get_system_health)
+				get_system_health
+				;;
+			get_alerts)
+				get_alerts
+				;;
+			quick_action)
+				read -r input
+				json_load "$input"
+				json_get_var action action ""
+				quick_action "$action"
+				;;
+			get_dashboard_data)
+				get_dashboard_data
+				;;
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+	*)
+		echo '{"error":"Unknown command"}'
+		;;
 esac
