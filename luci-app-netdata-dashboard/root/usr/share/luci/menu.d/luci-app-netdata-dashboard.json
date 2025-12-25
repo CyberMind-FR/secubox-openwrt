@@ -18,6 +18,38 @@
 			"path": "netdata-dashboard/dashboard"
 		}
 	},
+	"admin/secubox/monitoring/netdata/system": {
+		"title": "System Info",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "netdata-dashboard/system"
+		}
+	},
+	"admin/secubox/monitoring/netdata/processes": {
+		"title": "Processes",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "netdata-dashboard/processes"
+		}
+	},
+	"admin/secubox/monitoring/netdata/realtime": {
+		"title": "Real-time Metrics",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "netdata-dashboard/realtime"
+		}
+	},
+	"admin/secubox/monitoring/netdata/network": {
+		"title": "Network",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "netdata-dashboard/network"
+		}
+	},
 	"admin/secubox/monitoring/netdata/settings": {
 		"title": "Settings",
 		"order": 90,

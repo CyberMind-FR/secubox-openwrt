@@ -25,12 +25,36 @@
 			"path": "vhost-manager/vhosts"
 		}
 	},
+	"admin/secubox/services/vhosts/internal": {
+		"title": "Internal Services",
+		"order": 25,
+		"action": {
+			"type": "view",
+			"path": "vhost-manager/internal"
+		}
+	},
 	"admin/secubox/services/vhosts/certificates": {
 		"title": "SSL Certificates",
 		"order": 30,
 		"action": {
 			"type": "view",
 			"path": "vhost-manager/certificates"
+		}
+	},
+	"admin/secubox/services/vhosts/ssl": {
+		"title": "SSL/TLS Configuration",
+		"order": 35,
+		"action": {
+			"type": "view",
+			"path": "vhost-manager/ssl"
+		}
+	},
+	"admin/secubox/services/vhosts/redirects": {
+		"title": "URL Redirects",
+		"order": 37,
+		"action": {
+			"type": "view",
+			"path": "vhost-manager/redirects"
 		}
 	},
 	"admin/secubox/services/vhosts/logs": {

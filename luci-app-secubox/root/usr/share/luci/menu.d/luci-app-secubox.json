@@ -14,6 +14,11 @@
         "order": 20,
         "action": {"type": "view", "path": "secubox/modules"}
     },
+    "admin/secubox/settings": {
+        "title": "Settings",
+        "order": 25,
+        "action": {"type": "view", "path": "secubox/settings"}
+    },
     "admin/secubox/security": {
         "title": "Security & Monitoring",
         "order": 30,

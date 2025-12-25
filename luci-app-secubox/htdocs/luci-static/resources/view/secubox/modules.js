@@ -2,7 +2,11 @@
 'require view';
 'require rpc';
 
-var callModules = rpc.declare({object:'luci.secubox',method:'modules',expect:{modules:[]}});
+var callModules = rpc.declare({
+	object: 'luci.secubox',
+	method: 'modules',
+	expect: { modules: [] }
+});
 
 return view.extend({
     load: function() { return callModules(); },

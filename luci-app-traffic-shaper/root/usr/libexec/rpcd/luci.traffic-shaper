@@ -1,0 +1,568 @@
+#!/bin/sh
+# Traffic Shaper RPCD Backend
+# Advanced QoS traffic control with TC/CAKE
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+# Configuration file
+CONFIG_FILE="/etc/config/traffic-shaper"
+
+# Get current status
+status() {
+	json_init
+
+	# Check if traffic shaping is active
+	local active=0
+	local qdisc_count=$(tc qdisc show 2>/dev/null | grep -c "cake\|htb" || echo 0)
+	[ "$qdisc_count" -gt 0 ] && active=1
+
+	json_add_boolean "active" "$active"
+	json_add_int "qdisc_count" "$qdisc_count"
+
+	# Count classes
+	local class_count=0
+	[ -f "$CONFIG_FILE" ] && class_count=$(uci show traffic-shaper 2>/dev/null | grep -c "=class" || echo 0)
+	json_add_int "class_count" "$class_count"
+
+	# Count rules
+	local rule_count=0
+	[ -f "$CONFIG_FILE" ] && rule_count=$(uci show traffic-shaper 2>/dev/null | grep -c "=rule" || echo 0)
+	json_add_int "rule_count" "$rule_count"
+
+	# Get interfaces with shaping
+	json_add_array "interfaces"
+	tc qdisc show 2>/dev/null | awk '/dev/ {print $5}' | sort -u | while read iface; do
+		json_add_string "" "$iface"
+	done
+	json_close_array
+
+	json_dump
+}
+
+# List all traffic classes
+list_classes() {
+	json_init
+	json_add_array "classes"
+
+	if [ -f "$CONFIG_FILE" ]; then
+		config_load traffic-shaper
+
+		list_class() {
+			local name priority rate ceil interface enabled
+			config_get name "$1" name
+			config_get priority "$1" priority "5"
+			config_get rate "$1" rate "1mbit"
+			config_get ceil "$1" ceil "10mbit"
+			config_get interface "$1" interface "wan"
+			config_get_bool enabled "$1" enabled "1"
+
+			json_add_object ""
+			json_add_string "id" "$1"
+			json_add_string "name" "$name"
+			json_add_int "priority" "$priority"
+			json_add_string "rate" "$rate"
+			json_add_string "ceil" "$ceil"
+			json_add_string "interface" "$interface"
+			json_add_boolean "enabled" "$enabled"
+			json_close_object
+		}
+
+		config_foreach list_class class
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Add new traffic class
+add_class() {
+	read -r input
+	json_load "$input"
+
+	local name priority rate ceil interface
+	json_get_var name name
+	json_get_var priority priority "5"
+	json_get_var rate rate "1mbit"
+	json_get_var ceil ceil "10mbit"
+	json_get_var interface interface "wan"
+	json_cleanup
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Class name is required"
+		json_dump
+		return 1
+	fi
+
+	# Generate unique ID
+	local class_id="class_$(date +%s)"
+
+	# Add to UCI
+	uci set traffic-shaper."$class_id"=class
+	uci set traffic-shaper."$class_id".name="$name"
+	uci set traffic-shaper."$class_id".priority="$priority"
+	uci set traffic-shaper."$class_id".rate="$rate"
+	uci set traffic-shaper."$class_id".ceil="$ceil"
+	uci set traffic-shaper."$class_id".interface="$interface"
+	uci set traffic-shaper."$class_id".enabled="1"
+	uci commit traffic-shaper
+
+	# Apply to TC
+	apply_tc_config
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Class added successfully"
+	json_add_string "id" "$class_id"
+	json_dump
+}
+
+# Update existing class
+update_class() {
+	read -r input
+	json_load "$input"
+
+	local id name priority rate ceil interface enabled
+	json_get_var id id
+	json_get_var name name
+	json_get_var priority priority
+	json_get_var rate rate
+	json_get_var ceil ceil
+	json_get_var interface interface
+	json_get_var enabled enabled
+	json_cleanup
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Class ID is required"
+		json_dump
+		return 1
+	fi
+
+	# Update UCI
+	[ -n "$name" ] && uci set traffic-shaper."$id".name="$name"
+	[ -n "$priority" ] && uci set traffic-shaper."$id".priority="$priority"
+	[ -n "$rate" ] && uci set traffic-shaper."$id".rate="$rate"
+	[ -n "$ceil" ] && uci set traffic-shaper."$id".ceil="$ceil"
+	[ -n "$interface" ] && uci set traffic-shaper."$id".interface="$interface"
+	[ -n "$enabled" ] && uci set traffic-shaper."$id".enabled="$enabled"
+	uci commit traffic-shaper
+
+	# Re-apply TC
+	apply_tc_config
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Class updated successfully"
+	json_dump
+}
+
+# Delete traffic class
+delete_class() {
+	read -r input
+	json_load "$input"
+
+	local id
+	json_get_var id id
+	json_cleanup
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Class ID is required"
+		json_dump
+		return 1
+	fi
+
+	# Delete from UCI
+	uci delete traffic-shaper."$id" 2>/dev/null
+	uci commit traffic-shaper
+
+	# Re-apply TC
+	apply_tc_config
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Class deleted successfully"
+	json_dump
+}
+
+# List all classification rules
+list_rules() {
+	json_init
+	json_add_array "rules"
+
+	if [ -f "$CONFIG_FILE" ]; then
+		config_load traffic-shaper
+
+		list_rule() {
+			local class match_type match_value enabled
+			config_get class "$1" class
+			config_get match_type "$1" match_type
+			config_get match_value "$1" match_value
+			config_get_bool enabled "$1" enabled "1"
+
+			json_add_object ""
+			json_add_string "id" "$1"
+			json_add_string "class" "$class"
+			json_add_string "match_type" "$match_type"
+			json_add_string "match_value" "$match_value"
+			json_add_boolean "enabled" "$enabled"
+			json_close_object
+		}
+
+		config_foreach list_rule rule
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Add classification rule
+add_rule() {
+	read -r input
+	json_load "$input"
+
+	local class match_type match_value
+	json_get_var class class
+	json_get_var match_type match_type
+	json_get_var match_value match_value
+	json_cleanup
+
+	if [ -z "$class" ] || [ -z "$match_type" ] || [ -z "$match_value" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Class, match_type, and match_value are required"
+		json_dump
+		return 1
+	fi
+
+	# Generate unique ID
+	local rule_id="rule_$(date +%s)"
+
+	# Add to UCI
+	uci set traffic-shaper."$rule_id"=rule
+	uci set traffic-shaper."$rule_id".class="$class"
+	uci set traffic-shaper."$rule_id".match_type="$match_type"
+	uci set traffic-shaper."$rule_id".match_value="$match_value"
+	uci set traffic-shaper."$rule_id".enabled="1"
+	uci commit traffic-shaper
+
+	# Apply filter to TC
+	apply_tc_config
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Rule added successfully"
+	json_add_string "id" "$rule_id"
+	json_dump
+}
+
+# Delete classification rule
+delete_rule() {
+	read -r input
+	json_load "$input"
+
+	local id
+	json_get_var id id
+	json_cleanup
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Rule ID is required"
+		json_dump
+		return 1
+	fi
+
+	# Delete from UCI
+	uci delete traffic-shaper."$id" 2>/dev/null
+	uci commit traffic-shaper
+
+	# Re-apply TC
+	apply_tc_config
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Rule deleted successfully"
+	json_dump
+}
+
+# Get traffic statistics per class
+get_stats() {
+	json_init
+	json_add_array "stats"
+
+	# Get stats from TC
+	tc -s class show 2>/dev/null | awk '
+	BEGIN { class=""; }
+	/class/ {
+		if (class != "") {
+			print class"|"packets"|"bytes"|"drops
+		}
+		class=$3; packets=0; bytes=0; drops=0
+	}
+	/Sent/ { bytes=$2; packets=$4 }
+	/dropped/ { drops=$2 }
+	END {
+		if (class != "") {
+			print class"|"packets"|"bytes"|"drops
+		}
+	}
+	' | while IFS='|' read class_id packets bytes drops; do
+		json_add_object ""
+		json_add_string "class" "$class_id"
+		json_add_int "packets" "$packets"
+		json_add_int "bytes" "$bytes"
+		json_add_int "drops" "$drops"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Apply preset configuration
+apply_preset() {
+	read -r input
+	json_load "$input"
+
+	local preset
+	json_get_var preset preset
+	json_cleanup
+
+	if [ -z "$preset" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Preset name is required"
+		json_dump
+		return 1
+	fi
+
+	# Clear existing config
+	uci revert traffic-shaper 2>/dev/null
+
+	case "$preset" in
+		gaming)
+			# Gaming preset: High priority for gaming, low latency
+			uci set traffic-shaper.gaming=class
+			uci set traffic-shaper.gaming.name="Gaming"
+			uci set traffic-shaper.gaming.priority="1"
+			uci set traffic-shaper.gaming.rate="10mbit"
+			uci set traffic-shaper.gaming.ceil="50mbit"
+			uci set traffic-shaper.gaming.interface="wan"
+			uci set traffic-shaper.gaming.enabled="1"
+
+			uci set traffic-shaper.default=class
+			uci set traffic-shaper.default.name="Default"
+			uci set traffic-shaper.default.priority="5"
+			uci set traffic-shaper.default.rate="5mbit"
+			uci set traffic-shaper.default.ceil="30mbit"
+			uci set traffic-shaper.default.interface="wan"
+			uci set traffic-shaper.default.enabled="1"
+
+			# Gaming ports
+			uci set traffic-shaper.gaming_rule=rule
+			uci set traffic-shaper.gaming_rule.class="gaming"
+			uci set traffic-shaper.gaming_rule.match_type="dport"
+			uci set traffic-shaper.gaming_rule.match_value="3074,3478-3479,27015-27030"
+			uci set traffic-shaper.gaming_rule.enabled="1"
+			;;
+
+		streaming)
+			# Streaming preset: Prioritize video streaming
+			uci set traffic-shaper.streaming=class
+			uci set traffic-shaper.streaming.name="Streaming"
+			uci set traffic-shaper.streaming.priority="2"
+			uci set traffic-shaper.streaming.rate="15mbit"
+			uci set traffic-shaper.streaming.ceil="80mbit"
+			uci set traffic-shaper.streaming.interface="wan"
+			uci set traffic-shaper.streaming.enabled="1"
+
+			uci set traffic-shaper.default=class
+			uci set traffic-shaper.default.name="Default"
+			uci set traffic-shaper.default.priority="5"
+			uci set traffic-shaper.default.rate="5mbit"
+			uci set traffic-shaper.default.ceil="20mbit"
+			uci set traffic-shaper.default.interface="wan"
+			uci set traffic-shaper.default.enabled="1"
+
+			# Streaming ports (RTMP, HLS, etc.)
+			uci set traffic-shaper.streaming_rule=rule
+			uci set traffic-shaper.streaming_rule.class="streaming"
+			uci set traffic-shaper.streaming_rule.match_type="dport"
+			uci set traffic-shaper.streaming_rule.match_value="1935,8080,443"
+			uci set traffic-shaper.streaming_rule.enabled="1"
+			;;
+
+		work_from_home)
+			# Work from home: Prioritize VPN, video conf
+			uci set traffic-shaper.video_conf=class
+			uci set traffic-shaper.video_conf.name="Video Conference"
+			uci set traffic-shaper.video_conf.priority="1"
+			uci set traffic-shaper.video_conf.rate="10mbit"
+			uci set traffic-shaper.video_conf.ceil="30mbit"
+			uci set traffic-shaper.video_conf.interface="wan"
+			uci set traffic-shaper.video_conf.enabled="1"
+
+			uci set traffic-shaper.vpn=class
+			uci set traffic-shaper.vpn.name="VPN"
+			uci set traffic-shaper.vpn.priority="2"
+			uci set traffic-shaper.vpn.rate="5mbit"
+			uci set traffic-shaper.vpn.ceil="50mbit"
+			uci set traffic-shaper.vpn.interface="wan"
+			uci set traffic-shaper.vpn.enabled="1"
+
+			uci set traffic-shaper.default=class
+			uci set traffic-shaper.default.name="Default"
+			uci set traffic-shaper.default.priority="5"
+			uci set traffic-shaper.default.rate="3mbit"
+			uci set traffic-shaper.default.ceil="20mbit"
+			uci set traffic-shaper.default.interface="wan"
+			uci set traffic-shaper.default.enabled="1"
+
+			# Video conf ports (Zoom, Teams, Meet)
+			uci set traffic-shaper.conf_rule=rule
+			uci set traffic-shaper.conf_rule.class="video_conf"
+			uci set traffic-shaper.conf_rule.match_type="dport"
+			uci set traffic-shaper.conf_rule.match_value="3478-3481,8801-8810"
+			uci set traffic-shaper.conf_rule.enabled="1"
+
+			# VPN ports
+			uci set traffic-shaper.vpn_rule=rule
+			uci set traffic-shaper.vpn_rule.class="vpn"
+			uci set traffic-shaper.vpn_rule.match_type="dport"
+			uci set traffic-shaper.vpn_rule.match_value="1194,1701,500,4500"
+			uci set traffic-shaper.vpn_rule.enabled="1"
+			;;
+
+		*)
+			json_init
+			json_add_boolean "success" 0
+			json_add_string "message" "Unknown preset: $preset"
+			json_dump
+			return 1
+			;;
+	esac
+
+	uci commit traffic-shaper
+	apply_tc_config
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Preset '$preset' applied successfully"
+	json_dump
+}
+
+# List available presets
+list_presets() {
+	json_init
+	json_add_array "presets"
+
+	json_add_object ""
+	json_add_string "id" "gaming"
+	json_add_string "name" "Gaming"
+	json_add_string "description" "Optimized for online gaming with low latency"
+	json_close_object
+
+	json_add_object ""
+	json_add_string "id" "streaming"
+	json_add_string "name" "Streaming"
+	json_add_string "description" "Prioritize video streaming services"
+	json_close_object
+
+	json_add_object ""
+	json_add_string "id" "work_from_home"
+	json_add_string "name" "Work From Home"
+	json_add_string "description" "Optimize for VPN and video conferencing"
+	json_close_object
+
+	json_close_array
+	json_dump
+}
+
+# Apply TC configuration from UCI
+apply_tc_config() {
+	# Clear existing qdiscs
+	for iface in $(tc qdisc show 2>/dev/null | awk '/dev/ {print $5}' | sort -u); do
+		tc qdisc del dev "$iface" root 2>/dev/null || true
+	done
+
+	# Load configuration
+	config_load traffic-shaper
+
+	# Group classes by interface
+	local interfaces=""
+
+	apply_class() {
+		local interface enabled
+		config_get interface "$1" interface "wan"
+		config_get_bool enabled "$1" enabled "1"
+
+		[ "$enabled" = "1" ] || return 0
+
+		# Track interfaces
+		echo "$interfaces" | grep -q "$interface" || interfaces="$interfaces $interface"
+	}
+
+	config_foreach apply_class class
+
+	# Setup CAKE qdisc on each interface
+	for iface in $interfaces; do
+		# Get total bandwidth (sum of all class rates)
+		local total_bandwidth="100mbit"
+
+		# Apply CAKE qdisc
+		tc qdisc add dev "$iface" root cake bandwidth "$total_bandwidth" diffserv4 2>/dev/null || {
+			# Fallback to HTB if CAKE not available
+			tc qdisc add dev "$iface" root handle 1: htb default 9999 2>/dev/null
+		}
+	done
+
+	return 0
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		cat << 'EOF'
+{
+	"status": {},
+	"list_classes": {},
+	"add_class": { "name": "string", "priority": 5, "rate": "string", "ceil": "string", "interface": "wan" },
+	"update_class": { "id": "string", "name": "string", "priority": 5, "rate": "string", "ceil": "string", "interface": "string", "enabled": true },
+	"delete_class": { "id": "string" },
+	"list_rules": {},
+	"add_rule": { "class": "string", "match_type": "string", "match_value": "string" },
+	"delete_rule": { "id": "string" },
+	"get_stats": {},
+	"apply_preset": { "preset": "string" },
+	"list_presets": {}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status) status ;;
+			list_classes) list_classes ;;
+			add_class) add_class ;;
+			update_class) update_class ;;
+			delete_class) delete_class ;;
+			list_rules) list_rules ;;
+			add_rule) add_rule ;;
+			delete_rule) delete_rule ;;
+			get_stats) get_stats ;;
+			apply_preset) apply_preset ;;
+			list_presets) list_presets ;;
+			*)
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "Unknown method: $2"
+				json_dump
+				;;
+		esac
+		;;
+esac

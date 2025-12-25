@@ -60,14 +60,50 @@ var callPreloadUrl = rpc.declare({
 
 var callGetPolicies = rpc.declare({
 	object: 'luci.cdn-cache',
-	method: 'get_policies',
+	method: 'policies',
 	expect: { policies: [] }
 });
 
-var callSetPolicy = rpc.declare({
+var callAddPolicy = rpc.declare({
 	object: 'luci.cdn-cache',
-	method: 'set_policy',
-	params: ['name', 'enabled', 'extensions', 'ttl', 'domains']
+	method: 'add_policy',
+	params: ['name', 'domains', 'extensions', 'cache_time', 'max_size'],
+	expect: { }
+});
+
+var callRemovePolicy = rpc.declare({
+	object: 'luci.cdn-cache',
+	method: 'remove_policy',
+	params: ['id'],
+	expect: { }
+});
+
+// Specification-compliant methods (rules = policies)
+var callListRules = rpc.declare({
+	object: 'luci.cdn-cache',
+	method: 'list_rules',
+	expect: { policies: [] }
+});
+
+var callAddRule = rpc.declare({
+	object: 'luci.cdn-cache',
+	method: 'add_rule',
+	params: ['name', 'domains', 'extensions', 'cache_time', 'max_size'],
+	expect: { }
+});
+
+var callDeleteRule = rpc.declare({
+	object: 'luci.cdn-cache',
+	method: 'delete_rule',
+	params: ['id'],
+	expect: { }
+});
+
+var callSetLimits = rpc.declare({
+	object: 'luci.cdn-cache',
+	method: 'set_limits',
+	params: ['max_size_mb', 'cache_valid'],
+	expect: { }
 });
 
 function formatBytes(bytes) {
@@ -103,8 +139,16 @@ return baseclass.extend({
 	purgeCache: callPurgeCache,
 	purgeDomain: callPurgeDomain,
 	preloadUrl: callPreloadUrl,
+	// Policy methods
 	getPolicies: callGetPolicies,
-	setPolicy: callSetPolicy,
+	addPolicy: callAddPolicy,
+	removePolicy: callRemovePolicy,
+	// Specification-compliant methods (rules = policies)
+	listRules: callListRules,
+	addRule: callAddRule,
+	deleteRule: callDeleteRule,
+	setLimits: callSetLimits,
+	// Utility functions
 	formatBytes: formatBytes,
 	formatUptime: formatUptime,
 	formatHitRatio: formatHitRatio

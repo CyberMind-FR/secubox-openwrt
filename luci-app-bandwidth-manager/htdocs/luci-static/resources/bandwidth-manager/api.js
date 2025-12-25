@@ -67,6 +67,18 @@ var callGetUsageHistory = rpc.declare({
 	expect: { history: [] }
 });
 
+var callGetMedia = rpc.declare({
+	object: 'luci.bandwidth-manager',
+	method: 'get_media',
+	expect: { media: [] }
+});
+
+var callGetClasses = rpc.declare({
+	object: 'luci.bandwidth-manager',
+	method: 'get_classes',
+	expect: { classes: [] }
+});
+
 return {
 	getStatus: callStatus,
 	listRules: callListRules,
@@ -77,5 +89,7 @@ return {
 	setQuota: callSetQuota,
 	resetQuota: callResetQuota,
 	getUsageRealtime: callGetUsageRealtime,
-	getUsageHistory: callGetUsageHistory
+	getUsageHistory: callGetUsageHistory,
+	getMedia: callGetMedia,
+	getClasses: callGetClasses
 };

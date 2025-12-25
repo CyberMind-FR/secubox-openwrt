@@ -520,12 +520,52 @@ remove_exclusion() {
 	fi
 }
 
+# Wrapper methods for specification compliance (rules = policies)
+list_rules() {
+	get_policies
+}
+
+add_rule() {
+	add_policy "$@"
+}
+
+delete_rule() {
+	remove_policy "$@"
+}
+
+# Set cache size limits
+set_limits() {
+	local max_size_mb="$1"
+	local cache_valid="${2:-1440}"
+
+	if [ -z "$max_size_mb" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "max_size_mb required"
+		json_dump
+		return
+	fi
+
+	uci set cdn-cache.main.cache_size="$max_size_mb"
+	uci set cdn-cache.main.cache_valid="$cache_valid"
+	uci commit cdn-cache
+
+	logger -t cdn-cache "Cache limits updated: ${max_size_mb}MB, ${cache_valid}min validity"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Cache limits updated"
+	json_add_int "max_size_mb" "$max_size_mb"
+	json_add_int "cache_valid_minutes" "$cache_valid"
+	json_dump
+}
+
 # Clear statistics
 clear_stats() {
 	cat > "$STATS_FILE" << 'EOF'
 {"hits":0,"misses":0,"bytes_saved":0,"bytes_served":0,"requests":0,"start_time":0}
 EOF
-	
+
 	json_init
 	json_add_boolean "success" 1
 	json_dump
@@ -597,6 +637,22 @@ case "$1" in
 		json_close_object
 		json_add_object "remove_exclusion"
 		json_add_string "id" "string"
+		json_close_object
+		json_add_object "list_rules"
+		json_close_object
+		json_add_object "add_rule"
+		json_add_string "name" "string"
+		json_add_string "domains" "string"
+		json_add_string "extensions" "string"
+		json_add_int "cache_time" 0
+		json_add_int "max_size" 0
+		json_close_object
+		json_add_object "delete_rule"
+		json_add_string "id" "string"
+		json_close_object
+		json_add_object "set_limits"
+		json_add_int "max_size_mb" 0
+		json_add_int "cache_valid" 0
 		json_close_object
 		json_add_object "clear_stats"
 		json_close_object
@@ -680,6 +736,30 @@ case "$1" in
 				json_load "$input"
 				json_get_var id id ""
 				remove_exclusion "$id"
+				;;
+			list_rules) list_rules ;;
+			add_rule)
+				read -r input
+				json_load "$input"
+				json_get_var name name ""
+				json_get_var domains domains ""
+				json_get_var extensions extensions ""
+				json_get_var cache_time cache_time 1440
+				json_get_var max_size max_size 512
+				add_rule "$name" "$domains" "$extensions" "$cache_time" "$max_size"
+				;;
+			delete_rule)
+				read -r input
+				json_load "$input"
+				json_get_var id id ""
+				delete_rule "$id"
+				;;
+			set_limits)
+				read -r input
+				json_load "$input"
+				json_get_var max_size_mb max_size_mb 0
+				json_get_var cache_valid cache_valid 1440
+				set_limits "$max_size_mb" "$cache_valid"
 				;;
 			clear_stats) clear_stats ;;
 			restart) do_restart ;;

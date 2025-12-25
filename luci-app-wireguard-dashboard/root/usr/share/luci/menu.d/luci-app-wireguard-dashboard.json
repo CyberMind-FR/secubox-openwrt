@@ -34,6 +34,22 @@
 			"path": "wireguard-dashboard/qrcodes"
 		}
 	},
+	"admin/secubox/network/wireguard/traffic": {
+		"title": "Traffic Stats",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "wireguard-dashboard/traffic"
+		}
+	},
+	"admin/secubox/network/wireguard/config": {
+		"title": "Configuration",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "wireguard-dashboard/config"
+		}
+	},
 	"admin/secubox/network/wireguard/settings": {
 		"title": "Settings",
 		"order": 90,

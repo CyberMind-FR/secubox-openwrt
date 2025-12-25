@@ -1,147 +1,517 @@
 #!/bin/sh
+# Auth Guardian RPCD Backend
+# OAuth2 authentication and voucher system
+
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
-SESSIONS_FILE="/tmp/authguard_sessions.json"
-VOUCHERS_FILE="/tmp/authguard_vouchers.json"
+# Configuration paths
+CONFIG_FILE="/etc/config/auth_guardian"
+SESSIONS_FILE="/tmp/auth_guardian_sessions.json"
+LOGS_FILE="/tmp/auth_guardian_logs.json"
 
-get_status() {
-    json_init
-    
-    local enabled auth_method
-    config_load authguard
-    config_get enabled global enabled "0"
-    config_get auth_method global auth_method "splash"
-    
-    json_add_boolean "enabled" "$enabled"
-    json_add_string "auth_method" "$auth_method"
-    
-    # Count active sessions
-    local sessions=0
-    [ -f "$SESSIONS_FILE" ] && sessions=$(cat "$SESSIONS_FILE" | grep -c "active" || echo 0)
-    json_add_int "active_sessions" "$sessions"
-    
-    # Check nodogsplash
-    local nds_running=0
-    pgrep -f nodogsplash >/dev/null && nds_running=1
-    json_add_boolean "captive_portal_active" "$nds_running"
-    
-    json_dump
+# Initialize storage
+init_storage() {
+	mkdir -p /tmp/auth_guardian
+	[ ! -f "$SESSIONS_FILE" ] && echo '[]' > "$SESSIONS_FILE"
+	[ ! -f "$LOGS_FILE" ] && echo '[]' > "$LOGS_FILE"
+	touch "$CONFIG_FILE"
 }
 
-get_sessions() {
-    json_init
-    json_add_array "sessions"
-    
-    # Parse nodogsplash clients if available
-    if command -v ndsctl >/dev/null 2>&1; then
-        ndsctl json 2>/dev/null | jsonfilter -e '@.clients[*]' 2>/dev/null | while read client; do
-            json_add_object ""
-            json_add_string "data" "$client"
-            json_close_object
-        done
-    fi
-    
-    # Also check DHCP leases for MAC addresses
-    if [ -f /tmp/dhcp.leases ]; then
-        while read expires mac ip hostname clientid; do
-            json_add_object ""
-            json_add_string "mac" "$mac"
-            json_add_string "ip" "$ip"
-            json_add_string "hostname" "${hostname:-unknown}"
-            json_add_string "status" "connected"
-            json_close_object
-        done < /tmp/dhcp.leases
-    fi
-    
-    json_close_array
-    json_dump
+# Generate unique ID
+generate_id() {
+	head -c 8 /dev/urandom | hexdump -e '"%016x"'
 }
 
-get_vouchers() {
-    json_init
-    json_add_array "vouchers"
-    
-    if [ -f "$VOUCHERS_FILE" ]; then
-        cat "$VOUCHERS_FILE"
-    else
-        # Generate sample vouchers
-        for i in 1 2 3 4 5; do
-            json_add_object ""
-            json_add_string "code" "WIFI-$(head -c 4 /dev/urandom | hexdump -e '"%08x"' | tr '[:lower:]' '[:upper:]')"
-            json_add_string "status" "unused"
-            json_add_int "validity" "86400"
-            json_add_int "created" "$(date +%s)"
-            json_close_object
-        done
-    fi
-    
-    json_close_array
-    json_dump
+# Generate voucher code
+generate_voucher_code() {
+	local part1=$(head -c 3 /dev/urandom | hexdump -e '"%06x"' | tr '[:lower:]' '[:upper:]')
+	local part2=$(head -c 3 /dev/urandom | hexdump -e '"%06x"' | tr '[:lower:]' '[:upper:]')
+	local part3=$(head -c 3 /dev/urandom | hexdump -e '"%06x"' | tr '[:lower:]' '[:upper:]')
+	echo "${part1}-${part2}-${part3}"
 }
 
-get_oauth_providers() {
-    config_load authguard
-    json_init
-    json_add_array "providers"
-    
-    _add_provider() {
-        local enabled
-        config_get enabled "$1" enabled "0"
-        
-        json_add_object ""
-        json_add_string "id" "$1"
-        json_add_boolean "enabled" "$enabled"
-        json_close_object
-    }
-    config_foreach _add_provider oauth
-    
-    json_close_array
-    json_dump
+# Add log entry
+add_log() {
+	local event="$1"
+	local details="$2"
+	local mac="$3"
+
+	init_storage
+
+	local timestamp=$(date -Iseconds)
+	local entry="{\"timestamp\":\"$timestamp\",\"event\":\"$event\",\"details\":\"$details\",\"mac\":\"$mac\"}"
+
+	if [ -f "$LOGS_FILE" ]; then
+		jq ". += [$entry] | .[-500:]" "$LOGS_FILE" > "${LOGS_FILE}.tmp" 2>/dev/null && mv "${LOGS_FILE}.tmp" "$LOGS_FILE"
+	fi
 }
 
-get_bypass_list() {
-    config_load authguard
-    json_init
-    json_add_array "mac"
-    config_list_foreach whitelist mac _add_item
-    json_close_array
-    json_add_array "ip"
-    config_list_foreach whitelist ip _add_item
-    json_close_array
-    json_add_array "domain"
-    config_list_foreach whitelist domain _add_item
-    json_close_array
-    json_dump
+# Get system status
+status() {
+	init_storage
+
+	json_init
+
+	config_load auth_guardian
+	local enabled auth_method
+	config_get enabled global enabled "0"
+	config_get auth_method global auth_method "splash"
+
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "auth_method" "$auth_method"
+
+	# Count active sessions
+	local sessions=0
+	if [ -f "$SESSIONS_FILE" ]; then
+		sessions=$(jq '[.[] | select(.active == true)] | length' "$SESSIONS_FILE" 2>/dev/null || echo 0)
+	fi
+	json_add_int "active_sessions" "$sessions"
+
+	# Count OAuth providers
+	local provider_count=0
+	config_foreach count_section oauth_provider && provider_count=$?
+	json_add_int "oauth_providers" "$provider_count"
+
+	# Count vouchers
+	local voucher_count=0
+	local active_vouchers=0
+	config_foreach count_vouchers voucher
+	json_add_int "total_vouchers" "$voucher_count"
+	json_add_int "active_vouchers" "$active_vouchers"
+
+	# Check nodogsplash
+	local captive_portal=0
+	pgrep -x nodogsplash >/dev/null 2>&1 && captive_portal=1
+	json_add_boolean "captive_portal_active" "$captive_portal"
+
+	json_dump
 }
 
-_add_item() {
-    json_add_string "" "$1"
+count_section() {
+	return $(( $? + 1 ))
 }
 
-generate_voucher() {
-    local code="WIFI-$(head -c 4 /dev/urandom | hexdump -e '"%08x"' | tr '[:lower:]' '[:upper:]')"
-    
-    json_init
-    json_add_boolean "success" 1
-    json_add_string "code" "$code"
-    json_add_int "validity" "86400"
-    json_dump
+count_vouchers() {
+	voucher_count=$((voucher_count + 1))
+	local used
+	config_get used "$1" used "0"
+	[ "$used" = "0" ] && active_vouchers=$((active_vouchers + 1))
 }
 
+# List OAuth providers
+list_providers() {
+	config_load auth_guardian
+	json_init
+	json_add_array "providers"
+
+	_add_provider() {
+		local name client_id client_secret redirect_uri enabled
+		config_get name "$1" name ""
+		config_get client_id "$1" client_id ""
+		config_get client_secret "$1" client_secret ""
+		config_get redirect_uri "$1" redirect_uri ""
+		config_get enabled "$1" enabled "0"
+
+		json_add_object ""
+		json_add_string "id" "$1"
+		json_add_string "name" "$name"
+		json_add_string "client_id" "$client_id"
+		json_add_string "client_secret" "${client_secret:0:10}..." # Masked
+		json_add_string "redirect_uri" "$redirect_uri"
+		json_add_boolean "enabled" "$enabled"
+		json_close_object
+	}
+
+	config_foreach _add_provider oauth_provider
+
+	json_close_array
+	json_dump
+}
+
+# Set OAuth provider
+set_provider() {
+	read -r input
+	json_load "$input"
+
+	local provider name client_id client_secret redirect_uri
+	json_get_var provider provider
+	json_get_var name name
+	json_get_var client_id client_id
+	json_get_var client_secret client_secret
+	json_get_var redirect_uri redirect_uri
+
+	if [ -z "$provider" ] || [ -z "$client_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Provider type and client_id required"
+		json_dump
+		return
+	fi
+
+	# Create or update provider
+	local section_id="oauth_$(echo $provider | tr '[:upper:]' '[:lower:]')"
+
+	uci -q delete "auth_guardian.${section_id}" 2>/dev/null
+	uci set "auth_guardian.${section_id}=oauth_provider"
+	uci set "auth_guardian.${section_id}.name=$name"
+	uci set "auth_guardian.${section_id}.provider=$provider"
+	uci set "auth_guardian.${section_id}.client_id=$client_id"
+	uci set "auth_guardian.${section_id}.client_secret=$client_secret"
+	uci set "auth_guardian.${section_id}.redirect_uri=$redirect_uri"
+	uci set "auth_guardian.${section_id}.enabled=1"
+	uci commit auth_guardian
+
+	add_log "provider_configured" "OAuth provider $name configured" ""
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "OAuth provider configured"
+	json_add_string "provider_id" "$section_id"
+	json_dump
+}
+
+# Delete OAuth provider
+delete_provider() {
+	read -r input
+	json_load "$input"
+
+	local provider_id
+	json_get_var provider_id provider_id
+
+	if [ -z "$provider_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Provider ID required"
+		json_dump
+		return
+	fi
+
+	uci -q delete "auth_guardian.${provider_id}" 2>/dev/null
+	uci commit auth_guardian
+
+	add_log "provider_deleted" "OAuth provider $provider_id deleted" ""
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Provider deleted"
+	json_dump
+}
+
+# List all vouchers
+list_vouchers() {
+	config_load auth_guardian
+	json_init
+	json_add_array "vouchers"
+
+	_add_voucher() {
+		local code duration_hours data_limit_mb created used note
+		config_get code "$1" code ""
+		config_get duration_hours "$1" duration_hours "24"
+		config_get data_limit_mb "$1" data_limit_mb "0"
+		config_get created "$1" created ""
+		config_get used "$1" used "0"
+		config_get note "$1" note ""
+		config_get used_by "$1" used_by ""
+		config_get used_at "$1" used_at ""
+
+		json_add_object ""
+		json_add_string "id" "$1"
+		json_add_string "code" "$code"
+		json_add_int "duration_hours" "$duration_hours"
+		json_add_int "data_limit_mb" "$data_limit_mb"
+		json_add_string "created" "$created"
+		json_add_boolean "used" "$used"
+		json_add_string "note" "$note"
+		json_add_string "used_by" "$used_by"
+		json_add_string "used_at" "$used_at"
+		json_close_object
+	}
+
+	config_foreach _add_voucher voucher
+
+	json_close_array
+	json_dump
+}
+
+# Create voucher
+create_voucher() {
+	read -r input
+	json_load "$input"
+
+	local duration_hours data_limit_mb note
+	json_get_var duration_hours duration_hours
+	json_get_var data_limit_mb data_limit_mb
+	json_get_var note note
+
+	# Defaults
+	duration_hours=${duration_hours:-24}
+	data_limit_mb=${data_limit_mb:-0}
+	note=${note:-""}
+
+	# Generate voucher code
+	local code=$(generate_voucher_code)
+	local voucher_id="v_$(generate_id)"
+	local timestamp=$(date -Iseconds)
+
+	# Save to UCI
+	uci set "auth_guardian.${voucher_id}=voucher"
+	uci set "auth_guardian.${voucher_id}.code=$code"
+	uci set "auth_guardian.${voucher_id}.duration_hours=$duration_hours"
+	uci set "auth_guardian.${voucher_id}.data_limit_mb=$data_limit_mb"
+	uci set "auth_guardian.${voucher_id}.created=$timestamp"
+	uci set "auth_guardian.${voucher_id}.used=0"
+	uci set "auth_guardian.${voucher_id}.note=$note"
+	uci commit auth_guardian
+
+	add_log "voucher_created" "Voucher $code created" ""
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Voucher created"
+	json_add_string "voucher_id" "$voucher_id"
+	json_add_string "code" "$code"
+	json_add_int "duration_hours" "$duration_hours"
+	json_add_int "data_limit_mb" "$data_limit_mb"
+	json_dump
+}
+
+# Delete voucher
+delete_voucher() {
+	read -r input
+	json_load "$input"
+
+	local voucher_id
+	json_get_var voucher_id voucher_id
+
+	if [ -z "$voucher_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Voucher ID required"
+		json_dump
+		return
+	fi
+
+	config_load auth_guardian
+	local code
+	config_get code "$voucher_id" code ""
+
+	uci -q delete "auth_guardian.${voucher_id}" 2>/dev/null
+	uci commit auth_guardian
+
+	add_log "voucher_deleted" "Voucher $code deleted" ""
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Voucher deleted"
+	json_dump
+}
+
+# Validate voucher code
+validate_voucher() {
+	read -r input
+	json_load "$input"
+
+	local code mac
+	json_get_var code code
+	json_get_var mac mac
+
+	if [ -z "$code" ]; then
+		json_init
+		json_add_boolean "valid" 0
+		json_add_string "error" "Voucher code required"
+		json_dump
+		return
+	fi
+
+	# Search for voucher
+	config_load auth_guardian
+	local found=0
+	local voucher_id=""
+	local duration=24
+	local data_limit=0
+	local used=0
+
+	_check_voucher() {
+		local v_code v_used
+		config_get v_code "$1" code ""
+		config_get v_used "$1" used "0"
+
+		if [ "$v_code" = "$code" ]; then
+			found=1
+			voucher_id="$1"
+			config_get duration "$1" duration_hours "24"
+			config_get data_limit "$1" data_limit_mb "0"
+			used="$v_used"
+		fi
+	}
+
+	config_foreach _check_voucher voucher
+
+	if [ "$found" = "1" ] && [ "$used" = "0" ]; then
+		# Mark as used
+		local timestamp=$(date -Iseconds)
+		uci set "auth_guardian.${voucher_id}.used=1"
+		uci set "auth_guardian.${voucher_id}.used_by=$mac"
+		uci set "auth_guardian.${voucher_id}.used_at=$timestamp"
+		uci commit auth_guardian
+
+		# Authorize MAC via nodogsplash if available
+		if command -v ndsctl >/dev/null 2>&1 && [ -n "$mac" ]; then
+			ndsctl auth "$mac" >/dev/null 2>&1
+		fi
+
+		add_log "voucher_used" "Voucher $code validated" "$mac"
+
+		json_init
+		json_add_boolean "valid" 1
+		json_add_string "message" "Voucher valid and activated"
+		json_add_int "duration_hours" "$duration"
+		json_add_int "data_limit_mb" "$data_limit"
+		json_dump
+	else
+		json_init
+		json_add_boolean "valid" 0
+		json_add_string "error" "Invalid or already used voucher"
+		json_dump
+	fi
+}
+
+# List active sessions
+list_sessions() {
+	init_storage
+
+	json_init
+	json_add_array "sessions"
+
+	# Get sessions from nodogsplash if available
+	if command -v ndsctl >/dev/null 2>&1; then
+		ndsctl json 2>/dev/null | jq -c '.clients[]?' 2>/dev/null | while IFS= read -r client; do
+			local mac=$(echo "$client" | jq -r '.mac // ""')
+			local ip=$(echo "$client" | jq -r '.ip // ""')
+			local uploaded=$(echo "$client" | jq -r '.uploaded // 0')
+			local downloaded=$(echo "$client" | jq -r '.downloaded // 0')
+			local duration=$(echo "$client" | jq -r '.duration // 0')
+
+			json_add_object ""
+			json_add_string "mac" "$mac"
+			json_add_string "ip" "$ip"
+			json_add_int "uploaded_bytes" "$uploaded"
+			json_add_int "downloaded_bytes" "$downloaded"
+			json_add_int "duration_seconds" "$duration"
+			json_add_boolean "active" 1
+			json_add_string "auth_method" "voucher"
+			json_close_object
+		done
+	fi
+
+	# Also add from sessions file
+	if [ -f "$SESSIONS_FILE" ]; then
+		jq -c '.[]?' "$SESSIONS_FILE" 2>/dev/null | while IFS= read -r session; do
+			echo "$session"
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Revoke session
+revoke_session() {
+	read -r input
+	json_load "$input"
+
+	local mac
+	json_get_var mac mac
+
+	if [ -z "$mac" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "MAC address required"
+		json_dump
+		return
+	fi
+
+	# Deauth via nodogsplash
+	if command -v ndsctl >/dev/null 2>&1; then
+		ndsctl deauth "$mac" >/dev/null 2>&1
+	fi
+
+	# Remove from sessions file
+	if [ -f "$SESSIONS_FILE" ]; then
+		jq "map(select(.mac != \"$mac\"))" "$SESSIONS_FILE" > "${SESSIONS_FILE}.tmp" 2>/dev/null && mv "${SESSIONS_FILE}.tmp" "$SESSIONS_FILE"
+	fi
+
+	add_log "session_revoked" "Session revoked for $mac" "$mac"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Session revoked"
+	json_dump
+}
+
+# Get authentication logs
+get_logs() {
+	read -r input
+	json_load "$input"
+
+	local limit
+	json_get_var limit limit
+	limit=${limit:-100}
+
+	init_storage
+
+	json_init
+	json_add_array "logs"
+
+	if [ -f "$LOGS_FILE" ]; then
+		jq -c ".[-${limit}:][]" "$LOGS_FILE" 2>/dev/null | while IFS= read -r entry; do
+			echo "$entry"
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Main dispatcher
 case "$1" in
-    list)
-        echo '{"status":{},"sessions":{},"vouchers":{},"oauth_providers":{},"bypass_list":{},"generate_voucher":{}}'
-        ;;
-    call)
-        case "$2" in
-            status) get_status ;;
-            sessions) get_sessions ;;
-            vouchers) get_vouchers ;;
-            oauth_providers) get_oauth_providers ;;
-            bypass_list) get_bypass_list ;;
-            generate_voucher) generate_voucher ;;
-            *) echo '{"error":"Unknown method"}' ;;
-        esac
-        ;;
+	list)
+		cat << 'EOF'
+{
+	"status": {},
+	"list_providers": {},
+	"set_provider": { "provider": "string", "name": "string", "client_id": "string", "client_secret": "string", "redirect_uri": "string" },
+	"delete_provider": { "provider_id": "string" },
+	"list_vouchers": {},
+	"create_voucher": { "duration_hours": 24, "data_limit_mb": 0, "note": "string" },
+	"delete_voucher": { "voucher_id": "string" },
+	"validate_voucher": { "code": "string", "mac": "string" },
+	"list_sessions": {},
+	"revoke_session": { "mac": "string" },
+	"get_logs": { "limit": 100 }
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status) status ;;
+			list_providers) list_providers ;;
+			set_provider) set_provider ;;
+			delete_provider) delete_provider ;;
+			list_vouchers) list_vouchers ;;
+			create_voucher) create_voucher ;;
+			delete_voucher) delete_voucher ;;
+			validate_voucher) validate_voucher ;;
+			list_sessions) list_sessions ;;
+			revoke_session) revoke_session ;;
+			get_logs) get_logs ;;
+			*)
+				json_init
+				json_add_int "error" -32601
+				json_add_string "message" "Method not found: $2"
+				json_dump
+				;;
+		esac
+		;;
 esac

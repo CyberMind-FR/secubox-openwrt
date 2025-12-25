@@ -424,10 +424,175 @@ get_stats() {
 	json_dump
 }
 
+# ===================================
+# Netdata Integration Methods
+# ===================================
+
+# Get Netdata service status
+get_netdata_status() {
+	json_init
+
+	# Check if netdata is running
+	if pgrep -x netdata >/dev/null 2>&1; then
+		json_add_string "service" "running"
+		json_add_boolean "running" 1
+	else
+		json_add_string "service" "stopped"
+		json_add_boolean "running" 0
+	fi
+
+	# Get configuration
+	local port="19999"
+	local bind="127.0.0.1"
+
+	if [ -f /etc/netdata/netdata.conf ]; then
+		port=$(grep "^\s*default port" /etc/netdata/netdata.conf 2>/dev/null | awk '{print $NF}' || echo "19999")
+		bind=$(grep "^\s*bind to" /etc/netdata/netdata.conf 2>/dev/null | awk '{print $NF}' || echo "127.0.0.1")
+	fi
+
+	json_add_int "port" "$port"
+	json_add_string "bind" "$bind"
+	json_add_string "url" "http://${bind}:${port}"
+
+	# Try to get version from Netdata API
+	local version=""
+	if command -v curl >/dev/null; then
+		version=$(curl -s "http://${bind}:${port}/api/v1/info" 2>/dev/null | jsonfilter -e '@.version' 2>/dev/null || echo "")
+	fi
+	json_add_string "version" "${version:-unknown}"
+
+	json_dump
+}
+
+# Get Netdata alarms/alerts
+get_netdata_alarms() {
+	json_init
+
+	# Get config
+	local port="19999"
+	local bind="127.0.0.1"
+	if [ -f /etc/netdata/netdata.conf ]; then
+		port=$(grep "^\s*default port" /etc/netdata/netdata.conf 2>/dev/null | awk '{print $NF}' || echo "19999")
+		bind=$(grep "^\s*bind to" /etc/netdata/netdata.conf 2>/dev/null | awk '{print $NF}' || echo "127.0.0.1")
+	fi
+
+	# Fetch alarms from Netdata API
+	if command -v curl >/dev/null && pgrep -x netdata >/dev/null; then
+		local alarms=$(curl -s "http://${bind}:${port}/api/v1/alarms" 2>/dev/null)
+		if [ -n "$alarms" ] && [ "$alarms" != "null" ]; then
+			echo "$alarms"
+			return
+		fi
+	fi
+
+	# Return empty if not available
+	echo '{"alarms":{}}'
+}
+
+# Get Netdata info
+get_netdata_info() {
+	json_init
+
+	# Get config
+	local port="19999"
+	local bind="127.0.0.1"
+	if [ -f /etc/netdata/netdata.conf ]; then
+		port=$(grep "^\s*default port" /etc/netdata/netdata.conf 2>/dev/null | awk '{print $NF}' || echo "19999")
+		bind=$(grep "^\s*bind to" /etc/netdata/netdata.conf 2>/dev/null | awk '{print $NF}' || echo "127.0.0.1")
+	fi
+
+	# Fetch info from Netdata API
+	if command -v curl >/dev/null && pgrep -x netdata >/dev/null; then
+		local info=$(curl -s "http://${bind}:${port}/api/v1/info" 2>/dev/null)
+		if [ -n "$info" ] && [ "$info" != "null" ]; then
+			echo "$info"
+			return
+		fi
+	fi
+
+	# Return minimal info if not available
+	echo '{"error":"Netdata not available"}'
+}
+
+# Restart Netdata service
+restart_netdata() {
+	json_init
+
+	if [ -x /etc/init.d/netdata ]; then
+		/etc/init.d/netdata restart >/dev/null 2>&1
+		sleep 2
+
+		if pgrep -x netdata >/dev/null 2>&1; then
+			json_add_boolean "success" 1
+			json_add_string "message" "Netdata restarted successfully"
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "Failed to start Netdata"
+		fi
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Netdata init script not found"
+	fi
+
+	json_dump
+}
+
+# Start Netdata service
+start_netdata() {
+	json_init
+
+	if pgrep -x netdata >/dev/null 2>&1; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Netdata already running"
+	elif [ -x /etc/init.d/netdata ]; then
+		/etc/init.d/netdata start >/dev/null 2>&1
+		sleep 2
+
+		if pgrep -x netdata >/dev/null 2>&1; then
+			json_add_boolean "success" 1
+			json_add_string "message" "Netdata started successfully"
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "Failed to start Netdata"
+		fi
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Netdata init script not found"
+	fi
+
+	json_dump
+}
+
+# Stop Netdata service
+stop_netdata() {
+	json_init
+
+	if ! pgrep -x netdata >/dev/null 2>&1; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Netdata already stopped"
+	elif [ -x /etc/init.d/netdata ]; then
+		/etc/init.d/netdata stop >/dev/null 2>&1
+		sleep 1
+
+		if ! pgrep -x netdata >/dev/null 2>&1; then
+			json_add_boolean "success" 1
+			json_add_string "message" "Netdata stopped successfully"
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "Failed to stop Netdata"
+		fi
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Netdata init script not found"
+	fi
+
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"stats":{},"cpu":{},"memory":{},"disk":{},"network":{},"processes":{},"sensors":{},"system":{}}'
+		echo '{"stats":{},"cpu":{},"memory":{},"disk":{},"network":{},"processes":{},"sensors":{},"system":{},"netdata_status":{},"netdata_alarms":{},"netdata_info":{},"restart_netdata":{},"start_netdata":{},"stop_netdata":{}}'
 		;;
 	call)
 		case "$2" in
@@ -454,6 +619,24 @@ case "$1" in
 				;;
 			system)
 				get_system
+				;;
+			netdata_status)
+				get_netdata_status
+				;;
+			netdata_alarms)
+				get_netdata_alarms
+				;;
+			netdata_info)
+				get_netdata_info
+				;;
+			restart_netdata)
+				restart_netdata
+				;;
+			start_netdata)
+				start_netdata
+				;;
+			stop_netdata)
+				stop_netdata
 				;;
 			*)
 				echo '{"error": "Unknown method"}'

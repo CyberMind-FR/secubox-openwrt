@@ -48,5 +48,37 @@
 			"type": "view",
 			"path": "bandwidth-manager/settings"
 		}
+	},
+	"admin/network/bandwidth-manager/media": {
+		"title": "Media Detection",
+		"order": 6,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/media"
+		}
+	},
+	"admin/network/bandwidth-manager/classes": {
+		"title": "QoS Classes",
+		"order": 7,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/classes"
+		}
+	},
+	"admin/network/bandwidth-manager/clients": {
+		"title": "Connected Clients",
+		"order": 8,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/clients"
+		}
+	},
+	"admin/network/bandwidth-manager/schedules": {
+		"title": "Schedules",
+		"order": 9,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/schedules"
+		}
 	}
 }

@@ -1,0 +1,30 @@
+{
+	"luci-app-traffic-shaper": {
+		"description": "Grant access to Traffic Shaper configuration",
+		"read": {
+			"ubus": {
+				"luci.traffic-shaper": [
+					"status",
+					"list_classes",
+					"list_rules",
+					"get_stats",
+					"list_presets"
+				]
+			},
+			"uci": ["traffic-shaper"]
+		},
+		"write": {
+			"ubus": {
+				"luci.traffic-shaper": [
+					"add_class",
+					"update_class",
+					"delete_class",
+					"add_rule",
+					"delete_rule",
+					"apply_preset"
+				]
+			},
+			"uci": ["traffic-shaper"]
+		}
+	}
+}

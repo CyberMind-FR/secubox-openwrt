@@ -1,0 +1,54 @@
+{
+	"admin/network/traffic-shaper": {
+		"title": "Traffic Shaper",
+		"order": 65,
+		"action": {
+			"type": "view",
+			"path": "traffic-shaper/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-traffic-shaper"],
+			"uci": ["traffic-shaper"]
+		}
+	},
+	"admin/network/traffic-shaper/overview": {
+		"title": "Overview",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "traffic-shaper/overview"
+		}
+	},
+	"admin/network/traffic-shaper/classes": {
+		"title": "Traffic Classes",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "traffic-shaper/classes"
+		}
+	},
+	"admin/network/traffic-shaper/rules": {
+		"title": "Classification Rules",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "traffic-shaper/rules"
+		}
+	},
+	"admin/network/traffic-shaper/stats": {
+		"title": "Statistics",
+		"order": 4,
+		"action": {
+			"type": "view",
+			"path": "traffic-shaper/stats"
+		}
+	},
+	"admin/network/traffic-shaper/presets": {
+		"title": "Presets",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "traffic-shaper/presets"
+		}
+	}
+}

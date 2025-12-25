@@ -1,0 +1,363 @@
+/* Traffic Shaper Dashboard Styles */
+
+.traffic-shaper-dashboard {
+	padding: 1em;
+}
+
+/* Status Cards */
+.ts-status-cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+	gap: 1em;
+	margin-bottom: 2em;
+}
+
+.ts-status-card {
+	background: #fff;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+	padding: 1em;
+	box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.ts-status-card h3 {
+	margin: 0 0 0.5em 0;
+	font-size: 1.1em;
+	color: #333;
+}
+
+.ts-status-value {
+	font-size: 2em;
+	font-weight: bold;
+	color: #0088cc;
+}
+
+.ts-status-label {
+	font-size: 0.9em;
+	color: #666;
+}
+
+/* Traffic Class Diagram */
+.ts-class-diagram {
+	background: #f9f9f9;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+	padding: 1.5em;
+	margin-bottom: 2em;
+}
+
+.ts-class-flow {
+	display: flex;
+	flex-direction: column;
+	gap: 1em;
+}
+
+.ts-class-item {
+	background: #fff;
+	border: 2px solid #ddd;
+	border-radius: 4px;
+	padding: 1em;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	transition: all 0.3s;
+}
+
+.ts-class-item:hover {
+	border-color: #0088cc;
+	box-shadow: 0 2px 8px rgba(0,136,204,0.2);
+}
+
+.ts-class-info {
+	flex: 1;
+}
+
+.ts-class-name {
+	font-weight: bold;
+	font-size: 1.1em;
+	margin-bottom: 0.3em;
+}
+
+.ts-class-details {
+	font-size: 0.9em;
+	color: #666;
+}
+
+.ts-class-metrics {
+	display: flex;
+	gap: 1.5em;
+	text-align: right;
+}
+
+.ts-metric {
+	display: flex;
+	flex-direction: column;
+}
+
+.ts-metric-value {
+	font-size: 1.2em;
+	font-weight: bold;
+	color: #0088cc;
+}
+
+.ts-metric-label {
+	font-size: 0.8em;
+	color: #999;
+}
+
+/* Priority Indicators */
+.high-priority {
+	border-left: 4px solid #dc3545;
+}
+
+.medium-priority {
+	border-left: 4px solid #fd7e14;
+}
+
+.normal-priority {
+	border-left: 4px solid #28a745;
+}
+
+.low-priority {
+	border-left: 4px solid #6c757d;
+}
+
+/* Tables */
+.ts-table {
+	width: 100%;
+	border-collapse: collapse;
+	background: #fff;
+	box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.ts-table th {
+	background: #f8f9fa;
+	padding: 0.75em;
+	text-align: left;
+	border-bottom: 2px solid #dee2e6;
+	font-weight: 600;
+}
+
+.ts-table td {
+	padding: 0.75em;
+	border-bottom: 1px solid #dee2e6;
+}
+
+.ts-table tr:hover {
+	background: #f8f9fa;
+}
+
+/* Action Buttons */
+.ts-action-buttons {
+	display: flex;
+	gap: 0.5em;
+}
+
+.ts-btn {
+	padding: 0.4em 0.8em;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	font-size: 0.9em;
+	transition: all 0.2s;
+}
+
+.ts-btn-primary {
+	background: #0088cc;
+	color: white;
+}
+
+.ts-btn-primary:hover {
+	background: #006699;
+}
+
+.ts-btn-success {
+	background: #28a745;
+	color: white;
+}
+
+.ts-btn-success:hover {
+	background: #218838;
+}
+
+.ts-btn-danger {
+	background: #dc3545;
+	color: white;
+}
+
+.ts-btn-danger:hover {
+	background: #c82333;
+}
+
+.ts-btn-warning {
+	background: #ffc107;
+	color: #212529;
+}
+
+.ts-btn-warning:hover {
+	background: #e0a800;
+}
+
+/* Preset Cards */
+.ts-preset-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+	gap: 1.5em;
+	margin-top: 1em;
+}
+
+.ts-preset-card {
+	background: #fff;
+	border: 2px solid #ddd;
+	border-radius: 8px;
+	padding: 1.5em;
+	cursor: pointer;
+	transition: all 0.3s;
+}
+
+.ts-preset-card:hover {
+	border-color: #0088cc;
+	box-shadow: 0 4px 12px rgba(0,136,204,0.2);
+	transform: translateY(-2px);
+}
+
+.ts-preset-title {
+	font-size: 1.3em;
+	font-weight: bold;
+	margin-bottom: 0.5em;
+	color: #333;
+}
+
+.ts-preset-description {
+	color: #666;
+	margin-bottom: 1em;
+	font-size: 0.95em;
+}
+
+.ts-preset-apply {
+	text-align: right;
+}
+
+/* Stats View */
+.ts-stats-container {
+	background: #fff;
+	border-radius: 4px;
+	padding: 1.5em;
+	margin-bottom: 1.5em;
+}
+
+.ts-stats-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 1em;
+	padding-bottom: 0.5em;
+	border-bottom: 2px solid #eee;
+}
+
+.ts-stats-refresh {
+	padding: 0.5em 1em;
+	background: #0088cc;
+	color: white;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.ts-stats-refresh:hover {
+	background: #006699;
+}
+
+/* Traffic Flow Animation */
+@keyframes flowAnimation {
+	0% { transform: translateX(-100%); }
+	100% { transform: translateX(100%); }
+}
+
+.ts-class-item.active::after {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: linear-gradient(90deg, transparent, rgba(0,136,204,0.1), transparent);
+	animation: flowAnimation 2s infinite;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+	.ts-status-cards {
+		grid-template-columns: 1fr;
+	}
+
+	.ts-class-metrics {
+		flex-direction: column;
+		gap: 0.5em;
+	}
+
+	.ts-preset-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* Form Styles */
+.ts-form-group {
+	margin-bottom: 1em;
+}
+
+.ts-form-label {
+	display: block;
+	margin-bottom: 0.3em;
+	font-weight: 600;
+	color: #333;
+}
+
+.ts-form-input {
+	width: 100%;
+	padding: 0.5em;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+	font-size: 1em;
+}
+
+.ts-form-input:focus {
+	outline: none;
+	border-color: #0088cc;
+	box-shadow: 0 0 0 3px rgba(0,136,204,0.1);
+}
+
+.ts-form-help {
+	font-size: 0.85em;
+	color: #666;
+	margin-top: 0.3em;
+}
+
+/* Status Indicators */
+.ts-status-active {
+	color: #28a745;
+	font-weight: bold;
+}
+
+.ts-status-inactive {
+	color: #dc3545;
+	font-weight: bold;
+}
+
+.ts-status-badge {
+	display: inline-block;
+	padding: 0.25em 0.6em;
+	border-radius: 12px;
+	font-size: 0.85em;
+	font-weight: 600;
+}
+
+.ts-status-badge.active {
+	background: #d4edda;
+	color: #155724;
+}
+
+.ts-status-badge.inactive {
+	background: #f8d7da;
+	color: #721c24;
+}

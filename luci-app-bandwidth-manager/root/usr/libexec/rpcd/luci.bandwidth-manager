@@ -515,6 +515,151 @@ get_usage_history() {
 	json_dump
 }
 
+# Get media traffic types for classification
+get_media() {
+	json_init
+	json_add_array "media"
+
+	# VoIP
+	json_add_object ""
+	json_add_string "id" "voip"
+	json_add_string "name" "VoIP"
+	json_add_string "class" "1 (Highest)"
+	json_add_string "description" "Voice over IP (SIP, RTP, VoLTE)"
+	json_add_string "ports" "5060-5061,5004,16384-32767"
+	json_close_object
+
+	# Gaming
+	json_add_object ""
+	json_add_string "id" "gaming"
+	json_add_string "name" "Gaming"
+	json_add_string "class" "2 (High)"
+	json_add_string "description" "Online gaming traffic"
+	json_add_string "ports" "3074,27015-27030,3478-3479"
+	json_close_object
+
+	# Streaming
+	json_add_object ""
+	json_add_string "id" "streaming"
+	json_add_string "name" "Video Streaming"
+	json_add_string "class" "4 (Normal)"
+	json_add_string "description" "YouTube, Netflix, Twitch"
+	json_add_string "ports" "443,80"
+	json_add_string "domains" "youtube.com,netflix.com,twitch.tv"
+	json_close_object
+
+	# Downloads
+	json_add_object ""
+	json_add_string "id" "download"
+	json_add_string "name" "Downloads"
+	json_add_string "class" "7 (Low)"
+	json_add_string "description" "HTTP/HTTPS downloads, torrents"
+	json_add_string "ports" "6881-6889,51413"
+	json_close_object
+
+	# Social Media
+	json_add_object ""
+	json_add_string "id" "social"
+	json_add_string "name" "Social Media"
+	json_add_string "class" "5 (Normal)"
+	json_add_string "description" "Facebook, Twitter, Instagram"
+	json_add_string "ports" "443,80"
+	json_close_object
+
+	# Work/Business
+	json_add_object ""
+	json_add_string "id" "work"
+	json_add_string "name" "Work / Business"
+	json_add_string "class" "3"
+	json_add_string "description" "Email, VPN, remote desktop"
+	json_add_string "ports" "22,3389,1194,1723"
+	json_close_object
+
+	json_close_array
+	json_dump
+}
+
+# Get QoS priority classes
+get_classes() {
+	json_init
+	json_add_array "classes"
+
+	# Class 1 - Highest Priority
+	json_add_object ""
+	json_add_int "priority" 1
+	json_add_string "name" "Real-time (VoIP, Gaming)"
+	json_add_string "description" "Latency-sensitive applications requiring immediate delivery"
+	json_add_int "rate" 30
+	json_add_int "ceil" 100
+	json_close_object
+
+	# Class 2 - High Priority
+	json_add_object ""
+	json_add_int "priority" 2
+	json_add_string "name" "Interactive (SSH, RDP)"
+	json_add_string "description" "Interactive sessions and remote administration"
+	json_add_int "rate" 20
+	json_add_int "ceil" 90
+	json_close_object
+
+	# Class 3 - Medium-High Priority
+	json_add_object ""
+	json_add_int "priority" 3
+	json_add_string "name" "Business Critical"
+	json_add_string "description" "Email, VPN, business applications"
+	json_add_int "rate" 15
+	json_add_int "ceil" 80
+	json_close_object
+
+	# Class 4 - Normal Priority
+	json_add_object ""
+	json_add_int "priority" 4
+	json_add_string "name" "Video Streaming"
+	json_add_string "description" "YouTube, Netflix, video conferencing"
+	json_add_int "rate" 10
+	json_add_int "ceil" 70
+	json_close_object
+
+	# Class 5 - Normal Priority
+	json_add_object ""
+	json_add_int "priority" 5
+	json_add_string "name" "Web Browsing"
+	json_add_string "description" "HTTP/HTTPS web traffic, social media"
+	json_add_int "rate" 10
+	json_add_int "ceil" 60
+	json_close_object
+
+	# Class 6 - Low Priority
+	json_add_object ""
+	json_add_int "priority" 6
+	json_add_string "name" "Bulk Transfer"
+	json_add_string "description" "File transfers, cloud sync"
+	json_add_int "rate" 5
+	json_add_int "ceil" 50
+	json_close_object
+
+	# Class 7 - Lower Priority
+	json_add_object ""
+	json_add_int "priority" 7
+	json_add_string "name" "Downloads (P2P)"
+	json_add_string "description" "Torrents, large downloads"
+	json_add_int "rate" 5
+	json_add_int "ceil" 40
+	json_close_object
+
+	# Class 8 - Lowest Priority
+	json_add_object ""
+	json_add_int "priority" 8
+	json_add_string "name" "Background / Scavenger"
+	json_add_string "description" "System updates, backups, lowest priority traffic"
+	json_add_int "rate" 5
+	json_add_int "ceil" 30
+	json_close_object
+
+	json_close_array
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
@@ -529,7 +674,9 @@ case "$1" in
 	"set_quota": { "mac": "string", "name": "string", "limit_mb": 0, "action": "string", "reset_day": 1 },
 	"reset_quota": { "mac": "string" },
 	"get_usage_realtime": {},
-	"get_usage_history": { "timeframe": "24h", "mac": "" }
+	"get_usage_history": { "timeframe": "24h", "mac": "" },
+	"get_media": {},
+	"get_classes": {}
 }
 EOF
 		;;
@@ -545,6 +692,8 @@ EOF
 			reset_quota) reset_quota ;;
 			get_usage_realtime) get_usage_realtime ;;
 			get_usage_history) get_usage_history ;;
+			get_media) get_media ;;
+			get_classes) get_classes ;;
 			*)
 				json_init
 				json_add_boolean "success" 0

@@ -1,9 +1,9 @@
 'use strict';
 'require view';
-'require bandwidth-manager.api as api';
+'require bandwidth-manager/api as API';
 
 return view.extend({
-    load: function() { return api.getClients(); },
+    load: function() { return API.getUsageRealtime(); },
     render: function(data) {
         var clients = data.clients || [];
         return E('div', {class:'cbi-map'}, [
@@ -17,17 +17,26 @@ return view.extend({
                         E('th', {style:'padding:12px'}, 'Download'),
                         E('th', {style:'padding:12px'}, 'Upload')
                     ])
-                ].concat(clients.map(function(c) {
+                ].concat(clients.map(L.bind(function(c) {
                     return E('tr', {}, [
                         E('td', {style:'padding:12px;font-weight:600'}, c.hostname),
                         E('td', {style:'padding:12px;text-align:center;font-family:monospace'}, c.ip),
                         E('td', {style:'padding:12px;text-align:center;font-family:monospace;font-size:12px'}, c.mac),
-                        E('td', {style:'padding:12px;text-align:center;color:#22c55e'}, api.formatBytes(c.rx_bytes)),
-                        E('td', {style:'padding:12px;text-align:center;color:#3b82f6'}, api.formatBytes(c.tx_bytes))
+                        E('td', {style:'padding:12px;text-align:center;color:#22c55e'}, this.formatBytes(c.rx_bytes)),
+                        E('td', {style:'padding:12px;text-align:center;color:#3b82f6'}, this.formatBytes(c.tx_bytes))
                     ]);
-                }))) : E('p', {style:'color:#64748b;text-align:center'}, 'No clients connected')
+                }, this)))) : E('p', {style:'color:#64748b;text-align:center'}, 'No clients connected')
             ])
         ]);
     },
+
+    formatBytes: function(bytes) {
+        if (bytes === 0) return '0 B';
+        var k = 1024;
+        var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        var i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    },
+
     handleSaveApply:null,handleSave:null,handleReset:null
 });

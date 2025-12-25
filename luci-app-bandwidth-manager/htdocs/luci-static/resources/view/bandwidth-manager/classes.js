@@ -1,9 +1,9 @@
 'use strict';
 'require view';
-'require bandwidth-manager.api as api';
+'require bandwidth-manager/api as API';
 
 return view.extend({
-    load: function() { return api.getClasses(); },
+    load: function() { return API.getClasses(); },
     render: function(data) {
         var classes = data.classes || [];
         var colors = ['#ef4444','#f59e0b','#eab308','#22c55e','#06b6d4','#3b82f6','#8b5cf6','#ec4899'];

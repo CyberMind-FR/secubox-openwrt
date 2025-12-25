@@ -729,17 +729,17 @@ send_alert_internal() {
 	local type="$1"
 	local title="$2"
 	local message="$3"
-	
+
 	local alerts_enabled=$(uci -q get client-guardian.alerts.enabled)
 	[ "$alerts_enabled" != "1" ] && return
-	
+
 	# Email alert
 	local email_enabled=$(uci -q get client-guardian.email.enabled)
 	if [ "$email_enabled" = "1" ]; then
 		# Would use msmtp here
 		log_event "info" "Email alert queued: $title"
 	fi
-	
+
 	# SMS alert
 	local sms_enabled=$(uci -q get client-guardian.sms.enabled)
 	if [ "$sms_enabled" = "1" ]; then
@@ -748,10 +748,293 @@ send_alert_internal() {
 	fi
 }
 
+# ===================================
+# Nodogsplash Captive Portal Integration
+# ===================================
+
+# List active captive portal sessions (nodogsplash)
+list_sessions() {
+	json_init
+	json_add_array "sessions"
+
+	# Check if nodogsplash is running
+	if pidof nodogsplash >/dev/null; then
+		# Get sessions from ndsctl
+		ndsctl status 2>/dev/null | grep -A 100 "Client" | while read line; do
+			# Parse ndsctl output
+			# Format: IP MAC Duration Download Upload
+			if echo "$line" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"; then
+				local ip=$(echo "$line" | awk '{print $1}')
+				local mac=$(echo "$line" | awk '{print $2}' | tr 'A-F' 'a-f')
+				local duration=$(echo "$line" | awk '{print $3}')
+				local downloaded=$(echo "$line" | awk '{print $4}')
+				local uploaded=$(echo "$line" | awk '{print $5}')
+
+				# Get hostname
+				local hostname=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $4}')
+				[ -z "$hostname" ] && hostname="Unknown"
+
+				json_add_object
+				json_add_string "ip" "$ip"
+				json_add_string "mac" "$mac"
+				json_add_string "hostname" "$hostname"
+				json_add_int "duration" "$duration"
+				json_add_int "downloaded" "$downloaded"
+				json_add_int "uploaded" "$uploaded"
+				json_add_string "state" "authenticated"
+				json_close_object
+			fi
+		done
+	fi
+
+	json_close_array
+
+	# Add nodogsplash status
+	json_add_object "nodogsplash"
+	if pidof nodogsplash >/dev/null; then
+		json_add_boolean "running" 1
+		json_add_string "status" "active"
+	else
+		json_add_boolean "running" 0
+		json_add_string "status" "stopped"
+	fi
+	json_close_object
+
+	json_dump
+}
+
+# Get default policy
+get_policy() {
+	json_init
+
+	local policy=$(uci -q get client-guardian.config.default_policy || echo "captive")
+	local portal_enabled=$(uci -q get client-guardian.portal.enabled || echo "1")
+	local auto_approve=$(uci -q get client-guardian.config.auto_approve || echo "0")
+	local session_timeout=$(uci -q get client-guardian.config.session_timeout || echo "86400")
+
+	json_add_string "default_policy" "$policy"
+	json_add_boolean "portal_enabled" "$portal_enabled"
+	json_add_boolean "auto_approve" "$auto_approve"
+	json_add_int "session_timeout" "$session_timeout"
+
+	json_add_object "policy_options"
+	json_add_string "open" "Allow all clients without authentication"
+	json_add_string "captive" "Require captive portal authentication"
+	json_add_string "whitelist" "Allow only approved clients"
+	json_close_object
+
+	json_dump
+}
+
+# Set default policy
+set_policy() {
+	read input
+	json_load "$input"
+	json_get_var policy policy
+	json_get_var portal_enabled portal_enabled
+	json_get_var auto_approve auto_approve
+	json_get_var session_timeout session_timeout
+
+	json_init
+
+	if [ -z "$policy" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Policy required (open/captive/whitelist)"
+		json_dump
+		return
+	fi
+
+	# Validate policy value
+	case "$policy" in
+		open|captive|whitelist)
+			uci set client-guardian.config.default_policy="$policy"
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Invalid policy. Must be: open, captive, or whitelist"
+			json_dump
+			return
+			;;
+	esac
+
+	[ -n "$portal_enabled" ] && uci set client-guardian.portal.enabled="$portal_enabled"
+	[ -n "$auto_approve" ] && uci set client-guardian.config.auto_approve="$auto_approve"
+	[ -n "$session_timeout" ] && uci set client-guardian.config.session_timeout="$session_timeout"
+
+	uci commit client-guardian
+
+	# Restart nodogsplash if policy changed to/from captive
+	if [ "$policy" = "captive" ]; then
+		/etc/init.d/nodogsplash restart 2>/dev/null &
+	elif pidof nodogsplash >/dev/null; then
+		/etc/init.d/nodogsplash stop 2>/dev/null &
+	fi
+
+	log_event "info" "Default policy changed to: $policy"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Policy updated to $policy"
+	json_dump
+}
+
+# Authorize client via nodogsplash
+authorize_client() {
+	read input
+	json_load "$input"
+	json_get_var mac mac
+	json_get_var ip ip
+
+	json_init
+
+	if [ -z "$mac" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "MAC address required"
+		json_dump
+		return
+	fi
+
+	mac=$(echo "$mac" | tr 'A-F' 'a-f')
+
+	# Use ndsctl to authorize
+	if pidof nodogsplash >/dev/null; then
+		if [ -n "$ip" ]; then
+			# Authorize by IP if provided
+			ndsctl auth "$ip" 2>&1
+		else
+			# Find IP by MAC
+			local client_ip=$(cat /proc/net/arp | grep -i "$mac" | awk '{print $1}' | head -1)
+			if [ -n "$client_ip" ]; then
+				ndsctl auth "$client_ip" 2>&1
+				ip="$client_ip"
+			else
+				json_add_boolean "success" 0
+				json_add_string "error" "Client not found or offline"
+				json_dump
+				return
+			fi
+		fi
+
+		log_event "info" "Client authorized via nodogsplash: $mac ($ip)"
+
+		json_add_boolean "success" 1
+		json_add_string "message" "Client $mac authorized"
+		json_add_string "ip" "$ip"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Nodogsplash not running"
+	fi
+
+	json_dump
+}
+
+# Deauthorize client via nodogsplash
+deauthorize_client() {
+	read input
+	json_load "$input"
+	json_get_var mac mac
+	json_get_var ip ip
+
+	json_init
+
+	if [ -z "$mac" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "MAC address required"
+		json_dump
+		return
+	fi
+
+	mac=$(echo "$mac" | tr 'A-F' 'a-f')
+
+	# Use ndsctl to deauthorize
+	if pidof nodogsplash >/dev/null; then
+		if [ -n "$ip" ]; then
+			ndsctl deauth "$ip" 2>&1
+		else
+			# Find IP by MAC
+			local client_ip=$(cat /proc/net/arp | grep -i "$mac" | awk '{print $1}' | head -1)
+			if [ -n "$client_ip" ]; then
+				ndsctl deauth "$client_ip" 2>&1
+				ip="$client_ip"
+			else
+				json_add_boolean "success" 0
+				json_add_string "error" "Client not found in active sessions"
+				json_dump
+				return
+			fi
+		fi
+
+		log_event "info" "Client deauthorized via nodogsplash: $mac ($ip)"
+
+		json_add_boolean "success" 1
+		json_add_string "message" "Client $mac deauthorized"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Nodogsplash not running"
+	fi
+
+	json_dump
+}
+
+# Get client details
+get_client() {
+	read input
+	json_load "$input"
+	json_get_var mac mac
+
+	json_init
+
+	if [ -z "$mac" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "MAC address required"
+		json_dump
+		return
+	fi
+
+	mac=$(echo "$mac" | tr 'A-F' 'a-f')
+
+	# Find client in ARP table
+	local arp_entry=$(cat /proc/net/arp | grep -i "$mac" | head -1)
+	if [ -n "$arp_entry" ]; then
+		local ip=$(echo "$arp_entry" | awk '{print $1}')
+		local iface=$(echo "$arp_entry" | awk '{print $6}')
+		local hostname=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $4}')
+		[ -z "$hostname" ] && hostname="Unknown"
+
+		json_add_boolean "online" 1
+		json_add_string "ip" "$ip"
+		json_add_string "hostname" "$hostname"
+		json_add_string "interface" "$iface"
+	else
+		json_add_boolean "online" 0
+	fi
+
+	json_add_string "mac" "$mac"
+
+	# Get UCI details if exists
+	config_load client-guardian
+	config_foreach find_client_by_mac client "$mac"
+
+	if [ -n "$found_section" ]; then
+		json_add_boolean "known" 1
+		json_add_string "section" "$found_section"
+		json_add_string "name" "$(uci -q get client-guardian.$found_section.name)"
+		json_add_string "zone" "$(uci -q get client-guardian.$found_section.zone)"
+		json_add_string "status" "$(uci -q get client-guardian.$found_section.status)"
+		json_add_string "first_seen" "$(uci -q get client-guardian.$found_section.first_seen)"
+		json_add_string "last_seen" "$(uci -q get client-guardian.$found_section.last_seen)"
+		json_add_string "notes" "$(uci -q get client-guardian.$found_section.notes)"
+	else
+		json_add_boolean "known" 0
+		json_add_string "status" "unknown"
+	fi
+
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"clients":{},"zones":{},"parental":{},"portal":{},"alerts":{},"logs":{"limit":"int","level":"str"},"approve_client":{"mac":"str","name":"str","zone":"str","notes":"str"},"ban_client":{"mac":"str","reason":"str"},"quarantine_client":{"mac":"str"},"update_client":{"section":"str","name":"str","zone":"str","notes":"str","daily_quota":"int","static_ip":"str"},"update_zone":{"id":"str","name":"str","bandwidth_limit":"int","content_filter":"str"},"update_portal":{"title":"str","subtitle":"str","accent_color":"str"},"send_test_alert":{"type":"str"}}'
+		echo '{"status":{},"clients":{},"zones":{},"parental":{},"portal":{},"alerts":{},"logs":{"limit":"int","level":"str"},"approve_client":{"mac":"str","name":"str","zone":"str","notes":"str"},"ban_client":{"mac":"str","reason":"str"},"quarantine_client":{"mac":"str"},"update_client":{"section":"str","name":"str","zone":"str","notes":"str","daily_quota":"int","static_ip":"str"},"update_zone":{"id":"str","name":"str","bandwidth_limit":"int","content_filter":"str"},"update_portal":{"title":"str","subtitle":"str","accent_color":"str"},"send_test_alert":{"type":"str"},"list_sessions":{},"get_policy":{},"set_policy":{"policy":"str","portal_enabled":"bool","auto_approve":"bool","session_timeout":"int"},"authorize_client":{"mac":"str","ip":"str"},"deauthorize_client":{"mac":"str","ip":"str"},"get_client":{"mac":"str"}}'
 		;;
 	call)
 		case "$2" in
@@ -769,6 +1052,12 @@ case "$1" in
 			update_zone) update_zone ;;
 			update_portal) update_portal ;;
 			send_test_alert) send_test_alert ;;
+			list_sessions) list_sessions ;;
+			get_policy) get_policy ;;
+			set_policy) set_policy ;;
+			authorize_client) authorize_client ;;
+			deauthorize_client) deauthorize_client ;;
+			get_client) get_client ;;
 			*) echo '{"error": "Unknown method"}' ;;
 		esac
 		;;

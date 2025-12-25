@@ -40,5 +40,45 @@
 			"type": "view",
 			"path": "system-hub/backup"
 		}
+	},
+	"admin/system/system-hub/components": {
+		"title": "Components",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "system-hub/components"
+		}
+	},
+	"admin/system/system-hub/diagnostics": {
+		"title": "Diagnostics",
+		"order": 6,
+		"action": {
+			"type": "view",
+			"path": "system-hub/diagnostics"
+		}
+	},
+	"admin/system/system-hub/health": {
+		"title": "System Health",
+		"order": 7,
+		"action": {
+			"type": "view",
+			"path": "system-hub/health"
+		}
+	},
+	"admin/system/system-hub/remote": {
+		"title": "Remote Management",
+		"order": 8,
+		"action": {
+			"type": "view",
+			"path": "system-hub/remote"
+		}
+	},
+	"admin/system/system-hub/settings": {
+		"title": "Settings",
+		"order": 9,
+		"action": {
+			"type": "view",
+			"path": "system-hub/settings"
+		}
 	}
 }

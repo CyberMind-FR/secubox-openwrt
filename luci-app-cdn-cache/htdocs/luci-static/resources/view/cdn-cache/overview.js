@@ -137,6 +137,43 @@ return view.extend({
 
 			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 24px;' }, [
 				E('div', { 'class': 'cdn-section' }, [
+					E('div', { 'class': 'cdn-section-title' }, ['🎯 ', 'Hit Ratio Gauge']),
+					E('div', { 'style': 'display: flex; justify-content: center; padding: 20px;' }, [
+						E('div', { 'class': 'cdn-ratio-circle' }, [
+							(function() {
+								var ratio = stats.hit_ratio || 0;
+								var circumference = 2 * Math.PI * 46; // radius = 46
+								var offset = circumference - (ratio / 100) * circumference;
+
+								return E('svg', { 'width': '100', 'height': '100' }, [
+									E('circle', { 'class': 'bg', 'cx': '50', 'cy': '50', 'r': '46' }),
+									E('circle', {
+										'class': 'fg',
+										'cx': '50',
+										'cy': '50',
+										'r': '46',
+										'style': 'stroke-dasharray: ' + circumference + '; stroke-dashoffset: ' + offset + ';'
+									})
+								]);
+							})(),
+							E('div', { 'class': 'cdn-ratio-value' }, (stats.hit_ratio || 0) + '%')
+						])
+					]),
+					E('div', { 'style': 'text-align: center; margin-top: 16px;' }, [
+						E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;' }, [
+							E('div', {}, [
+								E('div', { 'style': 'font-size: 20px; font-weight: 700; color: #22c55e;' }, stats.hits || 0),
+								E('div', { 'style': 'font-size: 12px; color: #94a3b8;' }, 'Cache Hits')
+							]),
+							E('div', {}, [
+								E('div', { 'style': 'font-size: 20px; font-weight: 700; color: #ef4444;' }, stats.misses || 0),
+								E('div', { 'style': 'font-size: 12px; color: #94a3b8;' }, 'Cache Misses')
+							])
+						])
+					])
+				]),
+
+				E('div', { 'class': 'cdn-section' }, [
 					E('div', { 'class': 'cdn-section-title' }, ['📈 ', 'Économies de Bande Passante']),
 					E('div', { 'class': 'cdn-savings' }, [
 						E('div', { 'class': 'cdn-savings-value' }, stats.saved_mb + ' MB'),
@@ -155,7 +192,10 @@ return view.extend({
 							E('span', { 'style': 'color: #94a3b8; font-weight: 600;' }, stats.served_mb + ' MB')
 						])
 					])
-				]),
+				])
+			]),
+
+			E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 24px;' }, [
 
 				E('div', { 'class': 'cdn-section' }, [
 					E('div', { 'class': 'cdn-section-title' }, ['💿 ', 'Espace Cache']),

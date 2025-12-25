@@ -26,12 +26,36 @@
 			"path": "netifyd-dashboard/applications"
 		}
 	},
+	"admin/secubox/security/netifyd/devices": {
+		"title": "Devices",
+		"order": 25,
+		"action": {
+			"type": "view",
+			"path": "netifyd-dashboard/devices"
+		}
+	},
 	"admin/secubox/security/netifyd/flows": {
 		"title": "Flows",
 		"order": 30,
 		"action": {
 			"type": "view",
 			"path": "netifyd-dashboard/flows"
+		}
+	},
+	"admin/secubox/security/netifyd/talkers": {
+		"title": "Top Talkers",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "netifyd-dashboard/talkers"
+		}
+	},
+	"admin/secubox/security/netifyd/risks": {
+		"title": "Risk Assessment",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "netifyd-dashboard/risks"
 		}
 	},
 	"admin/secubox/security/netifyd/settings": {

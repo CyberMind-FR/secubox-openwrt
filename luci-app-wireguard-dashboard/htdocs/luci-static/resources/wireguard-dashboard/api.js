@@ -35,27 +35,41 @@ var callGenerateKeys = rpc.declare({
 var callAddPeer = rpc.declare({
 	object: 'luci.wireguard-dashboard',
 	method: 'add_peer',
-	params: ['interface', 'name', 'allowed_ips', 'public_key', 'preshared_key', 'endpoint', 'persistent_keepalive']
+	params: ['interface', 'name', 'allowed_ips', 'public_key', 'preshared_key', 'endpoint', 'persistent_keepalive'],
+	expect: { success: false }
 });
 
 var callRemovePeer = rpc.declare({
 	object: 'luci.wireguard-dashboard',
 	method: 'remove_peer',
-	params: ['interface', 'public_key']
+	params: ['interface', 'public_key'],
+	expect: { success: false }
 });
 
 var callGetConfig = rpc.declare({
 	object: 'luci.wireguard-dashboard',
-	method: 'get_config',
-	params: ['interface', 'peer'],
+	method: 'config',
+	expect: { }
+});
+
+var callGenerateConfig = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'generate_config',
+	params: ['interface', 'peer', 'private_key', 'endpoint'],
 	expect: { config: '' }
 });
 
-var callGetQRCode = rpc.declare({
+var callGenerateQR = rpc.declare({
 	object: 'luci.wireguard-dashboard',
-	method: 'get_qrcode',
-	params: ['interface', 'peer'],
+	method: 'generate_qr',
+	params: ['interface', 'peer', 'private_key', 'endpoint'],
 	expect: { qrcode: '' }
+});
+
+var callGetTraffic = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'traffic',
+	expect: { }
 });
 
 function formatBytes(bytes) {
@@ -80,11 +94,13 @@ return baseclass.extend({
 	getStatus: callStatus,
 	getPeers: callGetPeers,
 	getInterfaces: callGetInterfaces,
+	getConfig: callGetConfig,
+	getTraffic: callGetTraffic,
 	generateKeys: callGenerateKeys,
 	addPeer: callAddPeer,
 	removePeer: callRemovePeer,
-	getConfig: callGetConfig,
-	getQRCode: callGetQRCode,
+	generateConfig: callGenerateConfig,
+	generateQR: callGenerateQR,
 	formatBytes: formatBytes,
 	formatLastHandshake: formatLastHandshake
 });

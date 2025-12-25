@@ -1,9 +1,9 @@
 'use strict';
 'require view';
-'require bandwidth-manager.api as api';
+'require bandwidth-manager/api as API';
 
 return view.extend({
-    load: function() { return api.getMedia(); },
+    load: function() { return API.getMedia(); },
     render: function(data) {
         var media = data.media || [];
         var icons = {voip:'📞',gaming:'🎮',streaming:'📺',download:'📥',social:'💬',work:'💼'};

@@ -14,46 +14,131 @@ var callStatus = rpc.declare({
 	expect: { }
 });
 
-var callGetClients = rpc.declare({
+var callClients = rpc.declare({
 	object: 'luci.client-guardian',
-	method: 'get_clients',
+	method: 'clients',
 	expect: { clients: [] }
 });
 
-var callGetGroups = rpc.declare({
+var callGetClient = rpc.declare({
 	object: 'luci.client-guardian',
-	method: 'get_groups',
-	expect: { groups: [] }
+	method: 'get_client',
+	params: ['mac'],
+	expect: { }
+});
+
+var callZones = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'zones',
+	expect: { zones: [] }
+});
+
+var callParental = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'parental',
+	expect: { }
+});
+
+var callPortal = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'portal',
+	expect: { }
+});
+
+var callAlerts = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'alerts',
+	expect: { }
+});
+
+var callLogs = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'logs',
+	params: ['limit', 'level'],
+	expect: { logs: [] }
+});
+
+var callApproveClient = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'approve_client',
+	params: ['mac', 'name', 'zone', 'notes'],
+	expect: { success: false }
+});
+
+var callBanClient = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'ban_client',
+	params: ['mac', 'reason'],
+	expect: { success: false }
+});
+
+var callQuarantineClient = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'quarantine_client',
+	params: ['mac'],
+	expect: { success: false }
+});
+
+var callUpdateClient = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'update_client',
+	params: ['section', 'name', 'zone', 'notes', 'daily_quota', 'static_ip'],
+	expect: { success: false }
+});
+
+var callUpdateZone = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'update_zone',
+	params: ['id', 'name', 'bandwidth_limit', 'content_filter'],
+	expect: { success: false }
+});
+
+var callUpdatePortal = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'update_portal',
+	params: ['title', 'subtitle', 'accent_color'],
+	expect: { success: false }
+});
+
+var callSendTestAlert = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'send_test_alert',
+	params: ['type'],
+	expect: { success: false }
+});
+
+// Nodogsplash Captive Portal Methods
+var callListSessions = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'list_sessions',
+	expect: { sessions: [] }
+});
+
+var callGetPolicy = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'get_policy',
+	expect: { }
+});
+
+var callSetPolicy = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'set_policy',
+	params: ['policy', 'portal_enabled', 'auto_approve', 'session_timeout'],
+	expect: { success: false }
 });
 
 var callAuthorizeClient = rpc.declare({
 	object: 'luci.client-guardian',
 	method: 'authorize_client',
-	params: ['mac', 'group', 'duration']
+	params: ['mac', 'ip'],
+	expect: { success: false }
 });
 
 var callDeauthorizeClient = rpc.declare({
 	object: 'luci.client-guardian',
 	method: 'deauthorize_client',
-	params: ['mac']
-});
-
-var callBlockClient = rpc.declare({
-	object: 'luci.client-guardian',
-	method: 'block_client',
-	params: ['mac', 'reason']
-});
-
-var callGetCaptiveStatus = rpc.declare({
-	object: 'luci.client-guardian',
-	method: 'get_captive_status',
-	expect: { }
-});
-
-var callGetStats = rpc.declare({
-	object: 'luci.client-guardian',
-	method: 'get_stats',
-	expect: { }
+	params: ['mac', 'ip'],
+	expect: { success: false }
 });
 
 function formatMac(mac) {
@@ -70,15 +155,45 @@ function formatDuration(seconds) {
 	return m + 'm';
 }
 
+function formatBytes(bytes) {
+	if (!bytes || bytes === 0) return '0 B';
+	var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+	var i = Math.floor(Math.log(bytes) / Math.log(1024));
+	i = Math.min(i, units.length - 1);
+	return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + units[i];
+}
+
 return baseclass.extend({
+	// Core methods
 	getStatus: callStatus,
-	getClients: callGetClients,
-	getGroups: callGetGroups,
+	getClients: callClients,
+	getClient: callGetClient,
+	getZones: callZones,
+	getParental: callParental,
+	getPortal: callPortal,
+	getAlerts: callAlerts,
+	getLogs: callLogs,
+
+	// Client management
+	approveClient: callApproveClient,
+	banClient: callBanClient,
+	quarantineClient: callQuarantineClient,
+	updateClient: callUpdateClient,
+
+	// Configuration
+	updateZone: callUpdateZone,
+	updatePortal: callUpdatePortal,
+	sendTestAlert: callSendTestAlert,
+
+	// Nodogsplash Captive Portal
+	listSessions: callListSessions,
+	getPolicy: callGetPolicy,
+	setPolicy: callSetPolicy,
 	authorizeClient: callAuthorizeClient,
 	deauthorizeClient: callDeauthorizeClient,
-	blockClient: callBlockClient,
-	getCaptiveStatus: callGetCaptiveStatus,
-	getStats: callGetStats,
+
+	// Utility functions
 	formatMac: formatMac,
-	formatDuration: formatDuration
+	formatDuration: formatDuration,
+	formatBytes: formatBytes
 });

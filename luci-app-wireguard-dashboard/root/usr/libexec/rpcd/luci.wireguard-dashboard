@@ -359,45 +359,257 @@ get_config() {
 	json_dump
 }
 
-# Generate QR code for peer (requires qrencode)
+# Generate keys for new peer
+generate_keys() {
+	json_init
+
+	if [ ! -x "$WG_CMD" ]; then
+		json_add_string "error" "wireguard-tools not installed"
+		json_dump
+		return
+	fi
+
+	# Generate private key
+	local privkey=$(wg genkey)
+	# Generate public key from private key
+	local pubkey=$(echo "$privkey" | wg pubkey)
+	# Generate preshared key
+	local psk=$(wg genpsk)
+
+	json_add_string "private_key" "$privkey"
+	json_add_string "public_key" "$pubkey"
+	json_add_string "preshared_key" "$psk"
+
+	json_dump
+}
+
+# Add a new peer to interface
+add_peer() {
+	read input
+	json_load "$input"
+	json_get_var iface interface
+	json_get_var name name
+	json_get_var allowed_ips allowed_ips
+	json_get_var public_key public_key
+	json_get_var psk preshared_key
+	json_get_var endpoint endpoint
+	json_get_var keepalive persistent_keepalive
+
+	json_init
+
+	# Validate inputs
+	if [ -z "$iface" ] || [ -z "$public_key" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing required fields: interface and public_key"
+		json_dump
+		return
+	fi
+
+	# Default values
+	[ -z "$allowed_ips" ] && allowed_ips="10.0.0.2/32"
+	[ -z "$keepalive" ] && keepalive="25"
+	[ -z "$name" ] && name="peer_$(echo $public_key | cut -c1-8)"
+
+	# Create UCI section for peer
+	local section_name="wgpeer_$(echo $public_key | cut -c1-8 | tr 'A-Z+/=' 'a-z___')"
+
+	# Add peer to UCI network config
+	uci -q delete network.$section_name
+	uci set network.$section_name=wireguard_$iface
+	uci set network.$section_name.public_key="$public_key"
+	uci set network.$section_name.description="$name"
+
+	# Set allowed IPs (can be multiple)
+	uci delete network.$section_name.allowed_ips 2>/dev/null
+	for ip in $allowed_ips; do
+		uci add_list network.$section_name.allowed_ips="$ip"
+	done
+
+	# Optional: preshared key
+	if [ -n "$psk" ] && [ "$psk" != "none" ]; then
+		uci set network.$section_name.preshared_key="$psk"
+	fi
+
+	# Optional: endpoint
+	if [ -n "$endpoint" ] && [ "$endpoint" != "none" ]; then
+		local ep_host=$(echo "$endpoint" | cut -d: -f1)
+		local ep_port=$(echo "$endpoint" | cut -d: -f2)
+		uci set network.$section_name.endpoint_host="$ep_host"
+		uci set network.$section_name.endpoint_port="${ep_port:-51820}"
+	fi
+
+	# Persistent keepalive
+	if [ -n "$keepalive" ] && [ "$keepalive" != "0" ]; then
+		uci set network.$section_name.persistent_keepalive="$keepalive"
+	fi
+
+	# Route allowed IPs
+	uci set network.$section_name.route_allowed_ips="1"
+
+	# Commit changes
+	uci commit network
+
+	# Reload interface to apply
+	ifup "$iface" 2>/dev/null
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Peer added successfully"
+	json_add_string "section" "$section_name"
+	json_add_string "peer_name" "$name"
+
+	json_dump
+}
+
+# Remove a peer from interface
+remove_peer() {
+	read input
+	json_load "$input"
+	json_get_var iface interface
+	json_get_var public_key public_key
+
+	json_init
+
+	if [ -z "$iface" ] || [ -z "$public_key" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing interface or public_key"
+		json_dump
+		return
+	fi
+
+	# Find and remove UCI section with this public key
+	local found=0
+	local section=""
+
+	config_load network
+	config_cb() {
+		local type="$1"
+		local name="$2"
+		if [ "$type" = "wireguard_$iface" ]; then
+			local key=$(uci -q get network.$name.public_key)
+			if [ "$key" = "$public_key" ]; then
+				section="$name"
+				found=1
+			fi
+		fi
+	}
+	config_load network
+
+	if [ "$found" = "1" ] && [ -n "$section" ]; then
+		uci delete network.$section
+		uci commit network
+		ifup "$iface" 2>/dev/null
+
+		json_add_boolean "success" 1
+		json_add_string "message" "Peer removed successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Peer not found in configuration"
+	fi
+
+	json_dump
+}
+
+# Generate client configuration file
+generate_config() {
+	read input
+	json_load "$input"
+	json_get_var iface interface
+	json_get_var peer_key peer
+	json_get_var peer_privkey private_key
+	json_get_var server_endpoint endpoint
+
+	json_init
+
+	# Get interface details
+	local server_pubkey=$($WG_CMD show $iface public-key 2>/dev/null)
+	local server_port=$($WG_CMD show $iface listen-port 2>/dev/null)
+
+	# Get peer allowed IPs
+	local allowed=$($WG_CMD show $iface allowed-ips 2>/dev/null | grep "^$peer_key" | cut -f2-)
+
+	# Get preshared key if exists
+	local psk=$($WG_CMD show $iface preshared-keys 2>/dev/null | grep "^$peer_key" | awk '{print $2}')
+
+	# Get DNS servers from interface
+	local dns=$(uci -q get network.$iface.dns || echo "1.1.1.1, 1.0.0.1")
+
+	# Build configuration file content
+	local config="[Interface]
+PrivateKey = ${peer_privkey}
+Address = ${allowed}
+DNS = ${dns}
+
+[Peer]
+PublicKey = ${server_pubkey}
+Endpoint = ${server_endpoint}:${server_port}
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25"
+
+	# Add preshared key if exists
+	if [ -n "$psk" ] && [ "$psk" != "(none)" ]; then
+		config="${config}
+PresharedKey = ${psk}"
+	fi
+
+	json_add_string "config" "$config"
+	json_add_string "filename" "wireguard_${iface}_client.conf"
+
+	json_dump
+}
+
+# Generate QR code PNG (base64) for peer config
 generate_qr() {
 	read input
 	json_load "$input"
 	json_get_var iface interface
 	json_get_var peer_key peer
-	
+	json_get_var peer_privkey private_key
+	json_get_var server_endpoint endpoint
+
 	json_init
-	
+
 	if [ ! -x "/usr/bin/qrencode" ]; then
-		json_add_string "error" "qrencode not installed"
+		json_add_string "error" "qrencode not installed (opkg install qrencode)"
 		json_dump
 		return
 	fi
-	
+
 	# Get interface details
 	local server_pubkey=$($WG_CMD show $iface public-key 2>/dev/null)
 	local server_port=$($WG_CMD show $iface listen-port 2>/dev/null)
-	local server_ip=$(ip -4 addr show $iface 2>/dev/null | grep -oP 'inet \K[\d.]+')
-	
+
 	# Get peer allowed IPs
-	local allowed_ips=$($WG_CMD show $iface allowed-ips 2>/dev/null | grep "^$peer_key" | cut -f2)
-	
-	# Generate config content (peer side view)
+	local allowed=$($WG_CMD show $iface allowed-ips 2>/dev/null | grep "^$peer_key" | cut -f2-)
+
+	# Get preshared key if exists
+	local psk=$($WG_CMD show $iface preshared-keys 2>/dev/null | grep "^$peer_key" | awk '{print $2}')
+
+	# Get DNS servers
+	local dns=$(uci -q get network.$iface.dns || echo "1.1.1.1, 1.0.0.1")
+
+	# Build configuration
 	local config="[Interface]
-Address = ${allowed_ips}
-PrivateKey = <PEER_PRIVATE_KEY>
+PrivateKey = ${peer_privkey}
+Address = ${allowed}
+DNS = ${dns}
 
 [Peer]
 PublicKey = ${server_pubkey}
-Endpoint = <SERVER_PUBLIC_IP>:${server_port}
-AllowedIPs = 0.0.0.0/0
+Endpoint = ${server_endpoint}:${server_port}
+AllowedIPs = 0.0.0.0/0, ::/0
 PersistentKeepalive = 25"
-	
-	json_add_string "config_template" "$config"
-	json_add_string "server_pubkey" "$server_pubkey"
-	json_add_int "server_port" "${server_port:-51820}"
-	json_add_string "peer_allowed_ips" "$allowed_ips"
-	
+
+	if [ -n "$psk" ] && [ "$psk" != "(none)" ]; then
+		config="${config}
+PresharedKey = ${psk}"
+	fi
+
+	# Generate QR code PNG and convert to base64
+	local qr_base64=$(echo "$config" | qrencode -t PNG -o - | base64 -w 0)
+
+	json_add_string "qrcode" "data:image/png;base64,$qr_base64"
+	json_add_string "config" "$config"
+
 	json_dump
 }
 
@@ -516,7 +728,7 @@ ping_peer() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_qr":{"interface":"str","peer":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"}}'
+		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_keys":{},"add_peer":{"interface":"str","name":"str","allowed_ips":"str","public_key":"str","preshared_key":"str","endpoint":"str","persistent_keepalive":"str"},"remove_peer":{"interface":"str","public_key":"str"},"generate_config":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"generate_qr":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"}}'
 		;;
 	call)
 		case "$2" in
@@ -534,6 +746,18 @@ case "$1" in
 				;;
 			config)
 				get_config
+				;;
+			generate_keys)
+				generate_keys
+				;;
+			add_peer)
+				add_peer
+				;;
+			remove_peer)
+				remove_peer
+				;;
+			generate_config)
+				generate_config
 				;;
 			generate_qr)
 				generate_qr
