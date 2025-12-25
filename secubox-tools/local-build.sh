@@ -962,14 +962,30 @@ CONFIG_PACKAGE_kmod-usb-storage=y
 CONFIG_PACKAGE_kmod-fs-ext4=y
 CONFIG_PACKAGE_kmod-fs-vfat=y
 
-# SecuBox packages
+# SecuBox packages - Core
+CONFIG_PACKAGE_luci-app-secubox=y
 CONFIG_PACKAGE_luci-app-system-hub=y
-CONFIG_PACKAGE_luci-app-network-modes=y
-CONFIG_PACKAGE_luci-app-wireguard-dashboard=y
+
+# SecuBox packages - Security & Monitoring
 CONFIG_PACKAGE_luci-app-crowdsec-dashboard=y
 CONFIG_PACKAGE_luci-app-netdata-dashboard=y
+
+# SecuBox packages - Network Intelligence
 CONFIG_PACKAGE_luci-app-netifyd-dashboard=y
+CONFIG_PACKAGE_luci-app-network-modes=y
+
+# SecuBox packages - VPN & Access Control
+CONFIG_PACKAGE_luci-app-wireguard-dashboard=y
 CONFIG_PACKAGE_luci-app-client-guardian=y
+CONFIG_PACKAGE_luci-app-auth-guardian=y
+
+# SecuBox packages - Bandwidth & Traffic
+CONFIG_PACKAGE_luci-app-bandwidth-manager=y
+CONFIG_PACKAGE_luci-app-media-flow=y
+
+# SecuBox packages - Performance & Services
+CONFIG_PACKAGE_luci-app-cdn-cache=y
+CONFIG_PACKAGE_luci-app-vhost-manager=y
 
 # WireGuard
 CONFIG_PACKAGE_wireguard-tools=y
