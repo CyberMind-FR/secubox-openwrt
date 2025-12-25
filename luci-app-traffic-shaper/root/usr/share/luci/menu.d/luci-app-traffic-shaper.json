@@ -1,5 +1,5 @@
 {
-	"admin/network/traffic-shaper": {
+	"admin/secubox/network/traffic-shaper": {
 		"title": "Traffic Shaper",
 		"order": 65,
 		"action": {
@@ -11,7 +11,7 @@
 			"uci": ["traffic-shaper"]
 		}
 	},
-	"admin/network/traffic-shaper/overview": {
+	"admin/secubox/network/traffic-shaper/overview": {
 		"title": "Overview",
 		"order": 1,
 		"action": {
@@ -19,7 +19,7 @@
 			"path": "traffic-shaper/overview"
 		}
 	},
-	"admin/network/traffic-shaper/classes": {
+	"admin/secubox/network/traffic-shaper/classes": {
 		"title": "Traffic Classes",
 		"order": 2,
 		"action": {
@@ -27,7 +27,7 @@
 			"path": "traffic-shaper/classes"
 		}
 	},
-	"admin/network/traffic-shaper/rules": {
+	"admin/secubox/network/traffic-shaper/rules": {
 		"title": "Classification Rules",
 		"order": 3,
 		"action": {
@@ -35,7 +35,7 @@
 			"path": "traffic-shaper/rules"
 		}
 	},
-	"admin/network/traffic-shaper/stats": {
+	"admin/secubox/network/traffic-shaper/stats": {
 		"title": "Statistics",
 		"order": 4,
 		"action": {
@@ -43,7 +43,7 @@
 			"path": "traffic-shaper/stats"
 		}
 	},
-	"admin/network/traffic-shaper/presets": {
+	"admin/secubox/network/traffic-shaper/presets": {
 		"title": "Presets",
 		"order": 5,
 		"action": {

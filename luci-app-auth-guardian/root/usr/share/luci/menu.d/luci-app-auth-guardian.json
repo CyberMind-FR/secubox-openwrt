@@ -1,35 +1,35 @@
 {
-    "admin/services/auth-guardian": {
+    "admin/secubox/security/auth-guardian": {
         "title": "Auth Guardian",
         "order": 70,
         "action": {"type": "firstchild"}
     },
-    "admin/services/auth-guardian/overview": {
+    "admin/secubox/security/auth-guardian/overview": {
         "title": "Overview",
         "order": 10,
         "action": {"type": "view", "path": "auth-guardian/overview"}
     },
-    "admin/services/auth-guardian/sessions": {
+    "admin/secubox/security/auth-guardian/sessions": {
         "title": "Sessions",
         "order": 20,
         "action": {"type": "view", "path": "auth-guardian/sessions"}
     },
-    "admin/services/auth-guardian/vouchers": {
+    "admin/secubox/security/auth-guardian/vouchers": {
         "title": "Vouchers",
         "order": 30,
         "action": {"type": "view", "path": "auth-guardian/vouchers"}
     },
-    "admin/services/auth-guardian/oauth": {
+    "admin/secubox/security/auth-guardian/oauth": {
         "title": "OAuth Providers",
         "order": 40,
         "action": {"type": "view", "path": "auth-guardian/oauth"}
     },
-    "admin/services/auth-guardian/splash": {
+    "admin/secubox/security/auth-guardian/splash": {
         "title": "Splash Page",
         "order": 50,
         "action": {"type": "view", "path": "auth-guardian/splash"}
     },
-    "admin/services/auth-guardian/bypass": {
+    "admin/secubox/security/auth-guardian/bypass": {
         "title": "Bypass Rules",
         "order": 60,
         "action": {"type": "view", "path": "auth-guardian/bypass"}

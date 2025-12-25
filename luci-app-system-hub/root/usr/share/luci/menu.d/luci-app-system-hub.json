@@ -1,5 +1,5 @@
 {
-	"admin/system/system-hub": {
+	"admin/secubox/system/system-hub": {
 		"title": "System Hub",
 		"order": 10,
 		"action": {
@@ -9,7 +9,7 @@
 			"acl": ["luci-app-system-hub"]
 		}
 	},
-	"admin/system/system-hub/overview": {
+	"admin/secubox/system/system-hub/overview": {
 		"title": "Overview",
 		"order": 1,
 		"action": {
@@ -17,7 +17,7 @@
 			"path": "system-hub/overview"
 		}
 	},
-	"admin/system/system-hub/services": {
+	"admin/secubox/system/system-hub/services": {
 		"title": "Services",
 		"order": 2,
 		"action": {
@@ -25,7 +25,7 @@
 			"path": "system-hub/services"
 		}
 	},
-	"admin/system/system-hub/logs": {
+	"admin/secubox/system/system-hub/logs": {
 		"title": "System Logs",
 		"order": 3,
 		"action": {
@@ -33,7 +33,7 @@
 			"path": "system-hub/logs"
 		}
 	},
-	"admin/system/system-hub/backup": {
+	"admin/secubox/system/system-hub/backup": {
 		"title": "Backup & Restore",
 		"order": 4,
 		"action": {
@@ -41,7 +41,7 @@
 			"path": "system-hub/backup"
 		}
 	},
-	"admin/system/system-hub/components": {
+	"admin/secubox/system/system-hub/components": {
 		"title": "Components",
 		"order": 5,
 		"action": {
@@ -49,7 +49,7 @@
 			"path": "system-hub/components"
 		}
 	},
-	"admin/system/system-hub/diagnostics": {
+	"admin/secubox/system/system-hub/diagnostics": {
 		"title": "Diagnostics",
 		"order": 6,
 		"action": {
@@ -57,7 +57,7 @@
 			"path": "system-hub/diagnostics"
 		}
 	},
-	"admin/system/system-hub/health": {
+	"admin/secubox/system/system-hub/health": {
 		"title": "System Health",
 		"order": 7,
 		"action": {
@@ -65,7 +65,7 @@
 			"path": "system-hub/health"
 		}
 	},
-	"admin/system/system-hub/remote": {
+	"admin/secubox/system/system-hub/remote": {
 		"title": "Remote Management",
 		"order": 8,
 		"action": {
@@ -73,7 +73,7 @@
 			"path": "system-hub/remote"
 		}
 	},
-	"admin/system/system-hub/settings": {
+	"admin/secubox/system/system-hub/settings": {
 		"title": "Settings",
 		"order": 9,
 		"action": {

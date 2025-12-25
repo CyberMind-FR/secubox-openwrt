@@ -1,5 +1,5 @@
 {
-	"admin/network/bandwidth-manager": {
+	"admin/secubox/network/bandwidth-manager": {
 		"title": "Bandwidth Manager",
 		"order": 55,
 		"action": {
@@ -9,7 +9,7 @@
 			"acl": ["luci-app-bandwidth-manager"]
 		}
 	},
-	"admin/network/bandwidth-manager/overview": {
+	"admin/secubox/network/bandwidth-manager/overview": {
 		"title": "Overview",
 		"order": 1,
 		"action": {
@@ -17,7 +17,7 @@
 			"path": "bandwidth-manager/overview"
 		}
 	},
-	"admin/network/bandwidth-manager/rules": {
+	"admin/secubox/network/bandwidth-manager/rules": {
 		"title": "QoS Rules",
 		"order": 2,
 		"action": {
@@ -25,7 +25,7 @@
 			"path": "bandwidth-manager/rules"
 		}
 	},
-	"admin/network/bandwidth-manager/quotas": {
+	"admin/secubox/network/bandwidth-manager/quotas": {
 		"title": "Client Quotas",
 		"order": 3,
 		"action": {
@@ -33,7 +33,7 @@
 			"path": "bandwidth-manager/quotas"
 		}
 	},
-	"admin/network/bandwidth-manager/usage": {
+	"admin/secubox/network/bandwidth-manager/usage": {
 		"title": "Real-time Usage",
 		"order": 4,
 		"action": {
@@ -41,7 +41,7 @@
 			"path": "bandwidth-manager/usage"
 		}
 	},
-	"admin/network/bandwidth-manager/settings": {
+	"admin/secubox/network/bandwidth-manager/settings": {
 		"title": "Settings",
 		"order": 5,
 		"action": {
@@ -49,7 +49,7 @@
 			"path": "bandwidth-manager/settings"
 		}
 	},
-	"admin/network/bandwidth-manager/media": {
+	"admin/secubox/network/bandwidth-manager/media": {
 		"title": "Media Detection",
 		"order": 6,
 		"action": {
@@ -57,7 +57,7 @@
 			"path": "bandwidth-manager/media"
 		}
 	},
-	"admin/network/bandwidth-manager/classes": {
+	"admin/secubox/network/bandwidth-manager/classes": {
 		"title": "QoS Classes",
 		"order": 7,
 		"action": {
@@ -65,7 +65,7 @@
 			"path": "bandwidth-manager/classes"
 		}
 	},
-	"admin/network/bandwidth-manager/clients": {
+	"admin/secubox/network/bandwidth-manager/clients": {
 		"title": "Connected Clients",
 		"order": 8,
 		"action": {
@@ -73,7 +73,7 @@
 			"path": "bandwidth-manager/clients"
 		}
 	},
-	"admin/network/bandwidth-manager/schedules": {
+	"admin/secubox/network/bandwidth-manager/schedules": {
 		"title": "Schedules",
 		"order": 9,
 		"action": {
