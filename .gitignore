@@ -7,3 +7,4 @@ secubox-tools/local-feed/
 
 # IDE settings
 .vscode/
+luci-app-secubox.backup-*
