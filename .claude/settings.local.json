@@ -53,7 +53,8 @@
       "Bash(for file in luci-app-traffic-shaper/htdocs/luci-static/resources/view/traffic-shaper/*.js luci-app-traffic-shaper/htdocs/luci-static/resources/traffic-shaper/api.js)",
       "Bash(timeout 5 ./secubox-tools/validate-modules.sh:*)",
       "Bash(tree:*)",
-      "Bash(for file in luci-app-ksm-manager/htdocs/luci-static/resources/view/ksm-manager/*.js luci-app-ksm-manager/htdocs/luci-static/resources/ksm-manager/api.js)"
+      "Bash(for file in luci-app-ksm-manager/htdocs/luci-static/resources/view/ksm-manager/*.js luci-app-ksm-manager/htdocs/luci-static/resources/ksm-manager/api.js)",
+      "Bash(git show:*)"
     ]
   }
 }
