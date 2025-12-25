@@ -6,8 +6,7 @@
 			"type": "firstchild"
 		},
 		"depends": {
-			"acl": ["luci-app-netdata-dashboard"],
-			"uci": {"netdata": true}
+			"acl": ["luci-app-netdata-dashboard"]
 		}
 	},
 	"admin/secubox/monitoring/netdata/dashboard": {

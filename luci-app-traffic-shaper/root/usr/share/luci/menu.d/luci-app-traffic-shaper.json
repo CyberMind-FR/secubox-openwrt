@@ -7,8 +7,7 @@
 			"path": "traffic-shaper/overview"
 		},
 		"depends": {
-			"acl": ["luci-app-traffic-shaper"],
-			"uci": ["traffic-shaper"]
+			"acl": ["luci-app-traffic-shaper"]
 		}
 	},
 	"admin/secubox/network/traffic-shaper/overview": {

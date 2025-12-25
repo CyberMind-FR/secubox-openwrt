@@ -6,8 +6,7 @@
 			"type": "firstchild"
 		},
 		"depends": {
-			"acl": ["luci-app-netifyd-dashboard"],
-			"uci": {"netifyd": true}
+			"acl": ["luci-app-netifyd-dashboard"]
 		}
 	},
 	"admin/secubox/security/netifyd/overview": {

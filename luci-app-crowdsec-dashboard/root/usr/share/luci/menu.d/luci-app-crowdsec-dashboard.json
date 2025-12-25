@@ -6,8 +6,7 @@
 			"type": "firstchild"
 		},
 		"depends": {
-			"acl": ["luci-app-crowdsec"],
-			"uci": {"crowdsec": true}
+			"acl": ["luci-app-crowdsec"]
 		}
 	},
 	"admin/secubox/security/crowdsec/overview": {

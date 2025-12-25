@@ -6,8 +6,7 @@
 			"type": "firstchild"
 		},
 		"depends": {
-			"acl": ["luci-app-client-guardian"],
-			"uci": {"client_guardian": true}
+			"acl": ["luci-app-client-guardian"]
 		}
 	},
 	"admin/secubox/security/client-guardian/overview": {

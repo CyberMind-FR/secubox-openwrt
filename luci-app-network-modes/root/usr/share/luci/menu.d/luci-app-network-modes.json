@@ -6,8 +6,7 @@
 			"type": "firstchild"
 		},
 		"depends": {
-			"acl": ["luci-app-network-modes"],
-			"uci": {"network_modes": true}
+			"acl": ["luci-app-network-modes"]
 		}
 	},
 	"admin/secubox/network/network-modes/overview": {

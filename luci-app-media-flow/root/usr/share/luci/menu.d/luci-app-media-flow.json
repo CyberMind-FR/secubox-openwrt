@@ -6,8 +6,7 @@
 			"type": "firstchild"
 		},
 		"depends": {
-			"acl": ["luci-app-media-flow"],
-			"uci": {"media_flow": true}
+			"acl": ["luci-app-media-flow"]
 		}
 	},
 	"admin/secubox/monitoring/mediaflow/dashboard": {
