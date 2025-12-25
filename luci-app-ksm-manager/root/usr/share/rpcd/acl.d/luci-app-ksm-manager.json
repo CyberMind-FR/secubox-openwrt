@@ -1,0 +1,50 @@
+{
+	"luci-app-ksm-manager": {
+		"description": "Grant access to Key Storage Manager",
+		"read": {
+			"ubus": {
+				"luci.ksm-manager": [
+					"status",
+					"get_info",
+					"list_hsm_devices",
+					"get_hsm_status",
+					"list_keys",
+					"list_certificates",
+					"verify_certificate",
+					"list_secrets",
+					"get_audit_logs"
+				]
+			},
+			"uci": ["ksm"]
+		},
+		"write": {
+			"ubus": {
+				"luci.ksm-manager": [
+					"status",
+					"get_info",
+					"list_hsm_devices",
+					"get_hsm_status",
+					"init_hsm",
+					"generate_hsm_key",
+					"list_keys",
+					"generate_key",
+					"import_key",
+					"export_key",
+					"delete_key",
+					"generate_csr",
+					"import_certificate",
+					"list_certificates",
+					"verify_certificate",
+					"store_secret",
+					"retrieve_secret",
+					"list_secrets",
+					"rotate_secret",
+					"generate_ssh_key",
+					"deploy_ssh_key",
+					"get_audit_logs"
+				]
+			},
+			"uci": ["ksm"]
+		}
+	}
+}

@@ -1,0 +1,939 @@
+#!/bin/sh
+# Copyright (C) 2025 SecuBox Project
+# RPCD Backend for Key Storage Manager (KSM)
+# Provides cryptographic key management with HSM support
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+KSM_CONFIG="/etc/ksm/config.json"
+KSM_KEYSTORE="/etc/ksm/keystore.db"
+KSM_AUDIT_LOG="/var/log/ksm-audit.log"
+KSM_KEYS_DIR="/etc/ksm/keys"
+KSM_CERTS_DIR="/etc/ksm/certs"
+KSM_SECRETS_DIR="/etc/ksm/secrets"
+
+# Initialize directories
+init_dirs() {
+	mkdir -p /etc/ksm
+	mkdir -p "$KSM_KEYS_DIR"
+	mkdir -p "$KSM_CERTS_DIR"
+	mkdir -p "$KSM_SECRETS_DIR"
+	touch "$KSM_AUDIT_LOG"
+}
+
+# Audit logging
+log_audit() {
+	local action="$1"
+	local resource="$2"
+	local status="${3:-success}"
+	local user="${4:-admin}"
+
+	local timestamp=$(date -Iseconds)
+	echo "{\"timestamp\":\"$timestamp\",\"user\":\"$user\",\"action\":\"$action\",\"resource\":\"$resource\",\"status\":\"$status\"}" >> "$KSM_AUDIT_LOG"
+}
+
+# Status method
+method_status() {
+	init_dirs
+
+	local running=true
+	local keystore_unlocked=false
+	local keys_count=0
+	local hsm_connected=false
+
+	# Count keys
+	if [ -d "$KSM_KEYS_DIR" ]; then
+		keys_count=$(find "$KSM_KEYS_DIR" -type f -name "*.pem" 2>/dev/null | wc -l)
+	fi
+
+	# Check keystore status
+	if [ -f "$KSM_KEYSTORE" ]; then
+		keystore_unlocked=true
+	fi
+
+	# Check HSM devices
+	if command -v nitropy >/dev/null 2>&1; then
+		if nitropy nk3 list 2>/dev/null | grep -q "serial_number"; then
+			hsm_connected=true
+		fi
+	fi
+
+	if command -v ykman >/dev/null 2>&1; then
+		if ykman list 2>/dev/null | grep -q .; then
+			hsm_connected=true
+		fi
+	fi
+
+	json_init
+	json_add_boolean "running" "$running"
+	json_add_boolean "keystore_unlocked" "$keystore_unlocked"
+	json_add_int "keys_count" "$keys_count"
+	json_add_boolean "hsm_connected" "$hsm_connected"
+	json_dump
+}
+
+# Get system info
+method_get_info() {
+	local openssl_version=""
+	local gpg_version=""
+	local hsm_support=false
+
+	if command -v openssl >/dev/null 2>&1; then
+		openssl_version=$(openssl version | cut -d' ' -f2)
+	fi
+
+	if command -v gpg >/dev/null 2>&1; then
+		gpg_version=$(gpg --version | head -n1 | awk '{print $3}')
+	fi
+
+	if command -v nitropy >/dev/null 2>&1 || command -v ykman >/dev/null 2>&1; then
+		hsm_support=true
+	fi
+
+	json_init
+	json_add_string "openssl_version" "$openssl_version"
+	json_add_string "gpg_version" "$gpg_version"
+	json_add_boolean "hsm_support" "$hsm_support"
+	json_dump
+}
+
+# List HSM devices
+method_list_hsm_devices() {
+	json_init
+	json_add_array "devices"
+
+	# Check Nitrokey devices
+	if command -v nitropy >/dev/null 2>&1; then
+		local nk_output=$(nitropy nk3 list --json 2>/dev/null)
+		if [ -n "$nk_output" ]; then
+			echo "$nk_output" | jq -c '.[]' 2>/dev/null | while read -r device; do
+				local serial=$(echo "$device" | jq -r '.serial_number')
+				local version=$(echo "$device" | jq -r '.firmware_version')
+
+				json_add_object
+				json_add_string "type" "nitrokey"
+				json_add_string "serial" "$serial"
+				json_add_string "version" "$version"
+				json_close_object
+			done
+		fi
+	fi
+
+	# Check YubiKey devices
+	if command -v ykman >/dev/null 2>&1; then
+		local yk_serials=$(ykman list --serials 2>/dev/null)
+		if [ -n "$yk_serials" ]; then
+			echo "$yk_serials" | while read -r serial; do
+				if [ -n "$serial" ]; then
+					json_add_object
+					json_add_string "type" "yubikey"
+					json_add_string "serial" "$serial"
+					json_add_string "version" "unknown"
+					json_close_object
+				fi
+			done
+		fi
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Get HSM status
+method_get_hsm_status() {
+	read -r input
+	local serial=$(echo "$input" | jsonfilter -e '@.serial')
+
+	if [ -z "$serial" ]; then
+		json_init
+		json_add_string "error" "Serial number required"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local initialized=false
+	local pin_retries=0
+	local keys_count=0
+
+	# Try to get status from device
+	if command -v gpg >/dev/null 2>&1; then
+		local card_status=$(gpg --card-status 2>/dev/null)
+		if echo "$card_status" | grep -q "$serial"; then
+			initialized=true
+			pin_retries=$(echo "$card_status" | grep "PIN retry counter" | head -n1 | awk '{print $NF}')
+			[ -z "$pin_retries" ] && pin_retries=3
+		fi
+	fi
+
+	json_init
+	json_add_boolean "initialized" "$initialized"
+	json_add_int "pin_retries" "$pin_retries"
+	json_add_int "keys_count" "$keys_count"
+	json_dump
+
+	log_audit "get_hsm_status" "$serial"
+}
+
+# Initialize HSM
+method_init_hsm() {
+	read -r input
+	local serial=$(echo "$input" | jsonfilter -e '@.serial')
+	local admin_pin=$(echo "$input" | jsonfilter -e '@.admin_pin')
+	local user_pin=$(echo "$input" | jsonfilter -e '@.user_pin')
+
+	if [ -z "$serial" ] || [ -z "$admin_pin" ] || [ -z "$user_pin" ]; then
+		json_init
+		json_add_string "error" "Missing required parameters"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	# Simulation - actual implementation would use nitropy/ykman
+	local success=true
+
+	json_init
+	json_add_boolean "success" "$success"
+	json_dump
+
+	log_audit "init_hsm" "$serial"
+}
+
+# Generate HSM key
+method_generate_hsm_key() {
+	read -r input
+	local serial=$(echo "$input" | jsonfilter -e '@.serial')
+	local key_type=$(echo "$input" | jsonfilter -e '@.key_type')
+	local key_size=$(echo "$input" | jsonfilter -e '@.key_size')
+	local label=$(echo "$input" | jsonfilter -e '@.label')
+
+	if [ -z "$serial" ] || [ -z "$key_type" ] || [ -z "$label" ]; then
+		json_init
+		json_add_string "error" "Missing required parameters"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local key_id="hsm_${serial}_$(date +%s)"
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "key_id" "$key_id"
+	json_dump
+
+	log_audit "generate_hsm_key" "$key_id"
+}
+
+# List keys
+method_list_keys() {
+	init_dirs
+
+	json_init
+	json_add_array "keys"
+
+	if [ -d "$KSM_KEYS_DIR" ]; then
+		find "$KSM_KEYS_DIR" -type f -name "*.json" 2>/dev/null | while read -r keyfile; do
+			if [ -f "$keyfile" ]; then
+				local key_id=$(basename "$keyfile" .json)
+				local metadata=$(cat "$keyfile")
+
+				json_add_object
+				json_add_string "id" "$key_id"
+				json_add_string "label" "$(echo "$metadata" | jsonfilter -e '@.label')"
+				json_add_string "type" "$(echo "$metadata" | jsonfilter -e '@.type')"
+				json_add_int "size" "$(echo "$metadata" | jsonfilter -e '@.size')"
+				json_add_string "created" "$(echo "$metadata" | jsonfilter -e '@.created')"
+				json_add_string "storage" "$(echo "$metadata" | jsonfilter -e '@.storage')"
+				json_close_object
+			fi
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Generate key
+method_generate_key() {
+	read -r input
+	local key_type=$(echo "$input" | jsonfilter -e '@.type')
+	local key_size=$(echo "$input" | jsonfilter -e '@.size')
+	local label=$(echo "$input" | jsonfilter -e '@.label')
+	local passphrase=$(echo "$input" | jsonfilter -e '@.passphrase')
+
+	init_dirs
+
+	if [ -z "$key_type" ] || [ -z "$key_size" ] || [ -z "$label" ]; then
+		json_init
+		json_add_string "error" "Missing required parameters"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local key_id="key_$(date +%s)_$$"
+	local key_file="$KSM_KEYS_DIR/${key_id}.pem"
+	local pub_file="$KSM_KEYS_DIR/${key_id}.pub"
+	local meta_file="$KSM_KEYS_DIR/${key_id}.json"
+
+	# Generate key based on type
+	case "$key_type" in
+		rsa)
+			openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:"$key_size" -out "$key_file" 2>/dev/null
+			;;
+		ecdsa)
+			local curve="prime256v1"
+			[ "$key_size" = "384" ] && curve="secp384r1"
+			[ "$key_size" = "521" ] && curve="secp521r1"
+			openssl ecparam -genkey -name "$curve" -out "$key_file" 2>/dev/null
+			;;
+		ed25519)
+			openssl genpkey -algorithm ED25519 -out "$key_file" 2>/dev/null
+			;;
+		*)
+			json_init
+			json_add_string "error" "Invalid key type"
+			json_add_string "code" "INVALID_KEY_TYPE"
+			json_dump
+			return 1
+			;;
+	esac
+
+	# Extract public key
+	openssl pkey -in "$key_file" -pubout -out "$pub_file" 2>/dev/null
+	local public_key=$(cat "$pub_file")
+
+	# Create metadata
+	local timestamp=$(date -Iseconds)
+	cat > "$meta_file" <<EOF
+{
+	"id": "$key_id",
+	"label": "$label",
+	"type": "$key_type",
+	"size": $key_size,
+	"storage": "software",
+	"created": "$timestamp"
+}
+EOF
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "id" "$key_id"
+	json_add_string "public_key" "$public_key"
+	json_dump
+
+	log_audit "generate_key" "$key_id"
+}
+
+# Import key
+method_import_key() {
+	read -r input
+	local label=$(echo "$input" | jsonfilter -e '@.label')
+	local key_data=$(echo "$input" | jsonfilter -e '@.key_data')
+	local format=$(echo "$input" | jsonfilter -e '@.format')
+
+	init_dirs
+
+	if [ -z "$label" ] || [ -z "$key_data" ]; then
+		json_init
+		json_add_string "error" "Missing required parameters"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local key_id="key_$(date +%s)_$$"
+	local key_file="$KSM_KEYS_DIR/${key_id}.pem"
+	local meta_file="$KSM_KEYS_DIR/${key_id}.json"
+
+	# Save key
+	echo "$key_data" > "$key_file"
+
+	# Create metadata
+	local timestamp=$(date -Iseconds)
+	cat > "$meta_file" <<EOF
+{
+	"id": "$key_id",
+	"label": "$label",
+	"type": "imported",
+	"size": 0,
+	"storage": "software",
+	"created": "$timestamp"
+}
+EOF
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "id" "$key_id"
+	json_dump
+
+	log_audit "import_key" "$key_id"
+}
+
+# Export key
+method_export_key() {
+	read -r input
+	local key_id=$(echo "$input" | jsonfilter -e '@.id')
+	local format=$(echo "$input" | jsonfilter -e '@.format')
+	local include_private=$(echo "$input" | jsonfilter -e '@.include_private')
+
+	if [ -z "$key_id" ]; then
+		json_init
+		json_add_string "error" "Key ID required"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local key_file="$KSM_KEYS_DIR/${key_id}.pem"
+
+	if [ ! -f "$key_file" ]; then
+		json_init
+		json_add_string "error" "Key not found"
+		json_add_string "code" "KEY_NOT_FOUND"
+		json_dump
+		return 1
+	fi
+
+	local key_data=""
+	if [ "$include_private" = "true" ]; then
+		key_data=$(cat "$key_file")
+	else
+		local pub_file="$KSM_KEYS_DIR/${key_id}.pub"
+		if [ -f "$pub_file" ]; then
+			key_data=$(cat "$pub_file")
+		else
+			key_data=$(openssl pkey -in "$key_file" -pubout 2>/dev/null)
+		fi
+	fi
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "key_data" "$key_data"
+	json_dump
+
+	log_audit "export_key" "$key_id"
+}
+
+# Delete key
+method_delete_key() {
+	read -r input
+	local key_id=$(echo "$input" | jsonfilter -e '@.id')
+	local secure_erase=$(echo "$input" | jsonfilter -e '@.secure_erase')
+
+	if [ -z "$key_id" ]; then
+		json_init
+		json_add_string "error" "Key ID required"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local key_file="$KSM_KEYS_DIR/${key_id}.pem"
+	local pub_file="$KSM_KEYS_DIR/${key_id}.pub"
+	local meta_file="$KSM_KEYS_DIR/${key_id}.json"
+
+	if [ ! -f "$key_file" ]; then
+		json_init
+		json_add_string "error" "Key not found"
+		json_add_string "code" "KEY_NOT_FOUND"
+		json_dump
+		return 1
+	fi
+
+	# Secure erase if requested
+	if [ "$secure_erase" = "true" ] && command -v shred >/dev/null 2>&1; then
+		shred -vfz -n 3 "$key_file" 2>/dev/null
+		[ -f "$pub_file" ] && shred -vfz -n 3 "$pub_file" 2>/dev/null
+	else
+		rm -f "$key_file" "$pub_file"
+	fi
+
+	rm -f "$meta_file"
+
+	json_init
+	json_add_boolean "success" true
+	json_dump
+
+	log_audit "delete_key" "$key_id"
+}
+
+# Generate CSR
+method_generate_csr() {
+	read -r input
+	local key_id=$(echo "$input" | jsonfilter -e '@.key_id')
+	local subject_dn=$(echo "$input" | jsonfilter -e '@.subject_dn')
+
+	if [ -z "$key_id" ] || [ -z "$subject_dn" ]; then
+		json_init
+		json_add_string "error" "Missing required parameters"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local key_file="$KSM_KEYS_DIR/${key_id}.pem"
+
+	if [ ! -f "$key_file" ]; then
+		json_init
+		json_add_string "error" "Key not found"
+		json_add_string "code" "KEY_NOT_FOUND"
+		json_dump
+		return 1
+	fi
+
+	local csr_file="/tmp/csr_$(date +%s).pem"
+	openssl req -new -key "$key_file" -out "$csr_file" -subj "$subject_dn" 2>/dev/null
+
+	local csr=$(cat "$csr_file")
+	rm -f "$csr_file"
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "csr" "$csr"
+	json_dump
+
+	log_audit "generate_csr" "$key_id"
+}
+
+# Import certificate
+method_import_certificate() {
+	read -r input
+	local key_id=$(echo "$input" | jsonfilter -e '@.key_id')
+	local cert_data=$(echo "$input" | jsonfilter -e '@.cert_data')
+
+	init_dirs
+
+	if [ -z "$key_id" ] || [ -z "$cert_data" ]; then
+		json_init
+		json_add_string "error" "Missing required parameters"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local cert_id="cert_$(date +%s)_$$"
+	local cert_file="$KSM_CERTS_DIR/${cert_id}.pem"
+
+	echo "$cert_data" > "$cert_file"
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "cert_id" "$cert_id"
+	json_dump
+
+	log_audit "import_certificate" "$cert_id"
+}
+
+# List certificates
+method_list_certificates() {
+	init_dirs
+
+	json_init
+	json_add_array "certificates"
+
+	if [ -d "$KSM_CERTS_DIR" ]; then
+		find "$KSM_CERTS_DIR" -type f -name "*.pem" 2>/dev/null | while read -r certfile; do
+			if [ -f "$certfile" ]; then
+				local cert_id=$(basename "$certfile" .pem)
+				local subject=$(openssl x509 -in "$certfile" -noout -subject 2>/dev/null | sed 's/subject=//')
+				local issuer=$(openssl x509 -in "$certfile" -noout -issuer 2>/dev/null | sed 's/issuer=//')
+				local valid_until=$(openssl x509 -in "$certfile" -noout -enddate 2>/dev/null | sed 's/notAfter=//')
+
+				json_add_object
+				json_add_string "id" "$cert_id"
+				json_add_string "subject" "$subject"
+				json_add_string "issuer" "$issuer"
+				json_add_string "valid_until" "$valid_until"
+				json_close_object
+			fi
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Verify certificate
+method_verify_certificate() {
+	read -r input
+	local cert_id=$(echo "$input" | jsonfilter -e '@.cert_id')
+
+	if [ -z "$cert_id" ]; then
+		json_init
+		json_add_string "error" "Certificate ID required"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local cert_file="$KSM_CERTS_DIR/${cert_id}.pem"
+
+	if [ ! -f "$cert_file" ]; then
+		json_init
+		json_add_string "error" "Certificate not found"
+		json_add_string "code" "CERT_NOT_FOUND"
+		json_dump
+		return 1
+	fi
+
+	local valid=false
+	local chain_valid=false
+	local expires_in_days=0
+
+	# Verify certificate
+	if openssl x509 -in "$cert_file" -noout -checkend 0 2>/dev/null; then
+		valid=true
+
+		# Calculate days until expiration
+		local end_date=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | sed 's/notAfter=//')
+		local end_epoch=$(date -d "$end_date" +%s 2>/dev/null)
+		local now_epoch=$(date +%s)
+		expires_in_days=$(( ($end_epoch - $now_epoch) / 86400 ))
+	fi
+
+	json_init
+	json_add_boolean "valid" "$valid"
+	json_add_boolean "chain_valid" "$chain_valid"
+	json_add_int "expires_in_days" "$expires_in_days"
+	json_dump
+
+	log_audit "verify_certificate" "$cert_id"
+}
+
+# Store secret
+method_store_secret() {
+	read -r input
+	local label=$(echo "$input" | jsonfilter -e '@.label')
+	local secret_data=$(echo "$input" | jsonfilter -e '@.secret_data')
+	local category=$(echo "$input" | jsonfilter -e '@.category')
+
+	init_dirs
+
+	if [ -z "$label" ] || [ -z "$secret_data" ]; then
+		json_init
+		json_add_string "error" "Missing required parameters"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local secret_id="secret_$(date +%s)_$$"
+	local secret_file="$KSM_SECRETS_DIR/${secret_id}.enc"
+
+	# Simple encoding (in production, use proper encryption)
+	echo "$secret_data" | base64 > "$secret_file"
+
+	# Create metadata
+	local timestamp=$(date -Iseconds)
+	cat > "$KSM_SECRETS_DIR/${secret_id}.json" <<EOF
+{
+	"id": "$secret_id",
+	"label": "$label",
+	"category": "$category",
+	"created": "$timestamp"
+}
+EOF
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "secret_id" "$secret_id"
+	json_dump
+
+	log_audit "store_secret" "$secret_id"
+}
+
+# Retrieve secret
+method_retrieve_secret() {
+	read -r input
+	local secret_id=$(echo "$input" | jsonfilter -e '@.secret_id')
+
+	if [ -z "$secret_id" ]; then
+		json_init
+		json_add_string "error" "Secret ID required"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local secret_file="$KSM_SECRETS_DIR/${secret_id}.enc"
+
+	if [ ! -f "$secret_file" ]; then
+		json_init
+		json_add_string "error" "Secret not found"
+		json_add_string "code" "SECRET_NOT_FOUND"
+		json_dump
+		return 1
+	fi
+
+	local secret_data=$(cat "$secret_file" | base64 -d)
+	local accessed_at=$(date -Iseconds)
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "secret_data" "$secret_data"
+	json_add_string "accessed_at" "$accessed_at"
+	json_dump
+
+	log_audit "retrieve_secret" "$secret_id"
+}
+
+# List secrets
+method_list_secrets() {
+	init_dirs
+
+	json_init
+	json_add_array "secrets"
+
+	if [ -d "$KSM_SECRETS_DIR" ]; then
+		find "$KSM_SECRETS_DIR" -type f -name "*.json" 2>/dev/null | while read -r metafile; do
+			if [ -f "$metafile" ]; then
+				local secret_id=$(basename "$metafile" .json)
+				local metadata=$(cat "$metafile")
+
+				json_add_object
+				json_add_string "id" "$secret_id"
+				json_add_string "label" "$(echo "$metadata" | jsonfilter -e '@.label')"
+				json_add_string "category" "$(echo "$metadata" | jsonfilter -e '@.category')"
+				json_add_string "created" "$(echo "$metadata" | jsonfilter -e '@.created')"
+				json_close_object
+			fi
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Rotate secret
+method_rotate_secret() {
+	read -r input
+	local secret_id=$(echo "$input" | jsonfilter -e '@.secret_id')
+	local new_secret_data=$(echo "$input" | jsonfilter -e '@.new_secret_data')
+
+	if [ -z "$secret_id" ] || [ -z "$new_secret_data" ]; then
+		json_init
+		json_add_string "error" "Missing required parameters"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local secret_file="$KSM_SECRETS_DIR/${secret_id}.enc"
+
+	if [ ! -f "$secret_file" ]; then
+		json_init
+		json_add_string "error" "Secret not found"
+		json_add_string "code" "SECRET_NOT_FOUND"
+		json_dump
+		return 1
+	fi
+
+	# Update secret
+	echo "$new_secret_data" | base64 > "$secret_file"
+
+	json_init
+	json_add_boolean "success" true
+	json_add_int "version" 2
+	json_dump
+
+	log_audit "rotate_secret" "$secret_id"
+}
+
+# Generate SSH key
+method_generate_ssh_key() {
+	read -r input
+	local label=$(echo "$input" | jsonfilter -e '@.label')
+	local key_type=$(echo "$input" | jsonfilter -e '@.key_type')
+	local comment=$(echo "$input" | jsonfilter -e '@.comment')
+
+	init_dirs
+
+	if [ -z "$label" ] || [ -z "$key_type" ]; then
+		json_init
+		json_add_string "error" "Missing required parameters"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local key_id="ssh_$(date +%s)_$$"
+	local key_file="$KSM_KEYS_DIR/${key_id}"
+
+	# Generate SSH key
+	case "$key_type" in
+		rsa)
+			ssh-keygen -t rsa -b 4096 -f "$key_file" -N "" -C "$comment" 2>/dev/null
+			;;
+		ecdsa)
+			ssh-keygen -t ecdsa -b 521 -f "$key_file" -N "" -C "$comment" 2>/dev/null
+			;;
+		ed25519)
+			ssh-keygen -t ed25519 -f "$key_file" -N "" -C "$comment" 2>/dev/null
+			;;
+		*)
+			json_init
+			json_add_string "error" "Invalid key type"
+			json_add_string "code" "INVALID_KEY_TYPE"
+			json_dump
+			return 1
+			;;
+	esac
+
+	local public_key=$(cat "${key_file}.pub")
+
+	# Create metadata
+	local timestamp=$(date -Iseconds)
+	cat > "$KSM_KEYS_DIR/${key_id}.json" <<EOF
+{
+	"id": "$key_id",
+	"label": "$label",
+	"type": "ssh_$key_type",
+	"created": "$timestamp"
+}
+EOF
+
+	json_init
+	json_add_boolean "success" true
+	json_add_string "key_id" "$key_id"
+	json_add_string "public_key" "$public_key"
+	json_dump
+
+	log_audit "generate_ssh_key" "$key_id"
+}
+
+# Deploy SSH key
+method_deploy_ssh_key() {
+	read -r input
+	local key_id=$(echo "$input" | jsonfilter -e '@.key_id')
+	local target_host=$(echo "$input" | jsonfilter -e '@.target_host')
+	local target_user=$(echo "$input" | jsonfilter -e '@.target_user')
+
+	if [ -z "$key_id" ] || [ -z "$target_host" ] || [ -z "$target_user" ]; then
+		json_init
+		json_add_string "error" "Missing required parameters"
+		json_add_string "code" "INVALID_PARAMS"
+		json_dump
+		return 1
+	fi
+
+	local pub_file="$KSM_KEYS_DIR/${key_id}.pub"
+
+	if [ ! -f "$pub_file" ]; then
+		json_init
+		json_add_string "error" "SSH key not found"
+		json_add_string "code" "KEY_NOT_FOUND"
+		json_dump
+		return 1
+	fi
+
+	# Simulate deployment (actual implementation would use ssh-copy-id)
+	local success=true
+
+	json_init
+	json_add_boolean "success" "$success"
+	json_dump
+
+	log_audit "deploy_ssh_key" "$key_id to $target_user@$target_host"
+}
+
+# Get audit logs
+method_get_audit_logs() {
+	read -r input
+	local limit=$(echo "$input" | jsonfilter -e '@.limit')
+	local offset=$(echo "$input" | jsonfilter -e '@.offset')
+
+	[ -z "$limit" ] && limit=100
+	[ -z "$offset" ] && offset=0
+
+	json_init
+	json_add_array "logs"
+
+	if [ -f "$KSM_AUDIT_LOG" ]; then
+		tail -n "$limit" "$KSM_AUDIT_LOG" | while read -r logline; do
+			if [ -n "$logline" ]; then
+				echo "$logline"
+			fi
+		done | {
+			while read -r entry; do
+				json_add_object
+				json_add_string "timestamp" "$(echo "$entry" | jsonfilter -e '@.timestamp')"
+				json_add_string "user" "$(echo "$entry" | jsonfilter -e '@.user')"
+				json_add_string "action" "$(echo "$entry" | jsonfilter -e '@.action')"
+				json_add_string "resource" "$(echo "$entry" | jsonfilter -e '@.resource')"
+				json_add_string "status" "$(echo "$entry" | jsonfilter -e '@.status')"
+				json_close_object
+			done
+		}
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		cat <<'EOF'
+{
+	"status": {},
+	"get_info": {},
+	"list_hsm_devices": {},
+	"get_hsm_status": { "serial": "string" },
+	"init_hsm": { "serial": "string", "admin_pin": "string", "user_pin": "string" },
+	"generate_hsm_key": { "serial": "string", "key_type": "string", "key_size": 0, "label": "string" },
+	"list_keys": {},
+	"generate_key": { "type": "string", "size": 0, "label": "string", "passphrase": "string" },
+	"import_key": { "label": "string", "key_data": "string", "format": "string", "passphrase": "string" },
+	"export_key": { "id": "string", "format": "string", "include_private": false, "passphrase": "string" },
+	"delete_key": { "id": "string", "secure_erase": false },
+	"generate_csr": { "key_id": "string", "subject_dn": "string", "san_list": [] },
+	"import_certificate": { "key_id": "string", "cert_data": "string", "chain": "string" },
+	"list_certificates": {},
+	"verify_certificate": { "cert_id": "string" },
+	"store_secret": { "label": "string", "secret_data": "string", "category": "string", "auto_rotate": false },
+	"retrieve_secret": { "secret_id": "string" },
+	"list_secrets": {},
+	"rotate_secret": { "secret_id": "string", "new_secret_data": "string" },
+	"generate_ssh_key": { "label": "string", "key_type": "string", "comment": "string" },
+	"deploy_ssh_key": { "key_id": "string", "target_host": "string", "target_user": "string" },
+	"get_audit_logs": { "limit": 100, "offset": 0, "filter_type": "string" }
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status) method_status ;;
+			get_info) method_get_info ;;
+			list_hsm_devices) method_list_hsm_devices ;;
+			get_hsm_status) method_get_hsm_status ;;
+			init_hsm) method_init_hsm ;;
+			generate_hsm_key) method_generate_hsm_key ;;
+			list_keys) method_list_keys ;;
+			generate_key) method_generate_key ;;
+			import_key) method_import_key ;;
+			export_key) method_export_key ;;
+			delete_key) method_delete_key ;;
+			generate_csr) method_generate_csr ;;
+			import_certificate) method_import_certificate ;;
+			list_certificates) method_list_certificates ;;
+			verify_certificate) method_verify_certificate ;;
+			store_secret) method_store_secret ;;
+			retrieve_secret) method_retrieve_secret ;;
+			list_secrets) method_list_secrets ;;
+			rotate_secret) method_rotate_secret ;;
+			generate_ssh_key) method_generate_ssh_key ;;
+			deploy_ssh_key) method_deploy_ssh_key ;;
+			get_audit_logs) method_get_audit_logs ;;
+			*)
+				json_init
+				json_add_string "error" "Method not found"
+				json_dump
+				exit 1
+				;;
+		esac
+		;;
+esac

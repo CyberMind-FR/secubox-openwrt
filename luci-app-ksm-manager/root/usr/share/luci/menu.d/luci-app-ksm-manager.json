@@ -1,0 +1,76 @@
+{
+	"admin/security/ksm-manager": {
+		"title": "Key Storage Manager",
+		"order": 60,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-ksm-manager"]
+		}
+	},
+	"admin/security/ksm-manager/overview": {
+		"title": "Overview",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "ksm-manager/overview"
+		}
+	},
+	"admin/security/ksm-manager/keys": {
+		"title": "Keys",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "ksm-manager/keys"
+		}
+	},
+	"admin/security/ksm-manager/hsm": {
+		"title": "HSM Devices",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "ksm-manager/hsm"
+		}
+	},
+	"admin/security/ksm-manager/certificates": {
+		"title": "Certificates",
+		"order": 4,
+		"action": {
+			"type": "view",
+			"path": "ksm-manager/certificates"
+		}
+	},
+	"admin/security/ksm-manager/secrets": {
+		"title": "Secrets",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "ksm-manager/secrets"
+		}
+	},
+	"admin/security/ksm-manager/ssh": {
+		"title": "SSH Keys",
+		"order": 6,
+		"action": {
+			"type": "view",
+			"path": "ksm-manager/ssh"
+		}
+	},
+	"admin/security/ksm-manager/audit": {
+		"title": "Audit Logs",
+		"order": 7,
+		"action": {
+			"type": "view",
+			"path": "ksm-manager/audit"
+		}
+	},
+	"admin/security/ksm-manager/settings": {
+		"title": "Settings",
+		"order": 8,
+		"action": {
+			"type": "view",
+			"path": "ksm-manager/settings"
+		}
+	}
+}
