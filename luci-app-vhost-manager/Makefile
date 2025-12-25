@@ -14,6 +14,6 @@ LUCI_DESCRIPTION:=Nginx reverse proxy manager with Let's Encrypt SSL certificate
 LUCI_DEPENDS:=+luci-base +rpcd +nginx-ssl +acme +curl
 LUCI_PKGARCH:=all
 
-include ../../luci.mk
+include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature

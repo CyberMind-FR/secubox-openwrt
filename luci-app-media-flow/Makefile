@@ -14,6 +14,6 @@ LUCI_DESCRIPTION:=Real-time detection and monitoring of streaming services (Netf
 LUCI_DEPENDS:=+luci-base +rpcd +netifyd +luci-app-netifyd-dashboard
 LUCI_PKGARCH:=all
 
-include ../../luci.mk
+include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature

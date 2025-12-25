@@ -10,6 +10,6 @@ LUCI_TITLE:=Traffic Shaper - Advanced QoS Control
 LUCI_DESCRIPTION:=Advanced traffic shaping with TC/CAKE for precise bandwidth control
 LUCI_DEPENDS:=+luci-base +rpcd +tc +kmod-sched-core +kmod-sched-cake
 
-include ../../luci.mk
+include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature

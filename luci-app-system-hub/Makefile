@@ -11,6 +11,6 @@ LUCI_DESCRIPTION:=Central system control with monitoring, services, logs, and ba
 LUCI_DEPENDS:=+luci-base +rpcd +coreutils +coreutils-base64
 LUCI_PKGARCH:=all
 
-include ../../luci.mk
+include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature
