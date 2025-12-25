@@ -500,24 +500,14 @@ jobs:
             
             # Build with timeout (10 minutes per package)
             BUILD_LOG="/tmp/build-${PKG_NAME}.log"
-            
+
             # Our packages are PKGARCH:=all (pure scripts), no compilation needed
             # Try regular build first, fallback to direct packaging if dependencies fail
             if timeout 600 make package/${PKG_NAME}/compile V=s -j1 > "$BUILD_LOG" 2>&1; then
-              BUILD_METHOD="standard"
-            else
-              echo "⚠️ Standard build failed (likely dependency issues), trying direct packaging..."
-              # Create .ipk directly using luci.mk template
-              BUILD_METHOD="direct"
-              if timeout 300 make package/${PKG_NAME}/prepare package/${PKG_NAME}/configure > "$BUILD_LOG" 2>&1; then
-                make package/index || true
-              fi
-            fi
+              # Build succeeded, check if .ipk was created
+              IPK_FILE=$(find bin -name "${PKG_NAME}*.ipk" 2>/dev/null | head -1)
 
-            # Check if .ipk was created
-            IPK_FILE=$(find bin -name "${PKG_NAME}*.ipk" 2>/dev/null | head -1)
-
-            if [[ -n "$IPK_FILE" ]]; then
+              if [[ -n "$IPK_FILE" ]]; then
                 echo "✅ Built: $PKG_NAME"
                 echo "   → $IPK_FILE"
                 BUILT=$((BUILT + 1))
