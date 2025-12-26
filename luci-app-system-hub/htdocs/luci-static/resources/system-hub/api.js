@@ -91,14 +91,14 @@ var callSaveSettings = rpc.declare({
 var callGetComponents = rpc.declare({
 	object: 'luci.system-hub',
 	method: 'get_components',
-	expect: { modules: [] }
+	expect: {}
 });
 
 var callGetComponentsByCategory = rpc.declare({
 	object: 'luci.system-hub',
 	method: 'get_components_by_category',
 	params: ['category'],
-	expect: { modules: [] }
+	expect: {}
 });
 
 return baseclass.extend({
