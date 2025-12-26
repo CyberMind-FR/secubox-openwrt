@@ -309,11 +309,13 @@ jobs:
 
           # SecuBox packages - Bandwidth & Traffic
           CONFIG_PACKAGE_luci-app-bandwidth-manager=y
+          CONFIG_PACKAGE_luci-app-traffic-shaper=y
           CONFIG_PACKAGE_luci-app-media-flow=y
 
           # SecuBox packages - Performance & Services
           CONFIG_PACKAGE_luci-app-cdn-cache=y
           CONFIG_PACKAGE_luci-app-vhost-manager=y
+          CONFIG_PACKAGE_luci-app-ksm-manager=y
           EOF
 
       - name: Add device-specific packages
@@ -825,14 +827,29 @@ jobs:
           | MOCHAbin | Armada 7040 | 4-8GB | Quad-core + 10G |
           
           ## Pre-installed SecuBox Modules
-          
-          - luci-app-crowdsec-dashboard
-          - luci-app-netdata-dashboard
-          - luci-app-netifyd-dashboard
-          - luci-app-wireguard-dashboard
-          - luci-app-network-modes
-          - luci-app-client-guardian
-          - luci-app-system-hub
+
+          **Security & Access Control:**
+          - luci-app-auth-guardian - Authentication & session manager
+          - luci-app-client-guardian - NAC & captive portal
+          - luci-app-crowdsec-dashboard - CrowdSec security monitoring
+          - luci-app-ksm-manager - Key storage & HSM
+          - luci-app-netifyd-dashboard - Deep packet inspection
+
+          **Monitoring & Analytics:**
+          - luci-app-media-flow - Media traffic detection
+          - luci-app-netdata-dashboard - System monitoring
+
+          **Network Management:**
+          - luci-app-bandwidth-manager - QoS & bandwidth quotas
+          - luci-app-cdn-cache - CDN proxy cache
+          - luci-app-network-modes - Network mode configuration
+          - luci-app-traffic-shaper - Advanced traffic shaping
+          - luci-app-wireguard-dashboard - WireGuard VPN
+
+          **System & Services:**
+          - luci-app-secubox - Central management hub
+          - luci-app-system-hub - System control center
+          - luci-app-vhost-manager - Virtual host manager
           
           ## Installation
           
