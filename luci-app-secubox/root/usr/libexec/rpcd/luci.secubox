@@ -135,7 +135,7 @@ get_modules() {
 	local module_sections=$(uci -q show secubox | grep "=module$" | cut -d. -f2 | cut -d= -f1)
 
 	for module in $module_sections; do
-		local name desc category icon color package config
+		local name desc category icon color package config version
 
 		config_get name "$module" name "$module"
 		config_get desc "$module" description ""
@@ -144,6 +144,7 @@ get_modules() {
 		config_get color "$module" color "#64748b"
 		config_get package "$module" package ""
 		config_get config "$module" config ""
+		config_get version "$module" version "0.0.9"
 
 		local is_installed=$(check_module_installed "$module")
 		local is_running=$(check_module_running "$module")
@@ -157,6 +158,7 @@ get_modules() {
 		json_add_string "color" "$color"
 		json_add_string "package" "$package"
 		json_add_string "config" "$config"
+		json_add_string "version" "$version"
 		json_add_boolean "installed" "$is_installed"
 		json_add_boolean "running" "$is_running"
 		json_close_object
@@ -183,7 +185,7 @@ get_modules_by_category() {
 		config_get mod_category "$module" category "other"
 
 		if [ "$mod_category" = "$category" ]; then
-			local name desc icon color package config
+			local name desc icon color package config version
 
 			config_get name "$module" name "$module"
 			config_get desc "$module" description ""
@@ -191,6 +193,7 @@ get_modules_by_category() {
 			config_get color "$module" color "#64748b"
 			config_get package "$module" package ""
 			config_get config "$module" config ""
+			config_get version "$module" version "0.0.9"
 
 			local is_installed=$(check_module_installed "$module")
 			local is_running=$(check_module_running "$module")
@@ -201,6 +204,7 @@ get_modules_by_category() {
 			json_add_string "description" "$desc"
 			json_add_string "icon" "$icon"
 			json_add_string "color" "$color"
+			json_add_string "version" "$version"
 			json_add_boolean "installed" "$is_installed"
 			json_add_boolean "running" "$is_running"
 			json_close_object
@@ -214,11 +218,11 @@ get_modules_by_category() {
 # Get single module info
 get_module_info() {
 	local module="$1"
-	
+
 	config_load secubox
-	
-	local name desc category icon color package config
-	
+
+	local name desc category icon color package config version
+
 	config_get name "$module" name "$module"
 	config_get desc "$module" description ""
 	config_get category "$module" category "other"
@@ -226,10 +230,11 @@ get_module_info() {
 	config_get color "$module" color "#64748b"
 	config_get package "$module" package ""
 	config_get config "$module" config ""
-	
+	config_get version "$module" version "0.0.9"
+
 	local is_installed=$(check_module_installed "$module")
 	local is_running=$(check_module_running "$module")
-	
+
 	json_init
 	json_add_string "id" "$module"
 	json_add_string "name" "$name"
@@ -239,6 +244,7 @@ get_module_info() {
 	json_add_string "color" "$color"
 	json_add_string "package" "$package"
 	json_add_string "config" "$config"
+	json_add_string "version" "$version"
 	json_add_boolean "installed" "$is_installed"
 	json_add_boolean "running" "$is_running"
 	json_dump

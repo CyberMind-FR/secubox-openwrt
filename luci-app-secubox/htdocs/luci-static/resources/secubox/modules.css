@@ -1,0 +1,442 @@
+/* SecuBox Modules Page Styles */
+
+.secubox-modules-page {
+	max-width: 1400px;
+	margin: 0 auto;
+	padding: 20px;
+}
+
+/* Header Section */
+.secubox-modules-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 12px;
+	margin-top: 16px;
+}
+
+.secubox-stat-badge {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 16px;
+	background: var(--sb-bg-card);
+	border: 2px solid var(--sb-border);
+	border-radius: 12px;
+	transition: all 0.2s;
+}
+
+.secubox-stat-badge:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 4px 12px var(--sb-shadow);
+}
+
+.secubox-stat-badge.secubox-stat-success {
+	border-color: #22c55e;
+	background: linear-gradient(135deg, var(--sb-bg-card) 0%, rgba(34, 197, 94, 0.1) 100%);
+}
+
+.secubox-stat-badge.secubox-stat-warning {
+	border-color: #f59e0b;
+	background: linear-gradient(135deg, var(--sb-bg-card) 0%, rgba(245, 158, 11, 0.1) 100%);
+}
+
+.secubox-stat-badge.secubox-stat-muted {
+	border-color: #64748b;
+	background: linear-gradient(135deg, var(--sb-bg-card) 0%, rgba(100, 116, 139, 0.05) 100%);
+}
+
+.secubox-stat-value {
+	font-size: 32px;
+	font-weight: 700;
+	color: var(--sb-text);
+	margin-bottom: 4px;
+}
+
+.secubox-stat-label {
+	font-size: 12px;
+	color: var(--sb-text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+/* Filter Tabs */
+.secubox-filter-tabs {
+	display: flex;
+	gap: 8px;
+	margin: 24px 0;
+	flex-wrap: wrap;
+}
+
+.secubox-filter-tab {
+	padding: 10px 20px;
+	background: var(--sb-bg-card);
+	border: 2px solid var(--sb-border);
+	border-radius: 8px;
+	color: var(--sb-text);
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.2s;
+}
+
+.secubox-filter-tab:hover {
+	background: var(--sb-bg);
+	border-color: var(--sb-primary);
+}
+
+.secubox-filter-tab.active {
+	background: var(--sb-primary);
+	border-color: var(--sb-primary);
+	color: white;
+}
+
+/* Modules Grid */
+.secubox-modules-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+	gap: 20px;
+	margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+	.secubox-modules-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* Module Card */
+.secubox-module-card {
+	background: var(--sb-bg-card);
+	border-radius: 12px;
+	border: 1px solid var(--sb-border);
+	overflow: hidden;
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	display: flex;
+	flex-direction: column;
+}
+
+.secubox-module-card:hover {
+	transform: translateY(-4px);
+	box-shadow: 0 8px 24px var(--sb-hover-shadow);
+}
+
+.secubox-module-card.secubox-module-running {
+	border-left-width: 4px;
+}
+
+.secubox-module-card.secubox-module-stopped {
+	opacity: 0.85;
+}
+
+.secubox-module-card.secubox-module-not-installed {
+	opacity: 0.6;
+}
+
+/* Card Header */
+.secubox-module-card-header {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 20px;
+	background: linear-gradient(135deg, var(--sb-bg) 0%, var(--sb-bg-card) 100%);
+	border-bottom: 1px solid var(--sb-border);
+}
+
+.secubox-module-icon {
+	font-size: 36px;
+	flex-shrink: 0;
+	line-height: 1;
+}
+
+.secubox-module-info {
+	flex: 1;
+	min-width: 0;
+}
+
+.secubox-module-name {
+	margin: 0 0 8px 0;
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--sb-text);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.secubox-module-meta {
+	display: flex;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.secubox-module-category,
+.secubox-module-version {
+	font-size: 12px;
+	padding: 4px 8px;
+	border-radius: 6px;
+	background: var(--sb-bg);
+	color: var(--sb-text-muted);
+	border: 1px solid var(--sb-border);
+}
+
+.secubox-status-indicator {
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	margin-top: 6px;
+}
+
+.secubox-status-indicator.secubox-status-running {
+	background: #22c55e;
+	box-shadow: 0 0 8px #22c55e;
+	animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.secubox-status-indicator.secubox-status-stopped {
+	background: #f59e0b;
+}
+
+.secubox-status-indicator.secubox-status-not-installed {
+	background: #64748b;
+}
+
+@keyframes pulse {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.5;
+	}
+}
+
+/* Card Body */
+.secubox-module-card-body {
+	padding: 20px;
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.secubox-module-description {
+	margin: 0;
+	color: var(--sb-text);
+	font-size: 14px;
+	line-height: 1.6;
+}
+
+.secubox-module-details {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.secubox-module-detail {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+}
+
+.secubox-detail-label {
+	color: var(--sb-text-muted);
+	font-weight: 500;
+	min-width: 70px;
+}
+
+.secubox-detail-value {
+	color: var(--sb-text);
+	flex: 1;
+}
+
+.secubox-detail-value code {
+	background: var(--sb-bg);
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: 12px;
+	font-family: monospace;
+	border: 1px solid var(--sb-border);
+}
+
+.secubox-status-text-running {
+	color: #22c55e;
+	font-weight: 600;
+}
+
+.secubox-status-text-stopped {
+	color: #f59e0b;
+	font-weight: 600;
+}
+
+.secubox-status-text-not-installed {
+	color: #64748b;
+}
+
+/* Card Actions */
+.secubox-module-card-actions {
+	display: flex;
+	gap: 8px;
+	padding: 16px 20px;
+	background: var(--sb-bg);
+	border-top: 1px solid var(--sb-border);
+	flex-wrap: wrap;
+}
+
+.secubox-btn {
+	padding: 8px 16px;
+	border-radius: 6px;
+	font-size: 13px;
+	font-weight: 500;
+	border: none;
+	cursor: pointer;
+	transition: all 0.2s;
+	text-decoration: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	white-space: nowrap;
+}
+
+.secubox-btn:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.secubox-btn:active {
+	transform: translateY(0);
+}
+
+.secubox-btn-sm {
+	padding: 6px 12px;
+	font-size: 12px;
+}
+
+.secubox-btn-primary {
+	background: var(--sb-primary);
+	color: white;
+}
+
+.secubox-btn-primary:hover {
+	background: var(--sb-primary-dark);
+}
+
+.secubox-btn-success {
+	background: #22c55e;
+	color: white;
+}
+
+.secubox-btn-success:hover {
+	background: #16a34a;
+}
+
+.secubox-btn-danger {
+	background: #ef4444;
+	color: white;
+}
+
+.secubox-btn-danger:hover {
+	background: #dc2626;
+}
+
+.secubox-btn-warning {
+	background: #f59e0b;
+	color: white;
+}
+
+.secubox-btn-warning:hover {
+	background: #d97706;
+}
+
+.secubox-btn-secondary {
+	background: var(--sb-bg-card);
+	color: var(--sb-text-muted);
+	border: 1px solid var(--sb-border);
+}
+
+.secubox-btn-secondary:hover {
+	background: var(--sb-bg);
+}
+
+.secubox-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.secubox-btn:disabled:hover {
+	transform: none;
+	box-shadow: none;
+}
+
+/* Empty State */
+.secubox-empty-state {
+	grid-column: 1 / -1;
+	text-align: center;
+	padding: 60px 20px;
+	background: var(--sb-bg-card);
+	border: 2px dashed var(--sb-border);
+	border-radius: 12px;
+}
+
+.secubox-empty-icon {
+	font-size: 64px;
+	margin-bottom: 16px;
+}
+
+.secubox-empty-title {
+	font-size: 20px;
+	font-weight: 600;
+	color: var(--sb-text);
+	margin-bottom: 8px;
+}
+
+.secubox-empty-text {
+	color: var(--sb-text-muted);
+	font-size: 14px;
+}
+
+/* Responsive Design */
+@media (max-width: 480px) {
+	.secubox-modules-page {
+		padding: 12px;
+	}
+
+	.secubox-modules-stats {
+		grid-template-columns: repeat(2, 1fr);
+	}
+
+	.secubox-filter-tabs {
+		gap: 6px;
+	}
+
+	.secubox-filter-tab {
+		padding: 8px 12px;
+		font-size: 12px;
+	}
+
+	.secubox-module-card-header {
+		padding: 16px;
+	}
+
+	.secubox-module-card-body {
+		padding: 16px;
+	}
+
+	.secubox-module-card-actions {
+		padding: 12px 16px;
+	}
+
+	.secubox-btn {
+		flex: 1;
+		min-width: 0;
+	}
+}
+
+/* Dark/Light theme specific adjustments */
+[data-theme="light"] .secubox-module-card:hover {
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .secubox-stat-badge:hover {
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
