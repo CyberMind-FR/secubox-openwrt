@@ -1,0 +1,161 @@
+/* SecuBox Monitoring Page Styles */
+
+.secubox-monitoring-page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.secubox-monitoring-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+/* Charts Grid */
+.secubox-charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 1024px) {
+    .secubox-charts-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Chart Card */
+.secubox-chart-card {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.secubox-chart-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.secubox-chart-title {
+    margin: 0 0 16px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.secubox-chart-container {
+    width: 100%;
+    height: 200px;
+    position: relative;
+    margin-bottom: 16px;
+    background: #f8fafc;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.secubox-chart {
+    width: 100%;
+    height: 100%;
+}
+
+.secubox-chart-legend {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 12px;
+    border-top: 2px solid #f1f5f9;
+}
+
+.secubox-current-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #6366f1;
+}
+
+.secubox-chart-unit {
+    font-size: 12px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Stats Table */
+.secubox-stats-table {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+}
+
+.secubox-stat-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: #f8fafc;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+
+.secubox-stat-item:hover {
+    background: #f1f5f9;
+}
+
+.secubox-stat-icon {
+    font-size: 32px;
+    flex-shrink: 0;
+}
+
+.secubox-stat-details {
+    flex: 1;
+}
+
+.secubox-stat-label {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.secubox-stat-value {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.secubox-chart-card {
+    animation: fadeIn 0.5s ease-out;
+}
+
+.secubox-chart-card:nth-child(1) { animation-delay: 0.1s; }
+.secubox-chart-card:nth-child(2) { animation-delay: 0.2s; }
+.secubox-chart-card:nth-child(3) { animation-delay: 0.3s; }
+.secubox-chart-card:nth-child(4) { animation-delay: 0.4s; }
+
+/* Chart SVG Animations */
+@keyframes drawLine {
+    from {
+        stroke-dashoffset: 1000;
+    }
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+.secubox-chart polyline {
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 1000;
+    animation: drawLine 1s ease-out forwards;
+}
