@@ -10,12 +10,12 @@
 # Module registry - auto-detected from /usr/libexec/rpcd/
 detect_modules() {
 	local modules=""
-	local scripts="crowdsec-dashboard netdata-dashboard netifyd-dashboard wireguard-dashboard network-modes client-guardian system-hub bandwidth-manager auth-guardian media-flow vhost-manager cdn-cache traffic-shaper"
+	local scripts="luci.crowdsec-dashboard luci.netdata-dashboard luci.netifyd-dashboard luci.wireguard-dashboard luci.network-modes luci.client-guardian luci.system-hub luci.bandwidth-manager luci.auth-guardian luci.media-flow luci.vhost-manager luci.cdn-cache luci.traffic-shaper luci.ksm-manager"
 
 	for script in $scripts; do
 		if [ -x "/usr/libexec/rpcd/$script" ]; then
-			# Convert script name to module ID (remove -dashboard suffix, convert dashes to underscores)
-			local module_id=$(echo "$script" | sed 's/-dashboard$//' | sed 's/-/_/g')
+			# Remove luci. prefix, remove -dashboard suffix, convert dashes to underscores
+			local module_id=$(echo "$script" | sed 's/^luci\.//' | sed 's/-dashboard$//' | sed 's/-/_/g')
 			modules="$modules $module_id"
 		fi
 	done
