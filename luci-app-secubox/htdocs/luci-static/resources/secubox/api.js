@@ -17,14 +17,14 @@ var callStatus = rpc.declare({
 var callModules = rpc.declare({
 	object: 'luci.secubox',
 	method: 'modules',
-	expect: { modules: [] }
+	expect: {}
 });
 
 var callModulesByCategory = rpc.declare({
 	object: 'luci.secubox',
 	method: 'modules_by_category',
 	params: ['category'],
-	expect: { modules: [] }
+	expect: {}
 });
 
 var callModuleInfo = rpc.declare({
