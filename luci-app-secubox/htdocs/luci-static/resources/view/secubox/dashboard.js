@@ -81,7 +81,7 @@ return view.extend({
 				]),
 				E('div', { 'class': 'secubox-header-info' }, [
 					E('span', { 'class': 'secubox-badge secubox-badge-version' },
-						'v' + (status.version || '0.0.1-beta')),
+						'v' + (status.version || '0.1.0')),
 					E('span', { 'class': 'secubox-badge' },
 						'⏱️ ' + API.formatUptime(status.uptime)),
 					E('span', { 'class': 'secubox-badge', 'id': 'secubox-hostname' },

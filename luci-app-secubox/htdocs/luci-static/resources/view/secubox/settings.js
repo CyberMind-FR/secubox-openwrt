@@ -33,7 +33,7 @@ return view.extend({
 		o = s.option(form.Value, 'version', '📦 Version',
 			'Current SecuBox version (read-only)');
 		o.readonly = true;
-		o.default = '0.0.1-beta';
+		o.default = '0.1.0';
 
 		// Dashboard Settings Section
 		s = m.section(form.TypedSection, 'secubox', '📊 Dashboard Settings');
