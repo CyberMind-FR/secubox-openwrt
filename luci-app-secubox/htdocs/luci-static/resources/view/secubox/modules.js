@@ -11,7 +11,8 @@ var callModules = rpc.declare({
 return view.extend({
     load: function() { return callModules(); },
     render: function(data) {
-        var modules = data.modules || [];
+        // data is already the array because of expect: { modules: [] }
+        var modules = data || [];
         return E('div', {class:'cbi-map'}, [
             E('h2', {}, '📦 SecuBox Modules'),
             E('div', {style:'display:grid;gap:12px'}, modules.map(function(m) {
