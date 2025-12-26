@@ -1,4 +1,5 @@
-/* SecuBox Monitoring Page Styles */
+/* SecuBox Monitoring Page Styles  * Version: 0.3.0
+ */
 
 .secubox-monitoring-page {
     max-width: 1400px;
@@ -10,7 +11,8 @@
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
-/* Charts Grid */
+/* Charts Grid  * Version: 0.3.0
+ */
 .secubox-charts-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));

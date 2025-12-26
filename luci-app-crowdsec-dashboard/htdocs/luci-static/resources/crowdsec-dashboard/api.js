@@ -8,6 +8,8 @@
  * RPCD object: luci.crowdsec-dashboard
  */
 
+// Version: 0.2.2
+
 var callStatus = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'status',

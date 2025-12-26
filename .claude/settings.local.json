@@ -114,7 +114,8 @@
       "Bash(/tmp/deploy-system-hub-all.sh)",
       "Bash(/tmp/deploy-secubox-final.sh)",
       "WebFetch(domain:cybermind.fr)",
-      "Bash(/tmp/deploy-system-hub-demo-style.sh)"
+      "Bash(/tmp/deploy-system-hub-demo-style.sh)",
+      "Bash(./secubox-tools/build-modules.sh:*)"
     ]
   }
 }

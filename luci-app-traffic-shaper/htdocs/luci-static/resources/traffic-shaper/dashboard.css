@@ -1,10 +1,12 @@
-/* Traffic Shaper Dashboard Styles */
+/* Traffic Shaper Dashboard Styles  * Version: 0.3.0
+ */
 
 .traffic-shaper-dashboard {
 	padding: 1em;
 }
 
-/* Status Cards */
+/* Status Cards  * Version: 0.3.0
+ */
 .ts-status-cards {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));

@@ -8,6 +8,8 @@
  * RPCD object: luci.wireguard-dashboard
  */
 
+// Version: 0.2.2
+
 var callStatus = rpc.declare({
 	object: 'luci.wireguard-dashboard',
 	method: 'status',

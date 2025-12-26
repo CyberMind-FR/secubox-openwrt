@@ -8,6 +8,8 @@
  * RPCD object: luci.netdata-dashboard
  */
 
+// Version: 0.2.2
+
 // System stats methods (from RPCD backend)
 var callStats = rpc.declare({
 	object: 'luci.netdata-dashboard',

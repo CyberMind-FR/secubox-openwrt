@@ -8,6 +8,8 @@
  * Provides RPC methods for cryptographic key management with HSM support
  */
 
+// Version: 0.2.2
+
 var callStatus = rpc.declare({
 	object: 'luci.ksm-manager',
 	method: 'status',
@@ -161,6 +163,8 @@ return baseclass.extend({
 	 * Get KSM service status
 	 * @returns {Promise<Object>} Status object with running, keystore_unlocked, keys_count, hsm_connected
 	 */
+
+// Version: 0.2.2
 	getStatus: function() {
 		return L.resolveDefault(callStatus(), {
 			running: false,
@@ -174,6 +178,8 @@ return baseclass.extend({
 	 * Get system information
 	 * @returns {Promise<Object>} Info object with openssl_version, gpg_version, hsm_support
 	 */
+
+// Version: 0.2.2
 	getInfo: function() {
 		return L.resolveDefault(callGetInfo(), {
 			openssl_version: 'unknown',
@@ -186,6 +192,8 @@ return baseclass.extend({
 	 * List HSM devices (Nitrokey, YubiKey)
 	 * @returns {Promise<Object>} Object with devices array
 	 */
+
+// Version: 0.2.2
 	listHsmDevices: function() {
 		return L.resolveDefault(callListHsmDevices(), { devices: [] });
 	},
@@ -195,6 +203,8 @@ return baseclass.extend({
 	 * @param {string} serial - Device serial number
 	 * @returns {Promise<Object>} Status object with initialized, pin_retries, keys_count
 	 */
+
+// Version: 0.2.2
 	getHsmStatus: function(serial) {
 		return L.resolveDefault(callGetHsmStatus(serial), {
 			initialized: false,
@@ -210,6 +220,8 @@ return baseclass.extend({
 	 * @param {string} userPin - User PIN
 	 * @returns {Promise<Object>} Result with success boolean
 	 */
+
+// Version: 0.2.2
 	initHsm: function(serial, adminPin, userPin) {
 		return callInitHsm(serial, adminPin, userPin);
 	},
@@ -222,6 +234,8 @@ return baseclass.extend({
 	 * @param {string} label - Key label
 	 * @returns {Promise<Object>} Result with success and key_id
 	 */
+
+// Version: 0.2.2
 	generateHsmKey: function(serial, keyType, keySize, label) {
 		return callGenerateHsmKey(serial, keyType, keySize, label);
 	},
@@ -230,6 +244,8 @@ return baseclass.extend({
 	 * List all cryptographic keys
 	 * @returns {Promise<Object>} Object with keys array
 	 */
+
+// Version: 0.2.2
 	listKeys: function() {
 		return L.resolveDefault(callListKeys(), { keys: [] });
 	},
@@ -242,6 +258,8 @@ return baseclass.extend({
 	 * @param {string} passphrase - Optional passphrase
 	 * @returns {Promise<Object>} Result with success, id, and public_key
 	 */
+
+// Version: 0.2.2
 	generateKey: function(type, size, label, passphrase) {
 		return callGenerateKey(type, size, label, passphrase || '');
 	},
@@ -254,6 +272,8 @@ return baseclass.extend({
 	 * @param {string} passphrase - Optional passphrase
 	 * @returns {Promise<Object>} Result with success and id
 	 */
+
+// Version: 0.2.2
 	importKey: function(label, keyData, format, passphrase) {
 		return callImportKey(label, keyData, format, passphrase || '');
 	},
@@ -266,6 +286,8 @@ return baseclass.extend({
 	 * @param {string} passphrase - Optional passphrase
 	 * @returns {Promise<Object>} Result with success and key_data
 	 */
+
+// Version: 0.2.2
 	exportKey: function(id, format, includePrivate, passphrase) {
 		return callExportKey(id, format, includePrivate, passphrase || '');
 	},
@@ -276,6 +298,8 @@ return baseclass.extend({
 	 * @param {boolean} secureErase - Use secure erase (shred)
 	 * @returns {Promise<Object>} Result with success boolean
 	 */
+
+// Version: 0.2.2
 	deleteKey: function(id, secureErase) {
 		return callDeleteKey(id, secureErase);
 	},
@@ -287,6 +311,8 @@ return baseclass.extend({
 	 * @param {Array} sanList - Subject Alternative Names
 	 * @returns {Promise<Object>} Result with success and csr
 	 */
+
+// Version: 0.2.2
 	generateCsr: function(keyId, subjectDn, sanList) {
 		return callGenerateCsr(keyId, subjectDn, sanList || []);
 	},
@@ -298,6 +324,8 @@ return baseclass.extend({
 	 * @param {string} chain - Certificate chain (optional)
 	 * @returns {Promise<Object>} Result with success and cert_id
 	 */
+
+// Version: 0.2.2
 	importCertificate: function(keyId, certData, chain) {
 		return callImportCertificate(keyId, certData, chain || '');
 	},
@@ -306,6 +334,8 @@ return baseclass.extend({
 	 * List all certificates
 	 * @returns {Promise<Object>} Object with certificates array
 	 */
+
+// Version: 0.2.2
 	listCertificates: function() {
 		return L.resolveDefault(callListCertificates(), { certificates: [] });
 	},
@@ -315,6 +345,8 @@ return baseclass.extend({
 	 * @param {string} certId - Certificate ID
 	 * @returns {Promise<Object>} Result with valid, chain_valid, expires_in_days
 	 */
+
+// Version: 0.2.2
 	verifyCertificate: function(certId) {
 		return callVerifyCertificate(certId);
 	},
@@ -327,6 +359,8 @@ return baseclass.extend({
 	 * @param {boolean} autoRotate - Enable auto-rotation
 	 * @returns {Promise<Object>} Result with success and secret_id
 	 */
+
+// Version: 0.2.2
 	storeSecret: function(label, secretData, category, autoRotate) {
 		return callStoreSecret(label, secretData, category, autoRotate);
 	},
@@ -336,6 +370,8 @@ return baseclass.extend({
 	 * @param {string} secretId - Secret ID
 	 * @returns {Promise<Object>} Result with success, secret_data, accessed_at
 	 */
+
+// Version: 0.2.2
 	retrieveSecret: function(secretId) {
 		return callRetrieveSecret(secretId);
 	},
@@ -344,6 +380,8 @@ return baseclass.extend({
 	 * List all secrets
 	 * @returns {Promise<Object>} Object with secrets array
 	 */
+
+// Version: 0.2.2
 	listSecrets: function() {
 		return L.resolveDefault(callListSecrets(), { secrets: [] });
 	},
@@ -354,6 +392,8 @@ return baseclass.extend({
 	 * @param {string} newSecretData - New secret data
 	 * @returns {Promise<Object>} Result with success and version
 	 */
+
+// Version: 0.2.2
 	rotateSecret: function(secretId, newSecretData) {
 		return callRotateSecret(secretId, newSecretData);
 	},
@@ -365,6 +405,8 @@ return baseclass.extend({
 	 * @param {string} comment - SSH key comment
 	 * @returns {Promise<Object>} Result with success, key_id, public_key
 	 */
+
+// Version: 0.2.2
 	generateSshKey: function(label, keyType, comment) {
 		return callGenerateSshKey(label, keyType, comment || '');
 	},
@@ -376,6 +418,8 @@ return baseclass.extend({
 	 * @param {string} targetUser - Target username
 	 * @returns {Promise<Object>} Result with success boolean
 	 */
+
+// Version: 0.2.2
 	deploySshKey: function(keyId, targetHost, targetUser) {
 		return callDeploySshKey(keyId, targetHost, targetUser);
 	},
@@ -387,6 +431,8 @@ return baseclass.extend({
 	 * @param {string} filterType - Filter by action type
 	 * @returns {Promise<Object>} Object with logs array
 	 */
+
+// Version: 0.2.2
 	getAuditLogs: function(limit, offset, filterType) {
 		return L.resolveDefault(callGetAuditLogs(limit || 100, offset || 0, filterType || ''), { logs: [] });
 	},
@@ -396,6 +442,8 @@ return baseclass.extend({
 	 * @param {string} type - Key type
 	 * @returns {string} Formatted type
 	 */
+
+// Version: 0.2.2
 	formatKeyType: function(type) {
 		var types = {
 			'rsa': 'RSA',
@@ -413,6 +461,8 @@ return baseclass.extend({
 	 * @param {string} storage - Storage type
 	 * @returns {string} Formatted storage
 	 */
+
+// Version: 0.2.2
 	formatStorage: function(storage) {
 		return storage === 'hsm' ? 'Hardware' : 'Software';
 	},
@@ -422,6 +472,8 @@ return baseclass.extend({
 	 * @param {number} daysRemaining - Days until expiration
 	 * @returns {string} Color class
 	 */
+
+// Version: 0.2.2
 	getCertStatusColor: function(daysRemaining) {
 		if (daysRemaining < 0) return 'gray';
 		if (daysRemaining < 7) return 'red';
@@ -434,6 +486,8 @@ return baseclass.extend({
 	 * @param {string} timestamp - ISO timestamp
 	 * @returns {string} Formatted date
 	 */
+
+// Version: 0.2.2
 	formatTimestamp: function(timestamp) {
 		if (!timestamp) return 'N/A';
 		try {

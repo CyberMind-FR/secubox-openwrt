@@ -8,6 +8,8 @@
  * RPCD object: luci.network-modes
  */
 
+// Version: 0.2.2
+
 var callStatus = rpc.declare({
 	object: 'luci.network-modes',
 	method: 'status',

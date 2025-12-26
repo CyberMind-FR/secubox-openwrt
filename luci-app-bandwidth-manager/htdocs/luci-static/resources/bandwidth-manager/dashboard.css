@@ -1,4 +1,5 @@
-/* Bandwidth Manager Dashboard Styles */
+/* Bandwidth Manager Dashboard Styles  * Version: 0.3.0
+ */
 
 :root {
     --bw-primary: #8b5cf6;
@@ -14,7 +15,8 @@
     --bw-gradient: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
 }
 
-/* Main Container */
+/* Main Container  * Version: 0.3.0
+ */
 .bandwidth-manager-container {
     background: linear-gradient(135deg, var(--bw-dark) 0%, var(--bw-darker) 100%);
     border-radius: 12px;

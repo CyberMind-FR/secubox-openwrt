@@ -8,6 +8,8 @@
  * RPCD object: luci.netifyd-dashboard
  */
 
+// Version: 0.2.2
+
 var callStatus = rpc.declare({
 	object: 'luci.netifyd-dashboard',
 	method: 'status',

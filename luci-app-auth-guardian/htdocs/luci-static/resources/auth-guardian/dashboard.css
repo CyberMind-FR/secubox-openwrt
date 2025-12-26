@@ -1,4 +1,5 @@
-/* Auth Guardian Dashboard Styles */
+/* Auth Guardian Dashboard Styles  * Version: 0.3.0
+ */
 
 :root {
     --ag-primary: #ef4444;
@@ -13,7 +14,8 @@
     --ag-info: #3b82f6;
 }
 
-/* Main Container */
+/* Main Container  * Version: 0.3.0
+ */
 .auth-guardian-container {
     background: linear-gradient(135deg, var(--ag-dark) 0%, var(--ag-darker) 100%);
     border-radius: 12px;

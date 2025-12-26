@@ -8,6 +8,8 @@
  * RPCD object: luci.client-guardian
  */
 
+// Version: 0.2.2
+
 var callStatus = rpc.declare({
 	object: 'luci.client-guardian',
 	method: 'status',
