@@ -442,4 +442,4 @@ SecuBox Project <support@secubox.com>
 
 ## Version
 
-0.0.1-alpha
+0.0.2
