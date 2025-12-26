@@ -1,116 +1,292 @@
 'use strict';
 'require view';
 'require ui';
+'require dom';
 'require system-hub/api as API';
 'require system-hub/theme as Theme';
 
-// Load CSS
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('system-hub/dashboard.css')
-}));
+return view.extend({
+	services: [],
+	currentFilter: 'all',
+	searchQuery: '',
 
-// Initialize theme
-Theme.init();
-
-return L.view.extend({
 	load: function() {
-		return API.listServices();
+		return Promise.all([
+			API.listServices(),
+			Theme.getTheme()
+		]);
 	},
 
-	render: function(services) {
-		var v = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('System Services')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Manage system services: start, stop, restart, enable, or disable'))
+	render: function(data) {
+		this.services = data[0] || [];
+		var theme = data[1];
+
+		var container = E('div', { 'class': 'system-hub-services' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/services.css') }),
+
+			// Header with stats
+			this.renderHeader(),
+
+			// Filter tabs
+			this.renderFilterTabs(),
+
+			// Search box
+			this.renderSearchBox(),
+
+			// Services grid
+			E('div', { 'class': 'sh-services-grid', 'id': 'services-grid' })
 		]);
 
-		var section = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Service List'))
-		]);
+		// Initial render
+		this.updateServicesGrid();
 
-		if (services.length === 0) {
-			section.appendChild(E('p', { 'style': 'text-align: center; font-style: italic; padding: 20px;' }, 
-				_('No services found')));
-			v.appendChild(section);
-			return v;
-		}
+		return container;
+	},
 
-		var table = E('table', { 'class': 'table' }, [
-			E('tr', { 'class': 'tr table-titles' }, [
-				E('th', { 'class': 'th' }, _('Service Name')),
-				E('th', { 'class': 'th' }, _('Status')),
-				E('th', { 'class': 'th' }, _('Autostart')),
-				E('th', { 'class': 'th' }, _('Actions'))
+	renderHeader: function() {
+		var stats = this.getStats();
+
+		return E('div', { 'class': 'sh-page-header' }, [
+			E('div', {}, [
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '⚙️'),
+					'System Services'
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					'Manage system services: start, stop, restart, enable, or disable')
+			]),
+			E('div', { 'class': 'sh-stats-grid' }, [
+				E('div', { 'class': 'sh-stat-badge' }, [
+					E('div', { 'class': 'sh-stat-value', 'style': 'color: #22c55e;' }, stats.running),
+					E('div', { 'class': 'sh-stat-label' }, 'Running')
+				]),
+				E('div', { 'class': 'sh-stat-badge' }, [
+					E('div', { 'class': 'sh-stat-value', 'style': 'color: #ef4444;' }, stats.stopped),
+					E('div', { 'class': 'sh-stat-label' }, 'Stopped')
+				]),
+				E('div', { 'class': 'sh-stat-badge' }, [
+					E('div', { 'class': 'sh-stat-value', 'style': 'color: #6366f1;' }, stats.enabled),
+					E('div', { 'class': 'sh-stat-label' }, 'Enabled')
+				]),
+				E('div', { 'class': 'sh-stat-badge' }, [
+					E('div', { 'class': 'sh-stat-value' }, stats.total),
+					E('div', { 'class': 'sh-stat-label' }, 'Total')
+				])
 			])
 		]);
+	},
 
-		services.forEach(L.bind(function(service) {
-			var statusColor = service.running ? 'green' : 'red';
-			var statusText = service.running ? '● Running' : '○ Stopped';
-			var enabledText = service.enabled ? '✓ Enabled' : '✗ Disabled';
+	renderFilterTabs: function() {
+		var self = this;
+		var stats = this.getStats();
 
-			var actionsDiv = E('div', { 'style': 'display: flex; gap: 5px;' });
+		return E('div', { 'class': 'sh-filter-tabs' }, [
+			this.createFilterTab('all', '📋', 'All Services', stats.total),
+			this.createFilterTab('running', '▶️', 'Running', stats.running),
+			this.createFilterTab('stopped', '⏹️', 'Stopped', stats.stopped),
+			this.createFilterTab('enabled', '✓', 'Enabled', stats.enabled),
+			this.createFilterTab('disabled', '✗', 'Disabled', stats.disabled)
+		]);
+	},
 
-			// Start button
-			if (!service.running) {
-				actionsDiv.appendChild(E('button', {
-					'class': 'cbi-button cbi-button-positive',
-					'click': L.bind(function(service_name, ev) {
-						this.performAction(service_name, 'start');
-					}, this, service.name)
-				}, _('Start')));
+	createFilterTab: function(filter, icon, label, count) {
+		var self = this;
+		var isActive = this.currentFilter === filter;
+
+		return E('div', {
+			'class': 'sh-filter-tab' + (isActive ? ' active' : ''),
+			'click': function() {
+				self.currentFilter = filter;
+				self.updateFilterTabs();
+				self.updateServicesGrid();
 			}
+		}, [
+			E('span', { 'class': 'sh-tab-icon' }, icon),
+			E('span', { 'class': 'sh-tab-label' }, label + ' (' + count + ')')
+		]);
+	},
 
-			// Stop button
-			if (service.running) {
-				actionsDiv.appendChild(E('button', {
-					'class': 'cbi-button cbi-button-negative',
-					'click': L.bind(function(service_name, ev) {
-						this.performAction(service_name, 'stop');
-					}, this, service.name)
-				}, _('Stop')));
-			}
+	renderSearchBox: function() {
+		var self = this;
 
-			// Restart button
-			actionsDiv.appendChild(E('button', {
-				'class': 'cbi-button cbi-button-action',
-				'click': L.bind(function(service_name, ev) {
-					this.performAction(service_name, 'restart');
-				}, this, service.name)
-			}, _('Restart')));
+		return E('div', { 'style': 'margin-bottom: 24px;' }, [
+			E('input', {
+				'type': 'text',
+				'class': 'cbi-input-text',
+				'placeholder': '🔍 Search services...',
+				'style': 'width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--sh-border); background: var(--sh-bg-card); color: var(--sh-text-primary); font-size: 14px;',
+				'input': function(ev) {
+					self.searchQuery = ev.target.value.toLowerCase();
+					self.updateServicesGrid();
+				}
+			})
+		]);
+	},
 
-			// Enable/Disable button
-			if (service.enabled) {
-				actionsDiv.appendChild(E('button', {
-					'class': 'cbi-button cbi-button-neutral',
-					'click': L.bind(function(service_name, ev) {
-						this.performAction(service_name, 'disable');
-					}, this, service.name)
-				}, _('Disable')));
+	updateFilterTabs: function() {
+		var tabs = document.querySelectorAll('.sh-filter-tab');
+		tabs.forEach(function(tab, index) {
+			var filters = ['all', 'running', 'stopped', 'enabled', 'disabled'];
+			if (filters[index] === this.currentFilter) {
+				tab.classList.add('active');
 			} else {
-				actionsDiv.appendChild(E('button', {
-					'class': 'cbi-button cbi-button-apply',
-					'click': L.bind(function(service_name, ev) {
-						this.performAction(service_name, 'enable');
-					}, this, service.name)
-				}, _('Enable')));
+				tab.classList.remove('active');
+			}
+		}.bind(this));
+	},
+
+	updateServicesGrid: function() {
+		var grid = document.getElementById('services-grid');
+		if (!grid) return;
+
+		var filtered = this.getFilteredServices();
+
+		if (filtered.length === 0) {
+			dom.content(grid, [
+				E('div', { 'class': 'sh-empty-state' }, [
+					E('div', { 'class': 'sh-empty-icon' }, '📭'),
+					E('div', { 'class': 'sh-empty-text' },
+						this.searchQuery ? 'No services match your search' : 'No services found')
+				])
+			]);
+			return;
+		}
+
+		dom.content(grid, filtered.map(this.renderServiceCard, this));
+	},
+
+	getFilteredServices: function() {
+		return this.services.filter(function(service) {
+			// Apply filter
+			var matchesFilter = true;
+			switch (this.currentFilter) {
+				case 'running':
+					matchesFilter = service.running;
+					break;
+				case 'stopped':
+					matchesFilter = !service.running;
+					break;
+				case 'enabled':
+					matchesFilter = service.enabled;
+					break;
+				case 'disabled':
+					matchesFilter = !service.enabled;
+					break;
 			}
 
-			table.appendChild(E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td' }, E('strong', {}, service.name)),
-				E('td', { 'class': 'td' }, [
-					E('span', { 'style': 'color: ' + statusColor + '; font-weight: bold;' }, statusText)
+			// Apply search
+			var matchesSearch = !this.searchQuery ||
+				service.name.toLowerCase().includes(this.searchQuery);
+
+			return matchesFilter && matchesSearch;
+		}.bind(this));
+	},
+
+	renderServiceCard: function(service) {
+		var statusClass = service.running ? 'ok' : 'error';
+		var statusIcon = service.running ? '▶️' : '⏹️';
+		var statusText = service.running ? 'Running' : 'Stopped';
+		var enabledIcon = service.enabled ? '✓' : '✗';
+		var enabledText = service.enabled ? 'Enabled' : 'Disabled';
+
+		return E('div', { 'class': 'sh-card' }, [
+			E('div', { 'class': 'sh-card-header' }, [
+				E('h3', { 'class': 'sh-card-title' }, [
+					E('span', { 'class': 'sh-card-title-icon' }, '⚙️'),
+					service.name
 				]),
-				E('td', { 'class': 'td' }, enabledText),
-				E('td', { 'class': 'td' }, actionsDiv)
+				E('div', { 'class': 'sh-card-badge sh-status-badge sh-status-' + statusClass }, [
+					statusIcon + ' ' + statusText
+				])
+			]),
+			E('div', { 'class': 'sh-card-body' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 8px; margin-bottom: 16px;' }, [
+					E('span', { 'style': 'font-size: 16px;' }, enabledIcon),
+					E('span', { 'style': 'font-weight: 600; color: var(--sh-text-secondary);' },
+						'Autostart: ' + enabledText)
+				]),
+				E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' },
+					this.renderActionButtons(service)
+				)
+			])
+		]);
+	},
+
+	renderActionButtons: function(service) {
+		var buttons = [];
+
+		// Start button (only if stopped)
+		if (!service.running) {
+			buttons.push(E('button', {
+				'class': 'sh-btn sh-btn-success',
+				'click': L.bind(this.performAction, this, service.name, 'start')
+			}, [
+				E('span', {}, '▶️'),
+				E('span', {}, 'Start')
 			]));
-		}, this));
+		}
 
-		section.appendChild(table);
-		v.appendChild(section);
+		// Stop button (only if running)
+		if (service.running) {
+			buttons.push(E('button', {
+				'class': 'sh-btn sh-btn-danger',
+				'click': L.bind(this.performAction, this, service.name, 'stop')
+			}, [
+				E('span', {}, '⏹️'),
+				E('span', {}, 'Stop')
+			]));
+		}
 
-		return v;
+		// Restart button
+		buttons.push(E('button', {
+			'class': 'sh-btn sh-btn-warning',
+			'click': L.bind(this.performAction, this, service.name, 'restart')
+		}, [
+			E('span', {}, '🔄'),
+			E('span', {}, 'Restart')
+		]));
+
+		// Enable/Disable button
+		if (service.enabled) {
+			buttons.push(E('button', {
+				'class': 'sh-btn sh-btn-secondary',
+				'click': L.bind(this.performAction, this, service.name, 'disable')
+			}, [
+				E('span', {}, '✗'),
+				E('span', {}, 'Disable')
+			]));
+		} else {
+			buttons.push(E('button', {
+				'class': 'sh-btn sh-btn-primary',
+				'click': L.bind(this.performAction, this, service.name, 'enable')
+			}, [
+				E('span', {}, '✓'),
+				E('span', {}, 'Enable')
+			]));
+		}
+
+		return buttons;
+	},
+
+	getStats: function() {
+		var stats = {
+			total: this.services.length,
+			running: 0,
+			stopped: 0,
+			enabled: 0,
+			disabled: 0
+		};
+
+		this.services.forEach(function(service) {
+			if (service.running) stats.running++;
+			else stats.stopped++;
+			if (service.enabled) stats.enabled++;
+			else stats.disabled++;
+		});
+
+		return stats;
 	},
 
 	performAction: function(service, action) {

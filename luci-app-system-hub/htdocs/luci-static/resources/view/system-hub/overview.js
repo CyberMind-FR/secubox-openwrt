@@ -25,11 +25,15 @@ return view.extend({
 		var theme = data[2];
 
 		var container = E('div', { 'class': 'system-hub-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/overview.css') }),
 
 			// Header
 			this.renderHeader(),
+
+			// Stats Overview (like SecuBox)
+			this.renderStatsOverview(),
 
 			// Health Metrics Cards
 			E('div', { 'class': 'sh-metrics-grid' }, [
@@ -66,20 +70,49 @@ return view.extend({
 		var score = this.healthData.score || 0;
 		var scoreClass = score >= 80 ? 'excellent' : (score >= 60 ? 'good' : (score >= 40 ? 'warning' : 'critical'));
 
-		return E('div', { 'class': 'sh-overview-header' }, [
-			E('div', { 'class': 'sh-overview-title' }, [
-				E('h2', {}, [
-					E('span', { 'class': 'sh-title-icon' }, '🖥️'),
-					' System Overview'
+		return E('div', { 'class': 'sh-dashboard-header' }, [
+			E('div', { 'class': 'sh-dashboard-header-content' }, [
+				E('div', {}, [
+					E('h2', {}, '🖥️ System Hub'),
+					E('p', { 'class': 'sh-dashboard-subtitle' }, 'System Monitoring & Management Center')
 				]),
-				E('p', { 'class': 'sh-overview-subtitle' },
-					this.sysInfo.hostname + ' • ' + this.sysInfo.model)
-			]),
-			E('div', { 'class': 'sh-overview-score' }, [
-				E('div', { 'class': 'sh-score-circle sh-score-' + scoreClass }, [
-					E('div', { 'class': 'sh-score-value' }, score),
-					E('div', { 'class': 'sh-score-label' }, 'Health Score')
+				E('div', { 'class': 'sh-dashboard-header-info' }, [
+					E('span', { 'class': 'sh-dashboard-badge sh-dashboard-badge-version' },
+						'v0.2.2'),
+					E('span', { 'class': 'sh-dashboard-badge' },
+						'⏱️ ' + (this.sysInfo.uptime_formatted || '0d 0h 0m')),
+					E('span', { 'class': 'sh-dashboard-badge' },
+						'🖥️ ' + (this.sysInfo.hostname || 'OpenWrt'))
 				])
+			])
+		]);
+	},
+
+	renderStatsOverview: function() {
+		var score = this.healthData.score || 0;
+		var scoreClass = score >= 80 ? 'excellent' : (score >= 60 ? 'good' : (score >= 40 ? 'warning' : 'critical'));
+		var scoreLabel = score >= 80 ? 'Excellent' : (score >= 60 ? 'Good' : (score >= 40 ? 'Warning' : 'Critical'));
+
+		return E('div', { 'class': 'sh-stats-overview-grid' }, [
+			E('div', { 'class': 'sh-stat-overview-card sh-stat-' + scoreClass }, [
+				E('div', { 'class': 'sh-stat-overview-value' }, score),
+				E('div', { 'class': 'sh-stat-overview-label' }, 'Health Score'),
+				E('div', { 'class': 'sh-stat-overview-status' }, scoreLabel)
+			]),
+			E('div', { 'class': 'sh-stat-overview-card sh-stat-cpu' }, [
+				E('div', { 'class': 'sh-stat-overview-icon' }, '🔥'),
+				E('div', { 'class': 'sh-stat-overview-value' }, (this.healthData.cpu?.usage || 0) + '%'),
+				E('div', { 'class': 'sh-stat-overview-label' }, 'CPU Usage')
+			]),
+			E('div', { 'class': 'sh-stat-overview-card sh-stat-memory' }, [
+				E('div', { 'class': 'sh-stat-overview-icon' }, '💾'),
+				E('div', { 'class': 'sh-stat-overview-value' }, (this.healthData.memory?.usage || 0) + '%'),
+				E('div', { 'class': 'sh-stat-overview-label' }, 'Memory Usage')
+			]),
+			E('div', { 'class': 'sh-stat-overview-card sh-stat-disk' }, [
+				E('div', { 'class': 'sh-stat-overview-icon' }, '💿'),
+				E('div', { 'class': 'sh-stat-overview-value' }, (this.healthData.disk?.usage || 0) + '%'),
+				E('div', { 'class': 'sh-stat-overview-label' }, 'Disk Usage')
 			])
 		]);
 	},

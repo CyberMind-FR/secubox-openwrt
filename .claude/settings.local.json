@@ -100,7 +100,21 @@
       "Bash(luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/*.js)",
       "Bash(luci-app-system-hub/root/usr/libexec/rpcd/luci.system-hub )",
       "Bash(luci-app-system-hub/root/usr/share/rpcd/acl.d/luci-app-system-hub.json )",
-      "Bash(LUCI_DEVELOPMENT_REFERENCE.md)"
+      "Bash(LUCI_DEVELOPMENT_REFERENCE.md)",
+      "Bash(while read file)",
+      "Bash(do echo \"=== $file ===\" grep \"object:\" \"$file\")",
+      "Bash(for file in luci-app-secubox/htdocs/luci-static/resources/view/secubox/*.js luci-app-secubox/htdocs/luci-static/resources/secubox/*.js)",
+      "Bash(./deploy-secubox-fix.sh)",
+      "Bash(./deploy-modules-v2.sh:*)",
+      "Bash(./deploy-dynamic-modules.sh:*)",
+      "Bash(/tmp/force-reload-luci.sh:*)",
+      "Bash(/tmp/deploy-common-css.sh)",
+      "Bash(/tmp/deploy-services.sh)",
+      "Bash(/tmp/deploy-health.sh)",
+      "Bash(/tmp/deploy-system-hub-all.sh)",
+      "Bash(/tmp/deploy-secubox-final.sh)",
+      "WebFetch(domain:cybermind.fr)",
+      "Bash(/tmp/deploy-system-hub-demo-style.sh)"
     ]
   }
 }

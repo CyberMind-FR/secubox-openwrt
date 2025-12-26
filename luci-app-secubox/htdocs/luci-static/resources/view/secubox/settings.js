@@ -6,23 +6,55 @@
 'require secubox/api as API';
 'require secubox/theme as Theme';
 
-// Initialize theme
-Theme.init();
-
 return view.extend({
 	load: function() {
 		return Promise.all([
 			uci.load('secubox'),
-			API.getStatus()
+			API.getStatus(),
+			Theme.getTheme()
 		]);
 	},
 
 	render: function(data) {
 		var status = data[1] || {};
+		var theme = data[2];
 		var m, s, o;
 
-		m = new form.Map('secubox', '⚙️ SecuBox Settings',
-			'Configure global settings for the SecuBox security suite.');
+		// Create wrapper container with modern header
+		var container = E('div', { 'class': 'secubox-settings-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
+
+			// Modern header
+			E('div', { 'class': 'sh-page-header' }, [
+				E('div', {}, [
+					E('h2', { 'class': 'sh-page-title' }, [
+						E('span', { 'class': 'sh-page-title-icon' }, '⚙️'),
+						'SecuBox Settings'
+					]),
+					E('p', { 'class': 'sh-page-subtitle' },
+						'Configure global settings for the SecuBox security suite')
+				]),
+				E('div', { 'class': 'sh-stats-grid' }, [
+					E('div', { 'class': 'sh-stat-badge' }, [
+						E('div', { 'class': 'sh-stat-value' }, status.version || 'v0.1.2'),
+						E('div', { 'class': 'sh-stat-label' }, 'Version')
+					]),
+					E('div', { 'class': 'sh-stat-badge' }, [
+						E('div', { 'class': 'sh-stat-value', 'style': status.enabled ? 'color: #22c55e;' : 'color: #ef4444;' },
+							status.enabled ? 'ON' : 'OFF'),
+						E('div', { 'class': 'sh-stat-label' }, 'Status')
+					]),
+					E('div', { 'class': 'sh-stat-badge' }, [
+						E('div', { 'class': 'sh-stat-value' }, status.modules_count || '14'),
+						E('div', { 'class': 'sh-stat-label' }, 'Modules')
+					])
+				])
+			])
+		]);
+
+		// Create form
+		m = new form.Map('secubox', null, null);
 
 		// General Settings Section
 		s = m.section(form.TypedSection, 'secubox', '🔧 General Settings');
@@ -37,7 +69,7 @@ return view.extend({
 		o = s.option(form.Value, 'version', '📦 Version',
 			'Current SecuBox version (read-only)');
 		o.readonly = true;
-		o.default = '0.1.0';
+		o.default = '0.1.2';
 
 		// Dashboard Settings Section
 		s = m.section(form.TypedSection, 'secubox', '📊 Dashboard Settings');
@@ -208,6 +240,10 @@ return view.extend({
 		o.default = '20';
 		o.placeholder = '20';
 
-		return m.render();
+		// Render form and append to container
+		return m.render().then(L.bind(function(formElement) {
+			container.appendChild(formElement);
+			return container;
+		}, this));
 	}
 });

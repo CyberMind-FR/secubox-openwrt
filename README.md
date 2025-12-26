@@ -4,6 +4,30 @@
 [![Test & Validate](https://github.com/gkerma/secubox/actions/workflows/test-validate.yml/badge.svg)](https://github.com/gkerma/secubox/actions/workflows/test-validate.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
+## 📚 Documentation pour Développeurs
+
+**NOUVEAU (2025-12-26):** Guides complets de développement disponibles!
+
+| Guide | Description | Public |
+|-------|-------------|--------|
+| **[DEVELOPMENT-GUIDELINES.md](./DEVELOPMENT-GUIDELINES.md)** | ⭐ Guide complet: Design System, RPCD/ubus, ACL, JavaScript, CSS, Debugging (100+ pages) | Développeurs, IA assistants |
+| **[QUICK-START.md](./QUICK-START.md)** | ⚡ Aide-mémoire rapide: Règles critiques, commandes, templates de code | Développeurs expérimentés |
+| **[CLAUDE.md](./CLAUDE.md)** | 🏗️ Architecture & Build: SDK OpenWrt, structure fichiers, CI/CD | Claude Code, automation |
+| **[deploy-module-template.sh](./deploy-module-template.sh)** | 🚀 Script de déploiement standardisé avec backup automatique | DevOps |
+
+**⚠️ Règles Critiques:**
+1. RPCD naming: fichier = objet ubus (`luci.system-hub`)
+2. Menu paths: path menu = fichier vue (`system-hub/overview.js`)
+3. Permissions: RPCD=755, CSS/JS=644
+4. **TOUJOURS valider:** `./secubox-tools/validate-modules.sh`
+
+**Design System (v0.3.0):** Inspiré de [demo Cybermind](https://cybermind.fr/apps/system-hub/demo.html)
+- Palette dark: `#0a0a0f` (fond), `#6366f1→#8b5cf6` (gradients)
+- Fonts: Inter (texte), JetBrains Mono (valeurs)
+- CSS classes: `.sh-*` (System Hub), `.sb-*` (SecuBox)
+
+---
+
 ## 🎯 Overview
 
 SecuBox is a comprehensive security and network management suite for OpenWrt, providing a unified ecosystem of specialized dashboards and tools. All modules are compiled automatically for multiple OpenWrt architectures via GitHub Actions.

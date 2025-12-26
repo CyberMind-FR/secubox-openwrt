@@ -6,18 +6,6 @@
 'require secubox/theme as Theme';
 'require poll';
 
-// Load CSS (base theme variables first)
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox/secubox.css')
-}));
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox/monitoring.css')
-}));
-
 // Initialize theme
 Theme.init();
 
@@ -87,7 +75,11 @@ return view.extend({
 
 	render: function(data) {
 		var self = this;
-		var container = E('div', { 'class': 'secubox-monitoring-page' });
+		var container = E('div', { 'class': 'secubox-monitoring-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/monitoring.css') })
+		]);
 
 		// Header
 		container.appendChild(this.renderHeader());
@@ -117,19 +109,47 @@ return view.extend({
 	},
 
 	renderHeader: function() {
-		return E('div', { 'class': 'secubox-page-header secubox-monitoring-header' }, [
+		var latest = {
+			cpu: this.cpuHistory[this.cpuHistory.length - 1] || { value: 0 },
+			memory: this.memoryHistory[this.memoryHistory.length - 1] || { value: 0 },
+			disk: this.diskHistory[this.diskHistory.length - 1] || { value: 0 }
+		};
+
+		return E('div', { 'class': 'sh-page-header' }, [
 			E('div', {}, [
-				E('h2', {}, '📊 System Monitoring'),
-				E('p', { 'class': 'secubox-page-subtitle' },
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '📊'),
+					'System Monitoring'
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
 					'Real-time system performance metrics and historical trends')
 			]),
-			E('div', { 'class': 'secubox-header-info' }, [
-				E('span', { 'class': 'secubox-badge' },
-					'⏱️ Refresh: Every 5 seconds'),
-				E('span', { 'class': 'secubox-badge' },
-					'📈 History: Last ' + this.maxDataPoints + ' points')
+			E('div', { 'class': 'sh-stats-grid' }, [
+				E('div', { 'class': 'sh-stat-badge' }, [
+					E('div', { 'class': 'sh-stat-value', 'style': 'color: ' + this.getColorForValue(latest.cpu.value) }, latest.cpu.value.toFixed(1) + '%'),
+					E('div', { 'class': 'sh-stat-label' }, 'CPU')
+				]),
+				E('div', { 'class': 'sh-stat-badge' }, [
+					E('div', { 'class': 'sh-stat-value', 'style': 'color: ' + this.getColorForValue(latest.memory.value) }, latest.memory.value.toFixed(1) + '%'),
+					E('div', { 'class': 'sh-stat-label' }, 'Memory')
+				]),
+				E('div', { 'class': 'sh-stat-badge' }, [
+					E('div', { 'class': 'sh-stat-value', 'style': 'color: ' + this.getColorForValue(latest.disk.value) }, latest.disk.value.toFixed(1) + '%'),
+					E('div', { 'class': 'sh-stat-label' }, 'Disk')
+				]),
+				E('div', { 'class': 'sh-stat-badge' }, [
+					E('div', { 'class': 'sh-stat-value' }, this.cpuHistory.length),
+					E('div', { 'class': 'sh-stat-label' }, 'Data Points')
+				])
 			])
 		]);
+	},
+
+	getColorForValue: function(value) {
+		if (value >= 90) return '#ef4444';
+		if (value >= 75) return '#f59e0b';
+		if (value >= 50) return '#3b82f6';
+		return '#22c55e';
 	},
 
 	renderChart: function(type, title, unit) {
@@ -352,6 +372,24 @@ return view.extend({
 		var container = document.getElementById('current-stats');
 		if (container) {
 			dom.content(container, this.renderStatsTable());
+		}
+
+		// Update header stats
+		var latest = {
+			cpu: this.cpuHistory[this.cpuHistory.length - 1] || { value: 0 },
+			memory: this.memoryHistory[this.memoryHistory.length - 1] || { value: 0 },
+			disk: this.diskHistory[this.diskHistory.length - 1] || { value: 0 }
+		};
+
+		var statBadges = document.querySelectorAll('.sh-stat-value');
+		if (statBadges.length >= 4) {
+			statBadges[0].textContent = latest.cpu.value.toFixed(1) + '%';
+			statBadges[0].style.color = this.getColorForValue(latest.cpu.value);
+			statBadges[1].textContent = latest.memory.value.toFixed(1) + '%';
+			statBadges[1].style.color = this.getColorForValue(latest.memory.value);
+			statBadges[2].textContent = latest.disk.value.toFixed(1) + '%';
+			statBadges[2].style.color = this.getColorForValue(latest.disk.value);
+			statBadges[3].textContent = this.cpuHistory.length;
 		}
 	},
 

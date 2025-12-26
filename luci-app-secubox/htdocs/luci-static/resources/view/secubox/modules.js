@@ -263,7 +263,7 @@ return view.extend({
 			'wireguard': 'admin/secubox/network/wireguard',
 			'network_modes': 'admin/secubox/network/modes',
 			'client_guardian': 'admin/secubox/security/guardian',
-			'system_hub': 'admin/system/system-hub/overview',
+			'system_hub': 'admin/secubox/system/system-hub',
 			'bandwidth_manager': 'admin/secubox/network/bandwidth',
 			'auth_guardian': 'admin/secubox/security/auth',
 			'media_flow': 'admin/secubox/network/media',

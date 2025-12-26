@@ -1,0 +1,89 @@
+/**
+ * System Hub - Services Page Styles
+ * Modern card-based service management interface
+ * Version: 0.2.2
+ */
+
+/* === Services Grid === */
+.sh-services-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+	gap: 20px;
+	margin-bottom: 24px;
+}
+
+/* === Service Cards === */
+.sh-services-grid .sh-card {
+	margin-bottom: 0;
+}
+
+.sh-services-grid .sh-card-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.sh-services-grid .sh-card-title {
+	margin: 0;
+	flex: 1;
+}
+
+.sh-services-grid .sh-card-badge {
+	flex-shrink: 0;
+	margin-left: 12px;
+}
+
+/* === Service Status Badges === */
+.sh-services-grid .sh-status-badge {
+	display: inline-block;
+	padding: 6px 12px;
+	border-radius: 12px;
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.4;
+}
+
+.sh-services-grid .sh-status-ok {
+	background: rgba(34, 197, 94, 0.15);
+	color: #16a34a;
+}
+
+.sh-services-grid .sh-status-error {
+	background: rgba(239, 68, 68, 0.15);
+	color: #dc2626;
+}
+
+/* === Action Buttons === */
+.sh-services-grid .sh-btn {
+	flex: 1;
+	min-width: 100px;
+}
+
+/* === Responsive === */
+@media (max-width: 768px) {
+	.sh-services-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.sh-services-grid .sh-card-header {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 12px;
+	}
+
+	.sh-services-grid .sh-card-badge {
+		margin-left: 0;
+		align-self: flex-start;
+	}
+}
+
+/* === Dark Mode === */
+[data-theme="dark"] .sh-services-grid .sh-status-ok {
+	background: rgba(34, 197, 94, 0.2);
+	color: #22c55e;
+}
+
+[data-theme="dark"] .sh-services-grid .sh-status-error {
+	background: rgba(239, 68, 68, 0.2);
+	color: #ef4444;
+}

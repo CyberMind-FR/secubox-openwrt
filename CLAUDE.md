@@ -2,6 +2,45 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 📚 Documentation Index
+
+**IMPORTANT:** Before working on any code, consult these guides:
+
+1. **[DEVELOPMENT-GUIDELINES.md](./DEVELOPMENT-GUIDELINES.md)** - ⭐ **GUIDE COMPLET**
+   - Design System & UI Guidelines (palettes, typographie, composants)
+   - Architecture & Naming Conventions (RPCD, menu paths, prefixes)
+   - RPCD & ubus Best Practices (erreurs communes, solutions)
+   - ACL & Permissions (templates, validations)
+   - JavaScript Patterns (API modules, views, event handling)
+   - CSS/Styling Standards (variables, responsive, dark mode)
+   - Common Errors & Solutions (diagnostics, fixes)
+   - Validation Checklist (pre-commit, pre-deploy, post-deploy)
+   - Deployment Procedures (scripts, rollback, versioning)
+
+2. **[QUICK-START.md](./QUICK-START.md)** - ⚡ **AIDE-MÉMOIRE RAPIDE**
+   - Règles critiques (RPCD naming, menu paths, permissions)
+   - Design system essentials (couleurs, fonts, classes)
+   - Common commands (validation, build, deploy, debug)
+   - Quick code templates (RPCD, View, Headers, Cards)
+   - Error quick fixes
+
+3. **CLAUDE.md** (ce fichier) - 🏗️ **ARCHITECTURE & BUILD**
+   - Build commands (OpenWrt SDK, local build)
+   - Module structure (files, directories)
+   - CI/CD workflows
+   - Common issues techniques
+
+**⚠️ RÈGLES CRITIQUES À TOUJOURS RESPECTER:**
+
+1. **RPCD Script Naming:** Nom fichier = objet ubus (`luci.system-hub`)
+2. **Menu Path Matching:** Path menu = fichier vue (`system-hub/overview.js`)
+3. **Permissions:** RPCD = 755, CSS/JS = 644
+4. **Validation:** Toujours exécuter `./secubox-tools/validate-modules.sh` avant commit
+5. **CSS Variables:** Toujours utiliser `var(--sh-*)`, jamais hardcoder les couleurs
+6. **Dark Mode:** Toujours supporter dark mode avec `[data-theme="dark"]`
+7. **Typography:** Inter (texte), JetBrains Mono (valeurs numériques)
+8. **Gradient Effects:** Utiliser `--sh-primary` → `--sh-primary-end` pour dégradés
+
 ## Project Overview
 
 SecuBox is a comprehensive security and network management suite for OpenWrt. The repository contains 13 LuCI application packages that provide dashboards for security monitoring, network intelligence, access control, bandwidth management, and system administration.
