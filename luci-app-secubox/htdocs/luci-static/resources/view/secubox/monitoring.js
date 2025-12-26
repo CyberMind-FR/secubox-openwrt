@@ -76,7 +76,7 @@ return view.extend({
 	render: function(data) {
 		var self = this;
 		var container = E('div', { 'class': 'secubox-monitoring-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/monitoring.css') })
 		]);

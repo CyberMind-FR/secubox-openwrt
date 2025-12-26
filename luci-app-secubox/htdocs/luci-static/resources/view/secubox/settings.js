@@ -22,7 +22,7 @@ return view.extend({
 
 		// Create wrapper container with modern header
 		var container = E('div', { 'class': 'secubox-settings-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
 
 			// Modern header
