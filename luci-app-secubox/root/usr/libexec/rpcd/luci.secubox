@@ -128,12 +128,15 @@ get_status() {
 get_modules() {
 	json_init
 	json_add_array "modules"
-	
-	config_load secubox
-	
-	for module in $MODULES; do
+
+	config_load secubox 2>/dev/null || true
+
+	# List all module sections from UCI config
+	local module_sections=$(uci -q show secubox | grep "=module$" | cut -d. -f2 | cut -d= -f1)
+
+	for module in $module_sections; do
 		local name desc category icon color package config
-		
+
 		config_get name "$module" name "$module"
 		config_get desc "$module" description ""
 		config_get category "$module" category "other"
@@ -141,10 +144,10 @@ get_modules() {
 		config_get color "$module" color "#64748b"
 		config_get package "$module" package ""
 		config_get config "$module" config ""
-		
+
 		local is_installed=$(check_module_installed "$module")
 		local is_running=$(check_module_running "$module")
-		
+
 		json_add_object ""
 		json_add_string "id" "$module"
 		json_add_string "name" "$name"
@@ -158,7 +161,7 @@ get_modules() {
 		json_add_boolean "running" "$is_running"
 		json_close_object
 	done
-	
+
 	json_close_array
 	json_dump
 }
@@ -166,29 +169,32 @@ get_modules() {
 # Get modules by category
 get_modules_by_category() {
 	local category="$1"
-	
+
 	json_init
 	json_add_array "modules"
-	
-	config_load secubox
-	
-	for module in $MODULES; do
+
+	config_load secubox 2>/dev/null || true
+
+	# List all module sections from UCI config
+	local module_sections=$(uci -q show secubox | grep "=module$" | cut -d. -f2 | cut -d= -f1)
+
+	for module in $module_sections; do
 		local mod_category
 		config_get mod_category "$module" category "other"
-		
+
 		if [ "$mod_category" = "$category" ]; then
 			local name desc icon color package config
-			
+
 			config_get name "$module" name "$module"
 			config_get desc "$module" description ""
 			config_get icon "$module" icon "box"
 			config_get color "$module" color "#64748b"
 			config_get package "$module" package ""
 			config_get config "$module" config ""
-			
+
 			local is_installed=$(check_module_installed "$module")
 			local is_running=$(check_module_running "$module")
-			
+
 			json_add_object ""
 			json_add_string "id" "$module"
 			json_add_string "name" "$name"
@@ -200,7 +206,7 @@ get_modules_by_category() {
 			json_close_object
 		fi
 	done
-	
+
 	json_close_array
 	json_dump
 }
@@ -308,26 +314,30 @@ restart_module() {
 get_health() {
 	json_init
 	json_add_array "checks"
-	
+
+	config_load secubox 2>/dev/null || true
+
+	# List all module sections from UCI config
+	local module_sections=$(uci -q show secubox | grep "=module$" | cut -d. -f2 | cut -d= -f1)
+
 	# Check each installed module
-	for module in $MODULES; do
+	for module in $module_sections; do
 		local is_installed=$(check_module_installed "$module")
-		
+
 		if [ "$is_installed" = "1" ]; then
 			local is_running=$(check_module_running "$module")
 			local name
-			
-			config_load secubox
+
 			config_get name "$module" name "$module"
-			
+
 			local status="ok"
 			local message="Running normally"
-			
+
 			if [ "$is_running" != "1" ]; then
 				status="warning"
 				message="Service not running"
 			fi
-			
+
 			json_add_object ""
 			json_add_string "module" "$module"
 			json_add_string "name" "$name"
@@ -336,16 +346,16 @@ get_health() {
 			json_close_object
 		fi
 	done
-	
+
 	json_close_array
-	
+
 	# Overall health
 	local overall="healthy"
 	# Could add more sophisticated health checks here
-	
+
 	json_add_string "overall" "$overall"
 	json_add_int "timestamp" "$(date +%s)"
-	
+
 	json_dump
 }
 
@@ -364,7 +374,9 @@ get_diagnostics() {
 
 	# Modules status
 	json_add_array "modules"
-	for module in $MODULES; do
+	config_load secubox 2>/dev/null || true
+	local module_sections=$(uci -q show secubox | grep "=module$" | cut -d. -f2 | cut -d= -f1)
+	for module in $module_sections; do
 		local is_installed=$(check_module_installed "$module")
 		local is_running=$(check_module_running "$module")
 
@@ -478,7 +490,10 @@ get_alerts() {
 	# Check each installed module for alerts
 	config_load secubox 2>/dev/null || true
 
-	for module in $MODULES; do
+	# List all module sections from UCI config
+	local module_sections=$(uci -q show secubox | grep "=module$" | cut -d. -f2 | cut -d= -f1)
+
+	for module in $module_sections; do
 		local is_installed=$(check_module_installed "$module")
 
 		if [ "$is_installed" = "1" ]; then
@@ -591,7 +606,10 @@ get_dashboard_data() {
 	json_add_array "modules"
 	local total=0 installed=0 running=0
 
-	for module in $MODULES; do
+	# List all module sections from UCI config
+	local module_sections=$(uci -q show secubox | grep "=module$" | cut -d. -f2 | cut -d= -f1)
+
+	for module in $module_sections; do
 		local name desc category icon color
 		config_get name "$module" name "$module"
 		config_get desc "$module" description ""
