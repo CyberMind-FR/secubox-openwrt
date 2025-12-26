@@ -1201,6 +1201,182 @@ Après déploiement:
 
 ## Deployment Procedures
 
+### ⚠️ Pre-Deployment Checks (CRITICAL)
+
+**TOUJOURS exécuter ces vérifications AVANT tout déploiement:**
+
+#### 1. Vérification de l'Espace Disque
+
+```bash
+# Sur le routeur cible
+ssh root@192.168.8.191 "df -h | grep overlay"
+
+# Vérifier que l'utilisation est < 90%
+# Exemple OK:
+# /dev/loop0    98.8M    45.2M    53.6M   46% /overlay
+
+# Exemple CRITIQUE (STOP deployment):
+# /dev/loop0    98.8M    98.8M       0  100% /overlay  ← PLEIN!
+```
+
+**Si l'overlay est plein (≥95%):**
+```bash
+# Libérer de l'espace avant déploiement
+ssh root@192.168.8.191 << 'EOF'
+# Supprimer fichiers temporaires
+rm -rf /tmp/*.ipk /tmp/luci-* 2>/dev/null
+
+# Supprimer anciens backups (>7 jours)
+find /root -name '*.backup-*' -type f -mtime +7 -delete 2>/dev/null
+
+# Vérifier packages inutilisés
+opkg list-installed | grep -E 'netdata|unused'
+
+# Après nettoyage, vérifier l'espace libéré
+df -h | grep overlay
+EOF
+```
+
+**Tailles typiques à surveiller:**
+- Netdata web UI: ~22MB (considérer suppression si non utilisé)
+- Modules LuCI: ~1-2MB chacun
+- Fichiers CSS/JS: ~10-50KB chacun
+
+#### 2. Vérification des Permissions (Critique pour Éviter Erreurs 403)
+
+**Permissions OBLIGATOIRES:**
+
+| Type | Permission | Octal | Raison |
+|------|-----------|-------|--------|
+| **RPCD scripts** | `rwxr-xr-x` | `755` | Exécutable par system |
+| **CSS files** | `rw-r--r--` | `644` | Lecture web server |
+| **JS files** | `rw-r--r--` | `644` | Lecture web server |
+| **JSON files** | `rw-r--r--` | `644` | Lecture rpcd |
+
+**Erreur commune:** Fichiers créés avec `600` (rw-------) au lieu de `644`
+
+**Symptôme:** HTTP 403 Forbidden lors du chargement de fichiers JS/CSS
+
+**Exemple d'erreur:**
+```
+NetworkError: HTTP error 403 while loading class file
+"/luci-static/resources/view/netdata-dashboard/dashboard.js"
+```
+
+**Diagnostic rapide:**
+```bash
+# Vérifier permissions des fichiers déployés
+ssh root@192.168.8.191 "ls -la /www/luci-static/resources/view/MODULE_NAME/"
+
+# Chercher fichiers avec permissions incorrectes (600)
+ssh root@192.168.8.191 "find /www/luci-static/resources/view/ -type f -name '*.js' -perm 600"
+
+# MAUVAIS (cause 403):
+# -rw-------  1 root root  9763 dashboard.js  ← 600 = pas lisible par web!
+
+# BON:
+# -rw-r--r--  1 root root  9763 dashboard.js  ← 644 = OK
+```
+
+**Correction immédiate:**
+```bash
+# Corriger TOUS les fichiers CSS/JS
+ssh root@192.168.8.191 << 'EOF'
+find /www/luci-static/resources/ -name '*.css' -exec chmod 644 {} \;
+find /www/luci-static/resources/ -name '*.js' -exec chmod 644 {} \;
+find /usr/libexec/rpcd/ -name 'luci.*' -exec chmod 755 {} \;
+EOF
+```
+
+#### 3. Post-Deployment Verification
+
+**Checklist après déploiement:**
+
+```bash
+#!/bin/bash
+ROUTER="root@192.168.8.191"
+MODULE="module-name"
+
+echo "🔍 Post-Deployment Verification"
+echo ""
+
+# 1. Vérifier espace disque
+echo "1. Espace disque restant:"
+ssh "$ROUTER" "df -h | grep overlay | awk '{print \$5}'" || echo "❌ FAIL"
+
+# 2. Vérifier permissions CSS/JS
+echo "2. Permissions CSS/JS:"
+ssh "$ROUTER" "find /www/luci-static/resources/$MODULE -type f \( -name '*.css' -o -name '*.js' \) ! -perm 644" | \
+    if [ -z "$(cat)" ]; then echo "✅ OK"; else echo "❌ FAIL - Permissions incorrectes"; fi
+
+# 3. Vérifier permissions RPCD
+echo "3. Permissions RPCD:"
+ssh "$ROUTER" "ls -l /usr/libexec/rpcd/luci.$MODULE | grep -q rwxr-xr-x" && echo "✅ OK" || echo "❌ FAIL"
+
+# 4. Vérifier ubus object
+echo "4. ubus object disponible:"
+ssh "$ROUTER" "ubus list | grep -q luci.$MODULE" && echo "✅ OK" || echo "❌ FAIL"
+
+# 5. Vérifier fichiers accessibles (HTTP)
+echo "5. Fichiers web accessibles:"
+ssh "$ROUTER" "test -r /www/luci-static/resources/$MODULE/common.css" && echo "✅ OK" || echo "⚠️  common.css non trouvé"
+
+# 6. Vérifier cache cleared
+echo "6. Cache LuCI cleared:"
+ssh "$ROUTER" "test ! -f /tmp/luci-indexcache" && echo "✅ OK" || echo "⚠️  Cache encore présent"
+
+echo ""
+echo "✅ Vérification terminée"
+```
+
+#### 4. Common Deployment Errors
+
+| Erreur | Cause | Solution Rapide |
+|--------|-------|----------------|
+| **HTTP 403 Forbidden** | Permissions 600 au lieu de 644 | `chmod 644 *.js *.css` |
+| **No space left on device** | Overlay plein | Nettoyer /tmp, supprimer anciens backups |
+| **Object not found -32000** | RPCD pas exécutable ou mal nommé | `chmod 755 rpcd/luci.*` + vérifier nom |
+| **Module not appearing** | Cache LuCI pas cleared | `rm /tmp/luci-*` + restart services |
+| **Changes not visible** | Cache navigateur | Mode privé + Ctrl+Shift+R |
+
+#### 5. Emergency Disk Space Recovery
+
+**Si le déploiement échoue avec "No space left on device":**
+
+```bash
+#!/bin/bash
+ROUTER="root@192.168.8.191"
+
+echo "🚨 Emergency Disk Space Recovery"
+echo ""
+
+# 1. Analyser l'utilisation
+echo "Top 10 consumers:"
+ssh "$ROUTER" "du -k /overlay/upper 2>/dev/null | sort -rn | head -10"
+
+# 2. Nettoyer temporaires
+echo ""
+echo "Cleaning temp files..."
+ssh "$ROUTER" "rm -rf /tmp/*.ipk /tmp/luci-* /root/*.ipk 2>/dev/null"
+
+# 3. Supprimer anciens backups
+echo "Removing old backups (>7 days)..."
+ssh "$ROUTER" "find /root -name '*.backup-*' -mtime +7 -delete 2>/dev/null"
+
+# 4. Option: Supprimer Netdata Web UI (libère ~22MB)
+echo ""
+echo "⚠️  Option: Remove Netdata Web UI (saves ~22MB)?"
+read -p "Continue? (y/N) " -n 1 -r
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    ssh "$ROUTER" "opkg remove netdata-web 2>/dev/null || rm -rf /usr/share/netdata/web/*"
+fi
+
+# 5. Vérifier espace libéré
+echo ""
+echo "Space after cleanup:"
+ssh "$ROUTER" "df -h | grep overlay"
+```
+
 ### Standard Deployment Script Template
 
 ```bash

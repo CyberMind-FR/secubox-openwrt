@@ -36,6 +36,36 @@ chmod 644 htdocs/**/*.{css,js}
 # Sinon: 403 Forbidden ou script non exécuté
 ```
 
+### 4. Pre-Deployment Checks
+```bash
+# TOUJOURS vérifier avant déploiement:
+
+# 1. Espace disque (doit être < 90%)
+ssh root@192.168.8.191 "df -h | grep overlay"
+
+# 2. Permissions après déploiement
+ssh root@192.168.8.191 "find /www/luci-static -name '*.js' -perm 600"
+# ⚠️ Si résultats: fichiers ont 600 au lieu de 644 → Erreur 403!
+
+# 3. Correction rapide si nécessaire
+ssh root@192.168.8.191 "find /www/luci-static -name '*.css' -exec chmod 644 {} \;"
+ssh root@192.168.8.191 "find /www/luci-static -name '*.js' -exec chmod 644 {} \;"
+```
+
+### 5. Common Errors Quick Fix
+```bash
+# HTTP 403 Forbidden
+chmod 644 /www/luci-static/resources/**/*.{js,css}
+
+# No space left on device
+rm -rf /tmp/*.ipk /tmp/luci-*
+find /root -name '*.backup-*' -mtime +7 -delete
+
+# Object not found -32000
+chmod 755 /usr/libexec/rpcd/luci.*
+ubus list | grep luci.module-name  # Vérifier disponibilité
+```
+
 ---
 
 ## 🎨 Design System Essentials
