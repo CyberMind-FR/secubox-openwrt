@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require dom';
+'require poll';
 'require system-hub/api as API';
 'require system-hub/theme as Theme';
 
@@ -10,6 +11,8 @@ return view.extend({
 	currentFilter: 'all',
 	searchQuery: '',
 	lineCount: 100,
+	autoRefresh: true,
+	autoScroll: true,
 
 	load: function() {
 		return Promise.all([
@@ -19,15 +22,16 @@ return view.extend({
 	},
 
 	render: function(data) {
-		this.logs = data[0] || [];
+		var self = this;
+		this.logs = data[0] && data[0].logs ? data[0].logs : [];
 		var theme = data[1];
 
 		var container = E('div', { 'class': 'system-hub-logs' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 
-			// Header
-			this.renderHeader(),
+			// Compact Header
+			this.renderCompactHeader(),
 
 			// Controls
 			this.renderControls(),
@@ -42,7 +46,7 @@ return view.extend({
 						E('span', { 'class': 'sh-card-title-icon' }, '📟'),
 						'Log Output'
 					]),
-					E('div', { 'class': 'sh-card-badge' }, this.getFilteredLogs().length + ' lines')
+					E('div', { 'class': 'sh-card-badge', 'id': 'log-badge' }, this.getFilteredLogs().length + ' lines')
 				]),
 				E('div', { 'class': 'sh-card-body', 'style': 'padding: 0;' }, [
 					E('div', { 'id': 'log-container' })
@@ -53,7 +57,46 @@ return view.extend({
 		// Initial render
 		this.updateLogDisplay();
 
+		// Start auto-refresh
+		poll.add(L.bind(function() {
+			if (this.autoRefresh) {
+				return API.getLogs(this.lineCount, '').then(L.bind(function(result) {
+					this.logs = result && result.logs ? result.logs : [];
+					this.updateLogDisplay();
+					this.updateStats();
+				}, this));
+			}
+		}, this), 5);
+
 		return container;
+	},
+
+	renderCompactHeader: function() {
+		var stats = this.getLogStats();
+
+		return E('div', { 'style': 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding: 16px 0; border-bottom: 1px solid var(--sh-border);' }, [
+			E('div', {}, [
+				E('h2', { 'style': 'font-size: 20px; font-weight: 600; color: var(--sh-text-primary); margin: 0; display: flex; align-items: center; gap: 8px;' }, [
+					E('span', {}, '📋'),
+					'System Logs',
+					E('span', { 'id': 'auto-refresh-indicator', 'style': 'font-size: 12px; color: #22c55e; margin-left: 12px;' }, '● Live')
+				])
+			]),
+			E('div', { 'style': 'display: flex; gap: 16px;' }, [
+				E('div', { 'style': 'text-align: center; padding: 8px 16px; background: var(--sh-bg-card); border-radius: 8px; border: 1px solid var(--sh-border);' }, [
+					E('div', { 'id': 'stat-total', 'style': 'font-size: 18px; font-weight: 600; color: var(--sh-text-primary); font-family: "JetBrains Mono", monospace;' }, stats.total),
+					E('div', { 'style': 'font-size: 11px; color: var(--sh-text-secondary); margin-top: 2px;' }, 'Total')
+				]),
+				E('div', { 'style': 'text-align: center; padding: 8px 16px; background: var(--sh-bg-card); border-radius: 8px; border: 1px solid var(--sh-border);' }, [
+					E('div', { 'id': 'stat-errors', 'style': 'font-size: 18px; font-weight: 600; color: #ef4444; font-family: "JetBrains Mono", monospace;' }, stats.errors),
+					E('div', { 'style': 'font-size: 11px; color: var(--sh-text-secondary); margin-top: 2px;' }, 'Errors')
+				]),
+				E('div', { 'style': 'text-align: center; padding: 8px 16px; background: var(--sh-bg-card); border-radius: 8px; border: 1px solid var(--sh-border);' }, [
+					E('div', { 'id': 'stat-warnings', 'style': 'font-size: 18px; font-weight: 600; color: #f59e0b; font-family: "JetBrains Mono", monospace;' }, stats.warnings),
+					E('div', { 'style': 'font-size: 11px; color: var(--sh-text-secondary); margin-top: 2px;' }, 'Warnings')
+				])
+			])
+		]);
 	},
 
 	renderHeader: function() {
@@ -115,13 +158,33 @@ return view.extend({
 				E('option', { 'value': '500' }, '500 lines'),
 				E('option', { 'value': '1000' }, '1000 lines')
 			]),
-			// Refresh button
+			// Auto-refresh toggle
 			E('button', {
-				'class': 'sh-btn sh-btn-primary',
-				'click': L.bind(this.refreshLogs, this)
+				'id': 'auto-refresh-toggle',
+				'class': 'sh-btn ' + (this.autoRefresh ? 'sh-btn-primary' : 'sh-btn-secondary'),
+				'click': function() {
+					self.autoRefresh = !self.autoRefresh;
+					this.className = 'sh-btn ' + (self.autoRefresh ? 'sh-btn-primary' : 'sh-btn-secondary');
+					var indicator = document.getElementById('auto-refresh-indicator');
+					if (indicator) {
+						indicator.style.display = self.autoRefresh ? '' : 'none';
+					}
+				}
 			}, [
-				E('span', {}, '🔄'),
-				E('span', {}, 'Refresh')
+				E('span', {}, '⟳'),
+				E('span', {}, 'Auto-Refresh')
+			]),
+			// Auto-scroll toggle
+			E('button', {
+				'id': 'auto-scroll-toggle',
+				'class': 'sh-btn ' + (this.autoScroll ? 'sh-btn-primary' : 'sh-btn-secondary'),
+				'click': function() {
+					self.autoScroll = !self.autoScroll;
+					this.className = 'sh-btn ' + (self.autoScroll ? 'sh-btn-primary' : 'sh-btn-secondary');
+				}
+			}, [
+				E('span', {}, '↓'),
+				E('span', {}, 'Auto-Scroll')
 			]),
 			// Download button
 			E('button', {
@@ -190,7 +253,7 @@ return view.extend({
 					E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '📋'),
 					E('div', { 'style': 'font-size: 16px; font-weight: 500;' }, 'No logs available'),
 					E('div', { 'style': 'font-size: 14px; margin-top: 8px;' },
-						this.searchQuery ? 'Try a different search query' : 'System logs will appear here')
+						this.searchQuery ? 'Try a different search query' : 'Waiting for logs...')
 				])
 			]);
 		} else {
@@ -199,17 +262,47 @@ return view.extend({
 				return this.renderLogLine(line);
 			}.bind(this));
 
-			dom.content(container, [
-				E('div', {
-					'style': 'background: var(--sh-bg-tertiary); padding: 20px; overflow: auto; max-height: 600px; font-size: 12px; font-family: "JetBrains Mono", "Courier New", monospace; line-height: 1.6;'
-				}, logLines)
-			]);
+			var logWrapper = E('div', {
+				'id': 'log-wrapper',
+				'style': 'background: var(--sh-bg-tertiary); padding: 20px; overflow: auto; max-height: 600px; font-size: 12px; font-family: "JetBrains Mono", "Courier New", monospace; line-height: 1.6;'
+			}, logLines);
+
+			dom.content(container, [logWrapper]);
+
+			// Auto-scroll to bottom if enabled
+			if (this.autoScroll) {
+				setTimeout(function() {
+					logWrapper.scrollTop = logWrapper.scrollHeight;
+				}, 100);
+			}
 		}
 
 		// Update badge
-		var badge = document.querySelector('.sh-card-badge');
+		var badge = document.getElementById('log-badge');
 		if (badge) {
 			badge.textContent = filtered.length + ' lines';
+		}
+	},
+
+	updateStats: function() {
+		var stats = this.getLogStats();
+
+		var statTotal = document.getElementById('stat-total');
+		if (statTotal) statTotal.textContent = stats.total;
+
+		var statErrors = document.getElementById('stat-errors');
+		if (statErrors) statErrors.textContent = stats.errors;
+
+		var statWarnings = document.getElementById('stat-warnings');
+		if (statWarnings) statWarnings.textContent = stats.warnings;
+
+		// Update filter tabs counts
+		var tabs = document.querySelectorAll('.sh-tab-label');
+		if (tabs.length >= 4) {
+			tabs[0].textContent = 'All Logs (' + stats.total + ')';
+			tabs[1].textContent = 'Errors (' + stats.errors + ')';
+			tabs[2].textContent = 'Warnings (' + stats.warnings + ')';
+			tabs[3].textContent = 'Info (' + stats.info + ')';
 		}
 	},
 
@@ -289,34 +382,11 @@ return view.extend({
 	},
 
 	refreshLogs: function() {
-		ui.showModal(_('Loading Logs'), [
-			E('p', { 'class': 'spinning' }, _('Fetching logs...'))
-		]);
-
-		API.getLogs(this.lineCount, '').then(L.bind(function(logs) {
-			ui.hideModal();
-			this.logs = logs || [];
+		API.getLogs(this.lineCount, '').then(L.bind(function(result) {
+			this.logs = result && result.logs ? result.logs : [];
 			this.updateLogDisplay();
-
-			// Update stats
-			var stats = this.getLogStats();
-			var statBadges = document.querySelectorAll('.sh-stat-value');
-			if (statBadges.length >= 3) {
-				statBadges[0].textContent = stats.total;
-				statBadges[1].textContent = stats.errors;
-				statBadges[2].textContent = stats.warnings;
-			}
-
-			// Update filter tabs counts
-			var tabs = document.querySelectorAll('.sh-tab-label');
-			if (tabs.length >= 4) {
-				tabs[0].textContent = 'All Logs (' + stats.total + ')';
-				tabs[1].textContent = 'Errors (' + stats.errors + ')';
-				tabs[2].textContent = 'Warnings (' + stats.warnings + ')';
-				tabs[3].textContent = 'Info (' + stats.info + ')';
-			}
+			this.updateStats();
 		}, this)).catch(function(err) {
-			ui.hideModal();
 			ui.addNotification(null, E('p', _('Failed to load logs: ') + err.message), 'error');
 		});
 	},
