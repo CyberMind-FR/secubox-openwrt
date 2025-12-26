@@ -53,5 +53,22 @@ return baseclass.extend({
 	getAvailableModes: callGetAvailableModes,
 	setMode: callSetMode,
 	getInterfaces: callGetInterfaces,
-	validateConfig: callValidateConfig
+	validateConfig: callValidateConfig,
+
+	// Aggregate function for overview page
+	getAllData: function() {
+		return Promise.all([
+			callStatus(),
+			callGetCurrentMode(),
+			callGetAvailableModes(),
+			callGetInterfaces()
+		]).then(function(results) {
+			return {
+				status: results[0] || {},
+				current_mode: results[1] || { mode: '' },
+				available_modes: results[2] || { modes: [] },
+				interfaces: results[3] || { interfaces: [] }
+			};
+		});
+	}
 });

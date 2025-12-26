@@ -104,5 +104,22 @@ return baseclass.extend({
 	generateConfig: callGenerateConfig,
 	generateQR: callGenerateQR,
 	formatBytes: formatBytes,
-	formatLastHandshake: formatLastHandshake
+	formatLastHandshake: formatLastHandshake,
+
+	// Aggregate function for overview page
+	getAllData: function() {
+		return Promise.all([
+			callStatus(),
+			callGetPeers(),
+			callGetInterfaces(),
+			callGetTraffic()
+		]).then(function(results) {
+			return {
+				status: results[0] || {},
+				peers: results[1] || { peers: [] },
+				interfaces: results[2] || { interfaces: [] },
+				traffic: results[3] || {}
+			};
+		});
+	}
 });

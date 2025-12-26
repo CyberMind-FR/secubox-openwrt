@@ -90,6 +90,7 @@ return baseclass.extend({
 	deleteVoucher: callDeleteVoucher,
 	validateVoucher: callValidateVoucher,
 	listSessions: callListSessions,
+	getSessions: callListSessions,  // Alias for compatibility
 	revokeSession: callRevokeSession,
 	getLogs: callGetLogs
 });

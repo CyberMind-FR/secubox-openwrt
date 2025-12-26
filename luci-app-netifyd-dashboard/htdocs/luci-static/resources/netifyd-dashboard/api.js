@@ -61,5 +61,22 @@ return baseclass.extend({
 	getHosts: callHosts,
 	getProtocols: callProtocols,
 	getStats: callStats,
-	formatBytes: formatBytes
+	formatBytes: formatBytes,
+
+	// Aggregate function for overview page
+	getAllData: function() {
+		return Promise.all([
+			callStatus(),
+			callStats(),
+			callFlows(),
+			callApplications()
+		]).then(function(results) {
+			return {
+				status: results[0] || {},
+				stats: results[1] || {},
+				flows: results[2] || { flows: [] },
+				applications: results[3] || { applications: [] }
+			};
+		});
+	}
 });

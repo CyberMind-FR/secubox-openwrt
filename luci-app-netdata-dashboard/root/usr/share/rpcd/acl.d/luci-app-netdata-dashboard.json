@@ -3,14 +3,32 @@
 		"description": "Grant access to LuCI Netdata Dashboard",
 		"read": {
 			"ubus": {
-				"netdata": [ "stats", "cpu", "memory", "disk", "network", "processes", "sensors", "system" ],
+				"luci.netdata-dashboard": [
+					"stats",
+					"cpu",
+					"memory",
+					"disk",
+					"network",
+					"processes",
+					"sensors",
+					"system",
+					"netdata_status",
+					"netdata_alarms",
+					"netdata_info"
+				],
 				"system": [ "info", "board" ],
-				"luci-rpc": [ "getNetdataStats" ],
 				"file": [ "read", "stat" ]
 			},
 			"uci": [ "netdata-dashboard" ]
 		},
 		"write": {
+			"ubus": {
+				"luci.netdata-dashboard": [
+					"restart_netdata",
+					"start_netdata",
+					"stop_netdata"
+				]
+			},
 			"uci": [ "netdata-dashboard" ]
 		}
 	}
