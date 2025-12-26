@@ -1,6 +1,7 @@
 name: Build SecuBox Images (GlobalScale)
 
 on:
+  # Manual trigger
   workflow_dispatch:
     inputs:
       device:
@@ -29,8 +30,15 @@ on:
         type: boolean
         default: true
 
+  # Automatic trigger on version tags
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-*'
+
 env:
-  OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version }}
+  # Use input if manual trigger, otherwise default to 23.05.5 for tag triggers
+  OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '23.05.5' }}
 
 permissions:
   contents: write
@@ -47,8 +55,11 @@ jobs:
       - name: Set build matrix
         id: set-matrix
         run: |
-          DEVICE="${{ github.event.inputs.device }}"
-          
+          # If triggered by tag, build all devices; otherwise use input
+          DEVICE="${{ github.event.inputs.device || 'all' }}"
+
+          echo "🎯 Building for device: $DEVICE"
+
           # Define all devices in a file to avoid heredoc issues
           cat > /tmp/devices.json << 'DEVICES_EOF'
           [
@@ -183,7 +194,7 @@ jobs:
           done
 
       - name: Copy SecuBox packages
-        if: ${{ github.event.inputs.include_secubox == 'true' }}
+        if: ${{ github.event.inputs.include_secubox == 'true' || github.event_name == 'push' }}
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📦 COPYING SECUBOX PACKAGES"
@@ -278,7 +289,7 @@ jobs:
           EOF
 
       - name: Add SecuBox packages to config
-        if: ${{ github.event.inputs.include_secubox == 'true' }}
+        if: ${{ github.event.inputs.include_secubox == 'true' || github.event_name == 'push' }}
         run: |
           cd openwrt
 
@@ -653,6 +664,11 @@ jobs:
           fi
 
           # Create info file
+          SECUBOX_INCLUDED="${{ github.event.inputs.include_secubox }}"
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            SECUBOX_INCLUDED="true (auto)"
+          fi
+
           cat > BUILD_INFO.txt << EOF
           SecuBox Firmware Build
           =======================
@@ -660,9 +676,16 @@ jobs:
           Profile: ${{ matrix.profile }}
           Target: ${{ matrix.target }}/${{ matrix.subtarget }}
           OpenWrt: ${{ env.OPENWRT_VERSION }}
-          SecuBox: ${{ github.event.inputs.include_secubox }}
+          SecuBox: ${SECUBOX_INCLUDED:-true}
           Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)
           Commit: ${{ github.sha }}
+          EOF
+
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "Tag: ${{ github.ref_name }}" >> BUILD_INFO.txt
+          fi
+
+          cat >> BUILD_INFO.txt << EOF
 
           Firmware Images: $IMG_COUNT
           SecuBox Packages: $PKG_COUNT
@@ -734,7 +757,7 @@ jobs:
           echo "| Profile | \`${{ matrix.profile }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Target | ${{ matrix.target }}/${{ matrix.subtarget }} |" >> $GITHUB_STEP_SUMMARY
           echo "| OpenWrt Version | ${{ env.OPENWRT_VERSION }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| SecuBox Included | ${{ github.event.inputs.include_secubox }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SecuBox Included | ${{ github.event.inputs.include_secubox || 'true (auto)' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build Time | $(date -u +%Y-%m-%d\ %H:%M:%S\ UTC) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
@@ -786,7 +809,7 @@ jobs:
   release:
     needs: [setup, build-image]
     runs-on: ubuntu-latest
-    if: github.event.inputs.device == 'all'
+    if: github.event.inputs.device == 'all' || github.event_name == 'push'
     
     steps:
       - name: Download all artifacts
@@ -865,16 +888,17 @@ jobs:
           EOF
 
       - name: Create release
-        if: github.ref == 'refs/heads/main'
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          name: "SecuBox Firmware ${{ env.OPENWRT_VERSION }}"
-          tag_name: "firmware-${{ env.OPENWRT_VERSION }}-${{ github.run_number }}"
+          name: "SecuBox Firmware ${{ github.ref_name }}"
+          tag_name: ${{ github.ref_name }}
           body_path: release/RELEASE_NOTES.md
           files: |
             release/*.tar.gz
             release/SHA256SUMS
-          draft: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -904,10 +928,16 @@ jobs:
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| OpenWrt Version | ${{ env.OPENWRT_VERSION }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| SecuBox Included | ${{ github.event.inputs.include_secubox }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Target Device | ${{ github.event.inputs.device }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SecuBox Included | ${{ github.event.inputs.include_secubox || 'true (auto)' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target Device | ${{ github.event.inputs.device || 'all (auto)' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Workflow Run | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Triggered by | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+
+          # Add tag info if triggered by tag
+          if [[ "${{ github.event_name }}" == "push" ]] && [[ -n "${{ github.ref_name }}" ]]; then
+            echo "| Git Tag | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
 
           echo "## 📦 Generated Artifacts" >> $GITHUB_STEP_SUMMARY
