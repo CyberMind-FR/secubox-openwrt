@@ -3,15 +3,28 @@
         "description": "Auth Guardian",
         "read": {
             "ubus": {
-                "luci.auth-guardian": ["status", "sessions", "vouchers", "oauth_providers", "bypass_list"]
+                "luci.auth-guardian": [
+                    "status",
+                    "list_providers",
+                    "list_vouchers",
+                    "list_sessions",
+                    "get_logs"
+                ]
             },
-            "uci": ["authguard"]
+            "uci": ["auth_guardian"]
         },
         "write": {
             "ubus": {
-                "luci.auth-guardian": ["generate_voucher"]
+                "luci.auth-guardian": [
+                    "set_provider",
+                    "delete_provider",
+                    "create_voucher",
+                    "delete_voucher",
+                    "validate_voucher",
+                    "revoke_session"
+                ]
             },
-            "uci": ["authguard"]
+            "uci": ["auth_guardian"]
         }
     }
 }

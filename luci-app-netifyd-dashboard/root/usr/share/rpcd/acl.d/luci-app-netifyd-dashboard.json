@@ -3,9 +3,19 @@
 		"description": "Grant access to LuCI Netifyd Dashboard",
 		"read": {
 			"ubus": {
-				"netifyd": [ "status", "flows", "applications", "protocols", "devices", "stats" ],
+				"luci.netifyd-dashboard": [
+					"status",
+					"flows",
+					"applications",
+					"protocols",
+					"devices",
+					"stats",
+					"risks",
+					"category_bandwidth",
+					"top_talkers",
+					"dns_queries"
+				],
 				"system": [ "info", "board" ],
-				"luci-rpc": [ "getNetifydStats" ],
 				"file": [ "read", "stat" ]
 			},
 			"uci": [ "netifyd", "netifyd-dashboard" ]
