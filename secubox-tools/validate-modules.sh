@@ -5,6 +5,7 @@
 #
 
 set -e
+set -o pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -139,18 +140,21 @@ for module_dir in luci-app-*/; do
     if [ -d "$view_dir" ] && [ -f "$menu_file" ]; then
         echo "Checking $module_name view files..."
 
+        # Temporarily disable exit on error for grep checks in loops
+        set +e
         # Find all .js view files
-        find "$view_dir" -name "*.js" -type f | while read -r view_file; do
+        find "$view_dir" -name "*.js" -type f 2>/dev/null | while read -r view_file; do
             # Convert file path to menu path
             rel_path=$(echo "$view_file" | sed "s|$module_dir/htdocs/luci-static/resources/view/||" | sed 's|.js$||')
 
             # Check if path exists in menu
-            if grep -q "\"path\":\s*\"$rel_path\"" "$menu_file"; then
+            if grep -q "\"path\":\s*\"$rel_path\"" "$menu_file" 2>/dev/null; then
                 success "$module_name: View '$rel_path.js' has menu entry"
             else
                 warn "$module_name: View file '$rel_path.js' exists but has no menu entry"
             fi
         done
+        set -e
         echo ""
     fi
 done
