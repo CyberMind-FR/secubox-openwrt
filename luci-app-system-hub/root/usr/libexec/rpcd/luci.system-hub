@@ -653,6 +653,47 @@ save_settings() {
 	json_dump
 }
 
+# Get components (leverages secubox module detection)
+get_components() {
+	# Call secubox backend to get modules, which are the system components
+	local result=$(ubus call luci.secubox get_modules 2>/dev/null)
+
+	if [ -n "$result" ]; then
+		# Pass through the secubox modules as components
+		echo "$result"
+	else
+		# Fallback if secubox is not available
+		json_init
+		json_add_array "modules"
+		json_close_array
+		json_dump
+	fi
+}
+
+# Get components by category
+get_components_by_category() {
+	local input
+	read -r input
+	json_load "$input"
+
+	local category
+	json_get_var category category
+	json_cleanup
+
+	# Call secubox backend with category filter
+	local result=$(ubus call luci.secubox get_modules_by_category "{\"category\":\"$category\"}" 2>/dev/null)
+
+	if [ -n "$result" ]; then
+		echo "$result"
+	else
+		# Fallback
+		json_init
+		json_add_array "modules"
+		json_close_array
+		json_dump
+	fi
+}
+
 # Main dispatcher
 case "$1" in
 	list)
@@ -661,6 +702,8 @@ case "$1" in
 	"status": {},
 	"get_system_info": {},
 	"get_health": {},
+	"get_components": {},
+	"get_components_by_category": { "category": "string" },
 	"list_services": {},
 	"service_action": { "service": "string", "action": "string" },
 	"get_logs": { "lines": 100, "filter": "" },
@@ -692,6 +735,8 @@ EOF
 			status) status ;;
 			get_system_info) get_system_info ;;
 			get_health) get_health ;;
+			get_components) get_components ;;
+			get_components_by_category) get_components_by_category ;;
 			list_services) list_services ;;
 			service_action) service_action ;;
 			get_logs) get_logs ;;

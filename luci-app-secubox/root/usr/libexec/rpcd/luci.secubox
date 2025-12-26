@@ -124,14 +124,26 @@ get_status() {
 	json_dump
 }
 
-# Get detailed modules list
+# Detect real installed luci-app packages
+detect_real_modules() {
+	opkg list-installed 2>/dev/null | grep "^luci-app-" | grep -v "^luci-app-secubox " | while read package version; do
+		# Extract module ID from package name
+		local module_id=$(echo "$package" | sed 's/^luci-app-//' | sed 's/-dashboard$//' | sed 's/-/_/g')
+		echo "$module_id:$package:$version"
+	done
+}
+
+# Get detailed modules list (UCI + auto-detected)
 get_modules() {
 	json_init
 	json_add_array "modules"
 
 	config_load secubox 2>/dev/null || true
 
-	# List all module sections from UCI config
+	# Create associative array to track processed modules
+	local processed_modules=""
+
+	# First, add modules from UCI config
 	local module_sections=$(uci -q show secubox | grep "=module$" | cut -d. -f2 | cut -d= -f1)
 
 	for module in $module_sections; do
@@ -140,7 +152,7 @@ get_modules() {
 		config_get name "$module" name "$module"
 		config_get desc "$module" description ""
 		config_get category "$module" category "other"
-		config_get icon "$module" icon "box"
+		config_get icon "$module" icon "📦"
 		config_get color "$module" color "#64748b"
 		config_get package "$module" package ""
 		config_get config "$module" config ""
@@ -148,6 +160,12 @@ get_modules() {
 
 		local is_installed=$(check_module_installed "$module")
 		local is_running=$(check_module_running "$module")
+
+		# Get real version from opkg if installed
+		if [ "$is_installed" = "1" ] && [ -n "$package" ]; then
+			local real_version=$(opkg list-installed "$package" 2>/dev/null | awk '{print $3}' | sed 's/-.*$//')
+			[ -n "$real_version" ] && version="$real_version"
+		fi
 
 		json_add_object ""
 		json_add_string "id" "$module"
@@ -161,6 +179,55 @@ get_modules() {
 		json_add_string "version" "$version"
 		json_add_boolean "installed" "$is_installed"
 		json_add_boolean "running" "$is_running"
+		json_add_boolean "in_uci" "1"
+		json_close_object
+
+		processed_modules="$processed_modules $module"
+	done
+
+	# Second, add auto-detected modules not in UCI
+	detect_real_modules | while IFS=: read module_id package version; do
+		# Skip if already processed
+		echo "$processed_modules" | grep -q " $module_id " && continue
+
+		# Auto-detect properties based on package name
+		local name=$(echo "$package" | sed 's/^luci-app-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++){$i=toupper(substr($i,1,1)) substr($i,2)}}1')
+		local category="other"
+		local icon="📦"
+		local color="#64748b"
+
+		# Auto-categorize
+		case "$package" in
+			*crowdsec*|*guardian*|*auth*)
+				category="security"; icon="🛡️"; color="#22c55e"
+				;;
+			*netdata*|*monitoring*)
+				category="monitoring"; icon="📊"; color="#00ab44"
+				;;
+			*network*|*wireguard*|*bandwidth*|*traffic*)
+				category="network"; icon="🌐"; color="#3b82f6"
+				;;
+			*system*|*hub*)
+				category="system"; icon="⚙️"; color="#6366f1"
+				;;
+		esac
+
+		local clean_module=$(echo "$module_id" | sed 's/_/-/g')
+		local is_running=$(check_module_running "$module_id")
+
+		json_add_object ""
+		json_add_string "id" "$module_id"
+		json_add_string "name" "$name"
+		json_add_string "description" "Auto-detected module"
+		json_add_string "category" "$category"
+		json_add_string "icon" "$icon"
+		json_add_string "color" "$color"
+		json_add_string "package" "$package"
+		json_add_string "config" "$clean_module"
+		json_add_string "version" "$version"
+		json_add_boolean "installed" "1"
+		json_add_boolean "running" "$is_running"
+		json_add_boolean "in_uci" "0"
 		json_close_object
 	done
 
@@ -176,10 +243,12 @@ get_modules_by_category() {
 	json_add_array "modules"
 
 	config_load secubox 2>/dev/null || true
+	local processed_modules=""
 
 	# List all module sections from UCI config
 	local module_sections=$(uci -q show secubox | grep "=module$" | cut -d. -f2 | cut -d= -f1)
 
+	# First pass: UCI-defined modules in this category
 	for module in $module_sections; do
 		local mod_category
 		config_get mod_category "$module" category "other"
@@ -198,6 +267,12 @@ get_modules_by_category() {
 			local is_installed=$(check_module_installed "$module")
 			local is_running=$(check_module_running "$module")
 
+			# Get real version from opkg if installed
+			if [ "$is_installed" = "1" ] && [ -n "$package" ]; then
+				local real_version=$(opkg list-installed "$package" 2>/dev/null | awk '{print $3}' | sed 's/-.*$//')
+				[ -n "$real_version" ] && version="$real_version"
+			fi
+
 			json_add_object ""
 			json_add_string "id" "$module"
 			json_add_string "name" "$name"
@@ -205,8 +280,61 @@ get_modules_by_category() {
 			json_add_string "icon" "$icon"
 			json_add_string "color" "$color"
 			json_add_string "version" "$version"
+			json_add_string "package" "$package"
 			json_add_boolean "installed" "$is_installed"
 			json_add_boolean "running" "$is_running"
+			json_add_boolean "in_uci" "1"
+			json_close_object
+
+			processed_modules="$processed_modules $module"
+		fi
+	done
+
+	# Second pass: Auto-detected modules not in UCI
+	detect_real_modules | while IFS=: read module_id package version; do
+		# Skip if already processed from UCI
+		echo "$processed_modules" | grep -q " $module_id " && continue
+
+		# Auto-categorize
+		local mod_category icon color name
+		case "$package" in
+			*crowdsec*|*guardian*|*auth*)
+				mod_category="security"; icon="🛡️"; color="#22c55e"
+				;;
+			*netdata*|*monitoring*)
+				mod_category="monitoring"; icon="📊"; color="#00ab44"
+				;;
+			*network*|*wireguard*|*bandwidth*|*traffic*|*cdn*)
+				mod_category="network"; icon="🌐"; color="#3b82f6"
+				;;
+			*system*|*hub*|*vhost*)
+				mod_category="system"; icon="⚙️"; color="#6366f1"
+				;;
+			*)
+				mod_category="other"; icon="📦"; color="#64748b"
+				;;
+		esac
+
+		# Only include if matches requested category
+		if [ "$mod_category" = "$category" ]; then
+			# Generate nice name from package
+			name=$(echo "$package" | sed 's/^luci-app-//' | sed 's/-dashboard$//' | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
+
+			local is_installed="1"  # Must be installed if detected
+			local is_running=$(check_module_running "$module_id")
+
+			json_add_object ""
+			json_add_string "id" "$module_id"
+			json_add_string "name" "$name"
+			json_add_string "description" "Auto-detected module"
+			json_add_string "icon" "$icon"
+			json_add_string "color" "$color"
+			json_add_string "version" "$version"
+			json_add_string "package" "$package"
+			json_add_string "category" "$mod_category"
+			json_add_boolean "installed" "$is_installed"
+			json_add_boolean "running" "$is_running"
+			json_add_boolean "in_uci" "0"
 			json_close_object
 		fi
 	done

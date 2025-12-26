@@ -88,11 +88,26 @@ var callSaveSettings = rpc.declare({
 	expect: {}
 });
 
+var callGetComponents = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'get_components',
+	expect: { modules: [] }
+});
+
+var callGetComponentsByCategory = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'get_components_by_category',
+	params: ['category'],
+	expect: { modules: [] }
+});
+
 return baseclass.extend({
 	// RPC methods - exposed via ubus
 	getStatus: callStatus,
 	getSystemInfo: callGetSystemInfo,
 	getHealth: callGetHealth,
+	getComponents: callGetComponents,
+	getComponentsByCategory: callGetComponentsByCategory,
 	listServices: callListServices,
 	serviceAction: callServiceAction,
 	getLogs: callGetLogs,

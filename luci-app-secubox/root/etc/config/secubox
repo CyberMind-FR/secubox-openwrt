@@ -1,6 +1,6 @@
 config secubox 'main'
 	option enabled '1'
-	option version '0.1.1'
+	option version '0.1.2'
 	option auto_discovery '1'
 	option notifications '1'
 	option theme 'dark'

@@ -1,157 +1,263 @@
 'use strict';
 'require view';
-'require dom';
 'require ui';
-
-var api = L.require('system-hub.api');
-
-// Stub: Get components (planned feature - returns mock data)
-function getComponents() {
-	return Promise.resolve({
-		components: [
-			{
-				id: 'netdata',
-				name: 'Netdata',
-				description: 'Real-time performance monitoring',
-				status: 'installed',
-				running: true,
-				icon: '📊',
-				color: '#00C851',
-				web_port: 19999
-			},
-			{
-				id: 'crowdsec',
-				name: 'CrowdSec',
-				description: 'Collaborative security engine',
-				status: 'installed',
-				running: true,
-				icon: '🛡️',
-				color: '#0091EA',
-				web_port: null
-			},
-			{
-				id: 'netifyd',
-				name: 'Netifyd',
-				description: 'Deep packet inspection',
-				status: 'planned',
-				roadmap_date: 'Q1 2026'
-			}
-		]
-	});
-}
-
-// Helper: Get component icon
-function getComponentIcon(icon) {
-	return icon || '📦';
-}
-
-// Stub: Manage component (planned feature)
-function manageComponent(id, action) {
-	return Promise.resolve({
-		success: true,
-		message: 'Component ' + id + ' ' + action + ' - Feature coming soon'
-	});
-}
+'require dom';
+'require poll';
+'require system-hub.api as API';
+'require system-hub.theme as Theme';
 
 return view.extend({
+	componentsData: [],
+	currentFilter: 'all',
+
 	load: function() {
-		return getComponents();
+		return Promise.all([
+			API.getComponents(),
+			Theme.getTheme()
+		]);
 	},
 
 	render: function(data) {
-		var components = data.components || [];
-		var self = this;
+		var components = (data[0] && data[0].modules) || [];
+		var theme = data[1];
 
-		var installed = components.filter(function(c) { return c.status === 'installed'; });
-		var planned = components.filter(function(c) { return c.status === 'planned'; });
+		this.componentsData = components;
 
 		var view = E('div', { 'class': 'system-hub-dashboard' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
-			
-			// Installed Components
-			E('div', { 'class': 'sh-card' }, [
-				E('div', { 'class': 'sh-card-header' }, [
-					E('div', { 'class': 'sh-card-title' }, [ E('span', { 'class': 'sh-card-title-icon' }, '🧩'), 'Composants Installés' ]),
-					E('div', { 'class': 'sh-card-badge' }, installed.length + ' actifs')
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/components.css') }),
+
+			// Header with filter tabs
+			E('div', { 'class': 'sh-components-header' }, [
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-title-icon' }, '🧩'),
+					' System Components'
 				]),
-				E('div', { 'class': 'sh-card-body' }, [
-					E('div', { 'class': 'sh-components-grid' }, 
-						installed.map(function(c) { return self.renderComponent(c); })
-					)
-				])
+				this.renderFilterTabs()
 			]),
-			
-			// Planned Components
-			E('div', { 'class': 'sh-card' }, [
-				E('div', { 'class': 'sh-card-header' }, [
-					E('div', { 'class': 'sh-card-title' }, [ E('span', { 'class': 'sh-card-title-icon' }, '🗓️'), 'Roadmap - Composants Planifiés' ])
-				]),
-				E('div', { 'class': 'sh-card-body' }, 
-					planned.map(function(c) { return self.renderRoadmapItem(c); })
-				)
-			])
+
+			// Components grid
+			E('div', { 'class': 'sh-components-grid', 'id': 'components-grid' },
+				this.renderComponentsGrid(components, this.currentFilter)
+			)
 		]);
+
+		// Setup auto-refresh
+		poll.add(L.bind(function() {
+			return API.getComponents().then(L.bind(function(result) {
+				if (result && result.modules) {
+					this.componentsData = result.modules;
+					this.updateComponentsGrid();
+				}
+			}, this));
+		}, this), 30);
 
 		return view;
 	},
 
-	renderComponent: function(c) {
+	renderFilterTabs: function() {
 		var self = this;
-		return E('div', { 'class': 'sh-component-card', 'style': '--component-color: ' + c.color }, [
-			E('div', { 'class': 'sh-component-header' }, [
+		var tabs = [
+			{ id: 'all', label: 'All Components', icon: '📦' },
+			{ id: 'security', label: 'Security', icon: '🛡️' },
+			{ id: 'monitoring', label: 'Monitoring', icon: '📊' },
+			{ id: 'network', label: 'Network', icon: '🌐' },
+			{ id: 'system', label: 'System', icon: '⚙️' }
+		];
+
+		return E('div', { 'class': 'sh-filter-tabs' },
+			tabs.map(function(tab) {
+				return E('button', {
+					'class': 'sh-filter-tab' + (self.currentFilter === tab.id ? ' active' : ''),
+					'click': function(ev) {
+						self.handleFilterChange(tab.id, ev.target);
+					}
+				}, [
+					E('span', { 'class': 'sh-tab-icon' }, tab.icon),
+					E('span', { 'class': 'sh-tab-label' }, tab.label)
+				]);
+			})
+		);
+	},
+
+	handleFilterChange: function(filterId, targetElement) {
+		this.currentFilter = filterId;
+
+		// Update active tab
+		var tabs = document.querySelectorAll('.sh-filter-tab');
+		tabs.forEach(function(tab) {
+			tab.classList.remove('active');
+		});
+		targetElement.closest('.sh-filter-tab').classList.add('active');
+
+		// Update grid
+		this.updateComponentsGrid();
+	},
+
+	renderComponentsGrid: function(components, filter) {
+		var filtered = filter === 'all'
+			? components
+			: components.filter(function(c) { return c.category === filter; });
+
+		if (filtered.length === 0) {
+			return E('div', { 'class': 'sh-empty-state' }, [
+				E('div', { 'class': 'sh-empty-icon' }, '📦'),
+				E('div', { 'class': 'sh-empty-text' },
+					filter === 'all'
+						? 'No components found'
+						: 'No ' + filter + ' components found')
+			]);
+		}
+
+		return filtered.map(L.bind(this.renderComponentCard, this));
+	},
+
+	renderComponentCard: function(component) {
+		var self = this;
+		var isRunning = component.running;
+		var isInstalled = component.installed;
+		var statusClass = isRunning ? 'running' : (isInstalled ? 'stopped' : 'not-installed');
+
+		return E('div', {
+			'class': 'sh-component-card sh-component-' + statusClass,
+			'style': 'border-left: 4px solid ' + (component.color || '#64748b')
+		}, [
+			E('div', { 'class': 'sh-component-card-header' }, [
+				E('div', { 'class': 'sh-component-icon' }, component.icon || '📦'),
 				E('div', { 'class': 'sh-component-info' }, [
-					E('div', { 'class': 'sh-component-icon' }, getComponentIcon(c.icon)),
-					E('div', {}, [
-						E('div', { 'class': 'sh-component-name' }, c.name),
-						E('div', { 'class': 'sh-component-desc' }, c.description)
+					E('h3', { 'class': 'sh-component-name' }, component.name || component.id),
+					E('div', { 'class': 'sh-component-meta' }, [
+						E('span', { 'class': 'sh-component-version' },
+							'v' + (component.version || '0.0.9')),
+						E('span', { 'class': 'sh-component-category' },
+							component.category || 'other')
 					])
 				]),
-				E('div', { 'class': 'sh-component-status ' + (c.running ? 'running' : 'stopped') }, 
-					c.running ? 'Running' : 'Stopped')
+				E('div', {
+					'class': 'sh-status-indicator sh-status-' + statusClass,
+					'title': isRunning ? 'Running' : (isInstalled ? 'Stopped' : 'Not Installed')
+				})
 			]),
-			E('div', { 'class': 'sh-component-actions' }, [
-				E('div', { 
-					'class': 'sh-component-action',
-					'click': function() { self.manageComponent(c.id, c.running ? 'stop' : 'start'); }
-				}, c.running ? '⏹️ Stop' : '▶️ Start'),
-				E('div', { 
-					'class': 'sh-component-action',
-					'click': function() { self.manageComponent(c.id, 'restart'); }
-				}, '🔄 Restart'),
-				E('div', { 
-					'class': 'sh-component-action',
-					'click': function() { window.location.href = c.web_port ? 'http://' + window.location.hostname + ':' + c.web_port : '#'; }
-				}, '📊 Open')
-			])
+
+			E('div', { 'class': 'sh-component-card-body' }, [
+				E('p', { 'class': 'sh-component-description' },
+					component.description || 'System component')
+			]),
+
+			E('div', { 'class': 'sh-component-card-actions' },
+				this.renderComponentActions(component)
+			)
 		]);
 	},
 
-	renderRoadmapItem: function(c) {
-		return E('div', { 'class': 'sh-roadmap-item' }, [
-			E('div', { 'class': 'sh-roadmap-icon' }, getComponentIcon(c.icon)),
-			E('div', { 'class': 'sh-roadmap-info' }, [
-				E('div', { 'class': 'sh-roadmap-name' }, c.name),
-				E('div', { 'class': 'sh-roadmap-desc' }, c.description)
-			]),
-			E('div', { 'class': 'sh-roadmap-date' }, c.roadmap_date || 'TBD')
-		]);
+	renderComponentActions: function(component) {
+		var self = this;
+		var actions = [];
+
+		if (component.installed) {
+			if (component.running) {
+				// Stop button
+				actions.push(
+					E('button', {
+						'class': 'sh-action-btn sh-btn-danger',
+						'click': function() { self.handleComponentAction(component.id, 'stop'); }
+					}, [
+						E('span', {}, '⏹️'),
+						' Stop'
+					])
+				);
+
+				// Restart button
+				actions.push(
+					E('button', {
+						'class': 'sh-action-btn sh-btn-warning',
+						'click': function() { self.handleComponentAction(component.id, 'restart'); }
+					}, [
+						E('span', {}, '🔄'),
+						' Restart'
+					])
+				);
+
+				// Dashboard button (if has dashboard)
+				if (component.package && component.package.includes('dashboard')) {
+					var dashboardUrl = '/cgi-bin/luci/admin/secubox/' + component.category + '/' + component.id;
+					actions.push(
+						E('a', {
+							'class': 'sh-action-btn sh-btn-primary',
+							'href': dashboardUrl
+						}, [
+							E('span', {}, '📊'),
+							' Dashboard'
+						])
+					);
+				}
+			} else {
+				// Start button
+				actions.push(
+					E('button', {
+						'class': 'sh-action-btn sh-btn-success',
+						'click': function() { self.handleComponentAction(component.id, 'start'); }
+					}, [
+						E('span', {}, '▶️'),
+						' Start'
+					])
+				);
+			}
+		} else {
+			// Install button
+			actions.push(
+				E('button', {
+					'class': 'sh-action-btn sh-btn-secondary',
+					'disabled': 'disabled',
+					'title': 'Manual installation required'
+				}, [
+					E('span', {}, '📥'),
+					' Not Installed'
+				])
+			);
+		}
+
+		return actions;
 	},
 
-	manageComponent: function(id, action) {
-		ui.showModal(_('Gestion Composant'), [
-			E('p', {}, 'Action: ' + action + ' sur ' + id + '...'),
+	handleComponentAction: function(componentId, action) {
+		var self = this;
+
+		ui.showModal(_('Component Action'), [
+			E('p', {}, 'Performing ' + action + ' on ' + componentId + '...'),
 			E('div', { 'class': 'spinning' })
 		]);
 
-		manageComponent(id, action).then(function(result) {
+		// Call service action via system-hub API
+		API.serviceAction(componentId, action).then(function(result) {
 			ui.hideModal();
-			if (result.success) {
-				ui.addNotification(null, E('p', {}, '✅ ' + result.message), 'success');
-				window.location.reload();
+
+			if (result && result.success) {
+				ui.addNotification(null,
+					E('p', {}, '✅ ' + componentId + ' ' + action + ' successful'),
+					'success');
+
+				// Refresh components
+				setTimeout(function() {
+					self.updateComponentsGrid();
+				}, 2000);
 			} else {
-				ui.addNotification(null, E('p', {}, '❌ ' + (result.error || 'Erreur')), 'error');
+				ui.addNotification(null,
+					E('p', {}, '❌ Failed to ' + action + ' ' + componentId),
+					'error');
 			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null,
+				E('p', {}, '❌ Error: ' + (err.message || err)),
+				'error');
 		});
+	},
+
+	updateComponentsGrid: function() {
+		var grid = document.getElementById('components-grid');
+		if (grid) {
+			dom.content(grid, this.renderComponentsGrid(this.componentsData, this.currentFilter));
+		}
 	},
 
 	handleSaveApply: null,
