@@ -4,7 +4,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-ksm-manager
-PKG_VERSION:=1.0.0
+PKG_VERSION:=0.0.9
 PKG_RELEASE:=1
 
 LUCI_TITLE:=LuCI support for Key Storage Manager
@@ -13,7 +13,7 @@ LUCI_DESCRIPTION:=Centralized cryptographic key management with hardware securit
 	Provides secure key storage, certificate management, SSH key handling, and secret storage with audit logging.
 LUCI_PKGARCH:=all
 
-PKG_MAINTAINER:=SecuBox Project <secubox@example.com>
+PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_LICENSE:=Apache-2.0
 
 include $(TOPDIR)/feeds/luci/luci.mk

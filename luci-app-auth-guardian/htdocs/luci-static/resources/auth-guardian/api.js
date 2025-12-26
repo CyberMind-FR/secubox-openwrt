@@ -1,4 +1,5 @@
 'use strict';
+'require baseclass';
 'require rpc';
 
 // Status and overview
@@ -79,7 +80,7 @@ var callGetLogs = rpc.declare({
 	expect: { logs: [] }
 });
 
-return {
+return baseclass.extend({
 	getStatus: callStatus,
 	listProviders: callListProviders,
 	setProvider: callSetProvider,
@@ -91,4 +92,4 @@ return {
 	listSessions: callListSessions,
 	revokeSession: callRevokeSession,
 	getLogs: callGetLogs
-};
+});

@@ -1,4 +1,5 @@
 'use strict';
+'require baseclass';
 'require rpc';
 
 var callStatus = rpc.declare({
@@ -79,7 +80,7 @@ var callGetClasses = rpc.declare({
 	expect: { classes: [] }
 });
 
-return {
+return baseclass.extend({
 	getStatus: callStatus,
 	listRules: callListRules,
 	addRule: callAddRule,
@@ -92,4 +93,4 @@ return {
 	getUsageHistory: callGetUsageHistory,
 	getMedia: callGetMedia,
 	getClasses: callGetClasses
-};
+});

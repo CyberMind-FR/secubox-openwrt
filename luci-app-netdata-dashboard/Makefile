@@ -8,11 +8,11 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-netdata-dashboard
-PKG_VERSION:=1.0.0
+PKG_VERSION:=0.0.9
 PKG_RELEASE:=1
 
 PKG_LICENSE:=Apache-2.0
-PKG_MAINTAINER:=Gandalf <contact@cybermind.fr>
+PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
 LUCI_TITLE:=LuCI Netdata Dashboard
 LUCI_DESCRIPTION:=Real-time system monitoring dashboard with Netdata integration for OpenWrt

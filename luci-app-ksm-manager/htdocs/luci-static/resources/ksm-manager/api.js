@@ -1,4 +1,5 @@
 'use strict';
+'require baseclass';
 'require rpc';
 'require uci';
 
@@ -155,7 +156,7 @@ var callGetAuditLogs = rpc.declare({
 	expect: { logs: [] }
 });
 
-return {
+return baseclass.extend({
 	/**
 	 * Get KSM service status
 	 * @returns {Promise<Object>} Status object with running, keystore_unlocked, keys_count, hsm_connected
@@ -442,4 +443,4 @@ return {
 			return timestamp;
 		}
 	}
-};
+});

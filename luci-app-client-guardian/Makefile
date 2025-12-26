@@ -8,11 +8,11 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-client-guardian
-PKG_VERSION:=1.0.0
+PKG_VERSION:=0.0.9
 PKG_RELEASE:=1
 
 PKG_LICENSE:=Apache-2.0
-PKG_MAINTAINER:=Gandalf <contact@cybermind.fr>
+PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
 LUCI_TITLE:=LuCI Client Guardian Dashboard
 LUCI_DESCRIPTION:=Network Access Control with client monitoring, zone management, captive portal, parental controls, and SMS/email alerts

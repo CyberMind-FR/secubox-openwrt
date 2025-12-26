@@ -1,4 +1,5 @@
 'use strict';
+'require baseclass';
 'require rpc';
 
 var callStatus = rpc.declare({
@@ -52,7 +53,7 @@ var callListAlerts = rpc.declare({
 	expect: { alerts: [] }
 });
 
-return {
+return baseclass.extend({
 	getStatus: callStatus,
 	getActiveStreams: callGetActiveStreams,
 	getStreamHistory: callGetStreamHistory,
@@ -61,4 +62,4 @@ return {
 	getServiceDetails: callGetServiceDetails,
 	setAlert: callSetAlert,
 	listAlerts: callListAlerts
-};
+});

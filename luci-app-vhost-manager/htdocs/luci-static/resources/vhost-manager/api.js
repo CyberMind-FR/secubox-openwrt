@@ -1,4 +1,5 @@
 'use strict';
+'require baseclass';
 'require rpc';
 
 var callStatus = rpc.declare({
@@ -74,7 +75,7 @@ var callGetAccessLogs = rpc.declare({
 	expect: { logs: [] }
 });
 
-return {
+return baseclass.extend({
 	getStatus: callStatus,
 	listVHosts: callListVHosts,
 	getVHost: callGetVHost,
@@ -86,4 +87,4 @@ return {
 	listCerts: callListCerts,
 	reloadNginx: callReloadNginx,
 	getAccessLogs: callGetAccessLogs
-};
+});

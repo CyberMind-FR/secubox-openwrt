@@ -1,4 +1,5 @@
 'use strict';
+'require baseclass';
 'require rpc';
 
 /**
@@ -78,7 +79,7 @@ var callListPresets = rpc.declare({
 	expect: { presets: [] }
 });
 
-return L.Class.extend({
+return baseclass.extend({
 	getStatus: function() {
 		return L.resolveDefault(callStatus(), {});
 	},
