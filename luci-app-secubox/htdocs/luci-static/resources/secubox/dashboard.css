@@ -1,0 +1,407 @@
+/* SecuBox Dashboard Styles */
+
+.secubox-dashboard {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+.secubox-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    color: white;
+}
+
+.secubox-header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.secubox-header h2 {
+    margin: 0 0 4px 0;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.secubox-subtitle {
+    margin: 0;
+    opacity: 0.9;
+    font-size: 14px;
+}
+
+.secubox-header-info {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.secubox-badge {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.secubox-badge-version {
+    background: rgba(255, 255, 255, 0.3);
+    font-weight: 600;
+}
+
+/* Stats Grid */
+.secubox-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.secubox-stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.secubox-stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.secubox-stat-icon {
+    font-size: 32px;
+    line-height: 1;
+}
+
+.secubox-stat-content {
+    flex: 1;
+}
+
+.secubox-stat-value {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.secubox-stat-label {
+    font-size: 13px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Main Grid Layout */
+.secubox-main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+@media (max-width: 1024px) {
+    .secubox-main-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.secubox-column-left,
+.secubox-column-right {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* Card */
+.secubox-card {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.secubox-card-title {
+    margin: 0 0 20px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1e293b;
+    border-bottom: 2px solid #f1f5f9;
+    padding-bottom: 12px;
+}
+
+/* Progress Bars */
+.secubox-health-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.secubox-progress-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.secubox-progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.secubox-progress-label {
+    font-weight: 600;
+    color: #1e293b;
+    font-size: 14px;
+}
+
+.secubox-progress-value {
+    font-weight: 700;
+    font-size: 16px;
+}
+
+.secubox-progress-bar {
+    height: 8px;
+    background: #f1f5f9;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.secubox-progress-fill {
+    height: 100%;
+    transition: width 0.6s ease, background 0.3s ease;
+    border-radius: 4px;
+}
+
+.secubox-progress-details {
+    font-size: 12px;
+    color: #64748b;
+}
+
+/* Active Modules */
+.secubox-modules-mini-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.secubox-module-link {
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.2s;
+    display: block;
+}
+
+.secubox-module-link:hover {
+    transform: translateY(-2px);
+}
+
+.secubox-module-mini-card {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 12px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.secubox-module-link:hover .secubox-module-mini-card {
+    background: #f1f5f9;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.secubox-module-mini-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.secubox-module-mini-icon {
+    font-size: 24px;
+}
+
+.secubox-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.secubox-status-dot.secubox-status-running {
+    background: #22c55e;
+    box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+    animation: pulse 2s infinite;
+}
+
+.secubox-status-dot.secubox-status-stopped {
+    background: #94a3b8;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.secubox-module-mini-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.secubox-module-mini-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: #1e293b;
+    line-height: 1.3;
+}
+
+.secubox-module-mini-status {
+    font-size: 11px;
+    color: #64748b;
+}
+
+.secubox-module-running .secubox-module-mini-status {
+    color: #22c55e;
+}
+
+/* Quick Actions */
+.secubox-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+}
+
+.secubox-action-btn {
+    background: white;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.secubox-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: currentColor;
+}
+
+.secubox-action-icon {
+    font-size: 24px;
+}
+
+.secubox-action-label {
+    color: #1e293b;
+}
+
+/* Alerts */
+.secubox-alerts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.secubox-alert {
+    padding: 12px 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.secubox-alert-success {
+    background: #f0fdf4;
+    border-left: 4px solid #22c55e;
+    color: #166534;
+}
+
+.secubox-alert-info {
+    background: #eff6ff;
+    border-left: 4px solid #3b82f6;
+    color: #1e40af;
+}
+
+.secubox-alert-warning {
+    background: #fffbeb;
+    border-left: 4px solid #f59e0b;
+    color: #92400e;
+}
+
+.secubox-alert-error {
+    background: #fef2f2;
+    border-left: 4px solid #ef4444;
+    color: #991b1b;
+}
+
+.secubox-alert-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.secubox-alert-content {
+    flex: 1;
+}
+
+.secubox-view-all {
+    display: inline-block;
+    margin-top: 12px;
+    color: #6366f1;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.secubox-view-all:hover {
+    color: #4f46e5;
+    text-decoration: underline;
+}
+
+/* Empty State */
+.secubox-empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #94a3b8;
+    font-size: 14px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.secubox-stat-card,
+.secubox-card {
+    animation: fadeIn 0.5s ease-out;
+}
+
+.secubox-stat-card:nth-child(1) { animation-delay: 0.1s; }
+.secubox-stat-card:nth-child(2) { animation-delay: 0.2s; }
+.secubox-stat-card:nth-child(3) { animation-delay: 0.3s; }
+.secubox-stat-card:nth-child(4) { animation-delay: 0.4s; }
