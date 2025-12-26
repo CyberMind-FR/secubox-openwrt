@@ -25,17 +25,27 @@ detect_modules() {
 
 MODULES=$(detect_modules)
 
-# Check if a module is installed
+# Cache opkg list to avoid multiple calls
+OPKG_LIST=""
+
+get_opkg_list() {
+	if [ -z "$OPKG_LIST" ]; then
+		OPKG_LIST=$(opkg list-installed 2>/dev/null)
+	fi
+	echo "$OPKG_LIST"
+}
+
+# Check if a module is installed (optimized)
 check_module_installed() {
 	local module="$1"
 	local package config
-	
+
 	config_load secubox
 	config_get package "$module" package ""
 	config_get config "$module" config ""
-	
-	# Check if package is installed via opkg
-	if opkg list-installed | grep -q "^${package} "; then
+
+	# Check if package is installed via opkg (use cached list)
+	if echo "$(get_opkg_list)" | grep -q "^${package} "; then
 		echo "1"
 	# Or check if config file exists
 	elif [ -f "/etc/config/${config}" ]; then
@@ -575,15 +585,16 @@ quick_action() {
 	json_dump
 }
 
-# Get all dashboard data in one call
+# Get all dashboard data in one call (optimized)
 get_dashboard_data() {
 	json_init
 
-	# Get status info
+	# Get status info (cached reads)
 	local uptime=$(cat /proc/uptime | cut -d. -f1)
 	local load=$(cat /proc/loadavg | cut -d' ' -f1-3)
-	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-	local mem_free=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+	local mem_info=$(grep -E "MemTotal|MemAvailable" /proc/meminfo)
+	local mem_total=$(echo "$mem_info" | grep MemTotal | awk '{print $2}')
+	local mem_free=$(echo "$mem_info" | grep MemAvailable | awk '{print $2}')
 	local mem_used=$((mem_total - mem_free))
 	local mem_pct=$((mem_used * 100 / mem_total))
 
@@ -597,9 +608,14 @@ get_dashboard_data() {
 	json_add_int "memory_percent" "$mem_pct"
 	json_close_object
 
-	# Get modules list
-	json_add_array "modules"
+	# Pre-load config once
 	config_load secubox
+
+	# Cache module status checks
+	local total=0 installed=0 running=0
+
+	# Get modules list (optimized - single loop)
+	json_add_array "modules"
 	for module in $MODULES; do
 		local name desc category icon color
 		config_get name "$module" name "$module"
@@ -609,7 +625,16 @@ get_dashboard_data() {
 		config_get color "$module" color "#64748b"
 
 		local is_installed=$(check_module_installed "$module")
-		local is_running=$(check_module_running "$module")
+		local is_running="0"
+
+		# Only check running status if installed
+		if [ "$is_installed" = "1" ]; then
+			is_running=$(check_module_running "$module")
+			installed=$((installed + 1))
+			[ "$is_running" = "1" ] && running=$((running + 1))
+		fi
+
+		total=$((total + 1))
 
 		json_add_object ""
 		json_add_string "id" "$module"
@@ -624,23 +649,15 @@ get_dashboard_data() {
 	done
 	json_close_array
 
-	# Count installed and running modules
-	local total=0 installed=0 running=0
-	for module in $MODULES; do
-		total=$((total + 1))
-		[ "$(check_module_installed "$module")" = "1" ] && installed=$((installed + 1))
-		[ "$(check_module_running "$module")" = "1" ] && running=$((running + 1))
-	done
-
 	json_add_object "counts"
 	json_add_int "total" "$total"
 	json_add_int "installed" "$installed"
 	json_add_int "running" "$running"
 	json_close_object
 
-	# Get system health
+	# Get system health (minimal computation)
 	local cpu_cores=$(grep -c processor /proc/cpuinfo)
-	local load_val=$(cat /proc/loadavg | cut -d' ' -f1)
+	local load_val=$(echo "$load" | cut -d' ' -f1)
 	local cpu_pct=$(awk "BEGIN {printf \"%.0f\", ($load_val / $cpu_cores) * 100}")
 	local disk_pct=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
 
@@ -650,24 +667,8 @@ get_dashboard_data() {
 	json_add_int "disk_percent" "$disk_pct"
 	json_close_object
 
-	# Get recent alerts (simplified)
+	# Alerts - empty by default (fetched separately if needed)
 	json_add_array "alerts"
-	for module in $MODULES; do
-		local is_installed=$(check_module_installed "$module")
-		local is_running=$(check_module_running "$module")
-
-		if [ "$is_installed" = "1" ] && [ "$is_running" != "1" ]; then
-			config_load secubox
-			local name
-			config_get name "$module" name "$module"
-
-			json_add_object ""
-			json_add_string "module" "$module"
-			json_add_string "message" "$name is not running"
-			json_add_string "severity" "warning"
-			json_close_object
-		fi
-	done
 	json_close_array
 
 	json_add_int "timestamp" "$(date +%s)"
