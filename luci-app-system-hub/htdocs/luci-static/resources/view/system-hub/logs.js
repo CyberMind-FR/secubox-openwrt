@@ -181,19 +181,64 @@ return view.extend({
 		if (!container) return;
 
 		var filtered = this.getFilteredLogs();
-		var logsText = filtered.length > 0 ? filtered.join('\n') : 'No logs available';
 
-		dom.content(container, [
-			E('pre', {
-				'style': 'background: var(--sh-bg-tertiary); color: var(--sh-text-primary); padding: 20px; overflow: auto; max-height: 600px; font-size: 12px; font-family: "Courier New", monospace; border-radius: 0; margin: 0; line-height: 1.5;'
-			}, logsText)
-		]);
+		if (filtered.length === 0) {
+			dom.content(container, [
+				E('div', {
+					'style': 'padding: 60px 20px; text-align: center; color: var(--sh-text-secondary);'
+				}, [
+					E('div', { 'style': 'font-size: 48px; margin-bottom: 16px;' }, '📋'),
+					E('div', { 'style': 'font-size: 16px; font-weight: 500;' }, 'No logs available'),
+					E('div', { 'style': 'font-size: 14px; margin-top: 8px;' },
+						this.searchQuery ? 'Try a different search query' : 'System logs will appear here')
+				])
+			]);
+		} else {
+			// Render colored log lines
+			var logLines = filtered.map(function(line) {
+				return this.renderLogLine(line);
+			}.bind(this));
+
+			dom.content(container, [
+				E('div', {
+					'style': 'background: var(--sh-bg-tertiary); padding: 20px; overflow: auto; max-height: 600px; font-size: 12px; font-family: "JetBrains Mono", "Courier New", monospace; line-height: 1.6;'
+				}, logLines)
+			]);
+		}
 
 		// Update badge
 		var badge = document.querySelector('.sh-card-badge');
 		if (badge) {
 			badge.textContent = filtered.length + ' lines';
 		}
+	},
+
+	renderLogLine: function(line) {
+		var lineLower = line.toLowerCase();
+		var color = 'var(--sh-text-primary)';
+		var bgColor = 'transparent';
+
+		// Detect log level and apply color
+		if (lineLower.includes('error') || lineLower.includes('err') || lineLower.includes('fatal') || lineLower.includes('crit')) {
+			color = '#ef4444'; // Red for errors
+			bgColor = 'rgba(239, 68, 68, 0.1)';
+		} else if (lineLower.includes('warn') || lineLower.includes('warning')) {
+			color = '#f59e0b'; // Orange for warnings
+			bgColor = 'rgba(245, 158, 11, 0.1)';
+		} else if (lineLower.includes('info') || lineLower.includes('notice')) {
+			color = '#3b82f6'; // Blue for info
+			bgColor = 'rgba(59, 130, 246, 0.1)';
+		} else if (lineLower.includes('debug')) {
+			color = '#8b5cf6'; // Purple for debug
+			bgColor = 'rgba(139, 92, 246, 0.1)';
+		} else if (lineLower.includes('success') || lineLower.includes('ok')) {
+			color = '#22c55e'; // Green for success
+			bgColor = 'rgba(34, 197, 94, 0.1)';
+		}
+
+		return E('div', {
+			'style': 'padding: 4px 8px; margin: 0; color: ' + color + '; background: ' + bgColor + '; border-left: 3px solid ' + color + '; margin-bottom: 2px; border-radius: 2px;'
+		}, line);
 	},
 
 	getFilteredLogs: function() {

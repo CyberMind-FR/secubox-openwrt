@@ -388,20 +388,28 @@ get_logs() {
 	json_get_var filter filter ""
 	json_cleanup
 
+	# Get logs into a temporary file to avoid subshell issues
+	local tmpfile="/tmp/syslog-$$"
+
+	if [ -n "$filter" ]; then
+		logread | tail -n "$lines" | grep -i "$filter" > "$tmpfile"
+	else
+		logread | tail -n "$lines" > "$tmpfile"
+	fi
+
 	json_init
 	json_add_array "logs"
 
-	if [ -n "$filter" ]; then
-		logread | tail -n "$lines" | grep -i "$filter" | while IFS= read -r line; do
-			json_add_string "" "$line"
-		done
-	else
-		logread | tail -n "$lines" | while IFS= read -r line; do
-			json_add_string "" "$line"
-		done
-	fi
+	# Read from file line by line
+	while IFS= read -r line; do
+		json_add_string "" "$line"
+	done < "$tmpfile"
 
 	json_close_array
+
+	# Cleanup
+	rm -f "$tmpfile"
+
 	json_dump
 }
 
