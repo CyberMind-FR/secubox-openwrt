@@ -13,8 +13,15 @@
                     "get_system_health",
                     "get_alerts",
                     "get_dashboard_data"
+                ],
+                "uci": [
+                    "get",
+                    "state"
                 ]
-            }
+            },
+            "uci": [
+                "secubox"
+            ]
         },
         "write": {
             "ubus": {
@@ -23,8 +30,17 @@
                     "stop_module",
                     "restart_module",
                     "quick_action"
+                ],
+                "uci": [
+                    "set",
+                    "delete",
+                    "commit",
+                    "apply"
                 ]
-            }
+            },
+            "uci": [
+                "secubox"
+            ]
         }
     }
 }
