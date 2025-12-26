@@ -26,7 +26,7 @@
 
 /* Chart Card */
 .secubox-chart-card {
-    background: white;
+    background: var(--sb-bg-card);
     border-radius: 12px;
     padding: 24px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -42,7 +42,7 @@
     margin: 0 0 16px 0;
     font-size: 16px;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--sb-text);
 }
 
 .secubox-chart-container {
@@ -50,7 +50,7 @@
     height: 200px;
     position: relative;
     margin-bottom: 16px;
-    background: #f8fafc;
+    background: var(--sb-bg);
     border-radius: 8px;
     overflow: hidden;
 }
@@ -76,7 +76,7 @@
 
 .secubox-chart-unit {
     font-size: 12px;
-    color: #64748b;
+    color: var(--sb-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -93,7 +93,7 @@
     align-items: center;
     gap: 16px;
     padding: 16px;
-    background: #f8fafc;
+    background: var(--sb-bg);
     border-radius: 8px;
     transition: background 0.2s;
 }
@@ -113,14 +113,14 @@
 
 .secubox-stat-label {
     font-size: 13px;
-    color: #64748b;
+    color: var(--sb-text-muted);
     margin-bottom: 4px;
 }
 
 .secubox-stat-value {
     font-size: 20px;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--sb-text);
 }
 
 /* Animations */

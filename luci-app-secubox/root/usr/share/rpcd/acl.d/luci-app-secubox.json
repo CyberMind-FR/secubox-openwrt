@@ -12,7 +12,8 @@
                     "diagnostics",
                     "get_system_health",
                     "get_alerts",
-                    "get_dashboard_data"
+                    "get_dashboard_data",
+                    "get_theme"
                 ],
                 "uci": [
                     "get",

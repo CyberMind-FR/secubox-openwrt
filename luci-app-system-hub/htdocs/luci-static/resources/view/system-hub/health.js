@@ -2,8 +2,18 @@
 'require view';
 'require dom';
 'require ui';
+'require system-hub/api as API';
+'require system-hub/theme as Theme';
 
-var api = L.require('system-hub.api');
+// Load CSS
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('system-hub/dashboard.css')
+}));
+
+// Initialize theme
+Theme.init();
 
 // Helper: Get health status info based on score
 function getHealthStatus(score) {
@@ -24,7 +34,7 @@ function formatBytes(bytes) {
 
 return view.extend({
 	load: function() {
-		return api.getHealth();
+		return API.getHealth();
 	},
 
 	render: function(data) {

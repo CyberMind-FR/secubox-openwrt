@@ -1,6 +1,10 @@
 'use strict';
 'require view';
 'require rpc';
+'require secubox/theme as Theme';
+
+// Initialize theme
+Theme.init();
 
 var callModules = rpc.declare({
 	object: 'luci.secubox',

@@ -4,6 +4,10 @@
 'require uci';
 'require ui';
 'require secubox/api as API';
+'require secubox/theme as Theme';
+
+// Initialize theme
+Theme.init();
 
 return view.extend({
 	load: function() {

@@ -2,6 +2,17 @@
 'require view';
 'require poll';
 'require system-hub/api as API';
+'require system-hub/theme as Theme';
+
+// Load CSS
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('system-hub/dashboard.css')
+}));
+
+// Initialize theme
+Theme.init();
 
 return L.view.extend({
 	load: function() {
@@ -68,27 +79,22 @@ return L.view.extend({
 		var gaugesContainer = E('div', { 'style': 'display: flex; justify-content: space-around; flex-wrap: wrap; margin: 20px 0;' });
 
 		// CPU Load Gauge
-		var cpuLoad = parseFloat(health.load ? health.load['1min'] : status.health ? status.health.cpu_load : '0');
-		var cpuPercent = Math.min((cpuLoad * 100 / (health.cpu ? health.cpu.cores : 1)), 100);
+		var cpuLoad = parseFloat(health.cpu ? health.cpu.load_1m : '0');
+		var cpuPercent = health.cpu ? health.cpu.usage : 0;
 		gaugesContainer.appendChild(this.createGauge('CPU Load', cpuPercent, cpuLoad.toFixed(2)));
 
 		// Memory Gauge
-		var memPercent = health.memory ? health.memory.percent : (status.health ? status.health.mem_percent : 0);
+		var memPercent = health.memory ? health.memory.usage : 0;
 		var memUsed = health.memory ? (health.memory.used_kb / 1024).toFixed(0) : 0;
 		var memTotal = health.memory ? (health.memory.total_kb / 1024).toFixed(0) : 0;
 		gaugesContainer.appendChild(this.createGauge('Memory', memPercent, memUsed + ' / ' + memTotal + ' MB'));
 
 		// Disk Gauge
-		var diskPercent = status.disk_percent || 0;
-		var diskInfo = '';
-		if (health.storage && health.storage.length > 0) {
-			var root = health.storage.find(function(s) { return s.mountpoint === '/'; });
-			if (root) {
-				diskPercent = root.percent;
-				diskInfo = root.used + ' / ' + root.size;
-			}
-		}
-		gaugesContainer.appendChild(this.createGauge('Disk Usage', diskPercent, diskInfo || diskPercent + '%'));
+		var diskPercent = health.disk ? health.disk.usage : 0;
+		var diskUsed = health.disk ? (health.disk.used_kb / 1024).toFixed(0) : 0;
+		var diskTotal = health.disk ? (health.disk.total_kb / 1024).toFixed(0) : 0;
+		var diskInfo = diskUsed + ' / ' + diskTotal + ' MB';
+		gaugesContainer.appendChild(this.createGauge('Disk Usage', diskPercent, diskInfo));
 
 		healthSection.appendChild(gaugesContainer);
 		v.appendChild(healthSection);
@@ -100,18 +106,18 @@ return L.view.extend({
 				E('div', { 'class': 'table' }, [
 					E('div', { 'class': 'tr' }, [
 						E('div', { 'class': 'td left', 'width': '50%' }, [
-							E('strong', {}, _('Model: ')),
-							E('span', {}, health.cpu.model)
-						]),
-						E('div', { 'class': 'td left', 'width': '50%' }, [
 							E('strong', {}, _('Cores: ')),
 							E('span', {}, String(health.cpu.cores))
+						]),
+						E('div', { 'class': 'td left', 'width': '50%' }, [
+							E('strong', {}, _('Usage: ')),
+							E('span', {}, health.cpu.usage + '%')
 						])
 					]),
 					E('div', { 'class': 'tr' }, [
 						E('div', { 'class': 'td left' }, [
 							E('strong', {}, _('Load Average: ')),
-							E('span', {}, (health.load ? health.load['1min'] + ' / ' + health.load['5min'] + ' / ' + health.load['15min'] : 'N/A'))
+							E('span', {}, (health.cpu.load_1m + ' / ' + health.cpu.load_5m + ' / ' + health.cpu.load_15m))
 						])
 					])
 				])
@@ -120,71 +126,54 @@ return L.view.extend({
 		}
 
 		// Temperature
-		if (health.temperatures && health.temperatures.length > 0) {
+		if (health.temperature && health.temperature.value > 0) {
+			var tempValue = health.temperature.value;
+			var tempColor = tempValue > 80 ? 'red' : (tempValue > 60 ? 'orange' : 'green');
 			var tempSection = E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Temperature'))
-			]);
-
-			var tempTable = E('table', { 'class': 'table' }, [
-				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, _('Zone')),
-					E('th', { 'class': 'th' }, _('Temperature'))
+				E('h3', {}, _('Temperature')),
+				E('div', { 'class': 'table' }, [
+					E('div', { 'class': 'tr' }, [
+						E('div', { 'class': 'td left' }, [
+							E('strong', {}, _('System Temperature: ')),
+							E('span', { 'style': 'color: ' + tempColor + '; font-weight: bold;' }, tempValue + '°C')
+						])
+					])
 				])
 			]);
-
-			health.temperatures.forEach(function(temp) {
-				var color = temp.celsius > 80 ? 'red' : (temp.celsius > 60 ? 'orange' : 'green');
-				tempTable.appendChild(E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td' }, temp.zone),
-					E('td', { 'class': 'td' }, [
-						E('span', { 'style': 'color: ' + color + '; font-weight: bold;' }, temp.celsius + '°C')
-					])
-				]));
-			});
-
-			tempSection.appendChild(tempTable);
 			v.appendChild(tempSection);
 		}
 
-		// Storage
-		if (health.storage && health.storage.length > 0) {
+		// Storage (Root Filesystem)
+		if (health.disk) {
+			var diskColor = health.disk.usage > 90 ? 'red' : (health.disk.usage > 75 ? 'orange' : 'green');
 			var storageSection = E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Storage'))
-			]);
-
-			var storageTable = E('table', { 'class': 'table' }, [
-				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, _('Mountpoint')),
-					E('th', { 'class': 'th' }, _('Filesystem')),
-					E('th', { 'class': 'th' }, _('Size')),
-					E('th', { 'class': 'th' }, _('Used')),
-					E('th', { 'class': 'th' }, _('Available')),
-					E('th', { 'class': 'th' }, _('Use %'))
-				])
-			]);
-
-			health.storage.forEach(function(storage) {
-				var color = storage.percent > 90 ? 'red' : (storage.percent > 75 ? 'orange' : 'green');
-				storageTable.appendChild(E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td' }, E('strong', {}, storage.mountpoint)),
-					E('td', { 'class': 'td' }, E('code', {}, storage.filesystem)),
-					E('td', { 'class': 'td' }, storage.size),
-					E('td', { 'class': 'td' }, storage.used),
-					E('td', { 'class': 'td' }, storage.available),
-					E('td', { 'class': 'td' }, [
-						E('div', { 'style': 'display: flex; align-items: center;' }, [
-							E('div', { 'style': 'flex: 1; background: #eee; height: 10px; border-radius: 5px; margin-right: 10px;' }, [
-								E('div', {
-									'style': 'background: ' + color + '; width: ' + storage.percent + '%; height: 100%; border-radius: 5px;'
-								})
-							]),
-							E('span', {}, storage.percent + '%')
+				E('h3', {}, _('Storage (Root Filesystem)')),
+				E('div', { 'class': 'table' }, [
+					E('div', { 'class': 'tr' }, [
+						E('div', { 'class': 'td left', 'width': '50%' }, [
+							E('strong', {}, _('Total: ')),
+							E('span', {}, (health.disk.total_kb / 1024).toFixed(0) + ' MB')
+						]),
+						E('div', { 'class': 'td left', 'width': '50%' }, [
+							E('strong', {}, _('Used: ')),
+							E('span', {}, (health.disk.used_kb / 1024).toFixed(0) + ' MB')
+						])
+					]),
+					E('div', { 'class': 'tr' }, [
+						E('div', { 'class': 'td left' }, [
+							E('strong', {}, _('Usage: ')),
+							E('div', { 'style': 'display: inline-flex; align-items: center; width: 200px;' }, [
+								E('div', { 'style': 'flex: 1; background: #eee; height: 10px; border-radius: 5px; margin-right: 10px;' }, [
+									E('div', {
+										'style': 'background: ' + diskColor + '; width: ' + health.disk.usage + '%; height: 100%; border-radius: 5px;'
+									})
+								]),
+								E('span', { 'style': 'font-weight: bold; color: ' + diskColor }, health.disk.usage + '%')
+							])
 						])
 					])
-				]));
-			});
-
-			storageSection.appendChild(storageTable);
+				])
+			]);
 			v.appendChild(storageSection);
 		}
 

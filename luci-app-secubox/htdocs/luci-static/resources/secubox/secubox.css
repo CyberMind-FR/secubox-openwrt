@@ -2,19 +2,39 @@
  * SecuBox Dashboard Styles
  * Copyright (C) 2025 CyberMind.fr
  * SPDX-License-Identifier: Apache-2.0
+ * Theme-aware styles with dark/light mode support
  */
 
+/* Common colors (theme-independent) */
 :root {
   --sb-primary: #3b82f6;
   --sb-primary-dark: #1e40af;
   --sb-success: #22c55e;
   --sb-warning: #f59e0b;
   --sb-danger: #ef4444;
+}
+
+/* Dark theme (default) */
+:root,
+[data-theme="dark"] {
   --sb-bg: #0f172a;
   --sb-bg-card: #1e293b;
   --sb-border: #334155;
   --sb-text: #f1f5f9;
   --sb-text-muted: #94a3b8;
+  --sb-shadow: rgba(0, 0, 0, 0.3);
+  --sb-hover-shadow: rgba(0, 0, 0, 0.4);
+}
+
+/* Light theme */
+[data-theme="light"] {
+  --sb-bg: #f8fafc;
+  --sb-bg-card: #ffffff;
+  --sb-border: #e2e8f0;
+  --sb-text: #0f172a;
+  --sb-text-muted: #64748b;
+  --sb-shadow: rgba(0, 0, 0, 0.08);
+  --sb-hover-shadow: rgba(0, 0, 0, 0.12);
 }
 
 .secubox-dashboard {
@@ -42,7 +62,7 @@
 
 .secubox-stat-box:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px var(--sb-shadow);
 }
 
 .secubox-stat-icon {
@@ -236,7 +256,7 @@
 
 .secubox-module-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px var(--sb-hover-shadow);
   border-color: var(--sb-primary);
 }
 

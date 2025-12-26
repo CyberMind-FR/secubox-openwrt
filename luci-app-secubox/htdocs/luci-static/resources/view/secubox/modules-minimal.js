@@ -1,5 +1,9 @@
 'use strict';
 'require view';
+'require secubox/theme as Theme';
+
+// Initialize theme
+Theme.init();
 
 return view.extend({
     load: function() {

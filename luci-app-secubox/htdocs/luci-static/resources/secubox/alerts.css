@@ -40,7 +40,7 @@
 
 /* Controls */
 .secubox-alerts-controls {
-    background: white;
+    background: var(--sb-bg-card);
     border-radius: 12px;
     padding: 20px;
     margin-bottom: 24px;
@@ -61,7 +61,7 @@
 .secubox-filter-group label {
     font-weight: 600;
     font-size: 13px;
-    color: #64748b;
+    color: var(--sb-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -75,7 +75,7 @@
 }
 
 .secubox-alert-stat-card {
-    background: white;
+    background: var(--sb-bg-card);
     border-radius: 12px;
     padding: 20px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -114,7 +114,7 @@
 
 /* Alert Item */
 .secubox-alert-item {
-    background: white;
+    background: var(--sb-bg-card);
     border-radius: 8px;
     padding: 16px;
     display: flex;
@@ -170,12 +170,12 @@
 
 .secubox-alert-module {
     font-size: 16px;
-    color: #1e293b;
+    color: var(--sb-text);
 }
 
 .secubox-alert-time {
     font-size: 12px;
-    color: #64748b;
+    color: var(--sb-text-muted);
 }
 
 .secubox-alert-message {
@@ -225,7 +225,7 @@
     border-radius: 50%;
     border: none;
     background: rgba(0, 0, 0, 0.05);
-    color: #64748b;
+    color: var(--sb-text-muted);
     cursor: pointer;
     font-size: 18px;
     line-height: 1;
@@ -256,7 +256,7 @@
 .secubox-empty-title {
     font-size: 20px;
     font-weight: 600;
-    color: #64748b;
+    color: var(--sb-text-muted);
     margin-bottom: 8px;
 }
 

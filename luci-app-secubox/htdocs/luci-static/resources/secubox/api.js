@@ -89,6 +89,12 @@ var callDashboardData = rpc.declare({
 	expect: { }
 });
 
+var callGetTheme = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_theme',
+	expect: { }
+});
+
 function formatUptime(seconds) {
 	if (!seconds) return '0s';
 	var d = Math.floor(seconds / 86400);
@@ -121,6 +127,7 @@ return baseclass.extend({
 	getAlerts: callAlerts,
 	quickAction: callQuickAction,
 	getDashboardData: callDashboardData,
+	getTheme: callGetTheme,
 	formatUptime: formatUptime,
 	formatBytes: formatBytes
 });

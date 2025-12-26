@@ -86,7 +86,7 @@ get_status() {
 	local running=0
 	
 	json_init
-	json_add_string "version" "0.1.0"
+	json_add_string "version" "0.1.1"
 	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || echo 'SecuBox')"
 
 	# System info
@@ -590,7 +590,7 @@ get_dashboard_data() {
 	local mem_pct=$((mem_used * 100 / mem_total))
 
 	json_add_object "status"
-	json_add_string "version" "0.1.0"
+	json_add_string "version" "0.1.1"
 	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || echo 'SecuBox')"
 	json_add_int "uptime" "$uptime"
 	json_add_string "load" "$load"
@@ -667,6 +667,21 @@ get_dashboard_data() {
 	json_dump
 }
 
+# Get theme setting
+get_theme() {
+	local theme="dark"
+
+	# Load secubox config
+	if [ -f "/etc/config/secubox" ]; then
+		config_load secubox
+		config_get theme main theme "dark"
+	fi
+
+	json_init
+	json_add_string "theme" "$theme"
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
@@ -702,6 +717,8 @@ case "$1" in
 		json_add_string "action" "string"
 		json_close_object
 		json_add_object "get_dashboard_data"
+		json_close_object
+		json_add_object "get_theme"
 		json_close_object
 		json_dump
 		;;
@@ -763,6 +780,9 @@ case "$1" in
 				;;
 			get_dashboard_data)
 				get_dashboard_data
+				;;
+			get_theme)
+				get_theme
 				;;
 			*)
 				echo '{"error":"Unknown method"}'

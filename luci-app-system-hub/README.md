@@ -124,13 +124,12 @@ Output:
 ```json
 {
   "cpu": {
-    "model": "ARM Cortex-A72",
+    "usage": 25,
+    "status": "ok",
+    "load_1m": "0.25",
+    "load_5m": "0.30",
+    "load_15m": "0.28",
     "cores": 4
-  },
-  "load": {
-    "1min": "0.25",
-    "5min": "0.30",
-    "15min": "0.28"
   },
   "memory": {
     "total_kb": 4096000,
@@ -139,23 +138,31 @@ Output:
     "used_kb": 1024000,
     "buffers_kb": 512000,
     "cached_kb": 1536000,
-    "percent": 25
+    "usage": 25,
+    "status": "ok"
   },
-  "storage": [
-    {
-      "filesystem": "/dev/mmcblk0p2",
-      "size": "29G",
-      "used": "5.2G",
-      "available": "22G",
-      "percent": 19,
-      "mountpoint": "/"
-    }
-  ],
-  "temperatures": [
-    {
-      "zone": "thermal_zone0",
-      "celsius": 45
-    }
+  "disk": {
+    "total_kb": 30408704,
+    "used_kb": 5447680,
+    "usage": 19,
+    "status": "ok"
+  },
+  "temperature": {
+    "value": 45,
+    "status": "ok"
+  },
+  "network": {
+    "wan_up": true,
+    "status": "ok"
+  },
+  "services": {
+    "running": 35,
+    "failed": 2
+  },
+  "score": 92,
+  "timestamp": "2025-12-26 10:30:00",
+  "recommendations": [
+    "2 service(s) enabled but not running. Check service status."
   ]
 }
 ```
@@ -225,6 +232,70 @@ System will reboot after 3 seconds.
 
 ```bash
 ubus call luci.system-hub get_storage
+```
+
+#### Get Settings
+
+```bash
+ubus call luci.system-hub get_settings
+```
+
+Output:
+```json
+{
+  "general": {
+    "auto_refresh": true,
+    "health_check": true,
+    "debug_mode": false,
+    "refresh_interval": 30,
+    "log_retention": 30
+  },
+  "thresholds": {
+    "cpu_warning": 80,
+    "cpu_critical": 95,
+    "mem_warning": 80,
+    "mem_critical": 95,
+    "disk_warning": 80,
+    "disk_critical": 95,
+    "temp_warning": 70,
+    "temp_critical": 85
+  },
+  "schedules": {
+    "health_report": true,
+    "backup_weekly": true,
+    "log_cleanup": true
+  },
+  "upload": {
+    "auto_upload": false,
+    "url": "",
+    "token": ""
+  },
+  "support": {
+    "provider": "CyberMind.fr",
+    "email": "support@cybermind.fr",
+    "docs": "https://docs.cybermind.fr"
+  }
+}
+```
+
+#### Save Settings
+
+```bash
+ubus call luci.system-hub save_settings '{
+  "auto_refresh": 1,
+  "health_check": 1,
+  "debug_mode": 0,
+  "refresh_interval": 30,
+  "log_retention": 30,
+  "cpu_warning": 80,
+  "cpu_critical": 95,
+  "mem_warning": 80,
+  "mem_critical": 95,
+  "disk_warning": 80,
+  "disk_critical": 95,
+  "temp_warning": 70,
+  "temp_critical": 85
+}'
 ```
 
 ## ubus API Reference
@@ -359,6 +430,75 @@ Reboot the system (3-second delay).
 
 Get detailed storage information for all mount points.
 
+### get_settings()
+
+Get all system-hub configuration settings.
+
+**Returns:**
+```json
+{
+  "general": {
+    "auto_refresh": true,
+    "health_check": true,
+    "debug_mode": false,
+    "refresh_interval": 30,
+    "log_retention": 30
+  },
+  "thresholds": {
+    "cpu_warning": 80,
+    "cpu_critical": 95,
+    "mem_warning": 80,
+    "mem_critical": 95,
+    "disk_warning": 80,
+    "disk_critical": 95,
+    "temp_warning": 70,
+    "temp_critical": 85
+  },
+  "schedules": {
+    "health_report": true,
+    "backup_weekly": true,
+    "log_cleanup": true
+  },
+  "upload": {
+    "auto_upload": false,
+    "url": "",
+    "token": ""
+  },
+  "support": {
+    "provider": "CyberMind.fr",
+    "email": "support@cybermind.fr",
+    "docs": "https://docs.cybermind.fr"
+  }
+}
+```
+
+### save_settings(...)
+
+Save system-hub configuration settings to UCI.
+
+**Parameters:**
+- `auto_refresh`: Enable auto-refresh (0|1)
+- `health_check`: Enable automatic health checks (0|1)
+- `debug_mode`: Enable debug mode (0|1)
+- `refresh_interval`: Refresh interval in seconds
+- `log_retention`: Log retention in days
+- `cpu_warning`: CPU warning threshold (%)
+- `cpu_critical`: CPU critical threshold (%)
+- `mem_warning`: Memory warning threshold (%)
+- `mem_critical`: Memory critical threshold (%)
+- `disk_warning`: Disk warning threshold (%)
+- `disk_critical`: Disk critical threshold (%)
+- `temp_warning`: Temperature warning threshold (°C)
+- `temp_critical`: Temperature critical threshold (°C)
+
+**Returns:**
+```json
+{
+  "success": true,
+  "message": "Settings saved successfully"
+}
+```
+
 ## System Information Sources
 
 - Hostname: `/proc/sys/kernel/hostname`
@@ -438,8 +578,37 @@ Apache-2.0
 
 ## Maintainer
 
-SecuBox Project <support@secubox.com>
+CyberMind <contact@cybermind.fr>
 
 ## Version
 
-0.0.2
+0.1.0
+
+## Changelog
+
+### v0.1.0 (2025-12-26)
+- **STABLE RELEASE** - Production ready
+- Fixed overview.js: Updated to use new health data structure (cpu.usage, memory.usage, disk.usage instead of deprecated fields)
+- Fixed health view: Complete restructure of get_health RPCD method with proper metrics
+  - CPU: usage %, status (ok/warning/critical), load averages, cores count
+  - Memory: usage %, status, detailed KB metrics
+  - Disk: root filesystem usage %, status, size metrics
+  - Temperature: system temperature with status
+  - Network: WAN connectivity check
+  - Services: running vs failed count
+  - Overall health score: 0-100 based on all metrics
+  - Dynamic recommendations: actionable alerts based on thresholds
+- Fixed settings view: Complete implementation with UCI backend
+  - Added get_settings and save_settings RPCD methods
+  - General settings: auto-refresh, health check, debug mode, intervals
+  - Alert thresholds: configurable CPU, memory, disk, temperature limits
+  - Scheduled tasks configuration
+  - Upload and support information
+- Fixed ACL permissions: Added get_settings (read) and save_settings (write) to ACL
+- Fixed API module: Correct usage of baseclass.extend() pattern
+- Fixed view imports: Use 'require system-hub/api as API' instead of L.require()
+- All 12 RPC methods working correctly
+- Comprehensive validation passing
+
+### v0.0.2
+- Initial implementation with basic system monitoring and service management

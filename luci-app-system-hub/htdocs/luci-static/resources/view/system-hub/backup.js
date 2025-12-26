@@ -2,6 +2,17 @@
 'require view';
 'require ui';
 'require system-hub/api as API';
+'require system-hub/theme as Theme';
+
+// Load CSS
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('system-hub/dashboard.css')
+}));
+
+// Initialize theme
+Theme.init();
 
 return L.view.extend({
 	load: function() {

@@ -1,6 +1,7 @@
 #!/bin/sh
 # System Hub RPCD Backend
 # Central system control and monitoring
+# Version: 0.1.1
 
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
@@ -98,25 +99,29 @@ get_system_info() {
 get_health() {
 	json_init
 
-	# CPU info
-	local cpu_model=$(awk -F': ' '/model name|Processor/ {print $2; exit}' /proc/cpuinfo 2>/dev/null || echo "Unknown")
+	# CPU usage calculation
 	local cpu_cores=$(grep -c "^processor" /proc/cpuinfo 2>/dev/null || echo 1)
-	
-	json_add_object "cpu"
-	json_add_string "model" "$cpu_model"
-	json_add_int "cores" "$cpu_cores"
-	json_close_object
-
-	# Load average
 	local load=$(cat /proc/loadavg 2>/dev/null || echo "0 0 0")
 	local load1=$(echo $load | awk '{print $1}')
 	local load5=$(echo $load | awk '{print $2}')
 	local load15=$(echo $load | awk '{print $3}')
 
-	json_add_object "load"
-	json_add_string "1min" "$load1"
-	json_add_string "5min" "$load5"
-	json_add_string "15min" "$load15"
+	# Calculate CPU usage percentage (load / cores * 100)
+	local cpu_usage=$(awk -v load="$load1" -v cores="$cpu_cores" 'BEGIN { printf "%.0f", (load / cores) * 100 }')
+	[ "$cpu_usage" -gt 100 ] && cpu_usage=100
+
+	# CPU status
+	local cpu_status="ok"
+	[ "$cpu_usage" -ge 80 ] && cpu_status="warning"
+	[ "$cpu_usage" -ge 95 ] && cpu_status="critical"
+
+	json_add_object "cpu"
+	json_add_int "usage" "$cpu_usage"
+	json_add_string "status" "$cpu_status"
+	json_add_string "load_1m" "$load1"
+	json_add_string "load_5m" "$load5"
+	json_add_string "load_15m" "$load15"
+	json_add_int "cores" "$cpu_cores"
 	json_close_object
 
 	# Memory
@@ -126,11 +131,16 @@ get_health() {
 	local mem_buffers=$(awk '/Buffers/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
 	local mem_cached=$(awk '/^Cached/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
 	local mem_used=$((mem_total - mem_available))
-	
-	local mem_percent=0
+
+	local mem_usage=0
 	if [ "$mem_total" -gt 0 ]; then
-		mem_percent=$(( (mem_used * 100) / mem_total ))
+		mem_usage=$(( (mem_used * 100) / mem_total ))
 	fi
+
+	# Memory status
+	local mem_status="ok"
+	[ "$mem_usage" -ge 80 ] && mem_status="warning"
+	[ "$mem_usage" -ge 95 ] && mem_status="critical"
 
 	json_add_object "memory"
 	json_add_int "total_kb" "$mem_total"
@@ -139,38 +149,136 @@ get_health() {
 	json_add_int "used_kb" "$mem_used"
 	json_add_int "buffers_kb" "$mem_buffers"
 	json_add_int "cached_kb" "$mem_cached"
-	json_add_int "percent" "$mem_percent"
+	json_add_int "usage" "$mem_usage"
+	json_add_string "status" "$mem_status"
 	json_close_object
 
-	# Storage
-	json_add_array "storage"
-	df -h | tail -n +2 | while read filesystem size used avail percent mountpoint; do
-		local percent_num=$(echo $percent | tr -d '%')
-		json_add_object ""
-		json_add_string "filesystem" "$filesystem"
-		json_add_string "size" "$size"
-		json_add_string "used" "$used"
-		json_add_string "available" "$avail"
-		json_add_int "percent" "$percent_num"
-		json_add_string "mountpoint" "$mountpoint"
-		json_close_object
-	done
-	json_close_array
+	# Disk (root filesystem)
+	local disk_total=$(df / | awk 'NR==2 {print $2}')
+	local disk_used=$(df / | awk 'NR==2 {print $3}')
+	local disk_usage=$(df / | awk 'NR==2 {gsub("%","",$5); print $5}' 2>/dev/null || echo 0)
+
+	# Disk status
+	local disk_status="ok"
+	[ "$disk_usage" -ge 80 ] && disk_status="warning"
+	[ "$disk_usage" -ge 95 ] && disk_status="critical"
+
+	json_add_object "disk"
+	json_add_int "total_kb" "$disk_total"
+	json_add_int "used_kb" "$disk_used"
+	json_add_int "usage" "$disk_usage"
+	json_add_string "status" "$disk_status"
+	json_close_object
 
 	# Temperature
-	json_add_array "temperatures"
+	local temp_value=0
+	local temp_status="ok"
 	for zone in /sys/class/thermal/thermal_zone*/temp; do
 		if [ -f "$zone" ]; then
 			local temp=$(cat "$zone" 2>/dev/null || echo 0)
 			local temp_c=$((temp / 1000))
-			local zone_name=$(basename $(dirname "$zone"))
-			
-			json_add_object ""
-			json_add_string "zone" "$zone_name"
-			json_add_int "celsius" "$temp_c"
-			json_close_object
+			# Use the highest temperature
+			[ "$temp_c" -gt "$temp_value" ] && temp_value="$temp_c"
 		fi
 	done
+
+	[ "$temp_value" -ge 70 ] && temp_status="warning"
+	[ "$temp_value" -ge 85 ] && temp_status="critical"
+
+	json_add_object "temperature"
+	json_add_int "value" "$temp_value"
+	json_add_string "status" "$temp_status"
+	json_close_object
+
+	# Network (WAN connectivity)
+	local wan_up=0
+	local wan_status="error"
+	if ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+		wan_up=1
+		wan_status="ok"
+	fi
+
+	json_add_object "network"
+	json_add_boolean "wan_up" "$wan_up"
+	json_add_string "status" "$wan_status"
+	json_close_object
+
+	# Services
+	local running_count=0
+	local failed_count=0
+	for service in /etc/init.d/*; do
+		[ -x "$service" ] || continue
+		local name=$(basename "$service")
+		case "$name" in
+			boot|done|functions|rc.*|sysctl|umount) continue ;;
+		esac
+
+		if [ -f "/etc/rc.d/S"*"$name" ]; then
+			if "$service" running >/dev/null 2>&1; then
+				running_count=$((running_count + 1))
+			else
+				failed_count=$((failed_count + 1))
+			fi
+		fi
+	done
+
+	json_add_object "services"
+	json_add_int "running" "$running_count"
+	json_add_int "failed" "$failed_count"
+	json_close_object
+
+	# Calculate overall health score
+	local score=100
+
+	# CPU impact (max -30)
+	if [ "$cpu_usage" -ge 95 ]; then
+		score=$((score - 30))
+	elif [ "$cpu_usage" -ge 80 ]; then
+		score=$((score - 15))
+	elif [ "$cpu_usage" -ge 60 ]; then
+		score=$((score - 5))
+	fi
+
+	# Memory impact (max -25)
+	if [ "$mem_usage" -ge 95 ]; then
+		score=$((score - 25))
+	elif [ "$mem_usage" -ge 80 ]; then
+		score=$((score - 12))
+	elif [ "$mem_usage" -ge 60 ]; then
+		score=$((score - 5))
+	fi
+
+	# Disk impact (max -20)
+	if [ "$disk_usage" -ge 95 ]; then
+		score=$((score - 20))
+	elif [ "$disk_usage" -ge 80 ]; then
+		score=$((score - 10))
+	fi
+
+	# Temperature impact (max -15)
+	if [ "$temp_value" -ge 85 ]; then
+		score=$((score - 15))
+	elif [ "$temp_value" -ge 70 ]; then
+		score=$((score - 7))
+	fi
+
+	# Network impact (max -10)
+	[ "$wan_up" -eq 0 ] && score=$((score - 10))
+
+	# Services impact (max -10)
+	[ "$failed_count" -gt 0 ] && score=$((score - 10))
+
+	json_add_int "score" "$score"
+	json_add_string "timestamp" "$(date '+%Y-%m-%d %H:%M:%S')"
+
+	# Recommendations
+	json_add_array "recommendations"
+	[ "$cpu_usage" -ge 80 ] && json_add_string "" "CPU usage is high ($cpu_usage%). Consider closing unnecessary services."
+	[ "$mem_usage" -ge 80 ] && json_add_string "" "Memory usage is high ($mem_usage%). Check for memory leaks."
+	[ "$disk_usage" -ge 80 ] && json_add_string "" "Disk usage is high ($disk_usage%). Clean up old files or logs."
+	[ "$temp_value" -ge 70 ] && json_add_string "" "Temperature is elevated (${temp_value}°C). Ensure proper ventilation."
+	[ "$wan_up" -eq 0 ] && json_add_string "" "WAN connection is down. Check network connectivity."
+	[ "$failed_count" -gt 0 ] && json_add_string "" "$failed_count service(s) enabled but not running. Check service status."
 	json_close_array
 
 	json_dump
@@ -393,7 +501,7 @@ get_storage() {
 
 	df -h | tail -n +2 | while read filesystem size used avail percent mountpoint; do
 		local percent_num=$(echo $percent | tr -d '%')
-		
+
 		json_add_object ""
 		json_add_string "filesystem" "$filesystem"
 		json_add_string "size" "$size"
@@ -405,6 +513,143 @@ get_storage() {
 	done
 
 	json_close_array
+	json_dump
+}
+
+# Get settings
+get_settings() {
+	json_init
+
+	# Load UCI config if it exists
+	local config_loaded=0
+	if [ -f "/etc/config/system-hub" ]; then
+		config_load system-hub
+		config_loaded=1
+	fi
+
+	# General settings
+	json_add_object "general"
+	config_get auto_refresh general auto_refresh "1"
+	config_get health_check general health_check "1"
+	config_get debug_mode general debug_mode "0"
+	config_get refresh_interval general refresh_interval "30"
+	config_get log_retention general log_retention "30"
+	json_add_boolean "auto_refresh" "${auto_refresh:-1}"
+	json_add_boolean "health_check" "${health_check:-1}"
+	json_add_boolean "debug_mode" "${debug_mode:-0}"
+	json_add_int "refresh_interval" "${refresh_interval:-30}"
+	json_add_int "log_retention" "${log_retention:-30}"
+	json_close_object
+
+	# Alert thresholds
+	json_add_object "thresholds"
+	config_get cpu_warning thresholds cpu_warning "80"
+	config_get cpu_critical thresholds cpu_critical "95"
+	config_get mem_warning thresholds mem_warning "80"
+	config_get mem_critical thresholds mem_critical "95"
+	config_get disk_warning thresholds disk_warning "80"
+	config_get disk_critical thresholds disk_critical "95"
+	config_get temp_warning thresholds temp_warning "70"
+	config_get temp_critical thresholds temp_critical "85"
+	json_add_int "cpu_warning" "${cpu_warning:-80}"
+	json_add_int "cpu_critical" "${cpu_critical:-95}"
+	json_add_int "mem_warning" "${mem_warning:-80}"
+	json_add_int "mem_critical" "${mem_critical:-95}"
+	json_add_int "disk_warning" "${disk_warning:-80}"
+	json_add_int "disk_critical" "${disk_critical:-95}"
+	json_add_int "temp_warning" "${temp_warning:-70}"
+	json_add_int "temp_critical" "${temp_critical:-85}"
+	json_close_object
+
+	# Scheduled tasks
+	json_add_object "schedules"
+	config_get health_report schedules health_report "1"
+	config_get backup_weekly schedules backup_weekly "1"
+	config_get log_cleanup schedules log_cleanup "1"
+	json_add_boolean "health_report" "${health_report:-1}"
+	json_add_boolean "backup_weekly" "${backup_weekly:-1}"
+	json_add_boolean "log_cleanup" "${log_cleanup:-1}"
+	json_close_object
+
+	# Upload settings
+	json_add_object "upload"
+	config_get auto_upload upload auto_upload "0"
+	config_get upload_url upload url ""
+	config_get upload_token upload token ""
+	json_add_boolean "auto_upload" "${auto_upload:-0}"
+	json_add_string "url" "${upload_url:-}"
+	json_add_string "token" "${upload_token:-}"
+	json_close_object
+
+	# Support info
+	json_add_object "support"
+	config_get support_provider support provider "CyberMind.fr"
+	config_get support_email support email "support@cybermind.fr"
+	config_get support_docs support docs "https://docs.cybermind.fr"
+	json_add_string "provider" "${support_provider:-CyberMind.fr}"
+	json_add_string "email" "${support_email:-support@cybermind.fr}"
+	json_add_string "docs" "${support_docs:-https://docs.cybermind.fr}"
+	json_close_object
+
+	json_dump
+}
+
+# Save settings
+save_settings() {
+	read -r input
+	json_load "$input"
+
+	# Parse settings from input
+	local section key value
+
+	# Create UCI config if it doesn't exist
+	if [ ! -f "/etc/config/system-hub" ]; then
+		touch /etc/config/system-hub
+		uci set system-hub.general=settings
+		uci set system-hub.thresholds=thresholds
+		uci set system-hub.schedules=schedules
+		uci set system-hub.upload=upload
+		uci set system-hub.support=support
+	fi
+
+	# This is a simplified version - in production you'd parse the JSON properly
+	# For now, we'll extract specific values
+	json_get_var auto_refresh auto_refresh
+	json_get_var health_check health_check
+	json_get_var debug_mode debug_mode
+	json_get_var refresh_interval refresh_interval
+	json_get_var log_retention log_retention
+	json_get_var cpu_warning cpu_warning
+	json_get_var cpu_critical cpu_critical
+	json_get_var mem_warning mem_warning
+	json_get_var mem_critical mem_critical
+	json_get_var disk_warning disk_warning
+	json_get_var disk_critical disk_critical
+	json_get_var temp_warning temp_warning
+	json_get_var temp_critical temp_critical
+
+	json_cleanup
+
+	# Save to UCI
+	[ -n "$auto_refresh" ] && uci set system-hub.general.auto_refresh="$auto_refresh"
+	[ -n "$health_check" ] && uci set system-hub.general.health_check="$health_check"
+	[ -n "$debug_mode" ] && uci set system-hub.general.debug_mode="$debug_mode"
+	[ -n "$refresh_interval" ] && uci set system-hub.general.refresh_interval="$refresh_interval"
+	[ -n "$log_retention" ] && uci set system-hub.general.log_retention="$log_retention"
+	[ -n "$cpu_warning" ] && uci set system-hub.thresholds.cpu_warning="$cpu_warning"
+	[ -n "$cpu_critical" ] && uci set system-hub.thresholds.cpu_critical="$cpu_critical"
+	[ -n "$mem_warning" ] && uci set system-hub.thresholds.mem_warning="$mem_warning"
+	[ -n "$mem_critical" ] && uci set system-hub.thresholds.mem_critical="$mem_critical"
+	[ -n "$disk_warning" ] && uci set system-hub.thresholds.disk_warning="$disk_warning"
+	[ -n "$disk_critical" ] && uci set system-hub.thresholds.disk_critical="$disk_critical"
+	[ -n "$temp_warning" ] && uci set system-hub.thresholds.temp_warning="$temp_warning"
+	[ -n "$temp_critical" ] && uci set system-hub.thresholds.temp_critical="$temp_critical"
+
+	uci commit system-hub
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Settings saved successfully"
 	json_dump
 }
 
@@ -422,7 +667,23 @@ case "$1" in
 	"backup_config": {},
 	"restore_config": { "data": "string" },
 	"reboot": {},
-	"get_storage": {}
+	"get_storage": {},
+	"get_settings": {},
+	"save_settings": {
+		"auto_refresh": 1,
+		"health_check": 1,
+		"debug_mode": 0,
+		"refresh_interval": 30,
+		"log_retention": 30,
+		"cpu_warning": 80,
+		"cpu_critical": 95,
+		"mem_warning": 80,
+		"mem_critical": 95,
+		"disk_warning": 80,
+		"disk_critical": 95,
+		"temp_warning": 70,
+		"temp_critical": 85
+	}
 }
 EOF
 		;;
@@ -438,6 +699,8 @@ EOF
 			restore_config) restore_config ;;
 			reboot) reboot_system ;;
 			get_storage) get_storage ;;
+			get_settings) get_settings ;;
+			save_settings) save_settings ;;
 			*)
 				json_init
 				json_add_boolean "success" 0

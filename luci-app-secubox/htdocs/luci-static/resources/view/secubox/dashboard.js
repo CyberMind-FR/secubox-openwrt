@@ -2,15 +2,24 @@
 'require view';
 'require ui';
 'require secubox/api as API';
+'require secubox/theme as Theme';
 'require dom';
 'require poll';
 
-// Load CSS
+// Load CSS (base theme variables first)
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox/secubox.css')
+}));
 document.head.appendChild(E('link', {
 	'rel': 'stylesheet',
 	'type': 'text/css',
 	'href': L.resource('secubox/dashboard.css')
 }));
+
+// Initialize theme
+Theme.init();
 
 return view.extend({
 	dashboardData: null,

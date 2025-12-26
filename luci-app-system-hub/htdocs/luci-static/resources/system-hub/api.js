@@ -6,11 +6,11 @@
  * System Hub API
  * Package: luci-app-system-hub
  * RPCD object: luci.system-hub
- * Version: 0.0.2-debug
+ * Version: 0.1.1
  */
 
 // Debug log to verify correct version is loaded
-console.log('🔧 System Hub API v0.0.2-debug loaded at', new Date().toISOString());
+console.log('🔧 System Hub API v0.1.1 loaded at', new Date().toISOString());
 
 var callStatus = rpc.declare({
 	object: 'luci.system-hub',
@@ -75,6 +75,19 @@ var callGetStorage = rpc.declare({
 	expect: { storage: [] }
 });
 
+var callGetSettings = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'get_settings',
+	expect: {}
+});
+
+var callSaveSettings = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'save_settings',
+	params: ['auto_refresh', 'health_check', 'debug_mode', 'refresh_interval', 'log_retention', 'cpu_warning', 'cpu_critical', 'mem_warning', 'mem_critical', 'disk_warning', 'disk_critical', 'temp_warning', 'temp_critical'],
+	expect: {}
+});
+
 return baseclass.extend({
 	// RPC methods - exposed via ubus
 	getStatus: callStatus,
@@ -86,5 +99,7 @@ return baseclass.extend({
 	backupConfig: callBackupConfig,
 	restoreConfig: callRestoreConfig,
 	reboot: callReboot,
-	getStorage: callGetStorage
+	getStorage: callGetStorage,
+	getSettings: callGetSettings,
+	saveSettings: callSaveSettings
 });
