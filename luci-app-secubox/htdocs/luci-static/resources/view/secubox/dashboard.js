@@ -154,39 +154,64 @@ return view.extend({
 		return E('div', { 'class': 'secubox-card' }, [
 			E('h3', { 'class': 'secubox-card-title' }, '📊 System Health'),
 			E('div', { 'class': 'secubox-health-grid' }, [
-				this.renderProgressBar('CPU', cpu.percent || 0, cpu.load_1min || '0.00', 'cpu'),
-				this.renderProgressBar('Memory', memory.percent || 0,
+				this.renderCircularGauge('CPU', cpu.percent || 0,
+					'Load: ' + (cpu.load_1min || '0.00'), 'cpu', '#6366f1'),
+				this.renderCircularGauge('Memory', memory.percent || 0,
 					API.formatBytes((memory.used_kb || 0) * 1024) + ' / ' +
-					API.formatBytes((memory.total_kb || 0) * 1024), 'memory'),
-				this.renderProgressBar('Disk', disk.percent || 0,
+					API.formatBytes((memory.total_kb || 0) * 1024), 'memory', '#22c55e'),
+				this.renderCircularGauge('Disk', disk.percent || 0,
 					API.formatBytes((disk.used_kb || 0) * 1024) + ' / ' +
-					API.formatBytes((disk.total_kb || 0) * 1024), 'disk')
+					API.formatBytes((disk.total_kb || 0) * 1024), 'disk', '#f59e0b')
 			])
 		]);
 	},
 
-	renderProgressBar: function(label, percent, details, id) {
+	renderCircularGauge: function(label, percent, details, id, baseColor) {
 		var color = percent < 70 ? '#22c55e' : percent < 85 ? '#f59e0b' : '#ef4444';
+		var radius = 45;
+		var circumference = 2 * Math.PI * radius;
+		var offset = circumference - (percent / 100) * circumference;
 
-		return E('div', { 'class': 'secubox-progress-item' }, [
-			E('div', { 'class': 'secubox-progress-header' }, [
-				E('span', { 'class': 'secubox-progress-label' }, label),
-				E('span', {
-					'class': 'secubox-progress-value',
-					'id': 'health-' + id + '-percent',
-					'style': 'color: ' + color
-				}, percent + '%')
-			]),
-			E('div', { 'class': 'secubox-progress-bar' }, [
-				E('div', {
-					'class': 'secubox-progress-fill',
-					'id': 'health-' + id + '-bar',
-					'style': 'width: ' + percent + '%; background: ' + color
-				})
+		return E('div', { 'class': 'secubox-gauge-container' }, [
+			E('div', { 'class': 'secubox-gauge' }, [
+				E('svg', { 'viewBox': '0 0 120 120', 'class': 'secubox-gauge-svg' }, [
+					// Background circle
+					E('circle', {
+						'cx': '60',
+						'cy': '60',
+						'r': radius,
+						'fill': 'none',
+						'stroke': '#f1f5f9',
+						'stroke-width': '10'
+					}),
+					// Progress circle
+					E('circle', {
+						'id': 'gauge-' + id,
+						'cx': '60',
+						'cy': '60',
+						'r': radius,
+						'fill': 'none',
+						'stroke': color,
+						'stroke-width': '10',
+						'stroke-linecap': 'round',
+						'stroke-dasharray': circumference,
+						'stroke-dashoffset': offset,
+						'transform': 'rotate(-90 60 60)',
+						'class': 'secubox-gauge-progress'
+					})
+				]),
+				E('div', { 'class': 'secubox-gauge-content' }, [
+					E('div', {
+						'class': 'secubox-gauge-percent',
+						'id': 'gauge-' + id + '-percent',
+						'style': 'color: ' + color
+					}, Math.round(percent) + '%'),
+					E('div', { 'class': 'secubox-gauge-label' }, label)
+				])
 			]),
 			E('div', {
-				'class': 'secubox-progress-details',
-				'id': 'health-' + id + '-details'
+				'class': 'secubox-gauge-details',
+				'id': 'gauge-' + id + '-details'
 			}, details)
 		]);
 	},
@@ -371,16 +396,31 @@ return view.extend({
 		var percent = data.percent || 0;
 		var color = percent < 70 ? '#22c55e' : percent < 85 ? '#f59e0b' : '#ef4444';
 
-		var percentEl = document.getElementById('health-' + type + '-percent');
-		var barEl = document.getElementById('health-' + type + '-bar');
+		var percentEl = document.getElementById('gauge-' + type + '-percent');
+		var gaugeEl = document.getElementById('gauge-' + type);
 
 		if (percentEl) {
-			percentEl.textContent = percent + '%';
+			percentEl.textContent = Math.round(percent) + '%';
 			percentEl.style.color = color;
 		}
-		if (barEl) {
-			barEl.style.width = percent + '%';
-			barEl.style.background = color;
+		if (gaugeEl) {
+			var radius = 45;
+			var circumference = 2 * Math.PI * radius;
+			var offset = circumference - (percent / 100) * circumference;
+			gaugeEl.setAttribute('stroke-dashoffset', offset);
+			gaugeEl.setAttribute('stroke', color);
+		}
+
+		// Update details
+		var detailsEl = document.getElementById('gauge-' + type + '-details');
+		if (detailsEl && type === 'cpu') {
+			detailsEl.textContent = 'Load: ' + (data.load_1min || '0.00');
+		} else if (detailsEl && type === 'memory') {
+			detailsEl.textContent = API.formatBytes((data.used_kb || 0) * 1024) + ' / ' +
+									API.formatBytes((data.total_kb || 0) * 1024);
+		} else if (detailsEl && type === 'disk') {
+			detailsEl.textContent = API.formatBytes((data.used_kb || 0) * 1024) + ' / ' +
+									API.formatBytes((data.total_kb || 0) * 1024);
 		}
 	},
 
