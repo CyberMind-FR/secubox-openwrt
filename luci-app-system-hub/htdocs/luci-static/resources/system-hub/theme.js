@@ -66,5 +66,13 @@ return baseclass.extend({
 	 */
 	getCurrentTheme: function() {
 		return document.documentElement.getAttribute('data-theme') || 'dark';
+	},
+
+	/**
+	 * Get theme preference from SecuBox
+	 * @returns {Promise} Promise resolving to theme data
+	 */
+	getTheme: function() {
+		return callGetTheme();
 	}
 });

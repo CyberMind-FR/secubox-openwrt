@@ -7,10 +7,17 @@
 					"status",
 					"get_system_info",
 					"get_health",
+					"get_components",
+					"get_components_by_category",
 					"list_services",
 					"get_logs",
 					"get_storage",
 					"get_settings"
+				],
+				"luci.secubox": [
+					"modules",
+					"modules_by_category",
+					"get_theme"
 				]
 			}
 		},
