@@ -25,27 +25,16 @@ detect_modules() {
 
 MODULES=$(detect_modules)
 
-# Cache opkg list to avoid multiple calls
-OPKG_LIST=""
-
-get_opkg_list() {
-	if [ -z "$OPKG_LIST" ]; then
-		OPKG_LIST=$(opkg list-installed 2>/dev/null)
-	fi
-	echo "$OPKG_LIST"
-}
-
-# Check if a module is installed (optimized)
+# Check if a module is installed (simple version)
 check_module_installed() {
 	local module="$1"
 	local package config
 
-	config_load secubox
 	config_get package "$module" package ""
 	config_get config "$module" config ""
 
-	# Check if package is installed via opkg (use cached list)
-	if echo "$(get_opkg_list)" | grep -q "^${package} "; then
+	# Check if package is installed via opkg
+	if opkg list-installed 2>/dev/null | grep -q "^${package} "; then
 		echo "1"
 	# Or check if config file exists
 	elif [ -f "/etc/config/${config}" ]; then
@@ -585,16 +574,15 @@ quick_action() {
 	json_dump
 }
 
-# Get all dashboard data in one call (optimized)
+# Get all dashboard data in one call
 get_dashboard_data() {
 	json_init
 
-	# Get status info (cached reads)
+	# Get status info
 	local uptime=$(cat /proc/uptime | cut -d. -f1)
 	local load=$(cat /proc/loadavg | cut -d' ' -f1-3)
-	local mem_info=$(grep -E "MemTotal|MemAvailable" /proc/meminfo)
-	local mem_total=$(echo "$mem_info" | grep MemTotal | awk '{print $2}')
-	local mem_free=$(echo "$mem_info" | grep MemAvailable | awk '{print $2}')
+	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+	local mem_free=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
 	local mem_used=$((mem_total - mem_free))
 	local mem_pct=$((mem_used * 100 / mem_total))
 
@@ -608,14 +596,13 @@ get_dashboard_data() {
 	json_add_int "memory_percent" "$mem_pct"
 	json_close_object
 
-	# Pre-load config once
-	config_load secubox
+	# Load config once for all modules
+	config_load secubox 2>/dev/null || true
 
-	# Cache module status checks
+	# Get modules list
+	json_add_array "modules"
 	local total=0 installed=0 running=0
 
-	# Get modules list (optimized - single loop)
-	json_add_array "modules"
 	for module in $MODULES; do
 		local name desc category icon color
 		config_get name "$module" name "$module"
@@ -627,14 +614,13 @@ get_dashboard_data() {
 		local is_installed=$(check_module_installed "$module")
 		local is_running="0"
 
-		# Only check running status if installed
+		total=$((total + 1))
+
 		if [ "$is_installed" = "1" ]; then
 			is_running=$(check_module_running "$module")
 			installed=$((installed + 1))
 			[ "$is_running" = "1" ] && running=$((running + 1))
 		fi
-
-		total=$((total + 1))
 
 		json_add_object ""
 		json_add_string "id" "$module"
@@ -655,10 +641,10 @@ get_dashboard_data() {
 	json_add_int "running" "$running"
 	json_close_object
 
-	# Get system health (minimal computation)
+	# Get system health
 	local cpu_cores=$(grep -c processor /proc/cpuinfo)
 	local load_val=$(echo "$load" | cut -d' ' -f1)
-	local cpu_pct=$(awk "BEGIN {printf \"%.0f\", ($load_val / $cpu_cores) * 100}")
+	local cpu_pct=$(awk "BEGIN {printf \"%.0f\", ($load_val / $cpu_cores) * 100}" 2>/dev/null || echo "0")
 	local disk_pct=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
 
 	json_add_object "health"
@@ -667,7 +653,7 @@ get_dashboard_data() {
 	json_add_int "disk_percent" "$disk_pct"
 	json_close_object
 
-	# Alerts - empty by default (fetched separately if needed)
+	# Empty alerts array
 	json_add_array "alerts"
 	json_close_array
 
