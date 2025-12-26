@@ -1288,6 +1288,51 @@ find /usr/libexec/rpcd/ -name 'luci.*' -exec chmod 755 {} \;
 EOF
 ```
 
+**⚡ Correction Automatique (Recommandé):**
+
+Utiliser le script automatique qui vérifie et corrige toutes les permissions:
+
+```bash
+# Corriger permissions locales (source code)
+./secubox-tools/fix-permissions.sh --local
+
+# Corriger permissions sur routeur
+./secubox-tools/fix-permissions.sh --remote
+
+# Corriger les deux (local + remote)
+./secubox-tools/fix-permissions.sh
+```
+
+Le script `fix-permissions.sh` effectue automatiquement:
+- ✅ Fixe tous les RPCD scripts à 755
+- ✅ Fixe tous les CSS à 644
+- ✅ Fixe tous les JS à 644
+- ✅ Vérifie qu'aucun fichier 600 ne reste
+- ✅ Clear cache et restart services (remote mode)
+- ✅ Affiche un rapport complet des changements
+
+**🔍 Validation Automatique des Permissions:**
+
+Le script `validate-modules.sh` inclut maintenant un Check 7 qui vérifie automatiquement les permissions:
+
+```bash
+./secubox-tools/validate-modules.sh
+
+# Check 7 validera:
+# ✓ Tous les RPCD sont 755
+# ✓ Tous les CSS sont 644
+# ✓ Tous les JS sont 644
+# ❌ Affichera erreurs si permissions incorrectes
+```
+
+**Workflow recommandé:**
+1. Développer/modifier code
+2. `./secubox-tools/fix-permissions.sh --local` (avant commit)
+3. `./secubox-tools/validate-modules.sh` (vérifier tout)
+4. Commit & push
+5. Deploy sur routeur
+6. `./secubox-tools/fix-permissions.sh --remote` (après deploy)
+
 #### 3. Post-Deployment Verification
 
 **Checklist après déploiement:**

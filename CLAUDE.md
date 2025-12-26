@@ -35,7 +35,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. **RPCD Script Naming:** Nom fichier = objet ubus (`luci.system-hub`)
 2. **Menu Path Matching:** Path menu = fichier vue (`system-hub/overview.js`)
 3. **Permissions:** RPCD = 755, CSS/JS = 644
+   - **Auto-fix:** `./secubox-tools/fix-permissions.sh --local` (avant commit)
+   - **Auto-fix remote:** `./secubox-tools/fix-permissions.sh --remote` (après deploy)
 4. **Validation:** Toujours exécuter `./secubox-tools/validate-modules.sh` avant commit
+   - **7 checks automatiques:** RPCD naming, menu paths, view files, RPCD permissions, JSON syntax, ubus naming, **htdocs permissions**
 5. **CSS Variables:** Toujours utiliser `var(--sh-*)`, jamais hardcoder les couleurs
 6. **Dark Mode:** Toujours supporter dark mode avec `[data-theme="dark"]`
 7. **Typography:** Inter (texte), JetBrains Mono (valeurs numériques)
@@ -77,8 +80,19 @@ opkg install /tmp/luci-app-*.ipk
 ### Validation
 
 ```bash
-# Run comprehensive module validation (RECOMMENDED)
+# Fix file permissions FIRST (CRITICAL)
+./secubox-tools/fix-permissions.sh --local
+
+# Run comprehensive module validation (RECOMMENDED - 7 checks)
 ./secubox-tools/validate-modules.sh
+# Checks:
+# 1. RPCD script names vs ubus objects
+# 2. Menu paths vs view file locations
+# 3. View files have menu entries
+# 4. RPCD script permissions (755)
+# 5. JSON syntax validation
+# 6. ubus object naming convention
+# 7. htdocs file permissions (644 for CSS/JS) ← NEW
 
 # Validate shell scripts (RPCD backends)
 shellcheck luci-app-*/root/usr/libexec/rpcd/*
@@ -88,6 +102,9 @@ find . -name "*.json" -exec jsonlint {} \;
 
 # Run automated repair tool
 ./secubox-tools/secubox-repair.sh
+
+# Fix permissions on deployed router
+./secubox-tools/fix-permissions.sh --remote
 
 # Run diagnostics
 ./secubox-tools/secubox-debug.sh luci-app-<module-name>

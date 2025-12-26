@@ -240,20 +240,77 @@ for module_dir in luci-app-*/; do
 done
 echo ""
 
+# Check 7: htdocs files must have correct permissions (644 for web server)
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "7. Validating htdocs file permissions (CSS/JS must be 644)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+PERMISSION_ERRORS=0
+
+for module_dir in luci-app-*/; do
+    module_name=$(basename "$module_dir")
+    htdocs_dir="$module_dir/htdocs"
+
+    if [ -d "$htdocs_dir" ]; then
+        # Check CSS files
+        while IFS= read -r css_file; do
+            if [ -n "$css_file" ]; then
+                perms=$(stat -c "%a" "$css_file" 2>/dev/null)
+                if [ "$perms" != "644" ]; then
+                    error "$module_name: CSS file has wrong permissions: $css_file ($perms, should be 644)"
+                    echo "  → Run: chmod 644 $css_file"
+                    ((PERMISSION_ERRORS++))
+                else
+                    success "$module_name: CSS file has correct permissions (644): $(basename $css_file)"
+                fi
+            fi
+        done < <(find "$htdocs_dir" -name "*.css" -type f 2>/dev/null)
+
+        # Check JS files
+        while IFS= read -r js_file; do
+            if [ -n "$js_file" ]; then
+                perms=$(stat -c "%a" "$js_file" 2>/dev/null)
+                if [ "$perms" != "644" ]; then
+                    error "$module_name: JS file has wrong permissions: $js_file ($perms, should be 644)"
+                    echo "  → Run: chmod 644 $js_file"
+                    ((PERMISSION_ERRORS++))
+                else
+                    success "$module_name: JS file has correct permissions (644): $(basename $js_file)"
+                fi
+            fi
+        done < <(find "$htdocs_dir" -name "*.js" -type f 2>/dev/null)
+    fi
+done
+
+if [ $PERMISSION_ERRORS -gt 0 ]; then
+    echo ""
+    echo -e "${YELLOW}⚠️  To fix all permission errors automatically, run:${NC}"
+    echo "  ./secubox-tools/fix-permissions.sh --local"
+fi
+echo ""
+
+# Add permission errors to total error count
+TOTAL_ERRORS=$((ERRORS + PERMISSION_ERRORS))
+
 # Summary
 echo "========================================"
 echo "Validation Summary"
 echo "========================================"
 echo ""
-if [ $ERRORS -eq 0 ] && [ $WARNINGS -eq 0 ]; then
+if [ $TOTAL_ERRORS -eq 0 ] && [ $WARNINGS -eq 0 ]; then
     echo -e "${GREEN}✓ All checks passed!${NC}"
     exit 0
-elif [ $ERRORS -eq 0 ]; then
+elif [ $TOTAL_ERRORS -eq 0 ]; then
     echo -e "${YELLOW}✓ All critical checks passed with $WARNINGS warning(s)${NC}"
     exit 0
 else
-    echo -e "${RED}✗ Found $ERRORS error(s) and $WARNINGS warning(s)${NC}"
+    echo -e "${RED}✗ Found $TOTAL_ERRORS error(s) and $WARNINGS warning(s)${NC}"
+    if [ $PERMISSION_ERRORS -gt 0 ]; then
+        echo -e "${YELLOW}   ($PERMISSION_ERRORS permission error(s))${NC}"
+    fi
     echo ""
     echo "Please fix the errors listed above before deploying."
+    echo "Run: ./secubox-tools/fix-permissions.sh --local"
     exit 1
 fi

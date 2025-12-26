@@ -54,7 +54,10 @@ ssh root@192.168.8.191 "find /www/luci-static -name '*.js' -exec chmod 644 {} \;
 
 ### 5. Common Errors Quick Fix
 ```bash
-# HTTP 403 Forbidden
+# HTTP 403 Forbidden (BEST: use automated script)
+./secubox-tools/fix-permissions.sh --remote  # Auto-fix all permissions
+
+# OR manual fix:
 chmod 644 /www/luci-static/resources/**/*.{js,css}
 
 # No space left on device
@@ -116,8 +119,11 @@ grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 
 ### Validation
 ```bash
-# Valider TOUT avant commit
+# Valider TOUT avant commit (7 checks incluant permissions)
 ./secubox-tools/validate-modules.sh
+
+# Corriger automatiquement les permissions
+./secubox-tools/fix-permissions.sh --local
 
 # JSON
 jsonlint file.json
@@ -176,10 +182,11 @@ ssh root@router "logread | grep -i error"
 
 ## 📋 Pre-Commit Checklist
 
-- [ ] `./secubox-tools/validate-modules.sh` ✅
+- [ ] `./secubox-tools/fix-permissions.sh --local` ✅ (auto-fix)
+- [ ] `./secubox-tools/validate-modules.sh` ✅ (7 checks)
 - [ ] RPCD name = ubus object name
 - [ ] Menu path = view file path
-- [ ] Permissions: 755 (RPCD), 644 (CSS/JS)
+- [ ] Permissions: 755 (RPCD), 644 (CSS/JS) - auto-verified
 - [ ] JSON valide (jsonlint)
 - [ ] CSS: variables utilisées (pas hardcode)
 - [ ] CSS: dark mode supporté
