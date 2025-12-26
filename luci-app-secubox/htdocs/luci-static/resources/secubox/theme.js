@@ -59,5 +59,18 @@ return baseclass.extend({
 	 */
 	getCurrentTheme: function() {
 		return document.documentElement.getAttribute('data-theme') || 'dark';
+	},
+
+	/**
+	 * Get theme preference from backend
+	 * @returns {Promise<string>} Theme preference ('dark', 'light', or 'system')
+	 */
+	getTheme: function() {
+		return API.getTheme().then(function(data) {
+			return data.theme || 'dark';
+		}).catch(function(err) {
+			console.error('Failed to load theme preference:', err);
+			return 'dark';
+		});
 	}
 });
