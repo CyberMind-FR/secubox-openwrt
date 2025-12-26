@@ -5,14 +5,31 @@
 
 var api = L.require('system-hub.api');
 
+// Helper: Get health status info based on score
+function getHealthStatus(score) {
+	if (score >= 90) return { status: 'excellent', label: 'Excellent', color: '#22c55e' };
+	if (score >= 75) return { status: 'good', label: 'Bon', color: '#3b82f6' };
+	if (score >= 50) return { status: 'warning', label: 'Attention', color: '#f59e0b' };
+	return { status: 'critical', label: 'Critique', color: '#ef4444' };
+}
+
+// Helper: Format bytes to human-readable size
+function formatBytes(bytes) {
+	if (!bytes) return '0 B';
+	var k = 1024;
+	var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+	var i = Math.floor(Math.log(bytes) / Math.log(k));
+	return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
+}
+
 return view.extend({
 	load: function() {
-		return api.callGetHealth();
+		return api.getHealth();
 	},
 
 	render: function(data) {
 		var health = data;
-		var healthInfo = api.getHealthStatus(health.score || 0);
+		var healthInfo = getHealthStatus(health.score || 0);
 		var self = this;
 
 		var view = E('div', { 'class': 'system-hub-dashboard' }, [
@@ -42,8 +59,8 @@ return view.extend({
 				E('div', { 'class': 'sh-card-body' }, [
 					E('div', { 'class': 'sh-health-grid' }, [
 						this.renderDetailedMetric('🔲', 'CPU', health.cpu?.usage || 0, health.cpu?.status, 'Load: ' + (health.cpu?.load_1m || 'N/A')),
-						this.renderDetailedMetric('💾', 'Mémoire', health.memory?.usage || 0, health.memory?.status, api.formatBytes((health.memory?.used_kb || 0) * 1024) + ' utilisés'),
-						this.renderDetailedMetric('💿', 'Stockage', health.disk?.usage || 0, health.disk?.status, api.formatBytes((health.disk?.used_kb || 0) * 1024) + ' utilisés'),
+						this.renderDetailedMetric('💾', 'Mémoire', health.memory?.usage || 0, health.memory?.status, formatBytes((health.memory?.used_kb || 0) * 1024) + ' utilisés'),
+						this.renderDetailedMetric('💿', 'Stockage', health.disk?.usage || 0, health.disk?.status, formatBytes((health.disk?.used_kb || 0) * 1024) + ' utilisés'),
 						this.renderDetailedMetric('🌡️', 'Température', health.temperature?.value || 0, health.temperature?.status, 'Zone 0: CPU'),
 						this.renderDetailedMetric('🌐', 'Réseau WAN', health.network?.wan_up ? 100 : 0, health.network?.status, health.network?.wan_up ? 'Connecté' : 'Déconnecté'),
 						this.renderDetailedMetric('⚙️', 'Services', ((health.services?.running || 0) / ((health.services?.running || 0) + (health.services?.failed || 0)) * 100) || 0, 
@@ -101,14 +118,11 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		api.callGenerateReport().then(function(result) {
+		// Stub: Report generation not yet implemented
+		setTimeout(function() {
 			ui.hideModal();
-			if (result.success) {
-				ui.addNotification(null, E('p', {}, '✅ Rapport généré: ' + result.file), 'success');
-			} else {
-				ui.addNotification(null, E('p', {}, '❌ Erreur lors de la génération'), 'error');
-			}
-		});
+			ui.addNotification(null, E('p', {}, '⚠️ Report generation feature coming soon'), 'info');
+		}, 1000);
 	},
 
 	handleSaveApply: null,

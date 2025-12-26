@@ -9,8 +9,8 @@ var api = L.require('system-hub.api');
 return view.extend({
 	load: function() {
 		return Promise.all([
-			api.callStatus(),
-			api.callGetSchedules()
+			api.getStatus(),
+			Promise.resolve({ schedules: [] })  // Stub: No schedules yet
 		]);
 	},
 

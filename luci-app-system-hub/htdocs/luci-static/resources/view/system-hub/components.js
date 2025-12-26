@@ -5,9 +5,57 @@
 
 var api = L.require('system-hub.api');
 
+// Stub: Get components (planned feature - returns mock data)
+function getComponents() {
+	return Promise.resolve({
+		components: [
+			{
+				id: 'netdata',
+				name: 'Netdata',
+				description: 'Real-time performance monitoring',
+				status: 'installed',
+				running: true,
+				icon: '📊',
+				color: '#00C851',
+				web_port: 19999
+			},
+			{
+				id: 'crowdsec',
+				name: 'CrowdSec',
+				description: 'Collaborative security engine',
+				status: 'installed',
+				running: true,
+				icon: '🛡️',
+				color: '#0091EA',
+				web_port: null
+			},
+			{
+				id: 'netifyd',
+				name: 'Netifyd',
+				description: 'Deep packet inspection',
+				status: 'planned',
+				roadmap_date: 'Q1 2026'
+			}
+		]
+	});
+}
+
+// Helper: Get component icon
+function getComponentIcon(icon) {
+	return icon || '📦';
+}
+
+// Stub: Manage component (planned feature)
+function manageComponent(id, action) {
+	return Promise.resolve({
+		success: true,
+		message: 'Component ' + id + ' ' + action + ' - Feature coming soon'
+	});
+}
+
 return view.extend({
 	load: function() {
-		return api.callGetComponents();
+		return getComponents();
 	},
 
 	render: function(data) {
@@ -52,7 +100,7 @@ return view.extend({
 		return E('div', { 'class': 'sh-component-card', 'style': '--component-color: ' + c.color }, [
 			E('div', { 'class': 'sh-component-header' }, [
 				E('div', { 'class': 'sh-component-info' }, [
-					E('div', { 'class': 'sh-component-icon' }, api.getComponentIcon(c.icon)),
+					E('div', { 'class': 'sh-component-icon' }, getComponentIcon(c.icon)),
 					E('div', {}, [
 						E('div', { 'class': 'sh-component-name' }, c.name),
 						E('div', { 'class': 'sh-component-desc' }, c.description)
@@ -80,7 +128,7 @@ return view.extend({
 
 	renderRoadmapItem: function(c) {
 		return E('div', { 'class': 'sh-roadmap-item' }, [
-			E('div', { 'class': 'sh-roadmap-icon' }, api.getComponentIcon(c.icon)),
+			E('div', { 'class': 'sh-roadmap-icon' }, getComponentIcon(c.icon)),
 			E('div', { 'class': 'sh-roadmap-info' }, [
 				E('div', { 'class': 'sh-roadmap-name' }, c.name),
 				E('div', { 'class': 'sh-roadmap-desc' }, c.description)
@@ -95,7 +143,7 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		api.callManageComponent(id, action).then(function(result) {
+		manageComponent(id, action).then(function(result) {
 			ui.hideModal();
 			if (result.success) {
 				ui.addNotification(null, E('p', {}, '✅ ' + result.message), 'success');

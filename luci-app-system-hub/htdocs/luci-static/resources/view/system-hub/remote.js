@@ -5,9 +5,27 @@
 
 var api = L.require('system-hub.api');
 
+// Stub: Get remote access config (planned feature)
+function getRemoteConfig() {
+	return Promise.resolve({
+		rustdesk_enabled: false,
+		rustdesk_installed: false,
+		rustdesk_id: null,
+		allow_unattended: false,
+		require_approval: true,
+		notify_on_connect: true,
+		support: {
+			provider: 'CyberMind.fr',
+			email: 'support@cybermind.fr',
+			phone: '+33 1 23 45 67 89',
+			website: 'https://cybermind.fr'
+		}
+	});
+}
+
 return view.extend({
 	load: function() {
-		return api.callGetRemote();
+		return getRemoteConfig();
 	},
 
 	render: function(data) {
@@ -135,14 +153,11 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		api.callStartRemoteSession(type).then(function(result) {
+		// Stub: Remote session not yet implemented
+		setTimeout(function() {
 			ui.hideModal();
-			if (result.success) {
-				ui.addNotification(null, E('p', {}, '✅ Session démarrée - ID: ' + (result.id || 'N/A')), 'success');
-			} else {
-				ui.addNotification(null, E('p', {}, '❌ ' + (result.error || 'Erreur')), 'error');
-			}
-		});
+			ui.addNotification(null, E('p', {}, '⚠️ Remote session feature coming soon'), 'info');
+		}, 1000);
 	},
 
 	handleSaveApply: null,
