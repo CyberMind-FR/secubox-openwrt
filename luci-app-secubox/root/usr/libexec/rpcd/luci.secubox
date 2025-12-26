@@ -86,9 +86,9 @@ get_status() {
 	local running=0
 	
 	json_init
-	json_add_string "version" "0.0.1-beta"
+	json_add_string "version" "0.1.0"
 	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || echo 'SecuBox')"
-	
+
 	# System info
 	local uptime=$(cat /proc/uptime | cut -d. -f1)
 	local load=$(cat /proc/loadavg | cut -d' ' -f1-3)
@@ -590,7 +590,7 @@ get_dashboard_data() {
 	local mem_pct=$((mem_used * 100 / mem_total))
 
 	json_add_object "status"
-	json_add_string "version" "0.0.1-beta"
+	json_add_string "version" "0.1.0"
 	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || echo 'SecuBox')"
 	json_add_int "uptime" "$uptime"
 	json_add_string "load" "$load"
