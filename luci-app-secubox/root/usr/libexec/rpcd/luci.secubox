@@ -473,32 +473,18 @@ get_alerts() {
 	json_init
 	json_add_array "alerts"
 
-	# Check each installed module for alerts via ubus
+	local alert_count=0
+
+	# Check each installed module for alerts
+	config_load secubox 2>/dev/null || true
+
 	for module in $MODULES; do
 		local is_installed=$(check_module_installed "$module")
 
 		if [ "$is_installed" = "1" ]; then
-			# Try to call module's status method to get alerts
-			local module_script=$(echo "$module" | sed 's/_/-/g')
-			if [ -x "/usr/libexec/rpcd/${module_script}" ] || [ -x "/usr/libexec/rpcd/${module_script}-dashboard" ]; then
-				# Call via ubus if available
-				local alerts=$(ubus call "luci.${module_script//-/_}" status 2>/dev/null | jsonfilter -e '@.alerts[@]' 2>/dev/null)
-
-				if [ -n "$alerts" ]; then
-					# Module has alerts, add them
-					json_add_object ""
-					json_add_string "module" "$module"
-					json_add_string "message" "$alerts"
-					json_add_string "severity" "warning"
-					json_add_int "timestamp" "$(date +%s)"
-					json_close_object
-				fi
-			fi
-
 			# Check if module service is not running
 			local is_running=$(check_module_running "$module")
 			if [ "$is_running" != "1" ]; then
-				config_load secubox
 				local name
 				config_get name "$module" name "$module"
 
@@ -508,12 +494,14 @@ get_alerts() {
 				json_add_string "severity" "warning"
 				json_add_int "timestamp" "$(date +%s)"
 				json_close_object
+
+				alert_count=$((alert_count + 1))
 			fi
 		fi
 	done
 
 	json_close_array
-	json_add_int "count" "$(ubus call luci.secubox get_alerts 2>/dev/null | jsonfilter -e '@.alerts[*]' | wc -l || echo 0)"
+	json_add_int "count" "$alert_count"
 	json_add_int "timestamp" "$(date +%s)"
 
 	json_dump
