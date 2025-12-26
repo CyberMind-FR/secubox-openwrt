@@ -1,231 +1,274 @@
 'use strict';
 'require view';
+'require ui';
+'require dom';
 'require poll';
 'require system-hub/api as API';
 'require system-hub/theme as Theme';
 
-// Load CSS
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('system-hub/dashboard.css')
-}));
+return view.extend({
+	healthData: null,
+	sysInfo: null,
 
-// Initialize theme
-Theme.init();
-
-return L.view.extend({
 	load: function() {
 		return Promise.all([
 			API.getSystemInfo(),
 			API.getHealth(),
-			API.getStatus()
+			Theme.getTheme()
 		]);
 	},
 
 	render: function(data) {
-		var sysInfo = data[0] || {};
-		var health = data[1] || {};
-		var status = data[2] || {};
+		var self = this;
+		this.sysInfo = data[0] || {};
+		this.healthData = data[1] || {};
+		var theme = data[2];
 
-		var v = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('System Hub - Overview')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Central system control and monitoring'))
+		var container = E('div', { 'class': 'system-hub-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/overview.css') }),
+
+			// Header
+			this.renderHeader(),
+
+			// Health Metrics Cards
+			E('div', { 'class': 'sh-metrics-grid' }, [
+				this.renderMetricCard('CPU', this.healthData.cpu),
+				this.renderMetricCard('Memory', this.healthData.memory),
+				this.renderMetricCard('Disk', this.healthData.disk),
+				this.renderMetricCard('Temperature', this.healthData.temperature)
+			]),
+
+			// System Info Grid
+			E('div', { 'class': 'sh-info-grid' }, [
+				this.renderInfoCard('System Information', this.renderSystemInfo()),
+				this.renderInfoCard('Network Status', this.renderNetworkInfo()),
+				this.renderInfoCard('Services', this.renderServicesInfo())
+			])
 		]);
 
-		// System Information Card
-		var infoSection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('System Information')),
-			E('div', { 'class': 'table' }, [
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td left', 'width': '50%' }, [
-						E('strong', {}, _('Hostname: ')),
-						E('span', {}, sysInfo.hostname || 'unknown')
-					]),
-					E('div', { 'class': 'td left', 'width': '50%' }, [
-						E('strong', {}, _('Model: ')),
-						E('span', {}, sysInfo.model || 'Unknown')
-					])
+		// Setup auto-refresh
+		poll.add(L.bind(function() {
+			return Promise.all([
+				API.getSystemInfo(),
+				API.getHealth()
+			]).then(L.bind(function(refreshData) {
+				this.sysInfo = refreshData[0] || {};
+				this.healthData = refreshData[1] || {};
+				this.updateDashboard();
+			}, this));
+		}, this), 30);
+
+		return container;
+	},
+
+	renderHeader: function() {
+		var score = this.healthData.score || 0;
+		var scoreClass = score >= 80 ? 'excellent' : (score >= 60 ? 'good' : (score >= 40 ? 'warning' : 'critical'));
+
+		return E('div', { 'class': 'sh-overview-header' }, [
+			E('div', { 'class': 'sh-overview-title' }, [
+				E('h2', {}, [
+					E('span', { 'class': 'sh-title-icon' }, '🖥️'),
+					' System Overview'
 				]),
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td left', 'width': '50%' }, [
-						E('strong', {}, _('OpenWrt: ')),
-						E('span', {}, sysInfo.openwrt_version || 'Unknown')
-					]),
-					E('div', { 'class': 'td left', 'width': '50%' }, [
-						E('strong', {}, _('Kernel: ')),
-						E('span', {}, sysInfo.kernel || 'unknown')
-					])
-				]),
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td left', 'width': '50%' }, [
-						E('strong', {}, _('Uptime: ')),
-						E('span', {}, sysInfo.uptime_formatted || '0d 0h 0m')
-					]),
-					E('div', { 'class': 'td left', 'width': '50%' }, [
-						E('strong', {}, _('Local Time: ')),
-						E('span', {}, sysInfo.local_time || 'unknown')
-					])
+				E('p', { 'class': 'sh-overview-subtitle' },
+					this.sysInfo.hostname + ' • ' + this.sysInfo.model)
+			]),
+			E('div', { 'class': 'sh-overview-score' }, [
+				E('div', { 'class': 'sh-score-circle sh-score-' + scoreClass }, [
+					E('div', { 'class': 'sh-score-value' }, score),
+					E('div', { 'class': 'sh-score-label' }, 'Health Score')
 				])
 			])
 		]);
-		v.appendChild(infoSection);
-
-		// Health Metrics with Gauges
-		var healthSection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('System Health'))
-		]);
-
-		var gaugesContainer = E('div', { 'style': 'display: flex; justify-content: space-around; flex-wrap: wrap; margin: 20px 0;' });
-
-		// CPU Load Gauge
-		var cpuLoad = parseFloat(health.cpu ? health.cpu.load_1m : '0');
-		var cpuPercent = health.cpu ? health.cpu.usage : 0;
-		gaugesContainer.appendChild(this.createGauge('CPU Load', cpuPercent, cpuLoad.toFixed(2)));
-
-		// Memory Gauge
-		var memPercent = health.memory ? health.memory.usage : 0;
-		var memUsed = health.memory ? (health.memory.used_kb / 1024).toFixed(0) : 0;
-		var memTotal = health.memory ? (health.memory.total_kb / 1024).toFixed(0) : 0;
-		gaugesContainer.appendChild(this.createGauge('Memory', memPercent, memUsed + ' / ' + memTotal + ' MB'));
-
-		// Disk Gauge
-		var diskPercent = health.disk ? health.disk.usage : 0;
-		var diskUsed = health.disk ? (health.disk.used_kb / 1024).toFixed(0) : 0;
-		var diskTotal = health.disk ? (health.disk.total_kb / 1024).toFixed(0) : 0;
-		var diskInfo = diskUsed + ' / ' + diskTotal + ' MB';
-		gaugesContainer.appendChild(this.createGauge('Disk Usage', diskPercent, diskInfo));
-
-		healthSection.appendChild(gaugesContainer);
-		v.appendChild(healthSection);
-
-		// CPU Info
-		if (health.cpu) {
-			var cpuSection = E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('CPU Information')),
-				E('div', { 'class': 'table' }, [
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td left', 'width': '50%' }, [
-							E('strong', {}, _('Cores: ')),
-							E('span', {}, String(health.cpu.cores))
-						]),
-						E('div', { 'class': 'td left', 'width': '50%' }, [
-							E('strong', {}, _('Usage: ')),
-							E('span', {}, health.cpu.usage + '%')
-						])
-					]),
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td left' }, [
-							E('strong', {}, _('Load Average: ')),
-							E('span', {}, (health.cpu.load_1m + ' / ' + health.cpu.load_5m + ' / ' + health.cpu.load_15m))
-						])
-					])
-				])
-			]);
-			v.appendChild(cpuSection);
-		}
-
-		// Temperature
-		if (health.temperature && health.temperature.value > 0) {
-			var tempValue = health.temperature.value;
-			var tempColor = tempValue > 80 ? 'red' : (tempValue > 60 ? 'orange' : 'green');
-			var tempSection = E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Temperature')),
-				E('div', { 'class': 'table' }, [
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td left' }, [
-							E('strong', {}, _('System Temperature: ')),
-							E('span', { 'style': 'color: ' + tempColor + '; font-weight: bold;' }, tempValue + '°C')
-						])
-					])
-				])
-			]);
-			v.appendChild(tempSection);
-		}
-
-		// Storage (Root Filesystem)
-		if (health.disk) {
-			var diskColor = health.disk.usage > 90 ? 'red' : (health.disk.usage > 75 ? 'orange' : 'green');
-			var storageSection = E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Storage (Root Filesystem)')),
-				E('div', { 'class': 'table' }, [
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td left', 'width': '50%' }, [
-							E('strong', {}, _('Total: ')),
-							E('span', {}, (health.disk.total_kb / 1024).toFixed(0) + ' MB')
-						]),
-						E('div', { 'class': 'td left', 'width': '50%' }, [
-							E('strong', {}, _('Used: ')),
-							E('span', {}, (health.disk.used_kb / 1024).toFixed(0) + ' MB')
-						])
-					]),
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td left' }, [
-							E('strong', {}, _('Usage: ')),
-							E('div', { 'style': 'display: inline-flex; align-items: center; width: 200px;' }, [
-								E('div', { 'style': 'flex: 1; background: #eee; height: 10px; border-radius: 5px; margin-right: 10px;' }, [
-									E('div', {
-										'style': 'background: ' + diskColor + '; width: ' + health.disk.usage + '%; height: 100%; border-radius: 5px;'
-									})
-								]),
-								E('span', { 'style': 'font-weight: bold; color: ' + diskColor }, health.disk.usage + '%')
-							])
-						])
-					])
-				])
-			]);
-			v.appendChild(storageSection);
-		}
-
-		// Auto-refresh every 5 seconds
-		poll.add(L.bind(function() {
-			return Promise.all([
-				API.getHealth(),
-				API.getStatus()
-			]).then(L.bind(function(refreshData) {
-				// Update would go here in a production implementation
-			}, this));
-		}, this), 5);
-
-		return v;
 	},
 
-	createGauge: function(label, percent, detail) {
-		var color = percent > 90 ? '#dc3545' : (percent > 75 ? '#fd7e14' : '#28a745');
-		var size = 120;
-		var strokeWidth = 10;
-		var radius = (size - strokeWidth) / 2;
-		var circumference = 2 * Math.PI * radius;
-		var offset = circumference - (percent / 100 * circumference);
+	renderMetricCard: function(type, data) {
+		if (!data) return E('div');
 
-		return E('div', { 'style': 'text-align: center; margin: 10px;' }, [
-			E('div', {}, [
-				E('svg', { 'width': size, 'height': size, 'style': 'transform: rotate(-90deg);' }, [
-					E('circle', {
-						'cx': size/2,
-						'cy': size/2,
-						'r': radius,
-						'fill': 'none',
-						'stroke': '#eee',
-						'stroke-width': strokeWidth
-					}),
-					E('circle', {
-						'cx': size/2,
-						'cy': size/2,
-						'r': radius,
-						'fill': 'none',
-						'stroke': color,
-						'stroke-width': strokeWidth,
-						'stroke-dasharray': circumference,
-						'stroke-dashoffset': offset,
-						'stroke-linecap': 'round'
-					})
-				])
+		var config = this.getMetricConfig(type, data);
+
+		return E('div', { 'class': 'sh-metric-card sh-metric-' + config.status }, [
+			E('div', { 'class': 'sh-metric-header' }, [
+				E('span', { 'class': 'sh-metric-icon' }, config.icon),
+				E('span', { 'class': 'sh-metric-title' }, config.title)
 			]),
-			E('div', { 'style': 'margin-top: -' + (size/2 + 10) + 'px; font-size: 20px; font-weight: bold; color: ' + color + ';' }, Math.round(percent) + '%'),
-			E('div', { 'style': 'margin-top: ' + (size/2 - 10) + 'px; font-weight: bold;' }, label),
-			E('div', { 'style': 'font-size: 12px; color: #666;' }, detail)
+			E('div', { 'class': 'sh-metric-value' }, config.value),
+			E('div', { 'class': 'sh-metric-progress' }, [
+				E('div', {
+					'class': 'sh-metric-progress-bar',
+					'style': 'width: ' + config.percentage + '%; background: ' + config.color
+				})
+			]),
+			E('div', { 'class': 'sh-metric-details' }, config.details)
 		]);
+	},
+
+	getMetricConfig: function(type, data) {
+		switch(type) {
+			case 'CPU':
+				return {
+					icon: '🔥',
+					title: 'CPU Usage',
+					value: (data.usage || 0) + '%',
+					percentage: data.usage || 0,
+					status: data.status || 'ok',
+					color: this.getStatusColor(data.usage || 0),
+					details: 'Load: ' + (data.load_1m || '0') + ' • ' + (data.cores || 0) + ' cores'
+				};
+			case 'Memory':
+				var usedMB = ((data.used_kb || 0) / 1024).toFixed(0);
+				var totalMB = ((data.total_kb || 0) / 1024).toFixed(0);
+				return {
+					icon: '💾',
+					title: 'Memory',
+					value: (data.usage || 0) + '%',
+					percentage: data.usage || 0,
+					status: data.status || 'ok',
+					color: this.getStatusColor(data.usage || 0),
+					details: usedMB + ' MB / ' + totalMB + ' MB used'
+				};
+			case 'Disk':
+				var usedGB = ((data.used_kb || 0) / 1024 / 1024).toFixed(1);
+				var totalGB = ((data.total_kb || 0) / 1024 / 1024).toFixed(1);
+				return {
+					icon: '💿',
+					title: 'Disk Space',
+					value: (data.usage || 0) + '%',
+					percentage: data.usage || 0,
+					status: data.status || 'ok',
+					color: this.getStatusColor(data.usage || 0),
+					details: usedGB + ' GB / ' + totalGB + ' GB used'
+				};
+			case 'Temperature':
+				return {
+					icon: '🌡️',
+					title: 'Temperature',
+					value: (data.value || 0) + '°C',
+					percentage: Math.min((data.value || 0), 100),
+					status: data.status || 'ok',
+					color: this.getTempColor(data.value || 0),
+					details: 'Status: ' + (data.status || 'unknown')
+				};
+			default:
+				return {
+					icon: '📊',
+					title: type,
+					value: 'N/A',
+					percentage: 0,
+					status: 'unknown',
+					color: '#64748b',
+					details: 'No data'
+				};
+		}
+	},
+
+	getStatusColor: function(usage) {
+		if (usage >= 90) return '#ef4444';
+		if (usage >= 75) return '#f59e0b';
+		if (usage >= 50) return '#3b82f6';
+		return '#22c55e';
+	},
+
+	getTempColor: function(temp) {
+		if (temp >= 80) return '#ef4444';
+		if (temp >= 70) return '#f59e0b';
+		if (temp >= 60) return '#3b82f6';
+		return '#22c55e';
+	},
+
+	renderInfoCard: function(title, content) {
+		return E('div', { 'class': 'sh-info-card' }, [
+			E('div', { 'class': 'sh-info-card-header' }, [
+				E('h3', {}, title)
+			]),
+			E('div', { 'class': 'sh-info-card-body' }, content)
+		]);
+	},
+
+	renderSystemInfo: function() {
+		return E('div', { 'class': 'sh-info-list' }, [
+			this.renderInfoRow('🏷️', 'Hostname', this.sysInfo.hostname || 'unknown'),
+			this.renderInfoRow('🖥️', 'Model', this.sysInfo.model || 'Unknown'),
+			this.renderInfoRow('📦', 'OpenWrt', this.sysInfo.openwrt_version || 'Unknown'),
+			this.renderInfoRow('⚙️', 'Kernel', this.sysInfo.kernel || 'unknown'),
+			this.renderInfoRow('⏱️', 'Uptime', this.sysInfo.uptime_formatted || '0d 0h 0m'),
+			this.renderInfoRow('🕐', 'Local Time', this.sysInfo.local_time || 'unknown')
+		]);
+	},
+
+	renderNetworkInfo: function() {
+		var wan_status = this.healthData.network ? this.healthData.network.wan_up : false;
+		return E('div', { 'class': 'sh-info-list' }, [
+			this.renderInfoRow('🌐', 'WAN Status',
+				E('span', {
+					'class': 'sh-status-badge sh-status-' + (wan_status ? 'ok' : 'error')
+				}, wan_status ? 'Connected' : 'Disconnected')
+			),
+			this.renderInfoRow('📡', 'Network', this.healthData.network ? this.healthData.network.status : 'unknown')
+		]);
+	},
+
+	renderServicesInfo: function() {
+		var running = this.healthData.services ? this.healthData.services.running : 0;
+		var failed = this.healthData.services ? this.healthData.services.failed : 0;
+
+		return E('div', { 'class': 'sh-info-list' }, [
+			this.renderInfoRow('▶️', 'Running Services',
+				E('span', { 'class': 'sh-status-badge sh-status-ok' }, running + ' services')
+			),
+			this.renderInfoRow('⏹️', 'Failed Services',
+				failed > 0
+					? E('span', { 'class': 'sh-status-badge sh-status-error' }, failed + ' services')
+					: E('span', { 'class': 'sh-status-badge sh-status-ok' }, 'None')
+			),
+			this.renderInfoRow('🔗', 'Quick Actions',
+				E('a', {
+					'class': 'sh-link-button',
+					'href': '/cgi-bin/luci/admin/secubox/system/system-hub/services'
+				}, 'Manage Services →')
+			)
+		]);
+	},
+
+	renderInfoRow: function(icon, label, value) {
+		return E('div', { 'class': 'sh-info-row' }, [
+			E('span', { 'class': 'sh-info-icon' }, icon),
+			E('span', { 'class': 'sh-info-label' }, label),
+			E('span', { 'class': 'sh-info-value' }, value)
+		]);
+	},
+
+	updateDashboard: function() {
+		var metricsGrid = document.querySelector('.sh-metrics-grid');
+		if (metricsGrid) {
+			dom.content(metricsGrid, [
+				this.renderMetricCard('CPU', this.healthData.cpu),
+				this.renderMetricCard('Memory', this.healthData.memory),
+				this.renderMetricCard('Disk', this.healthData.disk),
+				this.renderMetricCard('Temperature', this.healthData.temperature)
+			]);
+		}
+
+		var infoGrid = document.querySelector('.sh-info-grid');
+		if (infoGrid) {
+			dom.content(infoGrid, [
+				this.renderInfoCard('System Information', this.renderSystemInfo()),
+				this.renderInfoCard('Network Status', this.renderNetworkInfo()),
+				this.renderInfoCard('Services', this.renderServicesInfo())
+			]);
+		}
+
+		// Update health score
+		var scoreValue = document.querySelector('.sh-score-value');
+		var scoreCircle = document.querySelector('.sh-score-circle');
+		if (scoreValue && scoreCircle) {
+			var score = this.healthData.score || 0;
+			var scoreClass = score >= 80 ? 'excellent' : (score >= 60 ? 'good' : (score >= 40 ? 'warning' : 'critical'));
+			scoreValue.textContent = score;
+			scoreCircle.className = 'sh-score-circle sh-score-' + scoreClass;
+		}
 	},
 
 	handleSaveApply: null,
