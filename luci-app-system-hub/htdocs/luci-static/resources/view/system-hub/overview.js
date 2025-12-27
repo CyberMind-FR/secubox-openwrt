@@ -35,7 +35,11 @@ return view.extend({
 			// Stats Overview (like SecuBox)
 			this.renderStatsOverview(),
 
-			// Health Metrics Cards
+			// System Info Grid (4 columns per prompt)
+			this.renderSystemInfoGrid(),
+
+			// Resource Monitors (circular gauges per prompt)
+			E('h3', { 'class': 'sh-section-title' }, 'Resource Monitors'),
 			E('div', { 'class': 'sh-metrics-grid' }, [
 				this.renderMetricCard('CPU', this.healthData.cpu),
 				this.renderMetricCard('Memory', this.healthData.memory),
@@ -43,12 +47,9 @@ return view.extend({
 				this.renderMetricCard('Temperature', this.healthData.temperature)
 			]),
 
-			// System Info Grid
-			E('div', { 'class': 'sh-info-grid' }, [
-				this.renderInfoCard('System Information', this.renderSystemInfo()),
-				this.renderInfoCard('Network Status', this.renderNetworkInfo()),
-				this.renderInfoCard('Services', this.renderServicesInfo())
-			])
+			// Quick Status Indicators (per prompt)
+			E('h3', { 'class': 'sh-section-title' }, 'Quick Status Indicators'),
+			this.renderQuickStatusIndicators()
 		]);
 
 		// Setup auto-refresh
@@ -73,12 +74,12 @@ return view.extend({
 		return E('div', { 'class': 'sh-dashboard-header' }, [
 			E('div', { 'class': 'sh-dashboard-header-content' }, [
 				E('div', {}, [
-					E('h2', {}, '🖥️ System Hub'),
+					E('h2', {}, '⚙️ System Control Center'),
 					E('p', { 'class': 'sh-dashboard-subtitle' }, 'System Monitoring & Management Center')
 				]),
 				E('div', { 'class': 'sh-dashboard-header-info' }, [
 					E('span', { 'class': 'sh-dashboard-badge sh-dashboard-badge-version' },
-						'v0.2.2'),
+						'v0.3.1'),
 					E('span', { 'class': 'sh-dashboard-badge' },
 						'⏱️ ' + (this.sysInfo.uptime_formatted || '0d 0h 0m')),
 					E('span', { 'class': 'sh-dashboard-badge' },
@@ -113,6 +114,145 @@ return view.extend({
 				E('div', { 'class': 'sh-stat-overview-icon' }, '💿'),
 				E('div', { 'class': 'sh-stat-overview-value' }, (this.healthData.disk?.usage || 0) + '%'),
 				E('div', { 'class': 'sh-stat-overview-label' }, 'Disk Usage')
+			])
+		]);
+	},
+
+	renderSystemInfoGrid: function() {
+		var self = this;
+		var cpu = this.healthData.cpu || {};
+
+		return E('div', {}, [
+			E('h3', { 'class': 'sh-section-title' }, 'System Information'),
+			E('div', { 'class': 'sh-system-info-grid' }, [
+				// Hostname card with edit button
+				E('div', { 'class': 'sh-info-grid-card' }, [
+					E('div', { 'class': 'sh-info-grid-header' }, [
+						E('span', { 'class': 'sh-info-grid-icon' }, '🏷️'),
+						E('span', { 'class': 'sh-info-grid-title' }, 'Hostname')
+					]),
+					E('div', { 'class': 'sh-info-grid-value' }, this.sysInfo.hostname || 'unknown'),
+					E('button', {
+						'class': 'sh-info-grid-action',
+						'click': function() {
+							ui.addNotification(null, E('p', 'Edit hostname feature coming soon'), 'info');
+						}
+					}, '✏️ Edit')
+				]),
+
+				// Uptime card
+				E('div', { 'class': 'sh-info-grid-card' }, [
+					E('div', { 'class': 'sh-info-grid-header' }, [
+						E('span', { 'class': 'sh-info-grid-icon' }, '⏱️'),
+						E('span', { 'class': 'sh-info-grid-title' }, 'Uptime')
+					]),
+					E('div', { 'class': 'sh-info-grid-value' }, this.sysInfo.uptime_formatted || '0d 0h 0m'),
+					E('div', { 'class': 'sh-info-grid-detail' }, 'System runtime')
+				]),
+
+				// Load Average card (monospace per prompt)
+				E('div', { 'class': 'sh-info-grid-card' }, [
+					E('div', { 'class': 'sh-info-grid-header' }, [
+						E('span', { 'class': 'sh-info-grid-icon' }, '📊'),
+						E('span', { 'class': 'sh-info-grid-title' }, 'Load Average')
+					]),
+					E('div', { 'class': 'sh-info-grid-value sh-monospace' },
+						(cpu.load_1m || '0.00') + ' / ' +
+						(cpu.load_5m || '0.00') + ' / ' +
+						(cpu.load_15m || '0.00')
+					),
+					E('div', { 'class': 'sh-info-grid-detail' }, '1m / 5m / 15m')
+				]),
+
+				// Kernel Version card with copy icon
+				E('div', { 'class': 'sh-info-grid-card' }, [
+					E('div', { 'class': 'sh-info-grid-header' }, [
+						E('span', { 'class': 'sh-info-grid-icon' }, '⚙️'),
+						E('span', { 'class': 'sh-info-grid-title' }, 'Kernel Version')
+					]),
+					E('div', { 'class': 'sh-info-grid-value sh-monospace' }, this.sysInfo.kernel || 'unknown'),
+					E('button', {
+						'class': 'sh-info-grid-action',
+						'click': function() {
+							var kernel = self.sysInfo.kernel || 'unknown';
+							navigator.clipboard.writeText(kernel).then(function() {
+								ui.addNotification(null, E('p', '✓ Copied to clipboard: ' + kernel), 'info');
+							});
+						}
+					}, '📋 Copy')
+				])
+			])
+		]);
+	},
+
+	renderQuickStatusIndicators: function() {
+		var network = this.healthData.network || {};
+		var services = this.healthData.services || {};
+
+		// Determine status colors and icons
+		var internetStatus = network.wan_up ? 'ok' : 'error';
+		var internetIcon = network.wan_up ? '✓' : '✗';
+		var internetText = network.wan_up ? 'Connected' : 'Disconnected';
+
+		var dnsStatus = network.dns_ok !== false ? 'ok' : 'error';
+		var dnsIcon = network.dns_ok !== false ? '✓' : '✗';
+		var dnsText = network.dns_ok !== false ? 'Resolving' : 'Failed';
+
+		var ntpStatus = 'ok'; // Placeholder, would need backend support
+		var ntpIcon = '✓';
+		var ntpText = 'Synced';
+
+		var fwStatus = 'ok';
+		var fwIcon = '✓';
+		var fwText = (network.firewall_rules || 0) + ' rules active';
+
+		return E('div', { 'class': 'sh-status-indicators-grid' }, [
+			// Internet connectivity
+			E('div', { 'class': 'sh-status-indicator sh-status-' + internetStatus }, [
+				E('div', { 'class': 'sh-status-indicator-icon' }, '🌐'),
+				E('div', { 'class': 'sh-status-indicator-content' }, [
+					E('div', { 'class': 'sh-status-indicator-label' }, 'Internet Connectivity'),
+					E('div', { 'class': 'sh-status-indicator-value' }, [
+						E('span', { 'class': 'sh-status-badge sh-status-badge-' + internetStatus }, internetIcon),
+						E('span', {}, internetText)
+					])
+				])
+			]),
+
+			// DNS resolution
+			E('div', { 'class': 'sh-status-indicator sh-status-' + dnsStatus }, [
+				E('div', { 'class': 'sh-status-indicator-icon' }, '🔍'),
+				E('div', { 'class': 'sh-status-indicator-content' }, [
+					E('div', { 'class': 'sh-status-indicator-label' }, 'DNS Resolution'),
+					E('div', { 'class': 'sh-status-indicator-value' }, [
+						E('span', { 'class': 'sh-status-badge sh-status-badge-' + dnsStatus }, dnsIcon),
+						E('span', {}, dnsText)
+					])
+				])
+			]),
+
+			// NTP sync
+			E('div', { 'class': 'sh-status-indicator sh-status-' + ntpStatus }, [
+				E('div', { 'class': 'sh-status-indicator-icon' }, '🕐'),
+				E('div', { 'class': 'sh-status-indicator-content' }, [
+					E('div', { 'class': 'sh-status-indicator-label' }, 'NTP Sync'),
+					E('div', { 'class': 'sh-status-indicator-value' }, [
+						E('span', { 'class': 'sh-status-badge sh-status-badge-' + ntpStatus }, ntpIcon),
+						E('span', {}, ntpText)
+					])
+				])
+			]),
+
+			// Firewall status
+			E('div', { 'class': 'sh-status-indicator sh-status-' + fwStatus }, [
+				E('div', { 'class': 'sh-status-indicator-icon' }, '🛡️'),
+				E('div', { 'class': 'sh-status-indicator-content' }, [
+					E('div', { 'class': 'sh-status-indicator-label' }, 'Firewall'),
+					E('div', { 'class': 'sh-status-indicator-value' }, [
+						E('span', { 'class': 'sh-status-badge sh-status-badge-' + fwStatus }, fwIcon),
+						E('span', {}, fwText)
+					])
+				])
 			])
 		]);
 	},

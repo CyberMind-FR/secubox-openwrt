@@ -65,8 +65,8 @@ return view.extend({
 			// Header
 			E('div', { 'class': 'nm-header' }, [
 				E('div', { 'class': 'nm-logo' }, [
-					E('div', { 'class': 'nm-logo-icon' }, '⚙️'),
-					E('div', { 'class': 'nm-logo-text' }, ['Network ', E('span', {}, 'Modes')])
+					E('div', { 'class': 'nm-logo-icon' }, '🌐'),
+					E('div', { 'class': 'nm-logo-text' }, ['Network ', E('span', {}, 'Configuration')])
 				]),
 				E('div', { 'class': 'nm-mode-badge ' + currentMode }, [
 					E('span', { 'class': 'nm-mode-dot' }),
@@ -74,16 +74,108 @@ return view.extend({
 				])
 			]),
 			
-			// Status info
-			E('div', { 'class': 'nm-alert nm-alert-info' }, [
-				E('span', { 'class': 'nm-alert-icon' }, 'ℹ️'),
-				E('div', {}, [
-					E('div', { 'class': 'nm-alert-title' }, 'Current Mode: ' + (currentModeInfo ? currentModeInfo.name : currentMode)),
-					E('div', { 'class': 'nm-alert-text' }, 
-						'Last changed: ' + (status.last_change || 'Never') + ' • Uptime: ' + api.formatUptime(status.uptime))
+			// Current Mode Display Card
+			E('div', { 'class': 'nm-current-mode-card' }, [
+				E('div', { 'class': 'nm-current-mode-header' }, [
+					E('div', { 'class': 'nm-current-mode-icon' }, currentModeInfo ? currentModeInfo.icon : '🌐'),
+					E('div', { 'class': 'nm-current-mode-info' }, [
+						E('div', { 'class': 'nm-current-mode-label' }, 'Current Network Mode'),
+						E('h2', { 'class': 'nm-current-mode-name' }, currentModeInfo ? currentModeInfo.name : currentMode)
+					])
+				]),
+				E('div', { 'class': 'nm-current-mode-description' },
+					currentModeInfo ? currentModeInfo.description : 'Unknown mode'),
+				E('div', { 'class': 'nm-current-mode-config' }, [
+					E('div', { 'class': 'nm-config-item' }, [
+						E('span', { 'class': 'nm-config-label' }, 'WAN IP:'),
+						E('span', { 'class': 'nm-config-value' }, status.wan_ip || 'N/A')
+					]),
+					E('div', { 'class': 'nm-config-item' }, [
+						E('span', { 'class': 'nm-config-label' }, 'LAN IP:'),
+						E('span', { 'class': 'nm-config-value' }, status.lan_ip || 'N/A')
+					]),
+					E('div', { 'class': 'nm-config-item' }, [
+						E('span', { 'class': 'nm-config-label' }, 'DHCP Server:'),
+						E('span', { 'class': 'nm-config-value' }, status.dhcp_enabled ? 'Enabled' : 'Disabled')
+					])
+				]),
+				E('button', {
+					'class': 'nm-change-mode-btn',
+					'click': function() {
+						window.location.hash = '#admin/secubox/network/network-modes/wizard';
+					}
+				}, '🔄 Change Mode')
+			]),
+
+			// Mode Comparison Table
+			E('div', { 'class': 'nm-comparison-card' }, [
+				E('h3', { 'class': 'nm-comparison-title' }, 'Mode Comparison Table'),
+				E('div', { 'class': 'nm-comparison-table-wrapper' }, [
+					E('table', { 'class': 'nm-comparison-table' }, [
+						E('thead', {}, [
+							E('tr', {}, [
+								E('th', {}, 'Feature'),
+								E('th', { 'class': currentMode === 'router' ? 'active-mode' : '' }, '🏠 Router'),
+								E('th', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, '🌉 Bridge'),
+								E('th', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, '📡 Access Point'),
+								E('th', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, '🔁 Repeater'),
+								E('th', {}, '✈️ Travel Router')
+							])
+						]),
+						E('tbody', {}, [
+							E('tr', {}, [
+								E('td', { 'class': 'feature-label' }, 'Use Case'),
+								E('td', { 'class': currentMode === 'router' ? 'active-mode' : '' }, 'Home/Office'),
+								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'L2 Forwarding'),
+								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'WiFi Hotspot'),
+								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'WiFi Extender'),
+								E('td', {}, 'Portable WiFi')
+							]),
+							E('tr', {}, [
+								E('td', { 'class': 'feature-label' }, 'WAN Ports'),
+								E('td', { 'class': currentMode === 'router' ? 'active-mode' : '' }, '1+ ports'),
+								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'All bridged'),
+								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, '1 uplink'),
+								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'WiFi'),
+								E('td', {}, 'WiFi/Ethernet')
+							]),
+							E('tr', {}, [
+								E('td', { 'class': 'feature-label' }, 'LAN Ports'),
+								E('td', { 'class': currentMode === 'router' ? 'active-mode' : '' }, 'Multiple'),
+								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'All ports'),
+								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'All ports'),
+								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'All ports'),
+								E('td', {}, 'All ports')
+							]),
+							E('tr', {}, [
+								E('td', { 'class': 'feature-label' }, 'WiFi Role'),
+								E('td', { 'class': currentMode === 'router' ? 'active-mode' : '' }, 'AP'),
+								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'Optional AP'),
+								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'AP only'),
+								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'Client + AP'),
+								E('td', {}, 'Client + AP')
+							]),
+							E('tr', {}, [
+								E('td', { 'class': 'feature-label' }, 'DHCP Server'),
+								E('td', { 'class': currentMode === 'router' ? 'active-mode' : '' }, 'Yes'),
+								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'No'),
+								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'No'),
+								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'Yes'),
+								E('td', {}, 'Yes')
+							]),
+							E('tr', {}, [
+								E('td', { 'class': 'feature-label' }, 'NAT'),
+								E('td', { 'class': currentMode === 'router' ? 'active-mode' : '' }, 'Enabled'),
+								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'Disabled'),
+								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'Disabled'),
+								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'Enabled'),
+								E('td', {}, 'Enabled')
+							])
+						])
+					])
 				])
 			]),
-			
+
 			// Mode Selection Grid
 			E('div', { 'class': 'nm-modes-grid' },
 				Object.keys(modeInfos).map(function(modeId) {

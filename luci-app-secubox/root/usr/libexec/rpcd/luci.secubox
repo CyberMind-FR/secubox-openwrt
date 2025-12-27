@@ -816,6 +816,34 @@ get_theme() {
 	json_dump
 }
 
+# Dismiss a specific alert
+dismiss_alert() {
+	local alert_id="$1"
+
+	# Store dismissed alerts in tmp file
+	local dismissed_file="/tmp/secubox_dismissed_alerts"
+
+	# Append alert_id to dismissed list
+	echo "$alert_id" >> "$dismissed_file"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Alert dismissed"
+	json_dump
+}
+
+# Clear all alerts
+clear_alerts() {
+	# Clear dismissed alerts file
+	local dismissed_file="/tmp/secubox_dismissed_alerts"
+	rm -f "$dismissed_file"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "All alerts cleared"
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
@@ -853,6 +881,11 @@ case "$1" in
 		json_add_object "get_dashboard_data"
 		json_close_object
 		json_add_object "get_theme"
+		json_close_object
+		json_add_object "dismiss_alert"
+		json_add_string "alert_id" "string"
+		json_close_object
+		json_add_object "clear_alerts"
 		json_close_object
 		json_dump
 		;;
@@ -917,6 +950,15 @@ case "$1" in
 				;;
 			get_theme)
 				get_theme
+				;;
+			dismiss_alert)
+				read -r input
+				json_load "$input"
+				json_get_var alert_id alert_id ""
+				dismiss_alert "$alert_id"
+				;;
+			clear_alerts)
+				clear_alerts
 				;;
 			*)
 				echo '{"error":"Unknown method"}'

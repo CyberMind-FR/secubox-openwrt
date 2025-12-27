@@ -226,6 +226,7 @@ return view.extend({
 	},
 
 	renderAlertItem: function(alert) {
+		var self = this;
 		var severityClass = 'secubox-alert-' + (alert.severity || 'info');
 		var severityIcon = alert.severity === 'error' ? '❌' :
 						   alert.severity === 'warning' ? '⚠️' : 'ℹ️';
@@ -233,6 +234,9 @@ return view.extend({
 							alert.severity === 'warning' ? '#f59e0b' : '#3b82f6';
 
 		var timeAgo = this.formatTimeAgo(alert.timestamp);
+
+		// Generate unique alert ID from module and timestamp
+		var alertId = (alert.module || 'system') + '_' + (alert.timestamp || Date.now());
 
 		return E('div', { 'class': 'secubox-alert-item ' + severityClass }, [
 			E('div', { 'class': 'secubox-alert-icon-badge', 'style': 'background: ' + severityColor }, severityIcon),
@@ -251,8 +255,19 @@ return view.extend({
 				'class': 'secubox-alert-dismiss',
 				'title': 'Dismiss alert',
 				'click': function() {
-					// TODO: Implement dismiss functionality
-					ui.addNotification(null, E('p', 'Alert dismissed (not yet persistent)'), 'info');
+					API.dismissAlert(alertId).then(function() {
+						// Remove alert from current data
+						if (self.alertsData && self.alertsData.alerts) {
+							self.alertsData.alerts = self.alertsData.alerts.filter(function(a) {
+								var aId = (a.module || 'system') + '_' + (a.timestamp || Date.now());
+								return aId !== alertId;
+							});
+						}
+						self.updateAlertsList();
+						ui.addNotification(null, E('p', 'Alert dismissed'), 'info');
+					}).catch(function(err) {
+						ui.addNotification(null, E('p', 'Failed to dismiss alert: ' + err), 'error');
+					});
 				}
 			}, '×')
 		]);
@@ -326,11 +341,15 @@ return view.extend({
 				E('button', {
 					'class': 'cbi-button cbi-button-negative',
 					'click': function() {
-						// TODO: Implement backend clear functionality
-						self.alertsData.alerts = [];
-						self.updateAlertsList();
-						ui.hideModal();
-						ui.addNotification(null, E('p', 'All alerts cleared (not yet persistent)'), 'info');
+						API.clearAlerts().then(function() {
+							self.alertsData.alerts = [];
+							self.updateAlertsList();
+							ui.hideModal();
+							ui.addNotification(null, E('p', 'All alerts cleared'), 'info');
+						}).catch(function(err) {
+							ui.hideModal();
+							ui.addNotification(null, E('p', 'Failed to clear alerts: ' + err), 'error');
+						});
 					}
 				}, _('Clear All'))
 			])

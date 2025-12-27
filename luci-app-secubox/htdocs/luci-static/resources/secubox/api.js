@@ -97,6 +97,19 @@ var callGetTheme = rpc.declare({
 	expect: { }
 });
 
+var callDismissAlert = rpc.declare({
+	object: 'luci.secubox',
+	method: 'dismiss_alert',
+	params: ['alert_id'],
+	expect: { }
+});
+
+var callClearAlerts = rpc.declare({
+	object: 'luci.secubox',
+	method: 'clear_alerts',
+	expect: { }
+});
+
 function formatUptime(seconds) {
 	if (!seconds) return '0s';
 	var d = Math.floor(seconds / 86400);
@@ -130,6 +143,8 @@ return baseclass.extend({
 	quickAction: callQuickAction,
 	getDashboardData: callDashboardData,
 	getTheme: callGetTheme,
+	dismissAlert: callDismissAlert,
+	clearAlerts: callClearAlerts,
 	formatUptime: formatUptime,
 	formatBytes: formatBytes
 });

@@ -30,7 +30,9 @@
                     "start_module",
                     "stop_module",
                     "restart_module",
-                    "quick_action"
+                    "quick_action",
+                    "dismiss_alert",
+                    "clear_alerts"
                 ],
                 "uci": [
                     "set",

@@ -25,6 +25,7 @@ return view.extend({
 	dashboardData: null,
 	healthData: null,
 	alertsData: null,
+	activeFilter: 'all',
 
 	load: function() {
 		return this.refreshData();
@@ -85,7 +86,7 @@ return view.extend({
 		return E('div', { 'class': 'secubox-header' }, [
 			E('div', { 'class': 'secubox-header-content' }, [
 				E('div', {}, [
-					E('h2', {}, '🛡️ SecuBox Central Hub'),
+					E('h2', {}, '🚀 SecuBox Control Center'),
 					E('p', { 'class': 'secubox-subtitle' }, 'Security & Network Management Suite')
 				]),
 				E('div', { 'class': 'secubox-header-info' }, [
@@ -226,8 +227,15 @@ return view.extend({
 	},
 
 	renderActiveModules: function() {
+		var self = this;
 		var modules = this.dashboardData.modules || [];
 		var activeModules = modules.filter(function(m) { return m.installed; });
+
+		// Apply category filter
+		var filteredModules = this.activeFilter === 'all' ? activeModules :
+			activeModules.filter(function(m) {
+				return m.category === self.activeFilter;
+			});
 
 		// Map module IDs to their dashboard paths
 		var modulePaths = {
@@ -247,7 +255,7 @@ return view.extend({
 			'ksm_manager': 'admin/secubox/security/ksm'
 		};
 
-		var moduleCards = activeModules.map(function(module) {
+		var moduleCards = filteredModules.map(function(module) {
 			var isRunning = module.running;
 			var statusClass = isRunning ? 'running' : 'stopped';
 			var dashboardPath = modulePaths[module.id] || ('admin/secubox/' + module.id);
@@ -276,13 +284,138 @@ return view.extend({
 			]);
 		});
 
+		// Filter tabs
+		var filters = [
+			{ id: 'all', label: 'All', icon: '📦' },
+			{ id: 'security', label: 'Security', icon: '🛡️' },
+			{ id: 'network', label: 'Network', icon: '🌐' },
+			{ id: 'system', label: 'System', icon: '⚙️' },
+			{ id: 'monitoring', label: 'Monitoring', icon: '📊' }
+		];
+
+		var filterTabs = E('div', { 'class': 'secubox-filter-tabs' },
+			filters.map(function(filter) {
+				var isActive = self.activeFilter === filter.id;
+				return E('div', {
+					'class': 'secubox-filter-tab' + (isActive ? ' active' : ''),
+					'click': function() {
+						self.activeFilter = filter.id;
+						self.updateModulesGrid();
+					}
+				}, [
+					E('span', { 'class': 'secubox-tab-icon' }, filter.icon),
+					E('span', { 'class': 'secubox-tab-label' }, filter.label)
+				]);
+			})
+		);
+
 		return E('div', { 'class': 'secubox-card' }, [
 			E('h3', { 'class': 'secubox-card-title' }, '🎯 Active Modules (' + activeModules.length + ')'),
-			E('div', { 'class': 'secubox-modules-mini-grid' },
+			filterTabs,
+			E('div', {
+				'class': 'secubox-modules-mini-grid',
+				'id': 'modules-grid'
+			},
 				moduleCards.length > 0 ? moduleCards : [
-					E('p', { 'class': 'secubox-empty-state' }, 'No modules installed')
+					E('p', { 'class': 'secubox-empty-state' },
+						this.activeFilter === 'all' ? 'No modules installed' :
+						'No ' + this.activeFilter + ' modules installed')
 				]
 			)
+		]);
+	},
+
+	updateModulesGrid: function() {
+		var container = document.getElementById('modules-grid');
+		if (!container) return;
+
+		var modules = this.dashboardData.modules || [];
+		var activeModules = modules.filter(function(m) { return m.installed; });
+		var self = this;
+
+		// Filter definitions (same as in renderActiveModules)
+		var filters = [
+			{ id: 'all', label: 'All', icon: '📦' },
+			{ id: 'security', label: 'Security', icon: '🛡️' },
+			{ id: 'network', label: 'Network', icon: '🌐' },
+			{ id: 'system', label: 'System', icon: '⚙️' },
+			{ id: 'monitoring', label: 'Monitoring', icon: '📊' }
+		];
+
+		// Apply category filter
+		var filteredModules = this.activeFilter === 'all' ? activeModules :
+			activeModules.filter(function(m) {
+				return m.category === self.activeFilter;
+			});
+
+		// Map module IDs to their dashboard paths
+		var modulePaths = {
+			'crowdsec': 'admin/secubox/security/crowdsec',
+			'netdata': 'admin/secubox/monitoring/netdata',
+			'netifyd': 'admin/secubox/security/netifyd',
+			'wireguard': 'admin/secubox/network/wireguard',
+			'network_modes': 'admin/secubox/network/modes',
+			'client_guardian': 'admin/secubox/security/guardian',
+			'system_hub': 'admin/secubox/system/hub',
+			'bandwidth_manager': 'admin/secubox/network/bandwidth',
+			'auth_guardian': 'admin/secubox/security/auth',
+			'media_flow': 'admin/secubox/network/media',
+			'vhost_manager': 'admin/secubox/system/vhost',
+			'traffic_shaper': 'admin/secubox/network/shaper',
+			'cdn_cache': 'admin/secubox/network/cdn',
+			'ksm_manager': 'admin/secubox/security/ksm'
+		};
+
+		var moduleCards = filteredModules.map(function(module) {
+			var isRunning = module.running;
+			var statusClass = isRunning ? 'running' : 'stopped';
+			var dashboardPath = modulePaths[module.id] || ('admin/secubox/' + module.id);
+
+			return E('a', {
+				'href': L.url(dashboardPath),
+				'class': 'secubox-module-link secubox-module-' + statusClass
+			}, [
+				E('div', {
+					'class': 'secubox-module-mini-card',
+					'style': 'border-left: 4px solid ' + (module.color || '#64748b')
+				}, [
+					E('div', { 'class': 'secubox-module-mini-header' }, [
+						E('span', { 'class': 'secubox-module-mini-icon' }, module.icon || '📦'),
+						E('span', {
+							'class': 'secubox-status-dot secubox-status-' + statusClass,
+							'title': isRunning ? 'Running' : 'Stopped'
+						})
+					]),
+					E('div', { 'class': 'secubox-module-mini-body' }, [
+						E('div', { 'class': 'secubox-module-mini-name' }, module.name || module.id),
+						E('div', { 'class': 'secubox-module-mini-status' },
+							isRunning ? '● Running' : '○ Stopped')
+					])
+				])
+			]);
+		});
+
+		// Update filter tab active states
+		var tabs = container.parentElement.querySelectorAll('.secubox-filter-tab');
+		tabs.forEach(function(tab) {
+			var filterMatch = false;
+			filters.forEach(function(filter) {
+				if (tab.textContent.includes(filter.label) && self.activeFilter === filter.id) {
+					filterMatch = true;
+				}
+			});
+			if (filterMatch) {
+				tab.classList.add('active');
+			} else {
+				tab.classList.remove('active');
+			}
+		});
+
+		// Update content
+		dom.content(container, moduleCards.length > 0 ? moduleCards : [
+			E('p', { 'class': 'secubox-empty-state' },
+				this.activeFilter === 'all' ? 'No modules installed' :
+				'No ' + this.activeFilter + ' modules installed')
 		]);
 	},
 

@@ -207,6 +207,51 @@
     max-width: 140px;
 }
 
+/* Filter Tabs */
+.secubox-filter-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.secubox-filter-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--sb-bg);
+    border: 2px solid var(--sb-border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--sb-text-muted);
+}
+
+.secubox-filter-tab:hover {
+    border-color: #6366f1;
+    background: rgba(99, 102, 241, 0.05);
+    color: var(--sb-text);
+}
+
+.secubox-filter-tab.active {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    border-color: #6366f1;
+    color: white;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.secubox-tab-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+
+.secubox-tab-label {
+    font-weight: 600;
+}
+
 /* Active Modules */
 .secubox-modules-mini-grid {
     display: grid;
