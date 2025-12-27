@@ -150,7 +150,7 @@ The script automatically:
 - Collects artifacts in `build/<arch>/`
 
 Environment variables:
-- `OPENWRT_VERSION` - OpenWrt version (default: 23.05.5)
+- `OPENWRT_VERSION` - OpenWrt version (default: 24.10.5, also supports: 25.12.0-rc1, 23.05.5, SNAPSHOT)
 - `SDK_DIR` - SDK directory (default: ./sdk)
 - `BUILD_DIR` - Build output directory (default: ./build)
 - `CACHE_DIR` - Download cache directory (default: ./cache)

@@ -441,7 +441,7 @@ Packages are compiled automatically when:
 2. Click **Run workflow**
 3. Select build options:
    - **Package name**: Choose a specific package or leave empty for all packages
-   - **OpenWrt version**: 23.05.5, 24.10.0, or SNAPSHOT
+   - **OpenWrt version**: 25.12.0-rc1, 24.10.5, 23.05.5, or SNAPSHOT
    - **Architectures**: `all` or comma-separated list
 
 #### Build All Packages
@@ -498,11 +498,12 @@ packages-x86-64/
 
 | Version | Status | Notes |
 |---------|--------|-------|
-| 24.10.x | 🔜 Planned | Awaiting release |
-| 23.05.x | ✅ Supported | **Recommended** |
+| 25.12.0-rc1 | 🧪 Testing | Latest RC, for testing only |
+| 24.10.x | ✅ Supported | **Recommended** (latest stable) |
+| 23.05.x | ✅ Supported | Previous stable |
 | 22.03.x | ✅ Supported | LTS |
 | 21.02.x | ⚠️ Partial | End of support |
-| SNAPSHOT | ✅ Supported | Unstable |
+| SNAPSHOT | ✅ Supported | Unstable, bleeding edge |
 
 ---
 

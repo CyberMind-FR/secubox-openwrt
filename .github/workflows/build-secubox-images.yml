@@ -18,9 +18,11 @@ on:
       openwrt_version:
         description: 'OpenWrt version'
         required: true
-        default: '23.05.5'
+        default: '24.10.5'
         type: choice
         options:
+          - '25.12.0-rc1'
+          - '24.10.5'
           - '23.05.5'
           - '23.05.4'
           - 'SNAPSHOT'
@@ -37,8 +39,8 @@ on:
       - 'v*.*.*-*'
 
 env:
-  # Use input if manual trigger, otherwise default to 23.05.5 for tag triggers
-  OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '23.05.5' }}
+  # Use input if manual trigger, otherwise default to 24.10.5 for tag triggers
+  OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '24.10.5' }}
 
 permissions:
   contents: write

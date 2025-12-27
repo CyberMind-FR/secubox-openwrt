@@ -22,7 +22,8 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration
-OPENWRT_VERSION="${OPENWRT_VERSION:-23.05.5}"
+# Available versions: 25.12.0-rc1 (latest RC), 24.10.5 (latest stable), 23.05.5, SNAPSHOT
+OPENWRT_VERSION="${OPENWRT_VERSION:-24.10.5}"
 SDK_DIR="${SDK_DIR:-./sdk}"
 BUILD_DIR="${BUILD_DIR:-./build}"
 CACHE_DIR="${CACHE_DIR:-./cache}"
