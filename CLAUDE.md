@@ -144,10 +144,14 @@ Supported architectures:
 
 The script automatically:
 - Downloads and caches the OpenWrt SDK
-- Configures feeds (packages, luci)
+- Configures feeds (packages, luci) with correct branch for version
 - Copies your packages to the SDK
-- Builds .ipk packages
+- Builds packages (.apk for 25.12+, .ipk for older versions)
 - Collects artifacts in `build/<arch>/`
+
+**Package Format Support:**
+- OpenWrt 25.12+ and SNAPSHOT: `.apk` format (new Alpine-based package manager)
+- OpenWrt 24.10 and earlier: `.ipk` format (opkg package manager)
 
 Environment variables:
 - `OPENWRT_VERSION` - OpenWrt version (default: 24.10.5, also supports: 25.12.0-rc1, 23.05.5, SNAPSHOT)

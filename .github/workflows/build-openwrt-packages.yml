@@ -252,10 +252,26 @@ jobs:
             echo "✅ Removed telephony and routing from feeds.conf.default"
           fi
 
+          # Determine correct branch based on OpenWrt version
+          VERSION="${{ env.OPENWRT_VERSION }}"
+          if [[ "$VERSION" == "SNAPSHOT" ]]; then
+            BRANCH="master"
+          elif [[ "$VERSION" =~ ^25\. ]]; then
+            BRANCH="openwrt-25.12"
+          elif [[ "$VERSION" =~ ^24\. ]]; then
+            BRANCH="openwrt-24.10"
+          elif [[ "$VERSION" =~ ^23\. ]]; then
+            BRANCH="openwrt-23.05"
+          else
+            BRANCH="openwrt-23.05"  # fallback
+          fi
+
+          echo "📌 Using branch: $BRANCH for OpenWrt $VERSION"
+
           # Use GitHub mirrors - only essential feeds for SDK
-          cat > feeds.conf << 'FEEDS'
-          src-git packages https://github.com/openwrt/packages.git;openwrt-23.05
-          src-git luci https://github.com/openwrt/luci.git;openwrt-23.05
+          cat > feeds.conf << FEEDS
+          src-git packages https://github.com/openwrt/packages.git;$BRANCH
+          src-git luci https://github.com/openwrt/luci.git;$BRANCH
           FEEDS
 
           echo "📋 feeds.conf:"
@@ -420,9 +436,20 @@ jobs:
           # OpenWrt package repository base URL
           VERSION="${{ env.OPENWRT_VERSION }}"
           ARCH="${{ matrix.arch }}"
+          PKG_EXT="${{ env.PKG_EXT }}"
+
+          # Skip for RC versions as repos may not be stable
+          if [[ "$VERSION" =~ -rc ]]; then
+            echo "⚠️ Skipping dependency download for RC version"
+            echo "Note: Our SecuBox packages are PKGARCH:=all (scripts only)"
+            echo "They will be built regardless of dependency availability"
+            exit 0
+          fi
+
           REPO_BASE="https://downloads.openwrt.org/releases/${VERSION}/packages/${ARCH}"
 
           echo "Repository: $REPO_BASE"
+          echo "Package format: .${PKG_EXT}"
           echo ""
 
           # Download problematic dependencies as binaries
@@ -430,15 +457,17 @@ jobs:
           cd dl/luci-deps
 
           echo "Downloading LuCI core packages..."
-          # Try to download lucihttp and cgi-io
-          curl -sL "${REPO_BASE}/luci/Packages" > packages_luci.txt || true
-          curl -sL "${REPO_BASE}/packages/Packages" > packages_base.txt || true
+          # Try to download package index (format depends on version)
+          if [[ "$PKG_EXT" == "apk" ]]; then
+            curl -sL "${REPO_BASE}/luci/APKINDEX.tar.gz" > apkindex_luci.tar.gz || true
+            curl -sL "${REPO_BASE}/packages/APKINDEX.tar.gz" > apkindex_base.tar.gz || true
+          else
+            curl -sL "${REPO_BASE}/luci/Packages" > packages_luci.txt || true
+            curl -sL "${REPO_BASE}/packages/Packages" > packages_base.txt || true
+          fi
 
-          # Extract .ipk URLs (if available) and download
-          for pkg in lucihttp cgi-io luci-base rpcd; do
-            echo "  Looking for $pkg..."
-            # This will fail gracefully if packages aren't available
-          done
+          # Note: Actual package download logic would go here
+          # For now, we just note that dependencies exist
 
           cd ../..
 
@@ -472,49 +501,63 @@ jobs:
       - name: Build packages
         run: |
           cd sdk
-          
+
+          # Detect package format based on OpenWrt version
+          VERSION="${{ env.OPENWRT_VERSION }}"
+          if [[ "$VERSION" =~ ^25\. ]] || [[ "$VERSION" == "SNAPSHOT" ]]; then
+            PKG_EXT="apk"
+            echo "📦 Building for OpenWrt $VERSION (apk format)"
+          else
+            PKG_EXT="ipk"
+            echo "📦 Building for OpenWrt $VERSION (ipk format)"
+          fi
+
+          # Export for later steps
+          echo "PKG_EXT=$PKG_EXT" >> $GITHUB_ENV
+
+          echo ""
           echo "🔨 Building SecuBox packages..."
           echo ""
-          
+
           BUILT=0
           FAILED=0
           BUILT_LIST=""
           FAILED_LIST=""
-          
+
           for pkg in package/luci-app-*/; do
             [[ -d "$pkg" ]] || continue
-            
+
             PKG_NAME=$(basename "$pkg")
-            
+
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "📦 Building: $PKG_NAME"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            
+
             # Show package contents for debugging
             echo "📁 Package contents:"
             ls -la "$pkg"
-            
+
             # Verify Makefile syntax
             if ! grep -q "BuildPackage" "${pkg}Makefile"; then
               echo "⚠️ WARNING: Makefile missing BuildPackage call"
             fi
-            
+
             # Build with timeout (10 minutes per package)
             BUILD_LOG="/tmp/build-${PKG_NAME}.log"
 
             # Our packages are PKGARCH:=all (pure scripts), no compilation needed
             # Try regular build first, fallback to direct packaging if dependencies fail
             if timeout 600 make package/${PKG_NAME}/compile V=s -j1 > "$BUILD_LOG" 2>&1; then
-              # Build succeeded, check if .ipk was created
-              IPK_FILE=$(find bin -name "${PKG_NAME}*.ipk" 2>/dev/null | head -1)
+              # Build succeeded, check if package was created (.apk or .ipk)
+              PKG_FILE=$(find bin -name "${PKG_NAME}*.${PKG_EXT}" 2>/dev/null | head -1)
 
-              if [[ -n "$IPK_FILE" ]]; then
+              if [[ -n "$PKG_FILE" ]]; then
                 echo "✅ Built: $PKG_NAME"
-                echo "   → $IPK_FILE"
+                echo "   → $PKG_FILE"
                 BUILT=$((BUILT + 1))
                 BUILT_LIST="${BUILT_LIST}${PKG_NAME},"
               else
-                echo "⚠️ No .ipk generated for $PKG_NAME"
+                echo "⚠️ No .${PKG_EXT} generated for $PKG_NAME"
                 echo "📋 Last 50 lines of build log:"
                 tail -50 "$BUILD_LOG"
                 FAILED=$((FAILED + 1))
@@ -527,14 +570,14 @@ jobs:
               FAILED=$((FAILED + 1))
               FAILED_LIST="${FAILED_LIST}${PKG_NAME},"
             fi
-            
+
             echo ""
           done
-          
+
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📊 Build Summary"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ Built: $BUILT packages"
+          echo "✅ Built: $BUILT packages (.${PKG_EXT})"
           echo "❌ Failed: $FAILED packages"
           echo ""
           echo "Built: $BUILT_LIST"
@@ -546,31 +589,35 @@ jobs:
         id: collect
         run: |
           echo "📦 Collecting artifacts..."
-          
+
+          PKG_EXT="${{ env.PKG_EXT }}"
+          echo "📦 Package format: .${PKG_EXT}"
+
           mkdir -p artifacts/${{ matrix.target }}
-          
-          # Find and copy .ipk files
-          find sdk/bin -name "luci-app-*.ipk" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
-          
+
+          # Find and copy package files (.apk or .ipk)
+          find sdk/bin -name "luci-app-*.${PKG_EXT}" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
+
           # Also collect any SecuBox related packages
-          find sdk/bin -name "*secubox*.ipk" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
-          
-          # Count
-          PKG_COUNT=$(find artifacts/${{ matrix.target }} -name "*.ipk" 2>/dev/null | wc -l)
+          find sdk/bin -name "*secubox*.${PKG_EXT}" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
+
+          # Count packages
+          PKG_COUNT=$(find artifacts/${{ matrix.target }} -name "*.${PKG_EXT}" 2>/dev/null | wc -l)
           echo "pkg_count=$PKG_COUNT" >> $GITHUB_OUTPUT
-          
+          echo "pkg_ext=$PKG_EXT" >> $GITHUB_OUTPUT
+
           echo ""
           echo "📋 Built packages for ${{ matrix.target }}:"
           ls -la artifacts/${{ matrix.target }}/ 2>/dev/null || echo "No packages"
-          
+
           # Create checksums
           if [[ $PKG_COUNT -gt 0 ]]; then
             cd artifacts/${{ matrix.target }}
-            sha256sum *.ipk > SHA256SUMS
+            sha256sum *.${PKG_EXT} > SHA256SUMS
           fi
-          
+
           echo ""
-          echo "📦 Total: $PKG_COUNT packages"
+          echo "📦 Total: $PKG_COUNT packages (.${PKG_EXT})"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -583,7 +630,8 @@ jobs:
       - name: Build Summary
         run: |
           PKG_COUNT="${{ steps.collect.outputs.pkg_count }}"
-          
+          PKG_EXT="${{ steps.collect.outputs.pkg_ext }}"
+
           echo "## 📦 Build Results: ${{ matrix.target }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
@@ -591,14 +639,16 @@ jobs:
           echo "| Target | ${{ matrix.description }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Architecture | ${{ matrix.arch }} |" >> $GITHUB_STEP_SUMMARY
           echo "| SDK Path | ${{ matrix.sdk_path }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| OpenWrt Version | ${{ env.OPENWRT_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Package Format | .$PKG_EXT |" >> $GITHUB_STEP_SUMMARY
           echo "| Packages Built | $PKG_COUNT |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           if [[ "$PKG_COUNT" -gt 0 ]]; then
             echo "### Built Packages" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            ls artifacts/${{ matrix.target }}/*.ipk 2>/dev/null | xargs -I{} basename {} | sort
+            ls artifacts/${{ matrix.target }}/*.$PKG_EXT 2>/dev/null | xargs -I{} basename {} | sort
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 

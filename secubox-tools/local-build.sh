@@ -381,10 +381,26 @@ setup_sdk_feeds() {
     local local_feed_dir="$(pwd)/../local-feed"
     mkdir -p "$local_feed_dir"
 
+    # Determine correct branch based on OpenWrt version
+    local branch
+    if [[ "$OPENWRT_VERSION" == "SNAPSHOT" ]]; then
+        branch="master"
+    elif [[ "$OPENWRT_VERSION" =~ ^25\. ]]; then
+        branch="openwrt-25.12"
+    elif [[ "$OPENWRT_VERSION" =~ ^24\. ]]; then
+        branch="openwrt-24.10"
+    elif [[ "$OPENWRT_VERSION" =~ ^23\. ]]; then
+        branch="openwrt-23.05"
+    else
+        branch="openwrt-23.05"  # fallback
+    fi
+
+    print_info "Using branch: $branch for OpenWrt $OPENWRT_VERSION"
+
     # Use GitHub mirrors + local feed
     cat > feeds.conf << FEEDS
-src-git packages https://github.com/openwrt/packages.git;openwrt-23.05
-src-git luci https://github.com/openwrt/luci.git;openwrt-23.05
+src-git packages https://github.com/openwrt/packages.git;$branch
+src-git luci https://github.com/openwrt/luci.git;$branch
 src-link secubox $local_feed_dir
 FEEDS
 
@@ -625,6 +641,19 @@ build_packages() {
 
     cd "$SDK_DIR"
 
+    # Detect package format based on OpenWrt version
+    local pkg_ext
+    if [[ "$OPENWRT_VERSION" =~ ^25\. ]] || [[ "$OPENWRT_VERSION" == "SNAPSHOT" ]]; then
+        pkg_ext="apk"
+        print_info "Building for OpenWrt $OPENWRT_VERSION (apk format)"
+    else
+        pkg_ext="ipk"
+        print_info "Building for OpenWrt $OPENWRT_VERSION (ipk format)"
+    fi
+
+    # Export for later use
+    export PKG_EXT="$pkg_ext"
+
     local built=0
     local failed=0
     local built_list=""
@@ -663,16 +692,16 @@ build_packages() {
         # Build from feed (skip dependency checks for architecture-independent packages)
         # These packages are just JavaScript/shell scripts - no compilation needed
         if timeout 600 make "package/feeds/secubox/${pkg_name}/compile" V=s -j1 NO_DEPS=1 > "$build_log" 2>&1; then
-            # Check if .ipk was created
-            local ipk_file=$(find bin -name "${pkg_name}*.ipk" 2>/dev/null | head -1)
+            # Check if package was created (.apk or .ipk)
+            local pkg_file=$(find bin -name "${pkg_name}*.${pkg_ext}" 2>/dev/null | head -1)
 
-            if [[ -n "$ipk_file" ]]; then
+            if [[ -n "$pkg_file" ]]; then
                 print_success "Built: $pkg_name"
-                echo "   → $ipk_file"
+                echo "   → $pkg_file"
                 built=$((built + 1))
                 built_list="${built_list}${pkg_name},"
             else
-                print_warning "No .ipk generated for $pkg_name"
+                print_warning "No .${pkg_ext} generated for $pkg_name"
                 echo "📋 Last 50 lines of build log:"
                 tail -50 "$build_log"
                 failed=$((failed + 1))
@@ -714,14 +743,18 @@ collect_artifacts() {
 
     mkdir -p "$BUILD_DIR/$ARCH"
 
-    # Find and copy .ipk files
-    find "$SDK_DIR/bin" -name "luci-app-*.ipk" -exec cp {} "$BUILD_DIR/$ARCH/" \; 2>/dev/null || true
+    # Use package extension from build step
+    local pkg_ext="${PKG_EXT:-ipk}"
+    print_info "Package format: .${pkg_ext}"
+
+    # Find and copy package files (.apk or .ipk)
+    find "$SDK_DIR/bin" -name "luci-app-*.${pkg_ext}" -exec cp {} "$BUILD_DIR/$ARCH/" \; 2>/dev/null || true
 
     # Also collect any SecuBox related packages
-    find "$SDK_DIR/bin" -name "*secubox*.ipk" -exec cp {} "$BUILD_DIR/$ARCH/" \; 2>/dev/null || true
+    find "$SDK_DIR/bin" -name "*secubox*.${pkg_ext}" -exec cp {} "$BUILD_DIR/$ARCH/" \; 2>/dev/null || true
 
     # Count
-    local pkg_count=$(find "$BUILD_DIR/$ARCH" -name "*.ipk" 2>/dev/null | wc -l)
+    local pkg_count=$(find "$BUILD_DIR/$ARCH" -name "*.${pkg_ext}" 2>/dev/null | wc -l)
 
     echo ""
     print_info "Built packages for $ARCH:"
@@ -730,7 +763,7 @@ collect_artifacts() {
     # Create checksums
     if [[ $pkg_count -gt 0 ]]; then
         cd "$BUILD_DIR/$ARCH"
-        sha256sum ./*.ipk > SHA256SUMS
+        sha256sum ./*.${pkg_ext} > SHA256SUMS
         cd - > /dev/null
     fi
 

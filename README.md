@@ -496,14 +496,16 @@ packages-x86-64/
 
 ## 📊 OpenWrt Compatibility
 
-| Version | Status | Notes |
-|---------|--------|-------|
-| 25.12.0-rc1 | 🧪 Testing | Latest RC, for testing only |
-| 24.10.x | ✅ Supported | **Recommended** (latest stable) |
-| 23.05.x | ✅ Supported | Previous stable |
-| 22.03.x | ✅ Supported | LTS |
-| 21.02.x | ⚠️ Partial | End of support |
-| SNAPSHOT | ✅ Supported | Unstable, bleeding edge |
+| Version | Status | Package Format | Notes |
+|---------|--------|----------------|-------|
+| 25.12.0-rc1 | 🧪 Testing | `.apk` | Latest RC, new apk package manager |
+| 24.10.x | ✅ Supported | `.ipk` | **Recommended** (latest stable) |
+| 23.05.x | ✅ Supported | `.ipk` | Previous stable |
+| 22.03.x | ✅ Supported | `.ipk` | LTS |
+| 21.02.x | ⚠️ Partial | `.ipk` | End of support |
+| SNAPSHOT | ✅ Supported | `.apk` | Unstable, bleeding edge |
+
+**Note:** OpenWrt 25.12+ uses the new Alpine Package Manager (apk) instead of opkg. Our build workflows automatically detect the version and build the appropriate package format.
 
 ---
 
