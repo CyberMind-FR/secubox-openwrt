@@ -436,7 +436,13 @@ jobs:
           # OpenWrt package repository base URL
           VERSION="${{ env.OPENWRT_VERSION }}"
           ARCH="${{ matrix.arch }}"
-          PKG_EXT="${{ env.PKG_EXT }}"
+
+          # Detect package format based on OpenWrt version
+          if [[ "$VERSION" =~ ^25\. ]] || [[ "$VERSION" == "SNAPSHOT" ]]; then
+            PKG_EXT="apk"
+          else
+            PKG_EXT="ipk"
+          fi
 
           # Skip for RC versions as repos may not be stable
           if [[ "$VERSION" =~ -rc ]]; then
@@ -648,7 +654,7 @@ jobs:
             echo "### Built Packages" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            ls artifacts/${{ matrix.target }}/*.$PKG_EXT 2>/dev/null | xargs -I{} basename {} | sort
+            ls artifacts/${{ matrix.target }}/*.$PKG_EXT 2>/dev/null | xargs -I{} basename {} | sort >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
@@ -671,7 +677,17 @@ jobs:
         run: |
           VERSION="${{ needs.setup.outputs.version }}"
           PACKAGE_NAME="${{ github.event.inputs.package_name }}"
+          OPENWRT_VERSION="${{ env.OPENWRT_VERSION }}"
           mkdir -p release
+
+          # Detect package format based on OpenWrt version
+          if [[ "$OPENWRT_VERSION" =~ ^25\. ]] || [[ "$OPENWRT_VERSION" == "SNAPSHOT" ]]; then
+            PKG_EXT="apk"
+          else
+            PKG_EXT="ipk"
+          fi
+
+          echo "📦 Package format: .$PKG_EXT"
 
           # Determine prefix for archives
           if [[ -n "$PACKAGE_NAME" ]]; then
@@ -689,12 +705,12 @@ jobs:
             ARCH=$(basename "$dir" | sed 's/packages-//')
             echo "📦 $ARCH"
 
-            # Copy .ipk files to release
+            # Copy package files (.apk or .ipk) to release
             mkdir -p "release/${ARCH}"
-            cp "$dir"/*.ipk "release/${ARCH}/" 2>/dev/null || true
+            cp "$dir"/*.$PKG_EXT "release/${ARCH}/" 2>/dev/null || true
 
             # Create archive
-            if ls "release/${ARCH}"/*.ipk >/dev/null 2>&1; then
+            if ls "release/${ARCH}"/*.$PKG_EXT >/dev/null 2>&1; then
               tar -czf "release/${PREFIX}-${VERSION}-${ARCH}.tar.gz" -C "release/${ARCH}" .
             fi
           done
@@ -714,7 +730,7 @@ jobs:
           echo "📊 Package count per architecture:"
           for dir in */; do
             [[ -d "$dir" ]] || continue
-            COUNT=$(ls "$dir"/*.ipk 2>/dev/null | wc -l)
+            COUNT=$(ls "$dir"/*.$PKG_EXT 2>/dev/null | wc -l)
             echo "  ${dir%/}: $COUNT packages"
           done
 
@@ -727,11 +743,13 @@ jobs:
             release/SHA256SUMS
           retention-days: 90
 
-      - name: Upload individual .ipk files
+      - name: Upload individual package files
         uses: actions/upload-artifact@v4
         with:
-          name: secubox-all-ipk-${{ needs.setup.outputs.version }}
-          path: release/*/*.ipk
+          name: secubox-all-packages-${{ needs.setup.outputs.version }}
+          path: |
+            release/*/*.ipk
+            release/*/*.apk
           retention-days: 90
 
   # ============================================
@@ -752,21 +770,21 @@ jobs:
           name: secubox-release-${{ needs.setup.outputs.version }}
           path: release
 
-      - name: Download all .ipk files
+      - name: Download all package files
         uses: actions/download-artifact@v4
         with:
-          name: secubox-all-ipk-${{ needs.setup.outputs.version }}
-          path: ipk-files
+          name: secubox-all-packages-${{ needs.setup.outputs.version }}
+          path: package-files
         continue-on-error: true
 
       - name: List packages
         id: list-packages
         run: |
           echo "📦 Packages in release:"
-          find . -name "*.ipk" -exec basename {} \; | sort -u
-          
+          find . \( -name "*.ipk" -o -name "*.apk" \) -exec basename {} \; | sort -u
+
           # Count unique packages
-          PKG_LIST=$(find . -name "*.ipk" -exec basename {} \; | sort -u | sed 's/_[0-9].*//g' | sort -u | tr '\n' ', ' | sed 's/,$//')
+          PKG_LIST=$(find . \( -name "*.ipk" -o -name "*.apk" \) -exec basename {} \; | sort -u | sed 's/_[0-9].*//g' | sed 's/-[0-9].*//g' | sort -u | tr '\n' ', ' | sed 's/,$//')
           echo "packages=$PKG_LIST" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
@@ -786,14 +804,23 @@ jobs:
             ${{ steps.list-packages.outputs.packages }}
             
             ### 📥 Installation
-            
+
+            **For OpenWrt 25.12+ (.apk format):**
             ```bash
-            # Download the archive for your architecture
-            # Extract and upload .ipk files to router
-            
+            # Upload .apk files to router
+            apk update
+            apk add /tmp/luci-app-*.apk
+
+            # Restart services
+            /etc/init.d/rpcd restart
+            ```
+
+            **For OpenWrt 24.10 and earlier (.ipk format):**
+            ```bash
+            # Upload .ipk files to router
             opkg update
             opkg install /tmp/luci-app-*.ipk
-            
+
             # Restart services
             /etc/init.d/rpcd restart
             ```
@@ -866,9 +893,9 @@ jobs:
           for dir in packages/packages-*/; do
             if [[ -d "$dir" ]]; then
               ARCH=$(basename "$dir" | sed 's/packages-//')
-              COUNT=$(find "$dir" -name "*.ipk" 2>/dev/null | wc -l)
+              COUNT=$(find "$dir" \( -name "*.ipk" -o -name "*.apk" \) 2>/dev/null | wc -l)
               TOTAL=$((TOTAL + COUNT))
-              
+
               if [[ $COUNT -gt 0 ]]; then
                 echo "| $ARCH | ✅ Success | $COUNT |" >> $GITHUB_STEP_SUMMARY
               else
