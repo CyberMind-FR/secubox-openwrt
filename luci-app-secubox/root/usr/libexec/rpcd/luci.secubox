@@ -530,59 +530,35 @@ restart_module() {
 # Enable a module (NEW v0.3.1)
 enable_module() {
 	local module="$1"
-	local config
 
-	config_load secubox
-	config_get config "$module" config ""
-
-	# Set enabled flag in UCI
+	# Set enabled flag in UCI (v0.3.1)
+	# This only activates the module in configuration
+	# Use start_module() to actually start the service
 	uci set secubox.${module}.enabled='1'
 	uci commit secubox
 
-	# Enable and start service if init script exists
-	if [ -x "/etc/init.d/${config}" ]; then
-		/etc/init.d/${config} enable
-		/etc/init.d/${config} start
-
-		json_init
-		json_add_boolean "success" 1
-		json_add_string "message" "Module activé"
-		json_dump
-	else
-		json_init
-		json_add_boolean "success" 0
-		json_add_string "message" "Init script not found"
-		json_dump
-	fi
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Module activé dans la configuration"
+	json_add_string "note" "Utilisez 'Démarrer' pour lancer le service"
+	json_dump
 }
 
 # Disable a module (NEW v0.3.1)
 disable_module() {
 	local module="$1"
-	local config
 
-	config_load secubox
-	config_get config "$module" config ""
-
-	# Set disabled flag in UCI
+	# Set disabled flag in UCI (v0.3.1)
+	# This only deactivates the module in configuration
+	# Use stop_module() to actually stop the service
 	uci set secubox.${module}.enabled='0'
 	uci commit secubox
 
-	# Disable and stop service if init script exists
-	if [ -x "/etc/init.d/${config}" ]; then
-		/etc/init.d/${config} stop
-		/etc/init.d/${config} disable
-
-		json_init
-		json_add_boolean "success" 1
-		json_add_string "message" "Module désactivé"
-		json_dump
-	else
-		json_init
-		json_add_boolean "success" 0
-		json_add_string "message" "Init script not found"
-		json_dump
-	fi
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Module désactivé dans la configuration"
+	json_add_string "note" "Utilisez 'Arrêter' pour stopper le service"
+	json_dump
 }
 
 # Get health report
