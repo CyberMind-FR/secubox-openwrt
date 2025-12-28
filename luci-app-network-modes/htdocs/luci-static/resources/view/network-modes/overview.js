@@ -54,10 +54,11 @@ return view.extend({
 		var currentMode = status.current_mode || 'router';
 		
 		var modeInfos = {
-			sniffer: api.getModeInfo('sniffer'),
+			router: api.getModeInfo('router'),
 			accesspoint: api.getModeInfo('accesspoint'),
 			relay: api.getModeInfo('relay'),
-			router: api.getModeInfo('router')
+			travel: api.getModeInfo('travel'),
+			sniffer: api.getModeInfo('sniffer')
 		};
 		
 		var currentModeInfo = modeInfos[currentMode];
@@ -127,7 +128,7 @@ return view.extend({
 								E('th', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, '🌉 Bridge'),
 								E('th', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, '📡 Access Point'),
 								E('th', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, '🔁 Repeater'),
-								E('th', {}, '✈️ Travel Router')
+								E('th', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, '✈️ Travel Router')
 							])
 						]),
 						E('tbody', {}, [
@@ -137,7 +138,7 @@ return view.extend({
 								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'L2 Forwarding'),
 								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'WiFi Hotspot'),
 								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'WiFi Extender'),
-								E('td', {}, 'Portable WiFi')
+								E('td', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, 'Hotel / Travel kit')
 							]),
 							E('tr', {}, [
 								E('td', { 'class': 'feature-label' }, 'WAN Ports'),
@@ -145,7 +146,7 @@ return view.extend({
 								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'All bridged'),
 								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, '1 uplink'),
 								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'WiFi'),
-								E('td', {}, 'WiFi/Ethernet')
+								E('td', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, 'WiFi or USB')
 							]),
 							E('tr', {}, [
 								E('td', { 'class': 'feature-label' }, 'LAN Ports'),
@@ -153,7 +154,7 @@ return view.extend({
 								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'All ports'),
 								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'All ports'),
 								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'All ports'),
-								E('td', {}, 'All ports')
+								E('td', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, 'All ports')
 							]),
 							E('tr', {}, [
 								E('td', { 'class': 'feature-label' }, 'WiFi Role'),
@@ -161,7 +162,7 @@ return view.extend({
 								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'Optional AP'),
 								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'AP only'),
 								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'Client + AP'),
-								E('td', {}, 'Client + AP')
+								E('td', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, 'Client + AP')
 							]),
 							E('tr', {}, [
 								E('td', { 'class': 'feature-label' }, 'DHCP Server'),
@@ -169,7 +170,7 @@ return view.extend({
 								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'No'),
 								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'No'),
 								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'Yes'),
-								E('td', {}, 'Yes')
+								E('td', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, 'Yes')
 							]),
 							E('tr', {}, [
 								E('td', { 'class': 'feature-label' }, 'NAT'),
@@ -177,7 +178,7 @@ return view.extend({
 								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'Disabled'),
 								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'Disabled'),
 								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'Enabled'),
-								E('td', {}, 'Enabled')
+								E('td', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, 'Enabled')
 							])
 						])
 					])

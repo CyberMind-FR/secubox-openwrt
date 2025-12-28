@@ -95,6 +95,18 @@ var callRouterConfig = rpc.declare({
 	expect: { }
 });
 
+var callTravelConfig = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'travel_config',
+	expect: { }
+});
+
+var callTravelScan = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'travel_scan_networks',
+	expect: { networks: [] }
+});
+
 var callUpdateSettings = rpc.declare({
 	object: 'luci.network-modes',
 	method: 'update_settings'
@@ -237,6 +249,18 @@ return baseclass.extend({
 					'Signal amplification'
 				]
 			},
+			travel: {
+				id: 'travel',
+				name: 'Travel Router',
+				icon: '✈️',
+				description: 'Portable router for hotels and conferences. Clones WAN MAC and creates a secure personal hotspot.',
+				features: [
+					'Hotel WiFi client + scan wizard',
+					'MAC clone to bypass captive portals',
+					'Private WPA3 hotspot for your devices',
+					'Isolated NAT + DHCP sandbox'
+				]
+			},
 			sniffer: {
 				id: 'sniffer',
 				name: 'Sniffer Mode',
@@ -275,6 +299,8 @@ return baseclass.extend({
 	getApConfig: callApConfig,
 	getRelayConfig: callRelayConfig,
 	getRouterConfig: callRouterConfig,
+	getTravelConfig: callTravelConfig,
+	scanTravelNetworks: callTravelScan,
 
 	updateSettings: function(mode, settings) {
 		var payload = Object.assign({}, settings || {}, { mode: mode });

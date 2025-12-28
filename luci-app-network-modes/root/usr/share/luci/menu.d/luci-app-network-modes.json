@@ -49,6 +49,14 @@
 			"path": "network-modes/relay"
 		}
 	},
+	"admin/secubox/network-modes/travel": {
+		"title": "Travel Mode",
+		"order": 55,
+		"action": {
+			"type": "view",
+			"path": "network-modes/travel"
+		}
+	},
 	"admin/secubox/network-modes/sniffer": {
 		"title": "Sniffer Mode",
 		"order": 60,

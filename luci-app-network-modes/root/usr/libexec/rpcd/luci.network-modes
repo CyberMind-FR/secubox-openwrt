@@ -131,6 +131,19 @@ get_modes() {
 	json_add_boolean "https_frontend" "$(uci -q get network-modes.router.https_frontend || echo 0)"
 	json_add_string "frontend_type" "$(uci -q get network-modes.router.frontend_type)"
 	json_close_object
+
+	# Travel mode
+	json_add_object
+	json_add_string "id" "travel"
+	json_add_string "name" "$(uci -q get network-modes.travel.name || echo 'Travel Router')"
+	json_add_string "description" "$(uci -q get network-modes.travel.description || echo 'Portable router with WiFi uplink and personal hotspot')"
+	json_add_string "icon" "✈️"
+	json_add_boolean "active" "$([ "$current_mode" = "travel" ] && echo 1 || echo 0)"
+	json_add_string "client_interface" "$(uci -q get network-modes.travel.client_interface || echo 'wlan1')"
+	json_add_string "hotspot_interface" "$(uci -q get network-modes.travel.hotspot_interface || echo 'wlan0')"
+	json_add_boolean "mac_clone_enabled" "$([ -n "$(uci -q get network-modes.travel.clone_mac)" ] && echo 1 || echo 0)"
+	json_add_string "hotspot_ssid" "$(uci -q get network-modes.travel.hotspot_ssid || echo 'SecuBox-Travel')"
+	json_close_object
 	
 	json_close_array
 	json_dump
@@ -360,6 +373,135 @@ get_router_config() {
 	json_dump
 }
 
+# Get travel router configuration
+get_travel_config() {
+	json_init
+
+	local client_iface=$(uci -q get network-modes.travel.client_interface || echo "wlan1")
+	local hotspot_iface=$(uci -q get network-modes.travel.hotspot_interface || echo "wlan0")
+	local client_radio=$(uci -q get network-modes.travel.client_radio || echo "radio1")
+	local hotspot_radio=$(uci -q get network-modes.travel.hotspot_radio || echo "radio0")
+	local clone_mac=$(uci -q get network-modes.travel.clone_mac || echo "")
+
+	json_add_string "mode" "travel"
+	json_add_string "name" "$(uci -q get network-modes.travel.name || echo 'Travel Router')"
+	json_add_string "description" "$(uci -q get network-modes.travel.description || echo 'Portable WiFi router for hotels and coworking spaces')"
+
+	json_add_object "client"
+	json_add_string "interface" "$client_iface"
+	json_add_string "radio" "$client_radio"
+	json_add_string "ssid" "$(uci -q get network-modes.travel.ssid || echo '')"
+	json_add_string "encryption" "$(uci -q get network-modes.travel.encryption || echo 'sae-mixed')"
+	json_add_string "password" "$(uci -q get network-modes.travel.password || echo '')"
+	json_add_string "clone_mac" "$clone_mac"
+	json_add_boolean "mac_clone_enabled" "$([ -n "$clone_mac" ] && echo 1 || echo 0)"
+	json_close_object
+
+	json_add_object "hotspot"
+	json_add_string "interface" "$hotspot_iface"
+	json_add_string "radio" "$hotspot_radio"
+	json_add_string "ssid" "$(uci -q get network-modes.travel.hotspot_ssid || echo 'SecuBox-Travel')"
+	json_add_string "password" "$(uci -q get network-modes.travel.hotspot_password || echo 'TravelSafe123!')"
+	json_add_string "band" "$(uci -q get network-modes.travel.hotspot_band || echo 'dual')"
+	json_close_object
+
+	json_add_object "lan"
+	json_add_string "subnet" "$(uci -q get network-modes.travel.lan_subnet || echo '10.77.0.1')"
+	json_add_string "netmask" "$(uci -q get network-modes.travel.lan_netmask || echo '255.255.255.0')"
+	json_close_object
+
+	json_add_array "available_interfaces"
+	for iface in $(ls /sys/class/net/ 2>/dev/null | grep -E '^wl|^wlan' || true); do
+		json_add_string "" "$iface"
+	done
+	json_close_array
+
+	json_add_array "available_radios"
+	for radio in $(uci show wireless 2>/dev/null | grep "=wifi-device" | cut -d'.' -f2 | cut -d'=' -f1); do
+		json_add_string "" "$radio"
+	done
+	json_close_array
+
+	json_dump
+}
+
+# Scan nearby WiFi networks for travel mode
+travel_scan_networks() {
+	json_init
+	json_add_array "networks"
+
+	local iface=$(uci -q get network-modes.travel.client_interface || echo "wlan1")
+	local scan_output
+	scan_output="$(iwinfo "$iface" scan 2>/dev/null || true)"
+
+	if [ -z "$scan_output" ]; then
+		json_close_array
+		json_dump
+		return
+	fi
+
+	local bssid=""
+	local ssid=""
+	local channel=""
+	local signal=""
+	local encryption=""
+	local quality=""
+
+	while IFS= read -r line; do
+		case "$line" in
+			Cell*)
+				if [ -n "$bssid" ]; then
+					json_add_object
+					json_add_string "ssid" "${ssid:-Unknown}"
+					json_add_string "bssid" "$bssid"
+					json_add_string "channel" "${channel:-?}"
+					json_add_string "signal" "${signal:-N/A}"
+					json_add_string "quality" "${quality:-N/A}"
+					json_add_string "encryption" "${encryption:-Unknown}"
+					json_close_object
+				fi
+				bssid=$(printf '%s\n' "$line" | awk '{print $5}')
+				ssid=""
+				channel=""
+				signal=""
+				encryption=""
+				quality=""
+				;;
+			*"ESSID:"*)
+				ssid=$(printf '%s\n' "$line" | sed -n 's/.*ESSID: "\(.*\)".*/\1/p')
+				;;
+			*"Channel:"*)
+				channel=$(printf '%s\n' "$line" | awk -F'Channel:' '{print $2}' | awk '{print $1}')
+				;;
+			*"Signal:"*)
+				signal=$(printf '%s\n' "$line" | awk -F'Signal:' '{print $2}' | awk '{print $1" "$2}')
+				if echo "$line" | grep -q 'Quality'; then
+					quality=$(printf '%s\n' "$line" | sed -n 's/.*Quality: \([0-9\/]*\).*/\1/p')
+				fi
+				;;
+			*"Encryption:"*)
+				encryption=$(printf '%s\n' "$line" | sed -n 's/.*Encryption: //p')
+				;;
+		esac
+	done <<EOF
+$scan_output
+EOF
+
+	if [ -n "$bssid" ]; then
+		json_add_object
+		json_add_string "ssid" "${ssid:-Unknown}"
+		json_add_string "bssid" "$bssid"
+		json_add_string "channel" "${channel:-?}"
+		json_add_string "signal" "${signal:-N/A}"
+		json_add_string "quality" "${quality:-N/A}"
+		json_add_string "encryption" "${encryption:-Unknown}"
+		json_close_object
+	fi
+
+	json_close_array
+	json_dump
+}
+
 # Apply mode change (with actual network reconfiguration and rollback timer)
 apply_mode() {
 	json_init
@@ -426,8 +568,82 @@ apply_mode() {
 		apply_transparent_proxy_rules
 		deploy_nginx_vhosts
 		;;
+	travel)
+		local client_iface=$(uci -q get network-modes.travel.client_interface || echo "wlan1")
+		local client_radio=$(uci -q get network-modes.travel.client_radio || echo "radio1")
+		local hotspot_radio=$(uci -q get network-modes.travel.hotspot_radio || echo "radio0")
+		local travel_ssid=$(uci -q get network-modes.travel.ssid || echo "")
+		local travel_password=$(uci -q get network-modes.travel.password || echo "")
+		local travel_encryption=$(uci -q get network-modes.travel.encryption || echo "sae-mixed")
+		local hotspot_ssid=$(uci -q get network-modes.travel.hotspot_ssid || echo "SecuBox-Travel")
+		local hotspot_password=$(uci -q get network-modes.travel.hotspot_password || echo "TravelSafe123!")
+		local clone_mac=$(uci -q get network-modes.travel.clone_mac || echo "")
+		local lan_ip=$(uci -q get network-modes.travel.lan_subnet || echo "10.77.0.1")
+		local lan_netmask=$(uci -q get network-modes.travel.lan_netmask || echo "255.255.255.0")
 
-		accesspoint)
+		uci delete network.wan 2>/dev/null
+		uci set network.wan=interface
+		uci set network.wan.proto='dhcp'
+		uci set network.wan.device="$client_iface"
+
+		uci set network.lan=interface
+		uci set network.lan.proto='static'
+		uci set network.lan.device='br-lan'
+		uci set network.lan.ipaddr="$lan_ip"
+		uci set network.lan.netmask="$lan_netmask"
+
+		uci set dhcp.lan=dhcp
+		uci set dhcp.lan.interface='lan'
+		uci set dhcp.lan.start='60'
+		uci set dhcp.lan.limit='80'
+		uci set dhcp.lan.leasetime='6h'
+
+		uci set firewall.@zone[0]=zone
+		uci set firewall.@zone[0].name='lan'
+		uci set firewall.@zone[0].input='ACCEPT'
+		uci set firewall.@zone[0].output='ACCEPT'
+		uci set firewall.@zone[0].forward='ACCEPT'
+
+		uci set firewall.@zone[1]=zone
+		uci set firewall.@zone[1].name='wan'
+		uci set firewall.@zone[1].network='wan'
+		uci set firewall.@zone[1].input='REJECT'
+		uci set firewall.@zone[1].output='ACCEPT'
+		uci set firewall.@zone[1].forward='REJECT'
+		uci set firewall.@zone[1].masq='1'
+		uci set firewall.@zone[1].mtu_fix='1'
+
+		uci delete wireless.travel_sta 2>/dev/null
+		uci set wireless.travel_sta=wifi-iface
+		uci set wireless.travel_sta.device="$client_radio"
+		uci set wireless.travel_sta.mode='sta'
+		uci set wireless.travel_sta.network='wan'
+		[ -n "$travel_ssid" ] && uci set wireless.travel_sta.ssid="$travel_ssid" || uci delete wireless.travel_sta.ssid 2>/dev/null
+		uci set wireless.travel_sta.encryption="$travel_encryption"
+		if [ -n "$travel_password" ]; then
+			uci set wireless.travel_sta.key="$travel_password"
+		else
+			uci delete wireless.travel_sta.key 2>/dev/null
+		fi
+		if [ -n "$clone_mac" ]; then
+			uci set wireless.travel_sta.macaddr="$clone_mac"
+		else
+			uci delete wireless.travel_sta.macaddr 2>/dev/null
+		fi
+
+		uci delete wireless.travel_ap 2>/dev/null
+		uci set wireless.travel_ap=wifi-iface
+		uci set wireless.travel_ap.device="$hotspot_radio"
+		uci set wireless.travel_ap.mode='ap'
+		uci set wireless.travel_ap.network='lan'
+		uci set wireless.travel_ap.ssid="$hotspot_ssid"
+		uci set wireless.travel_ap.encryption='sae-mixed'
+		uci set wireless.travel_ap.key="$hotspot_password"
+		uci set wireless.travel_ap.ieee80211w='1'
+		uci set wireless.travel_ap.hidden='0'
+		;;
+
+	accesspoint)
 			# Access Point mode: Bridge, no NAT, DHCP client
 			# Delete WAN
 			uci delete network.wan 2>/dev/null
@@ -667,6 +883,31 @@ update_settings() {
 			[ -n "$transparent_proxy" ] && uci set network-modes.router.proxy_transparent="$transparent_proxy"
 			[ -n "$dns_over_https" ] && uci set network-modes.router.dns_over_https="$dns_over_https"
 			[ -n "$letsencrypt" ] && uci set network-modes.router.letsencrypt="$letsencrypt"
+			;;
+		travel)
+			json_get_var client_interface client_interface
+			json_get_var client_radio client_radio
+			json_get_var hotspot_radio hotspot_radio
+			json_get_var ssid ssid
+			json_get_var password password
+			json_get_var encryption encryption
+			json_get_var hotspot_ssid hotspot_ssid
+			json_get_var hotspot_password hotspot_password
+			json_get_var clone_mac clone_mac
+			json_get_var lan_subnet lan_subnet
+			json_get_var lan_netmask lan_netmask
+
+			[ -n "$client_interface" ] && uci set network-modes.travel.client_interface="$client_interface"
+			[ -n "$client_radio" ] && uci set network-modes.travel.client_radio="$client_radio"
+			[ -n "$hotspot_radio" ] && uci set network-modes.travel.hotspot_radio="$hotspot_radio"
+			[ -n "$ssid" ] && uci set network-modes.travel.ssid="$ssid"
+			[ -n "$password" ] && uci set network-modes.travel.password="$password"
+			[ -n "$encryption" ] && uci set network-modes.travel.encryption="$encryption"
+			[ -n "$hotspot_ssid" ] && uci set network-modes.travel.hotspot_ssid="$hotspot_ssid"
+			[ -n "$hotspot_password" ] && uci set network-modes.travel.hotspot_password="$hotspot_password"
+			[ -n "$clone_mac" ] && uci set network-modes.travel.clone_mac="$clone_mac"
+			[ -n "$lan_subnet" ] && uci set network-modes.travel.lan_subnet="$lan_subnet"
+			[ -n "$lan_netmask" ] && uci set network-modes.travel.lan_netmask="$lan_netmask"
 			;;
 		*)
 			json_add_boolean "success" 0
@@ -1415,6 +1656,49 @@ config forwarding
     option src 'lan'
     option dest 'wan'"
 			;;
+		travel)
+			local travel_ssid=$(uci -q get network-modes.travel.ssid || echo "HotelWiFi")
+			local hotspot_ssid=$(uci -q get network-modes.travel.hotspot_ssid || echo "SecuBox-Travel")
+			local lan_ip=$(uci -q get network-modes.travel.lan_subnet || echo "10.77.0.1")
+			config="# Travel Router Mode
+# /etc/config/network
+
+config interface 'wan'
+    option proto 'dhcp'
+    option device 'wlan-sta'
+
+config interface 'lan'
+    option proto 'static'
+    option ipaddr '$lan_ip'
+    option netmask '255.255.255.0'
+    option device 'br-lan'
+
+# /etc/config/wireless
+
+config wifi-iface 'travel_sta'
+    option device 'radio1'
+    option mode 'sta'
+    option network 'wan'
+    option ssid '$travel_ssid'
+    option encryption 'sae-mixed'
+    option key 'hotel-password'
+
+config wifi-iface 'travel_ap'
+    option device 'radio0'
+    option mode 'ap'
+    option network 'lan'
+    option ssid '$hotspot_ssid'
+    option encryption 'sae-mixed'
+    option key 'TravelSafe123!'
+
+# /etc/config/firewall
+config zone
+    option name 'wan'
+    option input 'REJECT'
+    option output 'ACCEPT'
+    option forward 'REJECT'
+    option masq '1'"
+			;;
 	esac
 	
 	json_add_string "config" "$config"
@@ -1503,6 +1787,21 @@ get_available_modes() {
 	json_close_array
 	json_close_object
 
+	# Travel router mode
+	json_add_object
+	json_add_string "id" "travel"
+	json_add_string "name" "Travel Router"
+	json_add_string "description" "Portable hotspot WiFi depuis l'ethernet ou WiFi hôtel"
+	json_add_string "icon" "✈️"
+	json_add_boolean "current" "$([ "$current_mode" = "travel" ] && echo 1 || echo 0)"
+	json_add_array "features"
+	json_add_string "" "Client WiFi + scan SSID"
+	json_add_string "" "Clone MAC WAN"
+	json_add_string "" "Hotspot privé WPA3"
+	json_add_string "" "NAT + DHCP isolé"
+	json_close_array
+	json_close_object
+
 	# Bridge mode
 	json_add_object
 	json_add_string "id" "bridge"
@@ -1532,7 +1831,7 @@ set_mode() {
 
 	# Validate mode
 	case "$target_mode" in
-		router|accesspoint|relay|bridge)
+		router|accesspoint|relay|bridge|sniffer|travel)
 			;;
 		*)
 			json_add_boolean "success" 0
@@ -1735,7 +2034,7 @@ rollback() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"modes":{},"get_current_mode":{},"get_available_modes":{},"set_mode":{"mode":"str"},"preview_changes":{},"apply_mode":{},"confirm_mode":{},"rollback":{},"sniffer_config":{},"ap_config":{},"relay_config":{},"router_config":{},"update_settings":{"mode":"str"},"generate_wireguard_keys":{},"apply_wireguard_config":{},"apply_mtu_clamping":{},"enable_tcp_bbr":{},"add_vhost":{"domain":"str","backend":"str","port":"int","ssl":"bool"},"generate_config":{"mode":"str"},"validate_pcap_filter":{"filter":"str"},"cleanup_old_pcaps":{}}'
+		echo '{"status":{},"modes":{},"get_current_mode":{},"get_available_modes":{},"set_mode":{"mode":"str"},"preview_changes":{},"apply_mode":{},"confirm_mode":{},"rollback":{},"sniffer_config":{},"ap_config":{},"relay_config":{},"router_config":{},"travel_config":{},"travel_scan_networks":{},"update_settings":{"mode":"str"},"generate_wireguard_keys":{},"apply_wireguard_config":{},"apply_mtu_clamping":{},"enable_tcp_bbr":{},"add_vhost":{"domain":"str","backend":"str","port":"int","ssl":"bool"},"generate_config":{"mode":"str"},"validate_pcap_filter":{"filter":"str"},"cleanup_old_pcaps":{}}'
 		;;
 	call)
 		case "$2" in
@@ -1777,6 +2076,12 @@ case "$1" in
 				;;
 			router_config)
 				get_router_config
+				;;
+			travel_config)
+				get_travel_config
+				;;
+			travel_scan_networks)
+				travel_scan_networks
 				;;
 			update_settings)
 				update_settings
