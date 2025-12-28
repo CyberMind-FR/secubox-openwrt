@@ -652,25 +652,32 @@ return view.extend({
 		// Update real-time metrics (v0.3.2)
 		var realtimeMetrics = document.querySelector('.sh-realtime-metrics');
 		if (realtimeMetrics) {
-			dom.content(realtimeMetrics, this.renderRealtimeMetrics().children);
+			var newMetrics = this.renderRealtimeMetrics();
+			dom.content(realtimeMetrics, Array.prototype.slice.call(newMetrics.childNodes));
 		}
 
 		// Update stats overview
 		var statsOverview = document.querySelector('.sh-stats-overview-grid');
 		if (statsOverview) {
-			dom.content(statsOverview, this.renderStatsOverview().children);
+			var newStats = this.renderStatsOverview();
+			dom.content(statsOverview, Array.prototype.slice.call(newStats.childNodes));
 		}
 
 		// Update system info grid
 		var systemInfoGrid = document.querySelector('.sh-system-info-grid');
 		if (systemInfoGrid) {
-			dom.content(systemInfoGrid, this.renderSystemInfoGrid().querySelector('.sh-system-info-grid').children);
+			var newInfoGrid = this.renderSystemInfoGrid();
+			var gridElement = newInfoGrid.querySelector('.sh-system-info-grid');
+			if (gridElement) {
+				dom.content(systemInfoGrid, Array.prototype.slice.call(gridElement.childNodes));
+			}
 		}
 
 		// Update quick status indicators
 		var statusIndicators = document.querySelector('.sh-status-indicators-grid');
 		if (statusIndicators) {
-			dom.content(statusIndicators, this.renderQuickStatusIndicators().children);
+			var newIndicators = this.renderQuickStatusIndicators();
+			dom.content(statusIndicators, Array.prototype.slice.call(newIndicators.childNodes));
 		}
 	},
 
