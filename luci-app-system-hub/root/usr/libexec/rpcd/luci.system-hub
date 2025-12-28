@@ -6,6 +6,16 @@
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
+DIAG_DIR="/tmp/system-hub/diagnostics"
+mkdir -p "$DIAG_DIR"
+
+safe_filename() {
+	local name="$1"
+	name="${name##*/}"
+	name="${name//../}"
+	echo "$name"
+}
+
 # Get comprehensive system status
 status() {
 	json_init
@@ -560,6 +570,470 @@ get_storage() {
 	json_dump
 }
 
+# Collect diagnostic data into archive
+collect_diagnostics() {
+	read input
+	[ -n "$input" ] && json_load "$input"
+
+	local include_logs include_config include_network anonymize
+	json_get_var include_logs include_logs 2>/dev/null
+	json_get_var include_config include_config 2>/dev/null
+	json_get_var include_network include_network 2>/dev/null
+	json_get_var anonymize anonymize 2>/dev/null
+
+	[ -z "$include_logs" ] && include_logs=1
+	[ -z "$include_config" ] && include_config=1
+	[ -z "$include_network" ] && include_network=1
+	[ -z "$anonymize" ] && anonymize=0
+
+	local timestamp="$(date +%Y%m%d-%H%M%S)"
+	local workdir="$DIAG_DIR/work-$timestamp"
+	mkdir -p "$workdir"
+
+	# System info
+	{
+		echo "=== System Information ==="
+		uname -a
+		echo
+		echo "--- CPU ---"
+		cat /proc/cpuinfo
+		echo
+		echo "--- Memory ---"
+		cat /proc/meminfo
+		echo
+		echo "--- Disk ---"
+		df -h
+		echo
+		echo "--- Uptime ---"
+		uptime
+	} >"$workdir/sysinfo.txt"
+
+	# Logs
+	if [ "$include_logs" = "1" ]; then
+		logread 2>/dev/null >"$workdir/system.log" || true
+		dmesg 2>/dev/null >"$workdir/kernel.log" || true
+	fi
+
+	# Configs
+	if [ "$include_config" = "1" ]; then
+		mkdir -p "$workdir/config"
+		sysupgrade -b "$workdir/config/backup.tar.gz" >/dev/null 2>&1 || true
+		for conf in /etc/config/*; do
+			[ -f "$conf" ] || continue
+			local dest="$workdir/config/$(basename "$conf")"
+			if [ "$anonymize" = "1" ]; then
+				grep -viE "(password|passwd|secret|key|token|psk|ipaddr|macaddr)" "$conf" >"$dest" 2>/dev/null || cp "$conf" "$dest"
+			else
+				cp "$conf" "$dest"
+			fi
+		done
+	fi
+
+	# Network info
+	if [ "$include_network" = "1" ]; then
+		{
+			echo "=== Interfaces ==="
+			ip addr
+			echo
+			echo "=== Routes ==="
+			ip route
+			echo
+			echo "=== Firewall ==="
+			iptables -L -n -v 2>/dev/null || true
+			echo
+			echo "=== DNS ==="
+			cat /etc/resolv.conf 2>/dev/null
+			echo
+			echo "=== Connectivity (8.8.8.8) ==="
+			ping -c 3 -W 2 8.8.8.8 2>&1
+			echo
+			echo "=== Connectivity (1.1.1.1) ==="
+			ping -c 3 -W 2 1.1.1.1 2>&1
+		} >"$workdir/network.txt"
+	fi
+
+	local archive_name="diagnostics-$(hostname)-$timestamp.tar.gz"
+	local archive_path="$DIAG_DIR/$archive_name"
+
+	tar -czf "$archive_path" -C "$workdir" . >/dev/null 2>&1 || {
+		rm -rf "$workdir"
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "archive_failed"
+		json_dump
+		return
+	}
+
+	rm -rf "$workdir"
+
+	local size=$(stat -c%s "$archive_path" 2>/dev/null || stat -f%z "$archive_path")
+	local created=$(date -r "$archive_path" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S')
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "file" "$archive_name"
+	json_add_int "size" "$size"
+	json_add_string "created_at" "$created"
+	json_dump
+}
+
+list_diagnostics() {
+	json_init
+	json_add_array "archives"
+
+	for file in $(ls -t "$DIAG_DIR"/diagnostics-*.tar.gz 2>/dev/null | head -n 50); do
+		[ -f "$file" ] || continue
+		local size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file")
+		local created=$(date -r "$file" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "")
+		json_add_object
+		json_add_string "name" "$(basename "$file")"
+		json_add_int "size" "$size"
+		json_add_string "created_at" "$created"
+		json_close_object
+	done
+
+	json_close_array
+	json_add_boolean "success" 1
+	json_dump
+}
+
+download_diagnostic() {
+	read input
+	json_load "$input"
+	json_get_var name name
+
+	local safe="$(safe_filename "$name")"
+	local file="$DIAG_DIR/$safe"
+	json_init
+
+	if [ -z "$safe" ] || [ ! -f "$file" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "not_found"
+		json_dump
+		return
+	}
+
+	local data=$(base64 "$file" 2>/dev/null)
+	json_add_boolean "success" 1
+	json_add_string "name" "$safe"
+	json_add_string "data" "$data"
+	json_dump
+}
+
+delete_diagnostic() {
+	read input
+	json_load "$input"
+	json_get_var name name
+	local safe="$(safe_filename "$name")"
+	local file="$DIAG_DIR/$safe"
+
+	json_init
+	if [ -n "$safe" ] && [ -f "$file" ]; then
+		rm -f "$file"
+		json_add_boolean "success" 1
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "not_found"
+	fi
+	json_dump
+}
+
+run_diagnostic_test() {
+	read input
+	json_load "$input"
+	json_get_var test test
+
+	local output=""
+	local success=1
+
+	case "$test" in
+		connectivity)
+			output="$(ping -c 3 -W 2 8.8.8.8 2>&1; echo; ping -c 3 -W 2 1.1.1.1 2>&1)"
+			;;
+		dns)
+			if command -v nslookup >/dev/null 2>&1; then
+				output="$(nslookup openwrt.org 2>&1)"
+			else
+				output="nslookup unavailable"
+				success=0
+			fi
+			;;
+		latency)
+			output="$(ping -c 5 -W 2 google.com 2>&1)"
+			;;
+		disk)
+			local testfile="/tmp/system-hub-disk-test"
+			if dd if=/dev/zero of="$testfile" bs=1M count=4 conv=fsync 2>&1; then
+				sync
+				rm -f "$testfile"
+				output="Disk write test completed (4MB)."
+			else
+				output="Disk test failed."
+				success=0
+			fi
+			;;
+		firewall)
+			output="$(iptables -L -n -v 2>&1)"
+			;;
+		wifi)
+			if command -v iwinfo >/dev/null 2>&1; then
+				output="$(iwinfo 2>&1)"
+			else
+				output="iwinfo not available"
+				success=0
+			fi
+			;;
+		*)
+			output="unknown test"
+			success=0
+			;;
+	esac
+
+	json_init
+	json_add_boolean "success" "$success"
+	json_add_string "test" "${test:-unknown}"
+	json_add_string "output" "$output"
+	json_dump
+}
+
+remote_status() {
+	local section="system-hub.remote"
+	local enabled=$(uci -q get $section.rustdesk_enabled || echo 0)
+	local relay_server=$(uci -q get $section.rustdesk_server || echo "")
+	local relay_key=$(uci -q get $section.rustdesk_key || echo "")
+	local stored_id=$(uci -q get $section.rustdesk_id || echo "")
+	local stored_password=$(uci -q get $section.rustdesk_password || echo "")
+	local allow_unattended=$(uci -q get $section.allow_unattended || echo 0)
+	local require_approval=$(uci -q get $section.require_approval || echo 1)
+	local notify_on_connect=$(uci -q get $section.notify_on_connect || echo 1)
+
+	local installed=0
+	command -v rustdesk >/dev/null 2>&1 && installed=1
+
+	local running=0
+	if [ -x /etc/init.d/rustdesk ]; then
+		/etc/init.d/rustdesk status >/dev/null 2>&1 && running=1
+	fi
+
+	json_init
+	json_add_boolean "installed" "$installed"
+	json_add_boolean "running" "$running"
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "server" "$relay_server"
+	json_add_string "key" "$relay_key"
+	json_add_string "id" "$stored_id"
+	json_add_string "password" "$stored_password"
+	json_add_boolean "allow_unattended" "$allow_unattended"
+	json_add_boolean "require_approval" "$require_approval"
+	json_add_boolean "notify_on_connect" "$notify_on_connect"
+	json_dump
+}
+
+remote_install() {
+	json_init
+	if command -v rustdesk >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "already_installed"
+		json_dump
+		return
+	fi
+
+	if ! command -v opkg >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "opkg_missing"
+		json_dump
+		return
+	fi
+
+	opkg update >/tmp/rustdesk-install.log 2>&1
+	if opkg install rustdesk >>/tmp/rustdesk-install.log 2>&1; then
+		json_add_boolean "success" 1
+		json_add_string "message" "RustDesk installed"
+	else
+		local err="$(tail -n 20 /tmp/rustdesk-install.log 2>/dev/null)"
+		json_add_boolean "success" 0
+		json_add_string "error" "${err:-install_failed}"
+	fi
+	json_dump
+}
+
+remote_configure() {
+	read input
+	json_load "$input"
+	local section="system-hub.remote"
+	local server key enabled
+	json_get_var server relay_server
+	json_get_var key relay_key
+	json_get_var enabled rustdesk_enabled
+
+	[ -n "$server" ] && uci set $section.rustdesk_server="$server"
+	[ -n "$key" ] && uci set $section.rustdesk_key="$key"
+	[ -n "$enabled" ] && uci set $section.rustdesk_enabled="$enabled"
+	uci commit system-hub
+
+	if [ -n "$server" ] || [ -n "$key" ]; then
+		mkdir -p /etc/rustdesk
+		cat > /etc/rustdesk/config.toml <<EOF
+[relay]
+server = "${server:-$(uci -q get $section.rustdesk_server)}"
+
+[options]
+key = "${key:-$(uci -q get $section.rustdesk_key)}"
+auto_start = true
+EOF
+	fi
+
+	if [ -x /etc/init.d/rustdesk ] && [ "${enabled:-0}" = "1" ]; then
+		/etc/init.d/rustdesk enable >/dev/null 2>&1 || true
+		/etc/init.d/rustdesk restart >/dev/null 2>&1 || true
+	elif [ -x /etc/init.d/rustdesk ]; then
+		/etc/init.d/rustdesk stop >/dev/null 2>&1 || true
+		/etc/init.d/rustdesk disable >/dev/null 2>&1 || true
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+remote_get_credentials() {
+	local section="system-hub.remote"
+	local rid="" rpass=""
+	if command -v rustdesk >/dev/null 2>&1; then
+		rid=$(rustdesk --get-id 2>/dev/null || echo "")
+		rpass=$(rustdesk --password 2>/dev/null || echo "")
+	fi
+	[ -z "$rid" ] && rid=$(uci -q get $section.rustdesk_id || echo "")
+	[ -z "$rpass" ] && rpass=$(uci -q get $section.rustdesk_password || echo "")
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$rid"
+	json_add_string "password" "$rpass"
+	json_dump
+}
+
+remote_service_action() {
+	read input
+	json_load "$input"
+	json_get_var action action
+
+	json_init
+	if [ ! -x /etc/init.d/rustdesk ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "service_missing"
+		json_dump
+		return
+	fi
+
+	case "$action" in
+		start|stop|restart|enable|disable)
+			if /etc/init.d/rustdesk "$action" >/dev/null 2>&1; then
+				json_add_boolean "success" 1
+				json_add_string "message" "$action"
+			else
+				json_add_boolean "success" 0
+				json_add_string "error" "action_failed"
+			fi
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "invalid_action"
+			;;
+	esac
+	json_dump
+}
+
+remote_save_settings() {
+	read input
+	json_load "$input"
+	local section="system-hub.remote"
+	local allow require notify
+	json_get_var allow allow_unattended
+	json_get_var require require_approval
+	json_get_var notify notify_on_connect
+
+	[ -n "$allow" ] && uci set $section.allow_unattended="$allow"
+	[ -n "$require" ] && uci set $section.require_approval="$require"
+	[ -n "$notify" ] && uci set $section.notify_on_connect="$notify"
+	uci commit system-hub
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+upload_diagnostics() {
+	read input
+	json_load "$input"
+	json_get_var name name
+
+	local upload_url=$(uci -q get system-hub.diagnostics.upload_url)
+	local upload_token=$(uci -q get system-hub.diagnostics.upload_token)
+
+	json_init
+
+	if [ -z "$upload_url" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "upload_url_missing"
+		json_dump
+		return
+	fi
+
+	if ! command -v curl >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "curl_missing"
+		json_dump
+		return
+	fi
+
+	local safe="$(safe_filename "$name")"
+	if [ -z "$safe" ]; then
+		# Use latest archive if not specified
+		safe="$(ls -t "$DIAG_DIR"/diagnostics-*.tar.gz 2>/dev/null | head -n1)"
+		[ -n "$safe" ] && safe="$(basename "$safe")"
+	fi
+
+	local file="$DIAG_DIR/$safe"
+	if [ -z "$safe" ] || [ ! -f "$file" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "archive_not_found"
+		json_dump
+		return
+	fi
+
+	local response
+	if [ -n "$upload_token" ]; then
+		response=$(curl -s -S -o /tmp/system-hub-upload.log -w "%{http_code}" \
+			-H "Authorization: Bearer $upload_token" \
+			-F "file=@$file" \
+			-F "hostname=$(hostname)" \
+			-F "timestamp=$(date +%s)" \
+			"$upload_url" 2>&1)
+	else
+		response=$(curl -s -S -o /tmp/system-hub-upload.log -w "%{http_code}" \
+			-F "file=@$file" \
+			-F "hostname=$(hostname)" \
+			-F "timestamp=$(date +%s)" \
+			"$upload_url" 2>&1)
+	fi
+
+	local curl_exit=$?
+	local body="$(cat /tmp/system-hub-upload.log 2>/dev/null || true)"
+	rm -f /tmp/system-hub-upload.log
+
+	if [ $curl_exit -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "status" "$response"
+		json_add_string "body" "$body"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "upload_failed"
+		json_add_string "details" "$body"
+	fi
+	json_dump
+}
+
 # Get settings
 get_settings() {
 	json_init
@@ -770,6 +1244,31 @@ case "$1" in
 		"disk_critical": 95,
 		"temp_warning": 70,
 		"temp_critical": 85
+	},
+	"collect_diagnostics": {
+		"include_logs": 1,
+		"include_config": 1,
+		"include_network": 1,
+		"anonymize": 1
+	},
+	"list_diagnostics": {},
+	"download_diagnostic": { "name": "string" },
+	"delete_diagnostic": { "name": "string" },
+	"run_diagnostic_test": { "test": "string" },
+	"upload_diagnostics": { "name": "string" },
+	"remote_status": {},
+	"remote_install": {},
+	"remote_configure": {
+		"relay_server": "string",
+		"relay_key": "string",
+		"rustdesk_enabled": 1
+	},
+	"remote_get_credentials": {},
+	"remote_service_action": { "action": "start|stop|restart|enable|disable" },
+	"remote_save_settings": {
+		"allow_unattended": 0,
+		"require_approval": 1,
+		"notify_on_connect": 1
 	}
 }
 EOF
@@ -790,6 +1289,18 @@ EOF
 			get_storage) get_storage ;;
 			get_settings) get_settings ;;
 			save_settings) save_settings ;;
+			collect_diagnostics) collect_diagnostics ;;
+			list_diagnostics) list_diagnostics ;;
+			download_diagnostic) download_diagnostic ;;
+			delete_diagnostic) delete_diagnostic ;;
+			run_diagnostic_test) run_diagnostic_test ;;
+			upload_diagnostics) upload_diagnostics ;;
+			remote_status) remote_status ;;
+			remote_install) remote_install ;;
+			remote_configure) remote_configure ;;
+			remote_get_credentials) remote_get_credentials ;;
+			remote_service_action) remote_service_action ;;
+			remote_save_settings) remote_save_settings ;;
 			*)
 				json_init
 				json_add_boolean "success" 0

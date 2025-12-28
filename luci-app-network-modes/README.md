@@ -19,6 +19,7 @@ Configure your OpenWrt router for different network operation modes with a moder
 - **WireGuard automation:** generate key pairs, deploy `wg0` interfaces, and push MTU/MSS/BBR optimizations directly from the Relay panel.
 - **Optimization RPCs:** new backend methods expose MTU clamping, TCP BBR, and WireGuard deployment to both UI and automation agents.
 - **UI action buttons:** Relay mode now includes one-click buttons for key generation, interface deployment, and optimization runs.
+- **Integrated proxies:** router mode now auto-configures Squid/TinyProxy/Privoxy, transparent HTTP redirection, DNS-over-HTTPS, and nginx reverse proxy vhosts with optional Let’s Encrypt certificates.
 
 ### 🔍 Sniffer Bridge Mode (Inline / Passthrough)
 Transparent Ethernet bridge without IP address for in-line traffic analysis. All traffic passes through the device.
@@ -59,6 +60,18 @@ Internet Router (Gateway)
 - ✅ Can apply firewall rules if needed
 - ✅ Can perform traffic shaping
 - ⚠️ Single point of failure (if device fails, network is down)
+
+**Proxy / DoH Requirements (Router Mode):**
+
+| Capability | Packages |
+|------------|----------|
+| Caching proxy | `squid` or `tinyproxy` or `privoxy` |
+| Transparent proxy redirect | (iptables built-in) |
+| DNS over HTTPS | `https-dns-proxy`, `ca-certificates` |
+| HTTPS reverse proxy | `nginx` (HAProxy/Caddy support planned) |
+| Let’s Encrypt automation | `acme`, `acme-dnsapi`, `openssl-util` |
+
+Install these packages before enabling the associated toggles in the Router panel so the automation can write configs and restart services successfully.
 
 ---
 

@@ -7,8 +7,13 @@
 var api = L.require('system-hub.api');
 
 return view.extend({
-	render: function() {
-		var self = this;
+	load: function() {
+		return api.listDiagnostics();
+	},
+
+	render: function(data) {
+		this.currentArchives = (data && data.archives) || [];
+		var archives = this.currentArchives;
 
 		var view = E('div', { 'class': 'system-hub-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
@@ -59,11 +64,7 @@ return view.extend({
 				E('div', { 'class': 'sh-card-header' }, [
 					E('div', { 'class': 'sh-card-title' }, [ E('span', { 'class': 'sh-card-title-icon' }, '📁'), 'Archives Récentes' ])
 				]),
-				E('div', { 'class': 'sh-card-body', 'id': 'archives-list' }, [
-					this.renderArchiveItem('diagnostic_20241220_154500.tar.gz', '256 KB', '2024-12-20 15:45:00'),
-					this.renderArchiveItem('diagnostic_20241219_093000.tar.gz', '312 KB', '2024-12-19 09:30:00'),
-					this.renderArchiveItem('diagnostic_20241218_110000.tar.gz', '298 KB', '2024-12-18 11:00:00')
-				])
+				E('div', { 'class': 'sh-card-body', 'id': 'archives-list' }, this.renderArchiveList(archives))
 			]),
 			
 			// Test Results
@@ -113,7 +114,19 @@ return view.extend({
 		]);
 	},
 
-	renderArchiveItem: function(name, size, date) {
+	renderArchiveList: function(archives) {
+		if (!archives.length) {
+			return [
+				E('div', { 'style': 'text-align:center; color:#707080; padding:24px;' }, 'Aucune archive disponible')
+			];
+		}
+		return archives.map(this.renderArchiveItem, this);
+	},
+
+	renderArchiveItem: function(archive) {
+		var name = archive.name || '';
+		var size = api.formatBytes(archive.size || 0);
+		var date = archive.created_at || '';
 		return E('div', { 'style': 'display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #1a1a24; border-radius: 8px; margin-bottom: 10px;' }, [
 			E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
 				E('span', { 'style': 'font-size: 20px;' }, '📦'),
@@ -123,8 +136,16 @@ return view.extend({
 				])
 			]),
 			E('div', { 'style': 'display: flex; gap: 8px;' }, [
-				E('button', { 'class': 'sh-btn', 'style': 'padding: 6px 10px; font-size: 10px;' }, '📥 Télécharger'),
-				E('button', { 'class': 'sh-btn', 'style': 'padding: 6px 10px; font-size: 10px;' }, '☁️ Envoyer')
+				E('button', { 
+					'class': 'sh-btn', 
+					'style': 'padding: 6px 10px; font-size: 10px;',
+					'click': L.bind(this.downloadArchive, this, name)
+				}, '📥 Télécharger'),
+				E('button', { 
+					'class': 'sh-btn', 
+					'style': 'padding: 6px 10px; font-size: 10px; background:#321616;',
+					'click': L.bind(this.deleteArchive, this, name)
+				}, '🗑️ Supprimer')
 			])
 		]);
 	},
@@ -140,49 +161,116 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		api.callCollectDiagnostics(includeLogs, includeConfig, includeNetwork, anonymize).then(function(result) {
+		api.collectDiagnostics(includeLogs, includeConfig, includeNetwork, anonymize).then(L.bind(function(result) {
 			ui.hideModal();
 			if (result.success) {
 				ui.addNotification(null, E('p', {}, '✅ Archive créée: ' + result.file + ' (' + api.formatBytes(result.size) + ')'), 'success');
+				this.refreshArchives();
 			} else {
 				ui.addNotification(null, E('p', {}, '❌ Erreur lors de la collecte'), 'error');
 			}
+		}, this)).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
 		});
 	},
 
 	uploadDiagnostics: function() {
-		ui.addNotification(null, E('p', {}, '⚠️ Fonctionnalité non configurée. Configurez l\'URL d\'upload dans les paramètres.'), 'warning');
+		var archives = this.currentArchives || [];
+		if (!archives.length) {
+			ui.addNotification(null, E('p', {}, 'Aucune archive à envoyer'), 'warning');
+			return;
+		}
+
+		var latest = archives[0];
+		ui.showModal(_('Upload Support'), [
+			E('p', {}, 'Envoi de ' + latest.name + '…'),
+			E('div', { 'class': 'spinning' })
+		]);
+
+		api.uploadDiagnostics(latest.name).then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				ui.addNotification(null, E('p', {}, '☁️ Archive envoyée au support (' + (result.status || 'OK') + ')'), 'info');
+			} else {
+				ui.addNotification(null, E('p', {}, '❌ Upload impossible: ' + ((result && result.error) || 'Erreur inconnue')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+		});
 	},
 
 	runTest: function(type) {
 		var resultsDiv = document.getElementById('test-results');
 		
 		resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px;"><div class="spinning"></div><div style="margin-top: 12px;">Test en cours...</div></div>';
-
-		// Simulate test
-		setTimeout(function() {
-			var results = {
-				'connectivity': { status: 'ok', message: 'WAN connecté, DNS fonctionnel', details: 'Ping: 8.8.8.8 - 12ms' },
-				'dns': { status: 'ok', message: 'Résolution DNS OK', details: 'google.com → 142.250.185.78' },
-				'latency': { status: 'warning', message: 'Latence élevée', details: 'Google: 45ms (seuil: 30ms)' },
-				'disk': { status: 'ok', message: 'Disque OK', details: 'Lecture: 25 MB/s, Écriture: 18 MB/s' },
-				'firewall': { status: 'ok', message: '127 règles actives', details: 'INPUT: 23, FORWARD: 89, OUTPUT: 15' },
-				'wifi': { status: 'ok', message: '2 radios actives', details: '2.4GHz: 8 clients, 5GHz: 4 clients' }
-			};
-
-			var r = results[type] || { status: 'ok', message: 'Test complété', details: '' };
-			var color = r.status === 'ok' ? '#22c55e' : (r.status === 'warning' ? '#f59e0b' : '#ef4444');
-			var icon = r.status === 'ok' ? '✅' : (r.status === 'warning' ? '⚠️' : '❌');
-
+		api.runDiagnosticTest(type).then(function(result) {
+			var color = result.success ? '#22c55e' : '#ef4444';
+			var bg = result.success ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)';
+			var icon = result.success ? '✅' : '❌';
 			resultsDiv.innerHTML = '';
-			resultsDiv.appendChild(E('div', { 'style': 'padding: 20px; background: rgba(' + (r.status === 'ok' ? '34,197,94' : '245,158,11') + ', 0.1); border-radius: 10px; border-left: 3px solid ' + color }, [
-				E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin-bottom: 8px;' }, [
-					E('span', { 'style': 'font-size: 24px;' }, icon),
-					E('span', { 'style': 'font-size: 16px; font-weight: 600;' }, r.message)
+			resultsDiv.appendChild(E('div', { 'style': 'padding: 18px; border-radius: 10px; border-left: 3px solid ' + color + '; background: ' + bg }, [
+				E('div', { 'style': 'display:flex; align-items:center; gap:10px;' }, [
+					E('span', { 'style': 'font-size:24px;' }, icon),
+					E('div', { 'style': 'font-weight:600;' }, (result.test || type) + ' - ' + (result.success ? 'Réussi' : 'Échec'))
 				]),
-				E('div', { 'style': 'font-size: 12px; color: #a0a0b0; margin-left: 36px;' }, r.details)
+				E('pre', { 'style': 'margin-top:12px; font-size:12px; white-space:pre-wrap;' }, result.output || '')
 			]));
-		}, 1500);
+		}).catch(function(err) {
+			resultsDiv.innerHTML = '';
+			resultsDiv.appendChild(E('div', { 'class': 'sh-alert error' }, [
+				E('div', { 'class': 'sh-alert-title' }, 'Erreur'),
+				E('div', {}, err.message || err)
+			]));
+		});
+	},
+
+	downloadArchive: function(name) {
+		ui.showModal(_('Téléchargement…'), [
+			E('p', {}, 'Préparation de ' + name)
+		]);
+
+		api.downloadDiagnostic(name).then(function(result) {
+			ui.hideModal();
+			if (!result.success || !result.data) {
+				ui.addNotification(null, E('p', {}, '❌ Téléchargement impossible'), 'error');
+				return;
+			}
+			var link = document.createElement('a');
+			link.href = 'data:application/gzip;base64,' + result.data;
+			link.download = result.name || name;
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+		});
+	},
+
+	deleteArchive: function(name) {
+		if (!confirm(_('Supprimer ') + name + ' ?')) return;
+		api.deleteDiagnostic(name).then(L.bind(function(result) {
+			if (result.success) {
+				ui.addNotification(null, E('p', {}, '🗑️ Archive supprimée'), 'info');
+				this.refreshArchives();
+			} else {
+				ui.addNotification(null, E('p', {}, '❌ Suppression impossible'), 'error');
+			}
+		}, this));
+	},
+
+	refreshArchives: function() {
+		api.listDiagnostics().then(L.bind(function(data) {
+			this.currentArchives = data.archives || [];
+			var list = document.getElementById('archives-list');
+			if (!list) return;
+			list.innerHTML = '';
+			(this.renderArchiveList(this.currentArchives)).forEach(function(node) {
+				list.appendChild(node);
+			});
+		}, this));
 	},
 
 	handleSaveApply: null,

@@ -19,6 +19,8 @@ return view.extend({
 		var fwConfig = config.firewall || {};
 		var proxyConfig = config.proxy || {};
 		var frontendConfig = config.https_frontend || {};
+		var proxyStatus = proxyConfig.enabled ? (proxyConfig.type || 'squid') : 'disabled';
+		var dohStatus = proxyConfig.dns_over_https ? _('Enabled') : _('Disabled');
 		var vhosts = config.virtual_hosts || [];
 		
 		var view = E('div', { 'class': 'network-modes-dashboard' }, [
@@ -48,8 +50,15 @@ return view.extend({
 						E('span', { 'class': 'nm-card-title-icon' }, '🌍'),
 						'WAN Configuration'
 					])
-				]),
-				E('div', { 'class': 'nm-card-body' }, [
+					]),
+					E('div', { 'class': 'nm-card-body' }, [
+						E('div', { 'class': 'nm-alert nm-alert-info', 'style': 'margin-bottom: 12px;' }, [
+							E('span', { 'class': 'nm-alert-icon' }, 'ℹ️'),
+							E('div', {}, [
+								E('div', { 'class': 'nm-alert-title' }, _('Proxy status')),
+								E('div', { 'class': 'nm-alert-text' }, _('Type: ') + proxyStatus + ' • DoH: ' + dohStatus)
+							])
+						]),
 					E('div', { 'class': 'nm-form-group' }, [
 						E('label', { 'class': 'nm-form-label' }, 'WAN Interface'),
 						E('input', { 
@@ -226,6 +235,13 @@ return view.extend({
 					E('div', { 'class': 'nm-card-badge' }, vhosts.length + ' virtual hosts')
 				]),
 				E('div', { 'class': 'nm-card-body' }, [
+					E('div', { 'class': 'nm-alert nm-alert-info', 'style': 'margin-bottom: 12px;' }, [
+						E('span', { 'class': 'nm-alert-icon' }, frontendConfig.enabled ? '🟢' : '⚪'),
+						E('div', {}, [
+							E('div', { 'class': 'nm-alert-title' }, _('Frontend status: ') + (frontendConfig.enabled ? _('Enabled') : _('Disabled'))),
+							E('div', { 'class': 'nm-alert-text' }, _('Type: ') + (frontendConfig.type || 'nginx') + ' • ' + _('Let\'s Encrypt: ') + (frontendConfig.letsencrypt ? _('Enabled') : _('Disabled')))
+						])
+					]),
 					E('div', { 'class': 'nm-toggle' }, [
 						E('div', { 'class': 'nm-toggle-info' }, [
 							E('span', { 'class': 'nm-toggle-icon' }, '🌐'),

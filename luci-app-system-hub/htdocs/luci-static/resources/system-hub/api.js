@@ -101,6 +101,86 @@ var callGetComponentsByCategory = rpc.declare({
 	expect: {}
 });
 
+var callCollectDiagnostics = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'collect_diagnostics',
+	params: ['include_logs', 'include_config', 'include_network', 'anonymize'],
+	expect: {}
+});
+
+var callListDiagnostics = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'list_diagnostics',
+	expect: {}
+});
+
+var callDownloadDiagnostic = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'download_diagnostic',
+	params: ['name'],
+	expect: {}
+});
+
+var callDeleteDiagnostic = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'delete_diagnostic',
+	params: ['name'],
+	expect: {}
+});
+
+var callRunDiagnosticTest = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'run_diagnostic_test',
+	params: ['test'],
+	expect: {}
+});
+
+var callUploadDiagnostics = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'upload_diagnostics',
+	params: ['name'],
+	expect: {}
+});
+
+var callRemoteStatus = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'remote_status',
+	expect: {}
+});
+
+var callRemoteInstall = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'remote_install',
+	expect: {}
+});
+
+var callRemoteConfigure = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'remote_configure',
+	params: ['relay_server', 'relay_key', 'rustdesk_enabled'],
+	expect: {}
+});
+
+var callRemoteGetCredentials = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'remote_get_credentials',
+	expect: {}
+});
+
+var callRemoteServiceAction = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'remote_service_action',
+	params: ['action'],
+	expect: {}
+});
+
+var callRemoteSaveSettings = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'remote_save_settings',
+	params: ['allow_unattended', 'require_approval', 'notify_on_connect'],
+	expect: {}
+});
+
 return baseclass.extend({
 	// RPC methods - exposed via ubus
 	getStatus: callStatus,
@@ -116,5 +196,50 @@ return baseclass.extend({
 	reboot: callReboot,
 	getStorage: callGetStorage,
 	getSettings: callGetSettings,
-	saveSettings: callSaveSettings
+	saveSettings: callSaveSettings,
+
+	collectDiagnostics: function(includeLogs, includeConfig, includeNetwork, anonymize) {
+		return callCollectDiagnostics({
+			include_logs: includeLogs ? 1 : 0,
+			include_config: includeConfig ? 1 : 0,
+			include_network: includeNetwork ? 1 : 0,
+			anonymize: anonymize ? 1 : 0
+		});
+	},
+
+	listDiagnostics: callListDiagnostics,
+	downloadDiagnostic: function(name) {
+		return callDownloadDiagnostic({ name: name });
+	},
+	deleteDiagnostic: function(name) {
+		return callDeleteDiagnostic({ name: name });
+	},
+	runDiagnosticTest: function(test) {
+		return callRunDiagnosticTest({ test: test });
+	},
+
+	uploadDiagnostics: function(name) {
+		return callUploadDiagnostics({ name: name });
+	},
+
+	formatBytes: function(bytes) {
+		if (!bytes || bytes <= 0)
+			return '0 B';
+		var units = ['B', 'KB', 'MB', 'GB'];
+		var i = Math.floor(Math.log(bytes) / Math.log(1024));
+		return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+	},
+
+	remoteStatus: callRemoteStatus,
+	remoteInstall: callRemoteInstall,
+	remoteConfigure: function(data) {
+		return callRemoteConfigure(data);
+	},
+	remoteCredentials: callRemoteGetCredentials,
+	remoteServiceAction: function(action) {
+		return callRemoteServiceAction({ action: action });
+	},
+	remoteSaveSettings: function(data) {
+		return callRemoteSaveSettings(data);
+	}
 });

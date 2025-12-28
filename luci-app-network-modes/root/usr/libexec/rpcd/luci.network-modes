@@ -8,6 +8,7 @@
 
 CONFIG_FILE="/etc/config/network-modes"
 BACKUP_DIR="/etc/network-modes-backup"
+PCAP_DIR="/var/log/pcap"
 
 # Get current status
 get_status() {
@@ -382,42 +383,49 @@ apply_mode() {
 	# Apply network configuration based on mode
 	case "$pending_mode" in
 		router)
-			# Router mode: NAT, DHCP server, firewall
-			# WAN interface
-			uci delete network.wan 2>/dev/null
-			uci set network.wan=interface
-			uci set network.wan.proto='dhcp'
-			uci set network.wan.device='eth1'
+		# Router mode: NAT, DHCP server, firewall
+		# WAN interface
+		uci delete network.wan 2>/dev/null
+		uci set network.wan=interface
+		uci set network.wan.proto='dhcp'
+		uci set network.wan.device='eth1'
 
-			# LAN interface
-			uci set network.lan=interface
-			uci set network.lan.proto='static'
-			uci set network.lan.device='eth0'
-			uci set network.lan.ipaddr='192.168.1.1'
-			uci set network.lan.netmask='255.255.255.0'
+		# LAN interface
+		uci set network.lan=interface
+		uci set network.lan.proto='static'
+		uci set network.lan.device='eth0'
+		uci set network.lan.ipaddr='192.168.1.1'
+		uci set network.lan.netmask='255.255.255.0'
 
-			# DHCP server
-			uci set dhcp.lan=dhcp
-			uci set dhcp.lan.interface='lan'
-			uci set dhcp.lan.start='100'
-			uci set dhcp.lan.limit='150'
-			uci set dhcp.lan.leasetime='12h'
+		# DHCP server
+		uci set dhcp.lan=dhcp
+		uci set dhcp.lan.interface='lan'
+		uci set dhcp.lan.start='100'
+		uci set dhcp.lan.limit='150'
+		uci set dhcp.lan.leasetime='12h'
 
-			# Firewall zones
-			uci set firewall.@zone[0]=zone
-			uci set firewall.@zone[0].name='lan'
-			uci set firewall.@zone[0].input='ACCEPT'
-			uci set firewall.@zone[0].output='ACCEPT'
-			uci set firewall.@zone[0].forward='ACCEPT'
+		# Firewall zones
+		uci set firewall.@zone[0]=zone
+		uci set firewall.@zone[0].name='lan'
+		uci set firewall.@zone[0].input='ACCEPT'
+		uci set firewall.@zone[0].output='ACCEPT'
+		uci set firewall.@zone[0].forward='ACCEPT'
 
-			uci set firewall.@zone[1]=zone
-			uci set firewall.@zone[1].name='wan'
-			uci set firewall.@zone[1].input='REJECT'
-			uci set firewall.@zone[1].output='ACCEPT'
-			uci set firewall.@zone[1].forward='REJECT'
-			uci set firewall.@zone[1].masq='1'
-			uci set firewall.@zone[1].mtu_fix='1'
-			;;
+		uci set firewall.@zone[1]=zone
+		uci set firewall.@zone[1].name='wan'
+		uci set firewall.@zone[1].input='REJECT'
+		uci set firewall.@zone[1].output='ACCEPT'
+		uci set firewall.@zone[1].forward='REJECT'
+		uci set firewall.@zone[1].masq='1'
+		uci set firewall.@zone[1].mtu_fix='1'
+
+		generate_squid_config
+		generate_tinyproxy_config
+		generate_privoxy_config
+		configure_doh_proxy
+		apply_transparent_proxy_rules
+		deploy_nginx_vhosts
+		;;
 
 		accesspoint)
 			# Access Point mode: Bridge, no NAT, DHCP client
@@ -437,6 +445,7 @@ apply_mode() {
 			uci set firewall.@zone[0].input='ACCEPT'
 			uci set firewall.@zone[0].forward='ACCEPT'
 			uci delete firewall.@zone[1] 2>/dev/null
+			apply_accesspoint_features
 			;;
 
 		relay)
@@ -478,6 +487,12 @@ apply_mode() {
 			uci delete firewall.@zone[1] 2>/dev/null
 			;;
 	esac
+
+	if [ "$pending_mode" = "sniffer" ]; then
+		start_packet_capture
+	else
+		stop_packet_capture
+	fi
 
 	# Commit all changes
 	uci commit network
@@ -633,10 +648,451 @@ update_settings() {
 	esac
 	
 	uci commit network-modes
+	[ "$mode" = "accesspoint" ] && apply_accesspoint_features
+	if [ "$mode" = "sniffer" ]; then
+		local current_mode=$(uci -q get network-modes.config.current_mode || echo "")
+		[ "$current_mode" = "sniffer" ] && start_packet_capture
+	fi
 	
 	json_add_boolean "success" 1
 	json_add_string "message" "Settings updated for $mode mode"
 	json_dump
+}
+
+# Squid proxy configuration
+generate_squid_config() {
+	local proxy_type=$(uci -q get network-modes.router.proxy_type || echo "none")
+	local enabled=$(uci -q get network-modes.router.proxy_enabled || echo 0)
+	[ "$proxy_type" = "squid" ] || return 0
+	[ "$enabled" = "1" ] || return 0
+
+	if ! command -v squid >/dev/null 2>&1; then
+		logger -t network-modes "squid binary not found"
+		return 1
+	fi
+
+	local proxy_port=$(uci -q get network-modes.router.proxy_port || echo 3128)
+	local cache_size=$(uci -q get network-modes.router.proxy_cache_size || echo 256)
+	mkdir -p /etc/squid /var/spool/squid /var/log/squid
+
+	cat > /etc/squid/squid.conf <<EOF
+# SecuBox Network Modes - Squid Configuration
+# Generated: $(date)
+
+http_port $proxy_port transparent
+cache_dir ufs /var/spool/squid $cache_size 16 256
+cache_mem 64 MB
+maximum_object_size 4096 KB
+minimum_object_size 0 KB
+
+acl localnet src 192.168.0.0/16
+acl localnet src 10.0.0.0/8
+acl localnet src fc00::/7
+acl SSL_ports port 443
+acl Safe_ports port 80
+acl Safe_ports port 443
+acl CONNECT method CONNECT
+
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow localhost manager
+http_access deny manager
+http_access allow localnet
+http_access allow localhost
+http_access deny all
+
+access_log /var/log/squid/access.log squid
+cache_log /var/log/squid/cache.log
+dns_nameservers 1.1.1.1 8.8.8.8
+forwarded_for on
+via on
+EOF
+
+	squid -z >/dev/null 2>&1 || true
+	/etc/init.d/squid restart >/dev/null 2>&1 || true
+}
+
+generate_tinyproxy_config() {
+	local proxy_type=$(uci -q get network-modes.router.proxy_type || echo "none")
+	local enabled=$(uci -q get network-modes.router.proxy_enabled || echo 0)
+	[ "$proxy_type" = "tinyproxy" ] || return 0
+	[ "$enabled" = "1" ] || return 0
+
+	if ! command -v tinyproxy >/dev/null 2>&1; then
+		logger -t network-modes "tinyproxy binary not found"
+		return 1
+	fi
+
+	local proxy_port=$(uci -q get network-modes.router.proxy_port || echo 8888)
+	mkdir -p /etc/tinyproxy
+
+	cat > /etc/tinyproxy/tinyproxy.conf <<EOF
+User nobody
+Group nogroup
+Port $proxy_port
+Listen 0.0.0.0
+Timeout 600
+DefaultErrorFile "/usr/share/tinyproxy/default.html"
+Logfile "/var/log/tinyproxy/tinyproxy.log"
+StatFile "/usr/share/tinyproxy/stats.html"
+MaxClients 100
+MinSpareServers 5
+MaxSpareServers 20
+StartServers 10
+Allow 192.168.0.0/16
+Allow 10.0.0.0/8
+Allow 172.16.0.0/12
+ViaProxyName "SecuBox"
+EOF
+
+	/etc/init.d/tinyproxy restart >/dev/null 2>&1 || true
+}
+
+generate_privoxy_config() {
+	local proxy_type=$(uci -q get network-modes.router.proxy_type || echo "none")
+	local enabled=$(uci -q get network-modes.router.proxy_enabled || echo 0)
+	[ "$proxy_type" = "privoxy" ] || return 0
+	[ "$enabled" = "1" ] || return 0
+
+	if ! command -v privoxy >/dev/null 2>&1; then
+		logger -t network-modes "privoxy binary not found"
+		return 1
+	fi
+
+	local proxy_port=$(uci -q get network-modes.router.proxy_port || echo 8118)
+	mkdir -p /etc/privoxy
+
+	cat > /etc/privoxy/config <<EOF
+listen-address  0.0.0.0:$proxy_port
+toggle  1
+enable-remote-toggle 0
+enable-remote-http-toggle 0
+accept-intercepted-requests 1
+forward-socks5 / 127.0.0.1:9050 .
+logfile /var/log/privoxy/logfile
+EOF
+
+	/etc/init.d/privoxy restart >/dev/null 2>&1 || true
+}
+
+apply_transparent_proxy_rules() {
+	local proxy_enabled=$(uci -q get network-modes.router.proxy_enabled || echo 0)
+	local proxy_port=$(uci -q get network-modes.router.proxy_port || echo 3128)
+	local transparent=$(uci -q get network-modes.router.proxy_transparent || echo 0)
+
+	uci -q delete firewall.proxy_redirect
+
+	if [ "$proxy_enabled" = "1" ] && [ "$transparent" = "1" ]; then
+		uci set firewall.proxy_redirect=redirect
+		uci set firewall.proxy_redirect.name='Transparent Web Proxy'
+		uci set firewall.proxy_redirect.src='lan'
+		uci set firewall.proxy_redirect.proto='tcp'
+		uci set firewall.proxy_redirect.src_dport='80'
+		uci set firewall.proxy_redirect.dest_port="$proxy_port"
+		uci set firewall.proxy_redirect.target='DNAT'
+	fi
+	uci commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1 || true
+}
+
+configure_doh_proxy() {
+	local doh_enabled=$(uci -q get network-modes.router.dns_over_https || echo 0)
+	[ "$doh_enabled" = "1" ] || return 0
+
+	if ! command -v https_dns_proxy >/dev/null 2>&1; then
+		logger -t network-modes "https_dns_proxy not installed"
+		return 1
+	fi
+
+	local provider=$(uci -q get network-modes.router.doh_provider || echo "cloudflare")
+	local doh_url
+	case "$provider" in
+		cloudflare) doh_url="https://1.1.1.1/dns-query" ;;
+		google) doh_url="https://dns.google/dns-query" ;;
+		quad9) doh_url="https://dns.quad9.net/dns-query" ;;
+		*) doh_url="https://1.1.1.1/dns-query" ;;
+	esac
+
+	uci set https-dns-proxy.@https-dns-proxy[0]=https-dns-proxy
+	uci set https-dns-proxy.@https-dns-proxy[0].resolver_url="$doh_url"
+	uci set https-dns-proxy.@https-dns-proxy[0].listen_addr='127.0.0.1'
+	uci set https-dns-proxy.@https-dns-proxy[0].listen_port='5053'
+	uci commit https-dns-proxy
+
+	uci set dhcp.@dnsmasq[0].noresolv='1'
+	uci -q delete dhcp.@dnsmasq[0].server
+	uci add_list dhcp.@dnsmasq[0].server="127.0.0.1#5053"
+	uci commit dhcp
+
+	/etc/init.d/https-dns-proxy restart >/dev/null 2>&1 || true
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+}
+
+apply_accesspoint_features() {
+	local iface="wireless.@wifi-iface[0]"
+	uci -q show "$iface" >/dev/null 2>&1 || return 0
+	local changed=0
+
+	local ft_enabled=$(uci -q get network-modes.accesspoint.roaming_enabled || echo 0)
+	if [ "$ft_enabled" = "1" ]; then
+		local ssid=$(uci -q get $iface.ssid || echo "SecuBox")
+		local mobility_domain=$(echo -n "$ssid" | md5sum 2>/dev/null | cut -c1-4)
+		[ -z "$mobility_domain" ] && mobility_domain="a1b2"
+		uci set $iface.ieee80211r='1'
+		uci set $iface.mobility_domain="$mobility_domain"
+		uci set $iface.ft_over_ds='1'
+		uci set $iface.ft_psk_generate_local='1'
+		uci set $iface.reassociation_deadline='1000'
+		changed=1
+	else
+		uci set $iface.ieee80211r='0'
+		uci -q delete $iface.mobility_domain
+	fi
+
+	local rrm_enabled=$(uci -q get network-modes.accesspoint.rrm_enabled || echo 0)
+	if [ "$rrm_enabled" = "1" ]; then
+		uci set $iface.ieee80211k='1'
+		uci set $iface.rrm_neighbor_report='1'
+		uci set $iface.rrm_beacon_report='1'
+		changed=1
+	else
+		uci set $iface.ieee80211k='0'
+		uci -q delete $iface.rrm_neighbor_report
+		uci -q delete $iface.rrm_beacon_report
+	fi
+
+	local v_enabled=$(uci -q get network-modes.accesspoint.wnm_enabled || echo 0)
+	if [ "$v_enabled" = "1" ]; then
+		uci set $iface.ieee80211v='1'
+		uci set $iface.bss_transition='1'
+		uci set $iface.wnm_sleep_mode='1'
+		changed=1
+	else
+		uci set $iface.ieee80211v='0'
+		uci -q delete $iface.bss_transition
+		uci -q delete $iface.wnm_sleep_mode
+	fi
+
+	local band=$(uci -q get network-modes.accesspoint.band_steering || echo 0)
+	if [ "$band" = "1" ]; then
+		local radio_2g=$(uci show wireless 2>/dev/null | grep "band='2g'" | head -n1)
+		local radio_5g=$(uci show wireless 2>/dev/null | grep "band='5g'" | head -n1)
+		if [ -n "$radio_2g" ] && [ -n "$radio_5g" ]; then
+			uci set $iface.bss_load_update_period='60'
+			uci set $iface.chan_util_avg_period='600'
+			uci set $iface.disassoc_low_ack='1'
+			changed=1
+		else
+			logger -t network-modes "band steering requested but dual-band radios missing"
+		fi
+	else
+		uci -q delete $iface.bss_load_update_period
+		uci -q delete $iface.chan_util_avg_period
+		uci -q delete $iface.disassoc_low_ack
+	fi
+
+	if [ "$changed" = "1" ]; then
+		uci commit wireless
+		wifi reload >/dev/null 2>&1 || true
+	fi
+}
+
+start_packet_capture() {
+	local capture_enabled=$(uci -q get network-modes.sniffer.pcap_capture || echo 0)
+	if [ "$capture_enabled" != "1" ]; then
+		stop_packet_capture
+		return 0
+	fi
+
+	if ! command -v tcpdump >/dev/null 2>&1; then
+		logger -t network-modes "tcpdump not installed"
+		return 1
+	fi
+
+	local capture_interface=$(uci -q get network-modes.sniffer.capture_interface || echo "br-lan")
+	local capture_filter=$(uci -q get network-modes.sniffer.capture_filter || echo "")
+	local max_size=$(uci -q get network-modes.sniffer.pcap_max_size || echo "100")
+	local rotate_count=$(uci -q get network-modes.sniffer.pcap_rotate || echo "10")
+
+	mkdir -p "$PCAP_DIR"
+	stop_packet_capture
+
+	if [ -n "$capture_filter" ]; then
+		tcpdump -i "$capture_interface" -w "$PCAP_DIR/capture.pcap" -C "$max_size" -W "$rotate_count" -s 0 $capture_filter >/dev/null 2>&1 &
+	else
+		tcpdump -i "$capture_interface" -w "$PCAP_DIR/capture.pcap" -C "$max_size" -W "$rotate_count" -s 0 >/dev/null 2>&1 &
+	fi
+	local pid=$!
+	echo "$pid" > /var/run/tcpdump-sniffer.pid
+}
+
+stop_packet_capture() {
+	if [ -f /var/run/tcpdump-sniffer.pid ]; then
+		local pid=$(cat /var/run/tcpdump-sniffer.pid 2>/dev/null)
+		[ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+		rm -f /var/run/tcpdump-sniffer.pid
+	fi
+	killall tcpdump >/dev/null 2>&1 || true
+}
+
+validate_pcap_filter() {
+	read input
+	json_load "$input"
+	json_get_var filter filter
+
+	if [ -z "$filter" ]; then
+		json_init
+		json_add_boolean "valid" 1
+		json_add_string "filter" "all"
+		json_dump
+		return
+	fi
+
+	if command -v tcpdump >/dev/null 2>&1 && tcpdump -i any -d "$filter" >/dev/null 2>&1; then
+		json_init
+		json_add_boolean "valid" 1
+		json_add_string "filter" "$filter"
+		json_dump
+	else
+		json_init
+		json_add_boolean "valid" 0
+		json_add_string "error" "Invalid BPF syntax"
+		json_dump
+	fi
+}
+
+cleanup_old_pcaps() {
+	local max_age=$(uci -q get network-modes.sniffer.pcap_retention_days || echo "7")
+	mkdir -p "$PCAP_DIR"
+	local deleted=0
+	find "$PCAP_DIR" -name "*.pcap*" -mtime +$max_age -type f 2>/dev/null | while read -r file; do
+		rm -f "$file"
+		deleted=$((deleted + 1))
+	done
+
+	local total_size=$(du -sm "$PCAP_DIR" 2>/dev/null | cut -f1 || echo "0")
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_int "deleted" "$deleted"
+	json_add_int "total_size_mb" "$total_size"
+	json_dump
+}
+
+deploy_nginx_vhosts() {
+	local frontend_enabled=$(uci -q get network-modes.router.https_frontend || echo 0)
+	local frontend_type=$(uci -q get network-modes.router.frontend_type || echo nginx)
+	[ "$frontend_enabled" = "1" ] || return 0
+	[ "$frontend_type" = "nginx" ] || return 0
+
+	if ! command -v nginx >/dev/null 2>&1; then
+		logger -t network-modes "nginx not installed"
+		return 1
+	fi
+
+	rm -f /etc/nginx/conf.d/vhost-*.conf 2>/dev/null || true
+	mkdir -p /etc/nginx/conf.d /etc/acme
+
+	local idx=0
+	local deployed=0
+	while true; do
+		local domain=$(uci -q get network-modes.@vhost[$idx].domain)
+		[ -n "$domain" ] || break
+		local backend=$(uci -q get network-modes.@vhost[$idx].backend || echo "127.0.0.1")
+		local port=$(uci -q get network-modes.@vhost[$idx].port || echo 80)
+		local ssl=$(uci -q get network-modes.@vhost[$idx].ssl || echo 0)
+
+		cat > "/etc/nginx/conf.d/vhost-$idx.conf" <<EOF
+server {
+	listen 80;
+	server_name $domain;
+EOF
+
+	if [ "$ssl" = "1" ]; then
+		cat >> "/etc/nginx/conf.d/vhost-$idx.conf" <<EOF
+	return 301 https://\$server_name\$request_uri;
+}
+
+server {
+	listen 443 ssl http2;
+	server_name $domain;
+
+	ssl_certificate /etc/acme/$domain/fullchain.cer;
+	ssl_certificate_key /etc/acme/$domain/$domain.key;
+	ssl_protocols TLSv1.2 TLSv1.3;
+	ssl_ciphers HIGH:!aNULL:!MD5;
+
+	location / {
+		proxy_pass http://$backend:$port;
+		proxy_set_header Host \$host;
+		proxy_set_header X-Real-IP \$remote_addr;
+		proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Proto \$scheme;
+	}
+}
+EOF
+	else
+		cat >> "/etc/nginx/conf.d/vhost-$idx.conf" <<EOF
+	location / {
+		proxy_pass http://$backend:$port;
+		proxy_set_header Host \$host;
+		proxy_set_header X-Real-IP \$remote_addr;
+		proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Proto \$scheme;
+	}
+}
+EOF
+	fi
+
+		deployed=$((deployed + 1))
+		idx=$((idx + 1))
+	done
+
+	/etc/init.d/nginx reload >/dev/null 2>&1 || true
+	logger -t network-modes "Deployed $deployed nginx vhosts"
+}
+
+issue_letsencrypt_cert() {
+	local domain="$1"
+	[ -n "$domain" ] || return 1
+
+	local acme_email=$(uci -q get network-modes.router.acme_email)
+	[ -n "$acme_email" ] || acme_email="admin@$domain"
+
+	if ! command -v /usr/lib/acme/acme.sh >/dev/null 2>&1; then
+		opkg update >/dev/null 2>&1 || true
+		opkg install acme acme-dnsapi >/dev/null 2>&1 || true
+	fi
+
+	/usr/lib/acme/acme.sh --issue -d "$domain" --webroot /www --accountemail "$acme_email" --force >/tmp/acme-issue.log 2>&1
+	if [ $? -eq 0 ]; then
+		mkdir -p /etc/acme/$domain
+		/usr/lib/acme/acme.sh --install-cert \
+			-d "$domain" \
+			--cert-file /etc/acme/$domain/cert.cer \
+			--key-file /etc/acme/$domain/$domain.key \
+			--fullchain-file /etc/acme/$domain/fullchain.cer \
+			--reloadcmd "/etc/init.d/nginx reload" >/dev/null 2>&1
+		return 0
+	else
+		logger -t network-modes "ACME issue failed for $domain"
+		return 1
+	fi
+}
+
+validate_ssl_cert() {
+	local domain="$1"
+	local cert_file="/etc/acme/$domain/fullchain.cer"
+	[ -f "$cert_file" ] || return 1
+	command -v openssl >/dev/null 2>&1 || return 1
+
+	local expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" | cut -d= -f2)
+	local expiry_epoch=$(date -d "$expiry_date" +%s 2>/dev/null || echo 0)
+	local now_epoch=$(date +%s)
+	[ "$expiry_epoch" -gt 0 ] || return 1
+	local days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+	logger -t network-modes "Cert $domain valid $days_left days"
+	[ "$days_left" -gt 0 ]
 }
 
 # Generate WireGuard key pair and store in UCI
@@ -1250,7 +1706,7 @@ rollback() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"modes":{},"get_current_mode":{},"get_available_modes":{},"set_mode":{"mode":"str"},"preview_changes":{},"apply_mode":{},"confirm_mode":{},"rollback":{},"sniffer_config":{},"ap_config":{},"relay_config":{},"router_config":{},"update_settings":{"mode":"str"},"generate_wireguard_keys":{},"apply_wireguard_config":{},"apply_mtu_clamping":{},"enable_tcp_bbr":{},"add_vhost":{"domain":"str","backend":"str","port":"int","ssl":"bool"},"generate_config":{"mode":"str"}}'
+		echo '{"status":{},"modes":{},"get_current_mode":{},"get_available_modes":{},"set_mode":{"mode":"str"},"preview_changes":{},"apply_mode":{},"confirm_mode":{},"rollback":{},"sniffer_config":{},"ap_config":{},"relay_config":{},"router_config":{},"update_settings":{"mode":"str"},"generate_wireguard_keys":{},"apply_wireguard_config":{},"apply_mtu_clamping":{},"enable_tcp_bbr":{},"add_vhost":{"domain":"str","backend":"str","port":"int","ssl":"bool"},"generate_config":{"mode":"str"},"validate_pcap_filter":{"filter":"str"},"cleanup_old_pcaps":{}}'
 		;;
 	call)
 		case "$2" in
@@ -1325,6 +1781,12 @@ case "$1" in
 				;;
 			generate_config)
 				generate_config
+				;;
+			validate_pcap_filter)
+				validate_pcap_filter
+				;;
+			cleanup_old_pcaps)
+				cleanup_old_pcaps
 				;;
 			*)
 				echo '{"error": "Unknown method"}'

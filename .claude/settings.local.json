@@ -144,7 +144,9 @@
       "Bash(for module in luci-app-ksm-manager luci-app-media-flow luci-app-netdata-dashboard luci-app-netifyd-dashboard luci-app-network-modes luci-app-secubox luci-app-system-hub luci-app-traffic-shaper luci-app-vhost-manager luci-app-wireguard-dashboard)",
       "Bash(do echo \"=== $module ===\" find \"$module/htdocs/luci-static/resources/view\" -name \"*.js\")",
       "Bash(gh run view:*)",
-      "Bash(/tmp/deploy-system-hub-overview-fix.sh)"
+      "Bash(/tmp/deploy-system-hub-overview-fix.sh)",
+      "Bash(./secubox-tools/deploy-network-modes.sh:*)",
+      "Bash(/tmp/generalize-makefile-filemodes.sh)"
     ]
   }
 }
