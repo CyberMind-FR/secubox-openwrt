@@ -153,7 +153,32 @@ validate_makefiles() {
 
     local errors=0
 
+    # Validate luci-app-* packages
     for makefile in ../luci-app-*/Makefile; do
+        if [[ -f "$makefile" ]]; then
+            local pkg=$(dirname "$makefile" | xargs basename)
+            echo "  🔍 Checking $pkg..."
+
+            # Required fields
+            local required_fields=("PKG_NAME" "PKG_VERSION" "PKG_RELEASE" "PKG_LICENSE")
+
+            for field in "${required_fields[@]}"; do
+                if ! grep -q "^${field}:=" "$makefile"; then
+                    print_error "Missing: $field in $pkg"
+                    errors=$((errors + 1))
+                fi
+            done
+
+            # Check for include statements
+            if ! grep -q "include.*luci.mk\|include.*package.mk" "$makefile"; then
+                print_error "Missing include statement in $pkg"
+                errors=$((errors + 1))
+            fi
+        fi
+    done
+
+    # Validate luci-theme-* packages
+    for makefile in ../luci-theme-*/Makefile; do
         if [[ -f "$makefile" ]]; then
             local pkg=$(dirname "$makefile" | xargs basename)
             echo "  🔍 Checking $pkg..."
@@ -543,7 +568,21 @@ copy_packages() {
     else
         print_info "Copying all packages"
 
+        # Copy luci-app-* packages
         for pkg in ../../luci-app-*/; do
+            if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
+                local pkg_name=$(basename "$pkg")
+                echo "  📁 $pkg_name"
+                cp -r "$pkg" "$feed_dir/"
+
+                # Fix Makefile include path for feed structure
+                sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "$feed_dir/$pkg_name/Makefile"
+                echo "    ✓ Fixed Makefile include path"
+            fi
+        done
+
+        # Copy luci-theme-* packages
+        for pkg in ../../luci-theme-*/; do
             if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
                 local pkg_name=$(basename "$pkg")
                 echo "  📁 $pkg_name"
@@ -558,7 +597,8 @@ copy_packages() {
 
     echo ""
     print_info "Packages in feed:"
-    ls -d "$feed_dir/luci-app-"*/ 2>/dev/null || echo "None"
+    ls -d "$feed_dir/luci-app-"*/ 2>/dev/null || true
+    ls -d "$feed_dir/luci-theme-"*/ 2>/dev/null || true
 
     # Update the secubox feed
     echo ""
@@ -572,7 +612,17 @@ copy_packages() {
         echo "  Installing $single_package..."
         ./scripts/feeds install "$single_package"
     else
+        # Install luci-app-* packages
         for pkg in "$feed_dir"/luci-app-*/; do
+            if [[ -d "$pkg" ]]; then
+                local pkg_name=$(basename "$pkg")
+                echo "  Installing $pkg_name..."
+                ./scripts/feeds install "$pkg_name" 2>&1 | grep -v "WARNING:" || true
+            fi
+        done
+
+        # Install luci-theme-* packages
+        for pkg in "$feed_dir"/luci-theme-*/; do
             if [[ -d "$pkg" ]]; then
                 local pkg_name=$(basename "$pkg")
                 echo "  Installing $pkg_name..."
@@ -608,8 +658,17 @@ configure_packages() {
             return 1
         fi
     else
-        # Enable all SecuBox packages from feed
+        # Enable all SecuBox packages from feed (luci-app-*)
         for pkg in feeds/secubox/luci-app-*/; do
+            if [[ -d "$pkg" ]]; then
+                local pkg_name=$(basename "$pkg")
+                echo "CONFIG_PACKAGE_${pkg_name}=m" >> .config
+                print_success "$pkg_name enabled"
+            fi
+        done
+
+        # Enable all SecuBox theme packages from feed (luci-theme-*)
+        for pkg in feeds/secubox/luci-theme-*/; do
             if [[ -d "$pkg" ]]; then
                 local pkg_name=$(basename "$pkg")
                 echo "CONFIG_PACKAGE_${pkg_name}=m" >> .config
@@ -678,7 +737,13 @@ build_packages() {
             return 1
         fi
     else
+        # Build luci-app-* packages
         for pkg in feeds/secubox/luci-app-*/; do
+            [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
+        done
+
+        # Build luci-theme-* packages
+        for pkg in feeds/secubox/luci-theme-*/; do
             [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
         done
     fi
@@ -757,6 +822,7 @@ collect_artifacts() {
 
     # Find and copy package files (.apk or .ipk)
     find "$SDK_DIR/bin" -name "luci-app-*.${pkg_ext}" -exec cp {} "$BUILD_DIR/$ARCH/" \; 2>/dev/null || true
+    find "$SDK_DIR/bin" -name "luci-theme-*.${pkg_ext}" -exec cp {} "$BUILD_DIR/$ARCH/" \; 2>/dev/null || true
 
     # Also collect any SecuBox related packages
     find "$SDK_DIR/bin" -name "*secubox*.${pkg_ext}" -exec cp {} "$BUILD_DIR/$ARCH/" \; 2>/dev/null || true
@@ -929,7 +995,26 @@ copy_secubox_to_openwrt() {
     mkdir -p package/secubox
 
     local pkg_count=0
+
+    # Copy luci-app-* packages
     for pkg in ../../luci-app-*/; do
+        if [[ -d "$pkg" ]]; then
+            local pkg_name=$(basename "$pkg")
+            echo "  ✅ $pkg_name"
+            cp -r "$pkg" package/secubox/
+
+            # Fix Makefile include path
+            if [[ -f "package/secubox/$pkg_name/Makefile" ]]; then
+                sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' \
+                    "package/secubox/$pkg_name/Makefile"
+            fi
+
+            pkg_count=$((pkg_count + 1))
+        fi
+    done
+
+    # Copy luci-theme-* packages
+    for pkg in ../../luci-theme-*/; do
         if [[ -d "$pkg" ]]; then
             local pkg_name=$(basename "$pkg")
             echo "  ✅ $pkg_name"
@@ -1494,7 +1579,7 @@ main() {
                         arch_specified=true
                         shift 2
                         ;;
-                    luci-app-*)
+                    luci-app-*|luci-theme-*)
                         single_package="$1"
                         shift
                         ;;
