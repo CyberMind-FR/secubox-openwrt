@@ -472,13 +472,36 @@ jobs:
             curl -sL "${REPO_BASE}/packages/Packages" > packages_base.txt || true
           fi
 
-          # Note: Actual package download logic would go here
-          # For now, we just note that dependencies exist
+          # Download critical LuCI dependencies that fail to compile in SDK
+          echo "Downloading lucihttp and related packages..."
+          DEPS=("lucihttp" "cgi-io" "lua")
+
+          for dep in "${DEPS[@]}"; do
+            if [[ "$PKG_EXT" == "apk" ]]; then
+              # For APK, try to extract package names from index
+              echo "Looking for $dep packages..."
+              curl -sL "${REPO_BASE}/luci/${dep}*.${PKG_EXT}" -o "${dep}.${PKG_EXT}" 2>/dev/null || true
+              curl -sL "${REPO_BASE}/packages/${dep}*.${PKG_EXT}" -o "${dep}.${PKG_EXT}" 2>/dev/null || true
+            else
+              # For IPK, download from packages feed
+              curl -sL "${REPO_BASE}/luci/${dep}_*.${PKG_EXT}" -o "${dep}.${PKG_EXT}" 2>/dev/null || true
+              curl -sL "${REPO_BASE}/packages/${dep}*.${PKG_EXT}" -o "${dep}.${PKG_EXT}" 2>/dev/null || true
+            fi
+          done
+
+          # Install downloaded packages into SDK
+          for pkg in *.${PKG_EXT}; do
+            if [[ -f "$pkg" && -s "$pkg" ]]; then
+              echo "  ✓ Downloaded: $pkg"
+              # Copy to SDK packages directory for installation
+              cp "$pkg" ../../packages/ 2>/dev/null || true
+            fi
+          done
 
           cd ../..
 
           echo ""
-          echo "✅ Download step completed"
+          echo "✅ Dependency download completed"
           echo "Note: Our SecuBox packages are PKGARCH:=all (scripts only)"
           echo "They will be built regardless of dependency availability"
 
@@ -501,6 +524,15 @@ jobs:
           echo "CONFIG_AUTOREBUILD=y" >> .config
           echo "CONFIG_AUTOREMOVE=y" >> .config
           echo "CONFIG_BUILDBOT=y" >> .config
+
+          # Disable problematic packages that fail to compile in SDK
+          # Our SecuBox packages are PKGARCH:=all (scripts) so they don't need these
+          echo "# CONFIG_PACKAGE_lucihttp is not set" >> .config
+          echo "# CONFIG_PACKAGE_cgi-io is not set" >> .config
+
+          # Enable use of pre-built packages from feeds
+          echo "CONFIG_FEED_packages=y" >> .config
+          echo "CONFIG_FEED_luci=y" >> .config
 
           make defconfig
 
