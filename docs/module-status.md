@@ -23,9 +23,9 @@
 
 ## See Also
 
-- **Feature Regeneration Prompts:** [FEATURE-REGENERATION-PROMPTS.md](feature-regeneration-prompts.md)
-- **Implementation Workflow:** [MODULE-IMPLEMENTATION-GUIDE.md](module-implementation-guide.md)
-- **Build System:** [CLAUDE.md](claude.md)
+- **Feature Regeneration Prompts:** [FEATURE-REGENERATION-PROMPTS.md](./FEATURE-REGENERATION-PROMPTS.md)
+- **Implementation Workflow:** [MODULE-IMPLEMENTATION-GUIDE.md](./MODULE-IMPLEMENTATION-GUIDE.md)
+- **Build System:** [CLAUDE.md](./CLAUDE.md)
 
 ---
 
@@ -600,8 +600,8 @@
 - **MIPS**: 24kc, mipsel variants
 
 ### Supported OpenWrt Versions
-- **24.10.5** (LTS, primary target)
-- **25.12.0-rc1** (latest, testing)
+- **25.12.0-rc1** (latest, primary target)
+- **24.10.5** (LTS, stable)
 - **23.05.5** (legacy support)
 - **SNAPSHOT** (development)
 

@@ -600,8 +600,8 @@
 - **MIPS**: 24kc, mipsel variants
 
 ### Supported OpenWrt Versions
-- **24.10.5** (LTS, primary target)
-- **25.12.0-rc1** (latest, testing)
+- **25.12.0-rc1** (latest, primary target)
+- **24.10.5** (LTS, stable)
 - **23.05.5** (legacy support)
 - **SNAPSHOT** (development)
 
