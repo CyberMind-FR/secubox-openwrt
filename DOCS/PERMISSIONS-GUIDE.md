@@ -1,8 +1,27 @@
 # OpenWrt Package Permissions Guide
 
-**Version:** 0.3.1
-**Date:** 2025-12-28
+**Version:** 0.3.1  
+**Last Updated:** 2025-12-28  
+**Status:** Active  
 **Author:** CyberMind
+
+> **📚 This is a quick reference guide.**
+> For complete deployment procedures, see [DEVELOPMENT-GUIDELINES.md §9](./DEVELOPMENT-GUIDELINES.md#deployment-procedures)
+>
+> **Related Documentation:**
+> - Complete guide: [DEVELOPMENT-GUIDELINES.md](./DEVELOPMENT-GUIDELINES.md)
+> - Quick reference: [QUICK-START.md](./QUICK-START.md)
+> - Validation tools: [VALIDATION-GUIDE.md](./VALIDATION-GUIDE.md)
+> - Automation briefing: [CODEX.md](./CODEX.md)
+
+---
+
+## See Also
+
+- **Deployment Procedures:** [DEVELOPMENT-GUIDELINES.md §9](./DEVELOPMENT-GUIDELINES.md#deployment-procedures)
+- **Quick Rules & Commands:** [QUICK-START.md](./QUICK-START.md)
+- **Validation Checklist:** [VALIDATION-GUIDE.md](./VALIDATION-GUIDE.md)
+- **Automation Standards:** [CODEX.md](./CODEX.md)
 
 ## 🎯 Objectif
 

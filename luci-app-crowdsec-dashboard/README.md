@@ -1,5 +1,10 @@
 # 🛡️ LuCI CrowdSec Dashboard
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
+
 A modern, responsive, and dynamic dashboard for monitoring CrowdSec security on OpenWrt routers.
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)

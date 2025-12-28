@@ -1,8 +1,22 @@
 # Quick Start Guide - SecuBox Development
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
 **⚡ Aide-mémoire rapide pour développement**
 
 Pour le guide complet, voir [DEVELOPMENT-GUIDELINES.md](./DEVELOPMENT-GUIDELINES.md)
+
+---
+
+## See Also
+
+- **Complete Guide:** [DEVELOPMENT-GUIDELINES.md](./DEVELOPMENT-GUIDELINES.md)
+- **Architecture & Build:** [CLAUDE.md](./CLAUDE.md)
+- **Code Templates:** [CODE-TEMPLATES.md](./CODE-TEMPLATES.md)
+- **Module Prompts:** [FEATURE-REGENERATION-PROMPTS.md](./FEATURE-REGENERATION-PROMPTS.md)
+- **Automation Briefing:** [CODEX.md](./CODEX.md)
 
 ---
 

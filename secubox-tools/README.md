@@ -1,6 +1,19 @@
 # SecuBox Development Tools
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
 This directory contains utilities for validating, debugging, and maintaining SecuBox modules.
+
+---
+
+## See Also
+
+- **Quick Commands & Rules:** [DOCS/QUICK-START.md](../DOCS/QUICK-START.md)
+- **Automation Guardrails:** [DOCS/CODEX.md](../DOCS/CODEX.md)
+- **Validation Guide:** [DOCS/VALIDATION-GUIDE.md](../DOCS/VALIDATION-GUIDE.md)
+- **Deployment Procedures:** [DOCS/DEVELOPMENT-GUIDELINES.md §9](../DOCS/DEVELOPMENT-GUIDELINES.md#deployment-procedures)
 
 ## Tools Overview
 

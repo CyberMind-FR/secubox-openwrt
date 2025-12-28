@@ -1,8 +1,18 @@
 # SecuBox Module Code Templates
 
-**Version:** 1.0.0
-**Date:** 2025-12-27
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active  
 **Purpose:** Ready-to-use code templates extracted from working SecuBox modules
+
+---
+
+## See Also
+
+- **Implementation Workflow:** [MODULE-IMPLEMENTATION-GUIDE.md](./MODULE-IMPLEMENTATION-GUIDE.md)
+- **Quick Commands:** [QUICK-START.md](./QUICK-START.md)
+- **Automation Guardrails:** [CODEX.md](./CODEX.md)
+- **Module Prompts:** [FEATURE-REGENERATION-PROMPTS.md](./FEATURE-REGENERATION-PROMPTS.md)
 
 ---
 

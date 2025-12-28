@@ -1,5 +1,10 @@
 # luci-app-client-guardian
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
+
 **Network Access Control & Captive Portal Dashboard for OpenWrt**
 
 🛡️ Client Guardian est un système de contrôle d'accès réseau (NAC) nouvelle génération pour OpenWrt avec portail captif, surveillance en temps réel, gestion des zones et alertes SMS/Email.

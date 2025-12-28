@@ -1,5 +1,10 @@
 # LuCI WireGuard Dashboard
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
+
 ![Version](https://img.shields.io/badge/version-1.0.0-cyan)
 ![License](https://img.shields.io/badge/license-Apache--2.0-green)
 ![OpenWrt](https://img.shields.io/badge/OpenWrt-21.02+-orange)

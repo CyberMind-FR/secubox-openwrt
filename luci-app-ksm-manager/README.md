@@ -1,5 +1,10 @@
 # LuCI App - Key Storage Manager (KSM)
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
+
 Centralized cryptographic key management system for OpenWrt with hardware security module (HSM) support for Nitrokey and YubiKey devices.
 
 ## Overview

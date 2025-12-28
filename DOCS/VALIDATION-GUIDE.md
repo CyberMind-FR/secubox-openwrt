@@ -1,5 +1,28 @@
 # SecuBox Module Validation Guide
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
+> **📚 Complete Reference:**
+> This is a detailed validation guide. For quick commands, see [QUICK-START.md](./QUICK-START.md)
+>
+> **Related Documentation:**
+> - Complete guide: [DEVELOPMENT-GUIDELINES.md §8](./DEVELOPMENT-GUIDELINES.md#validation-checklist)
+> - Pre-commit checklist: [DEVELOPMENT-GUIDELINES.md §8.1](./DEVELOPMENT-GUIDELINES.md#pre-commit-checklist)
+> - Post-deploy checklist: [DEVELOPMENT-GUIDELINES.md §8.3](./DEVELOPMENT-GUIDELINES.md#post-deploy-checklist)
+> - Permissions guide: [PERMISSIONS-GUIDE.md](./PERMISSIONS-GUIDE.md)
+> - Automation briefing: [CODEX.md](./CODEX.md)
+
+---
+
+## See Also
+
+- **Quick Commands:** [QUICK-START.md](./QUICK-START.md)
+- **Permissions Reference:** [PERMISSIONS-GUIDE.md](./PERMISSIONS-GUIDE.md)
+- **Automation Guardrails:** [CODEX.md](./CODEX.md)
+- **Deployment Procedures:** [DEVELOPMENT-GUIDELINES.md §9](./DEVELOPMENT-GUIDELINES.md#deployment-procedures)
+
 This guide explains the validation checks performed on SecuBox modules during generation and before git push.
 
 ## Overview

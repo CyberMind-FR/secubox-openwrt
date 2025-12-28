@@ -1,5 +1,10 @@
 # Traffic Shaper - Advanced QoS Control
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
+
 LuCI application for advanced traffic shaping and Quality of Service (QoS) management using Linux Traffic Control (TC) and CAKE qdisc.
 
 ## Features

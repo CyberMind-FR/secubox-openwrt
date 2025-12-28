@@ -1,8 +1,18 @@
 # SecuBox Module Implementation Guide
 
-**Version:** 1.0.0
-**Date:** 2025-12-27
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active  
 **Purpose:** Complete guide for regenerating SecuBox modules matching the live demo
+
+---
+
+## See Also
+
+- **Automation Briefing:** [CODEX.md](./CODEX.md)
+- **Module Prompts:** [FEATURE-REGENERATION-PROMPTS.md](./FEATURE-REGENERATION-PROMPTS.md)
+- **Code Templates:** [CODE-TEMPLATES.md](./CODE-TEMPLATES.md)
+- **Quick Commands:** [QUICK-START.md](./QUICK-START.md)
 
 ---
 

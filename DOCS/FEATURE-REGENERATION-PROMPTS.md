@@ -1,8 +1,18 @@
 # SecuBox Feature Regeneration Prompts
 
-**Version:** 1.0.0
-**Date:** 2025-12-27
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active  
 **Purpose:** Comprehensive prompts for Claude.ai to regenerate all SecuBox module features matching the live demo at secubox.cybermood.eu
+
+---
+
+## See Also
+
+- **Implementation Workflow:** [MODULE-IMPLEMENTATION-GUIDE.md](./MODULE-IMPLEMENTATION-GUIDE.md)
+- **Code Templates:** [CODE-TEMPLATES.md](./CODE-TEMPLATES.md)
+- **Quick Commands:** [QUICK-START.md](./QUICK-START.md)
+- **Automation Guardrails:** [CODEX.md](./CODEX.md)
 
 ---
 

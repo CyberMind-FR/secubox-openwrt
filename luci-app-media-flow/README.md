@@ -1,5 +1,10 @@
 # LuCI Media Flow - Streaming Detection & Monitoring
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
+
 Real-time detection and monitoring of streaming services with quality estimation and configurable alerts.
 
 ## Features

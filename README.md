@@ -1,5 +1,9 @@
 # SecuBox - Security Suite for OpenWrt
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
 [![Build OpenWrt Packages](https://github.com/gkerma/secubox/actions/workflows/build-openwrt-packages.yml/badge.svg)](https://github.com/gkerma/secubox/actions/workflows/build-openwrt-packages.yml)
 [![Test & Validate](https://github.com/gkerma/secubox/actions/workflows/test-validate.yml/badge.svg)](https://github.com/gkerma/secubox/actions/workflows/test-validate.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)

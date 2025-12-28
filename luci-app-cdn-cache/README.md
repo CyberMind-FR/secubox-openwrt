@@ -1,5 +1,10 @@
 # SecuBox CDN Cache Dashboard
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
+
 [![OpenWrt](https://img.shields.io/badge/OpenWrt-23.05+-blue.svg)](https://openwrt.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![SecuBox](https://img.shields.io/badge/SecuBox-Module-cyan.svg)](https://cybermind.fr/secubox)

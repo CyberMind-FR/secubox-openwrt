@@ -1,5 +1,10 @@
 # VHost Manager - Reverse Proxy & SSL Certificate Management
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
+
 LuCI application for managing nginx reverse proxy virtual hosts and SSL certificates via Let's Encrypt.
 
 ## Features

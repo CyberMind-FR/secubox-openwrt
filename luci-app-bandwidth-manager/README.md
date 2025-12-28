@@ -1,5 +1,10 @@
 # Bandwidth Manager - QoS & Traffic Control
 
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
+
 Advanced bandwidth management for OpenWrt with QoS rules, client quotas, and SQM/CAKE integration.
 
 ## Features

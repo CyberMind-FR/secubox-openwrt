@@ -1,7 +1,8 @@
 # SecuBox & System Hub - Development Guidelines
 
-**Version:** 1.0.0
-**Date:** 2025-12-26
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active  
 **Audience:** Développeurs, IA assistants, mainteneurs
 
 Ce document définit les standards, bonnes pratiques et validations obligatoires pour le développement de modules SecuBox et System Hub dans l'écosystème OpenWrt LuCI.
@@ -92,6 +93,77 @@ font-family: 'JetBrains Mono', 'Courier New', monospace;
 ```
 
 ### Component Patterns
+
+#### Component Hierarchy
+
+The following diagram shows the standard page structure and component relationships:
+
+```mermaid
+graph TB
+    PAGE[Page Container<br/>.module-dashboard] --> HEADER[sh-page-header]
+    PAGE --> CONTENT[sh-content]
+
+    HEADER --> TITLE_SECTION[Title Section<br/>div]
+    HEADER --> STATS[sh-stats-grid]
+
+    TITLE_SECTION --> TITLE[sh-page-title<br/>gradient text]
+    TITLE_SECTION --> SUBTITLE[sh-page-subtitle]
+
+    STATS --> BADGE1[sh-stat-badge]
+    STATS --> BADGE2[sh-stat-badge]
+    STATS --> BADGE3[...]
+
+    BADGE1 --> VALUE1[sh-stat-value<br/>monospace font]
+    BADGE1 --> LABEL1[sh-stat-label<br/>uppercase]
+
+    CONTENT --> TABS[sh-filter-tabs]
+    CONTENT --> CARD_GRID[Card Grid<br/>grid layout]
+
+    TABS --> TAB1[sh-filter-tab<br/>active]
+    TABS --> TAB2[sh-filter-tab]
+
+    CARD_GRID --> CARD1[sh-card]
+    CARD_GRID --> CARD2[sh-card-success]
+    CARD_GRID --> CARD3[sh-card-danger]
+
+    CARD1 --> CH1[sh-card-header]
+    CARD1 --> CB1[sh-card-body]
+
+    CH1 --> CT1[sh-card-title]
+    CT1 --> ICON1[sh-card-title-icon]
+
+    CB1 --> BUTTONS[Button Group]
+    CB1 --> INFO[Info Rows]
+
+    BUTTONS --> BTN1[sh-btn<br/>sh-btn-primary]
+    BUTTONS --> BTN2[sh-btn<br/>sh-btn-secondary]
+
+    style PAGE fill:#0a0a0f,color:#fafafa,stroke:#6366f1,stroke-width:3px
+    style HEADER fill:#12121a,color:#fafafa,stroke:#6366f1,stroke-width:2px
+    style CONTENT fill:#12121a,color:#fafafa,stroke:#6366f1,stroke-width:2px
+    style CARD1 fill:#12121a,color:#fafafa,stroke:#6366f1,stroke-width:2px
+    style CARD2 fill:#12121a,color:#fafafa,stroke:#22c55e,stroke-width:2px
+    style CARD3 fill:#12121a,color:#fafafa,stroke:#ef4444,stroke-width:2px
+    style TITLE fill:#6366f1,color:#fff
+    style BTN1 fill:#6366f1,color:#fff
+    style VALUE1 fill:#8b5cf6,color:#fff
+```
+
+**Component Categories:**
+1. **Layout Containers:** Page wrapper, header, content sections
+2. **Typography:** Titles with gradient effects, subtitles, labels
+3. **Data Display:** Stat badges with monospace values, cards with borders
+4. **Navigation:** Filter tabs, nav tabs (sticky)
+5. **Interactive:** Buttons with gradients and hover effects
+
+**Styling Rules:**
+- **Cards:** 3px top border (gradient on hover, or colored for status)
+- **Stat Badges:** Minimum 130px width, monospace font for values
+- **Buttons:** Gradient backgrounds, shadow on hover, smooth transitions
+- **Tabs:** Active state with gradient background and glow
+- **Grid Layouts:** Auto-fit with minimums (130px, 240px, or 300px)
+
+---
 
 #### 1. Page Header (Standard)
 
@@ -274,6 +346,61 @@ box-shadow: 0 8px 20px rgba(99, 102, 241, 0.5);
 ---
 
 ## Architecture & Naming Conventions
+
+### System Architecture Overview
+
+The following diagram illustrates the complete data flow from browser JavaScript to system backend:
+
+```mermaid
+graph TB
+    subgraph "Browser"
+        UI[JavaScript View<br/>view/module/overview.js]
+        API[API Module<br/>module/api.js]
+    end
+
+    subgraph "LuCI Framework"
+        RPC[RPC Layer<br/>L.rpc.declare]
+        UHTTPD[uhttpd<br/>Web Server]
+    end
+
+    subgraph "Backend Services"
+        RPCD[RPCD Daemon]
+        SCRIPT[RPCD Script<br/>/usr/libexec/rpcd/luci.module-name]
+        UBUS[ubus Message Bus]
+    end
+
+    subgraph "System Layer"
+        UCI[UCI Configuration]
+        SYS[System Services<br/>init.d scripts]
+        FS[Filesystem<br/>proc, sys, etc]
+    end
+
+    UI -->|"API.getStatus()"| API
+    API -->|"rpc.declare({ object: 'luci.module' })"| RPC
+    RPC -->|"HTTP POST /ubus"| UHTTPD
+    UHTTPD -->|"call method"| RPCD
+    RPCD -->|"execute script"| SCRIPT
+    SCRIPT -->|"ubus call"| UBUS
+    UBUS -->|"read/write"| UCI
+    UBUS -->|"control"| SYS
+    SCRIPT -->|"read metrics"| FS
+
+    style UI fill:#6366f1,color:#fff,stroke:#4f46e5
+    style API fill:#8b5cf6,color:#fff,stroke:#7c3aed
+    style SCRIPT fill:#22c55e,color:#fff,stroke:#16a34a
+    style RPCD fill:#f59e0b,color:#fff,stroke:#d97706
+    style UCI fill:#ef4444,color:#fff,stroke:#dc2626
+```
+
+**Key Components:**
+1. **Browser Layer:** JavaScript views and API modules handle UI and data requests
+2. **LuCI Framework:** RPC layer translates JavaScript calls to ubus protocol
+3. **Backend Services:** RPCD executes shell scripts via ubus message bus
+4. **System Layer:** UCI configs, system services, and filesystem provide data
+
+**Critical Naming Rule:** The RPCD script name **MUST** match the `object` parameter in JavaScript's `rpc.declare()`.
+
+---
 
 ### CRITICAL: RPCD Script Naming
 
@@ -1200,6 +1327,72 @@ Après déploiement:
 ---
 
 ## Deployment Procedures
+
+### Deployment Workflow
+
+The following flowchart illustrates the complete deployment process with validation checkpoints:
+
+```mermaid
+flowchart TD
+    START([Start Deployment]) --> LOCAL_VAL{Local Validation<br/>Passed?}
+    LOCAL_VAL -->|No| FIX_LOCAL[Fix Issues Locally]
+    FIX_LOCAL --> LOCAL_VAL
+    LOCAL_VAL -->|Yes| CHECK_DISK{Disk Space<br/>< 90%?}
+
+    CHECK_DISK -->|No| CLEAN_DISK[Clean Temp Files<br/>& Old Backups]
+    CLEAN_DISK --> CHECK_DISK
+    CHECK_DISK -->|Yes| FIX_PERM_LOCAL[Fix Permissions<br/>Local Source]
+
+    FIX_PERM_LOCAL --> COPY[Copy Files to Router<br/>scp JS/CSS/RPCD]
+    COPY --> FIX_PERM_REMOTE[Fix Permissions<br/>Remote Files<br/>755 RPCD / 644 CSS-JS]
+    FIX_PERM_REMOTE --> CLEAR[Clear LuCI Cache<br/>/tmp/luci-*]
+    CLEAR --> RESTART[Restart Services<br/>rpcd + uhttpd]
+
+    RESTART --> V1{ubus Object<br/>Available?}
+    V1 -->|No| DEBUG1[Debug RPCD Script<br/>Check naming & permissions]
+    DEBUG1 --> FIX_PERM_REMOTE
+
+    V1 -->|Yes| V2{Files<br/>Accessible?}
+    V2 -->|403 Error| DEBUG2[Fix File Permissions<br/>chmod 644]
+    DEBUG2 --> FIX_PERM_REMOTE
+
+    V2 -->|Yes| V3{Menu Path<br/>Matches View?}
+    V3 -->|404 Error| DEBUG3[Fix Menu JSON Path]
+    DEBUG3 --> COPY
+
+    V3 -->|Yes| V4{UI Loads<br/>Correctly?}
+    V4 -->|Errors| DEBUG4[Check Browser Console<br/>Fix JavaScript Errors]
+    DEBUG4 --> COPY
+
+    V4 -->|Yes| TEST[Browser Testing<br/>Private Mode<br/>Dark/Light Mode<br/>Responsive]
+    TEST --> SUCCESS([✅ Deployment Success])
+
+    style START fill:#6366f1,color:#fff,stroke:#4f46e5
+    style SUCCESS fill:#22c55e,color:#fff,stroke:#16a34a
+    style DEBUG1 fill:#ef4444,color:#fff,stroke:#dc2626
+    style DEBUG2 fill:#ef4444,color:#fff,stroke:#dc2626
+    style DEBUG3 fill:#ef4444,color:#fff,stroke:#dc2626
+    style DEBUG4 fill:#ef4444,color:#fff,stroke:#dc2626
+    style CHECK_DISK fill:#f59e0b,color:#fff,stroke:#d97706
+    style LOCAL_VAL fill:#8b5cf6,color:#fff,stroke:#7c3aed
+```
+
+**Deployment Stages:**
+1. **Local Validation:** Run `validate-modules.sh` and `fix-permissions.sh --local`
+2. **Pre-Flight Checks:** Disk space and permission verification
+3. **File Transfer:** Copy JavaScript, CSS, and RPCD scripts
+4. **Remote Setup:** Fix permissions and clear caches
+5. **Service Restart:** Reload rpcd and uhttpd daemons
+6. **Validation:** Multi-stage verification (ubus, files, menu, UI)
+7. **Testing:** Browser testing in private mode
+
+**Common Error Recovery Paths:**
+- **Object not found (-32000):** Check RPCD script naming and permissions
+- **403 Forbidden:** Fix file permissions to 644 for CSS/JS
+- **404 Not Found:** Verify menu path matches view file location
+- **JavaScript errors:** Check browser console and fix code issues
+
+---
 
 ### ⚠️ Pre-Deployment Checks (CRITICAL)
 

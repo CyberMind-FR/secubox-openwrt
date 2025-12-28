@@ -1,9 +1,24 @@
 # LuCI Development Reference Guide
 
-**Version**: 1.0
-**Date**: 2025-12-26
-**Based on**: luci-app-secubox and luci-app-system-hub implementations
-**Target Audience**: Claude.ai and developers working on OpenWrt LuCI applications
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active
+
+
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active  
+**Based on:** luci-app-secubox and luci-app-system-hub implementations  
+**Target Audience:** Claude.ai and developers working on OpenWrt LuCI applications
+
+---
+
+## See Also
+
+- **Design & Standards:** [DEVELOPMENT-GUIDELINES.md](./DEVELOPMENT-GUIDELINES.md)
+- **Quick Commands:** [QUICK-START.md](./QUICK-START.md)
+- **Automation Briefing:** [CODEX.md](./CODEX.md)
+- **Code Templates:** [CODE-TEMPLATES.md](./CODE-TEMPLATES.md)
 
 This document captures critical patterns, best practices, and common pitfalls discovered during the development of SecuBox LuCI applications. Use this as a validation reference for all future LuCI application development.
 

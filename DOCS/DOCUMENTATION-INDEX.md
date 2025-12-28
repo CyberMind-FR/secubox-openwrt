@@ -1,7 +1,8 @@
 # SecuBox Documentation Index
 
-**Version:** 1.0.0
-**Date:** 2025-12-27
+**Version:** 1.0.0  
+**Last Updated:** 2025-12-28  
+**Status:** Active  
 **Complete Documentation for SecuBox OpenWrt Project**
 
 ---
@@ -9,6 +10,26 @@
 ## 📖 Documentation Overview
 
 This index provides quick access to all SecuBox documentation. Choose the document that matches your needs:
+
+---
+
+## 📅 Version & Status Policy
+
+Every Markdown document in SecuBox must begin with metadata so contributors instantly see freshness:
+
+- Include `Version`, `Last Updated` (YYYY-MM-DD), and `Status` (Active | Draft | Archived).
+- New or regenerated docs start at `Version 1.0.0`; bump minor/patch numbers for incremental updates, major for structural rewrites.
+- When editing any doc, update the `Last Updated` date and keep statuses in sync with the archive plan outlined in `TODO-ANALYSE.md`.
+
+Follow this template when creating or revising documentation:
+
+```
+# Title
+
+**Version:** 1.0.0
+**Last Updated:** 2025-12-28
+**Status:** Active
+```
 
 ---
 
@@ -46,6 +67,20 @@ This index provides quick access to all SecuBox documentation. Choose the docume
 - Error quick fixes
 
 **When to use:** Daily development, quick lookups, debugging
+
+---
+
+#### **CODEX.md** 🤖
+*Field manual for Codex/automation agents*
+
+**Contents:**
+- Repository context and document map
+- Non-negotiable build/design standards
+- Prompt template for LLM workflows
+- Help & troubleshooting pointers
+- Documentation TODO radar and history
+
+**When to use:** Before launching Codex/AI-assisted edits, when crafting prompts, or when aligning work with current documentation initiatives
 
 ---
 
