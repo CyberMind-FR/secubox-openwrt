@@ -250,72 +250,177 @@ return view.extend({
 		]);
 	},
 
+	// v0.3.2 - Modern Quick Status with histograms
 	renderQuickStatusIndicators: function() {
 		var network = this.healthData.network || {};
 		var services = this.healthData.services || {};
 
-		// Determine status colors and icons
-		var internetStatus = network.wan_up ? 'ok' : 'error';
-		var internetIcon = network.wan_up ? '✓' : '✗';
-		var internetText = network.wan_up ? 'Connected' : 'Disconnected';
+		// Calculate status metrics
+		var internetUp = network.wan_up;
+		var internetPercent = internetUp ? 100 : 0;
+		var internetStatus = internetUp ? 'ok' : 'critical';
 
-		var dnsStatus = network.dns_ok !== false ? 'ok' : 'error';
-		var dnsIcon = network.dns_ok !== false ? '✓' : '✗';
-		var dnsText = network.dns_ok !== false ? 'Resolving' : 'Failed';
+		var dnsOk = network.dns_ok !== false;
+		var dnsPercent = dnsOk ? 100 : 0;
+		var dnsStatus = dnsOk ? 'ok' : 'critical';
 
-		var ntpStatus = 'ok'; // Placeholder, would need backend support
-		var ntpIcon = '✓';
-		var ntpText = 'Synced';
+		// NTP - placeholder (would need backend)
+		var ntpPercent = 100;
+		var ntpStatus = 'ok';
 
-		var fwStatus = 'ok';
-		var fwIcon = '✓';
-		var fwText = (network.firewall_rules || 0) + ' rules active';
+		// Firewall - calculate health based on rules
+		var fwRules = network.firewall_rules || 0;
+		var fwPercent = fwRules > 0 ? 100 : 0;
+		var fwStatus = fwRules > 0 ? 'ok' : 'warning';
 
-		return E('div', { 'class': 'sh-status-indicators-grid' }, [
-			// Internet connectivity
-			E('div', { 'class': 'sh-status-indicator sh-status-' + internetStatus }, [
-				E('div', { 'class': 'sh-status-indicator-icon' }, '🌐'),
-				E('div', { 'class': 'sh-status-indicator-content' }, [
-					E('div', { 'class': 'sh-status-indicator-label' }, 'Internet Connectivity'),
-					E('div', { 'class': 'sh-status-indicator-value' }, [
-						E('span', { 'class': 'sh-status-badge sh-status-badge-' + internetStatus }, internetIcon),
-						E('span', {}, internetText)
+		return E('div', { 'class': 'sh-status-modern-grid' }, [
+			// Internet Connectivity (v0.3.2)
+			E('div', { 'class': 'sh-st-metric sh-st-metric-internet' }, [
+				E('div', { 'class': 'sh-st-header' }, [
+					E('div', { 'class': 'sh-st-title-group' }, [
+						E('span', { 'class': 'sh-st-icon' }, '🌐'),
+						E('span', { 'class': 'sh-st-title' }, 'Internet')
+					]),
+					E('div', { 'class': 'sh-st-value-group' }, [
+						E('span', { 'class': 'sh-st-value' }, internetUp ? 'Online' : 'Offline'),
+						E('span', { 'class': 'sh-st-badge sh-st-badge-' + internetStatus },
+							internetUp ? 'connected' : 'disconnected')
+					])
+				]),
+				E('div', { 'class': 'sh-st-progress-modern' }, [
+					E('div', {
+						'class': 'sh-st-progress-fill sh-st-gradient-internet',
+						'style': 'width: ' + internetPercent + '%'
+					})
+				]),
+				E('div', { 'class': 'sh-st-details-grid' }, [
+					E('div', { 'class': 'sh-st-detail' }, [
+						E('span', { 'class': 'sh-st-detail-label' }, 'WAN IP'),
+						E('span', { 'class': 'sh-st-detail-value sh-monospace' },
+							network.wan_ip || 'N/A')
+					]),
+					E('div', { 'class': 'sh-st-detail' }, [
+						E('span', { 'class': 'sh-st-detail-label' }, 'Gateway'),
+						E('span', { 'class': 'sh-st-detail-value sh-monospace' },
+							network.gateway || 'N/A')
+					]),
+					E('div', { 'class': 'sh-st-detail' }, [
+						E('span', { 'class': 'sh-st-detail-label' }, 'Status'),
+						E('span', { 'class': 'sh-st-detail-value' },
+							internetUp ? '✓ Active' : '✗ Down')
 					])
 				])
 			]),
 
-			// DNS resolution
-			E('div', { 'class': 'sh-status-indicator sh-status-' + dnsStatus }, [
-				E('div', { 'class': 'sh-status-indicator-icon' }, '🔍'),
-				E('div', { 'class': 'sh-status-indicator-content' }, [
-					E('div', { 'class': 'sh-status-indicator-label' }, 'DNS Resolution'),
-					E('div', { 'class': 'sh-status-indicator-value' }, [
-						E('span', { 'class': 'sh-status-badge sh-status-badge-' + dnsStatus }, dnsIcon),
-						E('span', {}, dnsText)
+			// DNS Resolution (v0.3.2)
+			E('div', { 'class': 'sh-st-metric sh-st-metric-dns' }, [
+				E('div', { 'class': 'sh-st-header' }, [
+					E('div', { 'class': 'sh-st-title-group' }, [
+						E('span', { 'class': 'sh-st-icon' }, '🔍'),
+						E('span', { 'class': 'sh-st-title' }, 'DNS')
+					]),
+					E('div', { 'class': 'sh-st-value-group' }, [
+						E('span', { 'class': 'sh-st-value' }, dnsOk ? 'Resolving' : 'Failed'),
+						E('span', { 'class': 'sh-st-badge sh-st-badge-' + dnsStatus },
+							dnsOk ? 'healthy' : 'error')
+					])
+				]),
+				E('div', { 'class': 'sh-st-progress-modern' }, [
+					E('div', {
+						'class': 'sh-st-progress-fill sh-st-gradient-dns',
+						'style': 'width: ' + dnsPercent + '%'
+					})
+				]),
+				E('div', { 'class': 'sh-st-details-grid' }, [
+					E('div', { 'class': 'sh-st-detail' }, [
+						E('span', { 'class': 'sh-st-detail-label' }, 'Primary DNS'),
+						E('span', { 'class': 'sh-st-detail-value sh-monospace' },
+							network.dns_primary || '8.8.8.8')
+					]),
+					E('div', { 'class': 'sh-st-detail' }, [
+						E('span', { 'class': 'sh-st-detail-label' }, 'Secondary'),
+						E('span', { 'class': 'sh-st-detail-value sh-monospace' },
+							network.dns_secondary || '8.8.4.4')
+					]),
+					E('div', { 'class': 'sh-st-detail' }, [
+						E('span', { 'class': 'sh-st-detail-label' }, 'Queries'),
+						E('span', { 'class': 'sh-st-detail-value' },
+							(network.dns_queries || 0) + ' / min')
 					])
 				])
 			]),
 
-			// NTP sync
-			E('div', { 'class': 'sh-status-indicator sh-status-' + ntpStatus }, [
-				E('div', { 'class': 'sh-status-indicator-icon' }, '🕐'),
-				E('div', { 'class': 'sh-status-indicator-content' }, [
-					E('div', { 'class': 'sh-status-indicator-label' }, 'NTP Sync'),
-					E('div', { 'class': 'sh-status-indicator-value' }, [
-						E('span', { 'class': 'sh-status-badge sh-status-badge-' + ntpStatus }, ntpIcon),
-						E('span', {}, ntpText)
+			// NTP Sync (v0.3.2)
+			E('div', { 'class': 'sh-st-metric sh-st-metric-ntp' }, [
+				E('div', { 'class': 'sh-st-header' }, [
+					E('div', { 'class': 'sh-st-title-group' }, [
+						E('span', { 'class': 'sh-st-icon' }, '🕐'),
+						E('span', { 'class': 'sh-st-title' }, 'NTP Sync')
+					]),
+					E('div', { 'class': 'sh-st-value-group' }, [
+						E('span', { 'class': 'sh-st-value' }, 'Synced'),
+						E('span', { 'class': 'sh-st-badge sh-st-badge-' + ntpStatus }, 'active')
+					])
+				]),
+				E('div', { 'class': 'sh-st-progress-modern' }, [
+					E('div', {
+						'class': 'sh-st-progress-fill sh-st-gradient-ntp',
+						'style': 'width: ' + ntpPercent + '%'
+					})
+				]),
+				E('div', { 'class': 'sh-st-details-grid' }, [
+					E('div', { 'class': 'sh-st-detail' }, [
+						E('span', { 'class': 'sh-st-detail-label' }, 'Server'),
+						E('span', { 'class': 'sh-st-detail-value sh-monospace' },
+							network.ntp_server || 'pool.ntp.org')
+					]),
+					E('div', { 'class': 'sh-st-detail' }, [
+						E('span', { 'class': 'sh-st-detail-label' }, 'Offset'),
+						E('span', { 'class': 'sh-st-detail-value' },
+							(network.ntp_offset || '0') + ' ms')
+					]),
+					E('div', { 'class': 'sh-st-detail' }, [
+						E('span', { 'class': 'sh-st-detail-label' }, 'Last Sync'),
+						E('span', { 'class': 'sh-st-detail-value' },
+							network.ntp_last_sync || 'Just now')
 					])
 				])
 			]),
 
-			// Firewall status
-			E('div', { 'class': 'sh-status-indicator sh-status-' + fwStatus }, [
-				E('div', { 'class': 'sh-status-indicator-icon' }, '🛡️'),
-				E('div', { 'class': 'sh-status-indicator-content' }, [
-					E('div', { 'class': 'sh-status-indicator-label' }, 'Firewall'),
-					E('div', { 'class': 'sh-status-indicator-value' }, [
-						E('span', { 'class': 'sh-status-badge sh-status-badge-' + fwStatus }, fwIcon),
-						E('span', {}, fwText)
+			// Firewall Status (v0.3.2)
+			E('div', { 'class': 'sh-st-metric sh-st-metric-firewall' }, [
+				E('div', { 'class': 'sh-st-header' }, [
+					E('div', { 'class': 'sh-st-title-group' }, [
+						E('span', { 'class': 'sh-st-icon' }, '🛡️'),
+						E('span', { 'class': 'sh-st-title' }, 'Firewall')
+					]),
+					E('div', { 'class': 'sh-st-value-group' }, [
+						E('span', { 'class': 'sh-st-value' }, fwRules + ' rules'),
+						E('span', { 'class': 'sh-st-badge sh-st-badge-' + fwStatus },
+							fwRules > 0 ? 'active' : 'inactive')
+					])
+				]),
+				E('div', { 'class': 'sh-st-progress-modern' }, [
+					E('div', {
+						'class': 'sh-st-progress-fill sh-st-gradient-firewall',
+						'style': 'width: ' + fwPercent + '%'
+					})
+				]),
+				E('div', { 'class': 'sh-st-details-grid' }, [
+					E('div', { 'class': 'sh-st-detail' }, [
+						E('span', { 'class': 'sh-st-detail-label' }, 'Input'),
+						E('span', { 'class': 'sh-st-detail-value' },
+							network.fw_input || 'DROP')
+					]),
+					E('div', { 'class': 'sh-st-detail' }, [
+						E('span', { 'class': 'sh-st-detail-label' }, 'Forward'),
+						E('span', { 'class': 'sh-st-detail-value' },
+							network.fw_forward || 'REJECT')
+					]),
+					E('div', { 'class': 'sh-st-detail' }, [
+						E('span', { 'class': 'sh-st-detail-label' }, 'Output'),
+						E('span', { 'class': 'sh-st-detail-value' },
+							network.fw_output || 'ACCEPT')
 					])
 				])
 			])
