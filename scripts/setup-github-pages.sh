@@ -19,25 +19,46 @@ fi
 
 echo "📦 Checking dependencies..."
 
-# Check for Python and pip
+# Check for Python
 if ! command -v python3 &> /dev/null; then
     echo "❌ Python 3 is required but not installed."
-    echo "   Install: sudo apt-get install python3 python3-pip"
-    exit 1
-fi
-
-if ! command -v pip3 &> /dev/null; then
-    echo "❌ pip3 is required but not installed."
-    echo "   Install: sudo apt-get install python3-pip"
+    echo "   Install: sudo apt-get install python3"
     exit 1
 fi
 
 # Install mkdocs if not present
 if ! command -v mkdocs &> /dev/null; then
     echo "📥 Installing MkDocs..."
-    pip3 install mkdocs mkdocs-material pymdown-extensions
+
+    # Check if we're on a Debian/Ubuntu system with apt
+    if command -v apt-get &> /dev/null; then
+        echo "   Using apt package manager (recommended for Debian/Ubuntu)"
+        echo "   Running: sudo apt-get install -y mkdocs mkdocs-material python3-pymdownx"
+        sudo apt-get update -qq
+        sudo apt-get install -y mkdocs mkdocs-material python3-pymdownx
+    else
+        # Fallback to pip with virtual environment or user install
+        echo "   Using pip3 (fallback method)"
+        if python3 -m pip --version &> /dev/null; then
+            # Try user install first (doesn't require sudo, doesn't break system)
+            python3 -m pip install --user mkdocs mkdocs-material pymdown-extensions
+        else
+            echo "❌ Error: pip not available and apt not found."
+            echo "   Please install mkdocs manually:"
+            echo "   - Debian/Ubuntu: sudo apt-get install mkdocs mkdocs-material"
+            echo "   - macOS: brew install mkdocs"
+            echo "   - Other: pip3 install --user mkdocs mkdocs-material"
+            exit 1
+        fi
+    fi
+
+    # Verify installation
+    if ! command -v mkdocs &> /dev/null; then
+        echo "❌ Error: MkDocs installation failed."
+        exit 1
+    fi
 else
-    echo "✅ MkDocs already installed"
+    echo "✅ MkDocs already installed ($(mkdocs --version | head -1))"
 fi
 
 echo ""

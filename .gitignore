@@ -8,3 +8,10 @@ secubox-tools/local-feed/
 # IDE settings
 .vscode/
 luci-app-secubox.backup-*
+.venv/
+
+
+# MkDocs / GitHub Pages
+site/
+.venv/
+docs/.DS_Store

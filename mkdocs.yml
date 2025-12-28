@@ -1,0 +1,115 @@
+site_name: SecuBox Documentation
+site_description: OpenWrt LuCI Security & Management Suite
+site_author: CyberMind.fr
+site_url: https://gkerma.github.io/secubox-openwrt/
+
+repo_name: gkerma/secubox-openwrt
+repo_url: https://github.com/gkerma/secubox-openwrt
+edit_uri: edit/master/DOCS/
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/gkerma/secubox-openwrt
+    - icon: fontawesome/solid/globe
+      link: https://secubox.cybermood.eu
+
+  version:
+    provider: mike
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Quick Start: quick-start.md
+    - Documentation Index: documentation-index.md
+
+  - Development:
+    - Development Guidelines: development-guidelines.md
+    - Code Templates: code-templates.md
+    - Module Implementation: module-implementation-guide.md
+
+  - Reference:
+    - RPCD & Architecture: claude.md
+    - Validation Guide: validation-guide.md
+    - Permissions Guide: permissions-guide.md
+    - LuCI Development: luci-development-reference.md
+
+  - Modules:
+    - Module Status: module-status.md
+    - Feature Prompts: feature-regeneration-prompts.md
+
+  - Tools & Roadmap:
+    - TODO Roadmap: todo-analyse.md
+
+  - Archive:
+    - Archive Index: archive/index.md
+    - Build Issues: archive/build-issues.md
+    - Completion Report: archive/completion-report.md
+    - Module Enable/Disable: archive/module-enable-disable-design.md
