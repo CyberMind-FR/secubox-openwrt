@@ -64,36 +64,37 @@ return view.extend({
 	},
 
 	renderHeader: function() {
-		var status = this.dashboardData.status || {};
-		return E('header', { 'class': 'sb-header' }, [
-			E('div', { 'class': 'sb-header-info' }, [
-				E('div', { 'class': 'sb-header-icon' }, '🚀'),
-				E('div', {}, [
-					E('h1', { 'class': 'sb-title' }, 'SecuBox Control Center'),
-					E('p', { 'class': 'sb-subtitle' }, 'Security · Network · System Automation')
-				])
-			]),
-			E('div', { 'class': 'sb-header-meta' }, [
-				this.renderBadge('v' + (status.version || '0.0.0')),
-				this.renderBadge('⏱ ' + API.formatUptime(status.uptime)),
-				this.renderBadge('🖥 ' + (status.hostname || 'SecuBox'), 'sb-badge-ghost')
+	var status = this.dashboardData.status || {};
+	return E('header', { 'class': 'sb-header' }, [
+		E('div', { 'class': 'sb-header-info' }, [
+			E('div', { 'class': 'sb-header-icon' }, '🚀'),
+			E('div', {}, [
+				E('h1', { 'class': 'sb-title' }, 'SecuBox Control Center'),
+				E('p', { 'class': 'sb-subtitle' }, 'Security · Network · System Automation')
 			])
-		]);
-	},
+		]),
+		E('div', { 'class': 'sb-header-meta' }, [
+			this.renderBadge('v' + (status.version || this.getSystemVersion())),
+			this.renderBadge('⏱ ' + API.formatUptime(status.uptime || this.getSystemUptime())),
+			this.renderBadge('🖥 ' + (status.hostname || 'SecuBox'), 'sb-badge-ghost')
+		])
+	]);
+},
 
 	renderBadge: function(text, extraClass) {
 		return E('span', { 'class': 'sb-badge ' + (extraClass || '') }, text);
 	},
 
 	renderStatsGrid: function() {
-		var modules = this.dashboardData.modules || [];
+		var moduleStats = this.getModuleStats();
 		var counts = this.dashboardData.counts || {};
 		var alertsCount = (this.alertsData.alerts || []).length;
 		var healthScore = (this.healthData.overall && this.healthData.overall.score) || 0;
 
 		var stats = [
-			{ label: _('Total Modules'), value: counts.total || modules.length, icon: '📦', id: 'sb-stat-total' },
-			{ label: _('Active Services'), value: counts.running || 0, icon: '🟢', id: 'sb-stat-running' },
+			{ label: _('Total Modules'), value: counts.total || moduleStats.total, icon: '📦', id: 'sb-stat-total' },
+			{ label: _('Installed'), value: counts.installed || moduleStats.installed, icon: '💾', id: 'sb-stat-installed' },
+			{ label: _('Active Services'), value: counts.running || moduleStats.running, icon: '🟢', id: 'sb-stat-running' },
 			{ label: _('System Health'), value: healthScore + '/100', icon: '❤️', id: 'sb-stat-health' },
 			{ label: _('Alerts'), value: alertsCount, icon: '⚠️', id: 'sb-stat-alerts' }
 		];
@@ -388,6 +389,43 @@ return view.extend({
 		]);
 	},
 
+	getSystemVersion: function() {
+		if (this.dashboardData && this.dashboardData.status && this.dashboardData.status.version)
+			return this.dashboardData.status.version;
+		if (this.dashboardData && this.dashboardData.release)
+			return this.dashboardData.release;
+		return '0.0.0';
+	},
+
+	getSystemUptime: function() {
+		if (this.dashboardData && this.dashboardData.status && this.dashboardData.status.uptime)
+			return this.dashboardData.status.uptime;
+		if (this.healthData && typeof this.healthData.uptime === 'number')
+			return this.healthData.uptime;
+		return 0;
+	},
+
+	getModuleStats: function() {
+		var modules = (this.modulesList && this.modulesList.length)
+			? this.modulesList
+			: (this.dashboardData.modules || []);
+
+		var installed = modules.filter(function(mod) {
+			return mod.installed || mod.in_uci === 1 || mod.enabled === 1 || mod.status === 'active';
+		}).length;
+
+		var running = modules.filter(function(mod) {
+			return mod.running || mod.status === 'active';
+		}).length;
+
+		return {
+			list: modules,
+			total: modules.length,
+			installed: installed,
+			running: running
+		};
+	},
+
 	updateDynamicSections: function() {
 		this.updateStats();
 		this.updateModuleGrid();
@@ -396,14 +434,15 @@ return view.extend({
 	},
 
 	updateStats: function() {
-		var modules = this.dashboardData.modules || [];
+		var moduleStats = this.getModuleStats();
 		var counts = this.dashboardData.counts || {};
 		var alertsCount = (this.alertsData.alerts || []).length;
 		var healthScore = (this.healthData.overall && this.healthData.overall.score) || 0;
 
 		var stats = {
-			'sb-stat-total': counts.total || modules.length,
-			'sb-stat-running': counts.running || 0,
+			'sb-stat-total': counts.total || moduleStats.total,
+			'sb-stat-installed': counts.installed || moduleStats.installed,
+			'sb-stat-running': counts.running || moduleStats.running,
 			'sb-stat-health': healthScore + '/100',
 			'sb-stat-alerts': alertsCount
 		};

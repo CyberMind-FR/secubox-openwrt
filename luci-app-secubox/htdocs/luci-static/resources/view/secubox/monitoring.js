@@ -2,19 +2,23 @@
 'require view';
 'require ui';
 'require dom';
-'require secubox/api as API';
-'require secubox/theme as Theme';
 'require poll';
+'require secubox/api as API';
+'require secubox-theme/theme as Theme';
 
-// Initialize theme
-Theme.init();
+// Respect LuCI language/theme preferences
+var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: secuLang });
 
 return view.extend({
 	cpuHistory: [],
 	memoryHistory: [],
 	diskHistory: [],
 	networkHistory: [],
-	maxDataPoints: 30, // Keep last 30 data points
+	maxDataPoints: 60,
+	latestHealth: {},
 
 	load: function() {
 		return this.refreshData();
@@ -23,186 +27,153 @@ return view.extend({
 	refreshData: function() {
 		var self = this;
 		return API.getSystemHealth().then(function(data) {
-			self.addDataPoint(data);
-			return data;
+			var health = data || {};
+			self.latestHealth = health;
+			self.addDataPoint(health);
+			return health;
 		});
 	},
 
 	addDataPoint: function(health) {
 		var timestamp = Date.now();
 
-		// Add CPU data
-		this.cpuHistory.push({
-			time: timestamp,
-			value: (health.cpu && health.cpu.percent) || 0
-		});
+		this.cpuHistory.push({ time: timestamp, value: (health.cpu && health.cpu.percent) || 0 });
+		this.memoryHistory.push({ time: timestamp, value: (health.memory && health.memory.percent) || 0 });
+		this.diskHistory.push({ time: timestamp, value: (health.disk && health.disk.percent) || 0 });
 
-		// Add Memory data
-		this.memoryHistory.push({
-			time: timestamp,
-			value: (health.memory && health.memory.percent) || 0
-		});
-
-		// Add Disk data
-		this.diskHistory.push({
-			time: timestamp,
-			value: (health.disk && health.disk.percent) || 0
-		});
-
-		// Add Network data (calculate rate)
 		var netRx = (health.network && health.network.rx_bytes) || 0;
 		var netTx = (health.network && health.network.tx_bytes) || 0;
-		this.networkHistory.push({
-			time: timestamp,
-			rx: netRx,
-			tx: netTx
-		});
+		this.networkHistory.push({ time: timestamp, rx: netRx, tx: netTx });
 
-		// Keep only last N data points
-		if (this.cpuHistory.length > this.maxDataPoints) {
-			this.cpuHistory.shift();
-		}
-		if (this.memoryHistory.length > this.maxDataPoints) {
-			this.memoryHistory.shift();
-		}
-		if (this.diskHistory.length > this.maxDataPoints) {
-			this.diskHistory.shift();
-		}
-		if (this.networkHistory.length > this.maxDataPoints) {
-			this.networkHistory.shift();
-		}
+		['cpuHistory', 'memoryHistory', 'diskHistory', 'networkHistory'].forEach(function(key) {
+			if (this[key].length > this.maxDataPoints)
+				this[key].shift();
+		}, this);
 	},
 
-	render: function(data) {
-		var self = this;
+	render: function() {
 		var container = E('div', { 'class': 'secubox-monitoring-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/monitoring.css') })
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/monitoring.css') }),
+			this.renderHero(),
+			this.renderChartsGrid(),
+			this.renderCurrentStatsCard()
 		]);
 
-		// Header
-		container.appendChild(this.renderHeader());
+		this.updateCharts();
+		this.updateCurrentStats();
 
-		// Charts Grid
-		var chartsGrid = E('div', { 'class': 'secubox-charts-grid' }, [
-			this.renderChart('cpu', 'CPU Usage', '%'),
-			this.renderChart('memory', 'Memory Usage', '%'),
-			this.renderChart('disk', 'Disk Usage', '%'),
-			this.renderChart('network', 'Network Traffic', 'B/s')
-		]);
-
-		container.appendChild(chartsGrid);
-
-		// Current Stats Summary
-		container.appendChild(this.renderCurrentStats());
-
-		// Auto-refresh and update charts
+		var self = this;
 		poll.add(function() {
 			return self.refreshData().then(function() {
 				self.updateCharts();
 				self.updateCurrentStats();
 			});
-		}, 5); // Refresh every 5 seconds for monitoring
+		}, 5);
 
 		return container;
 	},
 
-	renderHeader: function() {
-		var latest = {
-			cpu: this.cpuHistory[this.cpuHistory.length - 1] || { value: 0 },
-			memory: this.memoryHistory[this.memoryHistory.length - 1] || { value: 0 },
-			disk: this.diskHistory[this.diskHistory.length - 1] || { value: 0 }
-		};
+	renderHero: function() {
+		var snapshot = this.getLatestSnapshot();
 
-		return E('div', { 'class': 'sh-page-header' }, [
-			E('div', {}, [
-				E('h2', { 'class': 'sh-page-title' }, [
-					E('span', { 'class': 'sh-page-title-icon' }, '📊'),
-					'System Monitoring'
+		var badges = [
+			this.renderHeroBadge('cpu', '🔥', _('CPU Usage'), snapshot.cpu.value.toFixed(1) + '%', snapshot.cpu.value),
+			this.renderHeroBadge('memory', '💾', _('Memory Usage'), snapshot.memory.value.toFixed(1) + '%', snapshot.memory.value),
+			this.renderHeroBadge('disk', '💿', _('Disk Usage'), snapshot.disk.value.toFixed(1) + '%', snapshot.disk.value),
+			this.renderHeroBadge('uptime', '⏱', _('Uptime'), API.formatUptime(snapshot.uptime || 0))
+		];
+
+		return E('section', { 'class': 'sb-card secubox-monitoring-hero' }, [
+			E('div', { 'class': 'sb-card-header' }, [
+				E('div', {}, [
+					E('h2', {}, _('Advanced System Monitoring')),
+					E('p', { 'class': 'sb-card-subtitle' }, _('Live telemetry for CPU, memory, storage, and network throughput'))
 				]),
-				E('p', { 'class': 'sh-page-subtitle' },
-					'Real-time system performance metrics and historical trends')
+				E('span', { 'class': 'sb-badge sb-badge-ghost' }, _('Last update: ') +
+					(snapshot.timestamp ? new Date(snapshot.timestamp).toLocaleTimeString() : _('Initializing')))
 			]),
-			E('div', { 'class': 'sh-stats-grid' }, [
-				E('div', { 'class': 'sh-stat-badge' }, [
-					E('div', { 'class': 'sh-stat-value', 'style': 'color: ' + this.getColorForValue(latest.cpu.value) }, latest.cpu.value.toFixed(1) + '%'),
-					E('div', { 'class': 'sh-stat-label' }, 'CPU')
-				]),
-				E('div', { 'class': 'sh-stat-badge' }, [
-					E('div', { 'class': 'sh-stat-value', 'style': 'color: ' + this.getColorForValue(latest.memory.value) }, latest.memory.value.toFixed(1) + '%'),
-					E('div', { 'class': 'sh-stat-label' }, 'Memory')
-				]),
-				E('div', { 'class': 'sh-stat-badge' }, [
-					E('div', { 'class': 'sh-stat-value', 'style': 'color: ' + this.getColorForValue(latest.disk.value) }, latest.disk.value.toFixed(1) + '%'),
-					E('div', { 'class': 'sh-stat-label' }, 'Disk')
-				]),
-				E('div', { 'class': 'sh-stat-badge' }, [
-					E('div', { 'class': 'sh-stat-value' }, this.cpuHistory.length),
-					E('div', { 'class': 'sh-stat-label' }, 'Data Points')
-				])
+			E('div', { 'class': 'secubox-monitoring-badges', 'id': 'secubox-monitoring-badges' }, badges)
+		]);
+	},
+
+	renderHeroBadge: function(id, icon, label, value, percent) {
+		var color = typeof percent === 'number' ? this.getColorForValue(percent) : null;
+		return E('div', { 'class': 'secubox-hero-badge', 'data-metric': id }, [
+			E('div', { 'class': 'secubox-hero-icon' }, icon),
+			E('div', { 'class': 'secubox-hero-meta' }, [
+				E('span', { 'class': 'secubox-hero-label' }, label),
+				E('span', {
+					'class': 'secubox-hero-value',
+					'id': 'secubox-hero-' + id,
+					'style': color ? 'color:' + color : ''
+				}, value)
 			])
 		]);
 	},
 
-	getColorForValue: function(value) {
-		if (value >= 90) return '#ef4444';
-		if (value >= 75) return '#f59e0b';
-		if (value >= 50) return '#3b82f6';
-		return '#22c55e';
+	renderChartsGrid: function() {
+		return E('section', { 'class': 'secubox-charts-grid' }, [
+			this.renderChartCard('cpu', _('CPU Usage'), '%', '#6366f1'),
+			this.renderChartCard('memory', _('Memory Usage'), '%', '#22c55e'),
+			this.renderChartCard('disk', _('Disk Usage'), '%', '#f59e0b'),
+			this.renderChartCard('network', _('Network Throughput'), 'B/s', '#3b82f6')
+		]);
 	},
 
-	renderChart: function(type, title, unit) {
+	renderChartCard: function(type, title, unit, accent) {
 		return E('div', { 'class': 'secubox-chart-card' }, [
 			E('h3', { 'class': 'secubox-chart-title' }, title),
-			E('div', { 'class': 'secubox-chart-container' }, [
+			E('div', { 'class': 'secubox-chart-container' },
 				E('svg', {
 					'id': 'chart-' + type,
 					'class': 'secubox-chart',
 					'viewBox': '0 0 600 200',
-					'preserveAspectRatio': 'none'
+					'preserveAspectRatio': 'none',
+					'data-accent': accent
 				})
-			]),
+			),
 			E('div', { 'class': 'secubox-chart-legend' }, [
 				E('span', { 'id': 'current-' + type, 'class': 'secubox-current-value' }, '0' + unit),
-				E('span', { 'class': 'secubox-chart-unit' }, 'Current')
+				E('span', { 'class': 'secubox-chart-unit' }, _('Live'))
 			])
 		]);
 	},
 
-	renderCurrentStats: function() {
-		return E('div', { 'class': 'secubox-card' }, [
-			E('h3', { 'class': 'secubox-card-title' }, '📋 Current Statistics'),
-			E('div', { 'id': 'current-stats', 'class': 'secubox-stats-table' },
-				this.renderStatsTable())
+	renderCurrentStatsCard: function() {
+		return E('section', { 'class': 'sb-card' }, [
+			E('div', { 'class': 'sb-card-header' }, [
+				E('h2', {}, _('Current Statistics')),
+				E('p', { 'class': 'sb-card-subtitle' }, _('Real-time snapshot of key resources'))
+			]),
+			E('div', { 'id': 'current-stats', 'class': 'secubox-stats-table' }, this.renderStatsTable())
 		]);
 	},
 
 	renderStatsTable: function() {
-		var latest = {
-			cpu: this.cpuHistory[this.cpuHistory.length - 1] || { value: 0 },
-			memory: this.memoryHistory[this.memoryHistory.length - 1] || { value: 0 },
-			disk: this.diskHistory[this.diskHistory.length - 1] || { value: 0 }
-		};
+		var snapshot = this.getLatestSnapshot();
+		var rates = this.getNetworkRateSummary();
+		var load = (this.latestHealth.load && this.latestHealth.load[0]) || '0.00';
 
 		var stats = [
-			{ label: 'CPU Usage', value: latest.cpu.value + '%', icon: '⚡' },
-			{ label: 'Memory Usage', value: latest.memory.value + '%', icon: '💾' },
-			{ label: 'Disk Usage', value: latest.disk.value + '%', icon: '💿' },
-			{ label: 'Data Points', value: this.cpuHistory.length + ' / ' + this.maxDataPoints, icon: '📊' }
+			{ label: _('CPU Usage'), value: snapshot.cpu.value.toFixed(1) + '%', icon: '⚡' },
+			{ label: _('Memory Usage'), value: snapshot.memory.value.toFixed(1) + '%', icon: '💾' },
+			{ label: _('Disk Usage'), value: snapshot.disk.value.toFixed(1) + '%', icon: '💿' },
+			{ label: _('System Load (1m)'), value: load, icon: '📈' },
+			{ label: _('Network RX/TX'), value: rates.summary, icon: '🌐' },
+			{ label: _('Data Window'), value: this.cpuHistory.length + ' / ' + this.maxDataPoints, icon: '🕒' }
 		];
 
-		return E('div', { 'class': 'secubox-stats-grid' },
-			stats.map(function(stat) {
-				return E('div', { 'class': 'secubox-stat-item' }, [
-					E('span', { 'class': 'secubox-stat-icon' }, stat.icon),
-					E('div', { 'class': 'secubox-stat-details' }, [
-						E('div', { 'class': 'secubox-stat-label' }, stat.label),
-						E('div', { 'class': 'secubox-stat-value' }, stat.value)
-					])
-				]);
-			})
-		);
+		return stats.map(function(stat) {
+			return E('div', { 'class': 'secubox-stat-item' }, [
+				E('span', { 'class': 'secubox-stat-icon' }, stat.icon),
+				E('div', { 'class': 'secubox-stat-details' }, [
+					E('div', { 'class': 'secubox-stat-label' }, stat.label),
+					E('div', { 'class': 'secubox-stat-value' }, stat.value)
+				])
+			]);
+		});
 	},
 
 	updateCharts: function() {
@@ -215,60 +186,26 @@ return view.extend({
 	drawChart: function(type, data, color) {
 		var svg = document.getElementById('chart-' + type);
 		var currentEl = document.getElementById('current-' + type);
+		if (!svg || data.length === 0)
+			return;
 
-		if (!svg || data.length === 0) return;
-
-		// Clear previous content
-		svg.innerHTML = '';
-
-		// Dimensions
 		var width = 600;
 		var height = 200;
-		var padding = 10;
+		var padding = 12;
 
-		// Find min/max for scaling
-		var maxValue = Math.max(...data.map(d => d.value), 100);
+		var values = data.map(function(d) { return d.value; });
+		var maxValue = Math.max(100, Math.max.apply(Math, values));
 		var minValue = 0;
-
-		// Create grid lines
-		for (var i = 0; i <= 4; i++) {
-			var y = height - (height - 2 * padding) * (i / 4) - padding;
-			svg.appendChild(E('line', {
-				'x1': padding,
-				'y1': y,
-				'x2': width - padding,
-				'y2': y,
-				'stroke': '#e5e7eb',
-				'stroke-width': '1',
-				'stroke-dasharray': '4'
-			}));
-		}
-
-		// Create path
-		var points = data.map(function(d, i) {
-			var x = padding + (width - 2 * padding) * (i / (this.maxDataPoints - 1 || 1));
-			var y = height - padding - ((d.value - minValue) / (maxValue - minValue)) * (height - 2 * padding);
+		var pathPoints = data.map(function(point, idx) {
+			var x = padding + (width - 2 * padding) * (idx / Math.max(1, this.maxDataPoints - 1));
+			var y = height - padding - ((point.value - minValue) / (maxValue - minValue)) * (height - 2 * padding);
 			return x + ',' + y;
 		}, this).join(' ');
 
-		// Draw area under the curve
-		if (points) {
-			var firstPoint = points.split(' ')[0];
-			var lastPoint = points.split(' ')[points.split(' ').length - 1];
-			var areaPoints = padding + ',' + (height - padding) + ' ' +
-							points + ' ' +
-							(lastPoint ? lastPoint.split(',')[0] : 0) + ',' + (height - padding);
+		svg.innerHTML = '';
 
-			svg.appendChild(E('polygon', {
-				'points': areaPoints,
-				'fill': color,
-				'fill-opacity': '0.1'
-			}));
-		}
-
-		// Draw line
 		svg.appendChild(E('polyline', {
-			'points': points,
+			'points': pathPoints,
 			'fill': 'none',
 			'stroke': color,
 			'stroke-width': '2',
@@ -276,121 +213,124 @@ return view.extend({
 			'stroke-linecap': 'round'
 		}));
 
-		// Draw dots for last few points
-		data.slice(-5).forEach(function(d, i) {
-			var idx = data.length - 5 + i;
-			if (idx < 0) return;
-			var x = padding + (width - 2 * padding) * (idx / (this.maxDataPoints - 1 || 1));
-			var y = height - padding - ((d.value - minValue) / (maxValue - minValue)) * (height - 2 * padding);
-
-			svg.appendChild(E('circle', {
-				'cx': x,
-				'cy': y,
-				'r': '3',
-				'fill': color
-			}));
-		}, this);
-
-		// Update current value
-		if (currentEl && data.length > 0) {
-			var unit = type === 'network' ? ' B/s' : '%';
-			currentEl.textContent = data[data.length - 1].value.toFixed(1) + unit;
+		if (currentEl) {
+			currentEl.textContent = (data[data.length - 1].value || 0).toFixed(1) + '%';
 		}
 	},
 
 	drawNetworkChart: function() {
-		// For network, we'll draw both RX and TX
 		var svg = document.getElementById('chart-network');
 		var currentEl = document.getElementById('current-network');
-
-		if (!svg || this.networkHistory.length === 0) return;
-
-		svg.innerHTML = '';
+		if (!svg || this.networkHistory.length < 2)
+			return;
 
 		var width = 600;
 		var height = 200;
-		var padding = 10;
+		var padding = 12;
+		var rates = this.networkHistory.slice(1).map(function(point, idx) {
+			var prev = this.networkHistory[idx];
+			var seconds = Math.max(1, (point.time - prev.time) / 1000);
+			return {
+				time: point.time,
+				rx: Math.max(0, (point.rx - prev.rx) / seconds),
+				tx: Math.max(0, (point.tx - prev.tx) / seconds)
+			};
+		}, this);
 
-		// Calculate rates (bytes per second)
-		var rates = [];
-		for (var i = 1; i < this.networkHistory.length; i++) {
-			var prev = this.networkHistory[i - 1];
-			var curr = this.networkHistory[i];
-			var timeDiff = (curr.time - prev.time) / 1000; // seconds
+		var maxRate = Math.max(1024, Math.max.apply(Math, rates.map(function(r) {
+			return Math.max(r.rx, r.tx);
+		})));
 
-			if (timeDiff > 0) {
-				rates.push({
-					rx: (curr.rx - prev.rx) / timeDiff,
-					tx: (curr.tx - prev.tx) / timeDiff
-				});
-			}
+		function buildPoints(fn) {
+			return rates.map(function(point, idx) {
+				var x = padding + (width - 2 * padding) * (idx / Math.max(1, rates.length - 1));
+				var y = height - padding - (fn(point) / maxRate) * (height - 2 * padding);
+				return x + ',' + y;
+			}).join(' ');
 		}
 
-		if (rates.length === 0) return;
-
-		var maxRate = Math.max(
-			...rates.map(r => Math.max(r.rx, r.tx)),
-			1024 // At least 1KB/s scale
-		);
-
-		// Draw RX line (green)
-		var rxPoints = rates.map(function(r, i) {
-			var x = padding + (width - 2 * padding) * (i / (rates.length - 1 || 1));
-			var y = height - padding - (r.rx / maxRate) * (height - 2 * padding);
-			return x + ',' + y;
-		}).join(' ');
-
+		svg.innerHTML = '';
 		svg.appendChild(E('polyline', {
-			'points': rxPoints,
+			'points': buildPoints(function(p) { return p.rx; }),
 			'fill': 'none',
 			'stroke': '#22c55e',
 			'stroke-width': '2'
 		}));
-
-		// Draw TX line (blue)
-		var txPoints = rates.map(function(r, i) {
-			var x = padding + (width - 2 * padding) * (i / (rates.length - 1 || 1));
-			var y = height - padding - (r.tx / maxRate) * (height - 2 * padding);
-			return x + ',' + y;
-		}).join(' ');
-
 		svg.appendChild(E('polyline', {
-			'points': txPoints,
+			'points': buildPoints(function(p) { return p.tx; }),
 			'fill': 'none',
 			'stroke': '#3b82f6',
 			'stroke-width': '2'
 		}));
 
-		// Update current value
-		if (currentEl && rates.length > 0) {
-			var lastRate = rates[rates.length - 1];
-			currentEl.textContent = API.formatBytes(lastRate.rx + lastRate.tx) + '/s';
+		if (currentEl) {
+			var last = rates[rates.length - 1];
+			currentEl.textContent = API.formatBytes(last.rx + last.tx) + '/s';
 		}
 	},
 
 	updateCurrentStats: function() {
-		var container = document.getElementById('current-stats');
-		if (container) {
-			dom.content(container, this.renderStatsTable());
-		}
+		var statsContainer = document.getElementById('current-stats');
+		if (statsContainer)
+			dom.content(statsContainer, this.renderStatsTable());
 
-		// Update header stats
-		var latest = {
-			cpu: this.cpuHistory[this.cpuHistory.length - 1] || { value: 0 },
-			memory: this.memoryHistory[this.memoryHistory.length - 1] || { value: 0 },
-			disk: this.diskHistory[this.diskHistory.length - 1] || { value: 0 }
+		this.updateHeroBadges(this.getLatestSnapshot());
+	},
+
+	updateHeroBadges: function(snapshot) {
+		var badges = document.querySelectorAll('.secubox-hero-badge');
+		if (!badges.length)
+			return;
+
+		var values = {
+			cpu: snapshot.cpu.value.toFixed(1) + '%',
+			memory: snapshot.memory.value.toFixed(1) + '%',
+			disk: snapshot.disk.value.toFixed(1) + '%',
+			uptime: API.formatUptime(snapshot.uptime || 0)
 		};
 
-		var statBadges = document.querySelectorAll('.sh-stat-value');
-		if (statBadges.length >= 4) {
-			statBadges[0].textContent = latest.cpu.value.toFixed(1) + '%';
-			statBadges[0].style.color = this.getColorForValue(latest.cpu.value);
-			statBadges[1].textContent = latest.memory.value.toFixed(1) + '%';
-			statBadges[1].style.color = this.getColorForValue(latest.memory.value);
-			statBadges[2].textContent = latest.disk.value.toFixed(1) + '%';
-			statBadges[2].style.color = this.getColorForValue(latest.disk.value);
-			statBadges[3].textContent = this.cpuHistory.length;
-		}
+		Object.keys(values).forEach(function(key) {
+			var target = document.getElementById('secubox-hero-' + key);
+			if (target) {
+				target.textContent = values[key];
+				if (key !== 'uptime') {
+					var numeric = snapshot[key] && snapshot[key].value || 0;
+					target.style.color = this.getColorForValue(numeric);
+				}
+			}
+		}, this);
+	},
+
+	getLatestSnapshot: function() {
+		return {
+			cpu: this.cpuHistory[this.cpuHistory.length - 1] || { value: 0 },
+			memory: this.memoryHistory[this.memoryHistory.length - 1] || { value: 0 },
+			disk: this.diskHistory[this.diskHistory.length - 1] || { value: 0 },
+			uptime: (this.latestHealth && this.latestHealth.uptime) || 0,
+			timestamp: (this.latestHealth && this.latestHealth.timestamp) || Date.now()
+		};
+	},
+
+	getNetworkRateSummary: function() {
+		if (this.networkHistory.length < 2)
+			return { summary: '0 B/s' };
+
+		var last = this.networkHistory[this.networkHistory.length - 1];
+		var prev = this.networkHistory[this.networkHistory.length - 2];
+		var seconds = Math.max(1, (last.time - prev.time) / 1000);
+		var rx = Math.max(0, (last.rx - prev.rx) / seconds);
+		var tx = Math.max(0, (last.tx - prev.tx) / seconds);
+
+		return {
+			summary: API.formatBytes(rx) + '/s ↓ · ' + API.formatBytes(tx) + '/s ↑'
+		};
+	},
+
+	getColorForValue: function(value) {
+		if (value >= 90) return '#ef4444';
+		if (value >= 75) return '#f59e0b';
+		if (value >= 50) return '#3b82f6';
+		return '#22c55e';
 	},
 
 	handleSaveApply: null,

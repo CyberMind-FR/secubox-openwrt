@@ -2,197 +2,62 @@
 	"admin/secubox/network/modes": {
 		"title": "Network Modes",
 		"order": 10,
-		"action": {
-			"type": "firstchild"
-		},
-		"depends": {
-			"acl": ["luci-app-network-modes"]
-		}
+		"action": {"type": "firstchild"},
+		"depends": {"acl": ["luci-app-network-modes"]}
 	},
 	"admin/secubox/network/modes/overview": {
 		"title": "Overview",
 		"order": 10,
-		"action": {
-			"type": "view",
-			"path": "network-modes/overview"
-		}
+		"action": {"type": "view", "path": "network-modes/overview"}
 	},
 	"admin/secubox/network/modes/wizard": {
 		"title": "Mode Wizard",
 		"order": 20,
-		"action": {
-			"type": "view",
-			"path": "network-modes/wizard"
-		}
+		"action": {"type": "view", "path": "network-modes/wizard"}
 	},
 	"admin/secubox/network/modes/router": {
 		"title": "Router Mode",
 		"order": 30,
-		"action": {
-			"type": "view",
-			"path": "network-modes/router"
-		}
+		"action": {"type": "view", "path": "network-modes/router"}
 	},
 	"admin/secubox/network/modes/multiwan": {
 		"title": "Multi-WAN Mode",
 		"order": 35,
-		"action": {
-			"type": "view",
-			"path": "network-modes/multiwan"
-		}
+		"action": {"type": "view", "path": "network-modes/multiwan"}
 	},
 	"admin/secubox/network/modes/doublenat": {
 		"title": "Double NAT Mode",
 		"order": 37,
-		"action": {
-			"type": "view",
-			"path": "network-modes/doublenat"
-		}
+		"action": {"type": "view", "path": "network-modes/doublenat"}
 	},
 	"admin/secubox/network/modes/accesspoint": {
 		"title": "Access Point Mode",
 		"order": 40,
-		"action": {
-			"type": "view",
-			"path": "network-modes/accesspoint"
-		}
+		"action": {"type": "view", "path": "network-modes/accesspoint"}
 	},
 	"admin/secubox/network/modes/relay": {
 		"title": "Relay Mode",
 		"order": 50,
-		"action": {
-			"type": "view",
-			"path": "network-modes/relay"
-		}
+		"action": {"type": "view", "path": "network-modes/relay"}
 	},
 	"admin/secubox/network/modes/vpnrelay": {
 		"title": "VPN Relay Mode",
 		"order": 52,
-		"action": {
-			"type": "view",
-			"path": "network-modes/vpnrelay"
-		}
+		"action": {"type": "view", "path": "network-modes/vpnrelay"}
 	},
 	"admin/secubox/network/modes/travel": {
 		"title": "Travel Mode",
 		"order": 55,
-		"action": {
-			"type": "view",
-			"path": "network-modes/travel"
-		}
+		"action": {"type": "view", "path": "network-modes/travel"}
 	},
 	"admin/secubox/network/modes/sniffer": {
 		"title": "Sniffer Mode",
 		"order": 60,
-		"action": {
-			"type": "view",
-			"path": "network-modes/sniffer"
-		}
+		"action": {"type": "view", "path": "network-modes/sniffer"}
 	},
 	"admin/secubox/network/modes/settings": {
 		"title": "Settings",
 		"order": 90,
-		"action": {
-			"type": "view",
-			"path": "network-modes/settings"
-		}
-	},
-	"admin/network/modes": {
-		"title": "Network Modes",
-		"order": 60,
-		"action": {
-			"type": "firstchild"
-		},
-		"depends": {
-			"acl": ["luci-app-network-modes"]
-		}
-	},
-	"admin/network/modes/overview": {
-		"title": "Overview",
-		"order": 10,
-		"action": {
-			"type": "view",
-			"path": "network-modes/overview"
-		}
-	},
-	"admin/network/modes/wizard": {
-		"title": "Mode Wizard",
-		"order": 20,
-		"action": {
-			"type": "view",
-			"path": "network-modes/wizard"
-		}
-	},
-	"admin/network/modes/router": {
-		"title": "Router Mode",
-		"order": 30,
-		"action": {
-			"type": "view",
-			"path": "network-modes/router"
-		}
-	},
-	"admin/network/modes/multiwan": {
-		"title": "Multi-WAN Mode",
-		"order": 35,
-		"action": {
-			"type": "view",
-			"path": "network-modes/multiwan"
-		}
-	},
-	"admin/network/modes/doublenat": {
-		"title": "Double NAT Mode",
-		"order": 37,
-		"action": {
-			"type": "view",
-			"path": "network-modes/doublenat"
-		}
-	},
-	"admin/network/modes/accesspoint": {
-		"title": "Access Point Mode",
-		"order": 40,
-		"action": {
-			"type": "view",
-			"path": "network-modes/accesspoint"
-		}
-	},
-	"admin/network/modes/relay": {
-		"title": "Relay Mode",
-		"order": 50,
-		"action": {
-			"type": "view",
-			"path": "network-modes/relay"
-		}
-	},
-	"admin/network/modes/vpnrelay": {
-		"title": "VPN Relay Mode",
-		"order": 52,
-		"action": {
-			"type": "view",
-			"path": "network-modes/vpnrelay"
-		}
-	},
-	"admin/network/modes/travel": {
-		"title": "Travel Mode",
-		"order": 55,
-		"action": {
-			"type": "view",
-			"path": "network-modes/travel"
-		}
-	},
-	"admin/network/modes/sniffer": {
-		"title": "Sniffer Mode",
-		"order": 60,
-		"action": {
-			"type": "view",
-			"path": "network-modes/sniffer"
-		}
-	},
-	"admin/network/modes/settings": {
-		"title": "Settings",
-		"order": 90,
-		"action": {
-			"type": "view",
-			"path": "network-modes/settings"
-		}
+		"action": {"type": "view", "path": "network-modes/settings"}
 	}
 }

@@ -107,6 +107,42 @@
 		"order": 90,
 		"action": {"type": "view", "path": "network-modes/settings"}
 	},
+	"admin/secubox/network/cdn-cache": {
+		"title": "CDN Cache",
+		"order": 20,
+		"action": {"type": "firstchild"},
+		"depends": {"acl": ["luci-app-cdn-cache"]}
+	},
+	"admin/secubox/network/cdn-cache/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {"type": "view", "path": "cdn-cache/overview"}
+	},
+	"admin/secubox/network/cdn-cache/cache": {
+		"title": "Cache",
+		"order": 20,
+		"action": {"type": "view", "path": "cdn-cache/cache"}
+	},
+	"admin/secubox/network/cdn-cache/policies": {
+		"title": "Policies",
+		"order": 30,
+		"action": {"type": "view", "path": "cdn-cache/policies"}
+	},
+	"admin/secubox/network/cdn-cache/statistics": {
+		"title": "Statistics",
+		"order": 40,
+		"action": {"type": "view", "path": "cdn-cache/statistics"}
+	},
+	"admin/secubox/network/cdn-cache/maintenance": {
+		"title": "Maintenance",
+		"order": 50,
+		"action": {"type": "view", "path": "cdn-cache/maintenance"}
+	},
+	"admin/secubox/network/cdn-cache/settings": {
+		"title": "Settings",
+		"order": 90,
+		"action": {"type": "view", "path": "cdn-cache/settings"}
+	},
     "admin/secubox/system": {
         "title": "System & Performance",
         "order": 50,
