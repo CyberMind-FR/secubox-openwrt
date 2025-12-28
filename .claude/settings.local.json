@@ -115,7 +115,22 @@
       "Bash(/tmp/deploy-secubox-final.sh)",
       "WebFetch(domain:cybermind.fr)",
       "Bash(/tmp/deploy-system-hub-demo-style.sh)",
-      "Bash(./secubox-tools/build-modules.sh:*)"
+      "Bash(./secubox-tools/build-modules.sh:*)",
+      "Bash(./secubox-tools/fix-permissions.sh:*)",
+      "Bash(/tmp/deploy-acl-updates.sh:*)",
+      "Bash(/tmp/deploy-acl-updates-v2.sh)",
+      "WebSearch",
+      "WebFetch(domain:secubox.cybermood.eu)",
+      "Bash(timeout 5 ssh:*)",
+      "Bash(ssh-keygen:*)",
+      "Bash(/tmp/deploy-v0.3.1.sh)",
+      "Bash(/tmp/deploy-v0.3.1-scp.sh)",
+      "Bash(tar czf:*)",
+      "Bash(__NEW_LINE__ echo \"\")",
+      "Bash(./secubox-tools/add-pkg-file-modes.sh:*)",
+      "Bash(luci-app-secubox/htdocs/luci-static/resources/view/secubox/dashboard.js )",
+      "Bash(luci-app-secubox/htdocs/luci-static/resources/view/secubox/modules.js )",
+      "Bash(git checkout:*)"
     ]
   }
 }
