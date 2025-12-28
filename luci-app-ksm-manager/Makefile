@@ -16,6 +16,10 @@ LUCI_PKGARCH:=all
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_LICENSE:=Apache-2.0
 
+
+# File permissions (RPCD scripts must be executable)
+PKG_FILE_MODES:=/usr/libexec/rpcd/luci.ksm-manager:755
+
 include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature

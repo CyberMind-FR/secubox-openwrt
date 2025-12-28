@@ -11,6 +11,10 @@ LUCI_DESCRIPTION:=Comprehensive authentication and session management with capti
 LUCI_DEPENDS:=+luci-base +rpcd +nodogsplash
 LUCI_PKGARCH:=all
 
+
+# File permissions (RPCD scripts must be executable)
+PKG_FILE_MODES:=/usr/libexec/rpcd/luci.auth-guardian:755
+
 include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature

@@ -11,6 +11,10 @@ LUCI_DESCRIPTION:=Advanced bandwidth management with QoS rules, client quotas, a
 LUCI_DEPENDS:=+luci-base +rpcd +tc +kmod-sched-core +kmod-sched-cake +kmod-ifb +sqm-scripts +iptables +iptables-mod-conntrack-extra +ip-full
 LUCI_PKGARCH:=all
 
+
+# File permissions (RPCD scripts must be executable)
+PKG_FILE_MODES:=/usr/libexec/rpcd/luci.bandwidth-manager:755
+
 include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature

@@ -256,9 +256,19 @@ return view.extend({
 		};
 
 		var moduleCards = filteredModules.map(function(module) {
-			var isRunning = module.running;
-			var statusClass = isRunning ? 'running' : 'stopped';
+			var status = module.status || 'unknown';
+			var statusClass = status;
 			var dashboardPath = modulePaths[module.id] || ('admin/secubox/' + module.id);
+
+			// Status label mapping (v0.3.1)
+			var statusLabels = {
+				'active': '✓ Activé',
+				'disabled': '○ Désactivé',
+				'error': '⚠️ Erreur',
+				'unknown': '? Inconnu'
+			};
+
+			var statusLabel = statusLabels[status] || '○ Désactivé';
 
 			return E('a', {
 				'href': L.url(dashboardPath),
@@ -272,13 +282,12 @@ return view.extend({
 						E('span', { 'class': 'secubox-module-mini-icon' }, module.icon || '📦'),
 						E('span', {
 							'class': 'secubox-status-dot secubox-status-' + statusClass,
-							'title': isRunning ? 'Running' : 'Stopped'
+							'title': statusLabel
 						})
 					]),
 					E('div', { 'class': 'secubox-module-mini-body' }, [
 						E('div', { 'class': 'secubox-module-mini-name' }, module.name || module.id),
-						E('div', { 'class': 'secubox-module-mini-status' },
-							isRunning ? '● Running' : '○ Stopped')
+						E('div', { 'class': 'secubox-module-mini-status' }, statusLabel)
 					])
 				])
 			]);
@@ -367,9 +376,19 @@ return view.extend({
 		};
 
 		var moduleCards = filteredModules.map(function(module) {
-			var isRunning = module.running;
-			var statusClass = isRunning ? 'running' : 'stopped';
+			var status = module.status || 'unknown';
+			var statusClass = status;
 			var dashboardPath = modulePaths[module.id] || ('admin/secubox/' + module.id);
+
+			// Status label mapping (v0.3.1)
+			var statusLabels = {
+				'active': '✓ Activé',
+				'disabled': '○ Désactivé',
+				'error': '⚠️ Erreur',
+				'unknown': '? Inconnu'
+			};
+
+			var statusLabel = statusLabels[status] || '○ Désactivé';
 
 			return E('a', {
 				'href': L.url(dashboardPath),
@@ -383,13 +402,12 @@ return view.extend({
 						E('span', { 'class': 'secubox-module-mini-icon' }, module.icon || '📦'),
 						E('span', {
 							'class': 'secubox-status-dot secubox-status-' + statusClass,
-							'title': isRunning ? 'Running' : 'Stopped'
+							'title': statusLabel
 						})
 					]),
 					E('div', { 'class': 'secubox-module-mini-body' }, [
 						E('div', { 'class': 'secubox-module-mini-name' }, module.name || module.id),
-						E('div', { 'class': 'secubox-module-mini-status' },
-							isRunning ? '● Running' : '○ Stopped')
+						E('div', { 'class': 'secubox-module-mini-status' }, statusLabel)
 					])
 				])
 			]);
@@ -443,6 +461,20 @@ return view.extend({
 			]);
 		});
 
+		// Add Fix Permissions button (v0.3.1)
+		buttons.push(
+			E('button', {
+				'class': 'secubox-action-btn',
+				'style': 'border-color: #f97316',
+				'click': function() {
+					self.executeFixPermissions();
+				}
+			}, [
+				E('span', { 'class': 'secubox-action-icon' }, '🔧'),
+				E('span', { 'class': 'secubox-action-label' }, 'Fix Perms')
+			])
+		);
+
 		return E('div', { 'class': 'secubox-card' }, [
 			E('h3', { 'class': 'secubox-card-title' }, '⚡ Quick Actions'),
 			E('div', { 'class': 'secubox-actions-grid' }, buttons)
@@ -467,6 +499,38 @@ return view.extend({
 				}, 2000);
 			} else {
 				ui.addNotification(null, E('p', '✗ ' + (result.message || 'Action failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', 'Error: ' + err.message), 'error');
+		});
+	},
+
+	executeFixPermissions: function() {
+		var self = this;
+		ui.showModal(_('Fixing Permissions'), [
+			E('p', { 'class': 'spinning' }, _('Fixing file permissions and restarting services...'))
+		]);
+
+		API.fixPermissions().then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				ui.addNotification(null, E('p', '✓ Permissions fixed successfully'), 'info');
+				// Show output in console
+				if (result.output) {
+					console.log('Fix Permissions Output:\n' + result.output);
+				}
+				// Refresh data after fixing permissions
+				setTimeout(function() {
+					self.refreshData().then(function() {
+						self.updateDynamicElements();
+					});
+				}, 2000);
+			} else {
+				ui.addNotification(null, E('p', '✗ ' + (result.message || 'Failed to fix permissions')), 'error');
+				if (result.output) {
+					console.error('Fix Permissions Error:\n' + result.output);
+				}
 			}
 		}).catch(function(err) {
 			ui.hideModal();

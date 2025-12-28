@@ -66,8 +66,8 @@ return view.extend({
 	renderHeader: function(modules) {
 		var total = modules.length;
 		var installed = modules.filter(function(m) { return m.installed; }).length;
-		var running = modules.filter(function(m) { return m.running; }).length;
-		var stopped = installed - running;
+		var enabled = modules.filter(function(m) { return m.enabled; }).length;
+		var disabled = installed - enabled;
 
 		return E('div', { 'class': 'secubox-page-header' }, [
 			E('div', {}, [
@@ -81,12 +81,12 @@ return view.extend({
 					E('span', { 'class': 'secubox-stat-label' }, 'Total')
 				]),
 				E('div', { 'class': 'secubox-stat-badge secubox-stat-success' }, [
-					E('span', { 'class': 'secubox-stat-value' }, running),
-					E('span', { 'class': 'secubox-stat-label' }, 'Running')
+					E('span', { 'class': 'secubox-stat-value' }, enabled),
+					E('span', { 'class': 'secubox-stat-label' }, 'Activés')
 				]),
 				E('div', { 'class': 'secubox-stat-badge secubox-stat-warning' }, [
-					E('span', { 'class': 'secubox-stat-value' }, stopped),
-					E('span', { 'class': 'secubox-stat-label' }, 'Stopped')
+					E('span', { 'class': 'secubox-stat-value' }, disabled),
+					E('span', { 'class': 'secubox-stat-label' }, 'Désactivés')
 				]),
 				E('div', { 'class': 'secubox-stat-badge secubox-stat-muted' }, [
 					E('span', { 'class': 'secubox-stat-value' }, total - installed),
@@ -144,9 +144,20 @@ return view.extend({
 
 	renderModuleCard: function(module) {
 		var self = this;
-		var isRunning = module.running;
+		var status = module.status || 'unknown';
 		var isInstalled = module.installed;
-		var statusClass = isRunning ? 'running' : (isInstalled ? 'stopped' : 'not-installed');
+		var statusClass = isInstalled ? status : 'not-installed';
+
+		// Status label mapping (v0.3.1)
+		var statusLabels = {
+			'active': '✓ Activé',
+			'disabled': '○ Désactivé',
+			'error': '⚠️ Erreur',
+			'unknown': '? Inconnu',
+			'not-installed': '- Not Installed'
+		};
+
+		var statusLabel = isInstalled ? (statusLabels[status] || '○ Désactivé') : statusLabels['not-installed'];
 
 		return E('div', {
 			'class': 'secubox-module-card secubox-module-' + statusClass,
@@ -166,7 +177,7 @@ return view.extend({
 				]),
 				E('div', {
 					'class': 'secubox-status-indicator secubox-status-' + statusClass,
-					'title': isRunning ? 'Running' : (isInstalled ? 'Stopped' : 'Not Installed')
+					'title': statusLabel
 				})
 			]),
 
@@ -184,7 +195,7 @@ return view.extend({
 						E('span', { 'class': 'secubox-detail-label' }, 'Status:'),
 						E('span', {
 							'class': 'secubox-detail-value secubox-status-text-' + statusClass
-						}, isRunning ? '● Running' : (isInstalled ? '○ Stopped' : '- Not Installed'))
+						}, statusLabel)
 					])
 				])
 			]),
@@ -207,36 +218,24 @@ return view.extend({
 				}, '📥 Install')
 			);
 		} else {
-			// Start/Stop button
-			if (module.running) {
+			// Enable/Disable button (v0.3.1)
+			if (module.enabled) {
 				actions.push(
 					E('button', {
 						'class': 'secubox-btn secubox-btn-danger secubox-btn-sm',
 						'click': function() {
-							self.stopModule(module);
+							self.disableModule(module);
 						}
-					}, '⏹️ Stop')
+					}, '⏹️ Désactiver')
 				);
 			} else {
 				actions.push(
 					E('button', {
 						'class': 'secubox-btn secubox-btn-success secubox-btn-sm',
 						'click': function() {
-							self.startModule(module);
+							self.enableModule(module);
 						}
-					}, '▶️ Start')
-				);
-			}
-
-			// Restart button (only if running)
-			if (module.running) {
-				actions.push(
-					E('button', {
-						'class': 'secubox-btn secubox-btn-warning secubox-btn-sm',
-						'click': function() {
-							self.restartModule(module);
-						}
-					}, '🔄 Restart')
+					}, '▶️ Activer')
 				);
 			}
 
@@ -286,69 +285,65 @@ return view.extend({
 		return icons[category] || icons['other'];
 	},
 
-	startModule: function(module) {
+	// Enable module (v0.3.1)
+	enableModule: function(module) {
 		var self = this;
-		ui.showModal(_('Starting Module'), [
-			E('p', {}, _('Starting') + ' ' + module.name + '...')
+		ui.showModal(_('Activation du module'), [
+			E('p', {}, 'Activation de ' + module.name + '...')
 		]);
 
-		API.startModule(module.id).then(function(result) {
+		API.enableModule(module.id).then(function(result) {
 			ui.hideModal();
 			if (result && result.success !== false) {
-				ui.addNotification(null, E('p', module.name + ' started successfully'), 'info');
+				ui.addNotification(null, E('p', module.name + ' activé avec succès'), 'info');
 				self.refreshData().then(function() {
 					self.updateModulesGrid();
 				});
 			} else {
-				ui.addNotification(null, E('p', 'Failed to start ' + module.name), 'error');
+				ui.addNotification(null, E('p', 'Échec de l\'activation de ' + module.name), 'error');
 			}
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', 'Error: ' + err.message), 'error');
+			ui.addNotification(null, E('p', 'Erreur: ' + err.message), 'error');
 		});
 	},
 
-	stopModule: function(module) {
+	// Disable module (v0.3.1)
+	disableModule: function(module) {
 		var self = this;
-		ui.showModal(_('Stopping Module'), [
-			E('p', {}, _('Stopping') + ' ' + module.name + '...')
+		ui.showModal(_('Désactivation du module'), [
+			E('p', {}, 'Désactivation de ' + module.name + '...')
 		]);
 
-		API.stopModule(module.id).then(function(result) {
+		API.disableModule(module.id).then(function(result) {
 			ui.hideModal();
 			if (result && result.success !== false) {
-				ui.addNotification(null, E('p', module.name + ' stopped successfully'), 'info');
+				ui.addNotification(null, E('p', module.name + ' désactivé avec succès'), 'info');
 				self.refreshData().then(function() {
 					self.updateModulesGrid();
 				});
 			} else {
-				ui.addNotification(null, E('p', 'Failed to stop ' + module.name), 'error');
+				ui.addNotification(null, E('p', 'Échec de la désactivation de ' + module.name), 'error');
 			}
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', 'Error: ' + err.message), 'error');
+			ui.addNotification(null, E('p', 'Erreur: ' + err.message), 'error');
 		});
+	},
+
+	// DEPRECATED: Keeping for backward compatibility
+	startModule: function(module) {
+		return this.enableModule(module);
+	},
+
+	stopModule: function(module) {
+		return this.disableModule(module);
 	},
 
 	restartModule: function(module) {
 		var self = this;
-		ui.showModal(_('Restarting Module'), [
-			E('p', {}, _('Restarting') + ' ' + module.name + '...')
-		]);
-
-		API.restartModule(module.id).then(function(result) {
-			ui.hideModal();
-			if (result && result.success !== false) {
-				ui.addNotification(null, E('p', module.name + ' restarted successfully'), 'info');
-				self.refreshData().then(function() {
-					self.updateModulesGrid();
-				});
-			} else {
-				ui.addNotification(null, E('p', 'Failed to restart ' + module.name), 'error');
-			}
-		}).catch(function(err) {
-			ui.hideModal();
-			ui.addNotification(null, E('p', 'Error: ' + err.message), 'error');
+		return this.disableModule(module).then(function() {
+			return self.enableModule(module);
 		});
 	},
 

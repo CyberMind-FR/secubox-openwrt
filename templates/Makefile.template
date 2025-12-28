@@ -14,8 +14,13 @@ PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 # LuCI specific
 LUCI_TITLE:=LuCI - Package Description
 LUCI_DESCRIPTION:=Detailed description of what this package does
-LUCI_DEPENDS:=+luci-base
+LUCI_DEPENDS:=+luci-base +rpcd
 LUCI_PKGARCH:=all
+
+# File permissions (CRITICAL: RPCD scripts MUST be executable)
+# CSS/JS files are 644 by default (correct)
+# Only specify files that need non-default permissions (755 for executables)
+PKG_FILE_MODES:=/usr/libexec/rpcd/luci.PACKAGE_NAME:755
 
 # Include LuCI build system
 include $(TOPDIR)/feeds/luci/luci.mk

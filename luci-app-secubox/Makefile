@@ -11,6 +11,10 @@ LUCI_DESCRIPTION:=Central control hub for all SecuBox modules. Provides unified 
 LUCI_DEPENDS:=+luci-base +rpcd +curl +jq
 LUCI_PKGARCH:=all
 
+# File permissions (RPCD scripts must be executable)
+PKG_FILE_MODES:=/usr/libexec/rpcd/luci.secubox:755 \
+	/usr/libexec/secubox/fix-permissions.sh:755
+
 include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot

@@ -14,6 +14,10 @@ LUCI_DESCRIPTION:=Real-time detection and monitoring of streaming services (Netf
 LUCI_DEPENDS:=+luci-base +rpcd +netifyd +luci-app-netifyd-dashboard
 LUCI_PKGARCH:=all
 
+
+# File permissions (RPCD scripts must be executable)
+PKG_FILE_MODES:=/usr/libexec/rpcd/luci.media-flow:755
+
 include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature

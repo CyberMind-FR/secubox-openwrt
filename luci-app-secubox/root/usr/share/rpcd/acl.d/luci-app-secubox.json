@@ -8,6 +8,7 @@
                     "modules",
                     "modules_by_category",
                     "module_info",
+                    "check_module_enabled",
                     "health",
                     "diagnostics",
                     "get_system_health",
@@ -30,9 +31,12 @@
                     "start_module",
                     "stop_module",
                     "restart_module",
+                    "enable_module",
+                    "disable_module",
                     "quick_action",
                     "dismiss_alert",
-                    "clear_alerts"
+                    "clear_alerts",
+                    "fix_permissions"
                 ],
                 "uci": [
                     "set",

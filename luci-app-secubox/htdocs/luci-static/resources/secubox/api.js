@@ -8,7 +8,7 @@
  * RPCD object: luci.secubox
  */
 
-// Version: 0.2.2
+// Version: 0.3.1
 
 var callStatus = rpc.declare({
 	object: 'luci.secubox',
@@ -52,6 +52,28 @@ var callRestartModule = rpc.declare({
 	object: 'luci.secubox',
 	method: 'restart_module',
 	params: ['module']
+});
+
+// NEW v0.3.1: Enable/Disable module methods
+var callEnableModule = rpc.declare({
+	object: 'luci.secubox',
+	method: 'enable_module',
+	params: ['module'],
+	expect: { success: false, message: '' }
+});
+
+var callDisableModule = rpc.declare({
+	object: 'luci.secubox',
+	method: 'disable_module',
+	params: ['module'],
+	expect: { success: false, message: '' }
+});
+
+var callCheckModuleEnabled = rpc.declare({
+	object: 'luci.secubox',
+	method: 'check_module_enabled',
+	params: ['module'],
+	expect: { enabled: false }
 });
 
 var callHealth = rpc.declare({
@@ -110,6 +132,12 @@ var callClearAlerts = rpc.declare({
 	expect: { }
 });
 
+var callFixPermissions = rpc.declare({
+	object: 'luci.secubox',
+	method: 'fix_permissions',
+	expect: { success: false, message: '', output: '' }
+});
+
 function formatUptime(seconds) {
 	if (!seconds) return '0s';
 	var d = Math.floor(seconds / 86400);
@@ -133,9 +161,15 @@ return baseclass.extend({
 	getModules: callModules,
 	getModulesByCategory: callModulesByCategory,
 	getModuleInfo: callModuleInfo,
+	// DEPRECATED: Use enable/disable instead
 	startModule: callStartModule,
 	stopModule: callStopModule,
 	restartModule: callRestartModule,
+	// NEW v0.3.1: Enable/Disable methods
+	enableModule: callEnableModule,
+	disableModule: callDisableModule,
+	checkModuleEnabled: callCheckModuleEnabled,
+	// Health & diagnostics
 	getHealth: callHealth,
 	getDiagnostics: callDiagnostics,
 	getSystemHealth: callSystemHealth,
@@ -145,6 +179,8 @@ return baseclass.extend({
 	getTheme: callGetTheme,
 	dismissAlert: callDismissAlert,
 	clearAlerts: callClearAlerts,
+	fixPermissions: callFixPermissions,
+	// Utilities
 	formatUptime: formatUptime,
 	formatBytes: formatBytes
 });

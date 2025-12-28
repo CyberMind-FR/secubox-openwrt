@@ -44,14 +44,25 @@ check_module_installed() {
 	fi
 }
 
+# Check if a module is enabled (UCI config)
+check_module_enabled() {
+	local module="$1"
+	local enabled
+
+	config_load secubox
+	config_get enabled "$module" enabled "1"
+
+	echo "$enabled"
+}
+
 # Check if a module service is running
 check_module_running() {
 	local module="$1"
 	local config
-	
+
 	config_load secubox
 	config_get config "$module" config ""
-	
+
 	case "$module" in
 		crowdsec)
 			pgrep -f crowdsec > /dev/null 2>&1 && echo "1" || echo "0"
@@ -77,6 +88,22 @@ check_module_running() {
 			fi
 			;;
 	esac
+}
+
+# Determine module status based on enabled + running
+get_module_status() {
+	local enabled="$1"
+	local running="$2"
+
+	if [ "$enabled" = "1" ] && [ "$running" = "1" ]; then
+		echo "active"
+	elif [ "$enabled" = "1" ] && [ "$running" = "0" ]; then
+		echo "error"
+	elif [ "$enabled" = "0" ] && [ "$running" = "0" ]; then
+		echo "disabled"
+	else
+		echo "unknown"
+	fi
 }
 
 # Get overall system status
@@ -159,7 +186,9 @@ get_modules() {
 		config_get version "$module" version "0.0.9"
 
 		local is_installed=$(check_module_installed "$module")
+		local is_enabled=$(check_module_enabled "$module")
 		local is_running=$(check_module_running "$module")
+		local status=$(get_module_status "$is_enabled" "$is_running")
 
 		# Get real version from opkg if installed
 		if [ "$is_installed" = "1" ] && [ -n "$package" ]; then
@@ -178,7 +207,9 @@ get_modules() {
 		json_add_string "config" "$config"
 		json_add_string "version" "$version"
 		json_add_boolean "installed" "$is_installed"
+		json_add_boolean "enabled" "$is_enabled"
 		json_add_boolean "running" "$is_running"
+		json_add_string "status" "$status"
 		json_add_boolean "in_uci" "1"
 		json_close_object
 
@@ -213,7 +244,9 @@ get_modules() {
 		esac
 
 		local clean_module=$(echo "$module_id" | sed 's/_/-/g')
+		local is_enabled=$(check_module_enabled "$module_id")
 		local is_running=$(check_module_running "$module_id")
+		local status=$(get_module_status "$is_enabled" "$is_running")
 
 		json_add_object ""
 		json_add_string "id" "$module_id"
@@ -226,7 +259,9 @@ get_modules() {
 		json_add_string "config" "$clean_module"
 		json_add_string "version" "$version"
 		json_add_boolean "installed" "1"
+		json_add_boolean "enabled" "$is_enabled"
 		json_add_boolean "running" "$is_running"
+		json_add_string "status" "$status"
 		json_add_boolean "in_uci" "0"
 		json_close_object
 	done
@@ -265,7 +300,9 @@ get_modules_by_category() {
 			config_get version "$module" version "0.0.9"
 
 			local is_installed=$(check_module_installed "$module")
+			local is_enabled=$(check_module_enabled "$module")
 			local is_running=$(check_module_running "$module")
+			local status=$(get_module_status "$is_enabled" "$is_running")
 
 			# Get real version from opkg if installed
 			if [ "$is_installed" = "1" ] && [ -n "$package" ]; then
@@ -282,7 +319,9 @@ get_modules_by_category() {
 			json_add_string "version" "$version"
 			json_add_string "package" "$package"
 			json_add_boolean "installed" "$is_installed"
+			json_add_boolean "enabled" "$is_enabled"
 			json_add_boolean "running" "$is_running"
+			json_add_string "status" "$status"
 			json_add_boolean "in_uci" "1"
 			json_close_object
 
@@ -321,7 +360,9 @@ get_modules_by_category() {
 			name=$(echo "$package" | sed 's/^luci-app-//' | sed 's/-dashboard$//' | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g')
 
 			local is_installed="1"  # Must be installed if detected
+			local is_enabled=$(check_module_enabled "$module_id")
 			local is_running=$(check_module_running "$module_id")
+			local status=$(get_module_status "$is_enabled" "$is_running")
 
 			json_add_object ""
 			json_add_string "id" "$module_id"
@@ -333,7 +374,9 @@ get_modules_by_category() {
 			json_add_string "package" "$package"
 			json_add_string "category" "$mod_category"
 			json_add_boolean "installed" "$is_installed"
+			json_add_boolean "enabled" "$is_enabled"
 			json_add_boolean "running" "$is_running"
+			json_add_string "status" "$status"
 			json_add_boolean "in_uci" "0"
 			json_close_object
 		fi
@@ -361,7 +404,9 @@ get_module_info() {
 	config_get version "$module" version "0.0.9"
 
 	local is_installed=$(check_module_installed "$module")
+	local is_enabled=$(check_module_enabled "$module")
 	local is_running=$(check_module_running "$module")
+	local status=$(get_module_status "$is_enabled" "$is_running")
 
 	json_init
 	json_add_string "id" "$module"
@@ -374,7 +419,9 @@ get_module_info() {
 	json_add_string "config" "$config"
 	json_add_string "version" "$version"
 	json_add_boolean "installed" "$is_installed"
+	json_add_boolean "enabled" "$is_enabled"
 	json_add_boolean "running" "$is_running"
+	json_add_string "status" "$status"
 	json_dump
 }
 
@@ -422,19 +469,77 @@ stop_module() {
 	fi
 }
 
-# Restart a module
+# Restart a module (DEPRECATED - use disable/enable instead)
 restart_module() {
 	local module="$1"
 	local config
-	
+
 	config_load secubox
 	config_get config "$module" config ""
-	
+
 	if [ -x "/etc/init.d/${config}" ]; then
 		/etc/init.d/${config} restart
 		json_init
 		json_add_boolean "success" 1
 		json_add_string "message" "Module restarted"
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Init script not found"
+		json_dump
+	fi
+}
+
+# Enable a module (NEW v0.3.1)
+enable_module() {
+	local module="$1"
+	local config
+
+	config_load secubox
+	config_get config "$module" config ""
+
+	# Set enabled flag in UCI
+	uci set secubox.${module}.enabled='1'
+	uci commit secubox
+
+	# Enable and start service if init script exists
+	if [ -x "/etc/init.d/${config}" ]; then
+		/etc/init.d/${config} enable
+		/etc/init.d/${config} start
+
+		json_init
+		json_add_boolean "success" 1
+		json_add_string "message" "Module activé"
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Init script not found"
+		json_dump
+	fi
+}
+
+# Disable a module (NEW v0.3.1)
+disable_module() {
+	local module="$1"
+	local config
+
+	config_load secubox
+	config_get config "$module" config ""
+
+	# Set disabled flag in UCI
+	uci set secubox.${module}.enabled='0'
+	uci commit secubox
+
+	# Disable and stop service if init script exists
+	if [ -x "/etc/init.d/${config}" ]; then
+		/etc/init.d/${config} stop
+		/etc/init.d/${config} disable
+
+		json_init
+		json_add_boolean "success" 1
+		json_add_string "message" "Module désactivé"
 		json_dump
 	else
 		json_init
@@ -752,12 +857,16 @@ get_dashboard_data() {
 		config_get color "$module" color "#64748b"
 
 		local is_installed=$(check_module_installed "$module")
+		local is_enabled="0"
 		local is_running="0"
+		local status="disabled"
 
 		total=$((total + 1))
 
 		if [ "$is_installed" = "1" ]; then
+			is_enabled=$(check_module_enabled "$module")
 			is_running=$(check_module_running "$module")
+			status=$(get_module_status "$is_enabled" "$is_running")
 			installed=$((installed + 1))
 			[ "$is_running" = "1" ] && running=$((running + 1))
 		fi
@@ -770,7 +879,9 @@ get_dashboard_data() {
 		json_add_string "icon" "$icon"
 		json_add_string "color" "$color"
 		json_add_boolean "installed" "$is_installed"
+		json_add_boolean "enabled" "$is_enabled"
 		json_add_boolean "running" "$is_running"
+		json_add_string "status" "$status"
 		json_close_object
 	done
 	json_close_array
@@ -844,6 +955,34 @@ clear_alerts() {
 	json_dump
 }
 
+# Fix permissions (v0.3.1)
+fix_permissions() {
+	local fix_script="/usr/libexec/secubox/fix-permissions.sh"
+
+	if [ ! -x "$fix_script" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Fix script not found or not executable"
+		json_dump
+		return 1
+	fi
+
+	# Run the fix script and capture output
+	local output=$($fix_script 2>&1)
+	local exit_code=$?
+
+	json_init
+	if [ $exit_code -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Permissions fixed successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "message" "Failed to fix permissions"
+	fi
+	json_add_string "output" "$output"
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
@@ -867,6 +1006,15 @@ case "$1" in
 		json_add_object "restart_module"
 		json_add_string "module" "string"
 		json_close_object
+		json_add_object "enable_module"
+		json_add_string "module" "string"
+		json_close_object
+		json_add_object "disable_module"
+		json_add_string "module" "string"
+		json_close_object
+		json_add_object "check_module_enabled"
+		json_add_string "module" "string"
+		json_close_object
 		json_add_object "health"
 		json_close_object
 		json_add_object "diagnostics"
@@ -886,6 +1034,8 @@ case "$1" in
 		json_add_string "alert_id" "string"
 		json_close_object
 		json_add_object "clear_alerts"
+		json_close_object
+		json_add_object "fix_permissions"
 		json_close_object
 		json_dump
 		;;
@@ -927,6 +1077,27 @@ case "$1" in
 				json_get_var module module ""
 				restart_module "$module"
 				;;
+			enable_module)
+				read -r input
+				json_load "$input"
+				json_get_var module module ""
+				enable_module "$module"
+				;;
+			disable_module)
+				read -r input
+				json_load "$input"
+				json_get_var module module ""
+				disable_module "$module"
+				;;
+			check_module_enabled)
+				read -r input
+				json_load "$input"
+				json_get_var module module ""
+				local enabled=$(check_module_enabled "$module")
+				json_init
+				json_add_boolean "enabled" "$enabled"
+				json_dump
+				;;
 			health)
 				get_health
 				;;
@@ -959,6 +1130,9 @@ case "$1" in
 				;;
 			clear_alerts)
 				clear_alerts
+				;;
+			fix_permissions)
+				fix_permissions
 				;;
 			*)
 				echo '{"error":"Unknown method"}'
