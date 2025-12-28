@@ -17,7 +17,12 @@ PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_LICENSE:=Apache-2.0
 
 
-# File permissions (RPCD scripts must be executable)
+# File permissions (CRITICAL: RPCD scripts MUST be executable 755)
+# Format: path:owner:group:mode
+# - RPCD scripts: 755 (executable by root, required for ubus calls)
+# - Helper scripts: 755 (if executable)
+# - Config files: 644 (readable by all, writable by root)
+# - CSS/JS files: 644 (set automatically by luci.mk)
 PKG_FILE_MODES:=/usr/libexec/rpcd/luci.ksm-manager:root:root:755
 
 include $(TOPDIR)/feeds/luci/luci.mk
