@@ -458,33 +458,14 @@ FEEDS
         print_warning "Feed installation had errors, checking if critical..."
     fi
 
-    # Install critical dependencies explicitly
-    # Note: lucihttp and cgi-io are skipped - they fail to compile in SDK (missing lua.h)
+    # Note: We skip manual dependency installation as it causes hangs
+    # The feeds install -a command above already installed all available packages
+    # lucihttp and cgi-io will be disabled in .config to prevent compilation failures
+    # Our SecuBox packages are PKGARCH:=all (scripts) so they don't need compiled dependencies
+
     echo ""
-    echo "📦 Installing LuCI and build dependencies..."
-    for dep in lua liblua luci-base rpcd rpcd-mod-rrdns libiwinfo ucode libucode rpcd-mod-luci; do
-        echo "  Installing $dep..."
-        ./scripts/feeds install "$dep" 2>&1 | grep -v "WARNING:" || true
-    done
-
-    # Try to install lucihttp and cgi-io but don't fail if unavailable
-    # They will be disabled in configuration to prevent compilation failures
-    for dep in lucihttp cgi-io; do
-        echo "  Installing $dep (will be disabled for compilation)..."
-        ./scripts/feeds install "$dep" 2>&1 | grep -v "WARNING:" || true
-    done
-
-    # Build essential dependencies first (skip lucihttp and cgi-io - they fail in SDK)
-    echo ""
-    echo "🔨 Building essential dependencies..."
-    for dep in lua liblua rpcd; do
-        echo "  Building $dep..."
-        make package/feeds/*/${dep}/compile V=s -j1 2>&1 | tail -5 || true
-    done
-
-    # Note: lucihttp and cgi-io are skipped because they fail to compile in SDK
-    # Missing lua.h headers causes: ninja: build stopped: subcommand failed
-    # Our SecuBox packages are PKGARCH:=all (scripts) so they don't need these
+    echo "ℹ️  Dependencies will be handled via .config (pre-built packages preferred)"
+    echo "   lucihttp and cgi-io will be disabled (fail to compile: missing lua.h)"
 
     # Verify feeds
     echo ""
