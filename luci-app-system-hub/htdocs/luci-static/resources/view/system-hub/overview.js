@@ -328,6 +328,8 @@ return view.extend({
 		var memory = this.healthData.memory || {};
 		var disk = this.healthData.disk || {};
 		var temp = this.healthData.temperature || {};
+		var network = this.healthData.network || {};
+		var services = this.healthData.services || {};
 
 		return E('div', { 'class': 'sh-realtime-metrics' }, [
 			// CPU with load trend bars
@@ -476,6 +478,84 @@ return view.extend({
 					E('div', { 'class': 'sh-rt-detail' }, [
 						E('span', { 'class': 'sh-rt-detail-label' }, 'Critical at'),
 						E('span', { 'class': 'sh-rt-detail-value' }, '85°C')
+					])
+				])
+			]),
+
+			// Network Stats (v0.3.2 - NEW)
+			E('div', { 'class': 'sh-rt-metric sh-rt-metric-network' }, [
+				E('div', { 'class': 'sh-rt-header' }, [
+					E('div', { 'class': 'sh-rt-title-group' }, [
+						E('span', { 'class': 'sh-rt-icon' }, '🌐'),
+						E('span', { 'class': 'sh-rt-title' }, 'Network Stats')
+					]),
+					E('div', { 'class': 'sh-rt-value-group' }, [
+						E('span', { 'class': 'sh-rt-value' }, network.wan_up ? 'Online' : 'Offline'),
+						E('span', { 'class': 'sh-rt-badge sh-rt-badge-' + (network.wan_up ? 'ok' : 'critical') },
+							network.wan_up ? 'connected' : 'disconnected')
+					])
+				]),
+				E('div', { 'class': 'sh-rt-progress-modern' }, [
+					E('div', {
+						'class': 'sh-rt-progress-fill sh-rt-gradient-network',
+						'style': 'width: ' + (network.wan_up ? 100 : 0) + '%'
+					})
+				]),
+				E('div', { 'class': 'sh-rt-details-grid' }, [
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Download'),
+						E('span', { 'class': 'sh-rt-detail-value' },
+							'↓ ' + ((network.rx_bytes || 0) / 1024 / 1024 / 1024).toFixed(2) + ' GB')
+					]),
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Upload'),
+						E('span', { 'class': 'sh-rt-detail-value' },
+							'↑ ' + ((network.tx_bytes || 0) / 1024 / 1024 / 1024).toFixed(2) + ' GB')
+					]),
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Status'),
+						E('span', { 'class': 'sh-rt-detail-value' }, network.status || 'unknown')
+					])
+				])
+			]),
+
+			// Services Monitor (v0.3.2 - NEW)
+			E('div', { 'class': 'sh-rt-metric sh-rt-metric-services' }, [
+				E('div', { 'class': 'sh-rt-header' }, [
+					E('div', { 'class': 'sh-rt-title-group' }, [
+						E('span', { 'class': 'sh-rt-icon' }, '⚙️'),
+						E('span', { 'class': 'sh-rt-title' }, 'Services Monitor')
+					]),
+					E('div', { 'class': 'sh-rt-value-group' }, [
+						E('span', { 'class': 'sh-rt-value' }, (services.running || 0) + '/' + ((services.running || 0) + (services.failed || 0))),
+						E('span', {
+							'class': 'sh-rt-badge sh-rt-badge-' + ((services.failed || 0) === 0 ? 'ok' : (services.failed || 0) > 3 ? 'critical' : 'warning')
+						}, (services.failed || 0) === 0 ? 'healthy' : 'issues')
+					])
+				]),
+				E('div', { 'class': 'sh-rt-progress-modern' }, [
+					E('div', {
+						'class': 'sh-rt-progress-fill sh-rt-gradient-services',
+						'style': 'width: ' + (((services.running || 0) + (services.failed || 0)) > 0
+							? Math.round(((services.running || 0) / ((services.running || 0) + (services.failed || 0))) * 100)
+							: 100) + '%'
+					})
+				]),
+				E('div', { 'class': 'sh-rt-details-grid' }, [
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Running'),
+						E('span', { 'class': 'sh-rt-detail-value' }, (services.running || 0) + ' services')
+					]),
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Failed'),
+						E('span', { 'class': 'sh-rt-detail-value' }, (services.failed || 0) + ' services')
+					]),
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Health'),
+						E('span', { 'class': 'sh-rt-detail-value' },
+							(((services.running || 0) + (services.failed || 0)) > 0
+								? Math.round(((services.running || 0) / ((services.running || 0) + (services.failed || 0))) * 100)
+								: 100) + '%')
 					])
 				])
 			])
