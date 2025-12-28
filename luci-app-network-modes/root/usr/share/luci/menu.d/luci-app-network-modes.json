@@ -1,7 +1,7 @@
 {
-	"admin/secubox/network-modes": {
+	"admin/secubox/network/modes": {
 		"title": "Network Modes",
-		"order": 20,
+		"order": 10,
 		"action": {
 			"type": "firstchild"
 		},
@@ -9,7 +9,7 @@
 			"acl": ["luci-app-network-modes"]
 		}
 	},
-	"admin/secubox/network-modes/overview": {
+	"admin/secubox/network/modes/overview": {
 		"title": "Overview",
 		"order": 10,
 		"action": {
@@ -17,7 +17,7 @@
 			"path": "network-modes/overview"
 		}
 	},
-	"admin/secubox/network-modes/wizard": {
+	"admin/secubox/network/modes/wizard": {
 		"title": "Mode Wizard",
 		"order": 20,
 		"action": {
@@ -25,7 +25,7 @@
 			"path": "network-modes/wizard"
 		}
 	},
-	"admin/secubox/network-modes/router": {
+	"admin/secubox/network/modes/router": {
 		"title": "Router Mode",
 		"order": 30,
 		"action": {
@@ -33,7 +33,7 @@
 			"path": "network-modes/router"
 		}
 	},
-	"admin/secubox/network-modes/multiwan": {
+	"admin/secubox/network/modes/multiwan": {
 		"title": "Multi-WAN Mode",
 		"order": 35,
 		"action": {
@@ -41,7 +41,7 @@
 			"path": "network-modes/multiwan"
 		}
 	},
-	"admin/secubox/network-modes/doublenat": {
+	"admin/secubox/network/modes/doublenat": {
 		"title": "Double NAT Mode",
 		"order": 37,
 		"action": {
@@ -49,7 +49,7 @@
 			"path": "network-modes/doublenat"
 		}
 	},
-	"admin/secubox/network-modes/accesspoint": {
+	"admin/secubox/network/modes/accesspoint": {
 		"title": "Access Point Mode",
 		"order": 40,
 		"action": {
@@ -57,7 +57,7 @@
 			"path": "network-modes/accesspoint"
 		}
 	},
-	"admin/secubox/network-modes/relay": {
+	"admin/secubox/network/modes/relay": {
 		"title": "Relay Mode",
 		"order": 50,
 		"action": {
@@ -65,7 +65,7 @@
 			"path": "network-modes/relay"
 		}
 	},
-	"admin/secubox/network-modes/vpnrelay": {
+	"admin/secubox/network/modes/vpnrelay": {
 		"title": "VPN Relay Mode",
 		"order": 52,
 		"action": {
@@ -73,7 +73,7 @@
 			"path": "network-modes/vpnrelay"
 		}
 	},
-	"admin/secubox/network-modes/travel": {
+	"admin/secubox/network/modes/travel": {
 		"title": "Travel Mode",
 		"order": 55,
 		"action": {
@@ -81,7 +81,7 @@
 			"path": "network-modes/travel"
 		}
 	},
-	"admin/secubox/network-modes/sniffer": {
+	"admin/secubox/network/modes/sniffer": {
 		"title": "Sniffer Mode",
 		"order": 60,
 		"action": {
@@ -89,7 +89,7 @@
 			"path": "network-modes/sniffer"
 		}
 	},
-	"admin/secubox/network-modes/settings": {
+	"admin/secubox/network/modes/settings": {
 		"title": "Settings",
 		"order": 90,
 		"action": {
