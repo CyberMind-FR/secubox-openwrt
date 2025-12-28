@@ -6,11 +6,11 @@
  * System Hub API
  * Package: luci-app-system-hub
  * RPCD object: luci.system-hub
- * Version: 0.2.2
+ * Version: 0.3.6
  */
 
 // Debug log to verify correct version is loaded
-console.log('🔧 System Hub API v0.2.2 loaded at', new Date().toISOString());
+console.log('🔧 System Hub API v0.3.6 loaded at', new Date().toISOString());
 
 var callStatus = rpc.declare({
 	object: 'luci.system-hub',

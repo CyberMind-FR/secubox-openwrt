@@ -1,11 +1,11 @@
 # LuCI Network Modes Dashboard
 
-**Version:** 0.3.5  
-**Last Updated:** 2025-12-28  
+**Version:** 0.3.6
+**Last Updated:** 2025-12-28
 **Status:** Active
 
 
-![Version](https://img.shields.io/badge/version-0.3.5-orange)
+![Version](https://img.shields.io/badge/version-0.3.6-orange)
 ![License](https://img.shields.io/badge/license-Apache--2.0-green)
 ![OpenWrt](https://img.shields.io/badge/OpenWrt-21.02+-blue)
 
@@ -15,7 +15,7 @@ Configure your OpenWrt router for different network operation modes with a moder
 
 ## 🎯 Network Modes
 
-### 🚀 What's New in v0.3.5
+### 🚀 What's New in v0.3.6
 - **WireGuard automation:** generate key pairs, deploy `wg0` interfaces, and push MTU/MSS/BBR optimizations directly from the Relay panel.
 - **Optimization RPCs:** new backend methods expose MTU clamping, TCP BBR, and WireGuard deployment to both UI and automation agents.
 - **UI action buttons:** Relay mode now includes one-click buttons for key generation, interface deployment, and optimization runs.
