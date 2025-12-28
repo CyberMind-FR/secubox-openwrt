@@ -130,7 +130,8 @@ return view.extend({
 			{ id: 'all', label: _('All Modules') },
 			{ id: 'security', label: _('Security') },
 			{ id: 'network', label: _('Network') },
-			{ id: 'services', label: _('Services') }
+			{ id: 'services', label: _('Services') },
+			{ id: 'system', label: _('System') }
 		];
 
 		return E('section', { 'class': 'sb-card' }, [
