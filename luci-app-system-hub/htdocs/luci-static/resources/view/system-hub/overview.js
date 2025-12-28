@@ -38,17 +38,12 @@ return view.extend({
 			// System Info Grid (4 columns per prompt)
 			this.renderSystemInfoGrid(),
 
-			// Resource Monitors (circular gauges per prompt)
-			E('h3', { 'class': 'sh-section-title' }, 'Resource Monitors'),
-			E('div', { 'class': 'sh-metrics-grid' }, [
-				this.renderMetricCard('CPU', this.healthData.cpu),
-				this.renderMetricCard('Memory', this.healthData.memory),
-				this.renderMetricCard('Disk', this.healthData.disk),
-				this.renderMetricCard('Temperature', this.healthData.temperature)
-			]),
+			// Real-Time Performance Metrics (v0.3.2 - NEW: modern histograms)
+			E('h3', { 'class': 'sh-section-title' }, '📈 Real-Time Performance Metrics'),
+			this.renderRealtimeMetrics(),
 
 			// Quick Status Indicators (per prompt)
-			E('h3', { 'class': 'sh-section-title' }, 'Quick Status Indicators'),
+			E('h3', { 'class': 'sh-section-title' }, '⚡ System Status'),
 			this.renderQuickStatusIndicators()
 		]);
 
@@ -327,24 +322,194 @@ return view.extend({
 		]);
 	},
 
-	renderMetricCard: function(type, data) {
-		if (!data) return E('div');
+	// v0.3.2 - Modern real-time metrics with histograms
+	renderRealtimeMetrics: function() {
+		var cpu = this.healthData.cpu || {};
+		var memory = this.healthData.memory || {};
+		var disk = this.healthData.disk || {};
+		var temp = this.healthData.temperature || {};
 
-		var config = this.getMetricConfig(type, data);
-
-		return E('div', { 'class': 'sh-metric-card sh-metric-' + config.status }, [
-			E('div', { 'class': 'sh-metric-header' }, [
-				E('span', { 'class': 'sh-metric-icon' }, config.icon),
-				E('span', { 'class': 'sh-metric-title' }, config.title)
+		return E('div', { 'class': 'sh-realtime-metrics' }, [
+			// CPU with load trend bars
+			E('div', { 'class': 'sh-rt-metric sh-rt-metric-cpu' }, [
+				E('div', { 'class': 'sh-rt-header' }, [
+					E('div', { 'class': 'sh-rt-title-group' }, [
+						E('span', { 'class': 'sh-rt-icon' }, '🔥'),
+						E('span', { 'class': 'sh-rt-title' }, 'CPU Performance')
+					]),
+					E('div', { 'class': 'sh-rt-value-group' }, [
+						E('span', { 'class': 'sh-rt-value' }, (cpu.usage || 0) + '%'),
+						E('span', { 'class': 'sh-rt-badge sh-rt-badge-' + (cpu.status || 'ok') }, cpu.status || 'ok')
+					])
+				]),
+				E('div', { 'class': 'sh-rt-progress-modern' }, [
+					E('div', {
+						'class': 'sh-rt-progress-fill sh-rt-gradient-cpu',
+						'style': 'width: ' + (cpu.usage || 0) + '%',
+						'data-value': (cpu.usage || 0)
+					})
+				]),
+				E('div', { 'class': 'sh-rt-details-grid' }, [
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Load Average'),
+						E('span', { 'class': 'sh-rt-detail-value' }, (cpu.load_1m || '0.00'))
+					]),
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Cores'),
+						E('span', { 'class': 'sh-rt-detail-value' }, (cpu.cores || 0))
+					]),
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Processes'),
+						E('span', { 'class': 'sh-rt-detail-value' }, (cpu.processes_running || 0) + '/' + (cpu.processes_total || 0))
+					])
+				]),
+				// Mini histogram for load average
+				E('div', { 'class': 'sh-rt-histogram' },
+					this.renderLoadHistogram([cpu.load_1m || 0, cpu.load_5m || 0, cpu.load_15m || 0]))
 			]),
-			E('div', { 'class': 'sh-metric-value' }, config.value),
-			E('div', { 'class': 'sh-metric-progress' }, [
+
+			// Memory with swap visualization
+			E('div', { 'class': 'sh-rt-metric sh-rt-metric-memory' }, [
+				E('div', { 'class': 'sh-rt-header' }, [
+					E('div', { 'class': 'sh-rt-title-group' }, [
+						E('span', { 'class': 'sh-rt-icon' }, '💾'),
+						E('span', { 'class': 'sh-rt-title' }, 'Memory Usage')
+					]),
+					E('div', { 'class': 'sh-rt-value-group' }, [
+						E('span', { 'class': 'sh-rt-value' }, (memory.usage || 0) + '%'),
+						E('span', { 'class': 'sh-rt-badge sh-rt-badge-' + (memory.status || 'ok') }, memory.status || 'ok')
+					])
+				]),
+				E('div', { 'class': 'sh-rt-progress-modern' }, [
+					E('div', {
+						'class': 'sh-rt-progress-fill sh-rt-gradient-memory',
+						'style': 'width: ' + (memory.usage || 0) + '%',
+						'data-value': (memory.usage || 0)
+					})
+				]),
+				E('div', { 'class': 'sh-rt-details-grid' }, [
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Used'),
+						E('span', { 'class': 'sh-rt-detail-value' }, ((memory.used_kb || 0) / 1024).toFixed(0) + ' MB')
+					]),
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Total'),
+						E('span', { 'class': 'sh-rt-detail-value' }, ((memory.total_kb || 0) / 1024).toFixed(0) + ' MB')
+					]),
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Swap'),
+						E('span', { 'class': 'sh-rt-detail-value' },
+							memory.swap_total_kb > 0 ? (memory.swap_usage || 0) + '%' : 'N/A')
+					])
+				]),
+				// Memory breakdown visualization
+				memory.swap_total_kb > 0 ? E('div', { 'class': 'sh-rt-multi-bar' }, [
+					E('div', { 'class': 'sh-rt-bar-segment sh-rt-bar-used', 'style': 'width: ' + (memory.usage || 0) + '%' }),
+					E('div', { 'class': 'sh-rt-bar-segment sh-rt-bar-swap', 'style': 'width: ' + (memory.swap_usage || 0) + '%' })
+				]) : null
+			]),
+
+			// Disk with storage breakdown
+			E('div', { 'class': 'sh-rt-metric sh-rt-metric-disk' }, [
+				E('div', { 'class': 'sh-rt-header' }, [
+					E('div', { 'class': 'sh-rt-title-group' }, [
+						E('span', { 'class': 'sh-rt-icon' }, '💿'),
+						E('span', { 'class': 'sh-rt-title' }, 'Disk Space')
+					]),
+					E('div', { 'class': 'sh-rt-value-group' }, [
+						E('span', { 'class': 'sh-rt-value' }, (disk.usage || 0) + '%'),
+						E('span', { 'class': 'sh-rt-badge sh-rt-badge-' + (disk.status || 'ok') }, disk.status || 'ok')
+					])
+				]),
+				E('div', { 'class': 'sh-rt-progress-modern' }, [
+					E('div', {
+						'class': 'sh-rt-progress-fill sh-rt-gradient-disk',
+						'style': 'width: ' + (disk.usage || 0) + '%',
+						'data-value': (disk.usage || 0)
+					})
+				]),
+				E('div', { 'class': 'sh-rt-details-grid' }, [
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Used'),
+						E('span', { 'class': 'sh-rt-detail-value' }, ((disk.used_kb || 0) / 1024 / 1024).toFixed(1) + ' GB')
+					]),
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Total'),
+						E('span', { 'class': 'sh-rt-detail-value' }, ((disk.total_kb || 0) / 1024 / 1024).toFixed(1) + ' GB')
+					]),
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Free'),
+						E('span', { 'class': 'sh-rt-detail-value' },
+							((disk.total_kb - disk.used_kb || 0) / 1024 / 1024).toFixed(1) + ' GB')
+					])
+				])
+			]),
+
+			// Temperature gauge
+			E('div', { 'class': 'sh-rt-metric sh-rt-metric-temp' }, [
+				E('div', { 'class': 'sh-rt-header' }, [
+					E('div', { 'class': 'sh-rt-title-group' }, [
+						E('span', { 'class': 'sh-rt-icon' }, '🌡️'),
+						E('span', { 'class': 'sh-rt-title' }, 'Temperature')
+					]),
+					E('div', { 'class': 'sh-rt-value-group' }, [
+						E('span', { 'class': 'sh-rt-value' }, (temp.value || 0) + '°C'),
+						E('span', { 'class': 'sh-rt-badge sh-rt-badge-' + (temp.status || 'ok') }, temp.status || 'ok')
+					])
+				]),
+				E('div', { 'class': 'sh-rt-progress-modern' }, [
+					E('div', {
+						'class': 'sh-rt-progress-fill sh-rt-gradient-temp',
+						'style': 'width: ' + Math.min((temp.value || 0), 100) + '%',
+						'data-value': (temp.value || 0)
+					})
+				]),
+				E('div', { 'class': 'sh-rt-details-grid' }, [
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Status'),
+						E('span', { 'class': 'sh-rt-detail-value' }, temp.status || 'ok')
+					]),
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Warning at'),
+						E('span', { 'class': 'sh-rt-detail-value' }, '70°C')
+					]),
+					E('div', { 'class': 'sh-rt-detail' }, [
+						E('span', { 'class': 'sh-rt-detail-label' }, 'Critical at'),
+						E('span', { 'class': 'sh-rt-detail-value' }, '85°C')
+					])
+				])
+			])
+		]);
+	},
+
+	// Render mini histogram for load average
+	renderLoadHistogram: function(loads) {
+		var maxLoad = Math.max(...loads, 1);
+		return E('div', { 'class': 'sh-rt-histogram-bars' }, [
+			E('div', { 'class': 'sh-rt-histogram-bar-group' }, [
 				E('div', {
-					'class': 'sh-metric-progress-bar',
-					'style': 'width: ' + config.percentage + '%; background: ' + config.color
-				})
+					'class': 'sh-rt-histogram-bar',
+					'style': 'height: ' + ((loads[0] / maxLoad) * 100) + '%',
+					'title': '1m: ' + loads[0]
+				}),
+				E('span', { 'class': 'sh-rt-histogram-label' }, '1m')
 			]),
-			E('div', { 'class': 'sh-metric-details' }, config.details)
+			E('div', { 'class': 'sh-rt-histogram-bar-group' }, [
+				E('div', {
+					'class': 'sh-rt-histogram-bar',
+					'style': 'height: ' + ((loads[1] / maxLoad) * 100) + '%',
+					'title': '5m: ' + loads[1]
+				}),
+				E('span', { 'class': 'sh-rt-histogram-label' }, '5m')
+			]),
+			E('div', { 'class': 'sh-rt-histogram-bar-group' }, [
+				E('div', {
+					'class': 'sh-rt-histogram-bar',
+					'style': 'height: ' + ((loads[2] / maxLoad) * 100) + '%',
+					'title': '15m: ' + loads[2]
+				}),
+				E('span', { 'class': 'sh-rt-histogram-label' }, '15m')
+			])
 		]);
 	},
 
@@ -484,33 +649,28 @@ return view.extend({
 	},
 
 	updateDashboard: function() {
-		var metricsGrid = document.querySelector('.sh-metrics-grid');
-		if (metricsGrid) {
-			dom.content(metricsGrid, [
-				this.renderMetricCard('CPU', this.healthData.cpu),
-				this.renderMetricCard('Memory', this.healthData.memory),
-				this.renderMetricCard('Disk', this.healthData.disk),
-				this.renderMetricCard('Temperature', this.healthData.temperature)
-			]);
+		// Update real-time metrics (v0.3.2)
+		var realtimeMetrics = document.querySelector('.sh-realtime-metrics');
+		if (realtimeMetrics) {
+			dom.content(realtimeMetrics, this.renderRealtimeMetrics().children);
 		}
 
-		var infoGrid = document.querySelector('.sh-info-grid');
-		if (infoGrid) {
-			dom.content(infoGrid, [
-				this.renderInfoCard('System Information', this.renderSystemInfo()),
-				this.renderInfoCard('Network Status', this.renderNetworkInfo()),
-				this.renderInfoCard('Services', this.renderServicesInfo())
-			]);
+		// Update stats overview
+		var statsOverview = document.querySelector('.sh-stats-overview-grid');
+		if (statsOverview) {
+			dom.content(statsOverview, this.renderStatsOverview().children);
 		}
 
-		// Update health score
-		var scoreValue = document.querySelector('.sh-score-value');
-		var scoreCircle = document.querySelector('.sh-score-circle');
-		if (scoreValue && scoreCircle) {
-			var score = this.healthData.score || 0;
-			var scoreClass = score >= 80 ? 'excellent' : (score >= 60 ? 'good' : (score >= 40 ? 'warning' : 'critical'));
-			scoreValue.textContent = score;
-			scoreCircle.className = 'sh-score-circle sh-score-' + scoreClass;
+		// Update system info grid
+		var systemInfoGrid = document.querySelector('.sh-system-info-grid');
+		if (systemInfoGrid) {
+			dom.content(systemInfoGrid, this.renderSystemInfoGrid().querySelector('.sh-system-info-grid').children);
+		}
+
+		// Update quick status indicators
+		var statusIndicators = document.querySelector('.sh-status-indicators-grid');
+		if (statusIndicators) {
+			dom.content(statusIndicators, this.renderQuickStatusIndicators().children);
 		}
 	},
 
