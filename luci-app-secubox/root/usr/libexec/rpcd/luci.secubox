@@ -25,7 +25,7 @@ detect_modules() {
 
 MODULES=$(detect_modules)
 
-# Check if a module is installed (simple version)
+# Check if a module is installed (supports both opkg and apk)
 check_module_installed() {
 	local module="$1"
 	local package config
@@ -33,11 +33,23 @@ check_module_installed() {
 	config_get package "$module" package ""
 	config_get config "$module" config ""
 
-	# Check if package is installed via opkg
-	if opkg list-installed 2>/dev/null | grep -q "^${package} "; then
-		echo "1"
-	# Or check if config file exists
-	elif [ -f "/etc/config/${config}" ]; then
+	# Check if package is installed via apk (OpenWrt 25.12+) or opkg (24.10 and earlier)
+	if [ -x "/usr/bin/apk" ]; then
+		# OpenWrt 25.12+ uses apk
+		if apk list --installed 2>/dev/null | grep -q "^${package}-"; then
+			echo "1"
+			return
+		fi
+	elif [ -x "/bin/opkg" ] || [ -x "/usr/bin/opkg" ]; then
+		# OpenWrt 24.10 and earlier uses opkg
+		if opkg list-installed 2>/dev/null | grep -q "^${package} "; then
+			echo "1"
+			return
+		fi
+	fi
+
+	# Fallback: check if config file exists
+	if [ -f "/etc/config/${config}" ]; then
 		echo "1"
 	else
 		echo "0"
@@ -130,12 +142,15 @@ get_status() {
 	json_add_int "memory_used" "$mem_used"
 	json_add_int "memory_percent" "$mem_pct"
 	
-	# Count modules
-	for module in $MODULES; do
+	# Count modules from UCI config (same as get_modules)
+	config_load secubox 2>/dev/null || true
+	local module_sections=$(uci -q show secubox | grep "=module$" | cut -d. -f2 | cut -d= -f1)
+
+	for module in $module_sections; do
 		total=$((total + 1))
 		local is_installed=$(check_module_installed "$module")
 		local is_running=$(check_module_running "$module")
-		
+
 		if [ "$is_installed" = "1" ]; then
 			installed=$((installed + 1))
 		fi
@@ -151,13 +166,26 @@ get_status() {
 	json_dump
 }
 
-# Detect real installed luci-app packages
+# Detect real installed luci-app packages (supports both opkg and apk)
 detect_real_modules() {
-	opkg list-installed 2>/dev/null | grep "^luci-app-" | grep -v "^luci-app-secubox " | while read package version; do
-		# Extract module ID from package name
-		local module_id=$(echo "$package" | sed 's/^luci-app-//' | sed 's/-dashboard$//' | sed 's/-/_/g')
-		echo "$module_id:$package:$version"
-	done
+	if [ -x "/usr/bin/apk" ]; then
+		# OpenWrt 25.12+ uses apk
+		apk list --installed 2>/dev/null | grep "^luci-app-" | grep -v "^luci-app-secubox-" | while IFS=- read -r pkg rest; do
+			# Parse apk output: luci-app-network-modes-0.3.1-r1 noarch {...} (license) [installed]
+			local package=$(echo "$pkg-$rest" | awk '{print $1}')
+			local version=$(echo "$package" | sed 's/^luci-app-[^-]*-//' | sed 's/-r[0-9]*$//')
+			local pkg_name=$(echo "$package" | sed 's/-[0-9].*//')
+			local module_id=$(echo "$pkg_name" | sed 's/^luci-app-//' | sed 's/-dashboard$//' | sed 's/-/_/g')
+			echo "$module_id:$pkg_name:$version"
+		done
+	elif [ -x "/bin/opkg" ] || [ -x "/usr/bin/opkg" ]; then
+		# OpenWrt 24.10 and earlier uses opkg
+		opkg list-installed 2>/dev/null | grep "^luci-app-" | grep -v "^luci-app-secubox " | while read package version; do
+			# Extract module ID from package name
+			local module_id=$(echo "$package" | sed 's/^luci-app-//' | sed 's/-dashboard$//' | sed 's/-/_/g')
+			echo "$module_id:$package:$version"
+		done
+	fi
 }
 
 # Get detailed modules list (UCI + auto-detected)
@@ -190,10 +218,18 @@ get_modules() {
 		local is_running=$(check_module_running "$module")
 		local status=$(get_module_status "$is_enabled" "$is_running")
 
-		# Get real version from opkg if installed
+		# Get real version from package manager if installed
 		if [ "$is_installed" = "1" ] && [ -n "$package" ]; then
-			local real_version=$(opkg list-installed "$package" 2>/dev/null | awk '{print $3}' | sed 's/-.*$//')
-			[ -n "$real_version" ] && version="$real_version"
+			if [ -x "/usr/bin/apk" ]; then
+				# OpenWrt 25.12+ uses apk
+				# apk output: luci-app-network-modes-0.3.1-r1 noarch {...}
+				local real_version=$(apk list --installed "$package" 2>/dev/null | head -1 | awk '{print $1}' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+				[ -n "$real_version" ] && version="$real_version"
+			elif [ -x "/bin/opkg" ] || [ -x "/usr/bin/opkg" ]; then
+				# OpenWrt 24.10 and earlier uses opkg
+				local real_version=$(opkg list-installed "$package" 2>/dev/null | awk '{print $3}' | sed 's/-.*$//')
+				[ -n "$real_version" ] && version="$real_version"
+			fi
 		fi
 
 		json_add_object ""
