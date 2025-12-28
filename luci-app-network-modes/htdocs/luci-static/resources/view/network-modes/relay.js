@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require network-modes.api as api';
+'require network-modes.helpers as helpers';
 
 return view.extend({
 	title: _('Relay Mode'),
@@ -45,6 +46,10 @@ return view.extend({
 					]),
 					E('div', { 'class': 'nm-card-badge' }, config.relayd_available ? 'Relayd Available' : 'Relayd Not Installed')
 				]),
+				E('div', { 'class': 'nm-btn-group', 'style': 'margin-top: 16px' }, [
+					E('button', { 'class': 'nm-btn', 'data-action': 'relay-generate-keys', 'type': 'button' }, '🔑 Generate Keys'),
+					E('button', { 'class': 'nm-btn', 'data-action': 'relay-apply-wireguard', 'type': 'button' }, '🚀 Deploy Interface')
+				])
 				E('div', { 'class': 'nm-card-body' }, [
 					E('div', { 'class': 'nm-form-group' }, [
 						E('label', { 'class': 'nm-form-label' }, 'Relay Interface (Upstream)'),
@@ -79,6 +84,9 @@ return view.extend({
 					]),
 					E('div', { 'class': 'nm-card-badge' }, (config.wg_interfaces || []).length + ' tunnels')
 				]),
+				E('div', { 'class': 'nm-btn-group', 'style': 'margin-top: 12px' }, [
+					E('button', { 'class': 'nm-btn', 'data-action': 'relay-apply-optimizations', 'type': 'button' }, '⚙️ Apply Optimizations')
+				])
 				E('div', { 'class': 'nm-card-body' }, [
 					E('div', { 'class': 'nm-toggle' }, [
 						E('div', { 'class': 'nm-toggle-info' }, [
@@ -191,13 +199,13 @@ return view.extend({
 			
 			// Actions
 			E('div', { 'class': 'nm-btn-group' }, [
-				E('button', { 'class': 'nm-btn nm-btn-primary' }, [
+				E('button', { 'class': 'nm-btn nm-btn-primary', 'data-action': 'relay-save', 'type': 'button' }, [
 					E('span', {}, '💾'),
 					'Save Settings'
 				]),
-				E('button', { 'class': 'nm-btn' }, [
-					E('span', {}, '🔄'),
-					'Apply & Restart'
+				E('button', { 'class': 'nm-btn', 'data-action': 'relay-config', 'type': 'button' }, [
+					E('span', {}, '📝'),
+					'Generate Config'
 				])
 			])
 		]);
@@ -213,10 +221,111 @@ return view.extend({
 		var cssLink = E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') });
 		document.head.appendChild(cssLink);
 		
+		this.bindRelayActions(view);
+		
 		return view;
 	},
 	
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	bindRelayActions: function(container) {
+		var saveBtn = container.querySelector('[data-action="relay-save"]');
+		var configBtn = container.querySelector('[data-action="relay-config"]');
+
+		if (saveBtn)
+			saveBtn.addEventListener('click', ui.createHandlerFn(this, 'saveRelaySettings', container));
+		if (configBtn)
+			configBtn.addEventListener('click', ui.createHandlerFn(helpers, helpers.showGeneratedConfig, 'relay'));
+		var generateBtn = container.querySelector('[data-action="relay-generate-keys"]');
+		var deployBtn = container.querySelector('[data-action="relay-apply-wireguard"]');
+		var optimizeBtn = container.querySelector('[data-action="relay-apply-optimizations"]');
+
+		if (generateBtn)
+			generateBtn.addEventListener('click', ui.createHandlerFn(this, 'generateWireguardKeys'));
+		if (deployBtn)
+			deployBtn.addEventListener('click', ui.createHandlerFn(this, 'deployWireguardInterface'));
+		if (optimizeBtn)
+			optimizeBtn.addEventListener('click', ui.createHandlerFn(this, 'applyOptimizations'));
+	},
+
+	saveRelaySettings: function(container) {
+		var toggles = {};
+		container.querySelectorAll('.nm-toggle-switch[data-opt]').forEach(function(toggle) {
+			var key = toggle.getAttribute('data-opt');
+			toggles[key] = helpers.isToggleActive(toggle);
+		});
+
+		var mtuValue = container.querySelector('#wg-mtu') ? parseInt(container.querySelector('#wg-mtu').value, 10) : 1420;
+		var conntrackValue = container.querySelector('#conntrack-max') ? parseInt(container.querySelector('#conntrack-max').value, 10) : 16384;
+
+		var payload = {
+			wireguard_enabled: helpers.isToggleActive(container.querySelector('#toggle-wg')) ? 1 : 0,
+			wireguard_interface: container.querySelector('#wg-interface') ? container.querySelector('#wg-interface').value : '',
+			relay_interface: container.querySelector('#relay-interface') ? container.querySelector('#relay-interface').value : '',
+			lan_interface: container.querySelector('#lan-interface') ? container.querySelector('#lan-interface').value : '',
+			wireguard_mtu: isNaN(mtuValue) ? 1420 : mtuValue,
+			mtu_optimization: toggles.mtu_optimization ? 1 : 0,
+			mss_clamping: toggles.mss_clamping ? 1 : 0,
+			tcp_optimization: toggles.tcp_optimization ? 1 : 0,
+			conntrack_max: isNaN(conntrackValue) ? 16384 : conntrackValue
+		};
+
+		return helpers.persistSettings('relay', payload);
+	},
+
+	generateWireguardKeys: function() {
+		ui.showModal(_('Generating WireGuard keys...'), [
+			E('p', { 'class': 'spinning' }, _('wg genkey / wg pubkey'))
+		]);
+
+		return api.generateWireguardKeys().then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				ui.addNotification(null, E('p', {}, _('New keys generated')), 'info');
+			} else {
+				ui.addNotification(null, E('p', {}, (result && result.error) || _('Key generation failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+		});
+	},
+
+	deployWireguardInterface: function() {
+		ui.showModal(_('Deploying WireGuard interface...'), [
+			E('p', { 'class': 'spinning' }, _('Writing /etc/config/network and reloading interfaces'))
+		]);
+
+		return api.applyWireguardConfig().then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				ui.addNotification(null, E('p', {}, _('WireGuard interface deployed')), 'info');
+			} else {
+				ui.addNotification(null, E('p', {}, (result && result.error) || _('Deployment failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+		});
+	},
+
+	applyOptimizations: function() {
+		ui.showModal(_('Applying optimizations...'), [
+			E('p', { 'class': 'spinning' }, _('Configuring firewall MSS clamping and TCP BBR'))
+		]);
+
+		return Promise.all([
+			api.applyMtuClamping(),
+			api.enableTcpBbr()
+		]).then(function(responses) {
+			ui.hideModal();
+			var errors = responses.filter(function(r) { return r && r.success === 0; });
+			if (errors.length > 0) {
+				ui.addNotification(null, E('p', {}, (errors[0].error || _('Optimization failed'))), 'error');
+			} else {
+				ui.addNotification(null, E('p', {}, _('Optimizations applied')), 'info');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+		});
+	}
 });

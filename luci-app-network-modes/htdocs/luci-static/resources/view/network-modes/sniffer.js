@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require network-modes.api as api';
+'require network-modes.helpers as helpers';
 
 return view.extend({
 	title: _('Sniffer Mode'),
@@ -130,11 +131,11 @@ return view.extend({
 			
 			// Actions
 			E('div', { 'class': 'nm-btn-group' }, [
-				E('button', { 'class': 'nm-btn nm-btn-primary' }, [
+				E('button', { 'class': 'nm-btn nm-btn-primary', 'data-action': 'sniffer-save', 'type': 'button' }, [
 					E('span', {}, '💾'),
 					'Save Settings'
 				]),
-				E('button', { 'class': 'nm-btn' }, [
+				E('button', { 'class': 'nm-btn', 'data-action': 'sniffer-config', 'type': 'button' }, [
 					E('span', {}, '🔄'),
 					'Apply & Restart'
 				])
@@ -152,10 +153,28 @@ return view.extend({
 		var cssLink = E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') });
 		document.head.appendChild(cssLink);
 		
+		this.bindSnifferActions(view);
+		
 		return view;
 	},
 	
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	bindSnifferActions: function(container) {
+		var saveBtn = container.querySelector('[data-action="sniffer-save"]');
+		var applyBtn = container.querySelector('[data-action="sniffer-config"]');
+
+		if (saveBtn)
+			saveBtn.addEventListener('click', ui.createHandlerFn(this, 'saveSnifferSettings', container));
+		if (applyBtn)
+			applyBtn.addEventListener('click', ui.createHandlerFn(helpers, helpers.showGeneratedConfig, 'sniffer'));
+	},
+
+	saveSnifferSettings: function(container) {
+		var payload = {
+			bridge_interface: container.querySelector('#bridge-interface') ? container.querySelector('#bridge-interface').value : '',
+			netifyd_enabled: helpers.isToggleActive(container.querySelector('#toggle-netifyd')) ? 1 : 0,
+			promiscuous: helpers.isToggleActive(container.querySelector('#toggle-promisc')) ? 1 : 0
+		};
+
+		return helpers.persistSettings('sniffer', payload);
+	}
 });

@@ -130,7 +130,21 @@
       "Bash(./secubox-tools/add-pkg-file-modes.sh:*)",
       "Bash(luci-app-secubox/htdocs/luci-static/resources/view/secubox/dashboard.js )",
       "Bash(luci-app-secubox/htdocs/luci-static/resources/view/secubox/modules.js )",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(./scripts/setup-github-pages.sh:*)",
+      "Bash(mkdocs:*)",
+      "Bash(apt search:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(pip install:*)",
+      "Bash(./scripts/setup-wiki.sh:*)",
+      "Bash(gh repo edit --help:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(gh auth status:*)",
+      "Bash(git ls-remote:*)",
+      "Bash(for module in luci-app-ksm-manager luci-app-media-flow luci-app-netdata-dashboard luci-app-netifyd-dashboard luci-app-network-modes luci-app-secubox luci-app-system-hub luci-app-traffic-shaper luci-app-vhost-manager luci-app-wireguard-dashboard)",
+      "Bash(do echo \"=== $module ===\" find \"$module/htdocs/luci-static/resources/view\" -name \"*.js\")",
+      "Bash(gh run view:*)",
+      "Bash(/tmp/deploy-system-hub-overview-fix.sh)"
     ]
   }
 }

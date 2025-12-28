@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require network-modes.api as api';
+'require network-modes.helpers as helpers';
 
 return view.extend({
 	title: _('Router Mode'),
@@ -300,14 +301,18 @@ return view.extend({
 					// Add Virtual Host
 					E('div', { 'style': 'margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--nm-border)' }, [
 						E('h4', { 'style': 'margin: 0 0 12px 0; font-size: 14px' }, 'Add Virtual Host'),
-						E('div', { 'style': 'display: grid; grid-template-columns: 2fr 2fr 1fr auto; gap: 12px; align-items: end' }, [
+						E('div', { 'style': 'display: grid; grid-template-columns: 2fr 2fr 1fr 1fr auto; gap: 12px; align-items: end' }, [
 							E('div', { 'class': 'nm-form-group', 'style': 'margin: 0' }, [
 								E('label', { 'class': 'nm-form-label' }, 'Domain'),
 								E('input', { 'class': 'nm-input', 'type': 'text', 'placeholder': 'example.com', 'id': 'new-domain' })
 							]),
 							E('div', { 'class': 'nm-form-group', 'style': 'margin: 0' }, [
 								E('label', { 'class': 'nm-form-label' }, 'Backend'),
-								E('input', { 'class': 'nm-input', 'type': 'text', 'placeholder': '127.0.0.1:8080', 'id': 'new-backend' })
+								E('input', { 'class': 'nm-input', 'type': 'text', 'placeholder': '127.0.0.1', 'id': 'new-backend' })
+							]),
+							E('div', { 'class': 'nm-form-group', 'style': 'margin: 0' }, [
+								E('label', { 'class': 'nm-form-label' }, 'Port'),
+								E('input', { 'class': 'nm-input', 'type': 'number', 'min': '1', 'max': '65535', 'value': '443', 'id': 'new-port' })
 							]),
 							E('div', { 'class': 'nm-form-group', 'style': 'margin: 0' }, [
 								E('label', { 'class': 'nm-form-label' }, 'SSL'),
@@ -316,7 +321,7 @@ return view.extend({
 									E('option', { 'value': '0' }, 'No')
 								])
 							]),
-							E('button', { 'class': 'nm-btn nm-btn-primary', 'style': 'height: 46px' }, '➕ Add')
+							E('button', { 'class': 'nm-btn nm-btn-primary', 'style': 'height: 46px', 'type': 'button', 'data-action': 'router-add-vhost' }, '➕ Add')
 						])
 					])
 				])
@@ -324,15 +329,15 @@ return view.extend({
 			
 			// Actions
 			E('div', { 'class': 'nm-btn-group' }, [
-				E('button', { 'class': 'nm-btn nm-btn-primary' }, [
+				E('button', { 'class': 'nm-btn nm-btn-primary', 'data-action': 'router-save', 'type': 'button' }, [
 					E('span', {}, '💾'),
 					'Save Settings'
 				]),
-				E('button', { 'class': 'nm-btn' }, [
-					E('span', {}, '🔄'),
-					'Apply & Restart'
+				E('button', { 'class': 'nm-btn', 'data-action': 'router-wizard', 'type': 'button' }, [
+					E('span', {}, '🧭'),
+					'Open Mode Wizard'
 				]),
-				E('button', { 'class': 'nm-btn' }, [
+				E('button', { 'class': 'nm-btn', 'data-action': 'router-config', 'type': 'button' }, [
 					E('span', {}, '📝'),
 					'Generate Config'
 				])
@@ -350,10 +355,81 @@ return view.extend({
 		var cssLink = E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') });
 		document.head.appendChild(cssLink);
 		
+		this.bindRouterActions(view);
+		
 		return view;
 	},
 	
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	bindRouterActions: function(container) {
+		var saveBtn = container.querySelector('[data-action="router-save"]');
+		var wizardBtn = container.querySelector('[data-action="router-wizard"]');
+		var configBtn = container.querySelector('[data-action="router-config"]');
+		var addVhostBtn = container.querySelector('[data-action="router-add-vhost"]');
+
+		if (saveBtn)
+			saveBtn.addEventListener('click', ui.createHandlerFn(this, 'saveRouterSettings', container));
+		if (wizardBtn)
+			wizardBtn.addEventListener('click', ui.createHandlerFn(this, 'openWizard'));
+		if (configBtn)
+			configBtn.addEventListener('click', ui.createHandlerFn(helpers, helpers.showGeneratedConfig, 'router'));
+		if (addVhostBtn)
+			addVhostBtn.addEventListener('click', ui.createHandlerFn(this, 'addVirtualHost', container));
+	},
+
+	saveRouterSettings: function(container) {
+		var payload = {
+			wan_interface: container.querySelector('#wan-interface') ? container.querySelector('#wan-interface').value : 'eth1',
+			wan_protocol: container.querySelector('#wan-protocol') ? container.querySelector('#wan-protocol').value : 'dhcp',
+			nat_enabled: helpers.isToggleActive(container.querySelector('#toggle-nat')) ? 1 : 0,
+			firewall_enabled: helpers.isToggleActive(container.querySelector('#toggle-firewall')) ? 1 : 0,
+			proxy_enabled: helpers.isToggleActive(container.querySelector('#toggle-proxy')) ? 1 : 0,
+			proxy_type: container.querySelector('#proxy-type') ? container.querySelector('#proxy-type').value : 'squid',
+			proxy_port: container.querySelector('#proxy-port') ? parseInt(container.querySelector('#proxy-port').value, 10) || 3128 : 3128,
+			transparent_proxy: helpers.isToggleActive(container.querySelector('#toggle-transparent')) ? 1 : 0,
+			dns_over_https: helpers.isToggleActive(container.querySelector('#toggle-doh')) ? 1 : 0,
+			https_frontend: helpers.isToggleActive(container.querySelector('#toggle-frontend')) ? 1 : 0,
+			frontend_type: container.querySelector('#frontend-type') ? container.querySelector('#frontend-type').value : 'nginx',
+			letsencrypt: helpers.isToggleActive(container.querySelector('#toggle-letsencrypt')) ? 1 : 0
+		};
+
+		return helpers.persistSettings('router', payload);
+	},
+
+	openWizard: function() {
+		window.location.hash = '#admin/secubox/network/network-modes/wizard';
+	},
+
+	addVirtualHost: function(container) {
+		var domain = container.querySelector('#new-domain').value.trim();
+		var backend = container.querySelector('#new-backend').value.trim();
+		var portValue = parseInt(container.querySelector('#new-port').value, 10);
+		var sslValue = container.querySelector('#new-ssl').value === '1' ? 1 : 0;
+
+		if (!domain || !backend) {
+			ui.addNotification(null, E('p', {}, _('Domain and backend are required')), 'error');
+			return;
+		}
+
+		ui.showModal(_('Adding virtual host...'), [
+			E('p', { 'class': 'spinning' }, _('Saving virtual host entry'))
+		]);
+
+		return api.addVirtualHost({
+			domain: domain,
+			backend: backend,
+			port: isNaN(portValue) ? 80 : portValue,
+			ssl: sslValue
+		}).then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				ui.addNotification(null, E('p', {}, result.message || _('Virtual host added')), 'info');
+				window.location.reload();
+			} else {
+				ui.addNotification(null, E('p', {}, (result && result.error) || _('Failed to add virtual host')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+		});
+	}
 });

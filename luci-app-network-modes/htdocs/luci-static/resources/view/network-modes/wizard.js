@@ -6,44 +6,44 @@
 'require poll';
 
 var callGetAvailableModes = rpc.declare({
-	object: 'luci.network_modes',
+	object: 'luci.network-modes',
 	method: 'get_available_modes',
 	expect: { modes: [] }
 });
 
 var callGetCurrentMode = rpc.declare({
-	object: 'luci.network_modes',
+	object: 'luci.network-modes',
 	method: 'get_current_mode',
 	expect: { }
 });
 
 var callSetMode = rpc.declare({
-	object: 'luci.network_modes',
+	object: 'luci.network-modes',
 	method: 'set_mode',
 	params: ['mode'],
 	expect: { }
 });
 
 var callPreviewChanges = rpc.declare({
-	object: 'luci.network_modes',
+	object: 'luci.network-modes',
 	method: 'preview_changes',
 	expect: { }
 });
 
 var callApplyMode = rpc.declare({
-	object: 'luci.network_modes',
+	object: 'luci.network-modes',
 	method: 'apply_mode',
 	expect: { }
 });
 
 var callConfirmMode = rpc.declare({
-	object: 'luci.network_modes',
+	object: 'luci.network-modes',
 	method: 'confirm_mode',
 	expect: { }
 });
 
 var callRollback = rpc.declare({
-	object: 'luci.network_modes',
+	object: 'luci.network-modes',
 	method: 'rollback',
 	expect: { }
 });
@@ -228,7 +228,7 @@ return view.extend({
 			E('p', { 'class': 'spinning' }, _('Préparation du changement de mode...'))
 		]);
 
-		return callSetMode(mode.id).then(L.bind(function(result) {
+		return callSetMode({ mode: mode.id }).then(L.bind(function(result) {
 			if (!result.success) {
 				ui.hideModal();
 				ui.addNotification(null, E('p', result.error || _('Erreur')), 'error');

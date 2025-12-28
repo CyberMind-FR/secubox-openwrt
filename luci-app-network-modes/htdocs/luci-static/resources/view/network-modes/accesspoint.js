@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require network-modes.api as api';
+'require network-modes.helpers as helpers';
 
 return view.extend({
 	title: _('Access Point Mode'),
@@ -210,25 +211,16 @@ return view.extend({
 			
 			// Actions
 			E('div', { 'class': 'nm-btn-group' }, [
-				E('button', { 'class': 'nm-btn nm-btn-primary' }, [
+				E('button', { 'class': 'nm-btn nm-btn-primary', 'data-action': 'ap-save', 'type': 'button' }, [
 					E('span', {}, '💾'),
 					'Save Settings'
 				]),
-				E('button', { 'class': 'nm-btn' }, [
-					E('span', {}, '🔄'),
-					'Restart WiFi'
+				E('button', { 'class': 'nm-btn', 'data-action': 'ap-config', 'type': 'button' }, [
+					E('span', {}, '📝'),
+					'Generate Config'
 				])
 			])
 		]);
-		
-		// TX Power slider handler
-		var slider = view.querySelector('#wifi-txpower');
-		var valueDisplay = view.querySelector('#txpower-value');
-		if (slider && valueDisplay) {
-			slider.addEventListener('input', function() {
-				valueDisplay.textContent = this.value + ' dBm';
-			});
-		}
 		
 		// Toggle handlers
 		view.querySelectorAll('.nm-toggle-switch').forEach(function(toggle) {
@@ -241,10 +233,48 @@ return view.extend({
 		var cssLink = E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') });
 		document.head.appendChild(cssLink);
 		
+		this.bindAccessPointActions(view);
+		
 		return view;
 	},
 	
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	bindAccessPointActions: function(container) {
+		var slider = container.querySelector('#wifi-txpower');
+		var valueDisplay = container.querySelector('#txpower-value');
+		if (slider && valueDisplay) {
+			slider.addEventListener('input', function() {
+				valueDisplay.textContent = this.value + ' dBm';
+			});
+		}
+
+		var saveBtn = container.querySelector('[data-action="ap-save"]');
+		var configBtn = container.querySelector('[data-action="ap-config"]');
+
+		if (saveBtn)
+			saveBtn.addEventListener('click', ui.createHandlerFn(this, 'saveAccessPointSettings', container));
+		if (configBtn)
+			configBtn.addEventListener('click', ui.createHandlerFn(helpers, helpers.showGeneratedConfig, 'accesspoint'));
+	},
+
+	saveAccessPointSettings: function(container) {
+		var toggles = {};
+		container.querySelectorAll('.nm-toggle-switch[data-setting]').forEach(function(toggle) {
+			var key = toggle.getAttribute('data-setting');
+			toggles[key] = helpers.isToggleActive(toggle);
+		});
+
+		var payload = {
+			wifi_channel: container.querySelector('#wifi-channel') ? container.querySelector('#wifi-channel').value : 'auto',
+			wifi_htmode: container.querySelector('#wifi-htmode') ? container.querySelector('#wifi-htmode').value : 'VHT80',
+			wifi_txpower: container.querySelector('#wifi-txpower') ? parseInt(container.querySelector('#wifi-txpower').value, 10) : 20,
+			roaming_enabled: toggles.roaming_80211r ? 1 : 0,
+			band_steering: toggles.band_steering ? 1 : 0,
+			rrm_enabled: toggles.rrm_80211k ? 1 : 0,
+			wnm_enabled: toggles.wnm_80211v ? 1 : 0,
+			airtime_fairness: toggles.airtime_fairness ? 1 : 0,
+			beamforming: toggles.beamforming ? 1 : 0
+		};
+
+		return helpers.persistSettings('accesspoint', payload);
+	}
 });

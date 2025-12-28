@@ -34,6 +34,30 @@ var callSetMode = rpc.declare({
 	params: ['mode']
 });
 
+var callPreviewChanges = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'preview_changes',
+	expect: { }
+});
+
+var callApplyMode = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'apply_mode',
+	expect: { }
+});
+
+var callConfirmMode = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'confirm_mode',
+	expect: { }
+});
+
+var callRollback = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'rollback',
+	expect: { }
+});
+
 var callGetInterfaces = rpc.declare({
 	object: 'luci.network-modes',
 	method: 'get_interfaces',
@@ -47,6 +71,71 @@ var callValidateConfig = rpc.declare({
 	expect: { valid: false, errors: [] }
 });
 
+var callSnifferConfig = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'sniffer_config',
+	expect: { }
+});
+
+var callApConfig = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'ap_config',
+	expect: { }
+});
+
+var callRelayConfig = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'relay_config',
+	expect: { }
+});
+
+var callRouterConfig = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'router_config',
+	expect: { }
+});
+
+var callUpdateSettings = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'update_settings'
+});
+
+var callAddVhost = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'add_vhost'
+});
+
+var callGenerateConfig = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'generate_config',
+	params: ['mode'],
+	expect: { }
+});
+
+var callGenerateWireguardKeys = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'generate_wireguard_keys',
+	expect: { }
+});
+
+var callApplyWireguardConfig = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'apply_wireguard_config',
+	expect: { }
+});
+
+var callApplyMtuClamping = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'apply_mtu_clamping',
+	expect: { }
+});
+
+var callEnableTcpBbr = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'enable_tcp_bbr',
+	expect: { }
+});
+
 return baseclass.extend({
 	getStatus: callStatus,
 	getCurrentMode: callGetCurrentMode,
@@ -54,6 +143,9 @@ return baseclass.extend({
 	setMode: callSetMode,
 	getInterfaces: callGetInterfaces,
 	validateConfig: callValidateConfig,
+	previewChanges: callPreviewChanges,
+	confirmMode: callConfirmMode,
+	rollbackMode: callRollback,
 
 	// Aggregate function for overview page
 	getAllData: function() {
@@ -74,6 +166,23 @@ return baseclass.extend({
 				status: status,
 				modes: results[2] || { modes: [] }
 			};
+		});
+	},
+
+	applyMode: function(targetMode) {
+		var chain = Promise.resolve();
+
+		if (targetMode) {
+			chain = callSetMode({ mode: targetMode }).then(function(result) {
+				if (!result || result.success === false) {
+					return Promise.reject(new Error((result && result.error) || 'Unable to prepare mode'));
+				}
+				return result;
+			});
+		}
+
+		return chain.then(function() {
+			return callApplyMode();
 		});
 	},
 
@@ -160,5 +269,39 @@ return baseclass.extend({
 		var minutes = Math.floor((seconds % 3600) / 60);
 
 		return days + 'd ' + hours + 'h ' + minutes + 'm';
+	},
+
+	getSnifferConfig: callSnifferConfig,
+	getApConfig: callApConfig,
+	getRelayConfig: callRelayConfig,
+	getRouterConfig: callRouterConfig,
+
+	updateSettings: function(mode, settings) {
+		var payload = Object.assign({}, settings || {}, { mode: mode });
+		return callUpdateSettings(payload);
+	},
+
+	addVirtualHost: function(vhost) {
+		return callAddVhost(vhost);
+	},
+
+	generateConfig: function(mode) {
+		return callGenerateConfig({ mode: mode });
+	},
+
+	generateWireguardKeys: function() {
+		return callGenerateWireguardKeys();
+	},
+
+	applyWireguardConfig: function() {
+		return callApplyWireguardConfig();
+	},
+
+	applyMtuClamping: function() {
+		return callApplyMtuClamping();
+	},
+
+	enableTcpBbr: function() {
+		return callEnableTcpBbr();
 	}
 });
