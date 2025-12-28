@@ -7,8 +7,11 @@
 'require secubox/help as Help';
 'require secubox-theme/theme as Theme';
 
-// Initialize global theme
-Theme.init({ theme: 'dark', language: 'en' });
+// Initialize global theme respecting LuCI preferences
+var nmLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: nmLang });
 
 return view.extend({
 	title: _('Network Modes'),

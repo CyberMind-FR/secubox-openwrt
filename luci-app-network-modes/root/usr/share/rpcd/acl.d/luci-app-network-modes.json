@@ -8,7 +8,17 @@
 					"get_current_mode",
 					"get_available_modes",
 					"get_interfaces",
-					"validate_config"
+					"validate_config",
+					"preview_changes",
+					"sniffer_config",
+					"ap_config",
+					"relay_config",
+					"router_config",
+					"travel_config",
+					"doublenat_config",
+					"multiwan_config",
+					"vpnrelay_config",
+					"travel_scan_networks"
 				],
 				"system": [ "info", "board" ],
 				"network.interface": [ "status", "dump" ],
@@ -24,7 +34,17 @@
 		"write": {
 			"ubus": {
 				"luci.network-modes": [
-					"set_mode"
+					"set_mode",
+					"apply_mode",
+					"confirm_mode",
+					"rollback",
+					"update_settings",
+					"generate_wireguard_keys",
+					"apply_wireguard_config",
+					"apply_mtu_clamping",
+					"enable_tcp_bbr",
+					"add_vhost",
+					"generate_config"
 				]
 			},
 			"uci": [ "network", "wireless", "firewall", "dhcp", "network-modes" ]

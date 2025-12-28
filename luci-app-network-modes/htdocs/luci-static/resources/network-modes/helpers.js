@@ -2,18 +2,18 @@
 'require ui';
 'require network-modes.api as api';
 
-var NAV_ITEMS = [
-	{ id: 'overview', icon: '📊', label: _('Overview') },
-	{ id: 'wizard', icon: '🧭', label: _('Wizard') },
-	{ id: 'router', icon: '🌐', label: _('Router') },
-	{ id: 'multiwan', icon: '🔀', label: _('Multi-WAN') },
-	{ id: 'doublenat', icon: '🧱', label: _('Double NAT') },
-	{ id: 'accesspoint', icon: '📡', label: _('Access Point') },
-	{ id: 'relay', icon: '📶', label: _('Relay') },
-	{ id: 'vpnrelay', icon: '🛡️', label: _('VPN Relay') },
-	{ id: 'travel', icon: '🧳', label: _('Travel') },
-	{ id: 'sniffer', icon: '🕵️', label: _('Sniffer') },
-	{ id: 'settings', icon: '⚙️', label: _('Settings') }
+var NAV_BLUEPRINT = [
+	{ id: 'overview', icon: '📊', labelKey: 'Overview' },
+	{ id: 'wizard', icon: '🧭', labelKey: 'Wizard' },
+	{ id: 'router', icon: '🌐', labelKey: 'Router' },
+	{ id: 'multiwan', icon: '🔀', labelKey: 'Multi-WAN' },
+	{ id: 'doublenat', icon: '🧱', labelKey: 'Double NAT' },
+	{ id: 'accesspoint', icon: '📡', labelKey: 'Access Point' },
+	{ id: 'relay', icon: '📶', labelKey: 'Relay' },
+	{ id: 'vpnrelay', icon: '🛡️', labelKey: 'VPN Relay' },
+	{ id: 'travel', icon: '🧳', labelKey: 'Travel' },
+	{ id: 'sniffer', icon: '🕵️', labelKey: 'Sniffer' },
+	{ id: 'settings', icon: '⚙️', labelKey: 'Settings' }
 ];
 
 function isToggleActive(node) {
@@ -138,7 +138,7 @@ function createNavigationTabs(activeId) {
 	var base = 'admin/secubox/network/modes/';
 	return E('nav', { 'class': 'nm-nav-tabs' }, [
 		E('div', { 'class': 'cyber-tablist' },
-			NAV_ITEMS.map(function(item) {
+			NAV_BLUEPRINT.map(function(item) {
 				var cls = 'cyber-tab';
 				if (activeId === item.id)
 					cls += ' is-active';
@@ -149,7 +149,7 @@ function createNavigationTabs(activeId) {
 					'aria-current': activeId === item.id ? 'page' : null
 				}, [
 					E('span', { 'class': 'cyber-tab-icon' }, item.icon),
-					E('span', { 'class': 'cyber-tab-label' }, item.label)
+					E('span', { 'class': 'cyber-tab-label' }, _(item.labelKey))
 				]);
 			})
 		)

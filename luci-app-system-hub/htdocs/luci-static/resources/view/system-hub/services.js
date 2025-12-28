@@ -6,7 +6,10 @@
 'require system-hub/api as API';
 'require secubox-theme/theme as Theme';
 
-Theme.init({ theme: 'dark', language: 'en' });
+var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: shLang });
 
 return view.extend({
 	services: [],

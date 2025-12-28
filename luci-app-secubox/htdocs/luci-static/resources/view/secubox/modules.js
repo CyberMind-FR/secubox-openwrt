@@ -18,8 +18,11 @@ document.head.appendChild(E('link', {
 	'href': L.resource('secubox/modules.css')
 }));
 
-// Initialize global theme
-Theme.init({ theme: 'dark', language: 'en' });
+// Initialize global theme respecting LuCI selection
+var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: secuLang });
 
 return view.extend({
 	modulesData: [],

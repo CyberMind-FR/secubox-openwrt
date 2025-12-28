@@ -7,7 +7,10 @@
 'require secubox/help as Help';
 'require secubox-theme/theme as Theme';
 
-Theme.init({ theme: 'dark', language: 'en' });
+var nmLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: nmLang });
 
 return view.extend({
 	title: _('Travel Router Mode'),
