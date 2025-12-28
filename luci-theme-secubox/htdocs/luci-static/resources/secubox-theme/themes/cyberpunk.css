@@ -1,0 +1,12 @@
+body[data-secubox-theme="cyberpunk"] {
+	--cyber-bg-primary: #050112;
+	--cyber-bg-secondary: #0f0324;
+	--cyber-bg-tertiary: #1b063a;
+	--cyber-text-primary: #fdf2f8;
+	--cyber-text-secondary: #f9a8d4;
+	--cyber-accent-primary: #ff7cfb;
+	--cyber-accent-primary-end: #ff4d6d;
+	--cyber-accent-secondary: #19f5ff;
+	background: radial-gradient(circle at 50% 20%, rgba(255, 108, 190, 0.25), transparent 45%), #050112;
+	color: var(--cyber-text-primary);
+}

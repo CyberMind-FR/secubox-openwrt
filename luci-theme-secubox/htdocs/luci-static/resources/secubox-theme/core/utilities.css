@@ -1,0 +1,40 @@
+/**
+ * Utility classes (spacing, layout helpers, glassmorphism)
+ */
+
+.cyber-container {
+	padding: 1.5rem;
+}
+
+.cyber-stack {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.cyber-grid-2 {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 1.25rem;
+}
+
+.cyber-flex-between {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.cyber-glass {
+	background: rgba(15, 18, 45, 0.55);
+	backdrop-filter: blur(12px);
+	border: var(--cyber-border);
+	box-shadow: var(--cyber-shadow);
+	border-radius: var(--cyber-radius-md);
+}
+
+.cyber-pill {
+	border-radius: 999px;
+	padding: 0.35rem 0.8rem;
+	border: var(--cyber-border);
+}

@@ -1,0 +1,23 @@
+.cyber-nav {
+	display: flex;
+	gap: 1rem;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+	padding-bottom: 0.75rem;
+	margin-bottom: 1.5rem;
+}
+
+.cyber-nav a {
+	padding: 0.35rem 0.6rem;
+	border-radius: var(--cyber-radius-xs);
+	color: var(--cyber-text-secondary);
+	font-weight: 600;
+	font-size: 0.85rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	transition: color var(--cyber-transition), background var(--cyber-transition);
+}
+
+.cyber-nav a.is-active {
+	color: var(--cyber-accent-secondary);
+	background: rgba(6, 182, 212, 0.08);
+}

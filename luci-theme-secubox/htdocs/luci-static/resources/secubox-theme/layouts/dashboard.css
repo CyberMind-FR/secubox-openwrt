@@ -1,0 +1,17 @@
+.cyber-dashboard {
+	display: grid;
+	grid-template-columns: 320px 1fr;
+	gap: 1.5rem;
+}
+
+.cyber-dashboard-sidebar {
+	position: sticky;
+	top: 1rem;
+	align-self: start;
+}
+
+.cyber-dashboard-content {
+	display: flex;
+	flex-direction: column;
+	gap: 1.25rem;
+}

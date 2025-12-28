@@ -1,0 +1,12 @@
+body[data-secubox-theme="light"] {
+	--cyber-bg-primary: #f4f6fb;
+	--cyber-bg-secondary: #ffffff;
+	--cyber-bg-tertiary: #eef1fb;
+	--cyber-surface: #ffffff;
+	--cyber-text-primary: #0f172a;
+	--cyber-text-secondary: #475569;
+	--cyber-text-muted: #64748b;
+	--cyber-border: 1px solid rgba(15, 23, 42, 0.08);
+	background: var(--cyber-bg-primary);
+	color: var(--cyber-text-primary);
+}

@@ -1,0 +1,30 @@
+@media (max-width: 1200px) {
+	.cyber-dashboard {
+		grid-template-columns: 1fr;
+	}
+
+	.cyber-dashboard-sidebar {
+		position: static;
+	}
+}
+
+@media (max-width: 768px) {
+	.cyber-container {
+		padding: 1rem;
+	}
+
+	.cyber-grid--stats {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 480px) {
+	.cyber-grid--stats {
+		grid-template-columns: 1fr;
+	}
+
+	.cyber-btn {
+		width: 100%;
+		justify-content: center;
+	}
+}

@@ -1,0 +1,29 @@
+.cyber-table {
+	width: 100%;
+	border-collapse: collapse;
+	background: rgba(13, 17, 38, 0.8);
+	border: var(--cyber-border);
+	border-radius: var(--cyber-radius-md);
+	overflow: hidden;
+}
+
+.cyber-table thead {
+	background: linear-gradient(135deg, rgba(102, 126, 234, 0.25), rgba(118, 75, 162, 0.25));
+	text-transform: uppercase;
+	font-size: 0.75rem;
+	letter-spacing: 0.08em;
+}
+
+.cyber-table th,
+.cyber-table td {
+	padding: 0.85rem 1rem;
+	text-align: left;
+}
+
+.cyber-table tbody tr {
+	border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cyber-table tbody tr:hover {
+	background: rgba(255, 255, 255, 0.04);
+}

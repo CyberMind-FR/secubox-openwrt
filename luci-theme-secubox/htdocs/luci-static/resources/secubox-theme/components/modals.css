@@ -1,0 +1,21 @@
+.cyber-modal {
+	background: rgba(10, 14, 37, 0.95);
+	backdrop-filter: blur(20px);
+	border: var(--cyber-border-strong);
+	border-radius: var(--cyber-radius-lg);
+	box-shadow: var(--cyber-shadow);
+	padding: 1.5rem;
+	animation: cyber-slide-up 220ms ease forwards;
+}
+
+.cyber-modal-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 1rem;
+}
+
+.cyber-modal-title {
+	font-size: 1.25rem;
+	font-weight: 600;
+}

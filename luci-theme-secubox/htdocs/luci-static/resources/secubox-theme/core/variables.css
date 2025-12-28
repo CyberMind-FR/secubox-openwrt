@@ -1,0 +1,100 @@
+/**
+ * SecuBox CyberMood Design System
+ * File: core/variables.css
+ * Version: 1.0.0
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+:root {
+	/* Base surfaces */
+	--cyber-bg-primary: #0a0e27;
+	--cyber-bg-secondary: #151932;
+	--cyber-bg-tertiary: #1e2139;
+	--cyber-surface: #252b4a;
+	--cyber-surface-light: #2d3454;
+	--cyber-overlay: rgba(8, 11, 30, 0.8);
+
+	/* Text */
+	--cyber-text-primary: #e2e8f0;
+	--cyber-text-secondary: #94a3b8;
+	--cyber-text-muted: #64748b;
+	--cyber-text-inverse: #0a0e27;
+
+	/* Accent */
+	--cyber-accent-primary: #667eea;
+	--cyber-accent-primary-end: #764ba2;
+	--cyber-accent-secondary: #06b6d4;
+	--cyber-accent-tertiary: #8b5cf6;
+
+	/* Semantic */
+	--cyber-success: #10b981;
+	--cyber-success-soft: rgba(16, 185, 129, 0.12);
+	--cyber-warning: #f59e0b;
+	--cyber-warning-soft: rgba(245, 158, 11, 0.15);
+	--cyber-danger: #ef4444;
+	--cyber-danger-soft: rgba(239, 68, 68, 0.15);
+	--cyber-info: #06b6d4;
+	--cyber-info-soft: rgba(6, 182, 212, 0.15);
+
+	/* Fonts */
+	--cyber-font-display: 'Orbitron', 'Rajdhani', 'Inter', sans-serif;
+	--cyber-font-body: 'Inter', 'SF Pro Display', 'Roboto', sans-serif;
+	--cyber-font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+
+	/* Shadows & borders */
+	--cyber-shadow: 0 12px 32px rgba(2, 6, 23, 0.55);
+	--cyber-shadow-soft: 0 8px 24px rgba(2, 6, 23, 0.35);
+	--cyber-border: 1px solid rgba(255, 255, 255, 0.08);
+	--cyber-border-strong: 1px solid rgba(255, 255, 255, 0.18);
+
+	/* Radii */
+	--cyber-radius-xs: 6px;
+	--cyber-radius-sm: 10px;
+	--cyber-radius-md: 16px;
+	--cyber-radius-lg: 24px;
+
+	/* Z-index */
+	--cyber-z-dropdown: 1000;
+	--cyber-z-modal: 1100;
+	--cyber-z-toast: 1200;
+
+	/* Timing */
+	--cyber-transition-fast: 120ms ease;
+	--cyber-transition: 220ms cubic-bezier(0.4, 0, 0.2, 1);
+	--cyber-transition-bounce: 320ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+	/* Glass effects */
+	--cyber-glass-bg: rgba(255, 255, 255, 0.05);
+	--cyber-glass-border: rgba(255, 255, 255, 0.1);
+	--cyber-glass-blur: 10px;
+	--cyber-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+
+	/* Gradients */
+	--cyber-gradient-primary: linear-gradient(135deg, var(--cyber-accent-primary) 0%, var(--cyber-accent-primary-end) 100%);
+	--cyber-gradient-steel: linear-gradient(135deg, #434343 0%, #000000 100%);
+	--cyber-gradient-chrome: linear-gradient(135deg, #bdc3c7 0%, #2c3e50 100%);
+	--cyber-gradient-cyber: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+	/* Spacing */
+	--cyber-space-xs: 0.25rem;
+	--cyber-space-sm: 0.5rem;
+	--cyber-space-md: 1rem;
+	--cyber-space-lg: 1.5rem;
+	--cyber-space-xl: 2rem;
+	--cyber-space-2xl: 3rem;
+
+	/* Font sizes */
+	--cyber-text-xs: 0.75rem;
+	--cyber-text-sm: 0.875rem;
+	--cyber-text-base: 1rem;
+	--cyber-text-lg: 1.125rem;
+	--cyber-text-xl: 1.25rem;
+	--cyber-text-2xl: 1.5rem;
+	--cyber-text-3xl: 1.875rem;
+	--cyber-text-4xl: 2.25rem;
+
+	/* Line heights */
+	--cyber-leading-tight: 1.25;
+	--cyber-leading-normal: 1.5;
+	--cyber-leading-relaxed: 1.75;
+}

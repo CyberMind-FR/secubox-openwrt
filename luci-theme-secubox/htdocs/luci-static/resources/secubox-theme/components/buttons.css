@@ -1,0 +1,40 @@
+/**
+ * Buttons
+ */
+
+.cyber-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 0.6rem 1.5rem;
+	border-radius: var(--cyber-radius-sm);
+	font-weight: 600;
+	border: var(--cyber-border);
+	background: linear-gradient(135deg, var(--cyber-accent-primary), var(--cyber-accent-primary-end));
+	color: #fff;
+	transition: transform var(--cyber-transition), box-shadow var(--cyber-transition);
+	text-transform: uppercase;
+	font-size: 0.85rem;
+	letter-spacing: 0.06em;
+}
+
+.cyber-btn:hover {
+	transform: translateY(-1px) scale(1.01);
+	box-shadow: var(--cyber-shadow);
+}
+
+.cyber-btn--secondary {
+	background: rgba(255, 255, 255, 0.06);
+	border-color: rgba(255, 255, 255, 0.12);
+	color: var(--cyber-text-primary);
+}
+
+.cyber-btn--danger {
+	background: linear-gradient(135deg, #f87171, #ef4444);
+}
+
+.cyber-btn--ghost {
+	background: transparent;
+	border-color: rgba(255, 255, 255, 0.18);
+}

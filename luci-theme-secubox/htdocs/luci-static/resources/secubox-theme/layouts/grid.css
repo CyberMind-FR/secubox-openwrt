@@ -1,0 +1,13 @@
+.cyber-grid {
+	display: grid;
+	gap: 1rem;
+}
+
+.cyber-grid--auto {
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.cyber-grid--stats {
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	gap: 0.75rem;
+}
