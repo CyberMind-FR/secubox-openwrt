@@ -459,20 +459,32 @@ FEEDS
     fi
 
     # Install critical dependencies explicitly
+    # Note: lucihttp and cgi-io are skipped - they fail to compile in SDK (missing lua.h)
     echo ""
     echo "📦 Installing LuCI and build dependencies..."
-    for dep in lua liblua luci-base lucihttp rpcd rpcd-mod-rrdns cgi-io libiwinfo ucode libucode rpcd-mod-luci; do
+    for dep in lua liblua luci-base rpcd rpcd-mod-rrdns libiwinfo ucode libucode rpcd-mod-luci; do
         echo "  Installing $dep..."
         ./scripts/feeds install "$dep" 2>&1 | grep -v "WARNING:" || true
     done
 
-    # Build essential dependencies first
+    # Try to install lucihttp and cgi-io but don't fail if unavailable
+    # They will be disabled in configuration to prevent compilation failures
+    for dep in lucihttp cgi-io; do
+        echo "  Installing $dep (will be disabled for compilation)..."
+        ./scripts/feeds install "$dep" 2>&1 | grep -v "WARNING:" || true
+    done
+
+    # Build essential dependencies first (skip lucihttp and cgi-io - they fail in SDK)
     echo ""
     echo "🔨 Building essential dependencies..."
-    for dep in lua liblua lucihttp rpcd cgi-io; do
+    for dep in lua liblua rpcd; do
         echo "  Building $dep..."
         make package/feeds/*/${dep}/compile V=s -j1 2>&1 | tail -5 || true
     done
+
+    # Note: lucihttp and cgi-io are skipped because they fail to compile in SDK
+    # Missing lua.h headers causes: ninja: build stopped: subcommand failed
+    # Our SecuBox packages are PKGARCH:=all (scripts) so they don't need these
 
     # Verify feeds
     echo ""
@@ -624,6 +636,21 @@ configure_packages() {
             fi
         done
     fi
+
+    # Disable problematic packages that fail to compile in SDK
+    # Our SecuBox packages are PKGARCH:=all (scripts) so they don't need these
+    echo ""
+    echo "⚠️  Disabling packages that fail in SDK environment..."
+    echo "# CONFIG_PACKAGE_lucihttp is not set" >> .config
+    echo "# CONFIG_PACKAGE_cgi-io is not set" >> .config
+    print_info "lucihttp and cgi-io disabled (fail to compile: missing lua.h)"
+
+    # Enable use of pre-built packages from feeds
+    echo "CONFIG_DEVEL=y" >> .config
+    echo "CONFIG_AUTOREBUILD=y" >> .config
+    echo "CONFIG_AUTOREMOVE=y" >> .config
+    echo "CONFIG_FEED_packages=y" >> .config
+    echo "CONFIG_FEED_luci=y" >> .config
 
     make defconfig
 
