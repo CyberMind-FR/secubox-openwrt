@@ -65,10 +65,10 @@
 	font-weight: 700;
 }
 
-/* === Stats Overview Grid (Demo Style - Compact) === */
+/* === Stats Overview Grid (v0.3.2 - updated for 5 cards) === */
 .sh-stats-overview-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 	gap: 16px;
 	margin-bottom: 32px;
 }
@@ -107,6 +107,9 @@
 .sh-stat-cpu::before { background: linear-gradient(90deg, #6366f1, #8b5cf6); opacity: 1; }
 .sh-stat-memory::before { background: linear-gradient(90deg, #8b5cf6, #ec4899); opacity: 1; }
 .sh-stat-disk::before { background: linear-gradient(90deg, #ec4899, #f43f5e); opacity: 1; }
+.sh-stat-network::before { background: linear-gradient(90deg, #06b6d4, #3b82f6); opacity: 1; }
+.sh-stat-ok::before { background: #22c55e; opacity: 1; }
+.sh-stat-error::before { background: #ef4444; opacity: 1; }
 
 .sh-stat-overview-icon {
 	font-size: 36px;
@@ -121,6 +124,10 @@
 	margin-bottom: 10px;
 	color: var(--sh-text-primary);
 	font-family: 'JetBrains Mono', monospace;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
 }
 
 .sh-stat-overview-label {
@@ -136,6 +143,26 @@
 	font-size: 12px;
 	font-weight: 600;
 	color: var(--sh-text-secondary);
+}
+
+/* v0.3.2 - Enhanced dynamic stats */
+.sh-stat-status-icon {
+	font-size: 18px;
+	opacity: 0.9;
+	animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+.sh-stat-overview-detail {
+	font-size: 10px;
+	font-weight: 500;
+	color: var(--sh-text-muted);
+	margin-top: 6px;
+	font-family: 'JetBrains Mono', monospace;
+}
+
+@keyframes pulse-subtle {
+	0%, 100% { opacity: 0.8; }
+	50% { opacity: 1; }
 }
 
 /* === Old Header (deprecated, keep for compatibility) === */

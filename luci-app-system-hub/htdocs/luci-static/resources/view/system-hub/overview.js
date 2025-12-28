@@ -79,7 +79,7 @@ return view.extend({
 				]),
 				E('div', { 'class': 'sh-dashboard-header-info' }, [
 					E('span', { 'class': 'sh-dashboard-badge sh-dashboard-badge-version' },
-						'v0.3.1'),
+						'v0.3.2'),
 					E('span', { 'class': 'sh-dashboard-badge' },
 						'⏱️ ' + (this.sysInfo.uptime_formatted || '0d 0h 0m')),
 					E('span', { 'class': 'sh-dashboard-badge' },
@@ -94,26 +94,96 @@ return view.extend({
 		var scoreClass = score >= 80 ? 'excellent' : (score >= 60 ? 'good' : (score >= 40 ? 'warning' : 'critical'));
 		var scoreLabel = score >= 80 ? 'Excellent' : (score >= 60 ? 'Good' : (score >= 40 ? 'Warning' : 'Critical'));
 
+		// Enhanced stats with status indicators (v0.3.2)
+		var cpu = this.healthData.cpu || {};
+		var memory = this.healthData.memory || {};
+		var disk = this.healthData.disk || {};
+		var network = this.healthData.network || {};
+
+		// Process count (v0.3.2)
+		var processes = (cpu.processes_running || 0) + '/' + (cpu.processes_total || 0);
+
+		// Network throughput (v0.3.2) - format bytes
+		var rxGB = ((network.rx_bytes || 0) / 1024 / 1024 / 1024).toFixed(2);
+		var txGB = ((network.tx_bytes || 0) / 1024 / 1024 / 1024).toFixed(2);
+
+		// Status icons (v0.3.2)
+		var getStatusIcon = function(status) {
+			if (status === 'critical') return '⚠️';
+			if (status === 'warning') return '⚡';
+			return '✓';
+		};
+
 		return E('div', { 'class': 'sh-stats-overview-grid' }, [
+			// Health Score Card
 			E('div', { 'class': 'sh-stat-overview-card sh-stat-' + scoreClass }, [
 				E('div', { 'class': 'sh-stat-overview-value' }, score),
 				E('div', { 'class': 'sh-stat-overview-label' }, 'Health Score'),
 				E('div', { 'class': 'sh-stat-overview-status' }, scoreLabel)
 			]),
-			E('div', { 'class': 'sh-stat-overview-card sh-stat-cpu' }, [
+
+			// CPU Card with enhanced info
+			E('div', {
+				'class': 'sh-stat-overview-card sh-stat-cpu sh-stat-' + (cpu.status || 'ok'),
+				'title': 'Load: ' + (cpu.load_1m || '0') + ' | ' + (cpu.cores || 0) + ' cores | ' + processes + ' processes'
+			}, [
 				E('div', { 'class': 'sh-stat-overview-icon' }, '🔥'),
-				E('div', { 'class': 'sh-stat-overview-value' }, (this.healthData.cpu?.usage || 0) + '%'),
-				E('div', { 'class': 'sh-stat-overview-label' }, 'CPU Usage')
+				E('div', { 'class': 'sh-stat-overview-value' }, [
+					E('span', {}, (cpu.usage || 0) + '%'),
+					E('span', { 'class': 'sh-stat-status-icon' }, getStatusIcon(cpu.status))
+				]),
+				E('div', { 'class': 'sh-stat-overview-label' }, 'CPU Usage'),
+				E('div', { 'class': 'sh-stat-overview-detail' },
+					'Load: ' + (cpu.load_1m || '0') + ' • ' + processes + ' proc')
 			]),
-			E('div', { 'class': 'sh-stat-overview-card sh-stat-memory' }, [
+
+			// Memory Card with swap info
+			E('div', {
+				'class': 'sh-stat-overview-card sh-stat-memory sh-stat-' + (memory.status || 'ok'),
+				'title': ((memory.used_kb || 0) / 1024).toFixed(0) + ' MB / ' + ((memory.total_kb || 0) / 1024).toFixed(0) + ' MB' +
+					(memory.swap_total_kb > 0 ? ' | Swap: ' + (memory.swap_usage || 0) + '%' : '')
+			}, [
 				E('div', { 'class': 'sh-stat-overview-icon' }, '💾'),
-				E('div', { 'class': 'sh-stat-overview-value' }, (this.healthData.memory?.usage || 0) + '%'),
-				E('div', { 'class': 'sh-stat-overview-label' }, 'Memory Usage')
+				E('div', { 'class': 'sh-stat-overview-value' }, [
+					E('span', {}, (memory.usage || 0) + '%'),
+					E('span', { 'class': 'sh-stat-status-icon' }, getStatusIcon(memory.status))
+				]),
+				E('div', { 'class': 'sh-stat-overview-label' }, 'Memory'),
+				E('div', { 'class': 'sh-stat-overview-detail' },
+					((memory.used_kb || 0) / 1024).toFixed(0) + 'MB / ' +
+					((memory.total_kb || 0) / 1024).toFixed(0) + 'MB' +
+					(memory.swap_total_kb > 0 ? ' • Swap: ' + (memory.swap_usage || 0) + '%' : ''))
 			]),
-			E('div', { 'class': 'sh-stat-overview-card sh-stat-disk' }, [
+
+			// Disk Card
+			E('div', {
+				'class': 'sh-stat-overview-card sh-stat-disk sh-stat-' + (disk.status || 'ok'),
+				'title': ((disk.used_kb || 0) / 1024 / 1024).toFixed(1) + ' GB / ' + ((disk.total_kb || 0) / 1024 / 1024).toFixed(1) + ' GB'
+			}, [
 				E('div', { 'class': 'sh-stat-overview-icon' }, '💿'),
-				E('div', { 'class': 'sh-stat-overview-value' }, (this.healthData.disk?.usage || 0) + '%'),
-				E('div', { 'class': 'sh-stat-overview-label' }, 'Disk Usage')
+				E('div', { 'class': 'sh-stat-overview-value' }, [
+					E('span', {}, (disk.usage || 0) + '%'),
+					E('span', { 'class': 'sh-stat-status-icon' }, getStatusIcon(disk.status))
+				]),
+				E('div', { 'class': 'sh-stat-overview-label' }, 'Disk Usage'),
+				E('div', { 'class': 'sh-stat-overview-detail' },
+					((disk.used_kb || 0) / 1024 / 1024).toFixed(1) + 'GB / ' +
+					((disk.total_kb || 0) / 1024 / 1024).toFixed(1) + 'GB')
+			]),
+
+			// Network Card (v0.3.2 - NEW)
+			E('div', {
+				'class': 'sh-stat-overview-card sh-stat-network sh-stat-' + (network.wan_up ? 'ok' : 'error'),
+				'title': 'RX: ' + rxGB + ' GB | TX: ' + txGB + ' GB'
+			}, [
+				E('div', { 'class': 'sh-stat-overview-icon' }, '🌐'),
+				E('div', { 'class': 'sh-stat-overview-value' }, [
+					E('span', {}, network.wan_up ? 'Online' : 'Offline'),
+					E('span', { 'class': 'sh-stat-status-icon' }, network.wan_up ? '✓' : '✗')
+				]),
+				E('div', { 'class': 'sh-stat-overview-label' }, 'Network'),
+				E('div', { 'class': 'sh-stat-overview-detail' },
+					'↓ ' + rxGB + 'GB • ↑ ' + txGB + 'GB')
 			])
 		]);
 	},

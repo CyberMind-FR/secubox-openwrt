@@ -106,6 +106,10 @@ get_health() {
 	local load5=$(echo $load | awk '{print $2}')
 	local load15=$(echo $load | awk '{print $3}')
 
+	# Process count (v0.3.2)
+	local processes_running=$(echo $load | awk '{split($4,a,"/"); print a[1]}')
+	local processes_total=$(echo $load | awk '{split($4,a,"/"); print a[2]}')
+
 	# Calculate CPU usage percentage (load / cores * 100)
 	local cpu_usage=$(awk -v load="$load1" -v cores="$cpu_cores" 'BEGIN { printf "%.0f", (load / cores) * 100 }')
 	[ "$cpu_usage" -gt 100 ] && cpu_usage=100
@@ -122,15 +126,26 @@ get_health() {
 	json_add_string "load_5m" "$load5"
 	json_add_string "load_15m" "$load15"
 	json_add_int "cores" "$cpu_cores"
+	json_add_int "processes_running" "${processes_running:-0}"
+	json_add_int "processes_total" "${processes_total:-0}"
 	json_close_object
 
-	# Memory
+	# Memory (v0.3.2: added swap support)
 	local mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
 	local mem_free=$(awk '/MemFree/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
 	local mem_available=$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null || echo $mem_free)
 	local mem_buffers=$(awk '/Buffers/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
 	local mem_cached=$(awk '/^Cached/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
 	local mem_used=$((mem_total - mem_available))
+
+	# Swap info (v0.3.2)
+	local swap_total=$(awk '/SwapTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+	local swap_free=$(awk '/SwapFree/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+	local swap_used=$((swap_total - swap_free))
+	local swap_usage=0
+	if [ "$swap_total" -gt 0 ]; then
+		swap_usage=$(( (swap_used * 100) / swap_total ))
+	fi
 
 	local mem_usage=0
 	if [ "$mem_total" -gt 0 ]; then
@@ -151,6 +166,9 @@ get_health() {
 	json_add_int "cached_kb" "$mem_cached"
 	json_add_int "usage" "$mem_usage"
 	json_add_string "status" "$mem_status"
+	json_add_int "swap_total_kb" "$swap_total"
+	json_add_int "swap_used_kb" "$swap_used"
+	json_add_int "swap_usage" "$swap_usage"
 	json_close_object
 
 	# Disk (root filesystem)
@@ -190,7 +208,7 @@ get_health() {
 	json_add_string "status" "$temp_status"
 	json_close_object
 
-	# Network (WAN connectivity)
+	# Network (WAN connectivity + throughput v0.3.2)
 	local wan_up=0
 	local wan_status="error"
 	if ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
@@ -198,9 +216,27 @@ get_health() {
 		wan_status="ok"
 	fi
 
+	# Network throughput (v0.3.2) - get total RX/TX from all interfaces
+	local rx_bytes=0
+	local tx_bytes=0
+	for iface in /sys/class/net/*; do
+		[ -d "$iface" ] || continue
+		local ifname=$(basename "$iface")
+		# Skip loopback and virtual interfaces
+		case "$ifname" in
+			lo|br-*|wlan*-*) continue ;;
+		esac
+		local rx=$(cat "$iface/statistics/rx_bytes" 2>/dev/null || echo 0)
+		local tx=$(cat "$iface/statistics/tx_bytes" 2>/dev/null || echo 0)
+		rx_bytes=$((rx_bytes + rx))
+		tx_bytes=$((tx_bytes + tx))
+	done
+
 	json_add_object "network"
 	json_add_boolean "wan_up" "$wan_up"
 	json_add_string "status" "$wan_status"
+	json_add_int "rx_bytes" "$rx_bytes"
+	json_add_int "tx_bytes" "$tx_bytes"
 	json_close_object
 
 	# Services
