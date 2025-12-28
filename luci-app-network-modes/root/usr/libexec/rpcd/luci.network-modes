@@ -448,8 +448,8 @@ apply_mode() {
 			apply_accesspoint_features
 			;;
 
-		relay)
-			# Repeater mode: STA + AP relay
+	relay)
+		# Repeater mode: STA + AP relay
 			# Client interface (sta)
 			uci set network.wwan=interface
 			uci set network.wwan.proto='dhcp'
@@ -465,12 +465,41 @@ apply_mode() {
 			uci set network.stabridge.proto='relay'
 			uci set network.stabridge.network='lan wwan'
 
-			apply_wireguard_config
-			apply_mtu_clamping
-			enable_tcp_bbr
-			;;
+		apply_wireguard_config
+		apply_mtu_clamping
+		enable_tcp_bbr
+		;;
 
-		bridge)
+	sniffer)
+		local ports=$(uci -q get network-modes.sniffer.bridge_ports || echo "eth0 eth1")
+		local bridge_iface=$(uci -q get network-modes.sniffer.bridge_interface || echo "br-lan")
+		local promisc=$(uci -q get network-modes.sniffer.promiscuous || echo 1)
+
+		uci delete network.wan 2>/dev/null
+		uci set network.lan=interface
+		uci set network.lan.proto='none'
+		uci set network.lan.type='bridge'
+		uci set network.lan.ifname="$ports"
+		uci set network.lan.delegate='0'
+		uci set network.lan.device="$bridge_iface"
+
+		uci set dhcp.lan=dhcp
+		uci set dhcp.lan.interface='lan'
+		uci set dhcp.lan.ignore='1'
+
+		uci set firewall.@zone[0].input='ACCEPT'
+		uci set firewall.@zone[0].output='ACCEPT'
+		uci set firewall.@zone[0].forward='ACCEPT'
+		uci delete firewall.@zone[1] 2>/dev/null
+
+		if [ "$promisc" = "1" ]; then
+			for port in $ports; do
+				ip link set "$port" promisc on 2>/dev/null || true
+			done
+		fi
+		;;
+
+	bridge)
 			# Pure L2 bridge: all interfaces bridged, DHCP client
 			uci delete network.wan 2>/dev/null
 

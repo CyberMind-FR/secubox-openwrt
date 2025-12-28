@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require network-modes.api as api';
+'require secubox/help as Help';
 
 return view.extend({
 	title: _('Network Modes'),
@@ -62,6 +63,9 @@ return view.extend({
 		var currentModeInfo = modeInfos[currentMode];
 		
 		var view = E('div', { 'class': 'network-modes-dashboard' }, [
+			// Load help CSS
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/help.css') }),
+
 			// Header
 			E('div', { 'class': 'nm-header' }, [
 				E('div', { 'class': 'nm-logo' }, [
@@ -71,7 +75,11 @@ return view.extend({
 				E('div', { 'class': 'nm-mode-badge ' + currentMode }, [
 					E('span', { 'class': 'nm-mode-dot' }),
 					currentModeInfo ? currentModeInfo.name : currentMode
-				])
+				]),
+				Help.createHelpButton('network-modes', 'header', {
+					icon: '📖',
+					label: _('Help')
+				})
 			]),
 			
 			// Current Mode Display Card

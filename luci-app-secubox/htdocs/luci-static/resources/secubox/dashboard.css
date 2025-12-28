@@ -244,6 +244,18 @@
     box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
+.secubox-tab-bonus {
+    background: linear-gradient(135deg, #f97316 0%, #ec4899 100%);
+    border: none;
+    color: white;
+    box-shadow: 0 10px 24px rgba(236, 72, 153, 0.35);
+}
+
+.secubox-tab-bonus:hover {
+    background: linear-gradient(135deg, #fb923c 0%, #f472b6 100%);
+    box-shadow: 0 12px 28px rgba(236, 72, 153, 0.4);
+}
+
 .secubox-tab-icon {
     font-size: 16px;
     line-height: 1;

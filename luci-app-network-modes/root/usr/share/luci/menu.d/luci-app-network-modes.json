@@ -1,5 +1,5 @@
 {
-	"admin/secubox/network/network-modes": {
+	"admin/secubox/network-modes": {
 		"title": "Network Modes",
 		"order": 20,
 		"action": {
@@ -9,7 +9,7 @@
 			"acl": ["luci-app-network-modes"]
 		}
 	},
-	"admin/secubox/network/network-modes/overview": {
+	"admin/secubox/network-modes/overview": {
 		"title": "Overview",
 		"order": 10,
 		"action": {
@@ -17,7 +17,7 @@
 			"path": "network-modes/overview"
 		}
 	},
-	"admin/secubox/network/network-modes/wizard": {
+	"admin/secubox/network-modes/wizard": {
 		"title": "Mode Wizard",
 		"order": 20,
 		"action": {
@@ -25,7 +25,7 @@
 			"path": "network-modes/wizard"
 		}
 	},
-	"admin/secubox/network/network-modes/router": {
+	"admin/secubox/network-modes/router": {
 		"title": "Router Mode",
 		"order": 30,
 		"action": {
@@ -33,7 +33,7 @@
 			"path": "network-modes/router"
 		}
 	},
-	"admin/secubox/network/network-modes/accesspoint": {
+	"admin/secubox/network-modes/accesspoint": {
 		"title": "Access Point Mode",
 		"order": 40,
 		"action": {
@@ -41,7 +41,7 @@
 			"path": "network-modes/accesspoint"
 		}
 	},
-	"admin/secubox/network/network-modes/relay": {
+	"admin/secubox/network-modes/relay": {
 		"title": "Relay Mode",
 		"order": 50,
 		"action": {
@@ -49,7 +49,7 @@
 			"path": "network-modes/relay"
 		}
 	},
-	"admin/secubox/network/network-modes/sniffer": {
+	"admin/secubox/network-modes/sniffer": {
 		"title": "Sniffer Mode",
 		"order": 60,
 		"action": {
@@ -57,7 +57,7 @@
 			"path": "network-modes/sniffer"
 		}
 	},
-	"admin/secubox/network/network-modes/settings": {
+	"admin/secubox/network-modes/settings": {
 		"title": "Settings",
 		"order": 90,
 		"action": {

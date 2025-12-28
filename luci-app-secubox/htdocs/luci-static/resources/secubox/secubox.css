@@ -345,6 +345,228 @@
   font-style: italic;
 }
 
+/* SecuBox Help Bonus Page */
+.secubox-help-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.secubox-help-hero {
+  display: flex;
+  gap: 32px;
+  align-items: center;
+  background: linear-gradient(135deg, #312e81 0%, #0f172a 60%, #1e293b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.45);
+  color: #eef2ff;
+}
+
+.secubox-help-hero-text {
+  flex: 1;
+}
+
+.secubox-help-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.secubox-help-subtitle {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 15px;
+  margin: 12px 0 0 0;
+}
+
+.secubox-help-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.secubox-help-hero-stat {
+  background: rgba(15, 23, 42, 0.55);
+  border-radius: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.secubox-help-hero-stat-icon {
+  font-size: 22px;
+  margin-bottom: 6px;
+}
+
+.secubox-help-hero-stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.secubox-help-hero-stat-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.secubox-help-hero-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 230px;
+}
+
+.secubox-help-cta {
+  background: linear-gradient(135deg, #22c55e 0%, #15803d 100%) !important;
+  box-shadow: 0 10px 30px rgba(21, 128, 61, 0.45);
+}
+
+.secubox-card-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.secubox-card-hint {
+  font-size: 13px;
+  color: var(--sb-text-muted);
+}
+
+.secubox-help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.secubox-help-card {
+  background: var(--sb-bg-card);
+  border: 1px solid var(--sb-border);
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.2s ease;
+}
+
+.secubox-help-card-body {
+  flex: 1;
+}
+
+.secubox-help-card:hover {
+  border-color: var(--sb-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px var(--sb-hover-shadow);
+}
+
+.secubox-help-card-icon {
+  font-size: 28px;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.secubox-help-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--sb-text);
+}
+
+.secubox-help-card-text {
+  margin: 4px 0 8px 0;
+  font-size: 13px;
+  color: var(--sb-text-muted);
+}
+
+.secubox-help-card-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sb-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.secubox-help-support-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.secubox-help-support-item {
+  border: 1px dashed var(--sb-border);
+  border-radius: 10px;
+  padding: 16px;
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.secubox-help-support-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.secubox-help-support-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--sb-text);
+}
+
+.secubox-help-support-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--sb-text-muted);
+  line-height: 1.5;
+}
+
+.secubox-help-support-actions {
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.secubox-help-footer {
+  background: var(--sb-bg-card);
+  border: 1px solid var(--sb-border);
+  border-radius: 14px;
+  padding: 20px;
+  text-align: center;
+}
+
+.secubox-help-footer-text {
+  font-size: 14px;
+  color: var(--sb-text-muted);
+  margin-bottom: 10px;
+}
+
+.secubox-help-footer-links {
+  display: inline-flex;
+  justify-content: center;
+  gap: 8px;
+  color: var(--sb-primary);
+  font-weight: 600;
+}
+
+.secubox-help-footer-links .sep {
+  color: var(--sb-text-muted);
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .secubox-health-grid {
@@ -357,5 +579,25 @@
 
   .secubox-modules-grid {
     grid-template-columns: 1fr;
+  }
+
+  .secubox-help-hero {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .secubox-help-hero-actions {
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .secubox-help-card {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .secubox-help-support-actions {
+    justify-content: center;
   }
 }

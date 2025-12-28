@@ -150,8 +150,8 @@
 - **Use Cases**: Traffic analysis, bandwidth optimization, security monitoring
 
 #### luci-app-network-modes
-- **Version**: 0.3.1-1
-- **Status**: ✅ In Heavily Development Stage
+- **Version**: 0.3.5-1
+- **Status**: ✅ Production Ready
 - **Description**: Dynamic network mode switching and configuration
 - **Views**: 7 (overview, wizard, router, relay, accesspoint, sniffer, settings)
 - **JavaScript Lines**: 2,104
@@ -171,8 +171,8 @@
   - DHCP server/client mode switching
   - Interface bridging automation
 - **Recent Updates**:
-  - v0.3.1: Enhanced mode switching logic
-  - Improved configuration persistence
+  - v0.3.5: Auto-deploy proxies (Squid/TinyProxy/Privoxy), DoH, nginx vhosts, and Let’s Encrypt certificates
+  - Auto-apply advanced WiFi (802.11r/k/v, band steering) and tcpdump packet capture per mode
 - **Integration**: network, firewall, DHCP, hostapd/wpa_supplicant
 
 ---

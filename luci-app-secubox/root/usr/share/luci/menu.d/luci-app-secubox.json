@@ -39,11 +39,6 @@
         "order": 10,
         "action": {"type": "view", "path": "secubox/monitoring"}
     },
-    "admin/secubox/network": {
-        "title": "Network Management",
-        "order": 40,
-        "action": {"type": "firstchild"}
-    },
     "admin/secubox/system": {
         "title": "System & Performance",
         "order": 50,
@@ -53,5 +48,10 @@
         "title": "Services & Applications",
         "order": 60,
         "action": {"type": "firstchild"}
+    },
+    "admin/secubox/help": {
+        "title": "Bonus · Help à SecuBox",
+        "order": 99,
+        "action": {"type": "view", "path": "secubox/help"}
     }
 }

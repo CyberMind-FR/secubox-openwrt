@@ -92,6 +92,18 @@
 	color: white;
 }
 
+.secubox-filter-tab-bonus {
+	background: linear-gradient(135deg, #f97316 0%, #ec4899 100%);
+	border-color: transparent;
+	color: white;
+	box-shadow: 0 8px 20px rgba(249, 115, 22, 0.35);
+}
+
+.secubox-filter-tab-bonus:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 10px 24px rgba(236, 72, 153, 0.35);
+}
+
 /* Modules Grid */
 .secubox-modules-grid {
 	display: grid;

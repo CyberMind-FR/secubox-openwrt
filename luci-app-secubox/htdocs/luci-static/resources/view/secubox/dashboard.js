@@ -239,20 +239,20 @@ return view.extend({
 
 		// Map module IDs to their dashboard paths
 		var modulePaths = {
-			'crowdsec': 'admin/secubox/security/crowdsec/overview',
-			'netdata': 'admin/secubox/monitoring/netdata/dashboard',
-			'netifyd': 'admin/secubox/security/netifyd/overview',
-			'wireguard': 'admin/secubox/network/wireguard/overview',
-			'network_modes': 'admin/secubox/network/network-modes/overview',
-			'client_guardian': 'admin/secubox/security/client-guardian/overview',
-			'system_hub': 'admin/secubox/system/system-hub/overview',
-			'bandwidth_manager': 'admin/secubox/network/bandwidth-manager/overview',
-			'auth_guardian': 'admin/secubox/security/auth-guardian/overview',
-			'media_flow': 'admin/secubox/monitoring/mediaflow/dashboard',
-			'vhost_manager': 'admin/secubox/services/vhosts/overview',
-			'traffic_shaper': 'admin/secubox/network/traffic-shaper/overview',
-			'cdn_cache': 'admin/secubox/network/cdn-cache/overview',
-			'ksm_manager': 'admin/secubox/security/ksm-manager/overview'
+			'crowdsec': 'admin/secubox/crowdsec/overview',
+			'netdata': 'admin/secubox/netdata/dashboard',
+			'netifyd': 'admin/secubox/netifyd/overview',
+			'wireguard': 'admin/secubox/wireguard/overview',
+			'network_modes': 'admin/secubox/network-modes/overview',
+			'client_guardian': 'admin/secubox/client-guardian/overview',
+			'system_hub': 'admin/secubox/system-hub/overview',
+			'bandwidth_manager': 'admin/secubox/bandwidth-manager/overview',
+			'auth_guardian': 'admin/secubox/auth-guardian/overview',
+			'media_flow': 'admin/secubox/mediaflow/dashboard',
+			'vhost_manager': 'admin/secubox/vhosts/overview',
+			'traffic_shaper': 'admin/secubox/traffic-shaper/overview',
+			'cdn_cache': 'admin/secubox/cdn-cache/overview',
+			'ksm_manager': 'admin/secubox/ksm-manager/overview'
 		};
 
 		var moduleCards = filteredModules.map(function(module) {
@@ -302,21 +302,33 @@ return view.extend({
 			{ id: 'monitoring', label: 'Monitoring', icon: '📊' }
 		];
 
-		var filterTabs = E('div', { 'class': 'secubox-filter-tabs' },
-			filters.map(function(filter) {
-				var isActive = self.activeFilter === filter.id;
-				return E('div', {
-					'class': 'secubox-filter-tab' + (isActive ? ' active' : ''),
-					'click': function() {
-						self.activeFilter = filter.id;
-						self.updateModulesGrid();
-					}
-				}, [
-					E('span', { 'class': 'secubox-tab-icon' }, filter.icon),
-					E('span', { 'class': 'secubox-tab-label' }, filter.label)
-				]);
-			})
+		var filterTabButtons = filters.map(function(filter) {
+			var isActive = self.activeFilter === filter.id;
+			return E('div', {
+				'class': 'secubox-filter-tab' + (isActive ? ' active' : ''),
+				'click': function() {
+					self.activeFilter = filter.id;
+					self.updateModulesGrid();
+				}
+			}, [
+				E('span', { 'class': 'secubox-tab-icon' }, filter.icon),
+				E('span', { 'class': 'secubox-tab-label' }, filter.label)
+			]);
+		});
+
+		filterTabButtons.push(
+			E('div', {
+				'class': 'secubox-filter-tab secubox-tab-bonus',
+				'click': function() {
+					window.location.href = L.url('admin/secubox/help');
+				}
+			}, [
+				E('span', { 'class': 'secubox-tab-icon' }, '✨'),
+				E('span', { 'class': 'secubox-tab-label' }, _('Bonus · Help à SecuBox'))
+			])
 		);
+
+		var filterTabs = E('div', { 'class': 'secubox-filter-tabs' }, filterTabButtons);
 
 		return E('div', { 'class': 'secubox-card' }, [
 			E('h3', { 'class': 'secubox-card-title' }, '🎯 Active Modules (' + activeModules.length + ')'),
@@ -359,20 +371,20 @@ return view.extend({
 
 		// Map module IDs to their dashboard paths
 		var modulePaths = {
-			'crowdsec': 'admin/secubox/security/crowdsec/overview',
-			'netdata': 'admin/secubox/monitoring/netdata/dashboard',
-			'netifyd': 'admin/secubox/security/netifyd/overview',
-			'wireguard': 'admin/secubox/network/wireguard/overview',
-			'network_modes': 'admin/secubox/network/network-modes/overview',
-			'client_guardian': 'admin/secubox/security/client-guardian/overview',
-			'system_hub': 'admin/secubox/system/system-hub/overview',
-			'bandwidth_manager': 'admin/secubox/network/bandwidth-manager/overview',
-			'auth_guardian': 'admin/secubox/security/auth-guardian/overview',
-			'media_flow': 'admin/secubox/monitoring/mediaflow/dashboard',
-			'vhost_manager': 'admin/secubox/services/vhosts/overview',
-			'traffic_shaper': 'admin/secubox/network/traffic-shaper/overview',
-			'cdn_cache': 'admin/secubox/network/cdn-cache/overview',
-			'ksm_manager': 'admin/secubox/security/ksm-manager/overview'
+			'crowdsec': 'admin/secubox/crowdsec/overview',
+			'netdata': 'admin/secubox/netdata/dashboard',
+			'netifyd': 'admin/secubox/netifyd/overview',
+			'wireguard': 'admin/secubox/wireguard/overview',
+			'network_modes': 'admin/secubox/network-modes/overview',
+			'client_guardian': 'admin/secubox/client-guardian/overview',
+			'system_hub': 'admin/secubox/system-hub/overview',
+			'bandwidth_manager': 'admin/secubox/bandwidth-manager/overview',
+			'auth_guardian': 'admin/secubox/auth-guardian/overview',
+			'media_flow': 'admin/secubox/mediaflow/dashboard',
+			'vhost_manager': 'admin/secubox/vhosts/overview',
+			'traffic_shaper': 'admin/secubox/traffic-shaper/overview',
+			'cdn_cache': 'admin/secubox/cdn-cache/overview',
+			'ksm_manager': 'admin/secubox/ksm-manager/overview'
 		};
 
 		var moduleCards = filteredModules.map(function(module) {

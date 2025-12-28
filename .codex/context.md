@@ -53,3 +53,4 @@ Each module follows the same structure: `Makefile`, module-specific README, Java
 - **SecuBox Design System** – Shared CSS variables (`--sh-*`) and components defined in `system-hub/common.css`
 - **Validation suite** – `./secubox-tools/validate-modules.sh`, `validate-module-generation.sh`, `pre-push-validation.sh`
 - **Deploy script** – `deploy-module-template.sh` (backup, copy JS/CSS/RPCD/menu/ACL, fix perms, restart services)
+- **Fix permissions** – Always run `./secubox-tools/fix-permissions.sh --local` before committing and `--remote <router>` after deploying to enforce `644` web assets / `755` executables
