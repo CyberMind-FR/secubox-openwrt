@@ -2,24 +2,19 @@
 'require view';
 'require ui';
 'require secubox/api as API';
-'require secubox/theme as Theme';
+'require secubox-theme/theme as Theme';
 'require dom';
 'require poll';
 
-// Load CSS (base theme variables first)
+// Load global theme CSS
 document.head.appendChild(E('link', {
 	'rel': 'stylesheet',
 	'type': 'text/css',
-	'href': L.resource('secubox/secubox.css')
-}));
-document.head.appendChild(E('link', {
-	'rel': 'stylesheet',
-	'type': 'text/css',
-	'href': L.resource('secubox/dashboard.css')
+	'href': L.resource('secubox-theme/secubox-theme.css')
 }));
 
-// Initialize theme
-Theme.init();
+// Initialize global theme
+Theme.init({ theme: 'dark', language: 'en' });
 
 return view.extend({
 	dashboardData: null,

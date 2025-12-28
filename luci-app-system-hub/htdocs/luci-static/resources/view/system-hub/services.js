@@ -3,7 +3,10 @@
 'require ui';
 'require dom';
 'require system-hub/api as API';
-'require system-hub/theme as Theme';
+'require secubox-theme/theme as Theme';
+
+// Initialize global theme
+Theme.init({ theme: 'dark', language: 'en' });
 
 return view.extend({
 	services: [],
@@ -11,17 +14,14 @@ return view.extend({
 	searchQuery: '',
 
 	load: function() {
-		return Promise.all([
-			API.listServices(),
-			Theme.getTheme()
-		]);
+		return API.listServices();
 	},
 
 	render: function(data) {
-		this.services = data[0] || [];
-		var theme = data[1];
+		this.services = data || [];
 
 		var container = E('div', { 'class': 'system-hub-services' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/services.css') }),

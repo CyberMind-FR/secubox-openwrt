@@ -4,7 +4,10 @@
 'require dom';
 'require poll';
 'require system-hub/api as API';
-'require system-hub/theme as Theme';
+'require secubox-theme/theme as Theme';
+
+// Initialize global theme
+Theme.init({ theme: 'dark', language: 'en' });
 
 return view.extend({
 	healthData: null,
@@ -13,8 +16,7 @@ return view.extend({
 	load: function() {
 		return Promise.all([
 			API.getSystemInfo(),
-			API.getHealth(),
-			Theme.getTheme()
+			API.getHealth()
 		]);
 	},
 
@@ -22,9 +24,9 @@ return view.extend({
 		var self = this;
 		this.sysInfo = data[0] || {};
 		this.healthData = data[1] || {};
-		var theme = data[2];
 
 		var container = E('div', { 'class': 'system-hub-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/overview.css') }),

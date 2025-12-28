@@ -3,14 +3,14 @@
 'require ui';
 'require dom';
 'require secubox/api as API';
-'require secubox/theme as Theme';
+'require secubox-theme/theme as Theme';
 'require poll';
 
-// Load CSS
+// Load global theme CSS
 document.head.appendChild(E('link', {
 	'rel': 'stylesheet',
 	'type': 'text/css',
-	'href': L.resource('secubox/secubox.css')
+	'href': L.resource('secubox-theme/secubox-theme.css')
 }));
 document.head.appendChild(E('link', {
 	'rel': 'stylesheet',
@@ -18,8 +18,8 @@ document.head.appendChild(E('link', {
 	'href': L.resource('secubox/modules.css')
 }));
 
-// Initialize theme
-Theme.init();
+// Initialize global theme
+Theme.init({ theme: 'dark', language: 'en' });
 
 return view.extend({
 	modulesData: [],
