@@ -159,6 +159,29 @@ return view.extend({
 		});
 	},
 
+	resolveModuleVersion: function(module) {
+		if (!module)
+			return '—';
+
+		var candidates = [
+			module.version,
+			module.pkg_version,
+			module.package_version,
+			module.packageVersion,
+			module.Version
+		];
+
+		for (var i = 0; i < candidates.length; i++) {
+			var value = candidates[i];
+			if (typeof value === 'number')
+				return String(value);
+			if (typeof value === 'string' && value.trim())
+				return value.trim();
+		}
+
+		return '—';
+	},
+
 	renderModuleCard: function(module) {
 		var self = this;
 		var status = module.status || 'unknown';
@@ -175,6 +198,7 @@ return view.extend({
 		};
 
 		var statusLabel = isInstalled ? (statusLabels[status] || '○ Désactivé') : statusLabels['not-installed'];
+		var versionLabel = this.resolveModuleVersion(module);
 
 		return E('div', {
 			'class': 'secubox-module-card secubox-module-' + statusClass,
@@ -189,7 +213,7 @@ return view.extend({
 						E('span', { 'class': 'secubox-module-category' },
 							this.getCategoryIcon(module.category) + ' ' + (module.category || 'other')),
 						E('span', { 'class': 'secubox-module-version' },
-							'v' + (module.version || '0.0.9'))
+							versionLabel === '—' ? versionLabel : 'v' + versionLabel)
 					])
 				]),
 				E('div', {

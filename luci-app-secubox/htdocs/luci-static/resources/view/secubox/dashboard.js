@@ -22,6 +22,7 @@ return view.extend({
 	dashboardData: null,
 	healthData: null,
 	alertsData: null,
+	modulesList: [],
 	activeCategory: 'all',
 
 	load: function() {
@@ -33,11 +34,13 @@ return view.extend({
 		return Promise.all([
 			API.getDashboardData(),
 			API.getSystemHealth(),
-			API.getAlerts()
+			API.getAlerts(),
+			API.getModules()
 		]).then(function(data) {
 			self.dashboardData = data[0] || {};
 			self.healthData = data[1] || {};
 			self.alertsData = data[2] || {};
+			self.modulesList = (data[3] && data[3].modules) || [];
 			return data;
 		});
 	},
@@ -157,12 +160,37 @@ return view.extend({
 	},
 
 	getFilteredModules: function() {
-		var modules = this.dashboardData.modules || [];
+		var modules = (this.modulesList && this.modulesList.length)
+			? this.modulesList
+			: (this.dashboardData.modules || []);
 		if (this.activeCategory === 'all')
 			return modules;
 		return modules.filter(function(module) {
 			return (module.category || '').toLowerCase() === this.activeCategory;
 		}, this);
+	},
+
+	getModuleVersion: function(module) {
+		if (!module)
+			return '—';
+
+		var candidates = [
+			module.version,
+			module.pkg_version,
+			module.package_version,
+			module.packageVersion,
+			module.Version
+		];
+
+		for (var i = 0; i < candidates.length; i++) {
+			var value = candidates[i];
+			if (typeof value === 'number')
+				return String(value);
+			if (typeof value === 'string' && value.trim())
+				return value.trim();
+		}
+
+		return '—';
 	},
 
 	renderModuleCard: function(module) {
@@ -180,8 +208,8 @@ return view.extend({
 				]),
 				E('span', { 'class': 'sb-status-pill' }, statusLabel)
 			]),
-			E('div', { 'class': 'sb-module-meta' }, [
-				E('span', {}, _('Version: ') + (module.version || '0.0.0')),
+				E('div', { 'class': 'sb-module-meta' }, [
+					E('span', {}, _('Version: ') + this.getModuleVersion(module)),
 				E('span', {}, _('Category: ') + (module.category || 'other'))
 			]),
 			E('div', { 'class': 'sb-module-actions' }, [

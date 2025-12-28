@@ -114,11 +114,35 @@ return view.extend({
 		return filtered.map(L.bind(this.renderComponentCard, this));
 	},
 
+	getComponentVersion: function(component) {
+		if (!component)
+			return '—';
+
+		var candidates = [
+			component.version,
+			component.pkg_version,
+			component.package_version,
+			component.packageVersion,
+			component.Version
+		];
+
+		for (var i = 0; i < candidates.length; i++) {
+			var value = candidates[i];
+			if (typeof value === 'number')
+				return String(value);
+			if (typeof value === 'string' && value.trim())
+				return value.trim();
+		}
+
+		return '—';
+	},
+
 	renderComponentCard: function(component) {
 		var self = this;
 		var isRunning = component.running;
 		var isInstalled = component.installed;
 		var statusClass = isRunning ? 'running' : (isInstalled ? 'stopped' : 'not-installed');
+		var versionLabel = this.getComponentVersion(component);
 
 		return E('div', {
 			'class': 'sh-component-card sh-component-' + statusClass,
@@ -130,7 +154,7 @@ return view.extend({
 					E('h3', { 'class': 'sh-component-name' }, component.name || component.id),
 					E('div', { 'class': 'sh-component-meta' }, [
 						E('span', { 'class': 'sh-component-version' },
-							'v' + (component.version || '0.0.9')),
+							versionLabel === '—' ? versionLabel : 'v' + versionLabel),
 						E('span', { 'class': 'sh-component-category' },
 							component.category || 'other')
 					])

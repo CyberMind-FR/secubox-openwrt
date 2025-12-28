@@ -1,4 +1,5 @@
 'use strict';
+'require baseclass';
 'require ui';
 'require network-modes.api as api';
 
@@ -156,7 +157,7 @@ function createNavigationTabs(activeId) {
 	]);
 }
 
-return {
+return baseclass.extend({
 	isToggleActive: isToggleActive,
 	persistSettings: persistSettings,
 	showGeneratedConfig: showGeneratedConfig,
@@ -166,4 +167,4 @@ return {
 	createList: createList,
 	createStepper: createStepper,
 	createNavigationTabs: createNavigationTabs
-};
+});
