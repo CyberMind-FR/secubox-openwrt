@@ -88,6 +88,22 @@ return view.extend({
 		]);
 	},
 
+	renderHealthGauge: function(score, scoreClass, scoreLabel) {
+		return E('div', { 'class': 'sh-health-gauge sh-health-' + scoreClass }, [
+			E('div', { 'class': 'sh-health-score' }, [
+				E('span', { 'class': 'sh-health-score-value' }, score),
+				E('span', { 'class': 'sh-health-score-max' }, '/100')
+			]),
+			E('div', { 'class': 'sh-health-label' }, scoreLabel),
+			E('div', { 'class': 'sh-health-progress' }, [
+				E('div', {
+					'class': 'sh-health-progress-fill sh-health-progress-' + scoreClass,
+					'style': 'width: ' + score + '%'
+				})
+			])
+		]);
+	},
+
 	renderStatsOverview: function() {
 		var score = this.healthData.score || 0;
 		var scoreClass = score >= 80 ? 'excellent' : (score >= 60 ? 'good' : (score >= 40 ? 'warning' : 'critical'));
