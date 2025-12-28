@@ -117,7 +117,7 @@ check_dependencies() {
     local missing_deps=()
 
     # Build tools
-    for cmd in make gcc g++ git wget curl tar xz jq; do
+    for cmd in make gcc g++ git wget curl tar xz jq ninja; do
         if ! command -v "$cmd" &> /dev/null; then
             missing_deps+=("$cmd")
         fi
@@ -137,7 +137,7 @@ check_dependencies() {
         echo "  sudo apt-get install -y build-essential clang flex bison g++ gawk \\"
         echo "    gcc-multilib g++-multilib gettext git libncurses5-dev \\"
         echo "    libssl-dev python3-setuptools python3-dev rsync \\"
-        echo "    swig unzip zlib1g-dev file wget curl jq"
+        echo "    swig unzip zlib1g-dev file wget curl jq ninja-build"
         echo ""
         echo "For validation tools:"
         echo "  sudo apt-get install -y shellcheck nodejs"

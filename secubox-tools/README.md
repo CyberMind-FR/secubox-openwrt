@@ -74,7 +74,7 @@ Build and test packages locally without pushing to GitHub. Automatically downloa
 sudo apt-get install -y build-essential clang flex bison g++ gawk \
     gcc-multilib g++-multilib gettext git libncurses5-dev \
     libssl-dev python3-setuptools python3-dev rsync \
-    swig unzip zlib1g-dev file wget curl jq
+    swig unzip zlib1g-dev file wget curl jq ninja-build
 
 # Optional for validation
 sudo apt-get install -y shellcheck nodejs
