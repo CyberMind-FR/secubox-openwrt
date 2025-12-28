@@ -73,12 +73,15 @@ return view.extend({
 					E('p', { 'class': 'sh-dashboard-subtitle' }, 'System Monitoring & Management Center')
 				]),
 				E('div', { 'class': 'sh-dashboard-header-info' }, [
-					E('span', { 'class': 'sh-dashboard-badge sh-dashboard-badge-version' },
-						'v0.3.2'),
-					E('span', { 'class': 'sh-dashboard-badge' },
-						'⏱️ ' + (this.sysInfo.uptime_formatted || '0d 0h 0m')),
-					E('span', { 'class': 'sh-dashboard-badge' },
-						'🖥️ ' + (this.sysInfo.hostname || 'OpenWrt'))
+					E('div', { 'class': 'sh-header-badge-group' }, [
+						E('span', { 'class': 'sh-dashboard-badge sh-dashboard-badge-version' },
+							'v0.3.2'),
+						E('span', { 'class': 'sh-dashboard-badge' },
+							'⏱️ ' + (this.sysInfo.uptime_formatted || '0d 0h 0m')),
+						E('span', { 'class': 'sh-dashboard-badge' },
+							'🖥️ ' + (this.sysInfo.hostname || 'OpenWrt'))
+					]),
+					this.renderHealthGauge(score, scoreClass, scoreLabel)
 				])
 			])
 		]);
@@ -112,9 +115,7 @@ return view.extend({
 		return E('div', { 'class': 'sh-stats-overview-grid' }, [
 			// Health Score Card
 			E('div', { 'class': 'sh-stat-overview-card sh-stat-' + scoreClass }, [
-				E('div', { 'class': 'sh-stat-overview-value' }, score),
-				E('div', { 'class': 'sh-stat-overview-label' }, 'Health Score'),
-				E('div', { 'class': 'sh-stat-overview-status' }, scoreLabel)
+				this.renderHealthGauge(score, scoreClass, scoreLabel)
 			]),
 
 			// CPU Card with enhanced info

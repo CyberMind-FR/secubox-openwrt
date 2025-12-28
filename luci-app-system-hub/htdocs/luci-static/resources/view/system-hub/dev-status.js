@@ -14,7 +14,7 @@ return view.extend({
 
 	getWidget: function() {
 		if (!this.widget)
-			this.widget = DevStatusWidget.new();
+			this.widget = DevStatusWidget;
 		return this.widget;
 	},
 
@@ -29,6 +29,19 @@ return view.extend({
 			]),
 			this.renderFooterNote()
 		]);
+
+		container.appendChild(E('style', {
+			'type': 'text/css'
+		}, `
+			.sh-dev-status-widget-shell .dsw-milestones,
+			.sh-dev-status-widget-shell .dsw-timeline,
+			.sh-dev-status-widget-shell .dsw-stats {
+				display: none !important;
+			}
+			.sh-dev-status-widget-shell .dsw-modules {
+				margin-top: -10px;
+			}
+		`));
 
 		window.requestAnimationFrame(function() {
 			widget.render('dev-status-widget');
@@ -48,7 +61,7 @@ return view.extend({
 					'Development Status'
 				]),
 				E('p', { 'class': 'sh-page-subtitle' },
-					'Bonus tab showcasing public roadmap & milestones from secubox-website demos')
+					'SecuBox + System Hub version monitor (v' + widget.targetVersion + ' target)')
 			]),
 			E('div', { 'class': 'sh-page-insight' }, [
 				E('div', { 'class': 'sh-page-insight-label' }, 'Current phase'),
