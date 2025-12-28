@@ -18,7 +18,7 @@ PKG_LICENSE:=Apache-2.0
 
 
 # File permissions (RPCD scripts must be executable)
-PKG_FILE_MODES:=/usr/libexec/rpcd/luci.ksm-manager:755
+PKG_FILE_MODES:=/usr/libexec/rpcd/luci.ksm-manager:root:root:755
 
 include $(TOPDIR)/feeds/luci/luci.mk
 

@@ -13,7 +13,7 @@ LUCI_PKGARCH:=all
 
 
 # File permissions (RPCD scripts must be executable)
-PKG_FILE_MODES:=/usr/libexec/rpcd/luci.auth-guardian:755
+PKG_FILE_MODES:=/usr/libexec/rpcd/luci.auth-guardian:root:root:755
 
 include $(TOPDIR)/feeds/luci/luci.mk
 

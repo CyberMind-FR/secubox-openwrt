@@ -12,7 +12,7 @@ LUCI_DEPENDS:=+luci-base +rpcd +coreutils +coreutils-base64
 LUCI_PKGARCH:=all
 
 # File permissions (RPCD scripts must be executable)
-PKG_FILE_MODES:=/usr/libexec/rpcd/luci.system-hub:755
+PKG_FILE_MODES:=/usr/libexec/rpcd/luci.system-hub:root:root:755
 
 include $(TOPDIR)/feeds/luci/luci.mk
 

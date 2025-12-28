@@ -12,7 +12,7 @@ LUCI_DEPENDS:=+luci-base +rpcd +tc +kmod-sched-core +kmod-sched-cake
 
 
 # File permissions (RPCD scripts must be executable)
-PKG_FILE_MODES:=/usr/libexec/rpcd/luci.traffic-shaper:755
+PKG_FILE_MODES:=/usr/libexec/rpcd/luci.traffic-shaper:root:root:755
 
 include $(TOPDIR)/feeds/luci/luci.mk
 
