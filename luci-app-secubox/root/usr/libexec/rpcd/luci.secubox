@@ -885,12 +885,14 @@ get_dashboard_data() {
 	local module_sections=$(uci -q show secubox | grep "=module$" | cut -d. -f2 | cut -d= -f1)
 
 	for module in $module_sections; do
-		local name desc category icon color
+		local name desc category icon color package version
 		config_get name "$module" name "$module"
 		config_get desc "$module" description ""
 		config_get category "$module" category "other"
 		config_get icon "$module" icon "box"
 		config_get color "$module" color "#64748b"
+		config_get package "$module" package ""
+		config_get version "$module" version "0.0.9"
 
 		local is_installed=$(check_module_installed "$module")
 		local is_enabled="0"
@@ -905,6 +907,19 @@ get_dashboard_data() {
 			status=$(get_module_status "$is_enabled" "$is_running")
 			installed=$((installed + 1))
 			[ "$is_running" = "1" ] && running=$((running + 1))
+
+			# Get real version from package manager if installed
+			if [ -n "$package" ]; then
+				if [ -x "/usr/bin/apk" ]; then
+					# OpenWrt 25.12+ uses apk
+					local real_version=$(apk list --installed "$package" 2>/dev/null | head -1 | awk '{print $1}' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+					[ -n "$real_version" ] && version="$real_version"
+				elif [ -x "/bin/opkg" ] || [ -x "/usr/bin/opkg" ]; then
+					# OpenWrt 24.10 and earlier uses opkg
+					local real_version=$(opkg list-installed "$package" 2>/dev/null | awk '{print $3}' | sed 's/-.*$//')
+					[ -n "$real_version" ] && version="$real_version"
+				fi
+			fi
 		fi
 
 		json_add_object ""
@@ -914,6 +929,7 @@ get_dashboard_data() {
 		json_add_string "category" "$category"
 		json_add_string "icon" "$icon"
 		json_add_string "color" "$color"
+		json_add_string "version" "$version"
 		json_add_boolean "installed" "$is_installed"
 		json_add_boolean "enabled" "$is_enabled"
 		json_add_boolean "running" "$is_running"
