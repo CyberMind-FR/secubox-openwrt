@@ -495,10 +495,69 @@ pre {
 		padding: 6px;
 	}
 
-	.sh-nav-tab {
-		padding: 8px 14px;
-		font-size: 13px;
-	}
+.sh-nav-tab {
+	padding: 8px 14px;
+	font-size: 13px;
+}
+
+/* === Development Status Bonus Tab === */
+.sh-page-insight {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	text-align: right;
+	background: var(--sh-bg-card);
+	border: 1px solid var(--sh-border);
+	padding: 16px 20px;
+	border-radius: 12px;
+	min-width: 220px;
+}
+
+.sh-page-insight-label {
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.6px;
+	color: var(--sh-text-secondary);
+	font-weight: 600;
+}
+
+.sh-page-insight-value {
+	font-size: 18px;
+	font-weight: 700;
+	color: var(--sh-text-primary);
+	margin: 6px 0 4px;
+}
+
+.sh-page-insight-sub {
+	font-size: 13px;
+	color: var(--sh-primary);
+	font-family: 'JetBrains Mono', monospace;
+}
+
+.sh-dev-status-grid .sh-stat-badge {
+	min-height: 110px;
+}
+
+.sh-dev-status-widget-shell {
+	margin-top: 12px;
+}
+
+.sh-dev-status-widget-shell #dev-status-widget {
+	margin-top: 8px;
+}
+
+.sh-dev-status-note {
+	margin-top: 20px;
+	padding: 14px 16px;
+	border-radius: 12px;
+	background: var(--sh-bg-secondary);
+	border: 1px dashed var(--sh-border);
+	font-size: 13px;
+	color: var(--sh-text-secondary);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
 }
 
 /* === Dark Mode Overrides === */

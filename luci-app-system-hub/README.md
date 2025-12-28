@@ -85,6 +85,11 @@ Navigate to **System → System Hub** in LuCI.
 - Upload and restore backup file
 - System reboot with confirmation
 
+#### Development Status Tab (Bonus)
+- Mirrors the public `demo-dev-status` widget from secubox-website
+- Displays overall progress, milestone groups, detailed roadmap, and project stats
+- Useful to showcase transparency directly from the LuCI interface
+
 ### Command Line
 
 #### Get System Status

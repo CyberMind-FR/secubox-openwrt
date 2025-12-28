@@ -101,10 +101,12 @@ deploy_js_files() {
         print_success "Fichiers JS vues déployés"
     fi
 
-    if [ -f "$LOCAL_RESOURCES/$MODULE_NAME/api.js" ]; then
-        ssh "$ROUTER" "mkdir -p $REMOTE_RESOURCES/$MODULE_NAME"
-        scp -q "$LOCAL_RESOURCES/$MODULE_NAME/api.js" "$ROUTER:$REMOTE_RESOURCES/$MODULE_NAME/" 2>/dev/null || true
-        print_success "API JS déployé"
+    if [ -d "$LOCAL_RESOURCES/$MODULE_NAME" ]; then
+        if ls "$LOCAL_RESOURCES/$MODULE_NAME"/*.js >/dev/null 2>&1; then
+            ssh "$ROUTER" "mkdir -p $REMOTE_RESOURCES/$MODULE_NAME"
+            scp -q "$LOCAL_RESOURCES/$MODULE_NAME/"*.js "$ROUTER:$REMOTE_RESOURCES/$MODULE_NAME/" 2>/dev/null || true
+            print_success "Scripts JS partagés déployés"
+        fi
     fi
 }
 
