@@ -133,15 +133,19 @@ return view.extend({
 					E('h2', {}, _('Module Overview')),
 					E('p', { 'class': 'sb-card-subtitle' }, _('Monitor, configure, and access every SecuBox module'))
 				]),
-				E('div', { 'class': 'sb-filter-tabs' }, filters.map(function(filter) {
+				E('div', { 'class': 'cyber-tablist cyber-tablist--pills sb-module-tabs' }, filters.map(function(filter) {
 					return E('button', {
-						'class': 'sb-filter-tab' + (self.activeCategory === filter.id ? ' active' : ''),
+						'class': 'cyber-tab cyber-tab--pill' + (self.activeCategory === filter.id ? ' is-active' : ''),
 						'type': 'button',
+						'data-category': filter.id,
 						'click': function() {
 							self.activeCategory = filter.id;
 							self.updateModuleGrid();
+							self.syncModuleFilterTabs();
 						}
-					}, filter.label);
+					}, [
+						E('span', { 'class': 'cyber-tab-label' }, filter.label)
+					]);
 				}))
 			]),
 			E('div', { 'class': 'sb-module-grid', 'id': 'sb-module-grid' },
@@ -382,6 +386,15 @@ return view.extend({
 		var grid = document.getElementById('sb-module-grid');
 		if (!grid) return;
 		dom.content(grid, this.getFilteredModules().map(this.renderModuleCard, this));
+		this.syncModuleFilterTabs();
+	},
+
+	syncModuleFilterTabs: function() {
+		var tabs = document.querySelectorAll('.sb-module-tabs .cyber-tab');
+		tabs.forEach(function(tab) {
+			var match = tab.getAttribute('data-category') === this.activeCategory;
+			tab.classList.toggle('is-active', match);
+		}, this);
 	},
 
 	updateHealthMetrics: function() {

@@ -20,7 +20,9 @@ return view.extend({
 		var policy = cfg.policy || {};
 
 		var container = E('div', { 'class': 'network-modes-dashboard vpnrelay-mode' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') }),
+			helpers.createNavigationTabs('vpnrelay'),
 			helpers.createHero({
 				icon: '🛡️',
 				title: _('VPN Relay'),

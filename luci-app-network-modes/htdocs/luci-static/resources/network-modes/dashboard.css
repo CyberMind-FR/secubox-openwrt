@@ -50,6 +50,25 @@
 	box-sizing: border-box;
 }
 
+/* Navigation */
+.nm-nav-tabs {
+	margin-bottom: 24px;
+}
+
+.nm-nav-tabs .cyber-tablist {
+	width: 100%;
+}
+
+@media (max-width: 768px) {
+	.nm-nav-tabs {
+		margin-bottom: 16px;
+	}
+
+	.nm-nav-tabs .cyber-tab {
+		min-width: 120px;
+	}
+}
+
 /* Header */
 .nm-header {
 	display: flex;

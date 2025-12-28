@@ -203,7 +203,7 @@ return baseclass.extend({
 		var chain = Promise.resolve();
 
 		if (targetMode) {
-			chain = callSetMode({ mode: targetMode }).then(function(result) {
+			chain = callSetMode(targetMode).then(function(result) {
 				if (!result || result.success === false) {
 					return Promise.reject(new Error((result && result.error) || 'Unable to prepare mode'));
 				}
@@ -369,7 +369,7 @@ return baseclass.extend({
 	},
 
 	generateConfig: function(mode) {
-		return callGenerateConfig({ mode: mode });
+		return callGenerateConfig(mode);
 	},
 
 	generateWireguardKeys: function() {

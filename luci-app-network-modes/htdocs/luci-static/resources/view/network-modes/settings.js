@@ -3,6 +3,7 @@
 'require form';
 'require ui';
 'require uci';
+'require network-modes.helpers as helpers';
 
 return view.extend({
 	load: function() {
@@ -246,6 +247,13 @@ return view.extend({
 			]);
 		};
 
-		return m.render();
+		return m.render().then(function(formEl) {
+			return E('div', { 'class': 'network-modes-dashboard nm-settings' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') }),
+				helpers.createNavigationTabs('settings'),
+				formEl
+			]);
+		});
 	}
 });

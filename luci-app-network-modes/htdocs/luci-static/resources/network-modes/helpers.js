@@ -2,6 +2,20 @@
 'require ui';
 'require network-modes.api as api';
 
+var NAV_ITEMS = [
+	{ id: 'overview', icon: '📊', label: _('Overview') },
+	{ id: 'wizard', icon: '🧭', label: _('Wizard') },
+	{ id: 'router', icon: '🌐', label: _('Router') },
+	{ id: 'multiwan', icon: '🔀', label: _('Multi-WAN') },
+	{ id: 'doublenat', icon: '🧱', label: _('Double NAT') },
+	{ id: 'accesspoint', icon: '📡', label: _('Access Point') },
+	{ id: 'relay', icon: '📶', label: _('Relay') },
+	{ id: 'vpnrelay', icon: '🛡️', label: _('VPN Relay') },
+	{ id: 'travel', icon: '🧳', label: _('Travel') },
+	{ id: 'sniffer', icon: '🕵️', label: _('Sniffer') },
+	{ id: 'settings', icon: '⚙️', label: _('Settings') }
+];
+
 function isToggleActive(node) {
 	return !!(node && node.classList.contains('active'));
 }
@@ -120,6 +134,28 @@ function createStepper(steps, active) {
 	}));
 }
 
+function createNavigationTabs(activeId) {
+	var base = 'admin/secubox/network/modes/';
+	return E('nav', { 'class': 'nm-nav-tabs' }, [
+		E('div', { 'class': 'cyber-tablist' },
+			NAV_ITEMS.map(function(item) {
+				var cls = 'cyber-tab';
+				if (activeId === item.id)
+					cls += ' is-active';
+
+				return E('a', {
+					'class': cls,
+					'href': L.url(base + item.id),
+					'aria-current': activeId === item.id ? 'page' : null
+				}, [
+					E('span', { 'class': 'cyber-tab-icon' }, item.icon),
+					E('span', { 'class': 'cyber-tab-label' }, item.label)
+				]);
+			})
+		)
+	]);
+}
+
 return {
 	isToggleActive: isToggleActive,
 	persistSettings: persistSettings,
@@ -128,5 +164,6 @@ return {
 	createStatBadge: createStatBadge,
 	createSection: createSection,
 	createList: createList,
-	createStepper: createStepper
+	createStepper: createStepper,
+	createNavigationTabs: createNavigationTabs
 };

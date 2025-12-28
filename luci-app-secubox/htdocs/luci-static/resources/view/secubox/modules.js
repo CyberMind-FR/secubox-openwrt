@@ -108,28 +108,33 @@ return view.extend({
 
 		var filterButtons = tabs.map(function(tab) {
 			return E('button', {
-				'class': 'secubox-filter-tab' + (tab.id === 'all' ? ' active' : ''),
+				'class': 'cyber-tab cyber-tab--pill' + (tab.id === 'all' ? ' is-active' : ''),
 				'data-filter': tab.id,
+				'type': 'button',
 				'click': function(ev) {
-					document.querySelectorAll('.secubox-filter-tab').forEach(function(el) {
-						el.classList.remove('active');
+					document.querySelectorAll('.secubox-filter-tabs .cyber-tab[data-filter]').forEach(function(el) {
+						el.classList.remove('is-active');
 					});
-					ev.target.classList.add('active');
+					ev.currentTarget.classList.add('is-active');
 					self.filterModules(tab.id);
 				}
-			}, tab.icon + ' ' + tab.label);
+			}, [
+				E('span', { 'class': 'cyber-tab-icon' }, tab.icon),
+				E('span', { 'class': 'cyber-tab-label' }, tab.label)
+			]);
 		});
 
 		filterButtons.push(
 			E('button', {
-				'class': 'secubox-filter-tab secubox-filter-tab-bonus',
+				'class': 'cyber-tab cyber-tab--ghost',
+				'type': 'button',
 				'click': function() {
 					window.location.href = L.url('admin/secubox/help');
 				}
 			}, '✨ ' + _('Bonus · Help à SecuBox'))
 		);
 
-		return E('div', { 'class': 'secubox-filter-tabs' }, filterButtons);
+		return E('div', { 'class': 'secubox-filter-tabs cyber-tablist cyber-tablist--filters' }, filterButtons);
 	},
 
 	renderModuleCards: function(modules, filter) {
@@ -364,7 +369,7 @@ return view.extend({
 	},
 
 	updateModulesGrid: function() {
-		var activeTab = document.querySelector('.secubox-filter-tab.active');
+		var activeTab = document.querySelector('.secubox-filter-tabs .cyber-tab.is-active[data-filter]');
 		var filter = activeTab ? activeTab.getAttribute('data-filter') : 'all';
 		this.filterModules(filter);
 

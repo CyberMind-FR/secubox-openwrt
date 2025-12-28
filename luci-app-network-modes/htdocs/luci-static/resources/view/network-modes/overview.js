@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require network-modes.api as api';
+'require network-modes.helpers as helpers';
 'require secubox/help as Help';
 'require secubox-theme/theme as Theme';
 
@@ -98,6 +99,7 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/help.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') }),
+			helpers.createNavigationTabs('overview'),
 
 			// Header
 			E('div', { 'class': 'nm-header' }, [

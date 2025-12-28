@@ -216,53 +216,9 @@ pre {
 }
 
 /* === Filter Tabs === */
-.sh-filter-tabs {
-	display: flex;
-	gap: 12px;
-	flex-wrap: wrap;
-	background: var(--sh-bg-secondary);
-	padding: 12px;
-	border-radius: 12px;
-	border: 1px solid var(--sh-border);
+.sh-service-tabs,
+.sh-component-tabs {
 	margin-bottom: 24px;
-}
-
-.sh-filter-tab {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 10px 20px;
-	background: var(--sh-bg-card);
-	border: 2px solid transparent;
-	border-radius: 8px;
-	cursor: pointer;
-	transition: all 0.2s ease;
-	font-size: 14px;
-	font-weight: 600;
-	color: var(--sh-text-secondary);
-	user-select: none;
-}
-
-.sh-filter-tab:hover {
-	background: var(--sh-hover-bg);
-	border-color: var(--sh-primary);
-	transform: translateY(-2px);
-}
-
-.sh-filter-tab.active {
-	background: linear-gradient(135deg, var(--sh-primary), var(--sh-primary-end));
-	color: #ffffff;
-	border-color: transparent;
-	box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
-}
-
-.sh-tab-icon {
-	font-size: 18px;
-	line-height: 1;
-}
-
-.sh-tab-label {
-	white-space: nowrap;
 }
 
 /* === Cards (with colored top border) === */
@@ -477,15 +433,6 @@ pre {
 		font-size: 22px;
 	}
 
-	.sh-filter-tabs {
-		gap: 8px;
-	}
-
-	.sh-filter-tab {
-		padding: 8px 16px;
-		font-size: 13px;
-	}
-
 	.sh-stats-grid {
 		grid-template-columns: repeat(2, 1fr);
 	}
@@ -495,10 +442,10 @@ pre {
 		padding: 6px;
 	}
 
-.sh-nav-tab {
-	padding: 8px 14px;
-	font-size: 13px;
-}
+	.sh-nav-tab {
+		padding: 8px 14px;
+		font-size: 13px;
+	}
 
 /* === Development Status Bonus Tab === */
 .sh-page-insight {
@@ -563,7 +510,6 @@ pre {
 /* === Dark Mode Overrides === */
 [data-theme="dark"] .sh-card,
 [data-theme="dark"] .sh-stat-badge,
-[data-theme="dark"] .sh-filter-tabs,
 [data-theme="dark"] .sh-nav-tabs,
 [data-theme="dark"] .sh-page-header {
 	background: var(--sh-bg-card);
@@ -571,18 +517,15 @@ pre {
 }
 
 [data-theme="dark"] .sh-card-header,
-[data-theme="dark"] .sh-filter-tabs,
 [data-theme="dark"] .sh-nav-tabs {
 	background: var(--sh-bg-secondary);
 	border-color: var(--sh-border);
 }
 
-[data-theme="dark"] .sh-filter-tab,
 [data-theme="dark"] .sh-nav-tab {
 	background: transparent;
 }
 
-[data-theme="dark"] .sh-filter-tab:hover,
 [data-theme="dark"] .sh-nav-tab:hover {
 	background: var(--sh-hover-bg);
 }

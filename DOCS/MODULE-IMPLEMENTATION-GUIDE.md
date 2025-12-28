@@ -615,6 +615,23 @@ handleSaveSettings: function() {
 - **Special Requirements:** UCI config validation, rollback mechanism
 - **Dependencies:** Network, firewall, DHCP configs
 
+#### Available Modes (v0.3.6)
+The production build now includes nine fully supported profiles. Each profile exposes its own RPC (`*_config`), view, and default values under `network-modes.<mode>`:
+
+| Mode ID | Description | Notable Features |
+| --- | --- | --- |
+| `router` | Standard router | NAT + firewall, DHCP, proxy/HTTPS front-end helpers |
+| `doublenat` | Behind ISP CPE | WAN DHCP client, isolated LAN/guest bridge, UPnP/DMZ controls |
+| `multiwan` | Dual uplink | Health checks, failover hold timers, load-balance/mwan3 |
+| `vpnrelay` | VPN gateway | WireGuard/OpenVPN, kill switch, DNS override, split tunnel |
+| `bridge` | Layer-2 pass-through | No NAT, all ports bridged, DHCP client |
+| `accesspoint` | WiFi AP | Bridge upstream, disable routing/DHCP, 802.11r/k/v toggles |
+| `relay` | WiFi repeater | STA+AP, relayd/WDS, WireGuard assist, MTU/MSS tuning |
+| `travel` | Portable router | Client WiFi scan, MAC clone, WPA3 hotspot, sandbox LAN |
+| `sniffer` | TAP/sniffer | Promiscuous bridge, Netifyd integration, pcap support |
+
+When adding another mode, update: UCI defaults (`root/etc/config/network-modes`), the RPC script (`get_<mode>_config`, `update_settings`, `generate_config`, `set_mode` allow-list), the JS API/view/menu, and the docs.
+
 ---
 
 ## Troubleshooting Guide

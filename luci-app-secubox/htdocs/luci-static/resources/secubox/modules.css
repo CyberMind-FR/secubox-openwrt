@@ -63,45 +63,7 @@
 
 /* Filter Tabs */
 .secubox-filter-tabs {
-	display: flex;
-	gap: 8px;
 	margin: 24px 0;
-	flex-wrap: wrap;
-}
-
-.secubox-filter-tab {
-	padding: 10px 20px;
-	background: var(--sb-bg-card);
-	border: 2px solid var(--sb-border);
-	border-radius: 8px;
-	color: var(--sb-text);
-	font-size: 14px;
-	font-weight: 500;
-	cursor: pointer;
-	transition: all 0.2s;
-}
-
-.secubox-filter-tab:hover {
-	background: var(--sb-bg);
-	border-color: var(--sb-primary);
-}
-
-.secubox-filter-tab.active {
-	background: var(--sb-primary);
-	border-color: var(--sb-primary);
-	color: white;
-}
-
-.secubox-filter-tab-bonus {
-	background: linear-gradient(135deg, #f97316 0%, #ec4899 100%);
-	border-color: transparent;
-	color: white;
-	box-shadow: 0 8px 20px rgba(249, 115, 22, 0.35);
-}
-
-.secubox-filter-tab-bonus:hover {
-	transform: translateY(-2px);
-	box-shadow: 0 10px 24px rgba(236, 72, 153, 0.35);
 }
 
 /* Modules Grid */
@@ -417,15 +379,6 @@
 
 	.secubox-modules-stats {
 		grid-template-columns: repeat(2, 1fr);
-	}
-
-	.secubox-filter-tabs {
-		gap: 6px;
-	}
-
-	.secubox-filter-tab {
-		padding: 8px 12px;
-		font-size: 12px;
 	}
 
 	.secubox-module-card-header {

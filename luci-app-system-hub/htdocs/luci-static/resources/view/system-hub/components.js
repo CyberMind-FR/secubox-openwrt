@@ -64,33 +64,36 @@ return view.extend({
 			{ id: 'system', label: 'System', icon: '⚙️' }
 		];
 
-		return E('div', { 'class': 'sh-filter-tabs' },
+		return E('div', { 'class': 'sh-component-tabs cyber-tablist cyber-tablist--filters' },
 			tabs.map(function(tab) {
 				return E('button', {
-					'class': 'sh-filter-tab' + (self.currentFilter === tab.id ? ' active' : ''),
-					'click': function(ev) {
-						self.handleFilterChange(tab.id, ev.target);
+					'class': 'cyber-tab' + (self.currentFilter === tab.id ? ' is-active' : ''),
+					'type': 'button',
+					'data-filter': tab.id,
+					'click': function() {
+						self.handleFilterChange(tab.id);
 					}
 				}, [
-					E('span', { 'class': 'sh-tab-icon' }, tab.icon),
-					E('span', { 'class': 'sh-tab-label' }, tab.label)
+					E('span', { 'class': 'cyber-tab-icon' }, tab.icon),
+					E('span', { 'class': 'cyber-tab-label' }, tab.label)
 				]);
 			})
 		);
 	},
 
-	handleFilterChange: function(filterId, targetElement) {
+	handleFilterChange: function(filterId) {
 		this.currentFilter = filterId;
 
-		// Update active tab
-		var tabs = document.querySelectorAll('.sh-filter-tab');
-		tabs.forEach(function(tab) {
-			tab.classList.remove('active');
-		});
-		targetElement.closest('.sh-filter-tab').classList.add('active');
-
-		// Update grid
 		this.updateComponentsGrid();
+		this.refreshFilterTabs();
+	},
+
+	refreshFilterTabs: function() {
+		var tabs = document.querySelectorAll('.sh-component-tabs .cyber-tab');
+		tabs.forEach(function(tab) {
+			var match = tab.getAttribute('data-filter') === this.currentFilter;
+			tab.classList.toggle('is-active', match);
+		}, this);
 	},
 
 	renderComponentsGrid: function(components, filter) {

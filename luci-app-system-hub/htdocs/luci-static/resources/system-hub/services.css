@@ -75,26 +75,9 @@
 	justify-content: space-between;
 }
 
-.sh-filter-tabs {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 10px;
-}
-
-.sh-filter-tab {
-	padding: 8px 16px;
-	border-radius: 999px;
-	border: 1px solid rgba(255,255,255,0.15);
-	background: rgba(255,255,255,0.02);
-	color: var(--sh-text-primary);
-	font-weight: 600;
-	cursor: pointer;
-	transition: all 0.2s ease;
-}
-
-.sh-filter-tab.active {
-	background: rgba(99,102,241,0.25);
-	border-color: rgba(99,102,241,0.5);
+.sh-service-tabs {
+	flex: 1;
+	min-width: 220px;
 }
 
 .sh-service-search input {

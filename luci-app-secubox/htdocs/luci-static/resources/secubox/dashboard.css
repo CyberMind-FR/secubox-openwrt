@@ -162,27 +162,8 @@
 	font-size: 14px;
 }
 
-/* Modules section */
-.sb-filter-tabs {
-	display: flex;
-	gap: 10px;
-	flex-wrap: wrap;
-}
-
-.sb-filter-tab {
-	background: transparent;
-	border: 1px solid rgba(255,255,255,0.15);
-	border-radius: 999px;
-	color: var(--sb-text);
-	padding: 8px 16px;
-	cursor: pointer;
-	font-weight: 600;
-	transition: all 0.2s ease;
-}
-
-.sb-filter-tab.active {
-	background: rgba(255,255,255,0.15);
-	border-color: rgba(255,255,255,0.35);
+.sb-module-tabs {
+	margin-left: auto;
 }
 
 .sb-module-grid {

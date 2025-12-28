@@ -91,7 +91,9 @@ return view.extend({
 		], currentModeData.rollback_active ? 2 : 1);
 
 		var container = E('div', { 'class': 'network-modes-dashboard nm-wizard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') }),
+			helpers.createNavigationTabs('wizard'),
 			hero,
 			stepper,
 			currentModeData.rollback_active ? this.renderRollbackBanner(currentModeData) : this.renderCurrentMode(currentModeData),
@@ -205,7 +207,7 @@ return view.extend({
 			E('p', { 'class': 'spinning' }, _('Preparing mode change...'))
 		]);
 
-		return callSetMode({ mode: mode.id }).then(L.bind(function(result) {
+		return callSetMode(mode.id).then(L.bind(function(result) {
 			if (!result.success) {
 				ui.hideModal();
 				ui.addNotification(null, E('p', {}, result.error || _('Failed to prepare mode')), 'error');

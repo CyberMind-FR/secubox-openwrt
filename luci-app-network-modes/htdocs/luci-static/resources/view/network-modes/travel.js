@@ -121,7 +121,9 @@ return view.extend({
 		});
 
 		var container = E('div', { 'class': 'network-modes-dashboard travel-mode' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') }),
+			helpers.createNavigationTabs('travel'),
 			hero,
 			stats,
 			uplinkSection,

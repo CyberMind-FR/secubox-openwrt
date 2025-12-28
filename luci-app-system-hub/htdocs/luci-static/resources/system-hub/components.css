@@ -24,50 +24,8 @@
 	line-height: 1;
 }
 
-.sh-filter-tabs {
-	display: flex;
-	gap: 12px;
-	flex-wrap: wrap;
-	background: var(--sh-bg-secondary, #f8fafc);
-	padding: 12px;
-	border-radius: 12px;
-	border: 1px solid var(--sh-border, #e2e8f0);
-}
-
-.sh-filter-tab {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 10px 20px;
-	background: var(--sh-bg-card, #ffffff);
-	border: 2px solid transparent;
-	border-radius: 8px;
-	cursor: pointer;
-	transition: all 0.2s ease;
-	font-size: 14px;
-	font-weight: 600;
-	color: var(--sh-text-secondary, #64748b);
-}
-
-.sh-filter-tab:hover {
-	background: var(--sh-hover-bg, #f1f5f9);
-	border-color: var(--sh-primary, #6366f1);
-	transform: translateY(-2px);
-}
-
-.sh-filter-tab.active {
-	background: var(--sh-primary, #6366f1);
-	color: #ffffff;
-	border-color: var(--sh-primary, #6366f1);
-}
-
-.sh-tab-icon {
-	font-size: 18px;
-	line-height: 1;
-}
-
-.sh-tab-label {
-	white-space: nowrap;
+.sh-component-tabs {
+	width: 100%;
 }
 
 /* === Components Grid === */
@@ -309,20 +267,6 @@
 [data-theme="dark"] .sh-component-card-actions {
 	background: var(--sh-bg-tertiary);
 	border-color: var(--sh-border);
-}
-
-[data-theme="dark"] .sh-filter-tabs {
-	background: var(--sh-bg-secondary);
-	border-color: var(--sh-border);
-}
-
-[data-theme="dark"] .sh-filter-tab {
-	background: var(--sh-bg-tertiary);
-	color: var(--sh-text-secondary);
-}
-
-[data-theme="dark"] .sh-filter-tab:hover {
-	background: var(--sh-hover-bg);
 }
 
 [data-theme="dark"] .sh-component-category {

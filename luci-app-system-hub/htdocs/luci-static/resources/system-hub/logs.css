@@ -150,24 +150,7 @@
 }
 
 .sh-log-filters {
-	display: flex;
-	gap: 8px;
-	flex-wrap: wrap;
-}
-
-.sh-log-filter {
-	border: none;
-	border-radius: 999px;
-	padding: 8px 16px;
-	background: rgba(255,255,255,0.05);
-	color: var(--sh-text-primary);
-	cursor: pointer;
-	font-weight: 600;
-}
-
-.sh-log-filter.active {
-	background: rgba(99,102,241,0.25);
-	border: 1px solid rgba(99,102,241,0.45);
+	margin-bottom: 8px;
 }
 
 .sh-log-stream {

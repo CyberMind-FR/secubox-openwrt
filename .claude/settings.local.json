@@ -153,7 +153,9 @@
       "Bash(luci-app-network-modes/htdocs/luci-static/resources/view/network-modes/overview.js )",
       "Bash(luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/overview.js )",
       "Bash(luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/services.js )",
-      "Bash(deploy-modules-with-theme.sh)"
+      "Bash(deploy-modules-with-theme.sh)",
+      "Bash(timeout 120 ./local-build.sh:*)",
+      "Bash(do echo \"=== admin/secubox/$category ===\")"
     ]
   }
 }

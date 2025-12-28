@@ -155,11 +155,12 @@ return view.extend({
 			{ id: 'info', label: _('Info') }
 		];
 
-		return E('div', { 'class': 'sh-log-filters', 'id': 'sh-log-filters' },
+		return E('div', { 'class': 'sh-log-filters cyber-tablist cyber-tablist--pills', 'id': 'sh-log-filters' },
 			filters.map(function(filter) {
 				return E('button', {
 					'type': 'button',
-					'class': 'sh-log-filter' + (self.severityFilter === filter.id ? ' active' : ''),
+					'class': 'cyber-tab cyber-tab--pill' + (self.severityFilter === filter.id ? ' is-active' : ''),
+					'data-filter': filter.id,
 					'click': function() {
 						self.severityFilter = filter.id;
 						self.updateLogStream();
@@ -170,11 +171,10 @@ return view.extend({
 	},
 
 	refreshSeverityTabs: function() {
-		var tabs = document.querySelectorAll('.sh-log-filter');
-		var ids = ['all', 'error', 'warning', 'info'];
-		tabs.forEach(function(tab, idx) {
-			if (ids[idx] === this.severityFilter) tab.classList.add('active');
-			else tab.classList.remove('active');
+		var tabs = document.querySelectorAll('#sh-log-filters .cyber-tab');
+		tabs.forEach(function(tab) {
+			var match = tab.getAttribute('data-filter') === this.severityFilter;
+			tab.classList.toggle('is-active', match);
 		}, this);
 	},
 

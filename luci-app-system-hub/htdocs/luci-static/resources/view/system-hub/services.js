@@ -85,17 +85,20 @@ return view.extend({
 		];
 
 		return E('div', { 'class': 'sh-service-controls' }, [
-			E('div', { 'class': 'sh-filter-tabs' },
+			E('div', { 'class': 'cyber-tablist cyber-tablist--pills sh-service-tabs' },
 				filters.map(function(filter) {
 					return E('button', {
-						'class': 'sh-filter-tab' + (self.activeFilter === filter.id ? ' active' : ''),
+						'class': 'cyber-tab cyber-tab--pill' + (self.activeFilter === filter.id ? ' is-active' : ''),
 						'type': 'button',
+						'data-filter': filter.id,
 						'click': function() {
 							self.activeFilter = filter.id;
 							self.updateServicesGrid();
 							self.refreshFilterTabs();
 						}
-					}, filter.label);
+					}, [
+						E('span', { 'class': 'cyber-tab-label' }, filter.label)
+					]);
 				})),
 			E('div', { 'class': 'sh-service-search' }, [
 				E('input', {
@@ -112,11 +115,10 @@ return view.extend({
 	},
 
 	refreshFilterTabs: function() {
-		var tabs = document.querySelectorAll('.sh-filter-tab');
-		var filters = ['all', 'running', 'stopped', 'enabled', 'disabled'];
-		tabs.forEach(function(tab, idx) {
-			if (filters[idx] === this.activeFilter) tab.classList.add('active');
-			else tab.classList.remove('active');
+		var tabs = document.querySelectorAll('.sh-service-tabs .cyber-tab');
+		tabs.forEach(function(tab) {
+			var match = tab.getAttribute('data-filter') === this.activeFilter;
+			tab.classList.toggle('is-active', match);
 		}, this);
 	},
 
