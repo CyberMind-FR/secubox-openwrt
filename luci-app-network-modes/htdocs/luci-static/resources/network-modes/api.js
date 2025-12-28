@@ -101,6 +101,24 @@ var callTravelConfig = rpc.declare({
 	expect: { }
 });
 
+var callDoubleNatConfig = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'doublenat_config',
+	expect: { }
+});
+
+var callMultiWanConfig = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'multiwan_config',
+	expect: { }
+});
+
+var callVpnRelayConfig = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'vpnrelay_config',
+	expect: { }
+});
+
 var callTravelScan = rpc.declare({
 	object: 'luci.network-modes',
 	method: 'travel_scan_networks',
@@ -213,6 +231,18 @@ return baseclass.extend({
 					'QoS and traffic shaping'
 				]
 			},
+			doublenat: {
+				id: 'doublenat',
+				name: 'Double NAT',
+				icon: '🔁',
+				description: 'Operate behind an ISP router with a second isolated LAN and guest network policies.',
+				features: [
+					'DHCP WAN client behind ISP box',
+					'Private LAN subnet (10.0.0.0/24)',
+					'Optional guest bridge isolation',
+					'UPnP/DMZ hardening'
+				]
+			},
 			bridge: {
 				id: 'bridge',
 				name: 'Bridge Mode',
@@ -223,6 +253,18 @@ return baseclass.extend({
 					'No NAT or routing',
 					'STP/RSTP support',
 					'VLAN tagging support'
+				]
+			},
+			multiwan: {
+				id: 'multiwan',
+				name: 'Multi-WAN Gateway',
+				icon: '⚡',
+				description: 'Combine dual WAN uplinks with health tracking, load balancing, and automatic failover.',
+				features: [
+					'Dual uplinks (ethernet, 4G/5G, USB)',
+					'Health tracking (ping/NTP/HTTP)',
+					'Automatic failover with hold timers',
+					'mwan3 compatible policies'
 				]
 			},
 			accesspoint: {
@@ -247,6 +289,18 @@ return baseclass.extend({
 					'Wireless uplink (WDS/Relay)',
 					'Rebroadcast on same or different SSID',
 					'Signal amplification'
+				]
+			},
+			vpnrelay: {
+				id: 'vpnrelay',
+				name: 'VPN Relay',
+				icon: '🛡️',
+				description: 'Inject WireGuard/OpenVPN tunnels with kill-switch, DNS override, and policy routing for LAN clients.',
+				features: [
+					'WireGuard & OpenVPN profiles',
+					'Policy routing / split tunnel',
+					'DNS override & kill switch',
+					'Provider templates'
 				]
 			},
 			travel: {
@@ -300,6 +354,9 @@ return baseclass.extend({
 	getRelayConfig: callRelayConfig,
 	getRouterConfig: callRouterConfig,
 	getTravelConfig: callTravelConfig,
+	getDoubleNatConfig: callDoubleNatConfig,
+	getMultiWanConfig: callMultiWanConfig,
+	getVpnRelayConfig: callVpnRelayConfig,
 	scanTravelNetworks: callTravelScan,
 
 	updateSettings: function(mode, settings) {

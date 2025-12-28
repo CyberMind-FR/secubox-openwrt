@@ -5,6 +5,9 @@
 'require network-modes.api as api';
 'require network-modes.helpers as helpers';
 'require secubox/help as Help';
+'require secubox-theme/theme as Theme';
+
+Theme.init({ theme: 'dark', language: 'en' });
 
 return view.extend({
 	title: _('Travel Router Mode'),
@@ -21,156 +24,113 @@ return view.extend({
 		var interfaces = config.available_interfaces || ['wlan0', 'wlan1'];
 		var radios = config.available_radios || ['radio0', 'radio1'];
 
-		var view = E('div', { 'class': 'network-modes-dashboard' }, [
-			E('div', { 'class': 'nm-header' }, [
-				E('div', { 'class': 'nm-logo' }, [
-					E('div', { 'class': 'nm-logo-icon', 'style': 'background: linear-gradient(135deg,#fbbf24,#f97316)' }, '✈️'),
-					E('div', { 'class': 'nm-logo-text' }, ['Travel ', E('span', { 'style': 'background: linear-gradient(135deg,#f97316,#fb923c); -webkit-background-clip:text; -webkit-text-fill-color:transparent;' }, 'Router')])
-				]),
-				Help.createHelpButton('network-modes', 'header', {
-					icon: '📘',
-					label: _('Travel help'),
-					modal: true
-				})
-			]),
+		var hero = helpers.createHero({
+			icon: '✈️',
+			title: _('Travel Router'),
+			subtitle: _('Clone the hotel uplink, stay behind your own encrypted hotspot, and keep a clean sandboxed LAN for all devices.'),
+			gradient: 'linear-gradient(135deg,#fbbf24,#f97316)',
+			actions: [
+				Help.createHelpButton('network-modes', 'header', { icon: '📘', label: _('Travel guide'), modal: true }),
+				E('button', { 'class': 'nm-btn', 'type': 'button', 'data-action': 'travel-scan' }, ['🔍 ', _('Scan Uplink')]),
+				E('button', { 'class': 'nm-btn nm-btn-primary', 'type': 'button', 'data-action': 'travel-save' }, ['💾 ', _('Save Settings')]),
+				E('button', { 'class': 'nm-btn', 'type': 'button', 'data-action': 'travel-preview' }, ['📝 ', _('Preview Config')])
+			]
+		});
 
-			E('div', { 'class': 'nm-alert nm-alert-info' }, [
-				E('span', { 'class': 'nm-alert-icon' }, '🌍'),
-				E('div', {}, [
-					E('div', { 'class': 'nm-alert-title' }, _('Portable security for hotels & events')),
-					E('div', { 'class': 'nm-alert-text' },
-						_('Connect the router as a WiFi client, clone the WAN MAC if needed, and broadcast your own encrypted hotspot for trusted devices.'))
-				])
-			]),
-
-			// Client WiFi
-			E('div', { 'class': 'nm-card' }, [
-				E('div', { 'class': 'nm-card-header' }, [
-					E('div', { 'class': 'nm-card-title' }, [
-						E('span', { 'class': 'nm-card-title-icon' }, '📡'),
-						_('Client WiFi Uplink')
-					]),
-					E('div', { 'class': 'nm-card-badge' }, client.ssid ? _('Connected to ') + client.ssid : _('No uplink configured'))
-				]),
-				E('div', { 'class': 'nm-card-body' }, [
-					E('div', { 'class': 'nm-form-grid' }, [
-						this.renderSelectField(_('Client interface'), 'travel-client-iface', interfaces, client.interface || 'wlan1'),
-						this.renderSelectField(_('Client radio'), 'travel-client-radio', radios, client.radio || 'radio1'),
-						this.renderSelectField(_('Encryption'), 'travel-encryption', [
-							'sae-mixed', 'sae', 'psk2', 'psk-mixed', 'none'
-						], client.encryption || 'sae-mixed')
-					]),
-					E('div', { 'class': 'nm-form-group' }, [
-						E('label', { 'class': 'nm-form-label' }, _('SSID / BSSID')),
-						E('input', { 'class': 'nm-input', 'id': 'travel-client-ssid', 'value': client.ssid || '', 'placeholder': _('Hotel WiFi name') }),
-						E('div', { 'class': 'nm-form-hint' }, _('Click a scanned network below to autofill'))
-					]),
-					E('div', { 'class': 'nm-form-group' }, [
-						E('label', { 'class': 'nm-form-label' }, _('Password / captive portal token')),
-						E('input', { 'class': 'nm-input', 'type': 'password', 'id': 'travel-client-password', 'value': client.password || '' }),
-						E('div', { 'class': 'nm-form-hint' }, _('Leave empty for open WiFi or captive portal'))
-					]),
-					E('div', { 'class': 'nm-form-group' }, [
-						E('label', { 'class': 'nm-form-label' }, _('WAN MAC clone')),
-						E('input', {
-							'class': 'nm-input',
-							'id': 'travel-mac-clone',
-							'value': client.clone_mac || '',
-							'placeholder': 'AA:BB:CC:DD:EE:FF'
-						}),
-						E('div', { 'class': 'nm-form-hint' }, _('Copy the MAC of the laptop/room card if the hotel locks access'))
-					]),
-					E('div', { 'class': 'nm-btn-group' }, [
-						E('button', {
-							'class': 'nm-btn',
-							'data-action': 'travel-scan',
-							'type': 'button'
-						}, [
-							E('span', {}, '🔍'),
-							_('Scan networks')
-						]),
-						E('span', { 'id': 'travel-scan-status', 'class': 'nm-text-muted' }, _('Last scan: never'))
-					]),
-					E('div', { 'class': 'nm-scan-results', 'id': 'travel-scan-results' }, [
-						E('div', { 'class': 'nm-empty' }, _('No scan results yet'))
-					])
-				])
-			]),
-
-			// Hotspot
-			E('div', { 'class': 'nm-card' }, [
-				E('div', { 'class': 'nm-card-header' }, [
-					E('div', { 'class': 'nm-card-title' }, [
-						E('span', { 'class': 'nm-card-title-icon' }, '🔥'),
-						_('Personal Hotspot')
-					]),
-					E('div', { 'class': 'nm-card-badge' }, _('WPA3 / WPA2 mixed'))
-				]),
-				E('div', { 'class': 'nm-card-body' }, [
-					E('div', { 'class': 'nm-form-grid' }, [
-						this.renderSelectField(_('Hotspot radio'), 'travel-hotspot-radio', radios, hotspot.radio || 'radio0')
-					]),
-					E('div', { 'class': 'nm-form-group' }, [
-						E('label', { 'class': 'nm-form-label' }, _('Hotspot SSID')),
-						E('input', { 'class': 'nm-input', 'id': 'travel-hotspot-ssid', 'value': hotspot.ssid || 'SecuBox-Travel' })
-					]),
-					E('div', { 'class': 'nm-form-group' }, [
-						E('label', { 'class': 'nm-form-label' }, _('Hotspot password')),
-						E('input', { 'class': 'nm-input', 'type': 'text', 'id': 'travel-hotspot-password', 'value': hotspot.password || 'TravelSafe123!' })
-					])
-				])
-			]),
-
-			// LAN / DHCP
-			E('div', { 'class': 'nm-card' }, [
-				E('div', { 'class': 'nm-card-header' }, [
-					E('div', { 'class': 'nm-card-title' }, [
-						E('span', { 'class': 'nm-card-title-icon' }, '🛡️'),
-						_('LAN & DHCP Sandbox')
-					])
-				]),
-				E('div', { 'class': 'nm-card-body' }, [
-					E('div', { 'class': 'nm-form-grid' }, [
-						E('div', { 'class': 'nm-form-group' }, [
-							E('label', { 'class': 'nm-form-label' }, _('LAN Gateway IP')),
-							E('input', { 'class': 'nm-input', 'id': 'travel-lan-ip', 'value': lan.subnet || '10.77.0.1' })
-						]),
-						E('div', { 'class': 'nm-form-group' }, [
-							E('label', { 'class': 'nm-form-label' }, _('LAN Netmask')),
-							E('input', { 'class': 'nm-input', 'id': 'travel-lan-mask', 'value': lan.netmask || '255.255.255.0' })
-						])
-					]),
-					E('div', { 'class': 'nm-form-hint' }, _('Each trip gets its own private /24 network to avoid overlapping hotel ranges.'))
-				])
-			]),
-
-			// Actions
-			E('div', { 'class': 'nm-btn-group' }, [
-				E('button', {
-					'class': 'nm-btn nm-btn-primary',
-					'type': 'button',
-					'data-action': 'travel-save'
-				}, [
-					E('span', {}, '💾'),
-					_('Save travel settings')
-				]),
-				E('button', {
-					'class': 'nm-btn',
-					'type': 'button',
-					'data-action': 'travel-preview'
-				}, [
-					E('span', {}, '📝'),
-					_('Preview configuration')
-				])
-			])
+		var stats = E('div', { 'style': 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px;' }, [
+			helpers.createStatBadge({ label: _('Client SSID'), value: client.ssid || _('Not set') }),
+			helpers.createStatBadge({ label: _('Hotspot SSID'), value: hotspot.ssid || 'SecuBox-Travel' }),
+			helpers.createStatBadge({ label: _('LAN Gateway'), value: lan.subnet || '10.77.0.1' }),
+			helpers.createStatBadge({ label: _('MAC Clone'), value: client.clone_mac ? _('Active') : _('Off') })
 		]);
 
-		var cssLink = E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') });
-		document.head.appendChild(cssLink);
+		var uplinkSection = helpers.createSection({
+			title: _('Client WiFi Uplink'),
+			icon: '📡',
+			badge: client.ssid ? _('Connected') : _('Pending'),
+			body: [
+				E('div', { 'class': 'nm-form-grid' }, [
+					this.renderSelectField(_('Client interface'), 'travel-client-iface', interfaces, client.interface || 'wlan1'),
+					this.renderSelectField(_('Client radio'), 'travel-client-radio', radios, client.radio || 'radio1'),
+					this.renderSelectField(_('Encryption'), 'travel-encryption', ['sae-mixed', 'sae', 'psk2', 'psk-mixed', 'none'], client.encryption || 'sae-mixed')
+				]),
+				E('div', { 'class': 'nm-form-group' }, [
+					E('label', { 'class': 'nm-form-label' }, _('SSID / BSSID')),
+					E('input', { 'class': 'nm-input', 'id': 'travel-client-ssid', 'value': client.ssid || '', 'placeholder': _('Hotel WiFi name') }),
+					E('div', { 'class': 'nm-form-hint' }, _('Pick from scan results or enter manually'))
+				]),
+				E('div', { 'class': 'nm-form-group' }, [
+					E('label', { 'class': 'nm-form-label' }, _('Password / Captive token')),
+					E('input', { 'class': 'nm-input', 'type': 'password', 'id': 'travel-client-password', 'value': client.password || '' }),
+					E('div', { 'class': 'nm-form-hint' }, _('Leave empty if using captive portal login'))
+				]),
+				E('div', { 'class': 'nm-form-group' }, [
+					E('label', { 'class': 'nm-form-label' }, _('WAN MAC clone')),
+					E('input', { 'class': 'nm-input', 'id': 'travel-mac-clone', 'value': client.clone_mac || '', 'placeholder': 'AA:BB:CC:DD:EE:FF' }),
+					E('div', { 'class': 'nm-form-hint' }, _('Copy laptop/room-authorized MAC to bypass hotel locks'))
+				]),
+				E('div', { 'class': 'nm-btn-group' }, [
+					E('button', { 'class': 'nm-btn', 'type': 'button', 'data-action': 'travel-scan' }, ['🔍 ', _('Scan networks')]),
+					E('span', { 'id': 'travel-scan-status', 'class': 'nm-text-muted' }, _('Last scan: never'))
+				]),
+				E('div', { 'class': 'nm-scan-results', 'id': 'travel-scan-results' }, [
+					E('div', { 'class': 'nm-empty' }, _('No scan results yet'))
+				])
+			]
+		});
 
-		this.bindTravelActions(view);
+		var hotspotSection = helpers.createSection({
+			title: _('Personal Hotspot'),
+			icon: '🔥',
+			badge: _('WPA3/WPA2'),
+			body: [
+				E('div', { 'class': 'nm-form-grid' }, [
+					this.renderSelectField(_('Hotspot radio'), 'travel-hotspot-radio', radios, hotspot.radio || 'radio0')
+				]),
+				E('div', { 'class': 'nm-form-group' }, [
+					E('label', { 'class': 'nm-form-label' }, _('Hotspot SSID')),
+					E('input', { 'class': 'nm-input', 'id': 'travel-hotspot-ssid', 'value': hotspot.ssid || 'SecuBox-Travel' })
+				]),
+				E('div', { 'class': 'nm-form-group' }, [
+					E('label', { 'class': 'nm-form-label' }, _('Hotspot password')),
+					E('input', { 'class': 'nm-input', 'id': 'travel-hotspot-password', 'value': hotspot.password || 'TravelSafe123!' })
+				]),
+				helpers.createList([
+					{ title: _('Private WPA3 bubble'), description: _('Keep laptops/phones on isolated SSID'), suffix: E('span', { 'class': 'nm-badge' }, _('Secure')) },
+					{ title: _('Dual-band'), description: _('Broadcast both 2.4/5 GHz when hardware supports it'), suffix: E('span', { 'class': 'nm-badge' }, _('Auto')) }
+				])
+			]
+		});
 
-		return view;
+		var lanSection = helpers.createSection({
+			title: _('LAN & DHCP Sandbox'),
+			icon: '🛡️',
+			body: [
+				E('div', { 'class': 'nm-form-grid' }, [
+					E('div', { 'class': 'nm-form-group' }, [
+						E('label', { 'class': 'nm-form-label' }, _('LAN Gateway IP')),
+						E('input', { 'class': 'nm-input', 'id': 'travel-lan-ip', 'value': lan.subnet || '10.77.0.1' })
+					]),
+					E('div', { 'class': 'nm-form-group' }, [
+						E('label', { 'class': 'nm-form-label' }, _('LAN Netmask')),
+						E('input', { 'class': 'nm-input', 'id': 'travel-lan-mask', 'value': lan.netmask || '255.255.255.0' })
+					])
+				]),
+				E('div', { 'class': 'nm-form-hint' }, _('Each trip receives an isolated /24 network with firewall & DNS-hardening.'))
+			]
+		});
+
+		var container = E('div', { 'class': 'network-modes-dashboard travel-mode' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') }),
+			hero,
+			stats,
+			uplinkSection,
+			hotspotSection,
+			lanSection
+		]);
+
+		this.bindTravelActions(container);
+		return container;
 	},
 
 	renderSelectField: function(label, id, options, selected) {
@@ -185,9 +145,10 @@ return view.extend({
 	},
 
 	bindTravelActions: function(container) {
-		var scanBtn = container.querySelector('[data-action="travel-scan"]');
-		if (scanBtn)
-			scanBtn.addEventListener('click', ui.createHandlerFn(this, 'scanNetworks', container));
+		var scanButtons = container.querySelectorAll('[data-action="travel-scan"]');
+		Array.prototype.forEach.call(scanButtons, function(btn) {
+			btn.addEventListener('click', ui.createHandlerFn(this, 'scanNetworks', container));
+		}, this);
 
 		var saveBtn = container.querySelector('[data-action="travel-save"]');
 		if (saveBtn)
@@ -218,6 +179,7 @@ return view.extend({
 		var list = container.querySelector('#travel-scan-results');
 		if (!list)
 			return;
+
 		list.innerHTML = '';
 
 		if (!networks.length) {

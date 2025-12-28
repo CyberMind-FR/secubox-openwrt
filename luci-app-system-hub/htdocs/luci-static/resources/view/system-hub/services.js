@@ -2,15 +2,15 @@
 'require view';
 'require ui';
 'require dom';
+'require poll';
 'require system-hub/api as API';
 'require secubox-theme/theme as Theme';
 
-// Initialize global theme
 Theme.init({ theme: 'dark', language: 'en' });
 
 return view.extend({
 	services: [],
-	currentFilter: 'all',
+	activeFilter: 'all',
 	searchQuery: '',
 
 	load: function() {
@@ -18,297 +18,252 @@ return view.extend({
 	},
 
 	render: function(data) {
-		this.services = data || [];
+		this.services = this.normalizeServices(data);
 
-		var container = E('div', { 'class': 'system-hub-services' }, [
+		var container = E('div', { 'class': 'sh-services-view' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/services.css') }),
-
-			// Header with stats
 			this.renderHeader(),
-
-			// Filter tabs
-			this.renderFilterTabs(),
-
-			// Search box
-			this.renderSearchBox(),
-
-			// Services grid
-			E('div', { 'class': 'sh-services-grid', 'id': 'services-grid' })
+			this.renderControls(),
+			E('div', { 'class': 'sh-services-grid', 'id': 'sh-services-grid' },
+				this.getFilteredServices().map(this.renderServiceCard, this))
 		]);
 
-		// Initial render
-		this.updateServicesGrid();
+		var self = this;
+		poll.add(function() {
+			return API.listServices().then(function(fresh) {
+				self.services = self.normalizeServices(fresh);
+				self.updateStats();
+				self.updateServicesGrid();
+			});
+		}, 30);
 
 		return container;
+	},
+
+	normalizeServices: function(data) {
+		if (!data) return [];
+		if (Array.isArray(data)) return data;
+		if (Array.isArray(data.services)) return data.services;
+		return [];
 	},
 
 	renderHeader: function() {
 		var stats = this.getStats();
 
-		return E('div', { 'class': 'sh-page-header' }, [
+		return E('section', { 'class': 'sh-services-hero' }, [
 			E('div', {}, [
-				E('h2', { 'class': 'sh-page-title' }, [
-					E('span', { 'class': 'sh-page-title-icon' }, '⚙️'),
-					'System Services'
-				]),
-				E('p', { 'class': 'sh-page-subtitle' },
-					'Manage system services: start, stop, restart, enable, or disable')
+				E('h1', {}, _('Service Control Center')),
+				E('p', {}, _('Start, stop, enable, and inspect all init.d services'))
 			]),
-			E('div', { 'class': 'sh-stats-grid' }, [
-				E('div', { 'class': 'sh-stat-badge' }, [
-					E('div', { 'class': 'sh-stat-value', 'style': 'color: #22c55e;' }, stats.running),
-					E('div', { 'class': 'sh-stat-label' }, 'Running')
-				]),
-				E('div', { 'class': 'sh-stat-badge' }, [
-					E('div', { 'class': 'sh-stat-value', 'style': 'color: #ef4444;' }, stats.stopped),
-					E('div', { 'class': 'sh-stat-label' }, 'Stopped')
-				]),
-				E('div', { 'class': 'sh-stat-badge' }, [
-					E('div', { 'class': 'sh-stat-value', 'style': 'color: #6366f1;' }, stats.enabled),
-					E('div', { 'class': 'sh-stat-label' }, 'Enabled')
-				]),
-				E('div', { 'class': 'sh-stat-badge' }, [
-					E('div', { 'class': 'sh-stat-value' }, stats.total),
-					E('div', { 'class': 'sh-stat-label' }, 'Total')
-				])
+			E('div', { 'class': 'sh-services-stats', 'id': 'sh-services-stats' }, [
+				this.createStatCard('sh-stat-total', _('Total'), stats.total),
+				this.createStatCard('sh-stat-running', _('Running'), stats.running, 'success'),
+				this.createStatCard('sh-stat-stopped', _('Stopped'), stats.stopped, 'danger'),
+				this.createStatCard('sh-stat-enabled', _('Enabled'), stats.enabled, 'info')
 			])
 		]);
 	},
 
-	renderFilterTabs: function() {
-		var self = this;
-		var stats = this.getStats();
-
-		return E('div', { 'class': 'sh-filter-tabs' }, [
-			this.createFilterTab('all', '📋', 'All Services', stats.total),
-			this.createFilterTab('running', '▶️', 'Running', stats.running),
-			this.createFilterTab('stopped', '⏹️', 'Stopped', stats.stopped),
-			this.createFilterTab('enabled', '✓', 'Enabled', stats.enabled),
-			this.createFilterTab('disabled', '✗', 'Disabled', stats.disabled)
+	createStatCard: function(id, label, value, tone) {
+		return E('div', { 'class': 'sh-service-stat ' + (tone || ''), 'id': id }, [
+			E('span', { 'class': 'label' }, label),
+			E('span', { 'class': 'value' }, value)
 		]);
 	},
 
-	createFilterTab: function(filter, icon, label, count) {
+	renderControls: function() {
 		var self = this;
-		var isActive = this.currentFilter === filter;
+		var filters = [
+			{ id: 'all', label: _('All') },
+			{ id: 'running', label: _('Running') },
+			{ id: 'stopped', label: _('Stopped') },
+			{ id: 'enabled', label: _('Enabled') },
+			{ id: 'disabled', label: _('Disabled') }
+		];
 
-		return E('div', {
-			'class': 'sh-filter-tab' + (isActive ? ' active' : ''),
-			'click': function() {
-				self.currentFilter = filter;
-				self.updateFilterTabs();
-				self.updateServicesGrid();
-			}
-		}, [
-			E('span', { 'class': 'sh-tab-icon' }, icon),
-			E('span', { 'class': 'sh-tab-label' }, label + ' (' + count + ')')
+		return E('div', { 'class': 'sh-service-controls' }, [
+			E('div', { 'class': 'sh-filter-tabs' },
+				filters.map(function(filter) {
+					return E('button', {
+						'class': 'sh-filter-tab' + (self.activeFilter === filter.id ? ' active' : ''),
+						'type': 'button',
+						'click': function() {
+							self.activeFilter = filter.id;
+							self.updateServicesGrid();
+							self.refreshFilterTabs();
+						}
+					}, filter.label);
+				})),
+			E('div', { 'class': 'sh-service-search' }, [
+				E('input', {
+					'type': 'text',
+					'class': 'cbi-input-text',
+					'placeholder': _('🔍 Search services...'),
+					'input': function(ev) {
+						self.searchQuery = (ev.target.value || '').toLowerCase();
+						self.updateServicesGrid();
+					}
+				})
+			])
 		]);
 	},
 
-	renderSearchBox: function() {
-		var self = this;
-
-		return E('div', { 'style': 'margin-bottom: 24px;' }, [
-			E('input', {
-				'type': 'text',
-				'class': 'cbi-input-text',
-				'placeholder': '🔍 Search services...',
-				'style': 'width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--sh-border); background: var(--sh-bg-card); color: var(--sh-text-primary); font-size: 14px;',
-				'input': function(ev) {
-					self.searchQuery = ev.target.value.toLowerCase();
-					self.updateServicesGrid();
-				}
-			})
-		]);
-	},
-
-	updateFilterTabs: function() {
+	refreshFilterTabs: function() {
 		var tabs = document.querySelectorAll('.sh-filter-tab');
-		tabs.forEach(function(tab, index) {
-			var filters = ['all', 'running', 'stopped', 'enabled', 'disabled'];
-			if (filters[index] === this.currentFilter) {
-				tab.classList.add('active');
-			} else {
-				tab.classList.remove('active');
-			}
-		}.bind(this));
+		var filters = ['all', 'running', 'stopped', 'enabled', 'disabled'];
+		tabs.forEach(function(tab, idx) {
+			if (filters[idx] === this.activeFilter) tab.classList.add('active');
+			else tab.classList.remove('active');
+		}, this);
 	},
 
-	updateServicesGrid: function() {
-		var grid = document.getElementById('services-grid');
-		if (!grid) return;
-
-		var filtered = this.getFilteredServices();
-
-		if (filtered.length === 0) {
-			dom.content(grid, [
-				E('div', { 'class': 'sh-empty-state' }, [
-					E('div', { 'class': 'sh-empty-icon' }, '📭'),
-					E('div', { 'class': 'sh-empty-text' },
-						this.searchQuery ? 'No services match your search' : 'No services found')
-				])
-			]);
-			return;
-		}
-
-		dom.content(grid, filtered.map(this.renderServiceCard, this));
+	getStats: function() {
+		var total = this.services.length;
+		var running = this.services.filter(function(s) { return s.running; }).length;
+		var enabled = this.services.filter(function(s) { return s.enabled; }).length;
+		var stopped = total - running;
+		return { total: total, running: running, stopped: stopped, enabled: enabled, disabled: total - enabled };
 	},
 
 	getFilteredServices: function() {
 		return this.services.filter(function(service) {
-			// Apply filter
 			var matchesFilter = true;
-			switch (this.currentFilter) {
-				case 'running':
-					matchesFilter = service.running;
-					break;
-				case 'stopped':
-					matchesFilter = !service.running;
-					break;
-				case 'enabled':
-					matchesFilter = service.enabled;
-					break;
-				case 'disabled':
-					matchesFilter = !service.enabled;
-					break;
+			switch (this.activeFilter) {
+				case 'running': matchesFilter = service.running; break;
+				case 'stopped': matchesFilter = !service.running; break;
+				case 'enabled': matchesFilter = service.enabled; break;
+				case 'disabled': matchesFilter = !service.enabled; break;
 			}
-
-			// Apply search
 			var matchesSearch = !this.searchQuery ||
 				service.name.toLowerCase().includes(this.searchQuery);
-
 			return matchesFilter && matchesSearch;
-		}.bind(this));
+		}, this);
 	},
 
 	renderServiceCard: function(service) {
-		var statusClass = service.running ? 'ok' : 'error';
-		var statusIcon = service.running ? '▶️' : '⏹️';
-		var statusText = service.running ? 'Running' : 'Stopped';
-		var enabledIcon = service.enabled ? '✓' : '✗';
-		var enabledText = service.enabled ? 'Enabled' : 'Disabled';
+		var statusClass = service.running ? 'running' : 'stopped';
+		var enabledLabel = service.enabled ? _('Enabled at boot') : _('Disabled');
 
-		return E('div', { 'class': 'sh-card' }, [
-			E('div', { 'class': 'sh-card-header' }, [
-				E('h3', { 'class': 'sh-card-title' }, [
-					E('span', { 'class': 'sh-card-title-icon' }, '⚙️'),
-					service.name
+		return E('div', { 'class': 'sh-service-card ' + statusClass }, [
+			E('div', { 'class': 'sh-service-head' }, [
+				E('div', {}, [
+					E('h3', {}, service.name),
+					E('span', { 'class': 'sh-service-tag' }, enabledLabel)
 				]),
-				E('div', { 'class': 'sh-card-badge sh-status-badge sh-status-' + statusClass }, [
-					statusIcon + ' ' + statusText
-				])
+				E('span', {
+					'class': 'sh-service-status ' + statusClass
+				}, service.running ? _('Running') : _('Stopped'))
 			]),
-			E('div', { 'class': 'sh-card-body' }, [
-				E('div', { 'style': 'display: flex; align-items: center; gap: 8px; margin-bottom: 16px;' }, [
-					E('span', { 'style': 'font-size: 16px;' }, enabledIcon),
-					E('span', { 'style': 'font-weight: 600; color: var(--sh-text-secondary);' },
-						'Autostart: ' + enabledText)
-				]),
-				E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' },
-					this.renderActionButtons(service)
-				)
+			E('div', { 'class': 'sh-service-actions' }, [
+				this.renderActionButton(service, service.running ? 'stop' : 'start'),
+				this.renderActionButton(service, 'restart'),
+				this.renderActionButton(service, service.enabled ? 'disable' : 'enable'),
+				E('button', {
+					'class': 'sh-btn sh-btn-ghost',
+					'type': 'button',
+					'click': ui.createHandlerFn(this, 'showServiceDetails', service)
+				}, _('Details'))
 			])
 		]);
 	},
 
-	renderActionButtons: function(service) {
-		var buttons = [];
-
-		// Start button (only if stopped)
-		if (!service.running) {
-			buttons.push(E('button', {
-				'class': 'sh-btn sh-btn-success',
-				'click': L.bind(this.performAction, this, service.name, 'start')
-			}, [
-				E('span', {}, '▶️'),
-				E('span', {}, 'Start')
-			]));
-		}
-
-		// Stop button (only if running)
-		if (service.running) {
-			buttons.push(E('button', {
-				'class': 'sh-btn sh-btn-danger',
-				'click': L.bind(this.performAction, this, service.name, 'stop')
-			}, [
-				E('span', {}, '⏹️'),
-				E('span', {}, 'Stop')
-			]));
-		}
-
-		// Restart button
-		buttons.push(E('button', {
-			'class': 'sh-btn sh-btn-warning',
-			'click': L.bind(this.performAction, this, service.name, 'restart')
-		}, [
-			E('span', {}, '🔄'),
-			E('span', {}, 'Restart')
-		]));
-
-		// Enable/Disable button
-		if (service.enabled) {
-			buttons.push(E('button', {
-				'class': 'sh-btn sh-btn-secondary',
-				'click': L.bind(this.performAction, this, service.name, 'disable')
-			}, [
-				E('span', {}, '✗'),
-				E('span', {}, 'Disable')
-			]));
-		} else {
-			buttons.push(E('button', {
-				'class': 'sh-btn sh-btn-primary',
-				'click': L.bind(this.performAction, this, service.name, 'enable')
-			}, [
-				E('span', {}, '✓'),
-				E('span', {}, 'Enable')
-			]));
-		}
-
-		return buttons;
-	},
-
-	getStats: function() {
-		var stats = {
-			total: this.services.length,
-			running: 0,
-			stopped: 0,
-			enabled: 0,
-			disabled: 0
+	renderActionButton: function(service, action) {
+		var labels = {
+			start: _('Start'),
+			stop: _('Stop'),
+			restart: _('Restart'),
+			enable: _('Enable'),
+			disable: _('Disable')
 		};
 
-		this.services.forEach(function(service) {
-			if (service.running) stats.running++;
-			else stats.stopped++;
-			if (service.enabled) stats.enabled++;
-			else stats.disabled++;
-		});
-
-		return stats;
+		return E('button', {
+			'class': 'sh-btn sh-btn-action',
+			'type': 'button',
+			'click': ui.createHandlerFn(this, 'handleServiceAction', service, action)
+		}, labels[action] || action);
 	},
 
-	performAction: function(service, action) {
-		ui.showModal(_('Performing Action'), [
-			E('p', { 'class': 'spinning' }, _('Executing %s on service %s...').format(action, service))
+	handleServiceAction: function(service, action) {
+		ui.showModal(_('Service action'), [
+			E('p', { 'class': 'spinning' }, _('Executing ') + action + ' ' + service.name + ' ...')
 		]);
 
-		API.serviceAction(service, action).then(function(result) {
+		return API.serviceAction({ service: service.name, action: action }).then(L.bind(function(result) {
 			ui.hideModal();
-			if (result.success) {
-				ui.addNotification(null, E('p', '✓ ' + result.message), 'info');
-				window.location.reload();
+			if (result && result.success === false) {
+				ui.addNotification(null, E('p', {}, result.message || _('Action failed')), 'error');
 			} else {
-				ui.addNotification(null, E('p', '✗ ' + result.message), 'error');
+				ui.addNotification(null, E('p', {}, result.message || _('Action completed')), 'info');
+				return API.listServices().then(L.bind(function(fresh) {
+					this.services = this.normalizeServices(fresh);
+					this.updateStats();
+					this.updateServicesGrid();
+				}, this));
 			}
-		}).catch(function(err) {
+		}, this)).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', _('Action failed: ') + err.message), 'error');
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
 		});
 	},
 
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	showServiceDetails: function(service) {
+		var details = [
+			{ label: _('Name'), value: service.name },
+			{ label: _('Enabled'), value: service.enabled ? _('Yes') : _('No') },
+			{ label: _('Running'), value: service.running ? _('Yes') : _('No') }
+		];
+
+		ui.showModal(_('Service Details'), [
+			E('div', { 'class': 'sh-service-detail' },
+				details.map(function(item) {
+					return E('div', { 'class': 'sh-service-detail-row' }, [
+						E('span', {}, item.label),
+						E('strong', {}, item.value)
+					]);
+				})),
+			E('div', { 'class': 'right' }, [
+				E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'click': ui.hideModal
+				}, _('Close'))
+			])
+		]);
+	},
+
+	updateStats: function() {
+		var stats = this.getStats();
+		var ids = {
+			'sh-stat-total': stats.total,
+			'sh-stat-running': stats.running,
+			'sh-stat-stopped': stats.stopped,
+			'sh-stat-enabled': stats.enabled
+		};
+
+		Object.keys(ids).forEach(function(id) {
+			var node = document.getElementById(id);
+			if (node) {
+				var value = node.querySelector('.value');
+				if (value) value.textContent = ids[id];
+			}
+		});
+	},
+
+	updateServicesGrid: function() {
+		var grid = document.getElementById('sh-services-grid');
+		if (!grid) return;
+		var filtered = this.getFilteredServices();
+		if (!filtered.length) {
+			dom.content(grid, [
+				E('div', { 'class': 'sh-empty-state' }, [
+					E('div', { 'class': 'sh-empty-icon' }, '📭'),
+					E('p', {}, _('No services match the current filter'))
+				])
+			]);
+			return;
+		}
+		dom.content(grid, filtered.map(this.renderServiceCard, this));
+	}
 });

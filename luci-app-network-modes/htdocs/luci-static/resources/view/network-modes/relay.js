@@ -4,240 +4,191 @@
 'require ui';
 'require network-modes.api as api';
 'require network-modes.helpers as helpers';
+'require secubox-theme/theme as Theme';
+
+Theme.init({ theme: 'dark', language: 'en' });
+
+function buildOptToggle(key, icon, label, desc, enabled) {
+	return E('div', { 'class': 'nm-toggle' }, [
+		E('div', { 'class': 'nm-toggle-info' }, [
+			E('span', { 'class': 'nm-toggle-icon' }, icon),
+			E('div', {}, [
+				E('div', { 'class': 'nm-toggle-label' }, label),
+				E('div', { 'class': 'nm-toggle-desc' }, desc)
+			])
+		]),
+		E('div', {
+			'class': 'nm-toggle-switch' + (enabled ? ' active' : ''),
+			'data-opt': key
+		})
+	]);
+}
 
 return view.extend({
 	title: _('Relay Mode'),
-	
+
 	load: function() {
 		return api.getRelayConfig();
 	},
-	
+
 	render: function(data) {
 		var config = data || {};
 		var wgConfig = config.wireguard || {};
 		var optConfig = config.optimizations || {};
-		
-		var view = E('div', { 'class': 'network-modes-dashboard' }, [
-			// Header
-			E('div', { 'class': 'nm-header' }, [
-				E('div', { 'class': 'nm-logo' }, [
-					E('div', { 'class': 'nm-logo-icon', 'style': 'background: linear-gradient(135deg, #10b981, #34d399)' }, '🔄'),
-					E('div', { 'class': 'nm-logo-text' }, ['Relay ', E('span', { 'style': 'background: linear-gradient(135deg, #10b981, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent;' }, 'Mode')])
-				])
-			]),
-			
-			// Description
-			E('div', { 'class': 'nm-alert nm-alert-info' }, [
-				E('span', { 'class': 'nm-alert-icon' }, '🔄'),
-				E('div', {}, [
-					E('div', { 'class': 'nm-alert-title' }, 'Network Relay with WireGuard'),
-					E('div', { 'class': 'nm-alert-text' }, 
-						'Extend your network with relayd bridging and secure WireGuard tunneling. ' +
-						'Optimized for LAN extension and VPN site-to-site connections.')
-				])
-			]),
-			
-			// Relay Configuration
-			E('div', { 'class': 'nm-card' }, [
-				E('div', { 'class': 'nm-card-header' }, [
-					E('div', { 'class': 'nm-card-title' }, [
-						E('span', { 'class': 'nm-card-title-icon' }, '🔗'),
-						'Relay Configuration'
-					]),
-					E('div', { 'class': 'nm-card-badge' }, config.relayd_available ? 'Relayd Available' : 'Relayd Not Installed')
-				]),
-				E('div', { 'class': 'nm-btn-group', 'style': 'margin-top: 16px' }, [
-					E('button', { 'class': 'nm-btn', 'data-action': 'relay-generate-keys', 'type': 'button' }, '🔑 Generate Keys'),
-					E('button', { 'class': 'nm-btn', 'data-action': 'relay-apply-wireguard', 'type': 'button' }, '🚀 Deploy Interface')
-				])
-				E('div', { 'class': 'nm-card-body' }, [
+
+		var hero = helpers.createHero({
+			icon: '🔁',
+			title: _('Relay Mode'),
+			subtitle: _('WiFi relay/bridge with optional WireGuard backhaul, MTU tuning, and TCP acceleration for remote sites.'),
+			gradient: 'linear-gradient(135deg,#10b981,#34d399)',
+			actions: [
+				E('button', { 'class': 'nm-btn', 'type': 'button', 'data-action': 'relay-generate-keys' }, ['🔑 ', _('Generate Keys')]),
+				E('button', { 'class': 'nm-btn', 'type': 'button', 'data-action': 'relay-apply-wireguard' }, ['🚀 ', _('Deploy Tunnel')]),
+				E('button', { 'class': 'nm-btn', 'type': 'button', 'data-action': 'relay-apply-optimizations' }, ['⚙️ ', _('Apply Optimizations')]),
+				E('button', { 'class': 'nm-btn nm-btn-primary', 'type': 'button', 'data-action': 'relay-save' }, ['💾 ', _('Save & Apply')]),
+				E('button', { 'class': 'nm-btn', 'type': 'button', 'data-action': 'relay-config' }, ['📝 ', _('Preview Config')])
+			]
+		});
+
+		var stats = E('div', { 'style': 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px;' }, [
+			helpers.createStatBadge({ label: _('Upstream'), value: (config.relay_interface || 'wlan0').toUpperCase() }),
+			helpers.createStatBadge({ label: _('LAN Bridge'), value: (config.lan_interface || 'br-lan').toUpperCase() }),
+			helpers.createStatBadge({ label: _('WireGuard'), value: wgConfig.enabled ? _('Enabled') : _('Disabled') }),
+			helpers.createStatBadge({ label: _('Relayd'), value: config.relayd_available ? _('Available') : _('Missing') })
+		]);
+
+		var relaySection = helpers.createSection({
+			title: _('Relay Interfaces'),
+			icon: '🔗',
+			badge: config.relayd_available ? _('Relayd ready') : _('Install relayd'),
+			body: [
+				E('div', { 'class': 'nm-form-grid' }, [
 					E('div', { 'class': 'nm-form-group' }, [
-						E('label', { 'class': 'nm-form-label' }, 'Relay Interface (Upstream)'),
-						E('input', { 
+						E('label', { 'class': 'nm-form-label' }, _('Upstream Interface')),
+						E('input', {
 							'class': 'nm-input',
-							'type': 'text',
-							'value': config.relay_interface || 'wlan0',
-							'id': 'relay-interface'
+							'id': 'relay-interface',
+							'value': config.relay_interface || 'wlan0'
 						}),
-						E('div', { 'class': 'nm-form-hint' }, 'Interface connected to the upstream network (e.g., wlan0 for WiFi client)')
+						E('div', { 'class': 'nm-form-hint' }, _('STA client connected to upstream WiFi or WAN'))
 					]),
-					
 					E('div', { 'class': 'nm-form-group' }, [
-						E('label', { 'class': 'nm-form-label' }, 'LAN Interface'),
-						E('input', { 
+						E('label', { 'class': 'nm-form-label' }, _('LAN Interface / Bridge')),
+						E('input', {
 							'class': 'nm-input',
-							'type': 'text',
-							'value': config.lan_interface || 'eth0',
-							'id': 'lan-interface'
+							'id': 'lan-interface',
+							'value': config.lan_interface || 'br-lan'
 						}),
-						E('div', { 'class': 'nm-form-hint' }, 'Interface for local devices')
+						E('div', { 'class': 'nm-form-hint' }, _('Bridge containing downstream Ethernet/WiFi AP'))
 					])
-				])
-			]),
-			
-			// WireGuard Configuration
-			E('div', { 'class': 'nm-card' }, [
-				E('div', { 'class': 'nm-card-header' }, [
-					E('div', { 'class': 'nm-card-title' }, [
-						E('span', { 'class': 'nm-card-title-icon' }, '🔐'),
-						'WireGuard VPN'
-					]),
-					E('div', { 'class': 'nm-card-badge' }, (config.wg_interfaces || []).length + ' tunnels')
 				]),
-				E('div', { 'class': 'nm-btn-group', 'style': 'margin-top: 12px' }, [
-					E('button', { 'class': 'nm-btn', 'data-action': 'relay-apply-optimizations', 'type': 'button' }, '⚙️ Apply Optimizations')
+				helpers.createList([
+					{ title: _('Relayd pseudo-bridge'), description: _('Extends upstream DHCP/NAT to LAN devices'), suffix: E('span', { 'class': 'nm-badge' }, _('Layer 3+2')) },
+					{ title: _('Per-mode backups'), description: _('Auto snapshot /etc/config/network before switching'), suffix: E('span', { 'class': 'nm-badge' }, _('Safety')) }
 				])
-				E('div', { 'class': 'nm-card-body' }, [
-					E('div', { 'class': 'nm-toggle' }, [
-						E('div', { 'class': 'nm-toggle-info' }, [
-							E('span', { 'class': 'nm-toggle-icon' }, '🔐'),
-							E('div', {}, [
-								E('div', { 'class': 'nm-toggle-label' }, 'Enable WireGuard'),
-								E('div', { 'class': 'nm-toggle-desc' }, 'Route traffic through WireGuard tunnel')
-							])
-						]),
-						E('div', { 
-							'class': 'nm-toggle-switch' + (wgConfig.enabled ? ' active' : ''),
-							'id': 'toggle-wg'
-						})
+			]
+		});
+
+		var wgSection = helpers.createSection({
+			title: _('WireGuard Backhaul'),
+			icon: '🔐',
+			badge: (config.wg_interfaces || []).length + ' ' + _('interfaces'),
+			body: [
+				E('div', { 'style': 'margin-bottom:12px;' }, [
+					E('button', { 'class': 'nm-btn', 'type': 'button', 'data-action': 'relay-generate-keys' }, '🔑 ' + _('Generate Keys')),
+					' ',
+					E('button', { 'class': 'nm-btn', 'type': 'button', 'data-action': 'relay-apply-wireguard' }, '🚀 ' + _('Deploy Interface'))
+				]),
+				E('div', { 'class': 'nm-toggle' }, [
+					E('div', { 'class': 'nm-toggle-info' }, [
+						E('span', { 'class': 'nm-toggle-icon' }, '🔐'),
+						E('div', {}, [
+							E('div', { 'class': 'nm-toggle-label' }, _('Enable WireGuard')),
+							E('div', { 'class': 'nm-toggle-desc' }, _('Route relay traffic through secure tunnel'))
+						])
 					]),
-					
-					E('div', { 'class': 'nm-form-group', 'style': 'margin-top: 16px' }, [
-						E('label', { 'class': 'nm-form-label' }, 'WireGuard Interface'),
+					E('div', { 'class': 'nm-toggle-switch' + (wgConfig.enabled ? ' active' : ''), 'id': 'toggle-wg' })
+				]),
+				E('div', { 'class': 'nm-form-grid', 'style': 'margin-top:16px;' }, [
+					E('div', { 'class': 'nm-form-group' }, [
+						E('label', { 'class': 'nm-form-label' }, _('WireGuard Interface')),
 						E('select', { 'class': 'nm-select', 'id': 'wg-interface' },
-							(config.wg_interfaces || ['wg0']).length > 0 ?
 							(config.wg_interfaces || ['wg0']).map(function(iface) {
-								return E('option', { 
+								return E('option', {
 									'value': iface,
 									'selected': iface === wgConfig.interface
 								}, iface);
-							}) :
-							[E('option', { 'value': '' }, 'No WireGuard interfaces')]
+							})
 						)
 					]),
-					
 					E('div', { 'class': 'nm-form-group' }, [
-						E('label', { 'class': 'nm-form-label' }, 'MTU'),
-						E('input', { 
+						E('label', { 'class': 'nm-form-label' }, _('Tunnel MTU')),
+						E('input', {
 							'class': 'nm-input',
 							'type': 'number',
-							'value': wgConfig.mtu || 1420,
 							'id': 'wg-mtu',
+							'value': wgConfig.mtu || 1420,
 							'min': '1280',
 							'max': '1500'
-						}),
-						E('div', { 'class': 'nm-form-hint' }, 'WireGuard tunnel MTU (recommended: 1420)')
+						})
 					])
 				])
-			]),
-			
-			// Optimizations
-			E('div', { 'class': 'nm-card' }, [
-				E('div', { 'class': 'nm-card-header' }, [
-					E('div', { 'class': 'nm-card-title' }, [
-						E('span', { 'class': 'nm-card-title-icon' }, '⚡'),
-						'Network Optimizations'
-					])
+			]
+		});
+
+		var optimSection = helpers.createSection({
+			title: _('Performance Optimizations'),
+			icon: '⚡',
+			body: [
+				buildOptToggle('mtu_optimization', '📏', _('MTU Optimization'), _('Auto-detect optimum MTU for relay path'), optConfig.mtu_optimization),
+				buildOptToggle('mss_clamping', '✂️', _('MSS Clamping'), _('Prevent TCP fragmentation issues'), optConfig.mss_clamping),
+				buildOptToggle('tcp_optimization', '🚀', _('TCP Acceleration'), _('Enable BBR and tcp_fastopen'), optConfig.tcp_optimization),
+				E('div', { 'class': 'nm-form-group', 'style': 'margin-top:16px;' }, [
+					E('label', { 'class': 'nm-form-label' }, _('Conntrack Max')),
+					E('input', {
+						'class': 'nm-input',
+						'type': 'number',
+						'id': 'conntrack-max',
+						'value': optConfig.conntrack_max || 16384,
+						'min': '1024',
+						'max': '262144'
+					}),
+					E('div', { 'class': 'nm-form-hint' }, _('Increase for busy relays (RAM usage grows accordingly)'))
 				]),
-				E('div', { 'class': 'nm-card-body' }, [
-					E('div', { 'class': 'nm-toggle' }, [
-						E('div', { 'class': 'nm-toggle-info' }, [
-							E('span', { 'class': 'nm-toggle-icon' }, '📏'),
-							E('div', {}, [
-								E('div', { 'class': 'nm-toggle-label' }, 'MTU Optimization'),
-								E('div', { 'class': 'nm-toggle-desc' }, 'Auto-adjust MTU for optimal throughput')
-							])
-						]),
-						E('div', { 
-							'class': 'nm-toggle-switch' + (optConfig.mtu_optimization ? ' active' : ''),
-							'data-opt': 'mtu_optimization'
-						})
-					]),
-					
-					E('div', { 'class': 'nm-toggle' }, [
-						E('div', { 'class': 'nm-toggle-info' }, [
-							E('span', { 'class': 'nm-toggle-icon' }, '✂️'),
-							E('div', {}, [
-								E('div', { 'class': 'nm-toggle-label' }, 'MSS Clamping'),
-								E('div', { 'class': 'nm-toggle-desc' }, 'Fix TCP fragmentation issues')
-							])
-						]),
-						E('div', { 
-							'class': 'nm-toggle-switch' + (optConfig.mss_clamping ? ' active' : ''),
-							'data-opt': 'mss_clamping'
-						})
-					]),
-					
-					E('div', { 'class': 'nm-toggle' }, [
-						E('div', { 'class': 'nm-toggle-info' }, [
-							E('span', { 'class': 'nm-toggle-icon' }, '🚀'),
-							E('div', {}, [
-								E('div', { 'class': 'nm-toggle-label' }, 'TCP Optimization'),
-								E('div', { 'class': 'nm-toggle-desc' }, 'Enable TCP BBR and fast open')
-							])
-						]),
-						E('div', { 
-							'class': 'nm-toggle-switch' + (optConfig.tcp_optimization ? ' active' : ''),
-							'data-opt': 'tcp_optimization'
-						})
-					]),
-					
-					E('div', { 'class': 'nm-form-group', 'style': 'margin-top: 16px' }, [
-						E('label', { 'class': 'nm-form-label' }, 'Connection Tracking Max'),
-						E('input', { 
-							'class': 'nm-input',
-							'type': 'number',
-							'value': optConfig.conntrack_max || 16384,
-							'id': 'conntrack-max',
-							'min': '1024',
-							'max': '262144'
-						}),
-						E('div', { 'class': 'nm-form-hint' }, 'Maximum tracked connections (higher = more memory)')
-					])
-				])
-			]),
-			
-			// Actions
-			E('div', { 'class': 'nm-btn-group' }, [
-				E('button', { 'class': 'nm-btn nm-btn-primary', 'data-action': 'relay-save', 'type': 'button' }, [
-					E('span', {}, '💾'),
-					'Save Settings'
-				]),
-				E('button', { 'class': 'nm-btn', 'data-action': 'relay-config', 'type': 'button' }, [
-					E('span', {}, '📝'),
-					'Generate Config'
-				])
-			])
+				E('button', { 'class': 'nm-btn', 'type': 'button', 'data-action': 'relay-apply-optimizations' }, '⚡ ' + _('Run Optimization Tasks'))
+			]
+		});
+
+		var container = E('div', { 'class': 'network-modes-dashboard relay-mode' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') }),
+			hero,
+			stats,
+			relaySection,
+			wgSection,
+			optimSection
 		]);
-		
-		// Toggle handlers
-		view.querySelectorAll('.nm-toggle-switch').forEach(function(toggle) {
+
+		container.querySelectorAll('.nm-toggle-switch').forEach(function(toggle) {
 			toggle.addEventListener('click', function() {
 				this.classList.toggle('active');
 			});
 		});
-		
-		// Include CSS
-		var cssLink = E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') });
-		document.head.appendChild(cssLink);
-		
-		this.bindRelayActions(view);
-		
-		return view;
+
+		this.bindRelayActions(container);
+		return container;
 	},
-	
+
 	bindRelayActions: function(container) {
 		var saveBtn = container.querySelector('[data-action="relay-save"]');
 		var configBtn = container.querySelector('[data-action="relay-config"]');
+		var generateBtn = container.querySelector('[data-action="relay-generate-keys"]');
+		var deployBtn = container.querySelector('[data-action="relay-apply-wireguard"]');
+		var optimizeBtn = container.querySelector('[data-action="relay-apply-optimizations"]');
 
 		if (saveBtn)
 			saveBtn.addEventListener('click', ui.createHandlerFn(this, 'saveRelaySettings', container));
 		if (configBtn)
 			configBtn.addEventListener('click', ui.createHandlerFn(helpers, helpers.showGeneratedConfig, 'relay'));
-		var generateBtn = container.querySelector('[data-action="relay-generate-keys"]');
-		var deployBtn = container.querySelector('[data-action="relay-apply-wireguard"]');
-		var optimizeBtn = container.querySelector('[data-action="relay-apply-optimizations"]');
-
 		if (generateBtn)
 			generateBtn.addEventListener('click', ui.createHandlerFn(this, 'generateWireguardKeys'));
 		if (deployBtn)

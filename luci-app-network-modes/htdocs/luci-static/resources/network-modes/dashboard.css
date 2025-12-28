@@ -329,6 +329,17 @@
 	color: white;
 }
 
+.nm-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	border-radius: 20px;
+	background: rgba(148,163,184,0.2);
+	font-size: 12px;
+	color: var(--nm-text-secondary);
+}
+
 .nm-card-body {
 	padding: 20px;
 }
@@ -451,6 +462,12 @@
 	background: var(--nm-bg-tertiary);
 	border-radius: var(--nm-radius);
 	margin-bottom: 10px;
+}
+
+.nm-toggle-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
 }
 
 .nm-toggle-info {
@@ -617,6 +634,96 @@
 	background: var(--nm-mode-gradient);
 	border: none;
 	color: white;
+}
+
+/* Hero + Stepper */
+.nm-hero {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 20px;
+	width: 100%;
+}
+
+.nm-hero-badge {
+	min-width: 120px;
+}
+
+.nm-stepper {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-bottom: 20px;
+}
+
+.nm-stepper-step {
+	display: flex;
+	gap: 12px;
+	padding: 12px;
+	border: 1px solid rgba(148,163,184,0.25);
+	border-radius: 10px;
+	background: rgba(15,23,42,0.35);
+	align-items: center;
+}
+
+.nm-stepper-step.active {
+	border-color: var(--nm-accent-blue);
+	box-shadow: 0 0 12px rgba(59,130,246,0.35);
+}
+
+.nm-stepper-step.complete {
+	border-color: var(--nm-accent-green);
+}
+
+.nm-stepper-index {
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(15,23,42,0.8);
+	border: 1px solid rgba(148,163,184,0.35);
+	font-weight: 600;
+}
+
+.nm-stepper-step.active .nm-stepper-index {
+	background: var(--nm-accent-blue);
+	color: #0f172a;
+	border-color: transparent;
+}
+
+.nm-stepper-step.complete .nm-stepper-index {
+	background: var(--nm-accent-green);
+	color: #0f172a;
+}
+
+.nm-stepper-info {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.nm-stepper-title {
+	font-weight: 600;
+}
+
+.nm-stepper-desc {
+	color: #94a3b8;
+	font-size: 13px;
+}
+
+/* Wizard cards */
+.nm-wizard-grid .wizard-card {
+	background: rgba(15,23,42,0.85);
+	border: 1px solid rgba(148,163,184,0.25);
+	border-radius: 16px;
+	padding: 20px;
+	box-shadow: 0 10px 25px rgba(0,0,0,0.35);
+}
+
+.nm-wizard-grid .wizard-card.active {
+	border-color: var(--nm-accent-green);
+	box-shadow: 0 0 24px rgba(34,197,94,0.35);
 }
 
 .nm-btn-primary:hover {

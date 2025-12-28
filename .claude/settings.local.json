@@ -146,7 +146,14 @@
       "Bash(gh run view:*)",
       "Bash(/tmp/deploy-system-hub-overview-fix.sh)",
       "Bash(./secubox-tools/deploy-network-modes.sh:*)",
-      "Bash(/tmp/generalize-makefile-filemodes.sh)"
+      "Bash(/tmp/generalize-makefile-filemodes.sh)",
+      "Bash(for file in luci-theme-secubox/htdocs/luci-static/resources/secubox-theme/i18n/*.json)",
+      "Bash(./deploy-theme.sh:*)",
+      "Bash(./deploy-modules-with-theme.sh:*)",
+      "Bash(luci-app-network-modes/htdocs/luci-static/resources/view/network-modes/overview.js )",
+      "Bash(luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/overview.js )",
+      "Bash(luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/services.js )",
+      "Bash(deploy-modules-with-theme.sh)"
     ]
   }
 }

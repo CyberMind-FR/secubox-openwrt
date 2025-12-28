@@ -909,6 +909,67 @@ update_settings() {
 			[ -n "$lan_subnet" ] && uci set network-modes.travel.lan_subnet="$lan_subnet"
 			[ -n "$lan_netmask" ] && uci set network-modes.travel.lan_netmask="$lan_netmask"
 			;;
+		doublenat)
+			json_get_var wan_interface wan_interface
+			json_get_var wan_protocol wan_protocol
+			json_get_var lan_interface lan_interface
+			json_get_var lan_ip lan_ip
+			json_get_var lan_netmask lan_netmask
+			json_get_var guest_network guest_network
+			json_get_var isolate_guest isolate_guest
+			json_get_var upnp_enabled upnp_enabled
+			json_get_var dmz_host dmz_host
+
+			[ -n "$wan_interface" ] && uci set network-modes.doublenat.wan_interface="$wan_interface"
+			[ -n "$wan_protocol" ] && uci set network-modes.doublenat.wan_protocol="$wan_protocol"
+			[ -n "$lan_interface" ] && uci set network-modes.doublenat.lan_interface="$lan_interface"
+			[ -n "$lan_ip" ] && uci set network-modes.doublenat.lan_ip="$lan_ip"
+			[ -n "$lan_netmask" ] && uci set network-modes.doublenat.lan_netmask="$lan_netmask"
+			[ -n "$guest_network" ] && uci set network-modes.doublenat.guest_network="$guest_network"
+			[ -n "$isolate_guest" ] && uci set network-modes.doublenat.isolate_guest="$isolate_guest"
+			[ -n "$upnp_enabled" ] && uci set network-modes.doublenat.upnp_enabled="$upnp_enabled"
+			[ -n "$dmz_host" ] && uci set network-modes.doublenat.dmz_host="$dmz_host"
+			;;
+		multiwan)
+			json_get_var wan_primary wan_primary
+			json_get_var wan_secondary wan_secondary
+			json_get_var policy policy
+			json_get_var tracking_host tracking_host
+			json_get_var tracking_interval tracking_interval
+			json_get_var failover_hold failover_hold
+			json_get_var load_balance load_balance
+			json_get_var use_mwan3 use_mwan3
+
+			[ -n "$wan_primary" ] && uci set network-modes.multiwan.wan_primary="$wan_primary"
+			[ -n "$wan_secondary" ] && uci set network-modes.multiwan.wan_secondary="$wan_secondary"
+			[ -n "$policy" ] && uci set network-modes.multiwan.policy="$policy"
+			[ -n "$tracking_host" ] && uci set network-modes.multiwan.tracking_host="$tracking_host"
+			[ -n "$tracking_interval" ] && uci set network-modes.multiwan.tracking_interval="$tracking_interval"
+			[ -n "$failover_hold" ] && uci set network-modes.multiwan.failover_hold="$failover_hold"
+			[ -n "$load_balance" ] && uci set network-modes.multiwan.load_balance="$load_balance"
+			[ -n "$use_mwan3" ] && uci set network-modes.multiwan.use_mwan3="$use_mwan3"
+			;;
+		vpnrelay)
+			json_get_var vpn_type vpn_type
+			json_get_var vpn_provider vpn_provider
+			json_get_var wg_interface wg_interface
+			json_get_var openvpn_profile openvpn_profile
+			json_get_var upstream_interface upstream_interface
+			json_get_var policy_routing policy_routing
+			json_get_var dns_override dns_override
+			json_get_var kill_switch kill_switch
+			json_get_var lan_bypass lan_bypass
+
+			[ -n "$vpn_type" ] && uci set network-modes.vpnrelay.vpn_type="$vpn_type"
+			[ -n "$vpn_provider" ] && uci set network-modes.vpnrelay.vpn_provider="$vpn_provider"
+			[ -n "$wg_interface" ] && uci set network-modes.vpnrelay.wg_interface="$wg_interface"
+			[ -n "$openvpn_profile" ] && uci set network-modes.vpnrelay.openvpn_profile="$openvpn_profile"
+			[ -n "$upstream_interface" ] && uci set network-modes.vpnrelay.upstream_interface="$upstream_interface"
+			[ -n "$policy_routing" ] && uci set network-modes.vpnrelay.policy_routing="$policy_routing"
+			[ -n "$dns_override" ] && uci set network-modes.vpnrelay.dns_override="$dns_override"
+			[ -n "$kill_switch" ] && uci set network-modes.vpnrelay.kill_switch="$kill_switch"
+			[ -n "$lan_bypass" ] && uci set network-modes.vpnrelay.lan_bypass="$lan_bypass"
+			;;
 		*)
 			json_add_boolean "success" 0
 			json_add_string "error" "Invalid mode"
@@ -1692,12 +1753,137 @@ config wifi-iface 'travel_ap'
     option key 'TravelSafe123!'
 
 # /etc/config/firewall
-config zone
+	config zone
     option name 'wan'
     option input 'REJECT'
     option output 'ACCEPT'
     option forward 'REJECT'
     option masq '1'"
+			;;
+		doublenat)
+			local lan_ip=$(uci -q get network-modes.doublenat.lan_ip || echo "10.10.0.1")
+			local lan_netmask=$(uci -q get network-modes.doublenat.lan_netmask || echo "255.255.255.0")
+			local guest=$(uci -q get network-modes.doublenat.guest_network || echo "br-guest")
+			config="# Double NAT mode
+# /etc/config/network
+
+config interface 'wan'
+    option proto 'dhcp'
+    option device 'eth1'
+
+config interface 'lan'
+    option proto 'static'
+    option ipaddr '$lan_ip'
+    option netmask '$lan_netmask'
+    option device 'br-lan'
+
+config interface '$guest'
+    option proto 'static'
+    option ipaddr '172.16.0.1'
+    option netmask '255.255.255.0'
+
+# /etc/config/firewall
+config zone
+    option name 'lan'
+    option input 'ACCEPT'
+    option output 'ACCEPT'
+    option forward 'REJECT'
+    list network 'lan'
+
+config zone
+    option name 'guest'
+    option input 'REJECT'
+    option output 'ACCEPT'
+    option forward 'REJECT'
+    list network '$guest'
+
+config forwarding
+    option src 'lan'
+    option dest 'wan'"
+			;;
+		multiwan)
+			local primary=$(uci -q get network-modes.multiwan.wan_primary || echo "eth1")
+			local secondary=$(uci -q get network-modes.multiwan.wan_secondary || echo "wwan0")
+			local host=$(uci -q get network-modes.multiwan.tracking_host || echo "8.8.8.8")
+			config="# Multi-WAN (mwan3) snippet
+# /etc/config/mwan3
+
+config interface '$primary'
+    option enabled '1'
+    option reliability '1'
+    option initial_state 'online'
+    option track_method 'ping'
+    list track_ip '$host'
+
+config interface '$secondary'
+    option enabled '1'
+    option reliability '1'
+    option initial_state 'online'
+    option timeout '5'
+    option track_method 'ping'
+    list track_ip '$host'
+
+config member 'member_primary'
+    option interface '$primary'
+    option metric '1'
+    option weight '3'
+
+config member 'member_secondary'
+    option interface '$secondary'
+    option metric '2'
+    option weight '1'
+
+config policy 'balanced'
+    list use_member 'member_primary'
+    list use_member 'member_secondary'
+
+config policy 'failover'
+    list use_member 'member_primary'
+    list use_member 'member_secondary'
+    option last_resort 'unreachable'"
+			;;
+		vpnrelay)
+			local vpn_type=$(uci -q get network-modes.vpnrelay.vpn_type || echo "wireguard")
+			local wg_iface=$(uci -q get network-modes.vpnrelay.wg_interface || echo "wg0")
+			config="# VPN Relay example
+# /etc/config/network
+
+config interface '$wg_iface'
+    option proto 'wireguard'
+    option private_key '<private>'
+    list addresses '10.8.0.2/32'
+
+config wireguard_$wg_iface
+    option public_key '<server_pub>'
+    option endpoint_host 'vpn.example.com'
+    option endpoint_port '51820'
+    option persistent_keepalive '25'
+    list allowed_ips '0.0.0.0/0'
+
+# /etc/config/firewall
+config zone
+    option name 'vpn'
+    option input 'ACCEPT'
+    option output 'ACCEPT'
+    option forward 'REJECT'
+    option masq '1'
+    list network '$wg_iface'
+
+config forwarding
+    option src 'lan'
+    option dest 'vpn'
+
+config rule
+    option name 'Kill-Switch'
+    option src 'lan'
+    option dest 'wan'
+    option proto 'all'
+    option target 'REJECT'
+    option enabled '1'
+
+# Force DNS over VPN
+uci set dhcp.@dnsmasq[0].server='10.8.0.1'
+uci commit dhcp && /etc/init.d/dnsmasq restart"
 			;;
 	esac
 	
@@ -1742,80 +1928,48 @@ get_available_modes() {
 
 	local current_mode=$(uci -q get network-modes.config.current_mode || echo "router")
 
-	# Router mode
-	json_add_object
-	json_add_string "id" "router"
-	json_add_string "name" "Router"
-	json_add_string "description" "Mode routeur complet avec NAT, DHCP et firewall"
-	json_add_string "icon" "🌐"
-	json_add_boolean "current" "$([ "$current_mode" = "router" ] && echo 1 || echo 0)"
-	json_add_array "features"
-	json_add_string "" "NAT activé"
-	json_add_string "" "Serveur DHCP"
-	json_add_string "" "Firewall (zones WAN/LAN)"
-	json_add_string "" "Proxy optionnel"
-	json_close_array
-	json_close_object
+	add_mode() {
+		local id="$1"; shift
+		local name="$1"; shift
+		local icon="$1"; shift
+		local desc="$1"; shift
+		json_add_object
+		json_add_string "id" "$id"
+		json_add_string "name" "$name"
+		json_add_string "description" "$desc"
+		json_add_string "icon" "$icon"
+		json_add_boolean "current" "$([ "$current_mode" = "$id" ] && echo 1 || echo 0)"
+		json_add_array "features"
+		for feature in "$@"; do
+			json_add_string "" "$feature"
+		done
+		json_close_array
+		json_close_object
+	}
 
-	# Access Point mode
-	json_add_object
-	json_add_string "id" "accesspoint"
-	json_add_string "name" "Access Point"
-	json_add_string "description" "Point d'accès WiFi en mode bridge, pas de NAT"
-	json_add_string "icon" "📶"
-	json_add_boolean "current" "$([ "$current_mode" = "accesspoint" ] && echo 1 || echo 0)"
-	json_add_array "features"
-	json_add_string "" "Bridge WAN+LAN"
-	json_add_string "" "Pas de DHCP (mode client)"
-	json_add_string "" "Pas de firewall"
-	json_add_string "" "Optimisations WiFi 802.11r/k/v"
-	json_close_array
-	json_close_object
+	add_mode "router" "Router" "🌐" "Mode routeur complet avec NAT, DHCP et firewall" \
+		"NAT activé" "Serveur DHCP" "Firewall (zones WAN/LAN)" "Proxy optionnel"
 
-	# Repeater/Relay mode
-	json_add_object
-	json_add_string "id" "relay"
-	json_add_string "name" "Repeater"
-	json_add_string "description" "Client WiFi + Répéteur AP avec optimisations"
-	json_add_string "icon" "🔄"
-	json_add_boolean "current" "$([ "$current_mode" = "relay" ] && echo 1 || echo 0)"
-	json_add_array "features"
-	json_add_string "" "Client WiFi (sta0)"
-	json_add_string "" "AP répéteur (ap0)"
-	json_add_string "" "WireGuard optionnel"
-	json_add_string "" "Optimisations MTU/MSS"
-	json_close_array
-	json_close_object
+	add_mode "doublenat" "Double NAT" "🔁" "Derrière box opérateur avec réseau isolé" \
+		"WAN DHCP client" "Deuxième LAN privé" "Isolation invitée" "UPnP désactivé"
 
-	# Travel router mode
-	json_add_object
-	json_add_string "id" "travel"
-	json_add_string "name" "Travel Router"
-	json_add_string "description" "Portable hotspot WiFi depuis l'ethernet ou WiFi hôtel"
-	json_add_string "icon" "✈️"
-	json_add_boolean "current" "$([ "$current_mode" = "travel" ] && echo 1 || echo 0)"
-	json_add_array "features"
-	json_add_string "" "Client WiFi + scan SSID"
-	json_add_string "" "Clone MAC WAN"
-	json_add_string "" "Hotspot privé WPA3"
-	json_add_string "" "NAT + DHCP isolé"
-	json_close_array
-	json_close_object
+	add_mode "multiwan" "Multi-WAN" "⚡" "Agrégation et bascule multi-liens WAN" \
+		"Double WAN" "Suivi de santé" "Équilibrage de charge" "Failover automatique"
 
-	# Bridge mode
-	json_add_object
-	json_add_string "id" "bridge"
-	json_add_string "name" "Bridge"
-	json_add_string "description" "Bridge Layer 2 pur, DHCP client"
-	json_add_string "icon" "🔗"
-	json_add_boolean "current" "$([ "$current_mode" = "bridge" ] && echo 1 || echo 0)"
-	json_add_array "features"
-	json_add_string "" "Bridge transparent L2"
-	json_add_string "" "Toutes interfaces bridgées"
-	json_add_string "" "DHCP client"
-	json_add_string "" "Pas de firewall"
-	json_close_array
-	json_close_object
+	add_mode "accesspoint" "Access Point" "📶" "Point d'accès WiFi en mode bridge" \
+		"Bridge WAN+LAN" "Pas de DHCP" "Pas de firewall" "Optimisations WiFi"
+
+	add_mode "relay" "Repeater" "🔄" "Client WiFi + Répéteur AP" \
+		"Client WiFi (sta0)" "AP répéteur (ap0)" "WireGuard optionnel" "Optimisations MTU/MSS"
+
+	add_mode "vpnrelay" "VPN Relay" "🛡️" "Tunnels WireGuard/OpenVPN avec policy routing" \
+		"Policy routing" "Kill-switch" "DNS sécurisé" "Split tunnel"
+
+	add_mode "travel" "Travel Router" "✈️" "Hotspot personnel depuis WiFi/ethernet hôtel" \
+		"Client WiFi + scan" "Clone MAC WAN" "Hotspot WPA3" "NAT + DHCP isolé"
+
+	add_mode "bridge" "Bridge" "🔗" "Bridge Layer 2 pur, DHCP client" \
+		"Bridge transparent L2" "Toutes interfaces bridgées" "DHCP client" "Pas de firewall"
 
 	json_close_array
 	json_dump
@@ -1831,7 +1985,7 @@ set_mode() {
 
 	# Validate mode
 	case "$target_mode" in
-		router|accesspoint|relay|bridge|sniffer|travel)
+		router|multiwan|doublenat|accesspoint|relay|vpnrelay|bridge|sniffer|travel)
 			;;
 		*)
 			json_add_boolean "success" 0
@@ -1956,6 +2110,128 @@ preview_changes() {
 	json_dump
 }
 
+# Multi-WAN configuration
+get_multiwan_config() {
+	json_init
+
+	json_add_string "mode" "multiwan"
+	json_add_string "name" "$(uci -q get network-modes.multiwan.name || echo 'Multi-WAN Controller')"
+	json_add_string "description" "$(uci -q get network-modes.multiwan.description || echo 'Dual-WAN bonding with health tracking')"
+
+	json_add_object "policy"
+	json_add_string "profile" "$(uci -q get network-modes.multiwan.policy || echo 'balanced')"
+	json_add_boolean "load_balance" "$(uci -q get network-modes.multiwan.load_balance || echo 1)"
+	json_add_string "tracking_host" "$(uci -q get network-modes.multiwan.tracking_host || echo '8.8.8.8')"
+	json_add_int "tracking_interval" "$(uci -q get network-modes.multiwan.tracking_interval || echo 30)"
+	json_add_int "failover_hold" "$(uci -q get network-modes.multiwan.failover_hold || echo 45)"
+	json_close_object
+
+	json_add_object "links"
+	json_add_string "primary" "$(uci -q get network-modes.multiwan.wan_primary || echo 'eth1')"
+	json_add_string "secondary" "$(uci -q get network-modes.multiwan.wan_secondary || echo 'wwan0')"
+	json_add_boolean "mwan3_enabled" "$(uci -q get network-modes.multiwan.use_mwan3 || echo 0)"
+	json_close_object
+
+	json_add_array "wan_candidates"
+	for iface in $(ls /sys/class/net 2>/dev/null); do
+		[ "$iface" = "lo" ] && continue
+		case "$iface" in
+			br-*|ifb*|gre*|ip6*|mon*) continue ;;
+		esac
+		local operstate="$(cat /sys/class/net/$iface/operstate 2>/dev/null)"
+		local mac="$(cat /sys/class/net/$iface/address 2>/dev/null)"
+		json_add_object
+		json_add_string "name" "$iface"
+		json_add_boolean "up" "$([ "$operstate" = "up" ] && echo 1 || echo 0)"
+		json_add_string "mac" "$mac"
+		json_close_object
+	done
+	json_close_array
+
+	json_dump
+}
+
+# VPN relay configuration
+get_vpnrelay_config() {
+	json_init
+
+	json_add_string "mode" "vpnrelay"
+	json_add_string "name" "$(uci -q get network-modes.vpnrelay.name || echo 'VPN Relay')"
+	json_add_string "description" "$(uci -q get network-modes.vpnrelay.description || echo 'Route LAN traffic through VPN tunnels with policy routing')"
+
+	json_add_object "vpn"
+	json_add_string "type" "$(uci -q get network-modes.vpnrelay.vpn_type || echo 'wireguard')"
+	json_add_string "provider" "$(uci -q get network-modes.vpnrelay.vpn_provider || echo 'Mullvad')"
+	json_add_string "wg_interface" "$(uci -q get network-modes.vpnrelay.wg_interface || echo 'wg0')"
+	json_add_string "openvpn_profile" "$(uci -q get network-modes.vpnrelay.openvpn_profile || echo '')"
+	json_add_string "upstream_interface" "$(uci -q get network-modes.vpnrelay.upstream_interface || echo 'wan')"
+	json_close_object
+
+	json_add_object "policy"
+	json_add_boolean "policy_routing" "$(uci -q get network-modes.vpnrelay.policy_routing || echo 1)"
+	json_add_boolean "dns_override" "$(uci -q get network-modes.vpnrelay.dns_override || echo 1)"
+	json_add_boolean "kill_switch" "$(uci -q get network-modes.vpnrelay.kill_switch || echo 1)"
+	json_add_boolean "lan_bypass" "$(uci -q get network-modes.vpnrelay.lan_bypass || echo 0)"
+	json_close_object
+
+	json_add_array "wireguard_interfaces"
+	if command -v wg >/dev/null 2>&1; then
+		for iface in $(wg show interfaces 2>/dev/null); do
+			json_add_string "" "$iface"
+		done
+	fi
+	json_close_array
+
+	json_add_array "openvpn_profiles"
+	for profile in /etc/openvpn/*.ovpn /etc/openvpn/*.conf; do
+		[ -f "$profile" ] || continue
+		json_add_string "" "$(basename "$profile")"
+	done
+	json_close_array
+
+	json_add_array "available_interfaces"
+	for iface in $(ls /sys/class/net 2>/dev/null); do
+		[ "$iface" = "lo" ] && continue
+		json_add_string "" "$iface"
+	done
+	json_close_array
+
+	json_dump
+}
+
+# Double NAT configuration
+get_doublenat_config() {
+	json_init
+
+	local wan_iface=$(uci -q get network-modes.doublenat.wan_interface || echo "eth1")
+	local wan_proto=$(uci -q get network-modes.doublenat.wan_protocol || echo "dhcp")
+	local lan_iface=$(uci -q get network-modes.doublenat.lan_interface || echo "br-lan")
+	local lan_ip=$(uci -q get network-modes.doublenat.lan_ip || echo "10.10.0.1")
+	local lan_netmask=$(uci -q get network-modes.doublenat.lan_netmask || echo "255.255.255.0")
+
+	json_add_string "mode" "doublenat"
+	json_add_string "name" "$(uci -q get network-modes.doublenat.name || echo 'Double NAT')"
+	json_add_string "description" "$(uci -q get network-modes.doublenat.description || echo 'Operate behind an ISP router with isolated LAN and guest network')"
+
+	json_add_object "wan"
+	json_add_string "interface" "$wan_iface"
+	json_add_string "protocol" "$wan_proto"
+	json_close_object
+
+	json_add_object "lan"
+	json_add_string "interface" "$lan_iface"
+	json_add_string "ipaddr" "$lan_ip"
+	json_add_string "netmask" "$lan_netmask"
+	json_close_object
+
+	json_add_boolean "upnp_enabled" "$(uci -q get network-modes.doublenat.upnp_enabled || echo 0)"
+	json_add_string "guest_network" "$(uci -q get network-modes.doublenat.guest_network || echo 'br-guest')"
+	json_add_boolean "isolate_guest" "$(uci -q get network-modes.doublenat.isolate_guest || echo 1)"
+	json_add_string "dmz_host" "$(uci -q get network-modes.doublenat.dmz_host || echo '')"
+
+	json_dump
+}
+
 # Confirm mode change (cancel rollback timer)
 confirm_mode() {
 	json_init
@@ -2034,7 +2310,7 @@ rollback() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"modes":{},"get_current_mode":{},"get_available_modes":{},"set_mode":{"mode":"str"},"preview_changes":{},"apply_mode":{},"confirm_mode":{},"rollback":{},"sniffer_config":{},"ap_config":{},"relay_config":{},"router_config":{},"travel_config":{},"travel_scan_networks":{},"update_settings":{"mode":"str"},"generate_wireguard_keys":{},"apply_wireguard_config":{},"apply_mtu_clamping":{},"enable_tcp_bbr":{},"add_vhost":{"domain":"str","backend":"str","port":"int","ssl":"bool"},"generate_config":{"mode":"str"},"validate_pcap_filter":{"filter":"str"},"cleanup_old_pcaps":{}}'
+		echo '{"status":{},"modes":{},"get_current_mode":{},"get_available_modes":{},"set_mode":{"mode":"str"},"preview_changes":{},"apply_mode":{},"confirm_mode":{},"rollback":{},"sniffer_config":{},"ap_config":{},"relay_config":{},"router_config":{},"travel_config":{},"doublenat_config":{},"multiwan_config":{},"vpnrelay_config":{},"travel_scan_networks":{},"update_settings":{"mode":"str"},"generate_wireguard_keys":{},"apply_wireguard_config":{},"apply_mtu_clamping":{},"enable_tcp_bbr":{},"add_vhost":{"domain":"str","backend":"str","port":"int","ssl":"bool"},"generate_config":{"mode":"str"},"validate_pcap_filter":{"filter":"str"},"cleanup_old_pcaps":{}}'
 		;;
 	call)
 		case "$2" in
@@ -2079,6 +2355,15 @@ case "$1" in
 				;;
 			travel_config)
 				get_travel_config
+				;;
+			doublenat_config)
+				get_doublenat_config
+				;;
+			multiwan_config)
+				get_multiwan_config
+				;;
+			vpnrelay_config)
+				get_vpnrelay_config
 				;;
 			travel_scan_networks)
 				travel_scan_networks

@@ -56,16 +56,42 @@ return view.extend({
 		var status = data.status || {};
 		var modesData = (data.modes || {}).modes || [];
 		var currentMode = status.current_mode || 'router';
-		
-		var modeInfos = {
-			router: api.getModeInfo('router'),
-			accesspoint: api.getModeInfo('accesspoint'),
-			relay: api.getModeInfo('relay'),
-			travel: api.getModeInfo('travel'),
-			sniffer: api.getModeInfo('sniffer')
-		};
-		
-		var currentModeInfo = modeInfos[currentMode];
+
+		// Build a full mode map using backend data + fallbacks
+		var baseOrder = ['router', 'doublenat', 'multiwan', 'vpnrelay', 'bridge', 'accesspoint', 'relay', 'travel', 'sniffer'];
+		var modeInfos = {};
+
+		// Prime with RPC payload so description/icon/features stay in sync
+		modesData.forEach(function(mode) {
+			var fallback = api.getModeInfo(mode.id || '');
+			modeInfos[mode.id] = Object.assign({}, fallback, {
+				id: mode.id,
+				name: mode.name || (fallback && fallback.name) || mode.id,
+				icon: mode.icon || (fallback && fallback.icon) || '🌐',
+				description: mode.description || (fallback && fallback.description) || '',
+				features: Array.isArray(mode.features) && mode.features.length
+					? mode.features
+					: (fallback && fallback.features) || []
+			});
+		});
+
+		// Ensure every known mode has a definition, even if RPC omitted it
+		baseOrder.concat(['sniffer']).forEach(function(mode) {
+			if (!modeInfos[mode]) {
+				modeInfos[mode] = api.getModeInfo(mode);
+			}
+		});
+
+		// Preserve RPC ordering but guarantee canonical fallback + sniffer tab
+		var modeOrder = modesData.map(function(mode) { return mode.id; });
+		baseOrder.forEach(function(mode) {
+			if (modeOrder.indexOf(mode) === -1)
+				modeOrder.push(mode);
+		});
+		if (modeOrder.indexOf('sniffer') === -1)
+			modeOrder.push('sniffer');
+
+		var currentModeInfo = modeInfos[currentMode] || api.getModeInfo(currentMode);
 		
 		var view = E('div', { 'class': 'network-modes-dashboard' }, [
 			// Load global theme CSS
@@ -129,75 +155,126 @@ return view.extend({
 					E('table', { 'class': 'nm-comparison-table' }, [
 						E('thead', {}, [
 							E('tr', {}, [
-								E('th', {}, 'Feature'),
-								E('th', { 'class': currentMode === 'router' ? 'active-mode' : '' }, '🏠 Router'),
-								E('th', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, '🌉 Bridge'),
-								E('th', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, '📡 Access Point'),
-								E('th', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, '🔁 Repeater'),
-								E('th', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, '✈️ Travel Router')
-							])
+								E('th', {}, 'Feature')
+							].concat(baseOrder.map(function(modeId) {
+								var info = modeInfos[modeId] || api.getModeInfo(modeId);
+								return E('th', {
+									'class': currentMode === modeId ? 'active-mode' : ''
+								}, (info.icon || '') + ' ' + (info.name || modeId));
+							})))
 						]),
-						E('tbody', {}, [
-							E('tr', {}, [
-								E('td', { 'class': 'feature-label' }, 'Use Case'),
-								E('td', { 'class': currentMode === 'router' ? 'active-mode' : '' }, 'Home/Office'),
-								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'L2 Forwarding'),
-								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'WiFi Hotspot'),
-								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'WiFi Extender'),
-								E('td', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, 'Hotel / Travel kit')
-							]),
-							E('tr', {}, [
-								E('td', { 'class': 'feature-label' }, 'WAN Ports'),
-								E('td', { 'class': currentMode === 'router' ? 'active-mode' : '' }, '1+ ports'),
-								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'All bridged'),
-								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, '1 uplink'),
-								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'WiFi'),
-								E('td', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, 'WiFi or USB')
-							]),
-							E('tr', {}, [
-								E('td', { 'class': 'feature-label' }, 'LAN Ports'),
-								E('td', { 'class': currentMode === 'router' ? 'active-mode' : '' }, 'Multiple'),
-								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'All ports'),
-								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'All ports'),
-								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'All ports'),
-								E('td', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, 'All ports')
-							]),
-							E('tr', {}, [
-								E('td', { 'class': 'feature-label' }, 'WiFi Role'),
-								E('td', { 'class': currentMode === 'router' ? 'active-mode' : '' }, 'AP'),
-								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'Optional AP'),
-								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'AP only'),
-								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'Client + AP'),
-								E('td', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, 'Client + AP')
-							]),
-							E('tr', {}, [
-								E('td', { 'class': 'feature-label' }, 'DHCP Server'),
-								E('td', { 'class': currentMode === 'router' ? 'active-mode' : '' }, 'Yes'),
-								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'No'),
-								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'No'),
-								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'Yes'),
-								E('td', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, 'Yes')
-							]),
-							E('tr', {}, [
-								E('td', { 'class': 'feature-label' }, 'NAT'),
-								E('td', { 'class': currentMode === 'router' ? 'active-mode' : '' }, 'Enabled'),
-								E('td', { 'class': currentMode === 'bridge' ? 'active-mode' : '' }, 'Disabled'),
-								E('td', { 'class': currentMode === 'accesspoint' ? 'active-mode' : '' }, 'Disabled'),
-								E('td', { 'class': currentMode === 'relay' ? 'active-mode' : '' }, 'Enabled'),
-								E('td', { 'class': currentMode === 'travel' ? 'active-mode' : '' }, 'Enabled')
-							])
-						])
+						E('tbody', {}, (function() {
+								var comparisonRows = [
+									{
+										label: 'Use Case',
+										values: {
+											router: 'Home/Office',
+											doublenat: 'Behind ISP box',
+											multiwan: 'Dual uplinks',
+											vpnrelay: 'VPN gateway',
+											bridge: 'Layer 2 passthrough',
+											accesspoint: 'WiFi Hotspot',
+											relay: 'WiFi Extender',
+											travel: 'Hotel / Travel kit',
+											sniffer: 'Packet capture / TAP'
+										}
+									},
+									{
+										label: 'WAN Ports',
+										values: {
+											router: '1 port',
+											doublenat: 'WAN DHCP',
+											multiwan: '2 uplinks',
+											vpnrelay: 'VPN tunnel',
+											bridge: 'All bridged',
+											accesspoint: '1 uplink',
+											relay: 'WiFi uplink',
+											travel: 'WiFi or USB',
+											sniffer: 'Monitor source port'
+										}
+									},
+									{
+										label: 'LAN Ports',
+										values: {
+											router: 'Multiple',
+											doublenat: 'LAN + Guest',
+											multiwan: 'All ports',
+											vpnrelay: 'Policy-based',
+											bridge: 'All ports',
+											accesspoint: 'All ports',
+											relay: 'All ports',
+											travel: 'All ports',
+											sniffer: 'Mirror to capture'
+										}
+									},
+									{
+										label: 'WiFi Role',
+										values: {
+											router: 'Access Point',
+											doublenat: 'Router',
+											multiwan: 'Router',
+											vpnrelay: 'Router',
+											bridge: 'Optional AP',
+											accesspoint: 'AP only',
+											relay: 'Client + AP',
+											travel: 'Client + AP',
+											sniffer: 'Monitor mode'
+										}
+									},
+									{
+										label: 'DHCP Server',
+										values: {
+											router: 'Yes',
+											doublenat: 'Yes',
+											multiwan: 'Yes',
+											vpnrelay: 'Optional',
+											bridge: 'No',
+											accesspoint: 'No',
+											relay: 'Yes',
+											travel: 'Yes',
+											sniffer: 'No'
+										}
+									},
+									{
+										label: 'NAT',
+										values: {
+											router: 'Enabled',
+											doublenat: 'Double layer',
+											multiwan: 'Enabled',
+											vpnrelay: 'VPN NAT',
+											bridge: 'Disabled',
+											accesspoint: 'Disabled',
+											relay: 'Enabled',
+											travel: 'Enabled',
+											sniffer: 'Disabled'
+										}
+									}
+							];
+
+							return comparisonRows.map(function(row) {
+								return E('tr', {}, [
+									E('td', { 'class': 'feature-label' }, row.label)
+								].concat(baseOrder.map(function(modeId) {
+									return E('td', {
+										'class': currentMode === modeId ? 'active-mode' : ''
+									}, row.values[modeId] || '—');
+								})));
+							});
+						})())
 					])
 				])
 			]),
 
 			// Mode Selection Grid
 			E('div', { 'class': 'nm-modes-grid' },
-				Object.keys(modeInfos).map(function(modeId) {
+				modeOrder.map(function(modeId) {
 					var info = modeInfos[modeId];
+					if (!info)
+						return null;
+
 					var isActive = modeId === currentMode;
-					
-					return E('div', { 
+
+					return E('div', {
 						'class': 'nm-mode-card ' + modeId + (isActive ? ' active' : ''),
 						'click': function() {
 							if (!isActive) {
@@ -215,7 +292,7 @@ return view.extend({
 						]),
 						E('div', { 'class': 'nm-mode-description' }, info.description),
 						E('div', { 'class': 'nm-mode-features' },
-							info.features.map(function(f) {
+							(info.features || []).map(function(f) {
 								return E('span', { 'class': 'nm-mode-feature' }, [
 									E('span', { 'class': 'nm-mode-feature-icon' }, '✓'),
 									f
@@ -223,7 +300,7 @@ return view.extend({
 							})
 						)
 					]);
-				})
+				}).filter(function(card) { return !!card; })
 			),
 			
 			// Interfaces Status

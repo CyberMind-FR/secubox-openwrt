@@ -52,8 +52,81 @@ function showGeneratedConfig(mode) {
 	});
 }
 
+function createHero(options) {
+	var gradient = options.gradient || 'linear-gradient(135deg,#0f172a,#1d4ed8)';
+	return E('div', {
+		'class': 'nm-hero',
+		'style': 'background:' + gradient + ';border-radius:16px;padding:20px;margin-bottom:24px;color:#f8fafc;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;'
+	}, [
+		E('div', {}, [
+			E('div', { 'style': 'font-size:32px;margin-bottom:4px;' }, options.icon || '🌐'),
+			E('h2', { 'style': 'margin:0;font-size:24px;' }, options.title || _('Network Mode')),
+			E('p', { 'style': 'margin:4px 0 0;color:#cbd5f5;max-width:460px;' }, options.subtitle || '')
+		]),
+		E('div', { 'style': 'display:flex;gap:12px;align-items:center;flex-wrap:wrap;' }, (options.actions || []))
+	]);
+}
+
+function createStatBadge(stat) {
+	return E('div', {
+		'class': 'nm-hero-badge',
+		'style': 'background:rgba(15,23,42,.7);border:1px solid rgba(148,163,184,.4);border-radius:12px;padding:12px 16px;min-width:120px;text-align:center;'
+	}, [
+		E('div', { 'style': 'font-size:13px;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;' }, stat.label),
+		E('div', { 'style': 'font-size:20px;font-weight:600;color:#e2e8f0;' }, stat.value)
+	]);
+}
+
+function createSection(options) {
+	return E('div', { 'class': 'nm-card' }, [
+		E('div', { 'class': 'nm-card-header' }, [
+			E('div', { 'class': 'nm-card-title' }, [
+				E('span', { 'class': 'nm-card-title-icon' }, options.icon || '📦'),
+				options.title || ''
+			]),
+			options.badge ? E('div', { 'class': 'nm-card-badge' }, options.badge) : ''
+		]),
+		E('div', { 'class': 'nm-card-body' }, options.body || [])
+	]);
+}
+
+function createList(items) {
+	return E('ul', {
+		'style': 'list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:12px;'
+	}, items.map(function(item) {
+		return E('li', {
+			'style': 'padding:12px 16px;border:1px solid rgba(148,163,184,.3);border-radius:10px;display:flex;justify-content:space-between;align-items:center;'
+		}, [
+			E('div', {}, [
+				E('div', { 'style': 'font-weight:600;margin-bottom:4px;' }, item.title),
+				item.description ? E('div', { 'style': 'font-size:13px;color:#94a3b8;' }, item.description) : ''
+			]),
+			item.suffix || ''
+		]);
+	}));
+}
+
+function createStepper(steps, active) {
+	return E('div', { 'class': 'nm-stepper' }, steps.map(function(step, idx) {
+		var isActive = idx === active;
+		var isComplete = idx < active;
+		return E('div', { 'class': 'nm-stepper-step' + (isActive ? ' active' : '') + (isComplete ? ' complete' : '') }, [
+			E('div', { 'class': 'nm-stepper-index' }, isComplete ? '✓' : (idx + 1)),
+			E('div', { 'class': 'nm-stepper-info' }, [
+				E('div', { 'class': 'nm-stepper-title' }, step.title),
+				E('div', { 'class': 'nm-stepper-desc' }, step.description || '')
+			])
+		]);
+	}));
+}
+
 return {
 	isToggleActive: isToggleActive,
 	persistSettings: persistSettings,
-	showGeneratedConfig: showGeneratedConfig
+	showGeneratedConfig: showGeneratedConfig,
+	createHero: createHero,
+	createStatBadge: createStatBadge,
+	createSection: createSection,
+	createList: createList,
+	createStepper: createStepper
 };

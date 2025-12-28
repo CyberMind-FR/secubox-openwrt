@@ -33,6 +33,22 @@
 			"path": "network-modes/router"
 		}
 	},
+	"admin/secubox/network-modes/multiwan": {
+		"title": "Multi-WAN Mode",
+		"order": 35,
+		"action": {
+			"type": "view",
+			"path": "network-modes/multiwan"
+		}
+	},
+	"admin/secubox/network-modes/doublenat": {
+		"title": "Double NAT Mode",
+		"order": 37,
+		"action": {
+			"type": "view",
+			"path": "network-modes/doublenat"
+		}
+	},
 	"admin/secubox/network-modes/accesspoint": {
 		"title": "Access Point Mode",
 		"order": 40,
@@ -47,6 +63,14 @@
 		"action": {
 			"type": "view",
 			"path": "network-modes/relay"
+		}
+	},
+	"admin/secubox/network-modes/vpnrelay": {
+		"title": "VPN Relay Mode",
+		"order": 52,
+		"action": {
+			"type": "view",
+			"path": "network-modes/vpnrelay"
 		}
 	},
 	"admin/secubox/network-modes/travel": {

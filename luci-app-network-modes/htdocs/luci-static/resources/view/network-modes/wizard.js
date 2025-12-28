@@ -4,6 +4,8 @@
 'require ui';
 'require dom';
 'require poll';
+'require network-modes.helpers as helpers';
+'require secubox-theme/theme as Theme';
 
 var callGetAvailableModes = rpc.declare({
 	object: 'luci.network-modes',
@@ -48,7 +50,11 @@ var callRollback = rpc.declare({
 	expect: { }
 });
 
+Theme.init({ theme: 'dark', language: 'en' });
+
 return view.extend({
+	title: _('Network Mode Wizard'),
+
 	load: function() {
 		return Promise.all([
 			callGetAvailableModes(),
@@ -60,29 +66,39 @@ return view.extend({
 		var modes = data[0].modes || [];
 		var currentModeData = data[1] || {};
 
-		var container = E('div', { 'class': 'cbi-map' });
+		var hero = helpers.createHero({
+			icon: '🌐',
+			title: _('Network Configuration Wizard'),
+			subtitle: _('Switch between Router, Access Point, Relay, Travel, Bridge, and Sniffer topologies with automatic preview + rollback safety.'),
+			gradient: 'linear-gradient(135deg,#6366f1,#9333ea)',
+			actions: [
+				currentModeData.rollback_active ? E('button', {
+					'class': 'nm-btn nm-btn-primary',
+					'click': ui.createHandlerFn(this, 'handleConfirmMode')
+				}, ['✅ ', _('Confirm Mode')]) : null,
+				currentModeData.rollback_active ? E('button', {
+					'class': 'nm-btn',
+					'click': ui.createHandlerFn(this, 'handleRollbackNow')
+				}, ['↩ ', _('Rollback Now')]) : null
+			].filter(Boolean)
+		});
 
-		// Header
-		container.appendChild(E('h2', {}, _('Network Mode Switcher')));
-		container.appendChild(E('div', { 'class': 'cbi-section-descr' },
-			_('Sélectionnez et basculez entre différents modes réseau. Un rollback automatique de 2 minutes protège contre les configurations défectueuses.')
-		));
+		var stepper = helpers.createStepper([
+			{ title: _('Select Topology'), description: _('Pick Router / AP / Relay / Travel / Bridge / Sniffer') },
+			{ title: _('Review Changes'), description: _('Preview network config+services impacted') },
+			{ title: _('Apply Mode'), description: _('Network restarts, rollback timer starts') },
+			{ title: _('Confirm or Rollback'), description: _('2 minute confirmation window') }
+		], currentModeData.rollback_active ? 2 : 1);
 
-		// Current mode status
-		if (currentModeData.rollback_active) {
-			var remaining = currentModeData.rollback_remaining || 0;
-			container.appendChild(this.renderRollbackBanner(remaining, currentModeData.current_mode));
-		} else {
-			container.appendChild(this.renderCurrentMode(currentModeData));
-		}
+		var container = E('div', { 'class': 'network-modes-dashboard nm-wizard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') }),
+			hero,
+			stepper,
+			currentModeData.rollback_active ? this.renderRollbackBanner(currentModeData) : this.renderCurrentMode(currentModeData),
+			this.renderModesGrid(modes, currentModeData.current_mode),
+			this.renderInstructions()
+		]);
 
-		// Modes grid
-		container.appendChild(this.renderModesGrid(modes, currentModeData.current_mode));
-
-		// Instructions
-		container.appendChild(this.renderInstructions());
-
-		// Start polling if rollback is active
 		if (currentModeData.rollback_active) {
 			this.startRollbackPoll();
 		}
@@ -91,296 +107,219 @@ return view.extend({
 	},
 
 	renderCurrentMode: function(data) {
-		var section = E('div', {
-			'class': 'cbi-section',
-			'style': 'background: #1e293b; padding: 16px; border-radius: 8px; margin-bottom: 24px;'
+		return helpers.createSection({
+			title: _('Current Mode'),
+			icon: '✅',
+			badge: data.current_mode || '--',
+			body: [
+				E('p', { 'style': 'color:#94a3b8;' }, [
+					E('strong', {}, data.mode_name || data.current_mode),
+					E('br'),
+					E('span', {}, data.description || ''),
+					E('br'),
+					E('span', { 'style': 'font-size:12px;' }, _('Last change: ') + (data.last_change || _('Never')))
+				])
+			]
 		});
-
-		section.appendChild(E('h3', { 'style': 'margin: 0 0 8px 0; color: #f1f5f9;' }, _('Mode Actuel')));
-		section.appendChild(E('div', { 'style': 'color: #94a3b8; font-size: 14px;' }, [
-			E('strong', { 'style': 'color: #22c55e; font-size: 18px;' }, data.mode_name || data.current_mode),
-			E('br'),
-			E('span', {}, data.description || ''),
-			E('br'),
-			E('span', { 'style': 'font-size: 12px;' }, _('Dernière modification: ') + (data.last_change || 'Never'))
-		]));
-
-		return section;
 	},
 
-	renderRollbackBanner: function(remaining, mode) {
+	renderRollbackBanner: function(data) {
+		var remaining = data.rollback_remaining || 0;
 		var minutes = Math.floor(remaining / 60);
 		var seconds = remaining % 60;
-		var timeStr = minutes + 'm ' + seconds + 's';
-
-		var banner = E('div', {
-			'class': 'alert-message warning',
-			'style': 'background: #f59e0b; color: #000; padding: 16px; border-radius: 8px; margin-bottom: 24px;'
+		return E('div', {
+			'class': 'nm-card',
+			'style': 'background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);'
 		}, [
-			E('h3', { 'style': 'margin: 0 0 8px 0;' }, '⏱️ ' + _('Rollback Automatique Actif')),
-			E('div', { 'id': 'rollback-timer', 'style': 'font-size: 20px; font-weight: bold; margin: 8px 0;' },
-				_('Temps restant: ') + timeStr
-			),
-			E('div', { 'style': 'margin: 12px 0;' },
-				_('Le mode ') + mode + _(' sera annulé automatiquement si vous ne confirmez pas.')
-			),
-			E('button', {
-				'class': 'cbi-button cbi-button-positive',
-				'style': 'margin-right: 8px;',
-				'click': ui.createHandlerFn(this, 'handleConfirmMode')
-			}, _('✓ Confirmer le Mode')),
-			E('button', {
-				'class': 'cbi-button cbi-button-negative',
-				'click': ui.createHandlerFn(this, 'handleRollbackNow')
-			}, _('↩ Annuler Maintenant'))
+			E('div', { 'class': 'nm-card-header' }, [
+				E('div', { 'class': 'nm-card-title' }, [
+					E('span', { 'class': 'nm-card-title-icon' }, '⏱️'),
+					_('Auto-Rollback Active')
+				]),
+				E('div', { 'class': 'nm-card-badge' }, data.current_mode || '')
+			]),
+			E('div', { 'class': 'nm-card-body' }, [
+				E('div', { 'id': 'rollback-timer', 'style': 'font-size:20px;font-weight:600;margin-bottom:8px;' },
+					_('Time left: ') + minutes + 'm ' + seconds + 's'),
+				E('p', {}, _('Confirm the mode if the network is stable, otherwise rollback will trigger automatically.')),
+				E('div', { 'class': 'nm-btn-group' }, [
+					E('button', { 'class': 'nm-btn nm-btn-primary', 'click': ui.createHandlerFn(this, 'handleConfirmMode') }, '✅ ' + _('Confirm Mode')),
+					E('button', { 'class': 'nm-btn', 'click': ui.createHandlerFn(this, 'handleRollbackNow') }, '↩ ' + _('Rollback Now'))
+				])
+			])
 		]);
-
-		return banner;
 	},
 
 	renderModesGrid: function(modes, currentMode) {
-		var grid = E('div', {
-			'class': 'cbi-section',
-			'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px;'
-		});
-
+		var grid = E('div', { 'class': 'nm-modes-grid nm-wizard-grid' });
 		modes.forEach(L.bind(function(mode) {
-			grid.appendChild(this.renderModeCard(mode, mode.current));
+			grid.appendChild(this.renderModeCard(mode, currentMode));
 		}, this));
-
 		return grid;
 	},
 
-	renderModeCard: function(mode, isCurrent) {
-		var borderColor = isCurrent ? '#22c55e' : '#334155';
-		var bgColor = isCurrent ? '#1e293b' : '#0f172a';
-
+	renderModeCard: function(mode, currentMode) {
+		var isCurrent = mode.id === currentMode;
 		var card = E('div', {
-			'class': 'mode-card',
-			'style': 'background: ' + bgColor + '; border: 2px solid ' + borderColor + '; border-radius: 8px; padding: 16px; cursor: ' + (isCurrent ? 'default' : 'pointer') + '; transition: all 0.2s;',
-			'data-mode': mode.id
-		});
-
-		// Icon and name
-		card.appendChild(E('div', { 'style': 'font-size: 32px; margin-bottom: 8px;' }, mode.icon));
-		card.appendChild(E('div', { 'style': 'font-size: 18px; font-weight: bold; color: #f1f5f9; margin-bottom: 4px;' },
-			mode.name
-		));
-
-		// Description
-		card.appendChild(E('div', { 'style': 'color: #94a3b8; font-size: 14px; margin-bottom: 12px; min-height: 40px;' },
-			mode.description
-		));
-
-		// Features list
-		var featuresList = E('ul', { 'style': 'color: #64748b; font-size: 13px; margin: 12px 0; padding-left: 20px;' });
-		(mode.features || []).forEach(function(feature) {
-			featuresList.appendChild(E('li', {}, feature));
-		});
-		card.appendChild(featuresList);
-
-		// Button
-		if (isCurrent) {
-			card.appendChild(E('div', {
-				'class': 'cbi-value-description',
-				'style': 'color: #22c55e; font-weight: bold; text-align: center; padding: 8px;'
-			}, '✓ ' + _('Mode Actuel')));
-		} else {
-			var btn = E('button', {
-				'class': 'cbi-button cbi-button-action',
-				'style': 'width: 100%;',
-				'click': ui.createHandlerFn(this, 'handleSwitchMode', mode)
-			}, _('Switch to ') + mode.name);
-			card.appendChild(btn);
-
-			// Hover effect
-			card.addEventListener('mouseenter', function() {
-				this.style.borderColor = '#3b82f6';
-				this.style.transform = 'translateY(-2px)';
-			});
-			card.addEventListener('mouseleave', function() {
-				this.style.borderColor = borderColor;
-				this.style.transform = 'translateY(0)';
-			});
-		}
+			'class': 'nm-mode-card wizard-card' + (isCurrent ? ' active' : '')
+		}, [
+			E('div', { 'class': 'nm-mode-header' }, [
+				E('div', { 'class': 'nm-mode-icon' }, mode.icon || '🌐'),
+				E('div', { 'class': 'nm-mode-title' }, [
+					E('h3', {}, mode.name),
+					E('p', {}, mode.description || '')
+				])
+			]),
+			E('div', { 'class': 'nm-mode-features' }, (mode.features || []).slice(0, 4).map(function(feature) {
+				return E('span', { 'class': 'nm-mode-feature' }, ['✓ ', feature]);
+			})),
+			isCurrent ?
+				E('div', { 'class': 'nm-mode-active-indicator' }, _('Active Mode')) :
+				E('button', {
+					'class': 'nm-btn nm-btn-primary',
+					'type': 'button',
+					'click': ui.createHandlerFn(this, 'handleSwitchMode', mode)
+				}, _('Switch to ') + mode.name)
+		]);
 
 		return card;
 	},
 
 	renderInstructions: function() {
-		var section = E('div', { 'class': 'cbi-section' });
-		section.appendChild(E('h3', {}, _('Instructions')));
-
-		var steps = E('ol', { 'style': 'color: #94a3b8; line-height: 1.8;' });
-		steps.appendChild(E('li', {}, _('Sélectionnez le mode réseau souhaité en cliquant sur "Switch to..."')));
-		steps.appendChild(E('li', {}, _('Vérifiez les changements qui seront appliqués dans la prévisualisation')));
-		steps.appendChild(E('li', {}, _('Confirmez l\'application - la configuration réseau sera modifiée')));
-		steps.appendChild(E('li', {}, _('Reconnectez-vous via la nouvelle IP si nécessaire (notée dans les instructions)')));
-		steps.appendChild(E('li', {}, _('Confirmez le nouveau mode dans les 2 minutes, sinon rollback automatique')));
-
-		section.appendChild(steps);
-
-		return section;
+		return helpers.createSection({
+			title: _('Wizard Guidance'),
+			icon: '🧭',
+			body: [
+				E('ol', { 'style': 'color:#94a3b8;line-height:1.8;margin-left:16px;' }, [
+					E('li', {}, _('Select the target mode from the cards above.')),
+					E('li', {}, _('Review configuration diffs + services impacted.')),
+					E('li', {}, _('Apply mode; device takes a snapshot and restarts network.')),
+					E('li', {}, _('Confirm within 2 minutes or automatic rollback restores previous state.'))
+				])
+			]
+		});
 	},
 
-	handleSwitchMode: function(mode, ev) {
-		var modal = ui.showModal(_('Switch to ') + mode.name, [
-			E('p', { 'class': 'spinning' }, _('Préparation du changement de mode...'))
+	handleSwitchMode: function(mode) {
+		ui.showModal(_('Switch to ') + mode.name, [
+			E('p', { 'class': 'spinning' }, _('Preparing mode change...'))
 		]);
 
 		return callSetMode({ mode: mode.id }).then(L.bind(function(result) {
 			if (!result.success) {
 				ui.hideModal();
-				ui.addNotification(null, E('p', result.error || _('Erreur')), 'error');
+				ui.addNotification(null, E('p', {}, result.error || _('Failed to prepare mode')), 'error');
 				return;
 			}
 
-			// Show preview
 			return callPreviewChanges().then(L.bind(function(preview) {
 				this.showPreviewModal(mode, preview);
 			}, this));
 		}, this)).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', _('Erreur: ') + err.message), 'error');
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
 		});
 	},
 
 	showPreviewModal: function(mode, preview) {
 		if (!preview.success) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', preview.error || _('Erreur')), 'error');
+			ui.addNotification(null, E('p', {}, preview.error || _('Preview failed')), 'error');
 			return;
 		}
 
 		var content = [
-			E('h4', {}, _('Changements qui seront appliqués:')),
-			E('div', { 'style': 'background: #1e293b; padding: 12px; border-radius: 4px; margin: 12px 0;' }, [
-				E('strong', {}, preview.current_mode + ' → ' + preview.target_mode)
-			])
+			E('h4', {}, _('Changes to apply')),
+			E('p', {}, preview.current_mode + ' → ' + preview.target_mode),
+			E('ul', {},
+				(preview.changes || []).map(function(change) {
+					return E('li', {}, [
+						E('strong', {}, change.file + ': '),
+						E('span', {}, change.change)
+					]);
+				})
+			)
 		];
 
-		// Changes list
-		var changesList = E('ul', { 'style': 'margin: 12px 0;' });
-		(preview.changes || []).forEach(function(change) {
-			changesList.appendChild(E('li', {}, [
-				E('strong', {}, change.file + ': '),
-				E('span', {}, change.change)
-			]));
-		});
-		content.push(changesList);
-
-		// Warnings
-		if (preview.warnings && preview.warnings.length > 0) {
+		if (preview.warnings && preview.warnings.length) {
 			content.push(E('div', {
 				'class': 'alert-message warning',
-				'style': 'background: #f59e0b20; border-left: 4px solid #f59e0b; padding: 12px; margin: 12px 0;'
+				'style': 'margin-top:12px;'
 			}, [
-				E('h5', { 'style': 'margin: 0 0 8px 0;' }, '⚠️ ' + _('Avertissements:')),
-				E('ul', { 'style': 'margin: 0; padding-left: 20px;' },
-					preview.warnings.map(function(w) {
-						return E('li', {}, w);
-					})
-				)
+				E('strong', {}, _('Warnings')),
+				E('ul', {}, preview.warnings.map(function(w) { return E('li', {}, w); }))
 			]));
 		}
 
-		// Buttons
-		content.push(E('div', { 'class': 'right', 'style': 'margin-top: 16px;' }, [
-			E('button', {
-				'class': 'cbi-button cbi-button-neutral',
-				'click': ui.hideModal
-			}, _('Annuler')),
+		content.push(E('div', { 'class': 'right', 'style': 'margin-top:16px;' }, [
+			E('button', { 'class': 'nm-btn', 'click': ui.hideModal }, _('Cancel')),
 			' ',
-			E('button', {
-				'class': 'cbi-button cbi-button-positive',
-				'click': L.bind(this.handleApplyMode, this, mode)
-			}, _('Appliquer le Mode'))
+			E('button', { 'class': 'nm-btn nm-btn-primary', 'click': L.bind(this.handleApplyMode, this, mode) }, _('Apply Mode'))
 		]));
 
-		ui.showModal(_('Prévisualisation: ') + mode.name, content);
+		ui.showModal(_('Preview: ') + mode.name, content);
 	},
 
-	handleApplyMode: function(mode, ev) {
-		ui.showModal(_('Application en cours...'), [
-			E('p', { 'class': 'spinning' }, _('Application du mode ') + mode.name + '...'),
-			E('p', {}, _('La connexion réseau sera brièvement interrompue.'))
+	handleApplyMode: function(mode) {
+		ui.showModal(_('Applying ') + mode.name, [
+			E('p', { 'class': 'spinning' }, _('Updating network configuration…'))
 		]);
 
 		return callApplyMode().then(function(result) {
+			ui.hideModal();
 			if (!result.success) {
-				ui.hideModal();
-				ui.addNotification(null, E('p', result.error || _('Erreur')), 'error');
+				ui.addNotification(null, E('p', {}, result.error || _('Failed to apply mode')), 'error');
 				return;
 			}
 
-			ui.hideModal();
-
-			// Show success with instructions
-			ui.showModal(_('Mode Appliqué'), [
-				E('div', { 'class': 'alert-message success' }, [
-					E('h4', {}, '✓ ' + _('Mode ') + mode.name + _(' activé')),
-					E('p', {}, _('Rollback automatique dans 2 minutes si non confirmé.')),
-					E('p', {}, _('Si vous perdez la connexion:')),
-					E('ul', {}, [
-						E('li', {}, _('Router: http://192.168.1.1')),
-						E('li', {}, _('Access Point/Bridge: Utilisez DHCP')),
-						E('li', {}, _('Repeater: http://192.168.2.1'))
-					])
-				]),
-				E('div', { 'class': 'right', 'style': 'margin-top: 16px;' }, [
+			ui.showModal(_('Mode applied'), [
+				E('p', {}, _('Network restarting. If you lose connectivity, reconnect to the new subnet.')),
+				E('p', {}, _('Confirm within 2 minutes to keep this mode.')),
+				E('div', { 'class': 'right', 'style': 'margin-top:12px;' }, [
 					E('button', {
-						'class': 'cbi-button cbi-button-positive',
+						'class': 'nm-btn nm-btn-primary',
 						'click': function() {
 							ui.hideModal();
 							window.location.reload();
 						}
-					}, _('Recharger la Page'))
+					}, _('Reload view'))
 				])
 			]);
-
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', _('Erreur: ') + err.message), 'error');
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
 		});
 	},
 
-	handleConfirmMode: function(ev) {
+	handleConfirmMode: function() {
 		return callConfirmMode().then(function(result) {
 			if (result.success) {
-				ui.addNotification(null, E('p', '✓ ' + result.message), 'info');
-				setTimeout(function() {
-					window.location.reload();
-				}, 1000);
+				ui.addNotification(null, E('p', {}, result.message || _('Mode confirmed')), 'info');
+				setTimeout(function() { window.location.reload(); }, 1000);
 			} else {
-				ui.addNotification(null, E('p', result.error), 'error');
+				ui.addNotification(null, E('p', {}, result.error || _('Confirmation failed')), 'error');
 			}
 		}).catch(function(err) {
-			ui.addNotification(null, E('p', _('Erreur: ') + err.message), 'error');
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
 		});
 	},
 
-	handleRollbackNow: function(ev) {
-		if (!confirm(_('Annuler le changement de mode et revenir à la configuration précédente?'))) {
-			return;
-		}
-
+	handleRollbackNow: function() {
 		ui.showModal(_('Rollback...'), [
-			E('p', { 'class': 'spinning' }, _('Restauration de la configuration précédente...'))
+			E('p', { 'class': 'spinning' }, _('Restoring previous configuration...'))
 		]);
 
 		return callRollback().then(function(result) {
 			ui.hideModal();
 			if (result.success) {
-				ui.addNotification(null, E('p', '✓ ' + result.message), 'info');
-				setTimeout(function() {
-					window.location.reload();
-				}, 2000);
+				ui.addNotification(null, E('p', {}, result.message || _('Rollback started')), 'info');
+				setTimeout(function() { window.location.reload(); }, 1500);
 			} else {
-				ui.addNotification(null, E('p', result.error), 'error');
+				ui.addNotification(null, E('p', {}, result.error || _('Rollback failed')), 'error');
 			}
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', _('Erreur: ') + err.message), 'error');
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
 		});
 	},
 
@@ -398,7 +337,7 @@ return view.extend({
 					var remaining = data.rollback_remaining || 0;
 					var minutes = Math.floor(remaining / 60);
 					var seconds = remaining % 60;
-					timerElem.textContent = _('Temps restant: ') + minutes + 'm ' + seconds + 's';
+					timerElem.textContent = _('Time left: ') + minutes + 'm ' + seconds + 's';
 				}
 			}, this));
 		}, this), 1);
