@@ -65,6 +65,7 @@ return view.extend({
 	renderHeader: function() {
 		var score = this.healthData.score || 0;
 		var scoreClass = score >= 80 ? 'excellent' : (score >= 60 ? 'good' : (score >= 40 ? 'warning' : 'critical'));
+		var scoreLabel = score >= 80 ? 'Excellent' : (score >= 60 ? 'Good' : (score >= 40 ? 'Warning' : 'Critical'));
 
 		return E('div', { 'class': 'sh-dashboard-header' }, [
 			E('div', { 'class': 'sh-dashboard-header-content' }, [
