@@ -221,6 +221,19 @@ Follow this template when creating or revising documentation:
 
 **Size:** Short (~100 lines)
 
+#### **embedded/vhost-manager.md** 🌐
+*How to publish local services behind nginx with vhost manager + CLI helper.*
+
+**Contents:**
+- Overview of `luci-app-vhost-manager` UI
+- CLI usage for `scripts/vhostctl.sh` (list/add/remove/reload)
+- Example mapping for Zigbee2MQTT
+- Troubleshooting tips (ACME, manual certs, upstream errors)
+
+**When to use:** Exposing Docker/LXC apps through HTTPS or integrating profiles/wizards.
+
+**Size:** Short (~120 lines)
+
 ---
 
 ### 5. Tools & Scripts Documentation

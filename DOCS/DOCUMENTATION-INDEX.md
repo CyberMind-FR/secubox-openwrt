@@ -213,6 +213,11 @@ Follow this template when creating or revising documentation:
 
 Pointer: see `docs/embedded/docker-zigbee2mqtt.md` for the canonical version.
 
+#### **embedded/vhost-manager.md** 🌐
+*How to publish services through nginx using the vhost manager and CLI helper.*
+
+Pointer: see `docs/embedded/vhost-manager.md` for the canonical version.
+
 ---
 
 ### 5. Tools & Scripts Documentation
