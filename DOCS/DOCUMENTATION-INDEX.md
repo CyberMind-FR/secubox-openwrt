@@ -223,6 +223,11 @@ Pointer: see `docs/embedded/vhost-manager.md` for the canonical version.
 
 Pointer: see `docs/embedded/app-store.md` for the canonical version.
 
+#### **embedded/wizard-profiles.md** 🧭
+*First-run wizard and OS-like profiles.*
+
+Pointer: see `docs/embedded/wizard-profiles.md` for the canonical version.
+
 ---
 
 ### 5. Tools & Scripts Documentation

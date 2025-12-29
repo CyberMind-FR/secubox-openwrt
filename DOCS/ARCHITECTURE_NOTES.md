@@ -22,6 +22,8 @@ These notes summarize the repository structure, conventions, and supporting tool
   - `DOCS/` + `docs/`: mirrored, versioned documentation tree (design system, prompts, module templates, validation, permissions, etc.).
   - `EXAMPLES/` and `templates/`: snippets and scaffolding.
   - CI workflows live in `.github/workflows/` (referenced from README badges).
+- **Profiles & App Manifests**
+  - App manifests (`/usr/share/secubox/plugins/`) and profile presets (`/usr/share/secubox/profiles/`) feed both the SecuBox wizard UI and the `secubox-app` CLI for automated installs.
 
 ---
 

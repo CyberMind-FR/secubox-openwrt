@@ -28,6 +28,9 @@ These notes capture the current repository structure, conventions, and supportin
 - **Docs**  
   Two mirrored trees (`docs/` and uppercase `DOCS/`) feed MkDocs and the GitHub wiki. All Markdown follows the metadata template defined in `docs/documentation-index.md`.
 
+- **Profiles & App Manifests**  
+  App manifests now live under `/usr/share/secubox/plugins/`, profiles under `/usr/share/secubox/profiles/`. `luci-app-secubox` exposes both through the wizard (UI) and `secubox-app` CLI (automation).
+
 ---
 
 ## 2. Target Platforms & Build System

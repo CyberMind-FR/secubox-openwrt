@@ -1,0 +1,12 @@
+{
+  "id": "hardened",
+  "name": "Hardened",
+  "description": "Security-focused preset enabling CrowdSec and Client Guardian.",
+  "network_mode": "router",
+  "apps": [],
+  "packages": ["luci-app-crowdsec-dashboard", "luci-app-client-guardian"],
+  "uci": [
+    { "config": "secubox", "section": "crowdsec", "option": "enabled", "value": "1" },
+    { "config": "secubox", "section": "client_guardian", "option": "enabled", "value": "1" }
+  ]
+}

@@ -174,6 +174,23 @@ var callApplyAppWizard = rpc.declare({
 	params: ['app_id', 'values']
 });
 
+var callListProfiles = rpc.declare({
+	object: 'luci.secubox',
+	method: 'list_profiles',
+	expect: { profiles: [] }
+});
+
+var callApplyProfile = rpc.declare({
+	object: 'luci.secubox',
+	method: 'apply_profile',
+	params: ['profile_id']
+});
+
+var callRollbackProfile = rpc.declare({
+	object: 'luci.secubox',
+	method: 'rollback_profile'
+});
+
 function formatUptime(seconds) {
 	if (!seconds) return '0s';
 	var d = Math.floor(seconds / 86400);
@@ -222,6 +239,9 @@ return baseclass.extend({
 	listApps: callListApps,
 	getAppManifest: callGetAppManifest,
 	applyAppWizard: callApplyAppWizard,
+	listProfiles: callListProfiles,
+	applyProfile: callApplyProfile,
+	rollbackProfile: callRollbackProfile,
 	// Utilities
 	formatUptime: formatUptime,
 	formatBytes: formatBytes

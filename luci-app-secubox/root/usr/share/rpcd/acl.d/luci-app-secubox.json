@@ -17,7 +17,8 @@
 					"get_theme",
 					"first_run_status",
 					"list_apps",
-					"get_app_manifest"
+					"get_app_manifest",
+					"list_profiles"
 				],
                 "uci": [
                     "get",
@@ -42,7 +43,9 @@
 					"clear_alerts",
 					"fix_permissions",
 					"apply_first_run",
-					"apply_app_wizard"
+					"apply_app_wizard",
+					"apply_profile",
+					"rollback_profile"
 				],
                 "uci": [
                     "set",

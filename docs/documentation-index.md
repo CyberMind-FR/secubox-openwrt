@@ -247,6 +247,18 @@ Follow this template when creating or revising documentation:
 
 **Size:** Short (~120 lines)
 
+#### **embedded/wizard-profiles.md** 🧭
+*First-run wizard + OS-like profiles.*
+
+**Contents:**
+- First-run checklist (password, timezone, storage, network mode)
+- Using manifest-driven app wizards
+- Baseline profiles (Home, Lab, Hardened, Gateway+DMZ) and rollback mechanics
+
+**When to use:** Guiding new deployments or applying pre-made bundles.
+
+**Size:** Short (~130 lines)
+
 ---
 
 ### 5. Tools & Scripts Documentation

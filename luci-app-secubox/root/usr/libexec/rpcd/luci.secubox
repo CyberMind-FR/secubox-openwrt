@@ -55,7 +55,11 @@ get_pkg_version() {
 PKG_VERSION="$(get_pkg_version)"
 
 PLUGIN_DIR="/usr/share/secubox/plugins"
+PROFILE_DIR="/usr/share/secubox/profiles"
+PROFILE_BACKUP_DIR="/etc/secubox-profiles/backups"
 DEFAULT_STORAGE_PATH="/srv/secubox"
+SECOBOX_APP="/usr/sbin/secubox-app"
+OPKG_UPDATED=0
 
 # Module registry - auto-detected from /usr/libexec/rpcd/
 detect_modules() {
@@ -125,6 +129,34 @@ packages_state() {
 ensure_directory() {
 	local dir="$1"
 	[ -d "$dir" ] || mkdir -p "$dir"
+}
+
+apply_network_mode() {
+	local mode="$1"
+	[ -n "$mode" ] || return
+	if command -v ubus >/dev/null 2>&1; then
+		if ubus call luci.network-modes set_mode "{\"mode\":\"$mode\"}" >/dev/null 2>&1; then
+			ubus call luci.network-modes apply_mode >/dev/null 2>&1
+		fi
+	fi
+}
+
+ensure_opkg_updated() {
+	[ "$OPKG_UPDATED" -eq 1 ] && return
+	if command -v opkg >/dev/null 2>&1; then
+		opkg update >/dev/null 2>&1 && OPKG_UPDATED=1
+	fi
+}
+
+install_package_if_missing() {
+	local pkg="$1"
+	package_installed "$pkg" && return
+	if command -v opkg >/dev/null 2>&1; then
+		ensure_opkg_updated
+		opkg install "$pkg" >/dev/null 2>&1
+	elif command -v apk >/dev/null 2>&1; then
+		apk add "$pkg" >/dev/null 2>&1
+	fi
 }
 
 # Check if a module is installed (supports both opkg and apk)
@@ -1324,6 +1356,136 @@ apply_app_wizard() {
 	json_add_boolean "success" 1
 	json_dump
 }
+
+list_profiles() {
+	ensure_directory "$PROFILE_DIR"
+	json_init
+	json_add_array "profiles"
+	local profile_file
+	for profile_file in "$PROFILE_DIR"/*.json; do
+		[ -f "$profile_file" ] || continue
+		local profile_json id name description network_mode apps state
+		profile_json=$(cat "$profile_file")
+		id=$(jsonfilter -s "$profile_json" -e '@.id' 2>/dev/null)
+		name=$(jsonfilter -s "$profile_json" -e '@.name' 2>/dev/null)
+		description=$(jsonfilter -s "$profile_json" -e '@.description' 2>/dev/null)
+		network_mode=$(jsonfilter -s "$profile_json" -e '@.network_mode' 2>/dev/null)
+		apps=$(jsonfilter -s "$profile_json" -e '@.apps[*]' 2>/dev/null)
+		state=$(packages_state "$profile_json")
+		[ -n "$id" ] || continue
+		json_add_object
+		json_add_string "id" "$id"
+		json_add_string "name" "$name"
+		json_add_string "description" "$description"
+		json_add_string "network_mode" "$network_mode"
+		json_add_string "state" "$state"
+		json_add_array "apps"
+		for app in $apps; do
+			json_add_string "" "$app"
+		done
+		json_close_array
+		json_close_object
+	done
+	json_close_array
+	json_dump
+}
+
+apply_profile() {
+	local input profile_id profile_file profile_json network_mode packages apps backup_file notes=""
+	read input
+	json_load "$input"
+	json_get_var profile_id profile_id
+	json_cleanup
+	[ -n "$profile_id" ] || {
+		json_init; json_add_boolean "success" 0; json_add_string "error" "profile_id required"; json_dump; return;
+	}
+	profile_file="$PROFILE_DIR/$profile_id.json"
+	if [ ! -f "$profile_file" ]; then
+		json_init; json_add_boolean "success" 0; json_add_string "error" "Profile not found"; json_dump; return;
+	fi
+	profile_json=$(cat "$profile_file")
+	ensure_directory "$PROFILE_BACKUP_DIR"
+	local timestamp=$(date +%Y%m%d_%H%M%S)
+	backup_file="$PROFILE_BACKUP_DIR/profile_${profile_id}_${timestamp}.tar.gz"
+	tar -czf "$backup_file" /etc/config 2>/dev/null
+	notes="${notes}Backup saved to $backup_file\n"
+	uci set secubox.profile.last_backup="$backup_file"
+	uci set secubox.profile.last_profile="$profile_id"
+	uci commit secubox
+	network_mode=$(jsonfilter -s "$profile_json" -e '@.network_mode' 2>/dev/null)
+	if [ -n "$network_mode" ]; then
+		notes="${notes}Switched network mode to $network_mode\n"
+		apply_network_mode "$network_mode"
+	fi
+	packages=$(jsonfilter -s "$profile_json" -e '@.packages[*]' 2>/dev/null)
+	for pkg in $packages; do
+		install_package_if_missing "$pkg"
+		notes="${notes}Ensured package $pkg\n"
+	done
+	apps=$(jsonfilter -s "$profile_json" -e '@.apps[*]' 2>/dev/null)
+	for app in $apps; do
+		if [ -x "$SECOBOX_APP" ]; then
+			$SECOBOX_APP install "$app" >/dev/null 2>&1 && notes="${notes}Installed app $app\n"
+		fi
+	done
+	json_load "$profile_json"
+	local uci_configs=""
+	if json_select uci >/dev/null 2>&1; then
+		local entries
+		json_get_keys entries
+		for entry in $entries; do
+			json_select "$entry"
+			local cfg section option value
+			json_get_var cfg config
+			json_get_var section section
+			json_get_var option option
+			json_get_var value value
+			section=${section:-main}
+			if [ -n "$cfg" ] && [ -n "$option" ]; then
+				uci set ${cfg}.${section}.${option}="$value"
+				uci_configs="${uci_configs} $cfg"
+				notes="${notes}Set ${cfg}.${section}.${option}=${value}\n"
+			fi
+			json_select ..
+		done
+		json_select ..
+	fi
+	json_cleanup
+	local committed=""
+	for cfg in $uci_configs; do
+		case " $committed " in
+			*" $cfg "*) continue;;
+		esac
+		uci commit "$cfg"
+		committed="$committed $cfg"
+	done
+	json_init
+	json_add_boolean "success" 1
+	json_add_array "messages"
+	printf '%b' "$notes" | while IFS= read -r line; do
+		[ -n "$line" ] && json_add_string "" "$line"
+	done
+	json_close_array
+	json_add_string "backup" "$backup_file"
+	json_dump
+}
+
+rollback_profile() {
+	local latest_backup
+	latest_backup=$(ls -t "$PROFILE_BACKUP_DIR"/profile_*.tar.gz 2>/dev/null | head -1)
+	if [ -z "$latest_backup" ]; then
+		json_init; json_add_boolean "success" 0; json_add_string "error" "No backups available"; json_dump; return;
+	fi
+	cd /
+	tar -xzf "$latest_backup" 2>/dev/null
+	/etc/init.d/network reload >/dev/null 2>&1
+	/etc/init.d/firewall reload >/dev/null 2>&1
+	/etc/init.d/dnsmasq reload >/dev/null 2>&1
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Restored $latest_backup"
+	json_dump
+}
 case "$1" in
 	list)
 		json_init
@@ -1379,6 +1541,25 @@ case "$1" in
 		json_add_object "clear_alerts"
 		json_close_object
 		json_add_object "fix_permissions"
+		json_close_object
+		json_add_object "first_run_status"
+		json_close_object
+		json_add_object "apply_first_run"
+		json_close_object
+		json_add_object "list_apps"
+		json_close_object
+		json_add_object "get_app_manifest"
+		json_add_string "app_id" "string"
+		json_close_object
+		json_add_object "apply_app_wizard"
+		json_add_string "app_id" "string"
+		json_close_object
+		json_add_object "list_profiles"
+		json_close_object
+		json_add_object "apply_profile"
+		json_add_string "profile_id" "string"
+		json_close_object
+		json_add_object "rollback_profile"
 		json_close_object
 		json_add_object "first_run_status"
 		json_close_object
@@ -1506,6 +1687,15 @@ case "$1" in
 			;;
 		apply_app_wizard)
 			apply_app_wizard
+			;;
+		list_profiles)
+			list_profiles
+			;;
+		apply_profile)
+			apply_profile
+			;;
+		rollback_profile)
+			rollback_profile
 			;;
 			*)
 				echo '{"error":"Unknown method"}'

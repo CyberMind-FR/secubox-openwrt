@@ -22,18 +22,21 @@ return view.extend({
 	load: function() {
 		return Promise.all([
 			API.getFirstRunStatus(),
-			API.listApps()
+			API.listApps(),
+			API.listProfiles()
 		]);
 	},
 
 	render: function(payload) {
 		this.firstRun = payload[0] || {};
 		this.appList = (payload[1] && payload[1].apps) || [];
+		this.profileList = (payload[2] && payload[2].profiles) || [];
 		var container = E('div', { 'class': 'secubox-wizard-page' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			SecuNav.renderTabs('wizard'),
 			this.renderHeader(),
 			this.renderFirstRunCard(),
+			this.renderProfilesCard(),
 			this.renderAppsCard()
 		]);
 		return container;
@@ -142,6 +145,44 @@ return view.extend({
 		]);
 	},
 
+	renderProfilesCard: function() {
+		var profiles = this.profileList || [];
+		return E('div', { 'class': 'sb-wizard-card' }, [
+			E('div', { 'class': 'sb-wizard-title' }, ['🧱 ', _('Profiles')]),
+			profiles.length ? E('div', { 'class': 'sb-app-grid' }, profiles.map(this.renderProfileCard, this)) :
+			E('div', { 'class': 'secubox-empty-state' }, [
+				E('div', { 'class': 'secubox-empty-icon' }, '📭'),
+				E('div', { 'class': 'secubox-empty-title' }, _('No profiles available')),
+				E('div', { 'class': 'secubox-empty-text' }, _('Profiles are stored in /usr/share/secubox/profiles/.'))
+			]),
+			profiles.length ? E('div', { 'class': 'right', 'style': 'margin-top:12px;' }, [
+				E('button', {
+					'class': 'cbi-button cbi-button-action',
+					'click': this.rollbackProfile.bind(this)
+				}, _('Rollback last profile'))
+			]) : ''
+		]);
+	},
+
+	renderProfileCard: function(profile) {
+		var apps = profile.apps || [];
+		return E('div', { 'class': 'sb-app-card' }, [
+			E('div', { 'class': 'sb-app-card-info' }, [
+				E('div', { 'class': 'sb-app-name' }, [profile.name || profile.id]),
+				E('div', { 'class': 'sb-app-desc' }, profile.description || ''),
+				E('div', { 'class': 'sb-app-desc' }, _('Network mode: %s').format(profile.network_mode || '—')),
+				apps.length ? E('div', { 'class': 'sb-app-desc' }, _('Apps: %s').format(apps.join(', '))) : ''
+			]),
+			E('div', { 'class': 'sb-app-actions' }, [
+				E('span', { 'class': 'sb-app-state' + (profile.state === 'installed' ? ' ok' : '') }, profile.state || 'n/a'),
+				E('button', {
+					'class': 'cbi-button cbi-button-action',
+					'click': this.applyProfile.bind(this, profile.id)
+				}, _('Apply'))
+			])
+		]);
+	},
+
 	renderAppCard: function(app) {
 		return E('div', { 'class': 'sb-app-card' }, [
 			E('div', { 'class': 'sb-app-card-info' }, [
@@ -239,6 +280,32 @@ return view.extend({
 				ui.addNotification(null, E('p', {}, _('Wizard applied.')), 'info');
 			} else {
 				ui.addNotification(null, E('p', {}, _('Failed to apply wizard.')), 'error');
+			}
+		}).catch(this.showError);
+	},
+
+	applyProfile: function(profileId) {
+		if (!profileId)
+			return;
+		ui.showModal(_('Applying profile…'), [E('div', { 'class': 'spinning' })]);
+		API.applyProfile(profileId).then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				ui.addNotification(null, E('p', {}, _('Profile applied. A reboot may be required.')), 'info');
+			} else {
+				ui.addNotification(null, E('p', {}, (result && result.error) || _('Failed to apply profile')), 'error');
+			}
+		}).catch(this.showError);
+	},
+
+	rollbackProfile: function() {
+		ui.showModal(_('Rolling back…'), [E('div', { 'class': 'spinning' })]);
+		API.rollbackProfile().then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				ui.addNotification(null, E('p', {}, result.message || _('Rollback completed.')), 'info');
+			} else {
+				ui.addNotification(null, E('p', {}, (result && result.error) || _('Rollback failed.')), 'error');
 			}
 		}).catch(this.showError);
 	}
