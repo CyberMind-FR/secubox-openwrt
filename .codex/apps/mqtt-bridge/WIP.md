@@ -5,6 +5,7 @@
 - Added RPC backend (`luci.mqtt-bridge`) and UCI defaults for broker/bridge stats.
 - Added Zigbee/SMSC USB2134B preset detection (USB VID/PID scan, tty hinting, LuCI cards + docs).
 - Added `/usr/sbin/mqtt-bridge-monitor` + init.d service to keep adapter sections (port/bus/health) in sync.
+- Promoted the monitor into `/usr/sbin/mqtt-bridge` daemon with stats tracking, automation rules, topic templates, and LuCI-side preset import/rescan/reset actions.
 
 ## In Progress
 - Flesh out real USB discovery and MQTT client integration.

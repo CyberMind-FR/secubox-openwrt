@@ -1,17 +1,12 @@
 # TODO – MQTT Bridge
 
-1. **Daemon Integration**
-   - Implement `/usr/sbin/mqtt-bridge` watcher handling USB serial adapters.
-   - Emit stats to `uci set mqtt-bridge.stats.*` for UI refresh.
-
-2. **Security**
+1. **Security**
    - Support TLS options (CA, client certs) in Settings.
    - Add access control for pairing window.
 
-3. **Automations**
-   - Add topic templates per device type (Zigbee, Modbus).
-   - Provide rules to forward payloads into SecuBox Alerts.
+2. **Automations**
+   - Expand rules to trigger SecuBox Alerts via ubus +/- integrate with alerting UI.
+   - Wire topic templates into actual payload routing once the MQTT daemon is implemented.
 
-4. **Profiles**
-   - Allow LuCI to edit adapter entries (enable/disable, rename, override serial port).
-   - Surface per-adapter health metrics/uptime graphs and expose actions (rescan, reset).
+3. **Profiles**
+   - Visualize adapter health trends (sparklines) and expose multi-port mapping options.

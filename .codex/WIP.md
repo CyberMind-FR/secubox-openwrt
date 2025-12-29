@@ -4,7 +4,7 @@
 
 - Introduced SecuBox cascade layout helper (CSS + JS) and migrated SecuNav + MQTT tabs to the new layered system.  
 - MQTT Bridge now exposes Zigbee/SMSC USB2134B presets with dmesg hints, tty detection, and documentation updates.  
-- New `mqtt-bridge-monitor` daemon keeps adapter metadata (port/bus/health) synced and logs detection events for SecuBox.  
+- New `mqtt-bridge` daemon keeps adapter metadata (port/bus/health) synced, updates stats, and runs automation rules/templates.  
 - Unified Monitoring + Modules filters and Help view with SecuNav styling.  
 - Added Bonus tab to navbar, refreshed alerts action buttons, removed legacy hero blocks.  
 - Verified on router (scp + cache reset) and tagged release v0.5.0-A.

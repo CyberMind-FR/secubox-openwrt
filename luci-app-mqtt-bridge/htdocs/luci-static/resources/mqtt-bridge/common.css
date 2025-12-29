@@ -729,6 +729,45 @@ pre {
 	height: 16px;
 }
 
+.mb-adapter-footer {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.mb-adapter-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.mb-health {
+	text-transform: uppercase;
+	font-size: 12px;
+	font-weight: 600;
+	padding: 4px 10px;
+	border-radius: 999px;
+	border: 1px solid var(--mb-border);
+}
+
+.mb-health.online {
+	color: #22c55e;
+	border-color: rgba(34, 197, 94, 0.6);
+	background: rgba(34, 197, 94, 0.12);
+}
+
+.mb-health.missing {
+	color: #f97316;
+	border-color: rgba(249, 115, 22, 0.6);
+	background: rgba(249, 115, 22, 0.12);
+}
+
+.mb-health.disabled,
+.mb-health.unknown {
+	color: var(--mb-muted);
+}
+
 @media (max-width: 768px) {
 	.mqtt-bridge-dashboard {
 		padding: 16px;

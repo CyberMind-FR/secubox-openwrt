@@ -25,9 +25,22 @@ var callApplySettings = rpc.declare({
 	method: 'apply_settings'
 });
 
+var callRescanAdapters = rpc.declare({
+	object: 'luci.mqtt-bridge',
+	method: 'rescan_adapters',
+	expect: {}
+});
+
+var callResetAdapter = rpc.declare({
+	object: 'luci.mqtt-bridge',
+	method: 'reset_adapter'
+});
+
 return baseclass.extend({
 	getStatus: callStatus,
 	listDevices: callListDevices,
 	triggerPairing: callTriggerPairing,
-	applySettings: callApplySettings
+	applySettings: callApplySettings,
+	rescanAdapters: callRescanAdapters,
+	resetAdapter: callResetAdapter
 });

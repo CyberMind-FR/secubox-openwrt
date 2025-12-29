@@ -113,6 +113,56 @@ append_configured_adapters() {
 	json_close_array
 }
 
+add_template_json() {
+	local section="$1"
+	local device_type topic qos retain
+	config_get device_type "$section" device_type
+	config_get topic "$section" topic
+	config_get qos "$section" qos
+	config_get retain "$section" retain
+	json_add_object
+	json_add_string "id" "$section"
+	[ -n "$device_type" ] && json_add_string "device_type" "$device_type"
+	[ -n "$topic" ] && json_add_string "topic" "$topic"
+	[ -n "$qos" ] && json_add_string "qos" "$qos"
+	[ -n "$retain" ] && json_add_string "retain" "$retain"
+	json_close_object
+}
+
+append_templates() {
+	json_add_array "templates"
+	config_load mqtt-bridge
+	config_foreach add_template_json template
+	json_close_array
+}
+
+add_rule_json() {
+	local section="$1"
+	local type adapter when action message topic
+	config_get type "$section" type
+	config_get adapter "$section" adapter
+	config_get when "$section" when
+	config_get action "$section" action
+	config_get message "$section" message
+	config_get topic "$section" topic
+	json_add_object
+	json_add_string "id" "$section"
+	[ -n "$type" ] && json_add_string "type" "$type"
+	[ -n "$adapter" ] && json_add_string "adapter" "$adapter"
+	[ -n "$when" ] && json_add_string "when" "$when"
+	[ -n "$action" ] && json_add_string "action" "$action"
+	[ -n "$message" ] && json_add_string "message" "$message"
+	[ -n "$topic" ] && json_add_string "topic" "$topic"
+	json_close_object
+}
+
+append_rules() {
+	json_add_array "rules"
+	config_load mqtt-bridge
+	config_foreach add_rule_json rule
+	json_close_array
+}
+
 apply_adapter_settings() {
 	local adapter_keys
 	json_get_keys adapter_keys
@@ -189,20 +239,22 @@ status() {
 	done
 	json_close_array
 
-json_add_object "settings"
-json_add_string "host" "$(uci -q get mqtt-bridge.broker.host || echo '127.0.0.1')"
-json_add_int "port" "$(uci -q get mqtt-bridge.broker.port || echo 1883)"
-json_add_string "username" "$(uci -q get mqtt-bridge.broker.username || echo '')"
-json_add_string "password" ""
-json_add_string "base_topic" "$(uci -q get mqtt-bridge.bridge.base_topic || echo 'secubox/+/state')"
-json_add_int "retention" "$(uci -q get mqtt-bridge.bridge.retention || echo 7)"
-json_close_object
+	json_add_object "settings"
+	json_add_string "host" "$(uci -q get mqtt-bridge.broker.host || echo '127.0.0.1')"
+	json_add_int "port" "$(uci -q get mqtt-bridge.broker.port || echo 1883)"
+	json_add_string "username" "$(uci -q get mqtt-bridge.broker.username || echo '')"
+	json_add_string "password" ""
+	json_add_string "base_topic" "$(uci -q get mqtt-bridge.bridge.base_topic || echo 'secubox/+/state')"
+	json_add_int "retention" "$(uci -q get mqtt-bridge.bridge.retention || echo 7)"
+	json_close_object
 
 json_add_array "profiles"
 append_zigbee_profile
 json_close_array
 
 append_configured_adapters
+append_templates
+append_rules
 
 json_dump
 }
@@ -266,6 +318,42 @@ apply_settings() {
 	json_dump
 }
 
+rescan_adapters() {
+	/usr/sbin/mqtt-bridge --rescan >/dev/null 2>&1 &
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "rescan_triggered"
+	json_dump
+}
+
+reset_adapter() {
+	read input
+	json_load "$input"
+	json_get_var adapter adapter
+	json_cleanup
+
+	if [ -z "$adapter" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "missing_adapter"
+		json_dump
+		return
+	fi
+
+	uci delete mqtt-bridge.adapter."$adapter".port >/dev/null 2>&1
+	uci delete mqtt-bridge.adapter."$adapter".bus >/dev/null 2>&1
+	uci delete mqtt-bridge.adapter."$adapter".device >/dev/null 2>&1
+	uci delete mqtt-bridge.adapter."$adapter".detected >/dev/null 2>&1
+	uci delete mqtt-bridge.adapter."$adapter".health >/dev/null 2>&1
+	uci delete mqtt-bridge.adapter."$adapter".last_seen >/dev/null 2>&1
+	uci commit mqtt-bridge
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "adapter_reset"
+	json_dump
+}
+
 case "$1" in
 	list)
 		cat <<'JSON'
@@ -273,7 +361,9 @@ case "$1" in
 	"status": {},
 	"list_devices": {},
 	"trigger_pairing": {},
-	"apply_settings": {}
+	"apply_settings": {},
+	"rescan_adapters": {},
+	"reset_adapter": {}
 }
 JSON
 	;;
@@ -283,6 +373,8 @@ JSON
 			list_devices) list_devices ;;
 			trigger_pairing) trigger_pairing ;;
 			apply_settings) apply_settings ;;
+			rescan_adapters) rescan_adapters ;;
+			reset_adapter) reset_adapter ;;
 			*)
 				json_init
 				json_add_boolean "success" 0

@@ -6,6 +6,7 @@
 'require ui';
 'require form';
 'require dom';
+'require dom';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -86,7 +87,9 @@ return view.extend({
 					E('strong', {}, adapter.label || id || _('Adapter')),
 					E('div', { 'class': 'mb-profile-meta' }, [
 						adapter.vendor && adapter.product ? _('VID:PID ') + adapter.vendor + ':' + adapter.product : null,
-						adapter.port ? _('Port ') + adapter.port : null
+						adapter.port ? _('Port ') + adapter.port : null,
+						adapter.health ? _('Health ') + adapter.health : null,
+						adapter.last_seen ? _('Last seen ') + adapter.last_seen : null
 					].filter(Boolean).map(function(entry) {
 						return E('span', {}, entry);
 					}))
@@ -102,6 +105,21 @@ return view.extend({
 			]),
 			this.input(this.makeAdapterInputId(id, 'custom-label'), _('Display label'), adapter.label || id),
 			this.input(this.makeAdapterInputId(id, 'custom-port'), _('Preferred /dev/tty*'), adapter.port || '', 'text'),
+			E('div', { 'class': 'mb-adapter-footer' }, [
+				E('span', {
+					'class': 'mb-health ' + this.healthClass(adapter.health)
+				}, (adapter.health || _('unknown')).toString()),
+				E('div', { 'class': 'mb-adapter-actions' }, [
+					E('button', {
+						'class': 'mb-btn mb-btn-secondary',
+						'click': this.handleRescan.bind(this, id)
+					}, ['🔄 ', _('Rescan')]),
+					E('button', {
+						'class': 'mb-btn mb-btn-secondary',
+						'click': this.handleReset.bind(this, id)
+					}, ['♻️ ', _('Reset')])
+				])
+			]),
 			adapter.notes ? E('p', { 'class': 'mb-profile-notes' }, adapter.notes) : null
 		]);
 	},
@@ -166,6 +184,10 @@ return view.extend({
 
 	normalizeAdapterId: function(id) {
 		return (id || '').replace(/[^a-z0-9_-]/ig, '_') || 'adapter_' + Math.random().toString(36).slice(2, 7);
+	},
+
+	healthClass: function(val) {
+		return (val || 'unknown').toString().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 	},
 
 	cloneAdapters: function(list) {
@@ -245,10 +267,50 @@ return view.extend({
 			product: profile.product || '',
 			port: profile.port || '',
 			enabled: profile.detected ? 1 : 0,
+			detected: profile.detected ? 1 : 0,
+			health: profile.detected ? 'online' : 'missing',
 			preset: profile.id || profile.preset || ''
 		});
 		this.refreshAdapterGrid();
 		ui.addNotification(null, E('p', {}, _('Preset added. Remember to save preferences.')), 'info');
+	},
+
+	handleRescan: function(id) {
+		ui.showModal(_('Rescanning adapters'), [
+			E('p', {}, _('Triggering daemon rescan…')),
+			E('div', { 'class': 'spinning' })
+		]);
+		return API.rescanAdapters().then(function() {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, _('Rescan triggered. Refresh status after a few seconds.')), 'info');
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+		});
+	},
+
+	handleReset: function(id) {
+		if (!id)
+			return;
+		var self = this;
+		ui.showModal(_('Reset adapter'), [
+			E('p', {}, _('Clear cached detection info for ') + id + '?'),
+			E('div', { 'class': 'right' }, [
+				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
+				E('button', {
+					'class': 'btn cbi-button-negative',
+					'click': function() {
+						API.resetAdapter({ adapter: id }).then(function() {
+							ui.hideModal();
+							ui.addNotification(null, E('p', {}, _('Adapter reset. Wait for next daemon scan.')), 'info');
+						}).catch(function(err) {
+							ui.hideModal();
+							ui.addNotification(null, E('p', {}, err.message || err), 'error');
+						});
+					}
+				}, _('Reset'))
+			])
+		]);
 	},
 
 	savePreferences: function() {

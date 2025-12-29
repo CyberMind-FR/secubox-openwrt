@@ -76,8 +76,37 @@ The package now installs a lightweight watcher (`/usr/sbin/mqtt-bridge-monitor`)
 - Writes state transitions to the system log (`logread -e mqtt-bridge-monitor`).
 - Updates each adapter section with `detected`, `port`, `bus`, `device`, `health`, and `last_seen`, which the LuCI Devices tab now surfaces.
 - The MQTT Settings view exposes the same adapter entries so you can enable/disable presets, rename labels, or override `/dev/tty*` assignments without leaving the UI.
+- Buttons in the Settings view let you trigger a rescan (`API.rescanAdapters`) or clear cached data for a specific adapter (`API.resetAdapter`), which is helpful after re-flashing dongles or moving USB ports.
 
 Use `uci show mqtt-bridge.adapter` to inspect the persisted metadata, or `ubus call luci.mqtt-bridge status` to see the JSON payload consumed by the UI.
+
+## Templates & automation rules
+
+`/etc/config/mqtt-bridge` now includes `config template` definitions for Zigbee and Modbus devices:
+
+```uci
+config template 'zigbee_default'
+	option device_type 'zigbee'
+	option topic 'secubox/zigbee/{id}/state'
+	option qos '1'
+	option retain '1'
+```
+
+These are exported through the `status` RPC (`templates` array) so LuCI or external clients can suggest topic patterns per device type. Add your own sections to cover other buses or naming schemes.
+
+Automation rules (`config rule`) can react to adapter state transitions:
+
+```uci
+config rule 'zigbee_disconnect'
+	option type 'adapter_status'
+	option adapter 'zigbee_usb2134'
+	option when 'missing'
+	option action 'alert'
+	option message 'Zigbee USB bridge disconnected'
+	option topic 'alerts/mqtt/zigbee'
+```
+
+When the daemon notices the adapter go `missing` or `online`, matching rules write to syslog and `/tmp/mqtt-bridge-alerts.log`, making it easy to forward events into SecuBox Alerts or any other pipeline.
 
 ## Next steps
 
