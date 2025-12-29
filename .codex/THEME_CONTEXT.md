@@ -59,6 +59,32 @@ Code/Metrics: var(--cyber-font-mono)        /* JetBrains Mono */
 <select class="cyber-select"></select>
 ```
 
+## 🧭 SecuBox Implementation Notes
+
+Mirror the current SecuBox/System Hub styling (see `luci-app-system-hub/htdocs/luci-static/resources/system-hub/common.css`) until every module is fully migrated to `cybermood`.
+
+### Token Names & Stylesheets
+- Modules that still import `system-hub/common.css` rely on the `--sh-*` variables. Map any new tokens to both namespaces (`--sh-primary` ↔ `--cyber-accent-primary`) so palettes stay aligned.
+- Always inject `secubox-theme/secubox-theme.css` (or `system-hub/common.css` for legacy screens) before page-specific CSS. Never inline `@import` statements inside a view.
+
+### Navigation & Headers
+- Tabs must use `system-hub/nav.js` (`sh-nav-tabs`, `sh-nav-tab`). This helper handles sticky positioning, scroll, and theme color updates—don’t recreate it with plain flex rows.
+- Page headers follow the `sh-page-header` block: icon+title, subtitle paragraph, and right-aligned chips (`sh-header-chip` inside `.sh-header-meta`). Keep padding at `24px` and gaps at `20px`.
+
+### Cards, Grids, and Spacing
+- Primary content belongs in `.sh-card` containers with `.sh-card-header` / `.sh-card-body`. Avoid custom borders/shadows: rely on the shared variables.
+- Default grid recipe: `grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))` with `gap: 20px`. This matches `.sh-info-grid`, `.sh-monitor-grid`, and keeps breakpoint behavior predictable.
+- Use `.sh-btn`, `.sh-toggle`, `.sh-alert` components; don’t invent new button or toggle markup unless the component library expands.
+
+### State Colors & Semantics
+- Statuses draw from `--sh-success`, `--sh-warning`, `--sh-danger`; pair with emojis (✅, ⚠️, ❌) for quick scanning.
+- Alerts and badges should include textual state labels (e.g., “Critical”, “Warning”) for accessibility. Use `.sh-alert.error|warning|success`.
+- Loading states = `.spinning` indicator plus localized copy; Empty states = icon (32px), headline, muted description using `var(--sh-text-secondary)`.
+
+### Localization & Copy
+- Wrap user-visible strings with `Theme.t()` even if translations haven’t shipped; namespace keys by module (`system_hub.diagnostics.generate_button`).
+- Emojis precede the text (`'⚙️ ' + Theme.t(...)`) so translators can drop them if culturally inappropriate.
+
 ## 🌍 Multi-Language Support
 
 ### Usage Pattern

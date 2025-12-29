@@ -8,7 +8,8 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
 /* === Variables (Demo-inspired Dark Mode) === */
-:root {
+:root,
+[data-secubox-theme="light"] {
 	/* Light Mode (less used) */
 	--sh-text-primary: #0f172a;
 	--sh-text-secondary: #475569;
@@ -27,7 +28,8 @@
 	--sh-warning: #f59e0b;
 }
 
-[data-theme="dark"] {
+[data-theme="dark"],
+[data-secubox-theme="dark"] {
 	/* Demo-inspired Dark Palette */
 	--sh-text-primary: #fafafa;
 	--sh-text-secondary: #a0a0b0;
@@ -197,6 +199,14 @@ pre {
 .sh-nav-tab:hover {
 	background: var(--sh-hover-bg);
 	color: var(--sh-text-primary);
+}
+
+/* Hide default LuCI tabs (we render SecuNav instead) */
+body[data-page^="admin-secubox-system-system-hub"] .tabs,
+body[data-page^="admin-secubox-system-system-hub"] #tabmenu,
+body[data-page^="admin-secubox-system-system-hub"] .cbi-tabmenu,
+body[data-page^="admin-secubox-system-system-hub"] .nav-tabs {
+	display: none !important;
 }
 
 .sh-nav-tab.active {
@@ -624,4 +634,3 @@ pre {
     border-color: rgba(245, 158, 11, 0.45);
     color: #b45309;
 }
-

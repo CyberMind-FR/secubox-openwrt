@@ -12,7 +12,12 @@
 					"list_services",
 					"get_logs",
 					"get_storage",
-					"get_settings"
+					"get_settings",
+					"list_diagnostics",
+					"download_diagnostic",
+					"run_diagnostic_test",
+					"remote_status",
+					"remote_get_credentials"
 				],
 				"luci.secubox": [
 					"modules",
@@ -28,7 +33,14 @@
 					"backup_config",
 					"restore_config",
 					"reboot",
-					"save_settings"
+					"save_settings",
+					"collect_diagnostics",
+					"delete_diagnostic",
+					"upload_diagnostics",
+					"remote_install",
+					"remote_configure",
+					"remote_service_action",
+					"remote_save_settings"
 				]
 			}
 		}

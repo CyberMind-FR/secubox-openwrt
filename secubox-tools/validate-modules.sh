@@ -104,19 +104,18 @@ for module_dir in luci-app-*/; do
         menu_paths=$(grep -o '"path":\s*"[^"]*"' "$menu_file" | cut -d'"' -f4)
 
         for path in $menu_paths; do
-            # Convert menu path to file path
-            view_file="$module_dir/htdocs/luci-static/resources/view/${path}.js"
+            # Locate view file anywhere in repo (supports shared menus pointing to other modules)
+            view_file=$(find . -path "*/htdocs/luci-static/resources/view/${path}.js" -print -quit 2>/dev/null)
 
-            if [ -f "$view_file" ]; then
-                success "$module_name: Menu path '$path' → file exists"
+            if [ -n "$view_file" ] && [ -f "$view_file" ]; then
+                success "$module_name: Menu path '$path' → file exists at ${view_file#./}"
             else
-                error "$module_name: Menu path '$path' → file NOT found at $view_file"
+                error "$module_name: Menu path '$path' → no view found in repository"
 
-                # Suggest possible matches
-                view_dir=$(dirname "$view_file")
-                if [ -d "$view_dir" ]; then
+                view_dir_guess=$(printf "%s/htdocs/luci-static/resources/view/%s" "$module_dir" "$(dirname "$path")")
+                if [ -d "$view_dir_guess" ]; then
                     echo "  → Possible files in $(dirname $path):"
-                    find "$view_dir" -name "*.js" -type f | while read -r f; do
+                    find "$view_dir_guess" -name "*.js" -type f | while read -r f; do
                         echo "     - $(basename $f)"
                     done
                 fi

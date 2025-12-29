@@ -19,7 +19,26 @@ return baseclass.extend({
 		return tabs.slice();
 	},
 
+	ensureLuCITabsHidden: function() {
+		if (typeof document === 'undefined')
+			return;
+		if (document.getElementById('system-hub-tabstyle'))
+			return;
+		var style = document.createElement('style');
+		style.id = 'system-hub-tabstyle';
+		style.textContent = `
+body[data-page^="admin-secubox-system-system-hub"] .tabs,
+body[data-page^="admin-secubox-system-system-hub"] #tabmenu,
+body[data-page^="admin-secubox-system-system-hub"] .cbi-tabmenu,
+body[data-page^="admin-secubox-system-system-hub"] .nav-tabs {
+	display: none !important;
+}
+		`;
+		document.head && document.head.appendChild(style);
+	},
+
 	renderTabs: function(active) {
+		this.ensureLuCITabsHidden();
 		return E('div', { 'class': 'sh-nav-tabs system-hub-nav-tabs' },
 			this.getTabs().map(function(tab) {
 				return E('a', {

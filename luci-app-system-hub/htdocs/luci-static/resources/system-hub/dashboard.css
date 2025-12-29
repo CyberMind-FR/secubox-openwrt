@@ -31,7 +31,8 @@
 
 /* Dark theme (default) */
 :root,
-[data-theme="dark"] {
+[data-theme="dark"],
+[data-secubox-theme="dark"] {
 	--sh-bg-primary: #0a0a0f;
 	--sh-bg-secondary: #12121a;
 	--sh-bg-tertiary: #1a1a24;
@@ -47,7 +48,8 @@
 }
 
 /* Light theme */
-[data-theme="light"] {
+[data-theme="light"],
+[data-secubox-theme="light"] {
 	--sh-bg-primary: #f5f5f7;
 	--sh-bg-secondary: #ffffff;
 	--sh-bg-tertiary: #f9fafb;
@@ -261,6 +263,110 @@
 }
 
 .sh-card-body { padding: 20px; }
+
+/* Settings + inputs */
+.sh-settings-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 16px;
+}
+
+.sh-settings-grid--compact {
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.sh-input-group {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.sh-input-label {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--sh-text-secondary);
+}
+
+.sh-input {
+	width: 100%;
+	padding: 10px 12px;
+	border-radius: 10px;
+	border: 1px solid var(--sh-border);
+	background: var(--sh-bg-secondary);
+	color: var(--sh-text-primary);
+	font-family: var(--sh-font-sans);
+	font-size: 13px;
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sh-input:focus {
+	outline: none;
+	border-color: var(--sh-primary);
+	box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.sh-threshold-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+	gap: 16px;
+}
+
+.sh-threshold-row {
+	background: var(--sh-bg-secondary);
+	border: 1px solid var(--sh-border);
+	border-radius: 12px;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.sh-threshold-label {
+	font-weight: 600;
+	color: var(--sh-text-primary);
+}
+
+.sh-threshold-inputs {
+	display: flex;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.sh-threshold-inputs label {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	font-size: 11px;
+	text-transform: uppercase;
+	color: var(--sh-text-secondary);
+	flex: 1;
+	min-width: 120px;
+}
+
+.sh-support-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 14px;
+}
+
+.sh-support-card {
+	background: var(--sh-bg-secondary);
+	border: 1px solid var(--sh-border);
+	border-radius: 12px;
+	padding: 14px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.sh-support-label {
+	font-size: 11px;
+	text-transform: uppercase;
+	color: var(--sh-text-secondary);
+	letter-spacing: 0.06em;
+}
 
 /* Component Grid */
 .sh-components-grid {

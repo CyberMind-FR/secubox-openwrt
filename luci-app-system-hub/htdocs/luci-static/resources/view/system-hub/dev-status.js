@@ -1,6 +1,6 @@
 'use strict';
 'require view';
-'require system-hub/theme as Theme';
+'require secubox-theme/theme as Theme';
 'require system-hub/dev-status-widget as DevStatusWidget';
 'require system-hub/nav as HubNav';
 
@@ -8,9 +8,10 @@ return view.extend({
 	widget: null,
 
 	load: function() {
-		return Promise.all([
-			Theme.getTheme()
-		]);
+		var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+			(document.documentElement && document.documentElement.getAttribute('lang')) ||
+			(navigator.language ? navigator.language.split('-')[0] : 'en');
+		return Theme.init({ language: shLang });
 	},
 
 	getWidget: function() {
@@ -22,7 +23,9 @@ return view.extend({
 	render: function() {
 		var widget = this.getWidget();
 		var container = E('div', { 'class': 'system-hub-dev-status' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			HubNav.renderTabs('dev-status'),
 			this.renderHeader(),
 			this.renderSummaryGrid(),

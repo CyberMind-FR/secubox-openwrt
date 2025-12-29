@@ -2,19 +2,26 @@
 'require view';
 'require dom';
 'require ui';
+'require secubox-theme/theme as Theme';
+'require system-hub/api as API';
 'require system-hub/nav as HubNav';
 
-var api = L.require('system-hub.api');
+var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: shLang });
 
 return view.extend({
 	load: function() {
-		return api.remoteStatus();
+		return API.remoteStatus();
 	},
 
 	render: function(remote) {
 		this.remote = remote || {};
 
 		var view = E('div', { 'class': 'system-hub-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			HubNav.renderTabs('remote'),
 			
@@ -141,7 +148,7 @@ return view.extend({
 			E('p', {}, 'Récupération en cours…'),
 			E('div', { 'class': 'spinning' })
 		]);
-		api.remoteCredentials().then(function(result) {
+		API.remoteCredentials().then(function(result) {
 			ui.hideModal();
 			ui.showModal(_('Identifiants RustDesk'), [
 				E('div', { 'style': 'font-size:18px; margin-bottom:8px;' }, 'ID: ' + (result.id || '---')),
@@ -159,7 +166,7 @@ return view.extend({
 	toggleService: function() {
 		if (!this.remote || !this.remote.installed) return;
 		var action = this.remote.running ? 'stop' : 'start';
-		api.remoteServiceAction(action).then(L.bind(function(res) {
+		API.remoteServiceAction(action).then(L.bind(function(res) {
 			if (res.success) {
 				this.reload();
 				ui.addNotification(null, E('p', {}, '✅ ' + action), 'info');
@@ -175,7 +182,7 @@ return view.extend({
 			E('p', {}, 'Installation de RustDesk…'),
 			E('div', { 'class': 'spinning' })
 		]);
-		api.remoteInstall().then(L.bind(function(result) {
+		API.remoteInstall().then(L.bind(function(result) {
 			ui.hideModal();
 			if (result.success) {
 				ui.addNotification(null, E('p', {}, result.message || 'Installé'), 'info');
@@ -194,7 +201,7 @@ return view.extend({
 		var require = document.querySelector('[data-field="require_approval"]').classList.contains('active') ? 1 : 0;
 		var notify = document.querySelector('[data-field="notify_on_connect"]').classList.contains('active') ? 1 : 0;
 
-		api.remoteSaveSettings({
+		API.remoteSaveSettings({
 			allow_unattended: allow,
 			require_approval: require,
 			notify_on_connect: notify

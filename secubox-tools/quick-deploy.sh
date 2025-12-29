@@ -183,22 +183,28 @@ prompt_select_app() {
 		echo "(non-interactive shell: rerun with --app <name>)" >&2
 		return 1
 	fi
-	echo "Select a LuCI app to deploy (type number or name, q to abort):"
 	local old_ps3=${PS3:-""}
+	local selected=""
 	PS3="Choice (q to abort): "
-	select choice in "${apps[@]}"; do
-		if [[ "$REPLY" == "q" || "$REPLY" == "quit" ]]; then
-			PS3="$old_ps3"
-			return 1
-		fi
-		if [[ -n "$choice" ]]; then
-			PS3="$old_ps3"
-			echo "$choice"
-			return 0
-		fi
-		echo "Invalid selection."
-	done
+	{
+		echo "Select a LuCI app to deploy (type number or name, q to abort):"
+		select choice in "${apps[@]}"; do
+			if [[ "$REPLY" == "q" || "$REPLY" == "quit" ]]; then
+				break
+			fi
+			if [[ -n "$choice" ]]; then
+				selected="$choice"
+				break
+			fi
+			echo "Invalid selection." >&2
+		done
+	} >&2
 	PS3="$old_ps3"
+	if [[ -z "$selected" ]]; then
+		return 1
+	fi
+	echo "$selected"
+	return 0
 }
 
 resolve_app_dir() {

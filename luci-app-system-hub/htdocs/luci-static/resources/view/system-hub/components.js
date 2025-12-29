@@ -3,28 +3,32 @@
 'require ui';
 'require dom';
 'require poll';
-'require system-hub.api as API';
-'require system-hub.theme as Theme';
+'require system-hub/api as API';
+'require secubox-theme/theme as Theme';
 'require system-hub/nav as HubNav';
+
+var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: shLang });
 
 return view.extend({
 	componentsData: [],
 	currentFilter: 'all',
 
 	load: function() {
-		return Promise.all([
-			API.getComponents(),
-			Theme.getTheme()
-		]);
+		return API.getComponents();
 	},
 
 	render: function(data) {
-		var components = (data[0] && data[0].modules) || [];
-		var theme = data[1];
+		var components = (data && data.modules) || [];
 
 		this.componentsData = components;
 
 		var view = E('div', { 'class': 'system-hub-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/components.css') }),
 
 			HubNav.renderTabs('components'),

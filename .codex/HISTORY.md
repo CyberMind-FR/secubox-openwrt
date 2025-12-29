@@ -28,3 +28,15 @@
 
 - **2025-12-29 – Quick Deploy tooling**  
   Added `secubox-tools/quick-deploy.sh` with profiles (theme, full LuCI app), interactive `--src-select`, selective uploads, verification, and cache management.
+
+- **2025-12-29 – System Hub ACL compliance**  
+  Added diagnostics and remote RPC methods to `luci-app-system-hub` ACL so those screens work with proper permissions.
+
+- **2025-12-29 – Validator improvements**  
+  `secubox-tools/validate-modules.sh` now accepts cross-module LuCI menus and all CSS/JS assets were reset to 644 so the suite passes validation.
+
+- **2025-12-29 – Quick Deploy prompt fix**  
+  Adjusted `prompt_select_app()` so menu output goes to stderr, preventing `--src-select` from capturing prompts along with the chosen app.
+
+- **2025-12-29 – System Hub theme sync**  
+  `system-hub/common.css` / `dashboard.css` now listen to `data-secubox-theme`, hide the stock LuCI tab bar, and every System Hub view imports `secubox-theme` so UI matches the global toggle.

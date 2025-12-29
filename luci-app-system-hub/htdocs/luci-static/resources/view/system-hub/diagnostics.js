@@ -3,13 +3,18 @@
 'require dom';
 'require ui';
 'require fs';
+'require secubox-theme/theme as Theme';
+'require system-hub/api as API';
 'require system-hub/nav as HubNav';
 
-var api = L.require('system-hub.api');
+var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: shLang });
 
 return view.extend({
 	load: function() {
-		return api.listDiagnostics();
+		return API.listDiagnostics();
 	},
 
 	render: function(data) {
@@ -17,6 +22,8 @@ return view.extend({
 		var archives = this.currentArchives;
 
 		var view = E('div', { 'class': 'system-hub-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			HubNav.renderTabs('diagnostics'),
 			
@@ -163,7 +170,7 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		api.collectDiagnostics(includeLogs, includeConfig, includeNetwork, anonymize).then(L.bind(function(result) {
+		API.collectDiagnostics(includeLogs, includeConfig, includeNetwork, anonymize).then(L.bind(function(result) {
 			ui.hideModal();
 			if (result.success) {
 				ui.addNotification(null, E('p', {}, '✅ Archive créée: ' + result.file + ' (' + api.formatBytes(result.size) + ')'), 'success');
@@ -190,7 +197,7 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		api.uploadDiagnostics(latest.name).then(function(result) {
+		API.uploadDiagnostics(latest.name).then(function(result) {
 			ui.hideModal();
 			if (result && result.success) {
 				ui.addNotification(null, E('p', {}, '☁️ Archive envoyée au support (' + (result.status || 'OK') + ')'), 'info');
@@ -207,7 +214,7 @@ return view.extend({
 		var resultsDiv = document.getElementById('test-results');
 		
 		resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px;"><div class="spinning"></div><div style="margin-top: 12px;">Test en cours...</div></div>';
-		api.runDiagnosticTest(type).then(function(result) {
+		API.runDiagnosticTest(type).then(function(result) {
 			var color = result.success ? '#22c55e' : '#ef4444';
 			var bg = result.success ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)';
 			var icon = result.success ? '✅' : '❌';
@@ -233,7 +240,7 @@ return view.extend({
 			E('p', {}, 'Préparation de ' + name)
 		]);
 
-		api.downloadDiagnostic(name).then(function(result) {
+		API.downloadDiagnostic(name).then(function(result) {
 			ui.hideModal();
 			if (!result.success || !result.data) {
 				ui.addNotification(null, E('p', {}, '❌ Téléchargement impossible'), 'error');
@@ -253,7 +260,7 @@ return view.extend({
 
 	deleteArchive: function(name) {
 		if (!confirm(_('Supprimer ') + name + ' ?')) return;
-		api.deleteDiagnostic(name).then(L.bind(function(result) {
+		API.deleteDiagnostic(name).then(L.bind(function(result) {
 			if (result.success) {
 				ui.addNotification(null, E('p', {}, '🗑️ Archive supprimée'), 'info');
 				this.refreshArchives();
@@ -264,7 +271,7 @@ return view.extend({
 	},
 
 	refreshArchives: function() {
-		api.listDiagnostics().then(L.bind(function(data) {
+		API.listDiagnostics().then(L.bind(function(data) {
 			this.currentArchives = data.archives || [];
 			var list = document.getElementById('archives-list');
 			if (!list) return;

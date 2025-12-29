@@ -4,10 +4,13 @@
 'require ui';
 'require poll';
 'require system-hub/api as API';
-'require system-hub/theme as Theme';
+'require secubox-theme/theme as Theme';
 'require system-hub/nav as HubNav';
 
-Theme.init();
+var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: shLang });
 
 return view.extend({
 	healthData: null,
@@ -20,6 +23,8 @@ return view.extend({
 		this.healthData = data || {};
 
 		var container = E('div', { 'class': 'system-hub-dashboard sh-health-view' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/health.css') }),
 			HubNav.renderTabs('health'),
