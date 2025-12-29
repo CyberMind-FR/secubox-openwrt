@@ -75,6 +75,7 @@ The package now installs a lightweight watcher (`/usr/sbin/mqtt-bridge-monitor`)
 - Managed with the standard init script: `service mqtt-bridge start|stop|status`.
 - Writes state transitions to the system log (`logread -e mqtt-bridge-monitor`).
 - Updates each adapter section with `detected`, `port`, `bus`, `device`, `health`, and `last_seen`, which the LuCI Devices tab now surfaces.
+- The MQTT Settings view exposes the same adapter entries so you can enable/disable presets, rename labels, or override `/dev/tty*` assignments without leaving the UI.
 
 Use `uci show mqtt-bridge.adapter` to inspect the persisted metadata, or `ubus call luci.mqtt-bridge status` to see the JSON payload consumed by the UI.
 

@@ -113,6 +113,38 @@ append_configured_adapters() {
 	json_close_array
 }
 
+apply_adapter_settings() {
+	local adapter_keys
+	json_get_keys adapter_keys
+	for adapter in $adapter_keys; do
+		json_select "$adapter" || continue
+		local enabled label port vendor product preset
+		json_get_var enabled enabled
+		json_get_var label label
+		json_get_var port port
+		json_get_var vendor vendor
+		json_get_var product product
+		json_get_var preset preset
+		json_select ..
+		[ -n "$adapter" ] || continue
+
+		[ -n "$enabled" ] && uci set mqtt-bridge.adapter."$adapter".enabled="$enabled"
+		if [ -n "$label" ]; then
+			uci set mqtt-bridge.adapter."$adapter".title="$label"
+		else
+			uci delete mqtt-bridge.adapter."$adapter".title >/dev/null 2>&1
+		fi
+		if [ -n "$port" ]; then
+			uci set mqtt-bridge.adapter."$adapter".port="$port"
+		else
+			uci delete mqtt-bridge.adapter."$adapter".port >/dev/null 2>&1
+		fi
+		[ -n "$vendor" ] && uci set mqtt-bridge.adapter."$adapter".vendor="$vendor"
+		[ -n "$product" ] && uci set mqtt-bridge.adapter."$adapter".product="$product"
+		[ -n "$preset" ] && uci set mqtt-bridge.adapter."$adapter".preset="$preset"
+	done
+}
+
 status() {
 	json_init
 	json_add_string "broker" "$(uci -q get mqtt-bridge.broker.host || echo 'localhost')"
@@ -208,6 +240,12 @@ apply_settings() {
 	json_get_var password password
 	json_get_var base_topic base_topic
 	json_get_var retention retention
+	json_get_type adapters_type adapters
+	if [ "$adapters_type" = "object" ]; then
+		json_select adapters
+		apply_adapter_settings
+		json_select ..
+	fi
 	json_cleanup
 
 	[ -n "$host" ] && uci set mqtt-bridge.broker.host="$host"

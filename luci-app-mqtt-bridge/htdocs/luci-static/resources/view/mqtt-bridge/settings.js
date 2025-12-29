@@ -13,17 +13,20 @@ Theme.init({ language: lang });
 
 return view.extend({
 	load: function() {
-		return API.getStatus().then(function(status) {
-			return status.settings || {};
-		});
+		return API.getStatus();
 	},
 
-	render: function(settings) {
+	render: function(payload) {
+		var settings = (payload && payload.settings) || {};
+		var adapters = (payload && payload.adapters) || [];
+		this.currentAdapters = adapters;
+
 		var container = E('div', { 'class': 'mqtt-bridge-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('mqtt-bridge/common.css') }),
 			Nav.renderTabs('settings'),
-			this.renderSettingsCard(settings || {})
+			this.renderSettingsCard(settings || {}),
+			this.renderAdapterCard(adapters || [])
 		]);
 		return container;
 	},
@@ -42,8 +45,48 @@ return view.extend({
 				this.input('retention', _('Retention (days)'), settings.retention || 7, 'number')
 			]),
 			E('div', { 'style': 'margin-top:16px;' }, [
-				E('button', { 'class': 'mb-btn mb-btn-primary', 'click': ui.createHandlerFn(this, 'saveSettings') }, ['💾 ', _('Save settings')])
+				E('button', { 'class': 'mb-btn mb-btn-primary', 'click': ui.createHandlerFn(this, 'savePreferences') }, ['💾 ', _('Save preferences')])
 			])
+		]);
+	},
+
+	renderAdapterCard: function(adapters) {
+		var items = adapters && adapters.length ? adapters.map(this.renderAdapterRow.bind(this)) :
+			[E('p', { 'style': 'color:var(--mb-muted);' }, _('No adapters configured yet. UCI sections named `config adapter` will appear here.'))];
+		return E('div', { 'class': 'mb-card' }, [
+			E('div', { 'class': 'mb-card-header' }, [
+				E('div', { 'class': 'mb-card-title' }, [E('span', {}, '🧩'), _('Adapter preferences')])
+			]),
+			E('div', { 'class': 'mb-adapter-grid' }, items)
+		]);
+	},
+
+	renderAdapterRow: function(adapter) {
+		var id = adapter.id || adapter.section || adapter.preset || adapter.vendor + ':' + adapter.product;
+		var inputId = this.makeAdapterInputId(id, 'label');
+		return E('div', { 'class': 'mb-adapter-row' }, [
+			E('div', { 'class': 'mb-adapter-header' }, [
+				E('div', {}, [
+					E('strong', {}, adapter.label || id || _('Adapter')),
+					E('div', { 'class': 'mb-profile-meta' }, [
+						adapter.vendor && adapter.product ? _('VID:PID ') + adapter.vendor + ':' + adapter.product : null,
+						adapter.port ? _('Port ') + adapter.port : null
+					].filter(Boolean).map(function(entry) {
+						return E('span', {}, entry);
+					}))
+				]),
+				E('label', { 'class': 'mb-switch' }, [
+					E('input', {
+						'type': 'checkbox',
+						'id': this.makeAdapterInputId(id, 'enabled'),
+						'checked': adapter.enabled !== false && adapter.enabled !== '0'
+					}),
+					E('span', {}, _('Enabled'))
+				])
+			]),
+			this.input(this.makeAdapterInputId(id, 'custom-label'), _('Display label'), adapter.label || id),
+			this.input(this.makeAdapterInputId(id, 'custom-port'), _('Preferred /dev/tty*'), adapter.port || '', 'text'),
+			adapter.notes ? E('p', { 'class': 'mb-profile-notes' }, adapter.notes) : null
 		]);
 	},
 
@@ -59,8 +102,12 @@ return view.extend({
 		]);
 	},
 
-	saveSettings: function() {
-		var payload = {
+	makeAdapterInputId: function(id, field) {
+		return 'adapter-' + (id || 'x').replace(/[^a-z0-9_-]/ig, '_') + '-' + field;
+	},
+
+	collectSettings: function() {
+		return {
 			host: document.getElementById('broker-host').value,
 			port: parseInt(document.getElementById('broker-port').value, 10) || 1883,
 			username: document.getElementById('username').value,
@@ -68,6 +115,33 @@ return view.extend({
 			base_topic: document.getElementById('base-topic').value,
 			retention: parseInt(document.getElementById('retention').value, 10) || 7
 		};
+	},
+
+	collectAdapters: function() {
+		var adapters = {};
+		var list = this.currentAdapters || [];
+		list.forEach(function(adapter) {
+			var id = adapter.id || adapter.section;
+			if (!id)
+				return;
+			var enabledEl = document.getElementById(this.makeAdapterInputId(id, 'enabled'));
+			var labelEl = document.getElementById(this.makeAdapterInputId(id, 'custom-label'));
+			var portEl = document.getElementById(this.makeAdapterInputId(id, 'custom-port'));
+			adapters[id] = {
+				enabled: enabledEl ? (enabledEl.checked ? 1 : 0) : 1,
+				label: labelEl ? labelEl.value : (adapter.label || ''),
+				port: portEl ? portEl.value : (adapter.port || ''),
+				preset: adapter.preset || '',
+				vendor: adapter.vendor || '',
+				product: adapter.product || ''
+			};
+		}, this);
+		return adapters;
+	},
+
+	savePreferences: function() {
+		var payload = this.collectSettings();
+		payload.adapters = this.collectAdapters();
 
 		ui.showModal(_('Saving MQTT settings'), [
 			E('p', {}, _('Applying broker configuration…')),

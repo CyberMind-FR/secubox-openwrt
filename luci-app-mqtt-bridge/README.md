@@ -9,7 +9,7 @@ USB-aware MQTT orchestrator for SecuBox routers. The application discovers USB s
 
 - `overview.js` – broker status, metrics, quick actions.
 - `devices.js` – USB/tasmota sensor list with pairing wizard.
-- `settings.js` – broker credentials, topic templates, retention options.
+- `settings.js` – broker credentials, topic templates, retention options, adapter preferences (enable/label/tty overrides).
 
 ## RPC Methods
 

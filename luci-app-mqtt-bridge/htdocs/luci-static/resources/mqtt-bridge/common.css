@@ -692,6 +692,43 @@ pre {
 	overflow-x: auto;
 }
 
+.mb-adapter-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+}
+
+.mb-adapter-row {
+	border: 1px solid var(--mb-border);
+	border-radius: 16px;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	background: var(--mb-card);
+}
+
+.mb-adapter-header {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	align-items: center;
+}
+
+.mb-switch {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	color: var(--mb-text);
+}
+
+.mb-switch input {
+	accent-color: var(--mb-accent);
+	width: 16px;
+	height: 16px;
+}
+
 @media (max-width: 768px) {
 	.mqtt-bridge-dashboard {
 		padding: 16px;
