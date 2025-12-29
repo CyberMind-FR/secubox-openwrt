@@ -240,6 +240,27 @@ git push  # validation runs automatically
 ./secubox-tools/install-git-hooks.sh
 ```
 
+### Apps & Plugin Registry
+
+#### secubox-app
+
+CLI helper for the nascent SecuBox App Store. It reads `plugins/*/manifest.json`, installs/removes the packages listed there, and runs optional shell actions (`install`, `check`, `update`, `status`) defined in the manifest.
+
+```bash
+# List manifests and install state
+secubox-app list
+
+# Install Zigbee2MQTT (packages + zigbee2mqttctl install)
+secubox-app install zigbee2mqtt
+
+# Show manifest or run status/update
+secubox-app show zigbee2mqtt
+secubox-app status zigbee2mqtt
+secubox-app update zigbee2mqtt
+```
+
+Environment: set `SECUBOX_PLUGINS_DIR` to override the manifest directory (default `../plugins`). Requires `opkg` and `jsonfilter`, so run it on an OpenWrt system (or within the SDK chroot).
+
 ### Maintenance Tools
 
 #### secubox-repair.sh

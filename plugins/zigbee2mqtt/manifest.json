@@ -1,0 +1,36 @@
+{
+  "id": "zigbee2mqtt",
+  "name": "Zigbee2MQTT",
+  "description": "Dockerized Zigbee gateway (secubox-app-zigbee2mqtt + LuCI UI).",
+  "type": "docker",
+  "version": "1.0.0",
+  "source": "https://www.zigbee2mqtt.io/",
+  "packages": [
+    "secubox-app-zigbee2mqtt",
+    "luci-app-zigbee2mqtt"
+  ],
+  "ports": [
+    { "name": "frontend", "protocol": "http", "port": 8080, "expose": true }
+  ],
+  "volumes": ["/srv/zigbee2mqtt"],
+  "network": {
+    "default_mode": "lan",
+    "dmz_supported": true
+  ],
+  "wizard": {
+    "uci": "/etc/config/zigbee2mqtt",
+    "steps": [
+      "serial_port",
+      "mqtt_host",
+      "credentials",
+      "frontend_port"
+    ]
+  },
+  "profiles": ["home", "lab"],
+  "actions": {
+    "install": "zigbee2mqttctl install",
+    "check": "zigbee2mqttctl check",
+    "update": "zigbee2mqttctl update",
+    "status": "/etc/init.d/zigbee2mqtt status"
+  }
+}

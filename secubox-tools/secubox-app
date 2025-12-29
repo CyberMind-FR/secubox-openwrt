@@ -1,0 +1,210 @@
+#!/bin/sh
+# SecuBox Apps CLI
+# Lists/installs/removes plugin manifests declared under plugins/*/manifest.json
+
+set -eu
+
+PLUGINS_DIR="${SECUBOX_PLUGINS_DIR:-$(cd "$(dirname "$0")/../plugins" && pwd)}"
+OPKG_UPDATED=0
+
+info() { printf '[INFO] %s\n' "$*"; }
+warn() { printf '[WARN] %s\n' "$*" >&2; }
+err() { printf '[ERROR] %s\n' "$*" >&2; }
+
+usage() {
+	cat <<'USAGE'
+SecuBox Apps CLI
+Usage: secubox-app <command> [arguments]
+
+Commands:
+  list                     Show available app manifests
+  show <app-id>            Display manifest details
+  install <app-id>         Install required packages + run install action
+  remove <app-id>          Remove packages listed in manifest
+  status <app-id>          Show install state and run status action if defined
+  update <app-id>          Run plugin update action or opkg upgrade
+
+Environment:
+  SECUBOX_PLUGINS_DIR   Override plugin manifest directory (default: ../plugins)
+USAGE
+}
+
+require_tool() {
+	command -v "$1" >/dev/null 2>&1 || { err "Missing dependency: $1"; exit 1; }
+}
+
+require_opkg() { require_tool opkg; }
+require_jsonfilter() { require_tool jsonfilter; }
+
+manifest_path() {
+	local id="$1"
+	local file="$PLUGINS_DIR/$id/manifest.json"
+	[ -f "$file" ] || { err "Manifest not found for '$id' ($file)"; exit 1; }
+	printf '%s' "$file"
+}
+
+manifest_field() {
+	local file="$1"; shift
+	jsonfilter -s "$file" -e "$1" 2>/dev/null || true
+}
+
+manifest_packages() {
+	local file="$1"
+	jsonfilter -s "$file" -e '@.packages[*]' 2>/dev/null || true
+}
+
+manifest_action() {
+	local file="$1"; shift
+	jsonfilter -s "$file" -e "@.actions.$1" 2>/dev/null || true
+}
+
+ensure_opkg_updated() {
+	[ "$OPKG_UPDATED" -eq 1 ] && return
+	opkg update >/dev/null
+	OPKG_UPDATED=1
+}
+
+packages_installed() {
+	local all_installed=0
+	local partial=0
+	local pkg
+	for pkg in $1; do
+		if opkg status "$pkg" >/dev/null 2>&1; then
+			continue
+		else
+			all_installed=1
+		fi
+		[ -n "$partial" ]
+	done
+}
+
+plugin_state() {
+	local file="$1"
+	local pkgs pkg missing=0 installed=0 total=0
+	pkgs=$(manifest_packages "$file")
+	for pkg in $pkgs; do
+		total=$((total+1))
+		if opkg status "$pkg" >/dev/null 2>&1; then
+			installed=$((installed+1))
+		else
+			missing=$((missing+1))
+		fi
+	 done
+	if [ "$total" -eq 0 ]; then
+		echo "n/a"
+	elif [ "$missing" -eq 0 ]; then
+		echo "installed"
+	elif [ "$installed" -eq 0 ]; then
+		echo "missing"
+	else
+		echo "partial"
+	fi
+}
+
+list_plugins() {
+	require_jsonfilter
+	require_opkg
+	printf '%-16s %-22s %-10s %-10s\n' "ID" "Name" "Type" "State"
+	printf '%-16s %-22s %-10s %-10s\n' "--" "----" "----" "-----"
+	find "$PLUGINS_DIR" -mindepth 2 -maxdepth 2 -name manifest.json | sort | while read -r file; do
+		local id name type state
+		id=$(manifest_field "$file" '@.id')
+		name=$(manifest_field "$file" '@.name')
+		type=$(manifest_field "$file" '@.type')
+		state=$(plugin_state "$file")
+		printf '%-16s %-22s %-10s %-10s\n' "$id" "${name:-Unknown}" "${type:-?}" "$state"
+	 done
+}
+
+show_manifest() {
+	require_jsonfilter
+	local file=$(manifest_path "$1")
+	cat "$file"
+}
+
+install_plugin() {
+	require_jsonfilter
+	require_opkg
+	local file=$(manifest_path "$1")
+	local pkgs pkg
+	pkgs=$(manifest_packages "$file")
+	if [ -z "$pkgs" ]; then
+		warn "Manifest has no packages; nothing to install."
+	else
+		for pkg in $pkgs; do
+			if opkg status "$pkg" >/dev/null 2>&1; then
+				info "$pkg already installed"
+			else
+				info "Installing $pkg"
+				ensure_opkg_updated
+				opkg install "$pkg"
+			fi
+		done
+	fi
+	local install_cmd
+	install_cmd=$(manifest_action "$file" install)
+	if [ -n "$install_cmd" ]; then
+		info "Running install action: $install_cmd"
+		sh -c "$install_cmd"
+	fi
+}
+
+remove_plugin() {
+	require_jsonfilter
+	require_opkg
+	local file=$(manifest_path "$1")
+	local pkgs pkg
+	pkgs=$(manifest_packages "$file")
+	for pkg in $pkgs; do
+		if opkg status "$pkg" >/dev/null 2>&1; then
+			info "Removing $pkg"
+			opkg remove "$pkg"
+		else
+			info "$pkg not installed"
+		fi
+	done
+}
+
+plugin_status_cmd() {
+	require_jsonfilter
+	local file=$(manifest_path "$1")
+	local status_cmd
+	status_cmd=$(manifest_action "$file" status)
+	local state
+	state=$(plugin_state "$file")
+	printf 'App: %s\nState: %s\n' "$1" "$state"
+	if [ -n "$status_cmd" ]; then
+		printf 'Status command output:\n'
+		sh -c "$status_cmd" || true
+	fi
+}
+
+update_plugin() {
+	require_jsonfilter
+	require_opkg
+	local file=$(manifest_path "$1")
+	local update_cmd pkgs pkg
+	update_cmd=$(manifest_action "$file" update)
+	if [ -n "$update_cmd" ]; then
+		info "Running update action: $update_cmd"
+		sh -c "$update_cmd"
+	else
+		pkgs=$(manifest_packages "$file")
+		for pkg in $pkgs; do
+			info "Upgrading $pkg"
+			ensure_opkg_updated
+			opkg upgrade "$pkg" || true
+		done
+	fi
+}
+
+case "${1:-}" in
+	list) shift; list_plugins ;;
+	show) shift; [ $# -ge 1 ] || { err "show requires an app id"; exit 1; }; show_manifest "$1" ;;
+	install) shift; [ $# -ge 1 ] || { err "install requires an app id"; exit 1; }; install_plugin "$1" ;;
+	remove) shift; [ $# -ge 1 ] || { err "remove requires an app id"; exit 1; }; remove_plugin "$1" ;;
+	status) shift; [ $# -ge 1 ] || { err "status requires an app id"; exit 1; }; plugin_status_cmd "$1" ;;
+	update) shift; [ $# -ge 1 ] || { err "update requires an app id"; exit 1; }; update_plugin "$1" ;;
+	help|--help|-h|'') usage ;;
+	*) err "Unknown command: $1"; usage; exit 1 ;;
+esac

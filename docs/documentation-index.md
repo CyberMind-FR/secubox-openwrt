@@ -234,6 +234,19 @@ Follow this template when creating or revising documentation:
 
 **Size:** Short (~120 lines)
 
+#### **embedded/app-store.md** 🛒
+*Plugin manifest format and SecuBox App Store CLI.*
+
+**Contents:**
+- Manifest schema (id/type/packages/actions, wizard metadata)
+- Example manifest for Zigbee2MQTT
+- `secubox-app` CLI usage (list/show/install/status/update/remove)
+- Notes on future LuCI App Store + profile integration
+
+**When to use:** Creating new app manifests or scripting installs via CLI.
+
+**Size:** Short (~120 lines)
+
 ---
 
 ### 5. Tools & Scripts Documentation
