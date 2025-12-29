@@ -11,6 +11,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/secubox-app-domoticz
   SECTION:=utils
   CATEGORY:=Utilities
+  PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Domoticz docker app
   DEPENDS:=+uci +libuci +dockerd +docker +containerd

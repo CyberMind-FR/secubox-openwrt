@@ -11,6 +11,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/secubox-app
   SECTION:=utils
   CATEGORY:=Utilities
+  PKGARCH:=all
   TITLE:=SecuBox App Store CLI
   DEPENDS:=+jsonfilter
 endef

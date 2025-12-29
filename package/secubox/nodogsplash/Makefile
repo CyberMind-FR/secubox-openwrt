@@ -19,6 +19,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/$(PKG_NAME)
   SECTION:=net
   CATEGORY:=Network
+  PKGARCH:=all
   SUBMENU:=Captive Portals
   TITLE:=Nodogsplash captive portal
   URL:=https://github.com/nodogsplash/nodogsplash

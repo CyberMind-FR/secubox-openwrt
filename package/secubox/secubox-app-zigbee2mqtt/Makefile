@@ -11,6 +11,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/secubox-app-zigbee2mqtt
   SECTION:=utils
   CATEGORY:=Utilities
+  PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Zigbee2MQTT docker app
   DEPENDS:=+uci +libuci +kmod-usb-acm +bash? +dockerd +docker +containerd

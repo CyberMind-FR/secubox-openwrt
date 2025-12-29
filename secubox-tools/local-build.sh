@@ -23,7 +23,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 # Available versions: 25.12.0-rc1 (default), 24.10.5 (stable LTS), 23.05.5, SNAPSHOT
-OPENWRT_VERSION="${OPENWRT_VERSION:-25.12.0-rc1}"
+OPENWRT_VERSION="${OPENWRT_VERSION:-24.10.5}"
 SDK_DIR="${SDK_DIR:-./sdk}"
 BUILD_DIR="${BUILD_DIR:-./build}"
 CACHE_DIR="${CACHE_DIR:-./cache}"
@@ -1603,7 +1603,7 @@ EXAMPLES:
     $0 clean-all
 
 ENVIRONMENT VARIABLES:
-    OPENWRT_VERSION             OpenWrt version (default: 23.05.5)
+OPENWRT_VERSION             OpenWrt version (default: 24.10.5)
     SDK_DIR                     SDK directory (default: ./sdk)
     BUILD_DIR                   Build output directory (default: ./build)
     CACHE_DIR                   Download cache directory (default: ./cache)
