@@ -13,5 +13,5 @@
    - Provide rules to forward payloads into SecuBox Alerts.
 
 4. **Profiles**
-   - Promote detected presets into editable device entries (auto-populate `/etc/config/mqtt-bridge`).
-   - Support multiple adapters simultaneously and expose health metrics per profile.
+   - Allow LuCI to edit adapter entries (enable/disable, rename, override serial port).
+   - Surface per-adapter health metrics/uptime graphs and expose actions (rescan, reset).

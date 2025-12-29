@@ -26,7 +26,7 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('mqtt-bridge/common.css') }),
 			Nav.renderTabs('devices'),
 			this.renderStats(status),
-			this.renderProfiles(status.profiles || []),
+			this.renderProfiles(status.adapters || [], status.profiles || []),
 			E('div', { 'class': 'mb-card' }, [
 				E('div', { 'class': 'mb-card-header' }, [
 					E('div', { 'class': 'mb-card-title' }, [E('span', {}, '🔌'), _('USB & Sensors')]),
@@ -41,8 +41,10 @@ return view.extend({
 		]);
 	},
 
-	renderProfiles: function(profiles) {
-		var items = profiles || [];
+	renderProfiles: function(adapters, liveProfiles) {
+		var primary = (adapters && adapters.length) ? adapters : [];
+		var fallback = (liveProfiles && liveProfiles.length) ? liveProfiles : [];
+		var items = primary.length ? primary : fallback;
 		var cards = items.length ? items.map(this.renderProfile.bind(this)) :
 			[E('p', { 'style': 'color:var(--mb-muted);' },
 				_('No presets detected yet. Connect a Zigbee adapter or review the documentation below.'))];
@@ -62,13 +64,22 @@ return view.extend({
 	},
 
 	renderProfile: function(profile) {
-		var detected = profile.detected;
+		var detected = profile.detected === true || profile.detected === 1 || profile.detected === '1';
 		var meta = [
 			(profile.vendor && profile.product) ? _('VID:PID ') + profile.vendor + ':' + profile.product : null,
 			profile.bus ? _('Bus ') + profile.bus : null,
 			profile.device ? _('Device ') + profile.device : null,
 			profile.port ? _('Port ') + profile.port : null
 		].filter(Boolean);
+		var statusParts = [];
+		if (detected)
+			statusParts.push(_('Detected'));
+		else
+			statusParts.push(_('Waiting'));
+		if (profile.health)
+			statusParts.push(profile.health);
+		if (profile.last_seen)
+			statusParts.push(_('Last seen ') + profile.last_seen);
 
 		return E('div', { 'class': 'mb-profile-card' }, [
 			E('div', { 'class': 'mb-profile-header' }, [
@@ -80,7 +91,7 @@ return view.extend({
 				]),
 				E('span', {
 					'class': 'mb-profile-status' + (detected ? ' online' : '')
-				}, detected ? _('Detected') : _('Waiting'))
+				}, statusParts.join(' • '))
 			]),
 			profile.notes ? E('p', { 'class': 'mb-profile-notes' }, profile.notes) : null
 		]);

@@ -67,6 +67,17 @@ Match the reported Bus/Device numbers with `/sys/bus/usb/devices/*/busnum` and `
 
 Once the tty node is confirmed, update `/etc/config/mqtt-bridge` and restart the bridge service to bind Zigbee traffic to the MQTT topics defined in the Settings tab.
 
+## Adapter monitor daemon
+
+The package now installs a lightweight watcher (`/usr/sbin/mqtt-bridge-monitor`) that keeps SecuBox informed about attached adapters:
+
+- Configured via `config monitor 'monitor'` (interval in seconds) and `config adapter '...'` sections inside `/etc/config/mqtt-bridge`.
+- Managed with the standard init script: `service mqtt-bridge start|stop|status`.
+- Writes state transitions to the system log (`logread -e mqtt-bridge-monitor`).
+- Updates each adapter section with `detected`, `port`, `bus`, `device`, `health`, and `last_seen`, which the LuCI Devices tab now surfaces.
+
+Use `uci show mqtt-bridge.adapter` to inspect the persisted metadata, or `ubus call luci.mqtt-bridge status` to see the JSON payload consumed by the UI.
+
 ## Next steps
 
 - Add real daemon integration with Mosquitto.

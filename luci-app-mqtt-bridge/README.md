@@ -20,6 +20,10 @@ USB-aware MQTT orchestrator for SecuBox routers. The application discovers USB s
 
 The LuCI views depend on the SecuBox theme bundle included in `luci-theme-secubox`.
 
+## Daemon / Monitor
+
+`/usr/sbin/mqtt-bridge-monitor` (started via `/etc/init.d/mqtt-bridge`) polls configured adapter presets, logs plug/unplug events, and updates `/etc/config/mqtt-bridge` with `detected`, `port`, `bus`, `device`, and `health` metadata. The Devices view consumes those values to surface Zigbee/serial presets along with `dmesg` hints for `/dev/tty*` alignment.
+
 ## Development Notes
 
 See `.codex/apps/mqtt-bridge/WIP.md` for current tasks and `.codex/apps/mqtt-bridge/TODO.md` for backlog/high-level goals.

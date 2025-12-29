@@ -4,6 +4,7 @@
 - Scaffolded `luci-app-mqtt-bridge` with SecuBox-themed views (overview/devices/settings).
 - Added RPC backend (`luci.mqtt-bridge`) and UCI defaults for broker/bridge stats.
 - Added Zigbee/SMSC USB2134B preset detection (USB VID/PID scan, tty hinting, LuCI cards + docs).
+- Added `/usr/sbin/mqtt-bridge-monitor` + init.d service to keep adapter sections (port/bus/health) in sync.
 
 ## In Progress
 - Flesh out real USB discovery and MQTT client integration.

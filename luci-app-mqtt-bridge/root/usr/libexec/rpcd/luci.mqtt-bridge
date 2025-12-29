@@ -72,6 +72,47 @@ append_zigbee_profile() {
 	fi
 }
 
+add_adapter_json() {
+	local section="$1"
+	local enabled vendor product title preset notes detected port bus device health last_seen
+
+	config_get enabled "$section" enabled "1"
+	config_get vendor "$section" vendor
+	config_get product "$section" product
+	config_get title "$section" title
+	config_get preset "$section" preset
+	config_get notes "$section" notes
+	config_get detected "$section" detected
+	config_get port "$section" port
+	config_get bus "$section" bus
+	config_get device "$section" device
+	config_get health "$section" health
+	config_get last_seen "$section" last_seen
+
+	json_add_object
+	json_add_string "id" "$section"
+	[ -n "$title" ] && json_add_string "label" "$title"
+	[ -n "$preset" ] && json_add_string "preset" "$preset"
+	[ -n "$vendor" ] && json_add_string "vendor" "$vendor"
+	[ -n "$product" ] && json_add_string "product" "$product"
+	json_add_boolean "enabled" "${enabled:-0}"
+	json_add_boolean "detected" "${detected:-0}"
+	[ -n "$port" ] && json_add_string "port" "$port"
+	[ -n "$bus" ] && json_add_string "bus" "$bus"
+	[ -n "$device" ] && json_add_string "device" "$device"
+	[ -n "$health" ] && json_add_string "health" "$health"
+	[ -n "$last_seen" ] && json_add_string "last_seen" "$last_seen"
+	[ -n "$notes" ] && json_add_string "notes" "$notes"
+	json_close_object
+}
+
+append_configured_adapters() {
+	json_add_array "adapters"
+	config_load mqtt-bridge
+	config_foreach add_adapter_json adapter
+	json_close_array
+}
+
 status() {
 	json_init
 	json_add_string "broker" "$(uci -q get mqtt-bridge.broker.host || echo 'localhost')"
@@ -112,20 +153,22 @@ status() {
 	done
 	json_close_array
 
-	json_add_object "settings"
-	json_add_string "host" "$(uci -q get mqtt-bridge.broker.host || echo '127.0.0.1')"
-	json_add_int "port" "$(uci -q get mqtt-bridge.broker.port || echo 1883)"
-	json_add_string "username" "$(uci -q get mqtt-bridge.broker.username || echo '')"
-	json_add_string "password" ""
-	json_add_string "base_topic" "$(uci -q get mqtt-bridge.bridge.base_topic || echo 'secubox/+/state')"
-	json_add_int "retention" "$(uci -q get mqtt-bridge.bridge.retention || echo 7)"
-	json_close_object
+json_add_object "settings"
+json_add_string "host" "$(uci -q get mqtt-bridge.broker.host || echo '127.0.0.1')"
+json_add_int "port" "$(uci -q get mqtt-bridge.broker.port || echo 1883)"
+json_add_string "username" "$(uci -q get mqtt-bridge.broker.username || echo '')"
+json_add_string "password" ""
+json_add_string "base_topic" "$(uci -q get mqtt-bridge.bridge.base_topic || echo 'secubox/+/state')"
+json_add_int "retention" "$(uci -q get mqtt-bridge.bridge.retention || echo 7)"
+json_close_object
 
-	json_add_array "profiles"
-	append_zigbee_profile
-	json_close_array
+json_add_array "profiles"
+append_zigbee_profile
+json_close_array
 
-	json_dump
+append_configured_adapters
+
+json_dump
 }
 
 list_devices() {
