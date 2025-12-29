@@ -1,92 +1,120 @@
 {
-	"admin/secubox/system/system-hub": {
-		"title": "System Hub",
-		"order": 10,
-		"action": {
-			"type": "firstchild"
-		},
-		"depends": {
-			"acl": ["luci-app-system-hub"]
-		}
-	},
-	"admin/secubox/system/system-hub/overview": {
-		"title": "Overview",
-		"order": 1,
-		"action": {
-			"type": "view",
-			"path": "system-hub/overview"
-		}
-	},
-	"admin/secubox/system/system-hub/services": {
-		"title": "Services",
-		"order": 2,
-		"action": {
-			"type": "view",
-			"path": "system-hub/services"
-		}
-	},
-	"admin/secubox/system/system-hub/logs": {
-		"title": "System Logs",
-		"order": 3,
-		"action": {
-			"type": "view",
-			"path": "system-hub/logs"
-		}
-	},
-	"admin/secubox/system/system-hub/backup": {
-		"title": "Backup & Restore",
-		"order": 4,
-		"action": {
-			"type": "view",
-			"path": "system-hub/backup"
-		}
-	},
-	"admin/secubox/system/system-hub/components": {
-		"title": "Components",
-		"order": 5,
-		"action": {
-			"type": "view",
-			"path": "system-hub/components"
-		}
-	},
-	"admin/secubox/system/system-hub/diagnostics": {
-		"title": "Diagnostics",
-		"order": 6,
-		"action": {
-			"type": "view",
-			"path": "system-hub/diagnostics"
-		}
-	},
-	"admin/secubox/system/system-hub/health": {
-		"title": "System Health",
-		"order": 7,
-		"action": {
-			"type": "view",
-			"path": "system-hub/health"
-		}
-	},
-	"admin/secubox/system/system-hub/remote": {
-		"title": "Remote Management",
-		"order": 8,
-		"action": {
-			"type": "view",
-			"path": "system-hub/remote"
-		}
-	},
-	"admin/secubox/system/system-hub/settings": {
-		"title": "Settings",
-		"order": 9,
-		"action": {
-			"type": "view",
-			"path": "system-hub/settings"
-		}
-	},
-	"admin/secubox/system/system-hub/dev-status": {
-		"title": "Development Status",
-		"order": 10,
-		"action": {
-			"type": "view",
-			"path": "system-hub/dev-status"
-		}
-	}
+    "admin/secubox/system/system-hub": {
+        "title": "System Hub",
+        "order": 10,
+        "action": {
+            "type": "firstchild"
+        },
+        "depends": {
+            "acl": [
+                "luci-app-system-hub"
+            ]
+        }
+    },
+    "admin/secubox/system/system-hub/overview": {
+        "title": "Overview",
+        "order": 1,
+        "action": {
+            "type": "view",
+            "path": "system-hub/overview"
+        }
+    },
+    "admin/secubox/system/system-hub/services": {
+        "title": "Services",
+        "order": 2,
+        "action": {
+            "type": "view",
+            "path": "system-hub/services"
+        }
+    },
+    "admin/secubox/system/system-hub/logs": {
+        "title": "System Logs",
+        "order": 3,
+        "action": {
+            "type": "view",
+            "path": "system-hub/logs"
+        }
+    },
+    "admin/secubox/system/system-hub/backup": {
+        "title": "Backup & Restore",
+        "order": 4,
+        "action": {
+            "type": "view",
+            "path": "system-hub/backup"
+        }
+    },
+    "admin/secubox/system/system-hub/components": {
+        "title": "Components",
+        "order": 5,
+        "action": {
+            "type": "view",
+            "path": "system-hub/components"
+        }
+    },
+    "admin/secubox/system/system-hub/diagnostics": {
+        "title": "Diagnostics",
+        "order": 6,
+        "action": {
+            "type": "view",
+            "path": "system-hub/diagnostics"
+        }
+    },
+    "admin/secubox/system/system-hub/health": {
+        "title": "System Health",
+        "order": 7,
+        "action": {
+            "type": "view",
+            "path": "system-hub/health"
+        }
+    },
+    "admin/secubox/system/system-hub/remote": {
+        "title": "Remote Management",
+        "order": 8,
+        "action": {
+            "type": "view",
+            "path": "system-hub/remote"
+        }
+    },
+    "admin/secubox/system/system-hub/settings": {
+        "title": "Settings",
+        "order": 9,
+        "action": {
+            "type": "view",
+            "path": "system-hub/settings"
+        }
+    },
+    "admin/secubox/system/system-hub/dev-status": {
+        "title": "Development Status",
+        "order": 10,
+        "action": {
+            "type": "view",
+            "path": "system-hub/dev-status"
+        }
+    },
+    "admin/secubox/system/system-hub/network-modes": {
+        "title": "Network Modes",
+        "order": 10,
+        "action": {
+            "type": "view",
+            "path": "system-hub/network-modes-link"
+        },
+        "depends": {
+            "acl": [
+                "luci-app-network-modes"
+            ]
+        }
+    },
+    "admin/secubox/system/system-hub/cdn-cache": {
+        "title": "CDN Cache",
+        "order": 11,
+        "action": {
+            "type": "view",
+            "path": "system-hub/cdn-cache-link"
+        },
+        "depends": {
+            "acl": [
+                "luci-app-cdn-cache"
+            ]
+        }
+    }
 }

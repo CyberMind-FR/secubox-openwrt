@@ -17,6 +17,7 @@
 @import url('./layouts/dashboard.css');
 @import url('./layouts/grid.css');
 @import url('./layouts/responsive.css');
+@import url('./layouts/cascade.css');
 
 @import url('./themes/dark.css');
 @import url('./themes/light.css');

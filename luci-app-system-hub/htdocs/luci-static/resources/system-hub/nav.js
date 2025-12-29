@@ -11,7 +11,9 @@ var tabs = [
 	{ id: 'health', icon: '❤️', label: _('Health'), path: ['admin', 'secubox', 'system', 'system-hub', 'health'] },
 	{ id: 'remote', icon: '📡', label: _('Remote'), path: ['admin', 'secubox', 'system', 'system-hub', 'remote'] },
 	{ id: 'dev-status', icon: '🚀', label: _('Dev Status'), path: ['admin', 'secubox', 'system', 'system-hub', 'dev-status'] },
-	{ id: 'settings', icon: '⚙️', label: _('Settings'), path: ['admin', 'secubox', 'system', 'system-hub', 'settings'] }
+	{ id: 'settings', icon: '⚙️', label: _('Settings'), path: ['admin', 'secubox', 'system', 'system-hub', 'settings'] },
+	{ id: 'network-modes', icon: '🌐', label: _('Network Modes'), path: ['admin', 'secubox', 'network', 'modes', 'overview'] },
+	{ id: 'cdn-cache', icon: '📦', label: _('CDN Cache'), path: ['admin', 'secubox', 'network', 'cdn-cache', 'overview'] }
 ];
 
 return baseclass.extend({

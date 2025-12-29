@@ -8,11 +8,17 @@
 return view.extend({
 	load: function() {
 		return Promise.all([
-			uci.load('network-modes')
+			uci.load('network-modes'),
+			api.getCurrentMode()
 		]);
 	},
 
-	render: function() {
+	render: function(data) {
+		var currentMode = (data && data[1] && data[1].mode) || 'router';
+		if (typeof L !== 'undefined') {
+			L.state = L.state || {};
+			L.state.network_modes_current = currentMode;
+		}
 		var m, s, o;
 
 		m = new form.Map('network-modes', _('Network Modes Settings'),

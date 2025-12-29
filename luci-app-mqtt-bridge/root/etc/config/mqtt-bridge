@@ -1,0 +1,18 @@
+config broker 'broker'
+	option host '127.0.0.1'
+	option port '1883'
+	option username 'secubox'
+	option password 'secubox'
+
+config bridge 'bridge'
+	option base_topic 'secubox/+/state'
+	option retention '7'
+
+config stats 'stats'
+	option clients '0'
+	option mps '0'
+	option retained '0'
+	option uptime '0s'
+
+config payloads 'payloads'
+#	push payload sections dynamically

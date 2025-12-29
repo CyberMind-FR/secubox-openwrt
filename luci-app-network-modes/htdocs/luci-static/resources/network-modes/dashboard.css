@@ -683,6 +683,28 @@
 	width: 100%;
 }
 
+.nm-hero-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 10px;
+}
+
+.nm-hero-chip {
+	background: rgba(255,255,255,0.1);
+	border-radius: 12px;
+	padding: 6px 12px;
+	border: 1px solid rgba(255,255,255,0.2);
+}
+
+.nm-hero-chip-label {
+	display: block;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: rgba(255,255,255,0.75);
+}
+
 .nm-hero-badge {
 	min-width: 120px;
 }

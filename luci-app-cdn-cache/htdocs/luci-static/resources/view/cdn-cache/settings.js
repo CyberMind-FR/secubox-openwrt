@@ -139,6 +139,8 @@ return view.extend({
 		o.default = '60';
 
 		return E('div', { 'class': 'cdn-settings-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
 			CdnNav.renderTabs('settings'),
 			m.render()
 		]);

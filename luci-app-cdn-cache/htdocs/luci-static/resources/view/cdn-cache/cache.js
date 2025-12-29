@@ -59,6 +59,7 @@ return view.extend({
 
 		return E('div', { 'class': 'cdn-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/dashboard.css') }),
 			CdnNav.renderTabs('cache'),
 			this.renderHero(items, domains),

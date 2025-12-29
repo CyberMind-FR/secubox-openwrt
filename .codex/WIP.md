@@ -2,6 +2,8 @@
 
 ## Completed Today
 
+- Introduced SecuBox cascade layout helper (CSS + JS) and migrated SecuNav + MQTT tabs to the new layered system.  
+- MQTT Bridge now exposes Zigbee/SMSC USB2134B presets with dmesg hints, tty detection, and documentation updates.  
 - Unified Monitoring + Modules filters and Help view with SecuNav styling.  
 - Added Bonus tab to navbar, refreshed alerts action buttons, removed legacy hero blocks.  
 - Verified on router (scp + cache reset) and tagged release v0.5.0-A.
@@ -17,7 +19,8 @@
 - Preparing follow-up refactor to deduplicate Theme initialization logic.  
 - Evaluating automated deployment pipeline (rsync/scp wrappers) for `secubox-tools`.
 - Enhancing SecuBox theme guidelines (see `.codex/THEME_CONTEXT.md`) to capture layout, state, and localization best practices before next UI sprint.  
-- Next TODO in focus: extract shared nav/header components into `secubox/components/` and document typings per `.codex/TODO.md` item #1.  
+- Next TODO in focus: rewrite Network Modes views so each mode loads its config, reacts to preferences, and stays theme-aligned (per `.codex/TODO.md` #1).  
+- Scaffolded MQTT Bridge module (`luci-app-mqtt-bridge`) and tracking follow-up work under `.codex/apps/mqtt-bridge/`.  
 
 ## Reminders
 

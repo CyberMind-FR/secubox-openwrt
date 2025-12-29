@@ -154,7 +154,7 @@ return view.extend({
 				}, _('Run full health check')),
 				E('button', {
 					'class': 'sh-btn',
-					'click': function() { window.location.hash = '#admin/secubox/network/network-modes'; }
+					'click': function() { window.location.hash = '#admin/secubox/network/modes/overview'; }
 				}, _('Open Network Modes'))
 			])
 		]);

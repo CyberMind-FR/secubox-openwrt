@@ -1,0 +1,23 @@
+{
+    "luci-app-mqtt-bridge": {
+        "description": "SecuBox MQTT Bridge permissions",
+        "read": {
+            "ubus": {
+                "luci.mqtt-bridge": [
+                    "status",
+                    "list_devices"
+                ]
+            },
+            "uci": ["mqtt-bridge"]
+        },
+        "write": {
+            "ubus": {
+                "luci.mqtt-bridge": [
+                    "trigger_pairing",
+                    "apply_settings"
+                ]
+            },
+            "uci": ["mqtt-bridge"]
+        }
+    }
+}

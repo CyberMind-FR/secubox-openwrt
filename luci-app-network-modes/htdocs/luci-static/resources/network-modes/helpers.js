@@ -22,12 +22,8 @@ function isToggleActive(node) {
 }
 
 function persistSettings(mode, payload) {
-	ui.showModal(_('Saving settings...'), [
-		E('p', { 'class': 'spinning' }, _('Applying configuration changes...'))
-	]);
-
+	var current = (window.L && L.state && L.state.network_modes_current) || null;
 	return api.updateSettings(mode, payload).then(function(result) {
-		ui.hideModal();
 		if (result && result.success) {
 			ui.addNotification(null, E('p', {}, result.message || _('Settings updated')), 'info');
 		} else {
@@ -69,16 +65,23 @@ function showGeneratedConfig(mode) {
 
 function createHero(options) {
 	var gradient = options.gradient || 'linear-gradient(135deg,#0f172a,#1d4ed8)';
+	var meta = options.meta || [];
 	return E('div', {
 		'class': 'nm-hero',
-		'style': 'background:' + gradient + ';border-radius:16px;padding:20px;margin-bottom:24px;color:#f8fafc;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;'
+		'style': 'background:' + gradient + ';border-radius:16px;padding:18px 22px;margin-bottom:20px;color:#f8fafc;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;'
 	}, [
 		E('div', {}, [
-			E('div', { 'style': 'font-size:32px;margin-bottom:4px;' }, options.icon || '🌐'),
-			E('h2', { 'style': 'margin:0;font-size:24px;' }, options.title || _('Network Mode')),
-			E('p', { 'style': 'margin:4px 0 0;color:#cbd5f5;max-width:460px;' }, options.subtitle || '')
+			E('div', { 'style': 'font-size:26px;margin-bottom:4px;' }, options.icon || '🌐'),
+			E('h2', { 'style': 'margin:0;font-size:22px;' }, options.title || _('Network Mode')),
+			E('p', { 'style': 'margin:4px 0 0;color:#cbd5f5;max-width:520px;font-size:13px;' }, options.subtitle || ''),
+			meta.length ? E('div', { 'class': 'nm-hero-meta' }, meta.map(function(item) {
+				return E('div', { 'class': 'nm-hero-chip' }, [
+					E('span', { 'class': 'nm-hero-chip-label' }, item.label || ''),
+					E('strong', {}, item.value || '—')
+				]);
+			})) : null
 		]),
-		E('div', { 'style': 'display:flex;gap:12px;align-items:center;flex-wrap:wrap;' }, (options.actions || []))
+		E('div', { 'style': 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;' }, (options.actions || []))
 	]);
 }
 

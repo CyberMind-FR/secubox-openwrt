@@ -232,6 +232,20 @@ Local CDN cache proxy for bandwidth savings.
 
 ---
 
+#### **luci-app-mqtt-bridge** - IoT MQTT Hub
+USB-aware MQTT bridge for sensors and automation gear.
+
+**Features:**
+- 🔌 Detects USB serial adapters and exposes pairing wizard
+- 📡 Publishes payloads to the built-in MQTT broker with topic templates
+- 🧊 Retains last payloads and surfaces metrics/clients in SecuBox theme
+- 🔐 Broker credential + retention management from the UI
+- 📁 Saves configuration snapshots for rollback
+
+[View Details](luci-app-mqtt-bridge/README.md)
+
+---
+
 #### **luci-app-vhost-manager** - Virtual Hosts
 Virtual host and local SaaS gateway management.
 

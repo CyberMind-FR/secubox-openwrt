@@ -60,6 +60,7 @@ return view.extend({
 		var bandwidthTrend = (data[2] && data[2].data) || [];
 		var view = E('div', { 'class': 'cdn-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/dashboard.css') }),
 			CdnNav.renderTabs('statistics'),
 			this.renderHero(stats),

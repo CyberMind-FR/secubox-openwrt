@@ -5,6 +5,7 @@
 'require secubox/api as API';
 'require secubox/theme as Theme';
 'require secubox/nav as SecuNav';
+'require secubox-theme/cascade as Cascade';
 'require poll';
 
 // Load global theme CSS
@@ -27,6 +28,8 @@ Theme.init({ language: secuLang });
 
 return view.extend({
 	modulesData: [],
+	currentFilter: 'all',
+	filterLayer: null,
 
 	load: function() {
 		return this.refreshData();
@@ -44,7 +47,11 @@ return view.extend({
 		var self = this;
 		var modules = this.modulesData;
 
-		var container = E('div', { 'class': 'secubox-modules-page' }, [
+		var defaultFilter = this.currentFilter || 'all';
+		var container = E('div', {
+			'class': 'secubox-modules-page',
+			'data-cascade-root': 'modules'
+		}, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
 			SecuNav.renderTabs('modules'),
@@ -52,8 +59,12 @@ return view.extend({
 			this.renderFilterTabs(),
 			E('div', {
 				'id': 'modules-grid',
-				'class': 'secubox-modules-grid'
-			}, this.renderModuleCards(modules, 'all'))
+				'class': 'secubox-modules-grid sb-cascade-layer',
+				'data-cascade-layer': 'view',
+				'data-cascade-role': 'modules',
+				'data-cascade-depth': '3',
+				'data-cascade-filter': defaultFilter
+			}, this.renderModuleCards(modules, defaultFilter))
 		]);
 
 		// Auto-refresh
@@ -98,28 +109,31 @@ return view.extend({
 			{ id: 'system', label: _('System'), icon: '⚙️' }
 		];
 
-		var filterButtons = tabs.map(function(tab) {
-			return E('button', {
-				'class': 'sh-nav-tab secubox-module-tab' + (tab.id === 'all' ? ' active' : ''),
-				'data-filter': tab.id,
-				'type': 'button',
-				'click': function(ev) {
-					document.querySelectorAll('.secubox-filter-tabs .sh-nav-tab[data-filter]').forEach(function(el) {
-						el.classList.remove('active');
-					});
-					ev.currentTarget.classList.add('active');
-					self.filterModules(tab.id);
-				}
-			}, [
-				E('span', { 'class': 'sh-tab-icon' }, tab.icon),
-				E('span', { 'class': 'sh-tab-label' }, tab.label)
-			]);
+		this.filterLayer = Cascade.createLayer({
+			id: 'secubox-module-filters',
+			type: 'tabs',
+			role: 'categories',
+			depth: 2,
+			className: 'secubox-filter-tabs sh-nav-tabs secubox-nav-tabs secubox-module-tabs',
+			items: tabs.map(function(tab) {
+				return {
+					id: tab.id,
+					label: tab.label,
+					icon: tab.icon,
+					state: tab.id === self.currentFilter ? 'active' : null
+				};
+			}),
+			active: this.currentFilter,
+			onSelect: function(item, ev) {
+				ev.preventDefault();
+				self.filterModules(item.id);
+			}
 		});
 
-		return E('div', { 'class': 'secubox-filter-tabs sh-nav-tabs secubox-nav-tabs secubox-module-tabs' }, filterButtons);
+		return this.filterLayer;
 	},
 
-renderModuleCards: function(modules, filter) {
+	renderModuleCards: function(modules, filter) {
 		var self = this;
 
 		var filtered = filter === 'all' ? modules :
@@ -181,6 +195,13 @@ renderModuleCards: function(modules, filter) {
 
 		return E('div', {
 			'class': 'secubox-module-card secubox-module-' + statusClass,
+			'data-cascade-item': module.id || module.name,
+			'data-cascade-category': module.category || 'other',
+			'data-cascade-status': status,
+			'data-module-installed': module.installed ? '1' : '0',
+			'data-module-enabled': module.enabled ? '1' : '0',
+			'data-module-access': statusClass,
+			'data-cascade-depth': '4',
 			'style': 'border-left: 4px solid ' + (module.color || '#64748b')
 		}, [
 			// Card Header
@@ -221,7 +242,12 @@ renderModuleCards: function(modules, filter) {
 			]),
 
 			// Card Actions
-			E('div', { 'class': 'secubox-module-card-actions' },
+			E('div', {
+				'class': 'secubox-module-card-actions sb-cascade-layer',
+				'data-cascade-layer': 'actions',
+				'data-cascade-role': 'module-actions',
+				'data-cascade-depth': '5'
+			},
 				this.renderModuleActions(module))
 		]);
 	},
@@ -233,29 +259,41 @@ renderModuleCards: function(modules, filter) {
 		if (!module.installed) {
 			actions.push(
 				E('button', {
-					'class': 'secubox-btn secubox-btn-secondary secubox-btn-sm',
+					'class': 'secubox-btn secubox-btn-secondary secubox-btn-sm sb-cascade-item',
+					'data-cascade-action': 'install',
+					'data-module-target': module.id,
 					'disabled': true
-				}, '📥 Install')
+				}, [
+					E('span', { 'class': 'sb-cascade-label' }, '📥 Install')
+				])
 			);
 		} else {
 			// Enable/Disable button (v0.3.1)
 			if (module.enabled) {
 				actions.push(
 					E('button', {
-						'class': 'secubox-btn secubox-btn-danger secubox-btn-sm',
+						'class': 'secubox-btn secubox-btn-danger secubox-btn-sm sb-cascade-item',
+						'data-cascade-action': 'disable',
+						'data-module-target': module.id,
 						'click': function() {
 							self.disableModule(module);
 						}
-					}, '⏹️ Désactiver')
+					}, [
+						E('span', { 'class': 'sb-cascade-label' }, '⏹️ Désactiver')
+					])
 				);
 			} else {
 				actions.push(
 					E('button', {
-						'class': 'secubox-btn secubox-btn-success secubox-btn-sm',
+						'class': 'secubox-btn secubox-btn-success secubox-btn-sm sb-cascade-item',
+						'data-cascade-action': 'enable',
+						'data-module-target': module.id,
 						'click': function() {
 							self.enableModule(module);
 						}
-					}, '▶️ Activer')
+					}, [
+						E('span', { 'class': 'sb-cascade-label' }, '▶️ Activer')
+					])
 				);
 			}
 
@@ -265,8 +303,12 @@ renderModuleCards: function(modules, filter) {
 				actions.push(
 					E('a', {
 						'href': L.url(dashboardPath),
-						'class': 'secubox-btn secubox-btn-primary secubox-btn-sm'
-					}, '📊 Dashboard')
+						'class': 'secubox-btn secubox-btn-primary secubox-btn-sm sb-cascade-item',
+						'data-cascade-action': 'navigate',
+						'data-module-target': module.id
+					}, [
+						E('span', { 'class': 'sb-cascade-label' }, '📊 Dashboard')
+					])
 				);
 			}
 		}
@@ -280,7 +322,7 @@ renderModuleCards: function(modules, filter) {
 			'netdata': 'admin/secubox/netdata/dashboard',
 			'netifyd': 'admin/secubox/netifyd/overview',
 			'wireguard': 'admin/secubox/wireguard/overview',
-			'network_modes': 'admin/secubox/network-modes/overview',
+			'network_modes': 'admin/secubox/network/modes/overview',
 			'client_guardian': 'admin/secubox/client-guardian/overview',
 			'system_hub': 'admin/secubox/system-hub/overview',
 			'bandwidth_manager': 'admin/secubox/bandwidth-manager/overview',
@@ -289,7 +331,8 @@ renderModuleCards: function(modules, filter) {
 			'vhost_manager': 'admin/secubox/vhosts/overview',
 			'traffic_shaper': 'admin/secubox/traffic-shaper/overview',
 			'cdn_cache': 'admin/secubox/cdn-cache/overview',
-			'ksm_manager': 'admin/secubox/ksm-manager/overview'
+			'ksm_manager': 'admin/secubox/ksm-manager/overview',
+			'mqtt_bridge': 'admin/secubox/network/mqtt-bridge/overview'
 		};
 		return paths[moduleId] || null;
 	},
@@ -368,9 +411,14 @@ renderModuleCards: function(modules, filter) {
 	},
 
 	filterModules: function(category) {
+		this.currentFilter = category || this.currentFilter || 'all';
 		var grid = document.getElementById('modules-grid');
 		if (grid) {
-			dom.content(grid, this.renderModuleCards(this.modulesData, category));
+			grid.setAttribute('data-cascade-filter', this.currentFilter);
+			dom.content(grid, this.renderModuleCards(this.modulesData, this.currentFilter));
+		}
+		if (this.filterLayer) {
+			Cascade.setActiveItem(this.filterLayer, this.currentFilter);
 		}
 	},
 
@@ -423,9 +471,7 @@ renderModuleCards: function(modules, filter) {
 	},
 
 	updateModulesGrid: function() {
-		var activeTab = document.querySelector('.secubox-filter-tabs .cyber-tab.is-active[data-filter]');
-		var filter = activeTab ? activeTab.getAttribute('data-filter') : 'all';
-		this.filterModules(filter);
+		this.filterModules(this.currentFilter || 'all');
 		this.updateHeaderStats();
 	},
 

@@ -1,0 +1,209 @@
+#!/bin/sh
+# SecuBox MQTT Bridge RPC backend
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+ZIGBEE_VENDOR="0424"
+ZIGBEE_PRODUCT="2134"
+ZIGBEE_PROFILE_ID="zigbee_usb2134"
+
+find_usb_tty() {
+	local base="$1"
+	local sub node tty
+	for sub in "$base" "$base"/* "$base"/*/*; do
+		[ -d "$sub/tty" ] || continue
+		for node in "$sub"/tty/*; do
+			[ -e "$node" ] || continue
+			tty="$(basename "$node")"
+			if [ -e "/dev/$tty" ]; then
+				echo "/dev/$tty"
+				return 0
+			fi
+		done
+	done
+	return 1
+}
+
+append_zigbee_profile() {
+	local matched=0
+	local dev
+	for dev in /sys/bus/usb/devices/*; do
+		[ -f "$dev/idVendor" ] || continue
+		[ -f "$dev/idProduct" ] || continue
+		local vendor product
+		vendor="$(cat "$dev/idVendor" 2>/dev/null)"
+		product="$(cat "$dev/idProduct" 2>/dev/null)"
+		[ "$vendor" = "$ZIGBEE_VENDOR" ] || continue
+		[ "$product" = "$ZIGBEE_PRODUCT" ] || continue
+		matched=1
+		local busnum devnum label port
+		busnum="$(cat "$dev/busnum" 2>/dev/null)"
+		devnum="$(cat "$dev/devnum" 2>/dev/null)"
+		if [ -f "$dev/product" ]; then
+			label="$(cat "$dev/product")"
+		else
+			label="SMSC USB2134B"
+		fi
+		port="$(find_usb_tty "$dev")"
+
+		json_add_object
+		json_add_string "id" "$ZIGBEE_PROFILE_ID"
+		json_add_string "label" "$label Zigbee Bridge"
+		json_add_string "vendor" "$vendor"
+		json_add_string "product" "$product"
+		[ -n "$busnum" ] && json_add_string "bus" "$busnum"
+		[ -n "$devnum" ] && json_add_string "device" "$devnum"
+		[ -n "$port" ] && json_add_string "port" "$port"
+		json_add_boolean "detected" 1
+		json_add_string "notes" "Detected via USB bus $busnum device $devnum"
+		json_close_object
+	done
+
+	if [ "$matched" -eq 0 ]; then
+		json_add_object
+		json_add_string "id" "$ZIGBEE_PROFILE_ID"
+		json_add_string "label" "SMSC USB2134B Zigbee Bridge"
+		json_add_string "vendor" "$ZIGBEE_VENDOR"
+		json_add_string "product" "$ZIGBEE_PRODUCT"
+		json_add_boolean "detected" 0
+		json_add_string "notes" "Connect the dongle (Bus 003 Device 002: ID 0424:2134) to auto-fill tty port"
+		json_close_object
+	fi
+}
+
+status() {
+	json_init
+	json_add_string "broker" "$(uci -q get mqtt-bridge.broker.host || echo 'localhost')"
+	json_add_int "clients" "$(uci -q get mqtt-bridge.stats.clients || echo 0)"
+	local adapters="$(ls /dev/ttyUSB* 2>/dev/null | wc -l)"
+	json_add_int "adapters" "$adapters"
+	json_add_int "messages_per_sec" "$(uci -q get mqtt-bridge.stats.mps || echo 0)"
+	json_add_int "retained" "$(uci -q get mqtt-bridge.stats.retained || echo 0)"
+	json_add_string "uptime" "$(uci -q get mqtt-bridge.stats.uptime || echo '0s')"
+	json_add_string "last_event" "$(uci -q get mqtt-bridge.stats.last_event || echo '')"
+
+	# Device statistics
+	local total=0 online=0
+	while true; do
+		local ser=$(uci -q get mqtt-bridge.device.@device[$total].serial)
+		[ -z "$ser" ] && break
+		local is_on=$(uci -q get mqtt-bridge.device.@device[$total].online || echo 0)
+		[ "$is_on" = "1" ] && online=$((online + 1))
+		total=$((total + 1))
+	done
+	json_add_object "device_stats"
+	json_add_int "total" "$total"
+	json_add_int "online" "$online"
+	json_add_int "usb" "$adapters"
+	json_close_object
+
+	json_add_array "recent_payloads"
+	local idx=0
+	while true; do
+		local topic=$(uci -q get mqtt-bridge.payloads.@payload[$idx].topic)
+		[ -z "$topic" ] && break
+		json_add_object
+		json_add_string "topic" "$topic"
+		json_add_string "payload" "$(uci -q get mqtt-bridge.payloads.@payload[$idx].data)"
+		json_add_string "timestamp" "$(uci -q get mqtt-bridge.payloads.@payload[$idx].time)"
+		json_close_object
+		idx=$((idx + 1))
+	done
+	json_close_array
+
+	json_add_object "settings"
+	json_add_string "host" "$(uci -q get mqtt-bridge.broker.host || echo '127.0.0.1')"
+	json_add_int "port" "$(uci -q get mqtt-bridge.broker.port || echo 1883)"
+	json_add_string "username" "$(uci -q get mqtt-bridge.broker.username || echo '')"
+	json_add_string "password" ""
+	json_add_string "base_topic" "$(uci -q get mqtt-bridge.bridge.base_topic || echo 'secubox/+/state')"
+	json_add_int "retention" "$(uci -q get mqtt-bridge.bridge.retention || echo 7)"
+	json_close_object
+
+	json_add_array "profiles"
+	append_zigbee_profile
+	json_close_array
+
+	json_dump
+}
+
+list_devices() {
+	json_init
+	json_add_array "devices"
+	local idx=0
+	while true; do
+		local serial=$(uci -q get mqtt-bridge.device.@device[$idx].serial)
+		[ -z "$serial" ] && break
+		json_add_object
+		json_add_string "serial" "$serial"
+		json_add_string "name" "$(uci -q get mqtt-bridge.device.@device[$idx].name)"
+		json_add_string "protocol" "$(uci -q get mqtt-bridge.device.@device[$idx].protocol || echo 'USB')"
+		json_add_string "port" "$(uci -q get mqtt-bridge.device.@device[$idx].port || echo '-')"
+		json_add_boolean "online" "$(uci -q get mqtt-bridge.device.@device[$idx].online || echo 0)"
+		json_close_object
+		idx=$((idx + 1))
+	done
+	json_close_array
+	json_dump
+}
+
+trigger_pairing() {
+	json_init
+	touch /tmp/mqtt-bridge-pairing
+	json_add_boolean "success" 1
+	json_add_string "message" "pairing_window_open"
+	json_dump
+}
+
+apply_settings() {
+	read input
+	json_load "$input"
+	json_get_var host host
+	json_get_var port port
+	json_get_var username username
+	json_get_var password password
+	json_get_var base_topic base_topic
+	json_get_var retention retention
+	json_cleanup
+
+	[ -n "$host" ] && uci set mqtt-bridge.broker.host="$host"
+	[ -n "$port" ] && uci set mqtt-bridge.broker.port="$port"
+	[ -n "$username" ] && uci set mqtt-bridge.broker.username="$username"
+	[ -n "$password" ] && uci set mqtt-bridge.broker.password="$password"
+	[ -n "$base_topic" ] && uci set mqtt-bridge.bridge.base_topic="$base_topic"
+	[ -n "$retention" ] && uci set mqtt-bridge.bridge.retention="$retention"
+	uci commit mqtt-bridge
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "settings_saved"
+	json_dump
+}
+
+case "$1" in
+	list)
+		cat <<'JSON'
+{
+	"status": {},
+	"list_devices": {},
+	"trigger_pairing": {},
+	"apply_settings": {}
+}
+JSON
+	;;
+	call)
+		case "$2" in
+			status) status ;;
+			list_devices) list_devices ;;
+			trigger_pairing) trigger_pairing ;;
+			apply_settings) apply_settings ;;
+			*)
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "unknown_method"
+				json_dump
+				;;
+		esac
+		;;
+esac

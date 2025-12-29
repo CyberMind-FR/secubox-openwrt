@@ -42,6 +42,8 @@ return view.extend({
 		var exclusions = data[1].exclusions || [];
 
 		return E('div', { 'class': 'cbi-map cdn-policies' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
 			E('style', {}, `
 				.cdn-policies { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 				.cdn-page-header { background: linear-gradient(135deg, #0891b2, #06b6d4); color: white; padding: 24px; border-radius: 12px; margin-bottom: 24px; }

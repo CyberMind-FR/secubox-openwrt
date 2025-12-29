@@ -31,11 +31,15 @@ return view.extend({
 	title: _('Router Mode'),
 
 	load: function() {
-		return api.getRouterConfig();
+		return Promise.all([
+			api.getRouterConfig(),
+			api.getStatus()
+		]);
 	},
 
-	render: function(data) {
-		var config = data || {};
+	render: function(payload) {
+		var config = (payload && payload[0]) || {};
+		var status = (payload && payload[1]) || {};
 		var wanConfig = config.wan || {};
 		var lanConfig = config.lan || {};
 		var fwConfig = config.firewall || {};
@@ -54,6 +58,11 @@ return view.extend({
 			title: _('Router Mode'),
 			subtitle: _('Full router stack with NAT, firewall, transparent proxying, HTTPS reverse proxy, and virtual hosts.'),
 			gradient: 'linear-gradient(135deg,#f97316,#fb923c)',
+			meta: [
+				{ label: _('WAN Protocol'), value: (wanConfig.protocol || 'DHCP').toUpperCase() },
+				{ label: _('WAN IP'), value: this.lookupInterfaceIp(status, wanConfig.interface || 'wan') },
+				{ label: _('LAN IP'), value: lanConfig.ip_address || this.lookupInterfaceIp(status, lanConfig.interface || 'lan') }
+			],
 			actions: heroActions
 		});
 
@@ -61,9 +70,9 @@ return view.extend({
 			'style': 'display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px;'
 		}, [
 			helpers.createStatBadge({ label: _('WAN Protocol'), value: (wanConfig.protocol || 'DHCP').toUpperCase() }),
-			helpers.createStatBadge({ label: _('LAN Gateway'), value: lanConfig.ip_address || '192.168.1.1' }),
+			helpers.createStatBadge({ label: _('LAN Gateway'), value: lanConfig.ip_address || this.lookupInterfaceIp(status, 'lan') || '—' }),
 			helpers.createStatBadge({ label: _('Firewall'), value: fwConfig.enabled !== false ? _('Active') : _('Disabled') }),
-			helpers.createStatBadge({ label: _('Proxy'), value: proxyConfig.enabled ? (proxyConfig.type || 'squid') : _('Disabled') })
+			helpers.createStatBadge({ label: _('Proxy'), value: proxyConfig.enabled ? (proxyConfig.type || _('Enabled')) : _('Disabled') })
 		]);
 
 		var wanSection = helpers.createSection({
@@ -331,5 +340,13 @@ return view.extend({
 			ui.hideModal();
 			ui.addNotification(null, E('p', {}, err.message || err), 'error');
 		});
+	},
+
+	lookupInterfaceIp: function(status, match) {
+		var ifaces = (status && status.interfaces) || [];
+		var target = match;
+		return (ifaces.find(function(item) {
+			return item.name === target || item.name === (target === 'lan' ? 'br-lan' : target);
+		}) || {}).ip || '';
 	}
 });

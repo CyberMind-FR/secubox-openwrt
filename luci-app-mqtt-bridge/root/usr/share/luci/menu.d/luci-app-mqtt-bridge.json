@@ -1,0 +1,38 @@
+{
+    "admin/secubox/network/mqtt-bridge": {
+        "title": "MQTT Bridge",
+        "order": 10,
+        "action": {
+            "type": "firstchild"
+        },
+        "depends": {
+            "acl": [
+                "luci-app-mqtt-bridge"
+            ]
+        }
+    },
+    "admin/secubox/network/mqtt-bridge/overview": {
+        "title": "Overview",
+        "order": 10,
+        "action": {
+            "type": "view",
+            "path": "mqtt-bridge/overview"
+        }
+    },
+    "admin/secubox/network/mqtt-bridge/devices": {
+        "title": "Devices",
+        "order": 20,
+        "action": {
+            "type": "view",
+            "path": "mqtt-bridge/devices"
+        }
+    },
+    "admin/secubox/network/mqtt-bridge/settings": {
+        "title": "Settings",
+        "order": 90,
+        "action": {
+            "type": "view",
+            "path": "mqtt-bridge/settings"
+        }
+    }
+}

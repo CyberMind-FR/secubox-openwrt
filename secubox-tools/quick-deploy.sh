@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-ROUTER="${ROUTER:-root@192.168.8.191}"
+ROUTER="${ROUTER:-root@192.168.8.205}"
 TARGET_PATH="${TARGET_PATH:-/www/luci-static}"
 SSH_OPTS=${SSH_OPTS:--o RequestTTY=no -o ForwardX11=no}
 SCP_OPTS=${SCP_OPTS:-}
@@ -131,7 +131,7 @@ verify_remote() {
 		local local_sum=$($REMOTE_HASH_CMD "$file" | awk '{print $1}')
 		local remote_path=$(join_path "$base" "$rel")
 		local remote_sum
-		remote_sum=$(remote_exec "if [ -f '$remote_path' ]; then $REMOTE_HASH_CMD '$remote_path' | awk '{print \\$1}'; fi") || true
+		remote_sum=$(remote_exec "if [ -f '$remote_path' ]; then $REMOTE_HASH_CMD '$remote_path' | awk '{print \$1}'; fi") || true
 		if [[ -z "$remote_sum" ]]; then
 			log "⚠️  Missing remote file: $remote_path"
 			VERIFY_ERRORS=1

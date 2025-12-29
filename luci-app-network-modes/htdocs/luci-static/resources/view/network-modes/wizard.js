@@ -5,6 +5,7 @@
 'require dom';
 'require poll';
 'require network-modes.helpers as helpers';
+'require network-modes/api as API';
 'require secubox-theme/theme as Theme';
 
 var callGetAvailableModes = rpc.declare({
@@ -61,13 +62,15 @@ return view.extend({
 	load: function() {
 		return Promise.all([
 			callGetAvailableModes(),
-			callGetCurrentMode()
+			callGetCurrentMode(),
+			API.getStatus()
 		]);
 	},
 
 	render: function(data) {
 		var modes = data[0].modes || [];
 		var currentModeData = data[1] || {};
+		var status = data[2] || {};
 
 		var hero = helpers.createHero({
 			icon: '🌐',
@@ -98,6 +101,7 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') }),
 			helpers.createNavigationTabs('wizard'),
+			this.renderStatusBadges(status, currentModeData),
 			hero,
 			stepper,
 			currentModeData.rollback_active ? this.renderRollbackBanner(currentModeData) : this.renderCurrentMode(currentModeData),
@@ -110,6 +114,65 @@ return view.extend({
 		}
 
 		return container;
+	},
+
+	renderStatusBadges: function(status, currentMode) {
+		var chips = [
+			{ label: _('Version'), value: status.version || _('unknown') },
+			{ label: _('Mode'), value: currentMode.mode_name || currentMode.current_mode || _('–') },
+			{ label: _('WAN IP'), value: this.lookupInterfaceIp(status, 'wan') || _('Unknown') },
+			{ label: _('LAN IP'), value: this.lookupInterfaceIp(status, 'lan') || _('Unknown') }
+		];
+		return E('div', { 'class': 'nm-hero-meta', 'style': 'margin-bottom:12px;' }, chips.map(function(chip) {
+			return E('div', { 'class': 'nm-hero-chip' }, [
+				E('span', { 'class': 'nm-hero-chip-label' }, chip.label),
+				E('strong', {}, chip.value)
+			]);
+		}));
+	},
+
+	renderPendingModeCard: function(data, modes) {
+		if (!data.pending_mode)
+			return null;
+		var info = modes.find(function(mode) { return mode.id === data.pending_mode; }) || {
+			id: data.pending_mode,
+			name: data.pending_mode_name || data.pending_mode,
+			description: ''
+		};
+		return helpers.createSection({
+			title: _('Planned Mode'),
+			icon: '🗂️',
+			badge: info.name,
+			body: [
+				E('p', { 'style': 'color:#94a3b8;' }, info.description || _('Ready to apply when you need to test this template.')),
+				E('div', { 'class': 'nm-btn-group' }, [
+					E('button', {
+						'class': 'nm-btn',
+						'click': ui.createHandlerFn(this, 'handlePreviewPending', info)
+					}, '📝 ' + _('Review Changes')),
+					E('button', {
+						'class': 'nm-btn nm-btn-primary',
+						'click': ui.createHandlerFn(this, 'handleApplyPending', info)
+					}, '✅ ' + _('Apply Planned Mode'))
+				])
+			]
+		});
+	},
+
+	renderBackupCard: function(data) {
+		var lastBackup = data.last_backup_time || _('Not yet created');
+		if (!data.last_backup_time && !data.pending_mode)
+			return null;
+		return helpers.createSection({
+			title: _('Safety & Backups'),
+			icon: '💾',
+			body: [
+				E('p', {}, _('Latest snapshot: ') + (data.last_backup_time || _('Not available'))),
+				data.pending_mode ? E('p', { 'style': 'color:#94a3b8;' },
+					_('Applying the planned mode will create a fresh backup before changes.')) : null,
+				E('div', { 'style': 'margin-top:10px;font-family:monospace;font-size:12px;' }, data.last_backup || '')
+			]
+		});
 	},
 
 	renderCurrentMode: function(data) {
@@ -258,7 +321,10 @@ return view.extend({
 		}
 
 		content.push(E('div', { 'class': 'right', 'style': 'margin-top:16px;' }, [
-			E('button', { 'class': 'nm-btn', 'click': ui.hideModal }, _('Cancel')),
+			E('button', {
+				'class': 'nm-btn',
+				'click': function() { ui.hideModal(); window.location.reload(); }
+			}, _('Cancel')),
 			' ',
 			E('button', { 'class': 'nm-btn nm-btn-primary', 'click': L.bind(this.handleApplyMode, this, mode) }, _('Apply Mode'))
 		]));
@@ -346,10 +412,34 @@ return view.extend({
 					timerElem.textContent = _('Time left: ') + minutes + 'm ' + seconds + 's';
 				}
 			}, this));
-		}, this), 1);
+	}, this), 1);
 	},
 
 	handleSaveApply: null,
 	handleSave: null,
-	handleReset: null
+	handleReset: null,
+
+	handlePreviewPending: function(modeInfo) {
+		ui.showModal(_('Previewing pending mode…'), [
+			E('p', { 'class': 'spinning' }, _('Loading diff preview'))
+		]);
+		return callPreviewChanges().then(L.bind(function(preview) {
+			this.showPreviewModal(modeInfo, preview);
+		}, this)).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+		});
+	},
+
+	handleApplyPending: function(modeInfo) {
+		return this.handleApplyMode(modeInfo);
+	},
+
+	lookupInterfaceIp: function(status, match) {
+		var ifaces = (status && status.interfaces) || [];
+		var iface = ifaces.find(function(item) {
+			return item.name === match || item.name === (match === 'lan' ? 'br-lan' : match);
+		});
+		return iface && iface.ip ? iface.ip : '';
+	}
 });

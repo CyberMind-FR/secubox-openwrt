@@ -21,6 +21,14 @@ CONFIG_FILE="/etc/config/network-modes"
 BACKUP_DIR="/etc/network-modes-backup"
 PCAP_DIR="/var/log/pcap"
 
+is_module_enabled() {
+	local enabled
+	enabled=$(uci -q get secubox.network_modes.enabled)
+	[ -z "$enabled" ] && return 0
+	[ "$enabled" = "1" ] && return 0
+	return 1
+}
+
 # Get current status
 get_status() {
 	json_init
@@ -516,6 +524,14 @@ EOF
 
 # Apply mode change (with actual network reconfiguration and rollback timer)
 apply_mode() {
+	if ! is_module_enabled; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "module_disabled"
+		json_add_string "message" "Network Modes module is disabled in SecuBox. Enable it before applying changes."
+		json_dump
+		return
+	fi
 	json_init
 
 	local pending_mode=$(uci -q get network-modes.config.pending_mode || echo "")
@@ -531,8 +547,11 @@ apply_mode() {
 
 	# Backup current config
 	mkdir -p "$BACKUP_DIR"
-	local backup_file="$BACKUP_DIR/backup_$(date +%Y%m%d_%H%M%S).tar.gz"
+	local timestamp="$(date +%Y%m%d_%H%M%S)"
+	local backup_file="$BACKUP_DIR/backup_${timestamp}.tar.gz"
 	tar -czf "$backup_file" /etc/config/network /etc/config/wireless /etc/config/firewall /etc/config/dhcp 2>/dev/null
+	uci set network-modes.config.last_backup="$backup_file"
+	uci set network-modes.config.last_backup_time="$(date '+%Y-%m-%d %H:%M:%S')"
 
 	# Apply network configuration based on mode
 	case "$pending_mode" in
@@ -812,7 +831,7 @@ update_settings() {
 	read input
 	json_load "$input"
 	json_get_var mode mode
-	
+
 	json_init
 	
 	case "$mode" in
@@ -1007,14 +1026,28 @@ update_settings() {
 	esac
 	
 	uci commit network-modes
-	[ "$mode" = "accesspoint" ] && apply_accesspoint_features
-	if [ "$mode" = "sniffer" ]; then
-		local current_mode=$(uci -q get network-modes.config.current_mode || echo "")
-		[ "$current_mode" = "sniffer" ] && start_packet_capture
+	local current_mode=$(uci -q get network-modes.config.current_mode || echo "")
+	local module_active=1
+	if ! is_module_enabled; then
+		module_active=0
+	fi
+	if [ "$module_active" = "1" ] && [ "$mode" = "accesspoint" ] && [ "$current_mode" = "accesspoint" ]; then
+		apply_accesspoint_features
+	fi
+	if [ "$module_active" = "1" ] && [ "$mode" = "sniffer" ] && [ "$current_mode" = "sniffer" ]; then
+		start_packet_capture
+	elif [ "$mode" = "sniffer" ]; then
+		stop_packet_capture
 	fi
 	
 	json_add_boolean "success" 1
-	json_add_string "message" "Settings updated for $mode mode"
+	if [ "$module_active" != "1" ]; then
+		json_add_string "message" "Module disabled in SecuBox. Preferences saved for $mode template."
+	elif [ "$mode" = "$current_mode" ]; then
+		json_add_string "message" "Settings updated for $mode mode"
+	else
+		json_add_string "message" "Settings saved for $mode template (current mode: $current_mode)"
+	fi
 	json_dump
 }
 
@@ -1934,7 +1967,12 @@ get_current_mode() {
 	json_add_string "description" "$(uci -q get network-modes.$current_mode.description || echo "")"
 	json_add_string "last_change" "$last_change"
 	json_add_string "pending_mode" "$pending_mode"
+	if [ -n "$pending_mode" ]; then
+		json_add_string "pending_mode_name" "$(uci -q get network-modes.$pending_mode.name || echo "$pending_mode")"
+	fi
 	json_add_int "rollback_timer" "$rollback_timer"
+	json_add_string "last_backup" "$(uci -q get network-modes.config.last_backup || echo '')"
+	json_add_string "last_backup_time" "$(uci -q get network-modes.config.last_backup_time || echo '')"
 
 	# Check if rollback is active
 	if [ -f "/tmp/network-mode-rollback.pid" ]; then
