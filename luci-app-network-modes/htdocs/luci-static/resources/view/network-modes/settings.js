@@ -250,6 +250,7 @@ return view.extend({
 		return m.render().then(function(formEl) {
 			return E('div', { 'class': 'network-modes-dashboard nm-settings' }, [
 				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/common.css') }),
 				E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') }),
 				helpers.createNavigationTabs('settings'),
 				formEl

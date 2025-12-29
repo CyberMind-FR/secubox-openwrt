@@ -3,7 +3,10 @@
 /* Copyright (C) 2024 CyberMind.fr - Gandalf  * Version: 0.3.0
  */
 
-:root {
+:root,
+[data-secubox-theme="dark"],
+[data-secubox-theme="cyberpunk"],
+[data-theme="dark"] {
 	--nm-bg-primary: #0c0a09;
 	--nm-bg-secondary: #1c1917;
 	--nm-bg-tertiary: #292524;
@@ -35,6 +38,23 @@
 	--nm-radius-lg: 12px;
 	--nm-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
 	--nm-shadow-glow: 0 0 30px rgba(249, 115, 22, 0.3);
+}
+
+[data-secubox-theme="light"],
+[data-theme="light"] {
+	--nm-bg-primary: #f5f3ff;
+	--nm-bg-secondary: #ffffff;
+	--nm-bg-tertiary: #eef2ff;
+	--nm-border: #e5e7eb;
+	--nm-border-light: #d1d5db;
+
+	--nm-text-primary: #0f172a;
+	--nm-text-secondary: #475569;
+	--nm-text-muted: #94a3b8;
+
+	--nm-mode-gradient: linear-gradient(135deg,#4f46e5,#7c3aed);
+	--nm-shadow: 0 12px 25px rgba(79,70,229,0.15);
+	--nm-shadow-glow: 0 0 30px rgba(79,70,229,0.25);
 }
 
 /* Base */

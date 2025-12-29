@@ -17,6 +17,7 @@
 - Preparing follow-up refactor to deduplicate Theme initialization logic.  
 - Evaluating automated deployment pipeline (rsync/scp wrappers) for `secubox-tools`.
 - Enhancing SecuBox theme guidelines (see `.codex/THEME_CONTEXT.md`) to capture layout, state, and localization best practices before next UI sprint.  
+- Next TODO in focus: extract shared nav/header components into `secubox/components/` and document typings per `.codex/TODO.md` item #1.  
 
 ## Reminders
 

@@ -9,7 +9,8 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
 /* === Design System Variables === */
-:root {
+:root,
+[data-secubox-theme="light"] {
 	/* Light Mode */
 	--sh-text-primary: #0f172a;
 	--sh-text-secondary: #475569;
@@ -29,7 +30,9 @@
 	--sh-info: #3b82f6;
 }
 
-[data-theme="dark"] {
+[data-theme="dark"],
+[data-secubox-theme="dark"],
+[data-secubox-theme="cyberpunk"] {
 	/* Dark Mode (Demo-inspired) */
 	--sh-text-primary: #fafafa;
 	--sh-text-secondary: #a0a0b0;
@@ -277,6 +280,13 @@ pre {
 	background: var(--sh-hover-bg);
 }
 
+body[data-page^="admin-secubox-network-modes"] .tabs,
+body[data-page^="admin-secubox-network-modes"] #tabmenu,
+body[data-page^="admin-secubox-network-modes"] .cbi-tabmenu,
+body[data-page^="admin-secubox-network-modes"] .nav-tabs {
+	display: none !important;
+}
+
 .sh-nav-tab.active {
 	color: var(--sh-primary);
 	background: var(--sh-bg-card);
@@ -506,4 +516,3 @@ pre {
     border-color: rgba(245, 158, 11, 0.45);
     color: #b45309;
 }
-

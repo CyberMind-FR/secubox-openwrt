@@ -135,7 +135,26 @@ function createStepper(steps, active) {
 	}));
 }
 
+function ensureLuCITabsHidden() {
+	if (typeof document === 'undefined')
+		return;
+	if (document.getElementById('network-modes-tabstyle'))
+		return;
+	var style = document.createElement('style');
+	style.id = 'network-modes-tabstyle';
+	style.textContent = `
+body[data-page^="admin-secubox-network-modes"] .tabs,
+body[data-page^="admin-secubox-network-modes"] #tabmenu,
+body[data-page^="admin-secubox-network-modes"] .cbi-tabmenu,
+body[data-page^="admin-secubox-network-modes"] .nav-tabs {
+	display: none !important;
+}
+	`;
+	document.head && document.head.appendChild(style);
+}
+
 function createNavigationTabs(activeId) {
+	ensureLuCITabsHidden();
 	return E('div', { 'class': 'sh-nav-tabs network-modes-nav-tabs' },
 		NAV_BLUEPRINT.map(function(item) {
 			return E('a', {
