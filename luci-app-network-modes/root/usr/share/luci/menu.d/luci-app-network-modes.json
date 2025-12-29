@@ -20,6 +20,11 @@
 		"order": 30,
 		"action": {"type": "view", "path": "network-modes/router"}
 	},
+	"admin/secubox/network/modes/dmz": {
+		"title": "DMZ Mode",
+		"order": 33,
+		"action": {"type": "view", "path": "network-modes/dmz"}
+	},
 	"admin/secubox/network/modes/multiwan": {
 		"title": "Multi-WAN Mode",
 		"order": 35,

@@ -95,6 +95,12 @@ var callRouterConfig = rpc.declare({
 	expect: { }
 });
 
+var callDmzConfig = rpc.declare({
+	object: 'luci.network-modes',
+	method: 'dmz_config',
+	expect: { }
+});
+
 var callTravelConfig = rpc.declare({
 	object: 'luci.network-modes',
 	method: 'travel_config',
@@ -172,6 +178,7 @@ return baseclass.extend({
 	getAvailableModes: callGetAvailableModes,
 	setMode: callSetMode,
 	getInterfaces: callGetInterfaces,
+	getDmzConfig: callDmzConfig,
 	validateConfig: callValidateConfig,
 	previewChanges: callPreviewChanges,
 	confirmMode: callConfirmMode,
@@ -337,6 +344,7 @@ return baseclass.extend({
 			features: []
 		};
 	},
+	getDmzConfig: callDmzConfig,
 
 	// Format uptime seconds to human readable
 	formatUptime: function(seconds) {
@@ -388,3 +396,15 @@ return baseclass.extend({
 		return callEnableTcpBbr();
 	}
 });
+			dmz: {
+				id: 'dmz',
+				name: 'Router + DMZ',
+				icon: '🛡️',
+				description: 'Traditional router with an additional DMZ interface isolated from LAN but allowed to reach WAN.',
+				features: [
+					'Dedicated DMZ subnet',
+					'Separate firewall zone',
+					'Optional DHCP for DMZ clients',
+					'Quick rollback timer'
+				]
+			},

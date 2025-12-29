@@ -7,6 +7,7 @@ var NAV_BLUEPRINT = [
 	{ id: 'overview', icon: '📊', labelKey: 'Overview' },
 	{ id: 'wizard', icon: '🧭', labelKey: 'Wizard' },
 	{ id: 'router', icon: '🌐', labelKey: 'Router' },
+	{ id: 'dmz', icon: '🛡️', labelKey: 'DMZ' },
 	{ id: 'multiwan', icon: '🔀', labelKey: 'Multi-WAN' },
 	{ id: 'doublenat', icon: '🧱', labelKey: 'Double NAT' },
 	{ id: 'accesspoint', icon: '📡', labelKey: 'Access Point' },

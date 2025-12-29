@@ -173,6 +173,13 @@ Full router with WAN, proxy and HTTPS frontends.
 - **HTTPS Reverse Proxy**: Nginx, HAProxy, Caddy
 - **Multiple virtual hosts** with Let's Encrypt
 
+### 🛡️ Router + DMZ Mode
+Create a dedicated DMZ segment for exposed servers while keeping LAN traffic segregated.
+- Separate DMZ interface with its own subnet/DHCP scope
+- Firewall zone isolation (DMZ → WAN forwarding, no DMZ → LAN unless toggled)
+- Fast rollback using the existing backup/confirm workflow
+- Designed for hosting apps (Zigbee2MQTT, Lyrion, etc.) when combined with the VHost manager
+
 ## ✨ Features
 
 - 🎛️ One-click mode switching with backup

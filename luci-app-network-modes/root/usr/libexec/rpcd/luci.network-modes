@@ -393,6 +393,59 @@ get_router_config() {
 	json_dump
 }
 
+get_dmz_config() {
+	json_init
+
+	json_add_string "mode" "dmz"
+	json_add_string "name" "Router + DMZ"
+	json_add_string "description" "LAN avec NAT + segment DMZ isolé"
+
+	local wan_iface=$(uci -q get network-modes.dmz.wan_interface || echo "eth1")
+	local wan_proto=$(uci -q get network-modes.dmz.wan_protocol || echo "dhcp")
+	local lan_iface=$(uci -q get network-modes.dmz.lan_interface || echo "br-lan")
+	local lan_ip=$(uci -q get network-modes.dmz.lan_ip || echo "192.168.1.1")
+	local lan_netmask=$(uci -q get network-modes.dmz.lan_netmask || echo "255.255.255.0")
+	local dmz_iface=$(uci -q get network-modes.dmz.dmz_interface || echo "eth2")
+	local dmz_ip=$(uci -q get network-modes.dmz.dmz_ip || echo "192.168.50.1")
+	local dmz_netmask=$(uci -q get network-modes.dmz.dmz_netmask || echo "255.255.255.0")
+	local dmz_start=$(uci -q get network-modes.dmz.dmz_dhcp_start || echo "50")
+	local dmz_limit=$(uci -q get network-modes.dmz.dmz_dhcp_limit || echo "80")
+	local dmz_isolated=$(uci -q get network-modes.dmz.dmz_isolated || echo "1")
+
+	json_add_object "wan"
+	json_add_string "interface" "$wan_iface"
+	json_add_string "protocol" "$wan_proto"
+	json_add_array "protocols"
+	for proto in dhcp static pppoe; do
+		json_add_string "" "$proto"
+	done
+	json_close_array
+	json_close_object
+
+	json_add_object "lan"
+	json_add_string "interface" "$lan_iface"
+	json_add_string "ip_address" "$lan_ip"
+	json_add_string "netmask" "$lan_netmask"
+	json_close_object
+
+	json_add_object "dmz"
+	json_add_string "interface" "$dmz_iface"
+	json_add_string "ip_address" "$dmz_ip"
+	json_add_string "netmask" "$dmz_netmask"
+	json_add_int "dhcp_start" "$dmz_start"
+	json_add_int "dhcp_limit" "$dmz_limit"
+	json_add_boolean "isolated" "$([ "$dmz_isolated" = "1" ] && echo 1 || echo 0)"
+	json_close_object
+
+	json_add_array "available_interfaces"
+	for iface in $(ls /sys/class/net/ | grep -v "^lo$"); do
+		json_add_string "" "$iface"
+	done
+	json_close_array
+
+	json_dump
+}
+
 # Get travel router configuration
 get_travel_config() {
 	json_init
@@ -598,6 +651,88 @@ apply_mode() {
 		configure_doh_proxy
 		apply_transparent_proxy_rules
 		deploy_nginx_vhosts
+		;;
+	dmz)
+		local dmz_wan=$(uci -q get network-modes.dmz.wan_interface || echo "eth1")
+		local dmz_wan_proto=$(uci -q get network-modes.dmz.wan_protocol || echo "dhcp")
+		local dmz_lan_iface=$(uci -q get network-modes.dmz.lan_interface || echo "br-lan")
+		local dmz_lan_ip=$(uci -q get network-modes.dmz.lan_ip || echo "192.168.1.1")
+		local dmz_lan_netmask=$(uci -q get network-modes.dmz.lan_netmask || echo "255.255.255.0")
+		local dmz_iface=$(uci -q get network-modes.dmz.dmz_interface || echo "eth2")
+		local dmz_ip=$(uci -q get network-modes.dmz.dmz_ip || echo "192.168.50.1")
+		local dmz_netmask=$(uci -q get network-modes.dmz.dmz_netmask || echo "255.255.255.0")
+		local dmz_start=$(uci -q get network-modes.dmz.dmz_dhcp_start || echo "50")
+		local dmz_limit=$(uci -q get network-modes.dmz.dmz_dhcp_limit || echo "80")
+		local dmz_isolated_flag=$(uci -q get network-modes.dmz.dmz_isolated || echo "1")
+
+		uci delete network.wan 2>/dev/null
+		uci set network.wan=interface
+		uci set network.wan.device="$dmz_wan"
+		uci set network.wan.proto="$dmz_wan_proto"
+
+		uci set network.lan=interface
+		uci set network.lan.proto='static'
+		uci set network.lan.device="$dmz_lan_iface"
+		uci set network.lan.ipaddr="$dmz_lan_ip"
+		uci set network.lan.netmask="$dmz_lan_netmask"
+
+		uci delete network.dmz 2>/dev/null
+		uci set network.dmz=interface
+		uci set network.dmz.proto='static'
+		uci set network.dmz.device="$dmz_iface"
+		uci set network.dmz.ipaddr="$dmz_ip"
+		uci set network.dmz.netmask="$dmz_netmask"
+
+		uci set dhcp.lan=dhcp
+		uci set dhcp.lan.interface='lan'
+		uci set dhcp.lan.start='100'
+		uci set dhcp.lan.limit='150'
+		uci set dhcp.lan.leasetime='12h'
+
+		uci delete dhcp.dmz 2>/dev/null
+		uci set dhcp.dmz=dhcp
+		uci set dhcp.dmz.interface='dmz'
+		uci set dhcp.dmz.start="$dmz_start"
+		uci set dhcp.dmz.limit="$dmz_limit"
+		uci set dhcp.dmz.leasetime='12h'
+
+		uci -q delete firewall.lan
+		uci set firewall.lan=zone
+		uci set firewall.lan.name='lan'
+		uci set firewall.lan.network='lan'
+		uci set firewall.lan.input='ACCEPT'
+		uci set firewall.lan.output='ACCEPT'
+		uci set firewall.lan.forward='ACCEPT'
+
+		uci -q delete firewall.wan
+		uci set firewall.wan=zone
+		uci set firewall.wan.name='wan'
+		uci set firewall.wan.network='wan'
+		uci set firewall.wan.input='REJECT'
+		uci set firewall.wan.output='ACCEPT'
+		uci set firewall.wan.forward='REJECT'
+		uci set firewall.wan.masq='1'
+		uci set firewall.wan.mtu_fix='1'
+
+		uci -q delete firewall.dmz
+		uci set firewall.dmz=zone
+		uci set firewall.dmz.name='dmz'
+		uci set firewall.dmz.network='dmz'
+		uci set firewall.dmz.input='REJECT'
+		uci set firewall.dmz.output='ACCEPT'
+		uci set firewall.dmz.forward='REJECT'
+
+		uci -q delete firewall.dmz_wan
+		uci set firewall.dmz_wan=forwarding
+		uci set firewall.dmz_wan.src='dmz'
+		uci set firewall.dmz_wan.dest='wan'
+
+		uci -q delete firewall.dmz_lan 2>/dev/null
+		if [ "$dmz_isolated_flag" != "1" ]; then
+			uci set firewall.dmz_lan=forwarding
+			uci set firewall.dmz_lan.src='dmz'
+			uci set firewall.dmz_lan.dest='lan'
+		fi
 		;;
 	travel)
 		local client_iface=$(uci -q get network-modes.travel.client_interface || echo "wlan1")
@@ -914,6 +1049,31 @@ update_settings() {
 			[ -n "$transparent_proxy" ] && uci set network-modes.router.proxy_transparent="$transparent_proxy"
 			[ -n "$dns_over_https" ] && uci set network-modes.router.dns_over_https="$dns_over_https"
 			[ -n "$letsencrypt" ] && uci set network-modes.router.letsencrypt="$letsencrypt"
+			;;
+		dmz)
+			json_get_var wan_interface wan_interface
+			json_get_var wan_protocol wan_protocol
+			json_get_var lan_interface lan_interface
+			json_get_var lan_ip lan_ip
+			json_get_var lan_netmask lan_netmask
+			json_get_var dmz_interface dmz_interface
+			json_get_var dmz_ip dmz_ip
+			json_get_var dmz_netmask dmz_netmask
+			json_get_var dmz_dhcp_start dmz_dhcp_start
+			json_get_var dmz_dhcp_limit dmz_dhcp_limit
+			json_get_var dmz_isolated dmz_isolated
+			
+			[ -n "$wan_interface" ] && uci set network-modes.dmz.wan_interface="$wan_interface"
+			[ -n "$wan_protocol" ] && uci set network-modes.dmz.wan_protocol="$wan_protocol"
+			[ -n "$lan_interface" ] && uci set network-modes.dmz.lan_interface="$lan_interface"
+			[ -n "$lan_ip" ] && uci set network-modes.dmz.lan_ip="$lan_ip"
+			[ -n "$lan_netmask" ] && uci set network-modes.dmz.lan_netmask="$lan_netmask"
+			[ -n "$dmz_interface" ] && uci set network-modes.dmz.dmz_interface="$dmz_interface"
+			[ -n "$dmz_ip" ] && uci set network-modes.dmz.dmz_ip="$dmz_ip"
+			[ -n "$dmz_netmask" ] && uci set network-modes.dmz.dmz_netmask="$dmz_netmask"
+			[ -n "$dmz_dhcp_start" ] && uci set network-modes.dmz.dmz_dhcp_start="$dmz_dhcp_start"
+			[ -n "$dmz_dhcp_limit" ] && uci set network-modes.dmz.dmz_dhcp_limit="$dmz_dhcp_limit"
+			[ -n "$dmz_isolated" ] && uci set network-modes.dmz.dmz_isolated="$dmz_isolated"
 			;;
 		travel)
 			json_get_var client_interface client_interface
@@ -2016,6 +2176,9 @@ get_available_modes() {
 	add_mode "router" "Router" "🌐" "Mode routeur complet avec NAT, DHCP et firewall" \
 		"NAT activé" "Serveur DHCP" "Firewall (zones WAN/LAN)" "Proxy optionnel"
 
+	add_mode "dmz" "Router + DMZ" "🛡️" "Mode routeur avec réseau DMZ isolé et firewall segmenté" \
+		"Réseau DMZ séparé" "DHCP optionnel pour DMZ" "Isolation LAN/DMZ" "Forwarding WAN contrôlé"
+
 	add_mode "doublenat" "Double NAT" "🔁" "Derrière box opérateur avec réseau isolé" \
 		"WAN DHCP client" "Deuxième LAN privé" "Isolation invitée" "UPnP désactivé"
 
@@ -2051,7 +2214,7 @@ set_mode() {
 
 	# Validate mode
 	case "$target_mode" in
-		router|multiwan|doublenat|accesspoint|relay|vpnrelay|bridge|sniffer|travel)
+		router|dmz|multiwan|doublenat|accesspoint|relay|vpnrelay|bridge|sniffer|travel)
 			;;
 		*)
 			json_add_boolean "success" 0
@@ -2104,6 +2267,9 @@ preview_changes() {
 	# Changes array
 	json_add_array "changes"
 
+	local dmz_ip_preview
+	dmz_ip_preview=$(uci -q get network-modes.dmz.dmz_ip || echo "192.168.50.1")
+
 	case "$pending_mode" in
 		router)
 			json_add_object
@@ -2117,6 +2283,24 @@ preview_changes() {
 			json_add_object
 			json_add_string "file" "/etc/config/firewall"
 			json_add_string "change" "Zones: WAN, LAN, forwarding rules"
+			json_close_object
+			;;
+		dmz)
+			json_add_object
+			json_add_string "file" "/etc/config/network"
+			json_add_string "change" "WAN interface + LAN bridge reconfiguré"
+			json_close_object
+			json_add_object
+			json_add_string "file" "/etc/config/network"
+			json_add_string "change" "Nouveau segment DMZ (${dmz_ip_preview}/24)"
+			json_close_object
+			json_add_object
+			json_add_string "file" "/etc/config/dhcp"
+			json_add_string "change" "Serveur DHCP dédié pour DMZ"
+			json_close_object
+			json_add_object
+			json_add_string "file" "/etc/config/firewall"
+			json_add_string "change" "Zone DMZ isolée (forwarding uniquement vers WAN)"
 			json_close_object
 			;;
 		accesspoint)
@@ -2376,7 +2560,7 @@ rollback() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"modes":{},"get_current_mode":{},"get_available_modes":{},"set_mode":{"mode":"str"},"preview_changes":{},"apply_mode":{},"confirm_mode":{},"rollback":{},"sniffer_config":{},"ap_config":{},"relay_config":{},"router_config":{},"travel_config":{},"doublenat_config":{},"multiwan_config":{},"vpnrelay_config":{},"travel_scan_networks":{},"update_settings":{"mode":"str"},"generate_wireguard_keys":{},"apply_wireguard_config":{},"apply_mtu_clamping":{},"enable_tcp_bbr":{},"add_vhost":{"domain":"str","backend":"str","port":"int","ssl":"bool"},"generate_config":{"mode":"str"},"validate_pcap_filter":{"filter":"str"},"cleanup_old_pcaps":{}}'
+		echo '{"status":{},"modes":{},"get_current_mode":{},"get_available_modes":{},"set_mode":{"mode":"str"},"preview_changes":{},"apply_mode":{},"confirm_mode":{},"rollback":{},"sniffer_config":{},"ap_config":{},"relay_config":{},"router_config":{},"dmz_config":{},"travel_config":{},"doublenat_config":{},"multiwan_config":{},"vpnrelay_config":{},"travel_scan_networks":{},"update_settings":{"mode":"str"},"generate_wireguard_keys":{},"apply_wireguard_config":{},"apply_mtu_clamping":{},"enable_tcp_bbr":{},"add_vhost":{"domain":"str","backend":"str","port":"int","ssl":"bool"},"generate_config":{"mode":"str"},"validate_pcap_filter":{"filter":"str"},"cleanup_old_pcaps":{}}'
 		;;
 	call)
 		case "$2" in
@@ -2418,6 +2602,9 @@ case "$1" in
 				;;
 			router_config)
 				get_router_config
+				;;
+			dmz_config)
+				get_dmz_config
 				;;
 			travel_config)
 				get_travel_config
@@ -2479,3 +2666,63 @@ case "$1" in
 		esac
 		;;
 esac
+		dmz)
+			local wan_if=$(uci -q get network-modes.dmz.wan_interface || echo "eth1")
+			local wan_proto=$(uci -q get network-modes.dmz.wan_protocol || echo "dhcp")
+			local lan_iface=$(uci -q get network-modes.dmz.lan_interface || echo "br-lan")
+			local lan_ip=$(uci -q get network-modes.dmz.lan_ip || echo "192.168.1.1")
+			local lan_mask=$(uci -q get network-modes.dmz.lan_netmask || echo "255.255.255.0")
+			local dmz_iface=$(uci -q get network-modes.dmz.dmz_interface || echo "eth2")
+			local dmz_ip=$(uci -q get network-modes.dmz.dmz_ip || echo "192.168.50.1")
+			local dmz_mask=$(uci -q get network-modes.dmz.dmz_netmask || echo "255.255.255.0")
+			config="# DMZ Mode Configuration
+# /etc/config/network
+
+config interface 'wan'
+    option device '$wan_if'
+    option proto '$wan_proto'
+
+config interface 'lan'
+    option device '$lan_iface'
+    option proto 'static'
+    option ipaddr '$lan_ip'
+    option netmask '$lan_mask'
+
+config interface 'dmz'
+    option device '$dmz_iface'
+    option proto 'static'
+    option ipaddr '$dmz_ip'
+    option netmask '$dmz_mask'
+
+# /etc/config/firewall
+config zone
+    option name 'lan'
+    option input 'ACCEPT'
+    option output 'ACCEPT'
+    option forward 'ACCEPT'
+    list network 'lan'
+
+config zone
+    option name 'dmz'
+    option input 'REJECT'
+    option output 'ACCEPT'
+    option forward 'REJECT'
+    list network 'dmz'
+
+config zone
+    option name 'wan'
+    option input 'REJECT'
+    option output 'ACCEPT'
+    option forward 'REJECT'
+    option masq '1'
+    option mtu_fix '1'
+    list network 'wan'
+
+config forwarding
+    option src 'lan'
+    option dest 'wan'
+
+config forwarding
+    option src 'dmz'
+    option dest 'wan'"
+			;;

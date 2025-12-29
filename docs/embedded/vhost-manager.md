@@ -83,6 +83,19 @@ The LuCI backend writes to the same `/etc/config/vhosts` file, so changes from `
 
 ---
 
+## DMZ Mode + VHost Workflow
+
+When enabling the new **Router + DMZ** network mode (admin → SecuBox → Network → Modes → DMZ):
+
+1. Assign `eth2` (or another physical port) as the DMZ interface and give it a subnet such as `192.168.50.1/24`.  
+2. Apply the mode; the backend creates a dedicated firewall zone (`dmz`) that only forwards to WAN.  
+3. Connect servers (e.g., Lyrion, Zigbee2MQTT UI) to the DMZ port so they can reach the internet but cannot reach the LAN.  
+4. Use `scripts/vhostctl.sh add ... --upstream http://192.168.50.10:32400` to expose the DMZ service through nginx with TLS.  
+
+If something goes wrong, simply click **Rollback** in the Network Modes UI—the previous `/etc/config/network`, `/etc/config/firewall`, and `/etc/config/dhcp` are restored automatically thanks to the built-in backups.
+
+---
+
 ## Troubleshooting
 
 | Issue | Fix |
