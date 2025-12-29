@@ -982,6 +982,22 @@ update_settings() {
 			[ -n "$kill_switch" ] && uci set network-modes.vpnrelay.kill_switch="$kill_switch"
 			[ -n "$lan_bypass" ] && uci set network-modes.vpnrelay.lan_bypass="$lan_bypass"
 			;;
+		bridge)
+			if ! uci -q get network-modes.bridge >/dev/null 2>&1; then
+				uci set network-modes.bridge=mode
+				uci set network-modes.bridge.name='Bridge'
+				uci set network-modes.bridge.description='Layer 2 bridge template'
+			fi
+			json_get_var bridge_interface bridge_interface
+			json_get_var bridge_ports bridge_ports
+			json_get_var dhcp_client dhcp_client
+			json_get_var firewall_mode firewall_mode
+
+			[ -n "$bridge_interface" ] && uci set network-modes.bridge.bridge_interface="$bridge_interface"
+			[ -n "$bridge_ports" ] && uci set network-modes.bridge.bridge_ports="$bridge_ports"
+			[ -n "$dhcp_client" ] && uci set network-modes.bridge.dhcp_client="$dhcp_client"
+			[ -n "$firewall_mode" ] && uci set network-modes.bridge.firewall_mode="$firewall_mode"
+			;;
 		*)
 			json_add_boolean "success" 0
 			json_add_string "error" "Invalid mode"
