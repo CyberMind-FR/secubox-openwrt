@@ -31,10 +31,22 @@ var callUpdate = rpc.declare({
 	method: 'update'
 });
 
+var callInstall = rpc.declare({
+	object: 'luci.zigbee2mqtt',
+	method: 'install'
+});
+
+var callCheck = rpc.declare({
+	object: 'luci.zigbee2mqtt',
+	method: 'check'
+});
+
 return {
 	getStatus: callStatus,
 	applyConfig: callApply,
 	getLogs: callLogs,
 	control: callControl,
-	update: callUpdate
+	update: callUpdate,
+	install: callInstall,
+	runCheck: callCheck
 };

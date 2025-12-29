@@ -22,6 +22,7 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('zigbee2mqtt/common.css') }),
 			this.renderHeader(config),
+			this.renderSetup(config),
 			this.renderForm(config),
 			this.renderLogs()
 		]);
@@ -30,6 +31,7 @@ return view.extend({
 			return API.getStatus().then(L.bind(function(newData) {
 				config = newData;
 				this.updateHeader(config);
+				this.updateDiagnostics(config.diagnostics);
 			}, this));
 		}, this), 10);
 
@@ -51,6 +53,8 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'z2m-actions' }, [
+				E('button', { 'class': 'sh-btn-secondary', 'click': this.handleCheck.bind(this) }, _('Run checks')),
+				E('button', { 'class': 'sh-btn-secondary', 'click': this.handleInstall.bind(this) }, _('Install prerequisites')),
 				E('button', { 'class': 'sh-btn-secondary', 'click': this.handleLogs.bind(this) }, _('Refresh logs')),
 				E('button', { 'class': 'sh-btn-secondary', 'click': this.handleUpdate.bind(this) }, _('Update Image')),
 				E('button', { 'class': 'sh-btn-secondary', 'click': this.handleControl.bind(this, 'restart') }, _('Restart')),
@@ -72,6 +76,51 @@ return view.extend({
 			enBadge.className = 'z2m-badge ' + ((cfg.service && cfg.service.enabled) ? 'on' : 'off');
 			enBadge.textContent = (cfg.service && cfg.service.enabled) ? _('Enabled') : _('Disabled');
 		}
+	},
+
+	renderSetup: function(cfg) {
+		var diag = cfg.diagnostics || {};
+		return E('div', { 'class': 'z2m-card' }, [
+			E('div', { 'class': 'z2m-card-header' }, [
+				E('div', { 'class': 'sh-card-title' }, _('Prerequisites & Health'))
+			]),
+			this.renderDiagnostics(diag)
+		]);
+	},
+
+	renderDiagnostics: function(diag) {
+		var items = [
+			{ key: 'cgroups', label: _('cgroups mounted') },
+			{ key: 'docker', label: _('Docker daemon') },
+			{ key: 'usb_module', label: _('cdc_acm module') },
+			{ key: 'serial_device', label: _('Serial device') },
+			{ key: 'service_file', label: _('Service script') }
+		];
+		return E('div', { 'class': 'z2m-diag-list' }, items.map(function(item) {
+			var ok = diag[item.key];
+			return E('div', {
+				'class': 'z2m-diag-chip ' + (ok ? 'ok' : 'bad'),
+				'id': 'z2m-diag-' + item.key
+			}, [
+				E('span', { 'class': 'z2m-diag-label' }, item.label),
+				E('span', { 'class': 'z2m-diag-value' }, ok ? _('OK') : _('Missing'))
+			]);
+		}));
+	},
+
+	updateDiagnostics: function(diag) {
+		var keys = ['cgroups', 'docker', 'usb_module', 'serial_device', 'service_file'];
+		diag = diag || {};
+		keys.forEach(function(key) {
+			var el = document.getElementById('z2m-diag-' + key);
+			if (el) {
+				var ok = diag[key];
+				el.className = 'z2m-diag-chip ' + (ok ? 'ok' : 'bad');
+				var valueEl = el.querySelector('.z2m-diag-value');
+				if (valueEl)
+					valueEl.textContent = ok ? _('OK') : _('Missing');
+			}
+		});
 	},
 
 	renderForm: function(cfg) {
@@ -201,6 +250,47 @@ return view.extend({
 		}).catch(function(err) {
 			ui.hideModal();
 			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+		});
+	},
+
+	handleInstall: function() {
+		this.runCommand(_('Installing prerequisites…'), API.install);
+	},
+
+	handleCheck: function() {
+		this.runCommand(_('Running prerequisite checks…'), API.runCheck);
+	},
+
+	runCommand: function(title, fn) {
+		var self = this;
+		ui.showModal(title, [
+			E('p', {}, title),
+			E('div', { 'class': 'spinning' })
+		]);
+		fn().then(function(result) {
+			ui.hideModal();
+			self.showCommandOutput(result, title);
+			self.refreshStatus();
+		}).catch(function(err) {
+			ui.hideModal();
+			self.showCommandOutput({ success: 0, output: err && err.message ? err.message : err }, title);
+		});
+	},
+
+	showCommandOutput: function(result, title) {
+		var output = (result && result.output) ? result.output : _('Command finished.');
+		var tone = (result && result.success) ? 'info' : 'error';
+		ui.addNotification(null, E('div', {}, [
+			E('strong', {}, title),
+			E('pre', { 'style': 'white-space:pre-wrap;margin-top:8px;' }, output)
+		]), tone);
+	},
+
+	refreshStatus: function() {
+		var self = this;
+		return API.getStatus().then(function(newData) {
+			self.updateHeader(newData);
+			self.updateDiagnostics(newData.diagnostics);
 		});
 	}
 });

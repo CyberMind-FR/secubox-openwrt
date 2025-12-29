@@ -21,6 +21,17 @@ load_config() {
 	json_add_boolean "enabled" "$( [ "$(uci -q get ${CONFIG}.main.enabled || echo 0)" = "1" ] && echo 1 || echo 0)"
 }
 
+diagnostics() {
+	local serial="$(uci -q get ${CONFIG}.main.serial_port || echo /dev/ttyACM0)"
+	json_add_object "diagnostics"
+	json_add_boolean "cgroups" "$( [ -d /sys/fs/cgroup ] && echo 1 || echo 0 )"
+	json_add_boolean "docker" "$( command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 && echo 1 || echo 0 )"
+	json_add_boolean "serial_device" "$( [ -c "$serial" ] && echo 1 || echo 0 )"
+	json_add_boolean "usb_module" "$( lsmod 2>/dev/null | grep -q 'cdc_acm' && echo 1 || echo 0 )"
+	json_add_boolean "service_file" "$( [ -x "$SERVICE" ] && echo 1 || echo 0 )"
+	json_close_object
+}
+
 status() {
 	json_init
 	load_config
@@ -28,6 +39,7 @@ status() {
 	json_add_boolean "enabled" "$( "$SERVICE" enabled >/dev/null 2>&1 && echo 1 || echo 0 )"
 	json_add_boolean "running" "$( "$SERVICE" status >/dev/null 2>&1 && echo 1 || echo 0 )"
 	json_close_object
+	diagnostics
 	json_add_array "container"
 	docker ps -a --filter "name=secbx-zigbee2mqtt" --format '{{.Names}}|{{.Status}}' 2>/dev/null | while IFS='|' read -r name st; do
 		json_add_object
@@ -116,6 +128,30 @@ update() {
 	json_dump
 }
 
+run_helper() {
+	local command="$1"
+	shift
+	local output
+	output=$("$CTL" "$command" "$@" 2>&1)
+	local rc=$?
+	json_init
+	if [ "$rc" -eq 0 ]; then
+		json_add_boolean "success" 1
+	else
+		json_add_boolean "success" 0
+	fi
+	[ -n "$output" ] && json_add_string "output" "$output"
+	json_dump
+}
+
+install() {
+	run_helper install
+}
+
+check() {
+	run_helper check
+}
+
 case "$1" in
 	list)
 		cat <<'JSON'
@@ -124,7 +160,9 @@ case "$1" in
 	"apply": {},
 	"logs": {},
 	"control": {},
-	"update": {}
+	"update": {},
+	"install": {},
+	"check": {}
 }
 JSON
 	;;
@@ -135,6 +173,8 @@ JSON
 			logs) logs ;;
 			control) control ;;
 			update) update ;;
+			install) install ;;
+			check) check ;;
 			*) json_init; json_add_string "error" "unknown method"; json_dump ;;
 		esac
 		;;

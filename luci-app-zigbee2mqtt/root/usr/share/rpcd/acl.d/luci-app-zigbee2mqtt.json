@@ -17,7 +17,9 @@
 				"luci.zigbee2mqtt": [
 					"apply",
 					"control",
-					"update"
+					"update",
+					"install",
+					"check"
 				]
 			},
 			"file": {

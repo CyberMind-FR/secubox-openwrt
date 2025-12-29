@@ -9,6 +9,7 @@ LuCI interface for managing the Docker-based Zigbee2MQTT service packaged in `se
 ## Features
 
 - Displays service/container status, enablement, and quick actions (start/stop/restart/update).
+- Runs prerequisite checks and full Docker installation (dockerd/containerd/image pull) via LuCI buttons.
 - Provides a form to edit `/etc/config/zigbee2mqtt` (serial port, MQTT host, credentials, base topic, frontend port, channel, data path, docker image, timezone).
 - Streams Docker logs directly in LuCI.
 - Uses SecuBox design system and RPCD backend (`luci.zigbee2mqtt`).
@@ -51,3 +52,8 @@ Access via LuCI: **Services → SecuBox → Zigbee2MQTT**.
 - Follow SecuBox design tokens (see `DOCS/DEVELOPMENT-GUIDELINES.md`).
 - Keep RPC filenames aligned with ubus object name (`luci.zigbee2mqtt`).
 - Validate with `./secubox-tools/validate-modules.sh`.
+
+## Documentation
+
+- Deployment walkthrough: [`docs/embedded/zigbee2mqtt-docker.md`](../docs/embedded/zigbee2mqtt-docker.md)
+- CLI helper (`zigbee2mqttctl`) is packaged by `secubox-app-zigbee2mqtt`.
