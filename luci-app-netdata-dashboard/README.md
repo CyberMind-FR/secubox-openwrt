@@ -47,6 +47,11 @@ Real-time system monitoring dashboard for OpenWrt with a modern, responsive inte
 - Animated gauges and sparklines
 - GitHub-inspired color palette
 
+### 🔔 SecuBox Alerts & Logs
+- Control bar integrates with the new `/usr/sbin/secubox-log` helper.
+- Start/restart/stop events get appended to `/var/log/seccubox.log`.
+- Dashboard card shows the tail of the aggregated log and lets you capture a dmesg/logread snapshot from LuCI.
+
 ## Screenshots
 
 ### Real-time View

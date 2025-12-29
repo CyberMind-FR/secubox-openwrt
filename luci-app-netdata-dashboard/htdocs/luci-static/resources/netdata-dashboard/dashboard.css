@@ -170,6 +170,96 @@
 	color: var(--nd-text-muted);
 }
 
+/* New SecuBox-aligned cards */
+.nd-control-bar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.nd-card {
+	background: var(--nd-bg-secondary);
+	border: 1px solid var(--nd-border);
+	border-radius: var(--nd-radius-lg);
+	padding: 20px;
+	margin-bottom: 16px;
+	box-shadow: var(--nd-shadow);
+}
+
+.nd-card-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12px;
+}
+
+.nd-card-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-weight: 600;
+}
+
+.nd-chip {
+	padding: 4px 10px;
+	border-radius: 999px;
+	background: rgba(56, 189, 248, 0.1);
+	color: var(--nd-accent-blue);
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.nd-chip.danger {
+	background: rgba(248, 81, 73, 0.15);
+	color: var(--nd-accent-red);
+}
+
+.nd-card-text {
+	margin: 0;
+	color: var(--nd-text-secondary);
+}
+
+.nd-card-actions {
+	margin-top: 12px;
+}
+
+.nd-card.nd-logs pre {
+	background: #000;
+	color: #a8ff60;
+	padding: 12px;
+	border-radius: var(--nd-radius);
+	max-height: 240px;
+	overflow-y: auto;
+	font-family: var(--nd-font-mono);
+	font-size: 12px;
+}
+
+.nd-card.nd-embed {
+	padding: 0;
+	overflow: hidden;
+}
+
+.nd-card.nd-embed.off {
+	padding: 20px;
+	text-align: center;
+}
+
+.nd-iframe-wrapper {
+	position: relative;
+	width: 100%;
+	padding-top: 75%;
+	background: var(--nd-bg-tertiary);
+}
+
+.nd-iframe-wrapper iframe {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	border: none;
+}
 /* Charts Grid */
 .nd-charts-grid {
 	display: grid;

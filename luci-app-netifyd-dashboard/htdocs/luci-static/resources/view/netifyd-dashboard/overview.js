@@ -9,7 +9,10 @@ return view.extend({
 	title: _('Netifyd Dashboard'),
 	
 	load: function() {
-		return api.getAllData();
+		return Promise.all([
+			api.getAllData(),
+			api.getSecuboxLogs()
+		]);
 	},
 	
 	renderDonut: function(data, size) {
@@ -47,8 +50,10 @@ return view.extend({
 		]);
 	},
 	
-	render: function(data) {
+	render: function(payload) {
 		var self = this;
+		var data = payload[0] || {};
+		var logEntries = (payload[1] && payload[1].entries) || [];
 		var status = data.status || {};
 		var stats = data.stats || {};
 		var apps = (data.applications || {}).applications || [];
@@ -63,7 +68,6 @@ return view.extend({
 			{ name: 'UDP', value: udpFlows },
 			{ name: 'Other', value: Math.max(0, totalFlows - tcpFlows - udpFlows) }
 		].filter(function(p) { return p.value > 0; });
-		
 		var topApps = apps.slice(0, 6);
 		var maxAppBytes = topApps.length > 0 ? Math.max.apply(null, topApps.map(function(a) { return a.bytes; })) : 1;
 		
@@ -186,14 +190,49 @@ return view.extend({
 						)
 					])
 				])
-			])
-		]);
+				]),
+
+				this.renderLogCard(logEntries)
+			]);
 		
 		// Include CSS
 		var cssLink = E('link', { 'rel': 'stylesheet', 'href': L.resource('netifyd-dashboard/dashboard.css') });
 		document.head.appendChild(cssLink);
 		
 		return view;
+	},
+	
+	renderLogCard: function(entries) {
+		return E('div', { 'class': 'nf-log-card' }, [
+			E('div', { 'class': 'nf-log-header' }, [
+				E('strong', {}, _('SecuBox log tail')),
+				E('button', {
+					'class': 'nf-log-btn',
+					'click': L.bind(this.handleSnapshot, this)
+				}, _('Snapshot'))
+			]),
+			entries && entries.length ?
+				E('pre', { 'class': 'nf-log-output' }, entries.join('\n')) :
+				E('p', { 'class': 'nf-log-empty' }, _('Log file empty'))
+		]);
+	},
+
+	handleSnapshot: function() {
+		ui.showModal(_('Collecting snapshot'), [
+			E('p', {}, _('Aggregating dmesg + logread into SecuBox log…')),
+			E('div', { 'class': 'spinning' })
+		]);
+		api.collectDebugSnapshot().then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				ui.addNotification(null, E('p', {}, _('Snapshot appended to /var/log/seccubox.log')), 'info');
+			} else {
+				ui.addNotification(null, E('p', {}, (result && result.error) || _('Snapshot failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+		});
 	},
 	
 	handleSaveApply: null,

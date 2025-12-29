@@ -58,6 +58,18 @@ var callStats = rpc.declare({
 	expect: { }
 });
 
+var callSecuboxLogs = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'seccubox_logs',
+	expect: { }
+});
+
+var callCollectDebug = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'collect_debug',
+	expect: { success: false }
+});
+
 var callBan = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'ban',
@@ -99,8 +111,26 @@ return baseclass.extend({
 	getMachines: callMachines,
 	getHub: callHub,
 	getStats: callStats,
+	getSecuboxLogs: callSecuboxLogs,
+	collectDebugSnapshot: callCollectDebug,
 	addBan: callBan,
 	removeBan: callUnban,
 	formatDuration: formatDuration,
-	formatDate: formatDate
+	formatDate: formatDate,
+
+	getDashboardData: function() {
+		return Promise.all([
+			callStatus(),
+			callStats(),
+			callDecisions(),
+			callAlerts()
+		]).then(function(results) {
+			return {
+				status: results[0] || {},
+				stats: results[1] || {},
+				decisions: (results[2] && results[2].decisions) || [],
+				alerts: (results[3] && results[3].alerts) || []
+			};
+		});
+	}
 });

@@ -247,6 +247,17 @@
 	padding: 0;
 }
 
+.cs-log-card pre.cs-log-output {
+	background: #0b1120;
+	color: #9efc6a;
+	padding: 14px;
+	border-radius: 12px;
+	font-family: 'JetBrains Mono', monospace;
+	font-size: 12px;
+	max-height: 220px;
+	overflow-y: auto;
+}
+
 /* Tables */
 .cs-table {
 	width: 100%;

@@ -120,6 +120,25 @@ opkg install /tmp/luci-app-system-hub*.ipk
 /etc/init.d/rpcd restart
 ```
 
+### Logging & Debug Utilities
+
+#### secubox-log.sh
+
+Centralized logger/aggregator for SecuBox modules. Appends tagged events to `/var/log/seccubox.log`, captures snapshots that merge `dmesg` + `logread`, and can tail the aggregated file for troubleshooting.
+
+```
+# Append a message
+secubox-log.sh --tag netdata --message "Netdata restarted"
+
+# Add a snapshot with dmesg/logread tail
+secubox-log.sh --snapshot
+
+# Tail the aggregated log
+secubox-log.sh --tail 100
+```
+
+The script is also installed on the router as `/usr/sbin/secubox-log` (via `luci-app-secubox`) so LuCI modules can log lifecycle events and collect debug bundles.
+
 **Example Workflow - Firmware Building:**
 ```bash
 # 1. Build firmware for MOCHAbin with SecuBox pre-installed

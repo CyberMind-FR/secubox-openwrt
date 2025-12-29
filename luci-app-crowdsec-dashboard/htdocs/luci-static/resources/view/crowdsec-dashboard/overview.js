@@ -28,7 +28,10 @@ return view.extend({
 		// Load API
 		this.csApi = new api();
 		
-		return this.csApi.getDashboardData();
+		return Promise.all([
+			this.csApi.getDashboardData(),
+			this.csApi.getSecuboxLogs()
+		]);
 	},
 
 	renderHeader: function(status) {
@@ -310,7 +313,7 @@ return view.extend({
 			if (result.success) {
 				self.showToast('IP ' + ip + ' unbanned successfully', 'success');
 				// Refresh data
-				return self.csApi.getDashboardData();
+				return self.refreshDashboard();
 			} else {
 				self.showToast('Failed to unban: ' + (result.error || 'Unknown error'), 'error');
 			}
@@ -355,7 +358,7 @@ return view.extend({
 			if (result.success) {
 				self.showToast('IP ' + ip + ' banned for ' + duration, 'success');
 				self.closeBanModal();
-				return self.csApi.getDashboardData();
+				return self.refreshDashboard();
 			} else {
 				self.showToast('Failed to ban: ' + (result.error || 'Unknown error'), 'error');
 			}
@@ -393,6 +396,7 @@ return view.extend({
 		var stats = data.stats || {};
 		var decisions = data.decisions || [];
 		var alerts = data.alerts || [];
+		var logs = this.logs || [];
 		
 		return E('div', {}, [
 			this.renderHeader(status),
@@ -429,30 +433,76 @@ return view.extend({
 						E('div', { 'class': 'cs-card-title' }, 'Recent Alerts'),
 					]),
 					E('div', { 'class': 'cs-card-body' }, this.renderAlertsTimeline(alerts))
-				])
+				]),
+				this.renderLogCard(logs)
 			]),
 			
 			this.renderBanModal()
 		]);
 	},
 
-	render: function(data) {
+	render: function(payload) {
 		var self = this;
-		this.data = data;
+		this.data = payload[0] || {};
+		this.logs = (payload[1] && payload[1].entries) || [];
 		
 		var view = E('div', { 'class': 'crowdsec-dashboard' }, [
-			E('div', { 'id': 'cs-dashboard-content' }, this.renderContent(data))
+			E('div', { 'id': 'cs-dashboard-content' }, this.renderContent(this.data))
 		]);
 		
 		// Setup polling for auto-refresh (every 30 seconds)
 		poll.add(function() {
-			return self.csApi.getDashboardData().then(function(newData) {
-				self.data = newData;
-				self.updateView();
-			});
+			return self.refreshDashboard();
 		}, 30);
 		
 		return view;
+	},
+	
+refreshDashboard: function() {
+		var self = this;
+		return Promise.all([
+			self.csApi.getDashboardData(),
+			self.csApi.getSecuboxLogs()
+		]).then(function(results) {
+			self.data = results[0];
+			self.logs = (results[1] && results[1].entries) || [];
+			self.updateView();
+		});
+	},
+
+	renderLogCard: function(entries) {
+		return E('div', { 'class': 'cs-card cs-log-card' }, [
+			E('div', { 'class': 'cs-card-header' }, [
+				E('div', { 'class': 'cs-card-title' }, _('SecuBox Log Tail')),
+				E('button', {
+					'class': 'cs-btn cs-btn-secondary cs-btn-sm',
+					'click': ui.createHandlerFn(this, 'handleSnapshot')
+				}, _('Snapshot'))
+			]),
+			entries && entries.length ?
+				E('pre', { 'class': 'cs-log-output' }, entries.join('\n')) :
+				E('p', { 'class': 'cs-empty' }, _('Log file empty'))
+		]);
+	},
+
+	handleSnapshot: function() {
+		var self = this;
+		ui.showModal(_('Collecting snapshot'), [
+			E('p', {}, _('Aggregating dmesg/logread into SecuBox log…')),
+			E('div', { 'class': 'spinning' })
+		]);
+		this.csApi.collectDebugSnapshot().then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				self.refreshDashboard();
+				self.showToast(_('Snapshot appended to /var/log/seccubox.log'), 'success');
+			} else {
+				self.showToast((result && result.error) || _('Snapshot failed'), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			self.showToast(err.message || _('Snapshot failed'), 'error');
+		});
 	},
 
 	handleSaveApply: null,

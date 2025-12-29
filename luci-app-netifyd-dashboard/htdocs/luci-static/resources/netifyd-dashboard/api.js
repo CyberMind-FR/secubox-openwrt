@@ -46,6 +46,18 @@ var callStats = rpc.declare({
 	expect: { }
 });
 
+var callSecuboxLogs = rpc.declare({
+	object: 'luci.netifyd-dashboard',
+	method: 'seccubox_logs',
+	expect: { }
+});
+
+var callCollectDebug = rpc.declare({
+	object: 'luci.netifyd-dashboard',
+	method: 'collect_debug',
+	expect: { success: false }
+});
+
 function formatBytes(bytes) {
 	if (bytes === 0) return '0 B';
 	var k = 1024;
@@ -61,6 +73,8 @@ return baseclass.extend({
 	getHosts: callHosts,
 	getProtocols: callProtocols,
 	getStats: callStats,
+	getSecuboxLogs: callSecuboxLogs,
+	collectDebugSnapshot: callCollectDebug,
 	formatBytes: formatBytes,
 
 	// Aggregate function for overview page

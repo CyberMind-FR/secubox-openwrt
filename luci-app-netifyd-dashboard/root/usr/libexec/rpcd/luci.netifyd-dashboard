@@ -6,6 +6,13 @@
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
+SECCUBOX_LOG="/usr/sbin/secubox-log"
+
+secubox_log() {
+	[ -x "$SECCUBOX_LOG" ] || return
+	"$SECCUBOX_LOG" --tag "netifyd" --message "$1" >/dev/null 2>&1
+}
+
 NETIFYD_SOCKET="/var/run/netifyd/netifyd.sock"
 NETIFYD_STATUS="/var/run/netifyd/status.json"
 NETIFYD_FLOWS="/var/run/netifyd/flows.json"
@@ -265,6 +272,31 @@ get_devices() {
 	json_dump
 }
 
+seccubox_logs() {
+	json_init
+	json_add_array "entries"
+	if [ -f /var/log/seccubox.log ]; then
+		tail -n 80 /var/log/seccubox.log | while IFS= read -r line; do
+			json_add_string "" "$line"
+		done
+	fi
+	json_close_array
+	json_dump
+}
+
+collect_debug() {
+	json_init
+	if [ -x "$SECCUBOX_LOG" ]; then
+		"$SECCUBOX_LOG" --snapshot >/dev/null 2>&1
+		json_add_boolean "success" 1
+		json_add_string "message" "Snapshot stored in /var/log/seccubox.log"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "secubox-log helper not found"
+	fi
+	json_dump
+}
+
 # Get overall statistics
 get_stats() {
 	json_init
@@ -463,7 +495,7 @@ get_dns_queries() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"flows":{},"applications":{},"protocols":{},"devices":{},"stats":{},"risks":{},"category_bandwidth":{},"top_talkers":{},"dns_queries":{}}'
+		echo '{"status":{},"flows":{},"applications":{},"protocols":{},"devices":{},"stats":{},"risks":{},"category_bandwidth":{},"top_talkers":{},"dns_queries":{},"seccubox_logs":{},"collect_debug":{}}'
 		;;
 	call)
 		case "$2" in
@@ -496,6 +528,12 @@ case "$1" in
 				;;
 			dns_queries)
 				get_dns_queries
+				;;
+			seccubox_logs)
+				seccubox_logs
+				;;
+			collect_debug)
+				collect_debug
 				;;
 			*)
 				echo '{"error": "Unknown method"}'

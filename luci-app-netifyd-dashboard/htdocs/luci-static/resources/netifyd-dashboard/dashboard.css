@@ -368,6 +368,48 @@
 	color: var(--nf-text-primary);
 }
 
+.nf-log-card {
+	background: var(--nf-bg-secondary);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 18px;
+	padding: 20px;
+	margin-top: 20px;
+	box-shadow: 0 18px 30px rgba(2, 6, 23, 0.45);
+}
+
+.nf-log-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 10px;
+}
+
+.nf-log-btn {
+	background: transparent;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	padding: 6px 14px;
+	border-radius: 999px;
+	color: var(--nf-text-secondary);
+	cursor: pointer;
+}
+
+.nf-log-output {
+	background: #020617;
+	color: #9efc6a;
+	padding: 12px;
+	border-radius: 12px;
+	font-family: var(--nf-font-mono);
+	font-size: 12px;
+	max-height: 220px;
+	overflow-y: auto;
+}
+
+.nf-log-empty {
+	color: var(--nf-text-secondary);
+	font-size: 13px;
+}
+
 /* Flow Table */
 .nf-table-container {
 	overflow-x: auto;

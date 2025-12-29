@@ -6,6 +6,13 @@
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
+SECCUBOX_LOG="/usr/sbin/secubox-log"
+
+secubox_log() {
+	[ -x "$SECCUBOX_LOG" ] || return
+	"$SECCUBOX_LOG" --tag "netdata" --message "$1" >/dev/null 2>&1
+}
+
 # Get CPU statistics
 get_cpu() {
 	json_init
@@ -525,6 +532,7 @@ restart_netdata() {
 		if pgrep -x netdata >/dev/null 2>&1; then
 			json_add_boolean "success" 1
 			json_add_string "message" "Netdata restarted successfully"
+			secubox_log "Netdata service restarted"
 		else
 			json_add_boolean "success" 0
 			json_add_string "error" "Failed to start Netdata"
@@ -551,6 +559,7 @@ start_netdata() {
 		if pgrep -x netdata >/dev/null 2>&1; then
 			json_add_boolean "success" 1
 			json_add_string "message" "Netdata started successfully"
+			secubox_log "Netdata service started"
 		else
 			json_add_boolean "success" 0
 			json_add_string "error" "Failed to start Netdata"
@@ -577,6 +586,7 @@ stop_netdata() {
 		if ! pgrep -x netdata >/dev/null 2>&1; then
 			json_add_boolean "success" 1
 			json_add_string "message" "Netdata stopped successfully"
+			secubox_log "Netdata service stopped"
 		else
 			json_add_boolean "success" 0
 			json_add_string "error" "Failed to stop Netdata"
@@ -589,10 +599,35 @@ stop_netdata() {
 	json_dump
 }
 
+seccubox_logs() {
+	json_init
+	json_add_array "entries"
+	if [ -f /var/log/seccubox.log ]; then
+		tail -n 80 /var/log/seccubox.log | while IFS= read -r line; do
+			json_add_string "" "$line"
+		done
+	fi
+	json_close_array
+	json_dump
+}
+
+collect_debug() {
+	json_init
+	if [ -x "$SECCUBOX_LOG" ]; then
+		"$SECCUBOX_LOG" --snapshot >/dev/null 2>&1
+		json_add_boolean "success" 1
+		json_add_string "message" "Snapshot collected to /var/log/seccubox.log"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "secubox-log helper not found"
+	fi
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"stats":{},"cpu":{},"memory":{},"disk":{},"network":{},"processes":{},"sensors":{},"system":{},"netdata_status":{},"netdata_alarms":{},"netdata_info":{},"restart_netdata":{},"start_netdata":{},"stop_netdata":{}}'
+		echo '{"stats":{},"cpu":{},"memory":{},"disk":{},"network":{},"processes":{},"sensors":{},"system":{},"netdata_status":{},"netdata_alarms":{},"netdata_info":{},"restart_netdata":{},"start_netdata":{},"stop_netdata":{},"seccubox_logs":{},"collect_debug":{}}'
 		;;
 	call)
 		case "$2" in
@@ -637,6 +672,12 @@ case "$1" in
 				;;
 			stop_netdata)
 				stop_netdata
+				;;
+			seccubox_logs)
+				seccubox_logs
+				;;
+			collect_debug)
+				collect_debug
 				;;
 			*)
 				echo '{"error": "Unknown method"}'

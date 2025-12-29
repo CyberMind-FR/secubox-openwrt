@@ -6,6 +6,13 @@
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
+SECCUBOX_LOG="/usr/sbin/secubox-log"
+
+secubox_log() {
+	[ -x "$SECCUBOX_LOG" ] || return
+	"$SECCUBOX_LOG" --tag "crowdsec" --message "$1" >/dev/null 2>&1
+}
+
 CSCLI="/usr/bin/cscli"
 
 # Check if cscli exists
@@ -137,6 +144,7 @@ add_ban() {
 	result=$($CSCLI decisions add --ip "$ip" --duration "$duration" --reason "$reason" 2>&1)
 	
 	if [ $? -eq 0 ]; then
+		secubox_log "CrowdSec ban added for $ip ($duration)"
 		echo '{"success": true}'
 	else
 		json_init
@@ -161,6 +169,7 @@ remove_ban() {
 	result=$($CSCLI decisions delete --ip "$ip" 2>&1)
 	
 	if [ $? -eq 0 ]; then
+		secubox_log "CrowdSec ban removed for $ip"
 		echo '{"success": true}'
 	else
 		json_init
@@ -214,6 +223,31 @@ get_dashboard_stats() {
 	json_dump
 }
 
+seccubox_logs() {
+	json_init
+	json_add_array "entries"
+	if [ -f /var/log/seccubox.log ]; then
+		tail -n 80 /var/log/seccubox.log | while IFS= read -r line; do
+			json_add_string "" "$line"
+		done
+	fi
+	json_close_array
+	json_dump
+}
+
+collect_debug() {
+	json_init
+	if [ -x "$SECCUBOX_LOG" ]; then
+		"$SECCUBOX_LOG" --snapshot >/dev/null 2>&1
+		json_add_boolean "success" 1
+		json_add_string "message" "Snapshot appended to /var/log/seccubox.log"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "secubox-log helper not found"
+	fi
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
@@ -258,6 +292,12 @@ case "$1" in
 				;;
 			stats)
 				get_dashboard_stats
+				;;
+			seccubox_logs)
+				seccubox_logs
+				;;
+			collect_debug)
+				collect_debug
 				;;
 			*)
 				echo '{"error": "Unknown method"}'

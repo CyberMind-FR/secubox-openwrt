@@ -96,6 +96,18 @@ var callStopNetdata = rpc.declare({
 	expect: { success: false }
 });
 
+var callSecuboxLogs = rpc.declare({
+	object: 'luci.netdata-dashboard',
+	method: 'seccubox_logs',
+	expect: { }
+});
+
+var callCollectDebug = rpc.declare({
+	object: 'luci.netdata-dashboard',
+	method: 'collect_debug',
+	expect: { success: false }
+});
+
 function formatBytes(bytes) {
 	if (!bytes || bytes === 0) return '0 B';
 	var units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -134,6 +146,8 @@ return baseclass.extend({
 	restartNetdata: callRestartNetdata,
 	startNetdata: callStartNetdata,
 	stopNetdata: callStopNetdata,
+	getSecuboxLogs: callSecuboxLogs,
+	collectDebugSnapshot: callCollectDebug,
 
 	// Utility functions
 	formatBytes: formatBytes,
