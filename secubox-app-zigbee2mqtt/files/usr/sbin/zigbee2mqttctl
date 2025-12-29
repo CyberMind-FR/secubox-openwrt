@@ -8,6 +8,10 @@ CONFIG="zigbee2mqtt"
 CONTAINER="secbx-zigbee2mqtt"
 OPKG_UPDATED=0
 
+warn() { printf '[WARN] %s\n' "$*" >&2; }
+info() { printf '[INFO] %s\n' "$*"; }
+err() { printf '[ERROR] %s\n' "$*" >&2; }
+
 usage() {
 	cat <<'EOF'
 Usage: zigbee2mqttctl <command>
@@ -99,6 +103,9 @@ check_prereqs() {
 	check_cgroups || return 1
 	check_serial "$serial_port"
 	ensure_packages kmod-usb-acm || return 1
+	if ! lsmod 2>/dev/null | grep -q 'cdc_acm'; then
+		warn "cdc_acm kernel module is not loaded; USB coordinator may not be detected."
+	fi
 	return 0
 }
 
@@ -106,6 +113,9 @@ ensure_docker() {
 	ensure_packages containerd docker dockerd || return 1
 	/etc/init.d/dockerd enable >/dev/null 2>&1
 	/etc/init.d/dockerd start >/dev/null 2>&1
+	if ! docker info >/dev/null 2>&1; then
+		warn "Docker daemon not ready yet. Retry once dockerd has finished starting."
+	fi
 }
 
 generate_configuration() {
@@ -146,13 +156,15 @@ cmd_install() {
 	ensure_dir "$data_path"
 	generate_configuration
 	pull_image
+	uci set ${CONFIG}.main.enabled='1'
+	uci commit ${CONFIG}
 	/etc/init.d/zigbee2mqtt enable
-	echo "Zigbee2MQTT prerequisites installed. Enable with: /etc/init.d/zigbee2mqtt start"
+	info "Installation complete. Start with: /etc/init.d/zigbee2mqtt start"
 }
 
 cmd_check() {
 	check_prereqs
-	echo "Prerequisite check completed."
+	info "Prerequisite check completed."
 }
 
 cmd_update() {
@@ -167,10 +179,18 @@ cmd_update() {
 }
 
 cmd_status() {
+	if ! command -v docker >/dev/null 2>&1; then
+		err "docker command missing. Run zigbee2mqttctl install first."
+		return 1
+	fi
 	docker ps -a --filter "name=$CONTAINER"
 }
 
 cmd_logs() {
+	if ! command -v docker >/dev/null 2>&1; then
+		err "docker command missing."
+		return 1
+	fi
 	docker logs "$@" "$CONTAINER"
 }
 

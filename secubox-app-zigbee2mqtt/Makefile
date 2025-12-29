@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-zigbee2mqtt
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_VERSION:=1.0.0
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
 PKG_LICENSE:=Apache-2.0
