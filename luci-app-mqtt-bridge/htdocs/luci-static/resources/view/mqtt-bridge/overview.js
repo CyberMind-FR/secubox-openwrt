@@ -53,8 +53,16 @@ return view.extend({
 	},
 
 	renderStats: function(status) {
+		var adapterCount = 0;
+		if (Array.isArray(status.adapters))
+			adapterCount = status.adapters.length;
+		else if (status.device_stats && typeof status.device_stats.usb !== 'undefined')
+			adapterCount = status.device_stats.usb;
+		else if (typeof status.adapters === 'number')
+			adapterCount = status.adapters;
+
 		var stats = [
-			{ label: _('USB adapters'), value: status.adapters || 0 },
+			{ label: _('USB adapters'), value: adapterCount },
 			{ label: _('Paired devices'), value: (status.device_stats && status.device_stats.total) || 0 },
 			{ label: _('Online devices'), value: (status.device_stats && status.device_stats.online) || 0 },
 			{ label: _('Topics/s'), value: status.messages_per_sec || 0 },
