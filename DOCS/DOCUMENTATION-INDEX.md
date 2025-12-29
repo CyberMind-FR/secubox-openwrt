@@ -206,7 +206,16 @@ Follow this template when creating or revising documentation:
 
 ---
 
-### 4. Tools & Scripts Documentation
+### 4. Embedded Deployment Guides
+
+#### **embedded/docker-zigbee2mqtt.md** 🔌
+*Deploy Zigbee2MQTT via Docker on SecuBox (ARM64).*
+
+Pointer: see `docs/embedded/docker-zigbee2mqtt.md` for the canonical version.
+
+---
+
+### 5. Tools & Scripts Documentation
 
 #### **secubox-tools/README.md** 🔧
 *Documentation for validation and build tools*
@@ -225,7 +234,7 @@ Follow this template when creating or revising documentation:
 
 ---
 
-### 5. Live Demo & Examples
+### 6. Live Demo & Examples
 
 #### **Live Demo Website** 🌐
 *Production demo of all modules*

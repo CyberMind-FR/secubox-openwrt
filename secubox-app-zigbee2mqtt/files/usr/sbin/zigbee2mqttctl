@@ -1,0 +1,208 @@
+#!/bin/sh
+#
+# SecuBox Zigbee2MQTT manager
+# Handles prerequisite checks, Docker installation, container lifecycle,
+# and configuration generation using UCI.
+
+CONFIG="zigbee2mqtt"
+CONTAINER="secbx-zigbee2mqtt"
+OPKG_UPDATED=0
+
+usage() {
+	cat <<'EOF'
+Usage: zigbee2mqttctl <command>
+
+Commands:
+  install         Run prerequisite checks, install Docker packages, prepare data dir
+  check           Validate kernel modules, cgroups, storage, and serial access
+  update          Pull the latest Zigbee2MQTT image and restart the service
+  status          Show container and service status
+  logs            Show Docker logs (pass -f to follow)
+  service-run     Internal: invoked by procd to run the container
+  service-stop    Stop the running container
+  help            Show this message
+EOF
+}
+
+require_root() {
+	if [ "$(id -u)" -ne 0 ]; then
+		echo "This command requires root privileges." >&2
+		exit 1
+	fi
+}
+
+uci_get() {
+	uci -q get "${CONFIG}.main.$1"
+}
+
+defaults() {
+	serial_port="$(uci_get serial_port || echo /dev/ttyACM0)"
+	mqtt_host="$(uci_get mqtt_host || echo mqtt://127.0.0.1:1883)"
+	mqtt_user="$(uci_get mqtt_username || printf '')"
+	mqtt_pass="$(uci_get mqtt_password || printf '')"
+	base_topic="$(uci_get base_topic || echo zigbee2mqtt)"
+	frontend_port="$(uci_get frontend_port || echo 8080)"
+	channel="$(uci_get channel || echo 11)"
+	image="$(uci_get image || echo ghcr.io/koenkk/zigbee2mqtt:latest)"
+	data_path="$(uci_get data_path || echo /srv/zigbee2mqtt)"
+	timezone="$(uci_get timezone || echo UTC)"
+}
+
+ensure_dir() {
+	local path="$1"
+	[ -d "$path" ] || mkdir -p "$path"
+}
+
+ensure_packages() {
+	local pkgs="$*"
+	require_root
+	for pkg in $pkgs; do
+		if ! opkg status "$pkg" >/dev/null 2>&1; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+	return 0
+}
+
+check_storage() {
+	local target="$1"
+	local free_kb
+	free_kb=$(df -Pk "${target:-/overlay}" | awk 'NR==2 {print $4}')
+	[ -z "$free_kb" ] && free_kb=0
+	if [ "$free_kb" -lt 102400 ]; then
+		echo "[WARN] Less than 100MB free on ${target:-overlay}. Docker images may fail." >&2
+	fi
+}
+
+check_cgroups() {
+	if [ ! -d /sys/fs/cgroup ]; then
+		echo "[ERROR] /sys/fs/cgroup missing. Enable cgroups in the kernel." >&2
+		return 1
+	fi
+	return 0
+}
+
+check_serial() {
+	local port="$1"
+	if [ ! -c "$port" ]; then
+		echo "[WARN] Serial device $port not found. Plug the Zigbee coordinator first." >&2
+	fi
+}
+
+check_prereqs() {
+	defaults
+	check_storage "$data_path"
+	check_cgroups || return 1
+	check_serial "$serial_port"
+	ensure_packages kmod-usb-acm || return 1
+	return 0
+}
+
+ensure_docker() {
+	ensure_packages containerd docker dockerd || return 1
+	/etc/init.d/dockerd enable >/dev/null 2>&1
+	/etc/init.d/dockerd start >/dev/null 2>&1
+}
+
+generate_configuration() {
+	defaults
+	ensure_dir "$data_path/data"
+	cat > "$data_path/data/configuration.yaml" <<EOF
+homeassistant: true
+permit_join: false
+mqtt:
+  base_topic: "${base_topic}"
+  server: "${mqtt_host}"
+  user: "${mqtt_user}"
+  password: "${mqtt_pass}"
+serial:
+  port: "${serial_port}"
+advanced:
+  channel: ${channel}
+frontend:
+  port: ${frontend_port}
+EOF
+	chmod 600 "$data_path/data/configuration.yaml"
+}
+
+pull_image() {
+	defaults
+	docker pull "$image"
+}
+
+stop_container() {
+	docker stop "$CONTAINER" >/dev/null 2>&1 || true
+	docker rm "$CONTAINER" >/dev/null 2>&1 || true
+}
+
+cmd_install() {
+	require_root
+	check_prereqs || exit 1
+	ensure_docker || exit 1
+	ensure_dir "$data_path"
+	generate_configuration
+	pull_image
+	/etc/init.d/zigbee2mqtt enable
+	echo "Zigbee2MQTT prerequisites installed. Enable with: /etc/init.d/zigbee2mqtt start"
+}
+
+cmd_check() {
+	check_prereqs
+	echo "Prerequisite check completed."
+}
+
+cmd_update() {
+	require_root
+	defaults
+	pull_image || exit 1
+	if /etc/init.d/zigbee2mqtt enabled >/dev/null 2>&1; then
+		/etc/init.d/zigbee2mqtt restart
+	else
+		echo "Image updated. Restart manually to apply."
+	fi
+}
+
+cmd_status() {
+	docker ps -a --filter "name=$CONTAINER"
+}
+
+cmd_logs() {
+	docker logs "$@" "$CONTAINER"
+}
+
+cmd_service_run() {
+	require_root
+	check_prereqs || exit 1
+	ensure_docker || exit 1
+	generate_configuration
+	stop_container
+	defaults
+	exec docker run --rm \
+		--name "$CONTAINER" \
+		--device "$serial_port" \
+		-p "${frontend_port}:8080" \
+		-v "$data_path/data:/app/data" \
+		-e TZ="$timezone" \
+		"$image"
+}
+
+cmd_service_stop() {
+	require_root
+	stop_container
+}
+
+case "$1" in
+	install) shift; cmd_install "$@";;
+	check) shift; cmd_check "$@";;
+	update) shift; cmd_update "$@";;
+	status) shift; cmd_status "$@";;
+	logs) shift; cmd_logs "$@";;
+	service-run) shift; cmd_service_run "$@";;
+	service-stop) shift; cmd_service_stop "$@";;
+	help|--help|-h|"") usage;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1;;
+esac
