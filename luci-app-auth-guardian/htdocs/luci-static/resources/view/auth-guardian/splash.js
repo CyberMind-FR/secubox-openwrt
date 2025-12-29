@@ -1,5 +1,6 @@
 'use strict';
 'require view';
+'require secubox-theme/bootstrap as Theme';
 
 return view.extend({
     render: function() {

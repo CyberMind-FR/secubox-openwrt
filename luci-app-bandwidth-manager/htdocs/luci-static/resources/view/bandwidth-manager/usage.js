@@ -1,5 +1,6 @@
 'use strict';
 'require view';
+'require secubox-theme/bootstrap as Theme';
 'require poll';
 'require bandwidth-manager/api as API';
 

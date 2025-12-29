@@ -8,7 +8,7 @@
  * Provides RPC methods for cryptographic key management with HSM support
  */
 
-// Version: 0.2.2
+// Version: 0.4.0
 
 var callStatus = rpc.declare({
 	object: 'luci.ksm-manager',
@@ -164,7 +164,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Status object with running, keystore_unlocked, keys_count, hsm_connected
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	getStatus: function() {
 		return L.resolveDefault(callStatus(), {
 			running: false,
@@ -179,7 +179,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Info object with openssl_version, gpg_version, hsm_support
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	getInfo: function() {
 		return L.resolveDefault(callGetInfo(), {
 			openssl_version: 'unknown',
@@ -193,7 +193,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Object with devices array
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	listHsmDevices: function() {
 		return L.resolveDefault(callListHsmDevices(), { devices: [] });
 	},
@@ -204,7 +204,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Status object with initialized, pin_retries, keys_count
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	getHsmStatus: function(serial) {
 		return L.resolveDefault(callGetHsmStatus(serial), {
 			initialized: false,
@@ -221,7 +221,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success boolean
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	initHsm: function(serial, adminPin, userPin) {
 		return callInitHsm(serial, adminPin, userPin);
 	},
@@ -235,7 +235,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success and key_id
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	generateHsmKey: function(serial, keyType, keySize, label) {
 		return callGenerateHsmKey(serial, keyType, keySize, label);
 	},
@@ -245,7 +245,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Object with keys array
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	listKeys: function() {
 		return L.resolveDefault(callListKeys(), { keys: [] });
 	},
@@ -259,7 +259,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success, id, and public_key
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	generateKey: function(type, size, label, passphrase) {
 		return callGenerateKey(type, size, label, passphrase || '');
 	},
@@ -273,7 +273,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success and id
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	importKey: function(label, keyData, format, passphrase) {
 		return callImportKey(label, keyData, format, passphrase || '');
 	},
@@ -287,7 +287,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success and key_data
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	exportKey: function(id, format, includePrivate, passphrase) {
 		return callExportKey(id, format, includePrivate, passphrase || '');
 	},
@@ -299,7 +299,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success boolean
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	deleteKey: function(id, secureErase) {
 		return callDeleteKey(id, secureErase);
 	},
@@ -312,7 +312,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success and csr
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	generateCsr: function(keyId, subjectDn, sanList) {
 		return callGenerateCsr(keyId, subjectDn, sanList || []);
 	},
@@ -325,7 +325,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success and cert_id
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	importCertificate: function(keyId, certData, chain) {
 		return callImportCertificate(keyId, certData, chain || '');
 	},
@@ -335,7 +335,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Object with certificates array
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	listCertificates: function() {
 		return L.resolveDefault(callListCertificates(), { certificates: [] });
 	},
@@ -346,7 +346,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with valid, chain_valid, expires_in_days
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	verifyCertificate: function(certId) {
 		return callVerifyCertificate(certId);
 	},
@@ -360,7 +360,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success and secret_id
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	storeSecret: function(label, secretData, category, autoRotate) {
 		return callStoreSecret(label, secretData, category, autoRotate);
 	},
@@ -371,7 +371,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success, secret_data, accessed_at
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	retrieveSecret: function(secretId) {
 		return callRetrieveSecret(secretId);
 	},
@@ -381,7 +381,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Object with secrets array
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	listSecrets: function() {
 		return L.resolveDefault(callListSecrets(), { secrets: [] });
 	},
@@ -393,7 +393,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success and version
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	rotateSecret: function(secretId, newSecretData) {
 		return callRotateSecret(secretId, newSecretData);
 	},
@@ -406,7 +406,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success, key_id, public_key
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	generateSshKey: function(label, keyType, comment) {
 		return callGenerateSshKey(label, keyType, comment || '');
 	},
@@ -419,7 +419,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Result with success boolean
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	deploySshKey: function(keyId, targetHost, targetUser) {
 		return callDeploySshKey(keyId, targetHost, targetUser);
 	},
@@ -432,7 +432,7 @@ return baseclass.extend({
 	 * @returns {Promise<Object>} Object with logs array
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	getAuditLogs: function(limit, offset, filterType) {
 		return L.resolveDefault(callGetAuditLogs(limit || 100, offset || 0, filterType || ''), { logs: [] });
 	},
@@ -443,7 +443,7 @@ return baseclass.extend({
 	 * @returns {string} Formatted type
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	formatKeyType: function(type) {
 		var types = {
 			'rsa': 'RSA',
@@ -462,7 +462,7 @@ return baseclass.extend({
 	 * @returns {string} Formatted storage
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	formatStorage: function(storage) {
 		return storage === 'hsm' ? 'Hardware' : 'Software';
 	},
@@ -473,7 +473,7 @@ return baseclass.extend({
 	 * @returns {string} Color class
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	getCertStatusColor: function(daysRemaining) {
 		if (daysRemaining < 0) return 'gray';
 		if (daysRemaining < 7) return 'red';
@@ -487,7 +487,7 @@ return baseclass.extend({
 	 * @returns {string} Formatted date
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	formatTimestamp: function(timestamp) {
 		if (!timestamp) return 'N/A';
 		try {

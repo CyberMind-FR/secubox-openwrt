@@ -7,7 +7,7 @@
  * Handles all RPC calls to the traffic-shaper backend
  */
 
-// Version: 0.2.2
+// Version: 0.4.0
 
 var callStatus = rpc.declare({
 	object: 'luci.traffic-shaper',
@@ -130,7 +130,7 @@ return baseclass.extend({
 	 * Format bandwidth value for display
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	formatBandwidth: function(value) {
 		if (!value) return '0 bit/s';
 
@@ -152,7 +152,7 @@ return baseclass.extend({
 	 * Format bytes for display
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	formatBytes: function(bytes) {
 		if (!bytes || bytes === 0) return '0 B';
 
@@ -166,7 +166,7 @@ return baseclass.extend({
 	 * Get priority label
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	getPriorityLabel: function(priority) {
 		if (priority <= 2) return _('High');
 		if (priority <= 4) return _('Medium');
@@ -178,7 +178,7 @@ return baseclass.extend({
 	 * Get priority color class
 	 */
 
-// Version: 0.2.2
+// Version: 0.4.0
 	getPriorityColor: function(priority) {
 		if (priority <= 2) return 'high-priority';
 		if (priority <= 4) return 'medium-priority';

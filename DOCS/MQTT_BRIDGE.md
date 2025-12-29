@@ -1,6 +1,6 @@
 # MQTT Bridge Module
 
-**Version:** 0.1.0  
+**Version:** 0.4.0  
 **Status:** Draft  
 
 SecuBox MQTT Bridge exposes USB dongles and IoT sensors through a themed LuCI interface.

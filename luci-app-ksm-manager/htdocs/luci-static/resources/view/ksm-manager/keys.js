@@ -1,5 +1,6 @@
 'use strict';
 'require view';
+'require secubox-theme/bootstrap as Theme';
 'require form';
 'require ui';
 'require ksm-manager/api as KSM';

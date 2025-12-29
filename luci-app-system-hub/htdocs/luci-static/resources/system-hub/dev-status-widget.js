@@ -86,19 +86,19 @@ const DevStatusWidget = {
     moduleStatus: [
         { name: 'SecuBox Central Hub', version: '0.3.1', note: 'Dashboard central' },
         { name: 'System Hub', version: '0.3.2', note: 'Centre de contrôle' },
-        { name: 'Traffic Shaper', version: '0.2.2', note: 'CAKE / fq_codel / HTB' },
-        { name: 'CrowdSec Dashboard', version: '0.2.2', note: 'Détection d’intrusions' },
-        { name: 'Netdata Dashboard', version: '0.2.2', note: 'Monitoring temps réel' },
-        { name: 'Netifyd Dashboard', version: '0.2.2', note: 'Intelligence applicative' },
+        { name: 'Traffic Shaper', version: '0.4.0', note: 'CAKE / fq_codel / HTB' },
+        { name: 'CrowdSec Dashboard', version: '0.4.0', note: 'Détection d’intrusions' },
+        { name: 'Netdata Dashboard', version: '0.4.0', note: 'Monitoring temps réel' },
+        { name: 'Netifyd Dashboard', version: '0.4.0', note: 'Intelligence applicative' },
         { name: 'Network Modes', version: '0.3.1', note: '5 topologies réseau' },
-        { name: 'WireGuard Dashboard', version: '0.2.2', note: 'VPN + QR codes' },
-        { name: 'Auth Guardian', version: '0.2.2', note: 'OAuth / vouchers' },
-        { name: 'Client Guardian', version: '0.2.2', note: 'Patch portail captif + montée en version' },
-        { name: 'Bandwidth Manager', version: '0.2.2', note: 'QoS + quotas' },
-        { name: 'Media Flow', version: '0.2.2', note: 'DPI streaming' },
-        { name: 'CDN Cache', version: '0.2.2', note: 'Cache contenu local' },
-        { name: 'VHost Manager', version: '0.2.2', note: 'Reverse proxy / SSL' },
-        { name: 'KSM Manager', version: '0.2.2', note: 'Gestion clés / HSM' }
+        { name: 'WireGuard Dashboard', version: '0.4.0', note: 'VPN + QR codes' },
+        { name: 'Auth Guardian', version: '0.4.0', note: 'OAuth / vouchers' },
+        { name: 'Client Guardian', version: '0.4.0', note: 'Patch portail captif + montée en version' },
+        { name: 'Bandwidth Manager', version: '0.4.0', note: 'QoS + quotas' },
+        { name: 'Media Flow', version: '0.4.0', note: 'DPI streaming' },
+        { name: 'CDN Cache', version: '0.4.1', note: 'Cache contenu local' },
+        { name: 'VHost Manager', version: '0.4.1', note: 'Reverse proxy / SSL' },
+        { name: 'KSM Manager', version: '0.4.0', note: 'Gestion clés / HSM' }
     ],
 
     // Overall project statistics

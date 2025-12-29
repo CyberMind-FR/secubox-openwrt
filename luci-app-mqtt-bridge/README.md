@@ -1,6 +1,6 @@
 # SecuBox MQTT Bridge
 
-**Version:** 0.1.0  
+**Version:** 0.4.0  
 **Status:** Draft
 
 USB-aware MQTT orchestrator for SecuBox routers. The application discovers USB serial dongles, bridges sensor payloads to a built-in MQTT broker, and exposes dashboards/settings with SecuBox theme tokens.

@@ -1,5 +1,6 @@
 'use strict';
 'require view';
+'require secubox-theme/bootstrap as Theme';
 'require dom';
 'require ui';
 'require client-guardian.api as api';

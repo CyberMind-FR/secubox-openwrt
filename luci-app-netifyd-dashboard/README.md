@@ -1,6 +1,6 @@
 # LuCI Netifyd Dashboard
 
-**Version:** 1.0.0  
+**Version:** 0.4.0  
 **Last Updated:** 2025-12-28  
 **Status:** Active
 

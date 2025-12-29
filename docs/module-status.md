@@ -88,7 +88,7 @@
 ### 2. Security & Monitoring (2 modules)
 
 #### luci-app-crowdsec-dashboard
-- **Version**: 0.2.2-1
+- **Version**: 0.4.0-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: CrowdSec threat intelligence and IPS dashboard
 - **Views**: 6 (overview, alerts, decisions, bouncers, metrics, settings)
@@ -107,7 +107,7 @@
 - **Dependencies**: crowdsec package
 
 #### luci-app-netdata-dashboard
-- **Version**: 0.2.2-1
+- **Version**: 0.4.0-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: Real-time system monitoring with comprehensive metrics
 - **Views**: 6 (dashboard, system, network, processes, realtime, settings)
@@ -130,7 +130,7 @@
 ### 3. Network Intelligence (2 modules)
 
 #### luci-app-netifyd-dashboard
-- **Version**: 0.2.2-1
+- **Version**: 0.4.0-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: Deep packet inspection and application classification
 - **Views**: 7 (overview, flows, applications, devices, talkers, risks, settings)
@@ -180,7 +180,7 @@
 ### 4. VPN & Access Control (3 modules)
 
 #### luci-app-wireguard-dashboard
-- **Version**: 0.2.2-1
+- **Version**: 0.4.0-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: WireGuard VPN management and monitoring
 - **Views**: 6 (overview, peers, config, qrcodes, traffic, settings)
@@ -201,7 +201,7 @@
 - **Supported Clients**: iOS, Android, Windows, macOS, Linux
 
 #### luci-app-client-guardian
-- **Version**: 0.2.2-1
+- **Version**: 0.4.0-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: Network Access Control (NAC) and captive portal
 - **Views**: 9 (overview, clients, zones, alerts, parental, portal, logs, captive, settings)
@@ -223,7 +223,7 @@
 - **Dependencies**: nodogsplash, iptables, arptables
 
 #### luci-app-auth-guardian
-- **Version**: 0.2.2-1
+- **Version**: 0.4.0-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: Advanced authentication and voucher system
 - **Views**: 6 (overview, sessions, vouchers, splash, oauth, bypass)
@@ -247,7 +247,7 @@
 ### 5. Bandwidth & Traffic (3 modules)
 
 #### luci-app-bandwidth-manager
-- **Version**: 0.2.2-1
+- **Version**: 0.4.0-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: Bandwidth management with QoS and quotas
 - **Views**: 9 (overview, rules, quotas, usage, clients, media, classes, schedules, settings)
@@ -272,7 +272,7 @@
 - **Commit**: fa9bb2a - "feat: complete Bandwidth Manager implementation"
 
 #### luci-app-traffic-shaper
-- **Version**: 0.2.2-1
+- **Version**: 0.4.0-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: Advanced traffic shaping and QoS control
 - **Views**: 5 (overview, classes, rules, presets, stats)
@@ -296,7 +296,7 @@
 - **Validation**: ✅ All checks passed
 
 #### luci-app-media-flow
-- **Version**: 0.2.2-1
+- **Version**: 0.4.0-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: Media traffic detection and streaming optimization
 - **Views**: 5 (dashboard, services, clients, history, alerts)
@@ -320,7 +320,7 @@
 ### 6. Performance & Services (3 modules)
 
 #### luci-app-cdn-cache
-- **Version**: 0.2.2-1
+- **Version**: 0.4.1-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: CDN proxy cache for bandwidth optimization
 - **Views**: 6 (overview, cache, policies, settings, maintenance, statistics)
@@ -343,7 +343,7 @@
 - **Dependencies**: nginx-full
 
 #### luci-app-vhost-manager
-- **Version**: 0.2.2-1
+- **Version**: 0.4.1-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: Virtual host and reverse proxy management
 - **Views**: 7 (overview, vhosts, certificates, ssl, redirects, internal, logs)
@@ -365,7 +365,7 @@
 - **Dependencies**: nginx-ssl, acme (optional)
 
 #### luci-app-ksm-manager
-- **Version**: 0.2.2-1
+- **Version**: 0.4.0-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: Cryptographic key and secret management
 - **Views**: 8 (overview, keys, certificates, secrets, hsm, ssh, audit, settings)
@@ -398,21 +398,21 @@
 
 | Module | Version | Views | JS Lines | Methods | Status |
 |--------|---------|-------|----------|---------|--------|
-| auth-guardian | 0.2.2-1 | 6 | 312 | 13 | ✅ Complete |
-| bandwidth-manager | 0.2.2-1 | 9 | 936 | 14 | ✅ Complete |
-| cdn-cache | 0.2.2-1 | 6 | 1,255 | 27 | ✅ Complete |
-| client-guardian | 0.2.2-1 | 9 | 2,293 | 29 | ✅ Complete |
-| crowdsec-dashboard | 0.2.2-1 | 6 | 2,089 | 12 | ✅ Complete |
-| ksm-manager | 0.2.2-1 | 8 | 2,423 | 28 | ✅ Complete |
-| media-flow | 0.2.2-1 | 5 | 690 | 10 | ✅ Complete |
-| netdata-dashboard | 0.2.2-1 | 6 | 1,554 | 16 | ✅ Complete |
-| netifyd-dashboard | 0.2.2-1 | 7 | 1,376 | 12 | ✅ Complete |
+| auth-guardian | 0.4.0-1 | 6 | 312 | 13 | ✅ Complete |
+| bandwidth-manager | 0.4.0-1 | 9 | 936 | 14 | ✅ Complete |
+| cdn-cache | 0.4.1-1 | 6 | 1,255 | 27 | ✅ Complete |
+| client-guardian | 0.4.0-1 | 9 | 2,293 | 29 | ✅ Complete |
+| crowdsec-dashboard | 0.4.0-1 | 6 | 2,089 | 12 | ✅ Complete |
+| ksm-manager | 0.4.0-1 | 8 | 2,423 | 28 | ✅ Complete |
+| media-flow | 0.4.0-1 | 5 | 690 | 10 | ✅ Complete |
+| netdata-dashboard | 0.4.0-1 | 6 | 1,554 | 16 | ✅ Complete |
+| netifyd-dashboard | 0.4.0-1 | 7 | 1,376 | 12 | ✅ Complete |
 | network-modes | 0.3.1-1 | 7 | 2,104 | 34 | ✅ Complete |
 | secubox | 0.3.1-1 | 8 | 2,906 | 33 | ✅ Complete |
 | system-hub | 0.3.2-1 | 10 | 4,454 | 18 | ✅ Complete |
-| traffic-shaper | 0.2.2-1 | 5 | 985 | 16 | ✅ Complete |
-| vhost-manager | 0.2.2-1 | 7 | 695 | 13 | ✅ Complete |
-| wireguard-dashboard | 0.2.2-1 | 6 | 1,571 | 15 | ✅ Complete |
+| traffic-shaper | 0.4.0-1 | 5 | 985 | 16 | ✅ Complete |
+| vhost-manager | 0.4.1-1 | 7 | 695 | 13 | ✅ Complete |
+| wireguard-dashboard | 0.4.0-1 | 6 | 1,571 | 15 | ✅ Complete |
 | **TOTALS** | | **110** | **26,638** | **281** | **100%** |
 
 ### Code Distribution

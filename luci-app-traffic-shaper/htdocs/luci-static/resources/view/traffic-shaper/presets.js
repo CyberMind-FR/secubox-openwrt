@@ -1,5 +1,6 @@
 'use strict';
 'require view';
+'require secubox-theme/bootstrap as Theme';
 'require ui';
 'require dom';
 'require traffic-shaper/api as API';
