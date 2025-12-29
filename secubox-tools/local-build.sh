@@ -593,6 +593,15 @@ copy_packages() {
                 echo "    ✓ Fixed Makefile include path"
             fi
         done
+
+        # Copy core packages (non-LuCI)
+        for pkg in ../../package/secubox/nodogsplash/; do
+            if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
+                local pkg_name=$(basename "$pkg")
+                echo "  📁 $pkg_name"
+                cp -r "$pkg" "$feed_dir/"
+            fi
+        done
     fi
 
     echo ""
@@ -623,6 +632,15 @@ copy_packages() {
 
         # Install luci-theme-* packages
         for pkg in "$feed_dir"/luci-theme-*/; do
+            if [[ -d "$pkg" ]]; then
+                local pkg_name=$(basename "$pkg")
+                echo "  Installing $pkg_name..."
+                ./scripts/feeds install "$pkg_name" 2>&1 | grep -v "WARNING:" || true
+            fi
+        done
+
+        # Install core packages (non-LuCI)
+        for pkg in "$feed_dir"/nodogsplash/; do
             if [[ -d "$pkg" ]]; then
                 local pkg_name=$(basename "$pkg")
                 echo "  Installing $pkg_name..."
@@ -1026,6 +1044,16 @@ copy_secubox_to_openwrt() {
                     "package/secubox/$pkg_name/Makefile"
             fi
 
+            pkg_count=$((pkg_count + 1))
+        fi
+    done
+
+    # Copy additional core packages (non-LuCI)
+    for pkg in ../../package/secubox/nodogsplash/; do
+        if [[ -d "$pkg" ]]; then
+            local pkg_name=$(basename "$pkg")
+            echo "  ✅ $pkg_name"
+            cp -r "$pkg" package/secubox/
             pkg_count=$((pkg_count + 1))
         fi
     done

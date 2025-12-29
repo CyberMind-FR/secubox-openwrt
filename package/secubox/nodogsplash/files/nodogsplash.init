@@ -1,0 +1,27 @@
+#!/bin/sh /etc/rc.common
+# Nodogsplash captive portal
+
+START=95
+STOP=15
+USE_PROCD=1
+
+PROG=/usr/bin/nodogsplash
+CONF=/etc/nodogsplash/nodogsplash.conf
+
+start_service() {
+	[ -x "$PROG" ] || return 1
+	if [ ! -f "$CONF" ]; then
+		logger -t nodogsplash "Missing $CONF"
+		return 1
+	fi
+
+	procd_open_instance
+	procd_set_param command "$PROG" -f "$CONF"
+	procd_set_param file "$CONF"
+	procd_set_param respawn 2000 3 5
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger nodogsplash
+}
