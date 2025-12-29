@@ -8,15 +8,21 @@
 Theme.init();
 
 return view.extend({
+	statusData: {},
+
 	load: function() {
-		return Promise.resolve();
+		return API.getSystemInfo().then(L.bind(function(info) {
+			this.statusData = info || {};
+			return info;
+		}, this));
 	},
 
 	render: function() {
-		var container = E('div', { 'class': 'system-hub-dashboard sh-backup-view' }, [
+		return E('div', { 'class': 'system-hub-dashboard sh-backup-view' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/backup.css') }),
 			HubNav.renderTabs('backup'),
+			this.renderHeader(),
 			this.renderHero(),
 			E('div', { 'class': 'sh-backup-grid' }, [
 				this.renderBackupCard(),
@@ -24,8 +30,25 @@ return view.extend({
 				this.renderMaintenanceCard()
 			])
 		]);
+	},
 
-		return container;
+	renderHeader: function() {
+		var info = this.statusData || {};
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
+			E('div', {}, [
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '💾'),
+					_('Backup Control Center')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					_('Create encrypted snapshots and restore complete configurations safely.'))
+			]),
+			E('div', { 'class': 'sh-header-meta' }, [
+				this.renderChip('🏷️', _('Version'), info.version || _('Unknown')),
+				this.renderChip('🕒', _('Uptime'), info.uptime_formatted || _('0d 0h 0m')),
+				this.renderChip('🗂️', _('Configs'), _('etc + packages'))
+			])
+		]);
 	},
 
 	renderHero: function() {
@@ -161,28 +184,17 @@ return view.extend({
 			return;
 		}
 
-		if (!confirm(_('Restore configuration from backup? This will overwrite all settings.'))) {
-			return;
-		}
-
-		ui.showModal(_('Restoring backup…'), [
-			E('p', { 'class': 'spinning' }, _('Uploading archive and applying configuration...'))
-		]);
-
 		var reader = new FileReader();
-		reader.onload = function(ev) {
-			var arrayBuffer = ev.target.result;
-			var bytes = new Uint8Array(arrayBuffer);
-			var binary = '';
-			for (var i = 0; i < bytes.length; i++) {
-				binary += String.fromCharCode(bytes[i]);
-			}
+		reader.onload = function() {
+			var base64Data = reader.result.split(',')[1];
+			ui.showModal(_('Restoring backup…'), [
+				E('p', { 'class': 'spinning' }, _('Uploading archive and applying configuration...'))
+			]);
 
-			var encoded = btoa(binary);
-			API.restoreConfig(encoded).then(function(result) {
+			API.restoreConfig(file.name, base64Data).then(function(result) {
 				ui.hideModal();
 				if (result && result.success) {
-					ui.addNotification(null, E('p', {}, _('Backup restored. Please reboot to apply changes.')), 'info');
+					ui.addNotification(null, E('p', {}, _('Backup restored successfully. System reboot recommended.')), 'info');
 				} else {
 					ui.addNotification(null, E('p', {}, (result && result.message) || _('Restore failed')), 'error');
 				}
@@ -191,31 +203,34 @@ return view.extend({
 				ui.addNotification(null, E('p', {}, err.message || err), 'error');
 			});
 		};
-
-		reader.onerror = function() {
-			ui.hideModal();
-			ui.addNotification(null, E('p', {}, _('Could not read backup file')), 'error');
-		};
-
-		reader.readAsArrayBuffer(file);
+		reader.readAsDataURL(file);
 	},
 
 	rebootSystem: function() {
-		if (!confirm(_('Reboot the device now? All connections will be interrupted.'))) {
-			return;
-		}
-
-		ui.showModal(_('System rebooting'), [
-			E('p', {}, _('Device is restarting. The interface will be unreachable for ~60 seconds.'))
+		ui.showModal(_('Reboot system?'), [
+			E('p', {}, _('Rebooting is recommended after restoring configurations. Continue?')),
+			E('div', { 'class': 'right' }, [
+				E('button', { 'class': 'sh-btn sh-btn-secondary', 'click': ui.hideModal }, _('Cancel')),
+				E('button', {
+					'class': 'sh-btn sh-btn-danger',
+					'click': function() {
+						ui.hideModal();
+						API.reboot().then(function() {
+							ui.addNotification(null, E('p', {}, _('System reboot initiated')), 'info');
+						});
+					}
+				}, _('Reboot'))
+			])
 		]);
-
-		API.reboot().catch(function(err) {
-			ui.hideModal();
-			ui.addNotification(null, E('p', {}, err.message || err), 'error');
-		});
 	},
 
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	renderChip: function(icon, label, value) {
+		return E('div', { 'class': 'sh-header-chip' }, [
+			E('span', { 'class': 'sh-chip-icon' }, icon),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, label),
+				E('strong', {}, value.toString())
+			])
+		]);
+	}
 });

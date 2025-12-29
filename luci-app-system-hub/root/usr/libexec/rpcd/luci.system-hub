@@ -6,6 +6,19 @@
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
+get_pkg_version() {
+	local ctrl="/usr/lib/opkg/status"
+	local pkg="luci-app-system-hub"
+	if [ -f "$ctrl" ]; then
+		awk -F': ' '/Package: '"$pkg"'/,/^Package/ { if ($1 == "Version") { print $2; exit } }' "$ctrl"
+	else
+		echo "unknown"
+	fi
+}
+
+
+PKG_VERSION="$(get_pkg_version)"
+
 DIAG_DIR="/tmp/system-hub/diagnostics"
 mkdir -p "$DIAG_DIR"
 
@@ -25,6 +38,7 @@ status() {
 	local uptime=$(awk '{print int($1)}' /proc/uptime 2>/dev/null || echo 0)
 	local model=$(cat /tmp/sysinfo/model 2>/dev/null || cat /proc/device-tree/model 2>/dev/null | tr -d '\0' || echo "Unknown")
 
+	json_add_string "version" "$PKG_VERSION"
 	json_add_string "hostname" "$hostname"
 	json_add_string "model" "$model"
 	json_add_int "uptime" "$uptime"
@@ -66,6 +80,7 @@ get_system_info() {
 
 	# Hostname
 	local hostname=$(cat /proc/sys/kernel/hostname 2>/dev/null || echo "unknown")
+	json_add_string "version" "$PKG_VERSION"
 	json_add_string "hostname" "$hostname"
 
 	# Model
@@ -494,8 +509,9 @@ restore_config() {
 	read -r input
 	json_load "$input"
 
-	local backup_data
+	local backup_data file_name
 	json_get_var backup_data data
+	json_get_var file_name file_name
 	json_cleanup
 
 	if [ -z "$backup_data" ]; then
@@ -506,15 +522,28 @@ restore_config() {
 		return 1
 	fi
 
-	local backup_file="/tmp/restore-$(date +%s).tar.gz"
+	local clean_name="$(basename "${file_name:-backup.tar.gz}")"
+	clean_name="$(echo "$clean_name" | tr -c 'A-Za-z0-9._-' '_')"
+	[ -z "$clean_name" ] && clean_name="backup.tar.gz"
+
+	local timestamp="$(date +%s)"
+	local backup_file="/tmp/${timestamp}-${clean_name}"
 	
 	# Decode base64
-	echo "$backup_data" | base64 -d > "$backup_file" 2>/dev/null
-	
-	if [ ! -f "$backup_file" ]; then
+	if ! echo "$backup_data" | base64 -d > "$backup_file" 2>/dev/null; then
+		rm -f "$backup_file"
 		json_init
 		json_add_boolean "success" 0
 		json_add_string "message" "Failed to decode backup data"
+		json_dump
+		return 1
+	fi
+	
+	if [ ! -s "$backup_file" ]; then
+		rm -f "$backup_file"
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Decoded backup archive is empty"
 		json_dump
 		return 1
 	fi
@@ -711,7 +740,7 @@ download_diagnostic() {
 		json_add_string "error" "not_found"
 		json_dump
 		return
-	}
+	fi
 
 	local data=$(base64 "$file" 2>/dev/null)
 	json_add_boolean "success" 1
@@ -1226,7 +1255,7 @@ case "$1" in
 	"service_action": { "service": "string", "action": "string" },
 	"get_logs": { "lines": 100, "filter": "" },
 	"backup_config": {},
-	"restore_config": { "data": "string" },
+	"restore_config": { "file_name": "string", "data": "string" },
 	"reboot": {},
 	"get_storage": {},
 	"get_settings": {},

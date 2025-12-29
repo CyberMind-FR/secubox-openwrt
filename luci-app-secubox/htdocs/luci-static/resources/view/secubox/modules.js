@@ -3,7 +3,7 @@
 'require ui';
 'require dom';
 'require secubox/api as API';
-'require secubox-theme/theme as Theme';
+'require secubox/theme as Theme';
 'require secubox/nav as SecuNav';
 'require poll';
 
@@ -46,6 +46,7 @@ return view.extend({
 
 		var container = E('div', { 'class': 'secubox-modules-page' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
 			SecuNav.renderTabs('modules'),
 			this.renderHeader(modules),
 			this.renderFilterTabs(),
@@ -66,34 +67,23 @@ return view.extend({
 	},
 
 	renderHeader: function(modules) {
-		var total = modules.length;
-		var installed = modules.filter(function(m) { return m.installed; }).length;
-		var enabled = modules.filter(function(m) { return m.enabled; }).length;
-		var disabled = installed - enabled;
+		var stats = this.getModuleStats(modules);
 
-		return E('div', { 'class': 'secubox-page-header' }, [
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
 			E('div', {}, [
-				E('h2', {}, '📦 SecuBox Modules'),
-				E('p', { 'class': 'secubox-page-subtitle' },
-					'Manage and monitor all SecuBox modules')
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '📦'),
+					_('SecuBox Modules')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					_('Manage and monitor all SecuBox modules'))
 			]),
-			E('div', { 'class': 'secubox-modules-stats' }, [
-				E('div', { 'class': 'secubox-stat-badge' }, [
-					E('span', { 'class': 'secubox-stat-value' }, total),
-					E('span', { 'class': 'secubox-stat-label' }, 'Total')
-				]),
-				E('div', { 'class': 'secubox-stat-badge secubox-stat-success' }, [
-					E('span', { 'class': 'secubox-stat-value' }, enabled),
-					E('span', { 'class': 'secubox-stat-label' }, 'Activés')
-				]),
-				E('div', { 'class': 'secubox-stat-badge secubox-stat-warning' }, [
-					E('span', { 'class': 'secubox-stat-value' }, disabled),
-					E('span', { 'class': 'secubox-stat-label' }, 'Désactivés')
-				]),
-				E('div', { 'class': 'secubox-stat-badge secubox-stat-muted' }, [
-					E('span', { 'class': 'secubox-stat-value' }, total - installed),
-					E('span', { 'class': 'secubox-stat-label' }, 'Available')
-				])
+			E('div', { 'class': 'sh-header-meta' }, [
+				this.renderHeaderChip('total', '🏷️', _('Total'), stats.total),
+				this.renderHeaderChip('installed', '💾', _('Installed'), stats.installed),
+				this.renderHeaderChip('active', '🟢', _('Active'), stats.enabled, stats.enabled ? 'success' : ''),
+				this.renderHeaderChip('inactive', '⚪', _('Disabled'), stats.disabled, stats.disabled ? 'warn' : ''),
+				this.renderHeaderChip('available', '📦', _('Available'), stats.available)
 			])
 		]);
 	},
@@ -139,7 +129,7 @@ return view.extend({
 		return E('div', { 'class': 'secubox-filter-tabs cyber-tablist cyber-tablist--filters' }, filterButtons);
 	},
 
-	renderModuleCards: function(modules, filter) {
+renderModuleCards: function(modules, filter) {
 		var self = this;
 
 		var filtered = filter === 'all' ? modules :
@@ -394,17 +384,59 @@ return view.extend({
 		}
 	},
 
+	getModuleStats: function(modules) {
+		var list = modules || [];
+		var installed = list.filter(function(m) { return m.installed; }).length;
+		var enabled = list.filter(function(m) { return m.enabled; }).length;
+		var disabled = Math.max(installed - enabled, 0);
+		var available = Math.max(list.length - installed, 0);
+
+		return {
+			total: list.length,
+			installed: installed,
+			enabled: enabled,
+			disabled: disabled,
+			available: available
+		};
+	},
+
+	renderHeaderChip: function(id, icon, label, value, tone) {
+		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
+			E('span', { 'class': 'sh-chip-icon' }, icon),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, label),
+				E('strong', { 'id': 'secubox-modules-chip-' + id }, value.toString())
+			])
+		]);
+	},
+
+	updateHeaderStats: function() {
+		var stats = this.getModuleStats(this.modulesData);
+		this.setHeaderChipValue('total', stats.total);
+		this.setHeaderChipValue('installed', stats.installed);
+		this.setHeaderChipValue('active', stats.enabled, stats.enabled ? 'success' : '');
+		this.setHeaderChipValue('inactive', stats.disabled, stats.disabled ? 'warn' : '');
+		this.setHeaderChipValue('available', stats.available);
+	},
+
+	setHeaderChipValue: function(id, value, tone) {
+		var target = document.getElementById('secubox-modules-chip-' + id);
+		if (target)
+			target.textContent = value.toString();
+
+		var chip = target && target.closest('.sh-header-chip');
+		if (chip) {
+			chip.classList.remove('success', 'warn');
+			if (tone)
+				chip.classList.add(tone);
+		}
+	},
+
 	updateModulesGrid: function() {
 		var activeTab = document.querySelector('.secubox-filter-tabs .cyber-tab.is-active[data-filter]');
 		var filter = activeTab ? activeTab.getAttribute('data-filter') : 'all';
 		this.filterModules(filter);
-
-		// Update header stats
-		var header = document.querySelector('.secubox-modules-stats');
-		if (header && header.parentNode) {
-			var newHeader = this.renderHeader(this.modulesData);
-			header.parentNode.replaceChild(newHeader.querySelector('.secubox-modules-stats'), header);
-		}
+		this.updateHeaderStats();
 	},
 
 	handleSaveApply: null,

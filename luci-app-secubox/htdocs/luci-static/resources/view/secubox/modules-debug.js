@@ -2,8 +2,9 @@
 'require view';
 'require rpc';
 'require secubox/theme as Theme';
+'require secubox/api as API';
+'require secubox/nav as SecuNav';
 
-// Initialize theme
 Theme.init();
 
 var callModules = rpc.declare({
@@ -13,54 +14,90 @@ var callModules = rpc.declare({
 });
 
 return view.extend({
-    load: function() {
-        console.log('=== MODULES DEBUG: load() called ===');
-        return callModules().then(function(result) {
-            console.log('=== MODULES DEBUG: RPC result ===');
-            console.log('Type:', typeof result);
-            console.log('Is Array:', Array.isArray(result));
-            console.log('Length:', result ? result.length : 'null/undefined');
-            console.log('Full result:', JSON.stringify(result, null, 2));
-            return result;
-        }).catch(function(err) {
-            console.error('=== MODULES DEBUG: RPC ERROR ===');
-            console.error(err);
-            return [];
-        });
-    },
-    render: function(data) {
-        console.log('=== MODULES DEBUG: render() called ===');
-        console.log('Data type:', typeof data);
-        console.log('Is Array:', Array.isArray(data));
-        console.log('Data:', data);
+	statusData: {},
 
-        var modules = data || [];
-        console.log('Modules array length:', modules.length);
+	load: function() {
+		return Promise.all([
+			API.getStatus(),
+			callModules()
+		]).then(L.bind(function(res) {
+			this.statusData = res[0] || {};
+			return res[1] || [];
+		}, this)).catch(function(err) {
+			console.error('=== MODULES DEBUG: RPC ERROR ===', err);
+			return [];
+		});
+	},
 
-        if (modules.length === 0) {
-            return E('div', {class:'cbi-map'}, [
-                E('h2', {}, '📦 SecuBox Modules'),
-                E('div', {style:'color:red;padding:20px;background:#fee;border:1px solid red;border-radius:8px'}, [
-                    E('p', {}, 'DEBUG: No modules found!'),
-                    E('p', {}, 'Data type: ' + typeof data),
-                    E('p', {}, 'Is Array: ' + Array.isArray(data)),
-                    E('p', {}, 'Length: ' + (data ? (data.length || 'no length property') : 'null/undefined')),
-                    E('p', {}, 'JSON: ' + JSON.stringify(data))
-                ])
-            ]);
-        }
+	render: function(modules) {
+		modules = modules || [];
+		var running = modules.filter(function(m) { return m.running; }).length;
+		var installed = modules.filter(function(m) { return m.installed; }).length;
 
-        return E('div', {class:'cbi-map'}, [
-            E('h2', {}, '📦 SecuBox Modules (' + modules.length + ' found)'),
-            E('div', {style:'display:grid;gap:12px'}, modules.map(function(m) {
-                console.log('Rendering module:', m.name);
-                return E('div', {style:'background:#1e293b;padding:16px;border-radius:8px;border-left:4px solid '+m.color}, [
-                    E('div', {style:'font-weight:bold;color:#f1f5f9'}, m.name),
-                    E('div', {style:'color:#94a3b8;font-size:14px'}, m.description),
-                    E('span', {style:'display:inline-block;margin-top:8px;padding:2px 8px;border-radius:4px;font-size:12px;background:'+(m.running?'#22c55e20;color:#22c55e':m.installed?'#f59e0b20;color:#f59e0b':'#64748b20;color:#64748b')},
-                        m.running ? 'Running' : m.installed ? 'Stopped' : 'Not Installed')
-                ]);
-            }))
-        ]);
-    }
+		return E('div', { 'class': 'secubox-modules-debug' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
+			SecuNav.renderTabs('modules'),
+			this.renderHeader(modules.length, running, installed),
+			modules.length ? this.renderModuleGrid(modules) : this.renderEmptyState()
+		]);
+	},
+
+	renderHeader: function(total, running, installed) {
+		var status = this.statusData || {};
+
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
+			E('div', {}, [
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '🧪'),
+					_('Modules Debug Console')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					_('Inspect raw module data returned by the SecuBox RPC backend.'))
+			]),
+			E('div', { 'class': 'sh-header-meta' }, [
+				this.renderHeaderChip('🏷️', _('Version'), status.version || _('Unknown')),
+				this.renderHeaderChip('📦', _('Total'), total),
+				this.renderHeaderChip('🟢', _('Running'), running, running ? 'success' : ''),
+				this.renderHeaderChip('💾', _('Installed'), installed)
+			])
+		]);
+	},
+
+	renderModuleGrid: function(modules) {
+		return E('div', { 'class': 'cbi-map' }, [
+			E('div', { 'class': 'secubox-debug-grid' }, modules.map(function(m) {
+				return E('div', { 'class': 'secubox-debug-card' }, [
+					E('div', { 'class': 'secubox-debug-card-title' }, m.name || _('Unnamed module')),
+					E('div', { 'class': 'secubox-debug-card-desc' }, m.description || _('No description provided.')),
+					E('div', { 'class': 'secubox-debug-card-meta' }, [
+						E('span', { 'class': 'secubox-debug-pill ' + (m.running ? 'running' : m.installed ? 'installed' : 'missing') },
+							m.running ? _('Running') : m.installed ? _('Installed') : _('Not Installed')),
+						m.category ? E('span', { 'class': 'secubox-debug-pill neutral' }, m.category) : ''
+					]),
+					E('pre', { 'class': 'secubox-debug-json' }, JSON.stringify(m, null, 2))
+				]);
+			}))
+		]);
+	},
+
+	renderEmptyState: function() {
+		return E('div', { 'class': 'cbi-map' }, [
+			E('div', { 'class': 'secubox-empty-state' }, [
+				E('div', { 'class': 'secubox-empty-icon' }, '📭'),
+				E('div', { 'class': 'secubox-empty-title' }, _('No modules found')),
+				E('p', { 'class': 'secubox-empty-text' }, _('RPC returned an empty list. Verify luci.secubox modules API.'))
+			])
+		]);
+	},
+
+	renderHeaderChip: function(icon, label, value, tone) {
+		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
+			E('span', { 'class': 'sh-chip-icon' }, icon),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, label),
+				E('strong', {}, value.toString())
+			])
+		]);
+	}
 });

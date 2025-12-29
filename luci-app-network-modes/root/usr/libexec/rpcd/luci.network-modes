@@ -6,6 +6,17 @@
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
+get_pkg_version() {
+	local ctrl="/usr/lib/opkg/info/luci-app-network-modes.control"
+	if [ -f "$ctrl" ]; then
+		awk -F': ' '/^Version/ { print $2; exit }' "$ctrl"
+	else
+		echo "unknown"
+	fi
+}
+
+PKG_VERSION="$(get_pkg_version)"
+
 CONFIG_FILE="/etc/config/network-modes"
 BACKUP_DIR="/etc/network-modes-backup"
 PCAP_DIR="/var/log/pcap"
@@ -18,6 +29,7 @@ get_status() {
 	local current_mode=$(uci -q get network-modes.config.current_mode || echo "router")
 	local last_change=$(uci -q get network-modes.config.last_change || echo "Never")
 	
+	json_add_string "version" "$PKG_VERSION"
 	json_add_string "current_mode" "$current_mode"
 	json_add_string "last_change" "$last_change"
 	

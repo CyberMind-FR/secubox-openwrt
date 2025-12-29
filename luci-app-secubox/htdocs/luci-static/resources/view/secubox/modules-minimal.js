@@ -1,22 +1,60 @@
 'use strict';
 'require view';
 'require secubox/theme as Theme';
+'require secubox/api as API';
+'require secubox/nav as SecuNav';
 
-// Initialize theme
 Theme.init();
 
 return view.extend({
-    load: function() {
-        return Promise.resolve(null);
-    },
-    render: function() {
-        return E('div', {'class': 'cbi-map'}, [
-            E('h2', {}, 'Test: SecuBox Modules'),
-            E('div', {'style': 'padding:20px;background:#d4edda;border:2px solid green'}, [
-                E('p', {}, '✅ If you see this, the JavaScript file is loading correctly!'),
-                E('p', {}, 'File: /www/luci-static/resources/view/secubox/modules.js'),
-                E('p', {}, 'This is a minimal test without RPC calls.')
-            ])
-        ]);
-    }
+	statusData: {},
+
+	load: function() {
+		return API.getStatus().then(L.bind(function(status) {
+			this.statusData = status || {};
+			return status;
+		}, this));
+	},
+
+	render: function() {
+		var status = this.statusData || {};
+
+		return E('div', { 'class': 'secubox-modules-minimal' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
+			SecuNav.renderTabs('modules'),
+			E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
+				E('div', {}, [
+					E('h2', { 'class': 'sh-page-title' }, [
+						E('span', { 'class': 'sh-page-title-icon' }, '🧪'),
+						_('Minimal Modules Test')
+					]),
+					E('p', { 'class': 'sh-page-subtitle' },
+						_('Simple view confirming that the modules UI assets load correctly.'))
+				]),
+				E('div', { 'class': 'sh-header-meta' }, [
+					this.renderHeaderChip('🏷️', _('Version'), status.version || _('Unknown')),
+					this.renderHeaderChip('🧩', _('Modules'), status.modules_count || '—')
+				])
+			]),
+			E('div', { 'class': 'cbi-map' }, [
+				E('div', {
+					'class': 'secubox-success-box'
+				}, [
+					E('h3', {}, _('✅ JavaScript Loaded')),
+					E('p', {}, _('modules.js assets are accessible and the SecuBox theme is active.'))
+				])
+			])
+		]);
+	},
+
+	renderHeaderChip: function(icon, label, value) {
+		return E('div', { 'class': 'sh-header-chip' }, [
+			E('span', { 'class': 'sh-chip-icon' }, icon),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, label),
+				E('strong', {}, value.toString())
+			])
+		]);
+	}
 });

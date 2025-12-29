@@ -7,6 +7,17 @@
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
+get_pkg_version() {
+	local ctrl="/usr/lib/opkg/info/luci-app-secubox.control"
+	if [ -f "$ctrl" ]; then
+		awk -F': ' '/^Version/ { print $2; exit }' "$ctrl"
+	else
+		echo "unknown"
+	fi
+}
+
+PKG_VERSION="$(get_pkg_version)"
+
 # Module registry - auto-detected from /usr/libexec/rpcd/
 detect_modules() {
 	local modules=""
@@ -125,7 +136,7 @@ get_status() {
 	local running=0
 	
 	json_init
-	json_add_string "version" "0.1.1"
+	json_add_string "version" "$PKG_VERSION"
 	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || echo 'SecuBox')"
 
 	# System info
@@ -841,7 +852,7 @@ get_dashboard_data() {
 	local mem_pct=$((mem_used * 100 / mem_total))
 
 	json_add_object "status"
-	json_add_string "version" "0.1.1"
+	json_add_string "version" "$PKG_VERSION"
 	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || echo 'SecuBox')"
 	json_add_int "uptime" "$uptime"
 	json_add_string "load" "$load"

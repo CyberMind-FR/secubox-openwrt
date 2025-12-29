@@ -44,8 +44,10 @@ return view.extend({
 		var self = this;
 		var container = E('div', { 'class': 'secubox-alerts-page' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
 			SecuNav.renderTabs('alerts'),
 			this.renderHeader(),
+			this.renderHeaderActions(),
 			this.renderControls(),
 			this.renderStats(),
 			this.renderAlertsList()
@@ -62,30 +64,44 @@ return view.extend({
 	},
 
 	renderHeader: function() {
-		var self = this;
-		return E('div', { 'class': 'secubox-page-header' }, [
+		var stats = this.getAlertStats();
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
 			E('div', {}, [
-				E('h2', {}, '⚠️ System Alerts'),
-				E('p', { 'class': 'secubox-page-subtitle' },
-					'Monitor and manage system alerts and notifications')
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '⚠️'),
+					_('System Alerts')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					_('Monitor and manage system alerts and notifications'))
 			]),
-			E('div', { 'class': 'secubox-header-actions' }, [
-				E('button', {
-					'class': 'cbi-button cbi-button-action',
-					'click': function() {
-						self.clearAllAlerts();
-					}
-				}, '🗑️ Clear All'),
-				E('button', {
-					'class': 'cbi-button cbi-button-neutral',
-					'click': function() {
-						self.refreshData().then(function() {
-							self.updateAlertsList();
-							ui.addNotification(null, E('p', 'Alerts refreshed'), 'info');
-						});
-					}
-				}, '🔄 Refresh')
+			E('div', { 'class': 'sh-header-meta' }, [
+				this.renderHeaderChip('total', '📊', _('Total'), stats.total),
+				this.renderHeaderChip('errors', '❌', _('Errors'), stats.errors, stats.errors ? 'danger' : ''),
+				this.renderHeaderChip('warnings', '⚠️', _('Warnings'), stats.warnings, stats.warnings ? 'warn' : ''),
+				this.renderHeaderChip('info', 'ℹ️', _('Info'), stats.info),
+				this.renderHeaderChip('ack', '🧹', _('Dismissed'), stats.dismissed || 0)
 			])
+		]);
+	},
+
+	renderHeaderActions: function() {
+		var self = this;
+		return E('div', { 'class': 'secubox-header-actions' }, [
+			E('button', {
+				'class': 'cbi-button cbi-button-action',
+				'click': function() {
+					self.clearAllAlerts();
+				}
+			}, '🗑️ Clear All'),
+			E('button', {
+				'class': 'cbi-button cbi-button-neutral',
+				'click': function() {
+					self.refreshData().then(function() {
+						self.updateAlertsList();
+						ui.addNotification(null, E('p', 'Alerts refreshed'), 'info');
+					});
+				}
+			}, '🔄 Refresh')
 		]);
 	},
 
@@ -144,17 +160,22 @@ return view.extend({
 	},
 
 	renderStats: function() {
+		return E('div', { 'id': 'secubox-alerts-stats', 'class': 'secubox-alerts-stats' },
+			this.renderStatCards());
+	},
+
+	renderStatCards: function() {
 		var alerts = this.alertsData.alerts || [];
 		var errorCount = alerts.filter(function(a) { return a.severity === 'error'; }).length;
 		var warningCount = alerts.filter(function(a) { return a.severity === 'warning'; }).length;
 		var infoCount = alerts.filter(function(a) { return a.severity === 'info'; }).length;
 
-		return E('div', { 'class': 'secubox-alerts-stats' }, [
+		return [
 			this.renderStatCard('Total Alerts', alerts.length, '📊', '#6366f1'),
 			this.renderStatCard('Errors', errorCount, '❌', '#ef4444'),
 			this.renderStatCard('Warnings', warningCount, '⚠️', '#f59e0b'),
 			this.renderStatCard('Info', infoCount, 'ℹ️', '#3b82f6')
-		]);
+		];
 	},
 
 	renderStatCard: function(label, value, icon, color) {
@@ -285,6 +306,54 @@ return view.extend({
 		return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
 	},
 
+	getAlertStats: function() {
+		var alerts = this.alertsData.alerts || [];
+		var errorCount = alerts.filter(function(a) { return a.severity === 'error'; }).length;
+		var warningCount = alerts.filter(function(a) { return a.severity === 'warning'; }).length;
+		var infoCount = alerts.filter(function(a) { return a.severity === 'info'; }).length;
+		var dismissed = alerts.filter(function(a) { return a.dismissed || a.acknowledged; }).length;
+
+		return {
+			total: alerts.length,
+			errors: errorCount,
+			warnings: warningCount,
+			info: infoCount,
+			dismissed: dismissed
+		};
+	},
+
+	renderHeaderChip: function(id, icon, label, value, tone) {
+		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
+			E('span', { 'class': 'sh-chip-icon' }, icon),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, label),
+				E('strong', { 'id': 'secubox-alerts-chip-' + id }, value.toString())
+			])
+		]);
+	},
+
+	updateHeaderStats: function() {
+		var stats = this.getAlertStats();
+		this.setHeaderChipValue('total', stats.total);
+		this.setHeaderChipValue('errors', stats.errors, stats.errors ? 'danger' : '');
+		this.setHeaderChipValue('warnings', stats.warnings, stats.warnings ? 'warn' : '');
+		this.setHeaderChipValue('info', stats.info);
+		this.setHeaderChipValue('ack', stats.dismissed);
+	},
+
+	setHeaderChipValue: function(id, value, tone) {
+		var target = document.getElementById('secubox-alerts-chip-' + id);
+		if (target)
+			target.textContent = value.toString();
+
+		var chip = target && target.closest('.sh-header-chip');
+		if (chip) {
+			chip.classList.remove('success', 'warn', 'danger');
+			if (tone)
+				chip.classList.add(tone);
+		}
+	},
+
 	updateAlertsList: function() {
 		var container = document.getElementById('alerts-container');
 		if (container) {
@@ -296,6 +365,7 @@ return view.extend({
 
 		// Update stats
 		this.updateStats();
+		this.updateHeaderStats();
 	},
 
 	updateModuleFilter: function() {
@@ -323,7 +393,9 @@ return view.extend({
 	},
 
 	updateStats: function() {
-		// Stats are re-rendered with the full list, so no need to update
+		var statsContainer = document.getElementById('secubox-alerts-stats');
+		if (statsContainer)
+			dom.content(statsContainer, this.renderStatCards());
 	},
 
 	clearAllAlerts: function() {

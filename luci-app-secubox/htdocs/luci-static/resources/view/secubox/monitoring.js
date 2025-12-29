@@ -4,7 +4,7 @@
 'require dom';
 'require poll';
 'require secubox/api as API';
-'require secubox-theme/theme as Theme';
+'require secubox/theme as Theme';
 'require secubox/nav as SecuNav';
 
 // Respect LuCI language/theme preferences
@@ -59,6 +59,7 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/monitoring.css') }),
 			SecuNav.renderTabs('monitoring'),
+			this.renderHeader(),
 			this.renderHero(),
 			this.renderChartsGrid(),
 			this.renderCurrentStatsCard()
@@ -75,7 +76,42 @@ return view.extend({
 			});
 		}, 5);
 
+		this.hideLegacyTabMenu();
+
 		return container;
+	},
+
+	renderHeader: function() {
+		var snapshot = this.getLatestSnapshot();
+		var rates = this.getNetworkRateSummary();
+
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
+			E('div', {}, [
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '📡'),
+					_('SecuBox Monitoring')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					_('Live telemetry for CPU, memory, storage, and network throughput'))
+			]),
+			E('div', { 'class': 'sh-header-meta' }, [
+				this.renderHeaderChip('cpu', '🔥', _('CPU'), snapshot.cpu.value.toFixed(1) + '%', snapshot.cpu.value),
+				this.renderHeaderChip('memory', '💾', _('Memory'), snapshot.memory.value.toFixed(1) + '%', snapshot.memory.value),
+				this.renderHeaderChip('disk', '💿', _('Disk'), snapshot.disk.value.toFixed(1) + '%', snapshot.disk.value),
+				this.renderHeaderChip('uptime', '⏱', _('Uptime'), API.formatUptime(snapshot.uptime || 0)),
+				this.renderHeaderChip('net', '🌐', _('Network'), rates.summary)
+			])
+		]);
+	},
+
+	renderHeaderChip: function(id, icon, label, value, percent) {
+		return E('div', { 'class': 'sh-header-chip' }, [
+			E('span', { 'class': 'sh-chip-icon' }, icon),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, label),
+				E('strong', { 'id': 'secubox-monitoring-chip-' + id, 'style': (typeof percent === 'number') ? ('color:' + this.getColorForValue(percent)) : '' }, value)
+			])
+		]);
 	},
 
 	renderHero: function() {
@@ -277,7 +313,9 @@ return view.extend({
 		if (statsContainer)
 			dom.content(statsContainer, this.renderStatsTable());
 
-		this.updateHeroBadges(this.getLatestSnapshot());
+		var snapshot = this.getLatestSnapshot();
+		this.updateHeroBadges(snapshot);
+		this.updateHeaderChips(snapshot);
 	},
 
 	updateHeroBadges: function(snapshot) {
@@ -302,6 +340,36 @@ return view.extend({
 				}
 			}
 		}, this);
+	},
+
+	updateHeaderChips: function(snapshot) {
+		this.setHeaderChipValue('cpu', snapshot.cpu.value.toFixed(1) + '%', snapshot.cpu.value);
+		this.setHeaderChipValue('memory', snapshot.memory.value.toFixed(1) + '%', snapshot.memory.value);
+		this.setHeaderChipValue('disk', snapshot.disk.value.toFixed(1) + '%', snapshot.disk.value);
+		this.setHeaderChipValue('uptime', API.formatUptime(snapshot.uptime || 0));
+		var rates = this.getNetworkRateSummary();
+		this.setHeaderChipValue('net', rates.summary);
+	},
+
+	setHeaderChipValue: function(id, text, percent) {
+		var target = document.getElementById('secubox-monitoring-chip-' + id);
+		if (!target)
+			return;
+
+		target.textContent = text;
+		if (typeof percent === 'number')
+			target.style.color = this.getColorForValue(percent);
+		else
+			target.style.color = '';
+	},
+
+	hideLegacyTabMenu: function() {
+		window.requestAnimationFrame(function() {
+			var menus = document.querySelectorAll('.main > .tabmenu, .main > .cbi-tabmenu');
+			menus.forEach(function(menu) {
+				menu.style.display = 'none';
+			});
+		});
 	},
 
 	getLatestSnapshot: function() {

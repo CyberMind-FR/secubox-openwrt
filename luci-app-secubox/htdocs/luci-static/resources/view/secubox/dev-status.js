@@ -3,12 +3,15 @@
 'require ui';
 'require poll';
 'require rpc';
+'require secubox/api as API';
+'require secubox/nav as SecuNav';
 
 /**
  * SecuBox Development Status View (LuCI)
  * Real-time development progress tracker for LuCI interface
  */
 return view.extend({
+	statusData: {},
 	// Development milestones data
 	milestones: {
 		'modules-core': {
@@ -267,7 +270,11 @@ return view.extend({
 	 * Load view
 	 */
 	load: function() {
-		return Promise.resolve();
+		var self = this;
+		return API.getStatus().then(function(status) {
+			self.statusData = status || {};
+			return status;
+		});
 	},
 
 	/**
@@ -290,7 +297,7 @@ return view.extend({
 			);
 		}
 
-		var view = E([], [
+		var main = E('div', { 'class': 'secubox-dev-body' }, [
 			E('h2', { 'class': 'section-title' }, _('Development Status')),
 			E('div', { 'class': 'cbi-map-descr' },
 				_('Real-time project progress tracker showing SecuBox development milestones and achievements.')),
@@ -528,7 +535,45 @@ return view.extend({
 			`)
 		]);
 
-		return view;
+		return E('div', { 'class': 'secubox-dev-status-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
+			SecuNav.renderTabs('dev-status'),
+			this.renderHeader(),
+			main
+		]);
+	},
+
+	renderHeader: function() {
+		var widget = this.getWidget();
+		var currentPhase = widget.getCurrentPhase() || {};
+		var status = this.statusData || {};
+
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
+			E('div', {}, [
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '🚀'),
+					_('Development Status')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					_('SecuBox roadmap, milestones, and release planning.'))
+			]),
+			E('div', { 'class': 'sh-header-meta' }, [
+				this.renderHeaderChip('🏷️', _('Version'), status.version || _('Unknown')),
+				this.renderHeaderChip('📈', _('Overall'), this.getOverallProgress() + '%'),
+				this.renderHeaderChip('📅', _('Current phase'),
+					currentPhase.phase ? currentPhase.phase + ' · ' + currentPhase.name : _('Not set'))
+			])
+		]);
+	},
+
+	renderHeaderChip: function(icon, label, value) {
+		return E('div', { 'class': 'sh-header-chip' }, [
+			E('span', { 'class': 'sh-chip-icon' }, icon),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, label),
+				E('strong', {}, value.toString())
+			])
+		]);
 	},
 
 	handleSaveApply: null,

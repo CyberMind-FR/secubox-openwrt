@@ -4,7 +4,7 @@
 'require dom';
 'require poll';
 'require secubox/api as API';
-'require secubox-theme/theme as Theme';
+'require secubox/theme as Theme';
 'require secubox/nav as SecuNav';
 
 // Load theme resources once
@@ -72,15 +72,16 @@ return view.extend({
 		var moduleStats = this.getModuleStats();
 		var alertsCount = (this.alertsData.alerts || []).length;
 		var healthScore = (this.healthData.overall && this.healthData.overall.score) || 0;
-
+		var version = status.version || _('Unknown');
 		var stats = [
-			{ label: _('Modules'), value: counts.total || moduleStats.total || 0 },
-			{ label: _('Running'), value: counts.running || moduleStats.running || 0 },
-			{ label: _('Alerts'), value: alertsCount },
-			{ label: _('Health'), value: healthScore + '/100' }
+			{ icon: '🏷️', label: _('Version'), value: version },
+			{ icon: '📦', label: _('Modules'), value: counts.total || moduleStats.total || 0 },
+			{ icon: '🟢', label: _('Running'), value: counts.running || moduleStats.running || 0, tone: (counts.running || moduleStats.running) > 0 ? 'success' : '' },
+			{ icon: '⚠️', label: _('Alerts'), value: alertsCount, tone: alertsCount ? 'warn' : '' },
+			{ icon: '❤️', label: _('Health'), value: healthScore + '/100' }
 		];
 
-		return E('div', { 'class': 'sh-page-header' }, [
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
 			E('div', {}, [
 				E('h2', { 'class': 'sh-page-title' }, [
 					E('span', { 'class': 'sh-page-title-icon' }, '🚀'),
@@ -89,14 +90,17 @@ return view.extend({
 				E('p', { 'class': 'sh-page-subtitle' },
 					_('Security · Network · System automation'))
 			]),
-			E('div', { 'class': 'sh-stats-grid' }, stats.map(this.renderHeaderStat, this))
+			E('div', { 'class': 'sh-header-meta' }, stats.map(this.renderHeaderChip, this))
 		]);
 	},
 
-	renderHeaderStat: function(stat) {
-		return E('div', { 'class': 'sh-stat-badge' }, [
-			E('div', { 'class': 'sh-stat-value' }, stat.value.toString()),
-			E('div', { 'class': 'sh-stat-label' }, stat.label)
+	renderHeaderChip: function(stat) {
+		return E('div', { 'class': 'sh-header-chip' + (stat.tone ? ' ' + stat.tone : '') }, [
+			E('span', { 'class': 'sh-chip-icon' }, stat.icon || '•'),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, stat.label),
+				E('strong', {}, stat.value.toString())
+			])
 		]);
 	},
 

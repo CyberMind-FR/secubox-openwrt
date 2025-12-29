@@ -82,6 +82,7 @@ return view.extend({
 
 	renderHeader: function(status) {
 		var stats = [
+			{ icon: '🏷️', label: _('Version'), value: status.version || _('Unknown') },
 			{ icon: '🟢', label: _('Service'), value: status.running ? _('Running') : _('Stopped'), tone: status.running ? 'success' : 'danger' },
 			{ icon: '⏱', label: _('Uptime'), value: formatUptime(status.uptime || 0) },
 			{ icon: '📁', label: _('Cache files'), value: (status.cache_files || 0).toLocaleString() }

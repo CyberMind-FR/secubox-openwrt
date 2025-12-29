@@ -59,7 +59,7 @@ var callBackupConfig = rpc.declare({
 var callRestoreConfig = rpc.declare({
 	object: 'luci.system-hub',
 	method: 'restore_config',
-	params: ['data'],
+	params: ['file_name', 'data'],
 	expect: {}
 });
 
@@ -192,7 +192,15 @@ return baseclass.extend({
 	serviceAction: callServiceAction,
 	getLogs: callGetLogs,
 	backupConfig: callBackupConfig,
-	restoreConfig: callRestoreConfig,
+	restoreConfig: function(fileName, data) {
+		if (typeof fileName === 'object')
+			return callRestoreConfig(fileName);
+
+		return callRestoreConfig({
+			file_name: fileName,
+			data: data
+		});
+	},
 	reboot: callReboot,
 	getStorage: callGetStorage,
 	getSettings: callGetSettings,

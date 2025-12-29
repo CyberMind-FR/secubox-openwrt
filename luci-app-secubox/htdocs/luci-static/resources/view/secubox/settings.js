@@ -7,6 +7,11 @@
 'require secubox/theme as Theme';
 'require secubox/nav as SecuNav';
 
+var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: secuLang });
+
 return view.extend({
 	load: function() {
 		return Promise.all([
@@ -44,17 +49,6 @@ return view.extend({
 				])
 			])
 		]);
-
-	renderHeaderChip: function(icon, label, value, tone) {
-		var display = (value == null ? '—' : value).toString();
-		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
-			E('span', { 'class': 'sh-chip-icon' }, icon),
-			E('div', { 'class': 'sh-chip-text' }, [
-				E('span', { 'class': 'sh-chip-label' }, label),
-				E('strong', {}, display)
-			])
-		]);
-	},
 
 		// Create form
 		m = new form.Map('secubox', null, null);
@@ -248,5 +242,16 @@ return view.extend({
 			container.appendChild(formElement);
 			return container;
 		}, this));
+	},
+
+	renderHeaderChip: function(icon, label, value, tone) {
+		var display = (value == null ? '—' : value).toString();
+		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
+			E('span', { 'class': 'sh-chip-icon' }, icon),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, label),
+				E('strong', {}, display)
+			])
+		]);
 	}
 });

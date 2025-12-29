@@ -5,6 +5,17 @@
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
+get_pkg_version() {
+	local ctrl="/usr/lib/opkg/info/luci-app-vhost-manager.control"
+	if [ -f "$ctrl" ]; then
+		awk -F': ' '/^Version/ { print $2; exit }' "$ctrl"
+	else
+		echo "unknown"
+	fi
+}
+
+PKG_VERSION="$(get_pkg_version)"
+
 NGINX_VHOST_DIR="/etc/nginx/conf.d"
 ACME_STATE_DIR="/etc/acme"
 VHOST_CONFIG="/etc/config/vhost_manager"
@@ -187,7 +198,7 @@ case "$1" in
 				json_init
 				json_add_boolean "enabled" 1
 				json_add_string "module" "vhost-manager"
-			json_add_string "version" "0.4.1"
+			json_add_string "version" "$PKG_VERSION"
 				
 				# Check nginx status
 				if pgrep -x nginx > /dev/null 2>&1; then

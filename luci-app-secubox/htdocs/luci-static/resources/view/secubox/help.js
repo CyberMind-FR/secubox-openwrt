@@ -4,6 +4,7 @@
 'require secubox/api as API';
 'require secubox/help as Help';
 'require secubox/theme as Theme';
+'require secubox/nav as SecuNav';
 
 // Ensure SecuBox theme variables are loaded for this view
 Theme.init();
@@ -30,6 +31,9 @@ return view.extend({
 		var helpPages = Help.getAllHelpPages();
 
 		return E('div', { 'class': 'secubox-help-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
+			SecuNav.renderTabs('help'),
+			this.renderHeader(data),
 			this.renderHero(data),
 			this.renderHelpCatalog(helpPages),
 			this.renderSupportSection(),
@@ -198,6 +202,20 @@ return view.extend({
 			return c.toUpperCase();
 		});
 
-		return titles[key] || { title: fallbackTitle, icon: '📦' };
+		return titles[key] || {
+			title: fallbackTitle,
+			icon: '📄',
+			description: _('Documentation officielle')
+		};
+	},
+
+	renderHeaderChip: function(icon, label, value) {
+		return E('div', { 'class': 'sh-header-chip' }, [
+			E('span', { 'class': 'sh-chip-icon' }, icon),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, label),
+				E('strong', {}, value.toString())
+			])
+		]);
 	}
 });

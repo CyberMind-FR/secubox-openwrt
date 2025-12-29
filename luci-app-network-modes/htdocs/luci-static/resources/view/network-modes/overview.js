@@ -364,9 +364,10 @@ return view.extend({
 		return view;
 	},
 
-	renderHeader: function(status, currentModeInfo) {
+		renderHeader: function(status, currentModeInfo) {
 		var modeName = currentModeInfo ? currentModeInfo.name : (status.current_mode || 'router');
 		var stats = [
+			{ label: _('Version'), value: status.version || _('Unknown'), icon: '🏷️' },
 			{ label: _('Mode'), value: modeName, icon: '🧭' },
 			{ label: _('WAN IP'), value: status.wan_ip || _('Unknown'), icon: '🌍' },
 			{ label: _('LAN IP'), value: status.lan_ip || _('Unknown'), icon: '🏠' }

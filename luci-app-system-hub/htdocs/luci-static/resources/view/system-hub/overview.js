@@ -59,8 +59,10 @@ return view.extend({
 		var hostname = this.sysInfo.hostname || 'OpenWrt';
 		var kernel = this.sysInfo.kernel || '-';
 		var score = (this.healthData.score || 0);
+        var version = this.sysInfo.version || _('Unknown');
 
 		var stats = [
+			{ label: _('Version'), value: version, icon: '🏷️' },
 			{ label: _('Uptime'), value: uptime, icon: '⏱' },
 			{ label: _('Hostname'), value: hostname, icon: '🖥' },
 			{ label: _('Kernel'), value: kernel, copy: kernel, icon: '🧬' },

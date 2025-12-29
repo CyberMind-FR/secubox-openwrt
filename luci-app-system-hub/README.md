@@ -226,8 +226,8 @@ Returns backup data in base64 format with size and filename.
 # Encode backup file to base64
 DATA=$(base64 < backup.tar.gz | tr -d '\n')
 
-# Restore
-ubus call luci.system-hub restore_config "{\"data\":\"$DATA\"}"
+# Restore (include original file name for logging/validation)
+ubus call luci.system-hub restore_config "{\"file_name\":\"backup.tar.gz\",\"data\":\"$DATA\"}"
 ```
 
 #### Reboot System
@@ -409,11 +409,12 @@ Create system configuration backup.
 }
 ```
 
-### restore_config(data)
+### restore_config(file_name, data)
 
 Restore system configuration from backup.
 
 **Parameters:**
+- `file_name`: Original archive name (used for logging/validation, optional but recommended)
 - `data`: Base64-encoded backup data
 
 **Returns:**

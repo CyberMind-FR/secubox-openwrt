@@ -6,6 +6,17 @@
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
+get_pkg_version() {
+	local ctrl="/usr/lib/opkg/info/luci-app-cdn-cache.control"
+	if [ -f "$ctrl" ]; then
+		awk -F': ' '/^Version/ { print $2; exit }' "$ctrl"
+	else
+		echo "unknown"
+	fi
+}
+
+PKG_VERSION="$(get_pkg_version)"
+
 CACHE_DIR=$(uci -q get cdn-cache.main.cache_dir || echo "/var/cache/cdn")
 STATS_FILE="/var/run/cdn-cache-stats.json"
 LOG_FILE="/var/log/cdn-cache.log"
@@ -50,6 +61,7 @@ get_status() {
 	local max_size=$(uci -q get cdn-cache.main.cache_size || echo "1024")
 	
 	json_init
+	json_add_string "version" "$PKG_VERSION"
 	json_add_boolean "enabled" "$enabled"
 	json_add_boolean "running" "$running"
 	json_add_string "pid" "$pid"
