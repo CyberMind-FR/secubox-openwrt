@@ -1,0 +1,141 @@
+#!/bin/sh
+
+. /usr/share/libubox/jshn.sh
+
+CONFIG="zigbee2mqtt"
+SERVICE="/etc/init.d/zigbee2mqtt"
+CTL="/usr/sbin/zigbee2mqttctl"
+
+load_config() {
+	json_init
+	json_add_string "serial_port" "$(uci -q get ${CONFIG}.main.serial_port || echo /dev/ttyACM0)"
+	json_add_string "mqtt_host" "$(uci -q get ${CONFIG}.main.mqtt_host || echo mqtt://127.0.0.1:1883)"
+	json_add_string "mqtt_username" "$(uci -q get ${CONFIG}.main.mqtt_username || printf '')"
+	json_add_string "mqtt_password" "$(uci -q get ${CONFIG}.main.mqtt_password || printf '')"
+	json_add_string "base_topic" "$(uci -q get ${CONFIG}.main.base_topic || echo zigbee2mqtt)"
+	json_add_string "frontend_port" "$(uci -q get ${CONFIG}.main.frontend_port || echo 8080)"
+	json_add_string "channel" "$(uci -q get ${CONFIG}.main.channel || echo 11)"
+	json_add_string "data_path" "$(uci -q get ${CONFIG}.main.data_path || echo /srv/zigbee2mqtt)"
+	json_add_string "image" "$(uci -q get ${CONFIG}.main.image || echo ghcr.io/koenkk/zigbee2mqtt:latest)"
+	json_add_string "timezone" "$(uci -q get ${CONFIG}.main.timezone || echo UTC)"
+	json_add_boolean "enabled" "$( [ "$(uci -q get ${CONFIG}.main.enabled || echo 0)" = "1" ] && echo 1 || echo 0)"
+}
+
+status() {
+	json_init
+	load_config
+	json_add_object "service"
+	json_add_boolean "enabled" "$( "$SERVICE" enabled >/dev/null 2>&1 && echo 1 || echo 0 )"
+	json_add_boolean "running" "$( "$SERVICE" status >/dev/null 2>&1 && echo 1 || echo 0 )"
+	json_close_object
+	json_add_array "container"
+	docker ps -a --filter "name=secbx-zigbee2mqtt" --format '{{.Names}}|{{.Status}}' 2>/dev/null | while IFS='|' read -r name st; do
+		json_add_object
+		json_add_string "name" "$name"
+		json_add_string "status" "$st"
+		json_close_object
+	done
+	json_close_array
+	json_dump
+}
+
+apply() {
+	read input
+	json_load "$input"
+	json_get_var serial_port serial_port
+	json_get_var mqtt_host mqtt_host
+	json_get_var mqtt_username mqtt_username
+	json_get_var mqtt_password mqtt_password
+	json_get_var base_topic base_topic
+	json_get_var frontend_port frontend_port
+	json_get_var channel channel
+	json_get_var data_path data_path
+	json_get_var image image
+	json_get_var timezone timezone
+	json_get_var enabled enabled
+
+	[ -n "$serial_port" ] && uci set ${CONFIG}.main.serial_port="$serial_port"
+	[ -n "$mqtt_host" ] && uci set ${CONFIG}.main.mqtt_host="$mqtt_host"
+	[ -n "$mqtt_username" ] && uci set ${CONFIG}.main.mqtt_username="$mqtt_username"
+	[ -n "$mqtt_password" ] && uci set ${CONFIG}.main.mqtt_password="$mqtt_password"
+	[ -n "$base_topic" ] && uci set ${CONFIG}.main.base_topic="$base_topic"
+	[ -n "$frontend_port" ] && uci set ${CONFIG}.main.frontend_port="$frontend_port"
+	[ -n "$channel" ] && uci set ${CONFIG}.main.channel="$channel"
+	[ -n "$data_path" ] && uci set ${CONFIG}.main.data_path="$data_path"
+	[ -n "$image" ] && uci set ${CONFIG}.main.image="$image"
+	[ -n "$timezone" ] && uci set ${CONFIG}.main.timezone="$timezone"
+	[ -n "$enabled" ] && uci set ${CONFIG}.main.enabled="$enabled"
+	uci commit ${CONFIG}
+
+	if [ "$enabled" = "1" ]; then
+		"$SERVICE" enable >/dev/null 2>&1
+	else
+		"$SERVICE" disable >/dev/null 2>&1
+	fi
+
+	"$SERVICE" restart >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+logs() {
+	read input
+	json_load "$input"
+	json_get_var tail tail
+	tail=${tail:-200}
+	json_init
+	json_add_array "lines"
+	$CTL logs --tail "$tail" 2>&1 | while IFS= read -r line; do
+		json_add_string "" "$line"
+	done
+	json_close_array
+	json_dump
+}
+
+control() {
+	read input
+	json_load "$input"
+	json_get_var action action
+	case "$action" in
+		start) "$SERVICE" start ;;
+		stop) "$SERVICE" stop ;;
+		restart) "$SERVICE" restart ;;
+		*) json_init; json_add_boolean "success" 0; json_add_string "error" "invalid action"; json_dump; return ;;
+	esac
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+update() {
+	$CTL update >/dev/null 2>&1
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+case "$1" in
+	list)
+		cat <<'JSON'
+{
+	"status": {},
+	"apply": {},
+	"logs": {},
+	"control": {},
+	"update": {}
+}
+JSON
+	;;
+	call)
+		case "$2" in
+			status) status ;;
+			apply) apply ;;
+			logs) logs ;;
+			control) control ;;
+			update) update ;;
+			*) json_init; json_add_string "error" "unknown method"; json_dump ;;
+		esac
+		;;
+esac

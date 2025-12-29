@@ -1,0 +1,28 @@
+{
+	"luci-app-zigbee2mqtt": {
+		"description": "Access control for Zigbee2MQTT LuCI module",
+		"read": {
+			"ubus": {
+				"luci.zigbee2mqtt": [
+					"status",
+					"logs"
+				]
+			},
+			"file": {
+				"/etc/config/zigbee2mqtt": [ "read" ]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.zigbee2mqtt": [
+					"apply",
+					"control",
+					"update"
+				]
+			},
+			"file": {
+				"/etc/config/zigbee2mqtt": [ "write" ]
+			}
+		}
+	}
+}

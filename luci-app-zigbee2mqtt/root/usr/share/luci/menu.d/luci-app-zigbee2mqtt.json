@@ -1,0 +1,10 @@
+{
+	"admin/secubox/zigbee2mqtt": {
+		"title": "Zigbee2MQTT",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "zigbee2mqtt/overview"
+		}
+	}
+}

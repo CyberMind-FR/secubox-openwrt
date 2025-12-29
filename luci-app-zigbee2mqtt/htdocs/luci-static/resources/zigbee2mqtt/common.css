@@ -1,0 +1,94 @@
+.z2m-dashboard {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding: 16px;
+}
+
+.z2m-card {
+	background: rgba(11, 15, 28, 0.92);
+	border: 1px solid rgba(148, 163, 184, 0.2);
+	border-radius: 16px;
+	padding: 20px;
+	color: #e2e8f0;
+	box-shadow: 0 18px 30px rgba(2, 6, 23, 0.45);
+}
+
+.z2m-card-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12px;
+}
+
+.z2m-form-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 12px;
+}
+
+.z2m-input-group {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.z2m-input-group label {
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: #94a3b8;
+}
+
+.z2m-input {
+	border-radius: 10px;
+	border: 1px solid rgba(148, 163, 184, 0.2);
+	background: rgba(15, 23, 42, 0.8);
+	color: #e2e8f0;
+	padding: 10px 12px;
+}
+
+.z2m-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	justify-content: flex-end;
+	margin-top: 12px;
+}
+
+.z2m-log {
+	background: #020617;
+	color: #9efc6a;
+	border-radius: 12px;
+	padding: 12px;
+	font-family: 'JetBrains Mono', monospace;
+	font-size: 12px;
+	max-height: 260px;
+	overflow-y: auto;
+}
+
+.z2m-status-badges {
+	display: flex;
+	gap: 12px;
+}
+
+.z2m-badge {
+	padding: 6px 12px;
+	border-radius: 999px;
+	border: 1px solid rgba(148, 163, 184, 0.2);
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.z2m-badge.on {
+	color: #4ade80;
+	border-color: rgba(74, 222, 128, 0.4);
+	background: rgba(22, 163, 74, 0.15);
+}
+
+.z2m-badge.off {
+	color: #f87171;
+	border-color: rgba(248, 113, 113, 0.4);
+	background: rgba(248, 113, 113, 0.12);
+}
