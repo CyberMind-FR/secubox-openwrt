@@ -549,6 +549,7 @@ copy_packages() {
     # Use the local feed directory (outside SDK)
     local feed_dir="../local-feed"
     mkdir -p "$feed_dir"
+    local -a core_pkg_names=()
 
     if [[ -n "$single_package" ]]; then
         print_info "Copying single package: $single_package"
@@ -594,12 +595,22 @@ copy_packages() {
             fi
         done
 
-        # Copy core packages (non-LuCI)
-        for pkg in ../../package/secubox/nodogsplash/; do
+        # Copy secubox-app-* helper packages
+        for pkg in ../../package/secubox/secubox-app-*/; do
             if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
                 local pkg_name=$(basename "$pkg")
                 echo "  📁 $pkg_name"
                 cp -r "$pkg" "$feed_dir/"
+            fi
+        done
+
+        # Copy core packages (non-LuCI)
+        for pkg in ../../package/secubox/*/; do
+            if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
+                local pkg_name=$(basename "$pkg")
+                echo "  📁 $pkg_name"
+                cp -r "$pkg" "$feed_dir/"
+                core_pkg_names+=("$pkg_name")
             fi
         done
     fi
@@ -639,10 +650,10 @@ copy_packages() {
             fi
         done
 
-        # Install core packages (non-LuCI)
-        for pkg in "$feed_dir"/nodogsplash/; do
-            if [[ -d "$pkg" ]]; then
-                local pkg_name=$(basename "$pkg")
+        # Install secubox core packages
+        for pkg_name in "${core_pkg_names[@]}"; do
+            local pkg_path="$feed_dir/$pkg_name"
+            if [[ -d "$pkg_path" ]]; then
                 echo "  Installing $pkg_name..."
                 ./scripts/feeds install "$pkg_name" 2>&1 | grep -v "WARNING:" || true
             fi
@@ -762,6 +773,14 @@ build_packages() {
 
         # Build luci-theme-* packages
         for pkg in feeds/secubox/luci-theme-*/; do
+            [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
+        done
+
+        # Build core secubox packages (secubox-app, nodogsplash, etc.)
+        for pkg in feeds/secubox/secubox-*/; do
+            [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
+        done
+        for pkg in feeds/secubox/nodogsplash/; do
             [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
         done
     fi
@@ -1048,8 +1067,18 @@ copy_secubox_to_openwrt() {
         fi
     done
 
-    # Copy additional core packages (non-LuCI)
-    for pkg in ../../package/secubox/nodogsplash/; do
+    # Copy secubox-app-* helper packages
+    for pkg in ../../package/secubox/secubox-app-*/; do
+        if [[ -d "$pkg" ]]; then
+            local pkg_name=$(basename "$pkg")
+            echo "  ✅ $pkg_name"
+            cp -r "$pkg" package/secubox/
+            pkg_count=$((pkg_count + 1))
+        fi
+    done
+
+    # Copy additional core packages (non-LuCI / non-app store)
+    for pkg in ../../package/secubox/*/; do
         if [[ -d "$pkg" ]]; then
             local pkg_name=$(basename "$pkg")
             echo "  ✅ $pkg_name"

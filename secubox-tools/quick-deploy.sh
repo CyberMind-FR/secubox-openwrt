@@ -23,6 +23,12 @@ SRC_PATH=""
 GIT_URL=""
 GIT_BRANCH=""
 POST_CMD=""
+BACKUP_DIR="${BACKUP_DIR:-/tmp/quickdeploy-backups}"
+HISTORY_DIR="${HOME}/.secubox"
+HISTORY_FILE="$HISTORY_DIR/quickdeploy-history.log"
+LAST_BACKUP_FILE="$HISTORY_DIR/quickdeploy-last"
+LAST_BACKUP=""
+UNINSTALL_TARGET=""
 
 usage() {
 	cat <<'USAGE'
@@ -34,6 +40,7 @@ Options (choose one source):
   --ipk <file.ipk>          Upload + install an IPK via opkg.
   --apk <file.apk>          Upload + install an APK via apk add.
   --src <path>              Tar + upload a local directory to --target-path.
+  --src-clean <path>        Remove files previously deployed from a local directory (no upload).
   --git <repo_url>          Clone repo (optionally --branch) then upload.
   --profile <name>          Use a predefined deployment profile (e.g. theme, luci-app).
   --app <name>              Shortcut for --profile luci-app; auto-resolves `luci-app-<name>`
@@ -48,6 +55,7 @@ Common flags:
   --no-verify               Skip post-deploy file verification.
   --force-root              Allow --src to write directly under /. Use with caution.
   --no-auto-profile         Disable automatic LuCI app detection when using --src.
+  --uninstall [backup]      Restore the latest (or specific) quick-deploy backup.
   --post <command>          Extra remote command to run after deploy.
   -h, --help                Show this message.
 
@@ -79,6 +87,87 @@ join_path() {
 	fi
 }
 
+gather_deploy_files() {
+	local dir="$1"
+	local -n out_ref="$2"
+	out_ref=()
+	[[ ! -d "$dir" ]] && return 0
+	if [[ ${#INCLUDE_PATHS[@]} -gt 0 ]]; then
+		for inc in "${INCLUDE_PATHS[@]}"; do
+			local path="$dir/$inc"
+			if [[ -d "$path" ]]; then
+				while IFS= read -r f; do out_ref+=("$f"); done < <(find "$path" -type f -not -path '*/.git/*' | sort)
+			elif [[ -f "$path" ]]; then
+				out_ref+=("$path")
+			fi
+		done
+	else
+		while IFS= read -r f; do out_ref+=("$f"); done < <(find "$dir" -type f -not -path '*/.git/*' | sort)
+	fi
+}
+
+record_backup_metadata() {
+	local backup_file="$1"
+	[[ -z "$backup_file" ]] && return
+	mkdir -p "$HISTORY_DIR"
+	printf '%s | %s | %s\n' "$(date -Iseconds)" "$ROUTER" "$backup_file" >> "$HISTORY_FILE"
+	printf '%s\n' "$backup_file" > "$LAST_BACKUP_FILE"
+	LAST_BACKUP="$backup_file"
+	log "🗂  Backup saved to $backup_file (restore with --uninstall $(basename "$backup_file" .tar.gz))"
+}
+
+backup_remote_list() {
+	local -a remote_paths=("$@")
+	if [[ ${#remote_paths[@]} -eq 0 ]]; then
+		log "No remote paths to backup; skipping snapshot."
+		return 0
+	fi
+	local unique_paths
+	unique_paths=$(printf '%s\n' "${remote_paths[@]}" | awk 'length && !seen[$0]++')
+	local trimmed_list=""
+	while IFS= read -r path; do
+		local trimmed="${path#/}"
+		[[ -z "$trimmed" ]] && continue
+		trimmed_list+="$trimmed"$'\n'
+	done <<< "$unique_paths"
+	if [[ -z "$trimmed_list" ]]; then
+		log "No existing remote files detected to backup."
+		return 0
+	fi
+	local backup_id
+	backup_id=$(date +%Y%m%d_%H%M%S)
+	local backup_file="$BACKUP_DIR/$backup_id.tar.gz"
+	local list_file="$BACKUP_DIR/$backup_id.list"
+	remote_exec "mkdir -p '$BACKUP_DIR'"
+	remote_exec "cat <<'EOF' > '$list_file'
+$trimmed_list
+EOF"
+	if remote_exec "cd / && tar --ignore-failed-read -czf '$backup_file' -T '$list_file' >/dev/null"; then
+		record_backup_metadata "$backup_file"
+	else
+		log "⚠️  Failed to create backup archive."
+		remote_exec "rm -f '$backup_file' '$list_file'"
+	fi
+}
+
+backup_remote_paths() {
+	local dir="$1"
+	local base="$2"
+	local -a files=()
+	gather_deploy_files "$dir" files
+	if [[ ${#files[@]} -eq 0 ]]; then
+		log "No local files detected for $dir; skipping backup."
+		return 0
+	fi
+	local -a remote_paths=()
+	for file in "${files[@]}"; do
+		local rel=${file#$dir/}
+		[[ -z "$rel" ]] && continue
+		remote_paths+=("$(join_path "$base" "$rel")")
+	done
+	backup_remote_list "${remote_paths[@]}"
+}
+
 ensure_remote_hash() {
 	if [[ -n "$REMOTE_HASH_CMD" ]]; then
 		return 0
@@ -99,23 +188,8 @@ verify_remote() {
 	local base="$TARGET_PATH"
 	[[ "$FORCE_ROOT" == "true" ]] && base="/"
 	ensure_remote_hash || return
-	local -a candidates
-	if [[ ${#INCLUDE_PATHS[@]} -gt 0 ]]; then
-		for inc in "${INCLUDE_PATHS[@]}"; do
-			local path="$dir/$inc"
-			if [[ -d "$path" ]]; then
-				while IFS= read -r f; do
-					candidates+=("$f")
-				done < <(find "$path" -type f -not -path '*/.git/*' | sort)
-			elif [[ -f "$path" ]]; then
-				candidates+=("$path")
-			fi
-		done
-	else
-		while IFS= read -r f; do
-			candidates+=("$f")
-		done < <(find "$dir" -type f -not -path '*/.git/*' | sort)
-	fi
+	local -a candidates=()
+	gather_deploy_files "$dir" candidates
 	local -a samples
 	for f in "${candidates[@]}"; do
 		samples+=("$f")
@@ -269,12 +343,34 @@ deploy_profile_theme() {
 		"luci-app-system-hub/htdocs/luci-static/resources/system-hub/dashboard.css:/www/luci-static/resources/system-hub/"
 		"luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/overview.js:/www/luci-static/resources/view/system-hub/"
 	)
+	remote_exec "mkdir -p /usr/libexec/rpcd /usr/share/rpcd/acl.d /www/luci-static/resources/secubox /www/luci-static/resources/view/secubox /www/luci-static/resources/system-hub /www/luci-static/resources/view/system-hub /www/luci-static/resources/secubox-theme"
+	local -a backup_targets=()
+	for entry in "${files[@]}"; do
+		local src=${entry%%:*}
+		local dest=${entry##*:}
+		local remote_file=$(join_path "$dest" "$(basename "$src")")
+		backup_targets+=("$remote_file")
+	done
+	backup_remote_list "${backup_targets[@]}"
 	for entry in "${files[@]}"; do
 		local src=${entry%%:*}
 		local dest=${entry##*:}
 		log "Copying $src -> $dest"
 		copy_file "$src" "$dest"
 	done
+
+	local theme_src_dir="luci-theme-secubox/htdocs/luci-static/resources"
+	if [[ -d "$theme_src_dir/secubox-theme" ]]; then
+		backup_remote_paths "$theme_src_dir/secubox-theme" "/www/luci-static/resources/secubox-theme"
+		local theme_archive=$(mktemp /tmp/secubox-theme-XXXX.tar.gz)
+		( cd "$theme_src_dir" && tar -czf "$theme_archive" secubox-theme/ )
+		local remote_theme="/tmp/secubox-theme.tar.gz"
+		log "Copying theme bundle to /www/luci-static/resources/secubox-theme"
+		copy_file "$theme_archive" "$remote_theme"
+		remote_exec "mkdir -p /www/luci-static/resources && tar -xzf '$remote_theme' -C /www/luci-static/resources && rm -f '$remote_theme'"
+		rm -f "$theme_archive"
+	fi
+
 	log "Setting permissions + restarting rpcd"
 	remote_exec "chmod +x /usr/libexec/rpcd/luci.secubox && \\
 		chmod 644 /www/luci-static/resources/secubox/*.{js,css} 2>/dev/null || true && \\
@@ -331,6 +427,8 @@ while [[ $# -gt 0 ]]; do
 			MODE="apk"; PKG_PATH="$2"; shift 2 ;;
 		--src)
 			MODE="src"; SRC_PATH="$2"; shift 2 ;;
+		--src-clean)
+			MODE="src-clean"; SRC_PATH="$2"; shift 2 ;;
 		--src-select)
 			MODE="src"; SRC_PATH=""; shift ;;
 		--git)
@@ -353,6 +451,13 @@ while [[ $# -gt 0 ]]; do
 			FORCE_ROOT="true"; shift ;;
 		--no-auto-profile)
 			AUTO_PROFILE=0; shift ;;
+		--uninstall)
+			MODE="uninstall"
+			if [[ $# -gt 1 && "$2" != --* ]]; then
+				UNINSTALL_TARGET="$2"; shift 2
+			else
+				UNINSTALL_TARGET="latest"; shift
+			fi ;;
 		-h|--help)
 			usage ;;
 		*)
@@ -364,6 +469,10 @@ done
 if [[ "$APP_NAME" == "list" ]]; then
 	LIST_APPS=1
 	APP_NAME=""
+fi
+
+if [[ "$MODE" == "uninstall" ]]; then
+	perform_uninstall "$UNINSTALL_TARGET"
 fi
 
 if [[ $LIST_APPS -eq 1 ]]; then
@@ -423,6 +532,13 @@ if [[ -z "$PROFILE" && "$MODE" == "src" && "$AUTO_PROFILE" -eq 1 && -n "$SRC_PAT
 	log "Auto-detected LuCI app at $SRC_PATH (use --no-auto-profile to disable)."
 fi
 
+if [[ "$MODE" == "src-clean" ]]; then
+	if [[ -z "$SRC_PATH" || ! -d "$SRC_PATH" ]]; then
+		echo "Error: --src-clean requires a valid --src path" >&2
+		exit 1
+	fi
+fi
+
 if [[ -z "$MODE" && -z "$PROFILE" ]]; then
     echo "Error: specify one of --ipk/--apk/--src/--git or --profile" >&2
     usage
@@ -433,7 +549,7 @@ if [[ -n "$MODE" && -n "$PROFILE" ]]; then
     exit 1
 fi
 
-if [[ "$FORCE_ROOT" == "true" && "$MODE" != "src" && "$PROFILE" != "luci-app" ]]; then
+if [[ "$FORCE_ROOT" == "true" && "$MODE" != "src" && "$MODE" != "src-clean" && "$PROFILE" != "luci-app" ]]; then
     echo "Error: --force-root is only valid with --src" >&2
     exit 1
 fi
@@ -489,6 +605,7 @@ upload_source_dir() {
 	if [[ "$FORCE_ROOT" == "true" ]]; then
 		extract_target="/"
 	fi
+	backup_remote_paths "$dir" "$extract_target"
 	log "Extracting to $extract_target"
 	remote_exec "mkdir -p $extract_target && tar -xzf $remote -C $extract_target && rm -f $remote"
 	if [[ "$CACHE_BUST" -eq 1 ]]; then
@@ -509,6 +626,79 @@ clone_and_upload() {
 		git clone --depth 1 "$GIT_URL" "$cleanup_tmp"
 	fi
 	upload_source_dir "$cleanup_tmp"
+}
+
+clean_source_dir() {
+	local dir="$1"
+	if [[ -z "$dir" || ! -d "$dir" ]]; then
+		echo "Error: --src-clean requires a valid local directory" >&2
+		exit 1
+	fi
+	local base="$TARGET_PATH"
+	[[ "$FORCE_ROOT" == "true" ]] && base="/"
+	log "🧹 Removing files deployed from $dir (target base: $base)"
+	local -a files=()
+	gather_deploy_files "$dir" files
+	if [[ ${#files[@]} -eq 0 ]]; then
+		log "No files detected within $dir; nothing to remove."
+		return 0
+	fi
+	local list=""
+	for file in "${files[@]}"; do
+		local rel=${file#$dir/}
+		[[ -z "$rel" ]] && continue
+		local remote=$(join_path "$base" "$rel")
+		list+="$remote"$'\n'
+	done
+	remote_exec "cat <<'EOF' > /tmp/quickdeploy-clean.list
+$list
+EOF"
+	remote_exec "while IFS= read -r f || [ -n \"\$f\" ]; do [ -z \"\$f\" ] && continue; rm -f \"\$f\" 2>/dev/null || true; done < /tmp/quickdeploy-clean.list; rm -f /tmp/quickdeploy-clean.list"
+	if [[ "$CACHE_BUST" -eq 1 ]]; then
+		remote_exec "rm -rf /tmp/luci-*"
+	fi
+	log "Cleanup complete."
+}
+
+resolve_backup_file() {
+	local target="$1"
+	local backup_file=""
+	if [[ "$target" == "latest" || -z "$target" ]]; then
+		backup_file=$(remote_exec "ls -1t '$BACKUP_DIR'/*.tar.gz 2>/dev/null | head -n1") || true
+	else
+		if [[ "$target" == /* ]]; then
+			backup_file="$target"
+		else
+			backup_file="$BACKUP_DIR/$target"
+			[[ "$target" != *.tar.gz ]] && backup_file="$backup_file.tar.gz"
+		fi
+	fi
+	echo "$backup_file"
+}
+
+perform_uninstall() {
+	local target="$1"
+	local backup_file
+	backup_file=$(resolve_backup_file "$target")
+	if [[ -z "$backup_file" ]]; then
+		echo "No backup archives found in $BACKUP_DIR" >&2
+		exit 1
+	fi
+	local list_file="${backup_file%.tar.gz}.list"
+	log "Restoring from backup: $backup_file"
+	if ! remote_exec "if [ ! -f '$backup_file' ]; then echo 'Backup $backup_file not found' >&2; exit 1; fi"; then
+		exit 1
+	fi
+	if ! remote_exec "if [ ! -f '$list_file' ]; then echo 'Warning: manifest $list_file missing; proceeding without cleanup.' >&2; fi"; then
+		true
+	fi
+	remote_exec "if [ -f '$list_file' ]; then while IFS= read -r rel || [ -n \"\$rel\" ]; do [ -z \"\$rel\" ] && continue; rm -f \"/\$rel\" 2>/dev/null || true; done < '$list_file'; fi"
+	remote_exec "cd / && tar -xzf '$backup_file'"
+	if [[ "$CACHE_BUST" -eq 1 ]]; then
+		remote_exec "rm -rf /tmp/luci-*"
+	fi
+	log "Rollback complete."
+	exit 0
 }
 
 if [[ -n "$PROFILE" ]]; then
@@ -541,6 +731,8 @@ else
 			install_apk "$PKG_PATH" ;;
 		src)
 			upload_source_dir "$SRC_PATH" ;;
+		src-clean)
+			clean_source_dir "$SRC_PATH" ;;
 		git)
 			clone_and_upload ;;
 		*)

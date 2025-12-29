@@ -4,7 +4,7 @@
 **Last Updated:** 2025-12-28  
 **Status:** Active
 
-This guide outlines the initial “SecuBox Apps” registry format and the `secubox-app` CLI helper. It currently ships with a single manifest (Zigbee2MQTT), but the workflow scales to other Docker/LXC/native services such as Lyrion.
+This guide outlines the “SecuBox Apps” registry format and the `secubox-app` CLI helper. The App Store currently ships manifests for Zigbee2MQTT, Lyrion Media Server, and Domoticz, with the workflow ready for additional Docker/LXC/native services.
 
 ---
 
@@ -65,7 +65,7 @@ Each plugin folder contains a `manifest.json`. Example (Zigbee2MQTT):
 
 ## CLI Usage (`secubox-app`)
 
-`luci-app-secubox` installs the CLI as `/usr/sbin/secubox-app` (also available under `secubox-tools/` for development). Commands:
+`secubox-app` is shipped as a standalone OpenWrt package (see `package/secubox/secubox-app`) and installs the CLI at `/usr/sbin/secubox-app`. Commands:
 
 ```bash
 # List manifests
@@ -89,6 +89,20 @@ Environment variables:
 - `SECUBOX_PLUGINS_DIR`: override manifest directory (default `../plugins`).
 
 The CLI relies on `opkg` and `jsonfilter`, so run it on the router (or within the OpenWrt SDK). It is idempotent: reinstalling an already-installed app simply confirms package state and reruns optional install hooks.
+
+---
+
+## Packaged SecuBox Apps
+
+`secubox-app-*` packages provide the runtime pieces behind each manifest (init scripts, helpers, and default configs). They are copied automatically by `secubox-tools/local-build.sh` into both firmware builds and the SDK feed, so developers get the same artifacts as the LuCI wizard and CLI.
+
+| Package | Manifest ID | Purpose |
+|---------|-------------|---------|
+| `secubox-app-zigbee2mqtt` | `zigbee2mqtt` | Installs Docker runner + `zigbee2mqttctl`, exposes splash/log helpers, and ships default UCI config. |
+| `secubox-app-lyrion` | `lyrion` | Deploys the Lyrion Media Server container, CLI (`lyrionctl`), and profile hooks for HTTPS publishing. |
+| `secubox-app-domoticz` | `domoticz` | Provides Domoticz Docker automation (`domoticzctl`) and the base data/service layout consumed by the wizard. |
+
+All three packages declare their dependencies (Docker, vhost manager, etc.) so `secubox-app install <id>` only has to orchestrate actions, not guess at required feeds.
 
 ---
 

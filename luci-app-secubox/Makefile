@@ -24,19 +24,10 @@ include $(TOPDIR)/feeds/luci/luci.mk
 
 define Package/$(PKG_NAME)/install
 	$(call Package/luci/install,$(1))
-	$(INSTALL_DIR) $(1)/usr/share/secubox/plugins
-	for dir in $(CURDIR)/../plugins/*; do \
-		[ -d $$dir ] || continue; \
-		name=$$(basename $$dir); \
-		$(INSTALL_DIR) $(1)/usr/share/secubox/plugins/$$name; \
-		$(INSTALL_DATA) $$dir/manifest.json $(1)/usr/share/secubox/plugins/$$name/manifest.json; \
-	done
 	$(INSTALL_DIR) $(1)/usr/share/secubox/profiles
-	for file in $(CURDIR)/../profiles/*.json; do \
+	for file in $(CURDIR)/profiles/*.json; do \
 		$(INSTALL_DATA) $$file $(1)/usr/share/secubox/profiles/$$(basename $$file); \
 	done
-	$(INSTALL_DIR) $(1)/usr/sbin
-	$(INSTALL_BIN) $(CURDIR)/../secubox-tools/secubox-app $(1)/usr/sbin/secubox-app
 endef
 
 # call BuildPackage - OpenWrt buildroot

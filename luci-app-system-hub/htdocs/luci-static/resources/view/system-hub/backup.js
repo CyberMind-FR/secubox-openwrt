@@ -3,6 +3,7 @@
 'require ui';
 'require system-hub/api as API';
 'require secubox-theme/theme as Theme';
+'require system-hub/theme-assets as ThemeAssets';
 'require system-hub/nav as HubNav';
 
 var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
@@ -23,9 +24,9 @@ return view.extend({
 	render: function() {
 		return E('div', { 'class': 'system-hub-dashboard sh-backup-view' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/backup.css') }),
+			ThemeAssets.stylesheet('common.css'),
+			ThemeAssets.stylesheet('dashboard.css'),
+			ThemeAssets.stylesheet('backup.css'),
 			HubNav.renderTabs('backup'),
 			this.renderHeader(),
 			this.renderHero(),

@@ -5,6 +5,7 @@
 'require fs';
 'require secubox-theme/theme as Theme';
 'require system-hub/api as API';
+'require system-hub/theme-assets as ThemeAssets';
 'require system-hub/nav as HubNav';
 
 var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
@@ -23,8 +24,8 @@ return view.extend({
 
 		var view = E('div', { 'class': 'system-hub-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
+			ThemeAssets.stylesheet('common.css'),
+			ThemeAssets.stylesheet('dashboard.css'),
 			HubNav.renderTabs('diagnostics'),
 			
 			// Collect Diagnostics

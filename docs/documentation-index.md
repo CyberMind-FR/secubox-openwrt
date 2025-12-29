@@ -219,7 +219,7 @@ Pointer: see `docs/embedded/docker-zigbee2mqtt.md` for the canonical version.
 Pointer: see `docs/embedded/vhost-manager.md` for the canonical version.
 
 #### **embedded/app-store.md** 🛒
-*Plugin manifest format and CLI for the SecuBox App Store.*
+*Manifest schema, `secubox-app` CLI usage, and packaged SecuBox apps (Zigbee2MQTT, Lyrion, Domoticz).*
 
 Pointer: see `docs/embedded/app-store.md` for the canonical version.
 

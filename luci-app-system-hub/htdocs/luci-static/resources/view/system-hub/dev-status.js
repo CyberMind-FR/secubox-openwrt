@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require secubox-theme/theme as Theme';
+'require system-hub/theme-assets as ThemeAssets';
 'require system-hub/dev-status-widget as DevStatusWidget';
 'require system-hub/nav as HubNav';
 
@@ -24,8 +25,8 @@ return view.extend({
 		var widget = this.getWidget();
 		var container = E('div', { 'class': 'system-hub-dev-status' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
+			ThemeAssets.stylesheet('common.css'),
+			ThemeAssets.stylesheet('dashboard.css'),
 			HubNav.renderTabs('dev-status'),
 			this.renderHeader(),
 			this.renderSummaryGrid(),

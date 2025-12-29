@@ -5,6 +5,7 @@
 'require poll';
 'require system-hub/api as API';
 'require secubox-theme/theme as Theme';
+'require system-hub/theme-assets as ThemeAssets';
 'require system-hub/nav as HubNav';
 
 var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
@@ -29,9 +30,9 @@ return view.extend({
 
 		var container = E('div', { 'class': 'sh-overview' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/overview.css') }),
+			ThemeAssets.stylesheet('common.css'),
+			ThemeAssets.stylesheet('dashboard.css'),
+			ThemeAssets.stylesheet('overview.css'),
 			HubNav.renderTabs('overview'),
 			this.renderPageHeader(),
 			this.renderInfoGrid(),
