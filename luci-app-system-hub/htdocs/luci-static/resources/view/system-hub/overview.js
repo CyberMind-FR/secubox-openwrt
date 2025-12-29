@@ -5,6 +5,7 @@
 'require poll';
 'require system-hub/api as API';
 'require secubox-theme/theme as Theme';
+'require system-hub/nav as HubNav';
 
 var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -31,7 +32,8 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/overview.css') }),
-			this.renderHeroHeader(),
+			HubNav.renderTabs('overview'),
+			this.renderPageHeader(),
 			this.renderInfoGrid(),
 			this.renderResourceMonitors(),
 			this.renderQuickStatus()
@@ -52,46 +54,47 @@ return view.extend({
 		return container;
 	},
 
-	renderHeroHeader: function() {
+	renderPageHeader: function() {
 		var uptime = this.sysInfo.uptime_formatted || '0d 0h 0m';
 		var hostname = this.sysInfo.hostname || 'OpenWrt';
-		var kernel = this.sysInfo.kernel || '';
+		var kernel = this.sysInfo.kernel || '-';
 		var score = (this.healthData.score || 0);
 
-		return E('section', { 'class': 'sh-hero' }, [
-			E('div', { 'class': 'sh-hero-title' }, [
-				E('div', { 'class': 'sh-hero-icon' }, '⚙️'),
-				E('div', {}, [
-					E('h1', {}, _('System Control Center')),
-					E('p', {}, _('Unified telemetry & orchestration'))
-				])
+		var stats = [
+			{ label: _('Uptime'), value: uptime },
+			{ label: _('Hostname'), value: hostname },
+			{ label: _('Kernel'), value: kernel, copy: kernel },
+			{ label: _('Health'), value: score + '/100' }
+		];
+
+		return E('div', { 'class': 'sh-page-header' }, [
+			E('div', {}, [
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '⚙️'),
+					_('System Control Center')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' }, _('Unified telemetry & orchestration'))
 			]),
-			E('div', { 'class': 'sh-hero-meta' }, [
-				this.renderBadge('⏱ ' + uptime, 'sh-badge'),
-				this.renderBadge('🖥 ' + hostname, 'sh-badge'),
-				this.renderBadge(kernel, 'sh-badge ghost', { copy: kernel })
-			]),
-			E('div', { 'class': 'sh-hero-score' }, [
-				E('div', { 'class': 'sh-score-value', 'id': 'sh-score-value' }, score),
-				E('span', {}, '/100'),
-				E('div', { 'class': 'sh-score-label', 'id': 'sh-score-label' }, this.getScoreLabel(score))
-			])
+			E('div', { 'class': 'sh-stats-grid' }, stats.map(this.renderHeaderStat, this))
 		]);
 	},
 
-	renderBadge: function(text, cls, opts) {
-		var node = E('span', { 'class': cls }, text);
-		if (opts && opts.copy) {
-			node.classList.add('sh-badge-copy');
-			node.addEventListener('click', function() {
-				if (navigator.clipboard && opts.copy) {
-					navigator.clipboard.writeText(opts.copy).then(function() {
-						ui.addNotification(null, E('p', {}, _('Copied to clipboard')), 'info');
-					});
-				}
+	renderHeaderStat: function(stat) {
+		var badge = E('div', { 'class': 'sh-stat-badge' }, [
+			E('div', { 'class': 'sh-stat-value' }, stat.value || '-'),
+			E('div', { 'class': 'sh-stat-label' }, stat.label)
+		]);
+
+		if (stat.copy && navigator.clipboard) {
+			badge.style.cursor = 'pointer';
+			badge.addEventListener('click', function() {
+				navigator.clipboard.writeText(stat.copy).then(function() {
+					ui.addNotification(null, E('p', {}, _('Copied to clipboard')), 'info');
+				});
 			});
 		}
-		return node;
+
+		return badge;
 	},
 
 	renderInfoGrid: function() {

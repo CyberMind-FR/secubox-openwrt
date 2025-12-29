@@ -3,6 +3,7 @@
 'require form';
 'require uci';
 'require rpc';
+'require cdn-cache/nav as CdnNav';
 
 var callSetEnabled = rpc.declare({
 	object: 'luci.cdn-cache',
@@ -137,6 +138,9 @@ return view.extend({
 		o.datatype = 'uinteger';
 		o.default = '60';
 
-		return m.render();
+		return E('div', { 'class': 'cdn-settings-page' }, [
+			CdnNav.renderTabs('settings'),
+			m.render()
+		]);
 	}
 });

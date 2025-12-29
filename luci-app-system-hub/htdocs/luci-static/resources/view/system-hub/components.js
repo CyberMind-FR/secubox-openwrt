@@ -5,6 +5,7 @@
 'require poll';
 'require system-hub.api as API';
 'require system-hub.theme as Theme';
+'require system-hub/nav as HubNav';
 
 return view.extend({
 	componentsData: [],
@@ -26,7 +27,8 @@ return view.extend({
 		var view = E('div', { 'class': 'system-hub-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/components.css') }),
 
-			// Header with filter tabs
+			HubNav.renderTabs('components'),
+
 			E('div', { 'class': 'sh-components-header' }, [
 				E('h2', { 'class': 'sh-page-title' }, [
 					E('span', { 'class': 'sh-title-icon' }, '🧩'),

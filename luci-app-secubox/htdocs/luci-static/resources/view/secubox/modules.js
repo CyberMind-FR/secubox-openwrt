@@ -4,6 +4,7 @@
 'require dom';
 'require secubox/api as API';
 'require secubox-theme/theme as Theme';
+'require secubox/nav as SecuNav';
 'require poll';
 
 // Load global theme CSS
@@ -43,18 +44,15 @@ return view.extend({
 		var self = this;
 		var modules = this.modulesData;
 
-		var container = E('div', { 'class': 'secubox-modules-page' });
-
-		// Header with stats
-		container.appendChild(this.renderHeader(modules));
-
-		// Filter tabs
-		container.appendChild(this.renderFilterTabs());
-
-		// Modules grid
-		container.appendChild(E('div', { 'id': 'modules-grid', 'class': 'secubox-modules-grid' },
-			this.renderModuleCards(modules, 'all')
-		));
+		var container = E('div', { 'class': 'secubox-modules-page' }, [
+			SecuNav.renderTabs('modules'),
+			this.renderHeader(modules),
+			this.renderFilterTabs(),
+			E('div', {
+				'id': 'modules-grid',
+				'class': 'secubox-modules-grid'
+			}, this.renderModuleCards(modules, 'all'))
+		]);
 
 		// Auto-refresh
 		poll.add(function() {

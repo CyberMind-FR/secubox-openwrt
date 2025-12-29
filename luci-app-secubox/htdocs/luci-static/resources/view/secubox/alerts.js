@@ -4,6 +4,7 @@
 'require dom';
 'require secubox/api as API';
 'require secubox/theme as Theme';
+'require secubox/nav as SecuNav';
 'require poll';
 
 // Load CSS (base theme variables first)
@@ -41,19 +42,13 @@ return view.extend({
 
 	render: function(data) {
 		var self = this;
-		var container = E('div', { 'class': 'secubox-alerts-page' });
-
-		// Header
-		container.appendChild(this.renderHeader());
-
-		// Filters and controls
-		container.appendChild(this.renderControls());
-
-		// Stats overview
-		container.appendChild(this.renderStats());
-
-		// Alerts list
-		container.appendChild(this.renderAlertsList());
+		var container = E('div', { 'class': 'secubox-alerts-page' }, [
+			SecuNav.renderTabs('alerts'),
+			this.renderHeader(),
+			this.renderControls(),
+			this.renderStats(),
+			this.renderAlertsList()
+		]);
 
 		// Auto-refresh
 		poll.add(function() {
@@ -66,6 +61,7 @@ return view.extend({
 	},
 
 	renderHeader: function() {
+		var self = this;
 		return E('div', { 'class': 'secubox-page-header' }, [
 			E('div', {}, [
 				E('h2', {}, '⚠️ System Alerts'),

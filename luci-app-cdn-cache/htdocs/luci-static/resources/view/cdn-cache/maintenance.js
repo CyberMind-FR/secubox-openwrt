@@ -2,6 +2,7 @@
 'require view';
 'require rpc';
 'require ui';
+'require cdn-cache/nav as CdnNav';
 
 var callPurgeCache = rpc.declare({
 	object: 'luci.cdn-cache',
@@ -73,6 +74,8 @@ return view.extend({
 				.cdn-log-line { color: #94a3b8; padding: 2px 0; }
 				.cdn-log-line:hover { background: rgba(6,182,212,0.1); }
 			`),
+
+			CdnNav.renderTabs('maintenance'),
 
 			E('div', { 'class': 'cdn-page-header' }, [
 				E('h2', { 'class': 'cdn-page-title' }, '🔧 Maintenance')

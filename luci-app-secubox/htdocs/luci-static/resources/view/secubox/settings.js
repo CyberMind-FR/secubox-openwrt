@@ -5,6 +5,7 @@
 'require ui';
 'require secubox/api as API';
 'require secubox/theme as Theme';
+'require secubox/nav as SecuNav';
 
 return view.extend({
 	load: function() {
@@ -24,6 +25,8 @@ return view.extend({
 		var container = E('div', { 'class': 'secubox-settings-page' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
+
+			SecuNav.renderTabs('settings'),
 
 			// Modern header
 			E('div', { 'class': 'sh-page-header' }, [

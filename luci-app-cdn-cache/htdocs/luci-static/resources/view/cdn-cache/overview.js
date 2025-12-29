@@ -2,6 +2,7 @@
 'require view';
 'require rpc';
 'require secubox-theme/theme as Theme';
+'require cdn-cache/nav as CdnNav';
 
 var callStatus = rpc.declare({
 	object: 'luci.cdn-cache',
@@ -72,26 +73,37 @@ return view.extend({
 		return E('div', { 'class': 'cdn-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/dashboard.css') }),
-			this.renderHero(status),
+			CdnNav.renderTabs('overview'),
+			this.renderHeader(status),
 			this.renderMetricGrid(stats, cacheSize),
 			this.renderSections(stats, cacheSize, topDomains)
 		]);
 	},
 
-	renderHero: function(status) {
-		return E('section', { 'class': 'cdn-hero' }, [
+	renderHeader: function(status) {
+		var stats = [
+			{ label: _('Service'), value: status.running ? _('Running') : _('Stopped') },
+			{ label: _('Uptime'), value: formatUptime(status.uptime || 0) },
+			{ label: _('Cache files'), value: (status.cache_files || 0).toLocaleString() }
+		];
+
+		return E('div', { 'class': 'sh-page-header' }, [
 			E('div', {}, [
-				E('h2', {}, '📦 CDN Cache Control'),
-				E('p', {}, _('Edge caching for media, firmware and downloads')),
-				E('span', { 'class': 'cdn-status-badge ' + (status.running ? 'cdn-status-running' : 'cdn-status-stopped') }, [
-					status.running ? _('● Running on port ') + (status.listen_port || '3128') : _('○ Service stopped')
-				])
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '📦'),
+					_('CDN Cache Control')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					_('Edge caching for media, firmware, and downloads'))
 			]),
-			E('div', { 'class': 'cdn-hero-meta' }, [
-				E('span', {}, _('PID: ') + (status.pid || 'N/A')),
-				E('span', {}, _('Uptime: ') + formatUptime(status.uptime || 0)),
-				E('span', {}, _('Cache files: ') + (status.cache_files || 0).toLocaleString())
-			])
+			E('div', { 'class': 'sh-stats-grid' }, stats.map(this.renderHeaderStat, this))
+		]);
+	},
+
+	renderHeaderStat: function(stat) {
+		return E('div', { 'class': 'sh-stat-badge' }, [
+			E('div', { 'class': 'sh-stat-value' }, stat.value),
+			E('div', { 'class': 'sh-stat-label' }, stat.label)
 		]);
 	},
 

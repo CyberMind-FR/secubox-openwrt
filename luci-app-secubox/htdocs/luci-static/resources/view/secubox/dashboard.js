@@ -5,6 +5,7 @@
 'require poll';
 'require secubox/api as API';
 'require secubox-theme/theme as Theme';
+'require secubox/nav as SecuNav';
 
 // Load theme resources once
 document.head.appendChild(E('link', {
@@ -48,6 +49,7 @@ return view.extend({
 	render: function() {
 		var container = E('div', { 'class': 'secubox-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/dashboard.css') }),
+			SecuNav.renderTabs('dashboard'),
 			this.renderHeader(),
 			this.renderStatsGrid(),
 			this.renderMainLayout()
@@ -64,25 +66,37 @@ return view.extend({
 	},
 
 	renderHeader: function() {
-	var status = this.dashboardData.status || {};
-	return E('header', { 'class': 'sb-header' }, [
-		E('div', { 'class': 'sb-header-info' }, [
-			E('div', { 'class': 'sb-header-icon' }, '🚀'),
-			E('div', {}, [
-				E('h1', { 'class': 'sb-title' }, 'SecuBox Control Center'),
-				E('p', { 'class': 'sb-subtitle' }, 'Security · Network · System Automation')
-			])
-		]),
-		E('div', { 'class': 'sb-header-meta' }, [
-			this.renderBadge('v' + (status.version || this.getSystemVersion())),
-			this.renderBadge('⏱ ' + API.formatUptime(status.uptime || this.getSystemUptime())),
-			this.renderBadge('🖥 ' + (status.hostname || 'SecuBox'), 'sb-badge-ghost')
-		])
-	]);
-},
+		var status = this.dashboardData.status || {};
+		var counts = this.dashboardData.counts || {};
+		var moduleStats = this.getModuleStats();
+		var alertsCount = (this.alertsData.alerts || []).length;
+		var healthScore = (this.healthData.overall && this.healthData.overall.score) || 0;
 
-	renderBadge: function(text, extraClass) {
-		return E('span', { 'class': 'sb-badge ' + (extraClass || '') }, text);
+		var stats = [
+			{ label: _('Modules'), value: counts.total || moduleStats.total || 0 },
+			{ label: _('Running'), value: counts.running || moduleStats.running || 0 },
+			{ label: _('Alerts'), value: alertsCount },
+			{ label: _('Health'), value: healthScore + '/100' }
+		];
+
+		return E('div', { 'class': 'sh-page-header' }, [
+			E('div', {}, [
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '🚀'),
+					_('SecuBox Control Center')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					_('Security · Network · System automation'))
+			]),
+			E('div', { 'class': 'sh-stats-grid' }, stats.map(this.renderHeaderStat, this))
+		]);
+	},
+
+	renderHeaderStat: function(stat) {
+		return E('div', { 'class': 'sh-stat-badge' }, [
+			E('div', { 'class': 'sh-stat-value' }, stat.value.toString()),
+			E('div', { 'class': 'sh-stat-label' }, stat.label)
+		]);
 	},
 
 	renderStatsGrid: function() {

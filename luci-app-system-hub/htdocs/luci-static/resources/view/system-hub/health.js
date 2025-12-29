@@ -5,6 +5,7 @@
 'require poll';
 'require system-hub/api as API';
 'require system-hub/theme as Theme';
+'require system-hub/nav as HubNav';
 
 Theme.init();
 
@@ -21,6 +22,7 @@ return view.extend({
 		var container = E('div', { 'class': 'system-hub-dashboard sh-health-view' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/health.css') }),
+			HubNav.renderTabs('health'),
 			this.renderHero(),
 			this.renderMetricGrid(),
 			this.renderSummaryPanels(),
@@ -176,4 +178,3 @@ return view.extend({
 		ui.addNotification(null, E('p', {}, _('Full health check started (see alerts).')), 'info');
 	}
 });
-

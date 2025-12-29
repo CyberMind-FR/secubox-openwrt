@@ -3,6 +3,7 @@
 'require rpc';
 'require ui';
 'require form';
+'require cdn-cache/nav as CdnNav';
 
 var callPolicies = rpc.declare({
 	object: 'luci.cdn-cache',
@@ -67,6 +68,8 @@ return view.extend({
 				.cdn-btn-danger { background: transparent; color: #ef4444; border: 1px solid #ef4444; }
 				.cdn-empty { text-align: center; padding: 40px; color: #64748b; }
 			`),
+
+			CdnNav.renderTabs('policies'),
 
 			E('div', { 'class': 'cdn-page-header' }, [
 				E('h2', { 'class': 'cdn-page-title' }, '📋 Policies de Cache'),

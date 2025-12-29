@@ -167,6 +167,8 @@ graph TB
 
 #### 1. Page Header (Standard)
 
+**REQUIREMENT:** Every module view MUST begin with this compact `.sh-page-header`. Do not introduce bespoke hero sections or oversized banners; the header keeps height predictable (title + subtitle on the left, stats on the right) and guarantees consistency across SecuBox dashboards. If no stats are needed, keep the container but supply an empty `.sh-stats-grid` for future metrics.
+
 **HTML Structure:**
 ```javascript
 E('div', { 'class': 'sh-page-header' }, [

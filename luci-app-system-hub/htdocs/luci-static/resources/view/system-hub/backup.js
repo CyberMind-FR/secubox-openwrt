@@ -3,6 +3,7 @@
 'require ui';
 'require system-hub/api as API';
 'require system-hub/theme as Theme';
+'require system-hub/nav as HubNav';
 
 Theme.init();
 
@@ -15,6 +16,7 @@ return view.extend({
 		var container = E('div', { 'class': 'system-hub-dashboard sh-backup-view' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/backup.css') }),
+			HubNav.renderTabs('backup'),
 			this.renderHero(),
 			E('div', { 'class': 'sh-backup-grid' }, [
 				this.renderBackupCard(),

@@ -3,6 +3,7 @@
 'require rpc';
 'require ui';
 'require secubox-theme/theme as Theme';
+'require cdn-cache/nav as CdnNav';
 
 var callCacheList = rpc.declare({
 	object: 'luci.cdn-cache',
@@ -59,6 +60,7 @@ return view.extend({
 		return E('div', { 'class': 'cdn-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/dashboard.css') }),
+			CdnNav.renderTabs('cache'),
 			this.renderHero(items, domains),
 			this.renderDomains(domains),
 			this.renderCacheTable(items)

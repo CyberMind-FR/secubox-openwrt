@@ -5,6 +5,7 @@
 'require poll';
 'require secubox/api as API';
 'require secubox-theme/theme as Theme';
+'require secubox/nav as SecuNav';
 
 // Respect LuCI language/theme preferences
 var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
@@ -56,6 +57,7 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/monitoring.css') }),
+			SecuNav.renderTabs('monitoring'),
 			this.renderHero(),
 			this.renderChartsGrid(),
 			this.renderCurrentStatsCard()

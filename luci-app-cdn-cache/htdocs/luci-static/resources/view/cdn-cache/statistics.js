@@ -2,6 +2,7 @@
 'require view';
 'require rpc';
 'require secubox-theme/theme as Theme';
+'require cdn-cache/nav as CdnNav';
 
 var callStats = rpc.declare({
 	object: 'luci.cdn-cache',
@@ -60,6 +61,7 @@ return view.extend({
 		var view = E('div', { 'class': 'cdn-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/dashboard.css') }),
+			CdnNav.renderTabs('statistics'),
 			this.renderHero(stats),
 			this.renderMetrics(stats),
 			this.renderTrendSection(_('Bandwidth Savings'), bandwidthTrend, '#06b6d4', function(d) {

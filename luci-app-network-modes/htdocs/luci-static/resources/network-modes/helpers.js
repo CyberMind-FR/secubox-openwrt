@@ -136,25 +136,17 @@ function createStepper(steps, active) {
 }
 
 function createNavigationTabs(activeId) {
-	var base = 'admin/secubox/network/modes/';
-	return E('nav', { 'class': 'nm-nav-tabs' }, [
-		E('div', { 'class': 'cyber-tablist' },
-			NAV_BLUEPRINT.map(function(item) {
-				var cls = 'cyber-tab';
-				if (activeId === item.id)
-					cls += ' is-active';
-
-				return E('a', {
-					'class': cls,
-					'href': L.url(base + item.id),
-					'aria-current': activeId === item.id ? 'page' : null
-				}, [
-					E('span', { 'class': 'cyber-tab-icon' }, item.icon),
-					E('span', { 'class': 'cyber-tab-label' }, _(item.labelKey))
-				]);
-			})
-		)
-	]);
+	return E('div', { 'class': 'sh-nav-tabs network-modes-nav-tabs' },
+		NAV_BLUEPRINT.map(function(item) {
+			return E('a', {
+				'class': 'sh-nav-tab' + (activeId === item.id ? ' active' : ''),
+				'href': L.url('admin', 'secubox', 'network', 'modes', item.id)
+			}, [
+				E('span', { 'class': 'sh-tab-icon' }, item.icon),
+				E('span', { 'class': 'sh-tab-label' }, _(item.labelKey))
+			]);
+		})
+	);
 }
 
 return baseclass.extend({

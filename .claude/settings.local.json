@@ -155,7 +155,8 @@
       "Bash(luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/services.js )",
       "Bash(deploy-modules-with-theme.sh)",
       "Bash(timeout 120 ./local-build.sh:*)",
-      "Bash(do echo \"=== admin/secubox/$category ===\")"
+      "Bash(do echo \"=== admin/secubox/$category ===\")",
+      "Bash(./secubox-tools/sync_module_versions.sh:*)"
     ]
   }
 }

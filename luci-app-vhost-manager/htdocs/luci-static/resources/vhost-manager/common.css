@@ -81,7 +81,7 @@ pre {
 }
 
 .sh-page-title {
-	font-size: 28px;
+	font-size: 20px;
 	font-weight: 700;
 	margin: 0;
 	background: linear-gradient(135deg, var(--sh-primary), var(--sh-primary-end));
@@ -94,7 +94,7 @@ pre {
 }
 
 .sh-page-title-icon {
-	font-size: 32px;
+	font-size: 24px;
 	line-height: 1;
 	-webkit-text-fill-color: initial;
 }

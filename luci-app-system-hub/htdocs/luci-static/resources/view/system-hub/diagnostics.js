@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require fs';
+'require system-hub/nav as HubNav';
 
 var api = L.require('system-hub.api');
 
@@ -17,6 +18,7 @@ return view.extend({
 
 		var view = E('div', { 'class': 'system-hub-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
+			HubNav.renderTabs('diagnostics'),
 			
 			// Collect Diagnostics
 			E('div', { 'class': 'sh-card' }, [

@@ -1,34 +1,95 @@
 'use strict';
 'require view';
-'require vhost-manager.api as api';
+'require vhost-manager/api as API';
+'require secubox-theme/theme as Theme';
+'require vhost-manager/ui as VHostUI';
+
+var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: lang });
+
+var SERVICES = [
+	{ icon: '🖥️', name: _('LuCI UI'), domain: 'router.local', backend: 'http://127.0.0.1:80', category: _('Core'), description: _('Expose the management UI behind nginx with optional SSL and auth.') },
+	{ icon: '📈', name: _('Netdata'), domain: 'metrics.local', backend: 'http://127.0.0.1:19999', category: _('Monitoring'), description: _('High-resolution telemetry for CPU, memory, and interfaces.') },
+	{ icon: '🛡️', name: _('CrowdSec'), domain: 'crowdsec.local', backend: 'http://127.0.0.1:8080', category: _('Security'), description: _('Review bouncer decisions and live intrusion alerts.') },
+	{ icon: '🏠', name: _('Home Assistant'), domain: 'home.local', backend: 'http://192.168.1.13:8123', category: _('Automation'), description: _('Publish your smart-home UI securely with SSL and auth.') },
+	{ icon: '🎬', name: _('Media Server'), domain: 'media.local', backend: 'http://192.168.1.12:8096', category: _('Entertainment'), description: _('Jellyfin or Plex front-end available via a friendly hostname.') },
+	{ icon: '🗄️', name: _('Nextcloud'), domain: 'cloud.local', backend: 'http://192.168.1.20:80', category: _('Productivity'), description: _('Bring private SaaS back on-prem with HTTPS and caching headers.') }
+];
 
 return view.extend({
-    load: function() { return api.getInternalHosts(); },
-    render: function(data) {
-        var hosts = data.hosts || [];
-        return E('div', {class:'cbi-map'}, [
-            E('h2', {}, '🏠 Internal Virtual Hosts'),
-            E('p', {style:'color:#94a3b8;margin-bottom:20px'}, 'Self-hosted services accessible from your local network.'),
-            E('div', {style:'background:#1e293b;padding:20px;border-radius:12px'}, [
-                E('table', {style:'width:100%;color:#f1f5f9'}, [
-                    E('tr', {style:'border-bottom:1px solid #334155'}, [
-                        E('th', {style:'padding:12px;text-align:left'}, 'Service'),
-                        E('th', {style:'padding:12px'}, 'Domain'),
-                        E('th', {style:'padding:12px'}, 'Backend'),
-                        E('th', {style:'padding:12px'}, 'SSL'),
-                        E('th', {style:'padding:12px'}, 'Status')
-                    ])
-                ].concat(hosts.map(function(h) {
-                    return E('tr', {}, [
-                        E('td', {style:'padding:12px;font-weight:600'}, h.name),
-                        E('td', {style:'padding:12px;font-family:monospace;color:#10b981'}, h.domain),
-                        E('td', {style:'padding:12px;font-family:monospace;color:#64748b'}, h.backend),
-                        E('td', {style:'padding:12px;text-align:center'}, h.ssl ? '🔒' : '🔓'),
-                        E('td', {style:'padding:12px'}, E('span', {style:'padding:4px 8px;border-radius:4px;background:'+(h.enabled?'#22c55e20;color:#22c55e':'#64748b20;color:#64748b')}, h.enabled ? 'Active' : 'Disabled'))
-                    ]);
-                })))
-            ])
-        ]);
-    },
-    handleSaveApply:null,handleSave:null,handleReset:null
+	load: function() {
+		return Promise.all([
+			API.listVHosts()
+		]);
+	},
+
+	render: function(data) {
+		var vhosts = data[0] || [];
+		var active = {};
+		vhosts.forEach(function(v) {
+			active[v.domain] = true;
+		});
+
+		return E('div', { 'class': 'vhost-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
+			VHostUI.renderTabs('internal'),
+			this.renderHeader(vhosts),
+			this.renderServices(active)
+		]);
+	},
+
+	renderHeader: function(vhosts) {
+		var configured = vhosts.filter(function(vhost) {
+			return SERVICES.some(function(s) { return s.domain === vhost.domain; });
+		}).length;
+
+		return E('div', { 'class': 'sh-page-header' }, [
+			E('div', {}, [
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '🏠'),
+					_('Internal Service Catalog')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					_('Pre-built recipes for publishing popular LAN services with SSL, auth, and redirects.'))
+			]),
+			E('div', { 'class': 'sh-stats-grid' }, [
+				this.renderStat(SERVICES.length, _('Templates')),
+				this.renderStat(configured, _('Configured'))
+			])
+		]);
+	},
+
+	renderStat: function(value, label) {
+		return E('div', { 'class': 'sh-stat-badge' }, [
+			E('div', { 'class': 'sh-stat-value' }, value.toString()),
+			E('div', { 'class': 'sh-stat-label' }, label)
+		]);
+	},
+
+	renderServices: function(active) {
+		return E('div', { 'class': 'vhost-card-grid' },
+			SERVICES.map(function(service) {
+				var isActive = !!active[service.domain];
+				return E('div', { 'class': 'vhost-card' }, [
+					E('div', { 'class': 'vhost-card-title' }, [service.icon, service.name]),
+					E('div', { 'class': 'vhost-card-meta' }, service.category),
+					E('p', { 'class': 'vhost-card-meta' }, service.description),
+					E('div', { 'class': 'vhost-card-meta' }, _('Domain: %s').format(service.domain)),
+					E('div', { 'class': 'vhost-card-meta' }, _('Backend: %s').format(service.backend)),
+					E('div', { 'class': 'vhost-actions' }, [
+						E('span', { 'class': 'vhost-pill ' + (isActive ? 'success' : '') },
+							isActive ? _('Published') : _('Not configured')),
+						E('a', {
+							'class': 'sh-btn-secondary',
+							'href': L.url('admin', 'secubox', 'services', 'vhosts', 'vhosts')
+						}, isActive ? _('Manage') : _('Create'))
+					])
+				]);
+			})
+		);
+	}
 });

@@ -104,21 +104,7 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') }),
 			helpers.createNavigationTabs('overview'),
 
-			// Header
-			E('div', { 'class': 'nm-header' }, [
-				E('div', { 'class': 'nm-logo' }, [
-					E('div', { 'class': 'nm-logo-icon' }, '🌐'),
-					E('div', { 'class': 'nm-logo-text' }, ['Network ', E('span', {}, 'Configuration')])
-				]),
-				E('div', { 'class': 'nm-mode-badge ' + currentMode }, [
-					E('span', { 'class': 'nm-mode-dot' }),
-					currentModeInfo ? currentModeInfo.name : currentMode
-				]),
-				Help.createHelpButton('network-modes', 'header', {
-					icon: '📖',
-					label: _('Help')
-				})
-			]),
+			this.renderHeader(status, currentModeInfo),
 			
 			// Current Mode Display Card
 			E('div', { 'class': 'nm-current-mode-card' }, [
@@ -376,6 +362,34 @@ return view.extend({
 		document.head.appendChild(cssLink);
 		
 		return view;
+	},
+
+	renderHeader: function(status, currentModeInfo) {
+		var modeName = currentModeInfo ? currentModeInfo.name : (status.current_mode || 'router');
+		var stats = [
+			{ label: _('Mode'), value: modeName },
+			{ label: _('WAN IP'), value: status.wan_ip || _('Unknown') },
+			{ label: _('LAN IP'), value: status.lan_ip || _('Unknown') }
+		];
+
+		return E('div', { 'class': 'sh-page-header' }, [
+			E('div', {}, [
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '🌐'),
+					_('Network Configuration')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					_('Switch between curated router, bridge, relay, and travel modes.'))
+			]),
+			E('div', { 'class': 'sh-stats-grid' }, stats.map(this.renderHeaderStat, this))
+		]);
+	},
+
+	renderHeaderStat: function(stat) {
+		return E('div', { 'class': 'sh-stat-badge' }, [
+			E('div', { 'class': 'sh-stat-value' }, stat.value || '-'),
+			E('div', { 'class': 'sh-stat-label' }, stat.label)
+		]);
 	},
 	
 	handleSaveApply: null,

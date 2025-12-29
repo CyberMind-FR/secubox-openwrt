@@ -2,6 +2,7 @@
 'require view';
 'require dom';
 'require ui';
+'require system-hub/nav as HubNav';
 
 var api = L.require('system-hub.api');
 
@@ -15,6 +16,7 @@ return view.extend({
 
 		var view = E('div', { 'class': 'system-hub-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
+			HubNav.renderTabs('remote'),
 			
 			// RustDesk Section
 			E('div', { 'class': 'sh-card sh-remote-card' }, [

@@ -5,6 +5,7 @@
 'require poll';
 'require system-hub/api as API';
 'require secubox-theme/theme as Theme';
+'require system-hub/nav as HubNav';
 
 var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -31,6 +32,7 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/dashboard.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('system-hub/logs.css') }),
+			HubNav.renderTabs('logs'),
 			this.renderHero(),
 			this.renderControls(),
 			this.renderBody()
