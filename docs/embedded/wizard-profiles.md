@@ -59,6 +59,7 @@ Baseline profiles:
 | `lab` | Monitoring lab | Router mode, ensures Netifyd & Bandwidth Manager |
 | `hardened` | Security-focused | Enables CrowdSec + Client Guardian |
 | `gateway_dmz` | Router + DMZ segment | Switches to DMZ mode and enables VHost manager |
+| `lxc_base` | (Upcoming) baseline LXC container | Reserved for future `secubox-lxc` integrations |
 
 `apply_profile` automatically tars `/etc/config` to `/etc/secubox-profiles/backups/` before modifying settings, so the **Rollback last profile** button (or `rollback_profile` RPC) instantly restores prior UCI files.
 

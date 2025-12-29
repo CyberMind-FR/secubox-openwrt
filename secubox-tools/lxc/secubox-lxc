@@ -1,0 +1,171 @@
+#!/bin/sh
+# SecuBox LXC helper: create/start/stop LXC containers following SecuBox conventions
+
+set -eu
+
+CONFIG="/etc/config/lxcapps"
+STORAGE_ROOT="/srv/lxc"
+TEMPLATE_DIR="${SECUBOX_LXC_TEMPLATES:-/usr/share/secubox/lxc/templates}"
+
+usage() {
+	cat <<'USAGE'
+SecuBox LXC Manager
+Usage: secubox-lxc <command> [options]
+
+Commands:
+  list                         Show containers defined in /etc/config/lxcapps
+  show <name>                  Display config values for a container
+  create <name> [options]      Create container (downloads template if needed)
+  start <name>                 Start container via lxc-start
+  stop <name>                  Stop container via lxc-stop
+  delete <name>                Stop and remove container directory
+  status <name>                Show runtime state
+
+Options (create):
+  --template PATH              Rootfs tarball or template script (default debian)
+  --bridge BRIDGE              Bridge to attach (default br-lan)
+  --ip ADDRESS                 Static IP address (optional)
+  --gateway ADDRESS            Gateway (optional)
+  --dns ADDRESS                DNS server (optional)
+  --memory MB                  Memory limit (optional)
+
+Examples:
+  secubox-lxc list
+  secubox-lxc create secubox-lyrion --bridge br-dmz --ip 192.168.50.10
+  secubox-lxc start secubox-lyrion
+USAGE
+}
+
+require_tool() {
+	command -v "$1" >/dev/null 2>&1 || { echo "[ERROR] Missing dependency: $1" >&2; exit 1; }
+}
+
+ensure_storage() {
+	mkdir -p "$STORAGE_ROOT"
+}
+
+uci_get_container() {
+	local name="$1" option="$2"
+	uci -q get lxcapps."$name"."$2"
+}
+
+uci_set_container() {
+	local name="$1" option="$2" value="$3"
+	uci set lxcapps."$name"."$option"="$value"
+}
+
+list_containers() {
+	uci -q show lxcapps 2>/dev/null | grep '=container$' | cut -d. -f2 | cut -d= -f1
+}
+
+cmd_list() {
+	require_tool lxc-info
+	ensure_storage
+	printf '%-18s %-20s %-10s %-16s\n' "Name" "Bridge" "State" "RootFS"
+	printf '%-18s %-20s %-10s %-16s\n' "----" "------" "-----" "------"
+	for name in $(list_containers); do
+		local bridge rootfs state
+		bridge=$(uci_get_container "$name" bridge || printf 'br-lan')
+		rootfs="$STORAGE_ROOT/$name/rootfs"
+		if lxc-info -n "$name" >/dev/null 2>&1; then
+			state=$(lxc-info -n "$name" -s 2>/dev/null | awk '{print $2}')
+		else
+			state="N/A"
+		fi
+		printf '%-18s %-20s %-10s %-16s\n' "$name" "$bridge" "$state" "$rootfs"
+	done
+}
+
+cmd_show() {
+	local name="$1"
+	uci -q show lxcapps."$name"
+}
+
+cmd_create() {
+	require_tool lxc-create
+	local name="$1"; shift
+	local template="debian"
+	local bridge="br-lan"
+	local ip=""
+	local gateway=""
+	local dns=""
+	local memory=""
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--template) template="$2"; shift 2;;
+			--bridge) bridge="$2"; shift 2;;
+			--ip) ip="$2"; shift 2;;
+			--gateway) gateway="$2"; shift 2;;
+			--dns) dns="$2"; shift 2;;
+			--memory) memory="$2"; shift 2;;
+			*) echo "Unknown option: $1" >&2; exit 1;;
+		esac
+	 done
+	[ -n "$name" ] || { echo "Container name required" >&2; exit 1; }
+	ensure_storage
+	local container_dir="$STORAGE_ROOT/$name"
+	if [ -d "$container_dir" ]; then
+		echo "[WARN] Container directory already exists, skipping rootfs creation."
+	else
+		mkdir -p "$container_dir"
+		local tmpl_path="$template"
+		if [ -f "$TEMPLATE_DIR/$template" ]; then
+			tmpl_path="$TEMPLATE_DIR/$template"
+		fi
+		lxc-create -n "$name" -P "$STORAGE_ROOT" -t "$tmpl_path"
+	fi
+	uci batch <<-EOF
+		set lxcapps.$name=container
+		set lxcapps.$name.bridge='$bridge'
+	EOF
+	[ -n "$ip" ] && uci_set_container "$name" ip "$ip"
+	[ -n "$gateway" ] && uci_set_container "$name" gateway "$gateway"
+	[ -n "$dns" ] && uci_set_container "$name" dns "$dns"
+	[ -n "$memory" ] && uci_set_container "$name" memory "$memory"
+	uci commit lxcapps
+	cat <<MSG
+[INFO] Container $name created.
+Rootfs: $container_dir
+Bridge: $bridge
+MSG
+}
+
+cmd_start() {
+	require_tool lxc-start
+	local name="$1"
+	lxc-start -n "$name" -d
+}
+
+cmd_stop() {
+	require_tool lxc-stop
+	local name="$1"
+	lxc-stop -n "$name"
+}
+
+cmd_delete() {
+	require_tool lxc-destroy
+	local name="$1"
+	lxc-stop -n "$name" >/dev/null 2>&1 || true
+	lxc-destroy -n "$name"
+	rm -rf "$STORAGE_ROOT/$name"
+	uci delete lxcapps."$name"
+	uci commit lxcapps
+}
+
+cmd_status() {
+	require_tool lxc-info
+	local name="$1"
+	lxc-info -n "$name"
+}
+
+case "${1:-}" in
+	list) shift; cmd_list "$@" ;;
+	show) shift; [ $# -ge 1 ] || { usage; exit 1; }; cmd_show "$1" ;;
+	create) shift; [ $# -ge 1 ] || { usage; exit 1; }; cmd_create "$@" ;;
+	start) shift; [ $# -ge 1 ] || { usage; exit 1; }; cmd_start "$1" ;;
+	stop) shift; [ $# -ge 1 ] || { usage; exit 1; }; cmd_stop "$1" ;;
+	delete) shift; [ $# -ge 1 ] || { usage; exit 1; }; cmd_delete "$1" ;;
+	status) shift; [ $# -ge 1 ] || { usage; exit 1; }; cmd_status "$1" ;;
+	help|--help|-h|'') usage ;;
+	*) usage; exit 1 ;;
+esac
