@@ -20,6 +20,7 @@ Ce document définit les standards, bonnes pratiques et validations obligatoires
 7. [Common Errors & Solutions](#common-errors--solutions)
 8. [Validation Checklist](#validation-checklist)
 9. [Deployment Procedures](#deployment-procedures)
+10. [AI Assistant Context Files](#ai-assistant-context-files)
 
 ---
 
@@ -166,6 +167,12 @@ graph TB
 ---
 
 #### 1. Page Header (Standard)
+
+**REQUIREMENT:** Every module view MUST begin with this compact `.sh-page-header`. Do not introduce bespoke hero sections or oversized banners; the header keeps height predictable (title + subtitle on the left, stats on the right) and guarantees consistency across SecuBox dashboards. If no stats are needed, keep the container but supply an empty `.sh-stats-grid` for future metrics.
+
+**Slim variant:** When the page only needs 2‑3 metrics, use `.sh-page-header-lite` + `.sh-header-chip` (see `luci-app-vhost-manager` and `luci-app-secubox` settings). Chips carry an emoji/icon, a tiny label, and the value; colors (`.success`, `.danger`, `.warn`) communicate state. This variant replaces the bulky hero blocks from older demos.
+
+**Version chip:** Always expose the package version from the RPC backend (read from `/usr/lib/opkg/info/<pkg>.control`) and display it as the first chip (`icon: 🏷️`). That keeps the UI and `PKG_VERSION` in sync without hunting for hard-coded strings.
 
 **HTML Structure:**
 ```javascript
@@ -1827,6 +1834,30 @@ var(--sh-shadow)            /* Box shadow */
 var(--sh-hover-shadow)      /* Hover shadow */
 var(--sh-hover-bg)          /* Hover background */
 ```
+
+---
+
+## AI Assistant Context Files
+
+SecuBox work is shared between Claude and Codex assistants. Keep the context folders synchronized so any agent can resume work quickly:
+
+| Directory | File | Usage |
+|-----------|------|-------|
+| `.claude/` | `HISTORY.md` | Chronological log of UI/theme changes and major deployments |
+| `.claude/` | `TODO.md` | High-level backlog (UX polish, docs, automation ideas) |
+| `.claude/` | `WIP.md` | Active tasks, risks, and immediate next steps |
+| `.codex/` | `HISTORY.md` | Mirrors the development timeline for Codex sessions |
+| `.codex/` | `TODO.md` | Tooling-focused tasks (linting, scripts, build automation) |
+| `.codex/` | `WIP.md` | Status tracker for ongoing Codex efforts |
+
+**Maintenance rules**
+
+1. **Update after each session:** When finishing work, append a short bullet to HISTORY and adjust WIP/TODO so they reflect the new state.
+2. **Reference deployment scripts:** Note which `secubox-tools/*.sh` script was used (dashboard vs. full deploy) so the next assistant knows how to reproduce it.
+3. **Keep entries concise:** A single paragraph or bullet per update is enough; detailed specs remain in DOCS.
+4. **Cross-check before big changes:** Read both folders before starting work to avoid conflicts or duplicate efforts.
+
+Treat these files as living handoff notes—if they drift, onboarding a new AI/teammate becomes significantly slower.
 
 ---
 

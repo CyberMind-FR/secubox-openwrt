@@ -211,77 +211,32 @@ Follow this template when creating or revising documentation:
 #### **embedded/docker-zigbee2mqtt.md** 🔌
 *Deploy Zigbee2MQTT via Docker on SecuBox (ARM64).*
 
-**Contents:**
-- Prerequisite checklist (storage, cgroups, USB coordinator, Docker packages)
-- Usage of `zigbee2mqttctl` (install/check/update/status/logs)
-- UCI configuration reference (`/etc/config/zigbee2mqtt`)
-- Troubleshooting + rollback/uninstall steps
-
-**When to use:** Setting up Zigbee2MQTT before the LuCI UI is available.
-
-**Size:** Short (~100 lines)
+Pointer: see `docs/embedded/docker-zigbee2mqtt.md` for the canonical version.
 
 #### **embedded/vhost-manager.md** 🌐
-*How to publish local services behind nginx with vhost manager + CLI helper.*
+*How to publish services through nginx using the vhost manager and CLI helper.*
 
-**Contents:**
-- Overview of `luci-app-vhost-manager` UI
-- CLI usage for `scripts/vhostctl.sh` (list/add/remove/reload)
-- Example mapping for Zigbee2MQTT
-- Troubleshooting tips (ACME, manual certs, upstream errors)
-
-**When to use:** Exposing Docker/LXC apps through HTTPS or integrating profiles/wizards.
-
-**Size:** Short (~120 lines)
+Pointer: see `docs/embedded/vhost-manager.md` for the canonical version.
 
 #### **embedded/app-store.md** 🛒
-*Plugin manifest format and SecuBox App Store CLI.*
+*Plugin manifest format and CLI for the SecuBox App Store.*
 
-**Contents:**
-- Manifest schema (id/type/packages/actions, wizard metadata)
-- Example manifest for Zigbee2MQTT
-- `secubox-app` CLI usage (list/show/install/status/update/remove)
-- Notes on future LuCI App Store + profile integration
-
-**When to use:** Creating new app manifests or scripting installs via CLI.
-
-**Size:** Short (~120 lines)
+Pointer: see `docs/embedded/app-store.md` for the canonical version.
 
 #### **embedded/wizard-profiles.md** 🧭
-*First-run wizard + OS-like profiles.*
+*First-run wizard and OS-like profiles.*
 
-**Contents:**
-- First-run checklist (password, timezone, storage, network mode)
-- Using manifest-driven app wizards
-- Baseline profiles (Home, Lab, Hardened, Gateway+DMZ) and rollback mechanics
-
-**When to use:** Guiding new deployments or applying pre-made bundles.
-
-**Size:** Short (~130 lines)
+Pointer: see `docs/embedded/wizard-profiles.md` for the canonical version.
 
 #### **embedded/lyrion-docker.md** 🎵
 *Deploy Lyrion Media Server via Docker.*
 
-**Contents:**
-- `secubox-app-lyrion` installer usage
-- UCI options (`/etc/config/lyrion`) and CLI helper commands
-- VHost exposure steps and troubleshooting
-
-**When to use:** Hosting Lyrion through the SecuBox App Store/wizard workflow.
-
-**Size:** Short (~120 lines)
+Pointer: see `docs/embedded/lyrion-docker.md` for the canonical version.
 
 #### **embedded/domoticz-docker.md** 🏠
 *Deploy Domoticz home automation via Docker.*
 
-**Contents:**
-- `secubox-app-domoticz` usage and `domoticzctl` commands
-- UCI options + wizard fields
-- VHost + DMZ profile guidance
-
-**When to use:** Hosting Domoticz using the new App Store manifest.
-
-**Size:** Short (~120 lines)
+Pointer: see `docs/embedded/domoticz-docker.md` for the canonical version.
 
 ---
 
