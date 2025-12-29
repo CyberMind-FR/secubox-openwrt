@@ -88,13 +88,13 @@ return view.extend({
 		var self = this;
 		return E('div', { 'class': 'secubox-header-actions' }, [
 			E('button', {
-				'class': 'cbi-button cbi-button-action',
+				'class': 'sh-btn sh-btn-danger',
 				'click': function() {
 					self.clearAllAlerts();
 				}
 			}, '🗑️ Clear All'),
 			E('button', {
-				'class': 'cbi-button cbi-button-neutral',
+				'class': 'sh-btn sh-btn-secondary',
 				'click': function() {
 					self.refreshData().then(function() {
 						self.updateAlertsList();

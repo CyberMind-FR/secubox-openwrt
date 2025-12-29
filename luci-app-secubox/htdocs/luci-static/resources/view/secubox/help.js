@@ -34,49 +34,27 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			SecuNav.renderTabs('help'),
 			this.renderHeader(data),
-			this.renderHero(data),
 			this.renderHelpCatalog(helpPages),
 			this.renderSupportSection(),
 			this.renderFooter()
 		]);
 	},
 
-	renderHero: function(status) {
-		return E('div', { 'class': 'secubox-card secubox-help-hero' }, [
-			E('div', { 'class': 'secubox-help-hero-text' }, [
-				E('span', { 'class': 'secubox-help-eyebrow' }, _('Bonus Tab')),
-				E('h2', {}, _('Help à SecuBox')),
-				E('p', { 'class': 'secubox-help-subtitle' },
-					_('Retrouvez la documentation, les guides et toutes les façons de soutenir la suite SecuBox.')),
-				E('div', { 'class': 'secubox-help-hero-stats' }, [
-					this.renderHeroStat('📦', _('Modules Couvert•e•s'), Object.keys(Help.getAllHelpPages()).length),
-					this.renderHeroStat('⚙️', _('Version Actuelle'), status.version || 'v1.0.0'),
-					this.renderHeroStat('🌐', _('Site Officiel'), 'secubox.cybermood.eu')
-				])
+	renderHeader: function(status) {
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
+			E('div', {}, [
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '✨'),
+					_('SecuBox Help & Bonus')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					_('Documentation, support et ressources officielles pour l’écosystème SecuBox.'))
 			]),
-			E('div', { 'class': 'secubox-help-hero-actions' }, [
-				Help.createHelpButton('secubox', 'header', {
-					icon: '📚',
-					label: _('Ouvrir la knowledge base'),
-					modal: true
-				}),
-				E('a', {
-					'class': 'sb-help-btn sb-help-header secubox-help-cta',
-					'href': 'https://secubox.cybermood.eu/#contact',
-					'target': '_blank'
-				}, [
-					E('span', { 'class': 'sb-help-icon' }, '🤝'),
-					E('span', { 'class': 'sb-help-label' }, _('Contacter SecuBox'))
-				])
+			E('div', { 'class': 'sh-header-meta' }, [
+				this.renderHeaderChip('🏷️', _('Version'), status.version || _('Unknown')),
+				this.renderHeaderChip('📘', _('Guides'), Object.keys(Help.getAllHelpPages()).length),
+				this.renderHeaderChip('🌐', _('Site vitrine'), 'secubox.cybermood.eu')
 			])
-		]);
-	},
-
-	renderHeroStat: function(icon, label, value) {
-		return E('div', { 'class': 'secubox-help-hero-stat' }, [
-			E('div', { 'class': 'secubox-help-hero-stat-icon' }, icon),
-			E('div', { 'class': 'secubox-help-hero-stat-value' }, value),
-			E('div', { 'class': 'secubox-help-hero-stat-label' }, label)
 		]);
 	},
 

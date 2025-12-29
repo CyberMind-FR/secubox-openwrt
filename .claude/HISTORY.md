@@ -23,3 +23,8 @@ _Last updated: 2025-12-28_
    - Use `secubox-tools/deploy-secubox-dashboard.sh` for view-only pushes.  
    - Use `secubox-tools/deploy-secubox-v0.1.2.sh` for RPCD/config updates.  
    - Always clear `/tmp/luci-*` after copying UI assets.
+
+6. **SecuBox v0.5.0-A Polish (2025-12-29)**  
+   - Monitoring and Modules views drop legacy hero/filter UIs; all tabs now use SecuNav styling.  
+   - Help/Bonus page adopts the shared header, navbar entry, and chips.  
+   - Alerts buttons use `sh-btn` components; nav + title chips inherit theme colors.

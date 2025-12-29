@@ -2,9 +2,9 @@
 
 ## Completed Today
 
-- Synced navigation styling with theme preferences (dark/light/cyberpunk).  
-- Ensured Monitoring view hides legacy LuCI tab bar and uses direct menu route.  
-- Added Theme.init call to Settings view.
+- Unified Monitoring + Modules filters and Help view with SecuNav styling.  
+- Added Bonus tab to navbar, refreshed alerts action buttons, removed legacy hero blocks.  
+- Verified on router (scp + cache reset) and tagged release v0.5.0-A.
 
 ## In Progress
 

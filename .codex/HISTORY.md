@@ -19,3 +19,6 @@
   Navigation tabs respond to dark/light/cyberpunk palettes.  
   Monitoring menu simplified (no `/overview` tab).  
   CSS updated so chip headers stay on a single row (with responsive wrap).
+
+- **2025-12-29 – v0.5.0-A UI polish**  
+  Monitoring hero + modules filter migrated to SecuNav styling, alerts buttons use `sh-btn`, Help page adopts shared header and navbar Bonus tab, and overall theme consistency is verified on router.

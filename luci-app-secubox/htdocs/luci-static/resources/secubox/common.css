@@ -237,6 +237,7 @@ pre {
 	cursor: pointer;
 	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	font-size: 14px;
+	box-shadow: 0 8px 20px var(--sh-shadow);
 }
 
 .sh-btn-secondary:hover {
@@ -476,8 +477,8 @@ pre {
 
 /* Slim header utility */
 .sh-page-header-lite {
-    background: #f7f9fc;
-    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: var(--sh-bg-secondary);
+    border: 1px solid var(--sh-border);
     border-radius: 18px;
     padding: 14px 20px;
     display: flex;
@@ -486,7 +487,7 @@ pre {
     gap: 12px;
     flex-wrap: nowrap;
     overflow-x: auto;
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+    box-shadow: 0 10px 24px var(--sh-shadow);
 }
 
 .sh-header-meta {
@@ -502,11 +503,12 @@ pre {
     gap: 8px;
     padding: 6px 12px;
     border-radius: 999px;
-    background: #ffffff;
-    border: 1px solid rgba(148, 163, 184, 0.3);
+    background: var(--sh-bg-card);
+    border: 1px solid var(--sh-border);
     font-size: 13px;
     font-weight: 600;
     color: var(--sh-text-secondary);
+    box-shadow: 0 6px 16px var(--sh-shadow);
 }
 
 .sh-header-chip strong {
@@ -532,20 +534,20 @@ pre {
 }
 
 .sh-header-chip.success {
-    background: rgba(34, 197, 94, 0.12);
-    border-color: rgba(34, 197, 94, 0.4);
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.5);
     color: #15803d;
 }
 
 .sh-header-chip.danger {
-    background: rgba(239, 68, 68, 0.12);
-    border-color: rgba(239, 68, 68, 0.45);
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.5);
     color: #b91c1c;
 }
 
 .sh-header-chip.warn {
-    background: rgba(245, 158, 11, 0.12);
-    border-color: rgba(245, 158, 11, 0.45);
+    background: rgba(245, 158, 11, 0.18);
+    border-color: rgba(245, 158, 11, 0.55);
     color: #b45309;
 }
 
@@ -557,4 +559,21 @@ pre {
 	.sh-header-meta {
 		flex-wrap: wrap;
 	}
+}
+.sh-btn-danger {
+	background: linear-gradient(135deg, #ef4444, #b91c1c);
+	color: #fff;
+	border: none;
+	padding: 10px 20px;
+	border-radius: 8px;
+	font-weight: 600;
+	box-shadow: 0 12px 25px rgba(239, 68, 68, 0.35);
+	cursor: pointer;
+	font-size: 14px;
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sh-btn-danger:hover {
+	box-shadow: 0 14px 28px rgba(239, 68, 68, 0.5);
+	transform: translateY(-2px);
 }

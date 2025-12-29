@@ -91,42 +91,32 @@ return view.extend({
 	renderFilterTabs: function() {
 		var self = this;
 		var tabs = [
-			{ id: 'all', label: 'All Modules', icon: '📦' },
-			{ id: 'security', label: 'Security', icon: '🛡️' },
-			{ id: 'monitoring', label: 'Monitoring', icon: '📊' },
-			{ id: 'network', label: 'Network', icon: '🌐' },
-			{ id: 'system', label: 'System', icon: '⚙️' }
+			{ id: 'all', label: _('All Modules'), icon: '📦' },
+			{ id: 'security', label: _('Security'), icon: '🛡️' },
+			{ id: 'monitoring', label: _('Monitoring'), icon: '📊' },
+			{ id: 'network', label: _('Network'), icon: '🌐' },
+			{ id: 'system', label: _('System'), icon: '⚙️' }
 		];
 
 		var filterButtons = tabs.map(function(tab) {
 			return E('button', {
-				'class': 'cyber-tab cyber-tab--pill' + (tab.id === 'all' ? ' is-active' : ''),
+				'class': 'sh-nav-tab secubox-module-tab' + (tab.id === 'all' ? ' active' : ''),
 				'data-filter': tab.id,
 				'type': 'button',
 				'click': function(ev) {
-					document.querySelectorAll('.secubox-filter-tabs .cyber-tab[data-filter]').forEach(function(el) {
-						el.classList.remove('is-active');
+					document.querySelectorAll('.secubox-filter-tabs .sh-nav-tab[data-filter]').forEach(function(el) {
+						el.classList.remove('active');
 					});
-					ev.currentTarget.classList.add('is-active');
+					ev.currentTarget.classList.add('active');
 					self.filterModules(tab.id);
 				}
 			}, [
-				E('span', { 'class': 'cyber-tab-icon' }, tab.icon),
-				E('span', { 'class': 'cyber-tab-label' }, tab.label)
+				E('span', { 'class': 'sh-tab-icon' }, tab.icon),
+				E('span', { 'class': 'sh-tab-label' }, tab.label)
 			]);
 		});
 
-		filterButtons.push(
-			E('button', {
-				'class': 'cyber-tab cyber-tab--ghost',
-				'type': 'button',
-				'click': function() {
-					window.location.href = L.url('admin/secubox/help');
-				}
-			}, '✨ ' + _('Bonus · Help à SecuBox'))
-		);
-
-		return E('div', { 'class': 'secubox-filter-tabs cyber-tablist cyber-tablist--filters' }, filterButtons);
+		return E('div', { 'class': 'secubox-filter-tabs sh-nav-tabs secubox-nav-tabs secubox-module-tabs' }, filterButtons);
 	},
 
 renderModuleCards: function(modules, filter) {

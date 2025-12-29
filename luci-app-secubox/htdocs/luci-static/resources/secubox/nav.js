@@ -6,7 +6,8 @@ var tabs = [
 	{ id: 'modules', icon: '🧩', label: _('Modules'), path: ['admin', 'secubox', 'modules'] },
 	{ id: 'monitoring', icon: '📡', label: _('Monitoring'), path: ['admin', 'secubox', 'monitoring'] },
 	{ id: 'alerts', icon: '⚠️', label: _('Alerts'), path: ['admin', 'secubox', 'alerts'] },
-	{ id: 'settings', icon: '⚙️', label: _('Settings'), path: ['admin', 'secubox', 'settings'] }
+	{ id: 'settings', icon: '⚙️', label: _('Settings'), path: ['admin', 'secubox', 'settings'] },
+	{ id: 'help', icon: '✨', label: _('Bonus'), path: ['admin', 'secubox', 'help'] }
 ];
 
 return baseclass.extend({

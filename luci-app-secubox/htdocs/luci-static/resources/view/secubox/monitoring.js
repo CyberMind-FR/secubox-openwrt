@@ -60,7 +60,6 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/monitoring.css') }),
 			SecuNav.renderTabs('monitoring'),
 			this.renderHeader(),
-			this.renderHero(),
 			this.renderChartsGrid(),
 			this.renderCurrentStatsCard()
 		]);
@@ -110,44 +109,6 @@ return view.extend({
 			E('div', { 'class': 'sh-chip-text' }, [
 				E('span', { 'class': 'sh-chip-label' }, label),
 				E('strong', { 'id': 'secubox-monitoring-chip-' + id, 'style': (typeof percent === 'number') ? ('color:' + this.getColorForValue(percent)) : '' }, value)
-			])
-		]);
-	},
-
-	renderHero: function() {
-		var snapshot = this.getLatestSnapshot();
-
-		var badges = [
-			this.renderHeroBadge('cpu', '🔥', _('CPU Usage'), snapshot.cpu.value.toFixed(1) + '%', snapshot.cpu.value),
-			this.renderHeroBadge('memory', '💾', _('Memory Usage'), snapshot.memory.value.toFixed(1) + '%', snapshot.memory.value),
-			this.renderHeroBadge('disk', '💿', _('Disk Usage'), snapshot.disk.value.toFixed(1) + '%', snapshot.disk.value),
-			this.renderHeroBadge('uptime', '⏱', _('Uptime'), API.formatUptime(snapshot.uptime || 0))
-		];
-
-		return E('section', { 'class': 'sb-card secubox-monitoring-hero' }, [
-			E('div', { 'class': 'sb-card-header' }, [
-				E('div', {}, [
-					E('h2', {}, _('Advanced System Monitoring')),
-					E('p', { 'class': 'sb-card-subtitle' }, _('Live telemetry for CPU, memory, storage, and network throughput'))
-				]),
-				E('span', { 'class': 'sb-badge sb-badge-ghost' }, _('Last update: ') +
-					(snapshot.timestamp ? new Date(snapshot.timestamp).toLocaleTimeString() : _('Initializing')))
-			]),
-			E('div', { 'class': 'secubox-monitoring-badges', 'id': 'secubox-monitoring-badges' }, badges)
-		]);
-	},
-
-	renderHeroBadge: function(id, icon, label, value, percent) {
-		var color = typeof percent === 'number' ? this.getColorForValue(percent) : null;
-		return E('div', { 'class': 'secubox-hero-badge', 'data-metric': id }, [
-			E('div', { 'class': 'secubox-hero-icon' }, icon),
-			E('div', { 'class': 'secubox-hero-meta' }, [
-				E('span', { 'class': 'secubox-hero-label' }, label),
-				E('span', {
-					'class': 'secubox-hero-value',
-					'id': 'secubox-hero-' + id,
-					'style': color ? 'color:' + color : ''
-				}, value)
 			])
 		]);
 	},
@@ -314,32 +275,7 @@ return view.extend({
 			dom.content(statsContainer, this.renderStatsTable());
 
 		var snapshot = this.getLatestSnapshot();
-		this.updateHeroBadges(snapshot);
 		this.updateHeaderChips(snapshot);
-	},
-
-	updateHeroBadges: function(snapshot) {
-		var badges = document.querySelectorAll('.secubox-hero-badge');
-		if (!badges.length)
-			return;
-
-		var values = {
-			cpu: snapshot.cpu.value.toFixed(1) + '%',
-			memory: snapshot.memory.value.toFixed(1) + '%',
-			disk: snapshot.disk.value.toFixed(1) + '%',
-			uptime: API.formatUptime(snapshot.uptime || 0)
-		};
-
-		Object.keys(values).forEach(function(key) {
-			var target = document.getElementById('secubox-hero-' + key);
-			if (target) {
-				target.textContent = values[key];
-				if (key !== 'uptime') {
-					var numeric = snapshot[key] && snapshot[key].value || 0;
-					target.style.color = this.getColorForValue(numeric);
-				}
-			}
-		}, this);
 	},
 
 	updateHeaderChips: function(snapshot) {
