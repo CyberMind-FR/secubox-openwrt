@@ -1,0 +1,107 @@
+#!/bin/sh
+# SecuBox Domoticz manager
+
+CONFIG="domoticz"
+CONTAINER="secbx-domoticz"
+OPKG_UPDATED=0
+
+usage() {
+	cat <<'USAGE'
+Usage: domoticzctl <command>
+
+Commands:
+  install         Install prerequisites, prepare directories, pull image
+  check           Run prerequisite checks
+  update          Pull new image and restart
+  status          Show container status
+  logs            Show container logs (use -f to follow)
+  service-run     Internal: run container via procd
+  service-stop    Stop container
+USAGE
+}
+
+require_root() { [ "$(id -u)" -eq 0 ]; }
+
+uci_get() { uci -q get ${CONFIG}.main.$1; }
+
+defaults() {
+	image="$(uci_get image || echo domoticz/domoticz:latest)"
+	data_path="$(uci_get data_path || echo /srv/domoticz)"
+	devices_path="$(uci_get devices_path || echo /srv/devices)"
+	port="$(uci_get port || echo 8080)"
+	timezone="$(uci_get timezone || echo UTC)"
+}
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+ensure_packages() {
+	for pkg in "$@"; do
+		if ! opkg status "$pkg" >/dev/null 2>&1; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+check_prereqs() {
+	defaults
+	ensure_dir "$data_path"
+	[ -d /sys/fs/cgroup ] || { echo "[ERROR] /sys/fs/cgroup missing" >&2; return 1; }
+	ensure_packages dockerd docker containerd
+	/etc/init.d/dockerd enable >/dev/null 2>&1
+	/etc/init.d/dockerd start >/dev/null 2>&1
+}
+
+pull_image() { defaults; docker pull "$image"; }
+
+stop_container() { docker stop "$CONTAINER" >/dev/null 2>&1 || true; docker rm "$CONTAINER" >/dev/null 2>&1 || true; }
+
+cmd_install() {
+	require_root || { echo Root required >&2; exit 1; }
+	check_prereqs || exit 1
+	ensure_dir "$data_path/config"
+	pull_image || exit 1
+	uci set ${CONFIG}.main.enabled='1'
+	uci commit ${CONFIG}
+	/etc/init.d/domoticz enable
+	echo "Domoticz prerequisites installed. Start with /etc/init.d/domoticz start"
+}
+
+cmd_check() { check_prereqs; echo "Prerequisite check completed."; }
+
+cmd_update() {
+	require_root || { echo Root required >&2; exit 1; }
+	pull_image || exit 1
+	/etc/init.d/domoticz restart
+}
+
+cmd_status() { docker ps -a --filter "name=$CONTAINER"; }
+
+cmd_logs() { docker logs "$@" "$CONTAINER"; }
+
+cmd_service_run() {
+	require_root || { echo Root required >&2; exit 1; }
+	check_prereqs || exit 1
+	defaults
+	stop_container
+	local docker_args="--name $CONTAINER -p ${port}:8080 -v $data_path/config:/config"
+	[ -d "$devices_path" ] && docker_args="$docker_args -v $devices_path:/devices"
+	exec docker run --rm $docker_args -e TZ="$timezone" "$image"
+}
+
+cmd_service_stop() { require_root || { echo Root required >&2; exit 1; }; stop_container; }
+
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	check) shift; cmd_check "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac

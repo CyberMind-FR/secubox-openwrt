@@ -233,6 +233,11 @@ Pointer: see `docs/embedded/wizard-profiles.md` for the canonical version.
 
 Pointer: see `docs/embedded/lyrion-docker.md` for the canonical version.
 
+#### **embedded/domoticz-docker.md** 🏠
+*Deploy Domoticz home automation via Docker.*
+
+Pointer: see `docs/embedded/domoticz-docker.md` for the canonical version.
+
 ---
 
 ### 5. Tools & Scripts Documentation

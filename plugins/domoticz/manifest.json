@@ -1,0 +1,39 @@
+{
+  "id": "domoticz",
+  "name": "Domoticz",
+  "description": "Home automation server (Docker-based).",
+  "type": "docker",
+  "version": "1.0.0",
+  "source": "https://www.domoticz.com/",
+  "packages": [
+    "secubox-app-domoticz",
+    "luci-app-vhost-manager"
+  ],
+  "ports": [
+    { "name": "ui", "protocol": "http", "port": 8080, "expose": true }
+  ],
+  "volumes": [
+    "/srv/domoticz",
+    "/srv/devices"
+  ],
+  "network": {
+    "default_mode": "router",
+    "dmz_supported": true
+  },
+  "wizard": {
+    "uci": { "config": "domoticz", "section": "main" },
+    "fields": [
+      { "id": "data_path", "label": "Data Path", "type": "text", "uci_option": "data_path", "placeholder": "/srv/domoticz" },
+      { "id": "devices_path", "label": "Devices Path", "type": "text", "uci_option": "devices_path", "placeholder": "/srv/devices" },
+      { "id": "port", "label": "HTTP Port", "type": "number", "uci_option": "port", "placeholder": "8080" },
+      { "id": "timezone", "label": "Timezone", "type": "text", "uci_option": "timezone", "placeholder": "UTC" }
+    ]
+  },
+  "profiles": ["home", "gateway_dmz"],
+  "actions": {
+    "install": "domoticzctl install",
+    "check": "domoticzctl check",
+    "update": "domoticzctl update",
+    "status": "/etc/init.d/domoticz status"
+  }
+}

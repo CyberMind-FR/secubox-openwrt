@@ -271,6 +271,18 @@ Follow this template when creating or revising documentation:
 
 **Size:** Short (~120 lines)
 
+#### **embedded/domoticz-docker.md** 🏠
+*Deploy Domoticz home automation via Docker.*
+
+**Contents:**
+- `secubox-app-domoticz` usage and `domoticzctl` commands
+- UCI options + wizard fields
+- VHost + DMZ profile guidance
+
+**When to use:** Hosting Domoticz using the new App Store manifest.
+
+**Size:** Short (~120 lines)
+
 ---
 
 ### 5. Tools & Scripts Documentation
