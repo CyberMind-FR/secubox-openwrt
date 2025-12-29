@@ -5,6 +5,7 @@
 'require mqtt-bridge/nav as Nav';
 'require ui';
 'require form';
+'require dom';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -19,14 +20,17 @@ return view.extend({
 	render: function(payload) {
 		var settings = (payload && payload.settings) || {};
 		var adapters = (payload && payload.adapters) || [];
-		this.currentAdapters = adapters;
+		var profiles = (payload && payload.profiles) || [];
+		this.currentAdapters = this.cloneAdapters(adapters || []);
+		this.liveProfiles = profiles || [];
 
 		var container = E('div', { 'class': 'mqtt-bridge-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('mqtt-bridge/common.css') }),
 			Nav.renderTabs('settings'),
 			this.renderSettingsCard(settings || {}),
-			this.renderAdapterCard(adapters || [])
+			this.renderAdapterCard(this.currentAdapters),
+			this.renderPresetCard(this.liveProfiles)
 		]);
 		return container;
 	},
@@ -51,14 +55,26 @@ return view.extend({
 	},
 
 	renderAdapterCard: function(adapters) {
-		var items = adapters && adapters.length ? adapters.map(this.renderAdapterRow.bind(this)) :
-			[E('p', { 'style': 'color:var(--mb-muted);' }, _('No adapters configured yet. UCI sections named `config adapter` will appear here.'))];
+		var grid = E('div', { 'class': 'mb-adapter-grid' }, this.renderAdapterRows(adapters));
+		this.adapterGrid = grid;
+
 		return E('div', { 'class': 'mb-card' }, [
 			E('div', { 'class': 'mb-card-header' }, [
 				E('div', { 'class': 'mb-card-title' }, [E('span', {}, '🧩'), _('Adapter preferences')])
 			]),
-			E('div', { 'class': 'mb-adapter-grid' }, items)
+			grid
 		]);
+	},
+
+	renderAdapterRows: function(adapters) {
+		var self = this;
+		if (!adapters || !adapters.length) {
+			return [E('p', { 'style': 'color:var(--mb-muted);' },
+				_('No adapters configured yet. Existing `config adapter` entries will appear once the monitor updates.'))];
+		}
+		return adapters.map(function(adapter) {
+			return self.renderAdapterRow(adapter);
+		});
 	},
 
 	renderAdapterRow: function(adapter) {
@@ -90,6 +106,48 @@ return view.extend({
 		]);
 	},
 
+	renderPresetCard: function(profiles) {
+		var self = this;
+		var rows = (profiles && profiles.length) ? profiles.map(function(profile) {
+			return self.renderPresetRow(profile);
+		}) : [
+			E('p', { 'style': 'color:var(--mb-muted);' },
+				_('When USB presets are detected (VID/PID), they will be displayed here so you can import them as adapters.'))
+		];
+
+		return E('div', { 'class': 'mb-card' }, [
+			E('div', { 'class': 'mb-card-header' }, [
+				E('div', { 'class': 'mb-card-title' }, [E('span', {}, '🛰️'), _('Detected presets')])
+			]),
+			E('div', { 'class': 'mb-profile-grid' }, rows)
+		]);
+	},
+
+	renderPresetRow: function(profile) {
+		var self = this;
+		var meta = [
+			(profile.vendor && profile.product) ? _('VID:PID ') + profile.vendor + ':' + profile.product : null,
+			profile.bus ? _('Bus ') + profile.bus : null,
+			profile.device ? _('Device ') + profile.device : null,
+			profile.port ? _('Port ') + profile.port : null
+		].filter(Boolean);
+		return E('div', { 'class': 'mb-profile-card' }, [
+			E('div', { 'class': 'mb-profile-header' }, [
+				E('div', {}, [
+					E('strong', {}, profile.label || profile.title || _('USB profile')),
+					E('div', { 'class': 'mb-profile-meta' }, meta.map(function(entry) {
+						return E('span', {}, entry);
+					}))
+				]),
+				E('button', {
+					'class': 'mb-btn mb-btn-secondary',
+					'click': function() { self.importProfile(profile); }
+				}, ['➕ ', _('Import preset')])
+			]),
+			profile.notes ? E('p', { 'class': 'mb-profile-notes' }, profile.notes) : null
+		]);
+	},
+
 	input: function(id, label, value, type) {
 		return E('div', { 'class': 'mb-input-group' }, [
 			E('label', { 'class': 'mb-stat-label', 'for': id }, label),
@@ -104,6 +162,24 @@ return view.extend({
 
 	makeAdapterInputId: function(id, field) {
 		return 'adapter-' + (id || 'x').replace(/[^a-z0-9_-]/ig, '_') + '-' + field;
+	},
+
+	normalizeAdapterId: function(id) {
+		return (id || '').replace(/[^a-z0-9_-]/ig, '_') || 'adapter_' + Math.random().toString(36).slice(2, 7);
+	},
+
+	cloneAdapters: function(list) {
+		var cloned = [];
+		(list || []).forEach(function(item) {
+			var copy = {};
+			if (item) {
+				Object.keys(item).forEach(function(key) {
+					copy[key] = item[key];
+				});
+			}
+			cloned.push(copy);
+		});
+		return cloned;
 	},
 
 	collectSettings: function() {
@@ -137,6 +213,42 @@ return view.extend({
 			};
 		}, this);
 		return adapters;
+	},
+
+	refreshAdapterGrid: function() {
+		if (!this.adapterGrid)
+			return;
+		dom.content(this.adapterGrid, this.renderAdapterRows(this.currentAdapters));
+	},
+
+	importProfile: function(profile) {
+		if (!profile)
+			return;
+		var idSource = profile.id || profile.preset || (profile.vendor ? profile.vendor + '_' + profile.product : null);
+		var id = this.normalizeAdapterId(idSource);
+
+		if (!this.currentAdapters)
+			this.currentAdapters = [];
+
+		var exists = this.currentAdapters.some(function(entry) {
+			return (entry.id || entry.section) === id;
+		});
+		if (exists) {
+			ui.addNotification(null, E('p', {}, _('Preset already imported. Adjust preferences below.')), 'info');
+			return;
+		}
+
+		this.currentAdapters.push({
+			id: id,
+			label: profile.label || profile.title || id,
+			vendor: profile.vendor || '',
+			product: profile.product || '',
+			port: profile.port || '',
+			enabled: profile.detected ? 1 : 0,
+			preset: profile.id || profile.preset || ''
+		});
+		this.refreshAdapterGrid();
+		ui.addNotification(null, E('p', {}, _('Preset added. Remember to save preferences.')), 'info');
 	},
 
 	savePreferences: function() {
