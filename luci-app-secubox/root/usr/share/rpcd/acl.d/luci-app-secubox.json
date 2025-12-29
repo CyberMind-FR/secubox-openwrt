@@ -34,6 +34,7 @@
                     "enable_module",
                     "disable_module",
                     "quick_action",
+                    "set_theme",
                     "dismiss_alert",
                     "clear_alerts",
                     "fix_permissions"

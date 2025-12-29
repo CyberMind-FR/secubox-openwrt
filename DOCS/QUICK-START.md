@@ -167,6 +167,41 @@ ssh root@192.168.8.191 "chmod 644 /www/luci-static/resources/**/*.css"
 ssh root@192.168.8.191 "rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* && /etc/init.d/rpcd restart && /etc/init.d/uhttpd restart"
 ```
 
+### Quick Deploy Helper
+```bash
+# IPK install via opkg (auto SCP + install)
+./secubox-tools/quick-deploy.sh --ipk bin/packages/luci-app-secubox.ipk
+
+# APK install on newer images
+./secubox-tools/quick-deploy.sh --apk dist/secubox-theme.apk
+
+# Push local source directory to /www/luci-static
+./secubox-tools/quick-deploy.sh --src luci-app-secubox/htdocs --target-path /www/luci-static
+
+# Clone Git repo and deploy (branch optional)
+./secubox-tools/quick-deploy.sh --git https://github.com/CyberMindStudio/secubox-theme.git --branch main
+
+# Selective push (only CSS + Settings view)
+./secubox-tools/quick-deploy.sh --src luci-app-secubox/htdocs \
+    --include luci-static/resources/secubox/secubox.css \
+    --include luci-static/resources/view/secubox/settings.js
+
+# Root tree updates (rpcd, ACLs, etc.)
+./secubox-tools/quick-deploy.sh --src luci-app-secubox/root --force-root
+
+# Legacy theme profile (mirrors deploy-theme-system.sh)
+./secubox-tools/quick-deploy.sh --profile theme
+
+# Deploy complete LuCI app (root + htdocs)
+./secubox-tools/quick-deploy.sh --profile luci-app --src luci-app-secubox
+
+# Browse LuCI apps and auto-pick one
+./secubox-tools/quick-deploy.sh --list-apps
+./secubox-tools/quick-deploy.sh --app secubox
+./secubox-tools/quick-deploy.sh --src-select   # interactive picker (TTY only)
+```
+*Flags:* `--include` limits uploads, `--force-root` writes relative to `/`, `--profile` triggers opinionated bundles (`theme`, `luci-app`), `--app <name>` auto-resolves `luci-app-<name>`, `--list-apps` prints detected apps, `--src-select` shows the same picker interactively, `--no-auto-profile` disables automatic LuCI detection when using `--src`, `--no-cache-bust` skips clearing `/tmp/luci-*`, `--no-verify` disables post-copy checksum checks, `--router root@192.168.8.191` overrides the target, and `--post "rm -rf /tmp/luci-*"` runs extra remote commands. Environment variables `ROUTER`, `TARGET_PATH`, `CACHE_BUST`, `VERIFY`, `SSH_OPTS`, and `SCP_OPTS` can be exported ahead of time.
+
 ### Debug
 ```bash
 # Test RPCD

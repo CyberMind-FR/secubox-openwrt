@@ -8,9 +8,45 @@
 . /usr/share/libubox/jshn.sh
 
 get_pkg_version() {
+	local version=""
+
+	# OpenWrt 25.12+ uses apk packages
+	if command -v apk >/dev/null 2>&1; then
+		local apk_line=$(apk info -v luci-app-secubox 2>/dev/null | grep -E '^luci-app-secubox-[0-9]' | head -n1)
+		if [ -n "$apk_line" ]; then
+			version=$(echo "$apk_line" | sed 's/^luci-app-secubox-//' | awk '{print $1}' | sed 's/-r[0-9]*$//')
+		else
+			version=$(apk info luci-app-secubox 2>/dev/null | awk -F': ' '/^Version/ {print $2; exit}')
+		fi
+		if [ -n "$version" ]; then
+			echo "$version"
+			return
+		fi
+	fi
+
+	# Legacy opkg metadata
 	local ctrl="/usr/lib/opkg/info/luci-app-secubox.control"
 	if [ -f "$ctrl" ]; then
-		awk -F': ' '/^Version/ { print $2; exit }' "$ctrl"
+		version=$(awk -F': ' '/^Version/ { print $2; exit }' "$ctrl")
+		if [ -n "$version" ]; then
+			echo "$version"
+			return
+		fi
+	fi
+
+	if command -v opkg >/dev/null 2>&1; then
+		version=$(opkg list-installed luci-app-secubox 2>/dev/null | awk '{print $3}' | sed 's/-r[0-9]*$//' | head -n1)
+		if [ -n "$version" ]; then
+			echo "$version"
+			return
+		fi
+	fi
+
+	local cfg_version="$(uci -q get secubox.main.version)"
+	if [ -n "$cfg_version" ]; then
+		echo "$cfg_version"
+	elif [ -f "/usr/share/secubox/VERSION" ]; then
+		head -n1 /usr/share/secubox/VERSION
 	else
 		echo "unknown"
 	fi
@@ -138,6 +174,7 @@ get_status() {
 	json_init
 	json_add_string "version" "$PKG_VERSION"
 	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || echo 'SecuBox')"
+	json_add_boolean "enabled" "$(uci -q get secubox.main.enabled || echo 1)"
 
 	# System info
 	local uptime=$(cat /proc/uptime | cut -d. -f1)
@@ -966,6 +1003,36 @@ get_theme() {
 	json_dump
 }
 
+# Persist theme setting
+set_theme() {
+	local input theme="dark"
+
+	read -r input
+	[ -n "$input" ] && json_load "$input"
+	json_get_var theme theme "dark"
+
+	case "$theme" in
+		dark|light|system|cyberpunk)
+			;;
+		*)
+			json_init
+			json_add_boolean "success" 0
+			json_add_string "message" "Invalid theme"
+			json_dump
+			return 1
+			;;
+	esac
+
+	uci -q set secubox.main.theme="$theme"
+	uci -q commit secubox
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "theme" "$theme"
+	json_add_string "message" "Theme updated"
+	json_dump
+}
+
 # Dismiss a specific alert
 dismiss_alert() {
 	local alert_id="$1"
@@ -1069,6 +1136,9 @@ case "$1" in
 		json_close_object
 		json_add_object "get_theme"
 		json_close_object
+		json_add_object "set_theme"
+		json_add_string "theme" "string"
+		json_close_object
 		json_add_object "dismiss_alert"
 		json_add_string "alert_id" "string"
 		json_close_object
@@ -1160,6 +1230,9 @@ case "$1" in
 				;;
 			get_theme)
 				get_theme
+				;;
+			set_theme)
+				set_theme
 				;;
 			dismiss_alert)
 				read -r input

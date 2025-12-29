@@ -119,6 +119,13 @@ var callGetTheme = rpc.declare({
 	expect: { }
 });
 
+var callSetTheme = rpc.declare({
+	object: 'luci.secubox',
+	method: 'set_theme',
+	params: ['theme'],
+	expect: { success: false, theme: '' }
+});
+
 var callDismissAlert = rpc.declare({
 	object: 'luci.secubox',
 	method: 'dismiss_alert',
@@ -177,6 +184,7 @@ return baseclass.extend({
 	quickAction: callQuickAction,
 	getDashboardData: callDashboardData,
 	getTheme: callGetTheme,
+	setTheme: callSetTheme,
 	dismissAlert: callDismissAlert,
 	clearAlerts: callClearAlerts,
 	fixPermissions: callFixPermissions,
