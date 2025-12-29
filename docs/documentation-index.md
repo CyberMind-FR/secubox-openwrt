@@ -259,6 +259,18 @@ Follow this template when creating or revising documentation:
 
 **Size:** Short (~130 lines)
 
+#### **embedded/lyrion-docker.md** 🎵
+*Deploy Lyrion Media Server via Docker.*
+
+**Contents:**
+- `secubox-app-lyrion` installer usage
+- UCI options (`/etc/config/lyrion`) and CLI helper commands
+- VHost exposure steps and troubleshooting
+
+**When to use:** Hosting Lyrion through the SecuBox App Store/wizard workflow.
+
+**Size:** Short (~120 lines)
+
 ---
 
 ### 5. Tools & Scripts Documentation

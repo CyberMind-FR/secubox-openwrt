@@ -4,7 +4,7 @@
 **Last Updated:** 2025-12-28  
 **Status:** Active
 
-This guide outlines the initial “SecuBox Apps” registry format and the `secubox-app` CLI helper. It currently ships with a single manifest (Zigbee2MQTT), but the workflow scales to other Docker/LXC/native services such as Lyrion.
+This guide outlines the initial “SecuBox Apps” registry format and the `secubox-app` CLI helper. It currently ships with manifests for Zigbee2MQTT and Lyrion, and easily scales to other Docker/LXC/native services.
 
 ---
 

@@ -228,6 +228,11 @@ Pointer: see `docs/embedded/app-store.md` for the canonical version.
 
 Pointer: see `docs/embedded/wizard-profiles.md` for the canonical version.
 
+#### **embedded/lyrion-docker.md** 🎵
+*Deploy Lyrion Media Server via Docker.*
+
+Pointer: see `docs/embedded/lyrion-docker.md` for the canonical version.
+
 ---
 
 ### 5. Tools & Scripts Documentation

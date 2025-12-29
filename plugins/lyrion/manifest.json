@@ -1,0 +1,39 @@
+{
+  "id": "lyrion",
+  "name": "Lyrion Media Server",
+  "description": "Self-hosted media server (Docker-based).",
+  "type": "docker",
+  "version": "1.0.0",
+  "source": "https://lyrion.org/",
+  "packages": [
+    "secubox-app-lyrion",
+    "luci-app-vhost-manager"
+  ],
+  "ports": [
+    { "name": "ui", "protocol": "http", "port": 8096, "expose": true }
+  ],
+  "volumes": [
+    "/srv/lyrion",
+    "/srv/media"
+  ],
+  "network": {
+    "default_mode": "dmz",
+    "dmz_supported": true
+  },
+  "wizard": {
+    "uci": { "config": "lyrion", "section": "main" },
+    "fields": [
+      { "id": "data_path", "label": "Data Path", "type": "text", "uci_option": "data_path", "placeholder": "/srv/lyrion" },
+      { "id": "media_path", "label": "Media Path", "type": "text", "uci_option": "media_path", "placeholder": "/srv/media" },
+      { "id": "port", "label": "HTTP Port", "type": "number", "uci_option": "port", "placeholder": "8096" },
+      { "id": "timezone", "label": "Timezone", "type": "text", "uci_option": "timezone", "placeholder": "UTC" }
+    ]
+  },
+  "profiles": ["home", "gateway_dmz"],
+  "actions": {
+    "install": "lyrionctl install",
+    "check": "lyrionctl check",
+    "update": "lyrionctl update",
+    "status": "/etc/init.d/lyrion status"
+  }
+}
