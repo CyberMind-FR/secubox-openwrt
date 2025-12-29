@@ -61,13 +61,13 @@ return view.extend({
 		var score = (this.healthData.score || 0);
 
 		var stats = [
-			{ label: _('Uptime'), value: uptime },
-			{ label: _('Hostname'), value: hostname },
-			{ label: _('Kernel'), value: kernel, copy: kernel },
-			{ label: _('Health'), value: score + '/100' }
+			{ label: _('Uptime'), value: uptime, icon: '⏱' },
+			{ label: _('Hostname'), value: hostname, icon: '🖥' },
+			{ label: _('Kernel'), value: kernel, copy: kernel, icon: '🧬' },
+			{ label: _('Health'), value: score + '/100', icon: '❤️' }
 		];
 
-		return E('div', { 'class': 'sh-page-header' }, [
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
 			E('div', {}, [
 				E('h2', { 'class': 'sh-page-title' }, [
 					E('span', { 'class': 'sh-page-title-icon' }, '⚙️'),
@@ -75,26 +75,29 @@ return view.extend({
 				]),
 				E('p', { 'class': 'sh-page-subtitle' }, _('Unified telemetry & orchestration'))
 			]),
-			E('div', { 'class': 'sh-stats-grid' }, stats.map(this.renderHeaderStat, this))
+			E('div', { 'class': 'sh-header-meta' }, stats.map(this.renderHeaderChip, this))
 		]);
 	},
 
-	renderHeaderStat: function(stat) {
-		var badge = E('div', { 'class': 'sh-stat-badge' }, [
-			E('div', { 'class': 'sh-stat-value' }, stat.value || '-'),
-			E('div', { 'class': 'sh-stat-label' }, stat.label)
+	renderHeaderChip: function(stat) {
+		var chip = E('div', { 'class': 'sh-header-chip' }, [
+			E('span', { 'class': 'sh-chip-icon' }, stat.icon || '•'),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, stat.label),
+				E('strong', {}, stat.value || '-')
+			])
 		]);
 
 		if (stat.copy && navigator.clipboard) {
-			badge.style.cursor = 'pointer';
-			badge.addEventListener('click', function() {
+			chip.style.cursor = 'pointer';
+			chip.addEventListener('click', function() {
 				navigator.clipboard.writeText(stat.copy).then(function() {
 					ui.addNotification(null, E('p', {}, _('Copied to clipboard')), 'info');
 				});
 			});
 		}
 
-		return badge;
+		return chip;
 	},
 
 	renderInfoGrid: function() {

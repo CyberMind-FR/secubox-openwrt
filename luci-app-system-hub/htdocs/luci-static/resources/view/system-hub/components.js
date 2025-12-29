@@ -29,10 +29,13 @@ return view.extend({
 
 			HubNav.renderTabs('components'),
 
-			E('div', { 'class': 'sh-components-header' }, [
-				E('h2', { 'class': 'sh-page-title' }, [
-					E('span', { 'class': 'sh-title-icon' }, '🧩'),
-					' System Components'
+			E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
+				E('div', {}, [
+					E('h2', { 'class': 'sh-page-title' }, [
+						E('span', { 'class': 'sh-page-title-icon' }, '🧩'),
+						_('System Components')
+					]),
+					E('p', { 'class': 'sh-page-subtitle' }, _('Installed modules grouped by category'))
 				]),
 				this.renderFilterTabs()
 			]),
@@ -99,9 +102,17 @@ return view.extend({
 	},
 
 	renderComponentsGrid: function(components, filter) {
+		var list = components.slice().sort(function(a, b) {
+			if ((a.installed ? 1 : 0) !== (b.installed ? 1 : 0))
+				return a.installed ? -1 : 1;
+			if ((a.running ? 1 : 0) !== (b.running ? 1 : 0))
+				return a.running ? -1 : 1;
+			return (a.name || '').localeCompare(b.name || '');
+		});
+
 		var filtered = filter === 'all'
-			? components
-			: components.filter(function(c) { return c.category === filter; });
+			? list
+			: list.filter(function(c) { return c.category === filter; });
 
 		if (filtered.length === 0) {
 			return E('div', { 'class': 'sh-empty-state' }, [

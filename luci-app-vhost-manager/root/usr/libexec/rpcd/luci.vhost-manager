@@ -187,7 +187,7 @@ case "$1" in
 				json_init
 				json_add_boolean "enabled" 1
 				json_add_string "module" "vhost-manager"
-				json_add_string "version" "1.0.0"
+			json_add_string "version" "0.4.1"
 				
 				# Check nginx status
 				if pgrep -x nginx > /dev/null 2>&1; then

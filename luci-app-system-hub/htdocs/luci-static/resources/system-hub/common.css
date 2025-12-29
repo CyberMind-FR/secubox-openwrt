@@ -549,3 +549,79 @@ pre {
 	background: var(--sh-bg-secondary);
 	border-color: var(--sh-border);
 }
+
+
+/* Slim header utility */
+.sh-page-header-lite {
+    background: #f7f9fc;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 18px;
+    padding: 14px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.sh-header-meta {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.sh-header-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: #ffffff;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--sh-text-secondary);
+}
+
+.sh-header-chip strong {
+    display: block;
+    color: var(--sh-text-primary);
+    font-size: 14px;
+}
+
+.sh-chip-text {
+    line-height: 1.1;
+}
+
+.sh-chip-label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sh-text-muted, #94a3b8);
+}
+
+.sh-chip-icon {
+    font-size: 16px;
+}
+
+.sh-header-chip.success {
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.4);
+    color: #15803d;
+}
+
+.sh-header-chip.danger {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #b91c1c;
+}
+
+.sh-header-chip.warn {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.45);
+    color: #b45309;
+}
+

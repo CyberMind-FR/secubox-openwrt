@@ -48,6 +48,7 @@ return view.extend({
 
 	render: function() {
 		var container = E('div', { 'class': 'secubox-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/dashboard.css') }),
 			SecuNav.renderTabs('dashboard'),
 			this.renderHeader(),

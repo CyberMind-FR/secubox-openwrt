@@ -45,6 +45,7 @@ return view.extend({
 		var modules = this.modulesData;
 
 		var container = E('div', { 'class': 'secubox-modules-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			SecuNav.renderTabs('modules'),
 			this.renderHeader(modules),
 			this.renderFilterTabs(),

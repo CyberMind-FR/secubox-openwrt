@@ -43,6 +43,7 @@ return view.extend({
 	render: function(data) {
 		var self = this;
 		var container = E('div', { 'class': 'secubox-alerts-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			SecuNav.renderTabs('alerts'),
 			this.renderHeader(),
 			this.renderControls(),

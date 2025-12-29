@@ -82,12 +82,12 @@ return view.extend({
 
 	renderHeader: function(status) {
 		var stats = [
-			{ label: _('Service'), value: status.running ? _('Running') : _('Stopped') },
-			{ label: _('Uptime'), value: formatUptime(status.uptime || 0) },
-			{ label: _('Cache files'), value: (status.cache_files || 0).toLocaleString() }
+			{ icon: '🟢', label: _('Service'), value: status.running ? _('Running') : _('Stopped'), tone: status.running ? 'success' : 'danger' },
+			{ icon: '⏱', label: _('Uptime'), value: formatUptime(status.uptime || 0) },
+			{ icon: '📁', label: _('Cache files'), value: (status.cache_files || 0).toLocaleString() }
 		];
 
-		return E('div', { 'class': 'sh-page-header' }, [
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
 			E('div', {}, [
 				E('h2', { 'class': 'sh-page-title' }, [
 					E('span', { 'class': 'sh-page-title-icon' }, '📦'),
@@ -96,14 +96,17 @@ return view.extend({
 				E('p', { 'class': 'sh-page-subtitle' },
 					_('Edge caching for media, firmware, and downloads'))
 			]),
-			E('div', { 'class': 'sh-stats-grid' }, stats.map(this.renderHeaderStat, this))
+			E('div', { 'class': 'sh-header-meta' }, stats.map(this.renderHeaderChip, this))
 		]);
 	},
 
-	renderHeaderStat: function(stat) {
-		return E('div', { 'class': 'sh-stat-badge' }, [
-			E('div', { 'class': 'sh-stat-value' }, stat.value),
-			E('div', { 'class': 'sh-stat-label' }, stat.label)
+	renderHeaderChip: function(stat) {
+		return E('div', { 'class': 'sh-header-chip' + (stat.tone ? ' ' + stat.tone : '') }, [
+			E('span', { 'class': 'sh-chip-icon' }, stat.icon || '•'),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, stat.label),
+				E('strong', {}, stat.value)
+			])
 		]);
 	},
 

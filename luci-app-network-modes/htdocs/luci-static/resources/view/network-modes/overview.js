@@ -367,12 +367,12 @@ return view.extend({
 	renderHeader: function(status, currentModeInfo) {
 		var modeName = currentModeInfo ? currentModeInfo.name : (status.current_mode || 'router');
 		var stats = [
-			{ label: _('Mode'), value: modeName },
-			{ label: _('WAN IP'), value: status.wan_ip || _('Unknown') },
-			{ label: _('LAN IP'), value: status.lan_ip || _('Unknown') }
+			{ label: _('Mode'), value: modeName, icon: '🧭' },
+			{ label: _('WAN IP'), value: status.wan_ip || _('Unknown'), icon: '🌍' },
+			{ label: _('LAN IP'), value: status.lan_ip || _('Unknown'), icon: '🏠' }
 		];
 
-		return E('div', { 'class': 'sh-page-header' }, [
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
 			E('div', {}, [
 				E('h2', { 'class': 'sh-page-title' }, [
 					E('span', { 'class': 'sh-page-title-icon' }, '🌐'),
@@ -381,14 +381,17 @@ return view.extend({
 				E('p', { 'class': 'sh-page-subtitle' },
 					_('Switch between curated router, bridge, relay, and travel modes.'))
 			]),
-			E('div', { 'class': 'sh-stats-grid' }, stats.map(this.renderHeaderStat, this))
+			E('div', { 'class': 'sh-header-meta' }, stats.map(this.renderHeaderChip, this))
 		]);
 	},
 
-	renderHeaderStat: function(stat) {
-		return E('div', { 'class': 'sh-stat-badge' }, [
-			E('div', { 'class': 'sh-stat-value' }, stat.value || '-'),
-			E('div', { 'class': 'sh-stat-label' }, stat.label)
+	renderHeaderChip: function(stat) {
+		return E('div', { 'class': 'sh-header-chip' }, [
+			E('span', { 'class': 'sh-chip-icon' }, stat.icon || '•'),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, stat.label),
+				E('strong', {}, stat.value || '-')
+			])
 		]);
 	},
 	

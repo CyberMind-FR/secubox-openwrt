@@ -69,7 +69,7 @@ return view.extend({
 			return days !== null && days <= 30;
 		}).length;
 
-		return E('div', { 'class': 'sh-page-header' }, [
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
 			E('div', {}, [
 				E('h2', { 'class': 'sh-page-title' }, [
 					E('span', { 'class': 'sh-page-title-icon' }, '🌐'),
@@ -78,18 +78,23 @@ return view.extend({
 				E('p', { 'class': 'sh-page-subtitle' },
 					_('Reverse proxy, SSL automation and hardened headers for SecuBox deployments.'))
 			]),
-			E('div', { 'class': 'sh-stats-grid' }, [
-				this.renderStatBadge(status.vhost_count || vhosts.length, _('Virtual Hosts')),
-				this.renderStatBadge(sslEnabled, _('TLS Enabled')),
-				this.renderStatBadge(expiringSoon, _('Expiring Certs'))
+			E('div', { 'class': 'sh-header-meta' }, [
+				this.renderHeaderChip('🏷️', _('Version'), status.version || '0.4.1'),
+				this.renderHeaderChip('📁', _('Virtual Hosts'), (status.vhost_count || vhosts.length)),
+				this.renderHeaderChip('🔒', _('TLS Enabled'), sslEnabled),
+				this.renderHeaderChip('⏳', _('Expiring'), expiringSoon, expiringSoon > 0 ? 'warn' : '')
 			])
 		]);
 	},
 
-	renderStatBadge: function(value, label) {
-		return E('div', { 'class': 'sh-stat-badge' }, [
-			E('div', { 'class': 'sh-stat-value' }, value.toString()),
-			E('div', { 'class': 'sh-stat-label' }, label)
+	renderHeaderChip: function(icon, label, value, tone) {
+		var display = (value == null ? '—' : value).toString();
+		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
+			E('span', { 'class': 'sh-chip-icon' }, icon),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, label),
+				E('strong', {}, display)
+			])
 		]);
 	},
 

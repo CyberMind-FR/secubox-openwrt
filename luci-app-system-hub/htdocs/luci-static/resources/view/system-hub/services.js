@@ -58,16 +58,29 @@ return view.extend({
 	renderHeader: function() {
 		var stats = this.getStats();
 
-		return E('section', { 'class': 'sh-services-hero' }, [
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
 			E('div', {}, [
-				E('h1', {}, _('Service Control Center')),
-				E('p', {}, _('Start, stop, enable, and inspect all init.d services'))
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '🧩'),
+					_('Service Control Center')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' }, _('Start, stop, enable, and inspect all init.d services'))
 			]),
-			E('div', { 'class': 'sh-services-stats', 'id': 'sh-services-stats' }, [
-				this.createStatCard('sh-stat-total', _('Total'), stats.total),
-				this.createStatCard('sh-stat-running', _('Running'), stats.running, 'success'),
-				this.createStatCard('sh-stat-stopped', _('Stopped'), stats.stopped, 'danger'),
-				this.createStatCard('sh-stat-enabled', _('Enabled'), stats.enabled, 'info')
+			E('div', { 'class': 'sh-header-meta', 'id': 'sh-services-stats' }, [
+				this.renderHeaderChip(_('Total'), stats.total, '📦'),
+				this.renderHeaderChip(_('Running'), stats.running, '🟢', stats.running > 0 ? 'success' : ''),
+				this.renderHeaderChip(_('Enabled'), stats.enabled, '✅'),
+				this.renderHeaderChip(_('Stopped'), stats.stopped, '⏹️', stats.stopped > 0 ? 'danger' : '')
+			])
+		]);
+	},
+
+	renderHeaderChip: function(label, value, icon, tone) {
+		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
+			E('span', { 'class': 'sh-chip-icon' }, icon),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, label),
+				E('strong', {}, value.toString())
 			])
 		]);
 	},
@@ -136,7 +149,15 @@ return view.extend({
 	},
 
 	getFilteredServices: function() {
-		return this.services.filter(function(service) {
+		var ordered = this.services.slice().sort(function(a, b) {
+			if (a.running !== b.running)
+				return a.running ? -1 : 1;
+			if (a.enabled !== b.enabled)
+				return a.enabled ? -1 : 1;
+			return (a.name || '').localeCompare(b.name || '');
+		});
+
+		return ordered.filter(function(service) {
 			var matchesFilter = true;
 			switch (this.activeFilter) {
 				case 'running': matchesFilter = service.running; break;
@@ -145,7 +166,7 @@ return view.extend({
 				case 'disabled': matchesFilter = !service.enabled; break;
 			}
 			var matchesSearch = !this.searchQuery ||
-				service.name.toLowerCase().includes(this.searchQuery);
+				(service.name || '').toLowerCase().includes(this.searchQuery);
 			return matchesFilter && matchesSearch;
 		}, this);
 	},

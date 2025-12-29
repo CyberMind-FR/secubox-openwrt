@@ -28,8 +28,7 @@ return view.extend({
 
 			SecuNav.renderTabs('settings'),
 
-			// Modern header
-			E('div', { 'class': 'sh-page-header' }, [
+			E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
 				E('div', {}, [
 					E('h2', { 'class': 'sh-page-title' }, [
 						E('span', { 'class': 'sh-page-title-icon' }, '⚙️'),
@@ -38,23 +37,24 @@ return view.extend({
 					E('p', { 'class': 'sh-page-subtitle' },
 						'Configure global settings for the SecuBox security suite')
 				]),
-				E('div', { 'class': 'sh-stats-grid' }, [
-					E('div', { 'class': 'sh-stat-badge' }, [
-						E('div', { 'class': 'sh-stat-value' }, status.version || 'v0.1.2'),
-						E('div', { 'class': 'sh-stat-label' }, 'Version')
-					]),
-					E('div', { 'class': 'sh-stat-badge' }, [
-						E('div', { 'class': 'sh-stat-value', 'style': status.enabled ? 'color: #22c55e;' : 'color: #ef4444;' },
-							status.enabled ? 'ON' : 'OFF'),
-						E('div', { 'class': 'sh-stat-label' }, 'Status')
-					]),
-					E('div', { 'class': 'sh-stat-badge' }, [
-						E('div', { 'class': 'sh-stat-value' }, status.modules_count || '14'),
-						E('div', { 'class': 'sh-stat-label' }, 'Modules')
-					])
+				E('div', { 'class': 'sh-header-meta' }, [
+					this.renderHeaderChip('🏷️', _('Version'), status.version || '0.1.2'),
+					this.renderHeaderChip('⚡', _('Status'), status.enabled ? _('On') : _('Off'), status.enabled ? 'success' : 'danger'),
+					this.renderHeaderChip('🧩', _('Modules'), status.modules_count || '14')
 				])
 			])
 		]);
+
+	renderHeaderChip: function(icon, label, value, tone) {
+		var display = (value == null ? '—' : value).toString();
+		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
+			E('span', { 'class': 'sh-chip-icon' }, icon),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, label),
+				E('strong', {}, display)
+			])
+		]);
+	},
 
 		// Create form
 		m = new form.Map('secubox', null, null);

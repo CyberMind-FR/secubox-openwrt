@@ -169,6 +169,8 @@ graph TB
 
 **REQUIREMENT:** Every module view MUST begin with this compact `.sh-page-header`. Do not introduce bespoke hero sections or oversized banners; the header keeps height predictable (title + subtitle on the left, stats on the right) and guarantees consistency across SecuBox dashboards. If no stats are needed, keep the container but supply an empty `.sh-stats-grid` for future metrics.
 
+**Slim variant:** When the page only needs 2‑3 metrics, use `.sh-page-header-lite` + `.sh-header-chip` (see `luci-app-vhost-manager` and `luci-app-secubox` settings). Chips carry an emoji/icon, a tiny label, and the value; colors (`.success`, `.danger`, `.warn`) communicate state. This variant replaces the bulky hero blocks from older demos.
+
 **HTML Structure:**
 ```javascript
 E('div', { 'class': 'sh-page-header' }, [

@@ -55,6 +55,7 @@ return view.extend({
 	render: function() {
 		var container = E('div', { 'class': 'secubox-monitoring-page' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/monitoring.css') }),
 			SecuNav.renderTabs('monitoring'),
