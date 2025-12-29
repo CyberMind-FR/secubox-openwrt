@@ -54,6 +54,9 @@ get_pkg_version() {
 
 PKG_VERSION="$(get_pkg_version)"
 
+PLUGIN_DIR="/usr/share/secubox/plugins"
+DEFAULT_STORAGE_PATH="/srv/secubox"
+
 # Module registry - auto-detected from /usr/libexec/rpcd/
 detect_modules() {
 	local modules=""
@@ -71,6 +74,58 @@ detect_modules() {
 }
 
 MODULES=$(detect_modules)
+
+is_root_password_set() {
+	local hash
+	hash=$(grep '^root:' /etc/shadow 2>/dev/null | cut -d: -f2)
+	[ -n "$hash" ] && [ "$hash" != "!" ] && [ "$hash" != "*" ]
+}
+
+get_storage_path() {
+	local path
+	path=$(uci -q get secubox.main.storage_path)
+	if [ -z "$path" ]; then
+		path="$DEFAULT_STORAGE_PATH"
+	fi
+	echo "$path"
+}
+
+package_installed() {
+	local pkg="$1"
+	if command -v opkg >/dev/null 2>&1; then
+		opkg status "$pkg" >/dev/null 2>&1 && return 0
+	elif command -v apk >/dev/null 2>&1; then
+		apk info -e "$pkg" >/dev/null 2>&1 && return 0
+	fi
+	return 1
+}
+
+packages_state() {
+	local manifest="$1"
+	local total=0 installed=0 missing=0 pkg
+	for pkg in $(jsonfilter -s "$manifest" -e '@.packages[*]' 2>/dev/null); do
+		total=$((total + 1))
+		if package_installed "$pkg"; then
+			installed=$((installed + 1))
+		else
+			missing=$((missing + 1))
+		fi
+	done
+	if [ "$total" -eq 0 ]; then
+		echo "n/a"
+	elif [ "$missing" -eq 0 ]; then
+		echo "installed"
+	elif [ "$installed" -eq 0 ]; then
+		echo "missing"
+	else
+		echo "partial"
+	fi
+}
+
+ensure_directory() {
+	local dir="$1"
+	[ -d "$dir" ] || mkdir -p "$dir"
+}
 
 # Check if a module is installed (supports both opkg and apk)
 check_module_installed() {
@@ -1090,6 +1145,185 @@ fix_permissions() {
 }
 
 # Main dispatcher
+first_run_status() {
+	local timezone storage network_json mode_name mode_id storage_path
+	storage_path=$(get_storage_path)
+	local storage_ready=0
+	[ -d "$storage_path" ] && storage_ready=1
+	local password_state=0
+	if is_root_password_set; then
+		password_state=1
+	fi
+	timezone=$(uci -q get system.@system[0].timezone || echo "UTC")
+	mode_id="unknown"
+	mode_name="N/A"
+	if command -v ubus >/dev/null 2>&1; then
+		network_json=$(ubus call luci.network-modes status 2>/dev/null || printf '')
+		if [ -n "$network_json" ]; then
+			mode_id=$(jsonfilter -s "$network_json" -e '@.current_mode' 2>/dev/null || echo "$mode_id")
+			mode_name=$(jsonfilter -s "$network_json" -e '@.mode_name' 2>/dev/null || echo "$mode_name")
+		fi
+	fi
+	json_init
+	json_add_boolean "password_set" "$password_state"
+	json_add_string "timezone" "$timezone"
+	json_add_string "storage_path" "$storage_path"
+	json_add_boolean "storage_ready" "$storage_ready"
+	json_add_string "network_mode" "$mode_id"
+	json_add_string "network_mode_name" "$mode_name"
+	json_add_array "recommended_modes"
+	json_add_string "" "router"
+	json_add_string "" "dmz"
+	json_close_array
+	json_dump
+}
+
+apply_first_run() {
+	local input
+	read input
+	json_load "$input"
+	json_get_var timezone timezone
+	json_get_var storage_path storage_path
+	json_get_var network_mode network_mode
+	json_init
+	json_add_array "messages"
+	if [ -n "$timezone" ]; then
+		uci set system.@system[0].timezone="$timezone"
+		uci set system.@system[0].zonename="$timezone"
+		uci commit system
+		if [ -f "/usr/share/zoneinfo/$timezone" ]; then
+			ln -sf "/usr/share/zoneinfo/$timezone" /etc/localtime
+		fi
+		json_add_string "" "Timezone updated"
+	fi
+	if [ -n "$storage_path" ]; then
+		mkdir -p "$storage_path"
+		chmod 755 "$storage_path"
+		uci set secubox.main.storage_path="$storage_path"
+		uci commit secubox
+		json_add_string "" "Storage prepared at $storage_path"
+	fi
+	if [ -n "$network_mode" ]; then
+		if command -v ubus >/dev/null 2>&1; then
+			if ubus call luci.network-modes set_mode "{\"mode\":\"$network_mode\"}" >/dev/null 2>&1; then
+				if ubus call luci.network-modes apply_mode >/dev/null 2>&1; then
+					json_add_string "" "Network mode $network_mode applied"
+				else
+					json_add_string "" "Failed to apply network mode"
+				fi
+			else
+				json_add_string "" "Mode $network_mode unsupported"
+			fi
+		else
+			json_add_string "" "ubus unavailable; cannot change network mode"
+		fi
+	fi
+	json_close_array
+	json_add_boolean "success" 1
+	json_dump
+}
+
+list_apps() {
+	ensure_directory "$PLUGIN_DIR"
+	json_init
+	json_add_array "apps"
+	local manifest_file
+	for manifest_file in "$PLUGIN_DIR"/*/manifest.json; do
+		[ -f "$manifest_file" ] || continue
+		local manifest
+		manifest=$(cat "$manifest_file")
+		local id name type version description state wizard_field
+		id=$(jsonfilter -s "$manifest" -e '@.id' 2>/dev/null)
+		name=$(jsonfilter -s "$manifest" -e '@.name' 2>/dev/null)
+		type=$(jsonfilter -s "$manifest" -e '@.type' 2>/dev/null)
+		version=$(jsonfilter -s "$manifest" -e '@.version' 2>/dev/null)
+		description=$(jsonfilter -s "$manifest" -e '@.description' 2>/dev/null)
+		[ -n "$id" ] || continue
+		state=$(packages_state "$manifest")
+		wizard_field=$(jsonfilter -s "$manifest" -e '@.wizard.fields[0].id' 2>/dev/null)
+		json_add_object
+		json_add_string "id" "$id"
+		json_add_string "name" "$name"
+		json_add_string "type" "$type"
+		json_add_string "version" "$version"
+		json_add_string "description" "$description"
+		json_add_string "state" "$state"
+		json_add_boolean "has_wizard" "$([ -n "$wizard_field" ] && echo 1 || echo 0)"
+		json_close_object
+	done
+	json_close_array
+	json_dump
+}
+
+get_app_manifest() {
+	local input app_id file manifest state
+	read input
+	app_id=$(jsonfilter -s "$input" -e '@.app_id' 2>/dev/null)
+	if [ -z "$app_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "app_id required"
+		json_dump
+		return
+	fi
+	file="$PLUGIN_DIR/$app_id/manifest.json"
+	if [ ! -f "$file" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Manifest not found"
+		json_dump
+		return
+	fi
+	manifest=$(cat "$file")
+	state=$(packages_state "$manifest")
+	json_load "$manifest"
+	json_add_string "state" "$state"
+	json_dump
+}
+
+apply_app_wizard() {
+	local input app_id file manifest config section fields field option value
+	read input
+	app_id=$(jsonfilter -s "$input" -e '@.app_id' 2>/dev/null)
+	if [ -z "$app_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "app_id required"
+		json_dump
+		return
+	fi
+	file="$PLUGIN_DIR/$app_id/manifest.json"
+	if [ ! -f "$file" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Manifest not found"
+		json_dump
+		return
+	fi
+	manifest=$(cat "$file")
+	config=$(jsonfilter -s "$manifest" -e '@.wizard.uci.config' 2>/dev/null)
+	section=$(jsonfilter -s "$manifest" -e '@.wizard.uci.section' 2>/dev/null)
+	[ -n "$section" ] || section="main"
+	if [ -z "$config" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Wizard missing UCI config"
+		json_dump
+		return
+	fi
+	fields=$(jsonfilter -s "$manifest" -e '@.wizard.fields[*].id' 2>/dev/null)
+	for field in $fields; do
+		option=$(jsonfilter -s "$manifest" -e "@.wizard.fields[@.id='$field'].uci_option" 2>/dev/null)
+		[ -n "$option" ] || continue
+		value=$(jsonfilter -s "$input" -e "@.values.$field" 2>/dev/null)
+		[ -n "$value" ] || continue
+		uci set ${config}.${section}.${option}="$value"
+	done
+	uci commit "$config"
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
 case "$1" in
 	list)
 		json_init
@@ -1145,6 +1379,18 @@ case "$1" in
 		json_add_object "clear_alerts"
 		json_close_object
 		json_add_object "fix_permissions"
+		json_close_object
+		json_add_object "first_run_status"
+		json_close_object
+		json_add_object "apply_first_run"
+		json_close_object
+		json_add_object "list_apps"
+		json_close_object
+		json_add_object "get_app_manifest"
+		json_add_string "app_id" "string"
+		json_close_object
+		json_add_object "apply_app_wizard"
+		json_add_string "app_id" "string"
 		json_close_object
 		json_dump
 		;;
@@ -1243,9 +1489,24 @@ case "$1" in
 			clear_alerts)
 				clear_alerts
 				;;
-			fix_permissions)
-				fix_permissions
-				;;
+		fix_permissions)
+			fix_permissions
+			;;
+		first_run_status)
+			first_run_status
+			;;
+		apply_first_run)
+			apply_first_run
+			;;
+		list_apps)
+			list_apps
+			;;
+		get_app_manifest)
+			get_app_manifest
+			;;
+		apply_app_wizard)
+			apply_app_wizard
+			;;
 			*)
 				echo '{"error":"Unknown method"}'
 				;;

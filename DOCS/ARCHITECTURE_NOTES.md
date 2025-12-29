@@ -17,7 +17,7 @@ These notes summarize the repository structure, conventions, and supporting tool
   - `luci-app-system-hub`: system health/remote assistance.
   - `luci-app-network-modes`: prebuilt router/sniffer modes (bridges, AP, relay, etc.).
   - `luci-app-vhost-manager`: reverse-proxy/vhost configuration (existing baseline for future work).
-- **Tooling (`secubox-tools/`)** – Bash/POSIX scripts for validation, building, deployment, permission repair, etc. The README documents workflows such as `validate-modules.sh`, `local-build.sh`, `fix-permissions.sh`, and `deploy-*.sh`.
+- **Tooling (`secubox-tools/`)** – Bash/POSIX scripts for validation, building, deployment, permission repair, etc. The README documents workflows such as `validate-modules.sh`, `local-build.sh`, `fix-permissions.sh`, and `deploy-*.sh`. The newer `secubox-app` helper consumes manifests under `/usr/share/secubox/plugins/` to install and configure “apps”.
 - **Automation & Docs**
   - `DOCS/` + `docs/`: mirrored, versioned documentation tree (design system, prompts, module templates, validation, permissions, etc.).
   - `EXAMPLES/` and `templates/`: snippets and scaffolding.

@@ -14,6 +14,14 @@
             "path": "secubox/dashboard"
         }
     },
+    "admin/secubox/wizard": {
+        "title": "First-Run Wizard",
+        "order": 15,
+        "action": {
+            "type": "view",
+            "path": "secubox/wizard"
+        }
+    },
     "admin/secubox/modules": {
         "title": "Modules",
         "order": 20,

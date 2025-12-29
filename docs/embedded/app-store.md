@@ -23,8 +23,15 @@ Each plugin folder contains a `manifest.json`. Example (Zigbee2MQTT):
   "volumes": ["/srv/zigbee2mqtt"],
   "network": { "default_mode": "lan", "dmz_supported": true },
   "wizard": {
-    "uci": "/etc/config/zigbee2mqtt",
-    "steps": ["serial_port", "mqtt_host", "credentials", "frontend_port"]
+    "uci": { "config": "zigbee2mqtt", "section": "main" },
+    "fields": [
+      { "id": "serial_port", "label": "Serial Port", "type": "text", "uci_option": "serial_port", "placeholder": "/dev/ttyACM0" },
+      { "id": "mqtt_host", "label": "MQTT Host", "type": "text", "uci_option": "mqtt_host", "placeholder": "mqtt://127.0.0.1:1883" },
+      { "id": "mqtt_username", "label": "MQTT Username", "type": "text", "uci_option": "mqtt_username" },
+      { "id": "mqtt_password", "label": "MQTT Password", "type": "password", "uci_option": "mqtt_password" },
+      { "id": "base_topic", "label": "Base Topic", "type": "text", "uci_option": "base_topic" },
+      { "id": "frontend_port", "label": "Frontend Port", "type": "number", "uci_option": "frontend_port" }
+    ]
   },
   "profiles": ["home", "lab"],
   "actions": {
@@ -51,14 +58,14 @@ Each plugin folder contains a `manifest.json`. Example (Zigbee2MQTT):
 - `ports`: Document exposed services for the App Store UI.
 - `volumes`: Persistent directories (e.g., `/srv/zigbee2mqtt`).
 - `network`: Defaults + whether DMZ mode is supported.
-- `wizard`: UCI file and logical steps for the future wizard UI.
+- `wizard`: Declarative form metadata (`uci.config`, `uci.section`, `fields[*].uci_option`).
 - `profiles`: Tags to pre-load when applying OS-like profiles.
 
 ---
 
-## CLI Usage (`secubox-tools/secubox-app`)
+## CLI Usage (`secubox-app`)
 
-Copy or install `secubox-tools/secubox-app` on the router (ensure it’s executable). Commands:
+`luci-app-secubox` installs the CLI as `/usr/sbin/secubox-app` (also available under `secubox-tools/` for development). Commands:
 
 ```bash
 # List manifests
@@ -92,4 +99,3 @@ The CLI relies on `opkg` and `jsonfilter`, so run it on the router (or within th
 - Profiles can bundle manifests with specific network modes (e.g., DMZ + Zigbee2MQTT + Lyrion).
 
 For now, Zigbee2MQTT demonstrates the format. Additional manifests should follow the same schema to ensure the CLI and future UIs remain consistent.
-

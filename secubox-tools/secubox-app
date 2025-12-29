@@ -4,7 +4,15 @@
 
 set -eu
 
-PLUGINS_DIR="${SECUBOX_PLUGINS_DIR:-$(cd "$(dirname "$0")/../plugins" && pwd)}"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+DEFAULT_PLUGINS_DIR="/usr/share/secubox/plugins"
+if [ -n "${SECUBOX_PLUGINS_DIR:-}" ]; then
+	PLUGINS_DIR="$SECUBOX_PLUGINS_DIR"
+elif [ -d "$SCRIPT_DIR/../plugins" ]; then
+	PLUGINS_DIR=$(cd "$SCRIPT_DIR/../plugins" && pwd)
+else
+	PLUGINS_DIR="$DEFAULT_PLUGINS_DIR"
+fi
 OPKG_UPDATED=0
 
 info() { printf '[INFO] %s\n' "$*"; }
@@ -25,7 +33,7 @@ Commands:
   update <app-id>          Run plugin update action or opkg upgrade
 
 Environment:
-  SECUBOX_PLUGINS_DIR   Override plugin manifest directory (default: ../plugins)
+  SECUBOX_PLUGINS_DIR   Override manifest directory (default: /usr/share/secubox/plugins)
 USAGE
 }
 

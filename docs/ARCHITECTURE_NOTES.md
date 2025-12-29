@@ -20,7 +20,7 @@ These notes capture the current repository structure, conventions, and supportin
   `luci-theme-secubox` carries the design system (dark palette, `sh-*`/`sb-*` classes, Inter + JetBrains Mono). Every LuCI view imports `secubox-theme/secubox-theme.css` plus module-specific CSS as needed.
 
 - **Tooling (`secubox-tools/`)**  
-  Contains validation (`validate-modules.sh`), build automation (`local-build.sh`), permission repair, deployment helpers, and debug loggers. These scripts mirror GitHub Actions workflows and should be reused for any new installer/test tooling.
+  Contains validation (`validate-modules.sh`), build automation (`local-build.sh`), permission repair, deployment helpers, and debug loggers. These scripts mirror GitHub Actions workflows and should be reused for new installer/test tooling. The `secubox-app` CLI now lives here as well, consuming manifests under `/usr/share/secubox/plugins/` to install and configure “apps”.
 
 - **Automation/scripts (`scripts/`)**  
   Hosts documentation publishing helpers plus existing diagnostics/smoke scripts. New repo-wide diagnostics should live alongside them.

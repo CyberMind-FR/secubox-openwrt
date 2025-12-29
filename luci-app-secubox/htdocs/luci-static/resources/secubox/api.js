@@ -145,6 +145,35 @@ var callFixPermissions = rpc.declare({
 	expect: { success: false, message: '', output: '' }
 });
 
+var callFirstRunStatus = rpc.declare({
+	object: 'luci.secubox',
+	method: 'first_run_status',
+	expect: { }
+});
+
+var callApplyFirstRun = rpc.declare({
+	object: 'luci.secubox',
+	method: 'apply_first_run'
+});
+
+var callListApps = rpc.declare({
+	object: 'luci.secubox',
+	method: 'list_apps',
+	expect: { apps: [] }
+});
+
+var callGetAppManifest = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_app_manifest',
+	params: ['app_id']
+});
+
+var callApplyAppWizard = rpc.declare({
+	object: 'luci.secubox',
+	method: 'apply_app_wizard',
+	params: ['app_id', 'values']
+});
+
 function formatUptime(seconds) {
 	if (!seconds) return '0s';
 	var d = Math.floor(seconds / 86400);
@@ -188,6 +217,11 @@ return baseclass.extend({
 	dismissAlert: callDismissAlert,
 	clearAlerts: callClearAlerts,
 	fixPermissions: callFixPermissions,
+	getFirstRunStatus: callFirstRunStatus,
+	applyFirstRun: callApplyFirstRun,
+	listApps: callListApps,
+	getAppManifest: callGetAppManifest,
+	applyAppWizard: callApplyAppWizard,
 	// Utilities
 	formatUptime: formatUptime,
 	formatBytes: formatBytes

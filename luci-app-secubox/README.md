@@ -52,6 +52,12 @@ Auto-detection and status monitoring for all SecuBox modules:
 - **CDN Cache** - Local caching proxy
 - **Virtual Host Manager** - Virtual host configuration
 
+### Wizard & App Store Integration
+- First-run assistant to verify password, timezone, storage, and preferred network mode
+- Manifest-driven app wizards (e.g., Zigbee2MQTT) surfaced directly inside SecuBox
+- `secubox-app` CLI (installed under `/usr/sbin/`) for scripted installs/updates via manifests
+- Plugins stored under `/usr/share/secubox/plugins/<app>/manifest.json` for easy expansion
+
 ## LuCI Menu Structure
 
 The SecuBox hub organizes all modules into a hierarchical menu structure in LuCI:

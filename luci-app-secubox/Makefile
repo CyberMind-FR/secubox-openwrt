@@ -22,4 +22,12 @@ PKG_FILE_MODES:=/usr/libexec/rpcd/luci.secubox:root:root:755 \
 
 include $(TOPDIR)/feeds/luci/luci.mk
 
+define Package/$(PKG_NAME)/install
+	$(call Package/luci/install,$(1))
+	$(INSTALL_DIR) $(1)/usr/share/secubox/plugins/zigbee2mqtt
+	$(INSTALL_DATA) $(CURDIR)/../plugins/zigbee2mqtt/manifest.json $(1)/usr/share/secubox/plugins/zigbee2mqtt/manifest.json
+	$(INSTALL_DIR) $(1)/usr/sbin
+	$(INSTALL_BIN) $(CURDIR)/../secubox-tools/secubox-app $(1)/usr/sbin/secubox-app
+endef
+
 # call BuildPackage - OpenWrt buildroot

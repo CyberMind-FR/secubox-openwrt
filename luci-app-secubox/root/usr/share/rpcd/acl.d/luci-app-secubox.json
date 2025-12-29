@@ -1,21 +1,24 @@
 {
     "luci-app-secubox": {
         "description": "SecuBox Dashboard",
-        "read": {
-            "ubus": {
-                "luci.secubox": [
-                    "status",
-                    "modules",
-                    "modules_by_category",
-                    "module_info",
-                    "check_module_enabled",
-                    "health",
-                    "diagnostics",
-                    "get_system_health",
-                    "get_alerts",
-                    "get_dashboard_data",
-                    "get_theme"
-                ],
+		"read": {
+			"ubus": {
+				"luci.secubox": [
+					"status",
+					"modules",
+					"modules_by_category",
+					"module_info",
+					"check_module_enabled",
+					"health",
+					"diagnostics",
+					"get_system_health",
+					"get_alerts",
+					"get_dashboard_data",
+					"get_theme",
+					"first_run_status",
+					"list_apps",
+					"get_app_manifest"
+				],
                 "uci": [
                     "get",
                     "state"
@@ -25,20 +28,22 @@
                 "secubox"
             ]
         },
-        "write": {
-            "ubus": {
-                "luci.secubox": [
-                    "start_module",
-                    "stop_module",
-                    "restart_module",
-                    "enable_module",
-                    "disable_module",
-                    "quick_action",
-                    "set_theme",
-                    "dismiss_alert",
-                    "clear_alerts",
-                    "fix_permissions"
-                ],
+		"write": {
+			"ubus": {
+				"luci.secubox": [
+					"start_module",
+					"stop_module",
+					"restart_module",
+					"enable_module",
+					"disable_module",
+					"quick_action",
+					"set_theme",
+					"dismiss_alert",
+					"clear_alerts",
+					"fix_permissions",
+					"apply_first_run",
+					"apply_app_wizard"
+				],
                 "uci": [
                     "set",
                     "delete",

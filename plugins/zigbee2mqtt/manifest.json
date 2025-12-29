@@ -18,12 +18,17 @@
     "dmz_supported": true
   ],
   "wizard": {
-    "uci": "/etc/config/zigbee2mqtt",
-    "steps": [
-      "serial_port",
-      "mqtt_host",
-      "credentials",
-      "frontend_port"
+    "uci": {
+      "config": "zigbee2mqtt",
+      "section": "main"
+    },
+    "fields": [
+      { "id": "serial_port", "label": "Serial Port", "type": "text", "uci_option": "serial_port", "placeholder": "/dev/ttyACM0" },
+      { "id": "mqtt_host", "label": "MQTT Host", "type": "text", "uci_option": "mqtt_host", "placeholder": "mqtt://127.0.0.1:1883" },
+      { "id": "mqtt_username", "label": "MQTT Username", "type": "text", "uci_option": "mqtt_username" },
+      { "id": "mqtt_password", "label": "MQTT Password", "type": "password", "uci_option": "mqtt_password" },
+      { "id": "base_topic", "label": "Base Topic", "type": "text", "uci_option": "base_topic", "placeholder": "zigbee2mqtt" },
+      { "id": "frontend_port", "label": "Frontend Port", "type": "number", "uci_option": "frontend_port", "placeholder": "8080" }
     ]
   },
   "profiles": ["home", "lab"],
