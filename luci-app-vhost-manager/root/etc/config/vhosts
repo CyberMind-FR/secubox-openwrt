@@ -1,0 +1,17 @@
+
+config global 'global'
+	option enabled '1'
+	option auto_reload '1'
+
+# Example VHost entry
+# config vhost 'zigbeeui'
+#	option domain 'zigbee.example.com'
+#	option upstream 'http://127.0.0.1:8080'
+#	option tls 'acme'        # off|acme|manual
+#	option cert_path '/etc/custom/fullchain.pem'   # used when tls=manual
+#	option key_path '/etc/custom/privkey.pem'
+#	option auth '0'
+#	option auth_user 'admin'
+#	option auth_pass 'secret'
+#	option websocket '1'
+#	option enabled '1'

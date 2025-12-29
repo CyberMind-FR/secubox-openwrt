@@ -29,6 +29,22 @@ function formatDate(value) {
 	}
 }
 
+function isEnabled(vhost) {
+	return !vhost || vhost.enabled !== false;
+}
+
+function formatTlsMode(vhost) {
+	var mode = (vhost && vhost.tls_mode) || (vhost && vhost.ssl ? 'acme' : 'off');
+	switch (mode) {
+		case 'acme':
+			return _('ACME (auto)');
+		case 'manual':
+			return _('Manual cert');
+		default:
+			return _('Disabled');
+	}
+}
+
 return L.view.extend({
 	load: function() {
 		return Promise.all([
@@ -58,7 +74,7 @@ return L.view.extend({
 	},
 
 	buildForm: function() {
-		var m = new form.Map('vhost_manager', null, null);
+		var m = new form.Map('vhosts', null, null);
 		var s = m.section(form.GridSection, 'vhost', _('Virtual Hosts'));
 		s.anonymous = false;
 		s.addremove = true;
@@ -105,9 +121,20 @@ return L.view.extend({
 			return widget;
 		};
 
-		o = s.option(form.Flag, 'ssl', _('Enable SSL'));
-		o.default = o.disabled;
-		o.description = _('Serve HTTPS (requires certificate).');
+		o = s.option(form.ListValue, 'tls_mode', _('TLS Mode'));
+		o.value('off', _('Disabled (HTTP only)'));
+		o.value('acme', _('Automatic (acme.sh)'));
+		o.value('manual', _('Manual certificate'));
+		o.default = 'acme';
+		o.description = _('Select how nginx obtains TLS certificates.');
+
+		o = s.option(form.Value, 'cert_path', _('Certificate Path'));
+		o.placeholder = '/etc/custom/fullchain.pem';
+		o.depends('tls_mode', 'manual');
+
+		o = s.option(form.Value, 'key_path', _('Private Key Path'));
+		o.placeholder = '/etc/custom/privkey.pem';
+		o.depends('tls_mode', 'manual');
 
 		o = s.option(form.Flag, 'auth', _('Enable Authentication'));
 		o.default = o.disabled;
@@ -124,19 +151,49 @@ return L.view.extend({
 		o.default = o.disabled;
 		o.description = _('Forward upgrade headers for WS backends.');
 
+		o = s.option(form.Flag, 'enabled', _('Enable Virtual Host'));
+		o.default = '1';
+		o.description = _('Toggle to disable without deleting configuration.');
+
 		s.addModalOptions = function(s, section_id) {
 			var domain = this.section.formvalue(section_id, 'domain');
 			var backend = this.section.formvalue(section_id, 'backend');
-			var ssl = this.section.formvalue(section_id, 'ssl') === '1';
+			var tlsMode = this.section.formvalue(section_id, 'tls_mode') || 'off';
 			var auth = this.section.formvalue(section_id, 'auth') === '1';
 			var websocket = this.section.formvalue(section_id, 'websocket') === '1';
+			var enabled = this.section.formvalue(section_id, 'enabled') !== '0';
+			var certPath = this.section.formvalue(section_id, 'cert_path') || '';
+			var keyPath = this.section.formvalue(section_id, 'key_path') || '';
+			var authUser = this.section.formvalue(section_id, 'auth_user') || '';
+			var authPass = this.section.formvalue(section_id, 'auth_pass') || '';
 
 			if (!domain || !backend) {
 				ui.addNotification(null, E('p', _('Domain and backend are required')), 'error');
 				return;
 			}
 
-			API.addVHost(domain, backend, ssl, auth, websocket).then(function(result) {
+			if (auth && (!authUser || !authPass)) {
+				ui.addNotification(null, E('p', _('Username and password required for authentication')), 'error');
+				return;
+			}
+
+			if (tlsMode === 'manual' && (!certPath || !keyPath)) {
+				ui.addNotification(null, E('p', _('Manual TLS requires certificate and key paths')), 'error');
+				return;
+			}
+
+			API.addVHost(
+				domain,
+				backend,
+				tlsMode,
+				auth,
+				auth ? authUser : null,
+				auth ? authPass : null,
+				websocket,
+				enabled,
+				tlsMode === 'manual' ? certPath : null,
+				tlsMode === 'manual' ? keyPath : null
+			).then(function(result) {
 				if (result.success) {
 					ui.addNotification(null, E('p', _('VHost created successfully')), 'info');
 
@@ -174,9 +231,10 @@ return L.view.extend({
 	},
 
 	renderHeader: function(vhosts) {
-		var sslEnabled = vhosts.filter(function(v) { return v.ssl; }).length;
-		var authEnabled = vhosts.filter(function(v) { return v.auth; }).length;
-		var websocketEnabled = vhosts.filter(function(v) { return v.websocket; }).length;
+		var active = vhosts.filter(isEnabled);
+		var sslEnabled = active.filter(function(v) { return v.ssl; }).length;
+		var authEnabled = active.filter(function(v) { return v.auth; }).length;
+		var websocketEnabled = active.filter(function(v) { return v.websocket; }).length;
 
 		return E('div', { 'class': 'sh-page-header' }, [
 			E('div', {}, [
@@ -189,6 +247,7 @@ return L.view.extend({
 			]),
 			E('div', { 'class': 'sh-stats-grid' }, [
 				this.renderStatBadge(vhosts.length, _('Defined')),
+				this.renderStatBadge(active.length, _('Enabled')),
 				this.renderStatBadge(sslEnabled, _('TLS')),
 				this.renderStatBadge(authEnabled, _('Auth')),
 				this.renderStatBadge(websocketEnabled, _('WebSocket'))
@@ -225,14 +284,22 @@ return L.view.extend({
 
 	renderVhostCard: function(vhost, cert) {
 		var pills = [];
-		if (vhost.ssl) pills.push(E('span', { 'class': 'vhost-pill success' }, _('SSL')));
+		if (!isEnabled(vhost)) {
+			pills.push(E('span', { 'class': 'vhost-pill danger' }, _('Disabled')));
+		} else if (vhost.ssl) {
+			pills.push(E('span', { 'class': 'vhost-pill success' }, _('TLS')));
+		}
 		if (vhost.auth) pills.push(E('span', { 'class': 'vhost-pill warn' }, _('Auth')));
 		if (vhost.websocket) pills.push(E('span', { 'class': 'vhost-pill' }, _('WebSocket')));
+		if (vhost.tls_mode === 'manual') {
+			pills.push(E('span', { 'class': 'vhost-pill' }, _('Manual cert')));
+		}
 
 		return E('div', { 'class': 'vhost-card' }, [
 			E('div', { 'class': 'vhost-card-title' }, ['🌐', vhost.domain || _('Unnamed')]),
 			E('div', { 'class': 'vhost-card-meta' }, vhost.backend || _('No backend defined')),
 			pills.length ? E('div', { 'class': 'vhost-filter-tags' }, pills) : '',
+			E('div', { 'class': 'vhost-card-meta' }, _('TLS Mode: %s').format(formatTlsMode(vhost))),
 			E('div', { 'class': 'vhost-card-meta' },
 				cert ? _('Certificate expires %s').format(formatDate(cert.expires)) : _('No certificate detected'))
 		]);

@@ -1,6 +1,5 @@
 #!/bin/sh
-# RPCD backend for VHost Manager
-# Provides ubus interface: luci.vhost-manager
+# RPCD backend for VHost Manager (UCI-driven)
 
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
@@ -18,26 +17,228 @@ PKG_VERSION="$(get_pkg_version)"
 
 NGINX_VHOST_DIR="/etc/nginx/conf.d"
 ACME_STATE_DIR="/etc/acme"
-VHOST_CONFIG="/etc/config/vhost_manager"
+VHOSTS_CONFIG="/etc/config/vhosts"
 
-# Initialize directories
+TLS_CERT_PATH=""
+TLS_KEY_PATH=""
+TLS_ACTIVE=0
+CERT_EXPIRES=""
+CERT_ISSUER=""
+CERT_SUBJECT=""
+
 init_dirs() {
-	mkdir -p "$NGINX_VHOST_DIR"
-	mkdir -p "$ACME_STATE_DIR"
-	touch "$VHOST_CONFIG"
+	mkdir -p "$NGINX_VHOST_DIR" "$ACME_STATE_DIR"
+	[ -f "$VHOSTS_CONFIG" ] || cat <<'CFG' > "$VHOSTS_CONFIG"
+config global 'global'
+	option enabled '1'
+	option auto_reload '1'
+CFG
 }
 
-# Generate nginx vhost configuration
+normalize_bool() {
+	local value="$1"
+	case "$value" in
+		1|true|on|yes|enabled) echo 1 ;;
+		*) echo 0 ;;
+	esac
+}
+
+resolve_tls_mode() {
+	local tls_mode="$1"
+	local legacy_ssl="$2"
+	if [ -n "$tls_mode" ]; then
+		echo "$tls_mode"
+		return
+	fi
+	legacy_ssl=$(normalize_bool "$legacy_ssl")
+	if [ "$legacy_ssl" = "1" ]; then
+		echo "acme"
+	else
+		echo "off"
+	fi
+}
+
+find_section() {
+	__target="$1"
+	__found_section=""
+	config_load vhosts
+	config_foreach __match_section vhost
+	echo "$__found_section"
+}
+
+__match_section() {
+	local section="$1"
+	config_get domain "$section" domain
+	if [ "$domain" = "$__target" ]; then
+		__found_section="$section"
+	fi
+}
+
+write_htpasswd() {
+	local domain="$1"
+	local user="$2"
+	local pass="$3"
+	local file="/etc/nginx/.luci-app-vhost-manager_${domain}"
+	mkdir -p /etc/nginx
+	local hash
+	hash=$(openssl passwd -apr1 "$pass")
+	printf '%s:%s\n' "$user" "$hash" > "$file"
+	chmod 600 "$file"
+}
+
+remove_htpasswd() {
+	local domain="$1"
+	rm -f "/etc/nginx/.luci-app-vhost-manager_${domain}"
+}
+
+sanitize_section_name() {
+	local domain="$1"
+	local safe
+	safe=$(echo "$domain" | tr 'A-Z' 'a-z' | tr -cd 'a-z0-9_')
+	[ -z "$safe" ] && safe="vh$(date +%s)"
+	echo "vh_${safe}"
+}
+
+set_tls_context() {
+	local domain="$1"
+	local tls_mode="$2"
+	local cert_path="$3"
+	local key_path="$4"
+
+	TLS_ACTIVE=0
+	TLS_CERT_PATH=""
+	TLS_KEY_PATH=""
+
+	case "$tls_mode" in
+		acme)
+			TLS_CERT_PATH="/etc/acme/${domain}/fullchain.cer"
+			TLS_KEY_PATH="/etc/acme/${domain}/${domain}.key"
+			;;
+		manual)
+			TLS_CERT_PATH="$cert_path"
+			TLS_KEY_PATH="$key_path"
+			;;
+		*)
+			TLS_CERT_PATH=""
+			TLS_KEY_PATH=""
+			;;
+	esac
+
+	if [ -n "$TLS_CERT_PATH" ] && [ -f "$TLS_CERT_PATH" ] && \
+	   [ -n "$TLS_KEY_PATH" ] && [ -f "$TLS_KEY_PATH" ]; then
+		TLS_ACTIVE=1
+	else
+		TLS_CERT_PATH=""
+		TLS_KEY_PATH=""
+		TLS_ACTIVE=0
+	fi
+}
+
+read_cert_metadata() {
+	local file="$1"
+	CERT_EXPIRES=""
+	CERT_ISSUER=""
+	CERT_SUBJECT=""
+	[ -f "$file" ] || return 1
+	CERT_EXPIRES="$(openssl x509 -in "$file" -noout -enddate 2>/dev/null | cut -d'=' -f2)"
+	CERT_ISSUER="$(openssl x509 -in "$file" -noout -issuer 2>/dev/null | cut -d'=' -f2-)"
+	CERT_SUBJECT="$(openssl x509 -in "$file" -noout -subject 2>/dev/null | cut -d'=' -f2-)"
+}
+
+_count_vhost() {
+	local section="$1"
+	config_get_bool enabled "$section" enabled 1
+	[ "$enabled" = "1" ] || return
+	count=$((count + 1))
+}
+
+append_vhost_json() {
+	local section="$1"
+	config_get domain "$section" domain
+	[ -n "$domain" ] || return
+
+	config_get upstream "$section" upstream
+	config_get tls "$section" tls
+	config_get cert_path "$section" cert_path
+	config_get key_path "$section" key_path
+	config_get_bool auth "$section" auth 0
+	config_get auth_user "$section" auth_user
+	config_get_bool websocket "$section" websocket 0
+	config_get_bool enabled "$section" enabled 1
+
+	set_tls_context "$domain" "${tls:-off}" "$cert_path" "$key_path"
+	[ "$TLS_ACTIVE" = "1" ] && read_cert_metadata "$TLS_CERT_PATH"
+
+	json_add_object ""
+	json_add_string "section" "$section"
+	json_add_string "domain" "$domain"
+	json_add_string "backend" "$upstream"
+	json_add_string "upstream" "$upstream"
+	json_add_string "tls_mode" "${tls:-off}"
+	json_add_boolean "ssl" "$TLS_ACTIVE"
+	json_add_boolean "auth" "$auth"
+	json_add_string "auth_user" "${auth_user:-}"
+	json_add_boolean "websocket" "$websocket"
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "config_file" "$NGINX_VHOST_DIR/${domain}.conf"
+
+	if [ "$TLS_ACTIVE" = "1" ]; then
+		json_add_string "cert_file" "$TLS_CERT_PATH"
+		[ -n "$CERT_EXPIRES" ] && json_add_string "cert_expires" "$CERT_EXPIRES"
+		[ -n "$CERT_ISSUER" ] && json_add_string "cert_issuer" "$CERT_ISSUER"
+		[ -n "$CERT_SUBJECT" ] && json_add_string "cert_subject" "$CERT_SUBJECT"
+	fi
+
+	json_close_object
+}
+
+
+render_vhost_section() {
+	local section="$1"
+	config_get domain "$section" domain
+	config_get upstream "$section" upstream
+	config_get tls "$section" tls
+	config_get cert_path "$section" cert_path
+	config_get key_path "$section" key_path
+	config_get_bool auth "$section" auth 0
+	config_get auth_user "$section" auth_user
+	config_get auth_pass "$section" auth_pass
+	config_get_bool websocket "$section" websocket 0
+	config_get_bool enabled "$section" enabled 1
+	[ -z "$domain" ] && return
+	[ -z "$upstream" ] && return
+	local conf="$NGINX_VHOST_DIR/${domain}.conf"
+
+	if [ "$enabled" != "1" ]; then
+		rm -f "$conf"
+		remove_htpasswd "$domain"
+		return
+	fi
+
+	if [ "$auth" = "1" ] && [ -n "$auth_user" ] && [ -n "$auth_pass" ]; then
+		write_htpasswd "$domain" "$auth_user" "$auth_pass"
+	else
+		remove_htpasswd "$domain"
+	fi
+
+	set_tls_context "$domain" "${tls:-off}" "$cert_path" "$key_path"
+	generate_vhost_config "$domain" "$upstream" "$TLS_ACTIVE" "$auth" "$websocket"
+}
+
+render_all_vhosts() {
+	config_load vhosts
+	config_foreach render_vhost_section vhost
+}
+
 generate_vhost_config() {
 	local domain="$1"
 	local backend="$2"
 	local ssl="$3"
 	local auth="$4"
 	local websocket="$5"
-	
-	local config_file="${NGINX_VHOST_DIR}/${domain}.conf"
-	
-	cat > "$config_file" << NGINXEOF
+	local config_file="$NGINX_VHOST_DIR/${domain}.conf"
+
+	cat > "$config_file" <<NGINXEOF
 # VHost for ${domain}
 # Generated by LuCI VHost Manager
 
@@ -46,475 +247,427 @@ server {
 	server_name ${domain};
 NGINXEOF
 
-	# Add SSL redirect if enabled
 	if [ "$ssl" = "1" ]; then
-		cat >> "$config_file" << NGINXEOF
-	
-	# Redirect to HTTPS
+		cat >> "$config_file" <<NGINXEOF
 	return 301 https://\$host\$request_uri;
 }
 
 server {
 	listen 443 ssl http2;
 	server_name ${domain};
-	
-	# SSL certificates
-	ssl_certificate /etc/acme/${domain}/fullchain.cer;
-	ssl_certificate_key /etc/acme/${domain}/${domain}.key;
-	
-	# SSL settings
+	ssl_certificate ${TLS_CERT_PATH};
+	ssl_certificate_key ${TLS_KEY_PATH};
 	ssl_protocols TLSv1.2 TLSv1.3;
 	ssl_ciphers HIGH:!aNULL:!MD5;
 	ssl_prefer_server_ciphers on;
 NGINXEOF
 	fi
 
-	# Add authentication if enabled
 	if [ "$auth" = "1" ]; then
-		cat >> "$config_file" << NGINXEOF
-	
-	# Basic authentication
+		cat >> "$config_file" <<NGINXEOF
 	auth_basic "Restricted Access";
-	auth_basic_user_file /etc/nginx/.htpasswd_${domain};
+	auth_basic_user_file /etc/nginx/.luci-app-vhost-manager_${domain};
 NGINXEOF
 	fi
 
-	# Add proxy configuration
-	cat >> "$config_file" << NGINXEOF
-	
+	cat >> "$config_file" <<NGINXEOF
 	location / {
 		proxy_pass ${backend};
 		proxy_http_version 1.1;
-		
-		# Proxy headers
 		proxy_set_header Host \$host;
 		proxy_set_header X-Real-IP \$remote_addr;
 		proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
 		proxy_set_header X-Forwarded-Proto \$scheme;
 NGINXEOF
 
-	# Add WebSocket support if enabled
 	if [ "$websocket" = "1" ]; then
-		cat >> "$config_file" << NGINXEOF
-		
-		# WebSocket support
+		cat >> "$config_file" <<NGINXEOF
 		proxy_set_header Upgrade \$http_upgrade;
 		proxy_set_header Connection "upgrade";
 NGINXEOF
 	fi
 
-	cat >> "$config_file" << NGINXEOF
-		
-		# Timeouts
+	cat >> "$config_file" <<NGINXEOF
 		proxy_connect_timeout 60s;
 		proxy_send_timeout 60s;
 		proxy_read_timeout 60s;
 	}
-	
-	# Access logs
 	access_log /var/log/nginx/${domain}_access.log;
 	error_log /var/log/nginx/${domain}_error.log;
 }
 NGINXEOF
-
-	echo "$config_file"
 }
 
-# Test backend connectivity
-test_backend() {
+validate_backend() {
 	local backend="$1"
-	
-	# Extract host and port from backend URL
-	local host=$(echo "$backend" | sed 's|https\?://||' | cut -d':' -f1 | cut -d'/' -f1)
-	local port=$(echo "$backend" | sed 's|https\?://||' | cut -d':' -f2 | cut -d'/' -f1)
-	
-	# Default port if not specified
-	if [ "$port" = "$host" ]; then
-		if echo "$backend" | grep -q "^https"; then
+	echo "$backend" | grep -Eq '^https?://' || return 1
+	return 0
+}
+
+probe_backend() {
+	local backend="$1"
+	local host port
+	host=$(echo "$backend" | sed 's|https\?://||' | cut -d'/' -f1 | cut -d':' -f1)
+	port=$(echo "$backend" | sed 's|https\?://||' | cut -d'/' -f1 | cut -d':' -f2)
+	if [ -z "$port" ]; then
+		if echo "$backend" | grep -q '^https://'; then
 			port=443
 		else
 			port=80
 		fi
 	fi
-	
-	# Test connection
-	if nc -z -w 5 "$host" "$port" 2>/dev/null; then
-		return 0
-	else
-		return 1
+	if [ -n "$host" ]; then
+		nc -z -w 5 "$host" "$port" 2>/dev/null
+		return $?
 	fi
+	return 1
 }
+
+add_or_update_vhost() {
+	local domain="$1"
+	local backend="$2"
+	local tls_mode="$3"
+	local auth="$4"
+	local auth_user="$5"
+	local auth_pass="$6"
+	local websocket="$7"
+	local enabled="$8"
+	local cert_path="$9"
+	local key_path="${10}"
+
+	local section
+	section=$(find_section "$domain")
+	if [ -z "$section" ]; then
+		local safe
+		safe=$(sanitize_section_name "$domain")
+		section=$(uci add vhosts vhost)
+		uci rename vhosts.$section="$safe"
+		section="$safe"
+		uci set vhosts.$section.domain="$domain"
+	fi
+
+	local normalized_tls="${tls_mode:-off}"
+	local normalized_auth
+	local normalized_websocket
+	local normalized_enabled
+
+	normalized_auth=$(normalize_bool "$auth")
+	normalized_websocket=$(normalize_bool "$websocket")
+	if [ -n "$enabled" ]; then
+		normalized_enabled=$(normalize_bool "$enabled")
+	else
+		normalized_enabled=1
+	fi
+
+	uci set vhosts.$section.upstream="$backend"
+	uci set vhosts.$section.tls="$normalized_tls"
+	if [ -n "$cert_path" ]; then
+		uci set vhosts.$section.cert_path="$cert_path"
+	else
+		uci -q delete vhosts.$section.cert_path
+	fi
+	if [ -n "$key_path" ]; then
+		uci set vhosts.$section.key_path="$key_path"
+	else
+		uci -q delete vhosts.$section.key_path
+	fi
+	uci set vhosts.$section.auth="$normalized_auth"
+	if [ -n "$auth_user" ]; then
+		uci set vhosts.$section.auth_user="$auth_user"
+	else
+		uci -q delete vhosts.$section.auth_user
+	fi
+	if [ -n "$auth_pass" ]; then
+		uci set vhosts.$section.auth_pass="$auth_pass"
+	else
+		uci -q delete vhosts.$section.auth_pass
+	fi
+	uci set vhosts.$section.websocket="$normalized_websocket"
+	uci set vhosts.$section.enabled="$normalized_enabled"
+
+	uci commit vhosts
+	config_load vhosts
+	render_vhost_section "$section"
+}
+
+list_response_schema() {
+	json_init
+	json_add_object "status"
+	json_close_object
+	json_add_object "list_vhosts"
+	json_close_object
+	json_add_object "get_vhost"
+		json_add_string "domain" "string"
+	json_close_object
+	json_add_object "add_vhost"
+		json_add_string "domain" "string"
+		json_add_string "backend" "string"
+		json_add_string "tls_mode" "string"
+		json_add_string "auth" "bool"
+		json_add_string "auth_user" "string"
+		json_add_string "auth_pass" "string"
+		json_add_string "websocket" "bool"
+		json_add_string "enabled" "bool"
+		json_add_string "cert_path" "string"
+		json_add_string "key_path" "string"
+	json_close_object
+	json_add_object "update_vhost"
+		json_add_string "domain" "string"
+		json_add_string "backend" "string"
+		json_add_string "tls_mode" "string"
+		json_add_string "auth" "bool"
+		json_add_string "auth_user" "string"
+		json_add_string "auth_pass" "string"
+		json_add_string "websocket" "bool"
+		json_add_string "enabled" "bool"
+		json_add_string "cert_path" "string"
+		json_add_string "key_path" "string"
+	json_close_object
+	json_add_object "delete_vhost"
+		json_add_string "domain" "string"
+	json_close_object
+	json_add_object "test_backend"
+		json_add_string "backend" "string"
+	json_close_object
+	json_add_object "request_cert"
+		json_add_string "domain" "string"
+		json_add_string "email" "string"
+	json_close_object
+	json_add_object "list_certs"
+	json_close_object
+	json_add_object "reload_nginx"
+	json_close_object
+	json_add_object "get_access_logs"
+		json_add_string "domain" "string"
+		json_add_string "lines" "int"
+	json_close_object
+	json_dump
+}
+
+init_dirs
 
 case "$1" in
 	list)
-		json_init
-		json_add_object "status"
-		json_close_object
-		json_add_object "list_vhosts"
-		json_close_object
-		json_add_object "get_vhost"
-			json_add_string "domain" "string"
-		json_close_object
-		json_add_object "add_vhost"
-			json_add_string "domain" "string"
-			json_add_string "backend" "string"
-			json_add_string "ssl" "bool"
-			json_add_string "auth" "bool"
-			json_add_string "websocket" "bool"
-		json_close_object
-		json_add_object "update_vhost"
-			json_add_string "domain" "string"
-			json_add_string "backend" "string"
-			json_add_string "ssl" "bool"
-			json_add_string "auth" "bool"
-			json_add_string "websocket" "bool"
-		json_close_object
-		json_add_object "delete_vhost"
-			json_add_string "domain" "string"
-		json_close_object
-		json_add_object "test_backend"
-			json_add_string "backend" "string"
-		json_close_object
-		json_add_object "request_cert"
-			json_add_string "domain" "string"
-			json_add_string "email" "string"
-		json_close_object
-		json_add_object "list_certs"
-		json_close_object
-		json_add_object "reload_nginx"
-		json_close_object
-		json_add_object "get_access_logs"
-			json_add_string "domain" "string"
-			json_add_string "lines" "int"
-		json_close_object
-		json_dump
+		list_response_schema
 		;;
-	
 	call)
 		case "$2" in
 			status)
 				init_dirs
-				
 				json_init
 				json_add_boolean "enabled" 1
 				json_add_string "module" "vhost-manager"
-			json_add_string "version" "$PKG_VERSION"
-				
-				# Check nginx status
-				if pgrep -x nginx > /dev/null 2>&1; then
+				json_add_string "version" "$PKG_VERSION"
+				if pgrep -x nginx >/dev/null 2>&1; then
 					json_add_boolean "nginx_running" 1
-					
-					# Get nginx version
-					local nginx_version=$(nginx -v 2>&1 | grep -o 'nginx/[0-9.]*' | cut -d'/' -f2)
-					json_add_string "nginx_version" "$nginx_version"
+					json_add_string "nginx_version" "$(nginx -v 2>&1 | grep -o 'nginx/[0-9.]*' | cut -d'/' -f2)"
 				else
 					json_add_boolean "nginx_running" 0
 					json_add_string "nginx_version" "unknown"
 				fi
-				
-				# Check acme.sh availability
-				if command -v acme.sh > /dev/null 2>&1; then
+				if command -v acme.sh >/dev/null 2>&1; then
 					json_add_boolean "acme_available" 1
-					local acme_version=$(acme.sh --version 2>/dev/null | head -1)
-					json_add_string "acme_version" "$acme_version"
+					json_add_string "acme_version" "$(acme.sh --version 2>/dev/null | head -1)"
 				else
 					json_add_boolean "acme_available" 0
 					json_add_string "acme_version" "not installed"
 				fi
-				
-				# Count vhosts
-				local vhost_count=0
-				if [ -d "$NGINX_VHOST_DIR" ]; then
-					vhost_count=$(find "$NGINX_VHOST_DIR" -name "*.conf" -type f 2>/dev/null | wc -l)
-				fi
-				json_add_int "vhost_count" "$vhost_count"
-				
+				count=0
+				config_load vhosts
+				config_foreach _count_vhost vhost
+				json_add_int "vhost_count" "$count"
 				json_dump
 				;;
-			
 			list_vhosts)
-				init_dirs
-				
 				json_init
 				json_add_array "vhosts"
-				
-				if [ -d "$NGINX_VHOST_DIR" ]; then
-					find "$NGINX_VHOST_DIR" -name "*.conf" -type f 2>/dev/null | while read -r conf_file; do
-						local domain=$(basename "$conf_file" .conf)
-						
-						# Parse config to extract info
-						local ssl=0
-						local auth=0
-						local websocket=0
-						local backend="unknown"
-						
-						if grep -q "listen 443 ssl" "$conf_file"; then
-							ssl=1
-						fi
-						
-						if grep -q "auth_basic" "$conf_file"; then
-							auth=1
-						fi
-						
-						if grep -q "Upgrade.*http_upgrade" "$conf_file"; then
-							websocket=1
-						fi
-						
-						backend=$(grep "proxy_pass" "$conf_file" | head -1 | sed 's/.*proxy_pass\s*\([^;]*\);.*/\1/')
-						
-						# Check SSL cert expiry
-						local ssl_expires="N/A"
-						if [ "$ssl" = "1" ] && [ -f "/etc/acme/${domain}/fullchain.cer" ]; then
-							ssl_expires=$(openssl x509 -in "/etc/acme/${domain}/fullchain.cer" -noout -enddate 2>/dev/null | cut -d'=' -f2)
-						fi
-						
-						json_add_object
-						json_add_string "domain" "$domain"
-						json_add_string "backend" "$backend"
-						json_add_boolean "ssl" "$ssl"
-						json_add_boolean "auth" "$auth"
-						json_add_boolean "websocket" "$websocket"
-						json_add_string "ssl_expires" "$ssl_expires"
-						json_add_string "config_file" "$conf_file"
-						json_close_object
-					done
-				fi
-				
+				config_load vhosts
+				config_foreach append_vhost_json vhost
 				json_close_array
 				json_dump
 				;;
-			
 			get_vhost)
 				read -r input
 				json_load "$input"
 				json_get_var domain domain
-				
-				local config_file="${NGINX_VHOST_DIR}/${domain}.conf"
-				
+				local section=$(find_section "$domain")
 				json_init
-				json_add_string "domain" "$domain"
-				
-				if [ -f "$config_file" ]; then
+				if [ -n "$section" ]; then
+					config_load vhosts
+					config_get upstream "$section" upstream
+					config_get tls "$section" tls
+					config_get_bool auth "$section" auth 0
+					config_get auth_user "$section" auth_user
+					config_get_bool websocket "$section" websocket 0
+					config_get_bool enabled "$section" enabled 1
+					config_get cert_path "$section" cert_path
+					config_get key_path "$section" key_path
+					set_tls_context "$domain" "${tls:-off}" "$cert_path" "$key_path"
+					[ "$TLS_ACTIVE" = "1" ] && read_cert_metadata "$TLS_CERT_PATH"
 					json_add_boolean "exists" 1
-					
-					# Parse configuration
-					local ssl=0
-					local auth=0
-					local websocket=0
-					local backend="unknown"
-					
-					if grep -q "listen 443 ssl" "$config_file"; then
-						ssl=1
-					fi
-					
-					if grep -q "auth_basic" "$config_file"; then
-						auth=1
-					fi
-					
-					if grep -q "Upgrade.*http_upgrade" "$config_file"; then
-						websocket=1
-					fi
-					
-					backend=$(grep "proxy_pass" "$config_file" | head -1 | sed 's/.*proxy_pass\s*\([^;]*\);.*/\1/')
-					
-					json_add_string "backend" "$backend"
-					json_add_boolean "ssl" "$ssl"
+					json_add_string "domain" "$domain"
+					json_add_string "backend" "$upstream"
+					json_add_string "tls_mode" "${tls:-off}"
+					json_add_boolean "ssl" "$TLS_ACTIVE"
 					json_add_boolean "auth" "$auth"
+					[ -n "$auth_user" ] && json_add_string "auth_user" "$auth_user"
 					json_add_boolean "websocket" "$websocket"
-					json_add_string "config_file" "$config_file"
-					
-					# SSL certificate info
-					if [ "$ssl" = "1" ] && [ -f "/etc/acme/${domain}/fullchain.cer" ]; then
-						local ssl_expires=$(openssl x509 -in "/etc/acme/${domain}/fullchain.cer" -noout -enddate 2>/dev/null | cut -d'=' -f2)
-						local ssl_issuer=$(openssl x509 -in "/etc/acme/${domain}/fullchain.cer" -noout -issuer 2>/dev/null | cut -d'=' -f2-)
-						
-						json_add_string "ssl_expires" "$ssl_expires"
-						json_add_string "ssl_issuer" "$ssl_issuer"
+					json_add_boolean "enabled" "$enabled"
+					json_add_string "config_file" "$NGINX_VHOST_DIR/${domain}.conf"
+					[ -n "$cert_path" ] && json_add_string "cert_path" "$cert_path"
+					[ -n "$key_path" ] && json_add_string "key_path" "$key_path"
+					if [ "$TLS_ACTIVE" = "1" ]; then
+						json_add_string "cert_file" "$TLS_CERT_PATH"
+						[ -n "$CERT_EXPIRES" ] && json_add_string "cert_expires" "$CERT_EXPIRES"
+						[ -n "$CERT_ISSUER" ] && json_add_string "cert_issuer" "$CERT_ISSUER"
 					fi
 				else
 					json_add_boolean "exists" 0
 				fi
-				
 				json_dump
 				;;
-			
 			add_vhost)
 				read -r input
 				json_load "$input"
 				json_get_var domain domain
 				json_get_var backend backend
-				json_get_var ssl ssl
+				json_get_var tls_mode tls_mode
+				json_get_var ssl legacy_ssl
 				json_get_var auth auth
+				json_get_var auth_user auth_user
+				json_get_var auth_pass auth_pass
 				json_get_var websocket websocket
-				
-				init_dirs
-				
-				# Validate domain
+				json_get_var enabled enabled
+				json_get_var cert_path cert_path
+				json_get_var key_path key_path
 				if [ -z "$domain" ] || [ -z "$backend" ]; then
-					json_init
-					json_add_boolean "success" 0
-					json_add_string "message" "Domain and backend are required"
-					json_dump
-					exit 0
+					json_init; json_add_boolean "success" 0; json_add_string "message" "Domain and backend required"; json_dump; exit 0
 				fi
-				
-				# Check if vhost already exists
-				if [ -f "${NGINX_VHOST_DIR}/${domain}.conf" ]; then
-					json_init
-					json_add_boolean "success" 0
-					json_add_string "message" "VHost already exists for domain: $domain"
-					json_dump
-					exit 0
+				if ! validate_backend "$backend"; then
+					json_init; json_add_boolean "success" 0; json_add_string "message" "Backend must be http(s) URL"; json_dump; exit 0
 				fi
-				
-				# Generate nginx config
-				local config_file=$(generate_vhost_config "$domain" "$backend" "$ssl" "$auth" "$websocket")
-				
-				# Test nginx config
-				if nginx -t 2>&1 | grep -q "successful"; then
-					json_init
-					json_add_boolean "success" 1
-					json_add_string "message" "VHost created successfully"
-					json_add_string "domain" "$domain"
-					json_add_string "config_file" "$config_file"
-					json_add_boolean "reload_required" 1
-					json_dump
-				else
-					# Remove invalid config
-					rm -f "$config_file"
-					
-					json_init
-					json_add_boolean "success" 0
-					json_add_string "message" "Invalid nginx configuration"
-					json_dump
+				local existing_section
+				existing_section=$(find_section "$domain")
+				if [ -n "$existing_section" ]; then
+					json_init; json_add_boolean "success" 0; json_add_string "message" "VHost already exists"; json_dump; exit 0
 				fi
+				tls_mode=$(resolve_tls_mode "$tls_mode" "$legacy_ssl")
+				if [ "$tls_mode" = "manual" ] && { [ -z "$cert_path" ] || [ -z "$key_path" ]; }; then
+					json_init; json_add_boolean "success" 0; json_add_string "message" "Manual TLS requires cert_path and key_path"; json_dump; exit 0
+				fi
+				add_or_update_vhost "$domain" "$backend" "$tls_mode" "$auth" "$auth_user" "$auth_pass" "$websocket" "$enabled" "$cert_path" "$key_path"
+				json_init; json_add_boolean "success" 1; json_add_boolean "reload_required" 1; json_dump
 				;;
-			
 			update_vhost)
 				read -r input
 				json_load "$input"
 				json_get_var domain domain
 				json_get_var backend backend
-				json_get_var ssl ssl
+				json_get_var tls_mode tls_mode
+				json_get_var ssl legacy_ssl
 				json_get_var auth auth
+				json_get_var auth_user auth_user
+				json_get_var auth_pass auth_pass
 				json_get_var websocket websocket
-				
-				# Check if vhost exists
-				if [ ! -f "${NGINX_VHOST_DIR}/${domain}.conf" ]; then
-					json_init
-					json_add_boolean "success" 0
-					json_add_string "message" "VHost not found: $domain"
-					json_dump
-					exit 0
+				json_get_var enabled enabled
+				json_get_var cert_path cert_path
+				json_get_var key_path key_path
+				if [ -z "$domain" ]; then
+					json_init; json_add_boolean "success" 0; json_add_string "message" "Domain required"; json_dump; exit 0
 				fi
-				
-				# Backup old config
-				cp "${NGINX_VHOST_DIR}/${domain}.conf" "${NGINX_VHOST_DIR}/${domain}.conf.bak"
-				
-				# Generate new config
-				local config_file=$(generate_vhost_config "$domain" "$backend" "$ssl" "$auth" "$websocket")
-				
-				# Test nginx config
-				if nginx -t 2>&1 | grep -q "successful"; then
-					rm -f "${NGINX_VHOST_DIR}/${domain}.conf.bak"
-					
-					json_init
-					json_add_boolean "success" 1
-					json_add_string "message" "VHost updated successfully"
-					json_add_boolean "reload_required" 1
-					json_dump
+				local section
+				section=$(find_section "$domain")
+				if [ -z "$section" ]; then
+					json_init; json_add_boolean "success" 0; json_add_string "message" "VHost not found"; json_dump; exit 0
+				fi
+				if [ -n "$backend" ] && ! validate_backend "$backend"; then
+					json_init; json_add_boolean "success" 0; json_add_string "message" "Backend must be http(s) URL"; json_dump; exit 0
+				fi
+				config_load vhosts
+				if [ -z "$backend" ]; then
+					config_get backend "$section" upstream
+				fi
+				if [ -z "$enabled" ]; then
+					config_get_bool enabled "$section" enabled 1
+				fi
+				local current_tls current_cert_path current_key_path
+				config_get current_tls "$section" tls
+				config_get current_cert_path "$section" cert_path
+				config_get current_key_path "$section" key_path
+				if [ -n "$tls_mode" ] || [ -n "$legacy_ssl" ]; then
+					tls_mode=$(resolve_tls_mode "$tls_mode" "$legacy_ssl")
 				else
-					# Restore backup
-					mv "${NGINX_VHOST_DIR}/${domain}.conf.bak" "${NGINX_VHOST_DIR}/${domain}.conf"
-					
-					json_init
-					json_add_boolean "success" 0
-					json_add_string "message" "Invalid configuration, changes reverted"
-					json_dump
+					tls_mode="${current_tls:-off}"
 				fi
+				[ -n "$cert_path" ] || cert_path="$current_cert_path"
+				[ -n "$key_path" ] || key_path="$current_key_path"
+				if [ "$tls_mode" = "manual" ] && { [ -z "$cert_path" ] || [ -z "$key_path" ]; }; then
+					json_init; json_add_boolean "success" 0; json_add_string "message" "Manual TLS requires cert_path and key_path"; json_dump; exit 0
+				fi
+				add_or_update_vhost "$domain" "$backend" "$tls_mode" "$auth" "$auth_user" "$auth_pass" "$websocket" "$enabled" "$cert_path" "$key_path"
+				json_init; json_add_boolean "success" 1; json_add_boolean "reload_required" 1; json_dump
 				;;
-			
 			delete_vhost)
 				read -r input
 				json_load "$input"
 				json_get_var domain domain
-				
-				local config_file="${NGINX_VHOST_DIR}/${domain}.conf"
-				
-				if [ -f "$config_file" ]; then
-					rm -f "$config_file"
-					
-					json_init
-					json_add_boolean "success" 1
-					json_add_string "message" "VHost deleted: $domain"
-					json_add_boolean "reload_required" 1
-					json_dump
-				else
-					json_init
-					json_add_boolean "success" 0
-					json_add_string "message" "VHost not found: $domain"
-					json_dump
+				local section=$(find_section "$domain")
+				local conf="$NGINX_VHOST_DIR/${domain}.conf"
+				if [ -n "$section" ]; then
+					uci delete vhosts.$section
+					uci commit vhosts
 				fi
+				rm -f "$conf"
+				remove_htpasswd "$domain"
+				json_init; json_add_boolean "success" 1; json_add_boolean "reload_required" 1; json_dump
 				;;
-			
 			test_backend)
 				read -r input
 				json_load "$input"
 				json_get_var backend backend
-				
 				json_init
 				json_add_string "backend" "$backend"
-				
-				if test_backend "$backend"; then
+				if [ -n "$backend" ] && probe_backend "$backend"; then
 					json_add_boolean "reachable" 1
 					json_add_string "status" "Backend is reachable"
 				else
 					json_add_boolean "reachable" 0
 					json_add_string "status" "Backend is unreachable"
 				fi
-				
 				json_dump
 				;;
-			
 			request_cert)
 				read -r input
 				json_load "$input"
 				json_get_var domain domain
 				json_get_var email email
-				
 				json_init
-				
-				if ! command -v acme.sh > /dev/null 2>&1; then
+				if ! command -v acme.sh >/dev/null 2>&1; then
 					json_add_boolean "success" 0
 					json_add_string "message" "acme.sh not installed"
 					json_dump
-					exit 0
+					return
 				fi
-				
-				# Request certificate using acme.sh
-				if acme.sh --issue -d "$domain" --standalone --force 2>&1 | grep -q "success"; then
+				if acme.sh --issue -d "$domain" --standalone --accountemail "$email" --force >/tmp/acme.log 2>&1; then
 					json_add_boolean "success" 1
-					json_add_string "message" "Certificate requested successfully"
-					json_add_string "domain" "$domain"
+					json_add_string "message" "Certificate requested"
 				else
 					json_add_boolean "success" 0
 					json_add_string "message" "Certificate request failed"
 				fi
-				
 				json_dump
 				;;
-			
 			list_certs)
 				json_init
 				json_add_array "certificates"
-				
 				if [ -d "$ACME_STATE_DIR" ]; then
 					find "$ACME_STATE_DIR" -name "fullchain.cer" -type f 2>/dev/null | while read -r cert_file; do
-						local domain=$(basename $(dirname "$cert_file"))
-						local expires=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | cut -d'=' -f2)
-						local issuer=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | cut -d'=' -f2-)
-						local subject=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | cut -d'=' -f2-)
-						
+						local domain
+						domain=$(basename "$(dirname "$cert_file")")
+						local expires issuer subject
+						expires=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | cut -d'=' -f2)
+						issuer=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | cut -d'=' -f2-)
+						subject=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | cut -d'=' -f2-)
 						json_add_object
 						json_add_string "domain" "$domain"
 						json_add_string "expires" "$expires"
@@ -524,62 +677,34 @@ case "$1" in
 						json_close_object
 					done
 				fi
-				
 				json_close_array
 				json_dump
 				;;
-			
 			reload_nginx)
-				json_init
-				
-				# Test configuration first
-				if nginx -t 2>&1 | grep -q "successful"; then
-					# Reload nginx
-					if /etc/init.d/nginx reload 2>&1; then
-						json_add_boolean "success" 1
-						json_add_string "message" "Nginx reloaded successfully"
-					else
-						json_add_boolean "success" 0
-						json_add_string "message" "Failed to reload nginx"
-					fi
+				if nginx -t >/dev/null 2>&1; then
+					/etc/init.d/nginx reload
+					json_init; json_add_boolean "success" 1; json_dump
 				else
-					json_add_boolean "success" 0
-					json_add_string "message" "Invalid nginx configuration"
+					json_init; json_add_boolean "success" 0; json_add_string "message" "nginx config invalid"; json_dump
 				fi
-				
-				json_dump
 				;;
-			
 			get_access_logs)
 				read -r input
 				json_load "$input"
 				json_get_var domain domain
 				json_get_var lines lines
-				
-				lines=${lines:-50}
-				
-				local log_file="/var/log/nginx/${domain}_access.log"
-				
+				lines=${lines:-100}
+				local file="/var/log/nginx/${domain}_access.log"
 				json_init
 				json_add_string "domain" "$domain"
 				json_add_array "logs"
-				
-				if [ -f "$log_file" ]; then
-					tail -n "$lines" "$log_file" | while read -r log_line; do
-						json_add_string "" "$log_line"
-					done
+				if [ -f "$file" ]; then
+					tail -n "$lines" "$file" | while read -r line; do json_add_string "" "$line"; done
 				fi
-				
 				json_close_array
 				json_dump
 				;;
-			
-			*)
-				json_init
-				json_add_int "error" -32601
-				json_add_string "message" "Method not found: $2"
-				json_dump
-				;;
+			*) json_init; json_add_string "error" "unknown method"; json_dump ;;
 		esac
 		;;
 esac

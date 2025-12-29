@@ -12,7 +12,7 @@
 					"get_access_logs"
 				]
 			},
-			"uci": ["vhost_manager", "nginx"],
+			"uci": ["vhosts", "vhost_manager", "nginx"],
 			"file": {
 				"/etc/nginx/conf.d/*": ["read"],
 				"/etc/acme/*": ["read"],
@@ -29,7 +29,7 @@
 					"reload_nginx"
 				]
 			},
-			"uci": ["vhost_manager", "nginx"],
+			"uci": ["vhosts", "vhost_manager", "nginx"],
 			"file": {
 				"/etc/nginx/conf.d/*": ["write"],
 				"/etc/nginx/.htpasswd_*": ["write"]

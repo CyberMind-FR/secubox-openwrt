@@ -1,0 +1,96 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+LEGACY_CFG="/etc/config/vhost_manager"
+TARGET_CFG="/etc/config/vhosts"
+
+[ -f "$LEGACY_CFG" ] || exit 0
+
+# If new config already contains vhost entries, assume migration already done.
+if uci -q show vhosts 2>/dev/null | grep -q '=vhost'; then
+	exit 0
+fi
+
+# Ensure target config exists
+if [ ! -f "$TARGET_CFG" ]; then
+	cat <<'CFG' > "$TARGET_CFG"
+config global 'global'
+	option enabled '1'
+	option auto_reload '1'
+CFG
+fi
+
+ensure_global_section() {
+	if ! uci -q get vhosts.global >/dev/null; then
+		local g
+		g=$(uci add vhosts global)
+		uci rename vhosts.$g='global'
+	fi
+}
+
+normalize_bool() {
+	case "$1" in
+		1|true|on|yes|enabled) echo "1" ;;
+		*) echo "0" ;;
+	esac
+}
+
+migrate_global() {
+	local section="$1"
+	local enabled auto_reload log_retention
+	config_get enabled "$section" enabled
+	config_get auto_reload "$section" auto_reload
+	config_get log_retention "$section" log_retention
+
+	ensure_global_section
+	[ -n "$enabled" ] && uci set vhosts.global.enabled="$enabled"
+	[ -n "$auto_reload" ] && uci set vhosts.global.auto_reload="$auto_reload"
+	[ -n "$log_retention" ] && uci set vhosts.global.log_retention="$log_retention"
+}
+
+migrate_vhost() {
+	local section="$1"
+	local domain backend ssl auth auth_user auth_pass websocket
+	config_get domain "$section" domain
+	config_get backend "$section" backend
+	config_get ssl "$section" ssl
+	config_get auth "$section" auth
+	config_get auth_user "$section" auth_user
+	config_get auth_pass "$section" auth_pass
+	config_get websocket "$section" websocket
+
+	[ -n "$domain" ] || return
+	[ -n "$backend" ] || return
+
+	local tls_mode="off"
+	if [ "$(normalize_bool "$ssl")" = "1" ]; then
+		tls_mode="acme"
+	fi
+
+	local s
+	s=$(uci add vhosts vhost)
+	uci set vhosts.$s.domain="$domain"
+	uci set vhosts.$s.upstream="$backend"
+	uci set vhosts.$s.tls="$tls_mode"
+
+	if [ "$(normalize_bool "$auth")" = "1" ]; then
+		uci set vhosts.$s.auth="1"
+		[ -n "$auth_user" ] && uci set vhosts.$s.auth_user="$auth_user"
+		[ -n "$auth_pass" ] && uci set vhosts.$s.auth_pass="$auth_pass"
+	else
+		uci set vhosts.$s.auth="0"
+	fi
+
+	uci set vhosts.$s.websocket="$(normalize_bool "$websocket")"
+	uci set vhosts.$s.enabled="1"
+}
+
+config_load vhost_manager
+config_foreach migrate_global global
+config_foreach migrate_vhost vhost
+uci commit vhosts
+
+mv "$LEGACY_CFG" "${LEGACY_CFG}.legacy" 2>/dev/null
+
+exit 0

@@ -49,25 +49,29 @@ opkg install luci-app-vhost-manager
 
 ## Configuration
 
-### UCI Configuration
+### UCI Configuration (`/etc/config/vhosts`)
 
-Edit `/etc/config/vhost_manager`:
+Virtual hosts now live in `/etc/config/vhosts`, allowing other SecuBox components to declaratively install proxies. A default file is dropped during install; edit it like any other UCI config:
 
 ```bash
 config global 'global'
 	option enabled '1'
 	option auto_reload '1'
-	option log_retention '30'
 
 config vhost 'myapp'
 	option domain 'app.example.com'
-	option backend 'http://192.168.1.100:8080'
-	option ssl '1'
+	option upstream 'http://127.0.0.1:8080'
+	option tls 'acme'          # off|acme|manual
+	option cert_path '/etc/custom/fullchain.pem'   # used when tls=manual
+	option key_path '/etc/custom/privkey.pem'
 	option auth '1'
 	option auth_user 'admin'
 	option auth_pass 'secretpassword'
 	option websocket '1'
+	option enabled '1'
 ```
+
+> Legacy installations may still ship `/etc/config/vhost_manager` for backwards compatibility, but the RPC backend now generates `/etc/nginx/conf.d/*.conf` exclusively from `/etc/config/vhosts`.
 
 ### Options
 
@@ -78,12 +82,13 @@ config vhost 'myapp'
 
 #### VHost Section
 - `domain`: Domain name for this virtual host (required)
-- `backend`: Backend URL to proxy to (required, e.g., http://192.168.1.100:8080)
-- `ssl`: Enable HTTPS (default: 0, requires valid SSL certificate)
+- `upstream`: Backend URL to proxy to (required, e.g., http://192.168.1.100:8080)
+- `tls`: TLS strategy (`off`, `acme`, or `manual`)
+- `cert_path` / `key_path`: Required when `tls=manual` to point to PEM files
 - `auth`: Enable HTTP Basic Authentication (default: 0)
-- `auth_user`: Username for authentication (required if auth=1)
-- `auth_pass`: Password for authentication (required if auth=1)
-- `websocket`: Enable WebSocket support (default: 0)
+- `auth_user` / `auth_pass`: Credentials used when `auth=1`
+- `websocket`: Enable WebSocket headers (default: 0)
+- `enabled`: Disable the vhost without deleting it (default: 1)
 
 ## Usage
 
@@ -135,9 +140,12 @@ ubus call luci.vhost-manager status
 ubus call luci.vhost-manager add_vhost '{
   "domain": "app.example.com",
   "backend": "http://192.168.1.100:8080",
-  "ssl": true,
-  "auth": false,
-  "websocket": true
+  "tls_mode": "acme",
+  "auth": true,
+  "auth_user": "admin",
+  "auth_pass": "secret",
+  "websocket": true,
+  "enabled": true
 }'
 ```
 
@@ -181,7 +189,7 @@ ubus call luci.vhost-manager get_access_logs '{
 
 ## Nginx Configuration
 
-VHost Manager generates nginx configuration files in `/etc/nginx/conf.d/vhosts/`.
+VHost Manager generates nginx configuration files in `/etc/nginx/conf.d/`.
 
 ### Example Generated Configuration (HTTP Only)
 
@@ -307,10 +315,16 @@ List all configured virtual hosts.
     {
       "domain": "app.example.com",
       "backend": "http://192.168.1.100:8080",
+      "upstream": "http://192.168.1.100:8080",
+      "tls_mode": "acme",
       "ssl": true,
-      "ssl_expires": "2025-03-15",
-      "auth": false,
-      "websocket": true
+      "cert_file": "/etc/acme/app.example.com/fullchain.cer",
+      "cert_expires": "2025-03-15",
+      "auth": true,
+      "auth_user": "admin",
+      "websocket": true,
+      "enabled": true,
+      "config_file": "/etc/nginx/conf.d/app.example.com.conf"
     }
   ]
 }
@@ -328,24 +342,30 @@ Get details for a specific virtual host.
 {
   "domain": "app.example.com",
   "backend": "http://192.168.1.100:8080",
+  "tls_mode": "acme",
   "ssl": true,
-  "ssl_expires": "2025-03-15",
+  "cert_expires": "2025-03-15",
+  "cert_issuer": "R3",
   "auth": true,
   "auth_user": "admin",
-  "websocket": true
+  "websocket": true,
+  "enabled": true
 }
 ```
 
-### add_vhost(domain, backend, ssl, auth, websocket)
+### add_vhost(payload)
 
 Add a new virtual host.
 
 **Parameters:**
 - `domain`: Domain name (required)
 - `backend`: Backend URL (required)
-- `ssl`: Enable SSL (boolean)
+- `tls_mode`: `off`, `acme`, or `manual` (required)
 - `auth`: Enable authentication (boolean)
+- `auth_user` / `auth_pass`: Credentials when auth is enabled
 - `websocket`: Enable WebSocket (boolean)
+- `enabled`: Disable the vhost without deleting (boolean)
+- `cert_path` / `key_path`: Required when `tls_mode=manual`
 
 **Returns:**
 ```json
@@ -355,11 +375,11 @@ Add a new virtual host.
 }
 ```
 
-### update_vhost(domain, backend, ssl, auth, websocket)
+### update_vhost(payload)
 
 Update an existing virtual host.
 
-**Parameters:** Same as add_vhost
+**Parameters:** Same as `add_vhost`. Omitted fields retain their previous value.
 
 **Returns:**
 ```json
@@ -394,8 +414,9 @@ Test connectivity to a backend server.
 **Returns:**
 ```json
 {
+  "backend": "http://192.168.1.100:8080",
   "reachable": true,
-  "response_time": 45
+  "status": "Backend is reachable"
 }
 ```
 
@@ -411,7 +432,7 @@ Request a Let's Encrypt SSL certificate.
 ```json
 {
   "success": true,
-  "message": "Certificate obtained successfully"
+  "message": "Certificate requested"
 }
 ```
 
@@ -456,6 +477,7 @@ Get nginx access logs for a domain.
 **Returns:**
 ```json
 {
+  "domain": "app.example.com",
   "logs": [
     "192.168.1.50 - - [24/Dec/2025:10:30:15 +0000] \"GET / HTTP/1.1\" 200 1234",
     "192.168.1.51 - - [24/Dec/2025:10:30:16 +0000] \"GET /api HTTP/1.1\" 200 5678"
@@ -513,18 +535,24 @@ Ensure:
 
 Check htpasswd file exists:
 ```bash
-ls -l /etc/nginx/htpasswd/{domain}
+ls -l /etc/nginx/.luci-app-vhost-manager_{domain}
 ```
 
 Regenerate htpasswd file:
 ```bash
-# Via UCI
-uci set vhost_manager.myapp.auth_user='newuser'
-uci set vhost_manager.myapp.auth_pass='newpass'
-uci commit vhost_manager
+# Update UCI entry
+uci set vhosts.myapp.auth='1'
+uci set vhosts.myapp.auth_user='newuser'
+uci set vhosts.myapp.auth_pass='newpass'
+uci commit vhosts
 
 # Trigger config regeneration
-ubus call luci.vhost-manager update_vhost '{...}'
+ubus call luci.vhost-manager update_vhost '{
+  "domain": "myapp.example.com",
+  "auth": true,
+  "auth_user": "newuser",
+  "auth_pass": "newpass"
+}'
 ```
 
 ## Security Considerations

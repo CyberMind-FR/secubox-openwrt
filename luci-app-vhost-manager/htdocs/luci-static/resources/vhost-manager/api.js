@@ -24,14 +24,14 @@ var callGetVHost = rpc.declare({
 var callAddVHost = rpc.declare({
 	object: 'luci.vhost-manager',
 	method: 'add_vhost',
-	params: ['domain', 'backend', 'ssl', 'auth', 'websocket'],
+	params: ['domain', 'backend', 'tls_mode', 'auth', 'auth_user', 'auth_pass', 'websocket', 'enabled', 'cert_path', 'key_path'],
 	expect: { }
 });
 
 var callUpdateVHost = rpc.declare({
 	object: 'luci.vhost-manager',
 	method: 'update_vhost',
-	params: ['domain', 'backend', 'ssl', 'auth', 'websocket'],
+	params: ['domain', 'backend', 'tls_mode', 'auth', 'auth_user', 'auth_pass', 'websocket', 'enabled', 'cert_path', 'key_path'],
 	expect: { }
 });
 
