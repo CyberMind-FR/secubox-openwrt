@@ -1,6 +1,6 @@
 'use strict';
 'require view';
-'require secubox-theme/bootstrap as Theme';
+'require secubox-theme/theme as Theme';
 'require ui';
 'require wireguard-dashboard.api as API';
 

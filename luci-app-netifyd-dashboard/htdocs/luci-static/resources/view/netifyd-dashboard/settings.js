@@ -1,6 +1,6 @@
 'use strict';
 'require view';
-'require secubox-theme/bootstrap as Theme';
+'require secubox-theme/theme as Theme';
 'require ui';
 'require netifyd-dashboard.api as API';
 

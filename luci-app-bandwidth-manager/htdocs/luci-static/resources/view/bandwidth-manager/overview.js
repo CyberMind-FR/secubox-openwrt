@@ -1,6 +1,6 @@
 'use strict';
 'require view';
-'require secubox-theme/bootstrap as Theme';
+'require secubox-theme/theme as Theme';
 'require bandwidth-manager/api as API';
 
 return L.view.extend({
