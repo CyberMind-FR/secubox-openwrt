@@ -1171,11 +1171,21 @@ CONFIG_TARGET_ROOTFS_PARTSIZE=512
 # CONFIG_GDB is not set
 CONFIG_BUILD_LOG=y
 
+# Package conflict resolution
+# CONFIG_PACKAGE_lucihttp is not set (fails in SDK)
+# CONFIG_PACKAGE_cgi-io is not set (fails in SDK)
+CONFIG_AUTOREMOVE=y
+
 # Base packages
 CONFIG_PACKAGE_luci=y
 CONFIG_PACKAGE_luci-ssl=y
 CONFIG_PACKAGE_luci-app-opkg=y
 CONFIG_PACKAGE_luci-theme-openwrt-2020=y
+CONFIG_PACKAGE_luci-theme-secubox=y
+
+# DNS Server (fix conflict: use dnsmasq-full only)
+# CONFIG_PACKAGE_dnsmasq is not set
+CONFIG_PACKAGE_dnsmasq-full=y
 
 # Networking essentials
 CONFIG_PACKAGE_curl=y
@@ -1193,11 +1203,12 @@ CONFIG_PACKAGE_kmod-fs-ext4=y
 CONFIG_PACKAGE_kmod-fs-vfat=y
 
 # SecuBox packages - Core
+CONFIG_PACKAGE_secubox-app=y
 CONFIG_PACKAGE_luci-app-secubox=y
 CONFIG_PACKAGE_luci-app-system-hub=y
 
 # SecuBox packages - Security & Monitoring
-CONFIG_PACKAGE_luci-app-crowdsec-dashboard=y
+# CONFIG_PACKAGE_luci-app-crowdsec-dashboard is not set (requires crowdsec backend - compile fails)
 CONFIG_PACKAGE_luci-app-netdata-dashboard=y
 
 # SecuBox packages - Network Intelligence
@@ -1207,7 +1218,7 @@ CONFIG_PACKAGE_luci-app-network-modes=y
 # SecuBox packages - VPN & Access Control
 CONFIG_PACKAGE_luci-app-wireguard-dashboard=y
 CONFIG_PACKAGE_luci-app-client-guardian=y
-CONFIG_PACKAGE_luci-app-auth-guardian=y
+# CONFIG_PACKAGE_luci-app-auth-guardian is not set (not stable yet)
 
 # SecuBox packages - Bandwidth & Traffic
 CONFIG_PACKAGE_luci-app-bandwidth-manager=y
@@ -1216,6 +1227,11 @@ CONFIG_PACKAGE_luci-app-media-flow=y
 # SecuBox packages - Performance & Services
 CONFIG_PACKAGE_luci-app-cdn-cache=y
 CONFIG_PACKAGE_luci-app-vhost-manager=y
+
+# SecuBox packages - Disabled (require compilation/not ready)
+# CONFIG_PACKAGE_secubox-app-crowdsec is not set (requires Go 1.23+ - fails in firmware build)
+# CONFIG_PACKAGE_luci-app-ksm-manager is not set (not stable)
+# CONFIG_PACKAGE_luci-app-traffic-shaper is not set (not stable)
 
 # WireGuard
 CONFIG_PACKAGE_wireguard-tools=y
