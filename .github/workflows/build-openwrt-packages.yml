@@ -28,6 +28,8 @@ on:
           - 'luci-app-media-flow'
           - 'luci-app-vhost-manager'
           - 'luci-app-cdn-cache'
+          - 'secubox-app'
+          - 'luci-theme-secubox'
       openwrt_version:
         description: 'OpenWrt version'
         required: true
@@ -419,11 +421,37 @@ jobs:
                 echo "    ✓ Fixed Makefile include path"
               fi
             done
+
+            # Copy secubox-app
+            if [[ -d "package/secubox/secubox-app" ]]; then
+              echo "  📁 secubox-app"
+              mkdir -p sdk/package/secubox
+              cp -r package/secubox/secubox-app sdk/package/secubox/
+
+              # Update version
+              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "sdk/package/secubox/secubox-app/Makefile"
+              sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "sdk/package/secubox/secubox-app/Makefile"
+              echo "    ✓ Fixed version"
+            fi
+
+            # Copy luci-theme-secubox
+            if [[ -d "luci-theme-secubox" ]]; then
+              echo "  📁 luci-theme-secubox"
+              cp -r luci-theme-secubox sdk/package/
+
+              # Update version
+              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "sdk/package/luci-theme-secubox/Makefile"
+              sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "sdk/package/luci-theme-secubox/Makefile"
+
+              # Fix Makefile include path for SDK environment
+              sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "sdk/package/luci-theme-secubox/Makefile"
+              echo "    ✓ Fixed Makefile include path"
+            fi
           fi
 
           echo ""
           echo "📋 Packages in SDK:"
-          ls -d sdk/package/luci-app-*/ 2>/dev/null || echo "None"
+          ls -d sdk/package/luci-app-*/ sdk/package/secubox/secubox-app/ sdk/package/luci-theme-secubox/ 2>/dev/null || echo "None"
 
       - name: Download pre-built LuCI dependencies
         run: |
@@ -638,6 +666,8 @@ jobs:
 
           # Also collect any SecuBox related packages
           find sdk/bin -name "*secubox*.${PKG_EXT}" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
+          find sdk/bin -name "secubox-app*.${PKG_EXT}" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
+          find sdk/bin -name "luci-theme-secubox*.${PKG_EXT}" -exec cp {} artifacts/${{ matrix.target }}/ \; 2>/dev/null || true
 
           # Count packages
           PKG_COUNT=$(find artifacts/${{ matrix.target }} -name "*.${PKG_EXT}" 2>/dev/null | wc -l)

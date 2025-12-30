@@ -206,6 +206,8 @@ jobs:
           mkdir -p openwrt/package/secubox
 
           PKG_COUNT=0
+
+          # Copy luci-app-* packages
           for pkg in luci-app-*/; do
             if [[ -d "$pkg" ]]; then
               PKG_NAME=$(basename "$pkg")
@@ -222,6 +224,24 @@ jobs:
               PKG_COUNT=$((PKG_COUNT + 1))
             fi
           done
+
+          # Copy luci-theme-secubox
+          if [[ -d "luci-theme-secubox" ]]; then
+            echo "  ✅ luci-theme-secubox"
+            cp -r luci-theme-secubox openwrt/package/secubox/
+            if [[ -f "openwrt/package/secubox/luci-theme-secubox/Makefile" ]]; then
+              sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "openwrt/package/secubox/luci-theme-secubox/Makefile"
+              echo "    ✓ Fixed Makefile include path"
+            fi
+            PKG_COUNT=$((PKG_COUNT + 1))
+          fi
+
+          # Copy package/secubox/secubox-app
+          if [[ -d "package/secubox/secubox-app" ]]; then
+            echo "  ✅ secubox-app"
+            cp -r package/secubox/secubox-app openwrt/package/secubox/
+            PKG_COUNT=$((PKG_COUNT + 1))
+          fi
 
           echo ""
           echo "📊 Total: $PKG_COUNT SecuBox packages copied and fixed"
@@ -259,7 +279,12 @@ jobs:
           CONFIG_PACKAGE_luci-ssl=y
           CONFIG_PACKAGE_luci-app-opkg=y
           CONFIG_PACKAGE_luci-theme-openwrt-2020=y
-          
+          CONFIG_PACKAGE_luci-theme-secubox=y
+
+          # DNS Server (fix conflict: use dnsmasq-full only)
+          # CONFIG_PACKAGE_dnsmasq is not set
+          CONFIG_PACKAGE_dnsmasq-full=y
+
           # Networking essentials
           CONFIG_PACKAGE_curl=y
           CONFIG_PACKAGE_wget-ssl=y
@@ -295,20 +320,17 @@ jobs:
         run: |
           cd openwrt
 
-          cat >> .config << EOF
+          cat >> .config << 'EOF'
           # SecuBox packages - Core
+          CONFIG_PACKAGE_secubox-app=y
           CONFIG_PACKAGE_luci-app-secubox=y
           CONFIG_PACKAGE_luci-app-system-hub=y
 
           # SecuBox packages - Security & Monitoring
-          CONFIG_PACKAGE_crowdsec=y
-          CONFIG_PACKAGE_crowdsec-firewall-bouncer=y
-          CONFIG_PACKAGE_luci-app-crowdsec-dashboard=y
-          CONFIG_PACKAGE_netdata=y
+          # CONFIG_PACKAGE_luci-app-crowdsec-dashboard is not set (requires crowdsec backend - compile fails)
           CONFIG_PACKAGE_luci-app-netdata-dashboard=y
 
           # SecuBox packages - Network Intelligence
-          CONFIG_PACKAGE_netifyd=y
           CONFIG_PACKAGE_luci-app-netifyd-dashboard=y
           CONFIG_PACKAGE_luci-app-network-modes=y
 
@@ -318,17 +340,20 @@ jobs:
           CONFIG_PACKAGE_luci-app-wireguard-dashboard=y
           CONFIG_PACKAGE_qrencode=y
           CONFIG_PACKAGE_luci-app-client-guardian=y
-          CONFIG_PACKAGE_luci-app-auth-guardian=y
+          # CONFIG_PACKAGE_luci-app-auth-guardian is not set (not stable yet)
 
           # SecuBox packages - Bandwidth & Traffic
           CONFIG_PACKAGE_luci-app-bandwidth-manager=y
-          CONFIG_PACKAGE_luci-app-traffic-shaper=y
           CONFIG_PACKAGE_luci-app-media-flow=y
 
           # SecuBox packages - Performance & Services
           CONFIG_PACKAGE_luci-app-cdn-cache=y
           CONFIG_PACKAGE_luci-app-vhost-manager=y
-          CONFIG_PACKAGE_luci-app-ksm-manager=y
+
+          # SecuBox packages - Disabled (require compilation/not ready)
+          # CONFIG_PACKAGE_secubox-app-crowdsec is not set (requires Go 1.23+ - fails in firmware build)
+          # CONFIG_PACKAGE_luci-app-ksm-manager is not set (not stable)
+          # CONFIG_PACKAGE_luci-app-traffic-shaper is not set (not stable)
           EOF
 
       - name: Add device-specific packages
