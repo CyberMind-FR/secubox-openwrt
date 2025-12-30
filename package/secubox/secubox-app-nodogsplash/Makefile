@@ -1,13 +1,13 @@
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=nodogsplash
+PKG_NAME:=secubox-app-nodogsplash
 PKG_VERSION:=5.0.2
 PKG_RELEASE:=1
 
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+PKG_SOURCE:=nodogsplash-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/nodogsplash/nodogsplash/archive/refs/tags
 PKG_HASH:=908d3674e93726fdcefb4c3b6705c745753435df9d46425781a57e3f6b417797
-PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
+PKG_BUILD_DIR:=$(BUILD_DIR)/nodogsplash-$(PKG_VERSION)
 PKG_BUILD_PARALLEL:=1
 
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>

@@ -619,6 +619,7 @@ copy_packages() {
     print_info "Packages in feed:"
     ls -d "$feed_dir/luci-app-"*/ 2>/dev/null || true
     ls -d "$feed_dir/luci-theme-"*/ 2>/dev/null || true
+    ls -d "$feed_dir/secubox-app-"*/ 2>/dev/null || true
 
     # Update the secubox feed
     echo ""
@@ -643,6 +644,15 @@ copy_packages() {
 
         # Install luci-theme-* packages
         for pkg in "$feed_dir"/luci-theme-*/; do
+            if [[ -d "$pkg" ]]; then
+                local pkg_name=$(basename "$pkg")
+                echo "  Installing $pkg_name..."
+                ./scripts/feeds install "$pkg_name" 2>&1 | grep -v "WARNING:" || true
+            fi
+        done
+
+        # Install secubox-app-* packages
+        for pkg in "$feed_dir"/secubox-app-*/; do
             if [[ -d "$pkg" ]]; then
                 local pkg_name=$(basename "$pkg")
                 echo "  Installing $pkg_name..."
@@ -698,6 +708,15 @@ configure_packages() {
 
         # Enable all SecuBox theme packages from feed (luci-theme-*)
         for pkg in feeds/secubox/luci-theme-*/; do
+            if [[ -d "$pkg" ]]; then
+                local pkg_name=$(basename "$pkg")
+                echo "CONFIG_PACKAGE_${pkg_name}=m" >> .config
+                print_success "$pkg_name enabled"
+            fi
+        done
+
+        # Enable all SecuBox app packages from feed (secubox-app-*)
+        for pkg in feeds/secubox/secubox-app-*/; do
             if [[ -d "$pkg" ]]; then
                 local pkg_name=$(basename "$pkg")
                 echo "CONFIG_PACKAGE_${pkg_name}=m" >> .config
@@ -1547,7 +1566,7 @@ USAGE:
 COMMANDS:
     validate                    Run validation only (lint, syntax checks)
     build                       Build all packages for x86_64
-    build <package>             Build single package
+    build <package>             Build single package (luci-app-*, luci-theme-*, secubox-app-*)
     build --arch <arch>         Build for specific architecture
     build-firmware <device>     Build full firmware image for device
     debug-firmware <device>     Debug firmware build (check config without building)
@@ -1578,8 +1597,11 @@ EXAMPLES:
     # Build all packages for x86_64
     $0 build
 
-    # Build single package
+    # Build single LuCI package
     $0 build luci-app-system-hub
+
+    # Build single SecuBox app package
+    $0 build secubox-app-nodogsplash
 
     # Build for specific architecture
     $0 build --arch aarch64-cortex-a72
@@ -1636,7 +1658,7 @@ main() {
                         arch_specified=true
                         shift 2
                         ;;
-                    luci-app-*|luci-theme-*)
+                    luci-app-*|luci-theme-*|secubox-app-*)
                         single_package="$1"
                         shift
                         ;;
