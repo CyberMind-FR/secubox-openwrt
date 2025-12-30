@@ -1,0 +1,136 @@
+{
+  "apps": [
+    {
+      "id": "secubox-app-crowdsec",
+      "name": "CrowdSec",
+      "version": "1.7.4",
+      "category": "security",
+      "description": "CrowdSec is an open-source, lightweight security engine that detects and responds to malicious behaviors",
+      "icon": "🛡️",
+      "author": "CyberMind.fr",
+      "license": "MIT",
+      "url": "https://github.com/crowdsecurity/crowdsec",
+      "tags": ["security", "ids", "ips", "firewall", "threat-detection"],
+      "requires": {
+        "go": "1.25+",
+        "memory": "128MB",
+        "storage": "50MB"
+      },
+      "status": "beta",
+      "luci_app": "luci-app-crowdsec-dashboard",
+      "dependencies": ["iptables-nft"],
+      "conflicts": []
+    },
+    {
+      "id": "secubox-app-nodogsplash",
+      "name": "NoDogSplash",
+      "version": "5.0.2",
+      "category": "network",
+      "description": "Captive portal solution that intercepts HTTP traffic and serves a customizable splash page before granting network access",
+      "icon": "🌐",
+      "author": "CyberMind.fr",
+      "license": "GPL-2.0-or-later",
+      "url": "https://github.com/nodogsplash/nodogsplash",
+      "tags": ["captive-portal", "hotspot", "guest-network", "access-control"],
+      "requires": {
+        "memory": "32MB",
+        "storage": "5MB"
+      },
+      "status": "stable",
+      "luci_app": null,
+      "dependencies": ["libmicrohttpd", "libjson-c", "iptables-nft"],
+      "conflicts": []
+    },
+    {
+      "id": "secubox-app-domoticz",
+      "name": "Domoticz",
+      "version": "1.0.0",
+      "category": "iot",
+      "description": "Home automation system with support for various devices and protocols",
+      "icon": "🏠",
+      "author": "CyberMind.fr",
+      "license": "GPL-3.0",
+      "url": "https://www.domoticz.com/",
+      "tags": ["home-automation", "iot", "smart-home", "docker"],
+      "requires": {
+        "docker": true,
+        "memory": "256MB",
+        "storage": "100MB"
+      },
+      "status": "stable",
+      "luci_app": null,
+      "dependencies": ["docker", "dockerd"],
+      "conflicts": []
+    },
+    {
+      "id": "secubox-app-lyrion",
+      "name": "Lyrion Music Server",
+      "version": "1.0.0",
+      "category": "media",
+      "description": "Multi-room audio streaming server (formerly Logitech Media Server)",
+      "icon": "🎵",
+      "author": "CyberMind.fr",
+      "license": "GPL-2.0",
+      "url": "https://lyrion.org/",
+      "tags": ["music", "streaming", "multi-room", "audio", "docker"],
+      "requires": {
+        "docker": true,
+        "memory": "128MB",
+        "storage": "50MB"
+      },
+      "status": "stable",
+      "luci_app": null,
+      "dependencies": ["docker", "dockerd"],
+      "conflicts": []
+    },
+    {
+      "id": "secubox-app-zigbee2mqtt",
+      "name": "Zigbee2MQTT",
+      "version": "1.0.0",
+      "category": "iot",
+      "description": "Zigbee to MQTT bridge allowing you to use Zigbee devices without proprietary hubs",
+      "icon": "📡",
+      "author": "CyberMind.fr",
+      "license": "GPL-3.0",
+      "url": "https://www.zigbee2mqtt.io/",
+      "tags": ["zigbee", "mqtt", "iot", "smart-home", "docker"],
+      "requires": {
+        "docker": true,
+        "zigbee_adapter": true,
+        "memory": "128MB",
+        "storage": "50MB"
+      },
+      "status": "stable",
+      "luci_app": "luci-app-zigbee2mqtt",
+      "dependencies": ["docker", "dockerd", "mqtt-broker"],
+      "conflicts": []
+    }
+  ],
+  "categories": {
+    "security": {
+      "name": "Security",
+      "icon": "🔒",
+      "description": "Security and threat detection applications"
+    },
+    "network": {
+      "name": "Network",
+      "icon": "🌐",
+      "description": "Network services and utilities"
+    },
+    "iot": {
+      "name": "IoT & Home Automation",
+      "icon": "🏠",
+      "description": "Internet of Things and home automation"
+    },
+    "media": {
+      "name": "Media",
+      "icon": "🎬",
+      "description": "Media streaming and entertainment"
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "last_updated": "2024-12-30",
+    "repository": "https://github.com/cybermind-studio/secubox-openwrt"
+  }
+}

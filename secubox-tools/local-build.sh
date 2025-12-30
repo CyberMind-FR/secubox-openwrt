@@ -554,13 +554,21 @@ copy_packages() {
     if [[ -n "$single_package" ]]; then
         print_info "Copying single package: $single_package"
 
+        # Check in root directory first (luci-app-*, luci-theme-*)
         if [[ -d "../../$single_package" && -f "../../${single_package}/Makefile" ]]; then
             echo "  📁 $single_package"
             cp -r "../../$single_package" "$feed_dir/"
 
-            # Fix Makefile include path for feed structure
-            sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "$feed_dir/$single_package/Makefile"
-            echo "    ✓ Fixed Makefile include path"
+            # Fix Makefile include path for LuCI packages
+            if [[ "$single_package" =~ ^luci- ]]; then
+                sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "$feed_dir/$single_package/Makefile"
+                echo "    ✓ Fixed Makefile include path"
+            fi
+        # Check in package/secubox/ directory (secubox-app-*, secubox-*)
+        elif [[ -d "../../package/secubox/$single_package" && -f "../../package/secubox/${single_package}/Makefile" ]]; then
+            echo "  📦 $single_package"
+            cp -r "../../package/secubox/$single_package" "$feed_dir/"
+            core_pkg_names+=("$single_package")
         else
             print_error "Package $single_package not found or missing Makefile"
             cd - > /dev/null
@@ -595,22 +603,29 @@ copy_packages() {
             fi
         done
 
-        # Copy secubox-app-* helper packages
+        # Copy secubox-app-* packages (backend services)
         for pkg in ../../package/secubox/secubox-app-*/; do
             if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
                 local pkg_name=$(basename "$pkg")
-                echo "  📁 $pkg_name"
+                echo "  📦 $pkg_name (SecuBox App)"
                 cp -r "$pkg" "$feed_dir/"
+                core_pkg_names+=("$pkg_name")
             fi
         done
 
-        # Copy core packages (non-LuCI)
+        # Copy other core packages (non-LuCI, non-secubox-app)
         for pkg in ../../package/secubox/*/; do
             if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
                 local pkg_name=$(basename "$pkg")
-                echo "  📁 $pkg_name"
-                cp -r "$pkg" "$feed_dir/"
-                core_pkg_names+=("$pkg_name")
+                # Skip if already copied (luci-app-*, luci-theme-*, secubox-app-*)
+                if [[ ! "$pkg_name" =~ ^luci-app- ]] && \
+                   [[ ! "$pkg_name" =~ ^luci-theme- ]] && \
+                   [[ ! "$pkg_name" =~ ^secubox-app- ]] && \
+                   [[ "$pkg_name" != ".appstore" ]]; then
+                    echo "  📁 $pkg_name (Core)"
+                    cp -r "$pkg" "$feed_dir/"
+                    core_pkg_names+=("$pkg_name")
+                fi
             fi
         done
     fi
