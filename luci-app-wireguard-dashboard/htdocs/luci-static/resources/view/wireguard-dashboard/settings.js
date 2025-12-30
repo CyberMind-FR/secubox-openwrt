@@ -17,6 +17,7 @@ return view.extend({
 		var interfaces = (data[1] || {}).interfaces || [];
 
 		var view = E('div', { 'class': 'cbi-map' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('WireGuard Settings')),
 			E('div', { 'class': 'cbi-map-descr' },
 				_('WireGuard VPN configuration and management information.')),

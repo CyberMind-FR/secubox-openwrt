@@ -62,6 +62,7 @@ return view.extend({
 				value = JSON.stringify(value);
 			}
 			return E('div', { 'class': 'cs-metric-item' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				E('span', { 'class': 'cs-metric-name' }, entry[0]),
 				E('span', { 'class': 'cs-metric-value' }, String(value))
 			]);

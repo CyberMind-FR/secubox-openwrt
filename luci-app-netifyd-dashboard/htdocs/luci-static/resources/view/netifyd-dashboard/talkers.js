@@ -65,6 +65,7 @@ return view.extend({
 		var totalBytes = talkers.reduce(function(sum, t) { return sum + t.total_bytes; }, 0);
 		
 		var view = E('div', { 'class': 'netifyd-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			// Header
 			E('div', { 'class': 'nf-header' }, [
 				E('div', { 'class': 'nf-logo' }, [

@@ -106,7 +106,12 @@ return L.view.extend({
 			return actions;
 		};
 
-		return m.render();
+		return m.render().then(function(rendered) {
+			return E('div', {}, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				rendered
+			]);
+		});
 	},
 
 	handleSaveApply: null,

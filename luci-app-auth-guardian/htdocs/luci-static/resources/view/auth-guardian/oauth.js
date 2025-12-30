@@ -11,6 +11,7 @@ return view.extend({
         var colors = {google:'#4285f4',github:'#333',facebook:'#1877f2',twitter:'#1da1f2'};
         
         return E('div', {class:'cbi-map'}, [
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
             E('h2', {}, '🔑 OAuth Providers'),
             E('p', {style:'color:#94a3b8;margin-bottom:20px'}, 'Configure third-party authentication providers.'),
             E('div', {style:'display:grid;gap:16px'}, [

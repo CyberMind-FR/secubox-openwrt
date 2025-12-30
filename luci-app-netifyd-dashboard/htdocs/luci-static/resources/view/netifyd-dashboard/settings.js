@@ -16,6 +16,7 @@ return view.extend({
 			'class': 'netifyd-settings',
 			'style': 'max-width: 1200px; margin: 0 auto;'
 		}, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			// Header
 			E('div', { 'style': 'margin-bottom: 2em;' }, [
 				E('h1', {

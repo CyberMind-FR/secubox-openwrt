@@ -18,6 +18,7 @@ return L.view.extend({
 		var quotas = data[2] || [];
 
 		var v = E('div', { 'class': 'cbi-map' }, [
+		E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('Bandwidth Manager - Overview')),
 			E('div', { 'class': 'cbi-map-descr' }, _('QoS rules, client quotas, and traffic control'))
 		]);

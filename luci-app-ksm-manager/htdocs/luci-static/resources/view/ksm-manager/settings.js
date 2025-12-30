@@ -89,7 +89,12 @@ return view.extend({
 		o.inputstyle = 'action';
 		o.onclick = L.bind(this.handleRestoreBackup, this);
 
-		return m.render();
+		return m.render().then(function(rendered) {
+			return E('div', {}, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				rendered
+			]);
+		});
 	},
 
 	handleCreateBackup: function() {

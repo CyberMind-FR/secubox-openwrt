@@ -19,6 +19,7 @@ return view.extend({
 		var status = data[1] || {};
 
 		var view = E('div', { 'class': 'cbi-map' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('CrowdSec Bouncers')),
 			E('div', { 'class': 'cbi-map-descr' },
 				_('Bouncers are components that enforce CrowdSec decisions by blocking malicious IPs at various points (firewall, web server, etc.).')),

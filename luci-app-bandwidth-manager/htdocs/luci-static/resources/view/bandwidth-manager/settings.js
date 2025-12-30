@@ -105,6 +105,11 @@ return L.view.extend({
 		o.placeholder = 'admin@example.com';
 		o.depends('enabled', '1');
 
-		return m.render();
+		return m.render().then(function(rendered) {
+			return E('div', {}, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				rendered
+			]);
+		});
 	}
 });

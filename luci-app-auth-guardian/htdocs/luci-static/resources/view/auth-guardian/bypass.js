@@ -7,6 +7,7 @@ return view.extend({
     load: function() { return api.getBypassList(); },
     render: function(data) {
         return E('div', {class:'cbi-map'}, [
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
             E('h2', {}, '⏭️ Bypass Rules'),
             E('p', {style:'color:#94a3b8;margin-bottom:20px'}, 'Devices and domains that bypass authentication.'),
             E('div', {style:'display:grid;grid-template-columns:repeat(3,1fr);gap:16px'}, [

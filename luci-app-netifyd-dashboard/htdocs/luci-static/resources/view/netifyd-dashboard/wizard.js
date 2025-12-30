@@ -21,6 +21,7 @@ return view.extend({
 			'class': 'netifyd-wizard-container',
 			'style': 'max-width: 900px; margin: 2em auto; padding: 2em;'
 		}, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			// Header
 			E('div', { 'style': 'text-align: center; margin-bottom: 3em;' }, [
 				E('div', {

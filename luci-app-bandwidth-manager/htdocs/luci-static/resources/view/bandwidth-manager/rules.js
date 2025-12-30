@@ -71,7 +71,12 @@ return L.view.extend({
 		o = s.option(form.Flag, 'enabled', _('Enabled'));
 		o.default = o.enabled;
 
-		return m.render();
+		return m.render().then(function(rendered) {
+			return E('div', {}, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				rendered
+			]);
+		});
 	},
 
 	handleSaveApply: null,

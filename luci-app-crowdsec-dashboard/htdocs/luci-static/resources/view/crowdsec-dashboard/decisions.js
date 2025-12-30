@@ -184,6 +184,7 @@ return view.extend({
 		
 		if (this.filteredDecisions.length === 0) {
 			return E('div', { 'class': 'cs-empty' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				E('div', { 'class': 'cs-empty-icon' }, this.searchQuery ? '🔍' : '✅'),
 				E('p', {}, this.searchQuery ? 'No matching decisions found' : 'No active decisions')
 			]);

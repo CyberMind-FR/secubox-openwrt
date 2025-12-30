@@ -14,6 +14,7 @@ return view.extend({
 		var presets = data.presets || [];
 
 		var container = E('div', { 'class': 'traffic-shaper-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('Traffic Shaping Presets')),
 
 			E('div', { 'class': 'cbi-section' }, [

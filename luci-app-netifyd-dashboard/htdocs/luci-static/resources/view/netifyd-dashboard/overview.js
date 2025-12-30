@@ -73,6 +73,7 @@ return view.extend({
 		var maxAppBytes = topApps.length > 0 ? Math.max.apply(null, topApps.map(function(a) { return a.bytes; })) : 1;
 		
 		var view = E('div', { 'class': 'netifyd-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			// Header
 			E('div', { 'class': 'nf-header' }, [
 				E('div', { 'class': 'nf-logo' }, [

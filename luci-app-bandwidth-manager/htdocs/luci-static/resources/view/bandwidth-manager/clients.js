@@ -8,6 +8,7 @@ return view.extend({
     render: function(data) {
         var clients = data.clients || [];
         return E('div', {class:'cbi-map'}, [
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
             E('h2', {}, '👥 Connected Clients'),
             E('div', {style:'background:#1e293b;padding:20px;border-radius:12px;margin-top:20px'}, [
                 clients.length ? E('table', {style:'width:100%;color:#f1f5f9'}, [

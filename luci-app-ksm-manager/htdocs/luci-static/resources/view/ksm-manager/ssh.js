@@ -82,6 +82,7 @@ return view.extend({
 	renderSshKeysTable: function(keys) {
 		if (!keys || keys.length === 0) {
 			return E('div', { 'class': 'cbi-value' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				E('em', {}, _('No SSH keys found. Generate a key to get started.'))
 			]);
 		}

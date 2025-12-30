@@ -140,6 +140,7 @@ return view.extend({
 						hsmDevices.devices.map(function(device) {
 							var typeIcon = device.type === 'nitrokey' ? '🔐' : '🔑';
 							return E('div', { 'class': 'cbi-value' }, [
+								E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 								E('label', { 'class': 'cbi-value-title' }, typeIcon + ' ' + device.serial + ':'),
 								E('div', { 'class': 'cbi-value-field' }, [
 									E('span', {}, device.type.toUpperCase() + ' '),

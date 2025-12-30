@@ -97,6 +97,7 @@ return view.extend({
 	renderKeysTable: function(keys) {
 		if (!keys || keys.length === 0) {
 			return E('div', { 'class': 'cbi-value' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				E('em', {}, _('No keys found. Generate or import a key to get started.'))
 			]);
 		}

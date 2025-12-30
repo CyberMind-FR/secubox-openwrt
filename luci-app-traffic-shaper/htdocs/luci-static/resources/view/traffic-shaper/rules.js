@@ -158,7 +158,11 @@ return view.extend({
 			]);
 
 			rendered.insertBefore(helpBox, rendered.firstChild);
-			return rendered;
+
+			return E('div', {}, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				rendered
+			]);
 		});
 	},
 

@@ -18,6 +18,7 @@ return view.extend({
 		var topProcs = procs.top || [];
 		
 		var view = E('div', { 'class': 'netdata-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			// Header
 			E('div', { 'class': 'nd-header' }, [
 				E('div', { 'class': 'nd-logo' }, [

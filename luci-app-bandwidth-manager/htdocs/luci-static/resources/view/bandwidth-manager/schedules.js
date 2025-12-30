@@ -5,6 +5,7 @@
 return view.extend({
     render: function() {
         return E('div', {class:'cbi-map'}, [
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
             E('h2', {}, '⏰ Time-Based Schedules'),
             E('p', {style:'color:#94a3b8'}, 'Configure bandwidth limits based on time of day.'),
             E('div', {style:'background:#1e293b;padding:20px;border-radius:12px;margin-top:20px'}, [

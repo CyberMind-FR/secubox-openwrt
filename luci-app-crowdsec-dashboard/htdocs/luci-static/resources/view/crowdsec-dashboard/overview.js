@@ -116,6 +116,7 @@ return view.extend({
 		
 		if (!Array.isArray(decisions) || decisions.length === 0) {
 			return E('div', { 'class': 'cs-empty' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				E('div', { 'class': 'cs-empty-icon' }, '✅'),
 				E('p', {}, 'No active decisions - All clear!')
 			]);

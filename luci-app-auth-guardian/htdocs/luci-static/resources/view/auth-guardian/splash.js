@@ -5,6 +5,7 @@
 return view.extend({
     render: function() {
         return E('div', {class:'cbi-map'}, [
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
             E('h2', {}, '🎨 Splash Page Editor'),
             E('p', {style:'color:#94a3b8'}, 'Customize the captive portal splash page appearance.'),
             E('div', {style:'display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px'}, [

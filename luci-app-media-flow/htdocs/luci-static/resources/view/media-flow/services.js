@@ -16,6 +16,7 @@ return L.view.extend({
 		var services = statsByService.services || {};
 
 		var v = E('div', { 'class': 'cbi-map' }, [
+		E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('Services Statistics')),
 			E('div', { 'class': 'cbi-map-descr' }, _('Detailed statistics per streaming service'))
 		]);

@@ -20,6 +20,7 @@ return L.view.extend({
 		var statsByService = data[2] || {};
 
 		var v = E('div', { 'class': 'cbi-map' }, [
+		E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('Media Flow Dashboard')),
 			E('div', { 'class': 'cbi-map-descr' }, _('Real-time detection and monitoring of streaming services'))
 		]);

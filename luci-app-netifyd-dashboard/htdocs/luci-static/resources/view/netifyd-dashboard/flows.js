@@ -17,6 +17,7 @@ return view.extend({
 		var flows = (data || {}).flows || [];
 		
 		var view = E('div', { 'class': 'netifyd-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			// Header
 			E('div', { 'class': 'nf-header' }, [
 				E('div', { 'class': 'nf-logo' }, [

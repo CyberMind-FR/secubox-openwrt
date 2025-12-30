@@ -25,6 +25,7 @@ return view.extend({
 		var activeRules = rules.filter(function(r) { return r.enabled === '1'; });
 
 		var view = E('div', { 'class': 'traffic-shaper-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('Traffic Shaper Overview')),
 
 			// Status Cards

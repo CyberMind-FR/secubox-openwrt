@@ -18,6 +18,7 @@ return view.extend({
 		var stats = data[1].stats || [];
 
 		var container = E('div', { 'class': 'traffic-shaper-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('Traffic Statistics')),
 
 			E('div', { 'class': 'ts-stats-container' }, [

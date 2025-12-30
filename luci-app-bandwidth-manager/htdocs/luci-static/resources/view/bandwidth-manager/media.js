@@ -11,6 +11,7 @@ return view.extend({
         var colors = {voip:'#22c55e',gaming:'#f59e0b',streaming:'#ef4444',download:'#3b82f6',social:'#ec4899',work:'#8b5cf6'};
         
         return E('div', {class:'cbi-map'}, [
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
             E('h2', {}, '🎯 Media Detection'),
             E('p', {style:'color:#94a3b8'}, 'Automatic traffic classification based on ports, protocols, and domains.'),
             E('div', {style:'display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:20px'}, media.map(function(m) {

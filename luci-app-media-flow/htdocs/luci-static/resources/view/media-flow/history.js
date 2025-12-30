@@ -77,6 +77,7 @@ return L.view.extend({
 				}
 
 				return E('div', { 'class': 'cbi-section' }, [
+					E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 					E('h3', {}, _('Recent Sessions')),
 					table
 				]);

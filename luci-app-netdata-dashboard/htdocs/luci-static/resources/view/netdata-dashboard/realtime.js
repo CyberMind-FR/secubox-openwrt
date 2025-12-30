@@ -37,6 +37,7 @@ return view.extend({
 		var statusClass = api.getStatusClass(percent);
 		
 		return E('div', { 'class': 'nd-gauge', 'style': 'width:' + size + 'px;height:' + size + 'px' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('svg', { 'class': 'nd-gauge-svg', 'width': size, 'height': size, 'viewBox': '0 0 ' + size + ' ' + size }, [
 				E('circle', {
 					'class': 'nd-gauge-bg',

@@ -50,6 +50,7 @@ return view.extend({
 	renderDevices: function(devices) {
 		if (!devices || devices.length === 0) {
 			return E('div', { 'class': 'cbi-value' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				E('em', {}, _('No HSM devices detected. Connect a Nitrokey or YubiKey and click "Scan for Devices".'))
 			]);
 		}

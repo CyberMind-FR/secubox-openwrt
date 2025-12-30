@@ -24,6 +24,7 @@ return view.extend({
 		var nds = sessions.nodogsplash || {};
 
 		var view = E('div', { 'class': 'cbi-map' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('Captive Portal Management')),
 
 			// Nodogsplash Status Card

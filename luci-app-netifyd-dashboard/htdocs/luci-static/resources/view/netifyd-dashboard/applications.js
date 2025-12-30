@@ -19,6 +19,7 @@ return view.extend({
 		var totalFlows = apps.reduce(function(sum, a) { return sum + (a.flows || 0); }, 0);
 		
 		var view = E('div', { 'class': 'netifyd-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			// Header
 			E('div', { 'class': 'nf-header' }, [
 				E('div', { 'class': 'nf-logo' }, [

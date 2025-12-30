@@ -19,6 +19,7 @@ return view.extend({
 		var self = this;
 
 		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
 			
 			// Filters

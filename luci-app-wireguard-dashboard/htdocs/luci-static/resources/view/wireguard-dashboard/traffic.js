@@ -21,6 +21,7 @@ return view.extend({
 		var totalTraffic = totalRx + totalTx;
 		
 		var view = E('div', { 'class': 'wireguard-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			// Header
 			E('div', { 'class': 'wg-header' }, [
 				E('div', { 'class': 'wg-logo' }, [

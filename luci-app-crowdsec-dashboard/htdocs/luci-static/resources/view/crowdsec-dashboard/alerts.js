@@ -130,6 +130,7 @@ return view.extend({
 		
 		if (this.filteredAlerts.length === 0) {
 			return E('div', { 'class': 'cs-empty' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				E('div', { 'class': 'cs-empty-icon' }, this.searchQuery ? '🔍' : '📭'),
 				E('p', {}, this.searchQuery ? 'No matching alerts found' : 'No alerts recorded')
 			]);

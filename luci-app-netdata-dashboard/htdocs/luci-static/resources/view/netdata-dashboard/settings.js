@@ -19,6 +19,7 @@ return view.extend({
 		var system = data[2] || {};
 
 		var view = E('div', { 'class': 'cbi-map' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('Netdata Settings')),
 			E('div', { 'class': 'cbi-map-descr' },
 				_('Configure Netdata monitoring service and view system information.')),

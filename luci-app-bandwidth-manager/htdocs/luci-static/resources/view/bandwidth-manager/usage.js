@@ -31,6 +31,7 @@ return L.view.extend({
 		v.appendChild(graphContainer);
 
 		var container = E('div', { 'id': 'usage-container', 'class': 'cbi-section' });
+		E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 		v.appendChild(container);
 
 		// Initial render

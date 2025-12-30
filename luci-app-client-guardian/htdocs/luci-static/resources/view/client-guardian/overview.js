@@ -27,6 +27,7 @@ return view.extend({
 		var bannedClients = clients.filter(function(c) { return c.status === 'banned'; });
 
 		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
 
 			// Header

@@ -12,6 +12,7 @@ return view.extend({
         var sessions = data[1].sessions || [];
         
         return E('div', {class:'cbi-map'}, [
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
             E('style', {}, [
                 '.ag{font-family:system-ui,sans-serif}',
                 '.ag-hdr{background:linear-gradient(135deg,#0891b2,#06b6d4);color:#fff;padding:24px;border-radius:12px;margin-bottom:20px}',

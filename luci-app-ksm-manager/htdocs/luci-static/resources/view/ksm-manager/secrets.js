@@ -62,6 +62,7 @@ return view.extend({
 	renderSecretsTable: function(secrets) {
 		if (!secrets || secrets.length === 0) {
 			return E('div', { 'class': 'cbi-value' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				E('em', {}, _('No secrets stored.'))
 			]);
 		}

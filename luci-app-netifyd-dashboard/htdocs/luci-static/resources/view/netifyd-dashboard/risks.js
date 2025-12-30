@@ -105,6 +105,7 @@ return view.extend({
 		var lowCount = risks.filter(function(r) { return r.severity === 'low'; }).length;
 		
 		var view = E('div', { 'class': 'netifyd-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			// Header
 			E('div', { 'class': 'nf-header' }, [
 				E('div', { 'class': 'nf-logo' }, [

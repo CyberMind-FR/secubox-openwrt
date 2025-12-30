@@ -11,6 +11,7 @@ return view.extend({
         var self = this;
         
         return E('div', {class:'cbi-map'}, [
+            E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
             E('h2', {}, '🎟️ Access Vouchers'),
             E('div', {style:'margin-bottom:16px'}, [
                 E('button', {class:'cbi-button cbi-button-positive',click:function(){

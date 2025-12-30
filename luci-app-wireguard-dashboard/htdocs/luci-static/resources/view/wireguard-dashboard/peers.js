@@ -23,6 +23,7 @@ return view.extend({
 		var activePeers = peers.filter(function(p) { return p.status === 'active'; }).length;
 
 		var view = E('div', { 'class': 'cbi-map' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('WireGuard Peers')),
 			E('div', { 'class': 'cbi-map-descr' },
 				_('Manage WireGuard VPN peers - add, configure, and monitor connected devices.')),

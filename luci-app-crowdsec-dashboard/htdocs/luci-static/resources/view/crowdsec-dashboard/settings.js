@@ -21,6 +21,7 @@ return view.extend({
 		var collections = Array.isArray(data[3]) ? data[3] : [];
 
 		var view = E('div', { 'class': 'cbi-map' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('CrowdSec Settings')),
 			E('div', { 'class': 'cbi-map-descr' },
 				_('Configure and manage your CrowdSec installation, machines, and collections.')),

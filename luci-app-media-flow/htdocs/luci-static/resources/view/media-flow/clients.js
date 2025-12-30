@@ -16,6 +16,7 @@ return L.view.extend({
 		var clients = statsByClient.clients || {};
 
 		var v = E('div', { 'class': 'cbi-map' }, [
+		E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('Clients Statistics')),
 			E('div', { 'class': 'cbi-map-descr' }, _('Streaming activity per client'))
 		]);

@@ -143,6 +143,7 @@ return view.extend({
 		});
 
 		var container = E('div', { 'class': 'nm-container' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			helpers.createNavigationTabs('dmz'),
 			hero,
 			wanSection,
