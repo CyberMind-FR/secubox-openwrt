@@ -87,9 +87,10 @@ Metadata for all 5 SecuBox applications:
 
 1. **secubox-app-crowdsec** (v1.7.4)
    - Category: Security 🛡️
-   - Status: Beta (requires Go 1.25+)
+   - Status: Development (requires full OpenWrt build environment)
    - LuCI App: `luci-app-crowdsec-dashboard`
    - Dependencies: `iptables-nft`
+   - Build: Go 1.23+ (available in OpenWrt 24.10), full build environment required
 
 2. **secubox-app-nodogsplash** (v5.0.2)
    - Category: Network 🌐

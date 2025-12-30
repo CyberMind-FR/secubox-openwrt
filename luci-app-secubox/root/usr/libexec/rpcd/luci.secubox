@@ -1540,6 +1540,301 @@ rollback_profile() {
 	json_add_string "message" "Restored $latest_backup"
 	json_dump
 }
+
+# ============================================================================
+# App Store Functions
+# ============================================================================
+
+APPSTORE_JSON="/usr/share/secubox/.appstore/apps.json"
+
+# Get all apps from app store catalog
+get_appstore_apps() {
+	if [ ! -f "$APPSTORE_JSON" ]; then
+		json_init
+		json_add_array "apps"
+		json_close_array
+		json_add_object "categories"
+		json_close_object
+		json_dump
+		return
+	fi
+
+	local appstore_data=$(cat "$APPSTORE_JSON")
+	local app_count=$(jsonfilter -s "$appstore_data" -e '@.apps[*]' | wc -l)
+
+	json_init
+	json_add_array "apps"
+
+	local i=0
+	while [ $i -lt $app_count ]; do
+		local app_id=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].id")
+		local app_name=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].name")
+		local app_version=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].version")
+		local app_category=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].category")
+		local app_description=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].description")
+		local app_icon=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].icon")
+		local app_status=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].status")
+		local app_luci=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].luci_app")
+		local app_notes=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].notes")
+
+		# Check if app is installed
+		local is_installed=0
+		if command -v opkg >/dev/null 2>&1; then
+			opkg list-installed "$app_id" 2>/dev/null | grep -q "^$app_id " && is_installed=1
+		elif command -v apk >/dev/null 2>&1; then
+			apk info -e "$app_id" >/dev/null 2>&1 && is_installed=1
+		fi
+
+		json_add_object
+		json_add_string "id" "$app_id"
+		json_add_string "name" "$app_name"
+		json_add_string "version" "$app_version"
+		json_add_string "category" "$app_category"
+		json_add_string "description" "$app_description"
+		json_add_string "icon" "$app_icon"
+		json_add_string "status" "$app_status"
+		json_add_boolean "installed" "$is_installed"
+		[ -n "$app_luci" ] && json_add_string "luci_app" "$app_luci"
+		[ -n "$app_notes" ] && json_add_string "notes" "$app_notes"
+		json_close_object
+
+		i=$((i + 1))
+	done
+
+	json_close_array
+
+	# Add categories
+	json_add_object "categories"
+	local cat_keys=$(jsonfilter -s "$appstore_data" -e '@.categories' | jsonfilter -e '@[@]')
+	for cat in security network iot media; do
+		local cat_name=$(jsonfilter -s "$appstore_data" -e "@.categories.$cat.name")
+		local cat_icon=$(jsonfilter -s "$appstore_data" -e "@.categories.$cat.icon")
+		local cat_desc=$(jsonfilter -s "$appstore_data" -e "@.categories.$cat.description")
+		if [ -n "$cat_name" ]; then
+			json_add_object "$cat"
+			json_add_string "name" "$cat_name"
+			json_add_string "icon" "$cat_icon"
+			json_add_string "description" "$cat_desc"
+			json_close_object
+		fi
+	done
+	json_close_object
+
+	json_dump
+}
+
+# Get single app from app store
+get_appstore_app() {
+	local input app_id
+	read input
+	json_load "$input"
+	json_get_var app_id app_id
+	json_cleanup
+
+	if [ ! -f "$APPSTORE_JSON" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "App store catalog not found"
+		json_dump
+		return
+	fi
+
+	local appstore_data=$(cat "$APPSTORE_JSON")
+	local app_count=$(jsonfilter -s "$appstore_data" -e '@.apps[*]' | wc -l)
+
+	local i=0
+	while [ $i -lt $app_count ]; do
+		local current_id=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].id")
+		if [ "$current_id" = "$app_id" ]; then
+			# Found the app
+			json_init
+			json_add_string "id" "$current_id"
+			json_add_string "name" "$(jsonfilter -s "$appstore_data" -e "@.apps[$i].name")"
+			json_add_string "version" "$(jsonfilter -s "$appstore_data" -e "@.apps[$i].version")"
+			json_add_string "category" "$(jsonfilter -s "$appstore_data" -e "@.apps[$i].category")"
+			json_add_string "description" "$(jsonfilter -s "$appstore_data" -e "@.apps[$i].description")"
+			json_add_string "icon" "$(jsonfilter -s "$appstore_data" -e "@.apps[$i].icon")"
+			json_add_string "author" "$(jsonfilter -s "$appstore_data" -e "@.apps[$i].author")"
+			json_add_string "license" "$(jsonfilter -s "$appstore_data" -e "@.apps[$i].license")"
+			json_add_string "url" "$(jsonfilter -s "$appstore_data" -e "@.apps[$i].url")"
+			json_add_string "status" "$(jsonfilter -s "$appstore_data" -e "@.apps[$i].status")"
+
+			local app_luci=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].luci_app")
+			[ -n "$app_luci" ] && [ "$app_luci" != "null" ] && json_add_string "luci_app" "$app_luci"
+
+			local app_notes=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].notes")
+			[ -n "$app_notes" ] && [ "$app_notes" != "null" ] && json_add_string "notes" "$app_notes"
+
+			# Add dependencies array
+			json_add_array "dependencies"
+			local dep_count=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].dependencies[*]" | wc -l)
+			local j=0
+			while [ $j -lt $dep_count ]; do
+				local dep=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].dependencies[$j]")
+				json_add_string "" "$dep"
+				j=$((j + 1))
+			done
+			json_close_array
+
+			# Add tags array
+			json_add_array "tags"
+			local tag_count=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].tags[*]" | wc -l)
+			j=0
+			while [ $j -lt $tag_count ]; do
+				local tag=$(jsonfilter -s "$appstore_data" -e "@.apps[$i].tags[$j]")
+				json_add_string "" "$tag"
+				j=$((j + 1))
+			done
+			json_close_array
+
+			# Check installation status
+			local is_installed=0
+			if command -v opkg >/dev/null 2>&1; then
+				opkg list-installed "$app_id" 2>/dev/null | grep -q "^$app_id " && is_installed=1
+			elif command -v apk >/dev/null 2>&1; then
+				apk info -e "$app_id" >/dev/null 2>&1 && is_installed=1
+			fi
+			json_add_boolean "installed" "$is_installed"
+
+			json_dump
+			return
+		fi
+		i=$((i + 1))
+	done
+
+	# App not found
+	json_init
+	json_add_boolean "success" 0
+	json_add_string "error" "App not found"
+	json_dump
+}
+
+# Install app from app store
+install_appstore_app() {
+	local input app_id
+	read input
+	json_load "$input"
+	json_get_var app_id app_id
+	json_cleanup
+
+	[ -z "$app_id" ] && {
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "app_id required"
+		json_dump
+		return
+	}
+
+	# Update package lists if not done in this session
+	if [ "$OPKG_UPDATED" -eq 0 ]; then
+		if command -v opkg >/dev/null 2>&1; then
+			opkg update >/dev/null 2>&1
+		elif command -v apk >/dev/null 2>&1; then
+			apk update >/dev/null 2>&1
+		fi
+		OPKG_UPDATED=1
+	fi
+
+	# Install the package
+	local install_output
+	if command -v opkg >/dev/null 2>&1; then
+		install_output=$(opkg install "$app_id" 2>&1)
+		local ret=$?
+		if [ $ret -eq 0 ]; then
+			json_init
+			json_add_boolean "success" 1
+			json_add_string "message" "App installed successfully"
+			json_add_string "app_id" "$app_id"
+			json_dump
+		else
+			json_init
+			json_add_boolean "success" 0
+			json_add_string "error" "Installation failed"
+			json_add_string "details" "$install_output"
+			json_dump
+		fi
+	elif command -v apk >/dev/null 2>&1; then
+		install_output=$(apk add "$app_id" 2>&1)
+		local ret=$?
+		if [ $ret -eq 0 ]; then
+			json_init
+			json_add_boolean "success" 1
+			json_add_string "message" "App installed successfully"
+			json_add_string "app_id" "$app_id"
+			json_dump
+		else
+			json_init
+			json_add_boolean "success" 0
+			json_add_string "error" "Installation failed"
+			json_add_string "details" "$install_output"
+			json_dump
+		fi
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "No package manager found"
+		json_dump
+	fi
+}
+
+# Remove app from app store
+remove_appstore_app() {
+	local input app_id
+	read input
+	json_load "$input"
+	json_get_var app_id app_id
+	json_cleanup
+
+	[ -z "$app_id" ] && {
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "app_id required"
+		json_dump
+		return
+	}
+
+	# Remove the package
+	local remove_output
+	if command -v opkg >/dev/null 2>&1; then
+		remove_output=$(opkg remove "$app_id" 2>&1)
+		local ret=$?
+		if [ $ret -eq 0 ]; then
+			json_init
+			json_add_boolean "success" 1
+			json_add_string "message" "App removed successfully"
+			json_add_string "app_id" "$app_id"
+			json_dump
+		else
+			json_init
+			json_add_boolean "success" 0
+			json_add_string "error" "Removal failed"
+			json_add_string "details" "$remove_output"
+			json_dump
+		fi
+	elif command -v apk >/dev/null 2>&1; then
+		remove_output=$(apk del "$app_id" 2>&1)
+		local ret=$?
+		if [ $ret -eq 0 ]; then
+			json_init
+			json_add_boolean "success" 1
+			json_add_string "message" "App removed successfully"
+			json_add_string "app_id" "$app_id"
+			json_dump
+		else
+			json_init
+			json_add_boolean "success" 0
+			json_add_string "error" "Removal failed"
+			json_add_string "details" "$remove_output"
+			json_dump
+		fi
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "No package manager found"
+		json_dump
+	fi
+}
+
 case "$1" in
 	list)
 		json_init
@@ -1614,6 +1909,17 @@ case "$1" in
 		json_add_string "profile_id" "string"
 		json_close_object
 		json_add_object "rollback_profile"
+		json_close_object
+		json_add_object "get_appstore_apps"
+		json_close_object
+		json_add_object "get_appstore_app"
+		json_add_string "app_id" "string"
+		json_close_object
+		json_add_object "install_appstore_app"
+		json_add_string "app_id" "string"
+		json_close_object
+		json_add_object "remove_appstore_app"
+		json_add_string "app_id" "string"
 		json_close_object
 		json_add_object "first_run_status"
 		json_close_object
@@ -1750,6 +2056,18 @@ case "$1" in
 			;;
 		rollback_profile)
 			rollback_profile
+			;;
+		get_appstore_apps)
+			get_appstore_apps
+			;;
+		get_appstore_app)
+			get_appstore_app
+			;;
+		install_appstore_app)
+			install_appstore_app
+			;;
+		remove_appstore_app)
+			remove_appstore_app
 			;;
 			*)
 				echo '{"error":"Unknown method"}'

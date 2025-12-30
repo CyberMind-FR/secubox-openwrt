@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-secubox
-PKG_VERSION:=0.6.0
-PKG_RELEASE:=1
+PKG_VERSION:=0.6.1
+PKG_RELEASE:=0
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
@@ -28,6 +28,8 @@ define Package/$(PKG_NAME)/install
 	for file in $(CURDIR)/profiles/*.json; do \
 		$(INSTALL_DATA) $$file $(1)/usr/share/secubox/profiles/$$(basename $$file); \
 	done
+	$(INSTALL_DIR) $(1)/usr/share/secubox/.appstore
+	$(INSTALL_DATA) $(CURDIR)/.appstore/apps.json $(1)/usr/share/secubox/.appstore/apps.json
 endef
 
 # call BuildPackage - OpenWrt buildroot

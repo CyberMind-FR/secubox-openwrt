@@ -22,12 +22,12 @@
             "path": "secubox/wizard"
         }
     },
-    "admin/secubox/appstore": {
+    "admin/secubox/apps": {
         "title": "App Store",
         "order": 18,
         "action": {
             "type": "view",
-            "path": "secubox/appstore"
+            "path": "secubox/apps"
         }
     },
     "admin/secubox/modules": {

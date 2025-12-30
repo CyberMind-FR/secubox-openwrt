@@ -1,6 +1,7 @@
 'use strict';
+'require baseclass';
 
-return {
+return baseclass.extend({
     stylesheet: function(name) {
         var primary = L.resource('secubox-theme/system-hub/' + name);
         var fallback = L.resource('system-hub/' + name);
@@ -15,4 +16,4 @@ return {
         };
         return link;
     }
-};
+});

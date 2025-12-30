@@ -191,6 +191,34 @@ var callRollbackProfile = rpc.declare({
 	method: 'rollback_profile'
 });
 
+// App Store methods
+var callGetAppstoreApps = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_appstore_apps',
+	expect: { apps: [], categories: {} }
+});
+
+var callGetAppstoreApp = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_appstore_app',
+	params: ['app_id'],
+	expect: { }
+});
+
+var callInstallAppstoreApp = rpc.declare({
+	object: 'luci.secubox',
+	method: 'install_appstore_app',
+	params: ['app_id'],
+	expect: { success: false }
+});
+
+var callRemoveAppstoreApp = rpc.declare({
+	object: 'luci.secubox',
+	method: 'remove_appstore_app',
+	params: ['app_id'],
+	expect: { success: false }
+});
+
 function formatUptime(seconds) {
 	if (!seconds) return '0s';
 	var d = Math.floor(seconds / 86400);
@@ -242,6 +270,11 @@ return baseclass.extend({
 	listProfiles: callListProfiles,
 	applyProfile: callApplyProfile,
 	rollbackProfile: callRollbackProfile,
+	// App Store
+	getAppstoreApps: callGetAppstoreApps,
+	getAppstoreApp: callGetAppstoreApp,
+	installAppstoreApp: callInstallAppstoreApp,
+	removeAppstoreApp: callRemoveAppstoreApp,
 	// Utilities
 	formatUptime: formatUptime,
 	formatBytes: formatBytes

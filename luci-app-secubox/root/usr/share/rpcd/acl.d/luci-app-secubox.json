@@ -18,7 +18,9 @@
 					"first_run_status",
 					"list_apps",
 					"get_app_manifest",
-					"list_profiles"
+					"list_profiles",
+					"get_appstore_apps",
+					"get_appstore_app"
 				],
                 "uci": [
                     "get",
@@ -45,7 +47,9 @@
 					"apply_first_run",
 					"apply_app_wizard",
 					"apply_profile",
-					"rollback_profile"
+					"rollback_profile",
+					"install_appstore_app",
+					"remove_appstore_app"
 				],
                 "uci": [
                     "set",

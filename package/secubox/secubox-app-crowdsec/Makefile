@@ -24,7 +24,7 @@ PKG_BUILD_FLAGS:=no-mips16
 CWD_SYSTEM:=openwrt
 
 CWD_BUILD_VERSION?=v$(PKG_VERSION)
-CWD_BUILD_GOVERSION:=$(shell go version | cut -d " " -f3 | sed -E 's/[go]+//g')
+CWD_BUILD_GOVERSION:=$(shell go version 2>/dev/null | cut -d " " -f3 | sed -E 's/[go]+//g' || echo "1.23")
 CWD_BUILD_CODENAME:=alphaga
 CWD_BUILD_TIMESTAMP:=$(shell date +%F"_"%T)
 CWD_BUILD_TAG:=openwrt-$(PKG_VERSION)-$(PKG_RELEASE)
@@ -52,7 +52,7 @@ endef
 
 define Package/crowdsec
 $(call Package/crowdsec/Default)
-  DEPENDS:=$(GO_ARCH_DEPENDS)
+  DEPENDS:=$(GO_ARCH_DEPENDS) +libc
 endef
 
 define Package/golang-crowdsec-dev
@@ -98,28 +98,28 @@ define Package/crowdsec/install
 
 	$(INSTALL_DATA) \
 		$(GO_PKG_BUILD_DIR)/src/$(GO_PKG)/config/config.yaml \
-		$(1)/etc/crowdsec
+		$(1)/etc/crowdsec/
 	$(INSTALL_DATA) \
 		$(GO_PKG_BUILD_DIR)/src/$(GO_PKG)/config/dev.yaml \
-		$(1)/etc/crowdsec
+		$(1)/etc/crowdsec/
 	$(INSTALL_DATA) \
 		$(GO_PKG_BUILD_DIR)/src/$(GO_PKG)/config/user.yaml \
-		$(1)/etc/crowdsec
+		$(1)/etc/crowdsec/
 	$(INSTALL_DATA) \
 		$(GO_PKG_BUILD_DIR)/src/$(GO_PKG)/config/acquis.yaml \
-		$(1)/etc/crowdsec
+		$(1)/etc/crowdsec/
 	$(INSTALL_DATA) \
 		$(GO_PKG_BUILD_DIR)/src/$(GO_PKG)/config/profiles.yaml \
-		$(1)/etc/crowdsec
+		$(1)/etc/crowdsec/
 	$(INSTALL_DATA) \
 		$(GO_PKG_BUILD_DIR)/src/$(GO_PKG)/config/simulation.yaml \
-		$(1)/etc/crowdsec
+		$(1)/etc/crowdsec/
 	$(INSTALL_DATA) \
 		$(GO_PKG_BUILD_DIR)/src/$(GO_PKG)/config/local_api_credentials.yaml \
-		$(1)/etc/crowdsec
+		$(1)/etc/crowdsec/
 	$(INSTALL_DATA) \
 		$(GO_PKG_BUILD_DIR)/src/$(GO_PKG)/config/online_api_credentials.yaml \
-		$(1)/etc/crowdsec
+		$(1)/etc/crowdsec/
 
 	$(CP) \
 		$(GO_PKG_BUILD_DIR)/src/$(GO_PKG)/config/patterns/* \
