@@ -160,7 +160,12 @@
       "Bash(for f in /home/reepost/CyberMindStudio/_files/secubox-openwrt/luci-app-*/htdocs/luci-static/resources/view/*/*.js)",
       "Bash(do grep -q \"secubox-theme/theme\" \"$f\")",
       "Bash(! grep -q \"cyberpunk.css\" \"$f\")",
-      "Bash(./secubox-tools/quick-deploy.sh:*)"
+      "Bash(./secubox-tools/quick-deploy.sh:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:docs.crowdsec.net)",
+      "Bash(timeout 600 make:*)",
+      "Bash(timeout 300 make:*)",
+      "Bash(timeout 120 make:*)"
     ]
   }
 }

@@ -41,6 +41,14 @@
 			"path": "crowdsec-dashboard/bouncers"
 		}
 	},
+	"admin/secubox/security/crowdsec/waf": {
+		"title": "WAF/AppSec",
+		"order": 45,
+		"action": {
+			"type": "view",
+			"path": "crowdsec-dashboard/waf"
+		}
+	},
 	"admin/secubox/security/crowdsec/metrics": {
 		"title": "Metrics",
 		"order": 50,

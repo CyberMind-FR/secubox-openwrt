@@ -6,9 +6,10 @@
  * CrowdSec Dashboard API
  * Package: luci-app-crowdsec-dashboard
  * RPCD object: luci.crowdsec-dashboard
+ * CrowdSec Core: 1.7.4+
  */
 
-// Version: 0.4.0
+// Version: 0.5.0
 
 var callStatus = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
@@ -84,6 +85,66 @@ var callUnban = rpc.declare({
 	expect: { success: false }
 });
 
+// CrowdSec v1.7.4+ features
+var callWAFStatus = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'waf_status',
+	expect: { }
+});
+
+var callMetricsConfig = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'metrics_config',
+	expect: { }
+});
+
+var callConfigureMetrics = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'configure_metrics',
+	params: ['enable'],
+	expect: { success: false }
+});
+
+var callCollections = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'collections',
+	expect: { }
+});
+
+var callInstallCollection = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'install_collection',
+	params: ['collection'],
+	expect: { success: false }
+});
+
+var callRemoveCollection = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'remove_collection',
+	params: ['collection'],
+	expect: { success: false }
+});
+
+var callUpdateHub = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'update_hub',
+	expect: { success: false }
+});
+
+var callRegisterBouncer = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'register_bouncer',
+	params: ['bouncer_name'],
+	expect: { success: false }
+});
+
+var callDeleteBouncer = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'delete_bouncer',
+	params: ['bouncer_name'],
+	expect: { success: false }
+});
+
 function formatDuration(seconds) {
 	if (!seconds) return 'N/A';
 	if (seconds < 60) return seconds + 's';
@@ -115,6 +176,18 @@ return baseclass.extend({
 	collectDebugSnapshot: callCollectDebug,
 	addBan: callBan,
 	removeBan: callUnban,
+
+	// CrowdSec v1.7.4+ features
+	getWAFStatus: callWAFStatus,
+	getMetricsConfig: callMetricsConfig,
+	configureMetrics: callConfigureMetrics,
+	getCollections: callCollections,
+	installCollection: callInstallCollection,
+	removeCollection: callRemoveCollection,
+	updateHub: callUpdateHub,
+	registerBouncer: callRegisterBouncer,
+	deleteBouncer: callDeleteBouncer,
+
 	formatDuration: formatDuration,
 	formatDate: formatDate,
 

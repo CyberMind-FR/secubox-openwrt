@@ -26,20 +26,22 @@ return view.extend({
 		cssLink.rel = 'stylesheet';
 		cssLink.href = L.resource('crowdsec-dashboard/dashboard.css');
 		document.head.appendChild(cssLink);
-		
+
 		this.csApi = new api();
-		
+
 		return Promise.all([
 			this.csApi.getMetrics(),
 			this.csApi.getBouncers(),
 			this.csApi.getMachines(),
-			this.csApi.getHub()
+			this.csApi.getHub(),
+			this.csApi.getMetricsConfig()
 		]).then(function(results) {
 			return {
 				metrics: results[0],
 				bouncers: results[1],
 				machines: results[2],
-				hub: results[3]
+				hub: results[3],
+				metricsConfig: results[4]
 			};
 		});
 	},
@@ -240,18 +242,83 @@ return view.extend({
 		return E('div', { 'class': 'cs-metric-list' }, items);
 	},
 
+	renderMetricsConfig: function(metricsConfig) {
+		var self = this;
+		var enabled = metricsConfig && (metricsConfig.metrics_enabled === true || metricsConfig.metrics_enabled === 1);
+		var prometheusEndpoint = metricsConfig && metricsConfig.prometheus_endpoint || 'http://127.0.0.1:6060/metrics';
+
+		return E('div', { 'class': 'cs-card', 'style': 'margin-bottom: 24px;' }, [
+			E('div', { 'class': 'cs-card-header' }, [
+				E('div', { 'class': 'cs-card-title' }, '⚙️ Metrics Export Configuration'),
+				E('span', {
+					'class': 'cs-action',
+					'style': enabled ?
+						'background: rgba(0,212,170,0.15); color: var(--cs-accent-green); padding: 6px 12px; border-radius: 6px; font-weight: 600; margin-left: auto;' :
+						'background: rgba(255,107,107,0.15); color: var(--cs-accent-red); padding: 6px 12px; border-radius: 6px; font-weight: 600; margin-left: auto;'
+				}, enabled ? _('Enabled') : _('Disabled'))
+			]),
+			E('div', { 'class': 'cs-card-body' }, [
+				E('div', { 'class': 'cs-metric-list' }, [
+					E('div', { 'class': 'cs-metric-item' }, [
+						E('span', { 'class': 'cs-metric-name' }, _('Metrics Export Status')),
+						E('span', { 'class': 'cs-metric-value' }, enabled ? _('Enabled') : _('Disabled'))
+					]),
+					E('div', { 'class': 'cs-metric-item' }, [
+						E('span', { 'class': 'cs-metric-name' }, _('Prometheus Endpoint')),
+						E('code', { 'class': 'cs-metric-value', 'style': 'font-size: 13px;' }, prometheusEndpoint)
+					])
+				]),
+				E('div', { 'style': 'margin-top: 16px; display: flex; gap: 12px; align-items: center;' }, [
+					E('button', {
+						'class': 'cbi-button ' + (enabled ? 'cbi-button-negative' : 'cbi-button-positive'),
+						'click': function() {
+							var newState = !enabled;
+							ui.showModal(_('Updating Metrics Configuration...'), [
+								E('p', {}, _('Changing metrics export to: %s').format(newState ? _('Enabled') : _('Disabled'))),
+								E('div', { 'class': 'spinning' })
+							]);
+							self.csApi.configureMetrics(newState ? '1' : '0').then(function(result) {
+								ui.hideModal();
+								if (result && result.success) {
+									ui.addNotification(null, E('p', {}, _('Metrics configuration updated. Restart CrowdSec to apply changes.')), 'info');
+								} else {
+									ui.addNotification(null, E('p', {}, result.error || _('Failed to update configuration')), 'error');
+								}
+							}).catch(function(err) {
+								ui.hideModal();
+								ui.addNotification(null, E('p', {}, err.message || err), 'error');
+							});
+						}
+					}, enabled ? _('Disable Metrics Export') : _('Enable Metrics Export')),
+					E('span', { 'style': 'color: var(--cs-text-muted); font-size: 13px;' },
+						_('Note: Changing this setting requires restarting CrowdSec'))
+				]),
+				E('div', { 'class': 'cs-info-box', 'style': 'margin-top: 16px; padding: 12px; background: rgba(0,150,255,0.1); border-left: 4px solid var(--cs-accent-cyan); border-radius: 4px;' }, [
+					E('p', { 'style': 'margin: 0 0 8px 0; color: var(--cs-text-primary); font-weight: 600;' }, _('About Metrics Export')),
+					E('p', { 'style': 'margin: 0; color: var(--cs-text-secondary); font-size: 14px;' },
+						_('When enabled, CrowdSec exports Prometheus-compatible metrics that can be scraped by monitoring tools. Access metrics at: ') +
+						E('code', {}, prometheusEndpoint))
+				])
+			])
+		]);
+	},
+
 	render: function(data) {
 		var self = this;
-		
+
 		this.metrics = data.metrics || {};
 		this.bouncers = data.bouncers || [];
-		this.machines = data.machines || [];
+		this.machines = data.machines || {};
 		this.hub = data.hub || {};
-		
+		var metricsConfig = data.metricsConfig || {};
+
 		var view = E('div', { 'class': 'crowdsec-dashboard' }, [
+			// Metrics Configuration
+			this.renderMetricsConfig(metricsConfig),
+
 			// Hub Stats
 			E('div', { 'style': 'margin-bottom: 24px' }, [
-				E('h3', { 'style': 'color: var(--cs-text-primary); margin-bottom: 16px; font-size: 16px' }, 
+				E('h3', { 'style': 'color: var(--cs-text-primary); margin-bottom: 16px; font-size: 16px' },
 					'🎯 Hub Components'),
 				this.renderHubStats()
 			]),
