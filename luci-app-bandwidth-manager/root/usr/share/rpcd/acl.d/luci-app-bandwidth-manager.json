@@ -9,9 +9,14 @@
 					"list_quotas",
 					"get_quota",
 					"get_usage_realtime",
-					"get_usage_history"
-				]
-			}
+					"get_usage_history",
+					"get_media",
+					"get_classes"
+				],
+				"system": [ "info", "board" ],
+				"file": [ "read", "stat" ]
+			},
+			"uci": [ "bandwidth" ]
 		},
 		"write": {
 			"ubus": {

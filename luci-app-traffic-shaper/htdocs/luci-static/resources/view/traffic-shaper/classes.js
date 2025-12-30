@@ -4,6 +4,7 @@
 'require network';
 'require form';
 'require ui';
+'require uci';
 'require traffic-shaper/api as API';
 
 return view.extend({
