@@ -569,6 +569,12 @@ copy_packages() {
             echo "  📦 $single_package"
             cp -r "../../package/secubox/$single_package" "$feed_dir/"
             core_pkg_names+=("$single_package")
+
+            # Fix Makefile include paths for feed structure
+            if grep -q "../../lang/golang/golang-package.mk" "$feed_dir/$single_package/Makefile" 2>/dev/null; then
+                sed -i 's|include.*../../lang/golang/golang-package.mk|include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk|' "$feed_dir/$single_package/Makefile"
+                echo "    ✓ Fixed golang package include path"
+            fi
         else
             print_error "Package $single_package not found or missing Makefile"
             cd - > /dev/null
@@ -610,6 +616,12 @@ copy_packages() {
                 echo "  📦 $pkg_name (SecuBox App)"
                 cp -r "$pkg" "$feed_dir/"
                 core_pkg_names+=("$pkg_name")
+
+                # Fix Makefile include paths for feed structure
+                if grep -q "../../lang/golang/golang-package.mk" "$feed_dir/$pkg_name/Makefile" 2>/dev/null; then
+                    sed -i 's|include.*../../lang/golang/golang-package.mk|include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk|' "$feed_dir/$pkg_name/Makefile"
+                    echo "    ✓ Fixed golang package include path"
+                fi
             fi
         done
 

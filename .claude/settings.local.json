@@ -171,7 +171,9 @@
       "Bash(feeds/packages/net/crowdsec/patches/)",
       "Bash(feeds/packages/net/crowdsec/files/)",
       "Bash(feeds/packages/net/crowdsec/Makefile)",
-      "Bash(feeds/packages/net/crowdsec/patches/002-fix_go_version.patch)"
+      "Bash(feeds/packages/net/crowdsec/patches/002-fix_go_version.patch)",
+      "Bash(tail:*)",
+      "Bash(pkill -f \"local-build.sh build secubox-app-crowdsec\")"
     ]
   }
 }
