@@ -33,11 +33,11 @@ on:
       openwrt_version:
         description: 'OpenWrt version'
         required: true
-        default: '25.12.0-rc1'
+        default: '24.10.5'
         type: choice
         options:
-          - '25.12.0-rc1'
           - '24.10.5'
+          - '25.12.0-rc1'
           - '23.05.5'
           - '23.05.4'
           - 'SNAPSHOT'
@@ -47,7 +47,7 @@ on:
         default: 'x86-64'
 
 env:
-  OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '25.12.0-rc1' }}
+  OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '24.10.5' }}
 
 permissions:
   contents: write
