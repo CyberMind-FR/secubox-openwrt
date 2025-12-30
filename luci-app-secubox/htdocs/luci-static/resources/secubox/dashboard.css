@@ -1,14 +1,14 @@
 /* SecuBox Control Center UI - regenerated to match design brief */
 
 :root {
-	--sb-bg: #090b12;
-	--sb-panel: rgba(17, 21, 34, 0.9);
-	--sb-border: rgba(255, 255, 255, 0.08);
-	--sb-text: #f3f4f6;
-	--sb-text-muted: #9ca3af;
-	--sb-gradient: linear-gradient(135deg, #6366f1, #9333ea);
+	--sb-bg: var(--sh-bg-primary);
+	--sb-panel: var(--sh-bg-card);
+	--sb-border: var(--sh-border);
+	--sb-text: var(--sh-text-primary);
+	--sb-text-muted: var(--sh-text-secondary);
+	--sb-gradient: linear-gradient(135deg, var(--sh-primary), var(--sh-primary-end));
 	--sb-gradient-soft: linear-gradient(135deg, rgba(99,102,241,.35), rgba(147,51,234,.35));
-	--sb-shadow: 0 20px 45px rgba(0, 0, 0, 0.45);
+	--sb-shadow: var(--sh-shadow);
 	--sb-radius: 18px;
 	--sb-card-radius: 20px;
 	--sb-spacing: 20px;
@@ -210,12 +210,12 @@
 
 .sb-status-active .sb-status-pill {
 	background: rgba(34,197,94,0.15);
-	color: #34d399;
+	color: var(--sh-success);
 }
 
 .sb-status-error .sb-status-pill {
 	background: rgba(248,113,113,0.18);
-	color: #f87171;
+	color: var(--sh-danger);
 }
 
 .sb-module-meta {
@@ -299,9 +299,9 @@
 	transition: width 0.3s ease;
 }
 
-.sb-ok { background: linear-gradient(90deg, #22c55e, #16a34a); }
-.sb-warn { background: linear-gradient(90deg, #f97316, #ea580c); }
-.sb-danger { background: linear-gradient(90deg, #ef4444, #dc2626); }
+.sb-ok { background: linear-gradient(90deg, var(--sh-success), #16a34a); }
+.sb-warn { background: linear-gradient(90deg, var(--sh-warning), #ea580c); }
+.sb-danger { background: linear-gradient(90deg, var(--sh-danger), #dc2626); }
 
 .sb-health-percent {
 	font-family: var(--sb-font-mono);
@@ -337,10 +337,10 @@
 	font-size: 22px;
 }
 
-.sb-orange { background: linear-gradient(135deg,#fb923c,#f97316); }
-.sb-blue { background: linear-gradient(135deg,#38bdf8,#2563eb); }
-.sb-indigo { background: linear-gradient(135deg,#818cf8,#4f46e5); }
-.sb-green { background: linear-gradient(135deg,#34d399,#059669); }
+.sb-orange { background: linear-gradient(135deg, var(--sh-warning), #f97316); }
+.sb-blue { background: linear-gradient(135deg, #38bdf8, var(--sh-primary)); }
+.sb-indigo { background: linear-gradient(135deg, #818cf8, var(--sh-primary)); }
+.sb-green { background: linear-gradient(135deg, var(--sh-success), #059669); }
 
 /* Alerts */
 .sb-alert-list {
@@ -377,9 +377,9 @@
 	color: var(--sb-text-muted);
 }
 
-.sb-info { border-left: 3px solid #6366f1; }
-.sb-warning { border-left: 3px solid #fbbf24; }
-.sb-critical { border-left: 3px solid #ef4444; }
+.sb-info { border-left: 3px solid var(--sh-primary); }
+.sb-warning { border-left: 3px solid var(--sh-warning); }
+.sb-critical { border-left: 3px solid var(--sh-danger); }
 
 .sb-empty-state {
 	text-align: center;
@@ -390,6 +390,72 @@
 .sb-empty-icon {
 	font-size: 40px;
 	margin-bottom: 12px;
+}
+
+/* === Cyberpunk Theme Support === */
+
+[data-secubox-theme="cyberpunk"] .sb-card,
+[data-secubox-theme="cyberpunk"] .sb-stat-card,
+[data-secubox-theme="cyberpunk"] .sb-module-card {
+	background: var(--cyber-bg-secondary);
+	border: var(--cyber-border);
+	box-shadow: 0 0 20px rgba(102, 126, 234, 0.2);
+}
+
+[data-secubox-theme="cyberpunk"] .sb-card:hover,
+[data-secubox-theme="cyberpunk"] .sb-stat-card:hover,
+[data-secubox-theme="cyberpunk"] .sb-module-card:hover {
+	border-color: var(--cyber-accent-primary);
+	box-shadow: 0 0 30px rgba(102, 126, 234, 0.3);
+}
+
+[data-secubox-theme="cyberpunk"] .sb-header {
+	background: var(--cyber-gradient-primary);
+	box-shadow: 0 0 40px rgba(102, 126, 234, 0.4);
+}
+
+[data-secubox-theme="cyberpunk"] .sb-btn-primary {
+	background: var(--cyber-gradient-primary);
+	border-color: var(--cyber-accent-primary);
+	box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+}
+
+[data-secubox-theme="cyberpunk"] .sb-btn-primary:hover {
+	box-shadow: 0 0 30px rgba(102, 126, 234, 0.5);
+}
+
+[data-secubox-theme="cyberpunk"] .sb-status-active .sb-status-pill {
+	background: var(--cyber-success-soft);
+	color: var(--cyber-success);
+}
+
+[data-secubox-theme="cyberpunk"] .sb-status-error .sb-status-pill {
+	background: var(--cyber-danger-soft);
+	color: var(--cyber-danger);
+}
+
+[data-secubox-theme="cyberpunk"] .sb-ok {
+	background: linear-gradient(90deg, var(--cyber-success), #16a34a);
+}
+
+[data-secubox-theme="cyberpunk"] .sb-warn {
+	background: linear-gradient(90deg, var(--cyber-warning), #ea580c);
+}
+
+[data-secubox-theme="cyberpunk"] .sb-danger {
+	background: linear-gradient(90deg, var(--cyber-danger), #dc2626);
+}
+
+[data-secubox-theme="cyberpunk"] .sb-info {
+	border-left: 3px solid var(--cyber-accent-primary);
+}
+
+[data-secubox-theme="cyberpunk"] .sb-warning {
+	border-left: 3px solid var(--cyber-warning);
+}
+
+[data-secubox-theme="cyberpunk"] .sb-critical {
+	border-left: 3px solid var(--cyber-danger);
 }
 
 @media (max-width: 1024px) {

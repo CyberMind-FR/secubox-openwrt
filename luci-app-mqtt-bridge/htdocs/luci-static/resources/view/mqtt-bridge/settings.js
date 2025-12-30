@@ -6,7 +6,6 @@
 'require ui';
 'require form';
 'require dom';
-'require dom';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||

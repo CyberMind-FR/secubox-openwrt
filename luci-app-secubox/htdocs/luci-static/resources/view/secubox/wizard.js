@@ -2,7 +2,20 @@
 'require view';
 'require ui';
 'require secubox/api as API';
+'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
+
+// Load theme resources
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/secubox-theme.css')
+}));
+
+var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: secuLang });
 
 var TIMEZONES = [
 	{ id: 'UTC', label: 'UTC' },
@@ -32,6 +45,7 @@ return view.extend({
 		this.appList = (payload[1] && payload[1].apps) || [];
 		this.profileList = (payload[2] && payload[2].profiles) || [];
 		var container = E('div', { 'class': 'secubox-wizard-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			SecuNav.renderTabs('wizard'),
 			this.renderHeader(),

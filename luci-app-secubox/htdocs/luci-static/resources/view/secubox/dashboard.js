@@ -4,7 +4,7 @@
 'require dom';
 'require poll';
 'require secubox/api as API';
-'require secubox/theme as Theme';
+'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
 
 // Load theme resources once
@@ -12,6 +12,12 @@ document.head.appendChild(E('link', {
 	'rel': 'stylesheet',
 	'type': 'text/css',
 	'href': L.resource('secubox-theme/secubox-theme.css')
+}));
+
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/themes/cyberpunk.css')
 }));
 
 var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
@@ -48,6 +54,7 @@ return view.extend({
 
 	render: function() {
 		var container = E('div', { 'class': 'secubox-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/dashboard.css') }),
 			SecuNav.renderTabs('dashboard'),

@@ -19,6 +19,14 @@
             "path": "mqtt-bridge/overview"
         }
     },
+    "admin/secubox/network/mqtt-bridge/adapters": {
+        "title": "Adapters",
+        "order": 15,
+        "action": {
+            "type": "view",
+            "path": "mqtt-bridge/adapters"
+        }
+    },
     "admin/secubox/network/mqtt-bridge/devices": {
         "title": "Devices",
         "order": 20,

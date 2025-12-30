@@ -1,10 +1,25 @@
 'use strict';
 'require view';
-'require secubox/theme as Theme';
+'require secubox-theme/theme as Theme';
 'require secubox/api as API';
 'require secubox/nav as SecuNav';
 
-Theme.init();
+// Load theme resources
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/secubox-theme.css')
+}));
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/themes/cyberpunk.css')
+}));
+
+var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: secuLang });
 
 return view.extend({
 	statusData: {},

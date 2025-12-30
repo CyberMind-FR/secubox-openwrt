@@ -3,11 +3,21 @@
 'require ui';
 'require dom';
 'require secubox/api as API';
-'require secubox/theme as Theme';
+'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
 'require poll';
 
-// Load CSS (base theme variables first)
+// Load theme resources
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/secubox-theme.css')
+}));
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/themes/cyberpunk.css')
+}));
 document.head.appendChild(E('link', {
 	'rel': 'stylesheet',
 	'type': 'text/css',
@@ -20,7 +30,10 @@ document.head.appendChild(E('link', {
 }));
 
 // Initialize theme
-Theme.init();
+var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: secuLang });
 
 return view.extend({
 	alertsData: null,
@@ -43,6 +56,7 @@ return view.extend({
 	render: function(data) {
 		var self = this;
 		var container = E('div', { 'class': 'secubox-alerts-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
 			SecuNav.renderTabs('alerts'),

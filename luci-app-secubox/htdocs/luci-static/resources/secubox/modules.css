@@ -33,17 +33,17 @@
 }
 
 .secubox-stat-badge.secubox-stat-success {
-	border-color: #22c55e;
+	border-color: var(--sh-success);
 	background: linear-gradient(135deg, var(--sb-bg-card) 0%, rgba(34, 197, 94, 0.1) 100%);
 }
 
 .secubox-stat-badge.secubox-stat-warning {
-	border-color: #f59e0b;
+	border-color: var(--sh-warning);
 	background: linear-gradient(135deg, var(--sb-bg-card) 0%, rgba(245, 158, 11, 0.1) 100%);
 }
 
 .secubox-stat-badge.secubox-stat-muted {
-	border-color: #64748b;
+	border-color: var(--sh-text-secondary);
 	background: linear-gradient(135deg, var(--sb-bg-card) 0%, rgba(100, 116, 139, 0.05) 100%);
 }
 
@@ -164,17 +164,17 @@
 }
 
 .secubox-status-indicator.secubox-status-running {
-	background: #22c55e;
-	box-shadow: 0 0 8px #22c55e;
+	background: var(--sh-success);
+	box-shadow: 0 0 8px var(--sh-success);
 	animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 .secubox-status-indicator.secubox-status-stopped {
-	background: #f59e0b;
+	background: var(--sh-warning);
 }
 
 .secubox-status-indicator.secubox-status-not-installed {
-	background: #64748b;
+	background: var(--sh-text-secondary);
 }
 
 @keyframes pulse {
@@ -236,17 +236,17 @@
 }
 
 .secubox-status-text-running {
-	color: #22c55e;
+	color: var(--sh-success);
 	font-weight: 600;
 }
 
 .secubox-status-text-stopped {
-	color: #f59e0b;
+	color: var(--sh-warning);
 	font-weight: 600;
 }
 
 .secubox-status-text-not-installed {
-	color: #64748b;
+	color: var(--sh-text-secondary);
 }
 
 /* Card Actions */
@@ -298,7 +298,7 @@
 }
 
 .secubox-btn-success {
-	background: #22c55e;
+	background: var(--sh-success);
 	color: white;
 }
 
@@ -307,7 +307,7 @@
 }
 
 .secubox-btn-danger {
-	background: #ef4444;
+	background: var(--sh-danger);
 	color: white;
 }
 
@@ -316,7 +316,7 @@
 }
 
 .secubox-btn-warning {
-	background: #f59e0b;
+	background: var(--sh-warning);
 	color: white;
 }
 
@@ -406,4 +406,75 @@
 
 [data-theme="light"] .secubox-stat-badge:hover {
 	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* === Cyberpunk Theme Support === */
+
+[data-secubox-theme="cyberpunk"] .secubox-module-card {
+	background: var(--cyber-bg-secondary);
+	border: var(--cyber-border);
+	box-shadow: 0 0 20px rgba(102, 126, 234, 0.15);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-module-card:hover {
+	border-color: var(--cyber-accent-primary);
+	box-shadow: 0 0 30px rgba(102, 126, 234, 0.3);
+	transform: translateY(-4px);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-stat-badge {
+	background: var(--cyber-bg-secondary);
+	border: var(--cyber-border);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-stat-badge:hover {
+	box-shadow: 0 0 20px rgba(102, 126, 234, 0.2);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-stat-badge.secubox-stat-success {
+	border-color: var(--cyber-success);
+	background: linear-gradient(135deg, var(--cyber-bg-secondary) 0%, var(--cyber-success-soft) 100%);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-stat-badge.secubox-stat-warning {
+	border-color: var(--cyber-warning);
+	background: linear-gradient(135deg, var(--cyber-bg-secondary) 0%, var(--cyber-warning-soft) 100%);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-status-indicator.secubox-status-running {
+	background: var(--cyber-success);
+	box-shadow: 0 0 12px var(--cyber-success);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-status-indicator.secubox-status-stopped {
+	background: var(--cyber-warning);
+	box-shadow: 0 0 8px var(--cyber-warning);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-status-text-running {
+	color: var(--cyber-success);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-status-text-stopped {
+	color: var(--cyber-warning);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-btn-success {
+	background: var(--cyber-gradient-success);
+	box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-btn-danger {
+	background: var(--cyber-gradient-danger);
+	box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-btn-warning {
+	background: var(--cyber-gradient-warning);
+	box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-btn-primary {
+	background: var(--cyber-gradient-primary);
+	box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
 }

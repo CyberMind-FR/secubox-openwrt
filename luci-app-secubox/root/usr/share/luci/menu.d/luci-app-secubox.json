@@ -22,6 +22,14 @@
             "path": "secubox/wizard"
         }
     },
+    "admin/secubox/appstore": {
+        "title": "App Store",
+        "order": 18,
+        "action": {
+            "type": "view",
+            "path": "secubox/appstore"
+        }
+    },
     "admin/secubox/modules": {
         "title": "Modules",
         "order": 20,

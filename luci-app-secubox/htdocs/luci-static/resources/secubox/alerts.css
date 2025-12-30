@@ -10,7 +10,7 @@
 /* Page Header  * Version: 0.3.0
  */
 .secubox-page-header {
-    background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+    background: linear-gradient(135deg, var(--sh-warning) 0%, var(--sh-danger) 100%);
     border-radius: 12px;
     padding: 24px;
     margin-bottom: 24px;
@@ -101,17 +101,17 @@
 }
 
 .secubox-alerts-container::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: var(--sh-bg-secondary);
     border-radius: 4px;
 }
 
 .secubox-alerts-container::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: var(--sh-border);
     border-radius: 4px;
 }
 
 .secubox-alerts-container::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: var(--sh-text-secondary);
 }
 
 /* Alert Item */
@@ -133,17 +133,17 @@
 }
 
 .secubox-alert-item.secubox-alert-error {
-    border-left: 4px solid #ef4444;
+    border-left: 4px solid var(--sh-danger);
     background: #fef2f2;
 }
 
 .secubox-alert-item.secubox-alert-warning {
-    border-left: 4px solid #f59e0b;
+    border-left: 4px solid var(--sh-warning);
     background: #fffbeb;
 }
 
 .secubox-alert-item.secubox-alert-info {
-    border-left: 4px solid #3b82f6;
+    border-left: 4px solid var(--sh-primary);
     background: #eff6ff;
 }
 
@@ -181,7 +181,7 @@
 }
 
 .secubox-alert-message {
-    color: #475569;
+    color: var(--sh-text-secondary);
     line-height: 1.5;
     margin-bottom: 8px;
 }
@@ -238,7 +238,7 @@
 }
 
 .secubox-alert-dismiss:hover {
-    background: #ef4444;
+    background: var(--sh-danger);
     color: white;
 }
 
@@ -246,7 +246,7 @@
 .secubox-empty-state {
     text-align: center;
     padding: 60px 20px;
-    color: #94a3b8;
+    color: var(--sh-text-secondary);
 }
 
 .secubox-empty-icon {
@@ -280,4 +280,79 @@
 
 .secubox-alert-item {
     animation: slideIn 0.3s ease-out;
+}
+
+/* === Cyberpunk Theme Support === */
+
+[data-secubox-theme="cyberpunk"] .secubox-page-header {
+	background: var(--cyber-gradient-primary);
+	box-shadow: 0 0 40px rgba(102, 126, 234, 0.4);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-alerts-controls,
+[data-secubox-theme="cyberpunk"] .secubox-alert-stat-card {
+	background: var(--cyber-bg-secondary);
+	border: var(--cyber-border);
+	box-shadow: 0 0 20px rgba(102, 126, 234, 0.15);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-alert-item {
+	background: var(--cyber-bg-secondary);
+	border: var(--cyber-border);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-alert-item:hover {
+	border-color: var(--cyber-accent-primary);
+	box-shadow: 0 0 25px rgba(102, 126, 234, 0.3);
+	transform: translateX(4px);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-alert-item.secubox-alert-error {
+	border-left: 4px solid var(--cyber-danger);
+	background: var(--cyber-danger-soft);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-alert-item.secubox-alert-warning {
+	border-left: 4px solid var(--cyber-warning);
+	background: var(--cyber-warning-soft);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-alert-item.secubox-alert-info {
+	border-left: 4px solid var(--cyber-accent-primary);
+	background: rgba(102, 126, 234, 0.1);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-badge-error {
+	background: var(--cyber-danger-soft);
+	color: var(--cyber-danger);
+	border-color: var(--cyber-danger);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-badge-warning {
+	background: var(--cyber-warning-soft);
+	color: var(--cyber-warning);
+	border-color: var(--cyber-warning);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-badge-info {
+	background: rgba(102, 126, 234, 0.1);
+	color: var(--cyber-accent-primary);
+	border-color: var(--cyber-accent-primary);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-alert-dismiss:hover {
+	background: var(--cyber-danger);
+	box-shadow: 0 0 15px var(--cyber-danger);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-alerts-container::-webkit-scrollbar-track {
+	background: var(--cyber-bg-primary);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-alerts-container::-webkit-scrollbar-thumb {
+	background: var(--cyber-border);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-alerts-container::-webkit-scrollbar-thumb:hover {
+	background: var(--cyber-accent-primary);
 }

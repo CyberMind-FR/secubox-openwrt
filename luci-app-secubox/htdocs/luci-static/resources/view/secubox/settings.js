@@ -4,8 +4,20 @@
 'require uci';
 'require ui';
 'require secubox/api as API';
-'require secubox/theme as Theme';
+'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
+
+// Load theme resources
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/secubox-theme.css')
+}));
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/themes/cyberpunk.css')
+}));
 
 var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -89,14 +101,13 @@ return view.extend({
 	load: function() {
 		return Promise.all([
 			uci.load('secubox'),
-			API.getStatus(),
-			Theme.getTheme()
+			API.getStatus()
 		]);
 	},
 
 	render: function(data) {
 		var status = data[1] || {};
-		var theme = sanitizeTheme(data[2]);
+		var theme = sanitizeTheme(getMainValue('theme', 'dark'));
 		var versionPref = getMainValue('version', '0.1.2');
 		var refreshPref = getMainValue('refresh_interval', '30');
 		var notificationsPref = getMainBool('notifications', true);
@@ -114,6 +125,7 @@ return view.extend({
 		var modulesChip = this.renderHeaderChip('🧩', _('Modules'), moduleCount);
 
 		var container = E('div', { 'class': 'secubox-settings-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
 

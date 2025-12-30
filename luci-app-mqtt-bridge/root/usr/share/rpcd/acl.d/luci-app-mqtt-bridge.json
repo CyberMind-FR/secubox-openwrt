@@ -5,7 +5,12 @@
             "ubus": {
                 "luci.mqtt-bridge": [
                     "status",
-                    "list_devices"
+                    "list_devices",
+                    "get_usb_devices",
+                    "detect_iot_adapters",
+                    "get_serial_ports",
+                    "get_adapter_info",
+                    "get_adapter_status"
                 ]
             },
             "uci": ["mqtt-bridge"]
@@ -14,7 +19,11 @@
             "ubus": {
                 "luci.mqtt-bridge": [
                     "trigger_pairing",
-                    "apply_settings"
+                    "apply_settings",
+                    "rescan_adapters",
+                    "reset_adapter",
+                    "test_connection",
+                    "configure_adapter"
                 ]
             },
             "uci": ["mqtt-bridge"]

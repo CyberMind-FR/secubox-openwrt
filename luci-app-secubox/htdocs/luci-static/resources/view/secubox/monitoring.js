@@ -4,8 +4,20 @@
 'require dom';
 'require poll';
 'require secubox/api as API';
-'require secubox/theme as Theme';
+'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
+
+// Load theme resources
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/secubox-theme.css')
+}));
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/themes/cyberpunk.css')
+}));
 
 // Respect LuCI language/theme preferences
 var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
@@ -54,6 +66,7 @@ return view.extend({
 
 	render: function() {
 		var container = E('div', { 'class': 'secubox-monitoring-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),

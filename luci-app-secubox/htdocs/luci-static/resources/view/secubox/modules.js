@@ -3,7 +3,7 @@
 'require ui';
 'require dom';
 'require secubox/api as API';
-'require secubox/theme as Theme';
+'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
 'require secubox-theme/cascade as Cascade';
 'require poll';
@@ -13,6 +13,11 @@ document.head.appendChild(E('link', {
 	'rel': 'stylesheet',
 	'type': 'text/css',
 	'href': L.resource('secubox-theme/secubox-theme.css')
+}));
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/themes/cyberpunk.css')
 }));
 document.head.appendChild(E('link', {
 	'rel': 'stylesheet',
@@ -52,6 +57,7 @@ return view.extend({
 			'class': 'secubox-modules-page',
 			'data-cascade-root': 'modules'
 		}, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
 			SecuNav.renderTabs('modules'),

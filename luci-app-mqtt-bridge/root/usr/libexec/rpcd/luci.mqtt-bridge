@@ -3,6 +3,7 @@
 
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
+. /usr/share/mqtt-bridge/usb-database.sh
 
 ZIGBEE_VENDOR="0424"
 ZIGBEE_PRODUCT="2134"
@@ -354,6 +355,278 @@ reset_adapter() {
 	json_dump
 }
 
+# === NEW USB DETECTION RPC METHODS ===
+
+get_usb_devices() {
+	json_init
+	json_add_array "devices"
+
+	for dev in /sys/bus/usb/devices/*; do
+		[ -f "$dev/idVendor" ] || continue
+		[ -f "$dev/idProduct" ] || continue
+
+		local vendor="$(cat "$dev/idVendor" 2>/dev/null)"
+		local product="$(cat "$dev/idProduct" 2>/dev/null)"
+		local busnum="$(cat "$dev/busnum" 2>/dev/null)"
+		local devnum="$(cat "$dev/devnum" 2>/dev/null)"
+		local manufacturer="$(cat "$dev/manufacturer" 2>/dev/null || echo "Unknown")"
+		local prod_name="$(cat "$dev/product" 2>/dev/null || echo "Unknown")"
+
+		local adapter_type="$(detect_adapter_type "$vendor" "$product")"
+		local device_name="$(get_device_name "$vendor" "$product")"
+		local port="$(find_usb_tty "$dev")"
+
+		json_add_object
+		json_add_string "vid" "$vendor"
+		json_add_string "pid" "$product"
+		json_add_string "bus" "$busnum"
+		json_add_string "device" "$devnum"
+		json_add_string "manufacturer" "$manufacturer"
+		json_add_string "product" "$prod_name"
+		json_add_string "type" "$adapter_type"
+		json_add_string "name" "$device_name"
+		[ -n "$port" ] && json_add_string "port" "$port"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+detect_iot_adapters() {
+	json_init
+
+	detect_zigbee_adapters
+	detect_zwave_adapters
+	detect_modbus_adapters
+
+	json_dump
+}
+
+get_serial_ports() {
+	json_init
+	list_serial_ports
+	json_dump
+}
+
+get_adapter_info() {
+	read input
+	json_load "$input"
+	json_get_var adapter_id adapter
+	json_cleanup
+
+	if [ -z "$adapter_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "missing_adapter_id"
+		json_dump
+		return
+	fi
+
+	json_init
+
+	# Get UCI configuration
+	local enabled="$(uci -q get mqtt-bridge.adapter."$adapter_id".enabled || echo 0)"
+	local type="$(uci -q get mqtt-bridge.adapter."$adapter_id".type || echo 'unknown')"
+	local title="$(uci -q get mqtt-bridge.adapter."$adapter_id".title || echo 'Unknown Adapter')"
+	local vendor="$(uci -q get mqtt-bridge.adapter."$adapter_id".vendor || echo '')"
+	local product="$(uci -q get mqtt-bridge.adapter."$adapter_id".product || echo '')"
+	local port="$(uci -q get mqtt-bridge.adapter."$adapter_id".port || echo '')"
+	local detected="$(uci -q get mqtt-bridge.adapter."$adapter_id".detected || echo 0)"
+	local health="$(uci -q get mqtt-bridge.adapter."$adapter_id".health || echo 'unknown')"
+
+	json_add_string "id" "$adapter_id"
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "type" "$type"
+	json_add_string "title" "$title"
+	json_add_string "vid" "$vendor"
+	json_add_string "pid" "$product"
+	json_add_string "port" "$port"
+	json_add_boolean "detected" "$detected"
+	json_add_string "health" "$health"
+
+	# Add type-specific config
+	case "$type" in
+		zigbee)
+			json_add_string "baud" "$(uci -q get mqtt-bridge.adapter."$adapter_id".baud || echo '115200')"
+			json_add_string "channel" "$(uci -q get mqtt-bridge.adapter."$adapter_id".channel || echo '11')"
+			json_add_string "pan_id" "$(uci -q get mqtt-bridge.adapter."$adapter_id".pan_id || echo '0x1A62')"
+			;;
+		zwave)
+			json_add_string "baud" "$(uci -q get mqtt-bridge.adapter."$adapter_id".baud || echo '115200')"
+			;;
+		modbus)
+			json_add_string "baud" "$(uci -q get mqtt-bridge.adapter."$adapter_id".baud || echo '9600')"
+			json_add_string "parity" "$(uci -q get mqtt-bridge.adapter."$adapter_id".parity || echo 'N')"
+			json_add_string "databits" "$(uci -q get mqtt-bridge.adapter."$adapter_id".databits || echo '8')"
+			json_add_string "stopbits" "$(uci -q get mqtt-bridge.adapter."$adapter_id".stopbits || echo '1')"
+			json_add_string "slave_id" "$(uci -q get mqtt-bridge.adapter."$adapter_id".slave_id || echo '1')"
+			;;
+	esac
+
+	# Check current USB presence if VID:PID known
+	if [ -n "$vendor" ] && [ -n "$product" ]; then
+		local found=0
+		for dev in /sys/bus/usb/devices/*; do
+			[ -f "$dev/idVendor" ] || continue
+			local v="$(cat "$dev/idVendor")"
+			local p="$(cat "$dev/idProduct")"
+			if [ "$v" = "$vendor" ] && [ "$p" = "$product" ]; then
+				found=1
+				local current_port="$(find_usb_tty "$dev")"
+				[ -n "$current_port" ] && json_add_string "current_port" "$current_port"
+				break
+			fi
+		done
+		json_add_boolean "usb_present" "$found"
+	fi
+
+	json_dump
+}
+
+test_connection() {
+	read input
+	json_load "$input"
+	json_get_var port port
+	json_cleanup
+
+	if [ -z "$port" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "missing_port"
+		json_dump
+		return
+	fi
+
+	json_init
+	if test_serial_port "$port"; then
+		json_add_boolean "success" 1
+		json_add_boolean "accessible" 1
+		json_add_string "message" "port_accessible"
+	else
+		json_add_boolean "success" 1
+		json_add_boolean "accessible" 0
+		json_add_string "message" "port_not_accessible"
+	fi
+	json_dump
+}
+
+configure_adapter() {
+	read input
+	json_load "$input"
+	json_get_var adapter_id id
+	json_get_var enabled enabled
+	json_get_var type type
+	json_get_var title title
+	json_get_var vendor vid
+	json_get_var product pid
+	json_get_var port port
+	json_cleanup
+
+	if [ -z "$adapter_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "missing_adapter_id"
+		json_dump
+		return
+	fi
+
+	# Create or update adapter section
+	uci -q get mqtt-bridge.adapter."$adapter_id" >/dev/null 2>&1 || {
+		uci set mqtt-bridge.adapter."$adapter_id"=adapter
+	}
+
+	[ -n "$enabled" ] && uci set mqtt-bridge.adapter."$adapter_id".enabled="$enabled"
+	[ -n "$type" ] && uci set mqtt-bridge.adapter."$adapter_id".type="$type"
+	[ -n "$title" ] && uci set mqtt-bridge.adapter."$adapter_id".title="$title"
+	[ -n "$vendor" ] && uci set mqtt-bridge.adapter."$adapter_id".vendor="$vendor"
+	[ -n "$product" ] && uci set mqtt-bridge.adapter."$adapter_id".product="$product"
+	[ -n "$port" ] && uci set mqtt-bridge.adapter."$adapter_id".port="$port"
+
+	# Mark as detected if port is present
+	if [ -n "$port" ] && [ -c "$port" ]; then
+		uci set mqtt-bridge.adapter."$adapter_id".detected=1
+		uci set mqtt-bridge.adapter."$adapter_id".health="online"
+	else
+		uci set mqtt-bridge.adapter."$adapter_id".detected=0
+		uci set mqtt-bridge.adapter."$adapter_id".health="unknown"
+	fi
+
+	uci commit mqtt-bridge
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "adapter_configured"
+	json_add_string "id" "$adapter_id"
+	json_dump
+}
+
+get_adapter_status() {
+	json_init
+	json_add_array "adapters"
+
+	# Iterate through all adapter sections in UCI
+	local idx=0
+	while uci -q get mqtt-bridge.@adapter[$idx] >/dev/null 2>&1; do
+		local adapter_id="$(uci -q get mqtt-bridge.@adapter[$idx])"
+		idx=$((idx + 1))
+	done
+
+	# Get named adapter sections
+	for adapter_id in $(uci -q show mqtt-bridge.adapter 2>/dev/null | grep '=adapter$' | cut -d. -f3 | cut -d= -f1); do
+		local enabled="$(uci -q get mqtt-bridge.adapter."$adapter_id".enabled || echo 0)"
+		local type="$(uci -q get mqtt-bridge.adapter."$adapter_id".type || echo 'unknown')"
+		local title="$(uci -q get mqtt-bridge.adapter."$adapter_id".title || echo 'Unknown')"
+		local vendor="$(uci -q get mqtt-bridge.adapter."$adapter_id".vendor || echo '')"
+		local product="$(uci -q get mqtt-bridge.adapter."$adapter_id".product || echo '')"
+		local port="$(uci -q get mqtt-bridge.adapter."$adapter_id".port || echo '')"
+
+		# Real-time health check
+		local health="unknown"
+		local usb_present=0
+		local port_accessible=0
+
+		# Check USB presence
+		if [ -n "$vendor" ] && [ -n "$product" ]; then
+			for dev in /sys/bus/usb/devices/*; do
+				[ -f "$dev/idVendor" ] || continue
+				local v="$(cat "$dev/idVendor")"
+				local p="$(cat "$dev/idProduct")"
+				if [ "$v" = "$vendor" ] && [ "$p" = "$product" ]; then
+					usb_present=1
+					local detected_port="$(find_usb_tty "$dev")"
+					[ -n "$detected_port" ] && port="$detected_port"
+					break
+				fi
+			done
+		fi
+
+		# Check port accessibility
+		if [ -n "$port" ] && test_serial_port "$port"; then
+			port_accessible=1
+			health="online"
+		elif [ "$usb_present" = "1" ]; then
+			health="error"
+		elif [ -n "$port" ]; then
+			health="missing"
+		fi
+
+		json_add_object
+		json_add_string "id" "$adapter_id"
+		json_add_boolean "enabled" "$enabled"
+		json_add_string "type" "$type"
+		json_add_string "title" "$title"
+		json_add_string "port" "$port"
+		json_add_string "health" "$health"
+		json_add_boolean "usb_present" "$usb_present"
+		json_add_boolean "port_accessible" "$port_accessible"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
 case "$1" in
 	list)
 		cat <<'JSON'
@@ -363,7 +636,14 @@ case "$1" in
 	"trigger_pairing": {},
 	"apply_settings": {},
 	"rescan_adapters": {},
-	"reset_adapter": {}
+	"reset_adapter": {},
+	"get_usb_devices": {},
+	"detect_iot_adapters": {},
+	"get_serial_ports": {},
+	"get_adapter_info": { "adapter": "string" },
+	"test_connection": { "port": "string" },
+	"configure_adapter": { "id": "string", "enabled": "boolean", "type": "string", "title": "string", "vid": "string", "pid": "string", "port": "string" },
+	"get_adapter_status": {}
 }
 JSON
 	;;
@@ -375,6 +655,13 @@ JSON
 			apply_settings) apply_settings ;;
 			rescan_adapters) rescan_adapters ;;
 			reset_adapter) reset_adapter ;;
+			get_usb_devices) get_usb_devices ;;
+			detect_iot_adapters) detect_iot_adapters ;;
+			get_serial_ports) get_serial_ports ;;
+			get_adapter_info) get_adapter_info ;;
+			test_connection) test_connection ;;
+			configure_adapter) configure_adapter ;;
+			get_adapter_status) get_adapter_status ;;
 			*)
 				json_init
 				json_add_boolean "success" 0

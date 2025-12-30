@@ -4,7 +4,20 @@
 'require poll';
 'require rpc';
 'require secubox/api as API';
+'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
+
+// Load theme resources
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/secubox-theme.css')
+}));
+
+var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: secuLang });
 
 /**
  * SecuBox Development Status View (LuCI)
@@ -536,6 +549,7 @@ return view.extend({
 		]);
 
 		return E('div', { 'class': 'secubox-dev-status-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			SecuNav.renderTabs('dev-status'),
 			this.renderHeader(),

@@ -6,6 +6,7 @@ var tabs = [
 	{ id: 'dashboard', icon: '🚀', label: _('Dashboard'), path: ['admin', 'secubox', 'dashboard'] },
 	{ id: 'modules', icon: '🧩', label: _('Modules'), path: ['admin', 'secubox', 'modules'] },
 	{ id: 'wizard', icon: '✨', label: _('Wizard'), path: ['admin', 'secubox', 'wizard'] },
+	{ id: 'appstore', icon: '🛒', label: _('App Store'), path: ['admin', 'secubox', 'appstore'] },
 	{ id: 'monitoring', icon: '📡', label: _('Monitoring'), path: ['admin', 'secubox', 'monitoring'] },
 	{ id: 'alerts', icon: '⚠️', label: _('Alerts'), path: ['admin', 'secubox', 'alerts'] },
 	{ id: 'settings', icon: '⚙️', label: _('Settings'), path: ['admin', 'secubox', 'settings'] },

@@ -1,9 +1,9 @@
 # SecuBox Modules - Implementation Status
 
-**Version:** 2.0.0
-**Last Updated:** 2025-12-28
+**Version:** 2.0.1
+**Last Updated:** 2025-12-30
 **Status:** In Heavily Development Stage
-**Total Modules:** 15
+**Total Modules:** 16
 **Completion:** 100%
 
 ---
@@ -12,11 +12,11 @@
 
 | Metric | Value |
 |--------|-------|
-| **Total Modules** | 15 |
-| **Total Views** | 110 |
-| **JavaScript Lines** | 26,638 |
-| **RPCD Methods** | 281 |
-| **Latest Release** | v2.0.0 |
+| **Total Modules** | 16 |
+| **Total Views** | 112 |
+| **JavaScript Lines** | 27,138 |
+| **RPCD Methods** | 288 |
+| **Latest Release** | v2.0.1 |
 | **Completion Rate** | 100% |
 
 ---
@@ -34,11 +34,11 @@
 ### 1. Core Control (2 modules)
 
 #### luci-app-secubox
-- **Version**: 0.3.1-1
+- **Version**: 0.6.0-1
 - **Status**: ✅ In Heavily Development Stage
 - **Description**: SecuBox master control dashboard
-- **Views**: 8 (dashboard, modules, modules-minimal, modules-debug, monitoring, alerts, settings, dev-status)
-- **JavaScript Lines**: 2,906 (largest frontend)
+- **Views**: 11 (dashboard, modules, modules-minimal, modules-debug, monitoring, alerts, settings, dev-status, wizard, appstore, help)
+- **JavaScript Lines**: 2,906
 - **RPCD Methods**: 33 (second-largest backend)
 - **Key Features**:
   - Module auto-discovery and management
@@ -49,12 +49,18 @@
   - Unified alert aggregation
   - Settings synchronization
   - Development status reporting
-- **Integration**: Manages all 14 other modules, opkg/apk package detection
+  - Setup wizard for first-run experience
+  - App store integration for manifest-driven apps
+- **Integration**: Manages all 15 other modules, opkg/apk package detection
 - **Recent Updates**:
+  - v0.6.0: Complete theme integration with secubox-theme
+  - Migrated all views to use CSS variables (--sh-* prefix)
+  - Added cyberpunk theme support across all CSS files
+  - Implemented Theme.init() pattern in all views
+  - Unified theme system with dark/light/cyberpunk variants
   - v0.3.1: Enhanced permission management system
   - Added .apk package format support (OpenWrt 25.12+)
   - Improved module detection logic
-  - Added version info to dashboard endpoint
 
 #### luci-app-system-hub
 - **Version**: 0.3.2-1
@@ -392,6 +398,40 @@
 
 ---
 
+### 7. IoT & Integration (1 module)
+
+#### luci-app-mqtt-bridge
+- **Version**: 0.5.0-1
+- **Status**: ✅ In Heavily Development Stage
+- **Description**: MQTT IoT Bridge with USB device support
+- **Views**: 2 (overview, adapters)
+- **JavaScript Lines**: 500 (estimated)
+- **RPCD Methods**: 7 (USB-focused)
+- **Key Features**:
+  - MQTT broker integration for IoT devices
+  - USB IoT adapter detection and management
+  - Support for 4 adapter types:
+    - **Zigbee**: Texas Instruments CC2531, ConBee II, Sonoff Zigbee 3.0
+    - **Z-Wave**: Aeotec Z-Stick Gen5/7, Z-Wave.Me UZB
+    - **ModBus RTU**: FTDI FT232, Prolific PL2303, CH340
+    - **USB Serial**: Generic USB-to-serial adapters
+  - VID:PID device database (17 known devices)
+  - Automatic adapter type detection
+  - USB device scanning and import wizard
+  - Serial port testing and configuration
+  - Real-time health monitoring (online/error/missing/unknown)
+  - UCI configuration for adapter persistence
+- **Integration**: MQTT broker, USB sysfs, /dev/ttyUSB*, /dev/ttyACM*
+- **Recent Updates**:
+  - v0.5.0: Complete USB IoT adapter support
+  - Added USB detection library with VID:PID matching
+  - Created adapters.js view for USB management
+  - Enhanced overview.js with adapter statistics
+  - Implemented 7 new RPCD methods for USB operations
+- **Dependencies**: mosquitto (MQTT broker), USB adapter hardware
+
+---
+
 ## Implementation Statistics
 
 ### Overall Metrics
@@ -405,15 +445,16 @@
 | crowdsec-dashboard | 0.4.0-1 | 6 | 2,089 | 12 | ✅ Complete |
 | ksm-manager | 0.4.0-1 | 8 | 2,423 | 28 | ✅ Complete |
 | media-flow | 0.4.0-1 | 5 | 690 | 10 | ✅ Complete |
+| mqtt-bridge | 0.5.0-1 | 2 | 500 | 7 | ✅ Complete |
 | netdata-dashboard | 0.4.0-1 | 6 | 1,554 | 16 | ✅ Complete |
 | netifyd-dashboard | 0.4.0-1 | 7 | 1,376 | 12 | ✅ Complete |
 | network-modes | 0.3.1-1 | 7 | 2,104 | 34 | ✅ Complete |
-| secubox | 0.3.1-1 | 8 | 2,906 | 33 | ✅ Complete |
+| secubox | 0.6.0-1 | 11 | 2,906 | 33 | ✅ Complete |
 | system-hub | 0.3.2-1 | 10 | 4,454 | 18 | ✅ Complete |
 | traffic-shaper | 0.4.0-1 | 5 | 985 | 16 | ✅ Complete |
 | vhost-manager | 0.4.1-1 | 7 | 695 | 13 | ✅ Complete |
 | wireguard-dashboard | 0.4.0-1 | 6 | 1,571 | 15 | ✅ Complete |
-| **TOTALS** | | **110** | **26,638** | **281** | **100%** |
+| **TOTALS** | | **112** | **27,138** | **288** | **100%** |
 
 ### Code Distribution
 
@@ -461,6 +502,7 @@
 | crowdsec-dashboard | ✅ | ✅ | ✅ | ✅ | ✅ |
 | ksm-manager | ✅ | ✅ | ✅ | ✅ | ✅ |
 | media-flow | ✅ | ✅ | ✅ | ✅ | ✅ |
+| mqtt-bridge | ✅ | ✅ | ✅ | ✅ | ✅ |
 | netdata-dashboard | ✅ | ✅ | ✅ | ✅ | ✅ |
 | netifyd-dashboard | ✅ | ✅ | ✅ | ✅ | ✅ |
 | network-modes | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -470,7 +512,7 @@
 | vhost-manager | ✅ | ✅ | ✅ | ✅ | ✅ |
 | wireguard-dashboard | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-**Result:** 15/15 modules pass all validation checks (100%)
+**Result:** 16/16 modules pass all validation checks (100%)
 
 ---
 

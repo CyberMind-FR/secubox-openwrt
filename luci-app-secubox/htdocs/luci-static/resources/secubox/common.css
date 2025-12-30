@@ -732,3 +732,191 @@ pre {
 	font-size: 13px;
 	color: var(--sh-text-secondary);
 }
+
+/* === App Store Layout === */
+.secubox-appstore-page {
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+	color: var(--sh-text-primary);
+}
+
+.sb-stats-row {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 16px;
+}
+
+.sb-stat-card {
+	background: var(--sh-bg-card);
+	border: 1px solid var(--sh-border);
+	border-radius: 14px;
+	padding: 16px 18px;
+	box-shadow: 0 1px 3px var(--sh-shadow);
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.sb-stat-icon {
+	font-size: 20px;
+}
+
+.sb-stat-label {
+	font-size: 12px;
+	text-transform: uppercase;
+	color: var(--sh-text-secondary);
+}
+
+.sb-stat-value {
+	font-size: 32px;
+	font-weight: 700;
+	font-family: 'JetBrains Mono', monospace;
+}
+
+.sb-stat-sub {
+	font-size: 12px;
+	color: var(--sh-text-secondary);
+}
+
+.secubox-appstore-filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	align-items: center;
+	background: var(--sh-bg-card);
+	border: 1px solid var(--sh-border);
+	border-radius: 14px;
+	padding: 16px;
+	box-shadow: 0 1px 3px var(--sh-shadow);
+}
+
+.sb-filter-group {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.sb-filter-label {
+	font-size: 12px;
+	text-transform: uppercase;
+	color: var(--sh-text-secondary);
+}
+
+.sb-filter-pills {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.sb-filter-pill {
+	border: 1px solid var(--sh-border);
+	background: var(--sh-bg-secondary);
+	color: var(--sh-text-primary);
+	padding: 6px 12px;
+	border-radius: 999px;
+	font-size: 12px;
+	transition: all 0.2s ease;
+}
+
+.sb-filter-pill.active {
+	background: linear-gradient(135deg, var(--sh-primary), var(--sh-primary-end));
+	color: #fff;
+	border-color: transparent;
+}
+
+.sb-filter-search {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	border: 1px solid var(--sh-border);
+	background: var(--sh-bg-secondary);
+	padding: 6px 12px;
+	border-radius: 12px;
+	min-width: 220px;
+}
+
+.sb-filter-search input {
+	border: none;
+	background: transparent;
+	color: var(--sh-text-primary);
+	width: 100%;
+	padding: 0;
+}
+
+.sb-filter-search input:focus {
+	outline: none;
+}
+
+.sb-filter-search-icon {
+	font-size: 14px;
+}
+
+.secubox-appstore-grid .sb-app-card {
+	background: var(--sh-bg-card);
+}
+
+.sb-app-tags {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.sb-app-tag {
+	font-size: 11px;
+	border-radius: 999px;
+	padding: 4px 10px;
+	background: var(--sh-bg-tertiary);
+	border: 1px solid var(--sh-border);
+}
+
+.sb-app-tag.sb-app-version {
+	font-family: 'JetBrains Mono', monospace;
+}
+
+.sb-app-detail-body {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	max-height: 60vh;
+	overflow-y: auto;
+	padding-right: 8px;
+}
+
+.sb-app-detail-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 12px;
+}
+
+.sb-app-detail-row {
+	background: var(--sh-bg-secondary);
+	border-radius: 10px;
+	border: 1px solid var(--sh-border);
+	padding: 10px 12px;
+	display: flex;
+	justify-content: space-between;
+	font-size: 13px;
+}
+
+.sb-app-detail-row strong {
+	color: var(--sh-text-secondary);
+	padding-right: 10px;
+}
+
+.sb-app-detail-list ul {
+	margin: 6px 0 0 16px;
+	padding: 0;
+	color: var(--sh-text-secondary);
+	font-size: 13px;
+}
+
+.sb-app-cli {
+	background: #050a1f;
+	color: #7dd3fc;
+	border-radius: 12px;
+	border: 1px solid rgba(125, 211, 252, 0.2);
+	padding: 12px;
+	font-size: 13px;
+	overflow-x: auto;
+}

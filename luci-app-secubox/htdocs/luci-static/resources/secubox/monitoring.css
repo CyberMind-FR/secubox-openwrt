@@ -105,13 +105,13 @@
     justify-content: space-between;
     align-items: center;
     padding-top: 12px;
-    border-top: 2px solid #f1f5f9;
+    border-top: 2px solid var(--sh-border);
 }
 
 .secubox-current-value {
     font-size: 24px;
     font-weight: 700;
-    color: #6366f1;
+    color: var(--sh-primary);
 }
 
 .secubox-chart-unit {
@@ -198,4 +198,43 @@
     stroke-dasharray: 1000;
     stroke-dashoffset: 1000;
     animation: drawLine 1s ease-out forwards;
+}
+
+/* === Cyberpunk Theme Support === */
+
+[data-secubox-theme="cyberpunk"] .secubox-chart-card {
+	background: var(--cyber-bg-secondary);
+	border: var(--cyber-border);
+	box-shadow: 0 0 20px rgba(102, 126, 234, 0.15);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-chart-card:hover {
+	border-color: var(--cyber-accent-primary);
+	box-shadow: 0 0 30px rgba(102, 126, 234, 0.3);
+	transform: translateY(-4px);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-hero-badge {
+	background: var(--cyber-bg-secondary);
+	border: var(--cyber-border);
+	box-shadow: 0 0 15px rgba(102, 126, 234, 0.1);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-current-value {
+	color: var(--cyber-accent-primary);
+	text-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-chart-legend {
+	border-top-color: var(--cyber-border);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-stat-item {
+	background: var(--cyber-bg-secondary);
+	border: var(--cyber-border);
+}
+
+[data-secubox-theme="cyberpunk"] .secubox-stat-item:hover {
+	border-color: var(--cyber-accent-primary);
+	box-shadow: 0 0 20px rgba(102, 126, 234, 0.2);
 }

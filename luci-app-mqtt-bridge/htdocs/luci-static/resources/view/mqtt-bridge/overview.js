@@ -12,19 +12,59 @@ Theme.init({ language: lang });
 
 return view.extend({
 	load: function() {
-		return API.getStatus();
+		return Promise.all([
+			API.getStatus().catch(function(err) {
+				console.warn('MQTT Bridge backend not available:', err);
+				return { backend_available: false };
+			}),
+			API.getAdapterStatus().catch(function(err) {
+				console.warn('MQTT Bridge backend not available:', err);
+				return { adapters: [], backend_available: false };
+			})
+		]);
 	},
 
 	render: function(data) {
-		var status = data || {};
-		var container = E('div', { 'class': 'mqtt-bridge-dashboard' }, [
+		var status = data[0] || {};
+		var adapterStatus = data[1] || { adapters: [] };
+
+		// Ensure adapters is always an array
+		var adapters = [];
+		if (adapterStatus && Array.isArray(adapterStatus.adapters)) {
+			adapters = adapterStatus.adapters;
+		} else if (status && Array.isArray(status.adapters)) {
+			// Fallback: try to get adapters from status
+			adapters = status.adapters;
+		}
+
+		var content = [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('mqtt-bridge/common.css') }),
-			Nav.renderTabs('overview'),
+			Nav.renderTabs('overview')
+		];
+
+		// Show warning if backend is not available
+		if (status.backend_available === false) {
+			content.push(E('div', {
+				'class': 'mb-card',
+				'style': 'background: #fef2f2; border-left: 4px solid #ef4444; margin-bottom: 16px;'
+			}, [
+				E('div', { 'class': 'mb-card-header' }, [
+					E('div', { 'class': 'mb-card-title' }, [E('span', {}, '⚠️'), _('Backend Not Installed')])
+				]),
+				E('p', { 'style': 'color: #991b1b; margin: 0;' },
+					_('The MQTT Bridge backend (RPCD script) is not installed on this router. Please deploy the complete module package to enable functionality.'))
+			]));
+		}
+
+		content.push(
 			this.renderHero(status),
+			this.renderUSBAdapterStats(adapters),
 			this.renderStats(status),
 			this.renderRecentPayloads(status)
-		]);
+		);
+
+		var container = E('div', { 'class': 'mqtt-bridge-dashboard' }, content);
 		return container;
 	},
 
@@ -49,6 +89,99 @@ return view.extend({
 					E('strong', {}, item.value)
 				]);
 			}))
+		]);
+	},
+
+	renderUSBAdapterStats: function(adapters) {
+		// Ensure adapters is always an array
+		if (!adapters || !Array.isArray(adapters)) {
+			adapters = [];
+		}
+
+		var stats = {
+			total: adapters.length,
+			byType: { zigbee: 0, zwave: 0, modbus: 0, serial: 0 },
+			byHealth: { online: 0, error: 0, missing: 0, unknown: 0 }
+		};
+
+		adapters.forEach(function(adapter) {
+			if (adapter.type) {
+				stats.byType[adapter.type] = (stats.byType[adapter.type] || 0) + 1;
+			}
+			if (adapter.health) {
+				stats.byHealth[adapter.health] = (stats.byHealth[adapter.health] || 0) + 1;
+			}
+		});
+
+		var typeIcons = {
+			zigbee: '📡',
+			zwave: '🌊',
+			modbus: '⚙️',
+			serial: '🔌'
+		};
+
+		var healthColors = {
+			online: '#22c55e',
+			error: '#ef4444',
+			missing: '#f59e0b',
+			unknown: '#9ca3af'
+		};
+
+		return E('div', { 'class': 'mb-card' }, [
+			E('div', { 'class': 'mb-card-header' }, [
+				E('div', { 'class': 'mb-card-title' }, [E('span', {}, '🔌'), _('USB IoT Adapters')]),
+				E('button', {
+					'class': 'mb-btn mb-btn-neutral',
+					'click': function() {
+						window.location.href = L.url('admin/secubox/services/mqtt-bridge/adapters');
+					}
+				}, _('Manage Adapters'))
+			]),
+
+			// Adapter count by type
+			E('div', { 'style': 'margin-bottom: 16px;' }, [
+				E('div', { 'style': 'color: var(--mb-muted); font-size: 13px; margin-bottom: 8px;' },
+					_('Configured Adapters: %d').format(stats.total)),
+				E('div', { 'class': 'mb-grid', 'style': 'grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));' },
+					Object.keys(stats.byType).map(function(type) {
+						var count = stats.byType[type];
+						if (count === 0) return null;
+						return E('div', {
+							'class': 'mb-stat',
+							'style': 'background: var(--mb-bg-secondary); border: 1px solid var(--mb-border); border-radius: 8px; padding: 12px;'
+						}, [
+							E('span', {
+								'style': 'display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--mb-muted);'
+							}, [
+								E('span', {}, typeIcons[type] || ''),
+								_('%s').format(type.charAt(0).toUpperCase() + type.slice(1))
+							]),
+							E('div', { 'class': 'mb-stat-value', 'style': 'font-size: 24px;' }, count)
+						]);
+					}).filter(Boolean)
+				)
+			]),
+
+			// Health status breakdown
+			E('div', { 'style': 'border-top: 1px solid var(--mb-border); padding-top: 16px;' }, [
+				E('div', { 'style': 'color: var(--mb-muted); font-size: 13px; margin-bottom: 8px;' },
+					_('Health Status')),
+				E('div', { 'class': 'mb-grid', 'style': 'grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));' },
+					Object.keys(stats.byHealth).map(function(health) {
+						var count = stats.byHealth[health];
+						return E('div', {
+							'style': 'display: flex; align-items: center; gap: 8px; padding: 8px;'
+						}, [
+							E('span', {
+								'style': 'display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: ' + healthColors[health]
+							}),
+							E('span', { 'style': 'color: var(--mb-muted); font-size: 13px; flex: 1;' },
+								_(health.charAt(0).toUpperCase() + health.slice(1))),
+							E('strong', { 'style': 'font-size: 16px;' }, count)
+						]);
+					})
+				)
+			])
 		]);
 	},
 

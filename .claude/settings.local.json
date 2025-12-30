@@ -156,7 +156,11 @@
       "Bash(deploy-modules-with-theme.sh)",
       "Bash(timeout 120 ./local-build.sh:*)",
       "Bash(do echo \"=== admin/secubox/$category ===\")",
-      "Bash(./secubox-tools/sync_module_versions.sh:*)"
+      "Bash(./secubox-tools/sync_module_versions.sh:*)",
+      "Bash(for f in /home/reepost/CyberMindStudio/_files/secubox-openwrt/luci-app-*/htdocs/luci-static/resources/view/*/*.js)",
+      "Bash(do grep -q \"secubox-theme/theme\" \"$f\")",
+      "Bash(! grep -q \"cyberpunk.css\" \"$f\")",
+      "Bash(./secubox-tools/quick-deploy.sh:*)"
     ]
   }
 }

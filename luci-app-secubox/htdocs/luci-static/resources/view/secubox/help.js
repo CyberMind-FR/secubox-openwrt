@@ -3,13 +3,20 @@
 'require dom';
 'require secubox/api as API';
 'require secubox/help as Help';
-'require secubox/theme as Theme';
+'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
 
-// Ensure SecuBox theme variables are loaded for this view
-Theme.init();
-
-// Load base SecuBox + help styles
+// Load theme resources
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/secubox-theme.css')
+}));
+document.head.appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('secubox-theme/themes/cyberpunk.css')
+}));
 document.head.appendChild(E('link', {
 	'rel': 'stylesheet',
 	'type': 'text/css',
@@ -21,6 +28,12 @@ document.head.appendChild(E('link', {
 	'href': L.resource('secubox/help.css')
 }));
 
+// Ensure SecuBox theme variables are loaded for this view
+var secuLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: secuLang });
+
 return view.extend({
 	load: function() {
 		return API.getStatus();
@@ -31,6 +44,7 @@ return view.extend({
 		var helpPages = Help.getAllHelpPages();
 
 		return E('div', { 'class': 'secubox-help-page' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			SecuNav.renderTabs('help'),
 			this.renderHeader(data),
