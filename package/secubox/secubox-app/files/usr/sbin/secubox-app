@@ -142,17 +142,17 @@ manifest_path() {
 
 manifest_field() {
 	local file="$1"; shift
-	jsonfilter -f "$file" -e "$1" 2>/dev/null || true
+	cat "$file" | jsonfilter -e "$1" 2>/dev/null || true
 }
 
 manifest_packages() {
 	local file="$1"
-	jsonfilter -f "$file" -e '@.packages[*]' 2>/dev/null || true
+	cat "$file" | jsonfilter -e '@.packages[*]' 2>/dev/null || true
 }
 
 manifest_action() {
 	local file="$1"; shift
-	jsonfilter -f "$file" -e "@.actions.$1" 2>/dev/null || true
+	cat "$file" | jsonfilter -e "@.actions.$1" 2>/dev/null || true
 }
 
 manifest_runtime() {
