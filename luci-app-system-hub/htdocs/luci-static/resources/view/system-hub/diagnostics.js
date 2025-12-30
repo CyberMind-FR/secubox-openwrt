@@ -223,19 +223,22 @@ return view.extend({
 
 	runTest: function(type) {
 		var resultsDiv = document.getElementById('test-results');
-		
+
 		resultsDiv.innerHTML = '<div style="text-align: center; padding: 20px;"><div class="spinning"></div><div style="margin-top: 12px;">Test en cours...</div></div>';
 		API.runDiagnosticTest(type).then(function(result) {
-			var color = result.success ? '#22c55e' : '#ef4444';
-			var bg = result.success ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)';
+			var color = result.success ? '#10b981' : '#ef4444';
+			var bg = result.success ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)';
+			var textColor = result.success ? '#059669' : '#dc2626';
 			var icon = result.success ? '✅' : '❌';
 			resultsDiv.innerHTML = '';
-			resultsDiv.appendChild(E('div', { 'style': 'padding: 18px; border-radius: 10px; border-left: 3px solid ' + color + '; background: ' + bg }, [
-				E('div', { 'style': 'display:flex; align-items:center; gap:10px;' }, [
-					E('span', { 'style': 'font-size:24px;' }, icon),
-					E('div', { 'style': 'font-weight:600;' }, (result.test || type) + ' - ' + (result.success ? 'Réussi' : 'Échec'))
+			resultsDiv.appendChild(E('div', { 'style': 'padding: 20px; border-radius: 8px; border: 2px solid ' + color + '; background: ' + bg }, [
+				E('div', { 'style': 'display:flex; align-items:center; gap:12px; margin-bottom: 16px;' }, [
+					E('span', { 'style': 'font-size:28px;' }, icon),
+					E('div', { 'style': 'font-weight:700; font-size:16px; color:' + textColor + ';' }, (result.test || type) + ' - ' + (result.success ? 'Réussi' : 'Échec'))
 				]),
-				E('pre', { 'style': 'margin-top:12px; font-size:12px; white-space:pre-wrap;' }, result.output || '')
+				E('pre', {
+					'style': 'margin:0; padding:14px; font-size:13px; line-height:1.6; white-space:pre-wrap; background:rgba(0,0,0,0.3); border-radius:6px; color:#e0e0e0; font-family:monospace; overflow-x:auto;'
+				}, result.output || 'Aucune sortie')
 			]));
 		}).catch(function(err) {
 			resultsDiv.innerHTML = '';

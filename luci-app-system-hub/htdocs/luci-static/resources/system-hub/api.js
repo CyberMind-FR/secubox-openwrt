@@ -234,7 +234,7 @@ return baseclass.extend({
 	listDiagnosticProfiles: callListDiagnosticProfiles,
 
 	getDiagnosticProfile: function(name) {
-		return callGetDiagnosticProfile({ name: name });
+		return callGetDiagnosticProfile(name);
 	},
 
 	downloadDiagnostic: function(name) {
@@ -244,7 +244,7 @@ return baseclass.extend({
 		return callDeleteDiagnostic({ name: name });
 	},
 	runDiagnosticTest: function(test) {
-		return callRunDiagnosticTest({ test: test });
+		return callRunDiagnosticTest(test);
 	},
 
 	uploadDiagnostics: function(name) {
