@@ -13,7 +13,8 @@
 					"risks",
 					"category_bandwidth",
 					"top_talkers",
-					"dns_queries"
+					"dns_queries",
+					"seccubox_logs"
 				],
 				"system": [ "info", "board" ],
 				"file": [ "read", "stat" ]

@@ -9,6 +9,14 @@
 			"acl": ["luci-app-netifyd-dashboard"]
 		}
 	},
+	"admin/secubox/security/netifyd/wizard": {
+		"title": "Setup Wizard",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "netifyd-dashboard/wizard"
+		}
+	},
 	"admin/secubox/security/netifyd/overview": {
 		"title": "Overview",
 		"order": 10,

@@ -3,6 +3,7 @@
 'require form';
 'require ui';
 'require uci';
+'require network-modes/api as api';
 'require network-modes.helpers as helpers';
 
 return view.extend({

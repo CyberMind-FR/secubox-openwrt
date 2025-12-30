@@ -12,239 +12,250 @@ return view.extend({
 	render: function(status) {
 		status = status || {};
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('Netifyd Settings')),
-			E('div', { 'class': 'cbi-map-descr' },
-				_('Configure and manage Netifyd deep packet inspection service.')),
-
-			// Service Status
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Service Status')),
-				E('div', { 'class': 'table cbi-section-table' }, [
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Service Status')),
-						E('div', { 'class': 'td left' }, [
-							E('span', {
-								'class': 'badge',
-								'style': 'background: ' + (status.running ? '#28a745' : '#dc3545') + '; color: white; padding: 0.25em 0.6em; border-radius: 3px;'
-							}, status.running ? _('Running') : _('Stopped'))
-						])
-					]),
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Version')),
-						E('div', { 'class': 'td left' }, status.version || 'Unknown')
-					]),
-					status.running ? E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Process ID')),
-						E('div', { 'class': 'td left' }, [
-							E('code', {}, (status.pid || 'N/A').toString())
-						])
-					]) : null,
-					status.running && status.uptime ? E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Uptime')),
-						E('div', { 'class': 'td left' }, this.formatUptime(status.uptime))
-					]) : null,
-					status.running && status.memory_kb ? E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Memory Usage')),
-						E('div', { 'class': 'td left' }, Math.round(status.memory_kb / 1024) + ' MB')
-					]) : null,
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Monitored Interfaces')),
-						E('div', { 'class': 'td left' }, [
-							status.interfaces && status.interfaces.length > 0
-								? status.interfaces.map(function(iface) {
-									return E('span', {
-										'class': 'badge',
-										'style': 'background: #0088cc; color: white; padding: 0.25em 0.6em; border-radius: 3px; margin-right: 0.5em;'
-									}, iface);
-								})
-								: E('span', { 'style': 'color: #999;' }, _('None configured'))
-						])
-					])
-				])
+		var container = E('div', {
+			'class': 'netifyd-settings',
+			'style': 'max-width: 1200px; margin: 0 auto;'
+		}, [
+			// Header
+			E('div', { 'style': 'margin-bottom: 2em;' }, [
+				E('h1', {
+					'style': 'font-size: 2em; margin: 0 0 0.5em 0; background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'
+				}, _('Netifyd Settings')),
+				E('p', { 'style': 'color: #94a3b8; font-size: 1.05em;' },
+					_('Configure and manage Netifyd deep packet inspection service'))
 			]),
 
-			// What is Netifyd
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
-				E('h3', {}, _('About Netifyd')),
-				E('div', { 'style': 'background: #f8f9fa; padding: 1em; border-radius: 4px;' }, [
-					E('p', {}, _('Netifyd is a deep packet inspection (DPI) daemon that classifies network traffic by application protocol and category.')),
-					E('p', { 'style': 'margin-top: 0.5em;' }, _('It provides real-time insights into:')),
-					E('ul', { 'style': 'margin: 0.5em 0; padding-left: 2em;' }, [
-						E('li', {}, _('Application detection (HTTP, HTTPS, DNS, SSH, etc.)')),
-						E('li', {}, _('Protocol identification (TCP, UDP, ICMP)')),
-						E('li', {}, _('Traffic categorization (Streaming, VoIP, Gaming, etc.)')),
-						E('li', {}, _('Device fingerprinting and tracking')),
-						E('li', {}, _('Bandwidth usage per application'))
-					]),
-					E('p', { 'style': 'margin-top: 1em; padding: 0.75em; background: #e8f4f8; border-radius: 4px;' }, [
-						E('strong', {}, _('Note:')),
-						' ',
-						_('Netifyd uses kernel conntrack for flow tracking and deep packet inspection for application detection.')
-					])
-				])
-			]),
-
-			// Configuration Files
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
-				E('h3', {}, _('Configuration Files')),
-				E('div', { 'style': 'background: #f8f9fa; padding: 1em; border-radius: 4px;' }, [
-					E('p', {}, [
-						E('strong', {}, _('Main Configuration:')),
-						' ',
-						E('code', {}, '/etc/netifyd.conf')
-					]),
-					E('p', {}, [
-						E('strong', {}, _('Service Configuration:')),
-						' ',
-						E('code', {}, '/etc/config/netifyd')
-					]),
-					E('p', {}, [
-						E('strong', {}, _('Runtime Data:')),
-						' ',
-						E('code', {}, '/var/run/netifyd/')
-					]),
-					E('p', { 'style': 'margin-top: 1em; padding: 0.75em; background: #fff3cd; border-radius: 4px;' }, [
-						E('strong', {}, _('Note:')),
-						' ',
-						_('After modifying configuration files, restart netifyd from the command line.')
-					])
-				])
-			]),
-
-			// Common Configuration Examples
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
-				E('h3', {}, _('Common Configuration Examples')),
-
-				// Monitor Specific Interfaces
-				E('div', { 'style': 'margin-bottom: 1.5em;' }, [
-					E('h4', {}, _('Monitor Specific Interfaces')),
-					E('p', {}, _('Edit /etc/config/netifyd to specify which interfaces to monitor:')),
-					E('pre', { 'style': 'background: #f5f5f5; padding: 1em; border-radius: 4px; overflow-x: auto;' },
-						'config netifyd\n' +
-						'    option enabled \'1\'\n' +
-						'    list internal_if \'br-lan\'\n' +
-						'    list internal_if \'wlan0\'\n' +
-						'    list external_if \'eth0\'\n'
-					),
-					E('p', { 'style': 'color: #666; font-size: 0.9em;' },
-						_('Internal interfaces are monitored for client traffic, external for WAN traffic.'))
+			// Service Status Card
+			E('div', { 'style': 'background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 2em; margin-bottom: 2em; border: 1px solid #334155;' }, [
+				E('h2', { 'style': 'color: #f1f5f9; margin-top: 0; display: flex; align-items: center; gap: 0.5em;' }, [
+					E('span', {}, status.running ? '✅' : '⚠️'),
+					_('Service Status')
 				]),
 
-				// Enable Protocol Detection
-				E('div', { 'style': 'margin-bottom: 1.5em;' }, [
-					E('h4', {}, _('Enable Advanced Detection')),
-					E('p', {}, _('Edit /etc/netifyd.conf for advanced DPI options:')),
-					E('pre', { 'style': 'background: #f5f5f5; padding: 1em; border-radius: 4px; overflow-x: auto;' },
-						'# Enable deep packet inspection\n' +
-						'enable_dpi=yes\n\n' +
-						'# Enable DNS resolution\n' +
-						'enable_dns_hint=yes\n\n' +
-						'# Detection sensitivity (high, medium, low)\n' +
-						'detection_sensitivity=high\n\n' +
-						'# Flow idle timeout (seconds)\n' +
-						'flow_idle_timeout=300\n'
+				E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5em; margin-top: 1.5em;' }, [
+					// Status
+					E('div', { 'style': 'background: #0f172a; border-radius: 8px; padding: 1.25em; border: 1px solid #1e293b;' }, [
+						E('div', { 'style': 'color: #64748b; font-size: 0.9em; margin-bottom: 0.5em;' }, _('Status')),
+						E('div', {
+							'class': 'badge',
+							'style': 'display: inline-block; padding: 0.5em 1em; border-radius: 6px; font-weight: bold; background: ' + (status.running ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #ef4444, #dc2626)') + '; color: white;'
+						}, status.running ? _('Running') : _('Stopped'))
+					]),
+
+					// Version
+					status.version ? E('div', { 'style': 'background: #0f172a; border-radius: 8px; padding: 1.25em; border: 1px solid #1e293b;' }, [
+						E('div', { 'style': 'color: #64748b; font-size: 0.9em; margin-bottom: 0.5em;' }, _('Version')),
+						E('div', { 'style': 'color: #8b5cf6; font-size: 1.5em; font-weight: bold;' }, status.version)
+					]) : null,
+
+					// Uptime
+					status.running && status.uptime ? E('div', { 'style': 'background: #0f172a; border-radius: 8px; padding: 1.25em; border: 1px solid #1e293b;' }, [
+						E('div', { 'style': 'color: #64748b; font-size: 0.9em; margin-bottom: 0.5em;' }, _('Uptime')),
+						E('div', { 'style': 'color: #3b82f6; font-size: 1.5em; font-weight: bold;' }, this.formatUptime(status.uptime))
+					]) : null,
+
+					// Memory
+					status.running && status.memory_kb ? E('div', { 'style': 'background: #0f172a; border-radius: 8px; padding: 1.25em; border: 1px solid #1e293b;' }, [
+						E('div', { 'style': 'color: #64748b; font-size: 0.9em; margin-bottom: 0.5em;' }, _('Memory')),
+						E('div', { 'style': 'color: #06b6d4; font-size: 1.5em; font-weight: bold;' }, Math.round(status.memory_kb / 1024) + ' MB')
+					]) : null
+				]),
+
+				// Monitored Interfaces
+				status.interfaces && status.interfaces.length > 0 ? E('div', { 'style': 'margin-top: 1.5em; padding-top: 1.5em; border-top: 1px solid #1e293b;' }, [
+					E('div', { 'style': 'color: #cbd5e1; font-size: 0.95em; margin-bottom: 1em;' }, _('Monitored Interfaces')),
+					E('div', { 'style': 'display: flex; gap: 0.75em; flex-wrap: wrap;' },
+						status.interfaces.map(function(iface) {
+							return E('span', {
+								'style': 'background: linear-gradient(135deg, #8b5cf6, #3b82f6); color: white; padding: 0.5em 1em; border-radius: 6px; font-weight: 500;'
+							}, iface);
+						})
 					)
+				]) : null
+			]),
+
+			// Configuration Info
+			E('div', { 'style': 'background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 2em; margin-bottom: 2em; border: 1px solid #334155;' }, [
+				E('h2', { 'style': 'color: #f1f5f9; margin-top: 0; display: flex; align-items: center; gap: 0.5em;' }, [
+					E('span', {}, '⚙️'),
+					_('Configuration Files')
 				]),
 
-				// Performance Tuning
-				E('div', { 'style': 'margin-bottom: 1.5em;' }, [
-					E('h4', {}, _('Performance Tuning')),
-					E('p', {}, _('Adjust resource usage in /etc/netifyd.conf:')),
-					E('pre', { 'style': 'background: #f5f5f5; padding: 1em; border-radius: 4px; overflow-x: auto;' },
-						'# Maximum flows to track\n' +
-						'max_flows=65536\n\n' +
-						'# Thread pool size\n' +
-						'thread_pool_size=4\n\n' +
-						'# Flow hash table size\n' +
-						'flow_hash_size=32768\n'
-					),
-					E('p', { 'style': 'color: #666; font-size: 0.9em;' },
-						_('Reduce values on low-memory devices, increase for high-traffic networks.'))
+				E('div', { 'style': 'display: grid; gap: 1em; margin-top: 1.5em;' }, [
+					E('div', { 'style': 'background: #0f172a; border-radius: 8px; padding: 1.25em; border: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center;' }, [
+						E('div', {}, [
+							E('div', { 'style': 'color: #cbd5e1; font-weight: 500; margin-bottom: 0.25em;' }, _('Main Configuration')),
+							E('div', { 'style': 'color: #64748b; font-size: 0.9em;' }, _('Service and interface settings'))
+						]),
+						E('code', { 'style': 'color: #8b5cf6; background: #020617; padding: 0.5em 1em; border-radius: 4px; font-size: 0.95em;' }, '/etc/netifyd.conf')
+					]),
+
+					E('div', { 'style': 'background: #0f172a; border-radius: 8px; padding: 1.25em; border: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center;' }, [
+						E('div', {}, [
+							E('div', { 'style': 'color: #cbd5e1; font-weight: 500; margin-bottom: 0.25em;' }, _('UCI Configuration')),
+							E('div', { 'style': 'color: #64748b; font-size: 0.9em;' }, _('OpenWrt system integration'))
+						]),
+						E('code', { 'style': 'color: #3b82f6; background: #020617; padding: 0.5em 1em; border-radius: 4px; font-size: 0.95em;' }, '/etc/config/netifyd')
+					]),
+
+					E('div', { 'style': 'background: #0f172a; border-radius: 8px; padding: 1.25em; border: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center;' }, [
+						E('div', {}, [
+							E('div', { 'style': 'color: #cbd5e1; font-weight: 500; margin-bottom: 0.25em;' }, _('Runtime Data')),
+							E('div', { 'style': 'color: #64748b; font-size: 0.9em;' }, _('Real-time flow and status data'))
+						]),
+						E('code', { 'style': 'color: #06b6d4; background: #020617; padding: 0.5em 1em; border-radius: 4px; font-size: 0.95em;' }, '/var/run/netifyd/')
+					])
+				]),
+
+				E('div', { 'style': 'background: linear-gradient(135deg, #92400e, #b45309); border-radius: 8px; padding: 1.25em; margin-top: 1.5em; border: 1px solid #f59e0b;' }, [
+					E('div', { 'style': 'display: flex; align-items: flex-start; gap: 0.75em;' }, [
+						E('span', { 'style': 'font-size: 1.3em; flex-shrink: 0;' }, '⚠️'),
+						E('div', {}, [
+							E('strong', { 'style': 'color: #fcd34d; font-size: 1.05em;' }, _('Note')),
+							E('p', { 'style': 'color: #fde68a; margin: 0.5em 0 0 0;' },
+								_('After modifying configuration files, restart netifyd from the command line:') + ' ' +
+								E('code', { 'style': 'background: #451a03; padding: 0.25em 0.5em; border-radius: 3px;' }, '/etc/init.d/netifyd restart'))
+						])
+					])
 				])
 			]),
 
-			// Useful Commands
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em; background: #e8f4f8; padding: 1em;' }, [
-				E('h3', {}, _('Useful Commands')),
-				E('pre', { 'style': 'background: white; padding: 1em; border-radius: 4px; overflow-x: auto;' }, [
-					'# Service control\n',
-					'/etc/init.d/netifyd start\n',
-					'/etc/init.d/netifyd stop\n',
-					'/etc/init.d/netifyd restart\n',
-					'/etc/init.d/netifyd status\n',
-					'\n',
-					'# View logs\n',
-					'logread | grep netifyd\n',
-					'\n',
-					'# Check version\n',
-					'netifyd --version\n',
-					'\n',
-					'# View current flows\n',
-					'cat /var/run/netifyd/flows.json\n',
-					'\n',
-					'# Check process status\n',
-					'ps | grep netifyd\n',
-					'top -n 1 | grep netifyd\n',
-					'\n',
-					'# Debug mode\n',
-					'netifyd -d -I br-lan\n'
+			// Quick Commands
+			E('div', { 'style': 'background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 2em; margin-bottom: 2em; border: 1px solid #334155;' }, [
+				E('h2', { 'style': 'color: #f1f5f9; margin-top: 0; display: flex; align-items: center; gap: 0.5em;' }, [
+					E('span', {}, '💻'),
+					_('Useful Commands')
+				]),
+
+				E('div', { 'style': 'background: #020617; border-radius: 8px; padding: 1.5em; margin-top: 1.5em; border: 1px solid #1e293b;' }, [
+					E('pre', {
+						'style': 'color: #e2e8f0; margin: 0; font-family: monospace; font-size: 0.95em; line-height: 1.8;'
+					}, [
+						E('div', { 'style': 'color: #64748b;' }, '# Service control'),
+						'/etc/init.d/netifyd start\n',
+						'/etc/init.d/netifyd stop\n',
+						'/etc/init.d/netifyd restart\n',
+						'/etc/init.d/netifyd status\n\n',
+						E('div', { 'style': 'color: #64748b;' }, '# View logs'),
+						'logread | grep netifyd\n\n',
+						E('div', { 'style': 'color: #64748b;' }, '# Check version'),
+						'netifyd --version\n\n',
+						E('div', { 'style': 'color: #64748b;' }, '# View current flows'),
+						'cat /var/run/netifyd/flows.json'
+					])
 				])
 			]),
 
-			// Integration & API
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
-				E('h3', {}, _('Integration & API')),
-				E('div', { 'style': 'background: #f8f9fa; padding: 1em; border-radius: 4px;' }, [
-					E('p', {}, _('Netifyd provides a Unix socket interface for real-time data access:')),
-					E('ul', { 'style': 'margin: 0.5em 0; padding-left: 2em;' }, [
-						E('li', {}, [
-							E('strong', {}, _('Socket:')),
-							' ',
-							E('code', {}, '/var/run/netifyd/netifyd.sock')
-						]),
-						E('li', {}, [
-							E('strong', {}, _('Status JSON:')),
-							' ',
-							E('code', {}, '/var/run/netifyd/status.json')
-						]),
-						E('li', {}, [
-							E('strong', {}, _('Flows JSON:')),
-							' ',
-							E('code', {}, '/var/run/netifyd/flows.json')
+			// Documentation Section (Collapsed by default)
+			E('details', { 'style': 'background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 2em; margin-bottom: 2em; border: 1px solid #334155;' }, [
+				E('summary', {
+					'style': 'color: #f1f5f9; font-size: 1.3em; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 0.5em; user-select: none;'
+				}, [
+					E('span', {}, '📚'),
+					_('Documentation & Resources')
+				]),
+
+				E('div', { 'style': 'margin-top: 2em;' }, [
+					// About Netifyd
+					E('div', { 'style': 'background: #0f172a; border-radius: 8px; padding: 1.5em; margin-bottom: 1.5em; border: 1px solid #1e293b;' }, [
+						E('h3', { 'style': 'color: #cbd5e1; margin-top: 0;' }, _('What is Netifyd?')),
+						E('p', { 'style': 'color: #94a3b8; line-height: 1.6;' },
+							_('Netifyd is a deep packet inspection (DPI) daemon that classifies network traffic by application protocol and category. It provides real-time insights into network activity without relying on cloud services.')),
+
+						E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1em; margin-top: 1em;' }, [
+							E('div', { 'style': 'background: #020617; padding: 1em; border-radius: 6px; border-left: 3px solid #8b5cf6;' }, [
+								E('div', { 'style': 'color: #8b5cf6; font-weight: bold; margin-bottom: 0.5em;' }, '300+'),
+								E('div', { 'style': 'color: #94a3b8; font-size: 0.9em;' }, _('Protocol Signatures'))
+							]),
+							E('div', { 'style': 'background: #020617; padding: 1em; border-radius: 6px; border-left: 3px solid #3b82f6;' }, [
+								E('div', { 'style': 'color: #3b82f6; font-weight: bold; margin-bottom: 0.5em;' }, '1000+'),
+								E('div', { 'style': 'color: #94a3b8; font-size: 0.9em;' }, _('Application Signatures'))
+							]),
+							E('div', { 'style': 'background: #020617; padding: 1em; border-radius: 6px; border-left: 3px solid #10b981;' }, [
+								E('div', { 'style': 'color: #10b981; font-weight: bold; margin-bottom: 0.5em;' }, _('Real-time')),
+								E('div', { 'style': 'color: #94a3b8; font-size: 0.9em;' }, _('DPI Classification'))
+							])
 						])
 					]),
-					E('p', { 'style': 'margin-top: 1em;' }, _('This dashboard uses the RPCD backend to parse conntrack data and provide DPI insights.')),
-					E('p', { 'style': 'margin-top: 0.5em; color: #666; font-size: 0.9em;' },
-						_('For advanced integrations, consider using netify-fwa (Flow Web API) for RESTful access to flow data.'))
-				])
-			]),
 
-			// Documentation Links
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
-				E('h3', {}, _('Documentation & Resources')),
-				E('ul', { 'style': 'margin-top: 0.5em;' }, [
-					E('li', {}, [
-						E('a', { 'href': 'https://www.netify.ai/', 'target': '_blank' },
-							_('Official Netify Website'))
+					// Configuration Examples
+					E('div', { 'style': 'background: #0f172a; border-radius: 8px; padding: 1.5em; margin-bottom: 1.5em; border: 1px solid #1e293b;' }, [
+						E('h3', { 'style': 'color: #cbd5e1; margin-top: 0;' }, _('Configuration Examples')),
+
+						E('div', { 'style': 'margin-bottom: 1.5em;' }, [
+							E('h4', { 'style': 'color: #8b5cf6; margin: 0.5em 0;' }, _('Monitor Specific Interfaces')),
+							E('pre', {
+								'style': 'background: #020617; color: #e2e8f0; padding: 1em; border-radius: 6px; overflow-x: auto; border: 1px solid #1e293b; margin: 0.5em 0;'
+							},
+								'config netifyd\n' +
+								'    option enabled \'1\'\n' +
+								'    list internal_if \'br-lan\'\n' +
+								'    list internal_if \'wlan0\'\n' +
+								'    list external_if \'eth0\''
+							)
+						]),
+
+						E('div', { 'style': 'margin-bottom: 1.5em;' }, [
+							E('h4', { 'style': 'color: #3b82f6; margin: 0.5em 0;' }, _('Advanced DPI Options')),
+							E('pre', {
+								'style': 'background: #020617; color: #e2e8f0; padding: 1em; border-radius: 6px; overflow-x: auto; border: 1px solid #1e293b; margin: 0.5em 0;'
+							},
+								'enable_dpi=yes\n' +
+								'enable_dns_hint=yes\n' +
+								'detection_sensitivity=high\n' +
+								'flow_idle_timeout=300'
+							)
+						]),
+
+						E('div', {}, [
+							E('h4', { 'style': 'color: #10b981; margin: 0.5em 0;' }, _('Performance Tuning')),
+							E('pre', {
+								'style': 'background: #020617; color: #e2e8f0; padding: 1em; border-radius: 6px; overflow-x: auto; border: 1px solid #1e293b; margin: 0.5em 0;'
+							},
+								'max_flows=65536\n' +
+								'thread_pool_size=4\n' +
+								'flow_hash_size=32768'
+							),
+							E('div', { 'style': 'color: #64748b; font-size: 0.9em; margin-top: 0.5em; font-style: italic;' },
+								_('💡 Reduce values on low-memory devices'))
+						])
 					]),
-					E('li', {}, [
-						E('a', { 'href': 'https://gitlab.com/netify.ai/public/netify-daemon', 'target': '_blank' },
-							_('Netifyd GitLab Repository'))
-					]),
-					E('li', {}, [
-						E('a', { 'href': 'https://www.netify.ai/documentation', 'target': '_blank' },
-							_('Netify Documentation'))
-					]),
-					E('li', {}, [
-						E('a', { 'href': 'https://openwrt.org/packages/pkgdata/netifyd', 'target': '_blank' },
-							_('OpenWrt Package Info'))
+
+					// Resources
+					E('div', { 'style': 'background: #0f172a; border-radius: 8px; padding: 1.5em; border: 1px solid #1e293b;' }, [
+						E('h3', { 'style': 'color: #cbd5e1; margin-top: 0;' }, _('External Resources')),
+						E('div', { 'style': 'display: grid; gap: 0.75em;' }, [
+							E('a', {
+								'href': 'https://www.netify.ai/',
+								'target': '_blank',
+								'style': 'color: #8b5cf6; text-decoration: none; display: flex; align-items: center; gap: 0.5em; padding: 0.75em; background: #020617; border-radius: 6px; border: 1px solid #1e293b;'
+							}, [
+								E('span', {}, '🔗'),
+								_('Official Netify Website')
+							]),
+							E('a', {
+								'href': 'https://www.netify.ai/documentation',
+								'target': '_blank',
+								'style': 'color: #3b82f6; text-decoration: none; display: flex; align-items: center; gap: 0.5em; padding: 0.75em; background: #020617; border-radius: 6px; border: 1px solid #1e293b;'
+							}, [
+								E('span', {}, '📖'),
+								_('Netify Documentation')
+							]),
+							E('a', {
+								'href': 'https://gitlab.com/netify.ai/public/netify-daemon',
+								'target': '_blank',
+								'style': 'color: #06b6d4; text-decoration: none; display: flex; align-items: center; gap: 0.5em; padding: 0.75em; background: #020617; border-radius: 6px; border: 1px solid #1e293b;'
+							}, [
+								E('span', {}, '💻'),
+								_('GitLab Repository')
+							])
+						])
 					])
 				])
 			])
 		]);
 
-		return view;
+		return container;
 	},
 
 	formatUptime: function(seconds) {
@@ -252,13 +263,11 @@ return view.extend({
 		var d = Math.floor(seconds / 86400);
 		var h = Math.floor((seconds % 86400) / 3600);
 		var m = Math.floor((seconds % 3600) / 60);
-		var s = seconds % 60;
 		var parts = [];
 		if (d > 0) parts.push(d + 'd');
 		if (h > 0) parts.push(h + 'h');
 		if (m > 0) parts.push(m + 'm');
-		if (s > 0 && parts.length === 0) parts.push(s + 's');
-		return parts.join(' ') || '0s';
+		return parts.join(' ') || '< 1m';
 	},
 
 	handleSaveApply: null,

@@ -396,15 +396,3 @@ return baseclass.extend({
 		return callEnableTcpBbr();
 	}
 });
-			dmz: {
-				id: 'dmz',
-				name: 'Router + DMZ',
-				icon: '🛡️',
-				description: 'Traditional router with an additional DMZ interface isolated from LAN but allowed to reach WAN.',
-				features: [
-					'Dedicated DMZ subnet',
-					'Separate firewall zone',
-					'Optional DHCP for DMZ clients',
-					'Quick rollback timer'
-				]
-			},

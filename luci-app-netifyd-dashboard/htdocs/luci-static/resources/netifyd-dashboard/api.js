@@ -40,6 +40,12 @@ var callProtocols = rpc.declare({
 	expect: { protocols: [] }
 });
 
+var callDevices = rpc.declare({
+	object: 'luci.netifyd-dashboard',
+	method: 'devices',
+	expect: { devices: [] }
+});
+
 var callStats = rpc.declare({
 	object: 'luci.netifyd-dashboard',
 	method: 'stats',
@@ -72,6 +78,7 @@ return baseclass.extend({
 	getApplications: callApplications,
 	getHosts: callHosts,
 	getProtocols: callProtocols,
+	getDevices: callDevices,
 	getStats: callStats,
 	getSecuboxLogs: callSecuboxLogs,
 	collectDebugSnapshot: callCollectDebug,
