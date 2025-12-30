@@ -1,0 +1,64 @@
+{
+  "id": "domoticz",
+  "name": "Domoticz",
+  "category": "home-automation",
+  "runtime": "docker",
+  "maturity": "stable",
+  "description": "Domoticz home-automation stack bundled with CLI installer, data mounts, and LuCI tie-ins.",
+  "source": {
+    "homepage": "https://www.domoticz.com/",
+    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/secubox-app-domoticz"
+  },
+  "packages": [
+    "secubox-app-domoticz",
+    "luci-app-vhost-manager"
+  ],
+  "capabilities": [
+    "home-automation",
+    "docker-runner",
+    "vhost-publish"
+  ],
+  "requirements": {
+    "arch": [
+      "arm64",
+      "x86_64"
+    ],
+    "min_ram_mb": 512,
+    "min_storage_mb": 1024
+  },
+  "hardware": {
+    "usb": false,
+    "serial": false
+  },
+  "network": {
+    "inbound_ports": [
+      8080
+    ],
+    "protocols": [
+      "http"
+    ],
+    "outbound_only": false
+  },
+  "privileges": {
+    "needs_usb": false,
+    "needs_serial": false,
+    "needs_net_admin": false
+  },
+  "update": {
+    "strategy": "docker_pull"
+  },
+  "wizard": {
+    "steps": [
+      "data_path",
+      "device_mounts",
+      "vhost_binding"
+    ]
+  },
+  "profiles": {
+    "recommended": [
+      "home",
+      "lab",
+      "iot"
+    ]
+  }
+}

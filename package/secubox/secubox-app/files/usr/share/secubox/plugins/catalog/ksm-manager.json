@@ -1,0 +1,63 @@
+{
+  "id": "ksm-manager",
+  "name": "KSM Manager",
+  "category": "security",
+  "runtime": "native",
+  "maturity": "stable",
+  "description": "Cryptographic key/secret manager with CSR tooling, SSH/HSM workflows, and audits.",
+  "source": {
+    "homepage": "https://github.com/gkerma/secubox-openwrt/tree/main/luci-app-ksm-manager",
+    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/luci-app-ksm-manager"
+  },
+  "packages": [
+    "luci-app-ksm-manager"
+  ],
+  "capabilities": [
+    "key-management",
+    "certificates",
+    "hsm"
+  ],
+  "requirements": {
+    "arch": [
+      "arm64",
+      "armv7",
+      "x86_64",
+      "mipsel"
+    ],
+    "min_ram_mb": 256,
+    "min_storage_mb": 100
+  },
+  "hardware": {
+    "usb": true,
+    "serial": false
+  },
+  "network": {
+    "inbound_ports": [],
+    "protocols": [
+      "http"
+    ],
+    "outbound_only": true
+  },
+  "privileges": {
+    "needs_usb": true,
+    "needs_serial": false,
+    "needs_net_admin": false
+  },
+  "update": {
+    "strategy": "opkg"
+  },
+  "wizard": {
+    "steps": [
+      "hsm_registration",
+      "key_policy",
+      "audit_targets"
+    ]
+  },
+  "profiles": {
+    "recommended": [
+      "smb",
+      "enterprise",
+      "lab"
+    ]
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "id": "zigbee2mqtt",
+  "name": "Zigbee2MQTT",
+  "category": "home-automation",
+  "runtime": "docker",
+  "maturity": "stable",
+  "description": "Dockerized Zigbee coordinator with MQTT bridge, serial setup, and LuCI management UI.",
+  "source": {
+    "homepage": "https://www.zigbee2mqtt.io",
+    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/secubox-app-zigbee2mqtt"
+  },
+  "packages": [
+    "secubox-app-zigbee2mqtt",
+    "luci-app-zigbee2mqtt"
+  ],
+  "capabilities": [
+    "zigbee-gateway",
+    "mqtt",
+    "docker-runner"
+  ],
+  "requirements": {
+    "arch": [
+      "arm64"
+    ],
+    "min_ram_mb": 256,
+    "min_storage_mb": 512
+  },
+  "hardware": {
+    "usb": true,
+    "serial": true
+  },
+  "network": {
+    "inbound_ports": [
+      8080
+    ],
+    "protocols": [
+      "http",
+      "mqtt"
+    ],
+    "outbound_only": false
+  },
+  "privileges": {
+    "needs_usb": true,
+    "needs_serial": true,
+    "needs_net_admin": false
+  },
+  "update": {
+    "strategy": "docker_pull"
+  },
+  "wizard": {
+    "steps": [
+      "serial_port",
+      "mqtt_broker",
+      "frontend_port",
+      "docker_check"
+    ]
+  },
+  "profiles": {
+    "recommended": [
+      "home",
+      "lab",
+      "iot"
+    ]
+  }
+}

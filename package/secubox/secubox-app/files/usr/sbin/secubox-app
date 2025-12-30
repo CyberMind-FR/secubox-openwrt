@@ -32,6 +32,7 @@ Commands:
   remove <app-id>          Remove packages listed in manifest
   status <app-id>          Show install state and run status action if defined
   update <app-id>          Run plugin update action or opkg upgrade
+  validate                 Verify manifest schema/metadata
 
 Environment:
   SECUBOX_PLUGINS_DIR   Override manifest directory (default: /usr/share/secubox/plugins)
@@ -110,11 +111,33 @@ pkg_upgrade() {
 	esac
 }
 
+manifest_files() {
+	if [ -d "$PLUGINS_DIR/catalog" ]; then
+		for file in "$PLUGINS_DIR"/catalog/*.json; do
+			[ -f "$file" ] || continue
+			echo "$file"
+		done
+	fi
+	for file in "$PLUGINS_DIR"/*/manifest.json; do
+		[ -f "$file" ] || continue
+		echo "$file"
+	done
+}
+
 manifest_path() {
 	local id="$1"
-	local file="$PLUGINS_DIR/$id/manifest.json"
-	[ -f "$file" ] || { err "Manifest not found for '$id' ($file)"; exit 1; }
-	printf '%s' "$file"
+	local catalog="$PLUGINS_DIR/catalog/$id.json"
+	local legacy="$PLUGINS_DIR/$id/manifest.json"
+	if [ -f "$catalog" ]; then
+		printf '%s' "$catalog"
+		return 0
+	fi
+	if [ -f "$legacy" ]; then
+		printf '%s' "$legacy"
+		return 0
+	fi
+	err "Manifest not found for '$id'"
+	exit 1
 }
 
 manifest_field() {
@@ -130,6 +153,38 @@ manifest_packages() {
 manifest_action() {
 	local file="$1"; shift
 	jsonfilter -f "$file" -e "@.actions.$1" 2>/dev/null || true
+}
+
+manifest_runtime() {
+	local file="$1"
+	local value
+	value=$(manifest_field "$file" '@.type')
+	[ -n "$value" ] || value=$(manifest_field "$file" '@.runtime')
+	printf '%s' "$value"
+}
+
+validate_manifest_file() {
+	require_jsonfilter
+	local file="$1"
+	local id name runtime packages category
+	id=$(manifest_field "$file" '@.id')
+	name=$(manifest_field "$file" '@.name')
+	category=$(manifest_field "$file" '@.category')
+	runtime=$(manifest_runtime "$file")
+	packages=$(manifest_packages "$file")
+	if [ -z "$id" ] || [ -z "$name" ] || [ -z "$runtime" ]; then
+		warn "Skipping manifest $file (missing id/name/runtime)"
+		return 1
+	fi
+	if [ -z "$packages" ]; then
+		warn "Manifest $id has no packages defined"
+		return 1
+	fi
+	if [ -z "$category" ]; then
+		warn "Manifest $id missing category"
+		return 1
+	fi
+	return 0
 }
 
 plugin_state() {
@@ -158,16 +213,28 @@ plugin_state() {
 list_plugins() {
 	require_jsonfilter
 	ensure_pkg_mgr
-	printf '%-16s %-22s %-10s %-10s\n' "ID" "Name" "Type" "State"
-	printf '%-16s %-22s %-10s %-10s\n' "--" "----" "----" "-----"
-	find "$PLUGINS_DIR" -mindepth 2 -maxdepth 2 -name manifest.json | sort | while read -r file; do
-		local id name type state
+	local seen_ids=""
+	printf '%-18s %-24s %-10s %-10s %-10s\n' "ID" "Name" "Runtime" "Category" "State"
+	printf '%-18s %-24s %-10s %-10s %-10s\n' "--" "----" "-------" "--------" "-----"
+	while IFS= read -r file; do
+		[ -f "$file" ] || continue
+		if ! validate_manifest_file "$file"; then
+			continue
+		fi
+		local id name runtime state category
 		id=$(manifest_field "$file" '@.id')
 		name=$(manifest_field "$file" '@.name')
-		type=$(manifest_field "$file" '@.type')
+		runtime=$(manifest_runtime "$file")
+		category=$(manifest_field "$file" '@.category')
+		case " $seen_ids " in
+			*" $id "*) continue ;;
+		esac
+		seen_ids="$seen_ids $id"
 		state=$(plugin_state "$file")
-		printf '%-16s %-22s %-10s %-10s\n' "$id" "${name:-Unknown}" "${type:-?}" "$state"
-	 done
+		printf '%-18s %-24s %-10s %-10s %-10s\n' "$id" "${name:-Unknown}" "${runtime:-unknown}" "${category:-?}" "$state"
+	done <<EOF
+$(manifest_files | sort)
+EOF
 }
 
 show_manifest() {
@@ -241,6 +308,27 @@ update_plugin() {
 	fi
 }
 
+validate_manifests_cmd() {
+	require_jsonfilter
+	local failed=0 passed=0 file
+	while IFS= read -r file; do
+		[ -f "$file" ] || continue
+		if validate_manifest_file "$file"; then
+			passed=$((passed + 1))
+		else
+			failed=$((failed + 1))
+		fi
+	done <<EOF
+$(manifest_files)
+EOF
+	info "Validated $passed manifest(s)"
+	if [ "$failed" -gt 0 ]; then
+		err "$failed manifest(s) failed validation"
+		return 1
+	fi
+	return 0
+}
+
 case "${1:-}" in
 	list) shift; list_plugins ;;
 	show) shift; [ $# -ge 1 ] || { err "show requires an app id"; exit 1; }; show_manifest "$1" ;;
@@ -248,6 +336,7 @@ case "${1:-}" in
 	remove) shift; [ $# -ge 1 ] || { err "remove requires an app id"; exit 1; }; remove_plugin "$1" ;;
 	status) shift; [ $# -ge 1 ] || { err "status requires an app id"; exit 1; }; plugin_status_cmd "$1" ;;
 	update) shift; [ $# -ge 1 ] || { err "update requires an app id"; exit 1; }; update_plugin "$1" ;;
+	validate) shift; if ! validate_manifests_cmd; then exit 1; fi ;;
 	help|--help|-h|'') usage ;;
 	*) err "Unknown command: $1"; usage; exit 1 ;;
 esac

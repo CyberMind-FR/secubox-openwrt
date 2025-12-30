@@ -61,6 +61,46 @@ DEFAULT_STORAGE_PATH="/srv/secubox"
 SECOBOX_APP="/usr/sbin/secubox-app"
 OPKG_UPDATED=0
 
+manifest_files() {
+	if [ -d "$PLUGIN_DIR/catalog" ]; then
+		for file in "$PLUGIN_DIR"/catalog/*.json; do
+			[ -f "$file" ] || continue
+			echo "$file"
+		done
+	fi
+	for file in "$PLUGIN_DIR"/*/manifest.json; do
+		[ -f "$file" ] || continue
+		echo "$file"
+	done
+}
+
+manifest_file_for_id() {
+	local id="$1"
+	local catalog="$PLUGIN_DIR/catalog/$id.json"
+	local legacy="$PLUGIN_DIR/$id/manifest.json"
+	if [ -f "$catalog" ]; then
+		printf '%s' "$catalog"
+		return 0
+	fi
+	if [ -f "$legacy" ]; then
+		printf '%s' "$legacy"
+		return 0
+	fi
+	return 1
+}
+
+validate_manifest_json() {
+	local manifest="$1"
+	local id name runtime packages category
+	id=$(jsonfilter -s "$manifest" -e '@.id' 2>/dev/null)
+	name=$(jsonfilter -s "$manifest" -e '@.name' 2>/dev/null)
+	category=$(jsonfilter -s "$manifest" -e '@.category' 2>/dev/null)
+	runtime=$(jsonfilter -s "$manifest" -e '@.runtime' 2>/dev/null)
+	[ -n "$runtime" ] || runtime=$(jsonfilter -s "$manifest" -e '@.type' 2>/dev/null)
+	packages=$(jsonfilter -s "$manifest" -e '@.packages[*]' 2>/dev/null)
+	[ -n "$id" ] && [ -n "$name" ] && [ -n "$runtime" ] && [ -n "$category" ] && [ -n "$packages" ]
+}
+
 # Module registry - auto-detected from /usr/libexec/rpcd/
 detect_modules() {
 	local modules=""
@@ -1259,30 +1299,44 @@ list_apps() {
 	ensure_directory "$PLUGIN_DIR"
 	json_init
 	json_add_array "apps"
-	local manifest_file
-	for manifest_file in "$PLUGIN_DIR"/*/manifest.json; do
+	local manifest_file manifest id name runtime type version description state wizard_field category maturity seen_ids=""
+	while IFS= read -r manifest_file; do
 		[ -f "$manifest_file" ] || continue
-		local manifest
 		manifest=$(cat "$manifest_file")
-		local id name type version description state wizard_field
 		id=$(jsonfilter -s "$manifest" -e '@.id' 2>/dev/null)
+		[ -n "$id" ] || continue
+		case " $seen_ids " in
+			*" $id "*) continue ;;
+		esac
+		if ! validate_manifest_json "$manifest"; then
+			continue
+		fi
+		seen_ids="$seen_ids $id"
 		name=$(jsonfilter -s "$manifest" -e '@.name' 2>/dev/null)
 		type=$(jsonfilter -s "$manifest" -e '@.type' 2>/dev/null)
+		runtime=$(jsonfilter -s "$manifest" -e '@.runtime' 2>/dev/null)
+		[ -n "$type" ] || type="$runtime"
 		version=$(jsonfilter -s "$manifest" -e '@.version' 2>/dev/null)
 		description=$(jsonfilter -s "$manifest" -e '@.description' 2>/dev/null)
-		[ -n "$id" ] || continue
+		category=$(jsonfilter -s "$manifest" -e '@.category' 2>/dev/null)
+		maturity=$(jsonfilter -s "$manifest" -e '@.maturity' 2>/dev/null)
 		state=$(packages_state "$manifest")
 		wizard_field=$(jsonfilter -s "$manifest" -e '@.wizard.fields[0].id' 2>/dev/null)
 		json_add_object
 		json_add_string "id" "$id"
 		json_add_string "name" "$name"
+		json_add_string "runtime" "$runtime"
 		json_add_string "type" "$type"
 		json_add_string "version" "$version"
 		json_add_string "description" "$description"
+		json_add_string "category" "$category"
+		json_add_string "maturity" "$maturity"
 		json_add_string "state" "$state"
 		json_add_boolean "has_wizard" "$([ -n "$wizard_field" ] && echo 1 || echo 0)"
 		json_close_object
-	done
+	done <<EOF
+$(manifest_files | sort)
+EOF
 	json_close_array
 	json_dump
 }
@@ -1298,8 +1352,8 @@ get_app_manifest() {
 		json_dump
 		return
 	fi
-	file="$PLUGIN_DIR/$app_id/manifest.json"
-	if [ ! -f "$file" ]; then
+	file=$(manifest_file_for_id "$app_id")
+	if [ -z "$file" ] || [ ! -f "$file" ]; then
 		json_init
 		json_add_boolean "success" 0
 		json_add_string "error" "Manifest not found"
@@ -1324,8 +1378,8 @@ apply_app_wizard() {
 		json_dump
 		return
 	fi
-	file="$PLUGIN_DIR/$app_id/manifest.json"
-	if [ ! -f "$file" ]; then
+	file=$(manifest_file_for_id "$app_id")
+	if [ -z "$file" ] || [ ! -f "$file" ]; then
 		json_init
 		json_add_boolean "success" 0
 		json_add_string "error" "Manifest not found"

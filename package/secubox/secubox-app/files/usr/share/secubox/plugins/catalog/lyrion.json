@@ -1,0 +1,66 @@
+{
+  "id": "lyrion",
+  "name": "Lyrion Media Server",
+  "category": "media",
+  "runtime": "docker",
+  "maturity": "stable",
+  "description": "Self-hosted Lyrion media server container with configurable storage and HTTPS publishing.",
+  "source": {
+    "homepage": "https://lyrion.org/",
+    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/secubox-app-lyrion"
+  },
+  "packages": [
+    "secubox-app-lyrion",
+    "luci-app-vhost-manager"
+  ],
+  "capabilities": [
+    "media-server",
+    "docker-runner",
+    "vhost-publish"
+  ],
+  "requirements": {
+    "arch": [
+      "arm64",
+      "x86_64"
+    ],
+    "min_ram_mb": 1024,
+    "min_storage_mb": 2048
+  },
+  "hardware": {
+    "usb": false,
+    "serial": false
+  },
+  "network": {
+    "inbound_ports": [
+      8096,
+      8920
+    ],
+    "protocols": [
+      "http",
+      "https"
+    ],
+    "outbound_only": false
+  },
+  "privileges": {
+    "needs_usb": false,
+    "needs_serial": false,
+    "needs_net_admin": false
+  },
+  "update": {
+    "strategy": "docker_pull"
+  },
+  "wizard": {
+    "steps": [
+      "library_path",
+      "media_mounts",
+      "https_publish"
+    ]
+  },
+  "profiles": {
+    "recommended": [
+      "home",
+      "media-gateway",
+      "lab"
+    ]
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "id": "wireguard-dashboard",
+  "name": "WireGuard Dashboard",
+  "category": "security",
+  "runtime": "native",
+  "maturity": "stable",
+  "description": "WireGuard tunnel orchestration with peer tracking, QR onboarding, and traffic views.",
+  "source": {
+    "homepage": "https://github.com/gkerma/secubox-openwrt/tree/main/luci-app-wireguard-dashboard",
+    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/luci-app-wireguard-dashboard"
+  },
+  "packages": [
+    "luci-app-wireguard-dashboard"
+  ],
+  "capabilities": [
+    "vpn-management",
+    "peer-onboarding"
+  ],
+  "requirements": {
+    "arch": [
+      "arm64",
+      "armv7",
+      "x86_64",
+      "mipsel"
+    ],
+    "min_ram_mb": 128,
+    "min_storage_mb": 40
+  },
+  "hardware": {
+    "usb": false,
+    "serial": false
+  },
+  "network": {
+    "inbound_ports": [
+      51820
+    ],
+    "protocols": [
+      "udp"
+    ],
+    "outbound_only": false
+  },
+  "privileges": {
+    "needs_usb": false,
+    "needs_serial": false,
+    "needs_net_admin": true
+  },
+  "update": {
+    "strategy": "opkg"
+  },
+  "wizard": {
+    "steps": [
+      "tunnel_basics",
+      "peer_enrollment",
+      "qrcode_export"
+    ]
+  },
+  "profiles": {
+    "recommended": [
+      "home",
+      "smb",
+      "remote-workers"
+    ]
+  }
+}
