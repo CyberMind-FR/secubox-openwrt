@@ -547,6 +547,18 @@ jobs:
             fi
           done
 
+          # Enable secubox-app if present
+          if [[ -d "package/secubox/secubox-app" ]]; then
+            echo "CONFIG_PACKAGE_secubox-app=m" >> .config
+            echo "  ✅ secubox-app"
+          fi
+
+          # Enable luci-theme-secubox if present
+          if [[ -d "package/luci-theme-secubox" ]]; then
+            echo "CONFIG_PACKAGE_luci-theme-secubox=m" >> .config
+            echo "  ✅ luci-theme-secubox"
+          fi
+
           # Enable download of pre-built packages for dependencies
           echo "CONFIG_DEVEL=y" >> .config
           echo "CONFIG_AUTOREBUILD=y" >> .config
