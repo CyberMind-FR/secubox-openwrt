@@ -15,11 +15,16 @@ Theme.init({ language: shLang });
 
 return view.extend({
 	load: function() {
-		return API.listDiagnostics();
+		return Promise.all([
+			API.listDiagnostics(),
+			API.listDiagnosticProfiles()
+		]);
 	},
 
 	render: function(data) {
-		this.currentArchives = (data && data.archives) || [];
+		this.currentArchives = (data && data[0] && data[0].archives) || [];
+		this.profiles = (data && data[1] && data[1].profiles) || [];
+		this.selectedProfile = null;
 		var archives = this.currentArchives;
 
 		var view = E('div', { 'class': 'system-hub-dashboard' }, [
@@ -27,7 +32,28 @@ return view.extend({
 			ThemeAssets.stylesheet('common.css'),
 			ThemeAssets.stylesheet('dashboard.css'),
 			HubNav.renderTabs('diagnostics'),
-			
+
+			// Profile Selector
+			E('div', { 'class': 'sh-card' }, [
+				E('div', { 'class': 'sh-card-header' }, [
+					E('div', { 'class': 'sh-card-title' }, [
+						E('span', { 'class': 'sh-card-title-icon' }, '📋'),
+						'Profils de Diagnostic'
+					])
+				]),
+				E('div', { 'class': 'sh-card-body' }, [
+					E('div', {
+						'class': 'profile-grid',
+						'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;'
+					}, this.renderProfileButtons()),
+					E('div', {
+						'id': 'profile-description',
+						'class': 'sh-info-box',
+						'style': 'display: none; padding: 0.75rem; background: rgba(66, 153, 225, 0.1); border-left: 3px solid #4299e1; border-radius: 4px;'
+					})
+				])
+			]),
+
 			// Collect Diagnostics
 			E('div', { 'class': 'sh-card' }, [
 				E('div', { 'class': 'sh-card-header' }, [
@@ -55,17 +81,14 @@ return view.extend({
 			// Quick Tests
 			E('div', { 'class': 'sh-card' }, [
 				E('div', { 'class': 'sh-card-header' }, [
-					E('div', { 'class': 'sh-card-title' }, [ E('span', { 'class': 'sh-card-title-icon' }, '🧪'), 'Tests Rapides' ])
+					E('div', { 'class': 'sh-card-title' }, [ E('span', { 'class': 'sh-card-title-icon' }, '🧪'), 'Tests Rapides' ]),
+					E('div', { 'id': 'test-profile-info', 'style': 'font-size: 12px; color: #888; display: none;' })
 				]),
 				E('div', { 'class': 'sh-card-body' }, [
-					E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;' }, [
-						this.renderTestButton('🌐', 'Test Connectivité', 'Ping WAN & DNS', 'connectivity'),
-						this.renderTestButton('📡', 'Test DNS', 'Résolution de noms', 'dns'),
-						this.renderTestButton('⚡', 'Test Latence', 'Ping vers Google', 'latency'),
-						this.renderTestButton('💾', 'Test Disque', 'Lecture/Écriture', 'disk'),
-						this.renderTestButton('🔒', 'Test Firewall', 'Règles actives', 'firewall'),
-						this.renderTestButton('📶', 'Test WiFi', 'Signal et clients', 'wifi')
-					])
+					E('div', {
+						'id': 'quick-tests-grid',
+						'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;'
+					}, this.renderTestButtons(null))
 				])
 			]),
 			
@@ -111,19 +134,6 @@ return view.extend({
 		]);
 	},
 
-	renderTestButton: function(icon, label, desc, type) {
-		var self = this;
-		return E('button', { 
-			'class': 'sh-btn',
-			'style': 'flex-direction: column; height: auto; padding: 16px;',
-			'click': function() { self.runTest(type); }
-		}, [
-			E('span', { 'style': 'font-size: 24px; margin-bottom: 8px;' }, icon),
-			E('span', { 'style': 'font-weight: 600;' }, label),
-			E('span', { 'style': 'font-size: 10px; color: #707080;' }, desc)
-		]);
-	},
-
 	renderArchiveList: function(archives) {
 		if (!archives.length) {
 			return [
@@ -135,7 +145,7 @@ return view.extend({
 
 	renderArchiveItem: function(archive) {
 		var name = archive.name || '';
-		var size = api.formatBytes(archive.size || 0);
+		var size = API.formatBytes(archive.size || 0);
 		var date = archive.created_at || '';
 		return E('div', { 'style': 'display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #1a1a24; border-radius: 8px; margin-bottom: 10px;' }, [
 			E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
@@ -171,10 +181,10 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		API.collectDiagnostics(includeLogs, includeConfig, includeNetwork, anonymize).then(L.bind(function(result) {
+		API.collectDiagnostics(includeLogs, includeConfig, includeNetwork, anonymize, this.selectedProfile || 'manual').then(L.bind(function(result) {
 			ui.hideModal();
 			if (result.success) {
-				ui.addNotification(null, E('p', {}, '✅ Archive créée: ' + result.file + ' (' + api.formatBytes(result.size) + ')'), 'success');
+				ui.addNotification(null, E('p', {}, '✅ Archive créée: ' + result.file + ' (' + API.formatBytes(result.size) + ')'), 'success');
 				this.refreshArchives();
 			} else {
 				ui.addNotification(null, E('p', {}, '❌ Erreur lors de la collecte'), 'error');
@@ -281,6 +291,135 @@ return view.extend({
 				list.appendChild(node);
 			});
 		}, this));
+	},
+
+	// Mapping des tests avec leurs métadonnées
+	testDefinitions: {
+		'connectivity': { icon: '🌐', label: 'Test Connectivité', desc: 'Ping WAN & DNS' },
+		'dns': { icon: '📡', label: 'Test DNS', desc: 'Résolution de noms' },
+		'latency': { icon: '⚡', label: 'Test Latence', desc: 'Ping vers Google' },
+		'disk': { icon: '💾', label: 'Test Disque', desc: 'Lecture/Écriture' },
+		'firewall': { icon: '🔒', label: 'Test Firewall', desc: 'Règles actives' },
+		'wifi': { icon: '📶', label: 'Test WiFi', desc: 'Signal et clients' }
+	},
+
+	renderTestButtons: function(profileTests) {
+		var self = this;
+		var testsToShow = [];
+
+		if (profileTests) {
+			// Filtrer selon les tests du profil
+			testsToShow = profileTests.split(',').map(function(t) { return t.trim(); });
+		} else {
+			// Afficher tous les tests par défaut
+			testsToShow = ['connectivity', 'dns', 'latency', 'disk', 'firewall', 'wifi'];
+		}
+
+		return testsToShow.map(function(testType) {
+			var testDef = self.testDefinitions[testType];
+			if (!testDef) return null;
+
+			return E('button', {
+				'class': 'sh-btn',
+				'style': 'flex-direction: column; height: auto; padding: 16px;',
+				'click': function() { self.runTest(testType); }
+			}, [
+				E('span', { 'style': 'font-size: 24px; margin-bottom: 8px;' }, testDef.icon),
+				E('span', { 'style': 'font-weight: 600;' }, testDef.label),
+				E('span', { 'style': 'font-size: 10px; color: #707080;' }, testDef.desc)
+			]);
+		}).filter(function(btn) { return btn !== null; });
+	},
+
+	updateQuickTests: function(profile) {
+		var grid = document.getElementById('quick-tests-grid');
+		var profileInfo = document.getElementById('test-profile-info');
+
+		if (!grid) return;
+
+		// Vider la grille
+		grid.innerHTML = '';
+
+		// Rendre les nouveaux boutons
+		var buttons = this.renderTestButtons(profile ? profile.tests : null);
+		buttons.forEach(function(btn) {
+			grid.appendChild(btn);
+		});
+
+		// Mettre à jour l'info du profil
+		if (profileInfo) {
+			if (profile && profile.tests) {
+				var testCount = profile.tests.split(',').length;
+				profileInfo.textContent = '📋 ' + testCount + ' test(s) recommandé(s) pour ce profil';
+				profileInfo.style.display = 'block';
+			} else {
+				profileInfo.style.display = 'none';
+			}
+		}
+	},
+
+	renderProfileButtons: function() {
+		var self = this;
+		return (this.profiles || []).map(function(profile) {
+			return E('button', {
+				'class': 'sh-btn sh-btn-secondary profile-btn',
+				'data-profile': profile.name,
+				'style': 'display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem;',
+				'click': L.bind(self.selectProfile, self, profile.name)
+			}, [
+				E('span', { 'style': 'font-size: 1.5rem;' }, profile.icon || '📋'),
+				E('span', {}, profile.label || profile.name)
+			]);
+		});
+	},
+
+	selectProfile: function(profileName) {
+		var self = this;
+
+		// Highlight selected button
+		document.querySelectorAll('.profile-btn').forEach(function(btn) {
+			if (btn.dataset.profile === profileName) {
+				btn.classList.add('active');
+				btn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+				btn.style.color = 'white';
+			} else {
+				btn.classList.remove('active');
+				btn.style.background = '';
+				btn.style.color = '';
+			}
+		});
+
+		// Load profile config and update toggles
+		API.getDiagnosticProfile(profileName).then(function(profile) {
+			self.selectedProfile = profileName;
+
+			// Update toggles to match profile
+			self.setToggle('diag_logs', profile.include_logs);
+			self.setToggle('diag_config', profile.include_config);
+			self.setToggle('diag_network', profile.include_network);
+			self.setToggle('diag_anonymize', profile.anonymize);
+
+			// Show description
+			var descBox = document.getElementById('profile-description');
+			if (descBox) {
+				descBox.style.display = 'block';
+				descBox.textContent = '📝 ' + (profile.description || '');
+			}
+
+			// Update quick tests to show only relevant tests
+			self.updateQuickTests(profile);
+		});
+	},
+
+	setToggle: function(id, value) {
+		var toggle = document.getElementById(id);
+		if (toggle) {
+			if (value == 1 || value === true) {
+				toggle.classList.add('active');
+			} else {
+				toggle.classList.remove('active');
+			}
+		}
 	},
 
 	handleSaveApply: null,

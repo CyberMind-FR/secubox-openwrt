@@ -176,7 +176,8 @@
       "Bash(pkill -f \"local-build.sh build secubox-app-crowdsec\")",
       "Bash(go version:*)",
       "Bash(timeout 600 ./secubox-tools/local-build.sh:*)",
-      "Bash(timeout 300 ./secubox-tools/local-build.sh:*)"
+      "Bash(timeout 300 ./secubox-tools/local-build.sh:*)",
+      "Bash(paste:*)"
     ]
   }
 }

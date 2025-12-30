@@ -604,16 +604,54 @@ collect_diagnostics() {
 	read input
 	[ -n "$input" ] && json_load "$input"
 
-	local include_logs include_config include_network anonymize
+	local include_logs include_config include_network anonymize profile
+	json_get_var profile profile 2>/dev/null
 	json_get_var include_logs include_logs 2>/dev/null
 	json_get_var include_config include_config 2>/dev/null
 	json_get_var include_network include_network 2>/dev/null
 	json_get_var anonymize anonymize 2>/dev/null
 
+	# If profile specified, load its config and override flags
+	if [ -n "$profile" ] && [ "$profile" != "manual" ]; then
+		case "$profile" in
+			network-issues)
+				include_logs=1
+				include_config=1
+				include_network=1
+				anonymize=0
+				;;
+			performance-problems)
+				include_logs=1
+				include_config=0
+				include_network=0
+				anonymize=0
+				;;
+			security-audit)
+				include_logs=1
+				include_config=1
+				include_network=1
+				anonymize=1
+				;;
+			wifi-problems)
+				include_logs=1
+				include_config=1
+				include_network=1
+				anonymize=0
+				;;
+			full-diagnostic)
+				include_logs=1
+				include_config=1
+				include_network=1
+				anonymize=1
+				;;
+		esac
+	fi
+
 	[ -z "$include_logs" ] && include_logs=1
 	[ -z "$include_config" ] && include_config=1
 	[ -z "$include_network" ] && include_network=1
 	[ -z "$anonymize" ] && anonymize=0
+	[ -z "$profile" ] && profile="manual"
 
 	local timestamp="$(date +%Y%m%d-%H%M%S)"
 	local workdir="$DIAG_DIR/work-$timestamp"
@@ -622,6 +660,9 @@ collect_diagnostics() {
 	# System info
 	{
 		echo "=== System Information ==="
+		echo "Profile: $profile"
+		echo "Generated: $(date)"
+		echo
 		uname -a
 		echo
 		echo "--- CPU ---"
@@ -681,7 +722,7 @@ collect_diagnostics() {
 		} >"$workdir/network.txt"
 	fi
 
-	local archive_name="diagnostics-$(hostname)-$timestamp.tar.gz"
+	local archive_name="diagnostics-$(hostname)-${profile}-$timestamp.tar.gz"
 	local archive_path="$DIAG_DIR/$archive_name"
 
 	tar -czf "$archive_path" -C "$workdir" . >/dev/null 2>&1 || {
@@ -823,6 +864,169 @@ run_diagnostic_test() {
 	json_add_string "test" "${test:-unknown}"
 	json_add_string "output" "$output"
 	json_dump
+}
+
+# List all available diagnostic profiles
+list_diagnostic_profiles() {
+	json_init
+	json_add_array "profiles"
+
+	# Profile 1: Network Issues
+	json_add_object ""
+	json_add_string "name" "network-issues"
+	json_add_string "label" "Problèmes Réseau"
+	json_add_string "icon" "🌐"
+	json_add_string "description" "Diagnostique les pannes de routage, DNS, perte de paquets et blocages firewall"
+	json_add_string "tests" "connectivity,dns,latency,firewall"
+	json_add_int "include_logs" 1
+	json_add_int "include_config" 1
+	json_add_int "include_network" 1
+	json_add_int "anonymize" 0
+	json_close_object
+
+	# Profile 2: Performance Problems
+	json_add_object ""
+	json_add_string "name" "performance-problems"
+	json_add_string "label" "Problèmes Performance"
+	json_add_string "icon" "⚡"
+	json_add_string "description" "Identifie les goulots d'étranglement CPU/mémoire, problèmes d'E/S disque"
+	json_add_string "tests" "disk,latency"
+	json_add_int "include_logs" 1
+	json_add_int "include_config" 0
+	json_add_int "include_network" 0
+	json_add_int "anonymize" 0
+	json_close_object
+
+	# Profile 3: Security Audit
+	json_add_object ""
+	json_add_string "name" "security-audit"
+	json_add_string "label" "Audit Sécurité"
+	json_add_string "icon" "🔐"
+	json_add_string "description" "Revue des règles firewall, logs d'authentification, exposition réseau"
+	json_add_string "tests" "firewall"
+	json_add_int "include_logs" 1
+	json_add_int "include_config" 1
+	json_add_int "include_network" 1
+	json_add_int "anonymize" 1
+	json_close_object
+
+	# Profile 4: WiFi Problems
+	json_add_object ""
+	json_add_string "name" "wifi-problems"
+	json_add_string "label" "Problèmes WiFi"
+	json_add_string "icon" "📶"
+	json_add_string "description" "Analyse la force du signal, interférences canaux, associations clients"
+	json_add_string "tests" "wifi,connectivity,latency"
+	json_add_int "include_logs" 1
+	json_add_int "include_config" 1
+	json_add_int "include_network" 1
+	json_add_int "anonymize" 0
+	json_close_object
+
+	# Profile 5: Full Diagnostic
+	json_add_object ""
+	json_add_string "name" "full-diagnostic"
+	json_add_string "label" "Diagnostic Complet"
+	json_add_string "icon" "📋"
+	json_add_string "description" "Diagnostic complet pour escalade support - collecte tout"
+	json_add_string "tests" "connectivity,dns,latency,disk,firewall,wifi"
+	json_add_int "include_logs" 1
+	json_add_int "include_config" 1
+	json_add_int "include_network" 1
+	json_add_int "anonymize" 1
+	json_close_object
+
+	# TODO: Add UCI custom profiles here
+	# config_load system-hub
+	# list_custom_profiles() { ... }
+
+	json_close_array
+	json_dump
+}
+
+# Get specific diagnostic profile
+get_diagnostic_profile() {
+	read input
+	[ -n "$input" ] && json_load "$input"
+
+	local profile_name
+	json_get_var profile_name name
+
+	# Hardcoded profiles
+	case "$profile_name" in
+		network-issues)
+			json_init
+			json_add_string "name" "network-issues"
+			json_add_string "label" "Problèmes Réseau"
+			json_add_string "icon" "🌐"
+			json_add_string "description" "Diagnostique les pannes de routage, DNS, perte de paquets et blocages firewall"
+			json_add_string "tests" "connectivity,dns,latency,firewall"
+			json_add_int "include_logs" 1
+			json_add_int "include_config" 1
+			json_add_int "include_network" 1
+			json_add_int "anonymize" 0
+			json_dump
+			;;
+		performance-problems)
+			json_init
+			json_add_string "name" "performance-problems"
+			json_add_string "label" "Problèmes Performance"
+			json_add_string "icon" "⚡"
+			json_add_string "description" "Identifie les goulots d'étranglement CPU/mémoire, problèmes d'E/S disque"
+			json_add_string "tests" "disk,latency"
+			json_add_int "include_logs" 1
+			json_add_int "include_config" 0
+			json_add_int "include_network" 0
+			json_add_int "anonymize" 0
+			json_dump
+			;;
+		security-audit)
+			json_init
+			json_add_string "name" "security-audit"
+			json_add_string "label" "Audit Sécurité"
+			json_add_string "icon" "🔐"
+			json_add_string "description" "Revue des règles firewall, logs d'authentification, exposition réseau"
+			json_add_string "tests" "firewall"
+			json_add_int "include_logs" 1
+			json_add_int "include_config" 1
+			json_add_int "include_network" 1
+			json_add_int "anonymize" 1
+			json_dump
+			;;
+		wifi-problems)
+			json_init
+			json_add_string "name" "wifi-problems"
+			json_add_string "label" "Problèmes WiFi"
+			json_add_string "icon" "📶"
+			json_add_string "description" "Analyse la force du signal, interférences canaux, associations clients"
+			json_add_string "tests" "wifi,connectivity,latency"
+			json_add_int "include_logs" 1
+			json_add_int "include_config" 1
+			json_add_int "include_network" 1
+			json_add_int "anonymize" 0
+			json_dump
+			;;
+		full-diagnostic)
+			json_init
+			json_add_string "name" "full-diagnostic"
+			json_add_string "label" "Diagnostic Complet"
+			json_add_string "icon" "📋"
+			json_add_string "description" "Diagnostic complet pour escalade support - collecte tout"
+			json_add_string "tests" "connectivity,dns,latency,disk,firewall,wifi"
+			json_add_int "include_logs" 1
+			json_add_int "include_config" 1
+			json_add_int "include_network" 1
+			json_add_int "anonymize" 1
+			json_dump
+			;;
+		*)
+			# TODO: Check UCI for custom profile
+			json_init
+			json_add_boolean "success" 0
+			json_add_string "error" "Profile not found: $profile_name"
+			json_dump
+			;;
+	esac
 }
 
 remote_status() {
@@ -1278,9 +1482,12 @@ case "$1" in
 		"include_logs": 1,
 		"include_config": 1,
 		"include_network": 1,
-		"anonymize": 1
+		"anonymize": 1,
+		"profile": "string"
 	},
 	"list_diagnostics": {},
+	"list_diagnostic_profiles": {},
+	"get_diagnostic_profile": { "name": "string" },
 	"download_diagnostic": { "name": "string" },
 	"delete_diagnostic": { "name": "string" },
 	"run_diagnostic_test": { "test": "string" },
@@ -1320,6 +1527,8 @@ EOF
 			save_settings) save_settings ;;
 			collect_diagnostics) collect_diagnostics ;;
 			list_diagnostics) list_diagnostics ;;
+			list_diagnostic_profiles) list_diagnostic_profiles ;;
+			get_diagnostic_profile) get_diagnostic_profile ;;
 			download_diagnostic) download_diagnostic ;;
 			delete_diagnostic) delete_diagnostic ;;
 			run_diagnostic_test) run_diagnostic_test ;;

@@ -14,6 +14,8 @@
 					"get_storage",
 					"get_settings",
 					"list_diagnostics",
+					"list_diagnostic_profiles",
+					"get_diagnostic_profile",
 					"download_diagnostic",
 					"run_diagnostic_test",
 					"remote_status",

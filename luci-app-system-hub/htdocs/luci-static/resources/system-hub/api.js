@@ -142,6 +142,19 @@ var callUploadDiagnostics = rpc.declare({
 	expect: {}
 });
 
+var callListDiagnosticProfiles = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'list_diagnostic_profiles',
+	expect: {}
+});
+
+var callGetDiagnosticProfile = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'get_diagnostic_profile',
+	params: ['name'],
+	expect: {}
+});
+
 var callRemoteStatus = rpc.declare({
 	object: 'luci.system-hub',
 	method: 'remote_status',
@@ -206,16 +219,24 @@ return baseclass.extend({
 	getSettings: callGetSettings,
 	saveSettings: callSaveSettings,
 
-	collectDiagnostics: function(includeLogs, includeConfig, includeNetwork, anonymize) {
+	collectDiagnostics: function(includeLogs, includeConfig, includeNetwork, anonymize, profile) {
 		return callCollectDiagnostics({
 			include_logs: includeLogs ? 1 : 0,
 			include_config: includeConfig ? 1 : 0,
 			include_network: includeNetwork ? 1 : 0,
-			anonymize: anonymize ? 1 : 0
+			anonymize: anonymize ? 1 : 0,
+			profile: profile || 'manual'
 		});
 	},
 
 	listDiagnostics: callListDiagnostics,
+
+	listDiagnosticProfiles: callListDiagnosticProfiles,
+
+	getDiagnosticProfile: function(name) {
+		return callGetDiagnosticProfile({ name: name });
+	},
+
 	downloadDiagnostic: function(name) {
 		return callDownloadDiagnostic({ name: name });
 	},
