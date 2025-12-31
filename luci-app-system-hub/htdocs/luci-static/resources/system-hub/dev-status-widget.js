@@ -84,21 +84,21 @@ const DevStatusWidget = {
 
     // Per-module status overview
     moduleStatus: [
-        { name: 'SecuBox Central Hub', version: '0.3.1', note: 'Dashboard central' },
-        { name: 'System Hub', version: '0.3.2', note: 'Centre de contrôle' },
-        { name: 'Traffic Shaper', version: '0.4.0', note: 'CAKE / fq_codel / HTB' },
-        { name: 'CrowdSec Dashboard', version: '0.4.0', note: 'Détection d’intrusions' },
-        { name: 'Netdata Dashboard', version: '0.4.0', note: 'Monitoring temps réel' },
-        { name: 'Netifyd Dashboard', version: '0.4.0', note: 'Intelligence applicative' },
-        { name: 'Network Modes', version: '0.3.1', note: '5 topologies réseau' },
-        { name: 'WireGuard Dashboard', version: '0.4.0', note: 'VPN + QR codes' },
-        { name: 'Auth Guardian', version: '0.4.0', note: 'OAuth / vouchers' },
-        { name: 'Client Guardian', version: '0.4.0', note: 'Patch portail captif + montée en version' },
-        { name: 'Bandwidth Manager', version: '0.4.0', note: 'QoS + quotas' },
-        { name: 'Media Flow', version: '0.4.0', note: 'DPI streaming' },
-        { name: 'CDN Cache', version: '0.4.1', note: 'Cache contenu local' },
-        { name: 'VHost Manager', version: '0.4.1', note: 'Reverse proxy / SSL' },
-        { name: 'KSM Manager', version: '0.4.0', note: 'Gestion clés / HSM' }
+        { name: 'SecuBox Central Hub', version: '0.7.0-r6', note: 'Dashboard central + Appstore (5 apps)' },
+        { name: 'System Hub', version: '0.5.1-r2', note: 'Centre de contrôle' },
+        { name: 'Traffic Shaper', version: '0.4.0-r1', note: 'CAKE / fq_codel / HTB' },
+        { name: 'CrowdSec Dashboard', version: '0.5.0-r1', note: 'Détection d'intrusions' },
+        { name: 'Netdata Dashboard', version: '0.5.0-r1', note: 'Monitoring temps réel' },
+        { name: 'Netifyd Dashboard', version: '0.4.0-r1', note: 'Intelligence applicative' },
+        { name: 'Network Modes', version: '0.5.0-r1', note: '5 topologies réseau' },
+        { name: 'WireGuard Dashboard', version: '0.4.0-r1', note: 'VPN + QR codes' },
+        { name: 'Auth Guardian', version: '0.4.0-r1', note: 'OAuth / vouchers' },
+        { name: 'Client Guardian', version: '0.4.0-r1', note: 'Portail captif + contrôle d'accès' },
+        { name: 'Bandwidth Manager', version: '0.4.0-r1', note: 'QoS + quotas' },
+        { name: 'Media Flow', version: '0.4.0-r1', note: 'DPI streaming' },
+        { name: 'CDN Cache', version: '0.5.0-r1', note: 'Cache contenu local' },
+        { name: 'VHost Manager', version: '0.4.1-r3', note: 'Reverse proxy / SSL' },
+        { name: 'KSM Manager', version: '0.4.0-r1', note: 'Gestion clés / HSM' }
     ],
 
     // Overall project statistics
