@@ -15,16 +15,11 @@ LUCI_PKGARCH:=all
 # Format: path:owner:group:mode
 # - RPCD scripts: 755 (executable by root, required for ubus calls)
 # - Helper scripts: 755 (if executable)
-# - Config files: 644 (readable by all, writable by root)
-# - Data directories: 755 (readable/searchable by all)
-# - Data files: 644 (readable by all)
+# - Data files: 644 (readable by all - INSTALL_DATA sets this automatically)
+# - Directories: 755 (set automatically by INSTALL_DIR)
 # - CSS/JS files: 644 (set automatically by luci.mk)
 PKG_FILE_MODES:=/usr/libexec/rpcd/luci.secubox:root:root:755 \
-	/usr/libexec/secubox/fix-permissions.sh:root:root:755 \
-	/usr/share/secubox:root:root:755 \
-	/usr/share/secubox/appstore:root:root:755 \
-	/usr/share/secubox/appstore/apps.json:root:root:644 \
-	/usr/share/secubox/profiles:root:root:755
+	/usr/libexec/secubox/fix-permissions.sh:root:root:755
 
 include $(TOPDIR)/feeds/luci/luci.mk
 
