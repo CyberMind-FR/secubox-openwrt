@@ -28,8 +28,8 @@ define Package/$(PKG_NAME)/install
 	for file in $(CURDIR)/profiles/*.json; do \
 		$(INSTALL_DATA) $$file $(1)/usr/share/secubox/profiles/$$(basename $$file); \
 	done
-	$(INSTALL_DIR) $(1)/usr/share/secubox/.appstore
-	$(INSTALL_DATA) $(CURDIR)/.appstore/apps.json $(1)/usr/share/secubox/.appstore/apps.json
+	$(INSTALL_DIR) $(1)/usr/share/secubox/appstore
+	$(INSTALL_DATA) $(CURDIR)/appstore/apps.json $(1)/usr/share/secubox/appstore/apps.json
 endef
 
 # call BuildPackage - OpenWrt buildroot

@@ -1545,7 +1545,7 @@ rollback_profile() {
 # App Store Functions
 # ============================================================================
 
-APPSTORE_JSON="/usr/share/secubox/.appstore/apps.json"
+APPSTORE_JSON="/usr/share/secubox/appstore/apps.json"
 
 # Get all apps from app store catalog
 get_appstore_apps() {
