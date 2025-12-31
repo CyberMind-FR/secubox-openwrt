@@ -4,7 +4,7 @@
 'require poll';
 'require dom';
 'require ui';
-'require netdata-dashboard.api as api';
+'require netdata-dashboard/api as API';
 
 return view.extend({
 	title: _('Netdata Dashboard'),
@@ -19,7 +19,7 @@ return view.extend({
 	maxHistory: 60,
 	
 	load: function() {
-		return api.getAllData();
+		return API.getAllData();
 	},
 	
 	addToHistory: function(key, value) {
@@ -34,7 +34,7 @@ return view.extend({
 		var radius = (size - 20) / 2;
 		var circumference = 2 * Math.PI * radius;
 		var offset = circumference - (percent / 100 * circumference);
-		var statusClass = api.getStatusClass(percent);
+		var statusClass = API.getStatusClass(percent);
 		
 		return E('div', { 'class': 'nd-gauge', 'style': 'width:' + size + 'px;height:' + size + 'px' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
@@ -105,11 +105,11 @@ return view.extend({
 		this.addToHistory('network_rx', stats.network_rx || 0);
 		this.addToHistory('network_tx', stats.network_tx || 0);
 		
-		var cpuClass = api.getStatusClass(stats.cpu_percent || 0);
-		var memClass = api.getStatusClass(stats.memory_percent || 0);
-		var diskClass = api.getStatusClass(stats.disk_percent || 0);
+		var cpuClass = API.getStatusClass(stats.cpu_percent || 0);
+		var memClass = API.getStatusClass(stats.memory_percent || 0);
+		var diskClass = API.getStatusClass(stats.disk_percent || 0);
 		var temp = stats.temperature || 0;
-		var tempClass = api.getTempClass(temp);
+		var tempClass = API.getTempClass(temp);
 		
 		var view = E('div', { 'class': 'netdata-dashboard' }, [
 			// Header
@@ -158,7 +158,7 @@ return view.extend({
 					E('div', { 'class': 'nd-quick-stat-label' }, 'Connections')
 				]),
 				E('div', { 'class': 'nd-quick-stat' }, [
-					E('div', { 'class': 'nd-quick-stat-value good' }, api.formatUptime(stats.uptime || 0)),
+					E('div', { 'class': 'nd-quick-stat-value good' }, API.formatUptime(stats.uptime || 0)),
 					E('div', { 'class': 'nd-quick-stat-label' }, 'Uptime')
 				])
 			]),
@@ -190,7 +190,7 @@ return view.extend({
 							E('span', { 'class': 'nd-chart-title-icon' }, '🧠'),
 							'Memory Usage'
 						]),
-						E('div', { 'class': 'nd-chart-value' }, api.formatKB(memory.used || 0) + ' / ' + api.formatKB(memory.total || 0))
+						E('div', { 'class': 'nd-chart-value' }, API.formatKB(memory.used || 0) + ' / ' + API.formatKB(memory.total || 0))
 					]),
 					E('div', { 'class': 'nd-chart-body' }, [
 						E('div', { 'class': 'nd-stacked-bar' }, [
@@ -201,19 +201,19 @@ return view.extend({
 						E('div', { 'class': 'nd-stacked-legend' }, [
 							E('div', { 'class': 'nd-legend-item' }, [
 								E('span', { 'class': 'nd-legend-dot', 'style': 'background:#f85149' }),
-								'Used: ' + api.formatKB(memory.used || 0)
+								'Used: ' + API.formatKB(memory.used || 0)
 							]),
 							E('div', { 'class': 'nd-legend-item' }, [
 								E('span', { 'class': 'nd-legend-dot', 'style': 'background:#d29922' }),
-								'Buffers: ' + api.formatKB(memory.buffers || 0)
+								'Buffers: ' + API.formatKB(memory.buffers || 0)
 							]),
 							E('div', { 'class': 'nd-legend-item' }, [
 								E('span', { 'class': 'nd-legend-dot', 'style': 'background:#3fb950' }),
-								'Cached: ' + api.formatKB(memory.cached || 0)
+								'Cached: ' + API.formatKB(memory.cached || 0)
 							]),
 							E('div', { 'class': 'nd-legend-item' }, [
 								E('span', { 'class': 'nd-legend-dot', 'style': 'background:#21262d' }),
-								'Free: ' + api.formatKB(memory.free || 0)
+								'Free: ' + API.formatKB(memory.free || 0)
 							])
 						]),
 						E('div', { 'style': 'margin-top:16px;text-align:center' }, 
@@ -234,12 +234,12 @@ return view.extend({
 						E('div', { 'class': 'nd-network-stats' }, [
 							E('div', { 'class': 'nd-network-direction' }, [
 								E('div', { 'class': 'nd-network-icon' }, '📥'),
-								E('div', { 'class': 'nd-network-value rx' }, api.formatBytes(stats.network_rx || 0)),
+								E('div', { 'class': 'nd-network-value rx' }, API.formatBytes(stats.network_rx || 0)),
 								E('div', { 'class': 'nd-network-label' }, 'Received')
 							]),
 							E('div', { 'class': 'nd-network-direction' }, [
 								E('div', { 'class': 'nd-network-icon' }, '📤'),
-								E('div', { 'class': 'nd-network-value tx' }, api.formatBytes(stats.network_tx || 0)),
+								E('div', { 'class': 'nd-network-value tx' }, API.formatBytes(stats.network_tx || 0)),
 								E('div', { 'class': 'nd-network-label' }, 'Transmitted')
 							])
 						]),
@@ -265,7 +265,7 @@ return view.extend({
 							return E('div', { 'class': 'nd-disk-item' }, [
 								E('div', { 'class': 'nd-disk-header' }, [
 									E('span', { 'class': 'nd-disk-mount' }, fs.mount),
-									E('span', { 'class': 'nd-disk-size' }, api.formatKB(fs.used) + ' / ' + api.formatKB(fs.size))
+									E('span', { 'class': 'nd-disk-size' }, API.formatKB(fs.used) + ' / ' + API.formatKB(fs.size))
 								]),
 								E('div', { 'class': 'nd-disk-bar' }, [
 									E('div', { 'class': 'nd-disk-fill ' + diskStatus, 'style': 'width:' + pct + '%' })

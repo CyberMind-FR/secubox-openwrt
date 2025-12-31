@@ -4,13 +4,13 @@
 'require poll';
 'require dom';
 'require ui';
-'require netdata-dashboard.api as api';
+'require netdata-dashboard/api as API';
 
 return view.extend({
 	title: _('Processes'),
 	
 	load: function() {
-		return api.getProcesses();
+		return API.getProcesses();
 	},
 	
 	render: function(data) {
@@ -86,7 +86,7 @@ return view.extend({
 									E('td', { 'class': 'mono' }, proc.pid),
 									E('td', {}, proc.user || 'root'),
 									E('td', { 'title': proc.cmd }, E('code', { 'style': 'font-size:11px;color:#58a6ff' }, proc.cmd || '-')),
-									E('td', { 'class': 'mono value' }, api.formatKB(proc.vsz || 0)),
+									E('td', { 'class': 'mono value' }, API.formatKB(proc.vsz || 0)),
 									E('td', {}, E('span', { 'class': 'nd-status ' + stateClass }, stateText))
 								]);
 							})
@@ -149,7 +149,7 @@ return view.extend({
 									E('div', { 'class': 'nd-bar-track' }, [
 										E('div', { 'class': 'nd-bar-fill', 'style': 'width:' + pct + '%;background:' + colors[i % colors.length] })
 									]),
-									E('span', { 'class': 'nd-bar-value' }, api.formatKB(proc.vsz || 0))
+									E('span', { 'class': 'nd-bar-value' }, API.formatKB(proc.vsz || 0))
 								]);
 							})
 						)

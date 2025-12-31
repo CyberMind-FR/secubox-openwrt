@@ -4,13 +4,13 @@
 'require poll';
 'require dom';
 'require ui';
-'require netdata-dashboard.api as api';
+'require netdata-dashboard/api as API';
 
 return view.extend({
 	title: _('Network'),
 	
 	load: function() {
-		return api.getNetwork();
+		return API.getNetwork();
 	},
 	
 	render: function(data) {
@@ -46,11 +46,11 @@ return view.extend({
 					E('div', { 'class': 'nd-quick-stat-label' }, 'Interfaces')
 				]),
 				E('div', { 'class': 'nd-quick-stat' }, [
-					E('div', { 'class': 'nd-quick-stat-value good' }, api.formatBytes(totalRx)),
+					E('div', { 'class': 'nd-quick-stat-value good' }, API.formatBytes(totalRx)),
 					E('div', { 'class': 'nd-quick-stat-label' }, 'Total RX')
 				]),
 				E('div', { 'class': 'nd-quick-stat' }, [
-					E('div', { 'class': 'nd-quick-stat-value info' }, api.formatBytes(totalTx)),
+					E('div', { 'class': 'nd-quick-stat-value info' }, API.formatBytes(totalTx)),
 					E('div', { 'class': 'nd-quick-stat-label' }, 'Total TX')
 				]),
 				E('div', { 'class': 'nd-quick-stat' }, [
@@ -115,8 +115,8 @@ return view.extend({
 									E('td', { 'class': 'mono' }, iface.ip || '-'),
 									E('td', {}, E('span', { 'class': 'nd-status ' + stateClass }, state)),
 									E('td', { 'class': 'mono' }, iface.speed > 0 ? iface.speed + ' Mbps' : '-'),
-									E('td', { 'class': 'mono value' }, api.formatBytes(iface.rx_bytes || 0)),
-									E('td', { 'class': 'mono' }, api.formatBytes(iface.tx_bytes || 0)),
+									E('td', { 'class': 'mono value' }, API.formatBytes(iface.rx_bytes || 0)),
+									E('td', { 'class': 'mono' }, API.formatBytes(iface.tx_bytes || 0)),
 									E('td', { 'class': 'mono' }, (iface.rx_packets || 0).toLocaleString()),
 									E('td', { 'class': 'mono' }, (iface.tx_packets || 0).toLocaleString()),
 									E('td', { 'class': 'mono' }, (iface.rx_errors || 0) + (iface.tx_errors || 0))
@@ -145,12 +145,12 @@ return view.extend({
 							E('div', { 'class': 'nd-network-stats' }, [
 								E('div', { 'class': 'nd-network-direction' }, [
 									E('div', { 'class': 'nd-network-icon' }, '📥'),
-									E('div', { 'class': 'nd-network-value rx' }, api.formatBytes(iface.rx_bytes || 0)),
+									E('div', { 'class': 'nd-network-value rx' }, API.formatBytes(iface.rx_bytes || 0)),
 									E('div', { 'class': 'nd-network-label' }, 'Received')
 								]),
 								E('div', { 'class': 'nd-network-direction' }, [
 									E('div', { 'class': 'nd-network-icon' }, '📤'),
-									E('div', { 'class': 'nd-network-value tx' }, api.formatBytes(iface.tx_bytes || 0)),
+									E('div', { 'class': 'nd-network-value tx' }, API.formatBytes(iface.tx_bytes || 0)),
 									E('div', { 'class': 'nd-network-label' }, 'Transmitted')
 								])
 							]),

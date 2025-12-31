@@ -4,17 +4,17 @@
 'require poll';
 'require dom';
 'require ui';
-'require netdata-dashboard.api as api';
+'require netdata-dashboard/api as API';
 
 return view.extend({
 	title: _('System'),
 	
 	load: function() {
 		return Promise.all([
-			api.getSystem(),
-			api.getCpu(),
-			api.getMemory(),
-			api.getSensors()
+			API.getSystem(),
+			API.getCpu(),
+			API.getMemory(),
+			API.getSensors()
 		]);
 	},
 	
@@ -167,35 +167,35 @@ return view.extend({
 						E('div', { 'class': 'nd-info-grid' }, [
 							E('div', { 'class': 'nd-info-item' }, [
 								E('div', { 'class': 'nd-info-label' }, 'Total'),
-								E('div', { 'class': 'nd-info-value' }, api.formatKB(memory.total || 0))
+								E('div', { 'class': 'nd-info-value' }, API.formatKB(memory.total || 0))
 							]),
 							E('div', { 'class': 'nd-info-item' }, [
 								E('div', { 'class': 'nd-info-label' }, 'Used'),
-								E('div', { 'class': 'nd-info-value' }, api.formatKB(memory.used || 0))
+								E('div', { 'class': 'nd-info-value' }, API.formatKB(memory.used || 0))
 							]),
 							E('div', { 'class': 'nd-info-item' }, [
 								E('div', { 'class': 'nd-info-label' }, 'Free'),
-								E('div', { 'class': 'nd-info-value' }, api.formatKB(memory.free || 0))
+								E('div', { 'class': 'nd-info-value' }, API.formatKB(memory.free || 0))
 							]),
 							E('div', { 'class': 'nd-info-item' }, [
 								E('div', { 'class': 'nd-info-label' }, 'Available'),
-								E('div', { 'class': 'nd-info-value' }, api.formatKB(memory.available || 0))
+								E('div', { 'class': 'nd-info-value' }, API.formatKB(memory.available || 0))
 							]),
 							E('div', { 'class': 'nd-info-item' }, [
 								E('div', { 'class': 'nd-info-label' }, 'Buffers'),
-								E('div', { 'class': 'nd-info-value' }, api.formatKB(memory.buffers || 0))
+								E('div', { 'class': 'nd-info-value' }, API.formatKB(memory.buffers || 0))
 							]),
 							E('div', { 'class': 'nd-info-item' }, [
 								E('div', { 'class': 'nd-info-label' }, 'Cached'),
-								E('div', { 'class': 'nd-info-value' }, api.formatKB(memory.cached || 0))
+								E('div', { 'class': 'nd-info-value' }, API.formatKB(memory.cached || 0))
 							]),
 							E('div', { 'class': 'nd-info-item' }, [
 								E('div', { 'class': 'nd-info-label' }, 'Swap Total'),
-								E('div', { 'class': 'nd-info-value' }, api.formatKB(memory.swap_total || 0))
+								E('div', { 'class': 'nd-info-value' }, API.formatKB(memory.swap_total || 0))
 							]),
 							E('div', { 'class': 'nd-info-item' }, [
 								E('div', { 'class': 'nd-info-label' }, 'Swap Used'),
-								E('div', { 'class': 'nd-info-value' }, api.formatKB(memory.swap_used || 0))
+								E('div', { 'class': 'nd-info-value' }, API.formatKB(memory.swap_used || 0))
 							])
 						])
 					])
@@ -212,7 +212,7 @@ return view.extend({
 					E('div', { 'class': 'nd-chart-body' },
 						(sensors.temperatures && sensors.temperatures.length > 0) ?
 						sensors.temperatures.map(function(s) {
-							var tempClass = api.getTempClass(s.temp_c);
+							var tempClass = API.getTempClass(s.temp_c);
 							return E('div', { 'style': 'display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #30363d' }, [
 								E('span', {}, s.sensor),
 								E('span', { 'class': 'nd-temp-value ' + tempClass, 'style': 'font-size:18px' }, s.temp_c + '°C')
