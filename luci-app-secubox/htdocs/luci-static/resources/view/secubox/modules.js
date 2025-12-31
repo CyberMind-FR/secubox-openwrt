@@ -43,14 +43,22 @@ return view.extend({
 	refreshData: function() {
 		var self = this;
 		return API.getModules().then(function(data) {
+			if (!data) {
+				console.warn('getModules returned empty data');
+				return { modules: [] };
+			}
 			self.modulesData = data.modules || [];
 			return data;
+		}).catch(function(err) {
+			console.error('Error loading modules:', err);
+			ui.addNotification(null, E('p', _('Failed to load modules: ') + err.message), 'error');
+			return { modules: [] };
 		});
 	},
 
 	render: function(data) {
 		var self = this;
-		var modules = this.modulesData;
+		var modules = (data && data.modules) || this.modulesData || [];
 
 		var defaultFilter = this.currentFilter || 'all';
 		var container = E('div', {

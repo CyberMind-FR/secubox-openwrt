@@ -44,9 +44,17 @@ return view.extend({
 	refreshData: function() {
 		var self = this;
 		return API.getAppstoreApps().then(function(data) {
+			if (!data) {
+				console.warn('getAppstoreApps returned empty data');
+				return { apps: [], categories: {} };
+			}
 			self.appsData = data.apps || [];
 			self.categoriesData = data.categories || {};
 			return data;
+		}).catch(function(err) {
+			console.error('Error loading appstore apps:', err);
+			ui.addNotification(null, E('p', _('Failed to load app store: ') + err.message), 'error');
+			return { apps: [], categories: {} };
 		});
 	},
 
