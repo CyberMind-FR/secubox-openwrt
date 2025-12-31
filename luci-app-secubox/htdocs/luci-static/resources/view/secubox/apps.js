@@ -383,6 +383,14 @@ return view.extend({
 							'class': 'btn btn-link'
 						}, _('Visit Project Website →'))
 					]) : null
+				]),
+				E('div', { 'class': 'modal-footer', 'style': 'margin-top: 1.5em; padding-top: 1em; border-top: 1px solid rgba(255,255,255,0.1); text-align: right;' }, [
+					E('button', {
+						'class': 'btn btn-primary',
+						'click': function() {
+							ui.hideModal();
+						}
+					}, _('Close'))
 				])
 			]);
 
