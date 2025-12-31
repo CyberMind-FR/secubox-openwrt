@@ -14,7 +14,9 @@
 					"system",
 					"netdata_status",
 					"netdata_alarms",
-					"netdata_info"
+					"netdata_info",
+					"seccubox_logs",
+					"collect_debug"
 				],
 				"system": [ "info", "board" ],
 				"file": [ "read", "stat" ]
