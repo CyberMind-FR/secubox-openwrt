@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bandwidth Manager - Démo Interactive | SecuBox</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+    <style>
+        :root {
+            --primary: #a855f7;
+            --primary-dark: #7c3aed;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #0f172a;
+            --darker: #020617;
+            --card: #1e293b;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --border: #334155;
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: system-ui, sans-serif;
+            background: var(--darker);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+            padding: 40px 24px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 36px;
+            margin-bottom: 8px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 18px;
+        }
+        
+        .back-link {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            opacity: 0.8;
+        }
+        
+        .back-link:hover {
+            opacity: 1;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 32px 24px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        
+        .stat-card {
+            background: var(--card);
+            padding: 24px;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+        
+        .section {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border);
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .qos-class {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: var(--dark);
+            border-radius: 10px;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+        }
+        
+        .qos-class:hover {
+            background: var(--border);
+        }
+        
+        .qos-name {
+            width: 100px;
+            font-weight: 600;
+        }
+        
+        .qos-priority {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            background: rgba(168, 85, 247, 0.2);
+            color: var(--primary);
+        }
+        
+        .qos-bar {
+            flex: 1;
+            height: 12px;
+            background: var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        
+        .qos-fill {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.5s ease;
+        }
+        
+        .qos-stats {
+            display: flex;
+            gap: 16px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        
+        .client-row {
+            display: grid;
+            grid-template-columns: 1fr 120px 100px 100px 80px;
+            gap: 16px;
+            padding: 12px 16px;
+            background: var(--dark);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            align-items: center;
+        }
+        
+        .client-row:first-child {
+            background: transparent;
+            font-weight: 600;
+            color: var(--text-muted);
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+        
+        .client-name {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .client-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--border);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .badge-streaming { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        .badge-gaming { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+        .badge-voip { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .badge-browsing { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+        
+        .quota-card {
+            background: var(--dark);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .quota-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .quota-bar {
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+        
+        .quota-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        
+        .quota-details {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        
+        .media-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        
+        .media-card {
+            background: var(--dark);
+            padding: 16px;
+            border-radius: 10px;
+            text-align: center;
+            border-top: 3px solid;
+        }
+        
+        .media-icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        
+        .media-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .media-bandwidth {
+            font-size: 14px;
+            font-weight: 700;
+        }
+        
+        .schedule-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: var(--dark);
+            border-radius: 10px;
+            margin-bottom: 12px;
+        }
+        
+        .schedule-icon {
+            font-size: 24px;
+        }
+        
+        .schedule-info {
+            flex: 1;
+        }
+        
+        .schedule-name {
+            font-weight: 600;
+        }
+        
+        .schedule-time {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        
+        .schedule-limit {
+            padding: 6px 12px;
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--warning);
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .graph-container {
+            height: 200px;
+            background: var(--dark);
+            border-radius: 12px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .graph-line {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            height: 2px;
+            background: var(--border);
+        }
+        
+        .graph-bars {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+            height: 150px;
+            padding: 0 20px;
+        }
+        
+        .graph-bar {
+            width: 30px;
+            background: linear-gradient(to top, var(--primary-dark), var(--primary));
+            border-radius: 4px 4px 0 0;
+            transition: height 0.3s;
+        }
+        
+        @media (max-width: 1024px) {
+            .main-grid { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(3, 1fr); }
+            .media-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .client-row { grid-template-columns: 1fr 80px; }
+            .client-row > *:nth-child(3),
+            .client-row > *:nth-child(4) { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+        <h1>⚡ Bandwidth Manager</h1>
+        <p>QoS, Quotas & Détection Médias en temps réel</p>
+    </div>
+    
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="stat-download">87.4</div>
+                <div class="stat-label">Download (Mbps)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-upload">23.1</div>
+                <div class="stat-label">Upload (Mbps)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">12</div>
+                <div class="stat-label">Clients actifs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="stat-quota">67%</div>
+                <div class="stat-label">Quota utilisé</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--success);">✓</div>
+                <div class="stat-label">QoS actif</div>
+            </div>
+        </div>
+        
+        <div class="main-grid">
+            <!-- QoS Classes -->
+            <div class="section">
+                <div class="section-title">📊 Classes QoS</div>
+                
+                <div class="qos-class">
+                    <span class="qos-name">Real-time</span>
+                    <span class="qos-priority">P1</span>
+                    <div class="qos-bar">
+                        <div class="qos-fill" id="qos-realtime" style="width: 25%; background: linear-gradient(90deg, #22c55e, #4ade80);"></div>
+                    </div>
+                    <div class="qos-stats">
+                        <span>30%</span>
+                        <span id="qos-realtime-bw">2.1 Mbps</span>
+                    </div>
+                </div>
+                
+                <div class="qos-class">
+                    <span class="qos-name">Interactive</span>
+                    <span class="qos-priority">P2</span>
+                    <div class="qos-bar">
+                        <div class="qos-fill" id="qos-interactive" style="width: 45%; background: linear-gradient(90deg, #f59e0b, #fbbf24);"></div>
+                    </div>
+                    <div class="qos-stats">
+                        <span>20%</span>
+                        <span id="qos-interactive-bw">8.3 Mbps</span>
+                    </div>
+                </div>
+                
+                <div class="qos-class">
+                    <span class="qos-name">Streaming</span>
+                    <span class="qos-priority">P3</span>
+                    <div class="qos-bar">
+                        <div class="qos-fill" id="qos-streaming" style="width: 80%; background: linear-gradient(90deg, #ef4444, #f87171);"></div>
+                    </div>
+                    <div class="qos-stats">
+                        <span>25%</span>
+                        <span id="qos-streaming-bw">45.2 Mbps</span>
+                    </div>
+                </div>
+                
+                <div class="qos-class">
+                    <span class="qos-name">Browsing</span>
+                    <span class="qos-priority">P4</span>
+                    <div class="qos-bar">
+                        <div class="qos-fill" id="qos-browsing" style="width: 35%; background: linear-gradient(90deg, #3b82f6, #60a5fa);"></div>
+                    </div>
+                    <div class="qos-stats">
+                        <span>15%</span>
+                        <span id="qos-browsing-bw">12.4 Mbps</span>
+                    </div>
+                </div>
+                
+                <div class="qos-class">
+                    <span class="qos-name">Bulk</span>
+                    <span class="qos-priority">P6</span>
+                    <div class="qos-bar">
+                        <div class="qos-fill" id="qos-bulk" style="width: 60%; background: linear-gradient(90deg, #64748b, #94a3b8);"></div>
+                    </div>
+                    <div class="qos-stats">
+                        <span>5%</span>
+                        <span id="qos-bulk-bw">19.4 Mbps</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Clients -->
+            <div class="section">
+                <div class="section-title">👥 Clients connectés</div>
+                
+                <div class="client-row">
+                    <div>Client</div>
+                    <div>IP</div>
+                    <div>Download</div>
+                    <div>Upload</div>
+                    <div>Type</div>
+                </div>
+                
+                <div class="client-row">
+                    <div class="client-name">
+                        <div class="client-icon">📱</div>
+                        <span>iPhone-Alice</span>
+                    </div>
+                    <div style="font-family: monospace; font-size: 13px;">192.168.1.101</div>
+                    <div style="color: var(--success);" id="client1-dl">24.3 Mbps</div>
+                    <div style="color: var(--primary);">2.1 Mbps</div>
+                    <div><span class="badge badge-streaming">Streaming</span></div>
+                </div>
+                
+                <div class="client-row">
+                    <div class="client-name">
+                        <div class="client-icon">💻</div>
+                        <span>MacBook-Bob</span>
+                    </div>
+                    <div style="font-family: monospace; font-size: 13px;">192.168.1.105</div>
+                    <div style="color: var(--success);" id="client2-dl">15.7 Mbps</div>
+                    <div style="color: var(--primary);">8.4 Mbps</div>
+                    <div><span class="badge badge-voip">VoIP</span></div>
+                </div>
+                
+                <div class="client-row">
+                    <div class="client-name">
+                        <div class="client-icon">🎮</div>
+                        <span>PS5-Gaming</span>
+                    </div>
+                    <div style="font-family: monospace; font-size: 13px;">192.168.1.110</div>
+                    <div style="color: var(--success);" id="client3-dl">8.2 Mbps</div>
+                    <div style="color: var(--primary);">1.2 Mbps</div>
+                    <div><span class="badge badge-gaming">Gaming</span></div>
+                </div>
+                
+                <div class="client-row">
+                    <div class="client-name">
+                        <div class="client-icon">🖥️</div>
+                        <span>Desktop-Office</span>
+                    </div>
+                    <div style="font-family: monospace; font-size: 13px;">192.168.1.115</div>
+                    <div style="color: var(--success);" id="client4-dl">35.1 Mbps</div>
+                    <div style="color: var(--primary);">4.8 Mbps</div>
+                    <div><span class="badge badge-browsing">Download</span></div>
+                </div>
+            </div>
+            
+            <!-- Quotas -->
+            <div class="section">
+                <div class="section-title">📉 Quotas</div>
+                
+                <div class="quota-card">
+                    <div class="quota-header">
+                        <span style="font-weight: 600;">📱 iPhone-Alice</span>
+                        <span style="color: var(--warning);">67% utilisé</span>
+                    </div>
+                    <div class="quota-bar">
+                        <div class="quota-fill" id="quota1" style="width: 67%; background: linear-gradient(90deg, var(--success), var(--warning));"></div>
+                    </div>
+                    <div class="quota-details">
+                        <span>134 GB / 200 GB (mensuel)</span>
+                        <span>Reste 66 GB</span>
+                    </div>
+                </div>
+                
+                <div class="quota-card">
+                    <div class="quota-header">
+                        <span style="font-weight: 600;">🎮 PS5-Gaming</span>
+                        <span style="color: var(--danger);">92% utilisé</span>
+                    </div>
+                    <div class="quota-bar">
+                        <div class="quota-fill" id="quota2" style="width: 92%; background: linear-gradient(90deg, var(--warning), var(--danger));"></div>
+                    </div>
+                    <div class="quota-details">
+                        <span>92 GB / 100 GB (mensuel)</span>
+                        <span style="color: var(--danger);">Throttle à 5 Mbps bientôt</span>
+                    </div>
+                </div>
+                
+                <div class="quota-card">
+                    <div class="quota-header">
+                        <span style="font-weight: 600;">🌐 Global journalier</span>
+                        <span style="color: var(--success);">34% utilisé</span>
+                    </div>
+                    <div class="quota-bar">
+                        <div class="quota-fill" style="width: 34%; background: var(--success);"></div>
+                    </div>
+                    <div class="quota-details">
+                        <span>17 GB / 50 GB (aujourd'hui)</span>
+                        <span>Reste 33 GB</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Media Detection -->
+            <div class="section">
+                <div class="section-title">🎯 Détection Médias</div>
+                
+                <div class="media-grid">
+                    <div class="media-card" style="border-color: #e50914;">
+                        <div class="media-icon">📺</div>
+                        <div class="media-name">Netflix</div>
+                        <div class="media-bandwidth" style="color: #e50914;" id="media-netflix">24.3 Mbps</div>
+                    </div>
+                    <div class="media-card" style="border-color: #ff0000;">
+                        <div class="media-icon">▶️</div>
+                        <div class="media-name">YouTube</div>
+                        <div class="media-bandwidth" style="color: #ff0000;" id="media-youtube">12.1 Mbps</div>
+                    </div>
+                    <div class="media-card" style="border-color: #1db954;">
+                        <div class="media-icon">🎵</div>
+                        <div class="media-name">Spotify</div>
+                        <div class="media-bandwidth" style="color: #1db954;">320 Kbps</div>
+                    </div>
+                    <div class="media-card" style="border-color: #2d8cff;">
+                        <div class="media-icon">📹</div>
+                        <div class="media-name">Zoom</div>
+                        <div class="media-bandwidth" style="color: #2d8cff;" id="media-zoom">2.1 Mbps</div>
+                    </div>
+                    <div class="media-card" style="border-color: #f59e0b;">
+                        <div class="media-icon">🎮</div>
+                        <div class="media-name">Gaming</div>
+                        <div class="media-bandwidth" style="color: #f59e0b;">8.2 Mbps</div>
+                    </div>
+                    <div class="media-card" style="border-color: #64748b;">
+                        <div class="media-icon">📥</div>
+                        <div class="media-name">Downloads</div>
+                        <div class="media-bandwidth" style="color: #64748b;" id="media-download">35.1 Mbps</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Schedules -->
+            <div class="section">
+                <div class="section-title">⏰ Planification</div>
+                
+                <div class="schedule-item">
+                    <div class="schedule-icon">🌙</div>
+                    <div class="schedule-info">
+                        <div class="schedule-name">Heures de pointe</div>
+                        <div class="schedule-time">18:00 - 23:00 (Lun-Ven)</div>
+                    </div>
+                    <div class="schedule-limit">80% max</div>
+                </div>
+                
+                <div class="schedule-item">
+                    <div class="schedule-icon">☀️</div>
+                    <div class="schedule-info">
+                        <div class="schedule-name">Heures creuses</div>
+                        <div class="schedule-time">00:00 - 07:00 (Tous les jours)</div>
+                    </div>
+                    <div class="schedule-limit" style="background: rgba(34, 197, 94, 0.2); color: var(--success);">100%</div>
+                </div>
+                
+                <div class="schedule-item">
+                    <div class="schedule-icon">🏠</div>
+                    <div class="schedule-info">
+                        <div class="schedule-name">Weekend</div>
+                        <div class="schedule-time">Toute la journée (Sam-Dim)</div>
+                    </div>
+                    <div class="schedule-limit" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6;">90%</div>
+                </div>
+            </div>
+            
+            <!-- Graph -->
+            <div class="section">
+                <div class="section-title">📈 Bande passante (dernière heure)</div>
+                
+                <div class="graph-container">
+                    <div class="graph-bars">
+                        <div class="graph-bar" id="bar1" style="height: 60%;"></div>
+                        <div class="graph-bar" id="bar2" style="height: 75%;"></div>
+                        <div class="graph-bar" id="bar3" style="height: 45%;"></div>
+                        <div class="graph-bar" id="bar4" style="height: 90%;"></div>
+                        <div class="graph-bar" id="bar5" style="height: 65%;"></div>
+                        <div class="graph-bar" id="bar6" style="height: 80%;"></div>
+                        <div class="graph-bar" id="bar7" style="height: 55%;"></div>
+                        <div class="graph-bar" id="bar8" style="height: 70%;"></div>
+                        <div class="graph-bar" id="bar9" style="height: 85%;"></div>
+                        <div class="graph-bar" id="bar10" style="height: 60%;"></div>
+                        <div class="graph-bar" id="bar11" style="height: 75%;"></div>
+                        <div class="graph-bar" id="bar12" style="height: 95%;"></div>
+                    </div>
+                    <div class="graph-line"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function randomBetween(min, max) {
+            return (Math.random() * (max - min) + min).toFixed(1);
+        }
+        
+        function updateStats() {
+            // Main stats
+            document.getElementById('stat-download').textContent = randomBetween(70, 95);
+            document.getElementById('stat-upload').textContent = randomBetween(15, 30);
+            
+            // QoS bars
+            const qosClasses = ['realtime', 'interactive', 'streaming', 'browsing', 'bulk'];
+            qosClasses.forEach(cls => {
+                const bar = document.getElementById('qos-' + cls);
+                const bw = document.getElementById('qos-' + cls + '-bw');
+                const width = randomBetween(15, 95);
+                bar.style.width = width + '%';
+                bw.textContent = randomBetween(1, 50) + ' Mbps';
+            });
+            
+            // Clients
+            for (let i = 1; i <= 4; i++) {
+                const el = document.getElementById('client' + i + '-dl');
+                if (el) el.textContent = randomBetween(5, 40) + ' Mbps';
+            }
+            
+            // Media
+            document.getElementById('media-netflix').textContent = randomBetween(15, 30) + ' Mbps';
+            document.getElementById('media-youtube').textContent = randomBetween(8, 20) + ' Mbps';
+            document.getElementById('media-zoom').textContent = randomBetween(1, 4) + ' Mbps';
+            document.getElementById('media-download').textContent = randomBetween(20, 50) + ' Mbps';
+            
+            // Graph bars
+            for (let i = 1; i <= 12; i++) {
+                const bar = document.getElementById('bar' + i);
+                bar.style.height = randomBetween(30, 95) + '%';
+            }
+        }
+        
+        setInterval(updateStats, 2000);
+    </script>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

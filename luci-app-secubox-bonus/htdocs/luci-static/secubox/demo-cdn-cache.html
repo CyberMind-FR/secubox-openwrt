@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CDN Cache - Démo | SecuBox</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💾</text></svg>">
+    <style>
+        :root { --primary: #ec4899; --primary-dark: #db2777; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --dark: #0f172a; --darker: #020617; --card: #1e293b; --text: #f1f5f9; --text-muted: #94a3b8; --border: #334155; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: var(--darker); color: var(--text); min-height: 100vh; }
+        .header { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); padding: 40px 24px; text-align: center; }
+        .header h1 { font-size: 36px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 18px; }
+        .back-link { position: absolute; top: 20px; left: 20px; color: white; text-decoration: none; opacity: 0.8; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+        
+        .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: var(--card); padding: 24px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+        .stat-value { font-size: 28px; font-weight: 700; }
+        .stat-label { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+        
+        .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .section { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); margin-bottom: 24px; }
+        .section-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+        
+        .cache-overview { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+        .cache-stat { background: var(--dark); padding: 24px; border-radius: 12px; text-align: center; }
+        .cache-big { font-size: 48px; font-weight: 700; color: var(--primary); margin-bottom: 8px; }
+        .cache-label { color: var(--text-muted); }
+        
+        .hit-ratio { display: flex; align-items: center; gap: 20px; background: var(--dark); padding: 24px; border-radius: 12px; margin-bottom: 24px; }
+        .ratio-circle { width: 100px; height: 100px; border-radius: 50%; background: conic-gradient(var(--success) 0% 78%, var(--border) 78% 100%); display: flex; align-items: center; justify-content: center; position: relative; }
+        .ratio-inner { width: 70px; height: 70px; background: var(--dark); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; }
+        .ratio-details { flex: 1; }
+        .ratio-title { font-size: 18px; font-weight: 600; margin-bottom: 12px; }
+        .ratio-stats { display: flex; gap: 24px; }
+        .ratio-stat { }
+        .ratio-stat-value { font-size: 20px; font-weight: 700; }
+        .ratio-stat-label { font-size: 12px; color: var(--text-muted); }
+        
+        .domain-row { display: grid; grid-template-columns: 1fr 100px 100px 80px; gap: 16px; padding: 16px; background: var(--dark); border-radius: 10px; margin-bottom: 12px; align-items: center; }
+        .domain-row.header { background: transparent; font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+        .domain-name { display: flex; align-items: center; gap: 12px; }
+        .domain-icon { font-size: 24px; }
+        .domain-size { font-weight: 600; }
+        .domain-hits { font-weight: 600; color: var(--success); }
+        .domain-action { padding: 6px 12px; background: rgba(239, 68, 68, 0.2); color: var(--danger); border: none; border-radius: 6px; font-size: 12px; cursor: pointer; }
+        
+        .storage-bar { background: var(--dark); padding: 20px; border-radius: 12px; margin-bottom: 24px; }
+        .storage-header { display: flex; justify-content: space-between; margin-bottom: 12px; }
+        .storage-used { font-weight: 600; }
+        .storage-total { color: var(--text-muted); }
+        .storage-progress { height: 20px; background: var(--border); border-radius: 10px; overflow: hidden; display: flex; }
+        .storage-segment { height: 100%; transition: width 0.3s; }
+        .storage-legend { display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+        .legend-color { width: 12px; height: 12px; border-radius: 3px; }
+        
+        .settings-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .setting-item { background: var(--dark); padding: 16px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .setting-label { font-weight: 600; }
+        .setting-value { color: var(--text-muted); font-size: 14px; }
+        .toggle { position: relative; width: 48px; height: 26px; background: var(--border); border-radius: 13px; cursor: pointer; transition: all 0.2s; }
+        .toggle.active { background: var(--success); }
+        .toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: all 0.2s; }
+        .toggle.active::after { left: 25px; }
+        
+        .clear-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 16px; background: var(--danger); border: none; border-radius: 12px; color: white; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 16px; transition: all 0.2s; }
+        .clear-btn:hover { background: #dc2626; }
+        
+        @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } .stats-row { grid-template-columns: repeat(3, 1fr); } .cache-overview { grid-template-columns: 1fr; } }
+        @media (max-width: 768px) { .stats-row { grid-template-columns: repeat(2, 1fr); } .settings-grid { grid-template-columns: 1fr; } .domain-row { grid-template-columns: 1fr 80px; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+        <h1>💾 CDN Cache</h1>
+        <p>Cache local pour optimiser la bande passante</p>
+    </div>
+    
+    <div class="container">
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--success);">78%</div>
+                <div class="stat-label">Hit Ratio</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--primary);">24.7 GB</div>
+                <div class="stat-label">Cache utilisé</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="saved">156 GB</div>
+                <div class="stat-label">Bande passante économisée</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="requests">12,847</div>
+                <div class="stat-label">Requêtes (24h)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--success);">✓</div>
+                <div class="stat-label">Squid actif</div>
+            </div>
+        </div>
+        
+        <div class="hit-ratio">
+            <div class="ratio-circle">
+                <div class="ratio-inner">78%</div>
+            </div>
+            <div class="ratio-details">
+                <div class="ratio-title">Taux de succès du cache</div>
+                <div class="ratio-stats">
+                    <div class="ratio-stat">
+                        <div class="ratio-stat-value" style="color: var(--success);" id="hits">10,021</div>
+                        <div class="ratio-stat-label">Cache Hits</div>
+                    </div>
+                    <div class="ratio-stat">
+                        <div class="ratio-stat-value" style="color: var(--danger);" id="misses">2,826</div>
+                        <div class="ratio-stat-label">Cache Misses</div>
+                    </div>
+                    <div class="ratio-stat">
+                        <div class="ratio-stat-value" style="color: var(--warning);">1.2 GB</div>
+                        <div class="ratio-stat-label">Données servies</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="main-grid">
+            <div class="section">
+                <div class="section-title">📊 Utilisation du stockage</div>
+                
+                <div class="storage-bar">
+                    <div class="storage-header">
+                        <span class="storage-used">24.7 GB utilisés</span>
+                        <span class="storage-total">sur 50 GB</span>
+                    </div>
+                    <div class="storage-progress">
+                        <div class="storage-segment" style="width: 30%; background: #e50914;"></div>
+                        <div class="storage-segment" style="width: 20%; background: #ff0000;"></div>
+                        <div class="storage-segment" style="width: 15%; background: #1db954;"></div>
+                        <div class="storage-segment" style="width: 10%; background: #3b82f6;"></div>
+                        <div class="storage-segment" style="width: 20%; background: var(--text-muted);"></div>
+                    </div>
+                    <div class="storage-legend">
+                        <div class="legend-item"><div class="legend-color" style="background: #e50914;"></div>Netflix 7.5 GB</div>
+                        <div class="legend-item"><div class="legend-color" style="background: #ff0000;"></div>YouTube 5 GB</div>
+                        <div class="legend-item"><div class="legend-color" style="background: #1db954;"></div>Spotify 3.7 GB</div>
+                        <div class="legend-item"><div class="legend-color" style="background: #3b82f6;"></div>Updates 2.5 GB</div>
+                        <div class="legend-item"><div class="legend-color" style="background: var(--text-muted);"></div>Autre 6 GB</div>
+                    </div>
+                </div>
+                
+                <div class="section-title">🌐 Domaines cachés</div>
+                <div class="domain-row header">
+                    <div>Domaine</div>
+                    <div>Taille</div>
+                    <div>Hits</div>
+                    <div></div>
+                </div>
+                <div class="domain-row">
+                    <div class="domain-name"><span class="domain-icon">📺</span>nflxvideo.net</div>
+                    <div class="domain-size">7.5 GB</div>
+                    <div class="domain-hits">4,521</div>
+                    <button class="domain-action">Purger</button>
+                </div>
+                <div class="domain-row">
+                    <div class="domain-name"><span class="domain-icon">▶️</span>googlevideo.com</div>
+                    <div class="domain-size">5.0 GB</div>
+                    <div class="domain-hits">3,287</div>
+                    <button class="domain-action">Purger</button>
+                </div>
+                <div class="domain-row">
+                    <div class="domain-name"><span class="domain-icon">🎵</span>scdn.co</div>
+                    <div class="domain-size">3.7 GB</div>
+                    <div class="domain-hits">1,892</div>
+                    <button class="domain-action">Purger</button>
+                </div>
+                <div class="domain-row">
+                    <div class="domain-name"><span class="domain-icon">🍎</span>apple.com</div>
+                    <div class="domain-size">2.5 GB</div>
+                    <div class="domain-hits">456</div>
+                    <button class="domain-action">Purger</button>
+                </div>
+                <div class="domain-row">
+                    <div class="domain-name"><span class="domain-icon">🪟</span>microsoft.com</div>
+                    <div class="domain-size">1.8 GB</div>
+                    <div class="domain-hits">234</div>
+                    <button class="domain-action">Purger</button>
+                </div>
+            </div>
+            
+            <div>
+                <div class="section">
+                    <div class="section-title">⚙️ Configuration</div>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <div>
+                                <div class="setting-label">Cache activé</div>
+                                <div class="setting-value">Proxy transparent</div>
+                            </div>
+                            <div class="toggle active"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div>
+                                <div class="setting-label">Cache HTTPS</div>
+                                <div class="setting-value">Bump SSL</div>
+                            </div>
+                            <div class="toggle"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div>
+                                <div class="setting-label">Netflix</div>
+                                <div class="setting-value">nflxvideo.net</div>
+                            </div>
+                            <div class="toggle active"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div>
+                                <div class="setting-label">YouTube</div>
+                                <div class="setting-value">googlevideo.com</div>
+                            </div>
+                            <div class="toggle active"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div>
+                                <div class="setting-label">Spotify</div>
+                                <div class="setting-value">scdn.co</div>
+                            </div>
+                            <div class="toggle active"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div>
+                                <div class="setting-label">Updates OS</div>
+                                <div class="setting-value">Apple, Microsoft</div>
+                            </div>
+                            <div class="toggle active"></div>
+                        </div>
+                    </div>
+                    
+                    <button class="clear-btn">🗑️ Vider le cache</button>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">📈 Économies réalisées</div>
+                    <div class="cache-overview">
+                        <div class="cache-stat">
+                            <div class="cache-big" id="monthly-saved">156</div>
+                            <div class="cache-label">GB économisés ce mois</div>
+                        </div>
+                        <div class="cache-stat">
+                            <div class="cache-big" style="color: var(--success);">€47</div>
+                            <div class="cache-label">Économie estimée</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.querySelectorAll('.toggle').forEach(toggle => {
+            toggle.addEventListener('click', () => toggle.classList.toggle('active'));
+        });
+        
+        setInterval(() => {
+            document.getElementById('requests').textContent = (12000 + Math.floor(Math.random() * 1000)).toLocaleString();
+            document.getElementById('hits').textContent = (9500 + Math.floor(Math.random() * 1000)).toLocaleString();
+            document.getElementById('misses').textContent = (2500 + Math.floor(Math.random() * 500)).toLocaleString();
+        }, 3000);
+    </script>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

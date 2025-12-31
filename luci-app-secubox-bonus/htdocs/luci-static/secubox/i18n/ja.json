@@ -1,0 +1,297 @@
+{
+  "meta": {
+    "title": "SecuBox - OpenWrt用セキュリティスイート | CyberMind",
+    "description": "SecuBoxは、OpenWrt用の完全なセキュリティおよびネットワーク管理スイートです。QoS、認証、メディア検出、VPNなど。",
+    "keywords": "OpenWrt, セキュリティ, QoS, VPN, ファイアウォール, ルーター, LuCI, CrowdSec, WireGuard"
+  },
+  "nav": {
+    "modules": "モジュール",
+    "features": "機能",
+    "demo": "デモ",
+    "installation": "インストール",
+    "blog": "ブログ",
+    "github": "GitHub ↗"
+  },
+  "hero": {
+    "badge": "バージョン2.0利用可能",
+    "title": "SecuBoxでネットワークを保護",
+    "subtitle": "OpenWrt用の完全なセキュリティおよびネットワーク管理スイート。ルーターをインテリジェントな制御センターに変える20の統合モジュールとアプリ。",
+    "btnDemo": "🎮 デモを見る",
+    "btnInstall": "📥 インストール",
+    "statsModules": "モジュール",
+    "statsArchs": "アーキテクチャ",
+    "statsOpenSource": "オープンソース",
+    "statsOpenWrt": "OpenWrt"
+  },
+  "modules": {
+    "tag": "📦 モジュール",
+    "title": "すべてのニーズに対応する20のモジュールとアプリ",
+    "subtitle": "セキュリティから監視、帯域幅管理、認証まで。",
+    "bandwidth": {
+      "name": "帯域幅マネージャー",
+      "description": "QoS、クォータ、自動メディア検出による高度な帯域幅管理。",
+      "features": [
+        "8つのQoS優先度レベル",
+        "日次/月次クォータ",
+        "自動スロットリング",
+        "VoIP、ゲーミング、ストリーミング検出"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    },
+    "auth": {
+      "name": "認証ガーディアン",
+      "description": "キャプティブポータル、OAuth、バウチャーシステムによる完全な認証。",
+      "features": [
+        "カスタマイズ可能なキャプティブポータル",
+        "OAuth2(Google、GitHub...)",
+        "バウチャーシステム",
+        "セッション/Cookie管理"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    },
+    "media": {
+      "name": "メディアフロー",
+      "description": "リアルタイムのマルチメディアフロー検出と監視。",
+      "features": [
+        "Netflix、YouTube、Twitch検出",
+        "RTSP、HLS、DASHプロトコル",
+        "VoIP監視(Zoom、Teams)",
+        "ストリーム品質(SD/HD/4K)"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    },
+    "vhost": {
+      "name": "VHostマネージャー",
+      "description": "ローカルSaaSサービス用の仮想ホストとゲートウェイ。",
+      "features": [
+        "Nextcloud、GitLab、Jellyfin",
+        "外部サービスリダイレクト",
+        "自動Let's Encrypt SSL",
+        "Nginxリバースプロキシ"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    },
+    "crowdsec": {
+      "name": "CrowdSecダッシュボード",
+      "description": "集合知による協調的な侵入防止。",
+      "features": [
+        "リアルタイム侵入検出",
+        "自動ブロック",
+        "コミュニティ共有",
+        "統合ダッシュボード"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    },
+    "wireguard": {
+      "name": "WireGuardダッシュボード",
+      "description": "簡素化されたピア管理とQRコードを備えた最新のVPN。",
+      "features": [
+        "簡素化された構成",
+        "モバイル用QRコード",
+        "ピアごとの統計",
+        "マルチトンネル"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    },
+    "netdata": {
+      "name": "Netdataダッシュボード",
+      "description": "インテリジェントなアラートを備えたリアルタイムシステム監視。",
+      "features": [
+        "リアルタイムグラフ",
+        "CPU、RAM、ディスク、ネットワーク",
+        "構成可能なアラート",
+        "メトリック履歴"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    },
+    "netifyd": {
+      "name": "Netifydダッシュボード",
+      "description": "アプリケーションとプロトコルを識別するためのDPIトラフィック分析。",
+      "features": [
+        "ディープパケットインスペクション",
+        "アプリケーション識別",
+        "プロトコル分類",
+        "詳細な統計"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    },
+    "clientGuardian": {
+      "name": "クライアントガーディアン",
+      "description": "アクセス制御とネットワーククライアント管理。",
+      "features": [
+        "ホワイトリスト/ブラックリスト",
+        "時間制限",
+        "帯域幅制限",
+        "リアルタイム監視"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    },
+    "networkModes": {
+      "name": "ネットワークモード",
+      "description": "簡素化されたネットワーク構成:NAT、ブリッジ、AP...",
+      "features": [
+        "事前構成済みモード",
+        "簡単な切り替え",
+        "ネットワークテンプレート",
+        "マルチWAN"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    },
+    "trafficShaper": {
+      "name": "トラフィックシェーパー",
+      "description": "CAKEとアンチバッファブロートによる高度なトラフィック制御。",
+      "features": [
+        "CAKE QoS",
+        "アンチバッファブロート",
+        "輻輳管理",
+        "スマート優先順位付け"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    },
+    "cdnCache": {
+      "name": "CDNキャッシュ",
+      "description": "帯域幅を節約するためのローカルキャッシュ。",
+      "features": [
+        "Steam、Windows Updateキャッシュ",
+        "帯域幅の節約",
+        "透過プロキシ",
+        "キャッシュ統計"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    },
+    "secuboxHub": {
+      "name": "SecuBoxハブ",
+      "description": "すべてのモジュールの統一制御センター。",
+      "features": [
+        "集中ダッシュボード",
+        "モジュール管理",
+        "グローバル通知",
+        "概要"
+      ],
+      "demo": "デモ",
+      "github": "GitHub"
+    }
+  },
+  "features": {
+    "tag": "✨ 機能",
+    "title": "なぜSecuBoxを選ぶのか?",
+    "subtitle": "OpenWrt向けに設計された完全なオープンソースソリューション。",
+    "simple": {
+      "title": "簡単なインストール",
+      "description": "`opkg install`だけで準備完了。複雑な構成は不要です。"
+    },
+    "luci": {
+      "title": "ネイティブLuCI統合",
+      "description": "ルーターと同じルック&フィールでLuCIに統合されたインターフェース。"
+    },
+    "realtime": {
+      "title": "リアルタイム",
+      "description": "RPCDとubusによるリアルタイム監視と統計。"
+    },
+    "security": {
+      "title": "強化されたセキュリティ",
+      "description": "CrowdSec、WireGuard、OAuth認証、キャプティブポータル。"
+    },
+    "performance": {
+      "title": "パフォーマンス",
+      "description": "CAKEによる高度なQoS、メディア検出、自動優先順位。"
+    },
+    "multiarch": {
+      "title": "マルチアーキテクチャ",
+      "description": "x86_64、ARM64、ARM32。すべてのOpenWrtルーターで動作します。"
+    }
+  },
+  "demo": {
+    "tag": "🎮 デモンストレーション",
+    "title": "実際のSecuBoxをご覧ください",
+    "subtitle": "インストール不要のインタラクティブなインターフェース。",
+    "backToMain": "← ホームに戻る"
+  },
+  "installation": {
+    "tag": "📥 インストール",
+    "title": "3ステップで準備完了",
+    "subtitle": "OpenWrtパッケージマネージャーopkgによる簡単なインストール。",
+    "step1": {
+      "title": "リポジトリを追加",
+      "description": "CyberMindリポジトリをopkg構成に追加します。"
+    },
+    "step2": {
+      "title": "更新",
+      "description": "利用可能なパッケージのリストを更新します。"
+    },
+    "step3": {
+      "title": "インストール",
+      "description": "SecuBoxと必要なモジュールをインストールします。"
+    },
+    "code": {
+      "comment1": "# ステップ1: リポジトリを追加(GitHubリリースを使用する場合はオプション)",
+      "comment2": "# ステップ2: パッケージリストを更新",
+      "comment3": "# ステップ3: SecuBox(メインハブ)をインストール",
+      "comment4": "# 必要なモジュールをインストール",
+      "comment5": "# インターフェースを再起動"
+    }
+  },
+  "blog": {
+    "tag": "📝 ブログ",
+    "title": "記事とチュートリアル",
+    "subtitle": "SecuBoxを最大限に活用するための詳細なガイド。",
+    "article1": {
+      "tag": "チュートリアル",
+      "title": "帯域幅マネージャーで帯域幅を最適化",
+      "description": "QoS、クォータ、自動メディア検出を構成するための完全なガイド。"
+    },
+    "article2": {
+      "tag": "チュートリアル",
+      "title": "OAuthとバウチャーを使用したキャプティブポータル",
+      "description": "WiFiネットワーク用の完全な認証システムを構成します。"
+    },
+    "article3": {
+      "tag": "チュートリアル",
+      "title": "独自のSaaSサービスをホスト",
+      "description": "Nextcloud、GitLab、Jellyfin:クラウドサービスをローカル代替に置き換えます。"
+    }
+  },
+  "cta": {
+    "title": "ネットワークを保護する準備はできましたか?",
+    "subtitle": "インフラストラクチャの保護にSecuBoxを信頼するユーザーに参加してください。",
+    "btnInstall": "📥 今すぐインストール",
+    "btnGithub": "⭐ GitHubでスター"
+  },
+  "footer": {
+    "description": "OpenWrt用のセキュリティおよびネットワーク管理スイート。CyberMindによって開発されました。",
+    "product": "製品",
+    "resources": "リソース",
+    "community": "コミュニティ",
+    "legal": "法的情報",
+    "documentation": "ドキュメント",
+    "support": "サポート",
+    "releases": "リリース",
+    "github": "GitHub",
+    "discord": "Discord",
+    "forum": "フォーラム",
+    "license": "ライセンス",
+    "privacy": "プライバシー",
+    "terms": "利用規約"
+  },
+  "common": {
+    "learnMore": "詳細を見る",
+    "getStarted": "始める",
+    "viewDemo": "デモを見る",
+    "documentation": "ドキュメント",
+    "downloadNow": "今すぐダウンロード",
+    "openSource": "オープンソース",
+    "freeForever": "永久無料"
+  }
+}

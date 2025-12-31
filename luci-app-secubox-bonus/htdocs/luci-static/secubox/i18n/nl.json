@@ -1,0 +1,297 @@
+{
+  "meta": {
+    "title": "SecuBox - Beveiligingssuite voor OpenWrt | CyberMind",
+    "description": "SecuBox is een complete beveiliging- en netwerkbeheersuite voor OpenWrt. QoS, Authenticatie, Mediadetectie, VPN en meer.",
+    "keywords": "OpenWrt, beveiliging, QoS, VPN, firewall, router, LuCI, CrowdSec, WireGuard"
+  },
+  "nav": {
+    "modules": "Modules",
+    "features": "Functies",
+    "demo": "Demo",
+    "installation": "Installatie",
+    "blog": "Blog",
+    "github": "GitHub ↗"
+  },
+  "hero": {
+    "badge": "Versie 2.0 beschikbaar",
+    "title": "Beveilig uw netwerk met SecuBox",
+    "subtitle": "Complete beveiliging- en netwerkbeheersuite voor OpenWrt. 20 geïntegreerde modules & apps om uw router om te zetten in een intelligent controlecentrum.",
+    "btnDemo": "🎮 Bekijk demo",
+    "btnInstall": "📥 Installatie",
+    "statsModules": "Modules",
+    "statsArchs": "Architecturen",
+    "statsOpenSource": "Open Source",
+    "statsOpenWrt": "OpenWrt"
+  },
+  "modules": {
+    "tag": "📦 Modules",
+    "title": "20 modules & apps voor al uw behoeften",
+    "subtitle": "Van beveiliging tot monitoring, inclusief bandbreedtebeheer en authenticatie.",
+    "bandwidth": {
+      "name": "Bandwidth Manager",
+      "description": "Geavanceerd bandbreedtebeheer met QoS, quota's en automatische mediadetectie.",
+      "features": [
+        "8 QoS-prioriteitsniveaus",
+        "Dagelijkse/maandelijkse quota's",
+        "Automatische beperking",
+        "VoIP, Gaming, Streaming detectie"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "auth": {
+      "name": "Auth Guardian",
+      "description": "Volledige authenticatie met captive portal, OAuth en vouchersysteem.",
+      "features": [
+        "Aanpasbaar captive portal",
+        "OAuth2 (Google, GitHub...)",
+        "Vouchersysteem",
+        "Sessie-/cookiebeheer"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "media": {
+      "name": "Media Flow",
+      "description": "Real-time detectie en monitoring van multimediastromen.",
+      "features": [
+        "Netflix, YouTube, Twitch detectie",
+        "RTSP, HLS, DASH protocollen",
+        "VoIP monitoring (Zoom, Teams)",
+        "Streamkwaliteit (SD/HD/4K)"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "vhost": {
+      "name": "VHost Manager",
+      "description": "Virtual hosts en gateway voor lokale SaaS-diensten.",
+      "features": [
+        "Nextcloud, GitLab, Jellyfin",
+        "Externe dienst doorverwijzing",
+        "Automatische Let's Encrypt SSL",
+        "Nginx reverse proxy"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "crowdsec": {
+      "name": "CrowdSec Dashboard",
+      "description": "Collaboratieve inbraakbescherming met collectieve intelligentie.",
+      "features": [
+        "Real-time inbraakdetectie",
+        "Automatisch blokkeren",
+        "Community-deling",
+        "Geïntegreerd dashboard"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "wireguard": {
+      "name": "WireGuard Dashboard",
+      "description": "Moderne VPN met vereenvoudigd peerbeheer en QR-codes.",
+      "features": [
+        "Vereenvoudigde configuratie",
+        "QR-codes voor mobiel",
+        "Statistieken per peer",
+        "Multi-tunnels"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "netdata": {
+      "name": "Netdata Dashboard",
+      "description": "Real-time systeemmonitoring met intelligente waarschuwingen.",
+      "features": [
+        "Real-time grafieken",
+        "CPU, RAM, Schijf, Netwerk",
+        "Configureerbare waarschuwingen",
+        "Metriekgeschiedenis"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "netifyd": {
+      "name": "Netifyd Dashboard",
+      "description": "DPI verkeersanalyse om applicaties en protocollen te identificeren.",
+      "features": [
+        "Deep Packet Inspection",
+        "Applicatie-identificatie",
+        "Protocolcategorisering",
+        "Gedetailleerde statistieken"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "clientGuardian": {
+      "name": "Client Guardian",
+      "description": "Toegangscontrole en beheer van netwerkclients.",
+      "features": [
+        "Witte/zwarte lijst",
+        "Tijdbeperkingen",
+        "Bandbreedtebeperkingen",
+        "Real-time monitoring"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "networkModes": {
+      "name": "Network Modes",
+      "description": "Vereenvoudigde netwerkconfiguratie: NAT, Bridge, AP...",
+      "features": [
+        "Voorgeconfigureerde modi",
+        "Eenvoudig schakelen",
+        "Netwerksjablonen",
+        "Multi-WAN"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "trafficShaper": {
+      "name": "Traffic Shaper",
+      "description": "Geavanceerde verkeerscontrole met CAKE en anti-bufferbloat.",
+      "features": [
+        "CAKE QoS",
+        "Anti-bufferbloat",
+        "Congestiebeheer",
+        "Slimme prioritering"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "cdnCache": {
+      "name": "CDN Cache",
+      "description": "Lokale cache om bandbreedte te besparen.",
+      "features": [
+        "Steam, Windows Update cache",
+        "Bandbreedtebesparing",
+        "Transparante proxy",
+        "Cachestatistieken"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "secuboxHub": {
+      "name": "SecuBox Hub",
+      "description": "Uniform controlecentrum voor alle modules.",
+      "features": [
+        "Gecentraliseerd dashboard",
+        "Modulebeheer",
+        "Globale meldingen",
+        "Overzicht"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    }
+  },
+  "features": {
+    "tag": "✨ Functies",
+    "title": "Waarom kiezen voor SecuBox?",
+    "subtitle": "Een complete, open source oplossing ontworpen voor OpenWrt.",
+    "simple": {
+      "title": "Eenvoudige installatie",
+      "description": "Gewoon `opkg install` en u bent klaar. Geen complexe configuratie."
+    },
+    "luci": {
+      "title": "Native LuCI-integratie",
+      "description": "Interface geïntegreerd met LuCI met dezelfde look & feel als uw router."
+    },
+    "realtime": {
+      "title": "Real-time",
+      "description": "Real-time monitoring en statistieken via RPCD en ubus."
+    },
+    "security": {
+      "title": "Verbeterde beveiliging",
+      "description": "CrowdSec, WireGuard, OAuth-authenticatie en captive portal."
+    },
+    "performance": {
+      "title": "Prestaties",
+      "description": "Geavanceerde QoS met CAKE, mediadetectie en automatische prioriteiten."
+    },
+    "multiarch": {
+      "title": "Multi-architectuur",
+      "description": "x86_64, ARM64, ARM32. Werkt op alle OpenWrt-routers."
+    }
+  },
+  "demo": {
+    "tag": "🎮 Demonstraties",
+    "title": "Ontdek SecuBox in actie",
+    "subtitle": "Interactieve interface zonder installatie.",
+    "backToMain": "← Terug naar home"
+  },
+  "installation": {
+    "tag": "📥 Installatie",
+    "title": "Klaar in 3 stappen",
+    "subtitle": "Eenvoudige installatie via opkg, de OpenWrt pakketbeheerder.",
+    "step1": {
+      "title": "Repository toevoegen",
+      "description": "Voeg de CyberMind-repository toe aan uw opkg-configuratie."
+    },
+    "step2": {
+      "title": "Bijwerken",
+      "description": "Ververs de lijst met beschikbare pakketten."
+    },
+    "step3": {
+      "title": "Installeren",
+      "description": "Installeer SecuBox en de gewenste modules."
+    },
+    "code": {
+      "comment1": "# Stap 1: Repository toevoegen (optioneel bij gebruik van GitHub releases)",
+      "comment2": "# Stap 2: Pakketlijst bijwerken",
+      "comment3": "# Stap 3: SecuBox installeren (hoofdhub)",
+      "comment4": "# Gewenste modules installeren",
+      "comment5": "# Interface herstarten"
+    }
+  },
+  "blog": {
+    "tag": "📝 Blog",
+    "title": "Artikelen & Tutorials",
+    "subtitle": "Gedetailleerde handleidingen om het meeste uit SecuBox te halen.",
+    "article1": {
+      "tag": "Tutorial",
+      "title": "Optimaliseer uw bandbreedte met Bandwidth Manager",
+      "description": "Volledige handleiding voor het configureren van QoS, quota's en automatische mediadetectie."
+    },
+    "article2": {
+      "tag": "Tutorial",
+      "title": "Captive portal met OAuth en vouchers",
+      "description": "Configureer een compleet authenticatiesysteem voor uw WiFi-netwerk."
+    },
+    "article3": {
+      "tag": "Tutorial",
+      "title": "Host uw eigen SaaS-diensten",
+      "description": "Nextcloud, GitLab, Jellyfin: vervang clouddiensten door lokale alternatieven."
+    }
+  },
+  "cta": {
+    "title": "Klaar om uw netwerk te beveiligen?",
+    "subtitle": "Sluit u aan bij gebruikers die SecuBox vertrouwen om hun infrastructuur te beschermen.",
+    "btnInstall": "📥 Nu installeren",
+    "btnGithub": "⭐ Ster op GitHub"
+  },
+  "footer": {
+    "description": "Beveiliging- en netwerkbeheersuite voor OpenWrt. Ontwikkeld door CyberMind.",
+    "product": "Product",
+    "resources": "Bronnen",
+    "community": "Gemeenschap",
+    "legal": "Juridisch",
+    "documentation": "Documentatie",
+    "support": "Ondersteuning",
+    "releases": "Releases",
+    "github": "GitHub",
+    "discord": "Discord",
+    "forum": "Forum",
+    "license": "Licentie",
+    "privacy": "Privacy",
+    "terms": "Voorwaarden"
+  },
+  "common": {
+    "learnMore": "Meer informatie",
+    "getStarted": "Aan de slag",
+    "viewDemo": "Bekijk demo",
+    "documentation": "Documentatie",
+    "downloadNow": "Nu downloaden",
+    "openSource": "Open Source",
+    "freeForever": "Altijd gratis"
+  }
+}

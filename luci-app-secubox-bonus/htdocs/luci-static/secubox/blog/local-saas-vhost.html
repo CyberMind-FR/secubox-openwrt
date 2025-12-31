@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Héberger vos propres services SaaS | CyberMind Blog</title>
+    <meta name="description" content="Remplacez Google Drive, GitHub et Netflix par des alternatives auto-hébergées : Nextcloud, GitLab et Jellyfin avec VHost Manager.">
+    <style>
+        :root { --primary: #10b981; --primary-dark: #059669; --dark: #0f172a; --darker: #020617; --card: #1e293b; --text: #f1f5f9; --text-muted: #94a3b8; --border: #334155; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Georgia', serif; background: var(--darker); color: var(--text); line-height: 1.8; }
+        .header { background: var(--dark); border-bottom: 1px solid var(--border); padding: 20px 0; }
+        .header-inner { max-width: 800px; margin: 0 auto; padding: 0 24px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-family: system-ui, sans-serif; font-weight: 700; font-size: 20px; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 8px; }
+        .nav a { color: var(--text-muted); text-decoration: none; margin-left: 24px; font-family: system-ui, sans-serif; font-size: 14px; }
+        .hero { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); padding: 80px 24px; text-align: center; }
+        .hero-inner { max-width: 800px; margin: 0 auto; }
+        .hero-tag { display: inline-block; background: rgba(255,255,255,0.2); padding: 6px 16px; border-radius: 50px; font-size: 14px; margin-bottom: 20px; font-family: system-ui, sans-serif; }
+        .hero h1 { font-size: 42px; line-height: 1.2; margin-bottom: 16px; }
+        .hero-meta { opacity: 0.9; font-size: 16px; font-family: system-ui, sans-serif; }
+        .content { max-width: 800px; margin: 0 auto; padding: 60px 24px; }
+        h2 { font-size: 28px; margin: 48px 0 24px; color: var(--text); font-family: system-ui, sans-serif; }
+        h3 { font-size: 22px; margin: 32px 0 16px; color: var(--text); font-family: system-ui, sans-serif; }
+        p { margin-bottom: 24px; color: var(--text-muted); }
+        .lead { font-size: 20px; color: var(--text); margin-bottom: 32px; }
+        ul, ol { margin: 0 0 24px 24px; color: var(--text-muted); }
+        li { margin-bottom: 12px; }
+        code { background: var(--card); padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: 14px; color: var(--primary); }
+        pre { background: var(--card); padding: 24px; border-radius: 12px; overflow-x: auto; margin: 24px 0; border: 1px solid var(--border); }
+        pre code { background: none; padding: 0; color: var(--text); }
+        .info-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid var(--primary); padding: 20px 24px; border-radius: 0 12px 12px 0; margin: 32px 0; }
+        .info-box p { margin: 0; color: var(--text); }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 32px 0; }
+        .comparison-table th, .comparison-table td { padding: 16px; text-align: left; border-bottom: 1px solid var(--border); }
+        .comparison-table th { background: var(--card); font-family: system-ui, sans-serif; }
+        .comparison-table td:first-child { font-weight: 600; }
+        .service-card { background: var(--card); padding: 24px; border-radius: 12px; margin: 24px 0; border-left: 4px solid; display: flex; gap: 20px; align-items: flex-start; }
+        .service-icon { font-size: 48px; }
+        .service-content h4 { font-family: system-ui, sans-serif; margin-bottom: 8px; }
+        .cta-box { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); padding: 40px; border-radius: 16px; text-align: center; margin: 48px 0; }
+        .cta-box h3 { color: white; margin-bottom: 16px; font-family: system-ui, sans-serif; }
+        .cta-box p { color: rgba(255,255,255,0.9); margin-bottom: 24px; }
+        .cta-btn { display: inline-block; background: white; color: var(--primary-dark); padding: 14px 32px; border-radius: 10px; text-decoration: none; font-family: system-ui, sans-serif; font-weight: 600; }
+        .footer { background: var(--dark); border-top: 1px solid var(--border); padding: 40px 24px; text-align: center; }
+        .footer p { color: var(--text-muted); font-family: system-ui, sans-serif; font-size: 14px; margin: 0; }
+        @media (max-width: 768px) { .hero h1 { font-size: 32px; } .service-card { flex-direction: column; } }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-inner">
+            <a href="https://cybermind.fr" class="logo">🧠 CyberMind</a>
+            <nav class="nav">
+                <a href="https://cybermind.fr/blog">Blog</a>
+                <a href="../index.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+            </nav>
+        </div>
+    </header>
+    
+    <div class="hero">
+        <div class="hero-inner">
+            <span class="hero-tag">📚 Tutorial</span>
+            <h1>Héberger vos propres services SaaS</h1>
+            <p class="hero-meta">Par Gandalf • 22 décembre 2024 • 18 min de lecture</p>
+        </div>
+    </div>
+    
+    <article class="content">
+        <p class="lead">
+            Fatigué de dépendre de Google, Microsoft et autres géants du cloud ? Avec <strong>VHost Manager</strong>, 
+            transformez votre réseau local en plateforme SaaS privée : Nextcloud remplace Google Drive, 
+            GitLab remplace GitHub, et Jellyfin remplace Netflix.
+        </p>
+        
+        <h2>Pourquoi auto-héberger ?</h2>
+        
+        <table class="comparison-table">
+            <tr>
+                <th>Aspect</th>
+                <th>Services Cloud</th>
+                <th>Auto-hébergé</th>
+            </tr>
+            <tr>
+                <td>🔒 Vie privée</td>
+                <td>Vos données chez eux</td>
+                <td>Vos données chez vous</td>
+            </tr>
+            <tr>
+                <td>💰 Coût</td>
+                <td>Abonnements mensuels</td>
+                <td>Coût initial puis gratuit</td>
+            </tr>
+            <tr>
+                <td>🌐 Dépendance Internet</td>
+                <td>Requise en permanence</td>
+                <td>Fonctionne hors ligne</td>
+            </tr>
+            <tr>
+                <td>⚡ Performance locale</td>
+                <td>Limitée par la connexion</td>
+                <td>Vitesse du réseau local</td>
+            </tr>
+            <tr>
+                <td>🎛️ Contrôle</td>
+                <td>Limité aux options proposées</td>
+                <td>Total</td>
+            </tr>
+        </table>
+        
+        <h2>Services recommandés</h2>
+        
+        <div class="service-card" style="border-color: #0082c9;">
+            <div class="service-icon">☁️</div>
+            <div class="service-content">
+                <h4>Nextcloud → Remplace Google Drive/Dropbox</h4>
+                <p>Synchronisation de fichiers, calendrier, contacts, notes, visioconférence. 
+                Applications mobiles et desktop. Collaboration en temps réel sur documents.</p>
+            </div>
+        </div>
+        
+        <div class="service-card" style="border-color: #fc6d26;">
+            <div class="service-icon">💻</div>
+            <div class="service-content">
+                <h4>GitLab → Remplace GitHub</h4>
+                <p>Hébergement Git avec CI/CD intégré, wiki, issues, merge requests. 
+                Parfait pour vos projets personnels ou d'équipe.</p>
+            </div>
+        </div>
+        
+        <div class="service-card" style="border-color: #00a4dc;">
+            <div class="service-icon">🎬</div>
+            <div class="service-content">
+                <h4>Jellyfin → Remplace Netflix/Plex</h4>
+                <p>Streaming de votre bibliothèque multimédia. Films, séries, musique. 
+                Applications sur tous les appareils. 100% gratuit et open source.</p>
+            </div>
+        </div>
+        
+        <div class="service-card" style="border-color: #41bdf5;">
+            <div class="service-icon">🏠</div>
+            <div class="service-content">
+                <h4>Home Assistant → Domotique centralisée</h4>
+                <p>Contrôlez tous vos appareils connectés depuis une interface unique. 
+                Automatisations puissantes, intégrations illimitées.</p>
+            </div>
+        </div>
+        
+        <h2>Configuration VHost Manager</h2>
+        
+        <h3>1. Installation</h3>
+        
+        <pre><code>opkg update
+opkg install luci-app-vhost-manager nginx
+/etc/init.d/rpcd reload</code></pre>
+        
+        <h3>2. Définir les services internes</h3>
+        
+        <pre><code># /etc/config/vhost
+
+config vhost 'global'
+    option enabled '1'
+    option default_ssl '1'
+    option acme_email '<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="e687828b8f88a68a8985878ac88a8788">[email&#160;protected]</a>'
+
+config internal 'nextcloud'
+    option enabled '1'
+    option name 'Nextcloud'
+    option domain 'cloud.local.lan'
+    option backend '192.168.1.10:80'
+    option ssl '1'
+
+config internal 'gitlab'
+    option enabled '1'
+    option name 'GitLab'
+    option domain 'git.local.lan'
+    option backend '192.168.1.11:80'
+    option ssl '1'
+
+config internal 'jellyfin'
+    option enabled '1'
+    option name 'Jellyfin'
+    option domain 'media.local.lan'
+    option backend '192.168.1.12:8096'
+    option ssl '1'</code></pre>
+        
+        <h3>3. Configuration DNS locale</h3>
+        
+        <p>Ajoutez les domaines à dnsmasq pour qu'ils pointent vers le routeur :</p>
+        
+        <pre><code># /etc/dnsmasq.conf ou via LuCI
+
+address=/cloud.local.lan/192.168.1.1
+address=/git.local.lan/192.168.1.1
+address=/media.local.lan/192.168.1.1
+address=/home.local.lan/192.168.1.1</code></pre>
+        
+        <h3>4. Configuration nginx (générée automatiquement)</h3>
+        
+        <pre><code># /etc/nginx/conf.d/vhost-cloud.conf
+
+server {
+    listen 443 ssl http2;
+    server_name cloud.local.lan;
+    
+    ssl_certificate /etc/ssl/acme/cloud.local.lan.crt;
+    ssl_certificate_key /etc/ssl/acme/cloud.local.lan.key;
+    
+    location / {
+        proxy_pass http://192.168.1.10:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}</code></pre>
+        
+        <h2>Redirection de services externes (avancé)</h2>
+        
+        <p>
+            Fonctionnalité expérimentale : redirigez les requêtes vers des services externes 
+            (Google Drive, GitHub) vers vos alternatives locales. Nécessite l'interception DNS.
+        </p>
+        
+        <div class="info-box">
+            <p>⚠️ <strong>Attention :</strong> Cette fonctionnalité peut casser certaines applications 
+            qui dépendent des services originaux. À utiliser avec précaution.</p>
+        </div>
+        
+        <pre><code>config redirect 'google_drive'
+    option enabled '0'  # Désactivé par défaut
+    option name 'Google Drive → Nextcloud'
+    option external_domain 'drive.google.com'
+    option local_domain 'cloud.local.lan'</code></pre>
+        
+        <h2>Gestion des certificats SSL</h2>
+        
+        <h3>Certificats auto-signés (réseau local)</h3>
+        
+        <pre><code># Générer un certificat auto-signé
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout /etc/ssl/private/cloud.local.lan.key \
+    -out /etc/ssl/certs/cloud.local.lan.crt \
+    -subj "/CN=cloud.local.lan"</code></pre>
+        
+        <h3>Let's Encrypt (avec accès externe)</h3>
+        
+        <pre><code>config ssl 'settings'
+    option provider 'acme'
+    option challenge 'dns'  # ou 'http'
+    option auto_renew '1'
+    option renew_days '30'</code></pre>
+        
+        <h2>Déployer vos services</h2>
+        
+        <h3>Nextcloud avec Docker</h3>
+        
+        <pre><code>docker run -d \
+    --name nextcloud \
+    -p 8080:80 \
+    -v nextcloud:/var/www/html \
+    -v nextcloud-data:/var/www/html/data \
+    nextcloud:latest</code></pre>
+        
+        <h3>Jellyfin avec Docker</h3>
+        
+        <pre><code>docker run -d \
+    --name jellyfin \
+    -p 8096:8096 \
+    -v jellyfin-config:/config \
+    -v /media:/media \
+    jellyfin/jellyfin:latest</code></pre>
+        
+        <div class="cta-box">
+            <h3>🌐 Créez votre cloud privé</h3>
+            <p>Installez VHost Manager et prenez le contrôle de vos services.</p>
+            <a href="../demo-vhost.html" class="cta-btn">Voir la démo</a>
+        </div>
+        
+        <h2>Conclusion</h2>
+        
+        <p>
+            L'auto-hébergement n'a jamais été aussi accessible. Avec VHost Manager, vous configurez 
+            facilement un reverse proxy nginx, gérez vos certificats SSL et organisez tous vos services 
+            depuis une interface unifiée dans LuCI.
+        </p>
+        
+        <p>
+            Vos données restent chez vous, vos services fonctionnent même sans Internet, et vous 
+            bénéficiez de performances réseau local optimales. C'est le meilleur des deux mondes !
+        </p>
+    </article>
+    
+    <footer class="footer">
+        <p>
+            <a href="https://cybermood.eu" style="color: var(--primary); text-decoration: none;">CyberMood.eu</a>
+            © 2025 <a href="https://cybermind.fr" style="color: var(--text-muted); text-decoration: none;">CyberMind.fr</a>
+            — Open Source Apache-2.0 — 🇫🇷 Made in France with ❤️
+        </p>
+    </footer>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

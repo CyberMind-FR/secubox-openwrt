@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KSM Manager - Démo | SecuBox</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔐</text></svg>">
+    <style>
+        :root { --primary: #f59e0b; --primary-dark: #d97706; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --dark: #0f172a; --darker: #020617; --card: #1e293b; --text: #f1f5f9; --text-muted: #94a3b8; --border: #334155; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: var(--darker); color: var(--text); min-height: 100vh; }
+        .header { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); padding: 40px 24px; text-align: center; }
+        .header h1 { font-size: 36px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 18px; }
+        .back-link { position: absolute; top: 20px; left: 20px; color: white; text-decoration: none; opacity: 0.8; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+
+        .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: var(--card); padding: 24px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+        .stat-value { font-size: 28px; font-weight: 700; }
+        .stat-label { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+
+        .tabs { display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid var(--border); }
+        .tab { padding: 12px 24px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 15px; font-weight: 600; border-bottom: 2px solid transparent; transition: all 0.2s; }
+        .tab:hover { color: var(--text); }
+        .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .section { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); margin-bottom: 24px; }
+        .section-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+
+        .key-row { display: grid; grid-template-columns: 50px 200px 120px 120px 150px 150px auto; gap: 16px; padding: 16px; background: var(--dark); border-radius: 10px; margin-bottom: 12px; align-items: center; }
+        .key-row.header { background: transparent; font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+        .key-icon { font-size: 24px; text-align: center; }
+        .key-label { font-weight: 600; }
+        .key-type { padding: 4px 12px; background: rgba(59, 130, 246, 0.2); color: #3b82f6; border-radius: 6px; font-size: 12px; display: inline-block; }
+        .key-size { color: var(--text-muted); font-size: 14px; }
+        .key-date { color: var(--text-muted); font-size: 13px; }
+        .key-actions { display: flex; gap: 8px; }
+        .key-btn { padding: 6px 12px; background: rgba(255, 255, 255, 0.1); border: none; border-radius: 6px; font-size: 12px; cursor: pointer; color: var(--text); transition: all 0.2s; }
+        .key-btn:hover { background: rgba(255, 255, 255, 0.2); }
+        .key-btn.danger { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+
+        .hsm-card { background: var(--dark); padding: 24px; border-radius: 12px; margin-bottom: 16px; display: flex; align-items: center; gap: 24px; }
+        .hsm-icon { font-size: 48px; }
+        .hsm-info { flex: 1; }
+        .hsm-name { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+        .hsm-serial { color: var(--text-muted); font-family: monospace; font-size: 13px; margin-bottom: 12px; }
+        .hsm-status { display: flex; gap: 16px; }
+        .hsm-badge { padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+        .hsm-badge.success { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .hsm-badge.warning { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+
+        .cert-row { display: grid; grid-template-columns: 50px 250px 150px 120px 120px auto; gap: 16px; padding: 16px; background: var(--dark); border-radius: 10px; margin-bottom: 12px; align-items: center; }
+        .cert-row.header { background: transparent; font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+
+        .secret-row { display: grid; grid-template-columns: 50px 200px 120px 150px 100px auto; gap: 16px; padding: 16px; background: var(--dark); border-radius: 10px; margin-bottom: 12px; align-items: center; }
+        .secret-row.header { background: transparent; font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+        .secret-category { padding: 4px 12px; background: rgba(139, 92, 246, 0.2); color: #8b5cf6; border-radius: 6px; font-size: 12px; display: inline-block; }
+
+        .audit-row { display: grid; grid-template-columns: 150px 120px 120px 1fr 100px; gap: 16px; padding: 16px; background: var(--dark); border-radius: 10px; margin-bottom: 12px; align-items: center; }
+        .audit-row.header { background: transparent; font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+        .audit-time { font-family: monospace; font-size: 13px; }
+        .audit-action { padding: 4px 12px; border-radius: 6px; font-size: 12px; display: inline-block; }
+        .audit-action.generate { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .audit-action.access { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        .audit-action.delete { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+
+        .add-btn { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 24px; background: var(--primary); border: none; border-radius: 10px; color: white; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .add-btn:hover { background: var(--primary-dark); }
+
+        @media (max-width: 1024px) { .stats-row { grid-template-columns: repeat(3, 1fr); } .key-row, .cert-row, .secret-row, .audit-row { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 768px) { .stats-row { grid-template-columns: repeat(2, 1fr); } .tabs { flex-wrap: wrap; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index-secubox.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+        <h1>🔐 KSM Manager</h1>
+        <p>Gestion centralisée des clés cryptographiques</p>
+    </div>
+
+    <div class="container">
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--primary);">24</div>
+                <div class="stat-label">Clés totales</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--success);">2</div>
+                <div class="stat-label">HSM Devices</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: #3b82f6;">12</div>
+                <div class="stat-label">Certificats</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: #8b5cf6;">18</div>
+                <div class="stat-label">Secrets</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: #06b6d4;">8</div>
+                <div class="stat-label">SSH Keys</div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('keys')">🔑 Clés</button>
+            <button class="tab" onclick="switchTab('hsm')">💾 HSM Devices</button>
+            <button class="tab" onclick="switchTab('certs')">📜 Certificats</button>
+            <button class="tab" onclick="switchTab('secrets')">🔒 Secrets</button>
+            <button class="tab" onclick="switchTab('ssh')">🖥️ SSH Keys</button>
+            <button class="tab" onclick="switchTab('audit')">📋 Audit Logs</button>
+        </div>
+
+        <!-- Keys Tab -->
+        <div id="keys-tab" class="tab-content active">
+            <div class="section">
+                <div class="section-title">🔑 Clés cryptographiques</div>
+
+                <div class="key-row header">
+                    <div>Type</div>
+                    <div>Label</div>
+                    <div>Algorithme</div>
+                    <div>Taille</div>
+                    <div>Créé le</div>
+                    <div>Expire le</div>
+                    <div>Actions</div>
+                </div>
+
+                <div class="key-row">
+                    <div class="key-icon">🔐</div>
+                    <div class="key-label">Production SSL</div>
+                    <div><span class="key-type">RSA</span></div>
+                    <div class="key-size">4096 bits</div>
+                    <div class="key-date">2025-01-15</div>
+                    <div class="key-date">2027-01-15</div>
+                    <div class="key-actions">
+                        <button class="key-btn">Export</button>
+                        <button class="key-btn">CSR</button>
+                        <button class="key-btn danger">Delete</button>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <div class="key-icon">🔑</div>
+                    <div class="key-label">GitHub Deploy</div>
+                    <div><span class="key-type" style="background: rgba(34, 197, 94, 0.2); color: var(--success);">Ed25519</span></div>
+                    <div class="key-size">256 bits</div>
+                    <div class="key-date">2024-11-20</div>
+                    <div class="key-date">-</div>
+                    <div class="key-actions">
+                        <button class="key-btn">Export</button>
+                        <button class="key-btn danger">Delete</button>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <div class="key-icon">💎</div>
+                    <div class="key-label">VPN Server</div>
+                    <div><span class="key-type" style="background: rgba(139, 92, 246, 0.2); color: #8b5cf6;">ECDSA</span></div>
+                    <div class="key-size">384 bits</div>
+                    <div class="key-date">2025-02-10</div>
+                    <div class="key-date">2026-02-10</div>
+                    <div class="key-actions">
+                        <button class="key-btn">Export</button>
+                        <button class="key-btn">CSR</button>
+                        <button class="key-btn danger">Delete</button>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <div class="key-icon">🛡️</div>
+                    <div class="key-label">HSM Backup Key</div>
+                    <div><span class="key-type">RSA</span></div>
+                    <div class="key-size">4096 bits</div>
+                    <div class="key-date">2024-12-01</div>
+                    <div class="key-date">-</div>
+                    <div class="key-actions">
+                        <button class="key-btn">Export</button>
+                        <button class="key-btn danger">Delete</button>
+                    </div>
+                </div>
+
+                <button class="add-btn" style="margin-top: 16px;">➕ Générer une nouvelle clé</button>
+            </div>
+        </div>
+
+        <!-- HSM Tab -->
+        <div id="hsm-tab" class="tab-content">
+            <div class="section">
+                <div class="section-title">💾 Dispositifs HSM</div>
+
+                <div class="hsm-card">
+                    <div class="hsm-icon">🔐</div>
+                    <div class="hsm-info">
+                        <div class="hsm-name">Nitrokey Pro 2</div>
+                        <div class="hsm-serial">S/N: NK-2024-8FA7B3C9</div>
+                        <div class="hsm-status">
+                            <span class="hsm-badge success">✓ Initialisé</span>
+                            <span class="hsm-badge success">✓ PIN configuré</span>
+                            <span class="hsm-badge success">6 clés stockées</span>
+                        </div>
+                    </div>
+                    <div class="key-actions">
+                        <button class="key-btn">Generate Key</button>
+                        <button class="key-btn">Change PIN</button>
+                        <button class="key-btn danger">Reset</button>
+                    </div>
+                </div>
+
+                <div class="hsm-card">
+                    <div class="hsm-icon">🔑</div>
+                    <div class="hsm-info">
+                        <div class="hsm-name">YubiKey 5 NFC</div>
+                        <div class="hsm-serial">S/N: YK-5-1A2B3C4D</div>
+                        <div class="hsm-status">
+                            <span class="hsm-badge success">✓ Initialisé</span>
+                            <span class="hsm-badge warning">⚠ PIN requis</span>
+                            <span class="hsm-badge success">3 clés stockées</span>
+                        </div>
+                    </div>
+                    <div class="key-actions">
+                        <button class="key-btn">Generate Key</button>
+                        <button class="key-btn">Unlock</button>
+                        <button class="key-btn">Settings</button>
+                    </div>
+                </div>
+
+                <button class="add-btn" style="margin-top: 16px;">🔍 Scanner les dispositifs USB</button>
+            </div>
+        </div>
+
+        <!-- Certificates Tab -->
+        <div id="certs-tab" class="tab-content">
+            <div class="section">
+                <div class="section-title">📜 Certificats SSL/TLS</div>
+
+                <div class="cert-row header">
+                    <div>Type</div>
+                    <div>Common Name</div>
+                    <div>Émetteur</div>
+                    <div>Valide du</div>
+                    <div>Expire le</div>
+                    <div>Actions</div>
+                </div>
+
+                <div class="cert-row">
+                    <div class="key-icon">🌐</div>
+                    <div class="key-label">secubox.cybermood.eu</div>
+                    <div class="key-size">Let's Encrypt</div>
+                    <div class="key-date">2025-01-01</div>
+                    <div class="key-date" style="color: var(--success);">2025-04-01</div>
+                    <div class="key-actions">
+                        <button class="key-btn">View</button>
+                        <button class="key-btn">Renew</button>
+                        <button class="key-btn">Export</button>
+                    </div>
+                </div>
+
+                <div class="cert-row">
+                    <div class="key-icon">🔒</div>
+                    <div class="key-label">*.internal.local</div>
+                    <div class="key-size">Self-Signed</div>
+                    <div class="key-date">2024-12-15</div>
+                    <div class="key-date">2029-12-15</div>
+                    <div class="key-actions">
+                        <button class="key-btn">View</button>
+                        <button class="key-btn">Export</button>
+                        <button class="key-btn danger">Revoke</button>
+                    </div>
+                </div>
+
+                <div class="cert-row">
+                    <div class="key-icon">⚠️</div>
+                    <div class="key-label">old-vpn.example.com</div>
+                    <div class="key-size">DigiCert</div>
+                    <div class="key-date">2024-01-10</div>
+                    <div class="key-date" style="color: var(--danger);">2025-01-10 (Expiré)</div>
+                    <div class="key-actions">
+                        <button class="key-btn">View</button>
+                        <button class="key-btn danger">Delete</button>
+                    </div>
+                </div>
+
+                <button class="add-btn" style="margin-top: 16px;">➕ Importer un certificat</button>
+            </div>
+        </div>
+
+        <!-- Secrets Tab -->
+        <div id="secrets-tab" class="tab-content">
+            <div class="section">
+                <div class="section-title">🔒 Secrets chiffrés</div>
+
+                <div class="secret-row header">
+                    <div>Icon</div>
+                    <div>Label</div>
+                    <div>Catégorie</div>
+                    <div>Mis à jour</div>
+                    <div>Auto-rotate</div>
+                    <div>Actions</div>
+                </div>
+
+                <div class="secret-row">
+                    <div class="key-icon">🔑</div>
+                    <div class="key-label">GitHub PAT</div>
+                    <div><span class="secret-category">API Key</span></div>
+                    <div class="key-date">2025-01-20</div>
+                    <div><span class="hsm-badge success">✓ 90j</span></div>
+                    <div class="key-actions">
+                        <button class="key-btn">👁️ View</button>
+                        <button class="key-btn">🔄 Rotate</button>
+                        <button class="key-btn danger">Delete</button>
+                    </div>
+                </div>
+
+                <div class="secret-row">
+                    <div class="key-icon">🌐</div>
+                    <div class="key-label">AWS Secret Key</div>
+                    <div><span class="secret-category">AWS</span></div>
+                    <div class="key-date">2024-11-30</div>
+                    <div><span class="hsm-badge warning">-</span></div>
+                    <div class="key-actions">
+                        <button class="key-btn">👁️ View</button>
+                        <button class="key-btn">🔄 Rotate</button>
+                        <button class="key-btn danger">Delete</button>
+                    </div>
+                </div>
+
+                <div class="secret-row">
+                    <div class="key-icon">🔐</div>
+                    <div class="key-label">PostgreSQL Root</div>
+                    <div><span class="secret-category" style="background: rgba(239, 68, 68, 0.2); color: var(--danger);">Password</span></div>
+                    <div class="key-date">2025-02-01</div>
+                    <div><span class="hsm-badge success">✓ 30j</span></div>
+                    <div class="key-actions">
+                        <button class="key-btn">👁️ View</button>
+                        <button class="key-btn">🔄 Rotate</button>
+                        <button class="key-btn danger">Delete</button>
+                    </div>
+                </div>
+
+                <button class="add-btn" style="margin-top: 16px;">➕ Ajouter un secret</button>
+            </div>
+        </div>
+
+        <!-- SSH Tab -->
+        <div id="ssh-tab" class="tab-content">
+            <div class="section">
+                <div class="section-title">🖥️ Clés SSH</div>
+
+                <div class="key-row header">
+                    <div>Icon</div>
+                    <div>Label</div>
+                    <div>Type</div>
+                    <div>Taille</div>
+                    <div>Créé le</div>
+                    <div>Fingerprint</div>
+                    <div>Actions</div>
+                </div>
+
+                <div class="key-row">
+                    <div class="key-icon">🖥️</div>
+                    <div class="key-label">Production Servers</div>
+                    <div><span class="key-type" style="background: rgba(34, 197, 94, 0.2); color: var(--success);">Ed25519</span></div>
+                    <div class="key-size">256 bits</div>
+                    <div class="key-date">2024-10-15</div>
+                    <div style="font-family: monospace; font-size: 11px; color: var(--text-muted);">SHA256:Ab3Xy...9Kz2</div>
+                    <div class="key-actions">
+                        <button class="key-btn">📋 Copy</button>
+                        <button class="key-btn">🚀 Deploy</button>
+                        <button class="key-btn danger">Delete</button>
+                    </div>
+                </div>
+
+                <div class="key-row">
+                    <div class="key-icon">🔧</div>
+                    <div class="key-label">Dev Environment</div>
+                    <div><span class="key-type">RSA</span></div>
+                    <div class="key-size">2048 bits</div>
+                    <div class="key-date">2024-09-20</div>
+                    <div style="font-family: monospace; font-size: 11px; color: var(--text-muted);">SHA256:Cd4Wx...7Lm1</div>
+                    <div class="key-actions">
+                        <button class="key-btn">📋 Copy</button>
+                        <button class="key-btn">🚀 Deploy</button>
+                        <button class="key-btn danger">Delete</button>
+                    </div>
+                </div>
+
+                <button class="add-btn" style="margin-top: 16px;">➕ Générer une clé SSH</button>
+            </div>
+        </div>
+
+        <!-- Audit Tab -->
+        <div id="audit-tab" class="tab-content">
+            <div class="section">
+                <div class="section-title">📋 Journal d'audit</div>
+
+                <div class="audit-row header">
+                    <div>Timestamp</div>
+                    <div>User</div>
+                    <div>Action</div>
+                    <div>Resource</div>
+                    <div>Status</div>
+                </div>
+
+                <div class="audit-row">
+                    <div class="audit-time">2025-12-25 10:32:14</div>
+                    <div class="key-label">admin</div>
+                    <div><span class="audit-action generate">GENERATE_KEY</span></div>
+                    <div class="key-size">Production SSL (RSA 4096)</div>
+                    <div><span class="hsm-badge success">✓ Success</span></div>
+                </div>
+
+                <div class="audit-row">
+                    <div class="audit-time">2025-12-25 09:15:42</div>
+                    <div class="key-label">operator</div>
+                    <div><span class="audit-action access">ACCESS_SECRET</span></div>
+                    <div class="key-size">AWS Secret Key</div>
+                    <div><span class="hsm-badge success">✓ Success</span></div>
+                </div>
+
+                <div class="audit-row">
+                    <div class="audit-time">2025-12-25 08:47:23</div>
+                    <div class="key-label">admin</div>
+                    <div><span class="audit-action delete">DELETE_KEY</span></div>
+                    <div class="key-size">Old Test Key (RSA 2048)</div>
+                    <div><span class="hsm-badge success">✓ Success</span></div>
+                </div>
+
+                <div class="audit-row">
+                    <div class="audit-time">2025-12-24 18:22:11</div>
+                    <div class="key-label">developer</div>
+                    <div><span class="audit-action generate">GENERATE_SSH</span></div>
+                    <div class="key-size">Dev Environment (Ed25519)</div>
+                    <div><span class="hsm-badge success">✓ Success</span></div>
+                </div>
+
+                <div class="audit-row">
+                    <div class="audit-time">2025-12-24 15:05:38</div>
+                    <div class="key-label">operator</div>
+                    <div><span class="audit-action access">ACCESS_SECRET</span></div>
+                    <div class="key-size">GitHub PAT</div>
+                    <div><span class="hsm-badge warning">⚠ Unauthorized</span></div>
+                </div>
+
+                <button class="add-btn" style="margin-top: 16px; background: #3b82f6;">📊 Exporter les logs (CSV)</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tab) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+
+            // Show selected tab
+            document.getElementById(tab + '-tab').classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Simulate live updates
+        let requestCount = 12847;
+        let hits = 10021;
+        let misses = 2826;
+
+        setInterval(() => {
+            requestCount += Math.floor(Math.random() * 5);
+            if (Math.random() > 0.3) {
+                hits += Math.floor(Math.random() * 3);
+            } else {
+                misses += 1;
+            }
+        }, 3000);
+    </script>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

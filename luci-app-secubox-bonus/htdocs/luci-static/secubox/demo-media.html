@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Media Flow - Démo Interactive | SecuBox</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+    <style>
+        :root {
+            --primary: #ef4444;
+            --primary-dark: #dc2626;
+            --success: #22c55e;
+            --dark: #0f172a;
+            --darker: #020617;
+            --card: #1e293b;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --border: #334155;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: var(--darker); color: var(--text); min-height: 100vh; }
+        .header { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); padding: 40px 24px; text-align: center; }
+        .header h1 { font-size: 36px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 18px; }
+        .back-link { position: absolute; top: 20px; left: 20px; color: white; text-decoration: none; opacity: 0.8; }
+        .back-link:hover { opacity: 1; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+        
+        .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: var(--card); padding: 24px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+        .stat-value { font-size: 28px; font-weight: 700; color: var(--primary); }
+        .stat-label { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+        
+        .services-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 32px; }
+        .service-card { background: var(--card); padding: 24px; border-radius: 16px; text-align: center; border-top: 4px solid; transition: all 0.2s; cursor: pointer; }
+        .service-card:hover { transform: translateY(-4px); box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .service-icon { font-size: 48px; margin-bottom: 12px; }
+        .service-name { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+        .service-category { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+        .service-bandwidth { font-size: 24px; font-weight: 700; }
+        .service-connections { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+        
+        .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .section { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); }
+        .section-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+        
+        .flow-row { display: grid; grid-template-columns: 1fr 120px 100px 80px 80px; gap: 12px; padding: 14px; background: var(--dark); border-radius: 10px; margin-bottom: 10px; align-items: center; }
+        .flow-row.header { background: transparent; font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+        .flow-service { display: flex; align-items: center; gap: 10px; }
+        .flow-icon { font-size: 20px; }
+        .quality-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .quality-4k { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+        .quality-hd { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .quality-sd { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+        
+        .protocol-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .protocol-card { padding: 16px; background: var(--dark); border-radius: 10px; }
+        .protocol-name { font-weight: 700; color: var(--primary); margin-bottom: 4px; }
+        .protocol-desc { font-size: 13px; color: var(--text-muted); }
+        .protocol-ports { font-size: 12px; color: var(--text-muted); margin-top: 8px; font-family: monospace; }
+        
+        @media (max-width: 1024px) { 
+            .services-grid { grid-template-columns: repeat(2, 1fr); }
+            .main-grid { grid-template-columns: 1fr; }
+            .stats-row { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 768px) { 
+            .services-grid { grid-template-columns: 1fr; }
+            .stats-row { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+        <h1>🎬 Media Flow</h1>
+        <p>Détection & Monitoring des flux multimédia</p>
+    </div>
+    
+    <div class="container">
+        <div class="stats-row">
+            <div class="stat-card"><div class="stat-value" style="color: var(--success);">✓</div><div class="stat-label">DPI Actif</div></div>
+            <div class="stat-card"><div class="stat-value" id="total-bw">78.4</div><div class="stat-label">Total (Mbps)</div></div>
+            <div class="stat-card"><div class="stat-value">8</div><div class="stat-label">Services détectés</div></div>
+            <div class="stat-card"><div class="stat-value" id="active-flows">12</div><div class="stat-label">Flux actifs</div></div>
+            <div class="stat-card"><div class="stat-value">4</div><div class="stat-label">Flux 4K</div></div>
+        </div>
+        
+        <div class="services-grid">
+            <div class="service-card" style="border-color: #e50914;">
+                <div class="service-icon">📺</div>
+                <div class="service-name">Netflix</div>
+                <div class="service-category">Streaming Vidéo</div>
+                <div class="service-bandwidth" style="color: #e50914;" id="netflix-bw">24.3 Mbps</div>
+                <div class="service-connections">3 flux actifs</div>
+            </div>
+            <div class="service-card" style="border-color: #ff0000;">
+                <div class="service-icon">▶️</div>
+                <div class="service-name">YouTube</div>
+                <div class="service-category">Streaming Vidéo</div>
+                <div class="service-bandwidth" style="color: #ff0000;" id="youtube-bw">18.7 Mbps</div>
+                <div class="service-connections">5 flux actifs</div>
+            </div>
+            <div class="service-card" style="border-color: #9146ff;">
+                <div class="service-icon">🎮</div>
+                <div class="service-name">Twitch</div>
+                <div class="service-category">Live Streaming</div>
+                <div class="service-bandwidth" style="color: #9146ff;" id="twitch-bw">12.1 Mbps</div>
+                <div class="service-connections">2 flux actifs</div>
+            </div>
+            <div class="service-card" style="border-color: #1db954;">
+                <div class="service-icon">🎵</div>
+                <div class="service-name">Spotify</div>
+                <div class="service-category">Audio</div>
+                <div class="service-bandwidth" style="color: #1db954;">1.2 Mbps</div>
+                <div class="service-connections">4 flux actifs</div>
+            </div>
+            <div class="service-card" style="border-color: #2d8cff;">
+                <div class="service-icon">📹</div>
+                <div class="service-name">Zoom</div>
+                <div class="service-category">Visio</div>
+                <div class="service-bandwidth" style="color: #2d8cff;" id="zoom-bw">3.2 Mbps</div>
+                <div class="service-connections">1 flux actif</div>
+            </div>
+            <div class="service-card" style="border-color: #6264a7;">
+                <div class="service-icon">💼</div>
+                <div class="service-name">Teams</div>
+                <div class="service-category">Visio</div>
+                <div class="service-bandwidth" style="color: #6264a7;" id="teams-bw">2.8 Mbps</div>
+                <div class="service-connections">1 flux actif</div>
+            </div>
+            <div class="service-card" style="border-color: #00897b;">
+                <div class="service-icon">🎥</div>
+                <div class="service-name">Meet</div>
+                <div class="service-category">Visio</div>
+                <div class="service-bandwidth" style="color: #00897b;">2.1 Mbps</div>
+                <div class="service-connections">1 flux actif</div>
+            </div>
+            <div class="service-card" style="border-color: #ff6b00;">
+                <div class="service-icon">🎬</div>
+                <div class="service-name">Disney+</div>
+                <div class="service-category">Streaming Vidéo</div>
+                <div class="service-bandwidth" style="color: #ff6b00;" id="disney-bw">15.4 Mbps</div>
+                <div class="service-connections">2 flux actifs</div>
+            </div>
+        </div>
+        
+        <div class="main-grid">
+            <div class="section">
+                <div class="section-title">🌊 Flux actifs</div>
+                <div class="flow-row header">
+                    <div>Service</div><div>Client</div><div>Bandwidth</div><div>Qualité</div><div>Durée</div>
+                </div>
+                <div class="flow-row">
+                    <div class="flow-service"><span class="flow-icon">📺</span><span>Netflix</span></div>
+                    <div style="font-family: monospace; font-size: 12px;">192.168.1.101</div>
+                    <div style="color: #e50914; font-weight: 600;">15.2 Mbps</div>
+                    <div><span class="quality-badge quality-4k">4K</span></div>
+                    <div style="color: var(--text-muted);">45m</div>
+                </div>
+                <div class="flow-row">
+                    <div class="flow-service"><span class="flow-icon">▶️</span><span>YouTube</span></div>
+                    <div style="font-family: monospace; font-size: 12px;">192.168.1.105</div>
+                    <div style="color: #ff0000; font-weight: 600;">8.4 Mbps</div>
+                    <div><span class="quality-badge quality-hd">1080p</span></div>
+                    <div style="color: var(--text-muted);">12m</div>
+                </div>
+                <div class="flow-row">
+                    <div class="flow-service"><span class="flow-icon">🎮</span><span>Twitch</span></div>
+                    <div style="font-family: monospace; font-size: 12px;">192.168.1.110</div>
+                    <div style="color: #9146ff; font-weight: 600;">6.8 Mbps</div>
+                    <div><span class="quality-badge quality-hd">1080p</span></div>
+                    <div style="color: var(--text-muted);">1h 23m</div>
+                </div>
+                <div class="flow-row">
+                    <div class="flow-service"><span class="flow-icon">📹</span><span>Zoom</span></div>
+                    <div style="font-family: monospace; font-size: 12px;">192.168.1.115</div>
+                    <div style="color: #2d8cff; font-weight: 600;">3.2 Mbps</div>
+                    <div><span class="quality-badge quality-hd">HD</span></div>
+                    <div style="color: var(--text-muted);">32m</div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">📡 Protocoles détectés</div>
+                <div class="protocol-grid">
+                    <div class="protocol-card">
+                        <div class="protocol-name">HLS</div>
+                        <div class="protocol-desc">HTTP Live Streaming</div>
+                        <div class="protocol-ports">Pattern: *.m3u8</div>
+                    </div>
+                    <div class="protocol-card">
+                        <div class="protocol-name">DASH</div>
+                        <div class="protocol-desc">Dynamic Adaptive Streaming</div>
+                        <div class="protocol-ports">Pattern: *.mpd</div>
+                    </div>
+                    <div class="protocol-card">
+                        <div class="protocol-name">RTSP</div>
+                        <div class="protocol-desc">Real Time Streaming Protocol</div>
+                        <div class="protocol-ports">Ports: 554, 8554</div>
+                    </div>
+                    <div class="protocol-card">
+                        <div class="protocol-name">RTP</div>
+                        <div class="protocol-desc">Real-time Transport Protocol</div>
+                        <div class="protocol-ports">Ports: 16384-32767</div>
+                    </div>
+                    <div class="protocol-card">
+                        <div class="protocol-name">WebRTC</div>
+                        <div class="protocol-desc">Web Real-Time Communication</div>
+                        <div class="protocol-ports">STUN/TURN</div>
+                    </div>
+                    <div class="protocol-card">
+                        <div class="protocol-name">QUIC</div>
+                        <div class="protocol-desc">Quick UDP Connections</div>
+                        <div class="protocol-ports">Port: 443/UDP</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function randomBw(min, max) { return (Math.random() * (max - min) + min).toFixed(1); }
+        setInterval(() => {
+            document.getElementById('netflix-bw').textContent = randomBw(15, 30) + ' Mbps';
+            document.getElementById('youtube-bw').textContent = randomBw(10, 25) + ' Mbps';
+            document.getElementById('twitch-bw').textContent = randomBw(5, 15) + ' Mbps';
+            document.getElementById('zoom-bw').textContent = randomBw(2, 5) + ' Mbps';
+            document.getElementById('teams-bw').textContent = randomBw(2, 4) + ' Mbps';
+            document.getElementById('disney-bw').textContent = randomBw(10, 20) + ' Mbps';
+            document.getElementById('total-bw').textContent = randomBw(60, 95);
+            document.getElementById('active-flows').textContent = 10 + Math.floor(Math.random() * 8);
+        }, 2000);
+    </script>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

@@ -1,0 +1,1723 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuBox - Suite de Sécurité pour OpenWrt | CyberMind</title>
+    <meta name="description" content="SecuBox est une suite complète de sécurité et gestion réseau pour OpenWrt. QoS, Authentification, Détection Médias, VPN, et plus encore.">
+    <meta name="keywords" content="OpenWrt, sécurité, QoS, VPN, firewall, routeur, LuCI, CrowdSec, WireGuard">
+    <meta property="og:title" content="SecuBox - Suite de Sécurité pour OpenWrt">
+    <meta property="og:description" content="Transformez votre routeur OpenWrt en centre de sécurité intelligent">
+    <meta property="og:image" content="https://cybermind.fr/images/secubox-og.png">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #22d3ee;
+            --accent: #f59e0b;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --dark: #0f172a;
+            --darker: #020617;
+            --card: #1e293b;
+            --card-hover: #334155;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --border: #334155;
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html { scroll-behavior: smooth; }
+        
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--darker);
+            color: var(--text);
+            line-height: 1.6;
+        }
+        
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+            z-index: 1000;
+            padding: 16px 0;
+        }
+        
+        .nav-container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text);
+            font-weight: 700;
+            font-size: 20px;
+        }
+        
+        .logo-icon {
+            font-size: 28px;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 32px;
+            list-style: none;
+        }
+        
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+        
+        .nav-cta {
+            background: var(--primary);
+            color: white;
+            padding: 10px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: background 0.2s, transform 0.2s;
+        }
+        
+        .nav-cta:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+        
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 120px 24px 80px;
+            background: 
+                radial-gradient(ellipse at top, rgba(99, 102, 241, 0.15), transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(34, 211, 238, 0.1), transparent 50%),
+                var(--darker);
+        }
+        
+        .hero-content {
+            max-width: 900px;
+        }
+        
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 14px;
+            color: var(--primary);
+            margin-bottom: 24px;
+        }
+        
+        .hero h1 {
+            font-size: clamp(40px, 8vw, 72px);
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, var(--text), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .hero p {
+            font-size: 20px;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto 40px;
+        }
+        
+        .hero-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 16px;
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 30px rgba(99, 102, 241, 0.5);
+        }
+        
+        .btn-secondary {
+            background: var(--card);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--card-hover);
+            border-color: var(--primary);
+        }
+        
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            max-width: 900px;
+            margin: 60px auto 0;
+        }
+        
+        .stat {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--secondary);
+        }
+        
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        
+        /* Section Styles */
+        section {
+            padding: 100px 24px;
+        }
+        
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+        
+        .section-header {
+            text-align: center;
+            max-width: 700px;
+            margin: 0 auto 60px;
+        }
+        
+        .section-tag {
+            display: inline-block;
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--primary);
+            padding: 6px 16px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        
+        .section-header h2 {
+            font-size: 40px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+        
+        .section-header p {
+            color: var(--text-muted);
+            font-size: 18px;
+        }
+        
+        /* Modules Grid */
+        .modules-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 24px;
+        }
+        
+        .module-card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 32px;
+            border: 1px solid var(--border);
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .module-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--module-color, var(--primary));
+        }
+        
+        .module-card:hover {
+            transform: translateY(-8px);
+            border-color: var(--module-color, var(--primary));
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+        
+        .module-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        
+        .module-card h3 {
+            font-size: 22px;
+            margin-bottom: 8px;
+        }
+        
+        .module-card p {
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+        
+        .module-features {
+            list-style: none;
+            margin-bottom: 24px;
+        }
+        
+        .module-features li {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        
+        .module-features li::before {
+            content: '✓';
+            color: var(--success);
+            font-weight: bold;
+        }
+
+        .module-progress {
+            margin-bottom: 20px;
+        }
+
+        .module-progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(148, 163, 184, 0.2);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .module-progress-fill {
+            height: 100%;
+            width: 0;
+            background: linear-gradient(90deg, var(--module-color, var(--primary)), var(--secondary));
+            border-radius: 999px;
+            transition: width 0.8s ease-out;
+        }
+
+        .module-progress-label {
+            margin-top: 6px;
+            font-size: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted);
+            text-align: right;
+        }
+
+        .module-demo-sticker {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+        
+        .module-links {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .module-link {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        
+        .module-link-demo {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--primary);
+        }
+        
+        .module-link-demo:hover {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .module-link-github {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+        }
+        
+        .module-link-github:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text);
+        }
+        
+        /* Features Section */
+        .features-section {
+            background: var(--dark);
+        }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+        }
+        
+        .feature-card {
+            padding: 32px;
+            background: var(--card);
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+        
+        .feature-icon {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin: 0 auto 20px;
+        }
+        
+        .feature-card h3 {
+            margin-bottom: 12px;
+            font-size: 20px;
+        }
+        
+        .feature-card p {
+            color: var(--text-muted);
+            font-size: 15px;
+        }
+        
+        /* Demo Section */
+        .demo-section {
+            background: 
+                radial-gradient(ellipse at center, rgba(99, 102, 241, 0.1), transparent 70%),
+                var(--darker);
+        }
+        
+        .demo-container {
+            background: var(--card);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.4);
+        }
+        
+        .demo-header {
+            background: var(--dark);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .demo-dots {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .demo-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        
+        .demo-dot:nth-child(1) { background: #ef4444; }
+        .demo-dot:nth-child(2) { background: #f59e0b; }
+        .demo-dot:nth-child(3) { background: #22c55e; }
+        
+        .demo-title {
+            flex: 1;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        
+        .demo-content {
+            padding: 32px;
+            min-height: 500px;
+        }
+        
+        .demo-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        
+        .demo-tab {
+            padding: 10px 20px;
+            background: var(--dark);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+        
+        .demo-tab:hover, .demo-tab.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+        
+        .demo-panel {
+            display: none;
+        }
+        
+        .demo-panel.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Installation Section */
+        .install-section {
+            background: var(--dark);
+        }
+        
+        .install-steps {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+            margin-bottom: 48px;
+        }
+        
+        .install-step {
+            text-align: center;
+            padding: 32px;
+        }
+        
+        .step-number {
+            width: 48px;
+            height: 48px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+            margin: 0 auto 20px;
+        }
+        
+        .install-step h3 {
+            margin-bottom: 12px;
+        }
+        
+        .install-step p {
+            color: var(--text-muted);
+        }
+        
+        .code-block {
+            background: var(--darker);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+        
+        .code-block .comment {
+            color: #6b7280;
+        }
+        
+        .code-block .command {
+            color: var(--secondary);
+        }
+        
+        /* Blog Section */
+        .blog-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+        
+        .blog-card {
+            background: var(--card);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            transition: all 0.3s;
+            text-decoration: none;
+            color: var(--text);
+        }
+        
+        .blog-card:hover {
+            transform: translateY(-8px);
+            border-color: var(--primary);
+        }
+        
+        .blog-image {
+            height: 200px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 64px;
+        }
+        
+        .blog-content {
+            padding: 24px;
+        }
+        
+        .blog-tag {
+            display: inline-block;
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--primary);
+            padding: 4px 12px;
+            border-radius: 50px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+        
+        .blog-card h3 {
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+        
+        .blog-card p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        
+        /* CTA Section */
+        .cta-section {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            text-align: center;
+        }
+        
+        .cta-section h2 {
+            font-size: 40px;
+            margin-bottom: 16px;
+        }
+        
+        .cta-section p {
+            opacity: 0.9;
+            margin-bottom: 32px;
+            font-size: 18px;
+        }
+        
+        .cta-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+        }
+        
+        .cta-buttons .btn {
+            background: white;
+            color: var(--primary-dark);
+        }
+        
+        .cta-buttons .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        .cta-buttons .btn-outline {
+            background: transparent;
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+        }
+        
+        .cta-buttons .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: white;
+        }
+        
+        /* Footer */
+        footer {
+            background: var(--darker);
+            border-top: 1px solid var(--border);
+            padding: 60px 24px 30px;
+        }
+        
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 2fr repeat(3, 1fr);
+            gap: 48px;
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+        
+        .footer-brand p {
+            color: var(--text-muted);
+            margin-top: 16px;
+            font-size: 14px;
+        }
+        
+        .footer-links h4 {
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+        
+        .footer-links ul {
+            list-style: none;
+        }
+        
+        .footer-links li {
+            margin-bottom: 12px;
+        }
+        
+        .footer-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.2s;
+        }
+        
+        .footer-links a:hover {
+            color: var(--primary);
+        }
+        
+        .footer-bottom {
+            max-width: 1280px;
+            margin: 48px auto 0;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        
+        .social-links {
+            display: flex;
+            gap: 16px;
+        }
+        
+        .social-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        
+        .social-links a:hover {
+            color: var(--primary);
+        }
+        
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .features-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .install-steps {
+                grid-template-columns: 1fr;
+            }
+            
+            .blog-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .footer-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+            
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .modules-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .hero-buttons {
+                flex-direction: column;
+            }
+            
+            .cta-buttons {
+                flex-direction: column;
+            }
+            
+            .footer-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .footer-bottom {
+                flex-direction: column;
+                gap: 16px;
+                text-align: center;
+            }
+        }
+        
+        /* Animations */
+        .animate-float {
+            animation: float 6s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        .animate-pulse {
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-container">
+            <a href="#" class="logo">
+                <span class="logo-icon">🛡️</span>
+                <span>SecuBox</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#modules" data-i18n="nav.modules">Modules</a></li>
+                <li><a href="#features" data-i18n="nav.features">Fonctionnalités</a></li>
+                <li><a href="#demo" data-i18n="nav.demo">Démo</a></li>
+                <li><a href="#installation" data-i18n="nav.installation">Installation</a></li>
+                <li><a href="#blog" data-i18n="nav.blog">Blog</a></li>
+            </ul>
+            <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="nav-cta" data-i18n="nav.github">
+                GitHub ↗
+            </a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <div class="hero-badge">
+                <span class="animate-pulse">●</span>
+                <span data-i18n="hero.badge">Heavy Development Stage</span>
+            </div>
+            <h1>Sécurisez, automatisez et déployez des apps en un clic</h1>
+            <p>
+                SecuBox 2025 ajoute l’App Store (Zigbee2MQTT, Lyrion, Domoticz), le wizard de premiers pas,
+                le mode réseau DMZ et les profils prêts à l’emploi pour OpenWrt 24.10.
+            </p>
+            <div class="hero-buttons">
+                <a href="#demo" class="btn btn-primary" data-i18n="hero.btnDemo">
+                    🎮 Voir la démo
+                </a>
+                <a href="#installation" class="btn btn-secondary" data-i18n="hero.btnInstall">
+                    📥 Installation
+                </a>
+            </div>
+            
+            <div class="stats">
+            <div class="stat">
+                    <div class="stat-value">20</div>
+                    <div class="stat-label">Modules & Apps</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">9</div>
+                    <div class="stat-label" data-i18n="hero.statsArchs">Architectures</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">100%</div>
+                    <div class="stat-label" data-i18n="hero.statsOpenSource">Open Source</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">24.10+</div>
+                    <div class="stat-label">OpenWrt</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Modules Section -->
+    <section id="modules">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag" data-i18n="modules.tag">📦 Modules</span>
+                <h2 data-i18n="modules.title">20 modules &amp; apps pour tous vos besoins</h2>
+                <p data-i18n="modules.subtitle">De la sécurité au monitoring, en passant par la gestion de bande passante et l'authentification.</p>
+            </div>
+            
+                        <div class="modules-grid">
+                <!-- Bandwidth Manager -->
+                <div class="module-card" style="--module-color: #a855f7;">
+                    <div class="module-icon">⚡</div>
+                    <h3 data-i18n="modules.bandwidth.name">Bandwidth Manager</h3>
+                    <p data-i18n="modules.bandwidth.description">Gestion avancée de la bande passante avec QoS, quotas et détection automatique des médias.</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.bandwidth.features[0]">8 niveaux de priorité QoS</li>
+                        <li data-i18n="modules.bandwidth.features[1]">Quotas journaliers/mensuels</li>
+                        <li data-i18n="modules.bandwidth.features[2]">Throttling automatique</li>
+                        <li data-i18n="modules.bandwidth.features[3]">Détection VoIP, Gaming, Streaming</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:22%;"></div>
+                        </div>
+                        <div class="module-progress-label">v0.2.2 · 0.22 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-bandwidth.html</div>
+                    <div class="module-links">
+                        <a href="demo-bandwidth.html" class="module-link module-link-demo" data-i18n="modules.bandwidth.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.bandwidth.github">GitHub</a>
+                    </div>
+                </div>
+                
+                <!-- Auth Guardian -->
+                <div class="module-card" style="--module-color: #06b6d4;">
+                    <div class="module-icon">🔐</div>
+                    <h3 data-i18n="modules.auth.name">Auth Guardian</h3>
+                    <p data-i18n="modules.auth.description">Authentification complète avec portail captif, OAuth et système de vouchers.</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.auth.features[0]">Portail captif personnalisable</li>
+                        <li data-i18n="modules.auth.features[1]">OAuth2 (Google, GitHub...)</li>
+                        <li data-i18n="modules.auth.features[2]">Système de vouchers</li>
+                        <li data-i18n="modules.auth.features[3]">Gestion des sessions/cookies</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                        <div class="module-progress-fill" style="width:22%;"></div>
+                    </div>
+                    <div class="module-progress-label">v0.2.2 · 0.22 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-auth.html</div>
+                    <div class="module-links">
+                        <a href="demo-auth.html" class="module-link module-link-demo" data-i18n="modules.auth.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.auth.github">GitHub</a>
+                    </div>
+                </div>
+                
+                <!-- Media Flow -->
+                <div class="module-card" style="--module-color: #ef4444;">
+                    <div class="module-icon">🎬</div>
+                    <h3 data-i18n="modules.media.name">Media Flow</h3>
+                    <p data-i18n="modules.media.description">Détection et monitoring des flux multimédia en temps réel.</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.media.features[0]">Détection Netflix, YouTube, Twitch</li>
+                        <li data-i18n="modules.media.features[1]">Protocoles RTSP, HLS, DASH</li>
+                        <li data-i18n="modules.media.features[2]">Monitoring VoIP (Zoom, Teams)</li>
+                        <li data-i18n="modules.media.features[3]">Qualité de flux (SD/HD/4K)</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:22%;"></div>
+                        </div>
+                        <div class="module-progress-label">v0.2.2 · 0.22 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-media.html</div>
+                    <div class="module-links">
+                        <a href="demo-media.html" class="module-link module-link-demo" data-i18n="modules.media.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.media.github">GitHub</a>
+                    </div>
+                </div>
+                
+                <!-- VHost Manager -->
+                <div class="module-card" style="--module-color: #10b981;">
+                    <div class="module-icon">🌐</div>
+                    <h3 data-i18n="modules.vhost.name">VHost Manager</h3>
+                    <p data-i18n="modules.vhost.description">Virtual hosts et gateway pour services SaaS locaux.</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.vhost.features[0]">Nextcloud, GitLab, Jellyfin</li>
+                        <li data-i18n="modules.vhost.features[1]">Redirection services externes</li>
+                        <li data-i18n="modules.vhost.features[2]">SSL Let's Encrypt automatique</li>
+                        <li data-i18n="modules.vhost.features[3]">Reverse proxy nginx</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:22%;"></div>
+                        </div>
+                        <div class="module-progress-label">v0.2.2 · 0.22 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-vhost.html</div>
+                    <div class="module-links">
+                        <a href="demo-vhost.html" class="module-link module-link-demo" data-i18n="modules.vhost.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.vhost.github">GitHub</a>
+                    </div>
+                </div>
+                
+                <!-- CrowdSec -->
+                <div class="module-card" style="--module-color: #6366f1;">
+                    <div class="module-icon">🛡️</div>
+                    <h3 data-i18n="modules.crowdsec.name">CrowdSec Dashboard</h3>
+                    <p data-i18n="modules.crowdsec.description">Protection collaborative contre les intrusions avec intelligence collective.</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.crowdsec.features[0]">Détection d'intrusion temps réel</li>
+                        <li data-i18n="modules.crowdsec.features[1]">Blocage automatique</li>
+                        <li data-i18n="modules.crowdsec.features[2]">Partage communautaire</li>
+                        <li data-i18n="modules.crowdsec.features[3]">Tableau de bord intégré</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:22%;"></div>
+                        </div>
+                        <div class="module-progress-label">v0.2.2 · 0.22 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-crowdsec.html</div>
+                    <div class="module-links">
+                        <a href="demo-crowdsec.html" class="module-link module-link-demo" data-i18n="modules.crowdsec.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.crowdsec.github">GitHub</a>
+                    </div>
+                </div>
+                
+                <!-- WireGuard -->
+                <div class="module-card" style="--module-color: #88171a;">
+                    <div class="module-icon">🔒</div>
+                    <h3 data-i18n="modules.wireguard.name">WireGuard Dashboard</h3>
+                    <p data-i18n="modules.wireguard.description">VPN moderne avec gestion simplifiée des peers et QR codes.</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.wireguard.features[0]">Configuration simplifiée</li>
+                        <li data-i18n="modules.wireguard.features[1]">QR codes pour mobile</li>
+                        <li data-i18n="modules.wireguard.features[2]">Statistiques par peer</li>
+                        <li data-i18n="modules.wireguard.features[3]">Multi-tunnels</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:22%;"></div>
+                        </div>
+                        <div class="module-progress-label">v0.2.2 · 0.22 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-wireguard.html</div>
+                    <div class="module-links">
+                        <a href="demo-wireguard.html" class="module-link module-link-demo" data-i18n="modules.wireguard.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.wireguard.github">GitHub</a>
+                    </div>
+                </div>
+                
+                <!-- Netdata -->
+                <div class="module-card" style="--module-color: #00ab44;">
+                    <div class="module-icon">📊</div>
+                    <h3 data-i18n="modules.netdata.name">Netdata Dashboard</h3>
+                    <p data-i18n="modules.netdata.description">Monitoring système en temps réel avec alertes intelligentes.</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.netdata.features[0]">Graphiques temps réel</li>
+                        <li data-i18n="modules.netdata.features[1]">CPU, RAM, Disque, Réseau</li>
+                        <li data-i18n="modules.netdata.features[2]">Alertes configurables</li>
+                        <li data-i18n="modules.netdata.features[3]">Historique des métriques</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:22%;"></div>
+                        </div>
+                        <div class="module-progress-label">v0.2.2 · 0.22 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-netdata.html</div>
+                    <div class="module-links">
+                        <a href="demo-netdata.html" class="module-link module-link-demo" data-i18n="modules.netdata.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.netdata.github">GitHub</a>
+                    </div>
+                </div>
+                
+                <!-- Netifyd -->
+                <div class="module-card" style="--module-color: #0891b2;">
+                    <div class="module-icon">🔍</div>
+                    <h3 data-i18n="modules.netifyd.name">Netifyd Dashboard</h3>
+                    <p data-i18n="modules.netifyd.description">Analyse DPI du trafic pour identifier applications et protocoles.</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.netifyd.features[0]">Deep Packet Inspection</li>
+                        <li data-i18n="modules.netifyd.features[1]">Identification applications</li>
+                        <li data-i18n="modules.netifyd.features[2]">Catégorisation protocoles</li>
+                        <li data-i18n="modules.netifyd.features[3]">Statistiques détaillées</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:22%;"></div>
+                        </div>
+                        <div class="module-progress-label">v0.2.2 · 0.22 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-netifyd.html</div>
+                    <div class="module-links">
+                        <a href="demo-netifyd.html" class="module-link module-link-demo" data-i18n="modules.netifyd.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.netifyd.github">GitHub</a>
+                    </div>
+                </div>
+                
+                <!-- Client Guardian -->
+                <div class="module-card" style="--module-color: #f97316;">
+                    <div class="module-icon">👥</div>
+                    <h3 data-i18n="modules.clientGuardian.name">Client Guardian</h3>
+                    <p data-i18n="modules.clientGuardian.description">Contrôle d'accès et gestion des clients réseau.</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.clientGuardian.features[0]">Liste blanche/noire</li>
+                        <li data-i18n="modules.clientGuardian.features[1]">Restrictions horaires</li>
+                        <li data-i18n="modules.clientGuardian.features[2]">Limitations bande passante</li>
+                        <li data-i18n="modules.clientGuardian.features[3]">Monitoring temps réel</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:22%;"></div>
+                        </div>
+                        <div class="module-progress-label">v0.2.2 · 0.22 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-client-guardian.html</div>
+                    <div class="module-links">
+                        <a href="demo-client-guardian.html" class="module-link module-link-demo" data-i18n="modules.clientGuardian.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.clientGuardian.github">GitHub</a>
+                    </div>
+                </div>
+                
+                <!-- Network Modes -->
+                <div class="module-card" style="--module-color: #8b5cf6;">
+                    <div class="module-icon">🌐</div>
+                    <h3 data-i18n="modules.networkModes.name">Network Modes</h3>
+                    <p data-i18n="modules.networkModes.description">Configuration réseau simplifiée : NAT, Bridge, AP...</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.networkModes.features[0]">Modes préconfigurés</li>
+                        <li data-i18n="modules.networkModes.features[1]">Basculement facile</li>
+                        <li data-i18n="modules.networkModes.features[2]">Templates réseau</li>
+                        <li data-i18n="modules.networkModes.features[3]">Multi-WAN</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:35%;"></div>
+                        </div>
+                        <div class="module-progress-label">v0.3.5 · 0.35 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-network-modes.html</div>
+                    <div class="module-links">
+                        <a href="demo-network-modes.html" class="module-link module-link-demo" data-i18n="modules.networkModes.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.networkModes.github">GitHub</a>
+                    </div>
+                </div>
+                
+                <!-- Traffic Shaper -->
+                <div class="module-card" style="--module-color: #14b8a6;">
+                    <div class="module-icon">🚦</div>
+                    <h3 data-i18n="modules.trafficShaper.name">Traffic Shaper</h3>
+                    <p data-i18n="modules.trafficShaper.description">Contrôle avancé du trafic avec CAKE et anti-bufferbloat.</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.trafficShaper.features[0]">CAKE QoS</li>
+                        <li data-i18n="modules.trafficShaper.features[1]">Anti-bufferbloat</li>
+                        <li data-i18n="modules.trafficShaper.features[2]">Gestion congestion</li>
+                        <li data-i18n="modules.trafficShaper.features[3]">Priorisation intelligente</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:22%;"></div>
+                        </div>
+                        <div class="module-progress-label">v0.2.2 · 0.22 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-traffic-shaper.html</div>
+                    <div class="module-links">
+                        <a href="demo-traffic-shaper.html" class="module-link module-link-demo" data-i18n="modules.trafficShaper.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.trafficShaper.github">GitHub</a>
+                    </div>
+                </div>
+                
+                <!-- CDN Cache -->
+                <div class="module-card" style="--module-color: #ec4899;">
+                    <div class="module-icon">💾</div>
+                    <h3 data-i18n="modules.cdnCache.name">CDN Cache</h3>
+                    <p data-i18n="modules.cdnCache.description">Cache local pour économiser la bande passante.</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.cdnCache.features[0]">Cache Steam, Windows Update</li>
+                        <li data-i18n="modules.cdnCache.features[1]">Économie bande passante</li>
+                        <li data-i18n="modules.cdnCache.features[2]">Transparent proxy</li>
+                        <li data-i18n="modules.cdnCache.features[3]">Statistiques cache</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:22%;"></div>
+                        </div>
+                        <div class="module-progress-label">v0.2.2 · 0.22 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-cdn-cache.html</div>
+                    <div class="module-links">
+                        <a href="demo-cdn-cache.html" class="module-link module-link-demo" data-i18n="modules.cdnCache.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.cdnCache.github">GitHub</a>
+                    </div>
+                </div>
+                
+                <!-- SecuBox Hub -->
+                <div class="module-card" style="--module-color: #6366f1;">
+                    <div class="module-icon">🛡️</div>
+                    <h3 data-i18n="modules.secuboxHub.name">SecuBox Hub</h3>
+                    <p data-i18n="modules.secuboxHub.description">Centre de contrôle unifié pour tous les modules.</p>
+                    <ul class="module-features">
+                        <li data-i18n="modules.secuboxHub.features[0]">Dashboard centralisé</li>
+                        <li data-i18n="modules.secuboxHub.features[1]">Gestion modules</li>
+                        <li data-i18n="modules.secuboxHub.features[2]">Notifications globales</li>
+                        <li data-i18n="modules.secuboxHub.features[3]">Vue d'ensemble</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:31%;"></div>
+                        </div>
+                        <div class="module-progress-label">v0.3.1 · 0.31 / 1.00</div>
+                    </div>
+                    <div class="module-demo-sticker">🎬 demo-secubox-hub.html</div>
+                    <div class="module-links">
+                        <a href="demo-secubox-hub.html" class="module-link module-link-demo" data-i18n="modules.secuboxHub.demo">Démo</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github" data-i18n="modules.secuboxHub.github">GitHub</a>
+                    </div>
+                </div>
+
+                <!-- SecuBox App Store -->
+                <div class="module-card" style="--module-color: #0ea5e9;">
+                    <div class="module-icon">🛒</div>
+                    <h3>SecuBox App Store & Wizard</h3>
+                    <p>Manifestes Docker/LXC, wizard de premiers pas, profils (Home/Lab/Hardened/DMZ) et CLI `secubox-app` pour installer Zigbee2MQTT, Lyrion, Domoticz…</p>
+                    <ul class="module-features">
+                        <li>Installeurs Docker prêts à l’emploi (Zigbee2MQTT, Lyrion, Domoticz)</li>
+                        <li>Wizard 1<sup>ère</sup> mise en route (password, timezone, DMZ)</li>
+                        <li>Profils OS-like (home, lab, hardened, gateway DMZ)</li>
+                        <li>Manifestes JSON + CLI scriptable</li>
+                    </ul>
+                    <div class="module-progress">
+                        <div class="module-progress-bar">
+                            <div class="module-progress-fill" style="width:75%;"></div>
+                        </div>
+                        <div class="module-progress-label">v1.0 · 0.75 / 1.00</div>
+                    </div>
+                    <div class="module-links">
+                        <a href="https://github.com/gkerma/secubox-openwrt/blob/master/DOCS/embedded/app-store.md" class="module-link module-link-demo">Documentation</a>
+                        <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="module-link module-link-github">GitHub</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features-section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag" data-i18n="features.tag">✨ Fonctionnalités</span>
+                <h2 data-i18n="features.title">Pourquoi choisir SecuBox ?</h2>
+                <p data-i18n="features.subtitle">Une solution complète, open source et conçue pour OpenWrt.</p>
+            </div>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🚀</div>
+                    <h3>Wizard &amp; Profils</h3>
+                    <p>Assistant de premiers pas (mot de passe, fuseau horaire, stockage, DMZ) et profils prêts à l’emploi (home, lab, hardened, gateway DMZ).</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔧</div>
+                    <h3>App Store Docker/LXC</h3>
+                    <p>Manifestes JSON + CLI `secubox-app` pour déployer Zigbee2MQTT, Lyrion, Domoticz, ainsi que vos propres images.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3 data-i18n="features.realtime.title">Temps réel</h3>
+                    <p data-i18n="features.realtime.description">Monitoring et statistiques en temps réel via RPCD et ubus.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h3 data-i18n="features.security.title">Sécurité renforcée</h3>
+                    <p data-i18n="features.security.description">CrowdSec, WireGuard, authentification OAuth et portail captif.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3 data-i18n="features.performance.title">Performance</h3>
+                    <p data-i18n="features.performance.description">QoS avancé avec CAKE, détection médias et priorités automatiques.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🌍</div>
+                    <h3 data-i18n="features.multiarch.title">Multi-architecture</h3>
+                    <p data-i18n="features.multiarch.description">x86_64, ARM64, ARM32. Fonctionne sur tous les routeurs OpenWrt.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Demo Section -->
+    <section id="demo" class="demo-section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag" data-i18n="demo.tag">🎮 Démonstration</span>
+                <h2 data-i18n="demo.title">Découvrez SecuBox en action</h2>
+                <p data-i18n="demo.subtitle">Interface interactive sans installation.</p>
+            </div>
+            
+            <div class="demo-container">
+                <div class="demo-header">
+                    <div class="demo-dots">
+                        <div class="demo-dot"></div>
+                        <div class="demo-dot"></div>
+                        <div class="demo-dot"></div>
+                    </div>
+                    <div class="demo-title">SecuBox Dashboard - OpenWrt LuCI</div>
+                </div>
+                <div class="demo-content">
+                    <div class="demo-tabs">
+                        <button class="demo-tab active" onclick="showDemo('dashboard')">🏠 Dashboard</button>
+                        <button class="demo-tab" onclick="showDemo('bandwidth')">⚡ Bandwidth</button>
+                        <button class="demo-tab" onclick="showDemo('auth')">🔐 Auth</button>
+                        <button class="demo-tab" onclick="showDemo('media')">🎬 Media</button>
+                        <button class="demo-tab" onclick="showDemo('vhost')">🌐 VHost</button>
+                    </div>
+                    
+                    <div id="demo-dashboard" class="demo-panel active">
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px; text-align: center;">
+                                <div style="font-size: 32px; font-weight: 700; color: var(--secondary);">13</div>
+                                <div style="color: var(--text-muted); font-size: 14px;">Modules</div>
+                            </div>
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px; text-align: center;">
+                                <div style="font-size: 32px; font-weight: 700; color: var(--success);">9</div>
+                                <div style="color: var(--text-muted); font-size: 14px;">Actifs</div>
+                            </div>
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px; text-align: center;">
+                                <div style="font-size: 32px; font-weight: 700; color: var(--primary);">12</div>
+                                <div style="color: var(--text-muted); font-size: 14px;">Clients</div>
+                            </div>
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px; text-align: center;">
+                                <div style="font-size: 32px; font-weight: 700; color: var(--accent);" id="demo-mem">34%</div>
+                                <div style="color: var(--text-muted); font-size: 14px;">Mémoire</div>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px;">
+                                <h4 style="margin-bottom: 16px; color: var(--text);">🔒 Sécurité</h4>
+                                <div style="display: flex; flex-direction: column; gap: 8px;">
+                                    <div style="display: flex; justify-content: space-between; padding: 8px; background: var(--card); border-radius: 6px;">
+                                        <span>CrowdSec</span><span style="color: var(--success);">✓ Actif</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding: 8px; background: var(--card); border-radius: 6px;">
+                                        <span>WireGuard</span><span style="color: var(--success);">✓ 3 peers</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding: 8px; background: var(--card); border-radius: 6px;">
+                                        <span>Auth Guardian</span><span style="color: var(--success);">✓ Actif</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px;">
+                                <h4 style="margin-bottom: 16px; color: var(--text);">🌐 Réseau</h4>
+                                <div style="display: flex; flex-direction: column; gap: 8px;">
+                                    <div style="display: flex; justify-content: space-between; padding: 8px; background: var(--card); border-radius: 6px;">
+                                        <span>Bandwidth</span><span style="color: var(--secondary);" id="demo-bw">↓ 45 Mbps</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding: 8px; background: var(--card); border-radius: 6px;">
+                                        <span>Media Flow</span><span style="color: var(--danger);">🎬 4 streams</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; padding: 8px; background: var(--card); border-radius: 6px;">
+                                        <span>VHost</span><span style="color: var(--success);">✓ 4 services</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="demo-bandwidth" class="demo-panel">
+                        <h3 style="margin-bottom: 20px;">⚡ QoS Classes</h3>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div style="display: flex; align-items: center; gap: 16px; padding: 12px; background: var(--dark); border-radius: 8px;">
+                                <span style="width: 100px; font-weight: 600;">Real-time</span>
+                                <span style="padding: 4px 8px; background: #a855f720; color: #a855f7; border-radius: 4px; font-size: 12px;">P1</span>
+                                <div style="flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
+                                    <div style="width: 30%; height: 100%; background: linear-gradient(90deg, #7c3aed, #a855f7);"></div>
+                                </div>
+                                <span style="color: var(--text-muted); font-size: 13px;">30%</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 16px; padding: 12px; background: var(--dark); border-radius: 8px;">
+                                <span style="width: 100px; font-weight: 600;">Interactive</span>
+                                <span style="padding: 4px 8px; background: #f59e0b20; color: #f59e0b; border-radius: 4px; font-size: 12px;">P2</span>
+                                <div style="flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
+                                    <div style="width: 20%; height: 100%; background: linear-gradient(90deg, #f59e0b, #fbbf24);"></div>
+                                </div>
+                                <span style="color: var(--text-muted); font-size: 13px;">20%</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 16px; padding: 12px; background: var(--dark); border-radius: 8px;">
+                                <span style="width: 100px; font-weight: 600;">Streaming</span>
+                                <span style="padding: 4px 8px; background: #ef444420; color: #ef4444; border-radius: 4px; font-size: 12px;">P3</span>
+                                <div style="flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
+                                    <div style="width: 25%; height: 100%; background: linear-gradient(90deg, #ef4444, #f87171);"></div>
+                                </div>
+                                <span style="color: var(--text-muted); font-size: 13px;">25%</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 16px; padding: 12px; background: var(--dark); border-radius: 8px;">
+                                <span style="width: 100px; font-weight: 600;">Bulk</span>
+                                <span style="padding: 4px 8px; background: #64748b20; color: #64748b; border-radius: 4px; font-size: 12px;">P6</span>
+                                <div style="flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;">
+                                    <div style="width: 5%; height: 100%; background: linear-gradient(90deg, #64748b, #94a3b8);"></div>
+                                </div>
+                                <span style="color: var(--text-muted); font-size: 13px;">5%</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="demo-auth" class="demo-panel">
+                        <h3 style="margin-bottom: 20px;">🔐 Sessions actives</h3>
+                        <div style="background: var(--dark); padding: 16px; border-radius: 12px;">
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr style="border-bottom: 1px solid var(--border);">
+                                    <th style="padding: 12px; text-align: left;">Client</th>
+                                    <th style="padding: 12px;">IP</th>
+                                    <th style="padding: 12px;">Auth</th>
+                                    <th style="padding: 12px;">Durée</th>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px;">iPhone-Alice</td>
+                                    <td style="padding: 12px; text-align: center; font-family: monospace;">192.168.1.101</td>
+                                    <td style="padding: 12px; text-align: center;"><span style="padding: 4px 8px; background: #3b82f620; color: #3b82f6; border-radius: 4px; font-size: 12px;">Google</span></td>
+                                    <td style="padding: 12px; text-align: center; color: var(--text-muted);">2h 34m</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px;">MacBook-Bob</td>
+                                    <td style="padding: 12px; text-align: center; font-family: monospace;">192.168.1.105</td>
+                                    <td style="padding: 12px; text-align: center;"><span style="padding: 4px 8px; background: #22c55e20; color: #22c55e; border-radius: 4px; font-size: 12px;">Voucher</span></td>
+                                    <td style="padding: 12px; text-align: center; color: var(--text-muted);">45m</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px;">Android-Guest</td>
+                                    <td style="padding: 12px; text-align: center; font-family: monospace;">192.168.1.112</td>
+                                    <td style="padding: 12px; text-align: center;"><span style="padding: 4px 8px; background: #f59e0b20; color: #f59e0b; border-radius: 4px; font-size: 12px;">Splash</span></td>
+                                    <td style="padding: 12px; text-align: center; color: var(--text-muted);">12m</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div id="demo-media" class="demo-panel">
+                        <h3 style="margin-bottom: 20px;">🎬 Flux détectés</h3>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid #e50914;">
+                                <div style="font-size: 32px; margin-bottom: 8px;">📺</div>
+                                <div style="font-weight: 600;">Netflix</div>
+                                <div style="color: #e50914; font-weight: 700; margin-top: 8px;" id="demo-netflix">12.4 MB/s</div>
+                            </div>
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid #ff0000;">
+                                <div style="font-size: 32px; margin-bottom: 8px;">▶️</div>
+                                <div style="font-weight: 600;">YouTube</div>
+                                <div style="color: #ff0000; font-weight: 700; margin-top: 8px;" id="demo-youtube">8.2 MB/s</div>
+                            </div>
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid #1db954;">
+                                <div style="font-size: 32px; margin-bottom: 8px;">🎵</div>
+                                <div style="font-weight: 600;">Spotify</div>
+                                <div style="color: #1db954; font-weight: 700; margin-top: 8px;">320 KB/s</div>
+                            </div>
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px; text-align: center; border-top: 4px solid #2d8cff;">
+                                <div style="font-size: 32px; margin-bottom: 8px;">📹</div>
+                                <div style="font-weight: 600;">Zoom</div>
+                                <div style="color: #2d8cff; font-weight: 700; margin-top: 8px;">1.8 MB/s</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="demo-vhost" class="demo-panel">
+                        <h3 style="margin-bottom: 20px;">🌐 Services locaux</h3>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px; border-left: 4px solid #0082c9;">
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                                    <span style="font-size: 32px;">☁️</span>
+                                    <div>
+                                        <div style="font-weight: 600; font-size: 18px;">Nextcloud</div>
+                                        <div style="color: var(--text-muted); font-size: 13px;">Cloud storage</div>
+                                    </div>
+                                </div>
+                                <div style="background: var(--card); padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px;">
+                                    <span style="color: var(--success);">🔒 https://</span>cloud.local.lan
+                                </div>
+                            </div>
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px; border-left: 4px solid #fc6d26;">
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                                    <span style="font-size: 32px;">💻</span>
+                                    <div>
+                                        <div style="font-weight: 600; font-size: 18px;">GitLab</div>
+                                        <div style="color: var(--text-muted); font-size: 13px;">Git repository</div>
+                                    </div>
+                                </div>
+                                <div style="background: var(--card); padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px;">
+                                    <span style="color: var(--success);">🔒 https://</span>git.local.lan
+                                </div>
+                            </div>
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px; border-left: 4px solid #00a4dc;">
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                                    <span style="font-size: 32px;">🎬</span>
+                                    <div>
+                                        <div style="font-weight: 600; font-size: 18px;">Jellyfin</div>
+                                        <div style="color: var(--text-muted); font-size: 13px;">Media server</div>
+                                    </div>
+                                </div>
+                                <div style="background: var(--card); padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px;">
+                                    <span style="color: var(--success);">🔒 https://</span>media.local.lan
+                                </div>
+                            </div>
+                            <div style="background: var(--dark); padding: 20px; border-radius: 12px; border-left: 4px solid #41bdf5;">
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                                    <span style="font-size: 32px;">🏠</span>
+                                    <div>
+                                        <div style="font-weight: 600; font-size: 18px;">Home Assistant</div>
+                                        <div style="color: var(--text-muted); font-size: 13px;">Home automation</div>
+                                    </div>
+                                </div>
+                                <div style="background: var(--card); padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px;">
+                                    <span style="color: var(--success);">🔒 https://</span>home.local.lan
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Installation Section -->
+    <section id="installation" class="install-section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag" data-i18n="installation.tag">📥 Installation</span>
+                <h2 data-i18n="installation.title">Prêt en 3 étapes</h2>
+                <p data-i18n="installation.subtitle">Installation simple via opkg, le gestionnaire de paquets OpenWrt.</p>
+            </div>
+
+            <div class="install-steps">
+                <div class="install-step">
+                    <div class="step-number">1</div>
+                    <h3 data-i18n="installation.step1.title">Ajouter le dépôt</h3>
+                    <p data-i18n="installation.step1.description">Ajoutez le dépôt CyberMind à votre configuration opkg.</p>
+                </div>
+                <div class="install-step">
+                    <div class="step-number">2</div>
+                    <h3 data-i18n="installation.step2.title">Mettre à jour</h3>
+                    <p data-i18n="installation.step2.description">Rafraîchissez la liste des paquets disponibles.</p>
+                </div>
+                <div class="install-step">
+                    <div class="step-number">3</div>
+                    <h3 data-i18n="installation.step3.title">Installer</h3>
+                    <p data-i18n="installation.step3.description">Installez SecuBox et les modules souhaités.</p>
+                </div>
+            </div>
+            
+            <div class="code-block">
+                <span class="comment"># Étape 1: Ajouter le dépôt (optionnel si vous utilisez les releases GitHub)</span><br>
+                <span class="command">echo "src/gz cybermind https://cybermind.fr/openwrt/packages" >> /etc/opkg/customfeeds.conf</span><br><br>
+                
+                <span class="comment"># Étape 2: Mettre à jour la liste des paquets</span><br>
+                <span class="command">opkg update</span><br><br>
+                
+                <span class="comment"># Étape 3: Installer SecuBox (hub principal)</span><br>
+                <span class="command">opkg install luci-app-secubox</span><br><br>
+                
+                <span class="comment"># Installer les modules souhaités</span><br>
+                <span class="command">opkg install luci-app-bandwidth-manager</span><br>
+                <span class="command">opkg install luci-app-auth-guardian</span><br>
+                <span class="command">opkg install luci-app-media-flow</span><br>
+                <span class="command">opkg install luci-app-vhost-manager</span><br>
+                <span class="command">opkg install luci-app-crowdsec-dashboard</span><br>
+                <span class="command">opkg install luci-app-wireguard-dashboard</span><br><br>
+                
+                <span class="comment"># Redémarrer l'interface</span><br>
+                <span class="command">/etc/init.d/rpcd reload && /etc/init.d/uhttpd restart</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Blog Section -->
+    <section id="blog">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag" data-i18n="blog.tag">📝 Blog</span>
+                <h2 data-i18n="blog.title">Articles & Tutoriels</h2>
+                <p data-i18n="blog.subtitle">Guides détaillés pour tirer le meilleur de SecuBox.</p>
+            </div>
+
+            <div class="blog-grid">
+                <a href="blog/bandwidth-manager-guide.html" class="blog-card">
+                    <div class="blog-image" style="background: linear-gradient(135deg, #7c3aed, #a855f7);">⚡</div>
+                    <div class="blog-content">
+                        <span class="blog-tag" data-i18n="blog.article1.tag">Tutorial</span>
+                        <h3 data-i18n="blog.article1.title">Optimiser sa bande passante avec Bandwidth Manager</h3>
+                        <p data-i18n="blog.article1.description">Guide complet pour configurer QoS, quotas et détection automatique des médias.</p>
+                    </div>
+                </a>
+                <a href="blog/auth-guardian-setup.html" class="blog-card">
+                    <div class="blog-image" style="background: linear-gradient(135deg, #0891b2, #06b6d4);">🔐</div>
+                    <div class="blog-content">
+                        <span class="blog-tag" data-i18n="blog.article2.tag">Tutorial</span>
+                        <h3 data-i18n="blog.article2.title">Portail captif avec OAuth et vouchers</h3>
+                        <p data-i18n="blog.article2.description">Configurez un système d'authentification complet pour votre réseau WiFi.</p>
+                    </div>
+                </a>
+                <a href="blog/local-saas-vhost.html" class="blog-card">
+                    <div class="blog-image" style="background: linear-gradient(135deg, #059669, #10b981);">🌐</div>
+                    <div class="blog-content">
+                        <span class="blog-tag" data-i18n="blog.article3.tag">Tutorial</span>
+                        <h3 data-i18n="blog.article3.title">Héberger vos propres services SaaS</h3>
+                        <p data-i18n="blog.article3.description">Nextcloud, GitLab, Jellyfin : remplacez les services cloud par des alternatives locales.</p>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <div class="container">
+            <h2 data-i18n="cta.title">Prêt à sécuriser votre réseau ?</h2>
+            <p data-i18n="cta.subtitle">Rejoignez les utilisateurs qui font confiance à SecuBox pour protéger leur infrastructure.</p>
+            <div class="cta-buttons">
+                <a href="#installation" class="btn" data-i18n="cta.btnInstall">📥 Installer maintenant</a>
+                <a href="https://github.com/CyberMind-FR/secubox-openwrt" class="btn btn-outline" data-i18n="cta.btnGithub">⭐ Star sur GitHub</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-grid">
+            <div class="footer-brand">
+                <a href="#" class="logo">
+                    <span class="logo-icon">🛡️</span>
+                    <span>SecuBox</span>
+                </a>
+                <p data-i18n="footer.description">Suite de sécurité et gestion réseau pour OpenWrt. Développé par CyberMind.</p>
+            </div>
+            <div class="footer-links">
+                <h4 data-i18n="footer.product">Produit</h4>
+                <ul>
+                    <li><a href="#modules" data-i18n="nav.modules">Modules</a></li>
+                    <li><a href="#features" data-i18n="nav.features">Fonctionnalités</a></li>
+                    <li><a href="#demo" data-i18n="nav.demo">Démo</a></li>
+                    <li><a href="#installation" data-i18n="nav.installation">Installation</a></li>
+                </ul>
+            </div>
+            <div class="footer-links">
+                <h4 data-i18n="footer.resources">Ressources</h4>
+                <ul>
+                    <li><a href="https://docs.cybermind.fr/secubox" data-i18n="footer.documentation">Documentation</a></li>
+                    <li><a href="#blog" data-i18n="nav.blog">Blog</a></li>
+                    <li><a href="https://github.com/CyberMind-FR/secubox-openwrt/issues" data-i18n="footer.support">Support</a></li>
+                    <li><a href="https://github.com/CyberMind-FR/secubox-openwrt/releases" data-i18n="footer.releases">Releases</a></li>
+                </ul>
+            </div>
+            <div class="footer-links">
+                <h4>CyberMind</h4>
+                <ul>
+                    <li><a href="https://cybermind.fr">Site web</a></li>
+                    <li><a href="https://cybermind.fr/services">Services</a></li>
+                    <li><a href="https://cybermind.fr/contact">Contact</a></li>
+                    <li><a href="https://cybermind.fr/about">À propos</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <div>
+                <a href="https://cybermood.eu" style="color: var(--primary); text-decoration: none;">CyberMood.eu</a>
+                © 2025 <a href="https://cybermind.fr" style="color: var(--text-muted); text-decoration: none;">CyberMind.fr</a>
+                — Open Source Apache-2.0 — 🇫🇷 Made in France with ❤️
+            </div>
+            <div class="social-links">
+                <a href="https://github.com/CyberMind-FR/secubox-openwrt">GitHub</a>
+                <a href="https://twitter.com/cybermind_fr">Twitter</a>
+                <a href="https://linkedin.com/company/cybermind-fr">LinkedIn</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Demo tabs
+        function showDemo(panel) {
+            document.querySelectorAll('.demo-panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.demo-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('demo-' + panel).classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        // Live stats simulation
+        function updateDemoStats() {
+            document.getElementById('demo-mem').textContent = (30 + Math.random() * 20).toFixed(0) + '%';
+            document.getElementById('demo-bw').textContent = '↓ ' + (40 + Math.random() * 20).toFixed(0) + ' Mbps';
+            document.getElementById('demo-netflix').textContent = (10 + Math.random() * 5).toFixed(1) + ' MB/s';
+            document.getElementById('demo-youtube').textContent = (5 + Math.random() * 5).toFixed(1) + ' MB/s';
+        }
+        setInterval(updateDemoStats, 2000);
+        
+        // Smooth scroll for nav links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+        
+        // Nav background on scroll
+        window.addEventListener('scroll', () => {
+            const nav = document.querySelector('nav');
+            if (window.scrollY > 100) {
+                nav.style.background = 'rgba(2, 6, 23, 0.98)';
+            } else {
+                nav.style.background = 'rgba(15, 23, 42, 0.95)';
+            }
+        });
+    </script>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

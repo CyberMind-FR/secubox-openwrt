@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Development Status - SecuBox</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --sb-bg: #0a0a12;
+            --sb-bg-secondary: #0f1019;
+            --sb-bg-card: #1a1a24;
+            --sb-border: #2a2a3a;
+            --sb-text: #f1f5f9;
+            --sb-text-muted: #94a3b8;
+            --sb-text-dim: #64748b;
+            --sb-green: #10b981;
+            --sb-cyan: #06b6d4;
+            --sb-blue: #3b82f6;
+            --sb-purple: #8b5cf6;
+            --sb-orange: #f97316;
+            --sb-red: #ef4444;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--sb-bg);
+            color: var(--sb-text);
+            line-height: 1.6;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .page-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .page-title {
+            font-size: 48px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #10b981, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 16px;
+        }
+
+        .page-subtitle {
+            color: var(--sb-text-muted);
+            font-size: 18px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--sb-cyan);
+            text-decoration: none;
+            font-weight: 600;
+            margin-bottom: 24px;
+            transition: all 0.2s;
+        }
+
+        .back-link:hover {
+            transform: translateX(-4px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="campaign.html" class="back-link">← Retour à la campagne</a>
+
+        <div class="page-header">
+            <h1 class="page-title">Development Status</h1>
+            <p class="page-subtitle">Suivez la progression en temps réel du développement de SecuBox</p>
+        </div>
+
+        <!-- Widget Container -->
+        <div id="dev-status-widget"></div>
+    </div>
+
+    <!-- Load Widget Script -->
+    <script src="./dev-status-widget.js"></script>
+</body>
+</html>

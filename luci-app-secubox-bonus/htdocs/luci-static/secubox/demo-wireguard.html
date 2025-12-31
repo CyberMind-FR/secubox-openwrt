@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WireGuard Dashboard - Démo | SecuBox</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
+    <style>
+        :root { --primary: #88171a; --primary-light: #b91c1c; --success: #22c55e; --warning: #f59e0b; --dark: #0f172a; --darker: #020617; --card: #1e293b; --text: #f1f5f9; --text-muted: #94a3b8; --border: #334155; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: var(--darker); color: var(--text); min-height: 100vh; }
+        .header { background: linear-gradient(135deg, var(--primary), var(--primary-light)); padding: 40px 24px; text-align: center; }
+        .header h1 { font-size: 36px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 18px; }
+        .back-link { position: absolute; top: 20px; left: 20px; color: white; text-decoration: none; opacity: 0.8; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+        
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: var(--card); padding: 24px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+        .stat-value { font-size: 32px; font-weight: 700; color: var(--primary-light); }
+        .stat-label { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+        
+        .interface-card { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); margin-bottom: 24px; }
+        .interface-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+        .interface-name { font-size: 24px; font-weight: 700; display: flex; align-items: center; gap: 12px; }
+        .interface-status { padding: 8px 16px; border-radius: 8px; font-weight: 600; background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .interface-details { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px; }
+        .detail-item { background: var(--dark); padding: 16px; border-radius: 10px; }
+        .detail-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+        .detail-value { font-family: monospace; font-size: 14px; word-break: break-all; }
+        
+        .peers-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .peer-card { background: var(--dark); border-radius: 12px; padding: 20px; margin-bottom: 16px; display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; }
+        .peer-info { display: flex; align-items: center; gap: 16px; }
+        .peer-avatar { width: 48px; height: 48px; background: var(--border); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+        .peer-name { font-weight: 600; font-size: 16px; margin-bottom: 4px; }
+        .peer-ip { font-family: monospace; font-size: 13px; color: var(--text-muted); }
+        .peer-stats { display: flex; gap: 24px; }
+        .peer-stat { text-align: center; }
+        .peer-stat-value { font-size: 18px; font-weight: 700; }
+        .peer-stat-label { font-size: 11px; color: var(--text-muted); }
+        .peer-status { display: flex; align-items: center; gap: 8px; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .status-online { background: var(--success); box-shadow: 0 0 8px var(--success); }
+        .status-offline { background: var(--text-muted); }
+        .peer-actions { display: flex; gap: 8px; }
+        .peer-btn { padding: 8px 16px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .btn-qr { background: var(--card); color: var(--text); }
+        .btn-qr:hover { background: var(--border); }
+        .btn-config { background: var(--primary); color: white; }
+        .btn-config:hover { background: var(--primary-light); }
+        
+        .qr-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); align-items: center; justify-content: center; z-index: 1000; }
+        .qr-modal.active { display: flex; }
+        .qr-content { background: var(--card); padding: 32px; border-radius: 20px; text-align: center; max-width: 400px; }
+        .qr-code { width: 200px; height: 200px; background: white; margin: 20px auto; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 100px; }
+        .qr-title { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+        .qr-subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 20px; }
+        .qr-close { padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        
+        .add-peer-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 16px; background: var(--primary); border: none; border-radius: 12px; color: white; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .add-peer-btn:hover { background: var(--primary-light); transform: translateY(-2px); }
+        
+        @media (max-width: 768px) { .stats-row { grid-template-columns: repeat(2, 1fr); } .interface-details { grid-template-columns: 1fr; } .peer-card { grid-template-columns: 1fr; } .peer-stats { justify-content: center; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+        <h1>🔒 WireGuard Dashboard</h1>
+        <p>VPN moderne avec gestion des peers</p>
+    </div>
+    
+    <div class="container">
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--success);">✓</div>
+                <div class="stat-label">Tunnel actif</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">5</div>
+                <div class="stat-label">Peers configurés</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--success);">3</div>
+                <div class="stat-label">Peers en ligne</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="total-transfer">24.7 GB</div>
+                <div class="stat-label">Trafic total</div>
+            </div>
+        </div>
+        
+        <div class="interface-card">
+            <div class="interface-header">
+                <div class="interface-name">
+                    <span>🔐</span>
+                    <span>wg0</span>
+                </div>
+                <div class="interface-status">● Actif</div>
+            </div>
+            
+            <div class="interface-details">
+                <div class="detail-item">
+                    <div class="detail-label">Clé publique</div>
+                    <div class="detail-value">gN65BkI...K7W8=</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Adresse</div>
+                    <div class="detail-value">10.0.0.1/24</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Port d'écoute</div>
+                    <div class="detail-value">51820/UDP</div>
+                </div>
+            </div>
+            
+            <div class="peers-title">👥 Peers</div>
+            
+            <div class="peer-card">
+                <div style="display: flex; align-items: center; gap: 20px;">
+                    <div class="peer-info">
+                        <div class="peer-avatar">📱</div>
+                        <div>
+                            <div class="peer-name">iPhone - Alice</div>
+                            <div class="peer-ip">10.0.0.2/32</div>
+                        </div>
+                    </div>
+                    <div class="peer-status">
+                        <div class="status-dot status-online"></div>
+                        <span style="color: var(--success); font-size: 13px;">En ligne</span>
+                    </div>
+                    <div class="peer-stats">
+                        <div class="peer-stat">
+                            <div class="peer-stat-value" style="color: var(--success);">↓ 2.4 GB</div>
+                            <div class="peer-stat-label">Reçu</div>
+                        </div>
+                        <div class="peer-stat">
+                            <div class="peer-stat-value" style="color: var(--primary-light);">↑ 1.1 GB</div>
+                            <div class="peer-stat-label">Envoyé</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="peer-actions">
+                    <button class="peer-btn btn-qr" onclick="showQR('iPhone - Alice')">📱 QR Code</button>
+                    <button class="peer-btn btn-config">⚙️ Config</button>
+                </div>
+            </div>
+            
+            <div class="peer-card">
+                <div style="display: flex; align-items: center; gap: 20px;">
+                    <div class="peer-info">
+                        <div class="peer-avatar">💻</div>
+                        <div>
+                            <div class="peer-name">MacBook - Bureau</div>
+                            <div class="peer-ip">10.0.0.3/32</div>
+                        </div>
+                    </div>
+                    <div class="peer-status">
+                        <div class="status-dot status-online"></div>
+                        <span style="color: var(--success); font-size: 13px;">En ligne</span>
+                    </div>
+                    <div class="peer-stats">
+                        <div class="peer-stat">
+                            <div class="peer-stat-value" style="color: var(--success);">↓ 8.7 GB</div>
+                            <div class="peer-stat-label">Reçu</div>
+                        </div>
+                        <div class="peer-stat">
+                            <div class="peer-stat-value" style="color: var(--primary-light);">↑ 3.2 GB</div>
+                            <div class="peer-stat-label">Envoyé</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="peer-actions">
+                    <button class="peer-btn btn-qr" onclick="showQR('MacBook - Bureau')">📱 QR Code</button>
+                    <button class="peer-btn btn-config">⚙️ Config</button>
+                </div>
+            </div>
+            
+            <div class="peer-card">
+                <div style="display: flex; align-items: center; gap: 20px;">
+                    <div class="peer-info">
+                        <div class="peer-avatar">🖥️</div>
+                        <div>
+                            <div class="peer-name">Serveur - Backup</div>
+                            <div class="peer-ip">10.0.0.4/32</div>
+                        </div>
+                    </div>
+                    <div class="peer-status">
+                        <div class="status-dot status-online"></div>
+                        <span style="color: var(--success); font-size: 13px;">En ligne</span>
+                    </div>
+                    <div class="peer-stats">
+                        <div class="peer-stat">
+                            <div class="peer-stat-value" style="color: var(--success);">↓ 5.2 GB</div>
+                            <div class="peer-stat-label">Reçu</div>
+                        </div>
+                        <div class="peer-stat">
+                            <div class="peer-stat-value" style="color: var(--primary-light);">↑ 2.8 GB</div>
+                            <div class="peer-stat-label">Envoyé</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="peer-actions">
+                    <button class="peer-btn btn-qr" onclick="showQR('Serveur - Backup')">📱 QR Code</button>
+                    <button class="peer-btn btn-config">⚙️ Config</button>
+                </div>
+            </div>
+            
+            <div class="peer-card" style="opacity: 0.6;">
+                <div style="display: flex; align-items: center; gap: 20px;">
+                    <div class="peer-info">
+                        <div class="peer-avatar">📱</div>
+                        <div>
+                            <div class="peer-name">Android - Bob</div>
+                            <div class="peer-ip">10.0.0.5/32</div>
+                        </div>
+                    </div>
+                    <div class="peer-status">
+                        <div class="status-dot status-offline"></div>
+                        <span style="color: var(--text-muted); font-size: 13px;">Hors ligne</span>
+                    </div>
+                    <div class="peer-stats">
+                        <div class="peer-stat">
+                            <div class="peer-stat-value" style="color: var(--text-muted);">↓ 1.2 GB</div>
+                            <div class="peer-stat-label">Reçu</div>
+                        </div>
+                        <div class="peer-stat">
+                            <div class="peer-stat-value" style="color: var(--text-muted);">↑ 0.4 GB</div>
+                            <div class="peer-stat-label">Envoyé</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="peer-actions">
+                    <button class="peer-btn btn-qr" onclick="showQR('Android - Bob')">📱 QR Code</button>
+                    <button class="peer-btn btn-config">⚙️ Config</button>
+                </div>
+            </div>
+            
+            <button class="add-peer-btn">➕ Ajouter un peer</button>
+        </div>
+    </div>
+    
+    <div class="qr-modal" id="qr-modal" onclick="closeQR()">
+        <div class="qr-content" onclick="event.stopPropagation()">
+            <div class="qr-title" id="qr-peer-name">Peer</div>
+            <div class="qr-subtitle">Scannez ce QR code avec l'app WireGuard</div>
+            <div class="qr-code">📱</div>
+            <button class="qr-close" onclick="closeQR()">Fermer</button>
+        </div>
+    </div>
+    
+    <script>
+        function showQR(peerName) {
+            document.getElementById('qr-peer-name').textContent = peerName;
+            document.getElementById('qr-modal').classList.add('active');
+        }
+        function closeQR() {
+            document.getElementById('qr-modal').classList.remove('active');
+        }
+    </script>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

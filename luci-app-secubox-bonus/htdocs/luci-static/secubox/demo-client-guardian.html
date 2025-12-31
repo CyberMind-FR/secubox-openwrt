@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Guardian - Démo | SecuBox</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👥</text></svg>">
+    <style>
+        :root { --primary: #f97316; --primary-dark: #ea580c; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --dark: #0f172a; --darker: #020617; --card: #1e293b; --text: #f1f5f9; --text-muted: #94a3b8; --border: #334155; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: var(--darker); color: var(--text); min-height: 100vh; }
+        .header { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); padding: 40px 24px; text-align: center; }
+        .header h1 { font-size: 36px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 18px; }
+        .back-link { position: absolute; top: 20px; left: 20px; color: white; text-decoration: none; opacity: 0.8; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+        
+        .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: var(--card); padding: 20px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+        .stat-value { font-size: 28px; font-weight: 700; }
+        .stat-label { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+        
+        .clients-section { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); margin-bottom: 24px; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .section-title { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+        .search-box { display: flex; gap: 12px; }
+        .search-input { padding: 10px 16px; background: var(--dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; width: 250px; }
+        .filter-btn { padding: 10px 16px; background: var(--dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); cursor: pointer; font-size: 14px; }
+        .filter-btn:hover { border-color: var(--primary); color: var(--primary); }
+        
+        .client-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+        .client-card { background: var(--dark); border-radius: 12px; padding: 20px; border: 1px solid var(--border); transition: all 0.2s; }
+        .client-card:hover { border-color: var(--primary); }
+        .client-card.blocked { opacity: 0.6; border-color: var(--danger); }
+        .client-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+        .client-avatar { width: 48px; height: 48px; background: var(--card); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+        .client-info { flex: 1; }
+        .client-name { font-weight: 600; font-size: 16px; margin-bottom: 2px; }
+        .client-mac { font-family: monospace; font-size: 12px; color: var(--text-muted); }
+        .client-status { width: 10px; height: 10px; border-radius: 50%; }
+        .status-online { background: var(--success); box-shadow: 0 0 8px var(--success); }
+        .status-offline { background: var(--text-muted); }
+        
+        .client-details { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
+        .detail-item { font-size: 13px; }
+        .detail-label { color: var(--text-muted); }
+        .detail-value { font-weight: 600; }
+        
+        .client-actions { display: flex; gap: 8px; }
+        .action-btn { flex: 1; padding: 10px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .btn-block { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+        .btn-block:hover { background: var(--danger); color: white; }
+        .btn-limit { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        .btn-limit:hover { background: var(--warning); color: var(--dark); }
+        .btn-trust { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .btn-trust:hover { background: var(--success); color: white; }
+        
+        .rules-section { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); }
+        .rule-row { display: grid; grid-template-columns: 200px 1fr 150px 100px 100px; gap: 16px; padding: 16px; background: var(--dark); border-radius: 10px; margin-bottom: 12px; align-items: center; }
+        .rule-row.header { background: transparent; font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+        .rule-target { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+        .rule-action { padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+        .action-allow { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .action-block { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+        .action-limit { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        
+        .toggle { position: relative; width: 44px; height: 24px; background: var(--border); border-radius: 12px; cursor: pointer; transition: all 0.2s; }
+        .toggle.active { background: var(--success); }
+        .toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: all 0.2s; }
+        .toggle.active::after { left: 22px; }
+        
+        .schedule-badge { font-size: 11px; padding: 4px 8px; background: var(--card); border-radius: 4px; color: var(--text-muted); }
+        
+        @media (max-width: 1024px) { .stats-row { grid-template-columns: repeat(3, 1fr); } .client-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 768px) { .stats-row { grid-template-columns: repeat(2, 1fr); } .rule-row { grid-template-columns: 1fr; gap: 8px; } .search-box { flex-direction: column; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+        <h1>👥 Client Guardian</h1>
+        <p>Contrôle d'accès et gestion des clients</p>
+    </div>
+    
+    <div class="container">
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--success);">12</div>
+                <div class="stat-label">Clients en ligne</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--text-muted);">5</div>
+                <div class="stat-label">Hors ligne</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--danger);">2</div>
+                <div class="stat-label">Bloqués</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--warning);">3</div>
+                <div class="stat-label">Limités</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--primary);">8</div>
+                <div class="stat-label">Règles actives</div>
+            </div>
+        </div>
+        
+        <div class="clients-section">
+            <div class="section-header">
+                <div class="section-title">📱 Clients connectés</div>
+                <div class="search-box">
+                    <input type="text" class="search-input" placeholder="🔍 Rechercher un client...">
+                    <button class="filter-btn">Tous</button>
+                    <button class="filter-btn">En ligne</button>
+                    <button class="filter-btn">Bloqués</button>
+                </div>
+            </div>
+            
+            <div class="client-grid">
+                <div class="client-card">
+                    <div class="client-header">
+                        <div class="client-avatar">📱</div>
+                        <div class="client-info">
+                            <div class="client-name">iPhone-Alice</div>
+                            <div class="client-mac">AA:BB:CC:11:22:33</div>
+                        </div>
+                        <div class="client-status status-online"></div>
+                    </div>
+                    <div class="client-details">
+                        <div class="detail-item"><span class="detail-label">IP:</span> <span class="detail-value">192.168.1.101</span></div>
+                        <div class="detail-item"><span class="detail-label">Groupe:</span> <span class="detail-value">Famille</span></div>
+                        <div class="detail-item"><span class="detail-label">Download:</span> <span class="detail-value" style="color: var(--success);">24.3 MB/s</span></div>
+                        <div class="detail-item"><span class="detail-label">Connexion:</span> <span class="detail-value">2h 34m</span></div>
+                    </div>
+                    <div class="client-actions">
+                        <button class="action-btn btn-block">🚫 Bloquer</button>
+                        <button class="action-btn btn-limit">⏱️ Limiter</button>
+                        <button class="action-btn btn-trust">✓ Trust</button>
+                    </div>
+                </div>
+                
+                <div class="client-card">
+                    <div class="client-header">
+                        <div class="client-avatar">💻</div>
+                        <div class="client-info">
+                            <div class="client-name">MacBook-Bob</div>
+                            <div class="client-mac">DD:EE:FF:44:55:66</div>
+                        </div>
+                        <div class="client-status status-online"></div>
+                    </div>
+                    <div class="client-details">
+                        <div class="detail-item"><span class="detail-label">IP:</span> <span class="detail-value">192.168.1.105</span></div>
+                        <div class="detail-item"><span class="detail-label">Groupe:</span> <span class="detail-value">Bureau</span></div>
+                        <div class="detail-item"><span class="detail-label">Download:</span> <span class="detail-value" style="color: var(--success);">45.1 MB/s</span></div>
+                        <div class="detail-item"><span class="detail-label">Connexion:</span> <span class="detail-value">5h 12m</span></div>
+                    </div>
+                    <div class="client-actions">
+                        <button class="action-btn btn-block">🚫 Bloquer</button>
+                        <button class="action-btn btn-limit">⏱️ Limiter</button>
+                        <button class="action-btn btn-trust" style="background: var(--success); color: white;">✓ Trusted</button>
+                    </div>
+                </div>
+                
+                <div class="client-card">
+                    <div class="client-header">
+                        <div class="client-avatar">🎮</div>
+                        <div class="client-info">
+                            <div class="client-name">PS5-Gaming</div>
+                            <div class="client-mac">77:88:99:AA:BB:CC</div>
+                        </div>
+                        <div class="client-status status-online"></div>
+                    </div>
+                    <div class="client-details">
+                        <div class="detail-item"><span class="detail-label">IP:</span> <span class="detail-value">192.168.1.110</span></div>
+                        <div class="detail-item"><span class="detail-label">Groupe:</span> <span class="detail-value">Enfants</span></div>
+                        <div class="detail-item"><span class="detail-label">Download:</span> <span class="detail-value" style="color: var(--warning);">5 MB/s</span></div>
+                        <div class="detail-item"><span class="detail-label">Quota:</span> <span class="detail-value" style="color: var(--warning);">92%</span></div>
+                    </div>
+                    <div class="client-actions">
+                        <button class="action-btn btn-block">🚫 Bloquer</button>
+                        <button class="action-btn btn-limit" style="background: var(--warning); color: var(--dark);">⏱️ Limité</button>
+                        <button class="action-btn btn-trust">✓ Trust</button>
+                    </div>
+                </div>
+                
+                <div class="client-card blocked">
+                    <div class="client-header">
+                        <div class="client-avatar">❓</div>
+                        <div class="client-info">
+                            <div class="client-name">Unknown-Device</div>
+                            <div class="client-mac">XX:XX:XX:XX:XX:XX</div>
+                        </div>
+                        <div class="client-status status-offline"></div>
+                    </div>
+                    <div class="client-details">
+                        <div class="detail-item"><span class="detail-label">IP:</span> <span class="detail-value">—</span></div>
+                        <div class="detail-item"><span class="detail-label">Groupe:</span> <span class="detail-value" style="color: var(--danger);">Bloqué</span></div>
+                        <div class="detail-item"><span class="detail-label">Tentatives:</span> <span class="detail-value">47</span></div>
+                        <div class="detail-item"><span class="detail-label">Dernière:</span> <span class="detail-value">Il y a 2h</span></div>
+                    </div>
+                    <div class="client-actions">
+                        <button class="action-btn btn-block" style="background: var(--danger); color: white;">🚫 Bloqué</button>
+                        <button class="action-btn btn-limit">⏱️ Limiter</button>
+                        <button class="action-btn btn-trust">✓ Débloquer</button>
+                    </div>
+                </div>
+                
+                <div class="client-card">
+                    <div class="client-header">
+                        <div class="client-avatar">📺</div>
+                        <div class="client-info">
+                            <div class="client-name">Smart-TV</div>
+                            <div class="client-mac">11:22:33:DD:EE:FF</div>
+                        </div>
+                        <div class="client-status status-online"></div>
+                    </div>
+                    <div class="client-details">
+                        <div class="detail-item"><span class="detail-label">IP:</span> <span class="detail-value">192.168.1.120</span></div>
+                        <div class="detail-item"><span class="detail-label">Groupe:</span> <span class="detail-value">IoT</span></div>
+                        <div class="detail-item"><span class="detail-label">Download:</span> <span class="detail-value" style="color: var(--success);">18.5 MB/s</span></div>
+                        <div class="detail-item"><span class="detail-label">Service:</span> <span class="detail-value">Netflix</span></div>
+                    </div>
+                    <div class="client-actions">
+                        <button class="action-btn btn-block">🚫 Bloquer</button>
+                        <button class="action-btn btn-limit">⏱️ Limiter</button>
+                        <button class="action-btn btn-trust">✓ Trust</button>
+                    </div>
+                </div>
+                
+                <div class="client-card">
+                    <div class="client-header">
+                        <div class="client-avatar">🏠</div>
+                        <div class="client-info">
+                            <div class="client-name">Home-Assistant</div>
+                            <div class="client-mac">AA:11:BB:22:CC:33</div>
+                        </div>
+                        <div class="client-status status-online"></div>
+                    </div>
+                    <div class="client-details">
+                        <div class="detail-item"><span class="detail-label">IP:</span> <span class="detail-value">192.168.1.50</span></div>
+                        <div class="detail-item"><span class="detail-label">Groupe:</span> <span class="detail-value">Serveurs</span></div>
+                        <div class="detail-item"><span class="detail-label">Download:</span> <span class="detail-value">0.2 MB/s</span></div>
+                        <div class="detail-item"><span class="detail-label">Uptime:</span> <span class="detail-value">14 jours</span></div>
+                    </div>
+                    <div class="client-actions">
+                        <button class="action-btn btn-block">🚫 Bloquer</button>
+                        <button class="action-btn btn-limit">⏱️ Limiter</button>
+                        <button class="action-btn btn-trust" style="background: var(--success); color: white;">✓ Trusted</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="rules-section">
+            <div class="section-title">📋 Règles d'accès</div>
+            
+            <div class="rule-row header">
+                <div>Cible</div>
+                <div>Description</div>
+                <div>Horaire</div>
+                <div>Action</div>
+                <div>Actif</div>
+            </div>
+            
+            <div class="rule-row">
+                <div class="rule-target">👶 Groupe: Enfants</div>
+                <div style="color: var(--text-muted);">Bloquer après 21h en semaine</div>
+                <div><span class="schedule-badge">Lun-Ven 21:00-07:00</span></div>
+                <div><span class="rule-action action-block">Bloquer</span></div>
+                <div><div class="toggle active"></div></div>
+            </div>
+            
+            <div class="rule-row">
+                <div class="rule-target">🎮 PS5-Gaming</div>
+                <div style="color: var(--text-muted);">Limiter à 10 Mbps pendant travail</div>
+                <div><span class="schedule-badge">Lun-Ven 09:00-17:00</span></div>
+                <div><span class="rule-action action-limit">Limiter</span></div>
+                <div><div class="toggle active"></div></div>
+            </div>
+            
+            <div class="rule-row">
+                <div class="rule-target">🌐 Groupe: IoT</div>
+                <div style="color: var(--text-muted);">Bloquer accès Internet (local only)</div>
+                <div><span class="schedule-badge">Toujours</span></div>
+                <div><span class="rule-action action-block">Bloquer WAN</span></div>
+                <div><div class="toggle"></div></div>
+            </div>
+            
+            <div class="rule-row">
+                <div class="rule-target">👥 Groupe: Invités</div>
+                <div style="color: var(--text-muted);">Limiter à 5 Mbps, isoler du LAN</div>
+                <div><span class="schedule-badge">Toujours</span></div>
+                <div><span class="rule-action action-limit">Limiter</span></div>
+                <div><div class="toggle active"></div></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.querySelectorAll('.toggle').forEach(toggle => {
+            toggle.addEventListener('click', () => toggle.classList.toggle('active'));
+        });
+    </script>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

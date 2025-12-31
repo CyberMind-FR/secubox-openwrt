@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VHost Manager - Démo Interactive | SecuBox</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
+    <style>
+        :root {
+            --primary: #10b981;
+            --primary-dark: #059669;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #0f172a;
+            --darker: #020617;
+            --card: #1e293b;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --border: #334155;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: var(--darker); color: var(--text); min-height: 100vh; }
+        .header { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); padding: 40px 24px; text-align: center; }
+        .header h1 { font-size: 36px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 18px; }
+        .back-link { position: absolute; top: 20px; left: 20px; color: white; text-decoration: none; opacity: 0.8; }
+        .back-link:hover { opacity: 1; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+        
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: var(--card); padding: 24px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+        .stat-value { font-size: 28px; font-weight: 700; color: var(--primary); }
+        .stat-label { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+        
+        .services-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 32px; }
+        .service-card { background: var(--card); padding: 24px; border-radius: 16px; border-left: 4px solid; transition: all 0.2s; }
+        .service-card:hover { transform: translateY(-4px); box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .service-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+        .service-icon { font-size: 40px; }
+        .service-name { font-size: 20px; font-weight: 600; }
+        .service-desc { font-size: 13px; color: var(--text-muted); }
+        .service-url { background: var(--dark); padding: 12px 16px; border-radius: 10px; font-family: monospace; font-size: 14px; margin-top: 12px; display: flex; align-items: center; gap: 8px; }
+        .service-backend { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+        .service-status { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-online { background: var(--success); box-shadow: 0 0 8px var(--success); }
+        .status-offline { background: var(--danger); }
+        
+        .section { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); margin-bottom: 24px; }
+        .section-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+        
+        .redirect-card { background: var(--dark); padding: 20px; border-radius: 12px; margin-bottom: 16px; opacity: 0.7; }
+        .redirect-card.active { opacity: 1; border: 1px solid var(--warning); }
+        .redirect-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .redirect-name { font-weight: 600; font-size: 16px; }
+        .redirect-status { padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+        .redirect-enabled { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        .redirect-disabled { background: rgba(100, 116, 139, 0.2); color: var(--text-muted); }
+        .redirect-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
+        .redirect-flow { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--card); border-radius: 8px; }
+        .redirect-domain { font-family: monospace; font-size: 14px; }
+        .redirect-external { color: var(--danger); text-decoration: line-through; }
+        .redirect-local { color: var(--primary); }
+        .redirect-arrow { font-size: 20px; }
+        
+        .cert-table { width: 100%; }
+        .cert-row { display: grid; grid-template-columns: 1fr 150px 100px 100px; gap: 16px; padding: 14px; background: var(--dark); border-radius: 10px; margin-bottom: 10px; align-items: center; }
+        .cert-row.header { background: transparent; font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+        .cert-domain { font-family: monospace; }
+        .cert-expiry { font-size: 13px; }
+        .cert-status { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; text-align: center; }
+        .cert-valid { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .cert-expiring { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        
+        .toggle { position: relative; width: 48px; height: 26px; background: var(--border); border-radius: 13px; cursor: pointer; transition: all 0.2s; }
+        .toggle.active { background: var(--primary); }
+        .toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: all 0.2s; }
+        .toggle.active::after { left: 25px; }
+        
+        @media (max-width: 1024px) { .services-grid { grid-template-columns: 1fr; } .stats-row { grid-template-columns: repeat(2, 1fr); } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+        <h1>🌐 VHost Manager</h1>
+        <p>Virtual Hosts & SaaS Locaux</p>
+    </div>
+    
+    <div class="container">
+        <div class="stats-row">
+            <div class="stat-card"><div class="stat-value" style="color: var(--success);">✓</div><div class="stat-label">Nginx actif</div></div>
+            <div class="stat-card"><div class="stat-value">4</div><div class="stat-label">Services internes</div></div>
+            <div class="stat-card"><div class="stat-value">3</div><div class="stat-label">Redirections</div></div>
+            <div class="stat-card"><div class="stat-value">4</div><div class="stat-label">Certificats SSL</div></div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">🏠 Services internes</div>
+            <div class="services-grid">
+                <div class="service-card" style="border-color: #0082c9;">
+                    <div class="service-header">
+                        <div class="service-icon">☁️</div>
+                        <div>
+                            <div class="service-name">Nextcloud</div>
+                            <div class="service-desc">Stockage cloud auto-hébergé</div>
+                        </div>
+                    </div>
+                    <div class="service-url">
+                        <span style="color: var(--success);">🔒</span>
+                        <span style="color: var(--primary);">https://</span>cloud.local.lan
+                    </div>
+                    <div class="service-backend">→ Backend: 192.168.1.10:80</div>
+                    <div class="service-status"><div class="status-dot status-online"></div><span style="color: var(--success); font-size: 13px;">En ligne</span></div>
+                </div>
+                
+                <div class="service-card" style="border-color: #fc6d26;">
+                    <div class="service-header">
+                        <div class="service-icon">💻</div>
+                        <div>
+                            <div class="service-name">GitLab</div>
+                            <div class="service-desc">Dépôts Git auto-hébergés</div>
+                        </div>
+                    </div>
+                    <div class="service-url">
+                        <span style="color: var(--success);">🔒</span>
+                        <span style="color: var(--primary);">https://</span>git.local.lan
+                    </div>
+                    <div class="service-backend">→ Backend: 192.168.1.11:80</div>
+                    <div class="service-status"><div class="status-dot status-online"></div><span style="color: var(--success); font-size: 13px;">En ligne</span></div>
+                </div>
+                
+                <div class="service-card" style="border-color: #00a4dc;">
+                    <div class="service-header">
+                        <div class="service-icon">🎬</div>
+                        <div>
+                            <div class="service-name">Jellyfin</div>
+                            <div class="service-desc">Serveur de streaming média</div>
+                        </div>
+                    </div>
+                    <div class="service-url">
+                        <span style="color: var(--success);">🔒</span>
+                        <span style="color: var(--primary);">https://</span>media.local.lan
+                    </div>
+                    <div class="service-backend">→ Backend: 192.168.1.12:8096</div>
+                    <div class="service-status"><div class="status-dot status-online"></div><span style="color: var(--success); font-size: 13px;">En ligne</span></div>
+                </div>
+                
+                <div class="service-card" style="border-color: #41bdf5;">
+                    <div class="service-header">
+                        <div class="service-icon">🏠</div>
+                        <div>
+                            <div class="service-name">Home Assistant</div>
+                            <div class="service-desc">Domotique et automatisation</div>
+                        </div>
+                    </div>
+                    <div class="service-url">
+                        <span style="color: var(--success);">🔒</span>
+                        <span style="color: var(--primary);">https://</span>home.local.lan
+                    </div>
+                    <div class="service-backend">→ Backend: 192.168.1.13:8123</div>
+                    <div class="service-status"><div class="status-dot status-online"></div><span style="color: var(--success); font-size: 13px;">En ligne</span></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">↪️ Redirections externes</div>
+            
+            <div class="redirect-card">
+                <div class="redirect-header">
+                    <div class="redirect-name">Google Drive → Nextcloud</div>
+                    <div class="redirect-status redirect-disabled">Désactivé</div>
+                </div>
+                <div class="redirect-desc">Redirige le trafic Google Drive vers votre Nextcloud local</div>
+                <div class="redirect-flow">
+                    <span class="redirect-domain redirect-external">drive.google.com</span>
+                    <span class="redirect-arrow">→</span>
+                    <span class="redirect-domain redirect-local">cloud.local.lan</span>
+                </div>
+            </div>
+            
+            <div class="redirect-card">
+                <div class="redirect-header">
+                    <div class="redirect-name">GitHub → GitLab</div>
+                    <div class="redirect-status redirect-disabled">Désactivé</div>
+                </div>
+                <div class="redirect-desc">Redirige les requêtes GitHub vers GitLab local</div>
+                <div class="redirect-flow">
+                    <span class="redirect-domain redirect-external">github.com</span>
+                    <span class="redirect-arrow">→</span>
+                    <span class="redirect-domain redirect-local">git.local.lan</span>
+                </div>
+            </div>
+            
+            <div class="redirect-card">
+                <div class="redirect-header">
+                    <div class="redirect-name">YouTube → Jellyfin</div>
+                    <div class="redirect-status redirect-disabled">Désactivé</div>
+                </div>
+                <div class="redirect-desc">Redirige YouTube vers votre bibliothèque Jellyfin</div>
+                <div class="redirect-flow">
+                    <span class="redirect-domain redirect-external">youtube.com</span>
+                    <span class="redirect-arrow">→</span>
+                    <span class="redirect-domain redirect-local">media.local.lan</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">🔒 Certificats SSL</div>
+            
+            <div class="cert-row header">
+                <div>Domaine</div><div>Expiration</div><div>Fournisseur</div><div>Status</div>
+            </div>
+            
+            <div class="cert-row">
+                <div class="cert-domain">cloud.local.lan</div>
+                <div class="cert-expiry">15 Mars 2025</div>
+                <div style="color: var(--text-muted);">Let's Encrypt</div>
+                <div><span class="cert-status cert-valid">Valide</span></div>
+            </div>
+            
+            <div class="cert-row">
+                <div class="cert-domain">git.local.lan</div>
+                <div class="cert-expiry">15 Mars 2025</div>
+                <div style="color: var(--text-muted);">Let's Encrypt</div>
+                <div><span class="cert-status cert-valid">Valide</span></div>
+            </div>
+            
+            <div class="cert-row">
+                <div class="cert-domain">media.local.lan</div>
+                <div class="cert-expiry">28 Déc 2024</div>
+                <div style="color: var(--text-muted);">Let's Encrypt</div>
+                <div><span class="cert-status cert-expiring">Expire bientôt</span></div>
+            </div>
+            
+            <div class="cert-row">
+                <div class="cert-domain">home.local.lan</div>
+                <div class="cert-expiry">10 Fév 2025</div>
+                <div style="color: var(--text-muted);">Self-signed</div>
+                <div><span class="cert-status cert-valid">Valide</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

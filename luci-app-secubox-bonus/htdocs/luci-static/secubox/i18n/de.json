@@ -1,0 +1,297 @@
+{
+  "meta": {
+    "title": "SecuBox - Sicherheitssuite für OpenWrt | CyberMind",
+    "description": "SecuBox ist eine vollständige Sicherheits- und Netzwerkverwaltungssuite für OpenWrt. QoS, Authentifizierung, Medienerkennung, VPN und mehr.",
+    "keywords": "OpenWrt, Sicherheit, QoS, VPN, Firewall, Router, LuCI, CrowdSec, WireGuard"
+  },
+  "nav": {
+    "modules": "Module",
+    "features": "Funktionen",
+    "demo": "Demo",
+    "installation": "Installation",
+    "blog": "Blog",
+    "github": "GitHub ↗"
+  },
+  "hero": {
+    "badge": "Version 2.0 verfügbar",
+    "title": "Sichern Sie Ihr Netzwerk mit SecuBox",
+    "subtitle": "Vollständige Sicherheits- und Netzwerkverwaltungssuite für OpenWrt. 20 integrierte Module & Apps, um Ihren Router in ein intelligentes Kontrollzentrum zu verwandeln.",
+    "btnDemo": "🎮 Demo ansehen",
+    "btnInstall": "📥 Installation",
+    "statsModules": "Module",
+    "statsArchs": "Architekturen",
+    "statsOpenSource": "Open Source",
+    "statsOpenWrt": "OpenWrt"
+  },
+  "modules": {
+    "tag": "📦 Module",
+    "title": "20 Module & Apps für alle Ihre Bedürfnisse",
+    "subtitle": "Von Sicherheit bis Überwachung, einschließlich Bandbreitenverwaltung und Authentifizierung.",
+    "bandwidth": {
+      "name": "Bandwidth Manager",
+      "description": "Erweiterte Bandbreitenverwaltung mit QoS, Kontingenten und automatischer Medienerkennung.",
+      "features": [
+        "8 QoS-Prioritätsstufen",
+        "Tages-/Monatskontingente",
+        "Automatische Drosselung",
+        "VoIP-, Gaming-, Streaming-Erkennung"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "auth": {
+      "name": "Auth Guardian",
+      "description": "Vollständige Authentifizierung mit Captive Portal, OAuth und Voucher-System.",
+      "features": [
+        "Anpassbares Captive Portal",
+        "OAuth2 (Google, GitHub...)",
+        "Voucher-System",
+        "Sitzungs-/Cookie-Verwaltung"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "media": {
+      "name": "Media Flow",
+      "description": "Echtzeit-Erkennung und -Überwachung von Multimedia-Streams.",
+      "features": [
+        "Netflix, YouTube, Twitch-Erkennung",
+        "RTSP, HLS, DASH-Protokolle",
+        "VoIP-Überwachung (Zoom, Teams)",
+        "Stream-Qualität (SD/HD/4K)"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "vhost": {
+      "name": "VHost Manager",
+      "description": "Virtuelle Hosts und Gateway für lokale SaaS-Dienste.",
+      "features": [
+        "Nextcloud, GitLab, Jellyfin",
+        "Externe Dienst-Umleitung",
+        "Automatisches Let's Encrypt SSL",
+        "Nginx Reverse Proxy"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "crowdsec": {
+      "name": "CrowdSec Dashboard",
+      "description": "Kollaborativer Einbruchsschutz mit kollektiver Intelligenz.",
+      "features": [
+        "Echtzeit-Einbruchserkennung",
+        "Automatisches Blockieren",
+        "Community-Austausch",
+        "Integriertes Dashboard"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "wireguard": {
+      "name": "WireGuard Dashboard",
+      "description": "Modernes VPN mit vereinfachter Peer-Verwaltung und QR-Codes.",
+      "features": [
+        "Vereinfachte Konfiguration",
+        "QR-Codes für Mobilgeräte",
+        "Statistiken pro Peer",
+        "Multi-Tunnel"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "netdata": {
+      "name": "Netdata Dashboard",
+      "description": "Echtzeit-Systemüberwachung mit intelligenten Alarmen.",
+      "features": [
+        "Echtzeit-Diagramme",
+        "CPU, RAM, Festplatte, Netzwerk",
+        "Konfigurierbare Alarme",
+        "Metrik-Historie"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "netifyd": {
+      "name": "Netifyd Dashboard",
+      "description": "DPI-Verkehrsanalyse zur Identifizierung von Anwendungen und Protokollen.",
+      "features": [
+        "Deep Packet Inspection",
+        "Anwendungsidentifikation",
+        "Protokollkategorisierung",
+        "Detaillierte Statistiken"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "clientGuardian": {
+      "name": "Client Guardian",
+      "description": "Zugriffskontrolle und Netzwerk-Client-Verwaltung.",
+      "features": [
+        "Whitelist/Blacklist",
+        "Zeitbeschränkungen",
+        "Bandbreitenbeschränkungen",
+        "Echtzeit-Überwachung"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "networkModes": {
+      "name": "Network Modes",
+      "description": "Vereinfachte Netzwerkkonfiguration: NAT, Bridge, AP...",
+      "features": [
+        "Vorkonfigurierte Modi",
+        "Einfaches Umschalten",
+        "Netzwerkvorlagen",
+        "Multi-WAN"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "trafficShaper": {
+      "name": "Traffic Shaper",
+      "description": "Erweiterte Verkehrskontrolle mit CAKE und Anti-Bufferbloat.",
+      "features": [
+        "CAKE QoS",
+        "Anti-Bufferbloat",
+        "Staumanagement",
+        "Intelligente Priorisierung"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "cdnCache": {
+      "name": "CDN Cache",
+      "description": "Lokaler Cache zur Bandbreiteneinsparung.",
+      "features": [
+        "Steam, Windows Update Cache",
+        "Bandbreiteneinsparung",
+        "Transparenter Proxy",
+        "Cache-Statistiken"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    },
+    "secuboxHub": {
+      "name": "SecuBox Hub",
+      "description": "Einheitliches Kontrollzentrum für alle Module.",
+      "features": [
+        "Zentrales Dashboard",
+        "Modulverwaltung",
+        "Globale Benachrichtigungen",
+        "Übersicht"
+      ],
+      "demo": "Demo",
+      "github": "GitHub"
+    }
+  },
+  "features": {
+    "tag": "✨ Funktionen",
+    "title": "Warum SecuBox wählen?",
+    "subtitle": "Eine vollständige, quelloffene Lösung, die für OpenWrt entwickelt wurde.",
+    "simple": {
+      "title": "Einfache Installation",
+      "description": "Nur `opkg install` und Sie sind startklar. Keine komplexe Konfiguration."
+    },
+    "luci": {
+      "title": "Native LuCI-Integration",
+      "description": "Mit LuCI integrierte Benutzeroberfläche mit demselben Look & Feel wie Ihr Router."
+    },
+    "realtime": {
+      "title": "Echtzeit",
+      "description": "Echtzeit-Überwachung und -Statistiken über RPCD und ubus."
+    },
+    "security": {
+      "title": "Verbesserte Sicherheit",
+      "description": "CrowdSec, WireGuard, OAuth-Authentifizierung und Captive Portal."
+    },
+    "performance": {
+      "title": "Leistung",
+      "description": "Erweitertes QoS mit CAKE, Medienerkennung und automatischen Prioritäten."
+    },
+    "multiarch": {
+      "title": "Multi-Architektur",
+      "description": "x86_64, ARM64, ARM32. Funktioniert auf allen OpenWrt-Routern."
+    }
+  },
+  "demo": {
+    "tag": "🎮 Demonstrationen",
+    "title": "Entdecken Sie SecuBox in Aktion",
+    "subtitle": "Interaktive Oberfläche ohne Installation.",
+    "backToMain": "← Zurück zur Startseite"
+  },
+  "installation": {
+    "tag": "📥 Installation",
+    "title": "Bereit in 3 Schritten",
+    "subtitle": "Einfache Installation über opkg, den OpenWrt-Paketmanager.",
+    "step1": {
+      "title": "Repository hinzufügen",
+      "description": "Fügen Sie das CyberMind-Repository zu Ihrer opkg-Konfiguration hinzu."
+    },
+    "step2": {
+      "title": "Aktualisieren",
+      "description": "Aktualisieren Sie die Liste der verfügbaren Pakete."
+    },
+    "step3": {
+      "title": "Installieren",
+      "description": "Installieren Sie SecuBox und die gewünschten Module."
+    },
+    "code": {
+      "comment1": "# Schritt 1: Repository hinzufügen (optional bei Verwendung von GitHub-Releases)",
+      "comment2": "# Schritt 2: Paketliste aktualisieren",
+      "comment3": "# Schritt 3: SecuBox installieren (Haupt-Hub)",
+      "comment4": "# Gewünschte Module installieren",
+      "comment5": "# Schnittstelle neu starten"
+    }
+  },
+  "blog": {
+    "tag": "📝 Blog",
+    "title": "Artikel & Tutorials",
+    "subtitle": "Detaillierte Anleitungen, um das Beste aus SecuBox herauszuholen.",
+    "article1": {
+      "tag": "Tutorial",
+      "title": "Optimieren Sie Ihre Bandbreite mit Bandwidth Manager",
+      "description": "Vollständiger Leitfaden zur Konfiguration von QoS, Kontingenten und automatischer Medienerkennung."
+    },
+    "article2": {
+      "tag": "Tutorial",
+      "title": "Captive Portal mit OAuth und Vouchers",
+      "description": "Konfigurieren Sie ein vollständiges Authentifizierungssystem für Ihr WiFi-Netzwerk."
+    },
+    "article3": {
+      "tag": "Tutorial",
+      "title": "Hosten Sie Ihre eigenen SaaS-Dienste",
+      "description": "Nextcloud, GitLab, Jellyfin: Ersetzen Sie Cloud-Dienste durch lokale Alternativen."
+    }
+  },
+  "cta": {
+    "title": "Bereit, Ihr Netzwerk zu sichern?",
+    "subtitle": "Schließen Sie sich Benutzern an, die SecuBox zum Schutz ihrer Infrastruktur vertrauen.",
+    "btnInstall": "📥 Jetzt installieren",
+    "btnGithub": "⭐ Star auf GitHub"
+  },
+  "footer": {
+    "description": "Sicherheits- und Netzwerkverwaltungssuite für OpenWrt. Entwickelt von CyberMind.",
+    "product": "Produkt",
+    "resources": "Ressourcen",
+    "community": "Community",
+    "legal": "Rechtliches",
+    "documentation": "Dokumentation",
+    "support": "Support",
+    "releases": "Releases",
+    "github": "GitHub",
+    "discord": "Discord",
+    "forum": "Forum",
+    "license": "Lizenz",
+    "privacy": "Datenschutz",
+    "terms": "Bedingungen"
+  },
+  "common": {
+    "learnMore": "Mehr erfahren",
+    "getStarted": "Erste Schritte",
+    "viewDemo": "Demo ansehen",
+    "documentation": "Dokumentation",
+    "downloadNow": "Jetzt herunterladen",
+    "openSource": "Open Source",
+    "freeForever": "Für immer kostenlos"
+  }
+}

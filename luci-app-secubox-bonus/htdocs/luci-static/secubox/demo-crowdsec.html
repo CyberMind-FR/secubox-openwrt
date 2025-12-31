@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrowdSec Dashboard - Démo | SecuBox</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <style>
+        :root { --primary: #6366f1; --primary-dark: #4f46e5; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --dark: #0f172a; --darker: #020617; --card: #1e293b; --text: #f1f5f9; --text-muted: #94a3b8; --border: #334155; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: var(--darker); color: var(--text); min-height: 100vh; }
+        .header { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); padding: 40px 24px; text-align: center; }
+        .header h1 { font-size: 36px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 18px; }
+        .back-link { position: absolute; top: 20px; left: 20px; color: white; text-decoration: none; opacity: 0.8; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: var(--card); padding: 24px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+        .stat-value { font-size: 32px; font-weight: 700; }
+        .stat-label { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+        
+        .main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+        .section { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); margin-bottom: 24px; }
+        .section-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+        
+        .alert-row { display: flex; align-items: center; gap: 16px; padding: 16px; background: var(--dark); border-radius: 10px; margin-bottom: 12px; border-left: 4px solid; }
+        .alert-critical { border-color: var(--danger); }
+        .alert-warning { border-color: var(--warning); }
+        .alert-info { border-color: var(--primary); }
+        .alert-icon { font-size: 24px; }
+        .alert-content { flex: 1; }
+        .alert-title { font-weight: 600; margin-bottom: 4px; }
+        .alert-details { font-size: 13px; color: var(--text-muted); }
+        .alert-time { font-size: 12px; color: var(--text-muted); }
+        
+        .decision-row { display: grid; grid-template-columns: 140px 1fr 100px 100px; gap: 12px; padding: 14px; background: var(--dark); border-radius: 10px; margin-bottom: 10px; align-items: center; }
+        .decision-row.header { background: transparent; font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+        .decision-ip { font-family: monospace; font-size: 14px; }
+        .decision-reason { font-size: 13px; color: var(--text-muted); }
+        .decision-type { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+        .type-ban { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+        .type-captcha { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        
+        .bouncer-card { background: var(--dark); padding: 16px; border-radius: 10px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; }
+        .bouncer-icon { font-size: 28px; }
+        .bouncer-info { flex: 1; }
+        .bouncer-name { font-weight: 600; }
+        .bouncer-type { font-size: 12px; color: var(--text-muted); }
+        .bouncer-status { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        
+        .collection-tag { display: inline-block; padding: 6px 12px; background: var(--dark); border-radius: 8px; margin: 4px; font-size: 13px; }
+        
+        .chart-container { height: 200px; background: var(--dark); border-radius: 12px; padding: 20px; display: flex; align-items: flex-end; justify-content: space-around; gap: 8px; }
+        .chart-bar { width: 40px; background: linear-gradient(to top, var(--primary-dark), var(--primary)); border-radius: 4px 4px 0 0; transition: height 0.3s; }
+        .chart-label { text-align: center; margin-top: 12px; display: flex; justify-content: space-around; font-size: 11px; color: var(--text-muted); }
+        
+        @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } .stats-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .decision-row { grid-template-columns: 1fr 80px; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+        <h1>🛡️ CrowdSec Dashboard</h1>
+        <p>Protection collaborative contre les intrusions</p>
+    </div>
+    
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--success);">✓</div>
+                <div class="stat-label">Agent actif</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--danger);" id="blocked">1,247</div>
+                <div class="stat-label">IPs bloquées</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--warning);" id="alerts">89</div>
+                <div class="stat-label">Alertes (24h)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--primary);">3</div>
+                <div class="stat-label">Bouncers</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--primary);">12</div>
+                <div class="stat-label">Collections</div>
+            </div>
+        </div>
+        
+        <div class="main-grid">
+            <div>
+                <!-- Alerts -->
+                <div class="section">
+                    <div class="section-title">🚨 Alertes récentes</div>
+                    
+                    <div class="alert-row alert-critical">
+                        <div class="alert-icon">🔴</div>
+                        <div class="alert-content">
+                            <div class="alert-title">Brute-force SSH détecté</div>
+                            <div class="alert-details">185.234.xx.xx - 847 tentatives en 5 min</div>
+                        </div>
+                        <div class="alert-time">Il y a 2 min</div>
+                    </div>
+                    
+                    <div class="alert-row alert-warning">
+                        <div class="alert-icon">🟠</div>
+                        <div class="alert-content">
+                            <div class="alert-title">Scan de ports détecté</div>
+                            <div class="alert-details">45.134.xx.xx - Scan SYN sur 1000+ ports</div>
+                        </div>
+                        <div class="alert-time">Il y a 15 min</div>
+                    </div>
+                    
+                    <div class="alert-row alert-warning">
+                        <div class="alert-icon">🟠</div>
+                        <div class="alert-content">
+                            <div class="alert-title">Tentative d'injection SQL</div>
+                            <div class="alert-details">92.118.xx.xx - Pattern UNION SELECT</div>
+                        </div>
+                        <div class="alert-time">Il y a 32 min</div>
+                    </div>
+                    
+                    <div class="alert-row alert-info">
+                        <div class="alert-icon">🔵</div>
+                        <div class="alert-content">
+                            <div class="alert-title">Bad User-Agent</div>
+                            <div class="alert-details">103.45.xx.xx - Scanner automatique détecté</div>
+                        </div>
+                        <div class="alert-time">Il y a 1h</div>
+                    </div>
+                </div>
+                
+                <!-- Decisions -->
+                <div class="section">
+                    <div class="section-title">🚫 Décisions actives</div>
+                    
+                    <div class="decision-row header">
+                        <div>IP</div>
+                        <div>Raison</div>
+                        <div>Type</div>
+                        <div>Expire</div>
+                    </div>
+                    
+                    <div class="decision-row">
+                        <div class="decision-ip">185.234.72.xx</div>
+                        <div class="decision-reason">crowdsecurity/ssh-bf</div>
+                        <div><span class="decision-type type-ban">Ban</span></div>
+                        <div style="color: var(--text-muted); font-size: 13px;">4h</div>
+                    </div>
+                    
+                    <div class="decision-row">
+                        <div class="decision-ip">45.134.144.xx</div>
+                        <div class="decision-reason">crowdsecurity/portscan</div>
+                        <div><span class="decision-type type-ban">Ban</span></div>
+                        <div style="color: var(--text-muted); font-size: 13px;">24h</div>
+                    </div>
+                    
+                    <div class="decision-row">
+                        <div class="decision-ip">92.118.39.xx</div>
+                        <div class="decision-reason">crowdsecurity/http-sqli</div>
+                        <div><span class="decision-type type-ban">Ban</span></div>
+                        <div style="color: var(--text-muted); font-size: 13px;">12h</div>
+                    </div>
+                    
+                    <div class="decision-row">
+                        <div class="decision-ip">103.45.67.xx</div>
+                        <div class="decision-reason">crowdsecurity/http-bad-ua</div>
+                        <div><span class="decision-type type-captcha">Captcha</span></div>
+                        <div style="color: var(--text-muted); font-size: 13px;">1h</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <!-- Bouncers -->
+                <div class="section">
+                    <div class="section-title">🏀 Bouncers</div>
+                    
+                    <div class="bouncer-card">
+                        <div class="bouncer-icon">🔥</div>
+                        <div class="bouncer-info">
+                            <div class="bouncer-name">cs-firewall-bouncer</div>
+                            <div class="bouncer-type">iptables / nftables</div>
+                        </div>
+                        <div class="bouncer-status">Actif</div>
+                    </div>
+                    
+                    <div class="bouncer-card">
+                        <div class="bouncer-icon">🌐</div>
+                        <div class="bouncer-info">
+                            <div class="bouncer-name">cs-nginx-bouncer</div>
+                            <div class="bouncer-type">Nginx Lua</div>
+                        </div>
+                        <div class="bouncer-status">Actif</div>
+                    </div>
+                    
+                    <div class="bouncer-card">
+                        <div class="bouncer-icon">📡</div>
+                        <div class="bouncer-info">
+                            <div class="bouncer-name">cs-custom-bouncer</div>
+                            <div class="bouncer-type">API Custom</div>
+                        </div>
+                        <div class="bouncer-status">Actif</div>
+                    </div>
+                </div>
+                
+                <!-- Collections -->
+                <div class="section">
+                    <div class="section-title">📚 Collections installées</div>
+                    <div>
+                        <span class="collection-tag">🔒 crowdsecurity/linux</span>
+                        <span class="collection-tag">🌐 crowdsecurity/nginx</span>
+                        <span class="collection-tag">🔑 crowdsecurity/sshd</span>
+                        <span class="collection-tag">💉 crowdsecurity/http-cve</span>
+                        <span class="collection-tag">🕷️ crowdsecurity/whitelist</span>
+                        <span class="collection-tag">📧 crowdsecurity/postfix</span>
+                    </div>
+                </div>
+                
+                <!-- Chart -->
+                <div class="section">
+                    <div class="section-title">📊 Alertes (7 jours)</div>
+                    <div class="chart-container">
+                        <div class="chart-bar" id="bar1" style="height: 60%;"></div>
+                        <div class="chart-bar" id="bar2" style="height: 45%;"></div>
+                        <div class="chart-bar" id="bar3" style="height: 80%;"></div>
+                        <div class="chart-bar" id="bar4" style="height: 55%;"></div>
+                        <div class="chart-bar" id="bar5" style="height: 90%;"></div>
+                        <div class="chart-bar" id="bar6" style="height: 70%;"></div>
+                        <div class="chart-bar" id="bar7" style="height: 65%;"></div>
+                    </div>
+                    <div class="chart-label">
+                        <span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        setInterval(() => {
+            document.getElementById('blocked').textContent = (1200 + Math.floor(Math.random() * 100)).toLocaleString();
+            document.getElementById('alerts').textContent = 80 + Math.floor(Math.random() * 20);
+            for (let i = 1; i <= 7; i++) {
+                document.getElementById('bar' + i).style.height = (30 + Math.random() * 60) + '%';
+            }
+        }, 3000);
+    </script>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

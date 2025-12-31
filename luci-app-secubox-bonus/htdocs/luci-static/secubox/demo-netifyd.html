@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netifyd Dashboard - Démo | SecuBox</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+    <style>
+        :root { --primary: #0891b2; --primary-dark: #0e7490; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --dark: #0f172a; --darker: #020617; --card: #1e293b; --text: #f1f5f9; --text-muted: #94a3b8; --border: #334155; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: var(--darker); color: var(--text); min-height: 100vh; }
+        .header { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); padding: 40px 24px; text-align: center; }
+        .header h1 { font-size: 36px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 18px; }
+        .back-link { position: absolute; top: 20px; left: 20px; color: white; text-decoration: none; opacity: 0.8; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+        
+        .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: var(--card); padding: 20px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+        .stat-value { font-size: 28px; font-weight: 700; color: var(--primary); }
+        .stat-label { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+        
+        .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .section { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); margin-bottom: 24px; }
+        .section-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+        
+        .app-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+        .app-card { background: var(--dark); padding: 16px; border-radius: 12px; text-align: center; transition: all 0.2s; cursor: pointer; }
+        .app-card:hover { background: var(--border); transform: translateY(-2px); }
+        .app-icon { font-size: 32px; margin-bottom: 8px; }
+        .app-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+        .app-category { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+        .app-stats { display: flex; justify-content: center; gap: 12px; font-size: 12px; }
+        .app-bw { color: var(--primary); font-weight: 600; }
+        .app-flows { color: var(--text-muted); }
+        
+        .flow-row { display: grid; grid-template-columns: 1fr 140px 100px 100px 80px; gap: 12px; padding: 12px; background: var(--dark); border-radius: 8px; margin-bottom: 8px; align-items: center; font-size: 13px; }
+        .flow-row.header { background: transparent; font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; }
+        .flow-app { display: flex; align-items: center; gap: 10px; }
+        .flow-icon { font-size: 20px; }
+        .flow-ip { font-family: monospace; font-size: 12px; color: var(--text-muted); }
+        
+        .protocol-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .protocol-tag { padding: 8px 16px; background: var(--dark); border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+        .protocol-count { background: var(--primary); color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+        
+        .pie-chart { width: 200px; height: 200px; margin: 0 auto 20px; position: relative; }
+        .pie-chart-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+        .pie-chart-value { font-size: 24px; font-weight: 700; }
+        .pie-chart-label { font-size: 12px; color: var(--text-muted); }
+        
+        .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; }
+        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+        .legend-color { width: 12px; height: 12px; border-radius: 3px; }
+        
+        .risk-indicator { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: var(--dark); border-radius: 8px; margin-bottom: 12px; }
+        .risk-level { padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+        .risk-low { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .risk-medium { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        .risk-high { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+        
+        @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } .stats-row { grid-template-columns: repeat(3, 1fr); } .app-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 768px) { .stats-row { grid-template-columns: repeat(2, 1fr); } .app-grid { grid-template-columns: 1fr; } .flow-row { grid-template-columns: 1fr 80px; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+        <h1>🔍 Netifyd Dashboard</h1>
+        <p>Deep Packet Inspection & Application Detection</p>
+    </div>
+    
+    <div class="container">
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--success);">✓</div>
+                <div class="stat-label">DPI Engine</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="apps-count">47</div>
+                <div class="stat-label">Applications</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="flows-count">234</div>
+                <div class="stat-label">Flux actifs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="protocols-count">18</div>
+                <div class="stat-label">Protocoles</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="total-bw">127 MB/s</div>
+                <div class="stat-label">Bande passante</div>
+            </div>
+        </div>
+        
+        <div class="main-grid">
+            <div class="section">
+                <div class="section-title">📱 Applications détectées</div>
+                <div class="app-grid">
+                    <div class="app-card">
+                        <div class="app-icon">▶️</div>
+                        <div class="app-name">YouTube</div>
+                        <div class="app-category">Streaming</div>
+                        <div class="app-stats">
+                            <span class="app-bw" id="yt-bw">24.3 MB/s</span>
+                            <span class="app-flows">12 flux</span>
+                        </div>
+                    </div>
+                    <div class="app-card">
+                        <div class="app-icon">📺</div>
+                        <div class="app-name">Netflix</div>
+                        <div class="app-category">Streaming</div>
+                        <div class="app-stats">
+                            <span class="app-bw" id="nf-bw">18.7 MB/s</span>
+                            <span class="app-flows">4 flux</span>
+                        </div>
+                    </div>
+                    <div class="app-card">
+                        <div class="app-icon">💬</div>
+                        <div class="app-name">WhatsApp</div>
+                        <div class="app-category">Messagerie</div>
+                        <div class="app-stats">
+                            <span class="app-bw">1.2 MB/s</span>
+                            <span class="app-flows">8 flux</span>
+                        </div>
+                    </div>
+                    <div class="app-card">
+                        <div class="app-icon">📹</div>
+                        <div class="app-name">Zoom</div>
+                        <div class="app-category">Visio</div>
+                        <div class="app-stats">
+                            <span class="app-bw" id="zm-bw">3.4 MB/s</span>
+                            <span class="app-flows">2 flux</span>
+                        </div>
+                    </div>
+                    <div class="app-card">
+                        <div class="app-icon">🎮</div>
+                        <div class="app-name">Steam</div>
+                        <div class="app-category">Gaming</div>
+                        <div class="app-stats">
+                            <span class="app-bw" id="st-bw">45.2 MB/s</span>
+                            <span class="app-flows">3 flux</span>
+                        </div>
+                    </div>
+                    <div class="app-card">
+                        <div class="app-icon">📧</div>
+                        <div class="app-name">Gmail</div>
+                        <div class="app-category">Email</div>
+                        <div class="app-stats">
+                            <span class="app-bw">0.3 MB/s</span>
+                            <span class="app-flows">6 flux</span>
+                        </div>
+                    </div>
+                    <div class="app-card">
+                        <div class="app-icon">🐦</div>
+                        <div class="app-name">Twitter/X</div>
+                        <div class="app-category">Social</div>
+                        <div class="app-stats">
+                            <span class="app-bw">2.1 MB/s</span>
+                            <span class="app-flows">5 flux</span>
+                        </div>
+                    </div>
+                    <div class="app-card">
+                        <div class="app-icon">📸</div>
+                        <div class="app-name">Instagram</div>
+                        <div class="app-category">Social</div>
+                        <div class="app-stats">
+                            <span class="app-bw">4.8 MB/s</span>
+                            <span class="app-flows">7 flux</span>
+                        </div>
+                    </div>
+                    <div class="app-card">
+                        <div class="app-icon">☁️</div>
+                        <div class="app-name">Dropbox</div>
+                        <div class="app-category">Cloud</div>
+                        <div class="app-stats">
+                            <span class="app-bw">8.4 MB/s</span>
+                            <span class="app-flows">2 flux</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <div class="section">
+                    <div class="section-title">📊 Répartition par catégorie</div>
+                    <div class="pie-chart">
+                        <svg viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="40" fill="none" stroke="#ef4444" stroke-width="20" stroke-dasharray="75 125" transform="rotate(-90 50 50)"/>
+                            <circle cx="50" cy="50" r="40" fill="none" stroke="#3b82f6" stroke-width="20" stroke-dasharray="50 150" stroke-dashoffset="-75" transform="rotate(-90 50 50)"/>
+                            <circle cx="50" cy="50" r="40" fill="none" stroke="#22c55e" stroke-width="20" stroke-dasharray="35 165" stroke-dashoffset="-125" transform="rotate(-90 50 50)"/>
+                            <circle cx="50" cy="50" r="40" fill="none" stroke="#f59e0b" stroke-width="20" stroke-dasharray="25 175" stroke-dashoffset="-160" transform="rotate(-90 50 50)"/>
+                            <circle cx="50" cy="50" r="40" fill="none" stroke="#8b5cf6" stroke-width="20" stroke-dasharray="15 185" stroke-dashoffset="-185" transform="rotate(-90 50 50)"/>
+                        </svg>
+                        <div class="pie-chart-center">
+                            <div class="pie-chart-value">127</div>
+                            <div class="pie-chart-label">MB/s</div>
+                        </div>
+                    </div>
+                    <div class="legend">
+                        <div class="legend-item"><div class="legend-color" style="background: #ef4444;"></div>Streaming 30%</div>
+                        <div class="legend-item"><div class="legend-color" style="background: #3b82f6;"></div>Gaming 20%</div>
+                        <div class="legend-item"><div class="legend-color" style="background: #22c55e;"></div>Social 14%</div>
+                        <div class="legend-item"><div class="legend-color" style="background: #f59e0b;"></div>Cloud 10%</div>
+                        <div class="legend-item"><div class="legend-color" style="background: #8b5cf6;"></div>Autre 26%</div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">🔐 Analyse de sécurité</div>
+                    <div class="risk-indicator">
+                        <span style="flex: 1;">Trafic chiffré (TLS/SSL)</span>
+                        <span class="risk-level risk-low">94%</span>
+                    </div>
+                    <div class="risk-indicator">
+                        <span style="flex: 1;">Protocoles inconnus</span>
+                        <span class="risk-level risk-low">2%</span>
+                    </div>
+                    <div class="risk-indicator">
+                        <span style="flex: 1;">Connexions suspectes</span>
+                        <span class="risk-level risk-low">0</span>
+                    </div>
+                    <div class="risk-indicator">
+                        <span style="flex: 1;">P2P / Torrent</span>
+                        <span class="risk-level risk-medium">3 flux</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">📡 Protocoles détectés</div>
+            <div class="protocol-list">
+                <div class="protocol-tag">HTTPS <span class="protocol-count">156</span></div>
+                <div class="protocol-tag">QUIC <span class="protocol-count">42</span></div>
+                <div class="protocol-tag">HTTP <span class="protocol-count">18</span></div>
+                <div class="protocol-tag">DNS <span class="protocol-count">89</span></div>
+                <div class="protocol-tag">TLS 1.3 <span class="protocol-count">124</span></div>
+                <div class="protocol-tag">WebSocket <span class="protocol-count">12</span></div>
+                <div class="protocol-tag">STUN <span class="protocol-count">8</span></div>
+                <div class="protocol-tag">RTP <span class="protocol-count">6</span></div>
+                <div class="protocol-tag">SSH <span class="protocol-count">4</span></div>
+                <div class="protocol-tag">MQTT <span class="protocol-count">3</span></div>
+                <div class="protocol-tag">NTP <span class="protocol-count">2</span></div>
+                <div class="protocol-tag">BitTorrent <span class="protocol-count">3</span></div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">🌊 Flux récents</div>
+            <div class="flow-row header">
+                <div>Application</div>
+                <div>Source</div>
+                <div>Destination</div>
+                <div>Bandwidth</div>
+                <div>Protocol</div>
+            </div>
+            <div class="flow-row">
+                <div class="flow-app"><span class="flow-icon">▶️</span>YouTube</div>
+                <div class="flow-ip">192.168.1.101</div>
+                <div class="flow-ip">172.217.x.x</div>
+                <div style="color: var(--primary); font-weight: 600;">8.4 MB/s</div>
+                <div style="color: var(--text-muted);">QUIC</div>
+            </div>
+            <div class="flow-row">
+                <div class="flow-app"><span class="flow-icon">📺</span>Netflix</div>
+                <div class="flow-ip">192.168.1.105</div>
+                <div class="flow-ip">45.57.x.x</div>
+                <div style="color: var(--primary); font-weight: 600;">15.2 MB/s</div>
+                <div style="color: var(--text-muted);">TLS 1.3</div>
+            </div>
+            <div class="flow-row">
+                <div class="flow-app"><span class="flow-icon">🎮</span>Steam</div>
+                <div class="flow-ip">192.168.1.110</div>
+                <div class="flow-ip">155.133.x.x</div>
+                <div style="color: var(--primary); font-weight: 600;">45.2 MB/s</div>
+                <div style="color: var(--text-muted);">HTTPS</div>
+            </div>
+            <div class="flow-row">
+                <div class="flow-app"><span class="flow-icon">📹</span>Zoom</div>
+                <div class="flow-ip">192.168.1.115</div>
+                <div class="flow-ip">52.202.x.x</div>
+                <div style="color: var(--primary); font-weight: 600;">3.4 MB/s</div>
+                <div style="color: var(--text-muted);">RTP</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        setInterval(() => {
+            document.getElementById('flows-count').textContent = 200 + Math.floor(Math.random() * 50);
+            document.getElementById('total-bw').textContent = (100 + Math.random() * 50).toFixed(0) + ' MB/s';
+            document.getElementById('yt-bw').textContent = (15 + Math.random() * 15).toFixed(1) + ' MB/s';
+            document.getElementById('nf-bw').textContent = (10 + Math.random() * 15).toFixed(1) + ' MB/s';
+            document.getElementById('zm-bw').textContent = (2 + Math.random() * 3).toFixed(1) + ' MB/s';
+            document.getElementById('st-bw').textContent = (30 + Math.random() * 30).toFixed(1) + ' MB/s';
+        }, 2000);
+    </script>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

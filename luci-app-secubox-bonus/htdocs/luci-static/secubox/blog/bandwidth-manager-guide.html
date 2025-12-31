@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimiser sa bande passante avec Bandwidth Manager | CyberMind Blog</title>
+    <meta name="description" content="Guide complet pour configurer QoS, quotas et détection automatique des médias sur OpenWrt avec le module SecuBox Bandwidth Manager.">
+    <style>
+        :root { --primary: #6366f1; --dark: #0f172a; --darker: #020617; --card: #1e293b; --text: #f1f5f9; --text-muted: #94a3b8; --border: #334155; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Georgia', serif; background: var(--darker); color: var(--text); line-height: 1.8; }
+        
+        .header { background: var(--dark); border-bottom: 1px solid var(--border); padding: 20px 0; }
+        .header-inner { max-width: 800px; margin: 0 auto; padding: 0 24px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-family: system-ui, sans-serif; font-weight: 700; font-size: 20px; color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 8px; }
+        .nav a { color: var(--text-muted); text-decoration: none; margin-left: 24px; font-family: system-ui, sans-serif; font-size: 14px; }
+        .nav a:hover { color: var(--primary); }
+        
+        .hero { background: linear-gradient(135deg, #7c3aed, #a855f7); padding: 80px 24px; text-align: center; }
+        .hero-inner { max-width: 800px; margin: 0 auto; }
+        .hero-tag { display: inline-block; background: rgba(255,255,255,0.2); padding: 6px 16px; border-radius: 50px; font-size: 14px; margin-bottom: 20px; font-family: system-ui, sans-serif; }
+        .hero h1 { font-size: 42px; line-height: 1.2; margin-bottom: 16px; }
+        .hero-meta { opacity: 0.9; font-size: 16px; font-family: system-ui, sans-serif; }
+        
+        .content { max-width: 800px; margin: 0 auto; padding: 60px 24px; }
+        
+        h2 { font-size: 28px; margin: 48px 0 24px; color: var(--text); font-family: system-ui, sans-serif; }
+        h3 { font-size: 22px; margin: 32px 0 16px; color: var(--text); font-family: system-ui, sans-serif; }
+        
+        p { margin-bottom: 24px; color: var(--text-muted); }
+        
+        .lead { font-size: 20px; color: var(--text); margin-bottom: 32px; }
+        
+        ul, ol { margin: 0 0 24px 24px; color: var(--text-muted); }
+        li { margin-bottom: 12px; }
+        
+        code { background: var(--card); padding: 2px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #a855f7; }
+        
+        pre { background: var(--card); padding: 24px; border-radius: 12px; overflow-x: auto; margin: 24px 0; border: 1px solid var(--border); }
+        pre code { background: none; padding: 0; color: var(--text); }
+        
+        .info-box { background: rgba(99, 102, 241, 0.1); border-left: 4px solid var(--primary); padding: 20px 24px; border-radius: 0 12px 12px 0; margin: 32px 0; }
+        .info-box p { margin: 0; color: var(--text); }
+        
+        .warning-box { background: rgba(245, 158, 11, 0.1); border-left: 4px solid #f59e0b; padding: 20px 24px; border-radius: 0 12px 12px 0; margin: 32px 0; }
+        .warning-box p { margin: 0; color: var(--text); }
+        
+        .feature-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin: 32px 0; }
+        .feature-card { background: var(--card); padding: 24px; border-radius: 12px; border: 1px solid var(--border); }
+        .feature-card h4 { font-family: system-ui, sans-serif; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .feature-card p { margin: 0; font-size: 14px; }
+        
+        .cta-box { background: linear-gradient(135deg, #7c3aed, #a855f7); padding: 40px; border-radius: 16px; text-align: center; margin: 48px 0; }
+        .cta-box h3 { color: white; margin-bottom: 16px; font-family: system-ui, sans-serif; }
+        .cta-box p { color: rgba(255,255,255,0.9); margin-bottom: 24px; }
+        .cta-btn { display: inline-block; background: white; color: #7c3aed; padding: 14px 32px; border-radius: 10px; text-decoration: none; font-family: system-ui, sans-serif; font-weight: 600; }
+        
+        .toc { background: var(--card); padding: 24px; border-radius: 12px; margin: 32px 0; }
+        .toc h4 { font-family: system-ui, sans-serif; margin-bottom: 16px; }
+        .toc ul { list-style: none; margin: 0; }
+        .toc li { margin-bottom: 8px; }
+        .toc a { color: var(--primary); text-decoration: none; font-family: system-ui, sans-serif; font-size: 14px; }
+        
+        img { max-width: 100%; border-radius: 12px; margin: 24px 0; }
+        
+        .footer { background: var(--dark); border-top: 1px solid var(--border); padding: 40px 24px; text-align: center; }
+        .footer p { color: var(--text-muted); font-family: system-ui, sans-serif; font-size: 14px; margin: 0; }
+        
+        @media (max-width: 768px) { .feature-grid { grid-template-columns: 1fr; } .hero h1 { font-size: 32px; } }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-inner">
+            <a href="https://cybermind.fr" class="logo">🧠 CyberMind</a>
+            <nav class="nav">
+                <a href="https://cybermind.fr/blog">Blog</a>
+                <a href="../index.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+                <a href="https://github.com/cybermind-fr">GitHub</a>
+            </nav>
+        </div>
+    </header>
+    
+    <div class="hero">
+        <div class="hero-inner">
+            <span class="hero-tag">📚 Tutorial</span>
+            <h1>Optimiser sa bande passante avec Bandwidth Manager</h1>
+            <p class="hero-meta">Par Gandalf • 22 décembre 2024 • 12 min de lecture</p>
+        </div>
+    </div>
+    
+    <article class="content">
+        <p class="lead">
+            Votre connexion rame pendant que quelqu'un regarde Netflix ? Les jeux en ligne lag quand un téléchargement est en cours ? 
+            Le module <strong>Bandwidth Manager</strong> de SecuBox résout ces problèmes avec une gestion intelligente de la QoS, 
+            des quotas et une détection automatique des types de trafic.
+        </p>
+        
+        <div class="toc">
+            <h4>📑 Table des matières</h4>
+            <ul>
+                <li><a href="#introduction">1. Introduction à la QoS</a></li>
+                <li><a href="#installation">2. Installation</a></li>
+                <li><a href="#classes">3. Configuration des classes QoS</a></li>
+                <li><a href="#quotas">4. Gestion des quotas</a></li>
+                <li><a href="#media">5. Détection automatique des médias</a></li>
+                <li><a href="#schedules">6. Planification horaire</a></li>
+                <li><a href="#avance">7. Configuration avancée</a></li>
+            </ul>
+        </div>
+        
+        <h2 id="introduction">1. Introduction à la QoS</h2>
+        
+        <p>
+            La <strong>Quality of Service (QoS)</strong> permet de prioriser certains types de trafic sur votre réseau. 
+            Sans QoS, tous les paquets sont traités de la même manière : un téléchargement massif peut donc 
+            monopoliser toute la bande passante et rendre les appels vidéo inutilisables.
+        </p>
+        
+        <p>
+            Bandwidth Manager utilise <strong>CAKE</strong> (Common Applications Kept Enhanced), le qdisc le plus moderne 
+            et efficace disponible sur Linux. Il gère automatiquement le bufferbloat et offre une distribution 
+            équitable de la bande passante.
+        </p>
+        
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h4>⚡ Priorité temps réel</h4>
+                <p>VoIP et gaming toujours fluides, même sous charge maximale.</p>
+            </div>
+            <div class="feature-card">
+                <h4>📊 8 classes de priorité</h4>
+                <p>Classification fine du trafic selon vos besoins.</p>
+            </div>
+            <div class="feature-card">
+                <h4>🎯 Détection automatique</h4>
+                <p>Netflix, YouTube, Zoom identifiés automatiquement.</p>
+            </div>
+            <div class="feature-card">
+                <h4>📉 Quotas intelligents</h4>
+                <p>Limites journalières/mensuelles avec throttling.</p>
+            </div>
+        </div>
+        
+        <h2 id="installation">2. Installation</h2>
+        
+        <p>Installez le module via opkg :</p>
+        
+        <pre><code># Mise à jour des paquets
+opkg update
+
+# Installation du module
+opkg install luci-app-bandwidth-manager
+
+# Dépendances (installées automatiquement)
+# - kmod-sched-cake
+# - kmod-sched-fq-codel
+# - tc
+
+# Redémarrer les services
+/etc/init.d/rpcd reload</code></pre>
+        
+        <p>Accédez ensuite à l'interface via <code>LuCI → Network → Bandwidth Manager</code>.</p>
+        
+        <h2 id="classes">3. Configuration des classes QoS</h2>
+        
+        <p>
+            Bandwidth Manager propose 8 classes de priorité préconfigurées. Chaque classe a un pourcentage 
+            garanti (rate) et un maximum autorisé (ceil) :
+        </p>
+        
+        <pre><code># /etc/config/bandwidth
+
+config class 'realtime'
+    option name 'Real-time'
+    option priority '1'
+    option rate '30'      # 30% garanti
+    option ceil '100'     # Peut utiliser jusqu'à 100%
+    option description 'VoIP, Video calls'
+
+config class 'interactive'
+    option name 'Interactive'
+    option priority '2'
+    option rate '20'
+    option ceil '100'
+    option description 'Gaming, SSH, DNS'
+
+config class 'streaming'
+    option name 'Streaming'
+    option priority '3'
+    option rate '20'
+    option ceil '90'
+    option description 'Netflix, YouTube'
+
+config class 'bulk'
+    option name 'Bulk'
+    option priority '6'
+    option rate '5'
+    option ceil '50'
+    option description 'P2P, Backups'</code></pre>
+        
+        <div class="info-box">
+            <p>💡 <strong>Conseil :</strong> La somme des rates ne doit pas dépasser 100%. Les classes de haute priorité 
+            peuvent emprunter la bande passante non utilisée par les classes inférieures.</p>
+        </div>
+        
+        <h2 id="quotas">4. Gestion des quotas</h2>
+        
+        <p>
+            Les quotas permettent de limiter la consommation par client ou par groupe. Quand le quota est atteint, 
+            vous pouvez choisir de throttler (réduire la vitesse) ou bloquer complètement l'accès.
+        </p>
+        
+        <pre><code>config quota 'kids_devices'
+    option daily_limit '5000'     # 5 GB par jour
+    option monthly_limit '100000'  # 100 GB par mois
+    option throttle_speed '1000'   # 1 Mbps après dépassement
+    option action 'throttle'       # ou 'block'
+    list mac 'AA:BB:CC:DD:EE:01'
+    list mac 'AA:BB:CC:DD:EE:02'</code></pre>
+        
+        <p>Cas d'usage typiques :</p>
+        <ul>
+            <li><strong>Appareils des enfants</strong> : quota journalier pour encourager la modération</li>
+            <li><strong>Invités WiFi</strong> : limite mensuelle pour éviter les abus</li>
+            <li><strong>Appareils IoT</strong> : détection d'anomalies (trafic anormal = compromission potentielle)</li>
+        </ul>
+        
+        <h2 id="media">5. Détection automatique des médias</h2>
+        
+        <p>
+            Le module identifie automatiquement les types de trafic grâce à l'analyse des ports, protocoles 
+            et domaines. Chaque type est associé à une classe QoS :
+        </p>
+        
+        <pre><code>config media 'voip'
+    option name 'VoIP'
+    option class 'realtime'
+    list port '5060'          # SIP
+    list port '5061'          # SIP TLS
+    list port '10000-20000'   # RTP
+    list protocol 'sip'
+    list protocol 'rtp'
+
+config media 'gaming'
+    option name 'Gaming'
+    option class 'interactive'
+    list port '3074'          # Xbox Live
+    list port '3478-3480'     # PlayStation
+    list port '27015-27030'   # Steam
+    option dscp 'ef'          # Expedited Forwarding
+
+config media 'streaming'
+    option name 'Streaming'
+    option class 'streaming'
+    list domain 'netflix.com'
+    list domain 'nflxvideo.net'
+    list domain 'youtube.com'
+    list domain 'googlevideo.com'</code></pre>
+        
+        <div class="warning-box">
+            <p>⚠️ <strong>Note :</strong> La détection par domaine nécessite que le DNS passe par le routeur. 
+            Si vos clients utilisent DoH (DNS over HTTPS), la détection sera moins efficace.</p>
+        </div>
+        
+        <h2 id="schedules">6. Planification horaire</h2>
+        
+        <p>
+            Adaptez les limites selon l'heure de la journée. Parfait pour réduire la bande passante 
+            pendant les heures de pointe :
+        </p>
+        
+        <pre><code>config schedule 'peak'
+    option name 'Heures de pointe'
+    option enabled '1'
+    option days 'mon tue wed thu fri'
+    option start '18:00'
+    option end '23:00'
+    option download_limit '80'  # 80% de la bande passante max
+    option upload_limit '80'
+
+config schedule 'night'
+    option name 'Nuit'
+    option enabled '1'
+    option days 'mon tue wed thu fri sat sun'
+    option start '00:00'
+    option end '07:00'
+    option download_limit '100'
+    option upload_limit '100'
+    # Backups nocturnes en classe 'bulk' prioritaire</code></pre>
+        
+        <h2 id="avance">7. Configuration avancée</h2>
+        
+        <h3>Ajuster les paramètres CAKE</h3>
+        
+        <pre><code># Activer manuellement CAKE avec des paramètres optimisés
+tc qdisc replace dev br-lan root cake bandwidth 100mbit \
+    diffserv4 nat wash ack-filter split-gso</code></pre>
+        
+        <h3>Marquage DSCP personnalisé</h3>
+        
+        <pre><code># Marquer le trafic VoIP avec DSCP EF (46)
+iptables -t mangle -A POSTROUTING -p udp --dport 5060 \
+    -j DSCP --set-dscp 46</code></pre>
+        
+        <h3>Monitoring en temps réel</h3>
+        
+        <pre><code># Voir les statistiques tc
+tc -s qdisc show dev br-lan
+
+# Surveiller le trafic par classe
+watch -n 1 'tc -s class show dev br-lan'</code></pre>
+        
+        <div class="cta-box">
+            <h3>🚀 Prêt à optimiser votre réseau ?</h3>
+            <p>Téléchargez SecuBox et installez Bandwidth Manager dès maintenant.</p>
+            <a href="../index.html#installation" class="cta-btn">Installer SecuBox</a>
+        </div>
+        
+        <h2>Conclusion</h2>
+        
+        <p>
+            Bandwidth Manager transforme votre routeur OpenWrt en un contrôleur de trafic intelligent. 
+            Avec la QoS basée sur CAKE, les quotas par client et la détection automatique des médias, 
+            vous avez tous les outils pour garantir une expérience optimale à tous les utilisateurs de votre réseau.
+        </p>
+        
+        <p>
+            Pour aller plus loin, consultez nos autres guides sur <a href="auth-guardian-setup.html">Auth Guardian</a> 
+            pour l'authentification et <a href="local-saas-vhost.html">VHost Manager</a> pour héberger vos propres services.
+        </p>
+    </article>
+    
+    <footer class="footer">
+        <p>
+            <a href="https://cybermood.eu" style="color: var(--primary); text-decoration: none;">CyberMood.eu</a>
+            © 2025 <a href="https://cybermind.fr" style="color: var(--text-muted); text-decoration: none;">CyberMind.fr</a>
+            — Open Source Apache-2.0 — 🇫🇷 Made in France with ❤️
+        </p>
+    </footer>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

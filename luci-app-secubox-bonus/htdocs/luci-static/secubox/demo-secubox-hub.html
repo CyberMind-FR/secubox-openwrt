@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuBox Hub - Centre de Contrôle | SecuBox</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <style>
+        :root { --primary: #6366f1; --primary-dark: #4f46e5; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --dark: #0f172a; --darker: #020617; --card: #1e293b; --text: #f1f5f9; --text-muted: #94a3b8; --border: #334155; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: var(--darker); color: var(--text); min-height: 100vh; }
+        .header { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); padding: 40px 24px; text-align: center; }
+        .header h1 { font-size: 36px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 18px; }
+        .back-link { position: absolute; top: 20px; left: 20px; color: white; text-decoration: none; opacity: 0.8; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+        
+        .overview-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+        .overview-card { background: var(--card); padding: 24px; border-radius: 12px; border: 1px solid var(--border); }
+        .overview-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .overview-icon { font-size: 28px; }
+        .overview-trend { font-size: 12px; padding: 4px 8px; border-radius: 4px; }
+        .trend-up { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+        .trend-down { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .overview-value { font-size: 32px; font-weight: 700; margin-bottom: 4px; }
+        .overview-label { color: var(--text-muted); font-size: 14px; }
+        
+        .main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px; }
+        .section { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); }
+        .section-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+        
+        .modules-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+        .module-card { background: var(--dark); padding: 16px; border-radius: 12px; display: flex; align-items: center; gap: 12px; transition: all 0.2s; cursor: pointer; border: 1px solid transparent; }
+        .module-card:hover { border-color: var(--primary); background: var(--card); }
+        .module-icon { font-size: 28px; }
+        .module-info { flex: 1; }
+        .module-name { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+        .module-status { font-size: 12px; }
+        .status-running { color: var(--success); }
+        .status-stopped { color: var(--text-muted); }
+        .status-warning { color: var(--warning); }
+        .module-indicator { width: 8px; height: 8px; border-radius: 50%; }
+        .indicator-green { background: var(--success); box-shadow: 0 0 8px var(--success); }
+        .indicator-gray { background: var(--text-muted); }
+        .indicator-yellow { background: var(--warning); box-shadow: 0 0 8px var(--warning); }
+        
+        .health-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .health-item { background: var(--dark); padding: 16px; border-radius: 10px; }
+        .health-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .health-name { font-size: 14px; font-weight: 600; }
+        .health-value { font-size: 14px; font-weight: 700; }
+        .health-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+        .health-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+        
+        .activity-list { max-height: 300px; overflow-y: auto; }
+        .activity-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--dark); border-radius: 8px; margin-bottom: 8px; }
+        .activity-icon { font-size: 20px; }
+        .activity-content { flex: 1; }
+        .activity-text { font-size: 14px; }
+        .activity-time { font-size: 12px; color: var(--text-muted); }
+        
+        .services-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .service-card { background: var(--dark); padding: 16px; border-radius: 10px; display: flex; align-items: center; gap: 12px; }
+        .service-icon { font-size: 24px; }
+        .service-name { font-weight: 600; font-size: 14px; }
+        .service-status { margin-left: auto; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+        .service-active { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .service-inactive { background: rgba(100, 116, 139, 0.2); color: var(--text-muted); }
+        
+        .quick-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 24px; }
+        .action-btn { background: var(--dark); padding: 16px; border-radius: 12px; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; text-align: center; }
+        .action-btn:hover { border-color: var(--primary); background: var(--card); }
+        .action-icon { font-size: 24px; margin-bottom: 8px; }
+        .action-label { font-size: 13px; font-weight: 600; }
+        
+        @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } .overview-grid { grid-template-columns: repeat(2, 1fr); } .modules-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 768px) { .overview-grid { grid-template-columns: 1fr; } .modules-grid { grid-template-columns: 1fr; } .quick-actions { grid-template-columns: repeat(2, 1fr); } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+        <h1>🛡️ SecuBox Hub</h1>
+        <p>Centre de contrôle unifié</p>
+    </div>
+    
+    <div class="container">
+        <div class="overview-grid">
+            <div class="overview-card">
+                <div class="overview-header">
+                    <div class="overview-icon">🛡️</div>
+                    <span class="overview-trend trend-down">↓ 12%</span>
+                </div>
+                <div class="overview-value" style="color: var(--success);">847</div>
+                <div class="overview-label">Menaces bloquées (24h)</div>
+            </div>
+            <div class="overview-card">
+                <div class="overview-header">
+                    <div class="overview-icon">👥</div>
+                    <span class="overview-trend trend-up">↑ 3</span>
+                </div>
+                <div class="overview-value" id="clients-count">12</div>
+                <div class="overview-label">Clients connectés</div>
+            </div>
+            <div class="overview-card">
+                <div class="overview-header">
+                    <div class="overview-icon">📊</div>
+                </div>
+                <div class="overview-value" style="color: var(--primary);" id="bandwidth">87.4</div>
+                <div class="overview-label">Bandwidth (Mbps)</div>
+            </div>
+            <div class="overview-card">
+                <div class="overview-header">
+                    <div class="overview-icon">⏱️</div>
+                </div>
+                <div class="overview-value" style="color: var(--success);">14j 5h</div>
+                <div class="overview-label">Uptime</div>
+            </div>
+        </div>
+        
+        <div class="main-grid">
+            <div class="section">
+                <div class="section-title">📦 Modules SecuBox</div>
+                <div class="modules-grid">
+                    <div class="module-card">
+                        <div class="module-icon">🛡️</div>
+                        <div class="module-info">
+                            <div class="module-name">CrowdSec</div>
+                            <div class="module-status status-running">1,247 IPs bloquées</div>
+                        </div>
+                        <div class="module-indicator indicator-green"></div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">🔒</div>
+                        <div class="module-info">
+                            <div class="module-name">WireGuard</div>
+                            <div class="module-status status-running">3 peers actifs</div>
+                        </div>
+                        <div class="module-indicator indicator-green"></div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">⚡</div>
+                        <div class="module-info">
+                            <div class="module-name">Bandwidth</div>
+                            <div class="module-status status-running">QoS actif</div>
+                        </div>
+                        <div class="module-indicator indicator-green"></div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">🔐</div>
+                        <div class="module-info">
+                            <div class="module-name">Auth Guardian</div>
+                            <div class="module-status status-running">24 sessions</div>
+                        </div>
+                        <div class="module-indicator indicator-green"></div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">🎬</div>
+                        <div class="module-info">
+                            <div class="module-name">Media Flow</div>
+                            <div class="module-status status-running">8 streams</div>
+                        </div>
+                        <div class="module-indicator indicator-green"></div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">🌐</div>
+                        <div class="module-info">
+                            <div class="module-name">VHost Manager</div>
+                            <div class="module-status status-running">4 services</div>
+                        </div>
+                        <div class="module-indicator indicator-green"></div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">📊</div>
+                        <div class="module-info">
+                            <div class="module-name">Netdata</div>
+                            <div class="module-status status-running">Monitoring OK</div>
+                        </div>
+                        <div class="module-indicator indicator-green"></div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">🔍</div>
+                        <div class="module-info">
+                            <div class="module-name">Netifyd</div>
+                            <div class="module-status status-running">DPI actif</div>
+                        </div>
+                        <div class="module-indicator indicator-green"></div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">👥</div>
+                        <div class="module-info">
+                            <div class="module-name">Client Guardian</div>
+                            <div class="module-status status-warning">2 alertes</div>
+                        </div>
+                        <div class="module-indicator indicator-yellow"></div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">🌐</div>
+                        <div class="module-info">
+                            <div class="module-name">Network Modes</div>
+                            <div class="module-status status-running">NAT Router</div>
+                        </div>
+                        <div class="module-indicator indicator-green"></div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">💾</div>
+                        <div class="module-info">
+                            <div class="module-name">CDN Cache</div>
+                            <div class="module-status status-stopped">Désactivé</div>
+                        </div>
+                        <div class="module-indicator indicator-gray"></div>
+                    </div>
+                    <div class="module-card">
+                        <div class="module-icon">🚦</div>
+                        <div class="module-info">
+                            <div class="module-name">Traffic Shaper</div>
+                            <div class="module-status status-running">CAKE actif</div>
+                        </div>
+                        <div class="module-indicator indicator-green"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <div class="section" style="margin-bottom: 24px;">
+                    <div class="section-title">💚 Santé système</div>
+                    <div class="health-grid">
+                        <div class="health-item">
+                            <div class="health-header">
+                                <span class="health-name">CPU</span>
+                                <span class="health-value" id="cpu-val">23%</span>
+                            </div>
+                            <div class="health-bar"><div class="health-fill" id="cpu-bar" style="width: 23%; background: var(--success);"></div></div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-header">
+                                <span class="health-name">RAM</span>
+                                <span class="health-value" id="ram-val">67%</span>
+                            </div>
+                            <div class="health-bar"><div class="health-fill" id="ram-bar" style="width: 67%; background: var(--warning);"></div></div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-header">
+                                <span class="health-name">Disque</span>
+                                <span class="health-value">45%</span>
+                            </div>
+                            <div class="health-bar"><div class="health-fill" style="width: 45%; background: var(--success);"></div></div>
+                        </div>
+                        <div class="health-item">
+                            <div class="health-header">
+                                <span class="health-name">Temp</span>
+                                <span class="health-value" id="temp-val">42°C</span>
+                            </div>
+                            <div class="health-bar"><div class="health-fill" id="temp-bar" style="width: 42%; background: var(--success);"></div></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">📋 Activité récente</div>
+                    <div class="activity-list">
+                        <div class="activity-item">
+                            <div class="activity-icon">🛡️</div>
+                            <div class="activity-content">
+                                <div class="activity-text">CrowdSec: IP 185.234.xx bloquée</div>
+                                <div class="activity-time">Il y a 2 min</div>
+                            </div>
+                        </div>
+                        <div class="activity-item">
+                            <div class="activity-icon">👤</div>
+                            <div class="activity-content">
+                                <div class="activity-text">Nouveau client: iPhone-Alice</div>
+                                <div class="activity-time">Il y a 15 min</div>
+                            </div>
+                        </div>
+                        <div class="activity-item">
+                            <div class="activity-icon">🔒</div>
+                            <div class="activity-content">
+                                <div class="activity-text">WireGuard: peer MacBook connecté</div>
+                                <div class="activity-time">Il y a 32 min</div>
+                            </div>
+                        </div>
+                        <div class="activity-item">
+                            <div class="activity-icon">⚠️</div>
+                            <div class="activity-content">
+                                <div class="activity-text">Quota PS5-Gaming: 90% atteint</div>
+                                <div class="activity-time">Il y a 1h</div>
+                            </div>
+                        </div>
+                        <div class="activity-item">
+                            <div class="activity-icon">🔄</div>
+                            <div class="activity-content">
+                                <div class="activity-text">SSL renouvelé: cloud.local.lan</div>
+                                <div class="activity-time">Il y a 3h</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">⚙️ Services système</div>
+            <div class="services-grid">
+                <div class="service-card">
+                    <div class="service-icon">🌐</div>
+                    <div class="service-name">nginx</div>
+                    <div class="service-status service-active">Actif</div>
+                </div>
+                <div class="service-card">
+                    <div class="service-icon">📡</div>
+                    <div class="service-name">dnsmasq</div>
+                    <div class="service-status service-active">Actif</div>
+                </div>
+                <div class="service-card">
+                    <div class="service-icon">🔥</div>
+                    <div class="service-name">firewall</div>
+                    <div class="service-status service-active">Actif</div>
+                </div>
+                <div class="service-card">
+                    <div class="service-icon">📶</div>
+                    <div class="service-name">hostapd</div>
+                    <div class="service-status service-active">Actif</div>
+                </div>
+                <div class="service-card">
+                    <div class="service-icon">🔐</div>
+                    <div class="service-name">dropbear</div>
+                    <div class="service-status service-active">Actif</div>
+                </div>
+                <div class="service-card">
+                    <div class="service-icon">⏰</div>
+                    <div class="service-name">cron</div>
+                    <div class="service-status service-active">Actif</div>
+                </div>
+            </div>
+            
+            <div class="quick-actions">
+                <div class="action-btn">
+                    <div class="action-icon">🔄</div>
+                    <div class="action-label">Redémarrer services</div>
+                </div>
+                <div class="action-btn">
+                    <div class="action-icon">💾</div>
+                    <div class="action-label">Backup config</div>
+                </div>
+                <div class="action-btn">
+                    <div class="action-icon">📊</div>
+                    <div class="action-label">Rapport complet</div>
+                </div>
+                <div class="action-btn">
+                    <div class="action-icon">⚙️</div>
+                    <div class="action-label">Paramètres</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        setInterval(() => {
+            const cpu = 15 + Math.random() * 20;
+            const ram = 60 + Math.random() * 15;
+            const temp = 38 + Math.random() * 10;
+            
+            document.getElementById('cpu-val').textContent = cpu.toFixed(0) + '%';
+            document.getElementById('cpu-bar').style.width = cpu + '%';
+            document.getElementById('ram-val').textContent = ram.toFixed(0) + '%';
+            document.getElementById('ram-bar').style.width = ram + '%';
+            document.getElementById('temp-val').textContent = temp.toFixed(0) + '°C';
+            document.getElementById('temp-bar').style.width = temp + '%';
+            
+            document.getElementById('bandwidth').textContent = (70 + Math.random() * 30).toFixed(1);
+            document.getElementById('clients-count').textContent = 10 + Math.floor(Math.random() * 5);
+        }, 2000);
+    </script>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

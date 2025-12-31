@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netdata Dashboard - Démo | SecuBox</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+    <style>
+        :root { --primary: #00ab44; --primary-dark: #008c38; --success: #22c55e; --warning: #f59e0b; --danger: #ef4444; --dark: #0f172a; --darker: #020617; --card: #1e293b; --text: #f1f5f9; --text-muted: #94a3b8; --border: #334155; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: var(--darker); color: var(--text); min-height: 100vh; }
+        .header { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); padding: 40px 24px; text-align: center; }
+        .header h1 { font-size: 36px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 18px; }
+        .back-link { position: absolute; top: 20px; left: 20px; color: white; text-decoration: none; opacity: 0.8; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+        
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: var(--card); padding: 24px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+        .stat-value { font-size: 32px; font-weight: 700; }
+        .stat-label { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+        .stat-trend { font-size: 12px; margin-top: 8px; }
+        .trend-up { color: var(--danger); }
+        .trend-down { color: var(--success); }
+        
+        .charts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-bottom: 24px; }
+        .chart-card { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); }
+        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .chart-title { font-size: 16px; font-weight: 600; }
+        .chart-value { font-size: 24px; font-weight: 700; color: var(--primary); }
+        
+        .chart-container { height: 120px; display: flex; align-items: flex-end; gap: 2px; padding: 10px 0; }
+        .chart-bar { flex: 1; background: linear-gradient(to top, var(--primary-dark), var(--primary)); border-radius: 2px 2px 0 0; transition: height 0.3s; min-width: 4px; }
+        
+        .chart-line-container { height: 120px; position: relative; overflow: hidden; }
+        .chart-line { position: absolute; bottom: 0; left: 0; right: 0; height: 100%; }
+        .chart-line svg { width: 100%; height: 100%; }
+        .chart-line path { fill: none; stroke: var(--primary); stroke-width: 2; }
+        .chart-line .area { fill: url(#gradient); stroke: none; }
+        
+        .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .metric-card { background: var(--card); padding: 16px; border-radius: 12px; border: 1px solid var(--border); }
+        .metric-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .metric-name { font-size: 13px; color: var(--text-muted); }
+        .metric-value { font-size: 20px; font-weight: 700; }
+        .metric-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+        .metric-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+        
+        .processes-section { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); }
+        .section-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+        .process-row { display: grid; grid-template-columns: 1fr 100px 100px 100px 80px; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); align-items: center; }
+        .process-row:last-child { border-bottom: none; }
+        .process-row.header { font-weight: 600; color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+        .process-name { display: flex; align-items: center; gap: 10px; }
+        .process-icon { width: 32px; height: 32px; background: var(--dark); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+        .process-cpu, .process-mem { font-family: monospace; }
+        .process-status { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .status-running { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .status-sleeping { background: rgba(100, 116, 139, 0.2); color: var(--text-muted); }
+        
+        .alerts-section { background: var(--card); border-radius: 16px; padding: 24px; border: 1px solid var(--border); margin-top: 24px; }
+        .alert-item { display: flex; align-items: center; gap: 16px; padding: 12px; background: var(--dark); border-radius: 8px; margin-bottom: 12px; }
+        .alert-item:last-child { margin-bottom: 0; }
+        .alert-icon { font-size: 20px; }
+        .alert-content { flex: 1; }
+        .alert-title { font-weight: 600; font-size: 14px; }
+        .alert-time { font-size: 12px; color: var(--text-muted); }
+        
+        @media (max-width: 1024px) { .charts-grid, .metrics-grid { grid-template-columns: repeat(2, 1fr); } .stats-row { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 768px) { .charts-grid, .metrics-grid { grid-template-columns: 1fr; } .process-row { grid-template-columns: 1fr 60px 60px; } .process-row > *:nth-child(4), .process-row > *:nth-child(5) { display: none; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back-link" data-i18n="demo.backToMain">← Retour à l'accueil</a>
+        <h1>📊 Netdata Dashboard</h1>
+        <p>Monitoring système en temps réel</p>
+    </div>
+    
+    <div class="container">
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--primary);" id="cpu-usage">23%</div>
+                <div class="stat-label">CPU Usage</div>
+                <div class="stat-trend trend-down">↓ 5% depuis 1h</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: #3b82f6;" id="mem-usage">67%</div>
+                <div class="stat-label">Memory Usage</div>
+                <div class="stat-trend trend-up">↑ 3% depuis 1h</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: #f59e0b;" id="disk-usage">45%</div>
+                <div class="stat-label">Disk Usage</div>
+                <div class="stat-trend">→ Stable</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: #22c55e;">14 jours</div>
+                <div class="stat-label">Uptime</div>
+                <div class="stat-trend">Depuis le 8 déc.</div>
+            </div>
+        </div>
+        
+        <div class="charts-grid">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title">🔥 CPU (dernière heure)</span>
+                    <span class="chart-value" id="cpu-current">23%</span>
+                </div>
+                <div class="chart-container" id="cpu-chart"></div>
+            </div>
+            
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title">💾 Memory (dernière heure)</span>
+                    <span class="chart-value" id="mem-current">67%</span>
+                </div>
+                <div class="chart-container" id="mem-chart"></div>
+            </div>
+            
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title">🌐 Network RX (dernière heure)</span>
+                    <span class="chart-value" id="net-rx">12.4 MB/s</span>
+                </div>
+                <div class="chart-container" id="net-rx-chart"></div>
+            </div>
+            
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title">🌐 Network TX (dernière heure)</span>
+                    <span class="chart-value" id="net-tx">3.2 MB/s</span>
+                </div>
+                <div class="chart-container" id="net-tx-chart"></div>
+            </div>
+        </div>
+        
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-name">CPU Core 0</span>
+                    <span class="metric-value" id="core0">18%</span>
+                </div>
+                <div class="metric-bar"><div class="metric-fill" id="core0-bar" style="width: 18%; background: var(--primary);"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-name">CPU Core 1</span>
+                    <span class="metric-value" id="core1">25%</span>
+                </div>
+                <div class="metric-bar"><div class="metric-fill" id="core1-bar" style="width: 25%; background: var(--primary);"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-name">CPU Core 2</span>
+                    <span class="metric-value" id="core2">31%</span>
+                </div>
+                <div class="metric-bar"><div class="metric-fill" id="core2-bar" style="width: 31%; background: var(--primary);"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-name">CPU Core 3</span>
+                    <span class="metric-value" id="core3">19%</span>
+                </div>
+                <div class="metric-bar"><div class="metric-fill" id="core3-bar" style="width: 19%; background: var(--primary);"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-name">RAM Used</span>
+                    <span class="metric-value">687 MB</span>
+                </div>
+                <div class="metric-bar"><div class="metric-fill" style="width: 67%; background: #3b82f6;"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-name">Swap</span>
+                    <span class="metric-value">12 MB</span>
+                </div>
+                <div class="metric-bar"><div class="metric-fill" style="width: 5%; background: #f59e0b;"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-name">Disk /</span>
+                    <span class="metric-value">4.2 GB</span>
+                </div>
+                <div class="metric-bar"><div class="metric-fill" style="width: 45%; background: #8b5cf6;"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-header">
+                    <span class="metric-name">Temperature</span>
+                    <span class="metric-value" id="temp">42°C</span>
+                </div>
+                <div class="metric-bar"><div class="metric-fill" id="temp-bar" style="width: 42%; background: linear-gradient(90deg, var(--success), var(--warning));"></div></div>
+            </div>
+        </div>
+        
+        <div class="processes-section">
+            <div class="section-title">🔄 Top Processes</div>
+            <div class="process-row header">
+                <div>Process</div>
+                <div>CPU</div>
+                <div>Memory</div>
+                <div>PID</div>
+                <div>Status</div>
+            </div>
+            <div class="process-row">
+                <div class="process-name"><div class="process-icon">🌐</div><div><div>nginx</div><div style="font-size: 11px; color: var(--text-muted);">master process</div></div></div>
+                <div class="process-cpu" style="color: var(--primary);">8.2%</div>
+                <div class="process-mem">124 MB</div>
+                <div style="color: var(--text-muted);">1234</div>
+                <div><span class="process-status status-running">Running</span></div>
+            </div>
+            <div class="process-row">
+                <div class="process-name"><div class="process-icon">🛡️</div><div><div>crowdsec</div><div style="font-size: 11px; color: var(--text-muted);">agent</div></div></div>
+                <div class="process-cpu" style="color: var(--primary);">5.4%</div>
+                <div class="process-mem">89 MB</div>
+                <div style="color: var(--text-muted);">2341</div>
+                <div><span class="process-status status-running">Running</span></div>
+            </div>
+            <div class="process-row">
+                <div class="process-name"><div class="process-icon">📡</div><div><div>dnsmasq</div><div style="font-size: 11px; color: var(--text-muted);">DNS/DHCP</div></div></div>
+                <div class="process-cpu" style="color: var(--success);">1.2%</div>
+                <div class="process-mem">12 MB</div>
+                <div style="color: var(--text-muted);">456</div>
+                <div><span class="process-status status-running">Running</span></div>
+            </div>
+            <div class="process-row">
+                <div class="process-name"><div class="process-icon">🔒</div><div><div>wireguard</div><div style="font-size: 11px; color: var(--text-muted);">wg0</div></div></div>
+                <div class="process-cpu" style="color: var(--success);">0.8%</div>
+                <div class="process-mem">8 MB</div>
+                <div style="color: var(--text-muted);">789</div>
+                <div><span class="process-status status-running">Running</span></div>
+            </div>
+            <div class="process-row">
+                <div class="process-name"><div class="process-icon">📊</div><div><div>netdata</div><div style="font-size: 11px; color: var(--text-muted);">monitoring</div></div></div>
+                <div class="process-cpu" style="color: var(--success);">2.1%</div>
+                <div class="process-mem">156 MB</div>
+                <div style="color: var(--text-muted);">567</div>
+                <div><span class="process-status status-running">Running</span></div>
+            </div>
+        </div>
+        
+        <div class="alerts-section">
+            <div class="section-title">🔔 Alertes récentes</div>
+            <div class="alert-item">
+                <div class="alert-icon">⚠️</div>
+                <div class="alert-content">
+                    <div class="alert-title">CPU usage elevated (>80%)</div>
+                    <div class="alert-time">Il y a 2 heures - Résolu automatiquement</div>
+                </div>
+            </div>
+            <div class="alert-item">
+                <div class="alert-icon">ℹ️</div>
+                <div class="alert-content">
+                    <div class="alert-title">Disk space warning (>70%)</div>
+                    <div class="alert-time">Hier à 14:32 - Résolu après nettoyage</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Initialize charts
+        function initCharts() {
+            ['cpu-chart', 'mem-chart', 'net-rx-chart', 'net-tx-chart'].forEach(id => {
+                const container = document.getElementById(id);
+                for (let i = 0; i < 60; i++) {
+                    const bar = document.createElement('div');
+                    bar.className = 'chart-bar';
+                    bar.style.height = Math.random() * 80 + 10 + '%';
+                    container.appendChild(bar);
+                }
+            });
+        }
+        initCharts();
+        
+        function updateStats() {
+            const cpu = 15 + Math.random() * 25;
+            const mem = 60 + Math.random() * 15;
+            
+            document.getElementById('cpu-usage').textContent = cpu.toFixed(0) + '%';
+            document.getElementById('cpu-current').textContent = cpu.toFixed(0) + '%';
+            document.getElementById('mem-usage').textContent = mem.toFixed(0) + '%';
+            document.getElementById('mem-current').textContent = mem.toFixed(0) + '%';
+            
+            document.getElementById('net-rx').textContent = (8 + Math.random() * 10).toFixed(1) + ' MB/s';
+            document.getElementById('net-tx').textContent = (2 + Math.random() * 4).toFixed(1) + ' MB/s';
+            
+            // Update cores
+            for (let i = 0; i < 4; i++) {
+                const val = 10 + Math.random() * 40;
+                document.getElementById('core' + i).textContent = val.toFixed(0) + '%';
+                document.getElementById('core' + i + '-bar').style.width = val + '%';
+            }
+            
+            // Temperature
+            const temp = 38 + Math.random() * 10;
+            document.getElementById('temp').textContent = temp.toFixed(0) + '°C';
+            document.getElementById('temp-bar').style.width = temp + '%';
+            
+            // Update chart bars
+            ['cpu-chart', 'mem-chart', 'net-rx-chart', 'net-tx-chart'].forEach(id => {
+                const bars = document.getElementById(id).children;
+                for (let bar of bars) {
+                    bar.style.height = Math.random() * 80 + 10 + '%';
+                }
+            });
+        }
+        
+        setInterval(updateStats, 2000);
+    </script>
+
+    <!-- Multi-language System -->
+    <script src="/i18n.js"></script>
+</body>
+</html>

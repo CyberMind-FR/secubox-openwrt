@@ -1,0 +1,497 @@
+{
+  "fr": {
+    "meta": {
+      "title": "SecuBox - Campagne Participative | Cybersécurité Open Source Made in France",
+      "description": "Soutenez SecuBox, l'appliance de cybersécurité open source française. Campagne de financement participatif Q2 2026."
+    },
+    "nav": {
+      "rewards": "Contreparties",
+      "roadmap": "Roadmap",
+      "why": "Pourquoi",
+      "team": "Équipe",
+      "faq": "FAQ",
+      "signup": "🚀 S'inscrire"
+    },
+    "hero": {
+      "badge": "Campagne Participative — Lancement prévu Q2 2026",
+      "title": "Soutenez",
+      "titleHighlight": "SecuBox",
+      "subtitle": "L'appliance de cybersécurité 100% open source et Made in France. Protégez votre réseau avec une solution professionnelle accessible à tous.",
+      "stat1Value": "15",
+      "stat1Label": "Modules LuCI",
+      "stat2Value": "100%",
+      "stat2Label": "Open Source",
+      "stat3Value": "🇫🇷",
+      "stat3Label": "Made in France",
+      "btnRewards": "🎁 Voir les Contreparties",
+      "btnLearnMore": "📖 En savoir plus"
+    },
+    "progress": {
+      "goal": "Objectif : 50 000€",
+      "backers": "contributeurs",
+      "days": "jours restants",
+      "funded": "financé"
+    },
+    "rewards": {
+      "badge": "🎁 Contreparties",
+      "title": "Choisissez votre Contrepartie",
+      "description": "Du simple soutien jusqu'à la SecuBox complète avec hardware GlobalScale et support premium."
+    },
+    "common": {
+      "popular": "⭐ POPULAIRE",
+      "backers": "contributeurs",
+      "selectReward": "Choisir cette contrepartie",
+      "includes": "Inclus :"
+    }
+  },
+  "en": {
+    "meta": {
+      "title": "SecuBox - Crowdfunding Campaign | Open Source Cybersecurity Made in France",
+      "description": "Support SecuBox, the French open source cybersecurity appliance. Crowdfunding campaign Q2 2026."
+    },
+    "nav": {
+      "rewards": "Rewards",
+      "roadmap": "Roadmap",
+      "why": "Why",
+      "team": "Team",
+      "faq": "FAQ",
+      "signup": "🚀 Sign up"
+    },
+    "hero": {
+      "badge": "Crowdfunding Campaign — Launch planned Q2 2026",
+      "title": "Support",
+      "titleHighlight": "SecuBox",
+      "subtitle": "The 100% open source cybersecurity appliance Made in France. Protect your network with a professional solution accessible to everyone.",
+      "stat1Value": "15",
+      "stat1Label": "LuCI Modules",
+      "stat2Value": "100%",
+      "stat2Label": "Open Source",
+      "stat3Value": "🇫🇷",
+      "stat3Label": "Made in France",
+      "btnRewards": "🎁 View Rewards",
+      "btnLearnMore": "📖 Learn more"
+    },
+    "progress": {
+      "goal": "Goal: €50,000",
+      "backers": "backers",
+      "days": "days left",
+      "funded": "funded"
+    },
+    "rewards": {
+      "badge": "🎁 Rewards",
+      "title": "Choose your Reward",
+      "description": "From simple support to the complete SecuBox with GlobalScale hardware and premium support."
+    },
+    "common": {
+      "popular": "⭐ POPULAR",
+      "backers": "backers",
+      "selectReward": "Select this reward",
+      "includes": "Includes:"
+    }
+  },
+  "de": {
+    "meta": {
+      "title": "SecuBox - Crowdfunding-Kampagne | Open Source Cybersicherheit Made in France",
+      "description": "Unterstützen Sie SecuBox, die französische Open-Source-Cybersicherheitsappliance. Crowdfunding-Kampagne Q2 2026."
+    },
+    "nav": {
+      "rewards": "Belohnungen",
+      "roadmap": "Roadmap",
+      "why": "Warum",
+      "team": "Team",
+      "faq": "FAQ",
+      "signup": "🚀 Anmelden"
+    },
+    "hero": {
+      "badge": "Crowdfunding-Kampagne — Start geplant Q2 2026",
+      "title": "Unterstützen Sie",
+      "titleHighlight": "SecuBox",
+      "subtitle": "Die 100% Open-Source-Cybersicherheitsappliance Made in France. Schützen Sie Ihr Netzwerk mit einer professionellen Lösung für alle.",
+      "stat1Value": "15",
+      "stat1Label": "LuCI-Module",
+      "stat2Value": "100%",
+      "stat2Label": "Open Source",
+      "stat3Value": "🇫🇷",
+      "stat3Label": "Made in France",
+      "btnRewards": "🎁 Belohnungen ansehen",
+      "btnLearnMore": "📖 Mehr erfahren"
+    },
+    "progress": {
+      "goal": "Ziel: 50.000€",
+      "backers": "Unterstützer",
+      "days": "Tage verbleibend",
+      "funded": "finanziert"
+    },
+    "rewards": {
+      "badge": "🎁 Belohnungen",
+      "title": "Wählen Sie Ihre Belohnung",
+      "description": "Von einfacher Unterstützung bis zur kompletten SecuBox mit GlobalScale-Hardware und Premium-Support."
+    },
+    "common": {
+      "popular": "⭐ BELIEBT",
+      "backers": "Unterstützer",
+      "selectReward": "Diese Belohnung wählen",
+      "includes": "Enthält:"
+    }
+  },
+  "es": {
+    "meta": {
+      "title": "SecuBox - Campaña de Financiación | Ciberseguridad Open Source Made in France",
+      "description": "Apoye SecuBox, el dispositivo de ciberseguridad open source francés. Campaña de financiación Q2 2026."
+    },
+    "nav": {
+      "rewards": "Recompensas",
+      "roadmap": "Hoja de ruta",
+      "why": "Por qué",
+      "team": "Equipo",
+      "faq": "FAQ",
+      "signup": "🚀 Registrarse"
+    },
+    "hero": {
+      "badge": "Campaña de Financiación — Lanzamiento previsto Q2 2026",
+      "title": "Apoye",
+      "titleHighlight": "SecuBox",
+      "subtitle": "El dispositivo de ciberseguridad 100% open source Made in France. Proteja su red con una solución profesional accesible para todos.",
+      "stat1Value": "15",
+      "stat1Label": "Módulos LuCI",
+      "stat2Value": "100%",
+      "stat2Label": "Código Abierto",
+      "stat3Value": "🇫🇷",
+      "stat3Label": "Made in France",
+      "btnRewards": "🎁 Ver Recompensas",
+      "btnLearnMore": "📖 Más información"
+    },
+    "progress": {
+      "goal": "Objetivo: 50.000€",
+      "backers": "patrocinadores",
+      "days": "días restantes",
+      "funded": "financiado"
+    },
+    "rewards": {
+      "badge": "🎁 Recompensas",
+      "title": "Elija su Recompensa",
+      "description": "Desde apoyo simple hasta la SecuBox completa con hardware GlobalScale y soporte premium."
+    },
+    "common": {
+      "popular": "⭐ POPULAR",
+      "backers": "patrocinadores",
+      "selectReward": "Seleccionar esta recompensa",
+      "includes": "Incluye:"
+    }
+  },
+  "it": {
+    "meta": {
+      "title": "SecuBox - Campagna di Crowdfunding | Cybersecurity Open Source Made in France",
+      "description": "Sostieni SecuBox, l'appliance di cybersecurity open source francese. Campagna di crowdfunding Q2 2026."
+    },
+    "nav": {
+      "rewards": "Ricompense",
+      "roadmap": "Roadmap",
+      "why": "Perché",
+      "team": "Team",
+      "faq": "FAQ",
+      "signup": "🚀 Registrati"
+    },
+    "hero": {
+      "badge": "Campagna di Crowdfunding — Lancio previsto Q2 2026",
+      "title": "Sostieni",
+      "titleHighlight": "SecuBox",
+      "subtitle": "L'appliance di cybersecurity 100% open source Made in France. Proteggi la tua rete con una soluzione professionale accessibile a tutti.",
+      "stat1Value": "15",
+      "stat1Label": "Moduli LuCI",
+      "stat2Value": "100%",
+      "stat2Label": "Open Source",
+      "stat3Value": "🇫🇷",
+      "stat3Label": "Made in France",
+      "btnRewards": "🎁 Vedi Ricompense",
+      "btnLearnMore": "📖 Scopri di più"
+    },
+    "progress": {
+      "goal": "Obiettivo: 50.000€",
+      "backers": "sostenitori",
+      "days": "giorni rimanenti",
+      "funded": "finanziato"
+    },
+    "rewards": {
+      "badge": "🎁 Ricompense",
+      "title": "Scegli la tua Ricompensa",
+      "description": "Dal semplice supporto alla SecuBox completa con hardware GlobalScale e supporto premium."
+    },
+    "common": {
+      "popular": "⭐ POPOLARE",
+      "backers": "sostenitori",
+      "selectReward": "Seleziona questa ricompensa",
+      "includes": "Include:"
+    }
+  },
+  "pt": {
+    "meta": {
+      "title": "SecuBox - Campanha de Financiamento | Cibersegurança Open Source Made in France",
+      "description": "Apoie SecuBox, o dispositivo de cibersegurança open source francês. Campanha de financiamento Q2 2026."
+    },
+    "nav": {
+      "rewards": "Recompensas",
+      "roadmap": "Roteiro",
+      "why": "Por quê",
+      "team": "Equipe",
+      "faq": "FAQ",
+      "signup": "🚀 Inscrever-se"
+    },
+    "hero": {
+      "badge": "Campanha de Financiamento — Lançamento previsto Q2 2026",
+      "title": "Apoie",
+      "titleHighlight": "SecuBox",
+      "subtitle": "O dispositivo de cibersegurança 100% open source Made in France. Proteja sua rede com uma solução profissional acessível a todos.",
+      "stat1Value": "15",
+      "stat1Label": "Módulos LuCI",
+      "stat2Value": "100%",
+      "stat2Label": "Código Aberto",
+      "stat3Value": "🇫🇷",
+      "stat3Label": "Made in France",
+      "btnRewards": "🎁 Ver Recompensas",
+      "btnLearnMore": "📖 Saiba mais"
+    },
+    "progress": {
+      "goal": "Objetivo: €50.000",
+      "backers": "apoiadores",
+      "days": "dias restantes",
+      "funded": "financiado"
+    },
+    "rewards": {
+      "badge": "🎁 Recompensas",
+      "title": "Escolha sua Recompensa",
+      "description": "Do simples apoio até a SecuBox completa com hardware GlobalScale e suporte premium."
+    },
+    "common": {
+      "popular": "⭐ POPULAR",
+      "backers": "apoiadores",
+      "selectReward": "Selecionar esta recompensa",
+      "includes": "Inclui:"
+    }
+  },
+  "nl": {
+    "meta": {
+      "title": "SecuBox - Crowdfundingcampagne | Open Source Cybersecurity Made in France",
+      "description": "Steun SecuBox, het Franse open source cybersecurity-apparaat. Crowdfundingcampagne Q2 2026."
+    },
+    "nav": {
+      "rewards": "Beloningen",
+      "roadmap": "Roadmap",
+      "why": "Waarom",
+      "team": "Team",
+      "faq": "FAQ",
+      "signup": "🚀 Aanmelden"
+    },
+    "hero": {
+      "badge": "Crowdfundingcampagne — Lancering gepland Q2 2026",
+      "title": "Steun",
+      "titleHighlight": "SecuBox",
+      "subtitle": "Het 100% open source cybersecurity-apparaat Made in France. Bescherm uw netwerk met een professionele oplossing toegankelijk voor iedereen.",
+      "stat1Value": "15",
+      "stat1Label": "LuCI-modules",
+      "stat2Value": "100%",
+      "stat2Label": "Open Source",
+      "stat3Value": "🇫🇷",
+      "stat3Label": "Made in France",
+      "btnRewards": "🎁 Bekijk Beloningen",
+      "btnLearnMore": "📖 Meer informatie"
+    },
+    "progress": {
+      "goal": "Doel: €50.000",
+      "backers": "backers",
+      "days": "dagen over",
+      "funded": "gefinancierd"
+    },
+    "rewards": {
+      "badge": "🎁 Beloningen",
+      "title": "Kies uw Beloning",
+      "description": "Van eenvoudige steun tot de volledige SecuBox met GlobalScale-hardware en premium ondersteuning."
+    },
+    "common": {
+      "popular": "⭐ POPULAIR",
+      "backers": "backers",
+      "selectReward": "Selecteer deze beloning",
+      "includes": "Bevat:"
+    }
+  },
+  "zh": {
+    "meta": {
+      "title": "SecuBox - 众筹活动 | 法国开源网络安全",
+      "description": "支持SecuBox，法国开源网络安全设备。2026年第二季度众筹活动。"
+    },
+    "nav": {
+      "rewards": "奖励",
+      "roadmap": "路线图",
+      "why": "为什么",
+      "team": "团队",
+      "faq": "常见问题",
+      "signup": "🚀 注册"
+    },
+    "hero": {
+      "badge": "众筹活动 — 计划于2026年第二季度启动",
+      "title": "支持",
+      "titleHighlight": "SecuBox",
+      "subtitle": "100%开源的法国制造网络安全设备。用人人可用的专业解决方案保护您的网络。",
+      "stat1Value": "15",
+      "stat1Label": "LuCI 模块",
+      "stat2Value": "100%",
+      "stat2Label": "开源",
+      "stat3Value": "🇫🇷",
+      "stat3Label": "法国制造",
+      "btnRewards": "🎁 查看奖励",
+      "btnLearnMore": "📖 了解更多"
+    },
+    "progress": {
+      "goal": "目标：50,000欧元",
+      "backers": "支持者",
+      "days": "剩余天数",
+      "funded": "已筹集"
+    },
+    "rewards": {
+      "badge": "🎁 奖励",
+      "title": "选择您的奖励",
+      "description": "从简单支持到配备GlobalScale硬件和高级支持的完整SecuBox。"
+    },
+    "common": {
+      "popular": "⭐ 热门",
+      "backers": "支持者",
+      "selectReward": "选择此奖励",
+      "includes": "包含："
+    }
+  },
+  "ja": {
+    "meta": {
+      "title": "SecuBox - クラウドファンディングキャンペーン | フランス製オープンソースサイバーセキュリティ",
+      "description": "SecuBoxを支援してください。フランス製オープンソースサイバーセキュリティアプライアンス。2026年第2四半期クラウドファンディングキャンペーン。"
+    },
+    "nav": {
+      "rewards": "リワード",
+      "roadmap": "ロードマップ",
+      "why": "なぜ",
+      "team": "チーム",
+      "faq": "よくある質問",
+      "signup": "🚀 登録"
+    },
+    "hero": {
+      "badge": "クラウドファンディングキャンペーン — 2026年第2四半期開始予定",
+      "title": "支援する",
+      "titleHighlight": "SecuBox",
+      "subtitle": "100%オープンソースのフランス製サイバーセキュリティアプライアンス。誰でも使えるプロフェッショナルソリューションでネットワークを保護します。",
+      "stat1Value": "15",
+      "stat1Label": "LuCIモジュール",
+      "stat2Value": "100%",
+      "stat2Label": "オープンソース",
+      "stat3Value": "🇫🇷",
+      "stat3Label": "フランス製",
+      "btnRewards": "🎁 リワードを見る",
+      "btnLearnMore": "📖 詳細"
+    },
+    "progress": {
+      "goal": "目標：50,000ユーロ",
+      "backers": "支援者",
+      "days": "残り日数",
+      "funded": "調達済み"
+    },
+    "rewards": {
+      "badge": "🎁 リワード",
+      "title": "リワードを選択",
+      "description": "シンプルなサポートからGlobalScaleハードウェアとプレミアムサポート付きの完全なSecuBoxまで。"
+    },
+    "common": {
+      "popular": "⭐ 人気",
+      "backers": "支援者",
+      "selectReward": "このリワードを選択",
+      "includes": "含まれるもの："
+    }
+  },
+  "ar": {
+    "meta": {
+      "title": "SecuBox - حملة التمويل الجماعي | الأمن السيبراني مفتوح المصدر صنع في فرنسا",
+      "description": "ادعم SecuBox، جهاز الأمن السيبراني الفرنسي مفتوح المصدر. حملة التمويل الجماعي الربع الثاني 2026."
+    },
+    "nav": {
+      "rewards": "المكافآت",
+      "roadmap": "خريطة الطريق",
+      "why": "لماذا",
+      "team": "الفريق",
+      "faq": "الأسئلة الشائعة",
+      "signup": "🚀 التسجيل"
+    },
+    "hero": {
+      "badge": "حملة التمويل الجماعي — الإطلاق المخطط الربع الثاني 2026",
+      "title": "ادعم",
+      "titleHighlight": "SecuBox",
+      "subtitle": "جهاز الأمن السيبراني مفتوح المصدر 100% صنع في فرنسا. احمِ شبكتك بحل احترافي متاح للجميع.",
+      "stat1Value": "15",
+      "stat1Label": "وحدات LuCI",
+      "stat2Value": "100%",
+      "stat2Label": "مفتوح المصدر",
+      "stat3Value": "🇫🇷",
+      "stat3Label": "صنع في فرنسا",
+      "btnRewards": "🎁 عرض المكافآت",
+      "btnLearnMore": "📖 معرفة المزيد"
+    },
+    "progress": {
+      "goal": "الهدف: 50,000 يورو",
+      "backers": "داعمين",
+      "days": "أيام متبقية",
+      "funded": "تم التمويل"
+    },
+    "rewards": {
+      "badge": "🎁 المكافآت",
+      "title": "اختر مكافأتك",
+      "description": "من الدعم البسيط إلى SecuBox الكاملة مع أجهزة GlobalScale والدعم المميز."
+    },
+    "common": {
+      "popular": "⭐ شائع",
+      "backers": "داعمين",
+      "selectReward": "اختر هذه المكافأة",
+      "includes": "يتضمن:"
+    }
+  },
+  "ru": {
+    "meta": {
+      "title": "SecuBox - Краудфандинговая кампания | Кибербезопасность с открытым исходным кодом, сделано во Франции",
+      "description": "Поддержите SecuBox, французское устройство кибербезопасности с открытым исходным кодом. Краудфандинговая кампания Q2 2026."
+    },
+    "nav": {
+      "rewards": "Награды",
+      "roadmap": "Дорожная карта",
+      "why": "Почему",
+      "team": "Команда",
+      "faq": "FAQ",
+      "signup": "🚀 Зарегистрироваться"
+    },
+    "hero": {
+      "badge": "Краудфандинговая кампания — Запуск запланирован на Q2 2026",
+      "title": "Поддержите",
+      "titleHighlight": "SecuBox",
+      "subtitle": "100% устройство кибербезопасности с открытым исходным кодом, сделанное во Франции. Защитите свою сеть профессиональным решением, доступным каждому.",
+      "stat1Value": "15",
+      "stat1Label": "Модули LuCI",
+      "stat2Value": "100%",
+      "stat2Label": "Открытый код",
+      "stat3Value": "🇫🇷",
+      "stat3Label": "Сделано во Франции",
+      "btnRewards": "🎁 Посмотреть награды",
+      "btnLearnMore": "📖 Узнать больше"
+    },
+    "progress": {
+      "goal": "Цель: 50 000€",
+      "backers": "спонсоров",
+      "days": "дней осталось",
+      "funded": "собрано"
+    },
+    "rewards": {
+      "badge": "🎁 Награды",
+      "title": "Выберите свою награду",
+      "description": "От простой поддержки до полной SecuBox с оборудованием GlobalScale и премиум-поддержкой."
+    },
+    "common": {
+      "popular": "⭐ ПОПУЛЯРНО",
+      "backers": "спонсоров",
+      "selectReward": "Выбрать эту награду",
+      "includes": "Включает:"
+    }
+  }
+}
