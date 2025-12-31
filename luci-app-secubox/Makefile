@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-secubox
 PKG_VERSION:=0.7.0
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
@@ -24,26 +24,26 @@ PKG_FILE_MODES:=/usr/libexec/rpcd/luci.secubox:root:root:755 \
 include $(TOPDIR)/feeds/luci/luci.mk
 
 define Package/$(PKG_NAME)/install
-	$(call Package/luci/install,$(1))
+	# Standard LuCI package install (htdocs, root, etc.)
+	$(INSTALL_DIR) $(1)/usr
+	$(INSTALL_DIR) $(1)/usr/share
+	$(INSTALL_DIR) $(1)/usr/share/rpcd
+	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
+	$(INSTALL_DIR) $(1)/www
+	$(INSTALL_DIR) $(1)/etc
+	$(CP) ./htdocs/* $(1)/www/
+	$(CP) ./root/* $(1)/
 
-	# Install SecuBox profiles
+	# Install SecuBox data directories (MUST be explicit, not via luci.mk)
+	$(INSTALL_DIR) $(1)/usr/share/secubox
 	$(INSTALL_DIR) $(1)/usr/share/secubox/profiles
-	for file in $(CURDIR)/profiles/*.json; do \
-		[ -f "$$file" ] && $(INSTALL_DATA) $$file $(1)/usr/share/secubox/profiles/$$(basename $$file); \
-	done
-
-	# Install AppStore catalog (CRITICAL: Required for app store functionality)
 	$(INSTALL_DIR) $(1)/usr/share/secubox/appstore
-	@if [ -f "$(CURDIR)/appstore/apps.json" ]; then \
-		$(INSTALL_DATA) $(CURDIR)/appstore/apps.json $(1)/usr/share/secubox/appstore/apps.json; \
-		echo "SecuBox: Installed appstore catalog ($(CURDIR)/appstore/apps.json -> /usr/share/secubox/appstore/apps.json)"; \
-	else \
-		echo "ERROR: AppStore catalog source file not found at $(CURDIR)/appstore/apps.json"; \
-		echo "  PWD: $$(pwd)"; \
-		echo "  CURDIR: $(CURDIR)"; \
-		echo "  Contents: $$(ls -la $(CURDIR)/ 2>&1 | head -10)"; \
-		exit 1; \
-	fi
+
+	# Install profiles
+	$(INSTALL_DATA) ./profiles/*.json $(1)/usr/share/secubox/profiles/ 2>/dev/null || true
+
+	# Install appstore catalog
+	$(INSTALL_DATA) ./appstore/apps.json $(1)/usr/share/secubox/appstore/apps.json
 endef
 
 define Package/$(PKG_NAME)/postinst
