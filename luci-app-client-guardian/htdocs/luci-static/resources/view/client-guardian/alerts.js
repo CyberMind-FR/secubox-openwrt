@@ -6,14 +6,13 @@
 'require uci';
 'require rpc';
 'require ui';
-
-var api = L.require('client-guardian.api');
+'require client-guardian/api as API';
 
 return view.extend({
 	load: function() {
 		return Promise.all([
-			api.getAlerts(),
-			api.getLogs(20, null)
+			API.getAlerts(),
+			API.getLogs(20, null)
 		]);
 	},
 
@@ -216,7 +215,7 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		api.sendTestAlert('email').then(function(result) {
+		API.sendTestAlert('email').then(function(result) {
 			ui.hideModal();
 			if (result.success) {
 				ui.addNotification(null, E('p', {}, '✅ Email de test envoyé avec succès!'), 'success');
@@ -232,7 +231,7 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		api.sendTestAlert('sms').then(function(result) {
+		API.sendTestAlert('sms').then(function(result) {
 			ui.hideModal();
 			if (result.success) {
 				ui.addNotification(null, E('p', {}, '✅ SMS de test envoyé avec succès!'), 'success');

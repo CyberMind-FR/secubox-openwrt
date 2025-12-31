@@ -4,14 +4,13 @@
 'require dom';
 'require poll';
 'require ui';
-
-var api = L.require('client-guardian.api');
+'require client-guardian/api as API';
 
 return view.extend({
 	refreshInterval: 5000,
 
 	load: function() {
-		return api.getLogs(100, null);
+		return API.getLogs(100, null);
 	},
 
 	render: function(data) {
@@ -170,7 +169,7 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		api.getLogs(limit, null).then(function(data) {
+		API.getLogs(limit, null).then(function(data) {
 			var container = document.getElementById('logs-container');
 			var logs = data.logs || [];
 			
@@ -192,7 +191,7 @@ return view.extend({
 		var self = this;
 		var limit = parseInt(document.getElementById('filter-limit')?.value || 100);
 
-		return api.getLogs(limit, null).then(function(data) {
+		return API.getLogs(limit, null).then(function(data) {
 			var container = document.getElementById('logs-container');
 			if (!container) return;
 			
