@@ -8,7 +8,7 @@
  * RPCD object: luci.cdn-cache
  */
 
-// Version: 0.2.2
+// Version: 0.5.0
 
 var callStatus = rpc.declare({
 	object: 'luci.cdn-cache',
