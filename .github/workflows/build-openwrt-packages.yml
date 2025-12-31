@@ -567,12 +567,15 @@ jobs:
 
           # Disable problematic packages that fail to compile in SDK
           # Our SecuBox packages are PKGARCH:=all (scripts) so they don't need these
-          echo "# CONFIG_PACKAGE_lucihttp is not set" >> .config
-          echo "# CONFIG_PACKAGE_cgi-io is not set" >> .config
+          echo "CONFIG_PACKAGE_lucihttp=n" >> .config
+          echo "CONFIG_PACKAGE_cgi-io=n" >> .config
 
           # Enable use of pre-built packages from feeds
           echo "CONFIG_FEED_packages=y" >> .config
           echo "CONFIG_FEED_luci=y" >> .config
+
+          # Allow missing dependencies (our packages are standalone scripts)
+          echo "CONFIG_BROKEN=y" >> .config
 
           make defconfig
 
