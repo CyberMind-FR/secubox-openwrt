@@ -36,6 +36,13 @@ return view.extend({
 	categoriesData: {},
 	currentFilter: 'all',
 	filterLayer: null,
+	debugMode: (window.location.hash.indexOf('debug') !== -1) || (localStorage.getItem('secubox_debug') === 'true'),
+
+	debug: function() {
+		if (this.debugMode && console && console.log) {
+			console.log.apply(console, ['[AppStore]'].concat(Array.prototype.slice.call(arguments)));
+		}
+	},
 
 	load: function() {
 		return this.refreshData();
@@ -44,20 +51,20 @@ return view.extend({
 	refreshData: function() {
 		var self = this;
 		return API.getAppstoreApps().then(function(data) {
-			console.log('getAppstoreApps raw response:', data);
+			self.debug('getAppstoreApps raw response:', data);
 			if (!data) {
-				console.warn('getAppstoreApps returned empty data');
+				console.warn('[AppStore] getAppstoreApps returned empty data');
 				return { apps: [], categories: {} };
 			}
-			console.log('Apps from API:', data.apps);
-			console.log('Categories from API:', data.categories);
+			self.debug('Apps from API:', data.apps);
+			self.debug('Categories from API:', data.categories);
 			self.appsData = data.apps || [];
 			self.categoriesData = data.categories || {};
-			console.log('Stored appsData:', self.appsData);
-			console.log('Stored categoriesData:', self.categoriesData);
+			self.debug('Stored appsData:', self.appsData);
+			self.debug('Stored categoriesData:', self.categoriesData);
 			return data;
 		}).catch(function(err) {
-			console.error('Error loading appstore apps:', err);
+			console.error('[AppStore] Error loading appstore apps:', err);
 			ui.addNotification(null, E('p', _('Failed to load app store: ') + err.message), 'error');
 			return { apps: [], categories: {} };
 		});
@@ -69,10 +76,10 @@ return view.extend({
 		var categories = (data && data.categories) || this.categoriesData || {};
 
 		// Debug logging
-		console.log('Apps render - data:', data);
-		console.log('Apps render - apps array:', apps);
-		console.log('Apps render - apps.length:', apps.length);
-		console.log('Apps render - categories:', categories);
+		self.debug('Apps render - data:', data);
+		self.debug('Apps render - apps array:', apps);
+		self.debug('Apps render - apps.length:', apps.length);
+		self.debug('Apps render - categories:', categories);
 
 		var defaultFilter = this.currentFilter || 'all';
 		var container = E('div', {

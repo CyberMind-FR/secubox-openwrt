@@ -35,6 +35,13 @@ return view.extend({
 	modulesData: [],
 	currentFilter: 'all',
 	filterLayer: null,
+	debugMode: (window.location.hash.indexOf('debug') !== -1) || (localStorage.getItem('secubox_debug') === 'true'),
+
+	debug: function() {
+		if (this.debugMode && console && console.log) {
+			console.log.apply(console, ['[Modules]'].concat(Array.prototype.slice.call(arguments)));
+		}
+	},
 
 	load: function() {
 		return this.refreshData();
@@ -43,14 +50,17 @@ return view.extend({
 	refreshData: function() {
 		var self = this;
 		return API.getModules().then(function(data) {
+			self.debug('getModules raw response:', data);
 			if (!data) {
-				console.warn('getModules returned empty data');
+				console.warn('[Modules] getModules returned empty data');
 				return { modules: [] };
 			}
+			self.debug('Modules from API:', data.modules);
 			self.modulesData = data.modules || [];
+			self.debug('Stored modulesData:', self.modulesData);
 			return data;
 		}).catch(function(err) {
-			console.error('Error loading modules:', err);
+			console.error('[Modules] Error loading modules:', err);
 			ui.addNotification(null, E('p', _('Failed to load modules: ') + err.message), 'error');
 			return { modules: [] };
 		});
@@ -59,6 +69,10 @@ return view.extend({
 	render: function(data) {
 		var self = this;
 		var modules = (data && data.modules) || this.modulesData || [];
+
+		self.debug('Modules render - data:', data);
+		self.debug('Modules render - modules array:', modules);
+		self.debug('Modules render - modules.length:', modules.length);
 
 		var defaultFilter = this.currentFilter || 'all';
 		var container = E('div', {
