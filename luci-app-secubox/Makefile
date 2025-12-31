@@ -34,10 +34,16 @@ define Package/$(PKG_NAME)/install
 
 	# Install AppStore catalog (CRITICAL: Required for app store functionality)
 	$(INSTALL_DIR) $(1)/usr/share/secubox/appstore
-	$(INSTALL_DATA) $(CURDIR)/appstore/apps.json $(1)/usr/share/secubox/appstore/apps.json
-
-	# Verify appstore file was installed
-	@echo "SecuBox: Installed appstore catalog to /usr/share/secubox/appstore/apps.json"
+	@if [ -f "$(CURDIR)/appstore/apps.json" ]; then \
+		$(INSTALL_DATA) $(CURDIR)/appstore/apps.json $(1)/usr/share/secubox/appstore/apps.json; \
+		echo "SecuBox: Installed appstore catalog ($(CURDIR)/appstore/apps.json -> /usr/share/secubox/appstore/apps.json)"; \
+	else \
+		echo "ERROR: AppStore catalog source file not found at $(CURDIR)/appstore/apps.json"; \
+		echo "  PWD: $$(pwd)"; \
+		echo "  CURDIR: $(CURDIR)"; \
+		echo "  Contents: $$(ls -la $(CURDIR)/ 2>&1 | head -10)"; \
+		exit 1; \
+	fi
 endef
 
 define Package/$(PKG_NAME)/postinst
