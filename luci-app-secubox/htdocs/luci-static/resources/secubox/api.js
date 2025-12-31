@@ -8,7 +8,7 @@
  * RPCD object: luci.secubox
  */
 
-// Version: 0.3.1
+// Version: 0.7.0
 
 var callStatus = rpc.declare({
 	object: 'luci.secubox',
