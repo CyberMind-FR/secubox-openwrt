@@ -132,6 +132,7 @@ return baseclass.extend({
 	// System stats
 	getStats: callStats,
 	getCPU: callCPU,
+	getCpu: callCPU,  // Alias for consistency
 	getMemory: callMemory,
 	getDisk: callDisk,
 	getNetwork: callNetwork,
@@ -148,6 +149,29 @@ return baseclass.extend({
 	stopNetdata: callStopNetdata,
 	getSecuboxLogs: callSecuboxLogs,
 	collectDebugSnapshot: callCollectDebug,
+
+	// Combined data fetch for dashboard
+	getAllData: function() {
+		return Promise.all([
+			callStats(),
+			callCPU(),
+			callMemory(),
+			callDisk(),
+			callNetwork(),
+			callProcesses(),
+			callSystem()
+		]).then(function(results) {
+			return {
+				stats: results[0] || {},
+				cpu: results[1] || {},
+				memory: results[2] || {},
+				disk: results[3] || {},
+				network: results[4] || {},
+				processes: results[5] || {},
+				system: results[6] || {}
+			};
+		});
+	},
 
 	// Utility functions
 	formatBytes: formatBytes,
