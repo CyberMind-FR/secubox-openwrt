@@ -195,7 +195,7 @@ var callRollbackProfile = rpc.declare({
 var callGetAppstoreApps = rpc.declare({
 	object: 'luci.secubox',
 	method: 'get_appstore_apps',
-	expect: { apps: [], categories: {} }
+	expect: { }
 });
 
 var callGetAppstoreApp = rpc.declare({

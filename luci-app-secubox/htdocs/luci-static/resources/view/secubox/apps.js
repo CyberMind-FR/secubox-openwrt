@@ -44,12 +44,17 @@ return view.extend({
 	refreshData: function() {
 		var self = this;
 		return API.getAppstoreApps().then(function(data) {
+			console.log('getAppstoreApps raw response:', data);
 			if (!data) {
 				console.warn('getAppstoreApps returned empty data');
 				return { apps: [], categories: {} };
 			}
+			console.log('Apps from API:', data.apps);
+			console.log('Categories from API:', data.categories);
 			self.appsData = data.apps || [];
 			self.categoriesData = data.categories || {};
+			console.log('Stored appsData:', self.appsData);
+			console.log('Stored categoriesData:', self.categoriesData);
 			return data;
 		}).catch(function(err) {
 			console.error('Error loading appstore apps:', err);
@@ -62,6 +67,12 @@ return view.extend({
 		var self = this;
 		var apps = (data && data.apps) || this.appsData || [];
 		var categories = (data && data.categories) || this.categoriesData || {};
+
+		// Debug logging
+		console.log('Apps render - data:', data);
+		console.log('Apps render - apps array:', apps);
+		console.log('Apps render - apps.length:', apps.length);
+		console.log('Apps render - categories:', categories);
 
 		var defaultFilter = this.currentFilter || 'all';
 		var container = E('div', {
