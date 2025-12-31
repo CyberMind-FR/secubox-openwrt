@@ -3,7 +3,7 @@
 		"description": "Grant access to LuCI Client Guardian Dashboard",
 		"read": {
 			"ubus": {
-				"client-guardian": [ "status", "clients", "zones", "parental", "portal", "alerts", "logs" ],
+				"luci.client-guardian": [ "status", "clients", "get_client", "zones", "parental", "portal", "alerts", "logs", "list_sessions", "get_policy" ],
 				"system": [ "info", "board" ],
 				"network.interface": [ "status", "dump" ],
 				"file": [ "read", "stat" ]
@@ -18,7 +18,7 @@
 		},
 		"write": {
 			"ubus": {
-				"client-guardian": [ "approve_client", "ban_client", "quarantine_client", "update_client", "update_zone", "update_portal", "send_test_alert" ]
+				"luci.client-guardian": [ "approve_client", "ban_client", "quarantine_client", "update_client", "update_zone", "update_portal", "send_test_alert", "set_policy", "authorize_client", "deauthorize_client" ]
 			},
 			"uci": [ "client-guardian" ]
 		}
