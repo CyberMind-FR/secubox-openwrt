@@ -7,7 +7,7 @@
 
 return view.extend({
 	load: function() {
-		return api.callParental();
+		return api.getParental();
 	},
 
 	render: function(data) {

@@ -7,7 +7,7 @@
 
 return view.extend({
 	load: function() {
-		return api.callPortal();
+		return api.getPortal();
 	},
 
 	render: function(data) {
@@ -202,7 +202,7 @@ return view.extend({
 		var password = document.getElementById('portal-password').value;
 		var color = document.getElementById('portal-color').value;
 
-		api.callUpdatePortal(title, subtitle, color, auth, password).then(function(res) {
+		api.updatePortal(title, subtitle, color, auth, password).then(function(res) {
 			if (res.success) {
 				ui.addNotification(null, E('p', {}, _('Configuration du portail enregistrée')), 'success');
 			}

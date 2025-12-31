@@ -9,8 +9,8 @@
 return view.extend({
 	load: function() {
 		return Promise.all([
-			api.callClients(),
-			api.callZones()
+			api.getClients(),
+			api.getZones()
 		]);
 	},
 
@@ -192,7 +192,7 @@ return view.extend({
 					var name = document.getElementById('approve-name').value;
 					var zone = document.getElementById('approve-zone').value;
 					var notes = document.getElementById('approve-notes').value;
-					api.callApproveClient(mac, name, zone, notes).then(function() {
+					api.approveClient(mac, name, zone, notes).then(function() {
 						ui.hideModal();
 						window.location.reload();
 					});
@@ -230,7 +230,7 @@ return view.extend({
 			E('div', { 'class': 'cg-btn-group', 'style': 'justify-content: flex-end' }, [
 				E('button', { 'class': 'cg-btn', 'click': ui.hideModal }, _('Annuler')),
 				E('button', { 'class': 'cg-btn cg-btn-primary', 'click': function() {
-					api.callUpdateClient(
+					api.updateClient(
 						client.section,
 						document.getElementById('edit-name').value,
 						document.getElementById('edit-zone').value,
@@ -260,7 +260,7 @@ return view.extend({
 				E('button', { 'class': 'cg-btn', 'click': ui.hideModal }, _('Annuler')),
 				E('button', { 'class': 'cg-btn cg-btn-danger', 'click': function() {
 					var reason = document.getElementById('ban-reason').value || 'Manual ban';
-					api.callBanClient(mac, reason).then(function() {
+					api.banClient(mac, reason).then(function() {
 						ui.hideModal();
 						window.location.reload();
 					});
@@ -271,7 +271,7 @@ return view.extend({
 
 	handleUnban: function(ev) {
 		var mac = ev.currentTarget.dataset.mac;
-		api.callQuarantineClient(mac).then(function() {
+		api.quarantineClient(mac).then(function() {
 			window.location.reload();
 		});
 	},

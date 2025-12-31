@@ -11,7 +11,7 @@ return view.extend({
 	refreshInterval: 5000,
 
 	load: function() {
-		return api.callGetLogs(100, null);
+		return api.getLogs(100, null);
 	},
 
 	render: function(data) {
@@ -170,7 +170,7 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		api.callGetLogs(limit, null).then(function(data) {
+		api.getLogs(limit, null).then(function(data) {
 			var container = document.getElementById('logs-container');
 			var logs = data.logs || [];
 			
@@ -192,7 +192,7 @@ return view.extend({
 		var self = this;
 		var limit = parseInt(document.getElementById('filter-limit')?.value || 100);
 
-		return api.callGetLogs(limit, null).then(function(data) {
+		return api.getLogs(limit, null).then(function(data) {
 			var container = document.getElementById('logs-container');
 			if (!container) return;
 			

@@ -10,9 +10,9 @@
 return view.extend({
 	load: function() {
 		return Promise.all([
-			api.callStatus(),
-			api.callClients(),
-			api.callZones()
+			api.getStatus(),
+			api.getClients(),
+			api.getZones()
 		]);
 	},
 
@@ -178,7 +178,7 @@ return view.extend({
 					'class': 'cg-btn cg-btn-success',
 					'click': function() {
 						var zone = document.getElementById('approve-zone').value;
-						api.callApproveClient(mac, '', zone, '').then(function() {
+						api.approveClient(mac, '', zone, '').then(function() {
 							ui.hideModal();
 							window.location.reload();
 						});
@@ -202,7 +202,7 @@ return view.extend({
 				E('button', {
 					'class': 'cg-btn cg-btn-danger',
 					'click': function() {
-						api.callBanClient(mac, 'Manual ban').then(function() {
+						api.banClient(mac, 'Manual ban').then(function() {
 							ui.hideModal();
 							window.location.reload();
 						});

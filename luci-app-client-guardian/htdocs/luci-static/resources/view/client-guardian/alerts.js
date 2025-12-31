@@ -12,8 +12,8 @@ var api = L.require('client-guardian.api');
 return view.extend({
 	load: function() {
 		return Promise.all([
-			api.callGetAlerts(),
-			api.callGetLogs(20, null)
+			api.getAlerts(),
+			api.getLogs(20, null)
 		]);
 	},
 
@@ -216,7 +216,7 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		api.callSendTestAlert('email').then(function(result) {
+		api.sendTestAlert('email').then(function(result) {
 			ui.hideModal();
 			if (result.success) {
 				ui.addNotification(null, E('p', {}, '✅ Email de test envoyé avec succès!'), 'success');
@@ -232,7 +232,7 @@ return view.extend({
 			E('div', { 'class': 'spinning' })
 		]);
 
-		api.callSendTestAlert('sms').then(function(result) {
+		api.sendTestAlert('sms').then(function(result) {
 			ui.hideModal();
 			if (result.success) {
 				ui.addNotification(null, E('p', {}, '✅ SMS de test envoyé avec succès!'), 'success');

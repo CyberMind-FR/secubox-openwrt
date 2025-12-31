@@ -7,7 +7,7 @@
 
 return view.extend({
 	load: function() {
-		return api.callZones();
+		return api.getZones();
 	},
 
 	render: function(data) {
@@ -154,7 +154,7 @@ return view.extend({
 			E('div', { 'class': 'cg-btn-group', 'style': 'justify-content: flex-end; margin-top: 20px' }, [
 				E('button', { 'class': 'cg-btn', 'click': ui.hideModal }, _('Annuler')),
 				E('button', { 'class': 'cg-btn cg-btn-primary', 'click': function() {
-					api.callUpdateZone(
+					api.updateZone(
 						zone.id,
 						zone.name,
 						parseInt(document.getElementById('zone-bandwidth').value) || 0,
