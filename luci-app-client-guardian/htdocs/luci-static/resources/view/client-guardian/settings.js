@@ -3,6 +3,7 @@
 'require secubox-theme/theme as Theme';
 'require form';
 'require ui';
+'require uci';
 'require client-guardian/api as API';
 
 return view.extend({
