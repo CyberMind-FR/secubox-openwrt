@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-secubox
 PKG_VERSION:=0.7.0
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
@@ -24,17 +24,10 @@ PKG_FILE_MODES:=/usr/libexec/rpcd/luci.secubox:root:root:755 \
 include $(TOPDIR)/feeds/luci/luci.mk
 
 define Package/$(PKG_NAME)/install
-	# Standard LuCI package install (htdocs, root, etc.)
-	$(INSTALL_DIR) $(1)/usr
-	$(INSTALL_DIR) $(1)/usr/share
-	$(INSTALL_DIR) $(1)/usr/share/rpcd
-	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
-	$(INSTALL_DIR) $(1)/www
-	$(INSTALL_DIR) $(1)/etc
-	$(CP) ./htdocs/* $(1)/www/
-	$(CP) ./root/* $(1)/
+	# Call parent LuCI installer for htdocs and root
+	$(call Package/luci/install,$(1))
 
-	# Install SecuBox data directories (MUST be explicit, not via luci.mk)
+	# Install SecuBox data directories (custom, not handled by luci.mk)
 	$(INSTALL_DIR) $(1)/usr/share/secubox
 	$(INSTALL_DIR) $(1)/usr/share/secubox/profiles
 	$(INSTALL_DIR) $(1)/usr/share/secubox/appstore
