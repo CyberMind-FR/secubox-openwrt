@@ -128,6 +128,33 @@ function formatUptime(seconds) {
 	return parts.join(' ') || '0m';
 }
 
+function formatKB(kb) {
+	if (!kb || kb === 0) return '0 KB';
+	var units = ['KB', 'MB', 'GB', 'TB'];
+	var i = 0;
+	var size = kb;
+	while (size >= 1024 && i < units.length - 1) {
+		size = size / 1024;
+		i++;
+	}
+	return size.toFixed(2) + ' ' + units[i];
+}
+
+function getStatusClass(percent) {
+	if (percent >= 90) return 'critical';
+	if (percent >= 75) return 'warning';
+	if (percent >= 50) return 'info';
+	return 'good';
+}
+
+function getTempClass(temp) {
+	if (!temp) return 'good';
+	if (temp >= 80) return 'critical';
+	if (temp >= 70) return 'warning';
+	if (temp >= 60) return 'info';
+	return 'good';
+}
+
 return baseclass.extend({
 	// System stats
 	getStats: callStats,
@@ -175,5 +202,8 @@ return baseclass.extend({
 
 	// Utility functions
 	formatBytes: formatBytes,
-	formatUptime: formatUptime
+	formatKB: formatKB,
+	formatUptime: formatUptime,
+	getStatusClass: getStatusClass,
+	getTempClass: getTempClass
 });
