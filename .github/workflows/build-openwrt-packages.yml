@@ -533,6 +533,18 @@ jobs:
           echo "Note: Our SecuBox packages are PKGARCH:=all (scripts only)"
           echo "They will be built regardless of dependency availability"
 
+      - name: Install Lua in SDK
+        run: |
+          cd sdk
+
+          echo "📦 Installing Lua headers in SDK to prevent lucihttp compilation errors..."
+
+          # Install lua package which provides headers needed by lucihttp
+          # This prevents lua.h missing error but we still don't want lucihttp compiled
+          ./scripts/feeds install lua
+
+          echo "✅ Lua installed"
+
       - name: Configure packages
         run: |
           cd sdk
@@ -567,8 +579,9 @@ jobs:
 
           # Disable problematic packages that fail to compile in SDK
           # Our SecuBox packages are PKGARCH:=all (scripts) so they don't need these
-          echo "CONFIG_PACKAGE_lucihttp=n" >> .config
-          echo "CONFIG_PACKAGE_cgi-io=n" >> .config
+          # Use OpenWrt standard format for disabling packages
+          echo "# CONFIG_PACKAGE_lucihttp is not set" >> .config
+          echo "# CONFIG_PACKAGE_cgi-io is not set" >> .config
 
           # Enable use of pre-built packages from feeds
           echo "CONFIG_FEED_packages=y" >> .config

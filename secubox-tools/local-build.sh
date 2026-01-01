@@ -483,6 +483,12 @@ FEEDS
         print_warning "Feed installation had errors, checking if critical..."
     fi
 
+    # Install Lua to provide headers (prevents lua.h missing error in lucihttp)
+    echo ""
+    echo "📦 Installing Lua package for headers..."
+    ./scripts/feeds install lua 2>&1 | grep -v "WARNING:" || true
+    print_info "Lua installed (provides headers to prevent lucihttp compilation errors)"
+
     # Note: We skip manual dependency installation as it causes hangs
     # The feeds install -a command above already installed all available packages
     # lucihttp and cgi-io will be disabled in .config to prevent compilation failures
@@ -1051,6 +1057,11 @@ setup_openwrt_feeds() {
     if ! ./scripts/feeds install -a 2>&1 | tee feed-install.log; then
         print_warning "Feed install had warnings, checking directories..."
     fi
+
+    # Install Lua to provide headers (prevents lua.h missing error in lucihttp)
+    echo ""
+    print_info "Installing Lua package for headers..."
+    ./scripts/feeds install lua 2>&1 | grep -v "WARNING:" || true
 
     # Verify feeds
     for feed in packages luci; do
