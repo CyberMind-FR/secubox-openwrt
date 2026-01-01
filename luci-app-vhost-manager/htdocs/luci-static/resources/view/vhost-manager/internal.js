@@ -3,26 +3,53 @@
 'require vhost-manager/api as API';
 'require secubox-theme/theme as Theme';
 'require vhost-manager/ui as VHostUI';
+'require request';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
 	(navigator.language ? navigator.language.split('-')[0] : 'en');
 Theme.init({ language: lang });
 
-var SERVICES = [
-	{ icon: '🖥️', name: _('LuCI UI'), domain: 'router.local', backend: 'http://127.0.0.1:80', category: _('Core'), description: _('Expose the management UI behind nginx with optional SSL and auth.') },
-	{ icon: '📈', name: _('Netdata'), domain: 'metrics.local', backend: 'http://127.0.0.1:19999', category: _('Monitoring'), description: _('High-resolution telemetry for CPU, memory, and interfaces.') },
-	{ icon: '🛡️', name: _('CrowdSec'), domain: 'crowdsec.local', backend: 'http://127.0.0.1:8080', category: _('Security'), description: _('Review bouncer decisions and live intrusion alerts.') },
-	{ icon: '🏠', name: _('Home Assistant'), domain: 'home.local', backend: 'http://192.168.1.13:8123', category: _('Automation'), description: _('Publish your smart-home UI securely with SSL and auth.') },
-	{ icon: '🎬', name: _('Media Server'), domain: 'media.local', backend: 'http://192.168.1.12:8096', category: _('Entertainment'), description: _('Jellyfin or Plex front-end available via a friendly hostname.') },
-	{ icon: '🗄️', name: _('Nextcloud'), domain: 'cloud.local', backend: 'http://192.168.1.20:80', category: _('Productivity'), description: _('Bring private SaaS back on-prem with HTTPS and caching headers.') }
-];
+var SERVICES = [];
 
 return view.extend({
 	load: function() {
 		return Promise.all([
-			API.listVHosts()
+			API.listVHosts(),
+			this.loadTemplates()
 		]);
+	},
+
+	loadTemplates: function() {
+		return request.get('/usr/share/vhost-manager/templates.json').then(function(response) {
+			try {
+				var data = JSON.parse(response.responseText || '{}');
+				SERVICES = (data.templates || []).map(function(t) {
+					return {
+						id: t.id,
+						icon: t.icon,
+						name: t.name,
+						domain: t.domain,
+						backend: t.backend,
+						port: t.port,
+						category: t.category,
+						description: t.description,
+						app_id: t.app_id,
+						requires_ssl: t.requires_ssl,
+						requires_auth: t.requires_auth,
+						websocket_support: t.websocket_support,
+						notes: t.notes
+					};
+				});
+				return SERVICES;
+			} catch(e) {
+				console.error('Failed to parse vhost templates:', e);
+				return [];
+			}
+		}).catch(function(err) {
+			console.error('Failed to load vhost templates:', err);
+			return [];
+		});
 	},
 
 	render: function(data) {

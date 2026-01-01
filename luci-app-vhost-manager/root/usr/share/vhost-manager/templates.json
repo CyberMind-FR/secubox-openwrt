@@ -1,0 +1,253 @@
+{
+  "templates": [
+    {
+      "id": "luci",
+      "icon": "🖥️",
+      "name": "LuCI UI",
+      "domain": "router.local",
+      "backend": "http://127.0.0.1:80",
+      "port": 80,
+      "category": "Core",
+      "description": "Expose the management UI behind nginx with optional SSL and auth.",
+      "app_id": null,
+      "enabled_by_default": true,
+      "requires_ssl": false,
+      "requires_auth": false,
+      "websocket_support": false
+    },
+    {
+      "id": "netdata",
+      "icon": "📈",
+      "name": "Netdata",
+      "domain": "metrics.local",
+      "backend": "http://127.0.0.1:19999",
+      "port": 19999,
+      "category": "Monitoring",
+      "description": "High-resolution telemetry for CPU, memory, and interfaces.",
+      "app_id": null,
+      "enabled_by_default": false,
+      "requires_ssl": false,
+      "requires_auth": true,
+      "websocket_support": true
+    },
+    {
+      "id": "crowdsec",
+      "icon": "🛡️",
+      "name": "CrowdSec",
+      "domain": "crowdsec.local",
+      "backend": "http://127.0.0.1:8080",
+      "port": 8080,
+      "category": "Security",
+      "description": "Review bouncer decisions and live intrusion alerts.",
+      "app_id": "secubox-app-crowdsec",
+      "enabled_by_default": false,
+      "requires_ssl": true,
+      "requires_auth": true,
+      "websocket_support": false
+    },
+    {
+      "id": "nodogsplash",
+      "icon": "🌐",
+      "name": "NoDogSplash",
+      "domain": "portal.local",
+      "backend": "http://127.0.0.1:2050",
+      "port": 2050,
+      "category": "Network",
+      "description": "Captive portal splash page for guest network access control.",
+      "app_id": "secubox-app-nodogsplash",
+      "enabled_by_default": false,
+      "requires_ssl": false,
+      "requires_auth": false,
+      "websocket_support": false
+    },
+    {
+      "id": "domoticz",
+      "icon": "🏠",
+      "name": "Domoticz",
+      "domain": "domoticz.local",
+      "backend": "http://127.0.0.1:8080",
+      "port": 8080,
+      "category": "IoT & Home Automation",
+      "description": "Home automation system with support for various devices and protocols.",
+      "app_id": "secubox-app-domoticz",
+      "enabled_by_default": false,
+      "requires_ssl": true,
+      "requires_auth": true,
+      "websocket_support": true
+    },
+    {
+      "id": "lyrion",
+      "icon": "🎵",
+      "name": "Lyrion Music Server",
+      "domain": "music.local",
+      "backend": "http://127.0.0.1:9000",
+      "port": 9000,
+      "category": "Media",
+      "description": "Multi-room audio streaming server (formerly Logitech Media Server).",
+      "app_id": "secubox-app-lyrion",
+      "enabled_by_default": false,
+      "requires_ssl": false,
+      "requires_auth": false,
+      "websocket_support": false
+    },
+    {
+      "id": "zigbee2mqtt",
+      "icon": "📡",
+      "name": "Zigbee2MQTT",
+      "domain": "zigbee.local",
+      "backend": "http://127.0.0.1:8080",
+      "port": 8080,
+      "category": "IoT & Home Automation",
+      "description": "Zigbee to MQTT bridge with web-based device management interface.",
+      "app_id": "secubox-app-zigbee2mqtt",
+      "enabled_by_default": false,
+      "requires_ssl": true,
+      "requires_auth": true,
+      "websocket_support": true
+    },
+    {
+      "id": "localai",
+      "icon": "🤖",
+      "name": "LocalAI",
+      "domain": "ai.local",
+      "backend": "http://127.0.0.1:8080",
+      "port": 8080,
+      "category": "AI & Machine Learning",
+      "description": "Self-hosted OpenAI-compatible API with web interface for model management.",
+      "app_id": "secubox-app-localai",
+      "enabled_by_default": false,
+      "requires_ssl": true,
+      "requires_auth": true,
+      "websocket_support": false
+    },
+    {
+      "id": "citadel",
+      "icon": "🏢",
+      "name": "Citadel",
+      "domain": "groupware.local",
+      "backend": "http://127.0.0.1:504",
+      "port": 504,
+      "category": "Productivity",
+      "description": "Complete groupware with email, calendar, contacts, and instant messaging.",
+      "app_id": "secubox-app-citadel",
+      "enabled_by_default": false,
+      "requires_ssl": true,
+      "requires_auth": true,
+      "websocket_support": true
+    },
+    {
+      "id": "ispconfig",
+      "icon": "🖥️",
+      "name": "ISPConfig",
+      "domain": "hosting.local",
+      "backend": "http://127.0.0.1:8080",
+      "port": 8080,
+      "category": "Hosting & Control Panels",
+      "description": "Web hosting control panel for managing servers, websites, and databases.",
+      "app_id": "secubox-app-ispconfig",
+      "enabled_by_default": false,
+      "requires_ssl": true,
+      "requires_auth": true,
+      "websocket_support": false
+    },
+    {
+      "id": "mailinabox",
+      "icon": "📧",
+      "name": "Mail-in-a-Box",
+      "domain": "mail.local",
+      "backend": "http://127.0.0.1:4430",
+      "port": 4430,
+      "category": "Productivity",
+      "description": "Easy-to-deploy email server with webmail, contacts, and calendar.",
+      "app_id": "secubox-app-mailinabox",
+      "enabled_by_default": false,
+      "requires_ssl": true,
+      "requires_auth": true,
+      "websocket_support": false
+    },
+    {
+      "id": "nextcloud",
+      "icon": "☁️",
+      "name": "Nextcloud",
+      "domain": "cloud.local",
+      "backend": "http://127.0.0.1:80",
+      "port": 80,
+      "category": "Productivity",
+      "description": "Self-hosted file sync and share with calendar, contacts, and collaboration.",
+      "app_id": "secubox-app-nextcloud",
+      "enabled_by_default": false,
+      "requires_ssl": true,
+      "requires_auth": false,
+      "websocket_support": true,
+      "notes": "Nextcloud handles its own authentication. Configure trusted domains in config.php."
+    },
+    {
+      "id": "adguardhome",
+      "icon": "🛡️",
+      "name": "AdGuard Home",
+      "domain": "adguard.local",
+      "backend": "http://127.0.0.1:3000",
+      "port": 3000,
+      "category": "Network",
+      "description": "Network-wide ad blocker with DNS-over-HTTPS/TLS and analytics dashboard.",
+      "app_id": "secubox-app-adguardhome",
+      "enabled_by_default": false,
+      "requires_ssl": true,
+      "requires_auth": false,
+      "websocket_support": false,
+      "notes": "AdGuard Home has its own authentication system."
+    }
+  ],
+  "categories": {
+    "Core": {
+      "name": "Core Services",
+      "icon": "🖥️",
+      "description": "Essential router services and management interfaces"
+    },
+    "Monitoring": {
+      "name": "Monitoring & Analytics",
+      "icon": "📈",
+      "description": "System monitoring and performance analytics tools"
+    },
+    "Security": {
+      "name": "Security",
+      "icon": "🛡️",
+      "description": "Security and threat detection services"
+    },
+    "Network": {
+      "name": "Network Services",
+      "icon": "🌐",
+      "description": "Network utilities and DNS services"
+    },
+    "IoT & Home Automation": {
+      "name": "IoT & Home Automation",
+      "icon": "🏠",
+      "description": "Smart home and IoT device management"
+    },
+    "Media": {
+      "name": "Media & Entertainment",
+      "icon": "🎵",
+      "description": "Media streaming and entertainment services"
+    },
+    "AI & Machine Learning": {
+      "name": "AI & Machine Learning",
+      "icon": "🤖",
+      "description": "AI models and machine learning tools"
+    },
+    "Productivity": {
+      "name": "Productivity & Collaboration",
+      "icon": "📧",
+      "description": "Email, file sharing, and collaboration tools"
+    },
+    "Hosting & Control Panels": {
+      "name": "Hosting & Control Panels",
+      "icon": "🖥️",
+      "description": "Web hosting and server management"
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "last_updated": "2026-01-01",
+    "repository": "https://github.com/cybermind-studio/secubox-openwrt"
+  }
+}
