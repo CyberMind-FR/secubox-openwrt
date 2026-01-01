@@ -1,0 +1,11 @@
+#!/bin/sh
+# Trigger network tweaks sync when LAN interface comes up
+
+[ "$ACTION" = "ifup" ] || exit 0
+[ "$INTERFACE" = "lan" ] || exit 0
+
+# Wait a bit for network to stabilize
+sleep 2
+
+# Trigger sync
+/usr/sbin/network-tweaks-sync sync >/dev/null 2>&1 &

@@ -1,0 +1,124 @@
+#!/bin/sh
+# SecuBox AdGuard Home manager
+
+CONFIG="adguardhome"
+CONTAINER="secbx-adguardhome"
+OPKG_UPDATED=0
+
+usage() {
+	cat <<'USAGE'
+Usage: adguardhomectl <command>
+
+Commands:
+  install         Install prerequisites, prepare directories, pull image
+  check           Run prerequisite checks
+  update          Pull new image and restart
+  status          Show container status
+  logs            Show container logs (use -f to follow)
+  service-run     Internal: run container via procd
+  service-stop    Stop container
+
+Post-Installation:
+  1. Access AdGuard Home at http://router-ip:3000
+  2. Complete the web setup wizard
+  3. Optionally configure router to use AdGuard as DNS server
+USAGE
+}
+
+require_root() { [ "$(id -u)" -eq 0 ]; }
+
+uci_get() { uci -q get ${CONFIG}.main.$1; }
+
+defaults() {
+	image="$(uci_get image || echo adguard/adguardhome:latest)"
+	work_path="$(uci_get work_path || echo /srv/adguardhome/work)"
+	conf_path="$(uci_get conf_path || echo /srv/adguardhome/conf)"
+	port="$(uci_get port || echo 3000)"
+	dns_port="$(uci_get dns_port || echo 53)"
+	timezone="$(uci_get timezone || echo UTC)"
+}
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+ensure_packages() {
+	for pkg in "$@"; do
+		if ! opkg status "$pkg" >/dev/null 2>&1; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+check_prereqs() {
+	defaults
+	ensure_dir "$work_path"
+	ensure_dir "$conf_path"
+	[ -d /sys/fs/cgroup ] || { echo "[ERROR] /sys/fs/cgroup missing" >&2; return 1; }
+	ensure_packages dockerd docker containerd
+	/etc/init.d/dockerd enable >/dev/null 2>&1
+	/etc/init.d/dockerd start >/dev/null 2>&1
+}
+
+pull_image() { defaults; docker pull "$image"; }
+
+stop_container() { docker stop "$CONTAINER" >/dev/null 2>&1 || true; docker rm "$CONTAINER" >/dev/null 2>&1 || true; }
+
+cmd_install() {
+	require_root || { echo Root required >&2; exit 1; }
+	check_prereqs || exit 1
+	pull_image || exit 1
+	uci set ${CONFIG}.main.enabled='1'
+	uci commit ${CONFIG}
+	/etc/init.d/adguardhome enable
+	echo "AdGuard Home prerequisites installed."
+	echo "Start with: /etc/init.d/adguardhome start"
+	echo ""
+	echo "IMPORTANT: After starting, access http://$(uci get network.lan.ipaddr):3000 to complete setup"
+	echo "Note: DNS port ${dns_port} will be exposed. Ensure it doesn't conflict with dnsmasq."
+}
+
+cmd_check() { check_prereqs; echo "Prerequisite check completed."; }
+
+cmd_update() {
+	require_root || { echo Root required >&2; exit 1; }
+	pull_image || exit 1
+	/etc/init.d/adguardhome restart
+}
+
+cmd_status() { docker ps -a --filter "name=$CONTAINER"; }
+
+cmd_logs() { docker logs "$@" "$CONTAINER"; }
+
+cmd_service_run() {
+	require_root || { echo Root required >&2; exit 1; }
+	check_prereqs || exit 1
+	defaults
+	stop_container
+
+	local docker_args="--name $CONTAINER"
+	docker_args="$docker_args -p ${port}:3000"
+	docker_args="$docker_args -p ${dns_port}:53/tcp"
+	docker_args="$docker_args -p ${dns_port}:53/udp"
+	docker_args="$docker_args -v $work_path:/opt/adguardhome/work"
+	docker_args="$docker_args -v $conf_path:/opt/adguardhome/conf"
+	docker_args="$docker_args -e TZ=$timezone"
+
+	exec docker run --rm $docker_args "$image"
+}
+
+cmd_service_stop() { require_root || { echo Root required >&2; exit 1; }; stop_container; }
+
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	check) shift; cmd_check "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac

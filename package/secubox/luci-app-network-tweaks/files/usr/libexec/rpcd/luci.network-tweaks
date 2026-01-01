@@ -1,0 +1,476 @@
+#!/bin/sh
+# RPCD backend for Network Tweaks
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG="network_tweaks"
+PLUGINS_CATALOG="/usr/share/secubox/plugins/catalog"
+
+# Helper Functions for Component Discovery
+
+# Check if a manifest has network relevance
+check_network_relevance() {
+	local manifest="$1"
+
+	# Check for network.inbound_ports[]
+	local ports=$(jsonfilter -i "$manifest" -e '@.network.inbound_ports[*]' 2>/dev/null)
+	[ -n "$ports" ] && return 0
+
+	# Check for network.protocols[]
+	local protocols=$(jsonfilter -i "$manifest" -e '@.network.protocols[*]' 2>/dev/null)
+	[ -n "$protocols" ] && return 0
+
+	# Check for network-related capabilities
+	local caps=$(jsonfilter -i "$manifest" -e '@.capabilities[*]' 2>/dev/null)
+	for cap in $caps; do
+		case "$cap" in
+			vhost-publish|dns-filtering|proxy|firewall|vpn|network-service)
+				return 0
+				;;
+		esac
+	done
+
+	return 1
+}
+
+# Query package install state
+query_install_state() {
+	local manifest="$1"
+	local packages=$(jsonfilter -i "$manifest" -e '@.packages[*]' 2>/dev/null)
+
+	[ -z "$packages" ] && echo "n/a" && return
+
+	local total=0 installed=0
+	for pkg in $packages; do
+		total=$((total + 1))
+		if opkg status "$pkg" >/dev/null 2>&1 || apk info -e "$pkg" >/dev/null 2>&1; then
+			installed=$((installed + 1))
+		fi
+	done
+
+	if [ "$installed" -eq 0 ]; then
+		echo "available"
+	elif [ "$installed" -eq "$total" ]; then
+		echo "installed"
+	else
+		echo "partial"
+	fi
+}
+
+# Query service runtime state
+query_service_state() {
+	local id="$1"
+	local manifest="$2"
+	local runtime=$(jsonfilter -i "$manifest" -e '@.runtime' 2>/dev/null)
+
+	case "$runtime" in
+		docker)
+			# Query Docker container state
+			if command -v docker >/dev/null 2>&1; then
+				local container=$(docker ps --filter "name=$id" --format '{{.Status}}' 2>/dev/null)
+				[ -n "$container" ] && echo "running" || echo "stopped"
+			else
+				echo "n/a"
+			fi
+			;;
+		native)
+			# Check init.d service
+			if [ -x "/etc/init.d/$id" ]; then
+				/etc/init.d/$id running >/dev/null 2>&1 && echo "running" || echo "stopped"
+			else
+				echo "n/a"
+			fi
+			;;
+		*)
+			echo "n/a"
+			;;
+	esac
+}
+
+# Discover VHost associations for an app
+discover_vhost_associations() {
+	local app_id="$1"
+	local result=""
+
+	# Load vhosts config
+	config_load vhosts
+
+	local vhost_list=""
+	collect_app_vhost() {
+		local section="$1"
+		local domain backend enabled tls_mode
+		config_get domain "$section" domain
+		config_get backend "$section" backend
+		config_get_bool enabled "$section" enabled 1
+		config_get tls_mode "$section" tls_mode "off"
+
+		# Simple heuristic: if domain contains app_id or backend references common ports
+		# This is a simplified version - in production, use template associations
+		if echo "$domain" | grep -qi "$app_id" || echo "$section" | grep -qi "$app_id"; then
+			vhost_list="$vhost_list $section"
+		fi
+	}
+	config_foreach collect_app_vhost vhost
+
+	echo "$vhost_list"
+}
+
+# Calculate network impact for a component
+calculate_network_impact() {
+	local id="$1"
+	local manifest="$2"
+
+	# Count DNS entries from sync files
+	local dns_count=0
+	if [ -f /tmp/dnsmasq.d/50-vhosts.conf ]; then
+		dns_count=$(grep -c "$id" /tmp/dnsmasq.d/50-vhosts.conf 2>/dev/null || echo 0)
+	fi
+
+	# Count hosts entries
+	local hosts_count=0
+	if [ -f /tmp/hosts.vhosts ]; then
+		hosts_count=$(grep -c "$id" /tmp/hosts.vhosts 2>/dev/null || echo 0)
+	fi
+
+	# Get ports from manifest
+	local ports=$(jsonfilter -i "$manifest" -e '@.network.inbound_ports[*]' 2>/dev/null | wc -w)
+
+	# Get VHost count
+	local vhosts=$(discover_vhost_associations "$id" | wc -w)
+
+	echo "$dns_count $hosts_count $ports $vhosts"
+}
+
+# Discover all network-relevant components
+discover_network_components() {
+	[ ! -d "$PLUGINS_CATALOG" ] && return
+
+	for manifest_file in "$PLUGINS_CATALOG"/*.json; do
+		[ ! -f "$manifest_file" ] && continue
+
+		# Check network relevance
+		check_network_relevance "$manifest_file" || continue
+
+		# Extract component metadata
+		local id=$(jsonfilter -i "$manifest_file" -e '@.id' 2>/dev/null)
+		local name=$(jsonfilter -i "$manifest_file" -e '@.name' 2>/dev/null)
+		local category=$(jsonfilter -i "$manifest_file" -e '@.category' 2>/dev/null)
+		local capabilities=$(jsonfilter -i "$manifest_file" -e '@.capabilities[*]' 2>/dev/null)
+
+		[ -z "$id" ] && continue
+
+		# Query states
+		local install_state=$(query_install_state "$manifest_file")
+		local service_state=$(query_service_state "$id" "$manifest_file")
+
+		# Calculate impact
+		local impact=$(calculate_network_impact "$id" "$manifest_file")
+		set -- $impact
+		local dns_entries=$1 hosts_entries=$2 ports=$3 vhost_count=$4
+
+		# Output component JSON object
+		json_add_object
+			json_add_string "id" "$id"
+			json_add_string "name" "${name:-$id}"
+			json_add_string "category" "${category:-unknown}"
+			json_add_string "install_state" "$install_state"
+			json_add_string "service_state" "$service_state"
+
+			json_add_object "network_impact"
+				json_add_int "dns_entries" "${dns_entries:-0}"
+				json_add_int "vhosts" "${vhost_count:-0}"
+				json_add_int "ports" "${ports:-0}"
+			json_close_object
+
+			json_add_object "cumulative_contribution"
+				json_add_int "dnsmasq_entries" "${dns_entries:-0}"
+				json_add_int "hosts_entries" "${hosts_entries:-0}"
+				json_add_int "ports_opened" "${ports:-0}"
+			json_close_object
+
+			json_add_array "capabilities"
+			for cap in $capabilities; do
+				json_add_string "" "$cap"
+			done
+			json_close_array
+		json_close_object
+	done
+}
+
+# Calculate cumulative impact summary
+calculate_cumulative_impact() {
+	[ ! -d "$PLUGINS_CATALOG" ] && return
+
+	local total_components=0
+	local active_components=0
+	local total_dns=0
+	local total_vhosts=0
+	local total_ports=0
+
+	for manifest_file in "$PLUGINS_CATALOG"/*.json; do
+		[ ! -f "$manifest_file" ] && continue
+		check_network_relevance "$manifest_file" || continue
+
+		local id=$(jsonfilter -i "$manifest_file" -e '@.id' 2>/dev/null)
+		[ -z "$id" ] && continue
+
+		total_components=$((total_components + 1))
+
+		local service_state=$(query_service_state "$id" "$manifest_file")
+		if [ "$service_state" = "running" ]; then
+			active_components=$((active_components + 1))
+
+			local impact=$(calculate_network_impact "$id" "$manifest_file")
+			set -- $impact
+			total_dns=$((total_dns + $1))
+			total_vhosts=$((total_vhosts + $4))
+			total_ports=$((total_ports + $3))
+		fi
+	done
+
+	json_add_int "total_components" "$total_components"
+	json_add_int "active_components" "$active_components"
+	json_add_int "total_dns_entries" "$total_dns"
+	json_add_int "total_vhosts" "$total_vhosts"
+	json_add_int "total_ports_exposed" "$total_ports"
+}
+
+# Get network mode status (if network-modes installed)
+get_network_mode_status() {
+	local current_mode="unknown"
+	local mode_name="Unknown"
+	local tweaks_enabled=1
+
+	# Try to read network-modes config
+	if [ -f /etc/config/network-modes ]; then
+		config_load network-modes
+		config_get current_mode config current_mode "router"
+
+		# Get mode name
+		config_get mode_name "$current_mode" name "$current_mode"
+
+		# Get network-tweaks settings for this mode
+		config_get tweaks_enabled "$current_mode" network_tweaks_enabled "1"
+	fi
+
+	json_add_string "current_mode" "$current_mode"
+	json_add_string "mode_name" "$mode_name"
+	json_add_boolean "sync_enabled" "${tweaks_enabled:-1}"
+}
+
+case "$1" in
+	list)
+		json_init
+		json_add_object "getStatus"
+		json_close_object
+		json_add_object "syncNow"
+		json_close_object
+		json_add_object "getConfig"
+		json_close_object
+		json_add_object "setConfig"
+			json_add_string "enabled" "boolean"
+			json_add_string "auto_sync" "boolean"
+			json_add_string "sync_hosts" "boolean"
+			json_add_string "sync_dnsmasq" "boolean"
+			json_add_string "lan_interface" "string"
+			json_add_string "default_ip" "string"
+		json_close_object
+		json_add_object "getNetworkComponents"
+		json_close_object
+		json_add_object "getCumulativeImpact"
+		json_close_object
+		json_add_object "setComponentEnabled"
+			json_add_string "app_id" "string"
+			json_add_string "enabled" "boolean"
+		json_close_object
+		json_dump
+		;;
+
+	call)
+		case "$2" in
+			getStatus)
+				# Get current status and statistics
+				json_init
+				json_add_boolean "success" 1
+
+				# Read config
+				config_load "$CONFIG"
+				config_get enabled global enabled "1"
+				config_get auto_sync global auto_sync "1"
+				config_get sync_hosts global sync_hosts "1"
+				config_get sync_dnsmasq global sync_dnsmasq "1"
+				config_get lan_interface global lan_interface "lan"
+				config_get default_ip global default_ip ""
+
+				json_add_object "config"
+					json_add_boolean "enabled" "${enabled:-1}"
+					json_add_boolean "auto_sync" "${auto_sync:-1}"
+					json_add_boolean "sync_hosts" "${sync_hosts:-1}"
+					json_add_boolean "sync_dnsmasq" "${sync_dnsmasq:-1}"
+					json_add_string "lan_interface" "${lan_interface:-lan}"
+					json_add_string "default_ip" "$default_ip"
+				json_close_object
+
+				# Count enabled vhosts
+				vhost_count=0
+				config_load vhosts
+				count_vhost() {
+					local enabled
+					config_get_bool enabled "$1" enabled 1
+					[ "$enabled" = "1" ] && vhost_count=$((vhost_count + 1))
+				}
+				config_foreach count_vhost vhost
+
+				# Check if files exist
+				dnsmasq_exists=0
+				hosts_exists=0
+				[ -f /tmp/dnsmasq.d/50-vhosts.conf ] && dnsmasq_exists=1
+				[ -f /tmp/hosts.vhosts ] && hosts_exists=1
+
+				dnsmasq_entries=0
+				hosts_entries=0
+				# Count entries
+				if [ -f /tmp/dnsmasq.d/50-vhosts.conf ]; then
+					dnsmasq_entries=$(grep -c '^address=' /tmp/dnsmasq.d/50-vhosts.conf 2>/dev/null || echo 0)
+				fi
+				if [ -f /tmp/hosts.vhosts ]; then
+					hosts_entries=$(grep -cv '^#' /tmp/hosts.vhosts 2>/dev/null || echo 0)
+				fi
+
+				json_add_object "stats"
+					json_add_int "vhosts_enabled" "$vhost_count"
+					json_add_int "dnsmasq_entries" "$dnsmasq_entries"
+					json_add_int "hosts_entries" "$hosts_entries"
+					json_add_boolean "dnsmasq_file_exists" "$dnsmasq_exists"
+					json_add_boolean "hosts_file_exists" "$hosts_exists"
+				json_close_object
+
+				json_dump
+				;;
+
+			syncNow)
+				# Trigger immediate synchronization
+				/usr/sbin/network-tweaks-sync sync >/dev/null 2>&1 &
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Synchronization triggered"
+				json_dump
+				;;
+
+			getConfig)
+				# Get configuration
+				json_init
+				json_add_boolean "success" 1
+
+				config_load "$CONFIG"
+				config_get enabled global enabled "1"
+				config_get auto_sync global auto_sync "1"
+				config_get sync_hosts global sync_hosts "1"
+				config_get sync_dnsmasq global sync_dnsmasq "1"
+				config_get lan_interface global lan_interface "lan"
+				config_get default_ip global default_ip ""
+
+				json_add_object "config"
+					json_add_boolean "enabled" "${enabled:-1}"
+					json_add_boolean "auto_sync" "${auto_sync:-1}"
+					json_add_boolean "sync_hosts" "${sync_hosts:-1}"
+					json_add_boolean "sync_dnsmasq" "${sync_dnsmasq:-1}"
+					json_add_string "lan_interface" "${lan_interface:-lan}"
+					json_add_string "default_ip" "$default_ip"
+				json_close_object
+
+				json_dump
+				;;
+
+			setConfig)
+				# Update configuration
+				read input
+				json_load "$input"
+
+				json_get_var enabled enabled
+				json_get_var auto_sync auto_sync
+				json_get_var sync_hosts sync_hosts
+				json_get_var sync_dnsmasq sync_dnsmasq
+				json_get_var lan_interface lan_interface
+				json_get_var default_ip default_ip
+
+				[ -n "$enabled" ] && uci set ${CONFIG}.global.enabled="$enabled"
+				[ -n "$auto_sync" ] && uci set ${CONFIG}.global.auto_sync="$auto_sync"
+				[ -n "$sync_hosts" ] && uci set ${CONFIG}.global.sync_hosts="$sync_hosts"
+				[ -n "$sync_dnsmasq" ] && uci set ${CONFIG}.global.sync_dnsmasq="$sync_dnsmasq"
+				[ -n "$lan_interface" ] && uci set ${CONFIG}.global.lan_interface="$lan_interface"
+				[ -n "$default_ip" ] && uci set ${CONFIG}.global.default_ip="$default_ip"
+
+				uci commit "$CONFIG"
+
+				# Trigger sync
+				/etc/init.d/network-tweaks reload >/dev/null 2>&1 &
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Configuration updated"
+				json_dump
+				;;
+
+			getNetworkComponents)
+				# Get all network-relevant components with aggregated data
+				json_init
+				json_add_boolean "success" 1
+
+				# Discover all components
+				json_add_array "components"
+				discover_network_components
+				json_close_array
+
+				# Add cumulative summary
+				json_add_object "cumulative_summary"
+				calculate_cumulative_impact
+				json_close_object
+
+				# Add network mode info
+				json_add_object "network_mode"
+				get_network_mode_status
+				json_close_object
+
+				json_dump
+				;;
+
+			getCumulativeImpact)
+				# Get cumulative network impact summary
+				json_init
+				json_add_boolean "success" 1
+
+				calculate_cumulative_impact
+
+				json_dump
+				;;
+
+			setComponentEnabled)
+				# Enable/disable component network features
+				read input
+				json_load "$input"
+
+				json_get_var app_id app_id
+				json_get_var enabled enabled
+
+				# TODO: Implement component-specific enable/disable logic
+				# For now, just trigger a sync
+				/usr/sbin/network-tweaks-sync sync >/dev/null 2>&1 &
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Component network features updated"
+				json_dump
+				;;
+
+			*)
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "Unknown method"
+				json_dump
+				;;
+		esac
+		;;
+esac

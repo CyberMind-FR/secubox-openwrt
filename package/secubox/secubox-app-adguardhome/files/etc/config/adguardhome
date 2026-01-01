@@ -1,0 +1,8 @@
+config adguardhome 'main'
+	option enabled '0'
+	option image 'adguard/adguardhome:latest'
+	option work_path '/srv/adguardhome/work'
+	option conf_path '/srv/adguardhome/conf'
+	option port '3000'
+	option dns_port '53'
+	option timezone 'UTC'

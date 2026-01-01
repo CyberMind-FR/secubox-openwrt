@@ -1,34 +1,60 @@
 # VHost Manager - Reverse Proxy & SSL Certificate Management
 
-**Version:** 1.0.0  
-**Last Updated:** 2025-12-28  
+**Version:** 2.0.0
+**Last Updated:** 2026-01-01
 **Status:** Active
 
 
-LuCI application for managing nginx reverse proxy virtual hosts and SSL certificates via Let's Encrypt.
+LuCI application for managing nginx reverse proxy virtual hosts and SSL certificates via Let's Encrypt with integrated service templates and redirect management.
 
 ## Features
 
-### Virtual Host Management
+### Internal Services Catalog (v2.0+)
+- 🏠 **Pre-configured Service Templates** - 19 ready-to-deploy internal services
+- 🚀 **One-Click Activation** - Deploy services with optimal SSL, auth, and WebSocket settings
+- 📊 **Real-Time Status** - Auto-refresh dashboard showing active/configured services
+- 🎯 **Smart Feature Detection** - Automatic SSL, authentication, and WebSocket configuration
+- 📦 **Category Organization** - Services grouped by type (IoT, Media, Security, Productivity, etc.)
+- 🔄 **Auto-Refresh** - Live updates every 10 seconds
+- 🎨 **Modern Grid UI** - Responsive card-based layout with feature badges
+
+### Redirect Rules Management (v2.0+)
+- ↪️ **Pre-built Redirect Templates** - 6 common redirect patterns (CDN cache, privacy redirects, failover)
+- 🎯 **HTTP Redirect Codes** - Support for 301 (permanent), 302 (temporary), 307 (temporary, preserve method)
+- 🔄 **Template Activation** - One-click deployment of redirect rules
+- 📊 **Active Redirects Dashboard** - Real-time status of configured redirects
+- 🎨 **Category Organization** - Templates grouped by use case (Productivity, Media, Security, Network)
+- 🔄 **Auto-Refresh** - Live updates every 10 seconds
+
+### Virtual Host Management (v1.0+)
 - Create and manage nginx reverse proxy configurations
 - Support for HTTP and HTTPS virtual hosts
 - Backend connectivity testing before deployment
 - WebSocket protocol support
 - HTTP Basic Authentication
 - Automatic nginx reload on configuration changes
+- **Enable/Disable toggle** - Quick service control without deletion
+- **Remove button** - Clean VHost deletion with confirmation
 
-### SSL Certificate Management
+### SSL Certificate Management (v1.0+)
 - Let's Encrypt certificate provisioning via acme.sh
 - Certificate status monitoring with expiry tracking
 - Color-coded expiry warnings (red < 7 days, orange < 30 days)
 - Certificate details viewer
 - Automatic certificate renewal support
 
-### Access Log Monitoring
+### Access Log Monitoring (v1.0+)
 - Real-time nginx access log viewer
 - Per-domain log filtering
 - Configurable line display (50-500 lines)
 - Terminal-style log display
+
+### Profile Activation System (v2.0+)
+- 🎯 **Template-Based Deployment** - Create VHosts from pre-configured templates
+- 🔐 **Smart Feature Configuration** - Automatic SSL/Auth/WebSocket setup based on service requirements
+- 📝 **Template Notes** - Contextual information displayed during activation
+- ✅ **Confirmation Modals** - Review settings before deployment
+- 🔄 **Activate/Deactivate** - Easy template management with visual feedback
 
 ## Installation
 
@@ -119,6 +145,150 @@ Navigate to **Services → VHost Manager** in LuCI.
 - View nginx access logs per domain
 - Select number of lines to display (50-500)
 - Real-time log streaming
+
+#### Internal Services Tab (v2.0+)
+
+The Internal Services tab provides a catalog of 19 pre-configured service templates for popular self-hosted applications.
+
+**Dashboard Metrics:**
+- **Active** - Services currently enabled and running
+- **Configured** - Total services with VHost entries
+- **Available** - Total templates in catalog
+
+**Active Services Grid:**
+
+Each configured service displays:
+- Service icon and name
+- Status badge (Active/Disabled)
+- Category and description
+- Domain, backend URL, and port
+- Feature badges (🔒 SSL, 🔐 Auth, ⚡ WebSocket)
+- Three action buttons:
+  - **Edit** - Navigate to VHost configuration
+  - **Enable/Disable** - Toggle service status
+  - **Remove** - Delete VHost configuration (with confirmation)
+
+**Service Templates:**
+
+Templates are organized by category:
+
+| Category | Services |
+|----------|----------|
+| **Core Services** | LuCI UI |
+| **Monitoring** | Netdata |
+| **Security** | CrowdSec, Vaultwarden |
+| **Network** | NoDogSplash, AdGuard Home, Uptime Kuma |
+| **IoT & Home Automation** | Domoticz, Zigbee2MQTT, Home Assistant, MagicMirror² |
+| **Media** | Lyrion Music Server, Jellyfin |
+| **AI & Machine Learning** | LocalAI |
+| **Productivity** | Citadel, ISPConfig, Mail-in-a-Box, Nextcloud, Gitea |
+| **Hosting & Control Panels** | Portainer |
+
+**Template Activation Workflow:**
+
+1. Click **Activate** on any template
+2. Review activation modal showing:
+   - Service name and icon
+   - Domain and backend URL
+   - Required features (SSL, Auth, WebSocket)
+   - Special notes (e.g., "Nextcloud handles its own authentication")
+3. Click **Activate** to create VHost
+4. Service automatically configured with optimal settings
+
+**Example: Activating Nextcloud**
+
+Template configuration:
+```
+Icon: ☁️
+Name: Nextcloud
+Domain: cloud.local
+Backend: http://127.0.0.1:80
+Port: 80
+Category: Productivity
+Features:
+  - SSL/TLS required
+  - WebSocket support
+Notes: "Nextcloud handles its own authentication. Configure trusted domains in config.php."
+```
+
+After activation:
+- VHost created at `cloud.local`
+- SSL automatically configured (ACME mode)
+- WebSocket headers enabled
+- Backend proxied to port 80
+- Service marked as "Active" in dashboard
+
+#### Redirects Tab (v2.0+)
+
+The Redirects tab manages nginx HTTP redirect rules with pre-built templates for common use cases.
+
+**Dashboard Metrics:**
+- **Active** - Currently enabled redirect rules
+- **Total** - All configured redirects
+- **Templates** - Available redirect templates
+
+**Active Redirects Grid:**
+
+Each configured redirect displays:
+- Redirect icon (↪️)
+- Domain name
+- Status badge (Active/Disabled)
+- From domain
+- To URL
+- HTTP code badge (301, 302, 307)
+- Three action buttons:
+  - **Edit** - Navigate to VHost configuration
+  - **Enable/Disable** - Toggle redirect status
+  - **Remove** - Delete redirect rule (with confirmation)
+
+**Redirect Templates:**
+
+| Template | HTTP Code | Category | Use Case |
+|----------|-----------|----------|----------|
+| **Nextcloud → LAN** | 301 | Productivity | Force remote users to LAN-hosted Nextcloud |
+| **Steam CDN cache** | 302 | Media | Redirect downloads to on-prem cache |
+| **YouTube → Invidious** | 307 | Media | Privacy-friendly YouTube redirect |
+| **Mail failover** | 302 | Productivity | Failover to alternate mail service |
+| **Ad Blocker Redirect** | 301 | Security | Redirect ad servers to localhost |
+| **CDN → Local Cache** | 302 | Network | Cache CDN assets locally |
+
+**HTTP Redirect Codes:**
+
+- **301 (Permanent)** - Browser caches redirect, use for permanent moves
+- **302 (Temporary)** - Browser doesn't cache, use for temporary redirects
+- **307 (Temporary, Preserve Method)** - Like 302 but preserves HTTP method (POST/GET)
+
+**Template Activation Workflow:**
+
+1. Click **Activate** on any redirect template
+2. Review activation modal showing:
+   - Redirect name
+   - From domain pattern
+   - To URL
+   - HTTP redirect code
+3. Click **Activate** to create redirect
+4. Redirect rule automatically configured
+
+**Example: Steam CDN Cache**
+
+Template configuration:
+```
+Icon: 🕹️
+Name: Steam CDN cache
+From: *.cdn.steamstatic.com
+To: http://steamcache.lan
+Code: 302
+Category: Media
+```
+
+Generated nginx config:
+```nginx
+server {
+    listen 80;
+    server_name *.cdn.steamstatic.com;
+    return 302 http://steamcache.lan$request_uri;
+}
+```
 
 ### Command Line
 
@@ -574,4 +744,4 @@ SecuBox Project <support@secubox.com>
 
 ## Version
 
-1.0.0
+2.0.0

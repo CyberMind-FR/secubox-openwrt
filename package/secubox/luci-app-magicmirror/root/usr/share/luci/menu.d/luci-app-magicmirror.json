@@ -1,0 +1,37 @@
+{
+	"admin/secubox/iot/magicmirror": {
+		"title": "MagicMirror²",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "magicmirror/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-magicmirror"]
+		}
+	},
+	"admin/secubox/iot/magicmirror/overview": {
+		"title": "Overview",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "magicmirror/overview"
+		}
+	},
+	"admin/secubox/iot/magicmirror/modules": {
+		"title": "Modules",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "magicmirror/modules"
+		}
+	},
+	"admin/secubox/iot/magicmirror/config": {
+		"title": "Configuration",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "magicmirror/config"
+		}
+	}
+}

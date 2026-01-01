@@ -1,0 +1,13 @@
+{
+	"admin/secubox/network/tweaks": {
+		"title": "Network Tweaks",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "network-tweaks/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-network-tweaks"]
+		}
+	}
+}

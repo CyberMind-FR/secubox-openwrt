@@ -2,6 +2,9 @@
 'require view';
 'require ui';
 'require form';
+'require poll';
+'require uci';
+'require dom';
 'require vhost-manager/api as API';
 'require secubox-theme/theme as Theme';
 'require vhost-manager/ui as VHostUI';
@@ -46,6 +49,9 @@ function formatTlsMode(vhost) {
 }
 
 return L.view.extend({
+	vhostsData: [],
+	certsData: [],
+
 	load: function() {
 		return Promise.all([
 			API.listVHosts(),
@@ -54,28 +60,31 @@ return L.view.extend({
 	},
 
 	render: function(data) {
-		var vhosts = data[0] || [];
-		var certs = normalizeCerts(data[1]);
+		this.vhostsData = data[0] || [];
+		this.certsData = normalizeCerts(data[1]);
 
-		var m = this.buildForm();
+		var m, s, o;
 
-		return E('div', { 'class': 'vhost-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
-			VHostUI.renderTabs('vhosts'),
-			this.renderHeader(vhosts),
-			this.renderList(vhosts, certs),
-			E('div', { 'class': 'vhost-card' }, [
-				E('div', { 'class': 'vhost-card-title' }, ['📝', _('Virtual Host Form')]),
-				m.render()
-			])
-		]);
-	},
+		m = new form.Map('vhosts', null, null);
 
-	buildForm: function() {
-		var m = new form.Map('vhosts', null, null);
-		var s = m.section(form.GridSection, 'vhost', _('Virtual Hosts'));
+		// Add custom dashboard section at the top
+		s = m.section(form.NamedSection, '_dashboard', 'dashboard', null);
+		s.anonymous = true;
+		s.render = L.bind(function() {
+			return E('div', {}, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/common.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('vhost-manager/dashboard.css') }),
+				VHostUI.renderTabs('vhosts'),
+				E('div', { 'id': 'vhosts-dashboard' }, [
+					this.renderHeader(this.vhostsData),
+					this.renderList(this.vhostsData, this.certsData)
+				])
+			]);
+		}, this);
+
+		// Add VHost configuration section
+		s = m.section(form.GridSection, 'vhost', _('Virtual Hosts'));
 		s.anonymous = false;
 		s.addremove = true;
 		s.sortable = true;
@@ -83,45 +92,17 @@ return L.view.extend({
 			return _('Edit VHost: ') + section_id;
 		};
 
-		var o;
-
 		o = s.option(form.Value, 'domain', _('Domain'));
 		o.rmempty = false;
 		o.placeholder = 'app.example.com';
 		o.description = _('Public hostname for this proxy.');
 
-		o = s.option(form.Value, 'backend', _('Backend URL'));
+		o = s.option(form.Value, 'upstream', _('Backend URL'));
 		o.rmempty = false;
 		o.placeholder = 'http://192.168.1.100:8080';
 		o.description = _('Upstream origin (HTTP/HTTPS/WebSocket).');
 
-		o.renderWidget = function(section_id, option_index, cfgvalue) {
-			var widget = form.Value.prototype.renderWidget.apply(this, [section_id, option_index, cfgvalue]);
-			var testBtn = E('button', {
-				'class': 'cbi-button cbi-button-action',
-				'style': 'margin-left: 10px',
-				'click': function(ev) {
-					ev.preventDefault();
-					var backend = this.parentNode.querySelector('input').value;
-					if (!backend) {
-						ui.addNotification(null, E('p', _('Please enter a backend URL')), 'warning');
-						return;
-					}
-					ui.addNotification(null, E('p', _('Testing backend connectivity...')), 'info');
-					API.testBackend(backend).then(function(result) {
-						if (result.reachable) {
-							ui.addNotification(null, E('p', '✓ ' + _('Backend is reachable')), 'info');
-						} else {
-							ui.addNotification(null, E('p', '✗ ' + _('Backend is unreachable')), 'error');
-						}
-					});
-				}
-			}, _('Test'));
-			widget.appendChild(testBtn);
-			return widget;
-		};
-
-		o = s.option(form.ListValue, 'tls_mode', _('TLS Mode'));
+		o = s.option(form.ListValue, 'tls', _('TLS Mode'));
 		o.value('off', _('Disabled (HTTP only)'));
 		o.value('acme', _('Automatic (acme.sh)'));
 		o.value('manual', _('Manual certificate'));
@@ -130,11 +111,11 @@ return L.view.extend({
 
 		o = s.option(form.Value, 'cert_path', _('Certificate Path'));
 		o.placeholder = '/etc/custom/fullchain.pem';
-		o.depends('tls_mode', 'manual');
+		o.depends('tls', 'manual');
 
 		o = s.option(form.Value, 'key_path', _('Private Key Path'));
 		o.placeholder = '/etc/custom/privkey.pem';
-		o.depends('tls_mode', 'manual');
+		o.depends('tls', 'manual');
 
 		o = s.option(form.Flag, 'auth', _('Enable Authentication'));
 		o.default = o.disabled;
@@ -155,79 +136,31 @@ return L.view.extend({
 		o.default = '1';
 		o.description = _('Toggle to disable without deleting configuration.');
 
-		s.addModalOptions = function(s, section_id) {
-			var domain = this.section.formvalue(section_id, 'domain');
-			var backend = this.section.formvalue(section_id, 'backend');
-			var tlsMode = this.section.formvalue(section_id, 'tls_mode') || 'off';
-			var auth = this.section.formvalue(section_id, 'auth') === '1';
-			var websocket = this.section.formvalue(section_id, 'websocket') === '1';
-			var enabled = this.section.formvalue(section_id, 'enabled') !== '0';
-			var certPath = this.section.formvalue(section_id, 'cert_path') || '';
-			var keyPath = this.section.formvalue(section_id, 'key_path') || '';
-			var authUser = this.section.formvalue(section_id, 'auth_user') || '';
-			var authPass = this.section.formvalue(section_id, 'auth_pass') || '';
+		// Start auto-refresh polling
+		poll.add(L.bind(this.pollData, this), 10);
 
-			if (!domain || !backend) {
-				ui.addNotification(null, E('p', _('Domain and backend are required')), 'error');
-				return;
-			}
+		return m.render();
+	},
 
-			if (auth && (!authUser || !authPass)) {
-				ui.addNotification(null, E('p', _('Username and password required for authentication')), 'error');
-				return;
-			}
+	pollData: function() {
+		return Promise.all([
+			API.listVHosts(),
+			API.listCerts()
+		]).then(L.bind(function(data) {
+			this.vhostsData = data[0] || [];
+			this.certsData = normalizeCerts(data[1]);
+			this.updateDisplay();
+		}, this));
+	},
 
-			if (tlsMode === 'manual' && (!certPath || !keyPath)) {
-				ui.addNotification(null, E('p', _('Manual TLS requires certificate and key paths')), 'error');
-				return;
-			}
+	updateDisplay: function() {
+		var dashboard = document.getElementById('vhosts-dashboard');
+		if (!dashboard) return;
 
-			API.addVHost(
-				domain,
-				backend,
-				tlsMode,
-				auth,
-				auth ? authUser : null,
-				auth ? authPass : null,
-				websocket,
-				enabled,
-				tlsMode === 'manual' ? certPath : null,
-				tlsMode === 'manual' ? keyPath : null
-			).then(function(result) {
-				if (result.success) {
-					ui.addNotification(null, E('p', _('VHost created successfully')), 'info');
-
-					if (result.reload_required) {
-						ui.showModal(_('Reload Nginx?'), [
-							E('p', {}, _('Configuration changed. Reload nginx to apply?')),
-							E('div', { 'class': 'right' }, [
-								E('button', {
-									'class': 'cbi-button cbi-button-neutral',
-									'click': ui.hideModal
-								}, _('Later')),
-								E('button', {
-									'class': 'cbi-button cbi-button-positive',
-									'click': function() {
-										API.reloadNginx().then(function(reload_result) {
-											ui.hideModal();
-											if (reload_result.success) {
-												ui.addNotification(null, E('p', '✓ ' + _('Nginx reloaded')), 'info');
-											} else {
-												ui.addNotification(null, E('p', '✗ ' + reload_result.message), 'error');
-											}
-										});
-									}
-								}, _('Reload Now'))
-							])
-						]);
-					}
-				} else {
-					ui.addNotification(null, E('p', '✗ ' + result.message), 'error');
-				}
-			});
-		};
-
-		return m;
+		dom.content(dashboard, [
+			this.renderHeader(this.vhostsData),
+			this.renderList(this.vhostsData, this.certsData)
+		]);
 	},
 
 	renderHeader: function(vhosts) {
@@ -271,7 +204,7 @@ return L.view.extend({
 		if (!vhosts.length) {
 			return E('div', { 'class': 'vhost-card' }, [
 				E('div', { 'class': 'vhost-card-title' }, ['📂', _('Configured VHosts')]),
-				E('div', { 'class': 'vhost-empty' }, _('No vhosts yet — add your first reverse proxy below.'))
+				E('div', { 'class': 'vhost-empty' }, _('No vhosts yet — add your first reverse proxy using the form below.'))
 			]);
 		}
 
@@ -283,25 +216,177 @@ return L.view.extend({
 	},
 
 	renderVhostCard: function(vhost, cert) {
+		var enabled = isEnabled(vhost);
 		var pills = [];
-		if (!isEnabled(vhost)) {
+
+		if (!enabled) {
 			pills.push(E('span', { 'class': 'vhost-pill danger' }, _('Disabled')));
-		} else if (vhost.ssl) {
-			pills.push(E('span', { 'class': 'vhost-pill success' }, _('TLS')));
+		} else {
+			pills.push(E('span', { 'class': 'vhost-pill success' }, _('Active')));
 		}
-		if (vhost.auth) pills.push(E('span', { 'class': 'vhost-pill warn' }, _('Auth')));
-		if (vhost.websocket) pills.push(E('span', { 'class': 'vhost-pill' }, _('WebSocket')));
+
+		if (vhost.ssl) pills.push(E('span', { 'class': 'vhost-pill success' }, '🔒 TLS'));
+		if (vhost.auth) pills.push(E('span', { 'class': 'vhost-pill warn' }, '🔐 Auth'));
+		if (vhost.websocket) pills.push(E('span', { 'class': 'vhost-pill' }, '⚡ WebSocket'));
 		if (vhost.tls_mode === 'manual') {
 			pills.push(E('span', { 'class': 'vhost-pill' }, _('Manual cert')));
 		}
 
 		return E('div', { 'class': 'vhost-card' }, [
 			E('div', { 'class': 'vhost-card-title' }, ['🌐', vhost.domain || _('Unnamed')]),
-			E('div', { 'class': 'vhost-card-meta' }, vhost.backend || _('No backend defined')),
 			pills.length ? E('div', { 'class': 'vhost-filter-tags' }, pills) : '',
-			E('div', { 'class': 'vhost-card-meta' }, _('TLS Mode: %s').format(formatTlsMode(vhost))),
-			E('div', { 'class': 'vhost-card-meta' },
-				cert ? _('Certificate expires %s').format(formatDate(cert.expires)) : _('No certificate detected'))
+			E('div', { 'class': 'vhost-card-meta' }, [
+				E('strong', {}, _('Backend: ')),
+				E('span', {}, vhost.backend || _('No backend defined'))
+			]),
+			E('div', { 'class': 'vhost-card-meta' }, [
+				E('strong', {}, _('TLS: ')),
+				E('span', {}, formatTlsMode(vhost))
+			]),
+			cert ? E('div', { 'class': 'vhost-card-meta' }, [
+				E('strong', {}, _('Certificate: ')),
+				E('span', {}, _('Expires %s').format(formatDate(cert.expires)))
+			]) : E('div', { 'class': 'vhost-card-meta' }, _('No certificate detected')),
+			E('div', { 'class': 'vhost-actions', 'style': 'margin-top: 1rem; display: flex; gap: 0.5rem;' }, [
+				E('button', {
+					'class': 'sh-btn-secondary',
+					'click': L.bind(this.handleEditVHost, this, vhost)
+				}, _('Edit')),
+				E('button', {
+					'class': enabled ? 'sh-btn-warning' : 'sh-btn-success',
+					'click': L.bind(this.handleToggleVHost, this, vhost)
+				}, enabled ? _('Disable') : _('Enable')),
+				E('button', {
+					'class': 'sh-btn-negative',
+					'click': L.bind(this.handleRemoveVHost, this, vhost)
+				}, _('Remove'))
+			])
 		]);
+	},
+
+	handleEditVHost: function(vhost, ev) {
+		var section = vhost.section || vhost['.name'];
+		if (!section) {
+			ui.addNotification(null, E('p', _('Cannot edit: VHost section name not found')), 'error');
+			return;
+		}
+
+		// Scroll to form and open modal for this section
+		var formCard = document.querySelector('.cbi-section-table');
+		if (formCard) {
+			formCard.scrollIntoView({ behavior: 'smooth' });
+		}
+		ui.addNotification(null, E('p', _('Use the table below to edit %s').format(vhost.domain)), 'info');
+	},
+
+	handleToggleVHost: function(vhost, ev) {
+		var section = vhost.section || vhost['.name'];
+		var enabled = isEnabled(vhost);
+		var newState = !enabled;
+
+		ui.showModal(_('Confirm Toggle'), [
+			E('p', {}, enabled ?
+				_('Are you sure you want to disable this virtual host?') :
+				_('Are you sure you want to enable this virtual host?')),
+			E('div', { 'style': 'margin: 1rem 0;' }, [
+				E('strong', {}, vhost.domain || section)
+			]),
+			E('div', { 'class': 'right', 'style': 'margin-top: 1rem;' }, [
+				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
+				E('button', {
+					'class': newState ? 'btn cbi-button-positive' : 'btn cbi-button-warning',
+					'click': L.bind(function() {
+						ui.hideModal();
+						this.toggleVHost(section, newState);
+					}, this)
+				}, newState ? _('Enable') : _('Disable'))
+			])
+		], 'cbi-modal');
+	},
+
+	handleRemoveVHost: function(vhost, ev) {
+		var section = vhost.section || vhost['.name'];
+
+		ui.showModal(_('Remove Virtual Host'), [
+			E('p', {}, _('Are you sure you want to remove this virtual host?')),
+			E('div', { 'style': 'margin: 1rem 0;' }, [
+				E('strong', {}, vhost.domain || section),
+				E('p', {}, _('Backend: %s').format(vhost.backend || _('N/A')))
+			]),
+			E('p', { 'style': 'color: #d9534f;' },
+				_('This will delete the VHost configuration. Nginx will be reloaded automatically.')),
+			E('div', { 'class': 'right', 'style': 'margin-top: 1rem;' }, [
+				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
+				E('button', {
+					'class': 'btn cbi-button-negative',
+					'click': L.bind(function() {
+						ui.hideModal();
+						this.deleteVHost(section);
+					}, this)
+				}, _('Remove'))
+			])
+		], 'cbi-modal');
+	},
+
+	toggleVHost: function(section, enabled) {
+		ui.showModal(_('Updating...'), [
+			E('p', { 'class': 'spinning' }, _('Please wait...'))
+		]);
+
+		return uci.load('vhosts')
+			.then(L.bind(function() {
+				uci.set('vhosts', section, 'enabled', enabled ? '1' : '0');
+				return uci.save();
+			}, this))
+			.then(L.bind(function() {
+				return uci.apply();
+			}, this))
+			.then(L.bind(function() {
+				return API.reloadNginx();
+			}, this))
+			.then(L.bind(function(result) {
+				ui.hideModal();
+				if (result && result.success) {
+					ui.addNotification(null, E('p', _('Virtual host %s successfully').format(enabled ? _('enabled') : _('disabled'))), 'info');
+					this.pollData();
+				} else {
+					ui.addNotification(null, E('p', _('Failed to reload nginx: %s').format(result.message || _('Unknown error'))), 'error');
+				}
+			}, this))
+			.catch(function(err) {
+				ui.hideModal();
+				ui.addNotification(null, E('p', _('Error: %s').format(err.message)), 'error');
+			});
+	},
+
+	deleteVHost: function(section) {
+		ui.showModal(_('Removing...'), [
+			E('p', { 'class': 'spinning' }, _('Please wait...'))
+		]);
+
+		return uci.load('vhosts')
+			.then(L.bind(function() {
+				uci.remove('vhosts', section);
+				return uci.save();
+			}, this))
+			.then(L.bind(function() {
+				return uci.apply();
+			}, this))
+			.then(L.bind(function() {
+				return API.reloadNginx();
+			}, this))
+			.then(L.bind(function(result) {
+				ui.hideModal();
+				if (result && result.success) {
+					ui.addNotification(null, E('p', _('Virtual host removed successfully')), 'info');
+					this.pollData();
+				} else {
+					ui.addNotification(null, E('p', _('Failed to reload nginx after removal')), 'error');
+				}
+			}, this))
+			.catch(function(err) {
+				ui.hideModal();
+				ui.addNotification(null, E('p', _('Error: %s').format(err.message)), 'error');
+			});
 	}
 });

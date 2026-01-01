@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-ROUTER="${ROUTER:-root@192.168.8.205}"
+ROUTER="${ROUTER:-root@192.168.8.191}"
 TARGET_PATH="${TARGET_PATH:-/www/luci-static}"
 SSH_OPTS=${SSH_OPTS:--o RequestTTY=no -o ForwardX11=no}
 SCP_OPTS=${SCP_OPTS:-}

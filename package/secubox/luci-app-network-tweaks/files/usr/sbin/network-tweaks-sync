@@ -1,0 +1,260 @@
+#!/bin/sh
+# Network Tweaks - Auto Proxy DNS & Hosts Synchronization
+# Reads enabled vhosts and generates DNS/hosts entries
+
+. /lib/functions.sh
+
+CONFIG_TWEAKS="network_tweaks"
+CONFIG_VHOSTS="vhosts"
+DNSMASQ_VHOST_CONF="/tmp/dnsmasq.d/50-vhosts.conf"
+HOSTS_VHOST="/tmp/hosts.vhosts"
+MANAGED_MARKER="# Managed by network-tweaks"
+
+log_msg() {
+	logger -t network-tweaks "$@"
+	echo "[network-tweaks] $@" >&2
+}
+
+get_lan_ip() {
+	local iface="${1:-lan}"
+	local ip
+	ip=$(uci -q get network.$iface.ipaddr)
+	if [ -z "$ip" ]; then
+		ip=$(ip -4 addr show br-$iface 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+	fi
+	echo "${ip:-127.0.0.1}"
+}
+
+is_enabled() {
+	local enabled
+	enabled=$(uci -q get ${CONFIG_TWEAKS}.global.enabled)
+	[ "$enabled" = "1" ] || [ "$enabled" = "true" ]
+}
+
+should_sync_hosts() {
+	local sync
+	sync=$(uci -q get ${CONFIG_TWEAKS}.global.sync_hosts)
+	[ "$sync" = "1" ] || [ "$sync" = "true" ]
+}
+
+should_sync_dnsmasq() {
+	local sync
+	sync=$(uci -q get ${CONFIG_TWEAKS}.global.sync_dnsmasq)
+	[ "$sync" = "1" ] || [ "$sync" = "true" ]
+}
+
+get_default_ip() {
+	local ip
+	ip=$(uci -q get ${CONFIG_TWEAKS}.global.default_ip)
+	if [ -z "$ip" ]; then
+		local iface
+		iface=$(uci -q get ${CONFIG_TWEAKS}.global.lan_interface)
+		ip=$(get_lan_ip "${iface:-lan}")
+	fi
+	echo "$ip"
+}
+
+collect_enabled_vhosts() {
+	local domains=""
+	local count=0
+
+	config_load "$CONFIG_VHOSTS"
+
+	collect_vhost() {
+		local section="$1"
+		local domain enabled
+
+		config_get domain "$section" domain
+		config_get_bool enabled "$section" enabled 1
+
+		if [ "$enabled" = "1" ] && [ -n "$domain" ]; then
+			domains="$domains $domain"
+			count=$((count + 1))
+		fi
+	}
+
+	config_foreach collect_vhost vhost
+
+	echo "$domains"
+	log_msg "Collected $count enabled vhost(s)"
+}
+
+generate_dnsmasq_conf() {
+	local domains="$1"
+	local ip="$2"
+	local tmpfile="${DNSMASQ_VHOST_CONF}.tmp"
+
+	mkdir -p "$(dirname "$DNSMASQ_VHOST_CONF")"
+
+	cat > "$tmpfile" <<EOF
+# Auto-generated DNS entries for VHost Manager domains
+$MANAGED_MARKER
+# IP: $ip
+# Generated: $(date)
+
+EOF
+
+	for domain in $domains; do
+		echo "address=/$domain/$ip" >> "$tmpfile"
+	done
+
+	mv "$tmpfile" "$DNSMASQ_VHOST_CONF"
+	log_msg "Generated dnsmasq config with $(echo $domains | wc -w) entries"
+}
+
+generate_hosts_entries() {
+	local domains="$1"
+	local ip="$2"
+	local tmpfile="${HOSTS_VHOST}.tmp"
+
+	cat > "$tmpfile" <<EOF
+$MANAGED_MARKER
+# Auto-generated hosts entries for VHost Manager domains
+# Generated: $(date)
+EOF
+
+	for domain in $domains; do
+		echo "$ip $domain" >> "$tmpfile"
+	done
+
+	mv "$tmpfile" "$HOSTS_VHOST"
+
+	# Merge with main hosts file
+	if [ -f /etc/hosts ]; then
+		# Remove old managed entries
+		sed -i "/^$MANAGED_MARKER\$/,/^[^#]/d" /etc/hosts 2>/dev/null || true
+		sed -i "/^# Auto-generated hosts entries for VHost Manager/d" /etc/hosts 2>/dev/null || true
+
+		# Append new entries
+		if [ -s "$HOSTS_VHOST" ]; then
+			cat "$HOSTS_VHOST" >> /etc/hosts
+		fi
+	fi
+
+	log_msg "Updated /etc/hosts with $(echo $domains | wc -w) entries"
+}
+
+reload_services() {
+	local reload_dnsmasq="$1"
+
+	if [ "$reload_dnsmasq" = "1" ]; then
+		# Check if dnsmasq is running
+		if /etc/init.d/dnsmasq enabled 2>/dev/null; then
+			log_msg "Reloading dnsmasq..."
+			/etc/init.d/dnsmasq reload >/dev/null 2>&1 || {
+				log_msg "Failed to reload dnsmasq, restarting..."
+				/etc/init.d/dnsmasq restart >/dev/null 2>&1
+			}
+		fi
+	fi
+}
+
+cleanup_entries() {
+	log_msg "Cleaning up managed entries..."
+
+	rm -f "$DNSMASQ_VHOST_CONF"
+	rm -f "$HOSTS_VHOST"
+
+	if [ -f /etc/hosts ]; then
+		sed -i "/^$MANAGED_MARKER\$/,/^[^#]/d" /etc/hosts 2>/dev/null || true
+		sed -i "/^# Auto-generated hosts entries for VHost Manager/d" /etc/hosts 2>/dev/null || true
+	fi
+
+	reload_services 1
+	log_msg "Cleanup complete"
+}
+
+sync_all() {
+	log_msg "Starting network tweaks synchronization..."
+
+	if ! is_enabled; then
+		log_msg "Network tweaks disabled, cleaning up..."
+		cleanup_entries
+		return 0
+	fi
+
+	local domains
+	domains=$(collect_enabled_vhosts)
+
+	if [ -z "$domains" ]; then
+		log_msg "No enabled vhosts found, cleaning up..."
+		cleanup_entries
+		return 0
+	fi
+
+	local ip
+	ip=$(get_default_ip)
+	log_msg "Using IP: $ip"
+
+	local reload_needed=0
+
+	if should_sync_dnsmasq; then
+		generate_dnsmasq_conf "$domains" "$ip"
+		reload_needed=1
+	fi
+
+	if should_sync_hosts; then
+		generate_hosts_entries "$domains" "$ip"
+	fi
+
+	reload_services "$reload_needed"
+
+	log_msg "Synchronization complete"
+}
+
+status_report() {
+	echo "Network Tweaks Status"
+	echo "===================="
+	echo ""
+	echo "Enabled: $(is_enabled && echo 'Yes' || echo 'No')"
+	echo "Sync Hosts: $(should_sync_hosts && echo 'Yes' || echo 'No')"
+	echo "Sync DNSmasq: $(should_sync_dnsmasq && echo 'Yes' || echo 'No')"
+	echo "Default IP: $(get_default_ip)"
+	echo ""
+	echo "Enabled VHosts:"
+	collect_enabled_vhosts | tr ' ' '\n' | grep -v '^$' | sed 's/^/  - /'
+	echo ""
+
+	if [ -f "$DNSMASQ_VHOST_CONF" ]; then
+		echo "DNSmasq config exists: $DNSMASQ_VHOST_CONF"
+		echo "  Entries: $(grep -c '^address=' "$DNSMASQ_VHOST_CONF" 2>/dev/null || echo 0)"
+	else
+		echo "DNSmasq config: Not generated"
+	fi
+
+	if [ -f "$HOSTS_VHOST" ]; then
+		echo "Hosts entries exist: $HOSTS_VHOST"
+		echo "  Lines: $(grep -cv '^#' "$HOSTS_VHOST" 2>/dev/null || echo 0)"
+	else
+		echo "Hosts entries: Not generated"
+	fi
+}
+
+case "${1:-sync}" in
+	sync)
+		sync_all
+		;;
+	status)
+		status_report
+		;;
+	cleanup)
+		cleanup_entries
+		;;
+	help|--help|-h)
+		cat <<'USAGE'
+Usage: network-tweaks-sync <command>
+
+Commands:
+  sync      Synchronize DNS and hosts entries from enabled vhosts (default)
+  status    Show current status and configuration
+  cleanup   Remove all managed entries
+  help      Show this help message
+
+USAGE
+		;;
+	*)
+		echo "Unknown command: $1" >&2
+		echo "Run 'network-tweaks-sync help' for usage" >&2
+		exit 1
+		;;
+esac

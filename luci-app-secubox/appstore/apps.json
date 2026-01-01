@@ -375,6 +375,29 @@
       "dependencies": ["docker", "dockerd"],
       "conflicts": [],
       "notes": "Beautiful uptime monitoring. Supports HTTP, TCP, ping, DNS, and more. Push notifications."
+    },
+    {
+      "id": "secubox-app-magicmirror",
+      "name": "MagicMirror²",
+      "version": "2.28.0",
+      "category": "iot",
+      "description": "Smart mirror platform with modular display of calendar, weather, news, and custom modules. Transform any display into an information hub.",
+      "icon": "🪞",
+      "author": "CyberMind.fr",
+      "license": "MIT",
+      "url": "https://magicmirror.builders/",
+      "tags": ["smart-mirror", "dashboard", "display", "modules", "iot", "docker"],
+      "requires": {
+        "docker": true,
+        "memory": "512MB",
+        "storage": "1GB",
+        "display": "optional"
+      },
+      "status": "stable",
+      "luci_app": "luci-app-magicmirror",
+      "dependencies": ["docker", "dockerd"],
+      "conflicts": [],
+      "notes": "Modular smart mirror platform. LuCI app provides module manager and web controller. Access via web browser or connect to a display."
     }
   ],
   "categories": {

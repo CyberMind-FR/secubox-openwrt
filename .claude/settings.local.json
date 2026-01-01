@@ -178,7 +178,16 @@
       "Bash(timeout 600 ./secubox-tools/local-build.sh:*)",
       "Bash(timeout 300 ./secubox-tools/local-build.sh:*)",
       "Bash(paste:*)",
-      "Bash(git -C /home/reepost/CyberMindStudio/_files/secubox-openwrt status --short .github/workflows/)"
+      "Bash(git -C /home/reepost/CyberMindStudio/_files/secubox-openwrt status --short .github/workflows/)",
+      "Bash(/tmp/deploy-secubox-bonus.sh)",
+      "Bash(git rm:*)",
+      "Bash(timeout 180 ./local-build.sh:*)",
+      "Bash(tar:*)",
+      "Bash(for makefile in luci-app-*/Makefile)",
+      "Bash(do echo \"=== $makefile ===\" grep -A15 \"define Package.*install\" \"$makefile\")",
+      "Bash(ssh root@192.168.8.191:*)",
+      "Bash(flatpak-spawn --host which:*)",
+      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")"
     ]
   }
 }

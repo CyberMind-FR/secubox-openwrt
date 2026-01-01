@@ -24,7 +24,7 @@ var callGetVHost = rpc.declare({
 var callAddVHost = rpc.declare({
 	object: 'luci.vhost-manager',
 	method: 'add_vhost',
-	params: ['domain', 'backend', 'tls_mode', 'auth', 'auth_user', 'auth_pass', 'websocket', 'enabled', 'cert_path', 'key_path'],
+	params: ['domain', 'backend', 'tls_mode', 'auth', 'auth_user', 'auth_pass', 'websocket', 'enabled', 'cert_path', 'key_path', 'section_id'],
 	expect: { }
 });
 
@@ -86,5 +86,34 @@ return baseclass.extend({
 	requestCert: callRequestCert,
 	listCerts: callListCerts,
 	reloadNginx: callReloadNginx,
-	getAccessLogs: callGetAccessLogs
+	getAccessLogs: callGetAccessLogs,
+
+	// Wrapper for template-based VHost creation
+	createVHost: function(config) {
+		var domain = config.domain;
+		var backend = config.backend || config.upstream;
+		var tlsMode = config.tls_mode || (config.requires_ssl ? 'acme' : 'off');
+		var auth = config.auth || false;
+		var authUser = config.auth_user || null;
+		var authPass = config.auth_pass || null;
+		var websocket = config.websocket_enabled || config.websocket_support || false;
+		var enabled = config.enabled !== false;
+		var certPath = config.cert_path || null;
+		var keyPath = config.key_path || null;
+		var sectionId = config.section_id || config.id || null;
+
+		return callAddVHost(
+			domain,
+			backend,
+			tlsMode,
+			auth,
+			authUser,
+			authPass,
+			websocket,
+			enabled,
+			certPath,
+			keyPath,
+			sectionId
+		);
+	}
 });

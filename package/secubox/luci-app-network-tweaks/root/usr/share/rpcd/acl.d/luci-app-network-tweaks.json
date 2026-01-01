@@ -1,0 +1,17 @@
+{
+	"luci-app-network-tweaks": {
+		"description": "Grant access to Network Tweaks",
+		"read": {
+			"ubus": {
+				"luci.network-tweaks": ["getStatus", "getConfig", "getNetworkComponents", "getCumulativeImpact"]
+			},
+			"uci": ["network_tweaks", "vhosts"]
+		},
+		"write": {
+			"ubus": {
+				"luci.network-tweaks": ["syncNow", "setConfig", "setComponentEnabled"]
+			},
+			"uci": ["network_tweaks"]
+		}
+	}
+}

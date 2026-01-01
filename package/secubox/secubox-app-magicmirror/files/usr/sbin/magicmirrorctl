@@ -1,0 +1,483 @@
+#!/bin/sh
+# SecuBox MagicMirror² manager
+
+CONFIG="magicmirror"
+CONTAINER="secbx-magicmirror"
+OPKG_UPDATED=0
+
+usage() {
+	cat <<'USAGE'
+Usage: magicmirrorctl <command>
+
+Commands:
+  install         Install prerequisites, prepare directories, pull image
+  check           Run prerequisite checks
+  update          Pull new image and restart
+  status          Show container status
+  logs            Show container logs (use -f to follow)
+  module          Manage MagicMirror modules (see module --help)
+  config          Manage MagicMirror configuration (see config --help)
+  service-run     Internal: run container via procd
+  service-stop    Stop container
+USAGE
+}
+
+usage_module() {
+	cat <<'USAGE'
+Usage: magicmirrorctl module <command>
+
+Commands:
+  list            List installed modules
+  install <url>   Install module from git URL
+  remove <name>   Remove installed module
+  update <name>   Update module to latest version
+  config <name>   Show module configuration template
+
+Examples:
+  magicmirrorctl module install https://github.com/MichMich/MMM-WeatherChart
+  magicmirrorctl module remove MMM-WeatherChart
+  magicmirrorctl module update MMM-WeatherChart
+USAGE
+}
+
+usage_config() {
+	cat <<'USAGE'
+Usage: magicmirrorctl config <command>
+
+Commands:
+  show            Show current configuration
+  edit            Edit configuration (opens in vi)
+  backup          Backup current configuration
+  restore         Restore from backup
+  reset           Reset to default configuration
+
+USAGE
+}
+
+require_root() { [ "$(id -u)" -eq 0 ]; }
+
+uci_get() { uci -q get ${CONFIG}.main.$1; }
+
+defaults() {
+	image="$(uci_get image || echo karsten13/magicmirror:latest)"
+	config_path="$(uci_get config_path || echo /srv/magicmirror/config)"
+	modules_path="$(uci_get modules_path || echo /srv/magicmirror/modules)"
+	css_path="$(uci_get css_path || echo /srv/magicmirror/css)"
+	port="$(uci_get port || echo 8080)"
+	timezone="$(uci_get timezone || echo UTC)"
+	language="$(uci_get language || echo en)"
+	units="$(uci_get units || echo metric)"
+}
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+ensure_packages() {
+	for pkg in "$@"; do
+		if ! opkg status "$pkg" >/dev/null 2>&1; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+check_prereqs() {
+	defaults
+	ensure_dir "$config_path"
+	ensure_dir "$modules_path"
+	ensure_dir "$css_path"
+	[ -d /sys/fs/cgroup ] || { echo "[ERROR] /sys/fs/cgroup missing" >&2; return 1; }
+	ensure_packages dockerd docker containerd jq
+	/etc/init.d/dockerd enable >/dev/null 2>&1
+	/etc/init.d/dockerd start >/dev/null 2>&1
+}
+
+pull_image() { defaults; docker pull "$image"; }
+
+stop_container() { docker stop "$CONTAINER" >/dev/null 2>&1 || true; docker rm "$CONTAINER" >/dev/null 2>&1 || true; }
+
+create_default_config() {
+	local config_file="$config_path/config.js"
+	defaults
+
+	cat > "$config_file" <<'CONFIGJS'
+/* MagicMirror² Config
+ * By Michael Teeuw https://michaelteeuw.nl
+ * MIT Licensed.
+ *
+ * For more information on how you can configure this file
+ * see https://docs.magicmirror.builders/configuration/introduction.html
+ * and https://docs.magicmirror.builders/modules/configuration.html
+ */
+let config = {
+	address: "0.0.0.0",
+	port: 8080,
+	basePath: "/",
+	ipWhitelist: [],
+	useHttps: false,
+	httpsPrivateKey: "",
+	httpsCertificate: "",
+
+	language: "LANG_PLACEHOLDER",
+	locale: "LANG_PLACEHOLDER",
+	logLevel: ["INFO", "LOG", "WARN", "ERROR"],
+	timeFormat: 24,
+	units: "UNITS_PLACEHOLDER",
+
+	modules: [
+		{
+			module: "alert",
+		},
+		{
+			module: "updatenotification",
+			position: "top_bar"
+		},
+		{
+			module: "clock",
+			position: "top_left"
+		},
+		{
+			module: "calendar",
+			header: "Upcoming Events",
+			position: "top_left",
+			config: {
+				calendars: [
+					{
+						symbol: "calendar-check",
+						url: "webcal://www.calendarlabs.com/ical-calendar/ics/76/US_Holidays.ics"
+					}
+				]
+			}
+		},
+		{
+			module: "compliments",
+			position: "lower_third"
+		},
+		{
+			module: "weather",
+			position: "top_right",
+			config: {
+				weatherProvider: "openweathermap",
+				type: "current",
+				location: "New York",
+				locationID: "5128581",
+				apiKey: "YOUR_OPENWEATHER_API_KEY"
+			}
+		},
+		{
+			module: "weather",
+			position: "top_right",
+			header: "Weather Forecast",
+			config: {
+				weatherProvider: "openweathermap",
+				type: "forecast",
+				location: "New York",
+				locationID: "5128581",
+				apiKey: "YOUR_OPENWEATHER_API_KEY"
+			}
+		},
+		{
+			module: "newsfeed",
+			position: "bottom_bar",
+			config: {
+				feeds: [
+					{
+						title: "New York Times",
+						url: "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"
+					}
+				],
+				showSourceTitle: true,
+				showPublishDate: true,
+				broadcastNewsFeeds: true,
+				broadcastNewsUpdates: true
+			}
+		},
+	]
+};
+
+/*************** DO NOT EDIT THE LINE BELOW ***************/
+if (typeof module !== "undefined") {module.exports = config;}
+CONFIGJS
+
+	# Replace placeholders
+	sed -i "s/LANG_PLACEHOLDER/$language/g" "$config_file"
+	sed -i "s/UNITS_PLACEHOLDER/$units/g" "$config_file"
+
+	chmod 644 "$config_file"
+	echo "Created default config: $config_file"
+}
+
+cmd_install() {
+	require_root || { echo Root required >&2; exit 1; }
+	check_prereqs || exit 1
+	pull_image || exit 1
+
+	# Create default config if not exists
+	if [ ! -f "$config_path/config.js" ]; then
+		create_default_config
+	fi
+
+	uci set ${CONFIG}.main.enabled='1'
+	uci commit ${CONFIG}
+	/etc/init.d/magicmirror enable
+
+	echo "MagicMirror² prerequisites installed."
+	echo "Start with: /etc/init.d/magicmirror start"
+	echo ""
+	echo "Access MagicMirror at: http://$(uci get network.lan.ipaddr):${port}"
+	echo "Edit config: $config_path/config.js"
+	echo "Install modules to: $modules_path"
+}
+
+cmd_check() { check_prereqs; echo "Prerequisite check completed."; }
+
+cmd_update() {
+	require_root || { echo Root required >&2; exit 1; }
+	pull_image || exit 1
+	/etc/init.d/magicmirror restart
+}
+
+cmd_status() { docker ps -a --filter "name=$CONTAINER"; }
+
+cmd_logs() { docker logs "$@" "$CONTAINER"; }
+
+# Module management commands
+cmd_module_list() {
+	defaults
+	echo "Installed MagicMirror Modules:"
+	echo "=============================="
+	if [ -d "$modules_path" ]; then
+		for module_dir in "$modules_path"/MMM-*; do
+			if [ -d "$module_dir" ]; then
+				local module_name=$(basename "$module_dir")
+				local module_readme="$module_dir/README.md"
+				echo "  - $module_name"
+				if [ -f "$module_readme" ]; then
+					head -5 "$module_readme" | grep -i "description" | sed 's/^/    /'
+				fi
+			fi
+		done
+	else
+		echo "  No modules directory found"
+	fi
+}
+
+cmd_module_install() {
+	local git_url="$1"
+	require_root || { echo Root required >&2; exit 1; }
+	defaults
+
+	if [ -z "$git_url" ]; then
+		echo "Error: Git URL required" >&2
+		usage_module
+		exit 1
+	fi
+
+	# Extract module name from URL
+	local module_name=$(basename "$git_url" .git)
+
+	echo "Installing module: $module_name"
+	echo "From: $git_url"
+
+	# Ensure git is available in container or install locally
+	if ! command -v git >/dev/null 2>&1; then
+		ensure_packages git git-http
+	fi
+
+	# Clone module
+	cd "$modules_path" || exit 1
+	if [ -d "$module_name" ]; then
+		echo "Module already exists. Use 'update' to update it."
+		exit 1
+	fi
+
+	git clone "$git_url" || exit 1
+
+	# Run npm install if package.json exists
+	if [ -f "$module_name/package.json" ]; then
+		echo "Running npm install..."
+		docker exec "$CONTAINER" sh -c "cd modules/$module_name && npm install" 2>/dev/null || {
+			echo "Note: Container not running. Module installed but npm dependencies not installed."
+			echo "Start MagicMirror and run: magicmirrorctl module update $module_name"
+		}
+	fi
+
+	echo "Module installed: $module_name"
+	echo "Add to config.js to activate it"
+}
+
+cmd_module_remove() {
+	local module_name="$1"
+	require_root || { echo Root required >&2; exit 1; }
+	defaults
+
+	if [ -z "$module_name" ]; then
+		echo "Error: Module name required" >&2
+		usage_module
+		exit 1
+	fi
+
+	local module_dir="$modules_path/$module_name"
+	if [ ! -d "$module_dir" ]; then
+		echo "Error: Module not found: $module_name" >&2
+		exit 1
+	fi
+
+	echo "Removing module: $module_name"
+	rm -rf "$module_dir"
+	echo "Module removed. Update config.js to remove module configuration."
+}
+
+cmd_module_update() {
+	local module_name="$1"
+	require_root || { echo Root required >&2; exit 1; }
+	defaults
+
+	if [ -z "$module_name" ]; then
+		echo "Error: Module name required" >&2
+		usage_module
+		exit 1
+	fi
+
+	local module_dir="$modules_path/$module_name"
+	if [ ! -d "$module_dir" ]; then
+		echo "Error: Module not found: $module_name" >&2
+		exit 1
+	fi
+
+	echo "Updating module: $module_name"
+	cd "$module_dir" || exit 1
+
+	git pull || exit 1
+
+	if [ -f "package.json" ]; then
+		echo "Running npm install..."
+		docker exec "$CONTAINER" sh -c "cd modules/$module_name && npm install" || {
+			echo "Warning: Failed to install npm dependencies. Make sure container is running."
+		}
+	fi
+
+	echo "Module updated: $module_name"
+}
+
+cmd_module_config() {
+	local module_name="$1"
+	defaults
+
+	if [ -z "$module_name" ]; then
+		echo "Error: Module name required" >&2
+		usage_module
+		exit 1
+	fi
+
+	local module_dir="$modules_path/$module_name"
+	if [ ! -d "$module_dir" ]; then
+		echo "Error: Module not found: $module_name" >&2
+		exit 1
+	fi
+
+	# Show README and config template
+	if [ -f "$module_dir/README.md" ]; then
+		echo "Module: $module_name"
+		echo "=============================="
+		grep -A 20 -i "config" "$module_dir/README.md" | head -30
+	else
+		echo "No README.md found for module: $module_name"
+	fi
+}
+
+cmd_module() {
+	case "${1:-list}" in
+		list) shift; cmd_module_list "$@" ;;
+		install) shift; cmd_module_install "$@" ;;
+		remove) shift; cmd_module_remove "$@" ;;
+		update) shift; cmd_module_update "$@" ;;
+		config) shift; cmd_module_config "$@" ;;
+		help|--help|-h) usage_module ;;
+		*) echo "Unknown module command: $1" >&2; usage_module >&2; exit 1 ;;
+	esac
+}
+
+# Config management commands
+cmd_config_show() {
+	defaults
+	cat "$config_path/config.js"
+}
+
+cmd_config_edit() {
+	require_root || { echo Root required >&2; exit 1; }
+	defaults
+	${EDITOR:-vi} "$config_path/config.js"
+}
+
+cmd_config_backup() {
+	defaults
+	local backup_file="$config_path/config.js.backup.$(date +%Y%m%d_%H%M%S)"
+	cp "$config_path/config.js" "$backup_file"
+	echo "Backup created: $backup_file"
+}
+
+cmd_config_restore() {
+	require_root || { echo Root required >&2; exit 1; }
+	defaults
+	local latest_backup=$(ls -t "$config_path"/config.js.backup.* 2>/dev/null | head -1)
+	if [ -z "$latest_backup" ]; then
+		echo "No backups found" >&2
+		exit 1
+	fi
+	cp "$latest_backup" "$config_path/config.js"
+	echo "Restored from: $latest_backup"
+}
+
+cmd_config_reset() {
+	require_root || { echo Root required >&2; exit 1; }
+	cmd_config_backup
+	create_default_config
+	echo "Configuration reset to defaults"
+}
+
+cmd_config() {
+	case "${1:-show}" in
+		show) shift; cmd_config_show "$@" ;;
+		edit) shift; cmd_config_edit "$@" ;;
+		backup) shift; cmd_config_backup "$@" ;;
+		restore) shift; cmd_config_restore "$@" ;;
+		reset) shift; cmd_config_reset "$@" ;;
+		help|--help|-h) usage_config ;;
+		*) echo "Unknown config command: $1" >&2; usage_config >&2; exit 1 ;;
+	esac
+}
+
+cmd_service_run() {
+	require_root || { echo Root required >&2; exit 1; }
+	check_prereqs || exit 1
+	defaults
+	stop_container
+
+	local docker_args="--name $CONTAINER"
+	docker_args="$docker_args -p ${port}:8080"
+	docker_args="$docker_args -v $config_path:/opt/magic_mirror/config"
+	docker_args="$docker_args -v $modules_path:/opt/magic_mirror/modules"
+	docker_args="$docker_args -v $css_path:/opt/magic_mirror/css/custom"
+	docker_args="$docker_args -e TZ=$timezone"
+
+	exec docker run --rm $docker_args "$image"
+}
+
+cmd_service_stop() { require_root || { echo Root required >&2; exit 1; }; stop_container; }
+
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	check) shift; cmd_check "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	module) shift; cmd_module "$@" ;;
+	config) shift; cmd_config "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac
