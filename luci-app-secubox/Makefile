@@ -8,18 +8,17 @@ PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
 LUCI_TITLE:=LuCI - SecuBox Hub (Central Dashboard)
 LUCI_DESCRIPTION:=Central control hub for all SecuBox modules. Provides unified dashboard, module status, system health monitoring, and quick actions.
-LUCI_DEPENDS:=+luci-base +rpcd +curl +jq
+LUCI_DEPENDS:=+luci-base +rpcd +curl +jq +secubox-core
 LUCI_PKGARCH:=all
 
-# File permissions (CRITICAL: RPCD scripts MUST be executable 755)
+# File permissions (CRITICAL: Helper scripts MUST be executable 755)
 # Format: path:owner:group:mode
-# - RPCD scripts: 755 (executable by root, required for ubus calls)
 # - Helper scripts: 755 (if executable)
 # - Data files: 644 (readable by all - INSTALL_DATA sets this automatically)
 # - Directories: 755 (set automatically by INSTALL_DIR)
 # - CSS/JS files: 644 (set automatically by luci.mk)
-PKG_FILE_MODES:=/usr/libexec/rpcd/luci.secubox:root:root:755 \
-	/usr/libexec/secubox/fix-permissions.sh:root:root:755
+# Note: RPCD backend is now provided by secubox-core package
+PKG_FILE_MODES:=/usr/libexec/secubox/fix-permissions.sh:root:root:755
 
 include $(TOPDIR)/feeds/luci/luci.mk
 

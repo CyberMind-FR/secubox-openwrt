@@ -21,8 +21,8 @@ log_error() {
 fix_rpcd_permissions() {
     log_info "Fixing RPCD script permissions..."
 
+    # Note: luci.secubox backend is now provided by secubox-core package
     local rpcd_scripts="
-        /usr/libexec/rpcd/luci.secubox
         /usr/libexec/rpcd/luci.system-hub
         /usr/libexec/rpcd/luci.network-modes
         /usr/libexec/rpcd/luci.crowdsec-dashboard

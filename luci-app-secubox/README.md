@@ -170,10 +170,11 @@ luci-app-secubox/
 └── root/
     ├── etc/config/secubox     # UCI configuration
     └── usr/
-        ├── libexec/rpcd/secubox              # RPCD backend
         └── share/
             ├── luci/menu.d/luci-app-secubox.json
             └── rpcd/acl.d/luci-app-secubox.json
+
+    # Note: RPCD backend (luci.secubox) is provided by secubox-core package
 ```
 
 ## License
