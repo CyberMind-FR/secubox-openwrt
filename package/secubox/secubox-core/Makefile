@@ -67,8 +67,12 @@ define Package/secubox-core/install
 	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.secubox $(1)/usr/libexec/rpcd/
 
 	$(INSTALL_DIR) $(1)/usr/share/secubox/modules
+	$(INSTALL_DIR) $(1)/usr/share/secubox/plugins/catalog
 	$(INSTALL_DIR) $(1)/usr/share/secubox/scripts
 	$(INSTALL_DATA) ./root/usr/share/secubox/scripts/* $(1)/usr/share/secubox/scripts/
+
+	# Install module catalog files if they exist
+	-$(INSTALL_DATA) ./root/usr/share/secubox/plugins/catalog/*.json $(1)/usr/share/secubox/plugins/catalog/ 2>/dev/null || true
 
 	$(INSTALL_DIR) $(1)/var/run/secubox
 	$(INSTALL_DIR) $(1)/var/log/secubox

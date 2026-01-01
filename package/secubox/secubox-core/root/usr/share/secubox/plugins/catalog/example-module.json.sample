@@ -1,0 +1,41 @@
+{
+  "id": "example-module",
+  "name": "Example Module",
+  "version": "1.0.0",
+  "category": "system",
+  "runtime": "native",
+  "description": "Example module catalog entry demonstrating the structure",
+  "author": "SecuBox Team",
+  "license": "GPL-2.0",
+  "url": "https://github.com/your-org/example-module",
+  "icon": "⚙️",
+  "tags": ["example", "demo"],
+  "packages": {
+    "required": [
+      "luci-app-example-module"
+    ],
+    "recommended": [
+      "example-module-extras"
+    ]
+  },
+  "capabilities": [
+    "system-management",
+    "monitoring"
+  ],
+  "requirements": {
+    "min_ram_mb": 64,
+    "min_storage_mb": 10,
+    "openwrt_version": "24.10"
+  },
+  "hooks": {
+    "pre_install": "/usr/share/example-module/hooks/pre-install.sh",
+    "post_install": "/usr/share/example-module/hooks/post-install.sh",
+    "pre_remove": "/usr/share/example-module/hooks/pre-remove.sh",
+    "post_remove": "/usr/share/example-module/hooks/post-remove.sh"
+  },
+  "config": {
+    "uci_package": "example-module",
+    "init_script": "/etc/init.d/example-module",
+    "default_enabled": true
+  }
+}
