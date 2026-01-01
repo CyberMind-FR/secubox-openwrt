@@ -1,0 +1,80 @@
+#!/bin/sh
+
+#
+# SecuBox First Boot Provisioning
+# Runs once on first boot, then self-deletes
+#
+
+SECUBOX_FIRSTBOOT="/var/run/secubox-firstboot"
+
+# Check if already provisioned
+[ -f "$SECUBOX_FIRSTBOOT" ] && exit 0
+
+logger -t secubox "First boot provisioning starting"
+
+# Initialize SecuBox core configuration (if not already set)
+uci -q get secubox.main >/dev/null 2>&1 || {
+	uci -q batch <<-EOF
+		set secubox.main=core
+		set secubox.main.enabled='1'
+		set secubox.main.log_level='info'
+		set secubox.main.appstore_url='https://repo.secubox.org/catalog'
+		set secubox.main.appstore_fallback_local='1'
+		set secubox.main.health_check_interval='300'
+		set secubox.main.ai_enabled='0'
+		set secubox.main.ai_mode='copilot'
+		commit secubox
+	EOF
+}
+
+# Generate unique device ID based on MAC address
+DEVICE_ID=$(cat /sys/class/net/eth0/address 2>/dev/null | tr -d ':' | sha256sum | cut -d' ' -f1 | cut -c1-16 || echo "unknown")
+uci set secubox.main.device_id="$DEVICE_ID"
+uci commit secubox
+
+# Create required directories
+mkdir -p /etc/secubox/{profiles,templates,macros}
+mkdir -p /usr/share/secubox/{modules,scripts}
+mkdir -p /usr/share/secubox/plugins/catalog
+mkdir -p /var/run/secubox
+mkdir -p /var/log/secubox
+mkdir -p /tmp/secubox
+mkdir -p /overlay/secubox-backups
+
+# Set proper permissions
+chmod 755 /etc/secubox
+chmod 755 /var/run/secubox
+chmod 755 /var/log/secubox
+
+# Create initial snapshot
+logger -t secubox "Creating initial configuration snapshot"
+/usr/sbin/secubox-recovery snapshot "initial-firstboot" >/dev/null 2>&1 || true
+
+# Enable and start secubox-core service
+/etc/init.d/secubox-core enable
+/etc/init.d/secubox-core start
+
+# Mark provisioning complete
+touch "$SECUBOX_FIRSTBOOT"
+logger -t secubox "First boot provisioning completed successfully"
+
+# Output welcome message to console
+cat <<'EOF'
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SecuBox Framework Initialized
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Welcome to SecuBox - Modular OpenWrt Security Appliance
+
+  Quick Start:
+    secubox device status    - View system status
+    secubox app list         - Browse available modules
+    secubox diag health      - Run health check
+
+  Documentation: https://docs.secubox.org
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+EOF
+
+exit 0

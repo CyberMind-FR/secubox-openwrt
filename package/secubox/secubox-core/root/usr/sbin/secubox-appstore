@@ -1,0 +1,339 @@
+#!/bin/bash
+
+#
+# SecuBox AppStore Manager
+# Module discovery, installation, and management
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+CATALOG_DIR="/usr/share/secubox/plugins/catalog"
+REMOTE_CATALOG="/tmp/secubox/remote-catalog"
+STATE_DIR="/var/run/secubox"
+
+# List all modules
+list_modules() {
+	local format="${1:-table}"
+	local modules=()
+
+	mkdir -p "$CATALOG_DIR"
+
+	if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
+		json_init
+		json_add_array "modules"
+	else
+		echo "Available Modules:"
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+		printf "%-20s %-12s %-12s %-10s\n" "MODULE" "CATEGORY" "STATUS" "VERSION"
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	fi
+
+	for catalog in "$CATALOG_DIR"/*.json; do
+		[ -f "$catalog" ] || continue
+
+		local module_id=$(jsonfilter -i "$catalog" -e '@.id' 2>/dev/null)
+		local module_name=$(jsonfilter -i "$catalog" -e '@.name' 2>/dev/null)
+		local module_category=$(jsonfilter -i "$catalog" -e '@.category' 2>/dev/null)
+		local module_version=$(jsonfilter -i "$catalog" -e '@.version' 2>/dev/null)
+
+		# Check if installed
+		local packages=$(jsonfilter -i "$catalog" -e '@.packages.required[0]' 2>/dev/null)
+		local status="available"
+		if [ -n "$packages" ] && opkg list-installed | grep -q "^$packages "; then
+			status="installed"
+		fi
+
+		if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
+			json_add_object ""
+				json_add_string "id" "$module_id"
+				json_add_string "name" "$module_name"
+				json_add_string "category" "$module_category"
+				json_add_string "version" "$module_version"
+				json_add_string "status" "$status"
+			json_close_object
+		else
+			printf "%-20s %-12s %-12s %-10s\n" \
+				"$module_id" "$module_category" "$status" "$module_version"
+		fi
+	done
+
+	if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
+		json_close_array
+		json_dump
+	else
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	fi
+}
+
+# Get module info
+get_module_info() {
+	local module_id="$1"
+	local catalog_file="$CATALOG_DIR/${module_id}.json"
+
+	if [ ! -f "$catalog_file" ]; then
+		echo "ERROR: Module not found: $module_id"
+		return 1
+	fi
+
+	echo "Module Information: $module_id"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	jsonfilter -i "$catalog_file" \
+		-e 'Name: @.name' \
+		-e 'Version: @.version' \
+		-e 'Category: @.category' \
+		-e 'Runtime: @.runtime' \
+		-e 'Description: @.description' \
+		-e 'Packages: @.packages.required' \
+		-e 'Capabilities: @.capabilities' \
+		-e 'Min RAM: @.requirements.min_ram_mb MB' \
+		-e 'Min Storage: @.requirements.min_storage_mb MB'
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+# Search modules
+search_modules() {
+	local query="$1"
+
+	echo "Searching for: $query"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+	for catalog in "$CATALOG_DIR"/*.json; do
+		[ -f "$catalog" ] || continue
+
+		if grep -qi "$query" "$catalog"; then
+			local module_id=$(jsonfilter -i "$catalog" -e '@.id')
+			local module_name=$(jsonfilter -i "$catalog" -e '@.name')
+			local module_desc=$(jsonfilter -i "$catalog" -e '@.description')
+
+			echo "[$module_id] $module_name"
+			echo "  $module_desc"
+			echo ""
+		fi
+	done
+}
+
+# Install module
+install_module() {
+	local module_id="$1"
+	local dryrun="$2"
+	local catalog_file="$CATALOG_DIR/${module_id}.json"
+
+	if [ ! -f "$catalog_file" ]; then
+		echo "ERROR: Module not found: $module_id"
+		return 1
+	fi
+
+	echo "Installing module: $module_id"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+	# Get package list
+	local packages=$(jsonfilter -i "$catalog_file" -e '@.packages.required[@]')
+
+	# Check if already installed
+	local already_installed=true
+	for pkg in $packages; do
+		if ! opkg list-installed | grep -q "^$pkg "; then
+			already_installed=false
+			break
+		fi
+	done
+
+	if [ "$already_installed" = "true" ]; then
+		echo "Module already installed"
+		return 0
+	fi
+
+	# Run pre-install hook if exists
+	local pre_hook=$(jsonfilter -i "$catalog_file" -e '@.hooks.pre_install')
+	if [ -n "$pre_hook" ] && [ -f "$pre_hook" ]; then
+		echo "[1/4] Running pre-install checks..."
+		if [ "$dryrun" != "--dryrun" ]; then
+			if ! bash "$pre_hook"; then
+				echo "ERROR: Pre-install check failed"
+				return 1
+			fi
+		else
+			echo "[DRYRUN] Would run: $pre_hook"
+		fi
+	fi
+
+	# Install packages
+	echo "[2/4] Installing packages..."
+	for pkg in $packages; do
+		if [ "$dryrun" = "--dryrun" ]; then
+			echo "[DRYRUN] Would install: $pkg"
+		else
+			if ! opkg install "$pkg"; then
+				echo "ERROR: Failed to install package: $pkg"
+				return 1
+			fi
+		fi
+	done
+
+	# Run post-install hook
+	local post_hook=$(jsonfilter -i "$catalog_file" -e '@.hooks.post_install')
+	if [ -n "$post_hook" ] && [ -f "$post_hook" ]; then
+		echo "[3/4] Running post-install configuration..."
+		if [ "$dryrun" != "--dryrun" ]; then
+			if ! bash "$post_hook"; then
+				echo "WARNING: Post-install hook failed"
+			fi
+		else
+			echo "[DRYRUN] Would run: $post_hook"
+		fi
+	fi
+
+	# Health check
+	echo "[4/4] Running health check..."
+	if [ "$dryrun" != "--dryrun" ]; then
+		sleep 2
+		/usr/sbin/secubox-diagnostics health > /dev/null
+	fi
+
+	echo "✓ Module installed successfully: $module_id"
+	return 0
+}
+
+# Remove module
+remove_module() {
+	local module_id="$1"
+	local catalog_file="$CATALOG_DIR/${module_id}.json"
+
+	if [ ! -f "$catalog_file" ]; then
+		echo "ERROR: Module not found: $module_id"
+		return 1
+	fi
+
+	echo "Removing module: $module_id"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+	# Get package list
+	local packages=$(jsonfilter -i "$catalog_file" -e '@.packages.required[@]')
+
+	# Run pre-remove hook
+	local pre_hook=$(jsonfilter -i "$catalog_file" -e '@.hooks.pre_remove')
+	if [ -n "$pre_hook" ] && [ -f "$pre_hook" ]; then
+		echo "[1/3] Running pre-remove cleanup..."
+		bash "$pre_hook" || true
+	fi
+
+	# Remove packages
+	echo "[2/3] Removing packages..."
+	for pkg in $packages; do
+		opkg remove "$pkg" || true
+	done
+
+	# Run post-remove hook
+	local post_hook=$(jsonfilter -i "$catalog_file" -e '@.hooks.post_remove')
+	if [ -n "$post_hook" ] && [ -f "$post_hook" ]; then
+		echo "[3/3] Running post-remove cleanup..."
+		bash "$post_hook" || true
+	fi
+
+	echo "✓ Module removed successfully: $module_id"
+	return 0
+}
+
+# Update module
+update_module() {
+	local module_id="$1"
+
+	if [ -z "$module_id" ]; then
+		# Update all modules
+		echo "Updating all installed modules..."
+		opkg update
+		opkg upgrade
+	else
+		# Update specific module
+		echo "Updating module: $module_id"
+		local catalog_file="$CATALOG_DIR/${module_id}.json"
+
+		if [ ! -f "$catalog_file" ]; then
+			echo "ERROR: Module not found: $module_id"
+			return 1
+		fi
+
+		local packages=$(jsonfilter -i "$catalog_file" -e '@.packages.required[@]')
+
+		opkg update
+		for pkg in $packages; do
+			opkg upgrade "$pkg"
+		done
+	fi
+}
+
+# Check module health
+check_health() {
+	echo "Module Health Check"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+	local total=0
+	local healthy=0
+	local unhealthy=0
+
+	for catalog in "$CATALOG_DIR"/*.json; do
+		[ -f "$catalog" ] || continue
+
+		local module_id=$(jsonfilter -i "$catalog" -e '@.id')
+		local packages=$(jsonfilter -i "$catalog" -e '@.packages.required[0]')
+
+		# Check if installed
+		if [ -n "$packages" ] && opkg list-installed | grep -q "^$packages "; then
+			total=$((total + 1))
+
+			# Run health checks from manifest
+			local health_checks=$(jsonfilter -i "$catalog" -e '@.health_checks.checks[@]')
+			local check_failed=false
+
+			# For simplicity, just check if service is running
+			local service=$(jsonfilter -i "$catalog" -e '@.procd.service')
+			if [ -n "$service" ]; then
+				if /etc/init.d/"$service" status >/dev/null 2>&1; then
+					echo "✓ $module_id: healthy"
+					healthy=$((healthy + 1))
+				else
+					echo "✗ $module_id: service not running"
+					unhealthy=$((unhealthy + 1))
+				fi
+			else
+				echo "✓ $module_id: installed (no health check)"
+				healthy=$((healthy + 1))
+			fi
+		fi
+	done
+
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	echo "Total modules: $total | Healthy: $healthy | Unhealthy: $unhealthy"
+}
+
+# Main command router
+case "$1" in
+	list)
+		shift
+		list_modules "$@"
+		;;
+	info)
+		get_module_info "$2"
+		;;
+	search)
+		search_modules "$2"
+		;;
+	install)
+		shift
+		install_module "$@"
+		;;
+	remove)
+		remove_module "$2"
+		;;
+	update)
+		update_module "$2"
+		;;
+	health)
+		check_health
+		;;
+	*)
+		echo "Usage: $0 {list|info|search|install|remove|update|health} [args]"
+		exit 1
+		;;
+esac

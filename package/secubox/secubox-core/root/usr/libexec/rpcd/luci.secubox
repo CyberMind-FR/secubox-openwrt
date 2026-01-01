@@ -1,0 +1,219 @@
+#!/bin/sh
+
+#
+# SecuBox Core RPCD Interface
+# Provides ubus API for SecuBox operations
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+case "$1" in
+	list)
+		json_init
+
+		# Core status and information
+		json_add_object "getStatus"
+		json_close_object
+
+		json_add_object "getVersion"
+		json_close_object
+
+		json_add_object "reload"
+		json_close_object
+
+		# Module management
+		json_add_object "getModules"
+		json_close_object
+
+		json_add_object "getModuleInfo"
+			json_add_string "module" "string"
+		json_close_object
+
+		json_add_object "installModule"
+			json_add_string "module" "string"
+			json_add_boolean "dryrun" "boolean"
+		json_close_object
+
+		json_add_object "removeModule"
+			json_add_string "module" "string"
+		json_close_object
+
+		json_add_object "updateModule"
+			json_add_string "module" "string"
+		json_close_object
+
+		# Profile management
+		json_add_object "listProfiles"
+		json_close_object
+
+		json_add_object "getProfile"
+			json_add_string "profile" "string"
+		json_close_object
+
+		json_add_object "applyProfile"
+			json_add_string "profile" "string"
+			json_add_boolean "dryrun" "boolean"
+		json_close_object
+
+		json_add_object "validateProfile"
+			json_add_string "profile" "string"
+		json_close_object
+
+		# Diagnostics
+		json_add_object "runDiagnostics"
+			json_add_string "target" "string"
+		json_close_object
+
+		json_add_object "getHealth"
+		json_close_object
+
+		json_add_object "getLogs"
+			json_add_string "service" "string"
+			json_add_int "lines" "integer"
+		json_close_object
+
+		# Snapshot/Recovery
+		json_add_object "createSnapshot"
+			json_add_string "name" "string"
+		json_close_object
+
+		json_add_object "listSnapshots"
+		json_close_object
+
+		json_add_object "restoreSnapshot"
+			json_add_string "snapshot" "string"
+		json_close_object
+
+		json_dump
+		;;
+
+	call)
+		case "$2" in
+			getStatus)
+				/usr/sbin/secubox-core status
+				;;
+
+			getVersion)
+				json_init
+				json_add_string "version" "0.8.0"
+				json_add_string "core" "secubox-core"
+				json_add_string "build_date" "$(date -u +%Y-%m-%d)"
+				json_dump
+				;;
+
+			reload)
+				/usr/sbin/secubox-core reload
+				json_init
+				json_add_boolean "success" true
+				json_dump
+				;;
+
+			getModules)
+				/usr/sbin/secubox-appstore list --json
+				;;
+
+			getModuleInfo)
+				read -r input
+				module=$(echo "$input" | jsonfilter -e '@.module')
+				/usr/sbin/secubox-appstore info "$module"
+				;;
+
+			installModule)
+				read -r input
+				module=$(echo "$input" | jsonfilter -e '@.module')
+				dryrun=$(echo "$input" | jsonfilter -e '@.dryrun')
+				/usr/sbin/secubox-appstore install "$module" ${dryrun:+--dryrun}
+				;;
+
+			removeModule)
+				read -r input
+				module=$(echo "$input" | jsonfilter -e '@.module')
+				/usr/sbin/secubox-appstore remove "$module"
+				;;
+
+			updateModule)
+				read -r input
+				module=$(echo "$input" | jsonfilter -e '@.module')
+				/usr/sbin/secubox-appstore update "$module"
+				;;
+
+			listProfiles)
+				/usr/sbin/secubox-profile list --json
+				;;
+
+			getProfile)
+				read -r input
+				profile=$(echo "$input" | jsonfilter -e '@.profile')
+				/usr/sbin/secubox-profile show "$profile"
+				;;
+
+			applyProfile)
+				read -r input
+				profile=$(echo "$input" | jsonfilter -e '@.profile')
+				dryrun=$(echo "$input" | jsonfilter -e '@.dryrun')
+				/usr/sbin/secubox-profile apply "$profile" ${dryrun:+--dryrun}
+				;;
+
+			validateProfile)
+				read -r input
+				profile=$(echo "$input" | jsonfilter -e '@.profile')
+				/usr/sbin/secubox-profile validate "$profile"
+				;;
+
+			runDiagnostics)
+				read -r input
+				target=$(echo "$input" | jsonfilter -e '@.target')
+				/usr/sbin/secubox-diagnostics run "${target:-all}"
+				;;
+
+			getHealth)
+				/usr/sbin/secubox-core health
+				;;
+
+			getLogs)
+				read -r input
+				service=$(echo "$input" | jsonfilter -e '@.service')
+				lines=$(echo "$input" | jsonfilter -e '@.lines')
+
+				json_init
+				json_add_array "logs"
+				if [ -n "$service" ]; then
+					logread -e "$service" | tail -n "${lines:-100}" | while read -r line; do
+						json_add_string "" "$line"
+					done
+				else
+					logread | tail -n "${lines:-100}" | while read -r line; do
+						json_add_string "" "$line"
+					done
+				fi
+				json_close_array
+				json_dump
+				;;
+
+			createSnapshot)
+				read -r input
+				name=$(echo "$input" | jsonfilter -e '@.name')
+				/usr/sbin/secubox-recovery snapshot "${name:-auto-$(date +%Y%m%d-%H%M%S)}"
+				;;
+
+			listSnapshots)
+				/usr/sbin/secubox-recovery list --json
+				;;
+
+			restoreSnapshot)
+				read -r input
+				snapshot=$(echo "$input" | jsonfilter -e '@.snapshot')
+				/usr/sbin/secubox-recovery rollback "$snapshot"
+				;;
+
+			*)
+				json_init
+				json_add_boolean "error" true
+				json_add_string "message" "Unknown method: $2"
+				json_dump
+				exit 1
+				;;
+		esac
+		;;
+esac

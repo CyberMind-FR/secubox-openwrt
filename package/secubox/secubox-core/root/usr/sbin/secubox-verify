@@ -1,0 +1,194 @@
+#!/bin/bash
+
+#
+# SecuBox Module Verification
+# Signature and manifest validation
+#
+
+. /usr/share/libubox/jshn.sh
+
+SECUBOX_PUBKEY="/etc/secubox/secubox-release.pub"
+ALLOWED_CAPABILITIES="/etc/secubox/allowed-capabilities"
+
+# Verify module package signature
+verify_module() {
+	local module_file="$1"
+	local sig_file="${module_file}.sig"
+
+	# Check if signature verification is enabled
+	local verify_enabled=$(uci -q get secubox.enforcement.module_signature_check)
+	if [ "$verify_enabled" != "1" ]; then
+		echo "WARNING: Signature verification is disabled"
+		return 0
+	fi
+
+	# Check if signature file exists
+	if [ ! -f "$sig_file" ]; then
+		echo "ERROR: Signature file not found: $sig_file"
+		return 1
+	fi
+
+	# Check if public key exists
+	if [ ! -f "$SECUBOX_PUBKEY" ]; then
+		echo "ERROR: Public key not found: $SECUBOX_PUBKEY"
+		echo "  Install secubox-keyring package for signature verification"
+		return 1
+	fi
+
+	echo "Verifying signature: $module_file"
+
+	# Try signify-openbsd first (OpenBSD signify)
+	if command -v signify-openbsd >/dev/null 2>&1; then
+		if signify-openbsd -V -p "$SECUBOX_PUBKEY" -m "$module_file"; then
+			echo "✓ Signature verified (signify)"
+			return 0
+		else
+			echo "✗ Signature verification failed"
+			return 1
+		fi
+	fi
+
+	# Fall back to openssl
+	if command -v openssl >/dev/null 2>&1; then
+		if openssl dgst -sha256 -verify "$SECUBOX_PUBKEY" \
+			-signature "$sig_file" "$module_file"; then
+			echo "✓ Signature verified (openssl)"
+			return 0
+		else
+			echo "✗ Signature verification failed"
+			return 1
+		fi
+	fi
+
+	echo "ERROR: No signature verification tool available"
+	echo "  Install signify-openbsd or openssl"
+	return 1
+}
+
+# Verify module manifest
+verify_manifest() {
+	local manifest_file="$1"
+
+	echo "Validating manifest: $manifest_file"
+
+	# Check if file exists
+	if [ ! -f "$manifest_file" ]; then
+		echo "ERROR: Manifest file not found: $manifest_file"
+		return 1
+	fi
+
+	# Validate JSON syntax
+	if ! jsonfilter -i "$manifest_file" -e '@' >/dev/null 2>&1; then
+		echo "ERROR: Invalid JSON syntax"
+		return 1
+	fi
+
+	# Check required fields
+	local required_fields="id name version category runtime packages"
+	local missing_fields=""
+
+	for field in $required_fields; do
+		if ! jsonfilter -i "$manifest_file" -e "@.$field" >/dev/null 2>&1; then
+			missing_fields="$missing_fields $field"
+		fi
+	done
+
+	if [ -n "$missing_fields" ]; then
+		echo "ERROR: Missing required fields:$missing_fields"
+		return 1
+	fi
+
+	# Validate field values
+	local module_id=$(jsonfilter -i "$manifest_file" -e '@.id')
+	if [ -z "$module_id" ]; then
+		echo "ERROR: Module ID cannot be empty"
+		return 1
+	fi
+
+	# Check ID format (alphanumeric and dashes only)
+	if ! echo "$module_id" | grep -qE '^[a-z0-9-]+$'; then
+		echo "ERROR: Invalid module ID format: $module_id"
+		echo "  Must contain only lowercase letters, numbers, and dashes"
+		return 1
+	fi
+
+	# Validate category
+	local valid_categories="system networking monitoring security iot productivity home-automation documentation"
+	local category=$(jsonfilter -i "$manifest_file" -e '@.category')
+
+	if ! echo "$valid_categories" | grep -qw "$category"; then
+		echo "WARNING: Unknown category: $category"
+		echo "  Valid categories: $valid_categories"
+	fi
+
+	# Validate runtime
+	local runtime=$(jsonfilter -i "$manifest_file" -e '@.runtime')
+	if [ "$runtime" != "native" ] && [ "$runtime" != "docker" ]; then
+		echo "ERROR: Invalid runtime: $runtime (must be 'native' or 'docker')"
+		return 1
+	fi
+
+	# Validate capabilities (if allowed-capabilities file exists)
+	if [ -f "$ALLOWED_CAPABILITIES" ]; then
+		local capabilities=$(jsonfilter -i "$manifest_file" -e '@.capabilities[@]')
+		for cap in $capabilities; do
+			if ! grep -qx "$cap" "$ALLOWED_CAPABILITIES"; then
+				echo "WARNING: Unknown capability: $cap"
+			fi
+		done
+	fi
+
+	# Validate version format (semver)
+	local version=$(jsonfilter -i "$manifest_file" -e '@.version')
+	if ! echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
+		echo "WARNING: Version should follow semver format (x.y.z): $version"
+	fi
+
+	# Check for required packages
+	local packages=$(jsonfilter -i "$manifest_file" -e '@.packages.required[@]')
+	if [ -z "$packages" ]; then
+		echo "WARNING: No required packages specified"
+	fi
+
+	echo "✓ Manifest validation passed"
+	return 0
+}
+
+# Validate catalog entry
+verify_catalog() {
+	local catalog_file="$1"
+
+	echo "Validating catalog entry: $catalog_file"
+
+	# Catalog is essentially a manifest, so use same validation
+	verify_manifest "$catalog_file"
+}
+
+# Main command router
+case "$1" in
+	module)
+		verify_module "$2"
+		;;
+	manifest)
+		verify_manifest "$2"
+		;;
+	catalog)
+		verify_catalog "$2"
+		;;
+	*)
+		cat <<EOF
+Usage: $0 {module|manifest|catalog} <file>
+
+Commands:
+  module <file>     - Verify module package signature
+  manifest <file>   - Validate module manifest
+  catalog <file>    - Validate catalog entry
+
+Examples:
+  $0 module luci-app-wireguard-vpn_1.0.0_all.ipk
+  $0 manifest /usr/share/secubox/modules/wireguard-vpn/manifest.json
+  $0 catalog /usr/share/secubox/plugins/catalog/wireguard-vpn.json
+EOF
+		exit 1
+		;;
+esac

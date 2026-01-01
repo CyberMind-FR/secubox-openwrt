@@ -1,0 +1,203 @@
+#!/bin/bash
+
+#
+# SecuBox Core Daemon
+# Main orchestration service for SecuBox framework
+#
+
+set -e
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+SECUBOX_VERSION="0.8.0"
+LOG_FILE="/var/log/secubox/core.log"
+PID_FILE="/var/run/secubox/core.pid"
+STATE_DIR="/var/run/secubox"
+
+# Logging function
+log() {
+    local level="$1"
+    shift
+    local message="$*"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] [$level] $message" | tee -a "$LOG_FILE"
+    logger -t secubox-core -p "user.$level" "$message"
+}
+
+# Get system status
+get_status() {
+    json_init
+
+    # Core info
+    json_add_string "version" "$SECUBOX_VERSION"
+    json_add_boolean "running" true
+    json_add_string "hostname" "$(uci -q get system.@system[0].hostname)"
+    json_add_string "uptime" "$(uptime | awk '{print $3,$4}' | sed 's/,//')"
+
+    # System resources
+    json_add_object "resources"
+        # CPU load
+        local load_1min=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | tr -d ',')
+        json_add_string "cpu_load" "$load_1min"
+
+        # Memory
+        local mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+        local mem_free=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+        local mem_used=$((mem_total - mem_free))
+        local mem_percent=$((mem_used * 100 / mem_total))
+        json_add_int "memory_total_kb" "$mem_total"
+        json_add_int "memory_used_kb" "$mem_used"
+        json_add_int "memory_percent" "$mem_percent"
+
+        # Storage
+        local storage_info=$(df -k / | tail -1)
+        local storage_total=$(echo "$storage_info" | awk '{print $2}')
+        local storage_used=$(echo "$storage_info" | awk '{print $3}')
+        local storage_percent=$(echo "$storage_info" | awk '{print $5}' | tr -d '%')
+        json_add_int "storage_total_kb" "$storage_total"
+        json_add_int "storage_used_kb" "$storage_used"
+        json_add_int "storage_percent" "$storage_percent"
+    json_close_object
+
+    # Network status
+    json_add_object "network"
+        # WAN status
+        local wan_device=$(uci -q get network.wan.device || uci -q get network.wan.ifname || echo "unknown")
+        local wan_ip=$(ip -4 addr show dev "$wan_device" 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1 | head -1 || echo "none")
+        local wan_connected="false"
+        [ -n "$wan_ip" ] && wan_connected="true"
+
+        json_add_object "wan"
+            json_add_boolean "connected" "$wan_connected"
+            json_add_string "device" "$wan_device"
+            json_add_string "ipaddr" "$wan_ip"
+        json_close_object
+
+        # LAN status
+        local lan_ip=$(uci -q get network.lan.ipaddr || echo "none")
+        json_add_object "lan"
+            json_add_string "ipaddr" "$lan_ip"
+            json_add_string "netmask" "$(uci -q get network.lan.netmask || echo 'none')"
+        json_close_object
+    json_close_object
+
+    # Installed modules
+    json_add_array "modules"
+        if [ -d "/usr/share/secubox/plugins/catalog" ]; then
+            for catalog in /usr/share/secubox/plugins/catalog/*.json; do
+                [ -f "$catalog" ] || continue
+                local module_id=$(jsonfilter -i "$catalog" -e '@.id' 2>/dev/null)
+                local module_name=$(jsonfilter -i "$catalog" -e '@.name' 2>/dev/null)
+
+                # Check if module package is installed
+                local packages=$(jsonfilter -i "$catalog" -e '@.packages[0]' 2>/dev/null)
+                local installed=false
+                if [ -n "$packages" ]; then
+                    opkg list-installed | grep -q "^$packages " && installed=true
+                fi
+
+                json_add_object ""
+                    json_add_string "id" "$module_id"
+                    json_add_string "name" "$module_name"
+                    json_add_boolean "installed" "$installed"
+                json_close_object
+            done
+        fi
+    json_close_array
+
+    json_dump
+}
+
+# Health check function
+run_health_check() {
+    local overall_status="healthy"
+    local warnings=0
+    local errors=0
+
+    # Check CPU
+    local cpu_threshold=$(uci -q get secubox.settings.health_threshold_cpu || echo "80")
+    local cpu_load=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | tr -d ',' | cut -d'.' -f1)
+    if [ "$cpu_load" -gt "$cpu_threshold" ]; then
+        log warn "CPU load high: $cpu_load"
+        warnings=$((warnings + 1))
+        overall_status="warning"
+    fi
+
+    # Check memory
+    local mem_threshold=$(uci -q get secubox.settings.health_threshold_memory || echo "90")
+    local mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+    local mem_free=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+    local mem_percent=$(( (mem_total - mem_free) * 100 / mem_total ))
+    if [ "$mem_percent" -gt "$mem_threshold" ]; then
+        log warn "Memory usage high: ${mem_percent}%"
+        warnings=$((warnings + 1))
+        overall_status="warning"
+    fi
+
+    # Check storage
+    local storage_threshold=$(uci -q get secubox.settings.health_threshold_storage || echo "85")
+    local storage_percent=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+    if [ "$storage_percent" -gt "$storage_threshold" ]; then
+        log warn "Storage usage high: ${storage_percent}%"
+        warnings=$((warnings + 1))
+        overall_status="warning"
+    fi
+
+    # Check network connectivity
+    if ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+        log warn "No internet connectivity"
+        warnings=$((warnings + 1))
+    fi
+
+    # Output health status
+    json_init
+    json_add_string "status" "$overall_status"
+    json_add_int "warnings" "$warnings"
+    json_add_int "errors" "$errors"
+    json_add_string "timestamp" "$(date -Iseconds)"
+    json_dump
+
+    return 0
+}
+
+# Daemon mode
+daemon_mode() {
+    log info "SecuBox Core daemon starting (version $SECUBOX_VERSION)"
+
+    # Write PID
+    echo $$ > "$PID_FILE"
+
+    # Get health check interval
+    local health_interval=$(uci -q get secubox.main.health_check_interval || echo "300")
+
+    # Main daemon loop
+    while true; do
+        # Run periodic health check
+        run_health_check > /tmp/secubox/health-status.json
+
+        # Sleep until next check
+        sleep "$health_interval"
+    done
+}
+
+# Main command router
+case "$1" in
+    daemon)
+        daemon_mode
+        ;;
+    status)
+        get_status
+        ;;
+    health)
+        run_health_check
+        ;;
+    reload)
+        log info "Reloading configuration"
+        killall -HUP secubox-core 2>/dev/null || true
+        ;;
+    *)
+        echo "Usage: $0 {daemon|status|health|reload}"
+        exit 1
+        ;;
+esac

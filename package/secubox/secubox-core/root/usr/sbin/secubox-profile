@@ -1,0 +1,283 @@
+#!/bin/bash
+
+#
+# SecuBox Profile Engine
+# Declarative configuration profiles, templates, and macros
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+PROFILE_DIR="/etc/secubox/profiles"
+TEMPLATE_DIR="/etc/secubox/templates"
+MACRO_DIR="/etc/secubox/macros"
+STATE_DIR="/var/run/secubox"
+
+# List available profiles
+list_profiles() {
+	local format="${1:-table}"
+
+	if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
+		json_init
+		json_add_array "profiles"
+
+		for profile in "$PROFILE_DIR"/*.{yaml,yml,json} 2>/dev/null; do
+			[ -f "$profile" ] || continue
+			local name=$(basename "$profile" | sed 's/\.\(yaml\|yml\|json\)$//')
+			json_add_string "" "$name"
+		done
+
+		json_close_array
+		json_dump
+	else
+		echo "Available Profiles:"
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+		if [ -z "$(ls -A "$PROFILE_DIR" 2>/dev/null)" ]; then
+			echo "  (none)"
+		else
+			for profile in "$PROFILE_DIR"/*.{yaml,yml,json} 2>/dev/null; do
+				[ -f "$profile" ] || continue
+				local name=$(basename "$profile" | sed 's/\.\(yaml\|yml\|json\)$//')
+				echo "  - $name"
+			done
+		fi
+
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	fi
+}
+
+# Show profile details
+show_profile() {
+	local profile_name="$1"
+	local profile_file=""
+
+	for ext in yaml yml json; do
+		if [ -f "$PROFILE_DIR/${profile_name}.${ext}" ]; then
+			profile_file="$PROFILE_DIR/${profile_name}.${ext}"
+			break
+		fi
+	done
+
+	if [ -z "$profile_file" ]; then
+		echo "ERROR: Profile not found: $profile_name"
+		return 1
+	fi
+
+	echo "Profile: $profile_name"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	cat "$profile_file"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+# Validate profile
+validate_profile() {
+	local profile_name="$1"
+	local profile_file=""
+
+	for ext in yaml yml json; do
+		if [ -f "$PROFILE_DIR/${profile_name}.${ext}" ]; then
+			profile_file="$PROFILE_DIR/${profile_name}.${ext}"
+			break
+		fi
+	done
+
+	if [ -z "$profile_file" ]; then
+		echo "ERROR: Profile not found: $profile_name"
+		return 1
+	fi
+
+	echo "Validating profile: $profile_name"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+	# For JSON files, validate with jsonfilter
+	if [[ "$profile_file" == *.json ]]; then
+		if jsonfilter -i "$profile_file" -e '@' >/dev/null 2>&1; then
+			echo "✓ JSON syntax valid"
+		else
+			echo "✗ JSON syntax error"
+			return 1
+		fi
+	fi
+
+	# For YAML files, would need yq or python
+	if [[ "$profile_file" == *.yaml ]] || [[ "$profile_file" == *.yml ]]; then
+		if command -v python3 >/dev/null; then
+			if python3 -c "import yaml; yaml.safe_load(open('$profile_file'))" 2>/dev/null; then
+				echo "✓ YAML syntax valid"
+			else
+				echo "✗ YAML syntax error"
+				return 1
+			fi
+		else
+			echo "⚠ Cannot validate YAML (python3 not available)"
+		fi
+	fi
+
+	echo "✓ Profile validation passed"
+	return 0
+}
+
+# Apply profile
+apply_profile() {
+	local profile_name="$1"
+	local dryrun="$2"
+	local profile_file=""
+
+	for ext in yaml yml json; do
+		if [ -f "$PROFILE_DIR/${profile_name}.${ext}" ]; then
+			profile_file="$PROFILE_DIR/${profile_name}.${ext}"
+			break
+		fi
+	done
+
+	if [ -z "$profile_file" ]; then
+		echo "ERROR: Profile not found: $profile_name"
+		return 1
+	fi
+
+	echo "Applying profile: $profile_name"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+	if [ "$dryrun" = "--dryrun" ]; then
+		echo "[DRYRUN MODE - No changes will be made]"
+		echo ""
+	fi
+
+	# Create snapshot before applying
+	if [ "$dryrun" != "--dryrun" ]; then
+		echo "[1/5] Creating configuration snapshot..."
+		/usr/sbin/secubox-recovery snapshot "before-profile-${profile_name}" >/dev/null
+	else
+		echo "[DRYRUN] Would create snapshot: before-profile-${profile_name}"
+	fi
+
+	# Parse profile and extract modules
+	# This is a simplified implementation - production would use proper YAML/JSON parser
+	echo "[2/5] Checking required modules..."
+
+	# For JSON profiles
+	if [[ "$profile_file" == *.json ]]; then
+		local modules=$(jsonfilter -i "$profile_file" -e '@.modules.required[@]' 2>/dev/null)
+		for module in $modules; do
+			if [ "$dryrun" = "--dryrun" ]; then
+				echo "[DRYRUN] Would install module: $module"
+			else
+				echo "  Installing module: $module"
+				/usr/sbin/secubox-appstore install "$module" || {
+					echo "ERROR: Failed to install module: $module"
+					return 1
+				}
+			fi
+		done
+	fi
+
+	# Apply UCI overrides
+	echo "[3/5] Applying configuration..."
+	if [ "$dryrun" = "--dryrun" ]; then
+		echo "[DRYRUN] Would apply UCI configuration changes"
+	else
+		# This would parse and apply UCI changes from profile
+		echo "  (UCI configuration application - simplified in v0.8.0)"
+	fi
+
+	# Execute macros
+	echo "[4/5] Executing macros..."
+	if [ "$dryrun" = "--dryrun" ]; then
+		echo "[DRYRUN] Would execute profile macros"
+	else
+		echo "  (Macro execution - simplified in v0.8.0)"
+	fi
+
+	# Health check
+	echo "[5/5] Running health check..."
+	if [ "$dryrun" != "--dryrun" ]; then
+		sleep 2
+		if /usr/sbin/secubox-diagnostics health >/dev/null 2>&1; then
+			echo "  ✓ Health check passed"
+		else
+			echo "  ⚠ Health check warnings detected"
+		fi
+	fi
+
+	# Mark active profile
+	if [ "$dryrun" != "--dryrun" ]; then
+		mkdir -p "$STATE_DIR"
+		echo "$profile_name" > "$STATE_DIR/active_profile"
+	fi
+
+	echo ""
+	echo "✓ Profile application completed: $profile_name"
+	return 0
+}
+
+# Export current configuration as profile
+export_profile() {
+	local output_file="${1:-/tmp/secubox-profile-export-$(date +%Y%m%d-%H%M%S).json}"
+
+	echo "Exporting current configuration to profile..."
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+	json_init
+
+	json_add_object "profile"
+		json_add_string "id" "exported-$(date +%Y%m%d)"
+		json_add_string "name" "Exported Configuration"
+		json_add_string "description" "Auto-exported from device on $(date)"
+		json_add_string "version" "1.0.0"
+	json_close_object
+
+	# Export installed modules
+	json_add_object "modules"
+		json_add_array "required"
+		for catalog in /usr/share/secubox/plugins/catalog/*.json; do
+			[ -f "$catalog" ] || continue
+			local module_id=$(jsonfilter -i "$catalog" -e '@.id')
+			local packages=$(jsonfilter -i "$catalog" -e '@.packages.required[0]')
+			if [ -n "$packages" ] && opkg list-installed | grep -q "^$packages "; then
+				json_add_string "" "$module_id"
+			fi
+		done
+		json_close_array
+	json_close_object
+
+	# Export network configuration
+	json_add_object "uci_overrides"
+		json_add_object "network"
+			json_add_object "lan"
+				json_add_string "ipaddr" "$(uci -q get network.lan.ipaddr)"
+				json_add_string "netmask" "$(uci -q get network.lan.netmask)"
+			json_close_object
+		json_close_object
+	json_close_object
+
+	json_dump > "$output_file"
+
+	echo "✓ Profile exported to: $output_file"
+	echo "  Copy this file to $PROFILE_DIR/ to use as a profile"
+}
+
+# Main command router
+case "$1" in
+	list)
+		shift
+		list_profiles "$@"
+		;;
+	show)
+		show_profile "$2"
+		;;
+	validate)
+		validate_profile "$2"
+		;;
+	apply)
+		shift
+		apply_profile "$@"
+		;;
+	export)
+		export_profile "$2"
+		;;
+	*)
+		echo "Usage: $0 {list|show|validate|apply|export} [args]"
+		exit 1
+		;;
+esac

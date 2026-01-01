@@ -1,0 +1,281 @@
+#!/bin/bash
+
+#
+# SecuBox Recovery and Snapshot Management
+# Configuration backup, restore, and rollback
+#
+
+. /usr/share/libubox/jshn.sh
+
+BACKUP_DIR="/overlay/secubox-backups"
+MAX_SNAPSHOTS=5
+
+# Create configuration snapshot
+create_snapshot() {
+	local snapshot_name="${1:-auto-$(date +%Y%m%d-%H%M%S)}"
+	local backup_file="$BACKUP_DIR/config-$snapshot_name.tar.gz"
+
+	mkdir -p "$BACKUP_DIR"
+
+	echo "Creating snapshot: $snapshot_name"
+
+	# Create backup using sysupgrade
+	if sysupgrade -b "$backup_file" 2>/dev/null; then
+		echo "✓ Snapshot created: $backup_file"
+		echo "  Size: $(du -h "$backup_file" | cut -f1)"
+
+		# Keep only last N snapshots
+		cleanup_old_snapshots
+
+		json_init
+		json_add_boolean "success" true
+		json_add_string "snapshot" "$snapshot_name"
+		json_add_string "path" "$backup_file"
+		json_dump
+
+		return 0
+	else
+		echo "✗ Failed to create snapshot"
+		json_init
+		json_add_boolean "success" false
+		json_add_string "error" "Backup failed"
+		json_dump
+		return 1
+	fi
+}
+
+# List available snapshots
+list_snapshots() {
+	local format="${1:-table}"
+
+	if [ ! -d "$BACKUP_DIR" ]; then
+		mkdir -p "$BACKUP_DIR"
+	fi
+
+	if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
+		json_init
+		json_add_array "snapshots"
+
+		ls -t "$BACKUP_DIR"/config-*.tar.gz 2>/dev/null | while read snapshot; do
+			[ -f "$snapshot" ] || continue
+			local name=$(basename "$snapshot" .tar.gz | sed 's/^config-//')
+			local date=$(stat -c %y "$snapshot" | cut -d' ' -f1,2 | cut -d'.' -f1)
+			local size=$(du -h "$snapshot" | cut -f1)
+
+			json_add_object ""
+				json_add_string "name" "$name"
+				json_add_string "date" "$date"
+				json_add_string "size" "$size"
+				json_add_string "path" "$snapshot"
+			json_close_object
+		done
+
+		json_close_array
+		json_dump
+	else
+		echo "Available Snapshots:"
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+		if [ -z "$(ls -A "$BACKUP_DIR"/config-*.tar.gz 2>/dev/null)" ]; then
+			echo "  (none)"
+		else
+			printf "%-30s %-20s %-10s\n" "NAME" "DATE" "SIZE"
+			echo "────────────────────────────────────────────────────────────────"
+
+			ls -t "$BACKUP_DIR"/config-*.tar.gz 2>/dev/null | while read snapshot; do
+				[ -f "$snapshot" ] || continue
+				local name=$(basename "$snapshot" .tar.gz | sed 's/^config-//')
+				local date=$(stat -c %y "$snapshot" | cut -d' ' -f1,2 | cut -d'.' -f1)
+				local size=$(du -h "$snapshot" | cut -f1)
+
+				printf "%-30s %-20s %-10s\n" "$name" "$date" "$size"
+			done
+		fi
+
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	fi
+}
+
+# Restore from snapshot
+restore_snapshot() {
+	local snapshot_name="$1"
+	local snapshot_file="$BACKUP_DIR/config-$snapshot_name.tar.gz"
+
+	if [ ! -f "$snapshot_file" ]; then
+		echo "ERROR: Snapshot not found: $snapshot_name"
+		echo "Available snapshots:"
+		list_snapshots
+		return 1
+	fi
+
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	echo "WARNING: This will restore configuration from: $snapshot_name"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	echo ""
+	read -p "Type 'YES' to confirm: " confirm
+
+	if [ "$confirm" != "YES" ]; then
+		echo "Cancelled"
+		return 1
+	fi
+
+	# Create emergency snapshot before restore
+	echo "Creating emergency snapshot before restore..."
+	create_snapshot "before-restore-$(date +%Y%m%d-%H%M%S)" >/dev/null
+
+	echo "Restoring configuration from: $snapshot_name"
+
+	# Restore using sysupgrade
+	if sysupgrade -r "$snapshot_file" 2>/dev/null; then
+		echo "✓ Configuration restored"
+		echo ""
+		echo "Reloading services..."
+
+		# Reload critical services
+		/etc/init.d/network reload
+		/etc/init.d/firewall reload
+		ubus call service reload
+
+		sleep 3
+
+		# Health check
+		if /usr/sbin/secubox-diagnostics health >/dev/null 2>&1; then
+			echo "✓ Health check passed"
+			echo "✓ Restore completed successfully"
+			return 0
+		else
+			echo "⚠ Health check warnings detected"
+			echo "  Review system status with: secubox diag health"
+			return 0
+		fi
+	else
+		echo "✗ Restore failed"
+		return 1
+	fi
+}
+
+# Cleanup old snapshots
+cleanup_old_snapshots() {
+	local count=$(ls -1 "$BACKUP_DIR"/config-*.tar.gz 2>/dev/null | wc -l)
+
+	if [ "$count" -gt "$MAX_SNAPSHOTS" ]; then
+		local to_remove=$((count - MAX_SNAPSHOTS))
+		echo "Cleaning up old snapshots (keeping last $MAX_SNAPSHOTS)..."
+
+		ls -t "$BACKUP_DIR"/config-*.tar.gz | tail -n "$to_remove" | while read old_snapshot; do
+			echo "  Removing: $(basename "$old_snapshot")"
+			rm -f "$old_snapshot"
+		done
+	fi
+}
+
+# Rollback to previous snapshot
+rollback() {
+	local snapshot_name="$1"
+
+	if [ -z "$snapshot_name" ]; then
+		# Rollback to most recent snapshot
+		local latest=$(ls -t "$BACKUP_DIR"/config-*.tar.gz 2>/dev/null | head -1)
+
+		if [ -z "$latest" ]; then
+			echo "ERROR: No snapshots available for rollback"
+			return 1
+		fi
+
+		snapshot_name=$(basename "$latest" .tar.gz | sed 's/^config-//')
+		echo "Auto-selecting most recent snapshot: $snapshot_name"
+	fi
+
+	restore_snapshot "$snapshot_name"
+}
+
+# Enter recovery mode
+enter_recovery() {
+	cat <<'EOF'
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SecuBox Recovery Mode
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Available actions:
+  1) Restore from snapshot
+  2) List available snapshots
+  3) Create new snapshot
+  4) Factory reset (keep network settings)
+  5) Full factory reset (WARNING: destructive)
+  6) Export diagnostic report
+  7) Exit recovery mode
+
+EOF
+
+	read -p "Select option [1-7]: " choice
+
+	case "$choice" in
+		1)
+			echo ""
+			list_snapshots
+			echo ""
+			read -p "Enter snapshot name to restore: " snapshot
+			restore_snapshot "$snapshot"
+			;;
+		2)
+			list_snapshots
+			;;
+		3)
+			read -p "Enter snapshot name (or press Enter for auto): " snapshot
+			create_snapshot "$snapshot"
+			;;
+		4)
+			echo "Performing factory reset (keeping network settings)..."
+			mkdir -p /tmp/network-backup
+			cp /etc/config/network /tmp/network-backup/
+			cp /etc/config/wireless /tmp/network-backup/ 2>/dev/null || true
+			cp /etc/config/dhcp /tmp/network-backup/ 2>/dev/null || true
+
+			firstboot -y
+			mkdir -p /etc/config
+			cp /tmp/network-backup/* /etc/config/
+
+			echo "Reset complete. Rebooting..."
+			sleep 3
+			reboot
+			;;
+		5)
+			echo "WARNING: This will erase ALL configuration!"
+			read -p "Type 'YES' to confirm: " confirm
+			[ "$confirm" = "YES" ] && firstboot -y && reboot
+			;;
+		6)
+			/usr/sbin/secubox-diagnostics report
+			;;
+		7)
+			echo "Exiting recovery mode"
+			;;
+		*)
+			echo "Invalid option"
+			;;
+	esac
+}
+
+# Main command router
+case "$1" in
+	snapshot)
+		create_snapshot "$2"
+		;;
+	list)
+		shift
+		list_snapshots "$@"
+		;;
+	restore)
+		restore_snapshot "$2"
+		;;
+	rollback)
+		rollback "$2"
+		;;
+	enter)
+		enter_recovery
+		;;
+	*)
+		echo "Usage: $0 {snapshot|list|restore|rollback|enter} [args]"
+		exit 1
+		;;
+esac

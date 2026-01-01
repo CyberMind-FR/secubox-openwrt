@@ -1,0 +1,329 @@
+#!/bin/bash
+
+#
+# SecuBox CLI - Main Entrypoint
+# Unified command-line interface for SecuBox operations
+#
+
+SECUBOX_VERSION="0.8.0"
+
+# Color output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+usage() {
+	cat <<EOF
+${BOLD}SecuBox CLI${NC} v${SECUBOX_VERSION}
+Modular OpenWrt Security Appliance Framework
+
+${BOLD}Usage:${NC} secubox <command> [subcommand] [options]
+
+${BOLD}Commands:${NC}
+  ${GREEN}app${NC}        Manage modules and AppStore
+  ${GREEN}profile${NC}    Manage profiles and templates
+  ${GREEN}device${NC}     Device information and management
+  ${GREEN}net${NC}        Network management
+  ${GREEN}diag${NC}       Diagnostics and health checks
+  ${GREEN}ai${NC}         AI copilot (optional)
+
+${BOLD}Examples:${NC}
+  secubox app list
+  secubox app install wireguard-vpn
+  secubox profile apply home-office
+  secubox diag health
+  secubox device status
+
+Run ${BOLD}secubox <command> help${NC} for command-specific help.
+EOF
+}
+
+# App commands
+cmd_app() {
+	case "$1" in
+		list)
+			/usr/sbin/secubox-appstore list
+			;;
+		search)
+			/usr/sbin/secubox-appstore search "$2"
+			;;
+		info)
+			/usr/sbin/secubox-appstore info "$2"
+			;;
+		install)
+			shift
+			/usr/sbin/secubox-appstore install "$@"
+			;;
+		remove)
+			/usr/sbin/secubox-appstore remove "$2"
+			;;
+		update)
+			/usr/sbin/secubox-appstore update "$2"
+			;;
+		health)
+			/usr/sbin/secubox-appstore health
+			;;
+		help|*)
+			cat <<EOF
+${BOLD}secubox app${NC} - Module and AppStore management
+
+${BOLD}Usage:${NC}
+  secubox app list              List all available modules
+  secubox app search <query>    Search for modules
+  secubox app info <module>     Show module details
+  secubox app install <module>  Install a module
+  secubox app remove <module>   Remove a module
+  secubox app update [module]   Update module(s)
+  secubox app health            Check module health
+EOF
+			;;
+	esac
+}
+
+# Profile commands
+cmd_profile() {
+	case "$1" in
+		list)
+			/usr/sbin/secubox-profile list
+			;;
+		show)
+			/usr/sbin/secubox-profile show "$2"
+			;;
+		apply)
+			shift
+			/usr/sbin/secubox-profile apply "$@"
+			;;
+		validate)
+			/usr/sbin/secubox-profile validate "$2"
+			;;
+		export)
+			/usr/sbin/secubox-profile export "$2"
+			;;
+		help|*)
+			cat <<EOF
+${BOLD}secubox profile${NC} - Profile and template management
+
+${BOLD}Usage:${NC}
+  secubox profile list                List available profiles
+  secubox profile show <profile>      Show profile details
+  secubox profile apply <profile>     Apply a profile
+  secubox profile validate <profile>  Validate profile syntax
+  secubox profile export [file]       Export current config as profile
+EOF
+			;;
+	esac
+}
+
+# Device commands
+cmd_device() {
+	case "$1" in
+		info)
+			ubus call system board 2>/dev/null | jsonfilter \
+				-e 'Hostname: @.hostname' \
+				-e 'Model: @.model' \
+				-e 'Board: @.board_name' \
+				-e 'Release: @.release.distribution @.release.version' \
+				-e 'Kernel: @.kernel' \
+				-e 'Architecture: @.system'
+			;;
+		status)
+			/usr/sbin/secubox-core status | jsonfilter \
+				-e 'Version: @.version' \
+				-e 'Uptime: @.uptime' \
+				-e 'CPU Load: @.resources.cpu_load' \
+				-e 'Memory: @.resources.memory_percent%' \
+				-e 'Storage: @.resources.storage_percent%' \
+				-e 'WAN: @.network.wan.ipaddr (@.network.wan.device)' \
+				-e 'LAN: @.network.lan.ipaddr'
+			;;
+		reboot)
+			echo -e "${YELLOW}Rebooting in 3 seconds...${NC}"
+			sleep 3
+			reboot
+			;;
+		factory-reset)
+			echo -e "${RED}${BOLD}WARNING: This will erase all configuration!${NC}"
+			read -p "Type 'YES' to confirm: " confirm
+			if [ "$confirm" = "YES" ]; then
+				firstboot -y && reboot
+			else
+				echo "Cancelled"
+			fi
+			;;
+		backup)
+			output="${2:-/tmp/secubox-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
+			sysupgrade -b "$output"
+			echo -e "${GREEN}Backup saved: $output${NC}"
+			;;
+		help|*)
+			cat <<EOF
+${BOLD}secubox device${NC} - Device information and management
+
+${BOLD}Usage:${NC}
+  secubox device info           Show device information
+  secubox device status         Show system status
+  secubox device reboot         Reboot device
+  secubox device factory-reset  Factory reset (WARNING: destructive)
+  secubox device backup [file]  Backup configuration
+EOF
+			;;
+	esac
+}
+
+# Network commands
+cmd_net() {
+	case "$1" in
+		status)
+			echo -e "${BOLD}Network Interfaces:${NC}"
+			ip -br addr show
+			;;
+		interfaces)
+			ubus call network.interface dump | jsonfilter -e '@.interface[@.interface,@.proto,@.up,@.device]'
+			;;
+		restart)
+			if [ -n "$2" ]; then
+				echo "Restarting interface: $2"
+				ifdown "$2" && ifup "$2"
+			else
+				echo "Restarting network..."
+				/etc/init.d/network restart
+			fi
+			;;
+		test-connectivity)
+			echo -n "Testing internet connectivity... "
+			if ping -c 3 -W 5 8.8.8.8 >/dev/null 2>&1; then
+				echo -e "${GREEN}✓ OK${NC}"
+			else
+				echo -e "${RED}✗ Failed${NC}"
+			fi
+			;;
+		help|*)
+			cat <<EOF
+${BOLD}secubox net${NC} - Network management
+
+${BOLD}Usage:${NC}
+  secubox net status              Show network status
+  secubox net interfaces          List network interfaces
+  secubox net restart [interface] Restart network/interface
+  secubox net test-connectivity   Test internet connectivity
+EOF
+			;;
+	esac
+}
+
+# Diagnostics commands
+cmd_diag() {
+	case "$1" in
+		health)
+			/usr/sbin/secubox-diagnostics health
+			;;
+		logs)
+			shift
+			if [ -n "$1" ]; then
+				logread -e "$1"
+			else
+				logread | tail -100
+			fi
+			;;
+		trace)
+			if [ -n "$2" ]; then
+				traceroute -n "$2"
+			else
+				echo "Usage: secubox diag trace <target>"
+			fi
+			;;
+		report)
+			/usr/sbin/secubox-diagnostics report
+			;;
+		help|*)
+			cat <<EOF
+${BOLD}secubox diag${NC} - Diagnostics and health checks
+
+${BOLD}Usage:${NC}
+  secubox diag health         Run health check
+  secubox diag logs [service] View system logs
+  secubox diag trace <target> Network trace to target
+  secubox diag report         Generate diagnostic report
+EOF
+			;;
+	esac
+}
+
+# AI commands (optional)
+cmd_ai() {
+	# Check if AI is enabled
+	local ai_enabled=$(uci -q get secubox.main.ai_enabled)
+	if [ "$ai_enabled" != "1" ]; then
+		echo -e "${YELLOW}AI copilot is disabled.${NC}"
+		echo "Enable with: uci set secubox.main.ai_enabled=1 && uci commit"
+		exit 1
+	fi
+
+	case "$1" in
+		suggest)
+			shift
+			/usr/sbin/secubox-ai suggest "$@"
+			;;
+		explain)
+			/usr/sbin/secubox-ai explain "$2"
+			;;
+		generate)
+			/usr/sbin/secubox-ai generate "$2"
+			;;
+		help|*)
+			cat <<EOF
+${BOLD}secubox ai${NC} - AI copilot (optional)
+
+${BOLD}Usage:${NC}
+  secubox ai suggest <context>  Get AI suggestions
+  secubox ai explain <config>   Explain configuration
+  secubox ai generate <type>    Generate config/macro
+
+${YELLOW}Note: AI features are experimental and require explicit user approval${NC}
+EOF
+			;;
+	esac
+}
+
+# Main command router
+case "$1" in
+	app)
+		shift
+		cmd_app "$@"
+		;;
+	profile)
+		shift
+		cmd_profile "$@"
+		;;
+	device)
+		shift
+		cmd_device "$@"
+		;;
+	net)
+		shift
+		cmd_net "$@"
+		;;
+	diag)
+		shift
+		cmd_diag "$@"
+		;;
+	ai)
+		shift
+		cmd_ai "$@"
+		;;
+	-v|--version|version)
+		echo "SecuBox v${SECUBOX_VERSION}"
+		;;
+	-h|--help|help|"")
+		usage
+		;;
+	*)
+		echo -e "${RED}Unknown command: $1${NC}"
+		echo ""
+		usage
+		exit 1
+		;;
+esac

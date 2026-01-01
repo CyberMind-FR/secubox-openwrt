@@ -1,0 +1,41 @@
+{
+  "profile": {
+    "id": "home-basic",
+    "name": "Home Network - Basic",
+    "description": "Basic home network setup with essential security features",
+    "version": "1.0.0",
+    "author": "SecuBox Team"
+  },
+
+  "modules": {
+    "required": [
+      "system-hub",
+      "vhost-manager"
+    ],
+    "recommended": [
+      "bandwidth-manager",
+      "network-tweaks"
+    ]
+  },
+
+  "uci_overrides": {
+    "system": {
+      "@system[0]": {
+        "hostname": "secubox-home",
+        "timezone": "UTC"
+      }
+    },
+    "network": {
+      "lan": {
+        "ipaddr": "192.168.1.1",
+        "netmask": "255.255.255.0"
+      }
+    }
+  },
+
+  "notes": [
+    "This profile provides a basic home network setup",
+    "Includes system dashboard and virtual host management",
+    "Suitable for home users with basic networking needs"
+  ]
+}
