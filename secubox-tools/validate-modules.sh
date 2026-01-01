@@ -15,6 +15,12 @@ NC='\033[0m' # No Color
 ERRORS=0
 WARNINGS=0
 
+# Helper function to collect all luci-app directories
+get_luci_apps() {
+	find . -maxdepth 1 -type d -name 'luci-app-*' 2>/dev/null
+	find package/secubox -maxdepth 1 -type d -name 'luci-app-*' 2>/dev/null
+}
+
 echo "========================================"
 echo "SecuBox Module Validation"
 echo "========================================"
@@ -43,7 +49,8 @@ echo "1. Validating RPCD script names vs ubus objects"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-for module_dir in luci-app-*/; do
+while IFS= read -r module_dir; do
+    [[ ! -d "$module_dir" ]] && continue
     module_name=$(basename "$module_dir")
     echo "Checking $module_name..."
 
@@ -85,7 +92,7 @@ for module_dir in luci-app-*/; do
         warn "$module_name: No RPCD directory found"
     fi
     echo ""
-done
+done < <(get_luci_apps)
 
 # Check 2: Menu paths must match actual view file locations
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -93,7 +100,8 @@ echo "2. Validating menu paths vs view file locations"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-for module_dir in luci-app-*/; do
+while IFS= read -r module_dir; do
+    [[ ! -d "$module_dir" ]] && continue
     module_name=$(basename "$module_dir")
     menu_file="$module_dir/root/usr/share/luci/menu.d/${module_name}.json"
 
@@ -123,7 +131,7 @@ for module_dir in luci-app-*/; do
         done
         echo ""
     fi
-done
+done < <(get_luci_apps)
 
 # Check 3: View files must have corresponding menu entries
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -131,7 +139,8 @@ echo "3. Validating view files have menu entries"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-for module_dir in luci-app-*/; do
+while IFS= read -r module_dir; do
+    [[ ! -d "$module_dir" ]] && continue
     module_name=$(basename "$module_dir")
     view_dir="$module_dir/htdocs/luci-static/resources/view"
     menu_file="$module_dir/root/usr/share/luci/menu.d/${module_name}.json"
@@ -156,7 +165,7 @@ for module_dir in luci-app-*/; do
         set -e
         echo ""
     fi
-done
+done < <(get_luci_apps)
 
 # Check 4: RPCD scripts must be executable
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -164,7 +173,8 @@ echo "4. Validating RPCD script permissions"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-for module_dir in luci-app-*/; do
+while IFS= read -r module_dir; do
+    [[ ! -d "$module_dir" ]] && continue
     module_name=$(basename "$module_dir")
     rpcd_dir="$module_dir/root/usr/libexec/rpcd"
 
@@ -178,7 +188,7 @@ for module_dir in luci-app-*/; do
             fi
         done
     fi
-done
+done < <(get_luci_apps)
 echo ""
 
 # Check 5: JSON files must be valid
@@ -187,7 +197,8 @@ echo "5. Validating JSON syntax"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-for module_dir in luci-app-*/; do
+while IFS= read -r module_dir; do
+    [[ ! -d "$module_dir" ]] && continue
     module_name=$(basename "$module_dir")
 
     # Check menu JSON
@@ -209,7 +220,7 @@ for module_dir in luci-app-*/; do
             error "$module_name: acl.d JSON is INVALID"
         fi
     fi
-done
+done < <(get_luci_apps)
 echo ""
 
 # Check 6: Verify ubus object naming convention
@@ -218,7 +229,8 @@ echo "6. Validating ubus object naming convention"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-for module_dir in luci-app-*/; do
+while IFS= read -r module_dir; do
+    [[ ! -d "$module_dir" ]] && continue
     module_name=$(basename "$module_dir")
 
     # Extract ubus object names from JavaScript
@@ -236,7 +248,7 @@ for module_dir in luci-app-*/; do
             fi
         done
     fi
-done
+done < <(get_luci_apps)
 echo ""
 
 # Check 7: htdocs files must have correct permissions (644 for web server)
@@ -247,7 +259,8 @@ echo ""
 
 PERMISSION_ERRORS=0
 
-for module_dir in luci-app-*/; do
+while IFS= read -r module_dir; do
+    [[ ! -d "$module_dir" ]] && continue
     module_name=$(basename "$module_dir")
     htdocs_dir="$module_dir/htdocs"
 
@@ -280,7 +293,7 @@ for module_dir in luci-app-*/; do
             fi
         done < <(find "$htdocs_dir" -name "*.js" -type f 2>/dev/null)
     fi
-done
+done < <(get_luci_apps)
 
 if [ $PERMISSION_ERRORS -gt 0 ]; then
     echo ""

@@ -221,7 +221,10 @@ verify_remote() {
 }
 
 collect_luci_apps() {
-	find . -maxdepth 1 -type d -name 'luci-app-*' | LC_ALL=C sort
+	{
+		find . -maxdepth 1 -type d -name 'luci-app-*'
+		find package/secubox -maxdepth 1 -type d -name 'luci-app-*' 2>/dev/null
+	} | LC_ALL=C sort
 }
 
 list_luci_apps() {
@@ -339,9 +342,9 @@ deploy_profile_theme() {
 		"luci-app-secubox/htdocs/luci-static/resources/secubox/theme.js:/www/luci-static/resources/secubox/"
 		"luci-app-secubox/htdocs/luci-static/resources/secubox/secubox.css:/www/luci-static/resources/secubox/"
 		"luci-app-secubox/htdocs/luci-static/resources/view/secubox/dashboard.js:/www/luci-static/resources/view/secubox/"
-		"luci-app-system-hub/htdocs/luci-static/resources/system-hub/theme.js:/www/luci-static/resources/system-hub/"
-		"luci-app-system-hub/htdocs/luci-static/resources/system-hub/dashboard.css:/www/luci-static/resources/system-hub/"
-		"luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/overview.js:/www/luci-static/resources/view/system-hub/"
+		"package/secubox/luci-app-system-hub/htdocs/luci-static/resources/system-hub/theme.js:/www/luci-static/resources/system-hub/"
+		"package/secubox/luci-app-system-hub/htdocs/luci-static/resources/system-hub/dashboard.css:/www/luci-static/resources/system-hub/"
+		"package/secubox/luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/overview.js:/www/luci-static/resources/view/system-hub/"
 	)
 	remote_exec "mkdir -p /usr/libexec/rpcd /usr/share/rpcd/acl.d /www/luci-static/resources/secubox /www/luci-static/resources/view/secubox /www/luci-static/resources/system-hub /www/luci-static/resources/view/system-hub /www/luci-static/resources/secubox-theme"
 	local -a backup_targets=()

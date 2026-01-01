@@ -26,10 +26,10 @@ jobs:
       - name: Validate Makefile structure
         run: |
           echo "📋 Validating Makefile structure..."
-          
+
           ERRORS=0
-          
-          for makefile in luci-app-*/Makefile; do
+
+          for makefile in luci-app-*/Makefile package/secubox/luci-app-*/Makefile; do
             if [[ -f "$makefile" ]]; then
               PKG=$(dirname "$makefile")
               echo "  🔍 Checking $PKG..."
@@ -161,8 +161,8 @@ jobs:
       - name: Validate package structure
         run: |
           echo "📋 Validating package structure..."
-          
-          for pkg in luci-app-*/; do
+
+          for pkg in luci-app-*/ package/secubox/luci-app-*/; do
             if [[ -d "$pkg" ]]; then
               echo "  📦 Checking $pkg..."
               
@@ -271,7 +271,7 @@ jobs:
       - name: Copy packages
         run: |
           # IMPORTANT: Copy packages DIRECTLY into package/, not into a subdirectory
-          for pkg in luci-app-*/; do
+          for pkg in luci-app-*/ package/secubox/luci-app-*/; do
             if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
               PKG_NAME=$(basename "$pkg")
               echo "📦 Copying $PKG_NAME..."
@@ -379,18 +379,18 @@ jobs:
           echo "" >> PACKAGES.md
           echo "| Package | Version | Description |" >> PACKAGES.md
           echo "|---------|---------|-------------|" >> PACKAGES.md
-          
-          for makefile in luci-app-*/Makefile; do
+
+          for makefile in luci-app-*/Makefile package/secubox/luci-app-*/Makefile; do
             if [[ -f "$makefile" ]]; then
               PKG_NAME=$(grep "^PKG_NAME:=" "$makefile" | cut -d'=' -f2)
               PKG_VERSION=$(grep "^PKG_VERSION:=" "$makefile" | cut -d'=' -f2)
               PKG_TITLE=$(grep "^LUCI_TITLE:=" "$makefile" | cut -d'=' -f2- | sed 's/^[[:space:]]*//')
-              
+
               # Fallback if LUCI_TITLE not found
               if [[ -z "$PKG_TITLE" ]]; then
                 PKG_TITLE=$(grep "TITLE:=" "$makefile" | head -1 | cut -d'=' -f2- | sed 's/^[[:space:]]*//')
               fi
-              
+
               echo "| $PKG_NAME | $PKG_VERSION | $PKG_TITLE |" >> PACKAGES.md
             fi
           done

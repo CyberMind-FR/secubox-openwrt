@@ -65,7 +65,7 @@ Central control and remote assistance dashboard for OpenWrt.
 - 📋 Unified logs from all components
 - 📅 Scheduled tasks (health reports, backups)
 
-[View Details](luci-app-system-hub/README.md)
+[View Details](package/secubox/luci-app-system-hub/README.md)
 
 ---
 
@@ -81,7 +81,7 @@ Modern dashboard for CrowdSec intrusion prevention on OpenWrt.
 - 🌍 Geographic threat visualization
 - ⚡ Auto-refresh with dark cybersecurity theme
 
-[View Details](luci-app-crowdsec-dashboard/README.md)
+[View Details](package/secubox/luci-app-crowdsec-dashboard/README.md)
 
 ---
 
@@ -95,7 +95,7 @@ System monitoring dashboard with live metrics visualization.
 - 🎨 Animated gauges and sparklines
 - 🔄 2-second auto-refresh
 
-[View Details](luci-app-netdata-dashboard/README.md)
+[View Details](package/secubox/luci-app-netdata-dashboard/README.md)
 
 ---
 
@@ -111,7 +111,7 @@ Network intelligence dashboard with DPI for OpenWrt.
 - 💻 Automatic device discovery
 - 📊 Traffic categorization (Web, Streaming, Gaming, VoIP)
 
-[View Details](luci-app-netifyd-dashboard/README.md)
+[View Details](package/secubox/luci-app-netifyd-dashboard/README.md)
 
 ---
 
@@ -127,7 +127,7 @@ Configure different network operation modes with one click.
 - 🎛️ One-click mode switching with automatic backup
 - 📊 Real-time interface and service status monitoring
 
-[View Details](luci-app-network-modes/README.md)
+[View Details](package/secubox/luci-app-network-modes/README.md)
 
 ---
 
@@ -143,7 +143,7 @@ Modern WireGuard VPN monitoring dashboard.
 - ⚙️ Configuration visualization
 - 🔒 Secure (private keys never exposed)
 
-[View Details](luci-app-wireguard-dashboard/README.md)
+[View Details](package/secubox/luci-app-wireguard-dashboard/README.md)
 
 ---
 
@@ -158,7 +158,7 @@ NAC system with captive portal, quarantine, and parental controls.
 - 👨‍👩‍👧‍👦 Parental controls (time limits, content filtering)
 - 🔔 SMS/Email alerts for security events
 
-[View Details](luci-app-client-guardian/README.md)
+[View Details](package/secubox/luci-app-client-guardian/README.md)
 
 ---
 
@@ -172,7 +172,7 @@ Comprehensive authentication and session management.
 - 🍪 Secure session management
 - ⏭️ MAC/IP/Domain bypass rules
 
-[View Details](luci-app-auth-guardian/README.md)
+[View Details](package/secubox/luci-app-auth-guardian/README.md)
 
 ---
 
@@ -188,7 +188,7 @@ Advanced bandwidth management with automatic media detection.
 - ⏰ Time-based scheduling (peak/off-peak)
 - 👥 Per-client statistics and controls
 
-[View Details](luci-app-bandwidth-manager/README.md)
+[View Details](package/secubox/luci-app-bandwidth-manager/README.md)
 
 ---
 
@@ -207,7 +207,7 @@ Advanced streaming and media traffic monitoring.
 - Spotify, Apple Music, Tidal
 - Zoom, Teams, Google Meet, WebEx
 
-[View Details](luci-app-media-flow/README.md)
+[View Details](package/secubox/luci-app-media-flow/README.md)
 
 ---
 
@@ -228,7 +228,7 @@ Local CDN cache proxy for bandwidth savings.
 - Static content (JS, CSS, images)
 - Configurable TTL per content type
 
-[View Details](luci-app-cdn-cache/README.md)
+[View Details](package/secubox/luci-app-cdn-cache/README.md)
 
 ---
 
@@ -242,7 +242,7 @@ USB-aware MQTT bridge for sensors and automation gear.
 - 🔐 Broker credential + retention management from the UI
 - 📁 Saves configuration snapshots for rollback
 
-[View Details](luci-app-mqtt-bridge/README.md)
+[View Details](package/secubox/luci-app-mqtt-bridge/README.md)
 
 ---
 
@@ -259,7 +259,7 @@ Virtual host and local SaaS gateway management.
 - Nextcloud, GitLab, Jellyfin
 - Home Assistant and more
 
-[View Details](luci-app-vhost-manager/README.md)
+[View Details](package/secubox/luci-app-vhost-manager/README.md)
 
 ---
 

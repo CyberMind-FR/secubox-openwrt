@@ -56,6 +56,12 @@ echo "SecuBox Permission Fix"
 echo "========================================"
 echo ""
 
+# Helper function to collect all luci-app directories
+get_luci_apps() {
+    find . -maxdepth 1 -type d -name 'luci-app-*' 2>/dev/null
+    find package/secubox -maxdepth 1 -type d -name 'luci-app-*' 2>/dev/null
+}
+
 # Fix local permissions
 if [ "$LOCAL_MODE" = true ]; then
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -67,7 +73,8 @@ if [ "$LOCAL_MODE" = true ]; then
     CSS_FIXED=0
     JS_FIXED=0
 
-    for module_dir in luci-app-*/; do
+    while IFS= read -r module_dir; do
+        [[ ! -d "$module_dir" ]] && continue
         module_name=$(basename "$module_dir")
 
         # Fix RPCD scripts (must be executable: 755)
@@ -108,7 +115,7 @@ if [ "$LOCAL_MODE" = true ]; then
                 fi
             done < <(find "$htdocs_dir" -name "*.js" -type f 2>/dev/null)
         fi
-    done
+    done < <(get_luci_apps)
 
     echo ""
     echo -e "${GREEN}Local Permissions Fixed:${NC}"

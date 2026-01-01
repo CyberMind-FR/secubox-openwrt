@@ -187,7 +187,11 @@
       "Bash(do echo \"=== $makefile ===\" grep -A15 \"define Package.*install\" \"$makefile\")",
       "Bash(ssh root@192.168.8.191:*)",
       "Bash(flatpak-spawn --host which:*)",
-      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")"
+      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")",
+      "Bash(jsonfilter:*)",
+      "Bash(for app in luci-app-auth-guardian luci-app-bandwidth-manager luci-app-cdn-cache luci-app-client-guardian luci-app-crowdsec-dashboard)",
+      "Bash(do echo \"Moving $app...\")",
+      "Bash(git mv:*)"
     ]
   }
 }
