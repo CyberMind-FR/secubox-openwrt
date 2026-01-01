@@ -196,6 +196,51 @@
       "dependencies": ["docker", "dockerd"],
       "conflicts": ["citadel", "ispconfig"],
       "notes": "Requires a domain name with proper DNS configuration. Includes webmail, spam filtering, and automatic TLS."
+    },
+    {
+      "id": "secubox-app-nextcloud",
+      "name": "Nextcloud",
+      "version": "30.0.2",
+      "category": "productivity",
+      "description": "Self-hosted file sync and share platform with calendar, contacts, mail, video calls, and collaborative document editing",
+      "icon": "☁️",
+      "author": "CyberMind.fr",
+      "license": "AGPL-3.0",
+      "url": "https://nextcloud.com/",
+      "tags": ["cloud", "file-sync", "collaboration", "calendar", "contacts", "docker"],
+      "requires": {
+        "docker": true,
+        "memory": "512MB",
+        "storage": "2GB",
+        "database": "optional"
+      },
+      "status": "stable",
+      "luci_app": null,
+      "dependencies": ["docker", "dockerd"],
+      "conflicts": [],
+      "notes": "Dropbox alternative with apps for mobile and desktop. Supports SQLite (default) or MySQL/PostgreSQL."
+    },
+    {
+      "id": "secubox-app-adguardhome",
+      "name": "AdGuard Home",
+      "version": "0.107.54",
+      "category": "network",
+      "description": "Network-wide ad and tracker blocker with DNS-over-HTTPS/TLS support, parental controls, and detailed analytics",
+      "icon": "🛡️",
+      "author": "CyberMind.fr",
+      "license": "GPL-3.0",
+      "url": "https://adguard.com/adguard-home/overview.html",
+      "tags": ["dns", "ad-blocker", "privacy", "parental-control", "docker"],
+      "requires": {
+        "docker": true,
+        "memory": "128MB",
+        "storage": "100MB"
+      },
+      "status": "stable",
+      "luci_app": null,
+      "dependencies": ["docker", "dockerd"],
+      "conflicts": [],
+      "notes": "Pi-hole alternative with DNS-over-HTTPS/TLS. Configure router to use AdGuard Home as DNS server."
     }
   ],
   "categories": {
@@ -236,8 +281,8 @@
     }
   },
   "metadata": {
-    "version": "1.1",
-    "last_updated": "2025-12-31",
+    "version": "1.2",
+    "last_updated": "2026-01-01",
     "repository": "https://github.com/cybermind-studio/secubox-openwrt"
   }
 }
