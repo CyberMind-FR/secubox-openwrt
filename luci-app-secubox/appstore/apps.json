@@ -106,6 +106,96 @@
       "luci_app": "luci-app-zigbee2mqtt",
       "dependencies": ["docker", "dockerd", "mqtt-broker"],
       "conflicts": []
+    },
+    {
+      "id": "secubox-app-localai",
+      "name": "LocalAI",
+      "version": "2.25.0",
+      "category": "ai",
+      "description": "Self-hosted OpenAI-compatible API for running LLMs locally with support for text, audio, and image generation",
+      "icon": "🤖",
+      "author": "CyberMind.fr",
+      "license": "MIT",
+      "url": "https://localai.io/",
+      "tags": ["ai", "llm", "machine-learning", "openai", "docker"],
+      "requires": {
+        "docker": true,
+        "memory": "2GB",
+        "storage": "5GB",
+        "gpu": "optional"
+      },
+      "status": "stable",
+      "luci_app": null,
+      "dependencies": ["docker", "dockerd"],
+      "conflicts": [],
+      "notes": "GPU acceleration optional. Model files require additional storage (1-10GB per model)."
+    },
+    {
+      "id": "secubox-app-citadel",
+      "name": "Citadel",
+      "version": "9.99",
+      "category": "productivity",
+      "description": "Complete groupware solution with email, calendar, contacts, instant messaging, and collaboration tools",
+      "icon": "🏢",
+      "author": "CyberMind.fr",
+      "license": "GPL-3.0",
+      "url": "https://www.citadel.org/",
+      "tags": ["groupware", "email", "calendar", "collaboration", "docker"],
+      "requires": {
+        "docker": true,
+        "memory": "512MB",
+        "storage": "1GB"
+      },
+      "status": "stable",
+      "luci_app": null,
+      "dependencies": ["docker", "dockerd"],
+      "conflicts": ["mailinabox"],
+      "notes": "Web-based groupware with email server, calendar, contacts, and instant messaging."
+    },
+    {
+      "id": "secubox-app-ispconfig",
+      "name": "ISPConfig",
+      "version": "3.2.12",
+      "category": "hosting",
+      "description": "Web hosting control panel for managing multiple servers, websites, email accounts, DNS, and databases",
+      "icon": "🖥️",
+      "author": "CyberMind.fr",
+      "license": "BSD-3-Clause",
+      "url": "https://www.ispconfig.org/",
+      "tags": ["hosting", "control-panel", "web-server", "email", "dns", "docker"],
+      "requires": {
+        "docker": true,
+        "memory": "1GB",
+        "storage": "2GB"
+      },
+      "status": "stable",
+      "luci_app": null,
+      "dependencies": ["docker", "dockerd"],
+      "conflicts": ["mailinabox"],
+      "notes": "Full hosting control panel with Apache/nginx, MySQL/MariaDB, PHP, email, DNS, and FTP."
+    },
+    {
+      "id": "secubox-app-mailinabox",
+      "name": "Mail-in-a-Box",
+      "version": "70.0",
+      "category": "productivity",
+      "description": "Easy-to-deploy email server with webmail, contacts, calendar, spam filtering, and automatic security updates",
+      "icon": "📧",
+      "author": "CyberMind.fr",
+      "license": "CC0-1.0",
+      "url": "https://mailinabox.email/",
+      "tags": ["email", "mail-server", "webmail", "calendar", "contacts", "docker"],
+      "requires": {
+        "docker": true,
+        "memory": "768MB",
+        "storage": "1GB",
+        "domain": "required"
+      },
+      "status": "stable",
+      "luci_app": null,
+      "dependencies": ["docker", "dockerd"],
+      "conflicts": ["citadel", "ispconfig"],
+      "notes": "Requires a domain name with proper DNS configuration. Includes webmail, spam filtering, and automatic TLS."
     }
   ],
   "categories": {
@@ -128,11 +218,26 @@
       "name": "Media",
       "icon": "🎬",
       "description": "Media streaming and entertainment"
+    },
+    "ai": {
+      "name": "AI & Machine Learning",
+      "icon": "🤖",
+      "description": "Artificial intelligence and machine learning tools"
+    },
+    "productivity": {
+      "name": "Productivity",
+      "icon": "📧",
+      "description": "Email, collaboration, and productivity tools"
+    },
+    "hosting": {
+      "name": "Hosting & Control Panels",
+      "icon": "🖥️",
+      "description": "Web hosting and server management tools"
     }
   },
   "metadata": {
-    "version": "1.0",
-    "last_updated": "2024-12-30",
+    "version": "1.1",
+    "last_updated": "2025-12-31",
     "repository": "https://github.com/cybermind-studio/secubox-openwrt"
   }
 }
