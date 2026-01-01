@@ -1,0 +1,38 @@
+{
+  "id": "secubox-app-jellyfin",
+  "name": "Jellyfin",
+  "version": "10.10.3",
+  "category": "media",
+  "runtime": "docker",
+  "description": "Free media server for managing and streaming movies, TV shows, music, and photos with apps for all platforms",
+  "author": "CyberMind.fr",
+  "license": "GPL-2.0",
+  "url": "https://jellyfin.org/",
+  "icon": "\ud83c\udfac",
+  "tags": [
+    "media",
+    "streaming",
+    "movies",
+    "tv-shows",
+    "music",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-jellyfin",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "media",
+    "streaming",
+    "movies"
+  ],
+  "requirements": {
+    "min_ram_mb": 512,
+    "min_storage_mb": 500
+  },
+  "status": "stable",
+  "notes": "Plex alternative with no premium features. Hardware transcoding supported with GPU."
+}

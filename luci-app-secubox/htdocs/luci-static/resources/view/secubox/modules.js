@@ -35,7 +35,7 @@ return view.extend({
 	modulesData: [],
 	currentFilter: 'all',
 	filterLayer: null,
-	debugMode: (window.location.hash.indexOf('debug') !== -1) || (localStorage.getItem('secubox_debug') === 'true'),
+	debugMode: true,  // FORCE DEBUG MODE ON
 
 	debug: function() {
 		if (this.debugMode && console && console.log) {
@@ -70,9 +70,13 @@ return view.extend({
 		var self = this;
 		var modules = (data && data.modules) || this.modulesData || [];
 
-		self.debug('Modules render - data:', data);
-		self.debug('Modules render - modules array:', modules);
-		self.debug('Modules render - modules.length:', modules.length);
+		console.log('[Modules] ========== RENDER START ==========');
+		console.log('[Modules] render() called with data:', data);
+		console.log('[Modules] data.modules:', data ? data.modules : 'NO DATA');
+		console.log('[Modules] this.modulesData:', this.modulesData);
+		console.log('[Modules] Final modules array:', modules);
+		console.log('[Modules] Final modules.length:', modules.length);
+		console.log('[Modules] ========== RENDER START ==========');
 
 		var defaultFilter = this.currentFilter || 'all';
 		var container = E('div', {
@@ -164,14 +168,22 @@ return view.extend({
 	renderModuleCards: function(modules, filter) {
 		var self = this;
 
+		console.log('[Modules] renderModuleCards called with:');
+		console.log('[Modules]   modules.length:', modules.length);
+		console.log('[Modules]   filter:', filter);
+		console.log('[Modules]   First 3 modules:', modules.slice(0, 3));
+
 		var filtered = filter === 'all' ? modules :
 			modules.filter(function(m) { return m.category === filter; });
 
+		console.log('[Modules]   filtered.length:', filtered.length);
+
 		if (filtered.length === 0) {
+			console.warn('[Modules] No modules match filter:', filter);
 			return E('div', { 'class': 'secubox-empty-state' }, [
 				E('div', { 'class': 'secubox-empty-icon' }, '📭'),
 				E('div', { 'class': 'secubox-empty-title' }, 'No modules found'),
-				E('div', { 'class': 'secubox-empty-text' }, 'Try selecting a different category')
+				E('div', { 'class': 'secubox-empty-text' }, 'Try selecting a different category or view all modules')
 			]);
 		}
 

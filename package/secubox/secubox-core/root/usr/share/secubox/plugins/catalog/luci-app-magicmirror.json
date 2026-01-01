@@ -1,0 +1,35 @@
+{
+  "id": "luci-app-magicmirror",
+  "name": "MagicMirror Manager",
+  "version": "0.4.0",
+  "category": "iot",
+  "runtime": "native",
+  "description": "Module manager and web controller for MagicMirror² smart mirror platform",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "🪞",
+  "tags": [
+    "smart-mirror",
+    "magicmirror",
+    "modules",
+    "dashboard"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-magicmirror",
+      "luci-base",
+      "rpcd"
+    ]
+  },
+  "capabilities": [
+    "module-management",
+    "mirror-control"
+  ],
+  "requirements": {
+    "min_ram_mb": 32,
+    "min_storage_mb": 5
+  },
+  "status": "stable",
+  "notes": "Module manager and web controller for MagicMirror²."
+}

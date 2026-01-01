@@ -1,0 +1,37 @@
+{
+  "id": "luci-app-netdata-dashboard",
+  "name": "Netdata Dashboard",
+  "version": "0.5.0",
+  "category": "monitoring",
+  "runtime": "native",
+  "description": "Real-time system monitoring dashboard with Netdata integration for CPU, memory, network, and disk metrics",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "📊",
+  "tags": [
+    "monitoring",
+    "metrics",
+    "performance",
+    "netdata"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-netdata-dashboard",
+      "luci-base",
+      "luci-app-secubox",
+      "rpcd"
+    ]
+  },
+  "capabilities": [
+    "performance-monitoring",
+    "metrics",
+    "real-time-monitoring"
+  ],
+  "requirements": {
+    "min_ram_mb": 64,
+    "min_storage_mb": 10
+  },
+  "status": "stable",
+  "notes": "Real-time system monitoring with Netdata integration."
+}

@@ -1,0 +1,40 @@
+{
+  "id": "luci-app-vhost-manager",
+  "name": "VHost Manager",
+  "version": "0.5.0",
+  "category": "network",
+  "runtime": "native",
+  "description": "Nginx reverse proxy manager with Let's Encrypt SSL certificates, authentication, and WebSocket support",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "🌐",
+  "tags": [
+    "reverse-proxy",
+    "nginx",
+    "ssl",
+    "lets-encrypt",
+    "websocket"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-vhost-manager",
+      "luci-base",
+      "rpcd",
+      "nginx-ssl",
+      "acme",
+      "curl"
+    ]
+  },
+  "capabilities": [
+    "reverse-proxy",
+    "ssl-certificates",
+    "vhost-management"
+  ],
+  "requirements": {
+    "min_ram_mb": 128,
+    "min_storage_mb": 50
+  },
+  "status": "stable",
+  "notes": "Nginx reverse proxy manager with Let's Encrypt SSL and WebSocket support."
+}

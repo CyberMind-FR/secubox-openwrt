@@ -1,0 +1,38 @@
+{
+  "id": "secubox-app-nextcloud",
+  "name": "Nextcloud",
+  "version": "30.0.2",
+  "category": "productivity",
+  "runtime": "docker",
+  "description": "Self-hosted file sync and share platform with calendar, contacts, mail, video calls, and collaborative document editing",
+  "author": "CyberMind.fr",
+  "license": "AGPL-3.0",
+  "url": "https://nextcloud.com/",
+  "icon": "\u2601\ufe0f",
+  "tags": [
+    "cloud",
+    "file-sync",
+    "collaboration",
+    "calendar",
+    "contacts",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-nextcloud",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "cloud",
+    "file-sync",
+    "collaboration"
+  ],
+  "requirements": {
+    "min_ram_mb": 512,
+    "min_storage_mb": 2048
+  },
+  "status": "stable",
+  "notes": "Dropbox alternative with apps for mobile and desktop. Supports SQLite (default) or MySQL/PostgreSQL."
+}

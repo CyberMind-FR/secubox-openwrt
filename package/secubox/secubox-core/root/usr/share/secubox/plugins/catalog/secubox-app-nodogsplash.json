@@ -1,0 +1,37 @@
+{
+  "id": "secubox-app-nodogsplash",
+  "name": "Nodogsplash",
+  "version": "5.0.2",
+  "category": "network",
+  "runtime": "native",
+  "description": "Simple captive portal solution that intercepts HTTP traffic and serves customizable splash page",
+  "author": "CyberMind.fr",
+  "license": "GPL-2.0",
+  "url": "https://github.com/nodogsplash/nodogsplash",
+  "icon": "🌐",
+  "tags": [
+    "captive-portal",
+    "authentication",
+    "network-access",
+    "guest-wifi"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-nodogsplash",
+      "libmicrohttpd",
+      "libjson-c",
+      "iptables-nft"
+    ]
+  },
+  "capabilities": [
+    "captive-portal",
+    "network-authentication",
+    "guest-access"
+  ],
+  "requirements": {
+    "min_ram_mb": 64,
+    "min_storage_mb": 10
+  },
+  "status": "stable",
+  "notes": "Provides simple captive portal for guest WiFi access control. Customizable splash pages."
+}

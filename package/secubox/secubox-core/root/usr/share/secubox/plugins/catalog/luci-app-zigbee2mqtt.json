@@ -1,0 +1,35 @@
+{
+  "id": "luci-app-zigbee2mqtt",
+  "name": "Zigbee2MQTT Manager",
+  "version": "0.4.0",
+  "category": "iot",
+  "runtime": "native",
+  "description": "Management dashboard for Zigbee2MQTT with device pairing and configuration",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "📡",
+  "tags": [
+    "zigbee",
+    "mqtt",
+    "iot",
+    "smart-home"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-zigbee2mqtt",
+      "luci-base",
+      "rpcd"
+    ]
+  },
+  "capabilities": [
+    "zigbee-management",
+    "device-pairing"
+  ],
+  "requirements": {
+    "min_ram_mb": 32,
+    "min_storage_mb": 5
+  },
+  "status": "stable",
+  "notes": "Management dashboard for Zigbee2MQTT."
+}

@@ -1,0 +1,37 @@
+{
+  "id": "secubox-app-vaultwarden",
+  "name": "Vaultwarden",
+  "version": "1.32.7",
+  "category": "security",
+  "runtime": "docker",
+  "description": "Lightweight Bitwarden-compatible password manager server written in Rust with web vault and mobile sync",
+  "author": "CyberMind.fr",
+  "license": "GPL-3.0",
+  "url": "https://github.com/dani-garcia/vaultwarden",
+  "icon": "\ud83d\udd10",
+  "tags": [
+    "password-manager",
+    "security",
+    "bitwarden",
+    "vault",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-vaultwarden",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "password-manager",
+    "security",
+    "bitwarden"
+  ],
+  "requirements": {
+    "min_ram_mb": 128,
+    "min_storage_mb": 500
+  },
+  "status": "stable",
+  "notes": "Bitwarden-compatible server. Use with official Bitwarden apps. HTTPS strongly recommended."
+}

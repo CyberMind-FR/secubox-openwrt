@@ -1,0 +1,36 @@
+{
+  "id": "secubox-app-portainer",
+  "name": "Portainer",
+  "version": "2.21.4",
+  "category": "hosting",
+  "runtime": "docker",
+  "description": "Powerful Docker container management platform with web UI for managing containers, images, networks, and volumes",
+  "author": "CyberMind.fr",
+  "license": "Zlib",
+  "url": "https://www.portainer.io/",
+  "icon": "\ud83d\udc33",
+  "tags": [
+    "docker",
+    "containers",
+    "management",
+    "orchestration"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-portainer",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "docker",
+    "containers",
+    "management"
+  ],
+  "requirements": {
+    "min_ram_mb": 128,
+    "min_storage_mb": 500
+  },
+  "status": "stable",
+  "notes": "Manages Docker containers on the router. Access via web UI to deploy and monitor containers."
+}

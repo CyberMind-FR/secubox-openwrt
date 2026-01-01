@@ -1,0 +1,38 @@
+{
+  "id": "luci-app-auth-guardian",
+  "name": "Auth Guardian",
+  "version": "0.4.0",
+  "category": "security",
+  "runtime": "native",
+  "description": "Comprehensive authentication and session management with captive portal, OAuth2/OIDC integration, voucher system, and time-based access control",
+  "author": "CyberMind.fr",
+  "license": "MIT",
+  "url": "",
+  "icon": "🔐",
+  "tags": [
+    "authentication",
+    "captive-portal",
+    "oauth2",
+    "vouchers",
+    "session-management"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-auth-guardian",
+      "luci-base",
+      "rpcd",
+      "nodogsplash"
+    ]
+  },
+  "capabilities": [
+    "authentication",
+    "session-management",
+    "captive-portal"
+  ],
+  "requirements": {
+    "min_ram_mb": 64,
+    "min_storage_mb": 10
+  },
+  "status": "stable",
+  "notes": "Authentication & Session Manager with captive portal, OAuth2/OIDC, voucher system."
+}

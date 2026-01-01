@@ -1,0 +1,47 @@
+{
+  "profile": {
+    "id": "smart-home",
+    "name": "Smart Home Profile",
+    "description": "Complete home automation with IoT device support and integrations",
+    "version": "1.0.0",
+    "author": "SecuBox Team"
+  },
+  "modules": {
+    "required": [
+      "luci-app-mqtt-bridge",
+      "secubox-app-homeassistant"
+    ],
+    "recommended": [
+      "secubox-app-zigbee2mqtt",
+      "secubox-app-domoticz",
+      "secubox-app-magicmirror",
+      "luci-app-vhost-manager"
+    ]
+  },
+  "network": {
+    "mode": "router",
+    "vlans": {
+      "iot": {
+        "id": 10,
+        "subnet": "192.168.10.0/24",
+        "isolated": true
+      },
+      "trusted": {
+        "id": 20,
+        "subnet": "192.168.20.0/24",
+        "isolated": false
+      }
+    }
+  },
+  "services": {
+    "mqtt": {
+      "enabled": true,
+      "port": 1883,
+      "websocket_port": 9001
+    },
+    "homeassistant": {
+      "enabled": true,
+      "port": 8123
+    }
+  }
+}

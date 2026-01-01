@@ -1,0 +1,1450 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-01-01T00:00:00Z",
+  "repository": "https://github.com/cybermind-studios/secubox-openwrt",
+  "description": "SecuBox AppStore Plugin Catalog",
+  "categories": {
+    "network": {
+      "name": "Network & Connectivity",
+      "description": "Network management, VPN, DNS, and connectivity tools",
+      "icon": "🌐"
+    },
+    "security": {
+      "name": "Security & Privacy",
+      "description": "Security tools, firewalls, intrusion detection, and authentication",
+      "icon": "🔒"
+    },
+    "monitoring": {
+      "name": "Monitoring & Analytics",
+      "description": "System monitoring, metrics, and analytics dashboards",
+      "icon": "📊"
+    },
+    "iot": {
+      "name": "IoT & Smart Home",
+      "description": "Smart home automation and IoT device integration",
+      "icon": "🏠"
+    },
+    "media": {
+      "name": "Media & Entertainment",
+      "description": "Media servers, streaming, and entertainment applications",
+      "icon": "🎵"
+    },
+    "productivity": {
+      "name": "Productivity & Collaboration",
+      "description": "Cloud storage, collaboration, and productivity tools",
+      "icon": "☁️"
+    },
+    "system": {
+      "name": "System & Management",
+      "description": "System administration, backup, and management tools",
+      "icon": "⚙️"
+    },
+    "documentation": {
+      "name": "Documentation & Help",
+      "description": "Documentation, tutorials, and help resources",
+      "icon": "📚"
+    }
+  },
+  "plugins": [
+    {
+      "id": "luci-app-auth-guardian",
+      "name": "Auth Guardian",
+      "version": "0.4.0",
+      "category": "security",
+      "runtime": "native",
+      "description": "Comprehensive authentication and session management with captive portal, OAuth2/OIDC integration, voucher system, and time-based access control",
+      "author": "CyberMind.fr",
+      "license": "MIT",
+      "url": "",
+      "icon": "🔐",
+      "tags": [
+        "authentication",
+        "captive-portal",
+        "oauth2",
+        "vouchers",
+        "session-management"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-auth-guardian",
+          "luci-base",
+          "rpcd",
+          "nodogsplash"
+        ]
+      },
+      "capabilities": [
+        "authentication",
+        "session-management",
+        "captive-portal"
+      ],
+      "requirements": {
+        "min_ram_mb": 64,
+        "min_storage_mb": 10
+      },
+      "status": "stable",
+      "notes": "Authentication & Session Manager with captive portal, OAuth2/OIDC, voucher system."
+    },
+    {
+      "id": "luci-app-bandwidth-manager",
+      "name": "Bandwidth Manager",
+      "version": "0.4.0",
+      "category": "network",
+      "runtime": "native",
+      "description": "Advanced bandwidth management with QoS rules, client quotas, and SQM integration",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "📊",
+      "tags": [
+        "bandwidth",
+        "qos",
+        "traffic-control",
+        "sqm",
+        "quotas"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-bandwidth-manager",
+          "luci-base",
+          "rpcd",
+          "tc",
+          "kmod-sched-core",
+          "kmod-sched-cake",
+          "kmod-ifb",
+          "sqm-scripts",
+          "iptables"
+        ]
+      },
+      "capabilities": [
+        "qos",
+        "bandwidth-control",
+        "traffic-shaping"
+      ],
+      "requirements": {
+        "min_ram_mb": 64,
+        "min_storage_mb": 10
+      },
+      "status": "stable",
+      "notes": "Advanced bandwidth management with QoS, client quotas, and SQM."
+    },
+    {
+      "id": "luci-app-cdn-cache",
+      "name": "CDN Cache",
+      "version": "0.5.0",
+      "category": "network",
+      "runtime": "native",
+      "description": "Dashboard for managing local CDN caching proxy for content delivery optimization",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "🚀",
+      "tags": [
+        "cdn",
+        "cache",
+        "proxy",
+        "optimization",
+        "performance"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-cdn-cache",
+          "luci-base",
+          "rpcd"
+        ]
+      },
+      "capabilities": [
+        "cdn-caching",
+        "content-optimization"
+      ],
+      "requirements": {
+        "min_ram_mb": 128,
+        "min_storage_mb": 500
+      },
+      "status": "stable",
+      "notes": "Local CDN caching proxy for faster content delivery."
+    },
+    {
+      "id": "luci-app-client-guardian",
+      "name": "Client Guardian",
+      "version": "0.4.0",
+      "category": "security",
+      "runtime": "native",
+      "description": "Network Access Control with client monitoring, zone management, captive portal, parental controls, and SMS/email alerts",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "👥",
+      "tags": [
+        "network-access",
+        "client-monitoring",
+        "parental-control",
+        "captive-portal",
+        "alerts"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-client-guardian",
+          "luci-base",
+          "luci-app-secubox",
+          "rpcd",
+          "dnsmasq-full",
+          "iptables",
+          "uhttpd"
+        ]
+      },
+      "capabilities": [
+        "network-access-control",
+        "client-monitoring",
+        "parental-controls"
+      ],
+      "requirements": {
+        "min_ram_mb": 64,
+        "min_storage_mb": 10
+      },
+      "status": "stable",
+      "notes": "Network Access Control with client monitoring, zone management, and parental controls."
+    },
+    {
+      "id": "luci-app-crowdsec-dashboard",
+      "name": "CrowdSec Dashboard",
+      "version": "0.4.0",
+      "category": "security",
+      "runtime": "native",
+      "description": "Dashboard for CrowdSec intrusion detection with real-time threat monitoring and alerts",
+      "author": "CyberMind.fr",
+      "license": "MIT",
+      "url": "",
+      "icon": "🛡️",
+      "tags": [
+        "security",
+        "intrusion-detection",
+        "monitoring",
+        "crowdsec"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-crowdsec-dashboard",
+          "luci-base",
+          "rpcd",
+          "crowdsec"
+        ]
+      },
+      "capabilities": [
+        "security-monitoring",
+        "intrusion-detection"
+      ],
+      "requirements": {
+        "min_ram_mb": 64,
+        "min_storage_mb": 10
+      },
+      "status": "stable",
+      "notes": "Dashboard for CrowdSec intrusion detection with real-time threat monitoring."
+    },
+    {
+      "id": "luci-app-ksm-manager",
+      "name": "Key Storage Manager",
+      "version": "0.4.0",
+      "category": "security",
+      "runtime": "native",
+      "description": "Centralized cryptographic key management with hardware security module (HSM) support for Nitrokey and YubiKey devices",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "🔑",
+      "tags": [
+        "cryptography",
+        "hsm",
+        "key-management",
+        "yubikey",
+        "nitrokey",
+        "certificates"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-ksm-manager",
+          "luci-base",
+          "rpcd",
+          "openssl-util",
+          "gnupg2",
+          "nitropy",
+          "yubikey-manager",
+          "opensc",
+          "libccid",
+          "pcscd"
+        ]
+      },
+      "capabilities": [
+        "key-management",
+        "hsm-support",
+        "certificate-management"
+      ],
+      "requirements": {
+        "min_ram_mb": 64,
+        "min_storage_mb": 20
+      },
+      "status": "stable",
+      "notes": "Centralized key management with HSM support for Nitrokey and YubiKey."
+    },
+    {
+      "id": "luci-app-magicmirror",
+      "name": "MagicMirror Manager",
+      "version": "0.4.0",
+      "category": "iot",
+      "runtime": "native",
+      "description": "Module manager and web controller for MagicMirror² smart mirror platform",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "🪞",
+      "tags": [
+        "smart-mirror",
+        "magicmirror",
+        "modules",
+        "dashboard"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-magicmirror",
+          "luci-base",
+          "rpcd"
+        ]
+      },
+      "capabilities": [
+        "module-management",
+        "mirror-control"
+      ],
+      "requirements": {
+        "min_ram_mb": 32,
+        "min_storage_mb": 5
+      },
+      "status": "stable",
+      "notes": "Module manager and web controller for MagicMirror²."
+    },
+    {
+      "id": "luci-app-media-flow",
+      "name": "Media Flow",
+      "version": "0.4.0",
+      "category": "monitoring",
+      "runtime": "native",
+      "description": "Real-time detection and monitoring of streaming services (Netflix, YouTube, Spotify) with quality estimation and alerts",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "📺",
+      "tags": [
+        "streaming",
+        "monitoring",
+        "dpi",
+        "media",
+        "quality-monitoring"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-media-flow",
+          "luci-base",
+          "rpcd",
+          "netifyd",
+          "luci-app-netifyd-dashboard"
+        ]
+      },
+      "capabilities": [
+        "streaming-detection",
+        "media-monitoring",
+        "quality-estimation"
+      ],
+      "requirements": {
+        "min_ram_mb": 64,
+        "min_storage_mb": 10
+      },
+      "status": "stable",
+      "notes": "Real-time streaming detection and monitoring with quality estimation."
+    },
+    {
+      "id": "luci-app-mqtt-bridge",
+      "name": "MQTT Bridge",
+      "version": "0.4.0",
+      "category": "iot",
+      "runtime": "native",
+      "description": "USB-to-MQTT IoT hub for connecting USB devices to MQTT broker",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "🌉",
+      "tags": [
+        "mqtt",
+        "iot",
+        "usb",
+        "bridge"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-mqtt-bridge",
+          "luci-base",
+          "libuci"
+        ]
+      },
+      "capabilities": [
+        "mqtt-bridge",
+        "usb-integration"
+      ],
+      "requirements": {
+        "min_ram_mb": 32,
+        "min_storage_mb": 5
+      },
+      "status": "stable",
+      "notes": "USB-to-MQTT IoT hub for connecting USB devices to MQTT broker."
+    },
+    {
+      "id": "luci-app-netdata-dashboard",
+      "name": "Netdata Dashboard",
+      "version": "0.5.0",
+      "category": "monitoring",
+      "runtime": "native",
+      "description": "Real-time system monitoring dashboard with Netdata integration for CPU, memory, network, and disk metrics",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "📊",
+      "tags": [
+        "monitoring",
+        "metrics",
+        "performance",
+        "netdata"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-netdata-dashboard",
+          "luci-base",
+          "luci-app-secubox",
+          "rpcd"
+        ]
+      },
+      "capabilities": [
+        "performance-monitoring",
+        "metrics",
+        "real-time-monitoring"
+      ],
+      "requirements": {
+        "min_ram_mb": 64,
+        "min_storage_mb": 10
+      },
+      "status": "stable",
+      "notes": "Real-time system monitoring with Netdata integration."
+    },
+    {
+      "id": "luci-app-netifyd-dashboard",
+      "name": "Netifyd Dashboard",
+      "version": "0.4.0",
+      "category": "monitoring",
+      "runtime": "native",
+      "description": "Network Intelligence dashboard with Deep Packet Inspection for application and protocol detection",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "🔍",
+      "tags": [
+        "dpi",
+        "network-intelligence",
+        "monitoring",
+        "protocol-detection"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-netifyd-dashboard",
+          "luci-base",
+          "luci-app-secubox",
+          "rpcd",
+          "netifyd"
+        ]
+      },
+      "capabilities": [
+        "deep-packet-inspection",
+        "network-intelligence",
+        "protocol-detection"
+      ],
+      "requirements": {
+        "min_ram_mb": 128,
+        "min_storage_mb": 20
+      },
+      "status": "stable",
+      "notes": "Network Intelligence dashboard with Deep Packet Inspection."
+    },
+    {
+      "id": "luci-app-network-modes",
+      "name": "Network Modes",
+      "version": "0.5.0",
+      "category": "network",
+      "runtime": "native",
+      "description": "Configure OpenWrt for different network modes: Sniffer, Access Point, Relay, Router",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "🔀",
+      "tags": [
+        "network-modes",
+        "configuration",
+        "router",
+        "access-point",
+        "sniffer"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-network-modes",
+          "luci-base",
+          "luci-app-secubox",
+          "rpcd"
+        ]
+      },
+      "capabilities": [
+        "network-mode-switching",
+        "configuration-management"
+      ],
+      "requirements": {
+        "min_ram_mb": 32,
+        "min_storage_mb": 5
+      },
+      "status": "stable",
+      "notes": "Configure different network modes: Sniffer, AP, Relay, Router."
+    },
+    {
+      "id": "luci-app-network-tweaks",
+      "name": "Network Tweaks",
+      "version": "0.4.0",
+      "category": "network",
+      "runtime": "native",
+      "description": "Advanced network optimization and tuning parameters for performance",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "⚙️",
+      "tags": [
+        "network",
+        "optimization",
+        "tuning",
+        "performance"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-network-tweaks",
+          "luci-base",
+          "rpcd"
+        ]
+      },
+      "capabilities": [
+        "network-optimization",
+        "performance-tuning"
+      ],
+      "requirements": {
+        "min_ram_mb": 32,
+        "min_storage_mb": 5
+      },
+      "status": "stable",
+      "notes": "Advanced network optimization and tuning parameters."
+    },
+    {
+      "id": "luci-app-secubox-bonus",
+      "name": "SecuBox Bonus Content",
+      "version": "0.1.0",
+      "category": "documentation",
+      "runtime": "native",
+      "description": "SecuBox marketing and documentation website with demo pages, tutorials, blog articles, and multilingual content",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "📚",
+      "tags": [
+        "documentation",
+        "tutorials",
+        "marketing",
+        "demos",
+        "multilingual"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-secubox-bonus",
+          "luci-base"
+        ]
+      },
+      "capabilities": [
+        "documentation",
+        "tutorials"
+      ],
+      "requirements": {
+        "min_ram_mb": 16,
+        "min_storage_mb": 10
+      },
+      "status": "stable",
+      "notes": "SecuBox marketing and documentation website. Includes demo pages, tutorials, blog articles, and multilingual content for SecuBox modules."
+    },
+    {
+      "id": "luci-app-system-hub",
+      "name": "System Hub",
+      "version": "0.5.1",
+      "category": "system",
+      "runtime": "native",
+      "description": "Central system control dashboard with monitoring, services management, logs, and backup",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "⚡",
+      "tags": [
+        "system",
+        "dashboard",
+        "monitoring",
+        "services",
+        "backup"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-system-hub",
+          "luci-base",
+          "rpcd",
+          "coreutils",
+          "coreutils-base64"
+        ]
+      },
+      "capabilities": [
+        "system-management",
+        "service-control",
+        "backup"
+      ],
+      "requirements": {
+        "min_ram_mb": 32,
+        "min_storage_mb": 10
+      },
+      "status": "stable",
+      "notes": "Central system control with monitoring, services, logs, and backup."
+    },
+    {
+      "id": "luci-app-traffic-shaper",
+      "name": "Traffic Shaper",
+      "version": "0.4.0",
+      "category": "network",
+      "runtime": "native",
+      "description": "Advanced traffic shaping with TC/CAKE for precise bandwidth control",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "🚦",
+      "tags": [
+        "traffic-shaping",
+        "qos",
+        "cake",
+        "bandwidth"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-traffic-shaper",
+          "luci-base",
+          "rpcd",
+          "tc",
+          "kmod-sched-core",
+          "kmod-sched-cake"
+        ]
+      },
+      "capabilities": [
+        "traffic-shaping",
+        "qos",
+        "bandwidth-control"
+      ],
+      "requirements": {
+        "min_ram_mb": 64,
+        "min_storage_mb": 10
+      },
+      "status": "stable",
+      "notes": "Advanced traffic shaping with TC/CAKE for precise bandwidth control."
+    },
+    {
+      "id": "luci-app-vhost-manager",
+      "name": "VHost Manager",
+      "version": "0.5.0",
+      "category": "network",
+      "runtime": "native",
+      "description": "Nginx reverse proxy manager with Let's Encrypt SSL certificates, authentication, and WebSocket support",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "🌐",
+      "tags": [
+        "reverse-proxy",
+        "nginx",
+        "ssl",
+        "lets-encrypt",
+        "websocket"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-vhost-manager",
+          "luci-base",
+          "rpcd",
+          "nginx-ssl",
+          "acme",
+          "curl"
+        ]
+      },
+      "capabilities": [
+        "reverse-proxy",
+        "ssl-certificates",
+        "vhost-management"
+      ],
+      "requirements": {
+        "min_ram_mb": 128,
+        "min_storage_mb": 50
+      },
+      "status": "stable",
+      "notes": "Nginx reverse proxy manager with Let's Encrypt SSL and WebSocket support."
+    },
+    {
+      "id": "luci-app-wireguard-dashboard",
+      "name": "WireGuard Dashboard",
+      "version": "0.4.0",
+      "category": "network",
+      "runtime": "native",
+      "description": "Modern dashboard for WireGuard VPN monitoring on OpenWrt",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "🔒",
+      "tags": [
+        "vpn",
+        "wireguard",
+        "monitoring",
+        "dashboard"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-wireguard-dashboard",
+          "luci-base",
+          "luci-app-secubox",
+          "rpcd",
+          "wireguard-tools"
+        ]
+      },
+      "capabilities": [
+        "vpn-monitoring",
+        "wireguard-management"
+      ],
+      "requirements": {
+        "min_ram_mb": 32,
+        "min_storage_mb": 5
+      },
+      "status": "stable",
+      "notes": "Modern dashboard for WireGuard VPN monitoring."
+    },
+    {
+      "id": "luci-app-zigbee2mqtt",
+      "name": "Zigbee2MQTT Manager",
+      "version": "0.4.0",
+      "category": "iot",
+      "runtime": "native",
+      "description": "Management dashboard for Zigbee2MQTT with device pairing and configuration",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "",
+      "icon": "📡",
+      "tags": [
+        "zigbee",
+        "mqtt",
+        "iot",
+        "smart-home"
+      ],
+      "packages": {
+        "required": [
+          "luci-app-zigbee2mqtt",
+          "luci-base",
+          "rpcd"
+        ]
+      },
+      "capabilities": [
+        "zigbee-management",
+        "device-pairing"
+      ],
+      "requirements": {
+        "min_ram_mb": 32,
+        "min_storage_mb": 5
+      },
+      "status": "stable",
+      "notes": "Management dashboard for Zigbee2MQTT."
+    },
+    {
+      "id": "secubox-app-adguardhome",
+      "name": "AdGuard Home",
+      "version": "0.107.54",
+      "category": "network",
+      "runtime": "docker",
+      "description": "Network-wide ad and tracker blocker with DNS-over-HTTPS/TLS support, parental controls, and detailed analytics",
+      "author": "CyberMind.fr",
+      "license": "GPL-3.0",
+      "url": "https://adguard.com/adguard-home/overview.html",
+      "icon": "🛡️",
+      "tags": [
+        "dns",
+        "ad-blocker",
+        "privacy",
+        "parental-control",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-adguardhome",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "dns",
+        "ad-blocker",
+        "privacy"
+      ],
+      "requirements": {
+        "min_ram_mb": 128,
+        "min_storage_mb": 100
+      },
+      "status": "stable",
+      "notes": "Pi-hole alternative with DNS-over-HTTPS/TLS. Configure router to use AdGuard Home as DNS server."
+    },
+    {
+      "id": "secubox-app-citadel",
+      "name": "Citadel",
+      "version": "9.99",
+      "category": "productivity",
+      "runtime": "docker",
+      "description": "Complete groupware solution with email, calendar, contacts, instant messaging, and collaboration tools",
+      "author": "CyberMind.fr",
+      "license": "GPL-3.0",
+      "url": "https://www.citadel.org/",
+      "icon": "🏢",
+      "tags": [
+        "groupware",
+        "email",
+        "calendar",
+        "collaboration",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-citadel",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "groupware",
+        "email",
+        "calendar"
+      ],
+      "requirements": {
+        "min_ram_mb": 512,
+        "min_storage_mb": 1024
+      },
+      "status": "stable",
+      "conflicts": [
+        "mailinabox"
+      ],
+      "notes": "Web-based groupware with email server, calendar, contacts, and instant messaging."
+    },
+    {
+      "id": "secubox-app-crowdsec",
+      "name": "CrowdSec",
+      "version": "1.7.4",
+      "category": "security",
+      "runtime": "native",
+      "description": "CrowdSec is an open-source, lightweight security engine that detects and responds to malicious behaviors",
+      "author": "CyberMind.fr",
+      "license": "MIT",
+      "url": "https://github.com/crowdsecurity/crowdsec",
+      "icon": "🛡️",
+      "tags": [
+        "security",
+        "ids",
+        "ips",
+        "firewall",
+        "threat-detection"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-crowdsec",
+          "luci-app-crowdsec-dashboard",
+          "iptables-nft"
+        ]
+      },
+      "capabilities": [
+        "security",
+        "ids",
+        "ips"
+      ],
+      "requirements": {
+        "min_ram_mb": 128,
+        "min_storage_mb": 50
+      },
+      "status": "dev",
+      "notes": "Requires full OpenWrt build environment (not SDK). Go 1.23.12 available in OpenWrt 24.10."
+    },
+    {
+      "id": "secubox-app-domoticz",
+      "name": "Domoticz",
+      "version": "1.0.0",
+      "category": "iot",
+      "runtime": "docker",
+      "description": "Home automation system with support for various devices and protocols",
+      "author": "CyberMind.fr",
+      "license": "GPL-3.0",
+      "url": "https://www.domoticz.com/",
+      "icon": "🏠",
+      "tags": [
+        "home-automation",
+        "iot",
+        "smart-home",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-domoticz",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "home-automation",
+        "iot",
+        "smart-home"
+      ],
+      "requirements": {
+        "min_ram_mb": 256,
+        "min_storage_mb": 100
+      },
+      "status": "stable"
+    },
+    {
+      "id": "secubox-app-gitea",
+      "name": "Gitea",
+      "version": "1.22.6",
+      "category": "productivity",
+      "runtime": "docker",
+      "description": "Lightweight self-hosted Git service with web UI, issue tracking, pull requests, and CI/CD integration",
+      "author": "CyberMind.fr",
+      "license": "MIT",
+      "url": "https://gitea.io/",
+      "icon": "🦊",
+      "tags": [
+        "git",
+        "version-control",
+        "code-hosting",
+        "collaboration",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-gitea",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "git",
+        "version-control",
+        "code-hosting"
+      ],
+      "requirements": {
+        "min_ram_mb": 256,
+        "min_storage_mb": 1024
+      },
+      "status": "stable",
+      "notes": "GitHub/GitLab alternative. Lightweight and fast. Supports SSH and HTTP Git access."
+    },
+    {
+      "id": "secubox-app-homeassistant",
+      "name": "Home Assistant",
+      "version": "2024.12.5",
+      "category": "iot",
+      "runtime": "docker",
+      "description": "Open-source home automation platform with support for 2000+ integrations including lights, sensors, cameras, and voice assistants",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "url": "https://www.home-assistant.io/",
+      "icon": "🏡",
+      "tags": [
+        "home-automation",
+        "iot",
+        "smart-home",
+        "automation",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-homeassistant",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "home-automation",
+        "iot",
+        "smart-home"
+      ],
+      "requirements": {
+        "min_ram_mb": 512,
+        "min_storage_mb": 2048
+      },
+      "status": "stable",
+      "notes": "Most popular home automation platform. Supports Zigbee, Z-Wave, MQTT, and 2000+ integrations."
+    },
+    {
+      "id": "secubox-app-ispconfig",
+      "name": "ISPConfig",
+      "version": "3.2.12",
+      "category": "hosting",
+      "runtime": "docker",
+      "description": "Web hosting control panel for managing multiple servers, websites, email accounts, DNS, and databases",
+      "author": "CyberMind.fr",
+      "license": "BSD-3-Clause",
+      "url": "https://www.ispconfig.org/",
+      "icon": "🖥️",
+      "tags": [
+        "hosting",
+        "control-panel",
+        "web-server",
+        "email",
+        "dns",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-ispconfig",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "hosting",
+        "control-panel",
+        "web-server"
+      ],
+      "requirements": {
+        "min_ram_mb": 1024,
+        "min_storage_mb": 2048
+      },
+      "status": "stable",
+      "conflicts": [
+        "mailinabox"
+      ],
+      "notes": "Full hosting control panel with Apache/nginx, MySQL/MariaDB, PHP, email, DNS, and FTP."
+    },
+    {
+      "id": "secubox-app-jellyfin",
+      "name": "Jellyfin",
+      "version": "10.10.3",
+      "category": "media",
+      "runtime": "docker",
+      "description": "Free media server for managing and streaming movies, TV shows, music, and photos with apps for all platforms",
+      "author": "CyberMind.fr",
+      "license": "GPL-2.0",
+      "url": "https://jellyfin.org/",
+      "icon": "🎬",
+      "tags": [
+        "media",
+        "streaming",
+        "movies",
+        "tv-shows",
+        "music",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-jellyfin",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "media",
+        "streaming",
+        "movies"
+      ],
+      "requirements": {
+        "min_ram_mb": 512,
+        "min_storage_mb": 500
+      },
+      "status": "stable",
+      "notes": "Plex alternative with no premium features. Hardware transcoding supported with GPU."
+    },
+    {
+      "id": "secubox-app-localai",
+      "name": "LocalAI",
+      "version": "2.25.0",
+      "category": "ai",
+      "runtime": "docker",
+      "description": "Self-hosted OpenAI-compatible API for running LLMs locally with support for text, audio, and image generation",
+      "author": "CyberMind.fr",
+      "license": "MIT",
+      "url": "https://localai.io/",
+      "icon": "🤖",
+      "tags": [
+        "ai",
+        "llm",
+        "machine-learning",
+        "openai",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-localai",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "ai",
+        "llm",
+        "machine-learning"
+      ],
+      "requirements": {
+        "min_ram_mb": 2048,
+        "min_storage_mb": 5120
+      },
+      "status": "stable",
+      "notes": "GPU acceleration optional. Model files require additional storage (1-10GB per model)."
+    },
+    {
+      "id": "secubox-app-lyrion",
+      "name": "Lyrion Music Server",
+      "version": "1.0.0",
+      "category": "media",
+      "runtime": "docker",
+      "description": "Multi-room audio streaming server (formerly Logitech Media Server)",
+      "author": "CyberMind.fr",
+      "license": "GPL-2.0",
+      "url": "https://lyrion.org/",
+      "icon": "🎵",
+      "tags": [
+        "music",
+        "streaming",
+        "multi-room",
+        "audio",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-lyrion",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "music",
+        "streaming",
+        "multi-room"
+      ],
+      "requirements": {
+        "min_ram_mb": 128,
+        "min_storage_mb": 50
+      },
+      "status": "stable"
+    },
+    {
+      "id": "secubox-app-magicmirror",
+      "name": "MagicMirror²",
+      "version": "2.28.0",
+      "category": "iot",
+      "runtime": "docker",
+      "description": "Smart mirror platform with modular display of calendar, weather, news, and custom modules. Transform any display into an information hub.",
+      "author": "CyberMind.fr",
+      "license": "MIT",
+      "url": "https://magicmirror.builders/",
+      "icon": "🪞",
+      "tags": [
+        "smart-mirror",
+        "dashboard",
+        "display",
+        "modules",
+        "iot",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-magicmirror",
+          "luci-app-magicmirror",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "smart-mirror",
+        "dashboard",
+        "display"
+      ],
+      "requirements": {
+        "min_ram_mb": 512,
+        "min_storage_mb": 1024
+      },
+      "status": "stable",
+      "notes": "Modular smart mirror platform. LuCI app provides module manager and web controller. Access via web browser or connect to a display."
+    },
+    {
+      "id": "secubox-app-mailinabox",
+      "name": "Mail-in-a-Box",
+      "version": "70.0",
+      "category": "productivity",
+      "runtime": "docker",
+      "description": "Easy-to-deploy email server with webmail, contacts, calendar, spam filtering, and automatic security updates",
+      "author": "CyberMind.fr",
+      "license": "CC0-1.0",
+      "url": "https://mailinabox.email/",
+      "icon": "📧",
+      "tags": [
+        "email",
+        "mail-server",
+        "webmail",
+        "calendar",
+        "contacts",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-mailinabox",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "email",
+        "mail-server",
+        "webmail"
+      ],
+      "requirements": {
+        "min_ram_mb": 768,
+        "min_storage_mb": 1024
+      },
+      "status": "stable",
+      "conflicts": [
+        "citadel",
+        "ispconfig"
+      ],
+      "notes": "Requires a domain name with proper DNS configuration. Includes webmail, spam filtering, and automatic TLS."
+    },
+    {
+      "id": "secubox-app-nextcloud",
+      "name": "Nextcloud",
+      "version": "30.0.2",
+      "category": "productivity",
+      "runtime": "docker",
+      "description": "Self-hosted file sync and share platform with calendar, contacts, mail, video calls, and collaborative document editing",
+      "author": "CyberMind.fr",
+      "license": "AGPL-3.0",
+      "url": "https://nextcloud.com/",
+      "icon": "☁️",
+      "tags": [
+        "cloud",
+        "file-sync",
+        "collaboration",
+        "calendar",
+        "contacts",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-nextcloud",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "cloud",
+        "file-sync",
+        "collaboration"
+      ],
+      "requirements": {
+        "min_ram_mb": 512,
+        "min_storage_mb": 2048
+      },
+      "status": "stable",
+      "notes": "Dropbox alternative with apps for mobile and desktop. Supports SQLite (default) or MySQL/PostgreSQL."
+    },
+    {
+      "id": "secubox-app-nodogsplash",
+      "name": "Nodogsplash",
+      "version": "5.0.2",
+      "category": "network",
+      "runtime": "native",
+      "description": "Simple captive portal solution that intercepts HTTP traffic and serves customizable splash page",
+      "author": "CyberMind.fr",
+      "license": "GPL-2.0",
+      "url": "https://github.com/nodogsplash/nodogsplash",
+      "icon": "🌐",
+      "tags": [
+        "captive-portal",
+        "authentication",
+        "network-access",
+        "guest-wifi"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-nodogsplash",
+          "libmicrohttpd",
+          "libjson-c",
+          "iptables-nft"
+        ]
+      },
+      "capabilities": [
+        "captive-portal",
+        "network-authentication",
+        "guest-access"
+      ],
+      "requirements": {
+        "min_ram_mb": 64,
+        "min_storage_mb": 10
+      },
+      "status": "stable",
+      "notes": "Provides simple captive portal for guest WiFi access control. Customizable splash pages."
+    },
+    {
+      "id": "secubox-app-portainer",
+      "name": "Portainer",
+      "version": "2.21.4",
+      "category": "hosting",
+      "runtime": "docker",
+      "description": "Powerful Docker container management platform with web UI for managing containers, images, networks, and volumes",
+      "author": "CyberMind.fr",
+      "license": "Zlib",
+      "url": "https://www.portainer.io/",
+      "icon": "🐳",
+      "tags": [
+        "docker",
+        "containers",
+        "management",
+        "orchestration"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-portainer",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "docker",
+        "containers",
+        "management"
+      ],
+      "requirements": {
+        "min_ram_mb": 128,
+        "min_storage_mb": 500
+      },
+      "status": "stable",
+      "notes": "Manages Docker containers on the router. Access via web UI to deploy and monitor containers."
+    },
+    {
+      "id": "secubox-app-uptimekuma",
+      "name": "Uptime Kuma",
+      "version": "1.23.15",
+      "category": "network",
+      "runtime": "docker",
+      "description": "Modern uptime monitoring tool with web UI, status pages, notifications, and multi-protocol support",
+      "author": "CyberMind.fr",
+      "license": "MIT",
+      "url": "https://uptime.kuma.pet/",
+      "icon": "📊",
+      "tags": [
+        "monitoring",
+        "uptime",
+        "status-page",
+        "alerts",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-uptimekuma",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "monitoring",
+        "uptime",
+        "status-page"
+      ],
+      "requirements": {
+        "min_ram_mb": 128,
+        "min_storage_mb": 200
+      },
+      "status": "stable",
+      "notes": "Beautiful uptime monitoring. Supports HTTP, TCP, ping, DNS, and more. Push notifications."
+    },
+    {
+      "id": "secubox-app-vaultwarden",
+      "name": "Vaultwarden",
+      "version": "1.32.7",
+      "category": "security",
+      "runtime": "docker",
+      "description": "Lightweight Bitwarden-compatible password manager server written in Rust with web vault and mobile sync",
+      "author": "CyberMind.fr",
+      "license": "GPL-3.0",
+      "url": "https://github.com/dani-garcia/vaultwarden",
+      "icon": "🔐",
+      "tags": [
+        "password-manager",
+        "security",
+        "bitwarden",
+        "vault",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-vaultwarden",
+          "docker",
+          "dockerd"
+        ]
+      },
+      "capabilities": [
+        "password-manager",
+        "security",
+        "bitwarden"
+      ],
+      "requirements": {
+        "min_ram_mb": 128,
+        "min_storage_mb": 500
+      },
+      "status": "stable",
+      "notes": "Bitwarden-compatible server. Use with official Bitwarden apps. HTTPS strongly recommended."
+    },
+    {
+      "id": "secubox-app-zigbee2mqtt",
+      "name": "Zigbee2MQTT",
+      "version": "1.0.0",
+      "category": "iot",
+      "runtime": "docker",
+      "description": "Zigbee to MQTT bridge allowing you to use Zigbee devices without proprietary hubs",
+      "author": "CyberMind.fr",
+      "license": "GPL-3.0",
+      "url": "https://www.zigbee2mqtt.io/",
+      "icon": "📡",
+      "tags": [
+        "zigbee",
+        "mqtt",
+        "iot",
+        "smart-home",
+        "docker"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-zigbee2mqtt",
+          "luci-app-zigbee2mqtt",
+          "docker",
+          "dockerd",
+          "mqtt-broker"
+        ]
+      },
+      "capabilities": [
+        "zigbee",
+        "mqtt",
+        "iot"
+      ],
+      "requirements": {
+        "min_ram_mb": 128,
+        "min_storage_mb": 50
+      },
+      "status": "stable"
+    }
+  ],
+  "total_plugins": 37
+}

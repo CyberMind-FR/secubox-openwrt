@@ -1,0 +1,41 @@
+{
+  "id": "luci-app-client-guardian",
+  "name": "Client Guardian",
+  "version": "0.4.0",
+  "category": "security",
+  "runtime": "native",
+  "description": "Network Access Control with client monitoring, zone management, captive portal, parental controls, and SMS/email alerts",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "👥",
+  "tags": [
+    "network-access",
+    "client-monitoring",
+    "parental-control",
+    "captive-portal",
+    "alerts"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-client-guardian",
+      "luci-base",
+      "luci-app-secubox",
+      "rpcd",
+      "dnsmasq-full",
+      "iptables",
+      "uhttpd"
+    ]
+  },
+  "capabilities": [
+    "network-access-control",
+    "client-monitoring",
+    "parental-controls"
+  ],
+  "requirements": {
+    "min_ram_mb": 64,
+    "min_storage_mb": 10
+  },
+  "status": "stable",
+  "notes": "Network Access Control with client monitoring, zone management, and parental controls."
+}

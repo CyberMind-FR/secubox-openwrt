@@ -23,8 +23,12 @@
 				],
 				"luci.secubox": [
 					"modules",
+					"getModules",
 					"modules_by_category",
-					"get_theme"
+					"getModuleInfo",
+					"get_theme",
+					"getStatus",
+					"getHealth"
 				]
 			}
 		},

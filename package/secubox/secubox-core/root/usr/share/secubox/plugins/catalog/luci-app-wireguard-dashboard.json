@@ -1,0 +1,37 @@
+{
+  "id": "luci-app-wireguard-dashboard",
+  "name": "WireGuard Dashboard",
+  "version": "0.4.0",
+  "category": "network",
+  "runtime": "native",
+  "description": "Modern dashboard for WireGuard VPN monitoring on OpenWrt",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "🔒",
+  "tags": [
+    "vpn",
+    "wireguard",
+    "monitoring",
+    "dashboard"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-wireguard-dashboard",
+      "luci-base",
+      "luci-app-secubox",
+      "rpcd",
+      "wireguard-tools"
+    ]
+  },
+  "capabilities": [
+    "vpn-monitoring",
+    "wireguard-management"
+  ],
+  "requirements": {
+    "min_ram_mb": 32,
+    "min_storage_mb": 5
+  },
+  "status": "stable",
+  "notes": "Modern dashboard for WireGuard VPN monitoring."
+}

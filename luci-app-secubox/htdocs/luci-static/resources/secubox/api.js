@@ -8,17 +8,17 @@
  * RPCD object: luci.secubox
  */
 
-// Version: 0.7.0
+// Version: 0.7.1 - Fixed RPCD method names
 
 var callStatus = rpc.declare({
 	object: 'luci.secubox',
-	method: 'status',
+	method: 'getStatus',
 	expect: { }
 });
 
 var callModules = rpc.declare({
 	object: 'luci.secubox',
-	method: 'modules',
+	method: 'getModules',
 	expect: {}
 });
 
@@ -31,7 +31,7 @@ var callModulesByCategory = rpc.declare({
 
 var callModuleInfo = rpc.declare({
 	object: 'luci.secubox',
-	method: 'module_info',
+	method: 'getModuleInfo',
 	params: ['module'],
 	expect: { }
 });
@@ -78,7 +78,7 @@ var callCheckModuleEnabled = rpc.declare({
 
 var callHealth = rpc.declare({
 	object: 'luci.secubox',
-	method: 'health',
+	method: 'getHealth',
 	expect: { checks: [], overall: '' }
 });
 

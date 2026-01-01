@@ -1,0 +1,70 @@
+{
+  "summary": {
+    "total_plugins": 37,
+    "luci_modules": 19,
+    "secubox_apps": 18,
+    "categories": 10,
+    "last_updated": "2026-01-01T00:00:00Z"
+  },
+  "by_category": {
+    "network": {
+      "count": 10,
+      "description": "Network management, VPN, DNS, connectivity",
+      "apps": ["adguardhome", "bandwidth-manager", "cdn-cache", "network-modes", "network-tweaks", "nodogsplash", "traffic-shaper", "uptimekuma", "vhost-manager", "wireguard-dashboard"]
+    },
+    "iot": {
+      "count": 7,
+      "description": "Smart home automation and IoT devices",
+      "apps": ["domoticz", "homeassistant", "magicmirror", "mqtt-bridge", "zigbee2mqtt"]
+    },
+    "security": {
+      "count": 6,
+      "description": "Security, authentication, intrusion detection",
+      "apps": ["auth-guardian", "client-guardian", "crowdsec", "crowdsec-dashboard", "ksm-manager", "vaultwarden"]
+    },
+    "productivity": {
+      "count": 4,
+      "description": "Cloud storage, collaboration, productivity",
+      "apps": ["citadel", "gitea", "mailinabox", "nextcloud"]
+    },
+    "monitoring": {
+      "count": 3,
+      "description": "System monitoring, metrics, analytics",
+      "apps": ["media-flow", "netdata-dashboard", "netifyd-dashboard"]
+    },
+    "media": {
+      "count": 2,
+      "description": "Media servers and streaming",
+      "apps": ["jellyfin", "lyrion"]
+    },
+    "hosting": {
+      "count": 2,
+      "description": "Web hosting and server management",
+      "apps": ["ispconfig", "portainer"]
+    },
+    "ai": {
+      "count": 1,
+      "description": "AI and machine learning",
+      "apps": ["localai"]
+    },
+    "system": {
+      "count": 1,
+      "description": "System administration and management",
+      "apps": ["system-hub"]
+    },
+    "documentation": {
+      "count": 1,
+      "description": "Documentation and help resources",
+      "apps": ["secubox-bonus"]
+    }
+  },
+  "by_runtime": {
+    "docker": 18,
+    "native": 19
+  },
+  "by_status": {
+    "stable": 36,
+    "beta": 1,
+    "dev": 0
+  }
+}

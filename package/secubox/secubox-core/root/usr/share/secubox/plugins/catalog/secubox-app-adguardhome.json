@@ -1,0 +1,37 @@
+{
+  "id": "secubox-app-adguardhome",
+  "name": "AdGuard Home",
+  "version": "0.107.54",
+  "category": "network",
+  "runtime": "docker",
+  "description": "Network-wide ad and tracker blocker with DNS-over-HTTPS/TLS support, parental controls, and detailed analytics",
+  "author": "CyberMind.fr",
+  "license": "GPL-3.0",
+  "url": "https://adguard.com/adguard-home/overview.html",
+  "icon": "\ud83d\udee1\ufe0f",
+  "tags": [
+    "dns",
+    "ad-blocker",
+    "privacy",
+    "parental-control",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-adguardhome",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "dns",
+    "ad-blocker",
+    "privacy"
+  ],
+  "requirements": {
+    "min_ram_mb": 128,
+    "min_storage_mb": 100
+  },
+  "status": "stable",
+  "notes": "Pi-hole alternative with DNS-over-HTTPS/TLS. Configure router to use AdGuard Home as DNS server."
+}

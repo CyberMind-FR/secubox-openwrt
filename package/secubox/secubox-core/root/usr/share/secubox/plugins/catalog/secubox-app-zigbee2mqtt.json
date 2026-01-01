@@ -1,0 +1,38 @@
+{
+  "id": "secubox-app-zigbee2mqtt",
+  "name": "Zigbee2MQTT",
+  "version": "1.0.0",
+  "category": "iot",
+  "runtime": "docker",
+  "description": "Zigbee to MQTT bridge allowing you to use Zigbee devices without proprietary hubs",
+  "author": "CyberMind.fr",
+  "license": "GPL-3.0",
+  "url": "https://www.zigbee2mqtt.io/",
+  "icon": "\ud83d\udce1",
+  "tags": [
+    "zigbee",
+    "mqtt",
+    "iot",
+    "smart-home",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-zigbee2mqtt",
+      "luci-app-zigbee2mqtt",
+      "docker",
+      "dockerd",
+      "mqtt-broker"
+    ]
+  },
+  "capabilities": [
+    "zigbee",
+    "mqtt",
+    "iot"
+  ],
+  "requirements": {
+    "min_ram_mb": 128,
+    "min_storage_mb": 50
+  },
+  "status": "stable"
+}

@@ -1,0 +1,44 @@
+{
+  "profile": {
+    "id": "home-office",
+    "name": "Home Office Profile",
+    "description": "Optimized for remote work with VPN, collaboration tools, and productivity services",
+    "version": "1.0.0",
+    "author": "SecuBox Team"
+  },
+  "modules": {
+    "required": [
+      "luci-app-vhost-manager",
+      "luci-app-wireguard-dashboard",
+      "luci-app-bandwidth-manager"
+    ],
+    "recommended": [
+      "secubox-app-nextcloud",
+      "secubox-app-gitea",
+      "secubox-app-uptimekuma",
+      "secubox-app-vaultwarden"
+    ]
+  },
+  "network": {
+    "mode": "router",
+    "qos": {
+      "enabled": true,
+      "priority": {
+        "voip": 1,
+        "video": 2,
+        "web": 3,
+        "bulk": 4
+      }
+    }
+  },
+  "services": {
+    "wireguard": {
+      "enabled": true,
+      "listen_port": 51820
+    },
+    "nextcloud": {
+      "enabled": true,
+      "port": 8080
+    }
+  }
+}

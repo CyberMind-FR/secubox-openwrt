@@ -1,0 +1,35 @@
+{
+  "id": "luci-app-network-tweaks",
+  "name": "Network Tweaks",
+  "version": "0.4.0",
+  "category": "network",
+  "runtime": "native",
+  "description": "Advanced network optimization and tuning parameters for performance",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "⚙️",
+  "tags": [
+    "network",
+    "optimization",
+    "tuning",
+    "performance"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-network-tweaks",
+      "luci-base",
+      "rpcd"
+    ]
+  },
+  "capabilities": [
+    "network-optimization",
+    "performance-tuning"
+  ],
+  "requirements": {
+    "min_ram_mb": 32,
+    "min_storage_mb": 5
+  },
+  "status": "stable",
+  "notes": "Advanced network optimization and tuning parameters."
+}

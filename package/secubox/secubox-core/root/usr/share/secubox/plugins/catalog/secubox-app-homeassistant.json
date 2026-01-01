@@ -1,0 +1,37 @@
+{
+  "id": "secubox-app-homeassistant",
+  "name": "Home Assistant",
+  "version": "2024.12.5",
+  "category": "iot",
+  "runtime": "docker",
+  "description": "Open-source home automation platform with support for 2000+ integrations including lights, sensors, cameras, and voice assistants",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "https://www.home-assistant.io/",
+  "icon": "\ud83c\udfe1",
+  "tags": [
+    "home-automation",
+    "iot",
+    "smart-home",
+    "automation",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-homeassistant",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "home-automation",
+    "iot",
+    "smart-home"
+  ],
+  "requirements": {
+    "min_ram_mb": 512,
+    "min_storage_mb": 2048
+  },
+  "status": "stable",
+  "notes": "Most popular home automation platform. Supports Zigbee, Z-Wave, MQTT, and 2000+ integrations."
+}

@@ -1,0 +1,42 @@
+{
+  "id": "secubox-app-mailinabox",
+  "name": "Mail-in-a-Box",
+  "version": "70.0",
+  "category": "productivity",
+  "runtime": "docker",
+  "description": "Easy-to-deploy email server with webmail, contacts, calendar, spam filtering, and automatic security updates",
+  "author": "CyberMind.fr",
+  "license": "CC0-1.0",
+  "url": "https://mailinabox.email/",
+  "icon": "\ud83d\udce7",
+  "tags": [
+    "email",
+    "mail-server",
+    "webmail",
+    "calendar",
+    "contacts",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-mailinabox",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "email",
+    "mail-server",
+    "webmail"
+  ],
+  "requirements": {
+    "min_ram_mb": 768,
+    "min_storage_mb": 1024
+  },
+  "status": "stable",
+  "conflicts": [
+    "citadel",
+    "ispconfig"
+  ],
+  "notes": "Requires a domain name with proper DNS configuration. Includes webmail, spam filtering, and automatic TLS."
+}

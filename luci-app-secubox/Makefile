@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-secubox
-PKG_VERSION:=0.7.0
-PKG_RELEASE:=6
+PKG_VERSION:=0.7.1
+PKG_RELEASE:=1
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 

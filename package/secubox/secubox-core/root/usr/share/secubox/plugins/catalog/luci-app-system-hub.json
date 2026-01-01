@@ -1,0 +1,39 @@
+{
+  "id": "luci-app-system-hub",
+  "name": "System Hub",
+  "version": "0.5.1",
+  "category": "system",
+  "runtime": "native",
+  "description": "Central system control dashboard with monitoring, services management, logs, and backup",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "⚡",
+  "tags": [
+    "system",
+    "dashboard",
+    "monitoring",
+    "services",
+    "backup"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-system-hub",
+      "luci-base",
+      "rpcd",
+      "coreutils",
+      "coreutils-base64"
+    ]
+  },
+  "capabilities": [
+    "system-management",
+    "service-control",
+    "backup"
+  ],
+  "requirements": {
+    "min_ram_mb": 32,
+    "min_storage_mb": 10
+  },
+  "status": "stable",
+  "notes": "Central system control with monitoring, services, logs, and backup."
+}

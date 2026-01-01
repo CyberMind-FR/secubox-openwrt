@@ -1,0 +1,50 @@
+{
+  "profile": {
+    "id": "home-security",
+    "name": "Home Security Profile",
+    "description": "Enhanced security for home networks with threat detection and monitoring",
+    "version": "1.0.0",
+    "author": "SecuBox Team"
+  },
+  "modules": {
+    "required": [
+      "luci-app-auth-guardian",
+      "luci-app-client-guardian",
+      "secubox-app-adguardhome"
+    ],
+    "recommended": [
+      "secubox-app-crowdsec",
+      "luci-app-wireguard-dashboard",
+      "secubox-app-vaultwarden"
+    ]
+  },
+  "network": {
+    "mode": "router",
+    "firewall": {
+      "default_policy": "drop",
+      "zones": {
+        "wan": {
+          "input": "reject",
+          "output": "accept",
+          "forward": "reject"
+        },
+        "lan": {
+          "input": "accept",
+          "output": "accept",
+          "forward": "accept"
+        }
+      }
+    }
+  },
+  "services": {
+    "adguardhome": {
+      "enabled": true,
+      "dns_port": 53,
+      "web_port": 3000
+    },
+    "wireguard": {
+      "enabled": true,
+      "listen_port": 51820
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "id": "secubox-app-gitea",
+  "name": "Gitea",
+  "version": "1.22.6",
+  "category": "productivity",
+  "runtime": "docker",
+  "description": "Lightweight self-hosted Git service with web UI, issue tracking, pull requests, and CI/CD integration",
+  "author": "CyberMind.fr",
+  "license": "MIT",
+  "url": "https://gitea.io/",
+  "icon": "\ud83e\udd8a",
+  "tags": [
+    "git",
+    "version-control",
+    "code-hosting",
+    "collaboration",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-gitea",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "git",
+    "version-control",
+    "code-hosting"
+  ],
+  "requirements": {
+    "min_ram_mb": 256,
+    "min_storage_mb": 1024
+  },
+  "status": "stable",
+  "notes": "GitHub/GitLab alternative. Lightweight and fast. Supports SSH and HTTP Git access."
+}

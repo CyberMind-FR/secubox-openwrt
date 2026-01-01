@@ -1,0 +1,39 @@
+{
+  "id": "luci-app-media-flow",
+  "name": "Media Flow",
+  "version": "0.4.0",
+  "category": "monitoring",
+  "runtime": "native",
+  "description": "Real-time detection and monitoring of streaming services (Netflix, YouTube, Spotify) with quality estimation and alerts",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "📺",
+  "tags": [
+    "streaming",
+    "monitoring",
+    "dpi",
+    "media",
+    "quality-monitoring"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-media-flow",
+      "luci-base",
+      "rpcd",
+      "netifyd",
+      "luci-app-netifyd-dashboard"
+    ]
+  },
+  "capabilities": [
+    "streaming-detection",
+    "media-monitoring",
+    "quality-estimation"
+  ],
+  "requirements": {
+    "min_ram_mb": 64,
+    "min_storage_mb": 10
+  },
+  "status": "stable",
+  "notes": "Real-time streaming detection and monitoring with quality estimation."
+}

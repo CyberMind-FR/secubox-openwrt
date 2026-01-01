@@ -1,0 +1,37 @@
+{
+  "id": "secubox-app-localai",
+  "name": "LocalAI",
+  "version": "2.25.0",
+  "category": "ai",
+  "runtime": "docker",
+  "description": "Self-hosted OpenAI-compatible API for running LLMs locally with support for text, audio, and image generation",
+  "author": "CyberMind.fr",
+  "license": "MIT",
+  "url": "https://localai.io/",
+  "icon": "\ud83e\udd16",
+  "tags": [
+    "ai",
+    "llm",
+    "machine-learning",
+    "openai",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-localai",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "ai",
+    "llm",
+    "machine-learning"
+  ],
+  "requirements": {
+    "min_ram_mb": 2048,
+    "min_storage_mb": 5120
+  },
+  "status": "stable",
+  "notes": "GPU acceleration optional. Model files require additional storage (1-10GB per model)."
+}

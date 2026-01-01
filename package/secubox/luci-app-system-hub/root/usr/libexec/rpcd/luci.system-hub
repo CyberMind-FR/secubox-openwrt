@@ -1407,7 +1407,7 @@ save_settings() {
 # Get components (leverages secubox module detection)
 get_components() {
 	# Call secubox backend to get modules, which are the system components
-	local result=$(ubus call luci.secubox modules 2>/dev/null)
+	local result=$(ubus call luci.secubox getModules 2>/dev/null)
 
 	if [ -n "$result" ]; then
 		# Pass through the secubox modules as components

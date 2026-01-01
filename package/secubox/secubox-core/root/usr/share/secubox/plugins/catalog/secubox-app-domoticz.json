@@ -1,0 +1,35 @@
+{
+  "id": "secubox-app-domoticz",
+  "name": "Domoticz",
+  "version": "1.0.0",
+  "category": "iot",
+  "runtime": "docker",
+  "description": "Home automation system with support for various devices and protocols",
+  "author": "CyberMind.fr",
+  "license": "GPL-3.0",
+  "url": "https://www.domoticz.com/",
+  "icon": "\ud83c\udfe0",
+  "tags": [
+    "home-automation",
+    "iot",
+    "smart-home",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-domoticz",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "home-automation",
+    "iot",
+    "smart-home"
+  ],
+  "requirements": {
+    "min_ram_mb": 256,
+    "min_storage_mb": 100
+  },
+  "status": "stable"
+}

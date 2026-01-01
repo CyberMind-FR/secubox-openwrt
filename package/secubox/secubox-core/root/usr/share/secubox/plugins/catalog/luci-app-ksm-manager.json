@@ -1,0 +1,45 @@
+{
+  "id": "luci-app-ksm-manager",
+  "name": "Key Storage Manager",
+  "version": "0.4.0",
+  "category": "security",
+  "runtime": "native",
+  "description": "Centralized cryptographic key management with hardware security module (HSM) support for Nitrokey and YubiKey devices",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "🔑",
+  "tags": [
+    "cryptography",
+    "hsm",
+    "key-management",
+    "yubikey",
+    "nitrokey",
+    "certificates"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-ksm-manager",
+      "luci-base",
+      "rpcd",
+      "openssl-util",
+      "gnupg2",
+      "nitropy",
+      "yubikey-manager",
+      "opensc",
+      "libccid",
+      "pcscd"
+    ]
+  },
+  "capabilities": [
+    "key-management",
+    "hsm-support",
+    "certificate-management"
+  ],
+  "requirements": {
+    "min_ram_mb": 64,
+    "min_storage_mb": 20
+  },
+  "status": "stable",
+  "notes": "Centralized key management with HSM support for Nitrokey and YubiKey."
+}

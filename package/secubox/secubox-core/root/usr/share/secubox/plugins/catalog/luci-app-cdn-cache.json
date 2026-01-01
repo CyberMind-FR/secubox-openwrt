@@ -1,0 +1,36 @@
+{
+  "id": "luci-app-cdn-cache",
+  "name": "CDN Cache",
+  "version": "0.5.0",
+  "category": "network",
+  "runtime": "native",
+  "description": "Dashboard for managing local CDN caching proxy for content delivery optimization",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "🚀",
+  "tags": [
+    "cdn",
+    "cache",
+    "proxy",
+    "optimization",
+    "performance"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-cdn-cache",
+      "luci-base",
+      "rpcd"
+    ]
+  },
+  "capabilities": [
+    "cdn-caching",
+    "content-optimization"
+  ],
+  "requirements": {
+    "min_ram_mb": 128,
+    "min_storage_mb": 500
+  },
+  "status": "stable",
+  "notes": "Local CDN caching proxy for faster content delivery."
+}

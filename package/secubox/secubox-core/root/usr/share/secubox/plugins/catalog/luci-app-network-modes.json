@@ -1,0 +1,37 @@
+{
+  "id": "luci-app-network-modes",
+  "name": "Network Modes",
+  "version": "0.5.0",
+  "category": "network",
+  "runtime": "native",
+  "description": "Configure OpenWrt for different network modes: Sniffer, Access Point, Relay, Router",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "🔀",
+  "tags": [
+    "network-modes",
+    "configuration",
+    "router",
+    "access-point",
+    "sniffer"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-network-modes",
+      "luci-base",
+      "luci-app-secubox",
+      "rpcd"
+    ]
+  },
+  "capabilities": [
+    "network-mode-switching",
+    "configuration-management"
+  ],
+  "requirements": {
+    "min_ram_mb": 32,
+    "min_storage_mb": 5
+  },
+  "status": "stable",
+  "notes": "Configure different network modes: Sniffer, AP, Relay, Router."
+}

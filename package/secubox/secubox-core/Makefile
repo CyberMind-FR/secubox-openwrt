@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
 PKG_VERSION:=0.8.0
-PKG_RELEASE:=1
+PKG_RELEASE:=3
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
 
@@ -54,6 +54,12 @@ define Package/secubox-core/install
 	$(INSTALL_DIR) $(1)/etc/secubox/templates
 	$(INSTALL_DIR) $(1)/etc/secubox/macros
 
+	# Install profile JSON files
+	-$(INSTALL_DATA) ./root/etc/secubox/profiles/*.json $(1)/etc/secubox/profiles/ 2>/dev/null || true
+
+	# Install template files
+	-$(INSTALL_DATA) ./root/etc/secubox/templates/*.json $(1)/etc/secubox/templates/ 2>/dev/null || true
+
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./root/usr/sbin/secubox $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-core $(1)/usr/sbin/
@@ -71,7 +77,11 @@ define Package/secubox-core/install
 	$(INSTALL_DIR) $(1)/usr/share/secubox/scripts
 	$(INSTALL_DATA) ./root/usr/share/secubox/scripts/* $(1)/usr/share/secubox/scripts/
 
-	# Install module catalog files if they exist
+	# Install main catalog files (REQUIRED for AppStore)
+	-$(INSTALL_DATA) ./root/usr/share/secubox/catalog.json $(1)/usr/share/secubox/ 2>/dev/null || true
+	-$(INSTALL_DATA) ./root/usr/share/secubox/catalog-stats.json $(1)/usr/share/secubox/ 2>/dev/null || true
+
+	# Install individual module catalog files
 	-$(INSTALL_DATA) ./root/usr/share/secubox/plugins/catalog/*.json $(1)/usr/share/secubox/plugins/catalog/ 2>/dev/null || true
 
 	$(INSTALL_DIR) $(1)/var/run/secubox

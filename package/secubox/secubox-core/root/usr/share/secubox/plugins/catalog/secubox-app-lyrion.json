@@ -1,0 +1,36 @@
+{
+  "id": "secubox-app-lyrion",
+  "name": "Lyrion Music Server",
+  "version": "1.0.0",
+  "category": "media",
+  "runtime": "docker",
+  "description": "Multi-room audio streaming server (formerly Logitech Media Server)",
+  "author": "CyberMind.fr",
+  "license": "GPL-2.0",
+  "url": "https://lyrion.org/",
+  "icon": "\ud83c\udfb5",
+  "tags": [
+    "music",
+    "streaming",
+    "multi-room",
+    "audio",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-lyrion",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "music",
+    "streaming",
+    "multi-room"
+  ],
+  "requirements": {
+    "min_ram_mb": 128,
+    "min_storage_mb": 50
+  },
+  "status": "stable"
+}

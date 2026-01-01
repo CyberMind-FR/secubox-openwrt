@@ -1,0 +1,39 @@
+{
+  "id": "luci-app-traffic-shaper",
+  "name": "Traffic Shaper",
+  "version": "0.4.0",
+  "category": "network",
+  "runtime": "native",
+  "description": "Advanced traffic shaping with TC/CAKE for precise bandwidth control",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "🚦",
+  "tags": [
+    "traffic-shaping",
+    "qos",
+    "cake",
+    "bandwidth"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-traffic-shaper",
+      "luci-base",
+      "rpcd",
+      "tc",
+      "kmod-sched-core",
+      "kmod-sched-cake"
+    ]
+  },
+  "capabilities": [
+    "traffic-shaping",
+    "qos",
+    "bandwidth-control"
+  ],
+  "requirements": {
+    "min_ram_mb": 64,
+    "min_storage_mb": 10
+  },
+  "status": "stable",
+  "notes": "Advanced traffic shaping with TC/CAKE for precise bandwidth control."
+}

@@ -1,0 +1,35 @@
+{
+  "id": "luci-app-secubox-bonus",
+  "name": "SecuBox Bonus Content",
+  "version": "0.1.0",
+  "category": "documentation",
+  "runtime": "native",
+  "description": "SecuBox marketing and documentation website with demo pages, tutorials, blog articles, and multilingual content",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "📚",
+  "tags": [
+    "documentation",
+    "tutorials",
+    "marketing",
+    "demos",
+    "multilingual"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-secubox-bonus",
+      "luci-base"
+    ]
+  },
+  "capabilities": [
+    "documentation",
+    "tutorials"
+  ],
+  "requirements": {
+    "min_ram_mb": 16,
+    "min_storage_mb": 10
+  },
+  "status": "stable",
+  "notes": "SecuBox marketing and documentation website. Includes demo pages, tutorials, blog articles, and multilingual content for SecuBox modules."
+}

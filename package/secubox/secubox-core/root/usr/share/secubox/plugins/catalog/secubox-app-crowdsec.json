@@ -1,0 +1,37 @@
+{
+  "id": "secubox-app-crowdsec",
+  "name": "CrowdSec",
+  "version": "1.7.4",
+  "category": "security",
+  "runtime": "native",
+  "description": "CrowdSec is an open-source, lightweight security engine that detects and responds to malicious behaviors",
+  "author": "CyberMind.fr",
+  "license": "MIT",
+  "url": "https://github.com/crowdsecurity/crowdsec",
+  "icon": "\ud83d\udee1\ufe0f",
+  "tags": [
+    "security",
+    "ids",
+    "ips",
+    "firewall",
+    "threat-detection"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-crowdsec",
+      "luci-app-crowdsec-dashboard",
+      "iptables-nft"
+    ]
+  },
+  "capabilities": [
+    "security",
+    "ids",
+    "ips"
+  ],
+  "requirements": {
+    "min_ram_mb": 128,
+    "min_storage_mb": 50
+  },
+  "status": "dev",
+  "notes": "Requires full OpenWrt build environment (not SDK). Go 1.23.12 available in OpenWrt 24.10."
+}

@@ -1,0 +1,37 @@
+{
+  "id": "secubox-app-uptimekuma",
+  "name": "Uptime Kuma",
+  "version": "1.23.15",
+  "category": "network",
+  "runtime": "docker",
+  "description": "Modern uptime monitoring tool with web UI, status pages, notifications, and multi-protocol support",
+  "author": "CyberMind.fr",
+  "license": "MIT",
+  "url": "https://uptime.kuma.pet/",
+  "icon": "\ud83d\udcca",
+  "tags": [
+    "monitoring",
+    "uptime",
+    "status-page",
+    "alerts",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-uptimekuma",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "monitoring",
+    "uptime",
+    "status-page"
+  ],
+  "requirements": {
+    "min_ram_mb": 128,
+    "min_storage_mb": 200
+  },
+  "status": "stable",
+  "notes": "Beautiful uptime monitoring. Supports HTTP, TCP, ping, DNS, and more. Push notifications."
+}

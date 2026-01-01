@@ -1,0 +1,35 @@
+{
+  "id": "luci-app-mqtt-bridge",
+  "name": "MQTT Bridge",
+  "version": "0.4.0",
+  "category": "iot",
+  "runtime": "native",
+  "description": "USB-to-MQTT IoT hub for connecting USB devices to MQTT broker",
+  "author": "CyberMind.fr",
+  "license": "Apache-2.0",
+  "url": "",
+  "icon": "🌉",
+  "tags": [
+    "mqtt",
+    "iot",
+    "usb",
+    "bridge"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-mqtt-bridge",
+      "luci-base",
+      "libuci"
+    ]
+  },
+  "capabilities": [
+    "mqtt-bridge",
+    "usb-integration"
+  ],
+  "requirements": {
+    "min_ram_mb": 32,
+    "min_storage_mb": 5
+  },
+  "status": "stable",
+  "notes": "USB-to-MQTT IoT hub for connecting USB devices to MQTT broker."
+}

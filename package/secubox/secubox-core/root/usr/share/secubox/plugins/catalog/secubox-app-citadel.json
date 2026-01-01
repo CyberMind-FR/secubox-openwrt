@@ -1,0 +1,40 @@
+{
+  "id": "secubox-app-citadel",
+  "name": "Citadel",
+  "version": "9.99",
+  "category": "productivity",
+  "runtime": "docker",
+  "description": "Complete groupware solution with email, calendar, contacts, instant messaging, and collaboration tools",
+  "author": "CyberMind.fr",
+  "license": "GPL-3.0",
+  "url": "https://www.citadel.org/",
+  "icon": "\ud83c\udfe2",
+  "tags": [
+    "groupware",
+    "email",
+    "calendar",
+    "collaboration",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-citadel",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "groupware",
+    "email",
+    "calendar"
+  ],
+  "requirements": {
+    "min_ram_mb": 512,
+    "min_storage_mb": 1024
+  },
+  "status": "stable",
+  "conflicts": [
+    "mailinabox"
+  ],
+  "notes": "Web-based groupware with email server, calendar, contacts, and instant messaging."
+}

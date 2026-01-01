@@ -1,0 +1,61 @@
+{
+  "profile": {
+    "id": "enterprise",
+    "name": "Enterprise Profile",
+    "description": "Full-featured enterprise setup with monitoring, security, and hosting",
+    "version": "1.0.0",
+    "author": "SecuBox Team"
+  },
+  "modules": {
+    "required": [
+      "luci-app-system-hub",
+      "luci-app-vhost-manager",
+      "luci-app-wireguard-dashboard",
+      "luci-app-netdata-dashboard",
+      "secubox-app-portainer"
+    ],
+    "recommended": [
+      "secubox-app-crowdsec",
+      "secubox-app-uptimekuma",
+      "secubox-app-gitea",
+      "luci-app-auth-guardian",
+      "luci-app-network-tweaks"
+    ]
+  },
+  "network": {
+    "mode": "router",
+    "firewall": {
+      "default_policy": "drop",
+      "zones": {
+        "wan": {
+          "input": "reject",
+          "output": "accept",
+          "forward": "reject"
+        },
+        "dmz": {
+          "input": "reject",
+          "output": "accept",
+          "forward": "accept"
+        },
+        "lan": {
+          "input": "accept",
+          "output": "accept",
+          "forward": "accept"
+        }
+      }
+    },
+    "qos": {
+      "enabled": true
+    }
+  },
+  "services": {
+    "monitoring": {
+      "netdata": true,
+      "uptimekuma": true
+    },
+    "security": {
+      "crowdsec": true,
+      "wireguard": true
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "id": "luci-app-crowdsec-dashboard",
+  "name": "CrowdSec Dashboard",
+  "version": "0.4.0",
+  "category": "security",
+  "runtime": "native",
+  "description": "Dashboard for CrowdSec intrusion detection with real-time threat monitoring and alerts",
+  "author": "CyberMind.fr",
+  "license": "MIT",
+  "url": "",
+  "icon": "🛡️",
+  "tags": [
+    "security",
+    "intrusion-detection",
+    "monitoring",
+    "crowdsec"
+  ],
+  "packages": {
+    "required": [
+      "luci-app-crowdsec-dashboard",
+      "luci-base",
+      "rpcd",
+      "crowdsec"
+    ]
+  },
+  "capabilities": [
+    "security-monitoring",
+    "intrusion-detection"
+  ],
+  "requirements": {
+    "min_ram_mb": 64,
+    "min_storage_mb": 10
+  },
+  "status": "stable",
+  "notes": "Dashboard for CrowdSec intrusion detection with real-time threat monitoring."
+}

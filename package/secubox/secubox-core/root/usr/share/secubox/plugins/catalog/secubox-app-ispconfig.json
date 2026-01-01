@@ -1,0 +1,41 @@
+{
+  "id": "secubox-app-ispconfig",
+  "name": "ISPConfig",
+  "version": "3.2.12",
+  "category": "hosting",
+  "runtime": "docker",
+  "description": "Web hosting control panel for managing multiple servers, websites, email accounts, DNS, and databases",
+  "author": "CyberMind.fr",
+  "license": "BSD-3-Clause",
+  "url": "https://www.ispconfig.org/",
+  "icon": "\ud83d\udda5\ufe0f",
+  "tags": [
+    "hosting",
+    "control-panel",
+    "web-server",
+    "email",
+    "dns",
+    "docker"
+  ],
+  "packages": {
+    "required": [
+      "secubox-app-ispconfig",
+      "docker",
+      "dockerd"
+    ]
+  },
+  "capabilities": [
+    "hosting",
+    "control-panel",
+    "web-server"
+  ],
+  "requirements": {
+    "min_ram_mb": 1024,
+    "min_storage_mb": 2048
+  },
+  "status": "stable",
+  "conflicts": [
+    "mailinabox"
+  ],
+  "notes": "Full hosting control panel with Apache/nginx, MySQL/MariaDB, PHP, email, DNS, and FTP."
+}

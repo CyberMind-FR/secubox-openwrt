@@ -1,0 +1,43 @@
+{
+  "profile": {
+    "id": "media-server",
+    "name": "Media Server Profile",
+    "description": "Optimized for streaming media with QoS and caching",
+    "version": "1.0.0",
+    "author": "SecuBox Team"
+  },
+  "modules": {
+    "required": [
+      "luci-app-media-flow",
+      "luci-app-cdn-cache"
+    ],
+    "recommended": [
+      "secubox-app-jellyfin",
+      "secubox-app-lyrion",
+      "luci-app-bandwidth-manager",
+      "luci-app-vhost-manager"
+    ]
+  },
+  "network": {
+    "mode": "router",
+    "qos": {
+      "enabled": true,
+      "priority": {
+        "streaming": 1,
+        "gaming": 2,
+        "web": 3,
+        "bulk": 4
+      }
+    }
+  },
+  "services": {
+    "jellyfin": {
+      "enabled": true,
+      "port": 8096
+    },
+    "cdn_cache": {
+      "enabled": true,
+      "cache_size": "10GB"
+    }
+  }
+}

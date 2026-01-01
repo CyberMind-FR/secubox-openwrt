@@ -85,7 +85,33 @@ case "$1" in
 			json_add_string "snapshot" "string"
 		json_close_object
 
-		json_dump
+		# AppStore (NEW - uses catalog files)
+		json_add_object "get_appstore_apps"
+		json_close_object
+
+		json_add_object "get_appstore_app"
+			json_add_string "app_id" "string"
+		json_close_object
+
+		json_add_object "install_appstore_app"
+			json_add_string "app_id" "string"
+		json_close_object
+
+		json_add_object "remove_appstore_app"
+			json_add_string "app_id" "string"
+		json_close_object
+
+			# Dashboard and monitoring
+		json_add_object "get_dashboard_data"
+		json_close_object
+
+		json_add_object "get_system_health"
+		json_close_object
+
+		json_add_object "get_alerts"
+		json_close_object
+
+	json_dump
 		;;
 
 	call)
@@ -171,6 +197,121 @@ case "$1" in
 				/usr/sbin/secubox-core health
 				;;
 
+			get_dashboard_data)
+				# Return dashboard summary data
+				json_init
+
+				# Get module stats
+				modules_output=$(/usr/sbin/secubox-appstore list --json 2>/dev/null || echo '{"modules":[]}')
+				total_modules=$(echo "$modules_output" | jsonfilter -e '@.modules[*]' | wc -l)
+				running_modules=$(echo "$modules_output" | jsonfilter -e '@.modules[@.state="running"]' | wc -l 2>/dev/null || echo 0)
+
+				# Get system info
+				uptime_seconds=$(cat /proc/uptime | cut -d' ' -f1 | cut -d'.' -f1)
+				load_avg=$(cat /proc/loadavg | cut -d' ' -f1-3)
+
+				# Build response
+				json_add_object "status"
+					json_add_string "version" "0.8.0"
+					json_add_int "uptime" "$uptime_seconds"
+					json_add_string "load" "$load_avg"
+				json_close_object
+
+				json_add_object "counts"
+					json_add_int "total" "$total_modules"
+					json_add_int "running" "$running_modules"
+				json_close_object
+
+				json_dump
+				;;
+
+			get_system_health)
+				# Return system health metrics
+				json_init
+
+				# CPU usage (simple average from /proc/loadavg)
+				load1=$(cat /proc/loadavg | cut -d' ' -f1)
+				cpu_count=$(grep -c ^processor /proc/cpuinfo)
+				cpu_percent=$(awk "BEGIN {printf \"%.0f\", ($load1 / $cpu_count) * 100}")
+
+				# Memory
+				mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+				mem_free=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+				mem_used=$((mem_total - mem_free))
+				mem_percent=$(awk "BEGIN {printf \"%.0f\", ($mem_used / $mem_total) * 100}")
+
+				# Disk
+				disk_info=$(df / | tail -1)
+				disk_total=$(echo "$disk_info" | awk '{print $2}')
+				disk_used=$(echo "$disk_info" | awk '{print $3}')
+				disk_percent=$(echo "$disk_info" | awk '{print $5}' | tr -d '%')
+
+				# Calculate overall score (100 - average of usage percentages)
+				overall_score=$(awk "BEGIN {printf \"%.0f\", 100 - (($cpu_percent + $mem_percent + $disk_percent) / 3)}")
+
+				json_add_object "overall"
+					json_add_int "score" "$overall_score"
+					json_add_string "status" "$([ $overall_score -gt 70 ] && echo healthy || echo warning)"
+				json_close_object
+
+				json_add_object "cpu"
+					json_add_int "usage_percent" "$cpu_percent"
+					json_add_string "load" "$(cat /proc/loadavg | cut -d' ' -f1-3)"
+				json_close_object
+
+				json_add_object "memory"
+					json_add_int "total_kb" "$mem_total"
+					json_add_int "used_kb" "$mem_used"
+					json_add_int "usage_percent" "$mem_percent"
+				json_close_object
+
+				json_add_object "disk"
+					json_add_int "total_kb" "$disk_total"
+					json_add_int "used_kb" "$disk_used"
+					json_add_int "usage_percent" "$disk_percent"
+				json_close_object
+
+				json_dump
+				;;
+
+			get_alerts)
+				# Return system alerts
+				json_init
+				json_add_array "alerts"
+
+				# Check for common issues
+				# 1. High memory usage
+				mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+				mem_free=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+				mem_percent=$(awk "BEGIN {printf \"%.0f\", (($mem_total - $mem_free) / $mem_total) * 100}")
+				if [ "$mem_percent" -gt 90 ]; then
+					json_add_object ""
+						json_add_string "id" "high_memory"
+						json_add_string "level" "warning"
+						json_add_string "title" "High Memory Usage"
+						json_add_string "message" "Memory usage is at ${mem_percent}%"
+						json_add_int "timestamp" "$(date +%s)"
+					json_close_object
+				fi
+
+				# 2. High disk usage
+				disk_percent=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+				if [ "$disk_percent" -gt 85 ]; then
+					json_add_object ""
+						json_add_string "id" "high_disk"
+						json_add_string "level" "warning"
+						json_add_string "title" "High Disk Usage"
+						json_add_string "message" "Disk usage is at ${disk_percent}%"
+						json_add_int "timestamp" "$(date +%s)"
+					json_close_object
+				fi
+
+				json_close_array
+				json_dump
+				;;
+
+
+
 			getLogs)
 				read -r input
 				service=$(echo "$input" | jsonfilter -e '@.service')
@@ -205,6 +346,84 @@ case "$1" in
 				read -r input
 				snapshot=$(echo "$input" | jsonfilter -e '@.snapshot')
 				/usr/sbin/secubox-recovery rollback "$snapshot"
+				;;
+
+			get_appstore_apps)
+				# Return apps from main catalog with categories
+				CATALOG_FILE="/usr/share/secubox/catalog.json"
+				if [ -f "$CATALOG_FILE" ]; then
+					jq '{apps: .plugins, categories: .categories}' "$CATALOG_FILE"
+				else
+					echo '{"apps":[],"categories":{}}'
+				fi
+				;;
+
+			get_appstore_app)
+				# Get single app details from catalog
+				read -r input
+				app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+
+				CATALOG_DIR="/usr/share/secubox/plugins/catalog"
+				CATALOG_FILE="$CATALOG_DIR/${app_id}.json"
+
+				if [ -f "$CATALOG_FILE" ]; then
+					# Add installed status
+					json_init
+					cat "$CATALOG_FILE" | jsonfilter -e '@'
+
+					# Check if installed
+					pkg=$(jsonfilter -i "$CATALOG_FILE" -e '@.packages.required[0]')
+					if [ -n "$pkg" ] && opkg list-installed | grep -q "^$pkg "; then
+						echo ',"installed":true'
+					else
+						echo ',"installed":false'
+					fi
+				else
+					json_init
+					json_add_boolean "error" true
+					json_add_string "message" "App not found: $app_id"
+					json_dump
+				fi
+				;;
+
+			install_appstore_app)
+				# Install app using secubox-appstore CLI
+				read -r input
+				app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+
+				# Use secubox-appstore for installation
+				if /usr/sbin/secubox-appstore install "$app_id" >/dev/null 2>&1; then
+					json_init
+					json_add_boolean "success" true
+					json_add_string "message" "App installed successfully"
+					json_dump
+				else
+					json_init
+					json_add_boolean "success" false
+					json_add_string "error" "Installation failed"
+					json_add_string "details" "Check system logs for more information"
+					json_dump
+				fi
+				;;
+
+			remove_appstore_app)
+				# Remove app using secubox-appstore CLI
+				read -r input
+				app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+
+				# Use secubox-appstore for removal
+				if /usr/sbin/secubox-appstore remove "$app_id" >/dev/null 2>&1; then
+					json_init
+					json_add_boolean "success" true
+					json_add_string "message" "App removed successfully"
+					json_dump
+				else
+					json_init
+					json_add_boolean "success" false
+					json_add_string "error" "Removal failed"
+					json_add_string "details" "Check system logs for more information"
+					json_dump
+				fi
 				;;
 
 			*)

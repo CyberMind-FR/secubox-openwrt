@@ -36,7 +36,7 @@ return view.extend({
 	categoriesData: {},
 	currentFilter: 'all',
 	filterLayer: null,
-	debugMode: (window.location.hash.indexOf('debug') !== -1) || (localStorage.getItem('secubox_debug') === 'true'),
+	debugMode: true,  // FORCE DEBUG MODE ON
 
 	debug: function() {
 		if (this.debugMode && console && console.log) {
@@ -76,10 +76,14 @@ return view.extend({
 		var categories = (data && data.categories) || this.categoriesData || {};
 
 		// Debug logging
-		self.debug('Apps render - data:', data);
-		self.debug('Apps render - apps array:', apps);
-		self.debug('Apps render - apps.length:', apps.length);
-		self.debug('Apps render - categories:', categories);
+		console.log('[AppStore] ========== RENDER START ==========');
+		console.log('[AppStore] render() called with data:', data);
+		console.log('[AppStore] data.apps:', data ? data.apps : 'NO DATA');
+		console.log('[AppStore] this.appsData:', this.appsData);
+		console.log('[AppStore] Final apps array:', apps);
+		console.log('[AppStore] Final apps.length:', apps.length);
+		console.log('[AppStore] Final categories:', categories);
+		console.log('[AppStore] ========== RENDER START ==========');
 
 		var defaultFilter = this.currentFilter || 'all';
 		var container = E('div', {
