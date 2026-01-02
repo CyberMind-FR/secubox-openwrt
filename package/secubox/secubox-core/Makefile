@@ -7,6 +7,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=secubox-core
 PKG_VERSION:=0.8.0
 PKG_RELEASE:=3
+PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
 
@@ -83,9 +84,6 @@ define Package/secubox-core/install
 
 	# Install individual module catalog files
 	-$(INSTALL_DATA) ./root/usr/share/secubox/plugins/catalog/*.json $(1)/usr/share/secubox/plugins/catalog/ 2>/dev/null || true
-
-	$(INSTALL_DIR) $(1)/var/run/secubox
-	$(INSTALL_DIR) $(1)/var/log/secubox
 endef
 
 define Package/secubox-core/postinst

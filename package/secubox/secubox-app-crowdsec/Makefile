@@ -8,6 +8,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=crowdsec
 PKG_VERSION:=1.7.4
 PKG_RELEASE:=1
+PKG_ARCH:=all
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/crowdsecurity/crowdsec/tar.gz/v$(PKG_VERSION)?

@@ -89,6 +89,9 @@ case "$1" in
 		json_add_object "get_appstore_apps"
 		json_close_object
 
+		json_add_object "list_apps"
+		json_close_object
+
 		json_add_object "get_appstore_app"
 			json_add_string "app_id" "string"
 		json_close_object
@@ -350,6 +353,16 @@ case "$1" in
 
 			get_appstore_apps)
 				# Return apps from main catalog with categories
+				CATALOG_FILE="/usr/share/secubox/catalog.json"
+				if [ -f "$CATALOG_FILE" ]; then
+					jq '{apps: .plugins, categories: .categories}' "$CATALOG_FILE"
+				else
+					echo '{"apps":[],"categories":{}}'
+				fi
+				;;
+
+			list_apps)
+				# Alias for get_appstore_apps - returns apps from main catalog
 				CATALOG_FILE="/usr/share/secubox/catalog.json"
 				if [ -f "$CATALOG_FILE" ]; then
 					jq '{apps: .plugins, categories: .categories}' "$CATALOG_FILE"

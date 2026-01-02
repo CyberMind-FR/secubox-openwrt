@@ -3,6 +3,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=secubox-app-nodogsplash
 PKG_VERSION:=5.0.2
 PKG_RELEASE:=1
+PKG_ARCH:=all
 
 PKG_SOURCE:=nodogsplash-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/nodogsplash/nodogsplash/archive/refs/tags

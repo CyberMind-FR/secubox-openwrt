@@ -6,6 +6,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=luci-app-ksm-manager
 PKG_VERSION:=0.4.0
 PKG_RELEASE:=1
+PKG_ARCH:=all
 
 LUCI_TITLE:=LuCI support for Key Storage Manager
 LUCI_DEPENDS:=+luci-base +rpcd +libubus +libubox +openssl-util +gnupg2 +nitropy +yubikey-manager +opensc +libccid +pcscd +kmod-usb-core +kmod-usb2 +kmod-usb3

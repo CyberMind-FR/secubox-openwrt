@@ -11,14 +11,12 @@ LUCI_DESCRIPTION:=Central control hub for all SecuBox modules. Provides unified 
 LUCI_DEPENDS:=+luci-base +rpcd +curl +jq +secubox-core
 LUCI_PKGARCH:=all
 
-# File permissions (CRITICAL: Helper scripts MUST be executable 755)
-# Format: path:owner:group:mode
-# - Helper scripts: 755 (if executable)
+# File permissions
+# - Helper scripts: 755 (set in source root/ directory)
 # - Data files: 644 (readable by all - INSTALL_DATA sets this automatically)
 # - Directories: 755 (set automatically by INSTALL_DIR)
 # - CSS/JS files: 644 (set automatically by luci.mk)
 # Note: RPCD backend is now provided by secubox-core package
-PKG_FILE_MODES:=/usr/libexec/secubox/fix-permissions.sh:root:root:755
 
 include $(TOPDIR)/feeds/luci/luci.mk
 

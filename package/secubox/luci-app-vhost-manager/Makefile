@@ -6,6 +6,7 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=luci-app-vhost-manager
 PKG_VERSION:=0.5.0
 PKG_RELEASE:=4
+PKG_ARCH:=all
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
