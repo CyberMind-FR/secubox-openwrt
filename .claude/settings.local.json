@@ -219,7 +219,12 @@
       "Bash(source secubox-tools/webui/.venv/bin/activate:*)",
       "Bash(python -m app.ingest:*)",
       "Bash(python -m json.tool:*)",
-      "Bash(python -m uvicorn:*)"
+      "Bash(python -m uvicorn:*)",
+      "Bash(./local-build.sh)",
+      "Bash(./scripts/feeds search:*)",
+      "Bash(./sdk/scripts/feeds install:*)",
+      "Bash(readlink:*)",
+      "Bash(git -C feeds/luci branch:*)"
     ]
   }
 }
