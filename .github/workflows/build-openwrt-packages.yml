@@ -533,28 +533,57 @@ jobs:
           echo "Note: Our SecuBox packages are PKGARCH:=all (scripts only)"
           echo "They will be built regardless of dependency availability"
 
-      - name: Install and compile Lua in SDK
+      - name: Install Lua headers in SDK staging directory
         run: |
           cd sdk
 
-          echo "📦 Installing and compiling Lua to provide headers for lucihttp..."
+          echo "📦 Installing Lua headers manually to prevent lucihttp compilation failures..."
 
-          # Install lua package
+          # Install lua package to feeds
           ./scripts/feeds install lua
 
-          # Enable lua package for compilation
-          echo "CONFIG_PACKAGE_lua=m" >> .config
+          # Find Lua source directory in feeds
+          LUA_SRC=$(find feeds/packages/lang/lua/src -type d -name "lua-*" 2>/dev/null | head -1)
 
-          # Compile lua to get headers in staging_dir
-          make defconfig
-          make package/lua/compile -j$(nproc) V=s || true
+          if [ -n "$LUA_SRC" ]; then
+            echo "Found Lua source at: $LUA_SRC"
 
-          # Verify headers are available
-          if ls staging_dir/target-*/usr/include/lua.h 2>/dev/null; then
-            echo "✅ Lua headers successfully installed"
+            # Create include directory in all target staging dirs
+            for STAGING in staging_dir/target-*; do
+              if [ -d "$STAGING" ]; then
+                echo "Installing headers to $STAGING/usr/include/"
+                mkdir -p "$STAGING/usr/include"
+
+                # Copy Lua headers
+                if [ -d "$LUA_SRC" ]; then
+                  cp -v "$LUA_SRC"/*.h "$STAGING/usr/include/" 2>/dev/null || true
+                  cp -v "$LUA_SRC"/src/*.h "$STAGING/usr/include/" 2>/dev/null || true
+                fi
+              fi
+            done
           else
-            echo "⚠️  Warning: Lua headers not found, but continuing..."
+            echo "⚠️  Lua source not found in feeds, trying alternative method..."
+
+            # Alternative: use system lua headers if available
+            for STAGING in staging_dir/target-*; do
+              if [ -d "$STAGING" ]; then
+                mkdir -p "$STAGING/usr/include"
+                # Copy from build_dir if lua was built
+                find build_dir -name "lua.h" -exec cp {} "$STAGING/usr/include/" \; 2>/dev/null || true
+              fi
+            done
           fi
+
+          # Verify headers are installed
+          echo ""
+          echo "Verifying Lua headers installation:"
+          for STAGING in staging_dir/target-*; do
+            if [ -f "$STAGING/usr/include/lua.h" ]; then
+              echo "✅ $STAGING/usr/include/lua.h found"
+            else
+              echo "❌ $STAGING/usr/include/lua.h NOT FOUND"
+            fi
+          done
 
       - name: Configure packages
         run: |

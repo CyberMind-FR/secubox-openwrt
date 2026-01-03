@@ -484,21 +484,45 @@ FEEDS
         print_warning "Feed installation had errors, checking if critical..."
     fi
 
-    # Install and compile Lua to provide headers (prevents lua.h missing error in lucihttp)
+    # Install Lua headers manually to staging directory (prevents lua.h missing error in lucihttp)
     echo ""
-    echo "📦 Installing and compiling Lua package for headers..."
+    echo "📦 Installing Lua headers manually to staging directory..."
     ./scripts/feeds install lua 2>&1 | grep -v "WARNING:" || true
 
-    # Enable and compile Lua to get headers in staging_dir
-    echo "CONFIG_PACKAGE_lua=m" >> .config
-    make defconfig > /dev/null 2>&1
-    echo "Compiling Lua package to install headers..."
-    make package/lua/compile -j$(nproc) V=s > /tmp/lua_compile.log 2>&1 || true
+    # Find Lua source directory in feeds
+    LUA_SRC=$(find feeds/packages/lang/lua/src -type d -name "lua-*" 2>/dev/null | head -1)
 
+    if [ -n "$LUA_SRC" ]; then
+        print_info "Found Lua source at: $LUA_SRC"
+
+        # Create include directory in all target staging dirs
+        for STAGING in staging_dir/target-*; do
+            if [ -d "$STAGING" ]; then
+                echo "Installing headers to $STAGING/usr/include/"
+                mkdir -p "$STAGING/usr/include"
+
+                # Copy Lua headers
+                cp "$LUA_SRC"/*.h "$STAGING/usr/include/" 2>/dev/null || true
+                cp "$LUA_SRC"/src/*.h "$STAGING/usr/include/" 2>/dev/null || true
+            fi
+        done
+    else
+        print_warn "Lua source not found in feeds, trying alternative method..."
+
+        # Alternative: use system lua headers if available
+        for STAGING in staging_dir/target-*; do
+            if [ -d "$STAGING" ]; then
+                mkdir -p "$STAGING/usr/include"
+                find build_dir -name "lua.h" -exec cp {} "$STAGING/usr/include/" \; 2>/dev/null || true
+            fi
+        done
+    fi
+
+    # Verify headers are installed
     if ls staging_dir/target-*/usr/include/lua.h 2>/dev/null > /dev/null; then
         print_info "✅ Lua headers successfully installed in staging directory"
     else
-        print_warn "Lua headers not found, but continuing (may cause issues with lucihttp)"
+        print_warn "⚠️  Lua headers not found, but continuing (may cause issues with lucihttp)"
     fi
 
     # Note: We skip manual dependency installation as it causes hangs
@@ -1070,21 +1094,45 @@ setup_openwrt_feeds() {
         print_warning "Feed install had warnings, checking directories..."
     fi
 
-    # Install and compile Lua to provide headers (prevents lua.h missing error in lucihttp)
+    # Install Lua headers manually to staging directory (prevents lua.h missing error in lucihttp)
     echo ""
-    print_info "Installing and compiling Lua package for headers..."
+    print_info "Installing Lua headers manually to staging directory..."
     ./scripts/feeds install lua 2>&1 | grep -v "WARNING:" || true
 
-    # Enable and compile Lua to get headers in staging_dir
-    echo "CONFIG_PACKAGE_lua=m" >> .config
-    make defconfig > /dev/null 2>&1
-    echo "Compiling Lua package to install headers..."
-    make package/lua/compile -j$(nproc) V=s > /tmp/lua_compile.log 2>&1 || true
+    # Find Lua source directory in feeds
+    LUA_SRC=$(find feeds/packages/lang/lua/src -type d -name "lua-*" 2>/dev/null | head -1)
 
-    if ls staging_dir/target-*/usr/include/lua.h 2>/dev/null > /dev/null; then
-        print_success "Lua headers successfully installed in staging directory"
+    if [ -n "$LUA_SRC" ]; then
+        print_info "Found Lua source at: $LUA_SRC"
+
+        # Create include directory in all target staging dirs
+        for STAGING in staging_dir/target-*; do
+            if [ -d "$STAGING" ]; then
+                echo "Installing headers to $STAGING/usr/include/"
+                mkdir -p "$STAGING/usr/include"
+
+                # Copy Lua headers
+                cp "$LUA_SRC"/*.h "$STAGING/usr/include/" 2>/dev/null || true
+                cp "$LUA_SRC"/src/*.h "$STAGING/usr/include/" 2>/dev/null || true
+            fi
+        done
     else
-        print_warning "Lua headers not found, but continuing (may cause issues with lucihttp)"
+        print_warning "Lua source not found in feeds, trying alternative method..."
+
+        # Alternative: use system lua headers if available
+        for STAGING in staging_dir/target-*; do
+            if [ -d "$STAGING" ]; then
+                mkdir -p "$STAGING/usr/include"
+                find build_dir -name "lua.h" -exec cp {} "$STAGING/usr/include/" \; 2>/dev/null || true
+            fi
+        done
+    fi
+
+    # Verify headers are installed
+    if ls staging_dir/target-*/usr/include/lua.h 2>/dev/null > /dev/null; then
+        print_success "✅ Lua headers successfully installed in staging directory"
+    else
+        print_warning "⚠️  Lua headers not found, but continuing (may cause issues with lucihttp)"
     fi
 
     # Verify feeds
