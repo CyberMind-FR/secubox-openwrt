@@ -533,6 +533,27 @@ jobs:
           echo "Note: Our SecuBox packages are PKGARCH:=all (scripts only)"
           echo "They will be built regardless of dependency availability"
 
+      - name: Patch packages to remove dependencies for SDK build
+        run: |
+          cd sdk
+
+          echo "🔧 Patching package Makefiles to remove runtime dependencies..."
+          echo "   (Dependencies will be installed separately on target device)"
+
+          # Remove LUCI_DEPENDS from all luci-app packages
+          # Our packages are PKGARCH:=all (scripts) - dependencies are runtime-only
+          for makefile in package/luci-app-*/Makefile; do
+            if [[ -f "$makefile" ]]; then
+              PKG=$(basename $(dirname "$makefile"))
+              echo "  📝 $PKG"
+
+              # Comment out LUCI_DEPENDS line
+              sed -i 's/^LUCI_DEPENDS:=/#&  # Removed for SDK build - runtime only/' "$makefile"
+            fi
+          done
+
+          echo "✅ Packages patched for SDK build"
+
       - name: Configure packages
         run: |
           cd sdk
@@ -628,7 +649,7 @@ jobs:
             BUILD_LOG="/tmp/build-${PKG_NAME}.log"
 
             # Our packages are PKGARCH:=all (pure scripts), no compilation needed
-            # Try regular build first, fallback to direct packaging if dependencies fail
+            # Dependencies removed from Makefile - they're runtime-only (prebuilt on target)
             if timeout 600 make package/${PKG_NAME}/compile V=s -j1 > "$BUILD_LOG" 2>&1; then
               # Build succeeded, check if package was created (.apk or .ipk)
               PKG_FILE=$(find bin -name "${PKG_NAME}*.${PKG_EXT}" 2>/dev/null | head -1)
