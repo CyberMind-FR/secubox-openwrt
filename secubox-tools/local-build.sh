@@ -7,6 +7,7 @@
 #   ./local-build.sh validate                    # Run validation only
 #   ./local-build.sh build                       # Build all packages (x86_64)
 #   ./local-build.sh build luci-app-system-hub   # Build single package
+#   ./local-build.sh build secubox-core          # Build SecuBox Core package
 #   ./local-build.sh build --arch aarch64        # Build for specific architecture
 #   ./local-build.sh full                        # Validate + Build
 #
@@ -483,11 +484,22 @@ FEEDS
         print_warning "Feed installation had errors, checking if critical..."
     fi
 
-    # Install Lua to provide headers (prevents lua.h missing error in lucihttp)
+    # Install and compile Lua to provide headers (prevents lua.h missing error in lucihttp)
     echo ""
-    echo "📦 Installing Lua package for headers..."
+    echo "📦 Installing and compiling Lua package for headers..."
     ./scripts/feeds install lua 2>&1 | grep -v "WARNING:" || true
-    print_info "Lua installed (provides headers to prevent lucihttp compilation errors)"
+
+    # Enable and compile Lua to get headers in staging_dir
+    echo "CONFIG_PACKAGE_lua=m" >> .config
+    make defconfig > /dev/null 2>&1
+    echo "Compiling Lua package to install headers..."
+    make package/lua/compile -j$(nproc) V=s > /tmp/lua_compile.log 2>&1 || true
+
+    if ls staging_dir/target-*/usr/include/lua.h 2>/dev/null > /dev/null; then
+        print_info "✅ Lua headers successfully installed in staging directory"
+    else
+        print_warn "Lua headers not found, but continuing (may cause issues with lucihttp)"
+    fi
 
     # Note: We skip manual dependency installation as it causes hangs
     # The feeds install -a command above already installed all available packages
@@ -1058,10 +1070,22 @@ setup_openwrt_feeds() {
         print_warning "Feed install had warnings, checking directories..."
     fi
 
-    # Install Lua to provide headers (prevents lua.h missing error in lucihttp)
+    # Install and compile Lua to provide headers (prevents lua.h missing error in lucihttp)
     echo ""
-    print_info "Installing Lua package for headers..."
+    print_info "Installing and compiling Lua package for headers..."
     ./scripts/feeds install lua 2>&1 | grep -v "WARNING:" || true
+
+    # Enable and compile Lua to get headers in staging_dir
+    echo "CONFIG_PACKAGE_lua=m" >> .config
+    make defconfig > /dev/null 2>&1
+    echo "Compiling Lua package to install headers..."
+    make package/lua/compile -j$(nproc) V=s > /tmp/lua_compile.log 2>&1 || true
+
+    if ls staging_dir/target-*/usr/include/lua.h 2>/dev/null > /dev/null; then
+        print_success "Lua headers successfully installed in staging directory"
+    else
+        print_warning "Lua headers not found, but continuing (may cause issues with lucihttp)"
+    fi
 
     # Verify feeds
     for feed in packages luci; do
@@ -1620,7 +1644,7 @@ USAGE:
 COMMANDS:
     validate                    Run validation only (lint, syntax checks)
     build                       Build all packages for x86_64
-    build <package>             Build single package (luci-app-*, luci-theme-*, secubox-app-*)
+    build <package>             Build single package (luci-app-*, luci-theme-*, secubox-app-*, secubox-*)
     build --arch <arch>         Build for specific architecture
     build-firmware <device>     Build full firmware image for device
     debug-firmware <device>     Debug firmware build (check config without building)
@@ -1656,6 +1680,9 @@ EXAMPLES:
 
     # Build single SecuBox app package
     $0 build secubox-app-nodogsplash
+
+    # Build SecuBox Core package
+    $0 build secubox-core
 
     # Build for specific architecture
     $0 build --arch aarch64-cortex-a72
@@ -1712,7 +1739,7 @@ main() {
                         arch_specified=true
                         shift 2
                         ;;
-                    luci-app-*|luci-theme-*|secubox-app-*)
+                    luci-app-*|luci-theme-*|secubox-app-*|secubox-*)
                         single_package="$1"
                         shift
                         ;;

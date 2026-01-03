@@ -36,6 +36,9 @@ Build and test packages locally without pushing to GitHub. Automatically downloa
 # Build single package
 ./secubox-tools/local-build.sh build luci-app-system-hub
 
+# Build SecuBox Core package
+./secubox-tools/local-build.sh build secubox-core
+
 # Build for specific architecture
 ./secubox-tools/local-build.sh build --arch aarch64-cortex-a72
 

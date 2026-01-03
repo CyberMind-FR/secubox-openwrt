@@ -533,17 +533,28 @@ jobs:
           echo "Note: Our SecuBox packages are PKGARCH:=all (scripts only)"
           echo "They will be built regardless of dependency availability"
 
-      - name: Install Lua in SDK
+      - name: Install and compile Lua in SDK
         run: |
           cd sdk
 
-          echo "📦 Installing Lua headers in SDK to prevent lucihttp compilation errors..."
+          echo "📦 Installing and compiling Lua to provide headers for lucihttp..."
 
-          # Install lua package which provides headers needed by lucihttp
-          # This prevents lua.h missing error but we still don't want lucihttp compiled
+          # Install lua package
           ./scripts/feeds install lua
 
-          echo "✅ Lua installed"
+          # Enable lua package for compilation
+          echo "CONFIG_PACKAGE_lua=m" >> .config
+
+          # Compile lua to get headers in staging_dir
+          make defconfig
+          make package/lua/compile -j$(nproc) V=s || true
+
+          # Verify headers are available
+          if ls staging_dir/target-*/usr/include/lua.h 2>/dev/null; then
+            echo "✅ Lua headers successfully installed"
+          else
+            echo "⚠️  Warning: Lua headers not found, but continuing..."
+          fi
 
       - name: Configure packages
         run: |
