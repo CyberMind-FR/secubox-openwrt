@@ -1,0 +1,74 @@
+[
+  {
+    "id": "system-hub-dashboard",
+    "name": "System Dashboard Widget",
+    "emoji": "📊",
+    "module_id": "luci-app-system-hub",
+    "component_type": "widget",
+    "description": "Real-time system metrics dashboard with CPU, memory, and disk usage",
+    "preview_url": "/static/img/components/dashboard-widget.png",
+    "props": {
+      "refreshInterval": 5000,
+      "showGraph": true,
+      "compactMode": false
+    },
+    "tags": ["monitoring", "dashboard"]
+  },
+  {
+    "id": "network-status-panel",
+    "name": "Network Status Panel",
+    "emoji": "🌐",
+    "module_id": "luci-app-network-modes",
+    "component_type": "panel",
+    "description": "Displays current network status, interfaces, and connection quality",
+    "preview_url": "",
+    "props": {
+      "showInterfaces": true,
+      "showTraffic": true
+    },
+    "tags": ["network", "status"]
+  },
+  {
+    "id": "firewall-rules-table",
+    "name": "Firewall Rules Table",
+    "emoji": "🔥",
+    "module_id": "luci-app-smart-firewall",
+    "component_type": "table",
+    "description": "Interactive table for managing firewall rules with drag-and-drop reordering",
+    "preview_url": "",
+    "props": {
+      "sortable": true,
+      "filterable": true,
+      "pagination": true
+    },
+    "tags": ["firewall", "security", "table"]
+  },
+  {
+    "id": "vpn-connection-form",
+    "name": "VPN Connection Form",
+    "emoji": "🔐",
+    "module_id": "luci-app-vpn-manager",
+    "component_type": "form",
+    "description": "Unified form for creating WireGuard, OpenVPN, or IPsec connections",
+    "preview_url": "",
+    "props": {
+      "protocols": ["wireguard", "openvpn", "ipsec"],
+      "validation": true
+    },
+    "tags": ["vpn", "form", "network"]
+  },
+  {
+    "id": "backup-wizard-modal",
+    "name": "Backup Configuration Wizard",
+    "emoji": "💾",
+    "module_id": "secubox-app-backup-manager",
+    "component_type": "modal",
+    "description": "Step-by-step wizard for configuring automated backups",
+    "preview_url": "",
+    "props": {
+      "steps": 4,
+      "showProgress": true
+    },
+    "tags": ["backup", "wizard", "modal"]
+  }
+]

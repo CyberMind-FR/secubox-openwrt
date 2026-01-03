@@ -1,0 +1,129 @@
+{% extends theme_template %}
+
+{% block title %}Templates - SecuBox WebUI{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <h2>📄 Configuration Templates</h2>
+            <p>Generate UCI configs, network setups, and custom configurations</p>
+        </div>
+        <button class="btn primary" disabled>➕ New Template</button>
+    </div>
+
+    <!-- Template Type Filter -->
+    {% if template_types %}
+    <div class="chip-group" style="margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">
+        <a href="/templates?theme={{ selected_theme }}"
+           class="chip {% if not active_type %}chip-active{% endif %}">
+            All Types
+        </a>
+        {% for ttype in template_types %}
+        <a href="/templates?template_type={{ ttype }}&theme={{ selected_theme }}"
+           class="chip {% if active_type == ttype %}chip-active{% endif %}">
+            {{ ttype }}
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Templates Grid -->
+    {% if templates %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.5rem;">
+        {% for template in templates %}
+        <div class="card">
+            <div class="card-header">
+                <h3>{{ template.emoji }} {{ template.name }}</h3>
+                <span class="chip small">{{ template.template_type }}</span>
+            </div>
+
+            <div class="card-body">
+                <p>{{ template.description }}</p>
+
+                {% if template.required_modules %}
+                <div style="margin-top: 0.75rem;">
+                    <strong style="font-size: 0.9rem;">Required Modules:</strong>
+                    <div style="margin-top: 0.25rem;">
+                        {% for module in template.required_modules %}
+                        <span class="chip small">{{ module }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if template.tags %}
+                <div class="tag-row" style="margin-top: 0.75rem;">
+                    {% for tag in template.tags %}
+                    <span class="chip small">#{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="card-footer" style="display: flex; gap: 0.5rem;">
+                <button class="btn primary small"
+                        @click="window.dispatchEvent(new CustomEvent('open-generate-modal-{{ template.id }}'))">
+                    📝 Generate
+                </button>
+                <button class="btn ghost small"
+                        hx-get="/templates/{{ template.id }}/preview"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML">
+                    👁️ Preview
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+        <p>No templates available. Create templates to generate configurations.</p>
+    </div>
+    {% endif %}
+</section>
+
+<!-- Modal Container for Preview -->
+<div id="modal-container"></div>
+
+<!-- Generate Modals (Alpine.js driven) -->
+{% for template in templates %}
+<div x-data="{ open: false }"
+     @open-generate-modal-{{ template.id }}.window="open = true"
+     x-show="open"
+     x-cloak
+     style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+    <div @click.away="open = false" style="background: var(--bg); border-radius: 8px; padding: 1.5rem; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border);">
+            <h3>Generate: {{ template.name }}</h3>
+            <button @click="open = false" class="btn ghost small">✕</button>
+        </div>
+
+        <form hx-post="/templates/{{ template.id }}/generate"
+              hx-target="#template-result-{{ template.id }}"
+              style="display: flex; flex-direction: column; gap: 1rem;">
+            <div class="form-field">
+                <label for="variables-{{ template.id }}">
+                    Variables (JSON)
+                    <span class="muted" style="font-weight: normal; font-size: 0.85rem;">
+                        - Leave empty for defaults
+                    </span>
+                </label>
+                <textarea id="variables-{{ template.id }}"
+                          name="variables_json"
+                          rows="8"
+                          placeholder="{{ template.variables|tojson(indent=2) }}"
+                          style="font-family: monospace; font-size: 0.9rem; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text);"></textarea>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem;">
+                <button type="submit" class="btn primary">Generate</button>
+                <button type="button" @click="open = false" class="btn ghost">Cancel</button>
+            </div>
+        </form>
+
+        <div id="template-result-{{ template.id }}" style="margin-top: 1rem;"></div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

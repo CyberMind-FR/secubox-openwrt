@@ -1,0 +1,240 @@
+<!-- SecuBox Cyberpunk Command Center Widget -->
+<div
+  x-data="commandCenter()"
+  x-show="$store.commandCenter.isOpen"
+  x-transition:enter="slide-in-right-enter-active"
+  x-cloak
+  class="command-center-widget"
+  id="cyber-command-center"
+>
+  <!-- Header -->
+  <div class="cyber-header">
+    <h2 class="cyber-title glitch" data-text="COMMAND CENTER">COMMAND CENTER</h2>
+    <button @click="$store.commandCenter.close()" class="cyber-btn-close" title="Close Command Center">
+      ×
+    </button>
+  </div>
+
+  <!-- Tab Navigation -->
+  <nav class="cyber-tabs">
+    <button
+      class="cyber-tab"
+      :class="{active: tab === 'metrics'}"
+      @click="tab = 'metrics'"
+      title="System Metrics"
+    >
+      <span class="cyber-icon">⚡</span>
+      <span>SYSTEM</span>
+    </button>
+    <button
+      class="cyber-tab"
+      :class="{active: tab === 'threats'}"
+      @click="tab = 'threats'"
+      title="Security Threats"
+    >
+      <span class="cyber-icon">🛡️</span>
+      <span>THREATS</span>
+    </button>
+    <button
+      class="cyber-tab"
+      :class="{active: tab === 'traffic'}"
+      @click="tab = 'traffic'"
+      title="Network Traffic"
+    >
+      <span class="cyber-icon">🌐</span>
+      <span>TRAFFIC</span>
+    </button>
+    <button
+      class="cyber-tab"
+      :class="{active: tab === 'commands'}"
+      @click="tab = 'commands'"
+      title="Terminal Console"
+    >
+      <span class="cyber-icon">⌨️</span>
+      <span>CONSOLE</span>
+    </button>
+  </nav>
+
+  <!-- Content Panels -->
+  <div class="cyber-content">
+    <!-- System Metrics Panel -->
+    <div x-show="tab === 'metrics'" class="cyber-panel">
+      <div class="metric-grid">
+        <!-- CPU Metric -->
+        <div class="metric-card">
+          <div class="metric-label">CPU LOAD</div>
+          <div class="metric-value cyber-text-cyan" x-text="metrics.cpu.usage.toFixed(1) + '%'">0%</div>
+          <canvas id="cpu-chart" class="metric-chart"></canvas>
+        </div>
+
+        <!-- Memory Metric -->
+        <div class="metric-card">
+          <div class="metric-label">MEMORY USAGE</div>
+          <div class="metric-value cyber-text-magenta" x-text="metrics.memory.percent.toFixed(1) + '%'">0%</div>
+          <div class="metric-bar">
+            <div class="metric-bar-fill" :style="`width: ${metrics.memory.percent}%`"></div>
+          </div>
+          <div style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--cyber-text-muted);">
+            <span x-text="metrics.memory.used"></span> MB / <span x-text="metrics.memory.total"></span> MB
+          </div>
+        </div>
+
+        <!-- Network Metric -->
+        <div class="metric-card">
+          <div class="metric-label">NETWORK THROUGHPUT</div>
+          <div class="metric-value cyber-text-green" style="font-size: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <span style="font-size: 0.7rem; color: var(--cyber-text-muted);">↓ RX</span>
+                <div x-text="formatBytes(metrics.network.rx_rate)">0 B/s</div>
+              </div>
+              <div>
+                <span style="font-size: 0.7rem; color: var(--cyber-text-muted);">↑ TX</span>
+                <div x-text="formatBytes(metrics.network.tx_rate)">0 B/s</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Threats Panel -->
+    <div x-show="tab === 'threats'" class="cyber-panel">
+      <div class="threat-counters" style="margin-bottom: 1.5rem;">
+        <div class="counter blocked">
+          <span class="counter-value" x-text="threats.counters.blocked">0</span>
+          <span class="counter-label">BLOCKED</span>
+        </div>
+        <div class="counter allowed">
+          <span class="counter-value" x-text="threats.counters.allowed">0</span>
+          <span class="counter-label">ALLOWED</span>
+        </div>
+        <div class="counter quarantined">
+          <span class="counter-value" x-text="threats.counters.quarantined">0</span>
+          <span class="counter-label">QUARANTINE</span>
+        </div>
+      </div>
+
+      <div class="cyber-divider"></div>
+
+      <h3 style="font-size: 0.85rem; letter-spacing: 0.1em; color: var(--cyber-text-muted); margin-bottom: 1rem; text-transform: uppercase;">
+        Recent Events
+      </h3>
+
+      <div class="threat-feed">
+        <template x-if="threats.recent_events.length === 0">
+          <div style="text-align: center; padding: 2rem; color: var(--cyber-text-dim);">
+            No recent threats detected
+          </div>
+        </template>
+
+        <template x-for="event in threats.recent_events" :key="event.time + event.ip">
+          <div class="threat-event" :class="`severity-${event.severity}`">
+            <span class="threat-time" x-text="event.time"></span>
+            <span class="threat-ip" x-text="event.ip"></span>
+            <span class="threat-action" x-text="event.action"></span>
+            <span class="threat-reason" x-text="event.reason"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Traffic Panel -->
+    <div x-show="tab === 'traffic'" class="cyber-panel">
+      <h3 style="font-size: 0.85rem; letter-spacing: 0.1em; color: var(--cyber-text-muted); margin-bottom: 1rem; text-transform: uppercase;">
+        Protocol Distribution
+      </h3>
+
+      <div class="protocol-chart" id="protocol-chart-container">
+        <template x-for="(percent, protocol) in traffic.protocols" :key="protocol">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1;">
+              <span style="font-weight: 600; text-transform: uppercase; color: var(--cyber-cyan); min-width: 60px;" x-text="protocol"></span>
+              <div style="flex: 1; height: 20px; background: rgba(0, 255, 255, 0.1); border-radius: 4px; overflow: hidden; border: 1px solid rgba(0, 255, 255, 0.2);">
+                <div
+                  style="height: 100%; background: linear-gradient(90deg, var(--cyber-cyan), var(--cyber-magenta)); box-shadow: 0 0 10px var(--cyber-cyan); transition: width 0.3s;"
+                  :style="`width: ${percent}%`"
+                ></div>
+              </div>
+            </div>
+            <span style="font-weight: 700; color: var(--cyber-magenta); min-width: 50px; text-align: right;" x-text="percent + '%'"></span>
+          </div>
+        </template>
+      </div>
+
+      <div class="cyber-divider"></div>
+
+      <h3 style="font-size: 0.85rem; letter-spacing: 0.1em; color: var(--cyber-text-muted); margin-bottom: 1rem; text-transform: uppercase;">
+        Top Domains
+      </h3>
+
+      <div class="domain-list">
+        <template x-if="traffic.top_domains.length === 0">
+          <div style="text-align: center; padding: 2rem; color: var(--cyber-text-dim);">
+            No traffic data available
+          </div>
+        </template>
+
+        <template x-for="domain in traffic.top_domains" :key="domain.domain">
+          <div class="domain-row">
+            <div>
+              <div class="domain-name" x-text="domain.domain"></div>
+              <div style="font-size: 0.7rem; color: var(--cyber-text-dim); margin-top: 0.25rem;">
+                <span class="cyber-badge" x-text="domain.category"></span>
+              </div>
+            </div>
+            <div class="domain-bytes" x-text="formatBytes(domain.bytes)"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Console Panel -->
+    <div x-show="tab === 'commands'" class="cyber-panel">
+      <div class="terminal-output" id="terminal-scrollback">
+        <template x-if="commandOutput.length === 0">
+          <div style="color: var(--cyber-text-dim);">
+            SecuBox Command Center v1.0<br>
+            Type commands below or execute presets from the main interface.<br>
+            <br>
+            root@secubox:~#
+          </div>
+        </template>
+
+        <template x-for="line in commandOutput" :key="line.id">
+          <div class="terminal-line" x-text="line.text"></div>
+        </template>
+      </div>
+
+      <div class="terminal-input">
+        <span class="prompt">root@secubox:~#</span>
+        <input
+          type="text"
+          class="terminal-cmd"
+          placeholder="Enter command..."
+          @keydown.enter="executeCommand($event.target.value); $event.target.value = ''"
+          x-ref="terminalInput"
+        />
+      </div>
+    </div>
+  </div>
+
+  <!-- Matrix Rain Background Effect -->
+  <canvas class="matrix-rain" id="matrix-bg"></canvas>
+</div>
+
+<!-- Trigger Button -->
+<button
+  @click="$store.commandCenter.toggle()"
+  class="cyber-trigger-btn"
+  title="Toggle Command Center (Ctrl+`)"
+  x-data
+>
+  <span class="cyber-icon">⚡</span>
+</button>
+
+<style>
+.slide-in-right-enter-active {
+  animation: slide-in-right 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+</style>

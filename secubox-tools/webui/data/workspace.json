@@ -1,0 +1,10 @@
+{
+  "id": "default",
+  "active_project": "cybermind-prod",
+  "active_device": "device-cybermind-1",
+  "canvas_modules": [],
+  "connections": [],
+  "layout": "grid",
+  "filters": {},
+  "sidebar_collapsed": false
+}

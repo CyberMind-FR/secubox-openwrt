@@ -1,0 +1,105 @@
+[
+  {
+    "id": "home-router",
+    "name": "Home Router",
+    "emoji": "\ud83c\udfe0",
+    "description": "Standard home router configuration with basic security and parental controls",
+    "author": "SecuBox Team",
+    "modules": [
+      "luci-app-system-hub",
+      "luci-app-network-modes",
+      "secubox-app-backup-manager"
+    ],
+    "presets": [
+      "system-hub-diagnostics"
+    ],
+    "config_overrides": {
+      "firewall": "moderate",
+      "auto_update": true
+    },
+    "tags": [
+      "home",
+      "basic",
+      "family"
+    ],
+    "active": true,
+    "priority": 100
+  },
+  {
+    "id": "iot-gateway",
+    "name": "IoT Gateway",
+    "emoji": "\ud83e\udd16",
+    "description": "Optimized for managing IoT devices with network isolation and monitoring",
+    "author": "Community",
+    "modules": [
+      "luci-app-smart-firewall",
+      "secubox-app-intrusion-detection",
+      "luci-app-advanced-monitoring"
+    ],
+    "presets": [],
+    "config_overrides": {
+      "vlan_isolation": true,
+      "iot_network": "192.168.10.0/24"
+    },
+    "tags": [
+      "iot",
+      "security",
+      "monitoring"
+    ],
+    "active": false,
+    "priority": 80
+  },
+  {
+    "id": "vpn-gateway",
+    "name": "VPN Gateway",
+    "emoji": "\ud83d\udd10",
+    "description": "Full VPN server and client configuration with multi-protocol support",
+    "author": "SecuBox Team",
+    "modules": [
+      "luci-app-vpn-manager",
+      "luci-app-advanced-monitoring"
+    ],
+    "presets": [
+      "portal-onboarding"
+    ],
+    "config_overrides": {
+      "default_protocol": "wireguard",
+      "enable_kill_switch": true
+    },
+    "tags": [
+      "vpn",
+      "privacy",
+      "network"
+    ],
+    "active": false,
+    "priority": 70
+  },
+  {
+    "id": "security-hardened",
+    "name": "Security Hardened",
+    "emoji": "\ud83d\udee1\ufe0f",
+    "description": "Maximum security configuration with IDS/IPS, advanced firewall, and monitoring",
+    "author": "Security Team",
+    "modules": [
+      "secubox-app-intrusion-detection",
+      "luci-app-smart-firewall",
+      "luci-app-advanced-monitoring",
+      "secubox-app-backup-manager"
+    ],
+    "presets": [
+      "system-hub-diagnostics"
+    ],
+    "config_overrides": {
+      "firewall": "strict",
+      "ids_enabled": true,
+      "log_level": "verbose"
+    },
+    "tags": [
+      "security",
+      "enterprise",
+      "monitoring"
+    ],
+    "active": false,
+    "priority": 90
+  }
+]

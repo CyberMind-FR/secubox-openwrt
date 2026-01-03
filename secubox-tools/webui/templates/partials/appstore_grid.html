@@ -1,0 +1,86 @@
+<div id="appstore-grid" class="module-grid" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">
+    {% if items %}
+        {% for item in items %}
+        <article class="card" data-item-id="{{ item.id }}">
+            <!-- Header -->
+            <header class="card-header">
+                <div class="card-icon">
+                    <span class="card-emoji">{{ item.emoji }}</span>
+                </div>
+                <div class="card-title-group">
+                    <h3 class="card-title">{{ item.name }}</h3>
+                    <span class="card-subtitle">v{{ item.version }} • {{ item.author }}</span>
+                </div>
+                {% if item.installed %}
+                <span class="pill pill-stable">Installed</span>
+                {% elif item.update_available %}
+                <span class="pill pill-warn">Update</span>
+                {% endif %}
+            </header>
+
+            <!-- Body -->
+            <div class="card-body">
+                <p class="card-description">{{ item.summary }}</p>
+
+                <!-- Rating and stats -->
+                <div style="display: flex; align-items: center; gap: 1rem; font-size: 0.875rem;">
+                    <span title="{{ item.rating }} stars">
+                        ⭐ {{ item.rating }}
+                    </span>
+                    <span title="{{ item.downloads }} downloads">
+                        ⬇️ {{ item.downloads }}
+                    </span>
+                    <span title="{{ item.size_mb }} MB">
+                        💾 {{ "%.1f"|format(item.size_mb) }} MB
+                    </span>
+                </div>
+
+                {% if item.tags %}
+                <div class="card-tags">
+                    {% for tag in item.tags[:3] %}
+                    <span class="chip">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Footer -->
+            <footer class="card-footer">
+                <div class="card-actions">
+                    {% if item.installed %}
+                        {% if item.update_available %}
+                        <button class="btn btn-primary btn-sm"
+                                hx-post="/appstore/{{ item.id }}/install"
+                                hx-target="#status-toast"
+                                @click="$store.app.showToast('Updating {{ item.name }}...', 'info')">
+                            Update
+                        </button>
+                        {% else %}
+                        <button class="btn btn-ghost btn-sm" disabled>
+                            Installed
+                        </button>
+                        {% endif %}
+                    {% else %}
+                    <button class="btn btn-primary btn-sm"
+                            hx-post="/appstore/{{ item.id }}/install"
+                            hx-target="#status-toast"
+                            @click="$store.app.showToast('Installing {{ item.name }}...', 'info')">
+                        Install
+                    </button>
+                    {% endif %}
+
+                    <a href="/appstore/{{ item.id }}?theme={{ selected_theme }}"
+                       class="btn btn-ghost btn-sm">
+                        Details
+                    </a>
+                </div>
+            </footer>
+        </article>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state" style="grid-column: 1 / -1; text-align: center; padding: 3rem;">
+            <p style="font-size: 3rem; margin-bottom: 1rem;">📦</p>
+            <p>No apps found matching your criteria.</p>
+        </div>
+    {% endif %}
+</div>

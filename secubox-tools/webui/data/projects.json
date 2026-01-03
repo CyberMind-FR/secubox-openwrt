@@ -1,0 +1,100 @@
+[
+  {
+    "id": "cybermind-prod",
+    "name": "CyberMind Production",
+    "emoji": "\ud83e\udde0",
+    "description": "Main production deployment at cybermind.fr",
+    "project_type": "production",
+    "url": "cybermind.fr",
+    "tags": [
+      "production",
+      "cloud"
+    ],
+    "devices": [
+      "device-cybermind-1",
+      "device-cybermind-2"
+    ],
+    "profiles": [
+      "security-hardened",
+      "iot-setup",
+      "smart-home",
+      "vpn-server",
+      "qos-gaming",
+      "security-lockdown",
+      "threat-monitoring",
+      "media-streaming",
+      "cdn-config"
+    ],
+    "modules": [
+      "luci-app-system-hub",
+      "luci-app-bandwidth-manager",
+      "luci-app-iot-manager",
+      "luci-app-mqtt-bridge",
+      "luci-app-wireguard-dashboard",
+      "luci-app-network-modes",
+      "luci-app-client-guardian",
+      "luci-app-netifyd-dashboard",
+      "luci-app-cdn-cache",
+      "luci-app-media-flow"
+    ],
+    "active": true,
+    "last_accessed": "2026-01-02T12:31:58.893550",
+    "workspace_state": {},
+    "owner": "admin",
+    "collaborators": [],
+    "visibility": "private"
+  },
+  {
+    "id": "cybermood-game",
+    "name": "CyberMood Gaming",
+    "emoji": "\ud83c\udfae",
+    "description": "Gaming platform at cybermood.eu",
+    "project_type": "production",
+    "url": "cybermood.eu",
+    "tags": [
+      "gaming",
+      "entertainment"
+    ],
+    "devices": [
+      "device-cybermood-1"
+    ],
+    "profiles": [
+      "vpn-gateway"
+    ],
+    "modules": [
+      "luci-app-cdn-cache",
+      "luci-app-media-flow"
+    ],
+    "active": false,
+    "last_accessed": "2026-01-02T12:31:54.013936",
+    "workspace_state": {},
+    "owner": "admin",
+    "collaborators": [],
+    "visibility": "private"
+  },
+  {
+    "id": "secubox-c3",
+    "name": "SecuBox C\u00b3",
+    "emoji": "\ud83d\udee1\ufe0f",
+    "description": "Security cube (c^3) core platform",
+    "project_type": "development",
+    "url": null,
+    "tags": [
+      "security",
+      "development"
+    ],
+    "devices": [
+      "device-local-1"
+    ],
+    "profiles": [
+      "home-router"
+    ],
+    "modules": [],
+    "active": false,
+    "last_accessed": "2026-01-02T12:24:42.220414",
+    "workspace_state": {},
+    "owner": "admin",
+    "collaborators": [],
+    "visibility": "private"
+  }
+]

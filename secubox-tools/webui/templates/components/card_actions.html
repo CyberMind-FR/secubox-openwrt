@@ -1,0 +1,69 @@
+{#
+  Reusable Card Actions Component
+
+  Usage:
+    {% include "components/card_actions.html" with {
+      "actions": [
+        {"label": "Install", "url": "/api/install/...", "method": "post"},
+        {"label": "Preview", "url": "/modules/...", "method": "get"},
+      ]
+    } %}
+#}
+
+<div class="card-actions-menu" x-data="{ menuOpen: false }">
+    <!-- Primary action button (if specified) -->
+    {% if primary_action %}
+    <button class="btn btn-primary btn-sm"
+            hx-{{ primary_action.method|default('get')|lower }}="{{ primary_action.url }}"
+            hx-target="{{ primary_action.target|default('#status-toast') }}"
+            hx-swap="{{ primary_action.swap|default('innerHTML') }}"
+            @click="$store.app.showToast('{{ primary_action.toast|default('Processing...') }}', 'info')">
+        {% if primary_action.icon %}{{ primary_action.icon }} {% endif %}
+        {{ primary_action.label|default('Action') }}
+    </button>
+    {% endif %}
+
+    <!-- Dropdown menu for additional actions -->
+    {% if actions and actions|length > 0 %}
+    <div class="action-dropdown">
+        <button @click="menuOpen = !menuOpen"
+                class="btn btn-ghost btn-sm"
+                aria-label="More actions">
+            <span class="dropdown-icon">⋮</span>
+        </button>
+
+        <div x-show="menuOpen"
+             @click.away="menuOpen = false"
+             x-transition:enter="transition ease-out duration-100"
+             x-transition:enter-start="opacity-0 scale-95"
+             x-transition:enter-end="opacity-100 scale-100"
+             x-transition:leave="transition ease-in duration-75"
+             x-transition:leave-start="opacity-100 scale-100"
+             x-transition:leave-end="opacity-0 scale-95"
+             class="dropdown-menu">
+
+            {% for action in actions %}
+            {% if action.divider %}
+                <div class="dropdown-divider"></div>
+            {% elif action.header %}
+                <div class="dropdown-header">{{ action.label }}</div>
+            {% else %}
+                <button class="dropdown-item"
+                        hx-{{ action.method|default('get')|lower }}="{{ action.url }}"
+                        hx-target="{{ action.target|default('#status-toast') }}"
+                        hx-swap="{{ action.swap|default('innerHTML') }}"
+                        @click="menuOpen = false; $store.app.showToast('{{ action.toast|default('Action started...') }}', 'info')">
+                    {% if action.icon %}
+                    <span class="dropdown-item-icon">{{ action.icon }}</span>
+                    {% endif %}
+                    <span class="dropdown-item-label">{{ action.label }}</span>
+                    {% if action.shortcut %}
+                    <span class="dropdown-item-shortcut">{{ action.shortcut }}</span>
+                    {% endif %}
+                </button>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>

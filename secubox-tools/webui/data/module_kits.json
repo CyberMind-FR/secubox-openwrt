@@ -1,0 +1,146 @@
+[
+  {
+    "id": "kit-security-suite",
+    "name": "Security Suite",
+    "emoji": "\ud83d\udee1\ufe0f",
+    "description": "Complete security stack with firewall, IDS, and monitoring",
+    "version": "1.0.0",
+    "author": "SecuBox Team",
+    "modules": [
+      "luci-app-client-guardian",
+      "luci-app-netifyd-dashboard"
+    ],
+    "presets": [
+      "security-lockdown",
+      "threat-monitoring"
+    ],
+    "templates": [
+      "firewall-hardened"
+    ],
+    "category": "security",
+    "tags": [
+      "security",
+      "firewall",
+      "monitoring"
+    ],
+    "use_cases": [
+      "Enterprise security",
+      "Home protection"
+    ],
+    "dependencies": [],
+    "conflicts": [],
+    "min_openwrt_version": "23.05",
+    "downloads": 1236,
+    "rating": 4.8,
+    "verified": true
+  },
+  {
+    "id": "kit-network-pro",
+    "name": "Network Professional",
+    "emoji": "\ud83c\udf10",
+    "description": "Advanced networking with VPN, VLAN, and bandwidth management",
+    "version": "1.2.0",
+    "author": "SecuBox Team",
+    "modules": [
+      "luci-app-wireguard-dashboard",
+      "luci-app-bandwidth-manager",
+      "luci-app-network-modes"
+    ],
+    "presets": [
+      "vpn-server",
+      "qos-gaming"
+    ],
+    "templates": [
+      "vlan-config",
+      "vpn-client"
+    ],
+    "category": "networking",
+    "tags": [
+      "vpn",
+      "bandwidth",
+      "vlan"
+    ],
+    "use_cases": [
+      "Remote work",
+      "Gaming optimization"
+    ],
+    "dependencies": [],
+    "conflicts": [],
+    "min_openwrt_version": "23.05",
+    "downloads": 893,
+    "rating": 4.6,
+    "verified": true
+  },
+  {
+    "id": "kit-home-automation",
+    "name": "Home Automation Kit",
+    "emoji": "\ud83c\udfe0",
+    "description": "IoT device management and home automation control",
+    "version": "1.1.0",
+    "author": "SecuBox Team",
+    "modules": [
+      "luci-app-iot-manager",
+      "luci-app-mqtt-bridge"
+    ],
+    "presets": [
+      "iot-setup",
+      "smart-home"
+    ],
+    "templates": [
+      "mqtt-config",
+      "zigbee-setup"
+    ],
+    "category": "automation",
+    "tags": [
+      "iot",
+      "mqtt",
+      "smart-home"
+    ],
+    "use_cases": [
+      "Smart home",
+      "IoT gateway"
+    ],
+    "dependencies": [],
+    "conflicts": [],
+    "min_openwrt_version": "23.05",
+    "downloads": 568,
+    "rating": 4.5,
+    "verified": true
+  },
+  {
+    "id": "kit-media-server",
+    "name": "Media Server Bundle",
+    "emoji": "\ud83c\udfac",
+    "description": "Complete media streaming and content delivery setup",
+    "version": "1.0.0",
+    "author": "SecuBox Team",
+    "modules": [
+      "luci-app-cdn-cache",
+      "luci-app-media-flow",
+      "luci-app-bandwidth-manager"
+    ],
+    "presets": [
+      "media-streaming",
+      "cdn-config"
+    ],
+    "templates": [
+      "streaming-config"
+    ],
+    "category": "media",
+    "tags": [
+      "media",
+      "streaming",
+      "cdn"
+    ],
+    "use_cases": [
+      "Media streaming",
+      "Content delivery"
+    ],
+    "dependencies": [],
+    "conflicts": [],
+    "min_openwrt_version": "23.05",
+    "downloads": 424,
+    "rating": 4.7,
+    "verified": true
+  }
+]

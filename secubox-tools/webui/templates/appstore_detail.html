@@ -1,0 +1,149 @@
+{% extends theme_template %}
+
+{% block title %}{{ item.name }} - AppStore - SecuBox WebUI{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <a href="/appstore?theme={{ selected_theme }}" class="btn ghost">← Back to AppStore</a>
+
+    <header class="panel-head" style="margin-top: 1.5rem;">
+        <div>
+            <h2>{{ item.emoji }} {{ item.name }}</h2>
+            <p class="muted">{{ item.category }} · Version {{ item.version }} · by {{ item.author }}</p>
+        </div>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            {% if item.installed %}
+            <span class="pill pill-stable">✓ Installed</span>
+            {% endif %}
+            {% if item.update_available %}
+            <span class="pill pill-warning">Update Available</span>
+            {% endif %}
+        </div>
+    </header>
+
+    <!-- Rating and Downloads -->
+    <div style="display: flex; gap: 2rem; margin: 1rem 0; align-items: center;">
+        <div>
+            <span style="color: var(--accent); font-weight: bold;">★ {{ "%.1f"|format(item.rating) }}</span>
+            <span class="muted">/ 5.0</span>
+        </div>
+        <div class="muted">
+            {{ item.downloads }} downloads
+        </div>
+        <div class="muted">
+            {{ "%.1f"|format(item.size_mb) }} MB
+        </div>
+        {% if item.license %}
+        <div class="muted">
+            License: {{ item.license }}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Summary -->
+    <p style="font-size: 1.1rem; margin: 1.5rem 0;">{{ item.summary }}</p>
+
+    <!-- Tags -->
+    {% if item.tags %}
+    <div class="tag-row" style="margin-bottom: 1.5rem;">
+        {% for tag in item.tags %}
+        <span class="chip small">#{{ tag }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Description -->
+    {% if item.description %}
+    <h3>Description</h3>
+    <div style="white-space: pre-wrap; margin-bottom: 1.5rem;">{{ item.description }}</div>
+    {% endif %}
+
+    <!-- Screenshots -->
+    {% if item.screenshots %}
+    <h3>Screenshots</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        {% for screenshot in item.screenshots %}
+        <img src="{{ screenshot }}" alt="Screenshot" style="width: 100%; border-radius: 8px; border: 1px solid var(--border);">
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Dependencies -->
+    {% if item.dependencies %}
+    <h3>Dependencies</h3>
+    <ul style="margin-bottom: 1.5rem;">
+        {% for dep in item.dependencies %}
+        <li>{{ dep }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <!-- Links -->
+    <h3>Additional Information</h3>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+        {% if item.repository_url %}
+        <a href="{{ item.repository_url }}" target="_blank" class="btn ghost">
+            📦 Repository
+        </a>
+        {% endif %}
+        {% if item.documentation_url %}
+        <a href="{{ item.documentation_url }}" target="_blank" class="btn ghost">
+            📚 Documentation
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Install/Uninstall Button -->
+    <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border);">
+        {% if item.installed %}
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <button class="btn danger"
+                    hx-post="/appstore/{{ item.id }}/uninstall"
+                    hx-target="#install-result"
+                    hx-confirm="Are you sure you want to uninstall {{ item.name }}?">
+                🗑️ Uninstall
+            </button>
+            {% if item.update_available %}
+            <button class="btn primary"
+                    hx-post="/appstore/{{ item.id }}/update"
+                    hx-target="#install-result">
+                ⬆️ Update Available
+            </button>
+            {% endif %}
+        </div>
+        {% else %}
+        <button class="btn primary"
+                hx-post="/appstore/{{ item.id }}/install"
+                hx-target="#install-result"
+                hx-swap="innerHTML">
+            📥 Install
+        </button>
+        {% endif %}
+        <div id="install-result" style="margin-top: 1rem;"></div>
+    </div>
+
+    <!-- Reviews Section -->
+    {% if reviews %}
+    <h3 style="margin-top: 2rem;">User Reviews</h3>
+    <div style="display: flex; flex-direction: column; gap: 1rem;">
+        {% for review in reviews %}
+        <div class="panel" style="padding: 1rem; background: var(--bg-secondary);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <div>
+                    <strong>{{ review.author }}</strong>
+                    <span class="muted" style="margin-left: 1rem;">{{ review.date }}</span>
+                </div>
+                <div>
+                    <span style="color: var(--accent);">★ {{ review.rating }}/5</span>
+                </div>
+            </div>
+            <p>{{ review.comment }}</p>
+            <div class="muted" style="margin-top: 0.5rem; font-size: 0.9rem;">
+                👍 {{ review.helpful_count }} found this helpful
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

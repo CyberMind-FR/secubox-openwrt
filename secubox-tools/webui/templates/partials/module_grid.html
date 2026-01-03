@@ -1,0 +1,31 @@
+<div id="module-grid" class="module-grid" hx-target="this">
+    {% for module in modules %}
+    <article class="module-card">
+        <header class="card-header">
+            <div class="card-meta">
+                <span class="emoji-badge">{{ emoji_for_module(module) }}</span>
+                <div>
+                    <h3>{{ module.name }}</h3>
+                    <p class="muted">{{ module.category }} · v{{ module.version }}</p>
+                </div>
+            </div>
+            <span class="pill pill-{{ module.health }}">{{ module.health|capitalize }}</span>
+        </header>
+        <p>{{ module.summary }}</p>
+        <div class="tag-row">
+            {% for tag in module.tags %}
+            <span class="chip small">#{{ tag }}</span>
+            {% endfor %}
+        </div>
+        <div class="card-actions">
+            <a class="btn" href="/modules/{{ module.id }}?theme={{ selected_theme }}">Inspect</a>
+            <button class="btn ghost">Preview</button>
+        </div>
+    </article>
+    {% endfor %}
+    {% if modules|length == 0 %}
+    <div class="empty-state">
+        <p>No modules found for this filter.</p>
+    </div>
+    {% endif %}
+</div>

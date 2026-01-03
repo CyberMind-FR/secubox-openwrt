@@ -1,0 +1,29 @@
+[
+  {
+    "id": "system-hub-diagnostics",
+    "name": "Hub Diagnostics",
+    "description": "Collect RPC, UCI, and health metrics for troubleshooting.",
+    "module": "luci-app-system-hub",
+    "command_sequence": ["fetch-rpc-status", "collect-health", "render-report"],
+    "parameters": {"verbosity": "high"},
+    "expected_outcome": "Consolidated JSON + human summary"
+  },
+  {
+    "id": "portal-onboarding",
+    "name": "Portal Onboarding",
+    "description": "Prepare captive portal with TLS assets and ACL templates.",
+    "module": "secubox-app-nodogsplash",
+    "command_sequence": ["validate-theme", "generate-acl", "simulate-auth"],
+    "parameters": {"preview_clients": 15},
+    "expected_outcome": "Preview of splash flow and policy diffs"
+  },
+  {
+    "id": "core-snapshot",
+    "name": "Core Snapshot",
+    "description": "Run secubox-core snapshot with checksum verification.",
+    "module": "secubox-core",
+    "command_sequence": ["sync-catalog", "capture-state", "summarize"],
+    "parameters": {"mode": "dry-run"},
+    "expected_outcome": "SHA-set + config delta overview"
+  }
+]

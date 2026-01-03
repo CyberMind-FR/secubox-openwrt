@@ -1,0 +1,83 @@
+<div class="modal-overlay" x-data="{ show: true }" x-show="show" @click.self="show = false; document.getElementById('modal-container').innerHTML = ''">
+    <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+        <div class="modal-header">
+            <h3>{{ template.emoji }} {{ template.name }}</h3>
+            <button @click="show = false; document.getElementById('modal-container').innerHTML = ''" class="btn ghost small">✕</button>
+        </div>
+
+        <div class="modal-body">
+            <p><strong>Description:</strong> {{ template.description }}</p>
+            <p><strong>Type:</strong> {{ template.template_type }}</p>
+
+            {% if template.required_modules %}
+            <div style="margin-top: 1rem;">
+                <strong>Required Modules:</strong>
+                <div style="margin-top: 0.5rem;">
+                    {% for module in template.required_modules %}
+                    <span class="chip small">{{ module }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div style="margin-top: 1rem;">
+                <strong>Template Content:</strong>
+                <pre style="margin-top: 0.5rem; padding: 1rem; background: var(--bg-secondary); border-radius: 4px; overflow-x: auto; font-size: 0.85rem; font-family: monospace;">{{ template.content }}</pre>
+            </div>
+
+            {% if template.variables %}
+            <div style="margin-top: 1rem;">
+                <strong>Default Variables:</strong>
+                <pre style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-secondary); border-radius: 4px; overflow-x: auto; font-size: 0.85rem;">{{ template.variables|tojson(indent=2) }}</pre>
+            </div>
+            {% endif %}
+
+            {% if template.examples %}
+            <div style="margin-top: 1rem;">
+                <strong>Examples:</strong>
+                {% for example in template.examples %}
+                <div style="margin-top: 0.5rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: 4px;">
+                    <div style="font-weight: 500;">{{ example.name }}</div>
+                    <pre style="margin-top: 0.25rem; font-size: 0.85rem;">{{ example.variables|tojson(indent=2) }}</pre>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-body {
+    line-height: 1.6;
+}
+</style>

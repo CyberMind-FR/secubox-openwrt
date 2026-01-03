@@ -1,0 +1,121 @@
+<!-- Multi-Device Management -->
+{% set active_project = projects|selectattr('active')|first %}
+
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <h2>🌐 Devices</h2>
+            {% if active_project %}
+            <p>Managing {{ active_project.devices|length }} devices in {{ active_project.name }}</p>
+            {% else %}
+            <p>All devices across all projects</p>
+            {% endif %}
+        </div>
+        <button class="btn primary" disabled>➕ Add Device</button>
+    </div>
+
+    <!-- Devices Grid -->
+    {% if active_project and active_project.devices %}
+    <div class="device-grid">
+        {% for device_id in active_project.devices %}
+            {% set device = devices|selectattr('id', 'equalto', device_id)|first %}
+            {% if device %}
+            <div class="card device-card">
+                <div class="card-header" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="device-status {% if device.active %}online{% else %}offline{% endif %}"></span>
+                    <div style="flex: 1;">
+                        <h3>{{ device.emoji }} {{ device.name }}</h3>
+                        {% if device.active %}
+                        <span class="pill pill-stable" style="font-size: 0.75rem;">✓ Active</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <p class="muted" style="margin-bottom: 0.5rem;">{{ device.description or 'No description' }}</p>
+                    <div style="font-size: 0.9rem;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                            <span class="muted">Connection:</span>
+                            <span>{{ device.connection_type }}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                            <span class="muted">Host:</span>
+                            <span>{{ device.host }}:{{ device.port }}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                            <span class="muted">Protocol:</span>
+                            <span>{{ device.protocol }}</span>
+                        </div>
+                        {% if device.firmware_version %}
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                            <span class="muted">Firmware:</span>
+                            <span>{{ device.firmware_version }}</span>
+                        </div>
+                        {% endif %}
+                        {% if device.last_connected %}
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                            <span class="muted">Last Connected:</span>
+                            <span style="font-size: 0.8rem;">{{ device.last_connected[:19] }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if device.tags %}
+                    <div class="tag-row" style="margin-top: 0.75rem;">
+                        {% for tag in device.tags %}
+                        <span class="chip small">#{{ tag }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="card-footer" style="display: flex; gap: 0.5rem;">
+                    {% if not device.active %}
+                    <button class="btn primary small"
+                            hx-post="/devices/{{ device.id }}/activate"
+                            hx-target="#device-result-{{ device.id }}"
+                            hx-swap="innerHTML">
+                        ▶️ Activate
+                    </button>
+                    {% endif %}
+                    <button class="btn ghost small" disabled>⚙️ Configure</button>
+                    <button class="btn ghost small" disabled>🔄 Sync</button>
+                </div>
+                <div id="device-result-{{ device.id }}"></div>
+            </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    <!-- Bulk Actions -->
+    <div class="card-footer" style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
+        <button class="btn ghost" disabled>🔄 Sync All</button>
+        <button class="btn ghost" disabled>💾 Backup All</button>
+        <button class="btn ghost" disabled>🔄 Update All</button>
+    </div>
+
+    {% elif devices %}
+    <!-- Show all devices when no project is active -->
+    <div class="device-grid">
+        {% for device in devices %}
+        <div class="card device-card">
+            <div class="card-header" style="display: flex; align-items: center; gap: 0.5rem;">
+                <span class="device-status {% if device.active %}online{% else %}offline{% endif %}"></span>
+                <div style="flex: 1;">
+                    <h3>{{ device.emoji }} {{ device.name }}</h3>
+                </div>
+            </div>
+            <div class="card-body">
+                <p>{{ device.host }}:{{ device.port }}</p>
+                <p class="muted" style="font-size: 0.85rem;">{{ device.connection_type }}</p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% else %}
+    <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+        <p>No devices configured. Add a device to get started!</p>
+    </div>
+    {% endif %}
+</section>

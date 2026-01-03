@@ -1,0 +1,107 @@
+{#
+  Reusable Card Component Base
+
+  Usage:
+    {% include "components/card_base.html" with {
+      "emoji": "🧩",
+      "title": "Module Name",
+      "subtitle": "v1.0.0",
+      "description": "Module description",
+      "tags": ["security", "network"],
+      "status": "stable",
+      "actions": [...]
+    } %}
+#}
+
+<article class="card"
+         x-data="{
+           menuOpen: false,
+           expanded: false,
+           status: '{{ status|default('idle') }}'
+         }"
+         :class="{ 'card-expanded': expanded }"
+         data-item-id="{{ id|default('') }}"
+         data-module-id="{{ module_id|default('') }}">
+
+    <!-- Card Header -->
+    <header class="card-header">
+        <div class="card-icon">
+            <span class="card-emoji">{{ emoji|default('📦') }}</span>
+        </div>
+        <div class="card-title-group">
+            <h3 class="card-title">{{ title|default('Untitled') }}</h3>
+            {% if subtitle %}
+            <span class="card-subtitle">{{ subtitle }}</span>
+            {% endif %}
+        </div>
+        {% if status %}
+        <span class="pill pill-{{ status }}">{{ status }}</span>
+        {% endif %}
+    </header>
+
+    <!-- Card Body -->
+    <div class="card-body">
+        {% if description %}
+        <p class="card-description">{{ description }}</p>
+        {% endif %}
+
+        {% if tags and tags|length > 0 %}
+        <div class="card-tags">
+            {% for tag in tags %}
+            <span class="chip">{{ tag }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Additional content slot -->
+        {% if extra_content %}
+        <div class="card-extra">
+            {{ extra_content }}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Card Footer with Actions -->
+    <footer class="card-footer">
+        <div class="card-actions">
+            {% if actions and actions|length > 0 %}
+                <!-- Primary action -->
+                {% if primary_action %}
+                <button class="btn btn-primary"
+                        hx-{{ primary_action.method|default('get')|lower }}="{{ primary_action.url }}"
+                        hx-target="{{ primary_action.target|default('#status-toast') }}"
+                        @click="$store.app.showToast('{{ primary_action.message|default('Action started...') }}', 'info')">
+                    {{ primary_action.label|default('Action') }}
+                </button>
+                {% endif %}
+
+                <!-- More actions dropdown -->
+                <div class="dropdown" x-data="{ open: false }">
+                    <button @click="open = !open" class="btn btn-ghost btn-sm">
+                        ⋮
+                    </button>
+                    <div x-show="open"
+                         @click.away="open = false"
+                         x-transition
+                         class="dropdown-menu">
+                        {% for action in actions %}
+                        <button class="dropdown-item"
+                                hx-{{ action.method|default('get')|lower }}="{{ action.url }}"
+                                hx-target="{{ action.target|default('#status-toast') }}"
+                                @click="open = false; $store.app.showToast('{{ action.message|default('Action started...') }}', 'info')">
+                            {{ action.label }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Drag handle (for sortable cards) -->
+        {% if draggable %}
+        <div class="drag-handle" title="Drag to reorder">
+            ⋮⋮
+        </div>
+        {% endif %}
+    </footer>
+</article>

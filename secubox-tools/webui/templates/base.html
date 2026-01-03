@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}SecuBox WebUI Prototyper{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/site.css" />
+    <link rel="stylesheet" href="/static/css/cyberpunk.css" />
+    <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <!-- Load Alpine stores before Alpine.js itself -->
+    <script src="/static/js/store.js" defer></script>
+    <script src="/static/js/command-center.js" defer></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="theme-base {% block body_class %}{% endblock %}">
+    <header class="app-header">
+        <div class="header-left">
+            <span class="badge">Prototype</span>
+            <h1>SecuBox Virtual Console</h1>
+        </div>
+        <div class="header-right">
+            {% block theme_switcher %}{% endblock %}
+        </div>
+    </header>
+
+    <div class="app-layout" x-data="{ section: $store.app.activeSection }">
+        <!-- Navigation Sidebar -->
+        <aside class="app-sidebar">
+            <nav class="nav-menu">
+                <a href="/?theme={{ selected_theme|default('secubox') }}"
+                   @click="$store.app.setSection('modules')"
+                   :class="{ 'nav-active': section === 'modules' }"
+                   class="nav-link">
+                    <span class="nav-emoji">🧩</span>
+                    <span class="nav-label">Modules</span>
+                </a>
+                <a href="/appstore?theme={{ selected_theme|default('secubox') }}"
+                   @click="$store.app.setSection('appstore')"
+                   :class="{ 'nav-active': section === 'appstore' }"
+                   class="nav-link">
+                    <span class="nav-emoji">🏪</span>
+                    <span class="nav-label">AppStore</span>
+                </a>
+                <a href="/components?theme={{ selected_theme|default('secubox') }}"
+                   @click="$store.app.setSection('components')"
+                   :class="{ 'nav-active': section === 'components' }"
+                   class="nav-link">
+                    <span class="nav-emoji">🎨</span>
+                    <span class="nav-label">Components</span>
+                </a>
+                <a href="/profiles?theme={{ selected_theme|default('secubox') }}"
+                   @click="$store.app.setSection('profiles')"
+                   :class="{ 'nav-active': section === 'profiles' }"
+                   class="nav-link">
+                    <span class="nav-emoji">📦</span>
+                    <span class="nav-label">Profiles</span>
+                </a>
+                <a href="/templates?theme={{ selected_theme|default('secubox') }}"
+                   @click="$store.app.setSection('templates')"
+                   :class="{ 'nav-active': section === 'templates' }"
+                   class="nav-link">
+                    <span class="nav-emoji">📄</span>
+                    <span class="nav-label">Templates</span>
+                </a>
+                <a href="/settings?theme={{ selected_theme|default('secubox') }}"
+                   @click="$store.app.setSection('settings')"
+                   :class="{ 'nav-active': section === 'settings' }"
+                   class="nav-link">
+                    <span class="nav-emoji">⚙️</span>
+                    <span class="nav-label">Settings</span>
+                </a>
+                <a href="/workspace?theme={{ selected_theme|default('secubox') }}"
+                   @click="$store.app.setSection('workspace')"
+                   :class="{ 'nav-active': section === 'workspace' }"
+                   class="nav-link">
+                    <span class="nav-emoji">🚀</span>
+                    <span class="nav-label">Workspace</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="app-main">
+            <!-- Toast Notifications -->
+            <div x-show="$store.app.toast.show"
+                 x-transition
+                 :class="'toast toast-' + $store.app.toast.type"
+                 class="toast"
+                 id="status-toast">
+                <span x-text="$store.app.toast.message"></span>
+            </div>
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Cyberpunk Command Center Widget -->
+    {% include "partials/command_center.html" %}
+</body>
+</html>

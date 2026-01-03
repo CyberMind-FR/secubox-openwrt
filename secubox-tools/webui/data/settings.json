@@ -1,0 +1,10 @@
+{
+  "id": "global",
+  "theme": "secubox",
+  "language": "fr",
+  "backend_type": "virtualized",
+  "openwrt_connection": {},
+  "auto_update": true,
+  "notifications": true,
+  "advanced_mode": true
+}

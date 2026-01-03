@@ -1,0 +1,567 @@
+{% extends theme_template %}
+
+{% block title %}Settings - SecuBox WebUI{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <h2>⚙️ Settings</h2>
+            <p>Configure WebUI preferences and backend connections</p>
+        </div>
+    </div>
+
+    <form hx-post="/settings/save"
+          hx-target="#settings-result"
+          hx-swap="innerHTML"
+          style="display: flex; flex-direction: column; gap: 2rem; max-width: 600px;">
+        <!-- General Settings -->
+        <div class="settings-group">
+            <h3>General</h3>
+            <div class="form-field">
+                <label for="theme">Theme</label>
+                <select id="theme" name="theme" class="input">
+                    {% for theme_key in available_themes %}
+                    <option value="{{ theme_key }}" {% if settings.theme == theme_key %}selected{% endif %}>
+                        {{ theme_key|title }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-field">
+                <label for="language">Language</label>
+                <select id="language" name="language" class="input">
+                    <option value="en" {% if settings.language == 'en' %}selected{% endif %}>English</option>
+                    <option value="fr" {% if settings.language == 'fr' %}selected{% endif %}>Français</option>
+                    <option value="de" {% if settings.language == 'de' %}selected{% endif %}>Deutsch</option>
+                    <option value="es" {% if settings.language == 'es' %}selected{% endif %}>Español</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Backend Configuration -->
+        <div class="settings-group" x-data="{ backendType: '{{ settings.backend_type }}' }">
+            <h3>Backend Connection</h3>
+            <div class="form-field">
+                <label for="backend_type">Backend Type</label>
+                <select id="backend_type" name="backend_type" class="input" x-model="backendType">
+                    <option value="virtualized">Virtualized (Development)</option>
+                    <option value="ssh">SSH Connection</option>
+                    <option value="http">HTTP API</option>
+                </select>
+            </div>
+
+            <!-- Virtualized Backend Info -->
+            <div x-show="backendType === 'virtualized'" style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px; margin-top: 0.5rem;">
+                <p class="muted">Running in virtualized mode. Commands are simulated locally using templates.</p>
+            </div>
+
+            <!-- HTTP Backend Configuration -->
+            <div x-show="backendType === 'http'" style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px; margin-top: 0.5rem; display: flex; flex-direction: column; gap: 1rem;">
+                <p class="muted" style="margin-bottom: 0.5rem;">Configure connection to OpenWrt device via HTTP/RPC:</p>
+
+                <div class="form-field">
+                    <label for="openwrt_protocol">Protocol</label>
+                    <select id="openwrt_protocol" name="openwrt_protocol" class="input">
+                        <option value="http" {% if settings.openwrt_connection and settings.openwrt_connection.get('protocol') == 'http' %}selected{% endif %}>HTTP</option>
+                        <option value="https" {% if settings.openwrt_connection and settings.openwrt_connection.get('protocol') == 'https' %}selected{% endif %}>HTTPS</option>
+                    </select>
+                </div>
+
+                <div class="form-field">
+                    <label for="openwrt_host">Host / IP Address</label>
+                    <input type="text" id="openwrt_host" name="openwrt_host" class="input"
+                           value="{{ settings.openwrt_connection.get('host', '192.168.1.1') if settings.openwrt_connection else '192.168.1.1' }}"
+                           placeholder="192.168.1.1">
+                </div>
+
+                <div class="form-field">
+                    <label for="openwrt_port">Port</label>
+                    <input type="number" id="openwrt_port" name="openwrt_port" class="input"
+                           value="{{ settings.openwrt_connection.get('port', 80) if settings.openwrt_connection else 80 }}"
+                           placeholder="80">
+                </div>
+
+                <div class="form-field">
+                    <label for="openwrt_username">Username</label>
+                    <input type="text" id="openwrt_username" name="openwrt_username" class="input"
+                           value="{{ settings.openwrt_connection.get('username', 'root') if settings.openwrt_connection else 'root' }}"
+                           placeholder="root">
+                </div>
+
+                <div class="form-field">
+                    <label for="openwrt_password">Password</label>
+                    <input type="password" id="openwrt_password" name="openwrt_password" class="input"
+                           placeholder="Enter password">
+                    <span class="muted" style="font-size: 0.85rem;">Password is stored in data/settings.json</span>
+                </div>
+
+                <button type="button" class="btn ghost"
+                        hx-post="/api/backend/test"
+                        hx-target="#settings-result">
+                    🔌 Test Connection
+                </button>
+            </div>
+
+            <!-- SSH Backend Info -->
+            <div x-show="backendType === 'ssh'" style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px; margin-top: 0.5rem;">
+                <p class="muted">SSH backend is not yet implemented. Please use HTTP or Virtualized backend.</p>
+            </div>
+        </div>
+
+        <!-- Preferences -->
+        <div class="settings-group">
+            <h3>Preferences</h3>
+
+            <div class="form-field">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                    <input type="checkbox" name="auto_update" {% if settings.auto_update %}checked{% endif %}>
+                    <span>Auto-update module catalog</span>
+                </label>
+            </div>
+
+            <div class="form-field">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                    <input type="checkbox" name="notifications" {% if settings.notifications %}checked{% endif %}>
+                    <span>Enable notifications</span>
+                </label>
+            </div>
+
+            <div class="form-field">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                    <input type="checkbox" name="advanced_mode" {% if settings.advanced_mode %}checked{% endif %}>
+                    <span>Advanced mode (show developer options)</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div style="display: flex; gap: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+            <button type="submit" class="btn primary">💾 Save Settings</button>
+            <button type="button"
+                    class="btn ghost"
+                    hx-post="/settings/reset"
+                    hx-target="#settings-result"
+                    hx-confirm="Are you sure you want to reset all settings to defaults?">
+                🔄 Reset to Defaults
+            </button>
+        </div>
+
+        <!-- Result Container -->
+        <div id="settings-result"></div>
+    </form>
+
+    <!-- Device Management -->
+    <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid var(--border);" x-data="{ showAddDevice: false }">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+                <h3>🌐 Device Management</h3>
+                <p class="muted">Manage multiple OpenWrt devices and switch between them</p>
+            </div>
+            <button type="button" class="btn primary" @click="showAddDevice = true">
+                ➕ Add Device
+            </button>
+        </div>
+
+        <!-- Device Cards List -->
+        <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
+            {% if devices %}
+                {% for device in devices %}
+                <div class="device-card {% if device.active %}device-active{% endif %}">
+                    <div class="device-header">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-size: 1.5rem;">{{ device.emoji }}</span>
+                            <div>
+                                <strong>{{ device.name }}</strong>
+                                {% if device.description %}
+                                <div class="muted" style="font-size: 0.85rem;">{{ device.description }}</div>
+                                {% endif %}
+                                <div class="muted" style="font-size: 0.85rem; font-family: monospace;">
+                                    {{ device.host }}:{{ device.port }}
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            {% if device.active %}
+                            <span class="pill pill-stable">✓ Active</span>
+                            {% endif %}
+                            <span class="pill">{{ device.connection_type }}</span>
+                        </div>
+                    </div>
+
+                    <div class="device-footer">
+                        {% if not device.active %}
+                        <button type="button" class="btn ghost small"
+                                hx-post="/devices/{{ device.id }}/activate"
+                                hx-target="#device-result-{{ device.id }}"
+                                hx-swap="innerHTML">
+                            ▶️ Switch
+                        </button>
+                        {% endif %}
+                        <button type="button" class="btn ghost small"
+                                hx-post="/devices/{{ device.id }}/test"
+                                hx-target="#device-result-{{ device.id }}"
+                                hx-swap="innerHTML">
+                            🔌 Test
+                        </button>
+                        <button type="button" class="btn ghost small"
+                                hx-get="/devices/{{ device.id }}/edit"
+                                hx-target="#device-modal-{{ device.id }}"
+                                hx-swap="innerHTML">
+                            ✏️ Edit
+                        </button>
+                        {% if not device.active %}
+                        <button type="button" class="btn ghost small danger"
+                                hx-delete="/devices/{{ device.id }}"
+                                hx-confirm="Are you sure you want to delete this device?"
+                                hx-target="#device-result-{{ device.id }}"
+                                hx-swap="innerHTML">
+                            🗑️ Delete
+                        </button>
+                        {% endif %}
+                    </div>
+
+                    <!-- Result container for this device -->
+                    <div id="device-result-{{ device.id }}"></div>
+
+                    <!-- Modal container for this device -->
+                    <div id="device-modal-{{ device.id }}"></div>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div style="padding: 2rem; text-align: center; background: var(--bg-secondary); border-radius: 8px; border: 1px dashed var(--border);">
+                <p class="muted">No devices configured yet. Click "Add Device" to get started.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Add Device Modal -->
+        <div x-show="showAddDevice" x-cloak class="modal-overlay">
+            <div class="modal-content" @click.away="showAddDevice = false">
+                <div class="modal-header">
+                    <h3>➕ Add New Device</h3>
+                    <button type="button" class="modal-close" @click="showAddDevice = false">✕</button>
+                </div>
+
+                <form hx-post="/devices/add"
+                      hx-target="#add-device-result"
+                      hx-swap="innerHTML"
+                      @htmx:after-request="if(event.detail.successful) { showAddDevice = false; setTimeout(() => window.location.reload(), 1000); }"
+                      style="padding: 1.5rem;">
+
+                    <div class="form-group">
+                        <label for="device-name">Device Name *</label>
+                        <input type="text"
+                               id="device-name"
+                               name="device_name"
+                               required
+                               placeholder="My OpenWrt Router">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="device-emoji">Emoji</label>
+                        <input type="text"
+                               id="device-emoji"
+                               name="device_emoji"
+                               value="🌐"
+                               placeholder="🌐"
+                               maxlength="2">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="device-description">Description</label>
+                        <input type="text"
+                               id="device-description"
+                               name="device_description"
+                               placeholder="Home router on main floor">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="device-connection-type">Connection Type *</label>
+                        <select id="device-connection-type" name="device_connection_type" required>
+                            <option value="http" selected>HTTP API</option>
+                            <option value="virtualized">Virtualized (Template Mode)</option>
+                            <option value="ssh" disabled>SSH (Coming Soon)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="device-host">Host *</label>
+                            <input type="text"
+                                   id="device-host"
+                                   name="device_host"
+                                   required
+                                   value="192.168.1.1"
+                                   placeholder="192.168.1.1">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="device-port">Port *</label>
+                            <input type="number"
+                                   id="device-port"
+                                   name="device_port"
+                                   required
+                                   value="80"
+                                   min="1"
+                                   max="65535">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="device-protocol">Protocol *</label>
+                        <select id="device-protocol" name="device_protocol" required>
+                            <option value="http" selected>HTTP</option>
+                            <option value="https">HTTPS</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="device-username">Username *</label>
+                        <input type="text"
+                               id="device-username"
+                               name="device_username"
+                               required
+                               value="root"
+                               placeholder="root">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="device-password">Password</label>
+                        <input type="password"
+                               id="device-password"
+                               name="device_password"
+                               placeholder="Enter device password">
+                    </div>
+
+                    <div id="add-device-result" style="margin-top: 1rem;"></div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn secondary" @click="showAddDevice = false">
+                            Cancel
+                        </button>
+                        <button type="submit" class="btn primary">
+                            💾 Add Device
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Information -->
+    <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid var(--border);">
+        <h3>System Information</h3>
+        <div style="display: grid; grid-template-columns: 200px 1fr; gap: 0.5rem; margin-top: 1rem; font-family: monospace; font-size: 0.9rem;">
+            <div class="muted">Backend:</div>
+            <div>{{ settings.backend_type }}</div>
+
+            <div class="muted">Theme:</div>
+            <div>{{ settings.theme }}</div>
+
+            <div class="muted">Advanced Mode:</div>
+            <div>{{ "Enabled" if settings.advanced_mode else "Disabled" }}</div>
+        </div>
+    </div>
+</section>
+
+<style>
+.settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.form-field label {
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.input, select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.95rem;
+}
+
+.input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* Device Management Styles */
+.device-card {
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    transition: all 0.2s;
+}
+
+.device-card:hover {
+    border-color: var(--border-hover, var(--border));
+}
+
+.device-active {
+    border-left: 4px solid var(--accent);
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.05) 0%, var(--bg-secondary) 100%);
+}
+
+.device-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.device-footer {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.btn.small {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+.btn.danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: #ef4444;
+    color: #ef4444;
+}
+
+.pill {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    background: var(--bg-tertiary, var(--bg));
+    border: 1px solid var(--border);
+}
+
+.pill-stable {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #22c55e;
+}
+
+/* Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+}
+
+.modal-content {
+    background: var(--bg-primary, #1a1a1a);
+    border-radius: 12px;
+    padding: 0;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted, #888);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.modal-close:hover {
+    background: var(--bg-secondary, #2a2a2a);
+    color: var(--text-primary, #fff);
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: var(--text-primary, #fff);
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--bg-secondary, #2a2a2a);
+    border: 1px solid var(--border, #333);
+    border-radius: 6px;
+    color: var(--text-primary, #fff);
+    font-size: 0.95rem;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--accent, #3b82f6);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1rem;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding-top: 1rem;
+    margin-top: 1rem;
+    border-top: 1px solid var(--border);
+}
+
+[x-cloak] {
+    display: none !important;
+}
+</style>
+{% endblock %}

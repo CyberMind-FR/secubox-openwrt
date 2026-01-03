@@ -1,0 +1,259 @@
+<div class="modal-overlay" x-data="{ show: true }" x-show="show" x-cloak>
+    <div class="modal-content" @click.away="show = false; $el.closest('.modal-overlay').remove()">
+        <div class="modal-header">
+            <h3>✏️ Edit Device</h3>
+            <button class="modal-close" @click="show = false; $el.closest('.modal-overlay').remove()">✕</button>
+        </div>
+
+        <form hx-post="/devices/{{ device.id }}/update"
+              hx-target="#device-result-{{ device.id }}"
+              hx-swap="innerHTML"
+              @submit="setTimeout(() => { show = false; $el.closest('.modal-overlay').remove() }, 100)">
+
+            <div class="form-group">
+                <label for="edit-device-name">Device Name *</label>
+                <input type="text"
+                       id="edit-device-name"
+                       name="device_name"
+                       value="{{ device.name }}"
+                       required
+                       placeholder="My OpenWrt Router">
+            </div>
+
+            <div class="form-group">
+                <label for="edit-device-emoji">Emoji</label>
+                <input type="text"
+                       id="edit-device-emoji"
+                       name="device_emoji"
+                       value="{{ device.emoji }}"
+                       placeholder="🌐"
+                       maxlength="2">
+            </div>
+
+            <div class="form-group">
+                <label for="edit-device-description">Description</label>
+                <input type="text"
+                       id="edit-device-description"
+                       name="device_description"
+                       value="{{ device.description }}"
+                       placeholder="Home router on main floor">
+            </div>
+
+            <div class="form-group">
+                <label for="edit-device-connection-type">Connection Type *</label>
+                <select id="edit-device-connection-type" name="device_connection_type" required>
+                    <option value="http" {% if device.connection_type == 'http' %}selected{% endif %}>HTTP API</option>
+                    <option value="virtualized" {% if device.connection_type == 'virtualized' %}selected{% endif %}>Virtualized (Template Mode)</option>
+                    <option value="ssh" {% if device.connection_type == 'ssh' %}selected{% endif %} disabled>SSH (Coming Soon)</option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="edit-device-host">Host *</label>
+                    <input type="text"
+                           id="edit-device-host"
+                           name="device_host"
+                           value="{{ device.host }}"
+                           required
+                           placeholder="192.168.1.1">
+                </div>
+
+                <div class="form-group">
+                    <label for="edit-device-port">Port *</label>
+                    <input type="number"
+                           id="edit-device-port"
+                           name="device_port"
+                           value="{{ device.port }}"
+                           required
+                           min="1"
+                           max="65535">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="edit-device-protocol">Protocol *</label>
+                <select id="edit-device-protocol" name="device_protocol" required>
+                    <option value="http" {% if device.protocol == 'http' %}selected{% endif %}>HTTP</option>
+                    <option value="https" {% if device.protocol == 'https' %}selected{% endif %}>HTTPS</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="edit-device-username">Username *</label>
+                <input type="text"
+                       id="edit-device-username"
+                       name="device_username"
+                       value="{{ device.username }}"
+                       required
+                       placeholder="root">
+            </div>
+
+            <div class="form-group">
+                <label for="edit-device-password">Password</label>
+                <input type="password"
+                       id="edit-device-password"
+                       name="device_password"
+                       placeholder="Leave empty to keep current password">
+                <small class="form-hint">Only fill this if you want to change the password</small>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn secondary"
+                        @click="show = false; $el.closest('.modal-overlay').remove()">
+                    Cancel
+                </button>
+                <button type="submit" class="btn primary">
+                    💾 Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: var(--bg-primary, #1a1a1a);
+    border-radius: 12px;
+    padding: 0;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border, #333);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted, #888);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.modal-close:hover {
+    background: var(--bg-secondary, #2a2a2a);
+    color: var(--text-primary, #fff);
+}
+
+.modal-content form {
+    padding: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: var(--text-primary, #fff);
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--bg-secondary, #2a2a2a);
+    border: 1px solid var(--border, #333);
+    border-radius: 6px;
+    color: var(--text-primary, #fff);
+    font-size: 0.95rem;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--accent, #3b82f6);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1rem;
+}
+
+.form-hint {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.85rem;
+    color: var(--text-muted, #888);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border, #333);
+    margin-top: 1rem;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+}
+
+.btn.primary {
+    background: var(--accent, #3b82f6);
+    color: white;
+}
+
+.btn.primary:hover {
+    background: var(--accent-hover, #2563eb);
+}
+
+.btn.secondary {
+    background: var(--bg-secondary, #2a2a2a);
+    color: var(--text-primary, #fff);
+    border: 1px solid var(--border, #333);
+}
+
+.btn.secondary:hover {
+    background: var(--bg-tertiary, #333);
+}
+
+[x-cloak] {
+    display: none !important;
+}
+</style>

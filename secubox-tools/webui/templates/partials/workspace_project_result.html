@@ -1,0 +1,29 @@
+<!-- Project Action Result -->
+{% if status == "success" %}
+<div class="card" style="margin-top: 1rem; border-left: 4px solid var(--success);">
+    <div class="card-body" style="padding: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="font-size: 1.5rem;">✅</span>
+            <div style="flex: 1;">
+                <strong style="color: var(--success);">{{ message }}</strong>
+                {% if project %}
+                <p class="muted" style="font-size: 0.9rem; margin-top: 0.25rem;">
+                    {{ project.devices|length }} devices • {{ project.modules|length }} modules • {{ project.profiles|length }} profiles
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card" style="margin-top: 1rem; border-left: 4px solid var(--danger);">
+    <div class="card-body" style="padding: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="font-size: 1.5rem;">❌</span>
+            <div style="flex: 1;">
+                <strong style="color: var(--danger);">{{ message }}</strong>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}

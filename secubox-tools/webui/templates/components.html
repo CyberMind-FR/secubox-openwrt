@@ -1,0 +1,69 @@
+{% extends theme_template %}
+
+{% block title %}Components - SecuBox WebUI{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <h2>🎨 Component Registry</h2>
+            <p>Reusable UI components from installed modules</p>
+        </div>
+    </div>
+
+    <!-- Module filter -->
+    {% if modules %}
+    <div class="chip-group" style="margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">
+        <a href="/components?theme={{ selected_theme }}"
+           class="chip {% if not active_module %}chip-active{% endif %}">
+            All Modules
+        </a>
+        {% for module in modules %}
+        <a href="/components?module_id={{ module.id }}&theme={{ selected_theme }}"
+           class="chip {% if active_module == module.id %}chip-active{% endif %}">
+            {{ module.name }}
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Components Grid -->
+    {% if components %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem;">
+        {% for component in components %}
+        <div class="card">
+            <div class="card-header">
+                <h3>{{ component.emoji }} {{ component.name }}</h3>
+                <span class="chip small">{{ component.component_type }}</span>
+            </div>
+            <div class="card-body">
+                <p class="muted" style="margin-bottom: 0.5rem;">
+                    Module: {{ component.module_id }}
+                </p>
+                <p>{{ component.description }}</p>
+
+                {% if component.tags %}
+                <div class="tag-row" style="margin-top: 0.75rem;">
+                    {% for tag in component.tags %}
+                    <span class="chip small">#{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% if component.preview_url %}
+            <div class="card-footer">
+                <a href="{{ component.preview_url }}" target="_blank" class="btn ghost small">
+                    👁️ Preview
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+        <p>No components available. Install modules to see their UI components.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

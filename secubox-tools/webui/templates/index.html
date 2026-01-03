@@ -1,0 +1,79 @@
+{% extends theme_template %}
+{% block content %}
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <h2>AppStore & Modules</h2>
+            <p>Responsive grid of LuCI apps, SecuBox services, themes, and profiles.</p>
+        </div>
+        <div class="filter-chips">
+            <button
+                class="chip {% if not active_tag %}chip-active{% endif %}"
+                hx-get="/modules/grid?theme={{ selected_theme }}"
+                hx-target="#module-grid"
+                hx-swap="outerHTML"
+            >All</button>
+            {% for tag in available_tags %}
+            <button
+                class="chip {% if active_tag == tag %}chip-active{% endif %}"
+                hx-get="/modules/grid?theme={{ selected_theme }}&tag={{ tag }}"
+                hx-target="#module-grid"
+                hx-swap="outerHTML"
+            >#{{ tag }}</button>
+            {% endfor %}
+        </div>
+    </div>
+    {% include "partials/module_grid.html" %}
+</section>
+
+<section class="panel preset-panel">
+    <div class="panel-head">
+        <div>
+            <h2>Preset Runner</h2>
+            <p>Apply multi-command templates and preview results instantly.</p>
+        </div>
+    </div>
+    <div class="preset-grid">
+        {% for preset in presets %}
+        <article class="preset-card">
+            <header>
+                <h3>{{ preset.name }}</h3>
+                <p class="muted">Module: {{ preset.module }}</p>
+            </header>
+            <p>{{ preset.description }}</p>
+            <p class="muted">Sequence: {{ preset.command_sequence|join(' → ') }}</p>
+            <button class="btn" hx-post="/presets/{{ preset.id }}/run" hx-target="#preset-result" hx-swap="innerHTML">
+                Run Preset
+            </button>
+        </article>
+        {% endfor %}
+    </div>
+    <div id="preset-result" class="preset-result muted">
+        <p>Select a preset to view the simulated output.</p>
+    </div>
+    <div class="custom-run">
+        <h3>Custom Context Run</h3>
+        <p class="muted">Select a preset and pass JSON context (e.g. {"mode": "dry-run"}).</p>
+        <form
+            hx-post="/presets/run"
+            hx-target="#preset-result"
+            hx-swap="innerHTML"
+            class="custom-run-form"
+        >
+            <label>
+                Preset
+                <select name="preset_id">
+                    {% for preset in presets %}
+                    <option value="{{ preset.id }}">{{ preset.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Context JSON
+                <textarea name="context_json" rows="3" placeholder='{"mode": "dry-run"}'></textarea>
+            </label>
+            <button type="submit" class="btn">Run with Context</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}SecuBox WebUI · LuCI Dark{% endblock %}
+{% block body_class %}theme-luci{% endblock %}
+{% block theme_switcher %}
+<div class="theme-switcher">
+    <span>Theme:</span>
+    <a href="/?theme=secubox" class="chip">SecuBox Light</a>
+    <a href="/?theme=luci" class="chip chip-active">LuCI Dark</a>
+</div>
+{% endblock %}
+{% block content %}{% endblock %}

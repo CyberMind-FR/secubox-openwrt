@@ -1,0 +1,20 @@
+[
+  {
+    "id": "device-898fa178",
+    "name": "secube",
+    "emoji": "\ud83c\udf10",
+    "description": "",
+    "host": "192.168.8.191",
+    "port": 80,
+    "username": "root",
+    "password": "",
+    "protocol": "http",
+    "connection_type": "http",
+    "active": true,
+    "tags": [],
+    "last_connected": "2026-01-02T11:32:59.783063",
+    "firmware_version": null,
+    "timeout": 30,
+    "verify_ssl": false
+  }
+]

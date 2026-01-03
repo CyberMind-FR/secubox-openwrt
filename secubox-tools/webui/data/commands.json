@@ -1,0 +1,74 @@
+[
+  {
+    "id": "fetch-rpc-status",
+    "name": "Fetch RPC Status",
+    "summary": "Query rpcd for luci.* objects",
+    "result_template": "RPC endpoints synchronized for {{ module.name }}. {{ preset.name }} captured {{ ctx.verbosity | default('normal') }} metrics.",
+    "tags": ["rpc", "system"],
+    "default_context": {"status": "ok"}
+  },
+  {
+    "id": "collect-health",
+    "name": "Collect Health",
+    "summary": "Aggregate CPU/mem/ping context",
+    "result_template": "Load averages: 0.21/0.18/0.12. MTBF window shows {{ ctx.window | default('72h') }} healthy samples.",
+    "tags": ["health"],
+    "default_context": {"window": "48h", "status": "ok"}
+  },
+  {
+    "id": "render-report",
+    "name": "Render Report",
+    "summary": "Build Markdown + JSON bundle",
+    "result_template": "Report stored in /tmp/{{ module.id }}-report.json and attached Markdown digest.",
+    "tags": ["report"],
+    "default_context": {"status": "ok"}
+  },
+  {
+    "id": "validate-theme",
+    "name": "Validate Theme",
+    "summary": "Lint portal assets",
+    "result_template": "Theme bundle passed linting with {{ ctx.preview_clients }} preview clients simulated.",
+    "tags": ["theme", "lint"],
+    "default_context": {"status": "ok"}
+  },
+  {
+    "id": "generate-acl",
+    "name": "Generate ACL",
+    "summary": "Assemble firewall + nodogsplash rules",
+    "result_template": "ACL diff shows {{ ctx.delta | default('minimal') }} changes. Stored at /tmp/acl-preview.rules.",
+    "tags": ["acl"],
+    "default_context": {"delta": "2 entries", "status": "warn"}
+  },
+  {
+    "id": "simulate-auth",
+    "name": "Simulate Auth",
+    "summary": "Replay captive portal handshake",
+    "result_template": "Client onboarding success rate: 98%. Generated mock tokens for QA team.",
+    "tags": ["auth"],
+    "default_context": {"status": "ok"}
+  },
+  {
+    "id": "sync-catalog",
+    "name": "Sync Catalog",
+    "summary": "Update SecuBox catalog cache",
+    "result_template": "Downloaded {{ ctx.catalog_items | default(42) }} catalog entries and verified signatures.",
+    "tags": ["catalog"],
+    "default_context": {"status": "ok"}
+  },
+  {
+    "id": "capture-state",
+    "name": "Capture State",
+    "summary": "Snapshot configs + runtime",
+    "result_template": "Captured UCI, RPC, and file inventory. Mode: {{ ctx.mode }}.",
+    "tags": ["snapshot"],
+    "default_context": {"status": "ok"}
+  },
+  {
+    "id": "summarize",
+    "name": "Summarize",
+    "summary": "Produce digest",
+    "result_template": "SecuBox Core snapshot complete. Hash bundle stored under /tmp/secubox-core-{{ ctx.mode }}.tar.gz.",
+    "tags": ["summary"],
+    "default_context": {"status": "ok"}
+  }
+]

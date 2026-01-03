@@ -1,0 +1,178 @@
+[
+  {
+    "id": "luci-app-advanced-monitoring",
+    "name": "Advanced Monitoring",
+    "emoji": "\ud83d\udcca",
+    "category": "LuCI Application",
+    "version": "1.2.0",
+    "author": "SecuBox Team",
+    "rating": 4.5,
+    "downloads": 1250,
+    "summary": "Real-time system monitoring with graphs and alerts",
+    "description": "Comprehensive monitoring solution with real-time graphs, custom alerts, and historical data tracking. Supports CPU, memory, disk, network, and process monitoring.",
+    "screenshots": [
+      "/static/img/screenshots/monitoring-1.png"
+    ],
+    "dependencies": [
+      "luci-base",
+      "collectd",
+      "luci-app-statistics"
+    ],
+    "tags": [
+      "monitoring",
+      "analytics",
+      "performance"
+    ],
+    "license": "GPL-3.0",
+    "repository_url": "https://github.com/secubox/luci-app-advanced-monitoring",
+    "documentation_url": "https://docs.secubox.io/monitoring",
+    "installed": true,
+    "update_available": false,
+    "size_mb": 2.5
+  },
+  {
+    "id": "secubox-app-intrusion-detection",
+    "name": "Intrusion Detection System",
+    "emoji": "\ud83d\udee1\ufe0f",
+    "category": "SecuBox Service",
+    "version": "2.0.1",
+    "author": "Security Team",
+    "rating": 4.8,
+    "downloads": 3400,
+    "summary": "AI-powered intrusion detection and prevention",
+    "description": "Advanced IDS/IPS with machine learning capabilities. Detects and blocks suspicious network activity in real-time. Includes pre-configured rules for common attacks.",
+    "screenshots": [],
+    "dependencies": [
+      "secubox-core",
+      "iptables"
+    ],
+    "tags": [
+      "security",
+      "network",
+      "monitoring"
+    ],
+    "license": "MIT",
+    "repository_url": "",
+    "documentation_url": "",
+    "installed": true,
+    "update_available": false,
+    "size_mb": 8.3
+  },
+  {
+    "id": "luci-app-vpn-manager",
+    "name": "VPN Manager Pro",
+    "emoji": "\ud83d\udd10",
+    "category": "LuCI Application",
+    "version": "3.1.0",
+    "author": "Community",
+    "rating": 4.2,
+    "downloads": 5670,
+    "summary": "Unified VPN management for multiple protocols",
+    "description": "Manage WireGuard, OpenVPN, and IPsec connections from a single interface. Features include connection profiles, automatic failover, and bandwidth monitoring.",
+    "screenshots": [
+      "/static/img/screenshots/vpn-1.png",
+      "/static/img/screenshots/vpn-2.png"
+    ],
+    "dependencies": [
+      "wireguard-tools",
+      "openvpn",
+      "luci-base"
+    ],
+    "tags": [
+      "vpn",
+      "network",
+      "security"
+    ],
+    "license": "GPL-2.0",
+    "repository_url": "https://github.com/community/vpn-manager",
+    "documentation_url": "https://vpn-manager.docs.io",
+    "installed": true,
+    "update_available": false,
+    "size_mb": 5.1
+  },
+  {
+    "id": "luci-app-smart-firewall",
+    "name": "Smart Firewall",
+    "emoji": "\ud83d\udd25",
+    "category": "LuCI Application",
+    "version": "1.5.2",
+    "author": "SecuBox Team",
+    "rating": 4.7,
+    "downloads": 2890,
+    "summary": "AI-assisted firewall rule management",
+    "description": "Intelligent firewall with automatic rule suggestions based on traffic patterns. Includes geo-blocking, application detection, and DoS protection.",
+    "screenshots": [],
+    "dependencies": [
+      "iptables",
+      "secubox-core"
+    ],
+    "tags": [
+      "security",
+      "firewall",
+      "network"
+    ],
+    "license": "GPL-3.0",
+    "repository_url": "",
+    "documentation_url": "",
+    "installed": true,
+    "update_available": false,
+    "size_mb": 3.8
+  },
+  {
+    "id": "secubox-app-backup-manager",
+    "name": "Backup Manager",
+    "emoji": "\ud83d\udcbe",
+    "category": "SecuBox Service",
+    "version": "2.3.0",
+    "author": "SecuBox Team",
+    "rating": 4.6,
+    "downloads": 1560,
+    "summary": "Automated backup and restore solution",
+    "description": "Schedule automatic backups to local storage, cloud providers, or remote servers. Features include incremental backups, encryption, and one-click restore.",
+    "screenshots": [],
+    "dependencies": [
+      "rsync",
+      "secubox-core"
+    ],
+    "tags": [
+      "backup",
+      "storage",
+      "automation"
+    ],
+    "license": "MIT",
+    "repository_url": "https://github.com/secubox/backup-manager",
+    "documentation_url": "",
+    "installed": true,
+    "update_available": false,
+    "size_mb": 4.2
+  },
+  {
+    "id": "luci-theme-material",
+    "name": "Material Design Theme",
+    "emoji": "\ud83c\udfa8",
+    "category": "LuCI Theme",
+    "version": "1.0.5",
+    "author": "Community",
+    "rating": 4.9,
+    "downloads": 7800,
+    "summary": "Modern Material Design theme for LuCI",
+    "description": "Beautiful and responsive theme based on Google's Material Design principles. Includes dark mode, customizable colors, and smooth animations.",
+    "screenshots": [
+      "/static/img/screenshots/theme-material.png"
+    ],
+    "dependencies": [
+      "luci-base"
+    ],
+    "tags": [
+      "theme",
+      "ui",
+      "design"
+    ],
+    "license": "Apache-2.0",
+    "repository_url": "https://github.com/themes/luci-theme-material",
+    "documentation_url": "",
+    "installed": true,
+    "update_available": false,
+    "size_mb": 1.2
+  }
+]

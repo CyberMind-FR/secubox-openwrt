@@ -1,0 +1,90 @@
+[
+  {
+    "id": "basic-network-config",
+    "name": "Basic Network Configuration",
+    "emoji": "🌐",
+    "description": "Standard LAN/WAN network configuration template",
+    "template_type": "network",
+    "content": "config interface 'lan'\n\toption type 'bridge'\n\toption ifname 'eth0'\n\toption proto 'static'\n\toption ipaddr '{{ lan_ip | default(\"192.168.1.1\") }}'\n\toption netmask '{{ netmask | default(\"255.255.255.0\") }}'\n\nconfig interface 'wan'\n\toption ifname 'eth1'\n\toption proto '{{ wan_proto | default(\"dhcp\") }}'",
+    "variables": {
+      "lan_ip": "192.168.1.1",
+      "netmask": "255.255.255.0",
+      "wan_proto": "dhcp"
+    },
+    "required_modules": [],
+    "tags": ["network", "uci", "basic"],
+    "examples": [
+      {
+        "name": "Standard home setup",
+        "variables": {
+          "lan_ip": "192.168.1.1",
+          "wan_proto": "dhcp"
+        }
+      }
+    ]
+  },
+  {
+    "id": "wireguard-vpn-server",
+    "name": "WireGuard VPN Server",
+    "emoji": "🔐",
+    "description": "Complete WireGuard VPN server configuration",
+    "template_type": "custom",
+    "content": "config interface 'wg0'\n\toption proto 'wireguard'\n\toption private_key '{{ private_key }}'\n\toption listen_port '{{ listen_port | default(51820) }}'\n\tlist addresses '{{ vpn_network | default(\"10.0.0.1/24\") }}'\n\nconfig wireguard_wg0\n\toption public_key '{{ peer_public_key }}'\n\toption allowed_ips '{{ peer_allowed_ips | default(\"10.0.0.2/32\") }}'\n\toption persistent_keepalive '25'",
+    "variables": {
+      "private_key": "",
+      "listen_port": 51820,
+      "vpn_network": "10.0.0.1/24",
+      "peer_public_key": "",
+      "peer_allowed_ips": "10.0.0.2/32"
+    },
+    "required_modules": ["luci-app-vpn-manager", "wireguard-tools"],
+    "tags": ["vpn", "wireguard", "network"],
+    "examples": []
+  },
+  {
+    "id": "firewall-rules",
+    "name": "Basic Firewall Rules",
+    "emoji": "🔥",
+    "description": "Standard firewall configuration with common rules",
+    "template_type": "firewall",
+    "content": "config defaults\n\toption syn_flood '1'\n\toption input '{{ default_input | default(\"REJECT\") }}'\n\toption output 'ACCEPT'\n\toption forward '{{ default_forward | default(\"REJECT\") }}'\n\nconfig zone\n\toption name 'lan'\n\tlist network 'lan'\n\toption input 'ACCEPT'\n\toption output 'ACCEPT'\n\toption forward 'ACCEPT'\n\nconfig zone\n\toption name 'wan'\n\tlist network 'wan'\n\toption input 'REJECT'\n\toption output 'ACCEPT'\n\toption forward 'REJECT'\n\toption masq '1'\n\toption mtu_fix '1'",
+    "variables": {
+      "default_input": "REJECT",
+      "default_forward": "REJECT"
+    },
+    "required_modules": [],
+    "tags": ["firewall", "security", "uci"],
+    "examples": [
+      {
+        "name": "Permissive (home use)",
+        "variables": {
+          "default_input": "ACCEPT",
+          "default_forward": "ACCEPT"
+        }
+      },
+      {
+        "name": "Restrictive (business)",
+        "variables": {
+          "default_input": "REJECT",
+          "default_forward": "REJECT"
+        }
+      }
+    ]
+  },
+  {
+    "id": "vlan-segmentation",
+    "name": "VLAN Network Segmentation",
+    "emoji": "🔀",
+    "description": "Multi-VLAN configuration for network segmentation",
+    "template_type": "network",
+    "content": "config switch_vlan\n\toption device 'switch0'\n\toption vlan '{{ vlan_id }}'\n\toption ports '{{ ports }}'\n\nconfig interface 'vlan{{ vlan_id }}'\n\toption type 'bridge'\n\toption proto 'static'\n\toption ipaddr '{{ network_ip }}'\n\toption netmask '255.255.255.0'",
+    "variables": {
+      "vlan_id": "10",
+      "ports": "0 1 2 6t",
+      "network_ip": "192.168.10.1"
+    },
+    "required_modules": [],
+    "tags": ["vlan", "network", "segmentation"],
+    "examples": []
+  }
+]

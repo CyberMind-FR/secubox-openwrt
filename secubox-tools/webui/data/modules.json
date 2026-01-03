@@ -1,0 +1,541 @@
+[
+  {
+    "id": "luci-app-auth-guardian",
+    "name": "Auth Guardian",
+    "category": "LuCI Application",
+    "version": "0.4.0",
+    "summary": "Comprehensive authentication and session management with captive portal, OAuth2/OIDC integration, voucher system, and time-based access control",
+    "health": "stable",
+    "tags": [
+      "auth",
+      "guardian"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-bandwidth-manager",
+    "name": "Bandwidth Manager",
+    "category": "LuCI Application",
+    "version": "0.4.0",
+    "summary": "Advanced bandwidth management with QoS rules, client quotas, and SQM integration",
+    "health": "stable",
+    "tags": [
+      "bandwidth",
+      "manager"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-cdn-cache",
+    "name": "CDN Cache",
+    "category": "LuCI Application",
+    "version": "0.5.0",
+    "summary": "Dashboard for managing local CDN caching proxy on OpenWrt",
+    "health": "stable",
+    "tags": [
+      "cdn",
+      "cache"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "secubox-app-crowdsec",
+    "name": "Crowdsec",
+    "category": "SecuBox Service",
+    "version": "1.7.4",
+    "summary": "- **Package**: secubox-app-crowdsec",
+    "health": "stable",
+    "tags": [
+      "crowdsec"
+    ],
+    "secure_contexts": [
+      "service-sandbox"
+    ],
+    "actions": [
+      "Simulate Service",
+      "Push Config"
+    ]
+  },
+  {
+    "id": "luci-app-secubox-bonus",
+    "name": "LuCI",
+    "category": "LuCI Application",
+    "version": "0.1.0",
+    "summary": "SecuBox marketing and documentation website. Includes demo pages, tutorials, blog articles, and multilingual content for SecuBox modules.",
+    "health": "stable",
+    "tags": [
+      "bonus"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-client-guardian",
+    "name": "LuCI Client Guardian Dashboard",
+    "category": "LuCI Application",
+    "version": "0.4.0",
+    "summary": "Network Access Control with client monitoring, zone management, captive portal, parental controls, and SMS/email alerts",
+    "health": "stable",
+    "tags": [
+      "client",
+      "guardian"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-crowdsec-dashboard",
+    "name": "LuCI CrowdSec Dashboard",
+    "category": "LuCI Application",
+    "version": "0.5.0",
+    "summary": "Real-time security monitoring dashboard for CrowdSec on OpenWrt",
+    "health": "stable",
+    "tags": [
+      "crowdsec",
+      "dashboard"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-netdata-dashboard",
+    "name": "LuCI Netdata Dashboard",
+    "category": "LuCI Application",
+    "version": "0.5.0",
+    "summary": "Real-time system monitoring dashboard with Netdata integration for OpenWrt",
+    "health": "stable",
+    "tags": [
+      "netdata",
+      "dashboard"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-netifyd-dashboard",
+    "name": "LuCI Netifyd Dashboard",
+    "category": "LuCI Application",
+    "version": "0.4.0",
+    "summary": "Network Intelligence dashboard with Deep Packet Inspection for OpenWrt",
+    "health": "stable",
+    "tags": [
+      "netifyd",
+      "dashboard"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-network-modes",
+    "name": "LuCI Network Modes Dashboard",
+    "category": "LuCI Application",
+    "version": "0.5.0",
+    "summary": "Configure OpenWrt for different network modes: Sniffer, Access Point, Relay, Router",
+    "health": "stable",
+    "tags": [
+      "network",
+      "modes"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-ksm-manager",
+    "name": "LuCI support for Key Storage Manager",
+    "category": "LuCI Application",
+    "version": "0.4.0",
+    "summary": "Centralized cryptographic key management with hardware security module (HSM) support for Nitrokey and YubiKey devices. \\",
+    "health": "stable",
+    "tags": [
+      "ksm",
+      "manager"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-zigbee2mqtt",
+    "name": "LuCI Support for SecuBox Zigbee2MQTT App",
+    "category": "LuCI Application",
+    "version": "1.0.0",
+    "summary": "Graphical interface for managing the Zigbee2MQTT docker application.",
+    "health": "stable",
+    "tags": [
+      "zigbee2mqtt"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-wireguard-dashboard",
+    "name": "LuCI WireGuard Dashboard",
+    "category": "LuCI Application",
+    "version": "0.4.0",
+    "summary": "Modern dashboard for WireGuard VPN monitoring on OpenWrt",
+    "health": "stable",
+    "tags": [
+      "wireguard",
+      "dashboard"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-magicmirror",
+    "name": "MagicMirror\u00b2 Manager",
+    "category": "LuCI Application",
+    "version": "1.0.0",
+    "summary": "Web-based module manager and controller for MagicMirror\u00b2 smart mirror platform",
+    "health": "stable",
+    "tags": [
+      "magicmirror"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-media-flow",
+    "name": "Media Flow",
+    "category": "LuCI Application",
+    "version": "0.4.0",
+    "summary": "Real-time detection and monitoring of streaming services (Netflix, YouTube, Spotify, etc.) with quality estimation and alerts",
+    "health": "stable",
+    "tags": [
+      "media",
+      "flow"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-network-tweaks",
+    "name": "Network Tweaks",
+    "category": "LuCI Application",
+    "version": "1.0.0",
+    "summary": "Automatically generates DNS and hosts entries from enabled vhosts for seamless local domain resolution",
+    "health": "stable",
+    "tags": [
+      "network",
+      "tweaks"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "secubox-app-nodogsplash",
+    "name": "Nodogsplash captive portal",
+    "category": "SecuBox Service",
+    "version": "5.0.2",
+    "summary": "No summary provided.",
+    "health": "stable",
+    "tags": [
+      "nodogsplash"
+    ],
+    "secure_contexts": [
+      "service-sandbox"
+    ],
+    "actions": [
+      "Simulate Service",
+      "Push Config"
+    ]
+  },
+  {
+    "id": "secubox-app-adguardhome",
+    "name": "SecuBox AdGuard Home docker app",
+    "category": "SecuBox Service",
+    "version": "1.0.0",
+    "summary": "No summary provided.",
+    "health": "stable",
+    "tags": [
+      "adguardhome"
+    ],
+    "secure_contexts": [
+      "service-sandbox"
+    ],
+    "actions": [
+      "Simulate Service",
+      "Push Config"
+    ]
+  },
+  {
+    "id": "secubox-app",
+    "name": "SecuBox App Store CLI",
+    "category": "SecuBox Service",
+    "version": "1.0.0",
+    "summary": "No summary provided.",
+    "health": "stable",
+    "tags": [
+      "secubox-app"
+    ],
+    "secure_contexts": [
+      "service-sandbox"
+    ],
+    "actions": [
+      "Simulate Service",
+      "Push Config"
+    ]
+  },
+  {
+    "id": "secubox-core",
+    "name": "SecuBox Core Framework",
+    "category": "Framework",
+    "version": "0.8.0",
+    "summary": "**Version**: 0.8.0",
+    "health": "stable",
+    "tags": [
+      "secubox-core"
+    ],
+    "secure_contexts": [
+      "privileged"
+    ],
+    "actions": [
+      "Device Snapshot",
+      "Catalog Sync",
+      "Profile Merge"
+    ]
+  },
+  {
+    "id": "secubox-app-domoticz",
+    "name": "SecuBox Domoticz docker app",
+    "category": "SecuBox Service",
+    "version": "1.0.0",
+    "summary": "No summary provided.",
+    "health": "stable",
+    "tags": [
+      "domoticz"
+    ],
+    "secure_contexts": [
+      "service-sandbox"
+    ],
+    "actions": [
+      "Simulate Service",
+      "Push Config"
+    ]
+  },
+  {
+    "id": "secubox-app-lyrion",
+    "name": "SecuBox Lyrion docker app",
+    "category": "SecuBox Service",
+    "version": "1.0.0",
+    "summary": "No summary provided.",
+    "health": "stable",
+    "tags": [
+      "lyrion"
+    ],
+    "secure_contexts": [
+      "service-sandbox"
+    ],
+    "actions": [
+      "Simulate Service",
+      "Push Config"
+    ]
+  },
+  {
+    "id": "secubox-app-magicmirror",
+    "name": "SecuBox MagicMirror\u00b2 docker app",
+    "category": "SecuBox Service",
+    "version": "1.0.0",
+    "summary": "No summary provided.",
+    "health": "stable",
+    "tags": [
+      "magicmirror"
+    ],
+    "secure_contexts": [
+      "service-sandbox"
+    ],
+    "actions": [
+      "Simulate Service",
+      "Push Config"
+    ]
+  },
+  {
+    "id": "luci-app-mqtt-bridge",
+    "name": "SecuBox MQTT Bridge",
+    "category": "LuCI Application",
+    "version": "0.4.0",
+    "summary": "USB-to-MQTT IoT hub with SecuBox theme",
+    "health": "stable",
+    "tags": [
+      "mqtt",
+      "bridge"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "secubox-app-nextcloud",
+    "name": "SecuBox Nextcloud docker app",
+    "category": "SecuBox Service",
+    "version": "1.0.0",
+    "summary": "No summary provided.",
+    "health": "stable",
+    "tags": [
+      "nextcloud"
+    ],
+    "secure_contexts": [
+      "service-sandbox"
+    ],
+    "actions": [
+      "Simulate Service",
+      "Push Config"
+    ]
+  },
+  {
+    "id": "secubox-app-zigbee2mqtt",
+    "name": "SecuBox Zigbee2MQTT docker app",
+    "category": "SecuBox Service",
+    "version": "1.0.0",
+    "summary": "No summary provided.",
+    "health": "stable",
+    "tags": [
+      "zigbee2mqtt"
+    ],
+    "secure_contexts": [
+      "service-sandbox"
+    ],
+    "actions": [
+      "Simulate Service",
+      "Push Config"
+    ]
+  },
+  {
+    "id": "luci-app-system-hub",
+    "name": "System Hub",
+    "category": "LuCI Application",
+    "version": "0.5.1",
+    "summary": "Central system control with monitoring, services, logs, and backup",
+    "health": "stable",
+    "tags": [
+      "system",
+      "hub"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-traffic-shaper",
+    "name": "Traffic Shaper",
+    "category": "LuCI Application",
+    "version": "0.4.0",
+    "summary": "Advanced traffic shaping with TC/CAKE for precise bandwidth control",
+    "health": "stable",
+    "tags": [
+      "traffic",
+      "shaper"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  },
+  {
+    "id": "luci-app-vhost-manager",
+    "name": "VHost Manager",
+    "category": "LuCI Application",
+    "version": "0.5.0",
+    "summary": "Nginx reverse proxy manager with Let's Encrypt SSL certificates, authentication, and WebSocket support",
+    "health": "stable",
+    "tags": [
+      "vhost",
+      "manager"
+    ],
+    "secure_contexts": [
+      "ui-sandbox"
+    ],
+    "actions": [
+      "Preview UI",
+      "Run Diagnostics"
+    ]
+  }
+]

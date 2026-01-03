@@ -1,0 +1,92 @@
+[
+  {
+    "id": "review-1",
+    "app_id": "luci-app-advanced-monitoring",
+    "author": "John D.",
+    "rating": 5,
+    "comment": "Excellent monitoring solution! The real-time graphs are very detailed and the alert system works perfectly. Highly recommended for anyone who wants to keep track of their router's performance.",
+    "date": "2025-12-15",
+    "helpful_count": 23
+  },
+  {
+    "id": "review-2",
+    "app_id": "luci-app-advanced-monitoring",
+    "author": "Sarah M.",
+    "rating": 4,
+    "comment": "Great app overall, but it can be a bit resource-intensive on older hardware. Works wonderfully on my modern router though.",
+    "date": "2025-12-10",
+    "helpful_count": 12
+  },
+  {
+    "id": "review-3",
+    "app_id": "secubox-app-intrusion-detection",
+    "author": "Mike R.",
+    "rating": 5,
+    "comment": "This IDS has caught several suspicious connection attempts on my network. The AI detection is impressive and the false positive rate is very low.",
+    "date": "2025-12-20",
+    "helpful_count": 45
+  },
+  {
+    "id": "review-4",
+    "app_id": "secubox-app-intrusion-detection",
+    "author": "Alex K.",
+    "rating": 5,
+    "comment": "Must-have for security-conscious users. Easy to configure and provides peace of mind.",
+    "date": "2025-12-18",
+    "helpful_count": 31
+  },
+  {
+    "id": "review-5",
+    "app_id": "luci-app-vpn-manager",
+    "author": "David L.",
+    "rating": 4,
+    "comment": "Very convenient to have all VPN protocols in one place. The UI could be more intuitive, but once you figure it out, it works great.",
+    "date": "2025-12-12",
+    "helpful_count": 18
+  },
+  {
+    "id": "review-6",
+    "app_id": "luci-app-vpn-manager",
+    "author": "Emma W.",
+    "rating": 4,
+    "comment": "Solid VPN manager. WireGuard setup was a breeze. Would give 5 stars if it had better documentation.",
+    "date": "2025-12-08",
+    "helpful_count": 9
+  },
+  {
+    "id": "review-7",
+    "app_id": "luci-theme-material",
+    "author": "Chris P.",
+    "rating": 5,
+    "comment": "Absolutely beautiful theme! Makes LuCI look modern and professional. Dark mode is perfect.",
+    "date": "2025-12-22",
+    "helpful_count": 67
+  },
+  {
+    "id": "review-8",
+    "app_id": "luci-theme-material",
+    "author": "Lisa T.",
+    "rating": 5,
+    "comment": "Best LuCI theme hands down. Responsive design works perfectly on mobile too.",
+    "date": "2025-12-19",
+    "helpful_count": 52
+  },
+  {
+    "id": "review-9",
+    "app_id": "luci-app-smart-firewall",
+    "author": "Robert H.",
+    "rating": 5,
+    "comment": "The AI-assisted rule suggestions are incredibly helpful. Saved me hours of manual configuration.",
+    "date": "2025-12-16",
+    "helpful_count": 28
+  },
+  {
+    "id": "review-10",
+    "app_id": "secubox-app-backup-manager",
+    "author": "Jennifer S.",
+    "rating": 4,
+    "comment": "Reliable backup solution. Encrypted backups to my NAS work flawlessly. Would love to see more cloud provider options.",
+    "date": "2025-12-14",
+    "helpful_count": 15
+  }
+]

@@ -1,0 +1,22 @@
+<div class="run-result">
+    <h3>{{ result.preset.name }}</h3>
+    <p>{{ result.summary }}</p>
+    {% if result.warnings %}
+    <div class="alert warning">
+        {% for warn in result.warnings %}
+        <p>{{ warn }}</p>
+        {% endfor %}
+    </div>
+    {% endif %}
+    <ol>
+        {% for command in result.commands %}
+        <li>
+            <div class="command-head">
+                <strong>{{ command.name }}</strong>
+                <span class="pill pill-{{ command.status }}">{{ command.status|capitalize }}</span>
+            </div>
+            <pre>{{ command.log }}</pre>
+        </li>
+        {% endfor %}
+    </ol>
+</div>

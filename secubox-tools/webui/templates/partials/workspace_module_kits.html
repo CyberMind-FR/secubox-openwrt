@@ -1,0 +1,96 @@
+<!-- Module Kits Browser -->
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <h2>📦 Module Kits</h2>
+            <p>Curated bundles of modules for specific use cases</p>
+        </div>
+        <button class="btn primary" disabled>➕ Create Kit</button>
+    </div>
+
+    <!-- Category Filters -->
+    <div class="tag-row" style="margin-bottom: 1.5rem;">
+        <button class="chip" :class="{ 'chip-active': !category }" @click="category = null">
+            All Kits
+        </button>
+        <button class="chip" :class="{ 'chip-active': category === 'security' }" @click="category = 'security'">
+            🛡️ Security
+        </button>
+        <button class="chip" :class="{ 'chip-active': category === 'networking' }" @click="category = 'networking'">
+            🌐 Networking
+        </button>
+        <button class="chip" :class="{ 'chip-active': category === 'automation' }" @click="category = 'automation'">
+            🤖 Automation
+        </button>
+        <button class="chip" :class="{ 'chip-active': category === 'media' }" @click="category = 'media'">
+            🎬 Media
+        </button>
+    </div>
+
+    <!-- Module Kits Grid -->
+    <div class="kit-grid">
+        {% for kit in module_kits %}
+        <template x-if="!category || category === '{{ kit.category }}'">
+            <div class="kit-card">
+                <div class="kit-header">
+                    <span class="kit-emoji">{{ kit.emoji }}</span>
+                    <div style="flex: 1;">
+                        <h3>{{ kit.name }}</h3>
+                        <p class="muted" style="font-size: 0.85rem;">v{{ kit.version }} by {{ kit.author }}</p>
+                    </div>
+                    {% if kit.verified %}
+                    <span class="pill pill-stable" style="font-size: 0.75rem;">✓ Verified</span>
+                    {% endif %}
+                </div>
+
+                <div class="card-body" style="padding: 1rem 0;">
+                    <p style="margin-bottom: 0.75rem;">{{ kit.description }}</p>
+
+                    <div class="kit-stats" style="display: flex; gap: 1rem; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                        <span>⭐ {{ kit.rating }}</span>
+                        <span>⬇️ {{ kit.downloads }}</span>
+                        <span>📦 {{ kit.modules|length }} modules</span>
+                    </div>
+
+                    <div class="kit-modules-count">
+                        <strong>Includes:</strong>
+                        <ul style="margin-top: 0.5rem; margin-left: 1.5rem; font-size: 0.85rem;">
+                            {% for module_id in kit.modules[:3] %}
+                            <li>{{ module_id }}</li>
+                            {% endfor %}
+                            {% if kit.modules|length > 3 %}
+                            <li class="muted">... and {{ kit.modules|length - 3 }} more</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+
+                    {% if kit.tags %}
+                    <div class="tag-row" style="margin-top: 0.75rem;">
+                        {% for tag in kit.tags %}
+                        <span class="chip small">#{{ tag }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="kit-actions">
+                    <button class="btn primary small"
+                            hx-post="/workspace/kits/{{ kit.id }}/install"
+                            hx-target="#kit-result-{{ kit.id }}"
+                            hx-swap="innerHTML">
+                        ⬇️ Install
+                    </button>
+                    <button class="btn ghost small" disabled>ℹ️ Details</button>
+                </div>
+                <div id="kit-result-{{ kit.id }}"></div>
+            </div>
+        </template>
+        {% endfor %}
+    </div>
+
+    {% if not module_kits %}
+    <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+        <p>No module kits available. Check back later for curated module bundles!</p>
+    </div>
+    {% endif %}
+</section>

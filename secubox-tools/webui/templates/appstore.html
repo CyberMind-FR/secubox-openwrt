@@ -1,0 +1,51 @@
+{% extends theme_template %}
+
+{% block title %}AppStore - SecuBox WebUI{% endblock %}
+
+{% block content %}
+<section class="panel" x-data="{ searchQuery: '{{ search_query }}', showInstalled: {{ 'true' if show_installed else 'false' }} }">
+    <div class="panel-head">
+        <div>
+            <h2>🏪 AppStore</h2>
+            <p>Browse, install, and manage SecuBox applications</p>
+        </div>
+
+        <!-- Search bar with Alpine -->
+        <div class="search-bar" style="display: flex; gap: 1rem; align-items: center;">
+            <input type="text"
+                   x-model="searchQuery"
+                   @input.debounce.500ms="
+                     htmx.ajax('GET', '/appstore/grid?search=' + searchQuery + '&theme={{ selected_theme }}',
+                               {target: '#appstore-grid', swap: 'outerHTML'})
+                   "
+                   placeholder="Search apps..."
+                   style="padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 999px; min-width: 300px;">
+
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox"
+                       x-model="showInstalled"
+                       @change="htmx.ajax('GET', '/appstore?installed=' + showInstalled + '&theme={{ selected_theme }}',
+                                         {target: 'main', swap: 'innerHTML'})">
+                <span>Installed only</span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Category filters -->
+    <div class="chip-group" style="margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">
+        <a href="/appstore?theme={{ selected_theme }}"
+           class="chip {% if not active_category %}chip-active{% endif %}">
+            All
+        </a>
+        {% for cat in categories %}
+        <a href="/appstore?category={{ cat }}&theme={{ selected_theme }}"
+           class="chip {% if active_category == cat %}chip-active{% endif %}">
+            {{ cat }}
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- Grid -->
+    {% include "partials/appstore_grid.html" %}
+</section>
+{% endblock %}

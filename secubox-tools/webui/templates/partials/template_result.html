@@ -1,0 +1,49 @@
+{% if status == 'success' %}
+<div class="alert alert-success" style="padding: 1rem; border-radius: 0.5rem;">
+    <h4>✅ Generated: {{ template.name }}</h4>
+    <p class="muted" style="margin: 0.5rem 0;">Template Type: {{ template.template_type }}</p>
+
+    {% if variables %}
+    <details style="margin: 0.75rem 0;">
+        <summary style="cursor: pointer; font-weight: 500;">Variables Used</summary>
+        <pre style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg); border-radius: 4px; overflow-x: auto; font-size: 0.85rem;">{{ variables|tojson(indent=2) }}</pre>
+    </details>
+    {% endif %}
+
+    <div style="margin-top: 1rem;">
+        <strong>Generated Configuration:</strong>
+        <pre id="generated-config" style="margin-top: 0.5rem; padding: 1rem; background: var(--bg); border-radius: 4px; overflow-x: auto; max-height: 400px; font-size: 0.9rem; font-family: monospace;">{{ output }}</pre>
+    </div>
+
+    <button class="btn ghost small" style="margin-top: 1rem;"
+            onclick="navigator.clipboard.writeText(document.getElementById('generated-config').textContent.trim());
+                     if (typeof Alpine !== 'undefined' && Alpine.store('app')) {
+                         Alpine.store('app').showToast('Copied to clipboard!', 'success');
+                     }">
+        📋 Copy to Clipboard
+    </button>
+</div>
+{% else %}
+<div class="alert alert-error" style="padding: 1rem; border-radius: 0.5rem;">
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <span style="font-size: 1.5rem;">❌</span>
+        <strong>{{ message }}</strong>
+    </div>
+</div>
+{% endif %}
+
+<style>
+.alert {
+    margin-bottom: 1rem;
+}
+.alert-success {
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #22c55e;
+}
+.alert-error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+}
+</style>

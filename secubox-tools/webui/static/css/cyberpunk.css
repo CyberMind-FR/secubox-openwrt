@@ -1,0 +1,749 @@
+/**
+ * SecuBox Cyberpunk Command Center Theme
+ * Full neon aesthetic with glitch effects, matrix rain, and scanlines
+ */
+
+:root {
+  /* Neon Color Palette */
+  --cyber-cyan: #00ffff;
+  --cyber-magenta: #ff00ff;
+  --cyber-green: #00ff41;
+  --cyber-yellow: #ffff00;
+  --cyber-red: #ff0040;
+  --cyber-blue: #0080ff;
+  --cyber-purple: #bf00ff;
+
+  /* Dark Base */
+  --cyber-bg: #0a0e27;
+  --cyber-panel: #0f1419;
+  --cyber-surface: #1a1f2e;
+  --cyber-border: rgba(0, 255, 255, 0.3);
+  --cyber-border-hover: rgba(0, 255, 255, 0.6);
+
+  /* Text */
+  --cyber-text-primary: #ffffff;
+  --cyber-text-muted: rgba(255, 255, 255, 0.6);
+  --cyber-text-dim: rgba(255, 255, 255, 0.4);
+
+  /* Effects */
+  --cyber-glow-cyan: 0 0 10px var(--cyber-cyan), 0 0 20px var(--cyber-cyan);
+  --cyber-glow-magenta: 0 0 10px var(--cyber-magenta), 0 0 20px var(--cyber-magenta);
+  --cyber-glow-green: 0 0 10px var(--cyber-green), 0 0 20px var(--cyber-green);
+
+  /* Scanline overlay */
+  --cyber-scanline: repeating-linear-gradient(
+    0deg,
+    rgba(0, 255, 255, 0.03) 0px,
+    transparent 1px,
+    transparent 2px,
+    rgba(0, 255, 255, 0.03) 3px
+  );
+}
+
+/* =================================================================
+   Command Center Widget Container
+   ================================================================= */
+
+.command-center-widget {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 420px;
+  height: 100vh;
+  background: var(--cyber-bg);
+  border-left: 2px solid var(--cyber-cyan);
+  box-shadow: none;
+  z-index: 9999;
+  overflow: hidden;
+  font-family: 'Courier New', 'Consolas', 'Monaco', monospace;
+  color: var(--cyber-text-primary);
+
+  /* Scanline overlay effect */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--cyber-scanline);
+    pointer-events: none;
+    opacity: 0.5;
+    z-index: 1;
+  }
+}
+
+/* Slide-in animation */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.command-center-widget[x-show="true"] {
+  animation: slide-in-right 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* =================================================================
+   Header
+   ================================================================= */
+
+.cyber-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  background: var(--cyber-panel);
+  border-bottom: 1px solid var(--cyber-border);
+  position: relative;
+  z-index: 2;
+}
+
+.cyber-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--cyber-cyan);
+  text-shadow: var(--cyber-glow-cyan);
+  margin: 0;
+  position: relative;
+}
+
+/* Glitch text effect */
+.glitch {
+  position: relative;
+
+  &::before,
+  &::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+  }
+
+  &::before {
+    color: var(--cyber-magenta);
+    animation: glitch-1 2s infinite;
+    clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
+  }
+
+  &::after {
+    color: var(--cyber-green);
+    animation: glitch-2 2s infinite;
+    clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%);
+  }
+}
+
+@keyframes glitch-1 {
+  0%, 90%, 100% { transform: translate(0); opacity: 0; }
+  91% { transform: translate(-2px, 2px); opacity: 0.7; }
+  92%, 93% { transform: translate(2px, -1px); opacity: 0.7; }
+  94% { transform: translate(0); opacity: 0; }
+}
+
+@keyframes glitch-2 {
+  0%, 90%, 100% { transform: translate(0); opacity: 0; }
+  91% { transform: translate(2px, -2px); opacity: 0.7; }
+  92%, 93% { transform: translate(-1px, 2px); opacity: 0.7; }
+  94% { transform: translate(0); opacity: 0; }
+}
+
+.cyber-btn-close {
+  background: transparent;
+  border: 1px solid var(--cyber-border);
+  color: var(--cyber-text-muted);
+  font-size: 1.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  font-family: inherit;
+
+  &:hover {
+    background: var(--cyber-surface);
+    border-color: var(--cyber-red);
+    color: var(--cyber-red);
+    box-shadow: 0 0 10px rgba(255, 0, 64, 0.3);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+/* =================================================================
+   Tab Navigation
+   ================================================================= */
+
+.cyber-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--cyber-border);
+  position: relative;
+  z-index: 2;
+}
+
+.cyber-tab {
+  background: var(--cyber-panel);
+  border: none;
+  padding: 0.875rem 0.5rem;
+  color: var(--cyber-text-dim);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  text-transform: uppercase;
+
+  &:hover {
+    background: var(--cyber-surface);
+    color: var(--cyber-text-muted);
+  }
+
+  &.active {
+    background: var(--cyber-surface);
+    color: var(--cyber-cyan);
+    text-shadow: 0 0 8px var(--cyber-cyan);
+    border-bottom: 2px solid var(--cyber-cyan);
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+  }
+}
+
+.cyber-icon {
+  display: inline-block;
+  font-size: 0.9rem;
+}
+
+/* =================================================================
+   Content Panels
+   ================================================================= */
+
+.cyber-content {
+  height: calc(100vh - 140px);
+  overflow-y: auto;
+  padding: 1.25rem;
+  position: relative;
+  z-index: 2;
+
+  /* Custom scrollbar */
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: var(--cyber-panel);
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--cyber-cyan);
+    border-radius: 4px;
+    box-shadow: 0 0 8px var(--cyber-cyan);
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--cyber-cyan);
+    box-shadow: 0 0 12px var(--cyber-cyan);
+  }
+}
+
+.cyber-panel {
+  animation: fade-in 0.3s ease;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* =================================================================
+   Metric Cards (System Panel)
+   ================================================================= */
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.metric-card {
+  background: var(--cyber-panel);
+  border: 1px solid var(--cyber-border);
+  border-radius: 6px;
+  padding: 1.25rem;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.05);
+  transition: all 0.3s;
+
+  &:hover {
+    border-color: var(--cyber-border-hover);
+    box-shadow: 0 0 30px rgba(0, 255, 255, 0.15);
+    transform: translateY(-2px);
+  }
+}
+
+.metric-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: var(--cyber-text-muted);
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.metric-value {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Neon text colors */
+.cyber-text-cyan {
+  color: var(--cyber-cyan);
+  text-shadow: 0 0 10px var(--cyber-cyan);
+}
+
+.cyber-text-magenta {
+  color: var(--cyber-magenta);
+  text-shadow: 0 0 10px var(--cyber-magenta);
+}
+
+.cyber-text-green {
+  color: var(--cyber-green);
+  text-shadow: 0 0 10px var(--cyber-green);
+}
+
+.cyber-text-yellow {
+  color: var(--cyber-yellow);
+  text-shadow: 0 0 10px var(--cyber-yellow);
+}
+
+.cyber-text-red {
+  color: var(--cyber-red);
+  text-shadow: 0 0 10px var(--cyber-red);
+}
+
+/* Metric bar chart */
+.metric-bar {
+  height: 10px;
+  background: rgba(0, 255, 255, 0.1);
+  border-radius: 5px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(0, 255, 255, 0.2);
+}
+
+.metric-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyber-cyan) 0%, var(--cyber-magenta) 100%);
+  box-shadow: 0 0 12px var(--cyber-cyan);
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 20px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3));
+  }
+}
+
+/* Chart canvas */
+.metric-chart {
+  width: 100%;
+  height: 60px;
+  margin-top: 0.5rem;
+}
+
+/* =================================================================
+   Threat Feed (Threats Panel)
+   ================================================================= */
+
+.threat-feed {
+  max-height: 400px;
+  overflow-y: auto;
+  margin-bottom: 1.5rem;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--cyber-border);
+    border-radius: 3px;
+  }
+}
+
+.threat-event {
+  display: grid;
+  grid-template-columns: 60px 110px 70px 1fr;
+  gap: 0.625rem;
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  border-left: 3px solid var(--cyber-green);
+  margin-bottom: 0.625rem;
+  background: rgba(0, 255, 65, 0.03);
+  border-radius: 0 4px 4px 0;
+  transition: all 0.2s;
+  font-family: 'Consolas', monospace;
+
+  &:hover {
+    background: rgba(0, 255, 65, 0.08);
+    transform: translateX(4px);
+  }
+
+  &.severity-high {
+    border-left-color: var(--cyber-red);
+    background: rgba(255, 0, 64, 0.05);
+
+    &:hover {
+      background: rgba(255, 0, 64, 0.1);
+    }
+  }
+
+  &.severity-medium {
+    border-left-color: var(--cyber-yellow);
+    background: rgba(255, 255, 0, 0.03);
+
+    &:hover {
+      background: rgba(255, 255, 0, 0.06);
+    }
+  }
+
+  &.severity-low {
+    border-left-color: var(--cyber-blue);
+    background: rgba(0, 128, 255, 0.03);
+
+    &:hover {
+      background: rgba(0, 128, 255, 0.06);
+    }
+  }
+}
+
+.threat-time {
+  color: var(--cyber-text-muted);
+  font-weight: 600;
+}
+
+.threat-ip {
+  color: var(--cyber-cyan);
+  font-weight: 600;
+}
+
+.threat-action {
+  color: var(--cyber-green);
+  text-transform: uppercase;
+  font-weight: 700;
+  font-size: 0.7rem;
+}
+
+.threat-reason {
+  color: var(--cyber-text-primary);
+}
+
+/* Threat counters */
+.threat-counters {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.counter {
+  background: var(--cyber-panel);
+  border: 1px solid var(--cyber-border);
+  border-radius: 6px;
+  padding: 1rem;
+  text-align: center;
+
+  &.blocked {
+    border-color: var(--cyber-red);
+    box-shadow: 0 0 15px rgba(255, 0, 64, 0.1);
+  }
+
+  &.allowed {
+    border-color: var(--cyber-green);
+    box-shadow: 0 0 15px rgba(0, 255, 65, 0.1);
+  }
+
+  &.quarantined {
+    border-color: var(--cyber-yellow);
+    box-shadow: 0 0 15px rgba(255, 255, 0, 0.1);
+  }
+}
+
+.counter-value {
+  display: block;
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+
+  .blocked & {
+    color: var(--cyber-red);
+    text-shadow: 0 0 10px var(--cyber-red);
+  }
+
+  .allowed & {
+    color: var(--cyber-green);
+    text-shadow: 0 0 10px var(--cyber-green);
+  }
+
+  .quarantined & {
+    color: var(--cyber-yellow);
+    text-shadow: 0 0 10px var(--cyber-yellow);
+  }
+}
+
+.counter-label {
+  display: block;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  color: var(--cyber-text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* =================================================================
+   Traffic Panel
+   ================================================================= */
+
+.protocol-chart {
+  margin-bottom: 1.5rem;
+  min-height: 200px;
+}
+
+.domain-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.domain-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--cyber-panel);
+  border: 1px solid var(--cyber-border);
+  border-radius: 4px;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: var(--cyber-border-hover);
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+    transform: translateX(4px);
+  }
+}
+
+.domain-name {
+  color: var(--cyber-cyan);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.domain-bytes {
+  color: var(--cyber-magenta);
+  font-weight: 700;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* =================================================================
+   Terminal/Console Panel
+   ================================================================= */
+
+.terminal-output {
+  height: calc(100vh - 340px);
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 1rem;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--cyber-green);
+  border: 1px solid rgba(0, 255, 65, 0.3);
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  box-shadow: inset 0 0 20px rgba(0, 255, 65, 0.05);
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--cyber-green);
+    border-radius: 4px;
+    box-shadow: 0 0 6px var(--cyber-green);
+  }
+}
+
+.terminal-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-bottom: 0.125rem;
+}
+
+.terminal-input {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--cyber-cyan);
+  border-radius: 6px;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+}
+
+.prompt {
+  color: var(--cyber-cyan);
+  font-weight: 700;
+  white-space: nowrap;
+  font-family: 'Consolas', monospace;
+}
+
+.terminal-cmd {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--cyber-green);
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.9rem;
+  outline: none;
+
+  &::placeholder {
+    color: rgba(0, 255, 65, 0.3);
+  }
+
+  &:focus {
+    color: var(--cyber-cyan);
+    text-shadow: 0 0 8px var(--cyber-cyan);
+  }
+}
+
+/* =================================================================
+   Matrix Rain Canvas Background
+   ================================================================= */
+
+.matrix-rain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.12;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(0.5px);
+}
+
+/* =================================================================
+   Trigger Button
+   ================================================================= */
+
+.cyber-trigger-btn {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.5rem;
+  width: 52px;
+  height: 52px;
+  background: var(--cyber-panel);
+  border: 2px solid var(--cyber-cyan);
+  border-radius: 10px;
+  color: var(--cyber-cyan);
+  font-size: 1.75rem;
+  cursor: pointer;
+  z-index: 9998;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* NO GLOW - clean and simple */
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: var(--cyber-cyan);
+    color: var(--cyber-bg);
+    transform: scale(1.05);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.3), inset 0 0 10px rgba(0, 255, 255, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 35px rgba(0, 255, 255, 0.5), inset 0 0 15px rgba(0, 255, 255, 0.2);
+  }
+}
+
+/* =================================================================
+   Backdrop Blur - DISABLED
+   ================================================================= */
+
+/* Removed backdrop blur and overlay to prevent interference with main interface */
+
+/* =================================================================
+   Utility Classes
+   ================================================================= */
+
+.cyber-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.cyber-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyber-border), transparent);
+  margin: 1.5rem 0;
+}
+
+.cyber-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: rgba(0, 255, 255, 0.1);
+  border: 1px solid var(--cyber-border);
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--cyber-cyan);
+}
+
+/* Alpine.js x-cloak */
+[x-cloak] {
+  display: none !important;
+}

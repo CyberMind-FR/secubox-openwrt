@@ -1,0 +1,31 @@
+{% extends theme_template %}
+{% block content %}
+<section class="panel">
+    <a href="/?theme=secubox" class="btn ghost">← Back to Catalog</a>
+    <header class="panel-head">
+        <div>
+            <h2>{{ module.name }}</h2>
+            <p class="muted">{{ module.category }} · Version {{ module.version }}</p>
+        </div>
+        <span class="pill pill-{{ module.health }}">{{ module.health|capitalize }}</span>
+    </header>
+    <p>{{ module.summary }}</p>
+    <div class="tag-row">
+        {% for tag in module.tags %}
+        <span class="chip small">#{{ tag }}</span>
+        {% endfor %}
+    </div>
+    <h3>Secure Contexts</h3>
+    <ul>
+        {% for context in module.secure_contexts %}
+        <li>{{ context }}</li>
+        {% endfor %}
+    </ul>
+    <h3>Available Actions</h3>
+    <ul>
+        {% for action in module.actions %}
+        <li>{{ action }}</li>
+        {% endfor %}
+    </ul>
+</section>
+{% endblock %}

@@ -1,0 +1,108 @@
+{% extends theme_template %}
+
+{% block title %}Profiles - SecuBox WebUI{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <h2>📦 Configuration Profiles</h2>
+            <p>Bundled module configurations and preset collections</p>
+        </div>
+        <button class="btn primary" disabled>➕ Create Profile</button>
+    </div>
+
+    <!-- Profiles List -->
+    {% if profiles %}
+    <div style="display: flex; flex-direction: column; gap: 1rem;">
+        {% for profile in profiles %}
+        <div class="card {% if profile.active %}card-highlighted{% endif %}"
+             style="border-left: 4px solid {% if profile.active %}var(--accent){% else %}var(--border){% endif %};">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: start;">
+                <div>
+                    <h3>{{ profile.emoji }} {{ profile.name }}</h3>
+                    <p class="muted">by {{ profile.author }}</p>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    {% if profile.active %}
+                    <span class="pill pill-stable">✓ Active</span>
+                    {% endif %}
+                    <span class="muted" style="font-size: 0.9rem;">Priority: {{ profile.priority }}</span>
+                </div>
+            </div>
+
+            <div class="card-body">
+                <p>{{ profile.description }}</p>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                    <div>
+                        <strong>Modules ({{ profile.modules|length }})</strong>
+                        {% if profile.modules %}
+                        <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
+                            {% for module_id in profile.modules[:5] %}
+                            <li>{{ module_id }}</li>
+                            {% endfor %}
+                            {% if profile.modules|length > 5 %}
+                            <li class="muted">... and {{ profile.modules|length - 5 }} more</li>
+                            {% endif %}
+                        </ul>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <strong>Presets ({{ profile.presets|length }})</strong>
+                        {% if profile.presets %}
+                        <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
+                            {% for preset_id in profile.presets[:5] %}
+                            <li>{{ preset_id }}</li>
+                            {% endfor %}
+                            {% if profile.presets|length > 5 %}
+                            <li class="muted">... and {{ profile.presets|length - 5 }} more</li>
+                            {% endif %}
+                        </ul>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if profile.tags %}
+                <div class="tag-row" style="margin-top: 1rem;">
+                    {% for tag in profile.tags %}
+                    <span class="chip small">#{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="card-footer" style="display: flex; gap: 0.5rem;">
+                {% if profile.active %}
+                <button class="btn ghost small"
+                        hx-post="/profiles/{{ profile.id }}/reload"
+                        hx-target="#profile-result-{{ profile.id }}"
+                        hx-swap="innerHTML">
+                    🔄 Reload
+                </button>
+                <button class="btn danger small"
+                        hx-post="/profiles/{{ profile.id }}/deactivate"
+                        hx-target="#profile-result-{{ profile.id }}"
+                        hx-confirm="Deactivate this profile?">
+                    ⏸️ Deactivate
+                </button>
+                {% else %}
+                <button class="btn primary small"
+                        hx-post="/profiles/{{ profile.id }}/activate"
+                        hx-target="#profile-result-{{ profile.id }}">
+                    ▶️ Activate
+                </button>
+                {% endif %}
+                <button class="btn ghost small" disabled>⚙️ Configure</button>
+            </div>
+            <div id="profile-result-{{ profile.id }}"></div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+        <p>No profiles configured. Create a profile to bundle modules and presets together.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,29 @@
+<!-- Module Kit Action Result -->
+{% if status == "success" %}
+<div class="card" style="margin-top: 0.5rem; border-left: 4px solid var(--success); background: var(--success-bg, #f0fdf4);">
+    <div class="card-body" style="padding: 0.75rem;">
+        <div style="display: flex; align-items: start; gap: 0.5rem;">
+            <span style="font-size: 1.25rem;">✅</span>
+            <div style="flex: 1;">
+                <strong style="color: var(--success, #10b981);">{{ message }}</strong>
+                {% if kit and project %}
+                <p class="muted" style="font-size: 0.85rem; margin-top: 0.25rem;">
+                    Added to {{ project.emoji }} {{ project.name }}
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card" style="margin-top: 0.5rem; border-left: 4px solid var(--danger); background: var(--danger-bg, #fef2f2);">
+    <div class="card-body" style="padding: 0.75rem;">
+        <div style="display: flex; align-items: start; gap: 0.5rem;">
+            <span style="font-size: 1.25rem;">❌</span>
+            <div style="flex: 1;">
+                <strong style="color: var(--danger, #ef4444);">{{ message }}</strong>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}

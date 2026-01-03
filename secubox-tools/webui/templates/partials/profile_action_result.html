@@ -1,0 +1,41 @@
+<div class="alert {% if status == 'success' %}alert-success{% else %}alert-error{% endif %}"
+     style="padding: 1rem; border-radius: 0.5rem; margin-top: 1rem;">
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+        {% if status == 'success' %}
+        <span style="font-size: 1.5rem;">✅</span>
+        {% else %}
+        <span style="font-size: 1.5rem;">❌</span>
+        {% endif %}
+        <strong>{{ message }}</strong>
+    </div>
+</div>
+
+<script>
+    // Show toast and reload page to update profile states after 1.5 seconds
+    {% if status == 'success' %}
+    setTimeout(() => {
+        if (typeof Alpine !== 'undefined' && Alpine.store('app')) {
+            Alpine.store('app').showToast('{{ message }}', 'success');
+        }
+    }, 100);
+    setTimeout(() => {
+        window.location.reload();
+    }, 1500);
+    {% endif %}
+</script>
+
+<style>
+.alert {
+    margin-bottom: 1rem;
+}
+.alert-success {
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #22c55e;
+}
+.alert-error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+}
+</style>

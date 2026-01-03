@@ -1,0 +1,80 @@
+{% extends theme_template %}
+
+{% block title %}Workspace - SecuBox WebUI{% endblock %}
+
+{% block content %}
+<div class="workspace-container" x-data="{ activeTab: 'overview', selectedProject: '{{ workspace.active_project or '' }}' }">
+    <!-- Project Switcher Header -->
+    <div class="workspace-header">
+        <div class="project-selector">
+            <select x-model="selectedProject"
+                    @change="htmx.ajax('POST', `/workspace/projects/${selectedProject}/activate`, {target: '#project-switch-result'})"
+                    class="project-dropdown">
+                <option value="">Select Project...</option>
+                {% for project in projects %}
+                <option value="{{ project.id }}" {% if project.active %}selected{% endif %}>
+                    {{ project.emoji }} {{ project.name }}
+                </option>
+                {% endfor %}
+            </select>
+            <button class="btn primary" disabled>+ New Project</button>
+        </div>
+
+        <!-- Project Info Bar -->
+        {% set active_project = projects|selectattr('active')|first %}
+        {% if active_project %}
+        <div class="project-info">
+            {% if active_project.url %}
+            <span class="project-url">🌐 {{ active_project.url }}</span>
+            {% endif %}
+            <span class="device-count">{{ active_project.devices|length }} devices</span>
+            <span class="status-badge {{ active_project.project_type }}">
+                {{ active_project.project_type }}
+            </span>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Project Switch Result -->
+    <div id="project-switch-result"></div>
+
+    <!-- Main Workspace Tabs -->
+    <nav class="workspace-tabs">
+        <button @click="activeTab = 'overview'" :class="{active: activeTab === 'overview'}">
+            📊 Overview
+        </button>
+        <button @click="activeTab = 'kits'" :class="{active: activeTab === 'kits'}">
+            📦 Module Kits
+        </button>
+        <button @click="activeTab = 'devices'" :class="{active: activeTab === 'devices'}">
+            🌐 Devices
+        </button>
+        <button @click="activeTab = 'composer'" :class="{active: activeTab === 'composer'}" disabled>
+            🎨 Composer
+        </button>
+    </nav>
+
+    <!-- Tab Content -->
+    <div class="workspace-content">
+        <!-- Overview Tab: Project Dashboard -->
+        <div x-show="activeTab === 'overview'" class="tab-panel">
+            {% include "partials/workspace_overview.html" %}
+        </div>
+
+        <!-- Module Kits Tab: Browse and manage kits -->
+        <div x-show="activeTab === 'kits'" class="tab-panel" x-data="{ category: null }">
+            {% include "partials/workspace_module_kits.html" %}
+        </div>
+
+        <!-- Devices Tab: Multi-device management -->
+        <div x-show="activeTab === 'devices'" class="tab-panel">
+            {% include "partials/workspace_devices.html" %}
+        </div>
+
+        <!-- Composer Tab: Drag & drop module builder -->
+        <div x-show="activeTab === 'composer'" class="tab-panel">
+            {% include "partials/workspace_composer.html" %}
+        </div>
+    </div>
+</div>
+{% endblock %}

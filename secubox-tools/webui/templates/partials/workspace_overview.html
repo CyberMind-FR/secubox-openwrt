@@ -1,0 +1,96 @@
+<!-- Project Dashboard Overview -->
+{% set active_project = projects|selectattr('active')|first %}
+
+{% if active_project %}
+<section class="panel">
+    <div class="panel-head">
+        <div>
+            <h2>{{ active_project.emoji }} {{ active_project.name }}</h2>
+            <p>{{ active_project.description }}</p>
+        </div>
+    </div>
+
+    <!-- Project Stats Grid -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="stat-card">
+            <div class="stat-value">{{ active_project.devices|length }}</div>
+            <div class="stat-label">Devices</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ active_project.modules|length }}</div>
+            <div class="stat-label">Modules</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ active_project.profiles|length }}</div>
+            <div class="stat-label">Profiles</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ active_project.project_type }}</div>
+            <div class="stat-label">Type</div>
+        </div>
+    </div>
+
+    <!-- Devices Status -->
+    <div class="card" style="margin-bottom: 1rem;">
+        <div class="card-header">
+            <h3>🌐 Devices Status</h3>
+        </div>
+        <div class="card-body">
+            {% if active_project.devices %}
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
+                {% for device_id in active_project.devices %}
+                    {% set device = devices|selectattr('id', 'equalto', device_id)|first %}
+                    {% if device %}
+                    <div class="device-card">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <span class="device-status {% if device.active %}online{% else %}offline{% endif %}"></span>
+                            <strong>{{ device.emoji }} {{ device.name }}</strong>
+                        </div>
+                        <p class="muted" style="font-size: 0.9rem;">{{ device.host }}:{{ device.port }}</p>
+                        {% if device.last_connected %}
+                        <p class="muted" style="font-size: 0.8rem;">Last: {{ device.last_connected }}</p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="muted">No devices configured for this project.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Installed Modules -->
+    <div class="card">
+        <div class="card-header">
+            <h3>🧩 Installed Modules</h3>
+        </div>
+        <div class="card-body">
+            {% if active_project.modules %}
+            <div class="tag-row">
+                {% for module_id in active_project.modules %}
+                <span class="chip">{{ module_id }}</span>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="muted">No modules installed. Browse the Module Kits tab to get started!</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card-footer" style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+        <button class="btn primary" disabled>🔄 Sync Modules</button>
+        <button class="btn ghost" disabled>💾 Backup Config</button>
+        <button class="btn ghost" disabled>📊 View Analytics</button>
+    </div>
+</section>
+
+{% else %}
+<section class="panel">
+    <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+        <h2>No Active Project</h2>
+        <p>Select a project from the dropdown above to get started.</p>
+    </div>
+</section>
+{% endif %}
