@@ -562,26 +562,55 @@ jobs:
               fi
             done
           else
-            echo "⚠️  Lua source not found in feeds, trying alternative method..."
+            echo "⚠️  Lua source not found in feeds, trying alternative methods..."
 
-            # Alternative: use system lua headers if available
-            for STAGING in staging_dir/target-*; do
-              if [ -d "$STAGING" ]; then
-                mkdir -p "$STAGING/usr/include"
-                # Copy from build_dir if lua was built
-                find build_dir -name "lua.h" -exec cp {} "$STAGING/usr/include/" \; 2>/dev/null || true
-              fi
-            done
+            # Alternative 1: Search for Lua headers in build_dir
+            LUA_BUILD_DIR=$(find build_dir -type f -name "lua.h" -printf '%h\n' 2>/dev/null | head -1)
+
+            if [ -n "$LUA_BUILD_DIR" ]; then
+              echo "Found Lua headers in build_dir at: $LUA_BUILD_DIR"
+
+              for STAGING in staging_dir/target-*; do
+                if [ -d "$STAGING" ]; then
+                  mkdir -p "$STAGING/usr/include"
+                  # Copy ALL header files from the directory
+                  cp -v "$LUA_BUILD_DIR"/*.h "$STAGING/usr/include/" 2>/dev/null || true
+                fi
+              done
+            else
+              # Alternative 2: Use system Lua headers as last resort
+              echo "Searching for system Lua headers..."
+
+              for STAGING in staging_dir/target-*; do
+                if [ -d "$STAGING" ]; then
+                  mkdir -p "$STAGING/usr/include"
+
+                  # Try to find lua headers anywhere in the SDK
+                  find . -type f \( -name "lua.h" -o -name "lualib.h" -o -name "lauxlib.h" \) \
+                    -exec cp {} "$STAGING/usr/include/" \; 2>/dev/null || true
+                fi
+              done
+            fi
           fi
 
           # Verify headers are installed
           echo ""
           echo "Verifying Lua headers installation:"
           for STAGING in staging_dir/target-*; do
-            if [ -f "$STAGING/usr/include/lua.h" ]; then
-              echo "✅ $STAGING/usr/include/lua.h found"
+            HEADERS_FOUND=0
+            for HEADER in lua.h lualib.h lauxlib.h; do
+              if [ -f "$STAGING/usr/include/$HEADER" ]; then
+                echo "✅ $STAGING/usr/include/$HEADER"
+                HEADERS_FOUND=$((HEADERS_FOUND + 1))
+              else
+                echo "❌ $STAGING/usr/include/$HEADER NOT FOUND"
+              fi
+            done
+
+            if [ $HEADERS_FOUND -eq 3 ]; then
+              echo "✅ All required Lua headers installed for $(basename $STAGING)"
             else
-              echo "❌ $STAGING/usr/include/lua.h NOT FOUND"
+              echo "⚠️  Warning: Missing some Lua headers in $(basename $STAGING)"
             fi
           done
 
