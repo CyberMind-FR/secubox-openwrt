@@ -2,13 +2,13 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-secubox-bonus
 PKG_VERSION:=0.1.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_ARCH:=all
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
-LUCI_TITLE:=LuCI - SecuBox Bonus Content
-LUCI_DESCRIPTION:=SecuBox marketing and documentation website. Includes demo pages, tutorials, blog articles, and multilingual content for SecuBox modules.
+LUCI_TITLE:=LuCI - SecuBox Bonus Content & Documentation
+LUCI_DESCRIPTION:=SecuBox marketing content, documentation website, and local mirror. Includes demo pages, tutorials, blog articles, development guides, and multilingual content for SecuBox modules. Accessible at /luci-static/secubox/
 LUCI_DEPENDS:=+luci-base
 LUCI_PKGARCH:=all
 

@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=crowdsec
 PKG_VERSION:=1.7.4
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_ARCH:=all
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz

@@ -1,0 +1,49 @@
+{
+	"admin/secubox/admin": {
+		"title": "Admin Control",
+		"order": 5,
+		"action": {
+			"type": "firstchild"
+		}
+	},
+	"admin/secubox/admin/dashboard": {
+		"title": "Control Panel",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "secubox-admin/dashboard"
+		}
+	},
+	"admin/secubox/admin/apps": {
+		"title": "Apps Manager",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "secubox-admin/apps"
+		}
+	},
+	"admin/secubox/admin/settings": {
+		"title": "App Settings",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "secubox-admin/settings"
+		}
+	},
+	"admin/secubox/admin/health": {
+		"title": "System Health",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "secubox-admin/health"
+		}
+	},
+	"admin/secubox/admin/logs": {
+		"title": "System Logs",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "secubox-admin/logs"
+		}
+	}
+}

@@ -1,0 +1,40 @@
+{
+	"luci-app-secubox-admin": {
+		"description": "SecuBox Admin Control Center",
+		"read": {
+			"ubus": {
+				"luci.secubox": [
+					"get_appstore_apps",
+					"get_appstore_app",
+					"getModules",
+					"getModuleInfo",
+					"get_dashboard_data",
+					"get_system_health",
+					"get_alerts",
+					"getLogs",
+					"listProfiles"
+				]
+			},
+			"uci": [
+				"secubox",
+				"*"
+			]
+		},
+		"write": {
+			"ubus": {
+				"luci.secubox": [
+					"install_appstore_app",
+					"remove_appstore_app",
+					"enable_module",
+					"disable_module",
+					"updateModule",
+					"applyProfile"
+				]
+			},
+			"uci": [
+				"secubox",
+				"*"
+			]
+		}
+	}
+}

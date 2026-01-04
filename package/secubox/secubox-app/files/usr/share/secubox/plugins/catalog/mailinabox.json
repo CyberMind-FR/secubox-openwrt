@@ -1,0 +1,97 @@
+{
+  "id": "mailinabox",
+  "name": "Mail-in-a-Box",
+  "category": "hosting",
+  "runtime": "docker",
+  "maturity": "beta",
+  "description": "Complete self-hosted email server with webmail, calendar, contacts, spam filtering, and automatic DNS configuration. Easy-to-deploy solution for running your own mail server.",
+  "source": {
+    "homepage": "https://mailinabox.email/",
+    "github": "https://github.com/gkerma/secubox-openwrt/tree/master/package/secubox/secubox-app-mailinabox"
+  },
+  "packages": [
+    "secubox-app-mailinabox",
+    "luci-app-vhost-manager"
+  ],
+  "capabilities": [
+    "email-server",
+    "webmail",
+    "calendar-server",
+    "contacts-server",
+    "dns-server",
+    "docker-runner"
+  ],
+  "requirements": {
+    "arch": [
+      "x86_64"
+    ],
+    "min_ram_mb": 768,
+    "min_storage_mb": 2048,
+    "public_ip": true,
+    "domain_name": true
+  },
+  "hardware": {
+    "usb": false,
+    "serial": false
+  },
+  "network": {
+    "inbound_ports": [
+      25,
+      53,
+      80,
+      443,
+      587,
+      993,
+      995,
+      4190
+    ],
+    "protocols": [
+      "smtp",
+      "dns",
+      "http",
+      "https",
+      "imap",
+      "pop3"
+    ],
+    "outbound_only": false,
+    "requires_public_ip": true
+  },
+  "privileges": {
+    "needs_usb": false,
+    "needs_serial": false,
+    "needs_net_admin": true,
+    "needs_net_bind_service": true
+  },
+  "update": {
+    "strategy": "docker_pull"
+  },
+  "wizard": {
+    "steps": [
+      "domain_config",
+      "dns_setup",
+      "data_path",
+      "port_config",
+      "admin_credentials"
+    ]
+  },
+  "profiles": {
+    "recommended": [
+      "office",
+      "home"
+    ],
+    "not_recommended": [
+      "lab"
+    ]
+  },
+  "conflicts": [
+    "secubox-app-citadel",
+    "secubox-app-ispconfig"
+  ],
+  "warnings": [
+    "Requires public IP address",
+    "Port 25 may be blocked by some ISPs",
+    "Valid domain name with DNS control required",
+    "Not suitable for beginners - requires DNS knowledge",
+    "Initial setup takes 10-15 minutes"
+  ]
+}

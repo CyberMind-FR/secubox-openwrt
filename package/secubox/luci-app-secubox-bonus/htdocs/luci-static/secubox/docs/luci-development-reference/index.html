@@ -1,0 +1,3138 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="OpenWrt LuCI Security & Management Suite">
+      
+      
+        <meta name="author" content="CyberMind.fr">
+      
+      
+        <link rel="canonical" href="https://gkerma.github.io/secubox-openwrt/luci-development-reference/">
+      
+      
+        <link rel="prev" href="../permissions-guide/">
+      
+      
+        <link rel="next" href="../module-status/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.5.3, mkdocs-material-9.4.0">
+    
+    
+      
+        <title>LuCI Development - SecuBox Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.9f615399.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.649f08f9.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="purple">
+  
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&"object"==typeof palette.color)for(var key of Object.keys(palette.color))document.body.setAttribute("data-md-color-"+key,palette.color[key])</script>
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#luci-development-reference-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="SecuBox Documentation" class="md-header__button md-logo" aria-label="SecuBox Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            SecuBox Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              LuCI Development
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="purple"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69Z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="purple"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12c0-2.42-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69Z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/gkerma/secubox-openwrt" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gkerma/secubox-openwrt
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../quick-start/" class="md-tabs__link">
+          
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../development-guidelines/" class="md-tabs__link">
+          
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../claude/" class="md-tabs__link">
+          
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../module-status/" class="md-tabs__link">
+          
+  
+  Modules
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../todo-analyse/" class="md-tabs__link">
+          
+  
+  Tools & Roadmap
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../archive/" class="md-tabs__link">
+          
+  
+  Archive
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="SecuBox Documentation" class="md-nav__button md-logo" aria-label="SecuBox Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+
+    </a>
+    SecuBox Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/gkerma/secubox-openwrt" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gkerma/secubox-openwrt
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Getting Started
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Getting Started
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quick-start/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Quick Start
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../documentation-index/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Documentation Index
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Development
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Development
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development-guidelines/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Development Guidelines
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-templates/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Code Templates
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../module-implementation-guide/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Module Implementation
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    RPCD & Architecture
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validation-guide/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Validation Guide
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../permissions-guide/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Permissions Guide
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    LuCI Development
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    LuCI Development
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    See Also
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    Table of Contents
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ubus-and-rpc-fundamentals" class="md-nav__link">
+    ubus and RPC Fundamentals
+  </a>
+  
+    <nav class="md-nav" aria-label="ubus and RPC Fundamentals">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-ubus" class="md-nav__link">
+    What is ubus?
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ubus-object-naming-convention" class="md-nav__link">
+    ubus Object Naming Convention
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rpcd-script-naming-must-match-ubus-object" class="md-nav__link">
+    RPCD Script Naming MUST Match ubus Object
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ubus-call-types" class="md-nav__link">
+    ubus Call Types
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rpcd-backend-patterns" class="md-nav__link">
+    RPCD Backend Patterns
+  </a>
+  
+    <nav class="md-nav" aria-label="RPCD Backend Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#shell-script-structure" class="md-nav__link">
+    Shell Script Structure
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#standard-template" class="md-nav__link">
+    Standard Template
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#json-output-with-jshnsh" class="md-nav__link">
+    JSON Output with jshn.sh
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handling" class="md-nav__link">
+    Error Handling
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uci-integration" class="md-nav__link">
+    UCI Integration
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-tips" class="md-nav__link">
+    Performance Tips
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#luci-api-module-patterns" class="md-nav__link">
+    LuCI API Module Patterns
+  </a>
+  
+    <nav class="md-nav" aria-label="LuCI API Module Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#critical-use-baseclassextend" class="md-nav__link">
+    CRITICAL: Use baseclass.extend()
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rpcdeclare-parameters" class="md-nav__link">
+    rpc.declare() Parameters
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#expect-parameter-patterns" class="md-nav__link">
+    expect Parameter Patterns
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handling-in-api-module" class="md-nav__link">
+    Error Handling in API Module
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#luci-view-import-patterns" class="md-nav__link">
+    LuCI View Import Patterns
+  </a>
+  
+    <nav class="md-nav" aria-label="LuCI View Import Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#critical-use-require-as-var-for-apis" class="md-nav__link">
+    CRITICAL: Use 'require ... as VAR' for APIs
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#standard-view-structure" class="md-nav__link">
+    Standard View Structure
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#import-patterns-summary" class="md-nav__link">
+    Import Patterns Summary
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acl-permission-structure" class="md-nav__link">
+    ACL Permission Structure
+  </a>
+  
+    <nav class="md-nav" aria-label="ACL Permission Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-location" class="md-nav__link">
+    File Location
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#standard-acl-template" class="md-nav__link">
+    Standard ACL Template
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-vs-write-classification" class="md-nav__link">
+    Read vs Write Classification
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#common-acl-errors" class="md-nav__link">
+    Common ACL Errors
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-structure-conventions" class="md-nav__link">
+    Data Structure Conventions
+  </a>
+  
+    <nav class="md-nav" aria-label="Data Structure Conventions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#health-metrics-structure-system-hub-v010" class="md-nav__link">
+    Health Metrics Structure (system-hub v0.1.0)
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#status-values" class="md-nav__link">
+    Status Values
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timestamp-format" class="md-nav__link">
+    Timestamp Format
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#boolean-values-in-json" class="md-nav__link">
+    Boolean Values in JSON
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#array-vs-single-value" class="md-nav__link">
+    Array vs Single Value
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-errors-and-solutions" class="md-nav__link">
+    Common Errors and Solutions
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Errors and Solutions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-rpc-error-object-not-found-32000" class="md-nav__link">
+    1. RPC Error: "Object not found" (-32000)
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-javascript-error-apimethodname-is-not-a-function" class="md-nav__link">
+    2. JavaScript Error: "api.methodName is not a function"
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-rpc-error-access-denied-32002" class="md-nav__link">
+    3. RPC Error: "Access denied" (-32002)
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-display-error-nan-or-undefined-values" class="md-nav__link">
+    4. Display Error: "NaN%" or Undefined Values
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-http-404-view-file-not-found" class="md-nav__link">
+    5. HTTP 404: View File Not Found
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-build-error-factory-yields-invalid-constructor" class="md-nav__link">
+    6. Build Error: "factory yields invalid constructor"
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-rpcd-not-responding-after-changes" class="md-nav__link">
+    7. RPCD Not Responding After Changes
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-checklist" class="md-nav__link">
+    Validation Checklist
+  </a>
+  
+    <nav class="md-nav" aria-label="Validation Checklist">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    File Structure
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#naming-conventions" class="md-nav__link">
+    Naming Conventions
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#code-validation" class="md-nav__link">
+    Code Validation
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#permissions" class="md-nav__link">
+    Permissions
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    Testing
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#automated-validation-command" class="md-nav__link">
+    Automated Validation Command
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-and-deployment" class="md-nav__link">
+    Testing and Deployment
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing and Deployment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#local-testing-with-ubus" class="md-nav__link">
+    Local Testing with ubus
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deployment-script" class="md-nav__link">
+    Deployment Script
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#browser-testing" class="md-nav__link">
+    Browser Testing
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#remote-ubus-testing" class="md-nav__link">
+    Remote ubus Testing
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debugging-tips" class="md-nav__link">
+    Debugging Tips
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#best-practices-summary" class="md-nav__link">
+    Best Practices Summary
+  </a>
+  
+    <nav class="md-nav" aria-label="Best Practices Summary">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#do" class="md-nav__link">
+    DO:
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dont" class="md-nav__link">
+    DON'T:
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-history" class="md-nav__link">
+    Version History
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    References
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contact" class="md-nav__link">
+    Contact
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Modules
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Modules
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../module-status/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Module Status
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../feature-regeneration-prompts/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Feature Prompts
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Tools & Roadmap
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Tools & Roadmap
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../todo-analyse/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    TODO Roadmap
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Archive
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            Archive
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Archive Index
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/build-issues/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Build Issues
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/completion-report/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Completion Report
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/module-enable-disable-design/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Module Enable/Disable
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    See Also
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    Table of Contents
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ubus-and-rpc-fundamentals" class="md-nav__link">
+    ubus and RPC Fundamentals
+  </a>
+  
+    <nav class="md-nav" aria-label="ubus and RPC Fundamentals">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-is-ubus" class="md-nav__link">
+    What is ubus?
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ubus-object-naming-convention" class="md-nav__link">
+    ubus Object Naming Convention
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rpcd-script-naming-must-match-ubus-object" class="md-nav__link">
+    RPCD Script Naming MUST Match ubus Object
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ubus-call-types" class="md-nav__link">
+    ubus Call Types
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rpcd-backend-patterns" class="md-nav__link">
+    RPCD Backend Patterns
+  </a>
+  
+    <nav class="md-nav" aria-label="RPCD Backend Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#shell-script-structure" class="md-nav__link">
+    Shell Script Structure
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#standard-template" class="md-nav__link">
+    Standard Template
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#json-output-with-jshnsh" class="md-nav__link">
+    JSON Output with jshn.sh
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handling" class="md-nav__link">
+    Error Handling
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uci-integration" class="md-nav__link">
+    UCI Integration
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-tips" class="md-nav__link">
+    Performance Tips
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#luci-api-module-patterns" class="md-nav__link">
+    LuCI API Module Patterns
+  </a>
+  
+    <nav class="md-nav" aria-label="LuCI API Module Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#critical-use-baseclassextend" class="md-nav__link">
+    CRITICAL: Use baseclass.extend()
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rpcdeclare-parameters" class="md-nav__link">
+    rpc.declare() Parameters
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#expect-parameter-patterns" class="md-nav__link">
+    expect Parameter Patterns
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handling-in-api-module" class="md-nav__link">
+    Error Handling in API Module
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#luci-view-import-patterns" class="md-nav__link">
+    LuCI View Import Patterns
+  </a>
+  
+    <nav class="md-nav" aria-label="LuCI View Import Patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#critical-use-require-as-var-for-apis" class="md-nav__link">
+    CRITICAL: Use 'require ... as VAR' for APIs
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#standard-view-structure" class="md-nav__link">
+    Standard View Structure
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#import-patterns-summary" class="md-nav__link">
+    Import Patterns Summary
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#acl-permission-structure" class="md-nav__link">
+    ACL Permission Structure
+  </a>
+  
+    <nav class="md-nav" aria-label="ACL Permission Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-location" class="md-nav__link">
+    File Location
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#standard-acl-template" class="md-nav__link">
+    Standard ACL Template
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-vs-write-classification" class="md-nav__link">
+    Read vs Write Classification
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#common-acl-errors" class="md-nav__link">
+    Common ACL Errors
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#data-structure-conventions" class="md-nav__link">
+    Data Structure Conventions
+  </a>
+  
+    <nav class="md-nav" aria-label="Data Structure Conventions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#health-metrics-structure-system-hub-v010" class="md-nav__link">
+    Health Metrics Structure (system-hub v0.1.0)
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#status-values" class="md-nav__link">
+    Status Values
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#timestamp-format" class="md-nav__link">
+    Timestamp Format
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#boolean-values-in-json" class="md-nav__link">
+    Boolean Values in JSON
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#array-vs-single-value" class="md-nav__link">
+    Array vs Single Value
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-errors-and-solutions" class="md-nav__link">
+    Common Errors and Solutions
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Errors and Solutions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-rpc-error-object-not-found-32000" class="md-nav__link">
+    1. RPC Error: "Object not found" (-32000)
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-javascript-error-apimethodname-is-not-a-function" class="md-nav__link">
+    2. JavaScript Error: "api.methodName is not a function"
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-rpc-error-access-denied-32002" class="md-nav__link">
+    3. RPC Error: "Access denied" (-32002)
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-display-error-nan-or-undefined-values" class="md-nav__link">
+    4. Display Error: "NaN%" or Undefined Values
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-http-404-view-file-not-found" class="md-nav__link">
+    5. HTTP 404: View File Not Found
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-build-error-factory-yields-invalid-constructor" class="md-nav__link">
+    6. Build Error: "factory yields invalid constructor"
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-rpcd-not-responding-after-changes" class="md-nav__link">
+    7. RPCD Not Responding After Changes
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-checklist" class="md-nav__link">
+    Validation Checklist
+  </a>
+  
+    <nav class="md-nav" aria-label="Validation Checklist">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    File Structure
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#naming-conventions" class="md-nav__link">
+    Naming Conventions
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#code-validation" class="md-nav__link">
+    Code Validation
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#permissions" class="md-nav__link">
+    Permissions
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    Testing
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#automated-validation-command" class="md-nav__link">
+    Automated Validation Command
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-and-deployment" class="md-nav__link">
+    Testing and Deployment
+  </a>
+  
+    <nav class="md-nav" aria-label="Testing and Deployment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#local-testing-with-ubus" class="md-nav__link">
+    Local Testing with ubus
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deployment-script" class="md-nav__link">
+    Deployment Script
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#browser-testing" class="md-nav__link">
+    Browser Testing
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#remote-ubus-testing" class="md-nav__link">
+    Remote ubus Testing
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debugging-tips" class="md-nav__link">
+    Debugging Tips
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#best-practices-summary" class="md-nav__link">
+    Best Practices Summary
+  </a>
+  
+    <nav class="md-nav" aria-label="Best Practices Summary">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#do" class="md-nav__link">
+    DO:
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dont" class="md-nav__link">
+    DON'T:
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-history" class="md-nav__link">
+    Version History
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    References
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contact" class="md-nav__link">
+    Contact
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="luci-development-reference-guide">LuCI Development Reference Guide<a class="headerlink" href="#luci-development-reference-guide" title="Permanent link">&para;</a></h1>
+<p><strong>Version:</strong> 1.0.0<br />
+<strong>Last Updated:</strong> 2025-12-28<br />
+<strong>Status:</strong> Active</p>
+<p><strong>Version:</strong> 1.0.0<br />
+<strong>Last Updated:</strong> 2025-12-28<br />
+<strong>Status:</strong> Active<br />
+<strong>Based on:</strong> luci-app-secubox and luci-app-system-hub implementations<br />
+<strong>Target Audience:</strong> Claude.ai and developers working on OpenWrt LuCI applications</p>
+<hr />
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Design &amp; Standards:</strong> <a href="../development-guidelines/">DEVELOPMENT-GUIDELINES.md</a></li>
+<li><strong>Quick Commands:</strong> <a href="../quick-start/">QUICK-START.md</a></li>
+<li><strong>Automation Briefing:</strong> <a href="codex.md">CODEX.md</a></li>
+<li><strong>Code Templates:</strong> <a href="../code-templates/">CODE-TEMPLATES.md</a></li>
+</ul>
+<p>This document captures critical patterns, best practices, and common pitfalls discovered during the development of SecuBox LuCI applications. Use this as a validation reference for all future LuCI application development.</p>
+<hr />
+<h2 id="table-of-contents">Table of Contents<a class="headerlink" href="#table-of-contents" title="Permanent link">&para;</a></h2>
+<ol>
+<li><a href="#ubus-and-rpc-fundamentals">ubus and RPC Fundamentals</a></li>
+<li><a href="#rpcd-backend-patterns">RPCD Backend Patterns</a></li>
+<li><a href="#luci-api-module-patterns">LuCI API Module Patterns</a></li>
+<li><a href="#luci-view-import-patterns">LuCI View Import Patterns</a></li>
+<li><a href="#acl-permission-structure">ACL Permission Structure</a></li>
+<li><a href="#data-structure-conventions">Data Structure Conventions</a></li>
+<li><a href="#common-errors-and-solutions">Common Errors and Solutions</a></li>
+<li><a href="#validation-checklist">Validation Checklist</a></li>
+<li><a href="#testing-and-deployment">Testing and Deployment</a></li>
+</ol>
+<hr />
+<h2 id="ubus-and-rpc-fundamentals">ubus and RPC Fundamentals<a class="headerlink" href="#ubus-and-rpc-fundamentals" title="Permanent link">&para;</a></h2>
+<h3 id="what-is-ubus">What is ubus?<a class="headerlink" href="#what-is-ubus" title="Permanent link">&para;</a></h3>
+<p><strong>ubus</strong> (OpenWrt micro bus architecture) is OpenWrt's inter-process communication (IPC) system. It enables:
+- RPC (Remote Procedure Call) between processes
+- Web interface (LuCI) to backend service communication
+- Command-line interaction via <code>ubus call</code></p>
+<h3 id="ubus-object-naming-convention">ubus Object Naming Convention<a class="headerlink" href="#ubus-object-naming-convention" title="Permanent link">&para;</a></h3>
+<p><strong>CRITICAL RULE</strong>: All LuCI application ubus objects MUST use the <code>luci.</code> prefix.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1">// ✅ CORRECT</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nx">object</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;luci.system-hub&#39;</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nx">object</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;luci.cdn-cache&#39;</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nx">object</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;luci.wireguard-dashboard&#39;</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="c1">// ❌ WRONG</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="nx">object</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;system-hub&#39;</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="nx">object</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;systemhub&#39;</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nx">object</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;cdn-cache&#39;</span>
+</code></pre></div>
+<p><strong>Why?</strong> LuCI expects objects under the <code>luci.*</code> namespace for web applications. Without this prefix:
+- ACL permissions won't match
+- RPCD won't route calls correctly
+- Browser console shows: <code>RPC call to system-hub/status failed with error -32000: Object not found</code></p>
+<h3 id="rpcd-script-naming-must-match-ubus-object">RPCD Script Naming MUST Match ubus Object<a class="headerlink" href="#rpcd-script-naming-must-match-ubus-object" title="Permanent link">&para;</a></h3>
+<p>The RPCD script filename MUST exactly match the ubus object name:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># If JavaScript declares:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1"># object: &#39;luci.system-hub&#39;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Then RPCD script MUST be named:</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>/usr/libexec/rpcd/luci.system-hub
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># NOT:</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>/usr/libexec/rpcd/system-hub
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>/usr/libexec/rpcd/luci-system-hub
+</code></pre></div>
+<p><strong>Validation Command</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Check JavaScript files for ubus object names</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>grep<span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;object:&quot;</span><span class="w"> </span>luci-app-*/htdocs<span class="w"> </span>--include<span class="o">=</span><span class="s2">&quot;*.js&quot;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Verify RPCD script exists with matching name</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>ls<span class="w"> </span>luci-app-*/root/usr/libexec/rpcd/
+</code></pre></div></p>
+<h3 id="ubus-call-types">ubus Call Types<a class="headerlink" href="#ubus-call-types" title="Permanent link">&para;</a></h3>
+<p><strong>Read Operations</strong> (GET-like):
+- <code>status</code> - Get current state
+- <code>get_*</code> - Retrieve data (e.g., <code>get_health</code>, <code>get_settings</code>)
+- <code>list_*</code> - Enumerate items (e.g., <code>list_services</code>)</p>
+<p><strong>Write Operations</strong> (POST-like):
+- <code>save_*</code> - Persist configuration (e.g., <code>save_settings</code>)
+- <code>*_action</code> - Perform actions (e.g., <code>service_action</code>)
+- <code>backup</code>, <code>restore</code>, <code>reboot</code> - System modifications</p>
+<p><strong>ACL Mapping</strong>:
+- Read operations → <code>"read"</code> section in ACL
+- Write operations → <code>"write"</code> section in ACL</p>
+<hr />
+<h2 id="rpcd-backend-patterns">RPCD Backend Patterns<a class="headerlink" href="#rpcd-backend-patterns" title="Permanent link">&para;</a></h2>
+<h3 id="shell-script-structure">Shell Script Structure<a class="headerlink" href="#shell-script-structure" title="Permanent link">&para;</a></h3>
+<p>RPCD backends are executable shell scripts that:
+1. Parse <code>$1</code> for the action (<code>list</code> or <code>call</code>)
+2. Parse <code>$2</code> for the method name (if <code>call</code>)
+3. Read JSON input from stdin (for methods with parameters)
+4. Output JSON to stdout
+5. Exit with status 0 on success, non-zero on error</p>
+<h3 id="standard-template">Standard Template<a class="headerlink" href="#standard-template" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="ch">#!/bin/sh</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># RPCD Backend: luci.system-hub</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># Version: 0.1.0</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Source JSON shell helper</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>.<span class="w"> </span>/usr/share/libubox/jshn.sh
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="k">case</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$1</span><span class="s2">&quot;</span><span class="w"> </span><span class="k">in</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">    </span>list<span class="o">)</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">        </span><span class="c1"># List all available methods and their parameters</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">        </span><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="s1">            &quot;status&quot;: {},</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="s1">            &quot;get_health&quot;: {},</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="s1">            &quot;service_action&quot;: { &quot;service&quot;: &quot;string&quot;, &quot;action&quot;: &quot;string&quot; },</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="s1">            &quot;save_settings&quot;: {</span>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="s1">                &quot;auto_refresh&quot;: 0,</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="s1">                &quot;health_check&quot;: 0,</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="s1">                &quot;refresh_interval&quot;: 0</span>
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="s1">            }</span>
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="s1">        }&#39;</span>
+<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="w">        </span><span class="p">;;</span>
+<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="w">    </span>call<span class="o">)</span>
+<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$2</span><span class="s2">&quot;</span><span class="w"> </span><span class="k">in</span>
+<a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="w">            </span>status<span class="o">)</span>
+<a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="w">                </span>status
+<a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="w">                </span><span class="p">;;</span>
+<a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a><span class="w">            </span>get_health<span class="o">)</span>
+<a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a><span class="w">                </span>get_health
+<a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a><span class="w">                </span><span class="p">;;</span>
+<a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a><span class="w">            </span>service_action<span class="o">)</span>
+<a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a><span class="w">                </span><span class="c1"># Read JSON input from stdin</span>
+<a id="__codelineno-3-32" name="__codelineno-3-32" href="#__codelineno-3-32"></a><span class="w">                </span><span class="nb">read</span><span class="w"> </span>-r<span class="w"> </span>input
+<a id="__codelineno-3-33" name="__codelineno-3-33" href="#__codelineno-3-33"></a><span class="w">                </span>json_load<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$input</span><span class="s2">&quot;</span>
+<a id="__codelineno-3-34" name="__codelineno-3-34" href="#__codelineno-3-34"></a><span class="w">                </span>json_get_var<span class="w"> </span>service<span class="w"> </span>service
+<a id="__codelineno-3-35" name="__codelineno-3-35" href="#__codelineno-3-35"></a><span class="w">                </span>json_get_var<span class="w"> </span>action<span class="w"> </span>action
+<a id="__codelineno-3-36" name="__codelineno-3-36" href="#__codelineno-3-36"></a><span class="w">                </span>service_action<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$service</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$action</span><span class="s2">&quot;</span>
+<a id="__codelineno-3-37" name="__codelineno-3-37" href="#__codelineno-3-37"></a><span class="w">                </span><span class="p">;;</span>
+<a id="__codelineno-3-38" name="__codelineno-3-38" href="#__codelineno-3-38"></a><span class="w">            </span>save_settings<span class="o">)</span>
+<a id="__codelineno-3-39" name="__codelineno-3-39" href="#__codelineno-3-39"></a><span class="w">                </span><span class="nb">read</span><span class="w"> </span>-r<span class="w"> </span>input
+<a id="__codelineno-3-40" name="__codelineno-3-40" href="#__codelineno-3-40"></a><span class="w">                </span>json_load<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$input</span><span class="s2">&quot;</span>
+<a id="__codelineno-3-41" name="__codelineno-3-41" href="#__codelineno-3-41"></a><span class="w">                </span>json_get_var<span class="w"> </span>auto_refresh<span class="w"> </span>auto_refresh
+<a id="__codelineno-3-42" name="__codelineno-3-42" href="#__codelineno-3-42"></a><span class="w">                </span>json_get_var<span class="w"> </span>health_check<span class="w"> </span>health_check
+<a id="__codelineno-3-43" name="__codelineno-3-43" href="#__codelineno-3-43"></a><span class="w">                </span>json_get_var<span class="w"> </span>refresh_interval<span class="w"> </span>refresh_interval
+<a id="__codelineno-3-44" name="__codelineno-3-44" href="#__codelineno-3-44"></a><span class="w">                </span>save_settings<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$auto_refresh</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$health_check</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$refresh_interval</span><span class="s2">&quot;</span>
+<a id="__codelineno-3-45" name="__codelineno-3-45" href="#__codelineno-3-45"></a><span class="w">                </span><span class="p">;;</span>
+<a id="__codelineno-3-46" name="__codelineno-3-46" href="#__codelineno-3-46"></a><span class="w">            </span>*<span class="o">)</span>
+<a id="__codelineno-3-47" name="__codelineno-3-47" href="#__codelineno-3-47"></a><span class="w">                </span><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;error&quot;: &quot;Method not found&quot;}&#39;</span>
+<a id="__codelineno-3-48" name="__codelineno-3-48" href="#__codelineno-3-48"></a><span class="w">                </span><span class="nb">exit</span><span class="w"> </span><span class="m">1</span>
+<a id="__codelineno-3-49" name="__codelineno-3-49" href="#__codelineno-3-49"></a><span class="w">                </span><span class="p">;;</span>
+<a id="__codelineno-3-50" name="__codelineno-3-50" href="#__codelineno-3-50"></a><span class="w">        </span><span class="k">esac</span>
+<a id="__codelineno-3-51" name="__codelineno-3-51" href="#__codelineno-3-51"></a><span class="w">        </span><span class="p">;;</span>
+<a id="__codelineno-3-52" name="__codelineno-3-52" href="#__codelineno-3-52"></a><span class="k">esac</span>
+</code></pre></div>
+<h3 id="json-output-with-jshnsh">JSON Output with jshn.sh<a class="headerlink" href="#json-output-with-jshnsh" title="Permanent link">&para;</a></h3>
+<p><strong>jshn.sh</strong> provides shell functions for JSON manipulation:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Initialize JSON object</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>json_init
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># Add simple values</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>json_add_string<span class="w"> </span><span class="s2">&quot;hostname&quot;</span><span class="w"> </span><span class="s2">&quot;openwrt&quot;</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>json_add_int<span class="w"> </span><span class="s2">&quot;uptime&quot;</span><span class="w"> </span><span class="m">86400</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>json_add_boolean<span class="w"> </span><span class="s2">&quot;running&quot;</span><span class="w"> </span><span class="m">1</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="c1"># Add nested object</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>json_add_object<span class="w"> </span><span class="s2">&quot;cpu&quot;</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>json_add_int<span class="w"> </span><span class="s2">&quot;usage&quot;</span><span class="w"> </span><span class="m">25</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>json_add_string<span class="w"> </span><span class="s2">&quot;status&quot;</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>json_close_object
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="c1"># Add array</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>json_add_array<span class="w"> </span><span class="s2">&quot;services&quot;</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>json_add_string<span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="s2">&quot;network&quot;</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>json_add_string<span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="s2">&quot;firewall&quot;</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>json_close_array
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="c1"># Output JSON to stdout</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>json_dump
+</code></pre></div>
+<p><strong>Common Functions</strong>:
+- <code>json_init</code> - Start new JSON object
+- <code>json_add_string "key" "value"</code> - Add string
+- <code>json_add_int "key" 123</code> - Add integer
+- <code>json_add_boolean "key" 1</code> - Add boolean (0 or 1)
+- <code>json_add_object "key"</code> - Start nested object
+- <code>json_close_object</code> - End nested object
+- <code>json_add_array "key"</code> - Start array
+- <code>json_close_array</code> - End array
+- <code>json_dump</code> - Output JSON to stdout</p>
+<h3 id="error-handling">Error Handling<a class="headerlink" href="#error-handling" title="Permanent link">&para;</a></h3>
+<p>Always validate inputs and return meaningful errors:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>service_action<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="nb">local</span><span class="w"> </span><span class="nv">service</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$1</span><span class="s2">&quot;</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nb">local</span><span class="w"> </span><span class="nv">action</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$2</span><span class="s2">&quot;</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="c1"># Validate service name</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-z<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$service</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">        </span>json_init
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">        </span>json_add_boolean<span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="w"> </span><span class="m">0</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">        </span>json_add_string<span class="w"> </span><span class="s2">&quot;error&quot;</span><span class="w"> </span><span class="s2">&quot;Service name is required&quot;</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">        </span>json_dump
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">    </span><span class="k">fi</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">    </span><span class="c1"># Validate action</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$action</span><span class="s2">&quot;</span><span class="w"> </span><span class="k">in</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="w">        </span>start<span class="p">|</span>stop<span class="p">|</span>restart<span class="p">|</span>enable<span class="p">|</span>disable<span class="o">)</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="w">            </span><span class="p">;;</span>
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="w">        </span>*<span class="o">)</span>
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="w">            </span>json_init
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a><span class="w">            </span>json_add_boolean<span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="w"> </span><span class="m">0</span>
+<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="w">            </span>json_add_string<span class="w"> </span><span class="s2">&quot;error&quot;</span><span class="w"> </span><span class="s2">&quot;Invalid action: </span><span class="nv">$action</span><span class="s2">&quot;</span>
+<a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a><span class="w">            </span>json_dump
+<a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a><span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a><span class="w">            </span><span class="p">;;</span>
+<a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a><span class="w">    </span><span class="k">esac</span>
+<a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>
+<a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a><span class="w">    </span><span class="c1"># Perform action</span>
+<a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a><span class="w">    </span>/etc/init.d/<span class="s2">&quot;</span><span class="nv">$service</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$action</span><span class="s2">&quot;</span><span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+<a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a>
+<a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="nv">$?</span><span class="w"> </span>-eq<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a><span class="w">        </span>json_init
+<a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a><span class="w">        </span>json_add_boolean<span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="w"> </span><span class="m">1</span>
+<a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a><span class="w">        </span>json_add_string<span class="w"> </span><span class="s2">&quot;message&quot;</span><span class="w"> </span><span class="s2">&quot;Service </span><span class="nv">$service</span><span class="s2"> </span><span class="nv">$action</span><span class="s2"> successful&quot;</span>
+<a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="w">        </span>json_dump
+<a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a><span class="w">    </span><span class="k">else</span>
+<a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a><span class="w">        </span>json_init
+<a id="__codelineno-5-37" name="__codelineno-5-37" href="#__codelineno-5-37"></a><span class="w">        </span>json_add_boolean<span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="w"> </span><span class="m">0</span>
+<a id="__codelineno-5-38" name="__codelineno-5-38" href="#__codelineno-5-38"></a><span class="w">        </span>json_add_string<span class="w"> </span><span class="s2">&quot;error&quot;</span><span class="w"> </span><span class="s2">&quot;Service </span><span class="nv">$service</span><span class="s2"> </span><span class="nv">$action</span><span class="s2"> failed&quot;</span>
+<a id="__codelineno-5-39" name="__codelineno-5-39" href="#__codelineno-5-39"></a><span class="w">        </span>json_dump
+<a id="__codelineno-5-40" name="__codelineno-5-40" href="#__codelineno-5-40"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="m">1</span>
+<a id="__codelineno-5-41" name="__codelineno-5-41" href="#__codelineno-5-41"></a><span class="w">    </span><span class="k">fi</span>
+<a id="__codelineno-5-42" name="__codelineno-5-42" href="#__codelineno-5-42"></a><span class="o">}</span>
+</code></pre></div>
+<h3 id="uci-integration">UCI Integration<a class="headerlink" href="#uci-integration" title="Permanent link">&para;</a></h3>
+<p>For persistent configuration, use UCI (Unified Configuration Interface):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>save_settings<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="nb">local</span><span class="w"> </span><span class="nv">auto_refresh</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$1</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nb">local</span><span class="w"> </span><span class="nv">health_check</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$2</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nb">local</span><span class="w"> </span><span class="nv">refresh_interval</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$3</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="c1"># Create/update UCI config</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span>uci<span class="w"> </span><span class="nb">set</span><span class="w"> </span>system-hub.general<span class="o">=</span>general
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span>uci<span class="w"> </span><span class="nb">set</span><span class="w"> </span>system-hub.general.auto_refresh<span class="o">=</span><span class="s2">&quot;</span><span class="nv">$auto_refresh</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span>uci<span class="w"> </span><span class="nb">set</span><span class="w"> </span>system-hub.general.health_check<span class="o">=</span><span class="s2">&quot;</span><span class="nv">$health_check</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span>uci<span class="w"> </span><span class="nb">set</span><span class="w"> </span>system-hub.general.refresh_interval<span class="o">=</span><span class="s2">&quot;</span><span class="nv">$refresh_interval</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">    </span>uci<span class="w"> </span>commit<span class="w"> </span>system-hub
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">    </span>json_init
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">    </span>json_add_boolean<span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="w"> </span><span class="m">1</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">    </span>json_add_string<span class="w"> </span><span class="s2">&quot;message&quot;</span><span class="w"> </span><span class="s2">&quot;Settings saved successfully&quot;</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">    </span>json_dump
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="o">}</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>get_settings<span class="o">()</span><span class="w"> </span><span class="o">{</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">    </span><span class="c1"># Load UCI config</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;/etc/config/system-hub&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="w">        </span>.<span class="w"> </span>/lib/functions.sh
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="w">        </span>config_load<span class="w"> </span>system-hub
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="w">    </span><span class="k">fi</span>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a>
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a><span class="w">    </span>json_init
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a><span class="w">    </span>json_add_object<span class="w"> </span><span class="s2">&quot;general&quot;</span>
+<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a>
+<a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a><span class="w">    </span><span class="c1"># Get value or use default</span>
+<a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a><span class="w">    </span>config_get<span class="w"> </span>auto_refresh<span class="w"> </span>general<span class="w"> </span>auto_refresh<span class="w"> </span><span class="s2">&quot;1&quot;</span>
+<a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a><span class="w">    </span>json_add_boolean<span class="w"> </span><span class="s2">&quot;auto_refresh&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">auto_refresh</span><span class="k">:-</span><span class="nv">1</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-32" name="__codelineno-6-32" href="#__codelineno-6-32"></a>
+<a id="__codelineno-6-33" name="__codelineno-6-33" href="#__codelineno-6-33"></a><span class="w">    </span>config_get<span class="w"> </span>refresh_interval<span class="w"> </span>general<span class="w"> </span>refresh_interval<span class="w"> </span><span class="s2">&quot;30&quot;</span>
+<a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a><span class="w">    </span>json_add_int<span class="w"> </span><span class="s2">&quot;refresh_interval&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">refresh_interval</span><span class="k">:-</span><span class="nv">30</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a>
+<a id="__codelineno-6-36" name="__codelineno-6-36" href="#__codelineno-6-36"></a><span class="w">    </span>json_close_object
+<a id="__codelineno-6-37" name="__codelineno-6-37" href="#__codelineno-6-37"></a><span class="w">    </span>json_dump
+<a id="__codelineno-6-38" name="__codelineno-6-38" href="#__codelineno-6-38"></a><span class="o">}</span>
+</code></pre></div>
+<h3 id="performance-tips">Performance Tips<a class="headerlink" href="#performance-tips" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Cache expensive operations</strong>: Don't re-read <code>/proc</code> files multiple times</li>
+<li><strong>Use command substitution efficiently</strong>:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Good</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nv">uptime</span><span class="o">=</span><span class="k">$(</span>cat<span class="w"> </span>/proc/uptime<span class="w"> </span><span class="p">|</span><span class="w"> </span>cut<span class="w"> </span>-d<span class="s1">&#39; &#39;</span><span class="w"> </span>-f1<span class="k">)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Better</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="nb">read</span><span class="w"> </span>uptime<span class="w"> </span>_<span class="w"> </span>&lt;<span class="w"> </span>/proc/uptime
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="nv">uptime</span><span class="o">=</span><span class="si">${</span><span class="nv">uptime</span><span class="p">%.*</span><span class="si">}</span>
+</code></pre></div></li>
+<li><strong>Avoid external commands when possible</strong>:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Slow</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nv">count</span><span class="o">=</span><span class="k">$(</span>ls<span class="w"> </span>/etc/init.d<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l<span class="k">)</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Fast</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="nv">count</span><span class="o">=</span><span class="m">0</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="k">for</span><span class="w"> </span>file<span class="w"> </span><span class="k">in</span><span class="w"> </span>/etc/init.d/*<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span><span class="o">[</span><span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$file</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">count</span><span class="o">=</span><span class="k">$((</span><span class="nv">count</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="m">1</span><span class="k">))</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="k">done</span>
+</code></pre></div></li>
+</ol>
+<hr />
+<h2 id="luci-api-module-patterns">LuCI API Module Patterns<a class="headerlink" href="#luci-api-module-patterns" title="Permanent link">&para;</a></h2>
+<h3 id="critical-use-baseclassextend">CRITICAL: Use baseclass.extend()<a class="headerlink" href="#critical-use-baseclassextend" title="Permanent link">&para;</a></h3>
+<p><strong>RULE</strong>: LuCI API modules MUST use <code>baseclass.extend()</code> pattern.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="s1">&#39;use strict&#39;</span><span class="p">;</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="s1">&#39;require baseclass&#39;</span><span class="p">;</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="s1">&#39;require rpc&#39;</span><span class="p">;</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="c1">// Declare RPC methods</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="kd">var</span><span class="w"> </span><span class="nx">callStatus</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">rpc</span><span class="p">.</span><span class="nx">declare</span><span class="p">({</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">    </span><span class="nx">object</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;luci.system-hub&#39;</span><span class="p">,</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">    </span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;status&#39;</span><span class="p">,</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">    </span><span class="nx">expect</span><span class="o">:</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="p">});</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="kd">var</span><span class="w"> </span><span class="nx">callGetHealth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">rpc</span><span class="p">.</span><span class="nx">declare</span><span class="p">({</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="w">    </span><span class="nx">object</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;luci.system-hub&#39;</span><span class="p">,</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="w">    </span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;get_health&#39;</span><span class="p">,</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="w">    </span><span class="nx">expect</span><span class="o">:</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="p">});</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="kd">var</span><span class="w"> </span><span class="nx">callSaveSettings</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">rpc</span><span class="p">.</span><span class="nx">declare</span><span class="p">({</span>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="w">    </span><span class="nx">object</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;luci.system-hub&#39;</span><span class="p">,</span>
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="w">    </span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;save_settings&#39;</span><span class="p">,</span>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a><span class="w">    </span><span class="nx">params</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s1">&#39;auto_refresh&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;health_check&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;refresh_interval&#39;</span><span class="p">],</span>
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="w">    </span><span class="nx">expect</span><span class="o">:</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a><span class="p">});</span>
+<a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a>
+<a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a><span class="c1">// ✅ CORRECT: Use baseclass.extend()</span>
+<a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a><span class="k">return</span><span class="w"> </span><span class="nx">baseclass</span><span class="p">.</span><span class="nx">extend</span><span class="p">({</span>
+<a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a><span class="w">    </span><span class="nx">getStatus</span><span class="o">:</span><span class="w"> </span><span class="nx">callStatus</span><span class="p">,</span>
+<a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a><span class="w">    </span><span class="nx">getHealth</span><span class="o">:</span><span class="w"> </span><span class="nx">callGetHealth</span><span class="p">,</span>
+<a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a><span class="w">    </span><span class="nx">saveSettings</span><span class="o">:</span><span class="w"> </span><span class="nx">callSaveSettings</span>
+<a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a><span class="p">});</span>
+<a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a>
+<a id="__codelineno-9-32" name="__codelineno-9-32" href="#__codelineno-9-32"></a><span class="c1">// ❌ WRONG: Do NOT use these patterns</span>
+<a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a><span class="k">return</span><span class="w"> </span><span class="nx">baseclass</span><span class="p">.</span><span class="nx">singleton</span><span class="p">({...});</span><span class="w">  </span><span class="c1">// Breaks everything!</span>
+<a id="__codelineno-9-34" name="__codelineno-9-34" href="#__codelineno-9-34"></a><span class="k">return</span><span class="w"> </span><span class="p">{...};</span><span class="w">  </span><span class="c1">// Plain object doesn&#39;t work</span>
+</code></pre></div>
+<p><strong>Why baseclass.extend()?</strong>
+- LuCI's module system expects class-based modules
+- Views import with <code>'require module/api as API'</code> which auto-instantiates
+- <code>baseclass.extend()</code> creates a proper class constructor
+- <code>baseclass.singleton()</code> breaks the instantiation mechanism
+- Plain objects don't support LuCI's module lifecycle</p>
+<h3 id="rpcdeclare-parameters">rpc.declare() Parameters<a class="headerlink" href="#rpcdeclare-parameters" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kd">var</span><span class="w"> </span><span class="nx">callMethodName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">rpc</span><span class="p">.</span><span class="nx">declare</span><span class="p">({</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span><span class="nx">object</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;luci.module-name&#39;</span><span class="p">,</span><span class="w">     </span><span class="c1">// ubus object name (MUST start with luci.)</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;method_name&#39;</span><span class="p">,</span><span class="w">          </span><span class="c1">// RPCD method name</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="nx">params</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s1">&#39;param1&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;param2&#39;</span><span class="p">],</span><span class="w">   </span><span class="c1">// Optional: parameter names (order matters!)</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="nx">expect</span><span class="o">:</span><span class="w"> </span><span class="p">{}</span><span class="w">                      </span><span class="c1">// Expected return structure (or { key: [] } for arrays)</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="p">});</span>
+</code></pre></div>
+<p><strong>Parameter Order Matters</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1">// RPCD expects parameters in this exact order</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="kd">var</span><span class="w"> </span><span class="nx">callSaveSettings</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">rpc</span><span class="p">.</span><span class="nx">declare</span><span class="p">({</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="nx">object</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;luci.system-hub&#39;</span><span class="p">,</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;save_settings&#39;</span><span class="p">,</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">    </span><span class="nx">params</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s1">&#39;auto_refresh&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;health_check&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;debug_mode&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;refresh_interval&#39;</span><span class="p">],</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">    </span><span class="nx">expect</span><span class="o">:</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="p">});</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="c1">// JavaScript call MUST pass parameters in same order</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="nx">API</span><span class="p">.</span><span class="nx">saveSettings</span><span class="p">(</span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="mf">0</span><span class="p">,</span><span class="w"> </span><span class="mf">30</span><span class="p">);</span><span class="w">  </span><span class="c1">// auto_refresh=1, health_check=1, debug_mode=0, refresh_interval=30</span>
+</code></pre></div></p>
+<h3 id="expect-parameter-patterns">expect Parameter Patterns<a class="headerlink" href="#expect-parameter-patterns" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1">// Method returns single object</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nx">expect</span><span class="o">:</span><span class="w"> </span><span class="p">{}</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1">// Method returns array at top level</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="nx">expect</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">services</span><span class="o">:</span><span class="w"> </span><span class="p">[]</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="c1">// Method returns specific structure</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="nx">expect</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">    </span><span class="nx">services</span><span class="o">:</span><span class="w"> </span><span class="p">[],</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">    </span><span class="nx">count</span><span class="o">:</span><span class="w"> </span><span class="mf">0</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="error-handling-in-api-module">Error Handling in API Module<a class="headerlink" href="#error-handling-in-api-module" title="Permanent link">&para;</a></h3>
+<p>API methods return Promises. Handle errors in views:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">return</span><span class="w"> </span><span class="nx">API</span><span class="p">.</span><span class="nx">getHealth</span><span class="p">().</span><span class="nx">then</span><span class="p">(</span><span class="kd">function</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">data</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s1">&#39;object&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="s1">&#39;Invalid health data:&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">data</span><span class="p">);</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">data</span><span class="p">;</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="p">}).</span><span class="k">catch</span><span class="p">(</span><span class="kd">function</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="s1">&#39;Failed to load health data:&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">);</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">    </span><span class="nx">ui</span><span class="p">.</span><span class="nx">addNotification</span><span class="p">(</span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="nx">E</span><span class="p">(</span><span class="s1">&#39;p&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="s1">&#39;Failed to load health data&#39;</span><span class="p">),</span><span class="w"> </span><span class="s1">&#39;error&#39;</span><span class="p">);</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="p">});</span>
+</code></pre></div>
+<hr />
+<h2 id="luci-view-import-patterns">LuCI View Import Patterns<a class="headerlink" href="#luci-view-import-patterns" title="Permanent link">&para;</a></h2>
+<h3 id="critical-use-require-as-var-for-apis">CRITICAL: Use 'require ... as VAR' for APIs<a class="headerlink" href="#critical-use-require-as-var-for-apis" title="Permanent link">&para;</a></h3>
+<p><strong>RULE</strong>: When importing API modules, use the <code>'require ... as VAR'</code> pattern at the top of the file.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1">// ✅ CORRECT: Auto-instantiates the class</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="s1">&#39;require system-hub/api as API&#39;</span><span class="p">;</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="k">return</span><span class="w"> </span><span class="nx">L</span><span class="p">.</span><span class="nx">view</span><span class="p">.</span><span class="nx">extend</span><span class="p">({</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="nx">load</span><span class="o">:</span><span class="w"> </span><span class="kd">function</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">API</span><span class="p">.</span><span class="nx">getHealth</span><span class="p">();</span><span class="w">  </span><span class="c1">// API is already instantiated</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="p">});</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="c1">// ❌ WRONG: Returns class constructor, not instance</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="kd">var</span><span class="w"> </span><span class="nx">api</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">L</span><span class="p">.</span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;system-hub.api&#39;</span><span class="p">);</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="nx">api</span><span class="p">.</span><span class="nx">getHealth</span><span class="p">();</span><span class="w">  </span><span class="c1">// ERROR: api.getHealth is not a function</span>
+</code></pre></div>
+<p><strong>Why?</strong>
+- <code>'require module/path as VAR'</code> (with forward slashes) auto-instantiates classes
+- <code>L.require('module.path')</code> (with dots) returns raw class constructor
+- API modules extend <code>baseclass</code>, which needs instantiation
+- LuCI's module loader handles instantiation when using the <code>as VAR</code> pattern</p>
+<h3 id="standard-view-structure">Standard View Structure<a class="headerlink" href="#standard-view-structure" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="s1">&#39;use strict&#39;</span><span class="p">;</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="s1">&#39;require view&#39;</span><span class="p">;</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="s1">&#39;require form&#39;</span><span class="p">;</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="s1">&#39;require ui&#39;</span><span class="p">;</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="s1">&#39;require system-hub/api as API&#39;</span><span class="p">;</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="k">return</span><span class="w"> </span><span class="nx">L</span><span class="p">.</span><span class="nx">view</span><span class="p">.</span><span class="nx">extend</span><span class="p">({</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">    </span><span class="nx">load</span><span class="o">:</span><span class="w"> </span><span class="kd">function</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">        </span><span class="c1">// Load data needed for rendering</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nb">Promise</span><span class="p">.</span><span class="nx">all</span><span class="p">([</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">            </span><span class="nx">API</span><span class="p">.</span><span class="nx">getHealth</span><span class="p">(),</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="w">            </span><span class="nx">API</span><span class="p">.</span><span class="nx">getStatus</span><span class="p">()</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="w">        </span><span class="p">]);</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a>
+<a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a><span class="w">    </span><span class="nx">render</span><span class="o">:</span><span class="w"> </span><span class="kd">function</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a><span class="w">        </span><span class="kd">var</span><span class="w"> </span><span class="nx">health</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">data</span><span class="p">[</span><span class="mf">0</span><span class="p">];</span>
+<a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a><span class="w">        </span><span class="kd">var</span><span class="w"> </span><span class="nx">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">data</span><span class="p">[</span><span class="mf">1</span><span class="p">];</span>
+<a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a>
+<a id="__codelineno-15-20" name="__codelineno-15-20" href="#__codelineno-15-20"></a><span class="w">        </span><span class="c1">// Create UI elements</span>
+<a id="__codelineno-15-21" name="__codelineno-15-21" href="#__codelineno-15-21"></a><span class="w">        </span><span class="kd">var</span><span class="w"> </span><span class="nx">container</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">E</span><span class="p">(</span><span class="s1">&#39;div&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s1">&#39;class&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;cbi-map&#39;</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-15-22" name="__codelineno-15-22" href="#__codelineno-15-22"></a><span class="w">            </span><span class="nx">E</span><span class="p">(</span><span class="s1">&#39;h2&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{},</span><span class="w"> </span><span class="s1">&#39;Dashboard&#39;</span><span class="p">),</span>
+<a id="__codelineno-15-23" name="__codelineno-15-23" href="#__codelineno-15-23"></a><span class="w">            </span><span class="c1">// ... more elements</span>
+<a id="__codelineno-15-24" name="__codelineno-15-24" href="#__codelineno-15-24"></a><span class="w">        </span><span class="p">]);</span>
+<a id="__codelineno-15-25" name="__codelineno-15-25" href="#__codelineno-15-25"></a>
+<a id="__codelineno-15-26" name="__codelineno-15-26" href="#__codelineno-15-26"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">container</span><span class="p">;</span>
+<a id="__codelineno-15-27" name="__codelineno-15-27" href="#__codelineno-15-27"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-15-28" name="__codelineno-15-28" href="#__codelineno-15-28"></a>
+<a id="__codelineno-15-29" name="__codelineno-15-29" href="#__codelineno-15-29"></a><span class="w">    </span><span class="nx">handleSave</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">  </span><span class="c1">// Disable save button</span>
+<a id="__codelineno-15-30" name="__codelineno-15-30" href="#__codelineno-15-30"></a><span class="w">    </span><span class="nx">handleSaveApply</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">  </span><span class="c1">// Disable save &amp; apply button</span>
+<a id="__codelineno-15-31" name="__codelineno-15-31" href="#__codelineno-15-31"></a><span class="w">    </span><span class="nx">handleReset</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="w">  </span><span class="c1">// Disable reset button</span>
+<a id="__codelineno-15-32" name="__codelineno-15-32" href="#__codelineno-15-32"></a><span class="p">});</span>
+</code></pre></div>
+<h3 id="import-patterns-summary">Import Patterns Summary<a class="headerlink" href="#import-patterns-summary" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1">// Core LuCI modules (always with quotes)</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="s1">&#39;require view&#39;</span><span class="p">;</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="s1">&#39;require form&#39;</span><span class="p">;</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="s1">&#39;require ui&#39;</span><span class="p">;</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="s1">&#39;require rpc&#39;</span><span class="p">;</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="s1">&#39;require baseclass&#39;</span><span class="p">;</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="c1">// Custom API modules (use &#39;as VAR&#39; for auto-instantiation)</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="s1">&#39;require system-hub/api as API&#39;</span><span class="p">;</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="s1">&#39;require cdn-cache/api as CdnAPI&#39;</span><span class="p">;</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a><span class="c1">// Access global L object (no require)</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="nx">L</span><span class="p">.</span><span class="nx">resolveDefault</span><span class="p">(...)</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a><span class="nx">L</span><span class="p">.</span><span class="nx">Poll</span><span class="p">.</span><span class="nx">add</span><span class="p">(...)</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a><span class="nx">L</span><span class="p">.</span><span class="nx">ui</span><span class="p">.</span><span class="nx">addNotification</span><span class="p">(...)</span>
+</code></pre></div>
+<hr />
+<h2 id="acl-permission-structure">ACL Permission Structure<a class="headerlink" href="#acl-permission-structure" title="Permanent link">&para;</a></h2>
+<h3 id="file-location">File Location<a class="headerlink" href="#file-location" title="Permanent link">&para;</a></h3>
+<p>ACL files are located in:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>/usr/share/rpcd/acl.d/luci-app-&lt;module-name&gt;.json
+</code></pre></div></p>
+<p>In source tree:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>luci-app-&lt;module-name&gt;/root/usr/share/rpcd/acl.d/luci-app-&lt;module-name&gt;.json
+</code></pre></div></p>
+<h3 id="standard-acl-template">Standard ACL Template<a class="headerlink" href="#standard-acl-template" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="p">{</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">    </span><span class="nt">&quot;luci-app-module-name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Module Name - Description&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="w">        </span><span class="nt">&quot;read&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="w">            </span><span class="nt">&quot;ubus&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="w">                </span><span class="nt">&quot;luci.module-name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="w">                    </span><span class="s2">&quot;status&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="w">                    </span><span class="s2">&quot;get_system_info&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="w">                    </span><span class="s2">&quot;get_health&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="w">                    </span><span class="s2">&quot;list_services&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a><span class="w">                    </span><span class="s2">&quot;get_logs&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="w">                    </span><span class="s2">&quot;get_storage&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="w">                    </span><span class="s2">&quot;get_settings&quot;</span>
+<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a><span class="w">                </span><span class="p">]</span>
+<a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a><span class="w">            </span><span class="p">}</span>
+<a id="__codelineno-19-16" name="__codelineno-19-16" href="#__codelineno-19-16"></a><span class="w">        </span><span class="p">},</span>
+<a id="__codelineno-19-17" name="__codelineno-19-17" href="#__codelineno-19-17"></a><span class="w">        </span><span class="nt">&quot;write&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-18" name="__codelineno-19-18" href="#__codelineno-19-18"></a><span class="w">            </span><span class="nt">&quot;ubus&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-19-19" name="__codelineno-19-19" href="#__codelineno-19-19"></a><span class="w">                </span><span class="nt">&quot;luci.module-name&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-19-20" name="__codelineno-19-20" href="#__codelineno-19-20"></a><span class="w">                    </span><span class="s2">&quot;service_action&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-21" name="__codelineno-19-21" href="#__codelineno-19-21"></a><span class="w">                    </span><span class="s2">&quot;backup_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-22" name="__codelineno-19-22" href="#__codelineno-19-22"></a><span class="w">                    </span><span class="s2">&quot;restore_config&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-23" name="__codelineno-19-23" href="#__codelineno-19-23"></a><span class="w">                    </span><span class="s2">&quot;reboot&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-24" name="__codelineno-19-24" href="#__codelineno-19-24"></a><span class="w">                    </span><span class="s2">&quot;save_settings&quot;</span>
+<a id="__codelineno-19-25" name="__codelineno-19-25" href="#__codelineno-19-25"></a><span class="w">                </span><span class="p">]</span>
+<a id="__codelineno-19-26" name="__codelineno-19-26" href="#__codelineno-19-26"></a><span class="w">            </span><span class="p">}</span>
+<a id="__codelineno-19-27" name="__codelineno-19-27" href="#__codelineno-19-27"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-19-28" name="__codelineno-19-28" href="#__codelineno-19-28"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-19-29" name="__codelineno-19-29" href="#__codelineno-19-29"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="read-vs-write-classification">Read vs Write Classification<a class="headerlink" href="#read-vs-write-classification" title="Permanent link">&para;</a></h3>
+<p><strong>Read Operations</strong> (no system modification):
+- <code>status</code> - Get current state
+- <code>get_*</code> - Retrieve data (system info, health, settings, logs, storage)
+- <code>list_*</code> - Enumerate items (services, interfaces, etc.)</p>
+<p><strong>Write Operations</strong> (modify system state):
+- <code>*_action</code> - Perform actions (start/stop services, etc.)
+- <code>save_*</code> - Persist configuration changes
+- <code>backup</code>, <code>restore</code> - System backup/restore
+- <code>reboot</code>, <code>shutdown</code> - System control</p>
+<h3 id="common-acl-errors">Common ACL Errors<a class="headerlink" href="#common-acl-errors" title="Permanent link">&para;</a></h3>
+<p><strong>Error</strong>: <code>Access denied</code> or RPC error <code>-32002</code></p>
+<p><strong>Cause</strong>: Method not listed in ACL, or listed in wrong section (read vs write)</p>
+<p><strong>Solution</strong>:
+1. Identify if method is read or write operation
+2. Add method name to correct section in ACL
+3. Restart RPCD: <code>/etc/init.d/rpcd restart</code></p>
+<p><strong>Validation</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="c1"># Check if ACL file is valid JSON</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>jsonlint<span class="w"> </span>/usr/share/rpcd/acl.d/luci-app-system-hub.json
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="c1"># List all ubus objects and methods</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>ubus<span class="w"> </span>list<span class="w"> </span>luci.system-hub
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="c1"># Test method with ubus call</span>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>ubus<span class="w"> </span>call<span class="w"> </span>luci.system-hub<span class="w"> </span>get_health
+</code></pre></div></p>
+<hr />
+<h2 id="data-structure-conventions">Data Structure Conventions<a class="headerlink" href="#data-structure-conventions" title="Permanent link">&para;</a></h2>
+<h3 id="health-metrics-structure-system-hub-v010">Health Metrics Structure (system-hub v0.1.0)<a class="headerlink" href="#health-metrics-structure-system-hub-v010" title="Permanent link">&para;</a></h3>
+<p>Based on extensive iteration, this structure provides clarity and consistency:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="p">{</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">    </span><span class="nt">&quot;cpu&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">        </span><span class="nt">&quot;usage&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">25</span><span class="p">,</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">        </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span><span class="p">,</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">        </span><span class="nt">&quot;load_1m&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0.25&quot;</span><span class="p">,</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">        </span><span class="nt">&quot;load_5m&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0.30&quot;</span><span class="p">,</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="w">        </span><span class="nt">&quot;load_15m&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0.28&quot;</span><span class="p">,</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="w">        </span><span class="nt">&quot;cores&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span>
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a><span class="w">    </span><span class="nt">&quot;memory&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a><span class="w">        </span><span class="nt">&quot;total_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4096000</span><span class="p">,</span>
+<a id="__codelineno-21-12" name="__codelineno-21-12" href="#__codelineno-21-12"></a><span class="w">        </span><span class="nt">&quot;free_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2048000</span><span class="p">,</span>
+<a id="__codelineno-21-13" name="__codelineno-21-13" href="#__codelineno-21-13"></a><span class="w">        </span><span class="nt">&quot;available_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3072000</span><span class="p">,</span>
+<a id="__codelineno-21-14" name="__codelineno-21-14" href="#__codelineno-21-14"></a><span class="w">        </span><span class="nt">&quot;used_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024000</span><span class="p">,</span>
+<a id="__codelineno-21-15" name="__codelineno-21-15" href="#__codelineno-21-15"></a><span class="w">        </span><span class="nt">&quot;buffers_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512000</span><span class="p">,</span>
+<a id="__codelineno-21-16" name="__codelineno-21-16" href="#__codelineno-21-16"></a><span class="w">        </span><span class="nt">&quot;cached_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1536000</span><span class="p">,</span>
+<a id="__codelineno-21-17" name="__codelineno-21-17" href="#__codelineno-21-17"></a><span class="w">        </span><span class="nt">&quot;usage&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">25</span><span class="p">,</span>
+<a id="__codelineno-21-18" name="__codelineno-21-18" href="#__codelineno-21-18"></a><span class="w">        </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span>
+<a id="__codelineno-21-19" name="__codelineno-21-19" href="#__codelineno-21-19"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-21-20" name="__codelineno-21-20" href="#__codelineno-21-20"></a><span class="w">    </span><span class="nt">&quot;disk&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-21-21" name="__codelineno-21-21" href="#__codelineno-21-21"></a><span class="w">        </span><span class="nt">&quot;total_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">30408704</span><span class="p">,</span>
+<a id="__codelineno-21-22" name="__codelineno-21-22" href="#__codelineno-21-22"></a><span class="w">        </span><span class="nt">&quot;used_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5447680</span><span class="p">,</span>
+<a id="__codelineno-21-23" name="__codelineno-21-23" href="#__codelineno-21-23"></a><span class="w">        </span><span class="nt">&quot;free_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">24961024</span><span class="p">,</span>
+<a id="__codelineno-21-24" name="__codelineno-21-24" href="#__codelineno-21-24"></a><span class="w">        </span><span class="nt">&quot;usage&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">19</span><span class="p">,</span>
+<a id="__codelineno-21-25" name="__codelineno-21-25" href="#__codelineno-21-25"></a><span class="w">        </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span>
+<a id="__codelineno-21-26" name="__codelineno-21-26" href="#__codelineno-21-26"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-21-27" name="__codelineno-21-27" href="#__codelineno-21-27"></a><span class="w">    </span><span class="nt">&quot;temperature&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-21-28" name="__codelineno-21-28" href="#__codelineno-21-28"></a><span class="w">        </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">45</span><span class="p">,</span>
+<a id="__codelineno-21-29" name="__codelineno-21-29" href="#__codelineno-21-29"></a><span class="w">        </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span>
+<a id="__codelineno-21-30" name="__codelineno-21-30" href="#__codelineno-21-30"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-21-31" name="__codelineno-21-31" href="#__codelineno-21-31"></a><span class="w">    </span><span class="nt">&quot;network&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-21-32" name="__codelineno-21-32" href="#__codelineno-21-32"></a><span class="w">        </span><span class="nt">&quot;wan_up&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-21-33" name="__codelineno-21-33" href="#__codelineno-21-33"></a><span class="w">        </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span>
+<a id="__codelineno-21-34" name="__codelineno-21-34" href="#__codelineno-21-34"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-21-35" name="__codelineno-21-35" href="#__codelineno-21-35"></a><span class="w">    </span><span class="nt">&quot;services&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-21-36" name="__codelineno-21-36" href="#__codelineno-21-36"></a><span class="w">        </span><span class="nt">&quot;running&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">35</span><span class="p">,</span>
+<a id="__codelineno-21-37" name="__codelineno-21-37" href="#__codelineno-21-37"></a><span class="w">        </span><span class="nt">&quot;failed&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span>
+<a id="__codelineno-21-38" name="__codelineno-21-38" href="#__codelineno-21-38"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-21-39" name="__codelineno-21-39" href="#__codelineno-21-39"></a><span class="w">    </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">92</span><span class="p">,</span>
+<a id="__codelineno-21-40" name="__codelineno-21-40" href="#__codelineno-21-40"></a><span class="w">    </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2025-12-26 10:30:00&quot;</span><span class="p">,</span>
+<a id="__codelineno-21-41" name="__codelineno-21-41" href="#__codelineno-21-41"></a><span class="w">    </span><span class="nt">&quot;recommendations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-21-42" name="__codelineno-21-42" href="#__codelineno-21-42"></a><span class="w">        </span><span class="s2">&quot;2 service(s) enabled but not running. Check service status.&quot;</span>
+<a id="__codelineno-21-43" name="__codelineno-21-43" href="#__codelineno-21-43"></a><span class="w">    </span><span class="p">]</span>
+<a id="__codelineno-21-44" name="__codelineno-21-44" href="#__codelineno-21-44"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Key Principles</strong>:
+1. <strong>Nested objects</strong> for related metrics (cpu, memory, disk, etc.)
+2. <strong>Consistent structure</strong>: Each metric has <code>usage</code> (percentage) and <code>status</code> (ok/warning/critical)
+3. <strong>Raw values + computed values</strong>: Provide both (e.g., <code>used_kb</code> AND <code>usage</code> percentage)
+4. <strong>Status thresholds</strong>: ok (&lt; warning), warning (warning-critical), critical (≥ critical)
+5. <strong>Overall score</strong>: Single 0-100 health score for dashboard
+6. <strong>Dynamic recommendations</strong>: Array of actionable alerts based on thresholds</p>
+<h3 id="status-values">Status Values<a class="headerlink" href="#status-values" title="Permanent link">&para;</a></h3>
+<p>Use consistent status strings across all metrics:
+- <code>"ok"</code> - Normal operation (green)
+- <code>"warning"</code> - Approaching threshold (orange)
+- <code>"critical"</code> - Exceeded threshold (red)
+- <code>"error"</code> - Unable to retrieve metric
+- <code>"unknown"</code> - Metric not available</p>
+<h3 id="timestamp-format">Timestamp Format<a class="headerlink" href="#timestamp-format" title="Permanent link">&para;</a></h3>
+<p>Use ISO 8601 or consistent local format:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nv">timestamp</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>date<span class="w"> </span><span class="s1">&#39;+%Y-%m-%d %H:%M:%S&#39;</span><span class="k">)</span><span class="s2">&quot;</span><span class="w">  </span><span class="c1"># 2025-12-26 10:30:00</span>
+</code></pre></div></p>
+<h3 id="boolean-values-in-json">Boolean Values in JSON<a class="headerlink" href="#boolean-values-in-json" title="Permanent link">&para;</a></h3>
+<p>In shell scripts using jshn.sh:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>json_add_boolean<span class="w"> </span><span class="s2">&quot;wan_up&quot;</span><span class="w"> </span><span class="m">1</span><span class="w">  </span><span class="c1"># true</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>json_add_boolean<span class="w"> </span><span class="s2">&quot;wan_up&quot;</span><span class="w"> </span><span class="m">0</span><span class="w">  </span><span class="c1"># false</span>
+</code></pre></div></p>
+<p>In JavaScript:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">health</span><span class="p">.</span><span class="nx">network</span><span class="p">.</span><span class="nx">wan_up</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="w">    </span><span class="c1">// WAN is up</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="p">}</span>
+</code></pre></div></p>
+<h3 id="array-vs-single-value">Array vs Single Value<a class="headerlink" href="#array-vs-single-value" title="Permanent link">&para;</a></h3>
+<p><strong>Use arrays for</strong>:
+- Multiple items of same type (services, interfaces, mount points)
+- Variable-length data</p>
+<p><strong>Use single values for</strong>:
+- System-wide metrics (CPU, memory, disk)
+- Primary/aggregate values (overall temperature, total uptime)</p>
+<p><strong>Example - Storage</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1">// Multiple mount points - use array</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="nt">&quot;storage&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="w">        </span><span class="nt">&quot;mount&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/&quot;</span><span class="p">,</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="w">        </span><span class="nt">&quot;total_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">30408704</span><span class="p">,</span>
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="w">        </span><span class="nt">&quot;used_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5447680</span><span class="p">,</span>
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="w">        </span><span class="nt">&quot;usage&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">19</span>
+<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a><span class="w">        </span><span class="nt">&quot;mount&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/mnt/usb&quot;</span><span class="p">,</span>
+<a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a><span class="w">        </span><span class="nt">&quot;total_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128000000</span><span class="p">,</span>
+<a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a><span class="w">        </span><span class="nt">&quot;used_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">64000000</span><span class="p">,</span>
+<a id="__codelineno-25-13" name="__codelineno-25-13" href="#__codelineno-25-13"></a><span class="w">        </span><span class="nt">&quot;usage&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span>
+<a id="__codelineno-25-14" name="__codelineno-25-14" href="#__codelineno-25-14"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-25-15" name="__codelineno-25-15" href="#__codelineno-25-15"></a><span class="p">]</span>
+<a id="__codelineno-25-16" name="__codelineno-25-16" href="#__codelineno-25-16"></a>
+<a id="__codelineno-25-17" name="__codelineno-25-17" href="#__codelineno-25-17"></a><span class="c1">// Root filesystem only - use object</span>
+<a id="__codelineno-25-18" name="__codelineno-25-18" href="#__codelineno-25-18"></a><span class="nt">&quot;disk&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-19" name="__codelineno-25-19" href="#__codelineno-25-19"></a><span class="w">    </span><span class="nt">&quot;total_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">30408704</span><span class="p">,</span>
+<a id="__codelineno-25-20" name="__codelineno-25-20" href="#__codelineno-25-20"></a><span class="w">    </span><span class="nt">&quot;used_kb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5447680</span><span class="p">,</span>
+<a id="__codelineno-25-21" name="__codelineno-25-21" href="#__codelineno-25-21"></a><span class="w">    </span><span class="nt">&quot;usage&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">19</span><span class="p">,</span>
+<a id="__codelineno-25-22" name="__codelineno-25-22" href="#__codelineno-25-22"></a><span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span>
+<a id="__codelineno-25-23" name="__codelineno-25-23" href="#__codelineno-25-23"></a><span class="p">}</span>
+</code></pre></div></p>
+<hr />
+<h2 id="common-errors-and-solutions">Common Errors and Solutions<a class="headerlink" href="#common-errors-and-solutions" title="Permanent link">&para;</a></h2>
+<h3 id="1-rpc-error-object-not-found-32000">1. RPC Error: "Object not found" (-32000)<a class="headerlink" href="#1-rpc-error-object-not-found-32000" title="Permanent link">&para;</a></h3>
+<p><strong>Error Message</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>RPC call to system-hub/status failed with error -32000: Object not found
+</code></pre></div></p>
+<p><strong>Cause</strong>: RPCD script name doesn't match ubus object name in JavaScript</p>
+<p><strong>Solution</strong>:
+1. Check JavaScript for object name:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>grep<span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;object:&quot;</span><span class="w"> </span>luci-app-system-hub/htdocs<span class="w"> </span>--include<span class="o">=</span><span class="s2">&quot;*.js&quot;</span>
+</code></pre></div>
+   Output: <code>object: 'luci.system-hub'</code></p>
+<ol>
+<li>
+<p>Rename RPCD script to match exactly:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>mv<span class="w"> </span>root/usr/libexec/rpcd/system-hub<span class="w"> </span>root/usr/libexec/rpcd/luci.system-hub
+</code></pre></div></p>
+</li>
+<li>
+<p>Ensure script is executable:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>chmod<span class="w"> </span>+x<span class="w"> </span>root/usr/libexec/rpcd/luci.system-hub
+</code></pre></div></p>
+</li>
+<li>
+<p>Restart RPCD:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>/etc/init.d/rpcd<span class="w"> </span>restart
+</code></pre></div></p>
+</li>
+</ol>
+<h3 id="2-javascript-error-apimethodname-is-not-a-function">2. JavaScript Error: "api.methodName is not a function"<a class="headerlink" href="#2-javascript-error-apimethodname-is-not-a-function" title="Permanent link">&para;</a></h3>
+<p><strong>Error Message</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>Uncaught TypeError: api.getHealth is not a function
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>    at view.load (health.js:12)
+</code></pre></div></p>
+<p><strong>Cause</strong>: Wrong import pattern - imported class constructor instead of instance</p>
+<p><strong>Solution</strong>:
+Change from:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="kd">var</span><span class="w"> </span><span class="nx">api</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">L</span><span class="p">.</span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;system-hub.api&#39;</span><span class="p">);</span><span class="w">  </span><span class="c1">// ❌ Wrong</span>
+</code></pre></div></p>
+<p>To:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="s1">&#39;require system-hub/api as API&#39;</span><span class="p">;</span><span class="w">  </span><span class="c1">// ✅ Correct</span>
+</code></pre></div></p>
+<p><strong>Why</strong>: <code>L.require('module.path')</code> returns raw class, <code>'require module/path as VAR'</code> auto-instantiates.</p>
+<h3 id="3-rpc-error-access-denied-32002">3. RPC Error: "Access denied" (-32002)<a class="headerlink" href="#3-rpc-error-access-denied-32002" title="Permanent link">&para;</a></h3>
+<p><strong>Error Message</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>RPC call to luci.system-hub/get_settings failed with error -32002: Access denied
+</code></pre></div></p>
+<p><strong>Cause</strong>: Method not listed in ACL file, or in wrong section (read vs write)</p>
+<p><strong>Solution</strong>:
+1. Open ACL file: <code>root/usr/share/rpcd/acl.d/luci-app-system-hub.json</code></p>
+<ol>
+<li>
+<p>Add method to appropriate section:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="nt">&quot;read&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a><span class="w">    </span><span class="nt">&quot;ubus&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a><span class="w">        </span><span class="nt">&quot;luci.system-hub&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a><span class="w">            </span><span class="s2">&quot;get_settings&quot;</span>
+<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a><span class="w">        </span><span class="p">]</span>
+<a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a><span class="p">}</span>
+</code></pre></div></p>
+</li>
+<li>
+<p>Deploy and restart RPCD:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>scp<span class="w"> </span>luci-app-system-hub/root/usr/share/rpcd/acl.d/*.json<span class="w"> </span>router:/usr/share/rpcd/acl.d/
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>ssh<span class="w"> </span>router<span class="w"> </span><span class="s2">&quot;/etc/init.d/rpcd restart&quot;</span>
+</code></pre></div></p>
+</li>
+</ol>
+<h3 id="4-display-error-nan-or-undefined-values">4. Display Error: "NaN%" or Undefined Values<a class="headerlink" href="#4-display-error-nan-or-undefined-values" title="Permanent link">&para;</a></h3>
+<p><strong>Error</strong>: Dashboard shows "NaN%", "undefined", or empty values</p>
+<p><strong>Cause</strong>: Frontend using wrong data structure keys (outdated after backend changes)</p>
+<p><strong>Solution</strong>:
+1. Check backend output:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>ubus<span class="w"> </span>call<span class="w"> </span>luci.system-hub<span class="w"> </span>get_health
+</code></pre></div></p>
+<ol>
+<li>
+<p>Update frontend to match structure:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="c1">// ❌ Old structure</span>
+<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a><span class="kd">var</span><span class="w"> </span><span class="nx">cpuPercent</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">health</span><span class="p">.</span><span class="nx">load</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="nx">health</span><span class="p">.</span><span class="nx">cores</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">100</span><span class="p">;</span>
+<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a><span class="kd">var</span><span class="w"> </span><span class="nx">memPercent</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">health</span><span class="p">.</span><span class="nx">memory</span><span class="p">.</span><span class="nx">percent</span><span class="p">;</span>
+<a id="__codelineno-38-4" name="__codelineno-38-4" href="#__codelineno-38-4"></a>
+<a id="__codelineno-38-5" name="__codelineno-38-5" href="#__codelineno-38-5"></a><span class="c1">// ✅ New structure</span>
+<a id="__codelineno-38-6" name="__codelineno-38-6" href="#__codelineno-38-6"></a><span class="kd">var</span><span class="w"> </span><span class="nx">cpuPercent</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">health</span><span class="p">.</span><span class="nx">cpu</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">health</span><span class="p">.</span><span class="nx">cpu</span><span class="p">.</span><span class="nx">usage</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span>
+<a id="__codelineno-38-7" name="__codelineno-38-7" href="#__codelineno-38-7"></a><span class="kd">var</span><span class="w"> </span><span class="nx">memPercent</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">health</span><span class="p">.</span><span class="nx">memory</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">health</span><span class="p">.</span><span class="nx">memory</span><span class="p">.</span><span class="nx">usage</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span>
+</code></pre></div></p>
+</li>
+<li>
+<p>Add null/undefined checks:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a><span class="kd">var</span><span class="w"> </span><span class="nx">temp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">health</span><span class="p">.</span><span class="nx">temperature</span><span class="o">?</span><span class="p">.</span><span class="nx">value</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span>
+<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a><span class="kd">var</span><span class="w"> </span><span class="nx">loadAvg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">health</span><span class="p">.</span><span class="nx">cpu</span><span class="o">?</span><span class="p">.</span><span class="nx">load_1m</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="s1">&#39;0.00&#39;</span><span class="p">;</span>
+</code></pre></div></p>
+</li>
+</ol>
+<h3 id="5-http-404-view-file-not-found">5. HTTP 404: View File Not Found<a class="headerlink" href="#5-http-404-view-file-not-found" title="Permanent link">&para;</a></h3>
+<p><strong>Error Message</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a>HTTP error 404 while loading class file &#39;/luci-static/resources/view/netifyd/overview.js&#39;
+</code></pre></div></p>
+<p><strong>Cause</strong>: Menu path doesn't match actual view file location</p>
+<p><strong>Solution</strong>:
+1. Check menu JSON:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>cat<span class="w"> </span>root/usr/share/luci/menu.d/luci-app-netifyd-dashboard.json
+</code></pre></div>
+   Look for: <code>"path": "netifyd/overview"</code></p>
+<ol>
+<li>
+<p>Check actual file location:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>ls<span class="w"> </span>htdocs/luci-static/resources/view/
+</code></pre></div>
+   File is at: <code>view/netifyd-dashboard/overview.js</code></p>
+</li>
+<li>
+<p>Fix either menu path OR file location:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a><span class="c1">// Option 1: Update menu path to match file</span>
+<a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;netifyd-dashboard/overview&quot;</span>
+<a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a>
+<a id="__codelineno-43-4" name="__codelineno-43-4" href="#__codelineno-43-4"></a><span class="c1">// Option 2: Move file to match menu</span>
+<a id="__codelineno-43-5" name="__codelineno-43-5" href="#__codelineno-43-5"></a><span class="err">mv</span><span class="w"> </span><span class="err">view/</span><span class="kc">net</span><span class="err">i</span><span class="kc">f</span><span class="err">yd</span><span class="mi">-</span><span class="err">dashboard/</span><span class="w"> </span><span class="err">view/</span><span class="kc">net</span><span class="err">i</span><span class="kc">f</span><span class="err">yd/</span>
+</code></pre></div></p>
+</li>
+</ol>
+<h3 id="6-build-error-factory-yields-invalid-constructor">6. Build Error: "factory yields invalid constructor"<a class="headerlink" href="#6-build-error-factory-yields-invalid-constructor" title="Permanent link">&para;</a></h3>
+<p><strong>Error Message</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>/luci-static/resources/system-hub/api.js: factory yields invalid constructor
+</code></pre></div></p>
+<p><strong>Cause</strong>: Used wrong pattern in API module (singleton, plain object, etc.)</p>
+<p><strong>Solution</strong>:
+Always use <code>baseclass.extend()</code>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-45-1" name="__codelineno-45-1" href="#__codelineno-45-1"></a><span class="k">return</span><span class="w"> </span><span class="nx">baseclass</span><span class="p">.</span><span class="nx">extend</span><span class="p">({</span>
+<a id="__codelineno-45-2" name="__codelineno-45-2" href="#__codelineno-45-2"></a><span class="w">    </span><span class="nx">getStatus</span><span class="o">:</span><span class="w"> </span><span class="nx">callStatus</span><span class="p">,</span>
+<a id="__codelineno-45-3" name="__codelineno-45-3" href="#__codelineno-45-3"></a><span class="w">    </span><span class="nx">getHealth</span><span class="o">:</span><span class="w"> </span><span class="nx">callGetHealth</span><span class="p">,</span>
+<a id="__codelineno-45-4" name="__codelineno-45-4" href="#__codelineno-45-4"></a><span class="w">    </span><span class="c1">// ... more methods</span>
+<a id="__codelineno-45-5" name="__codelineno-45-5" href="#__codelineno-45-5"></a><span class="p">});</span>
+</code></pre></div></p>
+<p>Do NOT use:
+- <code>baseclass.singleton({...})</code>
+- Plain object: <code>return {...}</code>
+- <code>baseclass.prototype</code></p>
+<h3 id="7-rpcd-not-responding-after-changes">7. RPCD Not Responding After Changes<a class="headerlink" href="#7-rpcd-not-responding-after-changes" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: Changes to RPCD script don't take effect</p>
+<p><strong>Solution</strong>:
+1. Verify script is deployed:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-46-1" name="__codelineno-46-1" href="#__codelineno-46-1"></a>ssh<span class="w"> </span>router<span class="w"> </span><span class="s2">&quot;ls -la /usr/libexec/rpcd/&quot;</span>
+</code></pre></div></p>
+<ol>
+<li>
+<p>Check script is executable:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-47-1" name="__codelineno-47-1" href="#__codelineno-47-1"></a>ssh<span class="w"> </span>router<span class="w"> </span><span class="s2">&quot;chmod +x /usr/libexec/rpcd/luci.system-hub&quot;</span>
+</code></pre></div></p>
+</li>
+<li>
+<p>Restart RPCD:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-48-1" name="__codelineno-48-1" href="#__codelineno-48-1"></a>ssh<span class="w"> </span>router<span class="w"> </span><span class="s2">&quot;/etc/init.d/rpcd restart&quot;</span>
+</code></pre></div></p>
+</li>
+<li>
+<p>Clear browser cache (Ctrl+Shift+R)</p>
+</li>
+<li>
+<p>Check RPCD logs:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>ssh<span class="w"> </span>router<span class="w"> </span><span class="s2">&quot;logread | grep rpcd&quot;</span>
+</code></pre></div></p>
+</li>
+</ol>
+<hr />
+<h2 id="validation-checklist">Validation Checklist<a class="headerlink" href="#validation-checklist" title="Permanent link">&para;</a></h2>
+<p>Use this checklist before deployment:</p>
+<h3 id="file-structure">File Structure<a class="headerlink" href="#file-structure" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> RPCD script exists: <code>/usr/libexec/rpcd/luci.&lt;module-name&gt;</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> RPCD script is executable: <code>chmod +x</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Menu JSON exists: <code>/usr/share/luci/menu.d/luci-app-&lt;module&gt;.json</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> ACL JSON exists: <code>/usr/share/rpcd/acl.d/luci-app-&lt;module&gt;.json</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> API module exists: <code>htdocs/luci-static/resources/&lt;module&gt;/api.js</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Views exist: <code>htdocs/luci-static/resources/view/&lt;module&gt;/*.js</code></li>
+</ul>
+<h3 id="naming-conventions">Naming Conventions<a class="headerlink" href="#naming-conventions" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> RPCD script name matches ubus object in JavaScript (including <code>luci.</code> prefix)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Menu paths match view file directory structure</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> All ubus objects start with <code>luci.</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> ACL key matches package name: <code>"luci-app-&lt;module&gt;"</code></li>
+</ul>
+<h3 id="code-validation">Code Validation<a class="headerlink" href="#code-validation" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> API module uses <code>baseclass.extend()</code> pattern</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Views import API with <code>'require &lt;module&gt;/api as API'</code> pattern</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> All rpc.declare() calls include correct <code>object</code>, <code>method</code>, <code>params</code>, <code>expect</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> RPCD script outputs valid JSON (test with <code>ubus call</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Menu JSON is valid (test with <code>jsonlint</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> ACL JSON is valid (test with <code>jsonlint</code>)</li>
+</ul>
+<h3 id="permissions">Permissions<a class="headerlink" href="#permissions" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> All read methods in ACL <code>"read"</code> section</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> All write methods in ACL <code>"write"</code> section</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Methods in ACL match RPCD script method names exactly</li>
+</ul>
+<h3 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h3>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Run validation script: <code>./secubox-tools/validate-modules.sh</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Test each method via ubus: <code>ubus call luci.&lt;module&gt; &lt;method&gt;</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Test frontend in browser (check console for errors)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Clear browser cache after deployment</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Verify RPCD restart: <code>/etc/init.d/rpcd restart</code></li>
+</ul>
+<h3 id="automated-validation-command">Automated Validation Command<a class="headerlink" href="#automated-validation-command" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-50-1" name="__codelineno-50-1" href="#__codelineno-50-1"></a><span class="c1"># Run comprehensive validation</span>
+<a id="__codelineno-50-2" name="__codelineno-50-2" href="#__codelineno-50-2"></a>./secubox-tools/validate-modules.sh
+<a id="__codelineno-50-3" name="__codelineno-50-3" href="#__codelineno-50-3"></a>
+<a id="__codelineno-50-4" name="__codelineno-50-4" href="#__codelineno-50-4"></a><span class="c1"># Validate specific module</span>
+<a id="__codelineno-50-5" name="__codelineno-50-5" href="#__codelineno-50-5"></a>./secubox-tools/validate-module-generation.sh<span class="w"> </span>luci-app-system-hub
+<a id="__codelineno-50-6" name="__codelineno-50-6" href="#__codelineno-50-6"></a>
+<a id="__codelineno-50-7" name="__codelineno-50-7" href="#__codelineno-50-7"></a><span class="c1"># Check JSON syntax</span>
+<a id="__codelineno-50-8" name="__codelineno-50-8" href="#__codelineno-50-8"></a>find<span class="w"> </span>luci-app-system-hub<span class="w"> </span>-name<span class="w"> </span><span class="s2">&quot;*.json&quot;</span><span class="w"> </span>-exec<span class="w"> </span>jsonlint<span class="w"> </span><span class="o">{}</span><span class="w"> </span><span class="se">\;</span>
+<a id="__codelineno-50-9" name="__codelineno-50-9" href="#__codelineno-50-9"></a>
+<a id="__codelineno-50-10" name="__codelineno-50-10" href="#__codelineno-50-10"></a><span class="c1"># Check shell scripts</span>
+<a id="__codelineno-50-11" name="__codelineno-50-11" href="#__codelineno-50-11"></a>shellcheck<span class="w"> </span>luci-app-system-hub/root/usr/libexec/rpcd/*
+</code></pre></div>
+<hr />
+<h2 id="testing-and-deployment">Testing and Deployment<a class="headerlink" href="#testing-and-deployment" title="Permanent link">&para;</a></h2>
+<h3 id="local-testing-with-ubus">Local Testing with ubus<a class="headerlink" href="#local-testing-with-ubus" title="Permanent link">&para;</a></h3>
+<p>Before deploying to router, test RPCD script locally:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a><span class="c1"># Copy RPCD script to local /tmp</span>
+<a id="__codelineno-51-2" name="__codelineno-51-2" href="#__codelineno-51-2"></a>cp<span class="w"> </span>luci-app-system-hub/root/usr/libexec/rpcd/luci.system-hub<span class="w"> </span>/tmp/
+<a id="__codelineno-51-3" name="__codelineno-51-3" href="#__codelineno-51-3"></a>
+<a id="__codelineno-51-4" name="__codelineno-51-4" href="#__codelineno-51-4"></a><span class="c1"># Make executable</span>
+<a id="__codelineno-51-5" name="__codelineno-51-5" href="#__codelineno-51-5"></a>chmod<span class="w"> </span>+x<span class="w"> </span>/tmp/luci.system-hub
+<a id="__codelineno-51-6" name="__codelineno-51-6" href="#__codelineno-51-6"></a>
+<a id="__codelineno-51-7" name="__codelineno-51-7" href="#__codelineno-51-7"></a><span class="c1"># Test &#39;list&#39; action</span>
+<a id="__codelineno-51-8" name="__codelineno-51-8" href="#__codelineno-51-8"></a>/tmp/luci.system-hub<span class="w"> </span>list
+<a id="__codelineno-51-9" name="__codelineno-51-9" href="#__codelineno-51-9"></a>
+<a id="__codelineno-51-10" name="__codelineno-51-10" href="#__codelineno-51-10"></a><span class="c1"># Test &#39;call&#39; action with method</span>
+<a id="__codelineno-51-11" name="__codelineno-51-11" href="#__codelineno-51-11"></a>/tmp/luci.system-hub<span class="w"> </span>call<span class="w"> </span>status
+<a id="__codelineno-51-12" name="__codelineno-51-12" href="#__codelineno-51-12"></a>
+<a id="__codelineno-51-13" name="__codelineno-51-13" href="#__codelineno-51-13"></a><span class="c1"># Test method with parameters</span>
+<a id="__codelineno-51-14" name="__codelineno-51-14" href="#__codelineno-51-14"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;service&quot;:&quot;network&quot;,&quot;action&quot;:&quot;restart&quot;}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>/tmp/luci.system-hub<span class="w"> </span>call<span class="w"> </span>service_action
+</code></pre></div>
+<h3 id="deployment-script">Deployment Script<a class="headerlink" href="#deployment-script" title="Permanent link">&para;</a></h3>
+<p>Use a deployment script for fast iteration:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a><span class="ch">#!/bin/bash</span>
+<a id="__codelineno-52-2" name="__codelineno-52-2" href="#__codelineno-52-2"></a><span class="c1"># deploy-system-hub.sh</span>
+<a id="__codelineno-52-3" name="__codelineno-52-3" href="#__codelineno-52-3"></a>
+<a id="__codelineno-52-4" name="__codelineno-52-4" href="#__codelineno-52-4"></a><span class="nv">ROUTER</span><span class="o">=</span><span class="s2">&quot;root@192.168.8.191&quot;</span>
+<a id="__codelineno-52-5" name="__codelineno-52-5" href="#__codelineno-52-5"></a>
+<a id="__codelineno-52-6" name="__codelineno-52-6" href="#__codelineno-52-6"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;🚀 Deploying system-hub to </span><span class="nv">$ROUTER</span><span class="s2">&quot;</span>
+<a id="__codelineno-52-7" name="__codelineno-52-7" href="#__codelineno-52-7"></a>
+<a id="__codelineno-52-8" name="__codelineno-52-8" href="#__codelineno-52-8"></a><span class="c1"># Deploy API module</span>
+<a id="__codelineno-52-9" name="__codelineno-52-9" href="#__codelineno-52-9"></a>scp<span class="w"> </span>luci-app-system-hub/htdocs/luci-static/resources/system-hub/api.js<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-52-10" name="__codelineno-52-10" href="#__codelineno-52-10"></a><span class="w">    </span><span class="s2">&quot;</span><span class="nv">$ROUTER</span><span class="s2">:/www/luci-static/resources/system-hub/&quot;</span>
+<a id="__codelineno-52-11" name="__codelineno-52-11" href="#__codelineno-52-11"></a>
+<a id="__codelineno-52-12" name="__codelineno-52-12" href="#__codelineno-52-12"></a><span class="c1"># Deploy views</span>
+<a id="__codelineno-52-13" name="__codelineno-52-13" href="#__codelineno-52-13"></a>scp<span class="w"> </span>luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/*.js<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-52-14" name="__codelineno-52-14" href="#__codelineno-52-14"></a><span class="w">    </span><span class="s2">&quot;</span><span class="nv">$ROUTER</span><span class="s2">:/www/luci-static/resources/view/system-hub/&quot;</span>
+<a id="__codelineno-52-15" name="__codelineno-52-15" href="#__codelineno-52-15"></a>
+<a id="__codelineno-52-16" name="__codelineno-52-16" href="#__codelineno-52-16"></a><span class="c1"># Deploy RPCD backend</span>
+<a id="__codelineno-52-17" name="__codelineno-52-17" href="#__codelineno-52-17"></a>scp<span class="w"> </span>luci-app-system-hub/root/usr/libexec/rpcd/luci.system-hub<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-52-18" name="__codelineno-52-18" href="#__codelineno-52-18"></a><span class="w">    </span><span class="s2">&quot;</span><span class="nv">$ROUTER</span><span class="s2">:/usr/libexec/rpcd/&quot;</span>
+<a id="__codelineno-52-19" name="__codelineno-52-19" href="#__codelineno-52-19"></a>
+<a id="__codelineno-52-20" name="__codelineno-52-20" href="#__codelineno-52-20"></a><span class="c1"># Deploy ACL</span>
+<a id="__codelineno-52-21" name="__codelineno-52-21" href="#__codelineno-52-21"></a>scp<span class="w"> </span>luci-app-system-hub/root/usr/share/rpcd/acl.d/luci-app-system-hub.json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-52-22" name="__codelineno-52-22" href="#__codelineno-52-22"></a><span class="w">    </span><span class="s2">&quot;</span><span class="nv">$ROUTER</span><span class="s2">:/usr/share/rpcd/acl.d/&quot;</span>
+<a id="__codelineno-52-23" name="__codelineno-52-23" href="#__codelineno-52-23"></a>
+<a id="__codelineno-52-24" name="__codelineno-52-24" href="#__codelineno-52-24"></a><span class="c1"># Set permissions and restart</span>
+<a id="__codelineno-52-25" name="__codelineno-52-25" href="#__codelineno-52-25"></a>ssh<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ROUTER</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;chmod +x /usr/libexec/rpcd/luci.system-hub &amp;&amp; /etc/init.d/rpcd restart&quot;</span>
+<a id="__codelineno-52-26" name="__codelineno-52-26" href="#__codelineno-52-26"></a>
+<a id="__codelineno-52-27" name="__codelineno-52-27" href="#__codelineno-52-27"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;✅ Deployment complete! Clear browser cache (Ctrl+Shift+R)&quot;</span>
+</code></pre></div>
+<h3 id="browser-testing">Browser Testing<a class="headerlink" href="#browser-testing" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Open browser console (F12)</li>
+<li>Navigate to module page</li>
+<li>Check for errors:</li>
+<li>RPC errors (object not found, method not found, access denied)</li>
+<li>JavaScript errors (api.method is not a function)</li>
+<li>404 errors (view files not found)</li>
+<li>Test functionality:</li>
+<li>Load data displays correctly</li>
+<li>Actions work (start/stop services, save settings)</li>
+<li>No "NaN", "undefined", or empty values</li>
+</ol>
+<h3 id="remote-ubus-testing">Remote ubus Testing<a class="headerlink" href="#remote-ubus-testing" title="Permanent link">&para;</a></h3>
+<p>Test RPCD methods on router:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a><span class="c1"># List all methods</span>
+<a id="__codelineno-53-2" name="__codelineno-53-2" href="#__codelineno-53-2"></a>ssh<span class="w"> </span>router<span class="w"> </span><span class="s2">&quot;ubus list luci.system-hub&quot;</span>
+<a id="__codelineno-53-3" name="__codelineno-53-3" href="#__codelineno-53-3"></a>
+<a id="__codelineno-53-4" name="__codelineno-53-4" href="#__codelineno-53-4"></a><span class="c1"># Call method without parameters</span>
+<a id="__codelineno-53-5" name="__codelineno-53-5" href="#__codelineno-53-5"></a>ssh<span class="w"> </span>router<span class="w"> </span><span class="s2">&quot;ubus call luci.system-hub status&quot;</span>
+<a id="__codelineno-53-6" name="__codelineno-53-6" href="#__codelineno-53-6"></a>
+<a id="__codelineno-53-7" name="__codelineno-53-7" href="#__codelineno-53-7"></a><span class="c1"># Call method with parameters</span>
+<a id="__codelineno-53-8" name="__codelineno-53-8" href="#__codelineno-53-8"></a>ssh<span class="w"> </span>router<span class="w"> </span><span class="s2">&quot;ubus call luci.system-hub service_action &#39;{\&quot;service\&quot;:\&quot;network\&quot;,\&quot;action\&quot;:\&quot;restart\&quot;}&#39;&quot;</span>
+<a id="__codelineno-53-9" name="__codelineno-53-9" href="#__codelineno-53-9"></a>
+<a id="__codelineno-53-10" name="__codelineno-53-10" href="#__codelineno-53-10"></a><span class="c1"># Pretty-print JSON output</span>
+<a id="__codelineno-53-11" name="__codelineno-53-11" href="#__codelineno-53-11"></a>ssh<span class="w"> </span>router<span class="w"> </span><span class="s2">&quot;ubus call luci.system-hub get_health | jsonlint&quot;</span>
+</code></pre></div>
+<h3 id="debugging-tips">Debugging Tips<a class="headerlink" href="#debugging-tips" title="Permanent link">&para;</a></h3>
+<p><strong>Enable RPCD debug logging</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-54-1" name="__codelineno-54-1" href="#__codelineno-54-1"></a><span class="c1"># Edit /etc/init.d/rpcd</span>
+<a id="__codelineno-54-2" name="__codelineno-54-2" href="#__codelineno-54-2"></a><span class="c1"># Add -v flag to procd_set_param command</span>
+<a id="__codelineno-54-3" name="__codelineno-54-3" href="#__codelineno-54-3"></a>procd_set_param<span class="w"> </span><span class="nb">command</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PROG</span><span class="s2">&quot;</span><span class="w"> </span>-v
+<a id="__codelineno-54-4" name="__codelineno-54-4" href="#__codelineno-54-4"></a>
+<a id="__codelineno-54-5" name="__codelineno-54-5" href="#__codelineno-54-5"></a><span class="c1"># Restart RPCD</span>
+<a id="__codelineno-54-6" name="__codelineno-54-6" href="#__codelineno-54-6"></a>/etc/init.d/rpcd<span class="w"> </span>restart
+<a id="__codelineno-54-7" name="__codelineno-54-7" href="#__codelineno-54-7"></a>
+<a id="__codelineno-54-8" name="__codelineno-54-8" href="#__codelineno-54-8"></a><span class="c1"># Watch logs</span>
+<a id="__codelineno-54-9" name="__codelineno-54-9" href="#__codelineno-54-9"></a>logread<span class="w"> </span>-f<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>rpcd
+</code></pre></div></p>
+<p><strong>Enable JavaScript console logging</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-55-1" name="__codelineno-55-1" href="#__codelineno-55-1"></a><span class="c1">// Add to api.js</span>
+<a id="__codelineno-55-2" name="__codelineno-55-2" href="#__codelineno-55-2"></a><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;🔧 API v0.1.0 loaded at&#39;</span><span class="p">,</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Date</span><span class="p">().</span><span class="nx">toISOString</span><span class="p">());</span>
+<a id="__codelineno-55-3" name="__codelineno-55-3" href="#__codelineno-55-3"></a>
+<a id="__codelineno-55-4" name="__codelineno-55-4" href="#__codelineno-55-4"></a><span class="c1">// Add to views</span>
+<a id="__codelineno-55-5" name="__codelineno-55-5" href="#__codelineno-55-5"></a><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;Loading health data...&#39;</span><span class="p">);</span>
+<a id="__codelineno-55-6" name="__codelineno-55-6" href="#__codelineno-55-6"></a><span class="nx">API</span><span class="p">.</span><span class="nx">getHealth</span><span class="p">().</span><span class="nx">then</span><span class="p">(</span><span class="kd">function</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-55-7" name="__codelineno-55-7" href="#__codelineno-55-7"></a><span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;Health data:&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">data</span><span class="p">);</span>
+<a id="__codelineno-55-8" name="__codelineno-55-8" href="#__codelineno-55-8"></a><span class="p">});</span>
+</code></pre></div></p>
+<p><strong>Test JSON output</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-56-1" name="__codelineno-56-1" href="#__codelineno-56-1"></a><span class="c1"># On router</span>
+<a id="__codelineno-56-2" name="__codelineno-56-2" href="#__codelineno-56-2"></a>/usr/libexec/rpcd/luci.system-hub<span class="w"> </span>call<span class="w"> </span>get_health<span class="w"> </span><span class="p">|</span><span class="w"> </span>jsonlint
+<a id="__codelineno-56-3" name="__codelineno-56-3" href="#__codelineno-56-3"></a>
+<a id="__codelineno-56-4" name="__codelineno-56-4" href="#__codelineno-56-4"></a><span class="c1"># Check for common errors</span>
+<a id="__codelineno-56-5" name="__codelineno-56-5" href="#__codelineno-56-5"></a><span class="c1"># - Missing commas</span>
+<a id="__codelineno-56-6" name="__codelineno-56-6" href="#__codelineno-56-6"></a><span class="c1"># - Trailing commas</span>
+<a id="__codelineno-56-7" name="__codelineno-56-7" href="#__codelineno-56-7"></a><span class="c1"># - Unquoted keys</span>
+<a id="__codelineno-56-8" name="__codelineno-56-8" href="#__codelineno-56-8"></a><span class="c1"># - Invalid escape sequences</span>
+</code></pre></div></p>
+<hr />
+<h2 id="best-practices-summary">Best Practices Summary<a class="headerlink" href="#best-practices-summary" title="Permanent link">&para;</a></h2>
+<h3 id="do">DO:<a class="headerlink" href="#do" title="Permanent link">&para;</a></h3>
+<p>✅ Use <code>luci.</code> prefix for all ubus objects
+✅ Name RPCD scripts to match ubus object exactly
+✅ Use <code>baseclass.extend()</code> for API modules
+✅ Import APIs with <code>'require module/api as API'</code> pattern
+✅ Add null/undefined checks in frontend: <code>health.cpu?.usage || 0</code>
+✅ Validate JSON with <code>jsonlint</code> before deploying
+✅ Test with <code>ubus call</code> before browser testing
+✅ Restart RPCD after backend changes
+✅ Clear browser cache after frontend changes
+✅ Run <code>./secubox-tools/validate-modules.sh</code> before committing</p>
+<h3 id="dont">DON'T:<a class="headerlink" href="#dont" title="Permanent link">&para;</a></h3>
+<p>❌ Use ubus object names without <code>luci.</code> prefix
+❌ Use <code>baseclass.singleton()</code> or plain objects for API modules
+❌ Import APIs with <code>L.require('module.path')</code> (returns class, not instance)
+❌ Forget to add methods to ACL file
+❌ Mix up read/write methods in ACL sections
+❌ Output non-JSON from RPCD scripts
+❌ Use inconsistent data structures between backend and frontend
+❌ Deploy without testing locally first
+❌ Assume data exists - always check for null/undefined
+❌ Forget to make RPCD scripts executable (<code>chmod +x</code>)</p>
+<hr />
+<h2 id="version-history">Version History<a class="headerlink" href="#version-history" title="Permanent link">&para;</a></h2>
+<p><strong>v1.0</strong> (2025-12-26)
+- Initial reference guide
+- Based on luci-app-secubox v1.0.0 and luci-app-system-hub v0.1.0
+- Documented all critical patterns and common errors
+- Validated against real-world implementation challenges</p>
+<hr />
+<h2 id="references">References<a class="headerlink" href="#references" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>OpenWrt Documentation</strong>: https://openwrt.org/docs/guide-developer/start</li>
+<li><strong>LuCI Documentation</strong>: https://github.com/openwrt/luci/wiki</li>
+<li><strong>ubus Documentation</strong>: https://openwrt.org/docs/techref/ubus</li>
+<li><strong>UCI Documentation</strong>: https://openwrt.org/docs/guide-user/base-system/uci</li>
+<li><strong>jshn.sh Library</strong>: <code>/usr/share/libubox/jshn.sh</code> on OpenWrt</li>
+</ul>
+<hr />
+<h2 id="contact">Contact<a class="headerlink" href="#contact" title="Permanent link">&para;</a></h2>
+<p>For questions or contributions to this reference guide:
+- <strong>Author</strong>: CyberMind <a href="&#109;&#97;&#105;&#108;&#116;&#111;&#58;&#99;&#111;&#110;&#116;&#97;&#99;&#116;&#64;&#99;&#121;&#98;&#101;&#114;&#109;&#105;&#110;&#100;&#46;&#102;&#114;">&#99;&#111;&#110;&#116;&#97;&#99;&#116;&#64;&#99;&#121;&#98;&#101;&#114;&#109;&#105;&#110;&#100;&#46;&#102;&#114;</a>
+- <strong>Project</strong>: SecuBox OpenWrt
+- <strong>Repository</strong>: https://github.com/cybermind-fr/secubox-openwrt</p>
+<hr />
+<p><strong>END OF REFERENCE GUIDE</strong></p>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12Z"/></svg>
+            Back to top
+          </button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        <div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/gkerma/secubox-openwrt" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://secubox.cybermood.eu" target="_blank" rel="noopener" title="secubox.cybermood.eu" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M352 256c0 22.2-1.2 43.6-3.3 64H163.3c-2.2-20.4-3.3-41.8-3.3-64s1.2-43.6 3.3-64h185.4c2.2 20.4 3.3 41.8 3.3 64zm28.8-64h123.1c5.3 20.5 8.1 41.9 8.1 64s-2.8 43.5-8.1 64H380.8c2.1-20.6 3.2-42 3.2-64s-1.1-43.4-3.2-64zm112.6-32H376.7c-10-63.9-29.8-117.4-55.3-151.6 78.3 20.7 142 77.5 171.9 151.6zm-149.1 0H167.7c6.1-36.4 15.5-68.6 27-94.7 10.5-23.6 22.2-40.7 33.5-51.5C239.4 3.2 248.7 0 256 0s16.6 3.2 27.8 13.8c11.3 10.8 23 27.9 33.5 51.5 11.6 26 20.9 58.2 27 94.7zm-209 0H18.6c30-74.1 93.6-130.9 172-151.6-25.5 34.2-45.3 87.7-55.3 151.6zM8.1 192h123.1c-2.1 20.6-3.2 42-3.2 64s1.1 43.4 3.2 64H8.1C2.8 299.5 0 278.1 0 256s2.8-43.5 8.1-64zm186.6 254.6c-11.6-26-20.9-58.2-27-94.6h176.6c-6.1 36.4-15.5 68.6-27 94.6-10.5 23.6-22.2 40.7-33.5 51.5-11.2 10.7-20.5 13.9-27.8 13.9s-16.6-3.2-27.8-13.8c-11.3-10.8-23-27.9-33.5-51.5zM135.3 352c10 63.9 29.8 117.4 55.3 151.6-78.4-20.7-142-77.5-172-151.6h116.7zm358.1 0c-30 74.1-93.6 130.9-171.9 151.6 25.5-34.2 45.2-87.7 55.3-151.6h116.6z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.a264c092.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.4e0fa4ba.min.js"></script>
+      
+    
+  </body>
+</html>
