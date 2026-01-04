@@ -16,19 +16,37 @@ on:
         options:
           - ''
           - 'luci-app-secubox'
+          - 'luci-app-secubox-admin'
+          - 'luci-app-secubox-bonus'
           - 'luci-app-crowdsec-dashboard'
           - 'luci-app-netdata-dashboard'
           - 'luci-app-netifyd-dashboard'
+          - 'luci-app-traffic-shaper'
           - 'luci-app-wireguard-dashboard'
           - 'luci-app-network-modes'
+          - 'luci-app-network-tweaks'
           - 'luci-app-client-guardian'
           - 'luci-app-system-hub'
+          - 'luci-app-ksm-manager'
           - 'luci-app-bandwidth-manager'
           - 'luci-app-auth-guardian'
           - 'luci-app-media-flow'
           - 'luci-app-vhost-manager'
           - 'luci-app-cdn-cache'
+          - 'luci-app-magicmirror'
+          - 'luci-app-mqtt-bridge'
+          - 'luci-app-zigbee2mqtt'
           - 'secubox-app'
+          - 'secubox-core'
+          - 'secubox-app-adguardhome'
+          - 'secubox-app-crowdsec'
+          - 'secubox-app-domoticz'
+          - 'secubox-app-lyrion'
+          - 'secubox-app-magicmirror'
+          - 'secubox-app-mailinabox'
+          - 'secubox-app-nextcloud'
+          - 'secubox-app-nodogsplash'
+          - 'secubox-app-zigbee2mqtt'
           - 'luci-theme-secubox'
       openwrt_version:
         description: 'OpenWrt version'
@@ -44,7 +62,7 @@ on:
       architectures:
         description: 'Architectures (comma-separated or "all")'
         required: false
-        default: 'x86-64'
+        default: 'arch_all'
 
 env:
   OPENWRT_VERSION: ${{ github.event.inputs.openwrt_version || '24.10.5' }}
@@ -151,7 +169,7 @@ jobs:
           EOF
           
           INPUT_ARCHS="${{ github.event.inputs.architectures }}"
-          if [[ -z "$INPUT_ARCHS" || "$INPUT_ARCHS" == "all" ]]; then
+          if [[ -z "$INPUT_ARCHS" || "$INPUT_ARCHS" == "all" || "$INPUT_ARCHS" == "arch_all" ]]; then
             MATRIX=$(cat /tmp/matrix.json)
           else
             MATRIX=$(jq -c --arg archs "$INPUT_ARCHS" '
@@ -383,75 +401,78 @@ jobs:
           VERSION="${{ needs.setup.outputs.version }}"
           PACKAGE_NAME="${{ github.event.inputs.package_name }}"
 
+          copy_package() {
+            local src="$1"
+            local base dest
+            base=$(basename "$src")
+
+            if [[ "$src" == package/secubox/* ]]; then
+              dest="sdk/package/secubox/$base"
+              mkdir -p "$(dirname "$dest")"
+            else
+              dest="sdk/package/$base"
+            fi
+
+            echo "  📁 $base (from $src)"
+            rm -rf "$dest"
+            cp -r "$src" "$dest"
+
+            if grep -q 'PKG_VERSION:=' "$dest/Makefile"; then
+              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "$dest/Makefile"
+            fi
+            if grep -q 'PKG_RELEASE:=' "$dest/Makefile"; then
+              sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "$dest/Makefile"
+            fi
+            if grep -q 'luci\.mk' "$dest/Makefile"; then
+              sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "$dest/Makefile"
+              echo "    ✓ Fixed Makefile include path"
+            fi
+          }
+
+          find_package_dir() {
+            local name="$1"
+            if [[ -d "$name" && -f "$name/Makefile" ]]; then
+              echo "$name"
+            elif [[ -d "package/secubox/$name" && -f "package/secubox/$name/Makefile" ]]; then
+              echo "package/secubox/$name"
+            else
+              echo ""
+            fi
+          }
+
           if [[ -n "$PACKAGE_NAME" ]]; then
             echo "📦 Copying single package: $PACKAGE_NAME (version: $VERSION)..."
 
-            if [[ -d "$PACKAGE_NAME" && -f "${PACKAGE_NAME}/Makefile" ]]; then
-              echo "  📁 $PACKAGE_NAME"
-              cp -r "$PACKAGE_NAME" sdk/package/
-
-              # Update version
-              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "sdk/package/${PACKAGE_NAME}/Makefile"
-              sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "sdk/package/${PACKAGE_NAME}/Makefile"
-
-              # Fix Makefile include path for SDK environment
-              # Change from ../../luci.mk to $(TOPDIR)/feeds/luci/luci.mk
-              sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "sdk/package/${PACKAGE_NAME}/Makefile"
-              echo "    ✓ Fixed Makefile include path"
-            else
+            PKG_DIR=$(find_package_dir "$PACKAGE_NAME")
+            if [[ -z "$PKG_DIR" ]]; then
               echo "❌ Package $PACKAGE_NAME not found or missing Makefile"
               exit 1
             fi
+
+            copy_package "$PKG_DIR"
           else
             echo "📦 Copying all packages (version: $VERSION)..."
 
             for pkg in luci-app-*/; do
               if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
-                PKG_NAME=$(basename "$pkg")
-                echo "  📁 $PKG_NAME"
-                cp -r "$pkg" sdk/package/
-
-                # Update version
-                sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "sdk/package/${PKG_NAME}/Makefile"
-                sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "sdk/package/${PKG_NAME}/Makefile"
-
-                # Fix Makefile include path for SDK environment
-                # Change from ../../luci.mk to $(TOPDIR)/feeds/luci/luci.mk
-                sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "sdk/package/${PKG_NAME}/Makefile"
-                echo "    ✓ Fixed Makefile include path"
+                copy_package "$pkg"
               fi
             done
 
-            # Copy secubox-app
-            if [[ -d "package/secubox/secubox-app" ]]; then
-              echo "  📁 secubox-app"
-              mkdir -p sdk/package/secubox
-              cp -r package/secubox/secubox-app sdk/package/secubox/
+            for pkg in package/secubox/*/; do
+              if [[ -d "$pkg" && -f "${pkg}/Makefile" ]]; then
+                copy_package "$pkg"
+              fi
+            done
 
-              # Update version
-              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "sdk/package/secubox/secubox-app/Makefile"
-              sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "sdk/package/secubox/secubox-app/Makefile"
-              echo "    ✓ Fixed version"
-            fi
-
-            # Copy luci-theme-secubox
-            if [[ -d "luci-theme-secubox" ]]; then
-              echo "  📁 luci-theme-secubox"
-              cp -r luci-theme-secubox sdk/package/
-
-              # Update version
-              sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION/" "sdk/package/luci-theme-secubox/Makefile"
-              sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" "sdk/package/luci-theme-secubox/Makefile"
-
-              # Fix Makefile include path for SDK environment
-              sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "sdk/package/luci-theme-secubox/Makefile"
-              echo "    ✓ Fixed Makefile include path"
+            if [[ -d "luci-theme-secubox" && -f "luci-theme-secubox/Makefile" ]]; then
+              copy_package "luci-theme-secubox"
             fi
           fi
 
           echo ""
           echo "📋 Packages in SDK:"
-          ls -d sdk/package/luci-app-*/ sdk/package/secubox/secubox-app/ sdk/package/luci-theme-secubox/ 2>/dev/null || echo "None"
+          ls -d sdk/package/luci-app-*/ sdk/package/secubox/*/ sdk/package/luci-theme-secubox/ 2>/dev/null || echo "None"
 
       - name: Download pre-built LuCI dependencies
         run: |
@@ -894,7 +915,7 @@ jobs:
           body: |
             ## 📦 ${{ github.event.inputs.package_name && format('{0} Package', github.event.inputs.package_name) || 'SecuBox Packages' }} v${{ needs.setup.outputs.version }}
 
-            Pre-built LuCI package${{ github.event.inputs.package_name && '' || 's' }} for OpenWrt ${{ env.OPENWRT_VERSION }}.
+            Pre-built OpenWrt package${{ github.event.inputs.package_name && '' || 's' }} for OpenWrt ${{ env.OPENWRT_VERSION }}.
 
             ${{ github.event.inputs.package_name && format('🎯 **Single package build**: {0}', github.event.inputs.package_name) || '' }}
 
