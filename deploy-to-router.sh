@@ -30,7 +30,11 @@ if [ ! -f "./secubox-tools/local-build.sh" ]; then
     exit 1
 fi
 
-./secubox-tools/local-build.sh secubox-core luci-app-secubox-admin
+echo "Building secubox-core..."
+./secubox-tools/local-build.sh build secubox-core
+
+echo "Building luci-app-secubox-admin..."
+./secubox-tools/local-build.sh build luci-app-secubox-admin
 
 echo ""
 echo "✓ Packages rebuilt successfully"
