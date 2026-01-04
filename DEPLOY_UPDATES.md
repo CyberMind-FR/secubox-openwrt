@@ -69,11 +69,16 @@ ubus -S call luci.secubox check_updates
 ### Package Versions
 
 - `secubox-core`: 0.8.0-6
-- `luci-app-secubox-admin`: 1.0.0-7
+- `luci-app-secubox-admin`: 1.0.0-8
 
 ### Recent Fixes
 
-**v1.0.0-7** (Latest):
+**v1.0.0-8** (Latest):
+- Removed dependency on luci-app-secubox to avoid file conflicts
+- Package now only depends on: luci-base, rpcd, secubox-core
+- Fixes installation error: "file already provided by secubox-core"
+
+**v1.0.0-7**:
 - Added graceful RPC fallback to ALL views
 - Wrapped all RPC calls in L.resolveDefault() with appropriate fallback values
 - Fixed "No related RPC reply" errors in health.js, logs.js, settings.js, apps.js, dashboard.js

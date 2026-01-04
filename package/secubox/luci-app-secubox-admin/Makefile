@@ -2,12 +2,12 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-secubox-admin
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=7
+PKG_RELEASE:=8
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
 LUCI_TITLE:=LuCI SecuBox Admin Control Center
-LUCI_DEPENDS:=+luci-base +luci-app-secubox +rpcd +secubox-core
+LUCI_DEPENDS:=+luci-base +rpcd +secubox-core
 LUCI_DESCRIPTION:=Unified admin control center for SecuBox appstore plugins with system monitoring
 LUCI_PKGARCH:=all
 
