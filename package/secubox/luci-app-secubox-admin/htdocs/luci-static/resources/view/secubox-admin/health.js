@@ -5,7 +5,7 @@
 
 return view.extend({
 	load: function() {
-		return API.getHealth();
+		return L.resolveDefault(API.getHealth(), {});
 	},
 
 	render: function(health) {

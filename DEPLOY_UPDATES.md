@@ -69,11 +69,17 @@ ubus -S call luci.secubox check_updates
 ### Package Versions
 
 - `secubox-core`: 0.8.0-6
-- `luci-app-secubox-admin`: 1.0.0-6
+- `luci-app-secubox-admin`: 1.0.0-7
 
 ### Recent Fixes
 
-**v1.0.0-6** (Latest):
+**v1.0.0-7** (Latest):
+- Added graceful RPC fallback to ALL views
+- Wrapped all RPC calls in L.resolveDefault() with appropriate fallback values
+- Fixed "No related RPC reply" errors in health.js, logs.js, settings.js, apps.js, dashboard.js
+- All pages now load gracefully even when backend not deployed
+
+**v1.0.0-6**:
 - Fixed WidgetRenderer constructor error
 - Changed from `new WidgetRenderer({...})` to `WidgetRenderer({...})`
 - Added comprehensive error handling with try-catch and fallback error display

@@ -7,7 +7,7 @@ return view.extend({
 	selectedService: 'system',
 
 	load: function() {
-		return API.getLogs(this.selectedService, 100);
+		return L.resolveDefault(API.getLogs(this.selectedService, 100), { logs: '' });
 	},
 
 	render: function(logsData) {

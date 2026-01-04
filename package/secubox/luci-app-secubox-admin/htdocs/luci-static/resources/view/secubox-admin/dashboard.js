@@ -11,10 +11,10 @@ return view.extend({
 
 	load: function() {
 		return Promise.all([
-			API.getApps(),
-			API.getModules(),
-			API.getHealth(),
-			API.getAlerts()
+			L.resolveDefault(API.getApps(), { apps: [] }),
+			L.resolveDefault(API.getModules(), { modules: {} }),
+			L.resolveDefault(API.getHealth(), {}),
+			L.resolveDefault(API.getAlerts(), { alerts: [] })
 		]);
 	},
 
