@@ -12,11 +12,17 @@
 					"get_system_health",
 					"get_alerts",
 					"getLogs",
-					"listProfiles"
+					"listProfiles",
+					"get_catalog_sources",
+					"check_updates",
+					"get_app_versions",
+					"get_changelog",
+					"get_widget_data"
 				]
 			},
 			"uci": [
 				"secubox",
+				"secubox-appstore",
 				"*"
 			]
 		},
@@ -28,11 +34,14 @@
 					"enable_module",
 					"disable_module",
 					"updateModule",
-					"applyProfile"
+					"applyProfile",
+					"set_catalog_source",
+					"sync_catalog"
 				]
 			},
 			"uci": [
 				"secubox",
+				"secubox-appstore",
 				"*"
 			]
 		}
