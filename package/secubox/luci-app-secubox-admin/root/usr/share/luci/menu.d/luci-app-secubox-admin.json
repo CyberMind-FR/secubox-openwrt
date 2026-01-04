@@ -14,6 +14,14 @@
 			"path": "secubox-admin/dashboard"
 		}
 	},
+	"admin/secubox/admin/cyber-dashboard": {
+		"title": "🔮 Cyber Console",
+		"order": 15,
+		"action": {
+			"type": "view",
+			"path": "secubox-admin/cyber-dashboard"
+		}
+	},
 	"admin/secubox/admin/apps": {
 		"title": "Apps Manager",
 		"order": 20,
