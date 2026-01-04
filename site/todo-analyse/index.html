@@ -1,0 +1,3650 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="OpenWrt LuCI Security & Management Suite">
+      
+      
+        <meta name="author" content="CyberMind.fr">
+      
+      
+        <link rel="canonical" href="https://gkerma.github.io/secubox-openwrt/todo-analyse/">
+      
+      
+        <link rel="prev" href="../feature-regeneration-prompts/">
+      
+      
+        <link rel="next" href="../archive/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>TODO Roadmap - SecuBox Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#documentation-improvement-todo" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="SecuBox Documentation" class="md-header__button md-logo" aria-label="SecuBox Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            SecuBox Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              TODO Roadmap
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="purple"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="purple"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/gkerma/secubox-openwrt" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gkerma/secubox-openwrt
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../quick-start/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../development-guidelines/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../claude/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../module-status/" class="md-tabs__link">
+          
+  
+  
+  Modules
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Tools & Roadmap
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../archive/" class="md-tabs__link">
+          
+  
+  
+  Archive
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="SecuBox Documentation" class="md-nav__button md-logo" aria-label="SecuBox Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    SecuBox Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/gkerma/secubox-openwrt" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gkerma/secubox-openwrt
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../documentation-index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../repository-guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repository Guidelines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development-guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Guidelines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Templates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../module-implementation-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module Implementation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RPCD & Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validation-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../permissions-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Permissions Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../luci-development-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LuCI Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Codex Manual
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../module-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module Status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../feature-regeneration-prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools & Roadmap
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tools & Roadmap
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TODO Roadmap
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TODO Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#immediate-actions-this-week" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Immediate Actions (This Week)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Immediate Actions (This Week)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#priority-high-effort-low-impact-high" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority: 🔴 HIGH | Effort: ⚡ Low | Impact: 🎯 High
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-standardize-document-versions-dates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Standardize Document Versions &amp; Dates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-add-cross-references-between-documents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Add Cross-References Between Documents
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-archive-historical-documents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Archive Historical Documents
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#short-term-actions-this-month" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Short-term Actions (This Month)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Short-term Actions (This Month)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#priority-medium-effort-medium-impact-high" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority: 🟡 MEDIUM | Effort: ⚡⚡ Medium | Impact: 🎯 High
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-add-architecture-diagrams" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Add Architecture Diagrams
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Add Architecture Diagrams">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-system-architecture-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. System Architecture Diagram
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-deployment-workflow-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. Deployment Workflow Diagram
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-component-hierarchy-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3. Component Hierarchy Diagram
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-create-missing-documentation-guides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Create Missing Documentation Guides
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Create Missing Documentation Guides">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-create-testingmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. Create TESTING.md
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-create-securitymd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. Create SECURITY.md
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-create-performancemd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3. Create PERFORMANCE.md
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-consolidate-validation-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Consolidate Validation Documentation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Consolidate Validation Documentation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-update-development-guidelinesmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1. Update DEVELOPMENT-GUIDELINES.md
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-convert-validation-guidemd-to-quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2. Convert VALIDATION-GUIDE.md to Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#individual-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Individual Checks
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Fix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="See Also">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#82-stale-content-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2. Stale Content Detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-auto-generate-api-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3. Auto-generate API Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-interactive-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Interactive Documentation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Interactive Documentation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-searchable-documentation-site" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.1. Searchable Documentation Site
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-interactive-code-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.2. Interactive Code Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93-video-tutorials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.3. Video Tutorials
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-internationalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Internationalization
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-enhancements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional Enhancements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optional Enhancements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#priority-nice-to-have-effort-variable-impact-low-medium" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority: 🔵 NICE-TO-HAVE | Effort: Variable | Impact: 🎯 Low-Medium
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-documentation-quality-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Documentation Quality Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-contributor-onboarding-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Contributor Onboarding Guide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-faq-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. FAQ Document
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-changelog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. Changelog
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tracking-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tracking &amp; Metrics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tracking &amp; Metrics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#success-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Success Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#progress-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Progress Tracking
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#review-schedule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review Schedule
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notes-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes &amp; Decisions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Notes &amp; Decisions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decision-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision Log
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#risks-concerns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Risks &amp; Concerns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start-guide-using-this-todo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start Guide (Using This TODO)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start Guide (Using This TODO)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#for-immediate-action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Immediate Action:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#for-project-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Project Management:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#for-progress-updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Progress Updates:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Archive
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/build-issues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/completion-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Completion Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/module-enable-disable-design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module Enable/Disable
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#immediate-actions-this-week" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Immediate Actions (This Week)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Immediate Actions (This Week)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#priority-high-effort-low-impact-high" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority: 🔴 HIGH | Effort: ⚡ Low | Impact: 🎯 High
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-standardize-document-versions-dates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Standardize Document Versions &amp; Dates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-add-cross-references-between-documents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Add Cross-References Between Documents
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-archive-historical-documents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Archive Historical Documents
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#short-term-actions-this-month" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Short-term Actions (This Month)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Short-term Actions (This Month)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#priority-medium-effort-medium-impact-high" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority: 🟡 MEDIUM | Effort: ⚡⚡ Medium | Impact: 🎯 High
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-add-architecture-diagrams" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Add Architecture Diagrams
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Add Architecture Diagrams">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-system-architecture-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1. System Architecture Diagram
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-deployment-workflow-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2. Deployment Workflow Diagram
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-component-hierarchy-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3. Component Hierarchy Diagram
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-create-missing-documentation-guides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Create Missing Documentation Guides
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Create Missing Documentation Guides">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-create-testingmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1. Create TESTING.md
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-create-securitymd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2. Create SECURITY.md
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-create-performancemd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3. Create PERFORMANCE.md
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-consolidate-validation-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Consolidate Validation Documentation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Consolidate Validation Documentation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-update-development-guidelinesmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1. Update DEVELOPMENT-GUIDELINES.md
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-convert-validation-guidemd-to-quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2. Convert VALIDATION-GUIDE.md to Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#individual-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Individual Checks
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-fix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Fix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="See Also">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#82-stale-content-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2. Stale Content Detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-auto-generate-api-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3. Auto-generate API Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-interactive-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Interactive Documentation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Interactive Documentation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-searchable-documentation-site" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.1. Searchable Documentation Site
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-interactive-code-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.2. Interactive Code Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93-video-tutorials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.3. Video Tutorials
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-internationalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Internationalization
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-enhancements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional Enhancements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optional Enhancements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#priority-nice-to-have-effort-variable-impact-low-medium" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Priority: 🔵 NICE-TO-HAVE | Effort: Variable | Impact: 🎯 Low-Medium
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-documentation-quality-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Documentation Quality Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-contributor-onboarding-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Contributor Onboarding Guide
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-faq-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. FAQ Document
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-changelog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. Changelog
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tracking-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tracking &amp; Metrics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tracking &amp; Metrics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#success-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Success Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#progress-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Progress Tracking
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#review-schedule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review Schedule
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notes-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes &amp; Decisions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Notes &amp; Decisions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decision-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision Log
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#risks-concerns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Risks &amp; Concerns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start-guide-using-this-todo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start Guide (Using This TODO)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start Guide (Using This TODO)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#for-immediate-action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Immediate Action:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#for-project-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Project Management:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#for-progress-updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For Progress Updates:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="documentation-improvement-todo">Documentation Improvement TODO<a class="headerlink" href="#documentation-improvement-todo" title="Permanent link">&para;</a></h1>
+<p><strong>Version:</strong> 1.0.0<br />
+<strong>Last Updated:</strong> 2025-12-28<br />
+<strong>Status:</strong> Active</p>
+<p><strong>Generated:</strong> 2025-12-28
+<strong>Based on:</strong> Documentation Analysis Report
+<strong>Overall Health:</strong> 8.5/10 (Excellent)
+<strong>Status:</strong> 📋 Planning Phase</p>
+<hr />
+<h2 id="table-of-contents">Table of Contents<a class="headerlink" href="#table-of-contents" title="Permanent link">&para;</a></h2>
+<ol>
+<li><a href="#immediate-actions-this-week">Immediate Actions (This Week)</a></li>
+<li><a href="#short-term-actions-this-month">Short-term Actions (This Month)</a></li>
+<li>Long-term Actions (This Quarter)</li>
+<li><a href="#optional-enhancements">Optional Enhancements</a></li>
+<li><a href="#tracking-metrics">Tracking &amp; Metrics</a></li>
+</ol>
+<hr />
+<h2 id="immediate-actions-this-week">Immediate Actions (This Week)<a class="headerlink" href="#immediate-actions-this-week" title="Permanent link">&para;</a></h2>
+<h3 id="priority-high-effort-low-impact-high">Priority: 🔴 HIGH | Effort: ⚡ Low | Impact: 🎯 High<a class="headerlink" href="#priority-high-effort-low-impact-high" title="Permanent link">&para;</a></h3>
+<h3 id="1-standardize-document-versions-dates">1. Standardize Document Versions &amp; Dates<a class="headerlink" href="#1-standardize-document-versions-dates" title="Permanent link">&para;</a></h3>
+<p><strong>Status:</strong> ⬜ Not Started
+<strong>Assignee:</strong> <em>TBD</em>
+<strong>Estimated Time:</strong> 30 minutes</p>
+<p><strong>Problem:</strong>
+- Version inconsistencies across documents
+- Some docs missing version/date headers
+- Different date formats used</p>
+<p><strong>Action Items:</strong>
+- [ ] Add version header to all <code>.md</code> files
+- [ ] Use consistent date format: <code>YYYY-MM-DD</code>
+- [ ] Set all docs to v1.0.0 baseline
+- [ ] Document versioning policy</p>
+<p><strong>Files to Update:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Missing version headers:
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">-</span><span class="w"> </span>CLAUDE.md
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">-</span><span class="w"> </span>BUILD_ISSUES.md
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">-</span><span class="w"> </span>LUCI_DEVELOPMENT_REFERENCE.md
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="k">-</span><span class="w"> </span>MODULE-ENABLE-DISABLE-DESIGN.md
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>Inconsistent dates:
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="k">-</span><span class="w"> </span>DOCUMENTATION-INDEX.md: 2025-12-27
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="k">-</span><span class="w"> </span>DEVELOPMENT-GUIDELINES.md: 2025-12-26
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="k">-</span><span class="w"> </span>QUICK-START.md: 2025-12-26
+</code></pre></div></p>
+<p><strong>Template:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="gh"># Document Title</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="gs">**Version:**</span> 1.0.0
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="gs">**Last Updated:**</span> 2025-12-28
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="gs">**Status:**</span> Active | Archived | Draft
+</code></pre></div></p>
+<p><strong>Acceptance Criteria:</strong>
+- ✅ All <code>.md</code> files have version header
+- ✅ Dates use YYYY-MM-DD format
+- ✅ Version policy documented in DOCUMENTATION-INDEX.md</p>
+<hr />
+<h3 id="2-add-cross-references-between-documents">2. Add Cross-References Between Documents<a class="headerlink" href="#2-add-cross-references-between-documents" title="Permanent link">&para;</a></h3>
+<p><strong>Status:</strong> ⬜ Not Started
+<strong>Assignee:</strong> <em>TBD</em>
+<strong>Estimated Time:</strong> 1 hour</p>
+<p><strong>Problem:</strong>
+- Redundant content in multiple docs
+- No clear indication where to find complete information
+- Users may miss related content</p>
+<p><strong>Action Items:</strong>
+- [ ] Add "See Also" sections to all major docs
+- [ ] Link quick references to detailed guides
+- [ ] Add navigation breadcrumbs
+- [ ] Create bi-directional links</p>
+<p><strong>Specific Cross-References to Add:</strong></p>
+<p><strong>QUICK-START.md:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="gu">## See Also</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Complete Guide:**</span> [<span class="nt">DEVELOPMENT-GUIDELINES.md</span>](<span class="na">development-guidelines.md</span>)
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Architecture Details:**</span> [<span class="nt">CLAUDE.md</span>](<span class="na">claude.md</span>) §2-6
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Code Examples:**</span> [<span class="nt">CODE-TEMPLATES.md</span>](<span class="na">code-templates.md</span>)
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Module Specs:**</span> [<span class="nt">FEATURE-REGENERATION-PROMPTS.md</span>](<span class="na">feature-regeneration-prompts.md</span>)
+</code></pre></div></p>
+<p><strong>PERMISSIONS-GUIDE.md:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">&gt; </span><span class="ge">**📚 This is a quick reference guide.**</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">&gt; </span><span class="ge">For complete deployment procedures, see [DEVELOPMENT-GUIDELINES.md §9](development-guidelines.md#deployment-procedures)</span>
+</code></pre></div></p>
+<p><strong>VALIDATION-GUIDE.md:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">&gt; </span><span class="ge">**🔗 Related:**</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">&gt; </span><span class="ge">- Pre-commit checklist: [DEVELOPMENT-GUIDELINES.md §8.1](development-guidelines.md#pre-commit-checklist)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="k">&gt; </span><span class="ge">- Deployment validation: [DEVELOPMENT-GUIDELINES.md §8.3](development-guidelines.md#post-deploy-checklist)</span>
+</code></pre></div></p>
+<p><strong>Acceptance Criteria:</strong>
+- ✅ All docs have "See Also" sections
+- ✅ Quick references link to detailed guides
+- ✅ No orphaned documents</p>
+<hr />
+<h3 id="3-archive-historical-documents">3. Archive Historical Documents<a class="headerlink" href="#3-archive-historical-documents" title="Permanent link">&para;</a></h3>
+<p><strong>Status:</strong> ⬜ Not Started
+<strong>Assignee:</strong> <em>TBD</em>
+<strong>Estimated Time:</strong> 15 minutes</p>
+<p><strong>Problem:</strong>
+- Historical docs mixed with active working docs
+- Cluttered root directory (15 markdown files)
+- Confusion about which docs are current</p>
+<p><strong>Action Items:</strong>
+- [ ] Create <code>docs/archive/</code> directory
+- [ ] Move historical documents
+- [ ] Update DOCUMENTATION-INDEX.md
+- [ ] Add README in archive explaining contents</p>
+<p><strong>Documents to Archive:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>docs/archive
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># Historical/completed documents</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>mv<span class="w"> </span>COMPLETION_REPORT.md<span class="w"> </span>docs/archive/
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>mv<span class="w"> </span>MODULE-ENABLE-DISABLE-DESIGN.md<span class="w"> </span>docs/archive/
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># Potentially merge/archive</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="c1"># (Review before moving)</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>mv<span class="w"> </span>BUILD_ISSUES.md<span class="w"> </span>docs/archive/<span class="w">  </span><span class="c1"># Merge into CLAUDE.md first?</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>mv<span class="w"> </span>LUCI_DEVELOPMENT_REFERENCE.md<span class="w"> </span>docs/archive/<span class="w">  </span><span class="c1"># External reference</span>
+</code></pre></div>
+<p><strong>Create Archive README:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="gh"># docs/archive/README.md</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="gh"># Documentation Archive</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>This directory contains historical and completed documentation.
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="gu">## Contents</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="k">-</span><span class="w"> </span><span class="gs">**COMPLETION_REPORT.md**</span> - Project completion report (2025-12-26)
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="k">-</span><span class="w"> </span><span class="gs">**MODULE-ENABLE-DISABLE-DESIGN.md**</span> - Design document for enable/disable feature
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="k">-</span><span class="w"> </span><span class="gs">**BUILD_ISSUES.md**</span> - Historical build issues (merged into CLAUDE.md)
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="k">-</span><span class="w"> </span><span class="gs">**LUCI_DEVELOPMENT_REFERENCE.md**</span> - External LuCI development reference
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="gu">## Active Documentation</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>For current documentation, see the root directory or [<span class="nt">DOCUMENTATION-INDEX.md</span>](<span class="na">../DOCUMENTATION-INDEX.md</span>)
+</code></pre></div></p>
+<p><strong>Acceptance Criteria:</strong>
+- ✅ Archive directory created
+- ✅ Historical docs moved
+- ✅ Archive README exists
+- ✅ DOCUMENTATION-INDEX updated</p>
+<hr />
+<h2 id="short-term-actions-this-month">Short-term Actions (This Month)<a class="headerlink" href="#short-term-actions-this-month" title="Permanent link">&para;</a></h2>
+<h3 id="priority-medium-effort-medium-impact-high">Priority: 🟡 MEDIUM | Effort: ⚡⚡ Medium | Impact: 🎯 High<a class="headerlink" href="#priority-medium-effort-medium-impact-high" title="Permanent link">&para;</a></h3>
+<h3 id="4-add-architecture-diagrams">4. Add Architecture Diagrams<a class="headerlink" href="#4-add-architecture-diagrams" title="Permanent link">&para;</a></h3>
+<p><strong>Status:</strong> ⬜ Not Started
+<strong>Assignee:</strong> <em>TBD</em>
+<strong>Estimated Time:</strong> 3-4 hours</p>
+<p><strong>Problem:</strong>
+- No visual documentation
+- Complex architecture hard to understand from text alone
+- New contributors need visual reference</p>
+<p><strong>Action Items:</strong>
+- [ ] Create architecture diagram (RPCD ↔ ubus ↔ JavaScript flow)
+- [ ] Create deployment workflow flowchart
+- [ ] Create component hierarchy diagram
+- [ ] Add UI component examples with screenshots</p>
+<p><strong>Diagrams to Create:</strong></p>
+<h4 id="41-system-architecture-diagram">4.1. System Architecture Diagram<a class="headerlink" href="#41-system-architecture-diagram" title="Permanent link">&para;</a></h4>
+<p><strong>Location:</strong> DEVELOPMENT-GUIDELINES.md §2 or new ARCHITECTURE.md</p>
+<pre class="mermaid"><code>graph TB
+    subgraph "Browser"
+        UI[JavaScript View&lt;br/&gt;overview.js]
+        API[API Module&lt;br/&gt;api.js]
+    end
+
+    subgraph "LuCI Framework"
+        RPC[RPC Layer&lt;br/&gt;L.rpc]
+        UHTTPD[uhttpd&lt;br/&gt;Web Server]
+    end
+
+    subgraph "Backend"
+        RPCD[RPCD Daemon]
+        SCRIPT[RPCD Script&lt;br/&gt;luci.module-name]
+        UBUS[ubus]
+    end
+
+    subgraph "System"
+        UCI[UCI Config]
+        SYS[System Services]
+    end
+
+    UI --&gt;|API calls| API
+    API --&gt;|RPC declare| RPC
+    RPC --&gt;|HTTP/JSON| UHTTPD
+    UHTTPD --&gt;|Call method| RPCD
+    RPCD --&gt;|Execute| SCRIPT
+    SCRIPT --&gt;|ubus call| UBUS
+    UBUS --&gt;|Read/Write| UCI
+    UBUS --&gt;|Control| SYS
+
+    style UI fill:#6366f1,color:#fff
+    style API fill:#8b5cf6,color:#fff
+    style SCRIPT fill:#22c55e,color:#fff</code></pre>
+<h4 id="42-deployment-workflow-diagram">4.2. Deployment Workflow Diagram<a class="headerlink" href="#42-deployment-workflow-diagram" title="Permanent link">&para;</a></h4>
+<p><strong>Location:</strong> DEVELOPMENT-GUIDELINES.md §9</p>
+<pre class="mermaid"><code>flowchart TD
+    START([Start Deployment]) --&gt; CHECK1{Disk Space&lt;br/&gt;&lt; 90%?}
+    CHECK1 --&gt;|No| CLEAN[Clean Temp Files]
+    CLEAN --&gt; CHECK1
+    CHECK1 --&gt;|Yes| COPY[Copy Files to Router]
+
+    COPY --&gt; FIX[Fix Permissions&lt;br/&gt;755 RPCD / 644 CSS-JS]
+    FIX --&gt; CACHE[Clear LuCI Cache]
+    CACHE --&gt; RESTART[Restart Services&lt;br/&gt;rpcd + uhttpd]
+
+    RESTART --&gt; VERIFY{Verify}
+    VERIFY --&gt;|ubus list| CHECK2{Object Found?}
+    CHECK2 --&gt;|No| DEBUG1[Debug RPCD&lt;br/&gt;Check naming]
+    DEBUG1 --&gt; FIX
+
+    CHECK2 --&gt;|Yes| CHECK3{Files Accessible?}
+    CHECK3 --&gt;|403 Error| DEBUG2[Fix Permissions&lt;br/&gt;chmod 644]
+    DEBUG2 --&gt; FIX
+
+    CHECK3 --&gt;|Yes| CHECK4{UI Loads?}
+    CHECK4 --&gt;|404 Error| DEBUG3[Fix Menu Path]
+    DEBUG3 --&gt; COPY
+
+    CHECK4 --&gt;|Yes| SUCCESS([✅ Success])
+
+    style START fill:#6366f1,color:#fff
+    style SUCCESS fill:#22c55e,color:#fff
+    style DEBUG1 fill:#ef4444,color:#fff
+    style DEBUG2 fill:#ef4444,color:#fff
+    style DEBUG3 fill:#ef4444,color:#fff</code></pre>
+<h4 id="43-component-hierarchy-diagram">4.3. Component Hierarchy Diagram<a class="headerlink" href="#43-component-hierarchy-diagram" title="Permanent link">&para;</a></h4>
+<p><strong>Location:</strong> DEVELOPMENT-GUIDELINES.md §1 (Design System)</p>
+<pre class="mermaid"><code>graph TB
+    PAGE[Page Container] --&gt; HEADER[sh-page-header]
+    PAGE --&gt; CONTENT[sh-content]
+
+    HEADER --&gt; TITLE[sh-page-title&lt;br/&gt;+ gradient]
+    HEADER --&gt; SUBTITLE[sh-page-subtitle]
+    HEADER --&gt; STATS[sh-stats-grid]
+
+    STATS --&gt; BADGE1[sh-stat-badge]
+    STATS --&gt; BADGE2[sh-stat-badge]
+
+    BADGE1 --&gt; VALUE[sh-stat-value&lt;br/&gt;monospace]
+    BADGE1 --&gt; LABEL[sh-stat-label&lt;br/&gt;uppercase]
+
+    CONTENT --&gt; CARD1[sh-card]
+    CONTENT --&gt; CARD2[sh-card]
+
+    CARD1 --&gt; CARD_HEADER[sh-card-header]
+    CARD1 --&gt; CARD_BODY[sh-card-body]
+
+    CARD_HEADER --&gt; CARD_TITLE[sh-card-title]
+    CARD_TITLE --&gt; ICON[sh-card-title-icon]
+
+    style PAGE fill:#0a0a0f,color:#fafafa,stroke:#6366f1
+    style HEADER fill:#12121a,color:#fafafa,stroke:#6366f1
+    style CARD1 fill:#12121a,color:#fafafa,stroke:#22c55e</code></pre>
+<p><strong>Acceptance Criteria:</strong>
+- ✅ 3+ Mermaid diagrams added
+- ✅ Diagrams render correctly on GitHub
+- ✅ Diagrams included in relevant doc sections
+- ✅ Alt text provided for accessibility</p>
+<hr />
+<h3 id="5-create-missing-documentation-guides">5. Create Missing Documentation Guides<a class="headerlink" href="#5-create-missing-documentation-guides" title="Permanent link">&para;</a></h3>
+<p><strong>Status:</strong> ⬜ Not Started
+<strong>Assignee:</strong> <em>TBD</em>
+<strong>Estimated Time:</strong> 6-8 hours</p>
+<p><strong>Problem:</strong>
+- Testing practices not documented
+- Security best practices missing
+- Performance optimization not covered</p>
+<h4 id="51-create-testingmd">5.1. Create TESTING.md<a class="headerlink" href="#51-create-testingmd" title="Permanent link">&para;</a></h4>
+<p><strong>Status:</strong> ⬜ Not Started
+<strong>Estimated Time:</strong> 2-3 hours</p>
+<p><strong>Outline:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="gh"># SecuBox Testing Guide</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="gu">## 1. Testing Philosophy</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="k">-</span><span class="w"> </span>Unit tests for RPCD scripts
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="k">-</span><span class="w"> </span>Integration tests for API modules
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="k">-</span><span class="w"> </span>E2E tests for UI workflows
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="k">-</span><span class="w"> </span>Manual testing checklist
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="gu">## 2. RPCD Script Testing</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="k">-</span><span class="w"> </span>Test JSON output validity
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="k">-</span><span class="w"> </span>Test error handling
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="k">-</span><span class="w"> </span>Test edge cases
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="k">-</span><span class="w"> </span>Mock ubus calls
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a><span class="gu">## 3. JavaScript Testing</span>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="k">-</span><span class="w"> </span>Test API modules
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="k">-</span><span class="w"> </span>Test view rendering
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="k">-</span><span class="w"> </span>Test event handlers
+<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a><span class="k">-</span><span class="w"> </span>Browser console checks
+<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>
+<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="gu">## 4. Integration Testing</span>
+<a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="k">-</span><span class="w"> </span>Test RPCD ↔ JavaScript flow
+<a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a><span class="k">-</span><span class="w"> </span>Test UCI config read/write
+<a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a><span class="k">-</span><span class="w"> </span>Test service restarts
+<a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a><span class="k">-</span><span class="w"> </span>Test permission scenarios
+<a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>
+<a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a><span class="gu">## 5. UI Testing</span>
+<a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a><span class="k">-</span><span class="w"> </span>Manual testing checklist
+<a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a><span class="k">-</span><span class="w"> </span>Browser compatibility
+<a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a><span class="k">-</span><span class="w"> </span>Responsive design verification
+<a id="__codelineno-7-31" name="__codelineno-7-31" href="#__codelineno-7-31"></a><span class="k">-</span><span class="w"> </span>Dark/Light mode verification
+<a id="__codelineno-7-32" name="__codelineno-7-32" href="#__codelineno-7-32"></a>
+<a id="__codelineno-7-33" name="__codelineno-7-33" href="#__codelineno-7-33"></a><span class="gu">## 6. Automated Testing</span>
+<a id="__codelineno-7-34" name="__codelineno-7-34" href="#__codelineno-7-34"></a><span class="k">-</span><span class="w"> </span>GitHub Actions integration
+<a id="__codelineno-7-35" name="__codelineno-7-35" href="#__codelineno-7-35"></a><span class="k">-</span><span class="w"> </span>Pre-commit hooks
+<a id="__codelineno-7-36" name="__codelineno-7-36" href="#__codelineno-7-36"></a><span class="k">-</span><span class="w"> </span>CI/CD test workflows
+<a id="__codelineno-7-37" name="__codelineno-7-37" href="#__codelineno-7-37"></a><span class="k">-</span><span class="w"> </span>Test coverage reporting
+<a id="__codelineno-7-38" name="__codelineno-7-38" href="#__codelineno-7-38"></a>
+<a id="__codelineno-7-39" name="__codelineno-7-39" href="#__codelineno-7-39"></a><span class="gu">## 7. Testing Tools</span>
+<a id="__codelineno-7-40" name="__codelineno-7-40" href="#__codelineno-7-40"></a><span class="k">-</span><span class="w"> </span>shellcheck for RPCD
+<a id="__codelineno-7-41" name="__codelineno-7-41" href="#__codelineno-7-41"></a><span class="k">-</span><span class="w"> </span>jsonlint for JSON
+<a id="__codelineno-7-42" name="__codelineno-7-42" href="#__codelineno-7-42"></a><span class="k">-</span><span class="w"> </span>Browser DevTools
+<a id="__codelineno-7-43" name="__codelineno-7-43" href="#__codelineno-7-43"></a><span class="k">-</span><span class="w"> </span>curl for API testing
+</code></pre></div></p>
+<p><strong>Action Items:</strong>
+- [ ] Write TESTING.md (follow outline above)
+- [ ] Add test examples for RPCD scripts
+- [ ] Add test examples for JavaScript
+- [ ] Document testing workflow
+- [ ] Add to DOCUMENTATION-INDEX.md</p>
+<h4 id="52-create-securitymd">5.2. Create SECURITY.md<a class="headerlink" href="#52-create-securitymd" title="Permanent link">&para;</a></h4>
+<p><strong>Status:</strong> ⬜ Not Started
+<strong>Estimated Time:</strong> 2-3 hours</p>
+<p><strong>Outline:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="gh"># SecuBox Security Guide</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="gu">## 1. Security Principles</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="k">-</span><span class="w"> </span>Least privilege
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="k">-</span><span class="w"> </span>Input validation
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="k">-</span><span class="w"> </span>Output sanitization
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="k">-</span><span class="w"> </span>Secure defaults
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="gu">## 2. RPCD Security</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="k">-</span><span class="w"> </span>Input validation in shell scripts
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="k">-</span><span class="w"> </span>Command injection prevention
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="k">-</span><span class="w"> </span>JSON injection prevention
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="k">-</span><span class="w"> </span>File permission security (755 vs 644)
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="gu">## 3. ACL Security</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="k">-</span><span class="w"> </span>Minimal permissions
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="k">-</span><span class="w"> </span>Read vs Write separation
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="k">-</span><span class="w"> </span>User group management
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="k">-</span><span class="w"> </span>Permission auditing
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="gu">## 4. JavaScript Security</span>
+<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a><span class="k">-</span><span class="w"> </span>XSS prevention
+<a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a><span class="k">-</span><span class="w"> </span>CSRF protection
+<a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a><span class="k">-</span><span class="w"> </span>Input sanitization
+<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a><span class="k">-</span><span class="w"> </span>Safe DOM manipulation
+<a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a>
+<a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a><span class="gu">## 5. Common Vulnerabilities</span>
+<a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a><span class="k">-</span><span class="w"> </span>Command injection (shell scripts)
+<a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a><span class="k">-</span><span class="w"> </span>Path traversal
+<a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a><span class="k">-</span><span class="w"> </span>Unsafe eval()
+<a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a><span class="k">-</span><span class="w"> </span>Hardcoded credentials
+<a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a>
+<a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a><span class="gu">## 6. Security Checklist</span>
+<a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a><span class="k">-</span><span class="w"> </span>Pre-deployment security review
+<a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a><span class="k">-</span><span class="w"> </span>ACL validation
+<a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a><span class="k">-</span><span class="w"> </span>Permission audit
+<a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a><span class="k">-</span><span class="w"> </span>Credential management
+<a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a>
+<a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a><span class="gu">## 7. Incident Response</span>
+<a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a><span class="k">-</span><span class="w"> </span>Security issue reporting
+<a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a><span class="k">-</span><span class="w"> </span>Patch procedures
+<a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a><span class="k">-</span><span class="w"> </span>Rollback procedures
+</code></pre></div></p>
+<p><strong>Action Items:</strong>
+- [ ] Write SECURITY.md (follow outline above)
+- [ ] Add security examples (good vs bad)
+- [ ] Document security review process
+- [ ] Add to DOCUMENTATION-INDEX.md</p>
+<h4 id="53-create-performancemd">5.3. Create PERFORMANCE.md<a class="headerlink" href="#53-create-performancemd" title="Permanent link">&para;</a></h4>
+<p><strong>Status:</strong> ⬜ Not Started
+<strong>Estimated Time:</strong> 2 hours</p>
+<p><strong>Outline:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="gh"># SecuBox Performance Guide</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="gu">## 1. Performance Goals</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="k">-</span><span class="w"> </span>Page load &lt; 2s
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="k">-</span><span class="w"> </span>API response &lt; 500ms
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="k">-</span><span class="w"> </span>Smooth animations (60fps)
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="k">-</span><span class="w"> </span>Minimal memory footprint
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="gu">## 2. RPCD Optimization</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="k">-</span><span class="w"> </span>Efficient shell scripting
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="k">-</span><span class="w"> </span>Caching strategies
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="k">-</span><span class="w"> </span>Avoid expensive operations
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="k">-</span><span class="w"> </span>Optimize JSON generation
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="gu">## 3. JavaScript Optimization</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="k">-</span><span class="w"> </span>Minimize DOM manipulation
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a><span class="k">-</span><span class="w"> </span>Debounce/throttle events
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="k">-</span><span class="w"> </span>Efficient polling
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="k">-</span><span class="w"> </span>Code splitting
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a><span class="gu">## 4. CSS Optimization</span>
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="k">-</span><span class="w"> </span>Minimize repaints
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a><span class="k">-</span><span class="w"> </span>Use CSS variables
+<a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a><span class="k">-</span><span class="w"> </span>Optimize animations
+<a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a><span class="k">-</span><span class="w"> </span>Reduce specificity
+<a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a>
+<a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a><span class="gu">## 5. Network Optimization</span>
+<a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a><span class="k">-</span><span class="w"> </span>Minimize API calls
+<a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a><span class="k">-</span><span class="w"> </span>Batch requests
+<a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a><span class="k">-</span><span class="w"> </span>Cache static assets
+<a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a><span class="k">-</span><span class="w"> </span>Compress responses
+<a id="__codelineno-9-32" name="__codelineno-9-32" href="#__codelineno-9-32"></a>
+<a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a><span class="gu">## 6. Profiling &amp; Monitoring</span>
+<a id="__codelineno-9-34" name="__codelineno-9-34" href="#__codelineno-9-34"></a><span class="k">-</span><span class="w"> </span>Browser DevTools profiling
+<a id="__codelineno-9-35" name="__codelineno-9-35" href="#__codelineno-9-35"></a><span class="k">-</span><span class="w"> </span>Network tab analysis
+<a id="__codelineno-9-36" name="__codelineno-9-36" href="#__codelineno-9-36"></a><span class="k">-</span><span class="w"> </span>Memory profiling
+<a id="__codelineno-9-37" name="__codelineno-9-37" href="#__codelineno-9-37"></a><span class="k">-</span><span class="w"> </span>Performance metrics
+<a id="__codelineno-9-38" name="__codelineno-9-38" href="#__codelineno-9-38"></a>
+<a id="__codelineno-9-39" name="__codelineno-9-39" href="#__codelineno-9-39"></a><span class="gu">## 7. Common Performance Issues</span>
+<a id="__codelineno-9-40" name="__codelineno-9-40" href="#__codelineno-9-40"></a><span class="k">-</span><span class="w"> </span>Excessive polling
+<a id="__codelineno-9-41" name="__codelineno-9-41" href="#__codelineno-9-41"></a><span class="k">-</span><span class="w"> </span>Memory leaks
+<a id="__codelineno-9-42" name="__codelineno-9-42" href="#__codelineno-9-42"></a><span class="k">-</span><span class="w"> </span>Inefficient selectors
+<a id="__codelineno-9-43" name="__codelineno-9-43" href="#__codelineno-9-43"></a><span class="k">-</span><span class="w"> </span>Large payloads
+</code></pre></div></p>
+<p><strong>Action Items:</strong>
+- [ ] Write PERFORMANCE.md (follow outline above)
+- [ ] Add performance benchmarks
+- [ ] Document profiling tools
+- [ ] Add to DOCUMENTATION-INDEX.md</p>
+<p><strong>Acceptance Criteria:</strong>
+- ✅ TESTING.md created and complete
+- ✅ SECURITY.md created and complete
+- ✅ PERFORMANCE.md created and complete
+- ✅ All added to DOCUMENTATION-INDEX.md
+- ✅ Cross-references added to existing docs</p>
+<hr />
+<h3 id="6-consolidate-validation-documentation">6. Consolidate Validation Documentation<a class="headerlink" href="#6-consolidate-validation-documentation" title="Permanent link">&para;</a></h3>
+<p><strong>Status:</strong> ⬜ Not Started
+<strong>Assignee:</strong> <em>TBD</em>
+<strong>Estimated Time:</strong> 2 hours</p>
+<p><strong>Problem:</strong>
+- Validation content duplicated across multiple docs
+- VALIDATION-GUIDE.md (495 lines) overlaps with DEVELOPMENT-GUIDELINES §8
+- PERMISSIONS-GUIDE.md (229 lines) overlaps with DEVELOPMENT-GUIDELINES §8.2</p>
+<p><strong>Strategy: Single Source + Quick References</strong></p>
+<h4 id="61-update-development-guidelinesmd">6.1. Update DEVELOPMENT-GUIDELINES.md<a class="headerlink" href="#61-update-development-guidelinesmd" title="Permanent link">&para;</a></h4>
+<p><strong>Action Items:</strong>
+- [ ] Expand §8 "Validation Checklist" with content from VALIDATION-GUIDE.md
+- [ ] Ensure all 7 validation checks documented
+- [ ] Add validation script usage examples
+- [ ] Mark as "Complete Reference"</p>
+<h4 id="62-convert-validation-guidemd-to-quick-reference">6.2. Convert VALIDATION-GUIDE.md to Quick Reference<a class="headerlink" href="#62-convert-validation-guidemd-to-quick-reference" title="Permanent link">&para;</a></h4>
+<p><strong>Action Items:</strong>
+- [ ] Reduce to ~200 lines (quick command reference)
+- [ ] Add prominent link to DEVELOPMENT-GUIDELINES §8
+- [ ] Keep command examples only
+- [ ] Remove detailed explanations (link to main guide)</p>
+<p><strong>New Structure:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="gh"># Validation Quick Reference</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="k">&gt; </span><span class="ge">**📚 Complete Guide:** [DEVELOPMENT-GUIDELINES.md §8](development-guidelines.md#validation-checklist)</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="gu">## Quick Commands</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="gu">### Run All Checks</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>```bash
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>./secubox-tools/validate-modules.sh
+</code></pre></div></p>
+<h3 id="individual-checks">Individual Checks<a class="headerlink" href="#individual-checks" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Check 1: RPCD naming</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="c1"># Check 2: Menu paths</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="c1"># ...</span>
+</code></pre></div>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Detailed validation guide: [DEVELOPMENT-GUIDELINES.md §8]</li>
+<li>Pre-commit checklist: [DEVELOPMENT-GUIDELINES.md §8.1]</li>
+<li>Post-deploy checklist: [DEVELOPMENT-GUIDELINES.md §8.3]
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>#### 6.3. Convert PERMISSIONS-GUIDE.md to Quick Reference
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>**Action Items:**
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>- [ ] Reduce to ~150 lines
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>- [ ] Add prominent link to DEVELOPMENT-GUIDELINES §9.2
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>- [ ] Keep quick fixes only
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>- [ ] Emphasize automated fix script
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>**New Structure:**
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>```markdown
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a># Permissions Quick Reference
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>&gt; **📚 Complete Guide:** [DEVELOPMENT-GUIDELINES.md §9](development-guidelines.md#deployment-procedures)
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>## Quick Fix (Automated)
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>```bash
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a># Local (before commit)
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>./secubox-tools/fix-permissions.sh --local
+<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>
+<a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a># Remote (after deploy)
+<a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a>./secubox-tools/fix-permissions.sh --remote
+</code></pre></div></li>
+</ul>
+<h2 id="manual-fix">Manual Fix<a class="headerlink" href="#manual-fix" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># RPCD = 755</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>chmod<span class="w"> </span><span class="m">755</span><span class="w"> </span>/usr/libexec/rpcd/luci.*
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="c1"># CSS/JS = 644</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>chmod<span class="w"> </span><span class="m">644</span><span class="w"> </span>/www/luci-static/resources/**/*.<span class="o">{</span>css,js<span class="o">}</span>
+</code></pre></div>
+<h2 id="see-also_1">See Also<a class="headerlink" href="#see-also_1" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Complete deployment guide: [DEVELOPMENT-GUIDELINES.md §9]</li>
+<li>Permission validation: [DEVELOPMENT-GUIDELINES.md §8.2]
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>**Acceptance Criteria:**
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>- ✅ DEVELOPMENT-GUIDELINES §8 is complete reference
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>- ✅ VALIDATION-GUIDE reduced to ~200 lines
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>- ✅ PERMISSIONS-GUIDE reduced to ~150 lines
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>- ✅ All quick references link to main guide
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>- ✅ No content loss (moved to main guide)
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>---
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>### 7. Add UI Component Examples
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>**Status:** ⬜ Not Started
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>**Assignee:** _TBD_
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>**Estimated Time:** 3 hours
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>
+<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>**Problem:**
+<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>- Design system documented but no visual examples
+<a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>- Hard to understand component appearance from CSS alone
+<a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a>- No screenshot reference for contributors
+<a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a>
+<a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>**Action Items:**
+<a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a>- [ ] Create `docs/images/` directory
+<a id="__codelineno-14-23" name="__codelineno-14-23" href="#__codelineno-14-23"></a>- [ ] Take screenshots of key UI components
+<a id="__codelineno-14-24" name="__codelineno-14-24" href="#__codelineno-14-24"></a>- [ ] Add to DEVELOPMENT-GUIDELINES §1
+<a id="__codelineno-14-25" name="__codelineno-14-25" href="#__codelineno-14-25"></a>- [ ] Create visual component library page
+<a id="__codelineno-14-26" name="__codelineno-14-26" href="#__codelineno-14-26"></a>
+<a id="__codelineno-14-27" name="__codelineno-14-27" href="#__codelineno-14-27"></a>**Screenshots Needed:**
+<a id="__codelineno-14-28" name="__codelineno-14-28" href="#__codelineno-14-28"></a>
+<a id="__codelineno-14-29" name="__codelineno-14-29" href="#__codelineno-14-29"></a>- `docs/images/components/page-header-light.png`
+<a id="__codelineno-14-30" name="__codelineno-14-30" href="#__codelineno-14-30"></a>- `docs/images/components/page-header-dark.png`
+<a id="__codelineno-14-31" name="__codelineno-14-31" href="#__codelineno-14-31"></a>- `docs/images/components/stat-badges.png`
+<a id="__codelineno-14-32" name="__codelineno-14-32" href="#__codelineno-14-32"></a>- `docs/images/components/card-gradient-border.png`
+<a id="__codelineno-14-33" name="__codelineno-14-33" href="#__codelineno-14-33"></a>- `docs/images/components/card-success-border.png`
+<a id="__codelineno-14-34" name="__codelineno-14-34" href="#__codelineno-14-34"></a>- `docs/images/components/buttons-all-variants.png`
+<a id="__codelineno-14-35" name="__codelineno-14-35" href="#__codelineno-14-35"></a>- `docs/images/components/filter-tabs-active.png`
+<a id="__codelineno-14-36" name="__codelineno-14-36" href="#__codelineno-14-36"></a>- `docs/images/components/nav-tabs-sticky.png`
+<a id="__codelineno-14-37" name="__codelineno-14-37" href="#__codelineno-14-37"></a>- `docs/images/components/grid-layouts.png`
+<a id="__codelineno-14-38" name="__codelineno-14-38" href="#__codelineno-14-38"></a>- `docs/images/components/dark-light-comparison.png`
+<a id="__codelineno-14-39" name="__codelineno-14-39" href="#__codelineno-14-39"></a>
+<a id="__codelineno-14-40" name="__codelineno-14-40" href="#__codelineno-14-40"></a>**Add to DEVELOPMENT-GUIDELINES.md:** Once screenshots exist, embed them directly in §1 (component patterns) with short captions describing required styles and grid behavior.
+<a id="__codelineno-14-41" name="__codelineno-14-41" href="#__codelineno-14-41"></a>
+<a id="__codelineno-14-42" name="__codelineno-14-42" href="#__codelineno-14-42"></a>**Optional: Interactive Component Library**
+<a id="__codelineno-14-43" name="__codelineno-14-43" href="#__codelineno-14-43"></a>
+<a id="__codelineno-14-44" name="__codelineno-14-44" href="#__codelineno-14-44"></a>Create `docs/components/index.html` - Interactive showcase:
+<a id="__codelineno-14-45" name="__codelineno-14-45" href="#__codelineno-14-45"></a>- Live examples of all components
+<a id="__codelineno-14-46" name="__codelineno-14-46" href="#__codelineno-14-46"></a>- Code snippets
+<a id="__codelineno-14-47" name="__codelineno-14-47" href="#__codelineno-14-47"></a>- Dark/Light mode toggle
+<a id="__codelineno-14-48" name="__codelineno-14-48" href="#__codelineno-14-48"></a>- Responsive preview
+<a id="__codelineno-14-49" name="__codelineno-14-49" href="#__codelineno-14-49"></a>
+<a id="__codelineno-14-50" name="__codelineno-14-50" href="#__codelineno-14-50"></a>**Acceptance Criteria:**
+<a id="__codelineno-14-51" name="__codelineno-14-51" href="#__codelineno-14-51"></a>- ✅ 10+ component screenshots added
+<a id="__codelineno-14-52" name="__codelineno-14-52" href="#__codelineno-14-52"></a>- ✅ Images added to relevant doc sections
+<a id="__codelineno-14-53" name="__codelineno-14-53" href="#__codelineno-14-53"></a>- ✅ Dark and light mode examples
+<a id="__codelineno-14-54" name="__codelineno-14-54" href="#__codelineno-14-54"></a>- ✅ Responsive examples included
+<a id="__codelineno-14-55" name="__codelineno-14-55" href="#__codelineno-14-55"></a>
+<a id="__codelineno-14-56" name="__codelineno-14-56" href="#__codelineno-14-56"></a>---
+<a id="__codelineno-14-57" name="__codelineno-14-57" href="#__codelineno-14-57"></a>
+<a id="__codelineno-14-58" name="__codelineno-14-58" href="#__codelineno-14-58"></a>&lt;div id=&quot;long-term-actions-this-quarter&quot;&gt;&lt;/div&gt;
+<a id="__codelineno-14-59" name="__codelineno-14-59" href="#__codelineno-14-59"></a>## Long-term Actions (This Quarter) {#long-term-actions-this-quarter}
+<a id="__codelineno-14-60" name="__codelineno-14-60" href="#__codelineno-14-60"></a>
+<a id="__codelineno-14-61" name="__codelineno-14-61" href="#__codelineno-14-61"></a>### Priority: 🟢 LOW | Effort: ⚡⚡⚡ High | Impact: 🎯 Medium
+<a id="__codelineno-14-62" name="__codelineno-14-62" href="#__codelineno-14-62"></a>
+<a id="__codelineno-14-63" name="__codelineno-14-63" href="#__codelineno-14-63"></a>### 8. Documentation Automation
+<a id="__codelineno-14-64" name="__codelineno-14-64" href="#__codelineno-14-64"></a>
+<a id="__codelineno-14-65" name="__codelineno-14-65" href="#__codelineno-14-65"></a>**Status:** ⬜ Not Started
+<a id="__codelineno-14-66" name="__codelineno-14-66" href="#__codelineno-14-66"></a>**Assignee:** _TBD_
+<a id="__codelineno-14-67" name="__codelineno-14-67" href="#__codelineno-14-67"></a>**Estimated Time:** 8-12 hours
+<a id="__codelineno-14-68" name="__codelineno-14-68" href="#__codelineno-14-68"></a>
+<a id="__codelineno-14-69" name="__codelineno-14-69" href="#__codelineno-14-69"></a>#### 8.1. Version Synchronization Script
+<a id="__codelineno-14-70" name="__codelineno-14-70" href="#__codelineno-14-70"></a>
+<a id="__codelineno-14-71" name="__codelineno-14-71" href="#__codelineno-14-71"></a>**Problem:** Manual version updates error-prone
+<a id="__codelineno-14-72" name="__codelineno-14-72" href="#__codelineno-14-72"></a>
+<a id="__codelineno-14-73" name="__codelineno-14-73" href="#__codelineno-14-73"></a>**Create:** `scripts/sync-doc-versions.sh`
+<a id="__codelineno-14-74" name="__codelineno-14-74" href="#__codelineno-14-74"></a>
+<a id="__codelineno-14-75" name="__codelineno-14-75" href="#__codelineno-14-75"></a>```bash
+<a id="__codelineno-14-76" name="__codelineno-14-76" href="#__codelineno-14-76"></a>#!/bin/bash
+<a id="__codelineno-14-77" name="__codelineno-14-77" href="#__codelineno-14-77"></a># Sync documentation versions
+<a id="__codelineno-14-78" name="__codelineno-14-78" href="#__codelineno-14-78"></a>
+<a id="__codelineno-14-79" name="__codelineno-14-79" href="#__codelineno-14-79"></a>VERSION=${1:-&quot;1.0.0&quot;}
+<a id="__codelineno-14-80" name="__codelineno-14-80" href="#__codelineno-14-80"></a>DATE=$(date +%Y-%m-%d)
+<a id="__codelineno-14-81" name="__codelineno-14-81" href="#__codelineno-14-81"></a>
+<a id="__codelineno-14-82" name="__codelineno-14-82" href="#__codelineno-14-82"></a>echo &quot;Syncing docs to version $VERSION (date: $DATE)&quot;
+<a id="__codelineno-14-83" name="__codelineno-14-83" href="#__codelineno-14-83"></a>
+<a id="__codelineno-14-84" name="__codelineno-14-84" href="#__codelineno-14-84"></a># Update all markdown files
+<a id="__codelineno-14-85" name="__codelineno-14-85" href="#__codelineno-14-85"></a>find . -maxdepth 1 -name &quot;*.md&quot; -type f | while read -r file; do
+<a id="__codelineno-14-86" name="__codelineno-14-86" href="#__codelineno-14-86"></a>    if grep -q &quot;^**Version:**&quot; &quot;$file&quot;; then
+<a id="__codelineno-14-87" name="__codelineno-14-87" href="#__codelineno-14-87"></a>        sed -i &quot;s/^\*\*Version:\*\*.*/\*\*Version:\*\* $VERSION/&quot; &quot;$file&quot;
+<a id="__codelineno-14-88" name="__codelineno-14-88" href="#__codelineno-14-88"></a>        sed -i &quot;s/^\*\*Last Updated:\*\*.*/\*\*Last Updated:\*\* $DATE/&quot; &quot;$file&quot;
+<a id="__codelineno-14-89" name="__codelineno-14-89" href="#__codelineno-14-89"></a>        echo &quot;✓ Updated $file&quot;
+<a id="__codelineno-14-90" name="__codelineno-14-90" href="#__codelineno-14-90"></a>    fi
+<a id="__codelineno-14-91" name="__codelineno-14-91" href="#__codelineno-14-91"></a>done
+</code></pre></div></li>
+</ul>
+<p><strong>Action Items:</strong>
+- [ ] Create version sync script
+- [ ] Add to pre-release checklist
+- [ ] Document in DOCUMENTATION-INDEX.md</p>
+<h4 id="82-stale-content-detection">8.2. Stale Content Detection<a class="headerlink" href="#82-stale-content-detection" title="Permanent link">&para;</a></h4>
+<p><strong>Problem:</strong> No way to detect outdated documentation</p>
+<p><strong>Create:</strong> <code>scripts/check-stale-docs.sh</code></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="ch">#!/bin/bash</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="c1"># Check for stale documentation</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="nv">WARN_DAYS</span><span class="o">=</span><span class="m">90</span><span class="w">  </span><span class="c1"># Warn if not updated in 90 days</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="nv">ERROR_DAYS</span><span class="o">=</span><span class="m">180</span><span class="w">  </span><span class="c1"># Error if not updated in 180 days</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>find<span class="w"> </span>.<span class="w"> </span>-maxdepth<span class="w"> </span><span class="m">1</span><span class="w"> </span>-name<span class="w"> </span><span class="s2">&quot;*.md&quot;</span><span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="nb">read</span><span class="w"> </span>-r<span class="w"> </span>file<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">    </span><span class="c1"># Extract date from file</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">    </span><span class="nv">date_str</span><span class="o">=</span><span class="k">$(</span>grep<span class="w"> </span><span class="s2">&quot;Last Updated:&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$file</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-oP<span class="w"> </span><span class="s1">&#39;\d{4}-\d{2}-\d{2}&#39;</span><span class="k">)</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$date_str</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="w">        </span><span class="c1"># Calculate age</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="w">        </span><span class="nv">age_days</span><span class="o">=</span><span class="k">$((</span><span class="w"> </span><span class="o">(</span><span class="k">$(</span>date<span class="w"> </span>+%s<span class="k">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">$(</span>date<span class="w"> </span>-d<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$date_str</span><span class="s2">&quot;</span><span class="w"> </span>+%s<span class="k">)</span><span class="o">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="m">86400</span><span class="w"> </span><span class="k">))</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>
+<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="nv">$age_days</span><span class="w"> </span>-gt<span class="w"> </span><span class="nv">$ERROR_DAYS</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a><span class="w">            </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;❌ </span><span class="nv">$file</span><span class="s2"> is </span><span class="nv">$age_days</span><span class="s2"> days old (&gt;</span><span class="nv">$ERROR_DAYS</span><span class="s2">)&quot;</span>
+<a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a><span class="w">        </span><span class="k">elif</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="nv">$age_days</span><span class="w"> </span>-gt<span class="w"> </span><span class="nv">$WARN_DAYS</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a><span class="w">            </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;⚠️  </span><span class="nv">$file</span><span class="s2"> is </span><span class="nv">$age_days</span><span class="s2"> days old (&gt;</span><span class="nv">$WARN_DAYS</span><span class="s2">)&quot;</span>
+<a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a><span class="w">        </span><span class="k">fi</span>
+<a id="__codelineno-15-20" name="__codelineno-15-20" href="#__codelineno-15-20"></a><span class="w">    </span><span class="k">fi</span>
+<a id="__codelineno-15-21" name="__codelineno-15-21" href="#__codelineno-15-21"></a><span class="k">done</span>
+</code></pre></div>
+<p><strong>Action Items:</strong>
+- [ ] Create stale content detector
+- [ ] Add to CI/CD pipeline
+- [ ] Set up monthly review reminders</p>
+<h4 id="83-auto-generate-api-documentation">8.3. Auto-generate API Documentation<a class="headerlink" href="#83-auto-generate-api-documentation" title="Permanent link">&para;</a></h4>
+<p><strong>Problem:</strong> API documentation manually maintained</p>
+<p><strong>Tools to Evaluate:</strong>
+- JSDoc for JavaScript
+- ShellDoc for shell scripts
+- Custom script for RPCD methods</p>
+<p><strong>Action Items:</strong>
+- [ ] Evaluate documentation generators
+- [ ] Create API doc generation script
+- [ ] Integrate into build process
+- [ ] Add to CI/CD</p>
+<p><strong>Acceptance Criteria:</strong>
+- ✅ Version sync script working
+- ✅ Stale content detection in CI
+- ✅ API docs auto-generated from code</p>
+<hr />
+<h3 id="9-interactive-documentation">9. Interactive Documentation<a class="headerlink" href="#9-interactive-documentation" title="Permanent link">&para;</a></h3>
+<p><strong>Status:</strong> ⬜ Not Started
+<strong>Assignee:</strong> <em>TBD</em>
+<strong>Estimated Time:</strong> 12-16 hours</p>
+<h4 id="91-searchable-documentation-site">9.1. Searchable Documentation Site<a class="headerlink" href="#91-searchable-documentation-site" title="Permanent link">&para;</a></h4>
+<p><strong>Options:</strong>
+- GitHub Pages with mkdocs
+- Docusaurus
+- VuePress
+- Custom static site</p>
+<p><strong>Features:</strong>
+- Full-text search
+- Version selector
+- Dark/Light theme
+- Mobile-responsive
+- Table of contents sidebar</p>
+<p><strong>Action Items:</strong>
+- [ ] Evaluate documentation frameworks
+- [ ] Choose platform (recommend: mkdocs-material)
+- [ ] Configure and deploy
+- [ ] Set up automatic deployment</p>
+<h4 id="92-interactive-code-examples">9.2. Interactive Code Examples<a class="headerlink" href="#92-interactive-code-examples" title="Permanent link">&para;</a></h4>
+<p><strong>Features:</strong>
+- Live code editor (CodePen/JSFiddle embeds)
+- Component playground
+- RPCD JSON validator
+- CSS variable playground</p>
+<p><strong>Action Items:</strong>
+- [ ] Create interactive examples for key components
+- [ ] Embed in documentation site
+- [ ] Add to CODE-TEMPLATES.md</p>
+<h4 id="93-video-tutorials">9.3. Video Tutorials<a class="headerlink" href="#93-video-tutorials" title="Permanent link">&para;</a></h4>
+<p><strong>Topics:</strong>
+- Getting started (10 min)
+- Creating a new module (20 min)
+- Debugging common errors (15 min)
+- Deployment workflow (10 min)</p>
+<p><strong>Action Items:</strong>
+- [ ] Script video content
+- [ ] Record screencasts
+- [ ] Host on YouTube
+- [ ] Embed in docs</p>
+<p><strong>Acceptance Criteria:</strong>
+- ✅ Documentation site deployed
+- ✅ Full-text search working
+- ✅ 5+ interactive examples
+- ✅ 2+ video tutorials</p>
+<hr />
+<h3 id="10-internationalization">10. Internationalization<a class="headerlink" href="#10-internationalization" title="Permanent link">&para;</a></h3>
+<p><strong>Status:</strong> ⬜ Not Started
+<strong>Assignee:</strong> <em>TBD</em>
+<strong>Estimated Time:</strong> 20+ hours</p>
+<p><strong>Problem:</strong>
+- Current docs mix French and English
+- DEVELOPMENT-GUIDELINES mostly French
+- Other docs mostly English</p>
+<p><strong>Decision Required:</strong>
+- Option A: English-only (translate French sections)
+- Option B: Bilingual (full French + English versions)
+- Option C: As-is (mixed, target French developers)</p>
+<p><strong>If Option A (English-only):</strong>
+- [ ] Translate DEVELOPMENT-GUIDELINES to English
+- [ ] Standardize all docs in English
+- [ ] Keep French in code comments only</p>
+<p><strong>If Option B (Bilingual):</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>docs/
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>├── en/
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>│   ├── DEVELOPMENT-GUIDELINES.md
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>│   ├── QUICK-START.md
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>│   └── ...
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>└── fr/
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>    ├── DEVELOPMENT-GUIDELINES.md
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    ├── QUICK-START.md
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>    └── ...
+</code></pre></div></p>
+<p><strong>Action Items:</strong>
+- [ ] Decide on i18n strategy
+- [ ] Document decision in DOCUMENTATION-INDEX.md
+- [ ] Implement chosen strategy
+- [ ] Set up translation maintenance process</p>
+<p><strong>Acceptance Criteria:</strong>
+- ✅ Language strategy documented
+- ✅ Consistent language use across docs
+- ✅ Navigation supports chosen approach</p>
+<hr />
+<h2 id="optional-enhancements">Optional Enhancements<a class="headerlink" href="#optional-enhancements" title="Permanent link">&para;</a></h2>
+<h3 id="priority-nice-to-have-effort-variable-impact-low-medium">Priority: 🔵 NICE-TO-HAVE | Effort: Variable | Impact: 🎯 Low-Medium<a class="headerlink" href="#priority-nice-to-have-effort-variable-impact-low-medium" title="Permanent link">&para;</a></h3>
+<h3 id="11-documentation-quality-metrics">11. Documentation Quality Metrics<a class="headerlink" href="#11-documentation-quality-metrics" title="Permanent link">&para;</a></h3>
+<p><strong>Tools:</strong>
+- Vale (prose linter)
+- markdownlint (markdown linter)
+- write-good (writing style checker)</p>
+<p><strong>Action Items:</strong>
+- [ ] Set up automated linting
+- [ ] Configure style guide (Microsoft, Google, or custom)
+- [ ] Add to CI/CD
+- [ ] Fix existing issues</p>
+<hr />
+<h3 id="12-contributor-onboarding-guide">12. Contributor Onboarding Guide<a class="headerlink" href="#12-contributor-onboarding-guide" title="Permanent link">&para;</a></h3>
+<p><strong>Create:</strong> <code>CONTRIBUTING.md</code></p>
+<p><strong>Sections:</strong>
+- How to contribute
+- Code of conduct
+- Documentation standards
+- PR process
+- Review guidelines</p>
+<hr />
+<h3 id="13-faq-document">13. FAQ Document<a class="headerlink" href="#13-faq-document" title="Permanent link">&para;</a></h3>
+<p><strong>Create:</strong> <code>FAQ.md</code></p>
+<p><strong>Sections:</strong>
+- Common questions from DEVELOPMENT-GUIDELINES §7
+- Troubleshooting quick links
+- Best practices summary</p>
+<hr />
+<h3 id="14-changelog">14. Changelog<a class="headerlink" href="#14-changelog" title="Permanent link">&para;</a></h3>
+<p><strong>Create:</strong> <code>CHANGELOG.md</code></p>
+<p>Track documentation changes:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="gh"># Changelog</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="gu">## [1.1.0] - 2025-XX-XX</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="gu">### Added</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="k">-</span><span class="w"> </span>TESTING.md - Complete testing guide
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="k">-</span><span class="w"> </span>SECURITY.md - Security best practices
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="k">-</span><span class="w"> </span>Architecture diagrams
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="gu">### Changed</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="k">-</span><span class="w"> </span>VALIDATION-GUIDE.md - Reduced to quick reference
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="k">-</span><span class="w"> </span>DEVELOPMENT-GUIDELINES.md - Expanded validation section
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a><span class="gu">### Removed</span>
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a><span class="k">-</span><span class="w"> </span>COMPLETION_REPORT.md - Moved to docs/archive/
+</code></pre></div></p>
+<hr />
+<h2 id="tracking-metrics">Tracking &amp; Metrics<a class="headerlink" href="#tracking-metrics" title="Permanent link">&para;</a></h2>
+<h3 id="success-metrics">Success Metrics<a class="headerlink" href="#success-metrics" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Current</th>
+<th>Target</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Documentation Coverage</strong></td>
+<td>90%</td>
+<td>95%</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td><strong>Average Document Age</strong></td>
+<td>&lt;30 days</td>
+<td>&lt;60 days</td>
+<td>🟢</td>
+</tr>
+<tr>
+<td><strong>Cross-Reference Density</strong></td>
+<td>Low</td>
+<td>High</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td><strong>Visual Documentation</strong></td>
+<td>0%</td>
+<td>30%</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td><strong>User Satisfaction</strong></td>
+<td>N/A</td>
+<td>4.5/5</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<h3 id="progress-tracking">Progress Tracking<a class="headerlink" href="#progress-tracking" title="Permanent link">&para;</a></h3>
+<p><strong>Immediate (Week 1):</strong>
+- [ ] Task 1: Version standardization (30 min)
+- [ ] Task 2: Cross-references (1 hr)
+- [ ] Task 3: Archive historical docs (15 min)</p>
+<p><strong>Progress:</strong> 0/3 (0%)</p>
+<p><strong>Short-term (Month 1):</strong>
+- [ ] Task 4: Architecture diagrams (4 hrs)
+- [ ] Task 5.1: TESTING.md (3 hrs)
+- [ ] Task 5.2: SECURITY.md (3 hrs)
+- [ ] Task 5.3: PERFORMANCE.md (2 hrs)
+- [ ] Task 6: Consolidate validation docs (2 hrs)
+- [ ] Task 7: UI component examples (3 hrs)</p>
+<p><strong>Progress:</strong> 0/6 (0%)</p>
+<p><strong>Long-term (Quarter 1):</strong>
+- [ ] Task 8: Documentation automation (12 hrs)
+- [ ] Task 9: Interactive documentation (16 hrs)
+- [ ] Task 10: Internationalization (20 hrs)</p>
+<p><strong>Progress:</strong> 0/3 (0%)</p>
+<h3 id="review-schedule">Review Schedule<a class="headerlink" href="#review-schedule" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Review Type</th>
+<th>Frequency</th>
+<th>Next Review</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Quick Review</strong></td>
+<td>Weekly</td>
+<td>TBD</td>
+</tr>
+<tr>
+<td><strong>Deep Review</strong></td>
+<td>Monthly</td>
+<td>TBD</td>
+</tr>
+<tr>
+<td><strong>Audit</strong></td>
+<td>Quarterly</td>
+<td>TBD</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="notes-decisions">Notes &amp; Decisions<a class="headerlink" href="#notes-decisions" title="Permanent link">&para;</a></h2>
+<h3 id="decision-log">Decision Log<a class="headerlink" href="#decision-log" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Decision</th>
+<th>Rationale</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2025-12-28</td>
+<td>Keep current redundancy model</td>
+<td>Standalone usability important</td>
+<td>✅ Accepted</td>
+</tr>
+<tr>
+<td>TBD</td>
+<td>I18n strategy (EN/FR/Mixed)</td>
+<td>Pending stakeholder input</td>
+<td>⏳ Pending</td>
+</tr>
+<tr>
+<td>TBD</td>
+<td>Documentation site platform</td>
+<td>Pending evaluation</td>
+<td>⏳ Pending</td>
+</tr>
+</tbody>
+</table>
+<h3 id="risks-concerns">Risks &amp; Concerns<a class="headerlink" href="#risks-concerns" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Maintenance Burden:</strong> More docs = more maintenance</li>
+<li>
+<p>Mitigation: Automation (Task 8)</p>
+</li>
+<li>
+<p><strong>Translation Cost:</strong> Bilingual docs double the effort</p>
+</li>
+<li>
+<p>Mitigation: Choose English-only or use translation tools</p>
+</li>
+<li>
+<p><strong>Diagram Maintenance:</strong> Diagrams can become outdated</p>
+</li>
+<li>Mitigation: Generate from code where possible</li>
+</ol>
+<h3 id="dependencies">Dependencies<a class="headerlink" href="#dependencies" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>External:</strong> GitHub Pages (if chosen for doc site)</li>
+<li><strong>Internal:</strong> secubox-tools scripts must be stable</li>
+<li><strong>Human:</strong> Technical writer for video tutorials (optional)</li>
+</ul>
+<hr />
+<h2 id="quick-start-guide-using-this-todo">Quick Start Guide (Using This TODO)<a class="headerlink" href="#quick-start-guide-using-this-todo" title="Permanent link">&para;</a></h2>
+<h3 id="for-immediate-action">For Immediate Action:<a class="headerlink" href="#for-immediate-action" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># 1. Start with immediate tasks</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="c1"># Complete tasks 1-3 this week (2 hours total)</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="c1"># 2. Review and prioritize short-term</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="c1"># Schedule 4-7 over next month</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="c1"># 3. Plan long-term initiatives</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="c1"># Quarterly planning for 8-10</span>
+</code></pre></div>
+<h3 id="for-project-management">For Project Management:<a class="headerlink" href="#for-project-management" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Copy tasks to GitHub Issues/Projects</li>
+<li>Assign owners</li>
+<li>Set deadlines</li>
+<li>Track in Kanban board</li>
+</ul>
+<h3 id="for-progress-updates">For Progress Updates:<a class="headerlink" href="#for-progress-updates" title="Permanent link">&para;</a></h3>
+<p>Update this file weekly:
+- Check off completed items: <code>- [x]</code>
+- Update progress percentages
+- Add notes to decision log</p>
+<hr />
+<p><strong>Last Updated:</strong> 2025-12-28
+<strong>Next Review:</strong> TBD
+<strong>Owner:</strong> TBD
+<strong>Status:</strong> 📋 Active Planning</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/gkerma/secubox-openwrt" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://secubox.cybermood.eu" target="_blank" rel="noopener" title="secubox.cybermood.eu" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M351.9 280H161c2.9 64.5 17.2 123.9 37.5 167.4 11.4 24.5 23.7 41.8 35.1 52.4 11.2 10.5 18.9 12.2 22.9 12.2s11.7-1.7 22.9-12.2c11.4-10.6 23.7-28 35.1-52.4 20.3-43.5 34.6-102.9 37.5-167.4zm-191-48h190.9c-2.8-64.5-17.1-123.9-37.4-167.4-11.4-24.4-23.7-41.8-35.1-52.4C268.1 1.7 260.4 0 256.4 0s-11.7 1.7-22.9 12.2c-11.4 10.6-23.7 28-35.1 52.4-20.3 43.5-34.6 102.9-37.5 167.4m-48 0c3.5-85.6 25.6-165.1 57.9-217.3C78.7 47.3 10.9 131.2 1.5 232zM1.5 280c9.4 100.8 77.2 184.7 169.3 217.3-32.3-52.2-54.4-131.7-57.9-217.3zm398.4 0c-3.5 85.6-25.6 165.1-57.9 217.3 92.1-32.7 159.9-116.5 169.3-217.3zm111.4-48C501.9 131.2 434.1 47.3 342 14.7c32.3 52.2 54.4 131.7 57.9 217.3z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

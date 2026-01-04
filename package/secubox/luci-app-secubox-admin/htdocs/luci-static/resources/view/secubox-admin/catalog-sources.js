@@ -2,34 +2,70 @@
 'require view';
 'require secubox-admin.api as API';
 'require secubox-admin.components as Components';
+'require secubox-admin.data-utils as DataUtils';
 'require ui';
 'require poll';
 
 return view.extend({
 	load: function() {
-		console.log('[CATALOG-SOURCES] Loading data...');
+		console.log('[CATALOG-SOURCES-DEBUG] ========== LOAD START ==========');
+
+		var getSourcesPromise = API.getCatalogSources().then(function(result) {
+			console.log('[CATALOG-SOURCES-DEBUG] getCatalogSources() raw result:', result);
+			console.log('[CATALOG-SOURCES-DEBUG] getCatalogSources() result type:', typeof result);
+			console.log('[CATALOG-SOURCES-DEBUG] getCatalogSources() keys:', Object.keys(result || {}));
+			console.log('[CATALOG-SOURCES-DEBUG] getCatalogSources() sources:', result.sources);
+			return { sources: DataUtils.normalizeSources(result) };
+		}).catch(function(err) {
+			console.error('[CATALOG-SOURCES-DEBUG] getCatalogSources() ERROR:', err);
+			console.error('[CATALOG-SOURCES-DEBUG] Error message:', err.message);
+			console.error('[CATALOG-SOURCES-DEBUG] Error stack:', err.stack);
+			return { sources: [] };
+		});
+
+		var checkUpdatesPromise = API.checkUpdates().then(function(result) {
+			console.log('[CATALOG-SOURCES-DEBUG] checkUpdates() raw result:', result);
+			return DataUtils.normalizeUpdates(result);
+		}).catch(function(err) {
+			console.error('[CATALOG-SOURCES-DEBUG] checkUpdates() ERROR:', err);
+			return { updates: [], total_updates_available: 0 };
+		});
+
 		return Promise.all([
-			L.resolveDefault(API.getCatalogSources(), { sources: [] }),
-			L.resolveDefault(API.checkUpdates(), { updates: [], total_updates_available: 0 })
+			L.resolveDefault(getSourcesPromise, { sources: [] }),
+			L.resolveDefault(checkUpdatesPromise, { updates: [], total_updates_available: 0 })
 		]).then(function(results) {
-			console.log('[CATALOG-SOURCES] Data loaded:', {
-				sources: results[0],
-				updates: results[1]
-			});
+			console.log('[CATALOG-SOURCES-DEBUG] ========== ALL PROMISES RESOLVED ==========');
+			console.log('[CATALOG-SOURCES-DEBUG] Result[0] (sources):', results[0]);
+			console.log('[CATALOG-SOURCES-DEBUG] Result[1] (updates):', results[1]);
+			console.log('[CATALOG-SOURCES-DEBUG] ========== LOAD COMPLETE ==========');
 			return results;
 		}).catch(function(err) {
-			console.error('[CATALOG-SOURCES] Load error:', err);
+			console.error('[CATALOG-SOURCES-DEBUG] ========== PROMISE.ALL ERROR ==========');
+			console.error('[CATALOG-SOURCES-DEBUG] Error:', err);
 			return [{ sources: [] }, { updates: [], total_updates_available: 0 }];
 		});
 	},
 
 	render: function(data) {
-		console.log('[CATALOG-SOURCES] Rendering with data:', data);
-		var sources = data[0].sources || [];
-		var updateInfo = data[1];
+		console.log('[CATALOG-SOURCES-DEBUG] ========== RENDER START ==========');
+		console.log('[CATALOG-SOURCES-DEBUG] Render data (raw):', data);
+		console.log('[CATALOG-SOURCES-DEBUG] Render data type:', typeof data);
+		console.log('[CATALOG-SOURCES-DEBUG] Render data length:', data ? data.length : 'null');
+
+		var sources = DataUtils.normalizeSources(data[0]);
+		var updateInfo = DataUtils.normalizeUpdates(data[1]);
 		var self = this;
 
-		console.log('[CATALOG-SOURCES] Sources count:', sources.length);
+		if (!sources.length) {
+			console.log('[CATALOG-SOURCES-DEBUG] No sources returned, injecting defaults');
+			sources = this.getDefaultSources();
+		}
+
+		console.log('[CATALOG-SOURCES-DEBUG] sources array:', sources);
+		console.log('[CATALOG-SOURCES-DEBUG] sources count:', sources.length);
+		console.log('[CATALOG-SOURCES-DEBUG] updateInfo:', updateInfo);
+		console.log('[CATALOG-SOURCES-DEBUG] ========== RENDER PROCESSING ==========');
 
 		var activeSource = sources.filter(function(s) { return s.active; })[0];
 		var enabledCount = sources.filter(function(s) { return s.enabled; }).length;
@@ -140,21 +176,49 @@ return view.extend({
 			console.log('[CATALOG-SOURCES] Polling for updates...');
 			return API.getCatalogSources().then(function(result) {
 				var sourcesContainer = document.getElementById('sources-container');
-				if (sourcesContainer && result.sources) {
-					console.log('[CATALOG-SOURCES] Poll update:', result.sources.length, 'sources');
+				var normalized = DataUtils.normalizeSources(result);
+				if (sourcesContainer) {
+					console.log('[CATALOG-SOURCES] Poll update:', normalized.length, 'sources');
 					sourcesContainer.innerHTML = '';
-					result.sources
-						.sort(function(a, b) { return a.priority - b.priority; })
-						.forEach(function(source) {
-							sourcesContainer.appendChild(self.renderSourceCard(source));
-						});
+					if (normalized.length) {
+						normalized
+							.sort(function(a, b) { return a.priority - b.priority; })
+							.forEach(function(source) {
+								sourcesContainer.appendChild(self.renderSourceCard(source));
+							});
+					}
 				}
 			}).catch(function(err) {
 				console.error('[CATALOG-SOURCES] Poll error:', err);
 			});
 		}, 30);
 
-		return container;
+			return container;
+	},
+
+	getDefaultSources: function() {
+		return [
+			{
+				name: 'github',
+				display_name: 'GitHub Catalog',
+				type: 'remote',
+				url: 'https://raw.githubusercontent.com/CyberMind-FR/secubox-openwrt/refs/heads/master/package/secubox/secubox-core/root/usr/share/secubox/catalog.json',
+				priority: 1,
+				enabled: true,
+				active: true,
+				status: 'default'
+			},
+			{
+				name: 'embedded',
+				display_name: 'Embedded Catalog',
+				type: 'embedded',
+				path: '/usr/share/secubox/catalog.json',
+				priority: 999,
+				enabled: true,
+				active: false,
+				status: 'default'
+			}
+		];
 	},
 
 	renderSourceCard: function(source) {

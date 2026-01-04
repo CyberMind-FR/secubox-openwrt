@@ -2,19 +2,20 @@
 'require view';
 'require secubox-admin.api as API';
 'require secubox-admin.components as Components';
+'require secubox-admin.data-utils as DataUtils';
 'require ui';
 
 return view.extend({
 	load: function() {
 		return Promise.all([
-			L.resolveDefault(API.getApps(), { apps: [] }),
-			L.resolveDefault(API.getModules(), { modules: {} })
+			L.resolveDefault(API.getApps(), []),
+			L.resolveDefault(API.getModules(), {})
 		]);
 	},
 
 	render: function(data) {
-		var apps = data[0].apps || [];
-		var modules = data[1].modules || {};
+		var apps = DataUtils.normalizeApps(data[0]);
+		var modules = DataUtils.normalizeModules(data[1]);
 		var self = this;
 
 		// Filter to only show installed apps

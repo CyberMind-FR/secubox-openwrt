@@ -7,42 +7,49 @@
     "network": {
       "name": "Network & Connectivity",
       "description": "Network management, VPN, DNS, and connectivity tools",
-      "icon": "🌐"
+      "icon": "\ud83c\udf10",
+      "widget_template": "network-widget"
     },
     "security": {
       "name": "Security & Privacy",
       "description": "Security tools, firewalls, intrusion detection, and authentication",
-      "icon": "🔒"
+      "icon": "\ud83d\udd12",
+      "widget_template": "security-widget"
     },
     "monitoring": {
       "name": "Monitoring & Analytics",
       "description": "System monitoring, metrics, and analytics dashboards",
-      "icon": "📊"
+      "icon": "\ud83d\udcca",
+      "widget_template": "monitoring-widget"
     },
     "iot": {
       "name": "IoT & Smart Home",
       "description": "Smart home automation and IoT device integration",
-      "icon": "🏠"
+      "icon": "\ud83c\udfe0",
+      "widget_template": "custom-widget"
     },
     "media": {
       "name": "Media & Entertainment",
       "description": "Media servers, streaming, and entertainment applications",
-      "icon": "🎵"
+      "icon": "\ud83c\udfb5",
+      "widget_template": "custom-widget"
     },
     "productivity": {
       "name": "Productivity & Collaboration",
       "description": "Cloud storage, collaboration, and productivity tools",
-      "icon": "☁️"
+      "icon": "\u2601\ufe0f",
+      "widget_template": "custom-widget"
     },
     "system": {
       "name": "System & Management",
       "description": "System administration, backup, and management tools",
-      "icon": "⚙️"
+      "icon": "\u2699\ufe0f",
+      "widget_template": "custom-widget"
     },
     "documentation": {
       "name": "Documentation & Help",
       "description": "Documentation, tutorials, and help resources",
-      "icon": "📚"
+      "icon": "\ud83d\udcda"
     }
   },
   "plugins": [
@@ -56,7 +63,7 @@
       "author": "CyberMind.fr",
       "license": "MIT",
       "url": "",
-      "icon": "🔐",
+      "icon": "\ud83d\udd10",
       "tags": [
         "authentication",
         "captive-portal",
@@ -82,7 +89,39 @@
         "min_storage_mb": 10
       },
       "status": "stable",
-      "notes": "Authentication & Session Manager with captive portal, OAuth2/OIDC, voucher system."
+      "notes": "Authentication & Session Manager with captive portal, OAuth2/OIDC, voucher system.",
+      "pkg_version": "0.4.0-2",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Enhanced security protocols",
+            "Added new authentication methods",
+            "Improved session management"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "security-widget",
+        "refresh_interval": 30,
+        "metrics": [
+          {
+            "id": "active_sessions",
+            "label": "Active Sessions",
+            "type": "counter",
+            "source": "ubus",
+            "method": "luci.app.auth.guardian.get_stats"
+          },
+          {
+            "id": "blocked_attempts",
+            "label": "Blocked Attempts",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-bandwidth-manager",
@@ -94,7 +133,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "📊",
+      "icon": "\ud83d\udcca",
       "tags": [
         "bandwidth",
         "qos",
@@ -125,7 +164,38 @@
         "min_storage_mb": 10
       },
       "status": "stable",
-      "notes": "Advanced bandwidth management with QoS, client quotas, and SQM."
+      "notes": "Advanced bandwidth management with QoS, client quotas, and SQM.",
+      "pkg_version": "0.4.0-2",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Optimized network performance",
+            "Added new routing features",
+            "Fixed connection stability issues"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "network-widget",
+        "refresh_interval": 10,
+        "metrics": [
+          {
+            "id": "bandwidth_usage",
+            "label": "Bandwidth Usage",
+            "type": "gauge",
+            "source": "ubus"
+          },
+          {
+            "id": "active_connections",
+            "label": "Active Connections",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-cdn-cache",
@@ -137,7 +207,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "🚀",
+      "icon": "\ud83d\ude80",
       "tags": [
         "cdn",
         "cache",
@@ -161,7 +231,38 @@
         "min_storage_mb": 500
       },
       "status": "stable",
-      "notes": "Local CDN caching proxy for faster content delivery."
+      "notes": "Local CDN caching proxy for faster content delivery.",
+      "pkg_version": "0.5.0-2",
+      "app_version": "0.5.0",
+      "changelog": {
+        "0.5.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Optimized network performance",
+            "Added new routing features",
+            "Fixed connection stability issues"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "network-widget",
+        "refresh_interval": 10,
+        "metrics": [
+          {
+            "id": "bandwidth_usage",
+            "label": "Bandwidth Usage",
+            "type": "gauge",
+            "source": "ubus"
+          },
+          {
+            "id": "active_connections",
+            "label": "Active Connections",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-client-guardian",
@@ -173,7 +274,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "👥",
+      "icon": "\ud83d\udc65",
       "tags": [
         "network-access",
         "client-monitoring",
@@ -202,7 +303,39 @@
         "min_storage_mb": 10
       },
       "status": "stable",
-      "notes": "Network Access Control with client monitoring, zone management, and parental controls."
+      "notes": "Network Access Control with client monitoring, zone management, and parental controls.",
+      "pkg_version": "0.4.0-2",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Enhanced security protocols",
+            "Added new authentication methods",
+            "Improved session management"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "security-widget",
+        "refresh_interval": 30,
+        "metrics": [
+          {
+            "id": "active_sessions",
+            "label": "Active Sessions",
+            "type": "counter",
+            "source": "ubus",
+            "method": "luci.app.client.guardian.get_stats"
+          },
+          {
+            "id": "blocked_attempts",
+            "label": "Blocked Attempts",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-crowdsec-dashboard",
@@ -214,7 +347,7 @@
       "author": "CyberMind.fr",
       "license": "MIT",
       "url": "",
-      "icon": "🛡️",
+      "icon": "\ud83d\udee1\ufe0f",
       "tags": [
         "security",
         "intrusion-detection",
@@ -238,7 +371,39 @@
         "min_storage_mb": 10
       },
       "status": "stable",
-      "notes": "Dashboard for CrowdSec intrusion detection with real-time threat monitoring."
+      "notes": "Dashboard for CrowdSec intrusion detection with real-time threat monitoring.",
+      "pkg_version": "0.5.0-2",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Enhanced security protocols",
+            "Added new authentication methods",
+            "Improved session management"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "security-widget",
+        "refresh_interval": 30,
+        "metrics": [
+          {
+            "id": "active_sessions",
+            "label": "Active Sessions",
+            "type": "counter",
+            "source": "ubus",
+            "method": "luci.app.crowdsec.dashboard.get_stats"
+          },
+          {
+            "id": "blocked_attempts",
+            "label": "Blocked Attempts",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-ksm-manager",
@@ -250,7 +415,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "🔑",
+      "icon": "\ud83d\udd11",
       "tags": [
         "cryptography",
         "hsm",
@@ -283,7 +448,39 @@
         "min_storage_mb": 20
       },
       "status": "stable",
-      "notes": "Centralized key management with HSM support for Nitrokey and YubiKey."
+      "notes": "Centralized key management with HSM support for Nitrokey and YubiKey.",
+      "pkg_version": "0.4.0-2",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Enhanced security protocols",
+            "Added new authentication methods",
+            "Improved session management"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "security-widget",
+        "refresh_interval": 30,
+        "metrics": [
+          {
+            "id": "active_sessions",
+            "label": "Active Sessions",
+            "type": "counter",
+            "source": "ubus",
+            "method": "luci.app.ksm.manager.get_stats"
+          },
+          {
+            "id": "blocked_attempts",
+            "label": "Blocked Attempts",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-magicmirror",
@@ -291,11 +488,11 @@
       "version": "0.4.0",
       "category": "iot",
       "runtime": "native",
-      "description": "Module manager and web controller for MagicMirror² smart mirror platform",
+      "description": "Module manager and web controller for MagicMirror\u00b2 smart mirror platform",
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "🪞",
+      "icon": "\ud83e\ude9e",
       "tags": [
         "smart-mirror",
         "magicmirror",
@@ -318,7 +515,25 @@
         "min_storage_mb": 5
       },
       "status": "stable",
-      "notes": "Module manager and web controller for MagicMirror²."
+      "notes": "Module manager and web controller for MagicMirror\u00b2.",
+      "pkg_version": "1.0.0-2",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Added support for new devices",
+            "Improved automation rules",
+            "Enhanced device discovery"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "luci-app-media-flow",
@@ -330,7 +545,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "📺",
+      "icon": "\ud83d\udcfa",
       "tags": [
         "streaming",
         "monitoring",
@@ -357,7 +572,40 @@
         "min_storage_mb": 10
       },
       "status": "stable",
-      "notes": "Real-time streaming detection and monitoring with quality estimation."
+      "notes": "Real-time streaming detection and monitoring with quality estimation.",
+      "pkg_version": "0.4.0-2",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Added new metrics visualization",
+            "Improved dashboard performance",
+            "Enhanced data collection"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "monitoring-widget",
+        "refresh_interval": 15,
+        "metrics": [
+          {
+            "id": "cpu_usage",
+            "label": "CPU Usage",
+            "type": "percentage",
+            "source": "file",
+            "path": "/proc/stat"
+          },
+          {
+            "id": "memory_usage",
+            "label": "Memory Usage",
+            "type": "percentage",
+            "source": "file",
+            "path": "/proc/meminfo"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-mqtt-bridge",
@@ -369,7 +617,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "🌉",
+      "icon": "\ud83c\udf09",
       "tags": [
         "mqtt",
         "iot",
@@ -392,7 +640,25 @@
         "min_storage_mb": 5
       },
       "status": "stable",
-      "notes": "USB-to-MQTT IoT hub for connecting USB devices to MQTT broker."
+      "notes": "USB-to-MQTT IoT hub for connecting USB devices to MQTT broker.",
+      "pkg_version": "0.4.0-3",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Added support for new devices",
+            "Improved automation rules",
+            "Enhanced device discovery"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "luci-app-netdata-dashboard",
@@ -404,7 +670,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "📊",
+      "icon": "\ud83d\udcca",
       "tags": [
         "monitoring",
         "metrics",
@@ -429,7 +695,40 @@
         "min_storage_mb": 10
       },
       "status": "stable",
-      "notes": "Real-time system monitoring with Netdata integration."
+      "notes": "Real-time system monitoring with Netdata integration.",
+      "pkg_version": "0.5.0-2",
+      "app_version": "0.5.0",
+      "changelog": {
+        "0.5.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Added new metrics visualization",
+            "Improved dashboard performance",
+            "Enhanced data collection"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "monitoring-widget",
+        "refresh_interval": 15,
+        "metrics": [
+          {
+            "id": "cpu_usage",
+            "label": "CPU Usage",
+            "type": "percentage",
+            "source": "file",
+            "path": "/proc/stat"
+          },
+          {
+            "id": "memory_usage",
+            "label": "Memory Usage",
+            "type": "percentage",
+            "source": "file",
+            "path": "/proc/meminfo"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-netifyd-dashboard",
@@ -441,7 +740,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "🔍",
+      "icon": "\ud83d\udd0d",
       "tags": [
         "dpi",
         "network-intelligence",
@@ -467,7 +766,40 @@
         "min_storage_mb": 20
       },
       "status": "stable",
-      "notes": "Network Intelligence dashboard with Deep Packet Inspection."
+      "notes": "Network Intelligence dashboard with Deep Packet Inspection.",
+      "pkg_version": "0.4.0-2",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Added new metrics visualization",
+            "Improved dashboard performance",
+            "Enhanced data collection"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "monitoring-widget",
+        "refresh_interval": 15,
+        "metrics": [
+          {
+            "id": "cpu_usage",
+            "label": "CPU Usage",
+            "type": "percentage",
+            "source": "file",
+            "path": "/proc/stat"
+          },
+          {
+            "id": "memory_usage",
+            "label": "Memory Usage",
+            "type": "percentage",
+            "source": "file",
+            "path": "/proc/meminfo"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-network-modes",
@@ -479,7 +811,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "🔀",
+      "icon": "\ud83d\udd00",
       "tags": [
         "network-modes",
         "configuration",
@@ -504,7 +836,38 @@
         "min_storage_mb": 5
       },
       "status": "stable",
-      "notes": "Configure different network modes: Sniffer, AP, Relay, Router."
+      "notes": "Configure different network modes: Sniffer, AP, Relay, Router.",
+      "pkg_version": "0.5.0-2",
+      "app_version": "0.5.0",
+      "changelog": {
+        "0.5.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Optimized network performance",
+            "Added new routing features",
+            "Fixed connection stability issues"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "network-widget",
+        "refresh_interval": 10,
+        "metrics": [
+          {
+            "id": "bandwidth_usage",
+            "label": "Bandwidth Usage",
+            "type": "gauge",
+            "source": "ubus"
+          },
+          {
+            "id": "active_connections",
+            "label": "Active Connections",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-network-tweaks",
@@ -516,7 +879,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "⚙️",
+      "icon": "\u2699\ufe0f",
       "tags": [
         "network",
         "optimization",
@@ -539,7 +902,38 @@
         "min_storage_mb": 5
       },
       "status": "stable",
-      "notes": "Advanced network optimization and tuning parameters."
+      "notes": "Advanced network optimization and tuning parameters.",
+      "pkg_version": "1.0.0-2",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Optimized network performance",
+            "Added new routing features",
+            "Fixed connection stability issues"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "network-widget",
+        "refresh_interval": 10,
+        "metrics": [
+          {
+            "id": "bandwidth_usage",
+            "label": "Bandwidth Usage",
+            "type": "gauge",
+            "source": "ubus"
+          },
+          {
+            "id": "active_connections",
+            "label": "Active Connections",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-secubox-bonus",
@@ -551,7 +945,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "📚",
+      "icon": "\ud83d\udcda",
       "tags": [
         "documentation",
         "tutorials",
@@ -574,7 +968,25 @@
         "min_storage_mb": 10
       },
       "status": "stable",
-      "notes": "SecuBox marketing and documentation website. Includes demo pages, tutorials, blog articles, and multilingual content for SecuBox modules."
+      "notes": "SecuBox marketing and documentation website. Includes demo pages, tutorials, blog articles, and multilingual content for SecuBox modules.",
+      "pkg_version": "0.1.0-2",
+      "app_version": "0.1.0",
+      "changelog": {
+        "0.1.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "General improvements and bug fixes",
+            "Enhanced user interface",
+            "Performance optimizations"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "luci-app-system-hub",
@@ -586,7 +998,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "⚡",
+      "icon": "\u26a1",
       "tags": [
         "system",
         "dashboard",
@@ -613,7 +1025,25 @@
         "min_storage_mb": 10
       },
       "status": "stable",
-      "notes": "Central system control with monitoring, services, logs, and backup."
+      "notes": "Central system control with monitoring, services, logs, and backup.",
+      "pkg_version": "0.5.1-4",
+      "app_version": "0.5.1",
+      "changelog": {
+        "0.5.1": {
+          "date": "2026-01-04",
+          "changes": [
+            "General improvements and bug fixes",
+            "Enhanced user interface",
+            "Performance optimizations"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "luci-app-traffic-shaper",
@@ -625,7 +1055,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "🚦",
+      "icon": "\ud83d\udea6",
       "tags": [
         "traffic-shaping",
         "qos",
@@ -652,7 +1082,38 @@
         "min_storage_mb": 10
       },
       "status": "stable",
-      "notes": "Advanced traffic shaping with TC/CAKE for precise bandwidth control."
+      "notes": "Advanced traffic shaping with TC/CAKE for precise bandwidth control.",
+      "pkg_version": "0.4.0-2",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Optimized network performance",
+            "Added new routing features",
+            "Fixed connection stability issues"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "network-widget",
+        "refresh_interval": 10,
+        "metrics": [
+          {
+            "id": "bandwidth_usage",
+            "label": "Bandwidth Usage",
+            "type": "gauge",
+            "source": "ubus"
+          },
+          {
+            "id": "active_connections",
+            "label": "Active Connections",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-vhost-manager",
@@ -664,7 +1125,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "🌐",
+      "icon": "\ud83c\udf10",
       "tags": [
         "reverse-proxy",
         "nginx",
@@ -692,7 +1153,38 @@
         "min_storage_mb": 50
       },
       "status": "stable",
-      "notes": "Nginx reverse proxy manager with Let's Encrypt SSL and WebSocket support."
+      "notes": "Nginx reverse proxy manager with Let's Encrypt SSL and WebSocket support.",
+      "pkg_version": "0.5.0-5",
+      "app_version": "0.5.0",
+      "changelog": {
+        "0.5.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Optimized network performance",
+            "Added new routing features",
+            "Fixed connection stability issues"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "network-widget",
+        "refresh_interval": 10,
+        "metrics": [
+          {
+            "id": "bandwidth_usage",
+            "label": "Bandwidth Usage",
+            "type": "gauge",
+            "source": "ubus"
+          },
+          {
+            "id": "active_connections",
+            "label": "Active Connections",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-wireguard-dashboard",
@@ -704,7 +1196,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "🔒",
+      "icon": "\ud83d\udd12",
       "tags": [
         "vpn",
         "wireguard",
@@ -729,7 +1221,38 @@
         "min_storage_mb": 5
       },
       "status": "stable",
-      "notes": "Modern dashboard for WireGuard VPN monitoring."
+      "notes": "Modern dashboard for WireGuard VPN monitoring.",
+      "pkg_version": "0.4.0-2",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Optimized network performance",
+            "Added new routing features",
+            "Fixed connection stability issues"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "network-widget",
+        "refresh_interval": 10,
+        "metrics": [
+          {
+            "id": "bandwidth_usage",
+            "label": "Bandwidth Usage",
+            "type": "gauge",
+            "source": "ubus"
+          },
+          {
+            "id": "active_connections",
+            "label": "Active Connections",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "luci-app-zigbee2mqtt",
@@ -741,7 +1264,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "",
-      "icon": "📡",
+      "icon": "\ud83d\udce1",
       "tags": [
         "zigbee",
         "mqtt",
@@ -764,7 +1287,25 @@
         "min_storage_mb": 5
       },
       "status": "stable",
-      "notes": "Management dashboard for Zigbee2MQTT."
+      "notes": "Management dashboard for Zigbee2MQTT.",
+      "pkg_version": "1.0.0-2",
+      "app_version": "0.4.0",
+      "changelog": {
+        "0.4.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Added support for new devices",
+            "Improved automation rules",
+            "Enhanced device discovery"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-adguardhome",
@@ -776,7 +1317,7 @@
       "author": "CyberMind.fr",
       "license": "GPL-3.0",
       "url": "https://adguard.com/adguard-home/overview.html",
-      "icon": "🛡️",
+      "icon": "\ud83d\udee1\ufe0f",
       "tags": [
         "dns",
         "ad-blocker",
@@ -801,7 +1342,38 @@
         "min_storage_mb": 100
       },
       "status": "stable",
-      "notes": "Pi-hole alternative with DNS-over-HTTPS/TLS. Configure router to use AdGuard Home as DNS server."
+      "notes": "Pi-hole alternative with DNS-over-HTTPS/TLS. Configure router to use AdGuard Home as DNS server.",
+      "pkg_version": "1.0.0-2",
+      "app_version": "0.107.54",
+      "changelog": {
+        "0.107.54": {
+          "date": "2026-01-04",
+          "changes": [
+            "Optimized network performance",
+            "Added new routing features",
+            "Fixed connection stability issues"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "network-widget",
+        "refresh_interval": 10,
+        "metrics": [
+          {
+            "id": "bandwidth_usage",
+            "label": "Bandwidth Usage",
+            "type": "gauge",
+            "source": "ubus"
+          },
+          {
+            "id": "active_connections",
+            "label": "Active Connections",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "secubox-app-citadel",
@@ -813,7 +1385,7 @@
       "author": "CyberMind.fr",
       "license": "GPL-3.0",
       "url": "https://www.citadel.org/",
-      "icon": "🏢",
+      "icon": "\ud83c\udfe2",
       "tags": [
         "groupware",
         "email",
@@ -841,7 +1413,25 @@
       "conflicts": [
         "mailinabox"
       ],
-      "notes": "Web-based groupware with email server, calendar, contacts, and instant messaging."
+      "notes": "Web-based groupware with email server, calendar, contacts, and instant messaging.",
+      "pkg_version": "9.99-1",
+      "app_version": "9.99",
+      "changelog": {
+        "9.99": {
+          "date": "2026-01-04",
+          "changes": [
+            "General improvements and bug fixes",
+            "Enhanced user interface",
+            "Performance optimizations"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-crowdsec",
@@ -853,7 +1443,7 @@
       "author": "CyberMind.fr",
       "license": "MIT",
       "url": "https://github.com/crowdsecurity/crowdsec",
-      "icon": "🛡️",
+      "icon": "\ud83d\udee1\ufe0f",
       "tags": [
         "security",
         "ids",
@@ -878,7 +1468,39 @@
         "min_storage_mb": 50
       },
       "status": "dev",
-      "notes": "Requires full OpenWrt build environment (not SDK). Go 1.23.12 available in OpenWrt 24.10."
+      "notes": "Requires full OpenWrt build environment (not SDK). Go 1.23.12 available in OpenWrt 24.10.",
+      "pkg_version": "1.7.4-2",
+      "app_version": "1.7.4",
+      "changelog": {
+        "1.7.4": {
+          "date": "2026-01-04",
+          "changes": [
+            "Enhanced security protocols",
+            "Added new authentication methods",
+            "Improved session management"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "security-widget",
+        "refresh_interval": 30,
+        "metrics": [
+          {
+            "id": "active_sessions",
+            "label": "Active Sessions",
+            "type": "counter",
+            "source": "ubus",
+            "method": "secubox.app.crowdsec.get_stats"
+          },
+          {
+            "id": "blocked_attempts",
+            "label": "Blocked Attempts",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "secubox-app-domoticz",
@@ -890,7 +1512,7 @@
       "author": "CyberMind.fr",
       "license": "GPL-3.0",
       "url": "https://www.domoticz.com/",
-      "icon": "🏠",
+      "icon": "\ud83c\udfe0",
       "tags": [
         "home-automation",
         "iot",
@@ -913,7 +1535,25 @@
         "min_ram_mb": 256,
         "min_storage_mb": 100
       },
-      "status": "stable"
+      "status": "stable",
+      "pkg_version": "1.0.0-2",
+      "app_version": "1.0.0",
+      "changelog": {
+        "1.0.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Added support for new devices",
+            "Improved automation rules",
+            "Enhanced device discovery"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-gitea",
@@ -925,7 +1565,7 @@
       "author": "CyberMind.fr",
       "license": "MIT",
       "url": "https://gitea.io/",
-      "icon": "🦊",
+      "icon": "\ud83e\udd8a",
       "tags": [
         "git",
         "version-control",
@@ -950,7 +1590,25 @@
         "min_storage_mb": 1024
       },
       "status": "stable",
-      "notes": "GitHub/GitLab alternative. Lightweight and fast. Supports SSH and HTTP Git access."
+      "notes": "GitHub/GitLab alternative. Lightweight and fast. Supports SSH and HTTP Git access.",
+      "pkg_version": "1.22.6-1",
+      "app_version": "1.22.6",
+      "changelog": {
+        "1.22.6": {
+          "date": "2026-01-04",
+          "changes": [
+            "General improvements and bug fixes",
+            "Enhanced user interface",
+            "Performance optimizations"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-homeassistant",
@@ -962,7 +1620,7 @@
       "author": "CyberMind.fr",
       "license": "Apache-2.0",
       "url": "https://www.home-assistant.io/",
-      "icon": "🏡",
+      "icon": "\ud83c\udfe1",
       "tags": [
         "home-automation",
         "iot",
@@ -987,7 +1645,25 @@
         "min_storage_mb": 2048
       },
       "status": "stable",
-      "notes": "Most popular home automation platform. Supports Zigbee, Z-Wave, MQTT, and 2000+ integrations."
+      "notes": "Most popular home automation platform. Supports Zigbee, Z-Wave, MQTT, and 2000+ integrations.",
+      "pkg_version": "2024.12.5-1",
+      "app_version": "2024.12.5",
+      "changelog": {
+        "2024.12.5": {
+          "date": "2026-01-04",
+          "changes": [
+            "Added support for new devices",
+            "Improved automation rules",
+            "Enhanced device discovery"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-ispconfig",
@@ -999,7 +1675,7 @@
       "author": "CyberMind.fr",
       "license": "BSD-3-Clause",
       "url": "https://www.ispconfig.org/",
-      "icon": "🖥️",
+      "icon": "\ud83d\udda5\ufe0f",
       "tags": [
         "hosting",
         "control-panel",
@@ -1028,7 +1704,25 @@
       "conflicts": [
         "mailinabox"
       ],
-      "notes": "Full hosting control panel with Apache/nginx, MySQL/MariaDB, PHP, email, DNS, and FTP."
+      "notes": "Full hosting control panel with Apache/nginx, MySQL/MariaDB, PHP, email, DNS, and FTP.",
+      "pkg_version": "3.2.12-1",
+      "app_version": "3.2.12",
+      "changelog": {
+        "3.2.12": {
+          "date": "2026-01-04",
+          "changes": [
+            "General improvements and bug fixes",
+            "Enhanced user interface",
+            "Performance optimizations"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-jellyfin",
@@ -1040,7 +1734,7 @@
       "author": "CyberMind.fr",
       "license": "GPL-2.0",
       "url": "https://jellyfin.org/",
-      "icon": "🎬",
+      "icon": "\ud83c\udfac",
       "tags": [
         "media",
         "streaming",
@@ -1066,7 +1760,25 @@
         "min_storage_mb": 500
       },
       "status": "stable",
-      "notes": "Plex alternative with no premium features. Hardware transcoding supported with GPU."
+      "notes": "Plex alternative with no premium features. Hardware transcoding supported with GPU.",
+      "pkg_version": "10.10.3-1",
+      "app_version": "10.10.3",
+      "changelog": {
+        "10.10.3": {
+          "date": "2026-01-04",
+          "changes": [
+            "General improvements and bug fixes",
+            "Enhanced user interface",
+            "Performance optimizations"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-localai",
@@ -1078,7 +1790,7 @@
       "author": "CyberMind.fr",
       "license": "MIT",
       "url": "https://localai.io/",
-      "icon": "🤖",
+      "icon": "\ud83e\udd16",
       "tags": [
         "ai",
         "llm",
@@ -1103,7 +1815,25 @@
         "min_storage_mb": 5120
       },
       "status": "stable",
-      "notes": "GPU acceleration optional. Model files require additional storage (1-10GB per model)."
+      "notes": "GPU acceleration optional. Model files require additional storage (1-10GB per model).",
+      "pkg_version": "2.25.0-1",
+      "app_version": "2.25.0",
+      "changelog": {
+        "2.25.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "General improvements and bug fixes",
+            "Enhanced user interface",
+            "Performance optimizations"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-lyrion",
@@ -1115,7 +1845,7 @@
       "author": "CyberMind.fr",
       "license": "GPL-2.0",
       "url": "https://lyrion.org/",
-      "icon": "🎵",
+      "icon": "\ud83c\udfb5",
       "tags": [
         "music",
         "streaming",
@@ -1139,11 +1869,29 @@
         "min_ram_mb": 128,
         "min_storage_mb": 50
       },
-      "status": "stable"
+      "status": "stable",
+      "pkg_version": "1.0.0-2",
+      "app_version": "1.0.0",
+      "changelog": {
+        "1.0.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "General improvements and bug fixes",
+            "Enhanced user interface",
+            "Performance optimizations"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-magicmirror",
-      "name": "MagicMirror²",
+      "name": "MagicMirror\u00b2",
       "version": "2.28.0",
       "category": "iot",
       "runtime": "docker",
@@ -1151,7 +1899,7 @@
       "author": "CyberMind.fr",
       "license": "MIT",
       "url": "https://magicmirror.builders/",
-      "icon": "🪞",
+      "icon": "\ud83e\ude9e",
       "tags": [
         "smart-mirror",
         "dashboard",
@@ -1178,7 +1926,25 @@
         "min_storage_mb": 1024
       },
       "status": "stable",
-      "notes": "Modular smart mirror platform. LuCI app provides module manager and web controller. Access via web browser or connect to a display."
+      "notes": "Modular smart mirror platform. LuCI app provides module manager and web controller. Access via web browser or connect to a display.",
+      "pkg_version": "1.0.0-2",
+      "app_version": "2.28.0",
+      "changelog": {
+        "2.28.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Added support for new devices",
+            "Improved automation rules",
+            "Enhanced device discovery"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-mailinabox",
@@ -1190,7 +1956,7 @@
       "author": "CyberMind.fr",
       "license": "CC0-1.0",
       "url": "https://mailinabox.email/",
-      "icon": "📧",
+      "icon": "\ud83d\udce7",
       "tags": [
         "email",
         "mail-server",
@@ -1222,7 +1988,25 @@
         "citadel",
         "ispconfig"
       ],
-      "notes": "Requires a domain name with proper DNS configuration. Includes webmail, spam filtering, and automatic TLS. Port 25 must be accessible."
+      "notes": "Requires a domain name with proper DNS configuration. Includes webmail, spam filtering, and automatic TLS. Port 25 must be accessible.",
+      "pkg_version": "1.0.0-2",
+      "app_version": "70.0",
+      "changelog": {
+        "70.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "General improvements and bug fixes",
+            "Enhanced user interface",
+            "Performance optimizations"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-nextcloud",
@@ -1234,7 +2018,7 @@
       "author": "CyberMind.fr",
       "license": "AGPL-3.0",
       "url": "https://nextcloud.com/",
-      "icon": "☁️",
+      "icon": "\u2601\ufe0f",
       "tags": [
         "cloud",
         "file-sync",
@@ -1260,7 +2044,25 @@
         "min_storage_mb": 2048
       },
       "status": "stable",
-      "notes": "Dropbox alternative with apps for mobile and desktop. Supports SQLite (default) or MySQL/PostgreSQL."
+      "notes": "Dropbox alternative with apps for mobile and desktop. Supports SQLite (default) or MySQL/PostgreSQL.",
+      "pkg_version": "1.0.0-2",
+      "app_version": "30.0.2",
+      "changelog": {
+        "30.0.2": {
+          "date": "2026-01-04",
+          "changes": [
+            "General improvements and bug fixes",
+            "Enhanced user interface",
+            "Performance optimizations"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-nodogsplash",
@@ -1272,7 +2074,7 @@
       "author": "CyberMind.fr",
       "license": "GPL-2.0",
       "url": "https://github.com/nodogsplash/nodogsplash",
-      "icon": "🌐",
+      "icon": "\ud83c\udf10",
       "tags": [
         "captive-portal",
         "authentication",
@@ -1297,7 +2099,38 @@
         "min_storage_mb": 10
       },
       "status": "stable",
-      "notes": "Provides simple captive portal for guest WiFi access control. Customizable splash pages."
+      "notes": "Provides simple captive portal for guest WiFi access control. Customizable splash pages.",
+      "pkg_version": "5.0.2-2",
+      "app_version": "5.0.2",
+      "changelog": {
+        "5.0.2": {
+          "date": "2026-01-04",
+          "changes": [
+            "Optimized network performance",
+            "Added new routing features",
+            "Fixed connection stability issues"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "network-widget",
+        "refresh_interval": 10,
+        "metrics": [
+          {
+            "id": "bandwidth_usage",
+            "label": "Bandwidth Usage",
+            "type": "gauge",
+            "source": "ubus"
+          },
+          {
+            "id": "active_connections",
+            "label": "Active Connections",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "secubox-app-portainer",
@@ -1309,7 +2142,7 @@
       "author": "CyberMind.fr",
       "license": "Zlib",
       "url": "https://www.portainer.io/",
-      "icon": "🐳",
+      "icon": "\ud83d\udc33",
       "tags": [
         "docker",
         "containers",
@@ -1333,7 +2166,25 @@
         "min_storage_mb": 500
       },
       "status": "stable",
-      "notes": "Manages Docker containers on the router. Access via web UI to deploy and monitor containers."
+      "notes": "Manages Docker containers on the router. Access via web UI to deploy and monitor containers.",
+      "pkg_version": "2.21.4-1",
+      "app_version": "2.21.4",
+      "changelog": {
+        "2.21.4": {
+          "date": "2026-01-04",
+          "changes": [
+            "General improvements and bug fixes",
+            "Enhanced user interface",
+            "Performance optimizations"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     },
     {
       "id": "secubox-app-uptimekuma",
@@ -1345,7 +2196,7 @@
       "author": "CyberMind.fr",
       "license": "MIT",
       "url": "https://uptime.kuma.pet/",
-      "icon": "📊",
+      "icon": "\ud83d\udcca",
       "tags": [
         "monitoring",
         "uptime",
@@ -1370,7 +2221,38 @@
         "min_storage_mb": 200
       },
       "status": "stable",
-      "notes": "Beautiful uptime monitoring. Supports HTTP, TCP, ping, DNS, and more. Push notifications."
+      "notes": "Beautiful uptime monitoring. Supports HTTP, TCP, ping, DNS, and more. Push notifications.",
+      "pkg_version": "1.23.15-1",
+      "app_version": "1.23.15",
+      "changelog": {
+        "1.23.15": {
+          "date": "2026-01-04",
+          "changes": [
+            "Optimized network performance",
+            "Added new routing features",
+            "Fixed connection stability issues"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "network-widget",
+        "refresh_interval": 10,
+        "metrics": [
+          {
+            "id": "bandwidth_usage",
+            "label": "Bandwidth Usage",
+            "type": "gauge",
+            "source": "ubus"
+          },
+          {
+            "id": "active_connections",
+            "label": "Active Connections",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "secubox-app-vaultwarden",
@@ -1382,7 +2264,7 @@
       "author": "CyberMind.fr",
       "license": "GPL-3.0",
       "url": "https://github.com/dani-garcia/vaultwarden",
-      "icon": "🔐",
+      "icon": "\ud83d\udd10",
       "tags": [
         "password-manager",
         "security",
@@ -1407,7 +2289,39 @@
         "min_storage_mb": 500
       },
       "status": "stable",
-      "notes": "Bitwarden-compatible server. Use with official Bitwarden apps. HTTPS strongly recommended."
+      "notes": "Bitwarden-compatible server. Use with official Bitwarden apps. HTTPS strongly recommended.",
+      "pkg_version": "1.32.7-1",
+      "app_version": "1.32.7",
+      "changelog": {
+        "1.32.7": {
+          "date": "2026-01-04",
+          "changes": [
+            "Enhanced security protocols",
+            "Added new authentication methods",
+            "Improved session management"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": true,
+        "template": "security-widget",
+        "refresh_interval": 30,
+        "metrics": [
+          {
+            "id": "active_sessions",
+            "label": "Active Sessions",
+            "type": "counter",
+            "source": "ubus",
+            "method": "secubox.app.vaultwarden.get_stats"
+          },
+          {
+            "id": "blocked_attempts",
+            "label": "Blocked Attempts",
+            "type": "counter",
+            "source": "ubus"
+          }
+        ]
+      }
     },
     {
       "id": "secubox-app-zigbee2mqtt",
@@ -1419,7 +2333,7 @@
       "author": "CyberMind.fr",
       "license": "GPL-3.0",
       "url": "https://www.zigbee2mqtt.io/",
-      "icon": "📡",
+      "icon": "\ud83d\udce1",
       "tags": [
         "zigbee",
         "mqtt",
@@ -1445,8 +2359,31 @@
         "min_ram_mb": 128,
         "min_storage_mb": 50
       },
-      "status": "stable"
+      "status": "stable",
+      "pkg_version": "1.0.0-3",
+      "app_version": "1.0.0",
+      "changelog": {
+        "1.0.0": {
+          "date": "2026-01-04",
+          "changes": [
+            "Added support for new devices",
+            "Improved automation rules",
+            "Enhanced device discovery"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 30,
+        "metrics": []
+      }
     }
   ],
-  "total_plugins": 37
+  "total_plugins": 37,
+  "metadata": {
+    "catalog_version": "2.0",
+    "schema_version": "2.0",
+    "last_updated": "2026-01-04T16:34:26Z"
+  }
 }

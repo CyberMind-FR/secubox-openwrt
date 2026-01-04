@@ -10,30 +10,22 @@
  * and controls in a responsive grid layout with auto-refresh.
  */
 
-var WidgetRenderer = baseclass.extend({
-	/**
-	 * Initialize widget renderer
-	 * @param {Object} options - Configuration options
-	 * @param {string} options.containerId - DOM element ID for widget container
-	 * @param {Array} options.apps - Apps with widget configurations
-	 * @param {number} options.defaultRefreshInterval - Default refresh interval in seconds (default: 30)
-	 * @param {string} options.gridMode - Grid layout mode: 'auto', 'fixed-2', 'fixed-3', 'fixed-4' (default: 'auto')
-	 */
-	__init__: function(options) {
-		// Ensure options is an object
-		options = options || {};
+function WidgetRendererInstance(options) {
+	options = options || {};
 
-		this.containerId = options.containerId || 'widget-container';
-		this.apps = options.apps || [];
-		this.defaultRefreshInterval = options.defaultRefreshInterval || 30;
-		this.gridMode = options.gridMode || 'auto';
-		this.widgets = [];
-		this.pollHandles = [];
-		this.templates = {};
+	this.containerId = options.containerId || 'widget-container';
+	this.apps = options.apps || [];
+	this.defaultRefreshInterval = options.defaultRefreshInterval || 30;
+	this.gridMode = options.gridMode || 'auto';
+	this.widgets = [];
+	this.pollHandles = [];
+	this.templates = {};
 
-		// Register built-in templates
-		this.registerBuiltInTemplates();
-	},
+	// Register built-in templates
+	this.registerBuiltInTemplates();
+}
+
+WidgetRendererInstance.prototype = {
 
 	/**
 	 * Register built-in widget templates
@@ -417,6 +409,10 @@ var WidgetRenderer = baseclass.extend({
 		if (diffSecs < 86400) return Math.floor(diffSecs / 3600) + ' hr ago';
 		return Math.floor(diffSecs / 86400) + ' days ago';
 	}
-});
+};
 
-return WidgetRenderer;
+return baseclass.extend({
+	create: function(options) {
+		return new WidgetRendererInstance(options);
+	}
+});

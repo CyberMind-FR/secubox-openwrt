@@ -8,7 +8,7 @@ config settings 'main'
 config source 'github'
 	option enabled '1'
 	option type 'remote'
-	option url 'https://raw.githubusercontent.com/cybermind-studios/secubox-catalog/main/catalog.json'
+	option url 'https://raw.githubusercontent.com/CyberMind-FR/secubox-openwrt/refs/heads/master/package/secubox/secubox-core/root/usr/share/secubox/catalog.json'
 	option priority '1'
 	option timeout '30'
 

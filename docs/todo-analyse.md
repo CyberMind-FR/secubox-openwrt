@@ -16,9 +16,9 @@
 
 1. [Immediate Actions (This Week)](#immediate-actions-this-week)
 2. [Short-term Actions (This Month)](#short-term-actions-this-month)
-3. [Long-term Actions (This Quarter)](#long-term-actions-this-quarter)
+3. Long-term Actions (This Quarter)
 4. [Optional Enhancements](#optional-enhancements)
-5. [Tracking & Metrics](#tracking--metrics)
+5. [Tracking & Metrics](#tracking-metrics)
 
 ---
 
@@ -105,14 +105,14 @@ Inconsistent dates:
 **PERMISSIONS-GUIDE.md:**
 ```markdown
 > **📚 This is a quick reference guide.**
-> For complete deployment procedures, see [DEVELOPMENT-GUIDELINES.md §9](./DEVELOPMENT-GUIDELINES.md#deployment-procedures)
+> For complete deployment procedures, see [DEVELOPMENT-GUIDELINES.md §9](development-guidelines.md#deployment-procedures)
 ```
 
 **VALIDATION-GUIDE.md:**
 ```markdown
 > **🔗 Related:**
-> - Pre-commit checklist: [DEVELOPMENT-GUIDELINES.md §8.1](./DEVELOPMENT-GUIDELINES.md#pre-commit-checklist)
-> - Deployment validation: [DEVELOPMENT-GUIDELINES.md §8.3](./DEVELOPMENT-GUIDELINES.md#post-deploy-checklist)
+> - Pre-commit checklist: [DEVELOPMENT-GUIDELINES.md §8.1](development-guidelines.md#pre-commit-checklist)
+> - Deployment validation: [DEVELOPMENT-GUIDELINES.md §8.3](development-guidelines.md#post-deploy-checklist)
 ```
 
 **Acceptance Criteria:**
@@ -551,7 +551,7 @@ graph TB
 ```markdown
 # Validation Quick Reference
 
-> **📚 Complete Guide:** [DEVELOPMENT-GUIDELINES.md §8](./DEVELOPMENT-GUIDELINES.md#validation-checklist)
+> **📚 Complete Guide:** [DEVELOPMENT-GUIDELINES.md §8](development-guidelines.md#validation-checklist)
 
 ## Quick Commands
 
@@ -585,7 +585,7 @@ graph TB
 ```markdown
 # Permissions Quick Reference
 
-> **📚 Complete Guide:** [DEVELOPMENT-GUIDELINES.md §9](./DEVELOPMENT-GUIDELINES.md#deployment-procedures)
+> **📚 Complete Guide:** [DEVELOPMENT-GUIDELINES.md §9](development-guidelines.md#deployment-procedures)
 
 ## Quick Fix (Automated)
 
@@ -640,44 +640,18 @@ chmod 644 /www/luci-static/resources/**/*.{css,js}
 
 **Screenshots Needed:**
 
-```
-docs/images/components/
-├── page-header-light.png
-├── page-header-dark.png
-├── stat-badges.png
-├── card-gradient-border.png
-├── card-success-border.png
-├── buttons-all-variants.png
-├── filter-tabs-active.png
-├── nav-tabs-sticky.png
-├── grid-layouts.png
-└── dark-light-comparison.png
-```
+- `docs/images/components/page-header-light.png`
+- `docs/images/components/page-header-dark.png`
+- `docs/images/components/stat-badges.png`
+- `docs/images/components/card-gradient-border.png`
+- `docs/images/components/card-success-border.png`
+- `docs/images/components/buttons-all-variants.png`
+- `docs/images/components/filter-tabs-active.png`
+- `docs/images/components/nav-tabs-sticky.png`
+- `docs/images/components/grid-layouts.png`
+- `docs/images/components/dark-light-comparison.png`
 
-**Add to DEVELOPMENT-GUIDELINES.md:**
-
-```markdown
-## Design System & UI Guidelines
-
-### Component Patterns
-
-#### 1. Page Header (Standard)
-
-![Page Header Example](./docs/images/components/page-header-dark.png)
-
-**HTML Structure:**
-```javascript
-E('div', { 'class': 'sh-page-header' }, [
-    // ...
-])
-```
-
-#### 2. Stats Badges
-
-![Stats Badges](./docs/images/components/stat-badges.png)
-
-Minimum 130px width, monospace font for values.
-```
+**Add to DEVELOPMENT-GUIDELINES.md:** Once screenshots exist, embed them directly in §1 (component patterns) with short captions describing required styles and grid behavior.
 
 **Optional: Interactive Component Library**
 
@@ -695,7 +669,8 @@ Create `docs/components/index.html` - Interactive showcase:
 
 ---
 
-## Long-term Actions (This Quarter)
+<div id="long-term-actions-this-quarter"></div>
+## Long-term Actions (This Quarter) {#long-term-actions-this-quarter}
 
 ### Priority: 🟢 LOW | Effort: ⚡⚡⚡ High | Impact: 🎯 Medium
 
@@ -969,7 +944,7 @@ Track documentation changes:
 
 ---
 
-## Tracking & Metrics
+## Tracking & Metrics {#tracking-metrics}
 
 ### Success Metrics
 

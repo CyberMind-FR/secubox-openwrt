@@ -14,6 +14,67 @@ STATE_DIR="/var/run/secubox"
 CACHE_DIR="/var/cache/secubox/catalogs"
 METADATA_FILE="/var/lib/secubox/catalog-metadata.json"
 MAIN_CATALOG="/usr/share/secubox/catalog.json"
+INSTALLED_CACHE="/tmp/secubox-installed-cache"
+INSTALLED_CACHE_TTL=300
+OPKG_STATUS_DB="/usr/lib/opkg/status"
+TIMEOUT_BIN=$(command -v timeout 2>/dev/null || echo "")
+
+# Build/refresh cache of installed packages (pkg -> version)
+ensure_installed_cache() {
+	local now cache_mtime cache_age tmp_cache
+
+	now=$(date +%s)
+	if [ -f "$INSTALLED_CACHE" ]; then
+		cache_mtime=$(stat -c %Y "$INSTALLED_CACHE" 2>/dev/null || echo 0)
+		cache_age=$((now - cache_mtime))
+		if [ "$cache_age" -lt "$INSTALLED_CACHE_TTL" ]; then
+			return 0
+		fi
+	fi
+
+	tmp_cache="${INSTALLED_CACHE}.$$"
+
+	# Preferred: parse opkg status database (fast, no process spawning per pkg)
+	if [ -r "$OPKG_STATUS_DB" ]; then
+		awk '
+			/^Package: / { pkg=$2; next }
+			/^Version: / { if (pkg != "") { print pkg " " $2; pkg="" } next }
+			/^$/ { pkg="" }
+		' "$OPKG_STATUS_DB" > "$tmp_cache" 2>/dev/null
+	fi
+
+	# Fallback: run opkg list-installed once (guarded by timeout when available)
+	if [ ! -s "$tmp_cache" ]; then
+		if [ -n "$TIMEOUT_BIN" ]; then
+			$TIMEOUT_BIN 15 opkg list-installed 2>/dev/null | awk '{ if (NF >= 3) print $1 " " $3 }' > "$tmp_cache"
+		else
+			opkg list-installed 2>/dev/null | awk '{ if (NF >= 3) print $1 " " $3 }' > "$tmp_cache"
+		fi
+
+		if [ ! -s "$tmp_cache" ]; then
+			rm -f "$tmp_cache"
+			return 1
+		fi
+	fi
+
+	mv "$tmp_cache" "$INSTALLED_CACHE" 2>/dev/null || cp "$tmp_cache" "$INSTALLED_CACHE"
+	rm -f "$tmp_cache"
+	return 0
+}
+
+get_installed_version_from_cache() {
+	local pkg="$1"
+	[ -n "$pkg" ] || return 1
+	[ -f "$INSTALLED_CACHE" ] || return 1
+	awk -v pkg="$pkg" '$1 == pkg { print $2; exit }' "$INSTALLED_CACHE"
+}
+
+is_pkg_installed_cached() {
+	local pkg="$1"
+	local version
+	version=$(get_installed_version_from_cache "$pkg")
+	[ -n "$version" ]
+}
 
 # Get active catalog path (from cache or embedded)
 get_active_catalog() {
@@ -32,8 +93,13 @@ get_active_catalog() {
 list_modules() {
 	local format="${1:-table}"
 	local modules=()
+	local cache_ready=0
 
 	mkdir -p "$CATALOG_DIR"
+
+	if ensure_installed_cache; then
+		cache_ready=1
+	fi
 
 	if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
 		json_init
@@ -56,8 +122,12 @@ list_modules() {
 		# Check if installed
 		local packages=$(jsonfilter -i "$catalog" -e '@.packages.required[0]' 2>/dev/null)
 		local status="available"
-		if [ -n "$packages" ] && opkg list-installed | grep -q "^$packages "; then
-			status="installed"
+		local installed_version=""
+		if [ "$cache_ready" -eq 1 ] && [ -n "$packages" ]; then
+			installed_version=$(get_installed_version_from_cache "$packages")
+			if [ -n "$installed_version" ]; then
+				status="installed"
+			fi
 		fi
 
 		if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
@@ -67,6 +137,8 @@ list_modules() {
 				json_add_string "category" "$module_category"
 				json_add_string "version" "$module_version"
 				json_add_string "status" "$status"
+				[ -n "$installed_version" ] && json_add_string "installed_version" "$installed_version"
+				json_add_boolean "installed" $([ "$status" = "installed" ] && echo true || echo false)
 			json_close_object
 		else
 			printf "%-20s %-12s %-12s %-10s\n" \
@@ -383,18 +455,28 @@ sync_catalog() {
 	fi
 }
 
-# Check for updates
+# Check for updates (OPTIMIZED with caching)
 check_updates() {
 	local format="${1:-table}"
+	local json_mode=0
+	local cache_ready=0
 
 	local active_catalog=$(get_active_catalog)
 
 	if [ ! -f "$active_catalog" ]; then
-		echo "ERROR: No catalog available. Run 'secubox-appstore sync' first."
+		if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
+			json_init
+			json_add_boolean "error" true
+			json_add_string "message" "No catalog available. Run secubox-appstore sync first."
+			json_dump
+		else
+			echo "ERROR: No catalog available. Run 'secubox-appstore sync' first."
+		fi
 		return 1
 	fi
 
 	if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
+		json_mode=1
 		json_init
 		json_add_array "updates"
 	else
@@ -406,44 +488,76 @@ check_updates() {
 
 	local updates_count=0
 
-	# Iterate over plugins in catalog
-	for plugin in $(jsonfilter -i "$active_catalog" -e '@.plugins[@.id]'); do
+	if ensure_installed_cache; then
+		cache_ready=1
+	fi
+
+	local plugin_count=$(jsonfilter -i "$active_catalog" -e '@.plugins[#]' 2>/dev/null || echo 0)
+	if [ "$plugin_count" -eq 0 ]; then
+		if [ "$json_mode" -eq 1 ]; then
+			json_close_array
+			json_add_int "total_updates_available" 0
+			json_add_boolean "cache_ready" $([ "$cache_ready" -eq 1 ] && echo true || echo false)
+			json_dump
+		else
+			echo "No plugins in catalog"
+		fi
+		return 0
+	fi
+
+	for plugin in $(jsonfilter -i "$active_catalog" -e '@.plugins[@.id]' 2>/dev/null); do
 		local app_id="$plugin"
 		local pkg_version=$(jsonfilter -i "$active_catalog" -e "@.plugins[@.id='$app_id'].pkg_version" 2>/dev/null)
 		local pkg_name=$(jsonfilter -i "$active_catalog" -e "@.plugins[@.id='$app_id'].packages.required[0]" 2>/dev/null)
 
-		# Check if installed
-		local installed_version=$(opkg list-installed | grep "^$pkg_name " | awk '{print $3}')
+		[ -z "$pkg_name" ] && continue
 
-		if [ -n "$installed_version" ]; then
-			# Compare versions
-			if [ "$installed_version" != "$pkg_version" ]; then
-				if opkg compare-versions "$pkg_version" '>>' "$installed_version" 2>/dev/null; then
-					updates_count=$((updates_count + 1))
+		local installed_version=""
+		if [ "$cache_ready" -eq 1 ]; then
+			installed_version=$(get_installed_version_from_cache "$pkg_name")
+		fi
 
-					if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
-						json_add_object ""
-							json_add_string "app_id" "$app_id"
-							json_add_string "installed_version" "$installed_version"
-							json_add_string "available_version" "$pkg_version"
-							json_add_string "type" "upgrade"
-						json_close_object
-					else
-						printf "%-25s %-15s %-15s %-10s\n" \
-							"$app_id" "$installed_version" "$pkg_version" "UPDATE"
-					fi
+		if [ -n "$installed_version" ] && [ -n "$pkg_version" ] && [ "$installed_version" != "$pkg_version" ]; then
+			local compare_ok=1
+			if [ -n "$TIMEOUT_BIN" ]; then
+				$TIMEOUT_BIN 1 opkg compare-versions "$pkg_version" '>>' "$installed_version" 2>/dev/null || compare_ok=0
+			else
+				opkg compare-versions "$pkg_version" '>>' "$installed_version" 2>/dev/null || compare_ok=0
+			fi
+
+			if [ "$compare_ok" -eq 1 ]; then
+				updates_count=$((updates_count + 1))
+
+				if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
+					json_add_object ""
+						json_add_string "app_id" "$app_id"
+						json_add_string "installed_version" "$installed_version"
+						json_add_string "available_version" "$pkg_version"
+						json_add_string "type" "upgrade"
+					json_close_object
+				else
+					printf "%-25s %-15s %-15s %-10s\n" \
+						"$app_id" "$installed_version" "$pkg_version" "UPDATE"
 				fi
 			fi
 		fi
 	done
 
-	if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
+	if [ "$json_mode" -eq 1 ]; then
 		json_close_array
-		json_add_int "total_updates" "$updates_count"
+		json_add_int "total_updates_available" "$updates_count"
+		json_add_boolean "cache_ready" $([ "$cache_ready" -eq 1 ] && echo true || echo false)
+		if [ "$cache_ready" -ne 1 ]; then
+			json_add_boolean "cache_warning" true
+			json_add_string "message" "Installed package cache unavailable (opkg status missing?)"
+		fi
 		json_dump
 	else
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 		echo "Total updates available: $updates_count"
+		if [ "$cache_ready" -ne 1 ]; then
+			echo "WARNING: Installed package cache unavailable - versions may be outdated"
+		fi
 	fi
 }
 

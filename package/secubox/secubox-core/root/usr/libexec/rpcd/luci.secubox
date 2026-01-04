@@ -471,31 +471,89 @@ case "$1" in
 				;;
 
 			get_catalog_sources)
-				# Return configured catalog sources from UCI
+				# Return configured catalog sources from UCI (OPTIMIZED)
 				CONFIG_NAME="secubox-appstore"
 				METADATA_FILE="/var/lib/secubox/catalog-metadata.json"
+
+					_add_default_source() {
+						local name="$1"
+						local type="$2"
+						local url="$3"
+						local path="$4"
+						local priority="$5"
+
+						json_add_object ""
+							json_add_string "name" "$name"
+							json_add_boolean "enabled" 1
+							json_add_string "type" "$type"
+							[ -n "$url" ] && json_add_string "url" "$url"
+							[ -n "$path" ] && json_add_string "path" "$path"
+							json_add_int "priority" "$priority"
+							[ "$name" = "embedded" ] && json_add_boolean "active" 1 || json_add_boolean "active" 0
+							json_add_string "status" "default"
+							json_add_string "last_success" ""
+						json_close_object
+					}
+
+					# Fast check: if UCI config doesn't exist, return sensible defaults
+					if [ ! -f "/etc/config/$CONFIG_NAME" ]; then
+						json_init
+						json_add_array "sources"
+						_add_default_source "github" "remote" "https://raw.githubusercontent.com/CyberMind-FR/secubox-openwrt/refs/heads/master/package/secubox/secubox-core/root/usr/share/secubox/catalog.json" "" 1
+						_add_default_source "embedded" "embedded" "" "/usr/share/secubox/catalog.json" 999
+						json_close_array
+						json_add_boolean "defaults" true
+						json_add_string "message" "Catalog config missing, using built-in defaults"
+						json_dump
+						exit 0
+					fi
 
 				json_init
 				json_add_array "sources"
 
 				# Parse UCI config sources
 				. /lib/functions.sh
+
+				# OPTIMIZATION: Add timeout guard for config_load, but still load
+				if ! timeout 5 sh -c ". /lib/functions.sh; config_load $CONFIG_NAME >/dev/null 2>&1" 2>/dev/null; then
+					# Config load failed or timed out, return defaults
+					_add_default_source "github" "remote" "https://raw.githubusercontent.com/CyberMind-FR/secubox-openwrt/refs/heads/master/package/secubox/secubox-core/root/usr/share/secubox/catalog.json" "" 1
+					_add_default_source "embedded" "embedded" "" "/usr/share/secubox/catalog.json" 999
+					json_close_array
+					json_add_boolean "defaults" true
+					json_add_string "message" "Catalog config unreadable, using defaults"
+					json_dump
+					exit 0
+				fi
+
+				# Load config in current shell for config_foreach usage
 				config_load "$CONFIG_NAME"
+
+				# Get active source once (optimization)
+				local active_source=""
+				if [ -f "$METADATA_FILE" ]; then
+					active_source=$(timeout 2 jsonfilter -i "$METADATA_FILE" -e '@.active_source' 2>/dev/null || echo "")
+				fi
+
+				# Cache metadata content to avoid multiple reads
+				local metadata_content=""
+				if [ -f "$METADATA_FILE" ]; then
+					metadata_content=$(timeout 2 cat "$METADATA_FILE" 2>/dev/null || echo "{}")
+				fi
+
+				local sources_count=0
+				local defaults_used=0
+				local defaults_message=""
 
 				_add_source_info() {
 					local section="$1"
-					local enabled type url path priority active_source
+					local enabled type url path priority
 
 					config_get_bool enabled "$section" enabled 0
 					config_get type "$section" type
 					config_get url "$section" url
 					config_get path "$section" path
 					config_get priority "$section" priority 999
-
-					# Get active source from metadata
-					if [ -f "$METADATA_FILE" ]; then
-						active_source=$(jsonfilter -i "$METADATA_FILE" -e '@.active_source' 2>/dev/null)
-					fi
 
 					json_add_object ""
 						json_add_string "name" "$section"
@@ -506,21 +564,35 @@ case "$1" in
 						json_add_int "priority" "$priority"
 						json_add_boolean "active" "$([ "$section" = "$active_source" ] && echo 1 || echo 0)"
 
-						# Get status from metadata
-						if [ -f "$METADATA_FILE" ]; then
-							local status=$(jsonfilter -i "$METADATA_FILE" -e "@.sources['$section'].status" 2>/dev/null)
-							local last_success=$(jsonfilter -i "$METADATA_FILE" -e "@.sources['$section'].last_success" 2>/dev/null)
+						# Get status from cached metadata (optimization with timeout)
+						if [ -n "$metadata_content" ]; then
+							local status=$(echo "$metadata_content" | timeout 1 jsonfilter -e "@.sources['$section'].status" 2>/dev/null || echo "")
+							local last_success=$(echo "$metadata_content" | timeout 1 jsonfilter -e "@.sources['$section'].last_success" 2>/dev/null || echo "")
 							[ -n "$status" ] && json_add_string "status" "$status"
 							[ -n "$last_success" ] && json_add_string "last_success" "$last_success"
 						fi
 					json_close_object
+
+					sources_count=$((sources_count + 1))
 				}
 
 				config_foreach _add_source_info source
 
+				# If config exists but contains no sources, fall back to defaults
+				if [ "$sources_count" -eq 0 ]; then
+					_add_default_source "github" "remote" "https://raw.githubusercontent.com/CyberMind-FR/secubox-openwrt/refs/heads/master/package/secubox/secubox-core/root/usr/share/secubox/catalog.json" "" 1
+					_add_default_source "embedded" "embedded" "" "/usr/share/secubox/catalog.json" 999
+					defaults_used=1
+					defaults_message="Catalog config empty, using built-in defaults"
+				fi
+
 				json_close_array
+				if [ "$defaults_used" -eq 1 ]; then
+					json_add_boolean "defaults" true
+					json_add_string "message" "$defaults_message"
+				fi
 				json_dump
-				;;
+					;;
 
 			set_catalog_source)
 				# Set force_source in UCI config

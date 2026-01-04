@@ -6,7 +6,7 @@
 **Author:** CyberMind
 
 > **📚 This is a quick reference guide.**
-> For complete deployment procedures, see [DEVELOPMENT-GUIDELINES.md §9](./DEVELOPMENT-GUIDELINES.md#deployment-procedures)
+> For complete deployment procedures, see [DEVELOPMENT-GUIDELINES.md §9](development-guidelines.md#deployment-procedures)
 >
 > **Related Documentation:**
 > - Complete guide: [DEVELOPMENT-GUIDELINES.md](development-guidelines.md)
@@ -18,7 +18,7 @@
 
 ## See Also
 
-- **Deployment Procedures:** [DEVELOPMENT-GUIDELINES.md §9](./DEVELOPMENT-GUIDELINES.md#deployment-procedures)
+- **Deployment Procedures:** [DEVELOPMENT-GUIDELINES.md §9](development-guidelines.md#deployment-procedures)
 - **Quick Rules & Commands:** [QUICK-START.md](quick-start.md)
 - **Validation Checklist:** [VALIDATION-GUIDE.md](validation-guide.md)
 - **Automation Standards:** [CODEX.md](codex.md)

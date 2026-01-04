@@ -20,11 +20,11 @@
 
 1. [Design System Reference](#design-system-reference)
 2. [Core Modules Prompts](#core-modules-prompts)
-3. [Security & Monitoring Modules](#security--monitoring-modules)
+3. [Security & Monitoring Modules](#security-monitoring-modules)
 4. [Network Intelligence Modules](#network-intelligence-modules)
-5. [VPN & Access Control Modules](#vpn--access-control-modules)
-6. [Bandwidth & Traffic Modules](#bandwidth--traffic-modules)
-7. [Performance & Services Modules](#performance--services-modules)
+5. [VPN & Access Control Modules](#vpn-access-control-modules)
+6. [Bandwidth & Traffic Modules](#bandwidth-traffic-modules)
+7. [Performance & Services Modules](#performance-services-modules)
 
 ---
 

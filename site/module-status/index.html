@@ -1,0 +1,4676 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="OpenWrt LuCI Security & Management Suite">
+      
+      
+        <meta name="author" content="CyberMind.fr">
+      
+      
+        <link rel="canonical" href="https://gkerma.github.io/secubox-openwrt/module-status/">
+      
+      
+        <link rel="prev" href="../codex/">
+      
+      
+        <link rel="next" href="../feature-regeneration-prompts/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>Module Status - SecuBox Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#secubox-modules-implementation-status" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="SecuBox Documentation" class="md-header__button md-logo" aria-label="SecuBox Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            SecuBox Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Module Status
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="purple"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="purple"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/gkerma/secubox-openwrt" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gkerma/secubox-openwrt
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../quick-start/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../development-guidelines/" class="md-tabs__link">
+          
+  
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../claude/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Modules
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../todo-analyse/" class="md-tabs__link">
+          
+  
+  
+  Tools & Roadmap
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../archive/" class="md-tabs__link">
+          
+  
+  
+  Archive
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="SecuBox Documentation" class="md-nav__button md-logo" aria-label="SecuBox Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    SecuBox Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/gkerma/secubox-openwrt" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gkerma/secubox-openwrt
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../documentation-index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../repository-guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repository Guidelines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development-guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Guidelines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../code-templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Templates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../module-implementation-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module Implementation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RPCD & Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../validation-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../permissions-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Permissions Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../luci-development-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LuCI Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../codex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Codex Manual
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module Status
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module Status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Stats
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#module-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Module Categories
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Module Categories">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-core-control-2-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Core Control (2 modules)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Core Control (2 modules)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-secubox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-secubox
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-system-hub" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-system-hub
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-security-monitoring-2-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Security &amp; Monitoring (2 modules)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Security &amp; Monitoring (2 modules)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-crowdsec-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-crowdsec-dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-netdata-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-netdata-dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-network-intelligence-2-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Network Intelligence (2 modules)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Network Intelligence (2 modules)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-netifyd-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-netifyd-dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-network-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-network-modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-vpn-access-control-3-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. VPN &amp; Access Control (3 modules)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. VPN &amp; Access Control (3 modules)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-wireguard-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-wireguard-dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-client-guardian" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-client-guardian
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-auth-guardian" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-auth-guardian
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-bandwidth-traffic-3-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Bandwidth &amp; Traffic (3 modules)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Bandwidth &amp; Traffic (3 modules)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-bandwidth-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-bandwidth-manager
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-traffic-shaper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-traffic-shaper
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-media-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-media-flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-performance-services-3-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Performance &amp; Services (3 modules)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Performance &amp; Services (3 modules)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-cdn-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-cdn-cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-vhost-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-vhost-manager
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-ksm-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-ksm-manager
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-iot-integration-1-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. IoT &amp; Integration (1 module)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. IoT &amp; Integration (1 module)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-mqtt-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-mqtt-bridge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Statistics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Implementation Statistics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overall-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overall Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#code-distribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Code Distribution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Validation Status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#automated-checks-secubox-toolsvalidate-modulessh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automated Checks (secubox-tools/validate-modules.sh)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#module-specific-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Module-Specific Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-system-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build System Status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Build System Status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#github-actions-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GitHub Actions Workflows
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GitHub Actions Workflows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-build-openwrt-packagesyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. build-openwrt-packages.yml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-build-secubox-imagesyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. build-secubox-images.yml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-test-validateyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. test-validate.yml
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#local-build-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Build System
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Local Build System">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#secubox-toolslocal-buildsh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        secubox-tools/local-build.sh
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version History
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Version History">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#v200-2025-12-28-current-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v2.0.0 (2025-12-28) - Current Release
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v033-2025-12-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.3.3 (2025-12-28)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v032-2025-12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.3.2 (2025-12)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v031-2025-12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.3.1 (2025-12)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v022-2025-11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.2.2 (2025-11)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v01x-series-2025-q4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.1.x Series (2025-Q4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture Support
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture Support">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tier-1-full-testing-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 1 - Full Testing &amp; Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tier-2-package-building-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 2 - Package Building Only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supported-openwrt-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported OpenWrt Versions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development-activity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Development Activity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Development Activity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#recent-commits-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recent Commits (2025)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#contribution-activity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contribution Activity
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-issues-todo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Issues &amp; TODO
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Known Issues &amp; TODO">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resolved-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ✅ Resolved Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#future-enhancements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🚀 Future Enhancements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment Guide
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deployment Guide">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pre-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-Installation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#installation-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation Methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Installation Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#method-1-package-manager-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method 1: Package Manager (Recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#method-2-manual-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method 2: Manual Installation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#method-3-firmware-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method 3: Firmware Images
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Post-Installation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintenance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Maintenance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#regular-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regular Tasks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Release Process
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Release Process">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#version-numbering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version Numbering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#release-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Release Checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#online-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Online Resources
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#license" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        License
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maintainer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintainer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../feature-regeneration-prompts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Prompts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools & Roadmap
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tools & Roadmap
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../todo-analyse/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TODO Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Archive
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Archive Index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/build-issues/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build Issues
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/completion-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Completion Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archive/module-enable-disable-design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module Enable/Disable
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Stats
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#module-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Module Categories
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Module Categories">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-core-control-2-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Core Control (2 modules)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Core Control (2 modules)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-secubox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-secubox
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-system-hub" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-system-hub
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-security-monitoring-2-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Security &amp; Monitoring (2 modules)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Security &amp; Monitoring (2 modules)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-crowdsec-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-crowdsec-dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-netdata-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-netdata-dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-network-intelligence-2-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Network Intelligence (2 modules)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Network Intelligence (2 modules)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-netifyd-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-netifyd-dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-network-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-network-modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-vpn-access-control-3-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. VPN &amp; Access Control (3 modules)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. VPN &amp; Access Control (3 modules)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-wireguard-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-wireguard-dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-client-guardian" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-client-guardian
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-auth-guardian" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-auth-guardian
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-bandwidth-traffic-3-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Bandwidth &amp; Traffic (3 modules)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Bandwidth &amp; Traffic (3 modules)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-bandwidth-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-bandwidth-manager
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-traffic-shaper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-traffic-shaper
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-media-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-media-flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-performance-services-3-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Performance &amp; Services (3 modules)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Performance &amp; Services (3 modules)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-cdn-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-cdn-cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-vhost-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-vhost-manager
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-ksm-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-ksm-manager
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-iot-integration-1-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. IoT &amp; Integration (1 module)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. IoT &amp; Integration (1 module)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#luci-app-mqtt-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        luci-app-mqtt-bridge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Statistics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Implementation Statistics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overall-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overall Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#code-distribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Code Distribution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Validation Status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#automated-checks-secubox-toolsvalidate-modulessh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automated Checks (secubox-tools/validate-modules.sh)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#module-specific-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Module-Specific Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-system-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build System Status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Build System Status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#github-actions-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GitHub Actions Workflows
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GitHub Actions Workflows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-build-openwrt-packagesyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. build-openwrt-packages.yml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-build-secubox-imagesyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. build-secubox-images.yml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-test-validateyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. test-validate.yml
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#local-build-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Build System
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Local Build System">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#secubox-toolslocal-buildsh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        secubox-tools/local-build.sh
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version History
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Version History">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#v200-2025-12-28-current-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v2.0.0 (2025-12-28) - Current Release
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v033-2025-12-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.3.3 (2025-12-28)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v032-2025-12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.3.2 (2025-12)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v031-2025-12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.3.1 (2025-12)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v022-2025-11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.2.2 (2025-11)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v01x-series-2025-q4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.1.x Series (2025-Q4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture Support
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture Support">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tier-1-full-testing-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 1 - Full Testing &amp; Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tier-2-package-building-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier 2 - Package Building Only
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supported-openwrt-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported OpenWrt Versions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#development-activity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Development Activity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Development Activity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#recent-commits-2025" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recent Commits (2025)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#contribution-activity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contribution Activity
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-issues-todo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Issues &amp; TODO
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Known Issues &amp; TODO">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resolved-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ✅ Resolved Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#future-enhancements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🚀 Future Enhancements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment Guide
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deployment Guide">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pre-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-Installation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#installation-methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation Methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Installation Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#method-1-package-manager-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method 1: Package Manager (Recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#method-2-manual-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method 2: Manual Installation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#method-3-firmware-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method 3: Firmware Images
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#post-installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Post-Installation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintenance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Maintenance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#regular-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Regular Tasks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#release-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Release Process
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Release Process">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#version-numbering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version Numbering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#release-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Release Checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#online-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Online Resources
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#license" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        License
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maintainer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintainer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="secubox-modules-implementation-status">SecuBox Modules - Implementation Status<a class="headerlink" href="#secubox-modules-implementation-status" title="Permanent link">&para;</a></h1>
+<p><strong>Version:</strong> 2.0.1
+<strong>Last Updated:</strong> 2025-12-30
+<strong>Status:</strong> In Heavily Development Stage
+<strong>Total Modules:</strong> 16
+<strong>Completion:</strong> 100%</p>
+<hr />
+<h2 id="quick-stats">Quick Stats<a class="headerlink" href="#quick-stats" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Total Modules</strong></td>
+<td>16</td>
+</tr>
+<tr>
+<td><strong>Total Views</strong></td>
+<td>112</td>
+</tr>
+<tr>
+<td><strong>JavaScript Lines</strong></td>
+<td>27,138</td>
+</tr>
+<tr>
+<td><strong>RPCD Methods</strong></td>
+<td>288</td>
+</tr>
+<tr>
+<td><strong>Latest Release</strong></td>
+<td>v2.0.1</td>
+</tr>
+<tr>
+<td><strong>Completion Rate</strong></td>
+<td>100%</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Feature Regeneration Prompts:</strong> <a href="../feature-regeneration-prompts/">FEATURE-REGENERATION-PROMPTS.md</a></li>
+<li><strong>Implementation Workflow:</strong> <a href="../module-implementation-guide/">MODULE-IMPLEMENTATION-GUIDE.md</a></li>
+<li><strong>Build System:</strong> <a href="../claude/">CLAUDE.md</a></li>
+</ul>
+<hr />
+<h2 id="module-categories">Module Categories<a class="headerlink" href="#module-categories" title="Permanent link">&para;</a></h2>
+<h3 id="1-core-control-2-modules">1. Core Control (2 modules)<a class="headerlink" href="#1-core-control-2-modules" title="Permanent link">&para;</a></h3>
+<h4 id="luci-app-secubox">luci-app-secubox<a class="headerlink" href="#luci-app-secubox" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.6.0-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: SecuBox master control dashboard</li>
+<li><strong>Views</strong>: 11 (dashboard, modules, modules-minimal, modules-debug, monitoring, alerts, settings, dev-status, wizard, appstore, help)</li>
+<li><strong>JavaScript Lines</strong>: 2,906</li>
+<li><strong>RPCD Methods</strong>: 33 (second-largest backend)</li>
+<li><strong>Key Features</strong>:</li>
+<li>Module auto-discovery and management</li>
+<li>Unified system dashboard</li>
+<li>Module enable/disable functionality</li>
+<li>Service health monitoring</li>
+<li>Package manager integration (opkg &amp; apk)</li>
+<li>Unified alert aggregation</li>
+<li>Settings synchronization</li>
+<li>Development status reporting</li>
+<li>Setup wizard for first-run experience</li>
+<li>App store integration for manifest-driven apps</li>
+<li><strong>Integration</strong>: Manages all 15 other modules, opkg/apk package detection</li>
+<li><strong>Recent Updates</strong>:</li>
+<li>v0.6.0: Complete theme integration with secubox-theme</li>
+<li>Migrated all views to use CSS variables (--sh-* prefix)</li>
+<li>Added cyberpunk theme support across all CSS files</li>
+<li>Implemented Theme.init() pattern in all views</li>
+<li>Unified theme system with dark/light/cyberpunk variants</li>
+<li>v0.3.1: Enhanced permission management system</li>
+<li>Added .apk package format support (OpenWrt 25.12+)</li>
+<li>Improved module detection logic</li>
+</ul>
+<h4 id="luci-app-system-hub">luci-app-system-hub<a class="headerlink" href="#luci-app-system-hub" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.3.2-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: Central system control and monitoring</li>
+<li><strong>Views</strong>: 10 (overview, health, services, components, diagnostics, backup, remote, logs, settings, dev-status)</li>
+<li><strong>JavaScript Lines</strong>: 4,454 (LARGEST implementation)</li>
+<li><strong>RPCD Methods</strong>: 18</li>
+<li><strong>Key Features</strong>:</li>
+<li>Comprehensive system information dashboard</li>
+<li>Real-time health monitoring (CPU, memory, disk, network)</li>
+<li>Service management (start/stop/restart/enable/disable)</li>
+<li>System diagnostics and troubleshooting</li>
+<li>Configuration backup/restore</li>
+<li>Remote management capabilities</li>
+<li>System logs aggregation with auto-refresh</li>
+<li>Component inventory tracking</li>
+<li>OpenWrt version detection</li>
+<li>Architecture detection (x86, ARM, MIPS)</li>
+<li><strong>Recent Updates</strong>:</li>
+<li>v0.3.2: Modernized Quick Status widgets with histograms and gradients</li>
+<li>Added Network and Services widgets to Real-Time Metrics</li>
+<li>Enhanced dynamic overview stats</li>
+<li>Implemented working system logs viewer</li>
+<li>Fixed HTMLCollection display errors</li>
+<li><strong>Integration</strong>: systemd/procd services, ubus, logread, opkg/apk</li>
+<li><strong>Commit</strong>: fadf606 - "feat(system-hub): enhance dynamic overview stats for v0.3.2"</li>
+</ul>
+<hr />
+<h3 id="2-security-monitoring-2-modules">2. Security &amp; Monitoring (2 modules)<a class="headerlink" href="#2-security-monitoring-2-modules" title="Permanent link">&para;</a></h3>
+<h4 id="luci-app-crowdsec-dashboard">luci-app-crowdsec-dashboard<a class="headerlink" href="#luci-app-crowdsec-dashboard" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.4.0-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: CrowdSec threat intelligence and IPS dashboard</li>
+<li><strong>Views</strong>: 6 (overview, alerts, decisions, bouncers, metrics, settings)</li>
+<li><strong>JavaScript Lines</strong>: 2,089</li>
+<li><strong>RPCD Methods</strong>: 12</li>
+<li><strong>Key Features</strong>:</li>
+<li>Real-time threat detection and blocking</li>
+<li>Collaborative security intelligence sharing</li>
+<li>IP ban/unban management</li>
+<li>Multi-bouncer support (firewall, nginx, etc.)</li>
+<li>Threat scoring and risk analysis</li>
+<li>Attack metrics and trends</li>
+<li>Custom scenario detection</li>
+<li>Geographic threat analysis</li>
+<li><strong>Integration</strong>: CrowdSec engine, cscli command-line, iptables/nftables</li>
+<li><strong>Dependencies</strong>: crowdsec package</li>
+</ul>
+<h4 id="luci-app-netdata-dashboard">luci-app-netdata-dashboard<a class="headerlink" href="#luci-app-netdata-dashboard" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.4.0-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: Real-time system monitoring with comprehensive metrics</li>
+<li><strong>Views</strong>: 6 (dashboard, system, network, processes, realtime, settings)</li>
+<li><strong>JavaScript Lines</strong>: 1,554</li>
+<li><strong>RPCD Methods</strong>: 16</li>
+<li><strong>Key Features</strong>:</li>
+<li>Real-time system metrics collection</li>
+<li>Per-core CPU analysis</li>
+<li>Memory and swap tracking</li>
+<li>Disk I/O monitoring</li>
+<li>Network interface statistics</li>
+<li>Process tracking and management</li>
+<li>System load averages</li>
+<li>Historical charts and trends</li>
+<li><strong>Integration</strong>: /proc/stat, /proc/meminfo, /proc/net, system utilities</li>
+<li><strong>Data Sources</strong>: procfs, sysfs, netlink</li>
+</ul>
+<hr />
+<h3 id="3-network-intelligence-2-modules">3. Network Intelligence (2 modules)<a class="headerlink" href="#3-network-intelligence-2-modules" title="Permanent link">&para;</a></h3>
+<h4 id="luci-app-netifyd-dashboard">luci-app-netifyd-dashboard<a class="headerlink" href="#luci-app-netifyd-dashboard" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.4.0-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: Deep packet inspection and application classification</li>
+<li><strong>Views</strong>: 7 (overview, flows, applications, devices, talkers, risks, settings)</li>
+<li><strong>JavaScript Lines</strong>: 1,376</li>
+<li><strong>RPCD Methods</strong>: 12</li>
+<li><strong>Key Features</strong>:</li>
+<li>Deep packet inspection (DPI)</li>
+<li>Application protocol detection (HTTP, HTTPS, DNS, SSH, etc.)</li>
+<li>Network flow tracking and analysis</li>
+<li>Device fingerprinting and classification</li>
+<li>Risk detection and scoring</li>
+<li>Top talkers analysis</li>
+<li>Traffic pattern identification</li>
+<li>Port/protocol classification</li>
+<li><strong>Integration</strong>: netifyd DPI engine</li>
+<li><strong>Dependencies</strong>: netifyd package</li>
+<li><strong>Use Cases</strong>: Traffic analysis, bandwidth optimization, security monitoring</li>
+</ul>
+<h4 id="luci-app-network-modes">luci-app-network-modes<a class="headerlink" href="#luci-app-network-modes" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.3.5-1</li>
+<li><strong>Status</strong>: ✅ Production Ready</li>
+<li><strong>Description</strong>: Dynamic network mode switching and configuration</li>
+<li><strong>Views</strong>: 7 (overview, wizard, router, relay, accesspoint, sniffer, settings)</li>
+<li><strong>JavaScript Lines</strong>: 2,104</li>
+<li><strong>RPCD Methods</strong>: 34 (LARGEST backend)</li>
+<li><strong>Key Features</strong>:</li>
+<li>Five network modes:<ul>
+<li><strong>Router</strong>: WAN/LAN with NAT and firewall</li>
+<li><strong>Relay</strong>: IP forwarding without NAT</li>
+<li><strong>Access Point</strong>: Bridge mode for wireless extension</li>
+<li><strong>Sniffer</strong>: Network monitoring mode</li>
+<li><strong>Custom</strong>: User-defined configuration</li>
+</ul>
+</li>
+<li>Automatic interface detection</li>
+<li>Configuration backup/restore per mode</li>
+<li>Live switching without reboot</li>
+<li>Service management per mode</li>
+<li>Dynamic firewall rule switching</li>
+<li>DHCP server/client mode switching</li>
+<li>Interface bridging automation</li>
+<li><strong>Recent Updates</strong>:</li>
+<li>v0.3.5: Auto-deploy proxies (Squid/TinyProxy/Privoxy), DoH, nginx vhosts, and Let’s Encrypt certificates</li>
+<li>Auto-apply advanced WiFi (802.11r/k/v, band steering) and tcpdump packet capture per mode</li>
+<li><strong>Integration</strong>: network, firewall, DHCP, hostapd/wpa_supplicant</li>
+</ul>
+<hr />
+<h3 id="4-vpn-access-control-3-modules">4. VPN &amp; Access Control (3 modules)<a class="headerlink" href="#4-vpn-access-control-3-modules" title="Permanent link">&para;</a></h3>
+<h4 id="luci-app-wireguard-dashboard">luci-app-wireguard-dashboard<a class="headerlink" href="#luci-app-wireguard-dashboard" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.4.0-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: WireGuard VPN management and monitoring</li>
+<li><strong>Views</strong>: 6 (overview, peers, config, qrcodes, traffic, settings)</li>
+<li><strong>JavaScript Lines</strong>: 1,571</li>
+<li><strong>RPCD Methods</strong>: 15</li>
+<li><strong>Key Features</strong>:</li>
+<li>WireGuard interface management</li>
+<li>Peer configuration and key management</li>
+<li>QR code generation for mobile clients</li>
+<li>Real-time traffic monitoring per peer</li>
+<li>Configuration import/export</li>
+<li>Automatic key pair generation</li>
+<li>Server and client modes</li>
+<li>Configuration validation</li>
+<li>Peer allowed-IPs management</li>
+<li><strong>Integration</strong>: wg-tools, wg command-line interface</li>
+<li><strong>Dependencies</strong>: wireguard-tools, qrencode</li>
+<li><strong>Supported Clients</strong>: iOS, Android, Windows, macOS, Linux</li>
+</ul>
+<h4 id="luci-app-client-guardian">luci-app-client-guardian<a class="headerlink" href="#luci-app-client-guardian" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.4.0-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: Network Access Control (NAC) and captive portal</li>
+<li><strong>Views</strong>: 9 (overview, clients, zones, alerts, parental, portal, logs, captive, settings)</li>
+<li><strong>JavaScript Lines</strong>: 2,293 (largest in access control category)</li>
+<li><strong>RPCD Methods</strong>: 29</li>
+<li><strong>Key Features</strong>:</li>
+<li>Network Access Control with approval workflow</li>
+<li>Security zones (LAN, Guest, Quarantine, DMZ)</li>
+<li>Client device management (approve/ban/quarantine)</li>
+<li>Parental controls with URL filtering</li>
+<li>Captive portal integration</li>
+<li>Real-time alerts (email/SMS notifications)</li>
+<li>Per-zone bandwidth limiting</li>
+<li>Time-based access restrictions</li>
+<li>Device fingerprinting and classification</li>
+<li>Session management</li>
+<li>DHCP lease tracking</li>
+<li><strong>Integration</strong>: nodogsplash (captive portal), iptables/arptables, DHCP, OpenWrt firewall</li>
+<li><strong>Dependencies</strong>: nodogsplash, iptables, arptables</li>
+</ul>
+<h4 id="luci-app-auth-guardian">luci-app-auth-guardian<a class="headerlink" href="#luci-app-auth-guardian" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.4.0-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: Advanced authentication and voucher system</li>
+<li><strong>Views</strong>: 6 (overview, sessions, vouchers, splash, oauth, bypass)</li>
+<li><strong>JavaScript Lines</strong>: 312 (minimal UI, form-focused)</li>
+<li><strong>RPCD Methods</strong>: 13</li>
+<li><strong>Key Features</strong>:</li>
+<li>OAuth2 integration (Google, GitHub, Facebook, etc.)</li>
+<li>Voucher-based access control system</li>
+<li>Session management and tracking</li>
+<li>Captive portal splash page customization</li>
+<li>Multi-factor authentication support</li>
+<li>Access bypass rules</li>
+<li>Audit logging for authentication events</li>
+<li>Time-limited vouchers</li>
+<li>Guest access management</li>
+<li><strong>Integration</strong>: nodogsplash, OAuth providers, UCI config</li>
+<li><strong>Storage</strong>: UCI config, sessions JSON, vouchers JSON, logs JSON</li>
+</ul>
+<hr />
+<h3 id="5-bandwidth-traffic-3-modules">5. Bandwidth &amp; Traffic (3 modules)<a class="headerlink" href="#5-bandwidth-traffic-3-modules" title="Permanent link">&para;</a></h3>
+<h4 id="luci-app-bandwidth-manager">luci-app-bandwidth-manager<a class="headerlink" href="#luci-app-bandwidth-manager" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.4.0-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: Bandwidth management with QoS and quotas</li>
+<li><strong>Views</strong>: 9 (overview, rules, quotas, usage, clients, media, classes, schedules, settings)</li>
+<li><strong>JavaScript Lines</strong>: 936</li>
+<li><strong>RPCD Methods</strong>: 14</li>
+<li><strong>Key Features</strong>:</li>
+<li>QoS traffic shaping (HTB, CAKE, FQ_CODEL)</li>
+<li>Per-client data quotas and limits</li>
+<li>Seven-priority traffic classification:<ul>
+<li>Real-time (VoIP, gaming)</li>
+<li>High priority (video conferencing)</li>
+<li>Normal (web browsing)</li>
+<li>Low priority (downloads)</li>
+<li>Bulk (torrents, backups)</li>
+</ul>
+</li>
+<li>Real-time bandwidth usage monitoring</li>
+<li>Historical usage tracking</li>
+<li>Media streaming detection and optimization</li>
+<li>Bandwidth reservation per application</li>
+<li>Schedule-based bandwidth policies</li>
+<li>Quota reset automation</li>
+<li><strong>Integration</strong>: tc (traffic control), iptables, conntrack</li>
+<li><strong>Commit</strong>: fa9bb2a - "feat: complete Bandwidth Manager implementation"</li>
+</ul>
+<h4 id="luci-app-traffic-shaper">luci-app-traffic-shaper<a class="headerlink" href="#luci-app-traffic-shaper" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.4.0-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: Advanced traffic shaping and QoS control</li>
+<li><strong>Views</strong>: 5 (overview, classes, rules, presets, stats)</li>
+<li><strong>JavaScript Lines</strong>: 985</li>
+<li><strong>RPCD Methods</strong>: 16</li>
+<li><strong>Key Features</strong>:</li>
+<li>CAKE (Common Applications Kept Enhanced) qdisc support</li>
+<li>HTB (Hierarchical Token Bucket) support</li>
+<li>Traffic classes with configurable priorities</li>
+<li>Port and protocol-based classification rules</li>
+<li>Quick preset configurations:<ul>
+<li><strong>Gaming</strong>: Low latency, prioritize UDP gaming ports</li>
+<li><strong>Streaming</strong>: Optimize video streams, buffer management</li>
+<li><strong>Work From Home</strong>: Prioritize VoIP and video conferencing</li>
+<li><strong>Balanced</strong>: Default fair queueing</li>
+</ul>
+</li>
+<li>Real-time queue statistics</li>
+<li>Per-class bandwidth allocation</li>
+<li>Burst and ceiling rate configuration</li>
+<li>Latency optimization</li>
+<li><strong>Integration</strong>: tc command, HTB/CAKE qdiscs, iptables marking</li>
+<li><strong>Validation</strong>: ✅ All checks passed</li>
+</ul>
+<h4 id="luci-app-media-flow">luci-app-media-flow<a class="headerlink" href="#luci-app-media-flow" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.4.0-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: Media traffic detection and streaming optimization</li>
+<li><strong>Views</strong>: 5 (dashboard, services, clients, history, alerts)</li>
+<li><strong>JavaScript Lines</strong>: 690 (lightweight detection module)</li>
+<li><strong>RPCD Methods</strong>: 10</li>
+<li><strong>Key Features</strong>:</li>
+<li>Streaming service detection:<ul>
+<li>Netflix, YouTube, Spotify, Twitch, etc.</li>
+</ul>
+</li>
+<li>Quality estimation (SD/HD/FHD/4K detection)</li>
+<li>Per-client media usage tracking</li>
+<li>Historical media consumption analysis</li>
+<li>Service categorization (video, audio, gaming)</li>
+<li>Bandwidth optimization hints</li>
+<li>Alert rules for excessive streaming</li>
+<li>Integration with bandwidth-manager for QoS</li>
+<li><strong>Integration</strong>: netifyd DPI engine for protocol detection</li>
+<li><strong>Dependencies</strong>: netifyd-dashboard</li>
+</ul>
+<hr />
+<h3 id="6-performance-services-3-modules">6. Performance &amp; Services (3 modules)<a class="headerlink" href="#6-performance-services-3-modules" title="Permanent link">&para;</a></h3>
+<h4 id="luci-app-cdn-cache">luci-app-cdn-cache<a class="headerlink" href="#luci-app-cdn-cache" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.4.1-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: CDN proxy cache for bandwidth optimization</li>
+<li><strong>Views</strong>: 6 (overview, cache, policies, settings, maintenance, statistics)</li>
+<li><strong>JavaScript Lines</strong>: 1,255</li>
+<li><strong>RPCD Methods</strong>: 27 (LARGEST method count)</li>
+<li><strong>Key Features</strong>:</li>
+<li>HTTP/HTTPS caching proxy</li>
+<li>Configurable cache policies per domain</li>
+<li>Bandwidth savings reporting</li>
+<li>Cache hit ratio analytics</li>
+<li>Domain-based exclusions</li>
+<li>Cache preloading for popular content</li>
+<li>TTL (Time-To-Live) configuration</li>
+<li>Cache size management</li>
+<li>Expired content purging</li>
+<li>Per-domain cache statistics</li>
+<li>Bandwidth savings charts</li>
+<li>Top domains by bandwidth report</li>
+<li><strong>Infrastructure</strong>: Nginx proxy_cache module, cache directory, stats JSON</li>
+<li><strong>Dependencies</strong>: nginx-full</li>
+</ul>
+<h4 id="luci-app-vhost-manager">luci-app-vhost-manager<a class="headerlink" href="#luci-app-vhost-manager" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.4.1-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: Virtual host and reverse proxy management</li>
+<li><strong>Views</strong>: 7 (overview, vhosts, certificates, ssl, redirects, internal, logs)</li>
+<li><strong>JavaScript Lines</strong>: 695</li>
+<li><strong>RPCD Methods</strong>: 13</li>
+<li><strong>Key Features</strong>:</li>
+<li>Nginx virtual host configuration</li>
+<li>SSL/TLS certificate management</li>
+<li>ACME protocol support (Let's Encrypt)</li>
+<li>Reverse proxy setup and configuration</li>
+<li>URL redirects (301/302)</li>
+<li>HTTP basic authentication</li>
+<li>WebSocket proxy support</li>
+<li>Custom nginx directives</li>
+<li>Access and error log aggregation</li>
+<li>Multi-domain hosting</li>
+<li>SNI (Server Name Indication) support</li>
+<li><strong>Integration</strong>: nginx, certbot/acme.sh for certificates</li>
+<li><strong>Dependencies</strong>: nginx-ssl, acme (optional)</li>
+</ul>
+<h4 id="luci-app-ksm-manager">luci-app-ksm-manager<a class="headerlink" href="#luci-app-ksm-manager" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.4.0-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: Cryptographic key and secret management</li>
+<li><strong>Views</strong>: 8 (overview, keys, certificates, secrets, hsm, ssh, audit, settings)</li>
+<li><strong>JavaScript Lines</strong>: 2,423</li>
+<li><strong>RPCD Methods</strong>: 28</li>
+<li><strong>Key Features</strong>:</li>
+<li>RSA and ECDSA key generation (2048/4096 bit)</li>
+<li>X.509 certificate management</li>
+<li>Hardware Security Module (HSM) integration:<ul>
+<li>Nitropy NK3 support</li>
+<li>YubiKey 5 support</li>
+</ul>
+</li>
+<li>SSH key management and deployment</li>
+<li>Secret storage with encryption</li>
+<li>Comprehensive audit trail</li>
+<li>Key rotation policies and automation</li>
+<li>Compliance reporting (FIPS, PCI-DSS)</li>
+<li>Certificate signing requests (CSR)</li>
+<li>Key export/import (PEM, DER formats)</li>
+<li><strong>Hardware Support</strong>:</li>
+<li>Nitropy NK3 (USB-C crypto key)</li>
+<li>YubiKey 5 series</li>
+<li><strong>Integration</strong>: openssl, gpg, ssh-keygen, HSM libraries</li>
+<li><strong>Security</strong>: All keys encrypted at rest</li>
+</ul>
+<hr />
+<h3 id="7-iot-integration-1-module">7. IoT &amp; Integration (1 module)<a class="headerlink" href="#7-iot-integration-1-module" title="Permanent link">&para;</a></h3>
+<h4 id="luci-app-mqtt-bridge">luci-app-mqtt-bridge<a class="headerlink" href="#luci-app-mqtt-bridge" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 0.5.0-1</li>
+<li><strong>Status</strong>: ✅ In Heavily Development Stage</li>
+<li><strong>Description</strong>: MQTT IoT Bridge with USB device support</li>
+<li><strong>Views</strong>: 2 (overview, adapters)</li>
+<li><strong>JavaScript Lines</strong>: 500 (estimated)</li>
+<li><strong>RPCD Methods</strong>: 7 (USB-focused)</li>
+<li><strong>Key Features</strong>:</li>
+<li>MQTT broker integration for IoT devices</li>
+<li>USB IoT adapter detection and management</li>
+<li>Support for 4 adapter types:<ul>
+<li><strong>Zigbee</strong>: Texas Instruments CC2531, ConBee II, Sonoff Zigbee 3.0</li>
+<li><strong>Z-Wave</strong>: Aeotec Z-Stick Gen5/7, Z-Wave.Me UZB</li>
+<li><strong>ModBus RTU</strong>: FTDI FT232, Prolific PL2303, CH340</li>
+<li><strong>USB Serial</strong>: Generic USB-to-serial adapters</li>
+</ul>
+</li>
+<li>VID:PID device database (17 known devices)</li>
+<li>Automatic adapter type detection</li>
+<li>USB device scanning and import wizard</li>
+<li>Serial port testing and configuration</li>
+<li>Real-time health monitoring (online/error/missing/unknown)</li>
+<li>UCI configuration for adapter persistence</li>
+<li><strong>Integration</strong>: MQTT broker, USB sysfs, /dev/ttyUSB<em>, /dev/ttyACM</em></li>
+<li><strong>Recent Updates</strong>:</li>
+<li>v0.5.0: Complete USB IoT adapter support</li>
+<li>Added USB detection library with VID:PID matching</li>
+<li>Created adapters.js view for USB management</li>
+<li>Enhanced overview.js with adapter statistics</li>
+<li>Implemented 7 new RPCD methods for USB operations</li>
+<li><strong>Dependencies</strong>: mosquitto (MQTT broker), USB adapter hardware</li>
+</ul>
+<hr />
+<h2 id="implementation-statistics">Implementation Statistics<a class="headerlink" href="#implementation-statistics" title="Permanent link">&para;</a></h2>
+<h3 id="overall-metrics">Overall Metrics<a class="headerlink" href="#overall-metrics" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Version</th>
+<th>Views</th>
+<th>JS Lines</th>
+<th>Methods</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>auth-guardian</td>
+<td>0.4.0-1</td>
+<td>6</td>
+<td>312</td>
+<td>13</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>bandwidth-manager</td>
+<td>0.4.0-1</td>
+<td>9</td>
+<td>936</td>
+<td>14</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>cdn-cache</td>
+<td>0.4.1-1</td>
+<td>6</td>
+<td>1,255</td>
+<td>27</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>client-guardian</td>
+<td>0.4.0-1</td>
+<td>9</td>
+<td>2,293</td>
+<td>29</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>crowdsec-dashboard</td>
+<td>0.4.0-1</td>
+<td>6</td>
+<td>2,089</td>
+<td>12</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>ksm-manager</td>
+<td>0.4.0-1</td>
+<td>8</td>
+<td>2,423</td>
+<td>28</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>media-flow</td>
+<td>0.4.0-1</td>
+<td>5</td>
+<td>690</td>
+<td>10</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>mqtt-bridge</td>
+<td>0.5.0-1</td>
+<td>2</td>
+<td>500</td>
+<td>7</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>netdata-dashboard</td>
+<td>0.4.0-1</td>
+<td>6</td>
+<td>1,554</td>
+<td>16</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>netifyd-dashboard</td>
+<td>0.4.0-1</td>
+<td>7</td>
+<td>1,376</td>
+<td>12</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>network-modes</td>
+<td>0.3.1-1</td>
+<td>7</td>
+<td>2,104</td>
+<td>34</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>secubox</td>
+<td>0.6.0-1</td>
+<td>11</td>
+<td>2,906</td>
+<td>33</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>system-hub</td>
+<td>0.3.2-1</td>
+<td>10</td>
+<td>4,454</td>
+<td>18</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>traffic-shaper</td>
+<td>0.4.0-1</td>
+<td>5</td>
+<td>985</td>
+<td>16</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>vhost-manager</td>
+<td>0.4.1-1</td>
+<td>7</td>
+<td>695</td>
+<td>13</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td>wireguard-dashboard</td>
+<td>0.4.0-1</td>
+<td>6</td>
+<td>1,571</td>
+<td>15</td>
+<td>✅ Complete</td>
+</tr>
+<tr>
+<td><strong>TOTALS</strong></td>
+<td></td>
+<td><strong>112</strong></td>
+<td><strong>27,138</strong></td>
+<td><strong>288</strong></td>
+<td><strong>100%</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="code-distribution">Code Distribution<a class="headerlink" href="#code-distribution" title="Permanent link">&para;</a></h3>
+<p><strong>By Module Size (JavaScript Lines):</strong>
+1. system-hub: 4,454 lines (16.7%)
+2. secubox: 2,906 lines (10.9%)
+3. ksm-manager: 2,423 lines (9.1%)
+4. client-guardian: 2,293 lines (8.6%)
+5. network-modes: 2,104 lines (7.9%)</p>
+<p><strong>By View Count:</strong>
+- Average: 7.3 views per module
+- Most views: system-hub (10 views)
+- Least views: media-flow, traffic-shaper (5 views each)</p>
+<p><strong>By RPCD Methods:</strong>
+- Average: 18.7 methods per module
+- Most methods: network-modes (34 methods)
+- Least methods: media-flow (10 methods)</p>
+<hr />
+<h2 id="validation-status">Validation Status<a class="headerlink" href="#validation-status" title="Permanent link">&para;</a></h2>
+<h3 id="automated-checks-secubox-toolsvalidate-modulessh">Automated Checks (secubox-tools/validate-modules.sh)<a class="headerlink" href="#automated-checks-secubox-toolsvalidate-modulessh" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Status</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RPCD naming</td>
+<td>✅ Pass</td>
+<td>All scripts use <code>luci.*</code> prefix</td>
+</tr>
+<tr>
+<td>Menu paths</td>
+<td>✅ Pass</td>
+<td>All paths match view locations</td>
+</tr>
+<tr>
+<td>View files</td>
+<td>✅ Pass</td>
+<td>All 110 views present</td>
+</tr>
+<tr>
+<td>RPCD permissions</td>
+<td>✅ Pass</td>
+<td>All scripts executable (755)</td>
+</tr>
+<tr>
+<td>htdocs permissions</td>
+<td>✅ Pass</td>
+<td>All CSS/JS readable (644)</td>
+</tr>
+<tr>
+<td>JSON syntax</td>
+<td>✅ Pass</td>
+<td>All menu.d and acl.d files valid</td>
+</tr>
+<tr>
+<td>ubus naming</td>
+<td>✅ Pass</td>
+<td>All objects use correct convention</td>
+</tr>
+</tbody>
+</table>
+<h3 id="module-specific-validation">Module-Specific Validation<a class="headerlink" href="#module-specific-validation" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>RPCD</th>
+<th>Menu</th>
+<th>Views</th>
+<th>JSON</th>
+<th>Overall</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>auth-guardian</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>bandwidth-manager</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>cdn-cache</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>client-guardian</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>crowdsec-dashboard</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>ksm-manager</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>media-flow</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>mqtt-bridge</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>netdata-dashboard</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>netifyd-dashboard</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>network-modes</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>secubox</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>system-hub</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>traffic-shaper</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>vhost-manager</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>wireguard-dashboard</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Result:</strong> 16/16 modules pass all validation checks (100%)</p>
+<hr />
+<h2 id="build-system-status">Build System Status<a class="headerlink" href="#build-system-status" title="Permanent link">&para;</a></h2>
+<h3 id="github-actions-workflows">GitHub Actions Workflows<a class="headerlink" href="#github-actions-workflows" title="Permanent link">&para;</a></h3>
+<h4 id="1-build-openwrt-packagesyml">1. build-openwrt-packages.yml<a class="headerlink" href="#1-build-openwrt-packagesyml" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Status</strong>: ✅ Operational</li>
+<li><strong>Purpose</strong>: Build IPK/APK packages for all architectures</li>
+<li><strong>Architectures Supported</strong>: 13 total</li>
+<li><strong>ARM64</strong> (6): aarch64-cortex-a53, aarch64-cortex-a72, aarch64-generic, mediatek-filogic, rockchip-armv8, bcm27xx-bcm2711</li>
+<li><strong>ARM32</strong> (4): arm-cortex-a7-neon, arm-cortex-a9-neon, qualcomm-ipq40xx, qualcomm-ipq806x</li>
+<li><strong>MIPS</strong> (2): mips-24kc, mipsel-24kc</li>
+<li><strong>x86</strong> (1): x86-64</li>
+<li><strong>Triggers</strong>: Push to master, pull requests, git tags</li>
+<li><strong>Output</strong>: Architecture-specific .ipk (24.10) or .apk (25.12+) packages</li>
+<li><strong>Recent Updates</strong>:</li>
+<li>Added .apk package format support (OpenWrt 25.12+)</li>
+<li>Updated to OpenWrt 24.10.5 and 25.12.0-rc1</li>
+<li>Added ninja-build dependency</li>
+</ul>
+<h4 id="2-build-secubox-imagesyml">2. build-secubox-images.yml<a class="headerlink" href="#2-build-secubox-imagesyml" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Status</strong>: ✅ Operational</li>
+<li><strong>Purpose</strong>: Build complete firmware images with SecuBox pre-installed</li>
+<li><strong>Target Devices</strong>:</li>
+<li>Globalscale ESPRESSObin V7/Ultra (aarch64-cortex-a53)</li>
+<li>Globalscale MOCHAbin (aarch64-cortex-a72)</li>
+<li>Marvell Sheeva64 (aarch64-cortex-a53)</li>
+<li><strong>Included Packages</strong>: All 15 SecuBox modules</li>
+<li><strong>Output</strong>: Firmware images (.img.gz, *-sysupgrade.bin)</li>
+<li><strong>Recent Fixes</strong>:</li>
+<li>Fixed opkg lock file issue</li>
+<li>Disabled GDB in toolchain</li>
+<li>Added image generation flags</li>
+<li>Added ninja-build dependency</li>
+</ul>
+<h4 id="3-test-validateyml">3. test-validate.yml<a class="headerlink" href="#3-test-validateyml" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Status</strong>: ✅ Operational</li>
+<li><strong>Purpose</strong>: Automated validation and testing</li>
+<li><strong>Checks</strong>:</li>
+<li>Makefile structure validation</li>
+<li>JSON syntax (menu.d, acl.d)</li>
+<li>Shell script validation (shellcheck)</li>
+<li>File permissions verification</li>
+<li>RPCD naming convention</li>
+<li>Menu path validation</li>
+</ul>
+<h3 id="local-build-system">Local Build System<a class="headerlink" href="#local-build-system" title="Permanent link">&para;</a></h3>
+<h4 id="secubox-toolslocal-buildsh">secubox-tools/local-build.sh<a class="headerlink" href="#secubox-toolslocal-buildsh" title="Permanent link">&para;</a></h4>
+<ul>
+<li><strong>Version</strong>: 2.0 (enhanced)</li>
+<li><strong>Features</strong>:</li>
+<li>Package building (SDK-based)</li>
+<li>Firmware building (full OpenWrt source)</li>
+<li>Validation suite (7 automated checks)</li>
+<li>Multi-architecture support (6 architectures)</li>
+<li><strong>Commands</strong>:</li>
+<li><code>validate</code> - Run all validation checks</li>
+<li><code>build [module]</code> - Build package(s)</li>
+<li><code>firmware</code> - Build complete firmware</li>
+<li><code>debug-firmware</code> - Debug configuration</li>
+<li><code>full</code> - Validate + build</li>
+<li><code>clean</code> - Remove artifacts</li>
+<li><strong>Package Formats</strong>:</li>
+<li>OpenWrt 24.10 and earlier: .ipk (opkg)</li>
+<li>OpenWrt 25.12+ and SNAPSHOT: .apk (Alpine apk)</li>
+<li><strong>Environment Variables</strong>:</li>
+<li><code>OPENWRT_VERSION</code>: 24.10.5 (default), 25.12.0-rc1, 23.05.5, SNAPSHOT</li>
+<li><code>SDK_DIR</code>: SDK cache directory (default: ./sdk)</li>
+<li><code>BUILD_DIR</code>: Build output (default: ./build)</li>
+<li><code>CACHE_DIR</code>: Download cache (default: ./cache)</li>
+</ul>
+<hr />
+<h2 id="version-history">Version History<a class="headerlink" href="#version-history" title="Permanent link">&para;</a></h2>
+<h3 id="v200-2025-12-28-current-release">v2.0.0 (2025-12-28) - Current Release<a class="headerlink" href="#v200-2025-12-28-current-release" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Documentation</strong>: Complete GitHub Pages and Wiki setup</li>
+<li><strong>CI/CD</strong>: Full .apk package format support</li>
+<li><strong>Modules</strong>: All 15 modules production-ready</li>
+<li><strong>Validation</strong>: 7 automated checks implemented</li>
+<li><strong>Architecture</strong>: 13 platforms supported</li>
+</ul>
+<h3 id="v033-2025-12-28">v0.3.3 (2025-12-28)<a class="headerlink" href="#v033-2025-12-28" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Documentation improvements</li>
+<li>Architecture diagrams added (3 Mermaid diagrams)</li>
+<li>Cross-references between documents</li>
+<li>Historical documents archived</li>
+</ul>
+<h3 id="v032-2025-12">v0.3.2 (2025-12)<a class="headerlink" href="#v032-2025-12" title="Permanent link">&para;</a></h3>
+<ul>
+<li>System Hub v0.3.2 with enhanced widgets</li>
+<li>Modernized Quick Status with histograms</li>
+<li>Added Network and Services real-time widgets</li>
+<li>Improved system logs viewer</li>
+</ul>
+<h3 id="v031-2025-12">v0.3.1 (2025-12)<a class="headerlink" href="#v031-2025-12" title="Permanent link">&para;</a></h3>
+<ul>
+<li>SecuBox v0.3.1 with permission management</li>
+<li>Network Modes v0.3.1 enhancements</li>
+<li>Support for both apk and opkg package managers</li>
+<li>Version info added to dashboard endpoints</li>
+</ul>
+<h3 id="v022-2025-11">v0.2.2 (2025-11)<a class="headerlink" href="#v022-2025-11" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Standardized version across 12 modules</li>
+<li>Traffic Shaper module completed</li>
+<li>Build system improvements</li>
+<li>Permission fixes</li>
+</ul>
+<h3 id="v01x-series-2025-q4">v0.1.x Series (2025-Q4)<a class="headerlink" href="#v01x-series-2025-q4" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Initial module implementations</li>
+<li>RPCD naming convention standardization</li>
+<li>ACL system implementation</li>
+<li>GitHub Actions workflows</li>
+</ul>
+<hr />
+<h2 id="architecture-support">Architecture Support<a class="headerlink" href="#architecture-support" title="Permanent link">&para;</a></h2>
+<h3 id="tier-1-full-testing-support">Tier 1 - Full Testing &amp; Support<a class="headerlink" href="#tier-1-full-testing-support" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>x86-64</strong>: PC, VMs, x86-based routers</li>
+<li><strong>aarch64-cortex-a72</strong>: MOCHAbin, Raspberry Pi 4</li>
+<li><strong>aarch64-cortex-a53</strong>: ESPRESSObin, Sheeva64</li>
+</ul>
+<h3 id="tier-2-package-building-only">Tier 2 - Package Building Only<a class="headerlink" href="#tier-2-package-building-only" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>ARM64</strong>: mediatek-filogic, rockchip-armv8, bcm27xx-bcm2711</li>
+<li><strong>ARM32</strong>: cortex-a7-neon, cortex-a9-neon, ipq40xx, ipq806x</li>
+<li><strong>MIPS</strong>: 24kc, mipsel variants</li>
+</ul>
+<h3 id="supported-openwrt-versions">Supported OpenWrt Versions<a class="headerlink" href="#supported-openwrt-versions" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>25.12.0-rc1</strong> (latest, primary target)</li>
+<li><strong>24.10.5</strong> (LTS, stable)</li>
+<li><strong>23.05.5</strong> (legacy support)</li>
+<li><strong>SNAPSHOT</strong> (development)</li>
+</ul>
+<hr />
+<h2 id="development-activity">Development Activity<a class="headerlink" href="#development-activity" title="Permanent link">&para;</a></h2>
+<h3 id="recent-commits-2025">Recent Commits (2025)<a class="headerlink" href="#recent-commits-2025" title="Permanent link">&para;</a></h3>
+<p><strong>Documentation</strong> (Dec 28, 2025):
+- 75042a8: Add GitHub Pages documentation site with MkDocs Material
+- dcdbd7b: Add GitHub Wiki and Pages setup automation
+- 4032834: Reorganize documentation structure and add architecture diagrams</p>
+<p><strong>System Hub</strong> (Dec 2025):
+- 00f2f20: Modernize Quick Status widgets with histograms and gradients
+- 14a5aca: Add Network and Services widgets to Real-Time Metrics
+- 4255a23: Add widget preferences styles and new widget gradients
+- f711001: Remove duplicate widgets and add modern histograms
+- fadf606: Enhance dynamic overview stats for v0.3.2
+- e90cf85: Implement working system logs viewer</p>
+<p><strong>SecuBox Core</strong> (Dec 2025):
+- f552cf7: Add LuCI development status view
+- a995b81: Add ninja-build to CI dependencies
+- 72a2b29: Fix module dashboard button URLs
+- c7ab10b: Support .apk package format in workflows
+- acdc7bc: Add version info to dashboard data endpoint
+- c5152f5: Support both apk and opkg package managers</p>
+<p><strong>Infrastructure</strong> (Nov-Dec 2025):
+- c1669b0: Add support for .apk package format (OpenWrt 25.12+)
+- c1dd6a9: Add OpenWrt 25.12.0-rc1 and 24.10.5 to build workflows
+- 1122f84: Fix ACL files to use proper luci.* ubus object naming
+- 0759c74: Add missing API functions to resolve module errors</p>
+<h3 id="contribution-activity">Contribution Activity<a class="headerlink" href="#contribution-activity" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Commits (Jan-Dec 2025)</strong>: 30+ commits</li>
+<li><strong>Lines Changed</strong>: 15,000+ insertions</li>
+<li><strong>Files Modified</strong>: 200+ files</li>
+<li><strong>Active Development</strong>: Ongoing</li>
+</ul>
+<hr />
+<h2 id="known-issues-todo">Known Issues &amp; TODO<a class="headerlink" href="#known-issues-todo" title="Permanent link">&para;</a></h2>
+<h3 id="resolved-issues">✅ Resolved Issues<a class="headerlink" href="#resolved-issues" title="Permanent link">&para;</a></h3>
+<ul>
+<li>~~client-guardian captive.js missing~~ - Fixed in v0.2.2</li>
+<li>~~RPCD naming inconsistencies~~ - Fixed in v0.1.3</li>
+<li>~~Menu path mismatches~~ - Fixed in v0.1.2</li>
+<li>~~Permission errors~~ - Auto-fix script created</li>
+<li>~~Build failures on OpenWrt 25.12~~ - apk support added</li>
+</ul>
+<h3 id="future-enhancements">🚀 Future Enhancements<a class="headerlink" href="#future-enhancements" title="Permanent link">&para;</a></h3>
+<p><strong>Priority 1 - Production Deployment</strong>:
+1. Hardware testing on all supported platforms
+2. Performance benchmarking suite
+3. Integration testing between modules
+4. Load testing for multi-user scenarios</p>
+<p><strong>Priority 2 - Features</strong>:
+1. Multi-language support (i18n)
+2. Mobile app integration (REST API)
+3. Email/SMS notification system
+4. Automated backup to cloud storage
+5. Module marketplace/repository</p>
+<p><strong>Priority 3 - Documentation</strong>:
+1. Video tutorials for each module
+2. Interactive demos
+3. API documentation (OpenAPI/Swagger)
+4. Troubleshooting flowcharts</p>
+<hr />
+<h2 id="deployment-guide">Deployment Guide<a class="headerlink" href="#deployment-guide" title="Permanent link">&para;</a></h2>
+<h3 id="pre-installation">Pre-Installation<a class="headerlink" href="#pre-installation" title="Permanent link">&para;</a></h3>
+<p><strong>System Requirements</strong>:
+- OpenWrt 23.05+ or 24.10+ (recommended)
+- Architecture: x86-64, ARM64, ARM32, or MIPS
+- Storage: 50MB minimum for all modules
+- RAM: 128MB minimum (256MB recommended)</p>
+<p><strong>Dependencies Check</strong>:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Install core dependencies</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>opkg<span class="w"> </span>update
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>opkg<span class="w"> </span>install<span class="w"> </span>luci<span class="w"> </span>luci-base<span class="w"> </span>rpcd<span class="w"> </span>rpcd-mod-ubus<span class="w"> </span>uhttpd
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># Optional dependencies (per module)</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>opkg<span class="w"> </span>install<span class="w"> </span>crowdsec<span class="w"> </span>netdata<span class="w"> </span>netifyd<span class="w"> </span>wireguard-tools<span class="w"> </span>nodogsplash<span class="w"> </span>nginx
+</code></pre></div></p>
+<h3 id="installation-methods">Installation Methods<a class="headerlink" href="#installation-methods" title="Permanent link">&para;</a></h3>
+<h4 id="method-1-package-manager-recommended">Method 1: Package Manager (Recommended)<a class="headerlink" href="#method-1-package-manager-recommended" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># OpenWrt 24.10 and earlier (opkg)</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>opkg<span class="w"> </span>update
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>opkg<span class="w"> </span>install<span class="w"> </span>luci-app-secubox<span class="w"> </span>luci-app-system-hub
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># OpenWrt 25.12+ (apk)</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>apk<span class="w"> </span>update
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>apk<span class="w"> </span>add<span class="w"> </span>luci-app-secubox<span class="w"> </span>luci-app-system-hub
+</code></pre></div>
+<h4 id="method-2-manual-installation">Method 2: Manual Installation<a class="headerlink" href="#method-2-manual-installation" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Download from GitHub Releases</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>wget<span class="w"> </span>https://github.com/gkerma/secubox-openwrt/releases/download/v2.0.0/luci-app-secubox_*.ipk
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Install</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>opkg<span class="w"> </span>install<span class="w"> </span>luci-app-secubox_*.ipk
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># Restart services</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>/etc/init.d/rpcd<span class="w"> </span>restart
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>/etc/init.d/uhttpd<span class="w"> </span>restart
+</code></pre></div>
+<h4 id="method-3-firmware-images">Method 3: Firmware Images<a class="headerlink" href="#method-3-firmware-images" title="Permanent link">&para;</a></h4>
+<ul>
+<li>Download pre-built firmware from GitHub Releases</li>
+<li>Flash to supported hardware (ESPRESSObin, MOCHAbin, etc.)</li>
+<li>All SecuBox modules pre-installed</li>
+</ul>
+<h3 id="post-installation">Post-Installation<a class="headerlink" href="#post-installation" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Verify installation</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>opkg<span class="w"> </span>list-installed<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>luci-app-
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Access SecuBox dashboard</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Navigate to: http://192.168.1.1/cgi-bin/luci/admin/secubox</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1"># Enable modules</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># Use SecuBox dashboard → Modules → Enable desired modules</span>
+</code></pre></div>
+<h3 id="validation">Validation<a class="headerlink" href="#validation" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Test RPCD backends</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>ubus<span class="w"> </span>list<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>luci.
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># Test services</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>/etc/init.d/rpcd<span class="w"> </span>status
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>/etc/init.d/uhttpd<span class="w"> </span>status
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="c1"># Check permissions</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>./secubox-tools/validate-modules.sh
+</code></pre></div>
+<hr />
+<h2 id="maintenance">Maintenance<a class="headerlink" href="#maintenance" title="Permanent link">&para;</a></h2>
+<h3 id="regular-tasks">Regular Tasks<a class="headerlink" href="#regular-tasks" title="Permanent link">&para;</a></h3>
+<p><strong>Daily</strong>:
+- Monitor system health via system-hub
+- Review security alerts in crowdsec-dashboard
+- Check bandwidth usage in bandwidth-manager</p>
+<p><strong>Weekly</strong>:
+- Update package lists: <code>opkg update</code>
+- Review logs in system-hub
+- Backup configuration via system-hub</p>
+<p><strong>Monthly</strong>:
+- Update packages: <code>opkg upgrade</code>
+- Review and rotate logs
+- Test backup/restore functionality
+- Security audit via crowdsec metrics</p>
+<h3 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h3>
+<p><strong>Common Issues</strong>:</p>
+<ol>
+<li><strong>Module not appearing in menu</strong></li>
+<li>Check ACL permissions: <code>/usr/share/rpcd/acl.d/luci-app-*.json</code></li>
+<li>Restart rpcd: <code>/etc/init.d/rpcd restart</code></li>
+<li>
+<p>Clear browser cache</p>
+</li>
+<li>
+<p><strong>RPC errors (Object not found)</strong></p>
+</li>
+<li>Verify RPCD script: <code>/usr/libexec/rpcd/luci.*</code></li>
+<li>Check permissions: <code>chmod 755 /usr/libexec/rpcd/luci.*</code></li>
+<li>
+<p>Test ubus: <code>ubus call luci.module method</code></p>
+</li>
+<li>
+<p><strong>Service not starting</strong></p>
+</li>
+<li>Check dependencies: <code>opkg list-installed</code></li>
+<li>Review logs: <code>logread</code></li>
+<li>Verify configuration: <code>uci show module</code></li>
+</ol>
+<p><strong>Debug Tools</strong>:
+- <code>./secubox-tools/validate-modules.sh</code> - Full validation
+- <code>./secubox-tools/secubox-debug.sh &lt;module&gt;</code> - Module diagnostics
+- <code>./secubox-tools/secubox-repair.sh</code> - Auto-repair common issues
+- <code>ubus call luci.module status</code> - Test RPC backend</p>
+<hr />
+<h2 id="release-process">Release Process<a class="headerlink" href="#release-process" title="Permanent link">&para;</a></h2>
+<h3 id="version-numbering">Version Numbering<a class="headerlink" href="#version-numbering" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Major.Minor.Patch</strong> (Semantic Versioning)</li>
+<li>Example: v2.0.0</li>
+<li>Major: Breaking changes, architectural updates</li>
+<li>Minor: New features, module additions</li>
+<li>Patch: Bug fixes, documentation</li>
+</ul>
+<h3 id="release-checklist">Release Checklist<a class="headerlink" href="#release-checklist" title="Permanent link">&para;</a></h3>
+<ol class="task-list">
+<li><strong>Pre-Release</strong>:</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Run full validation: <code>./secubox-tools/validate-modules.sh</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Update version in all Makefiles</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Update DOCS/MODULE_STATUS.md</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Test on target hardware</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Build packages locally: <code>./secubox-tools/local-build.sh build</code></li>
+<li class="task-list-item">
+<p><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Review CHANGELOG</p>
+</li>
+<li>
+<p><strong>Release</strong>:</p>
+</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Create git tag: <code>git tag -a v2.0.0 -m "Release 2.0.0"</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Push tag: <code>git push origin v2.0.0</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Wait for GitHub Actions to complete</li>
+<li class="task-list-item">
+<p><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Verify artifacts uploaded</p>
+</li>
+<li>
+<p><strong>Post-Release</strong>:</p>
+</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Download and test packages</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Update documentation site</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Announce on project channels</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Create GitHub Release with notes</li>
+</ol>
+<hr />
+<h2 id="resources">Resources<a class="headerlink" href="#resources" title="Permanent link">&para;</a></h2>
+<h3 id="documentation">Documentation<a class="headerlink" href="#documentation" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>DEVELOPMENT-GUIDELINES.md</strong> - Complete development reference</li>
+<li><strong>QUICK-START.md</strong> - Quick reference guide</li>
+<li><strong>CLAUDE.md</strong> - Build system and architecture</li>
+<li><strong>VALIDATION-GUIDE.md</strong> - Module validation procedures</li>
+<li><strong>PERMISSIONS-GUIDE.md</strong> - ACL and permissions</li>
+<li>Module README.md files in each <code>luci-app-*/</code> directory</li>
+</ul>
+<h3 id="tools">Tools<a class="headerlink" href="#tools" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>secubox-tools/validate-modules.sh</code> - Comprehensive validation (7 checks)</li>
+<li><code>secubox-tools/fix-permissions.sh</code> - Auto-fix file permissions</li>
+<li><code>secubox-tools/secubox-repair.sh</code> - Auto-repair common issues</li>
+<li><code>secubox-tools/secubox-debug.sh</code> - Module diagnostics</li>
+<li><code>secubox-tools/local-build.sh</code> - Local build system</li>
+</ul>
+<h3 id="online-resources">Online Resources<a class="headerlink" href="#online-resources" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>GitHub Repository</strong>: https://github.com/gkerma/secubox-openwrt</li>
+<li><strong>GitHub Pages</strong>: https://gkerma.github.io/secubox-openwrt/</li>
+<li><strong>GitHub Wiki</strong>: https://github.com/gkerma/secubox-openwrt/wiki</li>
+<li><strong>Live Demo</strong>: https://secubox.cybermood.eu</li>
+</ul>
+<hr />
+<h2 id="license">License<a class="headerlink" href="#license" title="Permanent link">&para;</a></h2>
+<p><strong>All modules</strong>: Apache License 2.0</p>
+<hr />
+<h2 id="maintainer">Maintainer<a class="headerlink" href="#maintainer" title="Permanent link">&para;</a></h2>
+<p><strong>SecuBox Project</strong>
+CyberMind.fr
+GitHub: @gkerma</p>
+<hr />
+<h2 id="summary">Summary<a class="headerlink" href="#summary" title="Permanent link">&para;</a></h2>
+<p><strong>SecuBox v2.0.0</strong> is a complete, production-ready suite of 15 OpenWrt LuCI applications providing comprehensive security, monitoring, and network management capabilities.</p>
+<p><strong>Key Achievements</strong>:
+- ✅ 100% implementation completion (110 views, 26,638 JS lines, 281 RPC methods)
+- ✅ Full validation coverage (7 automated checks)
+- ✅ Multi-architecture support (13 platforms)
+- ✅ Dual package format support (opkg .ipk and apk .apk)
+- ✅ Comprehensive documentation (GitHub Pages + Wiki)
+- ✅ Production-tested and deployed</p>
+<p><strong>Next Milestone</strong>: v2.1.0 with enhanced integration testing and mobile app support.</p>
+<hr />
+<p><em>Last updated: 2025-12-28 by automated analysis of repository</em></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/gkerma/secubox-openwrt" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://secubox.cybermood.eu" target="_blank" rel="noopener" title="secubox.cybermood.eu" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M351.9 280H161c2.9 64.5 17.2 123.9 37.5 167.4 11.4 24.5 23.7 41.8 35.1 52.4 11.2 10.5 18.9 12.2 22.9 12.2s11.7-1.7 22.9-12.2c11.4-10.6 23.7-28 35.1-52.4 20.3-43.5 34.6-102.9 37.5-167.4zm-191-48h190.9c-2.8-64.5-17.1-123.9-37.4-167.4-11.4-24.4-23.7-41.8-35.1-52.4C268.1 1.7 260.4 0 256.4 0s-11.7 1.7-22.9 12.2c-11.4 10.6-23.7 28-35.1 52.4-20.3 43.5-34.6 102.9-37.5 167.4m-48 0c3.5-85.6 25.6-165.1 57.9-217.3C78.7 47.3 10.9 131.2 1.5 232zM1.5 280c9.4 100.8 77.2 184.7 169.3 217.3-32.3-52.2-54.4-131.7-57.9-217.3zm398.4 0c-3.5 85.6-25.6 165.1-57.9 217.3 92.1-32.7 159.9-116.5 169.3-217.3zm111.4-48C501.9 131.2 434.1 47.3 342 14.7c32.3 52.2 54.4 131.7 57.9 217.3z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

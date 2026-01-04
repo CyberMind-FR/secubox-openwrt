@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require secubox-admin.api as API';
+'require secubox-admin.data-utils as DataUtils';
 'require poll';
 'require ui';
 
@@ -17,22 +18,14 @@ return view.extend({
 	},
 
 	render: function(data) {
-		var apps = data[0].apps || [];
-		var modules = data[1].modules || {};
+		var apps = DataUtils.normalizeApps(data[0]);
+		var modules = DataUtils.normalizeModules(data[1]);
 		var health = data[2] || {};
-		var alerts = data[3].alerts || [];
-		var sources = data[4].sources || [];
-		var updates = data[5] || {};
+		var alerts = DataUtils.normalizeAlerts(data[3]);
+		var sources = DataUtils.normalizeSources(data[4]);
+		var updates = DataUtils.normalizeUpdates(data[5]);
+		var stats = DataUtils.buildAppStats(apps, modules, alerts, updates, API.getAppStatus);
 		var self = this;
-
-		// Calculate stats
-		var installedCount = 0;
-		var runningCount = 0;
-		apps.forEach(function(app) {
-			var status = API.getAppStatus(app, modules);
-			if (status.installed) installedCount++;
-			if (status.running) runningCount++;
-		});
 
 		var container = E('div', { 'class': 'cyberpunk-mode' }, [
 			E('link', { 'rel': 'stylesheet',
@@ -58,7 +51,7 @@ return view.extend({
 				// LEFT CONSOLE - Stats & Quick Actions
 				E('div', { 'class': 'cyber-console-left' }, [
 					// System Stats
-					this.renderStatsPanel(apps.length, installedCount, runningCount, alerts.length, updates.total_updates_available || 0),
+					this.renderStatsPanel(stats.totalApps, stats.installedCount, stats.runningCount, stats.alertCount, updates.total_updates_available || 0),
 
 					// System Resources
 					this.renderSystemPanel(health),

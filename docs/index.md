@@ -104,7 +104,7 @@ SecuBox uses a modern, consistent design system:
 - **Components:** Cards, badges, buttons with gradient effects
 - **Layout:** Responsive grid system
 
-See the [Design System section](development-guidelines.md#design-system--ui-guidelines) for complete specifications.
+See the [Design System section](development-guidelines.md#design-system-ui-guidelines) for complete specifications.
 
 ---
 
@@ -152,6 +152,7 @@ Experience SecuBox in action:
 1. [Quick Start Guide](quick-start.md) - Essential rules and commands
 2. [Development Guidelines](development-guidelines.md) - Complete reference
 3. [CLAUDE.md](claude.md) - Build system and architecture
+4. [Repository Guidelines](repository-guidelines.md) - Structure, workflows, and PR expectations
 
 ### For AI-Assisted Development
 1. [Module Implementation Guide](module-implementation-guide.md) - Step-by-step workflow

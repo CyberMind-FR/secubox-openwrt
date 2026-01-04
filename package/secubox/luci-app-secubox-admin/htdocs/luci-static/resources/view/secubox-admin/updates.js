@@ -2,40 +2,88 @@
 'require view';
 'require secubox-admin.api as API';
 'require secubox-admin.components as Components';
+'require secubox-admin.data-utils as DataUtils';
 'require ui';
 'require poll';
 
 return view.extend({
 	load: function() {
-		console.log('[UPDATES] Loading data...');
+		console.log('[UPDATES-DEBUG] ========== LOAD START ==========');
+		console.log('[UPDATES-DEBUG] Starting Promise.all with 3 API calls...');
+
+		var checkUpdatesPromise = API.checkUpdates().then(function(result) {
+			console.log('[UPDATES-DEBUG] checkUpdates() raw result:', result);
+			console.log('[UPDATES-DEBUG] checkUpdates() result type:', typeof result);
+			console.log('[UPDATES-DEBUG] checkUpdates() keys:', Object.keys(result || {}));
+			return DataUtils.normalizeUpdates(result);
+		}).catch(function(err) {
+			console.error('[UPDATES-DEBUG] checkUpdates() ERROR:', err);
+			console.error('[UPDATES-DEBUG] checkUpdates() error message:', err.message);
+			console.error('[UPDATES-DEBUG] checkUpdates() error stack:', err.stack);
+			return { updates: [] };
+		});
+
+		var getAppsPromise = API.getApps().then(function(result) {
+			console.log('[UPDATES-DEBUG] getApps() raw result:', result);
+			console.log('[UPDATES-DEBUG] getApps() result type:', typeof result);
+			console.log('[UPDATES-DEBUG] getApps() keys:', Object.keys(result || {}));
+			return DataUtils.normalizeApps(result);
+		}).catch(function(err) {
+			console.error('[UPDATES-DEBUG] getApps() ERROR:', err);
+			return [];
+		});
+
+		var getModulesPromise = API.getModules().then(function(result) {
+			console.log('[UPDATES-DEBUG] getModules() raw result:', result);
+			return DataUtils.normalizeModules(result);
+		}).catch(function(err) {
+			console.error('[UPDATES-DEBUG] getModules() ERROR:', err);
+			return {};
+		});
+
 		return Promise.all([
-			L.resolveDefault(API.checkUpdates(), { updates: [] }),
-			L.resolveDefault(API.getApps(), { apps: [] }),
-			L.resolveDefault(API.getModules(), { modules: {} })
+			L.resolveDefault(checkUpdatesPromise, { updates: [] }),
+			L.resolveDefault(getAppsPromise, []),
+			L.resolveDefault(getModulesPromise, {})
 		]).then(function(results) {
-			console.log('[UPDATES] Data loaded:', {
-				updates: results[0],
-				apps: results[1],
-				modules: results[2]
-			});
+			console.log('[UPDATES-DEBUG] ========== ALL PROMISES RESOLVED ==========');
+			console.log('[UPDATES-DEBUG] Result[0] (updates):', results[0]);
+			console.log('[UPDATES-DEBUG] Result[1] (apps):', results[1]);
+			console.log('[UPDATES-DEBUG] Result[2] (modules):', results[2]);
+			console.log('[UPDATES-DEBUG] ========== LOAD COMPLETE ==========');
 			return results;
 		}).catch(function(err) {
-			console.error('[UPDATES] Load error:', err);
+			console.error('[UPDATES-DEBUG] ========== PROMISE.ALL ERROR ==========');
+			console.error('[UPDATES-DEBUG] Error:', err);
+			console.error('[UPDATES-DEBUG] Error message:', err.message);
+			console.error('[UPDATES-DEBUG] Error stack:', err.stack);
 			return [{ updates: [] }, { apps: [] }, { modules: {} }];
 		});
 	},
 
 	render: function(data) {
-		console.log('[UPDATES] Rendering with data:', data);
-		var updateData = data[0] || {};
-		var apps = data[1].apps || [];
-		var modules = data[2].modules || {};
+		console.log('[UPDATES-DEBUG] ========== RENDER START ==========');
+		console.log('[UPDATES-DEBUG] Render data (raw):', data);
+		console.log('[UPDATES-DEBUG] Render data type:', typeof data);
+		console.log('[UPDATES-DEBUG] Render data length:', data ? data.length : 'null');
+
+		var updateData = DataUtils.normalizeUpdates(data[0]);
+		var apps = DataUtils.normalizeApps(data[1]);
+		var modules = DataUtils.normalizeModules(data[2]);
 		var self = this;
+
+		console.log('[UPDATES-DEBUG] updateData:', updateData);
+		console.log('[UPDATES-DEBUG] updateData.updates:', updateData.updates);
+		console.log('[UPDATES-DEBUG] apps:', apps);
+		console.log('[UPDATES-DEBUG] apps length:', apps.length);
+		console.log('[UPDATES-DEBUG] modules:', modules);
 
 		var updatesAvailable = updateData.updates || [];
 		var totalUpdates = updatesAvailable.length;
 
-		console.log('[UPDATES] Total updates available:', totalUpdates);
+		console.log('[UPDATES-DEBUG] updatesAvailable:', updatesAvailable);
+		console.log('[UPDATES-DEBUG] totalUpdates:', totalUpdates);
+		console.log('[UPDATES-DEBUG] ========== RENDER PROCESSING ==========');
 
 		var container = E('div', { 'class': 'cyberpunk-mode secubox-updates' }, [
 			E('link', { 'rel': 'stylesheet',
@@ -111,7 +159,8 @@ return view.extend({
 		poll.add(function() {
 			console.log('[UPDATES] Polling for updates...');
 			return API.checkUpdates().then(function(result) {
-				if ((result.updates || []).length !== totalUpdates) {
+				var normalized = DataUtils.normalizeUpdates(result);
+				if ((normalized.updates || []).length !== totalUpdates) {
 					console.log('[UPDATES] Update count changed, reloading');
 					window.location.reload();
 				}

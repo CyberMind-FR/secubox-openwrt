@@ -8,9 +8,9 @@
 > This is a detailed validation guide. For quick commands, see [QUICK-START.md](quick-start.md)
 >
 > **Related Documentation:**
-> - Complete guide: [DEVELOPMENT-GUIDELINES.md §8](./DEVELOPMENT-GUIDELINES.md#validation-checklist)
-> - Pre-commit checklist: [DEVELOPMENT-GUIDELINES.md §8.1](./DEVELOPMENT-GUIDELINES.md#pre-commit-checklist)
-> - Post-deploy checklist: [DEVELOPMENT-GUIDELINES.md §8.3](./DEVELOPMENT-GUIDELINES.md#post-deploy-checklist)
+> - Complete guide: [DEVELOPMENT-GUIDELINES.md §8](development-guidelines.md#validation-checklist)
+> - Pre-commit checklist: [DEVELOPMENT-GUIDELINES.md §8.1](development-guidelines.md#pre-commit-checklist)
+> - Post-deploy checklist: [DEVELOPMENT-GUIDELINES.md §8.3](development-guidelines.md#post-deploy-checklist)
 > - Permissions guide: [PERMISSIONS-GUIDE.md](permissions-guide.md)
 > - Automation briefing: [CODEX.md](codex.md)
 
@@ -21,7 +21,7 @@
 - **Quick Commands:** [QUICK-START.md](quick-start.md)
 - **Permissions Reference:** [PERMISSIONS-GUIDE.md](permissions-guide.md)
 - **Automation Guardrails:** [CODEX.md](codex.md)
-- **Deployment Procedures:** [DEVELOPMENT-GUIDELINES.md §9](./DEVELOPMENT-GUIDELINES.md#deployment-procedures)
+- **Deployment Procedures:** [DEVELOPMENT-GUIDELINES.md §9](development-guidelines.md#deployment-procedures)
 
 This guide explains the validation checks performed on SecuBox modules during generation and before git push.
 
@@ -504,9 +504,9 @@ If validation incorrectly reports an error, please report it:
 
 ## Additional Resources
 
-- [CLAUDE.md](CLAUDE.md) - Main project documentation
-- [secubox-tools/README.md](secubox-tools/README.md) - Tools documentation
-- [.claude/module-prompts.md](.claude/module-prompts.md) - Module generation prompts
+- [CLAUDE.md](claude.md) - Main project documentation
+- [secubox-tools/README.md](https://github.com/gkerma/secubox-openwrt/blob/master/secubox-tools/README.md) - Tools documentation
+- [Feature Regeneration Prompts](feature-regeneration-prompts.md) - Module generation prompts
 
 ## Support
 

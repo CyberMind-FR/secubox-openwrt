@@ -9,6 +9,9 @@ return view.extend({
 	},
 
 	render: function(health) {
+		this.metricRefs = {};
+		this.detailRefs = {};
+
 		var container = E('div', { 'class': 'secubox-health' }, [
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/common.css') }),
@@ -32,26 +35,11 @@ return view.extend({
 						E('th', {}, 'Metric'),
 						E('th', {}, 'Value')
 					]),
-					E('tr', {}, [
-						E('td', {}, 'CPU Load'),
-						E('td', {}, (health.load || [0, 0, 0]).join(', '))
-					]),
-					E('tr', {}, [
-						E('td', {}, 'Total Memory'),
-						E('td', {}, API.formatBytes(health.total_memory || 0))
-					]),
-					E('tr', {}, [
-						E('td', {}, 'Free Memory'),
-						E('td', {}, API.formatBytes(health.free_memory || 0))
-					]),
-					E('tr', {}, [
-						E('td', {}, 'Total Disk'),
-						E('td', {}, API.formatBytes(health.total_disk || 0))
-					]),
-					E('tr', {}, [
-						E('td', {}, 'Free Disk'),
-						E('td', {}, API.formatBytes(health.free_disk || 0))
-					])
+					this.renderDetailRow('CPU Load', (health.load || [0, 0, 0]).join(', '), 'load'),
+					this.renderDetailRow('Total Memory', API.formatBytes(health.total_memory || 0), 'total_memory'),
+					this.renderDetailRow('Free Memory', API.formatBytes(health.free_memory || 0), 'free_memory'),
+					this.renderDetailRow('Total Disk', API.formatBytes(health.total_disk || 0), 'total_disk'),
+					this.renderDetailRow('Free Disk', API.formatBytes(health.free_disk || 0), 'free_disk')
 				])
 			])
 		]);
@@ -63,26 +51,52 @@ return view.extend({
 	},
 
 	renderMetricCard: function(label, value, unit, type) {
-		var colorClass = '';
-		if (typeof value === 'number') {
-			if (value > 90) colorClass = 'danger';
-			else if (value > 75) colorClass = 'warning';
-			else colorClass = 'success';
-		}
+		var colorClass = this.getMetricColor(value, type);
+		var valueEl = E('span', { 'class': 'value' }, value);
+		var unitEl = E('span', { 'class': 'unit' }, unit);
+		var progressBar = type === 'uptime' ? null : E('div', {
+			'class': 'progress-bar',
+			'style': 'width: ' + (typeof value === 'number' ? value : 0) + '%'
+		});
 
-		return E('div', { 'class': 'metric-card card ' + colorClass }, [
+		var card = E('div', { 'class': 'metric-card card ' + colorClass }, [
 			E('h4', {}, label),
 			E('div', { 'class': 'metric-value' }, [
-				E('span', { 'class': 'value' }, value),
-				E('span', { 'class': 'unit' }, unit)
+				valueEl,
+				unitEl
 			]),
-			E('div', { 'class': 'progress' }, [
-				E('div', {
-					'class': 'progress-bar',
-					'style': 'width: ' + (typeof value === 'number' ? value : 0) + '%'
-				})
+			type === 'uptime' ? null : E('div', { 'class': 'progress' }, [
+				progressBar
 			])
 		]);
+
+		this.metricRefs[type] = {
+			card: card,
+			valueEl: valueEl,
+			unitEl: unitEl,
+			progressEl: progressBar
+		};
+
+		return card;
+	},
+
+	renderDetailRow: function(label, value, key) {
+		var valueEl = E('td', {}, value);
+		this.detailRefs[key] = valueEl;
+		return E('tr', {}, [
+			E('td', {}, label),
+			valueEl
+		]);
+	},
+
+	getMetricColor: function(value, type) {
+		if (type === 'uptime' || typeof value !== 'number') {
+			return '';
+		}
+
+		if (value > 90) return 'danger';
+		if (value > 75) return 'warning';
+		return 'success';
 	},
 
 	formatUptime: function(seconds) {
@@ -92,11 +106,59 @@ return view.extend({
 		return days + 'd ' + hours + 'h ' + mins + 'm';
 	},
 
+	updateMetrics: function(health) {
+		this.setMetricValue('cpu', health.cpu || 0, '%');
+		this.setMetricValue('memory', health.memory || 0, '%');
+		this.setMetricValue('disk', health.disk || 0, '%');
+		this.setMetricValue('uptime', this.formatUptime(health.uptime || 0), '', true);
+	},
+
+	setMetricValue: function(type, value, unit, isText) {
+		var ref = this.metricRefs && this.metricRefs[type];
+		if (!ref) return;
+
+		if (ref.valueEl) {
+			ref.valueEl.textContent = (isText ? value : (typeof value === 'number' ? value : 0));
+		}
+		if (ref.unitEl && unit !== undefined) {
+			ref.unitEl.textContent = unit;
+		}
+		if (ref.progressEl && typeof value === 'number') {
+			ref.progressEl.style.width = value + '%';
+		}
+		if (ref.card && typeof value === 'number') {
+			var colorClass = this.getMetricColor(value, type);
+			ref.card.className = 'metric-card card ' + colorClass;
+		}
+	},
+
+	updateDetailRows: function(health) {
+		if (!this.detailRefs) return;
+		var refs = this.detailRefs;
+		if (refs.load) {
+			refs.load.textContent = (health.load || [0, 0, 0]).join(', ');
+		}
+		if (refs.total_memory) {
+			refs.total_memory.textContent = API.formatBytes(health.total_memory || 0);
+		}
+		if (refs.free_memory) {
+			refs.free_memory.textContent = API.formatBytes(health.free_memory || 0);
+		}
+		if (refs.total_disk) {
+			refs.total_disk.textContent = API.formatBytes(health.total_disk || 0);
+		}
+		if (refs.free_disk) {
+			refs.free_disk.textContent = API.formatBytes(health.free_disk || 0);
+		}
+	},
+
 	pollData: function() {
 		return API.getHealth().then(L.bind(function(health) {
-			// Update DOM elements with new values
-			// Implementation for live updates can be enhanced
-		}, this));
+			this.updateMetrics(health);
+			this.updateDetailRows(health);
+		}, this)).catch(function(err) {
+			console.error('[HEALTH] Poll error:', err);
+		});
 	},
 
 	handleSaveApply: null,

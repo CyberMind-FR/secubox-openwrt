@@ -11,13 +11,13 @@ Ce document définit les standards, bonnes pratiques et validations obligatoires
 
 ## Table des matières
 
-1. [Design System & UI Guidelines](#design-system--ui-guidelines)
-2. [Architecture & Naming Conventions](#architecture--naming-conventions)
-3. [RPCD & ubus Best Practices](#rpcd--ubus-best-practices)
-4. [ACL & Permissions](#acl--permissions)
+1. [Design System & UI Guidelines](#design-system-ui-guidelines)
+2. [Architecture & Naming Conventions](#architecture-naming-conventions)
+3. [RPCD & ubus Best Practices](#rpcd-ubus-best-practices)
+4. [ACL & Permissions](#acl-permissions)
 5. [JavaScript Patterns](#javascript-patterns)
 6. [CSS/Styling Standards](#cssstyling-standards)
-7. [Common Errors & Solutions](#common-errors--solutions)
+7. [Common Errors & Solutions](#common-errors-solutions)
 8. [Validation Checklist](#validation-checklist)
 9. [Deployment Procedures](#deployment-procedures)
 10. [AI Assistant Context Files](#ai-assistant-context-files)

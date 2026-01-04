@@ -65,32 +65,36 @@ var callGetLogs = rpc.declare({
 	expect: { logs: '' }
 });
 
-// Catalog Sources
+// Catalog Sources (with optimized timeout)
 var callGetCatalogSources = rpc.declare({
 	object: 'luci.secubox',
 	method: 'get_catalog_sources',
-	expect: { sources: [] }
+	expect: { sources: [] },
+	timeout: 15000  // 15 seconds (optimized backend with caching)
 });
 
 var callSetCatalogSource = rpc.declare({
 	object: 'luci.secubox',
 	method: 'set_catalog_source',
 	params: ['source'],
-	expect: { success: false }
+	expect: { success: false },
+	timeout: 20000  // 20 seconds
 });
 
 var callSyncCatalog = rpc.declare({
 	object: 'luci.secubox',
 	method: 'sync_catalog',
 	params: ['source'],
-	expect: { success: false }
+	expect: { success: false },
+	timeout: 90000  // Sync can take longer (90s for slow connections)
 });
 
-// Version Management
+// Version Management (with optimized timeout)
 var callCheckUpdates = rpc.declare({
 	object: 'luci.secubox',
 	method: 'check_updates',
-	expect: { }
+	expect: { },
+	timeout: 20000  // 20 seconds (optimized with persistent cache)
 });
 
 var callGetAppVersions = rpc.declare({
@@ -154,35 +158,76 @@ function getAppStatus(app, modules) {
 	};
 }
 
-// Export API
+// Debug wrapper for RPC calls with retry logic
+function debugRPC(name, call, options) {
+	options = options || {};
+	var maxRetries = options.retries || 2;
+	var retryDelay = options.retryDelay || 1000;
+
+	return function() {
+		var args = Array.prototype.slice.call(arguments);
+		var attemptCount = 0;
+		var self = this;
+
+		function attemptCall() {
+			attemptCount++;
+			console.log('[API-DEBUG] Calling:', name, 'with args:', args, '(attempt ' + attemptCount + ')');
+
+			return call.apply(self, args).then(function(result) {
+				console.log('[API-DEBUG] Success:', name, 'result:', result, '(attempt ' + attemptCount + ')');
+				return result;
+			}).catch(function(error) {
+				console.error('[API-DEBUG] Error:', name, 'error:', error, '(attempt ' + attemptCount + '/' + (maxRetries + 1) + ')');
+				console.error('[API-DEBUG] Error message:', error.message);
+				console.error('[API-DEBUG] Error stack:', error.stack || 'no stack');
+
+				// Retry on timeout errors
+				if (attemptCount <= maxRetries && error.message && error.message.indexOf('timed out') !== -1) {
+					console.warn('[API-DEBUG] Retrying', name, 'in', retryDelay, 'ms...');
+					return new Promise(function(resolve) {
+						setTimeout(function() {
+							resolve(attemptCall());
+						}, retryDelay);
+					});
+				}
+
+				throw error;
+			});
+		}
+
+		return attemptCall();
+	};
+}
+
+// Export API with debug wrappers and retry logic
 return baseclass.extend({
 	// Apps
-	getApps: callGetApps,
-	installApp: callInstallApp,
-	removeApp: callRemoveApp,
+	getApps: debugRPC('getApps', callGetApps, { retries: 2, retryDelay: 1500 }),
+	installApp: debugRPC('installApp', callInstallApp, { retries: 1 }),
+	removeApp: debugRPC('removeApp', callRemoveApp, { retries: 1 }),
 
 	// Modules
-	getModules: callGetModules,
-	enableModule: callEnableModule,
-	disableModule: callDisableModule,
+	getModules: debugRPC('getModules', callGetModules, { retries: 2, retryDelay: 1500 }),
+	enableModule: debugRPC('enableModule', callEnableModule),
+	disableModule: debugRPC('disableModule', callDisableModule),
 
 	// System
-	getHealth: callGetHealth,
-	getAlerts: callGetAlerts,
-	getLogs: callGetLogs,
+	getHealth: debugRPC('getHealth', callGetHealth, { retries: 1 }),
+	getAlerts: debugRPC('getAlerts', callGetAlerts, { retries: 1 }),
+	getLogs: debugRPC('getLogs', callGetLogs),
 
-	// Catalog Sources
-	getCatalogSources: callGetCatalogSources,
-	setCatalogSource: callSetCatalogSource,
-	syncCatalog: callSyncCatalog,
+	// Catalog Sources (critical - more retries)
+	getCatalogSources: debugRPC('getCatalogSources', callGetCatalogSources, { retries: 3, retryDelay: 2000 }),
+	setCatalogSource: debugRPC('setCatalogSource', callSetCatalogSource, { retries: 1 }),
+	syncCatalog: debugRPC('syncCatalog', callSyncCatalog, { retries: 1 }),
 
-	// Version Management
-	checkUpdates: callCheckUpdates,
-	getAppVersions: callGetAppVersions,
-	getChangelog: callGetChangelog,
+	// Version Management (critical - more retries)
+	checkUpdates: debugRPC('checkUpdates', callCheckUpdates, { retries: 3, retryDelay: 2000 }),
+	getAppVersions: debugRPC('getAppVersions', callGetAppVersions, { retries: 1 }),
+	getChangelog: debugRPC('getChangelog', callGetChangelog, { retries: 1 }),
 
 	// Widget Data
-	getWidgetData: callGetWidgetData,
+	getWidgetData: debugRPC('getWidgetData', callGetWidgetData, { retries: 1 }),
 
 	// Utilities
 	formatBytes: formatBytes,

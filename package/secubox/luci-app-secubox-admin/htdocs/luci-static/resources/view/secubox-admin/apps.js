@@ -2,38 +2,78 @@
 'require view';
 'require secubox-admin.api as API';
 'require secubox-admin.components as Components';
+'require secubox-admin.data-utils as DataUtils';
 'require ui';
 'require form';
 
 return view.extend({
 	load: function() {
-		console.log('[APPS] Loading data...');
+		console.log('[APPS-DEBUG] ========== LOAD START ==========');
+
+		var getAppsPromise = API.getApps().then(function(result) {
+			console.log('[APPS-DEBUG] getApps() raw result:', result);
+			var apps = DataUtils.normalizeApps(result);
+			console.log('[APPS-DEBUG] Normalized apps length:', apps.length);
+			return apps;
+		}).catch(function(err) {
+			console.error('[APPS-DEBUG] getApps() ERROR:', err);
+			console.error('[APPS-DEBUG] Error message:', err.message);
+			console.error('[APPS-DEBUG] Error stack:', err.stack);
+			return [];
+		});
+
+		var getModulesPromise = API.getModules().then(function(result) {
+			console.log('[APPS-DEBUG] getModules() raw result:', result);
+			var modules = DataUtils.normalizeModules(result);
+			console.log('[APPS-DEBUG] Normalized modules keys:', Object.keys(modules || {}).length);
+			return modules;
+		}).catch(function(err) {
+			console.error('[APPS-DEBUG] getModules() ERROR:', err);
+			return {};
+		});
+
+		var checkUpdatesPromise = API.checkUpdates().then(function(result) {
+			console.log('[APPS-DEBUG] checkUpdates() raw result:', result);
+			return DataUtils.normalizeUpdates(result);
+		}).catch(function(err) {
+			console.error('[APPS-DEBUG] checkUpdates() ERROR:', err);
+			return { updates: [], total_updates_available: 0 };
+		});
+
 		return Promise.all([
-			L.resolveDefault(API.getApps(), { apps: [] }),
-			L.resolveDefault(API.getModules(), { modules: {} }),
-			L.resolveDefault(API.checkUpdates(), { updates: [] })
+			L.resolveDefault(getAppsPromise, []),
+			L.resolveDefault(getModulesPromise, {}),
+			L.resolveDefault(checkUpdatesPromise, { updates: [], total_updates_available: 0 })
 		]).then(function(results) {
-			console.log('[APPS] Data loaded:', {
-				apps: results[0],
-				modules: results[1],
-				updates: results[2]
-			});
+			console.log('[APPS-DEBUG] ========== ALL PROMISES RESOLVED ==========');
+			console.log('[APPS-DEBUG] Apps length:', results[0].length);
+			console.log('[APPS-DEBUG] Modules keys:', Object.keys(results[1] || {}).length);
+			console.log('[APPS-DEBUG] Updates data:', results[2]);
+			console.log('[APPS-DEBUG] ========== LOAD COMPLETE ==========');
 			return results;
 		}).catch(function(err) {
-			console.error('[APPS] Load error:', err);
-			return [{ apps: [] }, { modules: {} }, { updates: [] }];
+			console.error('[APPS-DEBUG] ========== PROMISE.ALL ERROR ==========');
+			console.error('[APPS-DEBUG] Error:', err);
+			return [[], {}, { updates: [] }];
 		});
 	},
 
 	render: function(data) {
-		console.log('[APPS] Rendering with data:', data);
-		var apps = data[0].apps || [];
-		var modules = data[1].modules || {};
-		var updateInfo = data[2] || {};
+		console.log('[APPS-DEBUG] ========== RENDER START ==========');
+		console.log('[APPS-DEBUG] Render data (raw):', data);
+		console.log('[APPS-DEBUG] Render data type:', typeof data);
+		console.log('[APPS-DEBUG] Render data length:', data ? data.length : 'null');
+
+		var apps = DataUtils.normalizeApps(data[0]);
+		var modules = DataUtils.normalizeModules(data[1]);
+		var updateInfo = DataUtils.normalizeUpdates(data[2]);
 		var self = this;
 
-		console.log('[APPS] Apps count:', apps.length);
-		console.log('[APPS] Updates:', updateInfo);
+		console.log('[APPS-DEBUG] apps array:', apps);
+		console.log('[APPS-DEBUG] apps count:', apps.length);
+		console.log('[APPS-DEBUG] modules:', modules);
+		console.log('[APPS-DEBUG] updateInfo:', updateInfo);
+		console.log('[APPS-DEBUG] ========== RENDER PROCESSING ==========');
 
 		// Create updates lookup map
 		var updatesMap = {};
@@ -137,7 +177,7 @@ return view.extend({
 
 		console.log('[APPS] Rendering card for:', app.id, {isInstalled: isInstalled, hasUpdate: hasUpdate});
 
-		var itemClass = 'cyber-list-item';
+		var itemClass = 'cyber-list-item app-card';
 		if (isInstalled) itemClass += ' active';
 
 		return E('div', {

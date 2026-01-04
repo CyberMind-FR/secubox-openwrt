@@ -3,6 +3,7 @@
 'require secubox-admin.api as API';
 'require secubox-admin.components as Components';
 'require secubox-admin.widget-renderer as WidgetRenderer';
+'require secubox-admin.data-utils as DataUtils';
 'require poll';
 'require ui';
 
@@ -14,24 +15,18 @@ return view.extend({
 			L.resolveDefault(API.getApps(), { apps: [] }),
 			L.resolveDefault(API.getModules(), { modules: {} }),
 			L.resolveDefault(API.getHealth(), {}),
-			L.resolveDefault(API.getAlerts(), { alerts: [] })
+			L.resolveDefault(API.getAlerts(), { alerts: [] }),
+			L.resolveDefault(API.checkUpdates(), { updates: [] })
 		]);
 	},
 
 	render: function(data) {
-		var apps = data[0].apps || [];
-		var modules = data[1].modules || {};
+		var apps = DataUtils.normalizeApps(data[0]);
+		var modules = DataUtils.normalizeModules(data[1]);
 		var health = data[2];
-		var alerts = data[3].alerts || [];
-
-		var installedCount = 0;
-		var runningCount = 0;
-
-		apps.forEach(function(app) {
-			var status = API.getAppStatus(app, modules);
-			if (status.installed) installedCount++;
-			if (status.running) runningCount++;
-		});
+		var alerts = DataUtils.normalizeAlerts(data[3]);
+		var updateInfo = DataUtils.normalizeUpdates(data[4]);
+		var stats = DataUtils.buildAppStats(apps, modules, alerts, updateInfo, API.getAppStatus);
 
 		var container = E('div', { 'class': 'secubox-admin-dashboard' }, [
 			E('link', { 'rel': 'stylesheet',
@@ -45,10 +40,12 @@ return view.extend({
 
 			// Stats grid
 			E('div', { 'class': 'stats-grid' }, [
-				Components.renderStatCard('📦', apps.length, 'Total Apps', 'blue'),
-				Components.renderStatCard('✅', installedCount, 'Installed', 'green'),
-				Components.renderStatCard('▶️', runningCount, 'Running', 'success'),
-				Components.renderStatCard('⚠️', alerts.length, 'Alerts', alerts.length > 0 ? 'warning' : 'muted')
+				Components.renderStatCard('📦', stats.totalApps, 'Total Apps', 'blue'),
+				Components.renderStatCard('✅', stats.installedCount, 'Installed', 'green'),
+				Components.renderStatCard('▶️', stats.runningCount, 'Running', 'success'),
+				Components.renderStatCard('⚠️', stats.alertCount, 'Alerts', stats.alertCount > 0 ? 'warning' : 'muted'),
+				Components.renderStatCard('🔄', stats.updateCount, 'Pending Updates',
+					stats.updateCount > 0 ? 'warning' : 'muted')
 			]),
 
 			// System health summary
@@ -205,18 +202,19 @@ return view.extend({
 			}
 		}
 
-		try {
-			// Create new widget renderer instance
-			// WidgetRenderer is a baseclass-extended class, call it directly
-			this.widgetRenderer = WidgetRenderer({
-				containerId: 'dashboard-widgets-container',
-				apps: apps,
-				defaultRefreshInterval: 30,
-				gridMode: 'auto'
-			});
+			try {
+				// Create new widget renderer instance
+				var options = {
+					containerId: 'dashboard-widgets-container',
+					apps: apps,
+					defaultRefreshInterval: 30,
+					gridMode: 'auto'
+				};
 
-			// Render widgets
-			if (this.widgetRenderer && this.widgetRenderer.render) {
+				this.widgetRenderer = WidgetRenderer.create(options);
+
+				// Render widgets
+				if (this.widgetRenderer && this.widgetRenderer.render) {
 				this.widgetRenderer.render();
 			}
 		} catch (e) {

@@ -12,6 +12,6 @@ luci-app-secubox.backup-*
 
 
 # MkDocs / GitHub Pages
-site/
+##site/
 .venv/
 docs/.DS_Store

@@ -89,6 +89,7 @@ nav:
   - Getting Started:
     - Quick Start: quick-start.md
     - Documentation Index: documentation-index.md
+    - Repository Guidelines: repository-guidelines.md
 
   - Development:
     - Development Guidelines: development-guidelines.md
@@ -100,6 +101,7 @@ nav:
     - Validation Guide: validation-guide.md
     - Permissions Guide: permissions-guide.md
     - LuCI Development: luci-development-reference.md
+    - Codex Manual: codex.md
 
   - Modules:
     - Module Status: module-status.md

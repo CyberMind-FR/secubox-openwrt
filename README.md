@@ -16,6 +16,7 @@
 |-------|-------------|--------|
 | **[DEVELOPMENT-GUIDELINES.md](./DEVELOPMENT-GUIDELINES.md)** | ⭐ Guide complet: Design System, RPCD/ubus, ACL, JavaScript, CSS, Debugging (100+ pages) | Développeurs, IA assistants |
 | **[QUICK-START.md](./QUICK-START.md)** | ⚡ Aide-mémoire rapide: Règles critiques, commandes, templates de code | Développeurs expérimentés |
+| **[AGENTS.md](./AGENTS.md)** | 🤖 Repository Guidelines: structure, commandes build/test, conventions de commits | Contributeurs, agents IA |
 | **[CLAUDE.md](./CLAUDE.md)** | 🏗️ Architecture & Build: SDK OpenWrt, structure fichiers, CI/CD | Claude Code, automation |
 | **[deploy-module-template.sh](./deploy-module-template.sh)** | 🚀 Script de déploiement standardisé avec backup automatique | DevOps |
 
