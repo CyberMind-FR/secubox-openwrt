@@ -529,7 +529,7 @@ LUCI_MK
     rm -f feeds/telephony.index feeds/routing.index 2>/dev/null || true
     rm -rf feeds/telephony feeds/routing 2>/dev/null || true
 
-    make defconfig
+    make defconfig 2>/dev/null
 
     cd - > /dev/null
 
@@ -779,7 +779,7 @@ configure_packages() {
     echo "CONFIG_FEED_packages=y" >> .config
     echo "CONFIG_FEED_luci=y" >> .config
 
-    make defconfig
+    make defconfig 2>/dev/null
 
     cd - > /dev/null
 
@@ -1275,7 +1275,7 @@ EOF
     esac
 
     # Run defconfig
-    make defconfig
+    make defconfig 2>/dev/null
 
     cd - > /dev/null
 
