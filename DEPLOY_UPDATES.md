@@ -69,11 +69,16 @@ ubus -S call luci.secubox check_updates
 ### Package Versions
 
 - `secubox-core`: 0.8.0-6
-- `luci-app-secubox-admin`: 1.0.0-4
+- `luci-app-secubox-admin`: 1.0.0-5
 
 ### Recent Fixes
 
-**v1.0.0-4** (Latest):
+**v1.0.0-5** (Latest):
+- Added graceful RPC fallback with L.resolveDefault()
+- Pages now load with empty data instead of crashing when backend not deployed
+- Fixes "No related RPC reply" errors
+
+**v1.0.0-4**:
 - Fixed WidgetRenderer undefined options TypeError
 - Added defensive check: `options = options || {};`
 
@@ -82,6 +87,24 @@ ubus -S call luci.secubox check_updates
 - Added UCI access to `secubox-appstore` config
 
 ## Troubleshooting
+
+### Getting "No related RPC reply" errors?
+
+This means the backend (secubox-core) hasn't been deployed yet with the new RPCD methods.
+
+**Solution**: Deploy BOTH packages:
+```bash
+./deploy-to-router.sh
+```
+
+With v1.0.0-5, pages will load gracefully with empty data until backend is deployed.
+
+**What you'll see**:
+- Catalog Sources page: "No sources configured"
+- Updates page: "All applications are up to date"
+- Apps page: Works normally (uses existing RPC methods)
+
+After deploying secubox-core, these pages will populate with real data.
 
 ### Still Getting "Access Denied"?
 
