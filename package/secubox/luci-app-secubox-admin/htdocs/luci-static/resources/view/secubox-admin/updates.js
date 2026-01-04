@@ -7,83 +7,116 @@
 
 return view.extend({
 	load: function() {
+		console.log('[UPDATES] Loading data...');
 		return Promise.all([
 			L.resolveDefault(API.checkUpdates(), { updates: [] }),
-			API.getApps(),
-			API.getModules()
-		]);
+			L.resolveDefault(API.getApps(), { apps: [] }),
+			L.resolveDefault(API.getModules(), { modules: {} })
+		]).then(function(results) {
+			console.log('[UPDATES] Data loaded:', {
+				updates: results[0],
+				apps: results[1],
+				modules: results[2]
+			});
+			return results;
+		}).catch(function(err) {
+			console.error('[UPDATES] Load error:', err);
+			return [{ updates: [] }, { apps: [] }, { modules: {} }];
+		});
 	},
 
 	render: function(data) {
+		console.log('[UPDATES] Rendering with data:', data);
 		var updateData = data[0] || {};
 		var apps = data[1].apps || [];
 		var modules = data[2].modules || {};
 		var self = this;
 
-		// Filter apps that have updates available
 		var updatesAvailable = updateData.updates || [];
 		var totalUpdates = updatesAvailable.length;
 
-		var container = E('div', { 'class': 'secubox-updates' }, [
+		console.log('[UPDATES] Total updates available:', totalUpdates);
+
+		var container = E('div', { 'class': 'cyberpunk-mode secubox-updates' }, [
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/admin.css') }),
+			E('link', { 'rel': 'stylesheet',
+				'href': L.resource('secubox-admin/cyberpunk.css') }),
 
-			E('h2', {}, 'Available Updates'),
-			E('p', {}, 'Review and install available updates for SecuBox applications'),
+			// Cyberpunk header
+			E('div', { 'class': 'cyber-header' }, [
+				E('div', { 'class': 'cyber-header-title' }, '⚡ AVAILABLE UPDATES'),
+				E('div', { 'class': 'cyber-header-subtitle' },
+					totalUpdates + ' update' + (totalUpdates !== 1 ? 's' : '') + ' available · Keep your system current')
+			]),
 
-			// Summary header
-			E('div', { 'class': 'updates-summary' }, [
-				E('div', { 'class': 'summary-card' }, [
-					E('div', { 'class': 'summary-icon' }, '📦'),
-					E('div', { 'class': 'summary-info' }, [
-						E('div', { 'class': 'summary-count' }, totalUpdates.toString()),
-						E('div', { 'class': 'summary-label' }, totalUpdates === 1 ? 'Update Available' : 'Updates Available')
-					])
+			// Summary stats panel
+			E('div', { 'class': 'cyber-panel' }, [
+				E('div', { 'class': 'cyber-panel-header' }, [
+					E('span', { 'class': 'cyber-panel-title' }, 'UPDATE STATUS'),
+					E('span', { 'class': 'cyber-panel-badge ' + (totalUpdates > 0 ? 'warning' : 'success') }, 
+						totalUpdates > 0 ? totalUpdates + ' PENDING' : 'UP TO DATE')
 				]),
-				E('div', { 'class': 'summary-actions' }, [
-					totalUpdates > 0 ? E('button', {
-						'class': 'btn btn-primary',
-						'click': function() {
-							self.updateAllApps(updatesAvailable);
-						}
-					}, 'Update All') : null,
-					E('button', {
-						'class': 'btn btn-secondary',
-						'click': function() {
-							self.checkForUpdates();
-						}
-					}, 'Check for Updates')
+				E('div', { 'class': 'cyber-panel-body' }, [
+					E('div', { 'class': 'cyber-quick-actions' }, [
+						totalUpdates > 0 ? E('button', {
+							'class': 'cyber-action-btn',
+							'click': function() {
+								console.log('[UPDATES] Update all apps');
+								self.updateAllApps(updatesAvailable);
+							}
+						}, [
+							E('span', { 'class': 'cyber-action-icon' }, '⚡'),
+							E('span', { 'class': 'cyber-action-label' }, 'UPDATE ALL (' + totalUpdates + ')'),
+							E('span', { 'class': 'cyber-action-arrow' }, '→')
+						]) : null,
+						E('button', {
+							'class': 'cyber-action-btn',
+							'click': function() {
+								console.log('[UPDATES] Check for updates');
+								self.checkForUpdates();
+							}
+						}, [
+							E('span', { 'class': 'cyber-action-icon' }, '🔍'),
+							E('span', { 'class': 'cyber-action-label' }, 'CHECK FOR UPDATES'),
+							E('span', { 'class': 'cyber-action-arrow' }, '→')
+						])
+					])
 				])
 			]),
 
 			// Updates list
 			totalUpdates > 0 ?
-				E('div', { 'class': 'updates-list', 'id': 'updates-list' },
+				E('div', { 'class': 'cyber-list', 'id': 'updates-list' },
 					updatesAvailable.map(function(update) {
-						// Find full app details from catalog
 						var app = apps.find(function(a) { return a.id === update.app_id; });
+						console.log('[UPDATES] Rendering update for:', update.app_id);
 						return self.renderUpdateCard(update, app);
 					})
 				) :
-				E('div', { 'class': 'no-updates' }, [
-					E('div', { 'class': 'no-updates-icon' }, '✓'),
-					E('h3', {}, 'All applications are up to date'),
-					E('p', {}, 'Check back later for new updates or click "Check for Updates" to refresh.')
+				E('div', { 'class': 'cyber-panel' }, [
+					E('div', { 'class': 'cyber-panel-body', 'style': 'text-align: center; padding: 40px;' }, [
+						E('div', { 'style': 'font-size: 48px; margin-bottom: 20px;' }, '✓'),
+						E('div', { 'style': 'color: var(--cyber-primary); font-size: 18px; margin-bottom: 10px;' }, 
+							'ALL APPLICATIONS UP TO DATE'),
+						E('div', { 'style': 'color: var(--cyber-text-dim); font-size: 12px;' },
+							'Check back later or click "CHECK FOR UPDATES"')
+					])
 				])
 		]);
 
-		// Auto-refresh every 60 seconds
+		// Auto-refresh every 60s
 		poll.add(function() {
+			console.log('[UPDATES] Polling for updates...');
 			return API.checkUpdates().then(function(result) {
-				var updatesList = document.getElementById('updates-list');
-				if (updatesList && result.updates) {
-					// Only update if count changed
-					if (result.updates.length !== totalUpdates) {
-						window.location.reload();
-					}
+				if ((result.updates || []).length !== totalUpdates) {
+					console.log('[UPDATES] Update count changed, reloading');
+					window.location.reload();
 				}
+			}).catch(function(err) {
+				console.error('[UPDATES] Poll error:', err);
 			});
 		}, 60);
 
@@ -94,184 +127,100 @@ return view.extend({
 		var self = this;
 
 		if (!app) {
-			// App not found in catalog, show minimal info
 			app = {
 				id: update.app_id,
 				name: update.app_id,
-				description: 'Application from catalog',
+				description: 'Application',
 				icon: '📦'
 			};
 		}
 
-		return E('div', { 'class': 'update-card', 'data-app-id': update.app_id }, [
-			// App header
-			E('div', { 'class': 'update-header' }, [
-				E('div', { 'class': 'app-icon-large' }, app.icon || '📦'),
-				E('div', { 'class': 'app-title' }, [
-					E('h3', {}, app.name),
-					E('p', { 'class': 'app-category' }, app.category || 'Application')
+		return E('div', { 'class': 'cyber-list-item', 'data-app-id': update.app_id }, [
+			E('div', { 'class': 'cyber-list-icon' }, app.icon || '📦'),
+			E('div', { 'class': 'cyber-list-content' }, [
+				E('div', { 'class': 'cyber-list-title' }, [
+					app.name,
+					E('span', { 'class': 'cyber-badge warning' }, '⚡ UPDATE')
 				]),
-				E('div', { 'class': 'update-badge' }, [
-					E('span', { 'class': 'badge badge-warning' }, 'UPDATE AVAILABLE')
+				E('div', { 'class': 'cyber-list-meta' }, [
+					E('span', { 'class': 'cyber-list-meta-item' }, [
+						E('span', {}, '📊 '),
+						'v' + (update.installed_version || '?') + ' → v' + (update.catalog_version || '?')
+					]),
+					E('span', { 'class': 'cyber-list-meta-item' }, [
+						E('span', {}, '📁 '),
+						app.category || 'application'
+					])
 				])
 			]),
-
-			// Version info
-			E('div', { 'class': 'version-info' }, [
-				E('div', { 'class': 'version-row' }, [
-					E('span', { 'class': 'version-label' }, 'Current Version:'),
-					E('span', { 'class': 'version-value current' }, update.installed_version || 'Unknown')
-				]),
-				E('div', { 'class': 'version-arrow' }, '→'),
-				E('div', { 'class': 'version-row' }, [
-					E('span', { 'class': 'version-label' }, 'New Version:'),
-					E('span', { 'class': 'version-value new' }, update.catalog_version || 'Unknown')
-				])
-			]),
-
-			// Changelog section
-			update.changelog ? E('div', { 'class': 'changelog-section' }, [
-				E('h4', {}, 'What\'s New'),
-				E('div', { 'class': 'changelog-content' },
-					this.renderChangelog(update.changelog)
-				)
-			]) : null,
-
-			// Update info
-			E('div', { 'class': 'update-meta' }, [
-				update.release_date ? E('div', { 'class': 'meta-item' }, [
-					E('span', { 'class': 'meta-label' }, 'Release Date:'),
-					E('span', { 'class': 'meta-value' }, update.release_date)
-				]) : null,
-				update.download_size ? E('div', { 'class': 'meta-item' }, [
-					E('span', { 'class': 'meta-label' }, 'Download Size:'),
-					E('span', { 'class': 'meta-value' }, API.formatBytes(update.download_size))
-				]) : null
-			]),
-
-			// Actions
-			E('div', { 'class': 'update-actions' }, [
+			E('div', { 'class': 'cyber-list-actions' }, [
 				E('button', {
-					'class': 'btn btn-primary',
+					'class': 'cyber-btn warning',
 					'click': function() {
+						console.log('[UPDATES] Update app:', update.app_id);
 						self.updateApp(update.app_id, app.name);
 					}
-				}, 'Update Now'),
+				}, '⚡ UPDATE'),
 				E('button', {
-					'class': 'btn btn-secondary',
+					'class': 'cyber-btn',
 					'click': function() {
+						console.log('[UPDATES] View changelog:', update.app_id);
 						self.viewFullChangelog(update.app_id, update.installed_version, update.catalog_version);
 					}
-				}, 'View Full Changelog'),
-				E('button', {
-					'class': 'btn btn-tertiary',
-					'click': function() {
-						self.skipUpdate(update.app_id);
-					}
-				}, 'Skip This Version')
+				}, '📋 CHANGELOG')
 			])
 		]);
 	},
 
-	renderChangelog: function(changelog) {
-		if (typeof changelog === 'string') {
-			return E('p', {}, changelog);
-		}
-
-		if (Array.isArray(changelog)) {
-			return E('ul', { 'class': 'changelog-list' },
-				changelog.map(function(item) {
-					return E('li', {}, item);
-				})
-			);
-		}
-
-		// Object with version keys
-		var versions = Object.keys(changelog);
-		if (versions.length > 0) {
-			var latestVersion = versions[0];
-			var changes = changelog[latestVersion].changes || [];
-			return E('ul', { 'class': 'changelog-list' },
-				changes.map(function(item) {
-					return E('li', {}, item);
-				})
-			);
-		}
-
-		return E('p', {}, 'No changelog available');
-	},
-
 	updateApp: function(appId, appName) {
-		ui.showModal(_('Updating Application'), [
-			E('p', { 'class': 'spinning' }, _('Updating %s...').format(appName))
+		console.log('[UPDATES] Updating app:', appId);
+		ui.showModal('Updating Application', [
+			Components.renderLoader('Updating ' + appName + '...')
 		]);
 
 		API.installApp(appId).then(function(result) {
+			console.log('[UPDATES] Update result:', result);
 			ui.hideModal();
 			if (result.success) {
-				ui.addNotification(null,
-					E('p', _('%s updated successfully').format(appName)),
-					'success'
-				);
-				// Refresh the page to show updated status
-				setTimeout(function() {
-					window.location.reload();
-				}, 1000);
+				ui.addNotification(null, E('p', appName + ' updated successfully'), 'success');
+				setTimeout(function() { window.location.reload(); }, 1000);
 			} else {
-				ui.addNotification(null,
-					E('p', _('Update failed: %s').format(result.error || 'Unknown error')),
-					'error'
-				);
+				ui.addNotification(null, E('p', 'Update failed: ' + (result.error || 'Unknown')), 'error');
 			}
 		}).catch(function(err) {
+			console.error('[UPDATES] Update error:', err);
 			ui.hideModal();
-			ui.addNotification(null,
-				E('p', _('Update error: %s').format(err.message)),
-				'error'
-			);
+			ui.addNotification(null, E('p', 'Update error: ' + err.message), 'error');
 		});
 	},
 
 	updateAllApps: function(updates) {
+		console.log('[UPDATES] Updating all apps:', updates.length);
 		if (updates.length === 0) return;
 
-		ui.showModal(_('Updating Applications'), [
-			E('p', { 'class': 'spinning' }, _('Updating %d applications...').format(updates.length)),
-			E('p', { 'id': 'update-progress' }, _('Preparing...'))
+		ui.showModal('Updating Applications', [
+			Components.renderLoader('Updating ' + updates.length + ' applications...')
 		]);
 
-		var self = this;
 		var currentIndex = 0;
-
 		function updateNext() {
 			if (currentIndex >= updates.length) {
 				ui.hideModal();
-				ui.addNotification(null,
-					E('p', _('All applications updated successfully')),
-					'success'
-				);
-				setTimeout(function() {
-					window.location.reload();
-				}, 1000);
+				ui.addNotification(null, E('p', 'All applications updated'), 'success');
+				setTimeout(function() { window.location.reload(); }, 1000);
 				return;
 			}
 
 			var update = updates[currentIndex];
-			var progressEl = document.getElementById('update-progress');
-			if (progressEl) {
-				progressEl.textContent = _('Updating %s (%d/%d)...')
-					.format(update.app_id, currentIndex + 1, updates.length);
-			}
-
-			API.installApp(update.app_id).then(function(result) {
+			console.log('[UPDATES] Batch update:', update.app_id, '(' + (currentIndex + 1) + '/' + updates.length + ')');
+			
+			API.installApp(update.app_id).then(function() {
 				currentIndex++;
 				updateNext();
 			}).catch(function(err) {
+				console.error('[UPDATES] Batch update error:', err);
 				ui.hideModal();
-				ui.addNotification(null,
-					E('p', _('Failed to update %s: %s').format(update.app_id, err.message)),
-					'error'
-				);
+				ui.addNotification(null, E('p', 'Failed: ' + update.app_id), 'error');
 			});
 		}
 
@@ -279,70 +228,37 @@ return view.extend({
 	},
 
 	viewFullChangelog: function(appId, fromVersion, toVersion) {
+		console.log('[UPDATES] Viewing changelog:', appId, fromVersion, '→', toVersion);
 		API.getChangelog(appId, fromVersion, toVersion).then(function(changelog) {
-			var content = E('div', { 'class': 'changelog-modal' }, [
-				E('h3', {}, _('Changelog for %s').format(appId)),
-				E('div', { 'class': 'version-range' },
-					_('Changes from %s to %s').format(fromVersion, toVersion)
-				),
-				E('div', { 'class': 'changelog-full' },
-					// Render full changelog
-					typeof changelog === 'string' ?
-						E('pre', {}, changelog) :
-						JSON.stringify(changelog, null, 2)
-				)
-			]);
-
-			ui.showModal(_('Full Changelog'), [
-				content,
+			ui.showModal('Changelog: ' + appId, [
+				E('pre', {}, JSON.stringify(changelog, null, 2)),
 				E('div', { 'class': 'right' }, [
-					E('button', {
-						'class': 'btn',
-						'click': function() {
-							ui.hideModal();
-						}
-					}, _('Close'))
+					E('button', { 'class': 'btn', 'click': ui.hideModal }, 'Close')
 				])
 			]);
 		}).catch(function(err) {
-			ui.addNotification(null,
-				E('p', _('Failed to load changelog: %s').format(err.message)),
-				'error'
-			);
+			console.error('[UPDATES] Changelog error:', err);
+			ui.addNotification(null, E('p', 'Changelog failed: ' + err.message), 'error');
 		});
 	},
 
-	skipUpdate: function(appId) {
-		// TODO: Implement skip version functionality
-		// This would mark the version as skipped in metadata
-		ui.addNotification(null,
-			E('p', _('Skipped update for: %s').format(appId)),
-			'info'
-		);
-	},
-
 	checkForUpdates: function() {
-		ui.showModal(_('Checking for Updates'), [
-			E('p', { 'class': 'spinning' }, _('Checking for available updates...'))
+		console.log('[UPDATES] Checking for updates');
+		ui.showModal('Checking for Updates', [
+			Components.renderLoader('Syncing catalog and checking for updates...')
 		]);
 
-		// Sync catalog first, then check for updates
 		API.syncCatalog(null).then(function() {
 			return API.checkUpdates();
 		}).then(function(result) {
+			console.log('[UPDATES] Check result:', result);
 			ui.hideModal();
-			ui.addNotification(null,
-				E('p', _('Update check complete. Found %d updates.')
-					.format((result.updates || []).length)),
-				'success'
-			);
+			ui.addNotification(null, E('p', 'Found ' + (result.updates || []).length + ' updates'), 'success');
 			window.location.reload();
 		}).catch(function(err) {
+			console.error('[UPDATES] Check error:', err);
 			ui.hideModal();
-			ui.addNotification(null,
-				E('p', _('Update check failed: %s').format(err.message)),
-				'error'
-			);
+			ui.addNotification(null, E('p', 'Check failed: ' + err.message), 'error');
 		});
 	},
 
