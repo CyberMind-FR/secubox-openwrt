@@ -7,83 +7,150 @@
 
 return view.extend({
 	load: function() {
+		console.log('[CATALOG-SOURCES] Loading data...');
 		return Promise.all([
 			L.resolveDefault(API.getCatalogSources(), { sources: [] }),
-			L.resolveDefault(API.checkUpdates(), { updates: [] })
-		]);
+			L.resolveDefault(API.checkUpdates(), { updates: [], total_updates_available: 0 })
+		]).then(function(results) {
+			console.log('[CATALOG-SOURCES] Data loaded:', {
+				sources: results[0],
+				updates: results[1]
+			});
+			return results;
+		}).catch(function(err) {
+			console.error('[CATALOG-SOURCES] Load error:', err);
+			return [{ sources: [] }, { updates: [], total_updates_available: 0 }];
+		});
 	},
 
 	render: function(data) {
+		console.log('[CATALOG-SOURCES] Rendering with data:', data);
 		var sources = data[0].sources || [];
 		var updateInfo = data[1];
 		var self = this;
 
-		var container = E('div', { 'class': 'secubox-catalog-sources' }, [
+		console.log('[CATALOG-SOURCES] Sources count:', sources.length);
+
+		var activeSource = sources.filter(function(s) { return s.active; })[0];
+		var enabledCount = sources.filter(function(s) { return s.enabled; }).length;
+
+		var container = E('div', { 'class': 'cyberpunk-mode secubox-catalog-sources' }, [
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/admin.css') }),
+			E('link', { 'rel': 'stylesheet',
+				'href': L.resource('secubox-admin/cyberpunk.css') }),
 
-			E('h2', {}, 'Catalog Sources'),
-			E('p', {}, 'Manage catalog sources with automatic fallback'),
+			// Cyberpunk header
+			E('div', { 'class': 'cyber-header' }, [
+				E('div', { 'class': 'cyber-header-title' }, '📡 CATALOG SOURCES'),
+				E('div', { 'class': 'cyber-header-subtitle' },
+					'Multi-source catalog system · ' + sources.length + ' sources configured')
+			]),
 
-			// Summary stats
-			E('div', { 'class': 'source-summary' }, [
-				E('div', { 'class': 'stat-card' }, [
-					E('div', { 'class': 'stat-label' }, 'Total Sources'),
-					E('div', { 'class': 'stat-value' }, sources.length.toString())
+			// Stats panel
+			E('div', { 'class': 'cyber-panel' }, [
+				E('div', { 'class': 'cyber-panel-header' }, [
+					E('span', { 'class': 'cyber-panel-title' }, 'SYSTEM STATUS'),
+					E('span', { 'class': 'cyber-panel-badge' }, enabledCount + '/' + sources.length)
 				]),
-				E('div', { 'class': 'stat-card' }, [
-					E('div', { 'class': 'stat-label' }, 'Active Source'),
-					E('div', { 'class': 'stat-value' },
-						sources.filter(function(s) { return s.active; })[0]?.name || 'None')
-				]),
-				E('div', { 'class': 'stat-card' }, [
-					E('div', { 'class': 'stat-label' }, 'Updates Available'),
-					E('div', { 'class': 'stat-value' },
-						(updateInfo.total_updates_available || 0).toString())
+				E('div', { 'class': 'cyber-panel-body' }, [
+					E('div', { 'class': 'cyber-stats-grid' }, [
+						E('div', { 'class': 'cyber-stat-card' }, [
+							E('div', { 'class': 'cyber-stat-icon' }, '📡'),
+							E('div', { 'class': 'cyber-stat-value' }, sources.length),
+							E('div', { 'class': 'cyber-stat-label' }, 'Total Sources')
+						]),
+						E('div', { 'class': 'cyber-stat-card accent' }, [
+							E('div', { 'class': 'cyber-stat-icon' }, '✓'),
+							E('div', { 'class': 'cyber-stat-value' }, enabledCount),
+							E('div', { 'class': 'cyber-stat-label' }, 'Enabled')
+						]),
+						E('div', { 'class': 'cyber-stat-card warning' }, [
+							E('div', { 'class': 'cyber-stat-icon' }, '⚡'),
+							E('div', { 'class': 'cyber-stat-value' }, updateInfo.total_updates_available || 0),
+							E('div', { 'class': 'cyber-stat-label' }, 'Updates')
+						]),
+						E('div', { 'class': 'cyber-stat-card' + (activeSource ? '' : ' danger') }, [
+							E('div', { 'class': 'cyber-stat-icon' }, '▸'),
+							E('div', { 'class': 'cyber-stat-value', 'style': 'font-size: 14px;' },
+								activeSource ? activeSource.name.toUpperCase() : 'NONE'),
+							E('div', { 'class': 'cyber-stat-label' }, 'Active Source')
+						])
+					])
 				])
 			]),
 
-			// Sync controls
-			E('div', { 'class': 'sync-controls' }, [
-				E('button', {
-					'class': 'btn btn-primary',
-					'click': function() {
-						self.syncAllSources();
-					}
-				}, 'Sync All Sources'),
-				E('button', {
-					'class': 'btn btn-secondary',
-					'click': function() {
-						self.refreshPage();
-					}
-				}, 'Refresh Status')
+			// Quick actions panel
+			E('div', { 'class': 'cyber-panel' }, [
+				E('div', { 'class': 'cyber-panel-header' }, [
+					E('span', { 'class': 'cyber-panel-title' }, 'QUICK ACTIONS')
+				]),
+				E('div', { 'class': 'cyber-panel-body' }, [
+					E('div', { 'class': 'cyber-quick-actions' }, [
+						E('button', {
+							'class': 'cyber-action-btn',
+							'click': function() {
+								console.log('[CATALOG-SOURCES] Sync all sources');
+								self.syncAllSources();
+							}
+						}, [
+							E('span', { 'class': 'cyber-action-icon' }, '🔄'),
+							E('span', { 'class': 'cyber-action-label' }, 'SYNC ALL SOURCES'),
+							E('span', { 'class': 'cyber-action-arrow' }, '→')
+						]),
+						E('button', {
+							'class': 'cyber-action-btn',
+							'click': function() {
+								console.log('[CATALOG-SOURCES] Refresh status');
+								self.refreshPage();
+							}
+						}, [
+							E('span', { 'class': 'cyber-action-icon' }, '↻'),
+							E('span', { 'class': 'cyber-action-label' }, 'REFRESH STATUS'),
+							E('span', { 'class': 'cyber-action-arrow' }, '→')
+						])
+					])
+				])
 			]),
 
 			// Sources list
-			E('div', { 'class': 'sources-container', 'id': 'sources-container' },
-				sources
-					.sort(function(a, b) { return a.priority - b.priority; })
-					.map(function(source) {
-						return self.renderSourceCard(source);
-					})
+			E('div', { 'class': 'cyber-list', 'id': 'sources-container' },
+				sources.length > 0 ?
+					sources
+						.sort(function(a, b) { return a.priority - b.priority; })
+						.map(function(source) {
+							console.log('[CATALOG-SOURCES] Rendering source:', source.name);
+							return self.renderSourceCard(source);
+						}) :
+					[E('div', { 'class': 'cyber-panel' }, [
+						E('div', { 'class': 'cyber-panel-body', 'style': 'text-align: center; padding: 40px;' }, [
+							E('div', { 'style': 'font-size: 48px; margin-bottom: 20px;' }, '📡'),
+							E('div', { 'style': 'color: var(--cyber-text-dim);' }, 'NO SOURCES CONFIGURED'),
+							E('div', { 'style': 'color: var(--cyber-text-dim); font-size: 12px; margin-top: 10px;' },
+								'Configure sources in /etc/config/secubox-appstore')
+						])
+					])]
 			)
 		]);
 
 		// Auto-refresh every 30 seconds
 		poll.add(function() {
+			console.log('[CATALOG-SOURCES] Polling for updates...');
 			return API.getCatalogSources().then(function(result) {
 				var sourcesContainer = document.getElementById('sources-container');
-				if (sourcesContainer) {
-					var sources = result.sources || [];
+				if (sourcesContainer && result.sources) {
+					console.log('[CATALOG-SOURCES] Poll update:', result.sources.length, 'sources');
 					sourcesContainer.innerHTML = '';
-					sources
+					result.sources
 						.sort(function(a, b) { return a.priority - b.priority; })
 						.forEach(function(source) {
 							sourcesContainer.appendChild(self.renderSourceCard(source));
 						});
 				}
+			}).catch(function(err) {
+				console.error('[CATALOG-SOURCES] Poll error:', err);
 			});
 		}, 30);
 
@@ -93,78 +160,93 @@ return view.extend({
 	renderSourceCard: function(source) {
 		var self = this;
 		var statusClass = this.getStatusClass(source.status);
-		var statusIcon = this.getStatusIcon(source.status);
+		var statusDot = source.status === 'online' || source.status === 'available' ? 'online' : 'offline';
+
+		var itemClass = 'cyber-list-item';
+		if (source.active) itemClass += ' active';
+		if (!source.enabled) itemClass += ' offline';
 
 		return E('div', {
-			'class': 'source-card' + (source.active ? ' active-source' : ''),
+			'class': itemClass,
 			'data-source': source.name
 		}, [
-			// Source header
-			E('div', { 'class': 'source-header' }, [
-				E('div', { 'class': 'source-title' }, [
-					E('h3', {}, source.name),
-					source.active ? E('span', { 'class': 'badge badge-success' }, 'ACTIVE') : null
-				]),
-				E('div', { 'class': 'source-priority' },
-					E('span', { 'class': 'priority-badge' }, 'Priority: ' + source.priority)
-				)
-			]),
+			// Icon
+			E('div', { 'class': 'cyber-list-icon' },
+				source.type === 'remote' ? '🌐' :
+				source.type === 'local' ? '💾' :
+				source.type === 'embedded' ? '📦' : '❓'
+			),
 
-			// Source info
-			E('div', { 'class': 'source-info' }, [
-				E('div', { 'class': 'info-row' }, [
-					E('span', { 'class': 'label' }, 'Type:'),
-					E('span', { 'class': 'value' }, source.type)
-				]),
-				source.url ? E('div', { 'class': 'info-row' }, [
-					E('span', { 'class': 'label' }, 'URL:'),
-					E('span', { 'class': 'value url-text' }, source.url)
-				]) : null,
-				source.path ? E('div', { 'class': 'info-row' }, [
-					E('span', { 'class': 'label' }, 'Path:'),
-					E('span', { 'class': 'value' }, source.path)
-				]) : null,
-				E('div', { 'class': 'info-row' }, [
-					E('span', { 'class': 'label' }, 'Status:'),
-					E('span', { 'class': 'value' }, [
-						E('span', { 'class': 'status-indicator ' + statusClass }, statusIcon),
-						E('span', {}, source.status || 'unknown')
+			// Content
+			E('div', { 'class': 'cyber-list-content' }, [
+				E('div', { 'class': 'cyber-list-title' }, [
+					source.name.toUpperCase(),
+					source.active ? E('span', { 'class': 'cyber-badge success' }, [
+						E('span', { 'class': 'cyber-status-dot online' }),
+						' ACTIVE'
+					]) : null,
+					!source.enabled ? E('span', { 'class': 'cyber-badge' }, [
+						'DISABLED'
+					]) : E('span', { 'class': 'cyber-badge info' }, [
+						E('span', { 'class': 'cyber-status-dot ' + statusDot }),
+						' ' + (source.status || 'UNKNOWN').toUpperCase()
 					])
 				]),
-				source.last_success ? E('div', { 'class': 'info-row' }, [
-					E('span', { 'class': 'label' }, 'Last Success:'),
-					E('span', { 'class': 'value' }, this.formatTimestamp(source.last_success))
-				]) : null
+				E('div', { 'class': 'cyber-list-meta' }, [
+					E('span', { 'class': 'cyber-list-meta-item' }, [
+						E('span', {}, '🔢 '),
+						'Priority: ' + source.priority
+					]),
+					E('span', { 'class': 'cyber-list-meta-item' }, [
+						E('span', {}, '📋 '),
+						source.type
+					]),
+					source.url ? E('span', { 'class': 'cyber-list-meta-item' }, [
+						E('span', {}, '🔗 '),
+						E('span', { 'style': 'max-width: 300px; overflow: hidden; text-overflow: ellipsis;' },
+							source.url)
+					]) : null,
+					source.path ? E('span', { 'class': 'cyber-list-meta-item' }, [
+						E('span', {}, '📁 '),
+						source.path
+					]) : null,
+					source.last_success ? E('span', { 'class': 'cyber-list-meta-item' }, [
+						E('span', {}, '⏱️ '),
+						this.formatTimestamp(source.last_success)
+					]) : null
+				])
 			]),
 
-			// Source actions
-			E('div', { 'class': 'source-actions' }, [
-				E('button', {
-					'class': 'btn btn-sm btn-primary',
+			// Actions
+			E('div', { 'class': 'cyber-list-actions' }, [
+				source.enabled ? E('button', {
+					'class': 'cyber-btn primary',
 					'click': function() {
+						console.log('[CATALOG-SOURCES] Sync source:', source.name);
 						self.syncSource(source.name);
-					},
-					'disabled': !source.enabled
-				}, 'Sync'),
-				E('button', {
-					'class': 'btn btn-sm btn-secondary',
+					}
+				}, '🔄 SYNC') : null,
+				source.enabled ? E('button', {
+					'class': 'cyber-btn',
 					'click': function() {
+						console.log('[CATALOG-SOURCES] Test source:', source.name);
 						self.testSource(source.name);
-					},
-					'disabled': !source.enabled
-				}, 'Test'),
-				!source.active ? E('button', {
-					'class': 'btn btn-sm btn-warning',
+					}
+				}, '🧪 TEST') : null,
+				!source.active && source.enabled ? E('button', {
+					'class': 'cyber-btn warning',
 					'click': function() {
+						console.log('[CATALOG-SOURCES] Set active:', source.name);
 						self.setActiveSource(source.name);
 					}
-				}, 'Set Active') : null,
+				}, '▸ SET ACTIVE') : null,
 				E('button', {
-					'class': 'btn btn-sm ' + (source.enabled ? 'btn-danger' : 'btn-success'),
+					'class': 'cyber-btn ' + (source.enabled ? 'danger' : ''),
 					'click': function() {
+						console.log('[CATALOG-SOURCES] Toggle source:', source.name, !source.enabled);
 						self.toggleSource(source.name, !source.enabled);
 					}
-				}, source.enabled ? 'Disable' : 'Enable')
+				}, source.enabled ? '⊗ DISABLE' : '⊕ ENABLE')
 			])
 		]);
 	},
@@ -183,20 +265,6 @@ return view.extend({
 		}
 	},
 
-	getStatusIcon: function(status) {
-		switch(status) {
-			case 'online':
-			case 'success':
-			case 'available':
-				return '✓';
-			case 'offline':
-			case 'error':
-				return '✗';
-			default:
-				return '?';
-		}
-	},
-
 	formatTimestamp: function(timestamp) {
 		if (!timestamp) return 'Never';
 		var date = new Date(timestamp);
@@ -205,71 +273,78 @@ return view.extend({
 		var diffMins = Math.floor(diffMs / 60000);
 
 		if (diffMins < 1) return 'Just now';
-		if (diffMins < 60) return diffMins + ' minutes ago';
+		if (diffMins < 60) return diffMins + 'm ago';
 
 		var diffHours = Math.floor(diffMins / 60);
-		if (diffHours < 24) return diffHours + ' hours ago';
+		if (diffHours < 24) return diffHours + 'h ago';
 
 		var diffDays = Math.floor(diffHours / 24);
-		if (diffDays < 7) return diffDays + ' days ago';
+		if (diffDays < 7) return diffDays + 'd ago';
 
 		return date.toLocaleDateString();
 	},
 
 	syncSource: function(sourceName) {
-		ui.showModal(_('Syncing Catalog'), [
-			E('p', { 'class': 'spinning' }, _('Syncing from source: %s...').format(sourceName))
+		console.log('[CATALOG-SOURCES] Syncing source:', sourceName);
+		ui.showModal('Syncing Catalog', [
+			Components.renderLoader('Syncing from source: ' + sourceName + '...')
 		]);
 
 		API.syncCatalog(sourceName).then(function(result) {
+			console.log('[CATALOG-SOURCES] Sync result:', result);
 			ui.hideModal();
 			if (result.success) {
-				ui.addNotification(null, E('p', _('Catalog synced successfully from: %s').format(sourceName)), 'success');
+				ui.addNotification(null, E('p', 'Catalog synced successfully from: ' + sourceName), 'success');
 				window.location.reload();
 			} else {
-				ui.addNotification(null, E('p', _('Sync failed: %s').format(result.error || 'Unknown error')), 'error');
+				ui.addNotification(null, E('p', 'Sync failed: ' + (result.error || 'Unknown error')), 'error');
 			}
 		}).catch(function(err) {
+			console.error('[CATALOG-SOURCES] Sync error:', err);
 			ui.hideModal();
-			ui.addNotification(null, E('p', _('Sync error: %s').format(err.message)), 'error');
+			ui.addNotification(null, E('p', 'Sync error: ' + err.message), 'error');
 		});
 	},
 
 	syncAllSources: function() {
-		ui.showModal(_('Syncing Catalogs'), [
-			E('p', { 'class': 'spinning' }, _('Syncing from all enabled sources...'))
+		console.log('[CATALOG-SOURCES] Syncing all sources');
+		ui.showModal('Syncing Catalogs', [
+			Components.renderLoader('Syncing from all enabled sources...')
 		]);
 
 		API.syncCatalog(null).then(function(result) {
+			console.log('[CATALOG-SOURCES] Sync all result:', result);
 			ui.hideModal();
 			if (result.success) {
-				ui.addNotification(null, E('p', _('Catalogs synced successfully')), 'success');
+				ui.addNotification(null, E('p', 'Catalogs synced successfully'), 'success');
 				window.location.reload();
 			} else {
-				ui.addNotification(null, E('p', _('Sync failed: %s').format(result.error || 'Unknown error')), 'error');
+				ui.addNotification(null, E('p', 'Sync failed: ' + (result.error || 'Unknown error')), 'error');
 			}
 		}).catch(function(err) {
+			console.error('[CATALOG-SOURCES] Sync all error:', err);
 			ui.hideModal();
-			ui.addNotification(null, E('p', _('Sync error: %s').format(err.message)), 'error');
+			ui.addNotification(null, E('p', 'Sync error: ' + err.message), 'error');
 		});
 	},
 
 	testSource: function(sourceName) {
-		ui.addNotification(null, E('p', _('Testing source: %s...').format(sourceName)), 'info');
-		// Test is done by attempting a sync
+		console.log('[CATALOG-SOURCES] Testing source:', sourceName);
+		ui.addNotification(null, E('p', 'Testing source: ' + sourceName + '...'), 'info');
 		this.syncSource(sourceName);
 	},
 
 	setActiveSource: function(sourceName) {
-		ui.showModal(_('Setting Active Source'), [
-			E('p', { 'class': 'spinning' }, _('Setting active source to: %s...').format(sourceName))
+		console.log('[CATALOG-SOURCES] Setting active source:', sourceName);
+		ui.showModal('Setting Active Source', [
+			Components.renderLoader('Setting active source to: ' + sourceName + '...')
 		]);
 
 		API.setCatalogSource(sourceName).then(function(result) {
+			console.log('[CATALOG-SOURCES] Set active result:', result);
 			ui.hideModal();
 			if (result.success) {
-				ui.addNotification(null, E('p', _('Active source set to: %s').format(sourceName)), 'success');
-				// Trigger sync from new source
+				ui.addNotification(null, E('p', 'Active source set to: ' + sourceName), 'success');
 				return API.syncCatalog(sourceName);
 			} else {
 				throw new Error(result.error || 'Failed to set source');
@@ -277,20 +352,23 @@ return view.extend({
 		}).then(function() {
 			window.location.reload();
 		}).catch(function(err) {
+			console.error('[CATALOG-SOURCES] Set active error:', err);
 			ui.hideModal();
-			ui.addNotification(null, E('p', _('Error: %s').format(err.message)), 'error');
+			ui.addNotification(null, E('p', 'Error: ' + err.message), 'error');
 		});
 	},
 
 	toggleSource: function(sourceName, enable) {
+		console.log('[CATALOG-SOURCES] Toggle source:', sourceName, enable);
 		ui.addNotification(null,
-			E('p', _('%s source: %s').format(enable ? 'Enabling' : 'Disabling', sourceName)),
+			E('p', (enable ? 'Enabling' : 'Disabling') + ' source: ' + sourceName),
 			'info'
 		);
 		// TODO: Implement UCI config update to enable/disable source
 	},
 
 	refreshPage: function() {
+		console.log('[CATALOG-SOURCES] Refreshing page');
 		window.location.reload();
 	},
 
