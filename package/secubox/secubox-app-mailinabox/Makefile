@@ -15,7 +15,7 @@ define Package/secubox-app-mailinabox
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Mail-in-a-Box docker app
-  DEPENDS:=+uci +libuci +dockerd +docker +containerd
+  DEPENDS:=+uci +libuci
 endef
 
 define Package/secubox-app-mailinabox/description
