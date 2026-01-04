@@ -2,10 +2,13 @@
 'require view';
 'require secubox-admin.api as API';
 'require secubox-admin.components as Components';
+'require secubox-admin.widget-renderer as WidgetRenderer';
 'require poll';
 'require ui';
 
 return view.extend({
+	widgetRenderer: null,
+
 	load: function() {
 		return Promise.all([
 			API.getApps(),
@@ -35,6 +38,8 @@ return view.extend({
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/admin.css') }),
+			E('link', { 'rel': 'stylesheet',
+				'href': L.resource('secubox-admin/widgets.css') }),
 
 			E('h2', {}, 'Admin Control Panel'),
 
@@ -52,12 +57,21 @@ return view.extend({
 			// Recent alerts
 			this.renderAlertsSection(alerts),
 
+			// App Widgets Section
+			this.renderWidgetsSection(apps),
+
 			// Quick actions
 			this.renderQuickActions()
 		]);
 
 		// Auto-refresh every 30 seconds
 		poll.add(L.bind(this.pollData, this), 30);
+
+		// Initialize widget renderer after DOM is ready
+		var self = this;
+		requestAnimationFrame(function() {
+			self.initializeWidgets(apps);
+		});
 
 		return container;
 	},
@@ -163,6 +177,42 @@ return view.extend({
 		]);
 	},
 
+	renderWidgetsSection: function(apps) {
+		// Filter apps with widgets enabled
+		var widgetApps = apps.filter(function(app) {
+			return app.widget && app.widget.enabled;
+		});
+
+		var widgetCount = widgetApps.length;
+
+		return E('div', { 'class': 'widgets-section card' }, [
+			E('div', { 'class': 'widgets-header' }, [
+				E('h3', {}, 'App Widgets'),
+				E('span', { 'class': 'widget-count' },
+					widgetCount + (widgetCount === 1 ? ' widget' : ' widgets'))
+			]),
+			E('div', { 'id': 'dashboard-widgets-container' })
+		]);
+	},
+
+	initializeWidgets: function(apps) {
+		// Cleanup existing widget renderer
+		if (this.widgetRenderer) {
+			this.widgetRenderer.destroy();
+		}
+
+		// Create new widget renderer
+		this.widgetRenderer = new WidgetRenderer({
+			containerId: 'dashboard-widgets-container',
+			apps: apps,
+			defaultRefreshInterval: 30,
+			gridMode: 'auto'
+		});
+
+		// Render widgets
+		this.widgetRenderer.render();
+	},
+
 	pollData: function() {
 		var self = this;
 		return Promise.all([
@@ -177,5 +227,13 @@ return view.extend({
 
 	handleSaveApply: null,
 	handleSave: null,
-	handleReset: null
+	handleReset: null,
+
+	addFooter: function() {
+		// Cleanup widget renderer when leaving page
+		if (this.widgetRenderer) {
+			this.widgetRenderer.destroy();
+			this.widgetRenderer = null;
+		}
+	}
 });
