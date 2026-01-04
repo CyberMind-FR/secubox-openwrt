@@ -43,12 +43,23 @@ echo ""
 # Step 2: Find built packages
 echo "[2/5] Locating built packages..."
 
-SECUBOX_CORE_PKG=$(find bin/packages/*/secubox -name "secubox-core_*.ipk" | sort -V | tail -1)
-SECUBOX_ADMIN_PKG=$(find bin/packages/*/secubox -name "luci-app-secubox-admin_*.ipk" | sort -V | tail -1)
+# Packages are in secubox-tools/build/x86-64/ when using local-build.sh
+SECUBOX_CORE_PKG=$(find secubox-tools/build/x86-64 -name "secubox-core_*.ipk" 2>/dev/null | sort -V | tail -1)
+SECUBOX_ADMIN_PKG=$(find secubox-tools/build/x86-64 -name "luci-app-secubox-admin_*.ipk" 2>/dev/null | sort -V | tail -1)
+
+# Fallback: check SDK bin directory
+if [ -z "$SECUBOX_CORE_PKG" ]; then
+    SECUBOX_CORE_PKG=$(find secubox-tools/sdk/bin/packages -name "secubox-core_*.ipk" 2>/dev/null | sort -V | tail -1)
+fi
+if [ -z "$SECUBOX_ADMIN_PKG" ]; then
+    SECUBOX_ADMIN_PKG=$(find secubox-tools/sdk/bin/packages -name "luci-app-secubox-admin_*.ipk" 2>/dev/null | sort -V | tail -1)
+fi
 
 if [ -z "$SECUBOX_CORE_PKG" ] || [ -z "$SECUBOX_ADMIN_PKG" ]; then
     echo "ERROR: Could not find built packages!"
-    echo "Expected packages in: bin/packages/*/secubox/"
+    echo "Searched in:"
+    echo "  - secubox-tools/build/x86-64/"
+    echo "  - secubox-tools/sdk/bin/packages/"
     exit 1
 fi
 
