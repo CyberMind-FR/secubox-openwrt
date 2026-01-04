@@ -8,7 +8,7 @@
 return view.extend({
 	load: function() {
 		return Promise.all([
-			API.checkUpdates(),
+			L.resolveDefault(API.checkUpdates(), { updates: [] }),
 			API.getApps(),
 			API.getModules()
 		]);

@@ -8,8 +8,8 @@
 return view.extend({
 	load: function() {
 		return Promise.all([
-			API.getCatalogSources(),
-			L.resolveDefault(API.checkUpdates(), {})
+			L.resolveDefault(API.getCatalogSources(), { sources: [] }),
+			L.resolveDefault(API.checkUpdates(), { updates: [] })
 		]);
 	},
 
