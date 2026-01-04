@@ -22,6 +22,22 @@
 			"path": "secubox-admin/apps"
 		}
 	},
+	"admin/secubox/admin/updates": {
+		"title": "Updates",
+		"order": 25,
+		"action": {
+			"type": "view",
+			"path": "secubox-admin/updates"
+		}
+	},
+	"admin/secubox/admin/catalog-sources": {
+		"title": "Catalog Sources",
+		"order": 27,
+		"action": {
+			"type": "view",
+			"path": "secubox-admin/catalog-sources"
+		}
+	},
 	"admin/secubox/admin/settings": {
 		"title": "App Settings",
 		"order": 30,

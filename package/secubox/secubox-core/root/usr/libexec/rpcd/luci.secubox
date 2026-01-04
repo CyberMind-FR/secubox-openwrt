@@ -104,6 +104,37 @@ case "$1" in
 			json_add_string "app_id" "string"
 		json_close_object
 
+		# Catalog source management
+		json_add_object "get_catalog_sources"
+		json_close_object
+
+		json_add_object "set_catalog_source"
+			json_add_string "source" "string"
+		json_close_object
+
+		json_add_object "sync_catalog"
+			json_add_string "source" "string"
+		json_close_object
+
+		# Version and update management
+		json_add_object "check_updates"
+		json_close_object
+
+		json_add_object "get_app_versions"
+			json_add_string "app_id" "string"
+		json_close_object
+
+		json_add_object "get_changelog"
+			json_add_string "app_id" "string"
+			json_add_string "from_version" "string"
+			json_add_string "to_version" "string"
+		json_close_object
+
+		# Widget data
+		json_add_object "get_widget_data"
+			json_add_string "app_id" "string"
+		json_close_object
+
 			# Dashboard and monitoring
 		json_add_object "get_dashboard_data"
 		json_close_object
@@ -437,6 +468,186 @@ case "$1" in
 					json_add_string "details" "Check system logs for more information"
 					json_dump
 				fi
+				;;
+
+			get_catalog_sources)
+				# Return configured catalog sources from UCI
+				CONFIG_NAME="secubox-appstore"
+				METADATA_FILE="/var/lib/secubox/catalog-metadata.json"
+
+				json_init
+				json_add_array "sources"
+
+				# Parse UCI config sources
+				. /lib/functions.sh
+				config_load "$CONFIG_NAME"
+
+				_add_source_info() {
+					local section="$1"
+					local enabled type url path priority active_source
+
+					config_get_bool enabled "$section" enabled 0
+					config_get type "$section" type
+					config_get url "$section" url
+					config_get path "$section" path
+					config_get priority "$section" priority 999
+
+					# Get active source from metadata
+					if [ -f "$METADATA_FILE" ]; then
+						active_source=$(jsonfilter -i "$METADATA_FILE" -e '@.active_source' 2>/dev/null)
+					fi
+
+					json_add_object ""
+						json_add_string "name" "$section"
+						json_add_boolean "enabled" "$enabled"
+						json_add_string "type" "$type"
+						[ -n "$url" ] && json_add_string "url" "$url"
+						[ -n "$path" ] && json_add_string "path" "$path"
+						json_add_int "priority" "$priority"
+						json_add_boolean "active" "$([ "$section" = "$active_source" ] && echo 1 || echo 0)"
+
+						# Get status from metadata
+						if [ -f "$METADATA_FILE" ]; then
+							local status=$(jsonfilter -i "$METADATA_FILE" -e "@.sources['$section'].status" 2>/dev/null)
+							local last_success=$(jsonfilter -i "$METADATA_FILE" -e "@.sources['$section'].last_success" 2>/dev/null)
+							[ -n "$status" ] && json_add_string "status" "$status"
+							[ -n "$last_success" ] && json_add_string "last_success" "$last_success"
+						fi
+					json_close_object
+				}
+
+				config_foreach _add_source_info source
+
+				json_close_array
+				json_dump
+				;;
+
+			set_catalog_source)
+				# Set force_source in UCI config
+				read -r input
+				source=$(echo "$input" | jsonfilter -e '@.source')
+
+				CONFIG_NAME="secubox-appstore"
+
+				if [ -n "$source" ]; then
+					uci set "${CONFIG_NAME}.settings.force_source=$source"
+					uci commit "$CONFIG_NAME"
+
+					json_init
+					json_add_boolean "success" true
+					json_add_string "message" "Catalog source set to: $source"
+					json_dump
+				else
+					json_init
+					json_add_boolean "success" false
+					json_add_string "error" "No source specified"
+					json_dump
+				fi
+				;;
+
+			sync_catalog)
+				# Trigger catalog sync
+				read -r input
+				source=$(echo "$input" | jsonfilter -e '@.source')
+
+				# Call secubox-catalog-sync (with or without source)
+				if /usr/sbin/secubox-appstore sync ${source:+"$source"} 2>&1; then
+					json_init
+					json_add_boolean "success" true
+					json_add_string "message" "Catalog synced successfully"
+					[ -n "$source" ] && json_add_string "source" "$source"
+					json_dump
+				else
+					json_init
+					json_add_boolean "success" false
+					json_add_string "error" "Sync failed"
+					json_dump
+				fi
+				;;
+
+			check_updates)
+				# Check for available updates
+				/usr/sbin/secubox-appstore check-updates --json
+				;;
+
+			get_app_versions)
+				# Get version info for specific app
+				read -r input
+				app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+
+				CATALOG_FILE="/usr/share/secubox/catalog.json"
+				METADATA_FILE="/var/lib/secubox/catalog-metadata.json"
+
+				json_init
+
+				# Get catalog version
+				if [ -f "$CATALOG_FILE" ]; then
+					pkg_version=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].pkg_version" 2>/dev/null)
+					app_version=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].app_version" 2>/dev/null)
+					[ -n "$pkg_version" ] && json_add_string "catalog_pkg_version" "$pkg_version"
+					[ -n "$app_version" ] && json_add_string "catalog_app_version" "$app_version"
+				fi
+
+				# Get installed version
+				pkg_name=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].packages.required[0]" 2>/dev/null)
+				if [ -n "$pkg_name" ]; then
+					installed_version=$(opkg list-installed | grep "^$pkg_name " | awk '{print $3}')
+					[ -n "$installed_version" ] && json_add_string "installed_version" "$installed_version"
+				fi
+
+				# Get metadata version info
+				if [ -f "$METADATA_FILE" ]; then
+					metadata_version=$(jsonfilter -i "$METADATA_FILE" -e "@.installed_apps['$app_id'].installed_version" 2>/dev/null)
+					update_available=$(jsonfilter -i "$METADATA_FILE" -e "@.installed_apps['$app_id'].update_available" 2>/dev/null)
+					[ -n "$update_available" ] && json_add_boolean "update_available" "$update_available"
+				fi
+
+				json_add_string "app_id" "$app_id"
+				json_dump
+				;;
+
+			get_changelog)
+				# Get changelog for app
+				read -r input
+				app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+				from_version=$(echo "$input" | jsonfilter -e '@.from_version')
+				to_version=$(echo "$input" | jsonfilter -e '@.to_version')
+
+				# Use secubox-appstore CLI
+				/usr/sbin/secubox-appstore changelog "$app_id" ${from_version:+"$from_version"} ${to_version:+"$to_version"}
+				;;
+
+			get_widget_data)
+				# Get real-time widget data for app
+				read -r input
+				app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+
+				CATALOG_FILE="/usr/share/secubox/catalog.json"
+
+				json_init
+				json_add_string "app_id" "$app_id"
+				json_add_int "timestamp" "$(date +%s)"
+
+				# Get widget configuration from catalog
+				if [ -f "$CATALOG_FILE" ]; then
+					widget_enabled=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].widget.enabled" 2>/dev/null)
+
+					if [ "$widget_enabled" = "true" ]; then
+						json_add_boolean "widget_enabled" true
+
+						# Get metrics from catalog definition
+						# This would call app-specific data sources (ubus, files, etc.)
+						# For now, return placeholder structure
+						json_add_array "metrics"
+						json_close_array
+					else
+						json_add_boolean "widget_enabled" false
+					fi
+				else
+					json_add_boolean "widget_enabled" false
+				fi
+
+				json_dump
 				;;
 
 			*)

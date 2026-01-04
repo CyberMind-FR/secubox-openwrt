@@ -65,6 +65,56 @@ var callGetLogs = rpc.declare({
 	expect: { logs: '' }
 });
 
+// Catalog Sources
+var callGetCatalogSources = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_catalog_sources',
+	expect: { sources: [] }
+});
+
+var callSetCatalogSource = rpc.declare({
+	object: 'luci.secubox',
+	method: 'set_catalog_source',
+	params: ['source'],
+	expect: { success: false }
+});
+
+var callSyncCatalog = rpc.declare({
+	object: 'luci.secubox',
+	method: 'sync_catalog',
+	params: ['source'],
+	expect: { success: false }
+});
+
+// Version Management
+var callCheckUpdates = rpc.declare({
+	object: 'luci.secubox',
+	method: 'check_updates',
+	expect: { }
+});
+
+var callGetAppVersions = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_app_versions',
+	params: ['app_id'],
+	expect: { }
+});
+
+var callGetChangelog = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_changelog',
+	params: ['app_id', 'from_version', 'to_version'],
+	expect: { }
+});
+
+// Widget Data
+var callGetWidgetData = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_widget_data',
+	params: ['app_id'],
+	expect: { }
+});
+
 // Utility functions
 function formatBytes(bytes) {
 	if (bytes === 0) return '0 B';
@@ -120,6 +170,19 @@ return baseclass.extend({
 	getHealth: callGetHealth,
 	getAlerts: callGetAlerts,
 	getLogs: callGetLogs,
+
+	// Catalog Sources
+	getCatalogSources: callGetCatalogSources,
+	setCatalogSource: callSetCatalogSource,
+	syncCatalog: callSyncCatalog,
+
+	// Version Management
+	checkUpdates: callCheckUpdates,
+	getAppVersions: callGetAppVersions,
+	getChangelog: callGetChangelog,
+
+	// Widget Data
+	getWidgetData: callGetWidgetData,
 
 	// Utilities
 	formatBytes: formatBytes,

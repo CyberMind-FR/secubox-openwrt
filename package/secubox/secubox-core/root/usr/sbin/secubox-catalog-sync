@@ -1,0 +1,363 @@
+#!/bin/bash
+#
+# SecuBox Catalog Sync - Multi-source catalog management with fallback
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+CACHE_DIR="/var/cache/secubox/catalogs"
+METADATA_FILE="/var/lib/secubox/catalog-metadata.json"
+EMBEDDED_CATALOG="/usr/share/secubox/catalog.json"
+CONFIG_NAME="secubox-appstore"
+
+# Logging
+log() {
+	logger -t secubox-catalog-sync "$@"
+	echo "[$(date '+%Y-%m-%d %H:%M:%S')] $@" >&2
+}
+
+# Initialize directories
+init_dirs() {
+	mkdir -p "$CACHE_DIR"
+	mkdir -p "$(dirname "$METADATA_FILE")"
+
+	# Set permissions
+	chmod 755 "$CACHE_DIR"
+	chmod 700 "$(dirname "$METADATA_FILE")"
+}
+
+# Get sources ordered by priority
+get_sources_by_priority() {
+	local sources_list=""
+
+	config_load "$CONFIG_NAME"
+
+	_add_source() {
+		local section="$1"
+		local enabled priority name type
+
+		config_get_bool enabled "$section" enabled 0
+		[ "$enabled" -eq 0 ] && return
+
+		config_get priority "$section" priority 999
+		config_get type "$section" type
+
+		# Skip embedded for now if not only option
+		[ "$type" = "embedded" ] && [ -n "$sources_list" ] && return
+
+		sources_list="${sources_list}${priority}:${section}\n"
+	}
+
+	config_foreach _add_source source
+
+	# Sort by priority and extract source names
+	echo -e "$sources_list" | sort -n | cut -d':' -f2
+}
+
+# Get ETag for source from metadata
+get_etag() {
+	local source="$1"
+
+	if [ -f "$METADATA_FILE" ]; then
+		jsonfilter -i "$METADATA_FILE" -e "@.sources['$source'].etag" 2>/dev/null || echo ""
+	fi
+}
+
+# Update metadata for source
+update_metadata() {
+	local source="$1"
+	local status="$2"
+	local action="$3"
+	local etag="$4"
+	local catalog_version="$5"
+
+	local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+	# Create metadata structure if not exists
+	if [ ! -f "$METADATA_FILE" ]; then
+		cat > "$METADATA_FILE" <<EOF
+{
+	"schema_version": "1.0",
+	"active_source": "",
+	"last_sync": "",
+	"sync_status": "",
+	"sources": {},
+	"installed_apps": {},
+	"update_stats": {
+		"total_updates_available": 0
+	}
+}
+EOF
+	fi
+
+	# Update using jq (more reliable than manual JSON manipulation)
+	if command -v jq >/dev/null 2>&1; then
+		local temp_file="${METADATA_FILE}.tmp"
+
+		jq --arg source "$source" \
+		   --arg status "$status" \
+		   --arg timestamp "$timestamp" \
+		   --arg etag "$etag" \
+		   --arg version "$catalog_version" \
+		   '.sources[$source] = {
+		      "last_attempt": $timestamp,
+		      "last_success": (if $status == "success" then $timestamp else .sources[$source].last_success end),
+		      "status": $status,
+		      "etag": $etag,
+		      "catalog_version": $version
+		   }' "$METADATA_FILE" > "$temp_file"
+
+		mv "$temp_file" "$METADATA_FILE"
+		chmod 600 "$METADATA_FILE"
+	fi
+
+	log "Updated metadata for $source: $status ($action)"
+}
+
+# Set active source in metadata
+set_active_source() {
+	local source="$1"
+
+	if command -v jq >/dev/null 2>&1 && [ -f "$METADATA_FILE" ]; then
+		local temp_file="${METADATA_FILE}.tmp"
+		local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+		jq --arg source "$source" \
+		   --arg timestamp "$timestamp" \
+		   '.active_source = $source | .last_sync = $timestamp | .sync_status = "success"' \
+		   "$METADATA_FILE" > "$temp_file"
+
+		mv "$temp_file" "$METADATA_FILE"
+	fi
+
+	log "Set active source: $source"
+}
+
+# Sync from remote URL
+sync_remote() {
+	local source="$1"
+	local url="$2"
+	local timeout="$3"
+	local verify_ssl="$4"
+
+	local output="$CACHE_DIR/${source}.json"
+	local temp="/tmp/catalog-sync-$$"
+
+	log "Syncing from $source: $url"
+
+	# Determine download tool (prefer uclient-fetch, fallback to wget/curl)
+	local download_cmd=""
+	local etag=$(get_etag "$source")
+
+	if command -v uclient-fetch >/dev/null 2>&1; then
+		download_cmd="uclient-fetch --timeout=$timeout"
+		[ "$verify_ssl" -eq 0 ] && download_cmd="$download_cmd --no-check-certificate"
+		[ -n "$etag" ] && download_cmd="$download_cmd --header='If-None-Match: $etag'"
+		download_cmd="$download_cmd -O $temp $url"
+	elif command -v wget >/dev/null 2>&1; then
+		download_cmd="wget --timeout=$timeout --tries=3"
+		[ "$verify_ssl" -eq 0 ] && download_cmd="$download_cmd --no-check-certificate"
+		download_cmd="$download_cmd -O $temp $url"
+	elif command -v curl >/dev/null 2>&1; then
+		download_cmd="curl --max-time $timeout --retry 3"
+		[ "$verify_ssl" -eq 0 ] && download_cmd="$download_cmd --insecure"
+		download_cmd="$download_cmd -o $temp $url"
+	else
+		log "ERROR: No download tool available (uclient-fetch, wget, curl)"
+		return 1
+	fi
+
+	# Execute download
+	if eval "$download_cmd" 2>&1 | grep -q "304 Not Modified"; then
+		log "Catalog unchanged (304 Not Modified)"
+		update_metadata "$source" "success" "cached" "$etag" ""
+		return 0
+	fi
+
+	# Check if download succeeded
+	if [ -f "$temp" ] && [ -s "$temp" ]; then
+		# Validate JSON
+		if jsonfilter -i "$temp" -e '@.version' >/dev/null 2>&1; then
+			local catalog_version=$(jsonfilter -i "$temp" -e '@.version' 2>/dev/null || echo "unknown")
+
+			# Extract new ETag if available (from HTTP headers - requires modification)
+			local new_etag="$etag"  # For now, keep existing
+
+			mv "$temp" "$output"
+			chmod 644 "$output"
+
+			update_metadata "$source" "success" "downloaded" "$new_etag" "$catalog_version"
+			log "Sync successful from $source (version: $catalog_version)"
+			return 0
+		else
+			log "ERROR: Invalid JSON from $source"
+			rm -f "$temp"
+			update_metadata "$source" "error" "invalid_json" "" ""
+			return 1
+		fi
+	else
+		log "ERROR: Failed to download from $source"
+		update_metadata "$source" "error" "download_failed" "" ""
+		return 1
+	fi
+}
+
+# Sync from local path
+sync_local() {
+	local source="$1"
+	local path="$2"
+
+	local output="$CACHE_DIR/${source}.json"
+
+	log "Syncing from local: $path"
+
+	if [ -f "$path" ]; then
+		# Validate JSON
+		if jsonfilter -i "$path" -e '@.version' >/dev/null 2>&1; then
+			local catalog_version=$(jsonfilter -i "$path" -e '@.version' 2>/dev/null || echo "unknown")
+
+			cp "$path" "$output"
+			chmod 644 "$output"
+
+			update_metadata "$source" "success" "copied" "" "$catalog_version"
+			log "Sync successful from local: $path (version: $catalog_version)"
+			return 0
+		else
+			log "ERROR: Invalid JSON at $path"
+			update_metadata "$source" "error" "invalid_json" "" ""
+			return 1
+		fi
+	else
+		log "ERROR: Local catalog not found: $path"
+		update_metadata "$source" "error" "not_found" "" ""
+		return 1
+	fi
+}
+
+# Sync from embedded catalog
+sync_embedded() {
+	local output="$CACHE_DIR/embedded.json"
+
+	if [ -f "$EMBEDDED_CATALOG" ]; then
+		local catalog_version=$(jsonfilter -i "$EMBEDDED_CATALOG" -e '@.version' 2>/dev/null || echo "unknown")
+
+		cp "$EMBEDDED_CATALOG" "$output"
+		chmod 644 "$output"
+
+		update_metadata "embedded" "success" "copied" "" "$catalog_version"
+		log "Using embedded catalog (version: $catalog_version)"
+		return 0
+	else
+		log "ERROR: Embedded catalog not found"
+		return 1
+	fi
+}
+
+# Attempt sync from a source
+attempt_sync() {
+	local source="$1"
+	local type url path timeout verify_ssl
+
+	config_get type "$source" type
+
+	case "$type" in
+		remote)
+			config_get url "$source" url
+			config_get timeout "$source" timeout 30
+			config_get_bool verify_ssl "$source" verify_ssl 1
+			sync_remote "$source" "$url" "$timeout" "$verify_ssl"
+			;;
+		local)
+			config_get path "$source" path
+			sync_local "$source" "$path"
+			;;
+		embedded)
+			sync_embedded
+			;;
+		*)
+			log "ERROR: Unknown source type: $type"
+			return 1
+			;;
+	esac
+}
+
+# Main sync logic with fallback
+main() {
+	init_dirs
+
+	config_load "$CONFIG_NAME"
+
+	local force_source
+	config_get force_source settings force_source
+
+	# Check if forced to specific source
+	if [ -n "$force_source" ]; then
+		log "Forcing sync from: $force_source"
+		if attempt_sync "$force_source"; then
+			set_active_source "$force_source"
+			exit 0
+		else
+			log "ERROR: Forced source $force_source failed"
+			exit 1
+		fi
+	fi
+
+	# Try sources by priority with fallback
+	log "Starting catalog sync with automatic fallback..."
+
+	for source in $(get_sources_by_priority); do
+		log "Trying source: $source (priority-based)"
+		if attempt_sync "$source"; then
+			set_active_source "$source"
+			log "SUCCESS: Catalog synced from $source"
+			exit 0
+		else
+			log "FAILED: Source $source unavailable, trying next..."
+		fi
+	done
+
+	# All sources failed - try embedded as last resort
+	log "WARNING: All configured sources failed, using embedded catalog"
+	if sync_embedded; then
+		set_active_source "embedded"
+		exit 0
+	fi
+
+	log "ERROR: All sources failed including embedded catalog"
+	exit 1
+}
+
+# Usage
+usage() {
+	cat <<EOF
+Usage: secubox-catalog-sync [options]
+
+Options:
+  -f, --force <source>    Force sync from specific source
+  -h, --help             Show this help message
+
+Examples:
+  secubox-catalog-sync                 # Auto-fallback sync
+  secubox-catalog-sync --force github  # Force GitHub source
+EOF
+	exit 0
+}
+
+# Parse arguments
+case "${1:-}" in
+	-h|--help)
+		usage
+		;;
+	-f|--force)
+		shift
+		# Temporarily set force_source
+		uci set ${CONFIG_NAME}.settings.force_source="$1"
+		main
+		uci delete ${CONFIG_NAME}.settings.force_source
+		uci commit ${CONFIG_NAME}
+		;;
+	*)
+		main "$@"
+		;;
+esac

@@ -11,6 +11,22 @@
 CATALOG_DIR="/usr/share/secubox/plugins/catalog"
 REMOTE_CATALOG="/tmp/secubox/remote-catalog"
 STATE_DIR="/var/run/secubox"
+CACHE_DIR="/var/cache/secubox/catalogs"
+METADATA_FILE="/var/lib/secubox/catalog-metadata.json"
+MAIN_CATALOG="/usr/share/secubox/catalog.json"
+
+# Get active catalog path (from cache or embedded)
+get_active_catalog() {
+	if [ -f "$METADATA_FILE" ]; then
+		local active_source=$(jsonfilter -i "$METADATA_FILE" -e '@.active_source' 2>/dev/null)
+		if [ -n "$active_source" ] && [ -f "$CACHE_DIR/${active_source}.json" ]; then
+			echo "$CACHE_DIR/${active_source}.json"
+			return
+		fi
+	fi
+	# Fallback to embedded
+	echo "$MAIN_CATALOG"
+}
 
 # List all modules
 list_modules() {
@@ -343,6 +359,140 @@ check_health() {
 	echo "Total modules: $total | Healthy: $healthy | Unhealthy: $unhealthy"
 }
 
+# Sync catalog from sources
+sync_catalog() {
+	local source="$1"
+
+	echo "Syncing catalog..."
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+	if [ -n "$source" ]; then
+		/usr/sbin/secubox-catalog-sync --force "$source"
+	else
+		/usr/sbin/secubox-catalog-sync
+	fi
+
+	local result=$?
+
+	if [ $result -eq 0 ]; then
+		echo "✓ Catalog synced successfully"
+		return 0
+	else
+		echo "✗ Catalog sync failed"
+		return 1
+	fi
+}
+
+# Check for updates
+check_updates() {
+	local format="${1:-table}"
+
+	local active_catalog=$(get_active_catalog)
+
+	if [ ! -f "$active_catalog" ]; then
+		echo "ERROR: No catalog available. Run 'secubox-appstore sync' first."
+		return 1
+	fi
+
+	if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
+		json_init
+		json_add_array "updates"
+	else
+		echo "Checking for updates..."
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+		printf "%-25s %-15s %-15s %-10s\n" "APP" "INSTALLED" "AVAILABLE" "STATUS"
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	fi
+
+	local updates_count=0
+
+	# Iterate over plugins in catalog
+	for plugin in $(jsonfilter -i "$active_catalog" -e '@.plugins[@.id]'); do
+		local app_id="$plugin"
+		local pkg_version=$(jsonfilter -i "$active_catalog" -e "@.plugins[@.id='$app_id'].pkg_version" 2>/dev/null)
+		local pkg_name=$(jsonfilter -i "$active_catalog" -e "@.plugins[@.id='$app_id'].packages.required[0]" 2>/dev/null)
+
+		# Check if installed
+		local installed_version=$(opkg list-installed | grep "^$pkg_name " | awk '{print $3}')
+
+		if [ -n "$installed_version" ]; then
+			# Compare versions
+			if [ "$installed_version" != "$pkg_version" ]; then
+				if opkg compare-versions "$pkg_version" '>>' "$installed_version" 2>/dev/null; then
+					updates_count=$((updates_count + 1))
+
+					if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
+						json_add_object ""
+							json_add_string "app_id" "$app_id"
+							json_add_string "installed_version" "$installed_version"
+							json_add_string "available_version" "$pkg_version"
+							json_add_string "type" "upgrade"
+						json_close_object
+					else
+						printf "%-25s %-15s %-15s %-10s\n" \
+							"$app_id" "$installed_version" "$pkg_version" "UPDATE"
+					fi
+				fi
+			fi
+		fi
+	done
+
+	if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
+		json_close_array
+		json_add_int "total_updates" "$updates_count"
+		json_dump
+	else
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+		echo "Total updates available: $updates_count"
+	fi
+}
+
+# Get changelog for app
+get_changelog() {
+	local app_id="$1"
+	local from_version="$2"
+	local to_version="$3"
+
+	local active_catalog=$(get_active_catalog)
+
+	if [ ! -f "$active_catalog" ]; then
+		echo "ERROR: No catalog available"
+		return 1
+	fi
+
+	echo "Changelog for $app_id"
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+	# Extract changelog from catalog
+	local changelog=$(jsonfilter -i "$active_catalog" -e "@.plugins[@.id='$app_id'].changelog")
+
+	if [ -z "$changelog" ]; then
+		echo "No changelog available for $app_id"
+		return 1
+	fi
+
+	# If specific version requested
+	if [ -n "$to_version" ]; then
+		local version_changelog=$(jsonfilter -i "$active_catalog" -e "@.plugins[@.id='$app_id'].changelog['$to_version']")
+		if [ -n "$version_changelog" ]; then
+			echo "Version: $to_version"
+			echo "Date: $(jsonfilter -i "$active_catalog" -e "@.plugins[@.id='$app_id'].changelog['$to_version'].date")"
+			echo ""
+			echo "Changes:"
+			jsonfilter -i "$active_catalog" -e "@.plugins[@.id='$app_id'].changelog['$to_version'].changes[@]" | \
+				while read -r change; do
+					echo "  • $change"
+				done
+		fi
+	else
+		# Show all versions
+		echo "Full changelog:"
+		echo "$changelog" | jq -r 'to_entries[] | "\nVersion: \(.key)\nDate: \(.value.date)\nChanges:\n" + ([.value.changes[] | "  • \(.)"] | join("\n"))'
+	fi
+
+	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
 # Main command router
 case "$1" in
 	list)
@@ -368,8 +518,32 @@ case "$1" in
 	health)
 		check_health
 		;;
+	sync)
+		shift
+		sync_catalog "$@"
+		;;
+	check-updates)
+		shift
+		check_updates "$@"
+		;;
+	changelog)
+		shift
+		get_changelog "$@"
+		;;
 	*)
-		echo "Usage: $0 {list|info|search|install|remove|update|health} [args]"
+		echo "Usage: $0 {list|info|search|install|remove|update|health|sync|check-updates|changelog} [args]"
+		echo ""
+		echo "Commands:"
+		echo "  list [--json]              List all modules"
+		echo "  info <module>              Show module information"
+		echo "  search <query>             Search for modules"
+		echo "  install <module>           Install a module"
+		echo "  remove <module>            Remove a module"
+		echo "  update [module]            Update module(s)"
+		echo "  health                     Check module health"
+		echo "  sync [source]              Sync catalog from sources"
+		echo "  check-updates [--json]     Check for available updates"
+		echo "  changelog <app> [version]  Show app changelog"
 		exit 1
 		;;
 esac

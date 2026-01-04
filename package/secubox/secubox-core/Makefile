@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
 PKG_VERSION:=0.8.0
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
@@ -17,7 +17,7 @@ define Package/secubox-core
   SECTION:=admin
   CATEGORY:=Administration
   TITLE:=SecuBox Core Framework
-  DEPENDS:=+libubox +libubus +libuci +rpcd +bash +coreutils-base64 +jsonfilter
+  DEPENDS:=+libubox +libubus +libuci +rpcd +bash +coreutils-base64 +jsonfilter +jq
   PKGARCH:=all
 endef
 
@@ -33,6 +33,7 @@ endef
 
 define Package/secubox-core/conffiles
 /etc/config/secubox
+/etc/config/secubox-appstore
 /etc/secubox/profiles/
 /etc/secubox/templates/
 /etc/secubox/macros/
@@ -44,6 +45,7 @@ endef
 define Package/secubox-core/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./root/etc/config/secubox $(1)/etc/config/
+	$(INSTALL_CONF) ./root/etc/config/secubox-appstore $(1)/etc/config/
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./root/etc/init.d/secubox-core $(1)/etc/init.d/
@@ -65,6 +67,7 @@ define Package/secubox-core/install
 	$(INSTALL_BIN) ./root/usr/sbin/secubox $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-core $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-appstore $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-catalog-sync $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-profile $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-diagnostics $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-recovery $(1)/usr/sbin/
@@ -81,6 +84,7 @@ define Package/secubox-core/install
 	# Install main catalog files (REQUIRED for AppStore)
 	-$(INSTALL_DATA) ./root/usr/share/secubox/catalog.json $(1)/usr/share/secubox/ 2>/dev/null || true
 	-$(INSTALL_DATA) ./root/usr/share/secubox/catalog-stats.json $(1)/usr/share/secubox/ 2>/dev/null || true
+	-$(INSTALL_DATA) ./root/usr/share/secubox/catalog-metadata.json.example $(1)/usr/share/secubox/ 2>/dev/null || true
 
 	# Install individual module catalog files
 	-$(INSTALL_DATA) ./root/usr/share/secubox/plugins/catalog/*.json $(1)/usr/share/secubox/plugins/catalog/ 2>/dev/null || true
@@ -89,6 +93,12 @@ endef
 define Package/secubox-core/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
+	# Create catalog cache directories
+	mkdir -p /var/cache/secubox/catalogs
+	mkdir -p /var/lib/secubox
+	chmod 755 /var/cache/secubox/catalogs
+	chmod 700 /var/lib/secubox
+
 	/etc/init.d/secubox-core enable
 	/etc/init.d/secubox-core start
 
