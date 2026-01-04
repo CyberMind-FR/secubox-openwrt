@@ -198,19 +198,35 @@ return view.extend({
 	initializeWidgets: function(apps) {
 		// Cleanup existing widget renderer
 		if (this.widgetRenderer) {
-			this.widgetRenderer.destroy();
+			try {
+				this.widgetRenderer.destroy();
+			} catch (e) {
+				console.error('Error destroying widget renderer:', e);
+			}
 		}
 
-		// Create new widget renderer
-		this.widgetRenderer = new WidgetRenderer({
-			containerId: 'dashboard-widgets-container',
-			apps: apps,
-			defaultRefreshInterval: 30,
-			gridMode: 'auto'
-		});
+		try {
+			// Create new widget renderer instance
+			// WidgetRenderer is a baseclass-extended class, call it directly
+			this.widgetRenderer = WidgetRenderer({
+				containerId: 'dashboard-widgets-container',
+				apps: apps,
+				defaultRefreshInterval: 30,
+				gridMode: 'auto'
+			});
 
-		// Render widgets
-		this.widgetRenderer.render();
+			// Render widgets
+			if (this.widgetRenderer && this.widgetRenderer.render) {
+				this.widgetRenderer.render();
+			}
+		} catch (e) {
+			console.error('Error initializing widgets:', e);
+			// Render error message in widget container
+			var container = document.getElementById('dashboard-widgets-container');
+			if (container) {
+				container.innerHTML = '<div class="alert alert-warning">Widget system initialization failed. Please refresh the page.</div>';
+			}
+		}
 	},
 
 	pollData: function() {

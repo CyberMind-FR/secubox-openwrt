@@ -69,11 +69,17 @@ ubus -S call luci.secubox check_updates
 ### Package Versions
 
 - `secubox-core`: 0.8.0-6
-- `luci-app-secubox-admin`: 1.0.0-5
+- `luci-app-secubox-admin`: 1.0.0-6
 
 ### Recent Fixes
 
-**v1.0.0-5** (Latest):
+**v1.0.0-6** (Latest):
+- Fixed WidgetRenderer constructor error
+- Changed from `new WidgetRenderer({...})` to `WidgetRenderer({...})`
+- Added comprehensive error handling with try-catch and fallback error display
+- baseclass-extended classes should not be called with `new` keyword
+
+**v1.0.0-5**:
 - Added graceful RPC fallback with L.resolveDefault()
 - Pages now load with empty data instead of crashing when backend not deployed
 - Fixes "No related RPC reply" errors
