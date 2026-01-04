@@ -20,6 +20,9 @@ var WidgetRenderer = baseclass.extend({
 	 * @param {string} options.gridMode - Grid layout mode: 'auto', 'fixed-2', 'fixed-3', 'fixed-4' (default: 'auto')
 	 */
 	__init__: function(options) {
+		// Ensure options is an object
+		options = options || {};
+
 		this.containerId = options.containerId || 'widget-container';
 		this.apps = options.apps || [];
 		this.defaultRefreshInterval = options.defaultRefreshInterval || 30;
