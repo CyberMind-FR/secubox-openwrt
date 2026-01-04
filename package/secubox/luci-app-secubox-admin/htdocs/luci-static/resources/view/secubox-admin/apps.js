@@ -7,18 +7,33 @@
 
 return view.extend({
 	load: function() {
+		console.log('[APPS] Loading data...');
 		return Promise.all([
 			L.resolveDefault(API.getApps(), { apps: [] }),
 			L.resolveDefault(API.getModules(), { modules: {} }),
-			L.resolveDefault(API.checkUpdates(), {})
-		]);
+			L.resolveDefault(API.checkUpdates(), { updates: [] })
+		]).then(function(results) {
+			console.log('[APPS] Data loaded:', {
+				apps: results[0],
+				modules: results[1],
+				updates: results[2]
+			});
+			return results;
+		}).catch(function(err) {
+			console.error('[APPS] Load error:', err);
+			return [{ apps: [] }, { modules: {} }, { updates: [] }];
+		});
 	},
 
 	render: function(data) {
+		console.log('[APPS] Rendering with data:', data);
 		var apps = data[0].apps || [];
 		var modules = data[1].modules || {};
 		var updateInfo = data[2] || {};
 		var self = this;
+
+		console.log('[APPS] Apps count:', apps.length);
+		console.log('[APPS] Updates:', updateInfo);
 
 		// Create updates lookup map
 		var updatesMap = {};
@@ -28,57 +43,87 @@ return view.extend({
 			});
 		}
 
-		var container = E('div', { 'class': 'secubox-apps-manager' }, [
+		var container = E('div', { 'class': 'cyberpunk-mode secubox-apps-manager' }, [
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/admin.css') }),
+			E('link', { 'rel': 'stylesheet',
+				'href': L.resource('secubox-admin/cyberpunk.css') }),
 
-			E('h2', {}, 'Apps Manager'),
-			E('p', {}, 'Browse and manage SecuBox applications from the catalog'),
+			// Cyberpunk header
+			E('div', { 'class': 'cyber-header' }, [
+				E('div', { 'class': 'cyber-header-title' }, '📦 APPS MANAGER'),
+				E('div', { 'class': 'cyber-header-subtitle' },
+					'Browse and manage SecuBox applications · ' + apps.length + ' apps available')
+			]),
 
-			// Filters
-			E('div', { 'class': 'app-filters' }, [
-				E('input', {
-					'type': 'text',
-					'class': 'search-box',
-					'placeholder': 'Search apps...',
-					'keyup': function(ev) {
-						self.filterApps(ev.target.value);
-					}
-				}),
-				E('select', {
-					'class': 'category-filter',
-					'change': function(ev) {
-						self.filterByCategory(ev.target.value);
-					}
-				}, [
-					E('option', { 'value': '' }, 'All Categories'),
-					E('option', { 'value': 'security' }, 'Security'),
-					E('option', { 'value': 'network' }, 'Network'),
-					E('option', { 'value': 'hosting' }, 'Hosting'),
-					E('option', { 'value': 'productivity' }, 'Productivity')
+			// Cyber filters panel
+			E('div', { 'class': 'cyber-panel' }, [
+				E('div', { 'class': 'cyber-panel-header' }, [
+					E('span', { 'class': 'cyber-panel-title' }, 'FILTERS'),
+					E('span', { 'class': 'cyber-panel-badge' }, apps.length)
 				]),
-				E('select', {
-					'class': 'status-filter',
-					'change': function(ev) {
-						self.filterByStatus(ev.target.value);
-					}
+				E('div', { 'class': 'cyber-panel-body' }, [
+					E('input', {
+						'type': 'text',
+						'class': 'cyber-input',
+						'placeholder': 'Search apps...',
+						'style': 'width: 100%; margin-bottom: 10px; padding: 8px; background: rgba(0,255,65,0.1); border: 1px solid var(--cyber-border); color: var(--cyber-text); font-family: inherit;',
+						'keyup': function(ev) {
+							console.log('[APPS] Search:', ev.target.value);
+							self.filterApps(ev.target.value);
+						}
+					}),
+					E('select', {
+						'class': 'cyber-select',
+						'style': 'width: 100%; margin-bottom: 10px; padding: 8px; background: rgba(0,255,65,0.1); border: 1px solid var(--cyber-border); color: var(--cyber-text); font-family: inherit;',
+						'change': function(ev) {
+							console.log('[APPS] Category filter:', ev.target.value);
+							self.filterByCategory(ev.target.value);
+						}
 				}, [
-					E('option', { 'value': '' }, 'All Apps'),
-					E('option', { 'value': 'update-available' }, 'Updates Available'),
-					E('option', { 'value': 'installed' }, 'Installed'),
-					E('option', { 'value': 'not-installed' }, 'Not Installed')
+						E('option', { 'value': '' }, '→ All Categories'),
+						E('option', { 'value': 'security' }, '🔒 Security'),
+						E('option', { 'value': 'network' }, '🌐 Network'),
+						E('option', { 'value': 'hosting' }, '☁️ Hosting'),
+						E('option', { 'value': 'productivity' }, '📊 Productivity'),
+						E('option', { 'value': 'monitoring' }, '📡 Monitoring'),
+						E('option', { 'value': 'storage' }, '💾 Storage')
+					]),
+					E('select', {
+						'class': 'cyber-select',
+						'style': 'width: 100%; padding: 8px; background: rgba(0,255,65,0.1); border: 1px solid var(--cyber-border); color: var(--cyber-text); font-family: inherit;',
+						'change': function(ev) {
+							console.log('[APPS] Status filter:', ev.target.value);
+							self.filterByStatus(ev.target.value);
+						}
+					}, [
+						E('option', { 'value': '' }, '→ All Apps'),
+						E('option', { 'value': 'update-available' }, '⚡ Updates Available'),
+						E('option', { 'value': 'installed' }, '✓ Installed'),
+						E('option', { 'value': 'not-installed' }, '○ Not Installed')
+					])
 				])
 			]),
 
-			// Apps grid
-			E('div', { 'class': 'apps-grid', 'id': 'apps-grid' },
-				apps.map(function(app) {
-					var status = API.getAppStatus(app, modules);
-					var updateAvailable = updatesMap[app.id];
-					return self.renderAppCard(app, status, updateAvailable);
-				})
+			// Apps list (cyberpunk style)
+			E('div', { 'class': 'cyber-list', 'id': 'apps-grid' },
+				apps.length > 0 ?
+					apps.map(function(app) {
+						console.log('[APPS] Rendering app:', app.id, app);
+						var status = API.getAppStatus(app, modules);
+						var updateAvailable = updatesMap[app.id];
+						return self.renderAppCard(app, status, updateAvailable);
+					}) :
+					[E('div', { 'class': 'cyber-panel' }, [
+						E('div', { 'class': 'cyber-panel-body', 'style': 'text-align: center; padding: 40px;' }, [
+							E('div', { 'style': 'font-size: 48px; margin-bottom: 20px;' }, '📦'),
+							E('div', { 'style': 'color: var(--cyber-text-dim);' }, 'NO APPS FOUND'),
+							E('div', { 'style': 'color: var(--cyber-text-dim); font-size: 12px; margin-top: 10px;' },
+								'Check catalog sources or sync catalog')
+						])
+					])]
 			)
 		]);
 
@@ -88,62 +133,82 @@ return view.extend({
 	renderAppCard: function(app, status, updateInfo) {
 		var self = this;
 		var hasUpdate = updateInfo && updateInfo.update_available;
+		var isInstalled = status && status.installed;
 
-		var cardClasses = 'app-card';
-		if (status.installed) cardClasses += ' installed';
-		if (hasUpdate) cardClasses += ' has-update';
+		console.log('[APPS] Rendering card for:', app.id, {isInstalled: isInstalled, hasUpdate: hasUpdate});
+
+		var itemClass = 'cyber-list-item';
+		if (isInstalled) itemClass += ' active';
 
 		return E('div', {
-			'class': cardClasses,
+			'class': itemClass,
 			'data-category': app.category,
 			'data-update-status': hasUpdate ? 'update-available' : '',
-			'data-install-status': status.installed ? 'installed' : 'not-installed'
+			'data-install-status': isInstalled ? 'installed' : 'not-installed'
 		}, [
-			E('div', { 'class': 'app-icon' }, app.icon || '📦'),
-			E('div', { 'class': 'app-info' }, [
-				E('div', { 'class': 'app-title-row' }, [
-					E('h3', {}, app.name),
-					hasUpdate ? E('span', { 'class': 'badge badge-warning update-badge' }, 'Update') : null
+			// Icon
+			E('div', { 'class': 'cyber-list-icon' }, app.icon || '📦'),
+
+			// Content
+			E('div', { 'class': 'cyber-list-content' }, [
+				E('div', { 'class': 'cyber-list-title' }, [
+					app.name,
+					isInstalled ? E('span', { 'class': 'cyber-badge success' }, [
+						E('span', { 'class': 'cyber-status-dot online' }),
+						' INSTALLED'
+					]) : null,
+					hasUpdate ? E('span', { 'class': 'cyber-badge warning' }, [
+						'⚡ UPDATE'
+					]) : null
 				]),
-				E('p', { 'class': 'app-description' }, app.description),
-				E('div', { 'class': 'app-meta' }, [
-					E('span', { 'class': 'app-category' }, app.category),
-					E('span', {
-						'class': 'app-version' + (hasUpdate ? ' version-outdated' : ''),
-						'title': hasUpdate ?
-							'Installed: ' + updateInfo.installed_version + ' → Available: ' + updateInfo.catalog_version :
-							''
-					}, 'v' + (app.pkg_version || app.version || '1.0')),
-					Components.renderStatusBadge(status.status)
+				E('div', { 'class': 'cyber-list-meta' }, [
+					E('span', { 'class': 'cyber-list-meta-item' }, [
+						E('span', {}, '📁 '),
+						app.category || 'general'
+					]),
+					E('span', { 'class': 'cyber-list-meta-item' }, [
+						E('span', {}, '🔖 '),
+						'v' + (app.pkg_version || app.version || '1.0')
+					]),
+					hasUpdate ? E('span', { 'class': 'cyber-list-meta-item' }, [
+						E('span', {}, '→ '),
+						'v' + updateInfo.catalog_version
+					]) : null
 				])
 			]),
-			E('div', { 'class': 'app-actions' },
-				status.installed ? [
+
+			// Actions
+			E('div', { 'class': 'cyber-list-actions' },
+				isInstalled ? [
 					hasUpdate ? E('button', {
-						'class': 'btn btn-sm btn-warning',
-						'click': function() { self.updateApp(app, updateInfo); }
-					}, 'Update') : null,
+						'class': 'cyber-btn warning',
+						'click': function() {
+							console.log('[APPS] Update app:', app.id);
+							self.updateApp(app, updateInfo);
+						}
+					}, '⚡ UPDATE') : null,
 					E('button', {
-						'class': 'btn btn-sm btn-secondary',
-						'click': function() { self.viewChangelog(app); }
-					}, 'Changelog'),
+						'class': 'cyber-btn',
+						'click': function() {
+							console.log('[APPS] Configure app:', app.id);
+							self.configureApp(app);
+						}
+					}, '⚙️ CONFIG'),
 					E('button', {
-						'class': 'btn btn-sm btn-primary',
-						'click': function() { self.configureApp(app); }
-					}, 'Configure'),
-					E('button', {
-						'class': 'btn btn-sm btn-danger',
-						'click': function() { self.removeApp(app); }
-					}, 'Remove')
+						'class': 'cyber-btn danger',
+						'click': function() {
+							console.log('[APPS] Remove app:', app.id);
+							self.removeApp(app);
+						}
+					}, '🗑️ REMOVE')
 				] : [
 					E('button', {
-						'class': 'btn btn-sm btn-secondary',
-						'click': function() { self.viewChangelog(app); }
-					}, 'Changelog'),
-					E('button', {
-						'class': 'btn btn-sm btn-success',
-						'click': function() { self.installApp(app); }
-					}, 'Install')
+						'class': 'cyber-btn primary',
+						'click': function() {
+							console.log('[APPS] Install app:', app.id);
+							self.installApp(app);
+						}
+					}, '⬇️ INSTALL')
 				]
 			)
 		]);
