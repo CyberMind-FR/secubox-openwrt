@@ -608,6 +608,19 @@ copy_packages() {
             fi
         done
 
+        # Copy luci-app-* packages from package/secubox/ (e.g., luci-app-secubox-admin)
+        for pkg in ../../package/secubox/luci-app-*/; do
+            if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
+                local pkg_name=$(basename "$pkg")
+                echo "  📁 $pkg_name (SecuBox LuCI)"
+                cp -r "$pkg" "$feed_dir/"
+
+                # Fix Makefile include path for feed structure
+                sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "$feed_dir/$pkg_name/Makefile"
+                echo "    ✓ Fixed Makefile include path"
+            fi
+        done
+
         # Copy secubox-app-* packages (backend services)
         for pkg in ../../package/secubox/secubox-app-*/; do
             if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then

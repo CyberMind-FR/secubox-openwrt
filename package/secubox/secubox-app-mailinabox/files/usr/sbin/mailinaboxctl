@@ -1,0 +1,227 @@
+#!/bin/sh
+# SecuBox Mail-in-a-Box manager
+
+CONFIG="mailinabox"
+CONTAINER="secbx-mailinabox"
+OPKG_UPDATED=0
+
+usage() {
+	cat <<'USAGE'
+Usage: mailinaboxctl <command>
+
+Commands:
+  install         Install prerequisites, prepare directories, pull image
+  check           Run prerequisite checks
+  update          Pull new image and restart
+  status          Show container status
+  logs            Show container logs (use -f to follow)
+  admin           Open admin interface in browser (shows URL)
+  service-run     Internal: run container via procd
+  service-stop    Stop container
+
+Post-Installation:
+  1. Configure hostname and admin_email in /etc/config/mailinabox
+  2. Ensure proper DNS configuration (A, MX, SPF, DKIM, DMARC records)
+  3. Start with: /etc/init.d/mailinabox start
+  4. Access admin panel at https://your-hostname/admin
+
+Important Notes:
+  - Requires public IP and proper DNS configuration
+  - Port 25 must be open (some ISPs block it)
+  - Valid domain name required for SSL certificates
+  - Initial setup may take 10-15 minutes
+USAGE
+}
+
+require_root() { [ "$(id -u)" -eq 0 ]; }
+
+uci_get() { uci -q get ${CONFIG}.main.$1; }
+
+defaults() {
+	image="$(uci_get image || echo docker-mailserver/docker-mailserver:latest)"
+	data_path="$(uci_get data_path || echo /srv/mailinabox)"
+	hostname="$(uci_get hostname || echo mail.example.com)"
+	admin_email="$(uci_get admin_email || echo admin@example.com)"
+	timezone="$(uci_get timezone || echo UTC)"
+
+	smtp_port="$(uci_get smtp_port || echo 25)"
+	dns_port="$(uci_get dns_port || echo 53)"
+	http_port="$(uci_get http_port || echo 80)"
+	https_port="$(uci_get https_port || echo 443)"
+	submission_port="$(uci_get submission_port || echo 587)"
+	imaps_port="$(uci_get imaps_port || echo 993)"
+	pop3s_port="$(uci_get pop3s_port || echo 995)"
+	sieve_port="$(uci_get sieve_port || echo 4190)"
+
+	enable_dns="$(uci_get enable_dns || echo 1)"
+	enable_webmail="$(uci_get enable_webmail || echo 1)"
+	letsencrypt="$(uci_get letsencrypt || echo 1)"
+}
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+ensure_packages() {
+	for pkg in "$@"; do
+		if ! opkg status "$pkg" >/dev/null 2>&1; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+check_prereqs() {
+	defaults
+
+	# Check hostname configuration
+	if [ "$hostname" = "mail.example.com" ]; then
+		echo "[WARNING] Please configure hostname in /etc/config/mailinabox" >&2
+		echo "[WARNING] Mail-in-a-Box requires a valid domain name" >&2
+	fi
+
+	# Create data directories
+	ensure_dir "$data_path"
+	ensure_dir "$data_path/mail"
+	ensure_dir "$data_path/ssl"
+	ensure_dir "$data_path/data"
+	ensure_dir "$data_path/dns"
+
+	# Check system requirements
+	[ -d /sys/fs/cgroup ] || { echo "[ERROR] /sys/fs/cgroup missing" >&2; return 1; }
+
+	# Install Docker
+	ensure_packages dockerd docker containerd
+	/etc/init.d/dockerd enable >/dev/null 2>&1
+	/etc/init.d/dockerd start >/dev/null 2>&1
+
+	# Port conflict checks
+	if [ "$smtp_port" = "25" ]; then
+		if netstat -tln 2>/dev/null | grep -q ":25 "; then
+			echo "[WARNING] Port 25 already in use - potential conflict" >&2
+		fi
+	fi
+
+	if [ "$dns_port" = "53" ] && [ "$enable_dns" = "1" ]; then
+		if netstat -uln 2>/dev/null | grep -q ":53 "; then
+			echo "[WARNING] Port 53 already in use - DNS may conflict with dnsmasq" >&2
+			echo "[WARNING] Consider disabling Mail-in-a-Box DNS or moving dnsmasq" >&2
+		fi
+	fi
+}
+
+pull_image() { defaults; docker pull "$image"; }
+
+stop_container() {
+	docker stop "$CONTAINER" >/dev/null 2>&1 || true
+	docker rm "$CONTAINER" >/dev/null 2>&1 || true
+}
+
+cmd_install() {
+	require_root || { echo Root required >&2; exit 1; }
+	check_prereqs || exit 1
+	pull_image || exit 1
+	uci set ${CONFIG}.main.enabled='1'
+	uci commit ${CONFIG}
+	/etc/init.d/mailinabox enable
+	echo ""
+	echo "Mail-in-a-Box prerequisites installed."
+	echo ""
+	echo "CRITICAL NEXT STEPS:"
+	echo "  1. Edit /etc/config/mailinabox and set:"
+	echo "     - hostname (must be a valid FQDN)"
+	echo "     - admin_email"
+	echo "  2. Configure DNS records for your domain:"
+	echo "     - A record: $hostname -> your-public-ip"
+	echo "     - MX record: @ -> $hostname"
+	echo "  3. Ensure port 25 is not blocked by your ISP"
+	echo "  4. Start with: /etc/init.d/mailinabox start"
+	echo "  5. Access admin at: https://$hostname/admin"
+	echo ""
+}
+
+cmd_check() {
+	check_prereqs
+	echo "Prerequisite check completed."
+	echo ""
+	defaults
+	echo "Current configuration:"
+	echo "  Hostname: $hostname"
+	echo "  Admin email: $admin_email"
+	echo "  Data path: $data_path"
+	echo "  DNS enabled: $enable_dns"
+	echo ""
+}
+
+cmd_update() {
+	require_root || { echo Root required >&2; exit 1; }
+	pull_image || exit 1
+	/etc/init.d/mailinabox restart
+}
+
+cmd_status() { docker ps -a --filter "name=$CONTAINER"; }
+
+cmd_logs() { docker logs "$@" "$CONTAINER"; }
+
+cmd_admin() {
+	defaults
+	echo "Admin interface: https://$hostname/admin"
+	echo ""
+	echo "If accessing locally, you may need to:"
+	echo "  - Add '$hostname' to your hosts file"
+	echo "  - Or use: https://$(uci get network.lan.ipaddr 2>/dev/null || echo 'router-ip')/admin"
+}
+
+cmd_service_run() {
+	require_root || { echo Root required >&2; exit 1; }
+	check_prereqs || exit 1
+	defaults
+	stop_container
+
+	local docker_args="--name $CONTAINER"
+
+	# Network mode: host for mail server functionality
+	docker_args="$docker_args --network host"
+
+	# Volume mounts
+	docker_args="$docker_args -v $data_path/mail:/var/mail"
+	docker_args="$docker_args -v $data_path/ssl:/etc/ssl/mail"
+	docker_args="$docker_args -v $data_path/data:/var/mail-state"
+	docker_args="$docker_args -v $data_path/dns:/etc/bind"
+
+	# Environment variables for docker-mailserver
+	docker_args="$docker_args -e TZ=$timezone"
+	docker_args="$docker_args -e OVERRIDE_HOSTNAME=$hostname"
+	docker_args="$docker_args -e ENABLE_SPAMASSASSIN=1"
+	docker_args="$docker_args -e ENABLE_CLAMAV=1"
+	docker_args="$docker_args -e ENABLE_FAIL2BAN=1"
+	docker_args="$docker_args -e SSL_TYPE=letsencrypt"
+
+	# Capabilities for mail server
+	docker_args="$docker_args --cap-add=NET_ADMIN"
+	docker_args="$docker_args --cap-add=NET_BIND_SERVICE"
+
+	# Restart policy
+	docker_args="$docker_args --restart=unless-stopped"
+
+	exec docker run --rm $docker_args "$image"
+}
+
+cmd_service_stop() {
+	require_root || { echo Root required >&2; exit 1; }
+	stop_container
+}
+
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	check) shift; cmd_check "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	admin) shift; cmd_admin "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac

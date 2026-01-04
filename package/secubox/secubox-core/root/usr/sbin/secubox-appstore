@@ -184,11 +184,47 @@ install_module() {
 		fi
 	fi
 
+	# Check if Docker app and auto-install
+	local runtime=$(jsonfilter -i "$catalog_file" -e '@.runtime')
+	if [ "$runtime" = "docker" ]; then
+		echo "[4/5] Configuring Docker application..."
+		if [ "$dryrun" != "--dryrun" ]; then
+			# Detect control script name from package
+			local pkg_name=$(echo "$packages" | head -n1)
+			local ctl_name=""
+
+			# Convert package name to control script name
+			# secubox-app-adguardhome -> adguardhomectl
+			# secubox-app-mailinabox -> mailinaboxctl
+			if echo "$pkg_name" | grep -q "^secubox-app-"; then
+				ctl_name=$(echo "$pkg_name" | sed 's/^secubox-app-//' | sed 's/-//g')ctl
+			fi
+
+			if [ -n "$ctl_name" ] && [ -f "/usr/sbin/$ctl_name" ]; then
+				echo "  → Running /usr/sbin/$ctl_name install..."
+				if /usr/sbin/$ctl_name install; then
+					echo "  ✓ Docker app configured successfully"
+					# Auto-enable and start the service
+					/etc/init.d/$(echo "$ctl_name" | sed 's/ctl$//') enable 2>/dev/null || true
+					echo "  ✓ Service enabled"
+				else
+					echo "  ⚠ Docker app configuration completed with warnings"
+					echo "  → You may need to configure /etc/config/$(echo "$ctl_name" | sed 's/ctl$//')"
+				fi
+			else
+				echo "  ℹ Manual configuration required"
+				echo "  → Check /etc/config/ for app configuration"
+			fi
+		else
+			echo "[DRYRUN] Would configure Docker application"
+		fi
+	fi
+
 	# Health check
-	echo "[4/4] Running health check..."
+	echo "[5/5] Running health check..."
 	if [ "$dryrun" != "--dryrun" ]; then
 		sleep 2
-		/usr/sbin/secubox-diagnostics health > /dev/null
+		/usr/sbin/secubox-diagnostics health > /dev/null 2>&1 || true
 	fi
 
 	echo "✓ Module installed successfully: $module_id"

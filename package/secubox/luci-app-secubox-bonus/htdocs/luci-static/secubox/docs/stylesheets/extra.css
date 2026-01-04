@@ -1,0 +1,44 @@
+/* SecuBox custom styling */
+
+:root {
+    --md-primary-fg-color: #6366f1;
+    --md-accent-fg-color: #8b5cf6;
+}
+
+/* Code blocks */
+.highlight {
+    border-radius: 0.375rem;
+}
+
+/* Cards grid */
+.grid.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+
+.grid.cards > * {
+    border: 1px solid var(--md-default-fg-color--lightest);
+    border-radius: 0.375rem;
+    padding: 1rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.grid.cards > *:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Gradient headings */
+h1 {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Admonitions */
+.md-typeset .admonition {
+    border-radius: 0.375rem;
+}

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuBox - Local Documentation & Demo Mirror</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .header p {
+            font-size: 1.25rem;
+            opacity: 0.9;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .card h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .card p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-links {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            text-align: center;
+            transition: opacity 0.2s;
+            font-weight: 500;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 3rem;
+            color: white;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .cards {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ SecuBox Local Mirror</h1>
+            <p>Documentation, Demos & Marketing Content</p>
+        </div>
+
+        <div class="cards">
+            <div class="card">
+                <div class="card-icon">📚</div>
+                <h2>Documentation</h2>
+                <p>Complete developer documentation, guides, and references for SecuBox development and deployment.</p>
+                <div class="card-links">
+                    <a href="docs/index.html" class="btn">Browse Documentation</a>
+                    <a href="docs/quick-start/index.html" class="btn-secondary btn">Quick Start Guide</a>
+                    <a href="docs/development-guidelines/index.html" class="btn-secondary btn">Development Guidelines</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">🎮</div>
+                <h2>Live Demos</h2>
+                <p>Interactive demonstrations of SecuBox modules and features. Try before you install!</p>
+                <div class="card-links">
+                    <a href="demo-secubox-hub.html" class="btn">SecuBox Hub Demo</a>
+                    <a href="demo-client-guardian.html" class="btn-secondary btn">Client Guardian</a>
+                    <a href="demo-crowdsec.html" class="btn-secondary btn">CrowdSec IPS</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">📝</div>
+                <h2>Tutorials & Blogs</h2>
+                <p>Step-by-step guides and best practices for configuring SecuBox modules.</p>
+                <div class="card-links">
+                    <a href="blog/auth-guardian-setup.html" class="btn">Auth Guardian Setup</a>
+                    <a href="blog/bandwidth-manager-guide.html" class="btn-secondary btn">Bandwidth Manager</a>
+                    <a href="blog/local-saas-vhost.html" class="btn-secondary btn">Local SaaS Setup</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-icon">🌐</div>
+                <h2>Campaign & Marketing</h2>
+                <p>Marketing materials and landing pages for SecuBox modules and features.</p>
+                <div class="card-links">
+                    <a href="campaign.html" class="btn">View Campaign</a>
+                    <a href="index.html" class="btn-secondary btn">Landing Page</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>SecuBox Bonus Content v0.1.0 | Installed locally on your router</p>
+            <p>Access this mirror anytime at <code>/luci-static/secubox/index-main.html</code></p>
+        </div>
+    </div>
+</body>
+</html>

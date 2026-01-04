@@ -1184,7 +1184,7 @@
       "id": "secubox-app-mailinabox",
       "name": "Mail-in-a-Box",
       "version": "70.0",
-      "category": "productivity",
+      "category": "hosting",
       "runtime": "docker",
       "description": "Easy-to-deploy email server with webmail, contacts, calendar, spam filtering, and automatic security updates",
       "author": "CyberMind.fr",
@@ -1197,6 +1197,7 @@
         "webmail",
         "calendar",
         "contacts",
+        "hosting",
         "docker"
       ],
       "packages": {
@@ -1209,18 +1210,19 @@
       "capabilities": [
         "email",
         "mail-server",
-        "webmail"
+        "webmail",
+        "hosting"
       ],
       "requirements": {
         "min_ram_mb": 768,
-        "min_storage_mb": 1024
+        "min_storage_mb": 2048
       },
-      "status": "stable",
+      "status": "beta",
       "conflicts": [
         "citadel",
         "ispconfig"
       ],
-      "notes": "Requires a domain name with proper DNS configuration. Includes webmail, spam filtering, and automatic TLS."
+      "notes": "Requires a domain name with proper DNS configuration. Includes webmail, spam filtering, and automatic TLS. Port 25 must be accessible."
     },
     {
       "id": "secubox-app-nextcloud",
