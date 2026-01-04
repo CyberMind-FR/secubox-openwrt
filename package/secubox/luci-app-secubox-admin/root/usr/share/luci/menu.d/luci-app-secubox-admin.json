@@ -69,5 +69,13 @@
 			"type": "view",
 			"path": "secubox-admin/logs"
 		}
+	},
+	"admin/secubox/admin/advanced": {
+		"title": "⚙️ Advanced Settings",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "secubox-admin/advanced-settings"
+		}
 	}
 }
