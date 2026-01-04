@@ -600,15 +600,23 @@ case "$1" in
 				source=$(echo "$input" | jsonfilter -e '@.source')
 
 				CONFIG_NAME="secubox-appstore"
+				SECTION_NAME=$(uci -q show "$CONFIG_NAME" | grep "=settings" | head -n1 | cut -d'.' -f2 | cut -d'=' -f1)
+				[ -z "$SECTION_NAME" ] && SECTION_NAME="main"
 
 				if [ -n "$source" ]; then
-					uci set "${CONFIG_NAME}.settings.force_source=$source"
-					uci commit "$CONFIG_NAME"
+					if uci set "${CONFIG_NAME}.${SECTION_NAME}.force_source=$source" >/dev/null 2>&1 && \
+						uci commit "$CONFIG_NAME" >/dev/null 2>&1; then
+						json_init
+						json_add_boolean "success" true
+						json_add_string "message" "Catalog source set to: $source"
+						json_dump
+					else
+						json_init
+						json_add_boolean "success" false
+						json_add_string "error" "Failed to update UCI config"
+						json_dump
+					fi
 
-					json_init
-					json_add_boolean "success" true
-					json_add_string "message" "Catalog source set to: $source"
-					json_dump
 				else
 					json_init
 					json_add_boolean "success" false
