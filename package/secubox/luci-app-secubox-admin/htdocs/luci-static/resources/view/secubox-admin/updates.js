@@ -90,8 +90,6 @@ return view.extend({
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/admin.css') }),
-			E('link', { 'rel': 'stylesheet',
-				'href': L.resource('secubox-admin/cyberpunk.css') }),
 
 			// Cyberpunk header
 			E('div', { 'class': 'cyber-header' }, [

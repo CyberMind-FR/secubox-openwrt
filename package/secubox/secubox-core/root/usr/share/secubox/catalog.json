@@ -64,6 +64,11 @@
       "license": "MIT",
       "url": "",
       "icon": "\ud83d\udd10",
+      "featured": true,
+      "featured_priority": 1,
+      "featured_category": "security",
+      "featured_reason": "Essential security tool for network authentication and access control",
+      "badges": ["recommended", "popular"],
       "tags": [
         "authentication",
         "captive-portal",
@@ -134,6 +139,11 @@
       "license": "Apache-2.0",
       "url": "",
       "icon": "\ud83d\udcca",
+      "featured": true,
+      "featured_priority": 2,
+      "featured_category": "network",
+      "featured_reason": "Powerful QoS and bandwidth control for optimal network performance",
+      "badges": ["popular", "new"],
       "tags": [
         "bandwidth",
         "qos",
@@ -1444,6 +1454,11 @@
       "license": "MIT",
       "url": "https://github.com/crowdsecurity/crowdsec",
       "icon": "\ud83d\udee1\ufe0f",
+      "featured": true,
+      "featured_priority": 3,
+      "featured_category": "security",
+      "featured_reason": "Advanced intrusion detection and prevention with community-powered threat intelligence",
+      "badges": ["recommended"],
       "tags": [
         "security",
         "ids",
@@ -2380,6 +2395,27 @@
       }
     }
   ],
+  "featured_sections": {
+    "top_picks": [
+      "luci-app-auth-guardian",
+      "luci-app-bandwidth-manager",
+      "secubox-app-crowdsec"
+    ],
+    "security_picks": [
+      "luci-app-auth-guardian",
+      "secubox-app-crowdsec",
+      "luci-app-adblock-plus"
+    ],
+    "network_picks": [
+      "luci-app-bandwidth-manager",
+      "luci-app-wireguard-manager",
+      "luci-app-ddns-manager"
+    ],
+    "new_releases": [
+      "luci-app-auth-guardian",
+      "luci-app-bandwidth-manager"
+    ]
+  },
   "total_plugins": 37,
   "metadata": {
     "catalog_version": "2.0",

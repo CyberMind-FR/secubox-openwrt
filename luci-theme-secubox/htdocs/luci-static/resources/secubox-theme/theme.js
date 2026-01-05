@@ -10,7 +10,7 @@ return baseclass.extend({
 	currentTheme: 'dark',
 	currentLanguage: 'en',
 	translations: {},
-	availableThemes: ['dark', 'light', 'cyberpunk'],
+	availableThemes: ['dark', 'light', 'cyberpunk', 'ocean', 'sunset', 'forest', 'minimal', 'contrast'],
 
 	init: function(options) {
 		var opts = options || {};
@@ -119,6 +119,100 @@ return baseclass.extend({
 			opts.header || null,
 			E('div', { 'class': 'cyber-stack' }, opts.cards || [])
 		]);
+	},
+
+	/**
+	 * Animate page transitions
+	 * @param {HTMLElement} oldContent - Element being removed
+	 * @param {HTMLElement} newContent - Element being added
+	 * @param {Object} options - Animation options
+	 */
+	animatePageTransition: function(oldContent, newContent, options) {
+		var opts = options || {};
+		var duration = opts.duration || 400;
+		var exitDuration = opts.exitDuration || 300;
+
+		return new Promise(function(resolve) {
+			// If no old content, just animate in new content
+			if (!oldContent || !oldContent.parentNode) {
+				if (newContent) {
+					newContent.classList.add('cyber-page-transition-enter');
+					setTimeout(function() {
+						newContent.classList.remove('cyber-page-transition-enter');
+						resolve();
+					}, duration);
+				} else {
+					resolve();
+				}
+				return;
+			}
+
+			// Animate out old content
+			oldContent.classList.add('cyber-page-transition-exit');
+
+			setTimeout(function() {
+				// Remove old content
+				if (oldContent.parentNode) {
+					oldContent.parentNode.removeChild(oldContent);
+				}
+
+				// Animate in new content
+				if (newContent) {
+					newContent.classList.add('cyber-page-transition-enter');
+					setTimeout(function() {
+						newContent.classList.remove('cyber-page-transition-enter');
+						resolve();
+					}, duration);
+				} else {
+					resolve();
+				}
+			}, exitDuration);
+		});
+	},
+
+	/**
+	 * Apply entrance animation to element
+	 * @param {HTMLElement} element
+	 * @param {String} animationType - Type of animation (fade, zoom, slide, bounce, etc.)
+	 */
+	animateEntrance: function(element, animationType) {
+		if (!element) return;
+
+		var animClass = 'cyber-animate-' + (animationType || 'fade-in');
+		element.classList.add(animClass);
+
+		// Remove animation class after completion to allow re-triggering
+		element.addEventListener('animationend', function handler() {
+			element.classList.remove(animClass);
+			element.removeEventListener('animationend', handler);
+		});
+	},
+
+	/**
+	 * Apply micro-interaction to element
+	 * @param {HTMLElement} element
+	 * @param {String} interactionType - Type of interaction (shake, wobble, tada, etc.)
+	 */
+	applyMicroInteraction: function(element, interactionType) {
+		if (!element) return;
+
+		var animations = {
+			shake: 'cyber-shake',
+			wobble: 'cyber-wobble',
+			tada: 'cyber-tada',
+			jello: 'cyber-jello',
+			swing: 'cyber-swing',
+			flash: 'cyber-flash',
+			heartbeat: 'cyber-heartbeat',
+			rubberBand: 'cyber-rubber-band'
+		};
+
+		var animClass = animations[interactionType] || 'cyber-shake';
+		element.style.animation = animClass + ' 0.5s ease-out';
+
+		setTimeout(function() {
+			element.style.animation = '';
+		}, 500);
 	},
 
 	_detectLanguage: function() {

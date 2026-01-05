@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require secubox-admin.api as API';
+'require secubox-admin.data-utils as DataUtils';
 'require poll';
 
 return view.extend({
@@ -11,6 +12,8 @@ return view.extend({
 	render: function(health) {
 		this.metricRefs = {};
 		this.detailRefs = {};
+		var snapshot = DataUtils.normalizeHealth(health);
+		this.currentHealth = snapshot;
 
 		var container = E('div', { 'class': 'secubox-health' }, [
 			E('link', { 'rel': 'stylesheet',
@@ -22,10 +25,10 @@ return view.extend({
 			E('p', {}, 'Monitor system resources and performance'),
 
 			E('div', { 'class': 'health-cards' }, [
-				this.renderMetricCard('CPU Usage', health.cpu || 0, '%', 'cpu'),
-				this.renderMetricCard('Memory Usage', health.memory || 0, '%', 'memory'),
-				this.renderMetricCard('Disk Usage', health.disk || 0, '%', 'disk'),
-				this.renderMetricCard('Uptime', this.formatUptime(health.uptime || 0), '', 'uptime')
+				this.renderMetricCard('CPU Usage', snapshot.cpuUsage || 0, '%', 'cpu'),
+				this.renderMetricCard('Memory Usage', snapshot.memoryUsage || 0, '%', 'memory'),
+				this.renderMetricCard('Disk Usage', snapshot.diskUsage || 0, '%', 'disk'),
+				this.renderMetricCard('Uptime', this.formatUptime(snapshot.uptime || 0), '', 'uptime')
 			]),
 
 			E('div', { 'class': 'health-details card' }, [
@@ -35,11 +38,12 @@ return view.extend({
 						E('th', {}, 'Metric'),
 						E('th', {}, 'Value')
 					]),
-					this.renderDetailRow('CPU Load', (health.load || [0, 0, 0]).join(', '), 'load'),
-					this.renderDetailRow('Total Memory', API.formatBytes(health.total_memory || 0), 'total_memory'),
-					this.renderDetailRow('Free Memory', API.formatBytes(health.free_memory || 0), 'free_memory'),
-					this.renderDetailRow('Total Disk', API.formatBytes(health.total_disk || 0), 'total_disk'),
-					this.renderDetailRow('Free Disk', API.formatBytes(health.free_disk || 0), 'free_disk')
+					this.renderDetailRow('CPU Load',
+						snapshot.load ? snapshot.load.toString().replace(/\s+/g, ', ') : '0, 0, 0', 'load'),
+					this.renderDetailRow('Total Memory', API.formatBytes(snapshot.memory.totalBytes || 0), 'total_memory'),
+					this.renderDetailRow('Free Memory', API.formatBytes(snapshot.memory.freeBytes || 0), 'free_memory'),
+					this.renderDetailRow('Total Disk', API.formatBytes(snapshot.disk.totalBytes || 0), 'total_disk'),
+					this.renderDetailRow('Free Disk', API.formatBytes(snapshot.disk.freeBytes || 0), 'free_disk')
 				])
 			])
 		]);
@@ -107,9 +111,9 @@ return view.extend({
 	},
 
 	updateMetrics: function(health) {
-		this.setMetricValue('cpu', health.cpu || 0, '%');
-		this.setMetricValue('memory', health.memory || 0, '%');
-		this.setMetricValue('disk', health.disk || 0, '%');
+		this.setMetricValue('cpu', health.cpuUsage || 0, '%');
+		this.setMetricValue('memory', health.memoryUsage || 0, '%');
+		this.setMetricValue('disk', health.diskUsage || 0, '%');
 		this.setMetricValue('uptime', this.formatUptime(health.uptime || 0), '', true);
 	},
 
@@ -136,26 +140,28 @@ return view.extend({
 		if (!this.detailRefs) return;
 		var refs = this.detailRefs;
 		if (refs.load) {
-			refs.load.textContent = (health.load || [0, 0, 0]).join(', ');
+			refs.load.textContent = health.load ?
+				health.load.toString().replace(/\s+/g, ', ') : '0, 0, 0';
 		}
 		if (refs.total_memory) {
-			refs.total_memory.textContent = API.formatBytes(health.total_memory || 0);
+			refs.total_memory.textContent = API.formatBytes(health.memory.totalBytes || 0);
 		}
 		if (refs.free_memory) {
-			refs.free_memory.textContent = API.formatBytes(health.free_memory || 0);
+			refs.free_memory.textContent = API.formatBytes(health.memory.freeBytes || 0);
 		}
 		if (refs.total_disk) {
-			refs.total_disk.textContent = API.formatBytes(health.total_disk || 0);
+			refs.total_disk.textContent = API.formatBytes(health.disk.totalBytes || 0);
 		}
 		if (refs.free_disk) {
-			refs.free_disk.textContent = API.formatBytes(health.free_disk || 0);
+			refs.free_disk.textContent = API.formatBytes(health.disk.freeBytes || 0);
 		}
 	},
 
 	pollData: function() {
 		return API.getHealth().then(L.bind(function(health) {
-			this.updateMetrics(health);
-			this.updateDetailRows(health);
+			var snapshot = DataUtils.normalizeHealth(health);
+			this.updateMetrics(snapshot);
+			this.updateDetailRows(snapshot);
 		}, this)).catch(function(err) {
 			console.error('[HEALTH] Poll error:', err);
 		});

@@ -263,45 +263,72 @@ case "$1" in
 				# Return system health metrics
 				json_init
 
+				uptime_seconds=$(cut -d' ' -f1 /proc/uptime | cut -d'.' -f1)
+
 				# CPU usage (simple average from /proc/loadavg)
-				load1=$(cat /proc/loadavg | cut -d' ' -f1)
+				load1=$(awk '{print $1}' /proc/loadavg)
 				cpu_count=$(grep -c ^processor /proc/cpuinfo)
-				cpu_percent=$(awk "BEGIN {printf \"%.0f\", ($load1 / $cpu_count) * 100}")
+				if [ "$cpu_count" -le 0 ]; then
+					cpu_count=1
+				fi
+				cpu_percent=$(awk -v load="$load1" -v cores="$cpu_count" 'BEGIN {printf "%.0f", (load / cores) * 100}')
 
 				# Memory
 				mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
 				mem_free=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+				mem_free=${mem_free:-0}
+				if [ "$mem_total" -le 0 ]; then
+					mem_total=1
+				fi
 				mem_used=$((mem_total - mem_free))
-				mem_percent=$(awk "BEGIN {printf \"%.0f\", ($mem_used / $mem_total) * 100}")
+				mem_percent=$(awk -v used="$mem_used" -v total="$mem_total" 'BEGIN {printf "%.0f", (used / total) * 100}')
 
 				# Disk
 				disk_info=$(df / | tail -1)
 				disk_total=$(echo "$disk_info" | awk '{print $2}')
 				disk_used=$(echo "$disk_info" | awk '{print $3}')
+				disk_used=${disk_used:-0}
+				if [ -z "$disk_total" ] || [ "$disk_total" -le 0 ]; then
+					disk_total=0
+					disk_used=0
+				fi
+				disk_free=$((disk_total - disk_used))
 				disk_percent=$(echo "$disk_info" | awk '{print $5}' | tr -d '%')
+				[ -n "$disk_percent" ] || disk_percent=0
 
 				# Calculate overall score (100 - average of usage percentages)
-				overall_score=$(awk "BEGIN {printf \"%.0f\", 100 - (($cpu_percent + $mem_percent + $disk_percent) / 3)}")
+				overall_score=$(awk -v c="$cpu_percent" -v m="$mem_percent" -v d="$disk_percent" 'BEGIN {printf "%.0f", 100 - ((c + m + d) / 3)}')
+
+				json_add_int "uptime" "$uptime_seconds"
+
+				if [ "$overall_score" -gt 70 ]; then
+					overall_status="healthy"
+				else
+					overall_status="warning"
+				fi
 
 				json_add_object "overall"
 					json_add_int "score" "$overall_score"
-					json_add_string "status" "$([ $overall_score -gt 70 ] && echo healthy || echo warning)"
+					json_add_string "status" "$overall_status"
 				json_close_object
 
 				json_add_object "cpu"
 					json_add_int "usage_percent" "$cpu_percent"
-					json_add_string "load" "$(cat /proc/loadavg | cut -d' ' -f1-3)"
+					json_add_string "load" "$(cut -d' ' -f1-3 /proc/loadavg)"
+					json_add_int "count" "$cpu_count"
 				json_close_object
 
 				json_add_object "memory"
 					json_add_int "total_kb" "$mem_total"
 					json_add_int "used_kb" "$mem_used"
+					json_add_int "free_kb" "$mem_free"
 					json_add_int "usage_percent" "$mem_percent"
 				json_close_object
 
 				json_add_object "disk"
 					json_add_int "total_kb" "$disk_total"
 					json_add_int "used_kb" "$disk_used"
+					json_add_int "free_kb" "$disk_free"
 					json_add_int "usage_percent" "$disk_percent"
 				json_close_object
 

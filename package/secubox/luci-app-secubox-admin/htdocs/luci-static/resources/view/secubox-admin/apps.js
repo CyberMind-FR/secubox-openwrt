@@ -13,13 +13,15 @@ return view.extend({
 		var getAppsPromise = API.getApps().then(function(result) {
 			console.log('[APPS-DEBUG] getApps() raw result:', result);
 			var apps = DataUtils.normalizeApps(result);
+			var categories = DataUtils.extractCategories(result);
 			console.log('[APPS-DEBUG] Normalized apps length:', apps.length);
-			return apps;
+			console.log('[APPS-DEBUG] Categories:', Object.keys(categories || {}));
+			return { apps: apps, categories: categories };
 		}).catch(function(err) {
 			console.error('[APPS-DEBUG] getApps() ERROR:', err);
 			console.error('[APPS-DEBUG] Error message:', err.message);
 			console.error('[APPS-DEBUG] Error stack:', err.stack);
-			return [];
+			return { apps: [], categories: {} };
 		});
 
 		var getModulesPromise = API.getModules().then(function(result) {
@@ -41,12 +43,12 @@ return view.extend({
 		});
 
 		return Promise.all([
-			L.resolveDefault(getAppsPromise, []),
+			L.resolveDefault(getAppsPromise, { apps: [], categories: {} }),
 			L.resolveDefault(getModulesPromise, {}),
 			L.resolveDefault(checkUpdatesPromise, { updates: [], total_updates_available: 0 })
 		]).then(function(results) {
 			console.log('[APPS-DEBUG] ========== ALL PROMISES RESOLVED ==========');
-			console.log('[APPS-DEBUG] Apps length:', results[0].length);
+			console.log('[APPS-DEBUG] Apps length:', (results[0].apps || []).length);
 			console.log('[APPS-DEBUG] Modules keys:', Object.keys(results[1] || {}).length);
 			console.log('[APPS-DEBUG] Updates data:', results[2]);
 			console.log('[APPS-DEBUG] ========== LOAD COMPLETE ==========');
@@ -54,7 +56,7 @@ return view.extend({
 		}).catch(function(err) {
 			console.error('[APPS-DEBUG] ========== PROMISE.ALL ERROR ==========');
 			console.error('[APPS-DEBUG] Error:', err);
-			return [[], {}, { updates: [] }];
+			return [{ apps: [], categories: {} }, {}, { updates: [] }];
 		});
 	},
 
@@ -64,10 +66,20 @@ return view.extend({
 		console.log('[APPS-DEBUG] Render data type:', typeof data);
 		console.log('[APPS-DEBUG] Render data length:', data ? data.length : 'null');
 
-		var apps = DataUtils.normalizeApps(data[0]);
+		var appsPayload = data[0] || {};
+		var apps = DataUtils.normalizeApps(appsPayload.apps || appsPayload);
 		var modules = DataUtils.normalizeModules(data[1]);
 		var updateInfo = DataUtils.normalizeUpdates(data[2]);
+		var categories = appsPayload.categories || {};
+		var stats = DataUtils.buildAppStats(apps, modules, null, updateInfo, API.getAppStatus);
 		var self = this;
+		var categoryOptions = this.renderCategoryOptions(categories);
+
+		this.cachedApps = apps;
+		this.cachedModules = modules;
+		this.cachedUpdates = updateInfo;
+		this.cachedCategories = categories;
+		this.activeFilters = this.activeFilters || { query: '', category: '', status: '' };
 
 		console.log('[APPS-DEBUG] apps array:', apps);
 		console.log('[APPS-DEBUG] apps count:', apps.length);
@@ -83,13 +95,20 @@ return view.extend({
 			});
 		}
 
+		// Filter featured apps
+		var featuredApps = apps.filter(function(app) {
+			return app.featured === true;
+		}).sort(function(a, b) {
+			var priorityA = a.featured_priority || 999;
+			var priorityB = b.featured_priority || 999;
+			return priorityA - priorityB;
+		});
+
 		var container = E('div', { 'class': 'cyberpunk-mode secubox-apps-manager' }, [
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/admin.css') }),
-			E('link', { 'rel': 'stylesheet',
-				'href': L.resource('secubox-admin/cyberpunk.css') }),
 
 			// Cyberpunk header
 			E('div', { 'class': 'cyber-header' }, [
@@ -97,6 +116,25 @@ return view.extend({
 				E('div', { 'class': 'cyber-header-subtitle' },
 					'Browse and manage SecuBox applications · ' + apps.length + ' apps available')
 			]),
+
+			this.renderStatsPanel(stats),
+
+			// Featured Apps Section
+			featuredApps.length > 0 ? E('div', { 'class': 'cyber-featured-section' }, [
+				E('div', { 'class': 'cyber-featured-section-header' }, [
+					E('div', {}, [
+						E('div', { 'class': 'cyber-featured-section-title' }, 'Featured Apps'),
+						E('div', { 'class': 'cyber-featured-section-subtitle' },
+							'Handpicked apps recommended for your SecuBox')
+					])
+				]),
+				E('div', { 'class': 'cyber-featured-apps-grid' },
+					featuredApps.map(function(app) {
+						var status = API.getAppStatus(app, modules);
+						return self.renderFeaturedAppCard(app, status);
+					})
+				)
+			]) : null,
 
 			// Cyber filters panel
 			E('div', { 'class': 'cyber-panel' }, [
@@ -122,15 +160,9 @@ return view.extend({
 							console.log('[APPS] Category filter:', ev.target.value);
 							self.filterByCategory(ev.target.value);
 						}
-				}, [
-						E('option', { 'value': '' }, '→ All Categories'),
-						E('option', { 'value': 'security' }, '🔒 Security'),
-						E('option', { 'value': 'network' }, '🌐 Network'),
-						E('option', { 'value': 'hosting' }, '☁️ Hosting'),
-						E('option', { 'value': 'productivity' }, '📊 Productivity'),
-						E('option', { 'value': 'monitoring' }, '📡 Monitoring'),
-						E('option', { 'value': 'storage' }, '💾 Storage')
-					]),
+					}, [
+						E('option', { 'value': '' }, '→ All Categories')
+					].concat(categoryOptions)),
 					E('select', {
 						'class': 'cyber-select',
 						'style': 'width: 100%; padding: 8px; background: rgba(0,255,65,0.1); border: 1px solid var(--cyber-border); color: var(--cyber-text); font-family: inherit;',
@@ -182,7 +214,7 @@ return view.extend({
 
 		return E('div', {
 			'class': itemClass,
-			'data-category': app.category,
+			'data-category': (app.category || '').toLowerCase(),
 			'data-update-status': hasUpdate ? 'update-available' : '',
 			'data-install-status': isInstalled ? 'installed' : 'not-installed'
 		}, [
@@ -254,6 +286,113 @@ return view.extend({
 		]);
 	},
 
+	renderStatsPanel: function(stats) {
+		var tiles = [
+			this.renderStatTile('📦', stats.totalApps, 'Registered', 'accent'),
+			this.renderStatTile('✅', stats.installedCount, 'Installed', stats.installedCount === stats.totalApps ? 'success' : ''),
+			this.renderStatTile('▶️', stats.runningCount, 'Running', stats.runningCount ? 'success' : 'muted'),
+			this.renderStatTile('⚡', stats.updateCount, 'Updates', stats.updateCount ? 'warning' : 'muted'),
+			this.renderStatTile('🧩', stats.widgetCount, 'Widgets', stats.widgetCount ? 'accent' : '')
+		];
+
+		return E('div', { 'class': 'cyber-panel' }, [
+			E('div', { 'class': 'cyber-panel-header' }, [
+				E('span', { 'class': 'cyber-panel-title' }, 'SYSTEM SNAPSHOT'),
+				E('span', { 'class': 'cyber-panel-badge' }, stats.totalApps + ' apps')
+			]),
+			E('div', { 'class': 'cyber-panel-body' }, [
+				E('div', { 'class': 'cyber-stats-grid' }, tiles)
+			])
+		]);
+	},
+
+	renderStatTile: function(icon, value, label, extraClass) {
+		var tileClass = 'cyber-stat-card';
+		if (extraClass) tileClass += ' ' + extraClass;
+
+		return E('div', { 'class': tileClass }, [
+			E('div', { 'class': 'cyber-stat-icon' }, icon),
+			E('div', { 'class': 'cyber-stat-value' }, value.toString()),
+			E('div', { 'class': 'cyber-stat-label' }, label)
+		]);
+	},
+
+	renderFeaturedAppCard: function(app, status) {
+		var self = this;
+		var isInstalled = status && status.installed;
+
+		// Get badge class
+		var badgeClass = 'cyber-featured-badge';
+		var badgeText = 'FEATURED';
+		if (app.badges && app.badges.length > 0) {
+			var badge = app.badges[0];
+			if (badge === 'new') {
+				badgeClass += ' cyber-featured-badge--new';
+				badgeText = 'NEW';
+			} else if (badge === 'popular') {
+				badgeClass += ' cyber-featured-badge--popular';
+				badgeText = 'POPULAR';
+			} else if (badge === 'recommended') {
+				badgeClass += ' cyber-featured-badge--recommended';
+				badgeText = 'RECOMMENDED';
+			}
+		}
+
+		return E('div', {
+			'class': 'cyber-featured-app-card',
+			'click': function() {
+				if (!isInstalled) {
+					self.installApp(app);
+				}
+			}
+		}, [
+			// Featured badge
+			E('div', { 'class': badgeClass }, badgeText),
+
+			// Header with icon and info
+			E('div', { 'class': 'cyber-featured-app-header' }, [
+				E('div', { 'class': 'cyber-featured-app-icon' }, app.icon || '📦'),
+				E('div', { 'class': 'cyber-featured-app-info' }, [
+					E('div', { 'class': 'cyber-featured-app-name' }, app.name),
+					E('div', { 'class': 'cyber-featured-app-category' },
+						(app.category || 'general').toUpperCase())
+				])
+			]),
+
+			// Description
+			E('div', { 'class': 'cyber-featured-app-description' }, app.description || 'No description available'),
+
+			// Featured reason (why it's featured)
+			app.featured_reason ? E('div', { 'class': 'cyber-featured-app-reason' },
+				'💡 ' + app.featured_reason) : null,
+
+			// Footer with tags and action
+			E('div', { 'class': 'cyber-featured-app-footer' }, [
+				E('div', { 'class': 'cyber-featured-app-tags' },
+					(app.tags || []).slice(0, 2).map(function(tag) {
+						return E('span', { 'class': 'cyber-featured-app-tag' }, tag);
+					})
+				),
+				E('div', { 'class': 'cyber-featured-app-action' }, [
+					isInstalled ? [
+						E('span', { 'style': 'color: var(--cyber-success);' }, '✓ Installed'),
+						' → ',
+						E('span', {
+							'style': 'cursor: pointer;',
+							'click': function(ev) {
+								ev.stopPropagation();
+								self.configureApp(app);
+							}
+						}, 'Configure')
+					] : [
+						E('span', {}, 'Install now'),
+						' →'
+					]
+				])
+			])
+		]);
+	},
+
 	installApp: function(app) {
 		var self = this;
 		ui.showModal('Install ' + app.name, [
@@ -320,44 +459,68 @@ return view.extend({
 		window.location = L.url('admin/secubox/admin/settings');
 	},
 
-	filterApps: function(query) {
-		var cards = document.querySelectorAll('.app-card');
-		query = query.toLowerCase();
-		cards.forEach(function(card) {
-			var name = card.querySelector('h3').textContent.toLowerCase();
-			var desc = card.querySelector('.app-description').textContent.toLowerCase();
-			if (name.includes(query) || desc.includes(query)) {
-				card.style.display = '';
-			} else {
-				card.style.display = 'none';
-			}
+	renderCategoryOptions: function(categories) {
+		var options = [];
+		if (!categories || typeof categories !== 'object') {
+			return options;
+		}
+
+		Object.keys(categories).forEach(function(key) {
+			var entry = categories[key] || {};
+			var label = (entry.icon ? entry.icon + ' ' : '') + (entry.name || key);
+			options.push(E('option', { 'value': key.toLowerCase() }, label));
 		});
+
+		return options;
+	},
+
+	applyFilters: function() {
+		var cards = document.querySelectorAll('.app-card');
+		var filters = this.activeFilters || { query: '', category: '', status: '' };
+
+		Array.prototype.forEach.call(cards, function(card) {
+			var titleEl = card.querySelector('.cyber-list-title');
+			var contentEl = card.querySelector('.cyber-list-content');
+			var nameText = titleEl ? titleEl.textContent.toLowerCase() : '';
+			var descText = contentEl ? contentEl.textContent.toLowerCase() : '';
+			var matchesQuery = true;
+			if (filters.query) {
+				matchesQuery = nameText.indexOf(filters.query) !== -1 ||
+					descText.indexOf(filters.query) !== -1;
+			}
+
+			var cardCategory = (card.getAttribute('data-category') || '').toLowerCase();
+			var matchesCategory = !filters.category || cardCategory === filters.category;
+
+			var installStatus = (card.getAttribute('data-install-status') || '').toLowerCase();
+			var updateStatus = (card.getAttribute('data-update-status') || '').toLowerCase();
+			var matchesStatus = true;
+
+			if (filters.status === 'update-available') {
+				matchesStatus = updateStatus === 'update-available';
+			} else if (filters.status === 'installed') {
+				matchesStatus = installStatus === 'installed';
+			} else if (filters.status === 'not-installed') {
+				matchesStatus = installStatus === 'not-installed';
+			}
+
+			card.style.display = (matchesQuery && matchesCategory && matchesStatus) ? '' : 'none';
+		});
+	},
+
+	filterApps: function(query) {
+		this.activeFilters.query = (query || '').toLowerCase();
+		this.applyFilters();
 	},
 
 	filterByCategory: function(category) {
-		var cards = document.querySelectorAll('.app-card');
-		cards.forEach(function(card) {
-			if (!category || card.dataset.category === category) {
-				card.style.display = '';
-			} else {
-				card.style.display = 'none';
-			}
-		});
+		this.activeFilters.category = (category || '').toLowerCase();
+		this.applyFilters();
 	},
 
 	filterByStatus: function(status) {
-		var cards = document.querySelectorAll('.app-card');
-		cards.forEach(function(card) {
-			if (!status) {
-				card.style.display = '';
-			} else if (status === 'update-available') {
-				card.style.display = card.dataset.updateStatus === 'update-available' ? '' : 'none';
-			} else if (status === 'installed') {
-				card.style.display = card.dataset.installStatus === 'installed' ? '' : 'none';
-			} else if (status === 'not-installed') {
-				card.style.display = card.dataset.installStatus === 'not-installed' ? '' : 'none';
-			}
-		});
+		this.activeFilters.status = (status || '').toLowerCase();
+		this.applyFilters();
 	},
 
 	updateApp: function(app, updateInfo) {

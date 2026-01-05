@@ -75,8 +75,6 @@ return view.extend({
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/admin.css') }),
-			E('link', { 'rel': 'stylesheet',
-				'href': L.resource('secubox-admin/cyberpunk.css') }),
 
 			// Cyberpunk header
 			E('div', { 'class': 'cyber-header' }, [
@@ -350,18 +348,20 @@ return view.extend({
 
 	syncSource: function(sourceName) {
 		console.log('[CATALOG-SOURCES] Syncing source:', sourceName);
+		var self = this;
 		ui.showModal('Syncing Catalog', [
 			Components.renderLoader('Syncing from source: ' + sourceName + '...')
 		]);
 
 		API.syncCatalog(sourceName).then(function(result) {
 			console.log('[CATALOG-SOURCES] Sync result:', result);
+			var payload = self.normalizeRpcResult(result);
 			ui.hideModal();
-			if (result.success) {
+			if (payload.success) {
 				ui.addNotification(null, E('p', 'Catalog synced successfully from: ' + sourceName), 'success');
 				window.location.reload();
 			} else {
-				ui.addNotification(null, E('p', 'Sync failed: ' + (result.error || 'Unknown error')), 'error');
+				ui.addNotification(null, E('p', 'Sync failed: ' + (payload.error || payload.message || 'Unknown error')), 'error');
 			}
 		}).catch(function(err) {
 			console.error('[CATALOG-SOURCES] Sync error:', err);
@@ -372,18 +372,20 @@ return view.extend({
 
 	syncAllSources: function() {
 		console.log('[CATALOG-SOURCES] Syncing all sources');
+		var self = this;
 		ui.showModal('Syncing Catalogs', [
 			Components.renderLoader('Syncing from all enabled sources...')
 		]);
 
 		API.syncCatalog(null).then(function(result) {
 			console.log('[CATALOG-SOURCES] Sync all result:', result);
+			var payload = self.normalizeRpcResult(result);
 			ui.hideModal();
-			if (result.success) {
+			if (payload.success) {
 				ui.addNotification(null, E('p', 'Catalogs synced successfully'), 'success');
 				window.location.reload();
 			} else {
-				ui.addNotification(null, E('p', 'Sync failed: ' + (result.error || 'Unknown error')), 'error');
+				ui.addNotification(null, E('p', 'Sync failed: ' + (payload.error || payload.message || 'Unknown error')), 'error');
 			}
 		}).catch(function(err) {
 			console.error('[CATALOG-SOURCES] Sync all error:', err);
@@ -400,18 +402,25 @@ return view.extend({
 
 	setActiveSource: function(sourceName) {
 		console.log('[CATALOG-SOURCES] Setting active source:', sourceName);
+		var self = this;
 		ui.showModal('Setting Active Source', [
 			Components.renderLoader('Setting active source to: ' + sourceName + '...')
 		]);
 
 		API.setCatalogSource(sourceName).then(function(result) {
 			console.log('[CATALOG-SOURCES] Set active result:', result);
+			var payload = self.normalizeRpcResult(result);
 			ui.hideModal();
-			if (result.success) {
+			if (payload.success) {
 				ui.addNotification(null, E('p', 'Active source set to: ' + sourceName), 'success');
-				return API.syncCatalog(sourceName);
+				return API.syncCatalog(sourceName).then(function(syncResult) {
+					var syncPayload = self.normalizeRpcResult(syncResult);
+					if (!syncPayload.success) {
+						throw new Error(syncPayload.error || syncPayload.message || 'Sync failed');
+					}
+				});
 			} else {
-				throw new Error(result.error || 'Failed to set source');
+				throw new Error(payload.error || payload.message || 'Failed to set source');
 			}
 		}).then(function() {
 			window.location.reload();
@@ -434,6 +443,17 @@ return view.extend({
 	refreshPage: function() {
 		console.log('[CATALOG-SOURCES] Refreshing page');
 		window.location.reload();
+	},
+
+	normalizeRpcResult: function(result) {
+		if (result && typeof result === 'object') {
+			if (typeof result.success === 'string') {
+				result.success = result.success === 'true';
+			}
+			return result;
+		}
+
+		return { success: !!result };
 	},
 
 	handleSaveApply: null,

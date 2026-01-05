@@ -30,6 +30,7 @@ return view.extend({
 			HubNav.renderTabs('settings'),
 			this.renderHeader(),
 			this.renderGeneralSection(),
+			this.renderThemeSection(),
 			this.renderThresholdSection(),
 			this.renderSupportSection(),
 			this.renderActions()
@@ -197,6 +198,130 @@ return view.extend({
 			]),
 			switchEl
 		]);
+	},
+
+	renderThemeSection: function() {
+		var available = Theme.availableThemes || [];
+		var preferred = this.readStoredTheme() || Theme.currentTheme || available[0] || 'dark';
+		var selectEl = E('select', {
+			'id': 'sh-theme-select',
+			'class': 'sh-select',
+			'change': L.bind(function(ev) {
+				this.previewTheme(ev.target.value);
+			}, this)
+		});
+
+		if (available.length === 0) {
+			available = ['dark'];
+		}
+
+		available.forEach(function(themeName) {
+			selectEl.appendChild(E('option', {
+				'value': themeName,
+				'selected': themeName === preferred
+			}, themeName));
+		});
+
+		this.themeSelect = selectEl;
+
+		return E('section', { 'class': 'sh-card' }, [
+			E('div', { 'class': 'sh-card-header' }, [
+				E('div', { 'class': 'sh-card-title' }, [
+					E('span', { 'class': 'sh-card-title-icon' }, '🎨'),
+					_('SecuBox Theme Preferences')
+				]),
+				E('div', { 'class': 'sh-card-subtitle' },
+					_('Pick a theme, store it locally, and ensure the UI respects your choice.'))
+			]),
+				E('div', { 'class': 'sh-card-body' }, [
+					E('div', { 'class': 'sh-settings-grid' }, [
+						E('div', {}, [
+							E('label', { 'for': 'sh-theme-select' }, _('Preferred theme')),
+							selectEl,
+							E('small', { 'class': 'sh-muted' },
+								_('Current applied theme: {theme}', { theme: Theme.currentTheme || 'dark' }))
+						]),
+						E('div', { 'class': 'sh-btn-group' }, [
+							E('button', {
+								'class': 'sh-btn sh-btn-primary',
+								'click': L.bind(this.applyThemePreference, this)
+							}, [ '💾 ', _('Save to browser') ]),
+						E('button', {
+							'class': 'sh-btn sh-btn-secondary',
+							'click': L.bind(this.resetThemePreference, this)
+						}, [ '🗑️ ', _('Reset preference') ])
+					])
+				]),
+				E('div', { 'class': 'sh-support-grid', 'style': 'margin-top: 18px;' }, [
+					E('div', { 'class': 'sh-support-card' }, [
+						E('div', { 'class': 'sh-support-label' }, _('localStorage value')),
+						E('code', {}, this.readStoredTheme() || _('(none)'))
+					]),
+					E('div', { 'class': 'sh-support-card' }, [
+						E('div', { 'class': 'sh-support-label' }, _('Available themes')),
+						E('span', {}, available.join(', '))
+					])
+				]),
+				E('div', { 'class': 'sh-support-card sh-theme-help' }, [
+					E('strong', {}, _('Troubleshooting (theme not persisting)')),
+						E('ol', { 'class': 'sh-theme-checklist' }, [
+							E('li', {}, _('Check localStorage: `localStorage.getItem(\'secubox.theme\')`')),
+						E('li', {}, _('Verify the theme exists in Theme.availableThemes')),
+						E('li', {}, _('Confirm the browser allows localStorage / site data'))
+					]),
+					E('p', { 'class': 'sh-muted' },
+						_('Use the buttons above to re-generate your preference if the UI resets.'))
+				])
+			])
+		]);
+	},
+
+	readStoredTheme: function() {
+		try {
+			return window.localStorage.getItem('secubox.theme');
+		} catch (err) {
+			return null;
+		}
+	},
+
+	previewTheme: function(themeName) {
+		if (Theme && Theme.apply) {
+			Theme.apply(themeName);
+		}
+	},
+
+	applyThemePreference: function() {
+		var theme = this.themeSelect ? this.themeSelect.value : Theme.currentTheme;
+		if (!theme)
+			return;
+
+		if (Theme && Theme.setPreferredTheme) {
+			Theme.setPreferredTheme(theme);
+		} else {
+			try {
+				window.localStorage.setItem('secubox.theme', theme);
+			} catch (err) {
+				console.warn('Unable to store theme preference:', err);
+			}
+		}
+
+		ui.addNotification(null,
+			E('p', {}, _('Theme preference saved to this browser.') + ' [' + theme + ']'),
+			'info');
+	},
+
+	resetThemePreference: function() {
+		try {
+			window.localStorage.removeItem('secubox.theme');
+		} catch (err) { /* ignore */ }
+
+		if (this.themeSelect) {
+			this.themeSelect.value = Theme.currentTheme || Theme.availableThemes[0] || 'dark';
+		}
+
+		ui.addNotification(null,
+			E('p', {}, _('Stored preference cleared. The default detection logic will run on next load.')),
+			'warning');
 	},
 
 	renderSelect: function(key, label, options, current) {

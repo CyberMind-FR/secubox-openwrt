@@ -27,6 +27,7 @@ return view.extend({
 		var alerts = DataUtils.normalizeAlerts(data[3]);
 		var updateInfo = DataUtils.normalizeUpdates(data[4]);
 		var stats = DataUtils.buildAppStats(apps, modules, alerts, updateInfo, API.getAppStatus);
+		var healthSnapshot = DataUtils.normalizeHealth(health);
 
 		var container = E('div', { 'class': 'secubox-admin-dashboard' }, [
 			E('link', { 'rel': 'stylesheet',
@@ -49,7 +50,7 @@ return view.extend({
 			]),
 
 			// System health summary
-			this.renderHealthSummary(health),
+			this.renderHealthSummary(healthSnapshot),
 
 			// Recent alerts
 			this.renderAlertsSection(alerts),
@@ -76,39 +77,53 @@ return view.extend({
 	renderHealthSummary: function(health) {
 		if (!health) return E('div');
 
+		var cpu = health.cpuUsage || 0;
+		var memory = health.memoryUsage || 0;
+		var disk = health.diskUsage || 0;
+		var loadDisplay = health.load || '0 0 0';
+
 		return E('div', { 'class': 'health-summary card' }, [
 			E('h3', {}, 'System Health'),
+			E('div', { 'class': 'health-meta' }, [
+				E('span', { 'class': 'health-status ' + (health.overall.status || 'unknown') },
+					(health.overall.status || 'unknown').toUpperCase()),
+				E('span', { 'class': 'health-score' }, 'Score: ' + (health.overall.score || 0))
+			]),
 			E('div', { 'class': 'health-grid' }, [
 				E('div', { 'class': 'health-item' }, [
 					E('span', { 'class': 'health-label' }, 'CPU'),
 					E('div', { 'class': 'progress' }, [
 						E('div', {
 							'class': 'progress-bar',
-							'style': 'width: ' + (health.cpu || 0) + '%'
+							'style': 'width: ' + cpu + '%'
 						})
 					]),
-					E('span', { 'class': 'health-value' }, (health.cpu || 0) + '%')
+					E('span', { 'class': 'health-value' }, cpu + '%')
 				]),
 				E('div', { 'class': 'health-item' }, [
 					E('span', { 'class': 'health-label' }, 'Memory'),
 					E('div', { 'class': 'progress' }, [
 						E('div', {
 							'class': 'progress-bar',
-							'style': 'width: ' + (health.memory || 0) + '%'
+							'style': 'width: ' + memory + '%'
 						})
 					]),
-					E('span', { 'class': 'health-value' }, (health.memory || 0) + '%')
+					E('span', { 'class': 'health-value' }, memory + '%')
 				]),
 				E('div', { 'class': 'health-item' }, [
 					E('span', { 'class': 'health-label' }, 'Disk'),
 					E('div', { 'class': 'progress' }, [
 						E('div', {
 							'class': 'progress-bar',
-							'style': 'width: ' + (health.disk || 0) + '%'
+							'style': 'width: ' + disk + '%'
 						})
 					]),
-					E('span', { 'class': 'health-value' }, (health.disk || 0) + '%')
+					E('span', { 'class': 'health-value' }, disk + '%')
 				])
+			]),
+			E('div', { 'class': 'health-meta health-meta--secondary' }, [
+				E('span', {}, 'Load: ' + loadDisplay),
+				E('span', {}, 'Uptime: ' + API.formatUptime(health.uptime || 0))
 			])
 		]);
 	},

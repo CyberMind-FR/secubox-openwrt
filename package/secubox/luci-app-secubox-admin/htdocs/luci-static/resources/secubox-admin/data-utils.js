@@ -174,12 +174,100 @@ function buildAppStats(apps, modulesMap, alerts, updateInfo, statusResolver) {
 	return stats;
 }
 
+function normalizeHealth(data) {
+	var normalized = {
+		raw: data || {},
+		overall: {
+			score: 0,
+			status: 'unknown'
+		},
+		uptime: 0,
+		load: '0 0 0',
+		cpuUsage: 0,
+		cpuCount: 0,
+		memoryUsage: 0,
+		diskUsage: 0,
+		memory: {
+			totalBytes: 0,
+			freeBytes: 0,
+			usedBytes: 0
+		},
+		disk: {
+			totalBytes: 0,
+			freeBytes: 0,
+			usedBytes: 0
+		}
+	};
+
+	if (!data) {
+		return normalized;
+	}
+
+	if (typeof data.uptime === 'number') {
+		normalized.uptime = data.uptime;
+	}
+
+	if (data.overall && typeof data.overall === 'object') {
+		normalized.overall.score = data.overall.score || 0;
+		normalized.overall.status = data.overall.status || 'unknown';
+	}
+
+	var cpuSection = data.cpu;
+	if (typeof cpuSection === 'number') {
+		normalized.cpuUsage = cpuSection;
+	} else if (cpuSection && typeof cpuSection === 'object') {
+		normalized.cpuUsage = cpuSection.usage_percent || cpuSection.percent || 0;
+		normalized.cpuCount = cpuSection.count || cpuSection.cores || 0;
+		normalized.load = cpuSection.load || cpuSection.load_avg || normalized.load;
+	}
+
+	var memorySection = data.memory || {};
+	var memTotalKb = memorySection.total_kb || data.total_memory || 0;
+	var memFreeKb = memorySection.free_kb || data.free_memory || 0;
+	var memUsedKb = memorySection.used_kb || (memTotalKb - memFreeKb);
+	if (memTotalKb > 0) {
+		normalized.memoryUsage = memorySection.usage_percent ||
+			Math.round((memUsedKb / memTotalKb) * 100);
+	}
+	normalized.memory.totalBytes = memTotalKb * 1024;
+	normalized.memory.freeBytes = memFreeKb * 1024;
+	normalized.memory.usedBytes = memUsedKb * 1024;
+
+	var diskSection = data.disk || {};
+	var diskTotalKb = diskSection.total_kb || data.total_disk || 0;
+	var diskUsedKb = diskSection.used_kb || data.used_disk || 0;
+	var diskFreeKb = diskSection.free_kb || (diskTotalKb - diskUsedKb);
+	if (diskTotalKb > 0) {
+		normalized.diskUsage = diskSection.usage_percent ||
+			Math.round((diskUsedKb / diskTotalKb) * 100);
+	}
+	normalized.disk.totalBytes = diskTotalKb * 1024;
+	normalized.disk.freeBytes = diskFreeKb * 1024;
+	normalized.disk.usedBytes = diskUsedKb * 1024;
+
+	return normalized;
+}
+
+function extractCategories(data) {
+	if (!data || typeof data !== 'object') {
+		return {};
+	}
+
+	if (data.categories && typeof data.categories === 'object') {
+		return data.categories;
+	}
+
+	return {};
+}
+
 return baseclass.extend({
 	normalizeApps: normalizeApps,
 	normalizeModules: normalizeModules,
 	normalizeUpdates: normalizeUpdates,
 	normalizeSources: normalizeSources,
 	normalizeAlerts: normalizeAlerts,
+	normalizeHealth: normalizeHealth,
 	ensureArray: ensureArray,
-	buildAppStats: buildAppStats
+	buildAppStats: buildAppStats,
+	extractCategories: extractCategories
 });

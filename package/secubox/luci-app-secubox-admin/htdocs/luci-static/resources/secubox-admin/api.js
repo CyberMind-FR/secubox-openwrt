@@ -203,6 +203,30 @@ function debugRPC(name, call, options) {
 return baseclass.extend({
 	// Apps
 	getApps: debugRPC('getApps', callGetApps, { retries: 2, retryDelay: 1500 }),
+
+	// Featured Apps
+	getFeaturedApps: function() {
+		var self = this;
+		return this.getApps().then(function(apps) {
+			if (!apps || !Array.isArray(apps)) {
+				return [];
+			}
+			// Filter apps with featured=true and sort by priority
+			return apps
+				.filter(function(app) {
+					return app.featured === true;
+				})
+				.sort(function(a, b) {
+					var priorityA = a.featured_priority || 999;
+					var priorityB = b.featured_priority || 999;
+					return priorityA - priorityB;
+				});
+		}).catch(function(err) {
+			console.error('[API] getFeaturedApps error:', err);
+			return [];
+		});
+	},
+
 	installApp: debugRPC('installApp', callInstallApp, { retries: 1 }),
 	removeApp: debugRPC('removeApp', callRemoveApp, { retries: 1 }),
 

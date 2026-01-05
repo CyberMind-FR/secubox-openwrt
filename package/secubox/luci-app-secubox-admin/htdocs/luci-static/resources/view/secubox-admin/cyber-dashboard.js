@@ -24,13 +24,11 @@ return view.extend({
 		var alerts = DataUtils.normalizeAlerts(data[3]);
 		var sources = DataUtils.normalizeSources(data[4]);
 		var updates = DataUtils.normalizeUpdates(data[5]);
+		var healthSnapshot = DataUtils.normalizeHealth(health);
 		var stats = DataUtils.buildAppStats(apps, modules, alerts, updates, API.getAppStatus);
 		var self = this;
 
 		var container = E('div', { 'class': 'cyberpunk-mode' }, [
-			E('link', { 'rel': 'stylesheet',
-				'href': L.resource('secubox-admin/cyberpunk.css') }),
-
 			// ASCII Art Header
 			E('div', { 'class': 'cyber-header cyber-scanlines' }, [
 				E('pre', { 'class': 'cyber-ascii-art' },
@@ -54,7 +52,7 @@ return view.extend({
 					this.renderStatsPanel(stats.totalApps, stats.installedCount, stats.runningCount, stats.alertCount, updates.total_updates_available || 0),
 
 					// System Resources
-					this.renderSystemPanel(health),
+					this.renderSystemPanel(healthSnapshot),
 
 					// Quick Actions
 					this.renderQuickActionsPanel(),
@@ -124,9 +122,16 @@ return view.extend({
 	},
 
 	renderSystemPanel: function(health) {
-		var cpu = health.cpu || 0;
-		var memory = health.memory || 0;
-		var disk = health.disk || 0;
+		health = health || {};
+		var cpu = health.cpuUsage || 0;
+		var memory = health.memoryUsage || 0;
+		var disk = health.diskUsage || 0;
+		var memInfo = health.memory || {};
+		var diskInfo = health.disk || {};
+		var loadDisplay = health.load ? (health.load.toString().replace(/\s+/g, ', ')) : '0, 0, 0';
+		var uptimeText = API.formatUptime ? API.formatUptime(health.uptime || 0) : (health.uptime || 0) + 's';
+		var memorySummary = API.formatBytes((memInfo.usedBytes || 0)) + ' / ' + API.formatBytes((memInfo.totalBytes || 0));
+		var diskSummary = API.formatBytes((diskInfo.usedBytes || 0)) + ' / ' + API.formatBytes((diskInfo.totalBytes || 0));
 
 		return E('div', { 'class': 'cyber-panel cyber-scanlines' }, [
 			E('div', { 'class': 'cyber-panel-header' }, [
@@ -184,6 +189,24 @@ return view.extend({
 							})
 						])
 					])
+				])
+			]),
+			E('div', { 'class': 'cyber-system-meta' }, [
+				E('div', { 'class': 'cyber-system-meta-item' }, [
+					E('span', { 'class': 'label' }, 'Load'),
+					E('span', { 'class': 'value' }, loadDisplay)
+				]),
+				E('div', { 'class': 'cyber-system-meta-item' }, [
+					E('span', { 'class': 'label' }, 'Uptime'),
+					E('span', { 'class': 'value' }, uptimeText)
+				]),
+				E('div', { 'class': 'cyber-system-meta-item' }, [
+					E('span', { 'class': 'label' }, 'Memory'),
+					E('span', { 'class': 'value' }, memorySummary)
+				]),
+				E('div', { 'class': 'cyber-system-meta-item' }, [
+					E('span', { 'class': 'label' }, 'Disk'),
+					E('span', { 'class': 'value' }, diskSummary)
 				])
 			])
 		]);
