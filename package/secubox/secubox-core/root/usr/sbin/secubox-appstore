@@ -215,6 +215,11 @@ install_module() {
 	echo "Installing module: $module_id"
 	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+	# Update state to installing
+	if [ "$dryrun" != "--dryrun" ] && [ -f /usr/sbin/secubox-state ]; then
+		/usr/sbin/secubox-state set "$module_id" installing "user_install" > /dev/null 2>&1 || true
+	fi
+
 	# Get package list
 	local packages=$(jsonfilter -i "$catalog_file" -e '@.packages.required[@]')
 
@@ -239,6 +244,8 @@ install_module() {
 		if [ "$dryrun" != "--dryrun" ]; then
 			if ! bash "$pre_hook"; then
 				echo "ERROR: Pre-install check failed"
+				# Update state to error
+				[ -f /usr/sbin/secubox-state ] && /usr/sbin/secubox-state set "$module_id" error "pre_install_failed" > /dev/null 2>&1 || true
 				return 1
 			fi
 		else
@@ -254,6 +261,8 @@ install_module() {
 		else
 			if ! opkg install "$pkg"; then
 				echo "ERROR: Failed to install package: $pkg"
+				# Update state to error
+				[ -f /usr/sbin/secubox-state ] && /usr/sbin/secubox-state set "$module_id" error "package_install_failed" > /dev/null 2>&1 || true
 				return 1
 			fi
 		fi
@@ -315,6 +324,11 @@ install_module() {
 		/usr/sbin/secubox-diagnostics health > /dev/null 2>&1 || true
 	fi
 
+	# Update state to installed
+	if [ "$dryrun" != "--dryrun" ] && [ -f /usr/sbin/secubox-state ]; then
+		/usr/sbin/secubox-state set "$module_id" installed "install_success" > /dev/null 2>&1 || true
+	fi
+
 	echo "✓ Module installed successfully: $module_id"
 	return 0
 }
@@ -331,6 +345,9 @@ remove_module() {
 
 	echo "Removing module: $module_id"
 	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+	# Update state to uninstalling
+	[ -f /usr/sbin/secubox-state ] && /usr/sbin/secubox-state set "$module_id" uninstalling "user_remove" > /dev/null 2>&1 || true
 
 	# Get package list
 	local packages=$(jsonfilter -i "$catalog_file" -e '@.packages.required[@]')
@@ -354,6 +371,9 @@ remove_module() {
 		echo "[3/3] Running post-remove cleanup..."
 		bash "$post_hook" || true
 	fi
+
+	# Update state to available
+	[ -f /usr/sbin/secubox-state ] && /usr/sbin/secubox-state set "$module_id" available "remove_success" > /dev/null 2>&1 || true
 
 	echo "✓ Module removed successfully: $module_id"
 	return 0

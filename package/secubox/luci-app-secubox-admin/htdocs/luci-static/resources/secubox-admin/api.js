@@ -119,6 +119,87 @@ var callGetWidgetData = rpc.declare({
 	expect: { }
 });
 
+// ===== State Management API =====
+
+var callGetComponentState = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_component_state',
+	params: ['component_id'],
+	expect: { }
+});
+
+var callSetComponentState = rpc.declare({
+	object: 'luci.secubox',
+	method: 'set_component_state',
+	params: ['component_id', 'new_state', 'reason'],
+	expect: { success: false }
+});
+
+var callGetStateHistory = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_state_history',
+	params: ['component_id', 'limit'],
+	expect: { history: [] }
+});
+
+var callListComponents = rpc.declare({
+	object: 'luci.secubox',
+	method: 'list_components',
+	params: ['state_filter', 'type_filter'],
+	expect: { components: [] }
+});
+
+var callFreezeComponent = rpc.declare({
+	object: 'luci.secubox',
+	method: 'freeze_component',
+	params: ['component_id', 'reason'],
+	expect: { success: false }
+});
+
+var callClearErrorState = rpc.declare({
+	object: 'luci.secubox',
+	method: 'clear_error_state',
+	params: ['component_id'],
+	expect: { success: false }
+});
+
+// ===== Component Registry API =====
+
+var callGetComponent = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_component',
+	params: ['component_id'],
+	expect: { }
+});
+
+var callGetComponentTree = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_component_tree',
+	params: ['component_id'],
+	expect: { }
+});
+
+var callUpdateComponentSettings = rpc.declare({
+	object: 'luci.secubox',
+	method: 'update_component_settings',
+	params: ['component_id', 'settings'],
+	expect: { success: false }
+});
+
+var callListComponentsByType = rpc.declare({
+	object: 'luci.secubox',
+	method: 'list_components',
+	params: ['state_filter', 'type_filter', 'profile_filter'],
+	expect: { components: [] }
+});
+
+var callValidateComponentState = rpc.declare({
+	object: 'luci.secubox',
+	method: 'validate_component_state',
+	params: ['component_id'],
+	expect: { valid: true }
+});
+
 // Utility functions
 function formatBytes(bytes) {
 	if (bytes === 0) return '0 B';
@@ -252,6 +333,110 @@ return baseclass.extend({
 
 	// Widget Data
 	getWidgetData: debugRPC('getWidgetData', callGetWidgetData, { retries: 1 }),
+
+	// ===== State Management =====
+	getComponentState: debugRPC('getComponentState', callGetComponentState, { retries: 2 }),
+	setComponentState: debugRPC('setComponentState', callSetComponentState, { retries: 1 }),
+	getStateHistory: debugRPC('getStateHistory', callGetStateHistory, { retries: 1 }),
+	listComponents: debugRPC('listComponents', callListComponents, { retries: 2, retryDelay: 1500 }),
+	freezeComponent: debugRPC('freezeComponent', callFreezeComponent, { retries: 1 }),
+	clearErrorState: debugRPC('clearErrorState', callClearErrorState, { retries: 1 }),
+
+	// ===== Component Registry =====
+	getComponent: debugRPC('getComponent', callGetComponent, { retries: 2 }),
+	getComponentTree: debugRPC('getComponentTree', callGetComponentTree, { retries: 1 }),
+	updateComponentSettings: debugRPC('updateComponentSettings', callUpdateComponentSettings, { retries: 1 }),
+	listComponentsByType: debugRPC('listComponentsByType', callListComponentsByType, { retries: 2 }),
+	validateComponentState: debugRPC('validateComponentState', callValidateComponentState, { retries: 1 }),
+
+	// Enhanced component methods
+	getComponentWithState: function(component_id) {
+		var self = this;
+		return Promise.all([
+			this.getComponent(component_id),
+			this.getComponentState(component_id)
+		]).then(function(results) {
+			var component = results[0];
+			var state = results[1];
+			return Object.assign({}, component, { state_info: state });
+		}).catch(function(err) {
+			console.error('[API] getComponentWithState error:', err);
+			throw err;
+		});
+	},
+
+	getAllComponentsWithStates: function(filters) {
+		var self = this;
+		filters = filters || {};
+
+		return this.listComponents(filters.state, filters.type).then(function(components) {
+			if (!components || !Array.isArray(components)) {
+				return [];
+			}
+
+			// Fetch states for all components in parallel
+			var statePromises = components.map(function(comp) {
+				return self.getComponentState(comp.id || comp.component_id).catch(function(err) {
+					console.warn('[API] Failed to get state for', comp.id, err);
+					return null;
+				});
+			});
+
+			return Promise.all(statePromises).then(function(states) {
+				return components.map(function(comp, index) {
+					return Object.assign({}, comp, { state_info: states[index] });
+				});
+			});
+		}).catch(function(err) {
+			console.error('[API] getAllComponentsWithStates error:', err);
+			return [];
+		});
+	},
+
+	// Bulk operations
+	bulkSetComponentState: function(component_ids, new_state, reason) {
+		var self = this;
+		var promises = component_ids.map(function(id) {
+			return self.setComponentState(id, new_state, reason).catch(function(err) {
+				console.warn('[API] Failed to set state for', id, err);
+				return { success: false, component_id: id, error: err };
+			});
+		});
+
+		return Promise.all(promises);
+	},
+
+	// State statistics
+	getStateStatistics: function() {
+		var self = this;
+		return this.listComponents(null, null).then(function(components) {
+			if (!components || !Array.isArray(components)) {
+				return { total: 0, by_state: {}, by_type: {}, by_category: {} };
+			}
+
+			var stats = {
+				total: components.length,
+				by_state: {},
+				by_type: {},
+				by_category: {}
+			};
+
+			components.forEach(function(comp) {
+				// Count by state
+				var state = comp.current_state || comp.state || 'unknown';
+				stats.by_state[state] = (stats.by_state[state] || 0) + 1;
+
+				// Count by type
+				var type = comp.type || 'unknown';
+				stats.by_type[type] = (stats.by_type[type] || 0) + 1;
+			});
+
+			return stats;
+		}).catch(function(err) {
+			console.error('[API] getStateStatistics error:', err);
+			return { total: 0, by_state: {}, by_type: {}, by_category: {} };
+		});
+	},
 
 	// Utilities
 	formatBytes: formatBytes,

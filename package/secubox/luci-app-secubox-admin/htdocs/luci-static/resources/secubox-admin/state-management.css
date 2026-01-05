@@ -1,0 +1,601 @@
+/**
+ * SecuBox State Management Styles
+ * Comprehensive CSS for state indicators, timelines, and visualizations
+ */
+
+/* ===== State Badge Components ===== */
+
+.cyber-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.25rem 0.5rem;
+	border-radius: 0.375rem;
+	font-size: 0.75rem;
+	font-weight: 600;
+	transition: all 0.2s ease;
+}
+
+.state-badge {
+	border-width: 1px;
+	border-style: solid;
+}
+
+/* State-specific badge colors */
+.state-available {
+	color: #6b7280;
+	background-color: rgba(107, 114, 128, 0.1);
+	border-color: rgba(107, 114, 128, 0.25);
+}
+
+.state-installing {
+	color: #3b82f6;
+	background-color: rgba(59, 130, 246, 0.1);
+	border-color: rgba(59, 130, 246, 0.25);
+}
+
+.state-installed {
+	color: #8b5cf6;
+	background-color: rgba(139, 92, 246, 0.1);
+	border-color: rgba(139, 92, 246, 0.25);
+}
+
+.state-configuring {
+	color: #3b82f6;
+	background-color: rgba(59, 130, 246, 0.1);
+	border-color: rgba(59, 130, 246, 0.25);
+}
+
+.state-configured {
+	color: #8b5cf6;
+	background-color: rgba(139, 92, 246, 0.1);
+	border-color: rgba(139, 92, 246, 0.25);
+}
+
+.state-activating {
+	color: #3b82f6;
+	background-color: rgba(59, 130, 246, 0.1);
+	border-color: rgba(59, 130, 246, 0.25);
+}
+
+.state-active {
+	color: #06b6d4;
+	background-color: rgba(6, 182, 212, 0.1);
+	border-color: rgba(6, 182, 212, 0.25);
+}
+
+.state-starting {
+	color: #3b82f6;
+	background-color: rgba(59, 130, 246, 0.1);
+	border-color: rgba(59, 130, 246, 0.25);
+}
+
+.state-running {
+	color: #10b981;
+	background-color: rgba(16, 185, 129, 0.1);
+	border-color: rgba(16, 185, 129, 0.25);
+}
+
+.state-stopping {
+	color: #f59e0b;
+	background-color: rgba(245, 158, 11, 0.1);
+	border-color: rgba(245, 158, 11, 0.25);
+}
+
+.state-stopped {
+	color: #6b7280;
+	background-color: rgba(107, 114, 128, 0.1);
+	border-color: rgba(107, 114, 128, 0.25);
+}
+
+.state-error {
+	color: #ef4444;
+	background-color: rgba(239, 68, 68, 0.1);
+	border-color: rgba(239, 68, 68, 0.25);
+}
+
+.state-frozen {
+	color: #06b6d4;
+	background-color: rgba(6, 182, 212, 0.1);
+	border-color: rgba(6, 182, 212, 0.25);
+}
+
+.state-disabled {
+	color: #9ca3af;
+	background-color: rgba(156, 163, 175, 0.1);
+	border-color: rgba(156, 163, 175, 0.25);
+}
+
+.state-uninstalling {
+	color: #f59e0b;
+	background-color: rgba(245, 158, 11, 0.1);
+	border-color: rgba(245, 158, 11, 0.25);
+}
+
+.state-unknown {
+	color: #6b7280;
+	background-color: rgba(107, 114, 128, 0.1);
+	border-color: rgba(107, 114, 128, 0.25);
+}
+
+/* Category-based styling */
+.state-category-persistent {
+	border-style: solid;
+}
+
+.state-category-transient {
+	border-style: dashed;
+	animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.state-category-runtime {
+	border-style: solid;
+	box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
+}
+
+.state-category-error {
+	border-style: solid;
+	box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+}
+
+/* ===== State Pill Components ===== */
+
+.state-pill {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.5rem 0.75rem;
+	border-radius: 9999px;
+	border-width: 2px;
+	border-style: solid;
+	transition: all 0.2s ease;
+}
+
+.state-pill:hover {
+	transform: translateY(-1px);
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.state-pill-icon {
+	font-size: 1.25rem;
+	margin-right: 0.5rem;
+}
+
+.state-pill-label {
+	font-weight: 600;
+	font-size: 0.875rem;
+}
+
+.state-pill-description,
+.state-pill-time {
+	font-size: 0.75rem;
+	margin-top: 0.125rem;
+}
+
+/* ===== State Indicator Compact ===== */
+
+.state-indicator-compact {
+	display: inline-block;
+	width: 1.5rem;
+	height: 1.5rem;
+	line-height: 1.5rem;
+	text-align: center;
+	border-radius: 50%;
+	font-size: 0.875rem;
+	transition: all 0.2s ease;
+}
+
+.state-indicator-compact:hover {
+	transform: scale(1.1);
+}
+
+/* ===== State Dot ===== */
+
+.state-dot {
+	display: inline-block;
+	width: 0.75rem;
+	height: 0.75rem;
+	border-radius: 50%;
+	transition: all 0.2s ease;
+}
+
+.state-dot:hover {
+	transform: scale(1.2);
+}
+
+/* ===== State Timeline ===== */
+
+.state-timeline {
+	position: relative;
+	padding-left: 2rem;
+}
+
+.timeline-line {
+	position: absolute;
+	left: 0.5rem;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background-color: #e5e7eb;
+}
+
+.timeline-entry {
+	position: relative;
+	margin-bottom: 1.5rem;
+	animation: fadeInUp 0.3s ease;
+}
+
+.timeline-entry-error .timeline-content {
+	border-left-width: 4px;
+}
+
+.timeline-entry-transient .timeline-dot {
+	animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.timeline-dot {
+	position: absolute;
+	left: -1.75rem;
+	top: 0.25rem;
+	width: 1rem;
+	height: 1rem;
+	border-radius: 50%;
+	border: 3px solid #ffffff;
+	z-index: 10;
+	transition: all 0.2s ease;
+}
+
+.timeline-entry:hover .timeline-dot {
+	transform: scale(1.2);
+}
+
+.timeline-content {
+	padding: 0.75rem;
+	border-radius: 0.5rem;
+	border-left-width: 3px;
+	border-left-style: solid;
+	transition: all 0.2s ease;
+}
+
+.timeline-content:hover {
+	transform: translateX(4px);
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.timeline-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 0.5rem;
+}
+
+.timeline-timestamp {
+	font-size: 0.75rem;
+	color: #6b7280;
+}
+
+.timeline-reason {
+	font-size: 0.875rem;
+	color: #4b5563;
+	margin-bottom: 0.25rem;
+}
+
+.timeline-error-details {
+	margin-top: 0.5rem;
+	padding: 0.5rem;
+	background-color: #fee2e2;
+	border-radius: 0.375rem;
+	border-left: 3px solid #ef4444;
+}
+
+.timeline-metadata {
+	margin-top: 0.5rem;
+	padding-top: 0.5rem;
+	border-top: 1px solid rgba(0, 0, 0, 0.1);
+	font-size: 0.75rem;
+	color: #6b7280;
+}
+
+/* ===== Timeline Compact ===== */
+
+.state-timeline-compact {
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+}
+
+.state-timeline-empty {
+	padding: 2rem;
+	text-align: center;
+	color: #6b7280;
+}
+
+/* ===== Timeline Horizontal ===== */
+
+.state-timeline-horizontal {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	overflow-x: auto;
+	padding: 1rem 0;
+}
+
+.timeline-node {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	min-width: 80px;
+	transition: all 0.2s ease;
+}
+
+.timeline-node:hover {
+	transform: translateY(-4px);
+}
+
+.timeline-arrow {
+	font-size: 1.25rem;
+	color: #9ca3af;
+	margin: 0 0.5rem;
+}
+
+/* ===== State Progress ===== */
+
+.state-progress {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.state-progress-step {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	flex: 1;
+	transition: all 0.3s ease;
+}
+
+.state-progress-step.active {
+	transform: scale(1.05);
+}
+
+.state-progress-icon {
+	width: 2rem;
+	height: 2rem;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 2px solid;
+	font-weight: 600;
+	transition: all 0.3s ease;
+}
+
+.state-progress-step:hover .state-progress-icon {
+	transform: scale(1.1);
+}
+
+.state-progress-label {
+	margin-top: 0.25rem;
+	font-size: 0.75rem;
+}
+
+.state-progress-connector {
+	flex: 1;
+	height: 2px;
+	margin-bottom: 1.5rem;
+	transition: all 0.3s ease;
+}
+
+/* ===== State Statistics ===== */
+
+.state-statistics {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 1rem;
+}
+
+.state-stat-card {
+	padding: 1rem;
+	border-radius: 0.5rem;
+	border-left: 4px solid;
+	transition: all 0.2s ease;
+}
+
+.state-stat-card:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.state-stat-count {
+	font-size: 1.5rem;
+	font-weight: 700;
+}
+
+.state-stat-label {
+	font-size: 0.875rem;
+	color: #6b7280;
+	margin-top: 0.25rem;
+}
+
+/* ===== State Transition Diagram ===== */
+
+.state-transition-diagram {
+	padding: 1rem;
+}
+
+.transition-card {
+	padding: 0.75rem;
+	border-radius: 0.5rem;
+	border: 2px solid;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.transition-card:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* ===== Animations ===== */
+
+@keyframes pulse {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.5;
+	}
+}
+
+@keyframes fadeInUp {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* ===== Utility Classes ===== */
+
+.state-loading {
+	animation: spin 1s linear infinite;
+}
+
+.state-pulse {
+	animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.state-fade-in {
+	animation: fadeInUp 0.3s ease;
+}
+
+/* ===== Responsive Design ===== */
+
+@media (max-width: 768px) {
+	.state-timeline {
+		padding-left: 1.5rem;
+	}
+
+	.timeline-dot {
+		left: -1.5rem;
+		width: 0.875rem;
+		height: 0.875rem;
+	}
+
+	.timeline-line {
+		left: 0.375rem;
+	}
+
+	.state-statistics {
+		grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+	}
+
+	.state-timeline-horizontal {
+		overflow-x: scroll;
+	}
+
+	.timeline-node {
+		min-width: 60px;
+	}
+
+	.state-pill {
+		font-size: 0.75rem;
+		padding: 0.375rem 0.625rem;
+	}
+}
+
+/* ===== Dark Mode Support (optional) ===== */
+
+@media (prefers-color-scheme: dark) {
+	.timeline-line {
+		background-color: #374151;
+	}
+
+	.timeline-timestamp,
+	.timeline-metadata,
+	.state-stat-label {
+		color: #9ca3af;
+	}
+
+	.timeline-reason {
+		color: #d1d5db;
+	}
+
+	.timeline-dot {
+		border-color: #1f2937;
+	}
+
+	.state-timeline-empty {
+		color: #9ca3af;
+	}
+}
+
+/* ===== Print Styles ===== */
+
+@media print {
+	.state-badge,
+	.state-pill,
+	.timeline-entry {
+		page-break-inside: avoid;
+	}
+
+	.timeline-entry:hover .timeline-dot,
+	.state-dot:hover,
+	.state-indicator-compact:hover {
+		transform: none;
+	}
+
+	.transition-card:hover {
+		transform: none;
+		box-shadow: none;
+	}
+}
+
+/* ===== Accessibility Enhancements ===== */
+
+.state-badge:focus,
+.state-pill:focus,
+.transition-card:focus {
+	outline: 2px solid #3b82f6;
+	outline-offset: 2px;
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+	.state-badge,
+	.state-pill {
+		border-width: 2px;
+	}
+
+	.timeline-content {
+		border-left-width: 4px;
+	}
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.state-category-transient,
+	.timeline-entry-transient .timeline-dot,
+	.state-pulse {
+		animation: none;
+	}
+
+	.timeline-entry,
+	.state-fade-in {
+		animation: none;
+	}
+
+	* {
+		transition: none !important;
+	}
+}

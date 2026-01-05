@@ -1,0 +1,350 @@
+#!/bin/bash
+
+#
+# SecuBox Component Registry Sync
+# Auto-populate component registry from catalog and installed packages
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+CATALOG_FILE="/usr/share/secubox/catalog.json"
+PLUGIN_CATALOG_DIR="/usr/share/secubox/plugins/catalog"
+REGISTRY_FILE="/var/lib/secubox/component-registry.json"
+SYNC_LOG="/var/log/secubox-sync.log"
+
+# Log message
+log_message() {
+	local level="$1"
+	shift
+	local message="$*"
+	local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
+
+	echo "[$timestamp] [$level] $message" >> "$SYNC_LOG"
+	logger -t secubox-sync "[$level] $message"
+}
+
+# Sync catalog apps to component registry
+sync_catalog_apps() {
+	local catalog="$1"
+	local synced=0
+
+	if [ ! -f "$catalog" ]; then
+		log_message "WARN" "Catalog not found: $catalog"
+		return 0
+	fi
+
+	log_message "INFO" "Syncing apps from catalog: $catalog"
+
+	# Get all apps from catalog
+	local apps=$(jsonfilter -i "$catalog" -e "@.plugins[@]" 2>/dev/null)
+
+	if [ -z "$apps" ]; then
+		log_message "WARN" "No apps found in catalog"
+		return 0
+	fi
+
+	# Process each app
+	local app_ids=$(jsonfilter -i "$catalog" -e "@.plugins[@.id]" 2>/dev/null)
+
+	for app_id in $app_ids; do
+		# Extract app metadata
+		local app_name=$(jsonfilter -i "$catalog" -e "@.plugins[@.id='$app_id'].name" 2>/dev/null)
+		local app_runtime=$(jsonfilter -i "$catalog" -e "@.plugins[@.id='$app_id'].runtime" 2>/dev/null)
+		local app_category=$(jsonfilter -i "$catalog" -e "@.plugins[@.id='$app_id'].category" 2>/dev/null)
+
+		# Get packages
+		local packages=$(jsonfilter -i "$catalog" -e "@.plugins[@.id='$app_id'].packages.required[@]" 2>/dev/null)
+		local packages_json="[]"
+		if [ -n "$packages" ]; then
+			packages_json=$(echo "$packages" | jq -R . | jq -s .)
+		fi
+
+		# Get capabilities from category
+		local capabilities="[]"
+		if [ -n "$app_category" ]; then
+			capabilities='["'"$app_category"'"]'
+		fi
+
+		# Build component metadata JSON
+		local metadata=$(cat <<EOF
+{
+	"id": "$app_id",
+	"type": "app",
+	"name": "$app_name",
+	"runtime": "$app_runtime",
+	"category": "$app_category",
+	"packages": $packages_json,
+	"capabilities": $capabilities,
+	"dependencies": {
+		"required": [],
+		"optional": []
+	},
+	"settings": {},
+	"profiles": [],
+	"managed_services": [],
+	"state_ref": "$app_id"
+}
+EOF
+)
+
+		# Register component
+		if /usr/sbin/secubox-component register "$app_id" app "$metadata" > /dev/null 2>&1; then
+			log_message "DEBUG" "Synced app: $app_id"
+			synced=$((synced + 1))
+		else
+			log_message "WARN" "Failed to sync app: $app_id"
+		fi
+	done
+
+	log_message "INFO" "Synced $synced apps from catalog"
+	return 0
+}
+
+# Sync plugin catalogs to component registry
+sync_plugin_catalogs() {
+	local synced=0
+
+	if [ ! -d "$PLUGIN_CATALOG_DIR" ]; then
+		log_message "WARN" "Plugin catalog directory not found: $PLUGIN_CATALOG_DIR"
+		return 0
+	fi
+
+	log_message "INFO" "Syncing plugins from: $PLUGIN_CATALOG_DIR"
+
+	# Process each plugin catalog file
+	for plugin_file in "$PLUGIN_CATALOG_DIR"/*.json; do
+		[ -f "$plugin_file" ] || continue
+
+		local plugin_id=$(basename "$plugin_file" .json)
+		local plugin_name=$(jsonfilter -i "$plugin_file" -e "@.name" 2>/dev/null)
+		local plugin_type=$(jsonfilter -i "$plugin_file" -e "@.type" 2>/dev/null)
+
+		# Default to module type if not specified
+		[ -z "$plugin_type" ] && plugin_type="module"
+
+		# Get packages
+		local packages=$(jsonfilter -i "$plugin_file" -e "@.packages.required[@]" 2>/dev/null)
+		local packages_json="[]"
+		if [ -n "$packages" ]; then
+			packages_json=$(echo "$packages" | jq -R . | jq -s .)
+		fi
+
+		# Get capabilities
+		local capabilities=$(jsonfilter -i "$plugin_file" -e "@.capabilities[@]" 2>/dev/null)
+		local capabilities_json="[]"
+		if [ -n "$capabilities" ]; then
+			capabilities_json=$(echo "$capabilities" | jq -R . | jq -s .)
+		fi
+
+		# Build component metadata
+		local metadata=$(cat <<EOF
+{
+	"id": "$plugin_id",
+	"type": "$plugin_type",
+	"name": "$plugin_name",
+	"packages": $packages_json,
+	"capabilities": $capabilities_json,
+	"dependencies": {
+		"required": [],
+		"optional": []
+	},
+	"settings": {},
+	"profiles": [],
+	"managed_services": [],
+	"state_ref": "$plugin_id"
+}
+EOF
+)
+
+		# Register component
+		if /usr/sbin/secubox-component register "$plugin_id" "$plugin_type" "$metadata" > /dev/null 2>&1; then
+			log_message "DEBUG" "Synced plugin: $plugin_id"
+			synced=$((synced + 1))
+		else
+			log_message "WARN" "Failed to sync plugin: $plugin_id"
+		fi
+	done
+
+	log_message "INFO" "Synced $synced plugins from catalog"
+	return 0
+}
+
+# Detect and register installed packages as modules
+sync_installed_packages() {
+	local synced=0
+
+	log_message "INFO" "Detecting installed packages"
+
+	# Get list of SecuBox-related packages
+	local secubox_packages=$(opkg list-installed | grep -E "^(secubox-|luci-app-|luci-mod-)" | awk '{print $1}')
+
+	for pkg_name in $secubox_packages; do
+		# Check if already registered
+		if /usr/sbin/secubox-component get "$pkg_name" > /dev/null 2>&1; then
+			continue
+		fi
+
+		# Get package version
+		local pkg_version=$(opkg list-installed | grep "^$pkg_name " | awk '{print $3}')
+
+		# Register as module component
+		local metadata=$(cat <<EOF
+{
+	"id": "$pkg_name",
+	"type": "module",
+	"name": "$pkg_name",
+	"packages": ["$pkg_name"],
+	"capabilities": [],
+	"dependencies": {
+		"required": [],
+		"optional": []
+	},
+	"settings": {},
+	"profiles": [],
+	"managed_services": [],
+	"state_ref": "$pkg_name",
+	"metadata": {
+		"installed_version": "$pkg_version",
+		"auto_detected": true
+	}
+}
+EOF
+)
+
+		if /usr/sbin/secubox-component register "$pkg_name" module "$metadata" > /dev/null 2>&1; then
+			log_message "DEBUG" "Auto-registered package: $pkg_name"
+			synced=$((synced + 1))
+		fi
+	done
+
+	log_message "INFO" "Auto-registered $synced installed packages"
+	return 0
+}
+
+# Update state references for all registered components
+update_state_references() {
+	log_message "INFO" "Updating state references"
+
+	# Get all registered components
+	local components=$(/usr/sbin/secubox-component list 2>/dev/null)
+
+	if [ -z "$components" ] || [ "$components" = "[]" ]; then
+		log_message "INFO" "No components to update"
+		return 0
+	fi
+
+	# For each component, ensure it has a state entry
+	local component_ids=$(echo "$components" | jq -r '.[].id' 2>/dev/null)
+
+	for comp_id in $component_ids; do
+		# Check if state exists
+		local state=$(/usr/sbin/secubox-state get "$comp_id" 2>/dev/null)
+
+		if [ -z "$state" ] || echo "$state" | grep -q "Error:"; then
+			# Initialize state as available
+			/usr/sbin/secubox-state set "$comp_id" available "auto_sync" > /dev/null 2>&1 || true
+			log_message "DEBUG" "Initialized state for: $comp_id"
+		fi
+	done
+
+	log_message "INFO" "State references updated"
+	return 0
+}
+
+# Main sync function
+sync_all() {
+	local start_time=$(date +%s)
+
+	log_message "INFO" "===== Component Registry Sync Started ====="
+
+	# Ensure required tools are available
+	if ! command -v jq >/dev/null 2>&1; then
+		log_message "ERROR" "jq is required but not installed"
+		echo "Error: jq is required for registry sync"
+		return 1
+	fi
+
+	# Sync main catalog
+	if [ -f "$CATALOG_FILE" ]; then
+		sync_catalog_apps "$CATALOG_FILE"
+	else
+		log_message "WARN" "Main catalog not found: $CATALOG_FILE"
+	fi
+
+	# Sync plugin catalogs
+	sync_plugin_catalogs
+
+	# Sync installed packages (if opkg available)
+	if command -v opkg >/dev/null 2>&1; then
+		sync_installed_packages
+	else
+		log_message "WARN" "opkg not available, skipping package detection"
+	fi
+
+	# Update state references
+	if [ -f /usr/sbin/secubox-state ]; then
+		update_state_references
+	fi
+
+	local end_time=$(date +%s)
+	local duration=$((end_time - start_time))
+
+	log_message "INFO" "===== Component Registry Sync Completed in ${duration}s ====="
+
+	echo "Component registry sync completed successfully"
+	return 0
+}
+
+# Usage
+usage() {
+	cat <<EOF
+SecuBox Component Registry Sync
+
+Usage: secubox-sync-registry [command]
+
+Commands:
+  sync       Sync component registry from catalog and installed packages (default)
+  apps       Sync only apps from catalog
+  plugins    Sync only plugins from catalog
+  packages   Sync only installed packages
+  help       Show this help message
+
+Examples:
+  secubox-sync-registry
+  secubox-sync-registry sync
+  secubox-sync-registry apps
+
+EOF
+}
+
+# Main command dispatcher
+main() {
+	local command="${1:-sync}"
+
+	case "$command" in
+		sync)
+			sync_all
+			;;
+		apps)
+			sync_catalog_apps "$CATALOG_FILE"
+			;;
+		plugins)
+			sync_plugin_catalogs
+			;;
+		packages)
+			sync_installed_packages
+			;;
+		help|--help|-h)
+			usage
+			;;
+		*)
+			echo "Error: Unknown command: $command"
+			usage
+			exit 1
+			;;
+	esac
+}
+
+# Run
+main "$@"

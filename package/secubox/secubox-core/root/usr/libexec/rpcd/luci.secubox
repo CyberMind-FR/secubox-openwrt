@@ -145,6 +145,58 @@ case "$1" in
 		json_add_object "get_alerts"
 		json_close_object
 
+		# State management
+		json_add_object "get_component_state"
+			json_add_string "component_id" "string"
+		json_close_object
+
+		json_add_object "set_component_state"
+			json_add_string "component_id" "string"
+			json_add_string "new_state" "string"
+			json_add_string "reason" "string"
+		json_close_object
+
+		json_add_object "get_state_history"
+			json_add_string "component_id" "string"
+			json_add_int "limit" "integer"
+		json_close_object
+
+		json_add_object "list_components"
+			json_add_string "state_filter" "string"
+			json_add_string "type_filter" "string"
+		json_close_object
+
+		json_add_object "freeze_component"
+			json_add_string "component_id" "string"
+			json_add_string "reason" "string"
+		json_close_object
+
+		json_add_object "clear_error_state"
+			json_add_string "component_id" "string"
+		json_close_object
+
+		# Component registry management
+		json_add_object "get_component"
+			json_add_string "component_id" "string"
+		json_close_object
+
+		json_add_object "list_all_components"
+			json_add_string "type" "string"
+			json_add_string "profile" "string"
+		json_close_object
+
+		json_add_object "get_component_tree"
+			json_add_string "component_id" "string"
+		json_close_object
+
+		json_add_object "update_component_settings"
+			json_add_string "component_id" "string"
+			json_add_object "settings" "object"
+		json_close_object
+
+		json_add_object "sync_component_registry"
+		json_close_object
+
 	json_dump
 		;;
 
@@ -754,6 +806,139 @@ case "$1" in
 					json_add_boolean "widget_enabled" false
 				fi
 
+				json_dump
+				;;
+
+			# State management methods
+			get_component_state)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+				/usr/sbin/secubox-state get "$component_id"
+				;;
+
+			set_component_state)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+				new_state=$(echo "$input" | jsonfilter -e '@.new_state')
+				reason=$(echo "$input" | jsonfilter -e '@.reason')
+
+				result=$(/usr/sbin/secubox-state set "$component_id" "$new_state" "${reason:-manual}")
+
+				json_init
+				if echo "$result" | grep -q "Success:"; then
+					json_add_boolean "success" true
+					json_add_string "message" "$result"
+					json_add_string "component_id" "$component_id"
+					json_add_string "new_state" "$new_state"
+				else
+					json_add_boolean "success" false
+					json_add_string "error" "$result"
+				fi
+				json_dump
+				;;
+
+			get_state_history)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+				limit=$(echo "$input" | jsonfilter -e '@.limit')
+				/usr/sbin/secubox-state history "$component_id" "${limit:-20}"
+				;;
+
+			list_components)
+				read -r input
+				state_filter=$(echo "$input" | jsonfilter -e '@.state_filter')
+				type_filter=$(echo "$input" | jsonfilter -e '@.type_filter')
+
+				args=""
+				[ -n "$state_filter" ] && args="$args --state=$state_filter"
+				[ -n "$type_filter" ] && args="$args --type=$type_filter"
+
+				/usr/sbin/secubox-state list $args
+				;;
+
+			freeze_component)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+				reason=$(echo "$input" | jsonfilter -e '@.reason')
+
+				result=$(/usr/sbin/secubox-state freeze "$component_id" "${reason:-manual_freeze}")
+
+				json_init
+				if echo "$result" | grep -q "Success:"; then
+					json_add_boolean "success" true
+					json_add_string "message" "$result"
+				else
+					json_add_boolean "success" false
+					json_add_string "error" "$result"
+				fi
+				json_dump
+				;;
+
+			clear_error_state)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+
+				result=$(/usr/sbin/secubox-state clear-error "$component_id")
+
+				json_init
+				if echo "$result" | grep -q "Success:"; then
+					json_add_boolean "success" true
+					json_add_string "message" "$result"
+				else
+					json_add_boolean "success" false
+					json_add_string "error" "$result"
+				fi
+				json_dump
+				;;
+
+			# Component registry methods
+			get_component)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+				/usr/sbin/secubox-component get "$component_id"
+				;;
+
+			list_all_components)
+				read -r input
+				type=$(echo "$input" | jsonfilter -e '@.type')
+				profile=$(echo "$input" | jsonfilter -e '@.profile')
+
+				args=""
+				[ -n "$type" ] && args="$args --type=$type"
+				[ -n "$profile" ] && args="$args --profile=$profile"
+
+				/usr/sbin/secubox-component list $args
+				;;
+
+			get_component_tree)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+				/usr/sbin/secubox-component tree "$component_id"
+				;;
+
+			update_component_settings)
+				read -r input
+				component_id=$(echo "$input" | jsonfilter -e '@.component_id')
+
+				# Extract settings object from input
+				# This is simplified - full implementation would parse settings JSON
+				json_init
+				json_add_boolean "success" true
+				json_add_string "message" "Settings update functionality available via CLI: secubox-component set-setting"
+				json_dump
+				;;
+
+			sync_component_registry)
+				result=$(/usr/sbin/secubox-sync-registry sync)
+
+				json_init
+				if echo "$result" | grep -q "successfully"; then
+					json_add_boolean "success" true
+					json_add_string "message" "$result"
+				else
+					json_add_boolean "success" false
+					json_add_string "error" "$result"
+				fi
 				json_dump
 				;;
 

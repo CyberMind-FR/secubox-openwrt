@@ -1,0 +1,515 @@
+#!/bin/bash
+
+#
+# SecuBox Component Registry CLI
+# Component registration and management
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+REGISTRY_FILE="/var/lib/secubox/component-registry.json"
+REGISTRY_LOG="/var/log/secubox-component.log"
+CATALOG_FILE="/usr/share/secubox/catalog.json"
+
+# Ensure required directories exist
+init_dirs() {
+	mkdir -p "$(dirname "$REGISTRY_FILE")"
+	mkdir -p "$(dirname "$REGISTRY_LOG")"
+
+	# Initialize registry if it doesn't exist
+	if [ ! -f "$REGISTRY_FILE" ]; then
+		cat > "$REGISTRY_FILE" <<'EOF'
+{
+  "components": {},
+  "version": "1.0",
+  "last_updated": ""
+}
+EOF
+	fi
+}
+
+# Log message
+log_message() {
+	local level="$1"
+	shift
+	local message="$*"
+	local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
+
+	echo "[$timestamp] [$level] $message" >> "$REGISTRY_LOG"
+	logger -t secubox-component "[$level] $message"
+}
+
+# Read registry database
+read_registry() {
+	if [ ! -f "$REGISTRY_FILE" ]; then
+		echo "{}"
+		return 1
+	fi
+
+	cat "$REGISTRY_FILE"
+}
+
+# Write registry database (atomic)
+write_registry() {
+	local content="$1"
+	local temp_file="${REGISTRY_FILE}.tmp.$$"
+
+	echo "$content" > "$temp_file"
+	if [ $? -eq 0 ]; then
+		mv "$temp_file" "$REGISTRY_FILE"
+		log_message "DEBUG" "Registry updated"
+		return 0
+	else
+		rm -f "$temp_file"
+		log_message "ERROR" "Failed to write registry"
+		return 1
+	fi
+}
+
+# Get component from registry
+get_component_from_registry() {
+	local component_id="$1"
+
+	if [ ! -f "$REGISTRY_FILE" ]; then
+		echo "{}"
+		return 1
+	fi
+
+	jsonfilter -i "$REGISTRY_FILE" -e "@.components['$component_id']" 2>/dev/null
+}
+
+# List command - List components with filters
+cmd_list() {
+	local type_filter=""
+	local state_filter=""
+	local profile_filter=""
+
+	# Parse arguments
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--type=*)
+				type_filter="${1#--type=}"
+				;;
+			--state=*)
+				state_filter="${1#--state=}"
+				;;
+			--profile=*)
+				profile_filter="${1#--profile=}"
+				;;
+			*)
+				echo "Error: Unknown option: $1"
+				return 1
+				;;
+		esac
+		shift
+	done
+
+	init_dirs
+
+	if [ ! -f "$REGISTRY_FILE" ]; then
+		echo '[]'
+		return 0
+	fi
+
+	# Get all components
+	local components=$(jsonfilter -i "$REGISTRY_FILE" -e "@.components" 2>/dev/null)
+
+	if [ -z "$components" ] || [ "$components" = "null" ] || [ "$components" = "{}" ]; then
+		echo '[]'
+		return 0
+	fi
+
+	# Apply filters using jq if available
+	if command -v jq >/dev/null 2>&1; then
+		local filter='.'
+
+		if [ -n "$type_filter" ]; then
+			filter="$filter | select(.type == \"$type_filter\")"
+		fi
+
+		if [ -n "$profile_filter" ]; then
+			filter="$filter | select(.profiles | index(\"$profile_filter\"))"
+		fi
+
+		echo "$components" | jq -c "[.[] | $filter]" 2>/dev/null || echo "$components"
+	else
+		# Basic filtering without jq
+		echo "$components"
+	fi
+}
+
+# Get command - Get component details
+cmd_get() {
+	local component_id="$1"
+
+	if [ -z "$component_id" ]; then
+		echo "Error: component_id required"
+		return 1
+	fi
+
+	init_dirs
+
+	local comp_data=$(get_component_from_registry "$component_id")
+
+	if [ -z "$comp_data" ] || [ "$comp_data" = "null" ]; then
+		echo "Error: Component not found: $component_id"
+		return 1
+	fi
+
+	echo "$comp_data"
+}
+
+# Register command - Register a new component
+cmd_register() {
+	local component_id="$1"
+	local component_type="$2"
+	local metadata_json="$3"
+
+	if [ -z "$component_id" ] || [ -z "$component_type" ]; then
+		echo "Error: component_id and type required"
+		return 1
+	fi
+
+	# Validate component type
+	case "$component_type" in
+		app|module|widget|service|composite)
+			;;
+		*)
+			echo "Error: Invalid component type: $component_type"
+			echo "Valid types: app, module, widget, service, composite"
+			return 1
+			;;
+	esac
+
+	init_dirs
+
+	local timestamp=$(date -u "+%Y-%m-%dT%H:%M:%SZ")
+
+	# Read current registry
+	local registry_content=$(read_registry)
+	if [ -z "$registry_content" ]; then
+		registry_content='{"components":{},"version":"1.0","last_updated":""}'
+	fi
+
+	# Build component entry
+	if [ -n "$metadata_json" ]; then
+		# Use provided metadata
+		local comp_entry="$metadata_json"
+	else
+		# Create basic entry
+		comp_entry='{
+			"id": "'"$component_id"'",
+			"type": "'"$component_type"'",
+			"name": "'"$component_id"'",
+			"packages": [],
+			"capabilities": [],
+			"dependencies": {"required": [], "optional": []},
+			"settings": {},
+			"profiles": [],
+			"managed_services": [],
+			"state_ref": "'"$component_id"'"
+		}'
+	fi
+
+	# Update registry using jq if available
+	if command -v jq >/dev/null 2>&1; then
+		registry_content=$(echo "$registry_content" | jq \
+			--arg cid "$component_id" \
+			--argjson comp "$comp_entry" \
+			'.components[$cid] = ($comp + {id: $cid}) | .last_updated = "'"$timestamp"'"')
+	else
+		log_message "WARN" "jq not available, using basic registration"
+		# Fallback: basic merge (simplified)
+		echo "Warning: Full registration requires jq. Component registered with basic metadata."
+	fi
+
+	# Write updated registry
+	if write_registry "$registry_content"; then
+		echo "Success: Component registered: $component_id"
+		log_message "INFO" "Registered component: $component_id (type: $component_type)"
+		return 0
+	else
+		echo "Error: Failed to register component"
+		return 1
+	fi
+}
+
+# Unregister command - Remove component from registry
+cmd_unregister() {
+	local component_id="$1"
+
+	if [ -z "$component_id" ]; then
+		echo "Error: component_id required"
+		return 1
+	fi
+
+	init_dirs
+
+	# Check if component exists
+	local comp_data=$(get_component_from_registry "$component_id")
+	if [ -z "$comp_data" ] || [ "$comp_data" = "null" ]; then
+		echo "Error: Component not found: $component_id"
+		return 1
+	fi
+
+	local timestamp=$(date -u "+%Y-%m-%dT%H:%M:%SZ")
+
+	# Read current registry
+	local registry_content=$(read_registry)
+
+	# Remove component using jq if available
+	if command -v jq >/dev/null 2>&1; then
+		registry_content=$(echo "$registry_content" | jq \
+			--arg cid "$component_id" \
+			'del(.components[$cid]) | .last_updated = "'"$timestamp"'"')
+	else
+		log_message "WARN" "jq not available, cannot unregister"
+		echo "Error: jq required for unregistration"
+		return 1
+	fi
+
+	# Write updated registry
+	if write_registry "$registry_content"; then
+		echo "Success: Component unregistered: $component_id"
+		log_message "INFO" "Unregistered component: $component_id"
+		return 0
+	else
+		echo "Error: Failed to unregister component"
+		return 1
+	fi
+}
+
+# Tree command - Show dependency tree
+cmd_tree() {
+	local component_id="$1"
+	local indent="${2:-}"
+
+	if [ -z "$component_id" ]; then
+		echo "Error: component_id required"
+		return 1
+	fi
+
+	init_dirs
+
+	local comp_data=$(get_component_from_registry "$component_id")
+
+	if [ -z "$comp_data" ] || [ "$comp_data" = "null" ]; then
+		echo "${indent}Error: Component not found: $component_id"
+		return 1
+	fi
+
+	# Display component
+	local comp_type=$(echo "$comp_data" | jsonfilter -e "@.type" 2>/dev/null)
+	local comp_name=$(echo "$comp_data" | jsonfilter -e "@.name" 2>/dev/null)
+	echo "${indent}${comp_name:-$component_id} (${comp_type:-unknown})"
+
+	# Get required dependencies
+	local req_deps=$(echo "$comp_data" | jsonfilter -e "@.dependencies.required[@]" 2>/dev/null)
+
+	if [ -n "$req_deps" ]; then
+		echo "${indent}  Required dependencies:"
+		for dep in $req_deps; do
+			echo "${indent}    - $dep"
+			# Recursive call for nested dependencies (with depth limit)
+			if [ ${#indent} -lt 8 ]; then
+				cmd_tree "$dep" "${indent}      " 2>/dev/null || true
+			fi
+		done
+	fi
+
+	# Get optional dependencies
+	local opt_deps=$(echo "$comp_data" | jsonfilter -e "@.dependencies.optional[@]" 2>/dev/null)
+
+	if [ -n "$opt_deps" ]; then
+		echo "${indent}  Optional dependencies:"
+		for dep in $opt_deps; do
+			echo "${indent}    - $dep (optional)"
+		done
+	fi
+}
+
+# Affected command - Show reverse dependencies
+cmd_affected() {
+	local component_id="$1"
+
+	if [ -z "$component_id" ]; then
+		echo "Error: component_id required"
+		return 1
+	fi
+
+	init_dirs
+
+	if [ ! -f "$REGISTRY_FILE" ]; then
+		echo "No components affected"
+		return 0
+	fi
+
+	echo "Components that depend on $component_id:"
+
+	# Get all components
+	local all_components=$(jsonfilter -i "$REGISTRY_FILE" -e "@.components" 2>/dev/null | jq -r 'keys[]' 2>/dev/null)
+
+	local found=false
+
+	for comp_id in $all_components; do
+		# Check if this component has the target as a dependency
+		local deps=$(jsonfilter -i "$REGISTRY_FILE" -e "@.components['$comp_id'].dependencies.required[@]" 2>/dev/null)
+
+		for dep in $deps; do
+			if [ "$dep" = "$component_id" ]; then
+				echo "  - $comp_id (required)"
+				found=true
+			fi
+		done
+
+		# Check optional dependencies
+		local opt_deps=$(jsonfilter -i "$REGISTRY_FILE" -e "@.components['$comp_id'].dependencies.optional[@]" 2>/dev/null)
+
+		for dep in $opt_deps; do
+			if [ "$dep" = "$component_id" ]; then
+				echo "  - $comp_id (optional)"
+				found=true
+			fi
+		done
+	done
+
+	if [ "$found" = "false" ]; then
+		echo "  (none)"
+	fi
+}
+
+# Set-setting command - Update component setting
+cmd_set_setting() {
+	local component_id="$1"
+	local key="$2"
+	local value="$3"
+
+	if [ -z "$component_id" ] || [ -z "$key" ]; then
+		echo "Error: component_id and key required"
+		return 1
+	fi
+
+	init_dirs
+
+	# Check if component exists
+	local comp_data=$(get_component_from_registry "$component_id")
+	if [ -z "$comp_data" ] || [ "$comp_data" = "null" ]; then
+		echo "Error: Component not found: $component_id"
+		return 1
+	fi
+
+	local timestamp=$(date -u "+%Y-%m-%dT%H:%M:%SZ")
+
+	# Read current registry
+	local registry_content=$(read_registry)
+
+	# Update setting using jq if available
+	if command -v jq >/dev/null 2>&1; then
+		registry_content=$(echo "$registry_content" | jq \
+			--arg cid "$component_id" \
+			--arg key "$key" \
+			--arg val "$value" \
+			'.components[$cid].settings[$key] = $val | .last_updated = "'"$timestamp"'"')
+	else
+		log_message "WARN" "jq not available, cannot update setting"
+		echo "Error: jq required for setting updates"
+		return 1
+	fi
+
+	# Write updated registry
+	if write_registry "$registry_content"; then
+		echo "Success: Setting updated: $key = $value"
+		log_message "INFO" "Updated setting for $component_id: $key = $value"
+		return 0
+	else
+		echo "Error: Failed to update setting"
+		return 1
+	fi
+}
+
+# Usage/Help
+usage() {
+	cat <<EOF
+SecuBox Component Registry CLI
+
+Usage: secubox-component <command> [options]
+
+Commands:
+  list [--type=TYPE] [--state=STATE] [--profile=PROFILE]
+                                List components with optional filters
+
+  get <component-id>            Get component details
+
+  register <component-id> <type> [metadata-json]
+                                Register a new component
+                                Types: app, module, widget, service, composite
+
+  unregister <component-id>     Remove component from registry
+
+  tree <component-id>           Show dependency tree
+
+  affected <component-id>       Show reverse dependencies (what depends on this)
+
+  set-setting <component-id> <key> <value>
+                                Update component setting
+
+Component Types:
+  app        - LuCI application
+  module     - opkg package
+  widget     - Dashboard widget
+  service    - System service
+  composite  - Group of components
+
+Examples:
+  secubox-component list --type=app
+  secubox-component get luci-app-auth-guardian
+  secubox-component register my-app app
+  secubox-component tree luci-app-firewall
+  secubox-component affected luci-base
+  secubox-component set-setting my-app enabled true
+
+EOF
+}
+
+# Main command dispatcher
+main() {
+	local command="$1"
+	shift
+
+	case "$command" in
+		list)
+			cmd_list "$@"
+			;;
+		get)
+			cmd_get "$@"
+			;;
+		register)
+			cmd_register "$@"
+			;;
+		unregister)
+			cmd_unregister "$@"
+			;;
+		tree)
+			cmd_tree "$@"
+			;;
+		affected)
+			cmd_affected "$@"
+			;;
+		set-setting)
+			cmd_set_setting "$@"
+			;;
+		help|--help|-h)
+			usage
+			;;
+		*)
+			echo "Error: Unknown command: $command"
+			usage
+			exit 1
+			;;
+	esac
+}
+
+# Initialize and run
+init_dirs
+main "$@"

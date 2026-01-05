@@ -5,8 +5,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
-PKG_VERSION:=0.8.0
-PKG_RELEASE:=10
+PKG_VERSION:=0.9.0
+PKG_RELEASE:=1
 PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
@@ -25,6 +25,8 @@ define Package/secubox-core/description
   SecuBox Core Framework provides the foundational infrastructure for the
   modular SecuBox system including:
   - Module/AppStore management
+  - Component state management system
+  - Component registry and dependency tracking
   - Profile and template engine
   - Diagnostics and health checks
   - Unified CLI interface
@@ -72,6 +74,9 @@ define Package/secubox-core/install
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-diagnostics $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-recovery $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-verify $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-state $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-component $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-sync-registry $(1)/usr/sbin/
 
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.secubox $(1)/usr/libexec/rpcd/
@@ -80,6 +85,7 @@ define Package/secubox-core/install
 	$(INSTALL_DIR) $(1)/usr/share/secubox/plugins/catalog
 	$(INSTALL_DIR) $(1)/usr/share/secubox/scripts
 	$(INSTALL_DATA) ./root/usr/share/secubox/scripts/* $(1)/usr/share/secubox/scripts/
+	$(INSTALL_BIN) ./root/usr/share/secubox/state-machine.sh $(1)/usr/share/secubox/
 
 	# Install main catalog files (REQUIRED for AppStore)
 	-$(INSTALL_DATA) ./root/usr/share/secubox/catalog.json $(1)/usr/share/secubox/ 2>/dev/null || true
@@ -96,8 +102,30 @@ define Package/secubox-core/postinst
 	# Create catalog cache directories
 	mkdir -p /var/cache/secubox/catalogs
 	mkdir -p /var/lib/secubox
+	mkdir -p /var/log
 	chmod 755 /var/cache/secubox/catalogs
 	chmod 700 /var/lib/secubox
+
+	# Initialize state database and component registry
+	if [ ! -f /var/lib/secubox/state-db.json ]; then
+		cat > /var/lib/secubox/state-db.json <<'EOF'
+{
+  "components": {},
+  "version": "1.0",
+  "last_updated": ""
+}
+EOF
+	fi
+
+	if [ ! -f /var/lib/secubox/component-registry.json ]; then
+		cat > /var/lib/secubox/component-registry.json <<'EOF'
+{
+  "components": {},
+  "version": "1.0",
+  "last_updated": ""
+}
+EOF
+	fi
 
 	/etc/init.d/secubox-core enable
 	/etc/init.d/secubox-core start
@@ -105,8 +133,15 @@ define Package/secubox-core/postinst
 	# Register with rpcd
 	/etc/init.d/rpcd restart
 
-	echo "SecuBox Core Framework installed successfully"
+	# Sync component registry from catalog
+	if [ -x /usr/sbin/secubox-sync-registry ]; then
+		echo "Syncing component registry..."
+		/usr/sbin/secubox-sync-registry sync
+	fi
+
+	echo "SecuBox Core Framework v0.9.0 installed successfully"
 	echo "Run 'secubox device status' to verify installation"
+	echo "New features: State management, Component registry, Admin Control Center"
 }
 exit 0
 endef

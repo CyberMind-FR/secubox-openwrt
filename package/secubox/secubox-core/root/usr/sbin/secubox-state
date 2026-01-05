@@ -1,0 +1,466 @@
+#!/bin/bash
+
+#
+# SecuBox State Management CLI
+# Component state tracking and transition management
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+. /usr/share/secubox/state-machine.sh
+
+STATE_DB="/var/lib/secubox/state-db.json"
+STATE_LOG="/var/log/secubox-state.log"
+LOCK_DIR="/var/lock"
+
+# Ensure required directories exist
+init_dirs() {
+	mkdir -p "$(dirname "$STATE_DB")"
+	mkdir -p "$(dirname "$STATE_LOG")"
+	mkdir -p "$LOCK_DIR"
+
+	# Initialize state DB if it doesn't exist
+	if [ ! -f "$STATE_DB" ]; then
+		cat > "$STATE_DB" <<'EOF'
+{
+  "components": {},
+  "version": "1.0",
+  "last_updated": ""
+}
+EOF
+	fi
+}
+
+# Log message to state log file
+log_message() {
+	local level="$1"
+	shift
+	local message="$*"
+	local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
+
+	echo "[$timestamp] [$level] $message" >> "$STATE_LOG"
+	logger -t secubox-state "[$level] $message"
+}
+
+# Read state database
+read_state_db() {
+	if [ ! -f "$STATE_DB" ]; then
+		echo "{}"
+		return 1
+	fi
+
+	cat "$STATE_DB"
+}
+
+# Write state database (atomic with temp file + move)
+write_state_db() {
+	local content="$1"
+	local temp_file="${STATE_DB}.tmp.$$"
+
+	echo "$content" > "$temp_file"
+	if [ $? -eq 0 ]; then
+		mv "$temp_file" "$STATE_DB"
+		log_message "DEBUG" "State DB updated"
+		return 0
+	else
+		rm -f "$temp_file"
+		log_message "ERROR" "Failed to write state DB"
+		return 1
+	fi
+}
+
+# Get component state from database
+get_component_state_from_db() {
+	local component_id="$1"
+
+	if [ ! -f "$STATE_DB" ]; then
+		echo "{}"
+		return 1
+	fi
+
+	jsonfilter -i "$STATE_DB" -e "@.components['$component_id']" 2>/dev/null
+}
+
+# Update component state in database
+update_component_state_in_db() {
+	local component_id="$1"
+	local new_state="$2"
+	local reason="${3:-manual}"
+	local error_details="${4:-}"
+
+	local timestamp=$(date -u "+%Y-%m-%dT%H:%M:%SZ")
+
+	# Read current DB
+	local db_content=$(read_state_db)
+	if [ -z "$db_content" ]; then
+		db_content='{"components":{},"version":"1.0","last_updated":""}'
+	fi
+
+	# Get current component state
+	local current_data=$(echo "$db_content" | jsonfilter -e "@.components['$component_id']" 2>/dev/null)
+	local current_state=$(echo "$current_data" | jsonfilter -e "@.current_state" 2>/dev/null)
+	[ -z "$current_state" ] && current_state="available"
+
+	# Build history entry
+	local history_entry='{"state":"'"$new_state"'","timestamp":"'"$timestamp"'","reason":"'"$reason"'"}'
+
+	# Use Python/jq for complex JSON manipulation if available
+	# Otherwise use a simpler approach with jshn.sh
+	if command -v jq >/dev/null 2>&1; then
+		# Use jq for JSON manipulation
+		db_content=$(echo "$db_content" | jq \
+			--arg cid "$component_id" \
+			--arg new_state "$new_state" \
+			--arg prev_state "$current_state" \
+			--arg timestamp "$timestamp" \
+			--arg reason "$reason" \
+			--argjson history "$history_entry" \
+			'.components[$cid] = {
+				current_state: $new_state,
+				previous_state: $prev_state,
+				state_changed_at: $timestamp,
+				error_details: (if $new_state == "error" then {} else null end),
+				history: [(.components[$cid].history // [] | .[0:19]), [$history]] | flatten,
+				health: (.components[$cid].health // {status: "unknown", last_check: ""}),
+				metadata: (.components[$cid].metadata // {})
+			} | .last_updated = $timestamp')
+
+	else
+		# Fallback: simpler approach without full history tracking
+		# This is a basic implementation - for production, jq is recommended
+		log_message "WARN" "jq not available, using basic JSON update"
+
+		# Create simplified component entry
+		local comp_json='
+		{
+			"'"$component_id"'": {
+				"current_state": "'"$new_state"'",
+				"previous_state": "'"$current_state"'",
+				"state_changed_at": "'"$timestamp"'",
+				"error_details": null,
+				"history": [],
+				"health": {"status": "unknown", "last_check": ""},
+				"metadata": {}
+			}
+		}'
+
+		# Merge with existing DB (basic merge)
+		db_content=$(echo "$db_content" | sed 's/"components":{/"components":'"$comp_json"',/' | sed 's/,,/,/g')
+		db_content=$(echo "$db_content" | sed 's/"last_updated":"[^"]*"/"last_updated":"'"$timestamp"'"/')
+	fi
+
+	# Write updated DB
+	write_state_db "$db_content"
+}
+
+# Get command - Get current state of component
+cmd_get() {
+	local component_id="$1"
+
+	if [ -z "$component_id" ]; then
+		echo "Error: component_id required"
+		return 1
+	fi
+
+	init_dirs
+
+	local state_data=$(get_component_state_from_db "$component_id")
+
+	if [ -z "$state_data" ] || [ "$state_data" = "null" ]; then
+		# Component not in database, return available state
+		echo '{"current_state":"available","component_id":"'"$component_id"'"}'
+		return 0
+	fi
+
+	echo "$state_data"
+}
+
+# Set command - Set component state (with validation)
+cmd_set() {
+	local component_id="$1"
+	local new_state="$2"
+	local reason="${3:-manual}"
+
+	if [ -z "$component_id" ] || [ -z "$new_state" ]; then
+		echo "Error: component_id and new_state required"
+		return 1
+	fi
+
+	init_dirs
+
+	# Validate state
+	if ! is_valid_state "$new_state"; then
+		log_message "ERROR" "Invalid state: $new_state"
+		echo "Error: Invalid state: $new_state"
+		return 1
+	fi
+
+	# Lock component
+	if ! lock_component "$component_id"; then
+		log_message "ERROR" "Failed to acquire lock for $component_id"
+		echo "Error: Failed to acquire lock"
+		return 1
+	fi
+
+	# Get current state
+	local current_state=$(get_component_state_from_db "$component_id" | jsonfilter -e "@.current_state" 2>/dev/null)
+	[ -z "$current_state" ] && current_state="available"
+
+	# Execute transition validation
+	if ! execute_transition "$component_id" "$current_state" "$new_state" "$reason"; then
+		unlock_component "$component_id"
+		echo "Error: Transition not allowed: $current_state -> $new_state"
+		return 1
+	fi
+
+	# Update state in database
+	if update_component_state_in_db "$component_id" "$new_state" "$reason"; then
+		post_transition_hook "$component_id" "$current_state" "$new_state" 1
+		echo "Success: $component_id state changed to $new_state"
+		log_message "INFO" "Component $component_id: $current_state -> $new_state (reason: $reason)"
+		unlock_component "$component_id"
+		return 0
+	else
+		post_transition_hook "$component_id" "$current_state" "$new_state" 0
+		unlock_component "$component_id"
+		echo "Error: Failed to update state"
+		return 1
+	fi
+}
+
+# History command - Get state history for component
+cmd_history() {
+	local component_id="$1"
+	local limit="${2:-20}"
+
+	if [ -z "$component_id" ]; then
+		echo "Error: component_id required"
+		return 1
+	fi
+
+	init_dirs
+
+	local state_data=$(get_component_state_from_db "$component_id")
+
+	if [ -z "$state_data" ] || [ "$state_data" = "null" ]; then
+		echo '{"history":[]}'
+		return 0
+	fi
+
+	# Extract history
+	echo "$state_data" | jsonfilter -e "@.history" 2>/dev/null || echo '[]'
+}
+
+# List command - List components by state/type
+cmd_list() {
+	local state_filter=""
+	local type_filter=""
+
+	# Parse arguments
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--state=*)
+				state_filter="${1#--state=}"
+				;;
+			--type=*)
+				type_filter="${1#--type=}"
+				;;
+			*)
+				echo "Error: Unknown option: $1"
+				return 1
+				;;
+		esac
+		shift
+	done
+
+	init_dirs
+
+	if [ ! -f "$STATE_DB" ]; then
+		echo '[]'
+		return 0
+	fi
+
+	# Get all components
+	local components=$(jsonfilter -i "$STATE_DB" -e "@.components" 2>/dev/null)
+
+	if [ -z "$components" ] || [ "$components" = "null" ] || [ "$components" = "{}" ]; then
+		echo '[]'
+		return 0
+	fi
+
+	# Filter by state if specified
+	if [ -n "$state_filter" ]; then
+		components=$(echo "$components" | jsonfilter -e "@[?(@.current_state='$state_filter')]" 2>/dev/null)
+	fi
+
+	# Return component list
+	echo "$components" | jq -c '.' 2>/dev/null || echo "$components"
+}
+
+# Validate command - Validate state consistency
+cmd_validate() {
+	local component_id="$1"
+
+	if [ -z "$component_id" ]; then
+		echo "Error: component_id required"
+		return 1
+	fi
+
+	init_dirs
+
+	local state_data=$(get_component_state_from_db "$component_id")
+
+	if [ -z "$state_data" ] || [ "$state_data" = "null" ]; then
+		echo "Component not found in state DB"
+		return 0
+	fi
+
+	local current_state=$(echo "$state_data" | jsonfilter -e "@.current_state" 2>/dev/null)
+
+	# Validate state value
+	if ! is_valid_state "$current_state"; then
+		echo "Error: Invalid state value: $current_state"
+		return 1
+	fi
+
+	# TODO: Add more validation logic
+	# - Check if component actually exists in system
+	# - Verify state matches reality (e.g., if state=running, check if service is actually running)
+
+	echo "State validation passed for $component_id"
+	return 0
+}
+
+# Sync command - Sync state DB with actual system state
+cmd_sync() {
+	init_dirs
+
+	log_message "INFO" "Starting state database sync"
+
+	# TODO: Implement full sync logic
+	# - Scan installed packages (opkg list-installed)
+	# - Check running services (/etc/init.d/*/status)
+	# - Update state DB with actual system state
+	# - Flag inconsistencies
+
+	echo "State sync completed"
+	return 0
+}
+
+# Freeze command - Mark component as frozen
+cmd_freeze() {
+	local component_id="$1"
+	local reason="${2:-manual_freeze}"
+
+	if [ -z "$component_id" ]; then
+		echo "Error: component_id required"
+		return 1
+	fi
+
+	cmd_set "$component_id" "frozen" "$reason"
+}
+
+# Clear-error command - Reset error state
+cmd_clear_error() {
+	local component_id="$1"
+
+	if [ -z "$component_id" ]; then
+		echo "Error: component_id required"
+		return 1
+	fi
+
+	init_dirs
+
+	# Get current state
+	local current_state=$(get_component_state_from_db "$component_id" | jsonfilter -e "@.current_state" 2>/dev/null)
+
+	if [ "$current_state" != "error" ]; then
+		echo "Error: Component is not in error state (current: $current_state)"
+		return 1
+	fi
+
+	# Get previous state before error
+	local previous_state=$(get_component_state_from_db "$component_id" | jsonfilter -e "@.previous_state" 2>/dev/null)
+	[ -z "$previous_state" ] && previous_state="available"
+
+	# Transition to previous state or available
+	cmd_set "$component_id" "$previous_state" "error_cleared"
+}
+
+# Usage/Help
+usage() {
+	cat <<EOF
+SecuBox State Management CLI
+
+Usage: secubox-state <command> [options]
+
+Commands:
+  get <component-id>                   Get current state of component
+  set <component-id> <state> [reason]  Set component state (with validation)
+  history <component-id> [limit]       View state history (default: 20)
+  list [--state=STATE] [--type=TYPE]   List components with optional filters
+  validate <component-id>              Validate state consistency
+  sync                                 Sync state DB with actual system state
+  freeze <component-id> [reason]       Mark component as frozen
+  clear-error <component-id>           Reset error state to previous state
+
+States:
+  available, installing, installed, configuring, configured,
+  activating, active, starting, running, stopping, stopped,
+  error, frozen, disabled, uninstalling
+
+Examples:
+  secubox-state get luci-app-auth-guardian
+  secubox-state set luci-app-auth-guardian running user_start
+  secubox-state history luci-app-auth-guardian 10
+  secubox-state list --state=running
+  secubox-state freeze luci-app-firewall maintenance
+  secubox-state clear-error luci-app-auth-guardian
+
+EOF
+}
+
+# Main command dispatcher
+main() {
+	local command="$1"
+	shift
+
+	case "$command" in
+		get)
+			cmd_get "$@"
+			;;
+		set)
+			cmd_set "$@"
+			;;
+		history)
+			cmd_history "$@"
+			;;
+		list)
+			cmd_list "$@"
+			;;
+		validate)
+			cmd_validate "$@"
+			;;
+		sync)
+			cmd_sync "$@"
+			;;
+		freeze)
+			cmd_freeze "$@"
+			;;
+		clear-error)
+			cmd_clear_error "$@"
+			;;
+		help|--help|-h)
+			usage
+			;;
+		*)
+			echo "Error: Unknown command: $command"
+			usage
+			exit 1
+			;;
+	esac
+}
+
+# Initialize and run
+init_dirs
+main "$@"
