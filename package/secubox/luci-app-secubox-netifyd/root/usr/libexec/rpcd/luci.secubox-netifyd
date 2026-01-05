@@ -273,10 +273,9 @@ get_flow_statistics() {
 
 # Get top applications
 get_top_applications() {
-	json_init
-	json_add_array "applications"
-
 	if ! check_netifyd_running; then
+		json_init
+		json_add_array "applications"
 		json_close_array
 		json_add_boolean "error" 1
 		json_add_string "message" "Netifyd is not running"
@@ -296,33 +295,30 @@ get_top_applications() {
 		local jq_query='.flows[]?'
 		echo "$source_file" | grep -q "status.json" || jq_query='.[]'
 
-		# Extract application names and aggregate bytes
-		jq -r "[$jq_query] |
-			group_by(.application // \"Unknown\") |
-			map({
-				name: .[0].application // \"Unknown\",
-				flows: length,
-				bytes: map(.bytes_orig // 0 | tonumber) | add,
-				packets: map(.packets_orig // 0 | tonumber) | add
-			}) |
-			sort_by(-.bytes) |
-			limit($limit; .[])
-		" "$source_file" 2>/dev/null | while read -r app; do
-			echo "$app"
-		done
+		# Extract application names and aggregate bytes - output complete JSON
+		jq -c "{
+			applications: ([$jq_query] |
+				group_by(.application // \"Unknown\") |
+				map({
+					name: .[0].application // \"Unknown\",
+					flows: length,
+					bytes: (map(.bytes_orig // 0 | tonumber) | add),
+					packets: (map(.packets_orig // 0 | tonumber) | add)
+				}) |
+				sort_by(-.bytes) |
+				limit($limit; .[])),
+			timestamp: now | floor
+		}" "$source_file" 2>/dev/null || echo '{"applications":[],"timestamp":0}'
+	else
+		echo '{"applications":[],"timestamp":0}'
 	fi
-
-	json_close_array
-	json_add_int "timestamp" "$(date +%s)"
-	json_dump
 }
 
 # Get top protocols
 get_top_protocols() {
-	json_init
-	json_add_array "protocols"
-
 	if ! check_netifyd_running; then
+		json_init
+		json_add_array "protocols"
 		json_close_array
 		json_add_boolean "error" 1
 		json_add_string "message" "Netifyd is not running"
@@ -341,23 +337,22 @@ get_top_protocols() {
 		local jq_query='.flows[]?'
 		echo "$source_file" | grep -q "status.json" || jq_query='.[]'
 
-		jq -r "[$jq_query] |
-			group_by(.protocol // \"Unknown\") |
-			map({
-				name: .[0].protocol // \"Unknown\",
-				flows: length,
-				bytes: map(.bytes_orig // 0 | tonumber) | add
-			}) |
-			sort_by(-.bytes) |
-			limit($limit; .[])
-		" "$source_file" 2>/dev/null | while read -r proto; do
-			echo "$proto"
-		done
+		# Extract protocols and aggregate bytes - output complete JSON
+		jq -c "{
+			protocols: ([$jq_query] |
+				group_by(.protocol // \"Unknown\") |
+				map({
+					name: .[0].protocol // \"Unknown\",
+					flows: length,
+					bytes: (map(.bytes_orig // 0 | tonumber) | add)
+				}) |
+				sort_by(-.bytes) |
+				limit($limit; .[])),
+			timestamp: now | floor
+		}" "$source_file" 2>/dev/null || echo '{"protocols":[],"timestamp":0}'
+	else
+		echo '{"protocols":[],"timestamp":0}'
 	fi
-
-	json_close_array
-	json_add_int "timestamp" "$(date +%s)"
-	json_dump
 }
 
 # Get detected devices
