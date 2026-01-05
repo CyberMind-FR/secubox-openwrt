@@ -1,2 +1,0 @@
-# Netifyd Data Collector - runs every minute
-* * * * * root /usr/sbin/netifyd-collector

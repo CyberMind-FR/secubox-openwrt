@@ -20,9 +20,6 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DATA) ./README-FLOW-DATA.md $(1)/usr/share/doc/$(PKG_NAME)/
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-netifyd-configure $(1)/usr/sbin/
-	$(INSTALL_BIN) ./root/usr/sbin/netifyd-collector $(1)/usr/sbin/
-	$(INSTALL_DIR) $(1)/etc/cron.d
-	$(INSTALL_DATA) ./root/etc/cron.d/netifyd-collector $(1)/etc/cron.d/
 endef
 
 include $(TOPDIR)/feeds/luci/luci.mk
