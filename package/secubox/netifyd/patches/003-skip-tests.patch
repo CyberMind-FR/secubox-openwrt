@@ -1,7 +1,0 @@
---- a/Makefile.am
-+++ b/Makefile.am
-@@
--SUBDIRS = libs/inih libs/ndpi $(SUBDIRS_EXTRA) include src deploy doc tests util
--DIST_SUBDIRS = $(SUBDIRS)
-+SUBDIRS = libs/inih libs/ndpi $(SUBDIRS_EXTRA) include src deploy doc util
-+DIST_SUBDIRS = $(SUBDIRS) tests
