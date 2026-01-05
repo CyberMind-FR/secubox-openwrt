@@ -8,6 +8,7 @@
 #   ./local-build.sh build                       # Build all packages (x86_64)
 #   ./local-build.sh build luci-app-system-hub   # Build single package
 #   ./local-build.sh build secubox-core          # Build SecuBox Core package
+#   ./local-build.sh build netifyd               # Build netifyd DPI engine
 #   ./local-build.sh build --arch aarch64        # Build for specific architecture
 #   ./local-build.sh full                        # Validate + Build
 #
@@ -704,7 +705,13 @@ copy_packages() {
             local pkg_path="$feed_dir/$pkg_name"
             if [[ -d "$pkg_path" ]]; then
                 echo "  Installing $pkg_name..."
-                ./scripts/feeds install "$pkg_name" 2>&1 | grep -v "WARNING:" || true
+                # For netifyd, ensure we're using SecuBox feed (not packages feed which has old version)
+                if [[ "$pkg_name" == "netifyd" ]]; then
+                    ./scripts/feeds uninstall netifyd 2>&1 | grep -v "WARNING:" || true
+                    ./scripts/feeds install -p secubox netifyd 2>&1 | grep -v "WARNING:" || true
+                else
+                    ./scripts/feeds install "$pkg_name" 2>&1 | grep -v "WARNING:" || true
+                fi
             fi
         done
     fi
@@ -834,11 +841,14 @@ build_packages() {
             [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
         done
 
-        # Build core secubox packages (secubox-app, nodogsplash, etc.)
+        # Build core secubox packages (secubox-app, nodogsplash, netifyd, etc.)
         for pkg in feeds/secubox/secubox-*/; do
             [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
         done
         for pkg in feeds/secubox/nodogsplash/; do
+            [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
+        done
+        for pkg in feeds/secubox/netifyd/; do
             [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
         done
     fi
@@ -921,6 +931,7 @@ collect_artifacts() {
 
     # Also collect any SecuBox related packages
     find "$SDK_DIR/bin" -name "*secubox*.${pkg_ext}" -exec cp {} "$BUILD_DIR/$ARCH/" \; 2>/dev/null || true
+    find "$SDK_DIR/bin" -name "netifyd*.${pkg_ext}" -exec cp {} "$BUILD_DIR/$ARCH/" \; 2>/dev/null || true
 
     # Count
     local pkg_count=$(find "$BUILD_DIR/$ARCH" -name "*.${pkg_ext}" 2>/dev/null | wc -l)
@@ -963,9 +974,90 @@ run_validation() {
     return 0
 }
 
+# Run build using OpenWrt buildroot (for packages that need system libraries like netifyd)
+run_build_openwrt() {
+    local single_package="$1"
+
+    print_header "Building $single_package with OpenWrt Buildroot"
+    print_info "This package requires system libraries not available in SDK"
+    echo ""
+
+    check_dependencies
+    download_openwrt_source || return 1
+    setup_openwrt_feeds || return 1
+    copy_secubox_to_openwrt || return 1
+
+    cd "$OPENWRT_DIR"
+
+    # Update feeds
+    print_header "Installing Package from Feeds"
+    ./scripts/feeds update -a
+
+    # For netifyd, remove old version from packages feed first
+    if [[ "$single_package" == "netifyd" ]]; then
+        ./scripts/feeds uninstall netifyd 2>/dev/null || true
+    fi
+
+    # For Go packages (crowdsec, etc.), install golang build infrastructure first
+    if [[ "$single_package" =~ ^(crowdsec|secubox-app-crowdsec)$ ]] || \
+       grep -q "golang-package.mk" "../package/secubox/$single_package/Makefile" 2>/dev/null; then
+        print_info "Installing Go language support for $single_package..."
+        ./scripts/feeds install -a golang
+    fi
+
+    ./scripts/feeds install -p secubox "$single_package"
+
+    # Configure package
+    print_header "Configuring Build"
+    echo "CONFIG_PACKAGE_${single_package}=m" >> .config
+    make defconfig
+
+    # Build dependencies first (for packages like netifyd that need system libraries)
+    print_header "Building Dependencies"
+    print_info "Downloading and building required system libraries..."
+    make package/libs/compile V=s 2>&1 | grep -v "^make\[" || true
+
+    # Build package
+    print_header "Building Package: $single_package"
+    print_info "This may take several minutes on first build..."
+    echo ""
+
+    # Build from SecuBox feed (package/secubox/...)
+    if make package/secubox/"$single_package"/compile V=s; then
+        print_success "Package built successfully"
+
+        # Find and display built package
+        local pkg_file=$(find bin/packages -name "${single_package}*.ipk" 2>/dev/null | head -1)
+        if [[ -n "$pkg_file" ]]; then
+            echo ""
+            echo "📦 Built package:"
+            ls -lh "$pkg_file"
+            echo ""
+
+            # Copy to build directory
+            mkdir -p "$BUILD_DIR/$ARCH"
+            cp "$pkg_file" "$BUILD_DIR/$ARCH/"
+
+            print_success "Package copied to: $BUILD_DIR/$ARCH/"
+        fi
+    else
+        print_error "Package build failed"
+        return 1
+    fi
+
+    cd - > /dev/null
+    return 0
+}
+
 # Run build
 run_build() {
     local single_package="$1"
+
+    # Check if package needs OpenWrt buildroot instead of SDK (requires system libraries)
+    if [[ "$single_package" == "netifyd" ]] || [[ "$single_package" == "crowdsec" ]] || [[ "$single_package" =~ ^secubox-app-crowdsec ]]; then
+        run_build_openwrt "$single_package"
+        return $?
+    fi
 
     check_dependencies
     download_sdk || return 1
@@ -1227,7 +1319,8 @@ CONFIG_PACKAGE_luci-app-system-hub=y
 CONFIG_PACKAGE_luci-app-netdata-dashboard=y
 
 # SecuBox packages - Network Intelligence
-CONFIG_PACKAGE_luci-app-netifyd-dashboard=y
+CONFIG_PACKAGE_netifyd=y
+CONFIG_PACKAGE_luci-app-secubox-netifyd=y
 CONFIG_PACKAGE_luci-app-network-modes=y
 
 # SecuBox packages - VPN & Access Control
@@ -1477,6 +1570,8 @@ collect_firmware_artifacts() {
     # Copy packages
     mkdir -p "$output_dir/packages"
     find "$OPENWRT_DIR/bin/packages" -name "luci-app-*.ipk" -exec cp {} "$output_dir/packages/" \; 2>/dev/null || true
+    find "$OPENWRT_DIR/bin/packages" -name "*secubox*.ipk" -exec cp {} "$output_dir/packages/" \; 2>/dev/null || true
+    find "$OPENWRT_DIR/bin/packages" -name "netifyd*.ipk" -exec cp {} "$output_dir/packages/" \; 2>/dev/null || true
 
     local pkg_count=$(find "$output_dir/packages" -name "*.ipk" 2>/dev/null | wc -l)
 
@@ -1624,7 +1719,7 @@ USAGE:
 COMMANDS:
     validate                    Run validation only (lint, syntax checks)
     build                       Build all packages for x86_64
-    build <package>             Build single package (luci-app-*, luci-theme-*, secubox-app-*, secubox-*)
+    build <package>             Build single package (luci-app-*, luci-theme-*, secubox-app-*, secubox-*, netifyd)
     build --arch <arch>         Build for specific architecture
     build-firmware <device>     Build full firmware image for device
     debug-firmware <device>     Debug firmware build (check config without building)
@@ -1663,6 +1758,12 @@ EXAMPLES:
 
     # Build SecuBox Core package
     $0 build secubox-core
+
+    # Build netifyd DPI engine
+    $0 build netifyd
+
+    # Build netifyd LuCI app
+    $0 build luci-app-secubox-netifyd
 
     # Build for specific architecture
     $0 build --arch aarch64-cortex-a72
@@ -1719,7 +1820,7 @@ main() {
                         arch_specified=true
                         shift 2
                         ;;
-                    luci-app-*|luci-theme-*|secubox-app-*|secubox-*)
+                    luci-app-*|luci-theme-*|secubox-app-*|secubox-*|netifyd)
                         single_package="$1"
                         shift
                         ;;

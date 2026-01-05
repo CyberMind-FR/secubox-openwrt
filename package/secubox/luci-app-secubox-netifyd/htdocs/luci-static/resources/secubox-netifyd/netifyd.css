@@ -1,0 +1,148 @@
+/* SecuBox Netifyd DPI Styles */
+
+.netifyd-stat-card {
+	transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.netifyd-stat-card:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.netifyd-flow-table {
+	font-family: 'Courier New', monospace;
+	font-size: 0.9em;
+}
+
+.netifyd-badge {
+	display: inline-block;
+	padding: 0.25em 0.6em;
+	font-size: 0.75em;
+	font-weight: 700;
+	line-height: 1;
+	text-align: center;
+	white-space: nowrap;
+	vertical-align: baseline;
+	border-radius: 0.25rem;
+}
+
+.netifyd-progress-bar {
+	height: 20px;
+	background: #e9ecef;
+	border-radius: 4px;
+	position: relative;
+	overflow: hidden;
+}
+
+.netifyd-progress-fill {
+	height: 100%;
+	background: linear-gradient(90deg, #007bff, #0056b3);
+	transition: width 0.3s ease;
+}
+
+.netifyd-progress-text {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	font-size: 0.8em;
+	font-weight: bold;
+}
+
+.netifyd-alert-info {
+	padding: 0.75rem 1.25rem;
+	margin-bottom: 1rem;
+	border: 1px solid transparent;
+	border-radius: 0.25rem;
+	background-color: #d1ecf1;
+	border-color: #bee5eb;
+	color: #0c5460;
+}
+
+.netifyd-alert-warning {
+	padding: 0.75rem 1.25rem;
+	margin-bottom: 1rem;
+	border: 1px solid transparent;
+	border-radius: 0.25rem;
+	background-color: #fff3cd;
+	border-color: #ffeaa7;
+	color: #856404;
+}
+
+.netifyd-grid-auto {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 1rem;
+}
+
+@media (max-width: 768px) {
+	.netifyd-grid-auto {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* Service status badges */
+.badge-success {
+	background-color: #28a745;
+	color: #fff;
+}
+
+.badge-danger {
+	background-color: #dc3545;
+	color: #fff;
+}
+
+.badge-warning {
+	background-color: #ffc107;
+	color: #212529;
+}
+
+.badge-info {
+	background-color: #17a2b8;
+	color: #fff;
+}
+
+.badge-primary {
+	background-color: #007bff;
+	color: #fff;
+}
+
+.badge-secondary {
+	background-color: #6c757d;
+	color: #fff;
+}
+
+/* Real-time indicator */
+.netifyd-live-indicator {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	background: #28a745;
+	border-radius: 50%;
+	animation: pulse 2s infinite;
+	margin-right: 0.5rem;
+}
+
+@keyframes pulse {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.5;
+	}
+}
+
+/* Loading spinner */
+.netifyd-spinner {
+	display: inline-block;
+	width: 1rem;
+	height: 1rem;
+	border: 2px solid rgba(0,0,0,0.1);
+	border-left-color: #007bff;
+	border-radius: 50%;
+	animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+	to { transform: rotate(360deg); }
+}

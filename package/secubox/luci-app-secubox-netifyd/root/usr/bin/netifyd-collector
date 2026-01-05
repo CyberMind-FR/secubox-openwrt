@@ -1,0 +1,42 @@
+#!/bin/sh
+# Netifyd Flow Data Collector
+# Reads from netifyd Unix socket and maintains a local flow cache
+
+NETIFYD_SOCKET="/var/run/netifyd/netifyd.sock"
+FLOW_CACHE="/tmp/netifyd-flows.json"
+MAX_FLOWS=1000
+
+# Check if netifyd is running
+if ! pidof netifyd >/dev/null 2>&1; then
+    echo "[]" > "$FLOW_CACHE"
+    exit 1
+fi
+
+# Check if socket exists
+if [ ! -S "$NETIFYD_SOCKET" ]; then
+    echo "[]" > "$FLOW_CACHE"
+    exit 1
+fi
+
+# Read from Unix socket and collect flow data
+# Note: netifyd socket outputs status info, not real-time flows
+# We need to use netifyd CLI to get flow information
+
+# Try to get flow data from netifyd status
+if [ -f "/var/run/netifyd/status.json" ]; then
+    # Extract flows if available, otherwise create empty array
+    if command -v jq >/dev/null 2>&1; then
+        jq -c 'if .flows then .flows else [] end' /var/run/netifyd/status.json > "$FLOW_CACHE" 2>/dev/null || echo "[]" > "$FLOW_CACHE"
+    else
+        cp /var/run/netifyd/status.json "$FLOW_CACHE"
+    fi
+else
+    echo "[]" > "$FLOW_CACHE"
+fi
+
+# Keep only the most recent flows
+if [ -f "$FLOW_CACHE" ] && command -v jq >/dev/null 2>&1; then
+    jq "if length > $MAX_FLOWS then .[-$MAX_FLOWS:] else . end" "$FLOW_CACHE" > "$FLOW_CACHE.tmp" 2>/dev/null && mv "$FLOW_CACHE.tmp" "$FLOW_CACHE"
+fi
+
+exit 0

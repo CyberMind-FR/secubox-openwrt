@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 # SecuBox Catalog Sync - Multi-source catalog management with fallback
 #

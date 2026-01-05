@@ -1,0 +1,152 @@
+#!/bin/sh /etc/rc.common
+#
+# Copyright (C) 2016-2025 eGloo Incorporated
+# Copyright (C) 2025 CyberMind.fr (SecuBox Integration)
+#
+# This is free software, licensed under the GNU General Public License v2.
+
+START=50
+STOP=50
+
+USE_PROCD=1
+PROG=/usr/sbin/netifyd
+
+function append_params() {
+	procd_append_param command "$@"
+}
+
+function append_ifopts() {
+	local filter=0
+	local filter_expr=
+
+	for a in $1; do
+		case $a in
+		-F|--device-filter)
+			filter=1
+			procd_append_param command "$a"
+			;;
+		-*)
+			if [ $filter -gt 0 ]; then
+				procd_append_param command "${filter_expr#\ }"
+				filter=0; filter_expr=
+			fi
+			procd_append_param command "$a"
+			;;
+		*)
+			if [ $filter -gt 0 ]; then
+				a=${a#\"}; a=${a%\"}; a=${a#\'}; a=${a%\'}
+				filter_expr="$filter_expr $a"
+			else
+				procd_append_param command "$a"
+			fi
+		esac
+	done
+
+	if [ $filter -gt 0 ]; then
+		procd_append_param command "${filter_expr#\ }"
+	fi
+}
+
+function append_internal_if() {
+	append_ifopts "-I $@"
+}
+
+function append_external_if() {
+	append_ifopts "-E $@"
+}
+
+start_netifyd() {
+	local autoconfig enabled instance options
+
+	instance="$1"
+	config_get_bool enabled "$instance" enabled 0
+	[ "$enabled" -eq 0 ] && return 0
+
+	# Load kernel modules if needed
+	[ -f /usr/share/netifyd/functions.sh ] && {
+		. /usr/share/netifyd/functions.sh
+		load_modules
+	}
+
+	procd_open_instance
+	procd_set_param file /etc/netifyd.conf
+	procd_set_param term_timeout 30
+	procd_set_param respawn 3600 15 0
+	procd_set_param command $PROG -R
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+
+	# Add custom options
+	config_list_foreach "$instance" options append_params
+
+	# Auto-detect interfaces if enabled
+	config_get_bool autoconfig "$instance" autoconfig 1
+
+	if [ "$autoconfig" -gt 0 ]; then
+		NETIFYD_AUTODETECT=yes
+		options="$(auto_detect_options)"
+		[ -n "$options" ] && procd_append_param command $options
+	fi
+
+	# Manual interface configuration
+	config_list_foreach "$instance" internal_if append_internal_if
+	config_list_foreach "$instance" external_if append_external_if
+
+	procd_close_instance
+}
+
+start_service() {
+	# Ensure directories exist
+	[ ! -d /var/run/netifyd ] && mkdir -p /var/run/netifyd
+	[ ! -d /etc/netify.d ] && mkdir -p /etc/netify.d
+
+	# Set permissions
+	chmod 755 /var/run/netifyd
+	chmod 755 /etc/netify.d
+
+	# Load configuration
+	config_load netifyd
+	config_foreach start_netifyd netifyd
+}
+
+stop_service() {
+	# Cleanup
+	rm -f /var/run/netifyd/*.pid 2>/dev/null
+}
+
+reload_service() {
+	procd_send_signal netifyd
+}
+
+service_triggers() {
+	procd_add_reload_trigger "netifyd"
+}
+
+# Auto-detect internal/external interfaces
+auto_detect_options() {
+	local options=""
+	local internal=""
+	local external=""
+
+	# Try to detect LAN interface (br-lan or eth0)
+	if [ -d "/sys/class/net/br-lan" ]; then
+		internal="br-lan"
+	elif [ -d "/sys/class/net/eth0" ]; then
+		internal="eth0"
+	fi
+
+	# Try to detect WAN interface
+	if [ -d "/sys/class/net/br-wan" ]; then
+		external="br-wan"
+	elif [ -d "/sys/class/net/eth1" ]; then
+		external="eth1"
+	elif [ -d "/sys/class/net/wan" ]; then
+		external="wan"
+	fi
+
+	# Build options
+	[ -n "$internal" ] && options="$options -I $internal"
+	[ -n "$external" ] && options="$options -E $external"
+
+	echo "$options"
+}

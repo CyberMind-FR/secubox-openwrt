@@ -1,0 +1,44 @@
+{
+	"luci-app-secubox-netifyd": {
+		"description": "Grant access to SecuBox Netifyd DPI interface",
+		"read": {
+			"ubus": {
+				"luci.secubox-netifyd": [
+					"get_service_status",
+					"get_netifyd_status",
+					"get_realtime_flows",
+					"get_flow_statistics",
+					"get_top_applications",
+					"get_top_protocols",
+					"get_detected_devices",
+					"get_dashboard",
+					"get_config",
+					"get_interfaces"
+				],
+				"service": [
+					"list"
+				]
+			},
+			"uci": [
+				"secubox-netifyd"
+			]
+		},
+		"write": {
+			"ubus": {
+				"luci.secubox-netifyd": [
+					"service_start",
+					"service_stop",
+					"service_restart",
+					"service_enable",
+					"service_disable",
+					"update_config",
+					"clear_cache",
+					"export_flows"
+				]
+			},
+			"uci": [
+				"secubox-netifyd"
+			]
+		}
+	}
+}

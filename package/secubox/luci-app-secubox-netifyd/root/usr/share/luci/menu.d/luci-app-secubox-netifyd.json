@@ -1,0 +1,54 @@
+{
+	"admin/secubox/netifyd": {
+		"title": "Network Intelligence",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "secubox-netifyd/dashboard"
+		},
+		"depends": {
+			"acl": [ "luci-app-secubox-netifyd" ],
+			"uci": { "secubox-netifyd": true }
+		}
+	},
+	"admin/secubox/netifyd/dashboard": {
+		"title": "Dashboard",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "secubox-netifyd/dashboard"
+		}
+	},
+	"admin/secubox/netifyd/flows": {
+		"title": "Live Flows",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "secubox-netifyd/flows"
+		}
+	},
+	"admin/secubox/netifyd/applications": {
+		"title": "Applications",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "secubox-netifyd/applications"
+		}
+	},
+	"admin/secubox/netifyd/devices": {
+		"title": "Devices",
+		"order": 4,
+		"action": {
+			"type": "view",
+			"path": "secubox-netifyd/devices"
+		}
+	},
+	"admin/secubox/netifyd/settings": {
+		"title": "Settings",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "secubox-netifyd/settings"
+		}
+	}
+}

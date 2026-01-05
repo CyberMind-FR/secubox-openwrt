@@ -1,0 +1,788 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SecuBox Netifyd DPI - RPCD Backend
+# Complete interface for netifyd CLI, service, and socket monitoring
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG_FILE="/etc/config/secubox-netifyd"
+NETIFYD_CONFIG="/etc/netifyd.conf"
+NETIFYD_STATUS="/var/run/netifyd/status.json"
+NETIFYD_SOCKET="/var/run/netifyd/netifyd.sock"
+SOCKET_DUMP="/run/netifyd/sink-request.json"
+LOG_FILE="/var/log/secubox-netifyd.log"
+FLOW_CACHE="/tmp/netifyd-flows.json"
+STATS_CACHE="/tmp/netifyd-stats.json"
+
+# Logging function
+log_msg() {
+	local level="$1"
+	shift
+	local message="$*"
+	local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+	echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+	logger -t secubox-netifyd "[$level] $message"
+}
+
+# Check if netifyd is installed
+check_netifyd_installed() {
+	command -v netifyd >/dev/null 2>&1
+}
+
+# Check if netifyd service is running
+check_netifyd_running() {
+	pidof netifyd >/dev/null 2>&1
+}
+
+# Get netifyd service status
+get_service_status() {
+	json_init
+
+	if ! check_netifyd_installed; then
+		json_add_boolean "installed" 0
+		json_add_string "status" "not_installed"
+		json_add_string "message" "Netifyd package not installed"
+		json_dump
+		return 1
+	fi
+
+	json_add_boolean "installed" 1
+
+	if check_netifyd_running; then
+		json_add_boolean "running" 1
+		json_add_string "status" "active"
+
+		# Get PID
+		local pid=$(pidof netifyd)
+		json_add_int "pid" "${pid:-0}"
+
+		# Get uptime from process (using stat field 22 which is starttime in jiffies)
+		if [ -n "$pid" ] && [ -f "/proc/$pid/stat" ]; then
+			# Get system uptime in seconds
+			local sys_uptime=$(awk '{print int($1)}' /proc/uptime 2>/dev/null || echo 0)
+			# Get process start time from /proc/pid/stat (field 22)
+			local proc_starttime=$(awk '{print $22}' /proc/$pid/stat 2>/dev/null || echo 0)
+			# Get system clock ticks per second
+			local hz=$(getconf CLK_TCK 2>/dev/null || echo 100)
+			# Calculate process uptime
+			local proc_uptime_sec=$((proc_starttime / hz))
+			local uptime=$((sys_uptime - proc_uptime_sec))
+			[ $uptime -lt 0 ] && uptime=0
+			json_add_int "uptime" "$uptime"
+		else
+			json_add_int "uptime" 0
+		fi
+	else
+		json_add_boolean "running" 0
+		json_add_string "status" "stopped"
+		json_add_int "pid" 0
+		json_add_int "uptime" 0
+	fi
+
+	# Get version from netifyd
+	local version=$(netifyd -V 2>/dev/null | head -n1 | awk '{print $NF}')
+	json_add_string "version" "${version:-unknown}"
+
+	# Get UUID
+	local uuid=$(netifyd -p 2>/dev/null | tr -d '\n')
+	json_add_string "uuid" "${uuid:-unknown}"
+
+	# Check socket connectivity
+	local socket_ok=0
+	local socket_type=$(uci -q get secubox-netifyd.settings.socket_type || echo "tcp")
+
+	if [ "$socket_type" = "tcp" ]; then
+		local socket_addr=$(uci -q get secubox-netifyd.settings.socket_address || echo "127.0.0.1")
+		local socket_port=$(uci -q get secubox-netifyd.settings.socket_port || echo "7150")
+		if timeout 1 nc -z "$socket_addr" "$socket_port" 2>/dev/null; then
+			socket_ok=1
+		fi
+	else
+		# Unix socket
+		local unix_socket=$(uci -q get secubox-netifyd.settings.unix_socket_path || echo "/var/run/netifyd/netifyd.sock")
+		if [ -S "$unix_socket" ]; then
+			socket_ok=1
+		fi
+	fi
+	json_add_boolean "socket_connected" "$socket_ok"
+
+	# Get configuration
+	json_add_object "config"
+	json_add_string "socket_address" "$socket_addr"
+	json_add_int "socket_port" "$socket_port"
+	json_add_boolean "auto_start" "$(uci -q get secubox-netifyd.settings.auto_start || echo 1)"
+	json_close_object
+
+	json_dump
+}
+
+# Get netifyd status from CLI
+get_netifyd_status() {
+	json_init
+
+	if ! check_netifyd_running; then
+		json_add_boolean "error" 1
+		json_add_string "message" "Netifyd is not running"
+		json_dump
+		return 1
+	fi
+
+	# Parse netifyd -s output
+	local status_output=$(netifyd -s 2>/dev/null)
+
+	# Extract key metrics (example parsing - adjust based on actual output format)
+	json_add_string "raw_status" "$status_output"
+
+	# Parse common fields
+	local active_flows=$(echo "$status_output" | grep -i "active flows" | awk '{print $NF}' | tr -d ',')
+	local cpu_usage=$(echo "$status_output" | grep -i "cpu" | awk '{print $NF}' | tr -d '%')
+	local mem_usage=$(echo "$status_output" | grep -i "memory" | awk '{print $NF}')
+
+	json_add_int "active_flows" "${active_flows:-0}"
+	json_add_string "cpu_usage" "${cpu_usage:-0}"
+	json_add_string "memory_usage" "${mem_usage:-unknown}"
+
+	# Get stats from socket dump if available
+	if [ -f "$SOCKET_DUMP" ]; then
+		local dump_age=$(($(date +%s) - $(stat -c %Y "$SOCKET_DUMP" 2>/dev/null || echo 0)))
+		json_add_int "dump_age_seconds" "$dump_age"
+		json_add_boolean "dump_available" 1
+	else
+		json_add_boolean "dump_available" 0
+	fi
+
+	json_dump
+}
+
+# Get real-time flows from socket
+get_realtime_flows() {
+	json_init
+
+	if ! check_netifyd_running; then
+		json_add_boolean "error" 1
+		json_add_string "message" "Netifyd is not running"
+		json_dump
+		return 1
+	fi
+
+	# Note: netifyd status.json doesn't contain detailed flow data
+	# It only has summary statistics
+	# To get actual flows, we need to use netifyd plugins or sink exports
+
+	json_add_string "source" "status_summary"
+	json_add_string "note" "Detailed flow data requires netifyd sink configuration"
+
+	# Read basic info from status.json
+	json_add_array "flows"
+
+	if [ -f "$NETIFYD_STATUS" ] && command -v jq >/dev/null 2>&1; then
+		# Get flow count
+		local flow_count=$(jq -r '.flow_count // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+		json_add_int "flow_count" "$flow_count"
+
+		# Try to get device info and create pseudo-flows for display
+		# This is a workaround until proper flow export is configured
+		jq -r '.devices | to_entries[] | @json' "$NETIFYD_STATUS" 2>/dev/null | while IFS= read -r device; do
+			if [ -n "$device" ]; then
+				echo "$device"
+			fi
+		done
+	fi
+
+	json_close_array
+
+	# Add timestamp
+	json_add_int "timestamp" "$(date +%s)"
+
+	json_dump
+}
+
+# Get flow statistics
+get_flow_statistics() {
+	json_init
+
+	if ! check_netifyd_running; then
+		json_add_boolean "error" 1
+		json_add_string "message" "Netifyd is not running"
+		json_dump
+		return 1
+	fi
+
+	# Try status.json first, then fallback to dump file
+	local source_file="$NETIFYD_STATUS"
+	if [ ! -f "$source_file" ] && [ -f "$SOCKET_DUMP" ]; then
+		source_file="$SOCKET_DUMP"
+	fi
+
+	if [ ! -f "$source_file" ]; then
+		json_add_int "total_flows" 0
+		json_add_int "total_bytes_in" 0
+		json_add_int "total_bytes_out" 0
+		json_add_int "total_packets_in" 0
+		json_add_int "total_packets_out" 0
+		json_add_int "rate_bytes_in" 0
+		json_add_int "rate_bytes_out" 0
+		json_add_int "timestamp" "$(date +%s)"
+		json_dump
+		return 0
+	fi
+
+	# Parse file and aggregate statistics
+	local total_flows=0
+	local total_bytes_in=0
+	local total_bytes_out=0
+	local total_packets_in=0
+	local total_packets_out=0
+
+	# Use jq to parse and aggregate
+	if command -v jq >/dev/null 2>&1; then
+		# Check if source is status.json (has flows array) or direct flow array
+		if echo "$source_file" | grep -q "status.json"; then
+			total_flows=$(jq -r '.flows | length // 0' "$source_file" 2>/dev/null || echo 0)
+			total_bytes_in=$(jq -r '[.flows[]? | .bytes_orig // 0] | add // 0' "$source_file" 2>/dev/null || echo 0)
+			total_bytes_out=$(jq -r '[.flows[]? | .bytes_resp // 0] | add // 0' "$source_file" 2>/dev/null || echo 0)
+		else
+			total_flows=$(jq -r '. | length' "$source_file" 2>/dev/null || echo 0)
+			total_bytes_in=$(jq -r '[.[] | .bytes_orig // 0] | add // 0' "$source_file" 2>/dev/null || echo 0)
+			total_bytes_out=$(jq -r '[.[] | .bytes_resp // 0] | add // 0' "$source_file" 2>/dev/null || echo 0)
+		fi
+	fi
+
+	json_add_int "total_flows" "$total_flows"
+	json_add_int "total_bytes_in" "$total_bytes_in"
+	json_add_int "total_bytes_out" "$total_bytes_out"
+	json_add_int "total_packets_in" "$total_packets_in"
+	json_add_int "total_packets_out" "$total_packets_out"
+
+	# Calculate rates (bytes per second)
+	local dump_age=$(($(date +%s) - $(stat -c %Y "$source_file" 2>/dev/null || date +%s)))
+	[ "$dump_age" -eq 0 ] && dump_age=1
+
+	local rate_in=$((total_bytes_in / dump_age))
+	local rate_out=$((total_bytes_out / dump_age))
+
+	json_add_int "rate_bytes_in" "$rate_in"
+	json_add_int "rate_bytes_out" "$rate_out"
+
+	json_add_int "timestamp" "$(date +%s)"
+
+	json_dump
+}
+
+# Get top applications
+get_top_applications() {
+	json_init
+	json_add_array "applications"
+
+	if ! check_netifyd_running; then
+		json_close_array
+		json_add_boolean "error" 1
+		json_add_string "message" "Netifyd is not running"
+		json_dump
+		return 1
+	fi
+
+	local limit=$(uci -q get secubox-netifyd.analytics.top_apps_limit || echo 10)
+
+	# Try status.json first, then fallback to dump file
+	local source_file="$NETIFYD_STATUS"
+	[ ! -f "$source_file" ] && source_file="$SOCKET_DUMP"
+
+	# Parse from file
+	if [ -f "$source_file" ] && command -v jq >/dev/null 2>&1; then
+		# Check if source has flows array or is direct array
+		local jq_query='.flows[]?'
+		echo "$source_file" | grep -q "status.json" || jq_query='.[]'
+
+		# Extract application names and aggregate bytes
+		jq -r "[$jq_query] |
+			group_by(.application // \"Unknown\") |
+			map({
+				name: .[0].application // \"Unknown\",
+				flows: length,
+				bytes: map(.bytes_orig // 0 | tonumber) | add,
+				packets: map(.packets_orig // 0 | tonumber) | add
+			}) |
+			sort_by(-.bytes) |
+			limit($limit; .[])
+		" "$source_file" 2>/dev/null | while read -r app; do
+			echo "$app"
+		done
+	fi
+
+	json_close_array
+	json_add_int "timestamp" "$(date +%s)"
+	json_dump
+}
+
+# Get top protocols
+get_top_protocols() {
+	json_init
+	json_add_array "protocols"
+
+	if ! check_netifyd_running; then
+		json_close_array
+		json_add_boolean "error" 1
+		json_add_string "message" "Netifyd is not running"
+		json_dump
+		return 1
+	fi
+
+	local limit=$(uci -q get secubox-netifyd.analytics.top_protocols_limit || echo 10)
+
+	# Try status.json first, then fallback to dump file
+	local source_file="$NETIFYD_STATUS"
+	[ ! -f "$source_file" ] && source_file="$SOCKET_DUMP"
+
+	# Parse from file
+	if [ -f "$source_file" ] && command -v jq >/dev/null 2>&1; then
+		local jq_query='.flows[]?'
+		echo "$source_file" | grep -q "status.json" || jq_query='.[]'
+
+		jq -r "[$jq_query] |
+			group_by(.protocol // \"Unknown\") |
+			map({
+				name: .[0].protocol // \"Unknown\",
+				flows: length,
+				bytes: map(.bytes_orig // 0 | tonumber) | add
+			}) |
+			sort_by(-.bytes) |
+			limit($limit; .[])
+		" "$source_file" 2>/dev/null | while read -r proto; do
+			echo "$proto"
+		done
+	fi
+
+	json_close_array
+	json_add_int "timestamp" "$(date +%s)"
+	json_dump
+}
+
+# Get detected devices
+get_detected_devices() {
+	json_init
+	json_add_array "devices"
+
+	if ! check_netifyd_running; then
+		json_close_array
+		json_add_boolean "error" 1
+		json_add_string "message" "Netifyd is not running"
+		json_dump
+		return 1
+	fi
+
+	# Extract devices from status.json
+	if [ -f "$NETIFYD_STATUS" ] && command -v jq >/dev/null 2>&1; then
+		# Parse devices object: {"MAC": ["IP1", "IP2"], ...}
+		jq -r '.devices | to_entries[] | {
+			mac: .key,
+			ip: (.value[0] // "unknown"),
+			ips: .value,
+			flows: 0,
+			bytes_sent: 0,
+			bytes_received: 0,
+			last_seen: now,
+			online: true
+		}' "$NETIFYD_STATUS" 2>/dev/null | jq -s '.' 2>/dev/null
+	fi
+
+	json_close_array
+	json_add_int "timestamp" "$(date +%s)"
+	json_dump
+}
+
+# Get dashboard summary
+get_dashboard() {
+	json_init
+
+	# Service status
+	json_add_object "service"
+	if check_netifyd_running; then
+		json_add_boolean "running" 1
+		json_add_string "status" "active"
+
+		local pid=$(pidof netifyd)
+		if [ -n "$pid" ] && [ -f "/proc/$pid/stat" ]; then
+			local sys_uptime=$(awk '{print int($1)}' /proc/uptime 2>/dev/null || echo 0)
+			local proc_starttime=$(awk '{print $22}' /proc/$pid/stat 2>/dev/null || echo 0)
+			local hz=$(getconf CLK_TCK 2>/dev/null || echo 100)
+			local proc_uptime_sec=$((proc_starttime / hz))
+			local uptime=$((sys_uptime - proc_uptime_sec))
+			[ $uptime -lt 0 ] && uptime=0
+			json_add_int "uptime" "$uptime"
+		else
+			json_add_int "uptime" 0
+		fi
+	else
+		json_add_boolean "running" 0
+		json_add_string "status" "stopped"
+		json_add_int "uptime" 0
+	fi
+	json_close_object
+
+	# Quick stats
+	json_add_object "stats"
+
+	if [ -f "$NETIFYD_STATUS" ] && command -v jq >/dev/null 2>&1; then
+		# Use actual data from status.json
+		local total_flows=$(jq -r '.flow_count // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+		local unique_devices=$(jq -r '.devices | length // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+		local dhc_size=$(jq -r '.dhc_size // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+
+		json_add_int "active_flows" "$total_flows"
+		json_add_int "unique_devices" "$unique_devices"
+		json_add_int "unique_applications" "$dhc_size"
+		json_add_int "total_bytes" 0
+	else
+		json_add_int "active_flows" 0
+		json_add_int "unique_devices" 0
+		json_add_int "unique_applications" 0
+		json_add_int "total_bytes" 0
+	fi
+
+	json_close_object
+
+	# System info
+	json_add_object "system"
+	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || hostname)"
+	json_add_int "timestamp" "$(date +%s)"
+	json_close_object
+
+	json_dump
+}
+
+# Service control: start
+service_start() {
+	json_init
+
+	if check_netifyd_running; then
+		json_add_boolean "success" 0
+		json_add_string "message" "Netifyd is already running"
+		json_dump
+		return 0
+	fi
+
+	/etc/init.d/netifyd start >/dev/null 2>&1
+	sleep 2
+
+	if check_netifyd_running; then
+		log_msg "INFO" "Netifyd service started"
+		json_add_boolean "success" 1
+		json_add_string "message" "Netifyd started successfully"
+	else
+		log_msg "ERROR" "Failed to start netifyd service"
+		json_add_boolean "success" 0
+		json_add_string "message" "Failed to start netifyd"
+	fi
+
+	json_dump
+}
+
+# Service control: stop
+service_stop() {
+	json_init
+
+	if ! check_netifyd_running; then
+		json_add_boolean "success" 0
+		json_add_string "message" "Netifyd is not running"
+		json_dump
+		return 0
+	fi
+
+	/etc/init.d/netifyd stop >/dev/null 2>&1
+	sleep 1
+
+	if ! check_netifyd_running; then
+		log_msg "INFO" "Netifyd service stopped"
+		json_add_boolean "success" 1
+		json_add_string "message" "Netifyd stopped successfully"
+	else
+		log_msg "ERROR" "Failed to stop netifyd service"
+		json_add_boolean "success" 0
+		json_add_string "message" "Failed to stop netifyd"
+	fi
+
+	json_dump
+}
+
+# Service control: restart
+service_restart() {
+	json_init
+
+	/etc/init.d/netifyd restart >/dev/null 2>&1
+	sleep 2
+
+	if check_netifyd_running; then
+		log_msg "INFO" "Netifyd service restarted"
+		json_add_boolean "success" 1
+		json_add_string "message" "Netifyd restarted successfully"
+	else
+		log_msg "ERROR" "Failed to restart netifyd service"
+		json_add_boolean "success" 0
+		json_add_string "message" "Failed to restart netifyd"
+	fi
+
+	json_dump
+}
+
+# Service control: enable
+service_enable() {
+	json_init
+
+	/etc/init.d/netifyd enable >/dev/null 2>&1
+	uci set secubox-netifyd.settings.auto_start='1'
+	uci commit secubox-netifyd
+
+	log_msg "INFO" "Netifyd service enabled"
+	json_add_boolean "success" 1
+	json_add_string "message" "Netifyd enabled for auto-start"
+
+	json_dump
+}
+
+# Service control: disable
+service_disable() {
+	json_init
+
+	/etc/init.d/netifyd disable >/dev/null 2>&1
+	uci set secubox-netifyd.settings.auto_start='0'
+	uci commit secubox-netifyd
+
+	log_msg "INFO" "Netifyd service disabled"
+	json_add_boolean "success" 1
+	json_add_string "message" "Netifyd disabled from auto-start"
+
+	json_dump
+}
+
+# Get configuration
+get_config() {
+	json_init
+
+	# Settings
+	json_add_object "settings"
+	json_add_boolean "enabled" "$(uci -q get secubox-netifyd.settings.enabled || echo 1)"
+	json_add_string "socket_type" "$(uci -q get secubox-netifyd.settings.socket_type || echo 'tcp')"
+	json_add_string "socket_address" "$(uci -q get secubox-netifyd.settings.socket_address || echo '127.0.0.1')"
+	json_add_int "socket_port" "$(uci -q get secubox-netifyd.settings.socket_port || echo 7150)"
+	json_add_string "unix_socket_path" "$(uci -q get secubox-netifyd.settings.unix_socket_path || echo '/var/run/netifyd/netifyd.sock')"
+	json_add_boolean "auto_start" "$(uci -q get secubox-netifyd.settings.auto_start || echo 1)"
+	json_add_int "flow_retention" "$(uci -q get secubox-netifyd.settings.flow_retention || echo 3600)"
+	json_add_int "max_flows" "$(uci -q get secubox-netifyd.settings.max_flows || echo 10000)"
+	json_close_object
+
+	# Monitoring
+	json_add_object "monitoring"
+	json_add_boolean "enable_flow_tracking" "$(uci -q get secubox-netifyd.monitoring.enable_flow_tracking || echo 1)"
+	json_add_boolean "enable_app_detection" "$(uci -q get secubox-netifyd.monitoring.enable_app_detection || echo 1)"
+	json_add_boolean "enable_protocol_detection" "$(uci -q get secubox-netifyd.monitoring.enable_protocol_detection || echo 1)"
+	json_add_boolean "enable_device_tracking" "$(uci -q get secubox-netifyd.monitoring.enable_device_tracking || echo 1)"
+	json_add_boolean "enable_ssl_inspection" "$(uci -q get secubox-netifyd.monitoring.enable_ssl_inspection || echo 1)"
+	json_add_boolean "enable_dns_inspection" "$(uci -q get secubox-netifyd.monitoring.enable_dns_inspection || echo 1)"
+	json_close_object
+
+	# Analytics
+	json_add_object "analytics"
+	json_add_boolean "enabled" "$(uci -q get secubox-netifyd.analytics.enabled || echo 1)"
+	json_add_int "retention_days" "$(uci -q get secubox-netifyd.analytics.retention_days || echo 7)"
+	json_add_int "top_apps_limit" "$(uci -q get secubox-netifyd.analytics.top_apps_limit || echo 10)"
+	json_add_int "top_protocols_limit" "$(uci -q get secubox-netifyd.analytics.top_protocols_limit || echo 10)"
+	json_add_int "top_devices_limit" "$(uci -q get secubox-netifyd.analytics.top_devices_limit || echo 20)"
+	json_close_object
+
+	# Alerts
+	json_add_object "alerts"
+	json_add_boolean "enabled" "$(uci -q get secubox-netifyd.alerts.enabled || echo 0)"
+	json_add_boolean "alert_on_new_device" "$(uci -q get secubox-netifyd.alerts.alert_on_new_device || echo 0)"
+	json_add_boolean "alert_on_suspicious_traffic" "$(uci -q get secubox-netifyd.alerts.alert_on_suspicious_traffic || echo 0)"
+	json_add_int "alert_threshold_mbps" "$(uci -q get secubox-netifyd.alerts.alert_threshold_mbps || echo 100)"
+	json_close_object
+
+	json_dump
+}
+
+# Update configuration
+update_config() {
+	read -r input
+	json_load "$input"
+
+	json_init
+
+	# Update settings
+	json_select settings 2>/dev/null
+	if [ $? -eq 0 ]; then
+		json_get_var socket_address socket_address
+		json_get_var socket_port socket_port
+		json_get_var auto_start auto_start
+
+		[ -n "$socket_address" ] && uci set secubox-netifyd.settings.socket_address="$socket_address"
+		[ -n "$socket_port" ] && uci set secubox-netifyd.settings.socket_port="$socket_port"
+		[ -n "$auto_start" ] && uci set secubox-netifyd.settings.auto_start="$auto_start"
+
+		json_select ..
+	fi
+
+	# Update monitoring
+	json_select monitoring 2>/dev/null
+	if [ $? -eq 0 ]; then
+		json_get_var enable_flow_tracking enable_flow_tracking
+		json_get_var enable_app_detection enable_app_detection
+
+		[ -n "$enable_flow_tracking" ] && uci set secubox-netifyd.monitoring.enable_flow_tracking="$enable_flow_tracking"
+		[ -n "$enable_app_detection" ] && uci set secubox-netifyd.monitoring.enable_app_detection="$enable_app_detection"
+
+		json_select ..
+	fi
+
+	# Commit changes
+	uci commit secubox-netifyd
+
+	log_msg "INFO" "Configuration updated"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Configuration updated successfully"
+	json_dump
+}
+
+# Get network interfaces being monitored
+get_interfaces() {
+	json_init
+	json_add_array "interfaces"
+
+	# Parse from netifyd config or process command line
+	if check_netifyd_running; then
+		local pid=$(pidof netifyd)
+		if [ -n "$pid" ]; then
+			# Get command line args
+			local cmdline=$(cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ')
+
+			# Extract -I and -E interface arguments
+			echo "$cmdline" | grep -oE '\-[IE] [a-z0-9-]+' | while read -r flag iface; do
+				json_add_object
+				json_add_string "name" "$iface"
+				json_add_string "type" "$([ "$flag" = "-I" ] && echo 'internal' || echo 'external')"
+				json_add_boolean "active" 1
+				json_close_object
+			done
+		fi
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Clear flow cache
+clear_cache() {
+	json_init
+
+	rm -f "$FLOW_CACHE" "$STATS_CACHE" 2>/dev/null
+
+	log_msg "INFO" "Flow cache cleared"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Cache cleared successfully"
+	json_dump
+}
+
+# Export flows to JSON file
+export_flows() {
+	read -r input
+	json_load "$input"
+	json_get_var format format
+
+	json_init
+
+	[ -z "$format" ] && format="json"
+
+	local export_file="/tmp/netifyd-export-$(date +%Y%m%d-%H%M%S).$format"
+
+	if [ -f "$SOCKET_DUMP" ]; then
+		case "$format" in
+			json)
+				cp "$SOCKET_DUMP" "$export_file"
+				;;
+			csv)
+				# Convert JSON to CSV using jq
+				if command -v jq >/dev/null 2>&1; then
+					jq -r '(.[0] | keys_unsorted) as $keys | $keys, map([.[ $keys[] ]])[] | @csv' "$SOCKET_DUMP" > "$export_file"
+				else
+					json_add_boolean "success" 0
+					json_add_string "message" "jq required for CSV export"
+					json_dump
+					return 1
+				fi
+				;;
+		esac
+
+		log_msg "INFO" "Flows exported to $export_file"
+
+		json_add_boolean "success" 1
+		json_add_string "message" "Flows exported successfully"
+		json_add_string "file" "$export_file"
+	else
+		json_add_boolean "success" 0
+		json_add_string "message" "No flow data available to export"
+	fi
+
+	json_dump
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		cat <<'EOF'
+{
+	"get_service_status": {},
+	"get_netifyd_status": {},
+	"get_realtime_flows": {},
+	"get_flow_statistics": {},
+	"get_top_applications": {},
+	"get_top_protocols": {},
+	"get_detected_devices": {},
+	"get_dashboard": {},
+	"service_start": {},
+	"service_stop": {},
+	"service_restart": {},
+	"service_enable": {},
+	"service_disable": {},
+	"get_config": {},
+	"update_config": {
+		"settings": "object",
+		"monitoring": "object",
+		"analytics": "object",
+		"alerts": "object"
+	},
+	"get_interfaces": {},
+	"clear_cache": {},
+	"export_flows": {
+		"format": "string"
+	}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			get_service_status) get_service_status ;;
+			get_netifyd_status) get_netifyd_status ;;
+			get_realtime_flows) get_realtime_flows ;;
+			get_flow_statistics) get_flow_statistics ;;
+			get_top_applications) get_top_applications ;;
+			get_top_protocols) get_top_protocols ;;
+			get_detected_devices) get_detected_devices ;;
+			get_dashboard) get_dashboard ;;
+			service_start) service_start ;;
+			service_stop) service_stop ;;
+			service_restart) service_restart ;;
+			service_enable) service_enable ;;
+			service_disable) service_disable ;;
+			get_config) get_config ;;
+			update_config) update_config ;;
+			get_interfaces) get_interfaces ;;
+			clear_cache) clear_cache ;;
+			export_flows) export_flows ;;
+			*) echo '{"error": "Unknown method"}' ;;
+		esac
+		;;
+esac

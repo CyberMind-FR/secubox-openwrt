@@ -1,38 +1,45 @@
 {
-  "id": "luci-app-netifyd-dashboard",
-  "name": "Netifyd Dashboard",
-  "version": "0.4.0",
+  "id": "luci-app-secubox-netifyd",
+  "name": "Netifyd DPI",
+  "version": "1.0.0",
   "category": "monitoring",
   "runtime": "native",
-  "description": "Network Intelligence dashboard with Deep Packet Inspection for application and protocol detection",
+  "description": "Complete Deep Packet Inspection interface with real-time flow monitoring, application detection, and network analytics powered by Netifyd engine",
   "author": "CyberMind.fr",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "url": "",
   "icon": "🔍",
   "tags": [
     "dpi",
     "network-intelligence",
     "monitoring",
-    "protocol-detection"
+    "protocol-detection",
+    "flow-tracking",
+    "application-detection"
   ],
   "packages": {
     "required": [
-      "luci-app-netifyd-dashboard",
+      "luci-app-secubox-netifyd",
       "luci-base",
-      "luci-app-secubox",
       "rpcd",
-      "netifyd"
+      "netifyd",
+      "jq",
+      "secubox-core"
     ]
   },
   "capabilities": [
     "deep-packet-inspection",
     "network-intelligence",
-    "protocol-detection"
+    "protocol-detection",
+    "application-detection",
+    "device-tracking",
+    "flow-monitoring",
+    "ssl-inspection"
   ],
   "requirements": {
     "min_ram_mb": 128,
-    "min_storage_mb": 20
+    "min_storage_mb": 30
   },
   "status": "stable",
-  "notes": "Network Intelligence dashboard with Deep Packet Inspection."
+  "notes": "Complete Netifyd DPI integration with enhanced analytics, real-time monitoring, and comprehensive network intelligence features."
 }

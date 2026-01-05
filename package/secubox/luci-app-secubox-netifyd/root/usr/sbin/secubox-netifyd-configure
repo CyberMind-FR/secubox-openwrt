@@ -1,0 +1,125 @@
+#!/bin/sh
+# SecuBox Netifyd Configuration Helper
+# Helps configure netifyd for local flow data export
+
+NETIFYD_STATUS="/var/run/netifyd/status.json"
+FLOW_EXPORT="/tmp/netifyd-flows.json"
+
+echo "================================"
+echo "SecuBox Netifyd Configuration"
+echo "================================"
+echo ""
+
+# Check if netifyd is installed
+if ! command -v netifyd >/dev/null 2>&1; then
+    echo "❌ ERROR: netifyd is not installed"
+    echo "   Install it with: opkg install netifyd"
+    exit 1
+fi
+
+echo "✅ Netifyd is installed"
+
+# Check netifyd version and features
+echo ""
+echo "Netifyd Version:"
+netifyd -V | head -1
+
+# Check if running
+echo ""
+if pidof netifyd >/dev/null 2>&1; then
+    echo "✅ Netifyd is running"
+
+    # Show current stats
+    echo ""
+    echo "Current Statistics:"
+    if [ -f "$NETIFYD_STATUS" ] && command -v jq >/dev/null 2>&1; then
+        echo "  - Flow Count: $(jq -r '.flow_count // 0' "$NETIFYD_STATUS")"
+        echo "  - Devices: $(jq -r '.devices | length // 0' "$NETIFYD_STATUS")"
+        echo "  - DNS Cache: $(jq -r '.dhc_size // 0' "$NETIFYD_STATUS")"
+    fi
+else
+    echo "❌ Netifyd is not running"
+    echo "   Start it with: /etc/init.d/netifyd start"
+fi
+
+# Check for plugins
+echo ""
+echo "Checking for netifyd plugins..."
+if [ -d "/usr/lib/netifyd" ]; then
+    PLUGIN_COUNT=$(ls /usr/lib/netifyd/*.so 2>/dev/null | wc -l)
+    if [ "$PLUGIN_COUNT" -gt 0 ]; then
+        echo "✅ Found $PLUGIN_COUNT plugin(s):"
+        ls -1 /usr/lib/netifyd/*.so 2>/dev/null | while read -r plugin; do
+            echo "   - $(basename "$plugin")"
+        done
+    else
+        echo "⚠️  No plugins found in /usr/lib/netifyd/"
+    fi
+else
+    echo "⚠️  Plugin directory not found"
+fi
+
+# Check netifyd capabilities
+echo ""
+echo "Available netifyd command options:"
+netifyd --help 2>&1 | grep -E "^\s*-" | head -10
+echo "  ... (run 'netifyd --help' for full list)"
+
+# Check current configuration
+echo ""
+echo "Current Configuration:"
+echo "  - Config file: /etc/config/netifyd"
+if [ -f "/etc/config/netifyd" ]; then
+    echo "  - Enabled: $(uci -q get netifyd.@netifyd[0].enabled || echo 'unknown')"
+    echo "  - Autoconfig: $(uci -q get netifyd.@netifyd[0].autoconfig || echo 'unknown')"
+else
+    echo "  ⚠️  Config file not found"
+fi
+
+# Recommendations
+echo ""
+echo "================================"
+echo "Configuration Recommendations"
+echo "================================"
+echo ""
+
+if [ ! -f "$FLOW_EXPORT" ]; then
+    echo "📝 Flow export file not found at: $FLOW_EXPORT"
+    echo ""
+    echo "To enable local flow export, try one of these methods:"
+    echo ""
+    echo "Method 1: Check if netifyd supports -j option"
+    echo "  netifyd --help | grep '\-j'"
+    echo "  # If supported, add to config:"
+    echo "  uci add_list netifyd.@netifyd[0].options='-j /tmp/netifyd-flows.json'"
+    echo "  uci commit netifyd"
+    echo "  /etc/init.d/netifyd restart"
+    echo ""
+    echo "Method 2: Use netifyd collector script"
+    echo "  # Enable cron job:"
+    echo "  echo '* * * * * /usr/bin/netifyd-collector' >> /etc/crontabs/root"
+    echo "  /etc/init.d/cron restart"
+    echo ""
+    echo "Method 3: Use Netify.ai Cloud Dashboard"
+    echo "  # Your agent UUID: $(jq -r '.agent_uuid // "not-set"' "$NETIFYD_STATUS" 2>/dev/null)"
+    echo "  # Dashboard: https://dashboard.netify.ai"
+    echo ""
+fi
+
+# Check if sink is enabled
+if [ -f "$NETIFYD_STATUS" ] && command -v jq >/dev/null 2>&1; then
+    SINK_STATUS=$(jq -r '.sink_status // false' "$NETIFYD_STATUS" 2>/dev/null)
+    if [ "$SINK_STATUS" = "true" ]; then
+        echo "✅ Cloud sink is enabled and working"
+        echo "   You can access detailed flow data at: https://dashboard.netify.ai"
+    else
+        echo "⚠️  Cloud sink is not enabled"
+        echo "   To enable: netifyd --enable-sink"
+    fi
+fi
+
+echo ""
+echo "================================"
+echo "For more information, see:"
+echo "  /usr/share/doc/luci-app-secubox-netifyd/README-FLOW-DATA.md"
+echo "================================"

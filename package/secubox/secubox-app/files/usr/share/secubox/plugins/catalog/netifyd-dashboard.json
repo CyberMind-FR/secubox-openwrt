@@ -1,21 +1,28 @@
 {
-  "id": "netifyd-dashboard",
-  "name": "Netifyd Dashboard",
+  "id": "netifyd-dpi",
+  "name": "Netifyd DPI",
   "category": "monitoring",
   "runtime": "native",
   "maturity": "stable",
-  "description": "Deep packet inspection dashboard covering applications, devices, flows, and risks.",
+  "description": "Complete Deep Packet Inspection interface with real-time flow monitoring, application detection, device tracking, and comprehensive network analytics powered by Netifyd engine.",
   "source": {
-    "homepage": "https://github.com/gkerma/secubox-openwrt/tree/main/luci-app-netifyd-dashboard",
-    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/luci-app-netifyd-dashboard"
+    "homepage": "https://github.com/CyberMind-FR/secubox-openwrt/tree/master/package/secubox/luci-app-secubox-netifyd",
+    "github": "https://github.com/CyberMind-FR/secubox-openwrt/tree/master/package/secubox/luci-app-secubox-netifyd"
   },
   "packages": [
-    "luci-app-netifyd-dashboard"
+    "luci-app-secubox-netifyd",
+    "netifyd",
+    "jq"
   ],
   "capabilities": [
     "dpi",
     "device-insights",
-    "traffic-analysis"
+    "traffic-analysis",
+    "application-detection",
+    "protocol-detection",
+    "flow-tracking",
+    "ssl-inspection",
+    "dns-inspection"
   ],
   "requirements": {
     "arch": [
@@ -24,8 +31,8 @@
       "x86_64",
       "mipsel"
     ],
-    "min_ram_mb": 512,
-    "min_storage_mb": 200
+    "min_ram_mb": 128,
+    "min_storage_mb": 30
   },
   "hardware": {
     "usb": false,
@@ -46,18 +53,12 @@
   "update": {
     "strategy": "opkg"
   },
-  "wizard": {
-    "steps": [
-      "dpi_enable",
-      "device_tags",
-      "risk_rules"
-    ]
-  },
   "profiles": {
     "recommended": [
       "gateway",
       "lab",
-      "isp-lite"
+      "isp-lite",
+      "security"
     ]
   }
 }
