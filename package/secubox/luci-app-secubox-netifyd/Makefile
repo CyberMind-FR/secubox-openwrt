@@ -1,14 +1,14 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-secubox-netifyd
-PKG_VERSION:=1.0.1
+PKG_VERSION:=1.0.2
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_ARCH:=all
 
 LUCI_TITLE:=SecuBox Netifyd Deep Packet Inspection Interface
-LUCI_DEPENDS:=+luci-base +rpcd +netifyd +jq +secubox-core
+LUCI_DEPENDS:=+luci-base +rpcd +netifyd +jq +socat +secubox-core
 LUCI_DESCRIPTION:=Complete LuCI interface for netifyd DPI engine with real-time flow monitoring, application detection, and network analytics
 LUCI_PKGARCH:=all
 
@@ -20,8 +20,9 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DATA) ./README-FLOW-DATA.md $(1)/usr/share/doc/$(PKG_NAME)/
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-netifyd-configure $(1)/usr/sbin/
-	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) ./root/usr/bin/netifyd-collector $(1)/usr/bin/
+	$(INSTALL_BIN) ./root/usr/sbin/netifyd-collector $(1)/usr/sbin/
+	$(INSTALL_DIR) $(1)/etc/cron.d
+	$(INSTALL_DATA) ./root/etc/cron.d/netifyd-collector $(1)/etc/cron.d/
 endef
 
 include $(TOPDIR)/feeds/luci/luci.mk
