@@ -4,8 +4,8 @@
 # Copyright (C) 2025 CyberMind.fr
 
 NETIFYD_STATUS="/var/run/netifyd/status.json"
-NETIFYD_SOCKET="/var/run/netifyd/netifyd.sock"
 TMP_FILE="/tmp/netifyd-status.tmp"
+FLOW_DUMP="/tmp/netifyd-flow-dump.json"
 
 # Create run directory if needed
 mkdir -p /var/run/netifyd
@@ -19,55 +19,46 @@ fi
 # Get status from netifyd CLI
 STATUS_OUTPUT=$(netifyd -s 2>/dev/null)
 
-# Parse active flows count
-FLOW_COUNT=$(echo "$STATUS_OUTPUT" | grep -i "active flows" | awk '{print $NF}' | tr -d ',' || echo 0)
+# Parse flow count from status
+FLOW_COUNT=$(echo "$STATUS_OUTPUT" | grep -i "flows:" | head -1 | awk '{print $2}' | tr -d ',' || echo 0)
 
-# Try to get data from socket if available
-if [ -S "$NETIFYD_SOCKET" ] && command -v socat >/dev/null 2>&1; then
-	# Request flow dump from socket (with 2 second timeout)
-	SOCKET_DATA=$(timeout 2 socat - UNIX-CONNECT:"$NETIFYD_SOCKET" <<EOF 2>/dev/null
-{"type":"request","request":"flow_dump"}
-EOF
-)
+# Parse detection stats from status output
+# Example lines:
+#   Detection Cache Entries: 156
+#   Detected Applications: 24
+#   Detected Protocols: 12
+DHC_SIZE=$(echo "$STATUS_OUTPUT" | grep -i "cache entries\|applications" | head -1 | awk '{print $NF}' | tr -d ',' || echo 0)
+PROTO_COUNT=$(echo "$STATUS_OUTPUT" | grep -i "protocols:" | awk '{print $NF}' | tr -d ',' || echo 0)
 
-	# Parse socket data if available
-	if [ -n "$SOCKET_DATA" ] && command -v jq >/dev/null 2>&1; then
-		# Extract devices (unique IPs/MACs)
-		DEVICES=$(echo "$SOCKET_DATA" | jq -c '[.flows[]? | {ip: (.local_ip // "unknown"), mac: (.local_mac // "unknown")}] | unique' 2>/dev/null || echo '[]')
+# Try to extract device count from ARP table as fallback
+DEVICE_COUNT=$(ip neigh show | grep -c "REACHABLE\|STALE\|DELAY" 2>/dev/null || echo 0)
 
-		# Count unique applications
-		APP_COUNT=$(echo "$SOCKET_DATA" | jq '[.flows[]?.detected_application // "Unknown"] | unique | length' 2>/dev/null || echo 0)
-
-		# Count unique protocols
-		PROTO_COUNT=$(echo "$SOCKET_DATA" | jq '[.flows[]?.detected_protocol // "Unknown"] | unique | length' 2>/dev/null || echo 0)
-
-		# Calculate total bytes
-		TOTAL_BYTES=$(echo "$SOCKET_DATA" | jq '[.flows[]? | (.bytes_orig // 0) + (.bytes_resp // 0)] | add' 2>/dev/null || echo 0)
-
-		# Build devices object from array
-		DEVICES_OBJ=$(echo "$DEVICES" | jq -c 'reduce .[] as $item ({}; .[$item.mac] += [$item.ip])' 2>/dev/null || echo '{}')
-	else
-		DEVICES_OBJ='{}'
-		APP_COUNT=0
-		PROTO_COUNT=0
-		TOTAL_BYTES=0
-	fi
+# Build minimal devices object (MAC -> IP mapping from ARP)
+if command -v jq >/dev/null 2>&1; then
+	DEVICES_OBJ=$(ip neigh show 2>/dev/null | awk '$5 != "" && $1 != "" {print "{\"mac\":\""$5"\",\"ip\":\""$1"\"}"}' | jq -s 'reduce .[] as $item ({}; .[$item.mac] += [$item.ip])' 2>/dev/null || echo '{}')
 else
-	# Fallback: estimate from netifyd -s output
 	DEVICES_OBJ='{}'
-	APP_COUNT=0
-	PROTO_COUNT=0
-	TOTAL_BYTES=0
 fi
+
+# Estimate total bytes from interface stats
+TOTAL_BYTES=0
+for iface in br-lan eth0 eth1 wlan0; do
+	if [ -d "/sys/class/net/$iface" ]; then
+		RX=$(cat /sys/class/net/$iface/statistics/rx_bytes 2>/dev/null || echo 0)
+		TX=$(cat /sys/class/net/$iface/statistics/tx_bytes 2>/dev/null || echo 0)
+		TOTAL_BYTES=$((TOTAL_BYTES + RX + TX))
+	fi
+done
 
 # Create JSON status file
 cat > "$TMP_FILE" <<EOF
 {
 	"flow_count": ${FLOW_COUNT:-0},
 	"devices": ${DEVICES_OBJ},
-	"dhc_size": ${APP_COUNT:-0},
+	"dhc_size": ${DHC_SIZE:-0},
 	"protocol_count": ${PROTO_COUNT:-0},
 	"total_bytes": ${TOTAL_BYTES:-0},
+	"device_count": ${DEVICE_COUNT:-0},
 	"timestamp": $(date +%s),
 	"uptime": $(awk '{print int($1)}' /proc/uptime 2>/dev/null || echo 0)
 }

@@ -423,13 +423,14 @@ get_dashboard() {
 	if [ -f "$NETIFYD_STATUS" ] && command -v jq >/dev/null 2>&1; then
 		# Use actual data from status.json
 		local total_flows=$(jq -r '.flow_count // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
-		local unique_devices=$(jq -r '.devices | length // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+		local unique_devices=$(jq -r '.device_count // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
 		local dhc_size=$(jq -r '.dhc_size // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+		local total_bytes=$(jq -r '.total_bytes // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
 
 		json_add_int "active_flows" "$total_flows"
 		json_add_int "unique_devices" "$unique_devices"
 		json_add_int "unique_applications" "$dhc_size"
-		json_add_int "total_bytes" 0
+		json_add_int "total_bytes" "$total_bytes"
 	else
 		json_add_int "active_flows" 0
 		json_add_int "unique_devices" 0

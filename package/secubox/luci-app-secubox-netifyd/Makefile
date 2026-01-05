@@ -8,7 +8,7 @@ PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_ARCH:=all
 
 LUCI_TITLE:=SecuBox Netifyd Deep Packet Inspection Interface
-LUCI_DEPENDS:=+luci-base +rpcd +netifyd +jq +socat +secubox-core
+LUCI_DEPENDS:=+luci-base +rpcd +netifyd +jq +secubox-core
 LUCI_DESCRIPTION:=Complete LuCI interface for netifyd DPI engine with real-time flow monitoring, application detection, and network analytics
 LUCI_PKGARCH:=all
 
