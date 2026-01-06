@@ -214,8 +214,10 @@ return view.extend({
 								E('tr', {}, [
 									E('td', { 'colspan': 5, 'style': 'text-align: center; padding: 2em; color: #999;' }, [
 										E('p', {}, _('No collections found. Click "Update Hub" to fetch the collection list.')),
-										E('p', { 'style': 'margin-top: 0.5em; font-size: 0.9em;' },
-											_('Or use: ') + E('code', {}, 'cscli hub update'))
+										E('p', { 'style': 'margin-top: 0.5em; font-size: 0.9em;' }, [
+											_('Or use: '),
+											E('code', {}, 'cscli hub update')
+										])
 									])
 								])
 						)

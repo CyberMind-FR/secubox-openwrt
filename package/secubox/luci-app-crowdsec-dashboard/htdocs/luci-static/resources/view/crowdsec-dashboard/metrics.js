@@ -296,9 +296,10 @@ return view.extend({
 				]),
 				E('div', { 'class': 'cs-info-box', 'style': 'margin-top: 16px; padding: 12px; background: rgba(0,150,255,0.1); border-left: 4px solid var(--cs-accent-cyan); border-radius: 4px;' }, [
 					E('p', { 'style': 'margin: 0 0 8px 0; color: var(--cs-text-primary); font-weight: 600;' }, _('About Metrics Export')),
-					E('p', { 'style': 'margin: 0; color: var(--cs-text-secondary); font-size: 14px;' },
-						_('When enabled, CrowdSec exports Prometheus-compatible metrics that can be scraped by monitoring tools. Access metrics at: ') +
-						E('code', {}, prometheusEndpoint))
+					E('p', { 'style': 'margin: 0; color: var(--cs-text-secondary); font-size: 14px;' }, [
+						_('When enabled, CrowdSec exports Prometheus-compatible metrics that can be scraped by monitoring tools. Access metrics at: '),
+						E('code', {}, prometheusEndpoint)
+					])
 				])
 			])
 		]);

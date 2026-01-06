@@ -120,10 +120,19 @@ return view.extend({
 					E('p', { 'style': 'margin: 0 0 12px 0; color: var(--cs-text-secondary); font-size: 14px;' },
 						_('To enable the Web Application Firewall, you need to:')),
 					E('ol', { 'style': 'margin: 0; padding-left: 20px; color: var(--cs-text-secondary); font-size: 14px;' }, [
-						E('li', {}, _('Install AppSec collections: ') + E('code', {}, 'cscli collections install crowdsecurity/appsec-*')),
+						E('li', {}, [
+							_('Install AppSec collections: '),
+							E('code', {}, 'cscli collections install crowdsecurity/appsec-*')
+						]),
 						E('li', {}, _('Configure AppSec in your acquis.yaml')),
-						E('li', {}, _('Restart CrowdSec service: ') + E('code', {}, '/etc/init.d/crowdsec restart')),
-						E('li', {}, _('Verify status: ') + E('code', {}, 'cscli appsec status'))
+						E('li', {}, [
+							_('Restart CrowdSec service: '),
+							E('code', {}, '/etc/init.d/crowdsec restart')
+						]),
+						E('li', {}, [
+							_('Verify status: '),
+							E('code', {}, 'cscli appsec status')
+						])
 					])
 				]),
 				E('div', { 'class': 'cs-info-box', 'style': 'margin-top: 16px;' }, [
