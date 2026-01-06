@@ -111,7 +111,6 @@ define Package/netifyd/install
 	$(INSTALL_DIR) $(1)/usr/share/netifyd
 	$(INSTALL_BIN) ./files/functions.sh $(1)/usr/share/netifyd/
 
-	$(INSTALL_DIR) $(1)/var/run/netifyd
 	$(INSTALL_DIR) $(1)/etc/netify.d
 
 	# Install plugins if they exist
@@ -125,6 +124,7 @@ define Package/netifyd/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
 	/etc/init.d/netifyd enable
+	mkdir -p /var/run/netifyd
 	# Don't auto-start, let user configure first
 	echo "Netifyd installed. Configure /etc/config/netifyd and start with: /etc/init.d/netifyd start"
 }

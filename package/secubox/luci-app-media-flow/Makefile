@@ -12,7 +12,7 @@ PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
 LUCI_TITLE:=Media Flow - Streaming Detection & Monitoring
 LUCI_DESCRIPTION:=Real-time detection and monitoring of streaming services (Netflix, YouTube, Spotify, etc.) with quality estimation and alerts
-LUCI_DEPENDS:=+luci-base +rpcd +netifyd +luci-app-netifyd-dashboard
+LUCI_DEPENDS:=+luci-base +rpcd +netifyd
 LUCI_PKGARCH:=all
 
 

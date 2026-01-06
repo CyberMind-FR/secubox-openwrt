@@ -23,7 +23,7 @@ copy_package() {
 
     if [[ -z "$src" ]]; then
         echo "⚠️  $label not found in $OPENWRT_BIN_DIR"
-        return 1
+        return 0
     fi
 
     local dest="$FIRMWARE_DIR/$(basename "$src")"
@@ -37,7 +37,7 @@ update_checksums() {
     local tmp
     tmp=$(mktemp)
     if [[ -f "$sha_file" ]]; then
-        grep -v -E 'netifyd_.*\.ipk|crowdsec_.*\.ipk' "$sha_file" > "$tmp" || true
+        grep -v -E 'netifyd_.*\.ipk|crowdsec_.*\.ipk|secubox-app-netifyd_.*\.ipk|secubox-app-crowdsec_.*\.ipk' "$sha_file" > "$tmp" || true
     fi
     for pkg in "${COPIED_FILES[@]}"; do
         sha256sum "$pkg" >> "$tmp"
@@ -47,11 +47,13 @@ update_checksums() {
 
 copy_package 'netifyd_*.ipk' "netifyd DPI agent"
 copy_package 'crowdsec_*.ipk' "CrowdSec core"
+copy_package 'secubox-app-netifyd_*.ipk' "SecuBox Netifyd helper"
+copy_package 'secubox-app-crowdsec_*.ipk' "SecuBox CrowdSec app"
 
 if [[ ${#COPIED_FILES[@]} -gt 0 ]]; then
     update_checksums
     echo "📦 Firmware directory now contains:"
-    ls -1 "$FIRMWARE_DIR" | grep -E 'netifyd_|crowdsec_' || true
+    ls -1 "$FIRMWARE_DIR" | grep -E 'netifyd_|crowdsec_|secubox-app-netifyd_|secubox-app-crowdsec_' || true
 else
     echo "⚠️  No packages copied"
 fi

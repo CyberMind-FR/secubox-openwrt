@@ -23,6 +23,10 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
+# Normalize important directories
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+
 # Configuration
 # Available versions: 25.12.0-rc1 (default), 24.10.5 (stable LTS), 23.05.5, SNAPSHOT
 OPENWRT_VERSION="${OPENWRT_VERSION:-24.10.5}"
@@ -45,7 +49,20 @@ declare -A DEVICE_PROFILES=(
     ["x86-64"]="x86:64:generic:x86_64 Generic PC"
 )
 
+# Packages that must be built in the OpenWrt buildroot (toolchain) instead of the SDK.
+OPENWRT_ONLY_PACKAGES=("netifyd" "crowdsec" "secubox-app-crowdsec" "secubox-app-netifyd")
+
 # Helper functions
+
+is_openwrt_only_pkg() {
+    local target="$1"
+    for pkg in "${OPENWRT_ONLY_PACKAGES[@]}"; do
+        if [[ "$pkg" == "$target" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
 print_header() {
     echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -843,13 +860,34 @@ build_packages() {
 
         # Build core secubox packages (secubox-app, nodogsplash, netifyd, etc.)
         for pkg in feeds/secubox/secubox-*/; do
-            [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
+            if [[ -d "$pkg" ]]; then
+                local pkg_name=$(basename "$pkg")
+                if is_openwrt_only_pkg "$pkg_name"; then
+                    print_info "Skipping $pkg_name (requires OpenWrt buildroot)"
+                    continue
+                fi
+                packages_to_build+=("$pkg_name")
+            fi
         done
         for pkg in feeds/secubox/nodogsplash/; do
-            [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
+            if [[ -d "$pkg" ]]; then
+                local pkg_name=$(basename "$pkg")
+                if is_openwrt_only_pkg "$pkg_name"; then
+                    print_info "Skipping $pkg_name (requires OpenWrt buildroot)"
+                    continue
+                fi
+                packages_to_build+=("$pkg_name")
+            fi
         done
         for pkg in feeds/secubox/netifyd/; do
-            [[ -d "$pkg" ]] && packages_to_build+=("$(basename "$pkg")")
+            if [[ -d "$pkg" ]]; then
+                local pkg_name=$(basename "$pkg")
+                if is_openwrt_only_pkg "$pkg_name"; then
+                    print_info "Skipping $pkg_name (requires OpenWrt buildroot)"
+                    continue
+                fi
+                packages_to_build+=("$pkg_name")
+            fi
         done
     fi
 
@@ -1047,7 +1085,7 @@ run_build_openwrt() {
 
     cd - > /dev/null
     print_info "Syncing OpenWrt packages into firmware tree..."
-    ARCH_NAME="$ARCH_NAME" ./secubox-tools/sync-openwrt-packages.sh || print_warning "Package sync script failed"
+    ARCH_NAME="$ARCH_NAME" "$REPO_ROOT/secubox-tools/sync-openwrt-packages.sh" || print_warning "Package sync script failed"
     return 0
 }
 
@@ -1055,8 +1093,8 @@ run_build_openwrt() {
 run_build() {
     local single_package="$1"
 
-    # Check if package needs OpenWrt buildroot instead of SDK (requires system libraries)
-    if [[ "$single_package" == "netifyd" ]] || [[ "$single_package" == "crowdsec" ]] || [[ "$single_package" =~ ^secubox-app-crowdsec ]]; then
+    # Packages that are OpenWrt buildroot only
+    if [[ -n "$single_package" ]] && is_openwrt_only_pkg "$single_package"; then
         run_build_openwrt "$single_package"
         return $?
     fi

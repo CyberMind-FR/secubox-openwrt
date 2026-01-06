@@ -258,7 +258,12 @@
       "Bash(bash -n:*)",
       "Bash(./scripts/feeds uninstall:*)",
       "Bash(aarch64-openwrt-linux-musl-g++:*)",
-      "Bash(opkg-cl info:*)"
+      "Bash(opkg-cl info:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: Netifyd Integration & Build System Improvements \\(v0.9.1\\)\n\nMajor updates:\n- Replace luci-app-netifyd-dashboard with enhanced luci-app-secubox-netifyd\n- Add netifyd 5.2.1 package with GCC 13.3/C++17 build fixes\n- Fix nd-risks.cpp compilation errors via inline static maps patch\n- Enhance local-build.sh with improved package building workflow\n- Update secubox-core scripts version to v0.9.1\n\nNew Features:\n- Complete netifyd dashboard with flows, devices, applications, and settings\n- Local data collection with netifyd-collector\n- Automated cron-based data aggregation\n- RPCd integration for real-time statistics\n\nBuild Fixes:\n- Patch 001: Fix C++17 inline static maps in nd-risks.hpp and nd-protos.hpp\n- Patch 003: Skip ndpi tests to resolve roaring_v2 dependency issues\n- Add libatomic dependency\n- Include libnetifyd shared libraries in package\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(netifyd:*)",
+      "Bash(ubus call:*)",
+      "Bash(ss:*)",
+      "Bash(git cherry-pick:*)"
     ]
   }
 }

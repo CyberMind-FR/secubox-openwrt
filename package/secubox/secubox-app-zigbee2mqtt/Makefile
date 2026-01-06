@@ -15,7 +15,7 @@ define Package/secubox-app-zigbee2mqtt
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Zigbee2MQTT docker app
-  DEPENDS:=+uci +libuci +kmod-usb-acm +bash? +dockerd +docker +containerd
+  DEPENDS:=+uci +libuci +kmod-usb-acm +dockerd +docker +containerd
 endef
 
 define Package/secubox-app-zigbee2mqtt/description
