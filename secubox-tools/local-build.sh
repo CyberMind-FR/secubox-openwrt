@@ -32,9 +32,9 @@ CACHE_DIR="${CACHE_DIR:-./cache}"
 OPENWRT_DIR="${OPENWRT_DIR:-./openwrt}"
 
 # Default architecture
-ARCH="x86-64"
-ARCH_NAME="x86_64"
-SDK_PATH="x86/64"
+ARCH="aarch64_cortex-a72"
+ARCH_NAME="aarch64_cortex-a72"
+SDK_PATH="mvebu/cortexa72"
 
 # Device profiles for firmware building
 declare -A DEVICE_PROFILES=(
@@ -1046,6 +1046,8 @@ run_build_openwrt() {
     fi
 
     cd - > /dev/null
+    print_info "Syncing OpenWrt packages into firmware tree..."
+    ARCH_NAME="$ARCH_NAME" ./secubox-tools/sync-openwrt-packages.sh || print_warning "Package sync script failed"
     return 0
 }
 
