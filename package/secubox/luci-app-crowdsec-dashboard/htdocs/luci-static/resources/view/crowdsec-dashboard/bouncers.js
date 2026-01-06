@@ -10,13 +10,17 @@ return view.extend({
 	load: function() {
 		return Promise.all([
 			API.getBouncers(),
-			API.getStatus()
+			API.getStatus(),
+			API.getFirewallBouncerStatus(),
+			API.getNftablesStats()
 		]);
 	},
 
 	render: function(data) {
 		var bouncers = data[0] || [];
 		var status = data[1] || {};
+		var fwStatus = data[2] || {};
+		var nftStats = data[3] || {};
 
 		var view = E('div', { 'class': 'cbi-map' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
@@ -41,6 +45,9 @@ return view.extend({
 					])
 				])
 			]),
+
+			// Firewall Bouncer Management Card
+			this.renderFirewallBouncerCard(fwStatus, nftStats),
 
 			// Bouncers Table
 			E('div', { 'class': 'cbi-section' }, [
@@ -119,10 +126,43 @@ return view.extend({
 
 		// Setup auto-refresh
 		poll.add(L.bind(function() {
-			return API.getBouncers().then(L.bind(function(refreshData) {
+			return Promise.all([
+				API.getBouncers(),
+				API.getFirewallBouncerStatus(),
+				API.getNftablesStats()
+			]).then(L.bind(function(refreshData) {
+				// Update bouncer table
 				var tbody = document.getElementById('bouncers-tbody');
 				if (tbody) {
-					dom.content(tbody, this.renderBouncerRows(refreshData || []));
+					dom.content(tbody, this.renderBouncerRows(refreshData[0] || []));
+				}
+
+				// Update firewall bouncer status
+				var fwStatus = refreshData[1] || {};
+				var nftStats = refreshData[2] || {};
+
+				var statusBadge = document.getElementById('fw-bouncer-status');
+				if (statusBadge) {
+					var running = fwStatus.running || false;
+					statusBadge.textContent = running ? _('ACTIVE') : _('STOPPED');
+					statusBadge.style.background = running ? '#28a745' : '#dc3545';
+				}
+
+				var enabledBadge = document.getElementById('fw-bouncer-enabled');
+				if (enabledBadge) {
+					var enabled = fwStatus.enabled || false;
+					enabledBadge.textContent = enabled ? _('ENABLED') : _('DISABLED');
+					enabledBadge.style.background = enabled ? '#17a2b8' : '#6c757d';
+				}
+
+				var ipv4Count = document.getElementById('fw-bouncer-ipv4-count');
+				if (ipv4Count) {
+					ipv4Count.textContent = (fwStatus.blocked_ipv4 || 0).toString();
+				}
+
+				var ipv6Count = document.getElementById('fw-bouncer-ipv6-count');
+				if (ipv6Count) {
+					ipv6Count.textContent = (fwStatus.blocked_ipv6 || 0).toString();
 				}
 			}, this));
 		}, this), 10);
@@ -392,6 +432,348 @@ return view.extend({
 				}, _('Delete'))
 			])
 		]);
+	},
+
+	renderFirewallBouncerCard: function(fwStatus, nftStats) {
+		var running = fwStatus.running || false;
+		var enabled = fwStatus.enabled || false;
+		var configured = fwStatus.configured || false;
+		var blockedIPv4 = fwStatus.blocked_ipv4 || 0;
+		var blockedIPv6 = fwStatus.blocked_ipv6 || 0;
+		var nftIPv4 = fwStatus.nftables_ipv4 || false;
+		var nftIPv6 = fwStatus.nftables_ipv6 || false;
+
+		return E('div', { 'class': 'cbi-section', 'id': 'firewall-bouncer-card' }, [
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1em;' }, [
+				E('h3', { 'style': 'margin: 0;' }, _('Firewall Bouncer')),
+				E('div', { 'style': 'display: flex; gap: 0.5em;' }, [
+					E('button', {
+						'class': 'cbi-button cbi-button-action',
+						'click': L.bind(this.handleFirewallBouncerRefresh, this)
+					}, _('Refresh'))
+				])
+			]),
+
+			E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1em; margin-bottom: 1em;' }, [
+				// Status Card
+				E('div', { 'style': 'background: ' + (running ? '#d4edda' : '#f8d7da') + '; border-left: 4px solid ' + (running ? '#28a745' : '#dc3545') + '; padding: 1em; border-radius: 4px;' }, [
+					E('div', { 'style': 'font-weight: bold; margin-bottom: 0.5em; color: #333;' }, _('Service Status')),
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+						E('span', {}, _('Running:')),
+						E('span', {
+							'class': 'badge',
+							'id': 'fw-bouncer-status',
+							'style': 'background: ' + (running ? '#28a745' : '#dc3545') + '; color: white; padding: 0.25em 0.6em; border-radius: 3px;'
+						}, running ? _('ACTIVE') : _('STOPPED'))
+					]),
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-top: 0.5em;' }, [
+						E('span', {}, _('Boot Start:')),
+						E('span', {
+							'class': 'badge',
+							'id': 'fw-bouncer-enabled',
+							'style': 'background: ' + (enabled ? '#17a2b8' : '#6c757d') + '; color: white; padding: 0.25em 0.6em; border-radius: 3px;'
+						}, enabled ? _('ENABLED') : _('DISABLED'))
+					]),
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-top: 0.5em;' }, [
+						E('span', {}, _('Configured:')),
+						E('span', {
+							'class': 'badge',
+							'style': 'background: ' + (configured ? '#28a745' : '#ffc107') + '; color: ' + (configured ? 'white' : '#333') + '; padding: 0.25em 0.6em; border-radius: 3px;'
+						}, configured ? _('YES') : _('NO'))
+					])
+				]),
+
+				// Blocked IPs Card
+				E('div', { 'style': 'background: #e8f4f8; border-left: 4px solid #0088cc; padding: 1em; border-radius: 4px;' }, [
+					E('div', { 'style': 'font-weight: bold; margin-bottom: 0.5em; color: #333;' }, _('Blocked IPs')),
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+						E('span', {}, _('IPv4:')),
+						E('span', {
+							'id': 'fw-bouncer-ipv4-count',
+							'style': 'font-size: 1.5em; color: #dc3545; font-weight: bold;'
+						}, blockedIPv4.toString())
+					]),
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-top: 0.5em;' }, [
+						E('span', {}, _('IPv6:')),
+						E('span', {
+							'id': 'fw-bouncer-ipv6-count',
+							'style': 'font-size: 1.5em; color: #dc3545; font-weight: bold;'
+						}, blockedIPv6.toString())
+					]),
+					E('div', { 'style': 'margin-top: 0.75em; padding-top: 0.75em; border-top: 1px solid #d1e7f0;' }, [
+						E('button', {
+							'class': 'cbi-button cbi-button-action',
+							'style': 'width: 100%; font-size: 0.9em;',
+							'click': L.bind(this.showNftablesDetails, this, nftStats)
+						}, _('View Details'))
+					])
+				]),
+
+				// nftables Status Card
+				E('div', { 'style': 'background: #fff3cd; border-left: 4px solid #ffc107; padding: 1em; border-radius: 4px;' }, [
+					E('div', { 'style': 'font-weight: bold; margin-bottom: 0.5em; color: #333;' }, _('nftables Status')),
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center;' }, [
+						E('span', {}, _('IPv4 Table:')),
+						E('span', {
+							'class': 'badge',
+							'style': 'background: ' + (nftIPv4 ? '#28a745' : '#6c757d') + '; color: white; padding: 0.25em 0.6em; border-radius: 3px;'
+						}, nftIPv4 ? _('ACTIVE') : _('INACTIVE'))
+					]),
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-top: 0.5em;' }, [
+						E('span', {}, _('IPv6 Table:')),
+						E('span', {
+							'class': 'badge',
+							'style': 'background: ' + (nftIPv6 ? '#28a745' : '#6c757d') + '; color: white; padding: 0.25em 0.6em; border-radius: 3px;'
+						}, nftIPv6 ? _('ACTIVE') : _('INACTIVE'))
+					])
+				])
+			]),
+
+			// Control Buttons
+			E('div', { 'style': 'display: flex; gap: 0.5em; flex-wrap: wrap;' }, [
+				running ?
+					E('button', {
+						'class': 'cbi-button cbi-button-negative',
+						'click': L.bind(this.handleFirewallBouncerControl, this, 'stop')
+					}, _('Stop Service')) :
+					E('button', {
+						'class': 'cbi-button cbi-button-positive',
+						'click': L.bind(this.handleFirewallBouncerControl, this, 'start')
+					}, _('Start Service')),
+				E('button', {
+					'class': 'cbi-button cbi-button-action',
+					'click': L.bind(this.handleFirewallBouncerControl, this, 'restart')
+				}, _('Restart')),
+				enabled ?
+					E('button', {
+						'class': 'cbi-button',
+						'click': L.bind(this.handleFirewallBouncerControl, this, 'disable')
+					}, _('Disable Boot Start')) :
+					E('button', {
+						'class': 'cbi-button cbi-button-apply',
+						'click': L.bind(this.handleFirewallBouncerControl, this, 'enable')
+					}, _('Enable Boot Start')),
+				E('button', {
+					'class': 'cbi-button',
+					'click': L.bind(this.showFirewallBouncerConfig, this)
+				}, _('Configuration'))
+			])
+		]);
+	},
+
+	handleFirewallBouncerControl: function(action) {
+		var actionLabels = {
+			'start': _('Starting'),
+			'stop': _('Stopping'),
+			'restart': _('Restarting'),
+			'enable': _('Enabling'),
+			'disable': _('Disabling')
+		};
+
+		ui.showModal(_('Firewall Bouncer Control'), [
+			E('p', {}, _('%s firewall bouncer...').format(actionLabels[action] || action)),
+			E('div', { 'class': 'spinning' })
+		]);
+
+		return API.controlFirewallBouncer(action).then(L.bind(function(result) {
+			ui.hideModal();
+
+			if (result && result.success) {
+				ui.addNotification(null, E('p', result.message || _('Operation completed successfully')), 'info');
+				this.handleFirewallBouncerRefresh();
+			} else {
+				ui.addNotification(null, E('p', result.error || _('Operation failed')), 'error');
+			}
+		}, this)).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', err.message || err), 'error');
+		});
+	},
+
+	handleFirewallBouncerRefresh: function() {
+		return Promise.all([
+			API.getFirewallBouncerStatus(),
+			API.getNftablesStats()
+		]).then(L.bind(function(data) {
+			var fwStatus = data[0] || {};
+			var nftStats = data[1] || {};
+
+			// Update status badges
+			var statusBadge = document.getElementById('fw-bouncer-status');
+			if (statusBadge) {
+				var running = fwStatus.running || false;
+				statusBadge.textContent = running ? _('ACTIVE') : _('STOPPED');
+				statusBadge.style.background = running ? '#28a745' : '#dc3545';
+			}
+
+			var enabledBadge = document.getElementById('fw-bouncer-enabled');
+			if (enabledBadge) {
+				var enabled = fwStatus.enabled || false;
+				enabledBadge.textContent = enabled ? _('ENABLED') : _('DISABLED');
+				enabledBadge.style.background = enabled ? '#17a2b8' : '#6c757d';
+			}
+
+			// Update blocked IP counts
+			var ipv4Count = document.getElementById('fw-bouncer-ipv4-count');
+			if (ipv4Count) {
+				ipv4Count.textContent = (fwStatus.blocked_ipv4 || 0).toString();
+			}
+
+			var ipv6Count = document.getElementById('fw-bouncer-ipv6-count');
+			if (ipv6Count) {
+				ipv6Count.textContent = (fwStatus.blocked_ipv6 || 0).toString();
+			}
+
+			// Re-render the entire card to update buttons
+			var card = document.getElementById('firewall-bouncer-card');
+			if (card) {
+				dom.content(card, this.renderFirewallBouncerCard(fwStatus, nftStats).childNodes);
+			}
+
+			ui.addNotification(null, E('p', _('Firewall bouncer status refreshed')), 'info');
+		}, this)).catch(function(err) {
+			ui.addNotification(null, E('p', _('Failed to refresh: %s').format(err.message || err)), 'error');
+		});
+	},
+
+	showNftablesDetails: function(nftStats) {
+		var ipv4Blocked = nftStats.ipv4_blocked || [];
+		var ipv6Blocked = nftStats.ipv6_blocked || [];
+		var ipv4Rules = nftStats.ipv4_rules || 0;
+		var ipv6Rules = nftStats.ipv6_rules || 0;
+
+		ui.showModal(_('nftables Blocked IPs'), [
+			E('div', { 'class': 'cbi-section' }, [
+				E('h4', {}, _('IPv4 Blocked Addresses (%d)').format(ipv4Blocked.length)),
+				ipv4Blocked.length > 0 ?
+					E('div', { 'style': 'max-height: 200px; overflow-y: auto; background: #f5f5f5; padding: 0.5em; border-radius: 4px; margin-bottom: 1em;' },
+						ipv4Blocked.map(function(ip) {
+							return E('div', { 'style': 'font-family: monospace; padding: 0.25em 0;' }, ip);
+						})
+					) :
+					E('p', { 'style': 'color: #999; margin-bottom: 1em;' }, _('No IPv4 addresses blocked')),
+
+				E('h4', {}, _('IPv6 Blocked Addresses (%d)').format(ipv6Blocked.length)),
+				ipv6Blocked.length > 0 ?
+					E('div', { 'style': 'max-height: 200px; overflow-y: auto; background: #f5f5f5; padding: 0.5em; border-radius: 4px; margin-bottom: 1em;' },
+						ipv6Blocked.map(function(ip) {
+							return E('div', { 'style': 'font-family: monospace; padding: 0.25em 0;' }, ip);
+						})
+					) :
+					E('p', { 'style': 'color: #999; margin-bottom: 1em;' }, _('No IPv6 addresses blocked')),
+
+				E('div', { 'style': 'background: #e8f4f8; padding: 1em; border-radius: 4px;' }, [
+					E('div', { 'style': 'display: flex; justify-content: space-between; margin-bottom: 0.5em;' }, [
+						E('strong', {}, _('IPv4 Rules:')),
+						E('span', {}, ipv4Rules.toString())
+					]),
+					E('div', { 'style': 'display: flex; justify-content: space-between;' }, [
+						E('strong', {}, _('IPv6 Rules:')),
+						E('span', {}, ipv6Rules.toString())
+					])
+				])
+			]),
+			E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
+				E('button', {
+					'class': 'btn',
+					'click': ui.hideModal
+				}, _('Close'))
+			])
+		]);
+	},
+
+	showFirewallBouncerConfig: function() {
+		ui.showModal(_('Loading Configuration...'), [
+			E('div', { 'class': 'spinning' })
+		]);
+
+		return API.getFirewallBouncerConfig().then(function(config) {
+			if (!config.configured) {
+				ui.hideModal();
+				ui.showModal(_('Firewall Bouncer Configuration'), [
+					E('div', { 'class': 'cbi-section' }, [
+						E('p', { 'style': 'color: #ffc107; font-weight: bold;' },
+							_('⚠️ Firewall bouncer is not configured yet.')),
+						E('p', {},
+							_('Please install the secubox-app-crowdsec-bouncer package to configure the firewall bouncer.'))
+					]),
+					E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
+						E('button', {
+							'class': 'btn',
+							'click': ui.hideModal
+						}, _('Close'))
+					])
+				]);
+				return;
+			}
+
+			ui.hideModal();
+			ui.showModal(_('Firewall Bouncer Configuration'), [
+				E('div', { 'class': 'cbi-section' }, [
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('Enabled')),
+						E('div', { 'class': 'cbi-value-field' }, [
+							E('span', {
+								'class': 'badge',
+								'style': 'background: ' + (config.enabled === '1' ? '#28a745' : '#dc3545') + '; color: white; padding: 0.25em 0.6em;'
+							}, config.enabled === '1' ? _('YES') : _('NO'))
+						])
+					]),
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('IPv4 Support')),
+						E('div', { 'class': 'cbi-value-field' }, config.ipv4 === '1' ? _('Enabled') : _('Disabled'))
+					]),
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('IPv6 Support')),
+						E('div', { 'class': 'cbi-value-field' }, config.ipv6 === '1' ? _('Enabled') : _('Disabled'))
+					]),
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('API URL')),
+						E('div', { 'class': 'cbi-value-field' }, E('code', {}, config.api_url || 'N/A'))
+					]),
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('Update Frequency')),
+						E('div', { 'class': 'cbi-value-field' }, config.update_frequency || 'N/A')
+					]),
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('Deny Action')),
+						E('div', { 'class': 'cbi-value-field' }, config.deny_action || 'drop')
+					]),
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('Deny Logging')),
+						E('div', { 'class': 'cbi-value-field' }, config.deny_log === '1' ? _('Enabled') : _('Disabled'))
+					]),
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('Log Prefix')),
+						E('div', { 'class': 'cbi-value-field' }, E('code', {}, config.log_prefix || 'N/A'))
+					]),
+					E('div', { 'class': 'cbi-value' }, [
+						E('label', { 'class': 'cbi-value-title' }, _('Interfaces')),
+						E('div', { 'class': 'cbi-value-field' },
+							config.interfaces && config.interfaces.length > 0 ?
+								config.interfaces.join(', ') :
+								_('None configured')
+						)
+					]),
+					E('div', { 'class': 'cbi-section', 'style': 'background: #e8f4f8; padding: 1em; margin-top: 1em; border-radius: 4px;' }, [
+						E('p', { 'style': 'margin: 0;' }, [
+							E('strong', {}, _('Note:')),
+							' ',
+							_('To modify these settings, edit /etc/config/crowdsec using UCI commands or the configuration file.')
+						])
+					])
+				]),
+				E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
+					E('button', {
+						'class': 'btn',
+						'click': ui.hideModal
+					}, _('Close'))
+				])
+			]);
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Failed to load configuration: %s').format(err.message || err)), 'error');
+		});
 	},
 
 	handleSaveApply: null,
