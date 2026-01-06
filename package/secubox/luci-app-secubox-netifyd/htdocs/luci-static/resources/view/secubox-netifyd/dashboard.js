@@ -11,51 +11,9 @@ return view.extend({
 	statsContainer: null,
 	appsContainer: null,
 	protosContainer: null,
-	debugContainer: null,
-	debugMode: false,
-	lastUpdate: null,
-	updateCount: 0,
-	errorCount: 0,
 	latestDashboardData: null,
 	latestTopApps: null,
 	latestTopProtocols: null,
-
-	debug: function(message, data) {
-		if (!this.debugMode) return;
-
-		var timestamp = new Date().toISOString();
-		console.log('[NetifydDashboard ' + timestamp + '] ' + message, data || '');
-
-		if (this.debugContainer) {
-			var logEntry = E('div', {
-				'style': 'padding: 0.25rem; border-bottom: 1px solid #e5e7eb; font-family: monospace; font-size: 0.85em'
-			}, [
-				E('span', { 'style': 'color: #6b7280' }, timestamp + ' '),
-				E('span', { 'style': 'color: #059669; font-weight: 600' }, message),
-				data ? E('pre', { 'style': 'margin: 0.25rem 0 0 0; color: #374151; font-size: 0.8em' },
-					JSON.stringify(data, null, 2)) : null
-			]);
-			this.debugContainer.insertBefore(logEntry, this.debugContainer.firstChild);
-
-			// Keep only last 20 entries
-			while (this.debugContainer.childNodes.length > 20) {
-				this.debugContainer.removeChild(this.debugContainer.lastChild);
-			}
-		}
-	},
-
-	toggleDebug: function(ev) {
-		this.debugMode = !this.debugMode;
-		if (ev && ev.target) {
-			ev.target.textContent = this.debugMode ? 'Disable Debug' : 'Enable Debug';
-			ev.target.className = 'btn ' + (this.debugMode ? 'btn-danger' : 'btn-secondary');
-		}
-		this.debug('Debug mode ' + (this.debugMode ? 'enabled' : 'disabled'));
-
-		if (this.debugContainer) {
-			this.debugContainer.style.display = this.debugMode ? 'block' : 'none';
-		}
-	},
 
 	aggregateApplications: function(apps) {
 		var totals = {
@@ -79,27 +37,16 @@ return view.extend({
 	},
 
 	load: function() {
-		this.debug('Loading dashboard data...');
 		return Promise.all([
 			netifydAPI.getDashboard(),
 			netifydAPI.getServiceStatus(),
 			netifydAPI.getTopApplications(),
 			netifydAPI.getTopProtocols()
-	]).then(L.bind(function(result) {
-		this.debug('Dashboard data loaded', {
-			dashboard: result[0],
-			status: result[1],
-			apps: result[2] ? result[2].applications.length : 0,
-			protocols: result[3] ? result[3].protocols.length : 0
-		});
-		this.latestDashboardData = result[0] || {};
-		this.latestTopApps = result[2] || {};
-		this.latestTopProtocols = result[3] || {};
-		return result;
-	}, this)).catch(L.bind(function(err) {
-			this.debug('Error loading dashboard data', { error: err.message });
-			this.errorCount++;
-			throw err;
+		]).then(L.bind(function(result) {
+			this.latestDashboardData = result[0] || {};
+			this.latestTopApps = result[2] || {};
+			this.latestTopProtocols = result[3] || {};
+			return result;
 		}, this));
 	},
 
@@ -595,10 +542,7 @@ return view.extend({
 		this.latestTopApps = topApps;
 		this.latestTopProtocols = topProtos;
 
-		// Store container references
 		var self = this;
-
-		this.debug('Rendering dashboard', { dashboard: dashboard, status: status });
 
 		// Create containers first
 		self.statusContainer = E('div');
@@ -606,30 +550,14 @@ return view.extend({
 		self.appsContainer = E('div');
 		self.protosContainer = E('div');
 
-		// Debug panel (hidden by default)
-		self.debugContainer = E('div', {
-			'class': 'cbi-section',
-			'style': 'display: none; max-height: 400px; overflow-y: auto; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; margin-top: 1rem'
-		});
-
 		// Set up polling for real-time updates AFTER containers are created
 		poll.add(L.bind(function() {
-			self.debug('Polling for updates... (interval: ' + self.refreshInterval + 's)');
 			return Promise.all([
 				netifydAPI.getDashboard(),
 				netifydAPI.getServiceStatus(),
 				netifydAPI.getTopApplications(),
 				netifydAPI.getTopProtocols()
 			]).then(L.bind(function(result) {
-				self.updateCount++;
-				self.lastUpdate = new Date();
-
-				self.debug('Poll update #' + self.updateCount, {
-					flows: result[0] ? result[0].stats.active_flows : 0,
-					devices: result[0] ? result[0].stats.unique_devices : 0,
-					apps: result[2] ? result[2].applications.length : 0
-				});
-
 				// Update containers if they exist
 				if (self.statusContainer && result[1]) {
 					dom.content(self.statusContainer, self.renderServiceStatus(result[1]));
@@ -644,44 +572,17 @@ return view.extend({
 					dom.content(self.protosContainer, self.renderTopProtocols(result[3]));
 				}
 			}, this)).catch(L.bind(function(err) {
-				self.errorCount++;
-				self.debug('Poll error #' + self.errorCount, { error: err.message, stack: err.stack });
 				console.error('Netifyd dashboard poll error:', err);
 			}, this));
 		}, this), this.refreshInterval);
 
 		var pageContent = E('div', { 'class': 'cbi-map' }, [
-			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem' }, [
-				E('h2', { 'name': 'content', 'style': 'margin: 0' }, [
-					E('i', { 'class': 'fa fa-chart-pie', 'style': 'margin-right: 0.5rem' }),
-					_('Network Intelligence Dashboard')
-				]),
-				E('div', { 'style': 'display: flex; gap: 0.5rem' }, [
-					E('button', {
-						'class': 'btn btn-secondary',
-						'click': ui.createHandlerFn(this, 'toggleDebug')
-					}, _('Enable Debug')),
-					E('span', {
-						'id': 'netifyd-update-indicator',
-						'style': 'padding: 0.5rem 1rem; background: #f3f4f6; border-radius: 0.5rem; font-size: 0.85em; color: #6b7280'
-					}, [
-						E('i', { 'class': 'fa fa-clock' }),
-						' ',
-						E('span', {}, _('Updates: 0'))
-					])
-				])
+			E('h2', { 'name': 'content' }, [
+				E('i', { 'class': 'fa fa-chart-pie', 'style': 'margin-right: 0.5rem' }),
+				_('Network Intelligence Dashboard')
 			]),
 			E('div', { 'class': 'cbi-map-descr' },
 				_('Real-time deep packet inspection, application detection, and network analytics powered by Netifyd DPI engine')),
-
-			// Debug panel
-			E('div', {}, [
-				E('h3', { 'style': 'margin: 1rem 0 0.5rem 0; color: #374151; display: ' + (self.debugMode ? 'block' : 'none') }, [
-					E('i', { 'class': 'fa fa-bug', 'style': 'margin-right: 0.5rem' }),
-					_('Debug Log')
-				]),
-				self.debugContainer
-			]),
 
 			// Service Status
 			self.statusContainer,
@@ -704,21 +605,6 @@ return view.extend({
 		dom.content(self.statsContainer, self.renderStatistics(dashboard.stats));
 		dom.content(self.appsContainer, self.renderTopApplications(topApps));
 		dom.content(self.protosContainer, self.renderTopProtocols(topProtos));
-
-		// Update indicator with polling
-		var updateIndicator = function() {
-			var indicator = document.getElementById('netifyd-update-indicator');
-			if (indicator && self.lastUpdate) {
-				var elapsed = Math.floor((new Date() - self.lastUpdate) / 1000);
-				var span = indicator.querySelector('span');
-				if (span) {
-					span.textContent = _('Updates: %d | Last: %ds ago').format(self.updateCount, elapsed);
-				}
-			}
-		};
-		setInterval(updateIndicator, 1000);
-
-		this.debug('Dashboard rendered successfully');
 
 		return pageContent;
 	},
