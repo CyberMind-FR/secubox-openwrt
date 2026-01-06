@@ -9,6 +9,7 @@ return view.extend({
 	refreshInterval: 5,
 	statusContainer: null,
 	statsContainer: null,
+	interfacesContainer: null,
 	appsContainer: null,
 	protosContainer: null,
 	latestDashboardData: null,
@@ -216,6 +217,8 @@ return view.extend({
 		};
 
 		var activeFlows = resolveStat('active_flows') || fallbackApps.flows;
+		var flowsActive = resolveStat('flows_active');
+		var flowsExpired = resolveStat('flows_expired');
 		var uniqueDevices = resolveStat('unique_devices');
 		var totalBytes = resolveStat('total_bytes') || fallbackApps.bytes;
 		var ipBytes = resolveStat('ip_bytes');
@@ -227,10 +230,10 @@ return view.extend({
 
 		var statCards = [
 			{
-				title: _('Active Flows'),
+				title: _('Network Flows'),
 				value: (activeFlows || 0).toString(),
-				subtitle: _('Active: %d, Expired: %d').format(resolveStat('flows_active'), resolveStat('flows_expired')),
-				icon: 'exchange-alt',
+				subtitle: _('Active: %d | Expired: %d').format(flowsActive || 0, flowsExpired || 0),
+				icon: 'stream',
 				color: '#3b82f6',
 				gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
 			},
@@ -333,6 +336,106 @@ return view.extend({
 						})
 					)
 				]) : null
+			])
+		]);
+	},
+
+	renderInterfaceStats: function(interfaces) {
+		if (!interfaces || Object.keys(interfaces).length === 0) {
+			return null;
+		}
+
+		var interfaceList = [];
+		for (var iface in interfaces) {
+			if (interfaces.hasOwnProperty(iface)) {
+				var stats = interfaces[iface];
+				var totalPackets = (stats.tcp_packets || 0) + (stats.udp_packets || 0) + (stats.icmp_packets || 0);
+
+				interfaceList.push({
+					name: iface,
+					tcp: stats.tcp_packets || 0,
+					udp: stats.udp_packets || 0,
+					icmp: stats.icmp_packets || 0,
+					bytes: stats.wire_bytes || 0,
+					dropped: stats.dropped || 0,
+					total: totalPackets
+				});
+			}
+		}
+
+		return E('div', { 'class': 'cbi-section' }, [
+			E('h3', [
+				E('i', { 'class': 'fa fa-network-wired', 'style': 'margin-right: 0.5rem' }),
+				_('Interface Statistics')
+			]),
+			E('div', { 'class': 'cbi-section-node' }, [
+				E('div', {
+					'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem'
+				}, interfaceList.map(function(iface) {
+					var tcpPercent = iface.total > 0 ? (iface.tcp / iface.total * 100) : 0;
+					var udpPercent = iface.total > 0 ? (iface.udp / iface.total * 100) : 0;
+					var icmpPercent = iface.total > 0 ? (iface.icmp / iface.total * 100) : 0;
+
+					return E('div', {
+						'style': 'background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1.25rem'
+					}, [
+						E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem' }, [
+							E('h4', { 'style': 'margin: 0; color: #374151; display: flex; align-items: center; gap: 0.5rem' }, [
+								E('i', { 'class': 'fa fa-ethernet' }),
+								iface.name
+							]),
+							iface.dropped > 0 ? E('span', {
+								'class': 'badge',
+								'style': 'background: #ef4444; color: white; font-size: 0.75em'
+							}, iface.dropped + ' dropped') : null
+						]),
+						E('div', { 'style': 'margin-bottom: 1rem' }, [
+							E('div', { 'style': 'display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9em' }, [
+								E('span', _('Total Traffic')),
+								E('strong', { 'style': 'color: #6366f1' }, netifydAPI.formatBytes(iface.bytes))
+							]),
+							E('div', { 'style': 'display: flex; justify-content: space-between; font-size: 0.9em' }, [
+								E('span', _('Total Packets')),
+								E('strong', iface.total.toLocaleString())
+							])
+						]),
+						E('div', { 'style': 'display: grid; gap: 0.75rem' }, [
+							E('div', [
+								E('div', { 'style': 'display: flex; justify-content: space-between; margin-bottom: 0.25rem; font-size: 0.85em' }, [
+									E('span', { 'style': 'color: #3b82f6' }, 'TCP'),
+									E('span', iface.tcp.toLocaleString() + ' (' + tcpPercent.toFixed(1) + '%)')
+								]),
+								E('div', { 'style': 'background: #e5e7eb; height: 6px; border-radius: 3px; overflow: hidden' }, [
+									E('div', {
+										'style': 'background: #3b82f6; height: 100%; width: ' + tcpPercent + '%; transition: width 0.3s'
+									})
+								])
+							]),
+							E('div', [
+								E('div', { 'style': 'display: flex; justify-content: space-between; margin-bottom: 0.25rem; font-size: 0.85em' }, [
+									E('span', { 'style': 'color: #10b981' }, 'UDP'),
+									E('span', iface.udp.toLocaleString() + ' (' + udpPercent.toFixed(1) + '%)')
+								]),
+								E('div', { 'style': 'background: #e5e7eb; height: 6px; border-radius: 3px; overflow: hidden' }, [
+									E('div', {
+										'style': 'background: #10b981; height: 100%; width: ' + udpPercent + '%; transition: width 0.3s'
+									})
+								])
+							]),
+							E('div', [
+								E('div', { 'style': 'display: flex; justify-content: space-between; margin-bottom: 0.25rem; font-size: 0.85em' }, [
+									E('span', { 'style': 'color: #f59e0b' }, 'ICMP'),
+									E('span', iface.icmp.toLocaleString() + ' (' + icmpPercent.toFixed(1) + '%)')
+								]),
+								E('div', { 'style': 'background: #e5e7eb; height: 6px; border-radius: 3px; overflow: hidden' }, [
+									E('div', {
+										'style': 'background: #f59e0b; height: 100%; width: ' + icmpPercent + '%; transition: width 0.3s'
+									})
+								])
+							])
+						])
+					]);
+				}.bind(this)))
 			])
 		]);
 	},
@@ -547,6 +650,7 @@ return view.extend({
 		// Create containers first
 		self.statusContainer = E('div');
 		self.statsContainer = E('div');
+		self.interfacesContainer = E('div');
 		self.appsContainer = E('div');
 		self.protosContainer = E('div');
 
@@ -564,6 +668,9 @@ return view.extend({
 				}
 				if (self.statsContainer && result[0]) {
 					dom.content(self.statsContainer, self.renderStatistics(result[0].stats));
+				}
+				if (self.interfacesContainer && result[0] && result[0].interfaces) {
+					dom.content(self.interfacesContainer, self.renderInterfaceStats(result[0].interfaces));
 				}
 				if (self.appsContainer && result[2]) {
 					dom.content(self.appsContainer, self.renderTopApplications(result[2]));
@@ -590,6 +697,9 @@ return view.extend({
 			// Statistics
 			self.statsContainer,
 
+			// Interface Statistics
+			self.interfacesContainer,
+
 			// Two-column layout for apps and protocols
 			E('div', {
 				'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem',
@@ -603,6 +713,7 @@ return view.extend({
 		// Initial render
 		dom.content(self.statusContainer, self.renderServiceStatus(status));
 		dom.content(self.statsContainer, self.renderStatistics(dashboard.stats));
+		dom.content(self.interfacesContainer, self.renderInterfaceStats(dashboard.interfaces));
 		dom.content(self.appsContainer, self.renderTopApplications(topApps));
 		dom.content(self.protosContainer, self.renderTopProtocols(topProtos));
 

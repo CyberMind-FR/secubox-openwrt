@@ -479,6 +479,24 @@ get_dashboard() {
 
 	json_close_object
 
+	# Interface statistics
+	json_add_object "interfaces"
+	if [ -f "$NETIFYD_STATUS" ] && command -v jq >/dev/null 2>&1; then
+		# Get per-interface stats
+		local interfaces=$(jq -r '.stats | keys[]' "$NETIFYD_STATUS" 2>/dev/null)
+		for iface in $interfaces; do
+			json_add_object "$iface"
+			json_add_int "tcp_packets" "$(jq -r ".stats[\"$iface\"].tcp // 0" "$NETIFYD_STATUS" 2>/dev/null || echo 0)"
+			json_add_int "udp_packets" "$(jq -r ".stats[\"$iface\"].udp // 0" "$NETIFYD_STATUS" 2>/dev/null || echo 0)"
+			json_add_int "icmp_packets" "$(jq -r ".stats[\"$iface\"].icmp // 0" "$NETIFYD_STATUS" 2>/dev/null || echo 0)"
+			json_add_int "ip_bytes" "$(jq -r ".stats[\"$iface\"].ip_bytes // 0" "$NETIFYD_STATUS" 2>/dev/null || echo 0)"
+			json_add_int "wire_bytes" "$(jq -r ".stats[\"$iface\"].wire_bytes // 0" "$NETIFYD_STATUS" 2>/dev/null || echo 0)"
+			json_add_int "dropped" "$(jq -r ".stats[\"$iface\"].capture_dropped // 0" "$NETIFYD_STATUS" 2>/dev/null || echo 0)"
+			json_close_object
+		done
+	fi
+	json_close_object
+
 	# System info
 	json_add_object "system"
 	json_add_string "hostname" "$(uci -q get system.@system[0].hostname || hostname)"
