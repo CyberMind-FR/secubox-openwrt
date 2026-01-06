@@ -1,0 +1,154 @@
+#!/bin/sh
+#
+# CrowdSec Firewall Bouncer - UCI Defaults Script
+# Automatically configures and registers the firewall bouncer on first install
+#
+
+BOUNCER_NAME="crowdsec-firewall-bouncer"
+CONFIG_FILE="/etc/config/crowdsec"
+BOUNCER_CONFIG="/etc/config/crowdsec-bouncer"
+
+# Function to check if CrowdSec is installed and running
+check_crowdsec() {
+	if ! command -v cscli >/dev/null 2>&1; then
+		echo "CrowdSec (cscli) not found. Please install crowdsec first."
+		return 1
+	fi
+
+	# Check if LAPI is reachable
+	if ! cscli lapi status >/dev/null 2>&1; then
+		echo "CrowdSec LAPI not running. Start crowdsec service first."
+		return 1
+	fi
+
+	return 0
+}
+
+# Function to register bouncer and get API key
+register_bouncer() {
+	local api_key
+
+	# Check if bouncer already registered
+	if cscli bouncers list | grep -q "$BOUNCER_NAME"; then
+		echo "Bouncer '$BOUNCER_NAME' already registered"
+		# Try to get existing key (note: cscli doesn't show keys after creation)
+		return 0
+	fi
+
+	# Register new bouncer
+	echo "Registering bouncer '$BOUNCER_NAME' with CrowdSec LAPI..."
+	api_key=$(cscli bouncers add "$BOUNCER_NAME" -o raw 2>/dev/null)
+
+	if [ -n "$api_key" ] && [ "$api_key" != "null" ]; then
+		echo "Bouncer registered successfully"
+		# Update UCI config with API key
+		uci set crowdsec.bouncer.api_key="$api_key"
+		uci commit crowdsec
+		return 0
+	else
+		echo "Failed to register bouncer"
+		return 1
+	fi
+}
+
+# Function to detect network interfaces
+detect_interfaces() {
+	local interfaces=""
+	local lan_iface
+	local wan_iface
+
+	# Get LAN interface
+	lan_iface=$(uci -q get network.lan.device)
+	[ -z "$lan_iface" ] && lan_iface=$(uci -q get network.lan.ifname)
+	[ -z "$lan_iface" ] && lan_iface="br-lan"
+
+	# Get WAN interface
+	wan_iface=$(uci -q get network.wan.device)
+	[ -z "$wan_iface" ] && wan_iface=$(uci -q get network.wan.ifname)
+	[ -z "$wan_iface" ] && wan_iface="eth1"
+
+	interfaces="$lan_iface $wan_iface"
+
+	echo "$interfaces"
+}
+
+# Function to merge bouncer config into main crowdsec config
+merge_config() {
+	# Check if bouncer section already exists in main config
+	if ! uci -q get crowdsec.bouncer >/dev/null 2>&1; then
+		echo "Creating bouncer section in /etc/config/crowdsec..."
+
+		# Copy from template if it exists
+		if [ -f "$BOUNCER_CONFIG" ]; then
+			# Read values from bouncer config template
+			uci -q import crowdsec < "$BOUNCER_CONFIG"
+		else
+			# Create basic bouncer section
+			uci set crowdsec.bouncer=bouncer
+			uci set crowdsec.bouncer.enabled='0'
+			uci set crowdsec.bouncer.ipv4='1'
+			uci set crowdsec.bouncer.ipv6='1'
+			uci set crowdsec.bouncer.api_url='http://127.0.0.1:8080/'
+			uci set crowdsec.bouncer.update_frequency='10s'
+			uci set crowdsec.bouncer.deny_action='drop'
+			uci set crowdsec.bouncer.deny_log='1'
+			uci set crowdsec.bouncer.log_prefix='CrowdSec: '
+			uci set crowdsec.bouncer.log_level='info'
+			uci set crowdsec.bouncer.filter_input='1'
+			uci set crowdsec.bouncer.filter_forward='1'
+		fi
+
+		# Auto-detect and set interfaces
+		local ifaces
+		ifaces=$(detect_interfaces)
+		uci delete crowdsec.bouncer.interface 2>/dev/null
+		for iface in $ifaces; do
+			uci add_list crowdsec.bouncer.interface="$iface"
+		done
+
+		uci commit crowdsec
+	fi
+}
+
+# Function to load nftables kernel modules
+load_nftables_modules() {
+	modprobe nf_tables 2>/dev/null
+	modprobe nft_chain_nat 2>/dev/null
+	modprobe nf_nat 2>/dev/null
+}
+
+# Main execution
+main() {
+	echo "Configuring CrowdSec Firewall Bouncer..."
+
+	# Merge configuration
+	merge_config
+
+	# Load required kernel modules
+	load_nftables_modules
+
+	# Check if CrowdSec is available
+	if ! check_crowdsec; then
+		echo "CrowdSec not ready. Bouncer registration skipped."
+		echo "Run 'cscli bouncers add $BOUNCER_NAME' manually after starting crowdsec."
+		exit 0
+	fi
+
+	# Register bouncer
+	if register_bouncer; then
+		echo "Bouncer configuration complete"
+		echo "Enable the bouncer with: uci set crowdsec.bouncer.enabled='1'; uci commit crowdsec"
+		echo "Start the service with: /etc/init.d/crowdsec-firewall-bouncer enable && /etc/init.d/crowdsec-firewall-bouncer start"
+	else
+		echo "Bouncer registration failed. You may need to register manually:"
+		echo "  cscli bouncers add $BOUNCER_NAME"
+	fi
+}
+
+# Run main function
+main
+
+# Cleanup: remove this script after execution
+rm -f /etc/uci-defaults/99_crowdsec-bouncer
+
+exit 0
