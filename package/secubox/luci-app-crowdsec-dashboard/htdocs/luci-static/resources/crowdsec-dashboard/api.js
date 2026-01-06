@@ -145,6 +145,39 @@ var callDeleteBouncer = rpc.declare({
 	expect: { success: false }
 });
 
+// Firewall Bouncer Management
+var callFirewallBouncerStatus = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'firewall_bouncer_status',
+	expect: { }
+});
+
+var callControlFirewallBouncer = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'control_firewall_bouncer',
+	params: ['action'],
+	expect: { success: false }
+});
+
+var callFirewallBouncerConfig = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'firewall_bouncer_config',
+	expect: { }
+});
+
+var callUpdateFirewallBouncerConfig = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'update_firewall_bouncer_config',
+	params: ['key', 'value'],
+	expect: { success: false }
+});
+
+var callNftablesStats = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'nftables_stats',
+	expect: { }
+});
+
 function formatDuration(seconds) {
 	if (!seconds) return 'N/A';
 	if (seconds < 60) return seconds + 's';
@@ -187,6 +220,13 @@ return baseclass.extend({
 	updateHub: callUpdateHub,
 	registerBouncer: callRegisterBouncer,
 	deleteBouncer: callDeleteBouncer,
+
+	// Firewall Bouncer Management
+	getFirewallBouncerStatus: callFirewallBouncerStatus,
+	controlFirewallBouncer: callControlFirewallBouncer,
+	getFirewallBouncerConfig: callFirewallBouncerConfig,
+	updateFirewallBouncerConfig: callUpdateFirewallBouncerConfig,
+	getNftablesStats: callNftablesStats,
 
 	formatDuration: formatDuration,
 	formatDate: formatDate,
