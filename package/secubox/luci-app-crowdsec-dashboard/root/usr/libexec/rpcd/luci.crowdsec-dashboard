@@ -23,7 +23,7 @@ check_cscli() {
 	fi
 
 	# Check if crowdsec service is running
-	if ! pgrep -x crowdsec >/dev/null 2>&1; then
+	if ! pgrep crowdsec >/dev/null 2>&1; then
 		echo '{"error": "crowdsec service not running"}'
 		exit 1
 	fi
@@ -107,7 +107,7 @@ get_status() {
 	json_init
 	
 	# CrowdSec service
-	if pgrep -x crowdsec >/dev/null 2>&1; then
+	if pgrep crowdsec >/dev/null 2>&1; then
 		json_add_string "crowdsec" "running"
 	else
 		json_add_string "crowdsec" "stopped"
