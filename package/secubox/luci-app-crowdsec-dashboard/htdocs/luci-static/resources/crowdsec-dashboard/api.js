@@ -198,11 +198,18 @@ return baseclass.extend({
 			callDecisions(),
 			callAlerts()
 		]).then(function(results) {
+			// Check if any result has an error (service not running)
+			var status = results[0] || {};
+			var stats = results[1] || {};
+			var decisions = results[2] || {};
+			var alerts = results[3] || {};
+
 			return {
-				status: results[0] || {},
-				stats: results[1] || {},
-				decisions: (results[2] && results[2].decisions) || [],
-				alerts: (results[3] && results[3].alerts) || []
+				status: status,
+				stats: (stats.error) ? {} : stats,
+				decisions: (decisions.error) ? [] : (decisions.decisions || []),
+				alerts: (alerts.error) ? [] : (alerts.alerts || []),
+				error: stats.error || decisions.error || alerts.error || null
 			};
 		});
 	}

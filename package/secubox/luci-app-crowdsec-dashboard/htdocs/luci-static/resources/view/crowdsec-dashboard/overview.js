@@ -4,6 +4,7 @@
 'require dom';
 'require poll';
 'require ui';
+'require fs';
 'require crowdsec-dashboard/api as api';
 
 /**
@@ -399,9 +400,30 @@ return view.extend({
 		var decisions = data.decisions || [];
 		var alerts = data.alerts || [];
 		var logs = this.logs || [];
-		
+
+		// Check if service is not running
+		var serviceWarning = null;
+		if (data.error && status.crowdsec !== 'running') {
+			serviceWarning = E('div', { 'class': 'cs-warning-banner' }, [
+				E('div', { 'class': 'cs-warning-icon' }, '⚠️'),
+				E('div', { 'class': 'cs-warning-content' }, [
+					E('div', { 'class': 'cs-warning-title' }, 'CrowdSec Service Not Running'),
+					E('div', { 'class': 'cs-warning-message' }, [
+						'The CrowdSec engine is currently stopped. ',
+						E('a', {
+							'href': '#',
+							'click': ui.createHandlerFn(this, 'startCrowdSec')
+						}, 'Click here to start the service'),
+						' or use the command: ',
+						E('code', {}, '/etc/init.d/crowdsec start')
+					])
+				])
+			]);
+		}
+
 		return E('div', {}, [
 			this.renderHeader(status),
+			serviceWarning,
 			this.renderStatsGrid(stats, decisions),
 			
 			E('div', { 'class': 'cs-charts-row' }, [
@@ -440,6 +462,37 @@ return view.extend({
 			]),
 			
 			this.renderBanModal()
+		]);
+	},
+
+	startCrowdSec: function(ev) {
+		var self = this;
+		ev.preventDefault();
+
+		ui.showModal(_('Start CrowdSec'), [
+			E('p', {}, _('Do you want to start the CrowdSec service?')),
+			E('div', { 'class': 'right' }, [
+				E('button', {
+					'class': 'btn',
+					'click': ui.hideModal
+				}, _('Cancel')),
+				' ',
+				E('button', {
+					'class': 'btn cbi-button-positive',
+					'click': function() {
+						return fs.exec('/etc/init.d/crowdsec', ['start']).then(function() {
+							ui.hideModal();
+							self.showToast('CrowdSec service started', 'success');
+							setTimeout(function() {
+								return self.refreshDashboard();
+							}, 2000);
+						}).catch(function(err) {
+							ui.hideModal();
+							self.showToast('Failed to start service: ' + err, 'error');
+						});
+					}
+				}, _('Start Service'))
+			])
 		]);
 	},
 

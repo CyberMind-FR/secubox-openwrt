@@ -849,3 +849,48 @@
 	border-radius: var(--cs-radius);
 	border: 1px solid var(--cs-border);
 }
+
+/* Warning banner */
+.cs-warning-banner {
+	display: flex;
+	align-items: flex-start;
+	gap: 1rem;
+	padding: 1rem;
+	margin: 1rem 0;
+	background: #fff3cd;
+	border: 1px solid #ffc107;
+	border-radius: 0.5rem;
+}
+
+.cs-warning-icon {
+	font-size: 1.5rem;
+	line-height: 1;
+}
+
+.cs-warning-content {
+	flex: 1;
+}
+
+.cs-warning-title {
+	font-weight: 600;
+	color: #856404;
+	margin-bottom: 0.5rem;
+}
+
+.cs-warning-message {
+	color: #856404;
+	line-height: 1.5;
+}
+
+.cs-warning-message a {
+	color: #0056b3;
+	text-decoration: underline;
+}
+
+.cs-warning-message code {
+	background: #f8f9fa;
+	padding: 0.2rem 0.4rem;
+	border-radius: 0.25rem;
+	font-family: monospace;
+	color: #d63384;
+}
