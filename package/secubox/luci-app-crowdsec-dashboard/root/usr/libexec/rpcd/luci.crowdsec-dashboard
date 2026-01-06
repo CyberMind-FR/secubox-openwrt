@@ -15,10 +15,16 @@ secubox_log() {
 
 CSCLI="/usr/bin/cscli"
 
-# Check if cscli exists
+# Check if cscli exists and crowdsec is running
 check_cscli() {
 	if [ ! -x "$CSCLI" ]; then
 		echo '{"error": "cscli not found"}'
+		exit 1
+	fi
+
+	# Check if crowdsec service is running
+	if ! pgrep -x crowdsec >/dev/null 2>&1; then
+		echo '{"error": "crowdsec service not running"}'
 		exit 1
 	fi
 }
