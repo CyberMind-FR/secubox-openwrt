@@ -148,19 +148,74 @@ return view.extend({
 		o.datatype = 'uinteger';
 		o.placeholder = '3600';
 
-		o = s.option(form.Value, 'max_flows',
-			E('span', [
-				E('i', { 'class': 'fa fa-database', 'style': 'margin-right: 0.5rem' }),
-				_('Maximum Flows')
-			]),
-			_('Maximum number of concurrent flows to track (higher values use more memory)')
-		);
-		o.default = '10000';
-		o.datatype = 'uinteger';
-		o.placeholder = '10000';
+	o = s.option(form.Value, 'max_flows',
+		E('span', [
+			E('i', { 'class': 'fa fa-database', 'style': 'margin-right: 0.5rem' }),
+			_('Maximum Flows')
+		]),
+		_('Maximum number of concurrent flows to track (higher values use more memory)')
+	);
+	o.default = '10000';
+	o.datatype = 'uinteger';
+	o.placeholder = '10000';
 
-		// ========== Monitoring Settings Section ==========
-		s = m.section(form.TypedSection, 'monitoring',
+	// ========== Flow Export Settings ==========
+	s = m.section(form.TypedSection, 'sink',
+		E('span', [
+			E('i', { 'class': 'fa fa-stream', 'style': 'margin-right: 0.5rem' }),
+			_('Flow Export')
+		])
+	);
+	s.anonymous = true;
+	s.addremove = false;
+	s.description = _('Control how Netifyd exports flow data (sinks can be a UNIX socket or TCP listener).');
+
+	o = s.option(form.Flag, 'enabled',
+		E('span', [
+			E('i', { 'class': 'fa fa-toggle-on', 'style': 'margin-right: 0.5rem' }),
+			_('Enable Flow Sink')
+		]),
+		_('Automatically configure Netifyd to export flow summaries for dashboards or collectors')
+	);
+	o.default = '0';
+
+	o = s.option(form.ListValue, 'type',
+		E('span', [
+			E('i', { 'class': 'fa fa-plug', 'style': 'margin-right: 0.5rem' }),
+			_('Sink Type')
+		]),
+		_('Choose how Netifyd exposes flow exports (UNIX socket is strongly recommended)')
+	);
+	o.value('unix', _('Unix Domain Socket (file)'));
+	o.value('tcp', _('TCP Socket (port)'));
+	o.default = 'unix';
+	o.depends('enabled', '1');
+
+	o = s.option(form.Value, 'unix_path',
+		_('Unix Socket Path'),
+		_('Filesystem path that netifyd will write flow export JSON to')
+	);
+	o.default = '/tmp/netifyd-flows.json';
+	o.depends('type', 'unix');
+
+	o = s.option(form.Value, 'tcp_address',
+		_('TCP Listen Address'),
+		_('Bind address for the TCP sink (e.g. loopback)')
+	);
+	o.default = '127.0.0.1';
+	o.depends('type', 'tcp');
+	o.datatype = 'ipaddr';
+
+	o = s.option(form.Value, 'tcp_port',
+		_('TCP Listen Port'),
+		_('Port where Netifyd will serve exported flows')
+	);
+	o.default = '9501';
+	o.datatype = 'port';
+	o.depends('type', 'tcp');
+
+	// ========== Monitoring Settings Section ==========
+	s = m.section(form.TypedSection, 'monitoring',
 			E('span', [
 				E('i', { 'class': 'fa fa-eye', 'style': 'margin-right: 0.5rem' }),
 				_('Monitoring Features')
@@ -343,6 +398,75 @@ return view.extend({
 		o.datatype = 'uinteger';
 		o.depends('enabled', '1');
 		o.placeholder = '100';
+
+		// ========== Configuration Help Section ==========
+		s = m.section(form.TypedSection, '__help__');
+		s.anonymous = true;
+		s.addremove = false;
+		s.render = function() {
+			return E('div', {
+				'class': 'cbi-section',
+				'style': 'margin-top: 2rem'
+			}, [
+				E('div', {
+					'class': 'alert-message',
+					'style': 'background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; padding: 1.5rem; border-radius: 8px'
+				}, [
+					E('h3', { 'style': 'margin: 0 0 1rem 0; display: flex; align-items: center; gap: 0.5rem' }, [
+						E('i', { 'class': 'fa fa-info-circle' }),
+						_('Configuration Guide')
+					]),
+					E('div', { 'style': 'display: grid; gap: 1rem' }, [
+						E('div', [
+							E('strong', { 'style': 'display: block; margin-bottom: 0.5rem; font-size: 1.05em' }, [
+								E('i', { 'class': 'fa fa-lightbulb', 'style': 'margin-right: 0.5rem' }),
+								_('Recommended Configuration')
+							]),
+							E('ul', { 'style': 'margin: 0; padding-left: 1.5rem; opacity: 0.95; line-height: 1.6' }, [
+								E('li', _('Keep Auto Start enabled to ensure monitoring resumes after reboot')),
+								E('li', _('Use TCP socket type (default) for better compatibility and performance')),
+								E('li', _('Enable all monitoring features for comprehensive network visibility')),
+								E('li', _('Start with 7-day analytics retention, adjust based on storage capacity'))
+							])
+						]),
+						E('div', [
+							E('strong', { 'style': 'display: block; margin-bottom: 0.5rem; font-size: 1.05em' }, [
+								E('i', { 'class': 'fa fa-wrench', 'style': 'margin-right: 0.5rem' }),
+								_('Flow Export (Advanced)')
+							]),
+							E('p', { 'style': 'margin: 0; opacity: 0.95; line-height: 1.6' },
+								_('Flow Export is disabled by default and only needed for external integrations. The dashboard works without it. Enable only if you want to export flow data to external tools or custom collectors.'))
+						]),
+						E('div', [
+							E('strong', { 'style': 'display: block; margin-bottom: 0.5rem; font-size: 1.05em' }, [
+								E('i', { 'class': 'fa fa-exclamation-triangle', 'style': 'margin-right: 0.5rem' }),
+								_('Performance Considerations')
+							]),
+							E('ul', { 'style': 'margin: 0; padding-left: 1.5rem; opacity: 0.95; line-height: 1.6' }, [
+								E('li', _('Higher max_flows values (>10000) require more RAM - adjust based on available memory')),
+								E('li', _('SSL/TLS inspection adds CPU overhead - disable if performance issues occur')),
+								E('li', _('Longer retention periods increase storage usage - monitor /var partition space'))
+							])
+						]),
+						E('div', { 'style': 'margin-top: 0.5rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.2)' }, [
+							E('small', { 'style': 'opacity: 0.9; display: block; margin-bottom: 0.5rem' }, [
+								E('i', { 'class': 'fa fa-book', 'style': 'margin-right: 0.5rem' }),
+								_('After changing settings, click "Save & Apply" to restart the Netifyd service with new configuration.')
+							]),
+							E('small', { 'style': 'opacity: 0.9; display: block' }, [
+								_('For detailed flow analysis and cloud features, visit '),
+								E('a', {
+									'href': 'https://dashboard.netify.ai',
+									'target': '_blank',
+									'style': 'color: white; text-decoration: underline; font-weight: 600'
+								}, 'Netify.ai Dashboard'),
+								_(' (requires CAPI registration in netifyd configuration)')
+							])
+						])
+					])
+				])
+			]);
+		};
 
 		return m.render();
 	}

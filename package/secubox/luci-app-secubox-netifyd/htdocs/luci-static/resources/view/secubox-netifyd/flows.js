@@ -7,19 +7,15 @@
 
 return view.extend({
 	refreshInterval: 3,
-	flowsData: [],
-	statsData: {},
-	isPaused: false,
-	flowsContainer: null,
 	statsContainer: null,
-	filterProtocol: '',
-	filterApplication: '',
-	searchQuery: '',
+	interfaceContainer: null,
+	trendsContainer: null,
+	isPaused: false,
 
 	load: function() {
 		return Promise.all([
-			netifydAPI.getRealtimeFlows(),
-			netifydAPI.getFlowStatistics()
+			netifydAPI.getDashboard(),
+			netifydAPI.getServiceStatus()
 		]);
 	},
 
@@ -30,388 +26,255 @@ return view.extend({
 			btn.innerHTML = '<i class="fa fa-play"></i> ' + _('Resume');
 			btn.classList.remove('btn-warning');
 			btn.classList.add('btn-success');
+			poll.stop();
 		} else {
 			btn.innerHTML = '<i class="fa fa-pause"></i> ' + _('Pause');
 			btn.classList.remove('btn-success');
 			btn.classList.add('btn-warning');
+			poll.start();
 		}
 	},
 
-	handleExport: function(format, ev) {
-		ui.showModal(_('Export Flows'), [
-			E('p', { 'class': 'spinning' }, _('Exporting flows to %s...').format(format.toUpperCase()))
-		]);
+	renderFlowOverview: function(stats) {
+		if (!stats) {
+			return E('div', {
+				'class': 'alert-message warning',
+				'style': 'text-align: center; padding: 2rem'
+			}, _('No flow statistics available'));
+		}
 
-		netifydAPI.exportFlows(format).then(function(result) {
-			ui.hideModal();
-			if (result.success) {
-				ui.addNotification(null, E('p', _('Flows exported to: %s').format(result.file)), 'info');
-			} else {
-				ui.addNotification(null, E('p', result.message || _('Export failed')), 'error');
+		var cards = [
+			{
+				title: _('Total Flows'),
+				value: (stats.active_flows || 0).toString(),
+				subtitle: _('Currently tracked'),
+				icon: 'stream',
+				color: '#3b82f6',
+				gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+			},
+			{
+				title: _('Active Flows'),
+				value: (stats.flows_active || 0).toString(),
+				subtitle: _('In progress'),
+				icon: 'play-circle',
+				color: '#10b981',
+				gradient: 'linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)'
+			},
+			{
+				title: _('Expired Flows'),
+				value: (stats.flows_expired || 0).toString(),
+				subtitle: _('Completed'),
+				icon: 'check-circle',
+				color: '#f59e0b',
+				gradient: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)'
+			},
+			{
+				title: _('Purged Flows'),
+				value: (stats.flows_purged || 0).toString(),
+				subtitle: _('Cleaned up'),
+				icon: 'trash-alt',
+				color: '#ef4444',
+				gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
 			}
-		}).catch(function(err) {
-			ui.hideModal();
-			ui.addNotification(null, E('p', _('Error: %s').format(err.message)), 'error');
-		});
-	},
-
-	handleClearCache: function(ev) {
-		ui.showConfirmation(_('Clear Flow Cache'), _('Are you sure you want to clear the flow cache? This will remove all cached flow data.'), function() {
-			netifydAPI.clearCache().then(function(result) {
-				if (result.success) {
-					ui.addNotification(null, E('p', result.message || _('Cache cleared')), 'info');
-					window.location.reload();
-				} else {
-					ui.addNotification(null, E('p', result.message || _('Failed to clear cache')), 'error');
-				}
-			});
-		}.bind(this));
-	},
-
-	filterFlows: function(flows) {
-		var filtered = flows;
-
-		// Apply protocol filter
-		if (this.filterProtocol) {
-			filtered = filtered.filter(function(flow) {
-				return (flow.protocol || '').toLowerCase() === this.filterProtocol.toLowerCase();
-			}.bind(this));
-		}
-
-		// Apply application filter
-		if (this.filterApplication) {
-			filtered = filtered.filter(function(flow) {
-				return (flow.application || flow.app || '').toLowerCase() === this.filterApplication.toLowerCase();
-			}.bind(this));
-		}
-
-		// Apply search query
-		if (this.searchQuery) {
-			var query = this.searchQuery.toLowerCase();
-			filtered = filtered.filter(function(flow) {
-				var srcIp = (flow.ip_orig || flow.src_ip || '').toLowerCase();
-				var dstIp = (flow.ip_resp || flow.dst_ip || '').toLowerCase();
-				var app = (flow.application || flow.app || '').toLowerCase();
-				var proto = (flow.protocol || '').toLowerCase();
-				return srcIp.indexOf(query) >= 0 || dstIp.indexOf(query) >= 0 ||
-				       app.indexOf(query) >= 0 || proto.indexOf(query) >= 0;
-			}.bind(this));
-		}
-
-		return filtered;
-	},
-
-	renderToolbar: function(flowsData) {
-		var self = this;
-
-		// Get unique protocols and applications for filters
-		var protocols = {};
-		var applications = {};
-		(flowsData.flows || []).forEach(function(flow) {
-			var proto = flow.protocol || 'Unknown';
-			var app = flow.application || flow.app || 'Unknown';
-			protocols[proto] = (protocols[proto] || 0) + 1;
-			applications[app] = (applications[app] || 0) + 1;
-		});
+		];
 
 		return E('div', {
-			'class': 'cbi-section-node',
-			'style': 'background: #f9fafb; padding: 1rem; border-radius: 8px; margin-bottom: 1rem'
-		}, [
-			E('div', {
-				'style': 'display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 0.75rem; align-items: center'
+			'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem'
+		}, cards.map(function(card) {
+			return E('div', {
+				'style': 'background: ' + card.gradient + '; color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1)'
 			}, [
-				// Search
-				E('div', [
-					E('label', { 'style': 'font-size: 0.9em; display: block; margin-bottom: 0.25rem' }, [
-						E('i', { 'class': 'fa fa-search' }),
-						' ',
-						_('Search')
-					]),
-					E('input', {
-						'type': 'text',
-						'class': 'cbi-input-text',
-						'placeholder': _('IP, app, protocol...'),
-						'style': 'width: 100%',
-						'value': this.searchQuery,
-						'keyup': function(ev) {
-							self.searchQuery = ev.target.value;
-							self.updateFlowsTable();
-						}
-					})
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem' }, [
+					E('div', { 'style': 'font-size: 0.9em; opacity: 0.9' }, card.title),
+					E('i', { 'class': 'fa fa-' + card.icon, 'style': 'font-size: 2em; opacity: 0.3' })
 				]),
+				E('div', { 'style': 'font-size: 2.5em; font-weight: bold; margin-bottom: 0.5rem' }, card.value),
+				card.subtitle ? E('div', { 'style': 'font-size: 0.85em; opacity: 0.8' }, card.subtitle) : null
+			]);
+		}));
+	},
 
-				// Protocol Filter
-				E('div', [
-					E('label', { 'style': 'font-size: 0.9em; display: block; margin-bottom: 0.25rem' }, [
-						E('i', { 'class': 'fa fa-filter' }),
-						' ',
-						_('Protocol')
-					]),
-					E('select', {
-						'class': 'cbi-input-select',
-						'style': 'width: 100%',
-						'change': function(ev) {
-							self.filterProtocol = ev.target.value;
-							self.updateFlowsTable();
-						}
-					}, [
-						E('option', { 'value': '' }, _('All Protocols')),
-						Object.keys(protocols).sort().map(function(proto) {
-							return E('option', { 'value': proto }, proto + ' (' + protocols[proto] + ')');
-						})
-					])
-				]),
+	renderInterfaceFlows: function(interfaces, stats) {
+		if (!interfaces || Object.keys(interfaces).length === 0) {
+			return null;
+		}
 
-				// Application Filter
-				E('div', [
-					E('label', { 'style': 'font-size: 0.9em; display: block; margin-bottom: 0.25rem' }, [
-						E('i', { 'class': 'fa fa-filter' }),
-						' ',
-						_('Application')
-					]),
-					E('select', {
-						'class': 'cbi-input-select',
-						'style': 'width: 100%',
-						'change': function(ev) {
-							self.filterApplication = ev.target.value;
-							self.updateFlowsTable();
-						}
-					}, [
-						E('option', { 'value': '' }, _('All Applications')),
-						Object.keys(applications).sort().map(function(app) {
-							return E('option', { 'value': app }, app + ' (' + applications[app] + ')');
-						})
-					])
-				]),
+		var interfaceList = [];
+		for (var iface in interfaces) {
+			if (interfaces.hasOwnProperty(iface)) {
+				var ifaceStats = interfaces[iface];
+				interfaceList.push({
+					name: iface,
+					tcp: ifaceStats.tcp_packets || 0,
+					udp: ifaceStats.udp_packets || 0,
+					icmp: ifaceStats.icmp_packets || 0,
+					bytes: ifaceStats.wire_bytes || 0,
+					dropped: ifaceStats.dropped || 0
+				});
+			}
+		}
 
-				// Actions
-				E('div', [
-					E('label', { 'style': 'font-size: 0.9em; display: block; margin-bottom: 0.25rem; opacity: 0' }, '-'),
-					E('div', { 'class': 'btn-group' }, [
-						E('button', {
-							'class': 'btn btn-sm btn-warning',
-							'click': ui.createHandlerFn(this, 'handlePauseResume')
-						}, [
-							E('i', { 'class': 'fa fa-pause' }),
-							' ',
-							_('Pause')
-						]),
-						E('button', {
-							'class': 'btn btn-sm btn-primary',
-							'click': ui.createHandlerFn(this, 'handleExport', 'json')
-						}, [
-							E('i', { 'class': 'fa fa-download' }),
-							' ',
-							_('Export')
-						]),
-						E('button', {
-							'class': 'btn btn-sm btn-danger',
-							'click': ui.createHandlerFn(this, 'handleClearCache')
-						}, [
-							E('i', { 'class': 'fa fa-trash' })
-						])
-					])
-				])
+		return E('div', { 'class': 'cbi-section' }, [
+			E('h3', [
+				E('i', { 'class': 'fa fa-network-wired', 'style': 'margin-right: 0.5rem' }),
+				_('Flow Activity by Interface')
 			]),
+			E('div', { 'class': 'cbi-section-node' }, [
+				E('div', { 'class': 'table', 'style': 'font-size: 0.95em' }, [
+					// Header
+					E('div', { 'class': 'tr table-titles' }, [
+						E('div', { 'class': 'th', 'style': 'width: 25%' }, _('Interface')),
+						E('div', { 'class': 'th center', 'style': 'width: 15%' }, _('TCP')),
+						E('div', { 'class': 'th center', 'style': 'width: 15%' }, _('UDP')),
+						E('div', { 'class': 'th center', 'style': 'width: 15%' }, _('ICMP')),
+						E('div', { 'class': 'th right', 'style': 'width: 20%' }, _('Total Traffic')),
+						E('div', { 'class': 'th center', 'style': 'width: 10%' }, _('Status'))
+					]),
+					// Rows
+					interfaceList.map(function(iface) {
+						var totalPackets = iface.tcp + iface.udp + iface.icmp;
+						var isActive = totalPackets > 0;
 
-			// Info bar
-			E('div', {
-				'class': 'alert alert-info',
-				'style': 'margin-top: 0.75rem; margin-bottom: 0; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap'
-			}, [
-				E('span', [
-					E('i', { 'class': 'fa fa-circle', 'style': 'color: ' + (flowsData.source === 'socket' ? '#10b981' : '#f59e0b') }),
-					' ',
-					E('strong', _('Source:')),
-					' ',
-					flowsData.source === 'socket' ? _('Live Socket') : _('Cached Dump')
-				]),
-				E('span', [
-					E('i', { 'class': 'fa fa-sync' }),
-					' ',
-					E('strong', _('Refresh:')),
-					' ',
-					_('Every %d seconds').format(this.refreshInterval)
-				]),
-				E('span', [
-					E('i', { 'class': 'fa fa-database' }),
-					' ',
-					E('strong', _('Total Flows:')),
-					' ',
-					(flowsData.flows || []).length
+						return E('div', { 'class': 'tr' }, [
+							E('div', { 'class': 'td', 'style': 'width: 25%' }, [
+								E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem' }, [
+									E('i', { 'class': 'fa fa-ethernet', 'style': 'color: ' + (isActive ? '#3b82f6' : '#9ca3af') }),
+									E('strong', iface.name)
+								])
+							]),
+							E('div', { 'class': 'td center', 'style': 'width: 15%' }, [
+								E('span', {
+									'class': 'badge',
+									'style': 'background: #3b82f6; color: white'
+								}, iface.tcp.toLocaleString())
+							]),
+							E('div', { 'class': 'td center', 'style': 'width: 15%' }, [
+								E('span', {
+									'class': 'badge',
+									'style': 'background: #10b981; color: white'
+								}, iface.udp.toLocaleString())
+							]),
+							E('div', { 'class': 'td center', 'style': 'width: 15%' }, [
+								E('span', {
+									'class': 'badge',
+									'style': 'background: #f59e0b; color: white'
+								}, iface.icmp.toLocaleString())
+							]),
+							E('div', { 'class': 'td right', 'style': 'width: 20%' },
+								netifydAPI.formatBytes(iface.bytes)),
+							E('div', { 'class': 'td center', 'style': 'width: 10%' }, [
+								isActive ? E('i', {
+									'class': 'fa fa-circle',
+									'style': 'color: #10b981',
+									'title': _('Active')
+								}) : E('i', {
+									'class': 'fa fa-circle',
+									'style': 'color: #9ca3af',
+									'title': _('Idle')
+								}),
+								iface.dropped > 0 ? E('span', {
+									'class': 'badge',
+									'style': 'background: #ef4444; color: white; margin-left: 0.5rem; font-size: 0.75em'
+								}, iface.dropped + ' ⚠') : null
+							])
+						]);
+					})
 				])
 			])
 		]);
 	},
 
-	renderStatsSummary: function(stats) {
+	renderProtocolBreakdown: function(stats) {
 		if (!stats) return null;
 
-		var rateInMbps = ((stats.rate_bytes_in || 0) * 8 / 1000000).toFixed(2);
-		var rateOutMbps = ((stats.rate_bytes_out || 0) * 8 / 1000000).toFixed(2);
+		var tcp = stats.tcp_packets || 0;
+		var udp = stats.udp_packets || 0;
+		var icmp = stats.icmp_packets || 0;
+		var total = tcp + udp + icmp;
 
-		var statItems = [
+		if (total === 0) {
+			return E('div', {
+				'class': 'alert-message info',
+				'style': 'text-align: center; padding: 2rem'
+			}, _('No packet data available yet'));
+		}
+
+		var protocols = [
 			{
-				label: _('Total Flows'),
-				value: (stats.total_flows || 0).toString(),
-				icon: 'exchange-alt',
-				color: '#3b82f6'
+				name: 'TCP',
+				packets: tcp,
+				percentage: (tcp / total * 100).toFixed(1),
+				color: '#3b82f6',
+				icon: 'exchange-alt'
 			},
 			{
-				label: _('Downloaded'),
-				value: netifydAPI.formatBytes(stats.total_bytes_in || 0),
-				icon: 'download',
-				color: '#10b981'
+				name: 'UDP',
+				packets: udp,
+				percentage: (udp / total * 100).toFixed(1),
+				color: '#10b981',
+				icon: 'paper-plane'
 			},
 			{
-				label: _('Uploaded'),
-				value: netifydAPI.formatBytes(stats.total_bytes_out || 0),
-				icon: 'upload',
-				color: '#f59e0b'
-			},
-			{
-				label: _('Download Rate'),
-				value: rateInMbps + ' Mbps',
-				icon: 'arrow-down',
-				color: '#14b8a6'
-			},
-			{
-				label: _('Upload Rate'),
-				value: rateOutMbps + ' Mbps',
-				icon: 'arrow-up',
-				color: '#ef4444'
+				name: 'ICMP',
+				packets: icmp,
+				percentage: (icmp / total * 100).toFixed(1),
+				color: '#f59e0b',
+				icon: 'broadcast-tower'
 			}
 		];
 
-		return E('div', {
-			'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem'
-		}, statItems.map(function(item) {
-			return E('div', {
-				'style': 'background: linear-gradient(135deg, ' + item.color + '22 0%, ' + item.color + '11 100%); border-left: 4px solid ' + item.color + '; padding: 1rem; border-radius: 6px'
-			}, [
-				E('div', { 'style': 'font-size: 0.85em; color: #6b7280; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem' }, [
-					E('i', { 'class': 'fa fa-' + item.icon, 'style': 'color: ' + item.color }),
-					item.label
-				]),
-				E('div', { 'style': 'font-size: 1.5em; font-weight: bold; color: ' + item.color }, item.value)
-			]);
-		}));
-	},
-
-	renderFlowsTable: function(flows) {
-		if (!flows || flows.length === 0) {
-			return E('div', {
-				'class': 'alert-message info',
-				'style': 'text-align: center; padding: 3rem'
-			}, [
-				E('i', { 'class': 'fa fa-stream', 'style': 'font-size: 3em; opacity: 0.3; display: block; margin-bottom: 1rem' }),
-				E('h4', _('No Active Flows')),
-				E('p', { 'class': 'text-muted' }, _('Waiting for network traffic to be detected...')),
-				E('small', _('Make sure Netifyd service is running and capturing traffic'))
-			]);
-		}
-
-		// Apply filters
-		var filteredFlows = this.filterFlows(flows);
-
-		// Limit display for performance
-		var displayFlows = filteredFlows.slice(0, 200);
-
-		return E('div', [
-			E('div', { 'class': 'table', 'style': 'font-size: 0.9em' }, [
-				// Header
-				E('div', { 'class': 'tr table-titles' }, [
-					E('div', { 'class': 'th', 'style': 'width: 18%' }, _('Source')),
-					E('div', { 'class': 'th', 'style': 'width: 18%' }, _('Destination')),
-					E('div', { 'class': 'th center', 'style': 'width: 12%' }, _('Protocol')),
-					E('div', { 'class': 'th center', 'style': 'width: 15%' }, _('Application')),
-					E('div', { 'class': 'th right', 'style': 'width: 12%' }, _('Traffic')),
-					E('div', { 'class': 'th center', 'style': 'width: 10%' }, _('Packets')),
-					E('div', { 'class': 'th center', 'style': 'width: 10%' }, _('Duration'))
-				]),
-
-				// Rows
-				displayFlows.map(function(flow, idx) {
-					var srcIp = flow.ip_orig || flow.src_ip || 'N/A';
-					var dstIp = flow.ip_resp || flow.dst_ip || 'N/A';
-					var srcPort = flow.port_orig || flow.src_port || '';
-					var dstPort = flow.port_resp || flow.dst_port || '';
-					var protocol = flow.protocol || 'Unknown';
-					var application = flow.application || flow.app || 'Unknown';
-					var bytes = (flow.bytes_orig || 0) + (flow.bytes_resp || 0);
-					var packets = (flow.packets_orig || 0) + (flow.packets_resp || 0);
-					var duration = flow.duration || 0;
-
-					// Protocol colors
-					var protoColors = {
-						'TCP': '#3b82f6',
-						'UDP': '#10b981',
-						'ICMP': '#f59e0b',
-						'HTTP': '#14b8a6',
-						'HTTPS': '#8b5cf6'
-					};
-					var protoColor = protoColors[protocol] || '#6b7280';
-
-					return E('div', { 'class': 'tr', 'style': idx % 2 === 0 ? 'background: #f9fafb' : '' }, [
-						E('div', { 'class': 'td', 'style': 'width: 18%' }, [
-							E('code', { 'style': 'font-size: 0.85em' }, srcIp),
-							srcPort ? E('span', { 'class': 'text-muted', 'style': 'font-size: 0.8em' }, ':' + srcPort) : ''
-						]),
-						E('div', { 'class': 'td', 'style': 'width: 18%' }, [
-							E('code', { 'style': 'font-size: 0.85em' }, dstIp),
-							dstPort ? E('span', { 'class': 'text-muted', 'style': 'font-size: 0.8em' }, ':' + dstPort) : ''
-						]),
-						E('div', { 'class': 'td center', 'style': 'width: 12%' }, [
-							E('span', {
-								'class': 'badge',
-								'style': 'background: ' + protoColor + '; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75em'
-							}, protocol)
-						]),
-						E('div', { 'class': 'td center', 'style': 'width: 15%' }, [
-							E('span', {
-								'class': 'badge',
-								'style': 'background: #6366f1; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75em'
-							}, application)
-						]),
-						E('div', { 'class': 'td right', 'style': 'width: 12%' },
-							netifydAPI.formatBytes(bytes)),
-						E('div', { 'class': 'td center', 'style': 'width: 10%' },
-							packets.toString()),
-						E('div', { 'class': 'td center', 'style': 'width: 10%' },
-							duration > 0 ? netifydAPI.formatDuration(duration) : '-')
-					]);
-				}.bind(this))
+		return E('div', { 'class': 'cbi-section' }, [
+			E('h3', [
+				E('i', { 'class': 'fa fa-chart-pie', 'style': 'margin-right: 0.5rem' }),
+				_('Protocol Distribution')
 			]),
-
-			// Pagination info
-			filteredFlows.length > 200 ? E('div', {
-				'class': 'alert alert-warning',
-				'style': 'margin-top: 1rem; text-align: center'
-			}, _('Showing 200 of %d flows. Use filters to narrow results.').format(filteredFlows.length)) : null,
-
-			filteredFlows.length === 0 && flows.length > 0 ? E('div', {
-				'class': 'alert alert-info',
-				'style': 'margin-top: 1rem; text-align: center'
-			}, _('No flows match the current filters')) : null
+			E('div', { 'class': 'cbi-section-node' }, [
+				E('div', {
+					'style': 'background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1.5rem'
+				}, [
+					E('div', { 'style': 'display: grid; gap: 1.5rem' }, protocols.map(function(proto) {
+						return E('div', [
+							E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem' }, [
+								E('div', { 'style': 'display: flex; align-items: center; gap: 0.75rem' }, [
+									E('i', {
+										'class': 'fa fa-' + proto.icon,
+										'style': 'color: ' + proto.color + '; font-size: 1.5em'
+									}),
+									E('div', [
+										E('div', { 'style': 'font-weight: 600; color: ' + proto.color }, proto.name),
+										E('div', { 'style': 'font-size: 0.85em; color: #6b7280' },
+											proto.packets.toLocaleString() + ' packets')
+									])
+								]),
+								E('div', { 'style': 'text-align: right' }, [
+									E('div', { 'style': 'font-size: 1.5em; font-weight: bold; color: ' + proto.color },
+										proto.percentage + '%')
+								])
+							]),
+							E('div', { 'style': 'background: #f3f4f6; height: 12px; border-radius: 6px; overflow: hidden' }, [
+								E('div', {
+									'style': 'background: ' + proto.color + '; height: 100%; width: ' + proto.percentage + '%; transition: width 0.3s ease'
+								})
+							])
+						]);
+					}))
+				])
+			])
 		]);
 	},
 
-	updateFlowsTable: function() {
-		if (this.flowsContainer && this.flowsData) {
-			dom.content(this.flowsContainer, this.renderFlowsTable(this.flowsData));
-		}
-	},
-
 	render: function(data) {
-		var flowsData = data[0] || { flows: [] };
-		var statsData = data[1] || {};
-
-		// Store data
-		this.flowsData = flowsData.flows || [];
-		this.statsData = statsData;
+		var dashboard = data[0] || {};
+		var status = data[1] || {};
+		var stats = dashboard.stats || {};
+		var interfaces = dashboard.interfaces || {};
 
 		var self = this;
+
+		// Create containers
+		self.statsContainer = E('div');
+		self.interfaceContainer = E('div');
+		self.protocolContainer = E('div');
 
 		// Set up polling
 		poll.add(L.bind(function() {
@@ -420,98 +283,124 @@ return view.extend({
 			}
 
 			return Promise.all([
-				netifydAPI.getRealtimeFlows(),
-				netifydAPI.getFlowStatistics()
+				netifydAPI.getDashboard(),
+				netifydAPI.getServiceStatus()
 			]).then(L.bind(function(result) {
-				this.flowsData = (result[0] || {}).flows || [];
-				this.statsData = result[1] || {};
+				var newDashboard = result[0] || {};
+				var newStats = newDashboard.stats || {};
+				var newInterfaces = newDashboard.interfaces || {};
 
 				// Update containers
-				if (self.flowsContainer) {
-					dom.content(self.flowsContainer, self.renderFlowsTable(self.flowsData));
-				}
 				if (self.statsContainer) {
-					dom.content(self.statsContainer, self.renderStatsSummary(self.statsData));
+					dom.content(self.statsContainer, self.renderFlowOverview(newStats));
+				}
+				if (self.interfaceContainer) {
+					dom.content(self.interfaceContainer, self.renderInterfaceFlows(newInterfaces, newStats));
+				}
+				if (self.protocolContainer) {
+					dom.content(self.protocolContainer, self.renderProtocolBreakdown(newStats));
 				}
 			}, this));
 		}, this), this.refreshInterval);
 
-		return E('div', { 'class': 'cbi-map' }, [
-			E('h2', { 'name': 'content' }, [
-				E('i', { 'class': 'fa fa-stream', 'style': 'margin-right: 0.5rem' }),
-				_('Real-Time Network Flows')
-			]),
-			E('div', { 'class': 'cbi-map-descr' },
-				_('Live monitoring of network flows detected by Netifyd DPI engine with filtering and search capabilities')),
+		var serviceRunning = status.running;
 
-			// Information banner when no flow data
-			(!this.flowsData || this.flowsData.length === 0) ? E('div', {
-				'class': 'alert-message',
-				'style': 'background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 1.5rem; margin: 1rem 0; border-radius: 8px'
-			}, [
-				E('div', { 'style': 'display: flex; align-items: flex-start; gap: 1rem' }, [
-					E('i', { 'class': 'fa fa-info-circle', 'style': 'font-size: 2em; margin-top: 0.25rem' }),
-					E('div', { 'style': 'flex: 1' }, [
-						E('h4', { 'style': 'margin: 0 0 0.5rem 0; font-size: 1.1em' }, _('Detailed Flow Data Not Available')),
-						E('p', { 'style': 'margin: 0 0 0.75rem 0; opacity: 0.95' },
-							_('Netifyd is tracking flows but detailed flow information is not being exported to SecuBox dashboard. Flow count and statistics are available, but individual flow details (IPs, protocols, bytes) are not.')),
-						E('p', { 'style': 'margin: 0; font-size: 0.9em' }, [
-							E('strong', _('Options:')),
-							E('br'),
-							_('1. Access full flow details via '),
-							E('a', {
-								'href': 'https://dashboard.netify.ai',
-								'target': '_blank',
-								'style': 'color: white; text-decoration: underline'
-							}, _('Netify.ai Cloud Dashboard')),
-							E('br'),
-							_('2. Configure local flow export (see '),
-							E('code', { 'style': 'background: rgba(0,0,0,0.2); padding: 0.2rem 0.4rem; border-radius: 3px' }, 'README-FLOW-DATA.md'),
-							_(' for instructions)')
-						])
+		return E('div', { 'class': 'cbi-map' }, [
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem' }, [
+				E('h2', { 'name': 'content', 'style': 'margin: 0' }, [
+					E('i', { 'class': 'fa fa-stream', 'style': 'margin-right: 0.5rem' }),
+					_('Network Flow Analytics')
+				]),
+				E('div', { 'style': 'display: flex; gap: 0.5rem' }, [
+					E('button', {
+						'class': 'btn btn-warning',
+						'click': ui.createHandlerFn(this, 'handlePauseResume')
+					}, [
+						E('i', { 'class': 'fa fa-pause' }),
+						' ',
+						_('Pause')
+					]),
+					E('span', {
+						'class': 'badge',
+						'style': 'padding: 0.5rem 1rem; font-size: 0.9em; background: ' + (serviceRunning ? '#10b981' : '#ef4444')
+					}, [
+						E('i', { 'class': 'fa fa-circle', 'style': 'margin-right: 0.5rem' }),
+						serviceRunning ? _('Live') : _('Offline')
 					])
 				])
+			]),
+			E('div', { 'class': 'cbi-map-descr' },
+				_('Real-time flow statistics and protocol analysis. Updates every 3 seconds.')),
+
+			// Service warning if not running
+			!serviceRunning ? E('div', {
+				'class': 'alert-message warning',
+				'style': 'margin: 1rem 0'
+			}, [
+				E('strong', _('Netifyd service is not running')),
+				E('p', _('Start the service from the Dashboard to see live flow data.'))
 			]) : null,
 
-			E('div', { 'class': 'cbi-section' }, [
-				this.renderToolbar(flowsData)
-			]),
-
+			// Flow Overview
 			E('div', { 'class': 'cbi-section' }, [
 				E('h3', [
 					E('i', { 'class': 'fa fa-chart-bar', 'style': 'margin-right: 0.5rem' }),
-					_('Flow Statistics')
+					_('Flow Overview')
 				]),
 				E('div', { 'class': 'cbi-section-node' }, [
-					self.statsContainer = E('div')
+					self.statsContainer
 				])
 			]),
 
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', [
-					E('i', { 'class': 'fa fa-list', 'style': 'margin-right: 0.5rem' }),
-					_('Active Flows'),
-					' ',
-					E('span', {
-						'class': 'badge',
-						'style': 'background: #3b82f6; color: white; margin-left: 0.5rem'
-					}, this.flowsData.length)
+			// Interface Flows
+			self.interfaceContainer,
+
+			// Protocol Breakdown
+			self.protocolContainer,
+
+			// Information panel
+			E('div', {
+				'class': 'alert-message',
+				'style': 'background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; padding: 1.5rem; margin-top: 1.5rem; border-radius: 8px'
+			}, [
+				E('h4', { 'style': 'margin: 0 0 0.75rem 0; display: flex; align-items: center; gap: 0.5rem' }, [
+					E('i', { 'class': 'fa fa-info-circle' }),
+					_('About Flow Data')
 				]),
-				E('div', { 'class': 'cbi-section-node' }, [
-					self.flowsContainer = E('div')
+				E('p', { 'style': 'margin: 0 0 0.5rem 0; opacity: 0.95' },
+					_('This view shows aggregated flow statistics from Netifyd. Individual flow details (source/destination IPs, ports) require additional sink configuration.')),
+				E('p', { 'style': 'margin: 0; font-size: 0.9em; opacity: 0.9' }, [
+					_('For detailed per-flow analysis, visit '),
+					E('a', {
+						'href': 'https://dashboard.netify.ai',
+						'target': '_blank',
+						'style': 'color: white; text-decoration: underline; font-weight: 600'
+					}, _('Netify.ai Cloud Dashboard')),
+					_(' or configure local flow export.')
 				])
 			])
 		]);
 	},
 
 	addFooter: function() {
-		// Initial render of dynamic containers
-		if (this.statsContainer) {
-			dom.content(this.statsContainer, this.renderStatsSummary(this.statsData));
-		}
-		if (this.flowsContainer) {
-			dom.content(this.flowsContainer, this.renderFlowsTable(this.flowsData));
-		}
+		// Initial render
+		return Promise.all([
+			netifydAPI.getDashboard()
+		]).then(L.bind(function(result) {
+			var dashboard = result[0] || {};
+			var stats = dashboard.stats || {};
+			var interfaces = dashboard.interfaces || {};
+
+			if (this.statsContainer) {
+				dom.content(this.statsContainer, this.renderFlowOverview(stats));
+			}
+			if (this.interfaceContainer) {
+				dom.content(this.interfaceContainer, this.renderInterfaceFlows(interfaces, stats));
+			}
+			if (this.protocolContainer) {
+				dom.content(this.protocolContainer, this.renderProtocolBreakdown(stats));
+			}
+		}, this));
 	},
 
 	handleSaveApply: null,

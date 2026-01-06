@@ -15,6 +15,7 @@ SOCKET_DUMP="/run/netifyd/sink-request.json"
 LOG_FILE="/var/log/secubox-netifyd.log"
 FLOW_CACHE="/tmp/netifyd-flows.json"
 STATS_CACHE="/tmp/netifyd-stats.json"
+NETIFYD_SINK_CONF="/etc/netifyd.d/secubox-sink.conf"
 
 # Logging function
 log_msg() {
@@ -34,6 +35,38 @@ check_netifyd_installed() {
 # Check if netifyd service is running
 check_netifyd_running() {
 	pidof netifyd >/dev/null 2>&1
+}
+
+apply_flow_sink_config() {
+	local sink_enabled=$(uci -q get secubox-netifyd.sink.enabled || echo 0)
+	local sink_type=$(uci -q get secubox-netifyd.sink.type || echo 'unix')
+	local unix_path=$(uci -q get secubox-netifyd.sink.unix_path || echo '/tmp/netifyd-flows.json')
+	local tcp_address=$(uci -q get secubox-netifyd.sink.tcp_address || echo '127.0.0.1')
+	local tcp_port=$(uci -q get secubox-netifyd.sink.tcp_port || echo '9501')
+
+	mkdir -p "$(dirname "$NETIFYD_SINK_CONF")"
+
+	if [ "$sink_enabled" -eq 1 ]; then
+		cat <<EOF > "$NETIFYD_SINK_CONF"
+sink0.source = netlink
+EOF
+		if [ "$sink_type" = "tcp" ]; then
+			cat <<EOF >> "$NETIFYD_SINK_CONF"
+sink0.type = socket
+sink0.address = $tcp_address
+sink0.port = $tcp_port
+EOF
+		else
+			cat <<EOF >> "$NETIFYD_SINK_CONF"
+sink0.type = unix
+sink0.path = $unix_path
+EOF
+		fi
+		log_msg "INFO" "Flow sink enabled ($sink_type)"
+	else
+		rm -f "$NETIFYD_SINK_CONF"
+		log_msg "INFO" "Flow sink disabled"
+	fi
 }
 
 # Get netifyd service status
@@ -109,6 +142,14 @@ get_service_status() {
 	json_add_int "socket_port" "$socket_port"
 	json_add_string "unix_socket_path" "$unix_socket"
 	json_add_boolean "auto_start" "$(uci -q get secubox-netifyd.settings.auto_start || echo 1)"
+	json_close_object
+
+	json_add_object "sink"
+	json_add_boolean "enabled" "$(uci -q get secubox-netifyd.sink.enabled || echo 0)"
+	json_add_string "type" "$(uci -q get secubox-netifyd.sink.type || echo 'unix')"
+	json_add_string "unix_path" "$(uci -q get secubox-netifyd.sink.unix_path || echo '/tmp/netifyd-flows.json')"
+	json_add_string "tcp_address" "$(uci -q get secubox-netifyd.sink.tcp_address || echo '127.0.0.1')"
+	json_add_int "tcp_port" "$(uci -q get secubox-netifyd.sink.tcp_port || echo 9501)"
 	json_close_object
 
 	json_dump
@@ -689,8 +730,32 @@ update_config() {
 		json_select ..
 	fi
 
+	# Update sink configuration
+	json_select sink 2>/dev/null
+	if [ $? -eq 0 ]; then
+		json_get_var sink_enabled enabled
+		json_get_var sink_type type
+		json_get_var sink_unix unix_path
+		json_get_var sink_tcp_addr tcp_address
+		json_get_var sink_tcp_port tcp_port
+
+		[ -n "$sink_enabled" ] && uci set secubox-netifyd.sink.enabled="$sink_enabled"
+		[ -n "$sink_type" ] && uci set secubox-netifyd.sink.type="$sink_type"
+		[ -n "$sink_unix" ] && uci set secubox-netifyd.sink.unix_path="$sink_unix"
+		[ -n "$sink_tcp_addr" ] && uci set secubox-netifyd.sink.tcp_address="$sink_tcp_addr"
+		[ -n "$sink_tcp_port" ] && uci set secubox-netifyd.sink.tcp_port="$sink_tcp_port"
+
+		json_select ..
+	fi
+
 	# Commit changes
 	uci commit secubox-netifyd
+
+	apply_flow_sink_config
+	if check_netifyd_installed; then
+		/etc/init.d/netifyd restart >/dev/null 2>&1 || true
+		log_msg "INFO" "Netifyd restarted to apply sink configuration"
+	fi
 
 	log_msg "INFO" "Configuration updated"
 
@@ -805,7 +870,8 @@ case "$1" in
 		"settings": "object",
 		"monitoring": "object",
 		"analytics": "object",
-		"alerts": "object"
+		"alerts": "object",
+		"sink": "object"
 	},
 	"get_interfaces": {},
 	"clear_cache": {},

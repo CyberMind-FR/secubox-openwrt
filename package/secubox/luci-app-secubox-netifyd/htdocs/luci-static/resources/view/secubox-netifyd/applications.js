@@ -6,13 +6,18 @@
 'require secubox-netifyd/api as netifydAPI';
 
 return view.extend({
-	refreshInterval: 10,
+	refreshInterval: 5,
 	appsData: [],
 	sortColumn: 'bytes',
 	sortDirection: 'desc',
+	searchQuery: '',
+	lastUpdate: null,
 
 	load: function() {
-		return netifydAPI.getTopApplications();
+		return Promise.all([
+			netifydAPI.getTopApplications(),
+			netifydAPI.getServiceStatus()
+		]);
 	},
 
 	sortApplications: function(apps, column, direction) {
@@ -36,6 +41,18 @@ return view.extend({
 			this.sortDirection = 'desc';
 		}
 		this.renderApplicationsTable();
+	},
+
+	filterApplications: function(apps) {
+		if (!this.searchQuery) {
+			return apps;
+		}
+
+		var query = this.searchQuery.toLowerCase();
+		return apps.filter(function(app) {
+			var name = (app.name || '').toLowerCase();
+			return name.indexOf(query) >= 0;
+		});
 	},
 
 	handleExport: function(ev) {
@@ -128,7 +145,7 @@ return view.extend({
 		var container = document.getElementById('apps-table-container');
 		if (!container) return;
 
-		var apps = this.appsData;
+		var apps = this.filterApplications(this.appsData);
 		var sortedApps = this.sortApplications(apps, this.sortColumn, this.sortDirection);
 
 		var totalBytes = apps.reduce(function(sum, app) {
@@ -246,25 +263,43 @@ return view.extend({
 	},
 
 	render: function(data) {
-		this.appsData = data.applications || [];
+		var appsData = data[0] || {};
+		var status = data[1] || {};
+		this.appsData = appsData.applications || [];
+		this.lastUpdate = new Date();
 
 		var self = this;
 
 		// Set up polling
 		poll.add(L.bind(function() {
-			return netifydAPI.getTopApplications().then(L.bind(function(result) {
-				this.appsData = result.applications || [];
+			return Promise.all([
+				netifydAPI.getTopApplications(),
+				netifydAPI.getServiceStatus()
+			]).then(L.bind(function(result) {
+				this.appsData = (result[0] || {}).applications || [];
+				this.lastUpdate = new Date();
 				this.renderApplicationsTable();
 			}, this));
 		}, this), this.refreshInterval);
 
+		var serviceRunning = status.running;
+
 		return E('div', { 'class': 'cbi-map' }, [
-			E('h2', [
-				E('i', { 'class': 'fa fa-cubes', 'style': 'margin-right: 0.5rem' }),
-				_('Detected Applications')
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem' }, [
+				E('h2', { 'name': 'content', 'style': 'margin: 0' }, [
+					E('i', { 'class': 'fa fa-cubes', 'style': 'margin-right: 0.5rem' }),
+					_('Detected Applications')
+				]),
+				E('span', {
+					'class': 'badge',
+					'style': 'padding: 0.5rem 1rem; font-size: 0.9em; background: ' + (serviceRunning ? '#10b981' : '#ef4444')
+				}, [
+					E('i', { 'class': 'fa fa-circle', 'style': 'margin-right: 0.5rem' }),
+					serviceRunning ? _('Live') : _('Offline')
+				])
 			]),
 			E('div', { 'class': 'cbi-map-descr' },
-				_('Applications detected and identified by Netifyd deep packet inspection engine')),
+				_('Applications detected and identified by Netifyd deep packet inspection. Updates every 5 seconds.')),
 
 			E('div', { 'class': 'cbi-section' }, [
 				E('div', { 'class': 'cbi-section-node' }, [
@@ -287,14 +322,29 @@ return view.extend({
 			]),
 
 			E('div', { 'class': 'cbi-section' }, [
-				E('h3', [
-					E('i', { 'class': 'fa fa-list', 'style': 'margin-right: 0.5rem' }),
-					_('Application List'),
-					' ',
-					E('span', {
-						'class': 'badge',
-						'style': 'background: #3b82f6; color: white; margin-left: 0.5rem'
-					}, this.appsData.length)
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem' }, [
+					E('h3', { 'style': 'margin: 0' }, [
+						E('i', { 'class': 'fa fa-list', 'style': 'margin-right: 0.5rem' }),
+						_('Application List'),
+						' ',
+						E('span', {
+							'class': 'badge',
+							'style': 'background: #3b82f6; color: white; margin-left: 0.5rem'
+						}, this.appsData.length)
+					]),
+					E('div', { 'style': 'display: flex; gap: 0.5rem; align-items: center' }, [
+						E('input', {
+							'type': 'text',
+							'class': 'cbi-input-text',
+							'placeholder': _('Search applications...'),
+							'style': 'min-width: 250px',
+							'value': this.searchQuery,
+							'keyup': function(ev) {
+								self.searchQuery = ev.target.value;
+								self.renderApplicationsTable();
+							}
+						})
+					])
 				]),
 				E('div', { 'class': 'cbi-section-node' }, [
 					E('div', { 'id': 'apps-table-container' })

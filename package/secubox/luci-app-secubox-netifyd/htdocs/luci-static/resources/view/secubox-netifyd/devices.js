@@ -6,14 +6,31 @@
 'require secubox-netifyd/api as netifydAPI';
 
 return view.extend({
-	refreshInterval: 10,
+	refreshInterval: 5,
 	devicesData: [],
 	sortColumn: 'bytes_sent',
 	sortDirection: 'desc',
-	filterOnline: '',
+	searchQuery: '',
 
 	load: function() {
-		return netifydAPI.getDetectedDevices();
+		return Promise.all([
+			netifydAPI.getDetectedDevices(),
+			netifydAPI.getServiceStatus(),
+			netifydAPI.getDashboard()
+		]);
+	},
+
+	filterDevices: function(devices) {
+		if (!this.searchQuery) {
+			return devices;
+		}
+
+		var query = this.searchQuery.toLowerCase();
+		return devices.filter(function(device) {
+			var ip = (device.ip || '').toLowerCase();
+			var mac = (device.mac || '').toLowerCase();
+			return ip.indexOf(query) >= 0 || mac.indexOf(query) >= 0;
+		});
 	},
 
 	sortDevices: function(devices, column, direction) {
@@ -141,7 +158,7 @@ return view.extend({
 		var container = document.getElementById('devices-table-container');
 		if (!container) return;
 
-		var devices = this.devicesData;
+		var devices = this.filterDevices(this.devicesData);
 		var sortedDevices = this.sortDevices(devices, this.sortColumn, this.sortDirection);
 
 		var getSortIcon = function(column) {
@@ -274,25 +291,41 @@ return view.extend({
 	},
 
 	render: function(data) {
-		this.devicesData = data.devices || [];
+		var devicesData = data[0] || {};
+		var status = data[1] || {};
+		this.devicesData = devicesData.devices || [];
 
 		var self = this;
 
 		// Set up polling
 		poll.add(L.bind(function() {
-			return netifydAPI.getDetectedDevices().then(L.bind(function(result) {
-				this.devicesData = result.devices || [];
+			return Promise.all([
+				netifydAPI.getDetectedDevices(),
+				netifydAPI.getServiceStatus()
+			]).then(L.bind(function(result) {
+				this.devicesData = (result[0] || {}).devices || [];
 				this.renderDevicesTable();
 			}, this));
 		}, this), this.refreshInterval);
 
+		var serviceRunning = status.running;
+
 		return E('div', { 'class': 'cbi-map' }, [
-			E('h2', [
-				E('i', { 'class': 'fa fa-network-wired', 'style': 'margin-right: 0.5rem' }),
-				_('Detected Devices')
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem' }, [
+				E('h2', { 'name': 'content', 'style': 'margin: 0' }, [
+					E('i', { 'class': 'fa fa-network-wired', 'style': 'margin-right: 0.5rem' }),
+					_('Detected Devices')
+				]),
+				E('span', {
+					'class': 'badge',
+					'style': 'padding: 0.5rem 1rem; font-size: 0.9em; background: ' + (serviceRunning ? '#10b981' : '#ef4444')
+				}, [
+					E('i', { 'class': 'fa fa-circle', 'style': 'margin-right: 0.5rem' }),
+					serviceRunning ? _('Live') : _('Offline')
+				])
 			]),
 			E('div', { 'class': 'cbi-map-descr' },
-				_('Network devices detected and tracked by Netifyd deep packet inspection engine')),
+				_('Network devices detected and tracked by Netifyd deep packet inspection. Updates every 5 seconds.')),
 
 			E('div', { 'class': 'cbi-section' }, [
 				E('div', { 'class': 'cbi-section-node' }, [
@@ -315,14 +348,29 @@ return view.extend({
 			]),
 
 			E('div', { 'class': 'cbi-section' }, [
-				E('h3', [
-					E('i', { 'class': 'fa fa-list', 'style': 'margin-right: 0.5rem' }),
-					_('Device List'),
-					' ',
-					E('span', {
-						'class': 'badge',
-						'style': 'background: #3b82f6; color: white; margin-left: 0.5rem'
-					}, this.devicesData.length)
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem' }, [
+					E('h3', { 'style': 'margin: 0' }, [
+						E('i', { 'class': 'fa fa-list', 'style': 'margin-right: 0.5rem' }),
+						_('Device List'),
+						' ',
+						E('span', {
+							'class': 'badge',
+							'style': 'background: #3b82f6; color: white; margin-left: 0.5rem'
+						}, this.devicesData.length)
+					]),
+					E('div', { 'style': 'display: flex; gap: 0.5rem; align-items: center' }, [
+						E('input', {
+							'type': 'text',
+							'class': 'cbi-input-text',
+							'placeholder': _('Search by IP or MAC...'),
+							'style': 'min-width: 250px',
+							'value': this.searchQuery,
+							'keyup': function(ev) {
+								self.searchQuery = ev.target.value;
+								self.renderDevicesTable();
+							}
+						})
+					])
 				]),
 				E('div', { 'class': 'cbi-section-node' }, [
 					E('div', {
