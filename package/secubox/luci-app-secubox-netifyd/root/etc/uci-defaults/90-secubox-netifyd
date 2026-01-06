@@ -1,0 +1,53 @@
+#!/bin/sh
+# SecuBox Netifyd - UCI defaults setup
+# Creates required directories and initializes configuration
+
+# Create netifyd directories if they don't exist
+mkdir -p /etc/netify.d/plugins.d
+mkdir -p /etc/netify.d/address-groups.d
+
+# Create empty categories file to prevent error messages
+if [ ! -f /etc/netify.d/netify-categories.json ]; then
+	cat > /etc/netify.d/netify-categories.json <<'EOF'
+{
+  "version": "1.0",
+  "categories": []
+}
+EOF
+fi
+
+# Ensure proper permissions
+chmod 755 /etc/netify.d
+chmod 755 /etc/netify.d/plugins.d
+chmod 755 /etc/netify.d/address-groups.d
+chmod 644 /etc/netify.d/netify-categories.json
+
+# Initialize UCI configuration if it doesn't exist
+if ! uci -q get secubox-netifyd.settings >/dev/null 2>&1; then
+	uci set secubox-netifyd.settings=settings
+	uci set secubox-netifyd.settings.auto_refresh='1'
+	uci set secubox-netifyd.settings.refresh_interval='5'
+	uci set secubox-netifyd.settings.socket_type='unix'
+	uci set secubox-netifyd.settings.unix_socket_path='/var/run/netifyd/netifyd.sock'
+	uci set secubox-netifyd.settings.socket_address='127.0.0.1'
+	uci set secubox-netifyd.settings.socket_port='7150'
+	uci set secubox-netifyd.settings.auto_start='1'
+	uci commit secubox-netifyd
+fi
+
+# Analytics settings
+if ! uci -q get secubox-netifyd.analytics >/dev/null 2>&1; then
+	uci set secubox-netifyd.analytics=analytics
+	uci set secubox-netifyd.analytics.top_apps_limit='10'
+	uci set secubox-netifyd.analytics.top_protocols_limit='10'
+	uci set secubox-netifyd.analytics.top_devices_limit='20'
+	uci set secubox-netifyd.analytics.data_retention_days='7'
+	uci commit secubox-netifyd
+fi
+
+# Restart netifyd if it's running to apply changes
+if pidof netifyd >/dev/null 2>&1; then
+	/etc/init.d/netifyd restart >/dev/null 2>&1
+fi
+
+exit 0

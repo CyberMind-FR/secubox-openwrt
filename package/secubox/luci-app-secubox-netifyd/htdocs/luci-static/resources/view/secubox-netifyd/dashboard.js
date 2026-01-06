@@ -179,6 +179,7 @@ return view.extend({
 			{
 				title: _('Active Flows'),
 				value: (stats.active_flows || 0).toString(),
+				subtitle: _('Active: %d, Expired: %d').format(stats.flows_active || 0, stats.flows_expired || 0),
 				icon: 'exchange-alt',
 				color: '#3b82f6',
 				gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
@@ -186,25 +187,51 @@ return view.extend({
 			{
 				title: _('Unique Devices'),
 				value: (stats.unique_devices || 0).toString(),
+				subtitle: _('Connected devices'),
 				icon: 'network-wired',
 				color: '#10b981',
 				gradient: 'linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)'
 			},
 			{
-				title: _('Applications'),
-				value: (stats.unique_applications || 0).toString(),
-				icon: 'cubes',
-				color: '#8b5cf6',
-				gradient: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)'
-			},
-			{
 				title: _('Total Traffic'),
 				value: netifydAPI.formatBytes(stats.total_bytes || 0),
+				subtitle: _('IP: %s').format(netifydAPI.formatBytes(stats.ip_bytes || 0)),
 				icon: 'chart-line',
 				color: '#f59e0b',
 				gradient: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)'
+			},
+			{
+				title: _('CPU & Memory'),
+				value: (stats.cpu_usage || '0') + '%',
+				subtitle: _('RAM: %s').format(netifydAPI.formatBytes((stats.memory_kb || 0) * 1024)),
+				icon: 'microchip',
+				color: '#ec4899',
+				gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
 			}
 		];
+
+		// Protocol breakdown
+		var totalPackets = (stats.tcp_packets || 0) + (stats.udp_packets || 0) + (stats.icmp_packets || 0);
+		var protocolData = totalPackets > 0 ? [
+			{
+				name: 'TCP',
+				packets: stats.tcp_packets || 0,
+				percentage: totalPackets > 0 ? ((stats.tcp_packets || 0) / totalPackets * 100).toFixed(1) : 0,
+				color: '#3b82f6'
+			},
+			{
+				name: 'UDP',
+				packets: stats.udp_packets || 0,
+				percentage: totalPackets > 0 ? ((stats.udp_packets || 0) / totalPackets * 100).toFixed(1) : 0,
+				color: '#10b981'
+			},
+			{
+				name: 'ICMP',
+				packets: stats.icmp_packets || 0,
+				percentage: totalPackets > 0 ? ((stats.icmp_packets || 0) / totalPackets * 100).toFixed(1) : 0,
+				color: '#f59e0b'
+			}
+		] : [];
 
 		return E('div', { 'class': 'cbi-section' }, [
 			E('h3', [
@@ -219,16 +246,44 @@ return view.extend({
 						'class': 'netifyd-stat-card',
 						'style': 'background: ' + card.gradient + '; color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;'
 					}, [
-						E('div', { 'style': 'display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem' }, [
+						E('div', { 'style': 'display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem' }, [
 							E('div', { 'style': 'font-size: 0.9em; opacity: 0.9' }, card.title),
 							E('i', {
 								'class': 'fa fa-' + card.icon,
 								'style': 'font-size: 2em; opacity: 0.3'
 							})
 						]),
-						E('div', { 'style': 'font-size: 2em; font-weight: bold' }, card.value)
+						E('div', { 'style': 'font-size: 2em; font-weight: bold; margin-bottom: 0.5rem' }, card.value),
+						card.subtitle ? E('div', { 'style': 'font-size: 0.85em; opacity: 0.8' }, card.subtitle) : null
 					]);
-				}))
+				})),
+
+				// Protocol Breakdown
+				protocolData.length > 0 ? E('div', {
+					'style': 'background: white; padding: 1.5rem; border-radius: 8px; margin-top: 1rem; border: 1px solid #e5e7eb'
+				}, [
+					E('h4', { 'style': 'margin: 0 0 1rem 0; color: #374151; display: flex; align-items: center; gap: 0.5rem' }, [
+						E('i', { 'class': 'fa fa-network-wired' }),
+						_('Protocol Distribution')
+					]),
+					E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem' },
+						protocolData.map(function(proto) {
+							return E('div', [
+								E('div', { 'style': 'display: flex; justify-content: space-between; margin-bottom: 0.5rem; color: #6b7280' }, [
+									E('span', { 'style': 'font-weight: 600; color: ' + proto.color }, proto.name),
+									E('span', proto.packets.toLocaleString() + ' pkts')
+								]),
+								E('div', { 'style': 'background: #f3f4f6; height: 8px; border-radius: 4px; overflow: hidden' }, [
+									E('div', {
+										'style': 'background: ' + proto.color + '; height: 100%; width: ' + proto.percentage + '%; transition: width 0.3s ease'
+									})
+								]),
+								E('div', { 'style': 'text-align: right; font-size: 0.85em; margin-top: 0.25rem; color: #9ca3af' },
+									proto.percentage + '%')
+							]);
+						})
+					)
+				]) : null
 			])
 		]);
 	},

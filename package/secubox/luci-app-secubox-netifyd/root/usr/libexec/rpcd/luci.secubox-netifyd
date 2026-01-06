@@ -433,15 +433,52 @@ get_dashboard() {
 		# Calculate total bytes from all interface stats
 		local total_bytes=$(jq -r '[.stats | to_entries[] | .value.wire_bytes // 0] | add' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
 
+		# Protocol statistics
+		local tcp_packets=$(jq -r '[.stats | to_entries[] | .value.tcp // 0] | add' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+		local udp_packets=$(jq -r '[.stats | to_entries[] | .value.udp // 0] | add' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+		local icmp_packets=$(jq -r '[.stats | to_entries[] | .value.icmp // 0] | add' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+
+		# IP bytes (payload without ethernet overhead)
+		local ip_bytes=$(jq -r '[.stats | to_entries[] | .value.ip_bytes // 0] | add' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+
+		# Flow metrics
+		local flows_active=$(jq -r '.flows_active // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+		local flows_expired=$(jq -r '.flows_expired // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+		local flows_purged=$(jq -r '.flows_purged // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+
+		# CPU and memory
+		local cpu_user=$(jq -r '.cpu_user // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+		local cpu_system=$(jq -r '.cpu_system // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+		local mem_rss=$(jq -r '.memrss_kb // 0' "$NETIFYD_STATUS" 2>/dev/null || echo 0)
+		local cpu_total=$(awk "BEGIN {printf \"%.2f\", $cpu_user + $cpu_system}")
+
 		json_add_int "active_flows" "$total_flows"
 		json_add_int "unique_devices" "$unique_devices"
 		json_add_int "unique_applications" "$dhc_size"
 		json_add_int "total_bytes" "$total_bytes"
+		json_add_int "ip_bytes" "$ip_bytes"
+		json_add_int "tcp_packets" "$tcp_packets"
+		json_add_int "udp_packets" "$udp_packets"
+		json_add_int "icmp_packets" "$icmp_packets"
+		json_add_int "flows_active" "$flows_active"
+		json_add_int "flows_expired" "$flows_expired"
+		json_add_int "flows_purged" "$flows_purged"
+		json_add_string "cpu_usage" "$cpu_total"
+		json_add_int "memory_kb" "$mem_rss"
 	else
 		json_add_int "active_flows" 0
 		json_add_int "unique_devices" 0
 		json_add_int "unique_applications" 0
 		json_add_int "total_bytes" 0
+		json_add_int "ip_bytes" 0
+		json_add_int "tcp_packets" 0
+		json_add_int "udp_packets" 0
+		json_add_int "icmp_packets" 0
+		json_add_int "flows_active" 0
+		json_add_int "flows_expired" 0
+		json_add_int "flows_purged" 0
+		json_add_string "cpu_usage" "0"
+		json_add_int "memory_kb" 0
 	fi
 
 	json_close_object
