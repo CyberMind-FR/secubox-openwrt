@@ -172,51 +172,52 @@ return view.extend({
 		}.bind(this);
 
 		dom.content(container, [
-			devices.length > 0 ? E('div', { 'class': 'table', 'style': 'font-size: 0.95em' }, [
-				// Header
-				E('div', { 'class': 'tr table-titles' }, [
-					E('div', {
-						'class': 'th left',
-						'style': 'width: 20%; cursor: pointer',
-						'click': ui.createHandlerFn(this, 'handleSort', 'ip')
-					}, [
-						_('IP Address'),
-						' ',
-						getSortIcon('ip')
-					]),
-					E('div', { 'class': 'th left', 'style': 'width: 20%' }, _('MAC Address')),
-					E('div', {
-						'class': 'th center',
-						'style': 'width: 10%; cursor: pointer',
-						'click': ui.createHandlerFn(this, 'handleSort', 'flows')
-					}, [
-						_('Flows'),
-						' ',
-						getSortIcon('flows')
-					]),
-					E('div', {
-						'class': 'th right',
-						'style': 'width: 15%; cursor: pointer',
-						'click': ui.createHandlerFn(this, 'handleSort', 'bytes_sent')
-					}, [
-						_('Sent'),
-						' ',
-						getSortIcon('bytes_sent')
-					]),
-					E('div', {
-						'class': 'th right',
-						'style': 'width: 15%; cursor: pointer',
-						'click': ui.createHandlerFn(this, 'handleSort', 'bytes_received')
-					}, [
-						_('Received'),
-						' ',
-						getSortIcon('bytes_received')
-					]),
-					E('div', { 'class': 'th', 'style': 'width: 20%' }, _('Traffic Distribution'))
-				]),
-
-				// Rows
-				sortedDevices.map(function(device, idx) {
+			devices.length > 0 ? E('div', { 'class': 'table', 'style': 'font-size: 0.95em' },
+				[
+					// Header
+					E('div', { 'class': 'tr table-titles' }, [
+						E('div', {
+							'class': 'th left',
+							'style': 'width: 20%; cursor: pointer',
+							'click': ui.createHandlerFn(this, 'handleSort', 'ip')
+						}, [
+							_('IP Address'),
+							' ',
+							getSortIcon('ip')
+						]),
+						E('div', { 'class': 'th left', 'style': 'width: 20%' }, _('MAC Address')),
+						E('div', {
+							'class': 'th center',
+							'style': 'width: 10%; cursor: pointer',
+							'click': ui.createHandlerFn(this, 'handleSort', 'flows')
+						}, [
+							_('Flows'),
+							' ',
+							getSortIcon('flows')
+						]),
+						E('div', {
+							'class': 'th right',
+							'style': 'width: 15%; cursor: pointer',
+							'click': ui.createHandlerFn(this, 'handleSort', 'bytes_sent')
+						}, [
+							_('Sent'),
+							' ',
+							getSortIcon('bytes_sent')
+						]),
+						E('div', {
+							'class': 'th right',
+							'style': 'width: 15%; cursor: pointer',
+							'click': ui.createHandlerFn(this, 'handleSort', 'bytes_received')
+						}, [
+							_('Received'),
+							' ',
+							getSortIcon('bytes_received')
+						]),
+						E('div', { 'class': 'th', 'style': 'width: 20%' }, _('Traffic Distribution'))
+					])
+				].concat(
+					// Rows
+					sortedDevices.map(function(device, idx) {
 					var lastSeen = device.last_seen || 0;
 					var now = Math.floor(Date.now() / 1000);
 					var ago = now - lastSeen;
@@ -278,7 +279,8 @@ return view.extend({
 						])
 					]);
 				}.bind(this))
-			]) : E('div', {
+				)
+			) : E('div', {
 				'class': 'alert-message info',
 				'style': 'text-align: center; padding: 3rem'
 			}, [
