@@ -9,7 +9,7 @@
 cd /path/to/secubox-openwrt
 
 # Build netifyd
-make package/secubox/netifyd/compile V=s
+make package/secubox/secubox-app-netifyd/compile V=s
 
 # Build LuCI app
 make package/secubox/luci-app-secubox-netifyd/compile V=s
@@ -261,8 +261,8 @@ echo "Devices: $DEVICES"
 
 ```bash
 # Build new version
-make package/secubox/netifyd/clean
-make package/secubox/netifyd/compile V=s
+make package/secubox/secubox-app-netifyd/clean
+make package/secubox/secubox-app-netifyd/compile V=s
 
 # Install on device
 opkg remove netifyd

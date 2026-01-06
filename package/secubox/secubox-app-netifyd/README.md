@@ -51,7 +51,7 @@ make menuconfig
 # Select: <M> or <*>
 
 # Build package
-make package/secubox/netifyd/compile V=s
+make package/secubox/secubox-app-netifyd/compile V=s
 
 # Package will be in: bin/packages/*/secubox/netifyd_5.2.1-1_*.ipk
 ```
@@ -404,7 +404,7 @@ PKG_VERSION:=5.x.x
 PKG_HASH:=<new-hash>
 
 # Rebuild
-make package/secubox/netifyd/{clean,compile}
+make package/secubox/secubox-app-netifyd/{clean,compile}
 ```
 
 ## Support

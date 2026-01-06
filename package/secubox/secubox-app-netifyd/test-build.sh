@@ -79,7 +79,7 @@ fi
 echo ""
 echo "Step 5: Downloading source..."
 echo "================================"
-make package/secubox/netifyd/download V=s
+make package/secubox/secubox-app-netifyd/download V=s
 
 echo ""
 echo "Step 6: Checking source..."
@@ -95,7 +95,7 @@ fi
 echo ""
 echo "Step 7: Cleaning previous build..."
 echo "================================"
-make package/secubox/netifyd/clean V=s
+make package/secubox/secubox-app-netifyd/clean V=s
 
 echo ""
 echo "Step 8: Building package..."
@@ -103,7 +103,7 @@ echo "================================"
 echo "This may take several minutes..."
 echo ""
 
-if make package/secubox/netifyd/compile V=s; then
+if make package/secubox/secubox-app-netifyd/compile V=s; then
     echo ""
     echo "================================"
     echo "BUILD SUCCESSFUL!"

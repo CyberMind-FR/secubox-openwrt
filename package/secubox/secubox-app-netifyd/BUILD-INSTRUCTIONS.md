@@ -7,7 +7,7 @@ Complete build instructions for integrating official Netifyd 5.2.1 into SecuBox 
 ## Package Structure
 
 ```
-package/secubox/netifyd/
+package/secubox/secubox-app-netifyd/
 ├── Makefile                  # OpenWrt package Makefile
 ├── Config.in                 # Package configuration options
 ├── README.md                 # Package documentation
@@ -64,7 +64,7 @@ sudo apt-get install -y \
 ### Option 1: Automated Build Test
 
 ```bash
-cd /path/to/secubox-openwrt/package/secubox/netifyd
+cd /path/to/secubox-openwrt/package/secubox/secubox-app-netifyd
 ./test-build.sh
 ```
 
@@ -94,10 +94,10 @@ make menuconfig
 # SecuBox > <*> luci-app-secubox-netifyd
 
 # 4. Download source
-make package/secubox/netifyd/download V=s
+make package/secubox/secubox-app-netifyd/download V=s
 
 # 5. Build package
-make package/secubox/netifyd/compile V=s
+make package/secubox/secubox-app-netifyd/compile V=s
 
 # 6. Build LuCI app
 make package/secubox/luci-app-secubox-netifyd/compile V=s
@@ -151,7 +151,7 @@ make download V=s
 make toolchain/compile V=s
 
 # Build netifyd package
-make package/secubox/netifyd/compile V=s
+make package/secubox/secubox-app-netifyd/compile V=s
 
 # Build LuCI app
 make package/secubox/luci-app-secubox-netifyd/compile V=s
@@ -289,8 +289,8 @@ cd ..
 
 ```bash
 # Clean and retry
-make package/secubox/netifyd/clean
-make package/secubox/netifyd/compile V=s 2>&1 | tee build.log
+make package/secubox/secubox-app-netifyd/clean
+make package/secubox/secubox-app-netifyd/compile V=s 2>&1 | tee build.log
 
 # Check build.log for errors
 
@@ -360,7 +360,7 @@ for arch in $TARGET_ARCHS; do
     echo "Building for $arch..."
     make clean
     # Set target in menuconfig first
-    make package/secubox/netifyd/compile V=s
+    make package/secubox/secubox-app-netifyd/compile V=s
     mkdir -p releases/$arch
     cp bin/packages/*/secubox/netifyd_*.ipk releases/$arch/
 done
@@ -370,7 +370,7 @@ done
 
 ```bash
 # Build all packages
-make package/secubox/netifyd/compile V=s
+make package/secubox/secubox-app-netifyd/compile V=s
 make package/secubox/luci-app-secubox-netifyd/compile V=s
 
 # Create release directory
@@ -409,7 +409,7 @@ jobs:
           sudo apt-get install -y build-essential ...
       - name: Build package
         run: |
-          cd package/secubox/netifyd
+          cd package/secubox/secubox-app-netifyd
           ./test-build.sh
       - name: Upload artifacts
         uses: actions/upload-artifact@v3

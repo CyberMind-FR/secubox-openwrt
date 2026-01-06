@@ -42,7 +42,86 @@ GO_PKG_LDFLAGS_X:=$(CWD_VERSION_PKG).Version=$(CWD_BUILD_VERSION) \
 	$(CWD_VERSION_PKG).GoVersion=$(CWD_BUILD_GOVERSION)
 
 include $(INCLUDE_DIR)/package.mk
-include ../../lang/golang/golang-package.mk
+include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
+
+# Keep Go in module mode so it honors our local replacements.
+GO_MOD_ARGS+=-mod=mod
+
+CWD_GO_CSLIB_VERSION:=v0.0.24
+CWD_GO_VENDOR_ROOT:=secubox-vendor
+CWD_GO_VENDOR_MODULES:= \
+	github.com/crowdsecurity/go-cs-lib@$(CWD_GO_CSLIB_VERSION) \
+	github.com/crowdsecurity/time@v0.13.0-crowdsec.20250912 \
+	github.com/moby/moby/api@v1.52.1-0.20251116162601-e9ff10bf365a \
+	github.com/moby/moby/client@v0.1.1-0.20251116162601-e9ff10bf365a \
+	golang.org/x/crypto@v0.42.0 \
+	golang.org/x/mod@v0.28.0 \
+	golang.org/x/net@v0.44.0 \
+	golang.org/x/sync@v0.17.0 \
+	golang.org/x/sys@v0.37.0 \
+	golang.org/x/term@v0.35.0 \
+	golang.org/x/text@v0.29.0 \
+	golang.org/x/tools@v0.37.0 \
+	golang.org/x/telemetry@v0.0.0-20250908211612-aef8a434d053
+
+define CWD/EnsureModuleSource
+	if [ ! -d "$(DL_DIR)/go-mod-cache/$(1)@$(2)" ]; then \
+		$(INSTALL_DIR) "$(DL_DIR)/go-mod-cache/cache/download/$(1)/@v"; \
+		wget -q -O "$(DL_DIR)/go-mod-cache/cache/download/$(1)/@v/$(2).zip" \
+			"https://proxy.golang.org/$(1)/@v/$(2).zip"; \
+		unzip -q -d "$(DL_DIR)/go-mod-cache" \
+			"$(DL_DIR)/go-mod-cache/cache/download/$(1)/@v/$(2).zip"; \
+	fi
+endef
+
+define CWD/StageVendorModule
+	$(call CWD/EnsureModuleSource,$(1),$(2))
+	rm -rf $(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/$(1)
+	$(INSTALL_DIR) $(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/$(1)
+	$(CP) \
+		$(DL_DIR)/go-mod-cache/$(1)@$(2)/. \
+		$(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/$(1)/
+	if [ -f $(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/$(1)/go.mod ]; then \
+		$(SED) 's,^go 1\.[2-9][0-9]*.*,go 1.23,' \
+			$(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/$(1)/go.mod; \
+	fi
+endef
+
+define Build/Prepare
+	$(call Build/Prepare/Default)
+	# CrowdSec upstream requires Go 1.25+, but our SDK ships 1.23.x.
+	# Force the go.mod directive down so the stock toolchain can build it.
+	$(SED) 's,go 1\.[2-9][0-9]*.*,go 1.23,' $(PKG_BUILD_DIR)/go.mod
+	# Stage Go modules that require newer compilers so we can pin them locally and drop their go directive.
+	$(call CWD/StageVendorModule,github.com/crowdsecurity/go-cs-lib,$(CWD_GO_CSLIB_VERSION))
+	$(call CWD/StageVendorModule,github.com/crowdsecurity/time,v0.13.0-crowdsec.20250912)
+	$(call CWD/StageVendorModule,github.com/moby/moby/api,v1.52.1-0.20251116162601-e9ff10bf365a)
+	$(call CWD/StageVendorModule,github.com/moby/moby/client,v0.1.1-0.20251116162601-e9ff10bf365a)
+	$(call CWD/StageVendorModule,golang.org/x/crypto,v0.42.0)
+	$(call CWD/StageVendorModule,golang.org/x/mod,v0.28.0)
+	$(call CWD/StageVendorModule,golang.org/x/net,v0.44.0)
+	$(call CWD/StageVendorModule,golang.org/x/sync,v0.17.0)
+	$(call CWD/StageVendorModule,golang.org/x/sys,v0.37.0)
+	$(call CWD/StageVendorModule,golang.org/x/term,v0.35.0)
+	$(call CWD/StageVendorModule,golang.org/x/text,v0.29.0)
+	$(call CWD/StageVendorModule,golang.org/x/tools,v0.37.0)
+	$(call CWD/StageVendorModule,golang.org/x/telemetry,v0.0.0-20250908211612-aef8a434d053)
+	$(SED) 's@for line := range strings.SplitSeq@for _, line := range strings.SplitSeq@g' \
+		$(PKG_BUILD_DIR)/pkg/appsec/appsec_rules_collection.go
+	$(SED) 's@for f := range strings.SplitSeq@for _, f := range strings.SplitSeq@g' \
+		$(PKG_BUILD_DIR)/pkg/parser/runtime.go
+	$(SED) 's,strings.SplitSeq,strings.Split,g' \
+		$(PKG_BUILD_DIR)/pkg/appsec/appsec_rules_collection.go
+	$(SED) 's,strings.SplitSeq,strings.Split,g' \
+		$(PKG_BUILD_DIR)/pkg/parser/runtime.go
+
+	$(SED) 's@for line := range strings.SplitSeq(description, "\\n") {@for _, line := range strings.Split(description, "\\n") {@g' \
+		$(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/golang.org/x/tools/internal/mcp/generate.go
+	$(SED) 's@for field := range strings.FieldsSeq(line) {@for _, field := range strings.Fields(line) {@g' \
+		$(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/golang.org/x/tools/internal/mcp/generate.go
+	$(SED) 's@for line := range strings.SplitSeq(stdout.String(), "\\n") {@for _, line := range strings.Split(stdout.String(), "\\n") {@g' \
+		$(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/golang.org/x/tools/internal/stdlib/generate.go
+endef
 
 define Package/crowdsec/Default
   SECTION:=net
