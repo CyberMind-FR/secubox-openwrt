@@ -11,16 +11,42 @@ if [ ! -d "${data_dir}" ]; then
 	mkdir -m 0755 -p "${data_dir}"
 fi;
 
-if grep -q "login:" /etc/crowdsec/local_api_credentials.yaml; then
-	echo local API already registered...
+# Create machine-id if not exists
+if [ ! -f /etc/machine-id ]; then
+	cat /proc/sys/kernel/random/uuid | tr -d "-" > /etc/machine-id
+fi
+
+# Register local API machine
+if grep -q "login:" /etc/crowdsec/local_api_credentials.yaml 2>/dev/null; then
+	echo "Local API already registered"
 else
+	echo "Registering local API machine..."
 	cscli -c /etc/crowdsec/config.yaml machines add -a -f /etc/crowdsec/local_api_credentials.yaml
 fi
-if [ -s /etc/crowdsec/online_api_credentials.yaml ]; then
-	echo online API already registered...
-else
-	cscli -c /etc/crowdsec/config.yaml capi register -f /etc/crowdsec/online_api_credentials.yaml
+
+# Disable online_client (CAPI) by default - can be enabled manually later
+if grep -q "^    online_client:" /etc/crowdsec/config.yaml 2>/dev/null; then
+	echo "Disabling Central API (CAPI) - running in local-only mode"
+	sed -i 's/^    online_client:/#    online_client:/' /etc/crowdsec/config.yaml
+	sed -i 's/^      credentials_path: \/etc\/crowdsec\/online_api_credentials.yaml/#      credentials_path: \/etc\/crowdsec\/online_api_credentials.yaml/' /etc/crowdsec/config.yaml
 fi
-cscli hub update && cscli collections install crowdsecurity/linux && cscli parsers install crowdsecurity/whitelists && cscli hub upgrade
+
+# Create minimal online_api_credentials.yaml to prevent errors
+if [ ! -f /etc/crowdsec/online_api_credentials.yaml ]; then
+	echo "url: https://api.crowdsec.net/" > /etc/crowdsec/online_api_credentials.yaml
+fi
+
+# Update hub index manually (cscli hub update may fail with 403)
+if [ ! -f /etc/crowdsec/hub/.index.json ] || [ $(find /etc/crowdsec/hub/.index.json -mtime +7 2>/dev/null | wc -l) -gt 0 ]; then
+	echo "Updating hub index..."
+	curl -s -o /tmp/.index.json.new https://cdn-hub.crowdsec.net/crowdsecurity/master/.index.json 2>/dev/null && \
+		mv /tmp/.index.json.new /etc/crowdsec/hub/.index.json || \
+		cscli hub update 2>/dev/null || true
+fi
+
+# Install default collections
+cscli collections install crowdsecurity/linux 2>/dev/null || true
+cscli parsers install crowdsecurity/whitelists 2>/dev/null || true
+cscli hub upgrade 2>/dev/null || true
 
 exit 0
