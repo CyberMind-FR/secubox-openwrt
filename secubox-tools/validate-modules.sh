@@ -29,13 +29,13 @@ echo ""
 # Function to print error
 error() {
     echo -e "${RED}❌ ERROR: $1${NC}"
-    ((ERRORS++))
+    ERRORS=$((ERRORS + 1))
 }
 
 # Function to print warning
 warn() {
     echo -e "${YELLOW}⚠️  WARNING: $1${NC}"
-    ((WARNINGS++))
+    WARNINGS=$((WARNINGS + 1))
 }
 
 # Function to print success
@@ -63,9 +63,11 @@ while IFS= read -r module_dir; do
             rpcd_name=$(basename "$rpcd_script")
 
             # Extract ubus object names from JavaScript files
+            set +e
             js_objects=$(find "$module_dir/htdocs" -name "*.js" -type f 2>/dev/null | \
                 xargs grep -h "object:" 2>/dev/null | \
                 grep -o "'[^']*'" | sort -u | tr -d "'")
+            set -e
 
             if [ -n "$js_objects" ]; then
                 # Check if RPCD script name matches any ubus object
@@ -234,12 +236,17 @@ while IFS= read -r module_dir; do
     module_name=$(basename "$module_dir")
 
     # Extract ubus object names from JavaScript
+    set +e
     js_objects=$(find "$module_dir/htdocs" -name "*.js" -type f 2>/dev/null | \
         xargs grep -h "object:" 2>/dev/null | \
         grep -o "'[^']*'" | sort -u | tr -d "'")
+    set -e
 
     if [ -n "$js_objects" ]; then
         for obj in $js_objects; do
+            if [[ "$obj" == "service" || "$obj" == "file" ]]; then
+                continue
+            fi
             # Check if object starts with 'luci.'
             if [[ $obj == luci.* ]]; then
                 success "$module_name: ubus object '$obj' follows naming convention (luci.* prefix)"
