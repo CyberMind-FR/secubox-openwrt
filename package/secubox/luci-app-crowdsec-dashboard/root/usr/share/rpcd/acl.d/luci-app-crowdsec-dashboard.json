@@ -15,7 +15,10 @@
 					"seccubox_logs",
 					"waf_status",
 					"metrics_config",
-					"collections"
+					"collections",
+					"firewall_bouncer_status",
+					"firewall_bouncer_config",
+					"nftables_stats"
 				],
 				"file": [ "read", "stat" ]
 			},
@@ -32,7 +35,9 @@
 					"remove_collection",
 					"update_hub",
 					"register_bouncer",
-					"delete_bouncer"
+					"delete_bouncer",
+					"control_firewall_bouncer",
+					"update_firewall_bouncer_config"
 				]
 			},
 			"uci": [ "crowdsec-dashboard" ]
