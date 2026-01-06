@@ -16,6 +16,9 @@ return view.extend({
 	lastUpdate: null,
 	updateCount: 0,
 	errorCount: 0,
+	latestDashboardData: null,
+	latestTopApps: null,
+	latestTopProtocols: null,
 
 	debug: function(message, data) {
 		if (!this.debugMode) return;
@@ -54,6 +57,27 @@ return view.extend({
 		}
 	},
 
+	aggregateApplications: function(apps) {
+		var totals = {
+			flows: 0,
+			bytes: 0,
+			packets: 0,
+			uniqueApplications: Array.isArray(apps) ? apps.length : 0
+		};
+
+		if (!Array.isArray(apps)) {
+			return totals;
+		}
+
+		apps.forEach(function(app) {
+			totals.flows += app.flows || 0;
+			totals.bytes += app.bytes || 0;
+			totals.packets += app.packets || 0;
+		});
+
+		return totals;
+	},
+
 	load: function() {
 		this.debug('Loading dashboard data...');
 		return Promise.all([
@@ -61,15 +85,18 @@ return view.extend({
 			netifydAPI.getServiceStatus(),
 			netifydAPI.getTopApplications(),
 			netifydAPI.getTopProtocols()
-		]).then(L.bind(function(result) {
-			this.debug('Dashboard data loaded', {
-				dashboard: result[0],
-				status: result[1],
-				apps: result[2] ? result[2].applications.length : 0,
-				protocols: result[3] ? result[3].protocols.length : 0
-			});
-			return result;
-		}, this)).catch(L.bind(function(err) {
+	]).then(L.bind(function(result) {
+		this.debug('Dashboard data loaded', {
+			dashboard: result[0],
+			status: result[1],
+			apps: result[2] ? result[2].applications.length : 0,
+			protocols: result[3] ? result[3].protocols.length : 0
+		});
+		this.latestDashboardData = result[0] || {};
+		this.latestTopApps = result[2] || {};
+		this.latestTopProtocols = result[3] || {};
+		return result;
+	}, this)).catch(L.bind(function(err) {
 			this.debug('Error loading dashboard data', { error: err.message });
 			this.errorCount++;
 			throw err;
@@ -228,20 +255,41 @@ return view.extend({
 	},
 
 	renderStatistics: function(stats) {
-		if (!stats) stats = {};
+		var fallbackStats = (this.latestDashboardData && this.latestDashboardData.stats) || {};
+		var fallbackApps = this.aggregateApplications((this.latestTopApps && this.latestTopApps.applications) || []);
+
+		var resolveStat = function(key) {
+			if (stats && stats[key] !== undefined && stats[key] !== null) {
+				return stats[key];
+			}
+			if (fallbackStats && fallbackStats[key] !== undefined && fallbackStats[key] !== null) {
+				return fallbackStats[key];
+			}
+			return 0;
+		};
+
+		var activeFlows = resolveStat('active_flows') || fallbackApps.flows;
+		var uniqueDevices = resolveStat('unique_devices');
+		var totalBytes = resolveStat('total_bytes') || fallbackApps.bytes;
+		var ipBytes = resolveStat('ip_bytes');
+		var tcpPackets = resolveStat('tcp_packets');
+		var udpPackets = resolveStat('udp_packets');
+		var icmpPackets = resolveStat('icmp_packets');
+		var cpuUsage = resolveStat('cpu_usage');
+		var memoryKb = resolveStat('memory_kb');
 
 		var statCards = [
 			{
 				title: _('Active Flows'),
-				value: (stats.active_flows || 0).toString(),
-				subtitle: _('Active: %d, Expired: %d').format(stats.flows_active || 0, stats.flows_expired || 0),
+				value: (activeFlows || 0).toString(),
+				subtitle: _('Active: %d, Expired: %d').format(resolveStat('flows_active'), resolveStat('flows_expired')),
 				icon: 'exchange-alt',
 				color: '#3b82f6',
 				gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
 			},
 			{
 				title: _('Unique Devices'),
-				value: (stats.unique_devices || 0).toString(),
+				value: (uniqueDevices || 0).toString(),
 				subtitle: _('Connected devices'),
 				icon: 'network-wired',
 				color: '#10b981',
@@ -249,41 +297,40 @@ return view.extend({
 			},
 			{
 				title: _('Total Traffic'),
-				value: netifydAPI.formatBytes(stats.total_bytes || 0),
-				subtitle: _('IP: %s').format(netifydAPI.formatBytes(stats.ip_bytes || 0)),
+				value: netifydAPI.formatBytes(totalBytes || 0),
+				subtitle: _('IP: %s').format(netifydAPI.formatBytes(ipBytes || 0)),
 				icon: 'chart-line',
 				color: '#f59e0b',
 				gradient: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)'
 			},
 			{
 				title: _('CPU & Memory'),
-				value: (stats.cpu_usage || '0') + '%',
-				subtitle: _('RAM: %s').format(netifydAPI.formatBytes((stats.memory_kb || 0) * 1024)),
+				value: (cpuUsage || '0') + '%',
+				subtitle: _('RAM: %s').format(netifydAPI.formatBytes((memoryKb || 0) * 1024)),
 				icon: 'microchip',
 				color: '#ec4899',
 				gradient: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
 			}
 		];
 
-		// Protocol breakdown
-		var totalPackets = (stats.tcp_packets || 0) + (stats.udp_packets || 0) + (stats.icmp_packets || 0);
+		var totalPackets = tcpPackets + udpPackets + icmpPackets;
 		var protocolData = totalPackets > 0 ? [
 			{
 				name: 'TCP',
-				packets: stats.tcp_packets || 0,
-				percentage: totalPackets > 0 ? ((stats.tcp_packets || 0) / totalPackets * 100).toFixed(1) : 0,
+				packets: tcpPackets,
+				percentage: ((tcpPackets || 0) / totalPackets * 100).toFixed(1),
 				color: '#3b82f6'
 			},
 			{
 				name: 'UDP',
-				packets: stats.udp_packets || 0,
-				percentage: totalPackets > 0 ? ((stats.udp_packets || 0) / totalPackets * 100).toFixed(1) : 0,
+				packets: udpPackets,
+				percentage: ((udpPackets || 0) / totalPackets * 100).toFixed(1),
 				color: '#10b981'
 			},
 			{
 				name: 'ICMP',
-				packets: stats.icmp_packets || 0,
-				percentage: totalPackets > 0 ? ((stats.icmp_packets || 0) / totalPackets * 100).toFixed(1) : 0,
+				packets: icmpPackets,
+				percentage: ((icmpPackets || 0) / totalPackets * 100).toFixed(1),
 				color: '#f59e0b'
 			}
 		] : [];
@@ -344,6 +391,8 @@ return view.extend({
 	},
 
 	renderTopApplications: function(data) {
+		var fallbackStats = (this.latestDashboardData && this.latestDashboardData.stats) || {};
+
 		if (!data || !data.applications || data.applications.length === 0) {
 			return E('div', { 'class': 'cbi-section' }, [
 				E('h3', [
@@ -356,8 +405,10 @@ return view.extend({
 						'style': 'text-align: center; padding: 2rem'
 					}, [
 						E('i', { 'class': 'fa fa-info-circle', 'style': 'font-size: 2em; margin-bottom: 0.5rem; display: block' }),
-						E('p', _('No application data available yet')),
-						E('small', { 'class': 'text-muted' }, _('Data will appear once network traffic is detected'))
+						E('p', fallbackStats.active_flows ?
+							_('Netifyd is tracking %d flows across %d applications. Detailed reporting will appear once the flow exporter is configured.').format(fallbackStats.active_flows, fallbackStats.unique_applications || 0) :
+							_('No application data available yet')),
+						E('small', { 'class': 'text-muted' }, _('Try enabling flow export (socket or sink) to populate this section'))
 					])
 				])
 			]);
@@ -449,6 +500,8 @@ return view.extend({
 	},
 
 	renderTopProtocols: function(data) {
+		var fallbackStats = (this.latestDashboardData && this.latestDashboardData.stats) || {};
+
 		if (!data || !data.protocols || data.protocols.length === 0) {
 			return E('div', { 'class': 'cbi-section' }, [
 				E('h3', [
@@ -461,8 +514,10 @@ return view.extend({
 						'style': 'text-align: center; padding: 2rem'
 					}, [
 						E('i', { 'class': 'fa fa-info-circle', 'style': 'font-size: 2em; margin-bottom: 0.5rem; display: block' }),
-						E('p', _('No protocol data available yet')),
-						E('small', { 'class': 'text-muted' }, _('Data will appear once network traffic is detected'))
+						E('p', fallbackStats.active_flows ?
+							_('Netifyd is tracking %d flows, but protocol breakdown is still pending.').format(fallbackStats.active_flows) :
+							_('No protocol data available yet')),
+						E('small', { 'class': 'text-muted' }, _('Enable packet capture or flow export to populate protocol metrics'))
 					])
 				])
 			]);
@@ -535,6 +590,10 @@ return view.extend({
 		var status = data[1] || {};
 		var topApps = data[2] || {};
 		var topProtos = data[3] || {};
+
+		this.latestDashboardData = dashboard;
+		this.latestTopApps = topApps;
+		this.latestTopProtocols = topProtos;
 
 		// Store container references
 		var self = this;

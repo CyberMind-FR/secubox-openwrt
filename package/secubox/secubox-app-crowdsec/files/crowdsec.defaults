@@ -24,24 +24,24 @@ else
 	cscli -c /etc/crowdsec/config.yaml machines add -a -f /etc/crowdsec/local_api_credentials.yaml
 fi
 
-# Disable online_client (CAPI) by default - can be enabled manually later
-if grep -q "^    online_client:" /etc/crowdsec/config.yaml 2>/dev/null; then
-	echo "Disabling Central API (CAPI) - running in local-only mode"
-	sed -i 's/^    online_client:/#    online_client:/' /etc/crowdsec/config.yaml
-	sed -i 's/^      credentials_path: \/etc\/crowdsec\/online_api_credentials.yaml/#      credentials_path: \/etc\/crowdsec\/online_api_credentials.yaml/' /etc/crowdsec/config.yaml
+# Register with Central API (CAPI) for threat intelligence sharing
+if ! grep -q "login:" /etc/crowdsec/online_api_credentials.yaml 2>/dev/null; then
+	echo "Registering with Central API (CAPI)..."
+	if cscli capi register 2>/dev/null; then
+		echo "Successfully registered with Central API"
+	else
+		echo "WARNING: CAPI registration failed - will run in local-only mode"
+		# Create minimal credentials file to prevent errors
+		echo "url: https://api.crowdsec.net/" > /etc/crowdsec/online_api_credentials.yaml
+	fi
+else
+	echo "Central API already registered"
 fi
 
-# Create minimal online_api_credentials.yaml to prevent errors
-if [ ! -f /etc/crowdsec/online_api_credentials.yaml ]; then
-	echo "url: https://api.crowdsec.net/" > /etc/crowdsec/online_api_credentials.yaml
-fi
-
-# Update hub index manually (cscli hub update may fail with 403)
+# Update hub index
 if [ ! -f /etc/crowdsec/hub/.index.json ] || [ $(find /etc/crowdsec/hub/.index.json -mtime +7 2>/dev/null | wc -l) -gt 0 ]; then
 	echo "Updating hub index..."
-	curl -s -o /tmp/.index.json.new https://cdn-hub.crowdsec.net/crowdsecurity/master/.index.json 2>/dev/null && \
-		mv /tmp/.index.json.new /etc/crowdsec/hub/.index.json || \
-		cscli hub update 2>/dev/null || true
+	cscli hub update 2>/dev/null || true
 fi
 
 # Install default collections
