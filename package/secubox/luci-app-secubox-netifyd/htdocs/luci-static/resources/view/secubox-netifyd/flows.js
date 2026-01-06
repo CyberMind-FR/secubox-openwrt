@@ -383,8 +383,8 @@ return view.extend({
 	},
 
 	addFooter: function() {
-		// Initial render
-		return Promise.all([
+		// Initial render - execute promise but don't return it
+		Promise.all([
 			netifydAPI.getDashboard()
 		]).then(L.bind(function(result) {
 			var dashboard = result[0] || {};
