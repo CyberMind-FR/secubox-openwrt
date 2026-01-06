@@ -1,4 +1,0 @@
-
-config netifyd
-	option enabled 1
-	option autoconfig 1

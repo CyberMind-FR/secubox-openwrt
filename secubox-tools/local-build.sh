@@ -1280,6 +1280,8 @@ copy_secubox_to_openwrt() {
         fi
     done
 
+    rm -f package/secubox/luci-app-secubox-netifyd/root/etc/config/netifyd >/dev/null 2>&1 || true
+
     cd - > /dev/null
 
     print_success "Copied $pkg_count SecuBox packages"
@@ -1353,10 +1355,13 @@ CONFIG_PACKAGE_kmod-fs-vfat=y
 CONFIG_PACKAGE_secubox-app=y
 CONFIG_PACKAGE_luci-app-secubox=y
 CONFIG_PACKAGE_luci-app-system-hub=y
+CONFIG_PACKAGE_luci-app-secubox-admin=y
 
 # SecuBox packages - Security & Monitoring
 # CONFIG_PACKAGE_luci-app-crowdsec-dashboard is not set (requires crowdsec backend - compile fails)
 CONFIG_PACKAGE_luci-app-netdata-dashboard=y
+CONFIG_PACKAGE_crowdsec=y
+CONFIG_PACKAGE_secubox-app-crowdsec=y
 
 # SecuBox packages - Network Intelligence
 CONFIG_PACKAGE_netifyd=y
@@ -1377,7 +1382,6 @@ CONFIG_PACKAGE_luci-app-cdn-cache=y
 CONFIG_PACKAGE_luci-app-vhost-manager=y
 
 # SecuBox packages - Disabled (require compilation/not ready)
-# CONFIG_PACKAGE_secubox-app-crowdsec is not set (requires Go 1.23+ - fails in firmware build)
 # CONFIG_PACKAGE_luci-app-ksm-manager is not set (not stable)
 # CONFIG_PACKAGE_luci-app-traffic-shaper is not set (not stable)
 
