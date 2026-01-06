@@ -81,37 +81,33 @@ get_service_status() {
 		json_add_int "uptime" 0
 	fi
 
-	# Get version from netifyd
-	local version=$(netifyd -V 2>/dev/null | head -n1 | awk '{print $NF}')
+	# Get version from netifyd (format: "Netify Agent/5.2.1 ...")
+	local version=$(netifyd -V 2>/dev/null | head -n1 | sed 's/.*Agent\/\([0-9.]*\).*/\1/')
 	json_add_string "version" "${version:-unknown}"
 
 	# Get UUID
 	local uuid=$(netifyd -p 2>/dev/null | tr -d '\n')
 	json_add_string "uuid" "${uuid:-unknown}"
 
-	# Check socket connectivity
+	# Check connectivity - verify netifyd is running and producing data
 	local socket_ok=0
-	local socket_type=$(uci -q get secubox-netifyd.settings.socket_type || echo "tcp")
+	local socket_type=$(uci -q get secubox-netifyd.settings.socket_type || echo "unix")
+	local socket_addr=$(uci -q get secubox-netifyd.settings.socket_address || echo "127.0.0.1")
+	local socket_port=$(uci -q get secubox-netifyd.settings.socket_port || echo "7150")
+	local unix_socket=$(uci -q get secubox-netifyd.settings.unix_socket_path || echo "/var/run/netifyd/netifyd.sock")
 
-	if [ "$socket_type" = "tcp" ]; then
-		local socket_addr=$(uci -q get secubox-netifyd.settings.socket_address || echo "127.0.0.1")
-		local socket_port=$(uci -q get secubox-netifyd.settings.socket_port || echo "7150")
-		if timeout 1 nc -z "$socket_addr" "$socket_port" 2>/dev/null; then
-			socket_ok=1
-		fi
-	else
-		# Unix socket
-		local unix_socket=$(uci -q get secubox-netifyd.settings.unix_socket_path || echo "/var/run/netifyd/netifyd.sock")
-		if [ -S "$unix_socket" ]; then
-			socket_ok=1
-		fi
+	# Check if netifyd is running and producing status data
+	if check_netifyd_running && [ -f "$NETIFYD_STATUS" ] && [ -r "$NETIFYD_STATUS" ]; then
+		socket_ok=1
 	fi
 	json_add_boolean "socket_connected" "$socket_ok"
 
 	# Get configuration
 	json_add_object "config"
+	json_add_string "socket_type" "$socket_type"
 	json_add_string "socket_address" "$socket_addr"
 	json_add_int "socket_port" "$socket_port"
+	json_add_string "unix_socket_path" "$unix_socket"
 	json_add_boolean "auto_start" "$(uci -q get secubox-netifyd.settings.auto_start || echo 1)"
 	json_close_object
 
