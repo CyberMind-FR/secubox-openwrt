@@ -6,21 +6,14 @@
 mkdir -p /etc/netify.d/plugins.d
 mkdir -p /etc/netify.d/address-groups.d
 
-# Create empty categories file to prevent error messages
-if [ ! -f /etc/netify.d/netify-categories.json ]; then
-	cat > /etc/netify.d/netify-categories.json <<'EOF'
-{
-  "version": "1.0",
-  "categories": []
-}
-EOF
-fi
-
 # Ensure proper permissions
 chmod 755 /etc/netify.d
 chmod 755 /etc/netify.d/plugins.d
 chmod 755 /etc/netify.d/address-groups.d
-chmod 644 /etc/netify.d/netify-categories.json
+
+# Note: netify-categories.json is NOT created here as netifyd 5.2.1+ expects
+# a newer format that differs from the legacy format. Let netifyd manage this
+# file on its own, or operate without it (which works fine).
 
 # Initialize UCI configuration if it doesn't exist
 if ! uci -q get secubox-netifyd.settings >/dev/null 2>&1; then
