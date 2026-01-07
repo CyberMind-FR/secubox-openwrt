@@ -434,6 +434,16 @@ return view.extend({
 			var formWrapper = E('div', { 'class': 'secubox-settings-form' }, formElement);
 			container.appendChild(formWrapper);
 			this.bindStatusChip(formElement, statusChip);
+
+			// Add cyber-checkbox class to all checkboxes for proper styling
+			var checkboxes = formWrapper.querySelectorAll('input[type="checkbox"]');
+			checkboxes.forEach(function(checkbox) {
+				var wrapper = checkbox.parentNode;
+				if (wrapper && wrapper.classList) {
+					wrapper.classList.add('cyber-checkbox');
+				}
+			});
+
 			return container;
 		}, this));
 	},
