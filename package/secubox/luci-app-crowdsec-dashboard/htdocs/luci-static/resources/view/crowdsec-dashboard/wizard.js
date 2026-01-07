@@ -250,17 +250,15 @@ return view.extend({
 			E('div', { 'class': 'collections-list' },
 				recommendedCollections.map(L.bind(function(collection) {
 					var checkboxId = 'collection-' + collection.name.replace('/', '-');
-					var checkbox = E('input', {
-						'type': 'checkbox',
-						'id': checkboxId,
-						'checked': collection.preselected ? 'checked' : null,
-						'data-collection': collection.name,
-						'style': 'width: 18px; height: 18px; cursor: pointer; margin: 0;'
-					});
 
 					return E('div', { 'class': 'collection-item' }, [
-						E('label', { 'for': checkboxId, 'style': 'display: flex; align-items: center; gap: 12px; cursor: pointer; margin: 0;' }, [
-							checkbox,
+						E('label', { 'class': 'cyber-checkbox', 'for': checkboxId }, [
+							E('input', {
+								'type': 'checkbox',
+								'id': checkboxId,
+								'checked': collection.preselected ? 'checked' : null,
+								'data-collection': collection.name
+							}),
 							E('div', { 'class': 'collection-info' }, [
 								E('strong', {}, collection.name),
 								E('div', { 'class': 'collection-desc' }, collection.description)

@@ -198,18 +198,20 @@
 	background: rgba(15, 23, 42, 0.7);
 }
 
-.collection-item label {
-	display: flex;
+.collection-item .cyber-checkbox {
+	display: flex !important;
 	align-items: center;
 	gap: 12px;
 	cursor: pointer;
 	user-select: none;
+	padding: 0 !important;
 }
 
-.collection-item input[type="checkbox"] {
+.collection-item .cyber-checkbox input[type="checkbox"] {
 	cursor: pointer;
 	width: 18px;
 	height: 18px;
+	flex-shrink: 0;
 }
 
 .collection-info {
