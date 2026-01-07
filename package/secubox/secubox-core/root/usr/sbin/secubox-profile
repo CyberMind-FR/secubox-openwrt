@@ -8,7 +8,7 @@
 . /usr/share/libubox/jshn.sh
 . /lib/functions.sh
 
-PROFILE_DIR="/etc/secubox/profiles"
+PROFILE_DIR="/usr/share/secubox/profiles"
 TEMPLATE_DIR="/etc/secubox/templates"
 MACRO_DIR="/etc/secubox/macros"
 STATE_DIR="/var/run/secubox"
@@ -21,10 +21,12 @@ list_profiles() {
 		json_init
 		json_add_array "profiles"
 
-		for profile in "$PROFILE_DIR"/*.{yaml,yml,json} 2>/dev/null; do
-			[ -f "$profile" ] || continue
-			local name=$(basename "$profile" | sed 's/\.\(yaml\|yml\|json\)$//')
-			json_add_string "" "$name"
+		for ext in yaml yml json; do
+			for profile in "$PROFILE_DIR"/*.$ext; do
+				[ -f "$profile" ] || continue
+				local name=$(basename "$profile" | sed 's/\.\(yaml\|yml\|json\)$//')
+				json_add_string "" "$name"
+			done
 		done
 
 		json_close_array
@@ -36,10 +38,12 @@ list_profiles() {
 		if [ -z "$(ls -A "$PROFILE_DIR" 2>/dev/null)" ]; then
 			echo "  (none)"
 		else
-			for profile in "$PROFILE_DIR"/*.{yaml,yml,json} 2>/dev/null; do
-				[ -f "$profile" ] || continue
-				local name=$(basename "$profile" | sed 's/\.\(yaml\|yml\|json\)$//')
-				echo "  - $name"
+			for ext in yaml yml json; do
+				for profile in "$PROFILE_DIR"/*.$ext; do
+					[ -f "$profile" ] || continue
+					local name=$(basename "$profile" | sed 's/\.\(yaml\|yml\|json\)$//')
+					echo "  - $name"
+				done
 			done
 		fi
 
