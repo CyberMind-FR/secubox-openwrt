@@ -176,7 +176,7 @@ var callApplyAppWizard = rpc.declare({
 
 var callListProfiles = rpc.declare({
 	object: 'luci.secubox',
-	method: 'list_profiles',
+	method: 'listProfiles',
 	expect: { profiles: [] }
 });
 
