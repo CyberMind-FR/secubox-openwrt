@@ -472,39 +472,60 @@ case "$1" in
 				;;
 
 			list_apps)
-				# Returns apps from catalog and marks apps with wizards
+				# Returns apps from catalog and adds apps from manifests with wizards
 				CATALOG_FILE="/usr/share/secubox/catalog.json"
 				PLUGINS_DIR="/usr/share/secubox/plugins"
 
 				if [ -f "$CATALOG_FILE" ]; then
 					# Get base apps from catalog
 					APPS_JSON=$(jq '.plugins' "$CATALOG_FILE")
+				else
+					APPS_JSON='[]'
+				fi
 
-					# Check each plugin directory for manifest with wizard
-					for plugin_dir in "$PLUGINS_DIR"/*; do
-						[ -d "$plugin_dir" ] || continue
-						manifest="$plugin_dir/manifest.json"
-						[ -f "$manifest" ] || continue
+				# Scan plugin manifests and add apps with wizards
+				for plugin_dir in "$PLUGINS_DIR"/*; do
+					[ -d "$plugin_dir" ] || continue
+					manifest="$plugin_dir/manifest.json"
+					[ -f "$manifest" ] || continue
 
-						# Get app ID from manifest
-						app_id=$(jq -r '.id // empty' "$manifest" 2>/dev/null)
-						[ -n "$app_id" ] || continue
+					# Get app ID from manifest
+					app_id=$(jq -r '.id // empty' "$manifest" 2>/dev/null)
+					[ -n "$app_id" ] || continue
 
-						# Check if manifest has wizard configuration
-						has_wizard=$(jq -e '.wizard.fields | length > 0' "$manifest" >/dev/null 2>&1 && echo "true" || echo "false")
+					# Check if manifest has wizard configuration
+					has_wizard=$(jq -e '.wizard.fields | length > 0' "$manifest" >/dev/null 2>&1 && echo "true" || echo "false")
 
-						# Add has_wizard flag to matching app in catalog
-						if [ "$has_wizard" = "true" ]; then
+					if [ "$has_wizard" = "true" ]; then
+						# Check if app already exists in catalog
+						app_exists=$(echo "$APPS_JSON" | jq --arg id "$app_id" 'map(select(.id == $id)) | length')
+
+						if [ "$app_exists" -gt 0 ]; then
+							# Update existing catalog app with has_wizard flag
 							APPS_JSON=$(echo "$APPS_JSON" | jq --arg id "$app_id" \
 								'map(if .id == $id then . + {has_wizard: true} else . end)')
+						else
+							# Add new app from manifest
+							app_data=$(jq '{
+								id: .id,
+								name: .name,
+								description: .description,
+								version: .version,
+								icon: "📦",
+								has_wizard: true,
+								state: "available"
+							}' "$manifest")
+							APPS_JSON=$(echo "$APPS_JSON" | jq --argjson app "$app_data" '. + [$app]')
 						fi
-					done
+					fi
+				done
 
-					# Return modified apps list
+				# Return modified apps list
+				if [ -f "$CATALOG_FILE" ]; then
 					jq -n --argjson apps "$APPS_JSON" --argjson cats "$(jq '.categories // {}' "$CATALOG_FILE")" \
 						'{apps: $apps, categories: $cats}'
 				else
-					echo '{"apps":[],"categories":{}}'
+					jq -n --argjson apps "$APPS_JSON" '{apps: $apps, categories: {}}'
 				fi
 				;;
 
