@@ -472,10 +472,37 @@ case "$1" in
 				;;
 
 			list_apps)
-				# Alias for get_appstore_apps - returns apps from main catalog
+				# Returns apps from catalog and marks apps with wizards
 				CATALOG_FILE="/usr/share/secubox/catalog.json"
+				PLUGINS_DIR="/usr/share/secubox/plugins"
+
 				if [ -f "$CATALOG_FILE" ]; then
-					jq '{apps: .plugins, categories: .categories}' "$CATALOG_FILE"
+					# Get base apps from catalog
+					APPS_JSON=$(jq '.plugins' "$CATALOG_FILE")
+
+					# Check each plugin directory for manifest with wizard
+					for plugin_dir in "$PLUGINS_DIR"/*; do
+						[ -d "$plugin_dir" ] || continue
+						manifest="$plugin_dir/manifest.json"
+						[ -f "$manifest" ] || continue
+
+						# Get app ID from manifest
+						app_id=$(jq -r '.id // empty' "$manifest" 2>/dev/null)
+						[ -n "$app_id" ] || continue
+
+						# Check if manifest has wizard configuration
+						has_wizard=$(jq -e '.wizard.fields | length > 0' "$manifest" >/dev/null 2>&1 && echo "true" || echo "false")
+
+						# Add has_wizard flag to matching app in catalog
+						if [ "$has_wizard" = "true" ]; then
+							APPS_JSON=$(echo "$APPS_JSON" | jq --arg id "$app_id" \
+								'map(if .id == $id then . + {has_wizard: true} else . end)')
+						fi
+					done
+
+					# Return modified apps list
+					jq -n --argjson apps "$APPS_JSON" --argjson cats "$(jq '.categories // {}' "$CATALOG_FILE")" \
+						'{apps: $apps, categories: $cats}'
 				else
 					echo '{"apps":[],"categories":{}}'
 				fi

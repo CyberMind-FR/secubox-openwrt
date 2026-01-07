@@ -18,19 +18,19 @@ list_profiles() {
 	local format="${1:-table}"
 
 	if [ "$format" = "--json" ] || [ "$format" = "json" ]; then
-		json_init
-		json_add_array "profiles"
+		echo -n '{"profiles":['
+		local first=1
 
-		for ext in yaml yml json; do
+		for ext in json; do
 			for profile in "$PROFILE_DIR"/*.$ext; do
 				[ -f "$profile" ] || continue
-				local name=$(basename "$profile" | sed 's/\.\(yaml\|yml\|json\)$//')
-				json_add_string "" "$name"
+				[ "$first" = "1" ] || echo -n ','
+				cat "$profile"
+				first=0
 			done
 		done
 
-		json_close_array
-		json_dump
+		echo ']}'
 	else
 		echo "Available Profiles:"
 		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
