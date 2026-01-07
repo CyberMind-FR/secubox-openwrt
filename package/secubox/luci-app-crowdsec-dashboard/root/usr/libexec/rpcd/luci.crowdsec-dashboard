@@ -35,9 +35,9 @@ get_decisions() {
 	local output
 	output=$($CSCLI decisions list -o json 2>/dev/null)
 	if [ -z "$output" ] || [ "$output" = "null" ]; then
-		echo '[]'
+		echo '{"alerts":[]}'
 	else
-		echo "$output"
+		echo "{\"alerts\":$output}"
 	fi
 }
 
@@ -48,9 +48,9 @@ get_alerts() {
 	local output
 	output=$($CSCLI alerts list -o json --limit "$limit" 2>/dev/null)
 	if [ -z "$output" ] || [ "$output" = "null" ]; then
-		echo '[]'
+		echo '{"alerts":[]}'
 	else
-		echo "$output"
+		echo "{\"alerts\":$output}"
 	fi
 }
 
@@ -62,7 +62,9 @@ get_metrics() {
 	if [ -z "$output" ]; then
 		echo '{}'
 	else
-		echo "$output"
+		# Fix malformed JSON from cscli (remove empty string keys)
+		# CrowdSec sometimes outputs "": {...} which is technically valid but causes issues
+		echo "$output" | sed 's/"": {/"unknown": {/g'
 	fi
 }
 
@@ -72,9 +74,9 @@ get_bouncers() {
 	local output
 	output=$($CSCLI bouncers list -o json 2>/dev/null)
 	if [ -z "$output" ] || [ "$output" = "null" ]; then
-		echo '[]'
+		echo '{"bouncers":[]}'
 	else
-		echo "$output"
+		echo "{\"bouncers\":$output}"
 	fi
 }
 
@@ -84,9 +86,9 @@ get_machines() {
 	local output
 	output=$($CSCLI machines list -o json 2>/dev/null)
 	if [ -z "$output" ] || [ "$output" = "null" ]; then
-		echo '[]'
+		echo '{"machines":[]}'
 	else
-		echo "$output"
+		echo "{\"machines\":$output}"
 	fi
 }
 
@@ -340,9 +342,9 @@ get_collections() {
 	local output
 	output=$($CSCLI collections list -o json 2>/dev/null)
 	if [ -z "$output" ] || [ "$output" = "null" ]; then
-		echo '[]'
+		echo '{"collections":[]}'
 	else
-		echo "$output"
+		echo "{\"collections\":$output}"
 	fi
 }
 
