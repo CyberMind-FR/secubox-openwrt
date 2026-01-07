@@ -56,6 +56,9 @@ case "$1" in
 			json_add_boolean "dryrun" "boolean"
 		json_close_object
 
+		json_add_object "rollbackProfile"
+		json_close_object
+
 		json_add_object "validateProfile"
 			json_add_string "profile" "string"
 		json_close_object
@@ -264,7 +267,26 @@ case "$1" in
 				read -r input
 				profile=$(echo "$input" | jsonfilter -e '@.profile')
 				dryrun=$(echo "$input" | jsonfilter -e '@.dryrun')
-				/usr/sbin/secubox-profile apply "$profile" ${dryrun:+--dryrun}
+				result=$(/usr/sbin/secubox-profile apply "$profile" ${dryrun:+--dryrun} 2>&1)
+				if [ $? -eq 0 ]; then
+					echo '{"success":true,"message":"Profile applied successfully"}'
+				else
+					echo "{\"success\":false,\"message\":\"Failed to apply profile\",\"error\":\"$result\"}"
+				fi
+				;;
+
+			rollbackProfile)
+				# Rollback to last snapshot created before profile application
+				if [ -f /usr/sbin/secubox-recovery ]; then
+					result=$(/usr/sbin/secubox-recovery restore last 2>&1)
+					if [ $? -eq 0 ]; then
+						echo '{"success":true,"message":"Rolled back to last snapshot"}'
+					else
+						echo "{\"success\":false,\"message\":\"Rollback failed\",\"error\":\"$result\"}"
+					fi
+				else
+					echo '{"success":false,"message":"Recovery system not available"}'
+				fi
 				;;
 
 			validateProfile)

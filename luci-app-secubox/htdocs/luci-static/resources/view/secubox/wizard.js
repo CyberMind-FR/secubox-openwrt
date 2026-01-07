@@ -46,9 +46,11 @@ return view.extend({
 		console.log('[SecuBox Wizard] Profiles data:', payload[2]);
 		this.firstRun = payload[0] || {};
 		// Handle both array and object formats
-		this.appList = Array.isArray(payload[1]) ? payload[1] : (payload[1] && payload[1].apps) || [];
+		var allApps = Array.isArray(payload[1]) ? payload[1] : (payload[1] && payload[1].apps) || [];
+		// Filter to only show apps with wizards
+		this.appList = allApps.filter(function(app) { return app.has_wizard === true; });
 		this.profileList = Array.isArray(payload[2]) ? payload[2] : (payload[2] && payload[2].profiles) || [];
-		console.log('[SecuBox Wizard] Parsed appList:', this.appList);
+		console.log('[SecuBox Wizard] Filtered appList (has_wizard only):', this.appList);
 		console.log('[SecuBox Wizard] Parsed profileList:', this.profileList);
 		var container = E('div', { 'class': 'secubox-wizard-page' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),

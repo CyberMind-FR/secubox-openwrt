@@ -182,13 +182,15 @@ var callListProfiles = rpc.declare({
 
 var callApplyProfile = rpc.declare({
 	object: 'luci.secubox',
-	method: 'apply_profile',
-	params: ['profile_id']
+	method: 'applyProfile',
+	params: ['profile'],
+	expect: { success: false, message: '' }
 });
 
 var callRollbackProfile = rpc.declare({
 	object: 'luci.secubox',
-	method: 'rollback_profile'
+	method: 'rollbackProfile',
+	expect: { success: false, message: '' }
 });
 
 // App Store methods
