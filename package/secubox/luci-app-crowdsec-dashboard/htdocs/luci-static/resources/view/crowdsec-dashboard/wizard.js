@@ -249,15 +249,17 @@ return view.extend({
 
 			E('div', { 'class': 'collections-list' },
 				recommendedCollections.map(L.bind(function(collection) {
+					var checkboxId = 'collection-' + collection.name.replace('/', '-');
 					var checkbox = E('input', {
 						'type': 'checkbox',
-						'id': 'collection-' + collection.name.replace('/', '-'),
-						'checked': collection.preselected,
-						'data-collection': collection.name
+						'id': checkboxId,
+						'checked': collection.preselected ? 'checked' : null,
+						'data-collection': collection.name,
+						'style': 'width: 18px; height: 18px; cursor: pointer; margin: 0;'
 					});
 
 					return E('div', { 'class': 'collection-item' }, [
-						E('label', {}, [
+						E('label', { 'for': checkboxId, 'style': 'display: flex; align-items: center; gap: 12px; cursor: pointer; margin: 0;' }, [
 							checkbox,
 							E('div', { 'class': 'collection-info' }, [
 								E('strong', {}, collection.name),
@@ -274,7 +276,7 @@ return view.extend({
 					E('div', { 'class': 'spinning' }),
 					E('p', {}, _('Installing collections...')),
 					E('div', { 'id': 'install-status' }, this.wizardData.installStatus || '')
-				]) : null,
+				]) : E([]),
 
 			// Navigation
 			E('div', { 'class': 'wizard-nav' }, [
