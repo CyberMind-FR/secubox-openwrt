@@ -16,6 +16,9 @@ LOG_FILE="/var/log/secubox-netifyd.log"
 FLOW_CACHE="/tmp/netifyd-flows.json"
 STATS_CACHE="/tmp/netifyd-stats.json"
 NETIFYD_SINK_CONF="/etc/netifyd.d/secubox-sink.conf"
+NETIFYD_PLUGIN_LIBDIR="/usr/lib/netifyd"
+NETIFYD_PLUGIN_CONF_DIR="/etc/netifyd/plugins.d"
+NETIFYD_STATE_DIR="/etc/netify.d"
 
 # Logging function
 log_msg() {
@@ -66,6 +69,60 @@ EOF
 	else
 		rm -f "$NETIFYD_SINK_CONF"
 		log_msg "INFO" "Flow sink disabled"
+	fi
+}
+
+apply_plugin_config() {
+	local plugin_dir="$NETIFYD_PLUGIN_CONF_DIR"
+	local bittorrent_conf="$plugin_dir/secubox-bittorrent-ipset.conf"
+	local nft_conf="$plugin_dir/secubox-nftables-block.conf"
+
+	mkdir -p "$plugin_dir"
+	mkdir -p "$NETIFYD_STATE_DIR"
+
+	local bittorrent_enabled=$(uci -q get secubox-netifyd.bittorrent.enabled || echo 0)
+	local ipset_name=$(uci -q get secubox-netifyd.bittorrent.ipset || echo 'secubox-bittorrent')
+	local ipset_family=$(uci -q get secubox-netifyd.bittorrent.ipset_family || echo 'inet')
+	local match_app=$(uci -q get secubox-netifyd.bittorrent.match_application || echo 'bittorrent')
+
+	if [ "$bittorrent_enabled" -eq 1 ]; then
+		cat <<EOF > "$bittorrent_conf"
+[secubox-bittorrent-ipset]
+enable = yes
+plugin_library = ${NETIFYD_PLUGIN_LIBDIR}/libnetify-plugin-bittorrent-ipset.so
+conf_filename = ${NETIFYD_STATE_DIR}/secubox-bittorrent-ipset.json
+ipset-name = $ipset_name
+ipset-family = $ipset_family
+match-applications = $match_app
+ipset-timeout = 900
+EOF
+		log_msg "INFO" "BitTorrent ipset plugin enabled ($ipset_name)"
+	else
+		rm -f "$bittorrent_conf"
+		log_msg "INFO" "BitTorrent ipset plugin disabled"
+	fi
+
+	local nft_enabled=$(uci -q get secubox-netifyd.nftables.enabled || echo 0)
+	local nft_table=$(uci -q get secubox-netifyd.nftables.table || echo 'filter')
+	local nft_chain=$(uci -q get secubox-netifyd.nftables.chain || echo 'SECUBOX')
+	local nft_action=$(uci -q get secubox-netifyd.nftables.action || echo 'drop')
+	local nft_ipset=$(uci -q get secubox-netifyd.nftables.target_ipset || echo 'secubox-banned')
+
+	if [ "$nft_enabled" -eq 1 ]; then
+		cat <<EOF > "$nft_conf"
+[secubox-nftables-block]
+enable = yes
+plugin_library = ${NETIFYD_PLUGIN_LIBDIR}/libnetify-plugin-nftables-block.so
+conf_filename = ${NETIFYD_STATE_DIR}/secubox-nftables-block.json
+table = $nft_table
+chain = $nft_chain
+action = $nft_action
+ipset = $nft_ipset
+EOF
+		log_msg "INFO" "nftables plugin enabled ($nft_chain@$nft_table -> $nft_action $nft_ipset)"
+	else
+		rm -f "$nft_conf"
+		log_msg "INFO" "nftables plugin disabled"
 	fi
 }
 
@@ -681,6 +738,26 @@ get_config() {
 	json_add_int "alert_threshold_mbps" "$(uci -q get secubox-netifyd.alerts.alert_threshold_mbps || echo 100)"
 	json_close_object
 
+	# Plugins
+	json_add_object "plugins"
+
+	json_add_object "bittorrent"
+	json_add_boolean "enabled" "$(uci -q get secubox-netifyd.bittorrent.enabled || echo 0)"
+	json_add_string "ipset" "$(uci -q get secubox-netifyd.bittorrent.ipset || echo 'secubox-bittorrent')"
+	json_add_string "ipset_family" "$(uci -q get secubox-netifyd.bittorrent.ipset_family || echo 'inet')"
+	json_add_string "match_application" "$(uci -q get secubox-netifyd.bittorrent.match_application || echo 'bittorrent')"
+	json_close_object
+
+	json_add_object "nftables"
+	json_add_boolean "enabled" "$(uci -q get secubox-netifyd.nftables.enabled || echo 0)"
+	json_add_string "table" "$(uci -q get secubox-netifyd.nftables.table || echo 'filter')"
+	json_add_string "chain" "$(uci -q get secubox-netifyd.nftables.chain || echo 'SECUBOX')"
+	json_add_string "action" "$(uci -q get secubox-netifyd.nftables.action || echo 'drop')"
+	json_add_string "target_ipset" "$(uci -q get secubox-netifyd.nftables.target_ipset || echo 'secubox-banned')"
+	json_close_object
+
+	json_close_object
+
 	json_dump
 }
 
@@ -739,15 +816,32 @@ update_config() {
 	uci commit secubox-netifyd
 
 	apply_flow_sink_config
+	apply_plugin_config
 	if check_netifyd_installed; then
 		/etc/init.d/netifyd restart >/dev/null 2>&1 || true
-		log_msg "INFO" "Netifyd restarted to apply sink configuration"
+		log_msg "INFO" "Netifyd restarted to apply sink and plugin configuration"
 	fi
 
 	log_msg "INFO" "Configuration updated"
 
 	json_add_boolean "success" 1
 	json_add_string "message" "Configuration updated successfully"
+	json_dump
+}
+
+apply_plugin_configuration() {
+	json_init
+
+	apply_plugin_config
+	if check_netifyd_installed; then
+		/etc/init.d/netifyd restart >/dev/null 2>&1 || true
+		log_msg "INFO" "Netifyd restarted after plugin configuration sync"
+	else
+		log_msg "WARN" "Netifyd binary not found; plugin configuration stored"
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Plugin configuration synced"
 	json_dump
 }
 
@@ -860,6 +954,7 @@ case "$1" in
 		"alerts": "object",
 		"sink": "object"
 	},
+	"apply_plugin_configuration": {},
 	"get_interfaces": {},
 	"clear_cache": {},
 	"export_flows": {
@@ -885,6 +980,7 @@ EOF
 			service_disable) service_disable ;;
 			get_config) get_config ;;
 			update_config) update_config ;;
+			apply_plugin_configuration) apply_plugin_configuration ;;
 			get_interfaces) get_interfaces ;;
 			clear_cache) clear_cache ;;
 			export_flows) export_flows ;;

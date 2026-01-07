@@ -12,6 +12,30 @@ return view.extend({
 	trendsContainer: null,
 	isPaused: false,
 
+	formatInterfaceLabel: function(name) {
+		if (!name) {
+			return _('Unknown');
+		}
+
+		if (typeof name === 'string') {
+			return name;
+		}
+
+		if (name.nodeType && typeof name.textContent === 'string') {
+			return name.textContent.trim();
+		}
+
+		return String(name);
+	},
+
+	normalizePacketPercentage: function(value, total) {
+		if (!total || total <= 0) {
+			return '0.0';
+		}
+
+		return (value / total * 100).toFixed(1);
+	},
+
 	load: function() {
 		return Promise.all([
 			netifydAPI.getDashboard(),
@@ -95,8 +119,13 @@ return view.extend({
 	},
 
 	renderInterfaceFlows: function(interfaces, stats) {
+		var self = this;
+
 		if (!interfaces || Object.keys(interfaces).length === 0) {
-			return null;
+			return E('div', {
+				'class': 'alert-message info',
+				'style': 'text-align: center; padding: 1.5rem; margin-bottom: 1rem'
+			}, _('No interface activity detected yet'));
 		}
 
 		var interfaceList = [];
@@ -139,7 +168,7 @@ return view.extend({
 							E('div', { 'class': 'td', 'style': 'width: 25%' }, [
 								E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem' }, [
 									E('i', { 'class': 'fa fa-ethernet', 'style': 'color: ' + (isActive ? '#3b82f6' : '#9ca3af') }),
-									E('strong', iface.name)
+									E('strong', self.formatInterfaceLabel(iface.name))
 								])
 							]),
 							E('div', { 'class': 'td center', 'style': 'width: 15%' }, [
@@ -187,6 +216,8 @@ return view.extend({
 	renderProtocolBreakdown: function(stats) {
 		if (!stats) return null;
 
+		var self = this;
+
 		var tcp = stats.tcp_packets || 0;
 		var udp = stats.udp_packets || 0;
 		var icmp = stats.icmp_packets || 0;
@@ -203,21 +234,21 @@ return view.extend({
 			{
 				name: 'TCP',
 				packets: tcp,
-				percentage: (tcp / total * 100).toFixed(1),
+				percentage: self.normalizePacketPercentage(tcp, total),
 				color: '#3b82f6',
 				icon: 'exchange-alt'
 			},
 			{
 				name: 'UDP',
 				packets: udp,
-				percentage: (udp / total * 100).toFixed(1),
+				percentage: self.normalizePacketPercentage(udp, total),
 				color: '#10b981',
 				icon: 'paper-plane'
 			},
 			{
 				name: 'ICMP',
 				packets: icmp,
-				percentage: (icmp / total * 100).toFixed(1),
+				percentage: self.normalizePacketPercentage(icmp, total),
 				color: '#f59e0b',
 				icon: 'broadcast-tower'
 			}

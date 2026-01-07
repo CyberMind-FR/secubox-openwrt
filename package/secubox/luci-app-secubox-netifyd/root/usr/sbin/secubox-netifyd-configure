@@ -104,6 +104,14 @@ if [ ! -f "$FLOW_EXPORT" ]; then
     echo "  # Your agent UUID: $(jq -r '.agent_uuid // "not-set"' "$NETIFYD_STATUS" 2>/dev/null)"
     echo "  # Dashboard: https://dashboard.netify.ai"
     echo ""
+    echo "Method 4: Sync Flow Plugins (BitTorrent IP set / nftables block)"
+    echo "  # Enable the Flow Plugins section in LuCI, then run:"
+    echo "  ubus call luci.secubox-netifyd apply_plugin_configuration '{}'"
+    echo "  # Plugin configs live under /etc/netifyd/plugins.d/secubox-*.conf"
+    echo "  # See:"
+    echo "  # - https://www.netify.ai/documentation/netify-plugins/v5/examples/mark-bittorrent-with-ip-sets"
+    echo "  # - https://www.netify.ai/documentation/netify-plugins/v5/examples/block-traffic-with-nftables"
+    echo ""
 fi
 
 # Check if sink is enabled

@@ -4,6 +4,7 @@
 'require uci';
 'require ui';
 'require rpc';
+'require secubox-netifyd/api as netifydAPI';
 
 var callServiceList = rpc.declare({
 	object: 'service',
@@ -213,6 +214,124 @@ return view.extend({
 	o.default = '9501';
 	o.datatype = 'port';
 	o.depends('type', 'tcp');
+
+	// ========== Flow Plugin Templates ==========
+	s = m.section(form.NamedSection, 'bittorrent', 'plugin',
+		E('span', [
+			E('i', { 'class': 'fa fa-hashtag', 'style': 'margin-right: 0.5rem' }),
+			_('BitTorrent IP Set')
+		]),
+		_('Mark BitTorrent flows with an ipset so nftables rules can react to them.'));
+	s.addremove = false;
+
+	o = s.option(form.Flag, 'enabled',
+		E('span', [
+			E('i', { 'class': 'fa fa-toggle-on', 'style': 'margin-right: 0.5rem' }),
+			_('Enable Plugin')
+		]),
+		_('Generate the Netify plugin config described in the BitTorrent IP set example.')
+	);
+	o.default = '0';
+	o.rmempty = false;
+
+	o = s.option(form.Value, 'ipset',
+		E('span', [
+			E('i', { 'class': 'fa fa-database', 'style': 'margin-right: 0.5rem' }),
+			_('Target IP Set')
+		]),
+		_('IP set name used to tag BitTorrent traffic.')
+	);
+	o.default = 'secubox-bittorrent';
+
+	o = s.option(form.ListValue, 'ipset_family',
+		E('span', [
+			E('i', { 'class': 'fa fa-globe', 'style': 'margin-right: 0.5rem' }),
+			_('IP Family')
+		]),
+		_('IP set family used by the plugin (inet or inet6).')
+	);
+	o.value('inet', _('IPv4 (inet)'));
+	o.value('inet6', _('IPv6 (inet6)'));
+	o.default = 'inet';
+
+	o = s.option(form.Value, 'match_application',
+		E('span', [
+			E('i', { 'class': 'fa fa-search', 'style': 'margin-right: 0.5rem' }),
+			_('Match Application')
+		]),
+		_('Application identifier that triggers the IP set entry (default: bittorrent).')
+	);
+	o.default = 'bittorrent';
+
+	s = m.section(form.NamedSection, 'nftables', 'plugin',
+		E('span', [
+			E('i', { 'class': 'fa fa-fire', 'style': 'margin-right: 0.5rem' }),
+			_('nftables Verdicts')
+		]),
+		_('Emit flow verdicts into nftables chains after the Netify block-traffic example.'));
+	s.addremove = false;
+
+	o = s.option(form.Flag, 'enabled',
+		E('span', [
+			E('i', { 'class': 'fa fa-toggle-on', 'style': 'margin-right: 0.5rem' }),
+			_('Enable Plugin')
+		]),
+		_('Generate the Netify plugin config described in the nftables example.')
+	);
+	o.default = '0';
+	o.rmempty = false;
+
+	o = s.option(form.Value, 'table',
+		E('span', [
+			E('i', { 'class': 'fa fa-table', 'style': 'margin-right: 0.5rem' }),
+			_('nftables Table')
+		]),
+		_('Table where the plugin will insert verdicts.')
+	);
+	o.default = 'filter';
+
+	o = s.option(form.Value, 'chain',
+		E('span', [
+			E('i', { 'class': 'fa fa-chain', 'style': 'margin-right: 0.5rem' }),
+			_('nftables Chain')
+		]),
+		_('Chain used by the verdicts.')
+	);
+	o.default = 'SECUBOX';
+
+	o = s.option(form.Value, 'action',
+		E('span', [
+			E('i', { 'class': 'fa fa-ban', 'style': 'margin-right: 0.5rem' }),
+			_('Action')
+		]),
+		_('Action applied when the plugin matches a flow (drop/reject/queue).')
+	);
+	o.default = 'drop';
+
+	o = s.option(form.Value, 'target_ipset',
+		E('span', [
+			E('i', { 'class': 'fa fa-database', 'style': 'margin-right: 0.5rem' }),
+			_('Target IP Set')
+		]),
+		_('nftables ipset referenced by the verdict chain.')
+	);
+	o.default = 'secubox-banned';
+
+	o = s.option(form.Button, 'apply_plugins',
+		E('span', [
+			E('i', { 'class': 'fa fa-sync', 'style': 'margin-right: 0.5rem' }),
+			_('Apply Flow Plugins')
+		]),
+		_('Regenerate plugin configs and restart Netifyd.')
+	);
+	o.inputstyle = 'action';
+	o.write = function() {
+		netifydAPI.applyPluginConfig().then(function(result) {
+			ui.addNotification({ type: 'success', description: result.message || _('Plugin configuration applied') });
+		}, function(err) {
+			ui.addNotification({ type: 'error', description: (err && err.error && err.error.message) || _('Plugin configuration failed') });
+		});
+	};
 
 	// ========== Monitoring Settings Section ==========
 	s = m.section(form.TypedSection, 'monitoring',

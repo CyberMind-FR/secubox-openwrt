@@ -263,7 +263,13 @@
       "Bash(netifyd:*)",
       "Bash(ubus call:*)",
       "Bash(ss:*)",
-      "Bash(git cherry-pick:*)"
+      "Bash(git cherry-pick:*)",
+      "Bash(for file in overview.js decisions.js alerts.js waf.js metrics.js)",
+      "Bash(do scp /home/reepost/CyberMindStudio/_files/secubox-openwrt/package/secubox/luci-app-crowdsec-dashboard/htdocs/luci-static/resources/view/crowdsec-dashboard/$file root@192.168.8.191:/www/luci-static/resources/view/crowdsec-dashboard/ done)",
+      "Bash(Last: Xs ago\" in header\n- Updates every second\n- Visual feedback that polling is working\n- Easy to spot stalled/broken polling\n\nError Handling:\n- Try/catch around all poll callbacks\n- Errors logged to debug panel and console\n- Error counting for diagnostics\n- Polling continues even after errors\n\nCode Improvements:\n- Proper container creation order\n- Better error handling in load\\(\\) and polling\n- Debug logging throughout lifecycle\n- Performance metrics tracking\n\nDocumentation:\n- Complete analysis in REFRESH-DEBUG.md\n- Troubleshooting guide\n- Debug mode usage instructions\n- Performance considerations\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(ar r:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: Add missing API utility functions and fix data structure handling \\(v0.6.0-r9\\)\n\n- Add parseScenario\\(\\) to format scenario names\n- Add getCountryFlag\\(\\) to display country flag emojis\n- Add formatRelativeTime\\(\\) for relative timestamps\n- Fix decisions data flattening in handleUnban, handleBulkUnban, submitBan, and polling\n- Fix getDashboardData to properly flatten alerts->decisions structure\n- Fix context error in overview renderDecisionsTable \\(this vs self\\)\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: Sanitize malformed JSON from cscli metrics \\(v0.6.0-r10\\)\n\n- cscli metrics sometimes outputs empty string keys \\(\"\": {...}\\)\n- This causes RPC parsing errors in LuCI\n- Added sed filter to replace empty keys with \"unknown\"\n- Fixes \"No related RPC reply\" error in metrics view\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }

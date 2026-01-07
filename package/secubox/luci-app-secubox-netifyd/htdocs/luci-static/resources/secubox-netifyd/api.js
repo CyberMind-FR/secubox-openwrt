@@ -192,6 +192,16 @@ return baseclass.extend({
 	},
 
 	/**
+	 * Apply plugin configuration and restart Netifyd
+	 */
+	applyPluginConfig: function() {
+		return L.resolveDefault(rpc.declare({
+			object: 'luci.secubox-netifyd',
+			method: 'apply_plugin_configuration'
+		})(), {});
+	},
+
+	/**
 	 * Format bytes to human-readable format
 	 */
 	formatBytes: function(bytes, decimals) {

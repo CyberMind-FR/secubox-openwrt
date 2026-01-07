@@ -32,6 +32,7 @@
 					"service_enable",
 					"service_disable",
 					"update_config",
+					"apply_plugin_configuration",
 					"clear_cache",
 					"export_flows"
 				]

@@ -213,6 +213,14 @@ Netifyd streams JSON data via:
 }
 ```
 
+## Flow Plugin Integration
+
+SecuBox can emit the plugin configurations referenced in the Netify.ai examples for tagging BitTorrent traffic with IP sets and pushing verdicts into nftables. After copying the relevant Netify plugin binaries into `/usr/lib/netifyd/`, open the **Flow Export → Flow Plugins** section in LuCI to enable the `mark-bittorrent-with-ip-sets` and `block-traffic-with-nftables` templates. Hit **Apply Flow Plugins** to regenerate `/etc/netifyd/plugins.d/secubox-*.conf` and restart Netifyd so the new ipsets and nftables chains are activated.
+
+Refer to the upstream examples for exact `ipset`/`chain` rules:
+- https://www.netify.ai/documentation/netify-plugins/v5/examples/mark-bittorrent-with-ip-sets
+- https://www.netify.ai/documentation/netify-plugins/v5/examples/block-traffic-with-nftables
+
 ## Troubleshooting
 
 ### Netifyd Not Starting

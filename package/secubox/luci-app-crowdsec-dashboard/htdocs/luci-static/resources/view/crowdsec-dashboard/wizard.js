@@ -251,18 +251,32 @@ return view.extend({
 				recommendedCollections.map(L.bind(function(collection) {
 					var checkboxId = 'collection-' + collection.name.replace('/', '-');
 
-					return E('div', { 'class': 'collection-item' }, [
-						E('label', { 'class': 'cyber-checkbox', 'for': checkboxId }, [
-							E('input', {
-								'type': 'checkbox',
-								'id': checkboxId,
-								'checked': collection.preselected ? 'checked' : null,
-								'data-collection': collection.name
-							}),
-							E('div', { 'class': 'collection-info' }, [
-								E('strong', {}, collection.name),
-								E('div', { 'class': 'collection-desc' }, collection.description)
-							])
+					return E('div', {
+						'class': 'collection-item',
+						'data-collection': collection.name,
+						'data-checked': collection.preselected ? '1' : '0',
+						'style': 'display: flex; align-items: center; cursor: pointer;',
+						'click': function(ev) {
+							var item = ev.currentTarget;
+							var currentState = item.getAttribute('data-checked') === '1';
+							var newState = !currentState;
+							item.setAttribute('data-checked', newState ? '1' : '0');
+
+							// Update visual indicator
+							var checkbox = item.querySelector('.checkbox-indicator');
+							if (checkbox) {
+								checkbox.textContent = newState ? '☑' : '☐';
+								checkbox.style.color = newState ? '#22c55e' : '#94a3b8';
+							}
+						}
+					}, [
+						E('span', {
+							'class': 'checkbox-indicator',
+							'style': 'display: inline-block; font-size: 28px; margin-right: 16px; user-select: none; color: ' + (collection.preselected ? '#22c55e' : '#94a3b8') + '; line-height: 1; min-width: 28px;'
+						}, collection.preselected ? '☑' : '☐'),
+						E('div', { 'class': 'collection-info', 'style': 'flex: 1;' }, [
+							E('strong', {}, collection.name),
+							E('div', { 'class': 'collection-desc' }, collection.description)
 						])
 					]);
 				}, this))
@@ -281,17 +295,17 @@ return view.extend({
 				E('button', {
 					'class': 'cbi-button',
 					'click': L.bind(this.goToStep, this, 2),
-					'disabled': this.wizardData.installing
+					'disabled': this.wizardData.installing ? true : null
 				}, _('← Back')),
 				E('button', {
 					'class': 'cbi-button',
 					'click': L.bind(this.goToStep, this, 4),
-					'disabled': this.wizardData.installing
+					'disabled': this.wizardData.installing ? true : null
 				}, _('Skip')),
 				E('button', {
 					'class': 'cbi-button cbi-button-positive',
 					'click': L.bind(this.handleInstallCollections, this),
-					'disabled': this.wizardData.installing || this.wizardData.installed
+					'disabled': (this.wizardData.installing || this.wizardData.installed) ? true : null
 				}, this.wizardData.installed ? _('Installed ✓') : _('Install Selected'))
 			])
 		]);
@@ -304,27 +318,51 @@ return view.extend({
 
 			// Configuration options
 			E('div', { 'class': 'config-section' }, [
-				E('div', { 'class': 'config-group' }, [
-					E('label', {}, [
-						E('input', {
-							'type': 'checkbox',
-							'id': 'bouncer-ipv4',
-							'checked': true
-						}),
-						' ',
-						_('Enable IPv4 blocking')
-					])
+				E('div', {
+					'class': 'config-group',
+					'id': 'bouncer-ipv4',
+					'data-checked': '1',
+					'style': 'display: flex; align-items: center; cursor: pointer; padding: 12px; background: rgba(15, 23, 42, 0.5); border-radius: 8px; margin-bottom: 12px;',
+					'click': function(ev) {
+						var item = ev.currentTarget;
+						var currentState = item.getAttribute('data-checked') === '1';
+						var newState = !currentState;
+						item.setAttribute('data-checked', newState ? '1' : '0');
+						var checkbox = item.querySelector('.checkbox-indicator');
+						if (checkbox) {
+							checkbox.textContent = newState ? '☑' : '☐';
+							checkbox.style.color = newState ? '#22c55e' : '#94a3b8';
+						}
+					}
+				}, [
+					E('span', {
+						'class': 'checkbox-indicator',
+						'style': 'display: inline-block; font-size: 24px; margin-right: 12px; user-select: none; color: #22c55e; min-width: 24px;'
+					}, '☑'),
+					E('span', {}, _('Enable IPv4 blocking'))
 				]),
-				E('div', { 'class': 'config-group' }, [
-					E('label', {}, [
-						E('input', {
-							'type': 'checkbox',
-							'id': 'bouncer-ipv6',
-							'checked': true
-						}),
-						' ',
-						_('Enable IPv6 blocking')
-					])
+				E('div', {
+					'class': 'config-group',
+					'id': 'bouncer-ipv6',
+					'data-checked': '1',
+					'style': 'display: flex; align-items: center; cursor: pointer; padding: 12px; background: rgba(15, 23, 42, 0.5); border-radius: 8px; margin-bottom: 12px;',
+					'click': function(ev) {
+						var item = ev.currentTarget;
+						var currentState = item.getAttribute('data-checked') === '1';
+						var newState = !currentState;
+						item.setAttribute('data-checked', newState ? '1' : '0');
+						var checkbox = item.querySelector('.checkbox-indicator');
+						if (checkbox) {
+							checkbox.textContent = newState ? '☑' : '☐';
+							checkbox.style.color = newState ? '#22c55e' : '#94a3b8';
+						}
+					}
+				}, [
+					E('span', {
+						'class': 'checkbox-indicator',
+						'style': 'display: inline-block; font-size: 24px; margin-right: 12px; user-select: none; color: #22c55e; min-width: 24px;'
+					}, '☑'),
+					E('span', {}, _('Enable IPv6 blocking'))
 				]),
 				E('div', { 'class': 'config-group' }, [
 					E('label', {}, _('Update Frequency:')),
@@ -344,7 +382,7 @@ return view.extend({
 				]) :
 				this.wizardData.configuring ?
 					E('div', { 'class': 'spinning' }, _('Configuring bouncer...')) :
-					null,
+					E([]),
 
 			// API key display (if registered)
 			this.wizardData.apiKey ?
@@ -359,14 +397,14 @@ return view.extend({
 							ui.addNotification(null, E('p', _('API key copied')), 'info');
 						}
 					}, _('Copy'))
-				]) : null,
+				]) : E([]),
 
 			// Navigation
 			E('div', { 'class': 'wizard-nav' }, [
 				E('button', {
 					'class': 'cbi-button',
 					'click': L.bind(this.goToStep, this, 3),
-					'disabled': this.wizardData.configuring
+					'disabled': this.wizardData.configuring ? true : null
 				}, _('← Back')),
 				this.wizardData.bouncerConfigured ?
 					E('button', {
@@ -375,8 +413,8 @@ return view.extend({
 					}, _('Next →')) :
 					E('button', {
 						'class': 'cbi-button cbi-button-action',
-						'click': L.bind(this.handleConfigureBouncer, this),
-						'disabled': this.wizardData.configuring
+						'click': L.bind(function(ev) { console.log('[Wizard] Configure Bouncer button clicked!'); ev.preventDefault(); ev.stopPropagation(); this.handleConfigureBouncer(); }, this),
+						'disabled': this.wizardData.configuring ? true : null
 					}, _('Configure Bouncer'))
 			])
 		]);
@@ -416,7 +454,7 @@ return view.extend({
 				E('button', {
 					'class': 'cbi-button',
 					'click': L.bind(this.goToStep, this, 4),
-					'disabled': this.wizardData.starting
+					'disabled': this.wizardData.starting ? true : null
 				}, _('← Back')),
 				(this.wizardData.enabled && this.wizardData.running && this.wizardData.nftablesActive && this.wizardData.lapiConnected) ?
 					E('button', {
@@ -425,8 +463,8 @@ return view.extend({
 					}, _('Next →')) :
 					E('button', {
 						'class': 'cbi-button cbi-button-action',
-						'click': L.bind(this.handleStartServices, this),
-						'disabled': this.wizardData.starting
+						'click': L.bind(function(ev) { console.log('[Wizard] Start Services button clicked!'); ev.preventDefault(); ev.stopPropagation(); this.handleStartServices(); }, this),
+						'disabled': this.wizardData.starting ? true : null
 					}, _('Start Services'))
 			])
 		]);
@@ -577,10 +615,13 @@ return view.extend({
 	},
 
 	handleInstallCollections: function() {
-		var checkboxes = document.querySelectorAll('[data-collection]');
-		var selected = Array.from(checkboxes)
-			.filter(function(cb) { return cb.checked; })
-			.map(function(cb) { return cb.dataset.collection; });
+		// Read from data-checked attributes (Unicode checkbox approach)
+		var items = document.querySelectorAll('.collection-item[data-collection]');
+		var selected = Array.from(items)
+			.filter(function(item) { return item.getAttribute('data-checked') === '1'; })
+			.map(function(item) { return item.getAttribute('data-collection'); });
+
+		console.log('[Wizard] Selected collections:', selected);
 
 		if (selected.length === 0) {
 			this.goToStep(4);
@@ -617,15 +658,22 @@ return view.extend({
 	},
 
 	handleConfigureBouncer: function() {
+		console.log('[Wizard] handleConfigureBouncer called');
 		this.wizardData.configuring = true;
 		this.refreshView();
 
-		var ipv4 = document.getElementById('bouncer-ipv4').checked;
-		var ipv6 = document.getElementById('bouncer-ipv6').checked;
+		var ipv4Elem = document.getElementById('bouncer-ipv4');
+		var ipv6Elem = document.getElementById('bouncer-ipv6');
+		var ipv4 = ipv4Elem ? ipv4Elem.getAttribute('data-checked') === '1' : true;
+		var ipv6 = ipv6Elem ? ipv6Elem.getAttribute('data-checked') === '1' : true;
 		var frequency = document.getElementById('bouncer-frequency').value;
 
+		console.log('[Wizard] Bouncer config:', { ipv4: ipv4, ipv6: ipv6, frequency: frequency });
+
 		// Step 1: Register bouncer
+		console.log('[Wizard] Registering bouncer...');
 		return API.registerBouncer('crowdsec-firewall-bouncer').then(L.bind(function(result) {
+			console.log('[Wizard] registerBouncer result:', result);
 			if (!result.success) {
 				throw new Error(result.error || 'Bouncer registration failed');
 			}
@@ -642,15 +690,18 @@ return view.extend({
 			];
 
 			return Promise.all(configPromises);
-		}, this)).then(L.bind(function() {
+		}, this)).then(L.bind(function(results) {
+			console.log('[Wizard] UCI config results:', results);
 			this.wizardData.configuring = false;
 			this.wizardData.bouncerConfigured = true;
 			ui.addNotification(null, E('p', _('Bouncer configured successfully')), 'info');
 			this.refreshView();
 
 			// Auto-advance after 2 seconds
+			console.log('[Wizard] Auto-advancing to Step 5 in 2 seconds...');
 			setTimeout(L.bind(function() { this.goToStep(5); }, this), 2000);
 		}, this)).catch(L.bind(function(err) {
+			console.error('[Wizard] Configuration error:', err);
 			this.wizardData.configuring = false;
 			ui.addNotification(null, E('p', _('Configuration failed: %s').format(err.message)), 'error');
 			this.refreshView();
@@ -658,50 +709,71 @@ return view.extend({
 	},
 
 	handleStartServices: function() {
+		console.log('[Wizard] handleStartServices called');
 		this.wizardData.starting = true;
 		this.wizardData.enabling = true;
 		this.refreshView();
 
 		// Step 1: Enable service
+		console.log('[Wizard] Enabling firewall bouncer...');
 		return API.controlFirewallBouncer('enable').then(L.bind(function(result) {
+			console.log('[Wizard] Enable result:', result);
 			this.wizardData.enabling = false;
 			this.wizardData.enabled = result.success;
 			this.refreshView();
 
 			// Step 2: Start service
+			console.log('[Wizard] Starting firewall bouncer...');
 			return API.controlFirewallBouncer('start');
 		}, this)).then(L.bind(function(result) {
+			console.log('[Wizard] Start result:', result);
 			this.wizardData.running = result.success;
 			this.refreshView();
 
 			// Step 3: Wait 3 seconds for service to initialize
+			console.log('[Wizard] Waiting 3 seconds for service initialization...');
 			return new Promise(function(resolve) { setTimeout(resolve, 3000); });
 		}, this)).then(L.bind(function() {
 			// Step 4: Check status
+			console.log('[Wizard] Checking firewall bouncer status...');
 			return API.getFirewallBouncerStatus();
 		}, this)).then(L.bind(function(status) {
+			console.log('[Wizard] Bouncer status:', status);
 			this.wizardData.nftablesActive = status.nftables_ipv4 || status.nftables_ipv6;
 			this.wizardData.starting = false;
 
 			// Step 5: Verify LAPI connection (check if bouncer pulled decisions)
+			console.log('[Wizard] Checking LAPI connection...');
 			return API.getBouncers();
 		}, this)).then(L.bind(function(bouncers) {
+			console.log('[Wizard] Bouncers list:', bouncers);
 			var bouncer = (bouncers || []).find(function(b) {
 				return b.name === 'crowdsec-firewall-bouncer';
 			});
 
 			this.wizardData.lapiConnected = bouncer && bouncer.last_pull;
+			console.log('[Wizard] Final status:', {
+				enabled: this.wizardData.enabled,
+				running: this.wizardData.running,
+				nftablesActive: this.wizardData.nftablesActive,
+				lapiConnected: this.wizardData.lapiConnected
+			});
 			this.refreshView();
 
-			if (this.wizardData.enabled && this.wizardData.running &&
-				this.wizardData.nftablesActive && this.wizardData.lapiConnected) {
+			// Success if enabled, running, and nftables active
+		// LAPI connection may take a few seconds to establish, so it's optional
+		if (this.wizardData.enabled && this.wizardData.running &&
+				this.wizardData.nftablesActive) {
+				console.log('[Wizard] All critical services started! Auto-advancing to Step 6...');
 				ui.addNotification(null, E('p', _('Services started successfully!')), 'info');
 				// Auto-advance after 2 seconds
 				setTimeout(L.bind(function() { this.goToStep(6); }, this), 2000);
 			} else {
+				console.log('[Wizard] Service startup incomplete');
 				ui.addNotification(null, E('p', _('Service startup incomplete. Check status and retry.')), 'warning');
 			}
 		}, this)).catch(L.bind(function(err) {
+			console.error('[Wizard] Service startup error:', err);
 			this.wizardData.starting = false;
 			ui.addNotification(null, E('p', _('Service start failed: %s').format(err.message)), 'error');
 			this.refreshView();

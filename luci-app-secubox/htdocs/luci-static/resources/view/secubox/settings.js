@@ -159,7 +159,7 @@ return view.extend({
 		m = new form.Map('secubox', null, null);
 
 		// General Settings Section
-		s = m.section(form.TypedSection, 'secubox', '🔧 General Settings');
+		s = m.section(form.TypedSection, 'core', '🔧 General Settings');
 		s.anonymous = true;
 		s.addremove = false;
 
@@ -177,7 +177,7 @@ return view.extend({
 		};
 
 		// Dashboard Settings Section
-		s = m.section(form.TypedSection, 'secubox', '📊 Dashboard Settings');
+		s = m.section(form.TypedSection, 'core', '📊 Dashboard Settings');
 		s.anonymous = true;
 		s.addremove = false;
 
@@ -289,7 +289,7 @@ return view.extend({
 		o.default = '1';
 
 		// Module Management Section
-		s = m.section(form.TypedSection, 'secubox', '📦 Module Management');
+		s = m.section(form.TypedSection, 'core', '📦 Module Management');
 		s.anonymous = true;
 		s.addremove = false;
 
@@ -320,7 +320,7 @@ return view.extend({
 		o.optional = true;
 
 		// Notification Settings Section
-		s = m.section(form.TypedSection, 'secubox', '🔔 Notification Settings');
+		s = m.section(form.TypedSection, 'core', '🔔 Notification Settings');
 		s.anonymous = true;
 		s.addremove = false;
 
@@ -349,7 +349,7 @@ return view.extend({
 		o.depends('notifications', '1');
 
 		// Alert Thresholds Section
-		s = m.section(form.TypedSection, 'secubox', '⚠️ Alert Thresholds');
+		s = m.section(form.TypedSection, 'diagnostics', '⚠️ Alert Thresholds');
 		s.anonymous = true;
 		s.addremove = false;
 
@@ -390,7 +390,7 @@ return view.extend({
 		o.placeholder = '85';
 
 		// Security Settings Section
-		s = m.section(form.TypedSection, 'secubox', '🔒 Security Settings');
+		s = m.section(form.TypedSection, 'security', '🔒 Security Settings');
 		s.anonymous = true;
 		s.addremove = false;
 
@@ -409,7 +409,7 @@ return view.extend({
 		o.depends('audit_logging', '1');
 
 		// Advanced Settings Section
-		s = m.section(form.TypedSection, 'secubox', '🛠️ Advanced Settings');
+		s = m.section(form.TypedSection, 'core', '🛠️ Advanced Settings');
 		s.anonymous = true;
 		s.addremove = false;
 
