@@ -310,3 +310,21 @@ MIT License - Copyright (C) 2025 CyberMind.fr
 - **Netify by eGloo**: Deep packet inspection engine
 - **SecuBox Team**: LuCI integration and interface design
 - **OpenWrt Community**: Platform and package ecosystem
+## Collector Setup Script
+
+Use `/usr/bin/netifyd-collector-setup` to enable the flow exporter and install the cron job
+that runs `/usr/bin/netifyd-collector` every minute. The script accepts:
+
+```
+/usr/bin/netifyd-collector-setup [unix|tcp] [path_or_host[:port]]
+```
+
+Examples:
+
+```
+/usr/bin/netifyd-collector-setup unix /tmp/netifyd-flows.json
+/usr/bin/netifyd-collector-setup tcp 127.0.0.1:9501
+```
+
+Each invocation updates `/etc/config/secubox-netifyd`, writes `/etc/netifyd.d/secubox-sink.conf`,
+creates the cron entry (`* * * * * /usr/bin/netifyd-collector`), and restarts `netifyd`.

@@ -1,0 +1,53 @@
+#!/bin/sh
+set -e
+
+# Usage: netifyd-collector-setup [unix|tcp] [path_or_host:port]
+# Example:
+#   netifyd-collector-setup unix /tmp/netifyd-flows.json
+#   netifyd-collector-setup tcp 127.0.0.1:9501
+
+SINK_MODE="${1:-unix}"
+TARGET="${2:-/tmp/netifyd-flows.json}"
+
+configure_sink() {
+	local mode="$1"
+	local target="$2"
+
+	uci set secubox-netifyd.sink.enabled=1
+	if [ "$mode" = "tcp" ]; then
+		local addr="${target%:*}"
+		local port="${target##*:}"
+		uci set secubox-netifyd.sink.type="tcp"
+		uci set secubox-netifyd.sink.tcp_address="$addr"
+		uci set secubox-netifyd.sink.tcp_port="$port"
+	else
+		uci set secubox-netifyd.sink.type="unix"
+		uci set secubox-netifyd.sink.unix_path="$target"
+	fi
+	uci commit secubox-netifyd
+}
+
+ensure_collector_cron() {
+	local entry="* * * * * /usr/bin/netifyd-collector >/dev/null 2>&1"
+	local existing
+	existing=$(crontab -l 2>/dev/null || true)
+
+	if ! printf '%s\n' "$existing" | grep -Fxq "$entry"; then
+		local tempfile
+		tempfile=$(mktemp)
+		printf '%s\n' "$existing" | grep -v '^$' >"$tempfile"
+		printf '%s\n' "$entry" >>"$tempfile"
+		crontab "$tempfile"
+		rm -f "$tempfile"
+	fi
+}
+
+log() {
+	printf '%s\n' "$*"
+}
+
+log "Configuring Netifyd flow sink ($SINK_MODE -> $TARGET)"
+configure_sink "$SINK_MODE" "$TARGET"
+ensure_collector_cron
+/etc/init.d/netifyd restart >/dev/null 2>&1 || true
+log "Collector cron enabled and netifyd restarted."
