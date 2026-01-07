@@ -1,0 +1,84 @@
+{
+  "id": "luci-app-secubox-netifyd",
+  "name": "Netifyd DPI Dashboard",
+  "description": "Configure Deep Packet Inspection with real-time flow monitoring and application detection",
+  "type": "luci-app",
+  "version": "0.3.0",
+  "source": "https://github.com/CyberMindStudio/luci-app-secubox-netifyd",
+  "packages": [
+    "luci-app-secubox-netifyd",
+    "netifyd"
+  ],
+  "wizard": {
+    "uci": {
+      "config": "secubox-netifyd",
+      "section": "settings"
+    },
+    "fields": [
+      {
+        "id": "socket_type",
+        "label": "Socket Type",
+        "type": "select",
+        "uci_option": "socket_type",
+        "options": [
+          {"value": "unix", "label": "Unix Socket"},
+          {"value": "tcp", "label": "TCP Socket"}
+        ],
+        "description": "Type of socket connection to Netifyd daemon"
+      },
+      {
+        "id": "unix_socket_path",
+        "label": "Unix Socket Path",
+        "type": "text",
+        "uci_option": "unix_socket_path",
+        "placeholder": "/var/run/netifyd/netifyd.sock",
+        "description": "Path to Netifyd Unix domain socket"
+      },
+      {
+        "id": "socket_address",
+        "label": "TCP Socket Address",
+        "type": "text",
+        "uci_option": "socket_address",
+        "placeholder": "127.0.0.1",
+        "description": "IP address for TCP socket connection"
+      },
+      {
+        "id": "socket_port",
+        "label": "TCP Socket Port",
+        "type": "number",
+        "uci_option": "socket_port",
+        "placeholder": "7150",
+        "description": "Port for TCP socket connection"
+      },
+      {
+        "id": "enable_flow_tracking",
+        "label": "Enable Flow Tracking",
+        "type": "checkbox",
+        "uci_option": "enable_flow_tracking",
+        "uci_section": "monitoring",
+        "description": "Track active network flows in real-time"
+      },
+      {
+        "id": "enable_app_detection",
+        "label": "Enable Application Detection",
+        "type": "checkbox",
+        "uci_option": "enable_app_detection",
+        "uci_section": "monitoring",
+        "description": "Detect and classify network applications"
+      },
+      {
+        "id": "max_flows",
+        "label": "Maximum Flows",
+        "type": "number",
+        "uci_option": "max_flows",
+        "placeholder": "10000",
+        "description": "Maximum number of flows to track"
+      }
+    ]
+  },
+  "profiles": ["gateway", "gateway_dmz", "home"],
+  "actions": {
+    "configure": "/etc/init.d/netifyd restart",
+    "status": "/etc/init.d/netifyd status"
+  }
+}

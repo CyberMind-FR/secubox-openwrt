@@ -1,0 +1,56 @@
+{
+  "id": "luci-app-crowdsec-dashboard",
+  "name": "CrowdSec Dashboard",
+  "description": "Configure CrowdSec intrusion detection and monitoring dashboard",
+  "type": "luci-app",
+  "version": "0.4.0",
+  "source": "https://github.com/CyberMindStudio/luci-app-crowdsec-dashboard",
+  "packages": [
+    "luci-app-crowdsec-dashboard",
+    "crowdsec"
+  ],
+  "wizard": {
+    "uci": {
+      "config": "crowdsec",
+      "section": "settings"
+    },
+    "fields": [
+      {
+        "id": "api_url",
+        "label": "CrowdSec API URL",
+        "type": "text",
+        "uci_option": "api_url",
+        "placeholder": "http://127.0.0.1:8080",
+        "description": "URL of the CrowdSec Local API (LAPI)"
+      },
+      {
+        "id": "api_key",
+        "label": "API Key",
+        "type": "password",
+        "uci_option": "api_key",
+        "placeholder": "Enter your CrowdSec API key",
+        "description": "API key for authentication with CrowdSec LAPI"
+      },
+      {
+        "id": "auto_refresh",
+        "label": "Auto-refresh Interval (seconds)",
+        "type": "number",
+        "uci_option": "auto_refresh",
+        "placeholder": "30",
+        "description": "Dashboard auto-refresh interval"
+      },
+      {
+        "id": "enable_metrics",
+        "label": "Enable Metrics Collection",
+        "type": "checkbox",
+        "uci_option": "enable_metrics",
+        "description": "Collect and display CrowdSec engine metrics"
+      }
+    ]
+  },
+  "profiles": ["gateway", "gateway_dmz"],
+  "actions": {
+    "configure": "/etc/init.d/crowdsec restart",
+    "status": "/etc/init.d/crowdsec status"
+  }
+}
