@@ -20,7 +20,7 @@ var callStatus = rpc.declare({
 var callDecisions = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'decisions',
-	expect: { decisions: [] }
+	expect: { alerts: [] }
 });
 
 var callAlerts = rpc.declare({
@@ -68,21 +68,21 @@ var callSecuboxLogs = rpc.declare({
 var callCollectDebug = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'collect_debug',
-	expect: { success: false }
+	expect: { }
 });
 
 var callBan = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'ban',
 	params: ['ip', 'duration', 'reason'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callUnban = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'unban',
 	params: ['ip'],
-	expect: { success: false }
+	expect: { }
 });
 
 // CrowdSec v1.7.4+ features
@@ -102,27 +102,27 @@ var callConfigureMetrics = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'configure_metrics',
 	params: ['enable'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callCollections = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'collections',
-	expect: { }
+	expect: { collections: [] }
 });
 
 var callInstallCollection = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'install_collection',
 	params: ['collection'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callRemoveCollection = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'remove_collection',
 	params: ['collection'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callUpdateHub = rpc.declare({
@@ -135,14 +135,14 @@ var callRegisterBouncer = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'register_bouncer',
 	params: ['bouncer_name'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callDeleteBouncer = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'delete_bouncer',
 	params: ['bouncer_name'],
-	expect: { success: false }
+	expect: { }
 });
 
 // Firewall Bouncer Management
@@ -156,7 +156,7 @@ var callControlFirewallBouncer = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'control_firewall_bouncer',
 	params: ['action'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callFirewallBouncerConfig = rpc.declare({
@@ -169,7 +169,7 @@ var callUpdateFirewallBouncerConfig = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'update_firewall_bouncer_config',
 	params: ['key', 'value'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callNftablesStats = rpc.declare({
@@ -209,9 +209,75 @@ function formatDate(dateStr) {
 	}
 }
 
+function isValidIP(ip) {
+	if (!ip) return false;
+
+	// IPv4 regex
+	var ipv4Regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+
+	// IPv6 regex (simplified)
+	var ipv6Regex = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/;
+
+	return ipv4Regex.test(ip) || ipv6Regex.test(ip);
+}
+
+function parseScenario(scenario) {
+	if (!scenario) return 'N/A';
+
+	// Extract human-readable part from scenario name
+	// e.g., "crowdsecurity/ssh-bruteforce" -> "SSH Bruteforce"
+	var parts = scenario.split('/');
+	var name = parts[parts.length - 1];
+
+	// Convert dash-separated to title case
+	return name.split('-').map(function(word) {
+		return word.charAt(0).toUpperCase() + word.slice(1);
+	}).join(' ');
+}
+
+function getCountryFlag(countryCode) {
+	if (!countryCode || countryCode === 'N/A') return '';
+
+	// Convert country code to flag emoji
+	// e.g., "US" -> "🇺🇸"
+	var code = countryCode.toUpperCase();
+	if (code.length !== 2) return '';
+
+	var codePoints = [];
+	for (var i = 0; i < code.length; i++) {
+		codePoints.push(0x1F1E6 - 65 + code.charCodeAt(i));
+	}
+	return String.fromCodePoint.apply(null, codePoints);
+}
+
+function formatRelativeTime(dateStr) {
+	if (!dateStr) return 'N/A';
+
+	try {
+		var date = new Date(dateStr);
+		var now = new Date();
+		var seconds = Math.floor((now - date) / 1000);
+
+		if (seconds < 60) return seconds + 's ago';
+		if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+		if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+		if (seconds < 2592000) return Math.floor(seconds / 86400) + 'd ago';
+		return Math.floor(seconds / 2592000) + 'mo ago';
+	} catch(e) {
+		return dateStr;
+	}
+}
+
 return baseclass.extend({
 	getStatus: callStatus,
-	getDecisions: callDecisions,
+	getDecisions: function() {
+		return callDecisions().then(function(result) {
+			console.log('[API] getDecisions raw result:', result);
+			console.log('[API] getDecisions result type:', typeof result);
+			console.log('[API] getDecisions is array:', Array.isArray(result));
+			return result;
+		});
+	},
 	getAlerts: callAlerts,
 	getBouncers: callBouncers,
 	getMetrics: callMetrics,
@@ -247,6 +313,14 @@ return baseclass.extend({
 
 	formatDuration: formatDuration,
 	formatDate: formatDate,
+	formatRelativeTime: formatRelativeTime,
+	isValidIP: isValidIP,
+	parseScenario: parseScenario,
+	getCountryFlag: getCountryFlag,
+
+	// Aliases for compatibility
+	banIP: callBan,
+	unbanIP: callUnban,
 
 	getDashboardData: function() {
 		return Promise.all([
@@ -258,15 +332,25 @@ return baseclass.extend({
 			// Check if any result has an error (service not running)
 			var status = results[0] || {};
 			var stats = results[1] || {};
-			var decisions = results[2] || {};
-			var alerts = results[3] || {};
+			var decisionsRaw = results[2] || [];
+			var alerts = results[3] || [];
+
+			// Flatten alerts->decisions structure
+			var decisions = [];
+			if (Array.isArray(decisionsRaw)) {
+				decisionsRaw.forEach(function(alert) {
+					if (alert.decisions && Array.isArray(alert.decisions)) {
+						decisions = decisions.concat(alert.decisions);
+					}
+				});
+			}
 
 			return {
 				status: status,
 				stats: (stats.error) ? {} : stats,
-				decisions: (decisions.error) ? [] : (decisions.decisions || []),
-				alerts: (alerts.error) ? [] : (alerts.alerts || []),
-				error: stats.error || decisions.error || alerts.error || null
+				decisions: decisions,
+				alerts: alerts,
+				error: stats.error || null
 			};
 		});
 	}

@@ -136,7 +136,7 @@ return view.extend({
 				E('td', {}, E('button', {
 					'class': 'cs-btn cs-btn-danger cs-btn-sm',
 					'data-ip': d.value,
-					'click': ui.createHandlerFn(this, 'handleUnban', d.value)
+					'click': ui.createHandlerFn(self, 'handleUnban', d.value)
 				}, 'Unban'))
 			]);
 		});

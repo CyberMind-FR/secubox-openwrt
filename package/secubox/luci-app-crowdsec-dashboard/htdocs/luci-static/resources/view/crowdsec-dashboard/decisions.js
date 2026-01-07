@@ -82,11 +82,11 @@ return view.extend({
 
 	handleUnban: function(ip, ev) {
 		var self = this;
-		
+
 		if (!confirm('Remove ban for ' + ip + '?')) {
 			return;
 		}
-		
+
 		this.csApi.unbanIP(ip).then(function(result) {
 			if (result.success) {
 				self.showToast('IP ' + ip + ' unbanned successfully', 'success');
@@ -97,7 +97,15 @@ return view.extend({
 			}
 		}).then(function(data) {
 			if (data) {
-				self.decisions = data;
+				// Flatten alerts->decisions structure
+				self.decisions = [];
+				if (Array.isArray(data)) {
+					data.forEach(function(alert) {
+						if (alert.decisions && Array.isArray(alert.decisions)) {
+							self.decisions = self.decisions.concat(alert.decisions);
+						}
+					});
+				}
 				self.filterDecisions();
 				self.updateTable();
 			}
@@ -127,18 +135,26 @@ return view.extend({
 		Promise.all(promises).then(function(results) {
 			var success = results.filter(function(r) { return r.success; }).length;
 			var failed = results.length - success;
-			
+
 			if (success > 0) {
-				self.showToast(success + ' IP(s) unbanned' + (failed > 0 ? ', ' + failed + ' failed' : ''), 
+				self.showToast(success + ' IP(s) unbanned' + (failed > 0 ? ', ' + failed + ' failed' : ''),
 					failed > 0 ? 'warning' : 'success');
 			} else {
 				self.showToast('Failed to unban IPs', 'error');
 			}
-			
+
 			return self.csApi.getDecisions();
 		}).then(function(data) {
 			if (data) {
-				self.decisions = data;
+				// Flatten alerts->decisions structure
+				self.decisions = [];
+				if (Array.isArray(data)) {
+					data.forEach(function(alert) {
+						if (alert.decisions && Array.isArray(alert.decisions)) {
+							self.decisions = self.decisions.concat(alert.decisions);
+						}
+					});
+				}
 				self.filterDecisions();
 				self.updateTable();
 			}
@@ -325,29 +341,59 @@ return view.extend({
 			return;
 		}
 		
+	console.log('[Decisions] Banning IP:', ip, 'Duration:', duration, 'Reason:', reason);
 		self.csApi.banIP(ip, duration, reason).then(function(result) {
+			console.log('[Decisions] Ban result:', result);
 			if (result.success) {
 				self.showToast('IP ' + ip + ' banned for ' + duration, 'success');
 				self.closeBanModal();
-				return self.csApi.getDecisions();
+				// Wait 1 second for CrowdSec to process the decision
+				console.log('[Decisions] Waiting 1 second before refreshing...');
+				return new Promise(function(resolve) {
+					setTimeout(function() {
+						console.log('[Decisions] Refreshing decisions list...');
+						resolve(self.csApi.getDecisions());
+					}, 1000);
+				});
 			} else {
 				self.showToast('Failed to ban: ' + (result.error || 'Unknown error'), 'error');
 				return null;
 			}
 		}).then(function(data) {
+			console.log('[Decisions] Updated decisions data:', data);
 			if (data) {
-				self.decisions = data;
+				// Flatten alerts->decisions structure
+				self.decisions = [];
+				if (Array.isArray(data)) {
+					data.forEach(function(alert) {
+						if (alert.decisions && Array.isArray(alert.decisions)) {
+							self.decisions = self.decisions.concat(alert.decisions);
+						}
+					});
+				}
 				self.filterDecisions();
 				self.updateTable();
+				console.log('[Decisions] Table updated with', self.decisions.length, 'decisions');
 			}
 		}).catch(function(err) {
+			console.error('[Decisions] Ban error:', err);
 			self.showToast('Error: ' + err.message, 'error');
 		});
 	},
 
 	render: function(data) {
 		var self = this;
-		this.decisions = Array.isArray(data) ? data : [];
+		// Flatten alerts->decisions structure
+		// data is an array of alerts, each containing a decisions array
+		this.decisions = [];
+		if (Array.isArray(data)) {
+			data.forEach(function(alert) {
+				if (alert.decisions && Array.isArray(alert.decisions)) {
+					self.decisions = self.decisions.concat(alert.decisions);
+				}
+			});
+		}
+		console.log('[Decisions] Flattened', this.decisions.length, 'decisions from', data ? data.length : 0, 'alerts');
 		this.filterDecisions();
 		
 		var view = E('div', { 'class': 'crowdsec-dashboard' }, [
@@ -389,7 +435,15 @@ return view.extend({
 		// Setup polling
 		poll.add(function() {
 			return self.csApi.getDecisions().then(function(newData) {
-				self.decisions = Array.isArray(newData) ? newData : [];
+				// Flatten alerts->decisions structure
+				self.decisions = [];
+				if (Array.isArray(newData)) {
+					newData.forEach(function(alert) {
+						if (alert.decisions && Array.isArray(alert.decisions)) {
+							self.decisions = self.decisions.concat(alert.decisions);
+						}
+					});
+				}
 				self.filterDecisions();
 				self.updateTable();
 			});
