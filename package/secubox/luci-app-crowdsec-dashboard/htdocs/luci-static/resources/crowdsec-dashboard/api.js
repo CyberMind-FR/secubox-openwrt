@@ -128,7 +128,7 @@ var callRemoveCollection = rpc.declare({
 var callUpdateHub = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'update_hub',
-	expect: { success: false }
+	expect: { }
 });
 
 var callRegisterBouncer = rpc.declare({

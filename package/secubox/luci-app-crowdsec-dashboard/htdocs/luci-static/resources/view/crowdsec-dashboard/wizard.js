@@ -137,9 +137,12 @@ return view.extend({
 	},
 
 	renderStep1: function(data) {
+		console.log('[Wizard] renderStep1 data:', data);
 		var status = data ? data.status : {};
+		console.log('[Wizard] status:', status);
 		var crowdsecRunning = status && status.crowdsec === 'running';
 		var lapiAvailable = status && status.lapi_status === 'available';
+		console.log('[Wizard] crowdsecRunning:', crowdsecRunning, 'lapiAvailable:', lapiAvailable);
 
 		return E('div', { 'class': 'wizard-step' }, [
 			E('h2', {}, _('Welcome to CrowdSec Setup')),
@@ -185,8 +188,13 @@ return view.extend({
 				}, _('Cancel')),
 				E('button', {
 					'class': 'cbi-button cbi-button-positive',
-					'disabled': !crowdsecRunning || !lapiAvailable,
-					'click': L.bind(this.goToStep, this, 2)
+					'disabled': (!crowdsecRunning || !lapiAvailable) ? true : null,
+					'click': L.bind(function(ev) {
+						console.log('[Wizard] Next button clicked!');
+						ev.preventDefault();
+						ev.stopPropagation();
+						this.goToStep(2);
+					}, this)
 				}, _('Next →'))
 			])
 		]);
@@ -537,10 +545,12 @@ return view.extend({
 	},
 
 	handleUpdateHub: function() {
+		console.log('[Wizard] handleUpdateHub called');
 		this.wizardData.hubUpdating = true;
 		this.refreshView();
 
 		return API.updateHub().then(L.bind(function(result) {
+			console.log('[Wizard] updateHub result:', result);
 			this.wizardData.hubUpdating = false;
 			this.wizardData.hubUpdated = result.success;
 
@@ -549,11 +559,19 @@ return view.extend({
 				return API.getCollections();
 			} else {
 				ui.addNotification(null, E('p', result.error || _('Hub update failed')), 'error');
+				return null;
 			}
 		}, this)).then(L.bind(function(collections) {
+			console.log('[Wizard] getCollections result:', collections);
 			if (collections) {
 				this.wizardData.collections = collections;
 			}
+			this.refreshView();
+		}, this)).catch(L.bind(function(error) {
+			console.error('[Wizard] Hub update error:', error);
+			this.wizardData.hubUpdating = false;
+			this.wizardData.hubUpdated = false;
+			ui.addNotification(null, E('p', _('Hub update failed: ') + error.message), 'error');
 			this.refreshView();
 		}, this));
 	},
