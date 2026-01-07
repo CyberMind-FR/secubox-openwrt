@@ -129,7 +129,16 @@ get_status() {
 	local uptime_sec
 	uptime_sec=$(cat /proc/uptime | cut -d' ' -f1 | cut -d'.' -f1)
 	json_add_int "uptime" "$uptime_sec"
-	
+
+	# LAPI status (check if Local API is accessible)
+	local lapi_status="unavailable"
+	if [ -x "$CSCLI" ]; then
+		if $CSCLI lapi status >/dev/null 2>&1; then
+			lapi_status="available"
+		fi
+	fi
+	json_add_string "lapi_status" "$lapi_status"
+
 	json_dump
 }
 
