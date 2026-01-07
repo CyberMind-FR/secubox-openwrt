@@ -1,0 +1,18 @@
+{
+  "id": "gateway",
+  "name": "Secure Gateway",
+  "description": "Enterprise-grade security with IDS/IPS, VPN, and traffic analysis",
+  "network_mode": "router",
+  "apps": [
+    "luci-app-crowdsec-dashboard",
+    "luci-app-wireguard-dashboard",
+    "luci-app-netifyd-dashboard",
+    "luci-app-bandwidth-manager"
+  ],
+  "features": {
+    "intrusion_detection": true,
+    "vpn": true,
+    "traffic_analysis": true,
+    "qos": true
+  }
+}

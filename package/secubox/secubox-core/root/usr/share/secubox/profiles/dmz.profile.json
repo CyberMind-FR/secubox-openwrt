@@ -1,0 +1,18 @@
+{
+  "id": "gateway_dmz",
+  "name": "Gateway + DMZ",
+  "description": "Isolated DMZ network for self-hosted services with reverse proxy",
+  "network_mode": "dmz",
+  "apps": [
+    "luci-app-vhost-manager",
+    "secubox-app-nextcloud",
+    "secubox-app-vaultwarden",
+    "luci-app-crowdsec-dashboard"
+  ],
+  "features": {
+    "dmz_isolation": true,
+    "reverse_proxy": true,
+    "ssl_certificates": true,
+    "self_hosting": true
+  }
+}

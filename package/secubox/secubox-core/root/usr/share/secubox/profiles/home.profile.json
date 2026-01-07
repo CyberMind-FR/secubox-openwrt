@@ -1,0 +1,17 @@
+{
+  "id": "home",
+  "name": "Home Network",
+  "description": "Residential setup with parental controls, media streaming, and smart home integration",
+  "network_mode": "router",
+  "apps": [
+    "luci-app-client-guardian",
+    "luci-app-adguardhome",
+    "secubox-app-jellyfin",
+    "secubox-app-homeassistant"
+  ],
+  "features": {
+    "parental_controls": true,
+    "media_streaming": true,
+    "smart_home": true
+  }
+}
