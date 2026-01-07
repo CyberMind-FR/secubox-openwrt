@@ -9,7 +9,7 @@
  * CrowdSec Core: 1.7.4+
  */
 
-// Version: 0.5.0
+// Version: 0.6.0
 
 var callStatus = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
@@ -178,6 +178,19 @@ var callNftablesStats = rpc.declare({
 	expect: { }
 });
 
+// Wizard Methods
+var callCheckWizardNeeded = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'check_wizard_needed',
+	expect: { }
+});
+
+var callWizardState = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'wizard_state',
+	expect: { }
+});
+
 function formatDuration(seconds) {
 	if (!seconds) return 'N/A';
 	if (seconds < 60) return seconds + 's';
@@ -227,6 +240,10 @@ return baseclass.extend({
 	getFirewallBouncerConfig: callFirewallBouncerConfig,
 	updateFirewallBouncerConfig: callUpdateFirewallBouncerConfig,
 	getNftablesStats: callNftablesStats,
+
+	// Wizard Methods
+	checkWizardNeeded: callCheckWizardNeeded,
+	getWizardState: callWizardState,
 
 	formatDuration: formatDuration,
 	formatDate: formatDate,

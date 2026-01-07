@@ -18,7 +18,9 @@
 					"collections",
 					"firewall_bouncer_status",
 					"firewall_bouncer_config",
-					"nftables_stats"
+					"nftables_stats",
+					"check_wizard_needed",
+					"wizard_state"
 				],
 				"file": [ "read", "stat" ]
 			},

@@ -773,10 +773,56 @@ get_nftables_stats() {
 	json_dump
 }
 
+# Check if wizard should be shown (first-time setup detection)
+check_wizard_needed() {
+	json_init
+
+	# Check if bouncer is configured
+	local bouncer_configured=0
+	if uci -q get crowdsec.bouncer.enabled >/dev/null 2>&1; then
+		bouncer_configured=1
+	fi
+
+	# Check if collections are installed
+	local collections_installed=0
+	if [ -x "$CSCLI" ]; then
+		if $CSCLI collections list 2>/dev/null | grep -q "INSTALLED"; then
+			collections_installed=1
+		fi
+	fi
+
+	# Show wizard if not configured
+	local show_wizard=0
+	if [ "$bouncer_configured" = "0" ] || [ "$collections_installed" = "0" ]; then
+		show_wizard=1
+	fi
+
+	json_add_boolean "show_wizard" "$show_wizard"
+	json_add_boolean "bouncer_configured" "$bouncer_configured"
+	json_add_boolean "collections_installed" "$collections_installed"
+
+	json_dump
+}
+
+# Get wizard initial state
+get_wizard_state() {
+	json_init
+
+	# Get collections count
+	local collections_count=0
+	if [ -x "$CSCLI" ]; then
+		collections_count=$($CSCLI collections list 2>/dev/null | grep -c "INSTALLED" || echo "0")
+	fi
+
+	json_add_int "collections_count" "$collections_count"
+
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{}}'
+		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{}}'
 		;;
 	call)
 		case "$2" in
@@ -880,6 +926,12 @@ case "$1" in
 				;;
 			nftables_stats)
 				get_nftables_stats
+				;;
+			check_wizard_needed)
+				check_wizard_needed
+				;;
+			wizard_state)
+				get_wizard_state
 				;;
 			*)
 				echo '{"error": "Unknown method"}'
