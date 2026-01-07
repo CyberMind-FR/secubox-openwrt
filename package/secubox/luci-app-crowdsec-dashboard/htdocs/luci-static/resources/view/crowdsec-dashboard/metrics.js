@@ -162,7 +162,10 @@ return view.extend({
 		
 		var countInstalled = function(items) {
 			if (!Array.isArray(items)) return 0;
-			return items.filter(function(i) { return i.installed; }).length;
+			// Check for status === 'enabled' or if local_version exists (means installed)
+			return items.filter(function(i) {
+				return i.status === 'enabled' || i.local_version;
+			}).length;
 		};
 		
 		return E('div', { 'class': 'cs-stats-grid' }, [
@@ -198,7 +201,9 @@ return view.extend({
 			]);
 		}
 		
-		var installed = collections.filter(function(c) { return c.installed; });
+		var installed = collections.filter(function(c) {
+			return c.status === 'enabled' || c.local_version;
+		});
 		
 		var items = installed.slice(0, 15).map(function(c) {
 			return E('div', { 'class': 'cs-metric-item' }, [
