@@ -160,7 +160,7 @@ return view.extend({
 					'href': 'mailto:contact@cybermind.fr?subject=SecuBox%20Feedback'
 				}, [
 					E('span', { 'class': 'sb-help-icon' }, '✉️'),
-					E('span', { 'class': 'sb-help-label' }, _('Écrire à l'équipe'))
+					E('span', { 'class': 'sb-help-label' }, _('Écrire à l\'équipe'))
 				])
 			])
 		]);
