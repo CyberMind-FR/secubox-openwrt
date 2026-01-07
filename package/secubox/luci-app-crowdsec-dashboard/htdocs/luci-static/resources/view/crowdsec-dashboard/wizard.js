@@ -64,6 +64,15 @@ return view.extend({
 	},
 
 	render: function(data) {
+		// Load wizard CSS
+		var head = document.head || document.getElementsByTagName('head')[0];
+		var cssLink = E('link', {
+			'rel': 'stylesheet',
+			'type': 'text/css',
+			'href': L.resource('crowdsec-dashboard/wizard.css')
+		});
+		head.appendChild(cssLink);
+
 		var container = E('div', { 'class': 'wizard-container' });
 
 		// Create stepper
