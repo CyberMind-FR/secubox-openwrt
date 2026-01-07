@@ -137,8 +137,9 @@ return view.extend({
 	},
 
 	renderStep1: function(data) {
-		var crowdsecRunning = this.wizardData.crowdsecRunning;
-		var lapiAvailable = this.wizardData.lapiAvailable;
+		var status = data ? data.status : {};
+		var crowdsecRunning = status && status.crowdsec === 'running';
+		var lapiAvailable = status && status.lapi_status === 'available';
 
 		return E('div', { 'class': 'wizard-step' }, [
 			E('h2', {}, _('Welcome to CrowdSec Setup')),
