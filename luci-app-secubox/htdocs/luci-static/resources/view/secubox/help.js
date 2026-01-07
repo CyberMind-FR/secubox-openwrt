@@ -120,6 +120,11 @@ return view.extend({
 				text: _('Forkez le dépôt SecuBox, proposez des améliorations, corrigez des bugs, créez de nouveaux helpers.')
 			},
 			{
+				icon: '🐛',
+				title: _('Bug Bounty Program'),
+				text: _('Signalez des vulnérabilités de sécurité et recevez des récompenses. Consultez notre programme officiel.')
+			},
+			{
 				icon: '🤗',
 				title: _('Soutenir le projet'),
 				text: _('Commandes pro, sponsoring ou partenariats : contactez CyberMind.fr pour renforcer SecuBox.')
@@ -144,10 +149,18 @@ return view.extend({
 				}),
 				E('a', {
 					'class': 'sb-help-btn sb-help-footer',
+					'href': 'https://secubox.cybermood.eu/SecuBox_BugBounty_Announcement.html#contact',
+					'target': '_blank'
+				}, [
+					E('span', { 'class': 'sb-help-icon' }, '🐛'),
+					E('span', { 'class': 'sb-help-label' }, _('Bug Bounty Program'))
+				]),
+				E('a', {
+					'class': 'sb-help-btn sb-help-footer',
 					'href': 'mailto:contact@cybermind.fr?subject=SecuBox%20Feedback'
 				}, [
 					E('span', { 'class': 'sb-help-icon' }, '✉️'),
-					E('span', { 'class': 'sb-help-label' }, _('Écrire à l’équipe'))
+					E('span', { 'class': 'sb-help-label' }, _('Écrire à l'équipe'))
 				])
 			])
 		]);
