@@ -347,7 +347,9 @@
       "Bash($SSH root@192.168.255.1 \"uci show network | grep -E ''=interface|\\\\.proto=''\")",
       "Bash($SSH root@192.168.255.1 \"uci show firewall | grep -E ''zone.*name|=forwarding''\")",
       "Bash(for:*)",
-      "Bash(do sed -i \"s/''require secubox-theme\\\\/theme as Theme'';//g\" \"$f\")"
+      "Bash(do sed -i \"s/''require secubox-theme\\\\/theme as Theme'';//g\" \"$f\")",
+      "Bash(do sleep 5)",
+      "Bash(break)"
     ]
   }
 }

@@ -232,6 +232,18 @@
 	font-size: 20px;
 }
 
+.sh-status-body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25em;
+}
+
+.sh-status-body strong {
+	font-size: 0.85em;
+	font-weight: 500;
+	color: var(--sh-text-secondary, #888);
+}
+
 .sh-status-card.ok {
 	border-left: 3px solid #22c55e;
 }

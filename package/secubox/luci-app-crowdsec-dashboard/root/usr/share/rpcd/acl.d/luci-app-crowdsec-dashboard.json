@@ -43,7 +43,8 @@
 					"update_firewall_bouncer_config",
 					"repair_lapi",
 					"console_enroll",
-					"console_disable"
+					"console_disable",
+					"service_control"
 				]
 			},
 			"uci": [ "crowdsec-dashboard" ]

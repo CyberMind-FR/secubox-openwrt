@@ -16,9 +16,12 @@ return view.extend({
 
 	render: function(data) {
 		var status = data[0] || {};
-		var machines = data[1] || [];
+		var machinesData = data[1] || {};
+		var machines = Array.isArray(machinesData) ? machinesData : (machinesData.machines || []);
 		var hub = data[2] || {};
-		var collections = Array.isArray(data[3]) ? data[3] : [];
+		var collectionsData = data[3] || {};
+		var collections = collectionsData.collections || [];
+		if (collections.collections) collections = collections.collections;
 
 		var view = E('div', { 'class': 'cbi-map' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
@@ -42,13 +45,13 @@ return view.extend({
 					]),
 
 					// LAPI Status
-					E('div', { 'class': 'cbi-value', 'style': 'background: ' + (status.lapi === 'running' ? '#d4edda' : '#f8d7da') + '; padding: 1em; border-radius: 4px; border-left: 4px solid ' + (status.lapi === 'running' ? '#28a745' : '#dc3545') + ';' }, [
+					E('div', { 'class': 'cbi-value', 'style': 'background: ' + (status.lapi_status === 'available' ? '#d4edda' : '#f8d7da') + '; padding: 1em; border-radius: 4px; border-left: 4px solid ' + (status.lapi_status === 'available' ? '#28a745' : '#dc3545') + ';' }, [
 						E('label', { 'class': 'cbi-value-title' }, _('Local API (LAPI)')),
 						E('div', { 'class': 'cbi-value-field' }, [
 							E('span', {
 								'class': 'badge',
-								'style': 'background: ' + (status.lapi === 'running' ? '#28a745' : '#dc3545') + '; color: white; padding: 0.5em 1em; border-radius: 4px; font-size: 1em;'
-							}, status.lapi === 'running' ? _('RUNNING') : _('STOPPED'))
+								'style': 'background: ' + (status.lapi_status === 'available' ? '#28a745' : '#dc3545') + '; color: white; padding: 0.5em 1em; border-radius: 4px; font-size: 1em;'
+							}, status.lapi_status === 'available' ? _('AVAILABLE') : _('UNAVAILABLE'))
 						])
 					]),
 
@@ -152,7 +155,7 @@ return view.extend({
 						E('tbody', {},
 							collections.length > 0 ?
 								collections.map(function(collection) {
-									var isInstalled = collection.status === 'installed' || collection.installed === 'ok';
+									var isInstalled = collection.status === 'enabled' || collection.status === 'installed' || collection.installed === 'ok';
 									var collectionName = collection.name || 'Unknown';
 									return E('tr', {}, [
 										E('td', {}, [
@@ -228,46 +231,173 @@ return view.extend({
 			// Quick Actions
 			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
 				E('h3', {}, _('Quick Actions')),
-				E('div', { 'style': 'display: flex; gap: 1em; flex-wrap: wrap; margin-top: 1em;' }, [
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': function() {
-							ui.showModal(_('Service Control'), [
-								E('p', {}, _('Use the following commands to control CrowdSec:')),
-								E('pre', { 'style': 'background: #f5f5f5; padding: 1em; border-radius: 4px; overflow-x: auto;' }, [
-									'/etc/init.d/crowdsec start\n',
-									'/etc/init.d/crowdsec stop\n',
-									'/etc/init.d/crowdsec restart\n',
-									'/etc/init.d/crowdsec status'
-								]),
-								E('div', { 'class': 'right' }, [
-									E('button', {
-										'class': 'btn',
-										'click': ui.hideModal
-									}, _('Close'))
-								])
-							]);
-						}
-					}, _('Service Control')),
 
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': function() {
-							ui.showModal(_('Register Bouncer'), [
-								E('p', {}, _('To register a new bouncer, use the following command:')),
-								E('pre', { 'style': 'background: #f5f5f5; padding: 1em; border-radius: 4px;' },
-									'cscli bouncers add <bouncer-name>'),
-								E('p', { 'style': 'margin-top: 1em;' },
-									_('The command will output an API key. Use this key to configure your bouncer.')),
-								E('div', { 'class': 'right' }, [
-									E('button', {
-										'class': 'btn',
-										'click': ui.hideModal
-									}, _('Close'))
-								])
-							]);
-						}
-					}, _('Register Bouncer'))
+				// Service Control
+				E('div', { 'style': 'margin-top: 1em;' }, [
+					E('h4', { 'style': 'margin-bottom: 0.5em; color: var(--cyber-text-secondary, #888);' }, _('Service Control')),
+					E('div', { 'style': 'display: flex; gap: 0.5em; flex-wrap: wrap;' }, [
+						E('button', {
+							'class': 'cbi-button cbi-button-positive',
+							'style': 'min-width: 80px;',
+							'click': function(ev) {
+								ev.target.disabled = true;
+								ev.target.classList.add('spinning');
+								API.serviceControl('start').then(function(result) {
+									ev.target.disabled = false;
+									ev.target.classList.remove('spinning');
+									if (result && result.success) {
+										ui.addNotification(null, E('p', {}, _('CrowdSec started successfully')), 'info');
+										window.setTimeout(function() { location.reload(); }, 1500);
+									} else {
+										ui.addNotification(null, E('p', {}, result.error || _('Failed to start service')), 'error');
+									}
+								});
+							}
+						}, _('▶ Start')),
+						E('button', {
+							'class': 'cbi-button cbi-button-negative',
+							'style': 'min-width: 80px;',
+							'click': function(ev) {
+								ev.target.disabled = true;
+								ev.target.classList.add('spinning');
+								API.serviceControl('stop').then(function(result) {
+									ev.target.disabled = false;
+									ev.target.classList.remove('spinning');
+									if (result && result.success) {
+										ui.addNotification(null, E('p', {}, _('CrowdSec stopped')), 'info');
+										window.setTimeout(function() { location.reload(); }, 1500);
+									} else {
+										ui.addNotification(null, E('p', {}, result.error || _('Failed to stop service')), 'error');
+									}
+								});
+							}
+						}, _('■ Stop')),
+						E('button', {
+							'class': 'cbi-button cbi-button-action',
+							'style': 'min-width: 80px;',
+							'click': function(ev) {
+								ev.target.disabled = true;
+								ev.target.classList.add('spinning');
+								API.serviceControl('restart').then(function(result) {
+									ev.target.disabled = false;
+									ev.target.classList.remove('spinning');
+									if (result && result.success) {
+										ui.addNotification(null, E('p', {}, _('CrowdSec restarted')), 'info');
+										window.setTimeout(function() { location.reload(); }, 2000);
+									} else {
+										ui.addNotification(null, E('p', {}, result.error || _('Failed to restart service')), 'error');
+									}
+								});
+							}
+						}, _('↻ Restart')),
+						E('button', {
+							'class': 'cbi-button',
+							'style': 'min-width: 80px;',
+							'click': function(ev) {
+								ev.target.disabled = true;
+								ev.target.classList.add('spinning');
+								API.serviceControl('reload').then(function(result) {
+									ev.target.disabled = false;
+									ev.target.classList.remove('spinning');
+									if (result && result.success) {
+										ui.addNotification(null, E('p', {}, _('Configuration reloaded')), 'info');
+									} else {
+										ui.addNotification(null, E('p', {}, result.error || _('Failed to reload')), 'error');
+									}
+								});
+							}
+						}, _('⟳ Reload'))
+					])
+				]),
+
+				// Register Bouncer
+				E('div', { 'style': 'margin-top: 1.5em;' }, [
+					E('h4', { 'style': 'margin-bottom: 0.5em; color: var(--cyber-text-secondary, #888);' }, _('Register New Bouncer')),
+					E('div', { 'style': 'display: flex; gap: 0.5em; flex-wrap: wrap; align-items: center;' }, [
+						E('input', {
+							'type': 'text',
+							'id': 'new-bouncer-name',
+							'placeholder': _('Bouncer name...'),
+							'style': 'padding: 0.5em; border: 1px solid var(--cyber-border, #444); border-radius: 4px; background: var(--cyber-bg-secondary, #1a1a2e); color: var(--cyber-text-primary, #fff); min-width: 200px;'
+						}),
+						E('button', {
+							'class': 'cbi-button cbi-button-add',
+							'click': function(ev) {
+								var nameInput = document.getElementById('new-bouncer-name');
+								var name = nameInput.value.trim();
+								if (!name) {
+									ui.addNotification(null, E('p', {}, _('Please enter a bouncer name')), 'error');
+									return;
+								}
+								ev.target.disabled = true;
+								ev.target.classList.add('spinning');
+								API.registerBouncer(name).then(function(result) {
+									ev.target.disabled = false;
+									ev.target.classList.remove('spinning');
+									if (result && result.success) {
+										nameInput.value = '';
+										ui.showModal(_('Bouncer Registered'), [
+											E('p', {}, _('Bouncer "%s" registered successfully!').format(name)),
+											E('p', { 'style': 'margin-top: 1em;' }, _('API Key:')),
+											E('pre', {
+												'style': 'background: var(--cyber-bg-tertiary, #252538); padding: 1em; border-radius: 4px; word-break: break-all; user-select: all;'
+											}, result.api_key || result.key || 'Check console'),
+											E('p', { 'style': 'margin-top: 1em; color: #f39c12;' },
+												_('Save this key! It will not be shown again.')),
+											E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
+												E('button', {
+													'class': 'cbi-button cbi-button-action',
+													'click': function() {
+														ui.hideModal();
+														location.reload();
+													}
+												}, _('Close'))
+											])
+										]);
+									} else {
+										ui.addNotification(null, E('p', {}, result.error || _('Failed to register bouncer')), 'error');
+									}
+								});
+							}
+						}, _('+ Register'))
+					])
+				]),
+
+				// Hub Update
+				E('div', { 'style': 'margin-top: 1.5em;' }, [
+					E('h4', { 'style': 'margin-bottom: 0.5em; color: var(--cyber-text-secondary, #888);' }, _('Hub Management')),
+					E('div', { 'style': 'display: flex; gap: 0.5em; flex-wrap: wrap;' }, [
+						E('button', {
+							'class': 'cbi-button cbi-button-action',
+							'click': function(ev) {
+								ev.target.disabled = true;
+								ev.target.classList.add('spinning');
+								API.updateHub().then(function(result) {
+									ev.target.disabled = false;
+									ev.target.classList.remove('spinning');
+									if (result && result.success) {
+										ui.addNotification(null, E('p', {}, _('Hub index updated successfully')), 'info');
+										window.setTimeout(function() { location.reload(); }, 1500);
+									} else {
+										ui.addNotification(null, E('p', {}, result.error || _('Failed to update hub')), 'error');
+									}
+								});
+							}
+						}, _('⬇ Update Hub Index'))
+					])
+				]),
+
+				// CrowdSec Console
+				E('div', { 'style': 'margin-top: 1.5em;' }, [
+					E('h4', { 'style': 'margin-bottom: 0.5em; color: var(--cyber-text-secondary, #888);' }, _('CrowdSec Console')),
+					E('div', { 'style': 'display: flex; gap: 0.5em; flex-wrap: wrap;' }, [
+						E('a', {
+							'href': 'https://app.crowdsec.net',
+							'target': '_blank',
+							'class': 'cbi-button cbi-button-action',
+							'style': 'text-decoration: none; display: inline-flex; align-items: center; gap: 0.5em;'
+						}, _('🌐 Open CrowdSec Console'))
+					])
 				])
 			]),
 

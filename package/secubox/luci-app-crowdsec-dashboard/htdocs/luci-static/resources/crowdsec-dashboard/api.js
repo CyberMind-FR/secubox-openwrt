@@ -217,6 +217,13 @@ var callConsoleDisable = rpc.declare({
 	expect: { }
 });
 
+var callServiceControl = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'service_control',
+	params: ['action'],
+	expect: { }
+});
+
 function formatDuration(seconds) {
 	if (!seconds) return 'N/A';
 	if (seconds < 60) return seconds + 's';
@@ -342,6 +349,9 @@ return baseclass.extend({
 	getConsoleStatus: callConsoleStatus,
 	consoleEnroll: callConsoleEnroll,
 	consoleDisable: callConsoleDisable,
+
+	// Service Control
+	serviceControl: callServiceControl,
 
 	formatDuration: formatDuration,
 	formatDate: formatDate,

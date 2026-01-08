@@ -1049,10 +1049,49 @@ console_disable() {
 	json_dump
 }
 
+# Service control (start/stop/restart/reload)
+service_control() {
+	local action="$1"
+	json_init
+
+	case "$action" in
+		start|stop|restart|reload)
+			secubox_log "CrowdSec service $action requested"
+			local output
+			output=$(/etc/init.d/crowdsec "$action" 2>&1)
+			local result=$?
+			sleep 2
+
+			# Check if service is running after action
+			local running=0
+			if pgrep -x crowdsec >/dev/null 2>&1; then
+				running=1
+			fi
+
+			if [ "$result" -eq 0 ]; then
+				json_add_boolean "success" 1
+				json_add_string "action" "$action"
+				json_add_boolean "running" "$running"
+				json_add_string "message" "Service $action completed"
+			else
+				json_add_boolean "success" 0
+				json_add_string "error" "Service $action failed"
+				json_add_string "output" "$output"
+			fi
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Invalid action. Use: start, stop, restart, reload"
+			;;
+	esac
+
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{}}'
+		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"}}'
 		;;
 	call)
 		case "$2" in
@@ -1177,6 +1216,11 @@ case "$1" in
 				;;
 			console_disable)
 				console_disable
+				;;
+			service_control)
+				read -r input
+				action=$(echo "$input" | jsonfilter -e '@.action' 2>/dev/null)
+				service_control "$action"
 				;;
 			*)
 				echo '{"error": "Unknown method"}'
