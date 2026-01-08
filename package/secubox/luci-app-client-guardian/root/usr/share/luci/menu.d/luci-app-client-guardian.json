@@ -17,6 +17,14 @@
 			"path": "client-guardian/overview"
 		}
 	},
+	"admin/secubox/security/client-guardian/wizard": {
+		"title": "Setup Wizard",
+		"order": 15,
+		"action": {
+			"type": "view",
+			"path": "client-guardian/wizard"
+		}
+	},
 	"admin/secubox/security/client-guardian/clients": {
 		"title": "Clients",
 		"order": 20,
@@ -79,6 +87,14 @@
 		"action": {
 			"type": "view",
 			"path": "client-guardian/settings"
+		}
+	},
+	"admin/secubox/security/client-guardian/debug": {
+		"title": "Debug Console",
+		"order": 95,
+		"action": {
+			"type": "view",
+			"path": "client-guardian/debug"
 		}
 	}
 }

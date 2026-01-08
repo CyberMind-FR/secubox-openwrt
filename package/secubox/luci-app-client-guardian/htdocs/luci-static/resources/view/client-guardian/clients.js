@@ -15,8 +15,8 @@ return view.extend({
 	},
 
 	render: function(data) {
-		var clients = data[0].clients || [];
-		var zones = data[1].zones || [];
+		var clients = Array.isArray(data[0]) ? data[0] : (data[0].clients || []);
+		var zones = Array.isArray(data[1]) ? data[1] : (data[1].zones || []);
 		var self = this;
 
 		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
@@ -188,15 +188,16 @@ return view.extend({
 			]),
 			E('div', { 'class': 'cg-btn-group', 'style': 'justify-content: flex-end' }, [
 				E('button', { 'class': 'cg-btn', 'click': ui.hideModal }, _('Annuler')),
-				E('button', { 'class': 'cg-btn cg-btn-success', 'click': function() {
+				E('button', { 'class': 'cg-btn cg-btn-success', 'click': L.bind(function() {
 					var name = document.getElementById('approve-name').value;
 					var zone = document.getElementById('approve-zone').value;
 					var notes = document.getElementById('approve-notes').value;
-					api.approveClient(mac, name, zone, notes).then(function() {
+					api.approveClient(mac, name, zone, notes).then(L.bind(function() {
 						ui.hideModal();
-						window.location.reload();
-					});
-				}}, _('Approuver'))
+						ui.addNotification(null, E('p', _('Client approved successfully')), 'success');
+						this.handleRefresh();
+					}, this));
+				}, this)}, _('Approuver'))
 			])
 		]);
 	},
@@ -229,7 +230,7 @@ return view.extend({
 			]),
 			E('div', { 'class': 'cg-btn-group', 'style': 'justify-content: flex-end' }, [
 				E('button', { 'class': 'cg-btn', 'click': ui.hideModal }, _('Annuler')),
-				E('button', { 'class': 'cg-btn cg-btn-primary', 'click': function() {
+				E('button', { 'class': 'cg-btn cg-btn-primary', 'click': L.bind(function() {
 					api.updateClient(
 						client.section,
 						document.getElementById('edit-name').value,
@@ -237,11 +238,12 @@ return view.extend({
 						document.getElementById('edit-notes').value,
 						parseInt(document.getElementById('edit-quota').value) || 0,
 						document.getElementById('edit-ip').value
-					).then(function() {
+					).then(L.bind(function() {
 						ui.hideModal();
-						window.location.reload();
-					});
-				}}, _('Enregistrer'))
+						ui.addNotification(null, E('p', _('Client updated successfully')), 'success');
+						this.handleRefresh();
+					}, this));
+				}, this)}, _('Enregistrer'))
 			])
 		]);
 	},
@@ -258,26 +260,39 @@ return view.extend({
 			]),
 			E('div', { 'class': 'cg-btn-group', 'style': 'justify-content: flex-end' }, [
 				E('button', { 'class': 'cg-btn', 'click': ui.hideModal }, _('Annuler')),
-				E('button', { 'class': 'cg-btn cg-btn-danger', 'click': function() {
+				E('button', { 'class': 'cg-btn cg-btn-danger', 'click': L.bind(function() {
 					var reason = document.getElementById('ban-reason').value || 'Manual ban';
-					api.banClient(mac, reason).then(function() {
+					api.banClient(mac, reason).then(L.bind(function() {
 						ui.hideModal();
-						window.location.reload();
-					});
-				}}, _('Bannir'))
+						ui.addNotification(null, E('p', _('Client banned successfully')), 'info');
+						this.handleRefresh();
+					}, this));
+				}, this)}, _('Bannir'))
 			])
 		]);
 	},
 
 	handleUnban: function(ev) {
 		var mac = ev.currentTarget.dataset.mac;
-		api.quarantineClient(mac).then(function() {
-			window.location.reload();
-		});
+		api.quarantineClient(mac).then(L.bind(function() {
+			ui.addNotification(null, E('p', _('Client unbanned successfully')), 'success');
+			this.handleRefresh();
+		}, this));
 	},
 
 	handleRefresh: function() {
-		window.location.reload();
+		return Promise.all([
+			api.getClients(),
+			api.getZones()
+		]).then(L.bind(function(data) {
+			var container = document.querySelector('.client-guardian-dashboard');
+			if (container) {
+				var newView = this.render(data);
+				dom.content(container.parentNode, newView);
+			}
+		}, this)).catch(function(err) {
+			console.error('Failed to refresh clients list:', err);
+		});
 	},
 
 	handleSaveApply: null,

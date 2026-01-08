@@ -22,7 +22,7 @@ return view.extend({
 		var m, s, o;
 
 		m = new form.Map('client-guardian', _('Client Guardian Settings'),
-			_('Configure default network access policy and captive portal behavior.'));
+			_('Configure default network access policy and client management.'));
 
 		// General Settings
 		s = m.section(form.NamedSection, 'config', 'client-guardian', _('General Settings'));
@@ -34,9 +34,9 @@ return view.extend({
 
 		o = s.option(form.ListValue, 'default_policy', _('Default Policy'));
 		o.value('open', _('Open - Allow all clients'));
-		o.value('captive', _('Captive Portal - Require portal authentication'));
+		o.value('quarantine', _('Quarantine - Require approval'));
 		o.value('whitelist', _('Whitelist Only - Allow only approved clients'));
-		o.default = 'captive';
+		o.default = 'quarantine';
 		o.rmempty = false;
 		o.description = _('Default behavior for new/unknown clients');
 
@@ -50,57 +50,6 @@ return view.extend({
 		o.default = '86400';
 		o.placeholder = '86400';
 		o.description = _('Maximum session duration in seconds (default: 86400 = 24 hours)');
-
-		// Captive Portal Settings
-		s = m.section(form.NamedSection, 'portal', 'portal', _('Captive Portal'));
-
-		o = s.option(form.Flag, 'enabled', _('Enable Captive Portal'));
-		o.default = '1';
-		o.rmempty = false;
-		o.description = _('Enable nodogsplash captive portal for guest authentication');
-
-		o = s.option(form.Value, 'title', _('Portal Title'));
-		o.default = 'Welcome';
-		o.placeholder = 'Welcome';
-		o.description = _('Main title displayed on the portal page');
-
-		o = s.option(form.Value, 'subtitle', _('Portal Subtitle'));
-		o.default = 'Please authenticate to access the network';
-		o.placeholder = 'Please authenticate to access the network';
-		o.description = _('Subtitle or welcome message');
-
-		o = s.option(form.ListValue, 'auth_method', _('Authentication Method'));
-		o.value('click', _('Click to Continue'));
-		o.value('password', _('Password'));
-		o.value('voucher', _('Voucher Code'));
-		o.value('email', _('Email Verification'));
-		o.default = 'click';
-		o.description = _('Method used to authenticate users');
-
-		o = s.option(form.Value, 'guest_password', _('Guest Password'));
-		o.depends('auth_method', 'password');
-		o.password = true;
-		o.placeholder = 'Enter password';
-		o.description = _('Password required for guest access');
-
-		o = s.option(form.Value, 'accent_color', _('Accent Color'));
-		o.default = '#0088cc';
-		o.placeholder = '#0088cc';
-		o.datatype = 'string';
-		o.description = _('Hex color code for portal branding');
-
-		o = s.option(form.Flag, 'require_terms', _('Require Terms Acceptance'));
-		o.default = '0';
-		o.description = _('Require users to accept terms and conditions');
-
-		o = s.option(form.Flag, 'allow_registration', _('Allow Self-Registration'));
-		o.default = '0';
-		o.description = _('Allow users to register their own devices');
-
-		o = s.option(form.Flag, 'registration_approval', _('Require Registration Approval'));
-		o.default = '1';
-		o.depends('allow_registration', '1');
-		o.description = _('Administrator must approve self-registered devices');
 
 		// Advanced Settings
 		s = m.section(form.NamedSection, 'config', 'client-guardian', _('Advanced Settings'));
@@ -127,26 +76,128 @@ return view.extend({
 		o.default = '0';
 		o.description = _('Attempt to detect and block VPN connections');
 
+		// Dashboard Reactiveness
+		s = m.section(form.NamedSection, 'config', 'client-guardian', _('Dashboard Reactiveness'));
+
+		o = s.option(form.Flag, 'auto_refresh', _('Enable Auto-Refresh'),
+			_('Automatically refresh dashboard every few seconds'));
+		o.default = o.enabled;
+		o.rmempty = false;
+
+		o = s.option(form.ListValue, 'refresh_interval', _('Refresh Interval'),
+			_('How often to poll for updates'));
+		o.value('5', _('Every 5 seconds'));
+		o.value('10', _('Every 10 seconds (recommended)'));
+		o.value('30', _('Every 30 seconds'));
+		o.value('60', _('Every 60 seconds'));
+		o.default = '10';
+		o.depends('auto_refresh', '1');
+
+		// Threat Intelligence Integration
+		s = m.section(form.NamedSection, 'threat_policy', 'threat_policy', _('Threat Intelligence Integration'));
+
+		o = s.option(form.Flag, 'enabled', _('Enable Threat Intelligence'),
+			_('Correlate clients with Security Threats Dashboard data'));
+		o.default = o.enabled;
+		o.rmempty = false;
+
+		o = s.option(form.Value, 'auto_ban_threshold', _('Auto-Ban Threshold'),
+			_('Automatically ban clients with threat score above this value (0-100)'));
+		o.datatype = 'range(1,100)';
+		o.placeholder = '80';
+		o.default = '80';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'auto_quarantine_threshold', _('Auto-Quarantine Threshold'),
+			_('Automatically quarantine clients with threat score above this value (0-100)'));
+		o.datatype = 'range(1,100)';
+		o.placeholder = '60';
+		o.default = '60';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'threat_check_interval', _('Threat Check Interval'),
+			_('How often to check for threats (seconds)'));
+		o.datatype = 'uinteger';
+		o.placeholder = '60';
+		o.default = '60';
+		o.depends('enabled', '1');
+
+		// Auto-Zoning / Auto-Parking
+		s = m.section(form.NamedSection, 'config', 'client-guardian', _('Auto-Zoning & Auto-Parking'));
+		s.description = _('Automatically assign new clients to zones based on device type, vendor, or hostname patterns.');
+
+		o = s.option(form.Flag, 'auto_zoning_enabled', _('Enable Auto-Zoning'),
+			_('Automatically assign clients to zones using matching rules'));
+		o.default = '1';
+		o.rmempty = false;
+
+		o = s.option(form.ListValue, 'auto_parking_zone', _('Auto-Parking Zone'),
+			_('Default zone for clients that don\'t match any rule'));
+		o.value('guest', _('Guest'));
+		o.value('quarantine', _('Quarantine'));
+		o.value('iot', _('IoT'));
+		o.value('lan_private', _('LAN Private'));
+		o.default = 'guest';
+		o.depends('auto_zoning_enabled', '1');
+
+		o = s.option(form.Flag, 'auto_parking_approve', _('Auto-Approve Parked Clients'),
+			_('Automatically approve clients placed in auto-parking zone'));
+		o.default = '0';
+		o.depends('auto_zoning_enabled', '1');
+
+		// Auto-Zoning Rules Section
+		s = m.section(form.GridSection, 'auto_zone_rule', _('Auto-Zoning Rules'));
+		s.anonymous = false;
+		s.addremove = true;
+		s.sortable = true;
+		s.description = _('Rules are evaluated in priority order. First match wins.');
+
+		o = s.option(form.Flag, 'enabled', _('Enabled'));
+		o.default = '1';
+		o.editable = true;
+
+		o = s.option(form.Value, 'name', _('Rule Name'));
+		o.rmempty = false;
+
+		o = s.option(form.ListValue, 'match_type', _('Match Type'));
+		o.value('vendor', _('Device Vendor (OUI)'));
+		o.value('hostname', _('Hostname Pattern'));
+		o.value('mac_prefix', _('MAC Prefix'));
+		o.default = 'vendor';
+
+		o = s.option(form.Value, 'match_value', _('Match Value/Pattern'));
+		o.placeholder = _('e.g., Xiaomi, Apple, .*camera.*, aa:bb:cc');
+		o.rmempty = false;
+
+		o = s.option(form.ListValue, 'target_zone', _('Target Zone'));
+		o.value('lan_private', _('LAN Private'));
+		o.value('iot', _('IoT'));
+		o.value('kids', _('Kids'));
+		o.value('guest', _('Guest'));
+		o.value('quarantine', _('Quarantine'));
+		o.default = 'guest';
+
+		o = s.option(form.Flag, 'auto_approve', _('Auto-Approve'));
+		o.default = '0';
+
+		o = s.option(form.Value, 'priority', _('Priority'));
+		o.datatype = 'uinteger';
+		o.placeholder = '50';
+		o.default = '50';
+		o.description = _('Lower numbers = higher priority');
+
 		return m.render().then(function(rendered) {
 			// Add policy info box at the top
 			var infoBox = E('div', {
 				'class': 'cbi-section',
 				'style': 'background: #e8f4f8; border-left: 4px solid #0088cc; padding: 1em; margin-bottom: 1em;'
 			}, [
-				E('h3', { 'style': 'margin-top: 0;' }, _('Current Policy: ') + E('span', { 'style': 'color: #0088cc;' }, policy.default_policy || 'captive')),
-				E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 1em; margin-top: 1em;' }, [
-					E('div', {}, [
-						E('strong', {}, _('Portal Enabled:')),
-						' ',
-						E('span', { 'class': 'badge', 'style': 'background: ' + (policy.portal_enabled ? '#28a745' : '#6c757d') + '; color: white; padding: 0.25em 0.6em; border-radius: 3px;' },
-							policy.portal_enabled ? _('Yes') : _('No'))
-					]),
-					E('div', {}, [
-						E('strong', {}, _('Session Timeout:')),
-						' ',
-						E('span', {}, (policy.session_timeout || 86400) + ' ' + _('seconds'))
-					])
-				]),
+				E('h3', { 'style': 'margin-top: 0;' }, _('Current Policy: ') + E('span', { 'style': 'color: #0088cc;' }, policy.default_policy || 'quarantine')),
+			E('div', { 'style': 'margin-top: 1em;' }, [
+				E('strong', {}, _('Session Timeout:')),
+				' ',
+				E('span', {}, (policy.session_timeout || 86400) + ' ' + _('seconds'))
+			]),
 				E('div', { 'style': 'margin-top: 1em; padding: 0.75em; background: white; border-radius: 4px;' }, [
 					E('strong', {}, _('Policy Descriptions:')),
 					E('ul', { 'style': 'margin: 0.5em 0;' }, [
@@ -156,9 +207,9 @@ return view.extend({
 							_('All clients can access the network without authentication. Not recommended for public networks.')
 						]),
 						E('li', {}, [
-							E('strong', {}, _('Captive Portal:')),
+							E('strong', {}, _('Quarantine:')),
 							' ',
-							_('New clients are redirected to a captive portal for authentication. Recommended for guest networks.')
+							_('New clients are placed in quarantine and require manual approval. Recommended for secure networks.')
 						]),
 						E('li', {}, [
 							E('strong', {}, _('Whitelist Only:')),

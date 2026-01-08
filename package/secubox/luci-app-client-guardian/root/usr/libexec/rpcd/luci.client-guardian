@@ -11,32 +11,193 @@ LOG_FILE="/var/log/client-guardian.log"
 CLIENTS_DB="/tmp/client-guardian-clients.json"
 ALERTS_QUEUE="/tmp/client-guardian-alerts.json"
 
-# Logging function
+# Logging function with debug support
 log_event() {
 	local level="$1"
 	local message="$2"
 	local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 	echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+
+	# Also log to syslog if debug enabled
+	local debug_enabled=$(uci -q get client-guardian.config.debug_enabled)
+	if [ "$debug_enabled" = "1" ]; then
+		logger -t client-guardian -p "daemon.$level" "$message"
+	fi
 }
 
-# Get real-time client list from ARP and DHCP
+# Debug logging function
+log_debug() {
+	local message="$1"
+	local data="$2"
+
+	local debug_enabled=$(uci -q get client-guardian.config.debug_enabled)
+	local debug_level=$(uci -q get client-guardian.config.debug_level || echo "INFO")
+
+	if [ "$debug_enabled" != "1" ]; then
+		return
+	fi
+
+	# Log based on level hierarchy: ERROR < WARN < INFO < DEBUG < TRACE
+	case "$debug_level" in
+		ERROR) return ;;  # Only errors
+		WARN) [ "$1" != "error" ] && [ "$1" != "warn" ] && return ;;
+		INFO) [ "$1" != "error" ] && [ "$1" != "warn" ] && [ "$1" != "info" ] && return ;;
+		DEBUG) [ "$1" = "trace" ] && return ;;
+		TRACE) ;;  # Log everything
+	esac
+
+	local timestamp=$(date '+%Y-%m-%d %H:%M:%S.%N' | cut -c1-23)
+	local log_msg="[$timestamp] [DEBUG] $message"
+
+	if [ -n "$data" ]; then
+		log_msg="$log_msg | Data: $data"
+	fi
+
+	echo "$log_msg" >> "$LOG_FILE"
+	logger -t client-guardian-debug "$log_msg"
+}
+
+# Active network scan to discover clients
+scan_network_active() {
+	local subnet="$1"
+	local iface="$2"
+
+	# Method 1: arping (if available)
+	if command -v arping >/dev/null 2>&1; then
+		# Scan common subnet (192.168.x.0/24)
+		for i in $(seq 1 254); do
+			arping -c 1 -w 1 -I "$iface" "${subnet%.*}.$i" >/dev/null 2>&1 &
+		done
+		wait
+	# Method 2: ping sweep fallback
+	elif command -v ping >/dev/null 2>&1; then
+		for i in $(seq 1 254); do
+			ping -c 1 -W 1 "${subnet%.*}.$i" >/dev/null 2>&1 &
+		done
+		wait
+	fi
+
+	# Let ARP table populate
+	sleep 2
+}
+
+# Enhanced client detection with multiple methods
 get_connected_clients() {
-	local clients=""
-	
-	# Parse ARP table
-	while read ip type flags mac mask iface; do
+	log_debug "Starting client detection" "method=get_connected_clients"
+
+	local clients_tmp="/tmp/cg-clients-$$"
+	> "$clients_tmp"
+
+	# Active scan to populate ARP table (run in background)
+	local enable_scan=$(uci -q get client-guardian.config.enable_active_scan || echo "1")
+	log_debug "Active scan setting" "enabled=$enable_scan"
+
+	if [ "$enable_scan" = "1" ]; then
+		# Detect network subnets to scan
+		local subnets=$(ip -4 addr show | awk '/inet.*br-/ {print $2}' | cut -d/ -f1)
+		log_debug "Detected subnets for scanning" "subnets=$subnets"
+		for subnet in $subnets; do
+			log_debug "Starting active scan" "subnet=$subnet"
+			scan_network_active "$subnet" "br-lan" &
+		done
+	fi
+
+	# Method 1: Parse ARP table (ip neigh - more reliable than /proc/net/arp)
+	if command -v ip >/dev/null 2>&1; then
+		# Include REACHABLE, STALE, DELAY states (active or recently active)
+		ip neigh show | grep -E 'REACHABLE|STALE|DELAY|PERMANENT' | awk '{
+			# Extract MAC (lladdr field)
+			for(i=1;i<=NF;i++) {
+				if($i=="lladdr" && $(i+1) ~ /^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/) {
+					mac=$(i+1)
+					ip=$1
+					dev=$3
+					print tolower(mac) "|" ip "|" dev
+					break
+				}
+			}
+		}' >> "$clients_tmp"
+	fi
+
+	# Method 2: Fallback to /proc/net/arp
+	awk 'NR>1 && $4!="00:00:00:00:00:00" && $3!="0x0" {
+		print tolower($4) "|" $1 "|" $6
+	}' /proc/net/arp >> "$clients_tmp"
+
+	# Method 3: DHCP leases (authoritative for IP assignments)
+	if [ -f /tmp/dhcp.leases ] && [ -s /tmp/dhcp.leases ]; then
+		awk '{print tolower($2) "|" $3 "|" $4 "|dhcp|" $1}' /tmp/dhcp.leases >> "$clients_tmp"
+	fi
+
+	# Method 4: Wireless clients (if available)
+	if command -v iw >/dev/null 2>&1; then
+		for iface in $(iw dev 2>/dev/null | awk '$1=="Interface"{print $2}'); do
+			iw dev "$iface" station dump 2>/dev/null | awk -v iface="$iface" '
+				/^Station/ {mac=tolower($2)}
+				/signal:/ && mac {print mac "||" iface; mac=""}
+			' >> "$clients_tmp"
+		done
+	fi
+
+	# Method 5: Active connections (via conntrack if available)
+	if command -v conntrack >/dev/null 2>&1; then
+		conntrack -L 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | sort -u | while read ip; do
+			# Try to resolve MAC via ARP
+			local mac=$(ip neigh show "$ip" 2>/dev/null | awk '/lladdr/{print tolower($5)}' | head -1)
+			[ -n "$mac" ] && [ "$mac" != "00:00:00:00:00:00" ] && echo "$mac|$ip|br-lan" >> "$clients_tmp"
+		done
+	fi
+
+	# Method 6: Parse /proc/net/arp for any entry (last resort)
+	cat /proc/net/arp 2>/dev/null | awk 'NR>1 && $4 ~ /^[0-9a-fA-F:]+$/ && $4 != "00:00:00:00:00:00" {
+		print tolower($4) "|" $1 "|" $6
+	}' >> "$clients_tmp"
+
+	# Deduplicate and merge data
+	sort -u -t'|' -k1,1 "$clients_tmp" | while IFS='|' read mac ip iface extra; do
 		[ -z "$mac" ] && continue
 		[ "$mac" = "00:00:00:00:00:00" ] && continue
-		
+
+		# Skip IPv6 addresses in IP field
+		echo "$ip" | grep -q ':' && continue
+
 		# Get hostname from DHCP leases
-		local hostname=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $4}')
+		local hostname=""
+		if [ -f /tmp/dhcp.leases ] && [ -s /tmp/dhcp.leases ]; then
+			hostname=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $4}' | head -1)
+		fi
+
+		# Try to resolve hostname via DNS reverse lookup
+		if [ -z "$hostname" ] && [ "$ip" != "N/A" ] && [ -n "$ip" ]; then
+			hostname=$(nslookup "$ip" 2>/dev/null | awk '/name =/{print $4}' | sed 's/\.$//' | head -1)
+		fi
+
 		[ -z "$hostname" ] && hostname="Unknown"
-		
-		# Get lease expiry
-		local lease_time=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $1}')
-		
+
+		# Get best IP address (prefer DHCP assigned)
+		if [ -z "$ip" ] || [ "$ip" = "" ]; then
+			if [ -f /tmp/dhcp.leases ] && [ -s /tmp/dhcp.leases ]; then
+				ip=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $3}' | head -1)
+			fi
+			[ -z "$ip" ] && ip="N/A"
+		fi
+
+		# Get interface (prefer provided, fallback to bridge)
+		[ -z "$iface" ] && iface="br-lan"
+
+		# Get lease time
+		local lease_time=""
+		if [ -f /tmp/dhcp.leases ] && [ -s /tmp/dhcp.leases ]; then
+			lease_time=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $1}' | head -1)
+		fi
+
 		echo "$mac|$ip|$hostname|$iface|$lease_time"
-	done < /proc/net/arp
+	done
+
+	rm -f "$clients_tmp"
+
+	# Wait for background scan to complete
+	wait
 }
 
 # Get dashboard status
@@ -45,11 +206,9 @@ get_status() {
 	
 	local enabled=$(uci -q get client-guardian.config.enabled || echo "1")
 	local default_policy=$(uci -q get client-guardian.config.default_policy || echo "quarantine")
-	local portal_enabled=$(uci -q get client-guardian.portal.enabled || echo "1")
 	
 	json_add_boolean "enabled" "$enabled"
 	json_add_string "default_policy" "$default_policy"
-	json_add_boolean "portal_enabled" "$portal_enabled"
 	
 	# Count clients by status
 	local total_known=0
@@ -110,6 +269,243 @@ count_zones() {
 	zone_count=$((zone_count + 1))
 }
 
+# Threat Intelligence Integration
+get_client_threats() {
+	local ip="$1"
+	local mac="$2"
+
+	# Check if threat intelligence is enabled
+	local threat_enabled=$(uci -q get client-guardian.threat_policy.enabled)
+	[ "$threat_enabled" != "1" ] && return
+
+	# Query Security Threats Dashboard via ubus
+	ubus call luci.secubox-security-threats get_active_threats 2>/dev/null | \
+		jsonfilter -e "@.threats[@.ip='$ip']" -e "@.threats[@.mac='$mac']" 2>/dev/null
+}
+
+enrich_client_with_threats() {
+	local ip="$1"
+	local mac="$2"
+
+	# Get threat data
+	local threats=$(get_client_threats "$ip" "$mac")
+
+	# Count threats and find max risk score
+	local threat_count=0
+	local max_risk_score=0
+
+	if [ -n "$threats" ]; then
+		threat_count=$(echo "$threats" | jsonfilter -e '@[*].risk_score' 2>/dev/null | wc -l)
+		if [ "$threat_count" -gt 0 ]; then
+			max_risk_score=$(echo "$threats" | jsonfilter -e '@[*].risk_score' 2>/dev/null | sort -rn | head -1)
+		fi
+	fi
+
+	# Add threat fields to JSON
+	json_add_int "threat_count" "${threat_count:-0}"
+	json_add_int "risk_score" "${max_risk_score:-0}"
+	json_add_boolean "has_threats" "$( [ "$threat_count" -gt 0 ] && echo 1 || echo 0 )"
+
+	# Check for auto-actions if threats detected
+	if [ "$threat_count" -gt 0 ] && [ "$max_risk_score" -gt 0 ]; then
+		check_threat_auto_actions "$mac" "$ip" "$max_risk_score"
+	fi
+}
+
+# Auto-ban/quarantine based on threat score
+check_threat_auto_actions() {
+	local mac="$1"
+	local ip="$2"
+	local risk_score="$3"
+
+	# Check if threat intelligence and auto-actions are enabled
+	local threat_enabled=$(uci -q get client-guardian.threat_policy.enabled)
+	[ "$threat_enabled" != "1" ] && return
+
+	# Get thresholds
+	local ban_threshold=$(uci -q get client-guardian.threat_policy.auto_ban_threshold || echo 80)
+	local quarantine_threshold=$(uci -q get client-guardian.threat_policy.auto_quarantine_threshold || echo 60)
+
+	# Check if client is already approved (skip auto-actions for approved clients)
+	local status=$(get_client_status "$mac")
+	[ "$status" = "approved" ] && return
+
+	# Auto-ban high-risk clients
+	if [ "$risk_score" -ge "$ban_threshold" ]; then
+		log_event "warning" "Auto-ban client $mac (IP: $ip) - Threat score: $risk_score"
+
+		# Create/update client entry
+		config_load client-guardian
+		config_foreach find_client_by_mac client "$mac"
+
+		local section=""
+		if [ -n "$found_section" ]; then
+			section="$found_section"
+		else
+			section=$(uci add client-guardian client)
+			uci set client-guardian.$section.mac="$mac"
+			uci set client-guardian.$section.name="Auto-banned Device"
+			uci set client-guardian.$section.first_seen="$(date '+%Y-%m-%d %H:%M:%S')"
+		fi
+
+		uci set client-guardian.$section.status="banned"
+		uci set client-guardian.$section.zone="blocked"
+		uci set client-guardian.$section.ban_reason="Auto-banned: Threat score $risk_score"
+		uci set client-guardian.$section.ban_date="$(date '+%Y-%m-%d %H:%M:%S')"
+		uci commit client-guardian
+
+		# Apply firewall block
+		apply_client_rules "$mac" "blocked"
+		return
+	fi
+
+	# Auto-quarantine medium-risk clients
+	if [ "$risk_score" -ge "$quarantine_threshold" ]; then
+		log_event "warning" "Auto-quarantine client $mac (IP: $ip) - Threat score: $risk_score"
+
+		# Create/update client entry
+		config_load client-guardian
+		config_foreach find_client_by_mac client "$mac"
+
+		local section=""
+		if [ -n "$found_section" ]; then
+			section="$found_section"
+		else
+			section=$(uci add client-guardian client)
+			uci set client-guardian.$section.mac="$mac"
+			uci set client-guardian.$section.name="Auto-quarantined Device"
+			uci set client-guardian.$section.first_seen="$(date '+%Y-%m-%d %H:%M:%S')"
+		fi
+
+		uci set client-guardian.$section.status="unknown"
+		uci set client-guardian.$section.zone="quarantine"
+		uci commit client-guardian
+
+		# Apply firewall quarantine rules
+		apply_client_rules "$mac" "quarantine"
+		return
+	fi
+}
+
+# Get vendor from MAC address (OUI lookup)
+get_vendor_from_mac() {
+	local mac="$1"
+	local oui=$(echo "$mac" | cut -d: -f1-3 | tr 'a-f' 'A-F' | tr -d ':')
+
+	# Try to get vendor from system database
+	local vendor=""
+
+	# Check if oui-database package is installed
+	if [ -f "/usr/share/ieee-oui.txt" ]; then
+		vendor=$(grep -i "^$oui" /usr/share/ieee-oui.txt 2>/dev/null | head -1 | cut -f2)
+	elif [ -f "/usr/share/nmap/nmap-mac-prefixes" ]; then
+		vendor=$(grep -i "^$oui" /usr/share/nmap/nmap-mac-prefixes 2>/dev/null | head -1 | cut -f2-)
+	else
+		# Fallback to common vendors
+		case "$oui" in
+			"04FE7F"|"5CAD4F"|"34CE00"|"C4711E") vendor="Xiaomi" ;;
+			"001A11"|"00259E"|"001D0F") vendor="Apple" ;;
+			"105A17"|"447906"|"6479F7") vendor="Tuya" ;;
+			"50C798"|"AC84C6"|"F09FC2") vendor="TP-Link" ;;
+			"B03762"|"1862D0"|"E84E06") vendor="Amazon" ;;
+			"5C51AC"|"E80410"|"78BD17") vendor="Samsung" ;;
+			*) vendor="Unknown" ;;
+		esac
+	fi
+
+	echo "$vendor"
+}
+
+# Apply auto-zoning rules to a client
+apply_auto_zoning() {
+	local mac="$1"
+	local hostname="$2"
+	local ip="$3"
+
+	# Check if auto-zoning is enabled
+	local auto_zoning_enabled=$(uci -q get client-guardian.config.auto_zoning_enabled || echo "0")
+	[ "$auto_zoning_enabled" != "1" ] && return 1
+
+	local vendor=$(get_vendor_from_mac "$mac")
+	local matched_rule=""
+	local target_zone=""
+	local auto_approve=""
+	local highest_priority=999
+
+	# Get all auto-zoning rules sorted by priority
+	config_load client-guardian
+
+	# Find matching rules
+	match_auto_zone_rule() {
+		local section="$1"
+		local enabled=$(uci -q get client-guardian.$section.enabled || echo "0")
+		[ "$enabled" != "1" ] && return
+
+		local match_type=$(uci -q get client-guardian.$section.match_type)
+		local priority=$(uci -q get client-guardian.$section.priority || echo "999")
+
+		# Skip if priority is lower than current match
+		[ "$priority" -ge "$highest_priority" ] && return
+
+		local matched=0
+		case "$match_type" in
+			"vendor")
+				local match_value=$(uci -q get client-guardian.$section.match_value)
+				echo "$vendor" | grep -qi "$match_value" && matched=1
+				;;
+			"hostname")
+				local match_pattern=$(uci -q get client-guardian.$section.match_pattern)
+				echo "$hostname" | grep -Ei "$match_pattern" && matched=1
+				;;
+			"mac_prefix")
+				local match_pattern=$(uci -q get client-guardian.$section.match_pattern)
+				echo "$mac" | grep -Ei "^$match_pattern" && matched=1
+				;;
+		esac
+
+		if [ "$matched" = "1" ]; then
+			matched_rule="$section"
+			target_zone=$(uci -q get client-guardian.$section.target_zone)
+			auto_approve=$(uci -q get client-guardian.$section.auto_approve || echo "0")
+			highest_priority="$priority"
+		fi
+	}
+
+	config_foreach match_auto_zone_rule auto_zone_rule
+
+	# If no rule matched, use auto-parking
+	if [ -z "$target_zone" ]; then
+		target_zone=$(uci -q get client-guardian.config.auto_parking_zone || echo "guest")
+		auto_approve=$(uci -q get client-guardian.config.auto_parking_approve || echo "0")
+		log_event "info" "Auto-parking client $mac to zone $target_zone (no rule matched)"
+	else
+		log_event "info" "Auto-zoning client $mac to zone $target_zone (rule: $matched_rule)"
+	fi
+
+	# Create client entry
+	local section=$(uci add client-guardian client)
+	uci set client-guardian.$section.mac="$mac"
+	uci set client-guardian.$section.name="${hostname:-Unknown Device}"
+	uci set client-guardian.$section.zone="$target_zone"
+	uci set client-guardian.$section.first_seen="$(date '+%Y-%m-%d %H:%M:%S')"
+	uci set client-guardian.$section.last_seen="$(date '+%Y-%m-%d %H:%M:%S')"
+	uci set client-guardian.$section.vendor="$vendor"
+
+	if [ "$auto_approve" = "1" ]; then
+		uci set client-guardian.$section.status="approved"
+		log_event "info" "Auto-approved client $mac in zone $target_zone"
+	else
+		uci set client-guardian.$section.status="unknown"
+	fi
+
+	uci commit client-guardian
+
+	# Apply firewall rules
+	apply_client_rules "$mac" "$target_zone"
+
+	return 0
+}
+
 # Get all clients (known + detected)
 get_clients() {
 	json_init
@@ -148,15 +544,42 @@ get_clients() {
 			json_add_string "last_seen" "$(uci -q get client-guardian.$found_section.last_seen)"
 			json_add_string "notes" "$(uci -q get client-guardian.$found_section.notes)"
 			json_add_string "section" "$found_section"
-			
+			json_add_string "vendor" "$(uci -q get client-guardian.$found_section.vendor || echo 'Unknown')"
+
 			# Update last seen
 			uci set client-guardian.$found_section.last_seen="$(date '+%Y-%m-%d %H:%M:%S')"
 		else
-			json_add_boolean "known" 0
-			json_add_string "name" "$hostname"
-			json_add_string "zone" "quarantine"
-			json_add_string "status" "unknown"
-			json_add_string "first_seen" "$(date '+%Y-%m-%d %H:%M:%S')"
+			# New client detected - apply auto-zoning if enabled
+			if apply_auto_zoning "$mac" "$hostname" "$ip"; then
+				# Auto-zoning succeeded, reload and get the new section
+				config_load client-guardian
+				config_foreach find_client_by_mac client "$mac"
+
+				if [ -n "$found_section" ]; then
+					json_add_boolean "known" 1
+					json_add_string "name" "$(uci -q get client-guardian.$found_section.name)"
+					json_add_string "zone" "$(uci -q get client-guardian.$found_section.zone)"
+					json_add_string "status" "$(uci -q get client-guardian.$found_section.status)"
+					json_add_string "first_seen" "$(uci -q get client-guardian.$found_section.first_seen)"
+					json_add_string "vendor" "$(uci -q get client-guardian.$found_section.vendor || echo 'Unknown')"
+				else
+					# Fallback in case auto-zoning failed
+					json_add_boolean "known" 0
+					json_add_string "name" "$hostname"
+					json_add_string "zone" "quarantine"
+					json_add_string "status" "unknown"
+					json_add_string "first_seen" "$(date '+%Y-%m-%d %H:%M:%S')"
+					json_add_string "vendor" "$(get_vendor_from_mac "$mac")"
+				fi
+			else
+				# Auto-zoning disabled or failed - use default quarantine
+				json_add_boolean "known" 0
+				json_add_string "name" "$hostname"
+				json_add_string "zone" "quarantine"
+				json_add_string "status" "unknown"
+				json_add_string "first_seen" "$(date '+%Y-%m-%d %H:%M:%S')"
+				json_add_string "vendor" "$(get_vendor_from_mac "$mac")"
+			fi
 		fi
 		
 		# Get traffic stats if available
@@ -169,7 +592,10 @@ get_clients() {
 		fi
 		json_add_int "rx_bytes" "$rx_bytes"
 		json_add_int "tx_bytes" "$tx_bytes"
-		
+
+		# Enrich with threat intelligence
+		enrich_client_with_threats "$ip" "$mac"
+
 		json_close_object
 		found_section=""
 	done << EOF
@@ -221,6 +647,11 @@ add_offline_client() {
 	json_add_string "section" "$section"
 	json_add_int "rx_bytes" 0
 	json_add_int "tx_bytes" 0
+
+	# Enrich with threat intelligence
+	local ip="$(uci -q get client-guardian.$section.static_ip || echo 'N/A')"
+	enrich_client_with_threats "$ip" "$mac"
+
 	json_close_object
 }
 
@@ -238,7 +669,25 @@ get_zones() {
 
 output_zone() {
 	local section="$1"
-	
+
+	# Helper to convert true/false to 1/0
+	local internet_val=$(uci -q get client-guardian.$section.internet_access || echo "0")
+	[ "$internet_val" = "true" ] && internet_val="1"
+	[ "$internet_val" = "false" ] && internet_val="0"
+
+	local local_val=$(uci -q get client-guardian.$section.local_access || echo "0")
+	[ "$local_val" = "true" ] && local_val="1"
+	[ "$local_val" = "false" ] && local_val="0"
+
+	local inter_val=$(uci -q get client-guardian.$section.inter_client || echo "0")
+	[ "$inter_val" = "true" ] && inter_val="1"
+	[ "$inter_val" = "false" ] && inter_val="0"
+
+	local time_val=$(uci -q get client-guardian.$section.time_restrictions || echo "0")
+	[ "$time_val" = "true" ] && time_val="1"
+	[ "$time_val" = "false" ] && time_val="0"
+
+
 	json_add_object
 	json_add_string "id" "$section"
 	json_add_string "name" "$(uci -q get client-guardian.$section.name)"
@@ -246,19 +695,18 @@ output_zone() {
 	json_add_string "network" "$(uci -q get client-guardian.$section.network)"
 	json_add_string "color" "$(uci -q get client-guardian.$section.color)"
 	json_add_string "icon" "$(uci -q get client-guardian.$section.icon)"
-	json_add_boolean "internet_access" "$(uci -q get client-guardian.$section.internet_access || echo 0)"
-	json_add_boolean "local_access" "$(uci -q get client-guardian.$section.local_access || echo 0)"
-	json_add_boolean "inter_client" "$(uci -q get client-guardian.$section.inter_client || echo 0)"
+	json_add_boolean "internet_access" "$internet_val"
+	json_add_boolean "local_access" "$local_val"
+	json_add_boolean "inter_client" "$inter_val"
 	json_add_int "bandwidth_limit" "$(uci -q get client-guardian.$section.bandwidth_limit || echo 0)"
-	json_add_boolean "time_restrictions" "$(uci -q get client-guardian.$section.time_restrictions || echo 0)"
+	json_add_boolean "time_restrictions" "$time_val"
 	json_add_string "content_filter" "$(uci -q get client-guardian.$section.content_filter)"
-	json_add_boolean "portal_required" "$(uci -q get client-guardian.$section.portal_required || echo 0)"
-	
+
 	# Count clients in zone
 	local count=0
 	config_foreach count_zone_clients client "$section"
 	json_add_int "client_count" "$count"
-	
+
 	json_close_object
 }
 
@@ -319,29 +767,6 @@ output_schedule() {
 	json_close_object
 }
 
-# Get portal configuration
-get_portal() {
-	json_init
-	
-	json_add_boolean "enabled" "$(uci -q get client-guardian.portal.enabled || echo 1)"
-	json_add_string "title" "$(uci -q get client-guardian.portal.title)"
-	json_add_string "subtitle" "$(uci -q get client-guardian.portal.subtitle)"
-	json_add_string "logo" "$(uci -q get client-guardian.portal.logo)"
-	json_add_string "background_color" "$(uci -q get client-guardian.portal.background_color)"
-	json_add_string "accent_color" "$(uci -q get client-guardian.portal.accent_color)"
-	json_add_boolean "require_terms" "$(uci -q get client-guardian.portal.require_terms || echo 0)"
-	json_add_string "auth_method" "$(uci -q get client-guardian.portal.auth_method)"
-	json_add_boolean "allow_registration" "$(uci -q get client-guardian.portal.allow_registration || echo 0)"
-	json_add_boolean "registration_approval" "$(uci -q get client-guardian.portal.registration_approval || echo 1)"
-	json_add_boolean "show_bandwidth_info" "$(uci -q get client-guardian.portal.show_bandwidth_info || echo 0)"
-	
-	# Active sessions count
-	local sessions=0
-	[ -f "/tmp/client-guardian-sessions" ] && sessions=$(wc -l < /tmp/client-guardian-sessions)
-	json_add_int "active_sessions" "$sessions"
-	
-	json_dump
-}
 
 # Get alert configuration
 get_alerts() {
@@ -408,6 +833,256 @@ get_logs() {
 	
 	json_close_array
 	json_dump
+}
+
+# Profile Management Functions
+
+# List available zone profiles
+list_profiles() {
+	local profiles_file="/etc/client-guardian/profiles.json"
+
+	if [ -f "$profiles_file" ]; then
+		cat "$profiles_file"
+	else
+		echo '{"profiles":[]}'
+	fi
+}
+
+# Apply a zone profile
+apply_profile() {
+	read input
+	json_load "$input"
+	json_get_var profile_id profile_id
+	json_get_var auto_refresh auto_refresh
+	json_get_var refresh_interval refresh_interval
+	json_get_var threat_enabled threat_enabled
+	json_get_var auto_ban_threshold auto_ban_threshold
+	json_get_var auto_quarantine_threshold auto_quarantine_threshold
+
+	json_init
+
+	if [ -z "$profile_id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Profile ID required"
+		json_dump
+		return
+	fi
+
+	local profiles_file="/etc/client-guardian/profiles.json"
+
+	if [ ! -f "$profiles_file" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Profiles file not found"
+		json_dump
+		return
+	fi
+
+	# Extract profile zones
+	local profile_data=$(cat "$profiles_file" | jsonfilter -e "@.profiles[@.id='$profile_id']")
+
+	if [ -z "$profile_data" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Profile not found: $profile_id"
+		json_dump
+		return
+	fi
+
+	# Remove existing zones (except quarantine and blocked which are system)
+	local existing_zones=$(uci show client-guardian | grep "=zone" | cut -d. -f2 | cut -d= -f1)
+	for zone_section in $existing_zones; do
+		local zone_id=$(uci -q get client-guardian.$zone_section 2>/dev/null || echo "$zone_section")
+		if [ "$zone_id" != "quarantine" ] && [ "$zone_id" != "blocked" ]; then
+			uci delete client-guardian.$zone_section 2>/dev/null
+		fi
+	done
+
+	# Parse and create zones from profile
+	local zone_count=0
+	local idx=0
+
+	# Iterate through zones by index (up to reasonable limit)
+	while [ "$idx" -lt "20" ]; do
+		local zone_id=$(echo "$profile_data" | jsonfilter -e "@.zones[$idx].id" 2>/dev/null)
+
+		# Break if no more zones
+		[ -z "$zone_id" ] && break
+
+		local zone_name=$(echo "$profile_data" | jsonfilter -e "@.zones[$idx].name")
+		local zone_desc=$(echo "$profile_data" | jsonfilter -e "@.zones[$idx].description")
+		local zone_network=$(echo "$profile_data" | jsonfilter -e "@.zones[$idx].network")
+		local zone_color=$(echo "$profile_data" | jsonfilter -e "@.zones[$idx].color")
+		local zone_icon=$(echo "$profile_data" | jsonfilter -e "@.zones[$idx].icon")
+		local internet=$(echo "$profile_data" | jsonfilter -e "@.zones[$idx].internet_access")
+		local local_access=$(echo "$profile_data" | jsonfilter -e "@.zones[$idx].local_access")
+		local inter_client=$(echo "$profile_data" | jsonfilter -e "@.zones[$idx].inter_client")
+		local bandwidth=$(echo "$profile_data" | jsonfilter -e "@.zones[$idx].bandwidth_limit")
+
+		# Create UCI zone section
+		uci set client-guardian.$zone_id=zone 2>/dev/null
+		[ -n "$zone_name" ] && uci set client-guardian.$zone_id.name="$zone_name" 2>/dev/null
+		[ -n "$zone_desc" ] && uci set client-guardian.$zone_id.description="$zone_desc" 2>/dev/null
+		[ -n "$zone_network" ] && uci set client-guardian.$zone_id.network="$zone_network" 2>/dev/null
+		[ -n "$zone_color" ] && uci set client-guardian.$zone_id.color="$zone_color" 2>/dev/null
+		[ -n "$zone_icon" ] && uci set client-guardian.$zone_id.icon="$zone_icon" 2>/dev/null
+		[ -n "$internet" ] && uci set client-guardian.$zone_id.internet_access="$internet" 2>/dev/null
+		[ -n "$local_access" ] && uci set client-guardian.$zone_id.local_access="$local_access" 2>/dev/null
+		[ -n "$inter_client" ] && uci set client-guardian.$zone_id.inter_client="$inter_client" 2>/dev/null
+		uci set client-guardian.$zone_id.bandwidth_limit="${bandwidth:-0}" 2>/dev/null
+
+		zone_count=$((zone_count + 1))
+		idx=$((idx + 1))
+	done
+
+	# Apply dashboard settings (with error suppression)
+	[ -n "$auto_refresh" ] && uci set client-guardian.config.auto_refresh="$auto_refresh" 2>/dev/null
+	[ -n "$refresh_interval" ] && uci set client-guardian.config.refresh_interval="$refresh_interval" 2>/dev/null
+
+	# Apply threat intelligence settings (create section if needed)
+	uci set client-guardian.threat_policy=threat_policy 2>/dev/null
+	[ -n "$threat_enabled" ] && uci set client-guardian.threat_policy.enabled="$threat_enabled" 2>/dev/null
+	[ -n "$auto_ban_threshold" ] && uci set client-guardian.threat_policy.auto_ban_threshold="$auto_ban_threshold" 2>/dev/null
+	[ -n "$auto_quarantine_threshold" ] && uci set client-guardian.threat_policy.auto_quarantine_threshold="$auto_quarantine_threshold" 2>/dev/null
+
+	uci commit client-guardian 2>/dev/null
+
+	# Sync firewall zones
+	sync_firewall_zones
+
+	log_event "info" "Applied profile: $profile_id ($zone_count zones)"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Profile $profile_id applied successfully"
+	json_add_int "zones_created" "$zone_count"
+	json_dump
+}
+
+# Firewall Zone Synchronization Functions
+
+# Ensure Client Guardian zones exist in firewall
+sync_firewall_zones() {
+	# Check if firewall zones need to be created
+	config_load client-guardian
+	config_foreach create_firewall_zone zone
+}
+
+# Create firewall zone for Client Guardian zone
+create_firewall_zone() {
+	local section="$1"
+	local zone_name=$(uci -q get client-guardian.$section.name)
+	local network=$(uci -q get client-guardian.$section.network)
+	local internet_access=$(uci -q get client-guardian.$section.internet_access)
+	local local_access=$(uci -q get client-guardian.$section.local_access)
+
+	# Skip if no network defined
+	[ -z "$network" ] && return
+
+	# Check if firewall zone exists
+	local fw_zone_exists=$(uci show firewall | grep -c "firewall.*\.name='$network'")
+
+	if [ "$fw_zone_exists" = "0" ]; then
+		# Create firewall zone
+		local fw_section=$(uci add firewall zone)
+		uci set firewall.$fw_section.name="$network"
+		uci set firewall.$fw_section.input="REJECT"
+		uci set firewall.$fw_section.output="ACCEPT"
+		uci set firewall.$fw_section.forward="REJECT"
+		uci add_list firewall.$fw_section.network="$network"
+
+		# Add forwarding rule to WAN if internet access allowed
+		if [ "$internet_access" = "1" ]; then
+			local fwd_section=$(uci add firewall forwarding)
+			uci set firewall.$fwd_section.src="$network"
+			uci set firewall.$fwd_section.dest="wan"
+		fi
+
+		# Add forwarding rule to LAN if local access allowed
+		if [ "$local_access" = "1" ]; then
+			local fwd_section=$(uci add firewall forwarding)
+			uci set firewall.$fwd_section.src="$network"
+			uci set firewall.$fwd_section.dest="lan"
+		fi
+
+		uci commit firewall
+		log_event "info" "Created firewall zone: $network"
+	fi
+}
+
+# Apply MAC-based firewall rules for client
+apply_client_rules() {
+	local mac="$1"
+	local zone="$2"
+
+	# Remove existing rules for this MAC
+	remove_client_rules "$mac"
+
+	# Get zone configuration
+	local zone_network=""
+	local zone_internet=""
+	local zone_local=""
+
+	config_load client-guardian
+	config_foreach check_zone zone "$zone"
+
+	# Apply rules based on zone
+	if [ "$zone" = "blocked" ] || [ "$zone_network" = "null" ]; then
+		# Full block - drop all traffic from this MAC
+		local rule_section=$(uci add firewall rule)
+		uci set firewall.$rule_section.src="*"
+		uci set firewall.$rule_section.src_mac="$mac"
+		uci set firewall.$rule_section.target="DROP"
+		uci set firewall.$rule_section.name="CG_BLOCK_$mac"
+		uci commit firewall
+		log_event "info" "Applied BLOCK rule for MAC: $mac"
+	else
+		# Zone-based access control
+		# Allow DHCP for client
+		local rule_section=$(uci add firewall rule)
+		uci set firewall.$rule_section.src="*"
+		uci set firewall.$rule_section.src_mac="$mac"
+		uci set firewall.$rule_section.proto="udp"
+		uci set firewall.$rule_section.dest_port="67-68"
+		uci set firewall.$rule_section.target="ACCEPT"
+		uci set firewall.$rule_section.name="CG_DHCP_$mac"
+
+		# Allow DNS
+		rule_section=$(uci add firewall rule)
+		uci set firewall.$rule_section.src="*"
+		uci set firewall.$rule_section.src_mac="$mac"
+		uci set firewall.$rule_section.proto="udp"
+		uci set firewall.$rule_section.dest_port="53"
+		uci set firewall.$rule_section.target="ACCEPT"
+		uci set firewall.$rule_section.name="CG_DNS_$mac"
+
+		uci commit firewall
+		log_event "info" "Applied zone rules for MAC: $mac in zone: $zone"
+	fi
+
+	# Reload firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1 &
+}
+
+# Remove firewall rules for client
+remove_client_rules() {
+	local mac="$1"
+	mac=$(echo "$mac" | tr 'a-f' 'A-F')  # Firewall rules use uppercase
+
+	# Find and remove rules with this MAC
+	uci show firewall | grep -i "$mac" | cut -d. -f1-2 | sort -u | while read rule; do
+		uci delete "$rule" 2>/dev/null
+	done
+	uci commit firewall 2>/dev/null
+}
+
+# Helper to find zone config
+check_zone() {
+	local section="$1"
+	local target_zone="$2"
+
+	if [ "$section" = "$target_zone" ]; then
+		zone_network=$(uci -q get client-guardian.$section.network)
+		zone_internet=$(uci -q get client-guardian.$section.internet_access)
+		zone_local=$(uci -q get client-guardian.$section.local_access)
+	fi
 }
 
 # Approve client
@@ -506,10 +1181,10 @@ ban_client() {
 	uci set client-guardian.$section.ban_reason="$reason"
 	uci set client-guardian.$section.ban_date="$(date '+%Y-%m-%d %H:%M:%S')"
 	uci commit client-guardian
-	
-	# Block in firewall
-	block_client "$mac"
-	
+
+	# Apply firewall block rules
+	apply_client_rules "$mac" "blocked"
+
 	log_event "warning" "Client banned: $mac - Reason: $reason"
 	
 	# Send alert
@@ -662,32 +1337,6 @@ update_zone() {
 	json_dump
 }
 
-# Update portal settings
-update_portal() {
-	read input
-	json_load "$input"
-	json_get_var title title
-	json_get_var subtitle subtitle
-	json_get_var accent_color accent_color
-	json_get_var auth_method auth_method
-	json_get_var guest_password guest_password
-	
-	json_init
-	
-	[ -n "$title" ] && uci set client-guardian.portal.title="$title"
-	[ -n "$subtitle" ] && uci set client-guardian.portal.subtitle="$subtitle"
-	[ -n "$accent_color" ] && uci set client-guardian.portal.accent_color="$accent_color"
-	[ -n "$auth_method" ] && uci set client-guardian.portal.auth_method="$auth_method"
-	[ -n "$guest_password" ] && uci set client-guardian.portal.guest_password="$guest_password"
-	
-	uci commit client-guardian
-	
-	log_event "info" "Portal settings updated"
-	
-	json_add_boolean "success" 1
-	json_add_string "message" "Portal updated successfully"
-	json_dump
-}
 
 # Helper: Apply client firewall rules
 apply_client_rules() {
@@ -752,68 +1401,16 @@ send_alert_internal() {
 # Nodogsplash Captive Portal Integration
 # ===================================
 
-# List active captive portal sessions (nodogsplash)
-list_sessions() {
-	json_init
-	json_add_array "sessions"
-
-	# Check if nodogsplash is running
-	if pidof nodogsplash >/dev/null; then
-		# Get sessions from ndsctl
-		ndsctl status 2>/dev/null | grep -A 100 "Client" | while read line; do
-			# Parse ndsctl output
-			# Format: IP MAC Duration Download Upload
-			if echo "$line" | grep -qE "^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"; then
-				local ip=$(echo "$line" | awk '{print $1}')
-				local mac=$(echo "$line" | awk '{print $2}' | tr 'A-F' 'a-f')
-				local duration=$(echo "$line" | awk '{print $3}')
-				local downloaded=$(echo "$line" | awk '{print $4}')
-				local uploaded=$(echo "$line" | awk '{print $5}')
-
-				# Get hostname
-				local hostname=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $4}')
-				[ -z "$hostname" ] && hostname="Unknown"
-
-				json_add_object
-				json_add_string "ip" "$ip"
-				json_add_string "mac" "$mac"
-				json_add_string "hostname" "$hostname"
-				json_add_int "duration" "$duration"
-				json_add_int "downloaded" "$downloaded"
-				json_add_int "uploaded" "$uploaded"
-				json_add_string "state" "authenticated"
-				json_close_object
-			fi
-		done
-	fi
-
-	json_close_array
-
-	# Add nodogsplash status
-	json_add_object "nodogsplash"
-	if pidof nodogsplash >/dev/null; then
-		json_add_boolean "running" 1
-		json_add_string "status" "active"
-	else
-		json_add_boolean "running" 0
-		json_add_string "status" "stopped"
-	fi
-	json_close_object
-
-	json_dump
-}
 
 # Get default policy
 get_policy() {
 	json_init
 
 	local policy=$(uci -q get client-guardian.config.default_policy || echo "captive")
-	local portal_enabled=$(uci -q get client-guardian.portal.enabled || echo "1")
 	local auto_approve=$(uci -q get client-guardian.config.auto_approve || echo "0")
 	local session_timeout=$(uci -q get client-guardian.config.session_timeout || echo "86400")
 
 	json_add_string "default_policy" "$policy"
-	json_add_boolean "portal_enabled" "$portal_enabled"
 	json_add_boolean "auto_approve" "$auto_approve"
 	json_add_int "session_timeout" "$session_timeout"
 
@@ -831,7 +1428,6 @@ set_policy() {
 	read input
 	json_load "$input"
 	json_get_var policy policy
-	json_get_var portal_enabled portal_enabled
 	json_get_var auto_approve auto_approve
 	json_get_var session_timeout session_timeout
 
@@ -857,7 +1453,6 @@ set_policy() {
 			;;
 	esac
 
-	[ -n "$portal_enabled" ] && uci set client-guardian.portal.enabled="$portal_enabled"
 	[ -n "$auto_approve" ] && uci set client-guardian.config.auto_approve="$auto_approve"
 	[ -n "$session_timeout" ] && uci set client-guardian.config.session_timeout="$session_timeout"
 
@@ -878,102 +1473,8 @@ set_policy() {
 }
 
 # Authorize client via nodogsplash
-authorize_client() {
-	read input
-	json_load "$input"
-	json_get_var mac mac
-	json_get_var ip ip
-
-	json_init
-
-	if [ -z "$mac" ]; then
-		json_add_boolean "success" 0
-		json_add_string "error" "MAC address required"
-		json_dump
-		return
-	fi
-
-	mac=$(echo "$mac" | tr 'A-F' 'a-f')
-
-	# Use ndsctl to authorize
-	if pidof nodogsplash >/dev/null; then
-		if [ -n "$ip" ]; then
-			# Authorize by IP if provided
-			ndsctl auth "$ip" 2>&1
-		else
-			# Find IP by MAC
-			local client_ip=$(cat /proc/net/arp | grep -i "$mac" | awk '{print $1}' | head -1)
-			if [ -n "$client_ip" ]; then
-				ndsctl auth "$client_ip" 2>&1
-				ip="$client_ip"
-			else
-				json_add_boolean "success" 0
-				json_add_string "error" "Client not found or offline"
-				json_dump
-				return
-			fi
-		fi
-
-		log_event "info" "Client authorized via nodogsplash: $mac ($ip)"
-
-		json_add_boolean "success" 1
-		json_add_string "message" "Client $mac authorized"
-		json_add_string "ip" "$ip"
-	else
-		json_add_boolean "success" 0
-		json_add_string "error" "Nodogsplash not running"
-	fi
-
-	json_dump
-}
 
 # Deauthorize client via nodogsplash
-deauthorize_client() {
-	read input
-	json_load "$input"
-	json_get_var mac mac
-	json_get_var ip ip
-
-	json_init
-
-	if [ -z "$mac" ]; then
-		json_add_boolean "success" 0
-		json_add_string "error" "MAC address required"
-		json_dump
-		return
-	fi
-
-	mac=$(echo "$mac" | tr 'A-F' 'a-f')
-
-	# Use ndsctl to deauthorize
-	if pidof nodogsplash >/dev/null; then
-		if [ -n "$ip" ]; then
-			ndsctl deauth "$ip" 2>&1
-		else
-			# Find IP by MAC
-			local client_ip=$(cat /proc/net/arp | grep -i "$mac" | awk '{print $1}' | head -1)
-			if [ -n "$client_ip" ]; then
-				ndsctl deauth "$client_ip" 2>&1
-				ip="$client_ip"
-			else
-				json_add_boolean "success" 0
-				json_add_string "error" "Client not found in active sessions"
-				json_dump
-				return
-			fi
-		fi
-
-		log_event "info" "Client deauthorized via nodogsplash: $mac ($ip)"
-
-		json_add_boolean "success" 1
-		json_add_string "message" "Client $mac deauthorized"
-	else
-		json_add_boolean "success" 0
-		json_add_string "error" "Nodogsplash not running"
-	fi
-
-	json_dump
-}
 
 # Get client details
 get_client() {
@@ -1034,7 +1535,7 @@ get_client() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"clients":{},"zones":{},"parental":{},"portal":{},"alerts":{},"logs":{"limit":"int","level":"str"},"approve_client":{"mac":"str","name":"str","zone":"str","notes":"str"},"ban_client":{"mac":"str","reason":"str"},"quarantine_client":{"mac":"str"},"update_client":{"section":"str","name":"str","zone":"str","notes":"str","daily_quota":"int","static_ip":"str"},"update_zone":{"id":"str","name":"str","bandwidth_limit":"int","content_filter":"str"},"update_portal":{"title":"str","subtitle":"str","accent_color":"str"},"send_test_alert":{"type":"str"},"list_sessions":{},"get_policy":{},"set_policy":{"policy":"str","portal_enabled":"bool","auto_approve":"bool","session_timeout":"int"},"authorize_client":{"mac":"str","ip":"str"},"deauthorize_client":{"mac":"str","ip":"str"},"get_client":{"mac":"str"}}'
+		echo '{"status":{},"clients":{},"zones":{},"parental":{},"alerts":{},"logs":{"limit":"int","level":"str"},"approve_client":{"mac":"str","name":"str","zone":"str","notes":"str"},"ban_client":{"mac":"str","reason":"str"},"quarantine_client":{"mac":"str"},"update_client":{"section":"str","name":"str","zone":"str","notes":"str","daily_quota":"int","static_ip":"str"},"update_zone":{"id":"str","name":"str","bandwidth_limit":"int","content_filter":"str"},"send_test_alert":{"type":"str"},"get_policy":{},"set_policy":{"policy":"str","auto_approve":"bool","session_timeout":"int"},"get_client":{"mac":"str"},"sync_zones":{},"list_profiles":{},"apply_profile":{"profile_id":"str","auto_refresh":"str","refresh_interval":"str","threat_enabled":"str","auto_ban_threshold":"str","auto_quarantine_threshold":"str"}}'
 		;;
 	call)
 		case "$2" in
@@ -1042,7 +1543,6 @@ case "$1" in
 			clients) get_clients ;;
 			zones) get_zones ;;
 			parental) get_parental ;;
-			portal) get_portal ;;
 			alerts) get_alerts ;;
 			logs) get_logs ;;
 			approve_client) approve_client ;;
@@ -1050,14 +1550,19 @@ case "$1" in
 			quarantine_client) quarantine_client ;;
 			update_client) update_client ;;
 			update_zone) update_zone ;;
-			update_portal) update_portal ;;
 			send_test_alert) send_test_alert ;;
-			list_sessions) list_sessions ;;
 			get_policy) get_policy ;;
 			set_policy) set_policy ;;
-			authorize_client) authorize_client ;;
-			deauthorize_client) deauthorize_client ;;
 			get_client) get_client ;;
+			sync_zones)
+				json_init
+				sync_firewall_zones
+				json_add_boolean "success" 1
+				json_add_string "message" "Firewall zones synchronized"
+				json_dump
+				;;
+			list_profiles) list_profiles ;;
+			apply_profile) apply_profile ;;
 			*) echo '{"error": "Unknown method"}' ;;
 		esac
 		;;

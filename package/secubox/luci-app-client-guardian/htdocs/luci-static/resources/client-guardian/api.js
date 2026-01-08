@@ -41,11 +41,6 @@ var callParental = rpc.declare({
 	expect: { }
 });
 
-var callPortal = rpc.declare({
-	object: 'luci.client-guardian',
-	method: 'portal',
-	expect: { }
-});
 
 var callAlerts = rpc.declare({
 	object: 'luci.client-guardian',
@@ -95,25 +90,11 @@ var callUpdateZone = rpc.declare({
 	expect: { success: false }
 });
 
-var callUpdatePortal = rpc.declare({
-	object: 'luci.client-guardian',
-	method: 'update_portal',
-	params: ['title', 'subtitle', 'accent_color'],
-	expect: { success: false }
-});
-
 var callSendTestAlert = rpc.declare({
 	object: 'luci.client-guardian',
 	method: 'send_test_alert',
 	params: ['type'],
 	expect: { success: false }
-});
-
-// Nodogsplash Captive Portal Methods
-var callListSessions = rpc.declare({
-	object: 'luci.client-guardian',
-	method: 'list_sessions',
-	expect: { sessions: [] }
 });
 
 var callGetPolicy = rpc.declare({
@@ -125,21 +106,13 @@ var callGetPolicy = rpc.declare({
 var callSetPolicy = rpc.declare({
 	object: 'luci.client-guardian',
 	method: 'set_policy',
-	params: ['policy', 'portal_enabled', 'auto_approve', 'session_timeout'],
+	params: ['policy', 'auto_approve', 'session_timeout'],
 	expect: { success: false }
 });
 
-var callAuthorizeClient = rpc.declare({
+var callSyncZones = rpc.declare({
 	object: 'luci.client-guardian',
-	method: 'authorize_client',
-	params: ['mac', 'ip'],
-	expect: { success: false }
-});
-
-var callDeauthorizeClient = rpc.declare({
-	object: 'luci.client-guardian',
-	method: 'deauthorize_client',
-	params: ['mac', 'ip'],
+	method: 'sync_zones',
 	expect: { success: false }
 });
 
@@ -165,6 +138,42 @@ function formatBytes(bytes) {
 	return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + units[i];
 }
 
+function getDeviceIcon(hostname, mac) {
+	hostname = (hostname || '').toLowerCase();
+	mac = (mac || '').toLowerCase();
+
+	// Mobile devices
+	if (hostname.match(/android|iphone|ipad|mobile|phone|samsung|xiaomi|huawei/))
+		return '📱';
+
+	// Computers
+	if (hostname.match(/pc|laptop|desktop|macbook|imac|windows|linux|ubuntu/))
+		return '💻';
+
+	// IoT devices
+	if (hostname.match(/camera|bulb|switch|sensor|thermostat|doorbell|lock/))
+		return '📷';
+
+	// Smart TV / Media
+	if (hostname.match(/tv|roku|chromecast|firestick|appletv|media/))
+		return '📺';
+
+	// Gaming
+	if (hostname.match(/playstation|xbox|nintendo|switch|steam/))
+		return '🎮';
+
+	// Network equipment
+	if (hostname.match(/router|switch|ap|access[-_]?point|bridge/))
+		return '🌐';
+
+	// Printers
+	if (hostname.match(/printer|print|hp-|canon-|epson-/))
+		return '🖨️';
+
+	// Default
+	return '🔌';
+}
+
 return baseclass.extend({
 	// Core methods
 	getStatus: callStatus,
@@ -172,7 +181,6 @@ return baseclass.extend({
 	getClient: callGetClient,
 	getZones: callZones,
 	getParental: callParental,
-	getPortal: callPortal,
 	getAlerts: callAlerts,
 	getLogs: callLogs,
 
@@ -184,18 +192,14 @@ return baseclass.extend({
 
 	// Configuration
 	updateZone: callUpdateZone,
-	updatePortal: callUpdatePortal,
 	sendTestAlert: callSendTestAlert,
-
-	// Nodogsplash Captive Portal
-	listSessions: callListSessions,
+	syncZones: callSyncZones,
 	getPolicy: callGetPolicy,
 	setPolicy: callSetPolicy,
-	authorizeClient: callAuthorizeClient,
-	deauthorizeClient: callDeauthorizeClient,
 
 	// Utility functions
 	formatMac: formatMac,
 	formatDuration: formatDuration,
-	formatBytes: formatBytes
+	formatBytes: formatBytes,
+	getDeviceIcon: getDeviceIcon
 });

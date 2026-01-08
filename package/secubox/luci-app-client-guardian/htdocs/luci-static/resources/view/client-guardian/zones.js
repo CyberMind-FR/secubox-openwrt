@@ -11,7 +11,7 @@ return view.extend({
 	},
 
 	render: function(data) {
-		var zones = data.zones || [];
+		var zones = Array.isArray(data) ? data : (data.zones || []);
 		var self = this;
 
 		return E('div', { 'class': 'client-guardian-dashboard' }, [
@@ -22,11 +22,19 @@ return view.extend({
 				E('div', { 'class': 'cg-logo' }, [
 					E('div', { 'class': 'cg-logo-icon' }, '🌐'),
 					E('div', { 'class': 'cg-logo-text' }, 'Zones Réseau')
+				]),
+				E('button', {
+					'class': 'cg-btn cg-btn-primary',
+					'click': L.bind(this.handleSyncZones, this),
+					'style': 'display: flex; align-items: center; gap: 8px;'
+				}, [
+					E('span', {}, '🔄'),
+					'Synchroniser Firewall'
 				])
 			]),
 
 			E('p', { 'style': 'color: var(--cg-text-secondary); margin-bottom: 24px' },
-				'Définissez les zones de sécurité avec leurs règles d\'accès, filtrage et limitations.'
+				'Définissez les zones de sécurité avec leurs règles d\'accès, filtrage et limitations. Cliquez sur "Synchroniser Firewall" pour créer les zones dans la configuration firewall.'
 			),
 
 			E('div', { 'class': 'cg-zones-grid' },
@@ -153,7 +161,7 @@ return view.extend({
 			]) : E('span'),
 			E('div', { 'class': 'cg-btn-group', 'style': 'justify-content: flex-end; margin-top: 20px' }, [
 				E('button', { 'class': 'cg-btn', 'click': ui.hideModal }, _('Annuler')),
-				E('button', { 'class': 'cg-btn cg-btn-primary', 'click': function() {
+				E('button', { 'class': 'cg-btn cg-btn-primary', 'click': L.bind(function() {
 					api.updateZone(
 						zone.id,
 						zone.name,
@@ -161,13 +169,51 @@ return view.extend({
 						document.getElementById('zone-filter').value,
 						zone.time_restrictions ? document.getElementById('zone-start').value : '',
 						zone.time_restrictions ? document.getElementById('zone-end').value : ''
-					).then(function() {
+					).then(L.bind(function() {
 						ui.hideModal();
-						window.location.reload();
-					});
-				}}, _('Enregistrer'))
+						ui.addNotification(null, E('p', _('Zone updated successfully')), 'success');
+						this.handleRefresh();
+					}, this));
+				}, this)}, _('Enregistrer'))
 			])
 		]);
+	},
+
+	handleSyncZones: function(ev) {
+		var btn = ev.currentTarget;
+		btn.disabled = true;
+		btn.innerHTML = '<span>⏳</span> Synchronisation...';
+
+		api.syncZones().then(function(result) {
+			if (result.success) {
+				ui.addNotification(null, E('p', {}, 'Zones firewall synchronisées avec succès'), 'success');
+				btn.innerHTML = '<span>✅</span> Synchronisé';
+				setTimeout(function() {
+					btn.disabled = false;
+					btn.innerHTML = '<span>🔄</span> Synchroniser Firewall';
+				}, 2000);
+			} else {
+				ui.addNotification(null, E('p', {}, 'Erreur lors de la synchronisation'), 'error');
+				btn.disabled = false;
+				btn.innerHTML = '<span>🔄</span> Synchroniser Firewall';
+			}
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', {}, 'Erreur: ' + err), 'error');
+			btn.disabled = false;
+			btn.innerHTML = '<span>🔄</span> Synchroniser Firewall';
+		});
+	},
+
+	handleRefresh: function() {
+		return api.getZones().then(L.bind(function(data) {
+			var container = document.querySelector('.client-guardian-dashboard');
+			if (container) {
+				var newView = this.render(data);
+				dom.content(container.parentNode, newView);
+			}
+		}, this)).catch(function(err) {
+			console.error('Failed to refresh zones list:', err);
+		});
 	},
 
 	handleSaveApply: null,

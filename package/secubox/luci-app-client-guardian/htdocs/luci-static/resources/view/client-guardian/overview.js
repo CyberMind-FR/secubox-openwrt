@@ -12,14 +12,15 @@ return view.extend({
 		return Promise.all([
 			api.getStatus(),
 			api.getClients(),
-			api.getZones()
+			api.getZones(),
+			uci.load('client-guardian')
 		]);
 	},
 
 	render: function(data) {
 		var status = data[0];
-		var clients = data[1].clients || [];
-		var zones = data[2].zones || [];
+		var clients = Array.isArray(data[1]) ? data[1] : (data[1].clients || []);
+		var zones = Array.isArray(data[2]) ? data[2] : (data[2].zones || []);
 
 		var onlineClients = clients.filter(function(c) { return c.online; });
 		var approvedClients = clients.filter(function(c) { return c.status === 'approved'; });
@@ -51,8 +52,8 @@ return view.extend({
 				this.renderStatCard('✅', approvedClients.length, 'Approuvés'),
 				this.renderStatCard('⏳', quarantineClients.length, 'Quarantaine'),
 				this.renderStatCard('🚫', bannedClients.length, 'Bannis'),
-				this.renderStatCard('🌐', zones.length, 'Zones'),
-				this.renderStatCard('🔔', status.alerts_today || 0, 'Alertes Aujourd\'hui')
+				this.renderStatCard('⚠️', clients.filter(function(c) { return c.has_threats; }).length, 'Menaces Actives'),
+				this.renderStatCard('🌐', zones.length, 'Zones')
 			]),
 
 			// Recent Clients Card
@@ -88,6 +89,16 @@ return view.extend({
 			]) : E('div')
 		]);
 
+		// Setup auto-refresh polling based on UCI settings
+		var autoRefresh = uci.get('client-guardian', 'config', 'auto_refresh');
+		var refreshInterval = parseInt(uci.get('client-guardian', 'config', 'refresh_interval') || '10');
+
+		if (autoRefresh === '1') {
+			poll.add(L.bind(function() {
+				return this.handleRefresh();
+			}, this), refreshInterval);
+		}
+
 		return view;
 	},
 
@@ -114,11 +125,19 @@ return view.extend({
 			E('div', { 'class': 'cg-client-info' }, [
 				E('div', { 'class': 'cg-client-name' }, [
 					client.online ? E('span', { 'class': 'online-indicator' }) : E('span'),
-					client.name || client.hostname || 'Unknown'
+					client.name || client.hostname || 'Unknown',
+					client.has_threats ? E('span', {
+						'class': 'cg-threat-badge',
+						'title': (client.threat_count || 0) + ' menace(s) active(s), score de risque: ' + (client.risk_score || 0),
+						'style': 'margin-left: 8px; color: #ef4444; font-size: 16px; cursor: help;'
+					}, '⚠️') : E('span')
 				]),
 				E('div', { 'class': 'cg-client-meta' }, [
 					E('span', {}, client.mac),
-					E('span', {}, client.ip || 'N/A')
+					E('span', {}, client.ip || 'N/A'),
+					client.has_threats ? E('span', {
+						'style': 'color: #ef4444; font-weight: 500; margin-left: 8px;'
+					}, 'Risque: ' + (client.risk_score || 0) + '%') : E('span')
 				])
 			]),
 			E('span', { 'class': 'cg-client-zone ' + zoneClass }, client.zone || 'unknown'),
@@ -176,13 +195,14 @@ return view.extend({
 				}, _('Annuler')),
 				E('button', {
 					'class': 'cg-btn cg-btn-success',
-					'click': function() {
+					'click': L.bind(function() {
 						var zone = document.getElementById('approve-zone').value;
-						api.approveClient(mac, '', zone, '').then(function() {
+						api.approveClient(mac, '', zone, '').then(L.bind(function() {
 							ui.hideModal();
-							window.location.reload();
-						});
-					}
+							ui.addNotification(null, E('p', _('Client approved successfully')), 'success');
+							this.handleRefresh();
+						}, this));
+					}, this)
 				}, _('Approuver'))
 			])
 		]);
@@ -201,15 +221,50 @@ return view.extend({
 				}, _('Annuler')),
 				E('button', {
 					'class': 'cg-btn cg-btn-danger',
-					'click': function() {
-						api.banClient(mac, 'Manual ban').then(function() {
+					'click': L.bind(function() {
+						api.banClient(mac, 'Manual ban').then(L.bind(function() {
 							ui.hideModal();
-							window.location.reload();
-						});
-					}
+							ui.addNotification(null, E('p', _('Client banned successfully')), 'info');
+							this.handleRefresh();
+						}, this));
+					}, this)
 				}, _('Bannir'))
 			])
 		]);
+	},
+
+	handleRefresh: function() {
+		return Promise.all([
+			api.getStatus(),
+			api.getClients(),
+			api.getZones()
+		]).then(L.bind(function(data) {
+			// Update dashboard without full page reload
+			var container = document.querySelector('.client-guardian-dashboard');
+			if (container) {
+				// Show loading indicator
+				var statusBadge = document.querySelector('.cg-status-badge');
+				if (statusBadge) {
+					statusBadge.classList.add('loading');
+				}
+
+				// Reconstruct data array (status, clients, zones, uci already loaded)
+				var newView = this.render(data);
+				dom.content(container.parentNode, newView);
+
+				// Remove loading indicator
+				if (statusBadge) {
+					statusBadge.classList.remove('loading');
+				}
+			}
+		}, this)).catch(function(err) {
+			console.error('Failed to refresh Client Guardian dashboard:', err);
+		});
+	},
+
+	handleLeave: function() {
+		// Stop polling when leaving the view to prevent memory leaks
+		poll.stop();
 	},
 
 	handleSaveApply: null,
