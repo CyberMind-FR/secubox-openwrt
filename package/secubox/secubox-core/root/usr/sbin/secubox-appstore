@@ -92,7 +92,6 @@ get_active_catalog() {
 # List all modules
 list_modules() {
 	local format="${1:-table}"
-	local modules=()
 	local cache_ready=0
 
 	mkdir -p "$CATALOG_DIR"

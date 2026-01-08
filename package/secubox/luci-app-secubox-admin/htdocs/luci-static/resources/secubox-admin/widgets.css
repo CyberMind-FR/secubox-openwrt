@@ -507,3 +507,121 @@
 		border: 1px solid #ccc;
 	}
 }
+
+/* Widget Header with Version and Status */
+.widget-header {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	margin-bottom: 1rem;
+	padding-bottom: 0.75rem;
+	border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+}
+
+.widget-title-wrapper {
+	flex: 1;
+	min-width: 0;
+}
+
+.widget-title {
+	font-size: 0.95rem;
+	font-weight: 600;
+	color: var(--cyber-text, #1e293b);
+	margin: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.widget-version {
+	font-size: 0.75rem;
+	color: var(--cyber-text-dim, #64748b);
+	font-family: 'JetBrains Mono', monospace;
+	margin-top: 0.2rem;
+}
+
+/* Widget Status Indicator (Dot) */
+.widget-status-indicator {
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+	animation: pulse 2s ease-in-out infinite;
+}
+
+.widget-status-indicator.status-success {
+	background: #10b981;
+	box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2), 0 0 10px rgba(16, 185, 129, 0.3);
+}
+
+.widget-status-indicator.status-warning {
+	background: #f59e0b;
+	box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2), 0 0 10px rgba(245, 158, 11, 0.3);
+}
+
+.widget-status-indicator.status-error {
+	background: #ef4444;
+	box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2), 0 0 10px rgba(239, 68, 68, 0.3);
+}
+
+.widget-status-indicator.status-unknown {
+	background: #6b7280;
+	box-shadow: 0 0 0 2px rgba(107, 116, 128, 0.2);
+	animation: none;
+}
+
+@keyframes pulse {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.6;
+	}
+}
+
+/* Widget Status Text Badge */
+.widget-status-text {
+	margin-bottom: 0.75rem;
+}
+
+.status-badge {
+	display: inline-block;
+	padding: 0.25rem 0.75rem;
+	font-size: 0.7rem;
+	font-weight: 600;
+	border-radius: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.status-badge.status-success {
+	background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.15));
+	color: #059669;
+	border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-badge.status-warning {
+	background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.15));
+	color: #d97706;
+	border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.status-badge.status-error {
+	background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.15));
+	color: #dc2626;
+	border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.status-badge.status-unknown {
+	background: rgba(107, 116, 128, 0.1);
+	color: #6b7280;
+	border: 1px solid rgba(107, 116, 128, 0.2);
+}
+
+/* Enhanced widget icon */
+.widget-icon {
+	font-size: 2rem;
+	line-height: 1;
+	flex-shrink: 0;
+}

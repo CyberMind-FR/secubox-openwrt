@@ -36,9 +36,27 @@ WidgetRendererInstance.prototype = {
 		this.registerTemplate('default', {
 			render: function(container, app, data) {
 				container.innerHTML = '';
+
+				var status = data && data.status ? data.status : 'unknown';
+				var statusClass = status === 'running' ? 'status-success' :
+					status === 'stopped' ? 'status-warning' :
+					status === 'not_installed' ? 'status-error' : 'status-unknown';
+
+				var version = data && (data.installed_version || data.pkg_version || data.catalog_version) ?
+					'v' + (data.installed_version || data.pkg_version || data.catalog_version) : '';
+
 				container.appendChild(E('div', { 'class': 'widget-default' }, [
-					E('div', { 'class': 'widget-icon' }, app.icon || '📊'),
-					E('div', { 'class': 'widget-title' }, app.name || 'Application'),
+					E('div', { 'class': 'widget-header' }, [
+						E('div', { 'class': 'widget-icon' }, app.icon || '📊'),
+						E('div', { 'class': 'widget-title-wrapper' }, [
+							E('div', { 'class': 'widget-title' }, app.name || 'Application'),
+							version ? E('div', { 'class': 'widget-version' }, version) : null
+						]),
+						E('div', { 'class': 'widget-status-indicator ' + statusClass })
+					]),
+					E('div', { 'class': 'widget-status-text' }, [
+						E('span', { 'class': 'status-badge ' + statusClass }, status.replace('_', ' ').toUpperCase())
+					]),
 					E('div', { 'class': 'widget-status' },
 						data && data.widget_enabled ? 'Widget Enabled' : 'No widget data'
 					)
@@ -52,15 +70,24 @@ WidgetRendererInstance.prototype = {
 
 				var metrics = data && data.metrics ? data.metrics : [];
 				var status = data && data.status ? data.status : 'unknown';
-				var statusClass = status === 'ok' ? 'status-success' :
-					status === 'warning' ? 'status-warning' :
-					status === 'error' ? 'status-error' : 'status-unknown';
+				var statusClass = status === 'running' ? 'status-success' :
+					status === 'stopped' ? 'status-warning' :
+					status === 'not_installed' ? 'status-error' : 'status-unknown';
+
+				var version = data && (data.installed_version || data.pkg_version || data.catalog_version) ?
+					'v' + (data.installed_version || data.pkg_version || data.catalog_version) : '';
 
 				container.appendChild(E('div', { 'class': 'widget-security' }, [
 					E('div', { 'class': 'widget-header' }, [
 						E('div', { 'class': 'widget-icon' }, app.icon || '🔒'),
-						E('div', { 'class': 'widget-title' }, app.name || 'Security'),
+						E('div', { 'class': 'widget-title-wrapper' }, [
+							E('div', { 'class': 'widget-title' }, app.name || 'Security'),
+							version ? E('div', { 'class': 'widget-version' }, version) : null
+						]),
 						E('div', { 'class': 'widget-status-indicator ' + statusClass })
+					]),
+					E('div', { 'class': 'widget-status-text' }, [
+						E('span', { 'class': 'status-badge ' + statusClass }, status.replace('_', ' ').toUpperCase())
 					]),
 					E('div', { 'class': 'widget-metrics' },
 						metrics.map(function(metric) {
@@ -83,10 +110,25 @@ WidgetRendererInstance.prototype = {
 				var connections = data && data.active_connections ? data.active_connections : 0;
 				var bandwidth = data && data.bandwidth ? data.bandwidth : { up: 0, down: 0 };
 
+				var status = data && data.status ? data.status : 'unknown';
+				var statusClass = status === 'running' ? 'status-success' :
+					status === 'stopped' ? 'status-warning' :
+					status === 'not_installed' ? 'status-error' : 'status-unknown';
+
+				var version = data && (data.installed_version || data.pkg_version || data.catalog_version) ?
+					'v' + (data.installed_version || data.pkg_version || data.catalog_version) : '';
+
 				container.appendChild(E('div', { 'class': 'widget-network' }, [
 					E('div', { 'class': 'widget-header' }, [
 						E('div', { 'class': 'widget-icon' }, app.icon || '🌐'),
-						E('div', { 'class': 'widget-title' }, app.name || 'Network')
+						E('div', { 'class': 'widget-title-wrapper' }, [
+							E('div', { 'class': 'widget-title' }, app.name || 'Network'),
+							version ? E('div', { 'class': 'widget-version' }, version) : null
+						]),
+						E('div', { 'class': 'widget-status-indicator ' + statusClass })
+					]),
+					E('div', { 'class': 'widget-status-text' }, [
+						E('span', { 'class': 'status-badge ' + statusClass }, status.replace('_', ' ').toUpperCase())
 					]),
 					E('div', { 'class': 'widget-metrics' }, [
 						E('div', { 'class': 'metric-row' }, [
@@ -112,15 +154,24 @@ WidgetRendererInstance.prototype = {
 
 				var metrics = data && data.metrics ? data.metrics : [];
 				var status = data && data.status ? data.status : 'unknown';
-				var statusClass = status === 'healthy' ? 'status-success' :
-					status === 'degraded' ? 'status-warning' :
-					status === 'down' ? 'status-error' : 'status-unknown';
+				var statusClass = status === 'running' ? 'status-success' :
+					status === 'stopped' ? 'status-warning' :
+					status === 'not_installed' ? 'status-error' : 'status-unknown';
+
+				var version = data && (data.installed_version || data.pkg_version || data.catalog_version) ?
+					'v' + (data.installed_version || data.pkg_version || data.catalog_version) : '';
 
 				container.appendChild(E('div', { 'class': 'widget-monitoring' }, [
 					E('div', { 'class': 'widget-header' }, [
 						E('div', { 'class': 'widget-icon' }, app.icon || '📈'),
-						E('div', { 'class': 'widget-title' }, app.name || 'Monitoring'),
-						E('div', { 'class': 'widget-status-badge ' + statusClass }, status)
+						E('div', { 'class': 'widget-title-wrapper' }, [
+							E('div', { 'class': 'widget-title' }, app.name || 'Monitoring'),
+							version ? E('div', { 'class': 'widget-version' }, version) : null
+						]),
+						E('div', { 'class': 'widget-status-indicator ' + statusClass })
+					]),
+					E('div', { 'class': 'widget-status-text' }, [
+						E('span', { 'class': 'status-badge ' + statusClass }, status.replace('_', ' ').toUpperCase())
 					]),
 					E('div', { 'class': 'widget-metrics-grid' },
 						metrics.map(function(metric) {
@@ -142,10 +193,25 @@ WidgetRendererInstance.prototype = {
 				var metrics = data && data.metrics ? data.metrics : [];
 				var services = data && data.services ? data.services : [];
 
+				var status = data && data.status ? data.status : 'unknown';
+				var statusClass = status === 'running' ? 'status-success' :
+					status === 'stopped' ? 'status-warning' :
+					status === 'not_installed' ? 'status-error' : 'status-unknown';
+
+				var version = data && (data.installed_version || data.pkg_version || data.catalog_version) ?
+					'v' + (data.installed_version || data.pkg_version || data.catalog_version) : '';
+
 				container.appendChild(E('div', { 'class': 'widget-hosting' }, [
 					E('div', { 'class': 'widget-header' }, [
 						E('div', { 'class': 'widget-icon' }, app.icon || '🖥️'),
-						E('div', { 'class': 'widget-title' }, app.name || 'Hosting')
+						E('div', { 'class': 'widget-title-wrapper' }, [
+							E('div', { 'class': 'widget-title' }, app.name || 'Hosting'),
+							version ? E('div', { 'class': 'widget-version' }, version) : null
+						]),
+						E('div', { 'class': 'widget-status-indicator ' + statusClass })
+					]),
+					E('div', { 'class': 'widget-status-text' }, [
+						E('span', { 'class': 'status-badge ' + statusClass }, status.replace('_', ' ').toUpperCase())
 					]),
 					E('div', { 'class': 'widget-services' },
 						services.map(function(service) {

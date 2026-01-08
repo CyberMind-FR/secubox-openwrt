@@ -1406,18 +1406,36 @@ save_settings() {
 
 # Get components (leverages secubox module detection)
 get_components() {
-	# Call secubox backend to get modules, which are the system components
-	local result=$(ubus call luci.secubox getModules 2>/dev/null)
+	# Call secubox backend to get apps list
+	local apps_result=$(ubus call luci.secubox list_apps 2>/dev/null)
 
-	if [ -n "$result" ]; then
-		# Pass through the secubox modules as components
-		echo "$result"
+	if [ -n "$apps_result" ]; then
+		# Transform apps to components format
+		echo "$apps_result" | jq '{
+			modules: [
+				.apps[] | {
+					id: .id,
+					name: .name,
+					version: (.pkg_version // .version // "1.0.0"),
+					category: (.category // "system"),
+					description: (.description // "No description"),
+					icon: (.icon // "📦"),
+					package: (.packages.required[0] // ""),
+					installed: false,
+					running: false,
+					color: (
+						if .category == "security" then "#ef4444"
+						elif .category == "monitoring" then "#10b981"
+						elif .category == "network" then "#3b82f6"
+						else "#64748b"
+						end
+					)
+				}
+			]
+		}'
 	else
 		# Fallback if secubox is not available
-		json_init
-		json_add_array "modules"
-		json_close_array
-		json_dump
+		echo '{"modules":[]}'
 	fi
 }
 

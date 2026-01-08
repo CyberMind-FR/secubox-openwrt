@@ -29,7 +29,9 @@ return view.extend({
 		var stats = DataUtils.buildAppStats(apps, modules, alerts, updateInfo, API.getAppStatus);
 		var healthSnapshot = DataUtils.normalizeHealth(health);
 
-		var container = E('div', { 'class': 'secubox-admin-dashboard' }, [
+		var container = E('div', { 'class': 'cyberpunk-mode secubox-admin-dashboard' }, [
+			E('link', { 'rel': 'stylesheet', 'type': 'text/css',
+				'href': L.resource('secubox-admin/cyberpunk.css') + '?v=' + Date.now() }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',
@@ -37,7 +39,10 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/widgets.css') }),
 
-			E('h2', {}, 'Admin Control Panel'),
+			E('div', { 'class': 'cyber-header' }, [
+				E('div', { 'class': 'cyber-header-title' }, '🎛️ ADMIN CONTROL PANEL'),
+				E('div', { 'class': 'cyber-header-subtitle' }, 'System Overview · Applications · Health Monitoring')
+			]),
 
 			// Stats grid
 			E('div', { 'class': 'stats-grid' }, [

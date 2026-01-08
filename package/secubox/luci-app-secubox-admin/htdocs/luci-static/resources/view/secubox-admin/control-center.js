@@ -31,16 +31,19 @@ return view.extend({
 	render: function(data) {
 		var self = this;
 
-		var container = E('div', { 'class': 'control-center' });
+		var container = E('div', { 'class': 'cyberpunk-mode control-center' }, [
+			E('link', { 'rel': 'stylesheet', 'type': 'text/css',
+				'href': L.resource('secubox-admin/cyberpunk.css') + '?v=' + Date.now() }),
+			E('link', { 'rel': 'stylesheet',
+				'href': L.resource('secubox-admin/common.css') }),
+			E('link', { 'rel': 'stylesheet',
+				'href': L.resource('secubox-admin/admin.css') }),
 
-		// Page header
-		var header = E('div', { 'class': 'page-header', 'style': 'margin-bottom: 2rem;' });
-		var title = E('h2', {}, 'SecuBox Admin Control Center');
-		var subtitle = E('p', { 'style': 'color: #6b7280; margin-top: 0.5rem;' },
-			'Centralized management dashboard for components and system state');
-		header.appendChild(title);
-		header.appendChild(subtitle);
-		container.appendChild(header);
+			E('div', { 'class': 'cyber-header' }, [
+				E('div', { 'class': 'cyber-header-title' }, '🎛️ CONTROL CENTER'),
+				E('div', { 'class': 'cyber-header-subtitle' }, 'Centralized management dashboard for components and system state')
+			])
+		]);
 
 		// System Overview Panel
 		var overviewPanel = this.renderSystemOverview(data.health, data.statistics);

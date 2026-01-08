@@ -1,0 +1,405 @@
+{
+	"profiles": [
+		{
+			"id": "family_home",
+			"name": "Maison Familiale",
+			"description": "Configuration optimale pour une maison avec parents, enfants et appareils IoT",
+			"icon": "🏠",
+			"zones": [
+				{
+					"id": "lan_private",
+					"name": "Réseau Principal",
+					"description": "Appareils de confiance des parents",
+					"network": "lan",
+					"color": "#22c55e",
+					"icon": "home",
+					"internet_access": true,
+					"local_access": true,
+					"inter_client": true,
+					"bandwidth_limit": 0,
+					"priority": "high"
+				},
+				{
+					"id": "kids",
+					"name": "Enfants",
+					"description": "Contrôle parental actif avec horaires",
+					"network": "lan",
+					"color": "#06b6d4",
+					"icon": "child",
+					"internet_access": true,
+					"local_access": true,
+					"inter_client": true,
+					"bandwidth_limit": 50,
+					"time_restrictions": true,
+					"schedule_start": "08:00",
+					"schedule_end": "21:00",
+					"content_filter": "kids",
+					"priority": "normal"
+				},
+				{
+					"id": "iot",
+					"name": "Objets Connectés",
+					"description": "Caméras, thermostats, ampoules (isolés)",
+					"network": "iot",
+					"color": "#f59e0b",
+					"icon": "cpu",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 10,
+					"priority": "low"
+				},
+				{
+					"id": "guest",
+					"name": "Invités",
+					"description": "Accès Internet limité pour visiteurs",
+					"network": "guest",
+					"color": "#8b5cf6",
+					"icon": "users",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 25,
+					"session_duration": 7200,
+					"portal_required": true,
+					"priority": "low"
+				}
+			]
+		},
+		{
+			"id": "small_business",
+			"name": "Petite Entreprise",
+			"description": "Séparation réseau employés, invités et équipements",
+			"icon": "🏢",
+			"zones": [
+				{
+					"id": "corporate",
+					"name": "Réseau Entreprise",
+					"description": "Postes de travail des employés",
+					"network": "lan",
+					"color": "#3b82f6",
+					"icon": "briefcase",
+					"internet_access": true,
+					"local_access": true,
+					"inter_client": true,
+					"bandwidth_limit": 0,
+					"priority": "high"
+				},
+				{
+					"id": "servers",
+					"name": "Serveurs",
+					"description": "Infrastructure critique",
+					"network": "servers",
+					"color": "#ef4444",
+					"icon": "server",
+					"internet_access": true,
+					"local_access": true,
+					"inter_client": false,
+					"bandwidth_limit": 0,
+					"priority": "critical"
+				},
+				{
+					"id": "byod",
+					"name": "BYOD",
+					"description": "Appareils personnels des employés",
+					"network": "byod",
+					"color": "#f59e0b",
+					"icon": "smartphone",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 50,
+					"priority": "normal"
+				},
+				{
+					"id": "guest",
+					"name": "Visiteurs",
+					"description": "Accès Internet isolé",
+					"network": "guest",
+					"color": "#8b5cf6",
+					"icon": "users",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 10,
+					"portal_required": true,
+					"priority": "low"
+				}
+			]
+		},
+		{
+			"id": "hotel",
+			"name": "Hôtel / Gîte",
+			"description": "Gestion multi-chambres avec isolation stricte",
+			"icon": "🏨",
+			"zones": [
+				{
+					"id": "management",
+					"name": "Administration",
+					"description": "Réseau de gestion",
+					"network": "lan",
+					"color": "#22c55e",
+					"icon": "shield",
+					"internet_access": true,
+					"local_access": true,
+					"inter_client": true,
+					"bandwidth_limit": 0,
+					"priority": "critical"
+				},
+				{
+					"id": "rooms_floor1",
+					"name": "Chambres Étage 1",
+					"description": "Clients étage 1 (isolés)",
+					"network": "rooms1",
+					"color": "#3b82f6",
+					"icon": "bed",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 20,
+					"portal_required": true,
+					"priority": "normal"
+				},
+				{
+					"id": "rooms_floor2",
+					"name": "Chambres Étage 2",
+					"description": "Clients étage 2 (isolés)",
+					"network": "rooms2",
+					"color": "#06b6d4",
+					"icon": "bed",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 20,
+					"portal_required": true,
+					"priority": "normal"
+				},
+				{
+					"id": "public",
+					"name": "Espaces Communs",
+					"description": "Lobby, restaurant, bar",
+					"network": "public",
+					"color": "#8b5cf6",
+					"icon": "wifi",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 15,
+					"portal_required": true,
+					"priority": "low"
+				}
+			]
+		},
+		{
+			"id": "apartment",
+			"name": "Immeuble / Colocation",
+			"description": "Isolation stricte entre locataires",
+			"icon": "🏘️",
+			"zones": [
+				{
+					"id": "landlord",
+					"name": "Propriétaire",
+					"description": "Réseau administrateur",
+					"network": "lan",
+					"color": "#22c55e",
+					"icon": "key",
+					"internet_access": true,
+					"local_access": true,
+					"inter_client": true,
+					"bandwidth_limit": 0,
+					"priority": "high"
+				},
+				{
+					"id": "tenant_a",
+					"name": "Locataire A",
+					"description": "Appartement/Chambre A",
+					"network": "tenant_a",
+					"color": "#3b82f6",
+					"icon": "door",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": true,
+					"bandwidth_limit": 100,
+					"priority": "normal"
+				},
+				{
+					"id": "tenant_b",
+					"name": "Locataire B",
+					"description": "Appartement/Chambre B",
+					"network": "tenant_b",
+					"color": "#06b6d4",
+					"icon": "door",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": true,
+					"bandwidth_limit": 100,
+					"priority": "normal"
+				},
+				{
+					"id": "tenant_c",
+					"name": "Locataire C",
+					"description": "Appartement/Chambre C",
+					"network": "tenant_c",
+					"color": "#f59e0b",
+					"icon": "door",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": true,
+					"bandwidth_limit": 100,
+					"priority": "normal"
+				},
+				{
+					"id": "common",
+					"name": "Parties Communes",
+					"description": "Couloirs, buanderie",
+					"network": "common",
+					"color": "#8b5cf6",
+					"icon": "building",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 20,
+					"priority": "low"
+				}
+			]
+		},
+		{
+			"id": "school",
+			"name": "École / Formation",
+			"description": "Séparation élèves, enseignants, administration",
+			"icon": "🎓",
+			"zones": [
+				{
+					"id": "admin",
+					"name": "Administration",
+					"description": "Direction et services",
+					"network": "lan",
+					"color": "#22c55e",
+					"icon": "shield",
+					"internet_access": true,
+					"local_access": true,
+					"inter_client": true,
+					"bandwidth_limit": 0,
+					"priority": "high"
+				},
+				{
+					"id": "teachers",
+					"name": "Enseignants",
+					"description": "Salle des professeurs",
+					"network": "teachers",
+					"color": "#3b82f6",
+					"icon": "chalkboard",
+					"internet_access": true,
+					"local_access": true,
+					"inter_client": true,
+					"bandwidth_limit": 0,
+					"priority": "high"
+				},
+				{
+					"id": "students",
+					"name": "Élèves",
+					"description": "Salles de classe avec filtrage",
+					"network": "students",
+					"color": "#06b6d4",
+					"icon": "book",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 50,
+					"content_filter": "kids",
+					"time_restrictions": true,
+					"schedule_start": "08:00",
+					"schedule_end": "17:00",
+					"priority": "normal"
+				},
+				{
+					"id": "lab",
+					"name": "Laboratoire Info",
+					"description": "Postes de travail contrôlés",
+					"network": "lab",
+					"color": "#f59e0b",
+					"icon": "computer",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 100,
+					"priority": "normal"
+				}
+			]
+		},
+		{
+			"id": "secure_home",
+			"name": "Maison Sécurisée",
+			"description": "Maximum de segmentation pour sécurité avancée",
+			"icon": "🔒",
+			"zones": [
+				{
+					"id": "trusted",
+					"name": "Confiance Totale",
+					"description": "Appareils principaux uniquement",
+					"network": "lan",
+					"color": "#22c55e",
+					"icon": "shield-check",
+					"internet_access": true,
+					"local_access": true,
+					"inter_client": true,
+					"bandwidth_limit": 0,
+					"priority": "critical"
+				},
+				{
+					"id": "work",
+					"name": "Télétravail",
+					"description": "Poste de travail professionnel isolé",
+					"network": "work",
+					"color": "#3b82f6",
+					"icon": "briefcase",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 0,
+					"priority": "high"
+				},
+				{
+					"id": "iot_secure",
+					"name": "IoT Sécurisé",
+					"description": "Appareils connectés de confiance",
+					"network": "iot_secure",
+					"color": "#06b6d4",
+					"icon": "lock",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 10,
+					"priority": "low"
+				},
+				{
+					"id": "iot_untrusted",
+					"name": "IoT Non Vérifié",
+					"description": "Appareils chinois et non certifiés",
+					"network": "iot_untrusted",
+					"color": "#f59e0b",
+					"icon": "alert",
+					"internet_access": false,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 5,
+					"priority": "low"
+				},
+				{
+					"id": "guest",
+					"name": "Invités",
+					"description": "Accès Internet uniquement",
+					"network": "guest",
+					"color": "#8b5cf6",
+					"icon": "users",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 20,
+					"portal_required": true,
+					"priority": "low"
+				}
+			]
+		}
+	]
+}

@@ -82,23 +82,26 @@ const DevStatusWidget = {
         }
     },
 
-    // Per-module status overview
-    moduleStatus: [
-        { name: 'SecuBox Central Hub', version: '0.7.0-r6', note: 'Dashboard central + Appstore (5 apps)' },
-        { name: 'System Hub', version: '0.5.1-r2', note: 'Centre de contrôle' },
-        { name: 'Traffic Shaper', version: '0.4.0-r1', note: 'CAKE / fq_codel / HTB' },
-        { name: 'CrowdSec Dashboard', version: '0.5.0-r1', note: 'Détection d\'intrusions' },
-        { name: 'Netdata Dashboard', version: '0.5.0-r1', note: 'Monitoring temps réel' },
-        { name: 'Netifyd Dashboard', version: '0.4.0-r1', note: 'Intelligence applicative' },
-        { name: 'Network Modes', version: '0.5.0-r1', note: '5 topologies réseau' },
-        { name: 'WireGuard Dashboard', version: '0.4.0-r1', note: 'VPN + QR codes' },
-        { name: 'Auth Guardian', version: '0.4.0-r1', note: 'OAuth / vouchers' },
-        { name: 'Client Guardian', version: '0.4.0-r1', note: 'Portail captif + contrôle d\'accès' },
-        { name: 'Bandwidth Manager', version: '0.4.0-r1', note: 'QoS + quotas' },
-        { name: 'Media Flow', version: '0.4.0-r1', note: 'DPI streaming' },
-        { name: 'CDN Cache', version: '0.5.0-r1', note: 'Cache contenu local' },
-        { name: 'VHost Manager', version: '0.4.1-r3', note: 'Reverse proxy / SSL' },
-        { name: 'KSM Manager', version: '0.4.0-r1', note: 'Gestion clés / HSM' }
+    // Per-module status overview (will be populated dynamically)
+    moduleStatus: [],
+
+    // Static module definitions (fallback if API fails)
+    staticModuleStatus: [
+        { name: 'SecuBox Central Hub', version: '0.7.0-r6', note: 'Dashboard central + Appstore (5 apps)', id: 'secubox-admin' },
+        { name: 'System Hub', version: '0.5.1-r2', note: 'Centre de contrôle', id: 'system-hub' },
+        { name: 'Traffic Shaper', version: '0.4.0-r1', note: 'CAKE / fq_codel / HTB', id: 'traffic-shaper' },
+        { name: 'CrowdSec Dashboard', version: '0.5.0-r1', note: 'Détection d\'intrusions', id: 'crowdsec' },
+        { name: 'Netdata Dashboard', version: '0.5.0-r1', note: 'Monitoring temps réel', id: 'netdata' },
+        { name: 'Netifyd Dashboard', version: '0.4.0-r1', note: 'Intelligence applicative', id: 'netifyd' },
+        { name: 'Network Modes', version: '0.5.0-r1', note: '5 topologies réseau', id: 'network-modes' },
+        { name: 'WireGuard Dashboard', version: '0.4.0-r1', note: 'VPN + QR codes', id: 'wireguard' },
+        { name: 'Auth Guardian', version: '0.4.0-r1', note: 'OAuth / vouchers', id: 'auth-guardian' },
+        { name: 'Client Guardian', version: '0.4.0-r1', note: 'Portail captif + contrôle d\'accès', id: 'client-guardian' },
+        { name: 'Bandwidth Manager', version: '0.4.0-r1', note: 'QoS + quotas', id: 'bandwidth-manager' },
+        { name: 'Media Flow', version: '0.4.0-r1', note: 'DPI streaming', id: 'media-flow' },
+        { name: 'CDN Cache', version: '0.5.0-r1', note: 'Cache contenu local', id: 'cdn-cache' },
+        { name: 'VHost Manager', version: '0.4.1-r3', note: 'Reverse proxy / SSL', id: 'vhost-manager' },
+        { name: 'KSM Manager', version: '0.4.0-r1', note: 'Gestion clés / HSM', id: 'ksm-manager' }
     ],
 
     // Overall project statistics
@@ -160,6 +163,92 @@ const DevStatusWidget = {
     ],
 
     /**
+     * Fetch and synchronize module versions from system
+     */
+    async syncModuleVersions() {
+        try {
+            // Try to fetch from secubox via ubus
+            const appsData = await L.resolveDefault(
+                L.Request.post(L.env.ubus_rpc_session ? '/ubus/' : '/ubus', {
+                    'jsonrpc': '2.0',
+                    'id': 1,
+                    'method': 'call',
+                    'params': [
+                        L.env.ubus_rpc_session,
+                        'luci.secubox',
+                        'get_apps',
+                        {}
+                    ]
+                }),
+                null
+            );
+
+            if (!appsData || !appsData.json || !appsData.json().result || !appsData.json().result[1]) {
+                console.warn('[DevStatus] API not available, using static data');
+                this.moduleStatus = this.staticModuleStatus;
+                return;
+            }
+
+            const result = appsData.json().result[1];
+            const apps = result.apps || [];
+
+            // Also get modules status
+            const modulesData = await L.resolveDefault(
+                L.Request.post(L.env.ubus_rpc_session ? '/ubus/' : '/ubus', {
+                    'jsonrpc': '2.0',
+                    'id': 2,
+                    'method': 'call',
+                    'params': [
+                        L.env.ubus_rpc_session,
+                        'luci.secubox',
+                        'get_modules',
+                        {}
+                    ]
+                }),
+                null
+            );
+
+            const modules = modulesData && modulesData.json() && modulesData.json().result && modulesData.json().result[1] ?
+                modulesData.json().result[1].modules || {} : {};
+
+            // Map apps to module status
+            this.moduleStatus = this.staticModuleStatus.map(staticModule => {
+                const app = apps.find(a => a.id === staticModule.id || a.name === staticModule.name);
+
+                let installed = false;
+                let running = false;
+
+                if (app && app.packages && app.packages.required && app.packages.required[0]) {
+                    const pkgName = app.packages.required[0];
+                    const moduleInfo = modules[pkgName];
+                    if (moduleInfo) {
+                        installed = moduleInfo.enabled || false;
+                        running = moduleInfo.running || false;
+                    }
+                }
+
+                if (app) {
+                    return {
+                        name: staticModule.name,
+                        version: app.pkg_version || app.version || staticModule.version,
+                        note: staticModule.note,
+                        id: staticModule.id,
+                        installed: installed,
+                        running: running
+                    };
+                }
+
+                return staticModule;
+            });
+
+            console.log('[DevStatus] Module versions synchronized:', this.moduleStatus.length, 'modules');
+        } catch (error) {
+            console.error('[DevStatus] Failed to sync module versions:', error);
+            this.moduleStatus = this.staticModuleStatus;
+        }
+    },
+
+    /**
      * Calculate overall progress
      */
     getOverallProgress() {
@@ -184,13 +273,27 @@ const DevStatusWidget = {
     /**
      * Render the widget
      */
-    render(containerId) {
+    async render(containerId) {
         const container = document.getElementById(containerId);
         if (!container) {
             console.error(`Container #${containerId} not found`);
             return;
         }
 
+        // Show loading state
+        container.innerHTML = `
+            <div class="dev-status-widget">
+                <div class="dsw-loading">
+                    <div class="spinner"></div>
+                    <p>Loading development status...</p>
+                </div>
+            </div>
+        `;
+
+        // Fetch and sync module versions
+        await this.syncModuleVersions();
+
+        // Render with fresh data
         const overallProgress = this.getModulesOverallProgress();
         const currentPhase = this.getCurrentPhase();
 
@@ -351,11 +454,22 @@ const DevStatusWidget = {
             const statusLabel = status === 'completed'
                 ? `Prêt pour v${this.targetVersion}`
                 : `Progression vers v${this.targetVersion}`;
+
+            // Runtime status indicators
+            const runtimeStatus = module.running ? 'running' : (module.installed ? 'stopped' : 'not-installed');
+            const runtimeIcon = module.running ? '🟢' : (module.installed ? '🟠' : '⚫');
+            const runtimeLabel = module.running ? 'Running' : (module.installed ? 'Installed' : 'Not Installed');
+
             return `
             <div class="dsw-module-card dsw-module-${status}">
                 <div class="dsw-module-header">
                     <span class="dsw-module-name">${module.name}</span>
-                    <span class="dsw-module-version">${this.formatVersion(module.version)}</span>
+                    <div class="dsw-module-badges">
+                        <span class="dsw-module-version">${this.formatVersion(module.version)}</span>
+                        <span class="dsw-module-runtime-badge dsw-runtime-${runtimeStatus}" title="${runtimeLabel}">
+                            ${runtimeIcon}
+                        </span>
+                    </div>
                 </div>
                 <div class="dsw-module-status-row">
                     <span class="dsw-module-status-indicator">${status === 'completed' ? '✅' : '🔄'}</span>
@@ -575,6 +689,33 @@ const DevStatusWidget = {
                 border-radius: 20px;
                 padding: 32px;
                 color: var(--sb-text, #f1f5f9);
+            }
+
+            .dsw-loading {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-height: 200px;
+                gap: 16px;
+            }
+
+            .dsw-loading .spinner {
+                width: 50px;
+                height: 50px;
+                border: 4px solid rgba(99, 102, 241, 0.1);
+                border-top-color: #6366f1;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+            }
+
+            .dsw-loading p {
+                color: var(--sb-text-muted, #94a3b8);
+                font-size: 14px;
+            }
+
+            @keyframes spin {
+                to { transform: rotate(360deg); }
             }
 
             .dsw-header {
@@ -983,14 +1124,58 @@ const DevStatusWidget = {
             .dsw-module-header {
                 display: flex;
                 justify-content: space-between;
+                align-items: center;
                 gap: 12px;
                 font-weight: 600;
+            }
+
+            .dsw-module-badges {
+                display: flex;
+                align-items: center;
+                gap: 8px;
             }
 
             .dsw-module-version {
                 font-family: 'JetBrains Mono', monospace;
                 font-size: 13px;
                 color: var(--sb-text-muted, #94a3b8);
+            }
+
+            .dsw-module-runtime-badge {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 20px;
+                height: 20px;
+                font-size: 12px;
+                border-radius: 50%;
+                cursor: help;
+                transition: transform 0.2s;
+            }
+
+            .dsw-module-runtime-badge:hover {
+                transform: scale(1.2);
+            }
+
+            .dsw-runtime-running {
+                background: rgba(16, 185, 129, 0.15);
+                box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+                animation: pulse-green 2s ease-in-out infinite;
+            }
+
+            .dsw-runtime-stopped {
+                background: rgba(245, 158, 11, 0.15);
+                box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+            }
+
+            .dsw-runtime-not-installed {
+                background: rgba(107, 116, 128, 0.15);
+                box-shadow: 0 0 0 2px rgba(107, 116, 128, 0.2);
+            }
+
+            @keyframes pulse-green {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.6; }
             }
 
             .dsw-module-status-row {

@@ -29,6 +29,10 @@ return view.extend({
 		var self = this;
 
 		var container = E('div', { 'class': 'cyberpunk-mode' }, [
+			// Load cyberpunk CSS
+			E('link', { 'rel': 'stylesheet', 'type': 'text/css',
+				'href': L.resource('secubox-admin/cyberpunk.css') + '?v=' + Date.now() }),
+
 			// ASCII Art Header
 			E('div', { 'class': 'cyber-header cyber-scanlines' }, [
 				E('pre', { 'class': 'cyber-ascii-art' },

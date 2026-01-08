@@ -274,7 +274,21 @@
       "Bash(do scp \"$f\" root@192.168.8.191:/www/luci-static/resources/view/secubox/)",
       "Bash(node:*)",
       "Bash(awk:*)",
-      "Bash(for f in luci-app-secubox/htdocs/luci-static/resources/view/secubox/wizard.js luci-app-secubox/htdocs/luci-static/resources/secubox/api.js)"
+      "Bash(for f in luci-app-secubox/htdocs/luci-static/resources/view/secubox/wizard.js luci-app-secubox/htdocs/luci-static/resources/secubox/api.js)",
+      "Bash(for f in /home/reepost/CyberMindStudio/_files/secubox-openwrt/package/secubox/luci-app-client-guardian/htdocs/luci-static/resources/view/client-guardian/*.js)",
+      "Bash(do scp \"$f\" root@192.168.8.191:/www/luci-static/resources/view/client-guardian/)",
+      "Bash(for f in dashboard.js health.js logs.js settings.js)",
+      "Bash(root@192.168.8.191:/www/luci-static/resources/view/secubox-admin/)",
+      "Bash(root@192.168.8.191:/usr/libexec/rpcd/luci.secubox)",
+      "Bash(root@192.168.8.191:/www/luci-static/resources/secubox-admin/)",
+      "Bash(root@192.168.8.191:/www/luci-static/resources/system-hub/)",
+      "Bash(root@192.168.8.191:/usr/libexec/rpcd/luci.system-hub)",
+      "Bash(root@192.168.8.191:/usr/sbin/secubox-appstore)",
+      "Bash(for f in zones.js overview.js clients.js)",
+      "Bash(do scp /home/reepost/CyberMindStudio/_files/secubox-openwrt/package/secubox/luci-app-client-guardian/htdocs/luci-static/resources/view/client-guardian/$f root@192.168.8.191:/www/luci-static/resources/view/client-guardian/)",
+      "Bash(for f in clients.js overview.js)",
+      "Bash(for f in htdocs/luci-static/resources/view/client-guardian/settings.js htdocs/luci-static/resources/client-guardian/api.js root/usr/libexec/rpcd/luci.client-guardian root/etc/config/client-guardian)",
+      "Bash(do scp \"$f\" root@192.168.8.191:/$f#root/)"
     ]
   }
 }

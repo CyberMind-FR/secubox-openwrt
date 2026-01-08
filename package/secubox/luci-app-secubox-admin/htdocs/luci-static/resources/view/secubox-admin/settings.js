@@ -24,14 +24,18 @@ return view.extend({
 			return status.installed;
 		});
 
-		var container = E('div', { 'class': 'secubox-settings' }, [
+		var container = E('div', { 'class': 'cyberpunk-mode secubox-settings' }, [
+			E('link', { 'rel': 'stylesheet', 'type': 'text/css',
+				'href': L.resource('secubox-admin/cyberpunk.css') + '?v=' + Date.now() }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/admin.css') }),
 
-			E('h2', {}, 'App Settings'),
-			E('p', {}, 'Configure installed applications'),
+			E('div', { 'class': 'cyber-header' }, [
+				E('div', { 'class': 'cyber-header-title' }, '⚙️ APP SETTINGS'),
+				E('div', { 'class': 'cyber-header-subtitle' }, 'Configure installed applications')
+			]),
 
 			installedApps.length === 0 ?
 				E('div', { 'class': 'alert alert-info' }, 'No installed apps') :

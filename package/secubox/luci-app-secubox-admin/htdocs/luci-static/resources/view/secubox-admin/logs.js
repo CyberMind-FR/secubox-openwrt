@@ -14,14 +14,18 @@ return view.extend({
 		var self = this;
 		var logs = logsData.logs || '';
 
-		var container = E('div', { 'class': 'secubox-logs' }, [
+		var container = E('div', { 'class': 'cyberpunk-mode secubox-logs' }, [
+			E('link', { 'rel': 'stylesheet', 'type': 'text/css',
+				'href': L.resource('secubox-admin/cyberpunk.css') + '?v=' + Date.now() }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/admin.css') }),
 
-			E('h2', {}, 'System Logs'),
-			E('p', {}, 'View logs from system services and applications'),
+			E('div', { 'class': 'cyber-header' }, [
+				E('div', { 'class': 'cyber-header-title' }, '📋 SYSTEM LOGS'),
+				E('div', { 'class': 'cyber-header-subtitle' }, 'View logs from system services and applications')
+			]),
 
 			E('div', { 'class': 'logs-controls' }, [
 				E('select', {

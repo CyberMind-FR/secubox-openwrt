@@ -1,0 +1,536 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# SecuBox Security Threats Dashboard RPCD backend
+# Copyright (C) 2026 CyberMind.fr - Gandalf
+#
+# Integrates netifyd DPI security risks with CrowdSec threat intelligence
+# for comprehensive network threat monitoring and automated blocking
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+HISTORY_FILE="/tmp/secubox-threats-history.json"
+CSCLI="/usr/bin/cscli"
+SECCUBOX_LOG="/usr/sbin/secubox-log"
+
+secubox_log() {
+	[ -x "$SECCUBOX_LOG" ] || return
+	"$SECCUBOX_LOG" --tag "security-threats" --message "$1" >/dev/null 2>&1
+}
+
+# Initialize storage
+init_storage() {
+	[ ! -f "$HISTORY_FILE" ] && echo '[]' > "$HISTORY_FILE"
+}
+
+# ==============================================================================
+# DATA COLLECTION
+# ==============================================================================
+
+# Get netifyd flows (socket first, fallback to file)
+get_netifyd_flows() {
+	if [ -S /var/run/netifyd/netifyd.sock ]; then
+		echo "status" | nc -U /var/run/netifyd/netifyd.sock 2>/dev/null
+	elif [ -f /var/run/netifyd/status.json ]; then
+		cat /var/run/netifyd/status.json
+	else
+		echo '{}'
+	fi
+}
+
+# Filter flows with security risks
+filter_risky_flows() {
+	local flows="$1"
+	# Extract flows with risks[] array (length > 0)
+	echo "$flows" | jq -c '.flows[]? | select(.risks != null and (.risks | length) > 0)' 2>/dev/null
+}
+
+# Get CrowdSec decisions (active bans)
+get_crowdsec_decisions() {
+	[ ! -x "$CSCLI" ] && echo '[]' && return
+	$CSCLI decisions list -o json 2>/dev/null || echo '[]'
+}
+
+# Get CrowdSec alerts (recent detections)
+get_crowdsec_alerts() {
+	[ ! -x "$CSCLI" ] && echo '[]' && return
+	$CSCLI alerts list -o json --limit 100 2>/dev/null || echo '[]'
+}
+
+# ==============================================================================
+# CLASSIFICATION
+# ==============================================================================
+
+# Classify netifyd risk by category
+classify_netifyd_risk() {
+	local risk_name="$1"
+
+	# Map ND_RISK_* to categories
+	case "$risk_name" in
+		*MALICIOUS_JA3*|*SUSPICIOUS_DGA*|*SUSPICIOUS_ENTROPY*|*POSSIBLE_EXPLOIT*|*PERIODIC_FLOW*)
+			echo "malware";;
+		*SQL_INJECTION*|*XSS*|*RCE_INJECTION*|*HTTP_SUSPICIOUS*)
+			echo "web_attack";;
+		*DNS_FRAGMENTED*|*DNS_LARGE_PACKET*|*DNS_SUSPICIOUS*|*RISKY_ASN*|*RISKY_DOMAIN*|*UNIDIRECTIONAL*|*MALFORMED_PACKET*)
+			echo "anomaly";;
+		*BitTorrent*|*Mining*|*Tor*|*PROXY*|*SOCKS*)
+			echo "protocol";;
+		*TLS_*|*CERTIFICATE_*)
+			echo "tls_issue";;
+		*)
+			echo "other";;
+	esac
+}
+
+# Calculate risk score (0-100)
+calculate_risk_score() {
+	local risk_count="$1"
+	local has_crowdsec="$2"
+	local risk_types="$3"  # comma-separated
+
+	local score=$((risk_count * 10))  # Base: 10 per risk
+	[ "$score" -gt 50 ] && score=50    # Cap base at 50
+
+	# Severity weights
+	echo "$risk_types" | grep -q "MALICIOUS_JA3\|SUSPICIOUS_DGA\|POSSIBLE_EXPLOIT" && score=$((score + 20))
+	echo "$risk_types" | grep -q "SQL_INJECTION\|XSS\|RCE" && score=$((score + 15))
+	echo "$risk_types" | grep -q "RISKY_ASN\|RISKY_DOMAIN" && score=$((score + 10))
+	echo "$risk_types" | grep -q "BitTorrent\|Mining\|Tor" && score=$((score + 5))
+
+	# CrowdSec correlation bonus
+	[ "$has_crowdsec" = "1" ] && score=$((score + 30))
+
+	# Cap at 100
+	[ "$score" -gt 100 ] && score=100
+	echo "$score"
+}
+
+# Determine severity level
+get_threat_severity() {
+	local score="$1"
+	if [ "$score" -ge 80 ]; then
+		echo "critical"
+	elif [ "$score" -ge 60 ]; then
+		echo "high"
+	elif [ "$score" -ge 40 ]; then
+		echo "medium"
+	else
+		echo "low"
+	fi
+}
+
+# ==============================================================================
+# CORRELATION ENGINE
+# ==============================================================================
+
+# Correlate netifyd risks with CrowdSec data
+correlate_threats() {
+	local netifyd_flows="$1"
+	local crowdsec_decisions="$2"
+	local crowdsec_alerts="$3"
+
+	# Create lookup tables with jq
+	local decisions_by_ip=$(echo "$crowdsec_decisions" | jq -c 'INDEX(.value)' 2>/dev/null || echo '{}')
+	local alerts_by_ip=$(echo "$crowdsec_alerts" | jq -c 'group_by(.source.ip) | map({(.[0].source.ip): .}) | add // {}' 2>/dev/null || echo '{}')
+
+	# Process each risky flow
+	echo "$netifyd_flows" | while read -r flow; do
+		[ -z "$flow" ] && continue
+
+		local ip=$(echo "$flow" | jq -r '.src_ip // "unknown"')
+		[ "$ip" = "unknown" ] && continue
+
+		local mac=$(echo "$flow" | jq -r '.src_mac // "N/A"')
+		local risks=$(echo "$flow" | jq -r '.risks | map(tostring) | join(",")' 2>/dev/null || echo "")
+		local risk_count=$(echo "$flow" | jq '.risks | length' 2>/dev/null || echo 0)
+
+		# Lookup CrowdSec data
+		local decision=$(echo "$decisions_by_ip" | jq -c ".[\"$ip\"] // null")
+		local has_decision=$([[ "$decision" != "null" ]] && echo 1 || echo 0)
+		local alert=$(echo "$alerts_by_ip" | jq -c ".[\"$ip\"] // null")
+
+		# Calculate metrics
+		local risk_score=$(calculate_risk_score "$risk_count" "$has_decision" "$risks")
+		local severity=$(get_threat_severity "$risk_score")
+		local first_risk=$(echo "$risks" | cut -d, -f1)
+		local category=$(classify_netifyd_risk "$first_risk")
+
+		# Build unified threat JSON
+		jq -n \
+			--arg ip "$ip" \
+			--arg mac "$mac" \
+			--arg timestamp "$(date -Iseconds)" \
+			--argjson score "$risk_score" \
+			--arg severity "$severity" \
+			--arg category "$category" \
+			--argjson netifyd "$(echo "$flow" | jq '{
+				application: .detected_application // "unknown",
+				protocol: .detected_protocol // "unknown",
+				risks: [.risks[] | tostring],
+				risk_count: (.risks | length),
+				bytes: .total_bytes // 0,
+				packets: .total_packets // 0
+			}')" \
+			--argjson crowdsec "$(jq -n \
+				--argjson decision "$decision" \
+				--argjson alert "$alert" \
+				'{
+					has_decision: ($decision != null),
+					decision: $decision,
+					has_alert: ($alert != null),
+					alert_count: (if $alert != null then ($alert | length) else 0 end),
+					scenarios: (if $alert != null then ($alert | map(.scenario) | join(",")) else "" end)
+				}')" \
+			'{
+				ip: $ip,
+				mac: $mac,
+				timestamp: $timestamp,
+				risk_score: $score,
+				severity: $severity,
+				category: $category,
+				netifyd: $netifyd,
+				crowdsec: $crowdsec
+			}' 2>/dev/null
+	done
+}
+
+# ==============================================================================
+# AUTO-BLOCKING
+# ==============================================================================
+
+# Execute block via CrowdSec
+execute_block() {
+	local ip="$1"
+	local duration="$2"
+	local reason="$3"
+
+	[ ! -x "$CSCLI" ] && return 1
+
+	# Call cscli to add decision
+	if $CSCLI decisions add --ip "$ip" --duration "$duration" --reason "$reason" >/dev/null 2>&1; then
+		secubox_log "Auto-blocked $ip for $duration ($reason)"
+		return 0
+	else
+		return 1
+	fi
+}
+
+# Check single rule match
+check_rule_match() {
+	local section="$1"
+	local threat_category="$2"
+	local threat_risks="$3"
+	local threat_score="$4"
+	local threat_ip="$5"
+
+	local enabled=$(uci -q get "secubox_security_threats.${section}.enabled")
+	[ "$enabled" != "1" ] && return 1
+
+	local rule_types=$(uci -q get "secubox_security_threats.${section}.threat_types")
+	echo "$rule_types" | grep -qw "$threat_category" || return 1
+
+	local threshold=$(uci -q get "secubox_security_threats.${section}.threshold" 2>/dev/null || echo 1)
+	[ "$threat_score" -lt "$threshold" ] && return 1
+
+	# Rule matched - execute block
+	local duration=$(uci -q get "secubox_security_threats.${section}.duration" || echo "4h")
+	local name=$(uci -q get "secubox_security_threats.${section}.name" || echo "Security threat")
+
+	execute_block "$threat_ip" "$duration" "Auto-blocked: $name"
+	return $?
+}
+
+# Check if threat should be auto-blocked
+check_block_rules() {
+	local threat="$1"
+
+	local ip=$(echo "$threat" | jq -r '.ip')
+	local category=$(echo "$threat" | jq -r '.category')
+	local score=$(echo "$threat" | jq -r '.risk_score')
+	local risks=$(echo "$threat" | jq -r '.netifyd.risks | join(",")')
+
+	# Check whitelist first
+	local whitelist_section="whitelist_${ip//./_}"
+	uci -q get "secubox_security_threats.${whitelist_section}" >/dev/null 2>&1 && return 1
+
+	# Check if auto-blocking is enabled globally
+	local auto_block_enabled=$(uci -q get secubox_security_threats.global.auto_block_enabled 2>/dev/null || echo 1)
+	[ "$auto_block_enabled" != "1" ] && return 1
+
+	# Iterate block rules from UCI
+	config_load secubox_security_threats
+	config_foreach check_rule_match block_rule "$category" "$risks" "$score" "$ip"
+}
+
+# ==============================================================================
+# STATISTICS
+# ==============================================================================
+
+# Get stats by type (category)
+get_stats_by_type() {
+	local threats="$1"
+
+	echo "$threats" | jq -s '{
+		malware: [.[] | select(.category == "malware")] | length,
+		web_attack: [.[] | select(.category == "web_attack")] | length,
+		anomaly: [.[] | select(.category == "anomaly")] | length,
+		protocol: [.[] | select(.category == "protocol")] | length,
+		tls_issue: [.[] | select(.category == "tls_issue")] | length,
+		other: [.[] | select(.category == "other")] | length
+	}' 2>/dev/null
+}
+
+# Get stats by host (IP)
+get_stats_by_host() {
+	local threats="$1"
+
+	echo "$threats" | jq -s 'group_by(.ip) | map({
+		ip: .[0].ip,
+		mac: .[0].mac,
+		threat_count: length,
+		avg_risk_score: (map(.risk_score) | add / length | floor),
+		highest_severity: (map(.severity) | sort | reverse | .[0]),
+		first_seen: (map(.timestamp) | sort | .[0]),
+		last_seen: (map(.timestamp) | sort | reverse | .[0]),
+		categories: (map(.category) | unique | join(","))
+	})' 2>/dev/null
+}
+
+# ==============================================================================
+# UBUS INTERFACE
+# ==============================================================================
+
+case "$1" in
+	list)
+		# List available methods
+		json_init
+		json_add_object "status"
+		json_close_object
+		json_add_object "get_active_threats"
+		json_close_object
+		json_add_object "get_threat_history"
+			json_add_string "hours" "int"
+		json_close_object
+		json_add_object "get_stats_by_type"
+		json_close_object
+		json_add_object "get_stats_by_host"
+		json_close_object
+		json_add_object "get_blocked_ips"
+		json_close_object
+		json_add_object "block_threat"
+			json_add_string "ip" "string"
+			json_add_string "duration" "string"
+			json_add_string "reason" "string"
+		json_close_object
+		json_add_object "whitelist_host"
+			json_add_string "ip" "string"
+			json_add_string "reason" "string"
+		json_close_object
+		json_add_object "remove_whitelist"
+			json_add_string "ip" "string"
+		json_close_object
+		json_dump
+		;;
+
+	call)
+		case "$2" in
+			status)
+				json_init
+				json_add_boolean "enabled" 1
+				json_add_string "module" "secubox-security-threats"
+				json_add_string "version" "1.0.0"
+				json_add_boolean "netifyd_running" $(pgrep -x netifyd >/dev/null && echo 1 || echo 0)
+				json_add_boolean "crowdsec_running" $(pgrep crowdsec >/dev/null && echo 1 || echo 0)
+				json_add_boolean "cscli_available" $([ -x "$CSCLI" ] && echo 1 || echo 0)
+				json_dump
+				;;
+
+			get_active_threats)
+				# Main correlation workflow
+				local netifyd_data=$(get_netifyd_flows)
+				local risky_flows=$(filter_risky_flows "$netifyd_data")
+
+				# Only fetch CrowdSec data if available
+				local decisions='[]'
+				local alerts='[]'
+				if [ -x "$CSCLI" ]; then
+					decisions=$(get_crowdsec_decisions)
+					alerts=$(get_crowdsec_alerts)
+				fi
+
+				# Correlate threats
+				local threats=$(correlate_threats "$risky_flows" "$decisions" "$alerts")
+
+				# Check auto-block rules for each threat
+				if [ -n "$threats" ]; then
+					echo "$threats" | while read -r threat; do
+						[ -z "$threat" ] && continue
+						check_block_rules "$threat" >/dev/null 2>&1 || true
+					done
+				fi
+
+				# Output as JSON array
+				json_init
+				json_add_array "threats"
+				if [ -n "$threats" ]; then
+					echo "$threats" | jq -s 'sort_by(.risk_score) | reverse' | jq -c '.[]' | while read -r threat; do
+						echo "$threat"
+					done
+				fi
+				json_close_array
+				json_dump
+				;;
+
+			get_threat_history)
+				read -r input
+				json_load "$input"
+				json_get_var hours hours
+				hours=${hours:-24}
+
+				init_storage
+
+				# Filter history by time
+				local cutoff_time=$(date -d "$hours hours ago" -Iseconds 2>/dev/null || date -Iseconds)
+
+				json_init
+				json_add_array "threats"
+				if [ -f "$HISTORY_FILE" ]; then
+					jq -c --arg cutoff "$cutoff_time" '.[] | select(.timestamp >= $cutoff)' "$HISTORY_FILE" 2>/dev/null | while read -r threat; do
+						echo "$threat"
+					done
+				fi
+				json_close_array
+				json_dump
+				;;
+
+			get_stats_by_type)
+				local netifyd_data=$(get_netifyd_flows)
+				local risky_flows=$(filter_risky_flows "$netifyd_data")
+				local decisions=$(get_crowdsec_decisions)
+				local alerts=$(get_crowdsec_alerts)
+				local threats=$(correlate_threats "$risky_flows" "$decisions" "$alerts")
+
+				local stats=$(get_stats_by_type "$threats")
+
+				echo "$stats"
+				;;
+
+			get_stats_by_host)
+				local netifyd_data=$(get_netifyd_flows)
+				local risky_flows=$(filter_risky_flows "$netifyd_data")
+				local decisions=$(get_crowdsec_decisions)
+				local alerts=$(get_crowdsec_alerts)
+				local threats=$(correlate_threats "$risky_flows" "$decisions" "$alerts")
+
+				json_init
+				json_add_array "hosts"
+				if [ -n "$threats" ]; then
+					get_stats_by_host "$threats" | jq -c '.[]' | while read -r host; do
+						echo "$host"
+					done
+				fi
+				json_close_array
+				json_dump
+				;;
+
+			get_blocked_ips)
+				if [ -x "$CSCLI" ]; then
+					local decisions=$(get_crowdsec_decisions)
+					echo "{\"blocked\":$decisions}"
+				else
+					echo '{"blocked":[]}'
+				fi
+				;;
+
+			block_threat)
+				read -r input
+				json_load "$input"
+				json_get_var ip ip
+				json_get_var duration duration
+				json_get_var reason reason
+
+				if [ -z "$ip" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "IP address required"
+					json_dump
+					exit 0
+				fi
+
+				duration=${duration:-4h}
+				reason=${reason:-"Manual block from Security Threats Dashboard"}
+
+				if execute_block "$ip" "$duration" "$reason"; then
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "IP $ip blocked for $duration"
+					json_dump
+				else
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "Failed to block IP (check if CrowdSec is running)"
+					json_dump
+				fi
+				;;
+
+			whitelist_host)
+				read -r input
+				json_load "$input"
+				json_get_var ip ip
+				json_get_var reason reason
+
+				if [ -z "$ip" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "IP address required"
+					json_dump
+					exit 0
+				fi
+
+				reason=${reason:-"Whitelisted from Security Threats Dashboard"}
+				local section="whitelist_${ip//./_}"
+
+				uci set "secubox_security_threats.${section}=whitelist"
+				uci set "secubox_security_threats.${section}.ip=$ip"
+				uci set "secubox_security_threats.${section}.reason=$reason"
+				uci set "secubox_security_threats.${section}.added_at=$(date -Iseconds)"
+				uci commit secubox_security_threats
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "IP $ip added to whitelist"
+				json_dump
+				;;
+
+			remove_whitelist)
+				read -r input
+				json_load "$input"
+				json_get_var ip ip
+
+				if [ -z "$ip" ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "IP address required"
+					json_dump
+					exit 0
+				fi
+
+				local section="whitelist_${ip//./_}"
+				uci delete "secubox_security_threats.${section}" 2>/dev/null
+				uci commit secubox_security_threats
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "IP $ip removed from whitelist"
+				json_dump
+				;;
+
+			*)
+				json_init
+				json_add_boolean "error" 1
+				json_add_string "message" "Unknown method: $2"
+				json_dump
+				;;
+		esac
+		;;
+esac

@@ -15,14 +15,18 @@ return view.extend({
 		var snapshot = DataUtils.normalizeHealth(health);
 		this.currentHealth = snapshot;
 
-		var container = E('div', { 'class': 'secubox-health' }, [
+		var container = E('div', { 'class': 'cyberpunk-mode secubox-health' }, [
+			E('link', { 'rel': 'stylesheet', 'type': 'text/css',
+				'href': L.resource('secubox-admin/cyberpunk.css') + '?v=' + Date.now() }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/admin.css') }),
 
-			E('h2', {}, 'System Health'),
-			E('p', {}, 'Monitor system resources and performance'),
+			E('div', { 'class': 'cyber-header' }, [
+				E('div', { 'class': 'cyber-header-title' }, '💊 SYSTEM HEALTH'),
+				E('div', { 'class': 'cyber-header-subtitle' }, 'Monitor system resources and performance')
+			]),
 
 			E('div', { 'class': 'health-cards' }, [
 				this.renderMetricCard('CPU Usage', snapshot.cpuUsage || 0, '%', 'cpu'),

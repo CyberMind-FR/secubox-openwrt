@@ -86,6 +86,8 @@ return view.extend({
 		console.log('[UPDATES-DEBUG] ========== RENDER PROCESSING ==========');
 
 		var container = E('div', { 'class': 'cyberpunk-mode secubox-updates' }, [
+			E('link', { 'rel': 'stylesheet', 'type': 'text/css',
+				'href': L.resource('secubox-admin/cyberpunk.css') + '?v=' + Date.now() }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',

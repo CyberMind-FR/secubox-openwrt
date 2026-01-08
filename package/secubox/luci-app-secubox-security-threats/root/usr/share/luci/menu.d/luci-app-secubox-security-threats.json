@@ -1,0 +1,20 @@
+{
+	"admin/secubox/security/threats": {
+		"title": "Threat Monitor",
+		"order": 15,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-secubox-security-threats"]
+		}
+	},
+	"admin/secubox/security/threats/dashboard": {
+		"title": "Dashboard",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "secubox-security-threats/dashboard"
+		}
+	}
+}

@@ -864,6 +864,52 @@ case "$1" in
 					if [ "$widget_enabled" = "true" ]; then
 						json_add_boolean "widget_enabled" true
 
+						# Get version information from catalog
+						catalog_version=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].version" 2>/dev/null)
+						pkg_version=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].pkg_version" 2>/dev/null)
+
+						[ -n "$catalog_version" ] && json_add_string "catalog_version" "$catalog_version"
+						[ -n "$pkg_version" ] && json_add_string "pkg_version" "$pkg_version"
+
+						# Get installed version from opkg
+						installed_version=""
+						if [ -n "$pkg_version" ]; then
+							package_name=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].packages.required[0]" 2>/dev/null)
+							if [ -n "$package_name" ]; then
+								installed_version=$(opkg info "$package_name" 2>/dev/null | awk '/^Version:/ {print $2}')
+							fi
+						fi
+						[ -n "$installed_version" ] && json_add_string "installed_version" "$installed_version"
+
+						# Check if installed and running
+						json_add_boolean "installed" false
+						json_add_boolean "running" false
+						json_add_string "status" "unknown"
+
+						# Check installation status via ubus
+						if command -v ubus >/dev/null 2>&1; then
+							modules_json=$(ubus call luci.secubox get_modules 2>/dev/null)
+							if [ -n "$modules_json" ]; then
+								package_name=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@.id='$app_id'].packages.required[0]" 2>/dev/null)
+								if [ -n "$package_name" ]; then
+									module_enabled=$(echo "$modules_json" | jsonfilter -e "@.modules['$package_name'].enabled" 2>/dev/null)
+									module_running=$(echo "$modules_json" | jsonfilter -e "@.modules['$package_name'].running" 2>/dev/null)
+
+									[ "$module_enabled" = "true" ] && json_add_boolean "installed" true
+									[ "$module_running" = "true" ] && json_add_boolean "running" true
+
+									# Set status based on state
+									if [ "$module_running" = "true" ]; then
+										json_add_string "status" "running"
+									elif [ "$module_enabled" = "true" ]; then
+										json_add_string "status" "stopped"
+									else
+										json_add_string "status" "not_installed"
+									fi
+								fi
+							fi
+						fi
+
 						# Get metrics from catalog definition
 						# This would call app-specific data sources (ubus, files, etc.)
 						# For now, return placeholder structure

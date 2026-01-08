@@ -1,0 +1,42 @@
+{
+	"luci-app-secubox-security-threats": {
+		"description": "Grant access to SecuBox Security Threats Dashboard",
+		"read": {
+			"ubus": {
+				"luci.secubox-security-threats": [
+					"status",
+					"get_active_threats",
+					"get_threat_history",
+					"get_stats_by_type",
+					"get_stats_by_host",
+					"get_blocked_ips"
+				],
+				"luci.crowdsec-dashboard": [
+					"decisions",
+					"alerts",
+					"status"
+				],
+				"luci.netifyd-dashboard": [
+					"status",
+					"get_flows",
+					"get_devices"
+				]
+			},
+			"uci": ["secubox_security_threats", "netifyd", "crowdsec"]
+		},
+		"write": {
+			"ubus": {
+				"luci.secubox-security-threats": [
+					"block_threat",
+					"whitelist_host",
+					"remove_whitelist"
+				],
+				"luci.crowdsec-dashboard": [
+					"ban",
+					"unban"
+				]
+			},
+			"uci": ["secubox_security_threats"]
+		}
+	}
+}

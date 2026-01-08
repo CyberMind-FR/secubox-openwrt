@@ -105,6 +105,8 @@ return view.extend({
 		});
 
 		var container = E('div', { 'class': 'cyberpunk-mode secubox-apps-manager' }, [
+			E('link', { 'rel': 'stylesheet', 'type': 'text/css',
+				'href': L.resource('secubox-admin/cyberpunk.css') + '?v=' + Date.now() }),
 			E('link', { 'rel': 'stylesheet',
 				'href': L.resource('secubox-admin/common.css') }),
 			E('link', { 'rel': 'stylesheet',
@@ -371,9 +373,9 @@ return view.extend({
 				E('div', { 'class': 'cyber-featured-app-tags' },
 					(app.tags || []).slice(0, 2).map(function(tag) {
 						return E('span', { 'class': 'cyber-featured-app-tag' }, tag);
-					})
+					}).filter(Boolean)
 				),
-				E('div', { 'class': 'cyber-featured-app-action' }, [
+				E('div', { 'class': 'cyber-featured-app-action' },
 					isInstalled ? [
 						E('span', { 'style': 'color: var(--cyber-success);' }, '✓ Installed'),
 						' → ',
@@ -388,7 +390,7 @@ return view.extend({
 						E('span', {}, 'Install now'),
 						' →'
 					]
-				])
+				)
 			])
 		]);
 	},

@@ -1,0 +1,59 @@
+# SecuBox Security Threats Dashboard Configuration
+# Auto-blocking rules and whitelist configuration
+
+config global 'global'
+	option enabled '1'
+	option history_retention_days '7'
+	option refresh_interval '10'
+	option auto_block_enabled '1'
+	option log_threats '1'
+
+# High-priority: Block malware indicators
+config block_rule 'malware_high'
+	option name 'Block Malware Indicators'
+	option enabled '1'
+	option threat_types 'malware'
+	option risk_flags 'MALICIOUS_JA3,SUSPICIOUS_DGA_DOMAIN,SUSPICIOUS_ENTROPY,POSSIBLE_EXPLOIT'
+	option action 'ban'
+	option duration '24h'
+	option threshold '60'
+	option description 'Automatically block hosts with malware signatures (JA3, DGA domains, suspicious entropy)'
+
+# Medium-priority: Block web attacks
+config block_rule 'web_attacks'
+	option name 'Block Web Attacks'
+	option enabled '1'
+	option threat_types 'web_attack'
+	option risk_flags 'URL_POSSIBLE_SQL_INJECTION,URL_POSSIBLE_XSS,URL_POSSIBLE_RCE_INJECTION'
+	option action 'ban'
+	option duration '12h'
+	option threshold '40'
+	option description 'Block SQL injection, XSS, and RCE attempts'
+
+# Low-priority: Block protocol threats (disabled by default)
+config block_rule 'protocol_threats'
+	option name 'Block Unauthorized Protocols'
+	option enabled '0'
+	option threat_types 'protocol'
+	option risk_flags ''
+	option action 'ban'
+	option duration '4h'
+	option threshold '20'
+	option description 'Block unauthorized protocols like BitTorrent, Mining, Tor (disabled by default)'
+
+# Network anomalies (disabled by default - may generate false positives)
+config block_rule 'network_anomalies'
+	option name 'Block Network Anomalies'
+	option enabled '0'
+	option threat_types 'anomaly'
+	option risk_flags 'RISKY_ASN,RISKY_DOMAIN,DNS_SUSPICIOUS_TRAFFIC'
+	option action 'ban'
+	option duration '6h'
+	option threshold '50'
+	option description 'Block connections from risky ASNs/domains and suspicious DNS traffic'
+
+# Example whitelist entry (commented out)
+# config whitelist 'admin_workstation'
+# 	option ip '192.168.1.100'
+# 	option reason 'Admin workstation - never block'
+# 	option added_at '2026-01-07T15:00:00Z'
