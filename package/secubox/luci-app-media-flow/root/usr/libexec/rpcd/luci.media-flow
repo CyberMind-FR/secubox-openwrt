@@ -1,6 +1,8 @@
 #!/bin/sh
 # RPCD backend for Media Flow
 # Provides ubus interface: luci.media-flow
+# Note: netifyd 5.x does not export per-flow application data locally
+# This module shows available network statistics from netifyd
 
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
@@ -14,42 +16,6 @@ init_storage() {
 	[ ! -f "$HISTORY_FILE" ] && echo '[]' > "$HISTORY_FILE"
 }
 
-# Streaming services patterns
-STREAMING_VIDEO="netflix|youtube|disney|primevideo|amazon.*video|twitch|hulu|hbo|vimeo|peacock|paramount|crunchyroll|funimation"
-STREAMING_AUDIO="spotify|apple.*music|deezer|soundcloud|tidal|pandora|amazon.*music|youtube.*music"
-STREAMING_VISIO="zoom|teams|meet|discord|skype|webex|facetime|whatsapp"
-
-# Detect if application is a streaming service
-is_streaming_service() {
-	local app="$1"
-	echo "$app" | grep -qiE "$STREAMING_VIDEO|$STREAMING_AUDIO|$STREAMING_VISIO"
-}
-
-# Get service category
-get_service_category() {
-	local app="$1"
-	echo "$app" | grep -qiE "$STREAMING_VIDEO" && echo "video" && return
-	echo "$app" | grep -qiE "$STREAMING_AUDIO" && echo "audio" && return
-	echo "$app" | grep -qiE "$STREAMING_VISIO" && echo "visio" && return
-	echo "other"
-}
-
-# Estimate quality based on bandwidth (kbps)
-estimate_quality() {
-	local bandwidth="$1"
-	[ -z "$bandwidth" ] && bandwidth=0
-
-	if [ "$bandwidth" -lt 1000 ] 2>/dev/null; then
-		echo "SD"
-	elif [ "$bandwidth" -lt 3000 ] 2>/dev/null; then
-		echo "HD"
-	elif [ "$bandwidth" -lt 8000 ] 2>/dev/null; then
-		echo "FHD"
-	else
-		echo "4K"
-	fi
-}
-
 # Get netifyd status data
 get_netifyd_data() {
 	if [ -f /var/run/netifyd/status.json ]; then
@@ -59,39 +25,32 @@ get_netifyd_data() {
 	fi
 }
 
-# Build active streams JSON array
-build_active_streams_json() {
-	local netifyd_data="$1"
-	local result="[]"
+# Build network stats from netifyd status.json
+build_network_stats_json() {
+	netifyd_data="$1"
 
-	# Extract flows from netifyd data
-	local flows=$(echo "$netifyd_data" | jq -c '.flows // []' 2>/dev/null)
-	[ -z "$flows" ] || [ "$flows" = "null" ] && flows="[]"
-
-	# Process each flow and filter streaming services
-	result=$(echo "$flows" | jq -c '
-		[.[] | select(.detected_application != null and .detected_application != "") |
-		select(.detected_application | test("netflix|youtube|disney|primevideo|amazon.*video|twitch|hulu|hbo|vimeo|spotify|apple.*music|deezer|soundcloud|tidal|zoom|teams|meet|discord|skype|webex"; "i")) |
-		{
-			application: .detected_application,
-			client_ip: (.local_ip // .src_ip // "unknown"),
-			server_ip: (.other_ip // .dst_ip // "unknown"),
-			total_bytes: (.total_bytes // 0),
-			total_packets: (.total_packets // 0),
-			bandwidth_kbps: (if .total_packets > 0 then ((.total_bytes * 8) / 1000 / (if .duration > 0 then .duration else 1 end)) else 0 end | floor),
-			category: (if (.detected_application | test("netflix|youtube|disney|primevideo|twitch|hulu|hbo|vimeo"; "i")) then "video"
-				elif (.detected_application | test("spotify|apple.*music|deezer|soundcloud|tidal"; "i")) then "audio"
-				elif (.detected_application | test("zoom|teams|meet|discord|skype|webex"; "i")) then "visio"
-				else "other" end),
-			quality: (if .total_packets > 0 then
-				(if ((.total_bytes * 8) / 1000 / (if .duration > 0 then .duration else 1 end)) < 1000 then "SD"
-				elif ((.total_bytes * 8) / 1000 / (if .duration > 0 then .duration else 1 end)) < 3000 then "HD"
-				elif ((.total_bytes * 8) / 1000 / (if .duration > 0 then .duration else 1 end)) < 8000 then "FHD"
-				else "4K" end)
-				else "SD" end)
-		}]' 2>/dev/null) || result="[]"
-
-	echo "$result"
+	# Extract interface stats from netifyd
+	echo "$netifyd_data" | jq -c '{
+		interfaces: (if .stats then
+			[.stats | to_entries[] | {
+				name: .key,
+				rx_bytes: (.value.ip_bytes // 0),
+				tx_bytes: (.value.wire_bytes // 0),
+				rx_packets: (.value.ip // 0),
+				tx_packets: (.value.raw // 0),
+				tcp: (.value.tcp // 0),
+				udp: (.value.udp // 0),
+				icmp: (.value.icmp // 0)
+			}]
+		else [] end),
+		flows_active: (.flows_active // 0),
+		flow_count: (.flow_count // 0),
+		uptime: (.uptime // 0),
+		agent_version: (.agent_version // 0),
+		cpu_system: (.cpu_system // 0),
+		cpu_user: (.cpu_user // 0),
+		memrss_kb: (.memrss_kb // 0)
+	}' 2>/dev/null || echo '{"interfaces":[],"flows_active":0,"flow_count":0,"uptime":0,"agent_version":0}'
 }
 
 case "$1" in
@@ -100,6 +59,7 @@ case "$1" in
 		{
 			"status": {},
 			"get_active_streams": {},
+			"get_network_stats": {},
 			"get_stream_history": {"hours": 24},
 			"get_stats_by_service": {},
 			"get_stats_by_client": {},
@@ -123,16 +83,17 @@ case "$1" in
 				pgrep netifyd > /dev/null 2>&1 && netifyd_running=1
 
 				netifyd_data=$(get_netifyd_data)
-				active_count=0
+				flow_count=0
+				netifyd_version="unknown"
 
-				if [ "$netifyd_running" = "1" ] && [ -n "$netifyd_data" ]; then
-					active_count=$(build_active_streams_json "$netifyd_data" | jq 'length' 2>/dev/null || echo 0)
+				if [ "$netifyd_running" = "1" ] && [ -n "$netifyd_data" ] && [ "$netifyd_data" != "{}" ]; then
+					flow_count=$(echo "$netifyd_data" | jq '.flows_active // .flow_count // 0' 2>/dev/null || echo 0)
+					netifyd_version=$(echo "$netifyd_data" | jq -r '.agent_version // "unknown"' 2>/dev/null || echo "unknown")
 				fi
 
 				history_count=0
 				[ -f "$HISTORY_FILE" ] && history_count=$(jq 'length' "$HISTORY_FILE" 2>/dev/null || echo 0)
 
-				# Get settings
 				enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
 				refresh=$(uci -q get media_flow.global.refresh_interval 2>/dev/null || echo "5")
 
@@ -140,11 +101,13 @@ case "$1" in
 				{
 					"enabled": $enabled,
 					"module": "media-flow",
-					"version": "0.5.0",
+					"version": "0.5.2",
 					"netifyd_running": $netifyd_running,
-					"active_streams": $active_count,
+					"netifyd_version": "$netifyd_version",
+					"active_flows": $flow_count,
 					"history_entries": $history_count,
-					"refresh_interval": $refresh
+					"refresh_interval": $refresh,
+					"note": "netifyd 5.x requires cloud subscription for streaming detection"
 				}
 				EOF
 				;;
@@ -153,11 +116,26 @@ case "$1" in
 				init_storage
 
 				netifyd_data=$(get_netifyd_data)
-				streams=$(build_active_streams_json "$netifyd_data")
+				flow_count=$(echo "$netifyd_data" | jq '.flows_active // .flow_count // 0' 2>/dev/null || echo 0)
 
+				# netifyd 5.x doesn't export application detection locally
+				# Return empty streams with explanation
 				cat <<-EOF
-				{"streams": $streams}
+				{
+					"streams": [],
+					"note": "Application detection requires netifyd cloud subscription",
+					"flow_count": $flow_count
+				}
 				EOF
+				;;
+
+			get_network_stats)
+				init_storage
+
+				netifyd_data=$(get_netifyd_data)
+				stats=$(build_network_stats_json "$netifyd_data")
+
+				echo "{\"stats\": $stats}"
 				;;
 
 			get_stream_history)
@@ -169,7 +147,6 @@ case "$1" in
 
 				history="[]"
 				if [ -f "$HISTORY_FILE" ]; then
-					# Get history (cutoff filtering done client-side for simplicity)
 					history=$(jq -c '.' "$HISTORY_FILE" 2>/dev/null || echo "[]")
 				fi
 
@@ -308,7 +285,7 @@ case "$1" in
 			list_alerts)
 				alerts="[]"
 
-				# Use jq to build the alerts array from UCI
+				# Build alerts array from UCI
 				alerts=$(uci show media_flow 2>/dev/null | grep "=alert$" | while read -r line; do
 					section=$(echo "$line" | cut -d. -f2 | cut -d= -f1)
 					svc=$(uci -q get "media_flow.${section}.service")

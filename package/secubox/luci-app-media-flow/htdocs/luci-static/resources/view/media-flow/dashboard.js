@@ -15,13 +15,13 @@ return L.view.extend({
 
 	render: function(data) {
 		var status = data[0] || {};
-		var activeStreams = data[1] || [];
+		var streamsData = data[1] || {};
 		var statsByService = data[2] || {};
 
 		var v = E('div', { 'class': 'cbi-map' }, [
-		E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('Media Flow Dashboard')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Real-time detection and monitoring of streaming services'))
+			E('div', { 'class': 'cbi-map-descr' }, _('Network flow monitoring and statistics'))
 		]);
 
 		// Status overview
@@ -35,85 +35,66 @@ return L.view.extend({
 					]),
 					E('div', { 'class': 'td left', 'width': '33%' }, [
 						E('strong', {}, _('Netifyd: ')),
-						E('span', {}, status.netifyd_running ? 
-							E('span', { 'style': 'color: green' }, '● ' + _('Running')) : 
+						E('span', {}, status.netifyd_running ?
+							E('span', { 'style': 'color: green' }, '● ' + _('Running') + ' (v' + (status.netifyd_version || '?') + ')') :
 							E('span', { 'style': 'color: red' }, '● ' + _('Stopped'))
 						)
 					]),
 					E('div', { 'class': 'td left', 'width': '33%' }, [
-						E('strong', {}, _('Active Streams: ')),
-						E('span', { 'style': 'font-size: 1.5em; color: #0088cc' }, String(status.active_streams || 0))
+						E('strong', {}, _('Active Flows: ')),
+						E('span', { 'style': 'font-size: 1.5em; color: #0088cc' }, String(status.active_flows || 0))
 					])
 				])
 			])
 		]);
 		v.appendChild(statusSection);
 
-		// Active streams
-		var activeSection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Active Streams')),
-			E('div', { 'id': 'active-streams-table' })
+		// Netifyd 5.x limitation notice
+		var noticeSection = E('div', { 'class': 'cbi-section' }, [
+			E('div', { 'class': 'alert-message warning', 'style': 'background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 4px; margin-bottom: 15px;' }, [
+				E('strong', {}, _('Notice: ')),
+				E('span', {}, _('Netifyd 5.x requires a cloud subscription for streaming service detection. Currently showing network flow statistics only.'))
+			])
+		]);
+		v.appendChild(noticeSection);
+
+		// Network flow stats
+		var flowSection = E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('Network Flows')),
+			E('div', { 'id': 'flow-stats-container' })
 		]);
 
-		var updateActiveStreams = function() {
-			API.getActiveStreams().then(function(streams) {
-				var table = E('table', { 'class': 'table' }, [
-					E('tr', { 'class': 'tr table-titles' }, [
-						E('th', { 'class': 'th' }, _('Service')),
-						E('th', { 'class': 'th' }, _('Category')),
-						E('th', { 'class': 'th' }, _('Client')),
-						E('th', { 'class': 'th' }, _('Quality')),
-						E('th', { 'class': 'th' }, _('Bandwidth'))
+		var updateFlowStats = function() {
+			API.getActiveStreams().then(function(data) {
+				var container = document.getElementById('flow-stats-container');
+				if (!container) return;
+
+				var flowCount = data.flow_count || 0;
+				var note = data.note || '';
+
+				container.innerHTML = '';
+				container.appendChild(E('div', { 'class': 'table', 'style': 'background: #f8f9fa; padding: 20px; border-radius: 8px;' }, [
+					E('div', { 'class': 'tr' }, [
+						E('div', { 'class': 'td', 'style': 'text-align: center;' }, [
+							E('div', { 'style': 'font-size: 3em; color: #0088cc; font-weight: bold;' }, String(flowCount)),
+							E('div', { 'style': 'color: #666; margin-top: 5px;' }, _('Active Network Flows'))
+						])
 					])
-				]);
+				]));
 
-				if (streams && streams.length > 0) {
-					streams.forEach(function(stream) {
-						var qualityColor = {
-							'SD': '#999',
-							'HD': '#0088cc',
-							'FHD': '#00cc00',
-							'4K': '#cc0000'
-						}[stream.quality] || '#666';
-
-						var categoryIcon = {
-							'video': '🎬',
-							'audio': '🎵',
-							'visio': '📹'
-						}[stream.category] || '📊';
-
-						table.appendChild(E('tr', { 'class': 'tr' }, [
-							E('td', { 'class': 'td' }, categoryIcon + ' ' + stream.application),
-							E('td', { 'class': 'td' }, stream.category),
-							E('td', { 'class': 'td' }, stream.client_ip),
-							E('td', { 'class': 'td' }, 
-								E('span', { 'style': 'color: ' + qualityColor + '; font-weight: bold' }, stream.quality)
-							),
-							E('td', { 'class': 'td' }, stream.bandwidth_kbps + ' kbps')
-						]));
-					});
-				} else {
-					table.appendChild(E('tr', { 'class': 'tr' }, [
-						E('td', { 'class': 'td', 'colspan': '5', 'style': 'text-align: center; font-style: italic' }, 
-							_('No active streams detected')
-						)
-					]));
-				}
-
-				var container = document.getElementById('active-streams-table');
-				if (container) {
-					container.innerHTML = '';
-					container.appendChild(table);
+				if (note) {
+					container.appendChild(E('p', { 'style': 'font-style: italic; color: #666; text-align: center; margin-top: 10px;' }, note));
 				}
 			});
 		};
 
-		updateActiveStreams();
-		v.appendChild(activeSection);
+		updateFlowStats();
+		v.appendChild(flowSection);
 
-		// Stats by service (donut chart + bars)
+		// Stats by service (from history)
 		var statsSection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Usage by Service')),
+			E('h3', {}, _('Historical Usage by Service')),
+			E('p', { 'style': 'color: #666; font-size: 0.9em;' }, _('Data collected from previous sessions (if available)')),
 			E('div', { 'style': 'display: flex; gap: 20px;' }, [
 				E('div', { 'style': 'flex: 0 0 300px;' }, [
 					E('canvas', {
@@ -205,7 +186,7 @@ return L.view.extend({
 
 				var servicesList = Object.keys(services);
 				if (servicesList.length === 0) {
-					container.appendChild(E('p', { 'style': 'font-style: italic' }, _('No historical data available')));
+					container.appendChild(E('p', { 'style': 'font-style: italic' }, _('No historical data available. Stream detection requires netifyd cloud subscription.')));
 					drawDonutChart({}, [], 0);
 					return;
 				}
@@ -265,7 +246,7 @@ return L.view.extend({
 
 		// Setup auto-refresh
 		poll.add(L.bind(function() {
-			updateActiveStreams();
+			updateFlowStats();
 			updateServiceStats();
 		}, this), 5);
 
