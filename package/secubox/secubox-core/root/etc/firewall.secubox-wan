@@ -1,0 +1,16 @@
+#!/bin/sh
+#
+# SecuBox WAN Access - Firewall Include Script
+# This script is called on every firewall reload to ensure WAN access rules persist
+#
+
+# Only run if secubox-wan-access exists
+[ -x /usr/sbin/secubox-wan-access ] || exit 0
+
+# Log the reload
+logger -t secubox-wan "Firewall reload detected - reapplying WAN access rules"
+
+# Apply WAN access rules from UCI config
+/usr/sbin/secubox-wan-access apply >/dev/null 2>&1
+
+exit 0

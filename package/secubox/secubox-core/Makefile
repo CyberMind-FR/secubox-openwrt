@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
 PKG_VERSION:=0.9.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
@@ -77,6 +77,13 @@ define Package/secubox-core/install
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-state $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-component $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-sync-registry $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-wan-access $(1)/usr/sbin/
+
+	# WAN Access persistence (firewall include + hotplug)
+	$(INSTALL_DIR) $(1)/etc
+	$(INSTALL_BIN) ./root/etc/firewall.secubox-wan $(1)/etc/
+	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
+	$(INSTALL_BIN) ./root/etc/hotplug.d/iface/99-secubox-wan $(1)/etc/hotplug.d/iface/
 
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.secubox $(1)/usr/libexec/rpcd/
@@ -132,6 +139,15 @@ EOF
 
 	# Register with rpcd
 	/etc/init.d/rpcd restart
+
+	# Setup firewall include for WAN access persistence (fw4 compatible)
+	if ! uci -q get firewall.secubox_wan_include >/dev/null 2>&1; then
+		uci set firewall.secubox_wan_include=include
+		uci set firewall.secubox_wan_include.path='/etc/firewall.secubox-wan'
+		uci set firewall.secubox_wan_include.type='script'
+		uci commit firewall
+		echo "SecuBox WAN access firewall include configured"
+	fi
 
 	# Sync component registry from catalog
 	if [ -x /usr/sbin/secubox-sync-registry ]; then

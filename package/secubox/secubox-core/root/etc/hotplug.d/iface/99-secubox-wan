@@ -1,0 +1,21 @@
+#!/bin/sh
+#
+# SecuBox WAN Access - Network Hotplug Script
+# Reapplies WAN access rules when WAN interface comes up
+#
+
+[ "$ACTION" = "ifup" ] || exit 0
+[ "$INTERFACE" = "wan" ] || [ "$INTERFACE" = "wan6" ] || exit 0
+
+# Only run if secubox-wan-access exists
+[ -x /usr/sbin/secubox-wan-access ] || exit 0
+
+logger -t secubox-wan "WAN interface $INTERFACE up - reapplying WAN access rules"
+
+# Small delay to ensure firewall is ready
+sleep 2
+
+# Apply WAN access rules
+/usr/sbin/secubox-wan-access apply >/dev/null 2>&1
+
+exit 0
