@@ -10,7 +10,7 @@
 return view.extend({
 	wizardData: {
 		currentStep: 1,
-		totalSteps: 6,
+		totalSteps: 7,
 
 		// Step 1 data
 		crowdsecRunning: false,
@@ -18,23 +18,29 @@ return view.extend({
 		lapiRepairing: false,
 		lapiRepairAttempted: false,
 
-		// Step 2 data
+		// Step 2 data (Console Enrollment)
+		consoleEnrolled: false,
+		enrolling: false,
+		enrollmentKey: '',
+		machineName: '',
+
+		// Step 3 data (Hub Update)
 		hubUpdating: false,
 		hubUpdated: false,
 
-		// Step 3 data
+		// Step 4 data (Collections)
 		collections: [],
 		installing: false,
 		installed: false,
 		installStatus: '',
 		installedCount: 0,
 
-		// Step 4 data
+		// Step 5 data (Bouncer)
 		configuring: false,
 		bouncerConfigured: false,
 		apiKey: '',
 
-		// Step 5 data
+		// Step 6 data (Services)
 		starting: false,
 		enabling: false,
 		enabled: false,
@@ -42,7 +48,7 @@ return view.extend({
 		nftablesActive: false,
 		lapiConnected: false,
 
-		// Step 6 data
+		// Step 7 data (Complete)
 		blockedIPs: 0,
 		activeDecisions: 0
 	},
@@ -50,14 +56,17 @@ return view.extend({
 	load: function() {
 		return Promise.all([
 			API.getStatus(),
-			API.checkWizardNeeded()
+			API.checkWizardNeeded(),
+			API.getConsoleStatus()
 		]).then(L.bind(function(results) {
 			var status = results[0];
 			var wizardNeeded = results[1];
+			var consoleStatus = results[2];
 
 			// Update wizard data from status
 			this.wizardData.crowdsecRunning = status && status.crowdsec === 'running';
 			this.wizardData.lapiAvailable = status && status.lapi_status === 'available';
+			this.wizardData.consoleEnrolled = consoleStatus && consoleStatus.enrolled;
 
 			// Auto-repair LAPI if CrowdSec is running but LAPI is not available
 			if (this.wizardData.crowdsecRunning && !this.wizardData.lapiAvailable && !this.wizardData.lapiRepairAttempted) {
@@ -78,6 +87,7 @@ return view.extend({
 							return {
 								status: newStatus,
 								wizardNeeded: wizardNeeded,
+								consoleStatus: consoleStatus,
 								repaired: true
 							};
 						}, this));
@@ -86,6 +96,7 @@ return view.extend({
 						return {
 							status: status,
 							wizardNeeded: wizardNeeded,
+							consoleStatus: consoleStatus,
 							repairFailed: true
 						};
 					}
@@ -94,12 +105,16 @@ return view.extend({
 
 			return {
 				status: status,
-				wizardNeeded: wizardNeeded
+				wizardNeeded: wizardNeeded,
+				consoleStatus: consoleStatus
 			};
 		}, this));
 	},
 
 	render: function(data) {
+		// Initialize theme
+		Theme.init();
+
 		// Load wizard CSS
 		var head = document.head || document.getElementsByTagName('head')[0];
 		var cssLink = E('link', {
@@ -108,6 +123,14 @@ return view.extend({
 			'href': L.resource('crowdsec-dashboard/wizard.css')
 		});
 		head.appendChild(cssLink);
+
+		// Load SecuBox theme CSS
+		var themeLink = E('link', {
+			'rel': 'stylesheet',
+			'type': 'text/css',
+			'href': L.resource('secubox-theme/secubox-theme.css')
+		});
+		head.appendChild(themeLink);
 
 		var container = E('div', { 'class': 'wizard-container' });
 
@@ -123,11 +146,12 @@ return view.extend({
 	createStepper: function() {
 		var steps = [
 			{ number: 1, title: _('Welcome') },
-			{ number: 2, title: _('Update Hub') },
-			{ number: 3, title: _('Install Packs') },
-			{ number: 4, title: _('Configure Bouncer') },
-			{ number: 5, title: _('Enable Services') },
-			{ number: 6, title: _('Complete') }
+			{ number: 2, title: _('Console') },
+			{ number: 3, title: _('Update Hub') },
+			{ number: 4, title: _('Install Packs') },
+			{ number: 5, title: _('Configure Bouncer') },
+			{ number: 6, title: _('Enable Services') },
+			{ number: 7, title: _('Complete') }
 		];
 
 		var stepper = E('div', { 'class': 'wizard-stepper' });
@@ -158,15 +182,17 @@ return view.extend({
 			case 1:
 				return this.renderStep1(data);
 			case 2:
-				return this.renderStep2(data);
+				return this.renderStep2Console(data);
 			case 3:
-				return this.renderStep3(data);
+				return this.renderStep3Hub(data);
 			case 4:
-				return this.renderStep4(data);
+				return this.renderStep4Collections(data);
 			case 5:
-				return this.renderStep5(data);
+				return this.renderStep5Bouncer(data);
 			case 6:
-				return this.renderStep6(data);
+				return this.renderStep6Services(data);
+			case 7:
+				return this.renderStep7Complete(data);
 			default:
 				return E('div', {}, _('Invalid step'));
 		}
@@ -225,18 +251,18 @@ return view.extend({
 					E('button', {
 						'class': 'cbi-button cbi-button-action',
 						'click': L.bind(this.handleManualRepair, this)
-					}, _('🔧 Retry Repair'))
+					}, _('Retry Repair'))
 				]) : E([]),
 
 			// Info box
 			E('div', { 'class': 'info-box' }, [
 				E('h4', {}, _('What will be configured:')),
 				E('ul', {}, [
+					E('li', {}, _('Enroll in CrowdSec Console for community blocklists')),
 					E('li', {}, _('Update CrowdSec hub with latest collections')),
 					E('li', {}, _('Install essential security scenarios')),
 					E('li', {}, _('Register and configure firewall bouncer')),
-					E('li', {}, _('Enable automatic IP blocking via nftables')),
-					E('li', {}, _('Start all services'))
+					E('li', {}, _('Enable automatic IP blocking via nftables'))
 				])
 			]),
 
@@ -257,12 +283,107 @@ return view.extend({
 						ev.stopPropagation();
 						this.goToStep(2);
 					}, this)
-				}, _('Next →'))
+				}, _('Next'))
 			])
 		]);
 	},
 
-	renderStep2: function(data) {
+	renderStep2Console: function(data) {
+		var consoleStatus = data && data.consoleStatus ? data.consoleStatus : {};
+		var enrolled = consoleStatus.enrolled || this.wizardData.consoleEnrolled;
+
+		return E('div', { 'class': 'wizard-step' }, [
+			E('h2', {}, _('CrowdSec Console Enrollment')),
+			E('p', {}, _('Connect to CrowdSec Console to receive community blocklists and monitor your security.')),
+
+			// Benefits
+			E('div', { 'class': 'info-box', 'style': 'margin-bottom: 24px;' }, [
+				E('h4', {}, _('Benefits of enrolling:')),
+				E('ul', {}, [
+					E('li', {}, _('Access to community-curated blocklists')),
+					E('li', {}, _('Real-time threat intelligence sharing')),
+					E('li', {}, _('Centralized monitoring dashboard')),
+					E('li', {}, _('Free tier available'))
+				])
+			]),
+
+			// Enrollment status
+			enrolled ?
+				E('div', { 'class': 'success-message', 'style': 'margin: 24px 0; padding: 16px; background: rgba(34, 197, 94, 0.15); border-radius: 8px;' }, [
+					E('span', { 'class': 'check-icon success', 'style': 'font-size: 24px; margin-right: 12px;' }, '✓'),
+					E('div', { 'style': 'display: inline-block;' }, [
+						E('strong', { 'style': 'display: block; color: #16a34a;' }, _('Already enrolled!')),
+						E('span', { 'style': 'color: #15803d; font-size: 0.9em;' },
+							_('Your instance is connected to CrowdSec Console'))
+					])
+				]) :
+				E('div', { 'class': 'enrollment-form', 'style': 'margin: 24px 0;' }, [
+					// Enrollment key input
+					E('div', { 'class': 'form-group', 'style': 'margin-bottom: 16px;' }, [
+						E('label', { 'style': 'display: block; margin-bottom: 8px; font-weight: 500;' },
+							_('Enrollment Key')),
+						E('input', {
+							'type': 'text',
+							'id': 'console-enrollment-key',
+							'class': 'cbi-input-text',
+							'placeholder': _('Paste your enrollment key from console.crowdsec.net'),
+							'style': 'width: 100%; padding: 12px; font-family: monospace;'
+						}),
+						E('p', { 'style': 'margin-top: 8px; color: var(--cyber-text-secondary, #666); font-size: 0.9em;' }, [
+							_('Get your key from '),
+							E('a', {
+								'href': 'https://app.crowdsec.net/security-engines',
+								'target': '_blank',
+								'style': 'color: var(--cyber-accent-primary, #667eea);'
+							}, 'app.crowdsec.net')
+						])
+					]),
+
+					// Machine name (optional)
+					E('div', { 'class': 'form-group', 'style': 'margin-bottom: 16px;' }, [
+						E('label', { 'style': 'display: block; margin-bottom: 8px; font-weight: 500;' },
+							_('Machine Name (optional)')),
+						E('input', {
+							'type': 'text',
+							'id': 'console-machine-name',
+							'class': 'cbi-input-text',
+							'placeholder': _('e.g., secubox-router'),
+							'style': 'width: 100%; padding: 12px;'
+						})
+					]),
+
+					// Enrolling status
+					this.wizardData.enrolling ?
+						E('div', { 'style': 'text-align: center; padding: 16px;' }, [
+							E('div', { 'class': 'spinning' }),
+							E('p', {}, _('Enrolling...'))
+						]) : E([]),
+
+					// Enroll button
+					E('button', {
+						'class': 'cbi-button cbi-button-action',
+						'style': 'width: 100%; padding: 12px; font-size: 1em;',
+						'disabled': this.wizardData.enrolling ? true : null,
+						'click': L.bind(this.handleConsoleEnroll, this)
+					}, _('Enroll in CrowdSec Console'))
+				]),
+
+			// Navigation
+			E('div', { 'class': 'wizard-nav' }, [
+				E('button', {
+					'class': 'cbi-button',
+					'click': L.bind(this.goToStep, this, 1)
+				}, _('Back')),
+				E('button', {
+					'class': 'cbi-button',
+					'click': L.bind(this.goToStep, this, 3),
+					'disabled': this.wizardData.enrolling ? true : null
+				}, enrolled ? _('Next') : _('Skip'))
+			])
+		]);
+	},
+
+	renderStep3Hub: function(data) {
 		return E('div', { 'class': 'wizard-step' }, [
 			E('h2', {}, _('Update CrowdSec Hub')),
 			E('p', {}, _('Fetching the latest security collections from CrowdSec hub...')),
@@ -282,13 +403,13 @@ return view.extend({
 			E('div', { 'class': 'wizard-nav' }, [
 				E('button', {
 					'class': 'cbi-button',
-					'click': L.bind(this.goToStep, this, 1)
-				}, _('← Back')),
+					'click': L.bind(this.goToStep, this, 2)
+				}, _('Back')),
 				this.wizardData.hubUpdated ?
 					E('button', {
 						'class': 'cbi-button cbi-button-positive',
-						'click': L.bind(this.goToStep, this, 3)
-					}, _('Next →')) :
+						'click': L.bind(this.goToStep, this, 4)
+					}, _('Next')) :
 					E('button', {
 						'class': 'cbi-button cbi-button-action',
 						'click': L.bind(this.handleUpdateHub, this)
@@ -297,7 +418,7 @@ return view.extend({
 		]);
 	},
 
-	renderStep3: function(data) {
+	renderStep4Collections: function(data) {
 		var recommendedCollections = [
 			{ name: 'crowdsecurity/linux', description: 'Base Linux scenarios', preselected: true },
 			{ name: 'crowdsecurity/ssh-bf', description: 'SSH brute force protection', preselected: true },
@@ -356,24 +477,24 @@ return view.extend({
 			E('div', { 'class': 'wizard-nav' }, [
 				E('button', {
 					'class': 'cbi-button',
-					'click': L.bind(this.goToStep, this, 2),
+					'click': L.bind(this.goToStep, this, 3),
 					'disabled': this.wizardData.installing ? true : null
-				}, _('← Back')),
+				}, _('Back')),
 				E('button', {
 					'class': 'cbi-button',
-					'click': L.bind(this.goToStep, this, 4),
+					'click': L.bind(this.goToStep, this, 5),
 					'disabled': this.wizardData.installing ? true : null
 				}, _('Skip')),
 				E('button', {
 					'class': 'cbi-button cbi-button-positive',
 					'click': L.bind(this.handleInstallCollections, this),
 					'disabled': (this.wizardData.installing || this.wizardData.installed) ? true : null
-				}, this.wizardData.installed ? _('Installed ✓') : _('Install Selected'))
+				}, this.wizardData.installed ? _('Installed') : _('Install Selected'))
 			])
 		]);
 	},
 
-	renderStep4: function(data) {
+	renderStep5Bouncer: function(data) {
 		return E('div', { 'class': 'wizard-step' }, [
 			E('h2', {}, _('Configure Firewall Bouncer')),
 			E('p', {}, _('The firewall bouncer will automatically block malicious IPs using nftables.')),
@@ -465,24 +586,24 @@ return view.extend({
 			E('div', { 'class': 'wizard-nav' }, [
 				E('button', {
 					'class': 'cbi-button',
-					'click': L.bind(this.goToStep, this, 3),
+					'click': L.bind(this.goToStep, this, 4),
 					'disabled': this.wizardData.configuring ? true : null
-				}, _('← Back')),
+				}, _('Back')),
 				this.wizardData.bouncerConfigured ?
 					E('button', {
 						'class': 'cbi-button cbi-button-positive',
-						'click': L.bind(this.goToStep, this, 5)
-					}, _('Next →')) :
+						'click': L.bind(this.goToStep, this, 6)
+					}, _('Next')) :
 					E('button', {
 						'class': 'cbi-button cbi-button-action',
-						'click': L.bind(function(ev) { console.log('[Wizard] Configure Bouncer button clicked!'); ev.preventDefault(); ev.stopPropagation(); this.handleConfigureBouncer(); }, this),
+						'click': L.bind(this.handleConfigureBouncer, this),
 						'disabled': this.wizardData.configuring ? true : null
 					}, _('Configure Bouncer'))
 			])
 		]);
 	},
 
-	renderStep5: function(data) {
+	renderStep6Services: function(data) {
 		return E('div', { 'class': 'wizard-step' }, [
 			E('h2', {}, _('Enable & Start Services')),
 			E('p', {}, _('Starting the firewall bouncer service and verifying operation...')),
@@ -492,22 +613,22 @@ return view.extend({
 				E('div', { 'class': 'status-item' }, [
 					E('span', { 'class': 'status-label' }, _('Enable at boot:')),
 					E('span', { 'class': 'status-value' + (this.wizardData.enabled ? ' success' : '') },
-						this.wizardData.enabled ? _('Enabled ✓') : this.wizardData.enabling ? _('Enabling...') : _('Not enabled'))
+						this.wizardData.enabled ? _('Enabled') : this.wizardData.enabling ? _('Enabling...') : _('Not enabled'))
 				]),
 				E('div', { 'class': 'status-item' }, [
 					E('span', { 'class': 'status-label' }, _('Service status:')),
 					E('span', { 'class': 'status-value' + (this.wizardData.running ? ' success' : '') },
-						this.wizardData.running ? _('Running ✓') : this.wizardData.starting ? _('Starting...') : _('Stopped'))
+						this.wizardData.running ? _('Running') : this.wizardData.starting ? _('Starting...') : _('Stopped'))
 				]),
 				E('div', { 'class': 'status-item' }, [
 					E('span', { 'class': 'status-label' }, _('nftables rules:')),
 					E('span', { 'class': 'status-value' + (this.wizardData.nftablesActive ? ' success' : '') },
-						this.wizardData.nftablesActive ? _('Loaded ✓') : _('Not loaded'))
+						this.wizardData.nftablesActive ? _('Loaded') : _('Not loaded'))
 				]),
 				E('div', { 'class': 'status-item' }, [
 					E('span', { 'class': 'status-label' }, _('LAPI connection:')),
 					E('span', { 'class': 'status-value' + (this.wizardData.lapiConnected ? ' success' : '') },
-						this.wizardData.lapiConnected ? _('Connected ✓') : _('Not connected'))
+						this.wizardData.lapiConnected ? _('Connected') : _('Not connected'))
 				])
 			]),
 
@@ -515,24 +636,24 @@ return view.extend({
 			E('div', { 'class': 'wizard-nav' }, [
 				E('button', {
 					'class': 'cbi-button',
-					'click': L.bind(this.goToStep, this, 4),
+					'click': L.bind(this.goToStep, this, 5),
 					'disabled': this.wizardData.starting ? true : null
-				}, _('← Back')),
+				}, _('Back')),
 				(this.wizardData.enabled && this.wizardData.running && this.wizardData.nftablesActive && this.wizardData.lapiConnected) ?
 					E('button', {
 						'class': 'cbi-button cbi-button-positive',
-						'click': L.bind(this.goToStep, this, 6)
-					}, _('Next →')) :
+						'click': L.bind(this.goToStep, this, 7)
+					}, _('Next')) :
 					E('button', {
 						'class': 'cbi-button cbi-button-action',
-						'click': L.bind(function(ev) { console.log('[Wizard] Start Services button clicked!'); ev.preventDefault(); ev.stopPropagation(); this.handleStartServices(); }, this),
+						'click': L.bind(this.handleStartServices, this),
 						'disabled': this.wizardData.starting ? true : null
 					}, _('Start Services'))
 			])
 		]);
 	},
 
-	renderStep6: function(data) {
+	renderStep7Complete: function(data) {
 		return E('div', { 'class': 'wizard-step wizard-complete' }, [
 			E('div', { 'class': 'success-hero' }, [
 				E('div', { 'class': 'success-icon' }, '🎉'),
@@ -550,6 +671,14 @@ return view.extend({
 						E('div', { 'class': 'summary-desc' }, _('Running and monitoring'))
 					])
 				]),
+				this.wizardData.consoleEnrolled ?
+					E('div', { 'class': 'summary-item' }, [
+						E('span', { 'class': 'check-icon success' }, '✓'),
+						E('div', {}, [
+							E('strong', {}, _('Console Enrolled')),
+							E('div', { 'class': 'summary-desc' }, _('Receiving community blocklists'))
+						])
+					]) : E([]),
 				E('div', { 'class': 'summary-item' }, [
 					E('span', { 'class': 'check-icon success' }, '✓'),
 					E('div', {}, [
@@ -607,7 +736,12 @@ return view.extend({
 					E('li', {}, _('View real-time decisions in the Decisions tab')),
 					E('li', {}, _('Monitor alerts in the Alerts tab')),
 					E('li', {}, _('Check blocked IPs in the Bouncers tab')),
-					E('li', {}, _('Review metrics in the Metrics tab'))
+					this.wizardData.consoleEnrolled ?
+						E('li', {}, [
+							_('Monitor from '),
+							E('a', { 'href': 'https://app.crowdsec.net', 'target': '_blank' }, 'CrowdSec Console')
+						]) :
+						E('li', {}, _('Consider enrolling in CrowdSec Console for blocklists'))
 				])
 			]),
 
@@ -619,7 +753,7 @@ return view.extend({
 					'click': function() {
 						window.location.href = L.url('admin', 'secubox', 'security', 'crowdsec', 'overview');
 					}
-				}, _('Go to Dashboard →'))
+				}, _('Go to Dashboard'))
 			])
 		]);
 	},
@@ -642,6 +776,42 @@ return view.extend({
 				container.replaceChild(stepContent, container.lastChild);
 			}, this));
 		}
+	},
+
+	handleConsoleEnroll: function() {
+		var keyInput = document.getElementById('console-enrollment-key');
+		var nameInput = document.getElementById('console-machine-name');
+		var key = keyInput ? keyInput.value.trim() : '';
+		var name = nameInput ? nameInput.value.trim() : '';
+
+		if (!key) {
+			ui.addNotification(null, E('p', _('Please enter an enrollment key')), 'warning');
+			return;
+		}
+
+		console.log('[Wizard] Enrolling with key:', key.substring(0, 10) + '...');
+		this.wizardData.enrolling = true;
+		this.refreshView();
+
+		return API.consoleEnroll(key, name).then(L.bind(function(result) {
+			console.log('[Wizard] Enrollment result:', result);
+			this.wizardData.enrolling = false;
+
+			if (result && result.success) {
+				this.wizardData.consoleEnrolled = true;
+				ui.addNotification(null, E('p', _('Successfully enrolled in CrowdSec Console!')), 'success');
+				// Auto-advance after 2 seconds
+				setTimeout(L.bind(function() { this.goToStep(3); }, this), 2000);
+			} else {
+				ui.addNotification(null, E('p', _('Enrollment failed: ') + (result.error || result.output || 'Unknown error')), 'error');
+			}
+			this.refreshView();
+		}, this)).catch(L.bind(function(err) {
+			console.error('[Wizard] Enrollment error:', err);
+			this.wizardData.enrolling = false;
+			ui.addNotification(null, E('p', _('Enrollment failed: ') + err.message), 'error');
+			this.refreshView();
+		}, this));
 	},
 
 	handleUpdateHub: function() {
@@ -686,7 +856,7 @@ return view.extend({
 		console.log('[Wizard] Selected collections:', selected);
 
 		if (selected.length === 0) {
-			this.goToStep(4);
+			this.goToStep(5);
 			return;
 		}
 
@@ -711,7 +881,7 @@ return view.extend({
 			this.refreshView();
 
 			// Auto-advance after 2 seconds
-			setTimeout(L.bind(function() { this.goToStep(4); }, this), 2000);
+			setTimeout(L.bind(function() { this.goToStep(5); }, this), 2000);
 		}, this)).catch(L.bind(function(err) {
 			this.wizardData.installing = false;
 			ui.addNotification(null, E('p', _('Installation failed: %s').format(err.message)), 'error');
@@ -760,8 +930,8 @@ return view.extend({
 			this.refreshView();
 
 			// Auto-advance after 2 seconds
-			console.log('[Wizard] Auto-advancing to Step 5 in 2 seconds...');
-			setTimeout(L.bind(function() { this.goToStep(5); }, this), 2000);
+			console.log('[Wizard] Auto-advancing to Step 6 in 2 seconds...');
+			setTimeout(L.bind(function() { this.goToStep(6); }, this), 2000);
 		}, this)).catch(L.bind(function(err) {
 			console.error('[Wizard] Configuration error:', err);
 			this.wizardData.configuring = false;
@@ -809,7 +979,8 @@ return view.extend({
 			return API.getBouncers();
 		}, this)).then(L.bind(function(bouncers) {
 			console.log('[Wizard] Bouncers list:', bouncers);
-			var bouncer = (bouncers || []).find(function(b) {
+			var bouncerList = bouncers && bouncers.bouncers ? bouncers.bouncers : bouncers;
+			var bouncer = (bouncerList || []).find(function(b) {
 				return b.name === 'crowdsec-firewall-bouncer';
 			});
 
@@ -823,13 +994,13 @@ return view.extend({
 			this.refreshView();
 
 			// Success if enabled, running, and nftables active
-		// LAPI connection may take a few seconds to establish, so it's optional
-		if (this.wizardData.enabled && this.wizardData.running &&
+			// LAPI connection may take a few seconds to establish, so it's optional
+			if (this.wizardData.enabled && this.wizardData.running &&
 				this.wizardData.nftablesActive) {
-				console.log('[Wizard] All critical services started! Auto-advancing to Step 6...');
+				console.log('[Wizard] All critical services started! Auto-advancing to Step 7...');
 				ui.addNotification(null, E('p', _('Services started successfully!')), 'info');
 				// Auto-advance after 2 seconds
-				setTimeout(L.bind(function() { this.goToStep(6); }, this), 2000);
+				setTimeout(L.bind(function() { this.goToStep(7); }, this), 2000);
 			} else {
 				console.log('[Wizard] Service startup incomplete');
 				ui.addNotification(null, E('p', _('Service startup incomplete. Check status and retry.')), 'warning');

@@ -20,7 +20,8 @@
 					"firewall_bouncer_config",
 					"nftables_stats",
 					"check_wizard_needed",
-					"wizard_state"
+					"wizard_state",
+					"console_status"
 				],
 				"file": [ "read", "stat" ]
 			},
@@ -40,7 +41,9 @@
 					"delete_bouncer",
 					"control_firewall_bouncer",
 					"update_firewall_bouncer_config",
-					"repair_lapi"
+					"repair_lapi",
+					"console_enroll",
+					"console_disable"
 				]
 			},
 			"uci": [ "crowdsec-dashboard" ]

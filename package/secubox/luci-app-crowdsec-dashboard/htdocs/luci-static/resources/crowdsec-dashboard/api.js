@@ -197,6 +197,26 @@ var callRepairLapi = rpc.declare({
 	expect: { }
 });
 
+// Console Methods
+var callConsoleStatus = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'console_status',
+	expect: { }
+});
+
+var callConsoleEnroll = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'console_enroll',
+	params: ['key', 'name'],
+	expect: { }
+});
+
+var callConsoleDisable = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'console_disable',
+	expect: { }
+});
+
 function formatDuration(seconds) {
 	if (!seconds) return 'N/A';
 	if (seconds < 60) return seconds + 's';
@@ -317,6 +337,11 @@ return baseclass.extend({
 	checkWizardNeeded: callCheckWizardNeeded,
 	getWizardState: callWizardState,
 	repairLapi: callRepairLapi,
+
+	// Console Methods
+	getConsoleStatus: callConsoleStatus,
+	consoleEnroll: callConsoleEnroll,
+	consoleDisable: callConsoleDisable,
 
 	formatDuration: formatDuration,
 	formatDate: formatDate,

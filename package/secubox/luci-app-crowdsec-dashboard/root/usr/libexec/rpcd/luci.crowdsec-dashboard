@@ -931,10 +931,128 @@ repair_lapi() {
 	json_dump
 }
 
+# Console enrollment status
+get_console_status() {
+	json_init
+	check_cscli
+
+	local enrolled=0
+	local name=""
+	local company=""
+
+	# Check if console is enrolled by checking if there's a console config
+	if [ -f "/etc/crowdsec/console.yaml" ]; then
+		# Check if the console is actually configured (has credentials)
+		if grep -q "share_manual_decisions\|share_tainted\|share_context" /etc/crowdsec/console.yaml 2>/dev/null; then
+			enrolled=1
+		fi
+	fi
+
+	# Try to get console status from cscli
+	local console_status
+	console_status=$($CSCLI console status 2>/dev/null)
+	if [ -n "$console_status" ]; then
+		# Check if enrolled by looking for "Enrolled" or similar in output
+		if echo "$console_status" | grep -qi "enrolled\|connected\|active"; then
+			enrolled=1
+		fi
+		# Extract name if present
+		name=$(echo "$console_status" | grep -i "name\|machine" | head -1 | awk -F: '{print $2}' | xargs 2>/dev/null)
+	fi
+
+	json_add_boolean "enrolled" "$enrolled"
+	json_add_string "name" "$name"
+
+	# Get share settings if enrolled
+	if [ "$enrolled" = "1" ] && [ -f "/etc/crowdsec/console.yaml" ]; then
+		local share_manual=$(grep "share_manual_decisions:" /etc/crowdsec/console.yaml 2>/dev/null | awk '{print $2}')
+		local share_tainted=$(grep "share_tainted:" /etc/crowdsec/console.yaml 2>/dev/null | awk '{print $2}')
+		local share_context=$(grep "share_context:" /etc/crowdsec/console.yaml 2>/dev/null | awk '{print $2}')
+
+		json_add_boolean "share_manual_decisions" "$([ \"$share_manual\" = \"true\" ] && echo 1 || echo 0)"
+		json_add_boolean "share_tainted" "$([ \"$share_tainted\" = \"true\" ] && echo 1 || echo 0)"
+		json_add_boolean "share_context" "$([ \"$share_context\" = \"true\" ] && echo 1 || echo 0)"
+	fi
+
+	json_dump
+}
+
+# Console enroll
+console_enroll() {
+	local key="$1"
+	local name="$2"
+
+	json_init
+	check_cscli
+
+	if [ -z "$key" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Enrollment key is required"
+		json_dump
+		return
+	fi
+
+	secubox_log "Enrolling CrowdSec Console with key..."
+
+	# Build enroll command
+	local enroll_cmd="$CSCLI console enroll $key"
+	if [ -n "$name" ]; then
+		enroll_cmd="$enroll_cmd --name \"$name\""
+	fi
+
+	# Run enrollment
+	local output
+	output=$(eval "$enroll_cmd" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Successfully enrolled in CrowdSec Console"
+		json_add_string "output" "$output"
+		secubox_log "Console enrollment successful"
+
+		# Enable sharing options by default
+		$CSCLI console enable share_manual_decisions >/dev/null 2>&1
+		$CSCLI console enable share_tainted >/dev/null 2>&1
+		$CSCLI console enable share_context >/dev/null 2>&1
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Enrollment failed"
+		json_add_string "output" "$output"
+		secubox_log "Console enrollment failed: $output"
+	fi
+
+	json_dump
+}
+
+# Console disable (unenroll)
+console_disable() {
+	json_init
+	check_cscli
+
+	secubox_log "Disabling CrowdSec Console enrollment..."
+
+	# Disable all sharing
+	$CSCLI console disable share_manual_decisions >/dev/null 2>&1
+	$CSCLI console disable share_tainted >/dev/null 2>&1
+	$CSCLI console disable share_context >/dev/null 2>&1
+
+	# Remove console config
+	if [ -f "/etc/crowdsec/console.yaml" ]; then
+		rm -f /etc/crowdsec/console.yaml
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Console enrollment disabled"
+	secubox_log "Console enrollment disabled"
+
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{}}'
+		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{}}'
 		;;
 	call)
 		case "$2" in
@@ -1047,6 +1165,18 @@ case "$1" in
 				;;
 			repair_lapi)
 				repair_lapi
+				;;
+			console_status)
+				get_console_status
+				;;
+			console_enroll)
+				read -r input
+				key=$(echo "$input" | jsonfilter -e '@.key' 2>/dev/null)
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				console_enroll "$key" "$name"
+				;;
+			console_disable)
+				console_disable
 				;;
 			*)
 				echo '{"error": "Unknown method"}'
