@@ -1012,65 +1012,171 @@ apply_client_rules() {
 	local mac="$1"
 	local zone="$2"
 
+	log_event "info" "Applying rules for MAC: $mac -> Zone: $zone"
+
+	# Normalize MAC to uppercase for firewall rules
+	local mac_upper=$(echo "$mac" | tr 'a-f' 'A-F')
+
 	# Remove existing rules for this MAC
 	remove_client_rules "$mac"
 
 	# Get zone configuration
-	local zone_network=""
 	local zone_internet=""
 	local zone_local=""
+	local zone_inter=""
 
 	config_load client-guardian
-	config_foreach check_zone zone "$zone"
+
+	# Find zone settings
+	local found_zone=""
+	check_zone_settings() {
+		local section="$1"
+		local target_zone="$2"
+		if [ "$section" = "$target_zone" ]; then
+			found_zone="$section"
+			zone_internet=$(uci -q get client-guardian.$section.internet_access || echo "0")
+			zone_local=$(uci -q get client-guardian.$section.local_access || echo "0")
+			zone_inter=$(uci -q get client-guardian.$section.inter_client || echo "0")
+			# Normalize boolean values
+			[ "$zone_internet" = "true" ] && zone_internet="1"
+			[ "$zone_internet" = "false" ] && zone_internet="0"
+			[ "$zone_local" = "true" ] && zone_local="1"
+			[ "$zone_local" = "false" ] && zone_local="0"
+		fi
+	}
+	config_foreach check_zone_settings zone "$zone"
+
+	log_event "debug" "Zone $zone settings: internet=$zone_internet local=$zone_local"
 
 	# Apply rules based on zone
-	if [ "$zone" = "blocked" ] || [ "$zone_network" = "null" ]; then
+	if [ "$zone" = "blocked" ]; then
 		# Full block - drop all traffic from this MAC
 		local rule_section=$(uci add firewall rule)
-		uci set firewall.$rule_section.src="*"
-		uci set firewall.$rule_section.src_mac="$mac"
+		uci set firewall.$rule_section.src="lan"
+		uci set firewall.$rule_section.src_mac="$mac_upper"
 		uci set firewall.$rule_section.target="DROP"
-		uci set firewall.$rule_section.name="CG_BLOCK_$mac"
+		uci set firewall.$rule_section.name="CG_BLOCK_${mac_upper//:/}"
 		uci commit firewall
 		log_event "info" "Applied BLOCK rule for MAC: $mac"
-	else
-		# Zone-based access control
-		# Allow DHCP for client
+	elif [ "$zone" = "quarantine" ]; then
+		# Quarantine - allow only DNS and DHCP, block internet
+		# Allow DHCP
 		local rule_section=$(uci add firewall rule)
-		uci set firewall.$rule_section.src="*"
-		uci set firewall.$rule_section.src_mac="$mac"
+		uci set firewall.$rule_section.src="lan"
+		uci set firewall.$rule_section.src_mac="$mac_upper"
 		uci set firewall.$rule_section.proto="udp"
 		uci set firewall.$rule_section.dest_port="67-68"
 		uci set firewall.$rule_section.target="ACCEPT"
-		uci set firewall.$rule_section.name="CG_DHCP_$mac"
+		uci set firewall.$rule_section.name="CG_DHCP_${mac_upper//:/}"
 
 		# Allow DNS
 		rule_section=$(uci add firewall rule)
-		uci set firewall.$rule_section.src="*"
-		uci set firewall.$rule_section.src_mac="$mac"
+		uci set firewall.$rule_section.src="lan"
+		uci set firewall.$rule_section.src_mac="$mac_upper"
 		uci set firewall.$rule_section.proto="udp"
 		uci set firewall.$rule_section.dest_port="53"
 		uci set firewall.$rule_section.target="ACCEPT"
-		uci set firewall.$rule_section.name="CG_DNS_$mac"
+		uci set firewall.$rule_section.name="CG_DNS_${mac_upper//:/}"
+
+		# Block WAN access
+		rule_section=$(uci add firewall rule)
+		uci set firewall.$rule_section.src="lan"
+		uci set firewall.$rule_section.dest="wan"
+		uci set firewall.$rule_section.src_mac="$mac_upper"
+		uci set firewall.$rule_section.target="REJECT"
+		uci set firewall.$rule_section.name="CG_QUARANTINE_${mac_upper//:/}"
+
+		uci commit firewall
+		log_event "info" "Applied QUARANTINE rules for MAC: $mac"
+	else
+		# Zone-based access control
+		# Always allow DHCP
+		local rule_section=$(uci add firewall rule)
+		uci set firewall.$rule_section.src="lan"
+		uci set firewall.$rule_section.src_mac="$mac_upper"
+		uci set firewall.$rule_section.proto="udp"
+		uci set firewall.$rule_section.dest_port="67-68"
+		uci set firewall.$rule_section.target="ACCEPT"
+		uci set firewall.$rule_section.name="CG_DHCP_${mac_upper//:/}"
+
+		# Always allow DNS
+		rule_section=$(uci add firewall rule)
+		uci set firewall.$rule_section.src="lan"
+		uci set firewall.$rule_section.src_mac="$mac_upper"
+		uci set firewall.$rule_section.proto="udp"
+		uci set firewall.$rule_section.dest_port="53"
+		uci set firewall.$rule_section.target="ACCEPT"
+		uci set firewall.$rule_section.name="CG_DNS_${mac_upper//:/}"
+
+		# Internet access rule
+		if [ "$zone_internet" != "1" ]; then
+			# Block WAN if no internet access
+			rule_section=$(uci add firewall rule)
+			uci set firewall.$rule_section.src="lan"
+			uci set firewall.$rule_section.dest="wan"
+			uci set firewall.$rule_section.src_mac="$mac_upper"
+			uci set firewall.$rule_section.target="REJECT"
+			uci set firewall.$rule_section.name="CG_NOWAN_${mac_upper//:/}"
+			log_event "info" "Blocked WAN access for MAC: $mac (zone: $zone)"
+		fi
+
+		# Local access rule
+		if [ "$zone_local" != "1" ]; then
+			# Block LAN access if no local access
+			rule_section=$(uci add firewall rule)
+			uci set firewall.$rule_section.src="lan"
+			uci set firewall.$rule_section.dest="lan"
+			uci set firewall.$rule_section.src_mac="$mac_upper"
+			uci set firewall.$rule_section.target="REJECT"
+			uci set firewall.$rule_section.name="CG_NOLAN_${mac_upper//:/}"
+			log_event "info" "Blocked LAN access for MAC: $mac (zone: $zone)"
+		fi
 
 		uci commit firewall
 		log_event "info" "Applied zone rules for MAC: $mac in zone: $zone"
 	fi
 
-	# Reload firewall
-	/etc/init.d/firewall reload >/dev/null 2>&1 &
+	# Reload firewall synchronously for immediate effect
+	/etc/init.d/firewall reload >/dev/null 2>&1
+	log_event "info" "Firewall reloaded for MAC: $mac"
 }
 
 # Remove firewall rules for client
 remove_client_rules() {
 	local mac="$1"
-	mac=$(echo "$mac" | tr 'a-f' 'A-F')  # Firewall rules use uppercase
+	local mac_upper=$(echo "$mac" | tr 'a-f' 'A-F')
+	local mac_clean=$(echo "$mac_upper" | tr -d ':')
 
-	# Find and remove rules with this MAC
-	uci show firewall | grep -i "$mac" | cut -d. -f1-2 | sort -u | while read rule; do
-		uci delete "$rule" 2>/dev/null
+	log_event "debug" "Removing firewall rules for MAC: $mac (clean: $mac_clean)"
+
+	# Find and remove all CG_ prefixed rules for this MAC
+	local rules_to_delete=""
+	local idx=0
+	while true; do
+		local name=$(uci -q get firewall.@rule[$idx].name 2>/dev/null)
+		if [ -z "$name" ] && [ $idx -gt 100 ]; then
+			break
+		fi
+		if echo "$name" | grep -q "CG_.*${mac_clean}"; then
+			rules_to_delete="$rules_to_delete firewall.@rule[$idx]"
+		fi
+		idx=$((idx + 1))
+		# Safety limit
+		[ $idx -gt 500 ] && break
 	done
+
+	# Delete rules in reverse order to maintain indices
+	for rule in $(echo "$rules_to_delete" | tr ' ' '\n' | tac); do
+		[ -n "$rule" ] && uci delete "$rule" 2>/dev/null
+	done
+
+	# Also check by src_mac directly
+	uci show firewall 2>/dev/null | grep -i "src_mac='$mac_upper'" | cut -d. -f1-2 | sort -u | while read rule; do
+		[ -n "$rule" ] && uci delete "$rule" 2>/dev/null
+	done
+
 	uci commit firewall 2>/dev/null
+	log_event "debug" "Removed firewall rules for MAC: $mac"
 }
 
 # Helper to find zone config
@@ -1338,30 +1444,8 @@ update_zone() {
 }
 
 
-# Helper: Apply client firewall rules
-apply_client_rules() {
-	local mac="$1"
-	local zone="$2"
-	
-	# Remove existing rules for this MAC
-	iptables -D FORWARD -m mac --mac-source "$mac" -j DROP 2>/dev/null
-	iptables -D FORWARD -m mac --mac-source "$mac" -j ACCEPT 2>/dev/null
-	
-	case "$zone" in
-		blocked)
-			iptables -I FORWARD -m mac --mac-source "$mac" -j DROP
-			;;
-		quarantine)
-			# Only portal access
-			iptables -I FORWARD -m mac --mac-source "$mac" -j DROP
-			iptables -I FORWARD -m mac --mac-source "$mac" -p tcp --dport 80 -d $(uci -q get network.lan.ipaddr || echo "192.168.1.1") -j ACCEPT
-			;;
-		*)
-			# Allow based on zone settings
-			iptables -I FORWARD -m mac --mac-source "$mac" -j ACCEPT
-			;;
-	esac
-}
+# Note: apply_client_rules is defined earlier in the file (line ~1010)
+# It uses UCI-based firewall rules for persistence
 
 # Helper: Block client completely
 block_client() {
