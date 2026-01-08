@@ -1,0 +1,231 @@
+#!/bin/sh
+# SecuBox Netifyd Plugin Setup
+# Configures netify.ai repository and installs plugins
+# Copyright (C) 2025 CyberMind.fr
+
+NETIFY_FEED_FILE="/etc/opkg/customfeeds.conf"
+NETIFY_KEY_URL="https://download.netify.ai/openwrt/netify-repo.pub"
+NETIFY_KEY_FILE="/etc/opkg/keys/netify-repo.pub"
+
+# Get OpenWrt version
+get_openwrt_version() {
+	if [ -f /etc/os-release ]; then
+		. /etc/os-release
+		echo "${VERSION_ID:-23.05}"
+	else
+		echo "23.05"
+	fi
+}
+
+# Get architecture
+get_arch() {
+	local arch=$(uname -m)
+	case "$arch" in
+		x86_64) echo "x86_64" ;;
+		aarch64) echo "aarch64" ;;
+		armv7l) echo "arm_cortex-a7" ;;
+		mips*) echo "mips_24kc" ;;
+		*) echo "$arch" ;;
+	esac
+}
+
+# Add netify repository
+add_netify_feed() {
+	local version=$(get_openwrt_version)
+	local arch=$(get_arch)
+	local feed_url="https://download.netify.ai/5/openwrt/${version}/${arch}"
+
+	echo "Adding Netify repository..."
+	echo "  Version: $version"
+	echo "  Architecture: $arch"
+	echo "  Feed URL: $feed_url"
+
+	# Check if feed already exists
+	if grep -q "download.netify.ai" "$NETIFY_FEED_FILE" 2>/dev/null; then
+		echo "Netify feed already configured"
+	else
+		echo "src/gz netify $feed_url" >> "$NETIFY_FEED_FILE"
+		echo "Feed added to $NETIFY_FEED_FILE"
+	fi
+
+	# Download signing key
+	mkdir -p "$(dirname "$NETIFY_KEY_FILE")"
+	if [ ! -f "$NETIFY_KEY_FILE" ]; then
+		echo "Downloading Netify signing key..."
+		wget -q -O "$NETIFY_KEY_FILE" "$NETIFY_KEY_URL" 2>/dev/null || \
+			curl -s -o "$NETIFY_KEY_FILE" "$NETIFY_KEY_URL" 2>/dev/null
+		if [ -f "$NETIFY_KEY_FILE" ]; then
+			echo "Signing key installed"
+		else
+			echo "Warning: Could not download signing key"
+		fi
+	fi
+
+	# Update package lists
+	echo "Updating package lists..."
+	opkg update
+}
+
+# List available plugins
+list_plugins() {
+	echo "Available Netifyd Plugins:"
+	echo ""
+	echo "  Processor Plugins:"
+	echo "    netify-proc-core          - Core processor (required for plugins)"
+	echo "    netify-proc-flow-actions  - Flow action rules (block, mark, ipset)"
+	echo "    netify-proc-device-discovery - Device identification"
+	echo ""
+	echo "  Sink Plugins:"
+	echo "    netify-sink-socket        - Export to Unix/TCP socket"
+	echo "    netify-sink-http          - Export to HTTP endpoint"
+	echo "    netify-sink-mqtt          - Export to MQTT broker"
+	echo "    netify-sink-log           - Export to log files"
+	echo ""
+	echo "  Use: $0 install <plugin-name>"
+}
+
+# Install plugin
+install_plugin() {
+	local plugin="$1"
+	if [ -z "$plugin" ]; then
+		echo "Error: Plugin name required"
+		list_plugins
+		return 1
+	fi
+
+	echo "Installing $plugin..."
+	opkg install "$plugin"
+	local rc=$?
+
+	if [ $rc -eq 0 ]; then
+		echo "Plugin $plugin installed successfully"
+		echo "Restarting netifyd..."
+		/etc/init.d/netifyd restart
+	else
+		echo "Failed to install $plugin"
+		echo "Make sure the Netify feed is configured: $0 add-feed"
+	fi
+
+	return $rc
+}
+
+# Check installed plugins
+check_plugins() {
+	echo "Checking installed Netifyd plugins..."
+	echo ""
+
+	local plugin_dir="/usr/lib/netifyd"
+	if [ -d "$plugin_dir" ]; then
+		echo "Plugin libraries in $plugin_dir:"
+		ls -la "$plugin_dir"/*.so 2>/dev/null || echo "  (none found)"
+	else
+		echo "Plugin directory not found: $plugin_dir"
+	fi
+
+	echo ""
+	echo "Installed netify packages:"
+	opkg list-installed | grep -i netif
+}
+
+# Create ipsets for plugins
+create_ipsets() {
+	echo "Creating ipsets for plugins..."
+
+	# BitTorrent ipset
+	if ! ipset list secubox-bittorrent >/dev/null 2>&1; then
+		ipset create secubox-bittorrent hash:ip timeout 900
+		echo "Created ipset: secubox-bittorrent"
+	else
+		echo "Ipset secubox-bittorrent already exists"
+	fi
+
+	# Banned IPs ipset
+	if ! ipset list secubox-banned >/dev/null 2>&1; then
+		ipset create secubox-banned hash:ip timeout 3600
+		echo "Created ipset: secubox-banned"
+	else
+		echo "Ipset secubox-banned already exists"
+	fi
+
+	# Streaming services ipset
+	if ! ipset list secubox-streaming >/dev/null 2>&1; then
+		ipset create secubox-streaming hash:ip timeout 1800
+		echo "Created ipset: secubox-streaming"
+	else
+		echo "Ipset secubox-streaming already exists"
+	fi
+
+	echo "Ipsets ready"
+}
+
+# Setup nftables chain for plugins
+setup_nftables() {
+	echo "Setting up nftables chain for plugins..."
+
+	# Create secubox table and chain if not exists
+	nft list table inet secubox >/dev/null 2>&1 || {
+		nft add table inet secubox
+		echo "Created table: inet secubox"
+	}
+
+	nft list chain inet secubox flow_actions >/dev/null 2>&1 || {
+		nft add chain inet secubox flow_actions
+		echo "Created chain: inet secubox flow_actions"
+	}
+
+	echo "nftables setup complete"
+}
+
+# Show usage
+usage() {
+	echo "SecuBox Netifyd Plugin Setup"
+	echo ""
+	echo "Usage: $0 <command> [options]"
+	echo ""
+	echo "Commands:"
+	echo "  add-feed          Add Netify.ai package repository"
+	echo "  list              List available plugins"
+	echo "  install <plugin>  Install a plugin package"
+	echo "  check             Check installed plugins"
+	echo "  create-ipsets     Create ipsets for flow plugins"
+	echo "  setup-nftables    Setup nftables chain for plugins"
+	echo "  init              Full initialization (feed + ipsets + nftables)"
+	echo ""
+	echo "Examples:"
+	echo "  $0 add-feed"
+	echo "  $0 install netify-proc-flow-actions"
+	echo "  $0 init"
+}
+
+# Main
+case "$1" in
+	add-feed)
+		add_netify_feed
+		;;
+	list)
+		list_plugins
+		;;
+	install)
+		install_plugin "$2"
+		;;
+	check)
+		check_plugins
+		;;
+	create-ipsets)
+		create_ipsets
+		;;
+	setup-nftables)
+		setup_nftables
+		;;
+	init)
+		add_netify_feed
+		create_ipsets
+		setup_nftables
+		echo ""
+		echo "Initialization complete. Install plugins with:"
+		echo "  $0 install netify-proc-flow-actions"
+		;;
+	*)
+		usage
+		;;
+esac

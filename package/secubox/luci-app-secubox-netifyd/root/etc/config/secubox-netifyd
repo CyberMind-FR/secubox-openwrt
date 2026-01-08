@@ -37,15 +37,63 @@ config sink 'sink'
 	option tcp_port '9501'
 	option collector_enabled '0'
 
+# Flow Actions Processor Plugin
+config plugin 'flow_actions'
+	option enabled '0'
+	option config_file '/etc/netifyd/flow-actions.json'
+
+# BitTorrent IP Set Plugin
 config plugin 'bittorrent'
 	option enabled '0'
 	option ipset 'secubox-bittorrent'
 	option ipset_family 'inet'
 	option match_application 'bittorrent'
+	option ipset_timeout '900'
 
+# nftables Verdicts Plugin
 config plugin 'nftables'
 	option enabled '0'
-	option table 'filter'
-	option chain 'SECUBOX'
+	option table 'inet secubox'
+	option chain 'flow_actions'
 	option action 'drop'
 	option target_ipset 'secubox-banned'
+
+# Streaming Services Detection Plugin
+config plugin 'streaming'
+	option enabled '0'
+	option ipset 'secubox-streaming'
+	option ipset_family 'inet'
+	option ipset_timeout '1800'
+	list match_application 'netflix'
+	list match_application 'youtube'
+	list match_application 'spotify'
+	list match_application 'twitch'
+	list match_application 'disney'
+	list match_application 'amazon_video'
+
+# Application Category Blocking
+config plugin 'category_block'
+	option enabled '0'
+	option table 'inet secubox'
+	option chain 'flow_actions'
+	option action 'drop'
+	list block_category 'malware'
+	list block_category 'ads'
+	list block_category 'tracking'
+
+# Custom Flow Rules
+config flow_rule
+	option enabled '0'
+	option name 'block_social'
+	option match_type 'application'
+	option match_value 'facebook|instagram|tiktok'
+	option action 'drop'
+	option schedule ''
+
+config flow_rule
+	option enabled '0'
+	option name 'mark_gaming'
+	option match_type 'category'
+	option match_value 'game'
+	option action 'mark'
+	option mark_value '0x10'

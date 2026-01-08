@@ -317,21 +317,169 @@ return view.extend({
 	);
 	o.default = 'secubox-banned';
 
+	// ========== Flow Actions Processor Plugin ==========
+	s = m.section(form.NamedSection, 'flow_actions', 'plugin',
+		E('span', [
+			E('i', { 'class': 'fa fa-cogs', 'style': 'margin-right: 0.5rem' }),
+			_('Flow Actions Processor')
+		]),
+		_('Enable the Flow Actions processor plugin for advanced flow handling.'));
+	s.addremove = false;
+
+	o = s.option(form.Flag, 'enabled',
+		E('span', [
+			E('i', { 'class': 'fa fa-toggle-on', 'style': 'margin-right: 0.5rem' }),
+			_('Enable Plugin')
+		]),
+		_('Requires netify-proc-flow-actions package from Netify repository.')
+	);
+	o.default = '0';
+	o.rmempty = false;
+
+	o = s.option(form.Value, 'config_file',
+		E('span', [
+			E('i', { 'class': 'fa fa-file-code', 'style': 'margin-right: 0.5rem' }),
+			_('Configuration File')
+		]),
+		_('Path to the flow actions JSON configuration file.')
+	);
+	o.default = '/etc/netifyd/flow-actions.json';
+
+	// ========== Streaming Services IP Set ==========
+	s = m.section(form.NamedSection, 'streaming', 'plugin',
+		E('span', [
+			E('i', { 'class': 'fa fa-play-circle', 'style': 'margin-right: 0.5rem' }),
+			_('Streaming Services IP Set')
+		]),
+		_('Tag streaming service traffic (Netflix, YouTube, Spotify, etc.) with an ipset.'));
+	s.addremove = false;
+
+	o = s.option(form.Flag, 'enabled',
+		E('span', [
+			E('i', { 'class': 'fa fa-toggle-on', 'style': 'margin-right: 0.5rem' }),
+			_('Enable Plugin')
+		]),
+		_('Add streaming service IPs to the configured ipset.')
+	);
+	o.default = '0';
+	o.rmempty = false;
+
+	o = s.option(form.Value, 'ipset',
+		E('span', [
+			E('i', { 'class': 'fa fa-database', 'style': 'margin-right: 0.5rem' }),
+			_('Target IP Set')
+		]),
+		_('IP set name used to tag streaming traffic.')
+	);
+	o.default = 'secubox-streaming';
+
+	o = s.option(form.ListValue, 'ipset_family',
+		E('span', [
+			E('i', { 'class': 'fa fa-globe', 'style': 'margin-right: 0.5rem' }),
+			_('IP Family')
+		]),
+		_('IP set family (inet or inet6).')
+	);
+	o.value('inet', _('IPv4 (inet)'));
+	o.value('inet6', _('IPv6 (inet6)'));
+	o.default = 'inet';
+
+	o = s.option(form.Value, 'ipset_timeout',
+		E('span', [
+			E('i', { 'class': 'fa fa-clock', 'style': 'margin-right: 0.5rem' }),
+			_('IP Set Timeout')
+		]),
+		_('Timeout in seconds for ipset entries.')
+	);
+	o.default = '1800';
+	o.datatype = 'uinteger';
+
+	// ========== Category Blocking Plugin ==========
+	s = m.section(form.NamedSection, 'category_block', 'plugin',
+		E('span', [
+			E('i', { 'class': 'fa fa-shield-alt', 'style': 'margin-right: 0.5rem' }),
+			_('Category Blocking')
+		]),
+		_('Block traffic based on application categories (malware, ads, tracking).'));
+	s.addremove = false;
+
+	o = s.option(form.Flag, 'enabled',
+		E('span', [
+			E('i', { 'class': 'fa fa-toggle-on', 'style': 'margin-right: 0.5rem' }),
+			_('Enable Plugin')
+		]),
+		_('Block flows matching specified categories.')
+	);
+	o.default = '0';
+	o.rmempty = false;
+
+	o = s.option(form.Value, 'table',
+		E('span', [
+			E('i', { 'class': 'fa fa-table', 'style': 'margin-right: 0.5rem' }),
+			_('nftables Table')
+		]),
+		_('Table where the plugin will insert verdicts.')
+	);
+	o.default = 'inet secubox';
+
+	o = s.option(form.Value, 'chain',
+		E('span', [
+			E('i', { 'class': 'fa fa-chain', 'style': 'margin-right: 0.5rem' }),
+			_('nftables Chain')
+		]),
+		_('Chain used by the verdicts.')
+	);
+	o.default = 'flow_actions';
+
+	o = s.option(form.ListValue, 'action',
+		E('span', [
+			E('i', { 'class': 'fa fa-ban', 'style': 'margin-right: 0.5rem' }),
+			_('Action')
+		]),
+		_('Action applied when the plugin matches a flow.')
+	);
+	o.value('drop', _('Drop'));
+	o.value('reject', _('Reject'));
+	o.default = 'drop';
+
+	// ========== Apply Plugins Button ==========
+	s = m.section(form.NamedSection, 'nftables', 'plugin');
+	s.addremove = false;
+	s.anonymous = true;
+
 	o = s.option(form.Button, 'apply_plugins',
 		E('span', [
 			E('i', { 'class': 'fa fa-sync', 'style': 'margin-right: 0.5rem' }),
-			_('Apply Flow Plugins')
+			_('Apply All Flow Plugins')
 		]),
-		_('Regenerate plugin configs and restart Netifyd.')
+		_('Regenerate all plugin configs and restart Netifyd.')
 	);
-	o.inputstyle = 'action';
+	o.inputstyle = 'action important';
 	o.write = function() {
 		netifydAPI.applyPluginConfig().then(function(result) {
-			ui.addNotification({ type: 'success', description: result.message || _('Plugin configuration applied') });
-		}, function(err) {
-			ui.addNotification({ type: 'error', description: (err && err.error && err.error.message) || _('Plugin configuration failed') });
+			ui.addNotification(null, E('p', result.message || _('Plugin configuration applied')), 'success');
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', (err && err.message) || _('Plugin configuration failed')), 'error');
 		});
 	};
+
+	// ========== Plugin Setup Instructions ==========
+	s = m.section(form.NamedSection, 'settings', 'settings',
+		E('span', [
+			E('i', { 'class': 'fa fa-info-circle', 'style': 'margin-right: 0.5rem' }),
+			_('Plugin Installation')
+		]),
+		E('div', { 'style': 'background: #f0f4f8; padding: 15px; border-radius: 8px; margin-top: 10px;' }, [
+			E('p', { 'style': 'margin: 0 0 10px 0;' }, _('To use plugins, add the Netify repository and install required packages:')),
+			E('pre', { 'style': 'background: #1e293b; color: #e2e8f0; padding: 10px; border-radius: 4px; overflow-x: auto;' },
+				'netifyd-plugin-setup add-feed\n' +
+				'netifyd-plugin-setup install netify-proc-flow-actions\n' +
+				'netifyd-plugin-setup create-ipsets'
+			),
+			E('p', { 'style': 'margin: 10px 0 0 0; font-size: 0.9em; color: #64748b;' },
+				_('See /usr/bin/netifyd-plugin-setup for more options.'))
+		]));
+	s.addremove = false;
 
 	// ========== Monitoring Settings Section ==========
 	s = m.section(form.TypedSection, 'monitoring',

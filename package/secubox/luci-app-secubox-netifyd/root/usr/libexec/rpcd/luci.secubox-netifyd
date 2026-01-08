@@ -74,27 +74,57 @@ EOF
 
 apply_plugin_config() {
 	local plugin_dir="$NETIFYD_PLUGIN_CONF_DIR"
+	local flow_actions_conf="$plugin_dir/secubox-flow-actions.conf"
 	local bittorrent_conf="$plugin_dir/secubox-bittorrent-ipset.conf"
 	local nft_conf="$plugin_dir/secubox-nftables-block.conf"
+	local streaming_conf="$plugin_dir/secubox-streaming-ipset.conf"
+	local category_conf="$plugin_dir/secubox-category-block.conf"
 
 	mkdir -p "$plugin_dir"
 	mkdir -p "$NETIFYD_STATE_DIR"
 
+	# Ensure ipsets exist
+	ipset list secubox-bittorrent >/dev/null 2>&1 || \
+		ipset create secubox-bittorrent hash:ip timeout 900 2>/dev/null
+	ipset list secubox-banned >/dev/null 2>&1 || \
+		ipset create secubox-banned hash:ip timeout 3600 2>/dev/null
+	ipset list secubox-streaming >/dev/null 2>&1 || \
+		ipset create secubox-streaming hash:ip timeout 1800 2>/dev/null
+
+	# Flow Actions Processor Plugin
+	local flow_actions_enabled=$(uci -q get secubox-netifyd.flow_actions.enabled || echo 0)
+	local flow_actions_config=$(uci -q get secubox-netifyd.flow_actions.config_file || echo '/etc/netifyd/flow-actions.json')
+
+	if [ "$flow_actions_enabled" -eq 1 ]; then
+		cat <<EOF > "$flow_actions_conf"
+[secubox-flow-actions]
+enable = yes
+plugin_library = ${NETIFYD_PLUGIN_LIBDIR}/libnetify-proc-flow-actions.so
+conf_filename = $flow_actions_config
+EOF
+		log_msg "INFO" "Flow Actions processor plugin enabled"
+	else
+		rm -f "$flow_actions_conf"
+		log_msg "INFO" "Flow Actions processor plugin disabled"
+	fi
+
+	# BitTorrent IP Set Plugin
 	local bittorrent_enabled=$(uci -q get secubox-netifyd.bittorrent.enabled || echo 0)
 	local ipset_name=$(uci -q get secubox-netifyd.bittorrent.ipset || echo 'secubox-bittorrent')
 	local ipset_family=$(uci -q get secubox-netifyd.bittorrent.ipset_family || echo 'inet')
 	local match_app=$(uci -q get secubox-netifyd.bittorrent.match_application || echo 'bittorrent')
+	local ipset_timeout=$(uci -q get secubox-netifyd.bittorrent.ipset_timeout || echo '900')
 
 	if [ "$bittorrent_enabled" -eq 1 ]; then
 		cat <<EOF > "$bittorrent_conf"
 [secubox-bittorrent-ipset]
 enable = yes
-plugin_library = ${NETIFYD_PLUGIN_LIBDIR}/libnetify-plugin-bittorrent-ipset.so
+plugin_library = ${NETIFYD_PLUGIN_LIBDIR}/libnetify-plugin-ipset.so
 conf_filename = ${NETIFYD_STATE_DIR}/secubox-bittorrent-ipset.json
 ipset-name = $ipset_name
 ipset-family = $ipset_family
 match-applications = $match_app
-ipset-timeout = 900
+ipset-timeout = $ipset_timeout
 EOF
 		log_msg "INFO" "BitTorrent ipset plugin enabled ($ipset_name)"
 	else
@@ -102,17 +132,22 @@ EOF
 		log_msg "INFO" "BitTorrent ipset plugin disabled"
 	fi
 
+	# nftables Verdicts Plugin
 	local nft_enabled=$(uci -q get secubox-netifyd.nftables.enabled || echo 0)
-	local nft_table=$(uci -q get secubox-netifyd.nftables.table || echo 'filter')
-	local nft_chain=$(uci -q get secubox-netifyd.nftables.chain || echo 'SECUBOX')
+	local nft_table=$(uci -q get secubox-netifyd.nftables.table || echo 'inet secubox')
+	local nft_chain=$(uci -q get secubox-netifyd.nftables.chain || echo 'flow_actions')
 	local nft_action=$(uci -q get secubox-netifyd.nftables.action || echo 'drop')
 	local nft_ipset=$(uci -q get secubox-netifyd.nftables.target_ipset || echo 'secubox-banned')
 
 	if [ "$nft_enabled" -eq 1 ]; then
+		# Create nftables table and chain if needed
+		nft list table $nft_table >/dev/null 2>&1 || nft add table $nft_table 2>/dev/null
+		nft list chain $nft_table $nft_chain >/dev/null 2>&1 || nft add chain $nft_table $nft_chain 2>/dev/null
+
 		cat <<EOF > "$nft_conf"
 [secubox-nftables-block]
 enable = yes
-plugin_library = ${NETIFYD_PLUGIN_LIBDIR}/libnetify-plugin-nftables-block.so
+plugin_library = ${NETIFYD_PLUGIN_LIBDIR}/libnetify-plugin-nftables.so
 conf_filename = ${NETIFYD_STATE_DIR}/secubox-nftables-block.json
 table = $nft_table
 chain = $nft_chain
@@ -123,6 +158,70 @@ EOF
 	else
 		rm -f "$nft_conf"
 		log_msg "INFO" "nftables plugin disabled"
+	fi
+
+	# Streaming Services IP Set Plugin
+	local streaming_enabled=$(uci -q get secubox-netifyd.streaming.enabled || echo 0)
+	local streaming_ipset=$(uci -q get secubox-netifyd.streaming.ipset || echo 'secubox-streaming')
+	local streaming_family=$(uci -q get secubox-netifyd.streaming.ipset_family || echo 'inet')
+	local streaming_timeout=$(uci -q get secubox-netifyd.streaming.ipset_timeout || echo '1800')
+
+	if [ "$streaming_enabled" -eq 1 ]; then
+		# Get list of streaming applications
+		local streaming_apps=""
+		local apps=$(uci -q get secubox-netifyd.streaming.match_application)
+		if [ -n "$apps" ]; then
+			streaming_apps=$(echo "$apps" | tr ' ' '|')
+		else
+			streaming_apps="netflix|youtube|spotify|twitch|disney|amazon_video"
+		fi
+
+		cat <<EOF > "$streaming_conf"
+[secubox-streaming-ipset]
+enable = yes
+plugin_library = ${NETIFYD_PLUGIN_LIBDIR}/libnetify-plugin-ipset.so
+conf_filename = ${NETIFYD_STATE_DIR}/secubox-streaming-ipset.json
+ipset-name = $streaming_ipset
+ipset-family = $streaming_family
+match-applications = $streaming_apps
+ipset-timeout = $streaming_timeout
+EOF
+		log_msg "INFO" "Streaming services ipset plugin enabled ($streaming_ipset)"
+	else
+		rm -f "$streaming_conf"
+		log_msg "INFO" "Streaming services ipset plugin disabled"
+	fi
+
+	# Category Blocking Plugin
+	local category_enabled=$(uci -q get secubox-netifyd.category_block.enabled || echo 0)
+	local category_table=$(uci -q get secubox-netifyd.category_block.table || echo 'inet secubox')
+	local category_chain=$(uci -q get secubox-netifyd.category_block.chain || echo 'flow_actions')
+	local category_action=$(uci -q get secubox-netifyd.category_block.action || echo 'drop')
+
+	if [ "$category_enabled" -eq 1 ]; then
+		# Get list of blocked categories
+		local categories=""
+		local cats=$(uci -q get secubox-netifyd.category_block.block_category)
+		if [ -n "$cats" ]; then
+			categories=$(echo "$cats" | tr ' ' '|')
+		else
+			categories="malware|ads|tracking"
+		fi
+
+		cat <<EOF > "$category_conf"
+[secubox-category-block]
+enable = yes
+plugin_library = ${NETIFYD_PLUGIN_LIBDIR}/libnetify-plugin-nftables.so
+conf_filename = ${NETIFYD_STATE_DIR}/secubox-category-block.json
+table = $category_table
+chain = $category_chain
+action = $category_action
+match-categories = $categories
+EOF
+		log_msg "INFO" "Category blocking plugin enabled ($categories)"
+	else
+		rm -f "$category_conf"
+		log_msg "INFO" "Category blocking plugin disabled"
 	fi
 }
 
