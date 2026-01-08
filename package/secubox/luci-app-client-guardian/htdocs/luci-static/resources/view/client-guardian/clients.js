@@ -1,16 +1,72 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
 'require dom';
 'require poll';
 'require ui';
-'require client-guardian.api as api';
+'require rpc';
+
+var callGetClients = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'clients',
+	expect: { clients: [] }
+});
+
+var callGetZones = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'zones',
+	expect: { zones: [] }
+});
+
+var callApproveClient = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'approve_client',
+	params: ['mac', 'name', 'zone', 'notes']
+});
+
+var callUpdateClient = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'update_client',
+	params: ['section', 'name', 'zone', 'notes', 'daily_quota', 'static_ip']
+});
+
+var callBanClient = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'ban_client',
+	params: ['mac', 'reason']
+});
+
+var callQuarantineClient = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'quarantine_client',
+	params: ['mac']
+});
+
+function formatBytes(bytes) {
+	if (!bytes || bytes === 0) return '0 B';
+	var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+	var i = Math.floor(Math.log(bytes) / Math.log(1024));
+	i = Math.min(i, units.length - 1);
+	return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + units[i];
+}
+
+function getDeviceIcon(hostname, mac) {
+	hostname = (hostname || '').toLowerCase();
+	mac = (mac || '').toLowerCase();
+	if (hostname.match(/android|iphone|ipad|mobile|phone|samsung|xiaomi|huawei/)) return '📱';
+	if (hostname.match(/pc|laptop|desktop|macbook|imac|windows|linux|ubuntu/)) return '💻';
+	if (hostname.match(/camera|bulb|switch|sensor|thermostat|doorbell|lock/)) return '📷';
+	if (hostname.match(/tv|roku|chromecast|firestick|appletv|media/)) return '📺';
+	if (hostname.match(/playstation|xbox|nintendo|switch|steam/)) return '🎮';
+	if (hostname.match(/router|switch|ap|access[-_]?point|bridge/)) return '🌐';
+	if (hostname.match(/printer|print|hp-|canon-|epson-/)) return '🖨️';
+	return '🔌';
+}
 
 return view.extend({
 	load: function() {
 		return Promise.all([
-			api.getClients(),
-			api.getZones()
+			callGetClients(),
+			callGetZones()
 		]);
 	},
 
@@ -85,7 +141,7 @@ return view.extend({
 		if (client.status === 'unknown') statusClass += ' quarantine';
 		if (client.status === 'banned') statusClass += ' banned';
 
-		var deviceIcon = api.getDeviceIcon(client.hostname || client.name, client.mac);
+		var deviceIcon = getDeviceIcon(client.hostname || client.name, client.mac);
 		var zoneClass = (client.zone || 'unknown').replace('lan_', '');
 		var self = this;
 
@@ -109,8 +165,8 @@ return view.extend({
 			]),
 			E('span', { 'class': 'cg-client-zone ' + zoneClass }, client.zone || 'unknown'),
 			E('div', { 'class': 'cg-client-traffic' }, [
-				E('div', { 'class': 'cg-client-traffic-value' }, '↓ ' + api.formatBytes(client.rx_bytes || 0)),
-				E('div', { 'class': 'cg-client-traffic-label' }, '↑ ' + api.formatBytes(client.tx_bytes || 0))
+				E('div', { 'class': 'cg-client-traffic-value' }, '↓ ' + formatBytes(client.rx_bytes || 0)),
+				E('div', { 'class': 'cg-client-traffic-label' }, '↑ ' + formatBytes(client.tx_bytes || 0))
 			]),
 			E('div', { 'class': 'cg-client-actions' }, [
 				client.status === 'unknown' ? E('div', {
@@ -192,7 +248,7 @@ return view.extend({
 					var name = document.getElementById('approve-name').value;
 					var zone = document.getElementById('approve-zone').value;
 					var notes = document.getElementById('approve-notes').value;
-					api.approveClient(mac, name, zone, notes).then(L.bind(function() {
+					callApproveClient(mac, name, zone, notes).then(L.bind(function() {
 						ui.hideModal();
 						ui.addNotification(null, E('p', _('Client approved successfully')), 'success');
 						this.handleRefresh();
@@ -231,7 +287,7 @@ return view.extend({
 			E('div', { 'class': 'cg-btn-group', 'style': 'justify-content: flex-end' }, [
 				E('button', { 'class': 'cg-btn', 'click': ui.hideModal }, _('Annuler')),
 				E('button', { 'class': 'cg-btn cg-btn-primary', 'click': L.bind(function() {
-					api.updateClient(
+					callUpdateClient(
 						client.section,
 						document.getElementById('edit-name').value,
 						document.getElementById('edit-zone').value,
@@ -262,7 +318,7 @@ return view.extend({
 				E('button', { 'class': 'cg-btn', 'click': ui.hideModal }, _('Annuler')),
 				E('button', { 'class': 'cg-btn cg-btn-danger', 'click': L.bind(function() {
 					var reason = document.getElementById('ban-reason').value || 'Manual ban';
-					api.banClient(mac, reason).then(L.bind(function() {
+					callBanClient(mac, reason).then(L.bind(function() {
 						ui.hideModal();
 						ui.addNotification(null, E('p', _('Client banned successfully')), 'info');
 						this.handleRefresh();
@@ -274,7 +330,7 @@ return view.extend({
 
 	handleUnban: function(ev) {
 		var mac = ev.currentTarget.dataset.mac;
-		api.quarantineClient(mac).then(L.bind(function() {
+		callQuarantineClient(mac).then(L.bind(function() {
 			ui.addNotification(null, E('p', _('Client unbanned successfully')), 'success');
 			this.handleRefresh();
 		}, this));
@@ -282,8 +338,8 @@ return view.extend({
 
 	handleRefresh: function() {
 		return Promise.all([
-			api.getClients(),
-			api.getZones()
+			callGetClients(),
+			callGetZones()
 		]).then(L.bind(function(data) {
 			var container = document.querySelector('.client-guardian-dashboard');
 			if (container) {

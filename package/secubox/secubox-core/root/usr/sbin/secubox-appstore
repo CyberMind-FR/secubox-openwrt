@@ -89,6 +89,23 @@ get_active_catalog() {
 	echo "$MAIN_CATALOG"
 }
 
+# Check if service is enabled (will start on boot)
+is_service_enabled() {
+	local service="$1"
+	[ -z "$service" ] && return 1
+	[ -f "/etc/init.d/$service" ] || return 1
+	# Check if service has symlink in /etc/rc.d/
+	ls /etc/rc.d/S*"$service" >/dev/null 2>&1
+}
+
+# Check if service is running/active
+is_service_active() {
+	local service="$1"
+	[ -z "$service" ] && return 1
+	[ -f "/etc/init.d/$service" ] || return 1
+	/etc/init.d/"$service" status >/dev/null 2>&1
+}
+
 # List all modules
 list_modules() {
 	local format="${1:-table}"
@@ -117,15 +134,62 @@ list_modules() {
 		local module_name=$(jsonfilter -i "$catalog" -e '@.name' 2>/dev/null)
 		local module_category=$(jsonfilter -i "$catalog" -e '@.category' 2>/dev/null)
 		local module_version=$(jsonfilter -i "$catalog" -e '@.version' 2>/dev/null)
+		local service_name=$(jsonfilter -i "$catalog" -e '@.procd.service' 2>/dev/null)
 
-		# Check if installed
+		# Auto-detect service name if not defined in catalog
+		if [ -z "$service_name" ]; then
+			case "$module_id" in
+				*crowdsec*) service_name="crowdsec" ;;
+				*netifyd*) service_name="netifyd" ;;
+				*adguardhome*) service_name="AdGuardHome" ;;
+				*wireguard*) service_name="wg-quick" ;;
+				*nginx*|*vhost*) service_name="nginx" ;;
+				*dnscrypt*) service_name="dnscrypt-proxy" ;;
+				*unbound*) service_name="unbound" ;;
+				*stubby*) service_name="stubby" ;;
+				*shadowsocks*) service_name="shadowsocks-libev" ;;
+				*zerotier*) service_name="zerotier" ;;
+				*tailscale*) service_name="tailscale" ;;
+				*docker*|*portainer*) service_name="dockerd" ;;
+				*homeassistant*) service_name="homeassistant" ;;
+				*jellyfin*) service_name="jellyfin" ;;
+				*nextcloud*) service_name="nextcloud" ;;
+				*uptimekuma*|*uptime-kuma*) service_name="uptime-kuma" ;;
+				*vaultwarden*) service_name="vaultwarden" ;;
+				*gitea*) service_name="gitea" ;;
+				*domoticz*) service_name="domoticz" ;;
+				*zigbee2mqtt*) service_name="zigbee2mqtt" ;;
+				*mosquitto*|*mqtt*) service_name="mosquitto" ;;
+				*netdata*) service_name="netdata" ;;
+			esac
+		fi
+
+		# Check if installed (support both packages.required[0] and packages[0] formats)
 		local packages=$(jsonfilter -i "$catalog" -e '@.packages.required[0]' 2>/dev/null)
+		[ -z "$packages" ] && packages=$(jsonfilter -i "$catalog" -e '@.packages[0]' 2>/dev/null)
 		local status="available"
 		local installed_version=""
+		local is_installed=0
+		local is_enabled=0
+		local is_active=0
+
 		if [ "$cache_ready" -eq 1 ] && [ -n "$packages" ]; then
 			installed_version=$(get_installed_version_from_cache "$packages")
 			if [ -n "$installed_version" ]; then
 				status="installed"
+				is_installed=1
+
+				# Check enabled/active status if service defined
+				if [ -n "$service_name" ]; then
+					if is_service_enabled "$service_name"; then
+						is_enabled=1
+						status="enabled"
+					fi
+					if is_service_active "$service_name"; then
+						is_active=1
+						status="active"
+					fi
+				fi
 			fi
 		fi
 
@@ -137,7 +201,10 @@ list_modules() {
 				json_add_string "version" "$module_version"
 				json_add_string "status" "$status"
 				[ -n "$installed_version" ] && json_add_string "installed_version" "$installed_version"
-				json_add_boolean "installed" $([ "$status" = "installed" ] && echo true || echo false)
+				[ -n "$service_name" ] && json_add_string "service" "$service_name"
+				json_add_boolean "installed" "$is_installed"
+				json_add_boolean "enabled" "$is_enabled"
+				json_add_boolean "active" "$is_active"
 			json_close_object
 		else
 			printf "%-20s %-12s %-12s %-10s\n" \

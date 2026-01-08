@@ -1,0 +1,235 @@
+#!/bin/sh
+#
+# SecuBox WAN Access Manager
+# Manages firewall rules for remote access to LuCI/SecuBox
+#
+
+. /lib/functions.sh
+
+RULE_PREFIX="secubox_wan"
+
+# Remove all SecuBox WAN access rules
+remove_rules() {
+	local changed=0
+
+	# Find and remove all secubox_wan rules
+	while uci -q get firewall.@rule[-1] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[-1].name)
+		if echo "$name" | grep -q "^${RULE_PREFIX}"; then
+			uci delete firewall.@rule[-1]
+			changed=1
+		else
+			break
+		fi
+	done
+
+	# Iterate through all rules to find secubox ones
+	local i=0
+	while true; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		[ -z "$name" ] && break
+
+		if echo "$name" | grep -q "^${RULE_PREFIX}"; then
+			uci delete firewall.@rule[$i]
+			changed=1
+			# Don't increment i since indices shift after delete
+		else
+			i=$((i + 1))
+		fi
+	done
+
+	[ "$changed" -eq 1 ] && return 0
+	return 1
+}
+
+# Detect WAN zone name (fallback to '*' for any)
+get_wan_zone() {
+	# Try common WAN zone names
+	for zone in wan WAN external internet; do
+		if uci -q get firewall.@zone[] 2>/dev/null | grep -q "name='$zone'"; then
+			echo "$zone"
+			return
+		fi
+	done
+	# Check for zone with wan/wan6 network
+	local i=0
+	while true; do
+		local name=$(uci -q get firewall.@zone[$i].name 2>/dev/null)
+		[ -z "$name" ] && break
+		local network=$(uci -q get firewall.@zone[$i].network 2>/dev/null)
+		if echo "$network" | grep -qE '^wan|wan6|wan '; then
+			echo "$name"
+			return
+		fi
+		i=$((i + 1))
+	done
+	# No WAN zone found - use '*' for any source
+	echo "*"
+}
+
+# Add a firewall rule
+add_rule() {
+	local name="$1"
+	local port="$2"
+	local proto="${3:-tcp}"
+	local src="${4:-$(get_wan_zone)}"
+
+	uci add firewall rule >/dev/null
+	uci set firewall.@rule[-1].name="$name"
+	uci set firewall.@rule[-1].src="$src"
+	uci set firewall.@rule[-1].dest_port="$port"
+	uci set firewall.@rule[-1].proto="$proto"
+	uci set firewall.@rule[-1].target="ACCEPT"
+	uci set firewall.@rule[-1].enabled="1"
+}
+
+# Apply rules based on secubox config
+apply_rules() {
+	config_load secubox
+
+	local enabled https_enabled https_port http_enabled http_port ssh_enabled ssh_port
+
+	config_get enabled remote enabled "0"
+	config_get https_enabled remote https_enabled "0"
+	config_get https_port remote https_port "443"
+	config_get http_enabled remote http_enabled "0"
+	config_get http_port remote http_port "80"
+	config_get ssh_enabled remote ssh_enabled "0"
+	config_get ssh_port remote ssh_port "22"
+
+	# Remove existing rules first
+	remove_rules
+
+	# Only add rules if WAN access is enabled
+	if [ "$enabled" = "1" ]; then
+		# HTTPS access
+		if [ "$https_enabled" = "1" ]; then
+			add_rule "${RULE_PREFIX}_https" "$https_port" "tcp" "wan"
+			echo "Added HTTPS access rule (port $https_port)"
+		fi
+
+		# HTTP access
+		if [ "$http_enabled" = "1" ]; then
+			add_rule "${RULE_PREFIX}_http" "$http_port" "tcp" "wan"
+			echo "Added HTTP access rule (port $http_port)"
+		fi
+
+		# SSH access
+		if [ "$ssh_enabled" = "1" ]; then
+			add_rule "${RULE_PREFIX}_ssh" "$ssh_port" "tcp" "wan"
+			echo "Added SSH access rule (port $ssh_port)"
+		fi
+	fi
+
+	uci commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+
+	echo "WAN access rules applied"
+}
+
+# Show current status
+status() {
+	config_load secubox
+
+	local enabled https_enabled https_port http_enabled http_port ssh_enabled ssh_port
+
+	config_get enabled remote enabled "0"
+	config_get https_enabled remote https_enabled "0"
+	config_get https_port remote https_port "443"
+	config_get http_enabled remote http_enabled "0"
+	config_get http_port remote http_port "80"
+	config_get ssh_enabled remote ssh_enabled "0"
+	config_get ssh_port remote ssh_port "22"
+
+	echo "SecuBox WAN Access Status"
+	echo "========================="
+	echo "Master switch: $([ "$enabled" = "1" ] && echo "ENABLED" || echo "DISABLED")"
+	echo ""
+	echo "Services:"
+	echo "  HTTPS (port $https_port): $([ "$https_enabled" = "1" ] && echo "ENABLED" || echo "disabled")"
+	echo "  HTTP  (port $http_port): $([ "$http_enabled" = "1" ] && echo "ENABLED" || echo "disabled")"
+	echo "  SSH   (port $ssh_port): $([ "$ssh_enabled" = "1" ] && echo "ENABLED" || echo "disabled")"
+	echo ""
+	echo "Active firewall rules:"
+	iptables -L INPUT -n --line-numbers 2>/dev/null | grep -E "dpt:(${https_port}|${http_port}|${ssh_port})" || echo "  (none)"
+}
+
+# Enable WAN access
+enable() {
+	uci set secubox.remote.enabled='1'
+	uci commit secubox
+	apply_rules
+	echo "WAN access enabled"
+}
+
+# Disable WAN access
+disable() {
+	uci set secubox.remote.enabled='0'
+	uci commit secubox
+	remove_rules
+	uci commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+	echo "WAN access disabled"
+}
+
+# JSON output for API
+json_status() {
+	config_load secubox
+
+	local enabled https_enabled https_port http_enabled http_port ssh_enabled ssh_port
+
+	config_get enabled remote enabled "0"
+	config_get https_enabled remote https_enabled "0"
+	config_get https_port remote https_port "443"
+	config_get http_enabled remote http_enabled "0"
+	config_get http_port remote http_port "80"
+	config_get ssh_enabled remote ssh_enabled "0"
+	config_get ssh_port remote ssh_port "22"
+
+	. /usr/share/libubox/jshn.sh
+	json_init
+	json_add_boolean "enabled" "$enabled"
+	json_add_object "services"
+		json_add_object "https"
+			json_add_boolean "enabled" "$https_enabled"
+			json_add_int "port" "$https_port"
+		json_close_object
+		json_add_object "http"
+			json_add_boolean "enabled" "$http_enabled"
+			json_add_int "port" "$http_port"
+		json_close_object
+		json_add_object "ssh"
+			json_add_boolean "enabled" "$ssh_enabled"
+			json_add_int "port" "$ssh_port"
+		json_close_object
+	json_close_object
+	json_dump
+}
+
+case "$1" in
+	apply)
+		apply_rules
+		;;
+	remove)
+		remove_rules
+		uci commit firewall
+		/etc/init.d/firewall reload >/dev/null 2>&1
+		echo "WAN access rules removed"
+		;;
+	enable)
+		enable
+		;;
+	disable)
+		disable
+		;;
+	status)
+		status
+		;;
+	json)
+		json_status
+		;;
+	*)
+		echo "Usage: $0 {apply|remove|enable|disable|status|json}"
+		exit 1
+		;;
+esac

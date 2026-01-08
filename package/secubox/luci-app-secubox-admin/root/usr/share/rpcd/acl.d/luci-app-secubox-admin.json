@@ -17,12 +17,14 @@
 					"check_updates",
 					"get_app_versions",
 					"get_changelog",
-					"get_widget_data"
+					"get_widget_data",
+					"get_wan_access"
 				]
 			},
 			"uci": [
 				"secubox",
 				"secubox-appstore",
+				"firewall",
 				"*"
 			]
 		},
@@ -36,12 +38,15 @@
 					"updateModule",
 					"applyProfile",
 					"set_catalog_source",
-					"sync_catalog"
+					"sync_catalog",
+					"set_wan_access",
+					"apply_wan_access"
 				]
 			},
 			"uci": [
 				"secubox",
 				"secubox-appstore",
+				"firewall",
 				"*"
 			]
 		}

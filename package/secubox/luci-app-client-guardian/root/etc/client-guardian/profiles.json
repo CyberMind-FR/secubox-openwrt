@@ -1,6 +1,63 @@
 {
 	"profiles": [
 		{
+			"id": "factory_default",
+			"name": "Configuration Usine",
+			"description": "Zones firewall par défaut OpenWrt - Réinitialisation standard",
+			"icon": "🔄",
+			"is_factory_default": true,
+			"zones": [
+				{
+					"id": "lan",
+					"name": "Réseau Local (LAN)",
+					"description": "Tous les appareils du réseau local",
+					"network": "lan",
+					"color": "#22c55e",
+					"icon": "home",
+					"internet_access": true,
+					"local_access": true,
+					"inter_client": true,
+					"bandwidth_limit": 0,
+					"priority": "normal"
+				},
+				{
+					"id": "wan",
+					"name": "Internet (WAN)",
+					"description": "Connexion vers Internet - trafic sortant autorisé",
+					"network": "wan",
+					"color": "#ef4444",
+					"icon": "globe",
+					"is_wan": true,
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 0,
+					"priority": "high"
+				},
+				{
+					"id": "guest",
+					"name": "Invités",
+					"description": "Réseau invités isolé (optionnel)",
+					"network": "guest",
+					"color": "#8b5cf6",
+					"icon": "users",
+					"optional": true,
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 0,
+					"priority": "low"
+				}
+			],
+			"firewall_defaults": {
+				"input": "ACCEPT",
+				"output": "ACCEPT",
+				"forward": "REJECT",
+				"lan_to_wan": "ACCEPT",
+				"wan_to_lan": "REJECT"
+			}
+		},
+		{
 			"id": "family_home",
 			"name": "Maison Familiale",
 			"description": "Configuration optimale pour une maison avec parents, enfants et appareils IoT",

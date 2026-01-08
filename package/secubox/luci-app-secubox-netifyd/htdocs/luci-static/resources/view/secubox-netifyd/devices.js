@@ -3,7 +3,52 @@
 'require poll';
 'require ui';
 'require dom';
-'require secubox-netifyd/api as netifydAPI';
+'require rpc';
+
+var callGetDevices = rpc.declare({
+	object: 'luci.secubox-netifyd',
+	method: 'get_detected_devices'
+});
+
+var callGetStatus = rpc.declare({
+	object: 'luci.secubox-netifyd',
+	method: 'get_service_status'
+});
+
+var callGetDashboard = rpc.declare({
+	object: 'luci.secubox-netifyd',
+	method: 'get_dashboard'
+});
+
+function formatBytes(bytes) {
+	if (!bytes || bytes === 0) return '0 B';
+	var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+	var i = Math.floor(Math.log(bytes) / Math.log(1024));
+	i = Math.min(i, units.length - 1);
+	return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + units[i];
+}
+
+function formatDuration(seconds) {
+	if (seconds < 60) return seconds + 's';
+	if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
+	if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
+	return Math.floor(seconds / 86400) + 'd';
+}
+
+function getDeviceIcon(hostname, mac) {
+	hostname = (hostname || '').toLowerCase();
+	if (hostname.match(/android|phone|mobile|samsung|xiaomi|huawei|oppo|vivo/)) return '📱';
+	if (hostname.match(/iphone|ipad|apple|macbook|imac/)) return '🍎';
+	if (hostname.match(/pc|laptop|desktop|windows|linux|ubuntu/)) return '💻';
+	if (hostname.match(/camera|cam|dvr|nvr|hikvision|dahua/)) return '📷';
+	if (hostname.match(/tv|roku|chromecast|firestick|appletv|smart-tv/)) return '📺';
+	if (hostname.match(/playstation|xbox|nintendo|switch|steam/)) return '🎮';
+	if (hostname.match(/router|switch|ap|access[-_]?point|mesh/)) return '📡';
+	if (hostname.match(/printer|print|hp-|canon-|epson-/)) return '🖨️';
+	if (hostname.match(/alexa|echo|google[-_]?home|homepod/)) return '🔊';
+	if (hostname.match(/thermostat|nest|hue|bulb|sensor|iot/)) return '🏠';
+	return '🔌';
+}
 
 return view.extend({
 	refreshInterval: 5,
@@ -14,9 +59,9 @@ return view.extend({
 
 	load: function() {
 		return Promise.all([
-			netifydAPI.getDetectedDevices(),
-			netifydAPI.getServiceStatus(),
-			netifydAPI.getDashboard()
+			callGetDevices(),
+			callGetStatus(),
+			callGetDashboard()
 		]);
 	},
 
@@ -67,7 +112,7 @@ return view.extend({
 	},
 
 	handleExport: function(ev) {
-		var csvContent = 'IP Address,MAC Address,Flows,Bytes Sent,Bytes Received,Total Traffic,Last Seen\n';
+		var csvContent = 'IP Address,MAC Address,Hostname,Flows,Bytes Sent,Bytes Received,Total Traffic,Last Seen\n';
 
 		this.devicesData.forEach(function(device) {
 			var total = (device.bytes_sent || 0) + (device.bytes_received || 0);
@@ -77,6 +122,7 @@ return view.extend({
 			csvContent += [
 				'"' + (device.ip || 'N/A') + '"',
 				'"' + (device.mac || 'N/A') + '"',
+				'"' + (device.hostname || device.name || '') + '"',
 				device.flows || 0,
 				device.bytes_sent || 0,
 				device.bytes_received || 0,
@@ -113,45 +159,46 @@ return view.extend({
 			{
 				title: _('Active Devices'),
 				value: devices.length.toString(),
-				icon: 'network-wired',
-				gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+				emoji: '📱',
+				color: '#6366f1',
+				bg: 'linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(139,92,246,0.15) 100%)'
 			},
 			{
 				title: _('Total Flows'),
 				value: totalFlows.toLocaleString(),
-				icon: 'stream',
-				gradient: 'linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)'
+				emoji: '🔄',
+				color: '#10b981',
+				bg: 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(52,211,153,0.15) 100%)'
 			},
 			{
-				title: _('Total Sent'),
-				value: netifydAPI.formatBytes(totalBytesSent),
-				icon: 'upload',
-				gradient: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)'
+				title: _('Upload'),
+				value: formatBytes(totalBytesSent),
+				emoji: '⬆️',
+				color: '#ef4444',
+				bg: 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(248,113,113,0.15) 100%)'
 			},
 			{
-				title: _('Total Received'),
-				value: netifydAPI.formatBytes(totalBytesRecv),
-				icon: 'download',
-				gradient: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)'
+				title: _('Download'),
+				value: formatBytes(totalBytesRecv),
+				emoji: '⬇️',
+				color: '#22c55e',
+				bg: 'linear-gradient(135deg, rgba(34,197,94,0.15) 0%, rgba(74,222,128,0.15) 100%)'
 			}
 		];
 
 		return E('div', {
-			'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem'
+			'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px'
 		}, cards.map(function(card) {
 			return E('div', {
-				'style': 'background: ' + card.gradient + '; color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1)'
+				'style': 'background: ' + card.bg + '; border: 1px solid rgba(0,0,0,0.08); padding: 20px; border-radius: 16px; transition: transform 0.2s, box-shadow 0.2s;'
 			}, [
-				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem' }, [
-					E('div', { 'style': 'font-size: 0.9em; opacity: 0.9' }, card.title),
-					E('i', {
-						'class': 'fa fa-' + card.icon,
-						'style': 'font-size: 2em; opacity: 0.3'
-					})
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px' }, [
+					E('span', { 'style': 'font-size: 28px' }, card.emoji),
+					E('span', { 'style': 'font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600' }, card.title)
 				]),
-				E('div', { 'style': 'font-size: 2em; font-weight: bold' }, card.value)
+				E('div', { 'style': 'font-size: 28px; font-weight: 700; color: ' + card.color }, card.value)
 			]);
-		}.bind(this)));
+		}));
 	},
 
 	renderDevicesTable: function() {
@@ -161,135 +208,90 @@ return view.extend({
 		var devices = this.filterDevices(this.devicesData);
 		var sortedDevices = this.sortDevices(devices, this.sortColumn, this.sortDirection);
 
-		var getSortIcon = function(column) {
-			if (this.sortColumn !== column) {
-				return E('i', { 'class': 'fa fa-sort', 'style': 'opacity: 0.3' });
-			}
-			return E('i', {
-				'class': 'fa fa-sort-' + (this.sortDirection === 'asc' ? 'up' : 'down'),
-				'style': 'color: #3b82f6'
-			});
-		}.bind(this);
-
-		dom.content(container, [
-			devices.length > 0 ? E('div', { 'class': 'table', 'style': 'font-size: 0.95em' },
-				[
-					// Header
-					E('div', { 'class': 'tr table-titles' }, [
-						E('div', {
-							'class': 'th left',
-							'style': 'width: 20%; cursor: pointer',
-							'click': ui.createHandlerFn(this, 'handleSort', 'ip')
-						}, [
-							_('IP Address'),
-							' ',
-							getSortIcon('ip')
-						]),
-						E('div', { 'class': 'th left', 'style': 'width: 20%' }, _('MAC Address')),
-						E('div', {
-							'class': 'th center',
-							'style': 'width: 10%; cursor: pointer',
-							'click': ui.createHandlerFn(this, 'handleSort', 'flows')
-						}, [
-							_('Flows'),
-							' ',
-							getSortIcon('flows')
-						]),
-						E('div', {
-							'class': 'th right',
-							'style': 'width: 15%; cursor: pointer',
-							'click': ui.createHandlerFn(this, 'handleSort', 'bytes_sent')
-						}, [
-							_('Sent'),
-							' ',
-							getSortIcon('bytes_sent')
-						]),
-						E('div', {
-							'class': 'th right',
-							'style': 'width: 15%; cursor: pointer',
-							'click': ui.createHandlerFn(this, 'handleSort', 'bytes_received')
-						}, [
-							_('Received'),
-							' ',
-							getSortIcon('bytes_received')
-						]),
-						E('div', { 'class': 'th', 'style': 'width: 20%' }, _('Traffic Distribution'))
-					])
-				].concat(
-					// Rows
-					sortedDevices.map(function(device, idx) {
-					var lastSeen = device.last_seen || 0;
-					var now = Math.floor(Date.now() / 1000);
-					var ago = now - lastSeen;
-					var lastSeenStr = 'N/A';
-
-					if (lastSeen > 0) {
-						if (ago < 60) {
-							lastSeenStr = _('Just now');
-						} else {
-							lastSeenStr = netifydAPI.formatDuration(ago) + ' ' + _('ago');
-						}
-					}
-
-					var totalBytes = (device.bytes_sent || 0) + (device.bytes_received || 0);
-					var sentPercent = totalBytes > 0 ? ((device.bytes_sent || 0) / totalBytes * 100) : 50;
-					var recvPercent = 100 - sentPercent;
-
-					return E('div', {
-						'class': 'tr',
-						'style': idx % 2 === 0 ? 'background: #f9fafb' : ''
-					}, [
-						E('div', { 'class': 'td left', 'style': 'width: 20%' }, [
-							E('code', { 'style': 'font-size: 0.9em' }, device.ip || 'Unknown'),
-							E('br'),
-							E('small', { 'class': 'text-muted' }, lastSeenStr)
-						]),
-						E('div', { 'class': 'td left', 'style': 'width: 20%' }, [
-							E('code', { 'style': 'font-size: 0.8em' }, device.mac || 'Unknown')
-						]),
-						E('div', { 'class': 'td center', 'style': 'width: 10%' },
-							(device.flows || 0).toLocaleString()),
-						E('div', { 'class': 'td right', 'style': 'width: 15%' }, [
-							E('span', {
-								'class': 'badge',
-								'style': 'background: #ef4444; color: white; padding: 0.25rem 0.5rem; border-radius: 4px'
-							}, netifydAPI.formatBytes(device.bytes_sent || 0))
-						]),
-						E('div', { 'class': 'td right', 'style': 'width: 15%' }, [
-							E('span', {
-								'class': 'badge',
-								'style': 'background: #10b981; color: white; padding: 0.25rem 0.5rem; border-radius: 4px'
-							}, netifydAPI.formatBytes(device.bytes_received || 0))
-						]),
-						E('div', { 'class': 'td', 'style': 'width: 20%' }, [
-							E('div', {
-								'style': 'display: flex; gap: 2px; height: 24px; border-radius: 4px; overflow: hidden'
-							}, [
-								E('div', {
-									'style': 'background: #ef4444; width: ' + sentPercent + '%; transition: width 0.3s',
-									'title': _('Upload: %s').format(sentPercent.toFixed(1) + '%')
-								}),
-								E('div', {
-									'style': 'background: #10b981; width: ' + recvPercent + '%; transition: width 0.3s',
-									'title': _('Download: %s').format(recvPercent.toFixed(1) + '%')
-								})
-							]),
-							E('div', { 'style': 'font-size: 0.75em; color: #6b7280; margin-top: 0.25rem; text-align: center' },
-								_('Total: %s').format(netifydAPI.formatBytes(totalBytes)))
-						])
-					]);
-				}.bind(this))
-				)
-			) : E('div', {
-				'class': 'alert-message info',
-				'style': 'text-align: center; padding: 3rem'
+		if (devices.length === 0) {
+			dom.content(container, E('div', {
+				'style': 'text-align: center; padding: 48px; background: linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(139,92,246,0.05) 100%); border-radius: 16px; border: 2px dashed rgba(99,102,241,0.2)'
 			}, [
-				E('i', { 'class': 'fa fa-network-wired', 'style': 'font-size: 3em; opacity: 0.3; display: block; margin-bottom: 1rem' }),
-				E('h4', _('No Device Data')),
-				E('p', { 'class': 'text-muted' }, _('No devices have been detected yet')),
-				E('small', _('Data will appear once network traffic is analyzed'))
-			])
-		]);
+				E('div', { 'style': 'font-size: 48px; margin-bottom: 16px; opacity: 0.5' }, '📡'),
+				E('h4', { 'style': 'margin: 0 0 8px 0; color: #374151' }, _('No Devices Detected')),
+				E('p', { 'style': 'color: #6b7280; margin: 0' }, _('Waiting for network traffic...'))
+			]));
+			return;
+		}
+
+		var deviceCards = sortedDevices.map(function(device) {
+			var lastSeen = device.last_seen || 0;
+			var now = Math.floor(Date.now() / 1000);
+			var ago = now - lastSeen;
+			var lastSeenStr = 'N/A';
+			var isOnline = ago < 120;
+
+			if (lastSeen > 0) {
+				if (ago < 60) lastSeenStr = _('Just now');
+				else lastSeenStr = formatDuration(ago) + ' ' + _('ago');
+			}
+
+			var totalBytes = (device.bytes_sent || 0) + (device.bytes_received || 0);
+			var sentPercent = totalBytes > 0 ? ((device.bytes_sent || 0) / totalBytes * 100) : 50;
+			var recvPercent = 100 - sentPercent;
+			var icon = getDeviceIcon(device.hostname || device.name, device.mac);
+
+			return E('div', {
+				'style': 'background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; transition: all 0.2s; ' + (isOnline ? 'box-shadow: 0 2px 8px rgba(34,197,94,0.1); border-left: 4px solid #22c55e;' : 'opacity: 0.7;')
+			}, [
+				// Header row: Icon + IP/MAC + Status
+				E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin-bottom: 12px' }, [
+					E('div', { 'style': 'font-size: 32px; flex-shrink: 0' }, icon),
+					E('div', { 'style': 'flex: 1; min-width: 0' }, [
+						E('div', { 'style': 'font-weight: 600; color: #111827; font-size: 15px; font-family: monospace' }, device.ip || 'Unknown'),
+						E('div', { 'style': 'font-size: 11px; color: #9ca3af; font-family: monospace' }, device.mac || 'Unknown')
+					]),
+					E('div', { 'style': 'text-align: right' }, [
+						E('div', {
+							'style': 'display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; ' + (isOnline ? 'background: rgba(34,197,94,0.15); color: #16a34a' : 'background: rgba(156,163,175,0.15); color: #6b7280')
+						}, [
+							E('span', { 'style': 'width: 6px; height: 6px; border-radius: 50%; background: ' + (isOnline ? '#22c55e' : '#9ca3af') }),
+							isOnline ? _('Online') : lastSeenStr
+						]),
+						E('div', { 'style': 'font-size: 11px; color: #9ca3af; margin-top: 4px' },
+							(device.flows || 0) + ' ' + _('flows'))
+					])
+				]),
+				// Traffic stats row
+				E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px' }, [
+					E('div', { 'style': 'background: rgba(239,68,68,0.08); padding: 8px 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center' }, [
+						E('span', { 'style': 'font-size: 12px; color: #6b7280' }, '⬆️ ' + _('Upload')),
+						E('span', { 'style': 'font-weight: 600; color: #dc2626; font-size: 13px' }, formatBytes(device.bytes_sent || 0))
+					]),
+					E('div', { 'style': 'background: rgba(34,197,94,0.08); padding: 8px 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center' }, [
+						E('span', { 'style': 'font-size: 12px; color: #6b7280' }, '⬇️ ' + _('Download')),
+						E('span', { 'style': 'font-weight: 600; color: #16a34a; font-size: 13px' }, formatBytes(device.bytes_received || 0))
+					])
+				]),
+				// Traffic bar
+				E('div', { 'style': 'position: relative' }, [
+					E('div', { 'style': 'display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: #f3f4f6' }, [
+						E('div', {
+							'style': 'background: linear-gradient(90deg, #ef4444, #f87171); width: ' + sentPercent + '%; transition: width 0.3s',
+							'title': _('Upload: %s').format(sentPercent.toFixed(1) + '%')
+						}),
+						E('div', {
+							'style': 'background: linear-gradient(90deg, #22c55e, #4ade80); width: ' + recvPercent + '%; transition: width 0.3s',
+							'title': _('Download: %s').format(recvPercent.toFixed(1) + '%')
+						})
+					]),
+					E('div', { 'style': 'display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: #9ca3af' }, [
+						E('span', {}, sentPercent.toFixed(0) + '% ↑'),
+						E('span', { 'style': 'font-weight: 500; color: #6b7280' }, _('Total: %s').format(formatBytes(totalBytes))),
+						E('span', {}, recvPercent.toFixed(0) + '% ↓')
+					])
+				])
+			]);
+		});
+
+		dom.content(container, E('div', {
+			'style': 'display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px'
+		}, deviceCards));
 	},
 
 	render: function(data) {
@@ -302,101 +304,96 @@ return view.extend({
 		// Set up polling
 		poll.add(L.bind(function() {
 			return Promise.all([
-				netifydAPI.getDetectedDevices(),
-				netifydAPI.getServiceStatus()
+				callGetDevices(),
+				callGetStatus()
 			]).then(L.bind(function(result) {
 				this.devicesData = (result[0] || {}).devices || [];
 				this.renderDevicesTable();
+				// Update summary cards
+				var summaryContainer = document.getElementById('summary-cards-container');
+				if (summaryContainer) {
+					dom.content(summaryContainer, this.renderSummaryCards(this.devicesData).childNodes);
+				}
+				// Update device count badge
+				var countBadge = document.getElementById('device-count-badge');
+				if (countBadge) {
+					countBadge.textContent = this.devicesData.length;
+				}
 			}, this));
 		}, this), this.refreshInterval);
 
 		var serviceRunning = status.running;
 
-		return E('div', { 'class': 'cbi-map' }, [
-			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem' }, [
-				E('h2', { 'name': 'content', 'style': 'margin: 0' }, [
-					E('i', { 'class': 'fa fa-network-wired', 'style': 'margin-right: 0.5rem' }),
-					_('Detected Devices')
-				]),
-				E('span', {
-					'class': 'badge',
-					'style': 'padding: 0.5rem 1rem; font-size: 0.9em; background: ' + (serviceRunning ? '#10b981' : '#ef4444')
-				}, [
-					E('i', { 'class': 'fa fa-circle', 'style': 'margin-right: 0.5rem' }),
-					serviceRunning ? _('Live') : _('Offline')
-				])
-			]),
-			E('div', { 'class': 'cbi-map-descr' },
-				_('Network devices detected and tracked by Netifyd deep packet inspection. Updates every 5 seconds.')),
-
-			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'class': 'cbi-section-node' }, [
-					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem' }, [
-						E('h3', { 'style': 'margin: 0' }, [
-							E('i', { 'class': 'fa fa-chart-bar', 'style': 'margin-right: 0.5rem' }),
-							_('Summary')
-						]),
-						E('button', {
-							'class': 'btn btn-primary',
-							'click': ui.createHandlerFn(this, 'handleExport')
-						}, [
-							E('i', { 'class': 'fa fa-download' }),
-							' ',
-							_('Export CSV')
-						])
-					]),
-					this.renderSummaryCards(this.devicesData)
-				])
-			]),
-
-			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem' }, [
-					E('h3', { 'style': 'margin: 0' }, [
-						E('i', { 'class': 'fa fa-list', 'style': 'margin-right: 0.5rem' }),
-						_('Device List'),
-						' ',
-						E('span', {
-							'class': 'badge',
-							'style': 'background: #3b82f6; color: white; margin-left: 0.5rem'
-						}, this.devicesData.length)
-					]),
-					E('div', { 'style': 'display: flex; gap: 0.5rem; align-items: center' }, [
-						E('input', {
-							'type': 'text',
-							'class': 'cbi-input-text',
-							'placeholder': _('Search by IP or MAC...'),
-							'style': 'min-width: 250px',
-							'value': this.searchQuery,
-							'keyup': function(ev) {
-								self.searchQuery = ev.target.value;
-								self.renderDevicesTable();
-							}
-						})
+		return E('div', { 'style': 'max-width: 1400px; margin: 0 auto; padding: 24px' }, [
+			// Header
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 12px' }, [
+					E('div', { 'style': 'font-size: 36px' }, '📡'),
+					E('div', {}, [
+						E('h2', { 'style': 'margin: 0; font-size: 24px; font-weight: 700; color: #111827' }, _('Network Devices')),
+						E('p', { 'style': 'margin: 4px 0 0 0; font-size: 14px; color: #6b7280' }, _('Real-time traffic monitoring via Netifyd DPI'))
 					])
 				]),
-				E('div', { 'class': 'cbi-section-node' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 12px' }, [
 					E('div', {
-						'class': 'alert alert-info',
-						'style': 'margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem'
+						'style': 'display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 24px; font-size: 13px; font-weight: 600; ' + (serviceRunning ? 'background: rgba(34,197,94,0.15); color: #16a34a' : 'background: rgba(239,68,68,0.15); color: #dc2626')
 					}, [
-						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem' }, [
-							E('div', { 'style': 'width: 12px; height: 12px; background: #ef4444; border-radius: 2px' }),
-							E('span', _('Upload'))
-						]),
-						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem' }, [
-							E('div', { 'style': 'width: 12px; height: 12px; background: #10b981; border-radius: 2px' }),
-							E('span', _('Download'))
-						]),
-						E('span', { 'class': 'text-muted' }, '|'),
-						E('span', [
-							E('i', { 'class': 'fa fa-sync' }),
-							' ',
-							_('Auto-refresh: Every %d seconds').format(this.refreshInterval)
-						])
+						E('span', { 'style': 'width: 8px; height: 8px; border-radius: 50%; background: ' + (serviceRunning ? '#22c55e' : '#ef4444') + '; animation: ' + (serviceRunning ? 'pulse 2s infinite' : 'none') }),
+						serviceRunning ? _('Live') : _('Offline')
 					]),
-					E('div', { 'id': 'devices-table-container' })
+					E('button', {
+						'style': 'display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: #6366f1; color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer',
+						'click': ui.createHandlerFn(this, 'handleExport')
+					}, [
+						'📥',
+						_('Export')
+					])
 				])
-			])
+			]),
+
+			// Summary Cards
+			E('div', { 'id': 'summary-cards-container' }, this.renderSummaryCards(this.devicesData).childNodes),
+
+			// Device List Header
+			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 12px' }, [
+					E('h3', { 'style': 'margin: 0; font-size: 18px; font-weight: 600; color: #374151' }, _('Device List')),
+					E('span', {
+						'id': 'device-count-badge',
+						'style': 'background: #6366f1; color: white; padding: 4px 12px; border-radius: 12px; font-size: 13px; font-weight: 600'
+					}, this.devicesData.length)
+				]),
+				E('div', { 'style': 'display: flex; gap: 12px; align-items: center' }, [
+					E('div', { 'style': 'display: flex; align-items: center; gap: 16px; font-size: 12px; color: #6b7280' }, [
+						E('span', { 'style': 'display: flex; align-items: center; gap: 4px' }, [
+							E('span', { 'style': 'width: 10px; height: 10px; background: linear-gradient(90deg, #ef4444, #f87171); border-radius: 2px' }),
+							_('Upload')
+						]),
+						E('span', { 'style': 'display: flex; align-items: center; gap: 4px' }, [
+							E('span', { 'style': 'width: 10px; height: 10px; background: linear-gradient(90deg, #22c55e, #4ade80); border-radius: 2px' }),
+							_('Download')
+						]),
+						E('span', { 'style': 'color: #9ca3af' }, '|'),
+						E('span', {}, '🔄 ' + _('%ds refresh').format(this.refreshInterval))
+					]),
+					E('input', {
+						'type': 'text',
+						'placeholder': _('🔍 Search IP or MAC...'),
+						'style': 'padding: 8px 16px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; min-width: 200px; outline: none',
+						'value': this.searchQuery,
+						'keyup': function(ev) {
+							self.searchQuery = ev.target.value;
+							self.renderDevicesTable();
+						}
+					})
+				])
+			]),
+
+			// Devices Grid
+			E('div', { 'id': 'devices-table-container' }),
+
+			// CSS for pulse animation
+			E('style', {}, '@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }')
 		]);
 	},
 

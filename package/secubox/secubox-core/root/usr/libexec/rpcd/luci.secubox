@@ -194,10 +194,28 @@ case "$1" in
 
 		json_add_object "update_component_settings"
 			json_add_string "component_id" "string"
-			json_add_object "settings" "object"
+			json_add_object "settings"
+			json_close_object
 		json_close_object
 
 		json_add_object "sync_component_registry"
+		json_close_object
+
+		# WAN Access management
+		json_add_object "get_wan_access"
+		json_close_object
+
+		json_add_object "set_wan_access"
+			json_add_boolean "enabled" "boolean"
+			json_add_boolean "https_enabled" "boolean"
+			json_add_int "https_port" "integer"
+			json_add_boolean "http_enabled" "boolean"
+			json_add_int "http_port" "integer"
+			json_add_boolean "ssh_enabled" "boolean"
+			json_add_int "ssh_port" "integer"
+		json_close_object
+
+		json_add_object "apply_wan_access"
 		json_close_object
 
 	json_dump
@@ -220,7 +238,7 @@ case "$1" in
 			reload)
 				/usr/sbin/secubox-core reload
 				json_init
-				json_add_boolean "success" true
+				json_add_boolean "success" 1
 				json_dump
 				;;
 
@@ -587,12 +605,12 @@ case "$1" in
 				# Use secubox-appstore for installation
 				if /usr/sbin/secubox-appstore install "$app_id" >/dev/null 2>&1; then
 					json_init
-					json_add_boolean "success" true
+					json_add_boolean "success" 1
 					json_add_string "message" "App installed successfully"
 					json_dump
 				else
 					json_init
-					json_add_boolean "success" false
+					json_add_boolean "success" 0
 					json_add_string "error" "Installation failed"
 					json_add_string "details" "Check system logs for more information"
 					json_dump
@@ -607,12 +625,12 @@ case "$1" in
 				# Use secubox-appstore for removal
 				if /usr/sbin/secubox-appstore remove "$app_id" >/dev/null 2>&1; then
 					json_init
-					json_add_boolean "success" true
+					json_add_boolean "success" 1
 					json_add_string "message" "App removed successfully"
 					json_dump
 				else
 					json_init
-					json_add_boolean "success" false
+					json_add_boolean "success" 0
 					json_add_string "error" "Removal failed"
 					json_add_string "details" "Check system logs for more information"
 					json_dump
@@ -756,19 +774,19 @@ case "$1" in
 					if uci set "${CONFIG_NAME}.${SECTION_NAME}.force_source=$source" >/dev/null 2>&1 && \
 						uci commit "$CONFIG_NAME" >/dev/null 2>&1; then
 						json_init
-						json_add_boolean "success" true
+						json_add_boolean "success" 1
 						json_add_string "message" "Catalog source set to: $source"
 						json_dump
 					else
 						json_init
-						json_add_boolean "success" false
+						json_add_boolean "success" 0
 						json_add_string "error" "Failed to update UCI config"
 						json_dump
 					fi
 
 				else
 					json_init
-					json_add_boolean "success" false
+					json_add_boolean "success" 0
 					json_add_string "error" "No source specified"
 					json_dump
 				fi
@@ -782,13 +800,13 @@ case "$1" in
 				# Call secubox-catalog-sync (with or without source)
 				if /usr/sbin/secubox-appstore sync ${source:+"$source"} 2>&1; then
 					json_init
-					json_add_boolean "success" true
+					json_add_boolean "success" 1
 					json_add_string "message" "Catalog synced successfully"
 					[ -n "$source" ] && json_add_string "source" "$source"
 					json_dump
 				else
 					json_init
-					json_add_boolean "success" false
+					json_add_boolean "success" 0
 					json_add_string "error" "Sync failed"
 					json_dump
 				fi
@@ -942,12 +960,12 @@ case "$1" in
 
 				json_init
 				if echo "$result" | grep -q "Success:"; then
-					json_add_boolean "success" true
+					json_add_boolean "success" 1
 					json_add_string "message" "$result"
 					json_add_string "component_id" "$component_id"
 					json_add_string "new_state" "$new_state"
 				else
-					json_add_boolean "success" false
+					json_add_boolean "success" 0
 					json_add_string "error" "$result"
 				fi
 				json_dump
@@ -981,10 +999,10 @@ case "$1" in
 
 				json_init
 				if echo "$result" | grep -q "Success:"; then
-					json_add_boolean "success" true
+					json_add_boolean "success" 1
 					json_add_string "message" "$result"
 				else
-					json_add_boolean "success" false
+					json_add_boolean "success" 0
 					json_add_string "error" "$result"
 				fi
 				json_dump
@@ -998,10 +1016,10 @@ case "$1" in
 
 				json_init
 				if echo "$result" | grep -q "Success:"; then
-					json_add_boolean "success" true
+					json_add_boolean "success" 1
 					json_add_string "message" "$result"
 				else
-					json_add_boolean "success" false
+					json_add_boolean "success" 0
 					json_add_string "error" "$result"
 				fi
 				json_dump
@@ -1039,7 +1057,7 @@ case "$1" in
 				# Extract settings object from input
 				# This is simplified - full implementation would parse settings JSON
 				json_init
-				json_add_boolean "success" true
+				json_add_boolean "success" 1
 				json_add_string "message" "Settings update functionality available via CLI: secubox-component set-setting"
 				json_dump
 				;;
@@ -1049,12 +1067,50 @@ case "$1" in
 
 				json_init
 				if echo "$result" | grep -q "successfully"; then
-					json_add_boolean "success" true
+					json_add_boolean "success" 1
 					json_add_string "message" "$result"
 				else
-					json_add_boolean "success" false
+					json_add_boolean "success" 0
 					json_add_string "error" "$result"
 				fi
+				json_dump
+				;;
+
+			get_wan_access)
+				/usr/sbin/secubox-wan-access json
+				;;
+
+			set_wan_access)
+				read -r input
+				enabled=$(echo "$input" | jsonfilter -e '@.enabled' 2>/dev/null)
+				https_enabled=$(echo "$input" | jsonfilter -e '@.https_enabled' 2>/dev/null)
+				https_port=$(echo "$input" | jsonfilter -e '@.https_port' 2>/dev/null)
+				http_enabled=$(echo "$input" | jsonfilter -e '@.http_enabled' 2>/dev/null)
+				http_port=$(echo "$input" | jsonfilter -e '@.http_port' 2>/dev/null)
+				ssh_enabled=$(echo "$input" | jsonfilter -e '@.ssh_enabled' 2>/dev/null)
+				ssh_port=$(echo "$input" | jsonfilter -e '@.ssh_port' 2>/dev/null)
+
+				# Update UCI settings
+				[ -n "$enabled" ] && uci set secubox.remote.enabled="$enabled"
+				[ -n "$https_enabled" ] && uci set secubox.remote.https_enabled="$https_enabled"
+				[ -n "$https_port" ] && uci set secubox.remote.https_port="$https_port"
+				[ -n "$http_enabled" ] && uci set secubox.remote.http_enabled="$http_enabled"
+				[ -n "$http_port" ] && uci set secubox.remote.http_port="$http_port"
+				[ -n "$ssh_enabled" ] && uci set secubox.remote.ssh_enabled="$ssh_enabled"
+				[ -n "$ssh_port" ] && uci set secubox.remote.ssh_port="$ssh_port"
+				uci commit secubox
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "WAN access settings updated"
+				json_dump
+				;;
+
+			apply_wan_access)
+				/usr/sbin/secubox-wan-access apply >/dev/null 2>&1
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "WAN access rules applied"
 				json_dump
 				;;
 

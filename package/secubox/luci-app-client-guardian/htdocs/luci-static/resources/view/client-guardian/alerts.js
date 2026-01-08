@@ -1,6 +1,6 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
+
 'require dom';
 'require poll';
 'require uci';

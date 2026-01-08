@@ -1,13 +1,17 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
 'require dom';
 'require ui';
-'require client-guardian.api as api';
+'require rpc';
+
+var callGetParental = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'parental'
+});
 
 return view.extend({
 	load: function() {
-		return api.getParental();
+		return callGetParental();
 	},
 
 	render: function(data) {

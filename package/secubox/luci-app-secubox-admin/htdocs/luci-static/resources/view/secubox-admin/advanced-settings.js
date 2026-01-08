@@ -6,6 +6,25 @@
 'require rpc';
 'require form';
 
+var callGetWanAccess = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_wan_access',
+	expect: { }
+});
+
+var callSetWanAccess = rpc.declare({
+	object: 'luci.secubox',
+	method: 'set_wan_access',
+	params: ['enabled', 'https_enabled', 'https_port', 'http_enabled', 'http_port', 'ssh_enabled', 'ssh_port'],
+	expect: { success: false }
+});
+
+var callApplyWanAccess = rpc.declare({
+	object: 'luci.secubox',
+	method: 'apply_wan_access',
+	expect: { success: false }
+});
+
 var callGetConfigFiles = rpc.declare({
 	object: 'file',
 	method: 'list',
@@ -34,12 +53,14 @@ return view.extend({
 			L.resolveDefault(uci.load('secubox-appstore'), {}),
 			L.resolveDefault(uci.load('network'), {}),
 			L.resolveDefault(uci.load('firewall'), {}),
-			L.resolveDefault(uci.load('dhcp'), {})
+			L.resolveDefault(uci.load('dhcp'), {}),
+			L.resolveDefault(callGetWanAccess(), {})
 		]);
 	},
 
-	render: function() {
+	render: function(data) {
 		var self = this;
+		var wanAccess = data[5] || {};
 
 		var container = E('div', { 'class': 'cyberpunk-mode' }, [
 			E('link', { 'rel': 'stylesheet', 'type': 'text/css',
@@ -55,6 +76,7 @@ return view.extend({
 			E('div', { 'class': 'cyber-dual-console' }, [
 				// Left: Quick Config Sections
 				E('div', { 'class': 'cyber-console-left' }, [
+					this.renderWanAccessPanel(wanAccess),
 					this.renderQuickConfigPanel(),
 					this.renderSystemSubsetsPanel(),
 					this.renderConfigFilesPanel()
@@ -70,6 +92,171 @@ return view.extend({
 		]);
 
 		return container;
+	},
+
+	renderWanAccessPanel: function(wanAccess) {
+		var self = this;
+		var enabled = wanAccess.enabled || false;
+		var services = wanAccess.services || {};
+
+		return E('div', { 'class': 'cyber-panel cyber-scanlines' }, [
+			E('div', { 'class': 'cyber-panel-header' }, [
+				E('div', { 'class': 'cyber-panel-title' }, '🌐 WAN ACCESS'),
+				E('span', {
+					'class': 'cyber-panel-badge ' + (enabled ? 'success' : 'warning'),
+					'id': 'wan-access-status'
+				}, enabled ? 'ENABLED' : 'DISABLED')
+			]),
+			E('div', { 'class': 'cyber-panel-body' }, [
+				// Master toggle
+				E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(0,255,65,0.05); border-left: 3px solid var(--cyber-primary); margin-bottom: 15px;' }, [
+					E('div', {}, [
+						E('div', { 'style': 'font-weight: bold; font-size: 13px;' }, 'Remote Access'),
+						E('div', { 'style': 'font-size: 10px; color: var(--cyber-text-dim);' }, 'Allow access from WAN/Internet')
+					]),
+					E('label', { 'class': 'cyber-switch' }, [
+						E('input', {
+							'type': 'checkbox',
+							'id': 'wan-access-master',
+							'checked': enabled,
+							'change': function(ev) {
+								var masterEnabled = ev.target.checked;
+								document.getElementById('wan-access-status').textContent = masterEnabled ? 'ENABLED' : 'DISABLED';
+								document.getElementById('wan-access-status').className = 'cyber-panel-badge ' + (masterEnabled ? 'success' : 'warning');
+							}
+						}),
+						E('span', { 'class': 'cyber-slider' })
+					])
+				]),
+
+				// Service toggles
+				E('div', { 'style': 'display: flex; flex-direction: column; gap: 10px;' }, [
+					// HTTPS
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(0,255,255,0.05); border-radius: 4px;' }, [
+						E('div', { 'style': 'display: flex; align-items: center; gap: 10px;' }, [
+							E('span', { 'style': 'font-size: 16px;' }, '🔒'),
+							E('div', {}, [
+								E('div', { 'style': 'font-size: 12px; font-weight: bold;' }, 'HTTPS (LuCI)'),
+								E('div', { 'style': 'font-size: 10px; color: var(--cyber-text-dim);' }, 'Secure web interface')
+							])
+						]),
+						E('div', { 'style': 'display: flex; align-items: center; gap: 10px;' }, [
+							E('input', {
+								'type': 'number',
+								'id': 'wan-https-port',
+								'value': (services.https && services.https.port) || 443,
+								'style': 'width: 70px; padding: 5px; background: rgba(0,0,0,0.3); border: 1px solid var(--cyber-border); color: var(--cyber-text); text-align: center;'
+							}),
+							E('label', { 'class': 'cyber-switch' }, [
+								E('input', {
+									'type': 'checkbox',
+									'id': 'wan-https-enabled',
+									'checked': services.https && services.https.enabled
+								}),
+								E('span', { 'class': 'cyber-slider' })
+							])
+						])
+					]),
+
+					// HTTP
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(255,165,0,0.05); border-radius: 4px;' }, [
+						E('div', { 'style': 'display: flex; align-items: center; gap: 10px;' }, [
+							E('span', { 'style': 'font-size: 16px;' }, '🌐'),
+							E('div', {}, [
+								E('div', { 'style': 'font-size: 12px; font-weight: bold;' }, 'HTTP'),
+								E('div', { 'style': 'font-size: 10px; color: var(--cyber-warning);' }, 'Not recommended')
+							])
+						]),
+						E('div', { 'style': 'display: flex; align-items: center; gap: 10px;' }, [
+							E('input', {
+								'type': 'number',
+								'id': 'wan-http-port',
+								'value': (services.http && services.http.port) || 80,
+								'style': 'width: 70px; padding: 5px; background: rgba(0,0,0,0.3); border: 1px solid var(--cyber-border); color: var(--cyber-text); text-align: center;'
+							}),
+							E('label', { 'class': 'cyber-switch' }, [
+								E('input', {
+									'type': 'checkbox',
+									'id': 'wan-http-enabled',
+									'checked': services.http && services.http.enabled
+								}),
+								E('span', { 'class': 'cyber-slider' })
+							])
+						])
+					]),
+
+					// SSH
+					E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(255,0,0,0.05); border-radius: 4px;' }, [
+						E('div', { 'style': 'display: flex; align-items: center; gap: 10px;' }, [
+							E('span', { 'style': 'font-size: 16px;' }, '🖥️'),
+							E('div', {}, [
+								E('div', { 'style': 'font-size: 12px; font-weight: bold;' }, 'SSH'),
+								E('div', { 'style': 'font-size: 10px; color: var(--cyber-danger);' }, 'Use with caution')
+							])
+						]),
+						E('div', { 'style': 'display: flex; align-items: center; gap: 10px;' }, [
+							E('input', {
+								'type': 'number',
+								'id': 'wan-ssh-port',
+								'value': (services.ssh && services.ssh.port) || 22,
+								'style': 'width: 70px; padding: 5px; background: rgba(0,0,0,0.3); border: 1px solid var(--cyber-border); color: var(--cyber-text); text-align: center;'
+							}),
+							E('label', { 'class': 'cyber-switch' }, [
+								E('input', {
+									'type': 'checkbox',
+									'id': 'wan-ssh-enabled',
+									'checked': services.ssh && services.ssh.enabled
+								}),
+								E('span', { 'class': 'cyber-slider' })
+							])
+						])
+					])
+				]),
+
+				// Apply button
+				E('div', { 'style': 'margin-top: 15px;' }, [
+					E('button', {
+						'class': 'cyber-btn primary',
+						'style': 'width: 100%;',
+						'click': function() {
+							var masterEnabled = document.getElementById('wan-access-master').checked;
+							var httpsEnabled = document.getElementById('wan-https-enabled').checked;
+							var httpsPort = parseInt(document.getElementById('wan-https-port').value) || 443;
+							var httpEnabled = document.getElementById('wan-http-enabled').checked;
+							var httpPort = parseInt(document.getElementById('wan-http-port').value) || 80;
+							var sshEnabled = document.getElementById('wan-ssh-enabled').checked;
+							var sshPort = parseInt(document.getElementById('wan-ssh-port').value) || 22;
+
+							ui.showModal(_('Applying'), [
+								E('p', { 'class': 'spinning' }, _('Updating firewall rules...'))
+							]);
+
+							callSetWanAccess(
+								masterEnabled ? 1 : 0,
+								httpsEnabled ? 1 : 0,
+								httpsPort,
+								httpEnabled ? 1 : 0,
+								httpPort,
+								sshEnabled ? 1 : 0,
+								sshPort
+							).then(function() {
+								return callApplyWanAccess();
+							}).then(function(result) {
+								ui.hideModal();
+								if (result.success) {
+									ui.addNotification(null, E('p', 'WAN access rules applied successfully'), 'success');
+								} else {
+									ui.addNotification(null, E('p', 'Failed to apply rules'), 'error');
+								}
+							}).catch(function(err) {
+								ui.hideModal();
+								ui.addNotification(null, E('p', 'Error: ' + err), 'error');
+							});
+						}
+					}, '🔄 Apply Firewall Rules')
+				])
+			])
+		]);
 	},
 
 	renderQuickConfigPanel: function() {

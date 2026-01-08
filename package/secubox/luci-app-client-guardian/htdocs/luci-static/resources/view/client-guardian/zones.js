@@ -1,13 +1,29 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
 'require dom';
 'require ui';
-'require client-guardian.api as api';
+'require rpc';
+
+var callGetZones = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'zones',
+	expect: { zones: [] }
+});
+
+var callUpdateZone = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'update_zone',
+	params: ['id', 'name', 'bandwidth_limit', 'content_filter']
+});
+
+var callSyncZones = rpc.declare({
+	object: 'luci.client-guardian',
+	method: 'sync_zones'
+});
 
 return view.extend({
 	load: function() {
-		return api.getZones();
+		return callGetZones();
 	},
 
 	render: function(data) {
@@ -51,17 +67,17 @@ return view.extend({
 		var features = [];
 		if (zone.internet_access) features.push({ name: 'Internet', enabled: true });
 		else features.push({ name: 'Internet', enabled: false });
-		
+
 		if (zone.local_access) features.push({ name: 'Local', enabled: true });
 		else features.push({ name: 'Local', enabled: false });
-		
+
 		if (zone.inter_client) features.push({ name: 'Inter-client', enabled: true });
-		
+
 		if (zone.time_restrictions) features.push({ name: 'Horaires', enabled: true });
-		if (zone.content_filter && zone.content_filter !== 'none') 
+		if (zone.content_filter && zone.content_filter !== 'none')
 			features.push({ name: 'Filtrage', enabled: true });
 		if (zone.portal_required) features.push({ name: 'Portail', enabled: true });
-		if (zone.bandwidth_limit > 0) 
+		if (zone.bandwidth_limit > 0)
 			features.push({ name: zone.bandwidth_limit + ' Mbps', enabled: true });
 
 		return E('div', {
@@ -162,13 +178,11 @@ return view.extend({
 			E('div', { 'class': 'cg-btn-group', 'style': 'justify-content: flex-end; margin-top: 20px' }, [
 				E('button', { 'class': 'cg-btn', 'click': ui.hideModal }, _('Annuler')),
 				E('button', { 'class': 'cg-btn cg-btn-primary', 'click': L.bind(function() {
-					api.updateZone(
+					callUpdateZone(
 						zone.id,
 						zone.name,
 						parseInt(document.getElementById('zone-bandwidth').value) || 0,
-						document.getElementById('zone-filter').value,
-						zone.time_restrictions ? document.getElementById('zone-start').value : '',
-						zone.time_restrictions ? document.getElementById('zone-end').value : ''
+						document.getElementById('zone-filter').value
 					).then(L.bind(function() {
 						ui.hideModal();
 						ui.addNotification(null, E('p', _('Zone updated successfully')), 'success');
@@ -184,7 +198,7 @@ return view.extend({
 		btn.disabled = true;
 		btn.innerHTML = '<span>⏳</span> Synchronisation...';
 
-		api.syncZones().then(function(result) {
+		callSyncZones().then(function(result) {
 			if (result.success) {
 				ui.addNotification(null, E('p', {}, 'Zones firewall synchronisées avec succès'), 'success');
 				btn.innerHTML = '<span>✅</span> Synchronisé';
@@ -205,7 +219,7 @@ return view.extend({
 	},
 
 	handleRefresh: function() {
-		return api.getZones().then(L.bind(function(data) {
+		return callGetZones().then(L.bind(function(data) {
 			var container = document.querySelector('.client-guardian-dashboard');
 			if (container) {
 				var newView = this.render(data);
