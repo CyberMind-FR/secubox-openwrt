@@ -1149,30 +1149,20 @@ remove_client_rules() {
 
 	log_event "debug" "Removing firewall rules for MAC: $mac (clean: $mac_clean)"
 
-	# Find and remove all CG_ prefixed rules for this MAC
-	local rules_to_delete=""
-	local idx=0
-	while true; do
-		local name=$(uci -q get firewall.@rule[$idx].name 2>/dev/null)
-		if [ -z "$name" ] && [ $idx -gt 100 ]; then
-			break
-		fi
-		if echo "$name" | grep -q "CG_.*${mac_clean}"; then
-			rules_to_delete="$rules_to_delete firewall.@rule[$idx]"
-		fi
-		idx=$((idx + 1))
-		# Safety limit
-		[ $idx -gt 500 ] && break
-	done
+	# Find all rule sections by name containing the MAC
+	local sections_to_delete=""
+	sections_to_delete=$(uci show firewall 2>/dev/null | grep "\.name='CG_.*${mac_clean}'" | cut -d. -f2 | cut -d= -f1)
 
-	# Delete rules in reverse order to maintain indices
-	for rule in $(echo "$rules_to_delete" | tr ' ' '\n' | tac); do
-		[ -n "$rule" ] && uci delete "$rule" 2>/dev/null
-	done
+	# Also find by src_mac
+	local mac_sections=$(uci show firewall 2>/dev/null | grep -i "\.src_mac='${mac_upper}'" | cut -d. -f2 | cut -d= -f1)
+	sections_to_delete="$sections_to_delete $mac_sections"
 
-	# Also check by src_mac directly
-	uci show firewall 2>/dev/null | grep -i "src_mac='$mac_upper'" | cut -d. -f1-2 | sort -u | while read rule; do
-		[ -n "$rule" ] && uci delete "$rule" 2>/dev/null
+	# Remove duplicates and delete each section
+	for section in $(echo "$sections_to_delete" | tr ' ' '\n' | sort -u); do
+		[ -n "$section" ] && [ "$section" != "" ] && {
+			log_event "debug" "Deleting firewall section: $section"
+			uci delete "firewall.$section" 2>/dev/null
+		}
 	done
 
 	uci commit firewall 2>/dev/null
