@@ -119,22 +119,22 @@ case "$1" in
 			status)
 				init_storage
 
-				local netifyd_running=0
+				netifyd_running=0
 				pgrep -x netifyd > /dev/null 2>&1 && netifyd_running=1
 
-				local netifyd_data=$(get_netifyd_data)
-				local active_count=0
+				netifyd_data=$(get_netifyd_data)
+				active_count=0
 
 				if [ "$netifyd_running" = "1" ] && [ -n "$netifyd_data" ]; then
 					active_count=$(build_active_streams_json "$netifyd_data" | jq 'length' 2>/dev/null || echo 0)
 				fi
 
-				local history_count=0
+				history_count=0
 				[ -f "$HISTORY_FILE" ] && history_count=$(jq 'length' "$HISTORY_FILE" 2>/dev/null || echo 0)
 
 				# Get settings
-				local enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
-				local refresh=$(uci -q get media_flow.global.refresh_interval 2>/dev/null || echo "5")
+				enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
+				refresh=$(uci -q get media_flow.global.refresh_interval 2>/dev/null || echo "5")
 
 				cat <<-EOF
 				{
@@ -152,8 +152,8 @@ case "$1" in
 			get_active_streams)
 				init_storage
 
-				local netifyd_data=$(get_netifyd_data)
-				local streams=$(build_active_streams_json "$netifyd_data")
+				netifyd_data=$(get_netifyd_data)
+				streams=$(build_active_streams_json "$netifyd_data")
 
 				cat <<-EOF
 				{"streams": $streams}
@@ -162,12 +162,12 @@ case "$1" in
 
 			get_stream_history)
 				read -r input
-				local hours=$(echo "$input" | jq -r '.hours // 24' 2>/dev/null)
+				hours=$(echo "$input" | jq -r '.hours // 24' 2>/dev/null)
 				[ -z "$hours" ] || [ "$hours" = "null" ] && hours=24
 
 				init_storage
 
-				local history="[]"
+				history="[]"
 				if [ -f "$HISTORY_FILE" ]; then
 					# Get history (cutoff filtering done client-side for simplicity)
 					history=$(jq -c '.' "$HISTORY_FILE" 2>/dev/null || echo "[]")
@@ -181,7 +181,7 @@ case "$1" in
 			get_stats_by_service)
 				init_storage
 
-				local services="{}"
+				services="{}"
 				if [ -f "$HISTORY_FILE" ] && [ -s "$HISTORY_FILE" ]; then
 					services=$(jq -c '
 						group_by(.app) |
@@ -206,7 +206,7 @@ case "$1" in
 			get_stats_by_client)
 				init_storage
 
-				local clients="{}"
+				clients="{}"
 				if [ -f "$HISTORY_FILE" ] && [ -s "$HISTORY_FILE" ]; then
 					clients=$(jq -c '
 						group_by(.client) |
@@ -230,11 +230,11 @@ case "$1" in
 
 			get_service_details)
 				read -r input
-				local service=$(echo "$input" | jq -r '.service // ""' 2>/dev/null)
+				service=$(echo "$input" | jq -r '.service // ""' 2>/dev/null)
 
 				init_storage
 
-				local result='{}'
+				result='{}'
 				if [ -n "$service" ] && [ -f "$HISTORY_FILE" ] && [ -s "$HISTORY_FILE" ]; then
 					result=$(jq -c --arg svc "$service" '
 						[.[] | select(.app == $svc)] |
@@ -263,16 +263,16 @@ case "$1" in
 
 			set_alert)
 				read -r input
-				local service=$(echo "$input" | jq -r '.service // ""' 2>/dev/null)
-				local threshold_hours=$(echo "$input" | jq -r '.threshold_hours // 4' 2>/dev/null)
-				local action=$(echo "$input" | jq -r '.action // "notify"' 2>/dev/null)
+				service=$(echo "$input" | jq -r '.service // ""' 2>/dev/null)
+				threshold_hours=$(echo "$input" | jq -r '.threshold_hours // 4' 2>/dev/null)
+				action=$(echo "$input" | jq -r '.action // "notify"' 2>/dev/null)
 
 				if [ -z "$service" ]; then
 					echo '{"success": false, "message": "Service name required"}'
 					exit 0
 				fi
 
-				local alert_id="alert_$(echo "$service" | tr -d ' ' | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_')"
+				alert_id="alert_$(echo "$service" | tr -d ' ' | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_')"
 
 				uci -q delete "media_flow.${alert_id}" 2>/dev/null
 				uci set "media_flow.${alert_id}=alert"
@@ -289,7 +289,7 @@ case "$1" in
 
 			delete_alert)
 				read -r input
-				local alert_id=$(echo "$input" | jq -r '.alert_id // ""' 2>/dev/null)
+				alert_id=$(echo "$input" | jq -r '.alert_id // ""' 2>/dev/null)
 
 				if [ -z "$alert_id" ]; then
 					echo '{"success": false, "message": "Alert ID required"}'
@@ -306,19 +306,19 @@ case "$1" in
 				;;
 
 			list_alerts)
-				local alerts="[]"
+				alerts="[]"
 
 				# Use jq to build the alerts array from UCI
 				alerts=$(uci show media_flow 2>/dev/null | grep "=alert$" | while read -r line; do
-					local section=$(echo "$line" | cut -d. -f2 | cut -d= -f1)
-					local service=$(uci -q get "media_flow.${section}.service")
-					local threshold=$(uci -q get "media_flow.${section}.threshold_hours")
-					local action=$(uci -q get "media_flow.${section}.action")
-					local enabled=$(uci -q get "media_flow.${section}.enabled")
-					[ -z "$enabled" ] && enabled="1"
+					section=$(echo "$line" | cut -d. -f2 | cut -d= -f1)
+					svc=$(uci -q get "media_flow.${section}.service")
+					threshold=$(uci -q get "media_flow.${section}.threshold_hours")
+					act=$(uci -q get "media_flow.${section}.action")
+					en=$(uci -q get "media_flow.${section}.enabled")
+					[ -z "$en" ] && en="1"
 
 					cat <<-ALERT
-					{"id":"$section","service":"$service","threshold_hours":$threshold,"action":"$action","enabled":$enabled}
+					{"id":"$section","service":"$svc","threshold_hours":$threshold,"action":"$act","enabled":$en}
 					ALERT
 				done | jq -s '.' 2>/dev/null) || alerts="[]"
 
@@ -335,9 +335,9 @@ case "$1" in
 				;;
 
 			get_settings)
-				local enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
-				local retention=$(uci -q get media_flow.global.history_retention 2>/dev/null || echo "7")
-				local refresh=$(uci -q get media_flow.global.refresh_interval 2>/dev/null || echo "5")
+				enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
+				retention=$(uci -q get media_flow.global.history_retention 2>/dev/null || echo "7")
+				refresh=$(uci -q get media_flow.global.refresh_interval 2>/dev/null || echo "5")
 
 				cat <<-EOF
 				{
@@ -350,9 +350,9 @@ case "$1" in
 
 			set_settings)
 				read -r input
-				local enabled=$(echo "$input" | jq -r '.enabled // 1' 2>/dev/null)
-				local retention=$(echo "$input" | jq -r '.history_retention // 7' 2>/dev/null)
-				local refresh=$(echo "$input" | jq -r '.refresh_interval // 5' 2>/dev/null)
+				enabled=$(echo "$input" | jq -r '.enabled // 1' 2>/dev/null)
+				retention=$(echo "$input" | jq -r '.history_retention // 7' 2>/dev/null)
+				refresh=$(echo "$input" | jq -r '.refresh_interval // 5' 2>/dev/null)
 
 				uci set media_flow.global.enabled="$enabled"
 				uci set media_flow.global.history_retention="$retention"
