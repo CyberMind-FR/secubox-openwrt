@@ -12,16 +12,24 @@ RULE_PREFIX="secubox_wan"
 # Remove all SecuBox WAN access rules from UCI
 remove_uci_rules() {
 	local changed=0
-	local sections=""
 
-	# Find all secubox_wan rules by name
-	sections=$(uci show firewall 2>/dev/null | grep "\.name='${RULE_PREFIX}" | cut -d. -f2 | cut -d= -f1)
+	# Keep removing rules until none left (indices shift after each delete)
+	while true; do
+		local found=0
+		local i=0
+		while true; do
+			local name=$(uci -q get firewall.@rule[$i].name 2>/dev/null)
+			[ -z "$name" ] && break
 
-	for section in $sections; do
-		[ -n "$section" ] && {
-			uci delete "firewall.$section" 2>/dev/null
-			changed=1
-		}
+			if echo "$name" | grep -q "^${RULE_PREFIX}"; then
+				uci delete "firewall.@rule[$i]" 2>/dev/null
+				changed=1
+				found=1
+				break  # Restart from beginning since indices shifted
+			fi
+			i=$((i + 1))
+		done
+		[ "$found" -eq 0 ] && break
 	done
 
 	[ "$changed" -eq 1 ] && uci commit firewall
