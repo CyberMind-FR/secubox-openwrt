@@ -120,7 +120,7 @@ case "$1" in
 				init_storage
 
 				netifyd_running=0
-				pgrep -x netifyd > /dev/null 2>&1 && netifyd_running=1
+				pgrep netifyd > /dev/null 2>&1 && netifyd_running=1
 
 				netifyd_data=$(get_netifyd_data)
 				active_count=0
