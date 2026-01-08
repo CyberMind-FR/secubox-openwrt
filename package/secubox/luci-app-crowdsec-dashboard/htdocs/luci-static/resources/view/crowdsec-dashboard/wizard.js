@@ -1,5 +1,6 @@
 'use strict';
 'require view';
+'require secubox-theme/theme as Theme';
 'require ui';
 'require form';
 'require rpc';
@@ -14,6 +15,8 @@ return view.extend({
 		// Step 1 data
 		crowdsecRunning: false,
 		lapiAvailable: false,
+		lapiRepairing: false,
+		lapiRepairAttempted: false,
 
 		// Step 2 data
 		hubUpdating: false,
@@ -55,6 +58,39 @@ return view.extend({
 			// Update wizard data from status
 			this.wizardData.crowdsecRunning = status && status.crowdsec === 'running';
 			this.wizardData.lapiAvailable = status && status.lapi_status === 'available';
+
+			// Auto-repair LAPI if CrowdSec is running but LAPI is not available
+			if (this.wizardData.crowdsecRunning && !this.wizardData.lapiAvailable && !this.wizardData.lapiRepairAttempted) {
+				console.log('[Wizard] LAPI unavailable, triggering auto-repair...');
+				this.wizardData.lapiRepairing = true;
+				this.wizardData.lapiRepairAttempted = true;
+
+				return API.repairLapi().then(L.bind(function(repairResult) {
+					console.log('[Wizard] LAPI repair result:', repairResult);
+					this.wizardData.lapiRepairing = false;
+
+					if (repairResult && repairResult.success) {
+						ui.addNotification(null, E('p', _('LAPI auto-repaired successfully')), 'success');
+						// Re-fetch status after repair
+						return API.getStatus().then(L.bind(function(newStatus) {
+							this.wizardData.crowdsecRunning = newStatus && newStatus.crowdsec === 'running';
+							this.wizardData.lapiAvailable = newStatus && newStatus.lapi_status === 'available';
+							return {
+								status: newStatus,
+								wizardNeeded: wizardNeeded,
+								repaired: true
+							};
+						}, this));
+					} else {
+						console.log('[Wizard] LAPI repair failed:', repairResult);
+						return {
+							status: status,
+							wizardNeeded: wizardNeeded,
+							repairFailed: true
+						};
+					}
+				}, this));
+			}
 
 			return {
 				status: status,
@@ -142,7 +178,16 @@ return view.extend({
 		console.log('[Wizard] status:', status);
 		var crowdsecRunning = status && status.crowdsec === 'running';
 		var lapiAvailable = status && status.lapi_status === 'available';
-		console.log('[Wizard] crowdsecRunning:', crowdsecRunning, 'lapiAvailable:', lapiAvailable);
+		var lapiRepairing = this.wizardData.lapiRepairing;
+		var repaired = data && data.repaired;
+		var repairFailed = data && data.repairFailed;
+		console.log('[Wizard] crowdsecRunning:', crowdsecRunning, 'lapiAvailable:', lapiAvailable, 'repairing:', lapiRepairing);
+
+		// Determine LAPI status display
+		var lapiStatusText = lapiAvailable ? _('AVAILABLE') : (lapiRepairing ? _('REPAIRING...') : _('UNAVAILABLE'));
+		var lapiStatusClass = lapiAvailable ? 'success' : (lapiRepairing ? 'warning' : 'error');
+		var lapiIconClass = lapiAvailable ? ' success' : (lapiRepairing ? ' warning' : ' error');
+		var lapiIcon = lapiAvailable ? '✓' : (lapiRepairing ? '⟳' : '✗');
 
 		return E('div', { 'class': 'wizard-step' }, [
 			E('h2', {}, _('Welcome to CrowdSec Setup')),
@@ -158,13 +203,30 @@ return view.extend({
 						crowdsecRunning ? _('RUNNING') : _('STOPPED'))
 				]),
 				E('div', { 'class': 'check-item' }, [
-					E('span', { 'class': 'check-icon' + (lapiAvailable ? ' success' : ' error') },
-						lapiAvailable ? '✓' : '✗'),
+					E('span', { 'class': 'check-icon' + lapiIconClass + (lapiRepairing ? ' spinning' : '') },
+						lapiIcon),
 					E('span', {}, _('Local API (LAPI)')),
-					E('span', { 'class': 'badge badge-' + (lapiAvailable ? 'success' : 'error') },
-						lapiAvailable ? _('AVAILABLE') : _('UNAVAILABLE'))
+					E('span', { 'class': 'badge badge-' + lapiStatusClass },
+						lapiStatusText)
 				])
 			]),
+
+			// Repair status message
+			repaired ? E('div', { 'class': 'success-message', 'style': 'margin: 16px 0; padding: 12px; background: rgba(34, 197, 94, 0.15); border-radius: 8px; color: #16a34a;' }, [
+				E('span', { 'style': 'margin-right: 8px;' }, '✓'),
+				_('LAPI was automatically repaired!')
+			]) : E([]),
+
+			// Manual repair button if auto-repair failed
+			(repairFailed || (!lapiAvailable && !lapiRepairing && this.wizardData.lapiRepairAttempted)) ?
+				E('div', { 'style': 'margin: 16px 0; padding: 16px; background: rgba(239, 68, 68, 0.1); border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3);' }, [
+					E('p', { 'style': 'margin: 0 0 12px 0; color: #dc2626;' },
+						_('LAPI auto-repair failed. You can try manual repair or check the CrowdSec logs.')),
+					E('button', {
+						'class': 'cbi-button cbi-button-action',
+						'click': L.bind(this.handleManualRepair, this)
+					}, _('🔧 Retry Repair'))
+				]) : E([]),
 
 			// Info box
 			E('div', { 'class': 'info-box' }, [
@@ -188,7 +250,7 @@ return view.extend({
 				}, _('Cancel')),
 				E('button', {
 					'class': 'cbi-button cbi-button-positive',
-					'disabled': (!crowdsecRunning || !lapiAvailable) ? true : null,
+					'disabled': (!crowdsecRunning || !lapiAvailable || lapiRepairing) ? true : null,
 					'click': L.bind(function(ev) {
 						console.log('[Wizard] Next button clicked!');
 						ev.preventDefault();
@@ -776,6 +838,37 @@ return view.extend({
 			console.error('[Wizard] Service startup error:', err);
 			this.wizardData.starting = false;
 			ui.addNotification(null, E('p', _('Service start failed: %s').format(err.message)), 'error');
+			this.refreshView();
+		}, this));
+	},
+
+	handleManualRepair: function() {
+		console.log('[Wizard] Manual repair triggered');
+		this.wizardData.lapiRepairing = true;
+		this.wizardData.lapiRepairAttempted = false; // Reset to allow retry
+		this.refreshView();
+
+		return API.repairLapi().then(L.bind(function(result) {
+			console.log('[Wizard] Manual repair result:', result);
+			this.wizardData.lapiRepairing = false;
+			this.wizardData.lapiRepairAttempted = true;
+
+			if (result && result.success) {
+				ui.addNotification(null, E('p', _('LAPI repaired successfully: ') + (result.steps || '')), 'success');
+				// Re-check status
+				return API.getStatus().then(L.bind(function(status) {
+					this.wizardData.crowdsecRunning = status && status.crowdsec === 'running';
+					this.wizardData.lapiAvailable = status && status.lapi_status === 'available';
+					this.refreshView();
+				}, this));
+			} else {
+				ui.addNotification(null, E('p', _('LAPI repair failed: ') + (result.error || result.errors || 'Unknown error')), 'error');
+				this.refreshView();
+			}
+		}, this)).catch(L.bind(function(err) {
+			console.error('[Wizard] Manual repair error:', err);
+			this.wizardData.lapiRepairing = false;
+			ui.addNotification(null, E('p', _('LAPI repair failed: ') + err.message), 'error');
 			this.refreshView();
 		}, this));
 	},

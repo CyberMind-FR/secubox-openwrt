@@ -39,7 +39,8 @@
 					"register_bouncer",
 					"delete_bouncer",
 					"control_firewall_bouncer",
-					"update_firewall_bouncer_config"
+					"update_firewall_bouncer_config",
+					"repair_lapi"
 				]
 			},
 			"uci": [ "crowdsec-dashboard" ]

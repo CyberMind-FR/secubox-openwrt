@@ -191,6 +191,12 @@ var callWizardState = rpc.declare({
 	expect: { }
 });
 
+var callRepairLapi = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'repair_lapi',
+	expect: { }
+});
+
 function formatDuration(seconds) {
 	if (!seconds) return 'N/A';
 	if (seconds < 60) return seconds + 's';
@@ -310,6 +316,7 @@ return baseclass.extend({
 	// Wizard Methods
 	checkWizardNeeded: callCheckWizardNeeded,
 	getWizardState: callWizardState,
+	repairLapi: callRepairLapi,
 
 	formatDuration: formatDuration,
 	formatDate: formatDate,

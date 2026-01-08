@@ -430,18 +430,30 @@ register_bouncer() {
 		return
 	fi
 
-	# Generate API key
+	# Check if bouncer already exists
+	local exists=0
+	if $CSCLI bouncers list -o json 2>/dev/null | grep -q "\"name\":\"$bouncer_name\""; then
+		exists=1
+	fi
+
 	local api_key
+	if [ "$exists" = "1" ]; then
+		# Delete existing bouncer and re-register to get new API key
+		$CSCLI bouncers delete "$bouncer_name" >/dev/null 2>&1
+		secubox_log "Deleted existing bouncer: $bouncer_name"
+	fi
+
+	# Generate API key
 	api_key=$($CSCLI bouncers add "$bouncer_name" -o raw 2>&1)
 
-	if [ -n "$api_key" ] && [ "${#api_key}" -gt 10 ]; then
+	if [ -n "$api_key" ] && [ "${#api_key}" -gt 10 ] && ! echo "$api_key" | grep -qi "error"; then
 		json_add_boolean "success" 1
 		json_add_string "api_key" "$api_key"
 		json_add_string "message" "Bouncer '$bouncer_name' registered successfully"
 		secubox_log "Registered bouncer: $bouncer_name"
 	else
 		json_add_boolean "success" 0
-		json_add_string "error" "Failed to register bouncer '$bouncer_name'"
+		json_add_string "error" "Failed to register bouncer '$bouncer_name': $api_key"
 	fi
 
 	json_dump
@@ -681,9 +693,9 @@ update_firewall_bouncer_config() {
 				json_dump
 				return
 			fi
-			uci set "crowdsec.bouncer.$key=$value"
+			uci set "crowdsec.@bouncer[0].$key=$value"
 			;;
-		api_url|update_frequency|deny_action|log_level)
+		api_url|update_frequency|deny_action|log_level|api_key)
 			# String values
 			if [ -z "$value" ]; then
 				json_add_boolean "success" 0
@@ -691,7 +703,7 @@ update_firewall_bouncer_config() {
 				json_dump
 				return
 			fi
-			uci set "crowdsec.bouncer.$key=$value"
+			uci set "crowdsec.@bouncer[0].$key=$value"
 			;;
 		*)
 			json_add_boolean "success" 0
@@ -830,10 +842,99 @@ get_wizard_state() {
 	json_dump
 }
 
+# Repair LAPI - auto-fix common configuration issues
+repair_lapi() {
+	json_init
+	local steps_done=""
+	local errors=""
+
+	secubox_log "Starting LAPI repair..."
+
+	# Step 1: Create data directory
+	if [ ! -d "/srv/crowdsec/data" ]; then
+		mkdir -p /srv/crowdsec/data 2>/dev/null
+		if [ -d "/srv/crowdsec/data" ]; then
+			steps_done="${steps_done}Created /srv/crowdsec/data; "
+		else
+			errors="${errors}Failed to create data directory; "
+		fi
+	fi
+
+	# Step 2: Fix config.yaml - ensure data_dir and db_path are set
+	local config_file="/etc/crowdsec/config.yaml"
+	if [ -f "$config_file" ]; then
+		# Check if data_dir is empty or missing
+		local current_data_dir=$(grep "^  data_dir:" "$config_file" | awk '{print $2}')
+		if [ -z "$current_data_dir" ] || [ "$current_data_dir" = "" ]; then
+			sed -i 's|^  data_dir:.*|  data_dir: /srv/crowdsec/data/|' "$config_file"
+			steps_done="${steps_done}Fixed data_dir in config; "
+		fi
+
+		# Check if db_path is empty or missing
+		local current_db_path=$(grep "^  db_path:" "$config_file" | awk '{print $2}')
+		if [ -z "$current_db_path" ] || [ "$current_db_path" = "" ]; then
+			sed -i 's|^  db_path:.*|  db_path: /srv/crowdsec/data/crowdsec.db|' "$config_file"
+			steps_done="${steps_done}Fixed db_path in config; "
+		fi
+	else
+		errors="${errors}Config file not found; "
+	fi
+
+	# Step 3: Restart CrowdSec to apply config changes
+	if /etc/init.d/crowdsec restart >/dev/null 2>&1; then
+		steps_done="${steps_done}Restarted CrowdSec; "
+		sleep 2
+	else
+		errors="${errors}Failed to restart CrowdSec; "
+	fi
+
+	# Step 4: Re-register local machine if needed
+	if [ -x "$CSCLI" ]; then
+		# Check if machine is registered and working
+		if ! $CSCLI machines list >/dev/null 2>&1; then
+			# Force re-register
+			if $CSCLI machines add localhost --auto --force >/dev/null 2>&1; then
+				steps_done="${steps_done}Re-registered localhost machine; "
+				# Restart again to apply new credentials
+				/etc/init.d/crowdsec restart >/dev/null 2>&1
+				sleep 2
+			else
+				errors="${errors}Failed to register machine; "
+			fi
+		fi
+	fi
+
+	# Step 5: Verify LAPI is now working
+	local lapi_ok=0
+	if [ -x "$CSCLI" ]; then
+		if $CSCLI lapi status >/dev/null 2>&1; then
+			lapi_ok=1
+			steps_done="${steps_done}LAPI verified working"
+		else
+			errors="${errors}LAPI still not responding"
+		fi
+	fi
+
+	if [ "$lapi_ok" = "1" ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "LAPI repaired successfully"
+		json_add_string "steps" "$steps_done"
+		secubox_log "LAPI repair completed: $steps_done"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "LAPI repair failed"
+		json_add_string "steps" "$steps_done"
+		json_add_string "errors" "$errors"
+		secubox_log "LAPI repair failed: $errors"
+	fi
+
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{}}'
+		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{}}'
 		;;
 	call)
 		case "$2" in
@@ -943,6 +1044,9 @@ case "$1" in
 				;;
 			wizard_state)
 				get_wizard_state
+				;;
+			repair_lapi)
+				repair_lapi
 				;;
 			*)
 				echo '{"error": "Unknown method"}'
