@@ -117,6 +117,60 @@ get_system_info() {
 	local localtime=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "unknown")
 	json_add_string "local_time" "$localtime"
 
+	# Load averages
+	local load=$(cat /proc/loadavg 2>/dev/null || echo "0 0 0")
+	local load1=$(echo $load | awk '{print $1}')
+	local load5=$(echo $load | awk '{print $2}')
+	local load15=$(echo $load | awk '{print $3}')
+	json_add_array "load"
+	json_add_string "" "$load1"
+	json_add_string "" "$load5"
+	json_add_string "" "$load15"
+	json_close_array
+
+	# Quick Status Indicators
+	json_add_object "status"
+
+	# Internet connectivity (ping 8.8.8.8)
+	local internet_ok=0
+	if ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
+		internet_ok=1
+	fi
+	json_add_boolean "internet" "$internet_ok"
+
+	# DNS resolution (resolve cloudflare.com)
+	local dns_ok=0
+	if nslookup cloudflare.com >/dev/null 2>&1 || host cloudflare.com >/dev/null 2>&1; then
+		dns_ok=1
+	fi
+	json_add_boolean "dns" "$dns_ok"
+
+	# NTP sync status
+	local ntp_ok=0
+	if [ -f /var/state/ntpd ] || pgrep -x ntpd >/dev/null 2>&1 || pgrep -x chronyd >/dev/null 2>&1; then
+		# Check if time seems reasonable (after year 2020)
+		local year=$(date +%Y)
+		[ "$year" -ge 2020 ] && ntp_ok=1
+	fi
+	json_add_boolean "ntp" "$ntp_ok"
+
+	# Firewall status (check if nftables or iptables rules exist)
+	local firewall_ok=0
+	local firewall_rules=0
+	# Count nftables rules (chains with rules)
+	firewall_rules=$(nft list ruleset 2>/dev/null | grep -cE "^\s+(type|counter|accept|drop|reject|jump|goto)" || echo 0)
+	if [ "$firewall_rules" -gt 0 ]; then
+		firewall_ok=1
+	else
+		# Fallback to iptables
+		firewall_rules=$(iptables -L -n 2>/dev/null | grep -cE "^(ACCEPT|DROP|REJECT)" || echo 0)
+		[ "$firewall_rules" -gt 0 ] && firewall_ok=1
+	fi
+	json_add_boolean "firewall" "$firewall_ok"
+	json_add_int "firewall_rules" "$firewall_rules"
+
+	json_close_object
+
 	json_dump
 }
 
@@ -575,6 +629,147 @@ reboot_system() {
 
 	# Reboot after 3 seconds
 	( sleep 3 && reboot ) &
+}
+
+# Get backup schedule from crontab
+get_backup_schedule() {
+	json_init
+
+	local cron_line=""
+	local enabled=0
+	local frequency="weekly"
+	local hour="03"
+	local minute="00"
+	local day_of_week="0"
+	local day_of_month="1"
+	local last_backup=""
+	local next_backup=""
+
+	# Check for existing backup cron job
+	if [ -f /etc/crontabs/root ]; then
+		cron_line=$(grep "sysupgrade -b" /etc/crontabs/root 2>/dev/null | head -n 1)
+	fi
+
+	if [ -n "$cron_line" ]; then
+		enabled=1
+		# Parse cron schedule: minute hour day_of_month month day_of_week command
+		minute=$(echo "$cron_line" | awk '{print $1}')
+		hour=$(echo "$cron_line" | awk '{print $2}')
+		local dom=$(echo "$cron_line" | awk '{print $3}')
+		local dow=$(echo "$cron_line" | awk '{print $5}')
+
+		# Determine frequency from cron pattern
+		if [ "$dom" != "*" ] && [ "$dow" = "*" ]; then
+			frequency="monthly"
+			day_of_month="$dom"
+		elif [ "$dow" != "*" ]; then
+			frequency="weekly"
+			day_of_week="$dow"
+		else
+			frequency="daily"
+		fi
+	fi
+
+	# Find last backup file
+	local last_file=$(ls -t /tmp/backup-*.tar.gz 2>/dev/null | head -n 1)
+	if [ -n "$last_file" ] && [ -f "$last_file" ]; then
+		last_backup=$(date -r "$last_file" '+%Y-%m-%d %H:%M' 2>/dev/null || echo "")
+	fi
+
+	# Calculate next backup time (simplified)
+	if [ "$enabled" = "1" ]; then
+		local now_hour=$(date +%H)
+		local now_min=$(date +%M)
+		local target_time="${hour}:${minute}"
+		case "$frequency" in
+			daily)
+				if [ "$now_hour$now_min" -lt "${hour}${minute}" ]; then
+					next_backup="Today at $target_time"
+				else
+					next_backup="Tomorrow at $target_time"
+				fi
+				;;
+			weekly)
+				local dow_names="Sun Mon Tue Wed Thu Fri Sat"
+				local dow_name=$(echo "$dow_names" | cut -d' ' -f$((day_of_week + 1)))
+				next_backup="$dow_name at $target_time"
+				;;
+			monthly)
+				next_backup="Day $day_of_month at $target_time"
+				;;
+		esac
+	fi
+
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "frequency" "$frequency"
+	json_add_string "hour" "$hour"
+	json_add_string "minute" "$minute"
+	json_add_string "day_of_week" "$day_of_week"
+	json_add_string "day_of_month" "$day_of_month"
+	json_add_string "last_backup" "$last_backup"
+	json_add_string "next_backup" "$next_backup"
+	json_dump
+}
+
+# Set backup schedule in crontab
+set_backup_schedule() {
+	read -r input
+	json_load "$input"
+
+	local enabled frequency hour minute day_of_week day_of_month
+	json_get_var enabled enabled "0"
+	json_get_var frequency frequency "weekly"
+	json_get_var hour hour "03"
+	json_get_var minute minute "00"
+	json_get_var day_of_week day_of_week "0"
+	json_get_var day_of_month day_of_month "1"
+	json_cleanup
+
+	# Validate inputs
+	hour=$(printf "%02d" "$((${hour:-3} % 24))")
+	minute=$(printf "%02d" "$((${minute:-0} % 60))")
+	day_of_week=$(printf "%d" "$((${day_of_week:-0} % 7))")
+	day_of_month=$(printf "%d" "$((${day_of_month:-1}))")
+	[ "$day_of_month" -lt 1 ] && day_of_month=1
+	[ "$day_of_month" -gt 28 ] && day_of_month=28
+
+	# Backup destination
+	local backup_dir="/root/backups"
+	local backup_cmd="mkdir -p $backup_dir && sysupgrade -b $backup_dir/backup-\$(date +%Y%m%d-%H%M%S).tar.gz && find $backup_dir -name 'backup-*.tar.gz' -mtime +30 -delete"
+
+	# Remove existing backup cron entries
+	if [ -f /etc/crontabs/root ]; then
+		grep -v "sysupgrade -b" /etc/crontabs/root > /tmp/crontab.tmp 2>/dev/null || touch /tmp/crontab.tmp
+		mv /tmp/crontab.tmp /etc/crontabs/root
+	else
+		touch /etc/crontabs/root
+	fi
+
+	# Add new cron entry if enabled
+	if [ "$enabled" = "1" ]; then
+		local cron_schedule=""
+		case "$frequency" in
+			daily)
+				cron_schedule="$minute $hour * * *"
+				;;
+			weekly)
+				cron_schedule="$minute $hour * * $day_of_week"
+				;;
+			monthly)
+				cron_schedule="$minute $hour $day_of_month * *"
+				;;
+		esac
+
+		echo "$cron_schedule $backup_cmd" >> /etc/crontabs/root
+	fi
+
+	# Reload cron
+	/etc/init.d/cron restart >/dev/null 2>&1 || true
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Backup schedule updated"
+	json_dump
 }
 
 # Get storage details
@@ -1404,38 +1599,217 @@ save_settings() {
 	json_dump
 }
 
-# Get components (leverages secubox module detection)
-get_components() {
-	# Call secubox backend to get apps list
-	local apps_result=$(ubus call luci.secubox list_apps 2>/dev/null)
+# Check if a package is installed (supports wildcards)
+is_package_installed() {
+	local pkg="$1"
+	[ -z "$pkg" ] && return 1
+	# Check exact match first
+	opkg list-installed 2>/dev/null | grep -q "^${pkg} " && return 0
+	# Check if it's a LuCI app package
+	opkg list-installed 2>/dev/null | grep -q "^luci-app-${pkg} " && return 0
+	return 1
+}
 
-	if [ -n "$apps_result" ]; then
-		# Transform apps to components format
-		echo "$apps_result" | jq '{
-			modules: [
-				.apps[] | {
-					id: .id,
-					name: .name,
-					version: (.pkg_version // .version // "1.0.0"),
-					category: (.category // "system"),
-					description: (.description // "No description"),
-					icon: (.icon // "📦"),
-					package: (.packages.required[0] // ""),
-					installed: false,
-					running: false,
-					color: (
-						if .category == "security" then "#ef4444"
-						elif .category == "monitoring" then "#10b981"
-						elif .category == "network" then "#3b82f6"
-						else "#64748b"
-						end
-					)
-				}
-			]
-		}'
+# Get installed package info (name and version) for a component
+get_installed_package_info() {
+	local pkg="$1"
+	[ -z "$pkg" ] && return
+	# Try exact match
+	local info=$(opkg list-installed "$pkg" 2>/dev/null | head -n1)
+	if [ -z "$info" ]; then
+		# Try luci-app- prefix
+		info=$(opkg list-installed "luci-app-$pkg" 2>/dev/null | head -n1)
+	fi
+	echo "$info"
+}
+
+# Check if a service is running
+is_service_running() {
+	local svc="$1"
+	[ -z "$svc" ] && return 1
+
+	# Check init script
+	if [ -x "/etc/init.d/$svc" ]; then
+		/etc/init.d/"$svc" running >/dev/null 2>&1 && return 0
+	fi
+
+	# Fallback: check process
+	pgrep -x "$svc" >/dev/null 2>&1 && return 0
+
+	return 1
+}
+
+# Get package version
+get_package_version() {
+	local pkg="$1"
+	[ -z "$pkg" ] && echo "" && return
+	local ver=$(opkg list-installed "$pkg" 2>/dev/null | awk '{print $3}' | head -n1)
+	echo "${ver:-}"
+}
+
+# Add a single component to the JSON output
+add_component() {
+	local id="$1" name="$2" category="$3" icon="$4" package="$5" service="$6" description="$7" color="$8"
+
+	local installed=0
+	local running=0
+	local version=""
+
+	if is_package_installed "$package"; then
+		installed=1
+		version=$(get_package_version "$package")
+	fi
+
+	if [ "$installed" = "1" ] && is_service_running "$service"; then
+		running=1
+	fi
+
+	json_add_object ""
+	json_add_string "id" "$id"
+	json_add_string "name" "$name"
+	json_add_string "category" "$category"
+	json_add_string "icon" "$icon"
+	json_add_string "package" "$package"
+	json_add_string "service" "$service"
+	json_add_string "description" "$description"
+	json_add_string "color" "$color"
+	json_add_string "version" "$version"
+	json_add_boolean "installed" "$installed"
+	json_add_boolean "running" "$running"
+	json_close_object
+}
+
+# Get components with real installation/running status
+get_components() {
+	# First try to get apps from secubox backend
+	local apps_json=$(ubus call luci.secubox list_apps 2>/dev/null)
+
+	if [ -n "$apps_json" ]; then
+		json_init
+		json_add_array "modules"
+
+		# Parse using jsonfilter - get all app IDs first
+		local app_ids=$(echo "$apps_json" | jsonfilter -e '@.apps[*].id' 2>/dev/null)
+		local i=0
+
+		for id in $app_ids; do
+			[ -z "$id" ] && continue
+
+			local name=$(echo "$apps_json" | jsonfilter -e "@.apps[$i].name" 2>/dev/null)
+			local category=$(echo "$apps_json" | jsonfilter -e "@.apps[$i].category" 2>/dev/null)
+			local state=$(echo "$apps_json" | jsonfilter -e "@.apps[$i].state" 2>/dev/null)
+			local version=$(echo "$apps_json" | jsonfilter -e "@.apps[$i].version" 2>/dev/null)
+			local description=$(echo "$apps_json" | jsonfilter -e "@.apps[$i].description" 2>/dev/null)
+
+			[ -z "$name" ] && name="$id"
+			[ -z "$category" ] && category="system"
+			[ -z "$state" ] && state="missing"
+			[ -z "$description" ] && description="No description"
+
+			local installed=0
+			local running=0
+			local color="#64748b"
+			local icon="📦"
+			local service="$id"
+
+			# Determine if installed based on state from secubox
+			case "$state" in
+				installed|partial) installed=1 ;;
+			esac
+
+			# Determine color and icon based on category
+			case "$category" in
+				security) color="#ef4444"; icon="🛡️" ;;
+				monitoring) color="#10b981"; icon="📊" ;;
+				network) color="#3b82f6"; icon="🌐" ;;
+				system) color="#64748b"; icon="⚙️" ;;
+			esac
+
+			# Override icon based on app ID
+			case "$id" in
+				crowdsec*) icon="🛡️" ;;
+				auth-guardian) icon="🔐" ;;
+				client-guardian) icon="👥" ;;
+				key-storage*|ksm*) icon="🔑" ;;
+				vaultwarden) icon="🔒" ;;
+				wireguard*) icon="🔒" ;;
+				bandwidth*|nlbwmon) icon="📊" ;;
+				netdata*) icon="📉" ;;
+			esac
+
+			# Check if service is running
+			if [ "$installed" = "1" ]; then
+				# Try direct service name
+				if [ -x "/etc/init.d/$id" ]; then
+					/etc/init.d/"$id" running >/dev/null 2>&1 && running=1
+				fi
+				# Try base service name (e.g., crowdsec-dashboard -> crowdsec)
+				if [ "$running" = "0" ]; then
+					local base_svc=$(echo "$id" | sed 's/-dashboard$//' | sed 's/-guardian$//' | sed 's/-manager$//')
+					if [ -x "/etc/init.d/$base_svc" ]; then
+						/etc/init.d/"$base_svc" running >/dev/null 2>&1 && running=1
+						service="$base_svc"
+					fi
+				fi
+				# Fallback: check process
+				if [ "$running" = "0" ]; then
+					pgrep -f "$id" >/dev/null 2>&1 && running=1
+				fi
+			fi
+
+			# Get version from opkg if not provided
+			if [ -z "$version" ] && [ "$installed" = "1" ]; then
+				local luci_pkg="luci-app-${id}"
+				version=$(opkg list-installed "$luci_pkg" 2>/dev/null | awk '{print $3}' | head -n1)
+			fi
+
+			json_add_object ""
+			json_add_string "id" "$id"
+			json_add_string "name" "$name"
+			json_add_string "category" "$category"
+			json_add_string "icon" "$icon"
+			json_add_string "package" "luci-app-$id"
+			json_add_string "service" "$service"
+			json_add_string "description" "$description"
+			json_add_string "color" "$color"
+			json_add_string "version" "$version"
+			json_add_string "state" "$state"
+			json_add_boolean "installed" "$installed"
+			json_add_boolean "running" "$running"
+			json_close_object
+
+			i=$((i + 1))
+		done
+
+		# Also add core system components
+		add_component "firewall4" "Firewall" "system" "🧱" "firewall4" "firewall" "nftables-based firewall" "#64748b"
+		add_component "dnsmasq" "DNSMasq" "system" "🔍" "dnsmasq-full" "dnsmasq" "DNS and DHCP server" "#64748b"
+		add_component "dropbear" "SSH Server" "system" "🔑" "dropbear" "dropbear" "Lightweight SSH server" "#64748b"
+		add_component "uhttpd" "uHTTPd" "system" "🌐" "uhttpd" "uhttpd" "Lightweight HTTP server" "#64748b"
+
+		json_close_array
+		json_dump
 	else
-		# Fallback if secubox is not available
-		echo '{"modules":[]}'
+		# Fallback: use hardcoded list with real status checks
+		json_init
+		json_add_array "modules"
+
+		add_component "crowdsec" "CrowdSec" "security" "🛡️" "crowdsec" "crowdsec" "Collaborative security engine" "#ef4444"
+		add_component "crowdsec-firewall-bouncer" "CrowdSec Bouncer" "security" "🔥" "crowdsec-firewall-bouncer-nftables" "crowdsec-firewall-bouncer" "Firewall bouncer" "#ef4444"
+		add_component "adguardhome" "AdGuard Home" "security" "🚫" "adguardhome" "AdGuardHome" "Ad and tracker blocking" "#22c55e"
+		add_component "banip" "BanIP" "security" "🚷" "banip" "banip" "IP blocking service" "#ef4444"
+		add_component "wireguard" "WireGuard" "network" "🔒" "wireguard-tools" "wg-quick@wg0" "Modern VPN tunnel" "#3b82f6"
+		add_component "sqm" "SQM QoS" "network" "⚡" "sqm-scripts" "sqm" "Smart Queue Management" "#3b82f6"
+		add_component "mwan3" "Multi-WAN" "network" "🔀" "mwan3" "mwan3" "Multi-WAN failover" "#3b82f6"
+		add_component "nlbwmon" "Bandwidth Monitor" "monitoring" "📊" "nlbwmon" "nlbwmon" "Bandwidth monitoring" "#10b981"
+		add_component "vnstat2" "Traffic Stats" "monitoring" "📈" "vnstat2" "vnstatd" "Traffic statistics" "#10b981"
+		add_component "firewall4" "Firewall" "system" "🧱" "firewall4" "firewall" "nftables firewall" "#64748b"
+		add_component "dnsmasq" "DNSMasq" "system" "🔍" "dnsmasq-full" "dnsmasq" "DNS/DHCP server" "#64748b"
+		add_component "dropbear" "SSH Server" "system" "🔑" "dropbear" "dropbear" "SSH server" "#64748b"
+		add_component "uhttpd" "uHTTPd" "system" "🌐" "uhttpd" "uhttpd" "HTTP server" "#64748b"
+
+		json_close_array
+		json_dump
 	fi
 }
 
@@ -1478,6 +1852,15 @@ case "$1" in
 	"get_logs": { "lines": 100, "filter": "" },
 	"backup_config": {},
 	"restore_config": { "file_name": "string", "data": "string" },
+	"get_backup_schedule": {},
+	"set_backup_schedule": {
+		"enabled": 1,
+		"frequency": "weekly",
+		"hour": "03",
+		"minute": "00",
+		"day_of_week": "0",
+		"day_of_month": "1"
+	},
 	"reboot": {},
 	"get_storage": {},
 	"get_settings": {},
@@ -1539,6 +1922,8 @@ EOF
 			get_logs) get_logs ;;
 			backup_config) backup_config ;;
 			restore_config) restore_config ;;
+			get_backup_schedule) get_backup_schedule ;;
+			set_backup_schedule) set_backup_schedule ;;
 			reboot) reboot_system ;;
 			get_storage) get_storage ;;
 			get_settings) get_settings ;;

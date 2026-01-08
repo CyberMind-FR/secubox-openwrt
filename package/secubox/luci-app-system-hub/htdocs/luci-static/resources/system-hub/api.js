@@ -63,6 +63,19 @@ var callRestoreConfig = rpc.declare({
 	expect: {}
 });
 
+var callGetBackupSchedule = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'get_backup_schedule',
+	expect: {}
+});
+
+var callSetBackupSchedule = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'set_backup_schedule',
+	params: ['enabled', 'frequency', 'hour', 'minute', 'day_of_week', 'day_of_month'],
+	expect: {}
+});
+
 var callReboot = rpc.declare({
 	object: 'luci.system-hub',
 	method: 'reboot',
@@ -213,6 +226,10 @@ return baseclass.extend({
 			file_name: fileName,
 			data: data
 		});
+	},
+	getBackupSchedule: callGetBackupSchedule,
+	setBackupSchedule: function(data) {
+		return callSetBackupSchedule(data);
 	},
 	reboot: callReboot,
 	getStorage: callGetStorage,

@@ -20,13 +20,16 @@ return view.extend({
 	autoScroll: true,
 	searchQuery: '',
 	severityFilter: 'all',
+	lastLogCount: 0,
+	pollInterval: 2,
 
 	load: function() {
 		return API.getLogs(this.lineCount, '');
 	},
 
 	render: function(data) {
-		this.logs = (data && data.logs) || [];
+		this.logs = Array.isArray(data) ? data : (data && data.logs) || [];
+		this.lastLogCount = this.logs.length;
 
 		var container = E('div', { 'class': 'sh-logs-view' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
@@ -45,12 +48,17 @@ return view.extend({
 		var self = this;
 		poll.add(function() {
 			if (!self.autoRefresh) return;
+			self.updateLiveIndicator(true);
 			return API.getLogs(self.lineCount, '').then(function(result) {
-				self.logs = (result && result.logs) || [];
+				var newLogs = Array.isArray(result) ? result : (result && result.logs) || [];
+				var hasNewLogs = newLogs.length !== self.lastLogCount;
+				self.logs = newLogs;
+				self.lastLogCount = newLogs.length;
 				self.updateStats();
-				self.updateLogStream();
+				self.updateLogStream(hasNewLogs);
+				self.updateLiveIndicator(false);
 			});
-		}, 5);
+		}, this.pollInterval);
 
 		return container;
 	},
@@ -58,8 +66,18 @@ return view.extend({
 	renderHero: function() {
 		return E('section', { 'class': 'sh-logs-hero' }, [
 			E('div', {}, [
-				E('h1', {}, _('System Logs Live Stream')),
-				E('p', {}, _('Follow kernel, service, and security events in real time'))
+				E('h1', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+					_('System Logs'),
+					E('span', {
+						'id': 'sh-live-indicator',
+						'class': 'sh-live-badge',
+						'style': 'display: inline-flex; align-items: center; gap: 0.3em; font-size: 0.5em; padding: 0.3em 0.6em; background: #22c55e; color: #fff; border-radius: 4px; animation: pulse 2s infinite;'
+					}, [
+						E('span', { 'class': 'sh-live-dot', 'style': 'width: 8px; height: 8px; background: #fff; border-radius: 50%;' }),
+						'LIVE'
+					])
+				]),
+				E('p', {}, _('Real-time kernel, service, and security events'))
 			]),
 			E('div', { 'class': 'sh-log-stats', 'id': 'sh-log-stats' }, [
 				this.createStat('sh-log-total', _('Lines'), this.logs.length),
@@ -92,6 +110,17 @@ return view.extend({
 				})
 			]),
 			E('div', { 'class': 'sh-log-selectors' }, [
+				E('button', {
+					'id': 'sh-play-pause',
+					'class': 'sh-btn ' + (this.autoRefresh ? 'sh-btn-danger' : 'sh-btn-success'),
+					'type': 'button',
+					'style': 'min-width: 100px; font-size: 1.1em;',
+					'click': function(ev) {
+						self.autoRefresh = !self.autoRefresh;
+						self.updatePlayPauseButton();
+						self.updateLiveBadge();
+					}
+				}, this.autoRefresh ? '⏸ ' + _('Pause') : '▶ ' + _('Play')),
 				E('select', {
 					'change': function(ev) {
 						self.lineCount = parseInt(ev.target.value, 10);
@@ -103,13 +132,15 @@ return view.extend({
 					E('option', { 'value': '500' }, '500 lines'),
 					E('option', { 'value': '1000' }, '1000 lines')
 				]),
-				E('div', { 'class': 'sh-toggle-group' }, [
-					this.renderToggle(_('Auto Refresh'), this.autoRefresh, function(enabled) {
-						self.autoRefresh = enabled;
+				E('label', { 'class': 'sh-toggle', 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+					E('input', {
+						'type': 'checkbox',
+						'checked': this.autoScroll ? 'checked' : null,
+						'change': function(ev) {
+							self.autoScroll = ev.target.checked;
+						}
 					}),
-					this.renderToggle(_('Auto Scroll'), this.autoScroll, function(enabled) {
-						self.autoScroll = enabled;
-					})
+					E('span', {}, _('Auto Scroll'))
 				]),
 				E('button', {
 					'class': 'sh-btn sh-btn-primary',
@@ -118,6 +149,40 @@ return view.extend({
 				}, '⬇ ' + _('Export'))
 			])
 		]);
+	},
+
+	updatePlayPauseButton: function() {
+		var btn = document.getElementById('sh-play-pause');
+		if (btn) {
+			btn.textContent = this.autoRefresh ? '⏸ ' + _('Pause') : '▶ ' + _('Play');
+			btn.className = 'sh-btn ' + (this.autoRefresh ? 'sh-btn-danger' : 'sh-btn-success');
+		}
+	},
+
+	updateLiveBadge: function() {
+		var badge = document.getElementById('sh-live-indicator');
+		if (badge) {
+			if (this.autoRefresh) {
+				badge.style.background = '#22c55e';
+				badge.style.animation = 'pulse 2s infinite';
+				badge.innerHTML = '<span class="sh-live-dot" style="width: 8px; height: 8px; background: #fff; border-radius: 50%;"></span>LIVE';
+			} else {
+				badge.style.background = '#6b7280';
+				badge.style.animation = 'none';
+				badge.innerHTML = '⏸ PAUSED';
+			}
+		}
+	},
+
+	updateLiveIndicator: function(fetching) {
+		var badge = document.getElementById('sh-live-indicator');
+		if (badge && this.autoRefresh) {
+			if (fetching) {
+				badge.style.background = '#f59e0b';
+			} else {
+				badge.style.background = '#22c55e';
+			}
+		}
 	},
 
 	renderToggle: function(label, state, handler) {
@@ -194,13 +259,18 @@ return view.extend({
 		}, this);
 	},
 
-	updateLogStream: function() {
+	updateLogStream: function(hasNewLogs) {
 		var container = document.getElementById('sh-log-stream');
 		if (!container) return;
 		var filtered = this.getFilteredLogs();
+		var totalLines = filtered.length;
 		var frag = filtered.map(function(line, idx) {
 			var severity = this.detectSeverity(line);
-			return E('div', { 'class': 'sh-log-line ' + severity }, [
+			var isNew = hasNewLogs && idx >= totalLines - 5;
+			return E('div', {
+				'class': 'sh-log-line ' + severity + (isNew ? ' sh-log-new' : ''),
+				'style': isNew ? 'animation: fadeIn 0.5s ease;' : ''
+			}, [
 				E('span', { 'class': 'sh-log-index' }, idx + 1),
 				E('span', { 'class': 'sh-log-message' }, line)
 			]);
@@ -252,7 +322,7 @@ return view.extend({
 		]);
 		return API.getLogs(this.lineCount, '').then(function(result) {
 			ui.hideModal();
-			self.logs = (result && result.logs) || [];
+			self.logs = Array.isArray(result) ? result : (result && result.logs) || [];
 			self.updateStats();
 			self.updateLogStream();
 		}).catch(function(err) {

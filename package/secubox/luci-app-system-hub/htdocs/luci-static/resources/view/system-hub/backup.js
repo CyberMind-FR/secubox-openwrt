@@ -13,11 +13,16 @@ Theme.init({ language: shLang });
 
 return view.extend({
 	statusData: {},
+	scheduleData: {},
 
 	load: function() {
-		return API.getSystemInfo().then(L.bind(function(info) {
-			this.statusData = info || {};
-			return info;
+		return Promise.all([
+			API.getSystemInfo(),
+			API.getBackupSchedule()
+		]).then(L.bind(function(results) {
+			this.statusData = results[0] || {};
+			this.scheduleData = results[1] || {};
+			return results;
 		}, this));
 	},
 
@@ -32,6 +37,7 @@ return view.extend({
 			this.renderHero(),
 			E('div', { 'class': 'sh-backup-grid' }, [
 				this.renderBackupCard(),
+				this.renderScheduleCard(),
 				this.renderRestoreCard(),
 				this.renderMaintenanceCard()
 			])
@@ -95,6 +101,174 @@ return view.extend({
 				}, '⬇ ' + _('Download Backup'))
 			])
 		]);
+	},
+
+	renderScheduleCard: function() {
+		var self = this;
+		var schedule = this.scheduleData || {};
+		var enabled = schedule.enabled || false;
+		var frequency = schedule.frequency || 'weekly';
+		var hour = schedule.hour || '03';
+		var minute = schedule.minute || '00';
+		var dayOfWeek = schedule.day_of_week || '0';
+		var dayOfMonth = schedule.day_of_month || '1';
+
+		var dayNames = [
+			_('Sunday'), _('Monday'), _('Tuesday'), _('Wednesday'),
+			_('Thursday'), _('Friday'), _('Saturday')
+		];
+
+		var frequencySelect = E('select', {
+			'id': 'schedule-frequency',
+			'class': 'sh-select',
+			'change': function() { self.updateScheduleVisibility(); }
+		}, [
+			E('option', { 'value': 'daily', 'selected': frequency === 'daily' ? 'selected' : null }, _('Daily')),
+			E('option', { 'value': 'weekly', 'selected': frequency === 'weekly' ? 'selected' : null }, _('Weekly')),
+			E('option', { 'value': 'monthly', 'selected': frequency === 'monthly' ? 'selected' : null }, _('Monthly'))
+		]);
+
+		var hourSelect = E('select', { 'id': 'schedule-hour', 'class': 'sh-select sh-select-time' });
+		for (var h = 0; h < 24; h++) {
+			var hStr = (h < 10 ? '0' : '') + h;
+			hourSelect.appendChild(E('option', { 'value': hStr, 'selected': hStr === hour ? 'selected' : null }, hStr));
+		}
+
+		var minuteSelect = E('select', { 'id': 'schedule-minute', 'class': 'sh-select sh-select-time' });
+		for (var m = 0; m < 60; m += 15) {
+			var mStr = (m < 10 ? '0' : '') + m;
+			minuteSelect.appendChild(E('option', { 'value': mStr, 'selected': mStr === minute ? 'selected' : null }, mStr));
+		}
+
+		var dowSelect = E('select', { 'id': 'schedule-dow', 'class': 'sh-select' });
+		for (var d = 0; d < 7; d++) {
+			dowSelect.appendChild(E('option', { 'value': String(d), 'selected': String(d) === dayOfWeek ? 'selected' : null }, dayNames[d]));
+		}
+
+		var domSelect = E('select', { 'id': 'schedule-dom', 'class': 'sh-select' });
+		for (var day = 1; day <= 28; day++) {
+			domSelect.appendChild(E('option', { 'value': String(day), 'selected': String(day) === dayOfMonth ? 'selected' : null }, String(day)));
+		}
+
+		var statusText = enabled
+			? (schedule.next_backup ? _('Next: ') + schedule.next_backup : _('Enabled'))
+			: _('Disabled');
+
+		return E('section', { 'class': 'sh-card' }, [
+			E('div', { 'class': 'sh-card-header' }, [
+				E('div', { 'class': 'sh-card-title' }, [
+					E('span', { 'class': 'sh-card-title-icon' }, '📅'),
+					_('Scheduled Backups')
+				]),
+				E('span', {
+					'class': 'sh-card-badge ' + (enabled ? 'sh-badge-success' : 'sh-badge-muted'),
+					'id': 'schedule-status-badge'
+				}, statusText)
+			]),
+			E('div', { 'class': 'sh-card-body' }, [
+				E('p', { 'class': 'sh-text-muted' }, _('Automatically create backups on a schedule. Backups are saved to /root/backups with auto-cleanup after 30 days.')),
+				E('div', { 'class': 'sh-schedule-form' }, [
+					E('label', { 'class': 'sh-toggle sh-toggle-main' }, [
+						E('input', {
+							'type': 'checkbox',
+							'id': 'schedule-enabled',
+							'checked': enabled ? 'checked' : null,
+							'change': function() { self.updateScheduleVisibility(); }
+						}),
+						E('span', {}, _('Enable scheduled backups'))
+					]),
+					E('div', { 'class': 'sh-schedule-options', 'id': 'schedule-options', 'style': enabled ? '' : 'opacity: 0.5; pointer-events: none;' }, [
+						E('div', { 'class': 'sh-form-row' }, [
+							E('label', {}, _('Frequency')),
+							frequencySelect
+						]),
+						E('div', { 'class': 'sh-form-row' }, [
+							E('label', {}, _('Time')),
+							E('div', { 'class': 'sh-time-picker' }, [
+								hourSelect,
+								E('span', {}, ':'),
+								minuteSelect
+							])
+						]),
+						E('div', { 'class': 'sh-form-row', 'id': 'dow-row', 'style': frequency === 'weekly' ? '' : 'display: none;' }, [
+							E('label', {}, _('Day of week')),
+							dowSelect
+						]),
+						E('div', { 'class': 'sh-form-row', 'id': 'dom-row', 'style': frequency === 'monthly' ? '' : 'display: none;' }, [
+							E('label', {}, _('Day of month')),
+							domSelect
+						])
+					])
+				]),
+				E('div', { 'class': 'sh-action-row', 'style': 'margin-top: 16px;' }, [
+					E('button', {
+						'class': 'sh-btn sh-btn-primary',
+						'type': 'button',
+						'click': ui.createHandlerFn(this, 'saveSchedule')
+					}, '💾 ' + _('Save Schedule'))
+				]),
+				schedule.last_backup ? E('p', { 'class': 'sh-text-muted sh-last-backup', 'style': 'margin-top: 12px; font-size: 13px;' },
+					_('Last backup: ') + schedule.last_backup) : ''
+			])
+		]);
+	},
+
+	updateScheduleVisibility: function() {
+		var enabled = document.getElementById('schedule-enabled');
+		var options = document.getElementById('schedule-options');
+		var frequency = document.getElementById('schedule-frequency');
+		var dowRow = document.getElementById('dow-row');
+		var domRow = document.getElementById('dom-row');
+
+		if (enabled && options) {
+			options.style.opacity = enabled.checked ? '1' : '0.5';
+			options.style.pointerEvents = enabled.checked ? 'auto' : 'none';
+		}
+
+		if (frequency && dowRow && domRow) {
+			var freq = frequency.value;
+			dowRow.style.display = freq === 'weekly' ? '' : 'none';
+			domRow.style.display = freq === 'monthly' ? '' : 'none';
+		}
+	},
+
+	saveSchedule: function() {
+		var enabled = document.getElementById('schedule-enabled');
+		var frequency = document.getElementById('schedule-frequency');
+		var hour = document.getElementById('schedule-hour');
+		var minute = document.getElementById('schedule-minute');
+		var dow = document.getElementById('schedule-dow');
+		var dom = document.getElementById('schedule-dom');
+
+		var data = {
+			enabled: enabled && enabled.checked ? 1 : 0,
+			frequency: frequency ? frequency.value : 'weekly',
+			hour: hour ? hour.value : '03',
+			minute: minute ? minute.value : '00',
+			day_of_week: dow ? dow.value : '0',
+			day_of_month: dom ? dom.value : '1'
+		};
+
+		ui.showModal(_('Saving schedule...'), [
+			E('p', { 'class': 'spinning' }, _('Updating cron configuration...'))
+		]);
+
+		return API.setBackupSchedule(data).then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				ui.addNotification(null, E('p', {}, _('Backup schedule saved successfully')), 'info');
+				var badge = document.getElementById('schedule-status-badge');
+				if (badge) {
+					badge.className = 'sh-card-badge ' + (data.enabled ? 'sh-badge-success' : 'sh-badge-muted');
+					badge.textContent = data.enabled ? _('Enabled') : _('Disabled');
+				}
+			} else {
+				ui.addNotification(null, E('p', {}, (result && result.message) || _('Failed to save schedule')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, err.message || err), 'error');
+		});
 	},
 
 	renderRestoreCard: function() {

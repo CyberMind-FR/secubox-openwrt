@@ -197,6 +197,7 @@ return view.extend({
 	renderComponentActions: function(component) {
 		var self = this;
 		var actions = [];
+		var serviceName = component.service || component.id;
 
 		if (component.installed) {
 			if (component.running) {
@@ -204,7 +205,7 @@ return view.extend({
 				actions.push(
 					E('button', {
 						'class': 'sh-action-btn sh-btn-danger',
-						'click': function() { self.handleComponentAction(component.id, 'stop'); }
+						'click': function() { self.handleComponentAction(component, 'stop'); }
 					}, [
 						E('span', {}, '⏹️'),
 						' Stop'
@@ -215,16 +216,16 @@ return view.extend({
 				actions.push(
 					E('button', {
 						'class': 'sh-action-btn sh-btn-warning',
-						'click': function() { self.handleComponentAction(component.id, 'restart'); }
+						'click': function() { self.handleComponentAction(component, 'restart'); }
 					}, [
 						E('span', {}, '🔄'),
 						' Restart'
 					])
 				);
 
-				// Dashboard button (if has dashboard)
-				if (component.package && component.package.includes('dashboard')) {
-					var dashboardUrl = '/cgi-bin/luci/admin/secubox/' + component.category + '/' + component.id;
+				// Dashboard button for security/monitoring components
+				if (component.category === 'security' || component.category === 'monitoring') {
+					var dashboardUrl = L.url('admin/secubox/' + component.category + '/' + component.id);
 					actions.push(
 						E('a', {
 							'class': 'sh-action-btn sh-btn-primary',
@@ -240,7 +241,7 @@ return view.extend({
 				actions.push(
 					E('button', {
 						'class': 'sh-action-btn sh-btn-success',
-						'click': function() { self.handleComponentAction(component.id, 'start'); }
+						'click': function() { self.handleComponentAction(component, 'start'); }
 					}, [
 						E('span', {}, '▶️'),
 						' Start'
@@ -248,12 +249,12 @@ return view.extend({
 				);
 			}
 		} else {
-			// Install button
+			// Not installed - show package info
 			actions.push(
 				E('button', {
 					'class': 'sh-action-btn sh-btn-secondary',
 					'disabled': 'disabled',
-					'title': 'Manual installation required'
+					'title': 'Install via: opkg install ' + component.package
 				}, [
 					E('span', {}, '📥'),
 					' Not Installed'
@@ -264,36 +265,43 @@ return view.extend({
 		return actions;
 	},
 
-	handleComponentAction: function(componentId, action) {
+	handleComponentAction: function(component, action) {
 		var self = this;
+		var serviceName = component.service || component.id;
+		var displayName = component.name || component.id;
 
 		ui.showModal(_('Component Action'), [
-			E('p', {}, 'Performing ' + action + ' on ' + componentId + '...'),
+			E('p', {}, _('Performing ') + action + _(' on ') + displayName + '...'),
 			E('div', { 'class': 'spinning' })
 		]);
 
-		// Call service action via system-hub API
-		API.serviceAction(componentId, action).then(function(result) {
+		// Call service action via system-hub API using service name
+		API.serviceAction(serviceName, action).then(function(result) {
 			ui.hideModal();
 
 			if (result && result.success) {
 				ui.addNotification(null,
-					E('p', {}, '✅ ' + componentId + ' ' + action + ' successful'),
+					E('p', {}, '✅ ' + displayName + ' ' + action + ' ' + _('successful')),
 					'success');
 
-				// Refresh components
+				// Refresh components after a short delay
 				setTimeout(function() {
-					self.updateComponentsGrid();
-				}, 2000);
+					API.getComponents().then(function(data) {
+						if (data && data.modules) {
+							self.componentsData = data.modules;
+							self.updateComponentsGrid();
+						}
+					});
+				}, 1500);
 			} else {
 				ui.addNotification(null,
-					E('p', {}, '❌ Failed to ' + action + ' ' + componentId),
+					E('p', {}, '❌ ' + _('Failed to ') + action + ' ' + displayName + (result && result.message ? ': ' + result.message : '')),
 					'error');
 			}
 		}).catch(function(err) {
 			ui.hideModal();
 			ui.addNotification(null,
-				E('p', {}, '❌ Error: ' + (err.message || err)),
+				E('p', {}, '❌ ' + _('Error: ') + (err.message || err)),
 				'error');
 		});
 	},

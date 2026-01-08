@@ -292,8 +292,8 @@ return view.extend({
 	},
 
 	getStatusLabel: function(state) {
-		if (state === undefined || state === null) return _('Unknown');
-		return state ? _('Healthy') : _('Attention');
+		if (state === undefined || state === null) return '❓';
+		return state ? '✅' : '⚠️';
 	},
 
 	getScoreLabel: function(score) {
