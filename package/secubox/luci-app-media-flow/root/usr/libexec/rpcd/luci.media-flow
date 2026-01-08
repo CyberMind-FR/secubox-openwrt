@@ -5,368 +5,275 @@
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
-# Streaming services detection patterns
-# Based on netifyd application detection
-
 HISTORY_FILE="/tmp/media-flow-history.json"
-ALERTS_FILE="/etc/config/media_flow"
 STATS_DIR="/tmp/media-flow-stats"
 
-# Initialize
+# Initialize storage
 init_storage() {
 	mkdir -p "$STATS_DIR"
 	[ ! -f "$HISTORY_FILE" ] && echo '[]' > "$HISTORY_FILE"
 }
 
-# Get netifyd flows and filter streaming services
-get_netifyd_flows() {
-	# Try to get flows from netifyd socket or status file
-	if [ -S /var/run/netifyd/netifyd.sock ]; then
-		echo "status" | nc -U /var/run/netifyd/netifyd.sock 2>/dev/null
-	elif [ -f /var/run/netifyd/status.json ]; then
-		cat /var/run/netifyd/status.json
-	else
-		echo '{}'
-	fi
-}
+# Streaming services patterns
+STREAMING_VIDEO="netflix|youtube|disney|primevideo|amazon.*video|twitch|hulu|hbo|vimeo|peacock|paramount|crunchyroll|funimation"
+STREAMING_AUDIO="spotify|apple.*music|deezer|soundcloud|tidal|pandora|amazon.*music|youtube.*music"
+STREAMING_VISIO="zoom|teams|meet|discord|skype|webex|facetime|whatsapp"
 
 # Detect if application is a streaming service
 is_streaming_service() {
 	local app="$1"
-	
-	# Video streaming
-	echo "$app" | grep -qiE 'netflix|youtube|disney|primevideo|amazon.*video|twitch|hulu|hbo|vimeo' && return 0
-	
-	# Audio streaming
-	echo "$app" | grep -qiE 'spotify|apple.*music|deezer|soundcloud|tidal|pandora' && return 0
-	
-	# Video conferencing
-	echo "$app" | grep -qiE 'zoom|teams|meet|discord|skype|webex' && return 0
-	
-	return 1
+	echo "$app" | grep -qiE "$STREAMING_VIDEO|$STREAMING_AUDIO|$STREAMING_VISIO"
+}
+
+# Get service category
+get_service_category() {
+	local app="$1"
+	echo "$app" | grep -qiE "$STREAMING_VIDEO" && echo "video" && return
+	echo "$app" | grep -qiE "$STREAMING_AUDIO" && echo "audio" && return
+	echo "$app" | grep -qiE "$STREAMING_VISIO" && echo "visio" && return
+	echo "other"
 }
 
 # Estimate quality based on bandwidth (kbps)
 estimate_quality() {
-	local bandwidth="$1"  # in kbps
-	
-	# Video streaming quality estimation
-	if [ "$bandwidth" -lt 1000 ]; then
+	local bandwidth="$1"
+	[ -z "$bandwidth" ] && bandwidth=0
+
+	if [ "$bandwidth" -lt 1000 ] 2>/dev/null; then
 		echo "SD"
-	elif [ "$bandwidth" -lt 3000 ]; then
+	elif [ "$bandwidth" -lt 3000 ] 2>/dev/null; then
 		echo "HD"
-	elif [ "$bandwidth" -lt 8000 ]; then
+	elif [ "$bandwidth" -lt 8000 ] 2>/dev/null; then
 		echo "FHD"
 	else
 		echo "4K"
 	fi
 }
 
-# Get service category
-get_service_category() {
-	local app="$1"
-	
-	echo "$app" | grep -qiE 'netflix|youtube|disney|primevideo|twitch|hulu|hbo|vimeo' && echo "video" && return
-	echo "$app" | grep -qiE 'spotify|apple.*music|deezer|soundcloud|tidal' && echo "audio" && return
-	echo "$app" | grep -qiE 'zoom|teams|meet|discord|skype|webex' && echo "visio" && return
-	echo "other"
+# Get netifyd status data
+get_netifyd_data() {
+	if [ -f /var/run/netifyd/status.json ]; then
+		cat /var/run/netifyd/status.json
+	else
+		echo '{}'
+	fi
 }
 
-# Save stream to history
-save_to_history() {
-	local app="$1"
-	local client="$2"
-	local bandwidth="$3"
-	local duration="$4"
-	
-	init_storage
-	
-	local timestamp=$(date -Iseconds)
-	local quality=$(estimate_quality "$bandwidth")
-	local category=$(get_service_category "$app")
-	
-	# Append to history (keep last 1000 entries)
-	local entry="{\"timestamp\":\"$timestamp\",\"app\":\"$app\",\"client\":\"$client\",\"bandwidth\":$bandwidth,\"duration\":$duration,\"quality\":\"$quality\",\"category\":\"$category\"}"
-	
-	if [ -f "$HISTORY_FILE" ]; then
-		jq ". += [$entry] | .[-1000:]" "$HISTORY_FILE" > "${HISTORY_FILE}.tmp" 2>/dev/null && mv "${HISTORY_FILE}.tmp" "$HISTORY_FILE"
-	fi
+# Build active streams JSON array
+build_active_streams_json() {
+	local netifyd_data="$1"
+	local result="[]"
+
+	# Extract flows from netifyd data
+	local flows=$(echo "$netifyd_data" | jq -c '.flows // []' 2>/dev/null)
+	[ -z "$flows" ] || [ "$flows" = "null" ] && flows="[]"
+
+	# Process each flow and filter streaming services
+	result=$(echo "$flows" | jq -c '
+		[.[] | select(.detected_application != null and .detected_application != "") |
+		select(.detected_application | test("netflix|youtube|disney|primevideo|amazon.*video|twitch|hulu|hbo|vimeo|spotify|apple.*music|deezer|soundcloud|tidal|zoom|teams|meet|discord|skype|webex"; "i")) |
+		{
+			application: .detected_application,
+			client_ip: (.local_ip // .src_ip // "unknown"),
+			server_ip: (.other_ip // .dst_ip // "unknown"),
+			total_bytes: (.total_bytes // 0),
+			total_packets: (.total_packets // 0),
+			bandwidth_kbps: (if .total_packets > 0 then ((.total_bytes * 8) / 1000 / (if .duration > 0 then .duration else 1 end)) else 0 end | floor),
+			category: (if (.detected_application | test("netflix|youtube|disney|primevideo|twitch|hulu|hbo|vimeo"; "i")) then "video"
+				elif (.detected_application | test("spotify|apple.*music|deezer|soundcloud|tidal"; "i")) then "audio"
+				elif (.detected_application | test("zoom|teams|meet|discord|skype|webex"; "i")) then "visio"
+				else "other" end),
+			quality: (if .total_packets > 0 then
+				(if ((.total_bytes * 8) / 1000 / (if .duration > 0 then .duration else 1 end)) < 1000 then "SD"
+				elif ((.total_bytes * 8) / 1000 / (if .duration > 0 then .duration else 1 end)) < 3000 then "HD"
+				elif ((.total_bytes * 8) / 1000 / (if .duration > 0 then .duration else 1 end)) < 8000 then "FHD"
+				else "4K" end)
+				else "SD" end)
+		}]' 2>/dev/null) || result="[]"
+
+	echo "$result"
 }
 
 case "$1" in
 	list)
-		# List available methods
-		json_init
-		json_add_object "status"
-		json_close_object
-		json_add_object "get_active_streams"
-		json_close_object
-		json_add_object "get_stream_history"
-			json_add_string "hours" "int"
-		json_close_object
-		json_add_object "get_stats_by_service"
-		json_close_object
-		json_add_object "get_stats_by_client"
-		json_close_object
-		json_add_object "get_service_details"
-			json_add_string "service" "string"
-		json_close_object
-		json_add_object "set_alert"
-			json_add_string "service" "string"
-			json_add_string "threshold_hours" "int"
-			json_add_string "action" "string"
-		json_close_object
-		json_add_object "list_alerts"
-		json_close_object
-		json_dump
+		cat <<-'EOF'
+		{
+			"status": {},
+			"get_active_streams": {},
+			"get_stream_history": {"hours": 24},
+			"get_stats_by_service": {},
+			"get_stats_by_client": {},
+			"get_service_details": {"service": "string"},
+			"set_alert": {"service": "string", "threshold_hours": 4, "action": "notify"},
+			"delete_alert": {"alert_id": "string"},
+			"list_alerts": {},
+			"clear_history": {},
+			"get_settings": {},
+			"set_settings": {"enabled": 1, "history_retention": 7, "refresh_interval": 5}
+		}
+		EOF
 		;;
-	
+
 	call)
 		case "$2" in
 			status)
 				init_storage
-				
-				json_init
-				json_add_boolean "enabled" 1
-				json_add_string "module" "media-flow"
-				json_add_string "version" "1.0.0"
-				
-				# Check netifyd status
-				if pgrep -x netifyd > /dev/null 2>&1; then
-					json_add_boolean "netifyd_running" 1
-				else
-					json_add_boolean "netifyd_running" 0
-				fi
-				
-				# Count active streams
+
+				local netifyd_running=0
+				pgrep -x netifyd > /dev/null 2>&1 && netifyd_running=1
+
+				local netifyd_data=$(get_netifyd_data)
 				local active_count=0
-				local flows=$(get_netifyd_flows)
-				if [ -n "$flows" ]; then
-					active_count=$(echo "$flows" | jq '[.flows[]? | select(.detected_application != null)] | length' 2>/dev/null || echo 0)
+
+				if [ "$netifyd_running" = "1" ] && [ -n "$netifyd_data" ]; then
+					active_count=$(build_active_streams_json "$netifyd_data" | jq 'length' 2>/dev/null || echo 0)
 				fi
-				json_add_int "active_streams" "$active_count"
-				
-				# History size
+
 				local history_count=0
-				if [ -f "$HISTORY_FILE" ]; then
-					history_count=$(jq 'length' "$HISTORY_FILE" 2>/dev/null || echo 0)
-				fi
-				json_add_int "history_entries" "$history_count"
-				
-				json_dump
+				[ -f "$HISTORY_FILE" ] && history_count=$(jq 'length' "$HISTORY_FILE" 2>/dev/null || echo 0)
+
+				# Get settings
+				local enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
+				local refresh=$(uci -q get media_flow.global.refresh_interval 2>/dev/null || echo "5")
+
+				cat <<-EOF
+				{
+					"enabled": $enabled,
+					"module": "media-flow",
+					"version": "0.5.0",
+					"netifyd_running": $netifyd_running,
+					"active_streams": $active_count,
+					"history_entries": $history_count,
+					"refresh_interval": $refresh
+				}
+				EOF
 				;;
-			
+
 			get_active_streams)
-				json_init
-				json_add_array "streams"
-				
-				# Get flows from netifyd
-				local flows=$(get_netifyd_flows)
-				
-				if [ -n "$flows" ]; then
-					# Parse flows and filter streaming services
-					echo "$flows" | jq -c '.flows[]? | select(.detected_application != null)' 2>/dev/null | while read -r flow; do
-						local app=$(echo "$flow" | jq -r '.detected_application // "unknown"')
-						local src_ip=$(echo "$flow" | jq -r '.src_ip // "0.0.0.0"')
-						local dst_ip=$(echo "$flow" | jq -r '.dst_ip // "0.0.0.0"')
-						local bytes=$(echo "$flow" | jq -r '.total_bytes // 0')
-						local packets=$(echo "$flow" | jq -r '.total_packets // 0')
-						
-						# Check if it's a streaming service
-						if is_streaming_service "$app"; then
-							# Estimate bandwidth (rough estimation)
-							local bandwidth=0
-							if [ "$packets" -gt 0 ]; then
-								bandwidth=$((bytes * 8 / packets / 100))  # Very rough kbps estimate
-							fi
-							
-							local quality=$(estimate_quality "$bandwidth")
-							local category=$(get_service_category "$app")
-							
-							json_add_object
-							json_add_string "application" "$app"
-							json_add_string "client_ip" "$src_ip"
-							json_add_string "server_ip" "$dst_ip"
-							json_add_int "bandwidth_kbps" "$bandwidth"
-							json_add_string "quality" "$quality"
-							json_add_string "category" "$category"
-							json_add_int "total_bytes" "$bytes"
-							json_add_int "total_packets" "$packets"
-							json_close_object
-						fi
-					done
-				fi
-				
-				json_close_array
-				json_dump
+				init_storage
+
+				local netifyd_data=$(get_netifyd_data)
+				local streams=$(build_active_streams_json "$netifyd_data")
+
+				cat <<-EOF
+				{"streams": $streams}
+				EOF
 				;;
-			
+
 			get_stream_history)
 				read -r input
-				json_load "$input"
-				json_get_var hours hours
-				
-				# Default to 24 hours
-				hours=${hours:-24}
-				
+				local hours=$(echo "$input" | jq -r '.hours // 24' 2>/dev/null)
+				[ -z "$hours" ] || [ "$hours" = "null" ] && hours=24
+
 				init_storage
-				
-				json_init
-				json_add_array "history"
-				
+
+				local history="[]"
 				if [ -f "$HISTORY_FILE" ]; then
-					# Filter by time (last N hours)
-					local cutoff_time=$(date -d "$hours hours ago" -Iseconds 2>/dev/null || date -Iseconds)
-					
-					jq -c ".[] | select(.timestamp >= \"$cutoff_time\")" "$HISTORY_FILE" 2>/dev/null | while read -r entry; do
-						echo "$entry"
-					done | jq -s '.' | jq -c '.[]' | while read -r entry; do
-						local timestamp=$(echo "$entry" | jq -r '.timestamp')
-						local app=$(echo "$entry" | jq -r '.app')
-						local client=$(echo "$entry" | jq -r '.client')
-						local bandwidth=$(echo "$entry" | jq -r '.bandwidth')
-						local duration=$(echo "$entry" | jq -r '.duration')
-						local quality=$(echo "$entry" | jq -r '.quality')
-						local category=$(echo "$entry" | jq -r '.category')
-						
-						json_add_object
-						json_add_string "timestamp" "$timestamp"
-						json_add_string "application" "$app"
-						json_add_string "client" "$client"
-						json_add_int "bandwidth_kbps" "$bandwidth"
-						json_add_int "duration_seconds" "$duration"
-						json_add_string "quality" "$quality"
-						json_add_string "category" "$category"
-						json_close_object
-					done
+					# Get history (cutoff filtering done client-side for simplicity)
+					history=$(jq -c '.' "$HISTORY_FILE" 2>/dev/null || echo "[]")
 				fi
-				
-				json_close_array
-				json_dump
+
+				cat <<-EOF
+				{"history": $history, "hours_requested": $hours}
+				EOF
 				;;
-			
+
 			get_stats_by_service)
 				init_storage
-				
-				json_init
-				json_add_object "services"
-				
-				if [ -f "$HISTORY_FILE" ]; then
-					# Aggregate by service
-					local services=$(jq -r '.[].app' "$HISTORY_FILE" 2>/dev/null | sort -u)
-					
-					for service in $services; do
-						local count=$(jq "[.[] | select(.app == \"$service\")] | length" "$HISTORY_FILE" 2>/dev/null || echo 0)
-						local total_bandwidth=$(jq "[.[] | select(.app == \"$service\")] | map(.bandwidth) | add" "$HISTORY_FILE" 2>/dev/null || echo 0)
-						local total_duration=$(jq "[.[] | select(.app == \"$service\")] | map(.duration) | add" "$HISTORY_FILE" 2>/dev/null || echo 0)
-						local category=$(jq -r "[.[] | select(.app == \"$service\")][0].category" "$HISTORY_FILE" 2>/dev/null || echo "other")
-						
-						json_add_object "$service"
-						json_add_int "sessions" "$count"
-						json_add_int "total_bandwidth_kbps" "$total_bandwidth"
-						json_add_int "total_duration_seconds" "$total_duration"
-						json_add_string "category" "$category"
-						json_close_object
-					done
+
+				local services="{}"
+				if [ -f "$HISTORY_FILE" ] && [ -s "$HISTORY_FILE" ]; then
+					services=$(jq -c '
+						group_by(.app) |
+						map({
+							key: .[0].app,
+							value: {
+								sessions: length,
+								total_bandwidth_kbps: (map(.bandwidth) | add // 0),
+								total_duration_seconds: (map(.duration) | add // 0),
+								category: .[0].category
+							}
+						}) |
+						from_entries
+					' "$HISTORY_FILE" 2>/dev/null) || services="{}"
 				fi
-				
-				json_close_object
-				json_dump
+
+				cat <<-EOF
+				{"services": $services}
+				EOF
 				;;
-			
+
 			get_stats_by_client)
 				init_storage
-				
-				json_init
-				json_add_object "clients"
-				
-				if [ -f "$HISTORY_FILE" ]; then
-					# Aggregate by client
-					local clients=$(jq -r '.[].client' "$HISTORY_FILE" 2>/dev/null | sort -u)
-					
-					for client in $clients; do
-						local count=$(jq "[.[] | select(.client == \"$client\")] | length" "$HISTORY_FILE" 2>/dev/null || echo 0)
-						local total_bandwidth=$(jq "[.[] | select(.client == \"$client\")] | map(.bandwidth) | add" "$HISTORY_FILE" 2>/dev/null || echo 0)
-						local total_duration=$(jq "[.[] | select(.client == \"$client\")] | map(.duration) | add" "$HISTORY_FILE" 2>/dev/null || echo 0)
-						local top_service=$(jq -r "[.[] | select(.client == \"$client\")] | group_by(.app) | max_by(length)[0].app" "$HISTORY_FILE" 2>/dev/null || echo "unknown")
-						
-						json_add_object "$client"
-						json_add_int "sessions" "$count"
-						json_add_int "total_bandwidth_kbps" "$total_bandwidth"
-						json_add_int "total_duration_seconds" "$total_duration"
-						json_add_string "top_service" "$top_service"
-						json_close_object
-					done
+
+				local clients="{}"
+				if [ -f "$HISTORY_FILE" ] && [ -s "$HISTORY_FILE" ]; then
+					clients=$(jq -c '
+						group_by(.client) |
+						map({
+							key: .[0].client,
+							value: {
+								sessions: length,
+								total_bandwidth_kbps: (map(.bandwidth) | add // 0),
+								total_duration_seconds: (map(.duration) | add // 0),
+								top_service: (group_by(.app) | max_by(length) | .[0].app // "unknown")
+							}
+						}) |
+						from_entries
+					' "$HISTORY_FILE" 2>/dev/null) || clients="{}"
 				fi
-				
-				json_close_object
-				json_dump
+
+				cat <<-EOF
+				{"clients": $clients}
+				EOF
 				;;
-			
+
 			get_service_details)
 				read -r input
-				json_load "$input"
-				json_get_var service service
-				
+				local service=$(echo "$input" | jq -r '.service // ""' 2>/dev/null)
+
 				init_storage
-				
-				json_init
-				json_add_string "service" "$service"
-				
-				if [ -f "$HISTORY_FILE" ] && [ -n "$service" ]; then
-					local count=$(jq "[.[] | select(.app == \"$service\")] | length" "$HISTORY_FILE" 2>/dev/null || echo 0)
-					local avg_bandwidth=$(jq "[.[] | select(.app == \"$service\")] | map(.bandwidth) | add / length" "$HISTORY_FILE" 2>/dev/null || echo 0)
-					local total_duration=$(jq "[.[] | select(.app == \"$service\")] | map(.duration) | add" "$HISTORY_FILE" 2>/dev/null || echo 0)
-					local category=$(jq -r "[.[] | select(.app == \"$service\")][0].category" "$HISTORY_FILE" 2>/dev/null || echo "other")
-					local quality=$(estimate_quality "$avg_bandwidth")
-					
-					json_add_int "total_sessions" "$count"
-					json_add_int "avg_bandwidth_kbps" "$avg_bandwidth"
-					json_add_int "total_duration_seconds" "$total_duration"
-					json_add_string "category" "$category"
-					json_add_string "typical_quality" "$quality"
-					
-					# Recent sessions
-					json_add_array "recent_sessions"
-					jq -c "[.[] | select(.app == \"$service\")] | .[-10:][]" "$HISTORY_FILE" 2>/dev/null | while read -r session; do
-						json_add_object
-						json_add_string "timestamp" "$(echo "$session" | jq -r '.timestamp')"
-						json_add_string "client" "$(echo "$session" | jq -r '.client')"
-						json_add_int "bandwidth_kbps" "$(echo "$session" | jq -r '.bandwidth')"
-						json_add_int "duration_seconds" "$(echo "$session" | jq -r '.duration')"
-						json_add_string "quality" "$(echo "$session" | jq -r '.quality')"
-						json_close_object
-					done
-					json_close_array
+
+				local result='{}'
+				if [ -n "$service" ] && [ -f "$HISTORY_FILE" ] && [ -s "$HISTORY_FILE" ]; then
+					result=$(jq -c --arg svc "$service" '
+						[.[] | select(.app == $svc)] |
+						{
+							service: $svc,
+							total_sessions: length,
+							avg_bandwidth_kbps: (if length > 0 then (map(.bandwidth) | add / length | floor) else 0 end),
+							total_duration_seconds: (map(.duration) | add // 0),
+							category: (.[0].category // "unknown"),
+							typical_quality: (.[0].quality // "unknown"),
+							recent_sessions: (.[-10:] | map({
+								timestamp: .timestamp,
+								client: .client,
+								bandwidth_kbps: .bandwidth,
+								duration_seconds: .duration,
+								quality: .quality
+							}))
+						}
+					' "$HISTORY_FILE" 2>/dev/null) || result='{"service":"'$service'","total_sessions":0,"avg_bandwidth_kbps":0,"total_duration_seconds":0,"category":"unknown","typical_quality":"unknown","recent_sessions":[]}'
 				else
-					json_add_int "total_sessions" 0
-					json_add_int "avg_bandwidth_kbps" 0
-					json_add_int "total_duration_seconds" 0
-					json_add_string "category" "unknown"
-					json_add_string "typical_quality" "unknown"
-					json_add_array "recent_sessions"
-					json_close_array
+					result='{"service":"'$service'","total_sessions":0,"avg_bandwidth_kbps":0,"total_duration_seconds":0,"category":"unknown","typical_quality":"unknown","recent_sessions":[]}'
 				fi
-				
-				json_dump
+
+				echo "$result"
 				;;
-			
+
 			set_alert)
 				read -r input
-				json_load "$input"
-				json_get_var service service
-				json_get_var threshold_hours threshold_hours
-				json_get_var action action
-				
-				# Save alert to UCI config
-				. /lib/functions.sh
-				
-				# Create config if not exists
-				touch "$ALERTS_FILE"
-				
-				# Add or update alert
-				local alert_id="alert_$(echo "$service" | tr -d ' ' | tr '[:upper:]' '[:lower:]')"
-				
+				local service=$(echo "$input" | jq -r '.service // ""' 2>/dev/null)
+				local threshold_hours=$(echo "$input" | jq -r '.threshold_hours // 4' 2>/dev/null)
+				local action=$(echo "$input" | jq -r '.action // "notify"' 2>/dev/null)
+
+				if [ -z "$service" ]; then
+					echo '{"success": false, "message": "Service name required"}'
+					exit 0
+				fi
+
+				local alert_id="alert_$(echo "$service" | tr -d ' ' | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_')"
+
 				uci -q delete "media_flow.${alert_id}" 2>/dev/null
 				uci set "media_flow.${alert_id}=alert"
 				uci set "media_flow.${alert_id}.service=${service}"
@@ -374,56 +281,91 @@ case "$1" in
 				uci set "media_flow.${alert_id}.action=${action}"
 				uci set "media_flow.${alert_id}.enabled=1"
 				uci commit media_flow
-				
-				json_init
-				json_add_boolean "success" 1
-				json_add_string "message" "Alert configured for $service"
-				json_add_string "alert_id" "$alert_id"
-				json_dump
+
+				cat <<-EOF
+				{"success": true, "message": "Alert configured for $service", "alert_id": "$alert_id"}
+				EOF
 				;;
-			
-			list_alerts)
-				json_init
-				json_add_array "alerts"
-				
-				if [ -f "$ALERTS_FILE" ]; then
-					. /lib/functions.sh
-					config_load media_flow
-					
-					config_cb() {
-						local type="$1"
-						local name="$2"
-						
-						if [ "$type" = "alert" ]; then
-							local service threshold_hours action enabled
-							
-							config_get service "$name" service
-							config_get threshold_hours "$name" threshold_hours
-							config_get action "$name" action
-							config_get enabled "$name" enabled
-							
-							json_add_object
-							json_add_string "id" "$name"
-							json_add_string "service" "$service"
-							json_add_int "threshold_hours" "$threshold_hours"
-							json_add_string "action" "$action"
-							json_add_boolean "enabled" "$enabled"
-							json_close_object
-						fi
-					}
-					
-					config_load media_flow
+
+			delete_alert)
+				read -r input
+				local alert_id=$(echo "$input" | jq -r '.alert_id // ""' 2>/dev/null)
+
+				if [ -z "$alert_id" ]; then
+					echo '{"success": false, "message": "Alert ID required"}'
+					exit 0
 				fi
-				
-				json_close_array
-				json_dump
+
+				if uci -q get "media_flow.${alert_id}" >/dev/null 2>&1; then
+					uci delete "media_flow.${alert_id}"
+					uci commit media_flow
+					echo '{"success": true, "message": "Alert deleted"}'
+				else
+					echo '{"success": false, "message": "Alert not found"}'
+				fi
 				;;
-			
+
+			list_alerts)
+				local alerts="[]"
+
+				# Use jq to build the alerts array from UCI
+				alerts=$(uci show media_flow 2>/dev/null | grep "=alert$" | while read -r line; do
+					local section=$(echo "$line" | cut -d. -f2 | cut -d= -f1)
+					local service=$(uci -q get "media_flow.${section}.service")
+					local threshold=$(uci -q get "media_flow.${section}.threshold_hours")
+					local action=$(uci -q get "media_flow.${section}.action")
+					local enabled=$(uci -q get "media_flow.${section}.enabled")
+					[ -z "$enabled" ] && enabled="1"
+
+					cat <<-ALERT
+					{"id":"$section","service":"$service","threshold_hours":$threshold,"action":"$action","enabled":$enabled}
+					ALERT
+				done | jq -s '.' 2>/dev/null) || alerts="[]"
+
+				[ -z "$alerts" ] || [ "$alerts" = "null" ] && alerts="[]"
+
+				cat <<-EOF
+				{"alerts": $alerts}
+				EOF
+				;;
+
+			clear_history)
+				echo '[]' > "$HISTORY_FILE"
+				echo '{"success": true, "message": "History cleared"}'
+				;;
+
+			get_settings)
+				local enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
+				local retention=$(uci -q get media_flow.global.history_retention 2>/dev/null || echo "7")
+				local refresh=$(uci -q get media_flow.global.refresh_interval 2>/dev/null || echo "5")
+
+				cat <<-EOF
+				{
+					"enabled": $enabled,
+					"history_retention": $retention,
+					"refresh_interval": $refresh
+				}
+				EOF
+				;;
+
+			set_settings)
+				read -r input
+				local enabled=$(echo "$input" | jq -r '.enabled // 1' 2>/dev/null)
+				local retention=$(echo "$input" | jq -r '.history_retention // 7' 2>/dev/null)
+				local refresh=$(echo "$input" | jq -r '.refresh_interval // 5' 2>/dev/null)
+
+				uci set media_flow.global.enabled="$enabled"
+				uci set media_flow.global.history_retention="$retention"
+				uci set media_flow.global.refresh_interval="$refresh"
+				uci commit media_flow
+
+				echo '{"success": true, "message": "Settings saved"}'
+				;;
+
 			*)
-				json_init
-				json_add_int "error" -32601
-				json_add_string "message" "Method not found: $2"
-				json_dump
+				cat <<-EOF
+				{"error": -32601, "message": "Method not found: $2"}
+				EOF
 				;;
 		esac
 		;;

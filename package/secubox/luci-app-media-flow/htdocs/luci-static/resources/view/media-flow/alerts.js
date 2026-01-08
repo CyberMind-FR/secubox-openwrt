@@ -1,6 +1,5 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
 'require form';
 'require ui';
 'require media-flow/api as API';

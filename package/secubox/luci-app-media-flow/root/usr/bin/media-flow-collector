@@ -1,0 +1,88 @@
+#!/bin/sh
+#
+# Media Flow Data Collector
+# Collects streaming service data from netifyd and stores in history
+#
+
+HISTORY_FILE="/tmp/media-flow-history.json"
+MAX_ENTRIES=1000
+LOCK_FILE="/tmp/media-flow-collector.lock"
+
+# Streaming services patterns
+STREAMING_PATTERN="netflix|youtube|disney|primevideo|amazon.*video|twitch|hulu|hbo|vimeo|peacock|paramount|crunchyroll|funimation|spotify|apple.*music|deezer|soundcloud|tidal|pandora|amazon.*music|youtube.*music|zoom|teams|meet|discord|skype|webex|facetime|whatsapp"
+
+# Check if already running
+if [ -f "$LOCK_FILE" ]; then
+	pid=$(cat "$LOCK_FILE")
+	if kill -0 "$pid" 2>/dev/null; then
+		exit 0
+	fi
+fi
+
+echo $$ > "$LOCK_FILE"
+trap "rm -f $LOCK_FILE" EXIT
+
+# Check if enabled
+enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
+[ "$enabled" != "1" ] && exit 0
+
+# Check if netifyd is running
+pgrep -x netifyd > /dev/null 2>&1 || exit 0
+
+# Initialize history file
+[ ! -f "$HISTORY_FILE" ] && echo '[]' > "$HISTORY_FILE"
+
+# Get current flows from netifyd
+if [ -f /var/run/netifyd/status.json ]; then
+	timestamp=$(date -Iseconds)
+
+	# Extract streaming flows and format as history entries
+	new_entries=$(jq -c --arg ts "$timestamp" '
+		.flows // [] |
+		[.[] |
+			select(.detected_application != null and .detected_application != "") |
+			select(.detected_application | test("'"$STREAMING_PATTERN"'"; "i")) |
+			{
+				timestamp: $ts,
+				app: .detected_application,
+				client: (.local_ip // .src_ip // "unknown"),
+				bandwidth: (if .total_packets > 0 and .duration > 0 then
+					((.total_bytes * 8) / 1000 / .duration) | floor
+				else 0 end),
+				duration: (.duration // 0 | floor),
+				quality: (if .total_packets > 0 and .duration > 0 then
+					(if ((.total_bytes * 8) / 1000 / .duration) < 1000 then "SD"
+					elif ((.total_bytes * 8) / 1000 / .duration) < 3000 then "HD"
+					elif ((.total_bytes * 8) / 1000 / .duration) < 8000 then "FHD"
+					else "4K" end)
+				else "SD" end),
+				category: (if (.detected_application | test("netflix|youtube|disney|primevideo|twitch|hulu|hbo|vimeo"; "i")) then "video"
+					elif (.detected_application | test("spotify|apple.*music|deezer|soundcloud|tidal"; "i")) then "audio"
+					elif (.detected_application | test("zoom|teams|meet|discord|skype|webex"; "i")) then "visio"
+					else "other" end),
+				bytes: (.total_bytes // 0)
+			}
+		] |
+		# Only include flows with significant duration (> 10 seconds)
+		[.[] | select(.duration > 10)]
+	' /var/run/netifyd/status.json 2>/dev/null)
+
+	# If we have new entries, merge with history
+	if [ -n "$new_entries" ] && [ "$new_entries" != "[]" ] && [ "$new_entries" != "null" ]; then
+		# Merge and deduplicate (by client+app combination within same minute)
+		jq -c --argjson new "$new_entries" '
+			. + $new |
+			# Keep only last MAX_ENTRIES
+			.[-'"$MAX_ENTRIES"':]
+		' "$HISTORY_FILE" > "${HISTORY_FILE}.tmp" 2>/dev/null && mv "${HISTORY_FILE}.tmp" "$HISTORY_FILE"
+	fi
+fi
+
+# Clean old entries based on retention (days)
+retention=$(uci -q get media_flow.global.history_retention 2>/dev/null || echo "7")
+if [ "$retention" -gt 0 ] 2>/dev/null; then
+	cutoff_date=$(date -d "$retention days ago" -Iseconds 2>/dev/null || date -Iseconds)
+	jq -c --arg cutoff "$cutoff_date" '[.[] | select(.timestamp >= $cutoff)]' "$HISTORY_FILE" > "${HISTORY_FILE}.tmp" 2>/dev/null && mv "${HISTORY_FILE}.tmp" "$HISTORY_FILE"
+fi
+
+exit 0

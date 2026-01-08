@@ -1,0 +1,82 @@
+#!/bin/sh /etc/rc.common
+#
+# Media Flow Init Script
+# Manages the media flow data collector cron job
+#
+
+START=99
+STOP=10
+
+CRON_FILE="/etc/crontabs/root"
+CRON_ENTRY="*/5 * * * * /usr/bin/media-flow-collector >/dev/null 2>&1"
+CRON_MARKER="# media-flow-collector"
+
+add_cron_entry() {
+	# Remove existing entries first
+	remove_cron_entry
+
+	# Add the new entry with marker
+	if [ -f "$CRON_FILE" ]; then
+		echo "$CRON_MARKER" >> "$CRON_FILE"
+		echo "$CRON_ENTRY" >> "$CRON_FILE"
+	else
+		echo "$CRON_MARKER" > "$CRON_FILE"
+		echo "$CRON_ENTRY" >> "$CRON_FILE"
+	fi
+
+	# Restart cron
+	/etc/init.d/cron reload 2>/dev/null || /etc/init.d/cron restart 2>/dev/null
+}
+
+remove_cron_entry() {
+	if [ -f "$CRON_FILE" ]; then
+		sed -i '/# media-flow-collector/d' "$CRON_FILE"
+		sed -i '\|/usr/bin/media-flow-collector|d' "$CRON_FILE"
+		/etc/init.d/cron reload 2>/dev/null || /etc/init.d/cron restart 2>/dev/null
+	fi
+}
+
+start() {
+	local enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
+
+	if [ "$enabled" = "1" ]; then
+		logger -t media-flow "Starting media flow collector"
+		add_cron_entry
+		# Run once immediately
+		/usr/bin/media-flow-collector &
+	fi
+}
+
+stop() {
+	logger -t media-flow "Stopping media flow collector"
+	remove_cron_entry
+}
+
+reload() {
+	local enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
+
+	if [ "$enabled" = "1" ]; then
+		logger -t media-flow "Reloading media flow collector"
+		add_cron_entry
+	else
+		logger -t media-flow "Media flow disabled, removing collector"
+		remove_cron_entry
+	fi
+}
+
+status() {
+	local enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
+
+	if grep -q "media-flow-collector" "$CRON_FILE" 2>/dev/null; then
+		echo "Media Flow collector: ACTIVE"
+	else
+		echo "Media Flow collector: INACTIVE"
+	fi
+
+	echo "UCI enabled: $enabled"
+
+	if [ -f /tmp/media-flow-history.json ]; then
+		local count=$(jq 'length' /tmp/media-flow-history.json 2>/dev/null || echo 0)
+		echo "History entries: $count"
+	fi
+}

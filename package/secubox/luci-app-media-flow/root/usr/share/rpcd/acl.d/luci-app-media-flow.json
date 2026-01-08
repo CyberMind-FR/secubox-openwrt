@@ -10,7 +10,8 @@
 					"get_stats_by_service",
 					"get_stats_by_client",
 					"get_service_details",
-					"list_alerts"
+					"list_alerts",
+					"get_settings"
 				],
 				"luci.netifyd-dashboard": [
 					"status",
@@ -22,7 +23,10 @@
 		"write": {
 			"ubus": {
 				"luci.media-flow": [
-					"set_alert"
+					"set_alert",
+					"delete_alert",
+					"clear_history",
+					"set_settings"
 				]
 			},
 			"uci": ["media_flow"]

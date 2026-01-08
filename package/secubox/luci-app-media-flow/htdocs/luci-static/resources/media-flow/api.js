@@ -47,10 +47,36 @@ var callSetAlert = rpc.declare({
 	expect: { }
 });
 
+var callDeleteAlert = rpc.declare({
+	object: 'luci.media-flow',
+	method: 'delete_alert',
+	params: ['alert_id'],
+	expect: { }
+});
+
 var callListAlerts = rpc.declare({
 	object: 'luci.media-flow',
 	method: 'list_alerts',
 	expect: { alerts: [] }
+});
+
+var callClearHistory = rpc.declare({
+	object: 'luci.media-flow',
+	method: 'clear_history',
+	expect: { }
+});
+
+var callGetSettings = rpc.declare({
+	object: 'luci.media-flow',
+	method: 'get_settings',
+	expect: { }
+});
+
+var callSetSettings = rpc.declare({
+	object: 'luci.media-flow',
+	method: 'set_settings',
+	params: ['enabled', 'history_retention', 'refresh_interval'],
+	expect: { }
 });
 
 return baseclass.extend({
@@ -61,5 +87,9 @@ return baseclass.extend({
 	getStatsByClient: callGetStatsByClient,
 	getServiceDetails: callGetServiceDetails,
 	setAlert: callSetAlert,
-	listAlerts: callListAlerts
+	deleteAlert: callDeleteAlert,
+	listAlerts: callListAlerts,
+	clearHistory: callClearHistory,
+	getSettings: callGetSettings,
+	setSettings: callSetSettings
 });
