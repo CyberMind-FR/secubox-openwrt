@@ -38,6 +38,18 @@ if ! uci -q get secubox-netifyd.analytics >/dev/null 2>&1; then
 	uci commit secubox-netifyd
 fi
 
+# Initialize sink/collector settings if missing
+if ! uci -q get secubox-netifyd.sink.collector_enabled >/dev/null 2>&1; then
+	uci set secubox-netifyd.sink.collector_enabled='0'
+	uci commit secubox-netifyd
+fi
+
+# Apply collector cron job if enabled in UCI
+if [ "$(uci -q get secubox-netifyd.sink.collector_enabled)" = "1" ]; then
+	/etc/init.d/secubox-netifyd-collector enable 2>/dev/null
+	/etc/init.d/secubox-netifyd-collector start 2>/dev/null
+fi
+
 # Restart netifyd if it's running to apply changes
 if pidof netifyd >/dev/null 2>&1; then
 	/etc/init.d/netifyd restart >/dev/null 2>&1

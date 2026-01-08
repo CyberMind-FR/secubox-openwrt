@@ -35,6 +35,7 @@ config sink 'sink'
 	option unix_path '/tmp/netifyd-flows.json'
 	option tcp_address '127.0.0.1'
 	option tcp_port '9501'
+	option collector_enabled '0'
 
 config plugin 'bittorrent'
 	option enabled '0'

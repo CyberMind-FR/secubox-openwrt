@@ -1,13 +1,21 @@
 #!/bin/sh
-set -e
-
+#
+# Netifyd Collector Setup - Persistent Configuration
+#
 # Usage: netifyd-collector-setup [unix|tcp] [path_or_host:port]
 # Example:
 #   netifyd-collector-setup unix /tmp/netifyd-flows.json
 #   netifyd-collector-setup tcp 127.0.0.1:9501
+#
+# To disable:
+#   netifyd-collector-setup disable
 
 SINK_MODE="${1:-unix}"
 TARGET="${2:-/tmp/netifyd-flows.json}"
+
+log() {
+	printf '%s\n' "$*"
+}
 
 configure_sink() {
 	local mode="$1"
@@ -27,27 +35,80 @@ configure_sink() {
 	uci commit secubox-netifyd
 }
 
-ensure_collector_cron() {
-	local entry="* * * * * /usr/bin/netifyd-collector >/dev/null 2>&1"
-	local existing
-	existing=$(crontab -l 2>/dev/null || true)
+enable_collector() {
+	# Set UCI flag for persistence
+	uci set secubox-netifyd.sink.collector_enabled=1
+	uci commit secubox-netifyd
 
-	if ! printf '%s\n' "$existing" | grep -Fxq "$entry"; then
-		local tempfile
-		tempfile=$(mktemp)
-		printf '%s\n' "$existing" | grep -v '^$' >"$tempfile"
-		printf '%s\n' "$entry" >>"$tempfile"
-		crontab "$tempfile"
-		rm -f "$tempfile"
+	# Enable and start the init script
+	/etc/init.d/secubox-netifyd-collector enable 2>/dev/null
+	/etc/init.d/secubox-netifyd-collector reload 2>/dev/null
+
+	log "Collector enabled and will persist across reboots"
+}
+
+disable_collector() {
+	# Clear UCI flag
+	uci set secubox-netifyd.sink.collector_enabled=0
+	uci commit secubox-netifyd
+
+	# Stop and disable the init script
+	/etc/init.d/secubox-netifyd-collector stop 2>/dev/null
+	/etc/init.d/secubox-netifyd-collector disable 2>/dev/null
+
+	log "Collector disabled"
+}
+
+show_status() {
+	local enabled=$(uci -q get secubox-netifyd.sink.collector_enabled 2>/dev/null || echo "0")
+	local sink_enabled=$(uci -q get secubox-netifyd.sink.enabled 2>/dev/null || echo "0")
+	local sink_type=$(uci -q get secubox-netifyd.sink.type 2>/dev/null || echo "unix")
+
+	log "Netifyd Collector Status"
+	log "========================"
+	log "Collector enabled: $([ "$enabled" = "1" ] && echo "YES" || echo "NO")"
+	log "Sink enabled: $([ "$sink_enabled" = "1" ] && echo "YES" || echo "NO")"
+	log "Sink type: $sink_type"
+
+	if [ "$sink_type" = "tcp" ]; then
+		local addr=$(uci -q get secubox-netifyd.sink.tcp_address 2>/dev/null)
+		local port=$(uci -q get secubox-netifyd.sink.tcp_port 2>/dev/null)
+		log "TCP target: $addr:$port"
+	else
+		local path=$(uci -q get secubox-netifyd.sink.unix_path 2>/dev/null)
+		log "Unix path: $path"
+	fi
+
+	if grep -q "netifyd-collector" /etc/crontabs/root 2>/dev/null; then
+		log "Cron job: ACTIVE"
+	else
+		log "Cron job: INACTIVE"
 	fi
 }
 
-log() {
-	printf '%s\n' "$*"
-}
-
-log "Configuring Netifyd flow sink ($SINK_MODE -> $TARGET)"
-configure_sink "$SINK_MODE" "$TARGET"
-ensure_collector_cron
-/etc/init.d/netifyd restart >/dev/null 2>&1 || true
-log "Collector cron enabled and netifyd restarted."
+case "$SINK_MODE" in
+	disable)
+		log "Disabling Netifyd collector..."
+		disable_collector
+		;;
+	status)
+		show_status
+		;;
+	unix|tcp)
+		log "Configuring Netifyd flow sink ($SINK_MODE -> $TARGET)"
+		configure_sink "$SINK_MODE" "$TARGET"
+		enable_collector
+		/etc/init.d/netifyd restart >/dev/null 2>&1 || true
+		log "Configuration complete. Netifyd restarted."
+		;;
+	*)
+		log "Usage: $0 [unix|tcp|disable|status] [path_or_host:port]"
+		log ""
+		log "Examples:"
+		log "  $0 unix /tmp/netifyd-flows.json"
+		log "  $0 tcp 127.0.0.1:9501"
+		log "  $0 disable"
+		log "  $0 status"
+		exit 1
+		;;
+esac

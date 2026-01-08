@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-secubox-netifyd
-PKG_VERSION:=1.0.2
-PKG_RELEASE:=2
+PKG_VERSION:=1.0.3
+PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_ARCH:=all
@@ -22,6 +22,8 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-netifyd-configure $(1)/usr/sbin/
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./root/usr/bin/netifyd-collector-setup $(1)/usr/bin/
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./root/etc/init.d/secubox-netifyd-collector $(1)/etc/init.d/
 endef
 
 include $(TOPDIR)/feeds/luci/luci.mk

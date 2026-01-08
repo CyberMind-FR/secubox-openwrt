@@ -1,0 +1,83 @@
+#!/bin/sh /etc/rc.common
+#
+# SecuBox Netifyd Collector Init Script
+# Manages persistent cron job for flow data collection
+#
+
+START=99
+STOP=10
+
+CRON_FILE="/etc/crontabs/root"
+CRON_ENTRY="* * * * * /usr/bin/netifyd-collector >/dev/null 2>&1"
+CRON_MARKER="# secubox-netifyd-collector"
+
+get_collector_enabled() {
+	uci -q get secubox-netifyd.sink.collector_enabled 2>/dev/null || echo "0"
+}
+
+add_cron_entry() {
+	# Remove any existing entries first (clean up duplicates)
+	remove_cron_entry
+
+	# Add the new entry with marker
+	if [ -f "$CRON_FILE" ]; then
+		echo "$CRON_MARKER" >> "$CRON_FILE"
+		echo "$CRON_ENTRY" >> "$CRON_FILE"
+	else
+		echo "$CRON_MARKER" > "$CRON_FILE"
+		echo "$CRON_ENTRY" >> "$CRON_FILE"
+	fi
+
+	# Restart cron to pick up changes
+	/etc/init.d/cron reload 2>/dev/null || /etc/init.d/cron restart 2>/dev/null
+}
+
+remove_cron_entry() {
+	if [ -f "$CRON_FILE" ]; then
+		# Remove marker line and collector entry (various formats)
+		sed -i '/# secubox-netifyd-collector/d' "$CRON_FILE"
+		sed -i '\|/usr/bin/netifyd-collector|d' "$CRON_FILE"
+		sed -i '\|/usr/sbin/netifyd-collector|d' "$CRON_FILE"
+
+		# Restart cron to pick up changes
+		/etc/init.d/cron reload 2>/dev/null || /etc/init.d/cron restart 2>/dev/null
+	fi
+}
+
+start() {
+	local enabled=$(get_collector_enabled)
+
+	if [ "$enabled" = "1" ]; then
+		logger -t secubox-netifyd "Starting netifyd collector (cron job)"
+		add_cron_entry
+	fi
+}
+
+stop() {
+	logger -t secubox-netifyd "Stopping netifyd collector (removing cron job)"
+	remove_cron_entry
+}
+
+reload() {
+	local enabled=$(get_collector_enabled)
+
+	if [ "$enabled" = "1" ]; then
+		logger -t secubox-netifyd "Enabling netifyd collector cron job"
+		add_cron_entry
+	else
+		logger -t secubox-netifyd "Disabling netifyd collector cron job"
+		remove_cron_entry
+	fi
+}
+
+status() {
+	local enabled=$(get_collector_enabled)
+
+	if grep -q "netifyd-collector" "$CRON_FILE" 2>/dev/null; then
+		echo "Collector cron job: ACTIVE"
+	else
+		echo "Collector cron job: INACTIVE"
+	fi
+
+	echo "UCI collector_enabled: $enabled"
+}
