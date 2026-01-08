@@ -10,7 +10,7 @@
 # Log the reload
 logger -t secubox-wan "Firewall reload detected - reapplying WAN access rules"
 
-# Apply WAN access rules from UCI config
-/usr/sbin/secubox-wan-access apply >/dev/null 2>&1
+# Apply WAN access rules from UCI config (noreload to avoid infinite loop)
+/usr/sbin/secubox-wan-access apply-noreload >/dev/null 2>&1
 
 exit 0

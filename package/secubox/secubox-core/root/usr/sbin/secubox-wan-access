@@ -84,7 +84,10 @@ add_rule() {
 }
 
 # Apply rules based on secubox config
+# Note: noreload parameter skips firewall reload (used by firewall include to avoid loops)
 apply_rules() {
+	local noreload="$1"
+
 	config_load secubox
 
 	local enabled https_enabled https_port http_enabled http_port ssh_enabled ssh_port
@@ -122,7 +125,11 @@ apply_rules() {
 	fi
 
 	uci commit firewall
-	/etc/init.d/firewall reload >/dev/null 2>&1
+
+	# Only reload firewall if not called from firewall include (avoid infinite loop)
+	if [ "$noreload" != "noreload" ]; then
+		/etc/init.d/firewall reload >/dev/null 2>&1
+	fi
 
 	echo "WAN access rules applied"
 }
@@ -210,6 +217,10 @@ case "$1" in
 	apply)
 		apply_rules
 		;;
+	apply-noreload)
+		# Called from firewall include - skip firewall reload to avoid loop
+		apply_rules "noreload"
+		;;
 	remove)
 		remove_rules
 		uci commit firewall
@@ -229,7 +240,7 @@ case "$1" in
 		json_status
 		;;
 	*)
-		echo "Usage: $0 {apply|remove|enable|disable|status|json}"
+		echo "Usage: $0 {apply|apply-noreload|remove|enable|disable|status|json}"
 		exit 1
 		;;
 esac
