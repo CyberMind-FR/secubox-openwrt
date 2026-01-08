@@ -23,7 +23,7 @@
 				{
 					"id": "wan",
 					"name": "Internet (WAN)",
-					"description": "Connexion vers Internet - trafic sortant autorisé",
+					"description": "Accès Internet uniquement - pas d'accès au réseau local",
 					"network": "wan",
 					"color": "#ef4444",
 					"icon": "globe",
@@ -75,6 +75,19 @@
 					"inter_client": true,
 					"bandwidth_limit": 0,
 					"priority": "high"
+				},
+				{
+					"id": "wan",
+					"name": "Internet Seul",
+					"description": "Accès Internet uniquement - pas d'accès au réseau local",
+					"network": "wan",
+					"color": "#ef4444",
+					"icon": "globe",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 0,
+					"priority": "normal"
 				},
 				{
 					"id": "kids",
@@ -143,6 +156,19 @@
 					"priority": "high"
 				},
 				{
+					"id": "wan",
+					"name": "Internet Seul",
+					"description": "Accès Internet uniquement - pas d'accès au réseau local",
+					"network": "wan",
+					"color": "#ef4444",
+					"icon": "globe",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 0,
+					"priority": "normal"
+				},
+				{
 					"id": "servers",
 					"name": "Serveurs",
 					"description": "Infrastructure critique",
@@ -202,6 +228,19 @@
 					"inter_client": true,
 					"bandwidth_limit": 0,
 					"priority": "critical"
+				},
+				{
+					"id": "wan",
+					"name": "Internet Seul",
+					"description": "Accès Internet uniquement - pas d'accès au réseau local",
+					"network": "wan",
+					"color": "#ef4444",
+					"icon": "globe",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 0,
+					"priority": "normal"
 				},
 				{
 					"id": "rooms_floor1",
@@ -265,6 +304,19 @@
 					"inter_client": true,
 					"bandwidth_limit": 0,
 					"priority": "high"
+				},
+				{
+					"id": "wan",
+					"name": "Internet Seul",
+					"description": "Accès Internet uniquement - pas d'accès au réseau local",
+					"network": "wan",
+					"color": "#ef4444",
+					"icon": "globe",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 0,
+					"priority": "normal"
 				},
 				{
 					"id": "tenant_a",
@@ -340,6 +392,19 @@
 					"priority": "high"
 				},
 				{
+					"id": "wan",
+					"name": "Internet Seul",
+					"description": "Accès Internet uniquement - pas d'accès au réseau local",
+					"network": "wan",
+					"color": "#ef4444",
+					"icon": "globe",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 0,
+					"priority": "normal"
+				},
+				{
 					"id": "teachers",
 					"name": "Enseignants",
 					"description": "Salle des professeurs",
@@ -402,6 +467,19 @@
 					"inter_client": true,
 					"bandwidth_limit": 0,
 					"priority": "critical"
+				},
+				{
+					"id": "wan",
+					"name": "Internet Seul",
+					"description": "Accès Internet uniquement - pas d'accès au réseau local",
+					"network": "wan",
+					"color": "#ef4444",
+					"icon": "globe",
+					"internet_access": true,
+					"local_access": false,
+					"inter_client": false,
+					"bandwidth_limit": 0,
+					"priority": "normal"
 				},
 				{
 					"id": "work",
