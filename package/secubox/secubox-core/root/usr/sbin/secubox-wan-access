@@ -1,90 +1,48 @@
 #!/bin/sh
 #
 # SecuBox WAN Access Manager
-# Manages firewall rules for remote access to LuCI/SecuBox
+# Opens ports completely (DMZ-style) for remote access
 #
 
 . /lib/functions.sh
+. /usr/share/libubox/jshn.sh
 
 RULE_PREFIX="secubox_wan"
 
-# Remove all SecuBox WAN access rules
-remove_rules() {
+# Remove all SecuBox WAN access rules from UCI
+remove_uci_rules() {
 	local changed=0
+	local sections=""
 
-	# Find and remove all secubox_wan rules
-	while uci -q get firewall.@rule[-1] >/dev/null 2>&1; do
-		local name=$(uci -q get firewall.@rule[-1].name)
-		if echo "$name" | grep -q "^${RULE_PREFIX}"; then
-			uci delete firewall.@rule[-1]
+	# Find all secubox_wan rules by name
+	sections=$(uci show firewall 2>/dev/null | grep "\.name='${RULE_PREFIX}" | cut -d. -f2 | cut -d= -f1)
+
+	for section in $sections; do
+		[ -n "$section" ] && {
+			uci delete "firewall.$section" 2>/dev/null
 			changed=1
-		else
-			break
-		fi
+		}
 	done
 
-	# Iterate through all rules to find secubox ones
-	local i=0
-	while true; do
-		local name=$(uci -q get firewall.@rule[$i].name)
-		[ -z "$name" ] && break
-
-		if echo "$name" | grep -q "^${RULE_PREFIX}"; then
-			uci delete firewall.@rule[$i]
-			changed=1
-			# Don't increment i since indices shift after delete
-		else
-			i=$((i + 1))
-		fi
-	done
-
-	[ "$changed" -eq 1 ] && return 0
-	return 1
+	[ "$changed" -eq 1 ] && uci commit firewall
+	return $changed
 }
 
-# Detect WAN zone name (fallback to '*' for any)
-get_wan_zone() {
-	# Try common WAN zone names
-	for zone in wan WAN external internet; do
-		if uci -q get firewall.@zone[] 2>/dev/null | grep -q "name='$zone'"; then
-			echo "$zone"
-			return
-		fi
-	done
-	# Check for zone with wan/wan6 network
-	local i=0
-	while true; do
-		local name=$(uci -q get firewall.@zone[$i].name 2>/dev/null)
-		[ -z "$name" ] && break
-		local network=$(uci -q get firewall.@zone[$i].network 2>/dev/null)
-		if echo "$network" | grep -qE '^wan|wan6|wan '; then
-			echo "$name"
-			return
-		fi
-		i=$((i + 1))
-	done
-	# No WAN zone found - use '*' for any source
-	echo "*"
-}
-
-# Add a firewall rule
+# Add a simple firewall rule - open to ALL (DMZ style)
 add_rule() {
 	local name="$1"
 	local port="$2"
 	local proto="${3:-tcp}"
-	local src="${4:-$(get_wan_zone)}"
 
 	uci add firewall rule >/dev/null
 	uci set firewall.@rule[-1].name="$name"
-	uci set firewall.@rule[-1].src="$src"
+	uci set firewall.@rule[-1].src="*"
 	uci set firewall.@rule[-1].dest_port="$port"
 	uci set firewall.@rule[-1].proto="$proto"
 	uci set firewall.@rule[-1].target="ACCEPT"
-	uci set firewall.@rule[-1].enabled="1"
 }
 
 # Apply rules based on secubox config
-# Note: noreload parameter skips firewall reload (used by firewall include to avoid loops)
 apply_rules() {
 	local noreload="$1"
 
@@ -101,34 +59,34 @@ apply_rules() {
 	config_get ssh_port remote ssh_port "22"
 
 	# Remove existing rules first
-	remove_rules
+	remove_uci_rules
 
 	# Only add rules if WAN access is enabled
 	if [ "$enabled" = "1" ]; then
 		# HTTPS access
 		if [ "$https_enabled" = "1" ]; then
-			add_rule "${RULE_PREFIX}_https" "$https_port" "tcp" "wan"
-			echo "Added HTTPS access rule (port $https_port)"
+			add_rule "${RULE_PREFIX}_https" "$https_port" "tcp"
+			logger -t secubox-wan "Opened HTTPS port $https_port (all zones)"
 		fi
 
 		# HTTP access
 		if [ "$http_enabled" = "1" ]; then
-			add_rule "${RULE_PREFIX}_http" "$http_port" "tcp" "wan"
-			echo "Added HTTP access rule (port $http_port)"
+			add_rule "${RULE_PREFIX}_http" "$http_port" "tcp"
+			logger -t secubox-wan "Opened HTTP port $http_port (all zones)"
 		fi
 
 		# SSH access
 		if [ "$ssh_enabled" = "1" ]; then
-			add_rule "${RULE_PREFIX}_ssh" "$ssh_port" "tcp" "wan"
-			echo "Added SSH access rule (port $ssh_port)"
+			add_rule "${RULE_PREFIX}_ssh" "$ssh_port" "tcp"
+			logger -t secubox-wan "Opened SSH port $ssh_port (all zones)"
 		fi
+
+		uci commit firewall
 	fi
 
-	uci commit firewall
-
-	# Only reload firewall if not called from firewall include (avoid infinite loop)
+	# Reload firewall unless called with noreload
 	if [ "$noreload" != "noreload" ]; then
-		/etc/init.d/firewall reload >/dev/null 2>&1
+		/etc/init.d/firewall reload >/dev/null 2>&1 &
 	fi
 
 	echo "WAN access rules applied"
@@ -148,17 +106,14 @@ status() {
 	config_get ssh_enabled remote ssh_enabled "0"
 	config_get ssh_port remote ssh_port "22"
 
-	echo "SecuBox WAN Access Status"
-	echo "========================="
+	echo "SecuBox WAN Access Status (DMZ Mode)"
+	echo "====================================="
 	echo "Master switch: $([ "$enabled" = "1" ] && echo "ENABLED" || echo "DISABLED")"
 	echo ""
-	echo "Services:"
-	echo "  HTTPS (port $https_port): $([ "$https_enabled" = "1" ] && echo "ENABLED" || echo "disabled")"
-	echo "  HTTP  (port $http_port): $([ "$http_enabled" = "1" ] && echo "ENABLED" || echo "disabled")"
-	echo "  SSH   (port $ssh_port): $([ "$ssh_enabled" = "1" ] && echo "ENABLED" || echo "disabled")"
-	echo ""
-	echo "Active firewall rules:"
-	iptables -L INPUT -n --line-numbers 2>/dev/null | grep -E "dpt:(${https_port}|${http_port}|${ssh_port})" || echo "  (none)"
+	echo "Open Ports (all zones):"
+	echo "  HTTPS (port $https_port): $([ "$https_enabled" = "1" ] && echo "OPEN" || echo "closed")"
+	echo "  HTTP  (port $http_port): $([ "$http_enabled" = "1" ] && echo "OPEN" || echo "closed")"
+	echo "  SSH   (port $ssh_port): $([ "$ssh_enabled" = "1" ] && echo "OPEN" || echo "closed")"
 }
 
 # Enable WAN access
@@ -166,16 +121,14 @@ enable() {
 	uci set secubox.remote.enabled='1'
 	uci commit secubox
 	apply_rules
-	echo "WAN access enabled"
 }
 
 # Disable WAN access
 disable() {
 	uci set secubox.remote.enabled='0'
 	uci commit secubox
-	remove_rules
-	uci commit firewall
-	/etc/init.d/firewall reload >/dev/null 2>&1
+	remove_uci_rules
+	/etc/init.d/firewall reload >/dev/null 2>&1 &
 	echo "WAN access disabled"
 }
 
@@ -193,7 +146,6 @@ json_status() {
 	config_get ssh_enabled remote ssh_enabled "0"
 	config_get ssh_port remote ssh_port "22"
 
-	. /usr/share/libubox/jshn.sh
 	json_init
 	json_add_boolean "enabled" "$enabled"
 	json_add_object "services"
@@ -218,13 +170,11 @@ case "$1" in
 		apply_rules
 		;;
 	apply-noreload)
-		# Called from firewall include - skip firewall reload to avoid loop
 		apply_rules "noreload"
 		;;
 	remove)
-		remove_rules
-		uci commit firewall
-		/etc/init.d/firewall reload >/dev/null 2>&1
+		remove_uci_rules
+		/etc/init.d/firewall reload >/dev/null 2>&1 &
 		echo "WAN access rules removed"
 		;;
 	enable)
