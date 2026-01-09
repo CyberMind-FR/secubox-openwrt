@@ -190,35 +190,54 @@ return baseclass.extend({
 
 	// Section definitions
 	sections: {
-		'dashboard': {
-			id: 'dashboard',
-			name: 'Dashboard',
+		'portal': {
+			id: 'portal',
+			name: 'Portal',
 			icon: '\ud83c\udfe0',
+			path: 'admin/secubox/portal',
 			order: 1
+		},
+		'hub': {
+			id: 'hub',
+			name: 'Hub',
+			icon: '\ud83d\ude80',
+			path: 'admin/secubox/dashboard',
+			order: 2
+		},
+		'admin': {
+			id: 'admin',
+			name: 'Admin',
+			icon: '\ud83c\udfdb\ufe0f',
+			path: 'admin/secubox/admin/dashboard',
+			order: 3
 		},
 		'security': {
 			id: 'security',
 			name: 'Security',
 			icon: '\ud83d\udee1\ufe0f',
-			order: 2
+			path: 'admin/secubox/security',
+			order: 4
 		},
 		'network': {
 			id: 'network',
 			name: 'Network',
 			icon: '\ud83c\udf10',
-			order: 3
+			path: 'admin/secubox/network',
+			order: 5
 		},
 		'monitoring': {
 			id: 'monitoring',
 			name: 'Monitoring',
 			icon: '\ud83d\udcca',
-			order: 4
+			path: 'admin/secubox/monitoring',
+			order: 6
 		},
 		'system': {
 			id: 'system',
 			name: 'System',
 			icon: '\u2699\ufe0f',
-			order: 5
+			path: 'admin/secubox/system',
+			order: 7
 		}
 	},
 

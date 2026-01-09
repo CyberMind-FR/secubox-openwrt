@@ -116,6 +116,9 @@ return view.extend({
 	renderHeader: function() {
 		var self = this;
 		var sections = portal.getSections();
+		// Sections that link to other pages vs tabs within portal
+		var linkSections = ['portal', 'hub', 'admin'];
+		var tabSections = ['security', 'network', 'monitoring', 'system'];
 
 		return E('div', { 'class': 'sb-portal-header' }, [
 			// Brand
@@ -127,8 +130,19 @@ return view.extend({
 			// Navigation
 			E('nav', { 'class': 'sb-portal-nav' },
 				sections.map(function(section) {
+					// Portal, Hub, Admin are links to other pages
+					if (linkSections.indexOf(section.id) !== -1) {
+						return E('a', {
+							'class': 'sb-portal-nav-item' + (section.id === 'portal' ? ' active' : ''),
+							'href': L.url(section.path)
+						}, [
+							E('span', { 'class': 'sb-portal-nav-icon' }, section.icon),
+							section.name
+						]);
+					}
+					// Security, Network, Monitoring, System are tabs within portal
 					return E('button', {
-						'class': 'sb-portal-nav-item' + (section.id === 'dashboard' ? ' active' : ''),
+						'class': 'sb-portal-nav-item',
 						'data-section': section.id,
 						'click': function() { self.switchSection(section.id); }
 					}, [
