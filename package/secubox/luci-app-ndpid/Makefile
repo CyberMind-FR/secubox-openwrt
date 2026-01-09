@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-ndpid
 PKG_VERSION:=0.9.1
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_ARCH:=all
 
 PKG_LICENSE:=Apache-2.0

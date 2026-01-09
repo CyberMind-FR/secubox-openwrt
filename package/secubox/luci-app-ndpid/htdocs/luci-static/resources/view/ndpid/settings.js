@@ -11,13 +11,13 @@ return view.extend({
 	load: function() {
 		return Promise.all([
 			uci.load('ndpid'),
-			api.getInterfaces()
+			api.getInterfaces().catch(function() { return {}; })
 		]);
 	},
 
 	render: function(data) {
 		var interfaces = data[1] || {};
-		var available = interfaces.available || [];
+		var available = (interfaces && interfaces.available) ? interfaces.available : ['br-lan', 'eth0', 'eth1', 'wlan0'];
 
 		var m, s, o;
 
