@@ -3,6 +3,41 @@
 'require secubox-admin.api as API';
 'require secubox-admin.data-utils as DataUtils';
 'require poll';
+'require secubox-theme/theme as Theme';
+'require secubox-portal/header as SbHeader';
+
+var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: lang });
+
+var ADMIN_NAV = [
+	{ id: 'dashboard', icon: '🎛️', label: 'Control Panel' },
+	{ id: 'cyber-dashboard', icon: '🔮', label: 'Cyber Console' },
+	{ id: 'apps', icon: '📦', label: 'Apps Manager' },
+	{ id: 'updates', icon: '🔄', label: 'Updates' },
+	{ id: 'catalog-sources', icon: '📚', label: 'Catalog' },
+	{ id: 'health', icon: '💚', label: 'Health' },
+	{ id: 'logs', icon: '📋', label: 'Logs' },
+	{ id: 'settings', icon: '⚙️', label: 'Settings' }
+];
+
+function renderAdminNav(activeId) {
+	return E('div', {
+		'class': 'sb-app-nav',
+		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:#141419;border:1px solid rgba(255,255,255,0.08);border-radius:12px;flex-wrap:wrap;'
+	}, ADMIN_NAV.map(function(item) {
+		var isActive = activeId === item.id;
+		return E('a', {
+			'href': L.url('admin', 'secubox', 'admin', item.id),
+			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
+				(isActive ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:white;' : 'color:#a0a0b0;background:transparent;')
+		}, [
+			E('span', {}, item.icon),
+			E('span', {}, _(item.label))
+		]);
+	}));
+}
 
 return view.extend({
 	load: function() {
@@ -55,7 +90,11 @@ return view.extend({
 		// Auto-refresh every 5 seconds
 		poll.add(L.bind(this.pollData, this), 5);
 
-		return container;
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(renderAdminNav('health'));
+		wrapper.appendChild(container);
+		return wrapper;
 	},
 
 	renderMetricCard: function(label, value, unit, type) {
