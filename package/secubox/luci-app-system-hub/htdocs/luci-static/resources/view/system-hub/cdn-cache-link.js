@@ -3,7 +3,7 @@
 
 return view.extend({
 	load: function() {
-		window.location.href = L.url('admin', 'secubox', 'network', 'cdn-cache', 'overview');
+		window.location.href = L.url('admin', 'secubox', 'network', 'cdn-cache');
 		return Promise.resolve();
 	},
 	render: function() {
