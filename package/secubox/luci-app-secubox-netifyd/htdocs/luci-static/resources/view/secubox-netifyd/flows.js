@@ -23,7 +23,7 @@ var NETIFYD_NAV = [
 function renderNetifydNav(activeId) {
 	return E('div', {
 		'class': 'sb-app-nav',
-		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:8px;background:rgba(255,255,255,0.05);border-radius:12px;flex-wrap:wrap;'
+		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:#141419;border:1px solid rgba(255,255,255,0.08);border-radius:12px;flex-wrap:wrap;'
 	}, NETIFYD_NAV.map(function(item) {
 		var isActive = activeId === item.id;
 		return E('a', {

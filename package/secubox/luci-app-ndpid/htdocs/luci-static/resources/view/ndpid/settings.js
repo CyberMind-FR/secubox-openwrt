@@ -21,13 +21,13 @@ var NDPID_NAV = [
 function renderNdpidNav(activeId) {
 	return E('div', {
 		'class': 'sb-app-nav',
-		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:8px;background:rgba(255,255,255,0.05);border-radius:12px;'
+		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:#141419;border:1px solid rgba(255,255,255,0.08);border-radius:12px;'
 	}, NDPID_NAV.map(function(item) {
 		var isActive = activeId === item.id;
 		return E('a', {
 			'href': L.url('admin', 'secubox', 'ndpid', item.id),
 			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
-				(isActive ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:white;' : 'color:#a0a0b0;')
+				(isActive ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:white;' : 'color:#a0a0b0;background:transparent;')
 		}, [
 			E('span', {}, item.icon),
 			E('span', {}, _(item.label))
