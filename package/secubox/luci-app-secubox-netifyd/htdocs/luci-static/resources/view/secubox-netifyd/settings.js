@@ -23,9 +23,17 @@ return view.extend({
 	render: function(data) {
 		var m, s, o;
 		var netifydStatus = data[1] && data[1].netifyd;
-		var isRunning = netifydStatus && netifydStatus.instances &&
-		                netifydStatus.instances.netifyd &&
-		                netifydStatus.instances.netifyd.running;
+		var isRunning = false;
+
+		// Check all instances for running status
+		if (netifydStatus && netifydStatus.instances) {
+			for (var inst in netifydStatus.instances) {
+				if (netifydStatus.instances[inst].running) {
+					isRunning = true;
+					break;
+				}
+			}
+		}
 
 		// Build description with status banner
 		var description = E('div', [
