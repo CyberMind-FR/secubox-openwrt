@@ -22,22 +22,54 @@ get_arch() {
 	local arch=$(uname -m)
 	case "$arch" in
 		x86_64) echo "x86_64" ;;
-		aarch64) echo "aarch64" ;;
+		aarch64) echo "aarch64_generic" ;;
 		armv7l) echo "arm_cortex-a7" ;;
 		mips*) echo "mips_24kc" ;;
 		*) echo "$arch" ;;
 	esac
 }
 
+# Check if architecture is supported by Netify
+check_arch_supported() {
+	local arch=$(uname -m)
+	case "$arch" in
+		x86_64|i686|i386)
+			return 0
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
 # Add netify repository
 add_netify_feed() {
 	local version=$(get_openwrt_version)
+	# Strip patch version (24.10.5 -> 24.10)
+	version=$(echo "$version" | sed 's/\.[0-9]*$//')
 	local arch=$(get_arch)
-	local feed_url="https://download.netify.ai/5/openwrt/${version}/${arch}"
 
-	echo "Adding Netify repository..."
-	echo "  Version: $version"
+	echo "Checking Netify repository compatibility..."
+	echo "  OpenWrt Version: $version"
 	echo "  Architecture: $arch"
+
+	if ! check_arch_supported; then
+		echo ""
+		echo "WARNING: Netify.ai only provides pre-built plugin packages for x86 architecture."
+		echo "Your system is running: $(uname -m)"
+		echo ""
+		echo "Options:"
+		echo "  1. Use netifyd without additional plugins (basic DPI still works)"
+		echo "  2. Build plugins from source (requires SDK)"
+		echo "  3. Use netifyd's built-in flow sink for local export"
+		echo ""
+		echo "The base netifyd package from OpenWrt includes DPI capabilities."
+		echo "Configure flow export in LuCI > SecuBox > Netifyd > Settings > Flow Sink"
+		return 1
+	fi
+
+	local feed_url="https://download.netify.ai/5/openwrt/${version}/x86"
+
 	echo "  Feed URL: $feed_url"
 
 	# Check if feed already exists
@@ -90,6 +122,20 @@ install_plugin() {
 	if [ -z "$plugin" ]; then
 		echo "Error: Plugin name required"
 		list_plugins
+		return 1
+	fi
+
+	if ! check_arch_supported; then
+		echo "ERROR: Plugin packages are not available for your architecture ($(uname -m))"
+		echo ""
+		echo "Netify.ai only provides pre-built packages for x86 systems."
+		echo ""
+		echo "Alternative: Use netifyd's built-in flow export feature:"
+		echo "  1. Go to LuCI > SecuBox > Netifyd > Settings"
+		echo "  2. Enable 'Flow Sink' and configure export"
+		echo "  3. The flow data includes application detection"
+		echo ""
+		echo "The base netifyd from OpenWrt provides DPI without extra plugins."
 		return 1
 	fi
 
