@@ -1,42 +1,63 @@
 #!/bin/sh
-# Netifyd Flow Data Collector
-# Reads from netifyd Unix socket and maintains a local flow cache
+# Netifyd Stats Collector
+# Collects network statistics from netifyd status.json
+# Note: netifyd 5.x doesn't export individual flows locally
 
-NETIFYD_SOCKET="/var/run/netifyd/netifyd.sock"
-FLOW_CACHE="/tmp/netifyd-flows.json"
-MAX_FLOWS=1000
+NETIFYD_STATUS="/var/run/netifyd/status.json"
+STATS_CACHE="/tmp/netifyd-stats-history.json"
+STATS_CURRENT="/tmp/netifyd-stats.json"
+MAX_ENTRIES=1440  # 24 hours at 1 min intervals
 
 # Check if netifyd is running
 if ! pidof netifyd >/dev/null 2>&1; then
-    echo "[]" > "$FLOW_CACHE"
     exit 1
 fi
 
-# Check if socket exists
-if [ ! -S "$NETIFYD_SOCKET" ]; then
-    echo "[]" > "$FLOW_CACHE"
+# Check if status file exists
+if [ ! -f "$NETIFYD_STATUS" ]; then
     exit 1
 fi
 
-# Read from Unix socket and collect flow data
-# Note: netifyd socket outputs status info, not real-time flows
-# We need to use netifyd CLI to get flow information
+# Get current timestamp
+TIMESTAMP=$(date +%s)
 
-# Try to get flow data from netifyd status
-if [ -f "/var/run/netifyd/status.json" ]; then
-    # Extract flows if available, otherwise create empty array
-    if command -v jq >/dev/null 2>&1; then
-        jq -c 'if .flows then .flows else [] end' /var/run/netifyd/status.json > "$FLOW_CACHE" 2>/dev/null || echo "[]" > "$FLOW_CACHE"
-    else
-        cp /var/run/netifyd/status.json "$FLOW_CACHE"
+# Extract current stats from netifyd
+if command -v jq >/dev/null 2>&1; then
+    # Build current stats snapshot
+    CURRENT=$(jq -c --arg ts "$TIMESTAMP" '{
+        timestamp: ($ts | tonumber),
+        flows_active: (.flows_active // 0),
+        flow_count: (.flow_count // 0),
+        uptime: (.uptime // 0),
+        cpu_system: (.cpu_system // 0),
+        cpu_user: (.cpu_user // 0),
+        memrss_kb: (.memrss_kb // 0),
+        interfaces: (if .stats then
+            [.stats | to_entries[] | {
+                name: .key,
+                rx_bytes: (.value.ip_bytes // 0),
+                tx_bytes: (.value.wire_bytes // 0),
+                tcp: (.value.tcp // 0),
+                udp: (.value.udp // 0)
+            }]
+        else [] end)
+    }' "$NETIFYD_STATUS" 2>/dev/null)
+
+    if [ -n "$CURRENT" ] && [ "$CURRENT" != "null" ]; then
+        # Save current stats
+        echo "$CURRENT" > "$STATS_CURRENT"
+
+        # Append to history
+        if [ -f "$STATS_CACHE" ]; then
+            # Add new entry and trim to max
+            jq -c --argjson new "$CURRENT" '. + [$new] | if length > '"$MAX_ENTRIES"' then .[-('"$MAX_ENTRIES"'):] else . end' "$STATS_CACHE" > "$STATS_CACHE.tmp" 2>/dev/null && mv "$STATS_CACHE.tmp" "$STATS_CACHE"
+        else
+            echo "[$CURRENT]" > "$STATS_CACHE"
+        fi
     fi
 else
-    echo "[]" > "$FLOW_CACHE"
-fi
-
-# Keep only the most recent flows
-if [ -f "$FLOW_CACHE" ] && command -v jq >/dev/null 2>&1; then
-    jq "if length > $MAX_FLOWS then .[-$MAX_FLOWS:] else . end" "$FLOW_CACHE" > "$FLOW_CACHE.tmp" 2>/dev/null && mv "$FLOW_CACHE.tmp" "$FLOW_CACHE"
+    # Fallback without jq - just copy status
+    cp "$NETIFYD_STATUS" "$STATS_CURRENT"
 fi
 
 exit 0
