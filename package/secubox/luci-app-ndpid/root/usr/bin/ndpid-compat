@@ -1,6 +1,6 @@
 #!/bin/sh
 # nDPId to Netifyd Compatibility Layer
-# Translates nDPId events to Netifyd-compatible format
+# Translates nDPId events to Netifyd-compatible format with enhanced detection
 # Copyright (C) 2025 CyberMind.fr
 
 . /lib/functions.sh
@@ -10,16 +10,19 @@
 DISTRIBUTOR_SOCK="/var/run/ndpid/distributor.sock"
 STATUS_FILE="/var/run/netifyd/status.json"
 FLOWS_FILE="/tmp/ndpid-flows.json"
+APPS_FILE="/tmp/ndpid-apps.json"
 STATS_FILE="/tmp/ndpid-stats.json"
-STATS_HISTORY="/tmp/ndpid-stats-history.json"
 UPDATE_INTERVAL=1
-MAX_HISTORY=1440
+MAX_FLOWS=500
+MAX_APPS=100
 
-# State variables (stored in temp files for shell compatibility)
+# State directory
 STATE_DIR="/tmp/ndpid-state"
 FLOWS_ACTIVE_FILE="$STATE_DIR/flows_active"
 FLOW_COUNT_FILE="$STATE_DIR/flow_count"
 STATS_FILE_TMP="$STATE_DIR/stats"
+FLOWS_TMP="$STATE_DIR/flows"
+APPS_TMP="$STATE_DIR/apps"
 
 # Initialize state
 init_state() {
@@ -28,16 +31,17 @@ init_state() {
 	echo "0" > "$FLOWS_ACTIVE_FILE"
 	echo "0" > "$FLOW_COUNT_FILE"
 	echo "{}" > "$STATS_FILE_TMP"
+	echo "[]" > "$FLOWS_TMP"
+	echo "{}" > "$APPS_TMP"
 }
 
-# Increment counter
+# Counter operations
 inc_counter() {
 	local file="$1"
 	local val=$(cat "$file" 2>/dev/null || echo 0)
 	echo $((val + 1)) > "$file"
 }
 
-# Decrement counter
 dec_counter() {
 	local file="$1"
 	local val=$(cat "$file" 2>/dev/null || echo 0)
@@ -45,7 +49,6 @@ dec_counter() {
 	echo "$val" > "$file"
 }
 
-# Get counter value
 get_counter() {
 	cat "$1" 2>/dev/null || echo 0
 }
@@ -56,20 +59,115 @@ update_iface_stats() {
 	local proto="$2"
 	local bytes="$3"
 
+	[ -z "$iface" ] && return
+
 	local stats=$(cat "$STATS_FILE_TMP" 2>/dev/null || echo "{}")
 
-	# Use jq to update stats (if available) or simple JSON
 	if command -v jq >/dev/null 2>&1; then
-		stats=$(echo "$stats" | jq --arg iface "$iface" --arg proto "$proto" --argjson bytes "$bytes" '
+		stats=$(echo "$stats" | jq --arg iface "$iface" --arg proto "$proto" --argjson bytes "${bytes:-0}" '
 			.[$iface] //= {"ip_bytes": 0, "wire_bytes": 0, "tcp": 0, "udp": 0, "icmp": 0} |
 			.[$iface].ip_bytes += $bytes |
 			.[$iface].wire_bytes += $bytes |
-			if $proto == "tcp" then .[$iface].tcp += 1
-			elif $proto == "udp" then .[$iface].udp += 1
-			elif $proto == "icmp" then .[$iface].icmp += 1
+			if $proto == "tcp" or $proto == "6" then .[$iface].tcp += 1
+			elif $proto == "udp" or $proto == "17" then .[$iface].udp += 1
+			elif $proto == "icmp" or $proto == "1" then .[$iface].icmp += 1
 			else . end
 		')
 		echo "$stats" > "$STATS_FILE_TMP"
+	fi
+}
+
+# Update application stats
+update_app_stats() {
+	local app="$1"
+	local category="$2"
+	local bytes="$3"
+
+	[ -z "$app" ] && return
+
+	if command -v jq >/dev/null 2>&1; then
+		local apps=$(cat "$APPS_TMP" 2>/dev/null || echo "{}")
+		apps=$(echo "$apps" | jq --arg app "$app" --arg cat "${category:-Unknown}" --argjson bytes "${bytes:-0}" '
+			.[$app] //= {"name": $app, "category": $cat, "flows": 0, "bytes": 0} |
+			.[$app].flows += 1 |
+			.[$app].bytes += $bytes
+		')
+		echo "$apps" > "$APPS_TMP"
+	fi
+}
+
+# Add flow to list
+add_flow() {
+	local json="$1"
+
+	if command -v jq >/dev/null 2>&1; then
+		local flow_info=$(echo "$json" | jq -c '{
+			id: .flow_id,
+			src_ip: .src_ip,
+			src_port: .src_port,
+			dst_ip: .dst_ip,
+			dst_port: .dst_port,
+			proto: .l4_proto,
+			app: (.ndpi.app_proto // .ndpi.proto // "Unknown"),
+			category: (.ndpi.category // "Unknown"),
+			hostname: (.ndpi.hostname // .flow_dst_hostname // null),
+			confidence: (.ndpi.confidence // "Unknown"),
+			risk: (.ndpi.flow_risk // []),
+			bytes_rx: (.flow_src_tot_l4_payload_len // 0),
+			bytes_tx: (.flow_dst_tot_l4_payload_len // 0),
+			packets: ((.flow_src_packets_processed // 0) + (.flow_dst_packets_processed // 0)),
+			first_seen: .flow_first_seen,
+			last_seen: .flow_last_seen,
+			state: "active",
+			iface: .source
+		}' 2>/dev/null)
+
+		[ -z "$flow_info" ] && return
+
+		local flows=$(cat "$FLOWS_TMP" 2>/dev/null || echo "[]")
+		flows=$(echo "$flows" | jq --argjson flow "$flow_info" --argjson max "$MAX_FLOWS" '
+			[. | .[] | select(.id != $flow.id)] + [$flow] | .[-$max:]
+		')
+		echo "$flows" > "$FLOWS_TMP"
+	fi
+}
+
+# Update existing flow
+update_flow() {
+	local json="$1"
+	local flow_id=$(echo "$json" | jsonfilter -e '@.flow_id' 2>/dev/null)
+
+	[ -z "$flow_id" ] && return
+
+	if command -v jq >/dev/null 2>&1; then
+		local update_info=$(echo "$json" | jq -c '{
+			bytes_rx: (.flow_src_tot_l4_payload_len // 0),
+			bytes_tx: (.flow_dst_tot_l4_payload_len // 0),
+			packets: ((.flow_src_packets_processed // 0) + (.flow_dst_packets_processed // 0)),
+			last_seen: .flow_last_seen
+		}' 2>/dev/null)
+
+		local flows=$(cat "$FLOWS_TMP" 2>/dev/null || echo "[]")
+		flows=$(echo "$flows" | jq --arg id "$flow_id" --argjson update "$update_info" '
+			map(if .id == ($id | tonumber) then . + $update else . end)
+		')
+		echo "$flows" > "$FLOWS_TMP"
+	fi
+}
+
+# Mark flow as ended
+end_flow() {
+	local json="$1"
+	local flow_id=$(echo "$json" | jsonfilter -e '@.flow_id' 2>/dev/null)
+
+	[ -z "$flow_id" ] && return
+
+	if command -v jq >/dev/null 2>&1; then
+		local flows=$(cat "$FLOWS_TMP" 2>/dev/null || echo "[]")
+		flows=$(echo "$flows" | jq --arg id "$flow_id" '
+			map(if .id == ($id | tonumber) then .state = "ended" else . end)
+		')
+		echo "$flows" > "$FLOWS_TMP"
 	fi
 }
 
@@ -77,41 +175,61 @@ update_iface_stats() {
 process_event() {
 	local raw="$1"
 
-	# Strip 5-digit length prefix
-	local json="${raw:5}"
+	# Strip 5-digit length prefix if present
+	local json="$raw"
+	if echo "$raw" | grep -q '^[0-9]\{5\}'; then
+		json="${raw:5}"
+	fi
 
 	# Parse event type
 	local event_name=$(echo "$json" | jsonfilter -e '@.flow_event_name' 2>/dev/null)
 	[ -z "$event_name" ] && event_name=$(echo "$json" | jsonfilter -e '@.daemon_event_name' 2>/dev/null)
 
+	# Extract common fields
+	local iface=$(echo "$json" | jsonfilter -e '@.source' 2>/dev/null)
+	local proto=$(echo "$json" | jsonfilter -e '@.l4_proto' 2>/dev/null)
+	local src_bytes=$(echo "$json" | jsonfilter -e '@.flow_src_tot_l4_payload_len' 2>/dev/null || echo 0)
+	local dst_bytes=$(echo "$json" | jsonfilter -e '@.flow_dst_tot_l4_payload_len' 2>/dev/null || echo 0)
+	local total_bytes=$((src_bytes + dst_bytes))
+
 	case "$event_name" in
 		new)
 			inc_counter "$FLOW_COUNT_FILE"
 			inc_counter "$FLOWS_ACTIVE_FILE"
+			add_flow "$json"
+			;;
+		detected|guessed|detection-update)
+			# Extract application info
+			local app=$(echo "$json" | jsonfilter -e '@.ndpi.app_proto' 2>/dev/null)
+			[ -z "$app" ] && app=$(echo "$json" | jsonfilter -e '@.ndpi.proto' 2>/dev/null)
+			local category=$(echo "$json" | jsonfilter -e '@.ndpi.category' 2>/dev/null)
+
+			# Update stats
+			[ -n "$iface" ] && update_iface_stats "$iface" "$proto" "$total_bytes"
+			[ -n "$app" ] && update_app_stats "$app" "$category" "$total_bytes"
+
+			# Update flow details
+			add_flow "$json"
+			;;
+		update)
+			update_flow "$json"
+			[ -n "$iface" ] && update_iface_stats "$iface" "$proto" "$total_bytes"
 			;;
 		end|idle)
 			dec_counter "$FLOWS_ACTIVE_FILE"
-			;;
-		detected|guessed)
-			# Extract flow info for stats
-			local iface=$(echo "$json" | jsonfilter -e '@.source' 2>/dev/null)
-			local proto=$(echo "$json" | jsonfilter -e '@.l4_proto' 2>/dev/null)
-			local src_bytes=$(echo "$json" | jsonfilter -e '@.flow_src_tot_l4_payload_len' 2>/dev/null || echo 0)
-			local dst_bytes=$(echo "$json" | jsonfilter -e '@.flow_dst_tot_l4_payload_len' 2>/dev/null || echo 0)
-			local total_bytes=$((src_bytes + dst_bytes))
-
-			[ -n "$iface" ] && update_iface_stats "$iface" "$proto" "$total_bytes"
+			end_flow "$json"
 			;;
 	esac
 }
 
-# Generate Netifyd-compatible status.json
+# Generate status files
 generate_status() {
 	local flow_count=$(get_counter "$FLOW_COUNT_FILE")
 	local flows_active=$(get_counter "$FLOWS_ACTIVE_FILE")
 	local stats=$(cat "$STATS_FILE_TMP" 2>/dev/null || echo "{}")
 	local uptime=$(($(date +%s) - START_TIME))
 
+	# Generate main status file
 	if command -v jq >/dev/null 2>&1; then
 		jq -n \
 			--argjson flow_count "$flow_count" \
@@ -127,6 +245,13 @@ generate_status() {
 				uptime: $uptime,
 				source: "ndpid-compat"
 			}' > "$STATUS_FILE"
+
+		# Generate flows file
+		cp "$FLOWS_TMP" "$FLOWS_FILE" 2>/dev/null
+
+		# Generate apps file (sorted by bytes)
+		local apps=$(cat "$APPS_TMP" 2>/dev/null || echo "{}")
+		echo "$apps" | jq '[.[] | select(.name != null)] | sort_by(-.bytes) | .[0:100]' > "$APPS_FILE" 2>/dev/null
 	else
 		cat > "$STATUS_FILE" << EOF
 {
@@ -142,19 +267,36 @@ EOF
 	fi
 }
 
+# Cleanup old ended flows
+cleanup_flows() {
+	if command -v jq >/dev/null 2>&1; then
+		local flows=$(cat "$FLOWS_TMP" 2>/dev/null || echo "[]")
+		local now=$(date +%s)
+		# Keep active flows and ended flows from last 5 minutes
+		flows=$(echo "$flows" | jq --argjson now "$now" '
+			[.[] | select(.state == "active" or (.last_seen != null and ($now - .last_seen) < 300))]
+		')
+		echo "$flows" > "$FLOWS_TMP"
+	fi
+}
+
 # Main loop
 main() {
 	START_TIME=$(date +%s)
 
-	logger -t ndpid-compat "Starting nDPId compatibility layer"
+	logger -t ndpid-compat "Starting nDPId compatibility layer (enhanced)"
 
 	# Initialize state
 	init_state
 
-	# Check for socat
+	# Check for dependencies
 	if ! command -v socat >/dev/null 2>&1; then
-		logger -t ndpid-compat "ERROR: socat not found, using nc fallback"
+		logger -t ndpid-compat "WARNING: socat not found, using nc fallback"
 		USE_NC=1
+	fi
+
+	if ! command -v jq >/dev/null 2>&1; then
+		logger -t ndpid-compat "WARNING: jq not found, detailed stats disabled"
 	fi
 
 	# Wait for distributor socket
@@ -179,7 +321,17 @@ main() {
 		done
 	) &
 	STATUS_PID=$!
-	trap "kill $STATUS_PID 2>/dev/null" EXIT
+
+	# Background cleanup
+	(
+		while true; do
+			sleep 60
+			cleanup_flows
+		done
+	) &
+	CLEANUP_PID=$!
+
+	trap "kill $STATUS_PID $CLEANUP_PID 2>/dev/null" EXIT
 
 	# Read events from distributor
 	if [ -z "$USE_NC" ]; then
@@ -193,11 +345,12 @@ main() {
 	fi
 }
 
-# Run main if not sourced
+# Run modes
 case "$1" in
 	-h|--help)
 		echo "Usage: $0 [-d|--daemon]"
-		echo "  Translates nDPId events to Netifyd-compatible format"
+		echo "  Enhanced nDPId to Netifyd compatibility layer"
+		echo "  Captures detailed flow and application information"
 		exit 0
 		;;
 	-d|--daemon)

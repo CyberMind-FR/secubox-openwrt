@@ -20,6 +20,18 @@ var callRealtimeFlows = rpc.declare({
 	expect: { }
 });
 
+var callDetailedFlows = rpc.declare({
+	object: 'luci.ndpid',
+	method: 'get_detailed_flows',
+	expect: { flows: [] }
+});
+
+var callCategories = rpc.declare({
+	object: 'luci.ndpid',
+	method: 'get_categories',
+	expect: { categories: [] }
+});
+
 var callInterfaceStats = rpc.declare({
 	object: 'luci.ndpid',
 	method: 'get_interface_stats',
@@ -136,9 +148,11 @@ return baseclass.extend({
 	// Read methods
 	getServiceStatus: callServiceStatus,
 	getRealtimeFlows: callRealtimeFlows,
+	getDetailedFlows: callDetailedFlows,
 	getInterfaceStats: callInterfaceStats,
 	getTopApplications: callTopApplications,
 	getTopProtocols: callTopProtocols,
+	getCategories: callCategories,
 	getConfig: callConfig,
 	getDashboard: callDashboard,
 	getInterfaces: callInterfaces,

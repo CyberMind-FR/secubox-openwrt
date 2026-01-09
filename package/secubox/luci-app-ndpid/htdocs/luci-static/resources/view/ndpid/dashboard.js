@@ -11,7 +11,56 @@ return view.extend({
 	pollActive: true,
 
 	load: function() {
-		return api.getAllData();
+		return Promise.all([
+			api.getAllData(),
+			api.getCategories().catch(function() { return { categories: [] }; })
+		]).then(function(results) {
+			var data = results[0];
+			data.categories = results[1];
+			return data;
+		});
+	},
+
+	getAppIcon: function(app, category) {
+		var icons = {
+			'HTTP': '🌐', 'HTTPS': '🔒', 'TLS': '🔒', 'SSL': '🔒',
+			'DNS': '📡', 'NTP': '🕐', 'DHCP': '📋',
+			'SSH': '🖥️', 'Telnet': '💻',
+			'YouTube': '▶️', 'Netflix': '🎬', 'Twitch': '🎮',
+			'Facebook': '👤', 'Twitter': '🐦', 'Instagram': '📷', 'TikTok': '🎵',
+			'WhatsApp': '💬', 'Telegram': '✈️', 'Discord': '🎧',
+			'BitTorrent': '📥', 'eDonkey': '📥',
+			'Spotify': '🎵', 'AppleMusic': '🎵',
+			'Dropbox': '📦', 'GoogleDrive': '📦', 'OneDrive': '📦',
+			'Zoom': '📹', 'Teams': '👥', 'Skype': '📞',
+			'VPN': '🛡️', 'OpenVPN': '🛡️', 'WireGuard': '🛡️',
+			'QUIC': '⚡', 'HTTP2': '⚡',
+			'SMTP': '📧', 'IMAP': '📧', 'POP3': '📧',
+			'FTP': '📁', 'SFTP': '📁', 'SMB': '📁',
+			'ICMP': '📶', 'IGMP': '📡',
+			'Unknown': '❓'
+		};
+		return icons[app] || icons[category] || '📦';
+	},
+
+	getCategoryColor: function(category) {
+		var colors = {
+			'Web': '#3b82f6',
+			'Video': '#ef4444',
+			'Streaming': '#f59e0b',
+			'SocialNetwork': '#ec4899',
+			'Chat': '#8b5cf6',
+			'VoIP': '#10b981',
+			'Game': '#06b6d4',
+			'Download': '#f97316',
+			'Cloud': '#6366f1',
+			'VPN': '#14b8a6',
+			'Mail': '#84cc16',
+			'FileTransfer': '#a855f7',
+			'Network': '#64748b',
+			'Unknown': '#94a3b8'
+		};
+		return colors[category] || '#64748b';
 	},
 
 	updateDashboard: function(data) {
@@ -46,7 +95,7 @@ return view.extend({
 		});
 
 		// Update interface stats
-		var interfaces = (data.interfaces || {}).interfaces || [];
+		var interfaces = Array.isArray(data.interfaces) ? data.interfaces : (data.interfaces || {}).interfaces || [];
 		interfaces.forEach(function(iface) {
 			var card = document.querySelector('.ndpi-iface-card[data-iface="' + iface.name + '"]');
 			if (!card) return;
@@ -121,9 +170,11 @@ return view.extend({
 		var service = dashboard.service || {};
 		var flows = dashboard.flows || {};
 		var system = dashboard.system || {};
-		var interfaces = (data.interfaces || {}).interfaces || [];
-		var applications = (data.applications || {}).applications || [];
-		var protocols = (data.protocols || {}).protocols || [];
+		// Handle both array and object formats from API
+		var interfaces = Array.isArray(data.interfaces) ? data.interfaces : (data.interfaces || {}).interfaces || [];
+		var applications = Array.isArray(data.applications) ? data.applications : (data.applications || {}).applications || [];
+		var protocols = Array.isArray(data.protocols) ? data.protocols : (data.protocols || {}).protocols || [];
+		var categories = Array.isArray(data.categories) ? data.categories : (data.categories || {}).categories || [];
 
 		var view = E('div', { 'class': 'ndpid-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('ndpid/dashboard.css') }),
@@ -276,43 +327,81 @@ return view.extend({
 				)
 			]),
 
-			// Top Applications
-			E('div', { 'class': 'ndpi-card' }, [
-				E('div', { 'class': 'ndpi-card-header' }, [
-					E('div', { 'class': 'ndpi-card-title' }, [
-						E('span', { 'class': 'ndpi-card-title-icon' }, '📱'),
-						'Top Applications'
-					])
-				]),
-				E('div', { 'class': 'ndpi-card-body' },
-					applications.length > 0 ?
-					E('div', { 'class': 'ndpi-table-container' }, [
-						E('table', { 'class': 'ndpi-table' }, [
-							E('thead', {}, [
-								E('tr', {}, [
-									E('th', {}, 'Application'),
-									E('th', {}, 'Flows'),
-									E('th', {}, 'Traffic')
-								])
-							]),
-							E('tbody', {},
-								applications.map(function(app) {
-									return E('tr', {}, [
-										E('td', {}, [
-											E('span', { 'class': 'ndpi-app-name' }, app.name || 'unknown')
+			// Grid layout for Applications and Categories
+			E('div', { 'class': 'ndpi-grid-2' }, [
+				// Top Applications
+				E('div', { 'class': 'ndpi-card' }, [
+					E('div', { 'class': 'ndpi-card-header' }, [
+						E('div', { 'class': 'ndpi-card-title' }, [
+							E('span', { 'class': 'ndpi-card-title-icon' }, '📱'),
+							'Top Applications'
+						]),
+						E('div', { 'class': 'ndpi-card-badge' }, applications.length + ' detected')
+					]),
+					E('div', { 'class': 'ndpi-card-body' },
+						applications.length > 0 ?
+						E('div', { 'class': 'ndpi-apps-list' },
+							(function() {
+								var maxBytes = Math.max.apply(null, applications.map(function(a) { return a.bytes || 0; })) || 1;
+								return applications.slice(0, 8).map(function(app) {
+									var pct = Math.round(((app.bytes || 0) / maxBytes) * 100);
+									return E('div', { 'class': 'ndpi-app-item' }, [
+										E('div', { 'class': 'ndpi-app-header' }, [
+											E('span', { 'class': 'ndpi-app-icon' }, self.getAppIcon(app.name, app.category)),
+											E('span', { 'class': 'ndpi-app-name' }, app.name || 'Unknown'),
+											E('span', { 'class': 'ndpi-app-bytes' }, api.formatBytes(app.bytes || 0))
 										]),
-										E('td', { 'class': 'mono' }, api.formatNumber(app.flows)),
-										E('td', { 'class': 'mono' }, api.formatBytes(app.bytes))
+										E('div', { 'class': 'ndpi-app-bar' }, [
+											E('div', { 'class': 'ndpi-app-bar-fill', 'style': 'width:' + pct + '%;background:' + self.getCategoryColor(app.category) })
+										]),
+										E('div', { 'class': 'ndpi-app-meta' }, (app.flows || 0) + ' flows · ' + (app.category || 'Unknown'))
 									]);
-								})
-							)
+								});
+							})()
+						) :
+						E('div', { 'class': 'ndpi-empty' }, [
+							E('div', { 'class': 'ndpi-empty-icon' }, '📱'),
+							E('div', { 'class': 'ndpi-empty-text' }, 'No applications detected yet'),
+							E('p', {}, 'Generate network traffic to see app detection')
 						])
-					]) :
-					E('div', { 'class': 'ndpi-empty' }, [
-						E('div', { 'class': 'ndpi-empty-icon' }, '📱'),
-						E('div', { 'class': 'ndpi-empty-text' }, 'No applications detected yet')
-					])
-				)
+					)
+				]),
+
+				// Traffic Categories
+				E('div', { 'class': 'ndpi-card' }, [
+					E('div', { 'class': 'ndpi-card-header' }, [
+						E('div', { 'class': 'ndpi-card-title' }, [
+							E('span', { 'class': 'ndpi-card-title-icon' }, '🏷️'),
+							'Traffic Categories'
+						]),
+						E('div', { 'class': 'ndpi-card-badge' }, categories.length + ' types')
+					]),
+					E('div', { 'class': 'ndpi-card-body' },
+						categories.length > 0 ?
+						E('div', { 'class': 'ndpi-categories-list' },
+							(function() {
+								var maxBytes = Math.max.apply(null, categories.map(function(c) { return c.bytes || 0; })) || 1;
+								return categories.slice(0, 8).map(function(cat) {
+									var pct = Math.round(((cat.bytes || 0) / maxBytes) * 100);
+									return E('div', { 'class': 'ndpi-category-item' }, [
+										E('div', { 'class': 'ndpi-category-header' }, [
+											E('span', { 'class': 'ndpi-category-name', 'style': 'color:' + self.getCategoryColor(cat.name) }, cat.name),
+											E('span', { 'class': 'ndpi-category-bytes' }, api.formatBytes(cat.bytes || 0))
+										]),
+										E('div', { 'class': 'ndpi-category-bar' }, [
+											E('div', { 'class': 'ndpi-category-bar-fill', 'style': 'width:' + pct + '%;background:' + self.getCategoryColor(cat.name) })
+										]),
+										E('div', { 'class': 'ndpi-category-meta' }, (cat.apps || 0) + ' apps · ' + (cat.flows || 0) + ' flows')
+									]);
+								});
+							})()
+						) :
+						E('div', { 'class': 'ndpi-empty' }, [
+							E('div', { 'class': 'ndpi-empty-icon' }, '🏷️'),
+							E('div', { 'class': 'ndpi-empty-text' }, 'No categories detected yet')
+						])
+					)
+				])
 			]),
 
 			// Top Protocols

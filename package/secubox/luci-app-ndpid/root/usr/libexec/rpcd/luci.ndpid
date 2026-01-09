@@ -13,6 +13,7 @@ STATUS_FILE="/var/run/netifyd/status.json"
 DISTRIBUTOR_SOCK="/var/run/ndpid/distributor.sock"
 COLLECTOR_SOCK="/var/run/ndpid/collector.sock"
 FLOWS_CACHE="/tmp/ndpid-flows.json"
+APPS_CACHE="/tmp/ndpid-apps.json"
 STATS_CACHE="/tmp/ndpid-stats.json"
 LOG_FILE="/var/log/ndpid.log"
 
@@ -138,31 +139,124 @@ get_interface_stats() {
 	json_dump
 }
 
-# Get top applications (from flow analysis)
+# Get top applications (from aggregated apps file)
 get_top_applications() {
 	json_init
 	json_add_array "applications"
 
-	# Read from flows cache if available
-	if [ -f "$FLOWS_CACHE" ] && command -v jq >/dev/null 2>&1; then
-		# Aggregate by application
-		jq -r '
-			group_by(.application) |
+	local app_data=""
+
+	# Try apps cache first (pre-aggregated by ndpid-compat)
+	if [ -f "$APPS_CACHE" ] && command -v jq >/dev/null 2>&1; then
+		app_data=$(jq -r '.[0:15][] | "\(.name // "Unknown")|\(.category // "Unknown")|\(.flows // 0)|\(.bytes // 0)"' \
+			"$APPS_CACHE" 2>/dev/null)
+	# Fallback to flows cache
+	elif [ -f "$FLOWS_CACHE" ] && command -v jq >/dev/null 2>&1; then
+		app_data=$(jq -r '
+			group_by(.app) |
 			map({
-				name: .[0].application,
+				name: (.[0].app // "Unknown"),
+				category: (.[0].category // "Unknown"),
 				flows: length,
-				bytes: (map(.bytes_rx + .bytes_tx) | add)
+				bytes: ([.[].bytes_rx, .[].bytes_tx] | add // 0)
 			}) |
 			sort_by(-.bytes) |
-			.[0:10][] |
-			"\(.name)|\(.flows)|\(.bytes)"
-		' "$FLOWS_CACHE" 2>/dev/null | while IFS='|' read -r name flows bytes; do
+			.[0:15][] |
+			"\(.name)|\(.category)|\(.flows)|\(.bytes)"
+		' "$FLOWS_CACHE" 2>/dev/null)
+	fi
+
+	if [ -n "$app_data" ]; then
+		while IFS='|' read -r name category flows bytes; do
+			[ -z "$name" ] && continue
 			json_add_object
-			json_add_string "name" "${name:-unknown}"
+			json_add_string "name" "${name:-Unknown}"
+			json_add_string "category" "${category:-Unknown}"
 			json_add_int "flows" "${flows:-0}"
 			json_add_int "bytes" "${bytes:-0}"
 			json_close_object
-		done
+		done <<EOF
+$app_data
+EOF
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Get detailed flows with detection info
+get_detailed_flows() {
+	json_init
+	json_add_array "flows"
+
+	if [ -f "$FLOWS_CACHE" ] && command -v jq >/dev/null 2>&1; then
+		# Get recent active flows sorted by bytes - use heredoc to avoid subshell
+		local flow_data
+		flow_data=$(jq -r '
+			sort_by(-(.bytes_rx + .bytes_tx)) |
+			.[0:100][] |
+			"\(.id // 0)|\(.src_ip // "")|\(.src_port // 0)|\(.dst_ip // "")|\(.dst_port // 0)|\(.proto // "")|\(.app // "Unknown")|\(.category // "Unknown")|\(.hostname // "")|\(.confidence // "")|\(.bytes_rx // 0)|\(.bytes_tx // 0)|\(.packets // 0)|\(.state // "unknown")|\(.iface // "")"
+		' "$FLOWS_CACHE" 2>/dev/null)
+
+		while IFS='|' read -r id src_ip src_port dst_ip dst_port proto app category hostname confidence bytes_rx bytes_tx packets state iface; do
+			[ -z "$id" ] && continue
+			json_add_object
+			json_add_int "id" "${id:-0}"
+			json_add_string "src_ip" "${src_ip}"
+			json_add_int "src_port" "${src_port:-0}"
+			json_add_string "dst_ip" "${dst_ip}"
+			json_add_int "dst_port" "${dst_port:-0}"
+			json_add_string "proto" "${proto}"
+			json_add_string "app" "${app:-Unknown}"
+			json_add_string "category" "${category:-Unknown}"
+			json_add_string "hostname" "${hostname}"
+			json_add_string "confidence" "${confidence}"
+			json_add_int "bytes_rx" "${bytes_rx:-0}"
+			json_add_int "bytes_tx" "${bytes_tx:-0}"
+			json_add_int "packets" "${packets:-0}"
+			json_add_string "state" "${state:-unknown}"
+			json_add_string "iface" "${iface}"
+			json_close_object
+		done <<EOF
+$flow_data
+EOF
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Get category breakdown
+get_categories() {
+	json_init
+	json_add_array "categories"
+
+	if [ -f "$APPS_CACHE" ] && command -v jq >/dev/null 2>&1; then
+		local cat_data
+		cat_data=$(jq -r '
+			group_by(.category) |
+			map({
+				name: (.[0].category // "Unknown"),
+				apps: length,
+				flows: ([.[].flows] | add),
+				bytes: ([.[].bytes] | add)
+			}) |
+			sort_by(-.bytes) |
+			.[] |
+			"\(.name)|\(.apps)|\(.flows)|\(.bytes)"
+		' "$APPS_CACHE" 2>/dev/null)
+
+		while IFS='|' read -r name apps flows bytes; do
+			[ -z "$name" ] && continue
+			json_add_object
+			json_add_string "name" "${name:-Unknown}"
+			json_add_int "apps" "${apps:-0}"
+			json_add_int "flows" "${flows:-0}"
+			json_add_int "bytes" "${bytes:-0}"
+			json_close_object
+		done <<EOF
+$cat_data
+EOF
 	fi
 
 	json_close_array
@@ -505,11 +599,40 @@ get_interfaces() {
 
 	json_close_array
 
-	# Also list available interfaces
+	# Scan available interfaces from network config and system
 	json_add_array "available"
-	for iface in $(ls /sys/class/net/ 2>/dev/null | grep -E '^(br-|eth|wlan)'); do
-		json_add_string "" "$iface"
+
+	# Get bridges and network interfaces from UCI
+	local net_ifaces=""
+	config_load network
+
+	# Get all defined interfaces (br-lan, br-wan, etc)
+	for iface in $(ls /sys/class/net/ 2>/dev/null); do
+		case "$iface" in
+			lo|sit*|ip6*|gre*|ifb*|teql*)
+				# Skip loopback and virtual tunnel interfaces
+				;;
+			br-*|eth*|wlan*|lan*|wan*)
+				# Include bridges, ethernet, wifi, and named interfaces
+				local state=$(cat /sys/class/net/$iface/operstate 2>/dev/null || echo "unknown")
+				local type=$(cat /sys/class/net/$iface/type 2>/dev/null || echo "0")
+				# Only include if it's a real interface (type 1 = ethernet)
+				if [ "$type" = "1" ] || [ -d "/sys/class/net/$iface/bridge" ]; then
+					json_add_object
+					json_add_string "name" "$iface"
+					json_add_string "state" "$state"
+					# Check if it's a bridge
+					if [ -d "/sys/class/net/$iface/bridge" ]; then
+						json_add_string "type" "bridge"
+					else
+						json_add_string "type" "interface"
+					fi
+					json_close_object
+				fi
+				;;
+		esac
 	done
+
 	json_close_array
 
 	json_dump
@@ -522,9 +645,11 @@ case "$1" in
 {
 	"get_service_status": {},
 	"get_realtime_flows": {},
+	"get_detailed_flows": {},
 	"get_interface_stats": {},
 	"get_top_applications": {},
 	"get_top_protocols": {},
+	"get_categories": {},
 	"get_config": {},
 	"get_dashboard": {},
 	"get_interfaces": {},
@@ -546,6 +671,9 @@ EOF
 			get_realtime_flows)
 				get_realtime_flows
 				;;
+			get_detailed_flows)
+				get_detailed_flows
+				;;
 			get_interface_stats)
 				get_interface_stats
 				;;
@@ -554,6 +682,9 @@ EOF
 				;;
 			get_top_protocols)
 				get_top_protocols
+				;;
+			get_categories)
+				get_categories
 				;;
 			get_config)
 				get_config

@@ -6,9 +6,11 @@
 				"luci.ndpid": [
 					"get_service_status",
 					"get_realtime_flows",
+					"get_detailed_flows",
 					"get_interface_stats",
 					"get_top_applications",
 					"get_top_protocols",
+					"get_categories",
 					"get_config",
 					"get_dashboard",
 					"get_interfaces"

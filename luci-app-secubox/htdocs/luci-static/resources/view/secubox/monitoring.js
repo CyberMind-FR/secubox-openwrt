@@ -29,6 +29,7 @@ return view.extend({
 	cpuHistory: [],
 	memoryHistory: [],
 	diskHistory: [],
+	loadHistory: [],
 	networkHistory: [],
 	maxDataPoints: 60,
 	latestHealth: {},
@@ -50,15 +51,23 @@ return view.extend({
 	addDataPoint: function(health) {
 		var timestamp = Date.now();
 
-		this.cpuHistory.push({ time: timestamp, value: (health.cpu && health.cpu.percent) || 0 });
-		this.memoryHistory.push({ time: timestamp, value: (health.memory && health.memory.percent) || 0 });
-		this.diskHistory.push({ time: timestamp, value: (health.disk && health.disk.percent) || 0 });
+		// API returns usage_percent, not percent
+		this.cpuHistory.push({ time: timestamp, value: (health.cpu && (health.cpu.usage_percent || health.cpu.percent)) || 0 });
+		this.memoryHistory.push({ time: timestamp, value: (health.memory && (health.memory.usage_percent || health.memory.percent)) || 0 });
+		this.diskHistory.push({ time: timestamp, value: (health.disk && (health.disk.usage_percent || health.disk.percent)) || 0 });
+
+		// System load - parse from string "2.14 1.86 1.70" or array, scale to percentage (assume 4 cores = 400% max)
+		var loadStr = (health.cpu && health.cpu.load) || (health.load && (Array.isArray(health.load) ? health.load[0] : health.load)) || '0';
+		var loadAvg = Array.isArray(loadStr) ? loadStr[0] : (typeof loadStr === 'string' ? parseFloat(loadStr.split(' ')[0]) : loadStr);
+		var numCores = (health.cpu && health.cpu.count) || 4;
+		var loadPercent = Math.min(100, (parseFloat(loadAvg) / numCores) * 100);
+		this.loadHistory.push({ time: timestamp, value: loadPercent, raw: loadAvg });
 
 		var netRx = (health.network && health.network.rx_bytes) || 0;
 		var netTx = (health.network && health.network.tx_bytes) || 0;
 		this.networkHistory.push({ time: timestamp, rx: netRx, tx: netTx });
 
-		['cpuHistory', 'memoryHistory', 'diskHistory', 'networkHistory'].forEach(function(key) {
+		['cpuHistory', 'memoryHistory', 'diskHistory', 'loadHistory', 'networkHistory'].forEach(function(key) {
 			if (this[key].length > this.maxDataPoints)
 				this[key].shift();
 		}, this);
@@ -73,8 +82,8 @@ return view.extend({
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/monitoring.css') }),
 			SecuNav.renderTabs('monitoring'),
 			this.renderHeader(),
-			this.renderChartsGrid(),
-			this.renderCurrentStatsCard()
+			this.renderCurrentStatsCard(),
+			this.renderChartsGrid()
 		]);
 
 		this.updateCharts();
@@ -131,7 +140,7 @@ return view.extend({
 			this.renderChartCard('cpu', _('CPU Usage'), '%', '#6366f1'),
 			this.renderChartCard('memory', _('Memory Usage'), '%', '#22c55e'),
 			this.renderChartCard('disk', _('Disk Usage'), '%', '#f59e0b'),
-			this.renderChartCard('network', _('Network Throughput'), 'B/s', '#3b82f6')
+			this.renderChartCard('load', _('System Load'), '', '#ec4899')
 		]);
 	},
 
@@ -167,7 +176,10 @@ return view.extend({
 	renderStatsTable: function() {
 		var snapshot = this.getLatestSnapshot();
 		var rates = this.getNetworkRateSummary();
-		var load = (this.latestHealth.load && this.latestHealth.load[0]) || '0.00';
+		// Load from cpu.load string "2.14 1.86 1.70" or load array
+		var loadStr = (this.latestHealth.cpu && this.latestHealth.cpu.load) ||
+		              (this.latestHealth.load && (Array.isArray(this.latestHealth.load) ? this.latestHealth.load[0] : this.latestHealth.load)) || '0.00';
+		var load = typeof loadStr === 'string' ? loadStr.split(' ')[0] : loadStr;
 
 		var stats = [
 			{ label: _('CPU Usage'), value: snapshot.cpu.value.toFixed(1) + '%', icon: '⚡' },
@@ -193,7 +205,7 @@ return view.extend({
 		this.drawChart('cpu', this.cpuHistory, '#6366f1');
 		this.drawChart('memory', this.memoryHistory, '#22c55e');
 		this.drawChart('disk', this.diskHistory, '#f59e0b');
-		this.drawNetworkChart();
+		this.drawLoadChart();
 	},
 
 	drawChart: function(type, data, color) {
@@ -279,6 +291,42 @@ return view.extend({
 		if (currentEl) {
 			var last = rates[rates.length - 1];
 			currentEl.textContent = API.formatBytes(last.rx + last.tx) + '/s';
+		}
+	},
+
+	drawLoadChart: function() {
+		var svg = document.getElementById('chart-load');
+		var currentEl = document.getElementById('current-load');
+		if (!svg || this.loadHistory.length === 0)
+			return;
+
+		var width = 600;
+		var height = 200;
+		var padding = 12;
+
+		var values = this.loadHistory.map(function(d) { return d.value; });
+		var maxValue = Math.max(100, Math.max.apply(Math, values));
+		var minValue = 0;
+		var pathPoints = this.loadHistory.map(function(point, idx) {
+			var x = padding + (width - 2 * padding) * (idx / Math.max(1, this.maxDataPoints - 1));
+			var y = height - padding - ((point.value - minValue) / (maxValue - minValue)) * (height - 2 * padding);
+			return x + ',' + y;
+		}, this).join(' ');
+
+		svg.innerHTML = '';
+
+		svg.appendChild(E('polyline', {
+			'points': pathPoints,
+			'fill': 'none',
+			'stroke': '#ec4899',
+			'stroke-width': '2',
+			'stroke-linejoin': 'round',
+			'stroke-linecap': 'round'
+		}));
+
+		if (currentEl) {
+			var lastPoint = this.loadHistory[this.loadHistory.length - 1];
+			currentEl.textContent = (lastPoint.raw || '0.00');
 		}
 	},
 
