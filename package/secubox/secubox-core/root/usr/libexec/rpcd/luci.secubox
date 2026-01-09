@@ -502,10 +502,27 @@ case "$1" in
 				;;
 
 			get_appstore_apps)
-				# Return apps from main catalog with categories
+				# Return apps from main catalog with categories and installation status
 				CATALOG_FILE="/usr/share/secubox/catalog.json"
 				if [ -f "$CATALOG_FILE" ]; then
-					jq '{apps: .plugins, categories: .categories}' "$CATALOG_FILE"
+					# Get installed packages list once for efficiency
+					INSTALLED_PKGS=$(opkg list-installed 2>/dev/null | awk '{print $1}')
+
+					# Process catalog and add installed status to each app
+					jq --arg installed_pkgs "$INSTALLED_PKGS" '
+						{
+							apps: [.plugins[] | . + {
+								installed: (
+									if .packages.required[0] then
+										($installed_pkgs | split("\n") | index(.packages.required[0])) != null
+									else
+										false
+									end
+								)
+							}],
+							categories: .categories
+						}
+					' "$CATALOG_FILE"
 				else
 					echo '{"apps":[],"categories":{}}'
 				fi
