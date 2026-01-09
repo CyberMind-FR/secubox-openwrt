@@ -5,9 +5,15 @@
 'require poll';
 'require ui';
 'require crowdsec-dashboard/api as API';
+'require crowdsec-dashboard/nav as CsNav';
 
 return view.extend({
 	load: function() {
+		var cssLink = document.createElement('link');
+		cssLink.rel = 'stylesheet';
+		cssLink.href = L.resource('crowdsec-dashboard/dashboard.css');
+		document.head.appendChild(cssLink);
+
 		return Promise.all([
 			API.getBouncers(),
 			API.getStatus(),
@@ -22,11 +28,8 @@ return view.extend({
 		var fwStatus = data[2] || {};
 		var nftStats = data[3] || {};
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('h2', {}, _('CrowdSec Bouncers')),
-			E('div', { 'class': 'cbi-map-descr' },
-				_('Bouncers are components that enforce CrowdSec decisions by blocking malicious IPs at various points (firewall, web server, etc.).')),
+		var view = E('div', { 'class': 'crowdsec-dashboard' }, [
+			CsNav.renderTabs('bouncers'),
 
 			// Status Card
 			E('div', { 'class': 'cbi-section', 'style': 'background: ' + (status.crowdsec === 'running' ? '#d4edda' : '#f8d7da') + '; border-left: 4px solid ' + (status.crowdsec === 'running' ? '#28a745' : '#dc3545') + '; padding: 1em; margin-bottom: 1.5em;' }, [

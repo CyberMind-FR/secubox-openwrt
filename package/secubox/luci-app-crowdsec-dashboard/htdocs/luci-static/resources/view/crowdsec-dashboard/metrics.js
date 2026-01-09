@@ -5,6 +5,7 @@
 'require poll';
 'require ui';
 'require crowdsec-dashboard/api as api';
+'require crowdsec-dashboard/nav as CsNav';
 
 /**
  * CrowdSec Dashboard - Metrics View
@@ -330,13 +331,14 @@ return view.extend({
 		this.hub = data.hub || {};
 		var metricsConfig = data.metricsConfig || {};
 
-		var view = E('div', { 'class': 'cyber-container crowdsec-metrics' }, [
+		var view = E('div', { 'class': 'crowdsec-dashboard crowdsec-metrics' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			CsNav.renderTabs('metrics'),
 
 			// Page Header
 			E('div', { 'style': 'margin-bottom: 1.5rem;' }, [
-				E('h2', { 'style': 'color: var(--cyber-text-primary, #fff); margin: 0 0 0.5rem 0;' }, _('CrowdSec Metrics')),
-				E('p', { 'style': 'color: var(--cyber-text-secondary, #a0a0b0); margin: 0;' }, _('Detailed metrics and statistics from CrowdSec engine'))
+				E('h2', { 'style': 'color: var(--cs-text-primary, #e6edf3); margin: 0 0 0.5rem 0;' }, _('CrowdSec Metrics')),
+				E('p', { 'style': 'color: var(--cs-text-secondary, #8b949e); margin: 0;' }, _('Detailed metrics and statistics from CrowdSec engine'))
 			]),
 
 			// Metrics Configuration

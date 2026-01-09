@@ -5,6 +5,7 @@
 'require poll';
 'require ui';
 'require crowdsec-dashboard/api as api';
+'require crowdsec-dashboard/nav as CsNav';
 
 /**
  * CrowdSec Dashboard - WAF/AppSec View
@@ -158,8 +159,9 @@ return view.extend({
 			(navigator.language ? navigator.language.split('-')[0] : 'en');
 		Theme.init({ language: lang });
 
-		return E('div', { 'class': 'cs-dashboard' }, [
+		return E('div', { 'class': 'crowdsec-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			CsNav.renderTabs('waf'),
 			E('h2', { 'class': 'cs-page-title' }, _('CrowdSec WAF/AppSec')),
 			E('div', { 'class': 'cs-grid' }, [
 				this.renderWAFStatus(),

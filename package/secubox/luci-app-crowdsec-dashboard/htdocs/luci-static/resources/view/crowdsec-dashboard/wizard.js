@@ -5,7 +5,8 @@
 'require form';
 'require rpc';
 'require uci';
-'require crowdsec-dashboard.api as API';
+'require crowdsec-dashboard/api as API';
+'require crowdsec-dashboard/nav as CsNav';
 
 return view.extend({
 	wizardData: {
@@ -132,7 +133,10 @@ return view.extend({
 		});
 		head.appendChild(themeLink);
 
-		var container = E('div', { 'class': 'wizard-container' });
+		var container = E('div', { 'class': 'crowdsec-dashboard wizard-container' });
+
+		// Add navigation tabs
+		container.appendChild(CsNav.renderTabs('wizard'));
 
 		// Create stepper
 		container.appendChild(this.createStepper());

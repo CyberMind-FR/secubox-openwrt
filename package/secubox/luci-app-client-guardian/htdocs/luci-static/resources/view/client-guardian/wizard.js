@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require rpc';
+'require client-guardian/nav as CgNav';
 
 var callListProfiles = rpc.declare({
 	object: 'luci.client-guardian',
@@ -30,6 +31,7 @@ return view.extend({
 		return E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
+			CgNav.renderTabs('wizard'),
 
 			E('div', { 'class': 'cg-wizard' }, [
 				E('div', { 'class': 'cg-wizard-header' }, [
@@ -304,7 +306,7 @@ return view.extend({
 				]), 'success');
 
 				setTimeout(function() {
-					window.location.href = L.url('admin/secubox/security/client-guardian/zones');
+					window.location.href = L.url('admin/secubox/security/guardian/zones');
 				}, 3000);
 			} else {
 				ui.addNotification(null, E('p', {}, 'Erreur: ' + (result.error || 'Échec de l\'application du profil')), 'error');

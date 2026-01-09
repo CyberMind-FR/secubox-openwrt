@@ -4,6 +4,7 @@
 'require poll';
 'require ui';
 'require rpc';
+'require client-guardian/nav as CgNav';
 
 var callGetClients = rpc.declare({
 	object: 'luci.client-guardian',
@@ -78,6 +79,7 @@ return view.extend({
 		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
+			CgNav.renderTabs('clients'),
 
 			E('div', { 'class': 'cg-header' }, [
 				E('div', { 'class': 'cg-logo' }, [

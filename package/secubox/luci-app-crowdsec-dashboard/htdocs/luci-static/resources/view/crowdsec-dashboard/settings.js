@@ -3,6 +3,7 @@
 'require secubox-theme/theme as Theme';
 'require ui';
 'require crowdsec-dashboard/api as API';
+'require crowdsec-dashboard/nav as CsNav';
 
 return view.extend({
 	load: function() {
@@ -23,10 +24,19 @@ return view.extend({
 		var collections = collectionsData.collections || [];
 		if (collections.collections) collections = collections.collections;
 
-		var view = E('div', { 'class': 'cbi-map' }, [
+		// Load CSS
+		var head = document.head || document.getElementsByTagName('head')[0];
+		var cssLink = E('link', {
+			'rel': 'stylesheet',
+			'href': L.resource('crowdsec-dashboard/dashboard.css')
+		});
+		head.appendChild(cssLink);
+
+		var view = E('div', { 'class': 'crowdsec-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('h2', {}, _('CrowdSec Settings')),
-			E('div', { 'class': 'cbi-map-descr' },
+			CsNav.renderTabs('settings'),
+			E('h2', { 'class': 'cs-page-title' }, _('CrowdSec Settings')),
+			E('p', { 'style': 'color: var(--cs-text-secondary); margin-bottom: 1.5rem;' },
 				_('Configure and manage your CrowdSec installation, machines, and collections.')),
 
 			// Service Status

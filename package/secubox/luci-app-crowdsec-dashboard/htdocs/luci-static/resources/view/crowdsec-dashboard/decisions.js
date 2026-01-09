@@ -5,6 +5,7 @@
 'require poll';
 'require ui';
 'require crowdsec-dashboard/api as api';
+'require crowdsec-dashboard/nav as CsNav';
 
 /**
  * CrowdSec Dashboard - Decisions View
@@ -397,6 +398,7 @@ return view.extend({
 		this.filterDecisions();
 		
 		var view = E('div', { 'class': 'crowdsec-dashboard' }, [
+			CsNav.renderTabs('decisions'),
 			E('div', { 'class': 'cs-card' }, [
 				E('div', { 'class': 'cs-card-header' }, [
 					E('div', { 'class': 'cs-card-title' }, [

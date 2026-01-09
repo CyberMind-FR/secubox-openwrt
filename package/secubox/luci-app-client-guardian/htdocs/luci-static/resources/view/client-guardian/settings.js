@@ -1,10 +1,10 @@
 'use strict';
 'require view';
-
 'require form';
 'require ui';
 'require uci';
 'require client-guardian/api as API';
+'require client-guardian/nav as CgNav';
 
 return view.extend({
 	load: function() {
@@ -222,8 +222,10 @@ return view.extend({
 
 			rendered.insertBefore(infoBox, rendered.firstChild);
 
-			return E('div', {}, [
+			return E('div', { 'class': 'client-guardian-dashboard' }, [
 				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
+				CgNav.renderTabs('settings'),
 				rendered
 			]);
 		});

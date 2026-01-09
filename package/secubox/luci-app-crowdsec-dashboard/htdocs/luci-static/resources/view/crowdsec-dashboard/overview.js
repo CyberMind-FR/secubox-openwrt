@@ -6,6 +6,7 @@
 'require ui';
 'require fs';
 'require crowdsec-dashboard/api as api';
+'require crowdsec-dashboard/nav as CsNav';
 
 /**
  * CrowdSec Dashboard - Overview View
@@ -500,8 +501,9 @@ return view.extend({
 		var self = this;
 		this.data = payload[0] || {};
 		this.logs = (payload[1] && payload[1].entries) || [];
-		
+
 		var view = E('div', { 'class': 'crowdsec-dashboard' }, [
+			CsNav.renderTabs('overview'),
 			E('div', { 'id': 'cs-dashboard-content' }, this.renderContent(this.data))
 		]);
 		

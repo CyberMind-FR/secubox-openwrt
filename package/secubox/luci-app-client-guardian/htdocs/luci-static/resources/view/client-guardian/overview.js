@@ -5,6 +5,7 @@
 'require uci';
 'require ui';
 'require rpc';
+'require client-guardian/nav as CgNav';
 
 var callGetStatus = rpc.declare({
 	object: 'luci.client-guardian',
@@ -79,6 +80,7 @@ return view.extend({
 		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
+			CgNav.renderTabs('overview'),
 
 			// Header
 			E('div', { 'class': 'cg-header' }, [

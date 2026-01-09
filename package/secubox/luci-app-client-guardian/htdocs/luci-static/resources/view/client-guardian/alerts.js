@@ -1,12 +1,12 @@
 'use strict';
 'require view';
-
 'require dom';
 'require poll';
 'require uci';
 'require rpc';
 'require ui';
 'require client-guardian/api as API';
+'require client-guardian/nav as CgNav';
 
 return view.extend({
 	load: function() {
@@ -23,7 +23,8 @@ return view.extend({
 		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
-			
+			CgNav.renderTabs('alerts'),
+
 			// Email Configuration
 			E('div', { 'class': 'cg-card' }, [
 				E('div', { 'class': 'cg-card-header' }, [

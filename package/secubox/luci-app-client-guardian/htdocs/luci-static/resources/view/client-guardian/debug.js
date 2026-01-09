@@ -1,11 +1,11 @@
 'use strict';
 'require view';
-
 'require dom';
 'require ui';
 'require uci';
 'require rpc';
 'require client-guardian/debug as Debug';
+'require client-guardian/nav as CgNav';
 
 var callGetLogs = rpc.declare({
 	object: 'luci.client-guardian',
@@ -33,6 +33,7 @@ return view.extend({
 		return E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
+			CgNav.renderTabs('debug'),
 
 			E('div', { 'class': 'cg-header' }, [
 				E('div', { 'class': 'cg-logo' }, [
