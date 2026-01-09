@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Copies the freshly built Netifyd and CrowdSec IPKs from the OpenWrt build tree
+# Copies the freshly built packages from the OpenWrt build tree
 # into the firmware release directory so they are included alongside the other
 # SecuBox packages (mirrors what the GitHub Actions jobs expect).
 
@@ -19,6 +19,7 @@ copy_package() {
     local pattern="$1"
     local label="$2"
     local src
+    # Search recursively in OPENWRT_BIN_DIR (packages are in base/, packages/ subdirs)
     src=$(find "$OPENWRT_BIN_DIR" -name "$pattern" -print -quit 2>/dev/null || true)
 
     if [[ -z "$src" ]]; then
@@ -37,23 +38,48 @@ update_checksums() {
     local tmp
     tmp=$(mktemp)
     if [[ -f "$sha_file" ]]; then
-        grep -v -E 'netifyd_.*\.ipk|crowdsec_.*\.ipk|secubox-app-netifyd_.*\.ipk|secubox-app-crowdsec_.*\.ipk' "$sha_file" > "$tmp" || true
+        # Remove old entries for packages we're updating
+        grep -v -E 'netifyd_|crowdsec|ndpid_|nodogsplash_|secubox-' "$sha_file" > "$tmp" || true
     fi
     for pkg in "${COPIED_FILES[@]}"; do
-        sha256sum "$pkg" >> "$tmp"
+        (cd "$(dirname "$pkg")" && sha256sum "$(basename "$pkg")") >> "$tmp"
     done
-    mv "$tmp" "$sha_file"
+    sort -u "$tmp" > "$sha_file"
+    rm -f "$tmp"
 }
 
-copy_package 'netifyd_*.ipk' "netifyd DPI agent"
-copy_package 'crowdsec_*.ipk' "CrowdSec core"
-copy_package 'secubox-app-netifyd_*.ipk' "SecuBox Netifyd helper"
-copy_package 'secubox-app-crowdsec_*.ipk' "SecuBox CrowdSec app"
+echo "📦 Syncing OpenWrt packages for $ARCH_NAME..."
+echo ""
 
+# DPI Engines
+copy_package 'netifyd_*.ipk' "Netifyd DPI engine"
+copy_package 'ndpid_*.ipk' "nDPId DPI engine"
+
+# Security
+copy_package 'crowdsec_*.ipk' "CrowdSec core"
+copy_package 'crowdsec-firewall-bouncer_*.ipk' "CrowdSec firewall bouncer"
+
+# Captive Portal
+copy_package 'secubox-app-nodogsplash_*.ipk' "Nodogsplash captive portal"
+
+# SecuBox Core packages
+copy_package 'secubox-core_*.ipk' "SecuBox Core"
+copy_package 'secubox-app_*.ipk' "SecuBox App"
+
+# LuCI apps
+copy_package 'luci-app-secubox_*.ipk' "LuCI SecuBox"
+copy_package 'luci-app-secubox-admin_*.ipk' "LuCI SecuBox Admin"
+copy_package 'luci-app-secubox-netifyd_*.ipk' "LuCI Netifyd Dashboard"
+copy_package 'luci-app-ndpid_*.ipk' "LuCI nDPId Dashboard"
+copy_package 'luci-theme-secubox_*.ipk' "LuCI SecuBox Theme"
+
+echo ""
 if [[ ${#COPIED_FILES[@]} -gt 0 ]]; then
     update_checksums
-    echo "📦 Firmware directory now contains:"
-    ls -1 "$FIRMWARE_DIR" | grep -E 'netifyd_|crowdsec_|secubox-app-netifyd_|secubox-app-crowdsec_' || true
+    echo "📦 Firmware packages directory ($FIRMWARE_DIR):"
+    ls -1 "$FIRMWARE_DIR"/*.ipk 2>/dev/null | xargs -n1 basename | sort
+    echo ""
+    echo "✅ Synced ${#COPIED_FILES[@]} packages"
 else
     echo "⚠️  No packages copied"
 fi
