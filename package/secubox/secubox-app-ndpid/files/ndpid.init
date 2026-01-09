@@ -1,0 +1,116 @@
+#!/bin/sh /etc/rc.common
+# nDPId init script for OpenWrt
+# Copyright (C) 2025 CyberMind.fr
+
+START=51
+STOP=10
+USE_PROCD=1
+
+PROG=/usr/sbin/ndpid
+CONF=/etc/config/ndpid
+RUNTIME_DIR=/var/run/ndpid
+COMPAT_STATUS=/var/run/netifyd/status.json
+
+. /usr/share/ndpid/functions.sh 2>/dev/null || true
+
+validate_section() {
+	uci_load_validate ndpid main "$1" "$2" \
+		'enabled:bool:0' \
+		'user:string:nobody' \
+		'group:string:nogroup' \
+		'interface:list(string)' \
+		'collector_socket:string:/var/run/ndpid/collector.sock' \
+		'pcap_filter:string' \
+		'max_flows:uinteger:100000' \
+		'flow_idle_timeout:uinteger:600000' \
+		'tcp_timeout:uinteger:7200000' \
+		'udp_timeout:uinteger:180000' \
+		'compression:bool:1'
+}
+
+generate_config() {
+	local enabled user group collector_socket max_flows
+	local flow_idle_timeout tcp_timeout udp_timeout compression
+
+	config_load ndpid
+	config_get enabled main enabled 0
+	config_get user main user nobody
+	config_get group main group nogroup
+	config_get collector_socket main collector_socket /var/run/ndpid/collector.sock
+	config_get max_flows main max_flows 100000
+	config_get flow_idle_timeout main flow_idle_timeout 600000
+	config_get tcp_timeout main tcp_timeout 7200000
+	config_get udp_timeout main udp_timeout 180000
+	config_get_bool compression main compression 1
+
+	cat > /etc/ndpid.conf << EOF
+# Auto-generated from UCI - do not edit
+collector = $collector_socket
+user = $user
+group = $group
+max-flows = $max_flows
+generic-max-idle-time = $flow_idle_timeout
+tcp-max-idle-time = $tcp_timeout
+udp-max-idle-time = $udp_timeout
+EOF
+
+	[ "$compression" -eq 1 ] && echo "enable-zlib-compression = yes" >> /etc/ndpid.conf
+}
+
+start_service() {
+	local enabled interfaces
+
+	config_load ndpid
+	config_get_bool enabled main enabled 0
+
+	[ "$enabled" -eq 0 ] && {
+		logger -t ndpid "Service disabled in config"
+		return 0
+	}
+
+	# Create runtime directories
+	mkdir -p "$RUNTIME_DIR"
+	mkdir -p "$(dirname "$COMPAT_STATUS")"
+	chown nobody:nogroup "$RUNTIME_DIR"
+
+	# Generate native config from UCI
+	generate_config
+
+	# Get interfaces
+	config_get interfaces main interface "br-lan"
+
+	# Build interface arguments
+	local iface_args=""
+	for iface in $interfaces; do
+		iface_args="$iface_args -i $iface"
+	done
+
+	# Get collector socket
+	local collector_socket
+	config_get collector_socket main collector_socket /var/run/ndpid/collector.sock
+
+	logger -t ndpid "Starting nDPId on interfaces: $interfaces"
+
+	procd_open_instance ndpid
+	procd_set_param command "$PROG" \
+		-c "$collector_socket" \
+		$iface_args
+	procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param pidfile /var/run/ndpid.pid
+	procd_close_instance
+}
+
+stop_service() {
+	logger -t ndpid "Stopping nDPId"
+}
+
+reload_service() {
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger "ndpid"
+}

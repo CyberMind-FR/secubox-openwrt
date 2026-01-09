@@ -1,0 +1,112 @@
+#!/bin/sh
+# nDPId Statistics Collector
+# Collects and aggregates DPI statistics for dashboards
+# Copyright (C) 2025 CyberMind.fr
+
+STATUS_FILE="/var/run/netifyd/status.json"
+STATS_FILE="/tmp/ndpid-stats.json"
+HISTORY_FILE="/tmp/ndpid-stats-history.json"
+FLOWS_FILE="/tmp/ndpid-flows.json"
+MAX_HISTORY=1440  # 24 hours at 1-minute intervals
+
+# Collect current statistics
+collect_stats() {
+	local timestamp=$(date +%s)
+
+	if [ ! -f "$STATUS_FILE" ]; then
+		echo '{"error": "Status file not found", "timestamp": '$timestamp'}'
+		return 1
+	fi
+
+	# Read current status
+	local status=$(cat "$STATUS_FILE" 2>/dev/null)
+	[ -z "$status" ] && return 1
+
+	# Extract values
+	local flow_count=$(echo "$status" | jsonfilter -e '@.flow_count' 2>/dev/null || echo 0)
+	local flows_active=$(echo "$status" | jsonfilter -e '@.flows_active' 2>/dev/null || echo 0)
+	local uptime=$(echo "$status" | jsonfilter -e '@.uptime' 2>/dev/null || echo 0)
+
+	# Get interface stats
+	local stats=""
+	if command -v jq >/dev/null 2>&1; then
+		stats=$(echo "$status" | jq -c '.stats // {}')
+	else
+		stats="{}"
+	fi
+
+	# Create snapshot
+	cat << EOF
+{
+	"timestamp": $timestamp,
+	"flow_count": $flow_count,
+	"flows_active": $flows_active,
+	"uptime": $uptime,
+	"stats": $stats
+}
+EOF
+}
+
+# Add to history
+add_to_history() {
+	local snapshot="$1"
+
+	# Initialize history file if needed
+	if [ ! -f "$HISTORY_FILE" ]; then
+		echo "[]" > "$HISTORY_FILE"
+	fi
+
+	if command -v jq >/dev/null 2>&1; then
+		# Add new snapshot and trim to max size
+		local temp=$(mktemp)
+		jq --argjson snapshot "$snapshot" --argjson max "$MAX_HISTORY" \
+			'. + [$snapshot] | .[-$max:]' \
+			"$HISTORY_FILE" > "$temp" 2>/dev/null && mv "$temp" "$HISTORY_FILE"
+	else
+		# Simple append without jq (less efficient)
+		local current=$(cat "$HISTORY_FILE" 2>/dev/null | tr -d '[]')
+		if [ -n "$current" ]; then
+			echo "[$current,$snapshot]" > "$HISTORY_FILE"
+		else
+			echo "[$snapshot]" > "$HISTORY_FILE"
+		fi
+	fi
+}
+
+# Main collection routine
+main() {
+	# Collect current stats
+	local snapshot=$(collect_stats)
+
+	if [ $? -eq 0 ] && [ -n "$snapshot" ]; then
+		# Save current snapshot
+		echo "$snapshot" > "$STATS_FILE"
+
+		# Add to history
+		add_to_history "$snapshot"
+
+		logger -t ndpid-collector "Stats collected: $(echo "$snapshot" | jsonfilter -e '@.flows_active' 2>/dev/null || echo 0) active flows"
+	fi
+}
+
+# Run modes
+case "$1" in
+	--once|-o)
+		main
+		;;
+	--daemon|-d)
+		while true; do
+			main
+			sleep 60
+		done
+		;;
+	--status|-s)
+		cat "$STATS_FILE" 2>/dev/null || echo '{"error": "No stats available"}'
+		;;
+	--history|-h)
+		cat "$HISTORY_FILE" 2>/dev/null || echo '[]'
+		;;
+	*)
+		main
+		;;
+esac

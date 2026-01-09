@@ -1,0 +1,34 @@
+{
+	"luci-app-ndpid": {
+		"description": "Grant access to nDPId DPI dashboard",
+		"read": {
+			"ubus": {
+				"luci.ndpid": [
+					"get_service_status",
+					"get_realtime_flows",
+					"get_interface_stats",
+					"get_top_applications",
+					"get_top_protocols",
+					"get_config",
+					"get_dashboard",
+					"get_interfaces"
+				]
+			},
+			"uci": ["ndpid"]
+		},
+		"write": {
+			"ubus": {
+				"luci.ndpid": [
+					"service_start",
+					"service_stop",
+					"service_restart",
+					"service_enable",
+					"service_disable",
+					"update_config",
+					"clear_cache"
+				]
+			},
+			"uci": ["ndpid"]
+		}
+	}
+}

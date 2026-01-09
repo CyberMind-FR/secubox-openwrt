@@ -1,0 +1,598 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SecuBox nDPId - RPCD Backend
+# Complete interface for nDPId DPI daemon
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+# Paths
+CONFIG_FILE="/etc/config/ndpid"
+STATUS_FILE="/var/run/netifyd/status.json"
+DISTRIBUTOR_SOCK="/var/run/ndpid/distributor.sock"
+COLLECTOR_SOCK="/var/run/ndpid/collector.sock"
+FLOWS_CACHE="/tmp/ndpid-flows.json"
+STATS_CACHE="/tmp/ndpid-stats.json"
+LOG_FILE="/var/log/ndpid.log"
+
+# Logging
+log_msg() {
+	local level="$1"
+	shift
+	logger -t luci.ndpid "[$level] $*"
+}
+
+# Check if nDPId is running
+check_ndpid_running() {
+	pidof ndpid >/dev/null 2>&1
+}
+
+# Check if nDPIsrvd is running
+check_ndpisrvd_running() {
+	pidof ndpisrvd >/dev/null 2>&1
+}
+
+# Get service status
+get_service_status() {
+	json_init
+
+	local running=0
+	local distributor_running=0
+	local pid=""
+	local uptime=0
+	local version=""
+
+	if check_ndpid_running; then
+		running=1
+		pid=$(pidof ndpid | awk '{print $1}')
+
+		# Get uptime from /proc
+		if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+			local start_time=$(stat -c %Y /proc/$pid 2>/dev/null)
+			local now=$(date +%s)
+			[ -n "$start_time" ] && uptime=$((now - start_time))
+		fi
+
+		# Get version
+		version=$(ndpid -v 2>&1 | head -1 | grep -oE '[0-9]+\.[0-9]+' || echo "1.7")
+	fi
+
+	check_ndpisrvd_running && distributor_running=1
+
+	json_add_boolean "running" "$running"
+	json_add_boolean "distributor_running" "$distributor_running"
+	json_add_string "pid" "$pid"
+	json_add_int "uptime" "$uptime"
+	json_add_string "version" "$version"
+	json_add_string "collector_socket" "$COLLECTOR_SOCK"
+	json_add_string "distributor_socket" "$DISTRIBUTOR_SOCK"
+
+	# Check if compat layer is running
+	local compat_running=0
+	pidof ndpid-compat >/dev/null 2>&1 && compat_running=1
+	json_add_boolean "compat_running" "$compat_running"
+
+	json_dump
+}
+
+# Get real-time flow statistics from status file
+get_realtime_flows() {
+	json_init
+
+	if [ -f "$STATUS_FILE" ]; then
+		local status_json=$(cat "$STATUS_FILE" 2>/dev/null)
+		if [ -n "$status_json" ]; then
+			# Parse values
+			local flow_count=$(echo "$status_json" | jsonfilter -e '@.flow_count' 2>/dev/null || echo 0)
+			local flows_active=$(echo "$status_json" | jsonfilter -e '@.flows_active' 2>/dev/null || echo 0)
+			local uptime=$(echo "$status_json" | jsonfilter -e '@.uptime' 2>/dev/null || echo 0)
+
+			json_add_int "flow_count" "$flow_count"
+			json_add_int "flows_active" "$flows_active"
+			json_add_int "uptime" "$uptime"
+			json_add_boolean "available" 1
+		else
+			json_add_boolean "available" 0
+		fi
+	else
+		json_add_boolean "available" 0
+		json_add_int "flow_count" 0
+		json_add_int "flows_active" 0
+	fi
+
+	json_dump
+}
+
+# Get interface statistics
+get_interface_stats() {
+	json_init
+	json_add_array "interfaces"
+
+	if [ -f "$STATUS_FILE" ]; then
+		local stats=$(cat "$STATUS_FILE" | jsonfilter -e '@.stats' 2>/dev/null)
+		if [ -n "$stats" ] && command -v jq >/dev/null 2>&1; then
+			# Parse each interface
+			for iface in $(echo "$stats" | jq -r 'keys[]' 2>/dev/null); do
+				json_add_object
+				json_add_string "name" "$iface"
+
+				local ip_bytes=$(echo "$stats" | jq -r ".\"$iface\".ip_bytes // 0")
+				local wire_bytes=$(echo "$stats" | jq -r ".\"$iface\".wire_bytes // 0")
+				local tcp=$(echo "$stats" | jq -r ".\"$iface\".tcp // 0")
+				local udp=$(echo "$stats" | jq -r ".\"$iface\".udp // 0")
+				local icmp=$(echo "$stats" | jq -r ".\"$iface\".icmp // 0")
+
+				json_add_int "ip_bytes" "$ip_bytes"
+				json_add_int "wire_bytes" "$wire_bytes"
+				json_add_int "tcp" "$tcp"
+				json_add_int "udp" "$udp"
+				json_add_int "icmp" "$icmp"
+
+				json_close_object
+			done
+		fi
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Get top applications (from flow analysis)
+get_top_applications() {
+	json_init
+	json_add_array "applications"
+
+	# Read from flows cache if available
+	if [ -f "$FLOWS_CACHE" ] && command -v jq >/dev/null 2>&1; then
+		# Aggregate by application
+		jq -r '
+			group_by(.application) |
+			map({
+				name: .[0].application,
+				flows: length,
+				bytes: (map(.bytes_rx + .bytes_tx) | add)
+			}) |
+			sort_by(-.bytes) |
+			.[0:10][] |
+			"\(.name)|\(.flows)|\(.bytes)"
+		' "$FLOWS_CACHE" 2>/dev/null | while IFS='|' read -r name flows bytes; do
+			json_add_object
+			json_add_string "name" "${name:-unknown}"
+			json_add_int "flows" "${flows:-0}"
+			json_add_int "bytes" "${bytes:-0}"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Get top protocols
+get_top_protocols() {
+	json_init
+	json_add_array "protocols"
+
+	if [ -f "$STATUS_FILE" ]; then
+		local stats=$(cat "$STATUS_FILE" | jsonfilter -e '@.stats' 2>/dev/null)
+		if [ -n "$stats" ] && command -v jq >/dev/null 2>&1; then
+			# Aggregate protocol counts across interfaces
+			local tcp=$(echo "$stats" | jq '[.[].tcp] | add // 0')
+			local udp=$(echo "$stats" | jq '[.[].udp] | add // 0')
+			local icmp=$(echo "$stats" | jq '[.[].icmp] | add // 0')
+
+			json_add_object
+			json_add_string "name" "TCP"
+			json_add_int "count" "$tcp"
+			json_close_object
+
+			json_add_object
+			json_add_string "name" "UDP"
+			json_add_int "count" "$udp"
+			json_close_object
+
+			json_add_object
+			json_add_string "name" "ICMP"
+			json_add_int "count" "$icmp"
+			json_close_object
+		fi
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Get configuration
+get_config() {
+	json_init
+
+	config_load ndpid
+
+	# Main settings
+	local enabled interfaces collector_socket max_flows
+	config_get_bool enabled main enabled 0
+	config_get interfaces main interface ""
+	config_get collector_socket main collector_socket "/var/run/ndpid/collector.sock"
+	config_get max_flows main max_flows 100000
+
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "interfaces" "$interfaces"
+	json_add_string "collector_socket" "$collector_socket"
+	json_add_int "max_flows" "$max_flows"
+
+	# Distributor settings
+	local dist_enabled tcp_port tcp_address
+	config_get_bool dist_enabled distributor enabled 1
+	config_get tcp_port distributor tcp_port 7000
+	config_get tcp_address distributor tcp_address "127.0.0.1"
+
+	json_add_object "distributor"
+	json_add_boolean "enabled" "$dist_enabled"
+	json_add_int "tcp_port" "$tcp_port"
+	json_add_string "tcp_address" "$tcp_address"
+	json_close_object
+
+	# Compat settings
+	local compat_enabled
+	config_get_bool compat_enabled compat enabled 1
+	json_add_object "compat"
+	json_add_boolean "enabled" "$compat_enabled"
+	json_close_object
+
+	# Actions settings
+	local actions_enabled
+	config_get_bool actions_enabled actions enabled 0
+	json_add_object "actions"
+	json_add_boolean "enabled" "$actions_enabled"
+	json_close_object
+
+	json_dump
+}
+
+# Get dashboard summary
+get_dashboard() {
+	json_init
+
+	# Service status
+	json_add_object "service"
+	local running=0
+	check_ndpid_running && running=1
+	json_add_boolean "running" "$running"
+
+	local distributor_running=0
+	check_ndpisrvd_running && distributor_running=1
+	json_add_boolean "distributor_running" "$distributor_running"
+
+	local compat_running=0
+	pidof ndpid-compat >/dev/null 2>&1 && compat_running=1
+	json_add_boolean "compat_running" "$compat_running"
+
+	json_add_string "version" "$(ndpid -v 2>&1 | head -1 | grep -oE '[0-9]+\.[0-9]+' || echo '1.7')"
+	json_close_object
+
+	# Flow stats
+	json_add_object "flows"
+	if [ -f "$STATUS_FILE" ]; then
+		local flow_count=$(cat "$STATUS_FILE" | jsonfilter -e '@.flow_count' 2>/dev/null || echo 0)
+		local flows_active=$(cat "$STATUS_FILE" | jsonfilter -e '@.flows_active' 2>/dev/null || echo 0)
+		json_add_int "total" "$flow_count"
+		json_add_int "active" "$flows_active"
+	else
+		json_add_int "total" 0
+		json_add_int "active" 0
+	fi
+	json_close_object
+
+	# System stats
+	json_add_object "system"
+	local pid=$(pidof ndpid | awk '{print $1}')
+	if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+		# Memory usage
+		local mem_kb=$(awk '/VmRSS/{print $2}' /proc/$pid/status 2>/dev/null || echo 0)
+		json_add_int "memory_kb" "$mem_kb"
+
+		# CPU (simplified)
+		json_add_string "cpu" "0%"
+	else
+		json_add_int "memory_kb" 0
+		json_add_string "cpu" "0%"
+	fi
+	json_close_object
+
+	# Interfaces
+	json_add_array "interfaces"
+	config_load ndpid
+	config_get interfaces main interface ""
+	for iface in $interfaces; do
+		json_add_string "" "$iface"
+	done
+	json_close_array
+
+	json_dump
+}
+
+# Service control: start
+service_start() {
+	json_init
+
+	/etc/init.d/ndpisrvd start 2>&1
+	sleep 1
+	/etc/init.d/ndpid start 2>&1
+
+	# Start compat layer
+	local compat_enabled
+	config_load ndpid
+	config_get_bool compat_enabled compat enabled 1
+	if [ "$compat_enabled" -eq 1 ]; then
+		/usr/bin/ndpid-compat -d 2>&1
+	fi
+
+	sleep 2
+
+	if check_ndpid_running; then
+		json_add_boolean "success" 1
+		json_add_string "message" "nDPId started successfully"
+		log_msg "INFO" "Service started"
+	else
+		json_add_boolean "success" 0
+		json_add_string "message" "Failed to start nDPId"
+		log_msg "ERROR" "Service failed to start"
+	fi
+
+	json_dump
+}
+
+# Service control: stop
+service_stop() {
+	json_init
+
+	# Stop compat layer
+	if [ -f /var/run/ndpid-compat.pid ]; then
+		kill $(cat /var/run/ndpid-compat.pid) 2>/dev/null
+		rm -f /var/run/ndpid-compat.pid
+	fi
+
+	/etc/init.d/ndpid stop 2>&1
+	/etc/init.d/ndpisrvd stop 2>&1
+
+	sleep 1
+
+	if ! check_ndpid_running; then
+		json_add_boolean "success" 1
+		json_add_string "message" "nDPId stopped successfully"
+		log_msg "INFO" "Service stopped"
+	else
+		json_add_boolean "success" 0
+		json_add_string "message" "Failed to stop nDPId"
+		log_msg "ERROR" "Service failed to stop"
+	fi
+
+	json_dump
+}
+
+# Service control: restart
+service_restart() {
+	json_init
+
+	service_stop >/dev/null 2>&1
+	sleep 2
+	service_start >/dev/null 2>&1
+
+	if check_ndpid_running; then
+		json_add_boolean "success" 1
+		json_add_string "message" "nDPId restarted successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "message" "Failed to restart nDPId"
+	fi
+
+	json_dump
+}
+
+# Service control: enable
+service_enable() {
+	json_init
+
+	uci set ndpid.main.enabled=1
+	uci commit ndpid
+
+	/etc/init.d/ndpid enable
+	/etc/init.d/ndpisrvd enable
+
+	json_add_boolean "success" 1
+	json_add_string "message" "nDPId enabled"
+
+	json_dump
+}
+
+# Service control: disable
+service_disable() {
+	json_init
+
+	uci set ndpid.main.enabled=0
+	uci commit ndpid
+
+	/etc/init.d/ndpid disable
+	/etc/init.d/ndpisrvd disable
+
+	json_add_boolean "success" 1
+	json_add_string "message" "nDPId disabled"
+
+	json_dump
+}
+
+# Update configuration
+update_config() {
+	local data="$1"
+	json_init
+
+	if [ -z "$data" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "No configuration data provided"
+		json_dump
+		return
+	fi
+
+	# Parse and apply configuration
+	local enabled=$(echo "$data" | jsonfilter -e '@.enabled' 2>/dev/null)
+	local interfaces=$(echo "$data" | jsonfilter -e '@.interfaces' 2>/dev/null)
+	local max_flows=$(echo "$data" | jsonfilter -e '@.max_flows' 2>/dev/null)
+
+	[ -n "$enabled" ] && uci set ndpid.main.enabled="$enabled"
+	[ -n "$max_flows" ] && uci set ndpid.main.max_flows="$max_flows"
+
+	# Handle interfaces (clear and re-add)
+	if [ -n "$interfaces" ]; then
+		uci -q delete ndpid.main.interface
+		for iface in $interfaces; do
+			uci add_list ndpid.main.interface="$iface"
+		done
+	fi
+
+	uci commit ndpid
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Configuration updated"
+	log_msg "INFO" "Configuration updated"
+
+	json_dump
+}
+
+# Clear statistics cache
+clear_cache() {
+	json_init
+
+	rm -f "$FLOWS_CACHE" "$STATS_CACHE"
+	rm -rf /tmp/ndpid-state
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Cache cleared"
+
+	json_dump
+}
+
+# Get monitored interfaces list
+get_interfaces() {
+	json_init
+	json_add_array "interfaces"
+
+	# Get configured interfaces
+	config_load ndpid
+	config_get interfaces main interface ""
+
+	for iface in $interfaces; do
+		json_add_object
+		json_add_string "name" "$iface"
+
+		# Check if interface exists
+		if [ -d "/sys/class/net/$iface" ]; then
+			json_add_boolean "exists" 1
+
+			# Get interface state
+			local state=$(cat /sys/class/net/$iface/operstate 2>/dev/null || echo "unknown")
+			json_add_string "state" "$state"
+
+			# Get MAC address
+			local mac=$(cat /sys/class/net/$iface/address 2>/dev/null || echo "")
+			json_add_string "mac" "$mac"
+		else
+			json_add_boolean "exists" 0
+		fi
+
+		json_close_object
+	done
+
+	json_close_array
+
+	# Also list available interfaces
+	json_add_array "available"
+	for iface in $(ls /sys/class/net/ 2>/dev/null | grep -E '^(br-|eth|wlan)'); do
+		json_add_string "" "$iface"
+	done
+	json_close_array
+
+	json_dump
+}
+
+# RPC method dispatcher
+case "$1" in
+	list)
+		cat << 'EOF'
+{
+	"get_service_status": {},
+	"get_realtime_flows": {},
+	"get_interface_stats": {},
+	"get_top_applications": {},
+	"get_top_protocols": {},
+	"get_config": {},
+	"get_dashboard": {},
+	"get_interfaces": {},
+	"service_start": {},
+	"service_stop": {},
+	"service_restart": {},
+	"service_enable": {},
+	"service_disable": {},
+	"update_config": { "data": "object" },
+	"clear_cache": {}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			get_service_status)
+				get_service_status
+				;;
+			get_realtime_flows)
+				get_realtime_flows
+				;;
+			get_interface_stats)
+				get_interface_stats
+				;;
+			get_top_applications)
+				get_top_applications
+				;;
+			get_top_protocols)
+				get_top_protocols
+				;;
+			get_config)
+				get_config
+				;;
+			get_dashboard)
+				get_dashboard
+				;;
+			get_interfaces)
+				get_interfaces
+				;;
+			service_start)
+				service_start
+				;;
+			service_stop)
+				service_stop
+				;;
+			service_restart)
+				service_restart
+				;;
+			service_enable)
+				service_enable
+				;;
+			service_disable)
+				service_disable
+				;;
+			update_config)
+				read -r input
+				data=$(echo "$input" | jsonfilter -e '@.data' 2>/dev/null)
+				update_config "$data"
+				;;
+			clear_cache)
+				clear_cache
+				;;
+			*)
+				echo '{"error": "Unknown method"}'
+				;;
+		esac
+		;;
+	*)
+		echo '{"error": "Invalid action"}'
+		;;
+esac

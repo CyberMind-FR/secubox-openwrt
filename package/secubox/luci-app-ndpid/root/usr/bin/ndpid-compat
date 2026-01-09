@@ -1,0 +1,210 @@
+#!/bin/sh
+# nDPId to Netifyd Compatibility Layer
+# Translates nDPId events to Netifyd-compatible format
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/ndpid/functions.sh 2>/dev/null || true
+
+# Configuration
+DISTRIBUTOR_SOCK="/var/run/ndpid/distributor.sock"
+STATUS_FILE="/var/run/netifyd/status.json"
+FLOWS_FILE="/tmp/ndpid-flows.json"
+STATS_FILE="/tmp/ndpid-stats.json"
+STATS_HISTORY="/tmp/ndpid-stats-history.json"
+UPDATE_INTERVAL=1
+MAX_HISTORY=1440
+
+# State variables (stored in temp files for shell compatibility)
+STATE_DIR="/tmp/ndpid-state"
+FLOWS_ACTIVE_FILE="$STATE_DIR/flows_active"
+FLOW_COUNT_FILE="$STATE_DIR/flow_count"
+STATS_FILE_TMP="$STATE_DIR/stats"
+
+# Initialize state
+init_state() {
+	mkdir -p "$STATE_DIR"
+	mkdir -p "$(dirname "$STATUS_FILE")"
+	echo "0" > "$FLOWS_ACTIVE_FILE"
+	echo "0" > "$FLOW_COUNT_FILE"
+	echo "{}" > "$STATS_FILE_TMP"
+}
+
+# Increment counter
+inc_counter() {
+	local file="$1"
+	local val=$(cat "$file" 2>/dev/null || echo 0)
+	echo $((val + 1)) > "$file"
+}
+
+# Decrement counter
+dec_counter() {
+	local file="$1"
+	local val=$(cat "$file" 2>/dev/null || echo 0)
+	[ "$val" -gt 0 ] && val=$((val - 1))
+	echo "$val" > "$file"
+}
+
+# Get counter value
+get_counter() {
+	cat "$1" 2>/dev/null || echo 0
+}
+
+# Update interface stats
+update_iface_stats() {
+	local iface="$1"
+	local proto="$2"
+	local bytes="$3"
+
+	local stats=$(cat "$STATS_FILE_TMP" 2>/dev/null || echo "{}")
+
+	# Use jq to update stats (if available) or simple JSON
+	if command -v jq >/dev/null 2>&1; then
+		stats=$(echo "$stats" | jq --arg iface "$iface" --arg proto "$proto" --argjson bytes "$bytes" '
+			.[$iface] //= {"ip_bytes": 0, "wire_bytes": 0, "tcp": 0, "udp": 0, "icmp": 0} |
+			.[$iface].ip_bytes += $bytes |
+			.[$iface].wire_bytes += $bytes |
+			if $proto == "tcp" then .[$iface].tcp += 1
+			elif $proto == "udp" then .[$iface].udp += 1
+			elif $proto == "icmp" then .[$iface].icmp += 1
+			else . end
+		')
+		echo "$stats" > "$STATS_FILE_TMP"
+	fi
+}
+
+# Process a single nDPId event
+process_event() {
+	local raw="$1"
+
+	# Strip 5-digit length prefix
+	local json="${raw:5}"
+
+	# Parse event type
+	local event_name=$(echo "$json" | jsonfilter -e '@.flow_event_name' 2>/dev/null)
+	[ -z "$event_name" ] && event_name=$(echo "$json" | jsonfilter -e '@.daemon_event_name' 2>/dev/null)
+
+	case "$event_name" in
+		new)
+			inc_counter "$FLOW_COUNT_FILE"
+			inc_counter "$FLOWS_ACTIVE_FILE"
+			;;
+		end|idle)
+			dec_counter "$FLOWS_ACTIVE_FILE"
+			;;
+		detected|guessed)
+			# Extract flow info for stats
+			local iface=$(echo "$json" | jsonfilter -e '@.source' 2>/dev/null)
+			local proto=$(echo "$json" | jsonfilter -e '@.l4_proto' 2>/dev/null)
+			local src_bytes=$(echo "$json" | jsonfilter -e '@.flow_src_tot_l4_payload_len' 2>/dev/null || echo 0)
+			local dst_bytes=$(echo "$json" | jsonfilter -e '@.flow_dst_tot_l4_payload_len' 2>/dev/null || echo 0)
+			local total_bytes=$((src_bytes + dst_bytes))
+
+			[ -n "$iface" ] && update_iface_stats "$iface" "$proto" "$total_bytes"
+			;;
+	esac
+}
+
+# Generate Netifyd-compatible status.json
+generate_status() {
+	local flow_count=$(get_counter "$FLOW_COUNT_FILE")
+	local flows_active=$(get_counter "$FLOWS_ACTIVE_FILE")
+	local stats=$(cat "$STATS_FILE_TMP" 2>/dev/null || echo "{}")
+	local uptime=$(($(date +%s) - START_TIME))
+
+	if command -v jq >/dev/null 2>&1; then
+		jq -n \
+			--argjson flow_count "$flow_count" \
+			--argjson flows_active "$flows_active" \
+			--argjson stats "$stats" \
+			--argjson uptime "$uptime" \
+			'{
+				flow_count: $flow_count,
+				flows_active: $flows_active,
+				stats: $stats,
+				devices: [],
+				dns_hint_cache: { cache_size: 0 },
+				uptime: $uptime,
+				source: "ndpid-compat"
+			}' > "$STATUS_FILE"
+	else
+		cat > "$STATUS_FILE" << EOF
+{
+  "flow_count": $flow_count,
+  "flows_active": $flows_active,
+  "stats": $stats,
+  "devices": [],
+  "dns_hint_cache": { "cache_size": 0 },
+  "uptime": $uptime,
+  "source": "ndpid-compat"
+}
+EOF
+	fi
+}
+
+# Main loop
+main() {
+	START_TIME=$(date +%s)
+
+	logger -t ndpid-compat "Starting nDPId compatibility layer"
+
+	# Initialize state
+	init_state
+
+	# Check for socat
+	if ! command -v socat >/dev/null 2>&1; then
+		logger -t ndpid-compat "ERROR: socat not found, using nc fallback"
+		USE_NC=1
+	fi
+
+	# Wait for distributor socket
+	local wait_count=0
+	while [ ! -S "$DISTRIBUTOR_SOCK" ] && [ $wait_count -lt 30 ]; do
+		sleep 1
+		wait_count=$((wait_count + 1))
+	done
+
+	if [ ! -S "$DISTRIBUTOR_SOCK" ]; then
+		logger -t ndpid-compat "ERROR: Distributor socket not found after 30s"
+		exit 1
+	fi
+
+	logger -t ndpid-compat "Connected to distributor: $DISTRIBUTOR_SOCK"
+
+	# Background status file updater
+	(
+		while true; do
+			generate_status
+			sleep $UPDATE_INTERVAL
+		done
+	) &
+	STATUS_PID=$!
+	trap "kill $STATUS_PID 2>/dev/null" EXIT
+
+	# Read events from distributor
+	if [ -z "$USE_NC" ]; then
+		socat -u UNIX-CONNECT:"$DISTRIBUTOR_SOCK" - | while IFS= read -r line; do
+			process_event "$line"
+		done
+	else
+		nc -U "$DISTRIBUTOR_SOCK" | while IFS= read -r line; do
+			process_event "$line"
+		done
+	fi
+}
+
+# Run main if not sourced
+case "$1" in
+	-h|--help)
+		echo "Usage: $0 [-d|--daemon]"
+		echo "  Translates nDPId events to Netifyd-compatible format"
+		exit 0
+		;;
+	-d|--daemon)
+		main &
+		echo $! > /var/run/ndpid-compat.pid
+		;;
+	*)
+		main
+		;;
+esac

@@ -1,0 +1,161 @@
+#!/bin/sh
+# nDPId Flow Actions Handler
+# Processes flow events and updates ipsets/nftables
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/ndpid/functions.sh 2>/dev/null || true
+
+DISTRIBUTOR_SOCK="/var/run/ndpid/distributor.sock"
+CONFIG_FILE="/etc/config/ndpid"
+
+# Load configuration
+load_config() {
+	config_load ndpid
+
+	config_get_bool ACTIONS_ENABLED actions enabled 0
+	config_get BITTORRENT_IPSET actions bittorrent_ipset "secubox-bittorrent"
+	config_get BITTORRENT_TIMEOUT actions bittorrent_timeout 900
+	config_get STREAMING_IPSET actions streaming_ipset "secubox-streaming"
+	config_get STREAMING_TIMEOUT actions streaming_timeout 1800
+	config_get BLOCKED_IPSET actions blocked_ipset "secubox-blocked"
+	config_get BLOCKED_TIMEOUT actions blocked_timeout 3600
+
+	# Get blocked applications
+	BLOCKED_APPS=""
+	config_list_foreach actions blocked_app append_blocked_app
+}
+
+append_blocked_app() {
+	BLOCKED_APPS="$BLOCKED_APPS $1"
+}
+
+# Normalize application name from nDPI format
+normalize_app() {
+	echo "$1" | tr '.' '\n' | tail -1 | tr '[:upper:]' '[:lower:]'
+}
+
+# Check if app is in blocked list
+is_blocked_app() {
+	local app="$1"
+	for blocked in $BLOCKED_APPS; do
+		[ "$app" = "$blocked" ] && return 0
+	done
+	return 1
+}
+
+# Check if app is streaming service
+is_streaming_app() {
+	local app="$1"
+	case "$app" in
+		netflix|youtube|spotify|twitch|disney|amazon_video|hulu|hbo|apple_tv|peacock)
+			return 0
+			;;
+	esac
+	return 1
+}
+
+# Process a flow detection event
+process_detection() {
+	local json="$1"
+
+	# Extract fields
+	local src_ip=$(echo "$json" | jsonfilter -e '@.src_ip' 2>/dev/null)
+	local dst_ip=$(echo "$json" | jsonfilter -e '@.dst_ip' 2>/dev/null)
+	local ndpi_proto=$(echo "$json" | jsonfilter -e '@.ndpi.proto' 2>/dev/null)
+
+	[ -z "$ndpi_proto" ] && return
+
+	local app=$(normalize_app "$ndpi_proto")
+
+	# BitTorrent detection
+	if [ "$app" = "bittorrent" ]; then
+		logger -t ndpid-actions "BitTorrent detected: $src_ip -> $dst_ip"
+		ipset add "$BITTORRENT_IPSET" "$src_ip" timeout "$BITTORRENT_TIMEOUT" 2>/dev/null
+		ipset add "$BITTORRENT_IPSET" "$dst_ip" timeout "$BITTORRENT_TIMEOUT" 2>/dev/null
+	fi
+
+	# Streaming services detection
+	if is_streaming_app "$app"; then
+		ipset add "$STREAMING_IPSET" "$dst_ip" timeout "$STREAMING_TIMEOUT" 2>/dev/null
+	fi
+
+	# Blocked applications
+	if is_blocked_app "$app"; then
+		logger -t ndpid-actions "Blocked app detected: $app from $src_ip"
+		ipset add "$BLOCKED_IPSET" "$src_ip" timeout "$BLOCKED_TIMEOUT" 2>/dev/null
+	fi
+}
+
+# Main event processing loop
+process_events() {
+	while IFS= read -r line; do
+		# Strip 5-digit length prefix
+		local json="${line:5}"
+
+		# Get event type
+		local event=$(echo "$json" | jsonfilter -e '@.flow_event_name' 2>/dev/null)
+
+		case "$event" in
+			detected|guessed)
+				process_detection "$json"
+				;;
+		esac
+	done
+}
+
+# Create ipsets if they don't exist
+setup_ipsets() {
+	ipset list "$BITTORRENT_IPSET" >/dev/null 2>&1 || \
+		ipset create "$BITTORRENT_IPSET" hash:ip timeout "$BITTORRENT_TIMEOUT"
+
+	ipset list "$STREAMING_IPSET" >/dev/null 2>&1 || \
+		ipset create "$STREAMING_IPSET" hash:ip timeout "$STREAMING_TIMEOUT"
+
+	ipset list "$BLOCKED_IPSET" >/dev/null 2>&1 || \
+		ipset create "$BLOCKED_IPSET" hash:ip timeout "$BLOCKED_TIMEOUT"
+}
+
+# Main
+main() {
+	load_config
+
+	if [ "$ACTIONS_ENABLED" -ne 1 ]; then
+		logger -t ndpid-actions "Flow actions disabled in config"
+		exit 0
+	fi
+
+	logger -t ndpid-actions "Starting flow actions handler"
+
+	# Setup ipsets
+	setup_ipsets
+
+	# Wait for socket
+	local wait_count=0
+	while [ ! -S "$DISTRIBUTOR_SOCK" ] && [ $wait_count -lt 30 ]; do
+		sleep 1
+		wait_count=$((wait_count + 1))
+	done
+
+	if [ ! -S "$DISTRIBUTOR_SOCK" ]; then
+		logger -t ndpid-actions "ERROR: Distributor socket not found"
+		exit 1
+	fi
+
+	# Connect and process events
+	if command -v socat >/dev/null 2>&1; then
+		socat -u UNIX-CONNECT:"$DISTRIBUTOR_SOCK" - | process_events
+	else
+		nc -U "$DISTRIBUTOR_SOCK" | process_events
+	fi
+}
+
+case "$1" in
+	-d|--daemon)
+		main &
+		echo $! > /var/run/ndpid-flow-actions.pid
+		;;
+	*)
+		main
+		;;
+esac

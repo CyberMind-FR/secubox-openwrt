@@ -1,0 +1,37 @@
+{
+	"admin/services/ndpid": {
+		"title": "nDPId",
+		"order": 60,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-ndpid"],
+			"uci": {"ndpid": true}
+		}
+	},
+	"admin/services/ndpid/dashboard": {
+		"title": "Dashboard",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "ndpid/dashboard"
+		}
+	},
+	"admin/services/ndpid/flows": {
+		"title": "Flows",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "ndpid/flows"
+		}
+	},
+	"admin/services/ndpid/settings": {
+		"title": "Settings",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "ndpid/settings"
+		}
+	}
+}
