@@ -7,6 +7,7 @@
 'require fs';
 'require crowdsec-dashboard/api as api';
 'require crowdsec-dashboard/nav as CsNav';
+'require secubox-portal/header as SbHeader';
 
 /**
  * CrowdSec Dashboard - Overview View
@@ -502,17 +503,23 @@ return view.extend({
 		this.data = payload[0] || {};
 		this.logs = (payload[1] && payload[1].entries) || [];
 
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+
 		var view = E('div', { 'class': 'crowdsec-dashboard' }, [
 			CsNav.renderTabs('overview'),
 			E('div', { 'id': 'cs-dashboard-content' }, this.renderContent(this.data))
 		]);
-		
+
+		wrapper.appendChild(view);
+
 		// Setup polling for auto-refresh (every 30 seconds)
 		poll.add(function() {
 			return self.refreshDashboard();
 		}, 30);
-		
-		return view;
+
+		return wrapper;
 	},
 	
 refreshDashboard: function() {

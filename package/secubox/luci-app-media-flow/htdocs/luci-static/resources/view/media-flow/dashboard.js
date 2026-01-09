@@ -3,9 +3,19 @@
 'require poll';
 'require ui';
 'require media-flow/api as API';
-'require secubox-portal/header as SbHeader';
 
-return L.view.extend({
+return view.extend({
+	title: _('Media Flow Dashboard'),
+	pollInterval: 5,
+
+	formatBytes: function(bytes) {
+		if (bytes === 0) return '0 B';
+		var k = 1024;
+		var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+		var i = Math.floor(Math.log(bytes) / Math.log(k));
+		return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+	},
+
 	load: function() {
 		return Promise.all([
 			API.getStatus(),
@@ -15,446 +25,223 @@ return L.view.extend({
 	},
 
 	render: function(data) {
+		var self = this;
 		var status = data[0] || {};
 		var streamsData = data[1] || {};
 		var statsByService = data[2] || {};
 
-		// Main wrapper with SecuBox header
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-
-		var v = E('div', { 'class': 'cbi-map' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('h2', {}, _('Media Flow Dashboard')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Streaming service detection and network flow monitoring'))
-		]);
-
-		// DPI Source indicator
 		var dpiSource = status.dpi_source || 'none';
-		var dpiColor = dpiSource === 'ndpid' ? '#00cc88' : (dpiSource === 'netifyd' ? '#0088cc' : '#cc0000');
-		var dpiLabel = dpiSource === 'ndpid' ? 'nDPId (Local DPI)' : (dpiSource === 'netifyd' ? 'Netifyd' : 'No DPI Engine');
+		var isNdpid = dpiSource === 'ndpid';
+		var isNetifyd = dpiSource === 'netifyd';
+		var streams = streamsData.streams || [];
+		var flowCount = streamsData.flow_count || status.active_flows || 0;
 
-		// Status overview with DPI source
-		var statusSection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Status')),
-			E('div', { 'class': 'table' }, [
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td left', 'width': '25%' }, [
-						E('strong', {}, _('Module: ')),
-						E('span', {}, status.enabled ? _('Enabled') : _('Disabled'))
-					]),
-					E('div', { 'class': 'td left', 'width': '25%' }, [
-						E('strong', {}, _('DPI Source: ')),
-						E('span', { 'style': 'color: ' + dpiColor + '; font-weight: bold;' }, '● ' + dpiLabel)
-					]),
-					E('div', { 'class': 'td left', 'width': '25%' }, [
-						E('strong', {}, _('Active Flows: ')),
-						E('span', { 'style': 'font-size: 1.3em; color: #0088cc' }, String(status.active_flows || 0))
-					]),
-					E('div', { 'class': 'td left', 'width': '25%' }, [
-						E('strong', {}, _('Active Streams: ')),
-						E('span', { 'style': 'font-size: 1.3em; color: #ec4899' }, String(status.active_streams || 0))
-					])
+		// Inject CSS
+		var css = `
+.mf-dashboard { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #e4e4e7; }
+.mf-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding: 20px; background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%); border-radius: 16px; border: 1px solid rgba(236, 72, 153, 0.3); }
+.mf-logo { display: flex; align-items: center; gap: 12px; }
+.mf-logo-icon { width: 48px; height: 48px; background: linear-gradient(135deg, #ec4899, #8b5cf6); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+.mf-logo-text { font-size: 1.5rem; font-weight: 700; background: linear-gradient(135deg, #ec4899, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.mf-status { display: flex; align-items: center; gap: 16px; }
+.mf-status-badge { padding: 8px 16px; border-radius: 20px; font-size: 0.875rem; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+.mf-status-badge.running { background: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); }
+.mf-status-badge.stopped { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+.mf-status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+.mf-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.mf-stat-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 20px; text-align: center; transition: all 0.2s; }
+.mf-stat-card:hover { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.12); }
+.mf-stat-icon { font-size: 1.5rem; margin-bottom: 8px; }
+.mf-stat-value { font-size: 2rem; font-weight: 700; margin-bottom: 4px; }
+.mf-stat-value.cyan { color: #06b6d4; }
+.mf-stat-value.pink { color: #ec4899; }
+.mf-stat-value.green { color: #22c55e; }
+.mf-stat-value.yellow { color: #fbbf24; }
+.mf-stat-label { font-size: 0.875rem; color: #a1a1aa; }
+
+.mf-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; margin-bottom: 24px; overflow: hidden; }
+.mf-card-header { padding: 16px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; align-items: center; justify-content: space-between; }
+.mf-card-title { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.mf-card-badge { font-size: 0.75rem; padding: 4px 10px; background: rgba(255, 255, 255, 0.1); border-radius: 12px; color: #a1a1aa; }
+.mf-card-body { padding: 20px; }
+
+.mf-notice { padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; }
+.mf-notice.success { background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); color: #e4e4e7; }
+.mf-notice.warning { background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.3); color: #e4e4e7; }
+.mf-notice.error { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #e4e4e7; }
+.mf-notice-icon { font-size: 1.25rem; }
+.mf-notice-text strong { color: #22c55e; }
+.mf-notice.warning .mf-notice-text strong { color: #fbbf24; }
+.mf-notice.error .mf-notice-text strong { color: #ef4444; }
+
+.mf-empty { text-align: center; padding: 48px 20px; color: #71717a; }
+.mf-empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
+.mf-empty-text { font-size: 1rem; }
+
+.mf-streams-table { width: 100%; border-collapse: collapse; }
+.mf-streams-table th { text-align: left; padding: 12px 16px; font-size: 0.75rem; text-transform: uppercase; color: #71717a; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.mf-streams-table td { padding: 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+.mf-streams-table tr:hover td { background: rgba(255, 255, 255, 0.03); }
+.mf-quality-badge { padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; color: white; }
+
+.mf-btn { padding: 10px 20px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; cursor: pointer; border: none; transition: all 0.2s; }
+.mf-btn-primary { background: linear-gradient(135deg, #ec4899, #8b5cf6); color: white; }
+.mf-btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+.mf-btn-secondary { background: rgba(255, 255, 255, 0.1); color: #e4e4e7; border: 1px solid rgba(255, 255, 255, 0.2); }
+.mf-btn-secondary:hover { background: rgba(255, 255, 255, 0.15); }
+
+.mf-controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+`;
+
+		var view = E('div', { 'class': 'mf-dashboard' }, [
+			E('style', {}, css),
+
+			// Header
+			E('div', { 'class': 'mf-header' }, [
+				E('div', { 'class': 'mf-logo' }, [
+					E('div', { 'class': 'mf-logo-icon' }, '🎬'),
+					E('span', { 'class': 'mf-logo-text' }, 'Media Flow')
 				]),
-				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td left', 'width': '25%' }, [
-						E('strong', {}, _('nDPId: ')),
-						E('span', {}, status.ndpid_running ?
-							E('span', { 'style': 'color: green' }, '● ' + _('Running') + (status.ndpid_version !== 'unknown' ? ' (v' + status.ndpid_version + ')' : '')) :
-							E('span', { 'style': 'color: #999' }, '○ ' + _('Not running'))
-						)
-					]),
-					E('div', { 'class': 'td left', 'width': '25%' }, [
-						E('strong', {}, _('Netifyd: ')),
-						E('span', {}, status.netifyd_running ?
-							E('span', { 'style': 'color: green' }, '● ' + _('Running') + ' (v' + (status.netifyd_version || '?') + ')') :
-							E('span', { 'style': 'color: #999' }, '○ ' + _('Not running'))
-						)
-					]),
-					E('div', { 'class': 'td left', 'width': '25%' }, [
-						E('strong', {}, _('nDPId Flows: ')),
-						E('span', {}, String(status.ndpid_flows || 0))
-					]),
-					E('div', { 'class': 'td left', 'width': '25%' }, [
-						E('strong', {}, _('History: ')),
-						E('span', {}, String(status.history_entries || 0) + ' entries')
+				E('div', { 'class': 'mf-status' }, [
+					E('div', { 'class': 'mf-status-badge ' + (isNdpid || isNetifyd ? 'running' : 'stopped') }, [
+						E('span', { 'class': 'mf-status-dot' }),
+						isNdpid ? 'nDPId Active' : (isNetifyd ? 'Netifyd Active' : 'No DPI')
 					])
 				])
-			])
-		]);
-		v.appendChild(statusSection);
+			]),
 
-		// Info notice based on DPI source
-		var noticeSection;
-		if (dpiSource === 'ndpid') {
-			noticeSection = E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'style': 'background: rgba(0, 212, 170, 0.15); border: 1px solid #00d4aa; padding: 15px; border-radius: 8px; margin-bottom: 15px; color: #e4e4e7;' }, [
-					E('strong', { 'style': 'color: #00d4aa;' }, _('nDPId Active: ')),
-					E('span', {}, _('Using local deep packet inspection for streaming detection. No cloud subscription required.'))
-				])
-			]);
-		} else if (dpiSource === 'netifyd') {
-			noticeSection = E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'style': 'background: rgba(251, 191, 36, 0.15); border: 1px solid #fbbf24; padding: 15px; border-radius: 8px; margin-bottom: 15px; color: #e4e4e7;' }, [
-					E('strong', { 'style': 'color: #fbbf24;' }, _('Notice: ')),
-					E('span', {}, _('Netifyd 5.x requires a cloud subscription for streaming service detection. Install nDPId for local detection.'))
-				])
-			]);
-		} else {
-			var self = this;
-			noticeSection = E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'style': 'background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; padding: 15px; border-radius: 8px; margin-bottom: 15px; color: #e4e4e7;' }, [
-					E('strong', { 'style': 'color: #ef4444;' }, _('No DPI Engine: ')),
-					E('span', {}, _('No DPI service is running. ')),
-					E('div', { 'style': 'margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;' }, [
-						E('button', {
-							'class': 'cbi-button cbi-button-positive',
-							'click': function() {
-								ui.showModal(_('Starting nDPId...'), [
-									E('p', { 'class': 'spinning' }, _('Starting nDPId and compatibility layer...'))
-								]);
-								API.startNdpid().then(function(res) {
-									ui.hideModal();
-									if (res && res.success) {
-										ui.addNotification(null, E('p', {}, res.message || _('nDPId started')), 'success');
-										setTimeout(function() { window.location.reload(); }, 2000);
-									} else {
-										ui.addNotification(null, E('p', {}, res.message || _('Failed to start nDPId')), 'error');
-									}
-								}).catch(function() {
-									ui.hideModal();
-									ui.addNotification(null, E('p', {}, _('Failed to start nDPId. Check if it is installed.')), 'error');
-								});
-							}
-						}, _('Start nDPId')),
-						E('button', {
-							'class': 'cbi-button cbi-button-action',
-							'click': function() {
-								ui.showModal(_('Starting Netifyd...'), [
-									E('p', { 'class': 'spinning' }, _('Starting netifyd service...'))
-								]);
-								API.startNetifyd().then(function(res) {
-									ui.hideModal();
-									if (res && res.success) {
-										ui.addNotification(null, E('p', {}, res.message || _('Netifyd started')), 'success');
-										setTimeout(function() { window.location.reload(); }, 2000);
-									} else {
-										ui.addNotification(null, E('p', {}, res.message || _('Failed to start netifyd')), 'error');
-									}
-								}).catch(function() {
-									ui.hideModal();
-									ui.addNotification(null, E('p', {}, _('Failed to start netifyd. Check if it is installed.')), 'error');
-								});
-							}
-						}, _('Start Netifyd')),
-						E('a', {
-							'class': 'cbi-button',
-							'href': L.url('admin/services/ndpid/settings')
-						}, _('nDPId Settings'))
-					])
-				])
-			]);
-		}
-		v.appendChild(noticeSection);
-
-		// Active Streams section (when nDPId provides data)
-		var streamsSection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Active Streams')),
-			E('div', { 'id': 'active-streams-container' })
-		]);
-
-		var categoryIcons = {
-			'video': String.fromCodePoint(0x1F3AC),
-			'audio': String.fromCodePoint(0x1F3B5),
-			'visio': String.fromCodePoint(0x1F4F9)
-		};
-
-		var qualityColors = {
-			'4K': '#9333ea',
-			'FHD': '#2563eb',
-			'HD': '#059669',
-			'SD': '#d97706',
-			'Lossless': '#9333ea',
-			'High': '#2563eb',
-			'Normal': '#059669',
-			'Low': '#d97706',
-			'Audio Only': '#6b7280'
-		};
-
-		var renderActiveStreams = function(streams, dpiSrc) {
-			var container = document.getElementById('active-streams-container');
-			if (!container) return;
-
-			container.innerHTML = '';
-
-			if (!streams || streams.length === 0) {
-				container.appendChild(E('div', { 'style': 'text-align: center; padding: 30px; color: #a1a1aa;' }, [
-					E('div', { 'style': 'font-size: 3em; margin-bottom: 10px;' }, String.fromCodePoint(0x1F4E1)),
-					E('p', {}, dpiSrc === 'ndpid' ? _('No streaming activity detected') : _('Waiting for streaming data...'))
-				]));
-				return;
-			}
-
-			var table = E('table', { 'class': 'table', 'style': 'width: 100%;' }, [
-				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, _('Service')),
-					E('th', { 'class': 'th' }, _('Client')),
-					E('th', { 'class': 'th' }, _('Category')),
-					E('th', { 'class': 'th' }, _('Quality')),
-					E('th', { 'class': 'th' }, _('Bandwidth')),
-					E('th', { 'class': 'th' }, _('Data'))
-				])
-			]);
-
-			streams.slice(0, 20).forEach(function(stream) {
-				var icon = categoryIcons[stream.category] || String.fromCodePoint(0x1F4CA);
-				var qualityColor = qualityColors[stream.quality] || '#6b7280';
-				var bytesTotal = (stream.bytes_rx || 0) + (stream.bytes_tx || 0);
-				var dataMB = (bytesTotal / 1048576).toFixed(1);
-
-				table.appendChild(E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td' }, [
-						E('strong', {}, stream.app || 'Unknown')
-					]),
-					E('td', { 'class': 'td' }, stream.client || '-'),
-					E('td', { 'class': 'td' }, icon + ' ' + (stream.category || 'other')),
-					E('td', { 'class': 'td' }, [
-						E('span', { 'style': 'background: ' + qualityColor + '; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;' },
-							stream.quality || '-')
-					]),
-					E('td', { 'class': 'td' }, (stream.bandwidth || 0) + ' kbps'),
-					E('td', { 'class': 'td' }, dataMB + ' MB')
-				]));
-			});
-
-			container.appendChild(table);
-		};
-
-		// Initial render of streams
-		renderActiveStreams(streamsData.streams || [], dpiSource);
-		v.appendChild(streamsSection);
-
-		// Network flow stats - render initial data from load()
-		var initialFlowCount = streamsData.flow_count || 0;
-		var initialStreamCount = (streamsData.streams || []).length;
-		var initialNote = streamsData.note || '';
-
-		var flowSection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Network Flow Statistics')),
-			E('div', { 'id': 'flow-stats-container' }, [
-				E('div', { 'style': 'display: flex; justify-content: space-around; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 12px;' }, [
-					E('div', { 'style': 'text-align: center;' }, [
-						E('div', { 'id': 'total-flows-value', 'style': 'font-size: 2.5em; color: #06b6d4; font-weight: bold;' }, String(initialFlowCount)),
-						E('div', { 'style': 'color: #a1a1aa; margin-top: 5px;' }, _('Total Flows'))
-					]),
-					E('div', { 'style': 'text-align: center;' }, [
-						E('div', { 'id': 'streaming-flows-value', 'style': 'font-size: 2.5em; color: #ec4899; font-weight: bold;' }, String(initialStreamCount)),
-						E('div', { 'style': 'color: #a1a1aa; margin-top: 5px;' }, _('Streaming Flows'))
-					])
+			// Stats Grid
+			E('div', { 'class': 'mf-stats-grid' }, [
+				E('div', { 'class': 'mf-stat-card' }, [
+					E('div', { 'class': 'mf-stat-icon' }, '📊'),
+					E('div', { 'class': 'mf-stat-value cyan', 'id': 'mf-total-flows' }, String(flowCount)),
+					E('div', { 'class': 'mf-stat-label' }, 'Total Flows')
 				]),
-				initialNote ? E('p', { 'style': 'font-style: italic; color: #a1a1aa; text-align: center; margin-top: 10px;' }, initialNote) : E('span')
-			])
-		]);
-
-		var updateFlowStats = function() {
-			API.getActiveStreams().then(function(data) {
-				var container = document.getElementById('flow-stats-container');
-				if (!container) return;
-
-				var flowCount = data.flow_count || 0;
-				var dpiSrc = data.dpi_source || 'none';
-				var note = data.note || '';
-
-				container.innerHTML = '';
-				container.appendChild(E('div', { 'style': 'display: flex; justify-content: space-around; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 12px;' }, [
-					E('div', { 'style': 'text-align: center;' }, [
-						E('div', { 'style': 'font-size: 2.5em; color: #06b6d4; font-weight: bold;' }, String(flowCount)),
-						E('div', { 'style': 'color: #a1a1aa; margin-top: 5px;' }, _('Total Flows'))
-					]),
-					E('div', { 'style': 'text-align: center;' }, [
-						E('div', { 'style': 'font-size: 2.5em; color: #ec4899; font-weight: bold;' }, String((data.streams || []).length)),
-						E('div', { 'style': 'color: #a1a1aa; margin-top: 5px;' }, _('Streaming Flows'))
-					])
-				]));
-
-				if (note) {
-					container.appendChild(E('p', { 'style': 'font-style: italic; color: #a1a1aa; text-align: center; margin-top: 10px;' }, note));
-				}
-
-				// Update active streams table
-				renderActiveStreams(data.streams || [], dpiSrc);
-			});
-		};
-
-		v.appendChild(flowSection);
-
-		// Stats by service (from history)
-		var statsSection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Historical Usage by Service')),
-			E('p', { 'style': 'color: #a1a1aa; font-size: 0.9em;' }, _('Data collected from previous sessions (if available)')),
-			E('div', { 'style': 'display: flex; gap: 20px;' }, [
-				E('div', { 'style': 'flex: 0 0 300px;' }, [
-					E('canvas', {
-						'id': 'service-donut-chart',
-						'width': '300',
-						'height': '300',
-						'style': 'max-width: 100%;'
-					})
+				E('div', { 'class': 'mf-stat-card' }, [
+					E('div', { 'class': 'mf-stat-icon' }, '🎬'),
+					E('div', { 'class': 'mf-stat-value pink', 'id': 'mf-stream-count' }, String(streams.length)),
+					E('div', { 'class': 'mf-stat-label' }, 'Active Streams')
 				]),
-				E('div', { 'id': 'service-stats', 'style': 'flex: 1;' })
-			])
-		]);
+				E('div', { 'class': 'mf-stat-card' }, [
+					E('div', { 'class': 'mf-stat-icon' }, '🔍'),
+					E('div', { 'class': 'mf-stat-value green' }, status.ndpid_running ? '✓' : '✗'),
+					E('div', { 'class': 'mf-stat-label' }, 'nDPId')
+				]),
+				E('div', { 'class': 'mf-stat-card' }, [
+					E('div', { 'class': 'mf-stat-icon' }, '📡'),
+					E('div', { 'class': 'mf-stat-value yellow' }, status.netifyd_running ? '✓' : '✗'),
+					E('div', { 'class': 'mf-stat-label' }, 'Netifyd')
+				])
+			]),
 
-		var serviceColors = [
-			'#0088cc', '#00cc88', '#cc0088', '#cc8800', '#8800cc',
-			'#00cccc', '#cc00cc', '#cccc00', '#0000cc', '#cc0000'
-		];
+			// DPI Notice
+			isNdpid ? E('div', { 'class': 'mf-notice success' }, [
+				E('span', { 'class': 'mf-notice-icon' }, '✅'),
+				E('span', { 'class': 'mf-notice-text' }, [
+					E('strong', {}, 'nDPId Active: '),
+					'Using local deep packet inspection. No cloud subscription required.'
+				])
+			]) : (isNetifyd ? E('div', { 'class': 'mf-notice warning' }, [
+				E('span', { 'class': 'mf-notice-icon' }, '⚠️'),
+				E('span', { 'class': 'mf-notice-text' }, [
+					E('strong', {}, 'Netifyd Active: '),
+					'Cloud subscription may be required for full app detection.'
+				])
+			]) : E('div', { 'class': 'mf-notice error' }, [
+				E('span', { 'class': 'mf-notice-icon' }, '❌'),
+				E('span', { 'class': 'mf-notice-text' }, [
+					E('strong', {}, 'No DPI Engine: '),
+					'Start nDPId or Netifyd for streaming detection.'
+				]),
+				E('div', { 'class': 'mf-controls' }, [
+					E('button', {
+						'class': 'mf-btn mf-btn-primary',
+						'click': function() {
+							ui.showModal(_('Starting...'), [E('p', { 'class': 'spinning' }, _('Starting nDPId...'))]);
+							API.startNdpid().then(function(res) {
+								ui.hideModal();
+								if (res && res.success) {
+									ui.addNotification(null, E('p', {}, 'nDPId started'), 'success');
+									setTimeout(function() { window.location.reload(); }, 2000);
+								} else {
+									ui.addNotification(null, E('p', {}, res.message || 'Failed'), 'error');
+								}
+							});
+						}
+					}, 'Start nDPId'),
+					E('button', {
+						'class': 'mf-btn mf-btn-secondary',
+						'click': function() {
+							ui.showModal(_('Starting...'), [E('p', { 'class': 'spinning' }, _('Starting Netifyd...'))]);
+							API.startNetifyd().then(function(res) {
+								ui.hideModal();
+								if (res && res.success) {
+									ui.addNotification(null, E('p', {}, 'Netifyd started'), 'success');
+									setTimeout(function() { window.location.reload(); }, 2000);
+								} else {
+									ui.addNotification(null, E('p', {}, res.message || 'Failed'), 'error');
+								}
+							});
+						}
+					}, 'Start Netifyd')
+				])
+			])),
 
-		var drawDonutChart = function(services, servicesList, total) {
-			var canvas = document.getElementById('service-donut-chart');
-			if (!canvas || !canvas.getContext) return;
-
-			var ctx = canvas.getContext('2d');
-			var centerX = 150;
-			var centerY = 150;
-			var outerRadius = 120;
-			var innerRadius = 70;
-
-			// Clear canvas
-			ctx.clearRect(0, 0, 300, 300);
-
-			if (servicesList.length === 0 || total === 0) {
-				ctx.fillStyle = '#999';
-				ctx.font = '14px sans-serif';
-				ctx.textAlign = 'center';
-				ctx.fillText(_('No data'), centerX, centerY);
-				return;
-			}
-
-			// Draw donut segments
-			var currentAngle = -Math.PI / 2; // Start at top
-
-			servicesList.slice(0, 10).forEach(function(service, index) {
-				var duration = services[service].total_duration_seconds || 0;
-				var percentage = duration / total;
-				var segmentAngle = percentage * 2 * Math.PI;
-
-				// Draw segment
-				ctx.fillStyle = serviceColors[index % serviceColors.length];
-				ctx.beginPath();
-				ctx.arc(centerX, centerY, outerRadius, currentAngle, currentAngle + segmentAngle);
-				ctx.arc(centerX, centerY, innerRadius, currentAngle + segmentAngle, currentAngle, true);
-				ctx.closePath();
-				ctx.fill();
-
-				// Draw border
-				ctx.strokeStyle = '#fff';
-				ctx.lineWidth = 2;
-				ctx.stroke();
-
-				currentAngle += segmentAngle;
-			});
-
-			// Draw center circle (donut hole)
-			ctx.fillStyle = '#1a1a24';
-			ctx.beginPath();
-			ctx.arc(centerX, centerY, innerRadius, 0, 2 * Math.PI);
-			ctx.fill();
-
-			// Draw total in center
-			ctx.fillStyle = '#e4e4e7';
-			ctx.font = 'bold 16px sans-serif';
-			ctx.textAlign = 'center';
-			ctx.textBaseline = 'middle';
-			var totalHours = Math.floor(total / 3600);
-			ctx.fillText(totalHours + 'h', centerX, centerY - 10);
-			ctx.font = '12px sans-serif';
-			ctx.fillText(_('Total'), centerX, centerY + 10);
-		};
-
-		var updateServiceStats = function() {
-			API.getStatsByService().then(function(data) {
-				var services = data.services || {};
-				var container = document.getElementById('service-stats');
-
-				if (!container) return;
-
-				container.innerHTML = '';
-
-				var servicesList = Object.keys(services);
-				if (servicesList.length === 0) {
-					container.appendChild(E('p', { 'style': 'font-style: italic; color: #a1a1aa;' }, _('No historical data available. Start streaming services while nDPId is running to collect data.')));
-					drawDonutChart({}, [], 0);
-					return;
-				}
-
-				// Calculate total for percentage
-				var total = 0;
-				servicesList.forEach(function(service) {
-					total += services[service].total_duration_seconds || 0;
-				});
-
-				// Sort by duration
-				servicesList.sort(function(a, b) {
-					return (services[b].total_duration_seconds || 0) - (services[a].total_duration_seconds || 0);
-				});
-
-				// Draw donut chart
-				drawDonutChart(services, servicesList, total);
-
-				// Display top 10
-				servicesList.slice(0, 10).forEach(function(service, index) {
-					var stats = services[service];
-					var duration = stats.total_duration_seconds || 0;
-					var percentage = total > 0 ? Math.round((duration / total) * 100) : 0;
-					var hours = Math.floor(duration / 3600);
-					var minutes = Math.floor((duration % 3600) / 60);
-
-					var categoryIcon = {
-						'video': '🎬',
-						'audio': '🎵',
-						'visio': '📹'
-					}[stats.category] || '📊';
-
-					var color = serviceColors[index % serviceColors.length];
-
-					container.appendChild(E('div', { 'style': 'margin: 10px 0' }, [
-						E('div', { 'style': 'margin-bottom: 5px; color: #e4e4e7;' }, [
-							E('span', {
-								'style': 'display: inline-block; width: 12px; height: 12px; background: ' + color + '; margin-right: 8px; border-radius: 2px;'
-							}),
-							E('strong', {}, categoryIcon + ' ' + service),
-							E('span', { 'style': 'float: right; color: #a1a1aa;' }, hours + 'h ' + minutes + 'm (' + percentage + '%)')
+			// Active Streams Card
+			E('div', { 'class': 'mf-card' }, [
+				E('div', { 'class': 'mf-card-header' }, [
+					E('div', { 'class': 'mf-card-title' }, [
+						E('span', {}, '🎬'),
+						'Active Streams'
+					]),
+					E('div', { 'class': 'mf-card-badge', 'id': 'mf-streams-badge' }, streams.length + ' streaming')
+				]),
+				E('div', { 'class': 'mf-card-body', 'id': 'mf-streams-container' },
+					streams.length > 0 ?
+					E('table', { 'class': 'mf-streams-table' }, [
+						E('thead', {}, [
+							E('tr', {}, [
+								E('th', {}, 'Service'),
+								E('th', {}, 'Client'),
+								E('th', {}, 'Quality'),
+								E('th', {}, 'Data')
+							])
 						]),
-						E('div', {
-							'style': 'background: rgba(255, 255, 255, 0.1); height: 20px; border-radius: 5px; overflow: hidden'
-						}, [
-							E('div', {
-								'style': 'background: ' + color + '; height: 100%; width: ' + percentage + '%'
+						E('tbody', {},
+							streams.slice(0, 15).map(function(s) {
+								var qualityColors = { '4K': '#9333ea', 'FHD': '#2563eb', 'HD': '#059669', 'SD': '#d97706' };
+								var totalBytes = (s.bytes_rx || 0) + (s.bytes_tx || 0);
+								return E('tr', {}, [
+									E('td', {}, E('strong', {}, s.app || 'Unknown')),
+									E('td', {}, s.client || s.src_ip || '-'),
+									E('td', {}, s.quality ? E('span', { 'class': 'mf-quality-badge', 'style': 'background:' + (qualityColors[s.quality] || '#6b7280') }, s.quality) : '-'),
+									E('td', {}, self.formatBytes(totalBytes))
+								]);
 							})
-						])
-					]));
-				});
-			});
-		};
+						)
+					]) :
+					E('div', { 'class': 'mf-empty' }, [
+						E('div', { 'class': 'mf-empty-icon' }, '📺'),
+						E('div', { 'class': 'mf-empty-text' }, isNdpid ? 'No streaming activity detected' : 'Waiting for streaming data...')
+					])
+				)
+			])
+		]);
 
-		v.appendChild(statsSection);
-
-		wrapper.appendChild(v);
-
-		// Call update functions after DOM is ready (delay for LuCI to insert into page)
-		setTimeout(function() {
-			updateFlowStats();
-			updateServiceStats();
-		}, 100);
-
-		// Setup auto-refresh
+		// Start polling
 		poll.add(L.bind(function() {
-			updateFlowStats();
-			updateServiceStats();
-		}, this), 5);
+			return API.getActiveStreams().then(L.bind(function(data) {
+				var el = document.getElementById('mf-total-flows');
+				if (el) el.textContent = String(data.flow_count || 0);
+				var el2 = document.getElementById('mf-stream-count');
+				if (el2) el2.textContent = String((data.streams || []).length);
+				var badge = document.getElementById('mf-streams-badge');
+				if (badge) badge.textContent = (data.streams || []).length + ' streaming';
+			}, this));
+		}, this), this.pollInterval);
 
-		return wrapper;
+		return view;
 	},
 
 	handleSaveApply: null,
