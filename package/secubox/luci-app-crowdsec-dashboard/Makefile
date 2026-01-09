@@ -8,7 +8,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-crowdsec-dashboard
-PKG_VERSION:=0.6.0
+PKG_VERSION:=0.7.0
 PKG_RELEASE:=8
 PKG_ARCH:=all
 
