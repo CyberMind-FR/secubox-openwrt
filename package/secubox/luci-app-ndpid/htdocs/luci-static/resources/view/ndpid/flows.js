@@ -4,6 +4,13 @@
 'require dom';
 'require ui';
 'require ndpid.api as api';
+'require secubox-theme/theme as Theme';
+'require secubox-portal/header as SbHeader';
+
+var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: lang });
 
 return view.extend({
 	title: _('nDPId Flows'),
@@ -428,7 +435,10 @@ return view.extend({
 		// Start polling
 		this.startPolling();
 
-		return view;
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	handleSaveApply: null,

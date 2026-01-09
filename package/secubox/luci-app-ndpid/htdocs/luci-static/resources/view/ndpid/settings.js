@@ -4,6 +4,13 @@
 'require uci';
 'require ui';
 'require ndpid.api as api';
+'require secubox-theme/theme as Theme';
+'require secubox-portal/header as SbHeader';
+
+var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: lang });
 
 return view.extend({
 	title: _('nDPId Settings'),
@@ -160,6 +167,11 @@ return view.extend({
 		o.value('vpn_udp', 'VPN (UDP)');
 		o.depends('enabled', '1');
 
-		return m.render();
+		return m.render().then(function(formEl) {
+			var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+			wrapper.appendChild(SbHeader.render());
+			wrapper.appendChild(formEl);
+			return wrapper;
+		});
 	}
 });
