@@ -182,7 +182,7 @@ return baseclass.extend({
 			iconBg: 'rgba(161, 161, 170, 0.15)',
 			iconColor: '#a1a1aa',
 			section: 'system',
-			path: 'admin/secubox/system/settings',
+			path: 'admin/secubox/settings',
 			service: null,
 			version: null
 		}

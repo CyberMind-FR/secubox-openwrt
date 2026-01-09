@@ -23,6 +23,14 @@
 			"path": "secubox-portal/apps"
 		}
 	},
+	"admin/secubox/settings": {
+		"title": "Settings",
+		"order": 70,
+		"action": {
+			"type": "view",
+			"path": "system-hub/settings"
+		}
+	},
 	"admin/secubox-home": {
 		"title": "SecuBox Home",
 		"order": 0,
