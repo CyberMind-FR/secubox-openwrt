@@ -13,6 +13,31 @@ var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(navigator.language ? navigator.language.split('-')[0] : 'en');
 Theme.init({ language: lang });
 
+var NETIFYD_NAV = [
+	{ id: 'dashboard', icon: '📊', label: 'Dashboard' },
+	{ id: 'flows', icon: '🔍', label: 'Flows' },
+	{ id: 'devices', icon: '💻', label: 'Devices' },
+	{ id: 'applications', icon: '📱', label: 'Applications' },
+	{ id: 'settings', icon: '⚙️', label: 'Settings' }
+];
+
+function renderNetifydNav(activeId) {
+	return E('div', {
+		'class': 'sb-app-nav',
+		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:8px;background:rgba(255,255,255,0.05);border-radius:12px;flex-wrap:wrap;'
+	}, NETIFYD_NAV.map(function(item) {
+		var isActive = activeId === item.id;
+		return E('a', {
+			'href': L.url('admin', 'secubox', 'netifyd', item.id),
+			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
+				(isActive ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:white;' : 'color:#a0a0b0;')
+		}, [
+			E('span', {}, item.icon),
+			E('span', {}, _(item.label))
+		]);
+	}));
+}
+
 var callServiceList = rpc.declare({
 	object: 'service',
 	method: 'list',
@@ -752,7 +777,9 @@ return view.extend({
 
 		return m.render().then(function(formEl) {
 			var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+			wrapper.appendChild(E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-netifyd/netifyd.css') }));
 			wrapper.appendChild(SbHeader.render());
+			wrapper.appendChild(renderNetifydNav('settings'));
 			wrapper.appendChild(formEl);
 			return wrapper;
 		});

@@ -12,6 +12,29 @@ var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(navigator.language ? navigator.language.split('-')[0] : 'en');
 Theme.init({ language: lang });
 
+var NDPID_NAV = [
+	{ id: 'dashboard', icon: '📊', label: 'Dashboard' },
+	{ id: 'flows', icon: '🔍', label: 'Flows' },
+	{ id: 'settings', icon: '⚙️', label: 'Settings' }
+];
+
+function renderNdpidNav(activeId) {
+	return E('div', {
+		'class': 'sb-app-nav',
+		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:8px;background:rgba(255,255,255,0.05);border-radius:12px;'
+	}, NDPID_NAV.map(function(item) {
+		var isActive = activeId === item.id;
+		return E('a', {
+			'href': L.url('admin', 'secubox', 'ndpid', item.id),
+			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
+				(isActive ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:white;' : 'color:#a0a0b0;')
+		}, [
+			E('span', {}, item.icon),
+			E('span', {}, _(item.label))
+		]);
+	}));
+}
+
 return view.extend({
 	title: _('nDPId Flows'),
 	pollInterval: 3,
@@ -437,6 +460,7 @@ return view.extend({
 
 		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
 		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(renderNdpidNav('flows'));
 		wrapper.appendChild(view);
 		return wrapper;
 	},

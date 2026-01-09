@@ -12,6 +12,31 @@ var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(navigator.language ? navigator.language.split('-')[0] : 'en');
 Theme.init({ language: lang });
 
+var NETIFYD_NAV = [
+	{ id: 'dashboard', icon: '📊', label: 'Dashboard' },
+	{ id: 'flows', icon: '🔍', label: 'Flows' },
+	{ id: 'devices', icon: '💻', label: 'Devices' },
+	{ id: 'applications', icon: '📱', label: 'Applications' },
+	{ id: 'settings', icon: '⚙️', label: 'Settings' }
+];
+
+function renderNetifydNav(activeId) {
+	return E('div', {
+		'class': 'sb-app-nav',
+		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:8px;background:rgba(255,255,255,0.05);border-radius:12px;flex-wrap:wrap;'
+	}, NETIFYD_NAV.map(function(item) {
+		var isActive = activeId === item.id;
+		return E('a', {
+			'href': L.url('admin', 'secubox', 'netifyd', item.id),
+			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
+				(isActive ? 'background:linear-gradient(135deg,#667eea,#764ba2);color:white;' : 'color:#a0a0b0;')
+		}, [
+			E('span', {}, item.icon),
+			E('span', {}, _(item.label))
+		]);
+	}));
+}
+
 var callGetDevices = rpc.declare({
 	object: 'luci.secubox-netifyd',
 	method: 'get_detected_devices'
@@ -332,6 +357,7 @@ return view.extend({
 		var serviceRunning = status.running;
 
 		var view = E('div', { 'style': 'max-width: 1400px; margin: 0 auto; padding: 24px' }, [
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-netifyd/netifyd.css') }),
 			// Header
 			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px' }, [
 				E('div', { 'style': 'display: flex; align-items: center; gap: 12px' }, [
@@ -405,6 +431,7 @@ return view.extend({
 
 		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
 		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(renderNetifydNav('devices'));
 		wrapper.appendChild(view);
 		return wrapper;
 	},
