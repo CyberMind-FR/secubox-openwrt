@@ -270,7 +270,6 @@ return L.view.extend({
 			});
 		};
 
-		updateFlowStats();
 		v.appendChild(flowSection);
 
 		// Stats by service (from history)
@@ -423,8 +422,15 @@ return L.view.extend({
 			});
 		};
 
-		updateServiceStats();
 		v.appendChild(statsSection);
+
+		wrapper.appendChild(v);
+
+		// Call update functions after DOM is ready
+		requestAnimationFrame(function() {
+			updateFlowStats();
+			updateServiceStats();
+		});
 
 		// Setup auto-refresh
 		poll.add(L.bind(function() {
@@ -432,7 +438,6 @@ return L.view.extend({
 			updateServiceStats();
 		}, this), 5);
 
-		wrapper.appendChild(v);
 		return wrapper;
 	},
 
