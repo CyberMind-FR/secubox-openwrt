@@ -1,0 +1,371 @@
+'use strict';
+'require view';
+'require dom';
+'require poll';
+'require uci';
+'require rpc';
+'require fs';
+'require ui';
+'require secubox-portal/portal as portal';
+
+var callSystemBoard = rpc.declare({
+	object: 'system',
+	method: 'board'
+});
+
+var callSystemInfo = rpc.declare({
+	object: 'system',
+	method: 'info'
+});
+
+return view.extend({
+	currentSection: 'dashboard',
+	appStatuses: {},
+
+	load: function() {
+		return Promise.all([
+			callSystemBoard(),
+			callSystemInfo(),
+			this.loadAppStatuses()
+		]);
+	},
+
+	loadAppStatuses: function() {
+		var self = this;
+		var apps = portal.apps;
+		var promises = [];
+
+		Object.keys(apps).forEach(function(key) {
+			var app = apps[key];
+			if (app.service) {
+				promises.push(
+					fs.exec('/etc/init.d/' + app.service, ['status'])
+						.then(function(res) {
+							return { id: key, status: (res && res.code === 0) ? 'running' : 'stopped' };
+						})
+						.catch(function() {
+							return { id: key, status: 'stopped' };
+						})
+				);
+			}
+		});
+
+		return Promise.all(promises).then(function(results) {
+			results.forEach(function(r) {
+				self.appStatuses[r.id] = r.status;
+			});
+			return self.appStatuses;
+		});
+	},
+
+	render: function(data) {
+		var boardInfo = data[0] || {};
+		var sysInfo = data[1] || {};
+		var self = this;
+
+		// Set portal app context
+		document.body.setAttribute('data-secubox-app', 'portal');
+
+		// Inject CSS
+		var cssLink = document.querySelector('link[href*="secubox-portal/portal.css"]');
+		if (!cssLink) {
+			var link = document.createElement('link');
+			link.rel = 'stylesheet';
+			link.href = L.resource('secubox-portal/portal.css');
+			document.head.appendChild(link);
+		}
+
+		var container = E('div', { 'class': 'secubox-portal' }, [
+			// Header
+			this.renderHeader(),
+			// Content
+			E('div', { 'class': 'sb-portal-content' }, [
+				this.renderDashboardSection(boardInfo, sysInfo),
+				this.renderSecuritySection(),
+				this.renderNetworkSection(),
+				this.renderMonitoringSection(),
+				this.renderSystemSection()
+			])
+		]);
+
+		// Set initial active section
+		this.switchSection('dashboard');
+
+		return container;
+	},
+
+	renderHeader: function() {
+		var self = this;
+		var sections = portal.getSections();
+
+		return E('div', { 'class': 'sb-portal-header' }, [
+			// Brand
+			E('div', { 'class': 'sb-portal-brand' }, [
+				E('div', { 'class': 'sb-portal-logo' }, 'S'),
+				E('span', { 'class': 'sb-portal-title' }, 'SecuBox'),
+				E('span', { 'class': 'sb-portal-version' }, 'v0.14.0')
+			]),
+			// Navigation
+			E('nav', { 'class': 'sb-portal-nav' },
+				sections.map(function(section) {
+					return E('button', {
+						'class': 'sb-portal-nav-item' + (section.id === 'dashboard' ? ' active' : ''),
+						'data-section': section.id,
+						'click': function() { self.switchSection(section.id); }
+					}, [
+						E('span', { 'class': 'sb-portal-nav-icon' }, section.icon),
+						section.name
+					]);
+				})
+			),
+			// Actions
+			E('div', { 'class': 'sb-portal-actions' }, [
+				E('a', {
+					'class': 'sb-luci-return',
+					'href': L.url('admin/status/overview'),
+					'title': 'Return to standard LuCI interface'
+				}, [
+					'\u2190 Standard LuCI'
+				])
+			])
+		]);
+	},
+
+	switchSection: function(sectionId) {
+		this.currentSection = sectionId;
+
+		// Update nav active state
+		document.querySelectorAll('.sb-portal-nav-item').forEach(function(btn) {
+			btn.classList.toggle('active', btn.dataset.section === sectionId);
+		});
+
+		// Update section visibility
+		document.querySelectorAll('.sb-portal-section').forEach(function(section) {
+			section.classList.toggle('active', section.dataset.section === sectionId);
+		});
+	},
+
+	renderDashboardSection: function(boardInfo, sysInfo) {
+		var self = this;
+		var securityApps = portal.getAppsBySection('security');
+		var networkApps = portal.getAppsBySection('network');
+		var monitoringApps = portal.getAppsBySection('monitoring');
+
+		// Count running services
+		var runningCount = Object.values(this.appStatuses).filter(function(s) { return s === 'running'; }).length;
+		var totalServices = Object.keys(this.appStatuses).length;
+
+		return E('div', { 'class': 'sb-portal-section active', 'data-section': 'dashboard' }, [
+			E('div', { 'class': 'sb-section-header' }, [
+				E('h2', { 'class': 'sb-section-title' }, 'SecuBox Dashboard'),
+				E('p', { 'class': 'sb-section-subtitle' },
+					'Welcome to SecuBox - Your unified network security and management platform')
+			]),
+
+			// Quick Stats
+			E('div', { 'class': 'sb-dashboard-grid' }, [
+				// System Status
+				E('div', { 'class': 'sb-quick-stat' }, [
+					E('div', { 'class': 'sb-quick-stat-header' }, [
+						E('div', { 'class': 'sb-quick-stat-icon system' }, '\ud83d\udda5\ufe0f'),
+						E('span', { 'class': 'sb-quick-stat-status running' }, 'Online')
+					]),
+					E('div', { 'class': 'sb-quick-stat-value' }, boardInfo.hostname || 'SecuBox'),
+					E('div', { 'class': 'sb-quick-stat-label' }, boardInfo.model || 'Router')
+				]),
+
+				// Services Status
+				E('div', { 'class': 'sb-quick-stat' }, [
+					E('div', { 'class': 'sb-quick-stat-header' }, [
+						E('div', { 'class': 'sb-quick-stat-icon monitoring' }, '\u2699\ufe0f'),
+						E('span', { 'class': 'sb-quick-stat-status ' + (runningCount > 0 ? 'running' : 'warning') },
+							runningCount > 0 ? 'Active' : 'Idle')
+					]),
+					E('div', { 'class': 'sb-quick-stat-value' }, runningCount + '/' + totalServices),
+					E('div', { 'class': 'sb-quick-stat-label' }, 'Services Running')
+				]),
+
+				// Security Apps
+				E('div', { 'class': 'sb-quick-stat' }, [
+					E('div', { 'class': 'sb-quick-stat-header' }, [
+						E('div', { 'class': 'sb-quick-stat-icon security' }, '\ud83d\udee1\ufe0f'),
+						E('span', { 'class': 'sb-quick-stat-status running' }, 'Protected')
+					]),
+					E('div', { 'class': 'sb-quick-stat-value' }, securityApps.length),
+					E('div', { 'class': 'sb-quick-stat-label' }, 'Security Modules')
+				]),
+
+				// Network Apps
+				E('div', { 'class': 'sb-quick-stat' }, [
+					E('div', { 'class': 'sb-quick-stat-header' }, [
+						E('div', { 'class': 'sb-quick-stat-icon network' }, '\ud83c\udf10'),
+						E('span', { 'class': 'sb-quick-stat-status running' }, 'Configured')
+					]),
+					E('div', { 'class': 'sb-quick-stat-value' }, networkApps.length),
+					E('div', { 'class': 'sb-quick-stat-label' }, 'Network Tools')
+				])
+			]),
+
+			// Featured Apps
+			E('h3', { 'style': 'margin: 1.5rem 0 1rem; color: var(--cyber-text-primary);' }, 'Quick Access'),
+			E('div', { 'class': 'sb-app-grid' },
+				this.renderFeaturedApps(['crowdsec', 'bandwidth-manager', 'media-flow', 'ndpid'])
+			),
+
+			// Recent Events placeholder
+			E('div', { 'class': 'sb-events-list', 'style': 'margin-top: 1.5rem;' }, [
+				E('div', { 'class': 'sb-events-header' }, [
+					E('h4', { 'class': 'sb-events-title' }, 'System Overview')
+				]),
+				E('div', { 'class': 'sb-events-item' }, [
+					E('div', { 'class': 'sb-events-icon info' }, '\u2139\ufe0f'),
+					E('div', { 'class': 'sb-events-content' }, [
+						E('p', { 'class': 'sb-events-message' },
+							'System: ' + (boardInfo.system || 'Unknown') + ' | Kernel: ' + (boardInfo.kernel || 'Unknown')),
+						E('span', { 'class': 'sb-events-meta' }, 'System Information')
+					])
+				]),
+				E('div', { 'class': 'sb-events-item' }, [
+					E('div', { 'class': 'sb-events-icon success' }, '\u2705'),
+					E('div', { 'class': 'sb-events-content' }, [
+						E('p', { 'class': 'sb-events-message' },
+							'Uptime: ' + this.formatUptime(sysInfo.uptime || 0)),
+						E('span', { 'class': 'sb-events-meta' }, 'System Status')
+					])
+				]),
+				E('div', { 'class': 'sb-events-item' }, [
+					E('div', { 'class': 'sb-events-icon info' }, '\ud83d\udcbe'),
+					E('div', { 'class': 'sb-events-content' }, [
+						E('p', { 'class': 'sb-events-message' },
+							'Memory: ' + this.formatBytes(sysInfo.memory ? sysInfo.memory.total - sysInfo.memory.free : 0) +
+							' / ' + this.formatBytes(sysInfo.memory ? sysInfo.memory.total : 0) + ' used'),
+						E('span', { 'class': 'sb-events-meta' }, 'Resource Usage')
+					])
+				])
+			])
+		]);
+	},
+
+	renderFeaturedApps: function(appIds) {
+		var self = this;
+		return appIds.map(function(id) {
+			var app = portal.apps[id];
+			if (!app) return null;
+
+			var status = self.appStatuses[id];
+
+			return E('a', {
+				'class': 'sb-app-card',
+				'href': L.url(app.path)
+			}, [
+				E('div', { 'class': 'sb-app-card-header' }, [
+					E('div', {
+						'class': 'sb-app-card-icon',
+						'style': 'background: ' + app.iconBg + '; color: ' + app.iconColor + ';'
+					}, app.icon),
+					E('div', {}, [
+						E('h4', { 'class': 'sb-app-card-title' }, app.name),
+						app.version ? E('span', { 'class': 'sb-app-card-version' }, 'v' + app.version) : null
+					])
+				]),
+				E('p', { 'class': 'sb-app-card-desc' }, app.desc),
+				status ? E('div', { 'class': 'sb-app-card-status' }, [
+					E('span', { 'class': 'sb-app-card-status-dot ' + status }),
+					E('span', { 'class': 'sb-app-card-status-text' },
+						status === 'running' ? 'Service running' : 'Service stopped')
+				]) : null
+			]);
+		}).filter(function(el) { return el !== null; });
+	},
+
+	renderSecuritySection: function() {
+		var apps = portal.getAppsBySection('security');
+		return this.renderAppSection('security', 'Security',
+			'Protect your network with advanced security tools', apps);
+	},
+
+	renderNetworkSection: function() {
+		var apps = portal.getAppsBySection('network');
+		return this.renderAppSection('network', 'Network',
+			'Configure and optimize your network connections', apps);
+	},
+
+	renderMonitoringSection: function() {
+		var apps = portal.getAppsBySection('monitoring');
+		return this.renderAppSection('monitoring', 'Monitoring',
+			'Monitor traffic, applications, and system performance', apps);
+	},
+
+	renderSystemSection: function() {
+		var apps = portal.getAppsBySection('system');
+		return this.renderAppSection('system', 'System',
+			'System administration and configuration tools', apps);
+	},
+
+	renderAppSection: function(sectionId, title, subtitle, apps) {
+		var self = this;
+
+		return E('div', { 'class': 'sb-portal-section', 'data-section': sectionId }, [
+			E('div', { 'class': 'sb-section-header' }, [
+				E('h2', { 'class': 'sb-section-title' }, title),
+				E('p', { 'class': 'sb-section-subtitle' }, subtitle)
+			]),
+			E('div', { 'class': 'sb-app-grid' },
+				apps.map(function(app) {
+					var status = self.appStatuses[app.id];
+
+					return E('a', {
+						'class': 'sb-app-card',
+						'href': L.url(app.path)
+					}, [
+						E('div', { 'class': 'sb-app-card-header' }, [
+							E('div', {
+								'class': 'sb-app-card-icon',
+								'style': 'background: ' + app.iconBg + '; color: ' + app.iconColor + ';'
+							}, app.icon),
+							E('div', {}, [
+								E('h4', { 'class': 'sb-app-card-title' }, app.name),
+								app.version ? E('span', { 'class': 'sb-app-card-version' }, 'v' + app.version) : null
+							])
+						]),
+						E('p', { 'class': 'sb-app-card-desc' }, app.desc),
+						status ? E('div', { 'class': 'sb-app-card-status' }, [
+							E('span', { 'class': 'sb-app-card-status-dot ' + status }),
+							E('span', { 'class': 'sb-app-card-status-text' },
+								status === 'running' ? 'Service running' : 'Service stopped')
+						]) : null
+					]);
+				})
+			)
+		]);
+	},
+
+	formatUptime: function(seconds) {
+		if (!seconds) return 'Unknown';
+		var days = Math.floor(seconds / 86400);
+		var hours = Math.floor((seconds % 86400) / 3600);
+		var mins = Math.floor((seconds % 3600) / 60);
+
+		var parts = [];
+		if (days > 0) parts.push(days + 'd');
+		if (hours > 0) parts.push(hours + 'h');
+		if (mins > 0) parts.push(mins + 'm');
+
+		return parts.join(' ') || '< 1m';
+	},
+
+	formatBytes: function(bytes) {
+		if (!bytes) return '0 B';
+		var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+		var i = 0;
+		while (bytes >= 1024 && i < units.length - 1) {
+			bytes /= 1024;
+			i++;
+		}
+		return bytes.toFixed(1) + ' ' + units[i];
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
+});
