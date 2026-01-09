@@ -1,7 +1,7 @@
 {
-	"admin/services/ndpid": {
-		"title": "nDPId",
-		"order": 60,
+	"admin/secubox/ndpid": {
+		"title": "nDPId Intelligence",
+		"order": 35,
 		"action": {
 			"type": "firstchild"
 		},
@@ -10,7 +10,7 @@
 			"uci": {"ndpid": true}
 		}
 	},
-	"admin/services/ndpid/dashboard": {
+	"admin/secubox/ndpid/dashboard": {
 		"title": "Dashboard",
 		"order": 10,
 		"action": {
@@ -18,7 +18,7 @@
 			"path": "ndpid/dashboard"
 		}
 	},
-	"admin/services/ndpid/flows": {
+	"admin/secubox/ndpid/flows": {
 		"title": "Flows",
 		"order": 20,
 		"action": {
@@ -26,7 +26,7 @@
 			"path": "ndpid/flows"
 		}
 	},
-	"admin/services/ndpid/settings": {
+	"admin/secubox/ndpid/settings": {
 		"title": "Settings",
 		"order": 30,
 		"action": {
