@@ -5,6 +5,7 @@
 
 include $(TOPDIR)/rules.mk
 
+PKG_NAME:=luci-app-secubox-portal
 LUCI_TITLE:=SecuBox Portal - Unified WebUI
 LUCI_DESCRIPTION:=Unified entry point for all SecuBox applications with tabbed navigation
 LUCI_DEPENDS:=+luci-base +luci-theme-secubox
