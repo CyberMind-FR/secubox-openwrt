@@ -7,6 +7,7 @@
 'require secubox-theme/theme as Theme';
 'require system-hub/theme-assets as ThemeAssets';
 'require system-hub/nav as HubNav';
+'require secubox-portal/header as SbHeader';
 
 var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -60,7 +61,10 @@ return view.extend({
 			});
 		}, this.pollInterval);
 
-		return container;
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(container);
+		return wrapper;
 	},
 
 	renderHero: function() {

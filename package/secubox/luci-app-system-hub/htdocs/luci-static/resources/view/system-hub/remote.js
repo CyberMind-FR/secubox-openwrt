@@ -6,6 +6,7 @@
 'require system-hub/api as API';
 'require system-hub/theme-assets as ThemeAssets';
 'require system-hub/nav as HubNav';
+'require secubox-portal/header as SbHeader';
 
 var shLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -244,7 +245,10 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	renderToggle: function(icon, label, desc, enabled, id) {

@@ -4,6 +4,7 @@
 'require system-hub/theme-assets as ThemeAssets';
 'require system-hub/dev-status-widget as DevStatusWidget';
 'require system-hub/nav as HubNav';
+'require secubox-portal/header as SbHeader';
 
 return view.extend({
 	widget: null,
@@ -53,7 +54,10 @@ return view.extend({
 			widget.render('dev-status-widget');
 		});
 
-		return container;
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(container);
+		return wrapper;
 	},
 
 	renderHeader: function() {
