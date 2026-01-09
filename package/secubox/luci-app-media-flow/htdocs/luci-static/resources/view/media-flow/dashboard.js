@@ -88,23 +88,23 @@ return L.view.extend({
 		var noticeSection;
 		if (dpiSource === 'ndpid') {
 			noticeSection = E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'style': 'background: #d4edda; border: 1px solid #28a745; padding: 15px; border-radius: 4px; margin-bottom: 15px;' }, [
-					E('strong', {}, _('nDPId Active: ')),
+				E('div', { 'style': 'background: rgba(0, 212, 170, 0.15); border: 1px solid #00d4aa; padding: 15px; border-radius: 8px; margin-bottom: 15px; color: #e4e4e7;' }, [
+					E('strong', { 'style': 'color: #00d4aa;' }, _('nDPId Active: ')),
 					E('span', {}, _('Using local deep packet inspection for streaming detection. No cloud subscription required.'))
 				])
 			]);
 		} else if (dpiSource === 'netifyd') {
 			noticeSection = E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'style': 'background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 4px; margin-bottom: 15px;' }, [
-					E('strong', {}, _('Notice: ')),
+				E('div', { 'style': 'background: rgba(251, 191, 36, 0.15); border: 1px solid #fbbf24; padding: 15px; border-radius: 8px; margin-bottom: 15px; color: #e4e4e7;' }, [
+					E('strong', { 'style': 'color: #fbbf24;' }, _('Notice: ')),
 					E('span', {}, _('Netifyd 5.x requires a cloud subscription for streaming service detection. Install nDPId for local detection.'))
 				])
 			]);
 		} else {
 			var self = this;
 			noticeSection = E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'style': 'background: #f8d7da; border: 1px solid #dc3545; padding: 15px; border-radius: 4px; margin-bottom: 15px;' }, [
-					E('strong', {}, _('No DPI Engine: ')),
+				E('div', { 'style': 'background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; padding: 15px; border-radius: 8px; margin-bottom: 15px; color: #e4e4e7;' }, [
+					E('strong', { 'style': 'color: #ef4444;' }, _('No DPI Engine: ')),
 					E('span', {}, _('No DPI service is running. ')),
 					E('div', { 'style': 'margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;' }, [
 						E('button', {
@@ -188,7 +188,7 @@ return L.view.extend({
 			container.innerHTML = '';
 
 			if (!streams || streams.length === 0) {
-				container.appendChild(E('div', { 'style': 'text-align: center; padding: 30px; color: #666;' }, [
+				container.appendChild(E('div', { 'style': 'text-align: center; padding: 30px; color: #a1a1aa;' }, [
 					E('div', { 'style': 'font-size: 3em; margin-bottom: 10px;' }, String.fromCodePoint(0x1F4E1)),
 					E('p', {}, dpiSrc === 'ndpid' ? _('No streaming activity detected') : _('Waiting for streaming data...'))
 				]));
@@ -250,19 +250,19 @@ return L.view.extend({
 				var note = data.note || '';
 
 				container.innerHTML = '';
-				container.appendChild(E('div', { 'style': 'display: flex; justify-content: space-around; background: #f8f9fa; padding: 20px; border-radius: 8px;' }, [
+				container.appendChild(E('div', { 'style': 'display: flex; justify-content: space-around; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 12px;' }, [
 					E('div', { 'style': 'text-align: center;' }, [
-						E('div', { 'style': 'font-size: 2.5em; color: #0088cc; font-weight: bold;' }, String(flowCount)),
-						E('div', { 'style': 'color: #666; margin-top: 5px;' }, _('Total Flows'))
+						E('div', { 'style': 'font-size: 2.5em; color: #06b6d4; font-weight: bold;' }, String(flowCount)),
+						E('div', { 'style': 'color: #a1a1aa; margin-top: 5px;' }, _('Total Flows'))
 					]),
 					E('div', { 'style': 'text-align: center;' }, [
 						E('div', { 'style': 'font-size: 2.5em; color: #ec4899; font-weight: bold;' }, String((data.streams || []).length)),
-						E('div', { 'style': 'color: #666; margin-top: 5px;' }, _('Streaming Flows'))
+						E('div', { 'style': 'color: #a1a1aa; margin-top: 5px;' }, _('Streaming Flows'))
 					])
 				]));
 
 				if (note) {
-					container.appendChild(E('p', { 'style': 'font-style: italic; color: #666; text-align: center; margin-top: 10px;' }, note));
+					container.appendChild(E('p', { 'style': 'font-style: italic; color: #a1a1aa; text-align: center; margin-top: 10px;' }, note));
 				}
 
 				// Update active streams table
@@ -276,7 +276,7 @@ return L.view.extend({
 		// Stats by service (from history)
 		var statsSection = E('div', { 'class': 'cbi-section' }, [
 			E('h3', {}, _('Historical Usage by Service')),
-			E('p', { 'style': 'color: #666; font-size: 0.9em;' }, _('Data collected from previous sessions (if available)')),
+			E('p', { 'style': 'color: #a1a1aa; font-size: 0.9em;' }, _('Data collected from previous sessions (if available)')),
 			E('div', { 'style': 'display: flex; gap: 20px;' }, [
 				E('div', { 'style': 'flex: 0 0 300px;' }, [
 					E('canvas', {
@@ -341,13 +341,13 @@ return L.view.extend({
 			});
 
 			// Draw center circle (donut hole)
-			ctx.fillStyle = '#f8f9fa';
+			ctx.fillStyle = '#1a1a24';
 			ctx.beginPath();
 			ctx.arc(centerX, centerY, innerRadius, 0, 2 * Math.PI);
 			ctx.fill();
 
 			// Draw total in center
-			ctx.fillStyle = '#333';
+			ctx.fillStyle = '#e4e4e7';
 			ctx.font = 'bold 16px sans-serif';
 			ctx.textAlign = 'center';
 			ctx.textBaseline = 'middle';
@@ -368,7 +368,7 @@ return L.view.extend({
 
 				var servicesList = Object.keys(services);
 				if (servicesList.length === 0) {
-					container.appendChild(E('p', { 'style': 'font-style: italic' }, _('No historical data available. Start streaming services while nDPId is running to collect data.')));
+					container.appendChild(E('p', { 'style': 'font-style: italic; color: #a1a1aa;' }, _('No historical data available. Start streaming services while nDPId is running to collect data.')));
 					drawDonutChart({}, [], 0);
 					return;
 				}
@@ -404,15 +404,15 @@ return L.view.extend({
 					var color = serviceColors[index % serviceColors.length];
 
 					container.appendChild(E('div', { 'style': 'margin: 10px 0' }, [
-						E('div', { 'style': 'margin-bottom: 5px' }, [
+						E('div', { 'style': 'margin-bottom: 5px; color: #e4e4e7;' }, [
 							E('span', {
 								'style': 'display: inline-block; width: 12px; height: 12px; background: ' + color + '; margin-right: 8px; border-radius: 2px;'
 							}),
 							E('strong', {}, categoryIcon + ' ' + service),
-							E('span', { 'style': 'float: right' }, hours + 'h ' + minutes + 'm (' + percentage + '%)')
+							E('span', { 'style': 'float: right; color: #a1a1aa;' }, hours + 'h ' + minutes + 'm (' + percentage + '%)')
 						]),
 						E('div', {
-							'style': 'background: #e0e0e0; height: 20px; border-radius: 5px; overflow: hidden'
+							'style': 'background: rgba(255, 255, 255, 0.1); height: 20px; border-radius: 5px; overflow: hidden'
 						}, [
 							E('div', {
 								'style': 'background: ' + color + '; height: 100%; width: ' + percentage + '%'
