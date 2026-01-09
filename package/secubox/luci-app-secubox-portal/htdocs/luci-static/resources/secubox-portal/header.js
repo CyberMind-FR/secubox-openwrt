@@ -10,7 +10,7 @@
 // CSS to inject for hiding LuCI elements and styling the header
 var headerCSS = `
 /* Hide OpenWrt/LuCI header and sidebar in SecuBox mode - AGGRESSIVE */
-body.secubox-mode header,
+body.secubox-mode header:not(.sb-global-header),
 body.secubox-mode .main-header,
 body.secubox-mode #mainmenu,
 body.secubox-mode .main-left,
@@ -28,18 +28,32 @@ body.secubox-mode > header:first-child,
 header:has(+ .secubox-page-wrapper),
 header:has(~ .secubox-page-wrapper),
 .main > header,
-body > header,
+body > header:not(.sb-global-header),
 #maincontent > header,
 .container > header:first-child {
 	display: none !important;
 }
 
-/* Force hide the blue OpenWrt header specifically */
+/* Force hide the blue OpenWrt header specifically - target cyan/blue background */
 header[style*="background"],
 .brand[style*="background"],
 header.brand,
-div.brand {
+div.brand,
+body.secubox-mode .showSide,
+body.secubox-mode .darkMask,
+body.secubox-mode .main > header:first-of-type,
+body.secubox-mode .main header:first-child,
+.main > header:not(.sb-global-header),
+header[class]:not(.sb-global-header):not([class*="sb-"]) {
 	display: none !important;
+}
+
+/* Hide OpenWrt header that uses background-color */
+body.secubox-mode header:first-of-type:not(.sb-global-header) {
+	display: none !important;
+	visibility: hidden !important;
+	height: 0 !important;
+	overflow: hidden !important;
 }
 
 /* Make main content full width */
@@ -248,22 +262,52 @@ function hideOpenWrtUI() {
 		'header', '.main-header', '#mainmenu', '.main-left',
 		'nav[role="navigation"]', '#navigation', '.luci-sidebar', 'aside', '#header',
 		'.brand', 'header.brand', 'div.brand', '.header-brand',
-		'.cbi-tabmenu', 'ul.tabs', '.tabs', '#viewtabs', '.view-tabs'
+		'.cbi-tabmenu', 'ul.tabs', '.tabs', '#viewtabs', '.view-tabs',
+		'.showSide', '.darkMask'
 	];
 	selectors.forEach(function(sel) {
 		document.querySelectorAll(sel).forEach(function(el) {
 			// Don't hide our SecuBox header
 			if (!el.classList.contains('sb-global-header') && !el.closest('.sb-global-header')) {
 				el.style.display = 'none';
+				el.style.visibility = 'hidden';
+				el.style.height = '0';
+				el.style.overflow = 'hidden';
 			}
 		});
+	});
+
+	// Specifically hide ALL headers that are not SecuBox header
+	document.querySelectorAll('header').forEach(function(el) {
+		if (!el.classList.contains('sb-global-header') && !el.closest('.sb-global-header') && !el.closest('.secubox-page-wrapper')) {
+			el.style.display = 'none';
+			el.style.visibility = 'hidden';
+			el.style.height = '0';
+			el.style.overflow = 'hidden';
+		}
 	});
 
 	// Specifically hide the first header in document (usually OpenWrt header)
 	var firstHeader = document.querySelector('body > header, #maincontent > header, .container > header, .main > header');
 	if (firstHeader && !firstHeader.classList.contains('sb-global-header')) {
 		firstHeader.style.display = 'none';
+		firstHeader.style.visibility = 'hidden';
+		firstHeader.style.height = '0';
 	}
+
+	// Hide any element with cyan/blue background (OpenWrt header color)
+	var allHeaders = document.querySelectorAll('header, .brand, div[class*="header"]');
+	allHeaders.forEach(function(el) {
+		if (el.classList.contains('sb-global-header') || el.closest('.sb-global-header')) return;
+		var style = window.getComputedStyle(el);
+		var bg = style.backgroundColor || '';
+		// Cyan/blue colors used by OpenWrt
+		if (bg.indexOf('rgb(0,') === 0 || bg.indexOf('rgb(0 ') === 0 || bg.indexOf('#0') === 0 || bg.indexOf('cyan') !== -1) {
+			el.style.display = 'none';
+			el.style.visibility = 'hidden';
+			el.style.height = '0';
+		}
+	});
 
 	// Expand main content
 	var main = document.querySelector('.main-right') || document.querySelector('#maincontent') || document.querySelector('.container');
