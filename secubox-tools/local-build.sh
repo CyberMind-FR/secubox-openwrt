@@ -50,7 +50,7 @@ declare -A DEVICE_PROFILES=(
 )
 
 # Packages that must be built in the OpenWrt buildroot (toolchain) instead of the SDK.
-OPENWRT_ONLY_PACKAGES=("netifyd" "crowdsec" "secubox-app-crowdsec" "secubox-app-netifyd")
+OPENWRT_ONLY_PACKAGES=("netifyd" "crowdsec" "secubox-app-crowdsec" "secubox-app-netifyd" "secubox-app-ndpid")
 
 # Helper functions
 
@@ -1027,6 +1027,18 @@ run_build_openwrt() {
 
     cd "$OPENWRT_DIR"
 
+    # Map directory names to actual package names (PKG_NAME in Makefile)
+    # Format: directory_name:package_name
+    declare -A PKG_NAME_MAP=(
+        ["secubox-app-ndpid"]="ndpid"
+        ["secubox-app-netifyd"]="secubox-netifyd"
+        ["secubox-app-crowdsec"]="secubox-crowdsec"
+    )
+
+    # Get actual package name (for config and finding .ipk)
+    local pkg_name="${PKG_NAME_MAP[$single_package]:-$single_package}"
+    print_info "Package directory: $single_package, Package name: $pkg_name"
+
     # Update feeds
     print_header "Installing Package from Feeds"
     ./scripts/feeds update -a
@@ -1045,15 +1057,33 @@ run_build_openwrt() {
 
     ./scripts/feeds install -p secubox "$single_package"
 
-    # Configure package
+    # Configure build for target architecture (mochabin = mvebu/cortexa72)
     print_header "Configuring Build"
-    echo "CONFIG_PACKAGE_${single_package}=m" >> .config
+
+    # Set target configuration based on ARCH
+    case "$ARCH" in
+        aarch64_cortex-a72|aarch64-cortex-a72)
+            echo "CONFIG_TARGET_mvebu=y" >> .config
+            echo "CONFIG_TARGET_mvebu_cortexa72=y" >> .config
+            ;;
+        aarch64_cortex-a53|aarch64-cortex-a53)
+            echo "CONFIG_TARGET_mvebu=y" >> .config
+            echo "CONFIG_TARGET_mvebu_cortexa53=y" >> .config
+            ;;
+        x86-64|x86_64)
+            echo "CONFIG_TARGET_x86=y" >> .config
+            echo "CONFIG_TARGET_x86_64=y" >> .config
+            ;;
+    esac
+
+    # Enable the package (use actual package name, not directory name)
+    echo "CONFIG_PACKAGE_${pkg_name}=m" >> .config
     make defconfig
 
     # Build dependencies first (for packages like netifyd that need system libraries)
     print_header "Building Dependencies"
     print_info "Downloading and building required system libraries..."
-    make package/libs/compile V=s 2>&1 | grep -v "^make\[" || true
+    make package/libs/toolchain/compile V=s 2>&1 | grep -v "^make\[" || true
 
     # Build package
     print_header "Building Package: $single_package"
@@ -1064,8 +1094,13 @@ run_build_openwrt() {
     if make package/secubox/"$single_package"/compile V=s; then
         print_success "Package built successfully"
 
-        # Find and display built package
-        local pkg_file=$(find bin/packages -name "${single_package}*.ipk" 2>/dev/null | head -1)
+        # Find and display built package (search by actual package name)
+        local pkg_file=$(find bin/packages bin/targets -name "${pkg_name}*.ipk" -o -name "${pkg_name}_*.ipk" 2>/dev/null | head -1)
+        if [[ -z "$pkg_file" ]]; then
+            # Try alternative search patterns
+            pkg_file=$(find bin -name "*${pkg_name}*.ipk" 2>/dev/null | head -1)
+        fi
+
         if [[ -n "$pkg_file" ]]; then
             echo ""
             echo "📦 Built package:"
@@ -1077,6 +1112,17 @@ run_build_openwrt() {
             cp "$pkg_file" "$BUILD_DIR/$ARCH/"
 
             print_success "Package copied to: $BUILD_DIR/$ARCH/"
+        else
+            print_warning "Package file not found in bin/, checking build directory..."
+            # The package might be in targets instead of packages
+            pkg_file=$(find bin/targets -name "${pkg_name}*.ipk" 2>/dev/null | head -1)
+            if [[ -n "$pkg_file" ]]; then
+                echo "📦 Built package:"
+                ls -lh "$pkg_file"
+                mkdir -p "$BUILD_DIR/$ARCH"
+                cp "$pkg_file" "$BUILD_DIR/$ARCH/"
+                print_success "Package copied to: $BUILD_DIR/$ARCH/"
+            fi
         fi
     else
         print_error "Package build failed"
@@ -1773,9 +1819,9 @@ COMMANDS:
     help                        Show this help message
 
 ARCHITECTURES (for package building):
-    x86-64                      PC, VMs (default)
+    aarch64-cortex-a72          ARM Cortex-A72 (MOCHAbin, RPi4) (default)
     aarch64-cortex-a53          ARM Cortex-A53 (ESPRESSObin)
-    aarch64-cortex-a72          ARM Cortex-A72 (MOCHAbin, RPi4)
+    x86-64                      PC, VMs
     aarch64-generic             Generic ARM64
     mips-24kc                   MIPS 24Kc (TP-Link)
     mipsel-24kc                 MIPS LE (Xiaomi, GL.iNet)
