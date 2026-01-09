@@ -7,30 +7,9 @@
 /* === Import Fonts === */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
-/* === Variables (Demo-inspired Dark Mode) === */
-:root,
-[data-secubox-theme="light"] {
-	/* Light Mode (less used) */
-	--sh-text-primary: #0f172a;
-	--sh-text-secondary: #475569;
-	--sh-bg-primary: #ffffff;
-	--sh-bg-secondary: #f8fafc;
-	--sh-bg-tertiary: #f1f5f9;
-	--sh-bg-card: #ffffff;
-	--sh-border: #e2e8f0;
-	--sh-hover-bg: #f8fafc;
-	--sh-hover-shadow: rgba(0, 0, 0, 0.1);
-	--sh-primary: #6366f1;
-	--sh-primary-end: #8b5cf6;
-	--sh-shadow: rgba(0, 0, 0, 0.08);
-	--sh-success: #22c55e;
-	--sh-danger: #ef4444;
-	--sh-warning: #f59e0b;
-}
-
-[data-theme="dark"],
-[data-secubox-theme="dark"] {
-	/* Demo-inspired Dark Palette */
+/* === Variables (Demo-inspired Dark Mode - Default) === */
+:root {
+	/* Dark Mode as default for SecuBox */
 	--sh-text-primary: #fafafa;
 	--sh-text-secondary: #a0a0b0;
 	--sh-bg-primary: #0a0a0f;
@@ -43,6 +22,25 @@
 	--sh-primary: #6366f1;
 	--sh-primary-end: #8b5cf6;
 	--sh-shadow: rgba(0, 0, 0, 0.4);
+	--sh-success: #22c55e;
+	--sh-danger: #ef4444;
+	--sh-warning: #f59e0b;
+}
+
+[data-secubox-theme="light"] {
+	/* Light Mode (optional override) */
+	--sh-text-primary: #0f172a;
+	--sh-text-secondary: #475569;
+	--sh-bg-primary: #ffffff;
+	--sh-bg-secondary: #f8fafc;
+	--sh-bg-tertiary: #f1f5f9;
+	--sh-bg-card: #ffffff;
+	--sh-border: #e2e8f0;
+	--sh-hover-bg: #f8fafc;
+	--sh-hover-shadow: rgba(0, 0, 0, 0.1);
+	--sh-primary: #6366f1;
+	--sh-primary-end: #8b5cf6;
+	--sh-shadow: rgba(0, 0, 0, 0.08);
 	--sh-success: #22c55e;
 	--sh-danger: #ef4444;
 	--sh-warning: #f59e0b;

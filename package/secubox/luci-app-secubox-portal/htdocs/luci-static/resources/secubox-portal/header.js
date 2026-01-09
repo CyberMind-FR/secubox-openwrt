@@ -61,6 +61,24 @@ body.secubox-mode .breadcrumb {
 	display: none !important;
 }
 
+/* Hide LuCI view tabs / submenu tabs */
+body.secubox-mode .cbi-tabmenu,
+body.secubox-mode ul.tabs,
+body.secubox-mode .tabs,
+body.secubox-mode ul.cbi-tabmenu,
+body.secubox-mode .view-tabs,
+body.secubox-mode #viewtabs,
+body.secubox-mode .cbi-section-node > ul:first-child,
+.cbi-tabmenu:has(~ .secubox-page-wrapper),
+ul.tabs:has(~ .secubox-page-wrapper),
+#maincontent > ul.tabs,
+#maincontent > .cbi-tabmenu,
+.container > ul.tabs,
+.main-right > ul.tabs:first-child,
+.main-right > .cbi-tabmenu:first-child {
+	display: none !important;
+}
+
 /* SecuBox Header Styles */
 .sb-global-header {
 	display: flex;
@@ -223,11 +241,12 @@ function injectCSS() {
 function hideOpenWrtUI() {
 	document.body.classList.add('secubox-mode');
 
-	// Direct element hiding for immediate effect - hide ALL headers and nav
+	// Direct element hiding for immediate effect - hide ALL headers, nav, and tabs
 	var selectors = [
 		'header', '.main-header', '#mainmenu', '.main-left',
 		'nav[role="navigation"]', '#navigation', '.luci-sidebar', 'aside', '#header',
-		'.brand', 'header.brand', 'div.brand', '.header-brand'
+		'.brand', 'header.brand', 'div.brand', '.header-brand',
+		'.cbi-tabmenu', 'ul.tabs', '.tabs', '#viewtabs', '.view-tabs'
 	];
 	selectors.forEach(function(sel) {
 		document.querySelectorAll(sel).forEach(function(el) {
