@@ -15,6 +15,14 @@
 			"path": "secubox-portal/index"
 		}
 	},
+	"admin/secubox/apps": {
+		"title": "Apps",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "secubox-portal/apps"
+		}
+	},
 	"admin/secubox-home": {
 		"title": "SecuBox Home",
 		"order": 0,

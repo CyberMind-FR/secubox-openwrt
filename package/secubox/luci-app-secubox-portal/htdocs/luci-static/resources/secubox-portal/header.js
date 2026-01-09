@@ -227,7 +227,8 @@ var sections = [
 	{ id: 'security', name: 'Security', icon: '\ud83d\udee1\ufe0f', path: 'admin/secubox/security' },
 	{ id: 'network', name: 'Network', icon: '\ud83c\udf10', path: 'admin/secubox/network' },
 	{ id: 'monitoring', name: 'Monitoring', icon: '\ud83d\udcca', path: 'admin/secubox/monitoring' },
-	{ id: 'system', name: 'System', icon: '\u2699\ufe0f', path: 'admin/secubox/system' }
+	{ id: 'system', name: 'System', icon: '\u2699\ufe0f', path: 'admin/secubox/system' },
+	{ id: 'apps', name: 'Apps', icon: '\ud83d\udce6', path: 'admin/secubox/apps' }
 ];
 
 function injectCSS() {
@@ -278,7 +279,14 @@ function detectActiveSection() {
 	if (path.indexOf('/secubox/security') !== -1) return 'security';
 	if (path.indexOf('/secubox/network') !== -1) return 'network';
 	if (path.indexOf('/secubox/monitoring') !== -1) return 'monitoring';
+	if (path.indexOf('/secubox/ndpid') !== -1) return 'monitoring';
+	if (path.indexOf('/secubox/netifyd') !== -1) return 'monitoring';
 	if (path.indexOf('/secubox/system') !== -1) return 'system';
+	if (path.indexOf('/secubox/apps') !== -1) return 'apps';
+	if (path.indexOf('/secubox/admin') !== -1) return 'apps';
+	if (path.indexOf('/secubox/services') !== -1) return 'apps';
+	if (path.indexOf('/secubox/iot') !== -1) return 'apps';
+	if (path.indexOf('/secubox/zigbee2mqtt') !== -1) return 'apps';
 	return 'dashboard';
 }
 
