@@ -502,27 +502,33 @@ case "$1" in
 				;;
 
 			get_appstore_apps)
-				# Return apps from main catalog with categories and installation status
+				# Return apps from catalog with installation status
+				# Use secubox-appstore which properly detects installed packages
 				CATALOG_FILE="/usr/share/secubox/catalog.json"
-				if [ -f "$CATALOG_FILE" ]; then
-					# Get installed packages list once for efficiency
-					INSTALLED_PKGS=$(opkg list-installed 2>/dev/null | awk '{print $1}')
 
-					# Process catalog and add installed status to each app
-					jq --arg installed_pkgs "$INSTALLED_PKGS" '
-						{
-							apps: [.plugins[] | . + {
-								installed: (
-									if .packages.required[0] then
-										($installed_pkgs | split("\n") | index(.packages.required[0])) != null
-									else
-										false
-									end
-								)
-							}],
-							categories: .categories
-						}
-					' "$CATALOG_FILE"
+				if [ -f "$CATALOG_FILE" ]; then
+					# Get modules list with installation status from secubox-appstore
+					MODULES_JSON=$(/usr/sbin/secubox-appstore list --json 2>/dev/null)
+
+					if [ -n "$MODULES_JSON" ]; then
+						# Merge installation status from modules into catalog apps
+						jq --argjson modules "$MODULES_JSON" '
+							{
+								apps: [.plugins[] | . as $app |
+									($modules.modules // [] | map(select(.id == $app.id or .name == $app.id)) | first) as $mod |
+									$app + {
+										installed: (if $mod then ($mod.installed // false) else false end),
+										enabled: (if $mod then ($mod.enabled // false) else false end),
+										status: (if $mod then ($mod.status // "unknown") else "not_installed" end)
+									}
+								],
+								categories: .categories
+							}
+						' "$CATALOG_FILE"
+					else
+						# Fallback: just return catalog without status
+						jq '{apps: .plugins, categories: .categories}' "$CATALOG_FILE"
+					fi
 				else
 					echo '{"apps":[],"categories":{}}'
 				fi
