@@ -143,72 +143,74 @@ return view.extend({
 			}
 		}
 
+		var tableStyle = 'width: 100%; border-collapse: collapse; margin-top: 1rem;';
+		var thStyle = 'padding: 0.75rem 1rem; text-align: left; font-weight: 600; background: #f8fafc; border-bottom: 2px solid #e2e8f0;';
+		var tdStyle = 'padding: 0.75rem 1rem; border-bottom: 1px solid #e2e8f0; vertical-align: middle;';
+
+		var tableContent = E('table', { 'style': tableStyle }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', { 'style': thStyle }, _('Interface')),
+					E('th', { 'style': thStyle + ' text-align: center;' }, _('TCP')),
+					E('th', { 'style': thStyle + ' text-align: center;' }, _('UDP')),
+					E('th', { 'style': thStyle + ' text-align: center;' }, _('ICMP')),
+					E('th', { 'style': thStyle + ' text-align: right;' }, _('Total Traffic')),
+					E('th', { 'style': thStyle + ' text-align: center;' }, _('Status'))
+				])
+			]),
+			E('tbody', {}, interfaceList.map(function(iface) {
+				var totalPackets = iface.tcp + iface.udp + iface.icmp;
+				var isActive = totalPackets > 0;
+
+				return E('tr', { 'style': isActive ? '' : 'opacity: 0.6;' }, [
+					E('td', { 'style': tdStyle }, [
+						E('span', { 'style': 'display: inline-flex; align-items: center; gap: 0.5rem;' }, [
+							E('i', { 'class': 'fa fa-ethernet', 'style': 'color: ' + (isActive ? '#3b82f6' : '#9ca3af') }),
+							E('strong', {}, self.formatInterfaceLabel(iface.name))
+						])
+					]),
+					E('td', { 'style': tdStyle + ' text-align: center;' }, [
+						E('span', {
+							'style': 'display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; background: #3b82f6; color: white; font-weight: 500; min-width: 3rem;'
+						}, iface.tcp.toLocaleString())
+					]),
+					E('td', { 'style': tdStyle + ' text-align: center;' }, [
+						E('span', {
+							'style': 'display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; background: #10b981; color: white; font-weight: 500; min-width: 3rem;'
+						}, iface.udp.toLocaleString())
+					]),
+					E('td', { 'style': tdStyle + ' text-align: center;' }, [
+						E('span', {
+							'style': 'display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; background: #f59e0b; color: white; font-weight: 500; min-width: 3rem;'
+						}, iface.icmp.toLocaleString())
+					]),
+					E('td', { 'style': tdStyle + ' text-align: right; font-weight: 500;' },
+						netifydAPI.formatBytes ? netifydAPI.formatBytes(iface.bytes) : (iface.bytes + ' B')),
+					E('td', { 'style': tdStyle + ' text-align: center;' }, [
+						E('span', {
+							'style': 'display: inline-flex; align-items: center; gap: 0.5rem;'
+						}, [
+							E('i', {
+								'class': 'fa fa-circle',
+								'style': 'color: ' + (isActive ? '#10b981' : '#9ca3af'),
+								'title': isActive ? _('Active') : _('Idle')
+							}),
+							iface.dropped > 0 ? E('span', {
+								'style': 'padding: 0.125rem 0.5rem; border-radius: 9999px; background: #ef4444; color: white; font-size: 0.75rem;'
+							}, iface.dropped + ' dropped') : null
+						])
+					])
+				]);
+			}))
+		]);
+
 		return E('div', { 'class': 'cbi-section' }, [
-			E('h3', [
-				E('i', { 'class': 'fa fa-network-wired', 'style': 'margin-right: 0.5rem' }),
+			E('h3', { 'style': 'display: flex; align-items: center; margin-bottom: 0.5rem;' }, [
+				E('i', { 'class': 'fa fa-network-wired', 'style': 'margin-right: 0.5rem; color: #3b82f6;' }),
 				_('Flow Activity by Interface')
 			]),
-			E('div', { 'class': 'cbi-section-node' }, [
-				E('div', { 'class': 'table', 'style': 'font-size: 0.95em' }, [
-					// Header
-					E('div', { 'class': 'tr table-titles' }, [
-						E('div', { 'class': 'th', 'style': 'width: 25%' }, _('Interface')),
-						E('div', { 'class': 'th center', 'style': 'width: 15%' }, _('TCP')),
-						E('div', { 'class': 'th center', 'style': 'width: 15%' }, _('UDP')),
-						E('div', { 'class': 'th center', 'style': 'width: 15%' }, _('ICMP')),
-						E('div', { 'class': 'th right', 'style': 'width: 20%' }, _('Total Traffic')),
-						E('div', { 'class': 'th center', 'style': 'width: 10%' }, _('Status'))
-					]),
-					// Rows
-					interfaceList.map(function(iface) {
-						var totalPackets = iface.tcp + iface.udp + iface.icmp;
-						var isActive = totalPackets > 0;
-
-						return E('div', { 'class': 'tr' }, [
-							E('div', { 'class': 'td', 'style': 'width: 25%' }, [
-								E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem' }, [
-									E('i', { 'class': 'fa fa-ethernet', 'style': 'color: ' + (isActive ? '#3b82f6' : '#9ca3af') }),
-									E('strong', self.formatInterfaceLabel(iface.name))
-								])
-							]),
-							E('div', { 'class': 'td center', 'style': 'width: 15%' }, [
-								E('span', {
-									'class': 'badge',
-									'style': 'background: #3b82f6; color: white'
-								}, iface.tcp.toLocaleString())
-							]),
-							E('div', { 'class': 'td center', 'style': 'width: 15%' }, [
-								E('span', {
-									'class': 'badge',
-									'style': 'background: #10b981; color: white'
-								}, iface.udp.toLocaleString())
-							]),
-							E('div', { 'class': 'td center', 'style': 'width: 15%' }, [
-								E('span', {
-									'class': 'badge',
-									'style': 'background: #f59e0b; color: white'
-								}, iface.icmp.toLocaleString())
-							]),
-							E('div', { 'class': 'td right', 'style': 'width: 20%' },
-								netifydAPI.formatBytes(iface.bytes)),
-							E('div', { 'class': 'td center', 'style': 'width: 10%' }, [
-								isActive ? E('i', {
-									'class': 'fa fa-circle',
-									'style': 'color: #10b981',
-									'title': _('Active')
-								}) : E('i', {
-									'class': 'fa fa-circle',
-									'style': 'color: #9ca3af',
-									'title': _('Idle')
-								}),
-								iface.dropped > 0 ? E('span', {
-									'class': 'badge',
-									'style': 'background: #ef4444; color: white; margin-left: 0.5rem; font-size: 0.75em'
-								}, iface.dropped + ' ⚠') : null
-							])
-						]);
-					})
-				])
+			E('div', { 'class': 'cbi-section-node', 'style': 'overflow-x: auto;' }, [
+				tableContent
 			])
 		]);
 	},

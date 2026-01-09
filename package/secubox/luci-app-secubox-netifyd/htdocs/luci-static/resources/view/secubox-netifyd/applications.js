@@ -160,107 +160,106 @@ return view.extend({
 
 		var getSortIcon = function(column) {
 			if (this.sortColumn !== column) {
-				return E('i', { 'class': 'fa fa-sort', 'style': 'opacity: 0.3' });
+				return E('i', { 'class': 'fa fa-sort', 'style': 'opacity: 0.3; margin-left: 0.25rem;' });
 			}
 			return E('i', {
 				'class': 'fa fa-sort-' + (this.sortDirection === 'asc' ? 'up' : 'down'),
-				'style': 'color: #3b82f6'
+				'style': 'color: #3b82f6; margin-left: 0.25rem;'
 			});
 		}.bind(this);
 
-		dom.content(container, [
-			apps.length > 0 ? E('div', { 'class': 'table', 'style': 'font-size: 0.95em' },
-				[
-					// Header
-					E('div', { 'class': 'tr table-titles' }, [
-						E('div', {
-							'class': 'th left',
-							'style': 'width: 30%; cursor: pointer',
-							'click': ui.createHandlerFn(this, 'handleSort', 'name')
-						}, [
-							_('Application'),
-							' ',
-							getSortIcon('name')
-						]),
-						E('div', {
-							'class': 'th center',
-							'style': 'width: 15%; cursor: pointer',
-							'click': ui.createHandlerFn(this, 'handleSort', 'flows')
-						}, [
-							_('Flows'),
-							' ',
-							getSortIcon('flows')
-						]),
-						E('div', {
-							'class': 'th center',
-							'style': 'width: 15%; cursor: pointer',
-							'click': ui.createHandlerFn(this, 'handleSort', 'packets')
-						}, [
-							_('Packets'),
-							' ',
-							getSortIcon('packets')
-						]),
-						E('div', {
-							'class': 'th right',
-							'style': 'width: 20%; cursor: pointer',
-							'click': ui.createHandlerFn(this, 'handleSort', 'bytes')
-						}, [
-							_('Total Traffic'),
-							' ',
-							getSortIcon('bytes')
-						]),
-						E('div', { 'class': 'th', 'style': 'width: 20%' }, _('% of Total'))
-					])
-				].concat(
-					// Rows
-					sortedApps.map(function(app, idx) {
-					var percentage = totalBytes > 0 ? (app.bytes / totalBytes * 100) : 0;
-					var color = appColors[idx % appColors.length];
+		var tableStyle = 'width: 100%; border-collapse: collapse;';
+		var thStyle = 'padding: 0.75rem 1rem; text-align: left; font-weight: 600; background: #f8fafc; border-bottom: 2px solid #e2e8f0; cursor: pointer; user-select: none;';
+		var tdStyle = 'padding: 0.75rem 1rem; border-bottom: 1px solid #e2e8f0; vertical-align: middle;';
 
-					return E('div', {
-						'class': 'tr',
-						'style': idx % 2 === 0 ? 'background: #f9fafb' : ''
+		if (apps.length === 0) {
+			dom.content(container, [
+				E('div', {
+					'style': 'text-align: center; padding: 3rem; background: #f9fafb; border-radius: 8px;'
+				}, [
+					E('i', { 'class': 'fa fa-cubes', 'style': 'font-size: 3em; opacity: 0.3; display: block; margin-bottom: 1rem; color: #6b7280;' }),
+					E('h4', { 'style': 'margin: 0 0 0.5rem 0; color: #374151;' }, _('No Application Data')),
+					E('p', { 'style': 'margin: 0 0 0.5rem 0; color: #6b7280;' }, _('No applications have been detected yet')),
+					E('small', { 'style': 'color: #9ca3af;' }, _('Data will appear once network traffic is analyzed'))
+				])
+			]);
+			return;
+		}
+
+		var tableContent = E('table', { 'style': tableStyle }, [
+			E('thead', {}, [
+				E('tr', {}, [
+					E('th', {
+						'style': thStyle,
+						'click': ui.createHandlerFn(this, 'handleSort', 'name')
 					}, [
-						E('div', { 'class': 'td left', 'style': 'width: 30%' }, [
-							E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem' }, [
-								E('div', {
-									'style': 'width: 10px; height: 10px; border-radius: 50%; background: ' + color + '; flex-shrink: 0'
-								}),
-								E('strong', app.name || 'Unknown')
-							])
-						]),
-						E('div', { 'class': 'td center', 'style': 'width: 15%' },
-							(app.flows || 0).toLocaleString()),
-						E('div', { 'class': 'td center', 'style': 'width: 15%' },
-							(app.packets || 0).toLocaleString()),
-						E('div', { 'class': 'td right', 'style': 'width: 20%' }, [
-							E('strong', { 'style': 'color: ' + color },
-								netifydAPI.formatBytes(app.bytes || 0))
-						]),
-						E('div', { 'class': 'td', 'style': 'width: 20%' }, [
-							E('div', {
-								'style': 'background: #e5e7eb; border-radius: 10px; height: 24px; position: relative; overflow: hidden'
-							}, [
-								E('div', {
-									'style': 'background: ' + color + '; height: 100%; width: ' + percentage + '%; transition: width 0.3s ease; border-radius: 10px'
-								}),
-								E('span', {
-									'style': 'position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 0.8em; font-weight: bold; color: ' + (percentage > 40 ? '#fff' : '#374151')
-								}, percentage.toFixed(1) + '%')
-							])
+						_('Application'),
+						getSortIcon('name')
+					]),
+					E('th', {
+						'style': thStyle + ' text-align: center;',
+						'click': ui.createHandlerFn(this, 'handleSort', 'flows')
+					}, [
+						_('Flows'),
+						getSortIcon('flows')
+					]),
+					E('th', {
+						'style': thStyle + ' text-align: center;',
+						'click': ui.createHandlerFn(this, 'handleSort', 'packets')
+					}, [
+						_('Packets'),
+						getSortIcon('packets')
+					]),
+					E('th', {
+						'style': thStyle + ' text-align: right;',
+						'click': ui.createHandlerFn(this, 'handleSort', 'bytes')
+					}, [
+						_('Total Traffic'),
+						getSortIcon('bytes')
+					]),
+					E('th', { 'style': thStyle + ' text-align: center; cursor: default;' }, _('% of Total'))
+				])
+			]),
+			E('tbody', {}, sortedApps.map(function(app, idx) {
+				var percentage = totalBytes > 0 ? (app.bytes / totalBytes * 100) : 0;
+				var color = appColors[idx % appColors.length];
+				var rowBg = idx % 2 === 0 ? '' : 'background: #f9fafb;';
+
+				return E('tr', { 'style': rowBg }, [
+					E('td', { 'style': tdStyle }, [
+						E('span', { 'style': 'display: inline-flex; align-items: center; gap: 0.5rem;' }, [
+							E('span', {
+								'style': 'width: 10px; height: 10px; border-radius: 50%; background: ' + color + '; flex-shrink: 0; display: inline-block;'
+							}),
+							E('strong', {}, app.name || 'Unknown')
 						])
-					]);
-				}.bind(this))
-				)
-			) : E('div', {
-				'class': 'alert-message info',
-				'style': 'text-align: center; padding: 3rem'
-			}, [
-				E('i', { 'class': 'fa fa-cubes', 'style': 'font-size: 3em; opacity: 0.3; display: block; margin-bottom: 1rem' }),
-				E('h4', _('No Application Data')),
-				E('p', { 'class': 'text-muted' }, _('No applications have been detected yet')),
-				E('small', _('Data will appear once network traffic is analyzed'))
-			])
+					]),
+					E('td', { 'style': tdStyle + ' text-align: center;' },
+						(app.flows || 0).toLocaleString()),
+					E('td', { 'style': tdStyle + ' text-align: center;' },
+						(app.packets || 0).toLocaleString()),
+					E('td', { 'style': tdStyle + ' text-align: right;' }, [
+						E('strong', { 'style': 'color: ' + color + ';' },
+							netifydAPI.formatBytes(app.bytes || 0))
+					]),
+					E('td', { 'style': tdStyle + ' text-align: center; min-width: 120px;' }, [
+						E('div', {
+							'style': 'background: #e5e7eb; border-radius: 12px; height: 24px; position: relative; overflow: hidden;'
+						}, [
+							E('div', {
+								'style': 'background: ' + color + '; height: 100%; width: ' + percentage + '%; transition: width 0.3s ease; border-radius: 12px;'
+							}),
+							E('span', {
+								'style': 'position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 0.8em; font-weight: 600; color: ' + (percentage > 40 ? '#fff' : '#374151') + ';'
+							}, percentage.toFixed(1) + '%')
+						])
+					])
+				]);
+			}.bind(this)))
+		]);
+
+		dom.content(container, [
+			E('div', { 'style': 'overflow-x: auto;' }, [tableContent])
 		]);
 	},
 
