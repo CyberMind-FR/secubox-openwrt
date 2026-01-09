@@ -50,7 +50,16 @@ declare -A DEVICE_PROFILES=(
 )
 
 # Packages that must be built in the OpenWrt buildroot (toolchain) instead of the SDK.
-OPENWRT_ONLY_PACKAGES=("netifyd" "crowdsec" "secubox-app-crowdsec" "secubox-app-netifyd" "secubox-app-ndpid")
+# These packages compile native code and need system libraries not available in SDK.
+OPENWRT_ONLY_PACKAGES=(
+    "netifyd"
+    "crowdsec"
+    "secubox-app-crowdsec"
+    "secubox-app-netifyd"
+    "secubox-app-ndpid"
+    "secubox-app-nodogsplash"
+    "nodogsplash"
+)
 
 # Helper functions
 
@@ -1027,17 +1036,29 @@ run_build_openwrt() {
 
     cd "$OPENWRT_DIR"
 
+    # Map shorthand names to actual directory names in package/secubox/
+    declare -A DIR_NAME_MAP=(
+        ["nodogsplash"]="secubox-app-nodogsplash"
+        ["ndpid"]="secubox-app-ndpid"
+        ["netifyd"]="secubox-app-netifyd"
+        ["crowdsec"]="secubox-app-crowdsec"
+    )
+
     # Map directory names to actual package names (PKG_NAME in Makefile)
-    # Format: directory_name:package_name
+    # Only needed when directory name differs from PKG_NAME
     declare -A PKG_NAME_MAP=(
         ["secubox-app-ndpid"]="ndpid"
         ["secubox-app-netifyd"]="secubox-netifyd"
         ["secubox-app-crowdsec"]="secubox-crowdsec"
+        ["secubox-app-nodogsplash"]="secubox-app-nodogsplash"
     )
 
+    # Resolve directory name (handle shorthand like "nodogsplash" -> "secubox-app-nodogsplash")
+    local dir_name="${DIR_NAME_MAP[$single_package]:-$single_package}"
+
     # Get actual package name (for config and finding .ipk)
-    local pkg_name="${PKG_NAME_MAP[$single_package]:-$single_package}"
-    print_info "Package directory: $single_package, Package name: $pkg_name"
+    local pkg_name="${PKG_NAME_MAP[$dir_name]:-$dir_name}"
+    print_info "Input: $single_package -> Directory: $dir_name -> Package: $pkg_name"
 
     # Update feeds
     print_header "Installing Package from Feeds"
@@ -1049,13 +1070,13 @@ run_build_openwrt() {
     fi
 
     # For Go packages (crowdsec, etc.), install golang build infrastructure first
-    if [[ "$single_package" =~ ^(crowdsec|secubox-app-crowdsec)$ ]] || \
-       grep -q "golang-package.mk" "../package/secubox/$single_package/Makefile" 2>/dev/null; then
-        print_info "Installing Go language support for $single_package..."
+    if [[ "$dir_name" =~ ^(crowdsec|secubox-app-crowdsec)$ ]] || \
+       grep -q "golang-package.mk" "../package/secubox/$dir_name/Makefile" 2>/dev/null; then
+        print_info "Installing Go language support for $dir_name..."
         ./scripts/feeds install -a golang
     fi
 
-    ./scripts/feeds install -p secubox "$single_package"
+    ./scripts/feeds install -p secubox "$dir_name"
 
     # Configure build for target architecture (mochabin = mvebu/cortexa72)
     print_header "Configuring Build"
@@ -1086,12 +1107,12 @@ run_build_openwrt() {
     make package/libs/toolchain/compile V=s 2>&1 | grep -v "^make\[" || true
 
     # Build package
-    print_header "Building Package: $single_package"
+    print_header "Building Package: $dir_name ($pkg_name)"
     print_info "This may take several minutes on first build..."
     echo ""
 
     # Build from SecuBox feed (package/secubox/...)
-    if make package/secubox/"$single_package"/compile V=s; then
+    if make package/secubox/"$dir_name"/compile V=s; then
         print_success "Package built successfully"
 
         # Find and display built package (search by actual package name)
@@ -1809,7 +1830,7 @@ USAGE:
 COMMANDS:
     validate                    Run validation only (lint, syntax checks)
     build                       Build all packages for x86_64
-    build <package>             Build single package (luci-app-*, luci-theme-*, secubox-app-*, secubox-*, netifyd)
+    build <package>             Build single package
     build --arch <arch>         Build for specific architecture
     build-firmware <device>     Build full firmware image for device
     debug-firmware <device>     Debug firmware build (check config without building)
@@ -1817,6 +1838,18 @@ COMMANDS:
     clean                       Clean build directories
     clean-all                   Clean all build directories including OpenWrt source
     help                        Show this help message
+
+PACKAGES:
+    SDK packages (scripts only, fast build):
+        luci-app-*              LuCI application packages
+        luci-theme-*            LuCI theme packages
+
+    Toolchain packages (native code, requires full OpenWrt build):
+        ndpid                   nDPId DPI engine (shorthand for secubox-app-ndpid)
+        netifyd                 Netifyd DPI engine (shorthand for secubox-app-netifyd)
+        nodogsplash             Captive portal (shorthand for secubox-app-nodogsplash)
+        crowdsec                CrowdSec IPS (shorthand for secubox-app-crowdsec)
+        secubox-app-*           Full directory names also accepted
 
 ARCHITECTURES (for package building):
     aarch64-cortex-a72          ARM Cortex-A72 (MOCHAbin, RPi4) (default)
@@ -1837,26 +1870,32 @@ EXAMPLES:
     # Validate all packages
     $0 validate
 
-    # Build all packages for x86_64
+    # Build all SDK packages for default architecture (mochabin)
     $0 build
 
-    # Build single LuCI package
+    # Build single LuCI package (SDK - fast)
     $0 build luci-app-system-hub
 
-    # Build single SecuBox app package
-    $0 build secubox-app-nodogsplash
+    # Build nDPId DPI engine (toolchain - native code)
+    $0 build ndpid
 
-    # Build SecuBox Core package
-    $0 build secubox-core
-
-    # Build netifyd DPI engine
+    # Build Netifyd DPI engine (toolchain)
     $0 build netifyd
 
-    # Build netifyd LuCI app
+    # Build Nodogsplash captive portal (toolchain)
+    $0 build nodogsplash
+
+    # Build CrowdSec IPS (toolchain - Go)
+    $0 build crowdsec
+
+    # Build using full directory name
+    $0 build secubox-app-ndpid
+
+    # Build netifyd LuCI app (SDK - scripts only)
     $0 build luci-app-secubox-netifyd
 
     # Build for specific architecture
-    $0 build --arch aarch64-cortex-a72
+    $0 build ndpid --arch x86-64
 
     # Build firmware image for MOCHAbin
     $0 build-firmware mochabin
@@ -1910,7 +1949,7 @@ main() {
                         arch_specified=true
                         shift 2
                         ;;
-                    luci-app-*|luci-theme-*|secubox-app-*|secubox-*|netifyd)
+                    luci-app-*|luci-theme-*|secubox-app-*|secubox-*|netifyd|ndpid|nodogsplash|crowdsec)
                         single_package="$1"
                         shift
                         ;;
