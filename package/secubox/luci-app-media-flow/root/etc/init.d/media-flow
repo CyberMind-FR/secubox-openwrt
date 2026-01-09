@@ -1,37 +1,53 @@
 #!/bin/sh /etc/rc.common
 #
 # Media Flow Init Script
-# Manages the media flow data collector cron job
+# Manages the media flow data collector cron jobs
+# Supports nDPId (local DPI) and netifyd as data sources
 #
 
 START=99
 STOP=10
 
 CRON_FILE="/etc/crontabs/root"
-CRON_ENTRY="*/5 * * * * /usr/bin/media-flow-collector >/dev/null 2>&1"
 CRON_MARKER="# media-flow-collector"
+
+# Detect best collector to use
+get_collector() {
+	# Prefer nDPId collector if nDPId is installed
+	if [ -x /usr/bin/media-flow-ndpid-collector ] && command -v ndpid >/dev/null 2>&1; then
+		echo "/usr/bin/media-flow-ndpid-collector"
+	else
+		echo "/usr/bin/media-flow-collector"
+	fi
+}
 
 add_cron_entry() {
 	# Remove existing entries first
 	remove_cron_entry
 
+	local collector=$(get_collector)
+	local cron_entry="*/1 * * * * $collector >/dev/null 2>&1"
+
 	# Add the new entry with marker
 	if [ -f "$CRON_FILE" ]; then
 		echo "$CRON_MARKER" >> "$CRON_FILE"
-		echo "$CRON_ENTRY" >> "$CRON_FILE"
+		echo "$cron_entry" >> "$CRON_FILE"
 	else
 		echo "$CRON_MARKER" > "$CRON_FILE"
-		echo "$CRON_ENTRY" >> "$CRON_FILE"
+		echo "$cron_entry" >> "$CRON_FILE"
 	fi
 
 	# Restart cron
 	/etc/init.d/cron reload 2>/dev/null || /etc/init.d/cron restart 2>/dev/null
+
+	logger -t media-flow "Collector enabled: $collector"
 }
 
 remove_cron_entry() {
 	if [ -f "$CRON_FILE" ]; then
 		sed -i '/# media-flow-collector/d' "$CRON_FILE"
 		sed -i '\|/usr/bin/media-flow-collector|d' "$CRON_FILE"
+		sed -i '\|/usr/bin/media-flow-ndpid-collector|d' "$CRON_FILE"
 		/etc/init.d/cron reload 2>/dev/null || /etc/init.d/cron restart 2>/dev/null
 	fi
 }
@@ -43,7 +59,8 @@ start() {
 		logger -t media-flow "Starting media flow collector"
 		add_cron_entry
 		# Run once immediately
-		/usr/bin/media-flow-collector &
+		local collector=$(get_collector)
+		$collector &
 	fi
 }
 
@@ -66,17 +83,40 @@ reload() {
 
 status() {
 	local enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
+	local collector=$(get_collector)
 
-	if grep -q "media-flow-collector" "$CRON_FILE" 2>/dev/null; then
-		echo "Media Flow collector: ACTIVE"
+	echo "Media Flow v0.6.0"
+	echo "================="
+
+	if grep -q "media-flow" "$CRON_FILE" 2>/dev/null; then
+		echo "Collector: ACTIVE"
 	else
-		echo "Media Flow collector: INACTIVE"
+		echo "Collector: INACTIVE"
 	fi
 
+	echo "Using: $collector"
 	echo "UCI enabled: $enabled"
+
+	# DPI engine status
+	if pgrep -x ndpid >/dev/null 2>&1; then
+		echo "nDPId: Running"
+	else
+		echo "nDPId: Not running"
+	fi
+
+	if pgrep -x netifyd >/dev/null 2>&1; then
+		echo "Netifyd: Running"
+	else
+		echo "Netifyd: Not running"
+	fi
 
 	if [ -f /tmp/media-flow-history.json ]; then
 		local count=$(jq 'length' /tmp/media-flow-history.json 2>/dev/null || echo 0)
 		echo "History entries: $count"
+	fi
+
+	if [ -f /tmp/media-flow-ndpid-cache.json ]; then
+		local streams=$(jq 'length' /tmp/media-flow-ndpid-cache.json 2>/dev/null || echo 0)
+		echo "Active streams: $streams"
 	fi
 }

@@ -11,20 +11,25 @@ PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
 LUCI_TITLE:=Media Flow - Streaming Detection & Monitoring
-LUCI_DESCRIPTION:=Real-time detection and monitoring of streaming services (Netflix, YouTube, Spotify, etc.) with quality estimation, history tracking, and alerts
-LUCI_DEPENDS:=+luci-base +rpcd +netifyd +jq
+LUCI_DESCRIPTION:=Real-time detection and monitoring of streaming services (Netflix, YouTube, Spotify, etc.) with quality estimation, history tracking, and alerts. Supports nDPId local DPI and netifyd.
+LUCI_DEPENDS:=+luci-base +rpcd +jq
 LUCI_PKGARCH:=all
 
+# Optional dependencies (nDPId for local DPI, netifyd as fallback)
+# +ndpid provides local application detection without cloud subscription
+# +netifyd requires cloud subscription for application detection
 
 # File permissions (CRITICAL: RPCD scripts MUST be executable 755)
 PKG_FILE_MODES:=/usr/libexec/rpcd/luci.media-flow:root:root:755 \
 	/usr/bin/media-flow-collector:root:root:755 \
+	/usr/bin/media-flow-ndpid-collector:root:root:755 \
 	/etc/init.d/media-flow:root:root:755
 
 define Package/$(PKG_NAME)/install
 	$(call Package/luci-app-media-flow/install,$(1))
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./root/usr/bin/media-flow-collector $(1)/usr/bin/
+	$(INSTALL_BIN) ./root/usr/bin/media-flow-ndpid-collector $(1)/usr/bin/
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./root/etc/init.d/media-flow $(1)/etc/init.d/
 endef

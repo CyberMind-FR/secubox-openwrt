@@ -21,46 +21,170 @@ return L.view.extend({
 		var v = E('div', { 'class': 'cbi-map' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('Media Flow Dashboard')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Network flow monitoring and statistics'))
+			E('div', { 'class': 'cbi-map-descr' }, _('Streaming service detection and network flow monitoring'))
 		]);
 
-		// Status overview
+		// DPI Source indicator
+		var dpiSource = status.dpi_source || 'none';
+		var dpiColor = dpiSource === 'ndpid' ? '#00cc88' : (dpiSource === 'netifyd' ? '#0088cc' : '#cc0000');
+		var dpiLabel = dpiSource === 'ndpid' ? 'nDPId (Local DPI)' : (dpiSource === 'netifyd' ? 'Netifyd' : 'No DPI Engine');
+
+		// Status overview with DPI source
 		var statusSection = E('div', { 'class': 'cbi-section' }, [
 			E('h3', {}, _('Status')),
 			E('div', { 'class': 'table' }, [
 				E('div', { 'class': 'tr' }, [
-					E('div', { 'class': 'td left', 'width': '33%' }, [
+					E('div', { 'class': 'td left', 'width': '25%' }, [
 						E('strong', {}, _('Module: ')),
 						E('span', {}, status.enabled ? _('Enabled') : _('Disabled'))
 					]),
-					E('div', { 'class': 'td left', 'width': '33%' }, [
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, _('DPI Source: ')),
+						E('span', { 'style': 'color: ' + dpiColor + '; font-weight: bold;' }, '● ' + dpiLabel)
+					]),
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, _('Active Flows: ')),
+						E('span', { 'style': 'font-size: 1.3em; color: #0088cc' }, String(status.active_flows || 0))
+					]),
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, _('Active Streams: ')),
+						E('span', { 'style': 'font-size: 1.3em; color: #ec4899' }, String(status.active_streams || 0))
+					])
+				]),
+				E('div', { 'class': 'tr' }, [
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, _('nDPId: ')),
+						E('span', {}, status.ndpid_running ?
+							E('span', { 'style': 'color: green' }, '● ' + _('Running') + (status.ndpid_version !== 'unknown' ? ' (v' + status.ndpid_version + ')' : '')) :
+							E('span', { 'style': 'color: #999' }, '○ ' + _('Not running'))
+						)
+					]),
+					E('div', { 'class': 'td left', 'width': '25%' }, [
 						E('strong', {}, _('Netifyd: ')),
 						E('span', {}, status.netifyd_running ?
 							E('span', { 'style': 'color: green' }, '● ' + _('Running') + ' (v' + (status.netifyd_version || '?') + ')') :
-							E('span', { 'style': 'color: red' }, '● ' + _('Stopped'))
+							E('span', { 'style': 'color: #999' }, '○ ' + _('Not running'))
 						)
 					]),
-					E('div', { 'class': 'td left', 'width': '33%' }, [
-						E('strong', {}, _('Active Flows: ')),
-						E('span', { 'style': 'font-size: 1.5em; color: #0088cc' }, String(status.active_flows || 0))
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, _('nDPId Flows: ')),
+						E('span', {}, String(status.ndpid_flows || 0))
+					]),
+					E('div', { 'class': 'td left', 'width': '25%' }, [
+						E('strong', {}, _('History: ')),
+						E('span', {}, String(status.history_entries || 0) + ' entries')
 					])
 				])
 			])
 		]);
 		v.appendChild(statusSection);
 
-		// Netifyd 5.x limitation notice
-		var noticeSection = E('div', { 'class': 'cbi-section' }, [
-			E('div', { 'class': 'alert-message warning', 'style': 'background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 4px; margin-bottom: 15px;' }, [
-				E('strong', {}, _('Notice: ')),
-				E('span', {}, _('Netifyd 5.x requires a cloud subscription for streaming service detection. Currently showing network flow statistics only.'))
-			])
-		]);
+		// Info notice based on DPI source
+		var noticeSection;
+		if (dpiSource === 'ndpid') {
+			noticeSection = E('div', { 'class': 'cbi-section' }, [
+				E('div', { 'style': 'background: #d4edda; border: 1px solid #28a745; padding: 15px; border-radius: 4px; margin-bottom: 15px;' }, [
+					E('strong', {}, _('nDPId Active: ')),
+					E('span', {}, _('Using local deep packet inspection for streaming detection. No cloud subscription required.'))
+				])
+			]);
+		} else if (dpiSource === 'netifyd') {
+			noticeSection = E('div', { 'class': 'cbi-section' }, [
+				E('div', { 'style': 'background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 4px; margin-bottom: 15px;' }, [
+					E('strong', {}, _('Notice: ')),
+					E('span', {}, _('Netifyd 5.x requires a cloud subscription for streaming service detection. Install nDPId for local detection.'))
+				])
+			]);
+		} else {
+			noticeSection = E('div', { 'class': 'cbi-section' }, [
+				E('div', { 'style': 'background: #f8d7da; border: 1px solid #dc3545; padding: 15px; border-radius: 4px; margin-bottom: 15px;' }, [
+					E('strong', {}, _('No DPI Engine: ')),
+					E('span', {}, _('Install nDPId or netifyd for streaming detection capabilities.'))
+				])
+			]);
+		}
 		v.appendChild(noticeSection);
+
+		// Active Streams section (when nDPId provides data)
+		var streamsSection = E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('Active Streams')),
+			E('div', { 'id': 'active-streams-container' })
+		]);
+
+		var categoryIcons = {
+			'video': String.fromCodePoint(0x1F3AC),
+			'audio': String.fromCodePoint(0x1F3B5),
+			'visio': String.fromCodePoint(0x1F4F9)
+		};
+
+		var qualityColors = {
+			'4K': '#9333ea',
+			'FHD': '#2563eb',
+			'HD': '#059669',
+			'SD': '#d97706',
+			'Lossless': '#9333ea',
+			'High': '#2563eb',
+			'Normal': '#059669',
+			'Low': '#d97706',
+			'Audio Only': '#6b7280'
+		};
+
+		var renderActiveStreams = function(streams, dpiSrc) {
+			var container = document.getElementById('active-streams-container');
+			if (!container) return;
+
+			container.innerHTML = '';
+
+			if (!streams || streams.length === 0) {
+				container.appendChild(E('div', { 'style': 'text-align: center; padding: 30px; color: #666;' }, [
+					E('div', { 'style': 'font-size: 3em; margin-bottom: 10px;' }, String.fromCodePoint(0x1F4E1)),
+					E('p', {}, dpiSrc === 'ndpid' ? _('No streaming activity detected') : _('Waiting for streaming data...'))
+				]));
+				return;
+			}
+
+			var table = E('table', { 'class': 'table', 'style': 'width: 100%;' }, [
+				E('tr', { 'class': 'tr table-titles' }, [
+					E('th', { 'class': 'th' }, _('Service')),
+					E('th', { 'class': 'th' }, _('Client')),
+					E('th', { 'class': 'th' }, _('Category')),
+					E('th', { 'class': 'th' }, _('Quality')),
+					E('th', { 'class': 'th' }, _('Bandwidth')),
+					E('th', { 'class': 'th' }, _('Data'))
+				])
+			]);
+
+			streams.slice(0, 20).forEach(function(stream) {
+				var icon = categoryIcons[stream.category] || String.fromCodePoint(0x1F4CA);
+				var qualityColor = qualityColors[stream.quality] || '#6b7280';
+				var bytesTotal = (stream.bytes_rx || 0) + (stream.bytes_tx || 0);
+				var dataMB = (bytesTotal / 1048576).toFixed(1);
+
+				table.appendChild(E('tr', { 'class': 'tr' }, [
+					E('td', { 'class': 'td' }, [
+						E('strong', {}, stream.app || 'Unknown')
+					]),
+					E('td', { 'class': 'td' }, stream.client || '-'),
+					E('td', { 'class': 'td' }, icon + ' ' + (stream.category || 'other')),
+					E('td', { 'class': 'td' }, [
+						E('span', { 'style': 'background: ' + qualityColor + '; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;' },
+							stream.quality || '-')
+					]),
+					E('td', { 'class': 'td' }, (stream.bandwidth || 0) + ' kbps'),
+					E('td', { 'class': 'td' }, dataMB + ' MB')
+				]));
+			});
+
+			container.appendChild(table);
+		};
+
+		// Initial render of streams
+		renderActiveStreams(streamsData.streams || [], dpiSource);
+		v.appendChild(streamsSection);
 
 		// Network flow stats
 		var flowSection = E('div', { 'class': 'cbi-section' }, [
-			E('h3', {}, _('Network Flows')),
+			E('h3', {}, _('Network Flow Statistics')),
 			E('div', { 'id': 'flow-stats-container' })
 		]);
 
@@ -70,21 +194,27 @@ return L.view.extend({
 				if (!container) return;
 
 				var flowCount = data.flow_count || 0;
+				var dpiSrc = data.dpi_source || 'none';
 				var note = data.note || '';
 
 				container.innerHTML = '';
-				container.appendChild(E('div', { 'class': 'table', 'style': 'background: #f8f9fa; padding: 20px; border-radius: 8px;' }, [
-					E('div', { 'class': 'tr' }, [
-						E('div', { 'class': 'td', 'style': 'text-align: center;' }, [
-							E('div', { 'style': 'font-size: 3em; color: #0088cc; font-weight: bold;' }, String(flowCount)),
-							E('div', { 'style': 'color: #666; margin-top: 5px;' }, _('Active Network Flows'))
-						])
+				container.appendChild(E('div', { 'style': 'display: flex; justify-content: space-around; background: #f8f9fa; padding: 20px; border-radius: 8px;' }, [
+					E('div', { 'style': 'text-align: center;' }, [
+						E('div', { 'style': 'font-size: 2.5em; color: #0088cc; font-weight: bold;' }, String(flowCount)),
+						E('div', { 'style': 'color: #666; margin-top: 5px;' }, _('Total Flows'))
+					]),
+					E('div', { 'style': 'text-align: center;' }, [
+						E('div', { 'style': 'font-size: 2.5em; color: #ec4899; font-weight: bold;' }, String((data.streams || []).length)),
+						E('div', { 'style': 'color: #666; margin-top: 5px;' }, _('Streaming Flows'))
 					])
 				]));
 
 				if (note) {
 					container.appendChild(E('p', { 'style': 'font-style: italic; color: #666; text-align: center; margin-top: 10px;' }, note));
 				}
+
+				// Update active streams table
+				renderActiveStreams(data.streams || [], dpiSrc);
 			});
 		};
 
@@ -186,7 +316,7 @@ return L.view.extend({
 
 				var servicesList = Object.keys(services);
 				if (servicesList.length === 0) {
-					container.appendChild(E('p', { 'style': 'font-style: italic' }, _('No historical data available. Stream detection requires netifyd cloud subscription.')));
+					container.appendChild(E('p', { 'style': 'font-style: italic' }, _('No historical data available. Start streaming services while nDPId is running to collect data.')));
 					drawDonutChart({}, [], 0);
 					return;
 				}

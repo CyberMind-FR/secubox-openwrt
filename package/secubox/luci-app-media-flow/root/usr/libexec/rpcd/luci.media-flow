@@ -1,19 +1,55 @@
 #!/bin/sh
 # RPCD backend for Media Flow
 # Provides ubus interface: luci.media-flow
-# Note: netifyd 5.x does not export per-flow application data locally
-# This module shows available network statistics from netifyd
+# Supports both nDPId (local DPI) and netifyd as data sources
+# nDPId provides local application detection without cloud subscription
 
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
 HISTORY_FILE="/tmp/media-flow-history.json"
 STATS_DIR="/tmp/media-flow-stats"
+NDPID_FLOWS="/tmp/ndpid-flows.json"
+NDPID_APPS="/tmp/ndpid-apps.json"
+MEDIA_CACHE="/tmp/media-flow-ndpid-cache.json"
+
+# Streaming patterns for filtering
+STREAMING_PATTERN="YouTube|Netflix|Disney|Amazon|Twitch|Hbo|Hulu|Vimeo|Peacock|Paramount|Spotify|Apple.*Music|Deezer|SoundCloud|Tidal|Zoom|Teams|Meet|Discord|Skype|Webex"
 
 # Initialize storage
 init_storage() {
 	mkdir -p "$STATS_DIR"
 	[ ! -f "$HISTORY_FILE" ] && echo '[]' > "$HISTORY_FILE"
+}
+
+# Detect available DPI source
+get_dpi_source() {
+	# Prefer nDPId if running and has data
+	if [ -f "$NDPID_FLOWS" ] && pgrep -x ndpid >/dev/null 2>&1; then
+		echo "ndpid"
+	elif [ -f /var/run/netifyd/status.json ] && pgrep -x netifyd >/dev/null 2>&1; then
+		echo "netifyd"
+	else
+		echo "none"
+	fi
+}
+
+# Get nDPId flow data
+get_ndpid_data() {
+	if [ -f "$NDPID_FLOWS" ]; then
+		cat "$NDPID_FLOWS"
+	else
+		echo '[]'
+	fi
+}
+
+# Get nDPId apps data
+get_ndpid_apps() {
+	if [ -f "$NDPID_APPS" ]; then
+		cat "$NDPID_APPS"
+	else
+		echo '[]'
+	fi
 }
 
 # Get netifyd status data
@@ -79,20 +115,45 @@ case "$1" in
 			status)
 				init_storage
 
+				# Check nDPId status
+				ndpid_running=0
+				ndpid_version="unknown"
+				ndpid_flows=0
+				pgrep -x ndpid > /dev/null 2>&1 && ndpid_running=1
+				if [ "$ndpid_running" = "1" ] && [ -f "$NDPID_FLOWS" ]; then
+					ndpid_flows=$(jq 'length' "$NDPID_FLOWS" 2>/dev/null || echo 0)
+					ndpid_version=$(ndpid -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "unknown")
+				fi
+
+				# Check netifyd status
 				netifyd_running=0
-				pgrep netifyd > /dev/null 2>&1 && netifyd_running=1
+				pgrep -x netifyd > /dev/null 2>&1 && netifyd_running=1
 
 				netifyd_data=$(get_netifyd_data)
-				flow_count=0
+				netifyd_flows=0
 				netifyd_version="unknown"
 
 				if [ "$netifyd_running" = "1" ] && [ -n "$netifyd_data" ] && [ "$netifyd_data" != "{}" ]; then
-					flow_count=$(echo "$netifyd_data" | jq '.flows_active // .flow_count // 0' 2>/dev/null || echo 0)
+					netifyd_flows=$(echo "$netifyd_data" | jq '.flows_active // .flow_count // 0' 2>/dev/null || echo 0)
 					netifyd_version=$(echo "$netifyd_data" | jq -r '.agent_version // "unknown"' 2>/dev/null || echo "unknown")
+				fi
+
+				# Determine active DPI source
+				dpi_source=$(get_dpi_source)
+
+				# Use flow count from active source
+				if [ "$dpi_source" = "ndpid" ]; then
+					flow_count=$ndpid_flows
+				else
+					flow_count=$netifyd_flows
 				fi
 
 				history_count=0
 				[ -f "$HISTORY_FILE" ] && history_count=$(jq 'length' "$HISTORY_FILE" 2>/dev/null || echo 0)
+
+				# Check if nDPId cache has active streams
+				active_streams=0
+				[ -f "$MEDIA_CACHE" ] && active_streams=$(jq 'length' "$MEDIA_CACHE" 2>/dev/null || echo 0)
 
 				enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
 				refresh=$(uci -q get media_flow.global.refresh_interval 2>/dev/null || echo "5")
@@ -101,13 +162,18 @@ case "$1" in
 				{
 					"enabled": $enabled,
 					"module": "media-flow",
-					"version": "0.5.2",
+					"version": "0.6.0",
+					"dpi_source": "$dpi_source",
+					"ndpid_running": $ndpid_running,
+					"ndpid_version": "$ndpid_version",
+					"ndpid_flows": $ndpid_flows,
 					"netifyd_running": $netifyd_running,
 					"netifyd_version": "$netifyd_version",
+					"netifyd_flows": $netifyd_flows,
 					"active_flows": $flow_count,
+					"active_streams": $active_streams,
 					"history_entries": $history_count,
-					"refresh_interval": $refresh,
-					"note": "netifyd 5.x requires cloud subscription for streaming detection"
+					"refresh_interval": $refresh
 				}
 				EOF
 				;;
@@ -115,15 +181,32 @@ case "$1" in
 			get_active_streams)
 				init_storage
 
-				netifyd_data=$(get_netifyd_data)
-				flow_count=$(echo "$netifyd_data" | jq '.flows_active // .flow_count // 0' 2>/dev/null || echo 0)
+				dpi_source=$(get_dpi_source)
+				streams="[]"
+				flow_count=0
 
-				# netifyd 5.x doesn't export application detection locally
-				# Return empty streams with explanation
+				if [ "$dpi_source" = "ndpid" ]; then
+					# Get active streams from nDPId cache
+					if [ -f "$MEDIA_CACHE" ]; then
+						streams=$(cat "$MEDIA_CACHE" 2>/dev/null || echo "[]")
+					fi
+					if [ -f "$NDPID_FLOWS" ]; then
+						flow_count=$(jq 'length' "$NDPID_FLOWS" 2>/dev/null || echo 0)
+					fi
+					note="Streams detected via nDPId local DPI"
+				elif [ "$dpi_source" = "netifyd" ]; then
+					netifyd_data=$(get_netifyd_data)
+					flow_count=$(echo "$netifyd_data" | jq '.flows_active // .flow_count // 0' 2>/dev/null || echo 0)
+					note="Application detection requires netifyd cloud subscription"
+				else
+					note="No DPI engine available"
+				fi
+
 				cat <<-EOF
 				{
-					"streams": [],
-					"note": "Application detection requires netifyd cloud subscription",
+					"streams": $streams,
+					"dpi_source": "$dpi_source",
+					"note": "$note",
 					"flow_count": $flow_count
 				}
 				EOF
