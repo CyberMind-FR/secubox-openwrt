@@ -1,0 +1,47 @@
+{
+	"luci-app-secubox-crowdsec": {
+		"description": "Grant access to SecuBox CrowdSec Dashboard",
+		"read": {
+			"ubus": {
+				"luci.secubox-crowdsec": [
+					"status",
+					"decisions",
+					"alerts",
+					"metrics",
+					"stats",
+					"collections",
+					"bouncers",
+					"nftables_stats",
+					"blocked_ips",
+					"config"
+				]
+			},
+			"uci": [
+				"crowdsec"
+			],
+			"file": {
+				"/etc/crowdsec/*": ["read"],
+				"/etc/crowdsec/acquis.d/*": ["read"],
+				"/var/log/crowdsec*.log": ["read"],
+				"/tmp/log/*.log": ["read"]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.secubox-crowdsec": [
+					"add_decision",
+					"delete_decision",
+					"install_collection",
+					"remove_collection",
+					"update_hub",
+					"upgrade_hub",
+					"control_service",
+					"save_config"
+				]
+			},
+			"uci": [
+				"crowdsec"
+			]
+		}
+	}
+}

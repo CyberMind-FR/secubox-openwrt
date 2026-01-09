@@ -1,0 +1,121 @@
+{
+  "id": "crowdsec",
+  "name": "CrowdSec Security Engine",
+  "category": "security",
+  "runtime": "native",
+  "maturity": "stable",
+  "description": "Open-source, lightweight security engine that detects and responds to malicious behaviors with automatic log acquisition for OpenWrt.",
+  "source": {
+    "homepage": "https://crowdsec.net/",
+    "github": "https://github.com/crowdsecurity/crowdsec"
+  },
+  "packages": [
+    "crowdsec"
+  ],
+  "capabilities": [
+    "intrusion-detection",
+    "threat-intel",
+    "log-analysis",
+    "ip-reputation"
+  ],
+  "requirements": {
+    "arch": [
+      "arm64",
+      "armv7",
+      "x86_64",
+      "mipsel"
+    ],
+    "min_ram_mb": 128,
+    "min_storage_mb": 50
+  },
+  "hardware": {
+    "usb": false,
+    "serial": false
+  },
+  "network": {
+    "inbound_ports": [
+      8080
+    ],
+    "protocols": [
+      "http"
+    ],
+    "outbound_only": false
+  },
+  "privileges": {
+    "needs_usb": false,
+    "needs_serial": false,
+    "needs_net_admin": true
+  },
+  "update": {
+    "strategy": "opkg"
+  },
+  "wizard": {
+    "uci": {
+      "config": "crowdsec",
+      "section": "acquisition"
+    },
+    "fields": [
+      {
+        "id": "syslog_enabled",
+        "label": "Enable Syslog Acquisition",
+        "type": "checkbox",
+        "uci_option": "syslog_enabled",
+        "description": "Monitor system syslog for security events",
+        "default": "1"
+      },
+      {
+        "id": "firewall_enabled",
+        "label": "Enable Firewall Log Acquisition",
+        "type": "checkbox",
+        "uci_option": "firewall_enabled",
+        "description": "Monitor iptables/nftables firewall logs for port scans",
+        "default": "1"
+      },
+      {
+        "id": "ssh_enabled",
+        "label": "Enable SSH Log Acquisition",
+        "type": "checkbox",
+        "uci_option": "ssh_enabled",
+        "description": "Monitor SSH/Dropbear authentication logs",
+        "default": "1"
+      },
+      {
+        "id": "http_enabled",
+        "label": "Enable HTTP Log Acquisition",
+        "type": "checkbox",
+        "uci_option": "http_enabled",
+        "description": "Monitor uHTTPd/nginx web server logs",
+        "default": "0"
+      },
+      {
+        "id": "syslog_path",
+        "label": "Syslog File Path",
+        "type": "text",
+        "uci_option": "syslog_path",
+        "placeholder": "/var/log/messages",
+        "description": "Path to the main syslog file"
+      },
+      {
+        "id": "kernel_log_path",
+        "label": "Kernel Log Path",
+        "type": "text",
+        "uci_option": "kernel_log_path",
+        "placeholder": "/var/log/kern.log",
+        "description": "Path to kernel/firewall log file"
+      }
+    ]
+  },
+  "profiles": {
+    "recommended": [
+      "gateway",
+      "smb",
+      "lab",
+      "home"
+    ]
+  },
+  "actions": {
+    "status": "/etc/init.d/crowdsec status",
+    "install": "cscli hub update && cscli collections install crowdsecurity/linux crowdsecurity/iptables",
+    "update": "cscli hub upgrade"
+  }
+}

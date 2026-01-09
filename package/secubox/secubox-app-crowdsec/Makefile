@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=crowdsec
 PKG_VERSION:=1.7.4
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_ARCH:=all
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
@@ -205,6 +205,21 @@ define Package/crowdsec/install
 		$(GO_PKG_BUILD_DIR)/src/$(GO_PKG)/config/patterns/* \
 		$(1)/etc/crowdsec/patterns
 
+	# Install acquisition configuration directory and templates
+	$(INSTALL_DIR) $(1)/etc/crowdsec/acquis.d
+	$(INSTALL_DATA) \
+		./files/acquis.d/openwrt-syslog.yaml \
+		$(1)/etc/crowdsec/acquis.d/
+	$(INSTALL_DATA) \
+		./files/acquis.d/openwrt-dropbear.yaml \
+		$(1)/etc/crowdsec/acquis.d/
+	$(INSTALL_DATA) \
+		./files/acquis.d/openwrt-firewall.yaml \
+		$(1)/etc/crowdsec/acquis.d/
+	$(INSTALL_DATA) \
+		./files/acquis.d/openwrt-uhttpd.yaml \
+		$(1)/etc/crowdsec/acquis.d/
+
 	$(INSTALL_DIR) $(1)/srv/crowdsec/data/
 
 	$(INSTALL_DIR) $(1)/etc/init.d
@@ -227,6 +242,7 @@ endef
 
 define Package/crowdsec/conffiles
 /etc/crowdsec/
+/etc/crowdsec/acquis.d/
 /etc/config/crowdsec
 endef
 

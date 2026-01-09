@@ -21,7 +21,8 @@
 					"nftables_stats",
 					"check_wizard_needed",
 					"wizard_state",
-					"console_status"
+					"console_status",
+					"acquisition_config"
 				],
 				"file": [ "read", "stat" ]
 			},
@@ -44,10 +45,12 @@
 					"repair_lapi",
 					"console_enroll",
 					"console_disable",
-					"service_control"
+					"service_control",
+					"configure_acquisition",
+					"reset_wizard"
 				]
 			},
-			"uci": [ "crowdsec-dashboard" ]
+			"uci": [ "crowdsec", "crowdsec-dashboard" ]
 		}
 	}
 }

@@ -230,6 +230,20 @@ var callServiceControl = rpc.declare({
 	expect: { }
 });
 
+// Acquisition Methods
+var callConfigureAcquisition = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'configure_acquisition',
+	params: ['syslog_enabled', 'firewall_enabled', 'ssh_enabled', 'http_enabled', 'syslog_path'],
+	expect: { }
+});
+
+var callAcquisitionConfig = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'acquisition_config',
+	expect: { }
+});
+
 function formatDuration(seconds) {
 	if (!seconds) return 'N/A';
 	if (seconds < 60) return seconds + 's';
@@ -359,6 +373,10 @@ return baseclass.extend({
 
 	// Service Control
 	serviceControl: callServiceControl,
+
+	// Acquisition Methods
+	configureAcquisition: callConfigureAcquisition,
+	getAcquisitionConfig: callAcquisitionConfig,
 
 	formatDuration: formatDuration,
 	formatDate: formatDate,

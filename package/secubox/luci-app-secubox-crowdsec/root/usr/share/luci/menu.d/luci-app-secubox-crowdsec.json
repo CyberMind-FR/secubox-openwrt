@@ -1,0 +1,53 @@
+{
+	"admin/services/secubox-crowdsec": {
+		"title": "CrowdSec",
+		"order": 80,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-secubox-crowdsec"],
+			"uci": { "crowdsec": true }
+		}
+	},
+	"admin/services/secubox-crowdsec/dashboard": {
+		"title": "Dashboard",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "secubox-crowdsec/dashboard"
+		}
+	},
+	"admin/services/secubox-crowdsec/decisions": {
+		"title": "Decisions",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "secubox-crowdsec/decisions"
+		}
+	},
+	"admin/services/secubox-crowdsec/alerts": {
+		"title": "Alerts",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "secubox-crowdsec/alerts"
+		}
+	},
+	"admin/services/secubox-crowdsec/collections": {
+		"title": "Collections",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "secubox-crowdsec/collections"
+		}
+	},
+	"admin/services/secubox-crowdsec/settings": {
+		"title": "Settings",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "secubox-crowdsec/settings"
+		}
+	}
+}

@@ -21,7 +21,7 @@
 return view.extend({
 	wizardData: {
 		currentStep: 1,
-		totalSteps: 7,
+		totalSteps: 8,
 
 		// Step 1 data
 		crowdsecRunning: false,
@@ -39,20 +39,29 @@ return view.extend({
 		hubUpdating: false,
 		hubUpdated: false,
 
-		// Step 4 data (Collections)
+		// Step 4 data (Log Acquisition)
+		acquisitionConfigured: false,
+		acquisitionConfiguring: false,
+		syslogEnabled: true,
+		firewallEnabled: true,
+		sshEnabled: true,
+		httpEnabled: false,
+		syslogPath: '/var/log/messages',
+
+		// Step 5 data (Collections)
 		collections: [],
 		installing: false,
 		installed: false,
 		installStatus: '',
 		installedCount: 0,
 
-		// Step 5 data (Bouncer)
+		// Step 6 data (Bouncer)
 		configuring: false,
 		bouncerConfigured: false,
 		apiKey: '',
 		resetting: false,
 
-		// Step 6 data (Services)
+		// Step 7 data (Services)
 		starting: false,
 		enabling: false,
 		enabled: false,
@@ -60,7 +69,7 @@ return view.extend({
 		nftablesActive: false,
 		lapiConnected: false,
 
-		// Step 7 data (Complete)
+		// Step 8 data (Complete)
 		blockedIPs: 0,
 		activeDecisions: 0
 	},
@@ -171,10 +180,11 @@ return view.extend({
 			{ number: 1, title: _('Welcome') },
 			{ number: 2, title: _('Console') },
 			{ number: 3, title: _('Update Hub') },
-			{ number: 4, title: _('Install Packs') },
-			{ number: 5, title: _('Configure Bouncer') },
-			{ number: 6, title: _('Enable Services') },
-			{ number: 7, title: _('Complete') }
+			{ number: 4, title: _('Log Sources') },
+			{ number: 5, title: _('Install Packs') },
+			{ number: 6, title: _('Configure Bouncer') },
+			{ number: 7, title: _('Enable Services') },
+			{ number: 8, title: _('Complete') }
 		];
 
 		var stepper = E('div', { 'class': 'wizard-stepper' });
@@ -209,13 +219,15 @@ return view.extend({
 			case 3:
 				return this.renderStep3Hub(data);
 			case 4:
-				return this.renderStep4Collections(data);
+				return this.renderStep4Acquisition(data);
 			case 5:
-				return this.renderStep5Bouncer(data);
+				return this.renderStep5Collections(data);
 			case 6:
-				return this.renderStep6Services(data);
+				return this.renderStep6Bouncer(data);
 			case 7:
-				return this.renderStep7Complete(data);
+				return this.renderStep7Services(data);
+			case 8:
+				return this.renderStep8Complete(data);
 			default:
 				return E('div', {}, _('Invalid step'));
 		}
@@ -441,11 +453,187 @@ return view.extend({
 		]);
 	},
 
-	renderStep4Collections: function(data) {
+	renderStep4Acquisition: function(data) {
+		var self = this;
+		return E('div', { 'class': 'wizard-step' }, [
+			E('h2', {}, _('Configure Log Acquisition')),
+			E('p', {}, _('Select which log sources CrowdSec should monitor for security threats.')),
+
+			// Info box about log acquisition
+			E('div', { 'class': 'info-box', 'style': 'margin-bottom: 24px;' }, [
+				E('h4', {}, _('About Log Acquisition')),
+				E('p', { 'style': 'margin: 0; font-size: 0.9em; color: var(--cyber-text-secondary, #94a3b8);' },
+					_('CrowdSec analyzes logs to detect malicious activity. Enable the log sources relevant to your setup.'))
+			]),
+
+			// Log source toggles
+			E('div', { 'class': 'config-section' }, [
+				// Syslog
+				E('div', {
+					'class': 'config-group',
+					'id': 'acq-syslog',
+					'data-checked': this.wizardData.syslogEnabled ? '1' : '0',
+					'style': 'display: flex; align-items: center; cursor: pointer; padding: 12px; background: rgba(15, 23, 42, 0.5); border-radius: 8px; margin-bottom: 12px;',
+					'click': function(ev) {
+						var item = ev.currentTarget;
+						var currentState = item.getAttribute('data-checked') === '1';
+						var newState = !currentState;
+						item.setAttribute('data-checked', newState ? '1' : '0');
+						self.wizardData.syslogEnabled = newState;
+						var checkbox = item.querySelector('.checkbox-indicator');
+						if (checkbox) {
+							checkbox.textContent = newState ? '☑' : '☐';
+							checkbox.style.color = newState ? '#22c55e' : '#94a3b8';
+						}
+					}
+				}, [
+					E('span', {
+						'class': 'checkbox-indicator',
+						'style': 'display: inline-block; font-size: 24px; margin-right: 12px; user-select: none; color: ' + (this.wizardData.syslogEnabled ? '#22c55e' : '#94a3b8') + '; min-width: 24px;'
+					}, this.wizardData.syslogEnabled ? '☑' : '☐'),
+					E('div', { 'style': 'flex: 1;' }, [
+						E('strong', {}, _('System Syslog')),
+						E('div', { 'style': 'font-size: 0.85em; color: var(--cyber-text-secondary, #94a3b8);' },
+							_('Monitor /var/log/messages for system events'))
+					])
+				]),
+
+				// Firewall logs
+				E('div', {
+					'class': 'config-group',
+					'id': 'acq-firewall',
+					'data-checked': this.wizardData.firewallEnabled ? '1' : '0',
+					'style': 'display: flex; align-items: center; cursor: pointer; padding: 12px; background: rgba(15, 23, 42, 0.5); border-radius: 8px; margin-bottom: 12px;',
+					'click': function(ev) {
+						var item = ev.currentTarget;
+						var currentState = item.getAttribute('data-checked') === '1';
+						var newState = !currentState;
+						item.setAttribute('data-checked', newState ? '1' : '0');
+						self.wizardData.firewallEnabled = newState;
+						var checkbox = item.querySelector('.checkbox-indicator');
+						if (checkbox) {
+							checkbox.textContent = newState ? '☑' : '☐';
+							checkbox.style.color = newState ? '#22c55e' : '#94a3b8';
+						}
+					}
+				}, [
+					E('span', {
+						'class': 'checkbox-indicator',
+						'style': 'display: inline-block; font-size: 24px; margin-right: 12px; user-select: none; color: ' + (this.wizardData.firewallEnabled ? '#22c55e' : '#94a3b8') + '; min-width: 24px;'
+					}, this.wizardData.firewallEnabled ? '☑' : '☐'),
+					E('div', { 'style': 'flex: 1;' }, [
+						E('strong', {}, _('Firewall Logs')),
+						E('div', { 'style': 'font-size: 0.85em; color: var(--cyber-text-secondary, #94a3b8);' },
+							_('Monitor iptables/nftables for port scans (requires iptables collection)'))
+					])
+				]),
+
+				// SSH/Dropbear logs
+				E('div', {
+					'class': 'config-group',
+					'id': 'acq-ssh',
+					'data-checked': this.wizardData.sshEnabled ? '1' : '0',
+					'style': 'display: flex; align-items: center; cursor: pointer; padding: 12px; background: rgba(15, 23, 42, 0.5); border-radius: 8px; margin-bottom: 12px;',
+					'click': function(ev) {
+						var item = ev.currentTarget;
+						var currentState = item.getAttribute('data-checked') === '1';
+						var newState = !currentState;
+						item.setAttribute('data-checked', newState ? '1' : '0');
+						self.wizardData.sshEnabled = newState;
+						var checkbox = item.querySelector('.checkbox-indicator');
+						if (checkbox) {
+							checkbox.textContent = newState ? '☑' : '☐';
+							checkbox.style.color = newState ? '#22c55e' : '#94a3b8';
+						}
+					}
+				}, [
+					E('span', {
+						'class': 'checkbox-indicator',
+						'style': 'display: inline-block; font-size: 24px; margin-right: 12px; user-select: none; color: ' + (this.wizardData.sshEnabled ? '#22c55e' : '#94a3b8') + '; min-width: 24px;'
+					}, this.wizardData.sshEnabled ? '☑' : '☐'),
+					E('div', { 'style': 'flex: 1;' }, [
+						E('strong', {}, _('SSH/Dropbear Logs')),
+						E('div', { 'style': 'font-size: 0.85em; color: var(--cyber-text-secondary, #94a3b8);' },
+							_('Detect SSH brute force attacks (via syslog)'))
+					])
+				]),
+
+				// HTTP logs
+				E('div', {
+					'class': 'config-group',
+					'id': 'acq-http',
+					'data-checked': this.wizardData.httpEnabled ? '1' : '0',
+					'style': 'display: flex; align-items: center; cursor: pointer; padding: 12px; background: rgba(15, 23, 42, 0.5); border-radius: 8px; margin-bottom: 12px;',
+					'click': function(ev) {
+						var item = ev.currentTarget;
+						var currentState = item.getAttribute('data-checked') === '1';
+						var newState = !currentState;
+						item.setAttribute('data-checked', newState ? '1' : '0');
+						self.wizardData.httpEnabled = newState;
+						var checkbox = item.querySelector('.checkbox-indicator');
+						if (checkbox) {
+							checkbox.textContent = newState ? '☑' : '☐';
+							checkbox.style.color = newState ? '#22c55e' : '#94a3b8';
+						}
+					}
+				}, [
+					E('span', {
+						'class': 'checkbox-indicator',
+						'style': 'display: inline-block; font-size: 24px; margin-right: 12px; user-select: none; color: ' + (this.wizardData.httpEnabled ? '#22c55e' : '#94a3b8') + '; min-width: 24px;'
+					}, this.wizardData.httpEnabled ? '☑' : '☐'),
+					E('div', { 'style': 'flex: 1;' }, [
+						E('strong', {}, _('HTTP Server Logs')),
+						E('div', { 'style': 'font-size: 0.85em; color: var(--cyber-text-secondary, #94a3b8);' },
+							_('Monitor uHTTPd/nginx web server (disabled by default)'))
+					])
+				]),
+
+				// Note about OpenWrt log handling
+				E('div', { 'class': 'info-box', 'style': 'margin-top: 16px; padding: 12px; background: rgba(102, 126, 234, 0.1); border-radius: 8px; border: 1px solid rgba(102, 126, 234, 0.3);' }, [
+					E('p', { 'style': 'margin: 0; font-size: 0.9em; color: var(--cyber-text-secondary, #94a3b8);' }, [
+						E('strong', { 'style': 'color: var(--cyber-accent-primary, #667eea);' }, _('Note: ')),
+						_('OpenWrt uses logread command instead of log files. CrowdSec will stream logs via "logread -f". All enabled sources (syslog, SSH, firewall) share the same log stream.')
+					])
+				])
+			]),
+
+			// Configuration status
+			this.wizardData.acquisitionConfigured ?
+				E('div', { 'class': 'success-message', 'style': 'margin-top: 16px;' }, [
+					E('span', { 'class': 'check-icon success' }, '✓'),
+					_('Log acquisition configured successfully!')
+				]) :
+				this.wizardData.acquisitionConfiguring ?
+					E('div', { 'class': 'spinning', 'style': 'margin-top: 16px;' }, _('Configuring acquisition...')) :
+					E([]),
+
+			// Navigation
+			E('div', { 'class': 'wizard-nav' }, [
+				E('button', {
+					'class': 'cbi-button',
+					'click': L.bind(this.goToStep, this, 3),
+					'disabled': this.wizardData.acquisitionConfiguring ? true : null
+				}, _('Back')),
+				this.wizardData.acquisitionConfigured ?
+					E('button', {
+						'class': 'cbi-button cbi-button-positive',
+						'click': L.bind(this.goToStep, this, 5)
+					}, _('Next')) :
+					E('button', {
+						'class': 'cbi-button cbi-button-action',
+						'click': L.bind(this.handleConfigureAcquisition, this),
+						'disabled': this.wizardData.acquisitionConfiguring ? true : null
+					}, _('Apply Configuration'))
+			])
+		]);
+	},
+
+	renderStep5Collections: function(data) {
 		var recommendedCollections = [
-			{ name: 'crowdsecurity/linux', description: 'Base Linux scenarios', preselected: true },
+			{ name: 'crowdsecurity/linux', description: 'Base Linux scenarios (SSH, syslog)', preselected: true },
+			{ name: 'crowdsecurity/iptables', description: 'Firewall log parser (port scan detection)', preselected: this.wizardData.firewallEnabled },
 			{ name: 'crowdsecurity/ssh-bf', description: 'SSH brute force protection', preselected: true },
-			{ name: 'crowdsecurity/http-cve', description: 'Web CVE protection', preselected: true },
+			{ name: 'crowdsecurity/http-cve', description: 'Web CVE protection', preselected: this.wizardData.httpEnabled },
 			{ name: 'crowdsecurity/whitelist-good-actors', description: 'Whitelist known good bots', preselected: false }
 		];
 
@@ -500,12 +688,12 @@ return view.extend({
 			E('div', { 'class': 'wizard-nav' }, [
 				E('button', {
 					'class': 'cbi-button',
-					'click': L.bind(this.goToStep, this, 3),
+					'click': L.bind(this.goToStep, this, 4),
 					'disabled': this.wizardData.installing ? true : null
 				}, _('Back')),
 				E('button', {
 					'class': 'cbi-button',
-					'click': L.bind(this.goToStep, this, 5),
+					'click': L.bind(this.goToStep, this, 6),
 					'disabled': this.wizardData.installing ? true : null
 				}, _('Skip')),
 				E('button', {
@@ -517,7 +705,7 @@ return view.extend({
 		]);
 	},
 
-	renderStep5Bouncer: function(data) {
+	renderStep6Bouncer: function(data) {
 		var self = this;
 		return E('div', { 'class': 'wizard-step' }, [
 			E('h2', {}, _('Configure Firewall Bouncer')),
@@ -628,13 +816,13 @@ return view.extend({
 			E('div', { 'class': 'wizard-nav' }, [
 				E('button', {
 					'class': 'cbi-button',
-					'click': L.bind(this.goToStep, this, 4),
+					'click': L.bind(this.goToStep, this, 5),
 					'disabled': this.wizardData.configuring ? true : null
 				}, _('Back')),
 				this.wizardData.bouncerConfigured ?
 					E('button', {
 						'class': 'cbi-button cbi-button-positive',
-						'click': L.bind(this.goToStep, this, 6)
+						'click': L.bind(this.goToStep, this, 7)
 					}, _('Next')) :
 					E('button', {
 						'class': 'cbi-button cbi-button-action',
@@ -645,7 +833,7 @@ return view.extend({
 		]);
 	},
 
-	renderStep6Services: function(data) {
+	renderStep7Services: function(data) {
 		return E('div', { 'class': 'wizard-step' }, [
 			E('h2', {}, _('Enable & Start Services')),
 			E('p', {}, _('Starting the firewall bouncer service and verifying operation...')),
@@ -678,13 +866,13 @@ return view.extend({
 			E('div', { 'class': 'wizard-nav' }, [
 				E('button', {
 					'class': 'cbi-button',
-					'click': L.bind(this.goToStep, this, 5),
+					'click': L.bind(this.goToStep, this, 6),
 					'disabled': this.wizardData.starting ? true : null
 				}, _('Back')),
 				(this.wizardData.enabled && this.wizardData.running && this.wizardData.nftablesActive && this.wizardData.lapiConnected) ?
 					E('button', {
 						'class': 'cbi-button cbi-button-positive',
-						'click': L.bind(this.goToStep, this, 7)
+						'click': L.bind(this.goToStep, this, 8)
 					}, _('Next')) :
 					E('button', {
 						'class': 'cbi-button cbi-button-action',
@@ -695,7 +883,7 @@ return view.extend({
 		]);
 	},
 
-	renderStep7Complete: function(data) {
+	renderStep8Complete: function(data) {
 		return E('div', { 'class': 'wizard-step wizard-complete' }, [
 			E('div', { 'class': 'success-hero' }, [
 				E('div', { 'class': 'success-icon' }, '🎉'),
@@ -888,6 +1076,52 @@ return view.extend({
 		}, this));
 	},
 
+	handleConfigureAcquisition: function() {
+		console.log('[Wizard] handleConfigureAcquisition called');
+		this.wizardData.acquisitionConfiguring = true;
+		this.refreshView();
+
+		// Get values from wizard data
+		var syslogEnabled = this.wizardData.syslogEnabled ? '1' : '0';
+		var firewallEnabled = this.wizardData.firewallEnabled ? '1' : '0';
+		var sshEnabled = this.wizardData.sshEnabled ? '1' : '0';
+		var httpEnabled = this.wizardData.httpEnabled ? '1' : '0';
+		var syslogPath = this.wizardData.syslogPath || '/var/log/messages';
+
+		console.log('[Wizard] Acquisition config:', {
+			syslog: syslogEnabled,
+			firewall: firewallEnabled,
+			ssh: sshEnabled,
+			http: httpEnabled,
+			path: syslogPath
+		});
+
+		return API.configureAcquisition(syslogEnabled, firewallEnabled, sshEnabled, httpEnabled, syslogPath)
+			.then(L.bind(function(result) {
+				console.log('[Wizard] configureAcquisition result:', result);
+				this.wizardData.acquisitionConfiguring = false;
+
+				if (result && result.success) {
+					this.wizardData.acquisitionConfigured = true;
+					ui.addNotification(null, E('p', _('Log acquisition configured successfully')), 'info');
+					this.refreshView();
+
+					// Auto-advance to Step 5 (Collections) after 2 seconds
+					console.log('[Wizard] Auto-advancing to Step 5 in 2 seconds...');
+					setTimeout(L.bind(function() { this.goToStep(5); }, this), 2000);
+				} else {
+					ui.addNotification(null, E('p', _('Configuration failed: ') + (result.error || 'Unknown error')), 'error');
+					this.refreshView();
+				}
+			}, this))
+			.catch(L.bind(function(err) {
+				console.error('[Wizard] Acquisition configuration error:', err);
+				this.wizardData.acquisitionConfiguring = false;
+				ui.addNotification(null, E('p', _('Configuration failed: ') + err.message), 'error');
+				this.refreshView();
+			}, this));
+	},
+
 	handleInstallCollections: function() {
 		// Read from data-checked attributes (Unicode checkbox approach)
 		var items = document.querySelectorAll('.collection-item[data-collection]');
@@ -898,7 +1132,7 @@ return view.extend({
 		console.log('[Wizard] Selected collections:', selected);
 
 		if (selected.length === 0) {
-			this.goToStep(5);
+			this.goToStep(6);
 			return;
 		}
 
@@ -922,8 +1156,8 @@ return view.extend({
 			ui.addNotification(null, E('p', _('Installed %d collections').format(selected.length)), 'info');
 			this.refreshView();
 
-			// Auto-advance after 2 seconds
-			setTimeout(L.bind(function() { this.goToStep(5); }, this), 2000);
+			// Auto-advance to Step 6 (Configure Bouncer) after 2 seconds
+			setTimeout(L.bind(function() { this.goToStep(6); }, this), 2000);
 		}, this)).catch(L.bind(function(err) {
 			this.wizardData.installing = false;
 			ui.addNotification(null, E('p', _('Installation failed: %s').format(err.message)), 'error');
@@ -971,9 +1205,9 @@ return view.extend({
 			ui.addNotification(null, E('p', _('Bouncer configured successfully')), 'info');
 			this.refreshView();
 
-			// Auto-advance after 2 seconds
-			console.log('[Wizard] Auto-advancing to Step 6 in 2 seconds...');
-			setTimeout(L.bind(function() { this.goToStep(6); }, this), 2000);
+			// Auto-advance to Step 7 (Enable Services) after 2 seconds
+			console.log('[Wizard] Auto-advancing to Step 7 in 2 seconds...');
+			setTimeout(L.bind(function() { this.goToStep(7); }, this), 2000);
 		}, this)).catch(L.bind(function(err) {
 			console.error('[Wizard] Configuration error:', err);
 			this.wizardData.configuring = false;
@@ -1039,10 +1273,10 @@ return view.extend({
 			// LAPI connection may take a few seconds to establish, so it's optional
 			if (this.wizardData.enabled && this.wizardData.running &&
 				this.wizardData.nftablesActive) {
-				console.log('[Wizard] All critical services started! Auto-advancing to Step 7...');
+				console.log('[Wizard] All critical services started! Auto-advancing to Step 8 (Complete)...');
 				ui.addNotification(null, E('p', _('Services started successfully!')), 'info');
-				// Auto-advance after 2 seconds
-				setTimeout(L.bind(function() { this.goToStep(7); }, this), 2000);
+				// Auto-advance to Step 8 (Complete) after 2 seconds
+				setTimeout(L.bind(function() { this.goToStep(8); }, this), 2000);
 			} else {
 				console.log('[Wizard] Service startup incomplete');
 				ui.addNotification(null, E('p', _('Service startup incomplete. Check status and retry.')), 'warning');

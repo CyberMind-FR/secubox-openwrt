@@ -1,52 +1,317 @@
 #!/bin/sh
+#
+# CrowdSec UCI Defaults Script
+# Configures CrowdSec on first install with automatic acquisition setup
+#
 
 CONFIG=/etc/crowdsec/config.yaml
-data_dir=`uci get "crowdsec.crowdsec.data_dir"`
-sed -i "s,^\(\s*data_dir\s*:\s*\).*\$,\1$data_dir," $CONFIG
-db_path=`uci get "crowdsec.crowdsec.db_path"`
-sed -i "s,^\(\s*db_path\s*:\s*\).*\$,\1$db_path," $CONFIG
+ACQUIS_DIR=/etc/crowdsec/acquis.d
+UCI_CONFIG=/etc/config/crowdsec
 
-# Create data dir & permissions if needed
-if [ ! -d "${data_dir}" ]; then
-	mkdir -m 0755 -p "${data_dir}"
-fi;
+# Load UCI functions
+. /lib/functions.sh
+
+# Get UCI values with defaults
+get_uci_value() {
+	local section="$1"
+	local option="$2"
+	local default="$3"
+	local value
+	value=$(uci -q get "crowdsec.${section}.${option}")
+	echo "${value:-$default}"
+}
+
+# Configure data paths
+setup_paths() {
+	local data_dir
+	local db_path
+
+	data_dir=$(get_uci_value "crowdsec" "data_dir" "/srv/crowdsec/data")
+	db_path=$(get_uci_value "crowdsec" "db_path" "/srv/crowdsec/data/crowdsec.db")
+
+	sed -i "s,^\(\s*data_dir\s*:\s*\).*\$,\1$data_dir," $CONFIG
+	sed -i "s,^\(\s*db_path\s*:\s*\).*\$,\1$db_path," $CONFIG
+
+	# Create data dir & permissions if needed
+	if [ ! -d "${data_dir}" ]; then
+		mkdir -m 0755 -p "${data_dir}"
+	fi
+}
 
 # Create machine-id if not exists
-if [ ! -f /etc/machine-id ]; then
-	cat /proc/sys/kernel/random/uuid | tr -d "-" > /etc/machine-id
-fi
+setup_machine_id() {
+	if [ ! -f /etc/machine-id ]; then
+		cat /proc/sys/kernel/random/uuid | tr -d "-" > /etc/machine-id
+		echo "Created machine-id"
+	fi
+}
 
 # Register local API machine
-if grep -q "login:" /etc/crowdsec/local_api_credentials.yaml 2>/dev/null; then
-	echo "Local API already registered"
-else
-	echo "Registering local API machine..."
-	cscli -c /etc/crowdsec/config.yaml machines add -a -f /etc/crowdsec/local_api_credentials.yaml
-fi
+register_lapi() {
+	if grep -q "login:" /etc/crowdsec/local_api_credentials.yaml 2>/dev/null; then
+		echo "Local API already registered"
+	else
+		echo "Registering local API machine..."
+		cscli -c /etc/crowdsec/config.yaml machines add -a -f /etc/crowdsec/local_api_credentials.yaml
+	fi
+}
 
 # Register with Central API (CAPI) for threat intelligence sharing
-if ! grep -q "login:" /etc/crowdsec/online_api_credentials.yaml 2>/dev/null; then
-	echo "Registering with Central API (CAPI)..."
-	if cscli capi register 2>/dev/null; then
-		echo "Successfully registered with Central API"
+register_capi() {
+	if ! grep -q "login:" /etc/crowdsec/online_api_credentials.yaml 2>/dev/null; then
+		echo "Registering with Central API (CAPI)..."
+		if cscli capi register 2>/dev/null; then
+			echo "Successfully registered with Central API"
+		else
+			echo "WARNING: CAPI registration failed - will run in local-only mode"
+			# Create minimal credentials file to prevent errors
+			echo "url: https://api.crowdsec.net/" > /etc/crowdsec/online_api_credentials.yaml
+		fi
 	else
-		echo "WARNING: CAPI registration failed - will run in local-only mode"
-		# Create minimal credentials file to prevent errors
-		echo "url: https://api.crowdsec.net/" > /etc/crowdsec/online_api_credentials.yaml
+		echo "Central API already registered"
 	fi
-else
-	echo "Central API already registered"
-fi
+}
 
 # Update hub index
-if [ ! -f /etc/crowdsec/hub/.index.json ] || [ $(find /etc/crowdsec/hub/.index.json -mtime +7 2>/dev/null | wc -l) -gt 0 ]; then
-	echo "Updating hub index..."
-	cscli hub update 2>/dev/null || true
-fi
+update_hub() {
+	local update_interval
+	update_interval=$(get_uci_value "hub" "update_interval" "7")
 
-# Install default collections
-cscli collections install crowdsecurity/linux 2>/dev/null || true
-cscli parsers install crowdsecurity/whitelists 2>/dev/null || true
-cscli hub upgrade 2>/dev/null || true
+	if [ "$update_interval" = "0" ]; then
+		echo "Hub auto-update disabled"
+		return 0
+	fi
+
+	if [ ! -f /etc/crowdsec/hub/.index.json ] || \
+	   [ $(find /etc/crowdsec/hub/.index.json -mtime +${update_interval} 2>/dev/null | wc -l) -gt 0 ]; then
+		echo "Updating hub index..."
+		cscli hub update 2>/dev/null || true
+	fi
+}
+
+# Install collections and parsers from Hub
+install_hub_items() {
+	local auto_install
+	local collections
+	local parsers
+
+	auto_install=$(get_uci_value "hub" "auto_install" "1")
+
+	if [ "$auto_install" != "1" ]; then
+		echo "Hub auto-install disabled"
+		return 0
+	fi
+
+	# Install collections
+	collections=$(get_uci_value "hub" "collections" "crowdsecurity/linux crowdsecurity/iptables")
+	for collection in $collections; do
+		echo "Installing collection: $collection"
+		cscli collections install "$collection" 2>/dev/null || true
+	done
+
+	# Install additional parsers
+	parsers=$(get_uci_value "hub" "parsers" "crowdsecurity/syslog-logs crowdsecurity/whitelists")
+	for parser in $parsers; do
+		echo "Installing parser: $parser"
+		cscli parsers install "$parser" 2>/dev/null || true
+	done
+
+	# Upgrade all hub items
+	cscli hub upgrade 2>/dev/null || true
+}
+
+# Generate dynamic acquisition configuration
+generate_acquisition_config() {
+	local syslog_enabled
+	local firewall_enabled
+	local ssh_enabled
+	local http_enabled
+	local syslog_path
+	local kernel_log_path
+	local auth_log_path
+
+	# Ensure acquis.d directory exists
+	mkdir -p "$ACQUIS_DIR"
+
+	# Get acquisition settings from UCI
+	syslog_enabled=$(get_uci_value "acquisition" "syslog_enabled" "1")
+	firewall_enabled=$(get_uci_value "acquisition" "firewall_enabled" "1")
+	ssh_enabled=$(get_uci_value "acquisition" "ssh_enabled" "1")
+	http_enabled=$(get_uci_value "acquisition" "http_enabled" "0")
+	syslog_path=$(get_uci_value "acquisition" "syslog_path" "/var/log/messages")
+	kernel_log_path=$(get_uci_value "acquisition" "kernel_log_path" "/var/log/kern.log")
+	auth_log_path=$(get_uci_value "acquisition" "auth_log_path" "/var/log/auth.log")
+
+	# Generate syslog acquisition config
+	if [ "$syslog_enabled" = "1" ]; then
+		echo "Configuring syslog acquisition..."
+		cat > "$ACQUIS_DIR/openwrt-syslog.yaml" << EOF
+# OpenWrt System Syslog Acquisition
+# Auto-generated by crowdsec.defaults
+# Monitors system logs for security events
+
+filenames:
+  - ${syslog_path}
+  - /var/log/syslog
+labels:
+  type: syslog
+EOF
+	else
+		rm -f "$ACQUIS_DIR/openwrt-syslog.yaml"
+	fi
+
+	# Generate firewall acquisition config
+	if [ "$firewall_enabled" = "1" ]; then
+		echo "Configuring firewall log acquisition..."
+		cat > "$ACQUIS_DIR/openwrt-firewall.yaml" << EOF
+# OpenWrt Firewall Logs Acquisition
+# Auto-generated by crowdsec.defaults
+# Monitors iptables/nftables firewall logs for port scans
+
+filenames:
+  - ${kernel_log_path}
+  - /var/log/firewall.log
+labels:
+  type: syslog
+EOF
+		# Ensure iptables collection is installed
+		cscli collections install crowdsecurity/iptables 2>/dev/null || true
+	else
+		rm -f "$ACQUIS_DIR/openwrt-firewall.yaml"
+	fi
+
+	# Generate SSH/auth acquisition config
+	if [ "$ssh_enabled" = "1" ]; then
+		echo "Configuring SSH/auth log acquisition..."
+		# SSH logs typically go to syslog on OpenWrt
+		# The syslog acquisition will capture them
+		# Just ensure the linux collection is installed for SSH scenarios
+		cscli collections install crowdsecurity/linux 2>/dev/null || true
+	fi
+
+	# Generate HTTP acquisition config (disabled by default)
+	if [ "$http_enabled" = "1" ]; then
+		echo "Configuring HTTP log acquisition..."
+		cat > "$ACQUIS_DIR/openwrt-http.yaml" << EOF
+# OpenWrt HTTP Server Logs Acquisition
+# Auto-generated by crowdsec.defaults
+
+filenames:
+  - /var/log/uhttpd/access.log
+  - /var/log/nginx/access.log
+labels:
+  type: syslog
+EOF
+	else
+		rm -f "$ACQUIS_DIR/openwrt-http.yaml"
+	fi
+}
+
+# Configure syslog service acquisition (if CrowdSec acts as syslog server)
+configure_syslog_service() {
+	local listen_addr
+	local listen_port
+
+	listen_addr=$(get_uci_value "acquisition" "syslog_listen_addr" "127.0.0.1")
+	listen_port=$(get_uci_value "acquisition" "syslog_listen_port" "10514")
+
+	# Only create syslog service config if non-default port is configured
+	if [ "$listen_port" != "10514" ] || [ "$listen_addr" != "127.0.0.1" ]; then
+		echo "Configuring syslog service acquisition..."
+		cat > "$ACQUIS_DIR/syslog-service.yaml" << EOF
+# Syslog Service Acquisition
+# Auto-generated by crowdsec.defaults
+# CrowdSec acts as a syslog server to receive logs
+
+source: syslog
+listen_addr: ${listen_addr}
+listen_port: ${listen_port}
+labels:
+  type: syslog
+EOF
+	fi
+}
+
+# Detect and configure OpenWrt-specific log sources
+detect_openwrt_logs() {
+	echo "Detecting OpenWrt log sources..."
+
+	# Check if syslog-ng is installed and configured
+	if [ -f /etc/syslog-ng.conf ]; then
+		echo "syslog-ng detected"
+	fi
+
+	# Check if rsyslog is configured
+	if [ -f /etc/rsyslog.conf ]; then
+		echo "rsyslog detected"
+	fi
+
+	# Check if log_file is configured in OpenWrt system config
+	local log_file
+	log_file=$(uci -q get system.@system[0].log_file)
+	if [ -n "$log_file" ]; then
+		echo "OpenWrt log_file configured: $log_file"
+		# Update syslog path in UCI
+		uci set crowdsec.acquisition.syslog_path="$log_file"
+		uci commit crowdsec
+	fi
+
+	# Check for Dropbear (SSH server)
+	if [ -f /etc/init.d/dropbear ]; then
+		echo "Dropbear SSH server detected"
+	fi
+
+	# Check for firewall (fw3 or fw4)
+	if [ -f /etc/init.d/firewall ]; then
+		echo "OpenWrt firewall detected"
+	fi
+}
+
+# Main execution
+main() {
+	echo "=========================================="
+	echo "CrowdSec Configuration - First Boot Setup"
+	echo "=========================================="
+
+	# Setup paths and directories
+	setup_paths
+
+	# Create machine-id
+	setup_machine_id
+
+	# Register with LAPI
+	register_lapi
+
+	# Register with CAPI
+	register_capi
+
+	# Update Hub index
+	update_hub
+
+	# Install Hub collections and parsers
+	install_hub_items
+
+	# Detect OpenWrt log sources
+	detect_openwrt_logs
+
+	# Generate acquisition configuration
+	generate_acquisition_config
+
+	# Configure syslog service if needed
+	configure_syslog_service
+
+	echo "=========================================="
+	echo "CrowdSec configuration complete!"
+	echo "=========================================="
+	echo ""
+	echo "Next steps:"
+	echo "  1. Enable and start CrowdSec: /etc/init.d/crowdsec enable && /etc/init.d/crowdsec start"
+	echo "  2. Check acquisition status: cscli metrics show acquisition"
+	echo "  3. View decisions: cscli decisions list"
+	echo ""
+}
+
+# Run main function
+main
 
 exit 0

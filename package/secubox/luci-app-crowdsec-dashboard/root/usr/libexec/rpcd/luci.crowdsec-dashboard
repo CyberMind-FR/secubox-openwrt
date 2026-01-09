@@ -14,6 +14,12 @@ secubox_log() {
 }
 
 CSCLI="/usr/bin/cscli"
+CSCLI_TIMEOUT=10
+
+# Run cscli with timeout to prevent hangs
+run_cscli() {
+	timeout "$CSCLI_TIMEOUT" "$CSCLI" "$@" 2>/dev/null
+}
 
 # Check if cscli exists and crowdsec is running
 check_cscli() {
@@ -33,7 +39,7 @@ check_cscli() {
 get_decisions() {
 	check_cscli
 	local output
-	output=$($CSCLI decisions list -o json 2>/dev/null)
+	output=$(run_cscli decisions list -o json)
 	if [ -z "$output" ] || [ "$output" = "null" ]; then
 		echo '{"alerts":[]}'
 	else
@@ -46,7 +52,7 @@ get_alerts() {
 	local limit="${1:-50}"
 	check_cscli
 	local output
-	output=$($CSCLI alerts list -o json --limit "$limit" 2>/dev/null)
+	output=$(run_cscli alerts list -o json --limit "$limit" 2>/dev/null)
 	if [ -z "$output" ] || [ "$output" = "null" ]; then
 		echo '{"alerts":[]}'
 	else
@@ -58,7 +64,7 @@ get_alerts() {
 get_metrics() {
 	check_cscli
 	local output
-	output=$($CSCLI metrics -o json 2>/dev/null)
+	output=$(run_cscli metrics -o json 2>/dev/null)
 	if [ -z "$output" ]; then
 		echo '{}'
 	else
@@ -72,7 +78,7 @@ get_metrics() {
 get_bouncers() {
 	check_cscli
 	local output
-	output=$($CSCLI bouncers list -o json 2>/dev/null)
+	output=$(run_cscli bouncers list -o json 2>/dev/null)
 	if [ -z "$output" ] || [ "$output" = "null" ]; then
 		echo '{"bouncers":[]}'
 	else
@@ -84,7 +90,7 @@ get_bouncers() {
 get_machines() {
 	check_cscli
 	local output
-	output=$($CSCLI machines list -o json 2>/dev/null)
+	output=$(run_cscli machines list -o json 2>/dev/null)
 	if [ -z "$output" ] || [ "$output" = "null" ]; then
 		echo '{"machines":[]}'
 	else
@@ -96,7 +102,7 @@ get_machines() {
 get_hub() {
 	check_cscli
 	local output
-	output=$($CSCLI hub list -o json 2>/dev/null)
+	output=$(run_cscli hub list -o json 2>/dev/null)
 	if [ -z "$output" ]; then
 		echo '{}'
 	else
@@ -124,7 +130,7 @@ get_status() {
 	
 	# Version
 	local version
-	version=$($CSCLI version 2>/dev/null | grep "version:" | awk '{print $2}')
+	version=$(run_cscli version 2>/dev/null | grep "version:" | awk '{print $2}')
 	json_add_string "version" "${version:-unknown}"
 	
 	# Uptime
@@ -135,7 +141,7 @@ get_status() {
 	# LAPI status (check if Local API is accessible)
 	local lapi_status="unavailable"
 	if [ -x "$CSCLI" ]; then
-		if $CSCLI lapi status >/dev/null 2>&1; then
+		if run_cscli lapi status >/dev/null 2>&1; then
 			lapi_status="available"
 		fi
 	fi
@@ -158,7 +164,7 @@ add_ban() {
 	fi
 	
 	local result
-	result=$($CSCLI decisions add --ip "$ip" --duration "$duration" --reason "$reason" 2>&1)
+	result=$(run_cscli decisions add --ip "$ip" --duration "$duration" --reason "$reason" 2>&1)
 	
 	if [ $? -eq 0 ]; then
 		secubox_log "CrowdSec ban added for $ip ($duration)"
@@ -183,7 +189,7 @@ remove_ban() {
 	fi
 	
 	local result
-	result=$($CSCLI decisions delete --ip "$ip" 2>&1)
+	result=$(run_cscli decisions delete --ip "$ip" 2>&1)
 	
 	if [ $? -eq 0 ]; then
 		secubox_log "CrowdSec ban removed for $ip"
@@ -204,22 +210,22 @@ get_dashboard_stats() {
 	
 	# Count decisions
 	local decisions_count
-	decisions_count=$($CSCLI decisions list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	decisions_count=$(run_cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
 	json_add_int "total_decisions" "${decisions_count:-0}"
 	
 	# Count alerts (last 24h)
 	local alerts_count
-	alerts_count=$($CSCLI alerts list -o json --since 24h 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	alerts_count=$(run_cscli alerts list -o json --since 24h 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
 	json_add_int "alerts_24h" "${alerts_count:-0}"
 	
 	# Count bouncers
 	local bouncers_count
-	bouncers_count=$($CSCLI bouncers list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	bouncers_count=$(run_cscli bouncers list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
 	json_add_int "bouncers" "${bouncers_count:-0}"
 	
 	# Top scenarios (from alerts)
 	local scenarios
-	scenarios=$($CSCLI alerts list -o json --limit 100 2>/dev/null | \
+	scenarios=$(run_cscli alerts list -o json --limit 100 2>/dev/null | \
 		jsonfilter -e '@[*].scenario' 2>/dev/null | \
 		sort | uniq -c | sort -rn | head -5 | \
 		awk '{print "{\"scenario\":\"" $2 "\",\"count\":" $1 "}"}' | \
@@ -229,7 +235,7 @@ get_dashboard_stats() {
 	
 	# Top countries (from decisions)
 	local countries
-	countries=$($CSCLI decisions list -o json 2>/dev/null | \
+	countries=$(run_cscli decisions list -o json 2>/dev/null | \
 		jsonfilter -e '@[*].country' 2>/dev/null | \
 		sort | uniq -c | sort -rn | head -10 | \
 		awk '{print "{\"country\":\"" $2 "\",\"count\":" $1 "}"}' | \
@@ -271,9 +277,9 @@ get_waf_status() {
 	json_init
 
 	# Check if appsec is available (cscli appsec command)
-	if $CSCLI help appsec >/dev/null 2>&1; then
+	if run_cscli help appsec >/dev/null 2>&1; then
 		local appsec_status
-		appsec_status=$($CSCLI appsec status -o json 2>/dev/null)
+		appsec_status=$(run_cscli appsec status -o json 2>/dev/null)
 
 		if [ -n "$appsec_status" ] && [ "$appsec_status" != "null" ]; then
 			echo "$appsec_status"
@@ -340,7 +346,7 @@ configure_metrics() {
 get_collections() {
 	check_cscli
 	local output
-	output=$($CSCLI collections list -o json 2>/dev/null)
+	output=$(run_cscli collections list -o json 2>/dev/null)
 	if [ -z "$output" ] || [ "$output" = "null" ]; then
 		echo '{"collections":[]}'
 	else
@@ -362,7 +368,7 @@ install_collection() {
 	fi
 
 	# Install collection
-	if $CSCLI collections install "$collection" >/dev/null 2>&1; then
+	if run_cscli collections install "$collection" >/dev/null 2>&1; then
 		json_add_boolean "success" 1
 		json_add_string "message" "Collection '$collection' installed successfully"
 		secubox_log "Installed collection: $collection"
@@ -388,7 +394,7 @@ remove_collection() {
 	fi
 
 	# Remove collection
-	if $CSCLI collections remove "$collection" >/dev/null 2>&1; then
+	if run_cscli collections remove "$collection" >/dev/null 2>&1; then
 		json_add_boolean "success" 1
 		json_add_string "message" "Collection '$collection' removed successfully"
 		secubox_log "Removed collection: $collection"
@@ -405,7 +411,7 @@ update_hub() {
 	check_cscli
 	json_init
 
-	if $CSCLI hub update >/dev/null 2>&1; then
+	if run_cscli hub update >/dev/null 2>&1; then
 		json_add_boolean "success" 1
 		json_add_string "message" "Hub index updated successfully"
 		secubox_log "Hub index updated"
@@ -434,7 +440,7 @@ register_bouncer() {
 	# Check if bouncer already exists (robust pattern matching)
 	local exists=0
 	local bouncer_list
-	bouncer_list=$($CSCLI bouncers list -o json 2>/dev/null)
+	bouncer_list=$(run_cscli bouncers list -o json 2>/dev/null)
 	if echo "$bouncer_list" | grep -qE "\"name\"[[:space:]]*:[[:space:]]*\"$bouncer_name\""; then
 		exists=1
 	fi
@@ -443,7 +449,7 @@ register_bouncer() {
 	if [ "$exists" = "1" ]; then
 		secubox_log "Bouncer '$bouncer_name' already exists, deleting for re-registration..."
 		# Delete existing bouncer to get new API key
-		if ! $CSCLI bouncers delete "$bouncer_name" 2>&1; then
+		if ! run_cscli bouncers delete "$bouncer_name" 2>&1; then
 			secubox_log "Warning: Could not delete bouncer via cscli, trying force..."
 		fi
 		# Small delay to ensure deletion is processed
@@ -451,7 +457,7 @@ register_bouncer() {
 	fi
 
 	# Generate API key
-	api_key=$($CSCLI bouncers add "$bouncer_name" -o raw 2>&1)
+	api_key=$(run_cscli bouncers add "$bouncer_name" -o raw 2>&1)
 
 	if [ -n "$api_key" ] && [ "${#api_key}" -gt 10 ] && ! echo "$api_key" | grep -qi "error\|unable\|failed"; then
 		json_add_boolean "success" 1
@@ -467,7 +473,7 @@ register_bouncer() {
 			sqlite3 /srv/crowdsec/data/crowdsec.db "DELETE FROM bouncers WHERE name='$bouncer_name';" 2>/dev/null
 			sleep 1
 			# Retry registration
-			api_key=$($CSCLI bouncers add "$bouncer_name" -o raw 2>&1)
+			api_key=$(run_cscli bouncers add "$bouncer_name" -o raw 2>&1)
 			if [ -n "$api_key" ] && [ "${#api_key}" -gt 10 ] && ! echo "$api_key" | grep -qi "error\|unable\|failed"; then
 				json_add_boolean "success" 1
 				json_add_string "api_key" "$api_key"
@@ -501,7 +507,7 @@ delete_bouncer() {
 	fi
 
 	# Delete bouncer
-	if $CSCLI bouncers delete "$bouncer_name" >/dev/null 2>&1; then
+	if run_cscli bouncers delete "$bouncer_name" >/dev/null 2>&1; then
 		json_add_boolean "success" 1
 		json_add_string "message" "Bouncer '$bouncer_name' deleted successfully"
 		secubox_log "Deleted bouncer: $bouncer_name"
@@ -837,7 +843,7 @@ check_wizard_needed() {
 	# Check if collections are installed
 	local collections_installed=0
 	if [ -x "$CSCLI" ]; then
-		if $CSCLI collections list 2>/dev/null | grep -q "INSTALLED"; then
+		if run_cscli collections list 2>/dev/null | grep -q "INSTALLED"; then
 			collections_installed=1
 		fi
 	fi
@@ -862,7 +868,7 @@ get_wizard_state() {
 	# Get collections count
 	local collections_count=0
 	if [ -x "$CSCLI" ]; then
-		collections_count=$($CSCLI collections list 2>/dev/null | grep -c "INSTALLED" || echo "0")
+		collections_count=$(run_cscli collections list 2>/dev/null | grep -c "INSTALLED" || echo "0")
 	fi
 
 	json_add_int "collections_count" "$collections_count"
@@ -919,9 +925,9 @@ repair_lapi() {
 	# Step 4: Re-register local machine if needed
 	if [ -x "$CSCLI" ]; then
 		# Check if machine is registered and working
-		if ! $CSCLI machines list >/dev/null 2>&1; then
+		if ! run_cscli machines list >/dev/null 2>&1; then
 			# Force re-register
-			if $CSCLI machines add localhost --auto --force >/dev/null 2>&1; then
+			if run_cscli machines add localhost --auto --force >/dev/null 2>&1; then
 				steps_done="${steps_done}Re-registered localhost machine; "
 				# Restart again to apply new credentials
 				/etc/init.d/crowdsec restart >/dev/null 2>&1
@@ -935,7 +941,7 @@ repair_lapi() {
 	# Step 5: Verify LAPI is now working
 	local lapi_ok=0
 	if [ -x "$CSCLI" ]; then
-		if $CSCLI lapi status >/dev/null 2>&1; then
+		if run_cscli lapi status >/dev/null 2>&1; then
 			lapi_ok=1
 			steps_done="${steps_done}LAPI verified working"
 		else
@@ -973,7 +979,7 @@ reset_wizard() {
 
 	# Step 2: Delete existing bouncer registration
 	if [ -x "$CSCLI" ]; then
-		$CSCLI bouncers delete "crowdsec-firewall-bouncer" >/dev/null 2>&1
+		run_cscli bouncers delete "crowdsec-firewall-bouncer" >/dev/null 2>&1
 		steps_done="${steps_done}Deleted bouncer registration; "
 
 		# Also try database cleanup
@@ -1023,7 +1029,7 @@ get_console_status() {
 
 	# Try to get console status from cscli
 	local console_status
-	console_status=$($CSCLI console status 2>/dev/null)
+	console_status=$(run_cscli console status 2>/dev/null)
 	if [ -n "$console_status" ]; then
 		# Check if enrolled by looking for "Enrolled" or similar in output
 		if echo "$console_status" | grep -qi "enrolled\|connected\|active"; then
@@ -1068,7 +1074,7 @@ console_enroll() {
 	secubox_log "Enrolling CrowdSec Console with key..."
 
 	# Build enroll command
-	local enroll_cmd="$CSCLI console enroll $key"
+	local enroll_cmd="run_cscli console enroll $key"
 	if [ -n "$name" ]; then
 		enroll_cmd="$enroll_cmd --name \"$name\""
 	fi
@@ -1085,9 +1091,9 @@ console_enroll() {
 		secubox_log "Console enrollment successful"
 
 		# Enable sharing options by default
-		$CSCLI console enable share_manual_decisions >/dev/null 2>&1
-		$CSCLI console enable share_tainted >/dev/null 2>&1
-		$CSCLI console enable share_context >/dev/null 2>&1
+		run_cscli console enable share_manual_decisions >/dev/null 2>&1
+		run_cscli console enable share_tainted >/dev/null 2>&1
+		run_cscli console enable share_context >/dev/null 2>&1
 	else
 		json_add_boolean "success" 0
 		json_add_string "error" "Enrollment failed"
@@ -1106,9 +1112,9 @@ console_disable() {
 	secubox_log "Disabling CrowdSec Console enrollment..."
 
 	# Disable all sharing
-	$CSCLI console disable share_manual_decisions >/dev/null 2>&1
-	$CSCLI console disable share_tainted >/dev/null 2>&1
-	$CSCLI console disable share_context >/dev/null 2>&1
+	run_cscli console disable share_manual_decisions >/dev/null 2>&1
+	run_cscli console disable share_tainted >/dev/null 2>&1
+	run_cscli console disable share_context >/dev/null 2>&1
 
 	# Remove console config
 	if [ -f "/etc/crowdsec/console.yaml" ]; then
@@ -1118,6 +1124,159 @@ console_disable() {
 	json_add_boolean "success" 1
 	json_add_string "message" "Console enrollment disabled"
 	secubox_log "Console enrollment disabled"
+
+	json_dump
+}
+
+# Configure log acquisition settings
+configure_acquisition() {
+	local syslog_enabled="$1"
+	local firewall_enabled="$2"
+	local ssh_enabled="$3"
+	local http_enabled="$4"
+	local syslog_path="$5"
+
+	json_init
+	local steps_done=""
+	local errors=""
+
+	secubox_log "Configuring CrowdSec log acquisition..."
+
+	# Step 1: Ensure acquisition section exists in UCI
+	if ! uci -q get crowdsec.acquisition >/dev/null 2>&1; then
+		uci set crowdsec.acquisition='acquisition'
+		steps_done="${steps_done}Created acquisition section; "
+	fi
+
+	# Step 2: Set acquisition options
+	uci set crowdsec.acquisition.syslog_enabled="${syslog_enabled:-1}"
+	uci set crowdsec.acquisition.firewall_enabled="${firewall_enabled:-1}"
+	uci set crowdsec.acquisition.ssh_enabled="${ssh_enabled:-1}"
+	uci set crowdsec.acquisition.http_enabled="${http_enabled:-0}"
+	if [ -n "$syslog_path" ]; then
+		uci set crowdsec.acquisition.syslog_path="$syslog_path"
+	fi
+	uci commit crowdsec
+	steps_done="${steps_done}Updated UCI settings; "
+
+	# Step 3: Generate acquisition YAML files
+	# OpenWrt uses logread command instead of /var/log/messages by default
+	# All syslog entries (SSH, firewall, system) go through the same log stream
+	# We create ONE unified acquisition file to avoid multiple logread processes
+	local acquis_dir="/etc/crowdsec/acquis.d"
+	mkdir -p "$acquis_dir"
+
+	# Remove old separate acquisition files if they exist
+	rm -f "$acquis_dir/openwrt-syslog.yaml" 2>/dev/null
+	rm -f "$acquis_dir/openwrt-firewall.yaml" 2>/dev/null
+	rm -f "$acquis_dir/openwrt-dropbear.yaml" 2>/dev/null
+
+	# Create unified syslog acquisition if any syslog-based source is enabled
+	# SSH, firewall, and system logs all go through OpenWrt's logread
+	if [ "$syslog_enabled" = "1" ] || [ "$firewall_enabled" = "1" ] || [ "$ssh_enabled" = "1" ]; then
+		cat > "$acquis_dir/openwrt-unified.yaml" << 'YAML'
+# OpenWrt Unified Syslog Acquisition
+# Auto-generated by SecuBox CrowdSec Wizard
+# Uses logread -f to stream all syslog entries
+# Covers: system logs, SSH/Dropbear, firewall (iptables/nftables)
+source: command
+command: /sbin/logread -f
+labels:
+  type: syslog
+YAML
+		local enabled_sources=""
+		[ "$syslog_enabled" = "1" ] && enabled_sources="${enabled_sources}system "
+		[ "$ssh_enabled" = "1" ] && enabled_sources="${enabled_sources}SSH "
+		[ "$firewall_enabled" = "1" ] && enabled_sources="${enabled_sources}firewall "
+		steps_done="${steps_done}Created unified syslog acquisition (${enabled_sources}); "
+	else
+		rm -f "$acquis_dir/openwrt-unified.yaml"
+		steps_done="${steps_done}Disabled syslog acquisition; "
+	fi
+
+	# Enable/disable HTTP log acquisition (separate file-based source)
+	if [ "$http_enabled" = "1" ]; then
+		# Check if log files exist
+		if [ -f "/var/log/uhttpd.log" ]; then
+			cat > "$acquis_dir/openwrt-http.yaml" << 'YAML'
+# OpenWrt uHTTPd Web Server Log Acquisition
+# Auto-generated by SecuBox CrowdSec Wizard
+filenames:
+  - /var/log/uhttpd.log
+labels:
+  type: nginx
+YAML
+		elif [ -f "/var/log/nginx/access.log" ]; then
+			cat > "$acquis_dir/openwrt-http.yaml" << 'YAML'
+# OpenWrt nginx Web Server Log Acquisition
+# Auto-generated by SecuBox CrowdSec Wizard
+filenames:
+  - /var/log/nginx/access.log
+labels:
+  type: nginx
+YAML
+		else
+			# Fallback - try both locations
+			cat > "$acquis_dir/openwrt-http.yaml" << 'YAML'
+# OpenWrt Web Server Log Acquisition
+# Auto-generated by SecuBox CrowdSec Wizard
+filenames:
+  - /var/log/uhttpd.log
+  - /var/log/nginx/access.log
+labels:
+  type: nginx
+YAML
+		fi
+		steps_done="${steps_done}Created HTTP acquisition; "
+	else
+		rm -f "$acquis_dir/openwrt-http.yaml"
+		rm -f "$acquis_dir/openwrt-uhttpd.yaml" 2>/dev/null
+		steps_done="${steps_done}Disabled HTTP acquisition; "
+	fi
+
+	# Step 4: Restart CrowdSec to apply acquisition changes
+	if /etc/init.d/crowdsec reload >/dev/null 2>&1; then
+		steps_done="${steps_done}Reloaded CrowdSec"
+	else
+		# Fallback to restart if reload fails
+		/etc/init.d/crowdsec restart >/dev/null 2>&1
+		steps_done="${steps_done}Restarted CrowdSec"
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Acquisition configuration completed"
+	json_add_string "steps" "$steps_done"
+	secubox_log "Acquisition configuration completed: $steps_done"
+
+	json_dump
+}
+
+# Get current acquisition configuration
+get_acquisition_config() {
+	json_init
+
+	# Get values from UCI
+	local syslog_enabled=$(uci -q get crowdsec.acquisition.syslog_enabled || echo "1")
+	local firewall_enabled=$(uci -q get crowdsec.acquisition.firewall_enabled || echo "1")
+	local ssh_enabled=$(uci -q get crowdsec.acquisition.ssh_enabled || echo "1")
+	local http_enabled=$(uci -q get crowdsec.acquisition.http_enabled || echo "0")
+	local syslog_path=$(uci -q get crowdsec.acquisition.syslog_path || echo "/var/log/messages")
+
+	json_add_string "syslog_enabled" "$syslog_enabled"
+	json_add_string "firewall_enabled" "$firewall_enabled"
+	json_add_string "ssh_enabled" "$ssh_enabled"
+	json_add_string "http_enabled" "$http_enabled"
+	json_add_string "syslog_path" "$syslog_path"
+
+	# Check which acquisition files exist
+	local acquis_dir="/etc/crowdsec/acquis.d"
+	local unified_exists=0
+	local http_exists=0
+	[ -f "$acquis_dir/openwrt-unified.yaml" ] && unified_exists=1
+	[ -f "$acquis_dir/openwrt-http.yaml" ] && http_exists=1
+
+	json_add_boolean "unified_file_exists" "$unified_exists"
+	json_add_boolean "http_file_exists" "$http_exists"
 
 	json_dump
 }
@@ -1164,7 +1323,7 @@ service_control() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"}}'
+		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{}}'
 		;;
 	call)
 		case "$2" in
@@ -1297,6 +1456,18 @@ case "$1" in
 				read -r input
 				action=$(echo "$input" | jsonfilter -e '@.action' 2>/dev/null)
 				service_control "$action"
+				;;
+			configure_acquisition)
+				read -r input
+				syslog_enabled=$(echo "$input" | jsonfilter -e '@.syslog_enabled' 2>/dev/null)
+				firewall_enabled=$(echo "$input" | jsonfilter -e '@.firewall_enabled' 2>/dev/null)
+				ssh_enabled=$(echo "$input" | jsonfilter -e '@.ssh_enabled' 2>/dev/null)
+				http_enabled=$(echo "$input" | jsonfilter -e '@.http_enabled' 2>/dev/null)
+				syslog_path=$(echo "$input" | jsonfilter -e '@.syslog_path' 2>/dev/null)
+				configure_acquisition "$syslog_enabled" "$firewall_enabled" "$ssh_enabled" "$http_enabled" "$syslog_path"
+				;;
+			acquisition_config)
+				get_acquisition_config
 				;;
 			*)
 				echo '{"error": "Unknown method"}'
