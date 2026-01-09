@@ -4,6 +4,13 @@
 'require ui';
 'require dom';
 'require secubox-netifyd/api as netifydAPI';
+'require secubox-theme/theme as Theme';
+'require secubox-portal/header as SbHeader';
+
+var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: lang });
 
 return view.extend({
 	refreshInterval: 5,
@@ -717,7 +724,10 @@ return view.extend({
 		dom.content(self.appsContainer, self.renderTopApplications(topApps));
 		dom.content(self.protosContainer, self.renderTopProtocols(topProtos));
 
-		return pageContent;
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(pageContent);
+		return wrapper;
 	},
 
 	handleSaveApply: null,

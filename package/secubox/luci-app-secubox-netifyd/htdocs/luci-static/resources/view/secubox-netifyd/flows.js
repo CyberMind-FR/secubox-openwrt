@@ -4,6 +4,13 @@
 'require ui';
 'require dom';
 'require secubox-netifyd/api as netifydAPI';
+'require secubox-theme/theme as Theme';
+'require secubox-portal/header as SbHeader';
+
+var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: lang });
 
 return view.extend({
 	refreshInterval: 3,
@@ -338,7 +345,7 @@ return view.extend({
 
 		var serviceRunning = status.running;
 
-		return E('div', { 'class': 'cbi-map' }, [
+		var view = E('div', { 'class': 'cbi-map' }, [
 			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem' }, [
 				E('h2', { 'name': 'content', 'style': 'margin: 0' }, [
 					E('i', { 'class': 'fa fa-stream', 'style': 'margin-right: 0.5rem' }),
@@ -413,6 +420,11 @@ return view.extend({
 				])
 			])
 		]);
+
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	addFooter: function() {

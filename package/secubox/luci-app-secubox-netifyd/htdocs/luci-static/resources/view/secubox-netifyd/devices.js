@@ -4,6 +4,13 @@
 'require ui';
 'require dom';
 'require rpc';
+'require secubox-theme/theme as Theme';
+'require secubox-portal/header as SbHeader';
+
+var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: lang });
 
 var callGetDevices = rpc.declare({
 	object: 'luci.secubox-netifyd',
@@ -324,7 +331,7 @@ return view.extend({
 
 		var serviceRunning = status.running;
 
-		return E('div', { 'style': 'max-width: 1400px; margin: 0 auto; padding: 24px' }, [
+		var view = E('div', { 'style': 'max-width: 1400px; margin: 0 auto; padding: 24px' }, [
 			// Header
 			E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px' }, [
 				E('div', { 'style': 'display: flex; align-items: center; gap: 12px' }, [
@@ -395,6 +402,11 @@ return view.extend({
 			// CSS for pulse animation
 			E('style', {}, '@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }')
 		]);
+
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	addFooter: function() {

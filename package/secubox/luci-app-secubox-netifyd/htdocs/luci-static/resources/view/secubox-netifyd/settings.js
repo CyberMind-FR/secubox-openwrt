@@ -5,6 +5,13 @@
 'require ui';
 'require rpc';
 'require secubox-netifyd/api as netifydAPI';
+'require secubox-theme/theme as Theme';
+'require secubox-portal/header as SbHeader';
+
+var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: lang });
 
 var callServiceList = rpc.declare({
 	object: 'service',
@@ -743,6 +750,11 @@ return view.extend({
 			]);
 		};
 
-		return m.render();
+		return m.render().then(function(formEl) {
+			var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+			wrapper.appendChild(SbHeader.render());
+			wrapper.appendChild(formEl);
+			return wrapper;
+		});
 	}
 });
