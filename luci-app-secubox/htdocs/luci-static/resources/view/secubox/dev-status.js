@@ -6,6 +6,7 @@
 'require secubox/api as API';
 'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
+'require secubox-portal/header as SbHeader';
 
 // Load theme resources
 document.head.appendChild(E('link', {
@@ -548,13 +549,18 @@ return view.extend({
 			`)
 		]);
 
-		return E('div', { 'class': 'secubox-dev-status-page' }, [
+		var container = E('div', { 'class': 'secubox-dev-status-page' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			SecuNav.renderTabs('dev-status'),
 			this.renderHeader(),
 			main
 		]);
+
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(container);
+		return wrapper;
 	},
 
 	renderHeader: function() {

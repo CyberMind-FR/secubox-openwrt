@@ -6,6 +6,7 @@
 'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
 'require secubox-theme/cascade as Cascade';
+'require secubox-portal/header as SbHeader';
 'require poll';
 
 // Load global theme CSS
@@ -113,7 +114,10 @@ return view.extend({
 			});
 		}, 10);
 
-		return container;
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(container);
+		return wrapper;
 	},
 
 	renderHeader: function(apps) {

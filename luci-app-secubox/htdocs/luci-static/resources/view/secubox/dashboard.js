@@ -6,6 +6,7 @@
 'require secubox/api as API';
 'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
+'require secubox-portal/header as SbHeader';
 
 // Load theme resources once
 document.head.appendChild(E('link', {
@@ -70,7 +71,10 @@ return view.extend({
 			});
 		}, 30);
 
-		return container;
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(container);
+		return wrapper;
 	},
 
 	renderHeader: function() {

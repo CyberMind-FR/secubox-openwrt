@@ -4,6 +4,7 @@
 'require secubox-theme/theme as Theme';
 'require secubox/api as API';
 'require secubox/nav as SecuNav';
+'require secubox-portal/header as SbHeader';
 
 // Load theme resources
 document.head.appendChild(E('link', {
@@ -49,13 +50,18 @@ return view.extend({
 		var running = modules.filter(function(m) { return m.running; }).length;
 		var installed = modules.filter(function(m) { return m.installed; }).length;
 
-		return E('div', { 'class': 'secubox-modules-debug' }, [
+		var container = E('div', { 'class': 'secubox-modules-debug' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/secubox.css') }),
 			SecuNav.renderTabs('modules'),
 			this.renderHeader(modules.length, running, installed),
 			modules.length ? this.renderModuleGrid(modules) : this.renderEmptyState()
 		]);
+
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(container);
+		return wrapper;
 	},
 
 	renderHeader: function(total, running, installed) {

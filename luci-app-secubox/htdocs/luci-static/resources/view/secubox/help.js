@@ -5,6 +5,7 @@
 'require secubox/help as Help';
 'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
+'require secubox-portal/header as SbHeader';
 
 // Load theme resources
 document.head.appendChild(E('link', {
@@ -43,7 +44,7 @@ return view.extend({
 		var data = status || {};
 		var helpPages = Help.getAllHelpPages();
 
-		return E('div', { 'class': 'secubox-help-page' }, [
+		var container = E('div', { 'class': 'secubox-help-page' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			SecuNav.renderTabs('help'),
@@ -52,6 +53,11 @@ return view.extend({
 			this.renderSupportSection(),
 			this.renderFooter()
 		]);
+
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(container);
+		return wrapper;
 	},
 
 	renderHeader: function(status) {
