@@ -234,10 +234,26 @@ return L.view.extend({
 		renderActiveStreams(streamsData.streams || [], dpiSource);
 		v.appendChild(streamsSection);
 
-		// Network flow stats
+		// Network flow stats - render initial data from load()
+		var initialFlowCount = streamsData.flow_count || 0;
+		var initialStreamCount = (streamsData.streams || []).length;
+		var initialNote = streamsData.note || '';
+
 		var flowSection = E('div', { 'class': 'cbi-section' }, [
 			E('h3', {}, _('Network Flow Statistics')),
-			E('div', { 'id': 'flow-stats-container' })
+			E('div', { 'id': 'flow-stats-container' }, [
+				E('div', { 'style': 'display: flex; justify-content: space-around; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 12px;' }, [
+					E('div', { 'style': 'text-align: center;' }, [
+						E('div', { 'id': 'total-flows-value', 'style': 'font-size: 2.5em; color: #06b6d4; font-weight: bold;' }, String(initialFlowCount)),
+						E('div', { 'style': 'color: #a1a1aa; margin-top: 5px;' }, _('Total Flows'))
+					]),
+					E('div', { 'style': 'text-align: center;' }, [
+						E('div', { 'id': 'streaming-flows-value', 'style': 'font-size: 2.5em; color: #ec4899; font-weight: bold;' }, String(initialStreamCount)),
+						E('div', { 'style': 'color: #a1a1aa; margin-top: 5px;' }, _('Streaming Flows'))
+					])
+				]),
+				initialNote ? E('p', { 'style': 'font-style: italic; color: #a1a1aa; text-align: center; margin-top: 10px;' }, initialNote) : E('span')
+			])
 		]);
 
 		var updateFlowStats = function() {
@@ -426,11 +442,11 @@ return L.view.extend({
 
 		wrapper.appendChild(v);
 
-		// Call update functions after DOM is ready
-		requestAnimationFrame(function() {
+		// Call update functions after DOM is ready (delay for LuCI to insert into page)
+		setTimeout(function() {
 			updateFlowStats();
 			updateServiceStats();
-		});
+		}, 100);
 
 		// Setup auto-refresh
 		poll.add(L.bind(function() {
