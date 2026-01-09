@@ -22,6 +22,11 @@ return view.extend({
 	searchQuery: '',
 	sortField: 'value',
 	sortOrder: 'asc',
+	// Advanced filters
+	filterType: 'all',      // all, ban, captcha
+	filterDuration: 'all',  // all, short (<1h), medium (1-24h), long (>24h), permanent
+	filterCountry: 'all',   // all, or specific country code
+	showFilters: false,
 
 	load: function() {
 		var cssLink = document.createElement('link');
@@ -33,35 +38,174 @@ return view.extend({
 		return this.csApi.getDecisions();
 	},
 
+	parseDurationToSeconds: function(duration) {
+		if (!duration) return 0;
+		var match = duration.match(/^(\d+)(h|m|s)?$/);
+		if (!match) {
+			// Try ISO 8601 duration
+			var hours = 0;
+			var hoursMatch = duration.match(/(\d+)h/i);
+			if (hoursMatch) hours = parseInt(hoursMatch[1]);
+			var minsMatch = duration.match(/(\d+)m/i);
+			if (minsMatch) hours += parseInt(minsMatch[1]) / 60;
+			return hours * 3600;
+		}
+		var value = parseInt(match[1]);
+		var unit = match[2] || 's';
+		if (unit === 'h') return value * 3600;
+		if (unit === 'm') return value * 60;
+		return value;
+	},
+
 	filterDecisions: function() {
 		var self = this;
 		var query = this.searchQuery.toLowerCase();
-		
+
 		this.filteredDecisions = this.decisions.filter(function(d) {
-			if (!query) return true;
-			
-			var searchFields = [
-				d.value,
-				d.scenario,
-				d.country,
-				d.type,
-				d.origin
-			].filter(Boolean).join(' ').toLowerCase();
-			
-			return searchFields.indexOf(query) !== -1;
+			// Text search filter
+			if (query) {
+				var searchFields = [
+					d.value,
+					d.scenario,
+					d.country,
+					d.type,
+					d.origin
+				].filter(Boolean).join(' ').toLowerCase();
+
+				if (searchFields.indexOf(query) === -1) return false;
+			}
+
+			// Type filter
+			if (self.filterType !== 'all') {
+				if ((d.type || 'ban').toLowerCase() !== self.filterType) return false;
+			}
+
+			// Country filter
+			if (self.filterCountry !== 'all') {
+				if ((d.country || '').toUpperCase() !== self.filterCountry) return false;
+			}
+
+			// Duration filter
+			if (self.filterDuration !== 'all') {
+				var durationSecs = self.parseDurationToSeconds(d.duration);
+				switch (self.filterDuration) {
+					case 'short':     // < 1 hour
+						if (durationSecs >= 3600) return false;
+						break;
+					case 'medium':    // 1-24 hours
+						if (durationSecs < 3600 || durationSecs >= 86400) return false;
+						break;
+					case 'long':      // > 24 hours
+						if (durationSecs < 86400) return false;
+						break;
+					case 'permanent': // > 7 days or explicit permanent
+						if (durationSecs < 604800 && d.duration !== 'permanent') return false;
+						break;
+				}
+			}
+
+			return true;
 		});
-		
+
 		// Sort
 		this.filteredDecisions.sort(function(a, b) {
 			var aVal = a[self.sortField] || '';
 			var bVal = b[self.sortField] || '';
-			
+
 			if (self.sortOrder === 'asc') {
 				return aVal.localeCompare(bVal);
 			} else {
 				return bVal.localeCompare(aVal);
 			}
 		});
+	},
+
+	getUniqueCountries: function() {
+		var countries = {};
+		this.decisions.forEach(function(d) {
+			if (d.country) {
+				countries[d.country.toUpperCase()] = true;
+			}
+		});
+		return Object.keys(countries).sort();
+	},
+
+	handleFilterChange: function(filterName, value, ev) {
+		this[filterName] = value;
+		this.filterDecisions();
+		this.updateTable();
+		this.updateFilterBadge();
+	},
+
+	toggleFilters: function() {
+		this.showFilters = !this.showFilters;
+		var panel = document.getElementById('advanced-filters');
+		if (panel) {
+			panel.style.display = this.showFilters ? 'block' : 'none';
+		}
+	},
+
+	clearFilters: function() {
+		this.filterType = 'all';
+		this.filterDuration = 'all';
+		this.filterCountry = 'all';
+		this.searchQuery = '';
+		var searchInput = document.querySelector('.cs-search-box input');
+		if (searchInput) searchInput.value = '';
+		this.filterDecisions();
+		this.updateTable();
+		this.updateFilterBadge();
+		this.updateFilterSelects();
+	},
+
+	updateFilterSelects: function() {
+		var typeSelect = document.getElementById('filter-type');
+		var durationSelect = document.getElementById('filter-duration');
+		var countrySelect = document.getElementById('filter-country');
+		if (typeSelect) typeSelect.value = this.filterType;
+		if (durationSelect) durationSelect.value = this.filterDuration;
+		if (countrySelect) countrySelect.value = this.filterCountry;
+	},
+
+	updateFilterBadge: function() {
+		var count = 0;
+		if (this.filterType !== 'all') count++;
+		if (this.filterDuration !== 'all') count++;
+		if (this.filterCountry !== 'all') count++;
+
+		var badge = document.getElementById('filter-badge');
+		if (badge) {
+			badge.textContent = count;
+			badge.style.display = count > 0 ? 'inline-block' : 'none';
+		}
+	},
+
+	exportToCSV: function() {
+		var self = this;
+		var csv = 'IP Address,Scenario,Country,Type,Duration,Origin,Created\n';
+		this.filteredDecisions.forEach(function(d) {
+			csv += [
+				d.value || '',
+				(d.scenario || '').replace(/,/g, ';'),
+				d.country || '',
+				d.type || 'ban',
+				d.duration || '',
+				d.origin || 'crowdsec',
+				d.created_at || ''
+			].join(',') + '\n';
+		});
+
+		var blob = new Blob([csv], { type: 'text/csv' });
+		var url = URL.createObjectURL(blob);
+		var a = document.createElement('a');
+		a.href = url;
+		a.download = 'crowdsec-decisions-' + new Date().toISOString().slice(0, 10) + '.csv';
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+
+		this.showToast('Exported ' + this.filteredDecisions.length + ' decisions to CSV', 'success');
 	},
 
 	handleSearch: function(ev) {
@@ -397,13 +541,15 @@ return view.extend({
 		console.log('[Decisions] Flattened', this.decisions.length, 'decisions from', data ? data.length : 0, 'alerts');
 		this.filterDecisions();
 		
+		var countries = this.getUniqueCountries();
+
 		var view = E('div', { 'class': 'crowdsec-dashboard' }, [
 			CsNav.renderTabs('decisions'),
 			E('div', { 'class': 'cs-card' }, [
 				E('div', { 'class': 'cs-card-header' }, [
 					E('div', { 'class': 'cs-card-title' }, [
 						'Active Decisions',
-						E('span', { 
+						E('span', {
 							'id': 'decisions-count',
 							'style': 'font-weight: normal; margin-left: 12px; font-size: 12px; color: var(--cs-text-muted)'
 						}, this.filteredDecisions.length + ' of ' + this.decisions.length + ' decisions')
@@ -418,6 +564,22 @@ return view.extend({
 							})
 						]),
 						E('button', {
+							'class': 'cs-btn',
+							'style': 'position: relative;',
+							'click': ui.createHandlerFn(this, 'toggleFilters')
+						}, [
+							'Filters ',
+							E('span', {
+								'id': 'filter-badge',
+								'style': 'display: none; background: #dc3545; color: white; padding: 2px 6px; border-radius: 10px; font-size: 10px; position: absolute; top: -5px; right: -5px;'
+							}, '0')
+						]),
+						E('button', {
+							'class': 'cs-btn',
+							'click': ui.createHandlerFn(this, 'exportToCSV'),
+							'title': 'Export to CSV'
+						}, 'Export CSV'),
+						E('button', {
 							'class': 'cs-btn cs-btn-danger',
 							'click': ui.createHandlerFn(this, 'handleBulkUnban')
 						}, 'Unban Selected'),
@@ -427,7 +589,67 @@ return view.extend({
 						}, '+ Add Ban')
 					])
 				]),
-				E('div', { 'class': 'cs-card-body no-padding', 'id': 'decisions-table-container' }, 
+				// Advanced Filters Panel
+				E('div', {
+					'id': 'advanced-filters',
+					'style': 'display: none; padding: 1em; background: #f8f9fa; border-bottom: 1px solid #ddd;'
+				}, [
+					E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 1em; align-items: flex-end;' }, [
+						E('div', {}, [
+							E('label', { 'style': 'display: block; font-size: 0.85em; margin-bottom: 4px; color: #666;' }, _('Action Type')),
+							E('select', {
+								'id': 'filter-type',
+								'class': 'cs-input',
+								'style': 'min-width: 120px;',
+								'change': function(ev) {
+									self.handleFilterChange('filterType', ev.target.value);
+								}
+							}, [
+								E('option', { 'value': 'all' }, 'All Types'),
+								E('option', { 'value': 'ban' }, 'Ban'),
+								E('option', { 'value': 'captcha' }, 'Captcha')
+							])
+						]),
+						E('div', {}, [
+							E('label', { 'style': 'display: block; font-size: 0.85em; margin-bottom: 4px; color: #666;' }, _('Duration')),
+							E('select', {
+								'id': 'filter-duration',
+								'class': 'cs-input',
+								'style': 'min-width: 140px;',
+								'change': function(ev) {
+									self.handleFilterChange('filterDuration', ev.target.value);
+								}
+							}, [
+								E('option', { 'value': 'all' }, 'All Durations'),
+								E('option', { 'value': 'short' }, '< 1 hour'),
+								E('option', { 'value': 'medium' }, '1-24 hours'),
+								E('option', { 'value': 'long' }, '> 24 hours'),
+								E('option', { 'value': 'permanent' }, 'Permanent (>7d)')
+							])
+						]),
+						E('div', {}, [
+							E('label', { 'style': 'display: block; font-size: 0.85em; margin-bottom: 4px; color: #666;' }, _('Country')),
+							E('select', {
+								'id': 'filter-country',
+								'class': 'cs-input',
+								'style': 'min-width: 140px;',
+								'change': function(ev) {
+									self.handleFilterChange('filterCountry', ev.target.value);
+								}
+							}, [
+								E('option', { 'value': 'all' }, 'All Countries')
+							].concat(countries.map(function(c) {
+								return E('option', { 'value': c }, self.csApi.getCountryFlag(c) + ' ' + c);
+							})))
+						]),
+						E('button', {
+							'class': 'cs-btn',
+							'style': 'margin-left: auto;',
+							'click': ui.createHandlerFn(this, 'clearFilters')
+						}, 'Clear Filters')
+					])
+				]),
+				E('div', { 'class': 'cs-card-body no-padding', 'id': 'decisions-table-container' },
 					this.renderTable()
 				)
 			]),

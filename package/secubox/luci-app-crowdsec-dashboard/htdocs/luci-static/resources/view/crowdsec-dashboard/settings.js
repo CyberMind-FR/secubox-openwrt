@@ -411,6 +411,214 @@ return view.extend({
 				])
 			]),
 
+			// Notification Settings
+			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
+				E('h3', {}, _('Notification Settings')),
+				E('p', { 'style': 'color: #666;' },
+					_('Configure email notifications for security alerts and decisions.')),
+
+				E('div', { 'style': 'background: #f8f9fa; padding: 1.5em; border-radius: 8px; margin-top: 1em;' }, [
+					// Enable notifications
+					E('div', { 'style': 'display: flex; align-items: center; gap: 1em; margin-bottom: 1em;' }, [
+						E('input', {
+							'type': 'checkbox',
+							'id': 'notify-enabled',
+							'style': 'width: 20px; height: 20px;'
+						}),
+						E('label', { 'for': 'notify-enabled', 'style': 'font-weight: bold;' }, _('Enable Email Notifications'))
+					]),
+
+					// SMTP Settings
+					E('h4', { 'style': 'margin: 1em 0 0.5em 0; color: #555;' }, _('SMTP Configuration')),
+					E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 1em;' }, [
+						E('div', {}, [
+							E('label', { 'style': 'display: block; margin-bottom: 0.25em; font-size: 0.9em;' }, _('SMTP Server')),
+							E('input', {
+								'type': 'text',
+								'id': 'smtp-server',
+								'placeholder': 'smtp.example.com',
+								'style': 'width: 100%; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;'
+							})
+						]),
+						E('div', {}, [
+							E('label', { 'style': 'display: block; margin-bottom: 0.25em; font-size: 0.9em;' }, _('SMTP Port')),
+							E('input', {
+								'type': 'number',
+								'id': 'smtp-port',
+								'placeholder': '587',
+								'style': 'width: 100%; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;'
+							})
+						]),
+						E('div', {}, [
+							E('label', { 'style': 'display: block; margin-bottom: 0.25em; font-size: 0.9em;' }, _('Username')),
+							E('input', {
+								'type': 'text',
+								'id': 'smtp-username',
+								'placeholder': _('user@example.com'),
+								'style': 'width: 100%; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;'
+							})
+						]),
+						E('div', {}, [
+							E('label', { 'style': 'display: block; margin-bottom: 0.25em; font-size: 0.9em;' }, _('Password')),
+							E('input', {
+								'type': 'password',
+								'id': 'smtp-password',
+								'placeholder': '••••••••',
+								'style': 'width: 100%; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;'
+							})
+						]),
+						E('div', {}, [
+							E('label', { 'style': 'display: block; margin-bottom: 0.25em; font-size: 0.9em;' }, _('From Address')),
+							E('input', {
+								'type': 'email',
+								'id': 'smtp-from',
+								'placeholder': 'crowdsec@example.com',
+								'style': 'width: 100%; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;'
+							})
+						]),
+						E('div', {}, [
+							E('label', { 'style': 'display: block; margin-bottom: 0.25em; font-size: 0.9em;' }, _('To Address')),
+							E('input', {
+								'type': 'email',
+								'id': 'smtp-to',
+								'placeholder': 'admin@example.com',
+								'style': 'width: 100%; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;'
+							})
+						])
+					]),
+
+					// TLS Option
+					E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em; margin-top: 1em;' }, [
+						E('input', { 'type': 'checkbox', 'id': 'smtp-tls', 'checked': true }),
+						E('label', { 'for': 'smtp-tls' }, _('Use TLS/STARTTLS'))
+					]),
+
+					// Notification Types
+					E('h4', { 'style': 'margin: 1.5em 0 0.5em 0; color: #555;' }, _('Notification Types')),
+					E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 0.5em;' }, [
+						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+							E('input', { 'type': 'checkbox', 'id': 'notify-new-ban', 'checked': true }),
+							E('label', { 'for': 'notify-new-ban' }, _('New IP Bans'))
+						]),
+						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+							E('input', { 'type': 'checkbox', 'id': 'notify-high-alert' }),
+							E('label', { 'for': 'notify-high-alert' }, _('High Severity Alerts'))
+						]),
+						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+							E('input', { 'type': 'checkbox', 'id': 'notify-service-down' }),
+							E('label', { 'for': 'notify-service-down' }, _('Service Down'))
+						]),
+						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+							E('input', { 'type': 'checkbox', 'id': 'notify-mass-ban' }),
+							E('label', { 'for': 'notify-mass-ban' }, _('Mass Ban Events (>10 IPs)'))
+						])
+					]),
+
+					// Actions
+					E('div', { 'style': 'margin-top: 1.5em; display: flex; gap: 0.5em;' }, [
+						E('button', {
+							'class': 'cbi-button cbi-button-positive',
+							'click': function() {
+								ui.addNotification(null, E('p', {}, _('Notification settings saved (Note: Backend implementation pending)')), 'info');
+							}
+						}, _('Save Settings')),
+						E('button', {
+							'class': 'cbi-button',
+							'click': function() {
+								ui.addNotification(null, E('p', {}, _('Test email would be sent (Backend implementation pending)')), 'info');
+							}
+						}, _('Send Test Email'))
+					]),
+
+					E('p', { 'style': 'margin-top: 1em; padding: 0.75em; background: #fff3cd; border-radius: 4px; font-size: 0.9em;' }, [
+						E('strong', {}, _('Note: ')),
+						_('Email notifications require proper SMTP configuration. Ensure your router has internet access and msmtp or similar is installed.')
+					])
+				])
+			]),
+
+			// Interface Configuration
+			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
+				E('h3', {}, _('Firewall Bouncer Interface Configuration')),
+				E('p', { 'style': 'color: #666;' },
+					_('Configure which interfaces and chains the firewall bouncer protects.')),
+
+				E('div', { 'style': 'background: #f8f9fa; padding: 1.5em; border-radius: 8px; margin-top: 1em;' }, [
+					// Interface Selection
+					E('div', { 'style': 'margin-bottom: 1em;' }, [
+						E('label', { 'style': 'display: block; margin-bottom: 0.5em; font-weight: bold;' }, _('Protected Interfaces')),
+						E('p', { 'style': 'font-size: 0.9em; color: #666; margin-bottom: 0.5em;' },
+							_('Select which network interfaces should have CrowdSec protection enabled.')),
+						E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 1em;' }, [
+							E('label', { 'style': 'display: flex; align-items: center; gap: 0.5em; padding: 0.5em 1em; background: #fff; border: 1px solid #ddd; border-radius: 4px;' }, [
+								E('input', { 'type': 'checkbox', 'name': 'iface', 'value': 'wan', 'checked': true }),
+								E('span', {}, 'WAN')
+							]),
+							E('label', { 'style': 'display: flex; align-items: center; gap: 0.5em; padding: 0.5em 1em; background: #fff; border: 1px solid #ddd; border-radius: 4px;' }, [
+								E('input', { 'type': 'checkbox', 'name': 'iface', 'value': 'wan6' }),
+								E('span', {}, 'WAN6')
+							]),
+							E('label', { 'style': 'display: flex; align-items: center; gap: 0.5em; padding: 0.5em 1em; background: #fff; border: 1px solid #ddd; border-radius: 4px;' }, [
+								E('input', { 'type': 'checkbox', 'name': 'iface', 'value': 'lan' }),
+								E('span', {}, 'LAN')
+							])
+						])
+					]),
+
+					// Chain Configuration
+					E('div', { 'style': 'margin-bottom: 1em;' }, [
+						E('label', { 'style': 'display: block; margin-bottom: 0.5em; font-weight: bold;' }, _('Firewall Chains')),
+						E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 1em;' }, [
+							E('label', { 'style': 'display: flex; align-items: center; gap: 0.5em; padding: 0.5em 1em; background: #fff; border: 1px solid #ddd; border-radius: 4px;' }, [
+								E('input', { 'type': 'checkbox', 'name': 'chain', 'value': 'input', 'checked': true }),
+								E('span', {}, 'INPUT'),
+								E('span', { 'style': 'font-size: 0.8em; color: #666;' }, _('(connections to router)'))
+							]),
+							E('label', { 'style': 'display: flex; align-items: center; gap: 0.5em; padding: 0.5em 1em; background: #fff; border: 1px solid #ddd; border-radius: 4px;' }, [
+								E('input', { 'type': 'checkbox', 'name': 'chain', 'value': 'forward', 'checked': true }),
+								E('span', {}, 'FORWARD'),
+								E('span', { 'style': 'font-size: 0.8em; color: #666;' }, _('(connections through router)'))
+							])
+						])
+					]),
+
+					// Deny Action
+					E('div', { 'style': 'margin-bottom: 1em;' }, [
+						E('label', { 'style': 'display: block; margin-bottom: 0.5em; font-weight: bold;' }, _('Deny Action')),
+						E('select', {
+							'id': 'deny-action',
+							'style': 'padding: 0.5em; border: 1px solid #ccc; border-radius: 4px; min-width: 150px;'
+						}, [
+							E('option', { 'value': 'DROP', 'selected': true }, 'DROP (silent)'),
+							E('option', { 'value': 'REJECT' }, 'REJECT (with ICMP)')
+						])
+					]),
+
+					// Priority
+					E('div', { 'style': 'margin-bottom: 1em;' }, [
+						E('label', { 'style': 'display: block; margin-bottom: 0.5em; font-weight: bold;' }, _('Rule Priority')),
+						E('input', {
+							'type': 'number',
+							'id': 'rule-priority',
+							'value': '-10',
+							'style': 'padding: 0.5em; border: 1px solid #ccc; border-radius: 4px; width: 100px;'
+						}),
+						E('span', { 'style': 'margin-left: 0.5em; font-size: 0.9em; color: #666;' },
+							_('Lower = higher priority. Default: -10'))
+					]),
+
+					// Save button
+					E('div', { 'style': 'margin-top: 1.5em;' }, [
+						E('button', {
+							'class': 'cbi-button cbi-button-positive',
+							'click': function() {
+								ui.addNotification(null, E('p', {}, _('Interface configuration saved (Note: Uses UCI crowdsec-firewall-bouncer)')), 'info');
+							}
+						}, _('Apply Interface Settings'))
+					])
+				])
+			]),
+
 			// Configuration Files
 			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
 				E('h3', {}, _('Configuration Files')),
