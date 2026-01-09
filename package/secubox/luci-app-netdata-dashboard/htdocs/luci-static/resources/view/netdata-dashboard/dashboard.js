@@ -28,7 +28,9 @@ return view.extend({
 		var logs = (data[3] && data[3].entries) || [];
 
 		var isRunning = netdataStatus.running || false;
-		var netdataUrl = netdataStatus.url || 'http://127.0.0.1:19999';
+		var netdataPort = netdataStatus.port || 19999;
+		// Use current browser hostname for iframe (not 127.0.0.1 which won't work)
+		var netdataUrl = 'http://' + window.location.hostname + ':' + netdataPort;
 		var alarmCount = this.countAlarms(alarms);
 
 		var view = E('div', { 'class': 'netdata-dashboard secubox-netdata' }, [
@@ -69,28 +71,45 @@ return view.extend({
 	},
 
 	renderHeader: function(status, stats) {
-		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
+		var headerStyle = 'margin-bottom: 1.5rem;';
+		var titleStyle = 'display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.5rem 0; font-size: 1.5rem;';
+		var subtitleStyle = 'margin: 0; color: #8b949e; font-size: 0.9rem;';
+		var metaStyle = 'display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem;';
+
+		return E('div', { 'style': headerStyle }, [
 			E('div', {}, [
-				E('h2', { 'class': 'sh-page-title' }, [
-					E('span', { 'class': 'sh-page-title-icon' }, '📊'),
+				E('h2', { 'style': titleStyle }, [
+					E('span', {}, '📊'),
 					_('Netdata Monitoring')
 				]),
-				E('p', { 'class': 'sh-page-subtitle' },
+				E('p', { 'style': subtitleStyle },
 					_('Real-time analytics for CPU, memory, disk, and services.'))
 			]),
-			E('div', { 'class': 'sh-header-meta' }, [
+			E('div', { 'style': metaStyle }, [
 				this.renderHeaderChip(_('Status'), status.running ? _('Online') : _('Offline'),
 					status.running ? 'success' : 'warn'),
-				this.renderHeaderChip(_('Version'), status.version || _('Unknown')),
+				this.renderHeaderChip(_('Version'), status.version || _('unknown')),
 				this.renderHeaderChip(_('Uptime'), API.formatUptime(stats.uptime || 0))
 			])
 		]);
 	},
 
 	renderHeaderChip: function(label, value, tone) {
-		return E('div', { 'class': 'sh-header-chip' + (tone ? ' ' + tone : '') }, [
-			E('span', { 'class': 'sh-chip-label' }, label),
-			E('strong', {}, value)
+		var chipStyle = 'display: flex; flex-direction: column; padding: 0.5rem 1rem; background: #161b22; border: 1px solid #30363d; border-radius: 8px; min-width: 100px;';
+		var labelStyle = 'font-size: 0.75rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.25rem;';
+		var valueStyle = 'font-size: 1rem; font-weight: 600;';
+
+		if (tone === 'success') {
+			valueStyle += ' color: #3fb950;';
+		} else if (tone === 'warn') {
+			valueStyle += ' color: #d29922;';
+		} else {
+			valueStyle += ' color: #f0f6fc;';
+		}
+
+		return E('div', { 'style': chipStyle }, [
+			E('span', { 'style': labelStyle }, label),
+			E('strong', { 'style': valueStyle }, value)
 		]);
 	},
 
@@ -115,20 +134,34 @@ return view.extend({
 	},
 
 	renderQuickStats: function(stats) {
-		return E('div', { 'class': 'nd-quick-stats' }, [
-			this.renderStatCard(_('CPU'), (stats.cpu_percent || 0) + '%'),
-			this.renderStatCard(_('Memory'), (stats.memory_percent || 0) + '%'),
-			this.renderStatCard(_('Disk'), (stats.disk_percent || 0) + '%'),
-			this.renderStatCard(_('Load'), stats.load || '0.00'),
-			this.renderStatCard(_('Temp'), (stats.temperature || 0) + '°C'),
-			this.renderStatCard(_('Clients'), stats.clients || 0)
+		var gridStyle = 'display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem;';
+
+		return E('div', { 'style': gridStyle }, [
+			this.renderStatCard(_('CPU'), (stats.cpu_percent || 0) + '%', stats.cpu_percent > 80 ? 'danger' : stats.cpu_percent > 50 ? 'warning' : 'good'),
+			this.renderStatCard(_('Memory'), (stats.memory_percent || 0) + '%', stats.memory_percent > 80 ? 'danger' : stats.memory_percent > 50 ? 'warning' : 'good'),
+			this.renderStatCard(_('Disk'), (stats.disk_percent || 0) + '%', stats.disk_percent > 80 ? 'danger' : stats.disk_percent > 50 ? 'warning' : 'info'),
+			this.renderStatCard(_('Load'), stats.load || '0.00', 'info'),
+			this.renderStatCard(_('Temp'), (stats.temperature || 0) + '°C', stats.temperature > 70 ? 'danger' : stats.temperature > 50 ? 'warning' : 'good'),
+			this.renderStatCard(_('Clients'), stats.clients || 0, 'info')
 		]);
 	},
 
-	renderStatCard: function(label, value) {
-		return E('div', { 'class': 'nd-stat-card' }, [
-			E('span', { 'class': 'nd-stat-label' }, label),
-			E('strong', { 'class': 'nd-stat-value' }, value)
+	renderStatCard: function(label, value, tone) {
+		var cardStyle = 'display: flex; flex-direction: column; align-items: center; padding: 1rem; background: #161b22; border: 1px solid #30363d; border-radius: 8px; text-align: center;';
+		var labelStyle = 'font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6e7681; margin-bottom: 0.5rem;';
+		var valueStyle = 'font-size: 1.5rem; font-weight: 700; font-family: monospace;';
+
+		var colors = {
+			'good': '#3fb950',
+			'warning': '#d29922',
+			'danger': '#f85149',
+			'info': '#58a6ff'
+		};
+		valueStyle += ' color: ' + (colors[tone] || '#f0f6fc') + ';';
+
+		return E('div', { 'style': cardStyle }, [
+			E('span', { 'style': labelStyle }, label),
+			E('strong', { 'style': valueStyle }, String(value))
 		]);
 	},
 

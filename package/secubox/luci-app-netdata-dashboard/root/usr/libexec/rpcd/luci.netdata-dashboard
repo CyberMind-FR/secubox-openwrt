@@ -439,8 +439,8 @@ get_stats() {
 get_netdata_status() {
 	json_init
 
-	# Check if netdata is running
-	if pgrep -x netdata >/dev/null 2>&1; then
+	# Check if netdata is running (use pidof for OpenWrt compatibility)
+	if pidof netdata >/dev/null 2>&1; then
 		json_add_string "service" "running"
 		json_add_boolean "running" 1
 	else
@@ -448,14 +448,18 @@ get_netdata_status() {
 		json_add_boolean "running" 0
 	fi
 
-	# Get configuration
-	local port="19999"
-	local bind="127.0.0.1"
+	# Get configuration with proper defaults
+	local port=""
+	local bind=""
 
 	if [ -f /etc/netdata/netdata.conf ]; then
-		port=$(grep "^\s*default port" /etc/netdata/netdata.conf 2>/dev/null | awk '{print $NF}' || echo "19999")
-		bind=$(grep "^\s*bind to" /etc/netdata/netdata.conf 2>/dev/null | awk '{print $NF}' || echo "127.0.0.1")
+		port=$(grep "^\s*default port" /etc/netdata/netdata.conf 2>/dev/null | awk '{print $NF}')
+		bind=$(grep "^\s*bind to" /etc/netdata/netdata.conf 2>/dev/null | awk '{print $NF}')
 	fi
+
+	# Apply defaults if empty
+	[ -z "$port" ] && port="19999"
+	[ -z "$bind" ] && bind="127.0.0.1"
 
 	json_add_int "port" "$port"
 	json_add_string "bind" "$bind"
@@ -463,8 +467,8 @@ get_netdata_status() {
 
 	# Try to get version from Netdata API
 	local version=""
-	if command -v curl >/dev/null; then
-		version=$(curl -s "http://${bind}:${port}/api/v1/info" 2>/dev/null | jsonfilter -e '@.version' 2>/dev/null || echo "")
+	if command -v curl >/dev/null && pidof netdata >/dev/null 2>&1; then
+		version=$(curl -s --connect-timeout 2 "http://${bind}:${port}/api/v1/info" 2>/dev/null | jsonfilter -e '@.version' 2>/dev/null || echo "")
 	fi
 	json_add_string "version" "${version:-unknown}"
 
@@ -484,7 +488,7 @@ get_netdata_alarms() {
 	fi
 
 	# Fetch alarms from Netdata API
-	if command -v curl >/dev/null && pgrep -x netdata >/dev/null; then
+	if command -v curl >/dev/null && pidof netdata >/dev/null; then
 		local alarms=$(curl -s "http://${bind}:${port}/api/v1/alarms" 2>/dev/null)
 		if [ -n "$alarms" ] && [ "$alarms" != "null" ]; then
 			echo "$alarms"
@@ -509,7 +513,7 @@ get_netdata_info() {
 	fi
 
 	# Fetch info from Netdata API
-	if command -v curl >/dev/null && pgrep -x netdata >/dev/null; then
+	if command -v curl >/dev/null && pidof netdata >/dev/null; then
 		local info=$(curl -s "http://${bind}:${port}/api/v1/info" 2>/dev/null)
 		if [ -n "$info" ] && [ "$info" != "null" ]; then
 			echo "$info"
@@ -529,7 +533,7 @@ restart_netdata() {
 		/etc/init.d/netdata restart >/dev/null 2>&1
 		sleep 2
 
-		if pgrep -x netdata >/dev/null 2>&1; then
+		if pidof netdata >/dev/null 2>&1; then
 			json_add_boolean "success" 1
 			json_add_string "message" "Netdata restarted successfully"
 			secubox_log "Netdata service restarted"
@@ -549,14 +553,14 @@ restart_netdata() {
 start_netdata() {
 	json_init
 
-	if pgrep -x netdata >/dev/null 2>&1; then
+	if pidof netdata >/dev/null 2>&1; then
 		json_add_boolean "success" 1
 		json_add_string "message" "Netdata already running"
 	elif [ -x /etc/init.d/netdata ]; then
 		/etc/init.d/netdata start >/dev/null 2>&1
 		sleep 2
 
-		if pgrep -x netdata >/dev/null 2>&1; then
+		if pidof netdata >/dev/null 2>&1; then
 			json_add_boolean "success" 1
 			json_add_string "message" "Netdata started successfully"
 			secubox_log "Netdata service started"
@@ -576,14 +580,14 @@ start_netdata() {
 stop_netdata() {
 	json_init
 
-	if ! pgrep -x netdata >/dev/null 2>&1; then
+	if ! pidof netdata >/dev/null 2>&1; then
 		json_add_boolean "success" 1
 		json_add_string "message" "Netdata already stopped"
 	elif [ -x /etc/init.d/netdata ]; then
 		/etc/init.d/netdata stop >/dev/null 2>&1
 		sleep 1
 
-		if ! pgrep -x netdata >/dev/null 2>&1; then
+		if ! pidof netdata >/dev/null 2>&1; then
 			json_add_boolean "success" 1
 			json_add_string "message" "Netdata stopped successfully"
 			secubox_log "Netdata service stopped"

@@ -18,6 +18,15 @@ return view.extend({
 		var info = data[1] || {};
 		var system = data[2] || {};
 
+		// Build URL using browser hostname (not 127.0.0.1 which won't work from browser)
+		var port = status.port || 19999;
+		var bind = status.bind || '0.0.0.0';
+		var dashboardUrl = 'http://' + window.location.hostname + ':' + port;
+
+		var tableStyle = 'width: 100%; border-collapse: collapse;';
+		var thStyle = 'padding: 0.75rem 1rem; text-align: left; font-weight: 600; width: 200px; background: #161b22; border-bottom: 1px solid #30363d;';
+		var tdStyle = 'padding: 0.75rem 1rem; border-bottom: 1px solid #30363d;';
+
 		var view = E('div', { 'class': 'cbi-map' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('h2', {}, _('Netdata Settings')),
@@ -27,35 +36,37 @@ return view.extend({
 			// Service Information
 			E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, _('Service Information')),
-				E('div', { 'class': 'table cbi-section-table' }, [
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Service Status')),
-						E('div', { 'class': 'td left' }, [
-							E('span', {
-								'class': 'badge',
-								'style': 'background: ' + (status.running ? '#28a745' : '#dc3545') + '; color: white; padding: 0.25em 0.6em; border-radius: 3px;'
-							}, status.running ? _('Running') : _('Stopped'))
-						])
-					]),
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Version')),
-						E('div', { 'class': 'td left' }, status.version || 'Unknown')
-					]),
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Listen Port')),
-						E('div', { 'class': 'td left' }, (status.port || 19999).toString())
-					]),
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Bind Address')),
-						E('div', { 'class': 'td left' }, status.bind || '127.0.0.1')
-					]),
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Dashboard URL')),
-						E('div', { 'class': 'td left' }, [
-							E('a', {
-								'href': status.url || 'http://127.0.0.1:19999',
-								'target': '_blank'
-							}, status.url || 'http://127.0.0.1:19999')
+				E('table', { 'style': tableStyle }, [
+					E('tbody', {}, [
+						E('tr', {}, [
+							E('th', { 'style': thStyle }, _('Service Status')),
+							E('td', { 'style': tdStyle }, [
+								E('span', {
+									'style': 'display: inline-block; padding: 0.25rem 0.75rem; border-radius: 4px; font-weight: 500; background: ' + (status.running ? '#238636' : '#da3633') + '; color: white;'
+								}, status.running ? _('Running') : _('Stopped'))
+							])
+						]),
+						E('tr', {}, [
+							E('th', { 'style': thStyle }, _('Version')),
+							E('td', { 'style': tdStyle }, status.version || 'unknown')
+						]),
+						E('tr', {}, [
+							E('th', { 'style': thStyle }, _('Listen Port')),
+							E('td', { 'style': tdStyle }, String(port))
+						]),
+						E('tr', {}, [
+							E('th', { 'style': thStyle }, _('Bind Address')),
+							E('td', { 'style': tdStyle }, bind)
+						]),
+						E('tr', {}, [
+							E('th', { 'style': thStyle }, _('Dashboard URL')),
+							E('td', { 'style': tdStyle }, [
+								E('a', {
+									'href': dashboardUrl,
+									'target': '_blank',
+									'style': 'color: #58a6ff;'
+								}, dashboardUrl)
+							])
 						])
 					])
 				])
@@ -64,31 +75,32 @@ return view.extend({
 			// System Information
 			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
 				E('h3', {}, _('System Information')),
-				E('div', { 'class': 'table cbi-section-table' }, [
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Hostname')),
-						E('div', { 'class': 'td left' }, system.hostname || 'Unknown')
-					]),
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Model')),
-						E('div', { 'class': 'td left' }, system.model || 'Unknown')
-					]),
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Kernel')),
-						E('div', { 'class': 'td left' }, system.kernel || 'Unknown')
-					]),
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Architecture')),
-						E('div', { 'class': 'td left' }, system.arch || 'Unknown')
-					]),
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Distribution')),
-						E('div', { 'class': 'td left' },
-							(system.distro || 'OpenWrt') + ' ' + (system.version || ''))
-					]),
-					E('div', { 'class': 'tr cbi-section-table-row' }, [
-						E('div', { 'class': 'td left', 'style': 'width: 33%; font-weight: bold;' }, _('Uptime')),
-						E('div', { 'class': 'td left' }, system.uptime_formatted || '0d 0h 0m')
+				E('table', { 'style': tableStyle }, [
+					E('tbody', {}, [
+						E('tr', {}, [
+							E('th', { 'style': thStyle }, _('Hostname')),
+							E('td', { 'style': tdStyle }, system.hostname || 'Unknown')
+						]),
+						E('tr', {}, [
+							E('th', { 'style': thStyle }, _('Model')),
+							E('td', { 'style': tdStyle }, system.model || 'Unknown')
+						]),
+						E('tr', {}, [
+							E('th', { 'style': thStyle }, _('Kernel')),
+							E('td', { 'style': tdStyle }, system.kernel || 'Unknown')
+						]),
+						E('tr', {}, [
+							E('th', { 'style': thStyle }, _('Architecture')),
+							E('td', { 'style': tdStyle }, system.arch || 'Unknown')
+						]),
+						E('tr', {}, [
+							E('th', { 'style': thStyle }, _('Distribution')),
+							E('td', { 'style': tdStyle }, (system.distro || 'OpenWrt') + ' ' + (system.version || ''))
+						]),
+						E('tr', {}, [
+							E('th', { 'style': thStyle }, _('Uptime')),
+							E('td', { 'style': tdStyle }, system.uptime_formatted || '0d 0h 0m')
+						])
 					])
 				])
 			]),
