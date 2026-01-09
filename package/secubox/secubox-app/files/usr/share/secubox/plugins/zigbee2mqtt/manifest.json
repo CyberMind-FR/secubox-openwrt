@@ -16,7 +16,7 @@
   "network": {
     "default_mode": "lan",
     "dmz_supported": true
-  ],
+  },
   "wizard": {
     "uci": {
       "config": "zigbee2mqtt",
