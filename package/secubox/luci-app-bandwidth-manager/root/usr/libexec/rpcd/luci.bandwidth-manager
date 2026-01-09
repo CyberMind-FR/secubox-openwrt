@@ -579,6 +579,615 @@ get_media() {
 	json_dump
 }
 
+# ============================================
+# Smart QoS - DPI Integration with nDPId
+# ============================================
+
+NDPID_FLOWS="/tmp/ndpid-flows.json"
+DPI_RULES_FILE="/tmp/bandwidth_dpi_rules.json"
+
+# Get DPI detected applications from nDPId
+get_dpi_applications() {
+	json_init
+	json_add_array "applications"
+
+	if [ -f "$NDPID_FLOWS" ] && pgrep -x ndpid >/dev/null 2>&1; then
+		# Extract unique applications from nDPId flows
+		jq -r '.flows[]? | .app // "Unknown"' "$NDPID_FLOWS" 2>/dev/null | sort -u | while read app; do
+			[ -z "$app" ] && continue
+			local count=$(jq -r ".flows[] | select(.app == \"$app\") | .src_ip" "$NDPID_FLOWS" 2>/dev/null | wc -l)
+			local bytes=$(jq -r ".flows[] | select(.app == \"$app\") | .bytes_rx + .bytes_tx" "$NDPID_FLOWS" 2>/dev/null | awk '{sum+=$1} END {print sum}')
+
+			json_add_object ""
+			json_add_string "name" "$app"
+			json_add_int "flow_count" "$count"
+			json_add_int "total_bytes" "${bytes:-0}"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+
+	# Check DPI source status
+	local dpi_source="none"
+	if [ -f "$NDPID_FLOWS" ] && pgrep -x ndpid >/dev/null 2>&1; then
+		dpi_source="ndpid"
+	elif [ -f "/var/run/netifyd/status.json" ] && pgrep -x netifyd >/dev/null 2>&1; then
+		dpi_source="netifyd"
+	fi
+	json_add_string "dpi_source" "$dpi_source"
+
+	json_dump
+}
+
+# Get smart QoS suggestions based on detected traffic
+get_smart_suggestions() {
+	json_init
+	json_add_array "suggestions"
+
+	if [ -f "$NDPID_FLOWS" ]; then
+		# Check for gaming traffic
+		local gaming_count=$(jq -r '.flows[]? | select(.category == "Game" or .app | test("Steam|Xbox|PlayStation|Nintendo|Epic|Riot"; "i")) | .src_ip' "$NDPID_FLOWS" 2>/dev/null | sort -u | wc -l)
+		if [ "$gaming_count" -gt 0 ]; then
+			json_add_object ""
+			json_add_string "type" "gaming"
+			json_add_string "title" "Gaming Traffic Detected"
+			json_add_string "description" "Detected $gaming_count devices with gaming traffic. Recommend priority class 1-2 for low latency."
+			json_add_int "priority" 2
+			json_add_int "affected_devices" "$gaming_count"
+			json_close_object
+		fi
+
+		# Check for streaming traffic
+		local streaming_count=$(jq -r '.flows[]? | select(.app | test("YouTube|Netflix|Twitch|Disney|HBO|Amazon.*Video|Spotify"; "i")) | .src_ip' "$NDPID_FLOWS" 2>/dev/null | sort -u | wc -l)
+		if [ "$streaming_count" -gt 0 ]; then
+			json_add_object ""
+			json_add_string "type" "streaming"
+			json_add_string "title" "Streaming Traffic Detected"
+			json_add_string "description" "Detected $streaming_count devices streaming video/audio. Recommend priority class 4 for consistent quality."
+			json_add_int "priority" 4
+			json_add_int "affected_devices" "$streaming_count"
+			json_close_object
+		fi
+
+		# Check for video conferencing
+		local video_conf_count=$(jq -r '.flows[]? | select(.app | test("Zoom|Teams|Meet|WebEx|Skype"; "i")) | .src_ip' "$NDPID_FLOWS" 2>/dev/null | sort -u | wc -l)
+		if [ "$video_conf_count" -gt 0 ]; then
+			json_add_object ""
+			json_add_string "type" "videoconf"
+			json_add_string "title" "Video Conferencing Detected"
+			json_add_string "description" "Detected $video_conf_count devices in video calls. Recommend priority class 1 for real-time communication."
+			json_add_int "priority" 1
+			json_add_int "affected_devices" "$video_conf_count"
+			json_close_object
+		fi
+
+		# Check for heavy downloaders
+		local download_bytes=$(jq -r '.flows[]? | select(.bytes_rx > 100000000) | "\(.src_ip) \(.bytes_rx)"' "$NDPID_FLOWS" 2>/dev/null | sort -t' ' -k2 -nr | head -3)
+		if [ -n "$download_bytes" ]; then
+			local heavy_users=$(echo "$download_bytes" | wc -l)
+			json_add_object ""
+			json_add_string "type" "downloads"
+			json_add_string "title" "Heavy Bandwidth Users"
+			json_add_string "description" "Detected $heavy_users devices downloading heavily. Consider priority class 6-7 or quotas."
+			json_add_int "priority" 7
+			json_add_int "affected_devices" "$heavy_users"
+			json_close_object
+		fi
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Apply smart QoS rule based on app detection
+apply_dpi_rule() {
+	read -r input
+	json_load "$input"
+
+	local app_name priority limit_down limit_up
+	json_get_var app_name app_name
+	json_get_var priority priority "5"
+	json_get_var limit_down limit_down "0"
+	json_get_var limit_up limit_up "0"
+	json_cleanup
+
+	if [ -z "$app_name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Application name is required"
+		json_dump
+		return 1
+	fi
+
+	# Create DPI-based QoS rule
+	local rule_id="dpi_rule_$(echo "$app_name" | tr ' ' '_' | tr '[:upper:]' '[:lower:]')_$(date +%s)"
+
+	uci -q batch << EOF
+set bandwidth.$rule_id=rule
+set bandwidth.$rule_id.name='DPI: $app_name'
+set bandwidth.$rule_id.type='dpi_app'
+set bandwidth.$rule_id.target='$app_name'
+set bandwidth.$rule_id.limit_down='$limit_down'
+set bandwidth.$rule_id.limit_up='$limit_up'
+set bandwidth.$rule_id.priority='$priority'
+set bandwidth.$rule_id.enabled='1'
+set bandwidth.$rule_id.dpi_match='1'
+commit bandwidth
+EOF
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "rule_id" "$rule_id"
+	json_add_string "message" "DPI rule created for $app_name"
+	json_dump
+}
+
+# ============================================
+# Device Groups Management
+# ============================================
+
+# List all device groups
+list_groups() {
+	config_load bandwidth
+	json_init
+	json_add_array "groups"
+
+	_add_group() {
+		local name description quota_mb priority members enabled
+		config_get name "$1" name ""
+		config_get description "$1" description ""
+		config_get quota_mb "$1" quota_mb "0"
+		config_get priority "$1" priority "5"
+		config_get members "$1" members ""
+		config_get enabled "$1" enabled "1"
+
+		# Calculate group usage
+		local total_used=0
+		local member_count=0
+		for mac in $members; do
+			member_count=$(( member_count + 1 ))
+			local used=$(get_mac_usage "$mac")
+			total_used=$(( total_used + used ))
+		done
+
+		json_add_object ""
+		json_add_string "id" "$1"
+		json_add_string "name" "$name"
+		json_add_string "description" "$description"
+		json_add_int "quota_mb" "$quota_mb"
+		json_add_int "priority" "$priority"
+		json_add_int "member_count" "$member_count"
+		json_add_int "used_mb" "$total_used"
+		json_add_boolean "enabled" "$enabled"
+		json_close_object
+	}
+
+	config_foreach _add_group group
+
+	json_close_array
+	json_dump
+}
+
+# Get group details with members
+get_group() {
+	read -r input
+	json_load "$input"
+
+	local group_id
+	json_get_var group_id group_id
+	json_cleanup
+
+	if [ -z "$group_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Group ID is required"
+		json_dump
+		return 1
+	fi
+
+	config_load bandwidth
+
+	local name description quota_mb priority members enabled
+	config_get name "$group_id" name ""
+	config_get description "$group_id" description ""
+	config_get quota_mb "$group_id" quota_mb "0"
+	config_get priority "$group_id" priority "5"
+	config_get members "$group_id" members ""
+	config_get enabled "$group_id" enabled "1"
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Group not found"
+		json_dump
+		return 1
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$group_id"
+	json_add_string "name" "$name"
+	json_add_string "description" "$description"
+	json_add_int "quota_mb" "$quota_mb"
+	json_add_int "priority" "$priority"
+	json_add_boolean "enabled" "$enabled"
+
+	# Add members with details
+	json_add_array "members"
+	for mac in $members; do
+		local hostname ip used_mb
+		hostname=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $4}')
+		ip=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $3}')
+		used_mb=$(get_mac_usage "$mac")
+
+		json_add_object ""
+		json_add_string "mac" "$mac"
+		json_add_string "hostname" "${hostname:-unknown}"
+		json_add_string "ip" "${ip:-unknown}"
+		json_add_int "used_mb" "$used_mb"
+		json_close_object
+	done
+	json_close_array
+
+	json_dump
+}
+
+# Create device group
+create_group() {
+	read -r input
+	json_load "$input"
+
+	local name description quota_mb priority members
+	json_get_var name name
+	json_get_var description description ""
+	json_get_var quota_mb quota_mb "0"
+	json_get_var priority priority "5"
+	json_get_var members members ""
+	json_cleanup
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Group name is required"
+		json_dump
+		return 1
+	fi
+
+	local group_id="group_$(date +%s)"
+
+	uci -q batch << EOF
+set bandwidth.$group_id=group
+set bandwidth.$group_id.name='$name'
+set bandwidth.$group_id.description='$description'
+set bandwidth.$group_id.quota_mb='$quota_mb'
+set bandwidth.$group_id.priority='$priority'
+set bandwidth.$group_id.members='$members'
+set bandwidth.$group_id.enabled='1'
+commit bandwidth
+EOF
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "group_id" "$group_id"
+	json_add_string "message" "Group created successfully"
+	json_dump
+}
+
+# Update device group
+update_group() {
+	read -r input
+	json_load "$input"
+
+	local group_id name description quota_mb priority members
+	json_get_var group_id group_id
+	json_get_var name name
+	json_get_var description description ""
+	json_get_var quota_mb quota_mb "0"
+	json_get_var priority priority "5"
+	json_get_var members members ""
+	json_cleanup
+
+	if [ -z "$group_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Group ID is required"
+		json_dump
+		return 1
+	fi
+
+	# Check if group exists
+	config_load bandwidth
+	local existing_name
+	config_get existing_name "$group_id" name ""
+	if [ -z "$existing_name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Group not found"
+		json_dump
+		return 1
+	fi
+
+	uci -q batch << EOF
+set bandwidth.$group_id.name='$name'
+set bandwidth.$group_id.description='$description'
+set bandwidth.$group_id.quota_mb='$quota_mb'
+set bandwidth.$group_id.priority='$priority'
+set bandwidth.$group_id.members='$members'
+commit bandwidth
+EOF
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Group updated successfully"
+	json_dump
+}
+
+# Delete device group
+delete_group() {
+	read -r input
+	json_load "$input"
+
+	local group_id
+	json_get_var group_id group_id
+	json_cleanup
+
+	if [ -z "$group_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Group ID is required"
+		json_dump
+		return 1
+	fi
+
+	# Check if group exists
+	if ! uci -q get bandwidth.$group_id >/dev/null 2>&1; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Group not found"
+		json_dump
+		return 1
+	fi
+
+	uci -q delete bandwidth.$group_id
+	uci -q commit bandwidth
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Group deleted successfully"
+	json_dump
+}
+
+# Add device to group
+add_to_group() {
+	read -r input
+	json_load "$input"
+
+	local group_id mac
+	json_get_var group_id group_id
+	json_get_var mac mac
+	json_cleanup
+
+	if [ -z "$group_id" ] || [ -z "$mac" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Group ID and MAC address are required"
+		json_dump
+		return 1
+	fi
+
+	config_load bandwidth
+	local members
+	config_get members "$group_id" members ""
+
+	# Check if already in group
+	if echo "$members" | grep -qi "$mac"; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Device already in group"
+		json_dump
+		return 1
+	fi
+
+	members="$members $mac"
+	uci -q set bandwidth.$group_id.members="$members"
+	uci -q commit bandwidth
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Device added to group"
+	json_dump
+}
+
+# Remove device from group
+remove_from_group() {
+	read -r input
+	json_load "$input"
+
+	local group_id mac
+	json_get_var group_id group_id
+	json_get_var mac mac
+	json_cleanup
+
+	if [ -z "$group_id" ] || [ -z "$mac" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Group ID and MAC address are required"
+		json_dump
+		return 1
+	fi
+
+	config_load bandwidth
+	local members
+	config_get members "$group_id" members ""
+
+	# Remove MAC from members list
+	members=$(echo "$members" | sed "s/$mac//gi" | tr -s ' ')
+	uci -q set bandwidth.$group_id.members="$members"
+	uci -q commit bandwidth
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Device removed from group"
+	json_dump
+}
+
+# ============================================
+# Analytics
+# ============================================
+
+ANALYTICS_DB="/tmp/bandwidth_analytics.db"
+
+# Initialize analytics database
+init_analytics_db() {
+	if [ ! -f "$ANALYTICS_DB" ]; then
+		cat > "$ANALYTICS_DB" << 'EOF'
+# Hour|Date|Total_RX|Total_TX|Peak_RX|Peak_TX|Client_Count
+EOF
+	fi
+}
+
+# Get analytics summary
+get_analytics_summary() {
+	read -r input
+	json_load "$input"
+
+	local period
+	json_get_var period period "24h"
+	json_cleanup
+
+	json_init
+
+	# Current totals
+	local interface
+	config_load bandwidth
+	config_get interface global interface "br-lan"
+
+	if [ -d "/sys/class/net/$interface" ]; then
+		local rx_bytes=$(cat /sys/class/net/$interface/statistics/rx_bytes 2>/dev/null || echo 0)
+		local tx_bytes=$(cat /sys/class/net/$interface/statistics/tx_bytes 2>/dev/null || echo 0)
+		json_add_int "total_rx_bytes" "$rx_bytes"
+		json_add_int "total_tx_bytes" "$tx_bytes"
+	fi
+
+	# Client count
+	local client_count=$(cat /tmp/dhcp.leases 2>/dev/null | wc -l)
+	json_add_int "active_clients" "$client_count"
+
+	# Top talkers
+	json_add_array "top_talkers"
+	if [ -f /tmp/dhcp.leases ]; then
+		while read -r expires mac ip hostname clientid; do
+			local used_mb=$(get_mac_usage "$mac")
+			[ "$used_mb" -gt 0 ] && echo "$used_mb|$mac|$ip|${hostname:-unknown}"
+		done < /tmp/dhcp.leases | sort -t'|' -k1 -nr | head -5 | while IFS='|' read used mac ip hostname; do
+			json_add_object ""
+			json_add_string "mac" "$mac"
+			json_add_string "ip" "$ip"
+			json_add_string "hostname" "$hostname"
+			json_add_int "used_mb" "$used"
+			json_close_object
+		done
+	fi
+	json_close_array
+
+	# Application breakdown (from nDPId)
+	json_add_array "app_breakdown"
+	if [ -f "$NDPID_FLOWS" ]; then
+		jq -r '[.flows[]? | {app: (.app // "Unknown"), bytes: (.bytes_rx + .bytes_tx)}] | group_by(.app) | map({app: .[0].app, total_bytes: (map(.bytes) | add)}) | sort_by(.total_bytes) | reverse | .[:10][] | "\(.app)|\(.total_bytes)"' "$NDPID_FLOWS" 2>/dev/null | while IFS='|' read app bytes; do
+			json_add_object ""
+			json_add_string "app" "$app"
+			json_add_int "bytes" "${bytes:-0}"
+			json_close_object
+		done
+	fi
+	json_close_array
+
+	# Protocol breakdown (from nDPId)
+	json_add_array "protocol_breakdown"
+	if [ -f "$NDPID_FLOWS" ]; then
+		jq -r '[.flows[]? | {protocol: (.l4_proto // "Unknown"), bytes: (.bytes_rx + .bytes_tx)}] | group_by(.protocol) | map({protocol: .[0].protocol, total_bytes: (map(.bytes) | add)}) | sort_by(.total_bytes) | reverse | .[:5][] | "\(.protocol)|\(.total_bytes)"' "$NDPID_FLOWS" 2>/dev/null | while IFS='|' read proto bytes; do
+			json_add_object ""
+			json_add_string "protocol" "$proto"
+			json_add_int "bytes" "${bytes:-0}"
+			json_close_object
+		done
+	fi
+	json_close_array
+
+	json_dump
+}
+
+# Get hourly usage data for charts
+get_hourly_data() {
+	read -r input
+	json_load "$input"
+
+	local days
+	json_get_var days days "7"
+	json_cleanup
+
+	init_analytics_db
+
+	json_init
+	json_add_array "hourly_data"
+
+	# Read from analytics DB
+	local threshold_date=$(date -d "$days days ago" +%Y%m%d 2>/dev/null || date +%Y%m%d)
+	if [ -f "$ANALYTICS_DB" ]; then
+		while IFS='|' read hour date rx tx peak_rx peak_tx clients; do
+			[ "$hour" = "# Hour" ] && continue
+			[ "$date" -lt "$threshold_date" ] 2>/dev/null && continue
+
+			json_add_object ""
+			json_add_int "hour" "$hour"
+			json_add_string "date" "$date"
+			json_add_int "rx_bytes" "$rx"
+			json_add_int "tx_bytes" "$tx"
+			json_add_int "peak_rx" "$peak_rx"
+			json_add_int "peak_tx" "$peak_tx"
+			json_add_int "clients" "$clients"
+			json_close_object
+		done < "$ANALYTICS_DB"
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Record current stats (called by cron)
+record_stats() {
+	init_analytics_db
+
+	local interface
+	config_load bandwidth
+	config_get interface global interface "br-lan"
+
+	local hour=$(date +%H)
+	local date=$(date +%Y%m%d)
+	local rx_bytes=0 tx_bytes=0
+
+	if [ -d "/sys/class/net/$interface" ]; then
+		rx_bytes=$(cat /sys/class/net/$interface/statistics/rx_bytes 2>/dev/null || echo 0)
+		tx_bytes=$(cat /sys/class/net/$interface/statistics/tx_bytes 2>/dev/null || echo 0)
+	fi
+
+	local client_count=$(cat /tmp/dhcp.leases 2>/dev/null | wc -l)
+
+	echo "$hour|$date|$rx_bytes|$tx_bytes|$rx_bytes|$tx_bytes|$client_count" >> "$ANALYTICS_DB"
+
+	# Keep only last 30 days
+	local old_date=$(date -d "30 days ago" +%Y%m%d 2>/dev/null || echo "0")
+	if [ -f "$ANALYTICS_DB" ]; then
+		awk -F'|' -v old="$old_date" '$2 >= old || /^#/' "$ANALYTICS_DB" > "${ANALYTICS_DB}.tmp"
+		mv "${ANALYTICS_DB}.tmp" "$ANALYTICS_DB"
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
 # Get QoS priority classes
 get_classes() {
 	json_init
@@ -676,7 +1285,20 @@ case "$1" in
 	"get_usage_realtime": {},
 	"get_usage_history": { "timeframe": "24h", "mac": "" },
 	"get_media": {},
-	"get_classes": {}
+	"get_classes": {},
+	"get_dpi_applications": {},
+	"get_smart_suggestions": {},
+	"apply_dpi_rule": { "app_name": "string", "priority": 5, "limit_down": 0, "limit_up": 0 },
+	"list_groups": {},
+	"get_group": { "group_id": "string" },
+	"create_group": { "name": "string", "description": "", "quota_mb": 0, "priority": 5, "members": "" },
+	"update_group": { "group_id": "string", "name": "string", "description": "", "quota_mb": 0, "priority": 5, "members": "" },
+	"delete_group": { "group_id": "string" },
+	"add_to_group": { "group_id": "string", "mac": "string" },
+	"remove_from_group": { "group_id": "string", "mac": "string" },
+	"get_analytics_summary": { "period": "24h" },
+	"get_hourly_data": { "days": 7 },
+	"record_stats": {}
 }
 EOF
 		;;
@@ -694,6 +1316,19 @@ EOF
 			get_usage_history) get_usage_history ;;
 			get_media) get_media ;;
 			get_classes) get_classes ;;
+			get_dpi_applications) get_dpi_applications ;;
+			get_smart_suggestions) get_smart_suggestions ;;
+			apply_dpi_rule) apply_dpi_rule ;;
+			list_groups) list_groups ;;
+			get_group) get_group ;;
+			create_group) create_group ;;
+			update_group) update_group ;;
+			delete_group) delete_group ;;
+			add_to_group) add_to_group ;;
+			remove_from_group) remove_from_group ;;
+			get_analytics_summary) get_analytics_summary ;;
+			get_hourly_data) get_hourly_data ;;
+			record_stats) record_stats ;;
 			*)
 				json_init
 				json_add_boolean "success" 0

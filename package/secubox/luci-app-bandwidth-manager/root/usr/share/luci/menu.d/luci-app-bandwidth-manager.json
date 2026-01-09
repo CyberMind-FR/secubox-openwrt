@@ -80,5 +80,29 @@
 			"type": "view",
 			"path": "bandwidth-manager/schedules"
 		}
+	},
+	"admin/secubox/network/bandwidth-manager/smart-qos": {
+		"title": "Smart QoS",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/smart-qos"
+		}
+	},
+	"admin/secubox/network/bandwidth-manager/groups": {
+		"title": "Device Groups",
+		"order": 11,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/groups"
+		}
+	},
+	"admin/secubox/network/bandwidth-manager/analytics": {
+		"title": "Analytics",
+		"order": 12,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/analytics"
+		}
 	}
 }
