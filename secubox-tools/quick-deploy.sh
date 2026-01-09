@@ -1,10 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-ROUTER="${ROUTER:-root@192.168.8.191}"
+ROUTER="${ROUTER:-root@192.168.255.1}"
 TARGET_PATH="${TARGET_PATH:-/www/luci-static}"
-SSH_OPTS=${SSH_OPTS:--o RequestTTY=no -o ForwardX11=no}
-SCP_OPTS=${SCP_OPTS:-}
+# SSH multiplexing - only ask password once per session
+SSH_CONTROL_PATH="/tmp/ssh-control-%r@%h:%p"
+SSH_OPTS=${SSH_OPTS:--o RequestTTY=no -o ForwardX11=no -o StrictHostKeyChecking=no -o ControlMaster=auto -o ControlPath=$SSH_CONTROL_PATH -o ControlPersist=600}
+SCP_OPTS=${SCP_OPTS:--o ControlPath=$SSH_CONTROL_PATH}
 CACHE_BUST=${CACHE_BUST:-1}
 VERIFY=${VERIFY:-1}
 FORCE_ROOT="false"
