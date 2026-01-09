@@ -254,6 +254,36 @@ function injectCSS() {
 	document.head.appendChild(style);
 }
 
+// Continuously watch and hide OpenWrt header elements
+var headerObserver = null;
+function startHeaderObserver() {
+	if (headerObserver) return;
+
+	var hideNonSecuBoxHeaders = function() {
+		document.querySelectorAll('header, .brand, div.brand, header.brand, .main-header, #header').forEach(function(el) {
+			if (!el.classList.contains('sb-global-header') && !el.closest('.sb-global-header') && !el.closest('.secubox-page-wrapper')) {
+				el.style.cssText = 'display:none!important;visibility:hidden!important;height:0!important;overflow:hidden!important;';
+			}
+		});
+	};
+
+	// Run immediately
+	hideNonSecuBoxHeaders();
+
+	// Watch for DOM changes
+	headerObserver = new MutationObserver(function(mutations) {
+		hideNonSecuBoxHeaders();
+	});
+
+	headerObserver.observe(document.body, {
+		childList: true,
+		subtree: true
+	});
+
+	// Also run on intervals as backup
+	setInterval(hideNonSecuBoxHeaders, 100);
+}
+
 function hideOpenWrtUI() {
 	document.body.classList.add('secubox-mode');
 
@@ -371,6 +401,7 @@ return baseclass.extend({
 	render: function() {
 		injectCSS();
 		hideOpenWrtUI();
+		startHeaderObserver();
 
 		var activeSection = detectActiveSection();
 
