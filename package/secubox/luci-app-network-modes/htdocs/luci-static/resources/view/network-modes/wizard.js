@@ -7,6 +7,7 @@
 'require network-modes.helpers as helpers';
 'require network-modes/api as API';
 'require secubox-theme/theme as Theme';
+'require secubox-portal/header as SbHeader';
 
 var callGetAvailableModes = rpc.declare({
 	object: 'luci.network-modes',
@@ -113,7 +114,10 @@ return view.extend({
 			this.startRollbackPoll();
 		}
 
-		return container;
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(container);
+		return wrapper;
 	},
 
 	renderStatusBadges: function(status, currentMode) {

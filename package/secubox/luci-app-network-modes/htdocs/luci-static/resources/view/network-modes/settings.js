@@ -5,6 +5,7 @@
 'require uci';
 'require network-modes/api as api';
 'require network-modes.helpers as helpers';
+'require secubox-portal/header as SbHeader';
 
 return view.extend({
 	load: function() {
@@ -255,13 +256,18 @@ return view.extend({
 		};
 
 		return m.render().then(function(formEl) {
-			return E('div', { 'class': 'network-modes-dashboard nm-settings' }, [
+			var container = E('div', { 'class': 'network-modes-dashboard nm-settings' }, [
 				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/common.css') }),
 				E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') }),
 				helpers.createNavigationTabs('settings'),
 				formEl
 			]);
+
+			var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+			wrapper.appendChild(SbHeader.render());
+			wrapper.appendChild(container);
+			return wrapper;
 		});
 	}
 });

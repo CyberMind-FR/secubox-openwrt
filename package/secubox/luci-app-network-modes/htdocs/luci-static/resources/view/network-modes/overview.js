@@ -6,6 +6,7 @@
 'require network-modes.helpers as helpers';
 'require secubox/help as Help';
 'require secubox-theme/theme as Theme';
+'require secubox-portal/header as SbHeader';
 
 // Initialize global theme respecting LuCI preferences
 var nmLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
@@ -60,6 +61,10 @@ return view.extend({
 		var status = data.status || {};
 		var modesData = (data.modes || {}).modes || [];
 		var currentMode = status.current_mode || 'router';
+
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
 
 		// Build a full mode map using backend data + fallbacks
 		var baseOrder = ['router', 'doublenat', 'multiwan', 'vpnrelay', 'bridge', 'accesspoint', 'relay', 'travel', 'sniffer'];
@@ -361,8 +366,9 @@ return view.extend({
 		// Include CSS
 		var cssLink = E('link', { 'rel': 'stylesheet', 'href': L.resource('network-modes/dashboard.css') });
 		document.head.appendChild(cssLink);
-		
-		return view;
+
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 		renderHeader: function(status, currentModeInfo) {

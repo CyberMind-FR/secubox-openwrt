@@ -4,6 +4,7 @@
 'require network-modes.api as api';
 'require network-modes.helpers as helpers';
 'require secubox-theme/theme as Theme';
+'require secubox-portal/header as SbHeader';
 
 var nmLang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -55,7 +56,11 @@ return view.extend({
 		});
 
 		this.bindActions(container);
-		return container;
+
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(container);
+		return wrapper;
 	},
 
 	renderVpnSection: function(vpn, cfg) {
