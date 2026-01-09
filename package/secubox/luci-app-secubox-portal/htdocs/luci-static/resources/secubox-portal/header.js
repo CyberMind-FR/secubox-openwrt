@@ -223,12 +223,13 @@ ul.tabs:has(~ .secubox-page-wrapper),
 `;
 
 var sections = [
-	{ id: 'dashboard', name: 'Dashboard', icon: '\ud83c\udfe0', path: 'admin/secubox/portal' },
+	{ id: 'portal', name: 'Portal', icon: '\ud83c\udfe0', path: 'admin/secubox/portal' },
+	{ id: 'hub', name: 'Hub', icon: '\ud83d\ude80', path: 'admin/secubox/dashboard' },
+	{ id: 'admin', name: 'Admin', icon: '\ud83c\udfdb\ufe0f', path: 'admin/secubox/admin/dashboard' },
 	{ id: 'security', name: 'Security', icon: '\ud83d\udee1\ufe0f', path: 'admin/secubox/security' },
 	{ id: 'network', name: 'Network', icon: '\ud83c\udf10', path: 'admin/secubox/network' },
 	{ id: 'monitoring', name: 'Monitoring', icon: '\ud83d\udcca', path: 'admin/secubox/monitoring' },
-	{ id: 'system', name: 'System', icon: '\u2699\ufe0f', path: 'admin/secubox/system' },
-	{ id: 'apps', name: 'Apps', icon: '\ud83d\udce6', path: 'admin/secubox/apps' }
+	{ id: 'system', name: 'System', icon: '\u2699\ufe0f', path: 'admin/secubox/system' }
 ];
 
 function injectCSS() {
@@ -276,18 +277,38 @@ function hideOpenWrtUI() {
 
 function detectActiveSection() {
 	var path = window.location.pathname;
+	// Admin Control Panel
+	if (path.indexOf('/secubox/admin/') !== -1) return 'admin';
+	// Security section
 	if (path.indexOf('/secubox/security') !== -1) return 'security';
+	if (path.indexOf('/secubox/crowdsec') !== -1) return 'security';
+	if (path.indexOf('/secubox/auth-guardian') !== -1) return 'security';
+	if (path.indexOf('/secubox/client-guardian') !== -1) return 'security';
+	// Network section
 	if (path.indexOf('/secubox/network') !== -1) return 'network';
+	if (path.indexOf('/secubox/bandwidth') !== -1) return 'network';
+	if (path.indexOf('/secubox/wireguard') !== -1) return 'network';
+	if (path.indexOf('/secubox/traffic') !== -1) return 'network';
+	// Monitoring section
 	if (path.indexOf('/secubox/monitoring') !== -1) return 'monitoring';
 	if (path.indexOf('/secubox/ndpid') !== -1) return 'monitoring';
 	if (path.indexOf('/secubox/netifyd') !== -1) return 'monitoring';
+	if (path.indexOf('/secubox/netdata') !== -1) return 'monitoring';
+	if (path.indexOf('/secubox/mediaflow') !== -1) return 'monitoring';
+	// System section
 	if (path.indexOf('/secubox/system') !== -1) return 'system';
-	if (path.indexOf('/secubox/apps') !== -1) return 'apps';
-	if (path.indexOf('/secubox/admin') !== -1) return 'apps';
-	if (path.indexOf('/secubox/services') !== -1) return 'apps';
-	if (path.indexOf('/secubox/iot') !== -1) return 'apps';
-	if (path.indexOf('/secubox/zigbee2mqtt') !== -1) return 'apps';
-	return 'dashboard';
+	if (path.indexOf('/secubox/system-hub') !== -1) return 'system';
+	// Hub (main SecuBox app)
+	if (path.indexOf('/secubox/dashboard') !== -1) return 'hub';
+	if (path.indexOf('/secubox/modules') !== -1) return 'hub';
+	if (path.indexOf('/secubox/wizard') !== -1) return 'hub';
+	if (path.indexOf('/secubox/alerts') !== -1) return 'hub';
+	if (path.indexOf('/secubox/apps') !== -1) return 'hub';
+	if (path.indexOf('/secubox/help') !== -1) return 'hub';
+	if (path.indexOf('/secubox/settings') !== -1) return 'hub';
+	// Portal (default)
+	if (path.indexOf('/secubox/portal') !== -1) return 'portal';
+	return 'portal';
 }
 
 return baseclass.extend({
