@@ -1,5 +1,12 @@
 'use strict';
+'require baseclass';
 'require rpc';
+
+/**
+ * nDPId API
+ * Package: luci-app-ndpid
+ * RPCD object: luci.ndpid
+ */
 
 var callServiceStatus = rpc.declare({
 	object: 'luci.ndpid',
@@ -92,40 +99,67 @@ var callClearCache = rpc.declare({
 	expect: { success: false }
 });
 
-return {
+function formatBytes(bytes) {
+	if (bytes === 0 || bytes === null || bytes === undefined) return '0 B';
+	var k = 1024;
+	var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+	var i = Math.floor(Math.log(bytes) / Math.log(k));
+	return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function formatNumber(num) {
+	if (num === null || num === undefined) return '0';
+	return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function formatUptime(seconds) {
+	if (!seconds || seconds === 0) return 'Not running';
+	var days = Math.floor(seconds / 86400);
+	var hours = Math.floor((seconds % 86400) / 3600);
+	var minutes = Math.floor((seconds % 3600) / 60);
+	var parts = [];
+	if (days > 0) parts.push(days + 'd');
+	if (hours > 0) parts.push(hours + 'h');
+	if (minutes > 0) parts.push(minutes + 'm');
+	return parts.length > 0 ? parts.join(' ') : '< 1m';
+}
+
+function getStatusClass(running) {
+	return running ? 'active' : 'inactive';
+}
+
+function getStatusText(running) {
+	return running ? 'Running' : 'Stopped';
+}
+
+return baseclass.extend({
 	// Read methods
-	getServiceStatus: function() {
-		return callServiceStatus();
-	},
+	getServiceStatus: callServiceStatus,
+	getRealtimeFlows: callRealtimeFlows,
+	getInterfaceStats: callInterfaceStats,
+	getTopApplications: callTopApplications,
+	getTopProtocols: callTopProtocols,
+	getConfig: callConfig,
+	getDashboard: callDashboard,
+	getInterfaces: callInterfaces,
 
-	getRealtimeFlows: function() {
-		return callRealtimeFlows();
-	},
+	// Write methods
+	serviceStart: callServiceStart,
+	serviceStop: callServiceStop,
+	serviceRestart: callServiceRestart,
+	serviceEnable: callServiceEnable,
+	serviceDisable: callServiceDisable,
+	updateConfig: callUpdateConfig,
+	clearCache: callClearCache,
 
-	getInterfaceStats: function() {
-		return callInterfaceStats();
-	},
+	// Utility functions
+	formatBytes: formatBytes,
+	formatNumber: formatNumber,
+	formatUptime: formatUptime,
+	getStatusClass: getStatusClass,
+	getStatusText: getStatusText,
 
-	getTopApplications: function() {
-		return callTopApplications();
-	},
-
-	getTopProtocols: function() {
-		return callTopProtocols();
-	},
-
-	getConfig: function() {
-		return callConfig();
-	},
-
-	getDashboard: function() {
-		return callDashboard();
-	},
-
-	getInterfaces: function() {
-		return callInterfaces();
-	},
-
+	// Aggregate function for dashboard
 	getAllData: function() {
 		return Promise.all([
 			callDashboard(),
@@ -134,74 +168,11 @@ return {
 			callTopProtocols()
 		]).then(function(results) {
 			return {
-				dashboard: results[0],
-				interfaces: results[1],
-				applications: results[2],
-				protocols: results[3]
+				dashboard: results[0] || {},
+				interfaces: results[1] || { interfaces: [] },
+				applications: results[2] || { applications: [] },
+				protocols: results[3] || { protocols: [] }
 			};
 		});
-	},
-
-	// Write methods
-	serviceStart: function() {
-		return callServiceStart();
-	},
-
-	serviceStop: function() {
-		return callServiceStop();
-	},
-
-	serviceRestart: function() {
-		return callServiceRestart();
-	},
-
-	serviceEnable: function() {
-		return callServiceEnable();
-	},
-
-	serviceDisable: function() {
-		return callServiceDisable();
-	},
-
-	updateConfig: function(data) {
-		return callUpdateConfig(data);
-	},
-
-	clearCache: function() {
-		return callClearCache();
-	},
-
-	// Utility functions
-	formatBytes: function(bytes) {
-		if (bytes === 0 || bytes === null || bytes === undefined) return '0 B';
-		var k = 1024;
-		var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-		var i = Math.floor(Math.log(bytes) / Math.log(k));
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-	},
-
-	formatNumber: function(num) {
-		if (num === null || num === undefined) return '0';
-		return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-	},
-
-	formatUptime: function(seconds) {
-		if (!seconds || seconds === 0) return 'Not running';
-		var days = Math.floor(seconds / 86400);
-		var hours = Math.floor((seconds % 86400) / 3600);
-		var minutes = Math.floor((seconds % 3600) / 60);
-		var parts = [];
-		if (days > 0) parts.push(days + 'd');
-		if (hours > 0) parts.push(hours + 'h');
-		if (minutes > 0) parts.push(minutes + 'm');
-		return parts.length > 0 ? parts.join(' ') : '< 1m';
-	},
-
-	getStatusClass: function(running) {
-		return running ? 'active' : 'inactive';
-	},
-
-	getStatusText: function(running) {
-		return running ? 'Running' : 'Stopped';
 	}
-};
+});
