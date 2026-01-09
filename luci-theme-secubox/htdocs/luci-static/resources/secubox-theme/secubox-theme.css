@@ -1,4 +1,5 @@
 @import url('./core/variables.css');
+@import url('./core/app-themes.css');
 @import url('./core/reset.css');
 @import url('./core/typography.css');
 @import url('./core/animations.css');

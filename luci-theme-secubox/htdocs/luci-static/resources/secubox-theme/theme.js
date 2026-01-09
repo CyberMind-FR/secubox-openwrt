@@ -122,6 +122,231 @@ return baseclass.extend({
 	},
 
 	/**
+	 * Set the current app context for theming
+	 * @param {String} appName - App identifier (crowdsec, bandwidth, guardian, media, network, system, etc.)
+	 */
+	setApp: function(appName) {
+		if (document.body) {
+			document.body.setAttribute('data-secubox-app', appName);
+		}
+		if (document.documentElement) {
+			document.documentElement.setAttribute('data-secubox-app', appName);
+		}
+	},
+
+	/**
+	 * Create navigation tabs for SecuBox apps
+	 * @param {Array} tabs - Array of tab objects with {id, label, icon, path}
+	 * @param {String} activeId - Currently active tab ID
+	 * @param {Object} options - Optional configuration
+	 * @returns {HTMLElement}
+	 */
+	renderNavTabs: function(tabs, activeId, options) {
+		var opts = options || {};
+		var baseUrl = opts.baseUrl || '';
+		var onTabClick = opts.onTabClick || null;
+
+		var navTabs = E('div', {
+			'class': 'sb-nav-tabs',
+			'style': 'display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; padding: 0.5rem; background: var(--cyber-bg-secondary, #151932); border-radius: var(--cyber-radius-md, 12px);'
+		});
+
+		tabs.forEach(function(tab) {
+			var isActive = tab.id === activeId;
+			var tabEl = E('a', {
+				'href': tab.path ? (baseUrl + tab.path) : '#',
+				'class': 'sb-nav-tab' + (isActive ? ' active' : ''),
+				'data-tab': tab.id,
+				'style': [
+					'display: inline-flex',
+					'align-items: center',
+					'gap: 0.5rem',
+					'padding: 0.75rem 1.25rem',
+					'text-decoration: none',
+					'color: ' + (isActive ? '#fff' : 'var(--cyber-text-secondary, #94a3b8)'),
+					'background: ' + (isActive ? 'var(--sb-accent-gradient, var(--cyber-gradient-primary))' : 'transparent'),
+					'border-radius: var(--cyber-radius-sm, 8px)',
+					'font-size: 0.9rem',
+					'font-weight: ' + (isActive ? '600' : '500'),
+					'transition: all 0.2s ease',
+					'cursor: pointer',
+					isActive ? 'box-shadow: 0 4px 12px var(--sb-accent-glow, rgba(102, 126, 234, 0.3))' : ''
+				].join('; '),
+				'click': onTabClick ? function(ev) {
+					ev.preventDefault();
+					onTabClick(tab.id, tab);
+				} : null
+			}, [
+				tab.icon ? E('span', { 'class': 'sb-nav-icon' }, tab.icon) : null,
+				E('span', { 'class': 'sb-nav-label' }, tab.label)
+			]);
+
+			// Add hover effect for non-active tabs
+			if (!isActive) {
+				tabEl.addEventListener('mouseenter', function() {
+					this.style.background = 'var(--cyber-bg-tertiary, #1e2139)';
+					this.style.color = 'var(--cyber-text-primary, #e2e8f0)';
+				});
+				tabEl.addEventListener('mouseleave', function() {
+					this.style.background = 'transparent';
+					this.style.color = 'var(--cyber-text-secondary, #94a3b8)';
+				});
+			}
+
+			navTabs.appendChild(tabEl);
+		});
+
+		return navTabs;
+	},
+
+	/**
+	 * Create a stat card component
+	 * @param {Object} options - {value, label, icon, trend, color}
+	 * @returns {HTMLElement}
+	 */
+	createStatCard: function(options) {
+		var opts = options || {};
+		var trendIcon = '';
+		var trendColor = '';
+
+		if (opts.trend) {
+			if (opts.trend > 0) {
+				trendIcon = String.fromCodePoint(0x2191); // ↑
+				trendColor = 'var(--cyber-success, #10b981)';
+			} else if (opts.trend < 0) {
+				trendIcon = String.fromCodePoint(0x2193); // ↓
+				trendColor = 'var(--cyber-danger, #ef4444)';
+			}
+		}
+
+		return E('div', {
+			'class': 'sb-stat-card',
+			'style': [
+				'background: var(--cyber-bg-secondary, #151932)',
+				'border: var(--cyber-border)',
+				'border-radius: var(--cyber-radius-md, 12px)',
+				'padding: 1.25rem',
+				'display: flex',
+				'flex-direction: column',
+				'gap: 0.5rem'
+			].join('; ')
+		}, [
+			E('div', { 'style': 'display: flex; align-items: center; justify-content: space-between;' }, [
+				opts.icon ? E('span', {
+					'style': 'font-size: 1.5rem; opacity: 0.8;'
+				}, opts.icon) : null,
+				trendIcon ? E('span', {
+					'style': 'font-size: 0.85rem; color: ' + trendColor
+				}, trendIcon + ' ' + Math.abs(opts.trend) + '%') : null
+			]),
+			E('div', {
+				'style': 'font-size: 2rem; font-weight: 700; color: ' + (opts.color || 'var(--sb-accent-primary, var(--cyber-accent-primary))') + ';'
+			}, String(opts.value !== undefined ? opts.value : 0)),
+			E('div', {
+				'style': 'font-size: 0.85rem; color: var(--cyber-text-secondary, #94a3b8);'
+			}, opts.label || '')
+		]);
+	},
+
+	/**
+	 * Create a mini chart (sparkline) using SVG
+	 * @param {Array} data - Array of numeric values
+	 * @param {Object} options - {width, height, color, fill}
+	 * @returns {HTMLElement}
+	 */
+	createMiniChart: function(data, options) {
+		var opts = options || {};
+		var width = opts.width || 100;
+		var height = opts.height || 30;
+		var color = opts.color || 'var(--sb-accent-primary, #667eea)';
+		var fill = opts.fill !== false;
+
+		if (!data || data.length < 2) {
+			return E('div', { 'style': 'width: ' + width + 'px; height: ' + height + 'px;' });
+		}
+
+		var max = Math.max.apply(null, data);
+		var min = Math.min.apply(null, data);
+		var range = max - min || 1;
+
+		var points = data.map(function(val, i) {
+			var x = (i / (data.length - 1)) * width;
+			var y = height - ((val - min) / range) * height;
+			return x + ',' + y;
+		});
+
+		var pathD = 'M ' + points.join(' L ');
+		var fillPath = fill ? pathD + ' L ' + width + ',' + height + ' L 0,' + height + ' Z' : '';
+
+		var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('width', width);
+		svg.setAttribute('height', height);
+		svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+		svg.style.display = 'block';
+
+		if (fill) {
+			var fillEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+			fillEl.setAttribute('d', fillPath);
+			fillEl.setAttribute('fill', color);
+			fillEl.setAttribute('fill-opacity', '0.2');
+			svg.appendChild(fillEl);
+		}
+
+		var lineEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		lineEl.setAttribute('d', pathD);
+		lineEl.setAttribute('stroke', color);
+		lineEl.setAttribute('stroke-width', '2');
+		lineEl.setAttribute('fill', 'none');
+		svg.appendChild(lineEl);
+
+		return svg;
+	},
+
+	/**
+	 * Show a toast notification
+	 * @param {String} message - Message to display
+	 * @param {String} type - Type: success, error, warning, info
+	 * @param {Number} duration - Duration in ms (default 4000)
+	 */
+	showToast: function(message, type, duration) {
+		var colors = {
+			success: 'var(--cyber-success, #10b981)',
+			error: 'var(--cyber-danger, #ef4444)',
+			warning: 'var(--cyber-warning, #f59e0b)',
+			info: 'var(--cyber-info, #06b6d4)'
+		};
+
+		// Remove existing toast
+		var existing = document.querySelector('.sb-toast');
+		if (existing) existing.remove();
+
+		var toast = E('div', {
+			'class': 'sb-toast',
+			'style': [
+				'position: fixed',
+				'bottom: 20px',
+				'right: 20px',
+				'padding: 1rem 1.5rem',
+				'background: var(--cyber-bg-secondary, #151932)',
+				'border-left: 4px solid ' + (colors[type] || colors.info),
+				'border-radius: var(--cyber-radius-sm, 8px)',
+				'color: var(--cyber-text-primary, #e2e8f0)',
+				'font-size: 0.9rem',
+				'box-shadow: var(--cyber-shadow)',
+				'z-index: var(--cyber-z-toast, 1200)',
+				'animation: cyber-slide-in-right 0.3s ease-out'
+			].join('; ')
+		}, message);
+
+		document.body.appendChild(toast);
+
+		setTimeout(function() {
+			toast.style.animation = 'cyber-fade-out 0.3s ease-out forwards';
+			setTimeout(function() { toast.remove(); }, 300);
+		}, duration || 4000);
+	},
+
+	/**
 	 * Animate page transitions
 	 * @param {HTMLElement} oldContent - Element being removed
 	 * @param {HTMLElement} newContent - Element being added

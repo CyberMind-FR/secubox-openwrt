@@ -1,0 +1,221 @@
+/**
+ * SecuBox App-Specific Theme Accents
+ * File: core/app-themes.css
+ * Version: 1.0.0
+ *
+ * Provides app-specific accent colors while maintaining
+ * the core SecuBox design system consistency.
+ *
+ * Usage: Add data-secubox-app="appname" to body or container element
+ */
+
+/* CrowdSec Dashboard - Security green */
+[data-secubox-app="crowdsec"],
+.crowdsec-dashboard {
+	--sb-accent-primary: #00d4aa;
+	--sb-accent-glow: rgba(0, 212, 170, 0.3);
+	--sb-accent-gradient: linear-gradient(135deg, #00d4aa 0%, #00a080 100%);
+	--sb-accent-soft: rgba(0, 212, 170, 0.15);
+}
+
+/* Bandwidth Manager - Blue for network traffic */
+[data-secubox-app="bandwidth"],
+.bandwidth-manager {
+	--sb-accent-primary: #3b82f6;
+	--sb-accent-glow: rgba(59, 130, 246, 0.3);
+	--sb-accent-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+	--sb-accent-soft: rgba(59, 130, 246, 0.15);
+}
+
+/* Client Guardian - Purple for client protection */
+[data-secubox-app="guardian"],
+.client-guardian {
+	--sb-accent-primary: #8b5cf6;
+	--sb-accent-glow: rgba(139, 92, 246, 0.3);
+	--sb-accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+	--sb-accent-soft: rgba(139, 92, 246, 0.15);
+}
+
+/* Media Flow - Pink for streaming/media */
+[data-secubox-app="media"],
+.media-flow {
+	--sb-accent-primary: #ec4899;
+	--sb-accent-glow: rgba(236, 72, 153, 0.3);
+	--sb-accent-gradient: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+	--sb-accent-soft: rgba(236, 72, 153, 0.15);
+}
+
+/* Network Tools (nDPId, Netifyd) - Cyan for network analysis */
+[data-secubox-app="network"],
+.ndpid-dashboard,
+.netifyd-dashboard {
+	--sb-accent-primary: #06b6d4;
+	--sb-accent-glow: rgba(6, 182, 212, 0.3);
+	--sb-accent-gradient: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+	--sb-accent-soft: rgba(6, 182, 212, 0.15);
+}
+
+/* System Hub - Orange for system administration */
+[data-secubox-app="system"],
+.system-hub {
+	--sb-accent-primary: #f97316;
+	--sb-accent-glow: rgba(249, 115, 22, 0.3);
+	--sb-accent-gradient: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+	--sb-accent-soft: rgba(249, 115, 22, 0.15);
+}
+
+/* Netdata Dashboard - Green for monitoring */
+[data-secubox-app="netdata"],
+.netdata-dashboard {
+	--sb-accent-primary: #22c55e;
+	--sb-accent-glow: rgba(34, 197, 94, 0.3);
+	--sb-accent-gradient: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+	--sb-accent-soft: rgba(34, 197, 94, 0.15);
+}
+
+/* WireGuard - Red for VPN/security */
+[data-secubox-app="wireguard"],
+.wireguard-dashboard {
+	--sb-accent-primary: #ef4444;
+	--sb-accent-glow: rgba(239, 68, 68, 0.3);
+	--sb-accent-gradient: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+	--sb-accent-soft: rgba(239, 68, 68, 0.15);
+}
+
+/* AppStore - Indigo for store/marketplace */
+[data-secubox-app="appstore"],
+.secubox-appstore {
+	--sb-accent-primary: #6366f1;
+	--sb-accent-glow: rgba(99, 102, 241, 0.3);
+	--sb-accent-gradient: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+	--sb-accent-soft: rgba(99, 102, 241, 0.15);
+}
+
+/* CDN Cache - Teal for caching */
+[data-secubox-app="cdn"],
+.cdn-cache {
+	--sb-accent-primary: #14b8a6;
+	--sb-accent-glow: rgba(20, 184, 166, 0.3);
+	--sb-accent-gradient: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+	--sb-accent-soft: rgba(20, 184, 166, 0.15);
+}
+
+/* Default/SecuBox Portal - Primary gradient */
+[data-secubox-app="portal"],
+.secubox-portal {
+	--sb-accent-primary: #667eea;
+	--sb-accent-glow: rgba(102, 126, 234, 0.3);
+	--sb-accent-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	--sb-accent-soft: rgba(102, 126, 234, 0.15);
+}
+
+/* ============================================
+   App-Aware Component Styling
+   ============================================ */
+
+/* Navigation tabs use app accent */
+[data-secubox-app] .sb-nav-tabs .sb-nav-tab.active,
+[data-secubox-app] .cs-nav-tabs .cs-nav-tab.active {
+	background: var(--sb-accent-gradient, var(--cyber-gradient-primary));
+	border-color: var(--sb-accent-primary, var(--cyber-accent-primary));
+	box-shadow: 0 4px 12px var(--sb-accent-glow, rgba(102, 126, 234, 0.3));
+}
+
+/* Buttons with app accent */
+[data-secubox-app] .sb-btn-primary,
+[data-secubox-app] .cs-btn-primary {
+	background: var(--sb-accent-gradient, var(--cyber-gradient-primary));
+	box-shadow: 0 4px 12px var(--sb-accent-glow, rgba(102, 126, 234, 0.3));
+}
+
+[data-secubox-app] .sb-btn-primary:hover,
+[data-secubox-app] .cs-btn-primary:hover {
+	box-shadow: 0 6px 20px var(--sb-accent-glow, rgba(102, 126, 234, 0.4));
+}
+
+/* Cards with app accent border */
+[data-secubox-app] .sb-card-accent,
+[data-secubox-app] .cs-card-accent {
+	border-left: 4px solid var(--sb-accent-primary, var(--cyber-accent-primary));
+}
+
+/* Stat cards with app accent */
+[data-secubox-app] .sb-stat-primary,
+[data-secubox-app] .cs-stat-primary {
+	background: var(--sb-accent-soft, rgba(102, 126, 234, 0.15));
+	border-color: var(--sb-accent-primary, var(--cyber-accent-primary));
+}
+
+/* Progress bars with app accent */
+[data-secubox-app] .sb-progress-bar,
+[data-secubox-app] .cs-progress-bar {
+	background: var(--sb-accent-gradient, var(--cyber-gradient-primary));
+}
+
+/* Badges with app accent */
+[data-secubox-app] .sb-badge-primary,
+[data-secubox-app] .cs-badge-primary {
+	background: var(--sb-accent-primary, var(--cyber-accent-primary));
+}
+
+/* Links with app accent */
+[data-secubox-app] a.sb-link,
+[data-secubox-app] a.cs-link {
+	color: var(--sb-accent-primary, var(--cyber-accent-primary));
+}
+
+/* Glow effect utility */
+[data-secubox-app] .sb-glow {
+	box-shadow: 0 0 20px var(--sb-accent-glow, rgba(102, 126, 234, 0.3));
+}
+
+/* Page title with app accent underline */
+[data-secubox-app] .sb-page-title::after,
+[data-secubox-app] .cs-page-title::after {
+	content: '';
+	display: block;
+	width: 60px;
+	height: 3px;
+	background: var(--sb-accent-gradient, var(--cyber-gradient-primary));
+	margin-top: 0.5em;
+	border-radius: 2px;
+}
+
+/* Table header with app accent */
+[data-secubox-app] .sb-table th,
+[data-secubox-app] .cs-table th {
+	border-bottom: 2px solid var(--sb-accent-primary, var(--cyber-accent-primary));
+}
+
+/* Form focus states with app accent */
+[data-secubox-app] input:focus,
+[data-secubox-app] select:focus,
+[data-secubox-app] textarea:focus {
+	border-color: var(--sb-accent-primary, var(--cyber-accent-primary));
+	box-shadow: 0 0 0 3px var(--sb-accent-soft, rgba(102, 126, 234, 0.15));
+}
+
+/* Toggle switches with app accent */
+[data-secubox-app] .sb-toggle:checked,
+[data-secubox-app] .cs-toggle:checked {
+	background: var(--sb-accent-primary, var(--cyber-accent-primary));
+}
+
+/* Tooltip with app accent */
+[data-secubox-app] .sb-tooltip::after {
+	background: var(--sb-accent-primary, var(--cyber-accent-primary));
+}
+
+/* Loading spinner with app accent */
+[data-secubox-app] .sb-spinner {
+	border-top-color: var(--sb-accent-primary, var(--cyber-accent-primary));
+}
+
+/* Chart colors (use app accent as primary) */
+[data-secubox-app] {
+	--chart-color-1: var(--sb-accent-primary, #667eea);
+	--chart-color-2: #22c55e;
+	--chart-color-3: #f59e0b;
+	--chart-color-4: #ef4444;
+	--chart-color-5: #8b5cf6;
+}
