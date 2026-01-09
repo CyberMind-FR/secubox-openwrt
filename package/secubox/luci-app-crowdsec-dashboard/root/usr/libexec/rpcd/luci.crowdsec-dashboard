@@ -881,68 +881,108 @@ repair_lapi() {
 	json_init
 	local steps_done=""
 	local errors=""
+	local REPAIR_TIMEOUT=30
 
 	secubox_log "Starting LAPI repair..."
 
-	# Step 1: Create data directory
-	if [ ! -d "/srv/crowdsec/data" ]; then
-		mkdir -p /srv/crowdsec/data 2>/dev/null
-		if [ -d "/srv/crowdsec/data" ]; then
-			steps_done="${steps_done}Created /srv/crowdsec/data; "
-		else
-			errors="${errors}Failed to create data directory; "
-		fi
-	fi
+	# Step 1: Stop CrowdSec first for clean repair
+	/etc/init.d/crowdsec stop >/dev/null 2>&1
+	sleep 1
+	steps_done="${steps_done}Stopped CrowdSec; "
 
-	# Step 2: Fix config.yaml - ensure data_dir and db_path are set
+	# Step 2: Create required directories
+	mkdir -p /srv/crowdsec/data 2>/dev/null
+	mkdir -p /etc/crowdsec/hub 2>/dev/null
+	mkdir -p /var/log 2>/dev/null
+	chown -R root:root /srv/crowdsec 2>/dev/null
+	chmod 755 /srv/crowdsec/data 2>/dev/null
+	steps_done="${steps_done}Created directories; "
+
+	# Step 3: Fix config.yaml - ensure data_dir and db_path are set
 	local config_file="/etc/crowdsec/config.yaml"
 	if [ -f "$config_file" ]; then
-		# Check if data_dir is empty or missing
-		local current_data_dir=$(grep "^  data_dir:" "$config_file" | awk '{print $2}')
-		if [ -z "$current_data_dir" ] || [ "$current_data_dir" = "" ]; then
-			sed -i 's|^  data_dir:.*|  data_dir: /srv/crowdsec/data/|' "$config_file"
-			steps_done="${steps_done}Fixed data_dir in config; "
+		# Backup original
+		cp "$config_file" "${config_file}.bak" 2>/dev/null
+
+		# Fix data_dir if empty or wrong
+		if ! grep -q "data_dir: /srv/crowdsec/data" "$config_file"; then
+			sed -i 's|^  data_dir:.*|  data_dir: /srv/crowdsec/data/|' "$config_file" 2>/dev/null
+			steps_done="${steps_done}Fixed data_dir; "
 		fi
 
-		# Check if db_path is empty or missing
-		local current_db_path=$(grep "^  db_path:" "$config_file" | awk '{print $2}')
-		if [ -z "$current_db_path" ] || [ "$current_db_path" = "" ]; then
-			sed -i 's|^  db_path:.*|  db_path: /srv/crowdsec/data/crowdsec.db|' "$config_file"
-			steps_done="${steps_done}Fixed db_path in config; "
+		# Fix db_path if empty or wrong
+		if ! grep -q "db_path: /srv/crowdsec/data/crowdsec.db" "$config_file"; then
+			sed -i 's|^  db_path:.*|  db_path: /srv/crowdsec/data/crowdsec.db|' "$config_file" 2>/dev/null
+			steps_done="${steps_done}Fixed db_path; "
 		fi
 	else
 		errors="${errors}Config file not found; "
 	fi
 
-	# Step 3: Restart CrowdSec to apply config changes
-	if /etc/init.d/crowdsec restart >/dev/null 2>&1; then
-		steps_done="${steps_done}Restarted CrowdSec; "
-		sleep 2
-	else
-		errors="${errors}Failed to restart CrowdSec; "
+	# Step 4: Check/regenerate local_api_credentials.yaml
+	local creds_file="/etc/crowdsec/local_api_credentials.yaml"
+	if [ ! -f "$creds_file" ] || [ ! -s "$creds_file" ]; then
+		# Generate new credentials
+		cat > "$creds_file" << 'CREDS'
+url: http://127.0.0.1:8080/
+login: localhost
+password:
+CREDS
+		steps_done="${steps_done}Created credentials file; "
 	fi
 
-	# Step 4: Re-register local machine if needed
-	if [ -x "$CSCLI" ]; then
-		# Check if machine is registered and working
-		if ! run_cscli machines list >/dev/null 2>&1; then
-			# Force re-register
-			if run_cscli machines add localhost --auto --force >/dev/null 2>&1; then
-				steps_done="${steps_done}Re-registered localhost machine; "
-				# Restart again to apply new credentials
-				/etc/init.d/crowdsec restart >/dev/null 2>&1
-				sleep 2
-			else
-				errors="${errors}Failed to register machine; "
-			fi
+	# Step 5: Start CrowdSec
+	if /etc/init.d/crowdsec start >/dev/null 2>&1; then
+		steps_done="${steps_done}Started CrowdSec; "
+	else
+		errors="${errors}Failed to start CrowdSec; "
+	fi
+
+	# Step 6: Wait for LAPI to become available (with retries)
+	local retries=10
+	local lapi_ready=0
+	while [ $retries -gt 0 ]; do
+		sleep 2
+		# Check if port 8080 is listening
+		if netstat -tln 2>/dev/null | grep -q ":8080 " || ss -tln 2>/dev/null | grep -q ":8080 "; then
+			lapi_ready=1
+			break
+		fi
+		retries=$((retries - 1))
+	done
+
+	if [ "$lapi_ready" = "0" ]; then
+		errors="${errors}LAPI not listening on port 8080; "
+	else
+		steps_done="${steps_done}LAPI port listening; "
+	fi
+
+	# Step 7: Re-register local machine with longer timeout
+	if [ -x "$CSCLI" ] && [ "$lapi_ready" = "1" ]; then
+		# Force re-register machine
+		if timeout "$REPAIR_TIMEOUT" "$CSCLI" machines add localhost --auto --force >/dev/null 2>&1; then
+			steps_done="${steps_done}Registered localhost; "
+		else
+			# Try without --force
+			timeout "$REPAIR_TIMEOUT" "$CSCLI" machines add localhost --auto >/dev/null 2>&1
+			steps_done="${steps_done}Attempted machine registration; "
 		fi
 	fi
 
-	# Step 5: Verify LAPI is now working
+	# Step 8: Final LAPI verification with retries
 	local lapi_ok=0
 	if [ -x "$CSCLI" ]; then
-		if run_cscli lapi status >/dev/null 2>&1; then
-			lapi_ok=1
+		retries=5
+		while [ $retries -gt 0 ]; do
+			if timeout "$REPAIR_TIMEOUT" "$CSCLI" lapi status >/dev/null 2>&1; then
+				lapi_ok=1
+				break
+			fi
+			sleep 2
+			retries=$((retries - 1))
+		done
+
+		if [ "$lapi_ok" = "1" ]; then
 			steps_done="${steps_done}LAPI verified working"
 		else
 			errors="${errors}LAPI still not responding"
