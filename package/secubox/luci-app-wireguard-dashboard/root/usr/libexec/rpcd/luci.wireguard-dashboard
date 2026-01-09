@@ -74,11 +74,15 @@ get_status() {
 		local transfer=$($WG_CMD show $iface transfer 2>/dev/null)
 		local iface_rx=0
 		local iface_tx=0
-		echo "$transfer" | while read peer rx tx; do
-			iface_rx=$((iface_rx + rx))
-			iface_tx=$((iface_tx + tx))
-		done
-		
+		while read peer rx tx; do
+			[ -n "$rx" ] && iface_rx=$((iface_rx + ${rx:-0}))
+			[ -n "$tx" ] && iface_tx=$((iface_tx + ${tx:-0}))
+		done << EOF
+$transfer
+EOF
+
+		json_add_int "rx_bytes" "$iface_rx"
+		json_add_int "tx_bytes" "$iface_tx"
 		json_close_object
 	done
 	
@@ -405,13 +409,30 @@ add_peer() {
 		return
 	fi
 
+	# Validate public key format (base64, 44 chars ending with =)
+	if ! echo "$public_key" | grep -qE '^[A-Za-z0-9+/]{43}=$'; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Invalid public key format"
+		json_dump
+		return
+	fi
+
+	# Check if peer already exists
+	local existing=$(uci show network 2>/dev/null | grep "public_key='$public_key'" | head -1)
+	if [ -n "$existing" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Peer with this public key already exists"
+		json_dump
+		return
+	fi
+
 	# Default values
 	[ -z "$allowed_ips" ] && allowed_ips="10.0.0.2/32"
 	[ -z "$keepalive" ] && keepalive="25"
 	[ -z "$name" ] && name="peer_$(echo $public_key | cut -c1-8)"
 
-	# Create UCI section for peer
-	local section_name="wgpeer_$(echo $public_key | cut -c1-8 | tr 'A-Z+/=' 'a-z___')"
+	# Create UCI section for peer using hash of full public key for uniqueness
+	local section_name="wgpeer_$(echo "$public_key" | md5sum | cut -c1-12)"
 
 	# Add peer to UCI network config
 	uci -q delete network.$section_name
@@ -476,31 +497,37 @@ remove_peer() {
 		return
 	fi
 
-	# Find and remove UCI section with this public key
-	local found=0
-	local section=""
+	# Validate public key format (base64, 44 chars ending with =)
+	if ! echo "$public_key" | grep -qE '^[A-Za-z0-9+/]{43}=$'; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Invalid public key format"
+		json_dump
+		return
+	fi
 
-	config_load network
-	config_cb() {
-		local type="$1"
-		local name="$2"
-		if [ "$type" = "wireguard_$iface" ]; then
-			local key=$(uci -q get network.$name.public_key)
-			if [ "$key" = "$public_key" ]; then
-				section="$name"
-				found=1
-			fi
+	# Find UCI section by iterating directly
+	local found_section=""
+	local sections=$(uci show network 2>/dev/null | grep "=wireguard_$iface$" | cut -d'.' -f2 | cut -d'=' -f1)
+
+	for section in $sections; do
+		local key=$(uci -q get network.$section.public_key)
+		if [ "$key" = "$public_key" ]; then
+			found_section="$section"
+			break
 		fi
-	}
-	config_load network
+	done
 
-	if [ "$found" = "1" ] && [ -n "$section" ]; then
-		uci delete network.$section
-		uci commit network
-		ifup "$iface" 2>/dev/null
-
-		json_add_boolean "success" 1
-		json_add_string "message" "Peer removed successfully"
+	if [ -n "$found_section" ]; then
+		uci delete network.$found_section
+		if uci commit network; then
+			ifup "$iface" 2>/dev/null
+			json_add_boolean "success" 1
+			json_add_string "message" "Peer removed successfully"
+			json_add_string "section" "$found_section"
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "Failed to commit changes"
+		fi
 	else
 		json_add_boolean "success" 0
 		json_add_string "error" "Peer not found in configuration"

@@ -5,9 +5,34 @@
 'require dom';
 'require ui';
 'require wireguard-dashboard.api as API';
+'require wireguard-dashboard.qrcode as qrcode';
 
 return view.extend({
 	title: _('WireGuard Peers'),
+
+	// Store private key in session storage for QR generation
+	storePrivateKey: function(publicKey, privateKey) {
+		try {
+			var stored = sessionStorage.getItem('wg_peer_keys');
+			var keys = stored ? JSON.parse(stored) : {};
+			keys[publicKey] = privateKey;
+			sessionStorage.setItem('wg_peer_keys', JSON.stringify(keys));
+		} catch (e) {
+			console.error('Failed to store private key:', e);
+		}
+	},
+
+	// Retrieve stored private key
+	getStoredPrivateKey: function(publicKey) {
+		try {
+			var stored = sessionStorage.getItem('wg_peer_keys');
+			if (stored) {
+				var keys = JSON.parse(stored);
+				return keys[publicKey] || null;
+			}
+		} catch (e) {}
+		return null;
+	},
 
 	load: function() {
 		return Promise.all([
@@ -35,7 +60,7 @@ return view.extend({
 						'class': 'cbi-button cbi-button-action',
 						'click': L.bind(this.handleAddPeer, this, interfaces)
 					}, '+ ' + _('Add New Peer')),
-					E('span', { 'style': 'margin-left: auto; font-weight: bold;' },
+					E('span', { 'class': 'peers-active-count', 'style': 'margin-left: auto; font-weight: bold;' },
 						_('Active: %d / %d').format(activePeers, peers.length))
 				])
 			]),
@@ -128,8 +153,50 @@ return view.extend({
 
 		// Setup auto-refresh every 5 seconds
 		poll.add(L.bind(function() {
-			return API.getPeers().then(L.bind(function(newPeers) {
-				// Update table dynamically
+			return API.getPeers().then(L.bind(function(data) {
+				var newPeers = (data || {}).peers || [];
+				var table = document.getElementById('peers-table');
+				if (!table) return;
+
+				var tbody = table.querySelector('tbody');
+				if (!tbody) return;
+
+				// Update existing rows
+				newPeers.forEach(function(peer, idx) {
+					var row = tbody.children[idx];
+					if (!row) return;
+
+					var cells = row.querySelectorAll('td');
+					if (cells.length < 7) return;
+
+					// Update status (cell 4)
+					var statusColor = peer.status === 'active' ? '#28a745' :
+					                  peer.status === 'idle' ? '#ffc107' : '#6c757d';
+					var statusIcon = peer.status === 'active' ? '✓' :
+					                 peer.status === 'idle' ? '~' : '✗';
+					var statusSpan = cells[4].querySelector('.badge');
+					if (statusSpan) {
+						statusSpan.style.background = statusColor;
+						statusSpan.textContent = statusIcon + ' ' + peer.status;
+					}
+
+					// Update last handshake (cell 5)
+					cells[5].textContent = API.formatLastHandshake(peer.handshake_ago);
+
+					// Update RX/TX (cell 6)
+					var trafficDiv = cells[6].querySelector('div');
+					if (trafficDiv) {
+						trafficDiv.innerHTML = '<div>↓ ' + API.formatBytes(peer.rx_bytes) + '</div>' +
+						                       '<div>↑ ' + API.formatBytes(peer.tx_bytes) + '</div>';
+					}
+				});
+
+				// Update active count
+				var activePeers = newPeers.filter(function(p) { return p.status === 'active'; }).length;
+				var countSpan = document.querySelector('.peers-active-count');
+				if (countSpan) {
+					countSpan.textContent = _('Active: %d / %d').format(activePeers, newPeers.length);
+				}
 			}, this));
 		}, this), 5);
 
@@ -286,11 +353,48 @@ return view.extend({
 								E('p', { 'class': 'spinning' }, _('Adding peer configuration...'))
 							]);
 
+							var privkey = document.getElementById('peer-privkey').value;
+
 							API.addPeer(iface, name, allowed_ips, pubkey, psk, endpoint, keepalive).then(function(result) {
 								ui.hideModal();
 								if (result.success) {
+									// Store private key for QR generation
+									self.storePrivateKey(pubkey, privkey);
 									ui.addNotification(null, E('p', result.message || _('Peer added successfully')), 'info');
-									window.location.reload();
+
+									// Offer to generate QR code immediately
+									ui.showModal(_('Peer Created Successfully'), [
+										E('p', {}, _('The peer has been added. Would you like to generate a QR code for mobile setup?')),
+										E('div', { 'style': 'background: #d4edda; padding: 1em; border-radius: 4px; margin: 1em 0;' }, [
+											E('strong', {}, _('Private Key Stored')),
+											E('p', { 'style': 'margin: 0.5em 0 0 0; font-size: 0.9em;' },
+												_('The private key has been temporarily stored in your browser session for QR generation.'))
+										]),
+										E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
+											E('button', {
+												'class': 'btn',
+												'click': function() {
+													ui.hideModal();
+													window.location.reload();
+												}
+											}, _('Skip')),
+											' ',
+											E('button', {
+												'class': 'btn cbi-button-action',
+												'click': function() {
+													ui.hideModal();
+													// Find the interface for QR generation
+													var ifaceObj = interfaces.find(function(i) { return i.name === iface; });
+													self.promptForEndpointAndShowQR({
+														public_key: pubkey,
+														short_key: pubkey.substring(0, 8),
+														allowed_ips: allowed_ips,
+														interface: iface
+													}, ifaceObj, privkey);
+												}
+											}, _('Generate QR Code'))
+										])
+									]);
 								} else {
 									ui.addNotification(null, E('p', result.error || _('Failed to add peer')), 'error');
 								}
@@ -309,25 +413,21 @@ return view.extend({
 		});
 	},
 
-	handleShowQR: function(peer, interfaces, ev) {
+	promptForEndpointAndShowQR: function(peer, ifaceObj, privateKey) {
 		var self = this;
+		var savedEndpoint = sessionStorage.getItem('wg_server_endpoint') || '';
 
-		ui.showModal(_('Loading QR Code'), [
-			E('p', { 'class': 'spinning' }, _('Generating QR code...'))
-		]);
-
-		// Prompt for server endpoint
-		ui.hideModal();
-		ui.showModal(_('Server Endpoint Required'), [
+		ui.showModal(_('Server Endpoint'), [
 			E('p', {}, _('Enter the public IP or hostname of this WireGuard server:')),
 			E('div', { 'class': 'cbi-value' }, [
 				E('label', { 'class': 'cbi-value-title' }, _('Server Endpoint')),
 				E('div', { 'class': 'cbi-value-field' }, [
 					E('input', {
 						'type': 'text',
-						'id': 'server-endpoint',
+						'id': 'qr-server-endpoint',
 						'class': 'cbi-input-text',
-						'placeholder': 'vpn.example.com or 203.0.113.1'
+						'placeholder': 'vpn.example.com or 203.0.113.1',
+						'value': savedEndpoint
 					})
 				])
 			]),
@@ -340,53 +440,271 @@ return view.extend({
 				E('button', {
 					'class': 'btn cbi-button-action',
 					'click': function() {
-						var endpoint = document.getElementById('server-endpoint').value;
+						var endpoint = document.getElementById('qr-server-endpoint').value.trim();
 						if (!endpoint) {
 							ui.addNotification(null, E('p', _('Please enter server endpoint')), 'error');
 							return;
 						}
-
+						sessionStorage.setItem('wg_server_endpoint', endpoint);
 						ui.hideModal();
-						ui.showModal(_('Generating QR Code'), [
-							E('p', { 'class': 'spinning' }, _('Please wait...'))
-						]);
-
-						// Need to get private key from somewhere - this is tricky
-						// In real implementation, you'd need to store it or ask user
-						ui.addNotification(null, E('p', _('QR code generation requires the peer private key. Please use the config download option and scan manually.')), 'info');
-						ui.hideModal();
+						self.generateAndShowQR(peer, ifaceObj, privateKey, endpoint);
 					}
 				}, _('Generate QR'))
 			])
 		]);
 	},
 
-	handleDownloadConfig: function(peer, interfaces, ev) {
-		ui.showModal(_('Server Endpoint Required'), [
-			E('p', {}, _('Enter the public IP or hostname of this WireGuard server:')),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Server Endpoint')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'text',
-						'id': 'server-endpoint-cfg',
-						'class': 'cbi-input-text',
-						'placeholder': 'vpn.example.com or 203.0.113.1'
-					})
+	generateAndShowQR: function(peer, ifaceObj, privateKey, serverEndpoint) {
+		var self = this;
+
+		// Build WireGuard client config
+		var config = '[Interface]\n' +
+			'PrivateKey = ' + privateKey + '\n' +
+			'Address = ' + (peer.allowed_ips || '10.0.0.2/32') + '\n' +
+			'DNS = 1.1.1.1, 1.0.0.1\n\n' +
+			'[Peer]\n' +
+			'PublicKey = ' + (ifaceObj.public_key || '') + '\n' +
+			'Endpoint = ' + serverEndpoint + ':' + (ifaceObj.listen_port || 51820) + '\n' +
+			'AllowedIPs = 0.0.0.0/0, ::/0\n' +
+			'PersistentKeepalive = 25';
+
+		// First try backend QR generation
+		API.generateQR(peer.interface, peer.public_key, privateKey, serverEndpoint).then(function(result) {
+			if (result && result.qrcode && !result.error) {
+				self.displayQRModal(peer, result.qrcode, config, false);
+			} else {
+				// Fall back to JavaScript QR generation
+				var svg = qrcode.generateSVG(config, 250);
+				if (svg) {
+					self.displayQRModal(peer, svg, config, true);
+				} else {
+					ui.addNotification(null, E('p', _('Failed to generate QR code')), 'error');
+				}
+			}
+		}).catch(function(err) {
+			// Fall back to JavaScript QR generation
+			var svg = qrcode.generateSVG(config, 250);
+			if (svg) {
+				self.displayQRModal(peer, svg, config, true);
+			} else {
+				ui.addNotification(null, E('p', _('Failed to generate QR code')), 'error');
+			}
+		});
+	},
+
+	displayQRModal: function(peer, qrData, config, isSVG) {
+		var qrElement;
+
+		if (isSVG) {
+			qrElement = E('div', { 'style': 'display: inline-block;' });
+			qrElement.innerHTML = qrData;
+		} else {
+			qrElement = E('img', {
+				'src': qrData,
+				'alt': 'WireGuard QR Code',
+				'style': 'max-width: 250px; max-height: 250px;'
+			});
+		}
+
+		ui.showModal(_('WireGuard QR Code'), [
+			E('div', { 'style': 'text-align: center;' }, [
+				E('h4', {}, peer.interface + ' - ' + (peer.short_key || peer.public_key.substring(0, 8))),
+				E('div', { 'style': 'background: white; padding: 20px; border-radius: 12px; display: inline-block; margin: 20px 0;' }, [
+					qrElement
+				]),
+				E('p', { 'style': 'color: #666;' }, _('Scan with WireGuard app on your mobile device')),
+				E('div', { 'style': 'display: flex; gap: 10px; justify-content: center; margin: 1em 0;' }, [
+					E('button', {
+						'class': 'btn',
+						'click': function() {
+							navigator.clipboard.writeText(config).then(function() {
+								ui.addNotification(null, E('p', _('Configuration copied to clipboard')), 'info');
+							});
+						}
+					}, _('Copy Config')),
+					E('button', {
+						'class': 'btn cbi-button-action',
+						'click': function() {
+							var blob = new Blob([config], { type: 'text/plain' });
+							var url = URL.createObjectURL(blob);
+							var a = document.createElement('a');
+							a.href = url;
+							a.download = peer.interface + '-peer.conf';
+							a.click();
+							URL.revokeObjectURL(url);
+						}
+					}, _('Download .conf'))
+				]),
+				E('details', { 'style': 'text-align: left; margin-top: 1em;' }, [
+					E('summary', { 'style': 'cursor: pointer; color: #06b6d4;' }, _('Show configuration')),
+					E('pre', { 'style': 'background: #f8f9fa; padding: 12px; border-radius: 8px; font-size: 11px; margin-top: 10px;' }, config)
 				])
 			]),
-			E('div', { 'style': 'margin-top: 1em; padding: 0.75em; background: #fff3cd; border-radius: 4px;' }, [
-				E('strong', {}, _('Note:')),
-				' ',
-				_('Configuration file requires the peer private key. This was generated when the peer was created.')
-			]),
-			E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
+			E('div', { 'class': 'right' }, [
 				E('button', {
 					'class': 'btn',
 					'click': ui.hideModal
-				}, _('Cancel'))
+				}, _('Close'))
 			])
 		]);
+	},
+
+	handleShowQR: function(peer, interfaces, ev) {
+		var self = this;
+		var privateKey = this.getStoredPrivateKey(peer.public_key);
+		var ifaceObj = interfaces.find(function(i) { return i.name === peer.interface; }) || {};
+
+		if (!privateKey) {
+			// Private key not stored - ask user to input it
+			ui.showModal(_('Private Key Required'), [
+				E('p', {}, _('To generate a QR code, the peer\'s private key is needed.')),
+				E('p', { 'style': 'color: #666; font-size: 0.9em;' },
+					_('Private keys are only stored in your browser session immediately after peer creation. If you closed or refreshed the page, you\'ll need to enter it manually.')),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Private Key')),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', {
+							'type': 'text',
+							'id': 'manual-private-key',
+							'class': 'cbi-input-text',
+							'placeholder': 'Base64 private key (44 characters)',
+							'style': 'font-family: monospace;'
+						})
+					])
+				]),
+				E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
+					E('button', {
+						'class': 'btn',
+						'click': ui.hideModal
+					}, _('Cancel')),
+					' ',
+					E('button', {
+						'class': 'btn cbi-button-action',
+						'click': function() {
+							var key = document.getElementById('manual-private-key').value.trim();
+							if (!key || key.length !== 44) {
+								ui.addNotification(null, E('p', _('Please enter a valid private key (44 characters)')), 'error');
+								return;
+							}
+							// Store for future use
+							self.storePrivateKey(peer.public_key, key);
+							ui.hideModal();
+							self.promptForEndpointAndShowQR(peer, ifaceObj, key);
+						}
+					}, _('Continue'))
+				])
+			]);
+			return;
+		}
+
+		this.promptForEndpointAndShowQR(peer, ifaceObj, privateKey);
+	},
+
+	handleDownloadConfig: function(peer, interfaces, ev) {
+		var self = this;
+		var privateKey = this.getStoredPrivateKey(peer.public_key);
+		var ifaceObj = interfaces.find(function(i) { return i.name === peer.interface; }) || {};
+
+		var showConfigModal = function(privKey) {
+			var savedEndpoint = sessionStorage.getItem('wg_server_endpoint') || '';
+
+			ui.showModal(_('Download Configuration'), [
+				E('p', {}, _('Enter the server endpoint to generate the client configuration:')),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Server Endpoint')),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', {
+							'type': 'text',
+							'id': 'cfg-server-endpoint',
+							'class': 'cbi-input-text',
+							'placeholder': 'vpn.example.com or 203.0.113.1',
+							'value': savedEndpoint
+						})
+					])
+				]),
+				E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
+					E('button', {
+						'class': 'btn',
+						'click': ui.hideModal
+					}, _('Cancel')),
+					' ',
+					E('button', {
+						'class': 'btn cbi-button-action',
+						'click': function() {
+							var endpoint = document.getElementById('cfg-server-endpoint').value.trim();
+							if (!endpoint) {
+								ui.addNotification(null, E('p', _('Please enter server endpoint')), 'error');
+								return;
+							}
+							sessionStorage.setItem('wg_server_endpoint', endpoint);
+
+							var config = '[Interface]\n' +
+								'PrivateKey = ' + privKey + '\n' +
+								'Address = ' + (peer.allowed_ips || '10.0.0.2/32') + '\n' +
+								'DNS = 1.1.1.1, 1.0.0.1\n\n' +
+								'[Peer]\n' +
+								'PublicKey = ' + (ifaceObj.public_key || '') + '\n' +
+								'Endpoint = ' + endpoint + ':' + (ifaceObj.listen_port || 51820) + '\n' +
+								'AllowedIPs = 0.0.0.0/0, ::/0\n' +
+								'PersistentKeepalive = 25';
+
+							var blob = new Blob([config], { type: 'text/plain' });
+							var url = URL.createObjectURL(blob);
+							var a = document.createElement('a');
+							a.href = url;
+							a.download = peer.interface + '-' + (peer.short_key || 'peer') + '.conf';
+							a.click();
+							URL.revokeObjectURL(url);
+
+							ui.hideModal();
+							ui.addNotification(null, E('p', _('Configuration file downloaded')), 'info');
+						}
+					}, _('Download'))
+				])
+			]);
+		};
+
+		if (!privateKey) {
+			// Private key not stored - ask user to input it
+			ui.showModal(_('Private Key Required'), [
+				E('p', {}, _('Enter the peer\'s private key to generate the configuration file:')),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Private Key')),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', {
+							'type': 'text',
+							'id': 'cfg-private-key',
+							'class': 'cbi-input-text',
+							'placeholder': 'Base64 private key (44 characters)',
+							'style': 'font-family: monospace;'
+						})
+					])
+				]),
+				E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
+					E('button', {
+						'class': 'btn',
+						'click': ui.hideModal
+					}, _('Cancel')),
+					' ',
+					E('button', {
+						'class': 'btn cbi-button-action',
+						'click': function() {
+							var key = document.getElementById('cfg-private-key').value.trim();
+							if (!key || key.length !== 44) {
+								ui.addNotification(null, E('p', _('Please enter a valid private key (44 characters)')), 'error');
+								return;
+							}
+							self.storePrivateKey(peer.public_key, key);
+							ui.hideModal();
+							showConfigModal(key);
+						}
+					}, _('Continue'))
+				])
+			]);
+			return;
+		}
+
+		showConfigModal(privateKey);
 	},
 
 	handleDeletePeer: function(peer, ev) {

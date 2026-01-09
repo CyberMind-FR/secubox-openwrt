@@ -8,12 +8,179 @@
 
 return view.extend({
 	title: _('WireGuard Dashboard'),
-	
+	pollInterval: 5,
+	pollActive: true,
+	selectedInterface: 'all',
+
 	load: function() {
 		return api.getAllData();
 	},
-	
+
+	// Interface tab filtering
+	setInterfaceFilter: function(ifaceName) {
+		this.selectedInterface = ifaceName;
+		var tabs = document.querySelectorAll('.wg-tab');
+		tabs.forEach(function(tab) {
+			tab.classList.toggle('active', tab.dataset.iface === ifaceName);
+		});
+
+		// Filter peer cards
+		var peerCards = document.querySelectorAll('.wg-peer-card');
+		peerCards.forEach(function(card) {
+			if (ifaceName === 'all' || card.dataset.interface === ifaceName) {
+				card.style.display = '';
+			} else {
+				card.style.display = 'none';
+			}
+		});
+
+		// Filter interface cards
+		var ifaceCards = document.querySelectorAll('.wg-interface-card');
+		ifaceCards.forEach(function(card) {
+			if (ifaceName === 'all' || card.dataset.iface === ifaceName) {
+				card.style.display = '';
+			} else {
+				card.style.display = 'none';
+			}
+		});
+	},
+
+	renderInterfaceTabs: function(interfaces) {
+		var self = this;
+		var tabs = [
+			E('button', {
+				'class': 'wg-tab active',
+				'data-iface': 'all',
+				'click': function() { self.setInterfaceFilter('all'); }
+			}, 'All Interfaces')
+		];
+
+		interfaces.forEach(function(iface) {
+			tabs.push(E('button', {
+				'class': 'wg-tab',
+				'data-iface': iface.name,
+				'click': function() { self.setInterfaceFilter(iface.name); }
+			}, iface.name));
+		});
+
+		return E('div', { 'class': 'wg-interface-tabs' }, tabs);
+	},
+
+	// Update stats without full re-render
+	updateStats: function(status) {
+		var updates = [
+			{ selector: '.wg-stat-interfaces', value: status.interface_count || 0 },
+			{ selector: '.wg-stat-total-peers', value: status.total_peers || 0 },
+			{ selector: '.wg-stat-active-peers', value: status.active_peers || 0 },
+			{ selector: '.wg-stat-rx', value: api.formatBytes(status.total_rx || 0) },
+			{ selector: '.wg-stat-tx', value: api.formatBytes(status.total_tx || 0) }
+		];
+
+		updates.forEach(function(u) {
+			var el = document.querySelector(u.selector);
+			if (el && el.textContent !== String(u.value)) {
+				el.textContent = u.value;
+				el.classList.add('wg-value-updated');
+				setTimeout(function() { el.classList.remove('wg-value-updated'); }, 500);
+			}
+		});
+
+		// Update status badge
+		var badge = document.querySelector('.wg-status-badge');
+		if (badge) {
+			var isActive = status.interface_count > 0;
+			badge.classList.toggle('offline', !isActive);
+			badge.innerHTML = '<span class="wg-status-dot"></span>' + (isActive ? 'VPN Active' : 'No Tunnels');
+		}
+	},
+
+	// Update peer cards
+	updatePeers: function(peers) {
+		var grid = document.querySelector('.wg-peer-grid');
+		if (!grid) return;
+
+		peers.slice(0, 6).forEach(function(peer, idx) {
+			var card = grid.children[idx];
+			if (!card) return;
+
+			// Update status
+			var statusEl = card.querySelector('.wg-peer-status');
+			if (statusEl) {
+				statusEl.textContent = peer.status;
+				statusEl.className = 'wg-peer-status ' + api.getPeerStatusClass(peer.status);
+			}
+
+			// Update handshake
+			var hsEl = card.querySelector('.wg-peer-detail-value[data-field="handshake"]');
+			if (hsEl) {
+				hsEl.textContent = api.formatHandshake(peer.handshake_ago);
+			}
+
+			// Update traffic
+			var rxEl = card.querySelector('.wg-peer-traffic-value.rx');
+			var txEl = card.querySelector('.wg-peer-traffic-value.tx');
+			if (rxEl) rxEl.textContent = api.formatBytes(peer.rx_bytes);
+			if (txEl) txEl.textContent = api.formatBytes(peer.tx_bytes);
+
+			// Update active state
+			card.classList.toggle('active', peer.status === 'active');
+		});
+
+		// Update badge count
+		var activePeers = peers.filter(function(p) { return p.status === 'active'; }).length;
+		var badge = document.querySelector('.wg-peers-badge');
+		if (badge) {
+			badge.textContent = activePeers + '/' + peers.length + ' active';
+		}
+	},
+
+	// Update interface cards
+	updateInterfaces: function(interfaces) {
+		interfaces.forEach(function(iface) {
+			var card = document.querySelector('.wg-interface-card[data-iface="' + iface.name + '"]');
+			if (!card) return;
+
+			// Update status
+			var statusEl = card.querySelector('.wg-interface-status');
+			if (statusEl) {
+				statusEl.textContent = iface.state;
+				statusEl.className = 'wg-interface-status ' + iface.state;
+			}
+
+			// Update traffic
+			var trafficEl = card.querySelector('.wg-interface-traffic');
+			if (trafficEl) {
+				trafficEl.textContent = '↓' + api.formatBytes(iface.rx_bytes) + ' / ↑' + api.formatBytes(iface.tx_bytes);
+			}
+		});
+	},
+
+	startPolling: function() {
+		var self = this;
+		this.pollActive = true;
+
+		poll.add(L.bind(function() {
+			if (!this.pollActive) return Promise.resolve();
+
+			return api.getAllData().then(L.bind(function(data) {
+				var status = data.status || {};
+				var interfaces = (data.interfaces || {}).interfaces || [];
+				var peers = (data.peers || {}).peers || [];
+
+				this.updateStats(status);
+				this.updatePeers(peers);
+				this.updateInterfaces(interfaces);
+			}, this));
+		}, this), this.pollInterval);
+	},
+
+	stopPolling: function() {
+		this.pollActive = false;
+		poll.stop();
+	},
+
 	render: function(data) {
+		var self = this;
 		var status = data.status || {};
 		var interfaces = (data.interfaces || {}).interfaces || [];
 		var peers = (data.peers || {}).peers || [];
@@ -38,6 +205,38 @@ return view.extend({
 				])
 			]),
 			
+			// Auto-refresh control
+			E('div', { 'class': 'wg-refresh-control' }, [
+				E('span', { 'class': 'wg-refresh-status' }, [
+					E('span', { 'class': 'wg-refresh-indicator active' }),
+					' Auto-refresh: ',
+					E('span', { 'class': 'wg-refresh-state' }, 'Active')
+				]),
+				E('button', {
+					'class': 'wg-btn wg-btn-sm',
+					'id': 'wg-poll-toggle',
+					'click': L.bind(function(ev) {
+						var btn = ev.target;
+						var indicator = document.querySelector('.wg-refresh-indicator');
+						var state = document.querySelector('.wg-refresh-state');
+						if (this.pollActive) {
+							this.stopPolling();
+							btn.textContent = '▶ Resume';
+							indicator.classList.remove('active');
+							state.textContent = 'Paused';
+						} else {
+							this.startPolling();
+							btn.textContent = '⏸ Pause';
+							indicator.classList.add('active');
+							state.textContent = 'Active';
+						}
+					}, this)
+				}, '⏸ Pause')
+			]),
+
+			// Interface tabs
+			interfaces.length > 1 ? this.renderInterfaceTabs(interfaces) : '',
+
 			// Quick Stats
 			E('div', { 'class': 'wg-quick-stats' }, [
 				E('div', { 'class': 'wg-quick-stat' }, [
@@ -45,7 +244,7 @@ return view.extend({
 						E('span', { 'class': 'wg-quick-stat-icon' }, '🌐'),
 						E('span', { 'class': 'wg-quick-stat-label' }, 'Interfaces')
 					]),
-					E('div', { 'class': 'wg-quick-stat-value' }, status.interface_count || 0),
+					E('div', { 'class': 'wg-quick-stat-value wg-stat-interfaces' }, status.interface_count || 0),
 					E('div', { 'class': 'wg-quick-stat-sub' }, 'Active tunnels')
 				]),
 				E('div', { 'class': 'wg-quick-stat' }, [
@@ -53,7 +252,7 @@ return view.extend({
 						E('span', { 'class': 'wg-quick-stat-icon' }, '👥'),
 						E('span', { 'class': 'wg-quick-stat-label' }, 'Total Peers')
 					]),
-					E('div', { 'class': 'wg-quick-stat-value' }, status.total_peers || 0),
+					E('div', { 'class': 'wg-quick-stat-value wg-stat-total-peers' }, status.total_peers || 0),
 					E('div', { 'class': 'wg-quick-stat-sub' }, 'Configured')
 				]),
 				E('div', { 'class': 'wg-quick-stat', 'style': '--stat-gradient: linear-gradient(135deg, #10b981, #34d399)' }, [
@@ -61,7 +260,7 @@ return view.extend({
 						E('span', { 'class': 'wg-quick-stat-icon' }, '✅'),
 						E('span', { 'class': 'wg-quick-stat-label' }, 'Active Peers')
 					]),
-					E('div', { 'class': 'wg-quick-stat-value' }, status.active_peers || 0),
+					E('div', { 'class': 'wg-quick-stat-value wg-stat-active-peers' }, status.active_peers || 0),
 					E('div', { 'class': 'wg-quick-stat-sub' }, 'Connected now')
 				]),
 				E('div', { 'class': 'wg-quick-stat' }, [
@@ -69,7 +268,7 @@ return view.extend({
 						E('span', { 'class': 'wg-quick-stat-icon' }, '📥'),
 						E('span', { 'class': 'wg-quick-stat-label' }, 'Downloaded')
 					]),
-					E('div', { 'class': 'wg-quick-stat-value' }, api.formatBytes(status.total_rx || 0)),
+					E('div', { 'class': 'wg-quick-stat-value wg-stat-rx' }, api.formatBytes(status.total_rx || 0)),
 					E('div', { 'class': 'wg-quick-stat-sub' }, 'Total received')
 				]),
 				E('div', { 'class': 'wg-quick-stat' }, [
@@ -77,7 +276,7 @@ return view.extend({
 						E('span', { 'class': 'wg-quick-stat-icon' }, '📤'),
 						E('span', { 'class': 'wg-quick-stat-label' }, 'Uploaded')
 					]),
-					E('div', { 'class': 'wg-quick-stat-value' }, api.formatBytes(status.total_tx || 0)),
+					E('div', { 'class': 'wg-quick-stat-value wg-stat-tx' }, api.formatBytes(status.total_tx || 0)),
 					E('div', { 'class': 'wg-quick-stat-sub' }, 'Total sent')
 				])
 			]),
@@ -95,7 +294,7 @@ return view.extend({
 					interfaces.length > 0 ?
 					E('div', { 'class': 'wg-charts-grid' },
 						interfaces.map(function(iface) {
-							return E('div', { 'class': 'wg-interface-card' }, [
+							return E('div', { 'class': 'wg-interface-card', 'data-iface': iface.name }, [
 								E('div', { 'class': 'wg-interface-header' }, [
 									E('div', { 'class': 'wg-interface-name' }, [
 										E('div', { 'class': 'wg-interface-icon' }, '🌐'),
@@ -121,7 +320,7 @@ return view.extend({
 									]),
 									E('div', { 'class': 'wg-interface-detail' }, [
 										E('div', { 'class': 'wg-interface-detail-label' }, 'Traffic'),
-										E('div', { 'class': 'wg-interface-detail-value' }, 
+										E('div', { 'class': 'wg-interface-detail-value wg-interface-traffic' },
 											'↓' + api.formatBytes(iface.rx_bytes) + ' / ↑' + api.formatBytes(iface.tx_bytes))
 									])
 								])
@@ -143,12 +342,12 @@ return view.extend({
 						E('span', { 'class': 'wg-card-title-icon' }, '👥'),
 						'Connected Peers'
 					]),
-					E('div', { 'class': 'wg-card-badge' }, activePeers + '/' + peers.length + ' active')
+					E('div', { 'class': 'wg-card-badge wg-peers-badge' }, activePeers + '/' + peers.length + ' active')
 				]),
 				E('div', { 'class': 'wg-card-body' }, [
 					E('div', { 'class': 'wg-peer-grid' },
 						peers.slice(0, 6).map(function(peer) {
-							return E('div', { 'class': 'wg-peer-card ' + (peer.status === 'active' ? 'active' : '') }, [
+							return E('div', { 'class': 'wg-peer-card ' + (peer.status === 'active' ? 'active' : ''), 'data-peer': peer.public_key, 'data-interface': peer.interface || '' }, [
 								E('div', { 'class': 'wg-peer-header' }, [
 									E('div', { 'class': 'wg-peer-info' }, [
 										E('div', { 'class': 'wg-peer-icon' }, peer.status === 'active' ? '✅' : '👤'),
@@ -166,7 +365,7 @@ return view.extend({
 									]),
 									E('div', { 'class': 'wg-peer-detail' }, [
 										E('span', { 'class': 'wg-peer-detail-label' }, 'Last Handshake'),
-										E('span', { 'class': 'wg-peer-detail-value' }, api.formatHandshake(peer.handshake_ago))
+										E('span', { 'class': 'wg-peer-detail-value', 'data-field': 'handshake' }, api.formatHandshake(peer.handshake_ago))
 									]),
 									E('div', { 'class': 'wg-peer-detail', 'style': 'grid-column: span 2' }, [
 										E('span', { 'class': 'wg-peer-detail-label' }, 'Allowed IPs'),
@@ -191,11 +390,14 @@ return view.extend({
 				])
 			]) : ''
 		]);
-		
+
 		// Include CSS
 		var cssLink = E('link', { 'rel': 'stylesheet', 'href': L.resource('wireguard-dashboard/dashboard.css') });
 		document.head.appendChild(cssLink);
-		
+
+		// Start auto-refresh
+		this.startPolling();
+
 		return view;
 	},
 	
