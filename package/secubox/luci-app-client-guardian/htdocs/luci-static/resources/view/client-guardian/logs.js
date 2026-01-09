@@ -5,6 +5,7 @@
 'require ui';
 'require client-guardian/api as API';
 'require client-guardian/nav as CgNav';
+'require secubox-portal/header as SbHeader';
 
 return view.extend({
 	refreshInterval: 5000,
@@ -16,6 +17,10 @@ return view.extend({
 	render: function(data) {
 		var logs = data.logs || [];
 		var self = this;
+
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
 
 		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
@@ -119,7 +124,8 @@ return view.extend({
 		// Setup auto-refresh
 		poll.add(L.bind(this.pollLogs, this), this.refreshInterval);
 
-		return view;
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	renderLogs: function(logs) {

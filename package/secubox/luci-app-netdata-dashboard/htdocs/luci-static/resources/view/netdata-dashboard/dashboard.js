@@ -5,6 +5,7 @@
 'require poll';
 'require netdata-dashboard/api as API';
 'require secubox-theme/theme as Theme';
+'require secubox-portal/header as SbHeader';
 
 var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
 	(document.documentElement && document.documentElement.getAttribute('lang')) ||
@@ -33,6 +34,10 @@ return view.extend({
 		var netdataUrl = 'http://' + window.location.hostname + ':' + netdataPort;
 		var alarmCount = this.countAlarms(alarms);
 
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+
 		var view = E('div', { 'class': 'netdata-dashboard secubox-netdata' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('netdata-dashboard/dashboard.css') }),
@@ -55,7 +60,8 @@ return view.extend({
 			}, this));
 		}, this), 5);
 
-		return view;
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	countAlarms: function(alarms) {

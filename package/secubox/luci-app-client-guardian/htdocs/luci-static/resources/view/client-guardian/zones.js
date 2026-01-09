@@ -4,6 +4,7 @@
 'require ui';
 'require rpc';
 'require client-guardian/nav as CgNav';
+'require secubox-portal/header as SbHeader';
 
 var callGetZones = rpc.declare({
 	object: 'luci.client-guardian',
@@ -31,7 +32,11 @@ return view.extend({
 		var zones = Array.isArray(data) ? data : (data.zones || []);
 		var self = this;
 
-		return E('div', { 'class': 'client-guardian-dashboard' }, [
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+
+		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
 			CgNav.renderTabs('zones'),
@@ -59,6 +64,9 @@ return view.extend({
 				zones.map(L.bind(this.renderZoneCard, this))
 			)
 		]);
+
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	renderZoneCard: function(zone) {

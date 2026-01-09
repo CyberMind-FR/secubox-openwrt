@@ -3,6 +3,7 @@
 'require secubox-theme/theme as Theme';
 'require ui';
 'require netdata-dashboard/api as API';
+'require secubox-portal/header as SbHeader';
 
 return view.extend({
 	load: function() {
@@ -26,6 +27,10 @@ return view.extend({
 		var tableStyle = 'width: 100%; border-collapse: collapse;';
 		var thStyle = 'padding: 0.75rem 1rem; text-align: left; font-weight: 600; width: 200px; background: #161b22; border-bottom: 1px solid #30363d;';
 		var tdStyle = 'padding: 0.75rem 1rem; border-bottom: 1px solid #30363d;';
+
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
 
 		var view = E('div', { 'class': 'cbi-map' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
@@ -227,7 +232,8 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	handleSaveApply: null,

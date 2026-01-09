@@ -5,6 +5,7 @@
 'require uci';
 'require client-guardian/api as API';
 'require client-guardian/nav as CgNav';
+'require secubox-portal/header as SbHeader';
 
 return view.extend({
 	load: function() {
@@ -222,12 +223,19 @@ return view.extend({
 
 			rendered.insertBefore(infoBox, rendered.firstChild);
 
-			return E('div', { 'class': 'client-guardian-dashboard' }, [
+			// Main wrapper with SecuBox header
+			var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+			wrapper.appendChild(SbHeader.render());
+
+			var view = E('div', { 'class': 'client-guardian-dashboard' }, [
 				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 				E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
 				CgNav.renderTabs('settings'),
 				rendered
 			]);
+
+			wrapper.appendChild(view);
+			return wrapper;
 		});
 	},
 

@@ -4,6 +4,7 @@
 'require ui';
 'require rpc';
 'require client-guardian/nav as CgNav';
+'require secubox-portal/header as SbHeader';
 
 var callGetParental = rpc.declare({
 	object: 'luci.client-guardian',
@@ -20,7 +21,11 @@ return view.extend({
 		var filters = data.filters || [];
 		var urlLists = data.url_lists || [];
 
-		return E('div', { 'class': 'client-guardian-dashboard' }, [
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+
+		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
 			CgNav.renderTabs('parental'),
@@ -246,6 +251,9 @@ return view.extend({
 				])
 			])
 		]);
+
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	renderScheduleDay: function(name, active) {

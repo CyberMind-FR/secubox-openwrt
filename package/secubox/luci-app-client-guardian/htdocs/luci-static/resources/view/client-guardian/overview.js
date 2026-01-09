@@ -6,6 +6,7 @@
 'require ui';
 'require rpc';
 'require client-guardian/nav as CgNav';
+'require secubox-portal/header as SbHeader';
 
 var callGetStatus = rpc.declare({
 	object: 'luci.client-guardian',
@@ -76,6 +77,10 @@ return view.extend({
 		var approvedClients = clients.filter(function(c) { return c.status === 'approved'; });
 		var quarantineClients = clients.filter(function(c) { return c.status === 'unknown' || c.zone === 'quarantine'; });
 		var bannedClients = clients.filter(function(c) { return c.status === 'banned'; });
+
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
 
 		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
@@ -150,7 +155,8 @@ return view.extend({
 			}, this), refreshInterval);
 		}
 
-		return view;
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	renderStatCard: function(icon, value, label) {

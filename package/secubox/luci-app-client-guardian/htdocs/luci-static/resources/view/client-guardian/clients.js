@@ -5,6 +5,7 @@
 'require ui';
 'require rpc';
 'require client-guardian/nav as CgNav';
+'require secubox-portal/header as SbHeader';
 
 var callGetClients = rpc.declare({
 	object: 'luci.client-guardian',
@@ -76,6 +77,10 @@ return view.extend({
 		var zones = Array.isArray(data[1]) ? data[1] : (data[1].zones || []);
 		var self = this;
 
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+
 		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
@@ -121,7 +126,8 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	renderFilterTab: function(filter, label, count, active) {

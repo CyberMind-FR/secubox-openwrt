@@ -7,6 +7,7 @@
 'require ui';
 'require client-guardian/api as API';
 'require client-guardian/nav as CgNav';
+'require secubox-portal/header as SbHeader';
 
 return view.extend({
 	load: function() {
@@ -19,6 +20,10 @@ return view.extend({
 	render: function(data) {
 		var alerts = data[0];
 		var logs = data[1].logs || [];
+
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
 
 		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
@@ -164,7 +169,8 @@ return view.extend({
 			])
 		]);
 
-		return view;
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	renderToggle: function(icon, label, desc, enabled) {

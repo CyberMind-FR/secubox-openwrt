@@ -3,6 +3,7 @@
 'require poll';
 'require ui';
 'require media-flow/api as API';
+'require secubox-portal/header as SbHeader';
 
 return view.extend({
 	title: _('Media Flow Dashboard'),
@@ -35,6 +36,10 @@ return view.extend({
 		var isNetifyd = dpiSource === 'netifyd';
 		var streams = streamsData.streams || [];
 		var flowCount = streamsData.flow_count || status.active_flows || 0;
+
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
 
 		// Inject CSS
 		var css = `
@@ -241,7 +246,8 @@ return view.extend({
 			}, this));
 		}, this), this.pollInterval);
 
-		return view;
+		wrapper.appendChild(view);
+		return wrapper;
 	},
 
 	handleSaveApply: null,
