@@ -39,7 +39,7 @@ secubox-crowdsec-setup --install
 opkg update
 
 # Install required packages
-opkg install crowdsec crowdsec-firewall-bouncer-nftables syslog-ng4
+opkg install crowdsec crowdsec-firewall-bouncer syslog-ng
 
 # Install LuCI dashboard (optional)
 opkg install luci-app-secubox-crowdsec
@@ -55,7 +55,7 @@ opkg install luci-app-secubox-crowdsec
               +--------------+--------------+
               |                             |
       +-------v-------+           +---------v---------+
-      |   syslog-ng4  |           |   logread -f      |
+      |   syslog-ng  |           |   logread -f      |
       | (UDP 5140)    |           |   (fallback)      |
       +-------+-------+           +---------+---------+
               |                             |
@@ -88,7 +88,7 @@ opkg install luci-app-secubox-crowdsec
 
 ## Components
 
-### 1. syslog-ng4 Configuration
+### 1. syslog-ng Configuration
 
 Located at `/etc/syslog-ng/syslog-ng.conf`, this configuration:
 - Captures all system logs via Unix socket
@@ -306,9 +306,9 @@ secubox-crowdsec-setup --uninstall
 /etc/init.d/syslog-ng stop
 
 opkg remove luci-app-secubox-crowdsec
-opkg remove crowdsec-firewall-bouncer-nftables
+opkg remove crowdsec-firewall-bouncer
 opkg remove crowdsec
-opkg remove syslog-ng4
+opkg remove syslog-ng
 
 # Clean nftables
 nft delete table ip crowdsec

@@ -25,3 +25,4 @@ PKG_FILE_MODES:=/usr/libexec/rpcd/luci.secubox-security-threats:root:root:755
 include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature
+$(eval $(call BuildPackage,luci-app-secubox-security-threats))

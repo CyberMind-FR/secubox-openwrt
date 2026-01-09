@@ -20,13 +20,13 @@ define Package/secubox-crowdsec-setup
   CATEGORY:=SecuBox
   SUBMENU:=Security
   TITLE:=SecuBox CrowdSec Setup Utility
-  DEPENDS:=+crowdsec +crowdsec-firewall-bouncer-nftables +syslog-ng4
+  DEPENDS:=+crowdsec +crowdsec-firewall-bouncer +syslog-ng
   PKGARCH:=all
 endef
 
 define Package/secubox-crowdsec-setup/description
   Script d'installation automatisee de CrowdSec pour SecuBox.
-  Configure syslog-ng4 pour le forwarding des logs vers CrowdSec,
+  Configure syslog-ng pour le forwarding des logs vers CrowdSec,
   installe les collections de securite, et configure le bouncer
   nftables pour fw4.
 endef

@@ -15,7 +15,6 @@ PKG_RELEASE:=1
 PKG_LICENSE:=GPL-3.0-or-later
 PKG_MAINTAINER:=SecuBox Team <secubox@example.com>
 
-include ../../luci.mk
+include $(TOPDIR)/feeds/luci/luci.mk
 
-# call BuildPackage - OpenWrt buildance!
-$(eval $(call BuildPackage,luci-app-secubox-portal))
+# call BuildPackage - OpenWrt buildroot signature

@@ -11,8 +11,6 @@ on:
         options:
           - espressobin-v7
           - espressobin-ultra
-          - sheeva64
-          - sheeva64-wifi
           - mochabin
           - all
       openwrt_version:
@@ -78,20 +76,6 @@ jobs:
               "subtarget": "cortexa53",
               "profile": "globalscale_espressobin-ultra",
               "description": "ESPRESSObin Ultra (PoE, WiFi)"
-            },
-            {
-              "device": "sheeva64",
-              "target": "mvebu",
-              "subtarget": "cortexa53",
-              "profile": "globalscale_sheeva64",
-              "description": "Sheeva64 (Plug computer)"
-            },
-            {
-              "device": "sheeva64-wifi",
-              "target": "mvebu",
-              "subtarget": "cortexa53",
-              "profile": "globalscale_sheeva64",
-              "description": "Sheeva64 WiFi (802.11ac + BT)"
             },
             {
               "device": "mochabin",
@@ -370,19 +354,11 @@ jobs:
           EOF
               ;;
             
-            espressobin-ultra|sheeva64-wifi)
+            espressobin-ultra)
               # WiFi support
               cat >> .config << EOF
           CONFIG_PACKAGE_kmod-mt76=y
           CONFIG_PACKAGE_kmod-mac80211=y
-          EOF
-              ;;
-            
-            sheeva64*)
-              # Minimal for plug computer
-              cat >> .config << EOF
-          # Optimized for plug form factor
-          CONFIG_PACKAGE_kmod-ledtrig-heartbeat=y
           EOF
               ;;
           esac

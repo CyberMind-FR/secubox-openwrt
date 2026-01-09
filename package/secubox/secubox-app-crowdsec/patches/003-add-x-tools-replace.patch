@@ -1,6 +1,0 @@
---- a/go.mod
-+++ b/go.mod
-@@ -269,1 +269,3 @@
- replace golang.org/x/text => ./secubox-vendor/golang.org/x/text
-+replace golang.org/x/tools => ./secubox-vendor/golang.org/x/tools
-+replace golang.org/x/telemetry => ./secubox-vendor/golang.org/x/telemetry

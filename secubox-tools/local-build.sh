@@ -44,7 +44,7 @@ SDK_PATH="mvebu/cortexa72"
 declare -A DEVICE_PROFILES=(
     ["espressobin-v7"]="mvebu:cortexa53:globalscale_espressobin:ESPRESSObin V7 (1-2GB DDR4)"
     ["espressobin-ultra"]="mvebu:cortexa53:globalscale_espressobin-ultra:ESPRESSObin Ultra (PoE, WiFi)"
-    ["sheeva64"]="mvebu:cortexa53:globalscale_sheeva64:Sheeva64 (Plug computer)"
+    # ["sheeva64"]="mvebu:cortexa53:globalscale_sheeva64:Sheeva64 (Plug computer)"  # Disabled
     ["mochabin"]="mvebu:cortexa72:globalscale_mochabin:MOCHAbin (Quad-core A72, 10G)"
     ["x86-64"]="x86:64:generic:x86_64 Generic PC"
 )
@@ -1468,7 +1468,7 @@ CONFIG_PACKAGE_kmod-sfp=y
 CONFIG_PACKAGE_kmod-phy-marvell-10g=y
 EOF
             ;;
-        espressobin-ultra|sheeva64)
+        espressobin-ultra)
             cat >> .config << EOF
 
 # WiFi support
@@ -1862,7 +1862,6 @@ ARCHITECTURES (for package building):
 DEVICES (for firmware building):
     espressobin-v7              ESPRESSObin V7 (1-2GB DDR4)
     espressobin-ultra           ESPRESSObin Ultra (PoE, WiFi)
-    sheeva64                    Sheeva64 (Plug computer)
     mochabin                    MOCHAbin (Quad-core A72, 10G)
     x86-64                      x86_64 Generic PC
 
