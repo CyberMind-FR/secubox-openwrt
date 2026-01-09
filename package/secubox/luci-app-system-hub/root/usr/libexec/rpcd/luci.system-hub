@@ -147,7 +147,7 @@ get_system_info() {
 
 	# NTP sync status
 	local ntp_ok=0
-	if [ -f /var/state/ntpd ] || pgrep -x ntpd >/dev/null 2>&1 || pgrep -x chronyd >/dev/null 2>&1; then
+	if [ -f /var/state/ntpd ] || pidof ntpd >/dev/null 2>&1 || pidof chronyd >/dev/null 2>&1; then
 		# Check if time seems reasonable (after year 2020)
 		local year=$(date +%Y)
 		[ "$year" -ge 2020 ] && ntp_ok=1
@@ -1225,41 +1225,54 @@ get_diagnostic_profile() {
 }
 
 remote_status() {
-	local section="system-hub.remote"
-	local enabled=$(uci -q get $section.rustdesk_enabled || echo 0)
-	local relay_server=$(uci -q get $section.rustdesk_server || echo "")
-	local relay_key=$(uci -q get $section.rustdesk_key || echo "")
-	local stored_id=$(uci -q get $section.rustdesk_id || echo "")
-	local stored_password=$(uci -q get $section.rustdesk_password || echo "")
-	local allow_unattended=$(uci -q get $section.allow_unattended || echo 0)
-	local require_approval=$(uci -q get $section.require_approval || echo 1)
-	local notify_on_connect=$(uci -q get $section.notify_on_connect || echo 1)
-
 	local installed=0
-	command -v rustdesk >/dev/null 2>&1 && installed=1
-
 	local running=0
-	if [ -x /etc/init.d/rustdesk ]; then
-		/etc/init.d/rustdesk status >/dev/null 2>&1 && running=1
+	local enabled=0
+
+	# Check if rtty is installed
+	command -v rtty >/dev/null 2>&1 && installed=1
+
+	# Check if running
+	if pidof rtty >/dev/null 2>&1; then
+		running=1
+	fi
+
+	# Check if enabled
+	if [ -x /etc/init.d/rtty ]; then
+		[ -f /etc/rc.d/S*rtty ] && enabled=1
+	fi
+
+	# Get config from UCI
+	local host=$(uci -q get rtty.@rtty[0].host || echo "")
+	local port=$(uci -q get rtty.@rtty[0].port || echo "5912")
+	local device_id=$(uci -q get rtty.@rtty[0].id || echo "")
+	local description=$(uci -q get rtty.@rtty[0].description || echo "")
+	local ssl=$(uci -q get rtty.@rtty[0].ssl || echo "0")
+	local token=$(uci -q get rtty.@rtty[0].token || echo "")
+
+	# Auto-generate ID from MAC if not set
+	if [ -z "$device_id" ]; then
+		local iface=$(uci -q get rtty.@rtty[0].interface || echo "lan")
+		device_id=$(cat /sys/class/net/br-$iface/address 2>/dev/null | tr -d ':' || cat /sys/class/net/eth0/address 2>/dev/null | tr -d ':' || echo "")
 	fi
 
 	json_init
 	json_add_boolean "installed" "$installed"
 	json_add_boolean "running" "$running"
 	json_add_boolean "enabled" "$enabled"
-	json_add_string "server" "$relay_server"
-	json_add_string "key" "$relay_key"
-	json_add_string "id" "$stored_id"
-	json_add_string "password" "$stored_password"
-	json_add_boolean "allow_unattended" "$allow_unattended"
-	json_add_boolean "require_approval" "$require_approval"
-	json_add_boolean "notify_on_connect" "$notify_on_connect"
+	json_add_string "host" "$host"
+	json_add_int "port" "$port"
+	json_add_string "id" "$device_id"
+	json_add_string "description" "$description"
+	json_add_boolean "ssl" "$ssl"
+	json_add_string "token" "$token"
 	json_dump
 }
 
 remote_install() {
 	json_init
-	if command -v rustdesk >/dev/null 2>&1; then
+
+	if command -v rtty >/dev/null 2>&1; then
 		json_add_boolean "success" 0
 		json_add_string "error" "already_installed"
 		json_dump
@@ -1273,12 +1286,12 @@ remote_install() {
 		return
 	fi
 
-	opkg update >/tmp/rustdesk-install.log 2>&1
-	if opkg install rustdesk >>/tmp/rustdesk-install.log 2>&1; then
+	opkg update >/tmp/rtty-install.log 2>&1
+	if opkg install rtty-openssl >>/tmp/rtty-install.log 2>&1; then
 		json_add_boolean "success" 1
-		json_add_string "message" "RustDesk installed"
+		json_add_string "message" "rtty installed successfully"
 	else
-		local err="$(tail -n 20 /tmp/rustdesk-install.log 2>/dev/null)"
+		local err="$(tail -n 20 /tmp/rtty-install.log 2>/dev/null)"
 		json_add_boolean "success" 0
 		json_add_string "error" "${err:-install_failed}"
 	fi
@@ -1288,36 +1301,28 @@ remote_install() {
 remote_configure() {
 	read input
 	json_load "$input"
-	local section="system-hub.remote"
-	local server key enabled
-	json_get_var server relay_server
-	json_get_var key relay_key
-	json_get_var enabled rustdesk_enabled
 
-	[ -n "$server" ] && uci set $section.rustdesk_server="$server"
-	[ -n "$key" ] && uci set $section.rustdesk_key="$key"
-	[ -n "$enabled" ] && uci set $section.rustdesk_enabled="$enabled"
-	uci commit system-hub
+	local host port device_id description ssl token
+	json_get_var host host
+	json_get_var port port
+	json_get_var device_id id
+	json_get_var description description
+	json_get_var ssl ssl
+	json_get_var token token
 
-	if [ -n "$server" ] || [ -n "$key" ]; then
-		mkdir -p /etc/rustdesk
-		cat > /etc/rustdesk/config.toml <<EOF
-[relay]
-server = "${server:-$(uci -q get $section.rustdesk_server)}"
-
-[options]
-key = "${key:-$(uci -q get $section.rustdesk_key)}"
-auto_start = true
-EOF
+	# Ensure rtty config section exists
+	if ! uci -q get rtty.@rtty[0] >/dev/null 2>&1; then
+		uci add rtty rtty
 	fi
 
-	if [ -x /etc/init.d/rustdesk ] && [ "${enabled:-0}" = "1" ]; then
-		/etc/init.d/rustdesk enable >/dev/null 2>&1 || true
-		/etc/init.d/rustdesk restart >/dev/null 2>&1 || true
-	elif [ -x /etc/init.d/rustdesk ]; then
-		/etc/init.d/rustdesk stop >/dev/null 2>&1 || true
-		/etc/init.d/rustdesk disable >/dev/null 2>&1 || true
-	fi
+	[ -n "$host" ] && uci set rtty.@rtty[0].host="$host"
+	[ -n "$port" ] && uci set rtty.@rtty[0].port="$port"
+	[ -n "$device_id" ] && uci set rtty.@rtty[0].id="$device_id"
+	[ -n "$description" ] && uci set rtty.@rtty[0].description="$description"
+	[ -n "$ssl" ] && uci set rtty.@rtty[0].ssl="$ssl"
+	[ -n "$token" ] && uci set rtty.@rtty[0].token="$token"
+
+	uci commit rtty
 
 	json_init
 	json_add_boolean "success" 1
@@ -1325,19 +1330,19 @@ EOF
 }
 
 remote_get_credentials() {
-	local section="system-hub.remote"
-	local rid="" rpass=""
-	if command -v rustdesk >/dev/null 2>&1; then
-		rid=$(rustdesk --get-id 2>/dev/null || echo "")
-		rpass=$(rustdesk --password 2>/dev/null || echo "")
+	local device_id=$(uci -q get rtty.@rtty[0].id || echo "")
+	local token=$(uci -q get rtty.@rtty[0].token || echo "")
+
+	# Auto-generate ID from MAC if not set
+	if [ -z "$device_id" ]; then
+		local iface=$(uci -q get rtty.@rtty[0].interface || echo "lan")
+		device_id=$(cat /sys/class/net/br-$iface/address 2>/dev/null | tr -d ':' || cat /sys/class/net/eth0/address 2>/dev/null | tr -d ':' || echo "")
 	fi
-	[ -z "$rid" ] && rid=$(uci -q get $section.rustdesk_id || echo "")
-	[ -z "$rpass" ] && rpass=$(uci -q get $section.rustdesk_password || echo "")
 
 	json_init
 	json_add_boolean "success" 1
-	json_add_string "id" "$rid"
-	json_add_string "password" "$rpass"
+	json_add_string "id" "$device_id"
+	json_add_string "token" "$token"
 	json_dump
 }
 
@@ -1347,21 +1352,87 @@ remote_service_action() {
 	json_get_var action action
 
 	json_init
-	if [ ! -x /etc/init.d/rustdesk ]; then
+
+	if ! command -v rtty >/dev/null 2>&1; then
 		json_add_boolean "success" 0
-		json_add_string "error" "service_missing"
+		json_add_string "error" "not_installed"
 		json_dump
 		return
 	fi
 
 	case "$action" in
-		start|stop|restart|enable|disable)
-			if /etc/init.d/rustdesk "$action" >/dev/null 2>&1; then
+		start)
+			# Stop any existing instance
+			killall rtty 2>/dev/null || true
+			sleep 1
+
+			# Get config
+			local host=$(uci -q get rtty.@rtty[0].host)
+			local port=$(uci -q get rtty.@rtty[0].port || echo "5912")
+			local device_id=$(uci -q get rtty.@rtty[0].id)
+			local token=$(uci -q get rtty.@rtty[0].token)
+			local ssl=$(uci -q get rtty.@rtty[0].ssl || echo "0")
+			local description=$(uci -q get rtty.@rtty[0].description)
+
+			if [ -z "$host" ]; then
+				json_add_boolean "success" 0
+				json_add_string "error" "no_server_configured"
+				json_dump
+				return
+			fi
+
+			# Build command
+			local cmd="rtty -h $host -p $port -a -D"
+			[ -n "$device_id" ] && cmd="$cmd -I $device_id"
+			[ -n "$token" ] && cmd="$cmd -t $token"
+			[ -n "$description" ] && cmd="$cmd -d \"$description\""
+			[ "$ssl" = "1" ] && cmd="$cmd -s -x"
+
+			eval $cmd
+
+			sleep 2
+			if pidof rtty >/dev/null 2>&1; then
 				json_add_boolean "success" 1
-				json_add_string "message" "$action"
+				json_add_string "message" "rtty started"
 			else
 				json_add_boolean "success" 0
-				json_add_string "error" "action_failed"
+				json_add_string "error" "failed_to_start"
+			fi
+			;;
+		stop)
+			if killall rtty 2>/dev/null; then
+				json_add_boolean "success" 1
+				json_add_string "message" "rtty stopped"
+			else
+				json_add_boolean "success" 0
+				json_add_string "error" "not_running"
+			fi
+			;;
+		restart)
+			killall rtty 2>/dev/null || true
+			sleep 1
+			# Recursive call to start
+			echo '{"action":"start"}' | remote_service_action
+			return
+			;;
+		enable)
+			if [ -x /etc/init.d/rtty ]; then
+				/etc/init.d/rtty enable >/dev/null 2>&1
+				json_add_boolean "success" 1
+				json_add_string "message" "rtty enabled"
+			else
+				json_add_boolean "success" 0
+				json_add_string "error" "init_script_missing"
+			fi
+			;;
+		disable)
+			if [ -x /etc/init.d/rtty ]; then
+				/etc/init.d/rtty disable >/dev/null 2>&1
+				json_add_boolean "success" 1
+				json_add_string "message" "rtty disabled"
+			else
+				json_add_boolean "success" 0
+				json_add_string "error" "init_script_missing"
 			fi
 			;;
 		*)
@@ -1375,16 +1446,195 @@ remote_service_action() {
 remote_save_settings() {
 	read input
 	json_load "$input"
-	local section="system-hub.remote"
-	local allow require notify
-	json_get_var allow allow_unattended
-	json_get_var require require_approval
-	json_get_var notify notify_on_connect
 
-	[ -n "$allow" ] && uci set $section.allow_unattended="$allow"
-	[ -n "$require" ] && uci set $section.require_approval="$require"
-	[ -n "$notify" ] && uci set $section.notify_on_connect="$notify"
-	uci commit system-hub
+	local host port device_id description ssl token
+	json_get_var host host
+	json_get_var port port
+	json_get_var device_id id
+	json_get_var description description
+	json_get_var ssl ssl
+	json_get_var token token
+
+	# Ensure rtty config section exists
+	if ! uci -q get rtty.@rtty[0] >/dev/null 2>&1; then
+		uci add rtty rtty
+	fi
+
+	[ -n "$host" ] && uci set rtty.@rtty[0].host="$host"
+	[ -n "$port" ] && uci set rtty.@rtty[0].port="$port"
+	[ -n "$device_id" ] && uci set rtty.@rtty[0].id="$device_id"
+	[ -n "$description" ] && uci set rtty.@rtty[0].description="$description"
+	[ -n "$ssl" ] && uci set rtty.@rtty[0].ssl="$ssl"
+	[ -n "$token" ] && uci set rtty.@rtty[0].token="$token"
+
+	uci commit rtty
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# ============================================
+# TTYD Web Console Functions
+# ============================================
+
+ttyd_status() {
+	local installed=0
+	local running=0
+	local enabled=0
+	local port=7681
+	local interface="lan"
+
+	# Check if installed
+	command -v ttyd >/dev/null 2>&1 && installed=1
+
+	# Check if running
+	if pidof ttyd >/dev/null 2>&1; then
+		running=1
+	fi
+
+	# Check if enabled in init
+	if [ -x /etc/init.d/ttyd ] && [ -f /etc/rc.d/S*ttyd 2>/dev/null ]; then
+		enabled=1
+	fi
+
+	# Get port from UCI config
+	local uci_port=$(uci -q get ttyd.@ttyd[0].port)
+	[ -n "$uci_port" ] && port="$uci_port"
+
+	# Get interface binding
+	local uci_interface=$(uci -q get ttyd.@ttyd[0].interface)
+	[ -n "$uci_interface" ] && interface="$uci_interface"
+
+	json_init
+	json_add_boolean "installed" "$installed"
+	json_add_boolean "running" "$running"
+	json_add_boolean "enabled" "$enabled"
+	json_add_int "port" "$port"
+	json_add_string "interface" "$interface"
+	json_dump
+}
+
+ttyd_install() {
+	json_init
+
+	if command -v ttyd >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "already_installed"
+		json_dump
+		return
+	fi
+
+	if ! command -v opkg >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "opkg_missing"
+		json_dump
+		return
+	fi
+
+	opkg update >/tmp/ttyd-install.log 2>&1
+	if opkg install ttyd >>/tmp/ttyd-install.log 2>&1; then
+		# Configure ttyd for LAN only by default
+		if [ ! -f /etc/config/ttyd ]; then
+			cat > /etc/config/ttyd <<'TTYDCONF'
+config ttyd
+	option port '7681'
+	option interface 'lan'
+	option command '/bin/login'
+	option ipv6 '0'
+TTYDCONF
+		fi
+		json_add_boolean "success" 1
+		json_add_string "message" "ttyd installed successfully"
+	else
+		local err="$(tail -n 20 /tmp/ttyd-install.log 2>/dev/null)"
+		json_add_boolean "success" 0
+		json_add_string "error" "${err:-install_failed}"
+	fi
+	json_dump
+}
+
+ttyd_start() {
+	json_init
+
+	if ! command -v ttyd >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "not_installed"
+		json_dump
+		return
+	fi
+
+	# Stop any existing instance
+	killall ttyd 2>/dev/null || true
+	sleep 1
+
+	# Get config
+	local port=$(uci -q get ttyd.@ttyd[0].port || echo 7681)
+	local interface=$(uci -q get ttyd.@ttyd[0].interface || echo "lan")
+
+	# Get interface IP
+	local bind_ip=""
+	if [ "$interface" != "" ] && [ "$interface" != "0.0.0.0" ]; then
+		bind_ip=$(ubus call network.interface.$interface status 2>/dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
+	fi
+
+	# Start ttyd
+	if [ -n "$bind_ip" ]; then
+		ttyd -p "$port" -i "$bind_ip" -W /bin/login &
+	else
+		ttyd -p "$port" -W /bin/login &
+	fi
+
+	sleep 2
+
+	if pidof ttyd >/dev/null 2>&1; then
+		json_add_boolean "success" 1
+		json_add_string "message" "ttyd started on port $port"
+		json_add_int "port" "$port"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "failed_to_start"
+	fi
+	json_dump
+}
+
+ttyd_stop() {
+	json_init
+
+	if killall ttyd 2>/dev/null; then
+		json_add_boolean "success" 1
+		json_add_string "message" "ttyd stopped"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "not_running"
+	fi
+	json_dump
+}
+
+ttyd_configure() {
+	read input
+	json_load "$input"
+
+	local port interface
+	json_get_var port port
+	json_get_var interface interface
+
+	# Ensure config exists
+	if [ ! -f /etc/config/ttyd ]; then
+		touch /etc/config/ttyd
+		uci set ttyd.main=ttyd
+	fi
+
+	[ -n "$port" ] && uci set ttyd.@ttyd[0].port="$port"
+	[ -n "$interface" ] && uci set ttyd.@ttyd[0].interface="$interface"
+	uci commit ttyd
+
+	# Restart if running
+	if pidof ttyd >/dev/null 2>&1; then
+		killall ttyd 2>/dev/null
+		sleep 1
+		ttyd_start >/dev/null 2>&1
+	fi
 
 	json_init
 	json_add_boolean "success" 1
@@ -1634,7 +1884,7 @@ is_service_running() {
 	fi
 
 	# Fallback: check process
-	pgrep -x "$svc" >/dev/null 2>&1 && return 0
+	pidof "$svc" >/dev/null 2>&1 && return 0
 
 	return 1
 }
@@ -1906,7 +2156,12 @@ case "$1" in
 		"allow_unattended": 0,
 		"require_approval": 1,
 		"notify_on_connect": 1
-	}
+	},
+	"ttyd_status": {},
+	"ttyd_install": {},
+	"ttyd_start": {},
+	"ttyd_stop": {},
+	"ttyd_configure": { "port": 7681, "interface": "lan" }
 }
 EOF
 		;;
@@ -1942,6 +2197,11 @@ EOF
 			remote_get_credentials) remote_get_credentials ;;
 			remote_service_action) remote_service_action ;;
 			remote_save_settings) remote_save_settings ;;
+			ttyd_status) ttyd_status ;;
+			ttyd_install) ttyd_install ;;
+			ttyd_start) ttyd_start ;;
+			ttyd_stop) ttyd_stop ;;
+			ttyd_configure) ttyd_configure ;;
 			*)
 				json_init
 				json_add_boolean "success" 0

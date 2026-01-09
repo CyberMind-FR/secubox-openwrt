@@ -6,11 +6,11 @@
  * System Hub API
  * Package: luci-app-system-hub
  * RPCD object: luci.system-hub
- * Version: 0.3.6
+ * Version: 0.4.0
  */
 
 // Debug log to verify correct version is loaded
-console.log('🔧 System Hub API v0.3.6 loaded at', new Date().toISOString());
+console.log('🔧 System Hub API v0.4.0 loaded at', new Date().toISOString());
 
 var callStatus = rpc.declare({
 	object: 'luci.system-hub',
@@ -183,7 +183,7 @@ var callRemoteInstall = rpc.declare({
 var callRemoteConfigure = rpc.declare({
 	object: 'luci.system-hub',
 	method: 'remote_configure',
-	params: ['relay_server', 'relay_key', 'rustdesk_enabled'],
+	params: ['host', 'port', 'id', 'description', 'ssl', 'token'],
 	expect: {}
 });
 
@@ -203,7 +203,39 @@ var callRemoteServiceAction = rpc.declare({
 var callRemoteSaveSettings = rpc.declare({
 	object: 'luci.system-hub',
 	method: 'remote_save_settings',
-	params: ['allow_unattended', 'require_approval', 'notify_on_connect'],
+	params: ['host', 'port', 'id', 'description', 'ssl', 'token'],
+	expect: {}
+});
+
+// TTYD Web Console
+var callTtydStatus = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'ttyd_status',
+	expect: {}
+});
+
+var callTtydInstall = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'ttyd_install',
+	expect: {}
+});
+
+var callTtydStart = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'ttyd_start',
+	expect: {}
+});
+
+var callTtydStop = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'ttyd_stop',
+	expect: {}
+});
+
+var callTtydConfigure = rpc.declare({
+	object: 'luci.system-hub',
+	method: 'ttyd_configure',
+	params: ['port', 'interface'],
 	expect: {}
 });
 
@@ -287,5 +319,14 @@ return baseclass.extend({
 	},
 	remoteSaveSettings: function(data) {
 		return callRemoteSaveSettings(data);
+	},
+
+	// TTYD Web Console
+	ttydStatus: callTtydStatus,
+	ttydInstall: callTtydInstall,
+	ttydStart: callTtydStart,
+	ttydStop: callTtydStop,
+	ttydConfigure: function(data) {
+		return callTtydConfigure(data);
 	}
 });
