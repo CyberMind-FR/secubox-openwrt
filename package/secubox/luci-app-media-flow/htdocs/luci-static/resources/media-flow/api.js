@@ -79,6 +79,30 @@ var callSetSettings = rpc.declare({
 	expect: { }
 });
 
+var callStartNdpid = rpc.declare({
+	object: 'luci.media-flow',
+	method: 'start_ndpid',
+	expect: { success: false }
+});
+
+var callStopNdpid = rpc.declare({
+	object: 'luci.media-flow',
+	method: 'stop_ndpid',
+	expect: { success: false }
+});
+
+var callStartNetifyd = rpc.declare({
+	object: 'luci.media-flow',
+	method: 'start_netifyd',
+	expect: { success: false }
+});
+
+var callStopNetifyd = rpc.declare({
+	object: 'luci.media-flow',
+	method: 'stop_netifyd',
+	expect: { success: false }
+});
+
 return baseclass.extend({
 	getStatus: callStatus,
 	getActiveStreams: callGetActiveStreams,
@@ -91,5 +115,9 @@ return baseclass.extend({
 	listAlerts: callListAlerts,
 	clearHistory: callClearHistory,
 	getSettings: callGetSettings,
-	setSettings: callSetSettings
+	setSettings: callSetSettings,
+	startNdpid: callStartNdpid,
+	stopNdpid: callStopNdpid,
+	startNetifyd: callStartNetifyd,
+	stopNetifyd: callStopNetifyd
 });

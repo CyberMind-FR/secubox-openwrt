@@ -6,6 +6,16 @@
  * SecuBox themed navigation tabs
  */
 
+// Immediately inject CSS to hide LuCI tabs before page renders
+(function() {
+	if (typeof document === 'undefined') return;
+	if (document.getElementById('crowdsec-early-hide')) return;
+	var style = document.createElement('style');
+	style.id = 'crowdsec-early-hide';
+	style.textContent = 'body[data-page*="crowdsec"] ul.tabs, body[data-page*="crowdsec"] .tabs:not(.cs-nav-tabs) { display: none !important; }';
+	(document.head || document.documentElement).appendChild(style);
+})();
+
 var tabs = [
 	{ id: 'wizard', icon: '🚀', label: _('Setup Wizard'), path: ['admin', 'secubox', 'security', 'crowdsec', 'wizard'] },
 	{ id: 'overview', icon: '📊', label: _('Overview'), path: ['admin', 'secubox', 'security', 'crowdsec', 'overview'] },
@@ -25,17 +35,71 @@ return baseclass.extend({
 	ensureLuCITabsHidden: function() {
 		if (typeof document === 'undefined')
 			return;
+
+		// Actively remove LuCI tabs from DOM
+		var luciTabs = document.querySelectorAll('.cbi-tabmenu, ul.tabs, div.tabs, .nav-tabs');
+		luciTabs.forEach(function(el) {
+			// Don't remove our own tabs
+			if (!el.classList.contains('cs-nav-tabs')) {
+				el.style.display = 'none';
+				// Also try removing from DOM after a brief delay
+				setTimeout(function() {
+					if (el.parentNode && !el.classList.contains('cs-nav-tabs')) {
+						el.style.display = 'none';
+					}
+				}, 100);
+			}
+		});
+
 		if (document.getElementById('crowdsec-tabstyle'))
 			return;
 		var style = document.createElement('style');
 		style.id = 'crowdsec-tabstyle';
 		style.textContent = `
-/* Hide default LuCI tabs for CrowdSec */
+/* Hide default LuCI tabs for CrowdSec - aggressive selectors */
+/* Target any ul.tabs in the page */
+ul.tabs {
+	display: none !important;
+}
+
+/* Be more specific for pages that need tabs elsewhere */
+body:not([data-page*="crowdsec"]) ul.tabs {
+	display: block !important;
+}
+
+/* All possible LuCI tab selectors */
 body[data-page^="admin-secubox-security-crowdsec"] .tabs,
 body[data-page^="admin-secubox-security-crowdsec"] #tabmenu,
 body[data-page^="admin-secubox-security-crowdsec"] .cbi-tabmenu,
 body[data-page^="admin-secubox-security-crowdsec"] .nav-tabs,
-body[data-page^="admin-secubox-security-crowdsec"] ul.cbi-tabmenu {
+body[data-page^="admin-secubox-security-crowdsec"] ul.cbi-tabmenu,
+body[data-page*="crowdsec"] ul.tabs,
+body[data-page*="crowdsec"] .tabs,
+/* Fallback: hide any tabs that appear before our custom nav */
+.crowdsec-dashboard .tabs,
+.crowdsec-dashboard + .tabs,
+.crowdsec-dashboard ~ .tabs,
+.cbi-map > .tabs:first-child,
+#maincontent > .container > .tabs,
+#maincontent > .container > ul.tabs,
+#view > .tabs,
+#view > ul.tabs,
+.view > .tabs,
+.view > ul.tabs,
+div.tabs:has(+ .crowdsec-dashboard),
+div.tabs:has(+ .wizard-container),
+/* Direct sibling of CrowdSec content */
+.wizard-container ~ .tabs,
+.cs-nav-tabs ~ .tabs,
+/* LuCI 24.x specific */
+.luci-app-crowdsec-dashboard .tabs,
+#cbi-crowdsec .tabs {
+	display: none !important;
+}
+
+/* Hide tabs container when our nav is present */
+.cs-nav-tabs ~ ul.tabs,
+.cs-nav-tabs + ul.tabs {
 	display: none !important;
 }
 

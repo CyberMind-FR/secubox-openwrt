@@ -8,11 +8,19 @@
 		}
 	},
 	"admin/secubox/portal": {
-		"title": "Portal",
-		"order": 10,
+		"title": "Dashboard",
+		"order": 1,
 		"action": {
 			"type": "view",
 			"path": "secubox-portal/index"
+		}
+	},
+	"admin/secubox-home": {
+		"title": "SecuBox Home",
+		"order": 0,
+		"action": {
+			"type": "alias",
+			"path": "admin/secubox/portal"
 		}
 	}
 }

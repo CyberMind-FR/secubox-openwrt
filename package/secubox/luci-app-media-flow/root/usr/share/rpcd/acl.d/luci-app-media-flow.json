@@ -26,7 +26,11 @@
 					"set_alert",
 					"delete_alert",
 					"clear_history",
-					"set_settings"
+					"set_settings",
+					"start_ndpid",
+					"stop_ndpid",
+					"start_netifyd",
+					"stop_netifyd"
 				]
 			},
 			"uci": ["media_flow"]

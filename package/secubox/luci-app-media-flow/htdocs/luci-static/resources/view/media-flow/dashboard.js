@@ -3,6 +3,7 @@
 'require poll';
 'require ui';
 'require media-flow/api as API';
+'require secubox-portal/header as SbHeader';
 
 return L.view.extend({
 	load: function() {
@@ -17,6 +18,10 @@ return L.view.extend({
 		var status = data[0] || {};
 		var streamsData = data[1] || {};
 		var statsByService = data[2] || {};
+
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
 
 		var v = E('div', { 'class': 'cbi-map' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
@@ -96,10 +101,57 @@ return L.view.extend({
 				])
 			]);
 		} else {
+			var self = this;
 			noticeSection = E('div', { 'class': 'cbi-section' }, [
 				E('div', { 'style': 'background: #f8d7da; border: 1px solid #dc3545; padding: 15px; border-radius: 4px; margin-bottom: 15px;' }, [
 					E('strong', {}, _('No DPI Engine: ')),
-					E('span', {}, _('Install nDPId or netifyd for streaming detection capabilities.'))
+					E('span', {}, _('No DPI service is running. ')),
+					E('div', { 'style': 'margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;' }, [
+						E('button', {
+							'class': 'cbi-button cbi-button-positive',
+							'click': function() {
+								ui.showModal(_('Starting nDPId...'), [
+									E('p', { 'class': 'spinning' }, _('Starting nDPId and compatibility layer...'))
+								]);
+								API.startNdpid().then(function(res) {
+									ui.hideModal();
+									if (res && res.success) {
+										ui.addNotification(null, E('p', {}, res.message || _('nDPId started')), 'success');
+										setTimeout(function() { window.location.reload(); }, 2000);
+									} else {
+										ui.addNotification(null, E('p', {}, res.message || _('Failed to start nDPId')), 'error');
+									}
+								}).catch(function() {
+									ui.hideModal();
+									ui.addNotification(null, E('p', {}, _('Failed to start nDPId. Check if it is installed.')), 'error');
+								});
+							}
+						}, _('Start nDPId')),
+						E('button', {
+							'class': 'cbi-button cbi-button-action',
+							'click': function() {
+								ui.showModal(_('Starting Netifyd...'), [
+									E('p', { 'class': 'spinning' }, _('Starting netifyd service...'))
+								]);
+								API.startNetifyd().then(function(res) {
+									ui.hideModal();
+									if (res && res.success) {
+										ui.addNotification(null, E('p', {}, res.message || _('Netifyd started')), 'success');
+										setTimeout(function() { window.location.reload(); }, 2000);
+									} else {
+										ui.addNotification(null, E('p', {}, res.message || _('Failed to start netifyd')), 'error');
+									}
+								}).catch(function() {
+									ui.hideModal();
+									ui.addNotification(null, E('p', {}, _('Failed to start netifyd. Check if it is installed.')), 'error');
+								});
+							}
+						}, _('Start Netifyd')),
+						E('a', {
+							'class': 'cbi-button',
+							'href': L.url('admin/services/ndpid/settings')
+						}, _('nDPId Settings'))
+					])
 				])
 			]);
 		}
@@ -380,7 +432,8 @@ return L.view.extend({
 			updateServiceStats();
 		}, this), 5);
 
-		return v;
+		wrapper.appendChild(v);
+		return wrapper;
 	},
 
 	handleSaveApply: null,

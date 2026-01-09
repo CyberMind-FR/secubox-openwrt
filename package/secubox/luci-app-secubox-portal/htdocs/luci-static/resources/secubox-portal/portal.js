@@ -9,7 +9,7 @@
 return baseclass.extend({
 	version: '1.0.0',
 
-	// SecuBox app registry
+	// SecuBox app registry - paths match admin/secubox/* menu structure
 	apps: {
 		// Security Apps
 		'crowdsec': {
@@ -20,7 +20,7 @@ return baseclass.extend({
 			iconBg: 'rgba(0, 212, 170, 0.15)',
 			iconColor: '#00d4aa',
 			section: 'security',
-			path: 'admin/services/crowdsec-dashboard',
+			path: 'admin/secubox/security/crowdsec/overview',
 			service: 'crowdsec',
 			version: '0.7.0'
 		},
@@ -32,7 +32,7 @@ return baseclass.extend({
 			iconBg: 'rgba(139, 92, 246, 0.15)',
 			iconColor: '#8b5cf6',
 			section: 'security',
-			path: 'admin/services/client-guardian',
+			path: 'admin/secubox/security/guardian/overview',
 			service: 'client-guardian',
 			version: '0.5.0'
 		},
@@ -44,7 +44,7 @@ return baseclass.extend({
 			iconBg: 'rgba(239, 68, 68, 0.15)',
 			iconColor: '#ef4444',
 			section: 'security',
-			path: 'admin/services/auth-guardian',
+			path: 'admin/secubox/security/auth-guardian/overview',
 			service: 'auth-guardian',
 			version: '0.3.0'
 		},
@@ -58,7 +58,7 @@ return baseclass.extend({
 			iconBg: 'rgba(59, 130, 246, 0.15)',
 			iconColor: '#3b82f6',
 			section: 'network',
-			path: 'admin/services/bandwidth-manager',
+			path: 'admin/secubox/network/bandwidth-manager',
 			service: 'bandwidth-manager',
 			version: '0.5.0'
 		},
@@ -82,7 +82,7 @@ return baseclass.extend({
 			iconBg: 'rgba(239, 68, 68, 0.15)',
 			iconColor: '#ef4444',
 			section: 'network',
-			path: 'admin/network/wireguard',
+			path: 'admin/secubox/network/wireguard',
 			service: 'wgserver',
 			version: null
 		},
@@ -94,7 +94,7 @@ return baseclass.extend({
 			iconBg: 'rgba(102, 126, 234, 0.15)',
 			iconColor: '#667eea',
 			section: 'network',
-			path: 'admin/services/network-modes',
+			path: 'admin/secubox/network/modes',
 			service: null,
 			version: '0.2.0'
 		},
@@ -108,8 +108,8 @@ return baseclass.extend({
 			iconBg: 'rgba(236, 72, 153, 0.15)',
 			iconColor: '#ec4899',
 			section: 'monitoring',
-			path: 'admin/services/media-flow',
-			service: 'media-flow',
+			path: 'admin/secubox/monitoring/mediaflow/dashboard',
+			service: null,
 			version: '0.6.0'
 		},
 		'ndpid': {
@@ -120,7 +120,7 @@ return baseclass.extend({
 			iconBg: 'rgba(6, 182, 212, 0.15)',
 			iconColor: '#06b6d4',
 			section: 'monitoring',
-			path: 'admin/services/ndpid',
+			path: 'admin/secubox/ndpid/dashboard',
 			service: 'ndpid',
 			version: '1.1.0'
 		},
@@ -132,7 +132,7 @@ return baseclass.extend({
 			iconBg: 'rgba(6, 182, 212, 0.15)',
 			iconColor: '#06b6d4',
 			section: 'monitoring',
-			path: 'admin/services/secubox-netifyd',
+			path: 'admin/secubox/netifyd/dashboard',
 			service: 'netifyd',
 			version: '1.2.0'
 		},
@@ -144,7 +144,7 @@ return baseclass.extend({
 			iconBg: 'rgba(34, 197, 94, 0.15)',
 			iconColor: '#22c55e',
 			section: 'monitoring',
-			path: 'admin/services/netdata-dashboard',
+			path: 'admin/secubox/monitoring/netdata/dashboard',
 			service: 'netdata',
 			version: '0.4.0'
 		},
@@ -158,7 +158,7 @@ return baseclass.extend({
 			iconBg: 'rgba(249, 115, 22, 0.15)',
 			iconColor: '#f97316',
 			section: 'system',
-			path: 'admin/services/system-hub',
+			path: 'admin/secubox/system/system-hub/overview',
 			service: null,
 			version: '0.4.0'
 		},
@@ -170,7 +170,7 @@ return baseclass.extend({
 			iconBg: 'rgba(20, 184, 166, 0.15)',
 			iconColor: '#14b8a6',
 			section: 'system',
-			path: 'admin/services/cdn-cache',
+			path: 'admin/secubox/system/cdn-cache',
 			service: 'squid',
 			version: '0.3.0'
 		},
@@ -182,7 +182,7 @@ return baseclass.extend({
 			iconBg: 'rgba(161, 161, 170, 0.15)',
 			iconColor: '#a1a1aa',
 			section: 'system',
-			path: 'admin/system/secubox',
+			path: 'admin/secubox/system/settings',
 			service: null,
 			version: null
 		}

@@ -7,6 +7,16 @@
 'require uci';
 'require crowdsec-dashboard/api as API';
 'require crowdsec-dashboard/nav as CsNav';
+'require secubox-portal/header as SbHeader';
+
+// Hide LuCI tabs immediately
+(function() {
+	if (typeof document === 'undefined') return;
+	var style = document.getElementById('cs-hide-tabs') || document.createElement('style');
+	style.id = 'cs-hide-tabs';
+	style.textContent = 'ul.tabs, .cbi-tabmenu { display: none !important; }';
+	if (!style.parentNode) (document.head || document.documentElement).appendChild(style);
+})();
 
 return view.extend({
 	wizardData: {
@@ -40,6 +50,7 @@ return view.extend({
 		configuring: false,
 		bouncerConfigured: false,
 		apiKey: '',
+		resetting: false,
 
 		// Step 6 data (Services)
 		starting: false,
@@ -133,6 +144,12 @@ return view.extend({
 		});
 		head.appendChild(themeLink);
 
+		// Main wrapper with SecuBox header
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+
+		// Add SecuBox global header
+		wrapper.appendChild(SbHeader.render());
+
 		var container = E('div', { 'class': 'crowdsec-dashboard wizard-container' });
 
 		// Add navigation tabs
@@ -144,7 +161,9 @@ return view.extend({
 		// Create step content
 		container.appendChild(this.renderCurrentStep(data));
 
-		return container;
+		wrapper.appendChild(container);
+
+		return wrapper;
 	},
 
 	createStepper: function() {
@@ -499,9 +518,28 @@ return view.extend({
 	},
 
 	renderStep5Bouncer: function(data) {
+		var self = this;
 		return E('div', { 'class': 'wizard-step' }, [
 			E('h2', {}, _('Configure Firewall Bouncer')),
 			E('p', {}, _('The firewall bouncer will automatically block malicious IPs using nftables.')),
+
+			// Recovery mode warning/option
+			E('div', { 'id': 'recovery-mode-section', 'class': 'config-section', 'style': 'margin-bottom: 20px; padding: 16px; background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px;' }, [
+				E('div', { 'style': 'display: flex; align-items: center; margin-bottom: 12px;' }, [
+					E('span', { 'style': 'font-size: 24px; margin-right: 12px;' }, '🔄'),
+					E('div', {}, [
+						E('strong', { 'style': 'color: #eab308;' }, _('Recovery Mode')),
+						E('div', { 'style': 'font-size: 0.9em; color: var(--cyber-text-secondary, #94a3b8);' },
+							_('Use this if bouncer registration fails or you want to start fresh'))
+					])
+				]),
+				E('button', {
+					'class': 'cbi-button cbi-button-negative',
+					'style': 'width: 100%;',
+					'disabled': this.wizardData.resetting ? true : null,
+					'click': L.bind(this.handleResetWizard, this)
+				}, this.wizardData.resetting ? _('Resetting...') : _('Reset Bouncer Configuration'))
+			]),
 
 			// Configuration options
 			E('div', { 'class': 'config-section' }, [
@@ -1044,6 +1082,43 @@ return view.extend({
 			console.error('[Wizard] Manual repair error:', err);
 			this.wizardData.lapiRepairing = false;
 			ui.addNotification(null, E('p', _('LAPI repair failed: ') + err.message), 'error');
+			this.refreshView();
+		}, this));
+	},
+
+	handleResetWizard: function() {
+		console.log('[Wizard] Reset wizard triggered (recovery mode)');
+
+		if (!confirm(_('This will delete existing bouncer registration and clear all bouncer configuration. Continue?'))) {
+			return;
+		}
+
+		this.wizardData.resetting = true;
+		this.wizardData.bouncerConfigured = false;
+		this.wizardData.apiKey = '';
+		this.refreshView();
+
+		return API.resetWizard().then(L.bind(function(result) {
+			console.log('[Wizard] Reset wizard result:', result);
+			this.wizardData.resetting = false;
+
+			if (result && result.success) {
+				ui.addNotification(null, E('p', _('Bouncer configuration reset successfully. You can now configure fresh.')), 'success');
+				// Reset relevant wizard data
+				this.wizardData.bouncerConfigured = false;
+				this.wizardData.apiKey = '';
+				this.wizardData.enabled = false;
+				this.wizardData.running = false;
+				this.wizardData.nftablesActive = false;
+				this.wizardData.lapiConnected = false;
+			} else {
+				ui.addNotification(null, E('p', _('Reset failed: ') + (result.error || 'Unknown error')), 'error');
+			}
+			this.refreshView();
+		}, this)).catch(L.bind(function(err) {
+			console.error('[Wizard] Reset wizard error:', err);
+			this.wizardData.resetting = false;
+			ui.addNotification(null, E('p', _('Reset failed: ') + err.message), 'error');
 			this.refreshView();
 		}, this));
 	},

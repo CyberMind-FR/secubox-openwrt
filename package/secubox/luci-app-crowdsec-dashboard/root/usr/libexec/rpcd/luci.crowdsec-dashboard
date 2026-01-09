@@ -420,6 +420,7 @@ update_hub() {
 # Register a new bouncer
 register_bouncer() {
 	local bouncer_name="$1"
+	local force="${2:-0}"
 	check_cscli
 	json_init
 
@@ -430,30 +431,57 @@ register_bouncer() {
 		return
 	fi
 
-	# Check if bouncer already exists
+	# Check if bouncer already exists (robust pattern matching)
 	local exists=0
-	if $CSCLI bouncers list -o json 2>/dev/null | grep -q "\"name\":\"$bouncer_name\""; then
+	local bouncer_list
+	bouncer_list=$($CSCLI bouncers list -o json 2>/dev/null)
+	if echo "$bouncer_list" | grep -qE "\"name\"[[:space:]]*:[[:space:]]*\"$bouncer_name\""; then
 		exists=1
 	fi
 
 	local api_key
 	if [ "$exists" = "1" ]; then
-		# Delete existing bouncer and re-register to get new API key
-		$CSCLI bouncers delete "$bouncer_name" >/dev/null 2>&1
-		secubox_log "Deleted existing bouncer: $bouncer_name"
+		secubox_log "Bouncer '$bouncer_name' already exists, deleting for re-registration..."
+		# Delete existing bouncer to get new API key
+		if ! $CSCLI bouncers delete "$bouncer_name" 2>&1; then
+			secubox_log "Warning: Could not delete bouncer via cscli, trying force..."
+		fi
+		# Small delay to ensure deletion is processed
+		sleep 1
 	fi
 
 	# Generate API key
 	api_key=$($CSCLI bouncers add "$bouncer_name" -o raw 2>&1)
 
-	if [ -n "$api_key" ] && [ "${#api_key}" -gt 10 ] && ! echo "$api_key" | grep -qi "error"; then
+	if [ -n "$api_key" ] && [ "${#api_key}" -gt 10 ] && ! echo "$api_key" | grep -qi "error\|unable\|failed"; then
 		json_add_boolean "success" 1
 		json_add_string "api_key" "$api_key"
 		json_add_string "message" "Bouncer '$bouncer_name' registered successfully"
-		secubox_log "Registered bouncer: $bouncer_name"
+		json_add_boolean "replaced" "$exists"
+		secubox_log "Registered bouncer: $bouncer_name (replaced: $exists)"
 	else
-		json_add_boolean "success" 0
-		json_add_string "error" "Failed to register bouncer '$bouncer_name': $api_key"
+		# If still failing, try more aggressive cleanup
+		if echo "$api_key" | grep -qi "already exists"; then
+			secubox_log "Bouncer still exists, attempting database-level cleanup..."
+			# Force delete from database
+			sqlite3 /srv/crowdsec/data/crowdsec.db "DELETE FROM bouncers WHERE name='$bouncer_name';" 2>/dev/null
+			sleep 1
+			# Retry registration
+			api_key=$($CSCLI bouncers add "$bouncer_name" -o raw 2>&1)
+			if [ -n "$api_key" ] && [ "${#api_key}" -gt 10 ] && ! echo "$api_key" | grep -qi "error\|unable\|failed"; then
+				json_add_boolean "success" 1
+				json_add_string "api_key" "$api_key"
+				json_add_string "message" "Bouncer '$bouncer_name' registered after forced cleanup"
+				json_add_boolean "replaced" 1
+				secubox_log "Registered bouncer after forced cleanup: $bouncer_name"
+			else
+				json_add_boolean "success" 0
+				json_add_string "error" "Failed to register bouncer '$bouncer_name' even after cleanup: $api_key"
+			fi
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "Failed to register bouncer '$bouncer_name': $api_key"
+		fi
 	fi
 
 	json_dump
@@ -931,6 +959,51 @@ repair_lapi() {
 	json_dump
 }
 
+# Reset wizard - clean up for fresh start
+reset_wizard() {
+	json_init
+	local steps_done=""
+	local errors=""
+
+	secubox_log "Starting CrowdSec wizard reset (recovery mode)..."
+
+	# Step 1: Stop services
+	/etc/init.d/crowdsec-firewall-bouncer stop >/dev/null 2>&1
+	steps_done="${steps_done}Stopped firewall bouncer; "
+
+	# Step 2: Delete existing bouncer registration
+	if [ -x "$CSCLI" ]; then
+		$CSCLI bouncers delete "crowdsec-firewall-bouncer" >/dev/null 2>&1
+		steps_done="${steps_done}Deleted bouncer registration; "
+
+		# Also try database cleanup
+		sqlite3 /srv/crowdsec/data/crowdsec.db "DELETE FROM bouncers WHERE name='crowdsec-firewall-bouncer';" 2>/dev/null
+	fi
+
+	# Step 3: Clear UCI bouncer config
+	uci -q delete crowdsec.bouncer 2>/dev/null
+	uci commit crowdsec 2>/dev/null
+	steps_done="${steps_done}Cleared UCI config; "
+
+	# Step 4: Remove bouncer config file
+	rm -f /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml 2>/dev/null
+	steps_done="${steps_done}Removed bouncer config file; "
+
+	# Step 5: Reset nftables rules
+	if command -v nft >/dev/null 2>&1; then
+		nft delete table ip crowdsec 2>/dev/null
+		nft delete table ip6 crowdsec6 2>/dev/null
+		steps_done="${steps_done}Cleared nftables rules; "
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Wizard reset completed - ready for fresh setup"
+	json_add_string "steps" "$steps_done"
+	secubox_log "Wizard reset completed: $steps_done"
+
+	json_dump
+}
+
 # Console enrollment status
 get_console_status() {
 	json_init
@@ -1091,7 +1164,7 @@ service_control() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"}}'
+		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"}}'
 		;;
 	call)
 		case "$2" in
@@ -1204,6 +1277,9 @@ case "$1" in
 				;;
 			repair_lapi)
 				repair_lapi
+				;;
+			reset_wizard)
+				reset_wizard
 				;;
 			console_status)
 				get_console_status

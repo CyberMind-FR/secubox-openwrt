@@ -63,8 +63,27 @@ return view.extend({
 		var sysInfo = data[1] || {};
 		var self = this;
 
-		// Set portal app context
+		// Set portal app context and hide LuCI navigation
 		document.body.setAttribute('data-secubox-app', 'portal');
+		document.body.classList.add('secubox-portal-mode');
+
+		// Hide LuCI sidebar immediately via JS for reliability
+		var elementsToHide = [
+			'#mainmenu', '.main-left', 'header.main-header',
+			'nav[role="navigation"]', '#navigation', '.luci-sidebar', 'aside'
+		];
+		elementsToHide.forEach(function(selector) {
+			var el = document.querySelector(selector);
+			if (el) el.style.display = 'none';
+		});
+
+		// Make main content full width
+		var mainRight = document.querySelector('.main-right') || document.querySelector('#maincontent');
+		if (mainRight) {
+			mainRight.style.marginLeft = '0';
+			mainRight.style.width = '100%';
+			mainRight.style.maxWidth = '100%';
+		}
 
 		// Inject CSS
 		var cssLink = document.querySelector('link[href*="secubox-portal/portal.css"]');
@@ -118,14 +137,20 @@ return view.extend({
 					]);
 				})
 			),
-			// Actions
+			// Actions - UI Switcher
 			E('div', { 'class': 'sb-portal-actions' }, [
-				E('a', {
-					'class': 'sb-luci-return',
-					'href': L.url('admin/status/overview'),
-					'title': 'Return to standard LuCI interface'
-				}, [
-					'\u2190 Standard LuCI'
+				E('div', { 'class': 'sb-ui-switcher' }, [
+					E('span', { 'class': 'sb-ui-label' }, 'Interface:'),
+					E('a', {
+						'class': 'sb-ui-btn active',
+						'href': L.url('admin/secubox/portal'),
+						'title': 'SecuBox Portal'
+					}, 'SecuBox'),
+					E('a', {
+						'class': 'sb-ui-btn',
+						'href': L.url('admin/status/overview'),
+						'title': 'Standard LuCI interface'
+					}, 'LuCI')
 				])
 			])
 		]);

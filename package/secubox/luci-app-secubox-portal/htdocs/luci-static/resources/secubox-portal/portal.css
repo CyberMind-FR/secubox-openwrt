@@ -4,6 +4,75 @@
  * Version: 1.0.0
  */
 
+/* Hide LuCI navigation when in SecuBox Portal mode */
+body:has(.secubox-portal) #mainmenu,
+body:has(.secubox-portal) .main > .main-left,
+body:has(.secubox-portal) header.main-header,
+body:has(.secubox-portal) .main-left,
+body:has(.secubox-portal) nav[role="navigation"],
+body:has(.secubox-portal) #navigation,
+body:has(.secubox-portal) .luci-sidebar,
+body:has(.secubox-portal) aside,
+body:has(.secubox-portal) header:not(.sb-portal-header):not(.sb-global-header),
+body:has(.secubox-portal) .brand,
+body:has(.secubox-portal) div.brand {
+	display: none !important;
+}
+
+/* Hide OpenWrt header when SecuBox mode is active */
+body.secubox-mode header:not(.sb-global-header),
+body.secubox-mode .brand,
+body.secubox-mode div.brand,
+body.secubox-portal-mode header:not(.sb-portal-header),
+body:has(.secubox-page-wrapper) header:not(.sb-global-header),
+body:has(.sb-global-header) > header:first-of-type:not(.sb-global-header) {
+	display: none !important;
+}
+
+/* Make main content full width in portal mode */
+body:has(.secubox-portal) .main > .main-right,
+body:has(.secubox-portal) #maincontent,
+body:has(.secubox-portal) .main-right,
+body:has(.secubox-portal) main[role="main"] {
+	margin-left: 0 !important;
+	width: 100% !important;
+	max-width: 100% !important;
+}
+
+/* Hide breadcrumb in portal mode */
+body:has(.secubox-portal) .cbi-breadcrumb,
+body:has(.secubox-portal) ol.breadcrumb,
+body:has(.secubox-portal) .breadcrumb {
+	display: none !important;
+}
+
+/* Hide page header in portal mode - portal has its own */
+body:has(.secubox-portal) h1.page-header,
+body:has(.secubox-portal) .page-header {
+	display: none !important;
+}
+
+/* Fallback for browsers without :has() support */
+.secubox-portal-mode #mainmenu,
+.secubox-portal-mode .main > .main-left,
+.secubox-portal-mode header.main-header,
+.secubox-portal-mode .main-left,
+.secubox-portal-mode nav[role="navigation"],
+.secubox-portal-mode #navigation,
+.secubox-portal-mode .luci-sidebar,
+.secubox-portal-mode aside {
+	display: none !important;
+}
+
+.secubox-portal-mode .main > .main-right,
+.secubox-portal-mode #maincontent,
+.secubox-portal-mode .main-right,
+.secubox-portal-mode main[role="main"] {
+	margin-left: 0 !important;
+	width: 100% !important;
+	max-width: 100% !important;
+}
+
 /* Portal Container */
 .secubox-portal {
 	font-family: var(--sb-font-family, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
@@ -536,6 +605,48 @@
 	}
 }
 
+/* UI Switcher - Toggle between SecuBox and LuCI */
+.sb-ui-switcher {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	background: var(--cyber-bg-tertiary, rgba(255, 255, 255, 0.05));
+	border: 1px solid var(--cyber-border-subtle, rgba(255, 255, 255, 0.1));
+	border-radius: 8px;
+	padding: 4px;
+}
+
+.sb-ui-label {
+	font-size: 0.75rem;
+	color: var(--cyber-text-tertiary, #71717a);
+	padding: 0 0.5rem;
+	display: none;
+}
+
+.sb-ui-btn {
+	padding: 0.375rem 0.875rem;
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: var(--cyber-text-secondary, #a1a1aa);
+	background: transparent;
+	border: none;
+	border-radius: 6px;
+	cursor: pointer;
+	text-decoration: none;
+	transition: all 0.2s ease;
+}
+
+.sb-ui-btn:hover {
+	color: var(--cyber-text-primary, #e4e4e7);
+	background: var(--cyber-bg-elevated, rgba(255, 255, 255, 0.08));
+}
+
+.sb-ui-btn.active {
+	color: white;
+	background: var(--sb-accent-gradient, linear-gradient(135deg, #667eea 0%, #764ba2 100%));
+	box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
 	.sb-portal-header {
@@ -569,5 +680,14 @@
 
 	.sb-app-grid {
 		grid-template-columns: 1fr;
+	}
+
+	.sb-ui-switcher {
+		padding: 3px;
+	}
+
+	.sb-ui-btn {
+		padding: 0.25rem 0.625rem;
+		font-size: 0.75rem;
 	}
 }

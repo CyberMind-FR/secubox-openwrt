@@ -25,9 +25,9 @@ init_storage() {
 # Detect available DPI source
 get_dpi_source() {
 	# Prefer nDPId if running and has data
-	if [ -f "$NDPID_FLOWS" ] && pgrep -x ndpid >/dev/null 2>&1; then
+	if [ -f "$NDPID_FLOWS" ] && pgrep ndpid >/dev/null 2>&1; then
 		echo "ndpid"
-	elif [ -f /var/run/netifyd/status.json ] && pgrep -x netifyd >/dev/null 2>&1; then
+	elif [ -f /var/run/netifyd/status.json ] && pgrep netifyd >/dev/null 2>&1; then
 		echo "netifyd"
 	else
 		echo "none"
@@ -105,7 +105,11 @@ case "$1" in
 			"list_alerts": {},
 			"clear_history": {},
 			"get_settings": {},
-			"set_settings": {"enabled": 1, "history_retention": 7, "refresh_interval": 5}
+			"set_settings": {"enabled": 1, "history_retention": 7, "refresh_interval": 5},
+			"start_ndpid": {},
+			"stop_ndpid": {},
+			"start_netifyd": {},
+			"stop_netifyd": {}
 		}
 		EOF
 		;;
@@ -119,7 +123,7 @@ case "$1" in
 				ndpid_running=0
 				ndpid_version="unknown"
 				ndpid_flows=0
-				pgrep -x ndpid > /dev/null 2>&1 && ndpid_running=1
+				pgrep ndpid > /dev/null 2>&1 && ndpid_running=1
 				if [ "$ndpid_running" = "1" ] && [ -f "$NDPID_FLOWS" ]; then
 					ndpid_flows=$(jq 'length' "$NDPID_FLOWS" 2>/dev/null || echo 0)
 					ndpid_version=$(ndpid -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "unknown")
@@ -127,7 +131,7 @@ case "$1" in
 
 				# Check netifyd status
 				netifyd_running=0
-				pgrep -x netifyd > /dev/null 2>&1 && netifyd_running=1
+				pgrep netifyd > /dev/null 2>&1 && netifyd_running=1
 
 				netifyd_data=$(get_netifyd_data)
 				netifyd_flows=0
@@ -420,6 +424,53 @@ case "$1" in
 				uci commit media_flow
 
 				echo '{"success": true, "message": "Settings saved"}'
+				;;
+
+			start_ndpid)
+				# Start nDPId and compatibility layer
+				result_ndpid=0
+				result_compat=0
+				msg=""
+
+				if [ -x /etc/init.d/ndpid ]; then
+					/etc/init.d/ndpid start 2>/dev/null && result_ndpid=1
+					/etc/init.d/ndpid enable 2>/dev/null
+				fi
+
+				if [ -x /etc/init.d/ndpid-compat ]; then
+					sleep 2
+					/etc/init.d/ndpid-compat start 2>/dev/null && result_compat=1
+					/etc/init.d/ndpid-compat enable 2>/dev/null
+				fi
+
+				if [ "$result_ndpid" = "1" ]; then
+					msg="nDPId started"
+					[ "$result_compat" = "1" ] && msg="$msg with compatibility layer"
+					echo "{\"success\": true, \"message\": \"$msg\"}"
+				else
+					echo '{"success": false, "message": "nDPId not installed or failed to start"}'
+				fi
+				;;
+
+			stop_ndpid)
+				/etc/init.d/ndpid-compat stop 2>/dev/null
+				/etc/init.d/ndpid stop 2>/dev/null
+				echo '{"success": true, "message": "nDPId stopped"}'
+				;;
+
+			start_netifyd)
+				if [ -x /etc/init.d/netifyd ]; then
+					/etc/init.d/netifyd start 2>/dev/null
+					/etc/init.d/netifyd enable 2>/dev/null
+					echo '{"success": true, "message": "Netifyd started"}'
+				else
+					echo '{"success": false, "message": "Netifyd not installed"}'
+				fi
+				;;
+
+			stop_netifyd)
+				/etc/init.d/netifyd stop 2>/dev/null
+				echo '{"success": true, "message": "Netifyd stopped"}'
 				;;
 
 			*)
