@@ -58,7 +58,7 @@ return baseclass.extend({
 			section: 'security',
 			path: 'admin/secubox/security/mitmproxy/dashboard',
 			service: 'mitmproxy',
-			version: '10.4.2'
+			version: '9.0.1'
 		},
 
 		// Network Apps
