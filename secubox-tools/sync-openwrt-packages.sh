@@ -62,6 +62,9 @@ copy_package 'crowdsec-firewall-bouncer_*.ipk' "CrowdSec firewall bouncer"
 # Captive Portal
 copy_package 'secubox-app-nodogsplash_*.ipk' "Nodogsplash captive portal"
 
+# HTTPS Proxy
+copy_package 'secubox-app-mitmproxy_*.ipk' "mitmproxy HTTPS proxy"
+
 # SecuBox Core packages
 copy_package 'secubox-core_*.ipk' "SecuBox Core"
 copy_package 'secubox-app_*.ipk' "SecuBox App"

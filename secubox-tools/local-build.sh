@@ -1956,7 +1956,7 @@ main() {
                         arch_specified=true
                         shift 2
                         ;;
-                    luci-app-*|luci-theme-*|secubox-app-*|secubox-*|netifyd|ndpid|nodogsplash|crowdsec)
+                    luci-app-*|luci-theme-*|secubox-app-*|secubox-*|netifyd|ndpid|nodogsplash|crowdsec|mitmproxy)
                         single_package="$1"
                         shift
                         ;;
