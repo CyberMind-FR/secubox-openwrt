@@ -1,4 +1,5 @@
 'use strict';
+'require baseclass';
 'require rpc';
 
 var callMitmproxy = rpc.declare({
@@ -59,7 +60,7 @@ var callClearData = rpc.declare({
 	method: 'clear_data'
 });
 
-return {
+return baseclass.extend({
 	getStatus: function() {
 		return callMitmproxy().catch(function() {
 			return { running: false, enabled: false };
@@ -117,12 +118,13 @@ return {
 	},
 
 	getAllData: function() {
+		var self = this;
 		return Promise.all([
-			this.getStatus(),
-			this.getConfig(),
-			this.getStats(),
-			this.getTopHosts(10),
-			this.getCaInfo()
+			self.getStatus(),
+			self.getConfig(),
+			self.getStats(),
+			self.getTopHosts(10),
+			self.getCaInfo()
 		]).then(function(results) {
 			return {
 				status: results[0],
@@ -148,4 +150,4 @@ return {
 		if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
 		return num.toString();
 	}
-};
+});
