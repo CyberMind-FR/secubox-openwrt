@@ -4,28 +4,19 @@
 # This is free software, licensed under the MIT License.
 #
 # mitmproxy - Interactive HTTPS proxy for traffic inspection
-# Built from Python source for aarch64
+# Runtime installation via pip for full Python dependency management
 #
 
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-mitmproxy
 PKG_VERSION:=11.1.3
-PKG_RELEASE:=1
-
-PKG_SOURCE:=mitmproxy-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://codeload.github.com/mitmproxy/mitmproxy/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=skip
-PKG_BUILD_DIR:=$(BUILD_DIR)/mitmproxy-$(PKG_VERSION)
+PKG_RELEASE:=2
 
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_LICENSE:=MIT
-PKG_LICENSE_FILES:=LICENSE
-
-PKG_BUILD_DEPENDS:=python3/host python-pip/host
 
 include $(INCLUDE_DIR)/package.mk
-include $(TOPDIR)/feeds/packages/lang/python/python3-package.mk
 
 define Package/secubox-app-mitmproxy
   SECTION:=net
@@ -33,8 +24,7 @@ define Package/secubox-app-mitmproxy
   SUBMENU:=SecuBox Apps
   TITLE:=mitmproxy - Interactive HTTPS Proxy
   URL:=https://mitmproxy.org/
-  DEPENDS:=+python3 +python3-pip +python3-cryptography +python3-openssl \
-	+python3-certifi +python3-urllib3 +ca-bundle
+  DEPENDS:=+python3 +python3-pip +ca-bundle
   PKGARCH:=all
 endef
 
@@ -55,6 +45,8 @@ define Package/secubox-app-mitmproxy/description
   - API debugging and development
   - Network traffic analysis
   - Parental controls and content filtering
+
+  Note: mitmproxy is installed via pip on first run.
 endef
 
 define Package/secubox-app-mitmproxy/conffiles
@@ -62,31 +54,15 @@ define Package/secubox-app-mitmproxy/conffiles
 endef
 
 define Build/Compile
-	$(call HostPython3/Run,, \
-		pip3 install --target=$(PKG_BUILD_DIR)/install \
-		--no-deps --no-cache-dir \
-		mitmproxy==$(PKG_VERSION) \
-	)
+	@echo "No compilation required - mitmproxy installed via pip at runtime"
 endef
 
 define Package/secubox-app-mitmproxy/install
-	# Python package
-	$(INSTALL_DIR) $(1)/usr/lib/python$(PYTHON3_VERSION)/site-packages
-	$(CP) $(PKG_BUILD_DIR)/install/* $(1)/usr/lib/python$(PYTHON3_VERSION)/site-packages/
-
 	# Wrapper scripts
 	$(INSTALL_DIR) $(1)/usr/bin
-	echo '#!/bin/sh' > $(1)/usr/bin/mitmproxy
-	echo 'exec python3 -m mitmproxy "$$@"' >> $(1)/usr/bin/mitmproxy
-	chmod +x $(1)/usr/bin/mitmproxy
-
-	echo '#!/bin/sh' > $(1)/usr/bin/mitmdump
-	echo 'exec python3 -m mitmproxy.tools.dump "$$@"' >> $(1)/usr/bin/mitmdump
-	chmod +x $(1)/usr/bin/mitmdump
-
-	echo '#!/bin/sh' > $(1)/usr/bin/mitmweb
-	echo 'exec python3 -m mitmproxy.tools.web "$$@"' >> $(1)/usr/bin/mitmweb
-	chmod +x $(1)/usr/bin/mitmweb
+	$(INSTALL_BIN) ./files/usr/bin/mitmproxy $(1)/usr/bin/mitmproxy
+	$(INSTALL_BIN) ./files/usr/bin/mitmdump $(1)/usr/bin/mitmdump
+	$(INSTALL_BIN) ./files/usr/bin/mitmweb $(1)/usr/bin/mitmweb
 
 	# Config
 	$(INSTALL_DIR) $(1)/etc/config
@@ -107,16 +83,22 @@ endef
 define Package/secubox-app-mitmproxy/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
-	# Create data directory
+	# Create data directories
 	mkdir -p /var/lib/mitmproxy
 	mkdir -p /tmp/mitmproxy
+
+	# Install mitmproxy via pip if not already installed
+	if ! python3 -c "import mitmproxy" 2>/dev/null; then
+		echo "Installing mitmproxy via pip..."
+		pip3 install --no-cache-dir mitmproxy==11.1.3
+	fi
 
 	# Generate CA certificate if not exists
 	if [ ! -f /etc/mitmproxy/mitmproxy-ca.pem ]; then
 		echo "Generating mitmproxy CA certificate..."
 		/usr/bin/mitmdump --set confdir=/etc/mitmproxy -q &
-		sleep 3
-		killall -q python3 2>/dev/null || true
+		sleep 5
+		killall -q mitmdump 2>/dev/null || killall -q python3 2>/dev/null || true
 	fi
 
 	/etc/init.d/mitmproxy enable

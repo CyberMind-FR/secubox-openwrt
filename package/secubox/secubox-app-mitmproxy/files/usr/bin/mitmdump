@@ -1,0 +1,3 @@
+#!/bin/sh
+# mitmdump wrapper script
+exec python3 -m mitmproxy.tools.dump "$@"
