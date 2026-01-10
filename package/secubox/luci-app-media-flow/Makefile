@@ -4,7 +4,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-media-flow
-PKG_VERSION:=0.6.0
+PKG_VERSION:=0.6.1
 PKG_RELEASE:=1
 PKG_ARCH:=all
 PKG_LICENSE:=Apache-2.0
@@ -19,19 +19,38 @@ LUCI_PKGARCH:=all
 # +ndpid provides local application detection without cloud subscription
 # +netifyd requires cloud subscription for application detection
 
-# File permissions (CRITICAL: RPCD scripts MUST be executable 755)
-PKG_FILE_MODES:=/usr/libexec/rpcd/luci.media-flow:root:root:755 \
-	/usr/bin/media-flow-collector:root:root:755 \
-	/usr/bin/media-flow-ndpid-collector:root:root:755 \
-	/etc/init.d/media-flow:root:root:755
+include $(TOPDIR)/feeds/luci/luci.mk
 
 define Package/$(PKG_NAME)/install
-	$(call Package/luci-app-media-flow/install,$(1))
+	# RPCD backend (MUST be 755 for ubus calls)
+	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
+	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.media-flow $(1)/usr/libexec/rpcd/
+
+	# Helper scripts
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./root/usr/bin/media-flow-collector $(1)/usr/bin/
 	$(INSTALL_BIN) ./root/usr/bin/media-flow-ndpid-collector $(1)/usr/bin/
+
+	# Init script
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./root/etc/init.d/media-flow $(1)/etc/init.d/
+
+	# ACL permissions
+	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
+	$(INSTALL_DATA) ./root/usr/share/rpcd/acl.d/*.json $(1)/usr/share/rpcd/acl.d/ 2>/dev/null || true
+
+	# LuCI menu
+	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
+	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/*.json $(1)/usr/share/luci/menu.d/ 2>/dev/null || true
+
+	# JavaScript resources
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/media-flow
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/media-flow/*.js $(1)/www/luci-static/resources/media-flow/ 2>/dev/null || true
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/media-flow/*.css $(1)/www/luci-static/resources/media-flow/ 2>/dev/null || true
+
+	# JavaScript views
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/media-flow
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/media-flow/*.js $(1)/www/luci-static/resources/view/media-flow/
 endef
 
 define Package/$(PKG_NAME)/postinst
@@ -60,6 +79,5 @@ define Package/$(PKG_NAME)/prerm
 exit 0
 endef
 
-include $(TOPDIR)/feeds/luci/luci.mk
-
-# call BuildPackage - OpenWrt buildroot signature
+# call BuildPackage - OpenWrt buildroot
+$(eval $(call BuildPackage,luci-app-media-flow))
