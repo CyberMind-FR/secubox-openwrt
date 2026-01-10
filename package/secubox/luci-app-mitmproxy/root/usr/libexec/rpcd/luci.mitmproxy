@@ -25,14 +25,18 @@ get_status() {
 	local mode="unknown"
 	local web_url=""
 
-	if pgrep mitmweb >/dev/null 2>&1; then
+	if pgrep -x mitmweb >/dev/null 2>&1; then
 		running=1
-		pid=$(pgrep mitmweb | head -1)
+		pid=$(pgrep -x mitmweb | head -1)
 		mode="mitmweb"
-	elif pgrep mitmdump >/dev/null 2>&1; then
+	elif pgrep -x mitmdump >/dev/null 2>&1; then
 		running=1
-		pid=$(pgrep mitmdump | head -1)
+		pid=$(pgrep -x mitmdump | head -1)
 		mode="mitmdump"
+	elif pgrep -f "python.*mitmproxy" >/dev/null 2>&1; then
+		running=1
+		pid=$(pgrep -f "python.*mitmproxy" | head -1)
+		mode="mitmproxy"
 	fi
 
 	local enabled=$(uci -q get mitmproxy.main.enabled || echo "0")
