@@ -1,0 +1,236 @@
+#!/bin/sh
+#
+# mitmproxyctl - mitmproxy management utility
+# Copyright (C) 2025 CyberMind.fr (SecuBox)
+#
+
+CONF_DIR=/etc/mitmproxy
+DATA_DIR=/tmp/mitmproxy
+LOG_FILE=/tmp/mitmproxy/requests.log
+
+usage() {
+	cat <<EOF
+mitmproxyctl - mitmproxy management utility
+
+Usage: mitmproxyctl <command> [options]
+
+Commands:
+  status          Show service status
+  start           Start mitmproxy
+  stop            Stop mitmproxy
+  restart         Restart mitmproxy
+  enable          Enable at boot
+  disable         Disable at boot
+  logs            Show recent logs
+  flows           List captured flows
+  clear           Clear captured data
+  ca-cert         Show CA certificate path
+  install-ca      Install CA cert instructions
+  stats           Show traffic statistics
+
+Options:
+  -h, --help      Show this help message
+EOF
+}
+
+cmd_status() {
+	if pgrep mitmweb >/dev/null 2>&1; then
+		echo "Status: Running (mitmweb)"
+		echo "PID: $(pgrep mitmweb)"
+		echo "Web UI: http://$(uci -q get network.lan.ipaddr || echo '192.168.1.1'):$(uci -q get mitmproxy.main.web_port || echo '8081')"
+	elif pgrep mitmdump >/dev/null 2>&1; then
+		echo "Status: Running (mitmdump)"
+		echo "PID: $(pgrep mitmdump)"
+	else
+		echo "Status: Stopped"
+	fi
+
+	echo ""
+	echo "Configuration:"
+	echo "  Mode: $(uci -q get mitmproxy.main.mode || echo 'transparent')"
+	echo "  Listen: $(uci -q get mitmproxy.main.listen_host || echo '0.0.0.0'):$(uci -q get mitmproxy.main.listen_port || echo '8080')"
+	echo "  Enabled: $(uci -q get mitmproxy.main.enabled || echo '0')"
+}
+
+cmd_start() {
+	echo "Starting mitmproxy..."
+	/etc/init.d/mitmproxy start
+}
+
+cmd_stop() {
+	echo "Stopping mitmproxy..."
+	/etc/init.d/mitmproxy stop
+}
+
+cmd_restart() {
+	echo "Restarting mitmproxy..."
+	/etc/init.d/mitmproxy restart
+}
+
+cmd_enable() {
+	uci set mitmproxy.main.enabled='1'
+	uci commit mitmproxy
+	/etc/init.d/mitmproxy enable
+	echo "mitmproxy enabled at boot"
+}
+
+cmd_disable() {
+	uci set mitmproxy.main.enabled='0'
+	uci commit mitmproxy
+	/etc/init.d/mitmproxy disable
+	echo "mitmproxy disabled at boot"
+}
+
+cmd_logs() {
+	if [ -f "$LOG_FILE" ]; then
+		tail -50 "$LOG_FILE"
+	else
+		echo "No logs available at $LOG_FILE"
+	fi
+}
+
+cmd_flows() {
+	local flow_file=$(uci -q get mitmproxy.capture.flow_file || echo "/tmp/mitmproxy/flows.bin")
+	if [ -f "$flow_file" ]; then
+		echo "Flow file: $flow_file"
+		echo "Size: $(ls -lh "$flow_file" | awk '{print $5}')"
+		echo ""
+		echo "Use 'mitmproxy -r $flow_file' to replay flows"
+	else
+		echo "No flow file found"
+	fi
+}
+
+cmd_clear() {
+	echo "Clearing captured data..."
+	rm -f "$DATA_DIR"/*.log "$DATA_DIR"/*.bin
+	echo "Done"
+}
+
+cmd_ca_cert() {
+	local cert="$CONF_DIR/mitmproxy-ca-cert.pem"
+	if [ -f "$cert" ]; then
+		echo "CA Certificate: $cert"
+		echo ""
+		echo "Certificate details:"
+		openssl x509 -in "$cert" -noout -subject -issuer -dates 2>/dev/null || \
+			cat "$cert"
+	else
+		echo "CA certificate not found"
+		echo "Start mitmproxy once to generate the certificate"
+	fi
+}
+
+cmd_install_ca() {
+	local cert="$CONF_DIR/mitmproxy-ca-cert.pem"
+	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+	cat <<EOF
+=== Installing mitmproxy CA Certificate ===
+
+To intercept HTTPS traffic, clients must trust the mitmproxy CA.
+
+1. Access the certificate at:
+   http://$router_ip:$(uci -q get mitmproxy.main.web_port || echo '8081')/cert
+
+2. Or download directly:
+   scp root@$router_ip:$cert ./mitmproxy-ca.pem
+
+3. Install on devices:
+
+   Windows:
+   - Double-click the .pem file
+   - Install to "Trusted Root Certification Authorities"
+
+   macOS:
+   - Double-click to add to Keychain
+   - In Keychain Access, find the cert and set "Always Trust"
+
+   Linux:
+   - Copy to /usr/local/share/ca-certificates/
+   - Run: sudo update-ca-certificates
+
+   Android:
+   - Settings > Security > Install from storage
+   - Select the certificate file
+
+   iOS:
+   - Email the cert and open it
+   - Settings > General > Profile > Install
+   - Settings > General > About > Certificate Trust Settings
+
+EOF
+}
+
+cmd_stats() {
+	echo "=== mitmproxy Statistics ==="
+	echo ""
+
+	if [ -f "$LOG_FILE" ]; then
+		local total=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0")
+		echo "Total requests logged: $total"
+
+		if command -v jq >/dev/null 2>&1; then
+			echo ""
+			echo "Top 10 hosts:"
+			jq -r '.request.host // .host // "unknown"' "$LOG_FILE" 2>/dev/null | \
+				sort | uniq -c | sort -rn | head -10
+
+			echo ""
+			echo "Request methods:"
+			jq -r '.request.method // .method // "GET"' "$LOG_FILE" 2>/dev/null | \
+				sort | uniq -c | sort -rn
+		fi
+	else
+		echo "No statistics available"
+	fi
+}
+
+# Parse arguments
+case "$1" in
+	status)
+		cmd_status
+		;;
+	start)
+		cmd_start
+		;;
+	stop)
+		cmd_stop
+		;;
+	restart)
+		cmd_restart
+		;;
+	enable)
+		cmd_enable
+		;;
+	disable)
+		cmd_disable
+		;;
+	logs)
+		cmd_logs
+		;;
+	flows)
+		cmd_flows
+		;;
+	clear)
+		cmd_clear
+		;;
+	ca-cert|ca|cert)
+		cmd_ca_cert
+		;;
+	install-ca|install)
+		cmd_install_ca
+		;;
+	stats|statistics)
+		cmd_stats
+		;;
+	-h|--help|help)
+		usage
+		;;
+	*)
+		usage
+		exit 1
+		;;
+esac
+
+exit 0

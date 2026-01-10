@@ -1,0 +1,34 @@
+{
+	"luci-app-mitmproxy": {
+		"description": "Grant access to mitmproxy LuCI app",
+		"read": {
+			"ubus": {
+				"luci.mitmproxy": [
+					"get_status",
+					"get_config",
+					"get_stats",
+					"get_requests",
+					"get_top_hosts",
+					"get_ca_info"
+				]
+			},
+			"uci": [
+				"mitmproxy"
+			]
+		},
+		"write": {
+			"ubus": {
+				"luci.mitmproxy": [
+					"service_start",
+					"service_stop",
+					"service_restart",
+					"set_config",
+					"clear_data"
+				]
+			},
+			"uci": [
+				"mitmproxy"
+			]
+		}
+	}
+}
