@@ -5,6 +5,7 @@
 # Uses nDPId's local DPI detection (no cloud subscription required)
 #
 # Copyright (C) 2025 CyberMind.fr
+# NOTE: Uses contains() instead of test() for jq without ONIGURUMA regex
 
 HISTORY_FILE="/tmp/media-flow-history.json"
 NDPID_FLOWS="/tmp/ndpid-flows.json"
@@ -12,13 +13,6 @@ NDPID_APPS="/tmp/ndpid-apps.json"
 MEDIA_CACHE="/tmp/media-flow-ndpid-cache.json"
 MAX_ENTRIES=1000
 LOCK_FILE="/tmp/media-flow-ndpid-collector.lock"
-
-# Streaming services patterns for nDPId applications
-# These match nDPId's application protocol names
-STREAMING_VIDEO="YouTube|Netflix|Disney|AmazonVideo|PrimeVideo|Twitch|HboMax|Hulu|Vimeo|Peacock|Paramount|Crunchyroll|DailyMotion|Vevo|Plex|AppleTV"
-STREAMING_AUDIO="Spotify|AppleMusic|Deezer|SoundCloud|Tidal|Pandora|AmazonMusic|YouTubeMusic|iHeartRadio|Audible"
-STREAMING_VISIO="Zoom|Teams|GoogleMeet|Discord|Skype|Webex|FaceTime|WhatsApp|Signal|Telegram|Slack|GoToMeeting"
-STREAMING_ALL="${STREAMING_VIDEO}|${STREAMING_AUDIO}|${STREAMING_VISIO}"
 
 # Check if already running
 if [ -f "$LOCK_FILE" ]; then
@@ -37,8 +31,7 @@ enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
 
 # Check if nDPId data is available
 if [ ! -f "$NDPID_FLOWS" ]; then
-	# Fall back to checking if ndpid is running
-	if ! pgrep -x ndpid > /dev/null 2>&1; then
+	if ! pgrep ndpid > /dev/null 2>&1; then
 		exit 0
 	fi
 fi
@@ -46,71 +39,85 @@ fi
 # Initialize history file
 [ ! -f "$HISTORY_FILE" ] && echo '[]' > "$HISTORY_FILE"
 
-# Function to categorize streaming service
-categorize_service() {
-	local app="$1"
-	if echo "$app" | grep -qiE "$STREAMING_VIDEO"; then
-		echo "video"
-	elif echo "$app" | grep -qiE "$STREAMING_AUDIO"; then
-		echo "audio"
-	elif echo "$app" | grep -qiE "$STREAMING_VISIO"; then
-		echo "visio"
-	else
-		echo "other"
-	fi
-}
-
-# Function to estimate quality from bandwidth
-estimate_quality() {
-	local kbps="$1"
-	local category="$2"
-
-	if [ "$category" = "audio" ]; then
-		# Audio quality tiers (kbps)
-		if [ "$kbps" -lt 96 ]; then
-			echo "Low"
-		elif [ "$kbps" -lt 192 ]; then
-			echo "Normal"
-		elif [ "$kbps" -lt 320 ]; then
-			echo "High"
-		else
-			echo "Lossless"
-		fi
-	elif [ "$category" = "visio" ]; then
-		# Video call quality tiers (kbps)
-		if [ "$kbps" -lt 500 ]; then
-			echo "Audio Only"
-		elif [ "$kbps" -lt 1500 ]; then
-			echo "SD"
-		elif [ "$kbps" -lt 3000 ]; then
-			echo "HD"
-		else
-			echo "FHD"
-		fi
-	else
-		# Video streaming quality tiers (kbps)
-		if [ "$kbps" -lt 1000 ]; then
-			echo "SD"
-		elif [ "$kbps" -lt 3000 ]; then
-			echo "HD"
-		elif [ "$kbps" -lt 8000 ]; then
-			echo "FHD"
-		else
-			echo "4K"
-		fi
-	fi
-}
-
-# Process nDPId flows
+# Process nDPId flows using contains() instead of test() regex
+# This works with jq compiled without ONIGURUMA
 if [ -f "$NDPID_FLOWS" ] && command -v jq >/dev/null 2>&1; then
 	timestamp=$(date -Iseconds)
 
-	# Extract streaming flows from nDPId data
-	new_entries=$(jq -c --arg ts "$timestamp" --arg pattern "$STREAMING_ALL" '
+	# Extract streaming flows - using contains() for pattern matching
+	# Matches: YouTube, Netflix, Disney, Twitch, Spotify, WhatsApp, Zoom, Teams, etc.
+	new_entries=$(jq -c --arg ts "$timestamp" '
+		# Helper function to check if app is a streaming service
+		def is_streaming:
+			(. | ascii_downcase) as $app |
+			($app | contains("youtube")) or
+			($app | contains("netflix")) or
+			($app | contains("disney")) or
+			($app | contains("amazon")) or
+			($app | contains("prime")) or
+			($app | contains("twitch")) or
+			($app | contains("hbo")) or
+			($app | contains("hulu")) or
+			($app | contains("vimeo")) or
+			($app | contains("peacock")) or
+			($app | contains("paramount")) or
+			($app | contains("plex")) or
+			($app | contains("appletv")) or
+			($app | contains("spotify")) or
+			($app | contains("applemusic")) or
+			($app | contains("deezer")) or
+			($app | contains("soundcloud")) or
+			($app | contains("tidal")) or
+			($app | contains("pandora")) or
+			($app | contains("audible")) or
+			($app | contains("zoom")) or
+			($app | contains("teams")) or
+			($app | contains("meet")) or
+			($app | contains("discord")) or
+			($app | contains("skype")) or
+			($app | contains("webex")) or
+			($app | contains("facetime")) or
+			($app | contains("whatsapp")) or
+			($app | contains("signal")) or
+			($app | contains("telegram")) or
+			($app | contains("slack"));
+
+		# Helper function to get category
+		def get_category:
+			(. | ascii_downcase) as $app |
+			if ($app | contains("youtube")) or ($app | contains("netflix")) or ($app | contains("disney")) or
+			   ($app | contains("amazon")) or ($app | contains("twitch")) or ($app | contains("hbo")) or
+			   ($app | contains("hulu")) or ($app | contains("vimeo")) or ($app | contains("plex")) or
+			   ($app | contains("appletv")) or ($app | contains("paramount")) or ($app | contains("peacock"))
+			then "video"
+			elif ($app | contains("spotify")) or ($app | contains("applemusic")) or ($app | contains("deezer")) or
+			     ($app | contains("soundcloud")) or ($app | contains("tidal")) or ($app | contains("pandora")) or
+			     ($app | contains("audible"))
+			then "audio"
+			elif ($app | contains("zoom")) or ($app | contains("teams")) or ($app | contains("meet")) or
+			     ($app | contains("discord")) or ($app | contains("skype")) or ($app | contains("webex")) or
+			     ($app | contains("facetime")) or ($app | contains("whatsapp")) or ($app | contains("signal")) or
+			     ($app | contains("telegram")) or ($app | contains("slack"))
+			then "visio"
+			else "other"
+			end;
+
+		# Helper function to estimate quality from bandwidth (kbps)
+		def get_quality(cat):
+			if cat == "audio" then
+				if . < 96 then "Low" elif . < 192 then "Normal" elif . < 320 then "High" else "Lossless" end
+			elif cat == "visio" then
+				if . < 500 then "Audio" elif . < 1500 then "SD" elif . < 3000 then "HD" else "FHD" end
+			else
+				if . < 1000 then "SD" elif . < 3000 then "HD" elif . < 8000 then "FHD" else "4K" end
+			end;
+
 		[.[] |
 			select(.app != null and .app != "" and .app != "Unknown") |
-			select(.app | test($pattern; "i")) |
-			select(.state == "active" or .bytes_rx > 10000) |
+			select(.app | is_streaming) |
+			select(.state == "active" or .bytes_rx > 10000 or .bytes_tx > 10000) |
+			(.app | get_category) as $cat |
+			(((.bytes_rx // 0) + (.bytes_tx // 0)) * 8 / 1000 | floor) as $bw |
 			{
 				timestamp: $ts,
 				app: .app,
@@ -124,63 +131,43 @@ if [ -f "$NDPID_FLOWS" ] && command -v jq >/dev/null 2>&1; then
 				confidence: (.confidence // "Unknown"),
 				ndpi_category: (.category // "Unknown"),
 				flow_id: (.id // 0),
-				state: (.state // "active")
+				state: (.state // "active"),
+				duration: 1,
+				bandwidth: $bw,
+				category: $cat,
+				quality: ($bw | get_quality($cat))
 			}
 		] |
-		# Calculate bandwidth and quality for each entry
-		map(. + {
-			duration: 1,
-			bandwidth: ((.bytes_rx + .bytes_tx) * 8 / 1000 | floor),
-			category: (
-				if (.app | test("YouTube|Netflix|Disney|Amazon|Twitch|Hbo|Hulu|Vimeo|Peacock|Paramount|Plex|AppleTV"; "i")) then "video"
-				elif (.app | test("Spotify|Apple.*Music|Deezer|SoundCloud|Tidal|Pandora|iHeart|Audible"; "i")) then "audio"
-				elif (.app | test("Zoom|Teams|Meet|Discord|Skype|Webex|Face.*Time|WhatsApp|Signal|Telegram|Slack"; "i")) then "visio"
-				else "other"
-				end
-			)
-		}) |
-		# Add quality estimation
-		map(. + {
-			quality: (
-				if .category == "audio" then
-					(if .bandwidth < 96 then "Low" elif .bandwidth < 192 then "Normal" elif .bandwidth < 320 then "High" else "Lossless" end)
-				elif .category == "visio" then
-					(if .bandwidth < 500 then "Audio Only" elif .bandwidth < 1500 then "SD" elif .bandwidth < 3000 then "HD" else "FHD" end)
-				else
-					(if .bandwidth < 1000 then "SD" elif .bandwidth < 3000 then "HD" elif .bandwidth < 8000 then "FHD" else "4K" end)
-				end
-			)
-		}) |
 		# Only include flows with significant traffic
-		[.[] | select(.bytes_rx > 10000 or .packets > 100)]
+		[.[] | select(.bytes_rx > 5000 or .bytes_tx > 5000 or .packets > 50)]
 	' "$NDPID_FLOWS" 2>/dev/null)
 
 	# Save current state to cache for frontend
 	if [ -n "$new_entries" ] && [ "$new_entries" != "[]" ] && [ "$new_entries" != "null" ]; then
 		echo "$new_entries" > "$MEDIA_CACHE"
 
-		# Merge with history (avoid duplicates by flow_id within same minute)
+		# Merge with history (avoid duplicates)
 		jq -c --argjson new "$new_entries" '
-			# Add new entries
 			. + ($new | map(del(.flow_id, .state))) |
-			# Remove duplicates (same client+app within 60 seconds)
 			unique_by(.client + .app + (.timestamp | split("T")[0])) |
-			# Keep only last MAX_ENTRIES
 			.[-'"$MAX_ENTRIES"':]
 		' "$HISTORY_FILE" > "${HISTORY_FILE}.tmp" 2>/dev/null && mv "${HISTORY_FILE}.tmp" "$HISTORY_FILE"
 	else
-		# No active streams, save empty cache
 		echo '[]' > "$MEDIA_CACHE"
 	fi
 fi
 
-# Also process nDPId apps file for aggregated stats
+# Also process nDPId apps file for aggregated stats (without regex)
 if [ -f "$NDPID_APPS" ] && command -v jq >/dev/null 2>&1; then
-	# Extract streaming apps from aggregated data
-	jq -c --arg pattern "$STREAMING_ALL" '
-		[.[] | select(.name | test($pattern; "i"))] |
-		sort_by(-.bytes) |
-		.[0:20]
+	jq -c '
+		def is_streaming:
+			(.name | ascii_downcase) as $app |
+			($app | contains("youtube")) or ($app | contains("netflix")) or
+			($app | contains("spotify")) or ($app | contains("whatsapp")) or
+			($app | contains("discord")) or ($app | contains("zoom")) or
+			($app | contains("teams")) or ($app | contains("twitch")) or
+			($app | contains("disney")) or ($app | contains("amazon"));
+		[.[] | select(is_streaming)] | sort_by(-.bytes) | .[0:20]
 	' "$NDPID_APPS" > "/tmp/media-flow-apps.json" 2>/dev/null
 fi
 
