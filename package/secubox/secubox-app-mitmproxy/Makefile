@@ -10,8 +10,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-mitmproxy
-PKG_VERSION:=11.1.3
-PKG_RELEASE:=2
+PKG_VERSION:=10.4.2
+PKG_RELEASE:=1
 
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_LICENSE:=MIT
@@ -90,7 +90,7 @@ define Package/secubox-app-mitmproxy/postinst
 	# Install mitmproxy via pip if not already installed
 	if ! python3 -c "import mitmproxy" 2>/dev/null; then
 		echo "Installing mitmproxy via pip..."
-		pip3 install --no-cache-dir mitmproxy==11.1.3
+		pip3 install --no-cache-dir mitmproxy==10.4.2
 	fi
 
 	# Generate CA certificate if not exists
