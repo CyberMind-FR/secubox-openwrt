@@ -58,6 +58,8 @@ OPENWRT_ONLY_PACKAGES=(
     "secubox-app-netifyd"
     "secubox-app-ndpid"
     "secubox-app-nodogsplash"
+    "secubox-app-mitmproxy"
+    "mitmproxy"
     "nodogsplash"
 )
 
@@ -1042,6 +1044,7 @@ run_build_openwrt() {
         ["ndpid"]="secubox-app-ndpid"
         ["netifyd"]="secubox-app-netifyd"
         ["crowdsec"]="secubox-app-crowdsec"
+        ["mitmproxy"]="secubox-app-mitmproxy"
     )
 
     # Map directory names to actual package names (PKG_NAME in Makefile)
@@ -1051,6 +1054,7 @@ run_build_openwrt() {
         ["secubox-app-netifyd"]="secubox-netifyd"
         ["secubox-app-crowdsec"]="secubox-crowdsec"
         ["secubox-app-nodogsplash"]="secubox-app-nodogsplash"
+        ["secubox-app-mitmproxy"]="secubox-app-mitmproxy"
     )
 
     # Resolve directory name (handle shorthand like "nodogsplash" -> "secubox-app-nodogsplash")
@@ -1849,6 +1853,7 @@ PACKAGES:
         netifyd                 Netifyd DPI engine (shorthand for secubox-app-netifyd)
         nodogsplash             Captive portal (shorthand for secubox-app-nodogsplash)
         crowdsec                CrowdSec IPS (shorthand for secubox-app-crowdsec)
+        mitmproxy               mitmproxy HTTPS proxy (shorthand for secubox-app-mitmproxy)
         secubox-app-*           Full directory names also accepted
 
 ARCHITECTURES (for package building):
@@ -1886,6 +1891,9 @@ EXAMPLES:
 
     # Build CrowdSec IPS (toolchain - Go)
     $0 build crowdsec
+
+    # Build mitmproxy HTTPS proxy (toolchain - binary download)
+    $0 build mitmproxy
 
     # Build using full directory name
     $0 build secubox-app-ndpid
