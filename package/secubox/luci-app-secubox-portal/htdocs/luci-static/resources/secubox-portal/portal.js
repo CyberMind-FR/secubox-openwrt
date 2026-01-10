@@ -48,6 +48,18 @@ return baseclass.extend({
 			service: 'auth-guardian',
 			version: '0.3.0'
 		},
+		'mitmproxy': {
+			id: 'mitmproxy',
+			name: 'mitmproxy',
+			desc: 'Interactive HTTPS proxy for traffic inspection, debugging, and security testing',
+			icon: '\ud83d\udd0d',
+			iconBg: 'rgba(231, 76, 60, 0.15)',
+			iconColor: '#e74c3c',
+			section: 'security',
+			path: 'admin/secubox/security/mitmproxy/dashboard',
+			service: 'mitmproxy',
+			version: '10.4.2'
+		},
 
 		// Network Apps
 		'bandwidth-manager': {
@@ -185,6 +197,20 @@ return baseclass.extend({
 			path: 'admin/secubox/settings',
 			service: null,
 			version: null
+		},
+
+		// Services Apps
+		'vhost-manager': {
+			id: 'vhost-manager',
+			name: 'VHost Manager',
+			desc: 'Manage virtual hosts, SSL certificates, and reverse proxy configurations',
+			icon: '\ud83c\udf10',
+			iconBg: 'rgba(102, 126, 234, 0.15)',
+			iconColor: '#667eea',
+			section: 'services',
+			path: 'admin/secubox/services/vhosts/overview',
+			service: 'nginx',
+			version: '0.5.0'
 		}
 	},
 
@@ -238,6 +264,13 @@ return baseclass.extend({
 			icon: '\u2699\ufe0f',
 			path: 'admin/secubox/system',
 			order: 7
+		},
+		'services': {
+			id: 'services',
+			name: 'Services',
+			icon: '\ud83d\udce6',
+			path: 'admin/secubox/services',
+			order: 8
 		}
 	},
 

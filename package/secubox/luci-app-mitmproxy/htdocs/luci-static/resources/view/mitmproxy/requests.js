@@ -22,7 +22,7 @@ function renderMitmproxyNav(activeId) {
 	return E('div', { 'class': 'mp-app-nav' }, MITMPROXY_NAV.map(function(item) {
 		var isActive = activeId === item.id;
 		return E('a', {
-			'href': L.url('admin', 'secubox', 'mitmproxy', item.id),
+			'href': L.url('admin', 'secubox', 'security', 'mitmproxy', item.id),
 			'class': isActive ? 'active' : ''
 		}, [
 			E('span', {}, item.icon),

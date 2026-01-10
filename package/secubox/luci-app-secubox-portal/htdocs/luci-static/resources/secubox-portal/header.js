@@ -243,7 +243,8 @@ var sections = [
 	{ id: 'security', name: 'Security', icon: '\ud83d\udee1\ufe0f', path: 'admin/secubox/security' },
 	{ id: 'network', name: 'Network', icon: '\ud83c\udf10', path: 'admin/secubox/network' },
 	{ id: 'monitoring', name: 'Monitoring', icon: '\ud83d\udcca', path: 'admin/secubox/monitoring' },
-	{ id: 'system', name: 'System', icon: '\u2699\ufe0f', path: 'admin/secubox/system' }
+	{ id: 'system', name: 'System', icon: '\u2699\ufe0f', path: 'admin/secubox/system' },
+	{ id: 'services', name: 'Services', icon: '\ud83d\udce6', path: 'admin/secubox/services' }
 ];
 
 function injectCSS() {
@@ -358,6 +359,7 @@ function detectActiveSection() {
 	if (path.indexOf('/secubox/crowdsec') !== -1) return 'security';
 	if (path.indexOf('/secubox/auth-guardian') !== -1) return 'security';
 	if (path.indexOf('/secubox/client-guardian') !== -1) return 'security';
+	if (path.indexOf('/secubox/mitmproxy') !== -1) return 'security';
 	// Network section
 	if (path.indexOf('/secubox/network') !== -1) return 'network';
 	if (path.indexOf('/secubox/bandwidth') !== -1) return 'network';
@@ -372,6 +374,9 @@ function detectActiveSection() {
 	// System section
 	if (path.indexOf('/secubox/system') !== -1) return 'system';
 	if (path.indexOf('/secubox/system-hub') !== -1) return 'system';
+	// Services section
+	if (path.indexOf('/secubox/services') !== -1) return 'services';
+	if (path.indexOf('/secubox/vhosts') !== -1) return 'services';
 	// Hub (main SecuBox app)
 	if (path.indexOf('/secubox/dashboard') !== -1) return 'hub';
 	if (path.indexOf('/secubox/modules') !== -1) return 'hub';

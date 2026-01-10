@@ -24,7 +24,7 @@ function renderMitmproxyNav(activeId) {
 	}, MITMPROXY_NAV.map(function(item) {
 		var isActive = activeId === item.id;
 		return E('a', {
-			'href': L.url('admin', 'secubox', 'mitmproxy', item.id),
+			'href': L.url('admin', 'secubox', 'security', 'mitmproxy', item.id),
 			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
 				(isActive ? 'background:linear-gradient(135deg,#e74c3c,#c0392b);color:white;' : 'color:#a0a0b0;background:transparent;')
 		}, [
