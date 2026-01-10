@@ -1,0 +1,20 @@
+--- a/libs/ndpi/example/Makefile.in
++++ b/libs/ndpi/example/Makefile.in
+@@ -48,6 +48,8 @@
+ 
+ CFLAGS+=-pthread
+ 
++LIBS_NO_NDPI := $(filter-out $(LIBNDPI),$(LIBS))
++
+ all: ndpiReader$(EXE_SUFFIX) @DPDK_TARGET@
+ 
+ EXECUTABLE_SOURCES := ndpiReader.c ndpiSimpleIntegration.c
+@@ -57,7 +59,7 @@
+ 	$(AR) rsv libndpiReader.a $(COMMON_SOURCES:%.c=%.o)
+ 
+ ndpiReader$(EXE_SUFFIX): libndpiReader.a $(LIBNDPI) ndpiReader.o
+-	$(CC) $(CFLAGS) $(LDFLAGS) ndpiReader.o libndpiReader.a $(LIBS) -o $@
++	$(CC) $(CFLAGS) $(LDFLAGS) ndpiReader.o -Wl,--start-group libndpiReader.a $(LIBNDPI) -Wl,--end-group $(LIBS_NO_NDPI) -o $@
+ 
+ ndpiSimpleIntegration$(EXE_SUFFIX): ndpiSimpleIntegration.o
+ 	$(CC) $(CFLAGS) $(LDFLAGS) $< $(LIBS) -o $@

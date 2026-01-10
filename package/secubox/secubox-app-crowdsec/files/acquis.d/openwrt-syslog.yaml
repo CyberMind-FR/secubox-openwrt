@@ -1,0 +1,28 @@
+# OpenWrt System Syslog Acquisition
+# This configuration monitors OpenWrt system logs via syslog
+# For local log files or syslog forwarding scenarios
+#
+# Note: OpenWrt uses logd by default which doesn't write to files.
+# Enable syslog-ng or configure log_file in /etc/config/system
+# to enable file-based log acquisition.
+#
+# Required collections:
+#   cscli collections install crowdsecurity/linux
+#   cscli parsers install crowdsecurity/syslog-logs
+
+# File-based acquisition for syslog (if log_file is configured)
+filenames:
+  - /var/log/messages
+  - /var/log/syslog
+labels:
+  type: syslog
+---
+# Alternative: Syslog service acquisition
+# Uncomment this section if using remote syslog forwarding
+# or if CrowdSec should act as a syslog server
+#
+# source: syslog
+# listen_addr: 127.0.0.1
+# listen_port: 10514
+# labels:
+#   type: syslog

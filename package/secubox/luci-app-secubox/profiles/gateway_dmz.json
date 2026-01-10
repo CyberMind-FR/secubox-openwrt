@@ -1,0 +1,11 @@
+{
+  "id": "gateway_dmz",
+  "name": "Gateway + DMZ",
+  "description": "Router with isolated DMZ segment for exposed services.",
+  "network_mode": "dmz",
+  "apps": ["zigbee2mqtt"],
+  "packages": ["luci-app-vhost-manager"],
+  "uci": [
+    { "config": "secubox", "section": "vhost_manager", "option": "enabled", "value": "1" }
+  ]
+}

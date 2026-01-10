@@ -15,14 +15,47 @@ LUCI_DESCRIPTION:=Unified dashboard integrating netifyd DPI threats with CrowdSe
 LUCI_DEPENDS:=+luci-base +rpcd +netifyd +crowdsec +jq +jsonfilter
 LUCI_PKGARCH:=all
 
-# File permissions (CRITICAL: RPCD scripts MUST be executable 755)
-# Format: path:owner:group:mode
-# - RPCD scripts: 755 (executable by root, required for ubus calls)
-# - Config files: 644 (readable by all, writable by root)
-# - CSS/JS files: 644 (set automatically by luci.mk)
-PKG_FILE_MODES:=/usr/libexec/rpcd/luci.secubox-security-threats:root:root:755
-
 include $(TOPDIR)/feeds/luci/luci.mk
+
+define Package/luci-app-secubox-security-threats/conffiles
+/etc/config/secubox_security_threats
+endef
+
+define Package/luci-app-secubox-security-threats/install
+	# RPCD backend (MUST be 755 for ubus calls)
+	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
+	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.secubox-security-threats $(1)/usr/libexec/rpcd/
+
+	# ACL permissions
+	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
+	$(INSTALL_DATA) ./root/usr/share/rpcd/acl.d/luci-app-secubox-security-threats.json $(1)/usr/share/rpcd/acl.d/
+
+	# LuCI menu
+	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
+	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-secubox-security-threats.json $(1)/usr/share/luci/menu.d/
+
+	# JavaScript API module
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/secubox-security-threats
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/secubox-security-threats/api.js $(1)/www/luci-static/resources/secubox-security-threats/
+
+	# JavaScript views
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/secubox-security-threats
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/secubox-security-threats/dashboard.js $(1)/www/luci-static/resources/view/secubox-security-threats/
+
+	# UCI default config
+	$(INSTALL_DIR) $(1)/etc/config
+	$(INSTALL_CONF) ./root/etc/config/secubox_security_threats $(1)/etc/config/secubox_security_threats
+endef
+
+define Package/luci-app-secubox-security-threats/postinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] || {
+	/etc/init.d/rpcd restart
+	rm -rf /tmp/luci-modulecache /tmp/luci-indexcache 2>/dev/null
+	echo "SecuBox Security Threats Dashboard installed."
+}
+exit 0
+endef
 
 # call BuildPackage - OpenWrt buildroot signature
 $(eval $(call BuildPackage,luci-app-secubox-security-threats))

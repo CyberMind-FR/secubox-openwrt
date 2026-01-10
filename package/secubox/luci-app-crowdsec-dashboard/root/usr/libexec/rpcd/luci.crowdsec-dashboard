@@ -16,9 +16,28 @@ secubox_log() {
 CSCLI="/usr/bin/cscli"
 CSCLI_TIMEOUT=10
 
-# Run cscli with timeout to prevent hangs
+# Check if timeout command exists
+HAS_TIMEOUT=""
+command -v timeout >/dev/null 2>&1 && HAS_TIMEOUT=1
+
+# Run cscli with optional timeout to prevent hangs
 run_cscli() {
-	timeout "$CSCLI_TIMEOUT" "$CSCLI" "$@" 2>/dev/null
+	if [ -n "$HAS_TIMEOUT" ]; then
+		timeout "$CSCLI_TIMEOUT" "$CSCLI" "$@" 2>/dev/null
+	else
+		"$CSCLI" "$@" 2>/dev/null
+	fi
+}
+
+# Run command with optional timeout
+run_with_timeout() {
+	local secs="$1"
+	shift
+	if [ -n "$HAS_TIMEOUT" ]; then
+		timeout "$secs" "$@"
+	else
+		"$@"
+	fi
 }
 
 # Check if cscli exists and crowdsec is running
@@ -113,26 +132,35 @@ get_hub() {
 # Get service status
 get_status() {
 	json_init
-	
-	# CrowdSec service
+
+	# CrowdSec service - check multiple ways
+	local cs_running=0
 	if pgrep crowdsec >/dev/null 2>&1; then
+		cs_running=1
+	elif pgrep -f "/usr/bin/crowdsec" >/dev/null 2>&1; then
+		cs_running=1
+	elif [ -f /var/run/crowdsec.pid ] && kill -0 "$(cat /var/run/crowdsec.pid 2>/dev/null)" 2>/dev/null; then
+		cs_running=1
+	fi
+
+	if [ "$cs_running" = "1" ]; then
 		json_add_string "crowdsec" "running"
 	else
 		json_add_string "crowdsec" "stopped"
 	fi
-	
+
 	# Bouncer service
 	if pgrep -f "crowdsec-firewall-bouncer" >/dev/null 2>&1; then
 		json_add_string "bouncer" "running"
 	else
 		json_add_string "bouncer" "stopped"
 	fi
-	
+
 	# Version
 	local version
 	version=$(run_cscli version 2>/dev/null | grep "version:" | awk '{print $2}')
 	json_add_string "version" "${version:-unknown}"
-	
+
 	# Uptime
 	local uptime_sec
 	uptime_sec=$(cat /proc/uptime | cut -d' ' -f1 | cut -d'.' -f1)
@@ -140,12 +168,42 @@ get_status() {
 
 	# LAPI status (check if Local API is accessible)
 	local lapi_status="unavailable"
-	if [ -x "$CSCLI" ]; then
-		if run_cscli lapi status >/dev/null 2>&1; then
-			lapi_status="available"
+	local lapi_reason=""
+
+	# First check if cscli exists
+	if [ ! -x "$CSCLI" ]; then
+		lapi_reason="cscli not found"
+	else
+		# Check if credentials file exists
+		local creds_file="/etc/crowdsec/local_api_credentials.yaml"
+		if [ ! -f "$creds_file" ]; then
+			lapi_reason="credentials missing"
+		elif ! grep -q "password:" "$creds_file" 2>/dev/null; then
+			lapi_reason="credentials incomplete"
+		else
+			# Check if LAPI port is listening (8080 hex = 1F90)
+			local port_up=0
+			if grep -qi ":1F90 " /proc/net/tcp 2>/dev/null; then
+				port_up=1
+			fi
+
+			if [ "$port_up" = "0" ]; then
+				lapi_reason="port 8080 not listening"
+			else
+				# Try actual LAPI status check
+				if run_cscli lapi status >/dev/null 2>&1; then
+					lapi_status="available"
+				else
+					lapi_reason="lapi check failed"
+				fi
+			fi
 		fi
 	fi
+
 	json_add_string "lapi_status" "$lapi_status"
+	if [ -n "$lapi_reason" ]; then
+		json_add_string "lapi_reason" "$lapi_reason"
+	fi
 
 	json_dump
 }
@@ -881,122 +939,142 @@ repair_lapi() {
 	json_init
 	local steps_done=""
 	local errors=""
-	local REPAIR_TIMEOUT=30
+	local REPAIR_TIMEOUT=10
 
 	secubox_log "Starting LAPI repair..."
 
-	# Step 1: Stop CrowdSec first for clean repair
+	# Step 1: Stop CrowdSec completely
 	/etc/init.d/crowdsec stop >/dev/null 2>&1
 	sleep 1
-	steps_done="${steps_done}Stopped CrowdSec; "
+	killall crowdsec 2>/dev/null
+	sleep 1
+	steps_done="${steps_done}Stopped; "
 
 	# Step 2: Create required directories
 	mkdir -p /srv/crowdsec/data 2>/dev/null
 	mkdir -p /etc/crowdsec/hub 2>/dev/null
-	mkdir -p /var/log 2>/dev/null
-	chown -R root:root /srv/crowdsec 2>/dev/null
+	mkdir -p /etc/crowdsec/acquis.d 2>/dev/null
+	mkdir -p /var/etc/crowdsec 2>/dev/null
 	chmod 755 /srv/crowdsec/data 2>/dev/null
-	steps_done="${steps_done}Created directories; "
+	steps_done="${steps_done}Dirs; "
 
-	# Step 3: Fix config.yaml - ensure data_dir and db_path are set
+	# Step 3: Fix config.yaml
 	local config_file="/etc/crowdsec/config.yaml"
+	local var_config="/var/etc/crowdsec/config.yaml"
 	if [ -f "$config_file" ]; then
-		# Backup original
-		cp "$config_file" "${config_file}.bak" 2>/dev/null
-
-		# Fix data_dir if empty or wrong
-		if ! grep -q "data_dir: /srv/crowdsec/data" "$config_file"; then
-			sed -i 's|^  data_dir:.*|  data_dir: /srv/crowdsec/data/|' "$config_file" 2>/dev/null
-			steps_done="${steps_done}Fixed data_dir; "
-		fi
-
-		# Fix db_path if empty or wrong
-		if ! grep -q "db_path: /srv/crowdsec/data/crowdsec.db" "$config_file"; then
-			sed -i 's|^  db_path:.*|  db_path: /srv/crowdsec/data/crowdsec.db|' "$config_file" 2>/dev/null
-			steps_done="${steps_done}Fixed db_path; "
-		fi
+		sed -i 's|^\(\s*\)data_dir:.*|\1data_dir: /srv/crowdsec/data/|' "$config_file" 2>/dev/null
+		sed -i 's|^\(\s*\)db_path:.*|\1db_path: /srv/crowdsec/data/crowdsec.db|' "$config_file" 2>/dev/null
+		cp "$config_file" "$var_config" 2>/dev/null
+		steps_done="${steps_done}Config; "
 	else
-		errors="${errors}Config file not found; "
+		errors="${errors}No config; "
 	fi
 
-	# Step 4: Check/regenerate local_api_credentials.yaml
+	# Step 4: Remove corrupted credentials
 	local creds_file="/etc/crowdsec/local_api_credentials.yaml"
-	if [ ! -f "$creds_file" ] || [ ! -s "$creds_file" ]; then
-		# Generate new credentials
-		cat > "$creds_file" << 'CREDS'
-url: http://127.0.0.1:8080/
-login: localhost
-password:
-CREDS
-		steps_done="${steps_done}Created credentials file; "
-	fi
+	rm -f "$creds_file" 2>/dev/null
 
-	# Step 5: Start CrowdSec
-	if /etc/init.d/crowdsec start >/dev/null 2>&1; then
-		steps_done="${steps_done}Started CrowdSec; "
-	else
-		errors="${errors}Failed to start CrowdSec; "
-	fi
-
-	# Step 6: Wait for LAPI to become available (with retries)
-	local retries=10
-	local lapi_ready=0
-	while [ $retries -gt 0 ]; do
-		sleep 2
-		# Check if port 8080 is listening
-		if netstat -tln 2>/dev/null | grep -q ":8080 " || ss -tln 2>/dev/null | grep -q ":8080 "; then
-			lapi_ready=1
-			break
-		fi
-		retries=$((retries - 1))
-	done
-
-	if [ "$lapi_ready" = "0" ]; then
-		errors="${errors}LAPI not listening on port 8080; "
-	else
-		steps_done="${steps_done}LAPI port listening; "
-	fi
-
-	# Step 7: Re-register local machine with longer timeout
-	if [ -x "$CSCLI" ] && [ "$lapi_ready" = "1" ]; then
-		# Force re-register machine
-		if timeout "$REPAIR_TIMEOUT" "$CSCLI" machines add localhost --auto --force >/dev/null 2>&1; then
-			steps_done="${steps_done}Registered localhost; "
+	# Step 5: Clean up orphaned machines from database
+	local db_file="/srv/crowdsec/data/crowdsec.db"
+	if [ -f "$db_file" ]; then
+		if command -v sqlite3 >/dev/null 2>&1; then
+			# Remove all machines - we'll re-register
+			sqlite3 "$db_file" "DELETE FROM machines;" 2>/dev/null
+			steps_done="${steps_done}DB cleaned; "
 		else
-			# Try without --force
-			timeout "$REPAIR_TIMEOUT" "$CSCLI" machines add localhost --auto >/dev/null 2>&1
-			steps_done="${steps_done}Attempted machine registration; "
+			# No sqlite3 - delete the database file, CrowdSec will recreate it
+			rm -f "$db_file" 2>/dev/null
+			steps_done="${steps_done}DB reset; "
 		fi
 	fi
 
-	# Step 8: Final LAPI verification with retries
-	local lapi_ok=0
-	if [ -x "$CSCLI" ]; then
-		retries=5
+	# Step 6: Start CrowdSec in LAPI-only mode (no agent)
+	# This allows LAPI to start without needing valid credentials
+	local crowdsec_bin="/usr/bin/crowdsec"
+	if [ -x "$crowdsec_bin" ]; then
+		# Start LAPI-only mode in background
+		"$crowdsec_bin" -c "$var_config" -no-cs &
+		local cs_pid=$!
+		steps_done="${steps_done}LAPI-only started; "
+
+		# Wait for LAPI to be ready (max 8 seconds)
+		local retries=8
+		local lapi_ready=0
 		while [ $retries -gt 0 ]; do
-			if timeout "$REPAIR_TIMEOUT" "$CSCLI" lapi status >/dev/null 2>&1; then
-				lapi_ok=1
+			if grep -qi ":1F90 " /proc/net/tcp 2>/dev/null; then
+				lapi_ready=1
 				break
 			fi
-			sleep 2
+			sleep 1
 			retries=$((retries - 1))
 		done
 
-		if [ "$lapi_ok" = "1" ]; then
-			steps_done="${steps_done}LAPI verified working"
+		if [ "$lapi_ready" = "1" ]; then
+			steps_done="${steps_done}LAPI up; "
+			sleep 1
+
+			# Step 7: Register machine while LAPI is running
+			if [ -x "$CSCLI" ]; then
+				local reg_output=""
+				reg_output=$("$CSCLI" -c "$var_config" machines add localhost --auto --force -f "$creds_file" 2>&1)
+				if [ $? -eq 0 ]; then
+					steps_done="${steps_done}Registered; "
+				else
+					errors="${errors}Reg failed: ${reg_output}; "
+				fi
+			fi
 		else
-			errors="${errors}LAPI still not responding"
+			errors="${errors}LAPI timeout; "
 		fi
+
+		# Step 8: Stop LAPI-only mode
+		kill $cs_pid 2>/dev/null
+		sleep 1
+		killall crowdsec 2>/dev/null
+		steps_done="${steps_done}LAPI stopped; "
+	else
+		errors="${errors}No crowdsec binary; "
+	fi
+
+	# Step 9: Verify credentials were created
+	if [ -s "$creds_file" ] && grep -q "password:" "$creds_file"; then
+		steps_done="${steps_done}Creds OK; "
+	else
+		errors="${errors}No creds; "
+	fi
+
+	# Step 10: Start CrowdSec normally via init
+	/etc/init.d/crowdsec start >/dev/null 2>&1
+	sleep 3
+
+	# Step 11: Verify everything is working
+	local lapi_ok=0
+	if pgrep crowdsec >/dev/null 2>&1; then
+		steps_done="${steps_done}Running; "
+		if [ -x "$CSCLI" ]; then
+			if run_with_timeout 5 "$CSCLI" lapi status >/dev/null 2>&1; then
+				lapi_ok=1
+				steps_done="${steps_done}LAPI OK"
+			else
+				errors="${errors}LAPI check failed; "
+			fi
+		fi
+	else
+		errors="${errors}Not running; "
+		# Get error from log
+		local log_err=""
+		log_err=$(tail -3 /var/log/crowdsec.log 2>/dev/null | grep -i "fatal\|error" | head -1)
+		[ -n "$log_err" ] && errors="${errors}${log_err}; "
 	fi
 
 	if [ "$lapi_ok" = "1" ]; then
 		json_add_boolean "success" 1
 		json_add_string "message" "LAPI repaired successfully"
 		json_add_string "steps" "$steps_done"
-		secubox_log "LAPI repair completed: $steps_done"
+		secubox_log "LAPI repair successful: $steps_done"
 	else
 		json_add_boolean "success" 0
-		json_add_string "error" "LAPI repair failed"
+		json_add_string "error" "LAPI repair incomplete"
 		json_add_string "steps" "$steps_done"
 		json_add_string "errors" "$errors"
 		secubox_log "LAPI repair failed: $errors"
@@ -1336,7 +1414,7 @@ service_control() {
 
 			# Check if service is running after action
 			local running=0
-			if pgrep -x crowdsec >/dev/null 2>&1; then
+			if pgrep crowdsec >/dev/null 2>&1; then
 				running=1
 			fi
 

@@ -38,13 +38,29 @@ return view.extend({
 		Object.keys(apps).forEach(function(key) {
 			var app = apps[key];
 			if (app.service) {
+				// First check if init script exists, then check status
 				promises.push(
-					fs.exec('/etc/init.d/' + app.service, ['status'])
-						.then(function(res) {
-							return { id: key, status: (res && res.code === 0) ? 'running' : 'stopped' };
+					fs.stat('/etc/init.d/' + app.service)
+						.then(function(stat) {
+							// Init script exists, check if enabled and running
+							return fs.exec('/etc/init.d/' + app.service, ['status'])
+								.then(function(res) {
+									return { id: key, status: (res && res.code === 0) ? 'running' : 'stopped', installed: true };
+								})
+								.catch(function() {
+									// status command failed, try pgrep as fallback
+									return fs.exec('pgrep', [app.service])
+										.then(function(res) {
+											return { id: key, status: (res && res.code === 0) ? 'running' : 'stopped', installed: true };
+										})
+										.catch(function() {
+											return { id: key, status: 'stopped', installed: true };
+										});
+								});
 						})
 						.catch(function() {
-							return { id: key, status: 'stopped' };
+							// Init script doesn't exist - service not installed
+							return { id: key, status: null, installed: false };
 						})
 				);
 			}
@@ -52,7 +68,10 @@ return view.extend({
 
 		return Promise.all(promises).then(function(results) {
 			results.forEach(function(r) {
-				self.appStatuses[r.id] = r.status;
+				// Only track installed services
+				if (r.installed) {
+					self.appStatuses[r.id] = r.status;
+				}
 			});
 			return self.appStatuses;
 		});

@@ -1,0 +1,322 @@
+/**
+ * SecuBox Help System Styles
+ * Version: 1.0.0
+ */
+
+/* ============================================================================
+   Base Help Button Styles
+   ============================================================================ */
+
+.sb-help-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 1rem;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	color: white !important;
+	border-radius: 8px;
+	text-decoration: none;
+	font-weight: 500;
+	font-size: 0.9rem;
+	transition: all 0.3s ease;
+	border: 2px solid transparent;
+	cursor: pointer;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.sb-help-btn:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+	border-color: rgba(255, 255, 255, 0.3);
+	color: white !important;
+	text-decoration: none;
+}
+
+.sb-help-btn:active {
+	transform: translateY(0);
+	box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+}
+
+.sb-help-icon {
+	font-size: 1.2em;
+	line-height: 1;
+	display: inline-flex;
+	align-items: center;
+}
+
+.sb-help-label {
+	white-space: nowrap;
+}
+
+/* ============================================================================
+   Position Variants
+   ============================================================================ */
+
+/* Header Position - Compact style for headers */
+.sb-help-header {
+	margin-left: auto;
+	padding: 0.4rem 0.8rem;
+	font-size: 0.85em;
+	align-self: center;
+}
+
+/* Footer Position - Full width on mobile */
+.sb-help-footer {
+	margin-top: 2rem;
+	width: 100%;
+	justify-content: center;
+}
+
+@media (min-width: 768px) {
+	.sb-help-footer {
+		width: auto;
+	}
+}
+
+/* Badge Style - Minimal, badge-like appearance */
+.sb-help-badge {
+	padding: 0.3rem 0.6rem;
+	font-size: 0.8rem;
+	border-radius: 4px;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	color: white !important;
+	text-decoration: none;
+	transition: all 0.3s ease;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+}
+
+.sb-help-badge:hover {
+	transform: scale(1.05);
+	box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+	color: white !important;
+}
+
+/* Floating Button - Fixed position, circular */
+.sb-help-floating {
+	position: fixed;
+	bottom: 2rem;
+	right: 2rem;
+	z-index: 1000;
+	border-radius: 50%;
+	width: 60px;
+	height: 60px;
+	padding: 0;
+	justify-content: center;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.sb-help-floating .sb-help-label {
+	display: none;
+}
+
+.sb-help-floating .sb-help-icon {
+	font-size: 1.8em;
+}
+
+.sb-help-floating:hover {
+	transform: scale(1.1);
+	box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+}
+
+/* Hide floating button on small screens to avoid overlap */
+@media (max-width: 768px) {
+	.sb-help-floating {
+		bottom: 1rem;
+		right: 1rem;
+		width: 50px;
+		height: 50px;
+	}
+
+	.sb-help-floating .sb-help-icon {
+		font-size: 1.5em;
+	}
+}
+
+/* ============================================================================
+   Tooltip Styles
+   ============================================================================ */
+
+.sb-help-tooltip {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+	color: white;
+	font-size: 12px;
+	cursor: help;
+	margin-left: 0.3rem;
+	transition: all 0.2s ease;
+}
+
+.sb-help-tooltip:hover {
+	transform: scale(1.2);
+	box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+}
+
+/* ============================================================================
+   Dark Theme Support
+   ============================================================================ */
+
+[data-theme="dark"] .sb-help-btn {
+	background: linear-gradient(135deg, #4c51bf 0%, #553c9a 100%);
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .sb-help-btn:hover {
+	box-shadow: 0 4px 12px rgba(76, 81, 191, 0.5);
+	border-color: rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="dark"] .sb-help-badge {
+	background: linear-gradient(135deg, #4c51bf 0%, #553c9a 100%);
+}
+
+[data-theme="dark"] .sb-help-tooltip {
+	background: linear-gradient(135deg, #4c51bf 0%, #553c9a 100%);
+}
+
+/* ============================================================================
+   Button States
+   ============================================================================ */
+
+.sb-help-btn:disabled,
+.sb-help-btn.disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+
+.sb-help-btn:focus {
+	outline: 2px solid #667eea;
+	outline-offset: 2px;
+}
+
+/* ============================================================================
+   Loading State
+   ============================================================================ */
+
+.sb-help-btn.loading {
+	position: relative;
+	color: transparent !important;
+}
+
+.sb-help-btn.loading::after {
+	content: '';
+	position: absolute;
+	width: 16px;
+	height: 16px;
+	top: 50%;
+	left: 50%;
+	margin-left: -8px;
+	margin-top: -8px;
+	border: 2px solid rgba(255, 255, 255, 0.3);
+	border-radius: 50%;
+	border-top-color: white;
+	animation: sb-help-spin 0.6s linear infinite;
+}
+
+@keyframes sb-help-spin {
+	to { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   Integration with Existing Modules
+   ============================================================================ */
+
+/* SecuBox Dashboard */
+.secubox-actions-grid .sb-help-btn {
+	width: 100%;
+	justify-content: center;
+}
+
+/* System Hub */
+.sh-dashboard-header .sb-help-badge {
+	margin-left: 0.5rem;
+}
+
+/* Network Modes */
+.nm-header .sb-help-btn {
+	margin-left: auto;
+}
+
+/* ============================================================================
+   Accessibility
+   ============================================================================ */
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+	.sb-help-btn {
+		border: 2px solid currentColor;
+	}
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+	.sb-help-btn,
+	.sb-help-tooltip,
+	.sb-help-floating {
+		transition: none;
+	}
+
+	.sb-help-btn:hover,
+	.sb-help-floating:hover {
+		transform: none;
+	}
+
+	.sb-help-btn.loading::after {
+		animation: none;
+		border-top-color: transparent;
+	}
+}
+
+/* Focus visible for keyboard navigation */
+.sb-help-btn:focus-visible {
+	outline: 3px solid #667eea;
+	outline-offset: 3px;
+}
+
+/* ============================================================================
+   Print Styles
+   ============================================================================ */
+
+@media print {
+	.sb-help-btn,
+	.sb-help-floating,
+	.sb-help-tooltip {
+		display: none !important;
+	}
+}
+
+/* ============================================================================
+   Responsive Adjustments
+   ============================================================================ */
+
+@media (max-width: 480px) {
+	.sb-help-btn {
+		font-size: 0.85rem;
+		padding: 0.4rem 0.7rem;
+	}
+
+	.sb-help-header {
+		padding: 0.3rem 0.6rem;
+	}
+
+	/* Stack label vertically on very small screens if needed */
+	.sb-help-btn.sb-help-stacked {
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.sb-help-btn.sb-help-stacked .sb-help-icon {
+		font-size: 1.4em;
+	}
+
+	.sb-help-btn.sb-help-stacked .sb-help-label {
+		font-size: 0.75rem;
+	}
+}

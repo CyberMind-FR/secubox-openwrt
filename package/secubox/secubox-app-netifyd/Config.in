@@ -1,0 +1,42 @@
+menu "Configuration"
+	depends on PACKAGE_netifyd
+
+config NETIFYD_WITH_LOCAL_EXPORT
+	bool "Enable local flow export"
+	default n
+	help
+		Enable local JSON export of flow data.
+		This allows the Netify Agent to write flow data to a local file
+		for consumption by other applications like luci-app-secubox-netifyd.
+
+config NETIFYD_WITH_PLUGINS
+	bool "Enable plugin support"
+	default n
+	help
+		Enable plugin support for extending Netify Agent functionality.
+		Plugins allow custom processing of flow data and integration
+		with external systems.
+
+config NETIFYD_SINK_PLUGINS
+	bool "Enable sink plugins"
+	depends on NETIFYD_WITH_PLUGINS
+	default n
+	help
+		Enable sink plugin support for custom data export backends.
+		Allows writing flow data to databases, message queues, etc.
+
+config NETIFYD_WITH_DEBUG
+	bool "Enable debug output"
+	default n
+	help
+		Enable verbose debug logging. Useful for troubleshooting
+		but increases log verbosity significantly.
+
+config NETIFYD_AUTOSTART
+	bool "Auto-start on boot"
+	default y
+	help
+		Automatically start Netify Agent when the system boots.
+		Can be disabled if you want manual control.
+
+endmenu

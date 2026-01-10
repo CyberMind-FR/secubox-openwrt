@@ -1,0 +1,226 @@
+/**
+ * Buttons
+ */
+
+/* ===== BASE BUTTON STYLES ===== */
+
+.cyber-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 0.6rem 1.5rem;
+	min-height: 40px;
+	border-radius: var(--cyber-radius-sm);
+	font-weight: 600;
+	border: var(--cyber-border);
+	background: linear-gradient(135deg, var(--cyber-accent-primary), var(--cyber-accent-primary-end));
+	color: #fff;
+	transition: transform var(--cyber-transition), box-shadow var(--cyber-transition);
+	text-transform: uppercase;
+	font-size: 0.85rem;
+	letter-spacing: 0.06em;
+	cursor: pointer;
+	white-space: nowrap;
+	user-select: none;
+}
+
+.cyber-btn:hover {
+	transform: translateY(-1px) scale(1.01);
+	box-shadow: var(--cyber-shadow);
+}
+
+.cyber-btn:active {
+	transform: translateY(0) scale(0.98);
+}
+
+.cyber-btn:focus-visible {
+	outline: 2px solid rgba(6, 182, 212, 0.6);
+	outline-offset: 2px;
+}
+
+/* ===== BUTTON VARIANTS ===== */
+
+.cyber-btn--secondary {
+	background: rgba(255, 255, 255, 0.06);
+	border-color: rgba(255, 255, 255, 0.12);
+	color: var(--cyber-text-primary);
+}
+
+.cyber-btn--danger {
+	background: linear-gradient(135deg, #f87171, #ef4444);
+}
+
+.cyber-btn--success {
+	background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.cyber-btn--warning {
+	background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+.cyber-btn--ghost {
+	background: transparent;
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+.cyber-btn--ghost:hover {
+	background: rgba(255, 255, 255, 0.08);
+}
+
+/* ===== BUTTON SIZES ===== */
+
+.cyber-btn--sm {
+	padding: 0.4rem 1rem;
+	min-height: 32px;
+	font-size: 0.75rem;
+}
+
+.cyber-btn--lg {
+	padding: 0.85rem 2rem;
+	min-height: 48px;
+	font-size: 0.95rem;
+}
+
+.cyber-btn--icon {
+	padding: 0.6rem;
+	min-width: 40px;
+	aspect-ratio: 1;
+}
+
+/* ===== BUTTON STATES ===== */
+
+.cyber-btn:disabled,
+.cyber-btn.is-disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+
+.cyber-btn.is-loading {
+	position: relative;
+	color: transparent;
+	pointer-events: none;
+}
+
+.cyber-btn.is-loading::after {
+	content: '';
+	position: absolute;
+	width: 16px;
+	height: 16px;
+	border: 2px solid rgba(255, 255, 255, 0.3);
+	border-top-color: #fff;
+	border-radius: 50%;
+	animation: cyber-spin 0.6s linear infinite;
+}
+
+/* ===== BUTTON GROUP ===== */
+
+.cyber-btn-group {
+	display: inline-flex;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+}
+
+.cyber-btn-group--attached {
+	gap: 0;
+}
+
+.cyber-btn-group--attached .cyber-btn {
+	border-radius: 0;
+	border-right: none;
+}
+
+.cyber-btn-group--attached .cyber-btn:first-child {
+	border-radius: var(--cyber-radius-sm) 0 0 var(--cyber-radius-sm);
+}
+
+.cyber-btn-group--attached .cyber-btn:last-child {
+	border-radius: 0 var(--cyber-radius-sm) var(--cyber-radius-sm) 0;
+	border-right: var(--cyber-border);
+}
+
+/* ===== RESPONSIVE - TABLET ===== */
+
+@media (max-width: 768px) {
+	.cyber-btn {
+		padding: 0.55rem 1.25rem;
+		font-size: 0.8rem;
+	}
+
+	.cyber-btn-group {
+		gap: 0.6rem;
+	}
+}
+
+/* ===== RESPONSIVE - MOBILE (Touch-Friendly) ===== */
+
+@media (max-width: 480px) {
+	.cyber-btn {
+		/* iOS touch target minimum: 44px */
+		min-height: 44px;
+		padding: 0.65rem 1.25rem;
+		font-size: 0.85rem;
+		width: auto;
+	}
+
+	.cyber-btn--sm {
+		min-height: 40px;
+		padding: 0.5rem 1rem;
+	}
+
+	.cyber-btn--lg {
+		min-height: 52px;
+		padding: 0.95rem 2rem;
+	}
+
+	.cyber-btn--icon {
+		min-width: 44px;
+		min-height: 44px;
+		padding: 0.75rem;
+	}
+
+	/* Full-width buttons on mobile */
+	.cyber-btn--full {
+		width: 100%;
+		justify-content: center;
+	}
+
+	/* Button group stacks vertically on mobile */
+	.cyber-btn-group--stack-mobile {
+		flex-direction: column;
+		width: 100%;
+	}
+
+	.cyber-btn-group--stack-mobile .cyber-btn {
+		width: 100%;
+		justify-content: center;
+	}
+
+	/* Attached button groups also stack */
+	.cyber-btn-group--attached {
+		flex-direction: column;
+	}
+
+	.cyber-btn-group--attached .cyber-btn {
+		border-radius: 0;
+		border-right: var(--cyber-border);
+		border-bottom: none;
+		width: 100%;
+	}
+
+	.cyber-btn-group--attached .cyber-btn:first-child {
+		border-radius: var(--cyber-radius-sm) var(--cyber-radius-sm) 0 0;
+	}
+
+	.cyber-btn-group--attached .cyber-btn:last-child {
+		border-radius: 0 0 var(--cyber-radius-sm) var(--cyber-radius-sm);
+		border-bottom: var(--cyber-border);
+	}
+
+	/* Better tap feedback on mobile */
+	.cyber-btn:active {
+		transform: scale(0.96);
+		transition-duration: 100ms;
+	}
+}

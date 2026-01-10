@@ -1,0 +1,169 @@
+/* ===== BASE TABLE STYLES ===== */
+
+.cyber-table {
+	width: 100%;
+	border-collapse: collapse;
+	background: rgba(13, 17, 38, 0.8);
+	border: var(--cyber-border);
+	border-radius: var(--cyber-radius-md);
+	overflow: hidden;
+}
+
+.cyber-table thead {
+	background: linear-gradient(135deg, rgba(102, 126, 234, 0.25), rgba(118, 75, 162, 0.25));
+	text-transform: uppercase;
+	font-size: 0.75rem;
+	letter-spacing: 0.08em;
+}
+
+.cyber-table th,
+.cyber-table td {
+	padding: 0.85rem 1rem;
+	text-align: left;
+}
+
+.cyber-table tbody tr {
+	border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cyber-table tbody tr:hover {
+	background: rgba(255, 255, 255, 0.04);
+}
+
+/* ===== RESPONSIVE TABLE - MOBILE CARD VIEW ===== */
+
+@media (max-width: 768px) {
+	/* Stack table rows as cards on mobile */
+	.cyber-table-responsive {
+		border: none;
+		background: transparent;
+	}
+
+	.cyber-table-responsive thead {
+		display: none; /* Hide headers on mobile */
+	}
+
+	.cyber-table-responsive,
+	.cyber-table-responsive tbody,
+	.cyber-table-responsive tr,
+	.cyber-table-responsive td {
+		display: block;
+		width: 100%;
+	}
+
+	.cyber-table-responsive tbody {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.cyber-table-responsive tr {
+		background: rgba(13, 17, 38, 0.8);
+		border: var(--cyber-border);
+		border-radius: var(--cyber-radius-md);
+		padding: 1rem;
+		margin-bottom: 0;
+		box-shadow: var(--cyber-shadow-soft);
+	}
+
+	.cyber-table-responsive tr:hover {
+		background: rgba(13, 17, 38, 0.95);
+		border-color: var(--cyber-accent-primary);
+		transform: translateY(-2px);
+		transition: all 0.2s ease;
+	}
+
+	.cyber-table-responsive td {
+		padding: 0.65rem 0;
+		border: none;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		text-align: right;
+	}
+
+	.cyber-table-responsive td:not(:last-child) {
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	}
+
+	/* Show label from data-label attribute */
+	.cyber-table-responsive td::before {
+		content: attr(data-label);
+		font-weight: 600;
+		font-size: 0.8rem;
+		color: var(--cyber-text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		text-align: left;
+		flex: 0 0 45%;
+		max-width: 45%;
+	}
+
+	.cyber-table-responsive td:empty::before {
+		content: none;
+	}
+}
+
+/* ===== RESPONSIVE TABLE - TABLET HORIZONTAL SCROLL ===== */
+
+@media (min-width: 769px) and (max-width: 1024px) {
+	.cyber-table-scroll-wrapper {
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+		border-radius: var(--cyber-radius-md);
+	}
+
+	.cyber-table-scroll {
+		min-width: 600px; /* Prevent table from being too narrow */
+	}
+
+	/* Slightly reduce padding on tablet */
+	.cyber-table th,
+	.cyber-table td {
+		padding: 0.75rem 0.85rem;
+		font-size: 0.9rem;
+	}
+}
+
+/* ===== MOBILE PORTRAIT - EXTRA COMPACT ===== */
+
+@media (max-width: 480px) {
+	.cyber-table-responsive tr {
+		padding: 0.85rem;
+	}
+
+	.cyber-table-responsive td {
+		padding: 0.5rem 0;
+		font-size: 0.85rem;
+	}
+
+	.cyber-table-responsive td::before {
+		font-size: 0.7rem;
+		flex: 0 0 40%;
+		max-width: 40%;
+	}
+}
+
+/* ===== TABLE VARIANTS ===== */
+
+/* Striped table */
+.cyber-table-striped tbody tr:nth-child(even) {
+	background: rgba(255, 255, 255, 0.02);
+}
+
+/* Bordered table */
+.cyber-table-bordered th,
+.cyber-table-bordered td {
+	border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Compact table */
+.cyber-table-compact th,
+.cyber-table-compact td {
+	padding: 0.5rem 0.75rem;
+}
+
+/* Hover effect disabled */
+.cyber-table-no-hover tbody tr:hover {
+	background: transparent;
+}

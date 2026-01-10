@@ -273,22 +273,50 @@ return baseclass.extend({
 	},
 
 	/**
-	 * Check if service is running
+	 * Check if service init script exists
+	 */
+	isServiceInstalled: function(serviceName) {
+		if (!serviceName) {
+			return Promise.resolve(false);
+		}
+		return fs.stat('/etc/init.d/' + serviceName)
+			.then(function() { return true; })
+			.catch(function() { return false; });
+	},
+
+	/**
+	 * Check if service is running (only for installed services)
 	 */
 	checkServiceStatus: function(serviceName) {
+		var self = this;
 		if (!serviceName) {
 			return Promise.resolve(null);
 		}
-		return L.resolveDefault(
-			fs.exec('/etc/init.d/' + serviceName, ['status']),
-			{ code: 1 }
-		).then(function(res) {
-			return res.code === 0 ? 'running' : 'stopped';
+		// First check if service is installed
+		return this.isServiceInstalled(serviceName).then(function(installed) {
+			if (!installed) {
+				return null; // Not installed
+			}
+			// Try init script status command
+			return fs.exec('/etc/init.d/' + serviceName, ['status'])
+				.then(function(res) {
+					return (res && res.code === 0) ? 'running' : 'stopped';
+				})
+				.catch(function() {
+					// Fallback to pgrep
+					return fs.exec('pgrep', [serviceName])
+						.then(function(res) {
+							return (res && res.code === 0) ? 'running' : 'stopped';
+						})
+						.catch(function() {
+							return 'stopped';
+						});
+				});
 		});
 	},
 
 	/**
-	 * Get all app statuses
+	 * Get all app statuses (only for installed services)
 	 */
 	getAllAppStatuses: function() {
 		var self = this;
@@ -300,18 +328,22 @@ return baseclass.extend({
 			if (app.service) {
 				promises.push(
 					self.checkServiceStatus(app.service).then(function(status) {
-						return { id: key, status: status };
+						// status is null if not installed
+						return { id: key, status: status, installed: status !== null };
 					})
 				);
 			} else {
-				promises.push(Promise.resolve({ id: key, status: null }));
+				promises.push(Promise.resolve({ id: key, status: null, installed: false }));
 			}
 		});
 
 		return Promise.all(promises).then(function(results) {
 			var statuses = {};
 			results.forEach(function(r) {
-				statuses[r.id] = r.status;
+				// Only include installed services
+				if (r.installed) {
+					statuses[r.id] = r.status;
+				}
 			});
 			return statuses;
 		});

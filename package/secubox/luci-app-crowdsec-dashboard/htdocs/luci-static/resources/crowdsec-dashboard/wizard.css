@@ -1,5 +1,39 @@
 /* CrowdSec Setup Wizard Styles */
 
+/* === Hide LuCI Left Menu === */
+#mainmenu,
+.main-left,
+.luci-mainmenu,
+#maincontent > .container > .main-left,
+header.main ~ .main .main-left,
+body > .main > .main-left,
+.node-crowdsec-dashboard-wizard .main-left {
+	display: none !important;
+	width: 0 !important;
+	min-width: 0 !important;
+	max-width: 0 !important;
+	overflow: hidden !important;
+	visibility: hidden !important;
+}
+
+/* Make main content full width when menu is hidden */
+.main-right,
+#maincontent > .container > .main-right,
+header.main ~ .main .main-right,
+body > .main > .main-right,
+.node-crowdsec-dashboard-wizard .main-right {
+	width: 100% !important;
+	max-width: 100% !important;
+	margin-left: 0 !important;
+	padding-left: 0 !important;
+	flex: 1 !important;
+}
+
+#maincontent > .container {
+	display: block !important;
+	max-width: 100% !important;
+}
+
 /* Wizard Container */
 .wizard-container {
 	max-width: 900px;

@@ -5,6 +5,25 @@
  * Version: 0.3.0
  */
 
+/* === Hide LuCI Left Menu === */
+#mainmenu,
+.main-left,
+#maincontent > .container > .main-left {
+	display: none !important;
+}
+
+/* Make main content full width when menu is hidden */
+.main-right,
+#maincontent > .container > .main-right {
+	width: 100% !important;
+	margin-left: 0 !important;
+	padding-left: 0 !important;
+}
+
+#maincontent > .container {
+	display: block !important;
+}
+
 /* === Import Fonts === */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 

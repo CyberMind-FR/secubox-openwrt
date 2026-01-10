@@ -1,0 +1,14 @@
+config main
+	option enabled '1'
+	list interface 'br-lan'
+
+config distributor
+	option enabled '1'
+	option tcp_port '7000'
+	option tcp_address '127.0.0.1'
+
+config compat
+	option enabled '1'
+
+config actions
+	option enabled '0'
