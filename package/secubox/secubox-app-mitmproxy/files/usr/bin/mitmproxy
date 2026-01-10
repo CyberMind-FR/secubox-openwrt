@@ -1,3 +1,0 @@
-#!/bin/sh
-# mitmproxy wrapper script
-exec python3 -m mitmproxy "$@"

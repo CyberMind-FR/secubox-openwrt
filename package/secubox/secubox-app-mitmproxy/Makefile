@@ -3,14 +3,15 @@
 #
 # This is free software, licensed under the MIT License.
 #
-# mitmproxy - Interactive HTTPS proxy for traffic inspection
-# Runtime installation via pip for full Python dependency management
+# secubox-app-mitmproxy - mitmproxy integration for SecuBox
+# Provides init scripts, UCI configuration, and control utilities
+# Uses native mitmproxy package (no pip required)
 #
 
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-mitmproxy
-PKG_VERSION:=8.1.1
+PKG_VERSION:=2.0.0
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
@@ -22,31 +23,25 @@ define Package/secubox-app-mitmproxy
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=SecuBox Apps
-  TITLE:=mitmproxy - Interactive HTTPS Proxy
+  TITLE:=mitmproxy - Interactive HTTPS Proxy (SecuBox Integration)
   URL:=https://mitmproxy.org/
-  DEPENDS:=+python3 +python3-pip +ca-bundle
+  DEPENDS:=+mitmproxy +jq +openssl-util
   PKGARCH:=all
 endef
 
 define Package/secubox-app-mitmproxy/description
-  mitmproxy is a free and open source interactive HTTPS proxy.
-  It can intercept, inspect, modify and replay HTTP/HTTPS traffic.
+  SecuBox integration package for mitmproxy.
+  Provides init scripts, UCI configuration, and control utilities.
+
+  Uses native mitmproxy package - no pip or runtime installation required.
 
   Features:
   - Intercept and modify HTTP/HTTPS traffic
   - Web-based interface (mitmweb)
   - Scripting API for automation
   - SSL/TLS certificate generation
-  - Request/response inspection
-  - URL and cookie capture
-
-  Use cases:
-  - Security testing and penetration testing
-  - API debugging and development
-  - Network traffic analysis
-  - Parental controls and content filtering
-
-  Note: mitmproxy is installed via pip on first run.
+  - Transparent proxy mode with iptables
+  - QUIC/HTTP3 support
 endef
 
 define Package/secubox-app-mitmproxy/conffiles
@@ -54,16 +49,9 @@ define Package/secubox-app-mitmproxy/conffiles
 endef
 
 define Build/Compile
-	@echo "No compilation required - mitmproxy installed via pip at runtime"
 endef
 
 define Package/secubox-app-mitmproxy/install
-	# Wrapper scripts
-	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) ./files/usr/bin/mitmproxy $(1)/usr/bin/mitmproxy
-	$(INSTALL_BIN) ./files/usr/bin/mitmdump $(1)/usr/bin/mitmdump
-	$(INSTALL_BIN) ./files/usr/bin/mitmweb $(1)/usr/bin/mitmweb
-
 	# Config
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/mitmproxy $(1)/etc/config/mitmproxy
@@ -78,32 +66,28 @@ define Package/secubox-app-mitmproxy/install
 
 	# CA certificate directory
 	$(INSTALL_DIR) $(1)/etc/mitmproxy
+
+	# Runtime directories
+	$(INSTALL_DIR) $(1)/var/lib/mitmproxy
+	$(INSTALL_DIR) $(1)/tmp/mitmproxy
 endef
 
 define Package/secubox-app-mitmproxy/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
-	# Create data directories
-	mkdir -p /var/lib/mitmproxy
-	mkdir -p /tmp/mitmproxy
+	# Create runtime directories
+	mkdir -p /var/lib/mitmproxy /tmp/mitmproxy /etc/mitmproxy
 
-	# Install mitmproxy via pip if not already installed
-	if ! python3 -c "import mitmproxy" 2>/dev/null; then
-		echo "Installing mitmproxy via pip..."
-		pip3 install --no-cache-dir mitmproxy==8.1.1
-	fi
-
-	# Generate CA certificate if not exists
+	# Generate CA certificate if needed
 	if [ ! -f /etc/mitmproxy/mitmproxy-ca.pem ]; then
 		echo "Generating mitmproxy CA certificate..."
-		/usr/bin/mitmdump --set confdir=/etc/mitmproxy -q &
-		sleep 5
-		killall -q mitmdump 2>/dev/null || killall -q python3 2>/dev/null || true
+		mitmdump --set confdir=/etc/mitmproxy -q &
+		sleep 3
+		killall mitmdump 2>/dev/null || true
 	fi
 
 	/etc/init.d/mitmproxy enable
 	echo "mitmproxy installed. Start with: /etc/init.d/mitmproxy start"
-	echo "Web interface at: http://router:8081"
 }
 exit 0
 endef
