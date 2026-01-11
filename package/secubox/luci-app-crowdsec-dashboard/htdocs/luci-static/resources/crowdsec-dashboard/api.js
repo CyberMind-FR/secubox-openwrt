@@ -9,7 +9,7 @@
  * CrowdSec Core: 1.7.4+
  */
 
-// Version: 0.6.0
+// Version: 0.7.0
 
 var callStatus = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
@@ -244,6 +244,12 @@ var callAcquisitionConfig = rpc.declare({
 	expect: { }
 });
 
+var callAcquisitionMetrics = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'acquisition_metrics',
+	expect: { }
+});
+
 function formatDuration(seconds) {
 	if (!seconds) return 'N/A';
 	if (seconds < 60) return seconds + 's';
@@ -377,6 +383,7 @@ return baseclass.extend({
 	// Acquisition Methods
 	configureAcquisition: callConfigureAcquisition,
 	getAcquisitionConfig: callAcquisitionConfig,
+	getAcquisitionMetrics: callAcquisitionMetrics,
 
 	formatDuration: formatDuration,
 	formatDate: formatDate,

@@ -22,7 +22,8 @@
 					"check_wizard_needed",
 					"wizard_state",
 					"console_status",
-					"acquisition_config"
+					"acquisition_config",
+					"acquisition_metrics"
 				],
 				"file": [ "read", "stat" ]
 			},

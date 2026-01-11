@@ -1369,6 +1369,95 @@ YAML
 	json_dump
 }
 
+# Get realtime acquisition metrics with rates
+get_acquisition_metrics() {
+	check_cscli
+	json_init
+
+	# Get raw metrics from cscli
+	local metrics_output
+	metrics_output=$(run_cscli metrics -o json 2>/dev/null)
+
+	if [ -z "$metrics_output" ]; then
+		json_add_boolean "available" 0
+		json_add_string "error" "Metrics not available"
+		json_dump
+		return
+	fi
+
+	json_add_boolean "available" 1
+	json_add_int "timestamp" "$(date +%s)"
+
+	# Parse acquisition sources from metrics
+	# Store metrics in temp file for parsing
+	local tmp_file="/tmp/crowdsec_metrics.$$"
+	echo "$metrics_output" > "$tmp_file"
+
+	# Extract acquisition metrics
+	json_add_array "sources"
+
+	# Use jsonfilter to extract acquisition data
+	# Format: {"source": "file:/var/log/messages", "lines_read": 123, "lines_parsed": 100, ...}
+	local sources
+	sources=$(cat "$tmp_file" | jsonfilter -e '@.acquisition' 2>/dev/null)
+
+	if [ -n "$sources" ]; then
+		# Parse each source
+		for source in $(echo "$metrics_output" | jsonfilter -e '@.acquisition.*' 2>/dev/null | head -20); do
+			json_add_object ""
+			json_add_string "source" "$source"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+
+	# Get overall stats
+	local total_read=0
+	local total_parsed=0
+	local total_unparsed=0
+	local total_buckets=0
+
+	# Parse acquisition stats using awk
+	if [ -f "$tmp_file" ]; then
+		# Extract line counts
+		total_read=$(cat "$tmp_file" | grep -o '"lines_read":[0-9]*' | grep -o '[0-9]*' | awk '{sum+=$1} END {print sum+0}')
+		total_parsed=$(cat "$tmp_file" | grep -o '"lines_parsed":[0-9]*' | grep -o '[0-9]*' | awk '{sum+=$1} END {print sum+0}')
+		total_unparsed=$(cat "$tmp_file" | grep -o '"lines_unparsed":[0-9]*' | grep -o '[0-9]*' | awk '{sum+=$1} END {print sum+0}')
+		total_buckets=$(cat "$tmp_file" | grep -o '"lines_poured_to_bucket":[0-9]*' | grep -o '[0-9]*' | awk '{sum+=$1} END {print sum+0}')
+	fi
+
+	json_add_int "total_lines_read" "${total_read:-0}"
+	json_add_int "total_lines_parsed" "${total_parsed:-0}"
+	json_add_int "total_lines_unparsed" "${total_unparsed:-0}"
+	json_add_int "total_buckets" "${total_buckets:-0}"
+
+	# Calculate parse rate
+	if [ "$total_read" -gt 0 ]; then
+		local parse_rate=$((total_parsed * 100 / total_read))
+		json_add_int "parse_rate" "$parse_rate"
+	else
+		json_add_int "parse_rate" 0
+	fi
+
+	# Check active acquisition files
+	json_add_array "active_files"
+	local acquis_dir="/etc/crowdsec/acquis.d"
+	if [ -d "$acquis_dir" ]; then
+		for f in "$acquis_dir"/*.yaml; do
+			if [ -f "$f" ]; then
+				json_add_string "" "$(basename "$f" .yaml)"
+			fi
+		done
+	fi
+	json_close_array
+
+	# Clean up
+	rm -f "$tmp_file"
+
+	json_dump
+}
+
 # Get current acquisition configuration
 get_acquisition_config() {
 	json_init
@@ -1441,7 +1530,7 @@ service_control() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{}}'
+		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{}}'
 		;;
 	call)
 		case "$2" in
@@ -1586,6 +1675,9 @@ case "$1" in
 				;;
 			acquisition_config)
 				get_acquisition_config
+				;;
+			acquisition_metrics)
+				get_acquisition_metrics
 				;;
 			*)
 				echo '{"error": "Unknown method"}'

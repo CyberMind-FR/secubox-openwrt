@@ -21,6 +21,9 @@ return view.extend({
 	bouncers: [],
 	machines: [],
 	hub: {},
+	acquisitionMetrics: {},
+	previousAcquisitionMetrics: null,
+	acquisitionRates: {},
 
 	load: function() {
 		this.csApi = api;
@@ -30,14 +33,16 @@ return view.extend({
 			this.csApi.getBouncers(),
 			this.csApi.getMachines(),
 			this.csApi.getHub(),
-			this.csApi.getMetricsConfig()
+			this.csApi.getMetricsConfig(),
+			this.csApi.getAcquisitionMetrics()
 		]).then(function(results) {
 			return {
 				metrics: results[0],
 				bouncers: results[1],
 				machines: results[2],
 				hub: results[3],
-				metricsConfig: results[4]
+				metricsConfig: results[4],
+				acquisitionMetrics: results[5]
 			};
 		});
 	},
@@ -255,6 +260,118 @@ return view.extend({
 		return E('div', { 'class': 'cyber-acquisition-list' }, items);
 	},
 
+	renderRealtimeAcquisitionMetrics: function() {
+		var self = this;
+		var acqMetrics = this.acquisitionMetrics;
+
+		if (!acqMetrics || !acqMetrics.available) {
+			return E('div', { 'class': 'cyber-empty', 'style': 'text-align: center; padding: 2rem; color: var(--cyber-text-muted, #666);' }, [
+				E('div', { 'style': 'font-size: 2rem; margin-bottom: 0.5rem;' }, '📊'),
+				E('p', {}, acqMetrics && acqMetrics.error ? acqMetrics.error : _('Realtime metrics not available'))
+			]);
+		}
+
+		var totalRead = acqMetrics.total_lines_read || 0;
+		var totalParsed = acqMetrics.total_lines_parsed || 0;
+		var totalUnparsed = acqMetrics.total_lines_unparsed || 0;
+		var totalBuckets = acqMetrics.total_buckets || 0;
+		var parseRate = acqMetrics.parse_rate || 0;
+		var activeFiles = acqMetrics.active_files || [];
+
+		// Calculate rates if we have previous data
+		var readRate = this.acquisitionRates.readRate || 0;
+		var parsedRate = this.acquisitionRates.parsedRate || 0;
+
+		// Create stats cards grid
+		var statsGrid = E('div', { 'class': 'cyber-realtime-stats', 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;' }, [
+			// Lines Read Card
+			E('div', { 'class': 'cyber-stat-card', 'style': 'background: var(--cyber-card-bg, rgba(30,30,40,0.8)); border: 1px solid var(--cyber-border, rgba(255,255,255,0.1)); border-radius: 8px; padding: 1rem; text-align: center;' }, [
+				E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-muted, #666); margin-bottom: 0.25rem; text-transform: uppercase;' }, _('Lines Read')),
+				E('div', { 'class': 'cyber-stat-value', 'style': 'font-size: 1.5rem; font-weight: 700; color: var(--cyber-accent-primary, #667eea);' }, this.formatNumber(totalRead)),
+				readRate > 0 ? E('div', { 'style': 'font-size: 0.7rem; color: var(--cyber-success, #00d4aa); margin-top: 0.25rem;' }, '+' + readRate + '/s') : null
+			]),
+			// Lines Parsed Card
+			E('div', { 'class': 'cyber-stat-card', 'style': 'background: var(--cyber-card-bg, rgba(30,30,40,0.8)); border: 1px solid var(--cyber-border, rgba(255,255,255,0.1)); border-radius: 8px; padding: 1rem; text-align: center;' }, [
+				E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-muted, #666); margin-bottom: 0.25rem; text-transform: uppercase;' }, _('Parsed')),
+				E('div', { 'class': 'cyber-stat-value', 'style': 'font-size: 1.5rem; font-weight: 700; color: var(--cyber-success, #00d4aa);' }, this.formatNumber(totalParsed)),
+				parsedRate > 0 ? E('div', { 'style': 'font-size: 0.7rem; color: var(--cyber-success, #00d4aa); margin-top: 0.25rem;' }, '+' + parsedRate + '/s') : null
+			]),
+			// Parse Rate Card with progress bar
+			E('div', { 'class': 'cyber-stat-card', 'style': 'background: var(--cyber-card-bg, rgba(30,30,40,0.8)); border: 1px solid var(--cyber-border, rgba(255,255,255,0.1)); border-radius: 8px; padding: 1rem; text-align: center;' }, [
+				E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-muted, #666); margin-bottom: 0.25rem; text-transform: uppercase;' }, _('Parse Rate')),
+				E('div', { 'class': 'cyber-stat-value', 'style': 'font-size: 1.5rem; font-weight: 700; color: ' + (parseRate >= 80 ? 'var(--cyber-success, #00d4aa)' : parseRate >= 50 ? 'var(--cyber-warning, #ffa500)' : 'var(--cyber-danger, #ff4757)') + ';' }, parseRate + '%'),
+				E('div', { 'class': 'cyber-progress', 'style': 'height: 4px; background: var(--cyber-border, rgba(255,255,255,0.1)); border-radius: 2px; margin-top: 0.5rem; overflow: hidden;' }, [
+					E('div', { 'class': 'cyber-progress-bar', 'style': 'width: ' + parseRate + '%; height: 100%; background: ' + (parseRate >= 80 ? 'var(--cyber-success, #00d4aa)' : parseRate >= 50 ? 'var(--cyber-warning, #ffa500)' : 'var(--cyber-danger, #ff4757)') + '; transition: width 0.3s ease;' })
+				])
+			]),
+			// Buckets Card
+			E('div', { 'class': 'cyber-stat-card', 'style': 'background: var(--cyber-card-bg, rgba(30,30,40,0.8)); border: 1px solid var(--cyber-border, rgba(255,255,255,0.1)); border-radius: 8px; padding: 1rem; text-align: center;' }, [
+				E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-muted, #666); margin-bottom: 0.25rem; text-transform: uppercase;' }, _('Buckets')),
+				E('div', { 'class': 'cyber-stat-value', 'style': 'font-size: 1.5rem; font-weight: 700; color: var(--cyber-warning, #ffa500);' }, this.formatNumber(totalBuckets))
+			]),
+			// Unparsed Card
+			E('div', { 'class': 'cyber-stat-card', 'style': 'background: var(--cyber-card-bg, rgba(30,30,40,0.8)); border: 1px solid var(--cyber-border, rgba(255,255,255,0.1)); border-radius: 8px; padding: 1rem; text-align: center;' }, [
+				E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-muted, #666); margin-bottom: 0.25rem; text-transform: uppercase;' }, _('Unparsed')),
+				E('div', { 'class': 'cyber-stat-value', 'style': 'font-size: 1.5rem; font-weight: 700; color: ' + (totalUnparsed > 0 ? 'var(--cyber-danger, #ff4757)' : 'var(--cyber-text-muted, #666)') + ';' }, this.formatNumber(totalUnparsed))
+			])
+		]);
+
+		// Active sources list
+		var sourcesList = E('div', { 'class': 'cyber-sources-list', 'style': 'margin-top: 1rem;' }, [
+			E('div', { 'style': 'font-size: 0.85rem; font-weight: 600; color: var(--cyber-text-secondary, #a0a0b0); margin-bottom: 0.5rem;' }, _('Active Acquisition Sources')),
+			activeFiles.length > 0 ?
+				E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 0.5rem;' },
+					activeFiles.map(function(file) {
+						return E('span', {
+							'class': 'cyber-badge cyber-badge--info',
+							'style': 'font-size: 0.75rem; padding: 0.25rem 0.5rem; background: var(--cyber-accent-primary, #667eea); color: white; border-radius: 4px;'
+						}, file);
+					})
+				) :
+				E('span', { 'style': 'color: var(--cyber-text-muted, #666); font-size: 0.85rem;' }, _('No active sources'))
+		]);
+
+		// Last update timestamp
+		var timestamp = acqMetrics.timestamp ? new Date(acqMetrics.timestamp * 1000).toLocaleTimeString() : 'N/A';
+		var lastUpdate = E('div', { 'style': 'text-align: right; font-size: 0.75rem; color: var(--cyber-text-muted, #666); margin-top: 1rem;' }, [
+			E('span', { 'class': 'cyber-pulse', 'style': 'display: inline-block; width: 8px; height: 8px; background: var(--cyber-success, #00d4aa); border-radius: 50%; margin-right: 0.5rem; animation: pulse 2s infinite;' }),
+			_('Last update: ') + timestamp
+		]);
+
+		return E('div', { 'class': 'cyber-realtime-acquisition', 'id': 'realtime-acquisition-container' }, [
+			statsGrid,
+			sourcesList,
+			lastUpdate
+		]);
+	},
+
+	formatNumber: function(num) {
+		if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+		if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+		return String(num);
+	},
+
+	updateAcquisitionRates: function(newMetrics) {
+		if (!this.previousAcquisitionMetrics || !newMetrics) {
+			this.previousAcquisitionMetrics = newMetrics;
+			return;
+		}
+
+		var prevTimestamp = this.previousAcquisitionMetrics.timestamp || 0;
+		var newTimestamp = newMetrics.timestamp || 0;
+		var timeDiff = newTimestamp - prevTimestamp;
+
+		if (timeDiff > 0) {
+			var readDiff = (newMetrics.total_lines_read || 0) - (this.previousAcquisitionMetrics.total_lines_read || 0);
+			var parsedDiff = (newMetrics.total_lines_parsed || 0) - (this.previousAcquisitionMetrics.total_lines_parsed || 0);
+
+			this.acquisitionRates.readRate = Math.round(readDiff / timeDiff);
+			this.acquisitionRates.parsedRate = Math.round(parsedDiff / timeDiff);
+		}
+
+		this.previousAcquisitionMetrics = newMetrics;
+	},
+
 	renderMetricsConfig: function(metricsConfig) {
 		var self = this;
 		var enabled = metricsConfig && (metricsConfig.metrics_enabled === true || metricsConfig.metrics_enabled === 1);
@@ -329,6 +446,7 @@ return view.extend({
 		this.bouncers = data.bouncers || [];
 		this.machines = data.machines || {};
 		this.hub = data.hub || {};
+		this.acquisitionMetrics = data.acquisitionMetrics || {};
 		var metricsConfig = data.metricsConfig || {};
 
 		var view = E('div', { 'class': 'crowdsec-dashboard crowdsec-metrics' }, [
@@ -390,7 +508,7 @@ return view.extend({
 					E('div', { 'class': 'cyber-card-body' }, this.renderCollectionsList())
 				]),
 
-				// Acquisition
+				// Acquisition - Per Source Details
 				E('div', { 'class': 'cyber-card' }, [
 					E('div', { 'class': 'cyber-card-header' }, [
 						E('div', { 'class': 'cyber-card-title' }, [
@@ -400,6 +518,18 @@ return view.extend({
 					]),
 					E('div', { 'class': 'cyber-card-body' }, this.renderAcquisitionMetrics())
 				])
+			]),
+
+			// Realtime Acquisition Statistics (full width)
+			E('div', { 'class': 'cyber-card', 'style': 'margin-top: 1.5rem;' }, [
+				E('div', { 'class': 'cyber-card-header' }, [
+					E('div', { 'class': 'cyber-card-title' }, [
+						E('span', { 'style': 'margin-right: 0.5rem;' }, '⚡'),
+						_('Realtime Acquisition Statistics')
+					]),
+					E('span', { 'class': 'cyber-badge cyber-badge--info', 'style': 'font-size: 0.7rem;' }, _('Live'))
+				]),
+				E('div', { 'class': 'cyber-card-body', 'id': 'realtime-acquisition-body' }, this.renderRealtimeAcquisitionMetrics())
 			]),
 
 			// Raw metrics sections
@@ -422,7 +552,7 @@ return view.extend({
 			])
 		]);
 
-		// Setup polling (every 60 seconds for metrics)
+		// Setup polling (every 60 seconds for general metrics)
 		poll.add(function() {
 			return Promise.all([
 				self.csApi.getMetrics(),
@@ -434,6 +564,20 @@ return view.extend({
 				self.machines = results[2];
 			});
 		}, 60);
+
+		// Fast polling for realtime acquisition metrics (every 10 seconds)
+		poll.add(function() {
+			return self.csApi.getAcquisitionMetrics().then(function(result) {
+				self.updateAcquisitionRates(result);
+				self.acquisitionMetrics = result;
+
+				// Update the realtime acquisition display
+				var container = document.getElementById('realtime-acquisition-body');
+				if (container) {
+					dom.content(container, self.renderRealtimeAcquisitionMetrics());
+				}
+			});
+		}, 10);
 
 		return view;
 	},
