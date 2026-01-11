@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-crowdsec-bouncer
-PKG_VERSION:=0.0.31
+PKG_VERSION:=0.0.32
 PKG_RELEASE:=1
 PKG_ARCH:=all
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
