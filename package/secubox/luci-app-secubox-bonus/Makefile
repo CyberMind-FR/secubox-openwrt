@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-secubox-bonus
 PKG_VERSION:=0.2.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_ARCH:=all
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
@@ -14,6 +14,10 @@ LUCI_PKGARCH:=all
 
 include $(TOPDIR)/feeds/luci/luci.mk
 
+define Package/luci-app-secubox-bonus/conffiles
+/etc/opkg/customfeeds.conf
+endef
+
 define Package/luci-app-secubox-bonus/install
 	# Documentation and static content
 	$(INSTALL_DIR) $(1)/www/luci-static/secubox
@@ -24,6 +28,10 @@ define Package/luci-app-secubox-bonus/install
 	if [ -d ./root/www/secubox-feed ] && [ -n "$$$$(ls -A ./root/www/secubox-feed 2>/dev/null)" ]; then \
 		$(CP) ./root/www/secubox-feed/* $(1)/www/secubox-feed/; \
 	fi
+
+	# opkg custom feeds configuration
+	$(INSTALL_DIR) $(1)/etc/opkg
+	$(INSTALL_CONF) ./root/etc/opkg/customfeeds.conf $(1)/etc/opkg/customfeeds.conf
 
 	# RPCD backend for package management
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
@@ -45,10 +53,6 @@ endef
 define Package/luci-app-secubox-bonus/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
-	# Add local feed to opkg if not already present
-	if ! grep -q "secubox-feed" /etc/opkg/customfeeds.conf 2>/dev/null; then
-		echo "src/gz secubox file:///www/secubox-feed" >> /etc/opkg/customfeeds.conf
-	fi
 	# Restart rpcd to load new backend
 	/etc/init.d/rpcd restart
 	rm -rf /tmp/luci-modulecache /tmp/luci-indexcache 2>/dev/null

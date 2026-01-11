@@ -1,0 +1,7 @@
+# Built packages are populated during build
+# Do not commit binary files to git
+*.ipk
+*.apk
+Packages
+Packages.gz
+apps-local.json
