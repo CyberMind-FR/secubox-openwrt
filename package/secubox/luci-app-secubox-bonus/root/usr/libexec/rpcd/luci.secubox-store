@@ -1,0 +1,274 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# SecuBox Local Package Store - RPCD Backend
+# Manages installation/removal of packages from local feed
+
+. /usr/share/libubox/jshn.sh
+
+FEED_DIR="/www/secubox-feed"
+APPS_JSON="$FEED_DIR/apps-local.json"
+
+# List available packages from local feed
+list_packages() {
+    if [ -f "$APPS_JSON" ]; then
+        # Read apps-local.json and add installation status
+        local packages=$(cat "$APPS_JSON")
+
+        json_init
+        json_add_boolean "success" 1
+        json_add_string "feed_url" "/secubox-feed"
+        json_add_array "packages"
+
+        # Parse apps-local.json and check each package
+        local pkg_list=$(jsonfilter -s "$packages" -e '@.packages[*].name' 2>/dev/null)
+
+        for name in $pkg_list; do
+            local pkg_data=$(jsonfilter -s "$packages" -e "@.packages[@.name='$name']" 2>/dev/null)
+            local version=$(echo "$pkg_data" | jsonfilter -e '@.version' 2>/dev/null)
+            local filename=$(echo "$pkg_data" | jsonfilter -e '@.filename' 2>/dev/null)
+            local size=$(echo "$pkg_data" | jsonfilter -e '@.size' 2>/dev/null)
+            local category=$(echo "$pkg_data" | jsonfilter -e '@.category' 2>/dev/null)
+            local icon=$(echo "$pkg_data" | jsonfilter -e '@.icon' 2>/dev/null)
+            local description=$(echo "$pkg_data" | jsonfilter -e '@.description' 2>/dev/null)
+
+            # Check if installed
+            local installed=0
+            if opkg list-installed 2>/dev/null | grep -q "^${name} "; then
+                installed=1
+            fi
+
+            json_add_object ""
+            json_add_string "name" "$name"
+            json_add_string "version" "$version"
+            json_add_string "filename" "$filename"
+            json_add_int "size" "${size:-0}"
+            json_add_string "category" "$category"
+            json_add_string "icon" "$icon"
+            json_add_string "description" "$description"
+            json_add_boolean "installed" "$installed"
+            json_close_object
+        done
+
+        json_close_array
+        json_dump
+    else
+        json_init
+        json_add_boolean "success" 0
+        json_add_string "error" "Local feed not found"
+        json_add_array "packages"
+        json_close_array
+        json_dump
+    fi
+}
+
+# Install a package from local feed
+install_package() {
+    local pkg_name="$1"
+
+    if [ -z "$pkg_name" ]; then
+        json_init
+        json_add_boolean "success" 0
+        json_add_string "error" "Package name required"
+        json_dump
+        return
+    fi
+
+    # Find the package file
+    local pkg_file=$(ls "$FEED_DIR/${pkg_name}_"*.ipk 2>/dev/null | head -1)
+
+    if [ -z "$pkg_file" ] || [ ! -f "$pkg_file" ]; then
+        json_init
+        json_add_boolean "success" 0
+        json_add_string "error" "Package file not found: $pkg_name"
+        json_dump
+        return
+    fi
+
+    # Update opkg lists first
+    opkg update 2>/dev/null || true
+
+    # Install the package
+    local output
+    output=$(opkg install "$pkg_file" 2>&1)
+    local result=$?
+
+    json_init
+    if [ $result -eq 0 ]; then
+        json_add_boolean "success" 1
+        json_add_string "message" "Package installed successfully"
+        json_add_string "package" "$pkg_name"
+
+        # Clear LuCI cache
+        rm -rf /tmp/luci-modulecache /tmp/luci-indexcache 2>/dev/null
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "$output"
+    fi
+    json_add_string "output" "$output"
+    json_dump
+}
+
+# Remove a package
+remove_package() {
+    local pkg_name="$1"
+
+    if [ -z "$pkg_name" ]; then
+        json_init
+        json_add_boolean "success" 0
+        json_add_string "error" "Package name required"
+        json_dump
+        return
+    fi
+
+    # Check if installed
+    if ! opkg list-installed 2>/dev/null | grep -q "^${pkg_name} "; then
+        json_init
+        json_add_boolean "success" 0
+        json_add_string "error" "Package not installed: $pkg_name"
+        json_dump
+        return
+    fi
+
+    # Remove the package
+    local output
+    output=$(opkg remove "$pkg_name" 2>&1)
+    local result=$?
+
+    json_init
+    if [ $result -eq 0 ]; then
+        json_add_boolean "success" 1
+        json_add_string "message" "Package removed successfully"
+        json_add_string "package" "$pkg_name"
+
+        # Clear LuCI cache
+        rm -rf /tmp/luci-modulecache /tmp/luci-indexcache 2>/dev/null
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "$output"
+    fi
+    json_add_string "output" "$output"
+    json_dump
+}
+
+# Get package info
+get_package_info() {
+    local pkg_name="$1"
+
+    if [ -z "$pkg_name" ]; then
+        json_init
+        json_add_boolean "success" 0
+        json_add_string "error" "Package name required"
+        json_dump
+        return
+    fi
+
+    json_init
+    json_add_boolean "success" 1
+    json_add_string "name" "$pkg_name"
+
+    # Check if installed
+    local installed_info=$(opkg list-installed "$pkg_name" 2>/dev/null)
+    if [ -n "$installed_info" ]; then
+        json_add_boolean "installed" 1
+        json_add_string "installed_version" "$(echo "$installed_info" | cut -d' ' -f3)"
+    else
+        json_add_boolean "installed" 0
+    fi
+
+    # Get info from feed
+    if [ -f "$APPS_JSON" ]; then
+        local pkg_data=$(cat "$APPS_JSON" | jsonfilter -e "@.packages[@.name='$pkg_name']" 2>/dev/null)
+        if [ -n "$pkg_data" ]; then
+            json_add_string "feed_version" "$(echo "$pkg_data" | jsonfilter -e '@.version' 2>/dev/null)"
+            json_add_string "description" "$(echo "$pkg_data" | jsonfilter -e '@.description' 2>/dev/null)"
+            json_add_string "category" "$(echo "$pkg_data" | jsonfilter -e '@.category' 2>/dev/null)"
+            json_add_int "size" "$(echo "$pkg_data" | jsonfilter -e '@.size' 2>/dev/null)"
+        fi
+    fi
+
+    json_dump
+}
+
+# Get feed status
+get_feed_status() {
+    json_init
+
+    if [ -d "$FEED_DIR" ]; then
+        json_add_boolean "feed_exists" 1
+        json_add_string "feed_path" "$FEED_DIR"
+
+        local pkg_count=$(ls -1 "$FEED_DIR"/*.ipk 2>/dev/null | wc -l)
+        json_add_int "package_count" "$pkg_count"
+
+        if [ -f "$APPS_JSON" ]; then
+            json_add_boolean "index_exists" 1
+            local generated=$(jsonfilter -i "$APPS_JSON" -e '@.generated' 2>/dev/null)
+            json_add_string "generated" "$generated"
+        else
+            json_add_boolean "index_exists" 0
+        fi
+
+        # Check if feed is in opkg config
+        if grep -q "secubox-feed" /etc/opkg/customfeeds.conf 2>/dev/null; then
+            json_add_boolean "feed_configured" 1
+        else
+            json_add_boolean "feed_configured" 0
+        fi
+    else
+        json_add_boolean "feed_exists" 0
+    fi
+
+    json_dump
+}
+
+# Main dispatcher
+case "$1" in
+    list)
+        json_init
+        json_add_object "list_packages"
+        json_close_object
+        json_add_object "install_package"
+            json_add_string "package" "str"
+        json_close_object
+        json_add_object "remove_package"
+            json_add_string "package" "str"
+        json_close_object
+        json_add_object "get_package_info"
+            json_add_string "package" "str"
+        json_close_object
+        json_add_object "get_feed_status"
+        json_close_object
+        json_dump
+        ;;
+    call)
+        case "$2" in
+            list_packages)
+                list_packages
+                ;;
+            install_package)
+                read -r input
+                pkg=$(echo "$input" | jsonfilter -e '@.package')
+                install_package "$pkg"
+                ;;
+            remove_package)
+                read -r input
+                pkg=$(echo "$input" | jsonfilter -e '@.package')
+                remove_package "$pkg"
+                ;;
+            get_package_info)
+                read -r input
+                pkg=$(echo "$input" | jsonfilter -e '@.package')
+                get_package_info "$pkg"
+                ;;
+            get_feed_status)
+                get_feed_status
+                ;;
+            *)
+                echo '{"error":"Unknown method"}'
+                ;;
+        esac
+        ;;
+    *)
+        echo '{"error":"Invalid action"}'
+        ;;
+esac

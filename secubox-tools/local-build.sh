@@ -51,16 +51,12 @@ declare -A DEVICE_PROFILES=(
 
 # Packages that must be built in the OpenWrt buildroot (toolchain) instead of the SDK.
 # These packages compile native code and need system libraries not available in SDK.
+# NOTE: secubox-app-* wrappers are PKGARCH:=all (shell scripts) and CAN be built in SDK.
 OPENWRT_ONLY_PACKAGES=(
-    "netifyd"
-    "crowdsec"
-    "secubox-app-crowdsec"
-    "secubox-app-netifyd"
-    "secubox-app-ndpid"
-    "secubox-app-nodogsplash"
-    "secubox-app-mitmproxy"
-    "mitmproxy"
-    "nodogsplash"
+    "netifyd"                       # C++ native binary
+    "crowdsec"                      # Go binary
+    "crowdsec-firewall-bouncer"     # Go binary
+    "nodogsplash"                   # C native binary
 )
 
 # Helper functions
@@ -1002,6 +998,183 @@ collect_artifacts() {
     return 0
 }
 
+# Embed built packages into luci-app-secubox-bonus as local feed
+embed_local_feed() {
+    print_header "Embedding Local Package Feed"
+
+    local feed_dir="$SCRIPT_DIR/../package/secubox/luci-app-secubox-bonus/root/www/secubox-feed"
+    local pkg_ext="${PKG_EXT:-ipk}"
+    local src_dir="$BUILD_DIR/$ARCH"
+
+    # Clean and create feed directory
+    rm -rf "$feed_dir"
+    mkdir -p "$feed_dir"
+
+    # Check if we have packages to embed
+    if [[ ! -d "$src_dir" ]] || [[ -z "$(ls -A "$src_dir"/*.${pkg_ext} 2>/dev/null)" ]]; then
+        print_warning "No packages found to embed in local feed"
+        return 0
+    fi
+
+    # Copy all built packages
+    print_info "Copying packages to local feed..."
+    cp "$src_dir"/*.${pkg_ext} "$feed_dir/" 2>/dev/null || true
+
+    local pkg_count=$(ls -1 "$feed_dir"/*.${pkg_ext} 2>/dev/null | wc -l)
+    print_info "Copied $pkg_count packages"
+
+    # Generate Packages index for opkg
+    print_info "Generating Packages index..."
+    (
+        cd "$feed_dir"
+        for pkg in *.${pkg_ext}; do
+            [[ -f "$pkg" ]] || continue
+
+            # Extract control file from package
+            local control=""
+            if [[ "$pkg_ext" == "ipk" ]]; then
+                control=$(tar -xzOf "$pkg" ./control.tar.gz 2>/dev/null | tar -xzOf - ./control 2>/dev/null || \
+                          ar -p "$pkg" control.tar.gz 2>/dev/null | tar -xzOf - ./control 2>/dev/null || \
+                          ar -p "$pkg" control.tar.zst 2>/dev/null | zstd -d 2>/dev/null | tar -xOf - ./control 2>/dev/null || true)
+            fi
+
+            if [[ -n "$control" ]]; then
+                echo "$control"
+                echo "Filename: $pkg"
+                echo "Size: $(stat -c%s "$pkg")"
+                echo "SHA256sum: $(sha256sum "$pkg" | cut -d' ' -f1)"
+                echo ""
+            fi
+        done > Packages
+
+        # Create compressed index
+        gzip -k Packages 2>/dev/null || true
+    )
+
+    # Generate apps-local.json for appstore UI
+    print_info "Generating local apps manifest..."
+    generate_local_apps_json "$feed_dir"
+
+    print_success "Local feed embedded with $pkg_count packages"
+    echo "   Feed location: /www/secubox-feed/"
+    echo "   opkg config: src/gz secubox file:///www/secubox-feed"
+
+    return 0
+}
+
+# Generate apps-local.json from built packages
+generate_local_apps_json() {
+    local feed_dir="$1"
+    local json_file="$feed_dir/apps-local.json"
+    local pkg_ext="${PKG_EXT:-ipk}"
+
+    cat > "$json_file" << 'HEADER'
+{
+  "feed_url": "/secubox-feed",
+  "generated": "TIMESTAMP",
+  "packages": [
+HEADER
+    sed -i "s/TIMESTAMP/$(date -Iseconds)/" "$json_file"
+
+    local first=true
+    for pkg in "$feed_dir"/*.${pkg_ext}; do
+        [[ -f "$pkg" ]] || continue
+        local filename=$(basename "$pkg")
+        local name=$(echo "$filename" | sed 's/_[0-9].*$//')
+        local version=$(echo "$filename" | sed 's/^[^_]*_//; s/_[^_]*$//')
+        local size=$(stat -c%s "$pkg")
+
+        # Determine category and description based on package name
+        local category="utility"
+        local description=""
+        local icon=""
+        local luci_app=""
+
+        case "$name" in
+            luci-app-crowdsec*)
+                category="security"; icon="shield"; description="CrowdSec security monitoring";;
+            luci-app-mitmproxy*)
+                category="security"; icon="lock"; description="HTTPS proxy and traffic inspection";;
+            luci-app-bandwidth*)
+                category="network"; icon="activity"; description="Bandwidth monitoring and control";;
+            luci-app-traffic*)
+                category="network"; icon="filter"; description="Traffic shaping and QoS";;
+            luci-app-client*)
+                category="network"; icon="users"; description="Client management and monitoring";;
+            luci-app-network*)
+                category="network"; icon="wifi"; description="Network configuration";;
+            luci-app-wireguard*)
+                category="vpn"; icon="shield"; description="WireGuard VPN dashboard";;
+            luci-app-vhost*)
+                category="network"; icon="server"; description="Virtual host management";;
+            luci-app-secubox*)
+                category="system"; icon="box"; description="SecuBox system component";;
+            luci-app-zigbee*)
+                category="iot"; icon="radio"; description="Zigbee device management";;
+            luci-app-mqtt*)
+                category="iot"; icon="message-square"; description="MQTT bridge";;
+            luci-app-ndpid*)
+                category="security"; icon="eye"; description="Deep packet inspection";;
+            luci-app-netdata*)
+                category="monitoring"; icon="bar-chart-2"; description="System monitoring dashboard";;
+            luci-app-system*)
+                category="system"; icon="settings"; description="System management";;
+            luci-app-cdn*)
+                category="network"; icon="globe"; description="CDN caching";;
+            luci-app-ksm*)
+                category="system"; icon="cpu"; description="Kernel memory management";;
+            luci-app-media*)
+                category="media"; icon="film"; description="Media streaming";;
+            luci-app-magicmirror*)
+                category="iot"; icon="monitor"; description="Smart mirror display";;
+            luci-app-auth*)
+                category="security"; icon="key"; description="Authentication management";;
+            luci-theme-*)
+                category="theme"; icon="palette"; description="LuCI theme";;
+            secubox-app-*)
+                category="secubox"; icon="package"; description="SecuBox backend service";;
+            secubox-core*)
+                category="system"; icon="box"; description="SecuBox core components";;
+            *)
+                category="utility"; icon="package"; description="SecuBox package";;
+        esac
+
+        # Check if this package has a corresponding luci-app
+        if [[ "$name" =~ ^secubox-app- ]]; then
+            local app_name="${name#secubox-app-}"
+            luci_app="luci-app-${app_name}"
+        fi
+
+        if [[ "$first" == "true" ]]; then
+            first=false
+        else
+            echo "," >> "$json_file"
+        fi
+
+        cat >> "$json_file" << ENTRY
+    {
+      "name": "$name",
+      "version": "$version",
+      "filename": "$filename",
+      "size": $size,
+      "category": "$category",
+      "icon": "$icon",
+      "description": "$description",
+      "installed": false,
+      "luci_app": $([ -n "$luci_app" ] && echo "\"$luci_app\"" || echo "null")
+    }
+ENTRY
+    done
+
+    cat >> "$json_file" << 'FOOTER'
+
+  ]
+}
+FOOTER
+
+    print_success "Generated apps-local.json"
+}
+
 # Run validation
 run_validation() {
     print_header "Running Validation"
@@ -1177,9 +1350,11 @@ run_build() {
     configure_packages "$single_package" || return 1
     build_packages "$single_package" || return 1
     collect_artifacts || return 1
+    embed_local_feed || return 1
 
     print_header "Build Complete!"
     print_success "Packages available in: $BUILD_DIR/$ARCH/"
+    print_info "Local feed embedded in luci-app-secubox-bonus"
 
     return 0
 }
@@ -1385,7 +1560,7 @@ CONFIG_TARGET_PER_DEVICE_ROOTFS=y
 CONFIG_TARGET_ROOTFS_SQUASHFS=y
 CONFIG_TARGET_ROOTFS_EXT4FS=y
 CONFIG_TARGET_KERNEL_PARTSIZE=32
-CONFIG_TARGET_ROOTFS_PARTSIZE=512
+CONFIG_TARGET_ROOTFS_PARTSIZE=16384
 
 # Disable GDB in toolchain (fixes build issues)
 # CONFIG_GDB is not set

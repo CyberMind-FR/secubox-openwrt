@@ -1,0 +1,14 @@
+{
+  "admin/secubox/local-packages": {
+    "title": "Local Packages",
+    "order": 19,
+    "action": {
+      "type": "view",
+      "path": "secubox-bonus/store"
+    },
+    "depends": {
+      "acl": ["luci-app-secubox-bonus"],
+      "uci": {}
+    }
+  }
+}
