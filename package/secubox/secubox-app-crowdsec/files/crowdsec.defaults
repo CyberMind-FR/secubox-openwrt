@@ -232,6 +232,32 @@ EOF
 	fi
 }
 
+# Configure OpenWrt to write logs to file
+setup_syslog_file() {
+	echo "Configuring syslog file logging..."
+
+	local log_file
+	log_file=$(uci -q get system.@system[0].log_file)
+
+	if [ -z "$log_file" ]; then
+		echo "Enabling syslog file logging for CrowdSec acquisition"
+		uci set system.@system[0].log_file='/var/log/messages'
+		uci set system.@system[0].log_size='512'
+		uci commit system
+		/etc/init.d/log restart
+		# Wait for log file to be created
+		sleep 2
+	else
+		echo "Syslog file already configured: $log_file"
+	fi
+
+	# Ensure log file exists
+	if [ ! -f /var/log/messages ]; then
+		touch /var/log/messages
+		chmod 644 /var/log/messages
+	fi
+}
+
 # Detect and configure OpenWrt-specific log sources
 detect_openwrt_logs() {
 	echo "Detecting OpenWrt log sources..."
@@ -290,6 +316,9 @@ main() {
 
 	# Install Hub collections and parsers
 	install_hub_items
+
+	# Setup syslog file logging (required for file-based acquisition)
+	setup_syslog_file
 
 	# Detect OpenWrt log sources
 	detect_openwrt_logs

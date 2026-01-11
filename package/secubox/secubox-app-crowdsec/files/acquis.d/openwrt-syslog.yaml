@@ -10,10 +10,10 @@
 #   cscli collections install crowdsecurity/linux
 #   cscli parsers install crowdsecurity/syslog-logs
 
-# File-based acquisition for syslog (if log_file is configured)
+# File-based acquisition for syslog
+# The init script configures OpenWrt to write logs to /var/log/messages
 filenames:
   - /var/log/messages
-  - /var/log/syslog
 labels:
   type: syslog
 ---
