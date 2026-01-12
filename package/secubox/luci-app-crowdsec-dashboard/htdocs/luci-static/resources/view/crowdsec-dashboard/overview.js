@@ -28,13 +28,16 @@ return view.extend({
 		cssLink.rel = 'stylesheet';
 		cssLink.href = L.resource('crowdsec-dashboard/dashboard.css');
 		document.head.appendChild(cssLink);
-		
+
 		// Load API
 		this.csApi = api;
-		
+
 		return Promise.all([
 			this.csApi.getDashboardData(),
-			this.csApi.getSecuboxLogs()
+			this.csApi.getSecuboxLogs(),
+			this.csApi.getHealthCheck().catch(function() { return {}; }),
+			this.csApi.getCapiMetrics().catch(function() { return {}; }),
+			this.csApi.getCollections().catch(function() { return { collections: [] }; })
 		]);
 	},
 
@@ -426,8 +429,9 @@ return view.extend({
 		return E('div', {}, [
 			this.renderHeader(status),
 			serviceWarning,
+			this.renderHealthCheck(),
 			this.renderStatsGrid(stats, decisions),
-			
+
 			E('div', { 'class': 'cs-charts-row' }, [
 				E('div', { 'class': 'cs-card' }, [
 					E('div', { 'class': 'cs-card-header' }, [
@@ -441,6 +445,11 @@ return view.extend({
 					]),
 					E('div', { 'class': 'cs-card-body' }, this.renderTopCountries(stats))
 				])
+			]),
+
+			E('div', { 'class': 'cs-charts-row' }, [
+				this.renderCapiBlocklist(),
+				this.renderCollectionsCard()
 			]),
 			
 			E('div', { 'class': 'cs-charts-row' }, [
@@ -502,6 +511,9 @@ return view.extend({
 		var self = this;
 		this.data = payload[0] || {};
 		this.logs = (payload[1] && payload[1].entries) || [];
+		this.healthCheck = payload[2] || {};
+		this.capiMetrics = payload[3] || {};
+		this.collections = (payload[4] && payload[4].collections) || [];
 
 		// Main wrapper with SecuBox header
 		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
@@ -526,11 +538,196 @@ refreshDashboard: function() {
 		var self = this;
 		return Promise.all([
 			self.csApi.getDashboardData(),
-			self.csApi.getSecuboxLogs()
+			self.csApi.getSecuboxLogs(),
+			self.csApi.getHealthCheck().catch(function() { return {}; }),
+			self.csApi.getCapiMetrics().catch(function() { return {}; }),
+			self.csApi.getCollections().catch(function() { return { collections: [] }; })
 		]).then(function(results) {
 			self.data = results[0];
 			self.logs = (results[1] && results[1].entries) || [];
+			self.healthCheck = results[2] || {};
+			self.capiMetrics = results[3] || {};
+			self.collections = (results[4] && results[4].collections) || [];
 			self.updateView();
+		});
+	},
+
+	// Health Check Section - Shows LAPI/CAPI/Console status
+	renderHealthCheck: function() {
+		var health = this.healthCheck || {};
+		var csRunning = health.crowdsec_running;
+		var lapiStatus = health.lapi_status || 'unavailable';
+		var capiStatus = health.capi_status || 'disconnected';
+		var capiEnrolled = health.capi_enrolled;
+		var capiSubscription = health.capi_subscription || '-';
+		var sharingSignals = health.sharing_signals;
+		var pullingBlocklist = health.pulling_blocklist;
+		var version = health.version || 'N/A';
+		var decisionsCount = health.decisions_count || 0;
+
+		return E('div', { 'class': 'cs-health-check', 'style': 'margin-bottom: 1.5em;' }, [
+			E('div', { 'class': 'cs-card' }, [
+				E('div', { 'class': 'cs-card-header' }, [
+					E('div', { 'class': 'cs-card-title' }, _('System Health'))
+				]),
+				E('div', { 'class': 'cs-card-body' }, [
+					E('div', { 'class': 'cs-health-grid', 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1em;' }, [
+						// CrowdSec Status
+						E('div', { 'class': 'cs-health-item', 'style': 'text-align: center; padding: 1em; background: rgba(0,0,0,0.1); border-radius: 8px;' }, [
+							E('div', { 'style': 'font-size: 2em; margin-bottom: 0.25em;' }, csRunning ? '✅' : '❌'),
+							E('div', { 'style': 'font-weight: 600; margin-bottom: 0.25em;' }, 'CrowdSec'),
+							E('div', { 'style': 'font-size: 0.85em; color: ' + (csRunning ? '#00d4aa' : '#ff4757') + ';' }, csRunning ? 'Running' : 'Stopped'),
+							E('div', { 'style': 'font-size: 0.75em; color: #888;' }, version ? (version.charAt(0) === 'v' ? version : 'v' + version) : '')
+						]),
+						// LAPI Status
+						E('div', { 'class': 'cs-health-item', 'style': 'text-align: center; padding: 1em; background: rgba(0,0,0,0.1); border-radius: 8px;' }, [
+							E('div', { 'style': 'font-size: 2em; margin-bottom: 0.25em;' }, lapiStatus === 'available' ? '✅' : '❌'),
+							E('div', { 'style': 'font-weight: 600; margin-bottom: 0.25em;' }, 'LAPI'),
+							E('div', { 'style': 'font-size: 0.85em; color: ' + (lapiStatus === 'available' ? '#00d4aa' : '#ff4757') + ';' }, lapiStatus === 'available' ? 'Available' : 'Unavailable'),
+							E('div', { 'style': 'font-size: 0.75em; color: #888;' }, ':8080')
+						]),
+						// CAPI Status
+						E('div', { 'class': 'cs-health-item', 'style': 'text-align: center; padding: 1em; background: rgba(0,0,0,0.1); border-radius: 8px;' }, [
+							E('div', { 'style': 'font-size: 2em; margin-bottom: 0.25em;' }, capiStatus === 'connected' ? '✅' : '⚠️'),
+							E('div', { 'style': 'font-weight: 600; margin-bottom: 0.25em;' }, 'CAPI'),
+							E('div', { 'style': 'font-size: 0.85em; color: ' + (capiStatus === 'connected' ? '#00d4aa' : '#ffa500') + ';' }, capiStatus === 'connected' ? 'Connected' : 'Disconnected'),
+							E('div', { 'style': 'font-size: 0.75em; color: #888;' }, capiSubscription)
+						]),
+						// Console Status
+						E('div', { 'class': 'cs-health-item', 'style': 'text-align: center; padding: 1em; background: rgba(0,0,0,0.1); border-radius: 8px;' }, [
+							E('div', { 'style': 'font-size: 2em; margin-bottom: 0.25em;' }, capiEnrolled ? '✅' : '⚪'),
+							E('div', { 'style': 'font-weight: 600; margin-bottom: 0.25em;' }, 'Console'),
+							E('div', { 'style': 'font-size: 0.85em; color: ' + (capiEnrolled ? '#00d4aa' : '#888') + ';' }, capiEnrolled ? 'Enrolled' : 'Not Enrolled'),
+							E('div', { 'style': 'font-size: 0.75em; color: #888;' }, sharingSignals ? 'Sharing: ON' : 'Sharing: OFF')
+						]),
+						// Blocklist Status
+						E('div', { 'class': 'cs-health-item', 'style': 'text-align: center; padding: 1em; background: rgba(0,0,0,0.1); border-radius: 8px;' }, [
+							E('div', { 'style': 'font-size: 2em; margin-bottom: 0.25em;' }, pullingBlocklist ? '🛡️' : '⚪'),
+							E('div', { 'style': 'font-weight: 600; margin-bottom: 0.25em;' }, 'Blocklist'),
+							E('div', { 'style': 'font-size: 0.85em; color: ' + (pullingBlocklist ? '#00d4aa' : '#888') + ';' }, pullingBlocklist ? 'Active' : 'Inactive'),
+							E('div', { 'style': 'font-size: 0.75em; color: #667eea; font-weight: 600;' }, decisionsCount.toLocaleString() + ' IPs')
+						])
+					])
+				])
+			])
+		]);
+	},
+
+	// CAPI Blocklist Metrics - Shows blocked IPs by category
+	renderCapiBlocklist: function() {
+		var metrics = this.capiMetrics || {};
+		var totalCapi = metrics.total_capi || 0;
+		var totalLocal = metrics.total_local || 0;
+		var breakdown = metrics.breakdown || [];
+
+		if (totalCapi === 0 && totalLocal === 0) {
+			return E('span'); // Empty if no data
+		}
+
+		// Build breakdown bars
+		var maxCount = Math.max.apply(null, breakdown.map(function(b) { return b.count || 0; }).concat([1]));
+		var breakdownBars = breakdown.slice(0, 5).map(function(item) {
+			var scenario = item.scenario || 'unknown';
+			var count = item.count || 0;
+			var pct = Math.round((count / maxCount) * 100);
+			var displayName = scenario.split('/').pop().replace(/-/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+
+			return E('div', { 'style': 'margin-bottom: 0.75em;' }, [
+				E('div', { 'style': 'display: flex; justify-content: space-between; margin-bottom: 0.25em;' }, [
+					E('span', { 'style': 'font-size: 0.85em;' }, displayName),
+					E('span', { 'style': 'font-size: 0.85em; font-weight: 600; color: #667eea;' }, count.toLocaleString())
+				]),
+				E('div', { 'style': 'height: 8px; background: rgba(102,126,234,0.2); border-radius: 4px; overflow: hidden;' }, [
+					E('div', { 'style': 'height: 100%; width: ' + pct + '%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 4px;' })
+				])
+			]);
+		});
+
+		return E('div', { 'class': 'cs-capi-blocklist', 'style': 'margin-bottom: 1.5em;' }, [
+			E('div', { 'class': 'cs-card' }, [
+				E('div', { 'class': 'cs-card-header' }, [
+					E('div', { 'class': 'cs-card-title' }, _('Community Blocklist (CAPI)'))
+				]),
+				E('div', { 'class': 'cs-card-body' }, [
+					E('div', { 'style': 'display: flex; gap: 2em; margin-bottom: 1em;' }, [
+						E('div', { 'style': 'text-align: center;' }, [
+							E('div', { 'style': 'font-size: 1.5em; font-weight: 700; color: #667eea;' }, totalCapi.toLocaleString()),
+							E('div', { 'style': 'font-size: 0.8em; color: #888;' }, 'CAPI Blocked')
+						]),
+						E('div', { 'style': 'text-align: center;' }, [
+							E('div', { 'style': 'font-size: 1.5em; font-weight: 700; color: #00d4aa;' }, totalLocal.toLocaleString()),
+							E('div', { 'style': 'font-size: 0.8em; color: #888;' }, 'Local Blocked')
+						])
+					]),
+					breakdownBars.length > 0 ? E('div', { 'style': 'margin-top: 1em;' }, [
+						E('div', { 'style': 'font-size: 0.85em; font-weight: 600; margin-bottom: 0.75em; color: #888;' }, _('Top Blocked Categories')),
+						E('div', {}, breakdownBars)
+					]) : E('span')
+				])
+			])
+		]);
+	},
+
+	// Collections Card - Shows installed collections with quick actions
+	renderCollectionsCard: function() {
+		var self = this;
+		var collections = this.collections || [];
+
+		if (!collections.length) {
+			return E('span'); // Empty if no collections
+		}
+
+		var collectionItems = collections.slice(0, 6).map(function(col) {
+			var name = col.name || col.Name || 'unknown';
+			var status = col.status || col.Status || '';
+			var version = col.version || col.Version || '';
+			var isInstalled = status.toLowerCase().indexOf('enabled') >= 0 || status.toLowerCase().indexOf('installed') >= 0;
+			var hasUpdate = status.toLowerCase().indexOf('update') >= 0;
+
+			return E('div', { 'style': 'display: flex; align-items: center; justify-content: space-between; padding: 0.5em 0; border-bottom: 1px solid rgba(255,255,255,0.1);' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+					E('span', { 'style': 'font-size: 1.2em;' }, isInstalled ? '✅' : '⬜'),
+					E('span', { 'style': 'font-size: 0.9em;' }, name)
+				]),
+				E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+					E('span', { 'style': 'font-size: 0.75em; color: #888;' }, 'v' + version),
+					hasUpdate ? E('span', { 'style': 'font-size: 0.7em; padding: 0.15em 0.4em; background: #ffa500; color: #000; border-radius: 3px;' }, 'UPDATE') : E('span')
+				])
+			]);
+		});
+
+		return E('div', { 'class': 'cs-collections-card' }, [
+			E('div', { 'class': 'cs-card' }, [
+				E('div', { 'class': 'cs-card-header' }, [
+					E('div', { 'class': 'cs-card-title' }, _('Installed Collections')),
+					E('button', {
+						'class': 'cs-btn cs-btn-secondary cs-btn-sm',
+						'click': ui.createHandlerFn(this, 'handleUpdateHub')
+					}, _('Update Hub'))
+				]),
+				E('div', { 'class': 'cs-card-body' }, collectionItems)
+			])
+		]);
+	},
+
+	handleUpdateHub: function() {
+		var self = this;
+		ui.showModal(_('Updating Hub'), [
+			E('p', {}, _('Downloading latest hub index...')),
+			E('div', { 'class': 'spinning' })
+		]);
+
+		this.csApi.updateHub().then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				self.showToast(_('Hub updated successfully'), 'success');
+				self.refreshDashboard();
+			} else {
+				self.showToast((result && result.error) || _('Hub update failed'), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			self.showToast(err.message || _('Hub update failed'), 'error');
 		});
 	},
 

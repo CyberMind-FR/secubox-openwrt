@@ -616,7 +616,7 @@ return view.extend({
 							}
 						}, _('Apply Interface Settings'))
 					])
-				])
+				]),
 
 				// Firewall Bouncer quick control
 				E('div', { 'style': 'margin-top: 1em; padding: 1em; background: #fff; border-radius: 6px; border: 1px solid #e6e6e6;' }, [

@@ -288,13 +288,13 @@ return view.extend({
 			E('div', { 'class': 'cyber-stat-card', 'style': 'background: var(--cyber-card-bg, rgba(30,30,40,0.8)); border: 1px solid var(--cyber-border, rgba(255,255,255,0.1)); border-radius: 8px; padding: 1rem; text-align: center;' }, [
 				E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-muted, #666); margin-bottom: 0.25rem; text-transform: uppercase;' }, _('Lines Read')),
 				E('div', { 'class': 'cyber-stat-value', 'style': 'font-size: 1.5rem; font-weight: 700; color: var(--cyber-accent-primary, #667eea);' }, this.formatNumber(totalRead)),
-				readRate > 0 ? E('div', { 'style': 'font-size: 0.7rem; color: var(--cyber-success, #00d4aa); margin-top: 0.25rem;' }, '+' + readRate + '/s') : null
+				readRate > 0 ? E('div', { 'style': 'font-size: 0.7rem; color: var(--cyber-success, #00d4aa); margin-top: 0.25rem;' }, '+' + readRate + '/s') : E('span')
 			]),
 			// Lines Parsed Card
 			E('div', { 'class': 'cyber-stat-card', 'style': 'background: var(--cyber-card-bg, rgba(30,30,40,0.8)); border: 1px solid var(--cyber-border, rgba(255,255,255,0.1)); border-radius: 8px; padding: 1rem; text-align: center;' }, [
 				E('div', { 'style': 'font-size: 0.75rem; color: var(--cyber-text-muted, #666); margin-bottom: 0.25rem; text-transform: uppercase;' }, _('Parsed')),
 				E('div', { 'class': 'cyber-stat-value', 'style': 'font-size: 1.5rem; font-weight: 700; color: var(--cyber-success, #00d4aa);' }, this.formatNumber(totalParsed)),
-				parsedRate > 0 ? E('div', { 'style': 'font-size: 0.7rem; color: var(--cyber-success, #00d4aa); margin-top: 0.25rem;' }, '+' + parsedRate + '/s') : null
+				parsedRate > 0 ? E('div', { 'style': 'font-size: 0.7rem; color: var(--cyber-success, #00d4aa); margin-top: 0.25rem;' }, '+' + parsedRate + '/s') : E('span')
 			]),
 			// Parse Rate Card with progress bar
 			E('div', { 'class': 'cyber-stat-card', 'style': 'background: var(--cyber-card-bg, rgba(30,30,40,0.8)); border: 1px solid var(--cyber-border, rgba(255,255,255,0.1)); border-radius: 8px; padding: 1rem; text-align: center;' }, [

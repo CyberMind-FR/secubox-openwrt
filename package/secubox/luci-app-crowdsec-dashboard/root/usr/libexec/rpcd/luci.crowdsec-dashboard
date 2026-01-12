@@ -1054,7 +1054,7 @@ repair_lapi() {
 		if [ -x "$CSCLI" ]; then
 			if run_with_timeout 5 "$CSCLI" lapi status >/dev/null 2>&1; then
 				lapi_ok=1
-				steps_done="${steps_done}LAPI OK"
+				steps_done="${steps_done}LAPI OK; "
 			else
 				errors="${errors}LAPI check failed; "
 			fi
@@ -1065,6 +1065,31 @@ repair_lapi() {
 		local log_err=""
 		log_err=$(tail -3 /var/log/crowdsec.log 2>/dev/null | grep -i "fatal\|error" | head -1)
 		[ -n "$log_err" ] && errors="${errors}${log_err}; "
+	fi
+
+	# Step 12: Update hub index (required for collections to work)
+	if [ "$lapi_ok" = "1" ] && [ -x "$CSCLI" ]; then
+		if run_with_timeout 30 "$CSCLI" hub update >/dev/null 2>&1; then
+			steps_done="${steps_done}Hub updated; "
+		else
+			errors="${errors}Hub update failed; "
+		fi
+	fi
+
+	# Step 13: Register with CAPI (required for console enrollment)
+	if [ "$lapi_ok" = "1" ] && [ -x "$CSCLI" ]; then
+		if run_with_timeout 15 "$CSCLI" capi register >/dev/null 2>&1; then
+			steps_done="${steps_done}CAPI registered; "
+		else
+			# CAPI registration may fail if already registered, which is OK
+			local capi_status=""
+			capi_status=$(run_with_timeout 5 "$CSCLI" capi status 2>&1)
+			if echo "$capi_status" | grep -qi "registered\|online"; then
+				steps_done="${steps_done}CAPI OK; "
+			else
+				errors="${errors}CAPI not registered; "
+			fi
+		fi
 	fi
 
 	if [ "$lapi_ok" = "1" ]; then
@@ -1190,6 +1215,26 @@ console_enroll() {
 	fi
 
 	secubox_log "Enrolling CrowdSec Console with key..."
+
+	# Step 0: Ensure CAPI is registered (prerequisite for console enrollment)
+	local capi_ok=0
+	local capi_status=""
+	capi_status=$(run_with_timeout 5 "$CSCLI" capi status 2>&1)
+	if echo "$capi_status" | grep -qi "registered\|online"; then
+		capi_ok=1
+	else
+		# Try to register with CAPI
+		secubox_log "CAPI not registered, attempting registration..."
+		if run_with_timeout 15 "$CSCLI" capi register >/dev/null 2>&1; then
+			capi_ok=1
+			secubox_log "CAPI registration successful"
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "CAPI registration failed. Please run LAPI repair first."
+			json_dump
+			return
+		fi
+	fi
 
 	# Build enroll command
 	local enroll_cmd="run_cscli console enroll $key"
@@ -1527,10 +1572,322 @@ service_control() {
 	json_dump
 }
 
+# Complete health check for dashboard
+get_health_check() {
+	json_init
+
+	# CrowdSec running status
+	local cs_running=0
+	if pgrep crowdsec >/dev/null 2>&1; then
+		cs_running=1
+	fi
+	json_add_boolean "crowdsec_running" "$cs_running"
+
+	# Version
+	local version=""
+	if [ -x "$CSCLI" ]; then
+		version=$(run_cscli version 2>/dev/null | grep "version:" | awk '{print $2}')
+	fi
+	json_add_string "version" "${version:-unknown}"
+
+	# LAPI status
+	local lapi_status="unavailable"
+	local lapi_url="http://127.0.0.1:8080"
+	if [ -x "$CSCLI" ]; then
+		if run_with_timeout 5 "$CSCLI" lapi status >/dev/null 2>&1; then
+			lapi_status="available"
+		fi
+	fi
+	json_add_string "lapi_status" "$lapi_status"
+	json_add_string "lapi_url" "$lapi_url"
+
+	# CAPI status - parse cscli capi status output
+	local capi_status="disconnected"
+	local capi_enrolled=0
+	local capi_subscription=""
+	local sharing_signals=0
+	local pulling_blocklist=0
+	local pulling_console=0
+
+	if [ -x "$CSCLI" ]; then
+		local capi_output=""
+		capi_output=$(run_with_timeout 10 "$CSCLI" capi status 2>&1)
+
+		if echo "$capi_output" | grep -qi "You can successfully interact with Central API"; then
+			capi_status="connected"
+		fi
+		if echo "$capi_output" | grep -qi "enrolled in the console"; then
+			capi_enrolled=1
+		fi
+		if echo "$capi_output" | grep -qi "COMMUNITY"; then
+			capi_subscription="COMMUNITY"
+		elif echo "$capi_output" | grep -qi "PRO"; then
+			capi_subscription="PRO"
+		fi
+		if echo "$capi_output" | grep -qi "Sharing signals is enabled"; then
+			sharing_signals=1
+		fi
+		if echo "$capi_output" | grep -qi "Pulling community blocklist is enabled"; then
+			pulling_blocklist=1
+		fi
+		if echo "$capi_output" | grep -qi "Pulling blocklists from the console is enabled"; then
+			pulling_console=1
+		fi
+	fi
+
+	json_add_string "capi_status" "$capi_status"
+	json_add_boolean "capi_enrolled" "$capi_enrolled"
+	json_add_string "capi_subscription" "$capi_subscription"
+	json_add_boolean "sharing_signals" "$sharing_signals"
+	json_add_boolean "pulling_blocklist" "$pulling_blocklist"
+	json_add_boolean "pulling_console" "$pulling_console"
+
+	# Machine info
+	local machine_id=""
+	local machine_version=""
+	if [ -x "$CSCLI" ]; then
+		local machines_output=""
+		machines_output=$(run_cscli machines list -o json 2>/dev/null)
+		if [ -n "$machines_output" ] && [ "$machines_output" != "null" ]; then
+			machine_id=$(echo "$machines_output" | jsonfilter -e '@[0].machineId' 2>/dev/null)
+			machine_version=$(echo "$machines_output" | jsonfilter -e '@[0].version' 2>/dev/null)
+		fi
+	fi
+	json_add_string "machine_id" "${machine_id:-localhost}"
+	json_add_string "machine_version" "$machine_version"
+
+	# Bouncer count
+	local bouncer_count=0
+	if [ -x "$CSCLI" ]; then
+		bouncer_count=$(run_cscli bouncers list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	fi
+	json_add_int "bouncer_count" "${bouncer_count:-0}"
+
+	# Total decisions count
+	local decisions_count=0
+	if [ -x "$CSCLI" ]; then
+		decisions_count=$(run_cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*].decisions[*]' 2>/dev/null | wc -l)
+	fi
+	json_add_int "decisions_count" "${decisions_count:-0}"
+
+	json_dump
+}
+
+# Get CAPI blocklist metrics (decisions by origin and reason)
+get_capi_metrics() {
+	json_init
+
+	if [ ! -x "$CSCLI" ]; then
+		json_add_boolean "available" 0
+		json_add_string "error" "cscli not found"
+		json_dump
+		return
+	fi
+
+	# Get all decisions
+	local decisions_output=""
+	decisions_output=$(run_cscli decisions list -o json 2>/dev/null)
+
+	if [ -z "$decisions_output" ] || [ "$decisions_output" = "null" ]; then
+		json_add_boolean "available" 1
+		json_add_int "total_capi" 0
+		json_add_int "total_local" 0
+		json_add_string "breakdown" "[]"
+		json_dump
+		return
+	fi
+
+	json_add_boolean "available" 1
+
+	# Count by origin
+	local capi_count=0
+	local local_count=0
+
+	# Parse decisions and count by origin
+	# The structure is: [{decisions: [...], ...}, ...]
+	# We need to count decisions where origin = "CAPI" or "crowdsec"
+
+	# Use a temp file for aggregation
+	local tmp_file="/tmp/capi_metrics.$$"
+
+	# Extract all decisions with their origin and scenario
+	echo "$decisions_output" | jsonfilter -e '@[*].decisions[*]' 2>/dev/null | while read -r decision; do
+		local origin=$(echo "$decisions_output" | jsonfilter -e '@[*].decisions[*].origin' 2>/dev/null | head -1)
+		local scenario=$(echo "$decisions_output" | jsonfilter -e '@[*].scenario' 2>/dev/null | head -1)
+		echo "$origin|$scenario"
+	done > "$tmp_file" 2>/dev/null
+
+	# Count CAPI decisions by scenario using awk
+	capi_count=$(echo "$decisions_output" | grep -o '"origin":"CAPI"' 2>/dev/null | wc -l)
+	local_count=$(echo "$decisions_output" | grep -o '"origin":"crowdsec"' 2>/dev/null | wc -l)
+
+	json_add_int "total_capi" "${capi_count:-0}"
+	json_add_int "total_local" "${local_count:-0}"
+
+	# Build breakdown by scenario for CAPI decisions
+	# Parse the JSON more carefully
+	json_add_array "breakdown"
+
+	# Extract unique scenarios and their counts from CAPI decisions
+	local scenarios=""
+	scenarios=$(echo "$decisions_output" | grep -oE '"scenario":"[^"]*"' | sort | uniq -c | sort -rn | head -10)
+
+	echo "$scenarios" | while read -r count scenario; do
+		if [ -n "$count" ] && [ -n "$scenario" ]; then
+			local name=$(echo "$scenario" | sed 's/"scenario":"//; s/"$//')
+			json_add_object ""
+			json_add_string "scenario" "$name"
+			json_add_int "count" "$count"
+			json_close_object
+		fi
+	done
+
+	json_close_array
+
+	rm -f "$tmp_file" 2>/dev/null
+
+	json_dump
+}
+
+# Get available hub items (not installed)
+get_hub_available() {
+	json_init
+
+	if [ ! -x "$CSCLI" ]; then
+		json_add_boolean "available" 0
+		json_add_string "error" "cscli not found"
+		json_dump
+		return
+	fi
+
+	json_add_boolean "available" 1
+
+	# Get hub list in JSON format (all items)
+	local hub_output=""
+	hub_output=$(run_with_timeout 30 "$CSCLI" hub list -a -o json 2>/dev/null)
+
+	if [ -z "$hub_output" ]; then
+		json_add_string "collections" "[]"
+		json_add_string "parsers" "[]"
+		json_add_string "scenarios" "[]"
+		json_dump
+		return
+	fi
+
+	# Output the raw hub data - frontend will parse it
+	echo "$hub_output"
+}
+
+# Install a hub item (collection, parser, scenario)
+install_hub_item() {
+	local item_type="$1"
+	local item_name="$2"
+
+	json_init
+
+	if [ -z "$item_type" ] || [ -z "$item_name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Item type and name are required"
+		json_dump
+		return
+	fi
+
+	# Validate item type
+	case "$item_type" in
+		collection|parser|scenario|postoverflow|context)
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Invalid item type: $item_type"
+			json_dump
+			return
+			;;
+	esac
+
+	if [ ! -x "$CSCLI" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "cscli not found"
+		json_dump
+		return
+	fi
+
+	secubox_log "Installing CrowdSec $item_type: $item_name"
+
+	# Install the item
+	local output=""
+	output=$(run_with_timeout 60 "$CSCLI" "${item_type}s" install "$item_name" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Successfully installed $item_type: $item_name"
+		json_add_string "output" "$output"
+		secubox_log "Installed $item_type: $item_name"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to install $item_type: $item_name"
+		json_add_string "output" "$output"
+		secubox_log "Failed to install $item_type: $item_name - $output"
+	fi
+
+	json_dump
+}
+
+# Remove a hub item
+remove_hub_item() {
+	local item_type="$1"
+	local item_name="$2"
+
+	json_init
+
+	if [ -z "$item_type" ] || [ -z "$item_name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Item type and name are required"
+		json_dump
+		return
+	fi
+
+	case "$item_type" in
+		collection|parser|scenario|postoverflow|context)
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Invalid item type: $item_type"
+			json_dump
+			return
+			;;
+	esac
+
+	if [ ! -x "$CSCLI" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "cscli not found"
+		json_dump
+		return
+	fi
+
+	secubox_log "Removing CrowdSec $item_type: $item_name"
+
+	local output=""
+	output=$(run_with_timeout 30 "$CSCLI" "${item_type}s" remove "$item_name" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Successfully removed $item_type: $item_name"
+		secubox_log "Removed $item_type: $item_name"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to remove $item_type: $item_name"
+		json_add_string "output" "$output"
+	fi
+
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{}}'
+		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{},"health_check":{},"capi_metrics":{},"hub_available":{},"install_hub_item":{"item_type":"string","item_name":"string"},"remove_hub_item":{"item_type":"string","item_name":"string"}}'
 		;;
 	call)
 		case "$2" in
@@ -1678,6 +2035,27 @@ case "$1" in
 				;;
 			acquisition_metrics)
 				get_acquisition_metrics
+				;;
+			health_check)
+				get_health_check
+				;;
+			capi_metrics)
+				get_capi_metrics
+				;;
+			hub_available)
+				get_hub_available
+				;;
+			install_hub_item)
+				read -r input
+				item_type=$(echo "$input" | jsonfilter -e '@.item_type' 2>/dev/null)
+				item_name=$(echo "$input" | jsonfilter -e '@.item_name' 2>/dev/null)
+				install_hub_item "$item_type" "$item_name"
+				;;
+			remove_hub_item)
+				read -r input
+				item_type=$(echo "$input" | jsonfilter -e '@.item_type' 2>/dev/null)
+				item_name=$(echo "$input" | jsonfilter -e '@.item_name' 2>/dev/null)
+				remove_hub_item "$item_type" "$item_name"
 				;;
 			*)
 				echo '{"error": "Unknown method"}'

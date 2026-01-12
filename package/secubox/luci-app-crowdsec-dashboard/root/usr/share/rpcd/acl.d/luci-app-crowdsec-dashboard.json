@@ -23,7 +23,10 @@
 					"wizard_state",
 					"console_status",
 					"acquisition_config",
-					"acquisition_metrics"
+					"acquisition_metrics",
+					"health_check",
+					"capi_metrics",
+					"hub_available"
 				],
 				"file": [ "read", "stat" ]
 			},
@@ -48,7 +51,9 @@
 					"console_disable",
 					"service_control",
 					"configure_acquisition",
-					"reset_wizard"
+					"reset_wizard",
+					"install_hub_item",
+					"remove_hub_item"
 				]
 			},
 			"uci": [ "crowdsec", "crowdsec-dashboard" ]

@@ -250,6 +250,39 @@ var callAcquisitionMetrics = rpc.declare({
 	expect: { }
 });
 
+// Health Check & CAPI Methods
+var callHealthCheck = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'health_check',
+	expect: { }
+});
+
+var callCapiMetrics = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'capi_metrics',
+	expect: { }
+});
+
+var callHubAvailable = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'hub_available',
+	expect: { }
+});
+
+var callInstallHubItem = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'install_hub_item',
+	params: ['item_type', 'item_name'],
+	expect: { }
+});
+
+var callRemoveHubItem = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'remove_hub_item',
+	params: ['item_type', 'item_name'],
+	expect: { }
+});
+
 function formatDuration(seconds) {
 	if (!seconds) return 'N/A';
 	if (seconds < 60) return seconds + 's';
@@ -384,6 +417,13 @@ return baseclass.extend({
 	configureAcquisition: callConfigureAcquisition,
 	getAcquisitionConfig: callAcquisitionConfig,
 	getAcquisitionMetrics: callAcquisitionMetrics,
+
+	// Health Check & CAPI Methods
+	getHealthCheck: callHealthCheck,
+	getCapiMetrics: callCapiMetrics,
+	getHubAvailable: callHubAvailable,
+	installHubItem: callInstallHubItem,
+	removeHubItem: callRemoveHubItem,
 
 	formatDuration: formatDuration,
 	formatDate: formatDate,
