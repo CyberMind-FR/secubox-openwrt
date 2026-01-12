@@ -37,7 +37,8 @@ return view.extend({
 			this.csApi.getSecuboxLogs(),
 			this.csApi.getHealthCheck().catch(function() { return {}; }),
 			this.csApi.getCapiMetrics().catch(function() { return {}; }),
-			this.csApi.getCollections().catch(function() { return { collections: [] }; })
+			this.csApi.getCollections().catch(function() { return { collections: [] }; }),
+			this.csApi.getNftablesStats().catch(function() { return {}; })
 		]);
 	},
 
@@ -451,6 +452,10 @@ return view.extend({
 				this.renderCapiBlocklist(),
 				this.renderCollectionsCard()
 			]),
+
+			E('div', { 'class': 'cs-charts-row' }, [
+				this.renderFirewallBlocks()
+			]),
 			
 			E('div', { 'class': 'cs-charts-row' }, [
 				E('div', { 'class': 'cs-card', 'style': 'flex: 2' }, [
@@ -514,6 +519,7 @@ return view.extend({
 		this.healthCheck = payload[2] || {};
 		this.capiMetrics = payload[3] || {};
 		this.collections = (payload[4] && payload[4].collections) || [];
+		this.nftablesStats = payload[5] || {};
 
 		// Main wrapper with SecuBox header
 		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
@@ -541,13 +547,15 @@ refreshDashboard: function() {
 			self.csApi.getSecuboxLogs(),
 			self.csApi.getHealthCheck().catch(function() { return {}; }),
 			self.csApi.getCapiMetrics().catch(function() { return {}; }),
-			self.csApi.getCollections().catch(function() { return { collections: [] }; })
+			self.csApi.getCollections().catch(function() { return { collections: [] }; }),
+			self.csApi.getNftablesStats().catch(function() { return {}; })
 		]).then(function(results) {
 			self.data = results[0];
 			self.logs = (results[1] && results[1].entries) || [];
 			self.healthCheck = results[2] || {};
 			self.capiMetrics = results[3] || {};
 			self.collections = (results[4] && results[4].collections) || [];
+			self.nftablesStats = results[5] || {};
 			self.updateView();
 		});
 	},
@@ -729,6 +737,112 @@ refreshDashboard: function() {
 			ui.hideModal();
 			self.showToast(err.message || _('Hub update failed'), 'error');
 		});
+	},
+
+	// Firewall Blocks - Shows IPs blocked in nftables
+	renderFirewallBlocks: function() {
+		var self = this;
+		var stats = this.nftablesStats || {};
+
+		// Check if nftables available
+		if (stats.error) {
+			return E('div', { 'class': 'cs-card' }, [
+				E('div', { 'class': 'cs-card-header' }, [
+					E('div', { 'class': 'cs-card-title' }, _('Firewall Blocks'))
+				]),
+				E('div', { 'class': 'cs-card-body' }, [
+					E('div', { 'class': 'cs-empty' }, [
+						E('div', { 'class': 'cs-empty-icon' }, '⚠️'),
+						E('p', {}, stats.error)
+					])
+				])
+			]);
+		}
+
+		var ipv4Active = stats.ipv4_table_exists;
+		var ipv6Active = stats.ipv6_table_exists;
+		var ipv4List = stats.ipv4_blocked_ips || [];
+		var ipv6List = stats.ipv6_blocked_ips || [];
+		var ipv4Rules = stats.ipv4_rules_count || 0;
+		var ipv6Rules = stats.ipv6_rules_count || 0;
+		// Use total counts from API (includes all IPs, not just sample)
+		var ipv4Total = stats.ipv4_total_count || ipv4List.length;
+		var ipv6Total = stats.ipv6_total_count || ipv6List.length;
+		var ipv4Capi = stats.ipv4_capi_count || 0;
+		var ipv4Cscli = stats.ipv4_cscli_count || 0;
+		var ipv6Capi = stats.ipv6_capi_count || 0;
+		var ipv6Cscli = stats.ipv6_cscli_count || 0;
+		var totalBlocked = ipv4Total + ipv6Total;
+
+		// Build IP list (combine IPv4 and IPv6, limit to 20)
+		var allIps = [];
+		ipv4List.forEach(function(ip) { allIps.push({ ip: ip, type: 'IPv4' }); });
+		ipv6List.forEach(function(ip) { allIps.push({ ip: ip, type: 'IPv6' }); });
+		var displayIps = allIps.slice(0, 20);
+
+		var ipRows = displayIps.map(function(item) {
+			return E('div', {
+				'style': 'display: flex; align-items: center; justify-content: space-between; padding: 0.5em 0; border-bottom: 1px solid rgba(255,255,255,0.1);'
+			}, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 0.75em;' }, [
+					E('span', { 'style': 'font-size: 1.1em;' }, '🚫'),
+					E('code', { 'style': 'font-size: 0.85em; background: rgba(0,0,0,0.2); padding: 0.2em 0.5em; border-radius: 4px;' }, item.ip),
+					E('span', {
+						'style': 'font-size: 0.7em; padding: 0.15em 0.4em; background: ' + (item.type === 'IPv4' ? '#667eea' : '#764ba2') + '; border-radius: 3px;'
+					}, item.type)
+				]),
+				E('button', {
+					'class': 'cs-btn cs-btn-danger cs-btn-sm',
+					'style': 'font-size: 0.75em; padding: 0.25em 0.5em;',
+					'click': ui.createHandlerFn(self, 'handleUnban', item.ip)
+				}, _('Unban'))
+			]);
+		});
+
+		// Status indicators with breakdown by origin
+		var statusRow = E('div', { 'style': 'display: flex; gap: 1.5em; margin-bottom: 1em; flex-wrap: wrap;' }, [
+			E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+				E('span', { 'style': 'font-size: 1.2em;' }, ipv4Active ? '✅' : '❌'),
+				E('span', { 'style': 'font-size: 0.85em;' }, 'IPv4'),
+				E('span', { 'style': 'font-size: 0.75em; color: #888;' }, ipv4Total.toLocaleString() + ' IPs')
+			]),
+			E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+				E('span', { 'style': 'font-size: 1.2em;' }, ipv6Active ? '✅' : '❌'),
+				E('span', { 'style': 'font-size: 0.85em;' }, 'IPv6'),
+				E('span', { 'style': 'font-size: 0.75em; color: #888;' }, ipv6Total.toLocaleString() + ' IPs')
+			]),
+			E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em; padding-left: 1em; border-left: 1px solid rgba(255,255,255,0.2);' }, [
+				E('span', { 'style': 'font-size: 0.8em; padding: 0.2em 0.5em; background: #667eea; border-radius: 4px;' }, 'CAPI'),
+				E('span', { 'style': 'font-size: 0.85em; color: #667eea;' }, (ipv4Capi + ipv6Capi).toLocaleString())
+			]),
+			E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+				E('span', { 'style': 'font-size: 0.8em; padding: 0.2em 0.5em; background: #00d4aa; border-radius: 4px;' }, 'Local'),
+				E('span', { 'style': 'font-size: 0.85em; color: #00d4aa;' }, (ipv4Cscli + ipv6Cscli).toLocaleString())
+			])
+		]);
+
+		return E('div', { 'class': 'cs-card', 'style': 'flex: 2;' }, [
+			E('div', { 'class': 'cs-card-header' }, [
+				E('div', { 'class': 'cs-card-title' }, [
+					_('Firewall Blocks'),
+					E('span', {
+						'style': 'margin-left: 0.75em; font-size: 0.8em; padding: 0.2em 0.6em; background: linear-gradient(90deg, #ff4757, #ff6b81); border-radius: 12px;'
+					}, totalBlocked + ' blocked')
+				])
+			]),
+			E('div', { 'class': 'cs-card-body' }, [
+				statusRow,
+				ipRows.length > 0 ?
+					E('div', { 'style': 'max-height: 300px; overflow-y: auto;' }, ipRows) :
+					E('div', { 'class': 'cs-empty', 'style': 'padding: 1em;' }, [
+						E('div', { 'class': 'cs-empty-icon' }, '✅'),
+						E('p', {}, _('No IPs currently blocked in firewall'))
+					]),
+				allIps.length > 20 ? E('div', { 'style': 'text-align: center; padding: 0.5em; font-size: 0.8em; color: #888;' },
+					_('Showing 20 of ') + allIps.length + _(' blocked IPs')
+				) : E('span')
+			])
+		]);
 	},
 
 	renderLogCard: function(entries) {

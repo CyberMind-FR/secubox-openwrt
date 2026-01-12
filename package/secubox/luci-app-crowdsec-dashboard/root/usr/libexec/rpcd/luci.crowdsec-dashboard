@@ -845,31 +845,65 @@ get_nftables_stats() {
 	fi
 	json_add_boolean "ipv6_table_exists" "$ipv6_exists"
 
-	# Get blocked IPs from IPv4 set
+	# Get blocked IPs from ALL IPv4 sets (CAPI, cscli, etc.)
+	local ipv4_total=0
+	local ipv4_capi=0
+	local ipv4_cscli=0
+	local ipv4_other=0
+
 	json_add_array "ipv4_blocked_ips"
 	if [ "$ipv4_exists" = "1" ]; then
-		local ips
-		ips=$(nft list set ip crowdsec crowdsec-blacklists 2>/dev/null | sed -n '/elements = {/,/}/p' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' || echo "")
-		if [ -n "$ips" ]; then
-			local ip
-			for ip in $ips; do
-				json_add_string "" "$ip"
-			done
-		fi
+		# Get all set names
+		local sets
+		sets=$(nft list sets ip 2>/dev/null | grep "set crowdsec-blacklists" | sed 's/.*set //' | sed 's/ {//')
+
+		local setname ips ip
+		for setname in $sets; do
+			ips=$(nft list set ip crowdsec "$setname" 2>/dev/null | sed -n '/elements = {/,/}/p' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?' | head -50)
+			if [ -n "$ips" ]; then
+				for ip in $ips; do
+					json_add_string "" "$ip"
+					ipv4_total=$((ipv4_total + 1))
+				done
+			fi
+			# Count by origin
+			local count
+			count=$(nft list set ip crowdsec "$setname" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | wc -l)
+			case "$setname" in
+				*-CAPI) ipv4_capi=$((ipv4_capi + count)) ;;
+				*-cscli) ipv4_cscli=$((ipv4_cscli + count)) ;;
+				*) ipv4_other=$((ipv4_other + count)) ;;
+			esac
+		done
 	fi
 	json_close_array
 
-	# Get blocked IPs from IPv6 set
+	# Get blocked IPs from ALL IPv6 sets
+	local ipv6_total=0
+	local ipv6_capi=0
+	local ipv6_cscli=0
+
 	json_add_array "ipv6_blocked_ips"
 	if [ "$ipv6_exists" = "1" ]; then
-		local ips
-		ips=$(nft list set ip6 crowdsec6 crowdsec6-blacklists 2>/dev/null | sed -n '/elements = {/,/}/p' | grep -oE '([0-9a-fA-F]{0,4}:){7}[0-9a-fA-F]{0,4}' || echo "")
-		if [ -n "$ips" ]; then
-			local ip
-			for ip in $ips; do
-				json_add_string "" "$ip"
-			done
-		fi
+		local sets
+		sets=$(nft list sets ip6 2>/dev/null | grep "set crowdsec6-blacklists" | sed 's/.*set //' | sed 's/ {//')
+
+		local setname ips ip
+		for setname in $sets; do
+			ips=$(nft list set ip6 crowdsec6 "$setname" 2>/dev/null | sed -n '/elements = {/,/}/p' | grep -oE '([0-9a-fA-F:]+:+)+[0-9a-fA-F]+' | head -50)
+			if [ -n "$ips" ]; then
+				for ip in $ips; do
+					json_add_string "" "$ip"
+					ipv6_total=$((ipv6_total + 1))
+				done
+			fi
+			local count
+			count=$(nft list set ip6 crowdsec6 "$setname" 2>/dev/null | grep -oE '([0-9a-fA-F:]+:+)+[0-9a-fA-F]+' | wc -l)
+			case "$setname" in
+				*-CAPI) ipv6_capi=$((ipv6_capi + count)) ;;
+				*-cscli) ipv6_cscli=$((ipv6_cscli + count)) ;;
+			esac
+		done
 	fi
 	json_close_array
 
@@ -884,6 +918,14 @@ get_nftables_stats() {
 	fi
 	json_add_int "ipv4_rules_count" "$ipv4_rules"
 	json_add_int "ipv6_rules_count" "$ipv6_rules"
+
+	# Add counts by origin
+	json_add_int "ipv4_capi_count" "$ipv4_capi"
+	json_add_int "ipv4_cscli_count" "$ipv4_cscli"
+	json_add_int "ipv4_total_count" "$((ipv4_capi + ipv4_cscli + ipv4_other))"
+	json_add_int "ipv6_capi_count" "$ipv6_capi"
+	json_add_int "ipv6_cscli_count" "$ipv6_cscli"
+	json_add_int "ipv6_total_count" "$((ipv6_capi + ipv6_cscli))"
 
 	json_dump
 }
