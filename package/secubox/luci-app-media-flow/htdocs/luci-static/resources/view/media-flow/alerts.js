@@ -3,32 +3,8 @@
 'require form';
 'require ui';
 'require media-flow/api as API';
+'require media-flow/nav as NavHelper';
 'require secubox-portal/header as SbHeader';
-
-var MEDIAFLOW_NAV = [
-	{ id: 'dashboard', icon: '📊', label: 'Dashboard' },
-	{ id: 'clients', icon: '👥', label: 'Clients' },
-	{ id: 'services', icon: '🎬', label: 'Services' },
-	{ id: 'history', icon: '📜', label: 'History' },
-	{ id: 'alerts', icon: '🔔', label: 'Alerts' }
-];
-
-function renderMediaFlowNav(activeId) {
-	return E('div', {
-		'class': 'sb-app-nav',
-		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:#141419;border:1px solid rgba(255,255,255,0.08);border-radius:12px;flex-wrap:wrap;'
-	}, MEDIAFLOW_NAV.map(function(item) {
-		var isActive = activeId === item.id;
-		return E('a', {
-			'href': L.url('admin', 'secubox', 'mediaflow', item.id),
-			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
-				(isActive ? 'background:linear-gradient(135deg,#ec4899,#8b5cf6);color:white;' : 'color:#a0a0b0;background:transparent;')
-		}, [
-			E('span', {}, item.icon),
-			E('span', {}, _(item.label))
-		]);
-	}));
-}
 
 return L.view.extend({
 	load: function() {
@@ -53,18 +29,19 @@ return L.view.extend({
 		o.placeholder = 'Netflix';
 		o.rmempty = false;
 
-		o = s.option(form.Value, 'threshold_hours', _('Threshold (hours)'));
+		o = s.option(form.Value, 'threshold_hours', _("Daily Usage Limit (hours)"));
 		o.datatype = 'uinteger';
-		o.placeholder = '2';
+		o.placeholder = '4';
 		o.rmempty = false;
-		o.description = _('Trigger alert if usage exceeds this many hours per day');
+		o.description = _('Alert when daily usage exceeds this threshold (e.g., 2-4 hours)');
 
-		o = s.option(form.ListValue, 'action', _('Action'));
-		o.value('notify', _('Notification only'));
-		o.value('limit', _('Limit bandwidth'));
-		o.value('block', _('Block service'));
+		o = s.option(form.ListValue, 'action', _("Alert Action"));
+		o.value('notify', _('📬 Notify Only'));
+		o.value('limit', _('🐌 Limit Bandwidth'));
+		o.value('block', _('🚫 Block Service'));
 		o.default = 'notify';
 		o.rmempty = false;
+		o.description = _('Choose what happens when threshold is exceeded');
 
 		o = s.option(form.Flag, 'enabled', _('Enabled'));
 		o.default = o.enabled;
@@ -75,10 +52,20 @@ return L.view.extend({
 .mf-header { margin-bottom: 24px; }
 .mf-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
 .mf-subtitle { color: #a1a1aa; font-size: 0.875rem; }
+.cbi-section { margin: 0 !important; background: rgba(255,255,255,0.02) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 12px !important; padding: 20px !important; }
+.cbi-section-create { margin-top: 12px !important; }
+.cbi-option-compact { padding: 12px 0 !important; border-bottom: 1px solid rgba(255,255,255,0.04) !important; }
+.cbi-option-compact:last-child { border-bottom: none !important; }
+.form-control { background: rgba(255,255,255,0.05) !important; border-color: rgba(255,255,255,0.1) !important; color: #e4e4e7 !important; border-radius: 6px !important; padding: 8px 12px !important; }
+.form-control:focus { border-color: #ec4899 !important; background: rgba(236,72,153,0.08) !important; box-shadow: 0 0 0 3px rgba(236,72,153,0.1) !important; }
+.cbi-button { border-radius: 8px !important; font-weight: 500 !important; transition: all 0.2s !important; }
+.cbi-button-add { background: linear-gradient(135deg, #ec4899, #8b5cf6) !important; color: white !important; border: none !important; }
+.cbi-button-add:hover { opacity: 0.9 !important; transform: translateY(-2px) !important; }
 `;
 			var container = E('div', { 'class': 'mf-page' }, [
 				E('style', {}, css),
-				renderMediaFlowNav('alerts'),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('media-flow/common.css') }),
+				NavHelper.renderTabs('alerts'),
 				E('div', { 'class': 'mf-header' }, [
 					E('div', { 'class': 'mf-title' }, ['🔔 ', _('Streaming Alerts')]),
 					E('div', { 'class': 'mf-subtitle' }, _('Configure alerts based on streaming service usage'))

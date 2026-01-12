@@ -617,6 +617,40 @@ return view.extend({
 						}, _('Apply Interface Settings'))
 					])
 				])
+
+				// Firewall Bouncer quick control
+				E('div', { 'style': 'margin-top: 1em; padding: 1em; background: #fff; border-radius: 6px; border: 1px solid #e6e6e6;' }, [
+					E('h4', { 'style': 'margin-bottom: 0.5em; color: var(--cyber-text-secondary, #888);' }, _('Firewall Bouncer')),
+					E('p', { 'style': 'color: #666; margin-bottom: 0.5em;' }, _('Enable or disable the CrowdSec firewall bouncer (requires nftables and the firewall-bouncer collection).')),
+					E('div', { 'id': 'bouncer-control', 'style': 'display: flex; gap: 0.5em; align-items: center;' }, [
+						E('button', {
+							'class': 'cbi-button cbi-button-action',
+							'click': function(ev) {
+								ev.target.disabled = true;
+								ev.target.classList.add('spinning');
+								API.getFirewallBouncerStatus().then(function(res) {
+									var enabled = res && res.enabled;
+									var action = enabled ? 'disable' : 'enable';
+									API.controlFirewallBouncer(action).then(function(result) {
+										ev.target.disabled = false;
+										ev.target.classList.remove('spinning');
+										if (result && result.success) {
+											ui.addNotification(null, E('p', {}, enabled ? _('Firewall bouncer disabled') : _('Firewall bouncer enabled')), 'info');
+											window.setTimeout(function() { location.reload(); }, 1200);
+										} else {
+											ui.addNotification(null, E('p', {}, result.error || _('Failed to change bouncer state')), 'error');
+										}
+									});
+								}).catch(function(err) {
+									ev.target.disabled = false;
+									ev.target.classList.remove('spinning');
+									ui.addNotification(null, E('p', {}, err.message || err), 'error');
+								});
+							}
+						}, _('Toggle Firewall Bouncer')),
+						E('div', { 'id': 'bouncer-status', 'style': 'color: #666; font-size: 0.95em;' }, _('Checking status...'))
+					])
+				]),
 			]),
 
 			// Configuration Files

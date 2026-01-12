@@ -2,32 +2,8 @@
 'require view';
 'require ui';
 'require media-flow/api as API';
+'require media-flow/nav as NavHelper';
 'require secubox-portal/header as SbHeader';
-
-var MEDIAFLOW_NAV = [
-	{ id: 'dashboard', icon: '📊', label: 'Dashboard' },
-	{ id: 'clients', icon: '👥', label: 'Clients' },
-	{ id: 'services', icon: '🎬', label: 'Services' },
-	{ id: 'history', icon: '📜', label: 'History' },
-	{ id: 'alerts', icon: '🔔', label: 'Alerts' }
-];
-
-function renderMediaFlowNav(activeId) {
-	return E('div', {
-		'class': 'sb-app-nav',
-		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:#141419;border:1px solid rgba(255,255,255,0.08);border-radius:12px;flex-wrap:wrap;'
-	}, MEDIAFLOW_NAV.map(function(item) {
-		var isActive = activeId === item.id;
-		return E('a', {
-			'href': L.url('admin', 'secubox', 'mediaflow', item.id),
-			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
-				(isActive ? 'background:linear-gradient(135deg,#ec4899,#8b5cf6);color:white;' : 'color:#a0a0b0;background:transparent;')
-		}, [
-			E('span', {}, item.icon),
-			E('span', {}, _(item.label))
-		]);
-	}));
-}
 
 return L.view.extend({
 	load: function() {
@@ -47,18 +23,30 @@ return L.view.extend({
 .mf-subtitle { color: #a1a1aa; font-size: 0.875rem; }
 .mf-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; overflow: hidden; }
 .mf-table { width: 100%; border-collapse: collapse; }
-.mf-table th { text-align: left; padding: 12px 16px; font-size: 0.75rem; text-transform: uppercase; color: #71717a; border-bottom: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255,255,255,0.02); }
+.mf-table th { text-align: left; padding: 12px 16px; font-size: 0.75rem; text-transform: uppercase; color: #71717a; border-bottom: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255,255,255,0.02); font-weight: 600; }
 .mf-table td { padding: 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
 .mf-table tr:hover td { background: rgba(255, 255, 255, 0.03); }
 .mf-empty { text-align: center; padding: 48px 20px; color: #71717a; }
 .mf-empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
 .mf-btn { padding: 8px 16px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; border: none; background: rgba(255,255,255,0.1); color: #e4e4e7; transition: all 0.2s; }
-.mf-btn:hover { background: rgba(255,255,255,0.15); }
+.mf-btn:hover { background: rgba(255,255,255,0.15); transform: translateY(-1px); }
+@media (max-width: 768px) { 
+	.mf-card { overflow-x: auto; }
+	.mf-table { font-size: 0.9rem; }
+	.mf-table th, .mf-table td { padding: 10px 8px; }
+}
+@media (max-width: 480px) {
+	.mf-title { font-size: 1.25rem; }
+	.mf-table { font-size: 0.8rem; }
+	.mf-table th, .mf-table td { padding: 8px 4px; }
+	.mf-btn { padding: 6px 12px; font-size: 0.75rem; }
+}
 `;
 
 		var container = E('div', { 'class': 'mf-page' }, [
 			E('style', {}, css),
-			renderMediaFlowNav('services'),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('media-flow/common.css') }),
+			NavHelper.renderTabs('services'),
 			E('div', { 'class': 'mf-header' }, [
 				E('div', { 'class': 'mf-title' }, ['🎬 ', _('Services Statistics')]),
 				E('div', { 'class': 'mf-subtitle' }, _('Detailed statistics per streaming service'))

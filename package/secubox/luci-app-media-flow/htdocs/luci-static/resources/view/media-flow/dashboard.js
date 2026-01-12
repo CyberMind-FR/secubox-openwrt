@@ -3,6 +3,7 @@
 'require poll';
 'require ui';
 'require media-flow/api as API';
+'require media-flow/nav as NavHelper';
 'require secubox-portal/header as SbHeader';
 
 return view.extend({
@@ -37,10 +38,6 @@ return view.extend({
 		var streams = streamsData.streams || [];
 		var flowCount = streamsData.flow_count || status.active_flows || 0;
 
-		// Main wrapper with SecuBox header
-		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
-		wrapper.appendChild(SbHeader.render());
-
 		// Inject CSS
 		var css = `
 .mf-dashboard { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #e4e4e7; }
@@ -54,7 +51,9 @@ return view.extend({
 .mf-status-badge.stopped { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
 .mf-status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 
-.mf-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.mf-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+@media (max-width: 768px) { .mf-stats-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .mf-stats-grid { grid-template-columns: 1fr; } }
 .mf-stat-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 20px; text-align: center; transition: all 0.2s; }
 .mf-stat-card:hover { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.12); }
 .mf-stat-icon { font-size: 1.5rem; margin-bottom: 8px; }
@@ -84,13 +83,20 @@ return view.extend({
 .mf-empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
 .mf-empty-text { font-size: 1rem; }
 
-.mf-streams-table { width: 100%; border-collapse: collapse; }
+.mf-streams-table { width: 100%; border-collapse: collapse; overflow-x: auto; }
+@media (max-width: 768px) { .mf-streams-table { font-size: 0.85rem; } .mf-streams-table th, .mf-streams-table td { padding: 10px 8px; } }
+@media (max-width: 480px) { .mf-card-body { padding: 12px; overflow-x: auto; } .mf-streams-table { font-size: 0.75rem; } .mf-streams-table th, .mf-streams-table td { padding: 8px 4px; } }
 .mf-streams-table th { text-align: left; padding: 12px 16px; font-size: 0.75rem; text-transform: uppercase; color: #71717a; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
 .mf-streams-table td { padding: 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
 .mf-streams-table tr:hover td { background: rgba(255, 255, 255, 0.03); }
 .mf-quality-badge { padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; color: white; }
 
 .mf-btn { padding: 10px 20px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; cursor: pointer; border: none; transition: all 0.2s; }
+.mf-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.mf-btn.spinning::after { content: ''; animation: spin 1s linear infinite; display: inline-block; margin-left: 8px; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.mf-loading { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 .mf-btn-primary { background: linear-gradient(135deg, #ec4899, #8b5cf6); color: white; }
 .mf-btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
 .mf-btn-secondary { background: rgba(255, 255, 255, 0.1); color: #e4e4e7; border: 1px solid rgba(255, 255, 255, 0.2); }
@@ -101,6 +107,8 @@ return view.extend({
 
 		var view = E('div', { 'class': 'mf-dashboard' }, [
 			E('style', {}, css),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('media-flow/common.css') }),
+			NavHelper.renderTabs('dashboard'),
 
 			// Header
 			E('div', { 'class': 'mf-header' }, [
@@ -246,6 +254,8 @@ return view.extend({
 			}, this));
 		}, this), this.pollInterval);
 
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
 		wrapper.appendChild(view);
 		return wrapper;
 	},
