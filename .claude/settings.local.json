@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npm i:*)",
+      "Bash(claude --version)",
+      "Bash(./local-build.sh:*)",
+      "Bash(sudo apt-get install:*)",
+      "Bash(FORCE=1 ./local-build.sh:*)",
+      "Bash(rsync:*)",
+      "Bash(make FORCE=1 package/feeds/secubox/luci-app-system-hub/compile:*)",
+      "Bash(chmod:*)",
+      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")"
     ]
   }
 }

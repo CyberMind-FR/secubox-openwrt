@@ -554,7 +554,7 @@ LUCI_MK
     rm -f feeds/telephony.index feeds/routing.index 2>/dev/null || true
     rm -rf feeds/telephony feeds/routing 2>/dev/null || true
 
-    make defconfig 2>/dev/null
+    make defconfig FORCE=1 2>/dev/null
 
     cd - > /dev/null
 
@@ -810,7 +810,7 @@ configure_packages() {
     echo "CONFIG_FEED_packages=y" >> .config
     echo "CONFIG_FEED_luci=y" >> .config
 
-    make defconfig 2>/dev/null
+    make defconfig FORCE=1 2>/dev/null
 
     cd - > /dev/null
 
@@ -914,7 +914,7 @@ build_packages() {
 
         # Build from feed (skip dependency checks for architecture-independent packages)
         # These packages are just JavaScript/shell scripts - no compilation needed
-        if timeout 600 make "package/feeds/secubox/${pkg_name}/compile" V=s -j1 NO_DEPS=1 > "$build_log" 2>&1; then
+        if timeout 600 make "package/feeds/secubox/${pkg_name}/compile" V=s -j1 NO_DEPS=1 FORCE=1 > "$build_log" 2>&1; then
             # Check if package was created (.apk or .ipk)
             local pkg_file=$(find bin -name "${pkg_name}*.${pkg_ext}" 2>/dev/null | head -1)
 
@@ -1276,7 +1276,7 @@ run_build_openwrt() {
 
     # Enable the package (use actual package name, not directory name)
     echo "CONFIG_PACKAGE_${pkg_name}=m" >> .config
-    make defconfig
+    make defconfig FORCE=1
 
     # Build dependencies first (for packages like netifyd that need system libraries)
     print_header "Building Dependencies"
@@ -1658,7 +1658,7 @@ EOF
     esac
 
     # Run defconfig
-    make defconfig 2>/dev/null
+    make defconfig FORCE=1 2>/dev/null
 
     cd - > /dev/null
 

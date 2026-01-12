@@ -16,3 +16,6 @@ luci-app-secubox.backup-*
 .venv/
 docs/.DS_Store
 .ssh-askpass
+
+
+.claude/settings.local.json

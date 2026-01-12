@@ -1,60 +1,12 @@
 {
   "feed_url": "/secubox-feed",
-  "generated": "2026-01-11T16:58:17+01:00",
+  "generated": "2026-01-12T09:06:09+01:00",
   "packages": [
-    {
-      "name": "luci-app-auth-guardian",
-      "version": "0.4.0-r2",
-      "filename": "luci-app-auth-guardian_0.4.0-r2_all.ipk",
-      "size": 12054,
-      "category": "security",
-      "icon": "key",
-      "description": "Authentication management",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
-      "name": "luci-app-bandwidth-manager",
-      "version": "0.5.0-r2",
-      "filename": "luci-app-bandwidth-manager_0.5.0-r2_all.ipk",
-      "size": 29788,
-      "category": "network",
-      "icon": "activity",
-      "description": "Bandwidth monitoring and control",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
-      "name": "luci-app-cdn-cache",
-      "version": "0.5.0-r2",
-      "filename": "luci-app-cdn-cache_0.5.0-r2_all.ipk",
-      "size": 20334,
-      "category": "network",
-      "icon": "globe",
-      "description": "CDN caching",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
-      "name": "luci-app-client-guardian",
-      "version": "0.4.0-r5",
-      "filename": "luci-app-client-guardian_0.4.0-r5_all.ipk",
-      "size": 61312,
-      "category": "network",
-      "icon": "users",
-      "description": "Client management and monitoring",
-      "installed": false,
-      "luci_app": null
-    }
-,
     {
       "name": "luci-app-crowdsec-dashboard",
       "version": "0.7.0-r17",
       "filename": "luci-app-crowdsec-dashboard_0.7.0-r17_all.ipk",
-      "size": 58608,
+      "size": 58898,
       "category": "security",
       "icon": "shield",
       "description": "CrowdSec security monitoring",
@@ -63,34 +15,10 @@
     }
 ,
     {
-      "name": "luci-app-ksm-manager",
-      "version": "0.4.0-r2",
-      "filename": "luci-app-ksm-manager_0.4.0-r2_all.ipk",
-      "size": 21550,
-      "category": "system",
-      "icon": "cpu",
-      "description": "Kernel memory management",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
-      "name": "luci-app-magicmirror",
-      "version": "1.0.0-r2",
-      "filename": "luci-app-magicmirror_1.0.0-r2_all.ipk",
-      "size": 8999,
-      "category": "iot",
-      "icon": "monitor",
-      "description": "Smart mirror display",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
       "name": "luci-app-media-flow",
-      "version": "0.6.2-r1",
-      "filename": "luci-app-media-flow_0.6.2-r1_all.ipk",
-      "size": 17137,
+      "version": "0.6.3-r1",
+      "filename": "luci-app-media-flow_0.6.3-r1_all.ipk",
+      "size": 17934,
       "category": "media",
       "icon": "film",
       "description": "Media streaming",
@@ -111,18 +39,6 @@
     }
 ,
     {
-      "name": "luci-app-mqtt-bridge",
-      "version": "0.4.0-r3",
-      "filename": "luci-app-mqtt-bridge_0.4.0-r3_all.ipk",
-      "size": 23873,
-      "category": "iot",
-      "icon": "message-square",
-      "description": "MQTT bridge",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
       "name": "luci-app-ndpid",
       "version": "1.1.2-r1",
       "filename": "luci-app-ndpid_1.1.2-r1_all.ipk",
@@ -130,42 +46,6 @@
       "category": "security",
       "icon": "eye",
       "description": "Deep packet inspection",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
-      "name": "luci-app-netdata-dashboard",
-      "version": "0.5.0-r2",
-      "filename": "luci-app-netdata-dashboard_0.5.0-r2_all.ipk",
-      "size": 22369,
-      "category": "monitoring",
-      "icon": "bar-chart-2",
-      "description": "System monitoring dashboard",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
-      "name": "luci-app-network-modes",
-      "version": "0.5.0-r2",
-      "filename": "luci-app-network-modes_0.5.0-r2_all.ipk",
-      "size": 55637,
-      "category": "network",
-      "icon": "wifi",
-      "description": "Network configuration",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
-      "name": "luci-app-network-tweaks",
-      "version": "1.0.0-r2",
-      "filename": "luci-app-network-tweaks_1.0.0-r2_all.ipk",
-      "size": 11701,
-      "category": "network",
-      "icon": "wifi",
-      "description": "Network configuration",
       "installed": false,
       "luci_app": null
     }
@@ -196,21 +76,9 @@
 ,
     {
       "name": "luci-app-secubox-bonus",
-      "version": "0.1.0-r2",
-      "filename": "luci-app-secubox-bonus_0.1.0-r2_all.ipk",
-      "size": 1112191,
-      "category": "system",
-      "icon": "box",
-      "description": "SecuBox system component",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
-      "name": "luci-app-secubox-bonus",
-      "version": "0.2.0-r1",
-      "filename": "luci-app-secubox-bonus_0.2.0-r1_all.ipk",
-      "size": 1119028,
+      "version": "0.2.0-r2",
+      "filename": "luci-app-secubox-bonus_0.2.0-r2_all.ipk",
+      "size": 4315940,
       "category": "system",
       "icon": "box",
       "description": "SecuBox system component",
@@ -262,54 +130,6 @@
       "category": "system",
       "icon": "box",
       "description": "SecuBox system component",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
-      "name": "luci-app-system-hub",
-      "version": "0.5.1-r4",
-      "filename": "luci-app-system-hub_0.5.1-r4_all.ipk",
-      "size": 63727,
-      "category": "system",
-      "icon": "settings",
-      "description": "System management",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
-      "name": "luci-app-traffic-shaper",
-      "version": "0.4.0-r2",
-      "filename": "luci-app-traffic-shaper_0.4.0-r2_all.ipk",
-      "size": 15609,
-      "category": "network",
-      "icon": "filter",
-      "description": "Traffic shaping and QoS",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
-      "name": "luci-app-vhost-manager",
-      "version": "0.5.0-r5",
-      "filename": "luci-app-vhost-manager_0.5.0-r5_all.ipk",
-      "size": 29133,
-      "category": "network",
-      "icon": "server",
-      "description": "Virtual host management",
-      "installed": false,
-      "luci_app": null
-    }
-,
-    {
-      "name": "luci-app-wireguard-dashboard",
-      "version": "0.5.0-r1",
-      "filename": "luci-app-wireguard-dashboard_0.5.0-r1_all.ipk",
-      "size": 33076,
-      "category": "vpn",
-      "icon": "shield",
-      "description": "WireGuard VPN dashboard",
       "installed": false,
       "luci_app": null
     }
@@ -424,9 +244,9 @@
 ,
     {
       "name": "secubox-app-mitmproxy",
-      "version": "2.1.0-r1",
-      "filename": "secubox-app-mitmproxy_2.1.0-r1_all.ipk",
-      "size": 5071,
+      "version": "2.2.0-r1",
+      "filename": "secubox-app-mitmproxy_2.2.0-r1_all.ipk",
+      "size": 4904,
       "category": "secubox",
       "icon": "package",
       "description": "SecuBox backend service",
