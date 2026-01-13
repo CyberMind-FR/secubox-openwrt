@@ -30,6 +30,7 @@ return view.extend({
 	dashboardData: null,
 	healthData: null,
 	alertsData: null,
+	publicIPs: null,
 	modulesList: [],
 	activeCategory: 'all',
 
@@ -43,12 +44,14 @@ return view.extend({
 			API.getDashboardData(),
 			API.getSystemHealth(),
 			API.getAlerts(),
-			API.getModules()
+			API.getModules(),
+			API.getPublicIPs()
 		]).then(function(data) {
 			self.dashboardData = data[0] || {};
 			self.healthData = data[1] || {};
 			self.alertsData = data[2] || {};
 			self.modulesList = (data[3] && data[3].modules) || [];
+			self.publicIPs = data[4] || {};
 			return data;
 		});
 	},
@@ -149,8 +152,50 @@ return view.extend({
 				this.renderSystemHealthPanel()
 			]),
 			E('div', { 'class': 'sb-grid-right' }, [
+				this.renderPublicIPsPanel(),
 				this.renderQuickActions(),
 				this.renderAlertsTimeline()
+			])
+		]);
+	},
+
+	renderPublicIPsPanel: function() {
+		var ips = this.publicIPs || {};
+		var ipv4 = ips.ipv4 || 'N/A';
+		var ipv6 = ips.ipv6 || 'N/A';
+		var ipv4Available = ips.ipv4_available;
+		var ipv6Available = ips.ipv6_available;
+
+		// Truncate IPv6 for display if too long
+		var ipv6Display = ipv6;
+		if (ipv6 && ipv6.length > 25) {
+			ipv6Display = ipv6.substring(0, 22) + '...';
+		}
+
+		return E('section', { 'class': 'sb-card' }, [
+			E('div', { 'class': 'sb-card-header' }, [
+				E('h2', {}, _('Public IP Addresses')),
+				E('p', { 'class': 'sb-card-subtitle' }, _('External network connectivity'))
+			]),
+			E('div', { 'class': 'sb-ip-grid', 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px;' }, [
+				E('div', { 'class': 'sb-ip-item', 'style': 'background: var(--cyber-bg-tertiary, #1a1a2e); padding: 16px; border-radius: 8px; text-align: center;' }, [
+					E('div', { 'style': 'font-size: 24px; margin-bottom: 8px;' }, '🌐'),
+					E('div', { 'style': 'font-size: 0.8em; color: var(--cyber-text-secondary, #888); margin-bottom: 4px;' }, 'IPv4'),
+					E('div', {
+						'id': 'sb-public-ipv4',
+						'style': 'font-family: monospace; font-size: 1.1em; color: ' + (ipv4Available ? 'var(--cyber-success, #22c55e)' : 'var(--cyber-text-secondary, #888)') + ';',
+						'title': ipv4
+					}, ipv4)
+				]),
+				E('div', { 'class': 'sb-ip-item', 'style': 'background: var(--cyber-bg-tertiary, #1a1a2e); padding: 16px; border-radius: 8px; text-align: center;' }, [
+					E('div', { 'style': 'font-size: 24px; margin-bottom: 8px;' }, '🔷'),
+					E('div', { 'style': 'font-size: 0.8em; color: var(--cyber-text-secondary, #888); margin-bottom: 4px;' }, 'IPv6'),
+					E('div', {
+						'id': 'sb-public-ipv6',
+						'style': 'font-family: monospace; font-size: 0.9em; color: ' + (ipv6Available ? 'var(--cyber-success, #22c55e)' : 'var(--cyber-text-secondary, #888)') + '; word-break: break-all;',
+						'title': ipv6
+					}, ipv6Display)
+				])
 			])
 		]);
 	},
@@ -460,7 +505,32 @@ return view.extend({
 		this.updateStats();
 		this.updateModuleGrid();
 		this.updateHealthMetrics();
+		this.updatePublicIPs();
 		this.updateAlerts();
+	},
+
+	updatePublicIPs: function() {
+		var ips = this.publicIPs || {};
+		var ipv4 = ips.ipv4 || 'N/A';
+		var ipv6 = ips.ipv6 || 'N/A';
+
+		var ipv4Elem = document.getElementById('sb-public-ipv4');
+		var ipv6Elem = document.getElementById('sb-public-ipv6');
+
+		if (ipv4Elem) {
+			ipv4Elem.textContent = ipv4;
+			ipv4Elem.title = ipv4;
+			ipv4Elem.style.color = ips.ipv4_available ? 'var(--cyber-success, #22c55e)' : 'var(--cyber-text-secondary, #888)';
+		}
+		if (ipv6Elem) {
+			var ipv6Display = ipv6;
+			if (ipv6 && ipv6.length > 25) {
+				ipv6Display = ipv6.substring(0, 22) + '...';
+			}
+			ipv6Elem.textContent = ipv6Display;
+			ipv6Elem.title = ipv6;
+			ipv6Elem.style.color = ips.ipv6_available ? 'var(--cyber-success, #22c55e)' : 'var(--cyber-text-secondary, #888)';
+		}
 	},
 
 	updateStats: function() {
