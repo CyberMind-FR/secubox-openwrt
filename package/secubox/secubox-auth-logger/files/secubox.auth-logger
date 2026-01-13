@@ -1,0 +1,143 @@
+#!/bin/sh
+# SecuBox Auth Logger - RPCD plugin for LuCI authentication logging
+# Copyright (C) 2024 CyberMind.fr
+#
+# This plugin wraps session.login to log authentication failures
+# for CrowdSec detection.
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+LOG_FILE="/var/log/secubox-auth.log"
+LOG_TAG="secubox-auth"
+
+# Ensure log file exists
+[ -f "$LOG_FILE" ] || { touch "$LOG_FILE"; chmod 644 "$LOG_FILE"; }
+
+# Log authentication failure
+log_auth_failure() {
+    local ip="$1"
+    local user="${2:-root}"
+    local service="${3:-luci}"
+
+    # Get timestamp in syslog format
+    local ts=$(date "+%b %d %H:%M:%S")
+    local hostname=$(cat /proc/sys/kernel/hostname 2>/dev/null || echo "OpenWrt")
+
+    # Log to dedicated file for CrowdSec
+    echo "$ts $hostname $LOG_TAG[$$]: authentication failure for $user from $ip via $service" >> "$LOG_FILE"
+
+    # Also log to syslog for visibility
+    logger -t "$LOG_TAG" -p auth.warning "authentication failure for $user from $ip via $service"
+}
+
+# Get client IP from environment or connection info
+get_client_ip() {
+    # Try various methods to get client IP
+
+    # Method 1: REMOTE_ADDR (if called via CGI)
+    [ -n "$REMOTE_ADDR" ] && echo "$REMOTE_ADDR" && return
+
+    # Method 2: HTTP_X_FORWARDED_FOR (if behind proxy)
+    [ -n "$HTTP_X_FORWARDED_FOR" ] && echo "${HTTP_X_FORWARDED_FOR%%,*}" && return
+
+    # Method 3: Parse from uhttpd connection (not available in rpcd context)
+    # Method 4: Default to local if unknown
+    echo "127.0.0.1"
+}
+
+# Perform login via ubus and return result
+do_login() {
+    local username="$1"
+    local password="$2"
+    local client_ip="$3"
+
+    # Call the real session.login via ubus
+    local result
+    result=$(ubus call session login "{\"username\":\"$username\",\"password\":\"$password\"}" 2>&1)
+    local rc=$?
+
+    if [ $rc -ne 0 ] || echo "$result" | grep -q '"ubus_rpc_session": ""' || echo "$result" | grep -qi "error\|denied"; then
+        # Login failed - log it
+        log_auth_failure "$client_ip" "$username" "luci"
+
+        # Return failure
+        json_init
+        json_add_boolean success 0
+        json_add_string error "Login failed"
+        json_add_string ip "$client_ip"
+        json_dump
+    else
+        # Login succeeded - return the session token
+        echo "$result"
+    fi
+}
+
+case "$1" in
+    list)
+        # List available methods
+        cat <<'EOF'
+{
+    "wrapped_login": {
+        "username": "str",
+        "password": "str",
+        "client_ip": "str"
+    },
+    "log_failure": {
+        "ip": "str",
+        "username": "str",
+        "service": "str"
+    },
+    "get_client_info": {}
+}
+EOF
+        ;;
+    call)
+        case "$2" in
+            wrapped_login)
+                # Parse JSON input
+                read -r input
+                json_load "$input"
+                json_get_var username username
+                json_get_var password password
+                json_get_var client_ip client_ip
+
+                # Use provided IP or try to detect
+                [ -z "$client_ip" ] && client_ip=$(get_client_ip)
+
+                # Perform login with logging
+                do_login "$username" "$password" "$client_ip"
+                ;;
+
+            log_failure)
+                # Direct logging method for JS to call
+                read -r input
+                json_load "$input"
+                json_get_var ip ip
+                json_get_var username username
+                json_get_var service service
+
+                [ -z "$ip" ] && ip="unknown"
+                [ -z "$username" ] && username="root"
+                [ -z "$service" ] && service="luci"
+
+                log_auth_failure "$ip" "$username" "$service"
+
+                json_init
+                json_add_boolean success 1
+                json_add_string message "Auth failure logged for $ip"
+                json_dump
+                ;;
+
+            get_client_info)
+                # Return whatever client info we can detect
+                local ip=$(get_client_ip)
+
+                json_init
+                json_add_string ip "$ip"
+                json_add_string remote_addr "${REMOTE_ADDR:-unknown}"
+                json_dump
+                ;;
+        esac
+        ;;
+esac

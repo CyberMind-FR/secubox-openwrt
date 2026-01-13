@@ -1,6 +1,7 @@
 #!/bin/sh
 # SecuBox Auth Logger - Post-install configuration
 # Enables verbose logging for uhttpd and configures CrowdSec
+# Copyright (C) 2024 CyberMind.fr
 
 # Note: Dropbear 2024.86 does NOT support -v flag
 # Auth monitoring relies on parsing existing syslog messages
@@ -16,6 +17,55 @@ fi
 # Create auth log file for secubox-auth-logger
 touch /var/log/secubox-auth.log
 chmod 644 /var/log/secubox-auth.log
+
+# Inject JS hook into LuCI login page
+# Try multiple locations for different LuCI versions/themes
+inject_js_hook() {
+    local hook_script='<script src="/luci-static/resources/secubox/secubox-auth-hook.js"></script>'
+    local hook_marker="secubox-auth-hook"
+
+    # Method 1: Bootstrap theme header (LuCI 19.x+)
+    if [ -f /usr/lib/lua/luci/view/themes/bootstrap/header.htm ]; then
+        if ! grep -q "$hook_marker" /usr/lib/lua/luci/view/themes/bootstrap/header.htm 2>/dev/null; then
+            sed -i "s|</head>|$hook_script\n</head>|" /usr/lib/lua/luci/view/themes/bootstrap/header.htm 2>/dev/null
+        fi
+    fi
+
+    # Method 2: Material theme header
+    if [ -f /usr/lib/lua/luci/view/themes/material/header.htm ]; then
+        if ! grep -q "$hook_marker" /usr/lib/lua/luci/view/themes/material/header.htm 2>/dev/null; then
+            sed -i "s|</head>|$hook_script\n</head>|" /usr/lib/lua/luci/view/themes/material/header.htm 2>/dev/null
+        fi
+    fi
+
+    # Method 3: OpenWrt theme header
+    if [ -f /usr/lib/lua/luci/view/themes/openwrt/header.htm ]; then
+        if ! grep -q "$hook_marker" /usr/lib/lua/luci/view/themes/openwrt/header.htm 2>/dev/null; then
+            sed -i "s|</head>|$hook_script\n</head>|" /usr/lib/lua/luci/view/themes/openwrt/header.htm 2>/dev/null
+        fi
+    fi
+
+    # Method 4: Base sysauth view (fallback for login page)
+    if [ -f /usr/lib/lua/luci/view/sysauth.htm ]; then
+        if ! grep -q "$hook_marker" /usr/lib/lua/luci/view/sysauth.htm 2>/dev/null; then
+            sed -i "s|</head>|$hook_script\n</head>|" /usr/lib/lua/luci/view/sysauth.htm 2>/dev/null
+        fi
+    fi
+
+    # Method 5: LuCI2 / luci-mod-admin-full footer
+    if [ -f /www/luci-static/resources/footer.htm ]; then
+        if ! grep -q "$hook_marker" /www/luci-static/resources/footer.htm 2>/dev/null; then
+            echo "$hook_script" >> /www/luci-static/resources/footer.htm 2>/dev/null
+        fi
+    fi
+}
+
+inject_js_hook
+
+# Restart rpcd to load new ubus object
+if [ -x /etc/init.d/rpcd ]; then
+    /etc/init.d/rpcd restart 2>/dev/null
+fi
 
 # Restart CrowdSec to pick up new acquisition/parser/scenario
 if [ -x /etc/init.d/crowdsec ]; then
