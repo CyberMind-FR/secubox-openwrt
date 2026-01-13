@@ -1141,10 +1141,21 @@ return view.extend({
 				}
 			}, this))
 			.catch(L.bind(function(err) {
-				console.error('[Wizard] Acquisition configuration error:', err);
+				console.log('[Wizard] Acquisition configuration catch:', err);
 				this.wizardData.acquisitionConfiguring = false;
-				ui.addNotification(null, E('p', _('Configuration failed: ') + err.message), 'error');
-				this.refreshView();
+
+				// XHR abort during CrowdSec restart is expected - treat as success
+				if (err && err.message && err.message.indexOf('abort') !== -1) {
+					console.log('[Wizard] XHR aborted (CrowdSec restart) - treating as success');
+					this.wizardData.acquisitionConfigured = true;
+					ui.addNotification(null, E('p', _('Log acquisition configured (service restarted)')), 'info');
+					// Auto-advance to Step 5 after brief delay
+					setTimeout(L.bind(function() { this.goToStep(5); }, this), 1500);
+				} else {
+					console.error('[Wizard] Acquisition configuration error:', err);
+					ui.addNotification(null, E('p', _('Configuration failed: ') + err.message), 'error');
+					this.refreshView();
+				}
 			}, this));
 	},
 
