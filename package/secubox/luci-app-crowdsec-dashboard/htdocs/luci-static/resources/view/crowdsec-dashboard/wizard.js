@@ -728,6 +728,12 @@ return view.extend({
 					]).then(function() {
 						return { success: true };
 					});
+				}).catch(function(err) {
+					// XHR abort during service restart is OK
+					if (err.message && err.message.indexOf('abort') !== -1) {
+						return { success: true };
+					}
+					throw err;
 				});
 
 			case 'services':
@@ -738,6 +744,12 @@ return view.extend({
 					return new Promise(function(resolve) { setTimeout(resolve, 2000); });
 				}).then(function() {
 					return { success: true };
+				}).catch(function(err) {
+					// XHR abort during service restart is OK
+					if (err.message && err.message.indexOf('abort') !== -1) {
+						return { success: true };
+					}
+					throw err;
 				});
 
 			default:

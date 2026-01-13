@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-crowdsec-dashboard
 PKG_VERSION:=0.7.0
-PKG_RELEASE:=22
+PKG_RELEASE:=23
 PKG_ARCH:=all
 
 PKG_LICENSE:=Apache-2.0
