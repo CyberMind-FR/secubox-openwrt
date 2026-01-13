@@ -1099,7 +1099,13 @@ return view.extend({
 	handleConfigureAcquisition: function() {
 		console.log('[Wizard] handleConfigureAcquisition called');
 		this.wizardData.acquisitionConfiguring = true;
-		this.refreshView();
+
+		// Update button state without full refresh (which would abort the XHR)
+		var btn = document.querySelector('.cbi-button-action');
+		if (btn) {
+			btn.disabled = true;
+			btn.textContent = _('Configuring...');
+		}
 
 		// Get values from wizard data
 		var syslogEnabled = this.wizardData.syslogEnabled ? '1' : '0';
