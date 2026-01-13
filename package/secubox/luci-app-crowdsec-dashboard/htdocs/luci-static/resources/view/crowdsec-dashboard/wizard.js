@@ -644,10 +644,10 @@ return view.extend({
 		];
 
 		var renderCheckboxItem = function(item, type) {
-			return E('div', {
+			var attrs = {
 				'class': 'collection-item',
-				'data-' + type: item.name,
 				'data-type': type,
+				'data-name': item.name,
 				'data-checked': item.preselected ? '1' : '0',
 				'style': 'display: flex; align-items: center; cursor: pointer;',
 				'click': function(ev) {
@@ -661,7 +661,8 @@ return view.extend({
 						checkbox.style.color = newState ? '#22c55e' : '#94a3b8';
 					}
 				}
-			}, [
+			};
+			return E('div', attrs, [
 				E('span', {
 					'class': 'checkbox-indicator',
 					'style': 'display: inline-block; font-size: 28px; margin-right: 16px; user-select: none; color: ' + (item.preselected ? '#22c55e' : '#94a3b8') + '; line-height: 1; min-width: 28px;'
@@ -1143,16 +1144,16 @@ return view.extend({
 
 	handleInstallCollections: function() {
 		// Read collections from data-checked attributes
-		var collectionItems = document.querySelectorAll('.collection-item[data-collection]');
+		var collectionItems = document.querySelectorAll('.collection-item[data-type="collection"]');
 		var selectedCollections = Array.from(collectionItems)
 			.filter(function(item) { return item.getAttribute('data-checked') === '1'; })
-			.map(function(item) { return item.getAttribute('data-collection'); });
+			.map(function(item) { return item.getAttribute('data-name'); });
 
 		// Read parsers from data-checked attributes
-		var parserItems = document.querySelectorAll('.collection-item[data-parser]');
+		var parserItems = document.querySelectorAll('.collection-item[data-type="parser"]');
 		var selectedParsers = Array.from(parserItems)
 			.filter(function(item) { return item.getAttribute('data-checked') === '1'; })
-			.map(function(item) { return item.getAttribute('data-parser'); });
+			.map(function(item) { return item.getAttribute('data-name'); });
 
 		console.log('[Wizard] Selected collections:', selectedCollections);
 		console.log('[Wizard] Selected parsers:', selectedParsers);

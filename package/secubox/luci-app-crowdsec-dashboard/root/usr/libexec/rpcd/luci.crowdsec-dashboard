@@ -1364,15 +1364,11 @@ configure_acquisition() {
 	uci commit crowdsec
 	steps_done="${steps_done}Updated UCI settings; "
 
-	# Step 3: Enable verbose logging for services that need it
-	# Dropbear SSH needs verbose mode to log authentication failures
+	# Step 3: Note on Dropbear SSH logging
+	# Dropbear 2024.86 does NOT support -v flag or verbose UCI option
+	# Auth failures are detected via auth-monitor.sh parsing syslog messages
 	if [ "$ssh_enabled" = "1" ]; then
-		if uci -q get dropbear.@dropbear[0] >/dev/null 2>&1; then
-			uci set dropbear.@dropbear[0].verbose='1'
-			uci commit dropbear
-			/etc/init.d/dropbear restart >/dev/null 2>&1
-			steps_done="${steps_done}Enabled Dropbear verbose logging; "
-		fi
+		steps_done="${steps_done}SSH detection enabled via syslog monitoring; "
 	fi
 
 	# Enable uhttpd syslog for HTTP auth logging

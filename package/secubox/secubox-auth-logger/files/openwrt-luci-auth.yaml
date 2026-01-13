@@ -1,0 +1,20 @@
+# CrowdSec Parser for SecuBox Auth Logger
+# Parses authentication failures from LuCI/uhttpd and Dropbear
+# Format: secubox-auth: Authentication failure for <user> from <ip> via <service>
+
+name: secubox/openwrt-luci-auth
+description: "Parse SecuBox auth failure logs for LuCI and SSH"
+filter: "evt.Parsed.program == 'secubox-auth'"
+onsuccess: next_stage
+
+nodes:
+  - grok:
+      pattern: "Authentication failure for %{USERNAME:user} from %{IP:source_ip} via %{WORD:service}"
+      apply_on: message
+    statics:
+      - meta: log_type
+        value: auth_failure
+      - meta: service
+        expression: evt.Parsed.service
+      - meta: source_ip
+        expression: evt.Parsed.source_ip

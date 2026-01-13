@@ -1,0 +1,34 @@
+#!/bin/sh
+# SecuBox Auth Logger - Post-install configuration
+# Enables verbose logging for Dropbear and uhttpd
+
+# Note: Dropbear 2024.86 does NOT support -v flag
+# Auth monitoring relies on parsing existing syslog messages
+# The auth-monitor.sh script watches logread for auth failures
+
+# Enable uhttpd syslog
+if [ -f /etc/config/uhttpd ]; then
+    uci set uhttpd.main.syslog='1'
+    uci commit uhttpd
+    /etc/init.d/uhttpd restart 2>/dev/null
+fi
+
+# Create auth failures log file
+touch /var/log/auth-failures.log
+chmod 644 /var/log/auth-failures.log
+
+# Add acquisition for CrowdSec if installed
+if [ -d /etc/crowdsec/acquis.d ]; then
+    cat > /etc/crowdsec/acquis.d/secubox-auth.yaml << 'EOF'
+# SecuBox Auth Failure Acquisition
+# Reads from /var/log/messages for secubox-auth tagged messages
+filenames:
+  - /var/log/messages
+labels:
+  type: syslog
+EOF
+    # Restart CrowdSec to pick up new acquisition
+    /etc/init.d/crowdsec restart 2>/dev/null
+fi
+
+exit 0
