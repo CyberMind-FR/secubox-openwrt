@@ -1,0 +1,4 @@
+config settings 'main'
+	option enrollment_key ''
+	option machine_name ''
+	option auto_enroll '0'

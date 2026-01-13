@@ -74,7 +74,20 @@ return view.extend({
 	},
 
 	load: function() {
-		return this.runHealthCheck();
+		var self = this;
+		// Load saved settings first, then run health check
+		return API.getSettings().then(function(settings) {
+			if (settings && settings.enrollment_key) {
+				self.config.enrollmentKey = settings.enrollment_key;
+			}
+			if (settings && settings.machine_name) {
+				self.config.machineName = settings.machine_name;
+			}
+			return self.runHealthCheck();
+		}).catch(function() {
+			// Settings not available, continue with health check
+			return self.runHealthCheck();
+		});
 	},
 
 	runHealthCheck: function() {
@@ -211,6 +224,10 @@ return view.extend({
 	renderHealthCheck: function() {
 		var self = this;
 
+		// Determine protection mode
+		var lapiOnly = this.health.lapiAvailable && !this.health.capiConnected;
+		var fullProtection = this.health.lapiAvailable && this.health.capiConnected;
+
 		var checks = [
 			{
 				id: 'crowdsec',
@@ -224,6 +241,7 @@ return view.extend({
 				label: _('Local API (LAPI)'),
 				ok: this.health.lapiAvailable,
 				status: this.health.lapiAvailable ? _('Available') : _('Unavailable'),
+				critical: true,  // LAPI is critical for protection
 				action: !this.health.lapiAvailable && this.health.crowdsecRunning ? _('Will repair') : null
 			},
 			{
@@ -231,7 +249,10 @@ return view.extend({
 				label: _('Central API (CAPI)'),
 				ok: this.health.capiConnected,
 				status: this.health.capiConnected ? _('Connected') : (this.health.capiEnrolled ? _('Enrolled but not connected') : _('Not registered')),
-				action: !this.health.capiConnected ? _('Enrollment required') : null
+				// CAPI is NOT critical - local protection works without it
+				critical: false,
+				warning: !this.health.capiConnected && this.health.lapiAvailable,
+				action: !this.health.capiConnected ? _('Optional - enroll for community blocklists') : null
 			},
 			{
 				id: 'bouncer',
@@ -240,6 +261,7 @@ return view.extend({
 				status: this.health.bouncerRegistered ?
 					(this.health.bouncerRunning ? _('Running') : _('Registered but stopped')) :
 					_('Not registered'),
+				critical: true,  // Bouncer is critical for enforcement
 				action: !this.health.bouncerRegistered ? _('Will register') : (!this.health.bouncerRunning ? _('Will start') : null)
 			},
 			{
@@ -247,6 +269,7 @@ return view.extend({
 				label: _('nftables Rules'),
 				ok: this.health.nftablesActive,
 				status: this.health.nftablesActive ? _('Active') : _('Not loaded'),
+				critical: true,
 				action: !this.health.nftablesActive ? _('Will configure') : null
 			},
 			{
@@ -265,16 +288,37 @@ return view.extend({
 				this.health.checking ? E('span', { 'class': 'spinning', 'style': 'margin-left: 12px; font-size: 14px;' }, '') : E([])
 			]),
 
+			// Protection Mode Banner
+			this.health.lapiAvailable ? E('div', {
+				'style': 'margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; display: flex; align-items: center; ' +
+					(fullProtection ? 'background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3);' :
+					'background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3);')
+			}, [
+				E('span', { 'style': 'font-size: 24px; margin-right: 12px;' }, fullProtection ? '🛡️' : '⚡'),
+				E('div', {}, [
+					E('strong', { 'style': 'color: ' + (fullProtection ? '#22c55e' : '#eab308') + ';' },
+						fullProtection ? _('Full Protection Mode') : _('Local Protection Mode')),
+					E('div', { 'style': 'font-size: 0.85em; color: #cbd5e1; margin-top: 2px;' },
+						fullProtection ?
+							_('Community blocklists + local detection active') :
+							_('Local auto-ban active. Enroll CAPI for community blocklists.'))
+				])
+			]) : E([]),
+
 			E('div', { 'class': 'status-checks', 'style': 'display: grid; gap: 8px;' },
 				checks.map(function(check) {
+					// Determine icon and color based on ok/warning/critical status
+					var iconColor = check.ok ? '#22c55e' : (check.warning ? '#eab308' : (check.critical ? '#ef4444' : '#eab308'));
+					var icon = check.ok ? '✓' : (check.warning ? '⚠' : (check.critical ? '✗' : '⚠'));
+
 					return E('div', {
 						'class': 'check-item',
 						'style': 'display: flex; align-items: center; padding: 12px; background: rgba(15, 23, 42, 0.5); border-radius: 8px;'
 					}, [
 						E('span', {
 							'class': 'check-icon',
-							'style': 'font-size: 20px; margin-right: 12px; color: ' + (check.ok ? '#22c55e' : (check.critical ? '#ef4444' : '#eab308')) + ';'
-						}, check.ok ? '✓' : (check.critical ? '✗' : '⚠')),
+							'style': 'font-size: 20px; margin-right: 12px; color: ' + iconColor + ';'
+						}, icon),
 						E('div', { 'style': 'flex: 1;' }, [
 							E('strong', {}, check.label),
 							E('div', { 'style': 'font-size: 0.85em; color: ' + (check.ok ? '#22c55e' : '#94a3b8') + ';' }, check.status)
@@ -321,7 +365,7 @@ return view.extend({
 				'style': 'margin-bottom: 20px; padding: 16px; background: rgba(15, 23, 42, 0.5); border-radius: 8px;'
 			}, [
 				E('h4', { 'style': 'margin: 0 0 12px 0; color: #818cf8;' }, _('Console Enrollment (Optional)')),
-				E('p', { 'style': 'margin: 0 0 12px 0; font-size: 0.9em; color: #94a3b8;' },
+				E('p', { 'style': 'margin: 0 0 12px 0; font-size: 0.9em; color: #cbd5e1;' },
 					_('Enroll to receive community blocklists. Leave empty to skip.')),
 				E('input', {
 					'type': 'text',
@@ -341,7 +385,7 @@ return view.extend({
 					'value': this.config.machineName,
 					'input': function(ev) { self.config.machineName = ev.target.value; }
 				}),
-				E('p', { 'style': 'margin: 8px 0 0 0; font-size: 0.85em; color: #64748b;' }, [
+				E('p', { 'style': 'margin: 8px 0 0 0; font-size: 0.85em; color: #94a3b8;' }, [
 					_('After enrollment, validate on '),
 					E('a', { 'href': 'https://app.crowdsec.net', 'target': '_blank', 'style': 'color: #818cf8;' }, 'app.crowdsec.net'),
 					_('. Service will restart automatically.')
@@ -371,7 +415,7 @@ return view.extend({
 				this.renderCollectionToggle('crowdsecurity/iptables', _('Firewall log parser'), this.config.firewallEnabled),
 				this.renderCollectionToggle('crowdsecurity/http-cve', _('Web CVE protection'), this.config.httpEnabled),
 				E('div', { 'style': 'margin-top: 12px;' }, [
-					E('strong', { 'style': 'font-size: 0.9em; color: #94a3b8;' }, _('OpenWrt Parsers:')),
+					E('strong', { 'style': 'font-size: 0.9em; color: #cbd5e1;' }, _('OpenWrt Parsers:')),
 				]),
 				this.renderCollectionToggle('crowdsecurity/syslog-logs', _('Syslog parser'), true, 'parser'),
 				this.renderCollectionToggle('crowdsecurity/dropbear-logs', _('Dropbear SSH parser'), this.config.sshEnabled, 'parser')
@@ -437,7 +481,7 @@ return view.extend({
 			}, checked ? '☑' : '☐'),
 			E('div', { 'style': 'flex: 1;' }, [
 				E('strong', { 'style': 'display: block;' }, label),
-				E('span', { 'style': 'font-size: 0.85em; color: #64748b;' }, description)
+				E('span', { 'style': 'font-size: 0.85em; color: #94a3b8;' }, description)
 			])
 		]);
 	},
@@ -471,7 +515,7 @@ return view.extend({
 			}, checked ? '☑' : '☐'),
 			E('div', { 'style': 'flex: 1;' }, [
 				E('code', { 'style': 'font-size: 0.9em;' }, name),
-				E('span', { 'style': 'margin-left: 8px; font-size: 0.85em; color: #64748b;' }, '— ' + description)
+				E('span', { 'style': 'margin-left: 8px; font-size: 0.85em; color: #94a3b8;' }, '— ' + description)
 			])
 		]);
 	},
@@ -482,7 +526,7 @@ return view.extend({
 		return E('div', { 'class': 'wizard-step', 'style': 'text-align: center; padding: 48px 24px;' }, [
 			E('div', { 'class': 'spinning', 'style': 'font-size: 48px; margin-bottom: 24px;' }, '⚙️'),
 			E('h2', {}, _('Applying Configuration...')),
-			E('p', { 'style': 'color: #94a3b8; margin-bottom: 24px;' }, this.config.applyStep),
+			E('p', { 'style': 'color: #cbd5e1; margin-bottom: 24px;' }, this.config.applyStep),
 
 			// Progress bar
 			E('div', { 'style': 'max-width: 400px; margin: 0 auto 24px;' }, [
@@ -493,7 +537,7 @@ return view.extend({
 						'style': 'height: 100%; width: ' + progressPercent + '%; background: linear-gradient(90deg, #667eea, #764ba2); transition: width 0.3s;'
 					})
 				]),
-				E('div', { 'style': 'margin-top: 8px; font-size: 0.9em; color: #64748b;' }, progressPercent + '%')
+				E('div', { 'style': 'margin-top: 8px; font-size: 0.9em; color: #94a3b8;' }, progressPercent + '%')
 			]),
 
 			// Errors if any
@@ -511,19 +555,37 @@ return view.extend({
 	},
 
 	renderComplete: function() {
+		var fullProtection = this.health.lapiAvailable && this.health.capiConnected;
+		var localOnly = this.health.lapiAvailable && !this.health.capiConnected;
+
 		return E('div', { 'class': 'wizard-step wizard-complete', 'style': 'text-align: center;' }, [
 			E('div', { 'class': 'success-hero', 'style': 'margin-bottom: 32px;' }, [
-				E('div', { 'style': 'font-size: 64px; margin-bottom: 16px;' }, '🎉'),
+				E('div', { 'style': 'font-size: 64px; margin-bottom: 16px;' }, fullProtection ? '🛡️' : '⚡'),
 				E('h2', {}, _('Setup Complete!'))
 			]),
 
-			E('p', { 'style': 'color: #94a3b8; margin-bottom: 32px;' },
+			// Protection Mode Banner
+			E('div', {
+				'style': 'max-width: 400px; margin: 0 auto 24px; padding: 16px; border-radius: 8px; ' +
+					(fullProtection ? 'background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3);' :
+					'background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3);')
+			}, [
+				E('strong', { 'style': 'color: ' + (fullProtection ? '#22c55e' : '#eab308') + ';' },
+					fullProtection ? _('Full Protection Mode') : _('Local Protection Mode')),
+				E('div', { 'style': 'font-size: 0.85em; color: #cbd5e1; margin-top: 4px;' },
+					fullProtection ?
+						_('Community blocklists + local detection active') :
+						_('Local auto-ban protects against attacks detected on your network'))
+			]),
+
+			E('p', { 'style': 'color: #cbd5e1; margin-bottom: 32px;' },
 				_('CrowdSec is now protecting your network.')),
 
 			// Summary of what was done
 			E('div', { 'style': 'max-width: 400px; margin: 0 auto 32px; text-align: left;' }, [
-				this.health.lapiAvailable ? this.renderCompletedItem(_('LAPI available')) : E([]),
-				this.health.capiConnected ? this.renderCompletedItem(_('CAPI connected')) : E([]),
+				this.health.lapiAvailable ? this.renderCompletedItem(_('LAPI available (local detection)')) : E([]),
+				this.health.capiConnected ? this.renderCompletedItem(_('CAPI connected (community blocklists)')) :
+					this.renderWarningItem(_('CAPI not connected (local protection only)')),
 				this.health.bouncerRegistered ? this.renderCompletedItem(_('Bouncer registered')) : E([]),
 				this.health.nftablesActive ? this.renderCompletedItem(_('nftables rules active')) : E([]),
 				this.health.collectionsInstalled > 0 ?
@@ -562,6 +624,13 @@ return view.extend({
 		]);
 	},
 
+	renderWarningItem: function(text) {
+		return E('div', { 'style': 'display: flex; align-items: center; padding: 8px 0;' }, [
+			E('span', { 'style': 'color: #eab308; margin-right: 12px; font-size: 18px;' }, '⚠'),
+			E('span', { 'style': 'color: #cbd5e1;' }, text)
+		]);
+	},
+
 	handleApplyAll: function() {
 		var self = this;
 		this.config.applying = true;
@@ -585,6 +654,13 @@ return view.extend({
 		var nameInput = document.getElementById('machine-name');
 		this.config.enrollmentKey = keyInput ? keyInput.value.trim() : '';
 		this.config.machineName = nameInput ? nameInput.value.trim() : '';
+
+		// Save enrollment key for future repairs (if provided)
+		if (this.config.enrollmentKey) {
+			API.saveSettings(this.config.enrollmentKey, this.config.machineName, '1').catch(function(err) {
+				console.log('[Wizard] Failed to save enrollment key:', err);
+			});
+		}
 
 		// Define steps
 		var steps = [];

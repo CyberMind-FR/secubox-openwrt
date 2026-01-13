@@ -289,6 +289,19 @@ var callRemoveHubItem = rpc.declare({
 	expect: { }
 });
 
+var callGetSettings = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'get_settings',
+	expect: { }
+});
+
+var callSaveSettings = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'save_settings',
+	params: ['enrollment_key', 'machine_name', 'auto_enroll'],
+	expect: { }
+});
+
 function formatDuration(seconds) {
 	if (!seconds) return 'N/A';
 	if (seconds < 60) return seconds + 's';
@@ -431,6 +444,10 @@ return baseclass.extend({
 	getHubAvailable: callHubAvailable,
 	installHubItem: callInstallHubItem,
 	removeHubItem: callRemoveHubItem,
+
+	// Settings Management
+	getSettings: callGetSettings,
+	saveSettings: callSaveSettings,
 
 	formatDuration: formatDuration,
 	formatDate: formatDate,
