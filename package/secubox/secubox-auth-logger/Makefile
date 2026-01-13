@@ -36,6 +36,10 @@ define Package/secubox-auth-logger/install
 	$(INSTALL_BIN) ./files/secubox-auth-logger.init $(1)/etc/init.d/secubox-auth-logger
 	$(INSTALL_DIR) $(1)/etc/crowdsec/parsers/s01-parse
 	$(INSTALL_DATA) ./files/openwrt-luci-auth.yaml $(1)/etc/crowdsec/parsers/s01-parse/
+	$(INSTALL_DIR) $(1)/etc/crowdsec/scenarios
+	$(INSTALL_DATA) ./files/openwrt-luci-bf.yaml $(1)/etc/crowdsec/scenarios/
+	$(INSTALL_DIR) $(1)/etc/crowdsec/acquis.d
+	$(INSTALL_DATA) ./files/secubox-auth-acquis.yaml $(1)/etc/crowdsec/acquis.d/
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_BIN) ./files/99-secubox-auth-logger $(1)/etc/uci-defaults/
 endef

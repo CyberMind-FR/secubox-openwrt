@@ -197,6 +197,12 @@ var callRepairLapi = rpc.declare({
 	expect: { }
 });
 
+var callRepairCapi = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'repair_capi',
+	expect: { }
+});
+
 var callResetWizard = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'reset_wizard',
@@ -403,6 +409,7 @@ return baseclass.extend({
 	checkWizardNeeded: callCheckWizardNeeded,
 	getWizardState: callWizardState,
 	repairLapi: callRepairLapi,
+	repairCapi: callRepairCapi,
 	resetWizard: callResetWizard,
 
 	// Console Methods

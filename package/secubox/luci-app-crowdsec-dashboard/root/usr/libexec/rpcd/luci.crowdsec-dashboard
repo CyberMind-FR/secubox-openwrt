@@ -1120,17 +1120,40 @@ repair_lapi() {
 
 	# Step 13: Register with CAPI (required for console enrollment)
 	if [ "$lapi_ok" = "1" ] && [ -x "$CSCLI" ]; then
+		local capi_creds="/etc/crowdsec/online_api_credentials.yaml"
+		local capi_registered=0
+
+		# First attempt: try to register with existing credentials
 		if run_with_timeout 15 "$CSCLI" capi register >/dev/null 2>&1; then
+			capi_registered=1
 			steps_done="${steps_done}CAPI registered; "
 		else
-			# CAPI registration may fail if already registered, which is OK
+			# Check if CAPI is already working
 			local capi_status=""
 			capi_status=$(run_with_timeout 5 "$CSCLI" capi status 2>&1)
-			if echo "$capi_status" | grep -qi "registered\|online"; then
+			if echo "$capi_status" | grep -qi "You can successfully interact with Central API"; then
+				capi_registered=1
 				steps_done="${steps_done}CAPI OK; "
-			else
-				errors="${errors}CAPI not registered; "
 			fi
+		fi
+
+		# If CAPI still not working, try with fresh credentials
+		if [ "$capi_registered" = "0" ] && [ -f "$capi_creds" ]; then
+			secubox_log "CAPI registration failed, removing stale credentials and retrying..."
+			rm -f "$capi_creds"
+			steps_done="${steps_done}CAPI creds reset; "
+
+			# Retry registration with clean slate
+			if run_with_timeout 15 "$CSCLI" capi register >/dev/null 2>&1; then
+				capi_registered=1
+				steps_done="${steps_done}CAPI re-registered; "
+			else
+				local capi_err=""
+				capi_err=$(run_with_timeout 10 "$CSCLI" capi register 2>&1)
+				errors="${errors}CAPI: ${capi_err}; "
+			fi
+		elif [ "$capi_registered" = "0" ]; then
+			errors="${errors}CAPI not registered; "
 		fi
 	fi
 
@@ -1145,6 +1168,84 @@ repair_lapi() {
 		json_add_string "steps" "$steps_done"
 		json_add_string "errors" "$errors"
 		secubox_log "LAPI repair failed: $errors"
+	fi
+
+	json_dump
+}
+
+# Repair CAPI - fix Central API registration issues
+repair_capi() {
+	json_init
+	local steps_done=""
+	local errors=""
+	local capi_creds="/etc/crowdsec/online_api_credentials.yaml"
+
+	secubox_log "Starting CAPI repair..."
+
+	# Check if CrowdSec and LAPI are running
+	if ! pgrep crowdsec >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "CrowdSec is not running. Start CrowdSec first."
+		json_dump
+		return
+	fi
+
+	if ! run_with_timeout 5 "$CSCLI" lapi status >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "LAPI is not available. Run LAPI repair first."
+		json_dump
+		return
+	fi
+
+	# Check current CAPI status
+	local capi_status=""
+	capi_status=$(run_with_timeout 5 "$CSCLI" capi status 2>&1)
+	if echo "$capi_status" | grep -qi "You can successfully interact with Central API"; then
+		steps_done="${steps_done}CAPI already working; "
+		json_add_boolean "success" 1
+		json_add_string "message" "CAPI is already connected"
+		json_add_string "steps" "$steps_done"
+		json_dump
+		return
+	fi
+
+	# Step 1: Backup and remove existing credentials
+	if [ -f "$capi_creds" ]; then
+		cp "$capi_creds" "${capi_creds}.bak" 2>/dev/null
+		rm -f "$capi_creds"
+		steps_done="${steps_done}Removed stale credentials; "
+	fi
+
+	# Step 2: Register with CAPI
+	local reg_output=""
+	reg_output=$(run_with_timeout 20 "$CSCLI" capi register 2>&1)
+	if [ $? -eq 0 ]; then
+		steps_done="${steps_done}CAPI registered; "
+	else
+		# Check if error is about already registered
+		if echo "$reg_output" | grep -qi "already registered"; then
+			steps_done="${steps_done}Already registered; "
+		else
+			errors="${errors}Registration failed: ${reg_output}; "
+		fi
+	fi
+
+	# Step 3: Verify CAPI connection
+	sleep 2
+	capi_status=$(run_with_timeout 5 "$CSCLI" capi status 2>&1)
+	if echo "$capi_status" | grep -qi "You can successfully interact with Central API"; then
+		steps_done="${steps_done}CAPI connected; "
+		json_add_boolean "success" 1
+		json_add_string "message" "CAPI repaired successfully"
+		json_add_string "steps" "$steps_done"
+		secubox_log "CAPI repair successful: $steps_done"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "CAPI repair incomplete"
+		json_add_string "steps" "$steps_done"
+		json_add_string "errors" "$errors"
+		json_add_string "capi_output" "$capi_status"
+		secubox_log "CAPI repair failed: $errors"
 	fi
 
 	json_dump
@@ -1261,21 +1362,36 @@ console_enroll() {
 	# Step 0: Ensure CAPI is registered (prerequisite for console enrollment)
 	local capi_ok=0
 	local capi_status=""
+	local capi_creds="/etc/crowdsec/online_api_credentials.yaml"
+
 	capi_status=$(run_with_timeout 5 "$CSCLI" capi status 2>&1)
-	if echo "$capi_status" | grep -qi "registered\|online"; then
+	if echo "$capi_status" | grep -qi "You can successfully interact with Central API"; then
 		capi_ok=1
+		secubox_log "CAPI already connected"
 	else
 		# Try to register with CAPI
-		secubox_log "CAPI not registered, attempting registration..."
+		secubox_log "CAPI not connected, attempting registration..."
 		if run_with_timeout 15 "$CSCLI" capi register >/dev/null 2>&1; then
 			capi_ok=1
 			secubox_log "CAPI registration successful"
 		else
-			json_add_boolean "success" 0
-			json_add_string "error" "CAPI registration failed. Please run LAPI repair first."
-			json_dump
-			return
+			# If registration fails and credentials exist, try with fresh credentials
+			if [ -f "$capi_creds" ]; then
+				secubox_log "CAPI registration failed, removing stale credentials..."
+				rm -f "$capi_creds"
+				if run_with_timeout 15 "$CSCLI" capi register >/dev/null 2>&1; then
+					capi_ok=1
+					secubox_log "CAPI re-registration successful"
+				fi
+			fi
 		fi
+	fi
+
+	if [ "$capi_ok" = "0" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "CAPI registration failed. Please run LAPI repair first."
+		json_dump
+		return
 	fi
 
 	# Build enroll command
@@ -1954,7 +2070,7 @@ remove_hub_item() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{},"health_check":{},"capi_metrics":{},"hub_available":{},"install_hub_item":{"item_type":"string","item_name":"string"},"remove_hub_item":{"item_type":"string","item_name":"string"}}'
+		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"repair_capi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{},"health_check":{},"capi_metrics":{},"hub_available":{},"install_hub_item":{"item_type":"string","item_name":"string"},"remove_hub_item":{"item_type":"string","item_name":"string"}}'
 		;;
 	call)
 		case "$2" in
@@ -2067,6 +2183,9 @@ case "$1" in
 				;;
 			repair_lapi)
 				repair_lapi
+				;;
+			repair_capi)
+				repair_capi
 				;;
 			reset_wizard)
 				reset_wizard

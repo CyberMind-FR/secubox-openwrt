@@ -1,0 +1,18 @@
+# CrowdSec Scenario for SecuBox LuCI Brute Force Detection
+# Triggers when multiple authentication failures are detected from the same IP
+# Works with secubox/openwrt-luci-auth parser
+
+type: leaky
+name: secubox/openwrt-luci-bf
+description: "Detect LuCI/OpenWrt web interface brute force attempts"
+filter: "evt.Meta.log_type == 'auth_failure'"
+leakspeed: "10s"
+capacity: 5
+groupby: evt.Meta.source_ip
+blackhole: 1m
+reprocess: true
+labels:
+  service: http
+  remediation: true
+  type: bruteforce
+  confidence: 3

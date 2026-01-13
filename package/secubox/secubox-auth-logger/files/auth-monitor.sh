@@ -1,9 +1,14 @@
 #!/bin/sh
 # SecuBox Auth Monitor - Lightweight auth failure detection
-# Monitors SSH and LuCI login failures, logs to syslog for CrowdSec
+# Monitors SSH and LuCI login failures for CrowdSec
 # Copyright (C) 2024 CyberMind.fr
 
+LOG_FILE="/var/log/secubox-auth.log"
 LOG_TAG="secubox-auth"
+
+# Ensure log file exists
+touch "$LOG_FILE"
+chmod 644 "$LOG_FILE"
 
 # Track recent IPs to avoid duplicate logging
 TRACK_FILE="/tmp/auth-monitor-track"
@@ -27,7 +32,12 @@ log_failure() {
     fi
     echo "${key}:${now}" >> "$TRACK_FILE"
 
-    # Log to syslog - CrowdSec will parse this
+    # Log to dedicated file in syslog format for CrowdSec
+    local ts=$(date "+%b %d %H:%M:%S")
+    local hostname=$(cat /proc/sys/kernel/hostname 2>/dev/null || echo "OpenWrt")
+    echo "$ts $hostname $LOG_TAG[$$]: authentication failure for $user from $ip via $service" >> "$LOG_FILE"
+
+    # Also log to syslog for local visibility
     logger -t "$LOG_TAG" -p auth.warning "authentication failure for $user from $ip via $service"
 }
 
