@@ -19,3 +19,4 @@ docs/.DS_Store
 
 
 .claude/settings.local.json
+package/secubox/luci-app-secubox-bonus/root/www/
