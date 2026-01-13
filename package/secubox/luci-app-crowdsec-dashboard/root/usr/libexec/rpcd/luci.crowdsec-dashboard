@@ -1364,7 +1364,28 @@ configure_acquisition() {
 	uci commit crowdsec
 	steps_done="${steps_done}Updated UCI settings; "
 
-	# Step 3: Generate acquisition YAML files
+	# Step 3: Enable verbose logging for services that need it
+	# Dropbear SSH needs verbose mode to log authentication failures
+	if [ "$ssh_enabled" = "1" ]; then
+		if uci -q get dropbear.@dropbear[0] >/dev/null 2>&1; then
+			uci set dropbear.@dropbear[0].verbose='1'
+			uci commit dropbear
+			/etc/init.d/dropbear restart >/dev/null 2>&1
+			steps_done="${steps_done}Enabled Dropbear verbose logging; "
+		fi
+	fi
+
+	# Enable uhttpd syslog for HTTP auth logging
+	if [ "$http_enabled" = "1" ]; then
+		if uci -q get uhttpd.main >/dev/null 2>&1; then
+			uci set uhttpd.main.syslog='1'
+			uci commit uhttpd
+			/etc/init.d/uhttpd restart >/dev/null 2>&1
+			steps_done="${steps_done}Enabled uhttpd syslog; "
+		fi
+	fi
+
+	# Step 4: Generate acquisition YAML files
 	# OpenWrt uses logread command instead of /var/log/messages by default
 	# All syslog entries (SSH, firewall, system) go through the same log stream
 	# We create ONE unified acquisition file to avoid multiple logread processes
