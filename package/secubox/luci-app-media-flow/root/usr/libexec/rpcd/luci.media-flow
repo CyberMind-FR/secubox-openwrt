@@ -24,8 +24,15 @@ init_storage() {
 
 # Detect available DPI source
 get_dpi_source() {
-	# Prefer nDPId if running and has data
-	if [ -f "$NDPID_FLOWS" ] && pgrep ndpid >/dev/null 2>&1; then
+	# Prefer nDPId if running
+	# Check for ndpid process and either direct flows file or compat layer output
+	if pgrep ndpid >/dev/null 2>&1; then
+		# nDPId running - check for data files
+		if [ -f "$NDPID_FLOWS" ] || [ -f "$MEDIA_CACHE" ] || [ -f /var/run/netifyd/status.json ]; then
+			echo "ndpid"
+			return
+		fi
+		# nDPId running but no data yet
 		echo "ndpid"
 	elif [ -f /var/run/netifyd/status.json ] && pgrep netifyd >/dev/null 2>&1; then
 		echo "netifyd"
@@ -124,9 +131,19 @@ case "$1" in
 				ndpid_version="unknown"
 				ndpid_flows=0
 				pgrep ndpid > /dev/null 2>&1 && ndpid_running=1
-				if [ "$ndpid_running" = "1" ] && [ -f "$NDPID_FLOWS" ]; then
-					ndpid_flows=$(jq 'length' "$NDPID_FLOWS" 2>/dev/null || echo 0)
-					ndpid_version=$(ndpid -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "unknown")
+				if [ "$ndpid_running" = "1" ]; then
+					ndpid_version=$(ndpid -v 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+					[ -z "$ndpid_version" ] && ndpid_version="unknown"
+					# Check for flows from compat layer status.json
+					if [ -f /var/run/netifyd/status.json ] && [ -s /var/run/netifyd/status.json ]; then
+						# Read flow_count using jsonfilter (busybox-friendly)
+						ndpid_flows=$(jsonfilter -i /var/run/netifyd/status.json -e '@.flow_count' 2>/dev/null)
+						[ -z "$ndpid_flows" ] && ndpid_flows=$(jsonfilter -i /var/run/netifyd/status.json -e '@.flows_active' 2>/dev/null)
+						[ -z "$ndpid_flows" ] && ndpid_flows=0
+					elif [ -f "$NDPID_FLOWS" ] && [ -s "$NDPID_FLOWS" ]; then
+						ndpid_flows=$(jsonfilter -i "$NDPID_FLOWS" -e '@[*]' 2>/dev/null | wc -l)
+						[ -z "$ndpid_flows" ] && ndpid_flows=0
+					fi
 				fi
 
 				# Check netifyd status
@@ -137,9 +154,12 @@ case "$1" in
 				netifyd_flows=0
 				netifyd_version="unknown"
 
-				if [ "$netifyd_running" = "1" ] && [ -n "$netifyd_data" ] && [ "$netifyd_data" != "{}" ]; then
-					netifyd_flows=$(echo "$netifyd_data" | jq '.flows_active // .flow_count // 0' 2>/dev/null || echo 0)
-					netifyd_version=$(echo "$netifyd_data" | jq -r '.agent_version // "unknown"' 2>/dev/null || echo "unknown")
+				if [ "$netifyd_running" = "1" ] && [ -f /var/run/netifyd/status.json ] && [ -s /var/run/netifyd/status.json ]; then
+					netifyd_flows=$(jsonfilter -i /var/run/netifyd/status.json -e '@.flows_active' 2>/dev/null)
+					[ -z "$netifyd_flows" ] && netifyd_flows=$(jsonfilter -i /var/run/netifyd/status.json -e '@.flow_count' 2>/dev/null)
+					[ -z "$netifyd_flows" ] && netifyd_flows=0
+					netifyd_version=$(jsonfilter -i /var/run/netifyd/status.json -e '@.agent_version' 2>/dev/null)
+					[ -z "$netifyd_version" ] && netifyd_version="unknown"
 				fi
 
 				# Determine active DPI source
@@ -153,11 +173,17 @@ case "$1" in
 				fi
 
 				history_count=0
-				[ -f "$HISTORY_FILE" ] && history_count=$(jq 'length' "$HISTORY_FILE" 2>/dev/null || echo 0)
+				if [ -f "$HISTORY_FILE" ]; then
+					history_count=$(jq 'length' "$HISTORY_FILE" 2>/dev/null)
+					[ -z "$history_count" ] && history_count=0
+				fi
 
 				# Check if nDPId cache has active streams
 				active_streams=0
-				[ -f "$MEDIA_CACHE" ] && active_streams=$(jq 'length' "$MEDIA_CACHE" 2>/dev/null || echo 0)
+				if [ -f "$MEDIA_CACHE" ]; then
+					active_streams=$(jq 'length' "$MEDIA_CACHE" 2>/dev/null)
+					[ -z "$active_streams" ] && active_streams=0
+				fi
 
 				enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
 				refresh=$(uci -q get media_flow.global.refresh_interval 2>/dev/null || echo "5")
@@ -194,13 +220,22 @@ case "$1" in
 					if [ -f "$MEDIA_CACHE" ]; then
 						streams=$(cat "$MEDIA_CACHE" 2>/dev/null || echo "[]")
 					fi
-					if [ -f "$NDPID_FLOWS" ]; then
-						flow_count=$(jq 'length' "$NDPID_FLOWS" 2>/dev/null || echo 0)
+					# Get flow count - prefer compat layer status.json
+					if [ -f /var/run/netifyd/status.json ] && [ -s /var/run/netifyd/status.json ]; then
+						flow_count=$(jsonfilter -i /var/run/netifyd/status.json -e '@.flow_count' 2>/dev/null)
+						[ -z "$flow_count" ] && flow_count=$(jsonfilter -i /var/run/netifyd/status.json -e '@.flows_active' 2>/dev/null)
+						[ -z "$flow_count" ] && flow_count=0
+					elif [ -f "$NDPID_FLOWS" ] && [ -s "$NDPID_FLOWS" ]; then
+						flow_count=$(jsonfilter -i "$NDPID_FLOWS" -e '@[*]' 2>/dev/null | wc -l)
+						[ -z "$flow_count" ] && flow_count=0
 					fi
 					note="Streams detected via nDPId local DPI"
 				elif [ "$dpi_source" = "netifyd" ]; then
-					netifyd_data=$(get_netifyd_data)
-					flow_count=$(echo "$netifyd_data" | jq '.flows_active // .flow_count // 0' 2>/dev/null || echo 0)
+					if [ -f /var/run/netifyd/status.json ] && [ -s /var/run/netifyd/status.json ]; then
+						flow_count=$(jsonfilter -i /var/run/netifyd/status.json -e '@.flows_active' 2>/dev/null)
+						[ -z "$flow_count" ] && flow_count=$(jsonfilter -i /var/run/netifyd/status.json -e '@.flow_count' 2>/dev/null)
+						[ -z "$flow_count" ] && flow_count=0
+					fi
 					note="Application detection requires netifyd cloud subscription"
 				else
 					note="No DPI engine available"

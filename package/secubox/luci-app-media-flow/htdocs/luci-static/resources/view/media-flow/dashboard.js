@@ -10,6 +10,26 @@ return view.extend({
 	title: _('Media Flow Dashboard'),
 	pollInterval: 5,
 
+	// Initialize SecuBox dark theme
+	initTheme: function() {
+		// Set dark theme on document
+		document.documentElement.setAttribute('data-theme', 'dark');
+		document.body.classList.add('secubox-mode');
+
+		// Apply dark background to body for SecuBox styling
+		if (!document.getElementById('mf-theme-styles')) {
+			var themeStyle = document.createElement('style');
+			themeStyle.id = 'mf-theme-styles';
+			themeStyle.textContent = `
+				body.secubox-mode { background: #0a0a0f !important; }
+				body.secubox-mode .main-right,
+				body.secubox-mode #maincontent,
+				body.secubox-mode .container { background: transparent !important; }
+			`;
+			document.head.appendChild(themeStyle);
+		}
+	},
+
 	formatBytes: function(bytes) {
 		if (bytes === 0) return '0 B';
 		var k = 1024;
@@ -28,6 +48,10 @@ return view.extend({
 
 	render: function(data) {
 		var self = this;
+
+		// Initialize SecuBox dark theme
+		this.initTheme();
+
 		var status = data[0] || {};
 		var streamsData = data[1] || {};
 		var statsByService = data[2] || {};
@@ -36,7 +60,7 @@ return view.extend({
 		var isNdpid = dpiSource === 'ndpid';
 		var isNetifyd = dpiSource === 'netifyd';
 		var streams = streamsData.streams || [];
-		var flowCount = streamsData.flow_count || status.active_flows || 0;
+		var flowCount = streamsData.flow_count || status.active_flows || status.ndpid_flows || 0;
 
 		// Inject CSS
 		var css = `

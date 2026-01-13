@@ -11,7 +11,7 @@ var callStatus = rpc.declare({
 var callGetActiveStreams = rpc.declare({
 	object: 'luci.media-flow',
 	method: 'get_active_streams',
-	expect: { streams: [] }
+	expect: { }
 });
 
 var callGetStreamHistory = rpc.declare({
