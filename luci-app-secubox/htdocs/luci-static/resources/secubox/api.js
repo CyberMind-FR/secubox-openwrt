@@ -94,6 +94,12 @@ var callSystemHealth = rpc.declare({
 	expect: { }
 });
 
+var callPublicIPs = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_public_ips',
+	expect: { }
+});
+
 var callAlerts = rpc.declare({
 	object: 'luci.secubox',
 	method: 'get_alerts',
@@ -256,6 +262,7 @@ return baseclass.extend({
 	getHealth: callHealth,
 	getDiagnostics: callDiagnostics,
 	getSystemHealth: callSystemHealth,
+	getPublicIPs: callPublicIPs,
 	getAlerts: callAlerts,
 	quickAction: callQuickAction,
 	getDashboardData: callDashboardData,
