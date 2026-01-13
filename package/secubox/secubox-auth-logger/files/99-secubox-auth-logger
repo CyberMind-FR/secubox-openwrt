@@ -41,8 +41,9 @@ patch_dispatcher() {
         cp "$DISPATCHER" "${DISPATCHER}.bak"
 
         # Insert auth failure logging code after "if (!session) {"
-        # The code logs to /var/log/secubox-auth.log in syslog format
-        sed -i 's/if (!session) {/if (!session) { let _secubox_auth_log = open("\/var\/log\/secubox-auth.log", "a"); if (_secubox_auth_log) { let _h = http.getenv("HTTP_HOST") || "OpenWrt"; let _ts = time(); let _d = localtime(_ts); let _month = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][_d.mon]; let _fmt = sprintf("%s %2d %02d:%02d:%02d", _month, _d.mday, _d.hour, _d.min, _d.sec); _secubox_auth_log.write(_fmt + " " + _h + " secubox-auth[" + getpid() + "]: authentication failure for " + (user || "root") + " from " + (http.getenv("REMOTE_ADDR") || "unknown") + " via luci\\n"); _secubox_auth_log.close(); }/' "$DISPATCHER"
+        # Simple format without timestamp - CrowdSec parser matches the message content
+        # Format: secubox-auth[pid]: authentication failure for <user> from <ip> via luci
+        sed -i 's/if (!session) {/if (!session) { let _secubox_auth_log = open("\/var\/log\/secubox-auth.log", "a"); if (_secubox_auth_log) { _secubox_auth_log.write("secubox-auth[1]: authentication failure for " + (user || "root") + " from " + (http.getenv("REMOTE_ADDR") || "unknown") + " via luci\\n"); _secubox_auth_log.close(); }/' "$DISPATCHER"
 
         echo "Dispatcher patched for auth failure logging"
         return 0

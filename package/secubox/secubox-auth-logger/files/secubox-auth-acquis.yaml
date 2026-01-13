@@ -4,4 +4,4 @@
 filenames:
   - /var/log/secubox-auth.log
 labels:
-  type: syslog
+  type: secubox-auth

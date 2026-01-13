@@ -4,14 +4,14 @@
 
 name: secubox/openwrt-luci-auth
 description: "Parse SecuBox auth failure logs for LuCI and SSH"
-filter: "evt.Parsed.program == 'secubox-auth'"
+filter: "evt.Line.Labels.type == 'secubox-auth'"
 onsuccess: next_stage
 
 nodes:
   - grok:
-      # Case-insensitive match for "authentication failure"
-      pattern: "(?i)authentication failure for %{USERNAME:user} from %{IP:source_ip} via %{WORD:service}"
-      apply_on: message
+      # Parse the full line: secubox-auth[pid]: authentication failure for <user> from <ip> via <service>
+      pattern: "secubox-auth\\[%{INT:pid}\\]: (?i)authentication failure for %{USERNAME:user} from %{IP:source_ip} via %{WORD:service}"
+      apply_on: Line.Raw
     statics:
       - meta: log_type
         value: auth_failure
@@ -21,3 +21,5 @@ nodes:
         expression: evt.Parsed.source_ip
       - meta: username
         expression: evt.Parsed.user
+      - parsed: program
+        value: secubox-auth
