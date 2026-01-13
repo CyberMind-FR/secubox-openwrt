@@ -1,0 +1,1052 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SecuBox CrowdSec Setup Script pour OpenWrt 24.10+
+# Copyright (C) 2025 CyberMind.fr - Gandalf <gandalf@gk2.net>
+#
+# Script d'installation automatisee de CrowdSec avec :
+# - syslog-ng4 pour le forwarding des logs
+# - crowdsec-firewall-bouncer-nftables pour fw4
+# - Integration complete avec SecuBox
+#
+# Usage: secubox-crowdsec-setup [--uninstall|--status|--repair]
+
+set -e
+
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+
+VERSION="1.0.0"
+SCRIPT_NAME="secubox-crowdsec-setup"
+LOG_TAG="secubox-crowdsec"
+
+# Repertoires
+CROWDSEC_CONFIG_DIR="/etc/crowdsec"
+CROWDSEC_DATA_DIR="/srv/crowdsec/data"
+CROWDSEC_HUB_DIR="/etc/crowdsec/hub"
+SYSLOG_NG_DIR="/etc/syslog-ng"
+BACKUP_DIR="/etc/secubox/backups/crowdsec"
+
+# Ports et adresses
+SYSLOG_LISTEN_ADDR="127.0.0.1"
+SYSLOG_LISTEN_PORT="5140"
+LAPI_LISTEN_ADDR="127.0.0.1"
+LAPI_LISTEN_PORT="8080"
+
+# Prérequis
+MIN_FLASH_MB=50
+MIN_RAM_MB=256
+MIN_OPENWRT_MAJOR=24
+
+# Collections a installer
+COLLECTIONS="crowdsecurity/linux crowdsecurity/sshd crowdsecurity/http-cve crowdsecurity/iptables"
+
+# Couleurs (si terminal supporte)
+if [ -t 1 ]; then
+	RED='\033[0;31m'
+	GREEN='\033[0;32m'
+	YELLOW='\033[1;33m'
+	BLUE='\033[0;34m'
+	NC='\033[0m'
+else
+	RED=''
+	GREEN=''
+	YELLOW=''
+	BLUE=''
+	NC=''
+fi
+
+# =============================================================================
+# FONCTIONS UTILITAIRES
+# =============================================================================
+
+# Journalisation
+log_info() {
+	printf "${GREEN}[INFO]${NC} %s\n" "$1"
+	logger -t "$LOG_TAG" -p info "$1"
+}
+
+log_warn() {
+	printf "${YELLOW}[WARN]${NC} %s\n" "$1" >&2
+	logger -t "$LOG_TAG" -p warning "$1"
+}
+
+log_error() {
+	printf "${RED}[ERREUR]${NC} %s\n" "$1" >&2
+	logger -t "$LOG_TAG" -p err "$1"
+}
+
+log_step() {
+	printf "\n${BLUE}==> %s${NC}\n" "$1"
+}
+
+# Verification de commande disponible
+check_cmd() {
+	command -v "$1" >/dev/null 2>&1
+}
+
+# Lecture securisee d'une valeur UCI
+uci_get() {
+	uci -q get "$1" 2>/dev/null || echo ""
+}
+
+# Ecriture UCI avec creation de section si necessaire
+uci_set() {
+	uci -q set "$1" 2>/dev/null
+}
+
+# Verification que le script tourne en root
+check_root() {
+	if [ "$(id -u)" != "0" ]; then
+		log_error "Ce script doit etre execute en tant que root"
+		exit 1
+	fi
+}
+
+# Detection de l'architecture
+detect_arch() {
+	ARCH=$(uname -m)
+	case "$ARCH" in
+		aarch64)
+			ARCH_NAME="arm64"
+			;;
+		armv7l|armv7)
+			ARCH_NAME="armv7"
+			;;
+		x86_64)
+			ARCH_NAME="x86_64"
+			;;
+		mips|mipsel)
+			ARCH_NAME="mips"
+			;;
+		*)
+			ARCH_NAME="$ARCH"
+			;;
+	esac
+	log_info "Architecture detectee: $ARCH_NAME ($ARCH)"
+}
+
+# Detection de la version OpenWrt
+detect_openwrt_version() {
+	if [ -f /etc/openwrt_release ]; then
+		. /etc/openwrt_release
+		OPENWRT_VERSION="${DISTRIB_RELEASE:-unknown}"
+		OPENWRT_CODENAME="${DISTRIB_CODENAME:-unknown}"
+
+		# Extraire le numero de version majeur
+		OPENWRT_MAJOR=$(echo "$OPENWRT_VERSION" | cut -d'.' -f1)
+
+		log_info "Version OpenWrt: $OPENWRT_VERSION ($OPENWRT_CODENAME)"
+	else
+		log_error "Fichier /etc/openwrt_release non trouve. Est-ce bien OpenWrt?"
+		exit 1
+	fi
+}
+
+# Verification des prerequis materiels
+check_prerequisites() {
+	log_step "Verification des prerequis"
+
+	local errors=0
+
+	# Verification version OpenWrt
+	if [ "$OPENWRT_MAJOR" -lt "$MIN_OPENWRT_MAJOR" ]; then
+		log_error "OpenWrt $MIN_OPENWRT_MAJOR+ requis (detecte: $OPENWRT_VERSION)"
+		errors=$((errors + 1))
+	else
+		log_info "Version OpenWrt OK: $OPENWRT_VERSION"
+	fi
+
+	# Verification espace flash (en Mo)
+	# Utiliser df sur /overlay qui represente l'espace disponible
+	if [ -d /overlay ]; then
+		FLASH_AVAIL=$(df -m /overlay 2>/dev/null | awk 'NR==2 {print $4}')
+	else
+		# Fallback sur /
+		FLASH_AVAIL=$(df -m / 2>/dev/null | awk 'NR==2 {print $4}')
+	fi
+
+	if [ -n "$FLASH_AVAIL" ] && [ "$FLASH_AVAIL" -lt "$MIN_FLASH_MB" ]; then
+		log_error "Espace flash insuffisant: ${FLASH_AVAIL}Mo disponible, ${MIN_FLASH_MB}Mo requis"
+		errors=$((errors + 1))
+	else
+		log_info "Espace flash OK: ${FLASH_AVAIL:-?}Mo disponible"
+	fi
+
+	# Verification RAM
+	RAM_TOTAL=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+	if [ "$RAM_TOTAL" -lt "$MIN_RAM_MB" ]; then
+		log_error "RAM insuffisante: ${RAM_TOTAL}Mo detecte, ${MIN_RAM_MB}Mo requis"
+		errors=$((errors + 1))
+	else
+		log_info "RAM OK: ${RAM_TOTAL}Mo"
+	fi
+
+	# Verification nftables/fw4
+	if ! check_cmd nft; then
+		log_error "nftables non disponible. fw4 requis pour OpenWrt 24.10+"
+		errors=$((errors + 1))
+	else
+		log_info "nftables OK"
+	fi
+
+	# Verification connectivite Internet
+	if ! ping -c 1 -W 3 downloads.openwrt.org >/dev/null 2>&1; then
+		log_warn "Pas de connectivite Internet detectee"
+		# Pas fatal, l'utilisateur peut avoir des paquets locaux
+	else
+		log_info "Connectivite Internet OK"
+	fi
+
+	if [ "$errors" -gt 0 ]; then
+		log_error "$errors erreur(s) de prerequis. Installation annulee."
+		exit 1
+	fi
+
+	log_info "Tous les prerequis sont satisfaits"
+}
+
+# =============================================================================
+# SAUVEGARDE ET RESTAURATION
+# =============================================================================
+
+backup_configs() {
+	log_step "Sauvegarde des configurations existantes"
+
+	BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+	BACKUP_PATH="${BACKUP_DIR}/${BACKUP_TIMESTAMP}"
+
+	mkdir -p "$BACKUP_PATH"
+
+	# Sauvegarder les configs existantes
+	[ -d "$CROWDSEC_CONFIG_DIR" ] && cp -a "$CROWDSEC_CONFIG_DIR" "$BACKUP_PATH/" 2>/dev/null || true
+	[ -d "$SYSLOG_NG_DIR" ] && cp -a "$SYSLOG_NG_DIR" "$BACKUP_PATH/" 2>/dev/null || true
+	[ -f /etc/config/system ] && cp /etc/config/system "$BACKUP_PATH/" 2>/dev/null || true
+
+	# Sauvegarder la liste des paquets installes
+	opkg list-installed > "$BACKUP_PATH/packages.list" 2>/dev/null || true
+
+	log_info "Sauvegarde creee dans $BACKUP_PATH"
+
+	# Garder les 5 dernieres sauvegardes
+	ls -dt "${BACKUP_DIR}"/*/ 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
+}
+
+rollback() {
+	log_error "Erreur detectee, tentative de rollback..."
+
+	# Trouver la derniere sauvegarde
+	LAST_BACKUP=$(ls -dt "${BACKUP_DIR}"/*/ 2>/dev/null | head -1)
+
+	if [ -z "$LAST_BACKUP" ]; then
+		log_error "Aucune sauvegarde disponible pour rollback"
+		return 1
+	fi
+
+	log_info "Restauration depuis $LAST_BACKUP"
+
+	# Arreter les services
+	/etc/init.d/crowdsec stop 2>/dev/null || true
+	/etc/init.d/crowdsec-firewall-bouncer stop 2>/dev/null || true
+	/etc/init.d/syslog-ng stop 2>/dev/null || true
+
+	# Restaurer les configs
+	[ -d "$LAST_BACKUP/crowdsec" ] && cp -a "$LAST_BACKUP/crowdsec"/* "$CROWDSEC_CONFIG_DIR/" 2>/dev/null || true
+	[ -d "$LAST_BACKUP/syslog-ng" ] && cp -a "$LAST_BACKUP/syslog-ng"/* "$SYSLOG_NG_DIR/" 2>/dev/null || true
+	[ -f "$LAST_BACKUP/system" ] && cp "$LAST_BACKUP/system" /etc/config/system 2>/dev/null || true
+
+	# Reactiver logd si necessaire
+	/etc/init.d/log enable 2>/dev/null || true
+	/etc/init.d/log start 2>/dev/null || true
+
+	log_warn "Rollback effectue. Verifiez l'etat du systeme."
+}
+
+# =============================================================================
+# INSTALLATION DES PAQUETS
+# =============================================================================
+
+install_packages() {
+	log_step "Installation des paquets"
+
+	# Mise a jour de la liste des paquets
+	log_info "Mise a jour de la liste des paquets..."
+	opkg update || {
+		log_error "Echec de la mise a jour opkg"
+		return 1
+	}
+
+	# Liste des paquets a installer
+	# Note: syslog-ng4 pour OpenWrt 24.10+ (pas syslog-ng3)
+	PACKAGES="crowdsec crowdsec-firewall-bouncer-nftables syslog-ng4"
+
+	# Installation des paquets
+	for pkg in $PACKAGES; do
+		log_info "Installation de $pkg..."
+		if opkg install "$pkg"; then
+			log_info "$pkg installe avec succes"
+		else
+			# Verifier si deja installe
+			if opkg list-installed | grep -q "^$pkg "; then
+				log_warn "$pkg deja installe"
+			else
+				log_error "Echec installation de $pkg"
+				return 1
+			fi
+		fi
+	done
+
+	# Verifier que cscli est disponible
+	if ! check_cmd cscli; then
+		log_error "cscli non disponible apres installation"
+		return 1
+	fi
+
+	log_info "Tous les paquets installes avec succes"
+}
+
+# =============================================================================
+# CONFIGURATION SYSLOG-NG4
+# =============================================================================
+
+configure_syslog_ng() {
+	log_step "Configuration de syslog-ng4"
+
+	mkdir -p "$SYSLOG_NG_DIR"
+	mkdir -p /tmp/log
+
+	# Configuration principale syslog-ng
+	cat > "${SYSLOG_NG_DIR}/syslog-ng.conf" << 'SYSLOGCONF'
+# Configuration syslog-ng4 pour SecuBox/CrowdSec
+# Genere automatiquement par secubox-crowdsec-setup
+# Ne pas modifier manuellement - utiliser UCI
+
+@version: 4.2
+@include "scl.conf"
+
+# Options globales
+options {
+    chain_hostnames(off);
+    flush_lines(0);
+    use_dns(no);
+    use_fqdn(no);
+    dns_cache(no);
+    owner("root");
+    group("root");
+    perm(0640);
+    stats_freq(0);
+    bad_hostname("^gconfd$");
+    keep_hostname(yes);
+    create_dirs(yes);
+};
+
+# Sources
+# Source systeme principale (socket Unix)
+source s_sys {
+    unix-dgram("/dev/log");
+    internal();
+};
+
+# Source kernel
+source s_kernel {
+    file("/proc/kmsg" program_override("kernel"));
+};
+
+# Destinations
+# Destination CrowdSec (UDP local)
+destination d_crowdsec {
+    syslog("127.0.0.1"
+        transport("udp")
+        port(5140)
+    );
+};
+
+# Destination fichier debug (optionnel, dans tmpfs)
+destination d_messages {
+    file("/tmp/log/messages"
+        template("${DATE} ${HOST} ${MSGHDR}${MSG}\n")
+        create_dirs(yes)
+    );
+};
+
+# Destination kernel log
+destination d_kern {
+    file("/tmp/log/kern.log"
+        template("${DATE} ${HOST} ${MSGHDR}${MSG}\n")
+    );
+};
+
+# Destination auth log (SSH, etc.)
+destination d_auth {
+    file("/tmp/log/auth.log"
+        template("${DATE} ${HOST} ${MSGHDR}${MSG}\n")
+    );
+};
+
+# Filtres
+filter f_kern { facility(kern); };
+filter f_auth { facility(auth) or facility(authpriv); };
+filter f_messages { level(info..emerg) and not facility(auth, authpriv, kern); };
+
+# Log paths
+# Tout vers CrowdSec
+log { source(s_sys); source(s_kernel); destination(d_crowdsec); };
+
+# Fichiers locaux pour debug
+log { source(s_sys); filter(f_messages); destination(d_messages); };
+log { source(s_kernel); filter(f_kern); destination(d_kern); };
+log { source(s_sys); filter(f_auth); destination(d_auth); };
+SYSLOGCONF
+
+	log_info "Configuration syslog-ng4 creee"
+
+	# Desactiver logd natif OpenWrt
+	log_info "Desactivation de logd natif..."
+	/etc/init.d/log stop 2>/dev/null || true
+	/etc/init.d/log disable 2>/dev/null || true
+
+	# Configurer UCI pour desactiver le log buffer interne
+	uci_set system.@system[0].log_size='0'
+	uci_set system.@system[0].log_buffer_size='0'
+	uci commit system 2>/dev/null || true
+
+	# Activer et demarrer syslog-ng
+	/etc/init.d/syslog-ng enable
+	/etc/init.d/syslog-ng start || {
+		log_error "Echec demarrage syslog-ng"
+		return 1
+	}
+
+	# Verifier que syslog-ng fonctionne
+	sleep 2
+	if pgrep -f "syslog-ng" >/dev/null; then
+		log_info "syslog-ng4 demarre avec succes"
+	else
+		log_error "syslog-ng4 ne semble pas fonctionner"
+		return 1
+	fi
+}
+
+# =============================================================================
+# CONFIGURATION CROWDSEC
+# =============================================================================
+
+configure_crowdsec() {
+	log_step "Configuration de CrowdSec"
+
+	mkdir -p "$CROWDSEC_CONFIG_DIR"
+	mkdir -p "$CROWDSEC_DATA_DIR"
+	mkdir -p "$CROWDSEC_HUB_DIR"
+	mkdir -p "${CROWDSEC_CONFIG_DIR}/acquis.d"
+
+	# Configuration acquisition syslog
+	cat > "${CROWDSEC_CONFIG_DIR}/acquis.d/syslog.yaml" << ACQUISCONF
+# Acquisition syslog pour OpenWrt/SecuBox
+# Source: syslog-ng4 via UDP
+
+source: syslog
+listen_addr: ${SYSLOG_LISTEN_ADDR}
+listen_port: ${SYSLOG_LISTEN_PORT}
+labels:
+  type: syslog
+ACQUISCONF
+
+	log_info "Configuration acquisition syslog creee"
+
+	# Verifier/corriger config.yaml
+	if [ -f "${CROWDSEC_CONFIG_DIR}/config.yaml" ]; then
+		# S'assurer que les chemins sont corrects
+		sed -i "s|data_dir:.*|data_dir: ${CROWDSEC_DATA_DIR}/|" "${CROWDSEC_CONFIG_DIR}/config.yaml"
+		sed -i "s|db_path:.*|db_path: ${CROWDSEC_DATA_DIR}/crowdsec.db|" "${CROWDSEC_CONFIG_DIR}/config.yaml"
+		log_info "Configuration CrowdSec mise a jour"
+	fi
+
+	# Creer la configuration UCI pour CrowdSec
+	if [ ! -f /etc/config/crowdsec ]; then
+		cat > /etc/config/crowdsec << 'UCICONF'
+config crowdsec 'crowdsec'
+	option enabled '1'
+	option data_dir '/srv/crowdsec/data'
+	option db_path '/srv/crowdsec/data/crowdsec.db'
+
+config acquisition 'acquisition'
+	option syslog_enabled '1'
+	option firewall_enabled '1'
+	option ssh_enabled '1'
+	option http_enabled '0'
+
+config hub 'hub'
+	option auto_install '1'
+	option collections 'crowdsecurity/linux crowdsecurity/sshd crowdsecurity/iptables'
+	option update_interval '7'
+
+config bouncer 'bouncer'
+	option enabled '1'
+	option ipv4 '1'
+	option ipv6 '1'
+	option deny_action 'drop'
+	option deny_log '1'
+	option update_frequency '10s'
+	option filter_input '1'
+	option filter_forward '1'
+UCICONF
+		log_info "Configuration UCI CrowdSec creee"
+	fi
+}
+
+# =============================================================================
+# ENREGISTREMENT CAPI ET INSTALLATION COLLECTIONS
+# =============================================================================
+
+register_and_setup_hub() {
+	log_step "Enregistrement CAPI et installation des collections"
+
+	# Demarrer CrowdSec temporairement pour les commandes cscli
+	/etc/init.d/crowdsec start 2>/dev/null || true
+	sleep 3
+
+	# Enregistrement CAPI (Central API)
+	log_info "Enregistrement aupres de la CAPI CrowdSec..."
+	if cscli capi register 2>/dev/null; then
+		log_info "Enregistrement CAPI reussi"
+	else
+		log_warn "Echec enregistrement CAPI (peut-etre deja enregistre)"
+	fi
+
+	# Mise a jour du hub
+	log_info "Mise a jour du hub CrowdSec..."
+	cscli hub update || log_warn "Echec mise a jour hub"
+
+	# Installation des collections
+	log_info "Installation des collections..."
+	for collection in $COLLECTIONS; do
+		log_info "Installation de $collection..."
+		if cscli collections install "$collection" 2>/dev/null; then
+			log_info "Collection $collection installee"
+		else
+			log_warn "Echec installation de $collection (peut-etre deja installee)"
+		fi
+	done
+
+	# Lister les collections installees
+	log_info "Collections installees:"
+	cscli collections list 2>/dev/null || true
+}
+
+# =============================================================================
+# CONFIGURATION FIREWALL BOUNCER
+# =============================================================================
+
+configure_bouncer() {
+	log_step "Configuration du firewall bouncer"
+
+	# Generer la cle API pour le bouncer
+	log_info "Generation de la cle API bouncer..."
+
+	# Supprimer l'ancien bouncer s'il existe
+	cscli bouncers delete crowdsec-firewall-bouncer 2>/dev/null || true
+
+	# Creer le nouveau bouncer et recuperer la cle
+	API_KEY=$(cscli bouncers add crowdsec-firewall-bouncer -o raw 2>/dev/null)
+
+	if [ -z "$API_KEY" ] || [ "${#API_KEY}" -lt 10 ]; then
+		log_error "Echec generation de la cle API bouncer"
+		return 1
+	fi
+
+	log_info "Cle API bouncer generee"
+
+	# Configuration du bouncer nftables
+	mkdir -p /etc/crowdsec/bouncers
+
+	cat > /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml << BOUNCERCONF
+# Configuration Firewall Bouncer pour OpenWrt/SecuBox
+# Genere automatiquement par secubox-crowdsec-setup
+
+mode: nftables
+pid_dir: /var/run/
+update_frequency: 10s
+daemonize: true
+log_mode: file
+log_dir: /var/log/
+log_level: info
+log_compression: true
+log_max_size: 10
+log_max_backups: 3
+log_max_age: 30
+
+api_url: http://${LAPI_LISTEN_ADDR}:${LAPI_LISTEN_PORT}/
+api_key: ${API_KEY}
+
+disable_ipv6: false
+
+# Configuration nftables optimisee pour fw4
+nftables:
+  ipv4:
+    enabled: true
+    set-only: true
+    table: crowdsec
+    chain: crowdsec-chain
+    priority: -10
+  ipv6:
+    enabled: true
+    set-only: true
+    table: crowdsec6
+    chain: crowdsec6-chain
+    priority: -10
+
+deny_action: drop
+deny_log: true
+deny_log_prefix: "crowdsec: "
+
+# Timers
+blacklists_ipv4: crowdsec-blacklists
+blacklists_ipv6: crowdsec6-blacklists
+BOUNCERCONF
+
+	log_info "Configuration bouncer creee"
+
+	# Sauvegarder la cle API dans UCI
+	uci_set crowdsec.bouncer.api_key="$API_KEY"
+	uci commit crowdsec 2>/dev/null || true
+}
+
+# =============================================================================
+# CONFIGURATION WHITELIST
+# =============================================================================
+
+configure_whitelist() {
+	log_step "Configuration des whitelists"
+
+	# Creer un fichier de whitelist pour les reseaux locaux
+	cat > "${CROWDSEC_CONFIG_DIR}/parsers/s02-enrich/secubox-whitelist.yaml" << 'WHITELIST'
+# Whitelist SecuBox - Reseaux locaux
+# Ne pas bannir les adresses RFC1918 et link-local
+
+name: secubox/whitelists
+description: "Whitelist des reseaux locaux SecuBox"
+whitelist:
+  reason: "Reseau local SecuBox"
+  ip:
+    - "127.0.0.0/8"
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+    - "169.254.0.0/16"
+    - "::1/128"
+    - "fe80::/10"
+    - "fc00::/7"
+WHITELIST
+
+	log_info "Whitelist reseaux locaux creee"
+}
+
+# =============================================================================
+# DEMARRAGE DES SERVICES
+# =============================================================================
+
+start_services() {
+	log_step "Demarrage des services"
+
+	# Ordre de demarrage: syslog-ng -> crowdsec -> bouncer
+
+	# Redemarrer syslog-ng pour s'assurer qu'il fonctionne
+	log_info "Redemarrage syslog-ng..."
+	/etc/init.d/syslog-ng restart || log_warn "Probleme redemarrage syslog-ng"
+	sleep 2
+
+	# Demarrer CrowdSec
+	log_info "Demarrage CrowdSec..."
+	/etc/init.d/crowdsec enable
+	/etc/init.d/crowdsec restart || {
+		log_error "Echec demarrage CrowdSec"
+		return 1
+	}
+	sleep 3
+
+	# Verifier que LAPI est disponible
+	local retries=10
+	while [ $retries -gt 0 ]; do
+		if cscli lapi status >/dev/null 2>&1; then
+			log_info "LAPI CrowdSec disponible"
+			break
+		fi
+		retries=$((retries - 1))
+		sleep 1
+	done
+
+	if [ $retries -eq 0 ]; then
+		log_error "LAPI CrowdSec non disponible apres 10 secondes"
+		return 1
+	fi
+
+	# Demarrer le bouncer
+	log_info "Demarrage du firewall bouncer..."
+	/etc/init.d/crowdsec-firewall-bouncer enable
+	/etc/init.d/crowdsec-firewall-bouncer restart || {
+		log_error "Echec demarrage bouncer"
+		return 1
+	}
+	sleep 2
+
+	# Verifier que les services tournent
+	log_info "Verification des services..."
+
+	local all_ok=1
+
+	if pgrep -f "syslog-ng" >/dev/null; then
+		log_info "  syslog-ng: OK"
+	else
+		log_error "  syslog-ng: ECHEC"
+		all_ok=0
+	fi
+
+	if pgrep -x crowdsec >/dev/null; then
+		log_info "  crowdsec: OK"
+	else
+		log_error "  crowdsec: ECHEC"
+		all_ok=0
+	fi
+
+	if pgrep -f "crowdsec-firewall-bouncer" >/dev/null; then
+		log_info "  bouncer: OK"
+	else
+		log_error "  bouncer: ECHEC"
+		all_ok=0
+	fi
+
+	# Verifier les tables nftables
+	if nft list tables 2>/dev/null | grep -q "crowdsec"; then
+		log_info "  nftables crowdsec: OK"
+	else
+		log_warn "  nftables crowdsec: Tables non creees (normal au premier demarrage)"
+	fi
+
+	if [ "$all_ok" -eq 0 ]; then
+		return 1
+	fi
+}
+
+# =============================================================================
+# VERIFICATION ET RAPPORT
+# =============================================================================
+
+verify_installation() {
+	log_step "Verification de l'installation"
+
+	local errors=0
+
+	# Test connectivite CAPI
+	log_info "Test connectivite CAPI..."
+	if cscli capi status 2>/dev/null | grep -qi "online\|connected"; then
+		log_info "  CAPI: Connecte"
+	else
+		log_warn "  CAPI: Deconnecte (verifier la connectivite Internet)"
+	fi
+
+	# Afficher les metriques
+	log_info "Metriques CrowdSec:"
+	cscli metrics 2>/dev/null | head -30 || log_warn "  Impossible de recuperer les metriques"
+
+	# Lister les bouncers
+	log_info "Bouncers enregistres:"
+	cscli bouncers list 2>/dev/null || log_warn "  Impossible de lister les bouncers"
+
+	# Verifier l'acquisition
+	log_info "Sources d'acquisition:"
+	cscli metrics show acquisition 2>/dev/null | head -10 || true
+}
+
+generate_report() {
+	log_step "Rapport d'installation"
+
+	REPORT_FILE="/tmp/secubox-crowdsec-install-report.txt"
+
+	cat > "$REPORT_FILE" << REPORT
+================================================================================
+             RAPPORT D'INSTALLATION SECUBOX CROWDSEC
+================================================================================
+Date: $(date)
+Version script: $VERSION
+Systeme: OpenWrt $OPENWRT_VERSION ($OPENWRT_CODENAME)
+Architecture: $ARCH_NAME
+
+SERVICES INSTALLES:
+-------------------
+$(opkg list-installed | grep -E "crowdsec|syslog-ng" || echo "Erreur listing paquets")
+
+STATUT SERVICES:
+----------------
+syslog-ng:    $(pgrep -f syslog-ng >/dev/null && echo "ACTIF" || echo "INACTIF")
+crowdsec:     $(pgrep -x crowdsec >/dev/null && echo "ACTIF" || echo "INACTIF")
+bouncer:      $(pgrep -f crowdsec-firewall-bouncer >/dev/null && echo "ACTIF" || echo "INACTIF")
+
+COLLECTIONS INSTALLEES:
+-----------------------
+$(cscli collections list 2>/dev/null || echo "Erreur listing collections")
+
+BOUNCERS:
+---------
+$(cscli bouncers list 2>/dev/null || echo "Erreur listing bouncers")
+
+TABLES NFTABLES:
+----------------
+$(nft list tables 2>/dev/null | grep crowdsec || echo "Aucune table crowdsec")
+
+CONFIGURATION:
+--------------
+Syslog listen: ${SYSLOG_LISTEN_ADDR}:${SYSLOG_LISTEN_PORT}
+LAPI listen: ${LAPI_LISTEN_ADDR}:${LAPI_LISTEN_PORT}
+Data dir: ${CROWDSEC_DATA_DIR}
+Config dir: ${CROWDSEC_CONFIG_DIR}
+
+COMMANDES UTILES:
+-----------------
+# Voir les decisions actives
+cscli decisions list
+
+# Voir les alertes
+cscli alerts list
+
+# Bannir une IP manuellement
+cscli decisions add --ip <IP> --duration 24h --reason "Ban manuel"
+
+# Debannir une IP
+cscli decisions delete --ip <IP>
+
+# Mettre a jour le hub
+cscli hub update && cscli hub upgrade
+
+# Voir les metriques
+cscli metrics
+
+# Logs CrowdSec
+logread | grep crowdsec
+cat /var/log/crowdsec.log
+
+================================================================================
+REPORT
+
+	log_info "Rapport genere: $REPORT_FILE"
+	cat "$REPORT_FILE"
+}
+
+# =============================================================================
+# DESINSTALLATION
+# =============================================================================
+
+uninstall() {
+	log_step "Desinstallation de CrowdSec SecuBox"
+
+	# Confirmation
+	printf "ATTENTION: Ceci va supprimer CrowdSec et ses configurations.\n"
+	printf "Continuer? [y/N] "
+	read -r confirm
+	case "$confirm" in
+		[yY][eE][sS]|[yY])
+			;;
+		*)
+			log_info "Desinstallation annulee"
+			exit 0
+			;;
+	esac
+
+	# Arreter les services
+	log_info "Arret des services..."
+	/etc/init.d/crowdsec-firewall-bouncer stop 2>/dev/null || true
+	/etc/init.d/crowdsec-firewall-bouncer disable 2>/dev/null || true
+	/etc/init.d/crowdsec stop 2>/dev/null || true
+	/etc/init.d/crowdsec disable 2>/dev/null || true
+	/etc/init.d/syslog-ng stop 2>/dev/null || true
+	/etc/init.d/syslog-ng disable 2>/dev/null || true
+
+	# Supprimer les tables nftables
+	log_info "Suppression des tables nftables..."
+	nft delete table ip crowdsec 2>/dev/null || true
+	nft delete table ip6 crowdsec6 2>/dev/null || true
+
+	# Desinstaller les paquets
+	log_info "Desinstallation des paquets..."
+	opkg remove crowdsec-firewall-bouncer-nftables 2>/dev/null || true
+	opkg remove crowdsec 2>/dev/null || true
+	opkg remove syslog-ng4 2>/dev/null || true
+
+	# Reactiver logd
+	log_info "Reactivation de logd..."
+	/etc/init.d/log enable 2>/dev/null || true
+	/etc/init.d/log start 2>/dev/null || true
+
+	# Optionnel: supprimer les configurations
+	printf "Supprimer les fichiers de configuration? [y/N] "
+	read -r confirm_conf
+	case "$confirm_conf" in
+		[yY][eE][sS]|[yY])
+			rm -rf "$CROWDSEC_CONFIG_DIR" 2>/dev/null || true
+			rm -rf "$CROWDSEC_DATA_DIR" 2>/dev/null || true
+			rm -rf "$SYSLOG_NG_DIR" 2>/dev/null || true
+			rm -f /etc/config/crowdsec 2>/dev/null || true
+			log_info "Configurations supprimees"
+			;;
+		*)
+			log_info "Configurations conservees"
+			;;
+	esac
+
+	log_info "Desinstallation terminee"
+}
+
+# =============================================================================
+# STATUT
+# =============================================================================
+
+show_status() {
+	log_step "Statut CrowdSec SecuBox"
+
+	printf "\n${BLUE}Services:${NC}\n"
+	printf "  syslog-ng:    "
+	if pgrep -f "syslog-ng" >/dev/null; then
+		printf "${GREEN}ACTIF${NC}\n"
+	else
+		printf "${RED}INACTIF${NC}\n"
+	fi
+
+	printf "  crowdsec:     "
+	if pgrep -x crowdsec >/dev/null; then
+		printf "${GREEN}ACTIF${NC}\n"
+	else
+		printf "${RED}INACTIF${NC}\n"
+	fi
+
+	printf "  bouncer:      "
+	if pgrep -f "crowdsec-firewall-bouncer" >/dev/null; then
+		printf "${GREEN}ACTIF${NC}\n"
+	else
+		printf "${RED}INACTIF${NC}\n"
+	fi
+
+	printf "\n${BLUE}LAPI Status:${NC}\n"
+	cscli lapi status 2>/dev/null || printf "  ${RED}Non disponible${NC}\n"
+
+	printf "\n${BLUE}Decisions actives:${NC}\n"
+	cscli decisions list 2>/dev/null | head -10 || printf "  Aucune ou erreur\n"
+
+	printf "\n${BLUE}Tables nftables:${NC}\n"
+	nft list tables 2>/dev/null | grep crowdsec || printf "  ${YELLOW}Aucune table crowdsec${NC}\n"
+}
+
+# =============================================================================
+# REPARATION
+# =============================================================================
+
+repair() {
+	log_step "Reparation de l'installation CrowdSec"
+
+	# Arreter les services
+	/etc/init.d/crowdsec-firewall-bouncer stop 2>/dev/null || true
+	/etc/init.d/crowdsec stop 2>/dev/null || true
+
+	# Verifier/recreer les repertoires
+	mkdir -p "$CROWDSEC_DATA_DIR"
+	mkdir -p "$CROWDSEC_CONFIG_DIR"
+
+	# Regenerer les credentials machine si necessaire
+	if [ ! -f "${CROWDSEC_CONFIG_DIR}/local_api_credentials.yaml" ]; then
+		log_info "Regeneration des credentials machine..."
+		cscli machines add localhost --auto --force 2>/dev/null || true
+	fi
+
+	# Redemarrer CrowdSec
+	/etc/init.d/crowdsec start
+	sleep 3
+
+	# Verifier LAPI
+	if ! cscli lapi status >/dev/null 2>&1; then
+		log_error "LAPI toujours non disponible apres reparation"
+		return 1
+	fi
+
+	# Re-enregistrer le bouncer si necessaire
+	if ! cscli bouncers list 2>/dev/null | grep -q "crowdsec-firewall-bouncer"; then
+		log_info "Re-enregistrement du bouncer..."
+		configure_bouncer
+	fi
+
+	# Redemarrer le bouncer
+	/etc/init.d/crowdsec-firewall-bouncer start
+
+	log_info "Reparation terminee"
+	show_status
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+usage() {
+	cat << EOF
+Usage: $SCRIPT_NAME [OPTIONS]
+
+Options:
+  --install     Installation complete (defaut)
+  --uninstall   Desinstallation complete
+  --status      Afficher le statut des services
+  --repair      Tenter de reparer une installation cassee
+  --help        Afficher cette aide
+
+Version: $VERSION
+
+EOF
+}
+
+main() {
+	check_root
+	detect_arch
+	detect_openwrt_version
+
+	case "${1:-install}" in
+		--install|install)
+			log_step "Installation SecuBox CrowdSec v$VERSION"
+
+			check_prerequisites
+			backup_configs
+
+			# Piege pour rollback en cas d'erreur
+			trap 'rollback; exit 1' ERR
+
+			install_packages
+			configure_syslog_ng
+			configure_crowdsec
+			register_and_setup_hub
+			configure_bouncer
+			configure_whitelist
+			start_services
+			verify_installation
+			generate_report
+
+			# Desactiver le piege
+			trap - ERR
+
+			log_step "Installation terminee avec succes!"
+			log_info "Consultez le rapport: /tmp/secubox-crowdsec-install-report.txt"
+			;;
+		--uninstall|uninstall)
+			uninstall
+			;;
+		--status|status)
+			show_status
+			;;
+		--repair|repair)
+			repair
+			;;
+		--help|-h|help)
+			usage
+			;;
+		*)
+			log_error "Option inconnue: $1"
+			usage
+			exit 1
+			;;
+	esac
+}
+
+main "$@"

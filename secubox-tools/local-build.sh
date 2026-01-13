@@ -562,6 +562,69 @@ LUCI_MK
     return 0
 }
 
+# Synchronize packages from package/secubox to local-feed
+# This ensures local-feed always matches the canonical source
+sync_packages_to_local_feed() {
+    local feed_dir="./local-feed"
+    local pkg_src="$REPO_ROOT/package/secubox"
+
+    print_info "Syncing from $pkg_src to $feed_dir"
+
+    # Create local-feed if it doesn't exist
+    mkdir -p "$feed_dir"
+
+    # Sync packages from package/secubox/ to local-feed
+    if [[ -d "$pkg_src" ]]; then
+        print_info "Syncing secubox core packages..."
+        for pkg in "$pkg_src"/*/; do
+            if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
+                local pkg_name=$(basename "$pkg")
+                echo "  📦 $pkg_name"
+                rm -rf "$feed_dir/$pkg_name"
+                cp -r "$pkg" "$feed_dir/"
+
+                # Fix Makefile include paths for feed structure
+                if grep -q "../../lang/golang/golang-package.mk" "$feed_dir/$pkg_name/Makefile" 2>/dev/null; then
+                    sed -i 's|include.*../../lang/golang/golang-package.mk|include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk|' "$feed_dir/$pkg_name/Makefile"
+                    echo "    ✓ Fixed golang package include path"
+                fi
+            fi
+        done
+    fi
+
+    # Sync luci-app-* packages from repo root
+    print_info "Syncing LuCI app packages..."
+    for pkg in "$REPO_ROOT"/luci-app-*/; do
+        if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
+            local pkg_name=$(basename "$pkg")
+            echo "  📁 $pkg_name"
+            rm -rf "$feed_dir/$pkg_name"
+            cp -r "$pkg" "$feed_dir/"
+
+            # Fix Makefile include path for feed structure
+            sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "$feed_dir/$pkg_name/Makefile"
+        fi
+    done
+
+    # Sync luci-theme-* packages from repo root
+    print_info "Syncing LuCI theme packages..."
+    for pkg in "$REPO_ROOT"/luci-theme-*/; do
+        if [[ -d "$pkg" && -f "${pkg}Makefile" ]]; then
+            local pkg_name=$(basename "$pkg")
+            echo "  🎨 $pkg_name"
+            rm -rf "$feed_dir/$pkg_name"
+            cp -r "$pkg" "$feed_dir/"
+
+            # Fix Makefile include path for feed structure
+            sed -i 's|include.*luci\.mk|include $(TOPDIR)/feeds/luci/luci.mk|' "$feed_dir/$pkg_name/Makefile"
+        fi
+    done
+
+    # Count packages
+    local pkg_count=$(ls -d "$feed_dir"/*/ 2>/dev/null | wc -l)
+    print_success "Synchronized $pkg_count packages to local-feed"
+}
+
 # Copy packages to SDK feed
 copy_packages() {
     local single_package="$1"
@@ -2015,7 +2078,8 @@ COMMANDS:
     debug-firmware <device>     Debug firmware build (check config without building)
     full                        Run validation then build
     clean                       Clean build directories
-    clean-all                   Clean all build directories including OpenWrt source
+    clean-all                   Clean all build directories including OpenWrt source and local-feed
+    sync                        Sync packages from package/secubox to local-feed
     help                        Show this help message
 
 PACKAGES:
@@ -2180,8 +2244,14 @@ main() {
 
         clean-all)
             print_header "Cleaning All Build Directories"
-            rm -rf "$SDK_DIR" "$BUILD_DIR" "$OPENWRT_DIR" "$CACHE_DIR"
-            print_success "All build directories cleaned (SDK, build, OpenWrt source, cache)"
+            rm -rf "$SDK_DIR" "$BUILD_DIR" "$OPENWRT_DIR" "$CACHE_DIR" "./local-feed"
+            print_success "All build directories cleaned (SDK, build, OpenWrt source, cache, local-feed)"
+            ;;
+
+        sync)
+            print_header "Synchronizing packages to local-feed"
+            sync_packages_to_local_feed
+            print_success "Packages synchronized to local-feed"
             ;;
 
         help|--help|-h)
