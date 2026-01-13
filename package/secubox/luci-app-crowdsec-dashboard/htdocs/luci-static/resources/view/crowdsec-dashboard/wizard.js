@@ -637,50 +637,69 @@ return view.extend({
 			{ name: 'crowdsecurity/whitelist-good-actors', description: 'Whitelist known good bots', preselected: false }
 		];
 
+		// OpenWrt-specific parsers for log sources
+		var recommendedParsers = [
+			{ name: 'crowdsecurity/dropbear-logs', description: 'Dropbear SSH daemon logs (OpenWrt)', preselected: this.wizardData.sshEnabled },
+			{ name: 'crowdsecurity/syslog-logs', description: 'Generic syslog parser', preselected: this.wizardData.syslogEnabled }
+		];
+
+		var renderCheckboxItem = function(item, type) {
+			return E('div', {
+				'class': 'collection-item',
+				'data-' + type: item.name,
+				'data-type': type,
+				'data-checked': item.preselected ? '1' : '0',
+				'style': 'display: flex; align-items: center; cursor: pointer;',
+				'click': function(ev) {
+					var el = ev.currentTarget;
+					var currentState = el.getAttribute('data-checked') === '1';
+					var newState = !currentState;
+					el.setAttribute('data-checked', newState ? '1' : '0');
+					var checkbox = el.querySelector('.checkbox-indicator');
+					if (checkbox) {
+						checkbox.textContent = newState ? '☑' : '☐';
+						checkbox.style.color = newState ? '#22c55e' : '#94a3b8';
+					}
+				}
+			}, [
+				E('span', {
+					'class': 'checkbox-indicator',
+					'style': 'display: inline-block; font-size: 28px; margin-right: 16px; user-select: none; color: ' + (item.preselected ? '#22c55e' : '#94a3b8') + '; line-height: 1; min-width: 28px;'
+				}, item.preselected ? '☑' : '☐'),
+				E('div', { 'class': 'collection-info', 'style': 'flex: 1;' }, [
+					E('strong', {}, item.name),
+					E('div', { 'class': 'collection-desc' }, item.description)
+				])
+			]);
+		};
+
 		return E('div', { 'class': 'wizard-step' }, [
-			E('h2', {}, _('Install Security Collections')),
-			E('p', {}, _('Select collections to install. Recommended collections are pre-selected.')),
+			E('h2', {}, _('Install Security Collections & Parsers')),
+			E('p', {}, _('Select collections and parsers to install. Recommended items are pre-selected based on your log configuration.')),
 
+			// Collections section
+			E('h3', { 'style': 'margin-top: 20px; margin-bottom: 12px; font-size: 1.1em; color: #94a3b8;' }, [
+				E('span', { 'style': 'margin-right: 8px;' }, '📦'),
+				_('Collections')
+			]),
 			E('div', { 'class': 'collections-list' },
-				recommendedCollections.map(L.bind(function(collection) {
-					var checkboxId = 'collection-' + collection.name.replace('/', '-');
+				recommendedCollections.map(function(c) { return renderCheckboxItem(c, 'collection'); })
+			),
 
-					return E('div', {
-						'class': 'collection-item',
-						'data-collection': collection.name,
-						'data-checked': collection.preselected ? '1' : '0',
-						'style': 'display: flex; align-items: center; cursor: pointer;',
-						'click': function(ev) {
-							var item = ev.currentTarget;
-							var currentState = item.getAttribute('data-checked') === '1';
-							var newState = !currentState;
-							item.setAttribute('data-checked', newState ? '1' : '0');
-
-							// Update visual indicator
-							var checkbox = item.querySelector('.checkbox-indicator');
-							if (checkbox) {
-								checkbox.textContent = newState ? '☑' : '☐';
-								checkbox.style.color = newState ? '#22c55e' : '#94a3b8';
-							}
-						}
-					}, [
-						E('span', {
-							'class': 'checkbox-indicator',
-							'style': 'display: inline-block; font-size: 28px; margin-right: 16px; user-select: none; color: ' + (collection.preselected ? '#22c55e' : '#94a3b8') + '; line-height: 1; min-width: 28px;'
-						}, collection.preselected ? '☑' : '☐'),
-						E('div', { 'class': 'collection-info', 'style': 'flex: 1;' }, [
-							E('strong', {}, collection.name),
-							E('div', { 'class': 'collection-desc' }, collection.description)
-						])
-					]);
-				}, this))
+			// Parsers section
+			E('h3', { 'style': 'margin-top: 24px; margin-bottom: 12px; font-size: 1.1em; color: #94a3b8;' }, [
+				E('span', { 'style': 'margin-right: 8px;' }, '📝'),
+				_('OpenWrt Parsers')
+			]),
+			E('div', { 'class': 'collections-list' },
+				recommendedParsers.map(function(p) { return renderCheckboxItem(p, 'parser'); })
 			),
 
 			// Install progress
 			this.wizardData.installing ?
 				E('div', { 'class': 'install-progress' }, [
 					E('div', { 'class': 'spinning' }),
-					E('p', {}, _('Installing collections...')),
+					E('p', {}, _('Installing...')),
 					E('div', { 'id': 'install-status' }, this.wizardData.installStatus || '')
 				]) : E([]),
 
@@ -1123,37 +1142,60 @@ return view.extend({
 	},
 
 	handleInstallCollections: function() {
-		// Read from data-checked attributes (Unicode checkbox approach)
-		var items = document.querySelectorAll('.collection-item[data-collection]');
-		var selected = Array.from(items)
+		// Read collections from data-checked attributes
+		var collectionItems = document.querySelectorAll('.collection-item[data-collection]');
+		var selectedCollections = Array.from(collectionItems)
 			.filter(function(item) { return item.getAttribute('data-checked') === '1'; })
 			.map(function(item) { return item.getAttribute('data-collection'); });
 
-		console.log('[Wizard] Selected collections:', selected);
+		// Read parsers from data-checked attributes
+		var parserItems = document.querySelectorAll('.collection-item[data-parser]');
+		var selectedParsers = Array.from(parserItems)
+			.filter(function(item) { return item.getAttribute('data-checked') === '1'; })
+			.map(function(item) { return item.getAttribute('data-parser'); });
 
-		if (selected.length === 0) {
+		console.log('[Wizard] Selected collections:', selectedCollections);
+		console.log('[Wizard] Selected parsers:', selectedParsers);
+
+		var totalItems = selectedCollections.length + selectedParsers.length;
+
+		if (totalItems === 0) {
 			this.goToStep(6);
 			return;
 		}
 
 		this.wizardData.installing = true;
-		this.wizardData.installStatus = _('Installing 0 of %d collections...').format(selected.length);
+		this.wizardData.installStatus = _('Installing 0 of %d items...').format(totalItems);
 		this.refreshView();
 
+		var currentIndex = 0;
+		var self = this;
+
 		// Install collections sequentially
-		var installPromises = selected.reduce(L.bind(function(promise, collection, index) {
-			return promise.then(L.bind(function() {
-				this.wizardData.installStatus = _('Installing %d of %d: %s').format(index + 1, selected.length, collection);
-				this.refreshView();
+		var installPromises = selectedCollections.reduce(function(promise, collection) {
+			return promise.then(function() {
+				currentIndex++;
+				self.wizardData.installStatus = _('Installing %d of %d: %s').format(currentIndex, totalItems, collection);
+				self.refreshView();
 				return API.installCollection(collection);
-			}, this));
-		}, this), Promise.resolve());
+			});
+		}, Promise.resolve());
+
+		// Then install parsers sequentially
+		installPromises = selectedParsers.reduce(function(promise, parser) {
+			return promise.then(function() {
+				currentIndex++;
+				self.wizardData.installStatus = _('Installing %d of %d: %s').format(currentIndex, totalItems, parser);
+				self.refreshView();
+				return API.installHubItem('parser', parser);
+			});
+		}, installPromises);
 
 		return installPromises.then(L.bind(function() {
 			this.wizardData.installing = false;
 			this.wizardData.installed = true;
-			this.wizardData.installedCount = selected.length;
-			ui.addNotification(null, E('p', _('Installed %d collections').format(selected.length)), 'info');
+			this.wizardData.installedCount = totalItems;
+			ui.addNotification(null, E('p', _('Installed %d collections and %d parsers').format(selectedCollections.length, selectedParsers.length)), 'info');
 			this.refreshView();
 
 			// Auto-advance to Step 6 (Configure Bouncer) after 2 seconds
