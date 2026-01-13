@@ -1,43 +1,116 @@
 #!/bin/sh
-# SecuBox Lyrion manager
+# SecuBox Lyrion manager - Multi-runtime support (Docker/LXC)
+# Copyright (C) 2024 CyberMind.fr
 
 CONFIG="lyrion"
-CONTAINER="secbx-lyrion"
+CONTAINER_NAME="secbx-lyrion"
+LXC_NAME="lyrion"
 OPKG_UPDATED=0
+
+# Paths
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+LYRION_ROOTFS_SCRIPT="/usr/share/lyrion/create-lxc-rootfs.sh"
 
 usage() {
 	cat <<'EOF'
 Usage: lyrionctl <command>
 
 Commands:
-  install         Install prerequisites, prep folders, pull image
-  check           Run prerequisite checks (storage, docker)
-  update          Pull new image and restart service
-  status          Show docker container status
-  logs            Show docker logs (use -f to follow)
+  install         Install prerequisites, prep folders, pull/create container
+  check           Run prerequisite checks (storage, runtime)
+  update          Update container image and restart service
+  status          Show container status
+  logs            Show container logs (use -f to follow)
+  shell           Open shell in container
   service-run     Internal: run container under procd
   service-stop    Stop container
+  runtime         Show detected/configured runtime
+
+Runtime Selection:
+  The runtime can be configured in /etc/config/lyrion:
+    option runtime 'auto'    # auto-detect (LXC preferred if available)
+    option runtime 'docker'  # Force Docker
+    option runtime 'lxc'     # Force LXC
 EOF
 }
 
 require_root() { [ "$(id -u)" -eq 0 ] || { echo "Root required" >&2; exit 1; }; }
 
-uci_get() { uci -q get ${CONFIG}.main.$1; }
+log_info() { echo "[INFO] $*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
 
-defaults() {
+uci_get() { uci -q get ${CONFIG}.main.$1; }
+uci_set() { uci set ${CONFIG}.main.$1="$2" && uci commit ${CONFIG}; }
+
+# Load configuration with defaults
+load_config() {
+	runtime="$(uci_get runtime || echo auto)"
 	image="$(uci_get image || echo ghcr.io/lyrion/lyrion:latest)"
 	data_path="$(uci_get data_path || echo /srv/lyrion)"
 	media_path="$(uci_get media_path || echo /srv/media)"
-	port="$(uci_get port || echo 8096)"
-	timezone="$(uci_get timezone || echo UTC)"
+	port="$(uci_get port || echo 9000)"
+	timezone="$(uci_get timezone || cat /etc/TZ 2>/dev/null || echo UTC)"
+	memory_limit="$(uci_get memory_limit || echo 256M)"
+	lxc_rootfs_url="$(uci_get lxc_rootfs_url || echo '')"
 }
 
 ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
 
+# Check if a runtime is available
+has_docker() {
+	command -v docker >/dev/null 2>&1 && \
+	command -v dockerd >/dev/null 2>&1 && \
+	[ -S /var/run/docker.sock ]
+}
+
+has_lxc() {
+	command -v lxc-start >/dev/null 2>&1 && \
+	command -v lxc-stop >/dev/null 2>&1
+}
+
+# Detect best available runtime
+detect_runtime() {
+	load_config
+
+	case "$runtime" in
+		docker)
+			if has_docker; then
+				echo "docker"
+			else
+				log_error "Docker requested but not available"
+				return 1
+			fi
+			;;
+		lxc)
+			if has_lxc; then
+				echo "lxc"
+			else
+				log_error "LXC requested but not available"
+				return 1
+			fi
+			;;
+		auto|*)
+			# Prefer LXC if available (lighter weight)
+			if has_lxc; then
+				echo "lxc"
+			elif has_docker; then
+				echo "docker"
+			else
+				log_error "No container runtime available (install lxc or docker)"
+				return 1
+			fi
+			;;
+	esac
+}
+
+# Ensure required packages are installed
 ensure_packages() {
 	require_root
 	for pkg in "$@"; do
-		if ! opkg status "$pkg" >/dev/null 2>&1; then
+		if ! opkg list-installed | grep -q "^$pkg "; then
 			if [ "$OPKG_UPDATED" -eq 0 ]; then
 				opkg update || return 1
 				OPKG_UPDATED=1
@@ -47,64 +120,456 @@ ensure_packages() {
 	done
 }
 
-check_prereqs() {
-	defaults
-	ensure_dir "$data_path"
-	[ -d /sys/fs/cgroup ] || { echo "[ERROR] /sys/fs/cgroup missing" >&2; return 1; }
-	ensure_packages dockerd docker containerd
+# =============================================================================
+# Docker Runtime Functions
+# =============================================================================
+
+docker_check_prereqs() {
+	log_info "Checking Docker prerequisites..."
+	ensure_packages dockerd docker containerd || return 1
+
+	# Enable and start Docker
 	/etc/init.d/dockerd enable >/dev/null 2>&1
-	/etc/init.d/dockerd start >/dev/null 2>&1
+	if ! /etc/init.d/dockerd status >/dev/null 2>&1; then
+		/etc/init.d/dockerd start || return 1
+		sleep 3
+	fi
+
+	# Wait for Docker socket
+	local retry=0
+	while [ ! -S /var/run/docker.sock ] && [ $retry -lt 30 ]; do
+		sleep 1
+		retry=$((retry + 1))
+	done
+
+	[ -S /var/run/docker.sock ] || { log_error "Docker socket not available"; return 1; }
+	log_info "Docker ready"
 }
 
-pull_image() { defaults; docker pull "$image"; }
+docker_pull() {
+	load_config
+	log_info "Pulling Docker image: $image"
+	docker pull "$image"
+}
 
-stop_container() { docker stop "$CONTAINER" >/dev/null 2>&1 || true; docker rm "$CONTAINER" >/dev/null 2>&1 || true; }
+docker_stop() {
+	docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+	docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+}
+
+docker_run() {
+	load_config
+	docker_stop
+
+	log_info "Starting Lyrion Docker container..."
+	exec docker run --rm \
+		--name "$CONTAINER_NAME" \
+		-p "${port}:9000" \
+		-p "3483:3483" \
+		-p "3483:3483/udp" \
+		-v "$data_path:/config" \
+		-v "$media_path:/music:ro" \
+		-e TZ="$timezone" \
+		--memory="$memory_limit" \
+		"$image"
+}
+
+docker_status() {
+	docker ps -a --filter "name=$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+}
+
+docker_logs() {
+	docker logs "$@" "$CONTAINER_NAME"
+}
+
+docker_shell() {
+	docker exec -it "$CONTAINER_NAME" /bin/sh
+}
+
+# =============================================================================
+# LXC Runtime Functions
+# =============================================================================
+
+lxc_check_prereqs() {
+	log_info "Checking LXC prerequisites..."
+	ensure_packages lxc lxc-common lxc-attach lxc-start lxc-stop lxc-destroy || return 1
+
+	# Check cgroups
+	if [ ! -d /sys/fs/cgroup ]; then
+		log_error "cgroups not mounted at /sys/fs/cgroup"
+		return 1
+	fi
+
+	log_info "LXC ready"
+}
+
+lxc_create_rootfs() {
+	load_config
+
+	if [ -d "$LXC_ROOTFS" ] && [ -f "$LXC_ROOTFS/etc/alpine-release" ]; then
+		log_info "LXC rootfs already exists"
+		return 0
+	fi
+
+	log_info "Creating LXC rootfs for Lyrion..."
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+
+	# Use external script if available
+	if [ -x "$LYRION_ROOTFS_SCRIPT" ]; then
+		"$LYRION_ROOTFS_SCRIPT" "$LXC_ROOTFS" || return 1
+	else
+		# Inline rootfs creation
+		lxc_create_alpine_rootfs || return 1
+	fi
+
+	# Create LXC config
+	lxc_create_config || return 1
+
+	log_info "LXC rootfs created successfully"
+}
+
+lxc_create_alpine_rootfs() {
+	local arch="aarch64"
+	local alpine_version="3.19"
+	local mirror="https://dl-cdn.alpinelinux.org/alpine"
+	local rootfs="$LXC_ROOTFS"
+
+	# Detect architecture
+	case "$(uname -m)" in
+		x86_64) arch="x86_64" ;;
+		aarch64) arch="aarch64" ;;
+		armv7l) arch="armv7" ;;
+		*) arch="x86_64" ;;
+	esac
+
+	log_info "Downloading Alpine Linux $alpine_version ($arch)..."
+
+	ensure_dir "$rootfs"
+	cd "$rootfs" || return 1
+
+	# Download Alpine minirootfs
+	local rootfs_url="$mirror/v$alpine_version/releases/$arch/alpine-minirootfs-$alpine_version.0-$arch.tar.gz"
+	wget -q -O /tmp/alpine-rootfs.tar.gz "$rootfs_url" || {
+		log_error "Failed to download Alpine rootfs"
+		return 1
+	}
+
+	# Extract rootfs
+	tar xzf /tmp/alpine-rootfs.tar.gz -C "$rootfs" || return 1
+	rm -f /tmp/alpine-rootfs.tar.gz
+
+	# Configure Alpine
+	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
+
+	# Install Lyrion in the container
+	cat > "$rootfs/tmp/setup-lyrion.sh" << 'SETUP'
+#!/bin/sh
+set -e
+
+# Update and install dependencies
+apk update
+apk add --no-cache \
+    perl \
+    perl-io-socket-ssl \
+    perl-encode \
+    perl-xml-parser \
+    perl-dbi \
+    perl-dbd-sqlite \
+    perl-json-xs \
+    perl-yaml-libyaml \
+    perl-image-scale \
+    perl-crypt-openssl-rsa \
+    perl-ev \
+    perl-anyevent \
+    flac \
+    faad2 \
+    sox \
+    lame \
+    curl \
+    wget
+
+# Download and install Lyrion
+cd /tmp
+wget -q "https://downloads.lyrion.org/nightly/lyrion-9.0.0-nightly.tar.gz" -O lyrion.tar.gz || \
+wget -q "https://downloads.slimdevices.com/nightly/lms/lms-nightly.tar.gz" -O lyrion.tar.gz
+
+mkdir -p /opt/lyrion
+tar xzf lyrion.tar.gz -C /opt/lyrion --strip-components=1
+rm -f lyrion.tar.gz
+
+# Create directories
+mkdir -p /config /music /var/log/lyrion
+
+# Create startup script
+cat > /opt/lyrion/start.sh << 'START'
+#!/bin/sh
+cd /opt/lyrion
+exec perl slimserver.pl \
+    --prefsdir /config/prefs \
+    --cachedir /config/cache \
+    --logdir /var/log/lyrion \
+    --httpport 9000 \
+    --cliport 9090 \
+    --user root
+START
+chmod +x /opt/lyrion/start.sh
+
+echo "Lyrion installed successfully"
+SETUP
+
+	chmod +x "$rootfs/tmp/setup-lyrion.sh"
+
+	# Run setup in chroot
+	log_info "Installing Lyrion in container (this may take a while)..."
+	chroot "$rootfs" /tmp/setup-lyrion.sh || {
+		log_error "Failed to install Lyrion in container"
+		return 1
+	}
+
+	rm -f "$rootfs/tmp/setup-lyrion.sh"
+}
+
+lxc_create_config() {
+	load_config
+
+	cat > "$LXC_CONFIG" << EOF
+# Lyrion LXC Configuration
+lxc.uts.name = $LXC_NAME
+
+# Root filesystem
+lxc.rootfs.path = dir:$LXC_ROOTFS
+
+# Network - use host network for simplicity
+lxc.net.0.type = none
+
+# Mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $data_path config none bind,create=dir 0 0
+lxc.mount.entry = $media_path music none bind,ro,create=dir 0 0
+
+# Capabilities
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override
+
+# cgroups limits
+lxc.cgroup.memory.limit_in_bytes = $memory_limit
+
+# Init
+lxc.init.cmd = /opt/lyrion/start.sh
+
+# Console
+lxc.console.size = 1024
+lxc.pty.max = 1024
+EOF
+
+	log_info "LXC config created at $LXC_CONFIG"
+}
+
+lxc_stop() {
+	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
+		lxc-stop -n "$LXC_NAME" -k >/dev/null 2>&1 || true
+	fi
+}
+
+lxc_run() {
+	load_config
+	lxc_stop
+
+	if [ ! -f "$LXC_CONFIG" ]; then
+		log_error "LXC not configured. Run 'lyrionctl install' first."
+		return 1
+	fi
+
+	# Ensure mount points exist
+	ensure_dir "$data_path"
+	ensure_dir "$media_path"
+
+	log_info "Starting Lyrion LXC container..."
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
+}
+
+lxc_status() {
+	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
+		lxc-info -n "$LXC_NAME"
+	else
+		echo "LXC container '$LXC_NAME' not found or not configured"
+	fi
+}
+
+lxc_logs() {
+	load_config
+	if [ -f "$data_path/cache/server.log" ]; then
+		if [ "$1" = "-f" ]; then
+			tail -f "$data_path/cache/server.log"
+		else
+			tail -100 "$data_path/cache/server.log"
+		fi
+	else
+		log_warn "No log file found at $data_path/cache/server.log"
+	fi
+}
+
+lxc_shell() {
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+lxc_destroy() {
+	lxc_stop
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		rm -rf "$LXC_PATH/$LXC_NAME"
+		log_info "LXC container destroyed"
+	fi
+}
+
+# =============================================================================
+# Main Commands
+# =============================================================================
 
 cmd_install() {
 	require_root
-	check_prereqs || exit 1
-	ensure_dir "$data_path/config"
-	pull_image || exit 1
-	uci set ${CONFIG}.main.enabled='1'
-	uci commit ${CONFIG}
+	load_config
+
+	local rt=$(detect_runtime) || exit 1
+	log_info "Using runtime: $rt"
+
+	# Save detected runtime if auto
+	[ "$runtime" = "auto" ] && uci_set detected_runtime "$rt"
+
+	# Create directories
+	ensure_dir "$data_path"
+	ensure_dir "$media_path"
+
+	case "$rt" in
+		docker)
+			docker_check_prereqs || exit 1
+			docker_pull || exit 1
+			;;
+		lxc)
+			lxc_check_prereqs || exit 1
+			lxc_create_rootfs || exit 1
+			;;
+	esac
+
+	uci_set enabled '1'
 	/etc/init.d/lyrion enable
-	echo "Lyrion prerequisites installed. Start with /etc/init.d/lyrion start"
+
+	log_info "Lyrion installed. Start with: /etc/init.d/lyrion start"
+	log_info "Web interface will be at: http://<router-ip>:$port"
 }
 
 cmd_check() {
-	check_prereqs
-	echo "Prerequisite check completed."
+	load_config
+
+	log_info "Checking prerequisites..."
+	log_info "Configured runtime: $runtime"
+
+	local rt=$(detect_runtime)
+	if [ -n "$rt" ]; then
+		log_info "Detected runtime: $rt"
+		case "$rt" in
+			docker) docker_check_prereqs ;;
+			lxc) lxc_check_prereqs ;;
+		esac
+	fi
 }
 
 cmd_update() {
 	require_root
-	pull_image || exit 1
+	load_config
+
+	local rt=$(detect_runtime) || exit 1
+
+	case "$rt" in
+		docker)
+			docker_pull || exit 1
+			;;
+		lxc)
+			log_info "Updating LXC rootfs..."
+			lxc_destroy
+			lxc_create_rootfs || exit 1
+			;;
+	esac
+
 	if /etc/init.d/lyrion enabled >/dev/null 2>&1; then
 		/etc/init.d/lyrion restart
 	else
-		echo "Image updated. Restart manually."
+		log_info "Update complete. Restart manually to apply."
 	fi
 }
 
-cmd_status() { docker ps -a --filter "name=$CONTAINER"; }
+cmd_status() {
+	local rt=$(detect_runtime 2>/dev/null)
+	case "$rt" in
+		docker) docker_status ;;
+		lxc) lxc_status ;;
+		*) echo "No runtime detected" ;;
+	esac
+}
 
-cmd_logs() { docker logs "$@" "$CONTAINER"; }
+cmd_logs() {
+	local rt=$(detect_runtime 2>/dev/null)
+	case "$rt" in
+		docker) docker_logs "$@" ;;
+		lxc) lxc_logs "$@" ;;
+		*) echo "No runtime detected" ;;
+	esac
+}
+
+cmd_shell() {
+	local rt=$(detect_runtime 2>/dev/null)
+	case "$rt" in
+		docker) docker_shell ;;
+		lxc) lxc_shell ;;
+		*) echo "No runtime detected" ;;
+	esac
+}
 
 cmd_service_run() {
 	require_root
-	check_prereqs || exit 1
-	defaults
-	stop_container
-	exec docker run --rm \
-		--name "$CONTAINER" \
-		-p "${port}:8096" \
-		-v "$data_path/config:/config" \
-		-v "$media_path:/media" \
-		-e TZ="$timezone" \
-		"$image"
+	load_config
+
+	local rt=$(detect_runtime) || exit 1
+
+	case "$rt" in
+		docker)
+			docker_check_prereqs || exit 1
+			docker_run
+			;;
+		lxc)
+			lxc_check_prereqs || exit 1
+			lxc_run
+			;;
+	esac
 }
 
-cmd_service_stop() { require_root; stop_container; }
+cmd_service_stop() {
+	require_root
+	local rt=$(detect_runtime 2>/dev/null)
+	case "$rt" in
+		docker) docker_stop ;;
+		lxc) lxc_stop ;;
+	esac
+}
+
+cmd_runtime() {
+	load_config
+	echo "Configured: $runtime"
+
+	local detected=$(detect_runtime 2>/dev/null)
+	if [ -n "$detected" ]; then
+		echo "Detected: $detected"
+	else
+		echo "Detected: none"
+	fi
+
+	echo ""
+	echo "Available runtimes:"
+	has_docker && echo "  - docker" || echo "  - docker (not installed)"
+	has_lxc && echo "  - lxc" || echo "  - lxc (not installed)"
+}
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
 
 case "${1:-}" in
 	install) shift; cmd_install "$@" ;;
@@ -112,8 +577,10 @@ case "${1:-}" in
 	update) shift; cmd_update "$@" ;;
 	status) shift; cmd_status "$@" ;;
 	logs) shift; cmd_logs "$@" ;;
+	shell) shift; cmd_shell "$@" ;;
 	service-run) shift; cmd_service_run "$@" ;;
 	service-stop) shift; cmd_service_stop "$@" ;;
+	runtime) shift; cmd_runtime "$@" ;;
 	help|--help|-h|'') usage ;;
 	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
 esac
