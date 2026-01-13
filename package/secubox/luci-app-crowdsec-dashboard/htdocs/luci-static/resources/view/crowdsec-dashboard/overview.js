@@ -430,7 +430,7 @@ return view.extend({
 
 		return E('div', {}, [
 			this.renderHeader(status),
-			serviceWarning,
+			serviceWarning || E([]),
 			this.renderHealthCheck(),
 			this.renderStatsGrid(stats, decisions),
 
