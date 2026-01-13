@@ -342,7 +342,9 @@ return view.extend({
 					'input': function(ev) { self.config.machineName = ev.target.value; }
 				}),
 				E('p', { 'style': 'margin: 8px 0 0 0; font-size: 0.85em; color: #64748b;' }, [
-					_('Note: Hub update requires CAPI connection.')
+					_('After enrollment, validate on '),
+					E('a', { 'href': 'https://app.crowdsec.net', 'target': '_blank', 'style': 'color: #818cf8;' }, 'app.crowdsec.net'),
+					_('. Service will restart automatically.')
 				])
 			]) : E([]),
 

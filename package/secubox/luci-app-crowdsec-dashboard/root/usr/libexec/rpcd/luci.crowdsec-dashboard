@@ -1415,6 +1415,12 @@ console_enroll() {
 		run_cscli console enable share_manual_decisions >/dev/null 2>&1
 		run_cscli console enable share_tainted >/dev/null 2>&1
 		run_cscli console enable share_context >/dev/null 2>&1
+
+		# Restart CrowdSec to activate enrollment
+		# Note: User must validate enrollment on app.crowdsec.net first
+		secubox_log "Restarting CrowdSec to apply enrollment..."
+		/etc/init.d/crowdsec restart >/dev/null 2>&1 &
+		json_add_boolean "restart_triggered" 1
 	else
 		json_add_boolean "success" 0
 		json_add_string "error" "Enrollment failed"
