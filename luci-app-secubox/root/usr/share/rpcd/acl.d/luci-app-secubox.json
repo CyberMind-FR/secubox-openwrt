@@ -31,7 +31,8 @@
 					"validateProfile",
 					"listSnapshots",
 					"get_appstore_apps",
-					"get_appstore_app"
+					"get_appstore_app",
+					"get_public_ips"
 				],
                 "uci": [
                     "get",
