@@ -4,7 +4,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-auth-logger
-PKG_VERSION:=1.1.0
+PKG_VERSION:=1.2.0
 PKG_RELEASE:=1
 PKG_ARCH:=all
 PKG_LICENSE:=Apache-2.0
@@ -95,10 +95,30 @@ endef
 define Package/secubox-auth-logger/postrm
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
-	# Remove JS hook from LuCI header
-	if [ -f /usr/lib/lua/luci/view/themes/bootstrap/header.htm ]; then
-		sed -i '/secubox-auth-hook/d' /usr/lib/lua/luci/view/themes/bootstrap/header.htm 2>/dev/null || true
+	# Restore dispatcher from backup
+	DISPATCHER="/usr/share/ucode/luci/dispatcher.uc"
+	if [ -f "$${DISPATCHER}.bak" ]; then
+		mv "$${DISPATCHER}.bak" "$$DISPATCHER"
+		echo "Restored LuCI dispatcher from backup"
 	fi
+
+	# Remove JS hook from modern LuCI theme headers
+	for header in /usr/share/ucode/luci/template/themes/*/header.ut; do
+		[ -f "$$header" ] && sed -i '/secubox-auth-hook/d' "$$header" 2>/dev/null || true
+	done
+
+	# Remove JS hook from legacy LuCI theme headers
+	for header in /usr/lib/lua/luci/view/themes/*/header.htm; do
+		[ -f "$$header" ] && sed -i '/secubox-auth-hook/d' "$$header" 2>/dev/null || true
+	done
+
+	# Remove JS hook from sysauth
+	if [ -f /usr/lib/lua/luci/view/sysauth.htm ]; then
+		sed -i '/secubox-auth-hook/d' /usr/lib/lua/luci/view/sysauth.htm 2>/dev/null || true
+	fi
+
+	# Restart uhttpd to apply changes
+	/etc/init.d/uhttpd restart 2>/dev/null || true
 }
 exit 0
 endef
