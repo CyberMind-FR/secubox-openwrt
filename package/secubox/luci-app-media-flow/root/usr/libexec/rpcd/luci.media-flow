@@ -216,9 +216,70 @@ case "$1" in
 				flow_count=0
 
 				if [ "$dpi_source" = "ndpid" ]; then
-					# Get active streams from nDPId cache
-					if [ -f "$MEDIA_CACHE" ]; then
+					# Get active streams - try cache first, then parse apps file directly
+					if [ -f "$MEDIA_CACHE" ] && [ -s "$MEDIA_CACHE" ]; then
 						streams=$(cat "$MEDIA_CACHE" 2>/dev/null || echo "[]")
+					elif [ -f "$NDPID_APPS" ] && [ -s "$NDPID_APPS" ]; then
+						# Parse ndpid-apps.json directly and filter streaming services
+						# Format is array: [{"name": "TLS.YouTube", "category": "Media", "flows": 33, "bytes": 123456}, ...]
+						if command -v jq >/dev/null 2>&1; then
+							# jq without regex (ONIGURUMA not available on OpenWrt)
+							# Filter streaming services by checking if name contains known patterns
+							streams=$(jq -c '
+								[.[] | select(
+									(.name | ascii_downcase | contains("youtube")) or
+									(.name | ascii_downcase | contains("netflix")) or
+									(.name | ascii_downcase | contains("disney")) or
+									(.name | ascii_downcase | contains("amazon")) or
+									(.name | ascii_downcase | contains("twitch")) or
+									(.name | ascii_downcase | contains("hbo")) or
+									(.name | ascii_downcase | contains("hulu")) or
+									(.name | ascii_downcase | contains("vimeo")) or
+									(.name | ascii_downcase | contains("peacock")) or
+									(.name | ascii_downcase | contains("paramount")) or
+									(.name | ascii_downcase | contains("spotify")) or
+									(.name | ascii_downcase | contains("applemusic")) or
+									(.name | ascii_downcase | contains("appleitunes")) or
+									(.name | ascii_downcase | contains("deezer")) or
+									(.name | ascii_downcase | contains("soundcloud")) or
+									(.name | ascii_downcase | contains("tidal")) or
+									(.name | ascii_downcase | contains("zoom")) or
+									(.name | ascii_downcase | contains("teams")) or
+									(.name | ascii_downcase | contains("meet")) or
+									(.name | ascii_downcase | contains("discord")) or
+									(.name | ascii_downcase | contains("skype")) or
+									(.name | ascii_downcase | contains("webex"))
+								)] |
+								map({
+									app: (if (.name | contains(".")) then (.name | split(".") | .[1:] | join(".")) else .name end),
+									category: (.category // "Media"),
+									flows: (.flows // 0),
+									bytes: (.bytes // 0)
+								}) |
+								group_by(.app) |
+								map({
+									app: .[0].app,
+									category: .[0].category,
+									flows: (map(.flows) | add),
+									bytes_rx: (map(.bytes) | add),
+									bytes_tx: 0,
+									bandwidth: ((map(.bytes) | add) / 125 | floor),
+									quality: (if ((map(.bytes) | add) > 100000000) then "FHD" elif ((map(.bytes) | add) > 10000000) then "HD" else "SD" end),
+									client: "LAN"
+								})
+							' "$NDPID_APPS" 2>/dev/null) || streams="[]"
+						else
+							# Fallback without jq - grep names from JSON array
+							streams="["
+							first=1
+							for name in $(jq -r '.[].name' "$NDPID_APPS" 2>/dev/null | grep -iE "$STREAMING_PATTERN"); do
+								app_name=$(echo "$name" | sed 's/^[^.]*\.//')
+								[ "$first" = "0" ] && streams="$streams,"
+								first=0
+								streams="$streams{\"app\":\"$app_name\",\"category\":\"Media\",\"flows\":1,\"bandwidth\":0,\"quality\":\"HD\",\"client\":\"LAN\"}"
+							done
+							streams="$streams]"
+						fi
 					fi
 					# Get flow count - prefer compat layer status.json
 					if [ -f /var/run/netifyd/status.json ] && [ -s /var/run/netifyd/status.json ]; then
