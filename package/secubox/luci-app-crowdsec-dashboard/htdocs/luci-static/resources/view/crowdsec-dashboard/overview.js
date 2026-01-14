@@ -32,15 +32,85 @@ return view.extend({
 		// Load API
 		this.csApi = api;
 
+		// Use consolidated API call + secondary calls for extended data
 		return Promise.all([
-			this.csApi.getDashboardData(),
-			this.csApi.getSecuboxLogs(),
-			this.csApi.getHealthCheck().catch(function() { return {}; }),
+			this.csApi.getOverview().catch(function() { return {}; }),
 			this.csApi.getCapiMetrics().catch(function() { return {}; }),
 			this.csApi.getCollections().catch(function() { return { collections: [] }; }),
 			this.csApi.getNftablesStats().catch(function() { return {}; }),
 			this.csApi.getHub().catch(function() { return {}; })
-		]);
+		]).then(this.transformOverviewData.bind(this));
+	},
+
+	// Transform getOverview response to expected data structure
+	transformOverviewData: function(results) {
+		var overview = results[0] || {};
+		var capiMetrics = results[1] || {};
+		var collectionsData = results[2] || {};
+		var nftablesStats = results[3] || {};
+		var hubData = results[4] || {};
+
+		// Parse raw JSON strings for scenarios and countries
+		var topScenarios = [];
+		var topCountries = [];
+		try {
+			if (overview.top_scenarios_raw) {
+				topScenarios = JSON.parse(overview.top_scenarios_raw);
+			}
+		} catch(e) { topScenarios = []; }
+		try {
+			if (overview.top_countries_raw) {
+				topCountries = JSON.parse(overview.top_countries_raw);
+			}
+		} catch(e) { topCountries = []; }
+
+		// Build compatible data structure
+		var dashboardData = {
+			status: {
+				crowdsec: overview.crowdsec || 'unknown',
+				bouncer: overview.bouncer || 'unknown',
+				version: overview.version || 'unknown'
+			},
+			stats: {
+				total_decisions: overview.total_decisions || 0,
+				alerts_today: overview.alerts_24h || 0,
+				alerts_week: overview.alerts_24h || 0,
+				scenarios_triggered: topScenarios.length,
+				top_countries: topCountries.map(function(c) {
+					return { country: c.country, count: c.count };
+				})
+			},
+			decisions: overview.decisions || [],
+			alerts: overview.alerts || [],
+			error: null
+		};
+
+		var logsData = {
+			entries: overview.logs || []
+		};
+
+		var healthCheck = {
+			crowdsec_running: overview.crowdsec === 'running',
+			lapi_status: overview.lapi_status || 'unavailable',
+			capi_status: overview.capi_enrolled ? 'connected' : 'disconnected',
+			capi_enrolled: overview.capi_enrolled || false,
+			capi_subscription: 'COMMUNITY',
+			sharing_signals: overview.capi_enrolled || false,
+			pulling_blocklist: overview.capi_enrolled || false,
+			version: overview.version || 'N/A',
+			decisions_count: overview.total_decisions || 0
+		};
+
+		// Return array matching expected payload structure
+		return [
+			dashboardData,
+			logsData,
+			healthCheck,
+			capiMetrics,
+			collectionsData,
+			nftablesStats,
+			hubData
+		];
 	},
 
 	renderHeader: function(status) {
@@ -535,32 +605,32 @@ return view.extend({
 
 		wrapper.appendChild(view);
 
-		// Setup polling for auto-refresh (every 30 seconds)
+		// Setup polling for auto-refresh (every 60 seconds)
 		poll.add(function() {
 			return self.refreshDashboard();
-		}, 30);
+		}, 60);
 
 		return wrapper;
 	},
-	
-refreshDashboard: function() {
+
+	refreshDashboard: function() {
 		var self = this;
+		// Use consolidated API call + secondary calls for extended data
 		return Promise.all([
-			self.csApi.getDashboardData(),
-			self.csApi.getSecuboxLogs(),
-			self.csApi.getHealthCheck().catch(function() { return {}; }),
+			self.csApi.getOverview().catch(function() { return {}; }),
 			self.csApi.getCapiMetrics().catch(function() { return {}; }),
 			self.csApi.getCollections().catch(function() { return { collections: [] }; }),
 			self.csApi.getNftablesStats().catch(function() { return {}; }),
 			self.csApi.getHub().catch(function() { return {}; })
 		]).then(function(results) {
-			self.data = results[0];
-			self.logs = (results[1] && results[1].entries) || [];
-			self.healthCheck = results[2] || {};
-			self.capiMetrics = results[3] || {};
-			self.collections = (results[4] && results[4].collections) || [];
-			self.nftablesStats = results[5] || {};
-			self.hubData = results[6] || {};
+			var transformed = self.transformOverviewData(results);
+			self.data = transformed[0];
+			self.logs = (transformed[1] && transformed[1].entries) || [];
+			self.healthCheck = transformed[2] || {};
+			self.capiMetrics = transformed[3] || {};
+			self.collections = (transformed[4] && transformed[4].collections) || [];
+			self.nftablesStats = transformed[5] || {};
+			self.hubData = transformed[6] || {};
 			self.updateView();
 		});
 	},
