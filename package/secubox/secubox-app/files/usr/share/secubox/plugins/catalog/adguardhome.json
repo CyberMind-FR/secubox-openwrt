@@ -7,7 +7,7 @@
   "description": "Network-wide ad and tracker blocker with DNS-over-HTTPS/TLS support, parental controls, and detailed analytics. Pi-hole alternative.",
   "source": {
     "homepage": "https://adguard.com/en/adguard-home/overview.html",
-    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/secubox-app-adguardhome"
+    "github": "https://github.com/CyberMind-FR/secubox-openwrt/tree/main/secubox-app-adguardhome"
   },
   "packages": [
     "secubox-app-adguardhome",

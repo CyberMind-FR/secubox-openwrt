@@ -40,14 +40,14 @@ You have two excellent options for publishing your DOCS/ directory online:
 
 ```bash
 # 1. Enable Wiki in GitHub repository settings
-#    https://github.com/gkerma/secubox-openwrt/settings
+#    https://github.com/CyberMind-FR/secubox-openwrt/settings
 
 # 2. Run setup script
 chmod +x scripts/setup-wiki.sh
 ./scripts/setup-wiki.sh
 
 # 3. View your wiki
-#    https://github.com/gkerma/secubox-openwrt/wiki
+#    https://github.com/CyberMind-FR/secubox-openwrt/wiki
 ```
 
 **Time to deploy:** ~2 minutes
@@ -73,7 +73,7 @@ git commit -m "Add GitHub Pages documentation site"
 git push
 
 # 5. Enable in GitHub settings
-#    https://github.com/gkerma/secubox-openwrt/settings/pages
+#    https://github.com/CyberMind-FR/secubox-openwrt/settings/pages
 #    Source: Deploy from a branch
 #    Branch: master, Folder: /docs
 
@@ -134,7 +134,7 @@ git push
 
 1. Go to repository settings:
    ```
-   https://github.com/gkerma/secubox-openwrt/settings
+   https://github.com/CyberMind-FR/secubox-openwrt/settings
    ```
 
 2. Scroll to "Features" section
@@ -165,7 +165,7 @@ chmod +x scripts/setup-wiki.sh
 
 #### Step 3: Verify
 
-Visit: `https://github.com/gkerma/secubox-openwrt/wiki`
+Visit: `https://github.com/CyberMind-FR/secubox-openwrt/wiki`
 
 #### Step 4: Update Wiki (Future Changes)
 
@@ -260,7 +260,7 @@ git push origin master
 
 1. Go to repository settings:
    ```
-   https://github.com/gkerma/secubox-openwrt/settings/pages
+   https://github.com/CyberMind-FR/secubox-openwrt/settings/pages
    ```
 
 2. Configure:
@@ -375,7 +375,7 @@ Now documentation auto-updates on every push to DOCS/!
 **Edit sidebar:**
 ```bash
 # Clone wiki
-git clone https://github.com/gkerma/secubox-openwrt.wiki.git
+git clone https://github.com/CyberMind-FR/secubox-openwrt.wiki.git
 
 # Edit sidebar
 vim _Sidebar.md

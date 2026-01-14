@@ -4,7 +4,7 @@ site_author: CyberMind.fr
 site_url: https://gkerma.github.io/secubox-openwrt/
 
 repo_name: gkerma/secubox-openwrt
-repo_url: https://github.com/gkerma/secubox-openwrt
+repo_url: https://github.com/CyberMind-FR/secubox-openwrt
 edit_uri: edit/master/DOCS/
 
 theme:
@@ -55,7 +55,7 @@ extra_css:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/gkerma/secubox-openwrt
+      link: https://github.com/CyberMind-FR/secubox-openwrt
     - icon: fontawesome/solid/globe
       link: https://secubox.cybermood.eu
 

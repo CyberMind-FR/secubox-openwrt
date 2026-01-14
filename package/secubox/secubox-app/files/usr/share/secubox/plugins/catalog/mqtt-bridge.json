@@ -6,8 +6,8 @@
   "maturity": "experimental",
   "description": "USB-aware MQTT bridge with adapter presets, local broker controls, and automation rules.",
   "source": {
-    "homepage": "https://github.com/gkerma/secubox-openwrt/tree/main/luci-app-mqtt-bridge",
-    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/luci-app-mqtt-bridge"
+    "homepage": "https://github.com/CyberMind-FR/secubox-openwrt/tree/main/luci-app-mqtt-bridge",
+    "github": "https://github.com/CyberMind-FR/secubox-openwrt/tree/main/luci-app-mqtt-bridge"
   },
   "packages": [
     "luci-app-mqtt-bridge"

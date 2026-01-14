@@ -163,8 +163,8 @@ Experience SecuBox in action:
 
 ## 📞 Support & Resources
 
-- **GitHub Repository:** [gkerma/secubox-openwrt](https://github.com/gkerma/secubox-openwrt)
-- **Documentation Issues:** [GitHub Issues](https://github.com/gkerma/secubox-openwrt/issues)
+- **GitHub Repository:** [gkerma/secubox-openwrt](https://github.com/CyberMind-FR/secubox-openwrt)
+- **Documentation Issues:** [GitHub Issues](https://github.com/CyberMind-FR/secubox-openwrt/issues)
 - **Technical Support:** support@cybermind.fr
 - **Company:** CyberMind.fr
 

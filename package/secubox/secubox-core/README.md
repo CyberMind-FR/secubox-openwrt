@@ -512,7 +512,7 @@ GPL-2.0
 ## Support
 
 - Documentation: https://docs.secubox.org
-- Issues: https://github.com/gkerma/secubox-openwrt/issues
+- Issues: https://github.com/CyberMind-FR/secubox-openwrt/issues
 - Community: https://forum.secubox.org
 
 ## Version History

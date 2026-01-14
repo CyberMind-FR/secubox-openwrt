@@ -7,7 +7,7 @@
   "description": "Complete self-hosted email server with webmail, calendar, contacts, spam filtering, and automatic DNS configuration. Easy-to-deploy solution for running your own mail server.",
   "source": {
     "homepage": "https://mailinabox.email/",
-    "github": "https://github.com/gkerma/secubox-openwrt/tree/master/package/secubox/secubox-app-mailinabox"
+    "github": "https://github.com/CyberMind-FR/secubox-openwrt/tree/master/package/secubox/secubox-app-mailinabox"
   },
   "packages": [
     "secubox-app-mailinabox",

@@ -330,7 +330,7 @@ return view.extend({
 
 			// Liens
 			E('div', { 'class': 'ds-links' }, [
-				E('a', { 'class': 'ds-link', 'href': 'https://github.com/gkerma/secubox-openwrt', 'target': '_blank' }, [
+				E('a', { 'class': 'ds-link', 'href': 'https://github.com/CyberMind-FR/secubox-openwrt', 'target': '_blank' }, [
 					E('span', {}, 'GitHub'),
 					E('span', {}, 'Code source')
 				]),

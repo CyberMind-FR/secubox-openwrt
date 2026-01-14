@@ -7,7 +7,7 @@
   "description": "Self-hosted Lyrion media server container with configurable storage and HTTPS publishing.",
   "source": {
     "homepage": "https://lyrion.org/",
-    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/secubox-app-lyrion"
+    "github": "https://github.com/CyberMind-FR/secubox-openwrt/tree/main/secubox-app-lyrion"
   },
   "packages": [
     "secubox-app-lyrion",

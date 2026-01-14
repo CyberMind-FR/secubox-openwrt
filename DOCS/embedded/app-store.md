@@ -22,7 +22,7 @@ Each app now ships a normalized JSON manifest under `plugins/catalog/<app-id>.js
   "description": "Dockerized Zigbee gateway bridging Zigbee coordinators with MQTT brokers.",
   "source": {
     "homepage": "https://www.zigbee2mqtt.io/",
-    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/secubox-app-zigbee2mqtt"
+    "github": "https://github.com/CyberMind-FR/secubox-openwrt/tree/main/secubox-app-zigbee2mqtt"
   },
   "packages": ["secubox-app-zigbee2mqtt", "luci-app-zigbee2mqtt"],
   "capabilities": ["zigbee-gateway", "mqtt", "docker-runner"],

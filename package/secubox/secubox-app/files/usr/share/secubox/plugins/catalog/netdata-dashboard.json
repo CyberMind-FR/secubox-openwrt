@@ -6,8 +6,8 @@
   "maturity": "stable",
   "description": "LuCI front-end for Netdata-like system metrics with realtime charts and process views.",
   "source": {
-    "homepage": "https://github.com/gkerma/secubox-openwrt/tree/main/luci-app-netdata-dashboard",
-    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/luci-app-netdata-dashboard"
+    "homepage": "https://github.com/CyberMind-FR/secubox-openwrt/tree/main/luci-app-netdata-dashboard",
+    "github": "https://github.com/CyberMind-FR/secubox-openwrt/tree/main/luci-app-netdata-dashboard"
   },
   "packages": [
     "luci-app-netdata-dashboard"
