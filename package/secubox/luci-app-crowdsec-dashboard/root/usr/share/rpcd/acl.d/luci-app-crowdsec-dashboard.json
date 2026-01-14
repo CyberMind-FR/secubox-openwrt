@@ -4,6 +4,7 @@
 		"read": {
 			"ubus": {
 				"luci.crowdsec-dashboard": [
+					"get_overview",
 					"decisions",
 					"alerts",
 					"metrics",
