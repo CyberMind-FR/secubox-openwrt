@@ -63,7 +63,7 @@
 	},
 	"secubox-public/bugbounty": {
 		"title": "Bug Bounty",
-		"order": 10,
+		"order": 20,
 		"action": {
 			"type": "view",
 			"path": "secubox-portal/bugbounty"
@@ -71,10 +71,18 @@
 	},
 	"secubox-public/crowdfunding": {
 		"title": "Campagne Participative",
-		"order": 20,
+		"order": 10,
 		"action": {
 			"type": "view",
 			"path": "secubox-portal/crowdfunding"
+		}
+	},
+	"secubox-public/devstatus": {
+		"title": "Development Status",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "secubox-portal/devstatus"
 		}
 	}
 }
