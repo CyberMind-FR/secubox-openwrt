@@ -334,9 +334,9 @@ return view.extend({
 					E('span', {}, 'GitHub'),
 					E('span', {}, 'Code source')
 				]),
-				E('a', { 'class': 'ds-link', 'href': 'https://secubox.io', 'target': '_blank' }, [
+				E('a', { 'class': 'ds-link', 'href': 'https://secubox.cybermood.eu', 'target': '_blank' }, [
 					E('span', {}, 'Site Web'),
-					E('span', {}, 'secubox.io')
+					E('span', {}, 'secubox.cybermood.eu')
 				]),
 				E('a', { 'class': 'ds-link', 'href': 'https://cybermind.fr', 'target': '_blank' }, [
 					E('span', {}, 'CyberMind'),
