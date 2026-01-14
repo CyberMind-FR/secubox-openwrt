@@ -9,20 +9,20 @@
 			"acl": ["luci-app-crowdsec-dashboard"]
 		}
 	},
-	"admin/secubox/security/crowdsec/wizard": {
-		"title": "Setup Wizard",
+	"admin/secubox/security/crowdsec/overview": {
+		"title": "Overview",
 		"order": 5,
 		"action": {
 			"type": "view",
-			"path": "crowdsec-dashboard/wizard"
+			"path": "crowdsec-dashboard/overview"
 		}
 	},
-	"admin/secubox/security/crowdsec/overview": {
-		"title": "Overview",
+	"admin/secubox/security/crowdsec/wizard": {
+		"title": "Setup Wizard",
 		"order": 10,
 		"action": {
 			"type": "view",
-			"path": "crowdsec-dashboard/overview"
+			"path": "crowdsec-dashboard/wizard"
 		}
 	},
 	"admin/secubox/security/crowdsec/decisions": {

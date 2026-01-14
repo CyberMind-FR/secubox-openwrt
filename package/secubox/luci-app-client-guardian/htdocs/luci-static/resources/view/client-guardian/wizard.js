@@ -77,6 +77,12 @@ return view.extend({
 				),
 				profile.zones.length > 4 ?
 					E('span', { 'class': 'cg-profile-more' }, '+' + (profile.zones.length - 4) + ' autres') :
+					E('span'),
+				(profile.auto_zone_rules && profile.auto_zone_rules.length > 0) ?
+					E('div', { 'style': 'margin-top: 8px; font-size: 0.85em; color: #f59e0b' }, [
+						E('span', {}, '🎯 '),
+						profile.auto_zone_rules.length + ' règles auto-zoning'
+					]) :
 					E('span')
 			]),
 			E('button', {
@@ -110,6 +116,42 @@ return view.extend({
 						})
 					)
 				]),
+
+				// Auto-zoning rules section
+				(profile.auto_zone_rules && profile.auto_zone_rules.length > 0) ?
+				E('div', { 'style': 'background: rgba(245, 158, 11, 0.1); padding: 16px; border-radius: 8px; margin: 16px 0' }, [
+					E('div', { 'style': 'display: flex; align-items: center; gap: 8px; margin-bottom: 12px' }, [
+						E('span', { 'style': 'font-size: 1.2em' }, '🎯'),
+						E('strong', {}, 'Règles Auto-Zoning (' + profile.auto_zone_rules.length + '):')
+					]),
+					E('div', { 'style': 'max-height: 150px; overflow-y: auto' },
+						E('table', { 'style': 'width: 100%; font-size: 0.85em; border-collapse: collapse' }, [
+							E('thead', {}, E('tr', { 'style': 'border-bottom: 1px solid rgba(255,255,255,0.1)' }, [
+								E('th', { 'style': 'text-align: left; padding: 4px 8px' }, 'Règle'),
+								E('th', { 'style': 'text-align: left; padding: 4px 8px' }, 'Type'),
+								E('th', { 'style': 'text-align: left; padding: 4px 8px' }, 'Zone cible')
+							])),
+							E('tbody', {},
+								profile.auto_zone_rules.map(function(rule) {
+									var matchTypeLabels = {
+										'vendor': 'Fabricant',
+										'hostname': 'Hostname',
+										'mac_prefix': 'MAC'
+									};
+									return E('tr', {}, [
+										E('td', { 'style': 'padding: 4px 8px' }, rule.name),
+										E('td', { 'style': 'padding: 4px 8px; color: #8b949e' }, matchTypeLabels[rule.match_type] || rule.match_type),
+										E('td', { 'style': 'padding: 4px 8px; font-weight: 500' }, rule.target_zone)
+									]);
+								})
+							)
+						])
+					),
+					E('p', { 'style': 'font-size: 0.8em; color: #8b949e; margin: 8px 0 0 0' }, [
+						'Zone par défaut: ',
+						E('strong', {}, profile.auto_parking_zone || 'guest')
+					])
+				]) : E('span'),
 
 				// Dashboard Reactiveness section
 				E('div', { 'style': 'background: rgba(34, 197, 94, 0.1); padding: 16px; border-radius: 8px; margin: 16px 0' }, [
@@ -298,6 +340,7 @@ return view.extend({
 				ui.addNotification(null, E('div', {}, [
 					E('p', {}, E('strong', {}, 'Profil appliqué avec succès!')),
 					E('p', {}, result.zones_created + ' zones créées et configurées.'),
+					result.rules_created > 0 ? E('p', {}, '🎯 ' + result.rules_created + ' règles auto-zoning activées.') : E('span'),
 					E('p', { 'style': 'font-size: 0.9em; margin-top: 8px' }, [
 						'✅ Rafraîchissement auto: ' + (autoRefresh ? 'Activé (' + refreshInterval + 's)' : 'Désactivé'),
 						E('br'),

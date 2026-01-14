@@ -4,7 +4,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-auth-logger
-PKG_VERSION:=1.2.1
+PKG_VERSION:=1.2.2
 PKG_RELEASE:=1
 PKG_ARCH:=all
 PKG_LICENSE:=Apache-2.0
@@ -60,6 +60,10 @@ define Package/secubox-auth-logger/install
 	# CrowdSec parser
 	$(INSTALL_DIR) $(1)/etc/crowdsec/parsers/s01-parse
 	$(INSTALL_DATA) ./files/openwrt-luci-auth.yaml $(1)/etc/crowdsec/parsers/s01-parse/
+
+	# CrowdSec whitelist for private IPs (RFC1918)
+	$(INSTALL_DIR) $(1)/etc/crowdsec/parsers/s02-enrich
+	$(INSTALL_DATA) ./files/secubox-private-ip-whitelist.yaml $(1)/etc/crowdsec/parsers/s02-enrich/
 
 	# CrowdSec scenario
 	$(INSTALL_DIR) $(1)/etc/crowdsec/scenarios

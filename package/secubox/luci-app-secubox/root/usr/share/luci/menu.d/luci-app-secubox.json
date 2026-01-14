@@ -4,6 +4,9 @@
         "order": 25,
         "action": {
             "type": "firstchild"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/dashboard": {
@@ -12,6 +15,9 @@
         "action": {
             "type": "view",
             "path": "secubox/dashboard"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/wizard": {
@@ -20,6 +26,9 @@
         "action": {
             "type": "view",
             "path": "secubox/wizard"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/apps": {
@@ -28,6 +37,9 @@
         "action": {
             "type": "view",
             "path": "secubox/apps"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/modules": {
@@ -36,6 +48,9 @@
         "action": {
             "type": "view",
             "path": "secubox/modules"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/alerts": {
@@ -44,6 +59,9 @@
         "action": {
             "type": "view",
             "path": "secubox/alerts"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/settings": {
@@ -52,6 +70,9 @@
         "action": {
             "type": "view",
             "path": "secubox/settings"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/security": {
@@ -59,6 +80,9 @@
         "order": 30,
         "action": {
             "type": "firstchild"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/monitoring": {
@@ -67,6 +91,9 @@
         "action": {
             "type": "view",
             "path": "secubox/monitoring"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/network": {
@@ -74,6 +101,9 @@
         "order": 40,
         "action": {
             "type": "firstchild"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/network/cdn-cache": {
@@ -83,9 +113,7 @@
             "type": "firstchild"
         },
         "depends": {
-            "acl": [
-                "luci-app-cdn-cache"
-            ]
+            "acl": ["luci-app-secubox", "luci-app-cdn-cache"]
         }
     },
     "admin/secubox/network/cdn-cache/overview": {
@@ -141,6 +169,9 @@
         "order": 50,
         "action": {
             "type": "firstchild"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/services": {
@@ -148,6 +179,9 @@
         "order": 60,
         "action": {
             "type": "firstchild"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/help": {
@@ -156,6 +190,9 @@
         "action": {
             "type": "view",
             "path": "secubox/help"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
         }
     },
     "admin/secubox/network/network-modes": {
@@ -165,9 +202,7 @@
             "type": "firstchild"
         },
         "depends": {
-            "acl": [
-                "luci-app-network-modes"
-            ]
+            "acl": ["luci-app-secubox", "luci-app-network-modes"]
         }
     },
     "admin/secubox/network/network-modes/overview": {

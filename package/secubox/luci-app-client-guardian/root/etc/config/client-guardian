@@ -223,45 +223,6 @@ config threat_policy 'threat_policy'
 	option auto_quarantine_threshold '60'
 	option threat_check_interval '60'
 
-# Example Known Clients
-config client 'client_example1'
-	option name 'PC Bureau Papa'
-	option mac 'AA:BB:CC:DD:EE:01'
-	option zone 'lan_private'
-	option status 'approved'
-	option first_seen '2024-12-01 10:00:00'
-	option last_seen '2024-12-20 15:30:00'
-	option notes 'Ordinateur principal'
-	option static_ip '192.168.1.10'
-
-config client 'client_example2'
-	option name 'Tablette Enfant'
-	option mac 'AA:BB:CC:DD:EE:02'
-	option zone 'kids'
-	option status 'approved'
-	option first_seen '2024-12-05 14:00:00'
-	option last_seen '2024-12-20 14:00:00'
-	option daily_quota '120'
-	option notes 'Tablette de Marie'
-
-config client 'client_example3'
-	option name 'Caméra Salon'
-	option mac 'AA:BB:CC:DD:EE:03'
-	option zone 'iot'
-	option status 'approved'
-	option first_seen '2024-11-15 09:00:00'
-	option notes 'Caméra IP Xiaomi'
-	option static_ip '192.168.1.50'
-
-config client 'client_banned'
-	option name 'Intrus Détecté'
-	option mac 'AA:BB:CC:DD:EE:99'
-	option zone 'blocked'
-	option status 'banned'
-	option first_seen '2024-12-18 03:00:00'
-	option ban_reason 'Tentative intrusion'
-	option ban_date '2024-12-18 03:05:00'
-
 # Auto-Zoning Rules
 # Rules are evaluated in order, first match wins
 

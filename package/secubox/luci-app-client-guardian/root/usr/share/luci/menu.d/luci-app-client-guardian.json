@@ -41,20 +41,12 @@
 			"path": "client-guardian/zones"
 		}
 	},
-	"admin/secubox/security/guardian/captive": {
-		"title": "Captive Portal",
+	"admin/secubox/security/guardian/autozoning": {
+		"title": "Auto-Zoning Rules",
 		"order": 30,
 		"action": {
 			"type": "view",
-			"path": "client-guardian/captive"
-		}
-	},
-	"admin/secubox/security/guardian/portal": {
-		"title": "Portal Config",
-		"order": 35,
-		"action": {
-			"type": "view",
-			"path": "client-guardian/portal"
+			"path": "client-guardian/autozoning"
 		}
 	},
 	"admin/secubox/security/guardian/logs": {
@@ -87,14 +79,6 @@
 		"action": {
 			"type": "view",
 			"path": "client-guardian/settings"
-		}
-	},
-	"admin/secubox/security/guardian/debug": {
-		"title": "Debug Console",
-		"order": 95,
-		"action": {
-			"type": "view",
-			"path": "client-guardian/debug"
 		}
 	}
 }

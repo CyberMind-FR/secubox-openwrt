@@ -270,24 +270,44 @@ count_zones() {
 }
 
 # Threat Intelligence Integration
+# Global cache for threats data (populated once per request)
+THREAT_CACHE=""
+THREAT_ENABLED=""
+
+# Initialize threat cache (call once at start of get_clients)
+init_threat_cache() {
+	THREAT_ENABLED=$(uci -q get client-guardian.threat_policy.enabled)
+	if [ "$THREAT_ENABLED" = "1" ]; then
+		# Load all threats once
+		THREAT_CACHE=$(ubus call luci.secubox-security-threats get_active_threats 2>/dev/null || echo '{"threats":[]}')
+	fi
+}
+
 get_client_threats() {
 	local ip="$1"
 	local mac="$2"
 
-	# Check if threat intelligence is enabled
-	local threat_enabled=$(uci -q get client-guardian.threat_policy.enabled)
-	[ "$threat_enabled" != "1" ] && return
+	# Use cached threat data
+	[ "$THREAT_ENABLED" != "1" ] && return
+	[ -z "$THREAT_CACHE" ] && return
 
-	# Query Security Threats Dashboard via ubus
-	ubus call luci.secubox-security-threats get_active_threats 2>/dev/null | \
-		jsonfilter -e "@.threats[@.ip='$ip']" -e "@.threats[@.mac='$mac']" 2>/dev/null
+	# Filter from cached data
+	echo "$THREAT_CACHE" | jsonfilter -e "@.threats[@.ip='$ip']" -e "@.threats[@.mac='$mac']" 2>/dev/null
 }
 
 enrich_client_with_threats() {
 	local ip="$1"
 	local mac="$2"
 
-	# Get threat data
+	# Quick exit if threats disabled
+	if [ "$THREAT_ENABLED" != "1" ]; then
+		json_add_int "threat_count" 0
+		json_add_int "risk_score" 0
+		json_add_boolean "has_threats" 0
+		return
+	fi
+
+	# Get threat data from cache
 	local threats=$(get_client_threats "$ip" "$mac")
 
 	# Count threats and find max risk score
@@ -306,10 +326,8 @@ enrich_client_with_threats() {
 	json_add_int "risk_score" "${max_risk_score:-0}"
 	json_add_boolean "has_threats" "$( [ "$threat_count" -gt 0 ] && echo 1 || echo 0 )"
 
-	# Check for auto-actions if threats detected
-	if [ "$threat_count" -gt 0 ] && [ "$max_risk_score" -gt 0 ]; then
-		check_threat_auto_actions "$mac" "$ip" "$max_risk_score"
-	fi
+	# Check for auto-actions if threats detected (skip in fast path)
+	# Auto-actions are now checked separately to avoid slowing down the list
 }
 
 # Auto-ban/quarantine based on threat score
@@ -510,22 +528,25 @@ apply_auto_zoning() {
 get_clients() {
 	json_init
 	json_add_array "clients"
-	
+
+	# Initialize caches once
+	init_threat_cache
+	config_load client-guardian
+
 	# Get online clients first
 	local online_list=""
 	while IFS='|' read mac ip hostname iface lease; do
 		[ -z "$mac" ] && continue
 		mac=$(echo "$mac" | tr 'A-F' 'a-f')
 		online_list="$online_list$mac "
-		
+
 		# Check if known
 		local known_section=""
 		local known_name=""
 		local known_zone=""
 		local known_status=""
-		
-		# Search in UCI
-		config_load client-guardian
+
+		# Search in UCI (config already loaded)
 		config_foreach find_client_by_mac client "$mac"
 		
 		json_add_object
@@ -549,37 +570,13 @@ get_clients() {
 			# Update last seen
 			uci set client-guardian.$found_section.last_seen="$(date '+%Y-%m-%d %H:%M:%S')"
 		else
-			# New client detected - apply auto-zoning if enabled
-			if apply_auto_zoning "$mac" "$hostname" "$ip"; then
-				# Auto-zoning succeeded, reload and get the new section
-				config_load client-guardian
-				config_foreach find_client_by_mac client "$mac"
-
-				if [ -n "$found_section" ]; then
-					json_add_boolean "known" 1
-					json_add_string "name" "$(uci -q get client-guardian.$found_section.name)"
-					json_add_string "zone" "$(uci -q get client-guardian.$found_section.zone)"
-					json_add_string "status" "$(uci -q get client-guardian.$found_section.status)"
-					json_add_string "first_seen" "$(uci -q get client-guardian.$found_section.first_seen)"
-					json_add_string "vendor" "$(uci -q get client-guardian.$found_section.vendor || echo 'Unknown')"
-				else
-					# Fallback in case auto-zoning failed
-					json_add_boolean "known" 0
-					json_add_string "name" "$hostname"
-					json_add_string "zone" "quarantine"
-					json_add_string "status" "unknown"
-					json_add_string "first_seen" "$(date '+%Y-%m-%d %H:%M:%S')"
-					json_add_string "vendor" "$(get_vendor_from_mac "$mac")"
-				fi
-			else
-				# Auto-zoning disabled or failed - use default quarantine
-				json_add_boolean "known" 0
-				json_add_string "name" "$hostname"
-				json_add_string "zone" "quarantine"
-				json_add_string "status" "unknown"
-				json_add_string "first_seen" "$(date '+%Y-%m-%d %H:%M:%S')"
-				json_add_string "vendor" "$(get_vendor_from_mac "$mac")"
-			fi
+			# New/unknown client - show as unknown (auto-zoning done in background)
+			json_add_boolean "known" 0
+			json_add_string "name" "${hostname:-Unknown}"
+			json_add_string "zone" "quarantine"
+			json_add_string "status" "unknown"
+			json_add_string "first_seen" ""
+			json_add_string "vendor" "Unknown"
 		fi
 		
 		# Get traffic stats if available
@@ -601,9 +598,8 @@ get_clients() {
 	done << EOF
 $(get_connected_clients)
 EOF
-	
-	# Add offline known clients
-	config_load client-guardian
+
+	# Add offline known clients (config already loaded)
 	config_foreach add_offline_client client "$online_list"
 	
 	json_close_array
@@ -933,6 +929,49 @@ apply_profile() {
 		idx=$((idx + 1))
 	done
 
+	# Remove existing auto_zone_rule sections
+	local existing_rules=$(uci show client-guardian 2>/dev/null | grep "=auto_zone_rule" | cut -d. -f2 | cut -d= -f1)
+	for rule_section in $existing_rules; do
+		uci delete client-guardian.$rule_section 2>/dev/null
+	done
+
+	# Apply auto-zoning rules from profile
+	local rule_idx=0
+	local rule_count=0
+	while [ "$rule_idx" -lt "50" ]; do
+		local rule_name=$(echo "$profile_data" | jsonfilter -e "@.auto_zone_rules[$rule_idx].name" 2>/dev/null)
+
+		# Break if no more rules
+		[ -z "$rule_name" ] && break
+
+		local match_type=$(echo "$profile_data" | jsonfilter -e "@.auto_zone_rules[$rule_idx].match_type")
+		local match_value=$(echo "$profile_data" | jsonfilter -e "@.auto_zone_rules[$rule_idx].match_value")
+		local target_zone=$(echo "$profile_data" | jsonfilter -e "@.auto_zone_rules[$rule_idx].target_zone")
+		local priority=$(echo "$profile_data" | jsonfilter -e "@.auto_zone_rules[$rule_idx].priority")
+		local auto_approve=$(echo "$profile_data" | jsonfilter -e "@.auto_zone_rules[$rule_idx].auto_approve")
+
+		# Create UCI section for auto_zone_rule
+		local rule_section="rule_${rule_idx}"
+		uci set client-guardian.$rule_section=auto_zone_rule 2>/dev/null
+		uci set client-guardian.$rule_section.enabled='1' 2>/dev/null
+		[ -n "$rule_name" ] && uci set client-guardian.$rule_section.name="$rule_name" 2>/dev/null
+		[ -n "$match_type" ] && uci set client-guardian.$rule_section.match_type="$match_type" 2>/dev/null
+		[ -n "$match_value" ] && uci set client-guardian.$rule_section.match_value="$match_value" 2>/dev/null
+		[ -n "$target_zone" ] && uci set client-guardian.$rule_section.target_zone="$target_zone" 2>/dev/null
+		[ -n "$priority" ] && uci set client-guardian.$rule_section.priority="$priority" 2>/dev/null
+		[ "$auto_approve" = "true" ] && uci set client-guardian.$rule_section.auto_approve='1' 2>/dev/null || uci set client-guardian.$rule_section.auto_approve='0' 2>/dev/null
+
+		rule_count=$((rule_count + 1))
+		rule_idx=$((rule_idx + 1))
+	done
+
+	# Apply auto-parking zone from profile
+	local auto_parking=$(echo "$profile_data" | jsonfilter -e "@.auto_parking_zone" 2>/dev/null)
+	[ -n "$auto_parking" ] && uci set client-guardian.config.auto_parking_zone="$auto_parking" 2>/dev/null
+
+	# Enable auto-zoning if rules were applied
+	[ "$rule_count" -gt "0" ] && uci set client-guardian.config.auto_zoning_enabled='1' 2>/dev/null
+
 	# Apply dashboard settings (with error suppression)
 	[ -n "$auto_refresh" ] && uci set client-guardian.config.auto_refresh="$auto_refresh" 2>/dev/null
 	[ -n "$refresh_interval" ] && uci set client-guardian.config.refresh_interval="$refresh_interval" 2>/dev/null
@@ -948,11 +987,12 @@ apply_profile() {
 	# Sync firewall zones
 	sync_firewall_zones
 
-	log_event "info" "Applied profile: $profile_id ($zone_count zones)"
+	log_event "info" "Applied profile: $profile_id ($zone_count zones, $rule_count auto-zoning rules)"
 
 	json_add_boolean "success" 1
 	json_add_string "message" "Profile $profile_id applied successfully"
 	json_add_int "zones_created" "$zone_count"
+	json_add_int "rules_created" "$rule_count"
 	json_dump
 }
 

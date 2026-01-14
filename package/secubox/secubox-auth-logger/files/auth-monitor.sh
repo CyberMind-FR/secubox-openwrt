@@ -79,11 +79,10 @@ monitor_logs() {
             fi
         fi
 
-        # rpcd session errors
-        if echo "$line" | grep -qi "rpcd.*access.denied\|ubus.*error"; then
-            ip=$(echo "$line" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-            [ -n "$ip" ] && log_failure "luci" "$ip"
-        fi
+        # NOTE: rpcd "access denied" is NOT a login attempt - it just means
+        # someone accessed LuCI without a valid session (session expired or
+        # not logged in). Real login attempts are detected by the JS hook
+        # in secubox-auth-hook.js which intercepts session.login calls.
 
     done
 }

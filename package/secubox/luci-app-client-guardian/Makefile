@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-client-guardian
 PKG_VERSION:=0.4.0
-PKG_RELEASE:=5
+PKG_RELEASE:=7
 PKG_ARCH:=all
 
 PKG_LICENSE:=Apache-2.0

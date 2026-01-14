@@ -2,8 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-nodogsplash
 PKG_VERSION:=5.0.2
-PKG_RELEASE:=2
-PKG_ARCH:=all
+PKG_RELEASE:=4
 
 PKG_SOURCE:=nodogsplash-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/nodogsplash/nodogsplash/archive/refs/tags
@@ -20,7 +19,6 @@ include $(INCLUDE_DIR)/package.mk
 define Package/$(PKG_NAME)
   SECTION:=net
   CATEGORY:=Network
-  PKGARCH:=all
   SUBMENU:=Captive Portals
   TITLE:=Nodogsplash captive portal
   URL:=https://github.com/nodogsplash/nodogsplash
@@ -46,15 +44,11 @@ define Build/Compile
 		STRIP=no \
 		ENABLE_STATE_FILE=yes \
 		all
-	$(MAKE) -C $(PKG_BUILD_DIR) \
-		CC="$(TARGET_CC)" \
-		CPPFLAGS="$(TARGET_CPPFLAGS)" \
-		CFLAGS="$(TARGET_CFLAGS)" \
-		LDFLAGS="$(TARGET_LDFLAGS)" \
-		STRIP=no \
-		ENABLE_STATE_FILE=yes \
-		DESTDIR="$(PKG_INSTALL_DIR)" \
-		install
+endef
+
+# Skip upstream install target which has hardcoded strip command
+define Build/Install
+	true
 endef
 
 define Package/$(PKG_NAME)/conffiles
@@ -65,12 +59,15 @@ endef
 
 define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/nodogsplash $(1)/usr/bin/
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/ndsctl $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/nodogsplash $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/ndsctl $(1)/usr/bin/
 
 	$(INSTALL_DIR) $(1)/etc/nodogsplash/htdocs/images
-	$(CP) $(PKG_INSTALL_DIR)/etc/nodogsplash/nodogsplash.conf $(1)/etc/nodogsplash/
-	$(CP) $(PKG_INSTALL_DIR)/etc/nodogsplash/htdocs/* $(1)/etc/nodogsplash/htdocs/
+	$(INSTALL_CONF) $(PKG_BUILD_DIR)/resources/nodogsplash.conf $(1)/etc/nodogsplash/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/resources/splash.html $(1)/etc/nodogsplash/htdocs/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/resources/splash.css $(1)/etc/nodogsplash/htdocs/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/resources/status.html $(1)/etc/nodogsplash/htdocs/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/resources/splash.jpg $(1)/etc/nodogsplash/htdocs/images/
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/nodogsplash.init $(1)/etc/init.d/nodogsplash
