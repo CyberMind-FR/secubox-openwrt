@@ -72,7 +72,7 @@ site_author: CyberMind.fr
 site_url: https://gkerma.github.io/secubox-openwrt/
 
 repo_name: gkerma/secubox-openwrt
-repo_url: https://github.com/gkerma/secubox-openwrt
+repo_url: https://github.com/CyberMind-FR/secubox-openwrt
 edit_uri: edit/master/DOCS/
 
 theme:
@@ -123,7 +123,7 @@ extra_css:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/gkerma/secubox-openwrt
+      link: https://github.com/CyberMind-FR/secubox-openwrt
     - icon: fontawesome/solid/globe
       link: https://secubox.cybermood.eu
 
@@ -356,8 +356,8 @@ Experience SecuBox in action:
 
 ## 📞 Support & Resources
 
-- **GitHub Repository:** [gkerma/secubox-openwrt](https://github.com/gkerma/secubox-openwrt)
-- **Documentation Issues:** [GitHub Issues](https://github.com/gkerma/secubox-openwrt/issues)
+- **GitHub Repository:** [gkerma/secubox-openwrt](https://github.com/CyberMind-FR/secubox-openwrt)
+- **Documentation Issues:** [GitHub Issues](https://github.com/CyberMind-FR/secubox-openwrt/issues)
 - **Technical Support:** support@cybermind.fr
 - **Company:** CyberMind.fr
 
@@ -509,7 +509,7 @@ echo "   git commit -m 'Add GitHub Pages documentation site'"
 echo "   git push"
 echo ""
 echo "3️⃣  Enable GitHub Pages in repository settings:"
-echo "   - Go to: https://github.com/gkerma/secubox-openwrt/settings/pages"
+echo "   - Go to: https://github.com/CyberMind-FR/secubox-openwrt/settings/pages"
 echo "   - Source: Deploy from a branch"
 echo "   - Branch: master"
 echo "   - Folder: /docs"

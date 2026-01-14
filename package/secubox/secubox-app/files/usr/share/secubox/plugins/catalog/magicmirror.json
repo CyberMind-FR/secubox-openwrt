@@ -7,7 +7,7 @@
   "description": "Smart mirror platform with modular information display. Transform any display into an interactive dashboard with weather, calendar, news, and custom modules.",
   "source": {
     "homepage": "https://magicmirror.builders/",
-    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/secubox-app-magicmirror"
+    "github": "https://github.com/CyberMind-FR/secubox-openwrt/tree/main/secubox-app-magicmirror"
   },
   "packages": [
     "secubox-app-magicmirror",

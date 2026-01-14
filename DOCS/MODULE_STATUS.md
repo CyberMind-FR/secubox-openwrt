@@ -714,7 +714,7 @@ apk add luci-app-secubox luci-app-system-hub
 #### Method 2: Manual Installation
 ```bash
 # Download from GitHub Releases
-wget https://github.com/gkerma/secubox-openwrt/releases/download/v2.0.0/luci-app-secubox_*.ipk
+wget https://github.com/CyberMind-FR/secubox-openwrt/releases/download/v2.0.0/luci-app-secubox_*.ipk
 
 # Install
 opkg install luci-app-secubox_*.ipk
@@ -856,9 +856,9 @@ ubus list | grep luci.
 - `secubox-tools/local-build.sh` - Local build system
 
 ### Online Resources
-- **GitHub Repository**: https://github.com/gkerma/secubox-openwrt
+- **GitHub Repository**: https://github.com/CyberMind-FR/secubox-openwrt
 - **GitHub Pages**: https://gkerma.github.io/secubox-openwrt/
-- **GitHub Wiki**: https://github.com/gkerma/secubox-openwrt/wiki
+- **GitHub Wiki**: https://github.com/CyberMind-FR/secubox-openwrt/wiki
 - **Live Demo**: https://secubox.cybermood.eu
 
 ---

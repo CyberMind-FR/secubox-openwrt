@@ -376,5 +376,5 @@ MIT License - Copyright (C) 2025 CyberMind.fr
 ## Support
 
 - GitHub Issues: https://github.com/secubox/secubox-openwrt
-- Documentation: https://docs.secubox.io
+- Documentation: https://secubox.cybermood.eu/docs
 - CrowdSec Docs: https://docs.crowdsec.net

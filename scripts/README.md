@@ -90,7 +90,7 @@ See [WIKI-SETUP-GUIDE.md](../WIKI-SETUP-GUIDE.md) for complete setup instruction
 ./scripts/setup-wiki.sh
 
 # 3. View at:
-# https://github.com/gkerma/secubox-openwrt/wiki
+# https://github.com/CyberMind-FR/secubox-openwrt/wiki
 ```
 
 ### Option 2: GitHub Pages (Recommended)
@@ -187,7 +187,7 @@ git push
 
 **Error: "Wiki repository doesn't exist"**
 - Enable Wiki in GitHub repository settings first
-- URL: https://github.com/gkerma/secubox-openwrt/settings
+- URL: https://github.com/CyberMind-FR/secubox-openwrt/settings
 
 **Error: "Permission denied"**
 - Ensure SSH key is configured for GitHub
@@ -230,7 +230,7 @@ git push
 
 Edit generated files in wiki repository:
 ```bash
-git clone https://github.com/gkerma/secubox-openwrt.wiki.git
+git clone https://github.com/CyberMind-FR/secubox-openwrt.wiki.git
 cd secubox-openwrt.wiki
 # Edit _Sidebar.md, Home.md, etc.
 git commit -am "Customize wiki"

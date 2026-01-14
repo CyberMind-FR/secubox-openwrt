@@ -505,7 +505,7 @@ If validation incorrectly reports an error, please report it:
 ## Additional Resources
 
 - [CLAUDE.md](claude.md) - Main project documentation
-- [secubox-tools/README.md](https://github.com/gkerma/secubox-openwrt/blob/master/secubox-tools/README.md) - Tools documentation
+- [secubox-tools/README.md](https://github.com/CyberMind-FR/secubox-openwrt/blob/master/secubox-tools/README.md) - Tools documentation
 - [Feature Regeneration Prompts](feature-regeneration-prompts.md) - Module generation prompts
 
 ## Support

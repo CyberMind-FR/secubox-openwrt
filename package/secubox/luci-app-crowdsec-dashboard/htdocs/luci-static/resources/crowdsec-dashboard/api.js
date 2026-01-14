@@ -59,9 +59,15 @@ var callStats = rpc.declare({
 	expect: { }
 });
 
+var callGetOverview = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'get_overview',
+	expect: { }
+});
+
 var callSecuboxLogs = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
-	method: 'seccubox_logs',
+	method: 'secubox_logs',
 	expect: { }
 });
 
@@ -395,6 +401,7 @@ return baseclass.extend({
 	getMachines: callMachines,
 	getHub: callHub,
 	getStats: callStats,
+	getOverview: callGetOverview,
 	getSecuboxLogs: callSecuboxLogs,
 	collectDebugSnapshot: callCollectDebug,
 	addBan: callBan,

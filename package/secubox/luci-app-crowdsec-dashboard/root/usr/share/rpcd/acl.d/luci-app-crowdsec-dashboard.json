@@ -4,6 +4,7 @@
 		"read": {
 			"ubus": {
 				"luci.crowdsec-dashboard": [
+					"get_overview",
 					"decisions",
 					"alerts",
 					"metrics",
@@ -12,7 +13,7 @@
 					"hub",
 					"status",
 					"stats",
-					"seccubox_logs",
+					"secubox_logs",
 					"waf_status",
 					"metrics_config",
 					"collections",

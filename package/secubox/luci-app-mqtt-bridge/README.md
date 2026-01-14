@@ -363,7 +363,7 @@ opkg install socat              # For TCP/serial bridging
 
 ```bash
 # Download from GitHub Releases
-wget https://github.com/gkerma/secubox-openwrt/releases/download/v0.5.0/luci-app-mqtt-bridge_0.5.0-1_all.ipk
+wget https://github.com/CyberMind-FR/secubox-openwrt/releases/download/v0.5.0/luci-app-mqtt-bridge_0.5.0-1_all.ipk
 
 # Install
 opkg install luci-app-mqtt-bridge_0.5.0-1_all.ipk
@@ -669,9 +669,9 @@ Email: contact@cybermind.fr
 
 ## Resources
 
-- **GitHub Repository**: https://github.com/gkerma/secubox-openwrt
+- **GitHub Repository**: https://github.com/CyberMind-FR/secubox-openwrt
 - **Documentation**: https://gkerma.github.io/secubox-openwrt/
-- **Issue Tracker**: https://github.com/gkerma/secubox-openwrt/issues
+- **Issue Tracker**: https://github.com/CyberMind-FR/secubox-openwrt/issues
 - **Live Demo**: https://secubox.cybermood.eu
 
 ---

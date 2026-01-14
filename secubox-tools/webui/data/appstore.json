@@ -25,7 +25,7 @@
     ],
     "license": "GPL-3.0",
     "repository_url": "https://github.com/secubox/luci-app-advanced-monitoring",
-    "documentation_url": "https://docs.secubox.io/monitoring",
+    "documentation_url": "https://secubox.cybermood.eu/docs/monitoring",
     "installed": true,
     "update_available": false,
     "size_mb": 2.5

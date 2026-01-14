@@ -730,7 +730,7 @@ CyberMind Studio <contact@cybermind.fr>
 
 ## Support
 
-- **Issues**: https://github.com/gkerma/secubox-openwrt/issues
+- **Issues**: https://github.com/CyberMind-FR/secubox-openwrt/issues
 - **Documentation**: This README
 - **Version**: 2.0.0
 - **Last Updated**: 2026-01-01

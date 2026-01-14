@@ -27,7 +27,7 @@ fi
 git clone "$WIKI_REPO" "$WIKI_DIR" 2>/dev/null || {
     echo "⚠️  Wiki repository doesn't exist yet."
     echo "   Please enable Wiki in GitHub repository settings first:"
-    echo "   https://github.com/gkerma/secubox-openwrt/settings"
+    echo "   https://github.com/CyberMind-FR/secubox-openwrt/settings"
     echo ""
     echo "   Then run this script again."
     exit 1
@@ -170,7 +170,7 @@ See **[Development Guidelines - Design System](Development-Guidelines#design-sys
 
 ## 📞 Support
 
-- **Documentation Issues:** [GitHub Issues](https://github.com/gkerma/secubox-openwrt/issues)
+- **Documentation Issues:** [GitHub Issues](https://github.com/CyberMind-FR/secubox-openwrt/issues)
 - **Technical Support:** support@cybermind.fr
 - **Company:** CyberMind.fr
 
@@ -217,9 +217,9 @@ cat > _Sidebar.md << 'EOF'
 ---
 
 ### Quick Links
-* [GitHub Repo](https://github.com/gkerma/secubox-openwrt)
+* [GitHub Repo](https://github.com/CyberMind-FR/secubox-openwrt)
 * [Live Demo](https://secubox.cybermood.eu)
-* [Issues](https://github.com/gkerma/secubox-openwrt/issues)
+* [Issues](https://github.com/CyberMind-FR/secubox-openwrt/issues)
 EOF
 
 echo "📄 Copying documentation files..."
@@ -320,7 +320,7 @@ echo ""
 echo "✅ Wiki successfully updated!"
 echo ""
 echo "🌐 View your wiki at:"
-echo "   https://github.com/gkerma/secubox-openwrt/wiki"
+echo "   https://github.com/CyberMind-FR/secubox-openwrt/wiki"
 echo ""
 echo "📋 Pages created: $file_count"
 echo ""

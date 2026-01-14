@@ -7,7 +7,7 @@
   "description": "Dockerized Zigbee coordinator with MQTT bridge, serial setup, and LuCI management UI.",
   "source": {
     "homepage": "https://www.zigbee2mqtt.io",
-    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/secubox-app-zigbee2mqtt"
+    "github": "https://github.com/CyberMind-FR/secubox-openwrt/tree/main/secubox-app-zigbee2mqtt"
   },
   "packages": [
     "secubox-app-zigbee2mqtt",

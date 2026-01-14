@@ -7,7 +7,7 @@
   "description": "Self-hosted file sync and share platform with calendar, contacts, and collaboration. Dropbox alternative with apps for mobile and desktop.",
   "source": {
     "homepage": "https://nextcloud.com/",
-    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/secubox-app-nextcloud"
+    "github": "https://github.com/CyberMind-FR/secubox-openwrt/tree/main/secubox-app-nextcloud"
   },
   "packages": [
     "secubox-app-nextcloud",

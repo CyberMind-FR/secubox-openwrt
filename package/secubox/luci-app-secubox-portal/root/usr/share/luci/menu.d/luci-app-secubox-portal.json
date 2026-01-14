@@ -84,5 +84,13 @@
 			"type": "view",
 			"path": "secubox-portal/devstatus"
 		}
+	},
+	"secubox-public/login": {
+		"title": "Connexion",
+		"order": 99,
+		"action": {
+			"type": "alias",
+			"path": "admin"
+		}
 	}
 }

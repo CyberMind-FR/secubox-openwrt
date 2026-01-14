@@ -6,8 +6,8 @@
   "maturity": "stable",
   "description": "Preset-friendly CAKE/HTB shaping with latency-focused rules and stats.",
   "source": {
-    "homepage": "https://github.com/gkerma/secubox-openwrt/tree/main/luci-app-traffic-shaper",
-    "github": "https://github.com/gkerma/secubox-openwrt/tree/main/luci-app-traffic-shaper"
+    "homepage": "https://github.com/CyberMind-FR/secubox-openwrt/tree/main/luci-app-traffic-shaper",
+    "github": "https://github.com/CyberMind-FR/secubox-openwrt/tree/main/luci-app-traffic-shaper"
   },
   "packages": [
     "luci-app-traffic-shaper"

@@ -877,9 +877,9 @@ Before deploying to production:
 - [CLAUDE.md](claude.md) - Build system reference
 
 ### Tools
-- [SecuBox Tools](https://github.com/gkerma/secubox-openwrt/tree/master/secubox-tools/) - Validation, build, deployment scripts
-- [GitHub Actions](https://github.com/gkerma/secubox-openwrt/tree/master/.github/workflows/) - CI/CD workflows
-- [Templates](https://github.com/gkerma/secubox-openwrt/tree/master/templates/) - Module templates
+- [SecuBox Tools](https://github.com/CyberMind-FR/secubox-openwrt/tree/master/secubox-tools/) - Validation, build, deployment scripts
+- [GitHub Actions](https://github.com/CyberMind-FR/secubox-openwrt/tree/master/.github/workflows/) - CI/CD workflows
+- [Templates](https://github.com/CyberMind-FR/secubox-openwrt/tree/master/templates/) - Module templates
 
 ---
 
