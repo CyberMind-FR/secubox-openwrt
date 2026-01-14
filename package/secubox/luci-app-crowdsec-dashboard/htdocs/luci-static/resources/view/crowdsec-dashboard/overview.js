@@ -910,15 +910,11 @@ refreshDashboard: function() {
 	renderLogCard: function(entries) {
 		return E('div', { 'class': 'cs-card cs-log-card' }, [
 			E('div', { 'class': 'cs-card-header' }, [
-				E('div', { 'class': 'cs-card-title' }, _('SecuBox Log Tail')),
-				E('button', {
-					'class': 'cs-btn cs-btn-secondary cs-btn-sm',
-					'click': ui.createHandlerFn(this, 'handleSnapshot')
-				}, _('Snapshot'))
+				E('div', { 'class': 'cs-card-title' }, _('CrowdSec Logs'))
 			]),
 			entries && entries.length ?
-				E('pre', { 'class': 'cs-log-output' }, entries.join('\n')) :
-				E('p', { 'class': 'cs-empty' }, _('Log file empty'))
+				E('pre', { 'class': 'cs-log-output' }, entries.slice(-30).join('\n')) :
+				E('p', { 'class': 'cs-empty' }, _('No log entries'))
 		]);
 	},
 

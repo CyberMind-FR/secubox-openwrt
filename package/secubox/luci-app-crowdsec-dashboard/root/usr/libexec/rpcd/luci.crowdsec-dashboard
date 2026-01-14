@@ -313,15 +313,26 @@ get_dashboard_stats() {
 	json_dump
 }
 
-seccubox_logs() {
+crowdsec_logs() {
 	json_init
 	json_add_array "entries"
-	if [ -f /var/log/seccubox.log ]; then
-		tail -n 80 /var/log/seccubox.log | while IFS= read -r line; do
+
+	# Try CrowdSec log first, then bouncer log
+	local log_file=""
+	if [ -f /var/log/crowdsec.log ]; then
+		log_file="/var/log/crowdsec.log"
+	elif [ -f /var/log/crowdsec-firewall-bouncer.log ]; then
+		log_file="/var/log/crowdsec-firewall-bouncer.log"
+	fi
+
+	if [ -n "$log_file" ]; then
+		tail -n 50 "$log_file" 2>/dev/null | while IFS= read -r line; do
 			json_add_string "" "$line"
 		done
 	fi
+
 	json_close_array
+	json_add_string "log_file" "$log_file"
 	json_dump
 }
 
@@ -330,7 +341,7 @@ collect_debug() {
 	if [ -x "$SECCUBOX_LOG" ]; then
 		"$SECCUBOX_LOG" --snapshot >/dev/null 2>&1
 		json_add_boolean "success" 1
-		json_add_string "message" "Snapshot appended to /var/log/seccubox.log"
+		json_add_string "message" "Snapshot appended to /var/log/secubox.log"
 	else
 		json_add_boolean "success" 0
 		json_add_string "error" "secubox-log helper not found"
@@ -2069,7 +2080,7 @@ save_settings() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"repair_capi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{},"health_check":{},"capi_metrics":{},"hub_available":{},"install_hub_item":{"item_type":"string","item_name":"string"},"remove_hub_item":{"item_type":"string","item_name":"string"},"get_settings":{},"save_settings":{"enrollment_key":"string","machine_name":"string","auto_enroll":"string"}}'
+		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"secubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"repair_capi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{},"health_check":{},"capi_metrics":{},"hub_available":{},"install_hub_item":{"item_type":"string","item_name":"string"},"remove_hub_item":{"item_type":"string","item_name":"string"},"get_settings":{},"save_settings":{"enrollment_key":"string","machine_name":"string","auto_enroll":"string"}}'
 		;;
 	call)
 		case "$2" in
@@ -2111,8 +2122,8 @@ case "$1" in
 			stats)
 				get_dashboard_stats
 				;;
-			seccubox_logs)
-				seccubox_logs
+			secubox_logs|crowdsec_logs)
+				crowdsec_logs
 				;;
 			collect_debug)
 				collect_debug

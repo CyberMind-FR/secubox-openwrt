@@ -61,7 +61,7 @@ var callStats = rpc.declare({
 
 var callSecuboxLogs = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
-	method: 'seccubox_logs',
+	method: 'secubox_logs',
 	expect: { }
 });
 
