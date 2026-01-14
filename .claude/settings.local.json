@@ -12,7 +12,28 @@
       "Bash(rsync:*)",
       "Bash(make FORCE=1 package/feeds/secubox/luci-app-system-hub/compile:*)",
       "Bash(chmod:*)",
-      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")"
+      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")",
+      "Bash(git status:*)",
+      "Bash(./localbuild.sh:*)",
+      "Bash(git tag:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(tar:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(git rm:*)",
+      "Bash(ssh:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(find:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git config:*)",
+      "Bash(./scripts/feeds update:*)",
+      "Bash(./scripts/feeds install:*)",
+      "Bash(xargs:*)",
+      "Bash(make defconfig:*)",
+      "Bash(make:*)",
+      "Bash(bash -n:*)"
     ]
   }
 }
