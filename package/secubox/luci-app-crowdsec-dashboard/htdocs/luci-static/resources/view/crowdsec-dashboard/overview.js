@@ -38,7 +38,8 @@ return view.extend({
 			this.csApi.getHealthCheck().catch(function() { return {}; }),
 			this.csApi.getCapiMetrics().catch(function() { return {}; }),
 			this.csApi.getCollections().catch(function() { return { collections: [] }; }),
-			this.csApi.getNftablesStats().catch(function() { return {}; })
+			this.csApi.getNftablesStats().catch(function() { return {}; }),
+			this.csApi.getHub().catch(function() { return {}; })
 		]);
 	},
 
@@ -429,7 +430,7 @@ return view.extend({
 
 		return E('div', {}, [
 			this.renderHeader(status),
-			serviceWarning,
+			serviceWarning || E([]),
 			this.renderHealthCheck(),
 			this.renderStatsGrid(stats, decisions),
 
@@ -450,7 +451,8 @@ return view.extend({
 
 			E('div', { 'class': 'cs-charts-row' }, [
 				this.renderCapiBlocklist(),
-				this.renderCollectionsCard()
+				this.renderCollectionsCard(),
+				this.renderHubStatsCard()
 			]),
 
 			E('div', { 'class': 'cs-charts-row' }, [
@@ -520,6 +522,7 @@ return view.extend({
 		this.capiMetrics = payload[3] || {};
 		this.collections = (payload[4] && payload[4].collections) || [];
 		this.nftablesStats = payload[5] || {};
+		this.hubData = payload[6] || {};
 
 		// Main wrapper with SecuBox header
 		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
@@ -548,7 +551,8 @@ refreshDashboard: function() {
 			self.csApi.getHealthCheck().catch(function() { return {}; }),
 			self.csApi.getCapiMetrics().catch(function() { return {}; }),
 			self.csApi.getCollections().catch(function() { return { collections: [] }; }),
-			self.csApi.getNftablesStats().catch(function() { return {}; })
+			self.csApi.getNftablesStats().catch(function() { return {}; }),
+			self.csApi.getHub().catch(function() { return {}; })
 		]).then(function(results) {
 			self.data = results[0];
 			self.logs = (results[1] && results[1].entries) || [];
@@ -556,6 +560,7 @@ refreshDashboard: function() {
 			self.capiMetrics = results[3] || {};
 			self.collections = (results[4] && results[4].collections) || [];
 			self.nftablesStats = results[5] || {};
+			self.hubData = results[6] || {};
 			self.updateView();
 		});
 	},
@@ -737,6 +742,63 @@ refreshDashboard: function() {
 			ui.hideModal();
 			self.showToast(err.message || _('Hub update failed'), 'error');
 		});
+	},
+
+	// Hub Stats Card - Shows installed parsers, scenarios, collections counts
+	renderHubStatsCard: function() {
+		var hub = this.hubData || {};
+
+		// Count installed items by type
+		var parsers = hub.parsers || [];
+		var scenarios = hub.scenarios || [];
+		var collections = hub.collections || [];
+		var postoverflows = hub.postoverflows || [];
+
+		var installedParsers = parsers.filter(function(p) {
+			return p.installed || (p.status && p.status.toLowerCase().indexOf('enabled') >= 0);
+		});
+		var installedScenarios = scenarios.filter(function(s) {
+			return s.installed || (s.status && s.status.toLowerCase().indexOf('enabled') >= 0);
+		});
+		var installedCollections = collections.filter(function(c) {
+			return c.installed || (c.status && c.status.toLowerCase().indexOf('enabled') >= 0);
+		});
+
+		// Get parser details for display
+		var parserList = installedParsers.slice(0, 8).map(function(p) {
+			var name = p.name || p.Name || 'unknown';
+			var shortName = name.split('/').pop();
+			return E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em; padding: 0.35em 0; border-bottom: 1px solid rgba(255,255,255,0.05);' }, [
+				E('span', { 'style': 'color: #22c55e;' }, '✓'),
+				E('span', { 'style': 'font-size: 0.85em;' }, shortName)
+			]);
+		});
+
+		return E('div', { 'class': 'cs-card' }, [
+			E('div', { 'class': 'cs-card-header' }, [
+				E('div', { 'class': 'cs-card-title' }, _('Hub Components'))
+			]),
+			E('div', { 'class': 'cs-card-body' }, [
+				// Mini stats row
+				E('div', { 'style': 'display: flex; gap: 1em; margin-bottom: 1em;' }, [
+					E('div', { 'style': 'flex: 1; text-align: center; padding: 0.75em; background: rgba(34,197,94,0.1); border-radius: 8px;' }, [
+						E('div', { 'style': 'font-size: 1.5em; font-weight: 700; color: #22c55e;' }, String(installedParsers.length)),
+						E('div', { 'style': 'font-size: 0.75em; color: #888;' }, _('Parsers'))
+					]),
+					E('div', { 'style': 'flex: 1; text-align: center; padding: 0.75em; background: rgba(59,130,246,0.1); border-radius: 8px;' }, [
+						E('div', { 'style': 'font-size: 1.5em; font-weight: 700; color: #3b82f6;' }, String(installedScenarios.length)),
+						E('div', { 'style': 'font-size: 0.75em; color: #888;' }, _('Scenarios'))
+					]),
+					E('div', { 'style': 'flex: 1; text-align: center; padding: 0.75em; background: rgba(168,85,247,0.1); border-radius: 8px;' }, [
+						E('div', { 'style': 'font-size: 1.5em; font-weight: 700; color: #a855f7;' }, String(installedCollections.length)),
+						E('div', { 'style': 'font-size: 0.75em; color: #888;' }, _('Collections'))
+					])
+				]),
+				// Parser list
+				E('div', { 'style': 'font-size: 0.8em; font-weight: 600; color: #94a3b8; margin-bottom: 0.5em;' }, _('Installed Parsers')),
+				parserList.length > 0 ? E('div', {}, parserList) : E('div', { 'style': 'color: #666; font-size: 0.85em;' }, _('No parsers installed'))
+			])
+		]);
 	},
 
 	// Firewall Blocks - Shows IPs blocked in nftables

@@ -148,7 +148,7 @@ body > .main > .main-right,
 }
 
 .wizard-step p {
-	color: #cbd5e1;
+	color: #e2e8f0;
 	margin-bottom: 24px;
 	line-height: 1.6;
 }
@@ -259,7 +259,7 @@ body > .main > .main-right,
 
 .collection-desc {
 	font-size: 12px;
-	color: #94a3b8;
+	color: #cbd5e1;
 	margin-top: 4px;
 }
 
@@ -362,7 +362,7 @@ body > .main > .main-right,
 }
 
 .status-value {
-	color: #94a3b8;
+	color: #cbd5e1;
 	font-size: 14px;
 }
 

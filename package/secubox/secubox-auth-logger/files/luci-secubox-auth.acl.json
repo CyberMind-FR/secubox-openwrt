@@ -1,0 +1,15 @@
+{
+    "secubox-auth-logger": {
+        "description": "SecuBox Authentication Logger",
+        "read": {
+            "ubus": {
+                "secubox.auth-logger": ["log_failure", "get_client_info", "wrapped_login"]
+            }
+        },
+        "write": {
+            "ubus": {
+                "secubox.auth-logger": ["log_failure", "wrapped_login"]
+            }
+        }
+    }
+}

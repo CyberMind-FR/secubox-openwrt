@@ -1,0 +1,7 @@
+# SecuBox Auth Logger Acquisition
+# Reads authentication failure logs from secubox-auth-logger
+# Used by secubox/openwrt-luci-auth parser and secubox/openwrt-luci-bf scenario
+filenames:
+  - /var/log/secubox-auth.log
+labels:
+  type: secubox-auth

@@ -123,98 +123,42 @@ return view.extend({
 		o.default = '60';
 		o.depends('enabled', '1');
 
-		// Auto-Zoning / Auto-Parking
-		s = m.section(form.NamedSection, 'config', 'client-guardian', _('Auto-Zoning & Auto-Parking'));
-		s.description = _('Automatically assign new clients to zones based on device type, vendor, or hostname patterns.');
-
-		o = s.option(form.Flag, 'auto_zoning_enabled', _('Enable Auto-Zoning'),
-			_('Automatically assign clients to zones using matching rules'));
-		o.default = '1';
-		o.rmempty = false;
-
-		o = s.option(form.ListValue, 'auto_parking_zone', _('Auto-Parking Zone'),
-			_('Default zone for clients that don\'t match any rule'));
-		o.value('guest', _('Guest'));
-		o.value('quarantine', _('Quarantine'));
-		o.value('iot', _('IoT'));
-		o.value('lan_private', _('LAN Private'));
-		o.default = 'guest';
-		o.depends('auto_zoning_enabled', '1');
-
-		o = s.option(form.Flag, 'auto_parking_approve', _('Auto-Approve Parked Clients'),
-			_('Automatically approve clients placed in auto-parking zone'));
-		o.default = '0';
-		o.depends('auto_zoning_enabled', '1');
-
-		// Auto-Zoning Rules Section
-		s = m.section(form.GridSection, 'auto_zone_rule', _('Auto-Zoning Rules'));
-		s.anonymous = false;
-		s.addremove = true;
-		s.sortable = true;
-		s.description = _('Rules are evaluated in priority order. First match wins.');
-
-		o = s.option(form.Flag, 'enabled', _('Enabled'));
-		o.default = '1';
-		o.editable = true;
-
-		o = s.option(form.Value, 'name', _('Rule Name'));
-		o.rmempty = false;
-
-		o = s.option(form.ListValue, 'match_type', _('Match Type'));
-		o.value('vendor', _('Device Vendor (OUI)'));
-		o.value('hostname', _('Hostname Pattern'));
-		o.value('mac_prefix', _('MAC Prefix'));
-		o.default = 'vendor';
-
-		o = s.option(form.Value, 'match_value', _('Match Value/Pattern'));
-		o.placeholder = _('e.g., Xiaomi, Apple, .*camera.*, aa:bb:cc');
-		o.rmempty = false;
-
-		o = s.option(form.ListValue, 'target_zone', _('Target Zone'));
-		o.value('lan_private', _('LAN Private'));
-		o.value('iot', _('IoT'));
-		o.value('kids', _('Kids'));
-		o.value('guest', _('Guest'));
-		o.value('quarantine', _('Quarantine'));
-		o.default = 'guest';
-
-		o = s.option(form.Flag, 'auto_approve', _('Auto-Approve'));
-		o.default = '0';
-
-		o = s.option(form.Value, 'priority', _('Priority'));
-		o.datatype = 'uinteger';
-		o.placeholder = '50';
-		o.default = '50';
-		o.description = _('Lower numbers = higher priority');
-
 		return m.render().then(function(rendered) {
+			// Policy display names
+			var policyNames = {
+				'open': _('Open'),
+				'quarantine': _('Quarantine'),
+				'whitelist': _('Whitelist Only')
+			};
+			var currentPolicy = policy.default_policy || 'quarantine';
+			var policyDisplay = policyNames[currentPolicy] || currentPolicy;
+
 			// Add policy info box at the top
 			var infoBox = E('div', {
 				'class': 'cbi-section',
-				'style': 'background: #e8f4f8; border-left: 4px solid #0088cc; padding: 1em; margin-bottom: 1em;'
+				'style': 'background: var(--cg-bg-secondary, #151b23); border-left: 4px solid var(--cg-accent, #6366f1); padding: 1em; margin-bottom: 1em; border-radius: 8px;'
 			}, [
-				E('h3', { 'style': 'margin-top: 0;' }, _('Current Policy: ') + E('span', { 'style': 'color: #0088cc;' }, policy.default_policy || 'quarantine')),
-			E('div', { 'style': 'margin-top: 1em;' }, [
-				E('strong', {}, _('Session Timeout:')),
-				' ',
-				E('span', {}, (policy.session_timeout || 86400) + ' ' + _('seconds'))
-			]),
-				E('div', { 'style': 'margin-top: 1em; padding: 0.75em; background: white; border-radius: 4px;' }, [
-					E('strong', {}, _('Policy Descriptions:')),
-					E('ul', { 'style': 'margin: 0.5em 0;' }, [
+				E('h3', { 'style': 'margin-top: 0; color: var(--cg-text-primary, #e6edf3);' }, [
+					_('Current Policy: '),
+					E('span', { 'style': 'color: var(--cg-accent, #6366f1); font-weight: 600;' }, policyDisplay)
+				]),
+				E('div', { 'style': 'margin-top: 0.5em; color: var(--cg-text-secondary, #8b949e);' }, [
+					E('strong', {}, _('Session Timeout: ')),
+					E('span', {}, (policy.session_timeout || 86400) + ' ' + _('seconds'))
+				]),
+				E('div', { 'style': 'margin-top: 1em; padding: 0.75em; background: var(--cg-bg-tertiary, #1e2632); border-radius: 4px;' }, [
+					E('strong', { 'style': 'color: var(--cg-text-primary, #e6edf3);' }, _('Policy Descriptions:')),
+					E('ul', { 'style': 'margin: 0.5em 0; color: var(--cg-text-secondary, #8b949e);' }, [
 						E('li', {}, [
-							E('strong', {}, _('Open:')),
-							' ',
+							E('strong', { 'style': 'color: #22c55e;' }, _('Open: ')),
 							_('All clients can access the network without authentication. Not recommended for public networks.')
 						]),
 						E('li', {}, [
-							E('strong', {}, _('Quarantine:')),
-							' ',
+							E('strong', { 'style': 'color: #f59e0b;' }, _('Quarantine: ')),
 							_('New clients are placed in quarantine and require manual approval. Recommended for secure networks.')
 						]),
 						E('li', {}, [
-							E('strong', {}, _('Whitelist Only:')),
-							' ',
+							E('strong', { 'style': 'color: #ef4444;' }, _('Whitelist Only: ')),
 							_('Only explicitly approved clients can access the network. Highest security.')
 						])
 					])

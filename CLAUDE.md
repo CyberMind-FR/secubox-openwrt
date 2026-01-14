@@ -12,6 +12,24 @@
 - `ss` command may not be available - use `netstat` or `/proc/net/tcp` as fallbacks
 - `sqlite3` may not be installed - provide fallback methods (e.g., delete database file instead of running SQL)
 
+### JSON Parsing
+- **Use `jsonfilter` instead of `jq`** - jsonfilter is native to OpenWrt (part of libubox), jq is often not installed
+- Syntax examples:
+  ```bash
+  # Get a field value
+  jsonfilter -i /path/to/file.json -e '@.field_name'
+
+  # Get nested field
+  jsonfilter -i /path/to/file.json -e '@.parent.child'
+
+  # Get array length (count elements)
+  jsonfilter -i /path/to/file.json -e '@[*]' | wc -l
+
+  # Get array element
+  jsonfilter -i /path/to/file.json -e '@[0]'
+  ```
+- Always check for empty results: `[ -z "$result" ] && result=0`
+
 ### Port Detection
 When checking if a port is listening, use this order of fallbacks:
 1. `/proc/net/tcp` (always available) - ports are in hex (e.g., 8080 = 1F90)

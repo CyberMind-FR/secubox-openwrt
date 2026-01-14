@@ -981,159 +981,105 @@ repair_lapi() {
 	json_init
 	local steps_done=""
 	local errors=""
-	local REPAIR_TIMEOUT=10
+	local config_file="/etc/crowdsec/config.yaml"
+	local creds_file="/etc/crowdsec/local_api_credentials.yaml"
+	local db_file="/srv/crowdsec/data/crowdsec.db"
+	local capi_creds="/etc/crowdsec/online_api_credentials.yaml"
 
-	secubox_log "Starting LAPI repair..."
+	secubox_log "Starting LAPI repair (simplified)..."
 
-	# Step 1: Stop CrowdSec completely
+	# Step 1: Stop CrowdSec
 	/etc/init.d/crowdsec stop >/dev/null 2>&1
-	sleep 1
+	sleep 2
 	killall crowdsec 2>/dev/null
 	sleep 1
-	steps_done="${steps_done}Stopped; "
+	steps_done="Stopped; "
 
 	# Step 2: Create required directories
 	mkdir -p /srv/crowdsec/data 2>/dev/null
 	mkdir -p /etc/crowdsec/hub 2>/dev/null
 	mkdir -p /etc/crowdsec/acquis.d 2>/dev/null
-	mkdir -p /var/etc/crowdsec 2>/dev/null
 	chmod 755 /srv/crowdsec/data 2>/dev/null
 	steps_done="${steps_done}Dirs; "
 
-	# Step 3: Fix config.yaml
-	local config_file="/etc/crowdsec/config.yaml"
-	local var_config="/var/etc/crowdsec/config.yaml"
+	# Step 3: Fix config paths
 	if [ -f "$config_file" ]; then
 		sed -i 's|^\(\s*\)data_dir:.*|\1data_dir: /srv/crowdsec/data/|' "$config_file" 2>/dev/null
 		sed -i 's|^\(\s*\)db_path:.*|\1db_path: /srv/crowdsec/data/crowdsec.db|' "$config_file" 2>/dev/null
-		cp "$config_file" "$var_config" 2>/dev/null
-		steps_done="${steps_done}Config; "
+		steps_done="${steps_done}Config fixed; "
 	else
-		errors="${errors}No config; "
+		errors="${errors}No config file; "
 	fi
 
-	# Step 4: Remove corrupted credentials
-	local creds_file="/etc/crowdsec/local_api_credentials.yaml"
+	# Step 4: Reset LAPI credentials (delete old ones)
 	rm -f "$creds_file" 2>/dev/null
+	steps_done="${steps_done}Creds cleared; "
 
-	# Step 5: Clean up orphaned machines from database
-	local db_file="/srv/crowdsec/data/crowdsec.db"
-	if [ -f "$db_file" ]; then
-		if command -v sqlite3 >/dev/null 2>&1; then
-			# Remove all machines - we'll re-register
-			sqlite3 "$db_file" "DELETE FROM machines;" 2>/dev/null
-			steps_done="${steps_done}DB cleaned; "
-		else
-			# No sqlite3 - delete the database file, CrowdSec will recreate it
-			rm -f "$db_file" 2>/dev/null
-			steps_done="${steps_done}DB reset; "
-		fi
-	fi
+	# Step 5: Reset database (delete it, CrowdSec will recreate)
+	rm -f "$db_file" 2>/dev/null
+	steps_done="${steps_done}DB reset; "
 
-	# Step 6: Start CrowdSec in LAPI-only mode (no agent)
-	# This allows LAPI to start without needing valid credentials
-	local crowdsec_bin="/usr/bin/crowdsec"
-	if [ -x "$crowdsec_bin" ]; then
-		# Start LAPI-only mode in background
-		"$crowdsec_bin" -c "$var_config" -no-cs &
-		local cs_pid=$!
-		steps_done="${steps_done}LAPI-only started; "
-
-		# Wait for LAPI to be ready (max 8 seconds)
-		local retries=8
-		local lapi_ready=0
-		while [ $retries -gt 0 ]; do
-			if grep -qi ":1F90 " /proc/net/tcp 2>/dev/null; then
-				lapi_ready=1
-				break
-			fi
-			sleep 1
-			retries=$((retries - 1))
-		done
-
-		if [ "$lapi_ready" = "1" ]; then
-			steps_done="${steps_done}LAPI up; "
-			sleep 1
-
-			# Step 7: Register machine while LAPI is running
-			if [ -x "$CSCLI" ]; then
-				local reg_output=""
-				reg_output=$("$CSCLI" -c "$var_config" machines add localhost --auto --force -f "$creds_file" 2>&1)
-				if [ $? -eq 0 ]; then
-					steps_done="${steps_done}Registered; "
-				else
-					errors="${errors}Reg failed: ${reg_output}; "
-				fi
-			fi
-		else
-			errors="${errors}LAPI timeout; "
-		fi
-
-		# Step 8: Stop LAPI-only mode
-		kill $cs_pid 2>/dev/null
-		sleep 1
-		killall crowdsec 2>/dev/null
-		steps_done="${steps_done}LAPI stopped; "
-	else
-		errors="${errors}No crowdsec binary; "
-	fi
-
-	# Step 9: Verify credentials were created
-	if [ -s "$creds_file" ] && grep -q "password:" "$creds_file"; then
-		steps_done="${steps_done}Creds OK; "
-	else
-		errors="${errors}No creds; "
-	fi
-
-	# Step 10: Start CrowdSec normally via init
+	# Step 6: Start CrowdSec via init (will auto-create DB and register machine)
 	/etc/init.d/crowdsec start >/dev/null 2>&1
-	sleep 3
+	sleep 5
+	steps_done="${steps_done}Started; "
 
-	# Step 11: Verify everything is working
+	# Step 7: Check if CrowdSec is running
 	local lapi_ok=0
 	if pgrep crowdsec >/dev/null 2>&1; then
 		steps_done="${steps_done}Running; "
-		if [ -x "$CSCLI" ]; then
-			if run_with_timeout 5 "$CSCLI" lapi status >/dev/null 2>&1; then
-				lapi_ok=1
-				steps_done="${steps_done}LAPI OK; "
+
+		# Step 8: Register machine if credentials don't exist
+		if [ ! -s "$creds_file" ] || ! grep -q "password:" "$creds_file" 2>/dev/null; then
+			secubox_log "Registering local machine..."
+			if "$CSCLI" machines add -a -f "$creds_file" 2>/dev/null; then
+				steps_done="${steps_done}Machine registered; "
+				# Restart to pick up new credentials
+				/etc/init.d/crowdsec restart >/dev/null 2>&1
+				sleep 3
 			else
-				errors="${errors}LAPI check failed; "
+				errors="${errors}Machine registration failed; "
 			fi
+		fi
+
+		# Step 9: Verify LAPI is working
+		if run_with_timeout 5 "$CSCLI" lapi status >/dev/null 2>&1; then
+			lapi_ok=1
+			steps_done="${steps_done}LAPI OK; "
+		else
+			errors="${errors}LAPI check failed; "
 		fi
 	else
-		errors="${errors}Not running; "
-		# Get error from log
+		errors="${errors}CrowdSec not running; "
 		local log_err=""
-		log_err=$(tail -3 /var/log/crowdsec.log 2>/dev/null | grep -i "fatal\|error" | head -1)
-		[ -n "$log_err" ] && errors="${errors}${log_err}; "
+		log_err=$(tail -5 /var/log/crowdsec.log 2>/dev/null | grep -i "fatal\|error" | head -1)
+		[ -n "$log_err" ] && errors="${errors}Log: ${log_err}; "
 	fi
 
-	# Step 12: Update hub index (required for collections to work)
-	if [ "$lapi_ok" = "1" ] && [ -x "$CSCLI" ]; then
-		if run_with_timeout 30 "$CSCLI" hub update >/dev/null 2>&1; then
-			steps_done="${steps_done}Hub updated; "
-		else
-			errors="${errors}Hub update failed; "
-		fi
-	fi
-
-	# Step 13: Register with CAPI (required for console enrollment)
-	if [ "$lapi_ok" = "1" ] && [ -x "$CSCLI" ]; then
-		if run_with_timeout 15 "$CSCLI" capi register >/dev/null 2>&1; then
-			steps_done="${steps_done}CAPI registered; "
-		else
-			# CAPI registration may fail if already registered, which is OK
-			local capi_status=""
-			capi_status=$(run_with_timeout 5 "$CSCLI" capi status 2>&1)
-			if echo "$capi_status" | grep -qi "registered\|online"; then
-				steps_done="${steps_done}CAPI OK; "
+	# Step 10: Try to connect CAPI if LAPI works (don't delete existing CAPI creds)
+	if [ "$lapi_ok" = "1" ]; then
+		local capi_ok=0
+		# Check if CAPI is already working
+		local capi_status=""
+		capi_status=$(run_with_timeout 5 "$CSCLI" capi status 2>&1)
+		if echo "$capi_status" | grep -qi "You can successfully interact with Central API"; then
+			capi_ok=1
+			steps_done="${steps_done}CAPI OK; "
+		elif [ ! -f "$capi_creds" ]; then
+			# No CAPI credentials - try to register (safe)
+			if run_with_timeout 15 "$CSCLI" capi register >/dev/null 2>&1; then
+				capi_ok=1
+				steps_done="${steps_done}CAPI registered; "
 			else
-				errors="${errors}CAPI not registered; "
+				errors="${errors}CAPI registration failed (will work in local mode); "
 			fi
+		else
+			# CAPI credentials exist but not working - don't delete them!
+			steps_done="${steps_done}CAPI creds preserved; "
 		fi
 	fi
 
+	# Final result
 	if [ "$lapi_ok" = "1" ]; then
 		json_add_boolean "success" 1
 		json_add_string "message" "LAPI repaired successfully"
@@ -1145,6 +1091,88 @@ repair_lapi() {
 		json_add_string "steps" "$steps_done"
 		json_add_string "errors" "$errors"
 		secubox_log "LAPI repair failed: $errors"
+	fi
+
+	json_dump
+}
+
+# Repair CAPI - fix Central API registration issues
+repair_capi() {
+	json_init
+	local steps_done=""
+	local errors=""
+	local capi_creds="/etc/crowdsec/online_api_credentials.yaml"
+
+	secubox_log "Starting CAPI repair..."
+
+	# Check if CrowdSec and LAPI are running
+	if ! pgrep crowdsec >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "CrowdSec is not running. Start CrowdSec first."
+		json_dump
+		return
+	fi
+
+	if ! run_with_timeout 5 "$CSCLI" lapi status >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "LAPI is not available. Run LAPI repair first."
+		json_dump
+		return
+	fi
+
+	# Check current CAPI status
+	local capi_status=""
+	capi_status=$(run_with_timeout 5 "$CSCLI" capi status 2>&1)
+	if echo "$capi_status" | grep -qi "You can successfully interact with Central API"; then
+		steps_done="${steps_done}CAPI already working; "
+		json_add_boolean "success" 1
+		json_add_string "message" "CAPI is already connected"
+		json_add_string "steps" "$steps_done"
+		json_dump
+		return
+	fi
+
+	# Step 1: Check credentials and register only if needed
+	# IMPORTANT: Never delete existing credentials - this triggers rate limiting
+	if [ -f "$capi_creds" ]; then
+		steps_done="${steps_done}Credentials exist (preserved); "
+		secubox_log "CAPI credentials exist, trying to reconnect..."
+		# Try to reconnect with existing credentials by restarting crowdsec
+		/etc/init.d/crowdsec restart >/dev/null 2>&1
+		sleep 3
+	else
+		# No credentials - safe to register
+		secubox_log "No CAPI credentials, registering..."
+		local reg_output=""
+		reg_output=$(run_with_timeout 20 "$CSCLI" capi register 2>&1)
+		if [ $? -eq 0 ]; then
+			steps_done="${steps_done}CAPI registered; "
+		else
+			# Check if error is about already registered
+			if echo "$reg_output" | grep -qi "already registered"; then
+				steps_done="${steps_done}Already registered; "
+			else
+				errors="${errors}Registration failed: ${reg_output}; "
+			fi
+		fi
+	fi
+
+	# Step 3: Verify CAPI connection
+	sleep 2
+	capi_status=$(run_with_timeout 5 "$CSCLI" capi status 2>&1)
+	if echo "$capi_status" | grep -qi "You can successfully interact with Central API"; then
+		steps_done="${steps_done}CAPI connected; "
+		json_add_boolean "success" 1
+		json_add_string "message" "CAPI repaired successfully"
+		json_add_string "steps" "$steps_done"
+		secubox_log "CAPI repair successful: $steps_done"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "CAPI repair incomplete"
+		json_add_string "steps" "$steps_done"
+		json_add_string "errors" "$errors"
+		json_add_string "capi_output" "$capi_status"
+		secubox_log "CAPI repair failed: $errors"
 	fi
 
 	json_dump
@@ -1261,21 +1289,43 @@ console_enroll() {
 	# Step 0: Ensure CAPI is registered (prerequisite for console enrollment)
 	local capi_ok=0
 	local capi_status=""
+	local capi_creds="/etc/crowdsec/online_api_credentials.yaml"
+
 	capi_status=$(run_with_timeout 5 "$CSCLI" capi status 2>&1)
-	if echo "$capi_status" | grep -qi "registered\|online"; then
+	if echo "$capi_status" | grep -qi "You can successfully interact with Central API"; then
 		capi_ok=1
+		secubox_log "CAPI already connected"
 	else
-		# Try to register with CAPI
-		secubox_log "CAPI not registered, attempting registration..."
-		if run_with_timeout 15 "$CSCLI" capi register >/dev/null 2>&1; then
-			capi_ok=1
-			secubox_log "CAPI registration successful"
+		# CAPI not connected - check if credentials exist
+		if [ -f "$capi_creds" ]; then
+			# Credentials exist but CAPI not working - try restarting CrowdSec
+			secubox_log "CAPI credentials exist but not connected, restarting CrowdSec..."
+			/etc/init.d/crowdsec restart >/dev/null 2>&1
+			sleep 3
+			# Check again after restart
+			capi_status=$(run_with_timeout 5 "$CSCLI" capi status 2>&1)
+			if echo "$capi_status" | grep -qi "You can successfully interact with Central API"; then
+				capi_ok=1
+				secubox_log "CAPI connected after restart"
+			else
+				# Still not working but DO NOT delete credentials (rate limit protection)
+				secubox_log "CAPI still not connected - credentials preserved to avoid rate limit"
+			fi
 		else
-			json_add_boolean "success" 0
-			json_add_string "error" "CAPI registration failed. Please run LAPI repair first."
-			json_dump
-			return
+			# No credentials - safe to register
+			secubox_log "No CAPI credentials, attempting registration..."
+			if run_with_timeout 15 "$CSCLI" capi register >/dev/null 2>&1; then
+				capi_ok=1
+				secubox_log "CAPI registration successful"
+			fi
 		fi
+	fi
+
+	if [ "$capi_ok" = "0" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "CAPI registration failed. Please run LAPI repair first."
+		json_dump
+		return
 	fi
 
 	# Build enroll command
@@ -1299,6 +1349,12 @@ console_enroll() {
 		run_cscli console enable share_manual_decisions >/dev/null 2>&1
 		run_cscli console enable share_tainted >/dev/null 2>&1
 		run_cscli console enable share_context >/dev/null 2>&1
+
+		# Restart CrowdSec to activate enrollment
+		# Note: User must validate enrollment on app.crowdsec.net first
+		secubox_log "Restarting CrowdSec to apply enrollment..."
+		/etc/init.d/crowdsec restart >/dev/null 2>&1 &
+		json_add_boolean "restart_triggered" 1
 	else
 		json_add_boolean "success" 0
 		json_add_string "error" "Enrollment failed"
@@ -1364,7 +1420,24 @@ configure_acquisition() {
 	uci commit crowdsec
 	steps_done="${steps_done}Updated UCI settings; "
 
-	# Step 3: Generate acquisition YAML files
+	# Step 3: Note on Dropbear SSH logging
+	# Dropbear 2024.86 does NOT support -v flag or verbose UCI option
+	# Auth failures are detected via auth-monitor.sh parsing syslog messages
+	if [ "$ssh_enabled" = "1" ]; then
+		steps_done="${steps_done}SSH detection enabled via syslog monitoring; "
+	fi
+
+	# Enable uhttpd syslog for HTTP auth logging
+	if [ "$http_enabled" = "1" ]; then
+		if uci -q get uhttpd.main >/dev/null 2>&1; then
+			uci set uhttpd.main.syslog='1'
+			uci commit uhttpd
+			/etc/init.d/uhttpd restart >/dev/null 2>&1
+			steps_done="${steps_done}Enabled uhttpd syslog; "
+		fi
+	fi
+
+	# Step 4: Generate acquisition YAML files
 	# OpenWrt uses logread command instead of /var/log/messages by default
 	# All syslog entries (SSH, firewall, system) go through the same log stream
 	# We create ONE unified acquisition file to avoid multiple logread processes
@@ -1377,15 +1450,23 @@ configure_acquisition() {
 	rm -f "$acquis_dir/openwrt-dropbear.yaml" 2>/dev/null
 
 	# Create unified syslog acquisition if any syslog-based source is enabled
-	# SSH, firewall, and system logs all go through OpenWrt's logread
+	# SSH, firewall, and system logs all go through /var/log/messages
+	# NOTE: CrowdSec doesn't support "source: command" - must use file-based acquisition
 	if [ "$syslog_enabled" = "1" ] || [ "$firewall_enabled" = "1" ] || [ "$ssh_enabled" = "1" ]; then
+		# Ensure busybox syslog writes to file (required for CrowdSec)
+		if uci -q get system.@system[0] >/dev/null 2>&1; then
+			uci set system.@system[0].log_file='/var/log/messages'
+			uci set system.@system[0].log_size='512'
+			uci commit system
+			/etc/init.d/log restart >/dev/null 2>&1
+		fi
 		cat > "$acquis_dir/openwrt-unified.yaml" << 'YAML'
 # OpenWrt Unified Syslog Acquisition
 # Auto-generated by SecuBox CrowdSec Wizard
-# Uses logread -f to stream all syslog entries
-# Covers: system logs, SSH/Dropbear, firewall (iptables/nftables)
-source: command
-command: /sbin/logread -f
+# Reads from /var/log/messages (busybox syslog)
+# Covers: system logs, SSH/Dropbear/OpenSSH, firewall (iptables/nftables)
+filenames:
+  - /var/log/messages
 labels:
   type: syslog
 YAML
@@ -1393,7 +1474,7 @@ YAML
 		[ "$syslog_enabled" = "1" ] && enabled_sources="${enabled_sources}system "
 		[ "$ssh_enabled" = "1" ] && enabled_sources="${enabled_sources}SSH "
 		[ "$firewall_enabled" = "1" ] && enabled_sources="${enabled_sources}firewall "
-		steps_done="${steps_done}Created unified syslog acquisition (${enabled_sources}); "
+		steps_done="${steps_done}Configured syslog to file and created acquisition (${enabled_sources}); "
 	else
 		rm -f "$acquis_dir/openwrt-unified.yaml"
 		steps_done="${steps_done}Disabled syslog acquisition; "
@@ -1926,10 +2007,60 @@ remove_hub_item() {
 	json_dump
 }
 
+# Get dashboard settings (enrollment key, etc.)
+get_settings() {
+	json_init
+
+	local enrollment_key=""
+	local machine_name=""
+	local auto_enroll=""
+
+	# Read from UCI config
+	enrollment_key=$(uci -q get crowdsec-dashboard.main.enrollment_key 2>/dev/null)
+	machine_name=$(uci -q get crowdsec-dashboard.main.machine_name 2>/dev/null)
+	auto_enroll=$(uci -q get crowdsec-dashboard.main.auto_enroll 2>/dev/null)
+
+	json_add_string "enrollment_key" "$enrollment_key"
+	json_add_string "machine_name" "$machine_name"
+	json_add_string "auto_enroll" "${auto_enroll:-0}"
+
+	json_dump
+}
+
+# Save dashboard settings
+save_settings() {
+	local enrollment_key="$1"
+	local machine_name="$2"
+	local auto_enroll="$3"
+
+	json_init
+
+	# Ensure config section exists
+	uci -q get crowdsec-dashboard.main >/dev/null 2>&1 || {
+		uci set crowdsec-dashboard.main=settings
+	}
+
+	# Save settings
+	[ -n "$enrollment_key" ] && uci set crowdsec-dashboard.main.enrollment_key="$enrollment_key"
+	[ -n "$machine_name" ] && uci set crowdsec-dashboard.main.machine_name="$machine_name"
+	[ -n "$auto_enroll" ] && uci set crowdsec-dashboard.main.auto_enroll="$auto_enroll"
+
+	if uci commit crowdsec-dashboard 2>/dev/null; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Settings saved"
+		secubox_log "Saved enrollment settings"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to save settings"
+	fi
+
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{},"health_check":{},"capi_metrics":{},"hub_available":{},"install_hub_item":{"item_type":"string","item_name":"string"},"remove_hub_item":{"item_type":"string","item_name":"string"}}'
+		echo '{"decisions":{},"alerts":{"limit":"number"},"metrics":{},"bouncers":{},"machines":{},"hub":{},"status":{},"ban":{"ip":"string","duration":"string","reason":"string"},"unban":{"ip":"string"},"stats":{},"seccubox_logs":{},"collect_debug":{},"waf_status":{},"metrics_config":{},"configure_metrics":{"enable":"string"},"collections":{},"install_collection":{"collection":"string"},"remove_collection":{"collection":"string"},"update_hub":{},"register_bouncer":{"bouncer_name":"string"},"delete_bouncer":{"bouncer_name":"string"},"firewall_bouncer_status":{},"control_firewall_bouncer":{"action":"string"},"firewall_bouncer_config":{},"update_firewall_bouncer_config":{"key":"string","value":"string"},"nftables_stats":{},"check_wizard_needed":{},"wizard_state":{},"repair_lapi":{},"repair_capi":{},"reset_wizard":{},"console_status":{},"console_enroll":{"key":"string","name":"string"},"console_disable":{},"service_control":{"action":"string"},"configure_acquisition":{"syslog_enabled":"string","firewall_enabled":"string","ssh_enabled":"string","http_enabled":"string","syslog_path":"string"},"acquisition_config":{},"acquisition_metrics":{},"health_check":{},"capi_metrics":{},"hub_available":{},"install_hub_item":{"item_type":"string","item_name":"string"},"remove_hub_item":{"item_type":"string","item_name":"string"},"get_settings":{},"save_settings":{"enrollment_key":"string","machine_name":"string","auto_enroll":"string"}}'
 		;;
 	call)
 		case "$2" in
@@ -2043,6 +2174,9 @@ case "$1" in
 			repair_lapi)
 				repair_lapi
 				;;
+			repair_capi)
+				repair_capi
+				;;
 			reset_wizard)
 				reset_wizard
 				;;
@@ -2098,6 +2232,16 @@ case "$1" in
 				item_type=$(echo "$input" | jsonfilter -e '@.item_type' 2>/dev/null)
 				item_name=$(echo "$input" | jsonfilter -e '@.item_name' 2>/dev/null)
 				remove_hub_item "$item_type" "$item_name"
+				;;
+			get_settings)
+				get_settings
+				;;
+			save_settings)
+				read -r input
+				enrollment_key=$(echo "$input" | jsonfilter -e '@.enrollment_key' 2>/dev/null)
+				machine_name=$(echo "$input" | jsonfilter -e '@.machine_name' 2>/dev/null)
+				auto_enroll=$(echo "$input" | jsonfilter -e '@.auto_enroll' 2>/dev/null)
+				save_settings "$enrollment_key" "$machine_name" "$auto_enroll"
 				;;
 			*)
 				echo '{"error": "Unknown method"}'

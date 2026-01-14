@@ -197,6 +197,12 @@ var callRepairLapi = rpc.declare({
 	expect: { }
 });
 
+var callRepairCapi = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'repair_capi',
+	expect: { }
+});
+
 var callResetWizard = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'reset_wizard',
@@ -280,6 +286,19 @@ var callRemoveHubItem = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'remove_hub_item',
 	params: ['item_type', 'item_name'],
+	expect: { }
+});
+
+var callGetSettings = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'get_settings',
+	expect: { }
+});
+
+var callSaveSettings = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'save_settings',
+	params: ['enrollment_key', 'machine_name', 'auto_enroll'],
 	expect: { }
 });
 
@@ -403,6 +422,7 @@ return baseclass.extend({
 	checkWizardNeeded: callCheckWizardNeeded,
 	getWizardState: callWizardState,
 	repairLapi: callRepairLapi,
+	repairCapi: callRepairCapi,
 	resetWizard: callResetWizard,
 
 	// Console Methods
@@ -424,6 +444,10 @@ return baseclass.extend({
 	getHubAvailable: callHubAvailable,
 	installHubItem: callInstallHubItem,
 	removeHubItem: callRemoveHubItem,
+
+	// Settings Management
+	getSettings: callGetSettings,
+	saveSettings: callSaveSettings,
 
 	formatDuration: formatDuration,
 	formatDate: formatDate,

@@ -17,8 +17,8 @@
 })();
 
 var tabs = [
-	{ id: 'wizard', icon: '🚀', label: _('Setup Wizard'), path: ['admin', 'secubox', 'security', 'crowdsec', 'wizard'] },
 	{ id: 'overview', icon: '📊', label: _('Overview'), path: ['admin', 'secubox', 'security', 'crowdsec', 'overview'] },
+	{ id: 'wizard', icon: '🚀', label: _('Wizard'), path: ['admin', 'secubox', 'security', 'crowdsec', 'wizard'] },
 	{ id: 'decisions', icon: '⛔', label: _('Decisions'), path: ['admin', 'secubox', 'security', 'crowdsec', 'decisions'] },
 	{ id: 'alerts', icon: '⚠️', label: _('Alerts'), path: ['admin', 'secubox', 'security', 'crowdsec', 'alerts'] },
 	{ id: 'bouncers', icon: '🛡️', label: _('Bouncers'), path: ['admin', 'secubox', 'security', 'crowdsec', 'bouncers'] },

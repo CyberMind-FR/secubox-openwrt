@@ -1,0 +1,26 @@
+{
+	"luci-app-secubox-portal": {
+		"description": "SecuBox Portal - Unified WebUI Dashboard",
+		"read": {
+			"ubus": {
+				"luci.secubox": [
+					"modules",
+					"getModules",
+					"modules_by_category",
+					"getModuleInfo",
+					"get_theme",
+					"getStatus",
+					"getHealth"
+				],
+				"luci.system-hub": [
+					"status",
+					"get_system_info",
+					"get_health",
+					"get_components",
+					"list_services"
+				]
+			}
+		},
+		"write": {}
+	}
+}

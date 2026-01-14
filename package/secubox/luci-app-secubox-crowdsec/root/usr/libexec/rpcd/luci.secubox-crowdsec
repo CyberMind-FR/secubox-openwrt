@@ -1,0 +1,691 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SecuBox CrowdSec RPCD Backend
+# Copyright (C) 2025 CyberMind.fr - Gandalf
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CSCLI="/usr/bin/cscli"
+CSCLI_TIMEOUT=10
+
+# Execution cscli avec timeout pour eviter les blocages
+run_cscli() {
+	timeout "$CSCLI_TIMEOUT" "$CSCLI" "$@" 2>/dev/null
+}
+
+# =============================================================================
+# FONCTIONS STATUS
+# =============================================================================
+
+# Statut global des services
+get_status() {
+	json_init
+
+	# Service CrowdSec
+	if pgrep -x crowdsec >/dev/null 2>&1; then
+		json_add_string "crowdsec" "running"
+	else
+		json_add_string "crowdsec" "stopped"
+	fi
+
+	# Service Bouncer
+	if pgrep -f "crowdsec-firewall-bouncer" >/dev/null 2>&1; then
+		json_add_string "bouncer" "running"
+	else
+		json_add_string "bouncer" "stopped"
+	fi
+
+	# Service syslog-ng
+	if pgrep -f "syslog-ng" >/dev/null 2>&1; then
+		json_add_string "syslog" "running"
+	else
+		json_add_string "syslog" "stopped"
+	fi
+
+	# Version CrowdSec
+	local version
+	version=$(run_cscli version 2>/dev/null | grep "version:" | awk '{print $2}')
+	json_add_string "version" "${version:-unknown}"
+
+	# LAPI status
+	local lapi_status="unavailable"
+	if [ -x "$CSCLI" ]; then
+		if run_cscli lapi status >/dev/null 2>&1; then
+			lapi_status="available"
+		fi
+	fi
+	json_add_string "lapi_status" "$lapi_status"
+
+	# CAPI status
+	local capi_status="unknown"
+	local capi_output
+	capi_output=$(run_cscli capi status 2>/dev/null)
+	if echo "$capi_output" | grep -qi "online\|connected"; then
+		capi_status="connected"
+	elif echo "$capi_output" | grep -qi "offline\|disconnected"; then
+		capi_status="disconnected"
+	fi
+	json_add_string "capi_status" "$capi_status"
+
+	# Tables nftables
+	local nft_ipv4=0
+	local nft_ipv6=0
+	if command -v nft >/dev/null 2>&1; then
+		nft list tables 2>/dev/null | grep -q "ip crowdsec" && nft_ipv4=1
+		nft list tables 2>/dev/null | grep -q "ip6 crowdsec6" && nft_ipv6=1
+	fi
+	json_add_boolean "nftables_ipv4" "$nft_ipv4"
+	json_add_boolean "nftables_ipv6" "$nft_ipv6"
+
+	json_dump
+}
+
+# =============================================================================
+# FONCTIONS DECISIONS
+# =============================================================================
+
+# Liste des decisions actives
+get_decisions() {
+	if [ ! -x "$CSCLI" ]; then
+		echo '{"decisions":[],"error":"cscli not found"}'
+		return
+	fi
+
+	if ! pgrep -x crowdsec >/dev/null 2>&1; then
+		echo '{"decisions":[],"error":"crowdsec not running"}'
+		return
+	fi
+
+	local output
+	output=$(run_cscli decisions list -o json)
+	if [ -z "$output" ] || [ "$output" = "null" ]; then
+		echo '{"decisions":[]}'
+	else
+		echo "{\"decisions\":$output}"
+	fi
+}
+
+# Ajouter une decision (ban)
+add_decision() {
+	local ip="$1"
+	local duration="${2:-24h}"
+	local reason="${3:-Ban manuel via LuCI}"
+	local decision_type="${4:-ban}"
+
+	json_init
+
+	if [ -z "$ip" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "IP requise"
+		json_dump
+		return
+	fi
+
+	local result
+	result=$(run_cscli decisions add --ip "$ip" --duration "$duration" --reason "$reason" --type "$decision_type" 2>&1)
+
+	if [ $? -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "IP $ip bannie pour $duration"
+		logger -t "secubox-crowdsec" "Ban manuel: $ip pour $duration - $reason"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+	fi
+
+	json_dump
+}
+
+# Supprimer une decision (unban)
+delete_decision() {
+	local ip="$1"
+	local decision_id="$2"
+
+	json_init
+
+	local result
+	if [ -n "$decision_id" ]; then
+		result=$(run_cscli decisions delete --id "$decision_id" 2>&1)
+	elif [ -n "$ip" ]; then
+		result=$(run_cscli decisions delete --ip "$ip" 2>&1)
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "IP ou ID decision requis"
+		json_dump
+		return
+	fi
+
+	if [ $? -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Decision supprimee"
+		logger -t "secubox-crowdsec" "Unban: ${ip:-ID:$decision_id}"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+	fi
+
+	json_dump
+}
+
+# =============================================================================
+# FONCTIONS ALERTES
+# =============================================================================
+
+# Liste des alertes
+get_alerts() {
+	local limit="${1:-50}"
+	local since="${2:-24h}"
+
+	if [ ! -x "$CSCLI" ]; then
+		echo '{"alerts":[],"error":"cscli not found"}'
+		return
+	fi
+
+	local output
+	output=$(run_cscli alerts list -o json --limit "$limit" --since "$since")
+	if [ -z "$output" ] || [ "$output" = "null" ]; then
+		echo '{"alerts":[]}'
+	else
+		echo "{\"alerts\":$output}"
+	fi
+}
+
+# =============================================================================
+# FONCTIONS METRIQUES
+# =============================================================================
+
+# Metriques globales
+get_metrics() {
+	if [ ! -x "$CSCLI" ]; then
+		echo '{"error":"cscli not found"}'
+		return
+	fi
+
+	local output
+	output=$(run_cscli metrics -o json)
+	if [ -z "$output" ]; then
+		echo '{}'
+	else
+		echo "$output"
+	fi
+}
+
+# Statistiques resumees
+get_stats() {
+	json_init
+
+	if [ ! -x "$CSCLI" ] || ! pgrep -x crowdsec >/dev/null 2>&1; then
+		json_add_int "total_decisions" 0
+		json_add_int "alerts_24h" 0
+		json_add_int "bouncers" 0
+		json_add_int "parsers" 0
+		json_add_int "scenarios" 0
+		json_dump
+		return
+	fi
+
+	# Compter les decisions actives
+	local decisions_count
+	decisions_count=$(run_cscli decisions list -o json 2>/dev/null | grep -c '"id"' || echo "0")
+	json_add_int "total_decisions" "${decisions_count:-0}"
+
+	# Compter les alertes 24h
+	local alerts_count
+	alerts_count=$(run_cscli alerts list -o json --since 24h 2>/dev/null | grep -c '"id"' || echo "0")
+	json_add_int "alerts_24h" "${alerts_count:-0}"
+
+	# Compter les bouncers
+	local bouncers_count
+	bouncers_count=$(run_cscli bouncers list -o json 2>/dev/null | grep -c '"name"' || echo "0")
+	json_add_int "bouncers" "${bouncers_count:-0}"
+
+	# Compter les parsers installes
+	local parsers_count
+	parsers_count=$(run_cscli parsers list 2>/dev/null | grep -c "INSTALLED" || echo "0")
+	json_add_int "parsers" "${parsers_count:-0}"
+
+	# Compter les scenarios installes
+	local scenarios_count
+	scenarios_count=$(run_cscli scenarios list 2>/dev/null | grep -c "INSTALLED" || echo "0")
+	json_add_int "scenarios" "${scenarios_count:-0}"
+
+	json_dump
+}
+
+# =============================================================================
+# FONCTIONS COLLECTIONS
+# =============================================================================
+
+# Liste des collections
+get_collections() {
+	if [ ! -x "$CSCLI" ]; then
+		echo '{"collections":[]}'
+		return
+	fi
+
+	local output
+	output=$(run_cscli collections list -o json)
+	if [ -z "$output" ] || [ "$output" = "null" ]; then
+		echo '{"collections":[]}'
+	else
+		echo "{\"collections\":$output}"
+	fi
+}
+
+# Installer une collection
+install_collection() {
+	local collection="$1"
+
+	json_init
+
+	if [ -z "$collection" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Nom de collection requis"
+		json_dump
+		return
+	fi
+
+	local result
+	result=$(run_cscli collections install "$collection" 2>&1)
+
+	if [ $? -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Collection $collection installee"
+		logger -t "secubox-crowdsec" "Collection installee: $collection"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+	fi
+
+	json_dump
+}
+
+# Desinstaller une collection
+remove_collection() {
+	local collection="$1"
+
+	json_init
+
+	if [ -z "$collection" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Nom de collection requis"
+		json_dump
+		return
+	fi
+
+	local result
+	result=$(run_cscli collections remove "$collection" 2>&1)
+
+	if [ $? -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Collection $collection supprimee"
+		logger -t "secubox-crowdsec" "Collection supprimee: $collection"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+	fi
+
+	json_dump
+}
+
+# =============================================================================
+# FONCTIONS HUB
+# =============================================================================
+
+# Mise a jour du hub
+update_hub() {
+	json_init
+
+	local result
+	result=$(run_cscli hub update 2>&1)
+
+	if [ $? -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Hub mis a jour"
+		logger -t "secubox-crowdsec" "Hub mis a jour"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+	fi
+
+	json_dump
+}
+
+# Upgrade du hub
+upgrade_hub() {
+	json_init
+
+	run_cscli hub update >/dev/null 2>&1
+	local result
+	result=$(run_cscli hub upgrade 2>&1)
+
+	if [ $? -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Hub upgrade effectue"
+		logger -t "secubox-crowdsec" "Hub upgrade effectue"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+	fi
+
+	json_dump
+}
+
+# =============================================================================
+# FONCTIONS BOUNCERS
+# =============================================================================
+
+# Liste des bouncers
+get_bouncers() {
+	if [ ! -x "$CSCLI" ]; then
+		echo '{"bouncers":[]}'
+		return
+	fi
+
+	local output
+	output=$(run_cscli bouncers list -o json)
+	if [ -z "$output" ] || [ "$output" = "null" ]; then
+		echo '{"bouncers":[]}'
+	else
+		echo "{\"bouncers\":$output}"
+	fi
+}
+
+# =============================================================================
+# FONCTIONS SERVICES
+# =============================================================================
+
+# Controle des services
+control_service() {
+	local service="$1"
+	local action="$2"
+
+	json_init
+
+	case "$service" in
+		crowdsec|syslog-ng|crowdsec-firewall-bouncer)
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Service invalide: $service"
+			json_dump
+			return
+			;;
+	esac
+
+	case "$action" in
+		start|stop|restart|enable|disable)
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Action invalide: $action"
+			json_dump
+			return
+			;;
+	esac
+
+	if /etc/init.d/"$service" "$action" >/dev/null 2>&1; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Service $service: $action OK"
+		logger -t "secubox-crowdsec" "Service $service: $action"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Echec $action sur $service"
+	fi
+
+	json_dump
+}
+
+# =============================================================================
+# FONCTIONS NFTABLES
+# =============================================================================
+
+# Statistiques nftables
+get_nftables_stats() {
+	json_init
+
+	if ! command -v nft >/dev/null 2>&1; then
+		json_add_boolean "available" 0
+		json_add_string "error" "nftables non disponible"
+		json_dump
+		return
+	fi
+
+	json_add_boolean "available" 1
+
+	# Table IPv4
+	local ipv4_exists=0
+	if nft list table ip crowdsec >/dev/null 2>&1; then
+		ipv4_exists=1
+	fi
+	json_add_boolean "ipv4_table" "$ipv4_exists"
+
+	# Table IPv6
+	local ipv6_exists=0
+	if nft list table ip6 crowdsec6 >/dev/null 2>&1; then
+		ipv6_exists=1
+	fi
+	json_add_boolean "ipv6_table" "$ipv6_exists"
+
+	# Compter les IPs bloquees
+	local ipv4_count=0
+	local ipv6_count=0
+
+	if [ "$ipv4_exists" = "1" ]; then
+		ipv4_count=$(nft list set ip crowdsec crowdsec-blacklists 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | wc -l || echo "0")
+	fi
+	if [ "$ipv6_exists" = "1" ]; then
+		ipv6_count=$(nft list set ip6 crowdsec6 crowdsec6-blacklists 2>/dev/null | grep -c ':' || echo "0")
+	fi
+
+	json_add_int "blocked_ipv4" "$ipv4_count"
+	json_add_int "blocked_ipv6" "$ipv6_count"
+
+	json_dump
+}
+
+# Liste des IPs bloquees
+get_blocked_ips() {
+	json_init
+	json_add_array "ipv4"
+
+	if nft list set ip crowdsec crowdsec-blacklists 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?' > /tmp/blocked_ips.tmp; then
+		while read -r ip; do
+			json_add_string "" "$ip"
+		done < /tmp/blocked_ips.tmp
+		rm -f /tmp/blocked_ips.tmp
+	fi
+
+	json_close_array
+
+	json_add_array "ipv6"
+	# IPv6 plus complexe, on simplifie
+	json_close_array
+
+	json_dump
+}
+
+# =============================================================================
+# FONCTIONS CONFIGURATION
+# =============================================================================
+
+# Lire la configuration UCI
+get_config() {
+	json_init
+
+	# Section crowdsec
+	local enabled=$(uci -q get crowdsec.crowdsec.enabled || echo "1")
+	json_add_string "enabled" "$enabled"
+
+	# Section bouncer
+	local bouncer_enabled=$(uci -q get crowdsec.bouncer.enabled || echo "1")
+	local ipv4=$(uci -q get crowdsec.bouncer.ipv4 || echo "1")
+	local ipv6=$(uci -q get crowdsec.bouncer.ipv6 || echo "1")
+	local deny_action=$(uci -q get crowdsec.bouncer.deny_action || echo "drop")
+	local deny_log=$(uci -q get crowdsec.bouncer.deny_log || echo "1")
+	local update_freq=$(uci -q get crowdsec.bouncer.update_frequency || echo "10s")
+
+	json_add_object "bouncer"
+	json_add_string "enabled" "$bouncer_enabled"
+	json_add_string "ipv4" "$ipv4"
+	json_add_string "ipv6" "$ipv6"
+	json_add_string "deny_action" "$deny_action"
+	json_add_string "deny_log" "$deny_log"
+	json_add_string "update_frequency" "$update_freq"
+	json_close_object
+
+	# Section acquisition
+	local syslog_enabled=$(uci -q get crowdsec.acquisition.syslog_enabled || echo "1")
+	local firewall_enabled=$(uci -q get crowdsec.acquisition.firewall_enabled || echo "1")
+	local ssh_enabled=$(uci -q get crowdsec.acquisition.ssh_enabled || echo "1")
+	local http_enabled=$(uci -q get crowdsec.acquisition.http_enabled || echo "0")
+
+	json_add_object "acquisition"
+	json_add_string "syslog_enabled" "$syslog_enabled"
+	json_add_string "firewall_enabled" "$firewall_enabled"
+	json_add_string "ssh_enabled" "$ssh_enabled"
+	json_add_string "http_enabled" "$http_enabled"
+	json_close_object
+
+	json_dump
+}
+
+# Sauvegarder la configuration UCI
+save_config() {
+	local key="$1"
+	local value="$2"
+
+	json_init
+
+	if [ -z "$key" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Cle requise"
+		json_dump
+		return
+	fi
+
+	if uci set "crowdsec.$key=$value" && uci commit crowdsec; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Configuration sauvegardee"
+		logger -t "secubox-crowdsec" "Config: $key=$value"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Echec sauvegarde configuration"
+	fi
+
+	json_dump
+}
+
+# =============================================================================
+# DISPATCHER PRINCIPAL
+# =============================================================================
+
+case "$1" in
+	list)
+		cat << 'EOF'
+{
+	"status":{},
+	"decisions":{},
+	"add_decision":{"ip":"string","duration":"string","reason":"string","type":"string"},
+	"delete_decision":{"ip":"string","decision_id":"string"},
+	"alerts":{"limit":"number","since":"string"},
+	"metrics":{},
+	"stats":{},
+	"collections":{},
+	"install_collection":{"collection":"string"},
+	"remove_collection":{"collection":"string"},
+	"update_hub":{},
+	"upgrade_hub":{},
+	"bouncers":{},
+	"control_service":{"service":"string","action":"string"},
+	"nftables_stats":{},
+	"blocked_ips":{},
+	"config":{},
+	"save_config":{"key":"string","value":"string"}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status)
+				get_status
+				;;
+			decisions)
+				get_decisions
+				;;
+			add_decision)
+				read -r input
+				ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+				duration=$(echo "$input" | jsonfilter -e '@.duration' 2>/dev/null)
+				reason=$(echo "$input" | jsonfilter -e '@.reason' 2>/dev/null)
+				dtype=$(echo "$input" | jsonfilter -e '@.type' 2>/dev/null)
+				add_decision "$ip" "$duration" "$reason" "$dtype"
+				;;
+			delete_decision)
+				read -r input
+				ip=$(echo "$input" | jsonfilter -e '@.ip' 2>/dev/null)
+				decision_id=$(echo "$input" | jsonfilter -e '@.decision_id' 2>/dev/null)
+				delete_decision "$ip" "$decision_id"
+				;;
+			alerts)
+				read -r input
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null)
+				since=$(echo "$input" | jsonfilter -e '@.since' 2>/dev/null)
+				get_alerts "${limit:-50}" "${since:-24h}"
+				;;
+			metrics)
+				get_metrics
+				;;
+			stats)
+				get_stats
+				;;
+			collections)
+				get_collections
+				;;
+			install_collection)
+				read -r input
+				collection=$(echo "$input" | jsonfilter -e '@.collection' 2>/dev/null)
+				install_collection "$collection"
+				;;
+			remove_collection)
+				read -r input
+				collection=$(echo "$input" | jsonfilter -e '@.collection' 2>/dev/null)
+				remove_collection "$collection"
+				;;
+			update_hub)
+				update_hub
+				;;
+			upgrade_hub)
+				upgrade_hub
+				;;
+			bouncers)
+				get_bouncers
+				;;
+			control_service)
+				read -r input
+				service=$(echo "$input" | jsonfilter -e '@.service' 2>/dev/null)
+				action=$(echo "$input" | jsonfilter -e '@.action' 2>/dev/null)
+				control_service "$service" "$action"
+				;;
+			nftables_stats)
+				get_nftables_stats
+				;;
+			blocked_ips)
+				get_blocked_ips
+				;;
+			config)
+				get_config
+				;;
+			save_config)
+				read -r input
+				key=$(echo "$input" | jsonfilter -e '@.key' 2>/dev/null)
+				value=$(echo "$input" | jsonfilter -e '@.value' 2>/dev/null)
+				save_config "$key" "$value"
+				;;
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+esac

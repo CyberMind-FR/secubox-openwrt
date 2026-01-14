@@ -1,16 +1,19 @@
 {
   "id": "lyrion",
   "name": "Lyrion Media Server",
-  "description": "Self-hosted media server (Docker-based).",
-  "type": "docker",
-  "version": "1.0.0",
+  "description": "Self-hosted media server with multi-room audio streaming (Docker/LXC).",
+  "type": "container",
+  "version": "2.0.0",
   "source": "https://lyrion.org/",
   "packages": [
     "secubox-app-lyrion",
     "luci-app-vhost-manager"
   ],
   "ports": [
-    { "name": "ui", "protocol": "http", "port": 8096, "expose": true }
+    { "name": "web", "protocol": "http", "port": 9000, "expose": true },
+    { "name": "cli", "protocol": "tcp", "port": 9090, "expose": false },
+    { "name": "discovery", "protocol": "tcp", "port": 3483, "expose": true },
+    { "name": "discovery-udp", "protocol": "udp", "port": 3483, "expose": true }
   ],
   "volumes": [
     "/srv/lyrion",
@@ -20,12 +23,24 @@
     "default_mode": "dmz",
     "dmz_supported": true
   },
+  "runtime": {
+    "supported": ["docker", "lxc"],
+    "default": "auto",
+    "description": "Auto-detects LXC or Docker. LXC preferred for lower RAM usage."
+  },
+  "resources": {
+    "ram_docker": "300MB",
+    "ram_lxc": "150MB",
+    "storage": "500MB"
+  },
   "wizard": {
     "uci": { "config": "lyrion", "section": "main" },
     "fields": [
+      { "id": "runtime", "label": "Container Runtime", "type": "select", "uci_option": "runtime", "options": ["auto", "docker", "lxc"], "default": "auto" },
       { "id": "data_path", "label": "Data Path", "type": "text", "uci_option": "data_path", "placeholder": "/srv/lyrion" },
       { "id": "media_path", "label": "Media Path", "type": "text", "uci_option": "media_path", "placeholder": "/srv/media" },
-      { "id": "port", "label": "HTTP Port", "type": "number", "uci_option": "port", "placeholder": "8096" },
+      { "id": "port", "label": "HTTP Port", "type": "number", "uci_option": "port", "placeholder": "9000" },
+      { "id": "memory_limit", "label": "Memory Limit", "type": "text", "uci_option": "memory_limit", "placeholder": "256M" },
       { "id": "timezone", "label": "Timezone", "type": "text", "uci_option": "timezone", "placeholder": "UTC" }
     ]
   },
@@ -34,6 +49,7 @@
     "install": "lyrionctl install",
     "check": "lyrionctl check",
     "update": "lyrionctl update",
-    "status": "/etc/init.d/lyrion status"
+    "status": "/etc/init.d/lyrion status",
+    "runtime": "lyrionctl runtime"
   }
 }

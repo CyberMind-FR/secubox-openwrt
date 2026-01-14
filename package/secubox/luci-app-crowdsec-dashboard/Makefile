@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-crowdsec-dashboard
 PKG_VERSION:=0.7.0
-PKG_RELEASE:=17
+PKG_RELEASE:=27
 PKG_ARCH:=all
 
 PKG_LICENSE:=Apache-2.0
@@ -29,6 +29,10 @@ define Package/luci-app-crowdsec-dashboard/conffiles
 endef
 
 define Package/luci-app-crowdsec-dashboard/install
+	# UCI config file
+	$(INSTALL_DIR) $(1)/etc/config
+	$(INSTALL_CONF) ./root/etc/config/crowdsec-dashboard $(1)/etc/config/
+
 	# RPCD backend (MUST be 755 for ubus calls)
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.crowdsec-dashboard $(1)/usr/libexec/rpcd/

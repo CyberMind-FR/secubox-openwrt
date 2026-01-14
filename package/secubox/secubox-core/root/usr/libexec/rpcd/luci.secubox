@@ -145,6 +145,9 @@ case "$1" in
 		json_add_object "get_system_health"
 		json_close_object
 
+		json_add_object "get_public_ips"
+		json_close_object
+
 		json_add_object "get_alerts"
 		json_close_object
 
@@ -423,6 +426,40 @@ case "$1" in
 					json_add_int "free_kb" "$disk_free"
 					json_add_int "usage_percent" "$disk_percent"
 				json_close_object
+
+				json_dump
+				;;
+
+			get_public_ips)
+				# Return public IPv4 and IPv6 addresses
+				json_init
+
+				# Get IPv4 (try multiple services with short timeout)
+				ipv4=""
+				for service in "https://api.ipify.org" "https://ipv4.icanhazip.com" "https://v4.ident.me"; do
+					ipv4=$(curl -4 -s --connect-timeout 3 --max-time 5 "$service" 2>/dev/null | tr -d '\n')
+					[ -n "$ipv4" ] && break
+				done
+
+				# Get IPv6 (try multiple services with short timeout)
+				ipv6=""
+				for service in "https://api64.ipify.org" "https://ipv6.icanhazip.com" "https://v6.ident.me"; do
+					ipv6=$(curl -6 -s --connect-timeout 3 --max-time 5 "$service" 2>/dev/null | tr -d '\n')
+					[ -n "$ipv6" ] && break
+				done
+
+				# Fallback: get from interface if external check fails
+				if [ -z "$ipv4" ]; then
+					ipv4=$(ip -4 addr show scope global 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+				fi
+				if [ -z "$ipv6" ]; then
+					ipv6=$(ip -6 addr show scope global 2>/dev/null | grep -oP '(?<=inet6\s)[0-9a-f:]+' | head -1)
+				fi
+
+				json_add_string "ipv4" "${ipv4:-N/A}"
+				json_add_string "ipv6" "${ipv6:-N/A}"
+				json_add_boolean "ipv4_available" "$([ -n "$ipv4" ] && [ "$ipv4" != "N/A" ] && echo 1 || echo 0)"
+				json_add_boolean "ipv6_available" "$([ -n "$ipv6" ] && [ "$ipv6" != "N/A" ] && echo 1 || echo 0)"
 
 				json_dump
 				;;

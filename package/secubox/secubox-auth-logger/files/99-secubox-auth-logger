@@ -1,0 +1,116 @@
+#!/bin/sh
+# SecuBox Auth Logger - Post-install configuration
+# Patches LuCI dispatcher to log auth failures for CrowdSec
+# Copyright (C) 2024 CyberMind.fr
+
+LOG_FILE="/var/log/secubox-auth.log"
+DISPATCHER="/usr/share/ucode/luci/dispatcher.uc"
+JS_HOOK='<script src="/luci-static/resources/secubox/secubox-auth-hook.js"></script>'
+HOOK_MARKER="secubox-auth-hook"
+AUTH_LOG_MARKER="_secubox_auth_log"
+
+# Enable uhttpd syslog for LuCI login monitoring
+if [ -f /etc/config/uhttpd ]; then
+    uci set uhttpd.main.syslog='1'
+    uci commit uhttpd
+    /etc/init.d/uhttpd restart 2>/dev/null
+fi
+
+# Create auth log file for CrowdSec
+touch "$LOG_FILE"
+chmod 644 "$LOG_FILE"
+
+# Patch the LuCI dispatcher to log authentication failures
+# This is the reliable server-side solution that works with modern LuCI (ucode)
+patch_dispatcher() {
+    if [ ! -f "$DISPATCHER" ]; then
+        echo "Warning: LuCI dispatcher not found at $DISPATCHER"
+        return 1
+    fi
+
+    # Check if already patched
+    if grep -q "$AUTH_LOG_MARKER" "$DISPATCHER" 2>/dev/null; then
+        echo "Dispatcher already patched for auth logging"
+        return 0
+    fi
+
+    # Find the line with "if (!session)" - this is where auth failures happen
+    # We insert logging code right after this condition
+    if grep -q "if (!session)" "$DISPATCHER"; then
+        # Create backup
+        cp "$DISPATCHER" "${DISPATCHER}.bak"
+
+        # Insert auth failure logging code after "if (!session) {"
+        # Simple format without timestamp - CrowdSec parser matches the message content
+        # Format: secubox-auth[pid]: authentication failure for <user> from <ip> via luci
+        sed -i 's/if (!session) {/if (!session) { let _secubox_auth_log = open("\/var\/log\/secubox-auth.log", "a"); if (_secubox_auth_log) { _secubox_auth_log.write("secubox-auth[1]: authentication failure for " + (user || "root") + " from " + (http.getenv("REMOTE_ADDR") || "unknown") + " via luci\\n"); _secubox_auth_log.close(); }/' "$DISPATCHER"
+
+        echo "Dispatcher patched for auth failure logging"
+        return 0
+    else
+        echo "Warning: Could not find auth check in dispatcher"
+        return 1
+    fi
+}
+
+# Inject JS hook into LuCI theme header (backup method)
+# This provides client-side detection as a fallback
+inject_js_hook() {
+    # Method 1: Modern LuCI (ucode templates) - openwrt2020 theme
+    if [ -f /usr/share/ucode/luci/template/themes/openwrt2020/header.ut ]; then
+        if ! grep -q "$HOOK_MARKER" /usr/share/ucode/luci/template/themes/openwrt2020/header.ut 2>/dev/null; then
+            sed -i "s|</head>|$JS_HOOK</head>|" /usr/share/ucode/luci/template/themes/openwrt2020/header.ut 2>/dev/null
+        fi
+    fi
+
+    # Method 2: Modern LuCI (ucode templates) - bootstrap theme
+    if [ -f /usr/share/ucode/luci/template/themes/bootstrap/header.ut ]; then
+        if ! grep -q "$HOOK_MARKER" /usr/share/ucode/luci/template/themes/bootstrap/header.ut 2>/dev/null; then
+            sed -i "s|</head>|$JS_HOOK</head>|" /usr/share/ucode/luci/template/themes/bootstrap/header.ut 2>/dev/null
+        fi
+    fi
+
+    # Method 3: Legacy LuCI (Lua templates) - bootstrap theme
+    if [ -f /usr/lib/lua/luci/view/themes/bootstrap/header.htm ]; then
+        if ! grep -q "$HOOK_MARKER" /usr/lib/lua/luci/view/themes/bootstrap/header.htm 2>/dev/null; then
+            sed -i "s|</head>|$JS_HOOK\n</head>|" /usr/lib/lua/luci/view/themes/bootstrap/header.htm 2>/dev/null
+        fi
+    fi
+
+    # Method 4: Legacy LuCI (Lua templates) - material theme
+    if [ -f /usr/lib/lua/luci/view/themes/material/header.htm ]; then
+        if ! grep -q "$HOOK_MARKER" /usr/lib/lua/luci/view/themes/material/header.htm 2>/dev/null; then
+            sed -i "s|</head>|$JS_HOOK\n</head>|" /usr/lib/lua/luci/view/themes/material/header.htm 2>/dev/null
+        fi
+    fi
+
+    # Method 5: Legacy LuCI (Lua templates) - openwrt theme
+    if [ -f /usr/lib/lua/luci/view/themes/openwrt/header.htm ]; then
+        if ! grep -q "$HOOK_MARKER" /usr/lib/lua/luci/view/themes/openwrt/header.htm 2>/dev/null; then
+            sed -i "s|</head>|$JS_HOOK\n</head>|" /usr/lib/lua/luci/view/themes/openwrt/header.htm 2>/dev/null
+        fi
+    fi
+
+    # Method 6: Legacy LuCI sysauth view (fallback)
+    if [ -f /usr/lib/lua/luci/view/sysauth.htm ]; then
+        if ! grep -q "$HOOK_MARKER" /usr/lib/lua/luci/view/sysauth.htm 2>/dev/null; then
+            sed -i "s|</head>|$JS_HOOK\n</head>|" /usr/lib/lua/luci/view/sysauth.htm 2>/dev/null
+        fi
+    fi
+}
+
+# Main installation
+patch_dispatcher
+inject_js_hook
+
+# Restart rpcd to load new ubus object
+if [ -x /etc/init.d/rpcd ]; then
+    /etc/init.d/rpcd restart 2>/dev/null
+fi
+
+# Restart CrowdSec to pick up new acquisition/parser/scenario
+if [ -x /etc/init.d/crowdsec ]; then
+    /etc/init.d/crowdsec restart 2>/dev/null
+fi
+
+exit 0

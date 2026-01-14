@@ -7,6 +7,18 @@
 'require secubox-portal/header as SbHeader';
 
 return L.view.extend({
+	// Initialize SecuBox dark theme
+	initTheme: function() {
+		document.documentElement.setAttribute('data-theme', 'dark');
+		document.body.classList.add('secubox-mode');
+		if (!document.getElementById('mf-theme-styles')) {
+			var themeStyle = document.createElement('style');
+			themeStyle.id = 'mf-theme-styles';
+			themeStyle.textContent = 'body.secubox-mode { background: #0a0a0f !important; } body.secubox-mode .main-right, body.secubox-mode #maincontent, body.secubox-mode .container { background: transparent !important; }';
+			document.head.appendChild(themeStyle);
+		}
+	},
+
 	load: function() {
 		return Promise.all([
 			API.listAlerts()
@@ -14,6 +26,9 @@ return L.view.extend({
 	},
 
 	render: function(data) {
+		var self = this;
+		this.initTheme();
+
 		var alerts = data[0] || [];
 
 		var m = new form.Map('media_flow', null, null);

@@ -126,6 +126,14 @@ init_yaml() {
 	sed -i "s,^\(\s*api_key\s*:\s*\).*\$,\1$api_key," $VARCONFIG
 }
 
+_add_interface_to_list() {
+	if [ -z "$interface_list" ]; then
+		interface_list="$1"
+	else
+		interface_list="$interface_list $1"
+	fi
+}
+
 init_nftables() {
 	local section="$1"
 
@@ -152,7 +160,16 @@ init_nftables() {
 	config_get_bool filter_forward $section filter_forward '1'
 	config_get chain_name $section chain_name "crowdsec-chain"
 	config_get chain6_name $section chain6_name "crowdsec6-chain"
-	config_get interface $section interface 'eth1'
+
+	# Read interface list properly (UCI list or single value)
+	local interface_list=""
+	config_list_foreach "$section" interface _add_interface_to_list
+	if [ -z "$interface_list" ]; then
+		# Fallback: try single value
+		config_get interface_list $section interface ''
+	fi
+	# Default interfaces for SecuBox (eth1=WAN on x86, br-wan=WAN bridge, br-lan=LAN)
+	interface="${interface_list:-eth1, br-lan, br-wan}"
 
 	if [ "$deny_log" -eq "1" ]; then
 		log_term="log prefix \"${log_prefix}\""
