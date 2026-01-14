@@ -291,14 +291,23 @@ get_dashboard_stats() {
 	
 	json_add_string "top_scenarios_raw" "[$scenarios]"
 	
-	# Top countries (from decisions)
+	# Top countries (from alerts - GeoIP enriched)
 	local countries
-	countries=$(run_cscli decisions list -o json 2>/dev/null | \
-		jsonfilter -e '@[*].country' 2>/dev/null | \
-		sort | uniq -c | sort -rn | head -10 | \
+	countries=$(run_cscli alerts list -o json --limit 500 2>/dev/null | \
+		jsonfilter -e '@[*].source.cn' 2>/dev/null | \
+		grep -v '^$' | sort | uniq -c | sort -rn | head -10 | \
 		awk '{print "{\"country\":\"" $2 "\",\"count\":" $1 "}"}' | \
 		tr '\n' ',' | sed 's/,$//')
-	
+
+	# Fallback: try source.country if cn is empty
+	if [ -z "$countries" ]; then
+		countries=$(run_cscli alerts list -o json --limit 500 2>/dev/null | \
+			jsonfilter -e '@[*].source.country' 2>/dev/null | \
+			grep -v '^$' | sort | uniq -c | sort -rn | head -10 | \
+			awk '{print "{\"country\":\"" $2 "\",\"count\":" $1 "}"}' | \
+			tr '\n' ',' | sed 's/,$//')
+	fi
+
 	json_add_string "top_countries_raw" "[$countries]"
 	
 	json_dump
