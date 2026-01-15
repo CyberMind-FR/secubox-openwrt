@@ -2060,6 +2060,118 @@ run_firmware_build() {
     return 0
 }
 
+# Build native packages using full OpenWrt toolchain (without firmware)
+run_toolchain_build() {
+    local device="${1:-espressobin-v7}"
+    local packages=("${@:2}")
+
+    print_header "Building Native Packages (Toolchain)"
+
+    # Parse device profile for architecture
+    parse_device_profile "$device" || return 1
+
+    # Check dependencies
+    check_dependencies
+
+    # Setup OpenWrt environment
+    download_openwrt_source || return 1
+    setup_openwrt_feeds || return 1
+    copy_secubox_to_openwrt || return 1
+
+    # Generate minimal config for package building
+    print_header "Generating Package Build Configuration"
+    cd "$OPENWRT_DIR"
+
+    # Start with minimal config
+    cat > .config << EOF
+# Target configuration for $FW_TARGET/$FW_SUBTARGET
+CONFIG_TARGET_${FW_TARGET}=y
+CONFIG_TARGET_${FW_TARGET}_${FW_SUBTARGET}=y
+CONFIG_TARGET_MULTI_PROFILE=y
+CONFIG_TARGET_ALL_PROFILES=y
+
+# Build packages only (no firmware)
+CONFIG_ALL_NONSHARED=n
+CONFIG_ALL_KMODS=n
+CONFIG_ALL=n
+
+# Enable SecuBox native packages
+CONFIG_PACKAGE_secubox-app-cs-firewall-bouncer=m
+CONFIG_PACKAGE_secubox-app-crowdsec=m
+CONFIG_PACKAGE_secubox-app-ndpid=m
+CONFIG_PACKAGE_secubox-app-netifyd=m
+CONFIG_PACKAGE_secubox-app-nodogsplash=m
+
+# Required dependencies
+CONFIG_PACKAGE_nftables=y
+CONFIG_PACKAGE_golang=y
+
+# Disable GDB to speed up build
+CONFIG_GDB=n
+EOF
+
+    # Expand config
+    make defconfig
+
+    # Download sources
+    print_info "Downloading package sources..."
+    make download -j$(nproc) V=s 2>&1 | grep -v "^make\[" || true
+
+    # Build specific packages or all native SecuBox packages
+    print_header "Compiling Native Packages"
+
+    local native_packages=(
+        "secubox-app-cs-firewall-bouncer"
+        "secubox-app-crowdsec"
+        "secubox-app-ndpid"
+        "secubox-app-netifyd"
+        "secubox-app-nodogsplash"
+    )
+
+    if [[ ${#packages[@]} -gt 0 ]]; then
+        native_packages=("${packages[@]}")
+    fi
+
+    local built=()
+    local failed=()
+
+    for pkg in "${native_packages[@]}"; do
+        print_info "Building: $pkg"
+        if make package/$pkg/compile V=s -j$(nproc) 2>&1 | tee -a build-$pkg.log; then
+            built+=("$pkg")
+            print_success "Built: $pkg"
+        else
+            failed+=("$pkg")
+            print_error "Failed: $pkg"
+        fi
+    done
+
+    # Collect built packages
+    print_header "Collecting Built Packages"
+
+    local output_dir="$BUILD_DIR/toolchain-$ARCH"
+    mkdir -p "$output_dir"
+
+    # Find and copy IPK packages
+    find "$OPENWRT_DIR/bin/packages" -name "*.ipk" -exec cp {} "$output_dir/" \; 2>/dev/null || true
+    find "$OPENWRT_DIR/bin/targets" -name "*.ipk" -exec cp {} "$output_dir/" \; 2>/dev/null || true
+
+    local pkg_count=$(find "$output_dir" -name "*.ipk" 2>/dev/null | wc -l)
+
+    cd - > /dev/null
+
+    # Summary
+    print_header "Toolchain Build Summary"
+    print_success "Built: ${#built[@]} packages: ${built[*]}"
+    if [[ ${#failed[@]} -gt 0 ]]; then
+        print_error "Failed: ${#failed[@]} packages: ${failed[*]}"
+    fi
+    print_success "Total IPK packages: $pkg_count"
+    print_success "Location: $output_dir/"
+
+    return 0
+}
+
 # Show usage
 show_usage() {
     cat << EOF
@@ -2074,6 +2186,7 @@ COMMANDS:
     build                       Build all packages for x86_64
     build <package>             Build single package
     build --arch <arch>         Build for specific architecture
+    build-toolchain <device>    Build native packages (Go/C++) using full toolchain
     build-firmware <device>     Build full firmware image for device
     debug-firmware <device>     Debug firmware build (check config without building)
     full                        Run validation then build
@@ -2219,6 +2332,12 @@ main() {
                 exit 1
             fi
             run_firmware_build "$device"
+            ;;
+
+        build-toolchain)
+            local device="${1:-espressobin-v7}"
+            shift || true
+            run_toolchain_build "$device" "$@"
             ;;
 
         debug-firmware)
