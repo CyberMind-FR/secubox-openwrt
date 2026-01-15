@@ -11,7 +11,7 @@ PKG_VERSION:=1.0.0
 PKG_RELEASE:=1
 
 LUCI_TITLE:=LuCI SecuBox CrowdSec Dashboard
-LUCI_DEPENDS:=+luci-base +crowdsec +crowdsec-firewall-bouncer
+LUCI_DEPENDS:=+luci-base +crowdsec +secubox-app-cs-firewall-bouncer
 LUCI_PKGARCH:=all
 
 PKG_MAINTAINER:=Gerald Kerma <gandalf@gk2.net>

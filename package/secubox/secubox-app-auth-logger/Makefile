@@ -3,7 +3,7 @@
 
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=secubox-auth-logger
+PKG_NAME:=secubox-app-auth-logger
 PKG_VERSION:=1.2.2
 PKG_RELEASE:=1
 PKG_ARCH:=all
@@ -12,15 +12,16 @@ PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
 include $(INCLUDE_DIR)/package.mk
 
-define Package/secubox-auth-logger
+define Package/secubox-app-auth-logger
   SECTION:=secubox
   CATEGORY:=SecuBox
   TITLE:=Authentication Failure Logger for CrowdSec
   DEPENDS:=+rpcd +uhttpd +libubox-lua
   PKGARCH:=all
+  PROVIDES:=secubox-auth-logger
 endef
 
-define Package/secubox-auth-logger/description
+define Package/secubox-app-auth-logger/description
   Logs authentication failures from LuCI/rpcd and Dropbear SSH
   for CrowdSec detection. Includes:
   - SSH failure monitoring (OpenSSH/Dropbear)
@@ -32,14 +33,14 @@ endef
 define Build/Compile
 endef
 
-define Package/secubox-auth-logger/install
+define Package/secubox-app-auth-logger/install
 	# Auth monitor script
 	$(INSTALL_DIR) $(1)/usr/lib/secubox
 	$(INSTALL_BIN) ./files/auth-monitor.sh $(1)/usr/lib/secubox/
 
 	# Init script
 	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/secubox-auth-logger.init $(1)/etc/init.d/secubox-auth-logger
+	$(INSTALL_BIN) ./files/secubox-app-auth-logger.init $(1)/etc/init.d/secubox-app-auth-logger
 
 	# RPCD plugin for auth logging via ubus
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
@@ -61,10 +62,6 @@ define Package/secubox-auth-logger/install
 	$(INSTALL_DIR) $(1)/etc/crowdsec/parsers/s01-parse
 	$(INSTALL_DATA) ./files/openwrt-luci-auth.yaml $(1)/etc/crowdsec/parsers/s01-parse/
 
-	# CrowdSec whitelist for private IPs (RFC1918)
-	$(INSTALL_DIR) $(1)/etc/crowdsec/parsers/s02-enrich
-	$(INSTALL_DATA) ./files/secubox-private-ip-whitelist.yaml $(1)/etc/crowdsec/parsers/s02-enrich/
-
 	# CrowdSec scenario
 	$(INSTALL_DIR) $(1)/etc/crowdsec/scenarios
 	$(INSTALL_DATA) ./files/openwrt-luci-bf.yaml $(1)/etc/crowdsec/scenarios/
@@ -75,28 +72,28 @@ define Package/secubox-auth-logger/install
 
 	# UCI defaults for first boot setup
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
-	$(INSTALL_BIN) ./files/99-secubox-auth-logger $(1)/etc/uci-defaults/
+	$(INSTALL_BIN) ./files/99-secubox-app-auth-logger $(1)/etc/uci-defaults/
 endef
 
-define Package/secubox-auth-logger/postinst
+define Package/secubox-app-auth-logger/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
 	# Restart rpcd to load new plugin
 	/etc/init.d/rpcd restart 2>/dev/null
 
 	# Enable and start auth monitor
-	/etc/init.d/secubox-auth-logger enable
-	/etc/init.d/secubox-auth-logger start
+	/etc/init.d/secubox-app-auth-logger enable
+	/etc/init.d/secubox-app-auth-logger start
 
 	# Run uci-defaults to inject JS hook
-	/etc/uci-defaults/99-secubox-auth-logger 2>/dev/null || true
+	/etc/uci-defaults/99-secubox-app-auth-logger 2>/dev/null || true
 
 	echo "SecuBox Auth Logger installed - LuCI login failures now logged for CrowdSec"
 }
 exit 0
 endef
 
-define Package/secubox-auth-logger/postrm
+define Package/secubox-app-auth-logger/postrm
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
 	# Restore dispatcher from backup
@@ -127,4 +124,4 @@ define Package/secubox-auth-logger/postrm
 exit 0
 endef
 
-$(eval $(call BuildPackage,secubox-auth-logger))
+$(eval $(call BuildPackage,secubox-app-auth-logger))

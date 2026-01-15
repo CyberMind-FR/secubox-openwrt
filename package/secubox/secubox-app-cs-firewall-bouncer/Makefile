@@ -3,18 +3,20 @@
 # Copyright (C) 2021-2022 Gerald Kerma <gandalf@gk2.net>
 # Copyright (C) 2024-2025 CyberMind.fr (SecuBox adaptation)
 #
-# CrowdSec Firewall Bouncer - nftables integration
+# SecuBox CrowdSec Firewall Bouncer - nftables integration
 #
 
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=crowdsec-firewall-bouncer
-PKG_VERSION:=0.0.34
+PKG_NAME:=secubox-app-cs-firewall-bouncer
+PKG_VERSION:=0.0.31
 PKG_RELEASE:=1
 
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+# Source from upstream CrowdSec
+# Note: v0.0.31 is the last version compatible with Go 1.23 (OpenWrt 24.10 SDK)
+PKG_SOURCE:=crowdsec-firewall-bouncer-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/crowdsecurity/cs-firewall-bouncer/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=5c58f5cb9a8afc94520f62a39be290e8eea4c1a5bbacc5fea78ccfad9c8da232
+PKG_HASH:=c34963f0680ae296ae974d8f6444a2d1e2dd7617e7b05d4ad85c320529eec5f5
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/cs-firewall-bouncer-$(PKG_VERSION)
 
@@ -30,27 +32,30 @@ GO_PKG:=github.com/crowdsecurity/cs-firewall-bouncer
 
 # Build version information
 GO_PKG_LDFLAGS_X:= \
-	github.com/crowdsecurity/go-cs-lib/version.Tag=v$(PKG_VERSION)-openwrt \
+	github.com/crowdsecurity/go-cs-lib/version.Tag=v$(PKG_VERSION)-secubox \
 	github.com/crowdsecurity/go-cs-lib/version.Timestamp=$(SOURCE_DATE_EPOCH) \
 	github.com/crowdsecurity/go-cs-lib/version.GoVersion=$(shell $(GO_STAGING_DIR)/bin/go version | cut -d" " -f3)
 
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
-define Package/crowdsec-firewall-bouncer/Default
+define Package/secubox-app-cs-firewall-bouncer/Default
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=CrowdSec Firewall Bouncer
+  SUBMENU:=SecuBox
+  TITLE:=SecuBox CrowdSec Firewall Bouncer
   URL:=https://github.com/crowdsecurity/cs-firewall-bouncer
 endef
 
-define Package/crowdsec-firewall-bouncer
-$(call Package/crowdsec-firewall-bouncer/Default)
+define Package/secubox-app-cs-firewall-bouncer
+$(call Package/secubox-app-cs-firewall-bouncer/Default)
   DEPENDS:=$(GO_ARCH_DEPENDS) +nftables
+  PROVIDES:=crowdsec-firewall-bouncer
+  CONFLICTS:=crowdsec-firewall-bouncer
 endef
 
-define Package/crowdsec-firewall-bouncer/description
-  CrowdSec Firewall Bouncer for OpenWrt/SecuBox.
+define Package/secubox-app-cs-firewall-bouncer/description
+  SecuBox CrowdSec Firewall Bouncer for OpenWrt.
 
   Fetches decisions from CrowdSec Local API and enforces them
   using nftables. Supports both IPv4 and IPv6 blocking with
@@ -61,15 +66,15 @@ define Package/crowdsec-firewall-bouncer/description
   - IPv4 and IPv6 support
   - Input and forward chain filtering
   - Interface-based filtering
-  - Automatic cleanup on stop
+  - Automatic restart on firewall reload
   - procd service management
 endef
 
-define Package/crowdsec-firewall-bouncer/conffiles
+define Package/secubox-app-cs-firewall-bouncer/conffiles
 /etc/config/crowdsec
 endef
 
-define Package/crowdsec-firewall-bouncer/install
+define Package/secubox-app-cs-firewall-bouncer/install
 	$(call GoPackage/Package/Install/Bin,$(1))
 
 	$(INSTALL_DIR) $(1)/etc/config
@@ -77,7 +82,11 @@ define Package/crowdsec-firewall-bouncer/install
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/crowdsec-firewall-bouncer.initd $(1)/etc/init.d/crowdsec-firewall-bouncer
+
+	# Hotplug script to restart bouncer when firewall reloads
+	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
+	$(INSTALL_DATA) ./files/hotplug.d/99-crowdsec-bouncer $(1)/etc/hotplug.d/iface/99-crowdsec-bouncer
 endef
 
-$(eval $(call GoBinPackage,crowdsec-firewall-bouncer))
-$(eval $(call BuildPackage,crowdsec-firewall-bouncer))
+$(eval $(call GoBinPackage,secubox-app-cs-firewall-bouncer))
+$(eval $(call BuildPackage,secubox-app-cs-firewall-bouncer))
