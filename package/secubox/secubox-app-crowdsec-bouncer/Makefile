@@ -15,7 +15,7 @@ define Package/secubox-app-crowdsec-bouncer
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox CrowdSec Firewall Bouncer wrapper
-  DEPENDS:=+uci +libuci +crowdsec-firewall-bouncer +crowdsec +nftables
+  DEPENDS:=+uci +libuci +secubox-app-cs-firewall-bouncer +crowdsec +nftables
 endef
 
 define Package/secubox-app-crowdsec-bouncer/description

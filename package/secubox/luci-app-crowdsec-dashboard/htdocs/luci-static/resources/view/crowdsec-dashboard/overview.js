@@ -526,6 +526,7 @@ return view.extend({
 			]),
 
 			E('div', { 'class': 'cs-charts-row' }, [
+				this.renderFirewallHealth(),
 				this.renderFirewallBlocks()
 			]),
 			
@@ -867,6 +868,78 @@ return view.extend({
 				// Parser list
 				E('div', { 'style': 'font-size: 0.8em; font-weight: 600; color: #94a3b8; margin-bottom: 0.5em;' }, _('Installed Parsers')),
 				parserList.length > 0 ? E('div', {}, parserList) : E('div', { 'style': 'color: #666; font-size: 0.85em;' }, _('No parsers installed'))
+			])
+		]);
+	},
+
+	// Firewall Health Status Card
+	renderFirewallHealth: function() {
+		var stats = this.nftablesStats || {};
+		var health = stats.firewall_health || {};
+
+		var status = health.status || 'unknown';
+		var issues = health.issues || '';
+		var bouncerRunning = health.bouncer_running;
+		var uciEnabled = health.uci_enabled;
+		var apiKeyConfigured = health.api_key_configured;
+		var inputHooked = health.input_chain_hooked;
+		var forwardHooked = health.forward_chain_hooked;
+		var setsHaveTimeout = health.sets_have_timeout;
+		var decisionsSynced = health.decisions_synced;
+		var cscliDecisions = health.cscli_decisions_count || 0;
+		var nftElements = health.nft_elements_count || 0;
+
+		var statusColor = status === 'ok' ? '#00d4aa' : (status === 'warning' ? '#ffa500' : '#ff4757');
+		var statusIcon = status === 'ok' ? '✅' : (status === 'warning' ? '⚠️' : '❌');
+		var statusText = status === 'ok' ? 'Healthy' : (status === 'warning' ? 'Warning' : 'Error');
+
+		var checkItems = [
+			{ label: 'Bouncer Process', ok: bouncerRunning, detail: bouncerRunning ? 'Running' : 'Not running' },
+			{ label: 'UCI Enabled', ok: uciEnabled, detail: uciEnabled ? 'Enabled' : 'Disabled' },
+			{ label: 'API Key', ok: apiKeyConfigured, detail: apiKeyConfigured ? 'Configured' : 'Missing or default' },
+			{ label: 'Input Chain', ok: inputHooked, detail: inputHooked ? 'Hooked' : 'Not hooked' },
+			{ label: 'Forward Chain', ok: forwardHooked, detail: forwardHooked ? 'Hooked' : 'Not hooked' },
+			{ label: 'Set Timeout', ok: setsHaveTimeout, detail: setsHaveTimeout ? 'Enabled' : 'Disabled' },
+			{ label: 'Decisions Sync', ok: decisionsSynced, detail: decisionsSynced ? (nftElements + ' synced') : 'Out of sync' }
+		];
+
+		var checkRows = checkItems.map(function(item) {
+			return E('div', { 'style': 'display: flex; align-items: center; justify-content: space-between; padding: 0.4em 0; border-bottom: 1px solid rgba(255,255,255,0.05);' }, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
+					E('span', { 'style': 'font-size: 1em;' }, item.ok ? '✅' : '❌'),
+					E('span', { 'style': 'font-size: 0.85em;' }, item.label)
+				]),
+				E('span', { 'style': 'font-size: 0.75em; color: ' + (item.ok ? '#00d4aa' : '#ff4757') + ';' }, item.detail)
+			]);
+		});
+
+		return E('div', { 'class': 'cs-card', 'style': 'flex: 1;' }, [
+			E('div', { 'class': 'cs-card-header' }, [
+				E('div', { 'class': 'cs-card-title' }, [
+					_('Firewall Health'),
+					E('span', {
+						'style': 'margin-left: 0.75em; font-size: 0.8em; padding: 0.2em 0.6em; background: ' + statusColor + '; border-radius: 12px;'
+					}, statusIcon + ' ' + statusText)
+				])
+			]),
+			E('div', { 'class': 'cs-card-body' }, [
+				// Status summary
+				issues ? E('div', { 'style': 'background: rgba(255,71,87,0.1); border: 1px solid rgba(255,71,87,0.3); border-radius: 8px; padding: 0.75em; margin-bottom: 1em;' }, [
+					E('div', { 'style': 'font-size: 0.85em; color: #ff4757;' }, issues)
+				]) : E('span'),
+				// Sync stats
+				E('div', { 'style': 'display: flex; gap: 1em; margin-bottom: 1em;' }, [
+					E('div', { 'style': 'flex: 1; text-align: center; padding: 0.5em; background: rgba(102,126,234,0.1); border-radius: 8px;' }, [
+						E('div', { 'style': 'font-size: 1.25em; font-weight: 700; color: #667eea;' }, String(cscliDecisions)),
+						E('div', { 'style': 'font-size: 0.7em; color: #888;' }, 'Decisions')
+					]),
+					E('div', { 'style': 'flex: 1; text-align: center; padding: 0.5em; background: rgba(0,212,170,0.1); border-radius: 8px;' }, [
+						E('div', { 'style': 'font-size: 1.25em; font-weight: 700; color: #00d4aa;' }, String(nftElements)),
+						E('div', { 'style': 'font-size: 0.7em; color: #888;' }, 'In Firewall')
+					])
+				]),
+				// Check items
+				E('div', {}, checkRows)
 			])
 		]);
 	},

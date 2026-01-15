@@ -1,0 +1,31 @@
+#!/bin/sh
+# CrowdSec Firewall Bouncer - Interface/Firewall hotplug handler
+# Ensures bouncer's nftables rules are applied after network/firewall changes
+
+# Only act on interface up events for WAN
+[ "$ACTION" = "ifup" ] || exit 0
+[ "$INTERFACE" = "wan" ] || [ "$INTERFACE" = "wan6" ] || exit 0
+
+# Check if bouncer is enabled
+. /lib/functions.sh
+config_load crowdsec
+
+is_enabled() {
+	local section="$1"
+	local enabled
+	config_get_bool enabled "$section" enabled 0
+	[ "$enabled" -eq 1 ] && return 0
+	return 1
+}
+
+bouncer_enabled=0
+config_foreach is_enabled bouncer && bouncer_enabled=1
+
+[ "$bouncer_enabled" -eq 1 ] || exit 0
+
+# Check if crowdsec tables exist - if not, bouncer needs restart
+if ! nft list table ip crowdsec >/dev/null 2>&1; then
+	logger -t crowdsec-bouncer "WAN up but crowdsec nftables missing, restarting bouncer"
+	sleep 2
+	/etc/init.d/crowdsec-firewall-bouncer restart
+fi

@@ -947,6 +947,86 @@ get_nftables_stats() {
 	json_add_int "ipv6_cscli_count" "$ipv6_cscli"
 	json_add_int "ipv6_total_count" "$((ipv6_capi + ipv6_cscli))"
 
+	# Firewall Health Check
+	json_add_object "firewall_health"
+
+	# Check bouncer process
+	local bouncer_running=0
+	if pgrep cs-firewall-bouncer >/dev/null 2>&1; then
+		bouncer_running=1
+	fi
+	json_add_boolean "bouncer_running" "$bouncer_running"
+
+	# Check UCI config
+	local uci_enabled=0
+	local uci_api_key=""
+	if uci -q get crowdsec.bouncer.enabled >/dev/null 2>&1; then
+		[ "$(uci -q get crowdsec.bouncer.enabled)" = "1" ] && uci_enabled=1
+	fi
+	uci_api_key=$(uci -q get crowdsec.bouncer.api_key 2>/dev/null)
+	json_add_boolean "uci_enabled" "$uci_enabled"
+	json_add_boolean "api_key_configured" "$([ -n "$uci_api_key" ] && [ "$uci_api_key" != "API_KEY" ] && echo 1 || echo 0)"
+
+	# Check chains are hooked (input/forward)
+	local input_hooked=0
+	local forward_hooked=0
+	if [ "$ipv4_exists" = "1" ]; then
+		nft list table ip crowdsec 2>/dev/null | grep -q "hook input" && input_hooked=1
+		nft list table ip crowdsec 2>/dev/null | grep -q "hook forward" && forward_hooked=1
+	fi
+	json_add_boolean "input_chain_hooked" "$input_hooked"
+	json_add_boolean "forward_chain_hooked" "$forward_hooked"
+
+	# Check if sets have timeout flag (required for auto-expiry)
+	local sets_have_timeout=0
+	if [ "$ipv4_exists" = "1" ]; then
+		nft list set ip crowdsec crowdsec-blacklists 2>/dev/null | grep -q "flags timeout" && sets_have_timeout=1
+	fi
+	json_add_boolean "sets_have_timeout" "$sets_have_timeout"
+
+	# Check decisions sync (compare cscli decisions count vs nftables)
+	local cscli_decisions=0
+	local nft_elements=0
+	local sync_ok=0
+	if command -v cscli >/dev/null 2>&1; then
+		cscli_decisions=$(cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l || echo "0")
+	fi
+	nft_elements=$((ipv4_capi + ipv4_cscli + ipv4_other + ipv6_capi + ipv6_cscli))
+	# Sync is OK if nft has at least some elements when decisions exist
+	[ "$cscli_decisions" -gt 0 ] && [ "$nft_elements" -gt 0 ] && sync_ok=1
+	[ "$cscli_decisions" -eq 0 ] && [ "$nft_elements" -eq 0 ] && sync_ok=1
+	json_add_int "cscli_decisions_count" "$cscli_decisions"
+	json_add_int "nft_elements_count" "$nft_elements"
+	json_add_boolean "decisions_synced" "$sync_ok"
+
+	# Overall health status
+	local health_status="ok"
+	local health_issues=""
+	if [ "$bouncer_running" != "1" ]; then
+		health_status="error"
+		health_issues="Bouncer not running; "
+	fi
+	if [ "$uci_enabled" != "1" ]; then
+		health_status="warning"
+		health_issues="${health_issues}Bouncer not enabled in UCI; "
+	fi
+	if [ "$ipv4_exists" != "1" ]; then
+		health_status="error"
+		health_issues="${health_issues}IPv4 table missing; "
+	fi
+	if [ "$input_hooked" != "1" ] && [ "$forward_hooked" != "1" ]; then
+		health_status="error"
+		health_issues="${health_issues}No chains hooked; "
+	fi
+	if [ "$sync_ok" != "1" ]; then
+		health_status="warning"
+		health_issues="${health_issues}Decisions not synced to firewall; "
+	fi
+	json_add_string "status" "$health_status"
+	json_add_string "issues" "$health_issues"
+
+	json_close_object
+
 	json_dump
 }
 
