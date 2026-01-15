@@ -2117,6 +2117,24 @@ EOF
     print_info "Downloading package sources..."
     make download -j$(nproc) V=s 2>&1 | grep -v "^make\[" || true
 
+    # Build prerequisite targets first
+    # This builds tools, toolchain, and target preparation in one step
+    print_header "Building Prerequisites (Tools + Toolchain)"
+    print_info "This may take 1-2 hours on first run..."
+
+    # Build tools, toolchain, and target preparation (needed for packages)
+    if ! make tools/install toolchain/install target/compile V=s -j$(nproc) 2>&1 | tee build-prereqs.log; then
+        print_warning "Prerequisites build had issues, continuing..."
+    fi
+    print_success "Prerequisites built"
+
+    # Build Go compiler for host (needed for Go packages)
+    print_header "Building Go Compiler (for Go packages)"
+    if ! make package/feeds/packages/lang/golang/host/compile V=s -j$(nproc) 2>&1 | tee build-golang.log; then
+        print_warning "Go compiler build had issues, some packages may fail"
+    fi
+    print_success "Go compiler ready"
+
     # Build specific packages or all native SecuBox packages
     print_header "Compiling Native Packages"
 
