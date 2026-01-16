@@ -11,7 +11,7 @@ LUCI_DESCRIPTION:=Unified entry point for all SecuBox applications with tabbed n
 LUCI_DEPENDS:=+luci-base +luci-theme-secubox
 LUCI_PKGARCH:=all
 PKG_VERSION:=1.0.2
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=GPL-3.0-or-later
 PKG_MAINTAINER:=SecuBox Team <secubox@example.com>
 
