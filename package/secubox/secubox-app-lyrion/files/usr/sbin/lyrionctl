@@ -273,14 +273,19 @@ apk add --no-cache \
     perl-io-socket-ssl \
     perl-encode \
     perl-xml-parser \
+    perl-xml-simple \
     perl-dbi \
     perl-dbd-sqlite \
     perl-json-xs \
     perl-yaml-libyaml \
-    perl-image-scale \
     perl-crypt-openssl-rsa \
     perl-ev \
     perl-anyevent \
+    perl-gd \
+    perl-digest-sha1 \
+    perl-sub-name \
+    perl-html-parser \
+    imagemagick \
     flac \
     faad2 \
     sox \
@@ -288,29 +293,51 @@ apk add --no-cache \
     curl \
     wget
 
-# Download and install Lyrion
+# Download and install Lyrion (full tarball with CPAN modules)
 cd /tmp
-wget -q "https://downloads.lyrion.org/nightly/lyrion-9.0.0-nightly.tar.gz" -O lyrion.tar.gz || \
-wget -q "https://downloads.slimdevices.com/nightly/lms/lms-nightly.tar.gz" -O lyrion.tar.gz
+wget -q "https://downloads.lms-community.org/LyrionMusicServer_v9.0.3/lyrionmusicserver-9.0.3.tgz" -O lyrion.tar.gz || \
+wget -q "https://downloads.lms-community.org/nightly/lyrionmusicserver-9.0.4-1768197566.tgz" -O lyrion.tar.gz
 
 mkdir -p /opt/lyrion
 tar xzf lyrion.tar.gz -C /opt/lyrion --strip-components=1
 rm -f lyrion.tar.gz
 
-# Create directories
-mkdir -p /config /music /var/log/lyrion
+# Remove conflicting bundled CPAN modules (use system modules instead)
+rm -rf /opt/lyrion/CPAN/arch
+rm -rf /opt/lyrion/CPAN/XML/Parser*
+rm -rf /opt/lyrion/CPAN/Image
+rm -rf /opt/lyrion/CPAN/DBD
+rm -rf /opt/lyrion/CPAN/DBI /opt/lyrion/CPAN/DBI.pm
+rm -rf /opt/lyrion/CPAN/YAML
+
+# Create stub Image::Scale module (artwork resizing - optional)
+mkdir -p /opt/lyrion/CPAN/Image
+cat > /opt/lyrion/CPAN/Image/Scale.pm << 'STUB'
+package Image::Scale;
+our $VERSION = '0.08';
+sub new { return bless {}, shift }
+sub resize { return 1 }
+sub width { return 0 }
+sub height { return 0 }
+1;
+STUB
+
+# Create directories with proper permissions for nobody user
+mkdir -p /config/prefs/plugin /config/cache /music /var/log/lyrion
+chown -R nobody:nobody /config /var/log/lyrion
 
 # Create startup script
 cat > /opt/lyrion/start.sh << 'START'
 #!/bin/sh
 cd /opt/lyrion
+mkdir -p /config/prefs/plugin /config/cache /var/log/lyrion
+chown -R nobody:nobody /config /var/log/lyrion 2>/dev/null || true
 exec perl slimserver.pl \
     --prefsdir /config/prefs \
     --cachedir /config/cache \
     --logdir /var/log/lyrion \
     --httpport 9000 \
-    --cliport 9090 \
-    --user root
+    --cliport 9090
 START
 chmod +x /opt/lyrion/start.sh
 
