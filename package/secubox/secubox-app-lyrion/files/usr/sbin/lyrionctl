@@ -285,6 +285,8 @@ apk add --no-cache \
     perl-digest-sha1 \
     perl-sub-name \
     perl-html-parser \
+    perl-template-toolkit \
+    perl-file-slurp \
     imagemagick \
     flac \
     faad2 \
@@ -309,6 +311,7 @@ rm -rf /opt/lyrion/CPAN/Image
 rm -rf /opt/lyrion/CPAN/DBD
 rm -rf /opt/lyrion/CPAN/DBI /opt/lyrion/CPAN/DBI.pm
 rm -rf /opt/lyrion/CPAN/YAML
+rm -rf /opt/lyrion/CPAN/Template /opt/lyrion/CPAN/Template.pm
 
 # Create stub Image::Scale module (artwork resizing - optional)
 mkdir -p /opt/lyrion/CPAN/Image
@@ -319,6 +322,25 @@ sub new { return bless {}, shift }
 sub resize { return 1 }
 sub width { return 0 }
 sub height { return 0 }
+1;
+STUB
+
+# Create stub Devel::Peek module (runtime inspection - optional)
+mkdir -p /opt/lyrion/CPAN/Devel
+cat > /opt/lyrion/CPAN/Devel/Peek.pm << 'STUB'
+package Devel::Peek;
+use strict;
+our $VERSION = '1.32';
+our $ANON_GV;
+{ no strict 'refs'; $ANON_GV = \*{'Devel::Peek::ANON'}; }
+sub Dump { }
+sub DumpArray { }
+sub SvREFCNT { return 1 }
+sub DeadCode { }
+sub mstat { }
+sub fill_mstats { }
+sub SvROK { return 0 }
+sub CvGV { return $ANON_GV }
 1;
 STUB
 
@@ -424,14 +446,24 @@ lxc_status() {
 
 lxc_logs() {
 	load_config
-	if [ -f "$data_path/cache/server.log" ]; then
+	local logfile="$LXC_ROOTFS/var/log/lyrion/server.log"
+
+	# Also check container logs via lxc-attach if container is running
+	if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
 		if [ "$1" = "-f" ]; then
-			tail -f "$data_path/cache/server.log"
+			lxc-attach -n "$LXC_NAME" -- tail -f /var/log/lyrion/server.log
 		else
-			tail -100 "$data_path/cache/server.log"
+			lxc-attach -n "$LXC_NAME" -- tail -100 /var/log/lyrion/server.log
+		fi
+	elif [ -f "$logfile" ]; then
+		if [ "$1" = "-f" ]; then
+			tail -f "$logfile"
+		else
+			tail -100 "$logfile"
 		fi
 	else
-		log_warn "No log file found at $data_path/cache/server.log"
+		log_warn "Container not running and no log file found"
+		log_info "Start the service with: /etc/init.d/lyrion start"
 	fi
 }
 
