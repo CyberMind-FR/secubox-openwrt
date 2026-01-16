@@ -39,19 +39,24 @@ return view.extend({
 		];
 
 		var changelog = [
-			{ version: 'v0.15.3', date: '2025-01', changes: [
+			{ version: 'v0.15.0-rc2', date: '2026-01-16', changes: [
+				'Fix CrowdSec firewall bouncer: ajout regles DROP manquantes',
+				'Correction interface WAN (br-wan) dans configuration bouncer',
+				'Les IPs blacklistees sont maintenant effectivement bloquees'
+			]},
+			{ version: 'v0.15.3', date: '2026-01', changes: [
 				'Reorganisation du dashboard',
 				'Console Debug deplacee vers System Hub',
 				'Pages publiques Bug Bounty et Crowdfunding',
 				'Correction detection auth-logger (faux positifs)',
 				'Whitelist IP privees pour CrowdSec'
 			]},
-			{ version: 'v0.15.2', date: '2025-01', changes: [
+			{ version: 'v0.15.2', date: '2026-01', changes: [
 				'Fix inscription CAPI avec credentials obsoletes',
 				'Correction affichage "null" CrowdSec Dashboard',
 				'Amelioration acquisition logs CrowdSec'
 			]},
-			{ version: 'v0.15.1', date: '2025-01', changes: [
+			{ version: 'v0.15.1', date: '2026-01', changes: [
 				'Support Docker/LXC hybride pour Lyrion',
 				'Permissions fichiers Network Tweaks',
 				'Sync command pour local-build'
