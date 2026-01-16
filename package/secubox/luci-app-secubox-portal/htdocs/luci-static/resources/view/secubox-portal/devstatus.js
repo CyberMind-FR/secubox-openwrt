@@ -32,10 +32,10 @@ return view.extend({
 		];
 
 		var planned = [
-			{ name: 'Network Modes 1.0', desc: 'Mode DMZ, Bridge avance, VLAN support', eta: 'Q1 2026' },
-			{ name: 'SecuBox Hub 1.0', desc: 'Gestion centralisee complete', eta: 'Q1 2026' },
-			{ name: 'Multi-WAN Failover', desc: 'Basculement automatique multi-FAI', eta: 'Q2 2026' },
-			{ name: 'Documentation Complete', desc: 'Guides utilisateur et developpeur', eta: 'Q2 2026' }
+			{ name: 'Phase 4: Beta Testing', desc: 'Recrutement 100 beta testeurs, validation terrain', eta: 'Q1 2026' },
+			{ name: 'Phase 5: Crowdfunding', desc: 'Campagne participative, objectif 50 000€', eta: 'Q2 2026' },
+			{ name: 'Phase 6: Production', desc: 'Fabrication, controle qualite, expedition', eta: 'Q3-Q4 2026' },
+			{ name: 'Livraison Finale', desc: 'Deploiement complet et support', eta: 'Q4 2027' }
 		];
 
 		var changelog = [
