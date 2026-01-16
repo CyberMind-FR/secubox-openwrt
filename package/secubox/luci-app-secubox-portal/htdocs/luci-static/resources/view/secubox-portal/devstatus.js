@@ -32,10 +32,10 @@ return view.extend({
 		];
 
 		var planned = [
-			{ name: 'SecuBox Cloud', desc: 'Synchronisation et backup cloud', eta: 'Q2 2026' },
-			{ name: 'Mobile App', desc: 'Application mobile de controle', eta: 'Q3 2026' },
-			{ name: 'AI Threat Detection', desc: 'Detection des menaces par IA', eta: 'Q4 2026' },
-			{ name: 'Multi-WAN Failover', desc: 'Basculement automatique multi-FAI', eta: 'Q2 2026' }
+			{ name: 'Network Modes 1.0', desc: 'Mode DMZ, Bridge avance, VLAN support', eta: 'Q1 2026' },
+			{ name: 'SecuBox Hub 1.0', desc: 'Gestion centralisee complete', eta: 'Q1 2026' },
+			{ name: 'Multi-WAN Failover', desc: 'Basculement automatique multi-FAI', eta: 'Q2 2026' },
+			{ name: 'Documentation Complete', desc: 'Guides utilisateur et developpeur', eta: 'Q2 2026' }
 		];
 
 		var changelog = [
