@@ -211,6 +211,30 @@ return baseclass.extend({
 			path: 'admin/secubox/services/vhosts/overview',
 			service: 'nginx',
 			version: '0.5.0'
+		},
+		'magicmirror2': {
+			id: 'magicmirror2',
+			name: 'MagicMirror²',
+			desc: 'Smart display platform with modular widgets for weather, calendar, news and more',
+			icon: '\ud83e\ude9e',
+			iconBg: 'rgba(155, 89, 182, 0.15)',
+			iconColor: '#9b59b6',
+			section: 'services',
+			path: 'admin/secubox/services/magicmirror2/dashboard',
+			service: 'magicmirror2',
+			version: '2.29.0'
+		},
+		'mmpm': {
+			id: 'mmpm',
+			name: 'MMPM',
+			desc: 'MagicMirror Package Manager - Install, update and manage modules easily',
+			icon: '\ud83d\udce6',
+			iconBg: 'rgba(243, 156, 18, 0.15)',
+			iconColor: '#f39c12',
+			section: 'services',
+			path: 'admin/secubox/services/mmpm/dashboard',
+			service: 'mmpm',
+			version: '3.1.0'
 		}
 	},
 

@@ -1,0 +1,34 @@
+{
+	"luci-app-magicmirror2": {
+		"description": "Grant access to MagicMirror2 dashboard",
+		"read": {
+			"ubus": {
+				"luci.magicmirror2": [
+					"get_status",
+					"get_config",
+					"get_display_config",
+					"get_weather_config",
+					"get_modules_config",
+					"get_installed_modules",
+					"get_web_url"
+				]
+			},
+			"uci": ["magicmirror2"]
+		},
+		"write": {
+			"ubus": {
+				"luci.magicmirror2": [
+					"service_start",
+					"service_stop",
+					"service_restart",
+					"install_module",
+					"remove_module",
+					"update_modules",
+					"regenerate_config",
+					"set_config"
+				]
+			},
+			"uci": ["magicmirror2"]
+		}
+	}
+}

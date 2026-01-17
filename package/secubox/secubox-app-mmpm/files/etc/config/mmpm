@@ -1,0 +1,6 @@
+# MMPM - MagicMirror Package Manager configuration
+
+config mmpm 'main'
+	option enabled '0'
+	option port '7891'
+	option address '0.0.0.0'
