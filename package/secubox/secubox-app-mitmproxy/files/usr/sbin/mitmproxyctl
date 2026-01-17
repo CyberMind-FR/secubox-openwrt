@@ -348,7 +348,7 @@ esac
 [ "$SSL_INSECURE" = "1" ] && ARGS="$ARGS --ssl-insecure"
 [ "$ANTICACHE" = "1" ] && ARGS="$ARGS --anticache"
 [ "$ANTICOMP" = "1" ] && ARGS="$ARGS --anticomp"
-[ -n "$FLOW_DETAIL" ] && ARGS="$ARGS --flow-detail $FLOW_DETAIL"
+# Note: --flow-detail removed in recent mitmproxy versions
 
 # Load addon script if filtering is enabled
 if [ "$FILTERING_ENABLED" = "1" ] && [ -n "$ADDON_SCRIPT" ] && [ -f "$ADDON_SCRIPT" ]; then
