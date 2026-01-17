@@ -149,7 +149,7 @@ cmd_status() {
 	echo "MagicMirror2 container: RUNNING"
 
 	if is_mmpm_installed; then
-		local version=$(lxc-attach -n "$LXC_NAME" -- $MMPM_BIN version 2>/dev/null | head -1 || echo "unknown")
+		local version=$(run_mmpm version 2>/dev/null | head -1 || echo "unknown")
 		echo "MMPM installed: YES (v$version)"
 	else
 		echo "MMPM installed: NO"
@@ -159,20 +159,17 @@ cmd_status() {
 	fi
 
 	echo ""
-	echo "=== Configuration ==="
-	echo "GUI Port: $port"
-	echo "GUI Address: $address"
-	echo "GUI Enabled: $enabled"
+	echo "=== GUI Status ==="
 
-	# Check if GUI is running
-	if pgrep -f "mmpm gui" >/dev/null 2>&1; then
-		local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
-		echo ""
-		echo "GUI Status: RUNNING"
-		echo "GUI URL: http://$router_ip:$port"
+	# Check if GUI is running via pm2
+	local ui_status=$(run_mmpm ui --status 2>/dev/null | grep "mmpm.ui" | grep -c "online" || echo "0")
+	if [ "$ui_status" != "0" ]; then
+		local gui_url=$(run_mmpm ui --url 2>/dev/null | grep -oE 'http://[^[:space:]]+' || echo "")
+		echo "GUI Status: RUNNING (pm2)"
+		echo "GUI URL: $gui_url"
 	else
-		echo ""
 		echo "GUI Status: NOT RUNNING"
+		echo "Start with: /etc/init.d/mmpm start"
 	fi
 }
 
@@ -185,7 +182,7 @@ cmd_logs() {
 	fi
 }
 
-# Run MMPM GUI (called by procd)
+# Start MMPM GUI (via pm2)
 cmd_service_run() {
 	check_mm2_running || return 1
 
@@ -194,19 +191,29 @@ cmd_service_run() {
 		return 1
 	fi
 
-	load_config
+	log_info "Starting MMPM GUI..."
 
-	log_info "Starting MMPM GUI on port $port..."
+	# Check if UI is installed, if not install it
+	local ui_status=$(run_mmpm ui --status 2>/dev/null | grep -c "mmpm.ui" || echo "0")
+	if [ "$ui_status" = "0" ]; then
+		log_info "Installing MMPM UI..."
+		run_mmpm ui install --yes 2>/dev/null || true
+	fi
 
-	# Run MMPM GUI inside container (with proper PATH for pm2/npm)
-	exec lxc-attach -n "$LXC_NAME" -- sh -c "export PATH=$NODE_PATH:\$PATH && $MMPM_BIN ui --port $port --host $address"
+	# Start MMPM GUI via pm2
+	run_mmpm ui --start
 }
 
 # Stop MMPM GUI
 cmd_service_stop() {
-	# Kill mmpm gui process in container
-	lxc-attach -n "$LXC_NAME" -- pkill -f "mmpm gui" 2>/dev/null || true
-	log_info "MMPM GUI stopped"
+	check_mm2_running || return 1
+
+	if ! is_mmpm_installed; then
+		return 0
+	fi
+
+	log_info "Stopping MMPM GUI..."
+	run_mmpm ui --stop 2>/dev/null || true
 }
 
 # Search modules
