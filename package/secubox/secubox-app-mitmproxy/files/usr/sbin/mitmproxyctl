@@ -357,7 +357,8 @@ if [ "$FILTERING_ENABLED" = "1" ] && [ -n "$ADDON_SCRIPT" ] && [ -f "$ADDON_SCRI
 fi
 
 # Run mitmweb (web interface + proxy)
-exec mitmweb $ARGS --web-host "$WEB_HOST" --web-port "$WEB_PORT" --no-web-open-browser
+# Disable web authentication for LAN access
+exec mitmweb $ARGS --web-host "$WEB_HOST" --web-port "$WEB_PORT" --no-web-open-browser --set web_password=
 START
 	chmod +x "$rootfs/opt/start-mitmproxy.sh"
 
