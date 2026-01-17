@@ -325,8 +325,9 @@ apk add --no-cache \
     openssl \
     ca-certificates
 
-# Install mitmproxy 9.0.1 (last version before mitmproxy_rs Rust dependency was added in 10.x)
-pip3 install --break-system-packages 'mitmproxy==9.0.1'
+# Install mitmproxy 8.1.1 (last pure-Python version without any Rust dependencies)
+# 9.x requires mitmproxy-wireguard (Rust), 10.x requires mitmproxy_rs (Rust)
+pip3 install --break-system-packages 'mitmproxy==8.1.1'
 
 # Create directories
 mkdir -p /data /var/log/mitmproxy /etc/mitmproxy/addons
