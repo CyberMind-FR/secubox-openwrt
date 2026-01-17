@@ -358,17 +358,26 @@ if [ "$FILTERING_ENABLED" = "1" ] && [ -n "$ADDON_SCRIPT" ] && [ -f "$ADDON_SCRI
 fi
 
 # Run mitmweb and capture token
-# The token is printed to stderr, capture it and save to file
-mitmweb $ARGS --web-host "$WEB_HOST" --web-port "$WEB_PORT" --no-web-open-browser 2>&1 | while IFS= read -r line; do
-    echo "$line"
-    # Extract and save token if present
-    case "$line" in
-        *"token="*)
-            token=$(echo "$line" | sed -n 's/.*token=\([a-f0-9]*\).*/\1/p')
-            [ -n "$token" ] && echo "$token" > /data/.mitmproxy_token
-            ;;
-    esac
-done
+# Use tee to both display output and capture token
+LOG_FILE="/tmp/mitmweb.log"
+rm -f "$LOG_FILE" /data/.mitmproxy_token
+
+# Background job to capture token from log
+(
+    for i in $(seq 1 30); do
+        if [ -f "$LOG_FILE" ]; then
+            token=$(grep -o 'token=[a-f0-9]*' "$LOG_FILE" 2>/dev/null | head -1 | cut -d= -f2)
+            if [ -n "$token" ]; then
+                echo "$token" > /data/.mitmproxy_token
+                break
+            fi
+        fi
+        sleep 1
+    done
+) &
+
+# Run mitmweb with output to both console and log file
+exec mitmweb $ARGS --web-host "$WEB_HOST" --web-port "$WEB_PORT" --no-web-open-browser 2>&1 | tee "$LOG_FILE"
 START
 	chmod +x "$rootfs/opt/start-mitmproxy.sh"
 
