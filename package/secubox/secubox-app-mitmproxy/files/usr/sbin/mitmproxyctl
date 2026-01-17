@@ -305,8 +305,6 @@ set -e
 sed -i 's|#\(.*community\)|\1|' /etc/apk/repositories
 
 # Update and install Python dependencies
-# Note: mitmproxy 10.2+ requires Rust 1.80+ but Alpine 3.19 only has 1.76
-# Using mitmproxy 10.1.6 which is the last pure-Python version
 apk update
 apk add --no-cache \
     python3 \
@@ -323,11 +321,18 @@ apk add --no-cache \
     py3-sortedcontainers \
     libffi \
     openssl \
-    ca-certificates
+    ca-certificates \
+    build-base \
+    python3-dev \
+    libffi-dev \
+    openssl-dev
 
 # Install mitmproxy 8.1.1 (last pure-Python version without any Rust dependencies)
 # 9.x requires mitmproxy-wireguard (Rust), 10.x requires mitmproxy_rs (Rust)
 pip3 install --break-system-packages 'mitmproxy==8.1.1'
+
+# Clean up build dependencies to save space
+apk del build-base python3-dev libffi-dev openssl-dev
 
 # Create directories
 mkdir -p /data /var/log/mitmproxy /etc/mitmproxy/addons
