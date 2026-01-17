@@ -10,7 +10,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-cs-firewall-bouncer
 PKG_VERSION:=0.0.31
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 # Source from upstream CrowdSec
 # Note: v0.0.31 is the last version compatible with Go 1.23 (OpenWrt 24.10 SDK)
@@ -86,6 +86,10 @@ define Package/secubox-app-cs-firewall-bouncer/install
 	# Hotplug script to restart bouncer when firewall reloads
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
 	$(INSTALL_DATA) ./files/hotplug.d/99-crowdsec-bouncer $(1)/etc/hotplug.d/iface/99-crowdsec-bouncer
+
+	# UCI defaults script for auto-registration with CrowdSec LAPI
+	$(INSTALL_DIR) $(1)/etc/uci-defaults
+	$(INSTALL_BIN) ./files/crowdsec-bouncer.defaults $(1)/etc/uci-defaults/99_crowdsec-bouncer
 endef
 
 $(eval $(call GoBinPackage,secubox-app-cs-firewall-bouncer))
