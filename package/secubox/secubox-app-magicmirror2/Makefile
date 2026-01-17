@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-magicmirror2
-PKG_RELEASE:=5
+PKG_RELEASE:=7
 PKG_VERSION:=0.4.0
 PKG_ARCH:=all
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
