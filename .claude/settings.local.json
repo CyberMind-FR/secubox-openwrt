@@ -63,7 +63,9 @@
       "Bash(git -C /home/reepost/CyberMindStudio/_files/secubox-openwrt/secubox-tools ls-tree:*)",
       "WebFetch(domain:secubox.cybermood.eu)",
       "WebFetch(domain:docs.cybermind.fr)",
-      "WebFetch(domain:lyrion.org)"
+      "WebFetch(domain:lyrion.org)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)"
     ]
   }
 }
