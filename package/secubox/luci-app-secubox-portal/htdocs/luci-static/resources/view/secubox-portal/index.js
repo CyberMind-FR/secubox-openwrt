@@ -122,7 +122,8 @@ return view.extend({
 				this.renderSecuritySection(),
 				this.renderNetworkSection(),
 				this.renderMonitoringSection(),
-				this.renderSystemSection()
+				this.renderSystemSection(),
+				this.renderServicesSection()
 			])
 		]);
 
@@ -137,7 +138,7 @@ return view.extend({
 		var sections = portal.getSections();
 		// Sections that link to other pages vs tabs within portal
 		var linkSections = ['portal', 'hub', 'admin'];
-		var tabSections = ['security', 'network', 'monitoring', 'system'];
+		var tabSections = ['security', 'network', 'monitoring', 'system', 'services'];
 
 		return E('div', { 'class': 'sb-portal-header' }, [
 			// Brand
@@ -358,6 +359,12 @@ return view.extend({
 		var apps = portal.getAppsBySection('system');
 		return this.renderAppSection('system', 'System',
 			'System administration and configuration tools', apps);
+	},
+
+	renderServicesSection: function() {
+		var apps = portal.getAppsBySection('services');
+		return this.renderAppSection('services', 'Services',
+			'Application services and server platforms', apps);
 	},
 
 	renderAppSection: function(sectionId, title, subtitle, apps) {
