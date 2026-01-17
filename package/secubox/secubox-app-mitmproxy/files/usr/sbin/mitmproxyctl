@@ -1,236 +1,463 @@
 #!/bin/sh
-#
-# mitmproxyctl - mitmproxy management utility
-# Copyright (C) 2025 CyberMind.fr (SecuBox)
-#
+# SecuBox mitmproxy manager - LXC container support
+# Copyright (C) 2024 CyberMind.fr
 
-CONF_DIR=/etc/mitmproxy
-DATA_DIR=/tmp/mitmproxy
-LOG_FILE=/tmp/mitmproxy/requests.log
+CONFIG="mitmproxy"
+LXC_NAME="mitmproxy"
+OPKG_UPDATED=0
+
+# Paths
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
 
 usage() {
-	cat <<EOF
-mitmproxyctl - mitmproxy management utility
-
-Usage: mitmproxyctl <command> [options]
+	cat <<'EOF'
+Usage: mitmproxyctl <command>
 
 Commands:
-  status          Show service status
-  start           Start mitmproxy
-  stop            Stop mitmproxy
-  restart         Restart mitmproxy
-  enable          Enable at boot
-  disable         Disable at boot
-  logs            Show recent logs
-  flows           List captured flows
-  clear           Clear captured data
-  ca-cert         Show CA certificate path
-  install-ca      Install CA cert instructions
-  stats           Show traffic statistics
+  install         Install prerequisites and create LXC container
+  check           Run prerequisite checks
+  update          Update mitmproxy in container
+  status          Show container status
+  logs            Show mitmproxy logs (use -f to follow)
+  shell           Open shell in container
+  cert            Show CA certificate info / export path
+  service-run     Internal: run container under procd
+  service-stop    Stop container
 
-Options:
-  -h, --help      Show this help message
+Modes (configure in /etc/config/mitmproxy):
+  regular      - Standard HTTP/HTTPS proxy (default)
+  transparent  - Transparent proxy (requires iptables redirect)
+  upstream     - Forward to upstream proxy
+  reverse      - Reverse proxy mode
+
+Web Interface: http://<router-ip>:8081
+Proxy Port: 8080
 EOF
+}
+
+require_root() { [ "$(id -u)" -eq 0 ] || { echo "Root required" >&2; exit 1; }; }
+
+log_info() { echo "[INFO] $*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get ${CONFIG}.main.$1; }
+uci_set() { uci set ${CONFIG}.main.$1="$2" && uci commit ${CONFIG}; }
+
+# Load configuration with defaults
+load_config() {
+	proxy_port="$(uci_get proxy_port || echo 8080)"
+	web_port="$(uci_get web_port || echo 8081)"
+	web_host="$(uci_get web_host || echo 0.0.0.0)"
+	data_path="$(uci_get data_path || echo /srv/mitmproxy)"
+	memory_limit="$(uci_get memory_limit || echo 256M)"
+	mode="$(uci_get mode || echo regular)"
+	upstream_proxy="$(uci_get upstream_proxy || echo '')"
+	reverse_target="$(uci_get reverse_target || echo '')"
+	ssl_insecure="$(uci_get ssl_insecure || echo 0)"
+	anticache="$(uci_get anticache || echo 0)"
+	anticomp="$(uci_get anticomp || echo 0)"
+	flow_detail="$(uci_get flow_detail || echo 1)"
+}
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+has_lxc() {
+	command -v lxc-start >/dev/null 2>&1 && \
+	command -v lxc-stop >/dev/null 2>&1
+}
+
+# Ensure required packages are installed
+ensure_packages() {
+	require_root
+	for pkg in "$@"; do
+		if ! opkg list-installed | grep -q "^$pkg "; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+lxc_check_prereqs() {
+	log_info "Checking LXC prerequisites..."
+	ensure_packages lxc lxc-common lxc-attach lxc-start lxc-stop lxc-destroy || return 1
+
+	if [ ! -d /sys/fs/cgroup ]; then
+		log_error "cgroups not mounted at /sys/fs/cgroup"
+		return 1
+	fi
+
+	log_info "LXC ready"
+}
+
+lxc_create_rootfs() {
+	load_config
+
+	if [ -d "$LXC_ROOTFS" ] && [ -f "$LXC_ROOTFS/etc/alpine-release" ]; then
+		log_info "LXC rootfs already exists"
+		return 0
+	fi
+
+	log_info "Creating LXC rootfs for mitmproxy..."
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+
+	lxc_create_alpine_rootfs || return 1
+	lxc_create_config || return 1
+
+	log_info "LXC rootfs created successfully"
+}
+
+lxc_create_alpine_rootfs() {
+	local arch="aarch64"
+	local alpine_version="3.19"
+	local mirror="https://dl-cdn.alpinelinux.org/alpine"
+	local rootfs="$LXC_ROOTFS"
+
+	# Detect architecture
+	case "$(uname -m)" in
+		x86_64) arch="x86_64" ;;
+		aarch64) arch="aarch64" ;;
+		armv7l) arch="armv7" ;;
+		*) arch="x86_64" ;;
+	esac
+
+	log_info "Downloading Alpine Linux $alpine_version ($arch)..."
+
+	ensure_dir "$rootfs"
+	cd "$rootfs" || return 1
+
+	# Download Alpine minirootfs
+	local rootfs_url="$mirror/v$alpine_version/releases/$arch/alpine-minirootfs-$alpine_version.0-$arch.tar.gz"
+	wget -q -O /tmp/alpine-rootfs.tar.gz "$rootfs_url" || {
+		log_error "Failed to download Alpine rootfs"
+		return 1
+	}
+
+	# Extract rootfs
+	tar xzf /tmp/alpine-rootfs.tar.gz -C "$rootfs" || return 1
+	rm -f /tmp/alpine-rootfs.tar.gz
+
+	# Configure Alpine
+	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
+
+	# Install mitmproxy in the container
+	cat > "$rootfs/tmp/setup-mitmproxy.sh" << 'SETUP'
+#!/bin/sh
+set -e
+
+# Update and install dependencies
+apk update
+apk add --no-cache \
+    python3 \
+    py3-pip \
+    py3-wheel \
+    py3-cryptography \
+    py3-openssl \
+    py3-cffi \
+    py3-brotli \
+    py3-yaml \
+    py3-tornado \
+    py3-urwid \
+    libffi \
+    openssl \
+    ca-certificates
+
+# Install mitmproxy via pip
+pip3 install --break-system-packages mitmproxy
+
+# Create directories
+mkdir -p /data /var/log/mitmproxy
+
+# Create startup script
+cat > /opt/start-mitmproxy.sh << 'START'
+#!/bin/sh
+cd /data
+
+# Read environment variables for configuration
+MODE="${MITMPROXY_MODE:-regular}"
+PROXY_PORT="${MITMPROXY_PROXY_PORT:-8080}"
+WEB_PORT="${MITMPROXY_WEB_PORT:-8081}"
+WEB_HOST="${MITMPROXY_WEB_HOST:-0.0.0.0}"
+
+# Build command arguments
+ARGS="--listen-host 0.0.0.0 --listen-port $PROXY_PORT"
+ARGS="$ARGS --set confdir=/data"
+
+# Mode-specific options
+case "$MODE" in
+    transparent)
+        ARGS="$ARGS --mode transparent"
+        ;;
+    upstream)
+        [ -n "$UPSTREAM_PROXY" ] && ARGS="$ARGS --mode upstream:$UPSTREAM_PROXY"
+        ;;
+    reverse)
+        [ -n "$REVERSE_TARGET" ] && ARGS="$ARGS --mode reverse:$REVERSE_TARGET"
+        ;;
+esac
+
+# Optional flags
+[ "$SSL_INSECURE" = "1" ] && ARGS="$ARGS --ssl-insecure"
+[ "$ANTICACHE" = "1" ] && ARGS="$ARGS --anticache"
+[ "$ANTICOMP" = "1" ] && ARGS="$ARGS --anticomp"
+[ -n "$FLOW_DETAIL" ] && ARGS="$ARGS --flow-detail $FLOW_DETAIL"
+
+# Run mitmweb (web interface + proxy)
+exec mitmweb $ARGS --web-host "$WEB_HOST" --web-port "$WEB_PORT" --no-web-open-browser
+START
+chmod +x /opt/start-mitmproxy.sh
+
+echo "mitmproxy installed successfully"
+SETUP
+
+	chmod +x "$rootfs/tmp/setup-mitmproxy.sh"
+
+	# Run setup in chroot
+	log_info "Installing mitmproxy in container (this may take a while)..."
+	chroot "$rootfs" /tmp/setup-mitmproxy.sh || {
+		log_error "Failed to install mitmproxy in container"
+		return 1
+	}
+
+	rm -f "$rootfs/tmp/setup-mitmproxy.sh"
+}
+
+lxc_create_config() {
+	load_config
+
+	cat > "$LXC_CONFIG" << EOF
+# mitmproxy LXC Configuration
+lxc.uts.name = $LXC_NAME
+
+# Root filesystem
+lxc.rootfs.path = dir:$LXC_ROOTFS
+
+# Network - use host network for simplicity
+lxc.net.0.type = none
+
+# Mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $data_path data none bind,create=dir 0 0
+
+# Environment variables for configuration
+lxc.environment = MITMPROXY_MODE=$mode
+lxc.environment = MITMPROXY_PROXY_PORT=$proxy_port
+lxc.environment = MITMPROXY_WEB_PORT=$web_port
+lxc.environment = MITMPROXY_WEB_HOST=$web_host
+lxc.environment = UPSTREAM_PROXY=$upstream_proxy
+lxc.environment = REVERSE_TARGET=$reverse_target
+lxc.environment = SSL_INSECURE=$ssl_insecure
+lxc.environment = ANTICACHE=$anticache
+lxc.environment = ANTICOMP=$anticomp
+lxc.environment = FLOW_DETAIL=$flow_detail
+
+# Capabilities
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override
+
+# cgroups limits
+lxc.cgroup.memory.limit_in_bytes = $memory_limit
+
+# Init
+lxc.init.cmd = /opt/start-mitmproxy.sh
+
+# Console
+lxc.console.size = 1024
+lxc.pty.max = 1024
+EOF
+
+	log_info "LXC config created at $LXC_CONFIG"
+}
+
+lxc_stop() {
+	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
+		lxc-stop -n "$LXC_NAME" -k >/dev/null 2>&1 || true
+	fi
+}
+
+lxc_run() {
+	load_config
+	lxc_stop
+
+	if [ ! -f "$LXC_CONFIG" ]; then
+		log_error "LXC not configured. Run 'mitmproxyctl install' first."
+		return 1
+	fi
+
+	# Regenerate config to pick up any UCI changes
+	lxc_create_config
+
+	# Ensure mount points exist
+	ensure_dir "$data_path"
+
+	log_info "Starting mitmproxy LXC container..."
+	log_info "Web interface: http://0.0.0.0:$web_port"
+	log_info "Proxy port: $proxy_port"
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
+}
+
+lxc_status() {
+	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
+		lxc-info -n "$LXC_NAME"
+	else
+		echo "LXC container '$LXC_NAME' not found or not configured"
+	fi
+}
+
+lxc_logs() {
+	load_config
+	local logfile="$LXC_ROOTFS/var/log/mitmproxy/mitmproxy.log"
+
+	if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		# For mitmweb, logs go to stderr which procd captures
+		if [ "$1" = "-f" ]; then
+			logread -f -e mitmproxy
+		else
+			logread -e mitmproxy | tail -100
+		fi
+	elif [ -f "$logfile" ]; then
+		if [ "$1" = "-f" ]; then
+			tail -f "$logfile"
+		else
+			tail -100 "$logfile"
+		fi
+	else
+		log_warn "Container not running. Try: logread -e mitmproxy"
+	fi
+}
+
+lxc_shell() {
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+lxc_destroy() {
+	lxc_stop
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		rm -rf "$LXC_PATH/$LXC_NAME"
+		log_info "LXC container destroyed"
+	fi
+}
+
+cmd_install() {
+	require_root
+	load_config
+
+	if ! has_lxc; then
+		log_error "LXC not available. Install lxc packages first."
+		exit 1
+	fi
+
+	log_info "Installing mitmproxy..."
+
+	# Create directories
+	ensure_dir "$data_path"
+
+	lxc_check_prereqs || exit 1
+	lxc_create_rootfs || exit 1
+
+	uci_set enabled '1'
+	/etc/init.d/mitmproxy enable
+
+	log_info "mitmproxy installed."
+	log_info "Start with: /etc/init.d/mitmproxy start"
+	log_info "Web interface: http://<router-ip>:$web_port"
+	log_info "Proxy port: $proxy_port"
+}
+
+cmd_check() {
+	load_config
+
+	log_info "Checking prerequisites..."
+	if has_lxc; then
+		log_info "LXC: available"
+		lxc_check_prereqs
+	else
+		log_warn "LXC: not available"
+	fi
+}
+
+cmd_update() {
+	require_root
+	load_config
+
+	log_info "Updating mitmproxy..."
+	lxc_destroy
+	lxc_create_rootfs || exit 1
+
+	if /etc/init.d/mitmproxy enabled >/dev/null 2>&1; then
+		/etc/init.d/mitmproxy restart
+	else
+		log_info "Update complete. Restart manually to apply."
+	fi
 }
 
 cmd_status() {
-	if pgrep mitmweb >/dev/null 2>&1; then
-		echo "Status: Running (mitmweb)"
-		echo "PID: $(pgrep mitmweb)"
-		echo "Web UI: http://$(uci -q get network.lan.ipaddr || echo '192.168.1.1'):$(uci -q get mitmproxy.main.web_port || echo '8081')"
-	elif pgrep mitmdump >/dev/null 2>&1; then
-		echo "Status: Running (mitmdump)"
-		echo "PID: $(pgrep mitmdump)"
-	else
-		echo "Status: Stopped"
-	fi
-
-	echo ""
-	echo "Configuration:"
-	echo "  Mode: $(uci -q get mitmproxy.main.mode || echo 'transparent')"
-	echo "  Listen: $(uci -q get mitmproxy.main.listen_host || echo '0.0.0.0'):$(uci -q get mitmproxy.main.listen_port || echo '8080')"
-	echo "  Enabled: $(uci -q get mitmproxy.main.enabled || echo '0')"
-}
-
-cmd_start() {
-	echo "Starting mitmproxy..."
-	/etc/init.d/mitmproxy start
-}
-
-cmd_stop() {
-	echo "Stopping mitmproxy..."
-	/etc/init.d/mitmproxy stop
-}
-
-cmd_restart() {
-	echo "Restarting mitmproxy..."
-	/etc/init.d/mitmproxy restart
-}
-
-cmd_enable() {
-	uci set mitmproxy.main.enabled='1'
-	uci commit mitmproxy
-	/etc/init.d/mitmproxy enable
-	echo "mitmproxy enabled at boot"
-}
-
-cmd_disable() {
-	uci set mitmproxy.main.enabled='0'
-	uci commit mitmproxy
-	/etc/init.d/mitmproxy disable
-	echo "mitmproxy disabled at boot"
+	lxc_status
 }
 
 cmd_logs() {
-	if [ -f "$LOG_FILE" ]; then
-		tail -50 "$LOG_FILE"
+	lxc_logs "$@"
+}
+
+cmd_shell() {
+	lxc_shell
+}
+
+cmd_cert() {
+	load_config
+
+	local cert_path="$data_path/mitmproxy-ca-cert.pem"
+
+	if [ -f "$cert_path" ]; then
+		log_info "CA Certificate location: $cert_path"
+		log_info ""
+		log_info "To install on clients:"
+		log_info "  1. Download from: http://<router-ip>:$web_port/cert/pem"
+		log_info "  2. Or copy: $cert_path"
+		log_info ""
+		log_info "Certificate info:"
+		openssl x509 -in "$cert_path" -noout -subject -dates 2>/dev/null || \
+			cat "$cert_path"
 	else
-		echo "No logs available at $LOG_FILE"
+		log_warn "CA certificate not yet generated."
+		log_info "Start mitmproxy first: /etc/init.d/mitmproxy start"
+		log_info "Then access: http://<router-ip>:$web_port/cert"
 	fi
 }
 
-cmd_flows() {
-	local flow_file=$(uci -q get mitmproxy.capture.flow_file || echo "/tmp/mitmproxy/flows.bin")
-	if [ -f "$flow_file" ]; then
-		echo "Flow file: $flow_file"
-		echo "Size: $(ls -lh "$flow_file" | awk '{print $5}')"
-		echo ""
-		echo "Use 'mitmproxy -r $flow_file' to replay flows"
-	else
-		echo "No flow file found"
-	fi
-}
+cmd_service_run() {
+	require_root
+	load_config
 
-cmd_clear() {
-	echo "Clearing captured data..."
-	rm -f "$DATA_DIR"/*.log "$DATA_DIR"/*.bin
-	echo "Done"
-}
-
-cmd_ca_cert() {
-	local cert="$CONF_DIR/mitmproxy-ca-cert.pem"
-	if [ -f "$cert" ]; then
-		echo "CA Certificate: $cert"
-		echo ""
-		echo "Certificate details:"
-		openssl x509 -in "$cert" -noout -subject -issuer -dates 2>/dev/null || \
-			cat "$cert"
-	else
-		echo "CA certificate not found"
-		echo "Start mitmproxy once to generate the certificate"
-	fi
-}
-
-cmd_install_ca() {
-	local cert="$CONF_DIR/mitmproxy-ca-cert.pem"
-	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
-
-	cat <<EOF
-=== Installing mitmproxy CA Certificate ===
-
-To intercept HTTPS traffic, clients must trust the mitmproxy CA.
-
-1. Access the certificate at:
-   http://$router_ip:$(uci -q get mitmproxy.main.web_port || echo '8081')/cert
-
-2. Or download directly:
-   scp root@$router_ip:$cert ./mitmproxy-ca.pem
-
-3. Install on devices:
-
-   Windows:
-   - Double-click the .pem file
-   - Install to "Trusted Root Certification Authorities"
-
-   macOS:
-   - Double-click to add to Keychain
-   - In Keychain Access, find the cert and set "Always Trust"
-
-   Linux:
-   - Copy to /usr/local/share/ca-certificates/
-   - Run: sudo update-ca-certificates
-
-   Android:
-   - Settings > Security > Install from storage
-   - Select the certificate file
-
-   iOS:
-   - Email the cert and open it
-   - Settings > General > Profile > Install
-   - Settings > General > About > Certificate Trust Settings
-
-EOF
-}
-
-cmd_stats() {
-	echo "=== mitmproxy Statistics ==="
-	echo ""
-
-	if [ -f "$LOG_FILE" ]; then
-		local total=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0")
-		echo "Total requests logged: $total"
-
-		if command -v jq >/dev/null 2>&1; then
-			echo ""
-			echo "Top 10 hosts:"
-			jq -r '.request.host // .host // "unknown"' "$LOG_FILE" 2>/dev/null | \
-				sort | uniq -c | sort -rn | head -10
-
-			echo ""
-			echo "Request methods:"
-			jq -r '.request.method // .method // "GET"' "$LOG_FILE" 2>/dev/null | \
-				sort | uniq -c | sort -rn
-		fi
-	else
-		echo "No statistics available"
-	fi
-}
-
-# Parse arguments
-case "$1" in
-	status)
-		cmd_status
-		;;
-	start)
-		cmd_start
-		;;
-	stop)
-		cmd_stop
-		;;
-	restart)
-		cmd_restart
-		;;
-	enable)
-		cmd_enable
-		;;
-	disable)
-		cmd_disable
-		;;
-	logs)
-		cmd_logs
-		;;
-	flows)
-		cmd_flows
-		;;
-	clear)
-		cmd_clear
-		;;
-	ca-cert|ca|cert)
-		cmd_ca_cert
-		;;
-	install-ca|install)
-		cmd_install_ca
-		;;
-	stats|statistics)
-		cmd_stats
-		;;
-	-h|--help|help)
-		usage
-		;;
-	*)
-		usage
+	if ! has_lxc; then
+		log_error "LXC not available"
 		exit 1
-		;;
-esac
+	fi
 
-exit 0
+	lxc_check_prereqs || exit 1
+	lxc_run
+}
+
+cmd_service_stop() {
+	require_root
+	lxc_stop
+}
+
+# Main Entry Point
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	check) shift; cmd_check "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	shell) shift; cmd_shell "$@" ;;
+	cert) shift; cmd_cert "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac

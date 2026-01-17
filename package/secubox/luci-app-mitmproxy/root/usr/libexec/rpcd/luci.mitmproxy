@@ -6,10 +6,11 @@
 
 . /lib/functions.sh
 
-CONF_DIR=/etc/mitmproxy
-DATA_DIR=/tmp/mitmproxy
-LOG_FILE=/tmp/mitmproxy/requests.log
-FLOW_FILE=/tmp/mitmproxy/flows.bin
+DATA_DIR=$(uci -q get mitmproxy.main.data_path || echo "/srv/mitmproxy")
+LXC_NAME="mitmproxy"
+CONF_DIR="$DATA_DIR"
+LOG_FILE="$DATA_DIR/requests.log"
+FLOW_FILE="$DATA_DIR/flows.bin"
 
 # JSON helpers
 json_init() { echo "{"; }
@@ -24,25 +25,35 @@ get_status() {
 	local pid=""
 	local mode="unknown"
 	local web_url=""
+	local lxc_state=""
 
-	if pgrep -x mitmweb >/dev/null 2>&1; then
-		running=1
-		pid=$(pgrep -x mitmweb | head -1)
-		mode="mitmweb"
-	elif pgrep -x mitmdump >/dev/null 2>&1; then
-		running=1
-		pid=$(pgrep -x mitmdump | head -1)
-		mode="mitmdump"
-	elif pgrep -f "python.*mitmproxy" >/dev/null 2>&1; then
-		running=1
-		pid=$(pgrep -f "python.*mitmproxy" | head -1)
-		mode="mitmproxy"
+	# Check LXC container status
+	if command -v lxc-info >/dev/null 2>&1; then
+		lxc_state=$(lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -oE 'RUNNING|STOPPED' || echo "UNKNOWN")
+		if [ "$lxc_state" = "RUNNING" ]; then
+			running=1
+			mode="mitmweb"
+			pid=$(lxc-info -n "$LXC_NAME" -p 2>/dev/null | grep -oE '[0-9]+' || echo "0")
+		fi
+	fi
+
+	# Fallback: check for direct process
+	if [ "$running" = "0" ]; then
+		if pgrep mitmweb >/dev/null 2>&1; then
+			running=1
+			pid=$(pgrep mitmweb | head -1)
+			mode="mitmweb"
+		elif pgrep mitmdump >/dev/null 2>&1; then
+			running=1
+			pid=$(pgrep mitmdump | head -1)
+			mode="mitmdump"
+		fi
 	fi
 
 	local enabled=$(uci -q get mitmproxy.main.enabled || echo "0")
-	local listen_port=$(uci -q get mitmproxy.main.listen_port || echo "8080")
+	local proxy_port=$(uci -q get mitmproxy.main.proxy_port || echo "8080")
 	local web_port=$(uci -q get mitmproxy.main.web_port || echo "8081")
-	local proxy_mode=$(uci -q get mitmproxy.main.mode || echo "transparent")
+	local proxy_mode=$(uci -q get mitmproxy.main.mode || echo "regular")
 	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
 
 	[ "$running" = "1" ] && [ "$mode" = "mitmweb" ] && web_url="http://${router_ip}:${web_port}"
@@ -54,7 +65,8 @@ get_status() {
 	"pid": ${pid:-0},
 	"mode": "$mode",
 	"proxy_mode": "$proxy_mode",
-	"listen_port": $listen_port,
+	"lxc_state": "$lxc_state",
+	"proxy_port": $proxy_port,
 	"web_port": $web_port,
 	"web_url": "$web_url",
 	"ca_installed": $([ -f "$CONF_DIR/mitmproxy-ca-cert.pem" ] && echo "true" || echo "false")
@@ -65,35 +77,30 @@ EOF
 # Get configuration
 get_config() {
 	local enabled=$(uci -q get mitmproxy.main.enabled || echo "0")
-	local mode=$(uci -q get mitmproxy.main.mode || echo "transparent")
-	local listen_host=$(uci -q get mitmproxy.main.listen_host || echo "0.0.0.0")
-	local listen_port=$(uci -q get mitmproxy.main.listen_port || echo "8080")
+	local mode=$(uci -q get mitmproxy.main.mode || echo "regular")
+	local proxy_port=$(uci -q get mitmproxy.main.proxy_port || echo "8080")
 	local web_host=$(uci -q get mitmproxy.main.web_host || echo "0.0.0.0")
 	local web_port=$(uci -q get mitmproxy.main.web_port || echo "8081")
+	local data_path=$(uci -q get mitmproxy.main.data_path || echo "/srv/mitmproxy")
+	local memory_limit=$(uci -q get mitmproxy.main.memory_limit || echo "256M")
 	local ssl_insecure=$(uci -q get mitmproxy.main.ssl_insecure || echo "0")
-	local flow_detail=$(uci -q get mitmproxy.main.flow_detail || echo "2")
-
-	local save_flows=$(uci -q get mitmproxy.capture.save_flows || echo "1")
-	local capture_urls=$(uci -q get mitmproxy.capture.capture_urls || echo "1")
-	local capture_cookies=$(uci -q get mitmproxy.capture.capture_cookies || echo "1")
-	local capture_headers=$(uci -q get mitmproxy.capture.capture_headers || echo "1")
-	local capture_body=$(uci -q get mitmproxy.capture.capture_body || echo "0")
+	local anticache=$(uci -q get mitmproxy.main.anticache || echo "0")
+	local anticomp=$(uci -q get mitmproxy.main.anticomp || echo "0")
+	local flow_detail=$(uci -q get mitmproxy.main.flow_detail || echo "1")
 
 	cat <<EOF
 {
 	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
 	"mode": "$mode",
-	"listen_host": "$listen_host",
-	"listen_port": $listen_port,
+	"proxy_port": $proxy_port,
 	"web_host": "$web_host",
 	"web_port": $web_port,
+	"data_path": "$data_path",
+	"memory_limit": "$memory_limit",
 	"ssl_insecure": $([ "$ssl_insecure" = "1" ] && echo "true" || echo "false"),
-	"flow_detail": $flow_detail,
-	"save_flows": $([ "$save_flows" = "1" ] && echo "true" || echo "false"),
-	"capture_urls": $([ "$capture_urls" = "1" ] && echo "true" || echo "false"),
-	"capture_cookies": $([ "$capture_cookies" = "1" ] && echo "true" || echo "false"),
-	"capture_headers": $([ "$capture_headers" = "1" ] && echo "true" || echo "false"),
-	"capture_body": $([ "$capture_body" = "1" ] && echo "true" || echo "false")
+	"anticache": $([ "$anticache" = "1" ] && echo "true" || echo "false"),
+	"anticomp": $([ "$anticomp" = "1" ] && echo "true" || echo "false"),
+	"flow_detail": $flow_detail
 }
 EOF
 }
