@@ -327,10 +327,11 @@ apk add --no-cache \
     libffi-dev \
     openssl-dev
 
-# Install mitmproxy 8.1.1 (last pure-Python version without any Rust dependencies)
+# Install mitmproxy 7.0.4 (compatible with Python 3.11 dataclasses)
+# 8.x has grpc dataclass issues with Python 3.11
 # 9.x requires mitmproxy-wireguard (Rust), 10.x requires mitmproxy_rs (Rust)
 # Pin werkzeug<3.0 for Flask compatibility (url_quote removed in 3.0)
-pip3 install --break-system-packages 'werkzeug<3.0' 'mitmproxy==8.1.1'
+pip3 install --break-system-packages 'werkzeug<3.0' 'mitmproxy==7.0.4'
 
 # Clean up build dependencies to save space
 apk del build-base python3-dev libffi-dev openssl-dev
