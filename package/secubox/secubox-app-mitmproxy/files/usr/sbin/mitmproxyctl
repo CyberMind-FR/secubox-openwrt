@@ -307,20 +307,53 @@ lxc_create_docker_rootfs() {
 		log_info "  Layer: ${layer_digest:7:12}..."
 		wget -q -O - --header="Authorization: Bearer $token" \
 			"https://$registry/v2/$image/blobs/$layer_digest" | \
-			tar xz -C "$rootfs" 2>/dev/null || true
+			tar xzf - -C "$rootfs" 2>&1 | grep -v "Cannot change ownership" || true
 	done
 
 	# Configure container
 	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
-	mkdir -p "$rootfs/data" "$rootfs/var/log/mitmproxy" "$rootfs/etc/mitmproxy/addons"
+	mkdir -p "$rootfs/data" "$rootfs/var/log/mitmproxy" "$rootfs/etc/mitmproxy/addons" "$rootfs/tmp"
 
-	# Create startup script for mitmweb
+	# Ensure proper shell setup - Docker image is Python slim (Debian-based)
+	# python:slim uses dash as /bin/sh but symlinks may not extract properly
+	log_info "Checking shell availability..."
+	ls -la "$rootfs/bin/" 2>/dev/null | head -20 || true
+
+	# Ensure /bin/sh exists - critical for script execution
+	if [ ! -x "$rootfs/bin/sh" ]; then
+		log_warn "/bin/sh not found or not executable, attempting to fix..."
+		# Check for available shells
+		if [ -x "$rootfs/bin/dash" ]; then
+			ln -sf dash "$rootfs/bin/sh"
+			log_info "Created /bin/sh -> dash"
+		elif [ -x "$rootfs/bin/bash" ]; then
+			ln -sf bash "$rootfs/bin/sh"
+			log_info "Created /bin/sh -> bash"
+		elif [ -x "$rootfs/usr/bin/dash" ]; then
+			mkdir -p "$rootfs/bin"
+			ln -sf /usr/bin/dash "$rootfs/bin/sh"
+			log_info "Created /bin/sh -> /usr/bin/dash"
+		else
+			# Last resort: copy busybox sh from host if available
+			log_error "No shell found in container! Container may not start properly."
+		fi
+	fi
+
+	# Verify shell is now available
+	if [ -x "$rootfs/bin/sh" ]; then
+		log_info "Shell ready: $(ls -la "$rootfs/bin/sh")"
+	else
+		log_error "Shell setup failed!"
+	fi
+
+	# Create startup script for mitmweb (POSIX-compliant for dash)
 	cat > "$rootfs/opt/start-mitmproxy.sh" << 'START'
 #!/bin/sh
-export PATH="/usr/local/bin:$PATH"
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+export PYTHONUNBUFFERED=1
 cd /data
 
-# Read environment variables for configuration
+# Read environment variables
 MODE="${MITMPROXY_MODE:-regular}"
 PROXY_PORT="${MITMPROXY_PROXY_PORT:-8888}"
 WEB_PORT="${MITMPROXY_WEB_PORT:-8081}"
@@ -328,28 +361,19 @@ WEB_HOST="${MITMPROXY_WEB_HOST:-0.0.0.0}"
 ADDON_SCRIPT="${MITMPROXY_ADDON_SCRIPT:-}"
 FILTERING_ENABLED="${MITMPROXY_FILTERING_ENABLED:-0}"
 
-# Build command arguments
-ARGS="--listen-host 0.0.0.0 --listen-port $PROXY_PORT"
-ARGS="$ARGS --set confdir=/data"
+# Build args
+ARGS="--listen-host 0.0.0.0 --listen-port $PROXY_PORT --set confdir=/data"
+ARGS="$ARGS --web-host $WEB_HOST --web-port $WEB_PORT --no-web-open-browser"
 
-# Mode-specific options
 case "$MODE" in
-    transparent)
-        ARGS="$ARGS --mode transparent"
-        ;;
-    upstream)
-        [ -n "$UPSTREAM_PROXY" ] && ARGS="$ARGS --mode upstream:$UPSTREAM_PROXY"
-        ;;
-    reverse)
-        [ -n "$REVERSE_TARGET" ] && ARGS="$ARGS --mode reverse:$REVERSE_TARGET"
-        ;;
+    transparent) ARGS="$ARGS --mode transparent" ;;
+    upstream) [ -n "$UPSTREAM_PROXY" ] && ARGS="$ARGS --mode upstream:$UPSTREAM_PROXY" ;;
+    reverse) [ -n "$REVERSE_TARGET" ] && ARGS="$ARGS --mode reverse:$REVERSE_TARGET" ;;
 esac
 
-# Optional flags
 [ "$SSL_INSECURE" = "1" ] && ARGS="$ARGS --ssl-insecure"
 [ "$ANTICACHE" = "1" ] && ARGS="$ARGS --anticache"
 [ "$ANTICOMP" = "1" ] && ARGS="$ARGS --anticomp"
-# Note: --flow-detail removed in recent mitmproxy versions
 
 # Load addon script if filtering is enabled
 if [ "$FILTERING_ENABLED" = "1" ] && [ -n "$ADDON_SCRIPT" ] && [ -f "$ADDON_SCRIPT" ]; then
@@ -357,27 +381,21 @@ if [ "$FILTERING_ENABLED" = "1" ] && [ -n "$ADDON_SCRIPT" ] && [ -f "$ADDON_SCRI
     echo "Loading addon: $ADDON_SCRIPT"
 fi
 
-# Run mitmweb and capture token
-# Use tee to both display output and capture token
-LOG_FILE="/tmp/mitmweb.log"
-rm -f "$LOG_FILE" /data/.mitmproxy_token
+rm -f /data/.mitmproxy_token /tmp/mitmweb.log
 
-# Background job to capture token from log
-(
-    for i in $(seq 1 30); do
-        if [ -f "$LOG_FILE" ]; then
-            token=$(grep -o 'token=[a-f0-9]*' "$LOG_FILE" 2>/dev/null | head -1 | cut -d= -f2)
-            if [ -n "$token" ]; then
-                echo "$token" > /data/.mitmproxy_token
-                break
-            fi
-        fi
-        sleep 1
-    done
-) &
+echo "Starting mitmweb..."
 
-# Run mitmweb with output to both console and log file
-exec mitmweb $ARGS --web-host "$WEB_HOST" --web-port "$WEB_PORT" --no-web-open-browser 2>&1 | tee "$LOG_FILE"
+# Run mitmweb with unbuffered output and inline token capture
+/usr/local/bin/mitmweb $ARGS 2>&1 | while IFS= read -r line; do
+    echo "$line"
+    echo "$line" >> /tmp/mitmweb.log
+    case "$line" in
+        *token=*)
+            token=$(echo "$line" | grep -o 'token=[a-f0-9]*' | cut -d= -f2)
+            [ -n "$token" ] && echo "$token" > /data/.mitmproxy_token
+            ;;
+    esac
+done
 START
 	chmod +x "$rootfs/opt/start-mitmproxy.sh"
 

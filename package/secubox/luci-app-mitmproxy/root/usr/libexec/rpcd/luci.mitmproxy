@@ -401,13 +401,15 @@ EOF
 }
 
 get_web_token() {
-	local token_file="$LXC_ROOTFS/data/.mitmproxy_token"
+	# Token is written to /data/.mitmproxy_token inside container
+	# /data is bind-mounted to DATA_DIR on host
+	local token_file="$DATA_DIR/.mitmproxy_token"
 	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
 	local web_port=$(uci -q get mitmproxy.main.web_port || echo "8081")
 	local token=""
 
 	if [ -f "$token_file" ]; then
-		token=$(cat "$token_file" 2>/dev/null)
+		token=$(cat "$token_file" 2>/dev/null | tr -d '\n\r')
 	fi
 
 	cat <<EOF
