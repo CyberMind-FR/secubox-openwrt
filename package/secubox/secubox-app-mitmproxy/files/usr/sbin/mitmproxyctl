@@ -320,10 +320,6 @@ apk add --no-cache \
     py3-urwid \
     py3-passlib \
     py3-sortedcontainers \
-    py3-wsproto \
-    py3-publicsuffix2 \
-    py3-flask \
-    py3-asgiref \
     libffi \
     openssl \
     ca-certificates \
