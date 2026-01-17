@@ -14,3 +14,55 @@ config mitmproxy 'main'
 	option anticache '0'
 	option anticomp '0'
 	option flow_detail '1'
+
+# Transparent mode settings
+config transparent 'transparent'
+	option enabled '0'
+	# Interface to intercept traffic from (e.g., br-lan)
+	option interface 'br-lan'
+	# Redirect HTTP traffic (port 80)
+	option redirect_http '1'
+	# Redirect HTTPS traffic (port 443)
+	option redirect_https '1'
+	# Custom HTTP port (default 80)
+	option http_port '80'
+	# Custom HTTPS port (default 443)
+	option https_port '443'
+
+# Whitelist/bypass - IPs and domains that bypass the proxy
+config whitelist 'whitelist'
+	option enabled '1'
+	# Bypass local networks by default
+	list bypass_ip '10.0.0.0/8'
+	list bypass_ip '172.16.0.0/12'
+	list bypass_ip '192.168.0.0/16'
+	list bypass_ip '127.0.0.0/8'
+	# Bypass sensitive domains (banking, medical, etc.)
+	list bypass_domain 'banking'
+	list bypass_domain 'paypal.com'
+	list bypass_domain 'stripe.com'
+	# Add custom bypasses here
+	# list bypass_ip 'x.x.x.x'
+	# list bypass_domain 'example.com'
+
+# CDN/MediaFlow filtering addon
+config filtering 'filtering'
+	option enabled '0'
+	# Log all requests to JSON file
+	option log_requests '1'
+	# Filter CDN traffic (e.g., cloudflare, akamai, fastly)
+	option filter_cdn '0'
+	# Filter streaming media
+	option filter_media '0'
+	# Block ads and trackers
+	option block_ads '0'
+	# Custom filter script path
+	option addon_script '/etc/mitmproxy/addons/secubox_filter.py'
+
+# Capture settings
+config capture 'capture'
+	option save_flows '0'
+	option capture_request_headers '1'
+	option capture_response_headers '1'
+	option capture_request_body '0'
+	option capture_response_body '0'

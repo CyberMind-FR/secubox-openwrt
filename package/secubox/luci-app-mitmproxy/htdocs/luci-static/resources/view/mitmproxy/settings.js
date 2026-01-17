@@ -45,9 +45,11 @@ return view.extend({
 		var m, s, o;
 
 		m = new form.Map('mitmproxy', _('mitmproxy Settings'),
-			_('Configure the mitmproxy HTTPS interception proxy.'));
+			_('Configure the mitmproxy HTTPS interception proxy with transparent mode and filtering options.'));
 
-		// Main settings
+		// =====================================================================
+		// Main Proxy Configuration
+		// =====================================================================
 		s = m.section(form.TypedSection, 'mitmproxy', _('Proxy Configuration'));
 		s.anonymous = true;
 		s.addremove = false;
@@ -59,18 +61,13 @@ return view.extend({
 
 		o = s.option(form.ListValue, 'mode', _('Proxy Mode'),
 			_('How clients connect to the proxy'));
-		o.value('transparent', _('Transparent - Intercept traffic automatically'));
 		o.value('regular', _('Regular - Clients must configure proxy settings'));
+		o.value('transparent', _('Transparent - Intercept traffic automatically via nftables'));
 		o.value('upstream', _('Upstream - Forward to another proxy'));
-		o.default = 'transparent';
+		o.value('reverse', _('Reverse - Reverse proxy mode'));
+		o.default = 'regular';
 
-		o = s.option(form.Value, 'listen_host', _('Listen Address'),
-			_('IP address to bind the proxy to'));
-		o.default = '0.0.0.0';
-		o.placeholder = '0.0.0.0';
-		o.datatype = 'ipaddr';
-
-		o = s.option(form.Value, 'listen_port', _('Proxy Port'),
+		o = s.option(form.Value, 'proxy_port', _('Proxy Port'),
 			_('Port for HTTP/HTTPS interception'));
 		o.default = '8080';
 		o.placeholder = '8080';
@@ -88,8 +85,25 @@ return view.extend({
 		o.placeholder = '8081';
 		o.datatype = 'port';
 
+		o = s.option(form.Value, 'data_path', _('Data Path'),
+			_('Directory for storing certificates and data'));
+		o.default = '/srv/mitmproxy';
+
+		o = s.option(form.Value, 'memory_limit', _('Memory Limit'),
+			_('Maximum memory for the LXC container'));
+		o.default = '256M';
+		o.placeholder = '256M';
+
 		o = s.option(form.Flag, 'ssl_insecure', _('Allow Insecure SSL'),
 			_('Accept invalid/self-signed SSL certificates from upstream servers'));
+		o.default = '0';
+
+		o = s.option(form.Flag, 'anticache', _('Anti-Cache'),
+			_('Strip cache headers to force fresh responses'));
+		o.default = '0';
+
+		o = s.option(form.Flag, 'anticomp', _('Anti-Compression'),
+			_('Disable compression to allow content inspection'));
 		o.default = '0';
 
 		o = s.option(form.ListValue, 'flow_detail', _('Log Detail Level'),
@@ -99,87 +113,141 @@ return view.extend({
 		o.value('2', _('Full headers'));
 		o.value('3', _('Full headers + body preview'));
 		o.value('4', _('Full headers + full body'));
-		o.default = '2';
+		o.default = '1';
 
-		// Capture settings
+		o = s.option(form.Value, 'upstream_proxy', _('Upstream Proxy'),
+			_('Forward traffic to this upstream proxy (e.g., http://proxy:8080)'));
+		o.depends('mode', 'upstream');
+		o.placeholder = 'http://proxy:8080';
+
+		o = s.option(form.Value, 'reverse_target', _('Reverse Target'),
+			_('Target server for reverse proxy mode (e.g., http://localhost:80)'));
+		o.depends('mode', 'reverse');
+		o.placeholder = 'http://localhost:80';
+
+		// =====================================================================
+		// Transparent Mode Settings
+		// =====================================================================
+		s = m.section(form.TypedSection, 'transparent', _('Transparent Mode'));
+		s.anonymous = true;
+		s.addremove = false;
+		s.tab('transparent', _('Firewall Settings'));
+
+		o = s.taboption('transparent', form.Flag, 'enabled', _('Enable Transparent Firewall'),
+			_('Automatically setup nftables rules to redirect traffic'));
+		o.default = '0';
+
+		o = s.taboption('transparent', form.Value, 'interface', _('Intercept Interface'),
+			_('Network interface to intercept traffic from'));
+		o.default = 'br-lan';
+		o.placeholder = 'br-lan';
+		o.depends('enabled', '1');
+
+		o = s.taboption('transparent', form.Flag, 'redirect_http', _('Redirect HTTP'),
+			_('Intercept plain HTTP traffic'));
+		o.default = '1';
+		o.depends('enabled', '1');
+
+		o = s.taboption('transparent', form.Flag, 'redirect_https', _('Redirect HTTPS'),
+			_('Intercept HTTPS traffic (requires CA certificate on clients)'));
+		o.default = '1';
+		o.depends('enabled', '1');
+
+		o = s.taboption('transparent', form.Value, 'http_port', _('HTTP Port'),
+			_('Source port to intercept for HTTP'));
+		o.default = '80';
+		o.datatype = 'port';
+		o.depends('redirect_http', '1');
+
+		o = s.taboption('transparent', form.Value, 'https_port', _('HTTPS Port'),
+			_('Source port to intercept for HTTPS'));
+		o.default = '443';
+		o.datatype = 'port';
+		o.depends('redirect_https', '1');
+
+		// =====================================================================
+		// Whitelist/Bypass Settings
+		// =====================================================================
+		s = m.section(form.TypedSection, 'whitelist', _('Whitelist / Bypass'));
+		s.anonymous = true;
+		s.addremove = false;
+
+		o = s.option(form.Flag, 'enabled', _('Enable Whitelist'),
+			_('Skip interception for whitelisted IPs and domains'));
+		o.default = '1';
+
+		o = s.option(form.DynamicList, 'bypass_ip', _('Bypass IP Addresses'),
+			_('IP addresses or CIDR ranges that bypass the proxy'));
+		o.placeholder = '192.168.1.0/24';
+		o.depends('enabled', '1');
+
+		o = s.option(form.DynamicList, 'bypass_domain', _('Bypass Domains'),
+			_('Domain patterns that bypass the proxy (for domain-based bypass, requires additional configuration)'));
+		o.placeholder = 'banking.com';
+		o.depends('enabled', '1');
+
+		// =====================================================================
+		// Filtering / CDN Tracking
+		// =====================================================================
+		s = m.section(form.TypedSection, 'filtering', _('Filtering & Analytics'));
+		s.anonymous = true;
+		s.addremove = false;
+
+		o = s.option(form.Flag, 'enabled', _('Enable Filtering Addon'),
+			_('Load the SecuBox filtering addon for CDN/Media tracking and ad blocking'));
+		o.default = '0';
+
+		o = s.option(form.Flag, 'log_requests', _('Log All Requests'),
+			_('Log request details to JSON file for analysis'));
+		o.default = '1';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'filter_cdn', _('Track CDN Traffic'),
+			_('Log and categorize CDN requests (Cloudflare, Akamai, Fastly, etc.)'));
+		o.default = '0';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'filter_media', _('Track Media Streaming'),
+			_('Log and categorize streaming media requests (YouTube, Netflix, Spotify, etc.)'));
+		o.default = '0';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'block_ads', _('Block Ads & Trackers'),
+			_('Block known advertising and tracking domains'));
+		o.default = '0';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'addon_script', _('Addon Script Path'),
+			_('Path to the Python filtering addon'));
+		o.default = '/etc/mitmproxy/addons/secubox_filter.py';
+		o.depends('enabled', '1');
+
+		// =====================================================================
+		// Capture Settings
+		// =====================================================================
 		s = m.section(form.TypedSection, 'capture', _('Capture Settings'));
 		s.anonymous = true;
 		s.addremove = false;
 
 		o = s.option(form.Flag, 'save_flows', _('Save Flows'),
 			_('Save captured flows to disk for later replay'));
-		o.default = '1';
-
-		o = s.option(form.Value, 'flow_file', _('Flow File'),
-			_('Path to save captured flows'));
-		o.default = '/tmp/mitmproxy/flows.bin';
-		o.depends('save_flows', '1');
-
-		o = s.option(form.Flag, 'capture_urls', _('Capture URLs'),
-			_('Log full URLs of requests'));
-		o.default = '1';
-
-		o = s.option(form.Flag, 'capture_cookies', _('Capture Cookies'),
-			_('Log cookie headers'));
-		o.default = '1';
-
-		o = s.option(form.Flag, 'capture_headers', _('Capture Headers'),
-			_('Log all HTTP headers'));
-		o.default = '1';
-
-		o = s.option(form.Flag, 'capture_body', _('Capture Body'),
-			_('Log request/response bodies (increases storage usage)'));
 		o.default = '0';
 
-		// Logging settings
-		s = m.section(form.TypedSection, 'logging', _('Logging'));
-		s.anonymous = true;
-		s.addremove = false;
-
-		o = s.option(form.Flag, 'enabled', _('Enable Request Logging'),
-			_('Log requests to file'));
+		o = s.option(form.Flag, 'capture_request_headers', _('Capture Request Headers'),
+			_('Include request headers in logs'));
 		o.default = '1';
 
-		o = s.option(form.Value, 'log_file', _('Log File'),
-			_('Path to request log file'));
-		o.default = '/tmp/mitmproxy/requests.log';
-		o.depends('enabled', '1');
+		o = s.option(form.Flag, 'capture_response_headers', _('Capture Response Headers'),
+			_('Include response headers in logs'));
+		o.default = '1';
 
-		o = s.option(form.ListValue, 'log_format', _('Log Format'),
-			_('Format of log entries'));
-		o.value('json', _('JSON'));
-		o.value('text', _('Plain text'));
-		o.default = 'json';
-		o.depends('enabled', '1');
-
-		o = s.option(form.Value, 'max_size', _('Max Log Size (MB)'),
-			_('Rotate log when it reaches this size'));
-		o.default = '10';
-		o.datatype = 'uinteger';
-		o.depends('enabled', '1');
-
-		// Filter settings
-		s = m.section(form.TypedSection, 'filter', _('Filtering'));
-		s.anonymous = true;
-		s.addremove = false;
-
-		o = s.option(form.Flag, 'enabled', _('Enable Filtering'),
-			_('Enable content filtering'));
+		o = s.option(form.Flag, 'capture_request_body', _('Capture Request Body'),
+			_('Include request body in logs (increases storage usage)'));
 		o.default = '0';
 
-		o = s.option(form.Flag, 'block_ads', _('Block Ads'),
-			_('Block known advertising domains'));
+		o = s.option(form.Flag, 'capture_response_body', _('Capture Response Body'),
+			_('Include response body in logs (increases storage usage)'));
 		o.default = '0';
-		o.depends('enabled', '1');
-
-		o = s.option(form.Flag, 'block_trackers', _('Block Trackers'),
-			_('Block known tracking domains'));
-		o.default = '0';
-		o.depends('enabled', '1');
-
-		o = s.option(form.DynamicList, 'ignore_host', _('Ignore Hosts'),
-			_('Hosts to pass through without interception'));
-		o.placeholder = '*.example.com';
 
 		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
 		wrapper.appendChild(SbHeader.render());

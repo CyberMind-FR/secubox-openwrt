@@ -1,15 +1,17 @@
 #!/bin/sh
-# SecuBox mitmproxy manager - LXC container support
-# Copyright (C) 2024 CyberMind.fr
+# SecuBox mitmproxy manager - LXC container support with transparent mode
+# Copyright (C) 2024-2025 CyberMind.fr
 
 CONFIG="mitmproxy"
 LXC_NAME="mitmproxy"
 OPKG_UPDATED=0
+NFT_TABLE="mitmproxy"
 
 # Paths
 LXC_PATH="/srv/lxc"
 LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
 LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+ADDON_PATH="/etc/mitmproxy/addons"
 
 usage() {
 	cat <<'EOF'
@@ -23,12 +25,14 @@ Commands:
   logs            Show mitmproxy logs (use -f to follow)
   shell           Open shell in container
   cert            Show CA certificate info / export path
+  firewall-setup  Setup nftables rules for transparent mode
+  firewall-clear  Remove nftables transparent mode rules
   service-run     Internal: run container under procd
   service-stop    Stop container
 
 Modes (configure in /etc/config/mitmproxy):
   regular      - Standard HTTP/HTTPS proxy (default)
-  transparent  - Transparent proxy (requires iptables redirect)
+  transparent  - Transparent proxy (auto-configures nftables)
   upstream     - Forward to upstream proxy
   reverse      - Reverse proxy mode
 
@@ -43,23 +47,44 @@ log_info() { echo "[INFO] $*"; }
 log_warn() { echo "[WARN] $*" >&2; }
 log_error() { echo "[ERROR] $*" >&2; }
 
-uci_get() { uci -q get ${CONFIG}.main.$1; }
-uci_set() { uci set ${CONFIG}.main.$1="$2" && uci commit ${CONFIG}; }
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+uci_get_list() { uci -q get ${CONFIG}.$1 2>/dev/null; }
 
 # Load configuration with defaults
 load_config() {
-	proxy_port="$(uci_get proxy_port || echo 8080)"
-	web_port="$(uci_get web_port || echo 8081)"
-	web_host="$(uci_get web_host || echo 0.0.0.0)"
-	data_path="$(uci_get data_path || echo /srv/mitmproxy)"
-	memory_limit="$(uci_get memory_limit || echo 256M)"
-	mode="$(uci_get mode || echo regular)"
-	upstream_proxy="$(uci_get upstream_proxy || echo '')"
-	reverse_target="$(uci_get reverse_target || echo '')"
-	ssl_insecure="$(uci_get ssl_insecure || echo 0)"
-	anticache="$(uci_get anticache || echo 0)"
-	anticomp="$(uci_get anticomp || echo 0)"
-	flow_detail="$(uci_get flow_detail || echo 1)"
+	# Main settings
+	proxy_port="$(uci_get main.proxy_port || echo 8080)"
+	web_port="$(uci_get main.web_port || echo 8081)"
+	web_host="$(uci_get main.web_host || echo 0.0.0.0)"
+	data_path="$(uci_get main.data_path || echo /srv/mitmproxy)"
+	memory_limit="$(uci_get main.memory_limit || echo 256M)"
+	mode="$(uci_get main.mode || echo regular)"
+	upstream_proxy="$(uci_get main.upstream_proxy || echo '')"
+	reverse_target="$(uci_get main.reverse_target || echo '')"
+	ssl_insecure="$(uci_get main.ssl_insecure || echo 0)"
+	anticache="$(uci_get main.anticache || echo 0)"
+	anticomp="$(uci_get main.anticomp || echo 0)"
+	flow_detail="$(uci_get main.flow_detail || echo 1)"
+
+	# Transparent mode settings
+	transparent_enabled="$(uci_get transparent.enabled || echo 0)"
+	transparent_iface="$(uci_get transparent.interface || echo br-lan)"
+	redirect_http="$(uci_get transparent.redirect_http || echo 1)"
+	redirect_https="$(uci_get transparent.redirect_https || echo 1)"
+	http_port="$(uci_get transparent.http_port || echo 80)"
+	https_port="$(uci_get transparent.https_port || echo 443)"
+
+	# Whitelist settings
+	whitelist_enabled="$(uci_get whitelist.enabled || echo 1)"
+
+	# Filtering settings
+	filtering_enabled="$(uci_get filtering.enabled || echo 0)"
+	log_requests="$(uci_get filtering.log_requests || echo 1)"
+	filter_cdn="$(uci_get filtering.filter_cdn || echo 0)"
+	filter_media="$(uci_get filtering.filter_media || echo 0)"
+	block_ads="$(uci_get filtering.block_ads || echo 0)"
+	addon_script="$(uci_get filtering.addon_script || echo /etc/mitmproxy/addons/secubox_filter.py)"
 }
 
 ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
@@ -67,6 +92,10 @@ ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
 has_lxc() {
 	command -v lxc-start >/dev/null 2>&1 && \
 	command -v lxc-stop >/dev/null 2>&1
+}
+
+has_nft() {
+	command -v nft >/dev/null 2>&1
 }
 
 # Ensure required packages are installed
@@ -82,6 +111,128 @@ ensure_packages() {
 		fi
 	done
 }
+
+# =============================================================================
+# NFTABLES TRANSPARENT MODE FUNCTIONS
+# =============================================================================
+
+nft_setup() {
+	load_config
+	require_root
+
+	if ! has_nft; then
+		log_error "nftables not available"
+		return 1
+	fi
+
+	if [ "$mode" != "transparent" ]; then
+		log_warn "Proxy mode is '$mode', not 'transparent'. Firewall rules not needed."
+		return 0
+	fi
+
+	log_info "Setting up nftables for transparent proxy..."
+
+	# Create mitmproxy table
+	nft add table inet $NFT_TABLE 2>/dev/null || true
+
+	# Create chains
+	nft add chain inet $NFT_TABLE prerouting { type nat hook prerouting priority -100 \; } 2>/dev/null || true
+	nft add chain inet $NFT_TABLE output { type nat hook output priority -100 \; } 2>/dev/null || true
+
+	# Create bypass set for whitelisted IPs
+	nft add set inet $NFT_TABLE bypass_ipv4 { type ipv4_addr \; flags interval \; } 2>/dev/null || true
+	nft add set inet $NFT_TABLE bypass_ipv6 { type ipv6_addr \; flags interval \; } 2>/dev/null || true
+
+	# Load whitelist IPs into bypass set
+	if [ "$whitelist_enabled" = "1" ]; then
+		local bypass_ips=$(uci_get_list whitelist.bypass_ip 2>/dev/null)
+		for ip in $bypass_ips; do
+			case "$ip" in
+				*:*) nft add element inet $NFT_TABLE bypass_ipv6 { $ip } 2>/dev/null || true ;;
+				*) nft add element inet $NFT_TABLE bypass_ipv4 { $ip } 2>/dev/null || true ;;
+			esac
+		done
+		log_info "Loaded whitelist bypass IPs"
+	fi
+
+	# Get interface index if specified
+	local iif_match=""
+	if [ -n "$transparent_iface" ]; then
+		iif_match="iifname \"$transparent_iface\""
+	fi
+
+	# Flush existing rules in our chains
+	nft flush chain inet $NFT_TABLE prerouting 2>/dev/null || true
+	nft flush chain inet $NFT_TABLE output 2>/dev/null || true
+
+	# Add bypass rules first (before redirect)
+	nft add rule inet $NFT_TABLE prerouting ip daddr @bypass_ipv4 return 2>/dev/null || true
+	nft add rule inet $NFT_TABLE prerouting ip6 daddr @bypass_ipv6 return 2>/dev/null || true
+
+	# Don't intercept traffic from the proxy itself
+	nft add rule inet $NFT_TABLE prerouting meta skuid mitmproxy return 2>/dev/null || true
+
+	# Redirect HTTP traffic
+	if [ "$redirect_http" = "1" ]; then
+		if [ -n "$iif_match" ]; then
+			nft add rule inet $NFT_TABLE prerouting $iif_match tcp dport $http_port redirect to :$proxy_port
+		else
+			nft add rule inet $NFT_TABLE prerouting tcp dport $http_port redirect to :$proxy_port
+		fi
+		log_info "HTTP redirect: port $http_port -> $proxy_port"
+	fi
+
+	# Redirect HTTPS traffic
+	if [ "$redirect_https" = "1" ]; then
+		if [ -n "$iif_match" ]; then
+			nft add rule inet $NFT_TABLE prerouting $iif_match tcp dport $https_port redirect to :$proxy_port
+		else
+			nft add rule inet $NFT_TABLE prerouting tcp dport $https_port redirect to :$proxy_port
+		fi
+		log_info "HTTPS redirect: port $https_port -> $proxy_port"
+	fi
+
+	log_info "nftables transparent mode rules applied"
+	log_info "Table: inet $NFT_TABLE"
+}
+
+nft_teardown() {
+	require_root
+
+	if ! has_nft; then
+		return 0
+	fi
+
+	log_info "Removing nftables transparent mode rules..."
+
+	# Delete the entire table (removes all chains and rules)
+	nft delete table inet $NFT_TABLE 2>/dev/null || true
+
+	log_info "nftables rules removed"
+}
+
+nft_status() {
+	if ! has_nft; then
+		echo "nftables not available"
+		return 1
+	fi
+
+	echo "=== mitmproxy nftables rules ==="
+	if nft list table inet $NFT_TABLE 2>/dev/null; then
+		echo ""
+		echo "Bypass IPv4 set:"
+		nft list set inet $NFT_TABLE bypass_ipv4 2>/dev/null || echo "  (empty or not created)"
+		echo ""
+		echo "Bypass IPv6 set:"
+		nft list set inet $NFT_TABLE bypass_ipv6 2>/dev/null || echo "  (empty or not created)"
+	else
+		echo "No mitmproxy rules configured"
+	fi
+}
+
+# =============================================================================
+# LXC CONTAINER FUNCTIONS
+# =============================================================================
 
 lxc_check_prereqs() {
 	log_info "Checking LXC prerequisites..."
@@ -171,7 +322,7 @@ apk add --no-cache \
 pip3 install --break-system-packages mitmproxy
 
 # Create directories
-mkdir -p /data /var/log/mitmproxy
+mkdir -p /data /var/log/mitmproxy /etc/mitmproxy/addons
 
 # Create startup script
 cat > /opt/start-mitmproxy.sh << 'START'
@@ -183,6 +334,8 @@ MODE="${MITMPROXY_MODE:-regular}"
 PROXY_PORT="${MITMPROXY_PROXY_PORT:-8080}"
 WEB_PORT="${MITMPROXY_WEB_PORT:-8081}"
 WEB_HOST="${MITMPROXY_WEB_HOST:-0.0.0.0}"
+ADDON_SCRIPT="${MITMPROXY_ADDON_SCRIPT:-}"
+FILTERING_ENABLED="${MITMPROXY_FILTERING_ENABLED:-0}"
 
 # Build command arguments
 ARGS="--listen-host 0.0.0.0 --listen-port $PROXY_PORT"
@@ -207,6 +360,12 @@ esac
 [ "$ANTICOMP" = "1" ] && ARGS="$ARGS --anticomp"
 [ -n "$FLOW_DETAIL" ] && ARGS="$ARGS --flow-detail $FLOW_DETAIL"
 
+# Load addon script if filtering is enabled
+if [ "$FILTERING_ENABLED" = "1" ] && [ -n "$ADDON_SCRIPT" ] && [ -f "$ADDON_SCRIPT" ]; then
+    ARGS="$ARGS -s $ADDON_SCRIPT"
+    echo "Loading addon: $ADDON_SCRIPT"
+fi
+
 # Run mitmweb (web interface + proxy)
 exec mitmweb $ARGS --web-host "$WEB_HOST" --web-port "$WEB_PORT" --no-web-open-browser
 START
@@ -225,10 +384,173 @@ SETUP
 	}
 
 	rm -f "$rootfs/tmp/setup-mitmproxy.sh"
+
+	# Install the SecuBox filter addon
+	install_addon_script
+}
+
+install_addon_script() {
+	load_config
+	ensure_dir "$ADDON_PATH"
+	ensure_dir "$LXC_ROOTFS/etc/mitmproxy/addons"
+
+	# Create the SecuBox filter addon
+	cat > "$ADDON_PATH/secubox_filter.py" << 'ADDON'
+"""
+SecuBox mitmproxy Filter Addon
+CDN/MediaFlow filtering and request logging
+"""
+import json
+import os
+import re
+from datetime import datetime
+from mitmproxy import http, ctx
+
+# CDN domains to track
+CDN_DOMAINS = [
+    r'\.cloudflare\.com$',
+    r'\.cloudflareinsights\.com$',
+    r'\.akamai\.net$',
+    r'\.akamaized\.net$',
+    r'\.fastly\.net$',
+    r'\.cloudfront\.net$',
+    r'\.azureedge\.net$',
+    r'\.jsdelivr\.net$',
+    r'\.unpkg\.com$',
+    r'\.cdnjs\.cloudflare\.com$',
+]
+
+# Media streaming domains
+MEDIA_DOMAINS = [
+    r'\.googlevideo\.com$',
+    r'\.youtube\.com$',
+    r'\.ytimg\.com$',
+    r'\.netflix\.com$',
+    r'\.nflxvideo\.net$',
+    r'\.spotify\.com$',
+    r'\.scdn\.co$',
+    r'\.twitch\.tv$',
+    r'\.ttvnw\.net$',
+]
+
+# Ad/Tracker domains to block
+AD_DOMAINS = [
+    r'\.doubleclick\.net$',
+    r'\.googlesyndication\.com$',
+    r'\.googleadservices\.com$',
+    r'\.facebook\.net$',
+    r'\.analytics\.google\.com$',
+    r'\.google-analytics\.com$',
+    r'\.hotjar\.com$',
+    r'\.segment\.io$',
+    r'\.mixpanel\.com$',
+    r'\.amplitude\.com$',
+]
+
+class SecuBoxFilter:
+    def __init__(self):
+        self.log_file = os.environ.get('MITMPROXY_LOG_FILE', '/data/requests.log')
+        self.filter_cdn = os.environ.get('MITMPROXY_FILTER_CDN', '0') == '1'
+        self.filter_media = os.environ.get('MITMPROXY_FILTER_MEDIA', '0') == '1'
+        self.block_ads = os.environ.get('MITMPROXY_BLOCK_ADS', '0') == '1'
+        self.log_requests = os.environ.get('MITMPROXY_LOG_REQUESTS', '1') == '1'
+
+        ctx.log.info(f"SecuBox Filter initialized")
+        ctx.log.info(f"  Log requests: {self.log_requests}")
+        ctx.log.info(f"  Filter CDN: {self.filter_cdn}")
+        ctx.log.info(f"  Filter Media: {self.filter_media}")
+        ctx.log.info(f"  Block Ads: {self.block_ads}")
+
+    def _match_domain(self, host, patterns):
+        """Check if host matches any pattern"""
+        for pattern in patterns:
+            if re.search(pattern, host, re.IGNORECASE):
+                return True
+        return False
+
+    def _log_request(self, flow: http.HTTPFlow, category: str = "normal"):
+        """Log request to JSON file"""
+        if not self.log_requests:
+            return
+
+        try:
+            entry = {
+                "timestamp": datetime.now().isoformat(),
+                "category": category,
+                "request": {
+                    "method": flow.request.method,
+                    "host": flow.request.host,
+                    "port": flow.request.port,
+                    "path": flow.request.path,
+                    "scheme": flow.request.scheme,
+                },
+            }
+
+            if flow.response:
+                entry["response"] = {
+                    "status_code": flow.response.status_code,
+                    "content_type": flow.response.headers.get("content-type", ""),
+                    "content_length": len(flow.response.content) if flow.response.content else 0,
+                }
+
+            with open(self.log_file, 'a') as f:
+                f.write(json.dumps(entry) + '\n')
+        except Exception as e:
+            ctx.log.error(f"Failed to log request: {e}")
+
+    def request(self, flow: http.HTTPFlow):
+        """Process incoming request"""
+        host = flow.request.host
+
+        # Check for ad/tracker domains
+        if self.block_ads and self._match_domain(host, AD_DOMAINS):
+            ctx.log.info(f"Blocked ad/tracker: {host}")
+            flow.response = http.Response.make(
+                403,
+                b"Blocked by SecuBox",
+                {"Content-Type": "text/plain"}
+            )
+            self._log_request(flow, "blocked_ad")
+            return
+
+        # Track CDN requests
+        if self._match_domain(host, CDN_DOMAINS):
+            self._log_request(flow, "cdn")
+            if self.filter_cdn:
+                ctx.log.info(f"CDN request: {host}{flow.request.path[:50]}")
+            return
+
+        # Track media requests
+        if self._match_domain(host, MEDIA_DOMAINS):
+            self._log_request(flow, "media")
+            if self.filter_media:
+                ctx.log.info(f"Media request: {host}{flow.request.path[:50]}")
+            return
+
+        # Log normal request
+        self._log_request(flow, "normal")
+
+    def response(self, flow: http.HTTPFlow):
+        """Process response - update log entry if needed"""
+        pass
+
+addons = [SecuBoxFilter()]
+ADDON
+
+	# Copy to container rootfs
+	cp "$ADDON_PATH/secubox_filter.py" "$LXC_ROOTFS/etc/mitmproxy/addons/" 2>/dev/null || true
+
+	log_info "Addon script installed: $ADDON_PATH/secubox_filter.py"
 }
 
 lxc_create_config() {
 	load_config
+
+	# Build addon path for container
+	local container_addon=""
+	if [ "$filtering_enabled" = "1" ] && [ -f "$LXC_ROOTFS$addon_script" ]; then
+		container_addon="$addon_script"
+	fi
 
 	cat > "$LXC_CONFIG" << EOF
 # mitmproxy LXC Configuration
@@ -243,6 +565,7 @@ lxc.net.0.type = none
 # Mounts
 lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
 lxc.mount.entry = $data_path data none bind,create=dir 0 0
+lxc.mount.entry = $ADDON_PATH etc/mitmproxy/addons none bind,create=dir 0 0
 
 # Environment variables for configuration
 lxc.environment = MITMPROXY_MODE=$mode
@@ -255,6 +578,13 @@ lxc.environment = SSL_INSECURE=$ssl_insecure
 lxc.environment = ANTICACHE=$anticache
 lxc.environment = ANTICOMP=$anticomp
 lxc.environment = FLOW_DETAIL=$flow_detail
+lxc.environment = MITMPROXY_FILTERING_ENABLED=$filtering_enabled
+lxc.environment = MITMPROXY_ADDON_SCRIPT=$addon_script
+lxc.environment = MITMPROXY_LOG_REQUESTS=$log_requests
+lxc.environment = MITMPROXY_FILTER_CDN=$filter_cdn
+lxc.environment = MITMPROXY_FILTER_MEDIA=$filter_media
+lxc.environment = MITMPROXY_BLOCK_ADS=$block_ads
+lxc.environment = MITMPROXY_LOG_FILE=/data/requests.log
 
 # Capabilities
 lxc.cap.drop = sys_admin sys_module mac_admin mac_override
@@ -293,18 +623,43 @@ lxc_run() {
 
 	# Ensure mount points exist
 	ensure_dir "$data_path"
+	ensure_dir "$ADDON_PATH"
+
+	# Setup firewall rules if in transparent mode
+	if [ "$mode" = "transparent" ]; then
+		nft_setup
+	fi
 
 	log_info "Starting mitmproxy LXC container..."
+	log_info "Mode: $mode"
 	log_info "Web interface: http://0.0.0.0:$web_port"
 	log_info "Proxy port: $proxy_port"
+	[ "$filtering_enabled" = "1" ] && log_info "Filtering: enabled"
 	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
 }
 
 lxc_status() {
+	load_config
+	echo "=== mitmproxy Status ==="
+	echo ""
+
 	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
 		lxc-info -n "$LXC_NAME"
 	else
 		echo "LXC container '$LXC_NAME' not found or not configured"
+	fi
+
+	echo ""
+	echo "=== Configuration ==="
+	echo "Mode: $mode"
+	echo "Proxy port: $proxy_port"
+	echo "Web port: $web_port"
+	echo "Data path: $data_path"
+	echo "Filtering: $([ "$filtering_enabled" = "1" ] && echo "enabled" || echo "disabled")"
+
+	if [ "$mode" = "transparent" ]; then
+		echo ""
+		nft_status
 	fi
 }
 
@@ -342,6 +697,10 @@ lxc_destroy() {
 	fi
 }
 
+# =============================================================================
+# COMMANDS
+# =============================================================================
+
 cmd_install() {
 	require_root
 	load_config
@@ -355,11 +714,12 @@ cmd_install() {
 
 	# Create directories
 	ensure_dir "$data_path"
+	ensure_dir "$ADDON_PATH"
 
 	lxc_check_prereqs || exit 1
 	lxc_create_rootfs || exit 1
 
-	uci_set enabled '1'
+	uci_set main.enabled '1'
 	/etc/init.d/mitmproxy enable
 
 	log_info "mitmproxy installed."
@@ -377,6 +737,12 @@ cmd_check() {
 		lxc_check_prereqs
 	else
 		log_warn "LXC: not available"
+	fi
+
+	if has_nft; then
+		log_info "nftables: available"
+	else
+		log_warn "nftables: not available (needed for transparent mode)"
 	fi
 }
 
@@ -429,6 +795,14 @@ cmd_cert() {
 	fi
 }
 
+cmd_firewall_setup() {
+	nft_setup
+}
+
+cmd_firewall_clear() {
+	nft_teardown
+}
+
 cmd_service_run() {
 	require_root
 	load_config
@@ -444,6 +818,13 @@ cmd_service_run() {
 
 cmd_service_stop() {
 	require_root
+	load_config
+
+	# Remove firewall rules
+	if [ "$mode" = "transparent" ]; then
+		nft_teardown
+	fi
+
 	lxc_stop
 }
 
@@ -456,6 +837,8 @@ case "${1:-}" in
 	logs) shift; cmd_logs "$@" ;;
 	shell) shift; cmd_shell "$@" ;;
 	cert) shift; cmd_cert "$@" ;;
+	firewall-setup) shift; cmd_firewall_setup "$@" ;;
+	firewall-clear) shift; cmd_firewall_clear "$@" ;;
 	service-run) shift; cmd_service_run "$@" ;;
 	service-stop) shift; cmd_service_stop "$@" ;;
 	help|--help|-h|'') usage ;;
