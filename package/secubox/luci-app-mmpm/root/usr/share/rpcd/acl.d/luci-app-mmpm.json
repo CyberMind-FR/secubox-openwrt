@@ -1,0 +1,17 @@
+{
+	"luci-app-mmpm": {
+		"description": "Grant access to MMPM",
+		"read": {
+			"ubus": {
+				"luci.mmpm": ["get_status", "get_config", "get_web_url", "list_modules", "search_modules"]
+			},
+			"uci": ["mmpm"]
+		},
+		"write": {
+			"ubus": {
+				"luci.mmpm": ["install_mmpm", "update_mmpm", "service_start", "service_stop", "service_restart", "install_module", "remove_module", "upgrade_modules", "set_config"]
+			},
+			"uci": ["mmpm"]
+		}
+	}
+}

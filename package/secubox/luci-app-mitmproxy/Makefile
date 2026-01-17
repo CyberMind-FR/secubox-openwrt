@@ -7,8 +7,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-mitmproxy
-PKG_VERSION:=1.0.0
-PKG_RELEASE:=1
+PKG_VERSION:=0.4.0
+PKG_RELEASE:=3
 PKG_ARCH:=all
 
 PKG_LICENSE:=Apache-2.0

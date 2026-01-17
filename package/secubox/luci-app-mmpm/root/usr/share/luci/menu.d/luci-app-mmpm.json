@@ -1,0 +1,46 @@
+{
+	"admin/secubox/services/mmpm": {
+		"title": "MMPM",
+		"order": 32,
+		"action": {
+			"type": "alias",
+			"path": "admin/secubox/services/mmpm/dashboard"
+		},
+		"depends": {
+			"acl": ["luci-app-mmpm"],
+			"uci": {"mmpm": true}
+		}
+	},
+	"admin/secubox/services/mmpm/dashboard": {
+		"title": "Dashboard",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "mmpm/dashboard"
+		}
+	},
+	"admin/secubox/services/mmpm/modules": {
+		"title": "Modules",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "mmpm/modules"
+		}
+	},
+	"admin/secubox/services/mmpm/webui": {
+		"title": "Web GUI",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "mmpm/webui"
+		}
+	},
+	"admin/secubox/services/mmpm/settings": {
+		"title": "Settings",
+		"order": 4,
+		"action": {
+			"type": "view",
+			"path": "mmpm/settings"
+		}
+	}
+}

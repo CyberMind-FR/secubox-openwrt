@@ -1,0 +1,48 @@
+# MagicMirror2 configuration for SecuBox
+
+config magicmirror2 'main'
+	option enabled '0'
+	option port '8082'
+	option address '0.0.0.0'
+	option data_path '/srv/magicmirror2'
+	option memory_limit '512M'
+	option language 'en'
+	option timezone 'Europe/Paris'
+	option units 'metric'
+	option electron_enabled '0'
+
+config display 'display'
+	option width '1920'
+	option height '1080'
+	option zoom '1.0'
+	option brightness '100'
+
+config weather 'weather'
+	option enabled '0'
+	option provider 'openweathermap'
+	option api_key ''
+	option location ''
+	option location_id ''
+	option units 'metric'
+
+config calendar 'calendar'
+	option enabled '0'
+	option max_entries '10'
+	option fetch_interval '300000'
+
+config newsfeed 'newsfeed'
+	option enabled '0'
+	option show_description '1'
+	option show_source_title '1'
+	option max_news_items '5'
+
+config clock 'clock'
+	option enabled '1'
+	option display_seconds '1'
+	option show_date '1'
+	option show_week '0'
+	option date_format 'dddd, LL'
+
+config compliments 'compliments'
+	option enabled '1'
+	option update_interval '30000'

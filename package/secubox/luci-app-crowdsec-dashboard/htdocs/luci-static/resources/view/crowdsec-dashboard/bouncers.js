@@ -698,7 +698,7 @@ return view.extend({
 						E('p', { 'style': 'color: #ffc107; font-weight: bold;' },
 							_('⚠️ Firewall bouncer is not configured yet.')),
 						E('p', {},
-							_('Please install the secubox-app-crowdsec-bouncer package to configure the firewall bouncer.'))
+							_('Please install the secubox-app-cs-firewall-bouncer package to configure the firewall bouncer.'))
 					]),
 					E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
 						E('button', {

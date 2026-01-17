@@ -194,12 +194,24 @@ init_nftables() {
 			nft add chain ip "$TABLE" $chain_name-input "{ type filter hook input priority $hook_priority; policy accept; }"
 			nft add rule ip "$TABLE" $chain_name-input ct state established,related accept
 			nft add rule ip "$TABLE" $chain_name-input iifname != \{ $interface \} accept
+			# Drop traffic from blacklisted IPs
+			if [ "$deny_log" -eq "1" ]; then
+				nft add rule ip "$TABLE" $chain_name-input ip saddr @crowdsec-blacklists $log_term $deny_action
+			else
+				nft add rule ip "$TABLE" $chain_name-input ip saddr @crowdsec-blacklists $deny_action
+			fi
 		fi
 
 		if [ "$filter_forward" -eq "1" ]; then
 			nft add chain ip "$TABLE" $chain_name-forward "{ type filter hook forward priority $hook_priority; policy accept; }"
 			nft add rule ip "$TABLE" $chain_name-forward ct state established,related accept
 			nft add rule ip "$TABLE" $chain_name-forward iifname != \{ $interface \} accept
+			# Drop traffic from blacklisted IPs
+			if [ "$deny_log" -eq "1" ]; then
+				nft add rule ip "$TABLE" $chain_name-forward ip saddr @crowdsec-blacklists $log_term $deny_action
+			else
+				nft add rule ip "$TABLE" $chain_name-forward ip saddr @crowdsec-blacklists $deny_action
+			fi
 		fi
 	fi
 
@@ -212,12 +224,24 @@ init_nftables() {
 			nft add chain ip6 "$TABLE6" $chain6_name-input "{ type filter hook input priority $hook_priority; policy accept; }"
 			nft add rule ip6 "$TABLE6" $chain6_name-input ct state established,related accept
 			nft add rule ip6 "$TABLE6" $chain6_name-input iifname != \{ $interface \} accept
+			# Drop traffic from blacklisted IPs
+			if [ "$deny_log" -eq "1" ]; then
+				nft add rule ip6 "$TABLE6" $chain6_name-input ip6 saddr @crowdsec6-blacklists $log_term $deny_action
+			else
+				nft add rule ip6 "$TABLE6" $chain6_name-input ip6 saddr @crowdsec6-blacklists $deny_action
+			fi
 		fi
 
 		if [ "$filter_forward" -eq "1" ]; then
 			nft add chain ip6 "$TABLE6" $chain6_name-forward "{ type filter hook forward priority $hook_priority; policy accept; }"
 			nft add rule ip6 "$TABLE6" $chain6_name-forward ct state established,related accept
 			nft add rule ip6 "$TABLE6" $chain6_name-forward iifname != \{ $interface \} accept
+			# Drop traffic from blacklisted IPs
+			if [ "$deny_log" -eq "1" ]; then
+				nft add rule ip6 "$TABLE6" $chain6_name-forward ip6 saddr @crowdsec6-blacklists $log_term $deny_action
+			else
+				nft add rule ip6 "$TABLE6" $chain6_name-forward ip6 saddr @crowdsec6-blacklists $deny_action
+			fi
 		fi
 	fi
 }

@@ -1,131 +1,33 @@
 #!/bin/sh /etc/rc.common
-#
-# mitmproxy init script for OpenWrt
-# Copyright (C) 2025 CyberMind.fr (SecuBox)
-#
 
 START=95
 STOP=10
 USE_PROCD=1
 
-PROG=/usr/bin/mitmweb
-CONF_DIR=/etc/mitmproxy
-PID_FILE=/var/run/mitmproxy.pid
+PROG=/usr/sbin/mitmproxyctl
+NAME=mitmproxy
+CONFIG=mitmproxy
 
-validate_section() {
-	uci_load_validate mitmproxy main "$1" "$2" \
-		'enabled:bool:0' \
-		'mode:string:transparent' \
-		'listen_host:string:0.0.0.0' \
-		'listen_port:port:8080' \
-		'web_port:port:8081' \
-		'web_host:string:0.0.0.0' \
-		'confdir:string:/etc/mitmproxy' \
-		'ssl_insecure:bool:0' \
-		'showhost:bool:1' \
-		'flow_detail:range(0,4):2'
-}
-
-start_mitmproxy() {
-	[ "$2" = 0 ] || {
-		echo "mitmproxy: validation failed" >&2
-		return 1
-	}
+start_service() {
+	local enabled
+	config_load "$CONFIG"
+	config_get enabled main enabled '0'
 
 	[ "$enabled" = "1" ] || {
-		echo "mitmproxy: disabled in config"
+		echo "mitmproxy is disabled. Enable with: uci set mitmproxy.main.enabled=1"
 		return 0
 	}
 
-	# Create directories
-	mkdir -p /tmp/mitmproxy
-	mkdir -p /var/lib/mitmproxy
-
-	procd_open_instance mitmproxy
-	procd_set_param command $PROG
-
-	# Core options
-	procd_append_param command --set confdir="$confdir"
-	procd_append_param command --listen-host "$listen_host"
-	procd_append_param command --listen-port "$listen_port"
-	procd_append_param command --web-host "$web_host"
-	procd_append_param command --web-port "$web_port"
-	procd_append_param command --set flow_detail="$flow_detail"
-
-	# Mode
-	case "$mode" in
-		transparent)
-			procd_append_param command --mode transparent
-			;;
-		regular)
-			procd_append_param command --mode regular
-			;;
-		upstream)
-			procd_append_param command --mode upstream
-			;;
-	esac
-
-	# SSL options
-	[ "$ssl_insecure" = "1" ] && procd_append_param command --ssl-insecure
-	[ "$showhost" = "1" ] && procd_append_param command --showhost
-
-	# Capture options
-	local save_flows flow_file
-	config_get save_flows capture save_flows 0
-	config_get flow_file capture flow_file "/tmp/mitmproxy/flows.bin"
-	[ "$save_flows" = "1" ] && procd_append_param command -w "$flow_file"
-
-	procd_set_param respawn
+	procd_open_instance
+	procd_set_param command "$PROG" service-run
+	procd_set_param respawn 3600 5 5
 	procd_set_param stdout 1
 	procd_set_param stderr 1
-	procd_set_param pidfile $PID_FILE
-
 	procd_close_instance
-
-	# Setup iptables rules for transparent mode
-	[ "$mode" = "transparent" ] && setup_iptables "$listen_port"
-}
-
-setup_iptables() {
-	local port="$1"
-
-	# Remove existing rules first
-	cleanup_iptables
-
-	# Get LAN interface
-	local lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
-
-	# Redirect HTTP traffic
-	iptables -t nat -A PREROUTING -i br-lan -p tcp --dport 80 \
-		-j REDIRECT --to-port "$port" 2>/dev/null
-
-	# Redirect HTTPS traffic
-	iptables -t nat -A PREROUTING -i br-lan -p tcp --dport 443 \
-		-j REDIRECT --to-port "$port" 2>/dev/null
-
-	# Mark mitmproxy traffic
-	iptables -t nat -I PREROUTING -p tcp -m mark --mark 0x1/0x1 -j ACCEPT 2>/dev/null
-}
-
-cleanup_iptables() {
-	# Get configured port (default 8080)
-	local port=$(uci -q get mitmproxy.main.listen_port || echo "8080")
-
-	# Remove mitmproxy redirect rules
-	iptables -t nat -D PREROUTING -i br-lan -p tcp --dport 80 \
-		-j REDIRECT --to-port "$port" 2>/dev/null
-	iptables -t nat -D PREROUTING -i br-lan -p tcp --dport 443 \
-		-j REDIRECT --to-port "$port" 2>/dev/null
-	iptables -t nat -D PREROUTING -p tcp -m mark --mark 0x1/0x1 -j ACCEPT 2>/dev/null
-}
-
-start_service() {
-	config_load mitmproxy
-	config_foreach validate_section main start_mitmproxy
 }
 
 stop_service() {
-	cleanup_iptables
+	"$PROG" service-stop
 }
 
 reload_service() {
@@ -134,20 +36,9 @@ reload_service() {
 }
 
 service_triggers() {
-	procd_add_reload_trigger "mitmproxy"
+	procd_add_reload_trigger "$CONFIG"
 }
 
 status() {
-	if pgrep mitmweb >/dev/null 2>&1; then
-		echo "mitmproxy is running"
-		pgrep mitmweb
-		return 0
-	elif pgrep mitmdump >/dev/null 2>&1; then
-		echo "mitmdump is running"
-		pgrep mitmdump
-		return 0
-	else
-		echo "mitmproxy is not running"
-		return 1
-	fi
+	"$PROG" status
 }

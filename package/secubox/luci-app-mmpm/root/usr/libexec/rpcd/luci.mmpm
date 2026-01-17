@@ -1,0 +1,345 @@
+#!/bin/sh
+#
+# RPCD backend for MMPM LuCI interface
+# Copyright (C) 2026 CyberMind.fr (SecuBox)
+#
+
+. /lib/functions.sh
+
+LXC_NAME="magicmirror2"
+MMPM_BIN="/usr/local/bin/mmpm"
+
+# Get MMPM status
+get_status() {
+	local running=0
+	local installed=0
+	local gui_running=0
+	local version=""
+	local web_url=""
+
+	# Check if MM2 container is running
+	local mm2_running=0
+	if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		mm2_running=1
+
+		# Check if MMPM is installed
+		if lxc-attach -n "$LXC_NAME" -- test -x "$MMPM_BIN" 2>/dev/null; then
+			installed=1
+			version=$(lxc-attach -n "$LXC_NAME" -- $MMPM_BIN version 2>/dev/null | head -1 || echo "unknown")
+
+			# Check GUI status from MMPM ui --url (needs PATH for pm2)
+			local ui_url=$(lxc-attach -n "$LXC_NAME" -- sh -c "export PATH=/usr/local/bin:/opt/nodejs/node-v24.13.0/bin:\$PATH && $MMPM_BIN ui --url 2>/dev/null" | grep -oE 'http://[^[:space:]]+')
+			if [ -n "$ui_url" ]; then
+				gui_running=1
+				web_url="$ui_url"
+			fi
+		fi
+	fi
+
+	local enabled=$(uci -q get mmpm.main.enabled || echo "0")
+	local port=$(echo "$web_url" | grep -oE ':[0-9]+$' | tr -d ':')
+	[ -z "$port" ] && port="7890"
+
+	cat <<EOF
+{
+	"mm2_running": $([ "$mm2_running" = "1" ] && echo "true" || echo "false"),
+	"installed": $([ "$installed" = "1" ] && echo "true" || echo "false"),
+	"gui_running": $([ "$gui_running" = "1" ] && echo "true" || echo "false"),
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"version": "$version",
+	"port": $port,
+	"web_url": "$web_url"
+}
+EOF
+}
+
+# Get configuration
+get_config() {
+	local enabled=$(uci -q get mmpm.main.enabled || echo "0")
+	local port=$(uci -q get mmpm.main.port || echo "7891")
+	local address=$(uci -q get mmpm.main.address || echo "0.0.0.0")
+
+	cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"port": $port,
+	"address": "$address"
+}
+EOF
+}
+
+# Install MMPM
+install_mmpm() {
+	local result=$(/usr/sbin/mmpmctl install 2>&1)
+	local rc=$?
+
+	if [ $rc -eq 0 ]; then
+		echo '{"success":true,"message":"MMPM installed successfully"}'
+	else
+		local escaped=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
+		echo "{\"success\":false,\"message\":\"$escaped\"}"
+	fi
+}
+
+# Update MMPM
+update_mmpm() {
+	local result=$(/usr/sbin/mmpmctl update 2>&1)
+	local rc=$?
+
+	if [ $rc -eq 0 ]; then
+		echo '{"success":true,"message":"MMPM updated successfully"}'
+	else
+		local escaped=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
+		echo "{\"success\":false,\"message\":\"$escaped\"}"
+	fi
+}
+
+# Service control
+service_start() {
+	/etc/init.d/mmpm start >/dev/null 2>&1
+	sleep 2
+	get_status
+}
+
+service_stop() {
+	/etc/init.d/mmpm stop >/dev/null 2>&1
+	sleep 1
+	get_status
+}
+
+service_restart() {
+	/etc/init.d/mmpm restart >/dev/null 2>&1
+	sleep 2
+	get_status
+}
+
+# Search modules
+search_modules() {
+	local query="$1"
+
+	if [ -z "$query" ]; then
+		echo '{"modules":[],"error":"Query required"}'
+		return
+	fi
+
+	if ! lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		echo '{"modules":[],"error":"MagicMirror2 not running"}'
+		return
+	fi
+
+	local results=$(lxc-attach -n "$LXC_NAME" -- $MMPM_BIN search "$query" --json 2>/dev/null)
+
+	if [ -n "$results" ]; then
+		echo "$results"
+	else
+		echo '{"modules":[]}'
+	fi
+}
+
+# List installed modules
+list_modules() {
+	if ! lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		echo '{"modules":[],"error":"MagicMirror2 not running"}'
+		return
+	fi
+
+	local results=$(lxc-attach -n "$LXC_NAME" -- $MMPM_BIN list --json 2>/dev/null)
+
+	if [ -n "$results" ]; then
+		echo "$results"
+	else
+		echo '{"modules":[]}'
+	fi
+}
+
+# Install module
+install_module() {
+	local name="$1"
+
+	if [ -z "$name" ]; then
+		echo '{"success":false,"message":"Module name required"}'
+		return
+	fi
+
+	local result=$(/usr/sbin/mmpmctl install-module "$name" 2>&1)
+	local rc=$?
+
+	if [ $rc -eq 0 ]; then
+		echo '{"success":true,"message":"Module installed successfully"}'
+	else
+		local escaped=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
+		echo "{\"success\":false,\"message\":\"$escaped\"}"
+	fi
+}
+
+# Remove module
+remove_module() {
+	local name="$1"
+
+	if [ -z "$name" ]; then
+		echo '{"success":false,"message":"Module name required"}'
+		return
+	fi
+
+	local result=$(/usr/sbin/mmpmctl remove "$name" 2>&1)
+	local rc=$?
+
+	if [ $rc -eq 0 ]; then
+		echo '{"success":true,"message":"Module removed successfully"}'
+	else
+		local escaped=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
+		echo "{\"success\":false,\"message\":\"$escaped\"}"
+	fi
+}
+
+# Upgrade modules
+upgrade_modules() {
+	local name="$1"
+
+	local result=$(/usr/sbin/mmpmctl upgrade $name 2>&1)
+	local rc=$?
+
+	if [ $rc -eq 0 ]; then
+		echo '{"success":true,"message":"Modules upgraded successfully"}'
+	else
+		local escaped=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
+		echo "{\"success\":false,\"message\":\"$escaped\"}"
+	fi
+}
+
+# Get web URL for iframe
+get_web_url() {
+	local web_url=""
+	local port="7890"
+
+	# Get actual URL from MMPM if available
+	if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		if lxc-attach -n "$LXC_NAME" -- test -x "$MMPM_BIN" 2>/dev/null; then
+			web_url=$(lxc-attach -n "$LXC_NAME" -- sh -c "export PATH=/usr/local/bin:/opt/nodejs/node-v24.13.0/bin:\$PATH && $MMPM_BIN ui --url 2>/dev/null" | grep -oE 'http://[^[:space:]]+')
+			if [ -n "$web_url" ]; then
+				port=$(echo "$web_url" | grep -oE ':[0-9]+$' | tr -d ':')
+			fi
+		fi
+	fi
+
+	# Fallback if not running
+	if [ -z "$web_url" ]; then
+		local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+		web_url="http://$router_ip:$port"
+	fi
+
+	cat <<EOF
+{
+	"web_url": "$web_url",
+	"port": $port
+}
+EOF
+}
+
+# Set configuration
+set_config() {
+	local key="$1"
+	local value="$2"
+
+	if [ -z "$key" ] || [ -z "$value" ]; then
+		echo '{"success":false,"message":"Key and value required"}'
+		return
+	fi
+
+	case "$value" in
+		true) value="1" ;;
+		false) value="0" ;;
+	esac
+
+	uci set "mmpm.main.$key=$value"
+	uci commit mmpm
+
+	echo '{"success":true}'
+}
+
+# RPCD list method
+case "$1" in
+	list)
+		cat <<EOF
+{
+	"get_status": {},
+	"get_config": {},
+	"get_web_url": {},
+	"install_mmpm": {},
+	"update_mmpm": {},
+	"service_start": {},
+	"service_stop": {},
+	"service_restart": {},
+	"search_modules": {"query": "string"},
+	"list_modules": {},
+	"install_module": {"name": "string"},
+	"remove_module": {"name": "string"},
+	"upgrade_modules": {"name": "string"},
+	"set_config": {"key": "string", "value": "string"}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			get_status)
+				get_status
+				;;
+			get_config)
+				get_config
+				;;
+			get_web_url)
+				get_web_url
+				;;
+			install_mmpm)
+				install_mmpm
+				;;
+			update_mmpm)
+				update_mmpm
+				;;
+			service_start)
+				service_start
+				;;
+			service_stop)
+				service_stop
+				;;
+			service_restart)
+				service_restart
+				;;
+			search_modules)
+				read -r input
+				query=$(echo "$input" | jsonfilter -e '@.query' 2>/dev/null)
+				search_modules "$query"
+				;;
+			list_modules)
+				list_modules
+				;;
+			install_module)
+				read -r input
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				install_module "$name"
+				;;
+			remove_module)
+				read -r input
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				remove_module "$name"
+				;;
+			upgrade_modules)
+				read -r input
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				upgrade_modules "$name"
+				;;
+			set_config)
+				read -r input
+				key=$(echo "$input" | jsonfilter -e '@.key' 2>/dev/null)
+				value=$(echo "$input" | jsonfilter -e '@.value' 2>/dev/null)
+				set_config "$key" "$value"
+				;;
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+	*)
+		echo '{"error":"Unknown command"}'
+		;;
+esac

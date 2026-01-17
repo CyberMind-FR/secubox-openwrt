@@ -1,0 +1,328 @@
+#!/bin/sh
+# MMPM - MagicMirror Package Manager controller
+# Manages MMPM inside MagicMirror2 LXC container
+# Copyright (C) 2024-2026 CyberMind.fr
+
+CONFIG="mmpm"
+LXC_NAME="magicmirror2"
+MMPM_REPO="https://github.com/Bee-Mar/mmpm.git"
+
+usage() {
+	cat <<'EOF'
+Usage: mmpmctl <command> [options]
+
+Commands:
+  install           Install MMPM in MagicMirror2 container
+  update            Update MMPM to latest version
+  status            Show MMPM status
+  logs              Show MMPM logs (use -f to follow)
+  shell             Open shell in container (MMPM context)
+  service-run       Internal: run MMPM GUI under procd
+  service-stop      Stop MMPM GUI
+
+Module Management (via MMPM):
+  search <query>    Search for modules
+  list              List installed modules
+  install <module>  Install a module
+  remove <module>   Remove a module
+  upgrade [module]  Upgrade module(s)
+
+Examples:
+  mmpmctl install
+  mmpmctl search weather
+  mmpmctl install MMM-WeatherChart
+  mmpmctl list
+
+MMPM Web GUI: http://<router-ip>:7891
+EOF
+}
+
+log_info() { echo "[INFO] $*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+load_config() {
+	port="$(uci_get main.port || echo 7891)"
+	address="$(uci_get main.address || echo 0.0.0.0)"
+	enabled="$(uci_get main.enabled || echo 0)"
+}
+
+# Check if MagicMirror2 LXC is running
+check_mm2_running() {
+	if ! lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		log_error "MagicMirror2 container not running"
+		log_error "Start it first: /etc/init.d/magicmirror2 start"
+		return 1
+	fi
+	return 0
+}
+
+# MMPM binary path inside container
+MMPM_BIN="/usr/local/bin/mmpm"
+# Node.js PATH inside container (for npm)
+NODE_PATH="/opt/nodejs/node-v24.13.0/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Check if MMPM is installed in container
+is_mmpm_installed() {
+	lxc-attach -n "$LXC_NAME" -- test -x "$MMPM_BIN"
+}
+
+# Run MMPM command with proper PATH (for npm access)
+run_mmpm() {
+	lxc-attach -n "$LXC_NAME" -- sh -c "export PATH=$NODE_PATH:\$PATH && $MMPM_BIN $*"
+}
+
+# Install MMPM in container
+cmd_install() {
+	check_mm2_running || return 1
+
+	if is_mmpm_installed; then
+		log_info "MMPM is already installed"
+		return 0
+	fi
+
+	log_info "Installing MMPM in MagicMirror2 container..."
+
+	# Install dependencies and MMPM via pip
+	lxc-attach -n "$LXC_NAME" -- sh -c '
+		# Update package lists
+		apt-get update 2>/dev/null || apk update 2>/dev/null || true
+
+		# Install Python and pip if not present
+		if ! command -v pip3 >/dev/null 2>&1; then
+			apt-get install -y python3 python3-pip python3-venv 2>/dev/null || \
+			apk add python3 py3-pip 2>/dev/null || true
+		fi
+
+		# Install MMPM via pip (--break-system-packages for Debian Trixie PEP 668)
+		pip3 install --upgrade --break-system-packages mmpm 2>/dev/null || \
+		pip3 install --upgrade mmpm 2>/dev/null || \
+		pip install --upgrade --break-system-packages mmpm 2>/dev/null || \
+		pip install --upgrade mmpm
+
+		# Initialize MMPM database
+		mmpm db --yes 2>/dev/null || true
+	' || {
+		log_error "Failed to install MMPM"
+		return 1
+	}
+
+	log_info "MMPM installed successfully"
+	log_info "Enable and start the GUI: /etc/init.d/mmpm enable && /etc/init.d/mmpm start"
+}
+
+# Update MMPM
+cmd_update() {
+	check_mm2_running || return 1
+
+	if ! is_mmpm_installed; then
+		log_error "MMPM not installed. Run 'mmpmctl install' first"
+		return 1
+	fi
+
+	log_info "Updating MMPM..."
+	lxc-attach -n "$LXC_NAME" -- pip3 install --upgrade --break-system-packages mmpm 2>/dev/null || \
+	lxc-attach -n "$LXC_NAME" -- pip3 install --upgrade mmpm || {
+		log_error "Failed to update MMPM"
+		return 1
+	}
+
+	log_info "MMPM updated successfully"
+}
+
+# Show status
+cmd_status() {
+	load_config
+
+	echo "=== MMPM Status ==="
+	echo ""
+
+	if ! lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		echo "MagicMirror2 container: NOT RUNNING"
+		echo "MMPM: N/A (container not running)"
+		return
+	fi
+
+	echo "MagicMirror2 container: RUNNING"
+
+	if is_mmpm_installed; then
+		local version=$(run_mmpm version 2>/dev/null | head -1 || echo "unknown")
+		echo "MMPM installed: YES (v$version)"
+	else
+		echo "MMPM installed: NO"
+		echo ""
+		echo "Install with: mmpmctl install"
+		return
+	fi
+
+	echo ""
+	echo "=== GUI Status ==="
+
+	# Check if GUI is running via pm2
+	local ui_status=$(run_mmpm ui --status 2>/dev/null | grep "mmpm.ui" | grep -c "online" || echo "0")
+	if [ "$ui_status" != "0" ]; then
+		local gui_url=$(run_mmpm ui --url 2>/dev/null | grep -oE 'http://[^[:space:]]+' || echo "")
+		echo "GUI Status: RUNNING (pm2)"
+		echo "GUI URL: $gui_url"
+	else
+		echo "GUI Status: NOT RUNNING"
+		echo "Start with: /etc/init.d/mmpm start"
+	fi
+}
+
+# Show logs
+cmd_logs() {
+	if [ "$1" = "-f" ]; then
+		logread -f -e mmpm
+	else
+		logread -e mmpm | tail -100
+	fi
+}
+
+# Start MMPM GUI (via pm2)
+cmd_service_run() {
+	check_mm2_running || return 1
+
+	if ! is_mmpm_installed; then
+		log_error "MMPM not installed"
+		return 1
+	fi
+
+	log_info "Starting MMPM GUI..."
+
+	# Check if UI is installed, if not install it
+	local ui_status=$(run_mmpm ui --status 2>/dev/null | grep -c "mmpm.ui" || echo "0")
+	if [ "$ui_status" = "0" ]; then
+		log_info "Installing MMPM UI..."
+		run_mmpm ui install --yes 2>/dev/null || true
+	fi
+
+	# Start MMPM GUI via pm2
+	run_mmpm ui --start
+}
+
+# Stop MMPM GUI
+cmd_service_stop() {
+	check_mm2_running || return 1
+
+	if ! is_mmpm_installed; then
+		return 0
+	fi
+
+	log_info "Stopping MMPM GUI..."
+	run_mmpm ui --stop 2>/dev/null || true
+}
+
+# Search modules
+cmd_search() {
+	local query="$1"
+	check_mm2_running || return 1
+
+	if ! is_mmpm_installed; then
+		log_error "MMPM not installed"
+		return 1
+	fi
+
+	if [ -z "$query" ]; then
+		log_error "Search query required"
+		return 1
+	fi
+
+	run_mmpm search "$query"
+}
+
+# List installed modules
+cmd_list() {
+	check_mm2_running || return 1
+
+	if ! is_mmpm_installed; then
+		log_error "MMPM not installed"
+		return 1
+	fi
+
+	run_mmpm list --installed
+}
+
+# Install module via MMPM
+cmd_module_install() {
+	local module="$1"
+	check_mm2_running || return 1
+
+	if ! is_mmpm_installed; then
+		log_error "MMPM not installed"
+		return 1
+	fi
+
+	if [ -z "$module" ]; then
+		log_error "Module name required"
+		return 1
+	fi
+
+	log_info "Installing module: $module"
+	run_mmpm install "$module" --yes
+}
+
+# Remove module via MMPM
+cmd_module_remove() {
+	local module="$1"
+	check_mm2_running || return 1
+
+	if ! is_mmpm_installed; then
+		log_error "MMPM not installed"
+		return 1
+	fi
+
+	if [ -z "$module" ]; then
+		log_error "Module name required"
+		return 1
+	fi
+
+	log_info "Removing module: $module"
+	run_mmpm remove "$module" --yes
+}
+
+# Upgrade modules
+cmd_upgrade() {
+	local module="$1"
+	check_mm2_running || return 1
+
+	if ! is_mmpm_installed; then
+		log_error "MMPM not installed"
+		return 1
+	fi
+
+	if [ -n "$module" ]; then
+		log_info "Upgrading module: $module"
+		run_mmpm upgrade "$module" --yes
+	else
+		log_info "Upgrading all modules..."
+		run_mmpm upgrade --yes
+	fi
+}
+
+# Open shell in container
+cmd_shell() {
+	check_mm2_running || return 1
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+# Main entry point
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	shell) shift; cmd_shell "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	search) shift; cmd_search "$@" ;;
+	list) shift; cmd_list "$@" ;;
+	install-module) shift; cmd_module_install "$@" ;;
+	remove) shift; cmd_module_remove "$@" ;;
+	upgrade) shift; cmd_upgrade "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac

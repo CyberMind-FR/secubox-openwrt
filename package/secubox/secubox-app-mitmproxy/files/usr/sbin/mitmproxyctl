@@ -1,236 +1,862 @@
 #!/bin/sh
-#
-# mitmproxyctl - mitmproxy management utility
-# Copyright (C) 2025 CyberMind.fr (SecuBox)
-#
+# SecuBox mitmproxy manager - LXC container support with transparent mode
+# Copyright (C) 2024-2025 CyberMind.fr
 
-CONF_DIR=/etc/mitmproxy
-DATA_DIR=/tmp/mitmproxy
-LOG_FILE=/tmp/mitmproxy/requests.log
+CONFIG="mitmproxy"
+LXC_NAME="mitmproxy"
+OPKG_UPDATED=0
+NFT_TABLE="mitmproxy"
+
+# Paths
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+ADDON_PATH="/etc/mitmproxy/addons"
 
 usage() {
-	cat <<EOF
-mitmproxyctl - mitmproxy management utility
-
-Usage: mitmproxyctl <command> [options]
+	cat <<'EOF'
+Usage: mitmproxyctl <command>
 
 Commands:
-  status          Show service status
-  start           Start mitmproxy
-  stop            Stop mitmproxy
-  restart         Restart mitmproxy
-  enable          Enable at boot
-  disable         Disable at boot
-  logs            Show recent logs
-  flows           List captured flows
-  clear           Clear captured data
-  ca-cert         Show CA certificate path
-  install-ca      Install CA cert instructions
-  stats           Show traffic statistics
+  install         Install prerequisites and create LXC container
+  check           Run prerequisite checks
+  update          Update mitmproxy in container
+  status          Show container status
+  logs            Show mitmproxy logs (use -f to follow)
+  shell           Open shell in container
+  cert            Show CA certificate info / export path
+  firewall-setup  Setup nftables rules for transparent mode
+  firewall-clear  Remove nftables transparent mode rules
+  service-run     Internal: run container under procd
+  service-stop    Stop container
 
-Options:
-  -h, --help      Show this help message
+Modes (configure in /etc/config/mitmproxy):
+  regular      - Standard HTTP/HTTPS proxy (default)
+  transparent  - Transparent proxy (auto-configures nftables)
+  upstream     - Forward to upstream proxy
+  reverse      - Reverse proxy mode
+
+Web Interface: http://<router-ip>:8081
+Proxy Port: 8888
 EOF
+}
+
+require_root() { [ "$(id -u)" -eq 0 ] || { echo "Root required" >&2; exit 1; }; }
+
+log_info() { echo "[INFO] $*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+uci_get_list() { uci -q get ${CONFIG}.$1 2>/dev/null; }
+
+# Load configuration with defaults
+load_config() {
+	# Main settings
+	proxy_port="$(uci_get main.proxy_port || echo 8888)"
+	web_port="$(uci_get main.web_port || echo 8081)"
+	web_host="$(uci_get main.web_host || echo 0.0.0.0)"
+	data_path="$(uci_get main.data_path || echo /srv/mitmproxy)"
+	memory_limit="$(uci_get main.memory_limit || echo 256M)"
+	mode="$(uci_get main.mode || echo regular)"
+	upstream_proxy="$(uci_get main.upstream_proxy || echo '')"
+	reverse_target="$(uci_get main.reverse_target || echo '')"
+	ssl_insecure="$(uci_get main.ssl_insecure || echo 0)"
+	anticache="$(uci_get main.anticache || echo 0)"
+	anticomp="$(uci_get main.anticomp || echo 0)"
+	flow_detail="$(uci_get main.flow_detail || echo 1)"
+
+	# Transparent mode settings
+	transparent_enabled="$(uci_get transparent.enabled || echo 0)"
+	transparent_iface="$(uci_get transparent.interface || echo br-lan)"
+	redirect_http="$(uci_get transparent.redirect_http || echo 1)"
+	redirect_https="$(uci_get transparent.redirect_https || echo 1)"
+	http_port="$(uci_get transparent.http_port || echo 80)"
+	https_port="$(uci_get transparent.https_port || echo 443)"
+
+	# Whitelist settings
+	whitelist_enabled="$(uci_get whitelist.enabled || echo 1)"
+
+	# Filtering settings
+	filtering_enabled="$(uci_get filtering.enabled || echo 0)"
+	log_requests="$(uci_get filtering.log_requests || echo 1)"
+	filter_cdn="$(uci_get filtering.filter_cdn || echo 0)"
+	filter_media="$(uci_get filtering.filter_media || echo 0)"
+	block_ads="$(uci_get filtering.block_ads || echo 0)"
+	addon_script="$(uci_get filtering.addon_script || echo /etc/mitmproxy/addons/secubox_filter.py)"
+}
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+has_lxc() {
+	command -v lxc-start >/dev/null 2>&1 && \
+	command -v lxc-stop >/dev/null 2>&1
+}
+
+has_nft() {
+	command -v nft >/dev/null 2>&1
+}
+
+# Ensure required packages are installed
+ensure_packages() {
+	require_root
+	for pkg in "$@"; do
+		if ! opkg list-installed | grep -q "^$pkg "; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+# =============================================================================
+# NFTABLES TRANSPARENT MODE FUNCTIONS
+# =============================================================================
+
+nft_setup() {
+	load_config
+	require_root
+
+	if ! has_nft; then
+		log_error "nftables not available"
+		return 1
+	fi
+
+	if [ "$mode" != "transparent" ]; then
+		log_warn "Proxy mode is '$mode', not 'transparent'. Firewall rules not needed."
+		return 0
+	fi
+
+	log_info "Setting up nftables for transparent proxy..."
+
+	# Create mitmproxy table
+	nft add table inet $NFT_TABLE 2>/dev/null || true
+
+	# Create chains
+	nft add chain inet $NFT_TABLE prerouting { type nat hook prerouting priority -100 \; } 2>/dev/null || true
+	nft add chain inet $NFT_TABLE output { type nat hook output priority -100 \; } 2>/dev/null || true
+
+	# Create bypass set for whitelisted IPs
+	nft add set inet $NFT_TABLE bypass_ipv4 { type ipv4_addr \; flags interval \; } 2>/dev/null || true
+	nft add set inet $NFT_TABLE bypass_ipv6 { type ipv6_addr \; flags interval \; } 2>/dev/null || true
+
+	# Load whitelist IPs into bypass set
+	if [ "$whitelist_enabled" = "1" ]; then
+		local bypass_ips=$(uci_get_list whitelist.bypass_ip 2>/dev/null)
+		for ip in $bypass_ips; do
+			case "$ip" in
+				*:*) nft add element inet $NFT_TABLE bypass_ipv6 { $ip } 2>/dev/null || true ;;
+				*) nft add element inet $NFT_TABLE bypass_ipv4 { $ip } 2>/dev/null || true ;;
+			esac
+		done
+		log_info "Loaded whitelist bypass IPs"
+	fi
+
+	# Get interface index if specified
+	local iif_match=""
+	if [ -n "$transparent_iface" ]; then
+		iif_match="iifname \"$transparent_iface\""
+	fi
+
+	# Flush existing rules in our chains
+	nft flush chain inet $NFT_TABLE prerouting 2>/dev/null || true
+	nft flush chain inet $NFT_TABLE output 2>/dev/null || true
+
+	# Add bypass rules first (before redirect)
+	nft add rule inet $NFT_TABLE prerouting ip daddr @bypass_ipv4 return 2>/dev/null || true
+	nft add rule inet $NFT_TABLE prerouting ip6 daddr @bypass_ipv6 return 2>/dev/null || true
+
+	# Don't intercept traffic from the proxy itself
+	nft add rule inet $NFT_TABLE prerouting meta skuid mitmproxy return 2>/dev/null || true
+
+	# Redirect HTTP traffic
+	if [ "$redirect_http" = "1" ]; then
+		if [ -n "$iif_match" ]; then
+			nft add rule inet $NFT_TABLE prerouting $iif_match tcp dport $http_port redirect to :$proxy_port
+		else
+			nft add rule inet $NFT_TABLE prerouting tcp dport $http_port redirect to :$proxy_port
+		fi
+		log_info "HTTP redirect: port $http_port -> $proxy_port"
+	fi
+
+	# Redirect HTTPS traffic
+	if [ "$redirect_https" = "1" ]; then
+		if [ -n "$iif_match" ]; then
+			nft add rule inet $NFT_TABLE prerouting $iif_match tcp dport $https_port redirect to :$proxy_port
+		else
+			nft add rule inet $NFT_TABLE prerouting tcp dport $https_port redirect to :$proxy_port
+		fi
+		log_info "HTTPS redirect: port $https_port -> $proxy_port"
+	fi
+
+	log_info "nftables transparent mode rules applied"
+	log_info "Table: inet $NFT_TABLE"
+}
+
+nft_teardown() {
+	require_root
+
+	if ! has_nft; then
+		return 0
+	fi
+
+	log_info "Removing nftables transparent mode rules..."
+
+	# Delete the entire table (removes all chains and rules)
+	nft delete table inet $NFT_TABLE 2>/dev/null || true
+
+	log_info "nftables rules removed"
+}
+
+nft_status() {
+	if ! has_nft; then
+		echo "nftables not available"
+		return 1
+	fi
+
+	echo "=== mitmproxy nftables rules ==="
+	if nft list table inet $NFT_TABLE 2>/dev/null; then
+		echo ""
+		echo "Bypass IPv4 set:"
+		nft list set inet $NFT_TABLE bypass_ipv4 2>/dev/null || echo "  (empty or not created)"
+		echo ""
+		echo "Bypass IPv6 set:"
+		nft list set inet $NFT_TABLE bypass_ipv6 2>/dev/null || echo "  (empty or not created)"
+	else
+		echo "No mitmproxy rules configured"
+	fi
+}
+
+# =============================================================================
+# LXC CONTAINER FUNCTIONS
+# =============================================================================
+
+lxc_check_prereqs() {
+	log_info "Checking LXC prerequisites..."
+	ensure_packages lxc lxc-common lxc-attach lxc-start lxc-stop lxc-destroy || return 1
+
+	if [ ! -d /sys/fs/cgroup ]; then
+		log_error "cgroups not mounted at /sys/fs/cgroup"
+		return 1
+	fi
+
+	log_info "LXC ready"
+}
+
+lxc_create_rootfs() {
+	load_config
+
+	if [ -d "$LXC_ROOTFS" ] && [ -x "$LXC_ROOTFS/usr/bin/mitmproxy" ]; then
+		log_info "LXC rootfs already exists with mitmproxy"
+		return 0
+	fi
+
+	log_info "Creating LXC rootfs for mitmproxy..."
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+
+	lxc_create_docker_rootfs || return 1
+	lxc_create_config || return 1
+
+	log_info "LXC rootfs created successfully"
+}
+
+lxc_create_docker_rootfs() {
+	local rootfs="$LXC_ROOTFS"
+	local image="mitmproxy/mitmproxy"
+	local tag="latest"
+	local registry="registry-1.docker.io"
+	local arch
+
+	# Detect architecture for Docker manifest
+	case "$(uname -m)" in
+		x86_64) arch="amd64" ;;
+		aarch64) arch="arm64" ;;
+		armv7l) arch="arm" ;;
+		*) arch="amd64" ;;
+	esac
+
+	log_info "Extracting mitmproxy Docker image ($arch)..."
+	ensure_dir "$rootfs"
+
+	# Get Docker Hub token
+	local token=$(wget -q -O - "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$image:pull" | jsonfilter -e '@.token')
+	[ -z "$token" ] && { log_error "Failed to get Docker Hub token"; return 1; }
+
+	# Get manifest list
+	local manifest=$(wget -q -O - --header="Authorization: Bearer $token" \
+		--header="Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+		"https://$registry/v2/$image/manifests/$tag")
+
+	# Find digest for our architecture
+	local digest=$(echo "$manifest" | jsonfilter -e "@.manifests[@.platform.architecture='$arch'].digest")
+	[ -z "$digest" ] && { log_error "No manifest found for $arch"; return 1; }
+
+	# Get image manifest
+	local img_manifest=$(wget -q -O - --header="Authorization: Bearer $token" \
+		--header="Accept: application/vnd.docker.distribution.manifest.v2+json" \
+		"https://$registry/v2/$image/manifests/$digest")
+
+	# Extract layers and download them
+	log_info "Downloading and extracting layers..."
+	local layers=$(echo "$img_manifest" | jsonfilter -e '@.layers[*].digest')
+
+	for layer_digest in $layers; do
+		log_info "  Layer: ${layer_digest:7:12}..."
+		wget -q -O - --header="Authorization: Bearer $token" \
+			"https://$registry/v2/$image/blobs/$layer_digest" | \
+			tar xzf - -C "$rootfs" 2>&1 | grep -v "Cannot change ownership" || true
+	done
+
+	# Configure container
+	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
+	mkdir -p "$rootfs/data" "$rootfs/var/log/mitmproxy" "$rootfs/etc/mitmproxy/addons" "$rootfs/tmp"
+
+	# Ensure proper shell setup - Docker image is Python slim (Debian-based)
+	# python:slim uses dash as /bin/sh but symlinks may not extract properly
+	log_info "Checking shell availability..."
+	ls -la "$rootfs/bin/" 2>/dev/null | head -20 || true
+
+	# Ensure /bin/sh exists - critical for script execution
+	if [ ! -x "$rootfs/bin/sh" ]; then
+		log_warn "/bin/sh not found or not executable, attempting to fix..."
+		# Check for available shells
+		if [ -x "$rootfs/bin/dash" ]; then
+			ln -sf dash "$rootfs/bin/sh"
+			log_info "Created /bin/sh -> dash"
+		elif [ -x "$rootfs/bin/bash" ]; then
+			ln -sf bash "$rootfs/bin/sh"
+			log_info "Created /bin/sh -> bash"
+		elif [ -x "$rootfs/usr/bin/dash" ]; then
+			mkdir -p "$rootfs/bin"
+			ln -sf /usr/bin/dash "$rootfs/bin/sh"
+			log_info "Created /bin/sh -> /usr/bin/dash"
+		else
+			# Last resort: copy busybox sh from host if available
+			log_error "No shell found in container! Container may not start properly."
+		fi
+	fi
+
+	# Verify shell is now available
+	if [ -x "$rootfs/bin/sh" ]; then
+		log_info "Shell ready: $(ls -la "$rootfs/bin/sh")"
+	else
+		log_error "Shell setup failed!"
+	fi
+
+	# Create startup script for mitmweb (POSIX-compliant for dash)
+	cat > "$rootfs/opt/start-mitmproxy.sh" << 'START'
+#!/bin/sh
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+export PYTHONUNBUFFERED=1
+cd /data
+
+# Read environment variables
+MODE="${MITMPROXY_MODE:-regular}"
+PROXY_PORT="${MITMPROXY_PROXY_PORT:-8888}"
+WEB_PORT="${MITMPROXY_WEB_PORT:-8081}"
+WEB_HOST="${MITMPROXY_WEB_HOST:-0.0.0.0}"
+ADDON_SCRIPT="${MITMPROXY_ADDON_SCRIPT:-}"
+FILTERING_ENABLED="${MITMPROXY_FILTERING_ENABLED:-0}"
+
+# Build args
+ARGS="--listen-host 0.0.0.0 --listen-port $PROXY_PORT --set confdir=/data"
+ARGS="$ARGS --web-host $WEB_HOST --web-port $WEB_PORT --no-web-open-browser"
+
+case "$MODE" in
+    transparent) ARGS="$ARGS --mode transparent" ;;
+    upstream) [ -n "$UPSTREAM_PROXY" ] && ARGS="$ARGS --mode upstream:$UPSTREAM_PROXY" ;;
+    reverse) [ -n "$REVERSE_TARGET" ] && ARGS="$ARGS --mode reverse:$REVERSE_TARGET" ;;
+esac
+
+[ "$SSL_INSECURE" = "1" ] && ARGS="$ARGS --ssl-insecure"
+[ "$ANTICACHE" = "1" ] && ARGS="$ARGS --anticache"
+[ "$ANTICOMP" = "1" ] && ARGS="$ARGS --anticomp"
+
+# Load addon script if filtering is enabled
+if [ "$FILTERING_ENABLED" = "1" ] && [ -n "$ADDON_SCRIPT" ] && [ -f "$ADDON_SCRIPT" ]; then
+    ARGS="$ARGS -s $ADDON_SCRIPT"
+    echo "Loading addon: $ADDON_SCRIPT"
+fi
+
+rm -f /data/.mitmproxy_token /tmp/mitmweb.log
+
+echo "Starting mitmweb..."
+
+# Run mitmweb with unbuffered output and inline token capture
+/usr/local/bin/mitmweb $ARGS 2>&1 | while IFS= read -r line; do
+    echo "$line"
+    echo "$line" >> /tmp/mitmweb.log
+    case "$line" in
+        *token=*)
+            token=$(echo "$line" | grep -o 'token=[a-f0-9]*' | cut -d= -f2)
+            [ -n "$token" ] && echo "$token" > /data/.mitmproxy_token
+            ;;
+    esac
+done
+START
+	chmod +x "$rootfs/opt/start-mitmproxy.sh"
+
+	log_info "mitmproxy Docker image extracted successfully"
+
+	# Install the SecuBox filter addon
+	install_addon_script
+}
+
+install_addon_script() {
+	load_config
+	ensure_dir "$ADDON_PATH"
+	ensure_dir "$LXC_ROOTFS/etc/mitmproxy/addons"
+
+	# Create the SecuBox filter addon
+	cat > "$ADDON_PATH/secubox_filter.py" << 'ADDON'
+"""
+SecuBox mitmproxy Filter Addon
+CDN/MediaFlow filtering and request logging
+"""
+import json
+import os
+import re
+from datetime import datetime
+from mitmproxy import http, ctx
+
+# CDN domains to track
+CDN_DOMAINS = [
+    r'\.cloudflare\.com$',
+    r'\.cloudflareinsights\.com$',
+    r'\.akamai\.net$',
+    r'\.akamaized\.net$',
+    r'\.fastly\.net$',
+    r'\.cloudfront\.net$',
+    r'\.azureedge\.net$',
+    r'\.jsdelivr\.net$',
+    r'\.unpkg\.com$',
+    r'\.cdnjs\.cloudflare\.com$',
+]
+
+# Media streaming domains
+MEDIA_DOMAINS = [
+    r'\.googlevideo\.com$',
+    r'\.youtube\.com$',
+    r'\.ytimg\.com$',
+    r'\.netflix\.com$',
+    r'\.nflxvideo\.net$',
+    r'\.spotify\.com$',
+    r'\.scdn\.co$',
+    r'\.twitch\.tv$',
+    r'\.ttvnw\.net$',
+]
+
+# Ad/Tracker domains to block
+AD_DOMAINS = [
+    r'\.doubleclick\.net$',
+    r'\.googlesyndication\.com$',
+    r'\.googleadservices\.com$',
+    r'\.facebook\.net$',
+    r'\.analytics\.google\.com$',
+    r'\.google-analytics\.com$',
+    r'\.hotjar\.com$',
+    r'\.segment\.io$',
+    r'\.mixpanel\.com$',
+    r'\.amplitude\.com$',
+]
+
+class SecuBoxFilter:
+    def __init__(self):
+        self.log_file = os.environ.get('MITMPROXY_LOG_FILE', '/data/requests.log')
+        self.filter_cdn = os.environ.get('MITMPROXY_FILTER_CDN', '0') == '1'
+        self.filter_media = os.environ.get('MITMPROXY_FILTER_MEDIA', '0') == '1'
+        self.block_ads = os.environ.get('MITMPROXY_BLOCK_ADS', '0') == '1'
+        self.log_requests = os.environ.get('MITMPROXY_LOG_REQUESTS', '1') == '1'
+
+        ctx.log.info(f"SecuBox Filter initialized")
+        ctx.log.info(f"  Log requests: {self.log_requests}")
+        ctx.log.info(f"  Filter CDN: {self.filter_cdn}")
+        ctx.log.info(f"  Filter Media: {self.filter_media}")
+        ctx.log.info(f"  Block Ads: {self.block_ads}")
+
+    def _match_domain(self, host, patterns):
+        """Check if host matches any pattern"""
+        for pattern in patterns:
+            if re.search(pattern, host, re.IGNORECASE):
+                return True
+        return False
+
+    def _log_request(self, flow: http.HTTPFlow, category: str = "normal"):
+        """Log request to JSON file"""
+        if not self.log_requests:
+            return
+
+        try:
+            entry = {
+                "timestamp": datetime.now().isoformat(),
+                "category": category,
+                "request": {
+                    "method": flow.request.method,
+                    "host": flow.request.host,
+                    "port": flow.request.port,
+                    "path": flow.request.path,
+                    "scheme": flow.request.scheme,
+                },
+            }
+
+            if flow.response:
+                entry["response"] = {
+                    "status_code": flow.response.status_code,
+                    "content_type": flow.response.headers.get("content-type", ""),
+                    "content_length": len(flow.response.content) if flow.response.content else 0,
+                }
+
+            with open(self.log_file, 'a') as f:
+                f.write(json.dumps(entry) + '\n')
+        except Exception as e:
+            ctx.log.error(f"Failed to log request: {e}")
+
+    def request(self, flow: http.HTTPFlow):
+        """Process incoming request"""
+        host = flow.request.host
+
+        # Check for ad/tracker domains
+        if self.block_ads and self._match_domain(host, AD_DOMAINS):
+            ctx.log.info(f"Blocked ad/tracker: {host}")
+            flow.response = http.Response.make(
+                403,
+                b"Blocked by SecuBox",
+                {"Content-Type": "text/plain"}
+            )
+            self._log_request(flow, "blocked_ad")
+            return
+
+        # Track CDN requests
+        if self._match_domain(host, CDN_DOMAINS):
+            self._log_request(flow, "cdn")
+            if self.filter_cdn:
+                ctx.log.info(f"CDN request: {host}{flow.request.path[:50]}")
+            return
+
+        # Track media requests
+        if self._match_domain(host, MEDIA_DOMAINS):
+            self._log_request(flow, "media")
+            if self.filter_media:
+                ctx.log.info(f"Media request: {host}{flow.request.path[:50]}")
+            return
+
+        # Log normal request
+        self._log_request(flow, "normal")
+
+    def response(self, flow: http.HTTPFlow):
+        """Process response - update log entry if needed"""
+        pass
+
+addons = [SecuBoxFilter()]
+ADDON
+
+	# Copy to container rootfs
+	cp "$ADDON_PATH/secubox_filter.py" "$LXC_ROOTFS/etc/mitmproxy/addons/" 2>/dev/null || true
+
+	log_info "Addon script installed: $ADDON_PATH/secubox_filter.py"
+}
+
+lxc_create_config() {
+	load_config
+
+	# Build addon path for container
+	local container_addon=""
+	if [ "$filtering_enabled" = "1" ] && [ -f "$LXC_ROOTFS$addon_script" ]; then
+		container_addon="$addon_script"
+	fi
+
+	cat > "$LXC_CONFIG" << EOF
+# mitmproxy LXC Configuration
+lxc.uts.name = $LXC_NAME
+
+# Root filesystem
+lxc.rootfs.path = dir:$LXC_ROOTFS
+
+# Network - use host network for simplicity
+lxc.net.0.type = none
+
+# Mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $data_path data none bind,create=dir 0 0
+lxc.mount.entry = $ADDON_PATH etc/mitmproxy/addons none bind,create=dir 0 0
+
+# Environment variables for configuration
+lxc.environment = MITMPROXY_MODE=$mode
+lxc.environment = MITMPROXY_PROXY_PORT=$proxy_port
+lxc.environment = MITMPROXY_WEB_PORT=$web_port
+lxc.environment = MITMPROXY_WEB_HOST=$web_host
+lxc.environment = UPSTREAM_PROXY=$upstream_proxy
+lxc.environment = REVERSE_TARGET=$reverse_target
+lxc.environment = SSL_INSECURE=$ssl_insecure
+lxc.environment = ANTICACHE=$anticache
+lxc.environment = ANTICOMP=$anticomp
+lxc.environment = FLOW_DETAIL=$flow_detail
+lxc.environment = MITMPROXY_FILTERING_ENABLED=$filtering_enabled
+lxc.environment = MITMPROXY_ADDON_SCRIPT=$addon_script
+lxc.environment = MITMPROXY_LOG_REQUESTS=$log_requests
+lxc.environment = MITMPROXY_FILTER_CDN=$filter_cdn
+lxc.environment = MITMPROXY_FILTER_MEDIA=$filter_media
+lxc.environment = MITMPROXY_BLOCK_ADS=$block_ads
+lxc.environment = MITMPROXY_LOG_FILE=/data/requests.log
+
+# Capabilities
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override
+
+# cgroups limits
+lxc.cgroup.memory.limit_in_bytes = $memory_limit
+
+# Init
+lxc.init.cmd = /opt/start-mitmproxy.sh
+
+# Console
+lxc.console.size = 1024
+lxc.pty.max = 1024
+EOF
+
+	log_info "LXC config created at $LXC_CONFIG"
+}
+
+lxc_stop() {
+	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
+		lxc-stop -n "$LXC_NAME" -k >/dev/null 2>&1 || true
+	fi
+}
+
+lxc_run() {
+	load_config
+	lxc_stop
+
+	if [ ! -f "$LXC_CONFIG" ]; then
+		log_error "LXC not configured. Run 'mitmproxyctl install' first."
+		return 1
+	fi
+
+	# Regenerate config to pick up any UCI changes
+	lxc_create_config
+
+	# Ensure mount points exist
+	ensure_dir "$data_path"
+	ensure_dir "$ADDON_PATH"
+
+	# Setup firewall rules if in transparent mode
+	if [ "$mode" = "transparent" ]; then
+		nft_setup
+	fi
+
+	log_info "Starting mitmproxy LXC container..."
+	log_info "Mode: $mode"
+	log_info "Web interface: http://0.0.0.0:$web_port"
+	log_info "Proxy port: $proxy_port"
+	[ "$filtering_enabled" = "1" ] && log_info "Filtering: enabled"
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
+}
+
+lxc_status() {
+	load_config
+	echo "=== mitmproxy Status ==="
+	echo ""
+
+	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
+		lxc-info -n "$LXC_NAME"
+	else
+		echo "LXC container '$LXC_NAME' not found or not configured"
+	fi
+
+	echo ""
+	echo "=== Configuration ==="
+	echo "Mode: $mode"
+	echo "Proxy port: $proxy_port"
+	echo "Web port: $web_port"
+	echo "Data path: $data_path"
+	echo "Filtering: $([ "$filtering_enabled" = "1" ] && echo "enabled" || echo "disabled")"
+
+	if [ "$mode" = "transparent" ]; then
+		echo ""
+		nft_status
+	fi
+}
+
+lxc_logs() {
+	load_config
+	local logfile="$LXC_ROOTFS/var/log/mitmproxy/mitmproxy.log"
+
+	if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		# For mitmweb, logs go to stderr which procd captures
+		if [ "$1" = "-f" ]; then
+			logread -f -e mitmproxy
+		else
+			logread -e mitmproxy | tail -100
+		fi
+	elif [ -f "$logfile" ]; then
+		if [ "$1" = "-f" ]; then
+			tail -f "$logfile"
+		else
+			tail -100 "$logfile"
+		fi
+	else
+		log_warn "Container not running. Try: logread -e mitmproxy"
+	fi
+}
+
+lxc_shell() {
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+lxc_destroy() {
+	lxc_stop
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		rm -rf "$LXC_PATH/$LXC_NAME"
+		log_info "LXC container destroyed"
+	fi
+}
+
+# =============================================================================
+# COMMANDS
+# =============================================================================
+
+cmd_install() {
+	require_root
+	load_config
+
+	if ! has_lxc; then
+		log_error "LXC not available. Install lxc packages first."
+		exit 1
+	fi
+
+	log_info "Installing mitmproxy..."
+
+	# Create directories
+	ensure_dir "$data_path"
+	ensure_dir "$ADDON_PATH"
+
+	lxc_check_prereqs || exit 1
+	lxc_create_rootfs || exit 1
+
+	uci_set main.enabled '1'
+	/etc/init.d/mitmproxy enable
+
+	log_info "mitmproxy installed."
+	log_info "Start with: /etc/init.d/mitmproxy start"
+	log_info "Web interface: http://<router-ip>:$web_port"
+	log_info "Proxy port: $proxy_port"
+}
+
+cmd_check() {
+	load_config
+
+	log_info "Checking prerequisites..."
+	if has_lxc; then
+		log_info "LXC: available"
+		lxc_check_prereqs
+	else
+		log_warn "LXC: not available"
+	fi
+
+	if has_nft; then
+		log_info "nftables: available"
+	else
+		log_warn "nftables: not available (needed for transparent mode)"
+	fi
+}
+
+cmd_update() {
+	require_root
+	load_config
+
+	log_info "Updating mitmproxy..."
+	lxc_destroy
+	lxc_create_rootfs || exit 1
+
+	if /etc/init.d/mitmproxy enabled >/dev/null 2>&1; then
+		/etc/init.d/mitmproxy restart
+	else
+		log_info "Update complete. Restart manually to apply."
+	fi
 }
 
 cmd_status() {
-	if pgrep mitmweb >/dev/null 2>&1; then
-		echo "Status: Running (mitmweb)"
-		echo "PID: $(pgrep mitmweb)"
-		echo "Web UI: http://$(uci -q get network.lan.ipaddr || echo '192.168.1.1'):$(uci -q get mitmproxy.main.web_port || echo '8081')"
-	elif pgrep mitmdump >/dev/null 2>&1; then
-		echo "Status: Running (mitmdump)"
-		echo "PID: $(pgrep mitmdump)"
-	else
-		echo "Status: Stopped"
-	fi
-
-	echo ""
-	echo "Configuration:"
-	echo "  Mode: $(uci -q get mitmproxy.main.mode || echo 'transparent')"
-	echo "  Listen: $(uci -q get mitmproxy.main.listen_host || echo '0.0.0.0'):$(uci -q get mitmproxy.main.listen_port || echo '8080')"
-	echo "  Enabled: $(uci -q get mitmproxy.main.enabled || echo '0')"
-}
-
-cmd_start() {
-	echo "Starting mitmproxy..."
-	/etc/init.d/mitmproxy start
-}
-
-cmd_stop() {
-	echo "Stopping mitmproxy..."
-	/etc/init.d/mitmproxy stop
-}
-
-cmd_restart() {
-	echo "Restarting mitmproxy..."
-	/etc/init.d/mitmproxy restart
-}
-
-cmd_enable() {
-	uci set mitmproxy.main.enabled='1'
-	uci commit mitmproxy
-	/etc/init.d/mitmproxy enable
-	echo "mitmproxy enabled at boot"
-}
-
-cmd_disable() {
-	uci set mitmproxy.main.enabled='0'
-	uci commit mitmproxy
-	/etc/init.d/mitmproxy disable
-	echo "mitmproxy disabled at boot"
+	lxc_status
 }
 
 cmd_logs() {
-	if [ -f "$LOG_FILE" ]; then
-		tail -50 "$LOG_FILE"
+	lxc_logs "$@"
+}
+
+cmd_shell() {
+	lxc_shell
+}
+
+cmd_cert() {
+	load_config
+
+	local cert_path="$data_path/mitmproxy-ca-cert.pem"
+
+	if [ -f "$cert_path" ]; then
+		log_info "CA Certificate location: $cert_path"
+		log_info ""
+		log_info "To install on clients:"
+		log_info "  1. Download from: http://<router-ip>:$web_port/cert/pem"
+		log_info "  2. Or copy: $cert_path"
+		log_info ""
+		log_info "Certificate info:"
+		openssl x509 -in "$cert_path" -noout -subject -dates 2>/dev/null || \
+			cat "$cert_path"
 	else
-		echo "No logs available at $LOG_FILE"
+		log_warn "CA certificate not yet generated."
+		log_info "Start mitmproxy first: /etc/init.d/mitmproxy start"
+		log_info "Then access: http://<router-ip>:$web_port/cert"
 	fi
 }
 
-cmd_flows() {
-	local flow_file=$(uci -q get mitmproxy.capture.flow_file || echo "/tmp/mitmproxy/flows.bin")
-	if [ -f "$flow_file" ]; then
-		echo "Flow file: $flow_file"
-		echo "Size: $(ls -lh "$flow_file" | awk '{print $5}')"
-		echo ""
-		echo "Use 'mitmproxy -r $flow_file' to replay flows"
-	else
-		echo "No flow file found"
-	fi
+cmd_firewall_setup() {
+	nft_setup
 }
 
-cmd_clear() {
-	echo "Clearing captured data..."
-	rm -f "$DATA_DIR"/*.log "$DATA_DIR"/*.bin
-	echo "Done"
+cmd_firewall_clear() {
+	nft_teardown
 }
 
-cmd_ca_cert() {
-	local cert="$CONF_DIR/mitmproxy-ca-cert.pem"
-	if [ -f "$cert" ]; then
-		echo "CA Certificate: $cert"
-		echo ""
-		echo "Certificate details:"
-		openssl x509 -in "$cert" -noout -subject -issuer -dates 2>/dev/null || \
-			cat "$cert"
-	else
-		echo "CA certificate not found"
-		echo "Start mitmproxy once to generate the certificate"
-	fi
-}
+cmd_service_run() {
+	require_root
+	load_config
 
-cmd_install_ca() {
-	local cert="$CONF_DIR/mitmproxy-ca-cert.pem"
-	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
-
-	cat <<EOF
-=== Installing mitmproxy CA Certificate ===
-
-To intercept HTTPS traffic, clients must trust the mitmproxy CA.
-
-1. Access the certificate at:
-   http://$router_ip:$(uci -q get mitmproxy.main.web_port || echo '8081')/cert
-
-2. Or download directly:
-   scp root@$router_ip:$cert ./mitmproxy-ca.pem
-
-3. Install on devices:
-
-   Windows:
-   - Double-click the .pem file
-   - Install to "Trusted Root Certification Authorities"
-
-   macOS:
-   - Double-click to add to Keychain
-   - In Keychain Access, find the cert and set "Always Trust"
-
-   Linux:
-   - Copy to /usr/local/share/ca-certificates/
-   - Run: sudo update-ca-certificates
-
-   Android:
-   - Settings > Security > Install from storage
-   - Select the certificate file
-
-   iOS:
-   - Email the cert and open it
-   - Settings > General > Profile > Install
-   - Settings > General > About > Certificate Trust Settings
-
-EOF
-}
-
-cmd_stats() {
-	echo "=== mitmproxy Statistics ==="
-	echo ""
-
-	if [ -f "$LOG_FILE" ]; then
-		local total=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0")
-		echo "Total requests logged: $total"
-
-		if command -v jq >/dev/null 2>&1; then
-			echo ""
-			echo "Top 10 hosts:"
-			jq -r '.request.host // .host // "unknown"' "$LOG_FILE" 2>/dev/null | \
-				sort | uniq -c | sort -rn | head -10
-
-			echo ""
-			echo "Request methods:"
-			jq -r '.request.method // .method // "GET"' "$LOG_FILE" 2>/dev/null | \
-				sort | uniq -c | sort -rn
-		fi
-	else
-		echo "No statistics available"
-	fi
-}
-
-# Parse arguments
-case "$1" in
-	status)
-		cmd_status
-		;;
-	start)
-		cmd_start
-		;;
-	stop)
-		cmd_stop
-		;;
-	restart)
-		cmd_restart
-		;;
-	enable)
-		cmd_enable
-		;;
-	disable)
-		cmd_disable
-		;;
-	logs)
-		cmd_logs
-		;;
-	flows)
-		cmd_flows
-		;;
-	clear)
-		cmd_clear
-		;;
-	ca-cert|ca|cert)
-		cmd_ca_cert
-		;;
-	install-ca|install)
-		cmd_install_ca
-		;;
-	stats|statistics)
-		cmd_stats
-		;;
-	-h|--help|help)
-		usage
-		;;
-	*)
-		usage
+	if ! has_lxc; then
+		log_error "LXC not available"
 		exit 1
-		;;
-esac
+	fi
 
-exit 0
+	lxc_check_prereqs || exit 1
+	lxc_run
+}
+
+cmd_service_stop() {
+	require_root
+	load_config
+
+	# Remove firewall rules
+	if [ "$mode" = "transparent" ]; then
+		nft_teardown
+	fi
+
+	lxc_stop
+}
+
+# Main Entry Point
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	check) shift; cmd_check "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	shell) shift; cmd_shell "$@" ;;
+	cert) shift; cmd_cert "$@" ;;
+	firewall-setup) shift; cmd_firewall_setup "$@" ;;
+	firewall-clear) shift; cmd_firewall_clear "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac

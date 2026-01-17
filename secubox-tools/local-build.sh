@@ -1486,6 +1486,18 @@ setup_openwrt_feeds() {
 
     cd "$OPENWRT_DIR"
 
+    # Fix: Create rsync symlink in staging_dir for OpenWrt build environment
+    # OpenWrt uses a restricted PATH and doesn't see system rsync
+    if command -v rsync &>/dev/null; then
+        mkdir -p staging_dir/host/bin
+        if [[ ! -L staging_dir/host/bin/rsync ]]; then
+            ln -sf "$(command -v rsync)" staging_dir/host/bin/rsync
+            print_success "Created rsync symlink in staging_dir/host/bin/"
+        fi
+    else
+        print_warning "rsync not found on system - some builds may fail"
+    fi
+
     # Remove unwanted feeds
     if [[ -f "feeds.conf.default" ]]; then
         sed -i '/telephony/d' feeds.conf.default
@@ -2046,6 +2058,17 @@ run_firmware_build() {
 
     # Build firmware
     download_openwrt_source || return 1
+
+    # Fix: Ensure rsync is available in OpenWrt staging directory
+    # OpenWrt build uses restricted PATH and may not see system rsync
+    if command -v rsync &>/dev/null; then
+        mkdir -p "$OPENWRT_DIR/staging_dir/host/bin"
+        if [[ ! -e "$OPENWRT_DIR/staging_dir/host/bin/rsync" ]]; then
+            ln -sf "$(command -v rsync)" "$OPENWRT_DIR/staging_dir/host/bin/rsync"
+            print_success "Created rsync symlink in staging_dir"
+        fi
+    fi
+
     setup_openwrt_feeds || return 1
     copy_secubox_to_openwrt || return 1
     generate_firmware_config || return 1
@@ -2075,6 +2098,16 @@ run_toolchain_build() {
 
     # Setup OpenWrt environment
     download_openwrt_source || return 1
+
+    # Fix: Ensure rsync is available in OpenWrt staging directory
+    if command -v rsync &>/dev/null; then
+        mkdir -p "$OPENWRT_DIR/staging_dir/host/bin"
+        if [[ ! -e "$OPENWRT_DIR/staging_dir/host/bin/rsync" ]]; then
+            ln -sf "$(command -v rsync)" "$OPENWRT_DIR/staging_dir/host/bin/rsync"
+            print_success "Created rsync symlink in staging_dir"
+        fi
+    fi
+
     setup_openwrt_feeds || return 1
     copy_secubox_to_openwrt || return 1
 

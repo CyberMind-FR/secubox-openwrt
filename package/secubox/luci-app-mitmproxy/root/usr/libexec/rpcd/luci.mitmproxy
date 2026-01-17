@@ -6,17 +6,11 @@
 
 . /lib/functions.sh
 
-CONF_DIR=/etc/mitmproxy
-DATA_DIR=/tmp/mitmproxy
-LOG_FILE=/tmp/mitmproxy/requests.log
-FLOW_FILE=/tmp/mitmproxy/flows.bin
-
-# JSON helpers
-json_init() { echo "{"; }
-json_close() { echo "}"; }
-json_add_string() { printf '"%s":"%s"' "$1" "$2"; }
-json_add_int() { printf '"%s":%d' "$1" "${2:-0}"; }
-json_add_bool() { [ "$2" = "1" ] && printf '"%s":true' "$1" || printf '"%s":false' "$1"; }
+DATA_DIR=$(uci -q get mitmproxy.main.data_path || echo "/srv/mitmproxy")
+LXC_NAME="mitmproxy"
+CONF_DIR="$DATA_DIR"
+LOG_FILE="$DATA_DIR/requests.log"
+FLOW_FILE="$DATA_DIR/flows.bin"
 
 # Get service status
 get_status() {
@@ -24,25 +18,42 @@ get_status() {
 	local pid=""
 	local mode="unknown"
 	local web_url=""
+	local lxc_state=""
+	local nft_active="false"
 
-	if pgrep -x mitmweb >/dev/null 2>&1; then
-		running=1
-		pid=$(pgrep -x mitmweb | head -1)
-		mode="mitmweb"
-	elif pgrep -x mitmdump >/dev/null 2>&1; then
-		running=1
-		pid=$(pgrep -x mitmdump | head -1)
-		mode="mitmdump"
-	elif pgrep -f "python.*mitmproxy" >/dev/null 2>&1; then
-		running=1
-		pid=$(pgrep -f "python.*mitmproxy" | head -1)
-		mode="mitmproxy"
+	# Check LXC container status
+	if command -v lxc-info >/dev/null 2>&1; then
+		lxc_state=$(lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -oE 'RUNNING|STOPPED' || echo "UNKNOWN")
+		if [ "$lxc_state" = "RUNNING" ]; then
+			running=1
+			mode="mitmweb"
+			pid=$(lxc-info -n "$LXC_NAME" -p 2>/dev/null | grep -oE '[0-9]+' || echo "0")
+		fi
+	fi
+
+	# Fallback: check for direct process
+	if [ "$running" = "0" ]; then
+		if pgrep mitmweb >/dev/null 2>&1; then
+			running=1
+			pid=$(pgrep mitmweb | head -1)
+			mode="mitmweb"
+		elif pgrep mitmdump >/dev/null 2>&1; then
+			running=1
+			pid=$(pgrep mitmdump | head -1)
+			mode="mitmdump"
+		fi
+	fi
+
+	# Check nftables rules
+	if command -v nft >/dev/null 2>&1; then
+		nft list table inet mitmproxy >/dev/null 2>&1 && nft_active="true"
 	fi
 
 	local enabled=$(uci -q get mitmproxy.main.enabled || echo "0")
-	local listen_port=$(uci -q get mitmproxy.main.listen_port || echo "8080")
+	local proxy_port=$(uci -q get mitmproxy.main.proxy_port || echo "8080")
 	local web_port=$(uci -q get mitmproxy.main.web_port || echo "8081")
-	local proxy_mode=$(uci -q get mitmproxy.main.mode || echo "transparent")
+	local proxy_mode=$(uci -q get mitmproxy.main.mode || echo "regular")
+	local filtering_enabled=$(uci -q get mitmproxy.filtering.enabled || echo "0")
 	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
 
 	[ "$running" = "1" ] && [ "$mode" = "mitmweb" ] && web_url="http://${router_ip}:${web_port}"
@@ -54,46 +65,121 @@ get_status() {
 	"pid": ${pid:-0},
 	"mode": "$mode",
 	"proxy_mode": "$proxy_mode",
-	"listen_port": $listen_port,
+	"lxc_state": "$lxc_state",
+	"proxy_port": $proxy_port,
 	"web_port": $web_port,
 	"web_url": "$web_url",
-	"ca_installed": $([ -f "$CONF_DIR/mitmproxy-ca-cert.pem" ] && echo "true" || echo "false")
+	"ca_installed": $([ -f "$CONF_DIR/mitmproxy-ca-cert.pem" ] && echo "true" || echo "false"),
+	"nft_active": $nft_active,
+	"filtering_enabled": $([ "$filtering_enabled" = "1" ] && echo "true" || echo "false")
 }
 EOF
 }
 
-# Get configuration
+# Get main configuration
 get_config() {
 	local enabled=$(uci -q get mitmproxy.main.enabled || echo "0")
-	local mode=$(uci -q get mitmproxy.main.mode || echo "transparent")
-	local listen_host=$(uci -q get mitmproxy.main.listen_host || echo "0.0.0.0")
-	local listen_port=$(uci -q get mitmproxy.main.listen_port || echo "8080")
+	local mode=$(uci -q get mitmproxy.main.mode || echo "regular")
+	local proxy_port=$(uci -q get mitmproxy.main.proxy_port || echo "8080")
 	local web_host=$(uci -q get mitmproxy.main.web_host || echo "0.0.0.0")
 	local web_port=$(uci -q get mitmproxy.main.web_port || echo "8081")
+	local data_path=$(uci -q get mitmproxy.main.data_path || echo "/srv/mitmproxy")
+	local memory_limit=$(uci -q get mitmproxy.main.memory_limit || echo "256M")
 	local ssl_insecure=$(uci -q get mitmproxy.main.ssl_insecure || echo "0")
-	local flow_detail=$(uci -q get mitmproxy.main.flow_detail || echo "2")
-
-	local save_flows=$(uci -q get mitmproxy.capture.save_flows || echo "1")
-	local capture_urls=$(uci -q get mitmproxy.capture.capture_urls || echo "1")
-	local capture_cookies=$(uci -q get mitmproxy.capture.capture_cookies || echo "1")
-	local capture_headers=$(uci -q get mitmproxy.capture.capture_headers || echo "1")
-	local capture_body=$(uci -q get mitmproxy.capture.capture_body || echo "0")
+	local anticache=$(uci -q get mitmproxy.main.anticache || echo "0")
+	local anticomp=$(uci -q get mitmproxy.main.anticomp || echo "0")
+	local flow_detail=$(uci -q get mitmproxy.main.flow_detail || echo "1")
 
 	cat <<EOF
 {
 	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
 	"mode": "$mode",
-	"listen_host": "$listen_host",
-	"listen_port": $listen_port,
+	"proxy_port": $proxy_port,
 	"web_host": "$web_host",
 	"web_port": $web_port,
+	"data_path": "$data_path",
+	"memory_limit": "$memory_limit",
 	"ssl_insecure": $([ "$ssl_insecure" = "1" ] && echo "true" || echo "false"),
-	"flow_detail": $flow_detail,
-	"save_flows": $([ "$save_flows" = "1" ] && echo "true" || echo "false"),
-	"capture_urls": $([ "$capture_urls" = "1" ] && echo "true" || echo "false"),
-	"capture_cookies": $([ "$capture_cookies" = "1" ] && echo "true" || echo "false"),
-	"capture_headers": $([ "$capture_headers" = "1" ] && echo "true" || echo "false"),
-	"capture_body": $([ "$capture_body" = "1" ] && echo "true" || echo "false")
+	"anticache": $([ "$anticache" = "1" ] && echo "true" || echo "false"),
+	"anticomp": $([ "$anticomp" = "1" ] && echo "true" || echo "false"),
+	"flow_detail": $flow_detail
+}
+EOF
+}
+
+# Get transparent mode configuration
+get_transparent_config() {
+	local enabled=$(uci -q get mitmproxy.transparent.enabled || echo "0")
+	local interface=$(uci -q get mitmproxy.transparent.interface || echo "br-lan")
+	local redirect_http=$(uci -q get mitmproxy.transparent.redirect_http || echo "1")
+	local redirect_https=$(uci -q get mitmproxy.transparent.redirect_https || echo "1")
+	local http_port=$(uci -q get mitmproxy.transparent.http_port || echo "80")
+	local https_port=$(uci -q get mitmproxy.transparent.https_port || echo "443")
+
+	cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"interface": "$interface",
+	"redirect_http": $([ "$redirect_http" = "1" ] && echo "true" || echo "false"),
+	"redirect_https": $([ "$redirect_https" = "1" ] && echo "true" || echo "false"),
+	"http_port": $http_port,
+	"https_port": $https_port
+}
+EOF
+}
+
+# Get whitelist configuration
+get_whitelist_config() {
+	local enabled=$(uci -q get mitmproxy.whitelist.enabled || echo "1")
+
+	# Get bypass_ip list
+	local bypass_ips=$(uci -q get mitmproxy.whitelist.bypass_ip 2>/dev/null | tr ' ' '\n' | while read ip; do
+		[ -n "$ip" ] && printf '"%s",' "$ip"
+	done | sed 's/,$//')
+
+	# Get bypass_domain list
+	local bypass_domains=$(uci -q get mitmproxy.whitelist.bypass_domain 2>/dev/null | tr ' ' '\n' | while read domain; do
+		[ -n "$domain" ] && printf '"%s",' "$domain"
+	done | sed 's/,$//')
+
+	cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"bypass_ip": [${bypass_ips}],
+	"bypass_domain": [${bypass_domains}]
+}
+EOF
+}
+
+# Get filtering configuration
+get_filtering_config() {
+	local enabled=$(uci -q get mitmproxy.filtering.enabled || echo "0")
+	local log_requests=$(uci -q get mitmproxy.filtering.log_requests || echo "1")
+	local filter_cdn=$(uci -q get mitmproxy.filtering.filter_cdn || echo "0")
+	local filter_media=$(uci -q get mitmproxy.filtering.filter_media || echo "0")
+	local block_ads=$(uci -q get mitmproxy.filtering.block_ads || echo "0")
+	local addon_script=$(uci -q get mitmproxy.filtering.addon_script || echo "/etc/mitmproxy/addons/secubox_filter.py")
+
+	cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"log_requests": $([ "$log_requests" = "1" ] && echo "true" || echo "false"),
+	"filter_cdn": $([ "$filter_cdn" = "1" ] && echo "true" || echo "false"),
+	"filter_media": $([ "$filter_media" = "1" ] && echo "true" || echo "false"),
+	"block_ads": $([ "$block_ads" = "1" ] && echo "true" || echo "false"),
+	"addon_script": "$addon_script"
+}
+EOF
+}
+
+# Get all configuration in one call
+get_all_config() {
+	cat <<EOF
+{
+	"main": $(get_config),
+	"transparent": $(get_transparent_config),
+	"whitelist": $(get_whitelist_config),
+	"filtering": $(get_filtering_config)
 }
 EOF
 }
@@ -103,11 +189,20 @@ get_stats() {
 	local total_requests=0
 	local unique_hosts=0
 	local flow_size="0"
+	local cdn_requests=0
+	local media_requests=0
+	local blocked_ads=0
 
 	if [ -f "$LOG_FILE" ]; then
 		total_requests=$(wc -l < "$LOG_FILE" 2>/dev/null || echo "0")
-		if command -v jq >/dev/null 2>&1; then
-			unique_hosts=$(jq -r '.request.host // .host // empty' "$LOG_FILE" 2>/dev/null | sort -u | wc -l)
+		# Use jsonfilter for parsing (OpenWrt native)
+		if command -v jsonfilter >/dev/null 2>&1; then
+			unique_hosts=$(cat "$LOG_FILE" 2>/dev/null | while read line; do
+				echo "$line" | jsonfilter -e '@.request.host' 2>/dev/null
+			done | sort -u | wc -l)
+			cdn_requests=$(grep -c '"category":"cdn"' "$LOG_FILE" 2>/dev/null || echo "0")
+			media_requests=$(grep -c '"category":"media"' "$LOG_FILE" 2>/dev/null || echo "0")
+			blocked_ads=$(grep -c '"category":"blocked_ad"' "$LOG_FILE" 2>/dev/null || echo "0")
 		fi
 	fi
 
@@ -119,7 +214,10 @@ get_stats() {
 {
 	"total_requests": $total_requests,
 	"unique_hosts": $unique_hosts,
-	"flow_file_size": $flow_size
+	"flow_file_size": $flow_size,
+	"cdn_requests": $cdn_requests,
+	"media_requests": $media_requests,
+	"blocked_ads": $blocked_ads
 }
 EOF
 }
@@ -127,18 +225,24 @@ EOF
 # Get recent requests
 get_requests() {
 	local limit="${1:-50}"
+	local category="${2:-}"
 
 	if [ ! -f "$LOG_FILE" ]; then
 		echo '{"requests":[]}'
 		return
 	fi
 
-	if command -v jq >/dev/null 2>&1; then
-		echo '{"requests":'
-		tail -"$limit" "$LOG_FILE" 2>/dev/null | jq -s '.' 2>/dev/null || echo '[]'
-		echo '}'
+	# Filter by category if specified
+	if [ -n "$category" ] && [ "$category" != "all" ]; then
+		echo '{"requests":['
+		grep "\"category\":\"$category\"" "$LOG_FILE" 2>/dev/null | tail -"$limit" | \
+			awk 'BEGIN{first=1}{if(!first)printf ",";first=0;print}' 2>/dev/null || echo ""
+		echo ']}'
 	else
-		echo '{"requests":[]}'
+		echo '{"requests":['
+		tail -"$limit" "$LOG_FILE" 2>/dev/null | \
+			awk 'BEGIN{first=1}{if(!first)printf ",";first=0;print}' 2>/dev/null || echo ""
+		echo ']}'
 	fi
 }
 
@@ -146,13 +250,15 @@ get_requests() {
 get_top_hosts() {
 	local limit="${1:-20}"
 
-	if [ ! -f "$LOG_FILE" ] || ! command -v jq >/dev/null 2>&1; then
+	if [ ! -f "$LOG_FILE" ]; then
 		echo '{"hosts":[]}'
 		return
 	fi
 
 	echo '{"hosts":['
-	jq -r '.request.host // .host // "unknown"' "$LOG_FILE" 2>/dev/null | \
+	# Parse JSON using grep/sed for compatibility
+	grep -o '"host":"[^"]*"' "$LOG_FILE" 2>/dev/null | \
+		sed 's/"host":"//;s/"$//' | \
 		sort | uniq -c | sort -rn | head -"$limit" | \
 		awk 'BEGIN{first=1} {
 			if(!first) printf ",";
@@ -182,6 +288,28 @@ service_restart() {
 	get_status
 }
 
+# Setup firewall rules
+firewall_setup() {
+	/usr/sbin/mitmproxyctl firewall-setup 2>&1
+	local result=$?
+	if [ $result -eq 0 ]; then
+		echo '{"success":true,"message":"Firewall rules applied"}'
+	else
+		echo '{"success":false,"message":"Failed to apply firewall rules"}'
+	fi
+}
+
+# Clear firewall rules
+firewall_clear() {
+	/usr/sbin/mitmproxyctl firewall-clear 2>&1
+	local result=$?
+	if [ $result -eq 0 ]; then
+		echo '{"success":true,"message":"Firewall rules cleared"}'
+	else
+		echo '{"success":false,"message":"Failed to clear firewall rules"}'
+	fi
+}
+
 # Set configuration
 set_config() {
 	local key="$1"
@@ -192,9 +320,46 @@ set_config() {
 		save_flows|capture_*)
 			section="capture"
 			;;
+		redirect_*|interface|http_port|https_port)
+			section="transparent"
+			;;
+		bypass_ip|bypass_domain)
+			section="whitelist"
+			;;
+		filter_*|log_requests|block_ads|addon_script)
+			section="filtering"
+			;;
+	esac
+
+	# Handle boolean conversion
+	case "$value" in
+		true) value="1" ;;
+		false) value="0" ;;
 	esac
 
 	uci set "mitmproxy.$section.$key=$value"
+	uci commit mitmproxy
+	echo '{"success":true}'
+}
+
+# Add to list (for bypass_ip, bypass_domain)
+add_to_list() {
+	local key="$1"
+	local value="$2"
+	local section="whitelist"
+
+	uci add_list "mitmproxy.$section.$key=$value"
+	uci commit mitmproxy
+	echo '{"success":true}'
+}
+
+# Remove from list
+remove_from_list() {
+	local key="$1"
+	local value="$2"
+	local section="whitelist"
+
+	uci del_list "mitmproxy.$section.$key=$value"
 	uci commit mitmproxy
 	echo '{"success":true}'
 }
@@ -235,6 +400,27 @@ EOF
 	fi
 }
 
+get_web_token() {
+	# Token is written to /data/.mitmproxy_token inside container
+	# /data is bind-mounted to DATA_DIR on host
+	local token_file="$DATA_DIR/.mitmproxy_token"
+	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+	local web_port=$(uci -q get mitmproxy.main.web_port || echo "8081")
+	local token=""
+
+	if [ -f "$token_file" ]; then
+		token=$(cat "$token_file" 2>/dev/null | tr -d '\n\r')
+	fi
+
+	cat <<EOF
+{
+	"token": "$token",
+	"web_url": "http://$router_ip:$web_port",
+	"web_url_with_token": "http://$router_ip:$web_port/?token=$token"
+}
+EOF
+}
+
 # RPCD list method
 case "$1" in
 	list)
@@ -242,14 +428,23 @@ case "$1" in
 {
 	"get_status": {},
 	"get_config": {},
+	"get_transparent_config": {},
+	"get_whitelist_config": {},
+	"get_filtering_config": {},
+	"get_all_config": {},
 	"get_stats": {},
-	"get_requests": {"limit": 50},
+	"get_requests": {"limit": 50, "category": "all"},
 	"get_top_hosts": {"limit": 20},
 	"get_ca_info": {},
+	"get_web_token": {},
 	"service_start": {},
 	"service_stop": {},
 	"service_restart": {},
+	"firewall_setup": {},
+	"firewall_clear": {},
 	"set_config": {"key": "string", "value": "string"},
+	"add_to_list": {"key": "string", "value": "string"},
+	"remove_from_list": {"key": "string", "value": "string"},
 	"clear_data": {}
 }
 EOF
@@ -262,13 +457,26 @@ EOF
 			get_config)
 				get_config
 				;;
+			get_transparent_config)
+				get_transparent_config
+				;;
+			get_whitelist_config)
+				get_whitelist_config
+				;;
+			get_filtering_config)
+				get_filtering_config
+				;;
+			get_all_config)
+				get_all_config
+				;;
 			get_stats)
 				get_stats
 				;;
 			get_requests)
 				read -r input
 				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null || echo "50")
-				get_requests "$limit"
+				category=$(echo "$input" | jsonfilter -e '@.category' 2>/dev/null || echo "all")
+				get_requests "$limit" "$category"
 				;;
 			get_top_hosts)
 				read -r input
@@ -277,6 +485,9 @@ EOF
 				;;
 			get_ca_info)
 				get_ca_info
+				;;
+			get_web_token)
+				get_web_token
 				;;
 			service_start)
 				service_start
@@ -287,11 +498,29 @@ EOF
 			service_restart)
 				service_restart
 				;;
+			firewall_setup)
+				firewall_setup
+				;;
+			firewall_clear)
+				firewall_clear
+				;;
 			set_config)
 				read -r input
 				key=$(echo "$input" | jsonfilter -e '@.key' 2>/dev/null)
 				value=$(echo "$input" | jsonfilter -e '@.value' 2>/dev/null)
 				set_config "$key" "$value"
+				;;
+			add_to_list)
+				read -r input
+				key=$(echo "$input" | jsonfilter -e '@.key' 2>/dev/null)
+				value=$(echo "$input" | jsonfilter -e '@.value' 2>/dev/null)
+				add_to_list "$key" "$value"
+				;;
+			remove_from_list)
+				read -r input
+				key=$(echo "$input" | jsonfilter -e '@.key' 2>/dev/null)
+				value=$(echo "$input" | jsonfilter -e '@.value' 2>/dev/null)
+				remove_from_list "$key" "$value"
 				;;
 			clear_data)
 				clear_data

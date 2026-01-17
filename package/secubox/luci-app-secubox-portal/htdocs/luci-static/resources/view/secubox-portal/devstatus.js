@@ -13,48 +13,65 @@ return view.extend({
 
 	render: function() {
 		var modules = [
-			{ name: 'SecuBox Portal', version: '1.0.2', status: 'stable', desc: 'Dashboard unifie et navigation' },
-			{ name: 'System Hub', version: '0.5.1', status: 'stable', desc: 'Gestion systeme centralisee' },
+			// Security
 			{ name: 'CrowdSec Dashboard', version: '0.7.0', status: 'stable', desc: 'Protection collaborative contre les menaces' },
-			{ name: 'Client Guardian', version: '0.4.0', status: 'stable', desc: 'Controle parental et gestion des appareils' },
-			{ name: 'WireGuard Dashboard', version: '0.5.0', status: 'stable', desc: 'VPN WireGuard simplifie' },
-			{ name: 'Network Modes', version: '0.5.0', status: 'stable', desc: 'Configuration reseau (routeur/AP/bridge)' },
+			{ name: 'Client Guardian', version: '0.5.0', status: 'stable', desc: 'Controle parental et gestion des appareils' },
+			{ name: 'Auth Guardian', version: '0.3.0', status: 'stable', desc: 'Portail captif et authentification' },
+			{ name: 'mitmproxy', version: '8.1.1', status: 'stable', desc: 'Proxy HTTPS pour inspection du trafic' },
+			// Network
 			{ name: 'Bandwidth Manager', version: '0.5.0', status: 'stable', desc: 'Gestion de la bande passante' },
 			{ name: 'Traffic Shaper', version: '0.4.0', status: 'stable', desc: 'QoS et priorisation du trafic' },
-			{ name: 'CDN Cache', version: '0.5.0', status: 'stable', desc: 'Cache local pour jeux et mises a jour' },
-			{ name: 'Auth Guardian', version: '0.4.0', status: 'stable', desc: 'Portail captif et authentification' },
-			{ name: 'Media Flow', version: '0.6.3', status: 'beta', desc: 'Streaming multimedia local' },
+			{ name: 'WireGuard VPN', version: '0.5.0', status: 'stable', desc: 'VPN WireGuard simplifie' },
+			{ name: 'Network Modes', version: '0.2.0', status: 'stable', desc: 'Configuration reseau (routeur/AP/bridge)' },
+			// Monitoring
+			{ name: 'Media Flow', version: '0.6.0', status: 'stable', desc: 'Monitoring streaming multimedia' },
+			{ name: 'nDPId Flows', version: '1.1.0', status: 'stable', desc: 'Deep packet inspection et analyse' },
+			{ name: 'Netifyd', version: '1.2.0', status: 'stable', desc: 'Classification du trafic reseau' },
+			{ name: 'Netdata Dashboard', version: '0.4.0', status: 'stable', desc: 'Monitoring en temps reel' },
+			// System
+			{ name: 'SecuBox Portal', version: '0.6.0', status: 'stable', desc: 'Dashboard unifie et navigation' },
+			{ name: 'System Hub', version: '0.4.0', status: 'stable', desc: 'Gestion systeme centralisee' },
+			{ name: 'CDN Cache', version: '0.3.0', status: 'stable', desc: 'Cache local pour jeux et mises a jour' },
+			// Services
 			{ name: 'VHost Manager', version: '0.5.0', status: 'stable', desc: 'Gestion des virtual hosts' },
-			{ name: 'MQTT Bridge', version: '0.4.0', status: 'stable', desc: 'Integration domotique MQTT' },
-			{ name: 'Netdata Dashboard', version: '0.5.0', status: 'stable', desc: 'Monitoring en temps reel' },
-			{ name: 'KSM Manager', version: '0.4.0', status: 'stable', desc: 'Optimisation memoire kernel' },
-			{ name: 'Network Tweaks', version: '1.0.0', status: 'stable', desc: 'Optimisations reseau avancees' }
+			{ name: 'MagicMirror2', version: '2.29.0', status: 'beta', desc: 'Smart display avec widgets modulaires' },
+			{ name: 'MMPM', version: '3.1.0', status: 'beta', desc: 'MagicMirror Package Manager' }
 		];
 
 		var planned = [
-			{ name: 'SecuBox Cloud', desc: 'Synchronisation et backup cloud', eta: 'Q2 2026' },
-			{ name: 'Mobile App', desc: 'Application mobile de controle', eta: 'Q3 2026' },
-			{ name: 'AI Threat Detection', desc: 'Detection des menaces par IA', eta: 'Q4 2026' },
-			{ name: 'Multi-WAN Failover', desc: 'Basculement automatique multi-FAI', eta: 'Q2 2026' }
+			{ name: 'Phase 4: Beta Testing', desc: 'Recrutement 100 beta testeurs, validation terrain', eta: 'Q1 2026' },
+			{ name: 'Phase 5: Crowdfunding', desc: 'Campagne participative, objectif 50 000€', eta: 'Q2 2026' },
+			{ name: 'Phase 6: Production', desc: 'Fabrication, controle qualite, expedition', eta: 'Q3-Q4 2026' },
+			{ name: 'Livraison Finale', desc: 'Deploiement complet et support', eta: 'Q1 2027' },
+			{ name: 'Certification CE/FCC', desc: 'Certification conformite et homologation du materiel', eta: 'Q2-Q3 2027' },
+			{ name: 'Financement Phase 2', desc: 'Levee de fonds pour expansion internationale', eta: 'Q4 2027' }
 		];
 
 		var changelog = [
-			{ version: 'v0.15.3', date: '2025-01', changes: [
-				'Reorganisation du dashboard',
-				'Console Debug deplacee vers System Hub',
-				'Pages publiques Bug Bounty et Crowdfunding',
-				'Correction detection auth-logger (faux positifs)',
-				'Whitelist IP privees pour CrowdSec'
+			{ version: 'v0.15.0-alpha3', date: '2026-01-17', changes: [
+				'Integration complete MMPM avec LuCI et portal',
+				'Section Services dans le portail (MagicMirror2, MMPM)',
+				'Detection GUI MMPM via pm2'
 			]},
-			{ version: 'v0.15.2', date: '2025-01', changes: [
-				'Fix inscription CAPI avec credentials obsoletes',
-				'Correction affichage "null" CrowdSec Dashboard',
-				'Amelioration acquisition logs CrowdSec'
+			{ version: 'v0.15.0-alpha2', date: '2026-01-17', changes: [
+				'Fix conteneur LXC MagicMirror2 avec symlink modules',
+				'Correction shebang start-mm2.sh',
+				'Support PEP 668 pour pip install'
 			]},
-			{ version: 'v0.15.1', date: '2025-01', changes: [
-				'Support Docker/LXC hybride pour Lyrion',
-				'Permissions fichiers Network Tweaks',
-				'Sync command pour local-build'
+			{ version: 'v0.15.0-alpha1', date: '2026-01-17', changes: [
+				'Ajout packages MagicMirror2 et MMPM',
+				'Extraction image Docker sans daemon',
+				'Backend RPCD pour LuCI MMPM'
+			]},
+			{ version: 'v0.15.0-rc7', date: '2026-01-16', changes: [
+				'mitmproxy: Web UI embarquee avec auth token',
+				'mitmproxy: Image Docker officielle',
+				'Fix capture token pour integration LuCI'
+			]},
+			{ version: 'v0.15.0-rc2', date: '2026-01-15', changes: [
+				'Fix CrowdSec firewall bouncer: regles DROP',
+				'Correction interface WAN (br-wan)',
+				'IPs blacklistees effectivement bloquees'
 			]}
 		];
 
@@ -279,7 +296,7 @@ return view.extend({
 						E('div', { 'class': 'ds-stat-label' }, 'A venir')
 					])
 				]),
-				E('div', { 'class': 'ds-version-badge' }, 'Release v0.15.3')
+				E('div', { 'class': 'ds-version-badge' }, 'Release v0.15.0-alpha3')
 			]),
 
 			// Modules actuels

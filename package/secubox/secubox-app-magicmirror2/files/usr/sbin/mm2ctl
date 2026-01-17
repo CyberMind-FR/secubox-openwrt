@@ -1,0 +1,942 @@
+#!/bin/sh
+# SecuBox MagicMirror2 manager - LXC container support with module management
+# Copyright (C) 2024-2026 CyberMind.fr
+
+CONFIG="magicmirror2"
+LXC_NAME="magicmirror2"
+OPKG_UPDATED=0
+
+# Paths
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+
+# MagicMirror paths inside container
+MM_PATH="/opt/magic_mirror"
+MM_MODULES="$MM_PATH/modules"
+MM_CONFIG="$MM_PATH/config"
+
+# Third-party modules registry
+MM_REGISTRY_URL="https://raw.githubusercontent.com/MagicMirrorOrg/MagicMirror-3rd-Party-Modules/master/modules.json"
+
+usage() {
+	cat <<'EOF'
+Usage: mm2ctl <command> [options]
+
+Commands:
+  install           Install prerequisites and create LXC container
+  update            Update MagicMirror2 in container
+  status            Show container and service status
+  logs              Show MagicMirror2 logs (use -f to follow)
+  shell             Open shell in container
+  config            Generate/update config.js from UCI
+  service-run       Internal: run container under procd
+  service-stop      Stop container
+
+Module Management:
+  module list                    List installed modules
+  module available [search]      List available third-party modules
+  module install <name|url>      Install a module (MMM-name or git URL)
+  module remove <name>           Remove an installed module
+  module update [name]           Update module(s)
+
+Configuration:
+  set <key> <value>     Set UCI configuration value
+  get <key>             Get UCI configuration value
+
+Examples:
+  mm2ctl install
+  mm2ctl module install MMM-WeatherChart
+  mm2ctl module install https://github.com/user/MMM-Custom
+  mm2ctl module list
+  mm2ctl config
+
+Web Interface: http://<router-ip>:8082
+EOF
+}
+
+require_root() { [ "$(id -u)" -eq 0 ] || { echo "Root required" >&2; exit 1; }; }
+
+log_info() { echo "[INFO] $*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Load configuration with defaults
+load_config() {
+	port="$(uci_get main.port || echo 8082)"
+	address="$(uci_get main.address || echo 0.0.0.0)"
+	data_path="$(uci_get main.data_path || echo /srv/magicmirror2)"
+	memory_limit="$(uci_get main.memory_limit || echo 512M)"
+	language="$(uci_get main.language || echo en)"
+	timezone="$(uci_get main.timezone || echo Europe/Paris)"
+	units="$(uci_get main.units || echo metric)"
+	electron_enabled="$(uci_get main.electron_enabled || echo 0)"
+
+	# Display settings
+	display_width="$(uci_get display.width || echo 1920)"
+	display_height="$(uci_get display.height || echo 1080)"
+	display_zoom="$(uci_get display.zoom || echo 1.0)"
+
+	# Weather settings
+	weather_enabled="$(uci_get weather.enabled || echo 0)"
+	weather_provider="$(uci_get weather.provider || echo openweathermap)"
+	weather_api_key="$(uci_get weather.api_key || echo '')"
+	weather_location="$(uci_get weather.location || echo '')"
+	weather_location_id="$(uci_get weather.location_id || echo '')"
+
+	# Clock settings
+	clock_enabled="$(uci_get clock.enabled || echo 1)"
+	clock_display_seconds="$(uci_get clock.display_seconds || echo 1)"
+	clock_show_date="$(uci_get clock.show_date || echo 1)"
+
+	# Calendar settings
+	calendar_enabled="$(uci_get calendar.enabled || echo 0)"
+	calendar_max_entries="$(uci_get calendar.max_entries || echo 10)"
+
+	# Newsfeed settings
+	newsfeed_enabled="$(uci_get newsfeed.enabled || echo 0)"
+	newsfeed_max_items="$(uci_get newsfeed.max_news_items || echo 5)"
+
+	# Compliments settings
+	compliments_enabled="$(uci_get compliments.enabled || echo 1)"
+}
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+has_lxc() {
+	command -v lxc-start >/dev/null 2>&1 && \
+	command -v lxc-stop >/dev/null 2>&1
+}
+
+# Ensure required packages are installed
+ensure_packages() {
+	require_root
+	for pkg in "$@"; do
+		if ! opkg list-installed | grep -q "^$pkg "; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+# =============================================================================
+# LXC CONTAINER FUNCTIONS
+# =============================================================================
+
+lxc_check_prereqs() {
+	log_info "Checking LXC prerequisites..."
+	ensure_packages lxc lxc-common lxc-attach lxc-start lxc-stop lxc-destroy || return 1
+
+	if [ ! -d /sys/fs/cgroup ]; then
+		log_error "cgroups not mounted at /sys/fs/cgroup"
+		return 1
+	fi
+
+	log_info "LXC ready"
+}
+
+lxc_create_rootfs() {
+	load_config
+
+	if [ -d "$LXC_ROOTFS" ] && [ -d "$LXC_ROOTFS/opt/magic_mirror" ]; then
+		log_info "LXC rootfs already exists with MagicMirror2"
+		return 0
+	fi
+
+	log_info "Creating LXC rootfs for MagicMirror2..."
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+
+	lxc_create_docker_rootfs || return 1
+	lxc_create_config || return 1
+
+	log_info "LXC rootfs created successfully"
+}
+
+lxc_create_docker_rootfs() {
+	local rootfs="$LXC_ROOTFS"
+	local image="karsten13/magicmirror"
+	local tag="latest"
+	local registry="registry-1.docker.io"
+	local arch
+	local tmp_layer="/tmp/mm2_layer.tar"
+
+	# Detect architecture for Docker manifest
+	case "$(uname -m)" in
+		x86_64) arch="amd64" ;;
+		aarch64) arch="arm64" ;;
+		armv7l) arch="arm" ;;
+		*) arch="amd64" ;;
+	esac
+
+	log_info "Extracting MagicMirror2 Docker image ($arch)..."
+	ensure_dir "$rootfs"
+
+	# Get Docker Hub token
+	local token=$(wget -q -O - "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$image:pull" | jsonfilter -e '@.token')
+	[ -z "$token" ] && { log_error "Failed to get Docker Hub token"; return 1; }
+
+	# Get manifest list
+	local manifest=$(wget -q -O - --header="Authorization: Bearer $token" \
+		--header="Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+		"https://$registry/v2/$image/manifests/$tag")
+
+	# Find digest for our architecture
+	local digest=$(echo "$manifest" | jsonfilter -e "@.manifests[@.platform.architecture='$arch'].digest")
+	[ -z "$digest" ] && { log_error "No manifest found for $arch"; return 1; }
+
+	# Get image manifest
+	local img_manifest=$(wget -q -O - --header="Authorization: Bearer $token" \
+		--header="Accept: application/vnd.docker.distribution.manifest.v2+json" \
+		"https://$registry/v2/$image/manifests/$digest")
+
+	# Extract layers and download them
+	log_info "Downloading and extracting layers..."
+	local layers=$(echo "$img_manifest" | jsonfilter -e '@.layers[*].digest')
+
+	for layer_digest in $layers; do
+		log_info "  Layer: ${layer_digest:7:12}..."
+
+		# Download layer to temp file
+		wget -q -O "$tmp_layer" --header="Authorization: Bearer $token" \
+			"https://$registry/v2/$image/blobs/$layer_digest" || {
+			log_warn "    Failed to download layer"
+			continue
+		}
+
+		# Try decompression methods in order (gzip most common, then zstd, then plain tar)
+		# Method 1: Try gzip
+		if gunzip -t "$tmp_layer" 2>/dev/null; then
+			gunzip -c "$tmp_layer" | tar xf - -C "$rootfs" 2>/dev/null || true
+		# Method 2: Try zstd
+		elif command -v zstd >/dev/null 2>&1 && zstd -t "$tmp_layer" 2>/dev/null; then
+			zstd -d -c "$tmp_layer" | tar xf - -C "$rootfs" 2>/dev/null || true
+		# Method 3: Try plain tar
+		elif tar tf "$tmp_layer" >/dev/null 2>&1; then
+			tar xf "$tmp_layer" -C "$rootfs" 2>/dev/null || true
+		else
+			# Last resort: try zstd even if test failed (might need to install it)
+			if ! command -v zstd >/dev/null 2>&1; then
+				log_warn "    Installing zstd for compressed layers..."
+				opkg update >/dev/null 2>&1 && opkg install zstd >/dev/null 2>&1
+			fi
+			if command -v zstd >/dev/null 2>&1; then
+				zstd -d -c "$tmp_layer" 2>/dev/null | tar xf - -C "$rootfs" 2>/dev/null || \
+				gunzip -c "$tmp_layer" 2>/dev/null | tar xf - -C "$rootfs" 2>/dev/null || \
+				tar xf "$tmp_layer" -C "$rootfs" 2>/dev/null || true
+			fi
+		fi
+	done
+
+	rm -f "$tmp_layer"
+
+	# Configure container
+	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
+	mkdir -p "$rootfs/opt/magic_mirror/config" "$rootfs/opt/magic_mirror/modules" "$rootfs/tmp"
+
+	# Ensure proper shell setup
+	log_info "Checking shell availability..."
+	if [ ! -x "$rootfs/bin/sh" ]; then
+		if [ -x "$rootfs/bin/bash" ]; then
+			ln -sf bash "$rootfs/bin/sh"
+		elif [ -x "$rootfs/bin/dash" ]; then
+			ln -sf dash "$rootfs/bin/sh"
+		fi
+	fi
+
+	# Create startup script (mimics Docker entrypoint.sh)
+	# Use printf for shebang to avoid shell escaping issues
+	printf '%s\n' '#!/bin/sh' > "$rootfs/opt/start-mm2.sh"
+	cat >> "$rootfs/opt/start-mm2.sh" << 'START'
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+export NODE_ENV=production
+export MM_PORT="${MM2_PORT:-8082}"
+export MM_ADDRESS="${MM2_ADDRESS:-0.0.0.0}"
+
+MM_DIR="/opt/magic_mirror"
+modules_dir="${MM_DIR}/modules"
+default_dir="${modules_dir}/default"
+config_dir="${MM_DIR}/config"
+css_dir="${MM_DIR}/css"
+
+cd "$MM_DIR"
+
+# Setup default modules symlink (like Docker entrypoint)
+if [ -d "${MM_DIR}/__modules/default" ]; then
+	mkdir -p "${modules_dir}"
+	if [ ! -e "${default_dir}" ]; then
+		echo "Symlinking default modules..."
+		ln -sf "${MM_DIR}/__modules/default" "${modules_dir}/default"
+	fi
+fi
+
+# Setup CSS files
+if [ -d "${MM_DIR}/__css" ] && [ ! -f "${css_dir}/main.css" ]; then
+	mkdir -p "${css_dir}"
+	echo "Copying CSS files..."
+	cp ${MM_DIR}/__css/* "${css_dir}/" 2>/dev/null || true
+fi
+
+# Ensure custom.css exists
+[ ! -f "${css_dir}/custom.css" ] && touch "${css_dir}/custom.css"
+
+# Wait for config to be available
+for i in 1 2 3 4 5; do
+	[ -f "${config_dir}/config.js" ] && break
+	echo "Waiting for config.js..."
+	sleep 2
+done
+
+if [ ! -f "${config_dir}/config.js" ]; then
+	echo "ERROR: config.js not found, using default"
+	if [ -f "${MM_DIR}/__config/config.js.sample" ]; then
+		mkdir -p "${config_dir}"
+		cp "${MM_DIR}/__config/config.js.sample" "${config_dir}/config.js"
+	fi
+fi
+
+echo "Starting MagicMirror2 on port $MM_PORT..."
+
+# Run MagicMirror in server-only mode
+exec npm run server
+START
+	chmod +x "$rootfs/opt/start-mm2.sh"
+
+	log_info "MagicMirror2 Docker image extracted successfully"
+}
+
+lxc_create_config() {
+	load_config
+
+	cat > "$LXC_CONFIG" << EOF
+# MagicMirror2 LXC Configuration
+lxc.uts.name = $LXC_NAME
+
+# Root filesystem
+lxc.rootfs.path = dir:$LXC_ROOTFS
+
+# Network - use host network for simplicity
+lxc.net.0.type = none
+
+# Mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $data_path/config opt/magic_mirror/config none bind,create=dir 0 0
+lxc.mount.entry = $data_path/modules opt/magic_mirror/modules none bind,create=dir 0 0
+lxc.mount.entry = $data_path/css opt/magic_mirror/css/custom none bind,create=dir 0 0
+
+# Environment variables
+lxc.environment = MM2_PORT=$port
+lxc.environment = MM2_ADDRESS=$address
+lxc.environment = TZ=$timezone
+lxc.environment = NODE_ENV=production
+
+# Capabilities
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override
+
+# cgroups limits
+lxc.cgroup.memory.limit_in_bytes = $memory_limit
+
+# Init
+lxc.init.cmd = /opt/start-mm2.sh
+
+# Console
+lxc.console.size = 1024
+lxc.pty.max = 1024
+EOF
+
+	log_info "LXC config created at $LXC_CONFIG"
+}
+
+lxc_stop() {
+	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
+		lxc-stop -n "$LXC_NAME" -k >/dev/null 2>&1 || true
+	fi
+}
+
+lxc_run() {
+	load_config
+	lxc_stop
+
+	if [ ! -f "$LXC_CONFIG" ]; then
+		log_error "LXC not configured. Run 'mm2ctl install' first."
+		return 1
+	fi
+
+	# Regenerate config to pick up UCI changes
+	lxc_create_config
+
+	# Ensure mount points exist
+	ensure_dir "$data_path/config"
+	ensure_dir "$data_path/modules"
+	ensure_dir "$data_path/css"
+
+	# Generate MagicMirror config.js from UCI
+	generate_mm_config
+
+	log_info "Starting MagicMirror2 LXC container..."
+	log_info "Web interface: http://0.0.0.0:$port"
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
+}
+
+lxc_status() {
+	load_config
+	echo "=== MagicMirror2 Status ==="
+	echo ""
+
+	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
+		lxc-info -n "$LXC_NAME"
+	else
+		echo "LXC container '$LXC_NAME' not found or not configured"
+	fi
+
+	echo ""
+	echo "=== Configuration ==="
+	echo "Port: $port"
+	echo "Address: $address"
+	echo "Data path: $data_path"
+	echo "Language: $language"
+	echo "Timezone: $timezone"
+
+	echo ""
+	echo "=== Installed Modules ==="
+	list_installed_modules
+}
+
+lxc_logs() {
+	if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		if [ "$1" = "-f" ]; then
+			logread -f -e magicmirror2
+		else
+			logread -e magicmirror2 | tail -100
+		fi
+	else
+		log_warn "Container not running. Try: logread -e magicmirror2"
+	fi
+}
+
+lxc_shell() {
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+lxc_destroy() {
+	lxc_stop
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		rm -rf "$LXC_PATH/$LXC_NAME"
+		log_info "LXC container destroyed"
+	fi
+}
+
+# =============================================================================
+# MAGICMIRROR CONFIGURATION
+# =============================================================================
+
+generate_mm_config() {
+	load_config
+	local config_file="$data_path/config/config.js"
+
+	log_info "Generating MagicMirror config.js..."
+
+	cat > "$config_file" << CONFIGJS
+/* MagicMirror² Config - Generated by SecuBox mm2ctl */
+let config = {
+	address: "$address",
+	port: $port,
+	basePath: "/",
+	ipWhitelist: [],
+	useHttps: false,
+	httpsPrivateKey: "",
+	httpsCertificate: "",
+
+	language: "$language",
+	locale: "$language",
+	logLevel: ["INFO", "LOG", "WARN", "ERROR"],
+	timeFormat: 24,
+	units: "$units",
+
+	modules: [
+CONFIGJS
+
+	# Add clock module
+	if [ "$clock_enabled" = "1" ]; then
+		cat >> "$config_file" << CONFIGJS
+		{
+			module: "clock",
+			position: "top_left",
+			config: {
+				displaySeconds: $([ "$clock_display_seconds" = "1" ] && echo "true" || echo "false"),
+				showDate: $([ "$clock_show_date" = "1" ] && echo "true" || echo "false"),
+			}
+		},
+CONFIGJS
+	fi
+
+	# Add weather module
+	if [ "$weather_enabled" = "1" ] && [ -n "$weather_api_key" ]; then
+		cat >> "$config_file" << CONFIGJS
+		{
+			module: "weather",
+			position: "top_right",
+			config: {
+				weatherProvider: "$weather_provider",
+				type: "current",
+				location: "$weather_location",
+				locationID: "$weather_location_id",
+				apiKey: "$weather_api_key",
+				units: "$units"
+			}
+		},
+		{
+			module: "weather",
+			position: "top_right",
+			header: "Weather Forecast",
+			config: {
+				weatherProvider: "$weather_provider",
+				type: "forecast",
+				location: "$weather_location",
+				locationID: "$weather_location_id",
+				apiKey: "$weather_api_key",
+				units: "$units"
+			}
+		},
+CONFIGJS
+	fi
+
+	# Add calendar module
+	if [ "$calendar_enabled" = "1" ]; then
+		cat >> "$config_file" << CONFIGJS
+		{
+			module: "calendar",
+			header: "Calendar",
+			position: "top_left",
+			config: {
+				maximumEntries: $calendar_max_entries,
+				calendars: []
+			}
+		},
+CONFIGJS
+	fi
+
+	# Add newsfeed module
+	if [ "$newsfeed_enabled" = "1" ]; then
+		cat >> "$config_file" << CONFIGJS
+		{
+			module: "newsfeed",
+			position: "bottom_bar",
+			config: {
+				feeds: [
+					{
+						title: "BBC News",
+						url: "https://feeds.bbci.co.uk/news/rss.xml"
+					}
+				],
+				showSourceTitle: true,
+				showPublishDate: true,
+				broadcastNewsFeeds: true,
+				broadcastNewsUpdates: true,
+				maxNewsItems: $newsfeed_max_items
+			}
+		},
+CONFIGJS
+	fi
+
+	# Add compliments module
+	if [ "$compliments_enabled" = "1" ]; then
+		cat >> "$config_file" << CONFIGJS
+		{
+			module: "compliments",
+			position: "lower_third",
+			config: {
+				compliments: {
+					anytime: ["Welcome to SecuBox MagicMirror!"],
+					morning: ["Good morning!"],
+					afternoon: ["Good afternoon!"],
+					evening: ["Good evening!"]
+				}
+			}
+		},
+CONFIGJS
+	fi
+
+	# Load custom modules from data directory
+	if [ -d "$data_path/modules" ]; then
+		for module_dir in "$data_path/modules"/MMM-*; do
+			if [ -d "$module_dir" ] && [ -f "$module_dir/package.json" ]; then
+				local module_name=$(basename "$module_dir")
+				# Check if module has a config file
+				if [ -f "$data_path/config/${module_name}.json" ]; then
+					local module_config=$(cat "$data_path/config/${module_name}.json")
+					cat >> "$config_file" << CONFIGJS
+		{
+			module: "$module_name",
+			position: "top_center",
+			config: $module_config
+		},
+CONFIGJS
+				else
+					cat >> "$config_file" << CONFIGJS
+		{
+			module: "$module_name",
+			position: "top_center"
+		},
+CONFIGJS
+				fi
+			fi
+		done
+	fi
+
+	# Close config
+	cat >> "$config_file" << CONFIGJS
+	]
+};
+
+/*************** DO NOT EDIT THE LINE BELOW ***************/
+if (typeof module !== "undefined") {module.exports = config;}
+CONFIGJS
+
+	log_info "Config generated at $config_file"
+}
+
+# =============================================================================
+# MODULE MANAGEMENT
+# =============================================================================
+
+list_installed_modules() {
+	load_config
+	local modules_dir="$data_path/modules"
+
+	if [ ! -d "$modules_dir" ]; then
+		echo "No modules directory found"
+		return
+	fi
+
+	echo ""
+	# List MMM-* modules
+	for module_dir in "$modules_dir"/MMM-*; do
+		[ -d "$module_dir" ] || continue
+		[ -f "$module_dir/package.json" ] || continue
+		local name=$(basename "$module_dir")
+		local version=$(jsonfilter -i "$module_dir/package.json" -e '@.version' 2>/dev/null || echo "unknown")
+		local desc=$(jsonfilter -i "$module_dir/package.json" -e '@.description' 2>/dev/null | head -c 60)
+		printf "  %-30s v%-10s %s\n" "$name" "$version" "$desc"
+	done
+	# List mm-* modules
+	for module_dir in "$modules_dir"/mm-*; do
+		[ -d "$module_dir" ] || continue
+		[ -f "$module_dir/package.json" ] || continue
+		local name=$(basename "$module_dir")
+		local version=$(jsonfilter -i "$module_dir/package.json" -e '@.version' 2>/dev/null || echo "unknown")
+		local desc=$(jsonfilter -i "$module_dir/package.json" -e '@.description' 2>/dev/null | head -c 60)
+		printf "  %-30s v%-10s %s\n" "$name" "$version" "$desc"
+	done
+}
+
+list_available_modules() {
+	local search="${1:-}"
+	local cache_file="/tmp/mm2_modules_cache.json"
+
+	# Download registry if not cached or old
+	if [ ! -f "$cache_file" ] || [ $(find "$cache_file" -mmin +60 2>/dev/null | wc -l) -gt 0 ]; then
+		log_info "Fetching module registry..."
+		wget -q -O "$cache_file" "$MM_REGISTRY_URL" || {
+			log_error "Failed to fetch module registry"
+			return 1
+		}
+	fi
+
+	echo "Available third-party modules:"
+	echo ""
+
+	if [ -n "$search" ]; then
+		grep -i "$search" "$cache_file" | head -50 || echo "No modules matching '$search'"
+	else
+		# Show first 30 modules
+		jsonfilter -i "$cache_file" -e '@[*].title' 2>/dev/null | head -30 | while read title; do
+			echo "  $title"
+		done
+		echo ""
+		echo "Use 'mm2ctl module available <search>' to filter"
+	fi
+}
+
+install_module() {
+	local module_name="$1"
+	load_config
+
+	if [ -z "$module_name" ]; then
+		log_error "Module name required"
+		return 1
+	fi
+
+	local modules_dir="$data_path/modules"
+	ensure_dir "$modules_dir"
+
+	local git_url=""
+
+	# Check if it's a URL
+	case "$module_name" in
+		http*|git@*)
+			git_url="$module_name"
+			module_name=$(basename "$git_url" .git)
+			;;
+		MMM-*|mm-*)
+			# Try to find in registry
+			git_url="https://github.com/MagicMirror-modules/$module_name"
+			# Also check MichMich's repos
+			;;
+		*)
+			module_name="MMM-$module_name"
+			git_url="https://github.com/MagicMirror-modules/$module_name"
+			;;
+	esac
+
+	if [ -d "$modules_dir/$module_name" ]; then
+		log_warn "Module $module_name already installed"
+		return 0
+	fi
+
+	log_info "Installing module: $module_name"
+
+	# Clone the module
+	if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		# Use container's git
+		lxc-attach -n "$LXC_NAME" -- sh -c "cd /opt/magic_mirror/modules && git clone --depth 1 '$git_url' '$module_name'" || {
+			log_error "Failed to clone module"
+			return 1
+		}
+
+		# Install dependencies if package.json exists
+		if lxc-attach -n "$LXC_NAME" -- test -f "/opt/magic_mirror/modules/$module_name/package.json"; then
+			log_info "Installing module dependencies..."
+			lxc-attach -n "$LXC_NAME" -- sh -c "cd /opt/magic_mirror/modules/$module_name && npm install --production" || {
+				log_warn "Failed to install dependencies (module may still work)"
+			}
+		fi
+	else
+		log_error "Container not running. Start it first: /etc/init.d/magicmirror2 start"
+		return 1
+	fi
+
+	log_info "Module $module_name installed successfully"
+	log_info "Restart MagicMirror2 to load the module: /etc/init.d/magicmirror2 restart"
+}
+
+remove_module() {
+	local module_name="$1"
+	load_config
+
+	if [ -z "$module_name" ]; then
+		log_error "Module name required"
+		return 1
+	fi
+
+	local module_path="$data_path/modules/$module_name"
+
+	if [ ! -d "$module_path" ]; then
+		log_error "Module $module_name not found"
+		return 1
+	fi
+
+	log_info "Removing module: $module_name"
+	rm -rf "$module_path"
+
+	# Remove config if exists
+	rm -f "$data_path/config/${module_name}.json"
+
+	log_info "Module $module_name removed"
+	log_info "Restart MagicMirror2 to apply: /etc/init.d/magicmirror2 restart"
+}
+
+update_module() {
+	local module_name="$1"
+	load_config
+
+	if [ -z "$module_name" ]; then
+		# Update all modules
+		log_info "Updating all modules..."
+		# Update MMM-* modules
+		for module_dir in "$data_path/modules"/MMM-*; do
+			[ -d "$module_dir/.git" ] || continue
+			local name=$(basename "$module_dir")
+			log_info "Updating $name..."
+			lxc-attach -n "$LXC_NAME" -- sh -c "cd /opt/magic_mirror/modules/$name && git pull" || true
+		done
+		# Update mm-* modules
+		for module_dir in "$data_path/modules"/mm-*; do
+			[ -d "$module_dir/.git" ] || continue
+			local name=$(basename "$module_dir")
+			log_info "Updating $name..."
+			lxc-attach -n "$LXC_NAME" -- sh -c "cd /opt/magic_mirror/modules/$name && git pull" || true
+		done
+	else
+		local module_path="$data_path/modules/$module_name"
+		if [ ! -d "$module_path" ]; then
+			log_error "Module $module_name not found"
+			return 1
+		fi
+
+		log_info "Updating module: $module_name"
+		lxc-attach -n "$LXC_NAME" -- sh -c "cd /opt/magic_mirror/modules/$module_name && git pull" || {
+			log_error "Failed to update module"
+			return 1
+		}
+	fi
+
+	log_info "Update complete. Restart MagicMirror2 to apply."
+}
+
+# =============================================================================
+# COMMANDS
+# =============================================================================
+
+cmd_install() {
+	require_root
+	load_config
+
+	if ! has_lxc; then
+		log_error "LXC not available. Install lxc packages first."
+		exit 1
+	fi
+
+	log_info "Installing MagicMirror2..."
+
+	# Create directories
+	ensure_dir "$data_path/config"
+	ensure_dir "$data_path/modules"
+	ensure_dir "$data_path/css"
+
+	lxc_check_prereqs || exit 1
+	lxc_create_rootfs || exit 1
+
+	# Generate initial config
+	generate_mm_config
+
+	uci_set main.enabled '1'
+	/etc/init.d/magicmirror2 enable
+
+	log_info "MagicMirror2 installed."
+	log_info "Start with: /etc/init.d/magicmirror2 start"
+	log_info "Web interface: http://<router-ip>:$port"
+}
+
+cmd_update() {
+	require_root
+	load_config
+
+	log_info "Updating MagicMirror2..."
+	lxc_destroy
+	lxc_create_rootfs || exit 1
+
+	if /etc/init.d/magicmirror2 enabled >/dev/null 2>&1; then
+		/etc/init.d/magicmirror2 restart
+	else
+		log_info "Update complete. Restart manually to apply."
+	fi
+}
+
+cmd_status() {
+	lxc_status
+}
+
+cmd_logs() {
+	lxc_logs "$@"
+}
+
+cmd_shell() {
+	lxc_shell
+}
+
+cmd_config() {
+	generate_mm_config
+}
+
+cmd_module() {
+	local action="$1"
+	shift
+
+	case "$action" in
+		list)
+			list_installed_modules
+			;;
+		available)
+			list_available_modules "$@"
+			;;
+		install)
+			install_module "$@"
+			;;
+		remove|uninstall)
+			remove_module "$@"
+			;;
+		update)
+			update_module "$@"
+			;;
+		*)
+			echo "Unknown module action: $action"
+			echo "Use: list, available, install, remove, update"
+			exit 1
+			;;
+	esac
+}
+
+cmd_service_run() {
+	require_root
+	load_config
+
+	if ! has_lxc; then
+		log_error "LXC not available"
+		exit 1
+	fi
+
+	lxc_check_prereqs || exit 1
+	lxc_run
+}
+
+cmd_service_stop() {
+	require_root
+	lxc_stop
+}
+
+cmd_set() {
+	local key="$1"
+	local value="$2"
+
+	if [ -z "$key" ] || [ -z "$value" ]; then
+		log_error "Usage: mm2ctl set <key> <value>"
+		exit 1
+	fi
+
+	uci_set "$key" "$value"
+	log_info "Set $key = $value"
+}
+
+cmd_get() {
+	local key="$1"
+
+	if [ -z "$key" ]; then
+		log_error "Usage: mm2ctl get <key>"
+		exit 1
+	fi
+
+	uci_get "$key"
+}
+
+# Main Entry Point
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	shell) shift; cmd_shell "$@" ;;
+	config) shift; cmd_config "$@" ;;
+	module) shift; cmd_module "$@" ;;
+	set) shift; cmd_set "$@" ;;
+	get) shift; cmd_get "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac
