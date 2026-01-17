@@ -249,98 +249,73 @@ lxc_check_prereqs() {
 lxc_create_rootfs() {
 	load_config
 
-	if [ -d "$LXC_ROOTFS" ] && [ -f "$LXC_ROOTFS/etc/alpine-release" ]; then
-		log_info "LXC rootfs already exists"
+	if [ -d "$LXC_ROOTFS" ] && [ -x "$LXC_ROOTFS/usr/bin/mitmproxy" ]; then
+		log_info "LXC rootfs already exists with mitmproxy"
 		return 0
 	fi
 
 	log_info "Creating LXC rootfs for mitmproxy..."
 	ensure_dir "$LXC_PATH/$LXC_NAME"
 
-	lxc_create_alpine_rootfs || return 1
+	lxc_create_docker_rootfs || return 1
 	lxc_create_config || return 1
 
 	log_info "LXC rootfs created successfully"
 }
 
-lxc_create_alpine_rootfs() {
-	local arch="aarch64"
-	local alpine_version="3.19"
-	local mirror="https://dl-cdn.alpinelinux.org/alpine"
+lxc_create_docker_rootfs() {
 	local rootfs="$LXC_ROOTFS"
+	local image="mitmproxy/mitmproxy"
+	local tag="latest"
+	local registry="registry-1.docker.io"
+	local arch
 
-	# Detect architecture
+	# Detect architecture for Docker manifest
 	case "$(uname -m)" in
-		x86_64) arch="x86_64" ;;
-		aarch64) arch="aarch64" ;;
-		armv7l) arch="armv7" ;;
-		*) arch="x86_64" ;;
+		x86_64) arch="amd64" ;;
+		aarch64) arch="arm64" ;;
+		armv7l) arch="arm" ;;
+		*) arch="amd64" ;;
 	esac
 
-	log_info "Downloading Alpine Linux $alpine_version ($arch)..."
-
+	log_info "Extracting mitmproxy Docker image ($arch)..."
 	ensure_dir "$rootfs"
-	cd "$rootfs" || return 1
 
-	# Download Alpine minirootfs
-	local rootfs_url="$mirror/v$alpine_version/releases/$arch/alpine-minirootfs-$alpine_version.0-$arch.tar.gz"
-	wget -q -O /tmp/alpine-rootfs.tar.gz "$rootfs_url" || {
-		log_error "Failed to download Alpine rootfs"
-		return 1
-	}
+	# Get Docker Hub token
+	local token=$(wget -q -O - "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$image:pull" | jsonfilter -e '@.token')
+	[ -z "$token" ] && { log_error "Failed to get Docker Hub token"; return 1; }
 
-	# Extract rootfs
-	tar xzf /tmp/alpine-rootfs.tar.gz -C "$rootfs" || return 1
-	rm -f /tmp/alpine-rootfs.tar.gz
+	# Get manifest list
+	local manifest=$(wget -q -O - --header="Authorization: Bearer $token" \
+		--header="Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+		"https://$registry/v2/$image/manifests/$tag")
 
-	# Configure Alpine
+	# Find digest for our architecture
+	local digest=$(echo "$manifest" | jsonfilter -e "@.manifests[@.platform.architecture='$arch'].digest")
+	[ -z "$digest" ] && { log_error "No manifest found for $arch"; return 1; }
+
+	# Get image manifest
+	local img_manifest=$(wget -q -O - --header="Authorization: Bearer $token" \
+		--header="Accept: application/vnd.docker.distribution.manifest.v2+json" \
+		"https://$registry/v2/$image/manifests/$digest")
+
+	# Extract layers and download them
+	log_info "Downloading and extracting layers..."
+	local layers=$(echo "$img_manifest" | jsonfilter -e '@.layers[*].digest')
+
+	for layer_digest in $layers; do
+		log_info "  Layer: ${layer_digest:7:12}..."
+		wget -q -O - --header="Authorization: Bearer $token" \
+			"https://$registry/v2/$image/blobs/$layer_digest" | \
+			tar xz -C "$rootfs" 2>/dev/null || true
+	done
+
+	# Configure container
 	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
+	mkdir -p "$rootfs/data" "$rootfs/var/log/mitmproxy" "$rootfs/etc/mitmproxy/addons"
 
-	# Install mitmproxy in the container
-	cat > "$rootfs/tmp/setup-mitmproxy.sh" << 'SETUP'
-#!/bin/sh
-set -e
-
-# Enable community repository
-sed -i 's|#\(.*community\)|\1|' /etc/apk/repositories
-
-# Update and install Python dependencies
-apk update
-apk add --no-cache \
-    python3 \
-    py3-pip \
-    py3-wheel \
-    py3-cryptography \
-    py3-openssl \
-    py3-cffi \
-    py3-brotli \
-    py3-yaml \
-    py3-tornado \
-    py3-urwid \
-    py3-passlib \
-    py3-sortedcontainers \
-    libffi \
-    openssl \
-    ca-certificates \
-    build-base \
-    python3-dev \
-    libffi-dev \
-    openssl-dev
-
-# Install mitmproxy 7.0.4 (compatible with Python 3.11 dataclasses)
-# 8.x has grpc dataclass issues with Python 3.11
-# 9.x requires mitmproxy-wireguard (Rust), 10.x requires mitmproxy_rs (Rust)
-# Pin werkzeug<3.0 for Flask compatibility (url_quote removed in 3.0)
-pip3 install --break-system-packages 'werkzeug<3.0' 'mitmproxy==7.0.4'
-
-# Clean up build dependencies to save space
-apk del build-base python3-dev libffi-dev openssl-dev
-
-# Create directories
-mkdir -p /data /var/log/mitmproxy /etc/mitmproxy/addons
-
-# Create startup script
-cat > /opt/start-mitmproxy.sh << 'START'
+	# Create startup script for mitmweb
+	cat > "$rootfs/opt/start-mitmproxy.sh" << 'START'
 #!/bin/sh
 cd /data
 
@@ -373,7 +348,7 @@ esac
 [ "$SSL_INSECURE" = "1" ] && ARGS="$ARGS --ssl-insecure"
 [ "$ANTICACHE" = "1" ] && ARGS="$ARGS --anticache"
 [ "$ANTICOMP" = "1" ] && ARGS="$ARGS --anticomp"
-# Note: --flow-detail not available in mitmproxy 7.x
+[ -n "$FLOW_DETAIL" ] && ARGS="$ARGS --flow-detail $FLOW_DETAIL"
 
 # Load addon script if filtering is enabled
 if [ "$FILTERING_ENABLED" = "1" ] && [ -n "$ADDON_SCRIPT" ] && [ -f "$ADDON_SCRIPT" ]; then
@@ -384,21 +359,9 @@ fi
 # Run mitmweb (web interface + proxy)
 exec mitmweb $ARGS --web-host "$WEB_HOST" --web-port "$WEB_PORT" --no-web-open-browser
 START
-chmod +x /opt/start-mitmproxy.sh
+	chmod +x "$rootfs/opt/start-mitmproxy.sh"
 
-echo "mitmproxy installed successfully"
-SETUP
-
-	chmod +x "$rootfs/tmp/setup-mitmproxy.sh"
-
-	# Run setup in chroot
-	log_info "Installing mitmproxy in container (this may take a while)..."
-	chroot "$rootfs" /tmp/setup-mitmproxy.sh || {
-		log_error "Failed to install mitmproxy in container"
-		return 1
-	}
-
-	rm -f "$rootfs/tmp/setup-mitmproxy.sh"
+	log_info "mitmproxy Docker image extracted successfully"
 
 	# Install the SecuBox filter addon
 	install_addon_script

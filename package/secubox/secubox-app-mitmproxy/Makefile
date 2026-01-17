@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-mitmproxy
-PKG_RELEASE:=7
+PKG_RELEASE:=8
 PKG_VERSION:=0.4.0
 PKG_ARCH:=all
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
