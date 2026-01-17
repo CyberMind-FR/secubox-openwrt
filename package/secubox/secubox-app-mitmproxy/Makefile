@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-mitmproxy
-PKG_RELEASE:=9
+PKG_RELEASE:=10
 PKG_VERSION:=0.4.0
 PKG_ARCH:=all
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
@@ -60,10 +60,10 @@ define Package/secubox-app-mitmproxy/postinst
 	echo "  /etc/init.d/mitmproxy start"
 	echo ""
 	echo "Web interface: http://<router-ip>:8081"
-	echo "Proxy port: 8080"
+	echo "Proxy port: 8888"
 	echo ""
 	echo "To use the proxy, configure clients with:"
-	echo "  HTTP Proxy: <router-ip>:8080"
+	echo "  HTTP Proxy: <router-ip>:8888"
 	echo "  Install CA cert from: http://<router-ip>:8081/cert"
 	echo ""
 }

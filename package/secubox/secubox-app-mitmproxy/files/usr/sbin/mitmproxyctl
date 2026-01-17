@@ -37,7 +37,7 @@ Modes (configure in /etc/config/mitmproxy):
   reverse      - Reverse proxy mode
 
 Web Interface: http://<router-ip>:8081
-Proxy Port: 8080
+Proxy Port: 8888
 EOF
 }
 
@@ -54,7 +54,7 @@ uci_get_list() { uci -q get ${CONFIG}.$1 2>/dev/null; }
 # Load configuration with defaults
 load_config() {
 	# Main settings
-	proxy_port="$(uci_get main.proxy_port || echo 8080)"
+	proxy_port="$(uci_get main.proxy_port || echo 8888)"
 	web_port="$(uci_get main.web_port || echo 8081)"
 	web_host="$(uci_get main.web_host || echo 0.0.0.0)"
 	data_path="$(uci_get main.data_path || echo /srv/mitmproxy)"
@@ -321,7 +321,7 @@ cd /data
 
 # Read environment variables for configuration
 MODE="${MITMPROXY_MODE:-regular}"
-PROXY_PORT="${MITMPROXY_PROXY_PORT:-8080}"
+PROXY_PORT="${MITMPROXY_PROXY_PORT:-8888}"
 WEB_PORT="${MITMPROXY_WEB_PORT:-8081}"
 WEB_HOST="${MITMPROXY_WEB_HOST:-0.0.0.0}"
 ADDON_SCRIPT="${MITMPROXY_ADDON_SCRIPT:-}"

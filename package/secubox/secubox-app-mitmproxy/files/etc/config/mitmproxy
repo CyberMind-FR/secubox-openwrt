@@ -1,7 +1,7 @@
 config mitmproxy 'main'
 	option enabled '0'
 	option runtime 'lxc'
-	option proxy_port '8080'
+	option proxy_port '8888'
 	option web_port '8081'
 	option web_host '0.0.0.0'
 	option data_path '/srv/mitmproxy'
