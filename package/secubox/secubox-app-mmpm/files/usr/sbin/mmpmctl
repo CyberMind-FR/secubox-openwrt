@@ -62,10 +62,17 @@ check_mm2_running() {
 
 # MMPM binary path inside container
 MMPM_BIN="/usr/local/bin/mmpm"
+# Node.js PATH inside container (for npm)
+NODE_PATH="/opt/nodejs/node-v24.13.0/bin:/usr/local/bin:/usr/bin:/bin"
 
 # Check if MMPM is installed in container
 is_mmpm_installed() {
 	lxc-attach -n "$LXC_NAME" -- test -x "$MMPM_BIN"
+}
+
+# Run MMPM command with proper PATH (for npm access)
+run_mmpm() {
+	lxc-attach -n "$LXC_NAME" -- sh -c "export PATH=$NODE_PATH:\$PATH && $MMPM_BIN $*"
 }
 
 # Install MMPM in container
@@ -191,8 +198,8 @@ cmd_service_run() {
 
 	log_info "Starting MMPM GUI on port $port..."
 
-	# Run MMPM GUI inside container
-	exec lxc-attach -n "$LXC_NAME" -- $MMPM_BIN ui --port "$port" --host "$address"
+	# Run MMPM GUI inside container (with proper PATH for pm2/npm)
+	exec lxc-attach -n "$LXC_NAME" -- sh -c "export PATH=$NODE_PATH:\$PATH && $MMPM_BIN ui --port $port --host $address"
 }
 
 # Stop MMPM GUI
@@ -217,7 +224,7 @@ cmd_search() {
 		return 1
 	fi
 
-	lxc-attach -n "$LXC_NAME" -- $MMPM_BIN search "$query"
+	run_mmpm search "$query"
 }
 
 # List installed modules
@@ -229,7 +236,7 @@ cmd_list() {
 		return 1
 	fi
 
-	lxc-attach -n "$LXC_NAME" -- $MMPM_BIN list
+	run_mmpm list --installed
 }
 
 # Install module via MMPM
@@ -248,7 +255,7 @@ cmd_module_install() {
 	fi
 
 	log_info "Installing module: $module"
-	lxc-attach -n "$LXC_NAME" -- $MMPM_BIN install "$module" --yes
+	run_mmpm install "$module" --yes
 }
 
 # Remove module via MMPM
@@ -267,7 +274,7 @@ cmd_module_remove() {
 	fi
 
 	log_info "Removing module: $module"
-	lxc-attach -n "$LXC_NAME" -- $MMPM_BIN remove "$module" --yes
+	run_mmpm remove "$module" --yes
 }
 
 # Upgrade modules
@@ -282,10 +289,10 @@ cmd_upgrade() {
 
 	if [ -n "$module" ]; then
 		log_info "Upgrading module: $module"
-		lxc-attach -n "$LXC_NAME" -- $MMPM_BIN upgrade "$module" --yes
+		run_mmpm upgrade "$module" --yes
 	else
 		log_info "Upgrading all modules..."
-		lxc-attach -n "$LXC_NAME" -- $MMPM_BIN upgrade --yes
+		run_mmpm upgrade --yes
 	fi
 }
 
