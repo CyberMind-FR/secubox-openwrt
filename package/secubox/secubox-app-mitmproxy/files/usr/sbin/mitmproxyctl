@@ -317,6 +317,7 @@ lxc_create_docker_rootfs() {
 	# Create startup script for mitmweb
 	cat > "$rootfs/opt/start-mitmproxy.sh" << 'START'
 #!/bin/sh
+export PATH="/usr/local/bin:$PATH"
 cd /data
 
 # Read environment variables for configuration
@@ -356,9 +357,18 @@ if [ "$FILTERING_ENABLED" = "1" ] && [ -n "$ADDON_SCRIPT" ] && [ -f "$ADDON_SCRI
     echo "Loading addon: $ADDON_SCRIPT"
 fi
 
-# Run mitmweb (web interface + proxy)
-# Disable web authentication for LAN access
-exec mitmweb $ARGS --web-host "$WEB_HOST" --web-port "$WEB_PORT" --no-web-open-browser --set web_password=
+# Run mitmweb and capture token
+# The token is printed to stderr, capture it and save to file
+mitmweb $ARGS --web-host "$WEB_HOST" --web-port "$WEB_PORT" --no-web-open-browser 2>&1 | while IFS= read -r line; do
+    echo "$line"
+    # Extract and save token if present
+    case "$line" in
+        *"token="*)
+            token=$(echo "$line" | sed -n 's/.*token=\([a-f0-9]*\).*/\1/p')
+            [ -n "$token" ] && echo "$token" > /data/.mitmproxy_token
+            ;;
+    esac
+done
 START
 	chmod +x "$rootfs/opt/start-mitmproxy.sh"
 

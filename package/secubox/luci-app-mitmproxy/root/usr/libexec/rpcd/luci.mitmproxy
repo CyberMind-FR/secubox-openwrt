@@ -400,6 +400,25 @@ EOF
 	fi
 }
 
+get_web_token() {
+	local token_file="$LXC_ROOTFS/data/.mitmproxy_token"
+	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+	local web_port=$(uci -q get mitmproxy.main.web_port || echo "8081")
+	local token=""
+
+	if [ -f "$token_file" ]; then
+		token=$(cat "$token_file" 2>/dev/null)
+	fi
+
+	cat <<EOF
+{
+	"token": "$token",
+	"web_url": "http://$router_ip:$web_port",
+	"web_url_with_token": "http://$router_ip:$web_port/?token=$token"
+}
+EOF
+}
+
 # RPCD list method
 case "$1" in
 	list)
@@ -415,6 +434,7 @@ case "$1" in
 	"get_requests": {"limit": 50, "category": "all"},
 	"get_top_hosts": {"limit": 20},
 	"get_ca_info": {},
+	"get_web_token": {},
 	"service_start": {},
 	"service_stop": {},
 	"service_restart": {},
@@ -463,6 +483,9 @@ EOF
 				;;
 			get_ca_info)
 				get_ca_info
+				;;
+			get_web_token)
+				get_web_token
 				;;
 			service_start)
 				service_start

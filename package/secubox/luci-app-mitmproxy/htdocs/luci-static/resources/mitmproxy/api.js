@@ -54,6 +54,11 @@ var callGetCaInfo = rpc.declare({
 	method: 'get_ca_info'
 });
 
+var callGetWebToken = rpc.declare({
+	object: 'luci.mitmproxy',
+	method: 'get_web_token'
+});
+
 var callServiceStart = rpc.declare({
 	object: 'luci.mitmproxy',
 	method: 'service_start'
@@ -167,6 +172,12 @@ return baseclass.extend({
 	getCaInfo: function() {
 		return callGetCaInfo().catch(function() {
 			return { installed: false };
+		});
+	},
+
+	getWebToken: function() {
+		return callGetWebToken().catch(function() {
+			return { token: '', web_url: '', web_url_with_token: '' };
 		});
 	},
 

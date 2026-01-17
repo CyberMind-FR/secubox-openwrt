@@ -18,6 +18,14 @@
 			"path": "mitmproxy/dashboard"
 		}
 	},
+	"admin/secubox/security/mitmproxy/webui": {
+		"title": "Web UI",
+		"order": 15,
+		"action": {
+			"type": "view",
+			"path": "mitmproxy/webui"
+		}
+	},
 	"admin/secubox/security/mitmproxy/requests": {
 		"title": "Requests",
 		"order": 20,

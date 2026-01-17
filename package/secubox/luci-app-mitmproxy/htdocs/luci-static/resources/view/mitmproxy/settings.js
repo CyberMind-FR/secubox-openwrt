@@ -13,6 +13,7 @@ Theme.init({ language: lang });
 
 var MITMPROXY_NAV = [
 	{ id: 'dashboard', icon: '📊', label: 'Dashboard' },
+	{ id: 'webui', icon: '🖥️', label: 'Web UI' },
 	{ id: 'requests', icon: '🔍', label: 'Requests' },
 	{ id: 'settings', icon: '⚙️', label: 'Settings' }
 ];
