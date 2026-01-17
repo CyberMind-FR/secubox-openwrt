@@ -301,16 +301,42 @@ lxc_create_alpine_rootfs() {
 #!/bin/sh
 set -e
 
-# Enable community repository for mitmproxy package
+# Enable community repository
 sed -i 's|#\(.*community\)|\1|' /etc/apk/repositories
 
-# Update and install mitmproxy from Alpine packages (pre-built, no Rust needed)
+# Update and install Python dependencies + Rust toolchain for mitmproxy_rs
 apk update
 apk add --no-cache \
-    mitmproxy \
+    python3 \
+    python3-dev \
     py3-pip \
+    py3-wheel \
+    py3-cryptography \
+    py3-openssl \
+    py3-cffi \
+    py3-brotli \
+    py3-yaml \
+    py3-tornado \
+    py3-urwid \
+    py3-passlib \
+    py3-sortedcontainers \
+    py3-wsproto \
+    py3-publicsuffix2 \
+    py3-flask \
+    py3-asgiref \
+    libffi \
     openssl \
-    ca-certificates
+    ca-certificates \
+    rust \
+    cargo \
+    musl-dev \
+    gcc
+
+# Install mitmproxy (latest version with Rust support)
+pip3 install --break-system-packages mitmproxy
+
+# Clean up build dependencies to save space
+apk del --purge rust cargo python3-dev musl-dev gcc 2>/dev/null || true
 
 # Create directories
 mkdir -p /data /var/log/mitmproxy /etc/mitmproxy/addons
