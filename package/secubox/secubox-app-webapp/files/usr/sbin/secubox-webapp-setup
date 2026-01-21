@@ -17,7 +17,7 @@ Commands:
   check       Check rpcd/uhttpd configuration
   info        Show access URLs
 
-Dashboard URL: http://<router-ip>/secubox-dashboard/
+Dashboard URL: http://<router-ip>/secubox/
 EOF
 }
 
@@ -60,7 +60,7 @@ cmd_status() {
     fi
 
     # Check dashboard files
-    if [ -f /www/secubox-dashboard/index.html ]; then
+    if [ -f /www/secubox/index.html ]; then
         echo "Dashboard: installed"
     else
         echo "Dashboard: not found"
@@ -69,7 +69,7 @@ cmd_status() {
     echo ""
     echo "=== Access URL ==="
     local lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
-    echo "http://$lan_ip/secubox-dashboard/"
+    echo "http://$lan_ip/secubox/"
 }
 
 cmd_enable() {
@@ -147,7 +147,7 @@ cmd_info() {
     echo "║           SecuBox Dashboard - Access Information          ║"
     echo "╠════════════════════════════════════════════════════════════╣"
     echo "║                                                            ║"
-    printf "║  Dashboard: %-46s ║\n" "http://$lan_ip/secubox-dashboard/"
+    printf "║  Dashboard: %-46s ║\n" "http://$lan_ip/secubox/"
     printf "║  UBUS API:  %-46s ║\n" "http://$lan_ip/ubus"
     echo "║                                                            ║"
     echo "║  Login: Use OpenWrt root credentials                       ║"

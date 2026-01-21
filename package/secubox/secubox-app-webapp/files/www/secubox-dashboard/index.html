@@ -1248,6 +1248,40 @@
             background: rgba(244, 63, 94, 0.25);
         }
 
+        /* Quick Actions Grid */
+        .quick-actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .quick-action-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .quick-action-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .quick-action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .quick-action-buttons .action-btn {
+            justify-content: flex-start;
+            width: 100%;
+        }
+
         /* Interfaces Table */
         .interfaces-table {
             width: 100%;
@@ -1642,6 +1676,71 @@
             color: var(--emerald);
         }
 
+        .service-btn.warning:hover {
+            border-color: var(--amber);
+            color: var(--amber);
+        }
+
+        .service-item.important {
+            border-left: 3px solid var(--cyan);
+        }
+
+        .service-badge {
+            font-size: 0.6rem;
+            padding: 0.125rem 0.375rem;
+            background: var(--cyan-glow);
+            color: var(--cyan);
+            border-radius: 0.25rem;
+            margin-left: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-running {
+            color: var(--emerald);
+        }
+
+        .status-stopped {
+            color: var(--text-muted);
+        }
+
+        .status-disabled {
+            color: var(--amber);
+            font-size: 0.7rem;
+        }
+
+        .loading-services {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            padding: 2rem;
+            color: var(--text-muted);
+        }
+
+        /* Process Table */
+        .process-table {
+            font-size: 0.75rem;
+        }
+
+        .process-table th,
+        .process-table td {
+            padding: 0.5rem 0.75rem;
+        }
+
+        .process-cmd {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+        }
+
+        .status-sleeping {
+            color: var(--text-muted);
+        }
+
         /* DHCP Leases Table */
         .leases-table {
             width: 100%;
@@ -1861,9 +1960,157 @@
             border-radius: 0.375rem;
         }
 
+        .skeleton-text {
+            height: 1em;
+            width: 60%;
+            display: inline-block;
+        }
+
+        .skeleton-value {
+            height: 2em;
+            width: 3em;
+            display: inline-block;
+        }
+
         @keyframes shimmer {
             0% { background-position: 200% 0; }
             100% { background-position: -200% 0; }
+        }
+
+        /* Value transition animations */
+        .value-transition {
+            transition: all 0.3s ease-out;
+        }
+
+        .value-increase {
+            color: var(--emerald) !important;
+        }
+
+        .value-decrease {
+            color: var(--rose) !important;
+        }
+
+        /* Pulse effect for live data */
+        .pulse-on-update {
+            animation: pulseUpdate 0.5s ease-out;
+        }
+
+        @keyframes pulseUpdate {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Loading overlay */
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(13, 17, 23, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .loading-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--cyan);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Connection status indicator */
+        .connection-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            background: var(--bg-secondary);
+            border-radius: 1rem;
+            font-size: 0.7rem;
+            transition: all 0.3s;
+        }
+
+        .connection-indicator.connected {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--emerald);
+        }
+
+        .connection-indicator.disconnected {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--rose);
+        }
+
+        .connection-indicator.reconnecting {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--amber);
+        }
+
+        /* Smooth number counter */
+        .counter {
+            display: inline-block;
+            transition: transform 0.2s;
+        }
+
+        /* Progress bar for operations */
+        .progress-bar {
+            height: 3px;
+            background: var(--bg-secondary);
+            border-radius: 2px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--cyan), var(--emerald));
+            border-radius: 2px;
+            transition: width 0.3s ease-out;
+        }
+
+        .progress-bar.indeterminate .progress-bar-fill {
+            width: 30%;
+            animation: indeterminate 1.5s infinite;
+        }
+
+        @keyframes indeterminate {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(400%); }
+        }
+
+        /* Real-time badge */
+        .realtime-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem 0.5rem;
+            background: rgba(6, 182, 212, 0.15);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            border-radius: 0.375rem;
+            font-size: 0.65rem;
+            color: var(--cyan);
+        }
+
+        .realtime-badge .dot {
+            width: 6px;
+            height: 6px;
+            background: var(--cyan);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
         }
 
         /* Empty State */
@@ -1876,6 +2123,27 @@
         .empty-state-icon {
             margin-bottom: 1rem;
             opacity: 0.5;
+        }
+
+        /* Responsive card loading */
+        .card.loading {
+            position: relative;
+        }
+
+        .card.loading::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+            animation: loadingBar 1s infinite;
+        }
+
+        @keyframes loadingBar {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
         }
     </style>
 </head>
@@ -2294,31 +2562,58 @@
                         </div>
                     </div>
                     <div class="card-body">
-                        <div class="actions-grid">
-                            <button class="action-btn primary" onclick="reloadCrowdSec()">
-                                <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
-                                Reload CrowdSec
-                            </button>
-                            <button class="action-btn" onclick="showBlockModal()">
-                                <i data-lucide="ban" style="width: 16px; height: 16px;"></i>
-                                Bloquer IP
-                            </button>
-                            <button class="action-btn" onclick="showDecisionsModal()">
-                                <i data-lucide="list" style="width: 16px; height: 16px;"></i>
-                                Voir Décisions
-                            </button>
-                            <button class="action-btn" onclick="restartNetwork()">
-                                <i data-lucide="wifi" style="width: 16px; height: 16px;"></i>
-                                Restart Réseau
-                            </button>
-                            <button class="action-btn" onclick="restartFirewall()">
-                                <i data-lucide="flame" style="width: 16px; height: 16px;"></i>
-                                Restart Firewall
-                            </button>
-                            <button class="action-btn danger" onclick="confirmReboot()">
-                                <i data-lucide="power" style="width: 16px; height: 16px;"></i>
-                                Redémarrer
-                            </button>
+                        <div class="quick-actions-grid">
+                            <div class="quick-action-group">
+                                <div class="quick-action-title">Sécurité</div>
+                                <div class="quick-action-buttons">
+                                    <button class="action-btn primary" onclick="reloadCrowdSec()" title="Recharger CrowdSec">
+                                        <i data-lucide="shield" style="width: 16px; height: 16px;"></i>
+                                        Reload CrowdSec
+                                    </button>
+                                    <button class="action-btn" onclick="showBlockModal()" title="Bloquer une IP manuellement">
+                                        <i data-lucide="ban" style="width: 16px; height: 16px;"></i>
+                                        Bloquer IP
+                                    </button>
+                                    <button class="action-btn" onclick="showDecisionsModal()" title="Voir les décisions actives">
+                                        <i data-lucide="list" style="width: 16px; height: 16px;"></i>
+                                        Décisions
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="quick-action-group">
+                                <div class="quick-action-title">Réseau</div>
+                                <div class="quick-action-buttons">
+                                    <button class="action-btn" onclick="restartNetwork()" title="Redémarrer le réseau">
+                                        <i data-lucide="wifi" style="width: 16px; height: 16px;"></i>
+                                        Restart Réseau
+                                    </button>
+                                    <button class="action-btn" onclick="restartFirewall()" title="Redémarrer le pare-feu">
+                                        <i data-lucide="flame" style="width: 16px; height: 16px;"></i>
+                                        Restart Firewall
+                                    </button>
+                                    <button class="action-btn" onclick="flushDNS()" title="Vider le cache DNS">
+                                        <i data-lucide="database" style="width: 16px; height: 16px;"></i>
+                                        Flush DNS
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="quick-action-group">
+                                <div class="quick-action-title">Système</div>
+                                <div class="quick-action-buttons">
+                                    <a href="/cgi-bin/luci/" target="_blank" class="action-btn" title="Ouvrir LuCI">
+                                        <i data-lucide="external-link" style="width: 16px; height: 16px;"></i>
+                                        LuCI Admin
+                                    </a>
+                                    <button class="action-btn" onclick="syncTime()" title="Synchroniser l'heure NTP">
+                                        <i data-lucide="clock" style="width: 16px; height: 16px;"></i>
+                                        Sync NTP
+                                    </button>
+                                    <button class="action-btn danger" onclick="confirmReboot()" title="Redémarrer le système">
+                                        <i data-lucide="power" style="width: 16px; height: 16px;"></i>
+                                        Redémarrer
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2380,6 +2675,31 @@
                                     <div class="info-item"><span class="info-label">Buffers</span><span class="info-value" id="memBuffers">--</span></div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="cpu" style="width: 18px; height: 18px; color: var(--rose);"></i>
+                                Processus
+                            </div>
+                            <div class="card-badge" id="processCount">0 processus</div>
+                        </div>
+                        <div class="card-body" style="overflow-x: auto; max-height: 400px; overflow-y: auto;">
+                            <table class="interfaces-table process-table">
+                                <thead>
+                                    <tr>
+                                        <th>PID</th>
+                                        <th>Utilisateur</th>
+                                        <th>CPU%</th>
+                                        <th>MEM%</th>
+                                        <th>Commande</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="processListBody">
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -2538,6 +2858,30 @@
                         </div>
                     </div>
 
+                    <div class="card" style="margin-bottom: 1.5rem;">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="alert-triangle" style="width: 18px; height: 18px; color: var(--amber);"></i>
+                                Alertes Récentes (24h)
+                            </div>
+                            <div class="card-badge" id="csAlertsBadge">0 alertes</div>
+                        </div>
+                        <div class="card-body" style="overflow-x: auto; max-height: 350px; overflow-y: auto;">
+                            <table class="decisions-table alerts-table">
+                                <thead>
+                                    <tr>
+                                        <th>Source</th>
+                                        <th>Scénario</th>
+                                        <th>Événements</th>
+                                        <th>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="csAlertsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     <div class="card">
                         <div class="card-header">
                             <div class="card-title">
@@ -2600,6 +2944,31 @@
                                     </tr>
                                 </thead>
                                 <tbody id="forwardingRulesBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-bottom: 1.5rem;">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="arrow-up-right" style="width: 18px; height: 18px; color: var(--amber);"></i>
+                                Redirections de Ports (DNAT)
+                            </div>
+                            <div class="card-badge" id="portForwardsCount">0 règles</div>
+                        </div>
+                        <div class="card-body" style="overflow-x: auto;">
+                            <table class="interfaces-table">
+                                <thead>
+                                    <tr>
+                                        <th>Nom</th>
+                                        <th>Protocole</th>
+                                        <th>Port Externe</th>
+                                        <th>Destination</th>
+                                        <th>État</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="portForwardsBody">
                                 </tbody>
                             </table>
                         </div>
@@ -2743,7 +3112,7 @@
                 <!-- Footer -->
                 <footer class="footer">
                     <p class="footer-text">
-                        SecuBox Control Center v2.2 • Propulsé par
+                        SecuBox Control Center v2.4 • Propulsé par
                         <span class="cyan">CrowdSec</span> +
                         <span class="emerald">OpenWrt</span> +
                         <span class="violet">LuCI</span>
@@ -2874,14 +3243,36 @@
             username: '',
             sessionToken: null,
             ubusSession: '00000000000000000000000000000000',
-            refreshInterval: 5000, // 5 seconds for more responsive updates
+            refreshInterval: 3000, // 3 seconds for reactive updates
             sessionTimeout: 3600000, // 1 hour
-            cpuPrevious: null, // For CPU delta calculation
-            networkPrevious: null // For network rate calculation
+            maxRetries: 3,
+            retryDelay: 1000
+        };
+
+        // State management for reactive updates
+        const STATE = {
+            cpu: { previous: null, current: 0 },
+            memory: { previous: null, current: 0 },
+            network: { previousRx: 0, previousTx: 0, previousTime: 0, rxRate: 0, txRate: 0 },
+            connections: 0,
+            disk: 0,
+            uptime: 0,
+            lastUpdate: null,
+            retryCount: 0,
+            isOnline: true
+        };
+
+        // Data cache for optimization
+        const CACHE = {
+            boardInfo: null,
+            services: null,
+            servicesTimestamp: 0,
+            cacheDuration: 30000 // 30 seconds cache
         };
 
         let refreshTimer = null;
         let sessionTimer = null;
+        let tabRefreshTimer = null;
         let isConnected = false;
         let previousNetStats = null;
 
@@ -3255,49 +3646,65 @@
             refreshBtn.classList.add('loading');
 
             try {
-                // Get system info - run all queries in parallel for faster updates
-                const [boardInfo, systemInfo, interfaces, devices] = await Promise.all([
-                    UBUS.getSystemBoard().catch(() => null),
+                // Batch all fast queries together
+                const [boardInfo, systemInfo, interfaces, cpuUsage, netRates] = await Promise.all([
+                    // Cache board info (doesn't change often)
+                    CACHE.boardInfo || UBUS.getSystemBoard().then(r => { CACHE.boardInfo = r; return r; }).catch(() => null),
                     UBUS.getSystemInfo().catch(() => null),
                     UBUS.getNetworkInterfaces().catch(() => ({ interface: [] })),
-                    UBUS.getNetworkDevices().catch(() => ({}))
+                    getRealCpuUsage(),
+                    getNetworkRates()
                 ]);
 
-                // Update board info
+                // Update board info (only on first load or cache miss)
                 if (boardInfo) {
-                    document.getElementById('deviceHostname').textContent = boardInfo.hostname || 'SecuBox';
-                    document.title = `${boardInfo.hostname || 'SecuBox'} - Control Center`;
+                    const hostname = boardInfo.hostname || 'SecuBox';
+                    const hostnameEl = document.getElementById('deviceHostname');
+                    if (hostnameEl && hostnameEl.textContent !== hostname) {
+                        hostnameEl.textContent = hostname;
+                        document.title = `${hostname} - Control Center`;
+                    }
                 }
 
-                // Update system info
+                // Update system metrics with animations
                 if (systemInfo) {
-                    updateSystemMetrics(systemInfo);
+                    updateSystemMetricsAnimated(systemInfo, cpuUsage);
                 }
 
-                // Update network
-                updateNetworkInterfaces(interfaces.interface || []);
-                updateNetworkStats(devices);
+                // Update network rates with animation
+                updateNetworkRatesAnimated(netRates);
 
-                // Run additional metrics in parallel (non-blocking)
+                // Update network interfaces (overview tab)
+                updateNetworkInterfaces(interfaces.interface || []);
+
+                // Run less critical updates in background (non-blocking)
                 Promise.all([
                     updateDiskUsage().catch(() => {}),
                     updateConnectionsCount().catch(() => {})
                 ]);
 
-                // Get CrowdSec data (in parallel)
-                const [decisions, bouncers, alerts] = await Promise.all([
-                    CROWDSEC.getDecisions(),
-                    CROWDSEC.getBouncers(),
-                    CROWDSEC.getAlerts()
-                ]);
+                // Get CrowdSec data (in parallel) - only on overview tab
+                if (currentTab === 'overview' || currentTab === 'crowdsec') {
+                    const [decisions, bouncers, alerts] = await Promise.all([
+                        CROWDSEC.getDecisions(),
+                        CROWDSEC.getBouncers(),
+                        CROWDSEC.getAlerts()
+                    ]);
+                    updateCrowdSecMetrics(decisions, bouncers, alerts);
+                }
 
-                updateCrowdSecMetrics(decisions, bouncers, alerts);
+                // Get logs only when on overview or logs tab
+                if (currentTab === 'overview') {
+                    await loadSystemLogs();
+                }
 
-                // Get logs
-                await loadSystemLogs();
+                // Update traffic graph data
+                updateTrafficGraph(netRates.rx, netRates.tx);
 
                 setConnectionStatus(true);
+                updateConnectionUI();
                 updateLastUpdate();
+                STATE.lastUpdate = Date.now();
 
             } catch (error) {
                 console.error('Refresh error:', error);
@@ -3306,10 +3713,74 @@
                     logout();
                 } else {
                     setConnectionStatus(false);
-                    showToast('Erreur de connexion au serveur', 'error');
+                    updateConnectionUI();
+                    // Only show error toast once per disconnect
+                    if (STATE.isOnline) {
+                        showToast('Connexion perdue, tentative de reconnexion...', 'error');
+                    }
                 }
             } finally {
                 refreshBtn.classList.remove('loading');
+            }
+        }
+
+        // Optimized metrics update with animations
+        function updateSystemMetricsAnimated(info, realCpuUsage) {
+            // Memory with animation
+            if (info.memory) {
+                const memTotal = info.memory.total;
+                const memFree = info.memory.free + (info.memory.buffered || 0) + (info.memory.cached || 0);
+                const memUsed = memTotal - memFree;
+                const memPercent = Math.round((memUsed / memTotal) * 100);
+
+                animateValue('ramValue', memPercent);
+                updateGauge('ramGauge', memPercent);
+                STATE.memory.current = memPercent;
+            }
+
+            // Real CPU usage (from /proc/stat) with animation
+            const cpuPercent = realCpuUsage !== null ? realCpuUsage :
+                (info.load ? Math.min(Math.round((info.load[0] / 65536) * 100), 100) : 0);
+
+            animateValue('cpuValue', cpuPercent);
+            updateGauge('cpuGauge', cpuPercent);
+
+            // Load badge
+            if (info.load) {
+                const load1 = (info.load[0] / 65536).toFixed(2);
+                document.getElementById('loadBadge').textContent = `Load: ${load1}`;
+            }
+
+            // Uptime
+            if (info.uptime) {
+                const uptime = formatUptime(info.uptime);
+                document.getElementById('uptime').textContent = uptime.short;
+                document.getElementById('uptimeSub').textContent = uptime.full;
+                STATE.uptime = info.uptime;
+            }
+        }
+
+        // Animated network rates update
+        function updateNetworkRatesAnimated(rates) {
+            const rxEl = document.getElementById('rxRate');
+            const txEl = document.getElementById('txRate');
+
+            if (rxEl) {
+                const rxValue = rates.rx.toFixed(1);
+                if (rxEl.textContent !== rxValue) {
+                    rxEl.textContent = rxValue;
+                    rxEl.classList.add('pulse-on-update');
+                    setTimeout(() => rxEl.classList.remove('pulse-on-update'), 500);
+                }
+            }
+
+            if (txEl) {
+                const txValue = rates.tx.toFixed(1);
+                if (txEl.textContent !== txValue) {
+                    txEl.textContent = txValue;
+                    txEl.classList.add('pulse-on-update');
+                    setTimeout(() => txEl.classList.remove('pulse-on-update'), 500);
+                }
             }
         }
 
@@ -3667,6 +4138,34 @@
             }
         }
 
+        async function flushDNS() {
+            try {
+                showToast('Vidage du cache DNS...', 'info');
+                // Restart dnsmasq to flush DNS cache
+                await UBUS.execCommand('/etc/init.d/dnsmasq', ['restart']);
+                showToast('Cache DNS vidé', 'success');
+            } catch (e) {
+                showToast(`Erreur: ${e.message}`, 'error');
+            }
+        }
+
+        async function syncTime() {
+            try {
+                showToast('Synchronisation NTP...', 'info');
+                // Try ntpd -n -q first (query and quit)
+                const result = await UBUS.execCommand('/usr/sbin/ntpd', ['-n', '-q', '-p', 'pool.ntp.org']).catch(() => null);
+                if (result) {
+                    showToast('Heure synchronisée', 'success');
+                } else {
+                    // Fallback: restart sysntpd
+                    await UBUS.execCommand('/etc/init.d/sysntpd', ['restart']);
+                    showToast('Service NTP redémarré', 'success');
+                }
+            } catch (e) {
+                showToast(`Erreur: ${e.message}`, 'error');
+            }
+        }
+
         async function confirmReboot() {
             if (!confirm('Êtes-vous sûr de vouloir redémarrer SecuBox ?')) return;
             if (!confirm('Cette action va redémarrer le système. Confirmer ?')) return;
@@ -3785,6 +4284,170 @@
             const div = document.createElement('div');
             div.textContent = str;
             return div.innerHTML;
+        }
+
+        // =====================================================
+        // Reactive Update Helpers
+        // =====================================================
+
+        // Animate value change with color indication
+        function animateValue(elementId, newValue, suffix = '') {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+
+            const oldValue = parseFloat(el.textContent) || 0;
+            const value = parseFloat(newValue) || 0;
+
+            // Add direction class
+            if (value > oldValue) {
+                el.classList.add('value-increase');
+                setTimeout(() => el.classList.remove('value-increase'), 500);
+            } else if (value < oldValue) {
+                el.classList.add('value-decrease');
+                setTimeout(() => el.classList.remove('value-decrease'), 500);
+            }
+
+            // Animate number
+            animateNumber(el, oldValue, value, 300, suffix);
+        }
+
+        // Smooth number animation
+        function animateNumber(element, start, end, duration, suffix = '') {
+            const startTime = performance.now();
+            const diff = end - start;
+
+            function update(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                // Easing function (ease-out)
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+                const current = start + diff * easeOut;
+
+                element.textContent = Math.round(current) + suffix;
+
+                if (progress < 1) {
+                    requestAnimationFrame(update);
+                }
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        // Real CPU usage calculation from /proc/stat
+        async function getRealCpuUsage() {
+            try {
+                const result = await UBUS.execCommand('/bin/cat', ['/proc/stat']);
+                if (!result || !result.stdout) return null;
+
+                const lines = result.stdout.split('\n');
+                const cpuLine = lines.find(l => l.startsWith('cpu '));
+                if (!cpuLine) return null;
+
+                const parts = cpuLine.split(/\s+/).slice(1).map(Number);
+                const idle = parts[3] + (parts[4] || 0); // idle + iowait
+                const total = parts.reduce((a, b) => a + b, 0);
+
+                if (STATE.cpu.previous) {
+                    const idleDiff = idle - STATE.cpu.previous.idle;
+                    const totalDiff = total - STATE.cpu.previous.total;
+
+                    if (totalDiff > 0) {
+                        STATE.cpu.current = Math.round((1 - idleDiff / totalDiff) * 100);
+                    }
+                }
+
+                STATE.cpu.previous = { idle, total };
+                return STATE.cpu.current;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Real network rate calculation
+        async function getNetworkRates() {
+            try {
+                const result = await UBUS.execCommand('/bin/cat', ['/proc/net/dev']);
+                if (!result || !result.stdout) return { rx: 0, tx: 0 };
+
+                let totalRx = 0, totalTx = 0;
+                const lines = result.stdout.split('\n');
+
+                for (const line of lines) {
+                    // Skip loopback and header lines
+                    if (line.includes('lo:') || !line.includes(':')) continue;
+
+                    const match = line.match(/:\s*(\d+)\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)/);
+                    if (match) {
+                        totalRx += parseInt(match[1]) || 0;
+                        totalTx += parseInt(match[2]) || 0;
+                    }
+                }
+
+                const now = Date.now();
+                let rxRate = 0, txRate = 0;
+
+                if (STATE.network.previousTime > 0) {
+                    const timeDiff = (now - STATE.network.previousTime) / 1000;
+                    if (timeDiff > 0) {
+                        rxRate = Math.max(0, (totalRx - STATE.network.previousRx) / timeDiff / 1024); // KB/s
+                        txRate = Math.max(0, (totalTx - STATE.network.previousTx) / timeDiff / 1024); // KB/s
+                    }
+                }
+
+                STATE.network.previousRx = totalRx;
+                STATE.network.previousTx = totalTx;
+                STATE.network.previousTime = now;
+                STATE.network.rxRate = rxRate;
+                STATE.network.txRate = txRate;
+
+                return { rx: rxRate, tx: txRate };
+            } catch (e) {
+                return { rx: 0, tx: 0 };
+            }
+        }
+
+        // Connection retry with exponential backoff
+        async function fetchWithRetry(fetchFn, maxRetries = CONFIG.maxRetries) {
+            let lastError;
+
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const result = await fetchFn();
+                    STATE.retryCount = 0;
+                    STATE.isOnline = true;
+                    return result;
+                } catch (e) {
+                    lastError = e;
+                    STATE.retryCount = i + 1;
+
+                    if (i < maxRetries - 1) {
+                        const delay = CONFIG.retryDelay * Math.pow(2, i);
+                        await new Promise(r => setTimeout(r, delay));
+                    }
+                }
+            }
+
+            STATE.isOnline = false;
+            throw lastError;
+        }
+
+        // Update connection status UI
+        function updateConnectionUI() {
+            const statusEl = document.getElementById('connectionStatus');
+            if (!statusEl) return;
+
+            if (STATE.isOnline) {
+                statusEl.className = 'connection-indicator connected';
+                statusEl.innerHTML = '<span class="live-dot"></span> Connecté';
+            } else if (STATE.retryCount > 0) {
+                statusEl.className = 'connection-indicator reconnecting';
+                statusEl.innerHTML = `<span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Reconnexion...`;
+            } else {
+                statusEl.className = 'connection-indicator disconnected';
+                statusEl.innerHTML = '<i data-lucide="wifi-off" style="width:12px;height:12px;"></i> Déconnecté';
+                lucide.createIcons();
+            }
         }
 
         function togglePassword() {
@@ -3936,8 +4599,11 @@
                     }
                 }
 
-                // Load storage info
-                await loadStorageInfo();
+                // Load storage info and processes in parallel
+                await Promise.all([
+                    loadStorageInfo(),
+                    loadProcessList()
+                ]);
 
                 // Get timezone
                 const tzResult = await UBUS.execCommand('/bin/cat', ['/etc/TZ']).catch(() => null);
@@ -3946,6 +4612,91 @@
                 }
             } catch (e) {
                 console.error('System info error:', e);
+            }
+        }
+
+        async function loadProcessList() {
+            const tbody = document.getElementById('processListBody');
+            const countBadge = document.getElementById('processCount');
+
+            try {
+                // Use ps with custom format for BusyBox compatibility
+                const result = await UBUS.execCommand('/bin/ps', ['w']);
+
+                if (!result || !result.stdout) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Impossible de charger les processus</td></tr>';
+                    return;
+                }
+
+                const lines = result.stdout.trim().split('\n');
+                const processes = [];
+
+                // Parse ps output (skip header)
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+
+                    // BusyBox ps format: PID USER VSZ STAT COMMAND
+                    const match = line.match(/^\s*(\d+)\s+(\S+)\s+(\d+)\s+(\S+)\s+(.+)$/);
+                    if (match) {
+                        const pid = match[1];
+                        const user = match[2];
+                        const vsz = parseInt(match[3]) || 0; // Virtual memory in KB
+                        const stat = match[4];
+                        const cmd = match[5];
+
+                        // Skip kernel threads and very low-level processes
+                        if (cmd.startsWith('[') && cmd.endsWith(']')) continue;
+
+                        processes.push({
+                            pid,
+                            user,
+                            vsz,
+                            stat,
+                            cmd: cmd.substring(0, 50), // Truncate long commands
+                            fullCmd: cmd
+                        });
+                    }
+                }
+
+                countBadge.textContent = `${processes.length} processus`;
+
+                if (processes.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Aucun processus</td></tr>';
+                    return;
+                }
+
+                // Sort by memory usage (VSZ) descending
+                processes.sort((a, b) => b.vsz - a.vsz);
+
+                // Get total memory for percentage calculation
+                let totalMem = 0;
+                try {
+                    const memResult = await UBUS.getSystemInfo().catch(() => null);
+                    if (memResult && memResult.memory) {
+                        totalMem = memResult.memory.total / 1024; // Convert to KB
+                    }
+                } catch (e) {}
+
+                tbody.innerHTML = processes.slice(0, 50).map(proc => {
+                    const memPercent = totalMem > 0 ? ((proc.vsz / totalMem) * 100).toFixed(1) : '--';
+                    const statClass = proc.stat.includes('R') ? 'status-running' :
+                                     proc.stat.includes('S') ? 'status-sleeping' : '';
+
+                    return `
+                        <tr title="${escapeHtml(proc.fullCmd)}">
+                            <td class="mono">${proc.pid}</td>
+                            <td>${escapeHtml(proc.user)}</td>
+                            <td class="mono ${statClass}">${proc.stat}</td>
+                            <td class="mono">${memPercent}%</td>
+                            <td class="process-cmd" title="${escapeHtml(proc.fullCmd)}">${escapeHtml(proc.cmd)}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+            } catch (e) {
+                console.error('Process list error:', e);
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Erreur chargement processus</td></tr>';
             }
         }
 
@@ -4220,9 +4971,43 @@
 
                 // Render decisions table with unban button
                 renderCrowdSecDecisions(decisions);
+
+                // Render alerts table
+                renderCrowdSecAlerts(alerts);
             } catch (e) {
                 console.error('CrowdSec info error:', e);
             }
+        }
+
+        function renderCrowdSecAlerts(alerts) {
+            const tbody = document.getElementById('csAlertsBody');
+            const countBadge = document.getElementById('csAlertsBadge');
+
+            if (!alerts || alerts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Aucune alerte dans les dernières 24h</td></tr>';
+                countBadge.textContent = '0 alertes';
+                return;
+            }
+
+            countBadge.textContent = `${alerts.length} alerte${alerts.length !== 1 ? 's' : ''}`;
+
+            tbody.innerHTML = alerts.slice(0, 50).map(alert => {
+                const source = alert.source?.ip || alert.source?.value || '--';
+                const scenario = (alert.scenario || '--').replace('crowdsecurity/', '');
+                const eventsCount = alert.events_count || alert.events?.length || 0;
+                const createdAt = alert.created_at ? new Date(alert.created_at).toLocaleString('fr-FR', {
+                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                }) : '--';
+
+                return `
+                    <tr>
+                        <td class="ip mono">${escapeHtml(source)}</td>
+                        <td style="max-width: 180px; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(alert.scenario || '')}">${escapeHtml(scenario)}</td>
+                        <td class="mono">${eventsCount}</td>
+                        <td style="font-size: 0.7rem; color: var(--text-muted);">${createdAt}</td>
+                    </tr>
+                `;
+            }).join('');
         }
 
         async function getCrowdSecMachines() {
@@ -4314,58 +5099,90 @@
         async function loadFirewallInfo() {
             try {
                 // Get firewall zones via uci
-                const result = await UBUS.execCommand('/sbin/fw4', ['zone']).catch(() => null);
-
-                // Fallback: use UCI to get zones
                 const zonesResult = await UBUS.execCommand('/bin/uci', ['show', 'firewall']).catch(() => null);
 
                 const zonesContainer = document.getElementById('firewallZones');
                 const forwardingBody = document.getElementById('forwardingRulesBody');
+                const portForwardsBody = document.getElementById('portForwardsBody');
+                const portForwardsCount = document.getElementById('portForwardsCount');
 
-                // Parse zones from UCI output
+                // Parse zones and redirects from UCI output
                 const zones = [];
                 const forwardings = [];
+                const redirects = [];
+                let currentZone = null;
+                let currentRedirect = null;
 
                 if (zonesResult && zonesResult.stdout) {
                     const lines = zonesResult.stdout.split('\n');
-                    let currentZone = null;
 
                     lines.forEach(line => {
-                        if (line.includes('.name=')) {
+                        // Parse zones
+                        if (line.includes('.name=') && line.includes('@zone')) {
                             const match = line.match(/firewall\.(@zone\[\d+\]|zone\d+)\.name='?(\w+)'?/);
                             if (match) {
                                 currentZone = { name: match[2], input: 'ACCEPT', output: 'ACCEPT', forward: 'REJECT', network: [] };
                                 zones.push(currentZone);
                             }
                         }
-                        if (currentZone && line.includes('.input=')) {
+                        if (currentZone && line.includes('@zone') && line.includes('.input=')) {
                             const match = line.match(/\.input='?(\w+)'?/);
                             if (match) currentZone.input = match[1];
                         }
-                        if (currentZone && line.includes('.output=')) {
+                        if (currentZone && line.includes('@zone') && line.includes('.output=')) {
                             const match = line.match(/\.output='?(\w+)'?/);
                             if (match) currentZone.output = match[1];
                         }
-                        if (currentZone && line.includes('.forward=')) {
+                        if (currentZone && line.includes('@zone') && line.includes('.forward=')) {
                             const match = line.match(/\.forward='?(\w+)'?/);
                             if (match) currentZone.forward = match[1];
                         }
-                        if (currentZone && line.includes('.network=')) {
+                        if (currentZone && line.includes('@zone') && line.includes('.network=')) {
                             const match = line.match(/\.network='([^']+)'/);
                             if (match) currentZone.network = match[1].split(' ');
                         }
+
                         // Forwarding rules
-                        if (line.includes('forwarding') && line.includes('.src=')) {
+                        if (line.includes('@forwarding') && line.includes('.src=')) {
                             const srcMatch = line.match(/\.src='?(\w+)'?/);
                             if (srcMatch) {
                                 forwardings.push({ src: srcMatch[1], dest: '' });
                             }
                         }
-                        if (forwardings.length > 0 && line.includes('.dest=')) {
+                        if (forwardings.length > 0 && line.includes('@forwarding') && line.includes('.dest=')) {
                             const destMatch = line.match(/\.dest='?(\w+)'?/);
                             if (destMatch && forwardings[forwardings.length - 1].dest === '') {
                                 forwardings[forwardings.length - 1].dest = destMatch[1];
                             }
+                        }
+
+                        // Port redirects (DNAT)
+                        if (line.includes('@redirect') && line.includes('.name=')) {
+                            const match = line.match(/\.name='([^']+)'/);
+                            if (match) {
+                                currentRedirect = { name: match[1], proto: 'tcp', src_dport: '', dest_ip: '', dest_port: '', enabled: true };
+                                redirects.push(currentRedirect);
+                            }
+                        }
+                        if (currentRedirect && line.includes('@redirect') && line.includes('.proto=')) {
+                            const match = line.match(/\.proto='?(\w+)'?/);
+                            if (match) currentRedirect.proto = match[1];
+                        }
+                        if (currentRedirect && line.includes('@redirect') && line.includes('.src_dport=')) {
+                            const match = line.match(/\.src_dport='?(\d+)'?/);
+                            if (match) currentRedirect.src_dport = match[1];
+                        }
+                        if (currentRedirect && line.includes('@redirect') && line.includes('.dest_ip=')) {
+                            const match = line.match(/\.dest_ip='([^']+)'/);
+                            if (match) currentRedirect.dest_ip = match[1];
+                        }
+                        if (currentRedirect && line.includes('@redirect') && line.includes('.dest_port=')) {
+                            const match = line.match(/\.dest_port='?(\d+)'?/);
+                            if (match) currentRedirect.dest_port = match[1];
+                        }
+                        if (currentRedirect && line.includes('@redirect') && line.includes('.enabled=')) {
+                            const match = line.match(/\.enabled='?(\d+)'?/);
+                            if (match) currentRedirect.enabled = match[1] !== '0';
                         }
                     });
                 }
@@ -4403,6 +5220,26 @@
                         <td>ACCEPT</td>
                     </tr>
                 `).join('');
+
+                // Port forwards
+                portForwardsCount.textContent = `${redirects.length} règle${redirects.length !== 1 ? 's' : ''}`;
+
+                if (redirects.length === 0) {
+                    portForwardsBody.innerHTML = '<tr><td colspan="5" class="empty-state">Aucune redirection configurée</td></tr>';
+                } else {
+                    portForwardsBody.innerHTML = redirects.map(redir => {
+                        const destPort = redir.dest_port || redir.src_dport;
+                        return `
+                            <tr>
+                                <td>${escapeHtml(redir.name)}</td>
+                                <td class="mono" style="text-transform: uppercase;">${redir.proto}</td>
+                                <td class="mono">${redir.src_dport}</td>
+                                <td class="mono">${redir.dest_ip}:${destPort}</td>
+                                <td><span class="interface-status ${redir.enabled ? 'up' : 'down'}">${redir.enabled ? 'ON' : 'OFF'}</span></td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
 
             } catch (e) {
                 console.error('Firewall info error:', e);
@@ -4509,8 +5346,56 @@
             'dropbear', 'odhcpd', 'ntpd', 'sysntpd', 'cron', 'log', 'urngd'
         ];
 
+        // Service to process name mapping for pgrep detection
+        const serviceProcessMap = {
+            'crowdsec': 'crowdsec',
+            'firewall': 'fw4',
+            'network': 'netifd',
+            'dnsmasq': 'dnsmasq',
+            'uhttpd': 'uhttpd',
+            'rpcd': 'rpcd',
+            'dropbear': 'dropbear',
+            'odhcpd': 'odhcpd',
+            'ntpd': 'ntpd',
+            'sysntpd': 'ntpd',
+            'cron': 'crond',
+            'log': 'logd',
+            'urngd': 'urngd',
+            'umdns': 'umdns',
+            'wpad': 'wpad',
+            'mitmproxy': 'mitmdump'
+        };
+
+        async function getServiceStatus(serviceName) {
+            // Use pgrep for reliable status detection (without -x flag per CLAUDE.md)
+            const processName = serviceProcessMap[serviceName] || serviceName;
+
+            try {
+                // Try pgrep first (most reliable)
+                const pgrepResult = await UBUS.execCommand('/usr/bin/pgrep', [processName]).catch(() => null);
+                if (pgrepResult && pgrepResult.stdout && pgrepResult.stdout.trim()) {
+                    return true;
+                }
+
+                // Fallback: check if enabled and try init.d status
+                const enabledResult = await UBUS.execCommand('/etc/init.d/' + serviceName, ['enabled']).catch(() => ({ code: 1 }));
+                if (enabledResult && enabledResult.code === 0) {
+                    // Service is enabled, check if running via procd
+                    const serviceList = await UBUS.getServices().catch(() => ({}));
+                    if (serviceList && serviceList[serviceName]) {
+                        return true;
+                    }
+                }
+
+                return false;
+            } catch (e) {
+                return false;
+            }
+        }
+
         async function loadServices() {
             const container = document.getElementById('servicesList');
+            container.innerHTML = '<div class="loading-services"><span class="spinner"></span> Chargement des services...</div>';
 
             try {
                 // Get init scripts
@@ -4521,28 +5406,51 @@
                     return;
                 }
 
-                const scripts = result.stdout.trim().split('\n').filter(s => s);
+                const scripts = result.stdout.trim().split('\n').filter(s => s && !s.startsWith('.'));
 
                 // Filter to important services first, then others
                 const sortedServices = [
                     ...scripts.filter(s => importantServices.includes(s)),
-                    ...scripts.filter(s => !importantServices.includes(s))
+                    ...scripts.filter(s => !importantServices.includes(s)).sort()
                 ];
 
-                // Get status for each service
-                const servicesHtml = await Promise.all(sortedServices.slice(0, 30).map(async (svc) => {
-                    const statusResult = await UBUS.execCommand('/etc/init.d/' + svc, ['status']).catch(() => ({ code: 1 }));
-                    const running = statusResult && statusResult.code === 0;
+                // Get procd service list for batch status check
+                const procdServices = await UBUS.getServices().catch(() => ({}));
+
+                // Get status for each service using improved detection
+                const servicesHtml = await Promise.all(sortedServices.slice(0, 40).map(async (svc) => {
+                    let running = false;
+                    let enabled = false;
+
+                    // Check procd first (fastest)
+                    if (procdServices && procdServices[svc]) {
+                        running = true;
+                    } else {
+                        // Fallback to pgrep
+                        running = await getServiceStatus(svc);
+                    }
+
+                    // Check if enabled
+                    const enabledResult = await UBUS.execCommand('/etc/init.d/' + svc, ['enabled']).catch(() => ({ code: 1 }));
+                    enabled = enabledResult && enabledResult.code === 0;
+
+                    const isImportant = importantServices.includes(svc);
 
                     return `
-                        <div class="service-item">
+                        <div class="service-item ${isImportant ? 'important' : ''}">
                             <div class="service-info">
                                 <div class="service-icon ${running ? 'running' : 'stopped'}">
-                                    <i data-lucide="${running ? 'play-circle' : 'stop-circle'}" style="width: 18px; height: 18px;"></i>
+                                    <i data-lucide="${running ? 'play-circle' : 'circle'}" style="width: 18px; height: 18px;"></i>
                                 </div>
                                 <div>
-                                    <div class="service-name">${escapeHtml(svc)}</div>
-                                    <div class="service-status">${running ? 'En cours d\'exécution' : 'Arrêté'}</div>
+                                    <div class="service-name">
+                                        ${escapeHtml(svc)}
+                                        ${isImportant ? '<span class="service-badge">système</span>' : ''}
+                                    </div>
+                                    <div class="service-status">
+                                        ${running ? '<span class="status-running">En cours</span>' : '<span class="status-stopped">Arrêté</span>'}
+                                        ${enabled ? '' : ' <span class="status-disabled">(désactivé)</span>'}
+                                    </div>
                                 </div>
                             </div>
                             <div class="service-actions">
@@ -4558,6 +5466,9 @@
                                         <i data-lucide="play" style="width: 14px; height: 14px;"></i>
                                     </button>
                                 `}
+                                <button class="service-btn ${enabled ? 'warning' : 'success'}" onclick="serviceAction('${svc}', '${enabled ? 'disable' : 'enable'}')" title="${enabled ? 'Désactiver' : 'Activer'}">
+                                    <i data-lucide="${enabled ? 'toggle-right' : 'toggle-left'}" style="width: 14px; height: 14px;"></i>
+                                </button>
                             </div>
                         </div>
                     `;
@@ -4577,10 +5488,20 @@
         }
 
         async function serviceAction(service, action) {
+            const actionMessages = {
+                'start': { doing: 'Démarrage', done: 'démarré' },
+                'stop': { doing: 'Arrêt', done: 'arrêté' },
+                'restart': { doing: 'Redémarrage', done: 'redémarré' },
+                'enable': { doing: 'Activation', done: 'activé' },
+                'disable': { doing: 'Désactivation', done: 'désactivé' }
+            };
+
+            const msg = actionMessages[action] || { doing: action, done: action };
+
             try {
-                showToast(`${action === 'start' ? 'Démarrage' : action === 'stop' ? 'Arrêt' : 'Redémarrage'} de ${service}...`, 'info');
+                showToast(`${msg.doing} de ${service}...`, 'info');
                 await UBUS.execCommand('/etc/init.d/' + service, [action]);
-                showToast(`${service} ${action === 'start' ? 'démarré' : action === 'stop' ? 'arrêté' : 'redémarré'}`, 'success');
+                showToast(`${service} ${msg.done}`, 'success');
                 await loadServices();
             } catch (e) {
                 showToast(`Erreur: ${e.message}`, 'error');

@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-webapp
-PKG_VERSION:=1.2.0
+PKG_VERSION:=1.4.1
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=CyberMind.FR <contact@cybermind.fr>
@@ -37,8 +37,8 @@ define Package/secubox-app-webapp/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/secubox-webapp $(1)/etc/config/secubox-webapp
 
-	$(INSTALL_DIR) $(1)/www/secubox-dashboard
-	$(INSTALL_DATA) ./files/www/secubox-dashboard/index.html $(1)/www/secubox-dashboard/index.html
+	$(INSTALL_DIR) $(1)/www/secubox
+	$(INSTALL_DATA) ./files/www/secubox-dashboard/index.html $(1)/www/secubox/index.html
 
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./files/usr/share/rpcd/acl.d/secubox-dashboard.json $(1)/usr/share/rpcd/acl.d/secubox-dashboard.json
@@ -64,8 +64,8 @@ uci commit uhttpd
 /etc/init.d/rpcd restart
 /etc/init.d/uhttpd restart
 
-echo "SecuBox Dashboard installed at /www/secubox-dashboard/"
-echo "Access via: http://<router-ip>/secubox-dashboard/"
+echo "SecuBox Dashboard installed at /www/secubox/"
+echo "Access via: http://<router-ip>/secubox/"
 exit 0
 endef
 
