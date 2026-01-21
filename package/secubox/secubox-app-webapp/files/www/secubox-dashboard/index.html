@@ -1016,6 +1016,18 @@
             font-size: 1rem;
             font-weight: 600;
             font-family: 'JetBrains Mono', monospace;
+            transition: color 0.3s ease;
+        }
+
+        /* Value update animation */
+        .value-update {
+            animation: valueFlash 0.3s ease;
+        }
+
+        @keyframes valueFlash {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
         }
 
         .bandwidth-unit {
@@ -1499,6 +1511,348 @@
             }
         }
 
+        /* Tab Pages */
+        .tab-page {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-page.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Info Grid */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            background: var(--bg-secondary);
+            border-radius: 0.5rem;
+            border: 1px solid var(--border);
+        }
+
+        .info-label {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .info-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+        }
+
+        /* Service List */
+        .service-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .service-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            transition: all 0.2s;
+        }
+
+        .service-item:hover {
+            border-color: var(--border-hover);
+        }
+
+        .service-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .service-icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-primary);
+            border-radius: 0.5rem;
+            color: var(--cyan);
+        }
+
+        .service-icon.running {
+            color: var(--emerald);
+        }
+
+        .service-icon.stopped {
+            color: var(--rose);
+        }
+
+        .service-name {
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .service-status {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .service-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .service-btn {
+            padding: 0.5rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .service-btn:hover {
+            border-color: var(--cyan);
+            color: var(--cyan);
+        }
+
+        .service-btn.danger:hover {
+            border-color: var(--rose);
+            color: var(--rose);
+        }
+
+        .service-btn.success:hover {
+            border-color: var(--emerald);
+            color: var(--emerald);
+        }
+
+        /* DHCP Leases Table */
+        .leases-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        .leases-table th,
+        .leases-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .leases-table th {
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+        }
+
+        .leases-table td {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Traffic Graph */
+        .traffic-graph {
+            height: 150px;
+            background: var(--bg-secondary);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .traffic-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .traffic-legend {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 0.75rem;
+            justify-content: center;
+        }
+
+        .traffic-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .traffic-legend-color {
+            width: 12px;
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        /* Firewall Zones */
+        .zone-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .zone-card {
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            border-left: 3px solid var(--cyan);
+        }
+
+        .zone-card.lan {
+            border-left-color: var(--emerald);
+        }
+
+        .zone-card.wan {
+            border-left-color: var(--rose);
+        }
+
+        .zone-card.guest {
+            border-left-color: var(--amber);
+        }
+
+        .zone-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+
+        .zone-policy {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .zone-interfaces {
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary);
+        }
+
+        /* WiFi Status */
+        .wifi-card {
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .wifi-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .wifi-ssid {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .wifi-band {
+            padding: 0.25rem 0.5rem;
+            background: var(--cyan);
+            color: white;
+            border-radius: 0.25rem;
+            font-size: 0.65rem;
+            font-weight: 600;
+        }
+
+        .wifi-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+            font-size: 0.75rem;
+        }
+
+        .wifi-stat {
+            text-align: center;
+            padding: 0.5rem;
+            background: var(--bg-primary);
+            border-radius: 0.375rem;
+        }
+
+        .wifi-stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            color: var(--cyan);
+        }
+
+        .wifi-stat-label {
+            color: var(--text-muted);
+            font-size: 0.65rem;
+        }
+
+        /* Logs Filter */
+        .logs-header {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .logs-filter {
+            padding: 0.5rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .logs-filter:hover,
+        .logs-filter.active {
+            border-color: var(--cyan);
+            color: var(--cyan);
+        }
+
+        .logs-search {
+            flex: 1;
+            min-width: 200px;
+            padding: 0.5rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            color: var(--text-primary);
+            font-size: 0.8rem;
+        }
+
+        .logs-search:focus {
+            outline: none;
+            border-color: var(--cyan);
+        }
+
+        /* Full Logs Container */
+        .full-logs-container {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
         /* Loading Skeleton */
         .skeleton {
             background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
@@ -1557,7 +1911,7 @@
                         <i data-lucide="server" style="width: 14px; height: 14px;"></i>
                         Serveur SecuBox
                     </label>
-                    <input type="text" class="form-input mono" id="serverUrl" value="https://secubox.maegia.tv" placeholder="https://secubox.maegia.tv">
+                    <input type="text" class="form-input mono" id="serverUrl" placeholder="http://192.168.1.1">
                 </div>
 
                 <div class="form-group">
@@ -1729,6 +2083,8 @@
 
             <!-- Dashboard Content -->
             <div class="dashboard" id="dashboardContent">
+                <!-- Overview Tab -->
+                <div class="tab-page active" id="tab-overview">
                 <!-- Metrics Grid -->
                 <div class="metrics-grid">
                     <div class="metric-card cyan">
@@ -1967,10 +2323,427 @@
                     </div>
                 </div>
 
+                </div><!-- End tab-overview -->
+
+                <!-- System Tab -->
+                <div class="tab-page" id="tab-system">
+                    <div class="card" style="margin-bottom: 1.5rem;">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="info" style="width: 18px; height: 18px; color: var(--cyan);"></i>
+                                Informations Système
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="info-grid" id="systemInfoGrid">
+                                <div class="info-item"><span class="info-label">Hostname</span><span class="info-value" id="sysHostname">--</span></div>
+                                <div class="info-item"><span class="info-label">Modèle</span><span class="info-value" id="sysModel">--</span></div>
+                                <div class="info-item"><span class="info-label">Architecture</span><span class="info-value" id="sysArch">--</span></div>
+                                <div class="info-item"><span class="info-label">Kernel</span><span class="info-value" id="sysKernel">--</span></div>
+                                <div class="info-item"><span class="info-label">OpenWrt</span><span class="info-value" id="sysRelease">--</span></div>
+                                <div class="info-item"><span class="info-label">Uptime</span><span class="info-value" id="sysUptime">--</span></div>
+                                <div class="info-item"><span class="info-label">Date locale</span><span class="info-value" id="sysLocaltime">--</span></div>
+                                <div class="info-item"><span class="info-label">Fuseau horaire</span><span class="info-value" id="sysTimezone">--</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="cards-grid">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <i data-lucide="hard-drive" style="width: 18px; height: 18px; color: var(--amber);"></i>
+                                    Stockage
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div id="storageInfo">
+                                    <div class="info-item"><span class="info-label">Racine (/)</span><span class="info-value" id="storageRoot">--</span></div>
+                                    <div class="info-item"><span class="info-label">/tmp</span><span class="info-value" id="storageTmp">--</span></div>
+                                    <div class="info-item"><span class="info-label">/overlay</span><span class="info-value" id="storageOverlay">--</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <i data-lucide="memory-stick" style="width: 18px; height: 18px; color: var(--violet);"></i>
+                                    Mémoire
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div id="memoryInfo">
+                                    <div class="info-item"><span class="info-label">Total</span><span class="info-value" id="memTotal">--</span></div>
+                                    <div class="info-item"><span class="info-label">Utilisée</span><span class="info-value" id="memUsed">--</span></div>
+                                    <div class="info-item"><span class="info-label">Libre</span><span class="info-value" id="memFree">--</span></div>
+                                    <div class="info-item"><span class="info-label">Buffers</span><span class="info-value" id="memBuffers">--</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Network Tab -->
+                <div class="tab-page" id="tab-network">
+                    <div class="cards-grid" style="margin-bottom: 1.5rem;">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <i data-lucide="wifi" style="width: 18px; height: 18px; color: var(--cyan);"></i>
+                                    Réseaux WiFi
+                                </div>
+                            </div>
+                            <div class="card-body" id="wifiNetworks">
+                                <div class="empty-state">Chargement...</div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-title">
+                                    <i data-lucide="activity" style="width: 18px; height: 18px; color: var(--emerald);"></i>
+                                    Trafic Réseau
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="traffic-graph">
+                                    <canvas id="trafficCanvas" class="traffic-canvas"></canvas>
+                                </div>
+                                <div class="traffic-legend">
+                                    <div class="traffic-legend-item">
+                                        <span class="traffic-legend-color" style="background: var(--emerald);"></span>
+                                        <span>Download</span>
+                                    </div>
+                                    <div class="traffic-legend-item">
+                                        <span class="traffic-legend-color" style="background: var(--cyan);"></span>
+                                        <span>Upload</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-bottom: 1.5rem;">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="network" style="width: 18px; height: 18px; color: var(--violet);"></i>
+                                Interfaces Réseau
+                            </div>
+                        </div>
+                        <div class="card-body" style="overflow-x: auto;">
+                            <table class="interfaces-table" id="fullInterfacesTable">
+                                <thead>
+                                    <tr>
+                                        <th>Interface</th>
+                                        <th>Adresse IP</th>
+                                        <th>Passerelle</th>
+                                        <th>DNS</th>
+                                        <th>État</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="fullInterfacesBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="users" style="width: 18px; height: 18px; color: var(--amber);"></i>
+                                Baux DHCP
+                            </div>
+                            <div class="card-badge" id="dhcpCount">0 clients</div>
+                        </div>
+                        <div class="card-body" style="overflow-x: auto;">
+                            <table class="leases-table">
+                                <thead>
+                                    <tr>
+                                        <th>Hostname</th>
+                                        <th>Adresse IP</th>
+                                        <th>Adresse MAC</th>
+                                        <th>Expire</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dhcpLeasesBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CrowdSec Tab -->
+                <div class="tab-page" id="tab-crowdsec">
+                    <div class="metrics-grid" style="margin-bottom: 1.5rem;">
+                        <div class="metric-card cyan">
+                            <div class="metric-header">
+                                <span class="metric-label">Décisions</span>
+                                <div class="metric-icon"><i data-lucide="shield" style="width: 18px; height: 18px;"></i></div>
+                            </div>
+                            <div class="metric-value" id="csDecisions">--</div>
+                            <div class="metric-sub">actives</div>
+                        </div>
+                        <div class="metric-card amber">
+                            <div class="metric-header">
+                                <span class="metric-label">Alertes 24h</span>
+                                <div class="metric-icon"><i data-lucide="alert-triangle" style="width: 18px; height: 18px;"></i></div>
+                            </div>
+                            <div class="metric-value" id="csAlerts">--</div>
+                            <div class="metric-sub">dernières 24h</div>
+                        </div>
+                        <div class="metric-card emerald">
+                            <div class="metric-header">
+                                <span class="metric-label">Bouncers</span>
+                                <div class="metric-icon"><i data-lucide="shield-check" style="width: 18px; height: 18px;"></i></div>
+                            </div>
+                            <div class="metric-value" id="csBouncers">--</div>
+                            <div class="metric-sub">connectés</div>
+                        </div>
+                        <div class="metric-card violet">
+                            <div class="metric-header">
+                                <span class="metric-label">Machines</span>
+                                <div class="metric-icon"><i data-lucide="server" style="width: 18px; height: 18px;"></i></div>
+                            </div>
+                            <div class="metric-value" id="csMachines">--</div>
+                            <div class="metric-sub">enregistrées</div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-bottom: 1.5rem;">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="list" style="width: 18px; height: 18px; color: var(--cyan);"></i>
+                                Décisions Actives
+                            </div>
+                            <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.5rem 0.75rem;" onclick="refreshCrowdSecDecisions()">
+                                <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+                                Actualiser
+                            </button>
+                        </div>
+                        <div class="card-body" style="overflow-x: auto;">
+                            <table class="decisions-table">
+                                <thead>
+                                    <tr>
+                                        <th>IP / Range</th>
+                                        <th>Raison</th>
+                                        <th>Type</th>
+                                        <th>Durée</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="csDecisionsBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="zap" style="width: 18px; height: 18px; color: var(--violet);"></i>
+                                Actions CrowdSec
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="actions-grid">
+                                <button class="action-btn primary" onclick="reloadCrowdSec()">
+                                    <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                                    Recharger CrowdSec
+                                </button>
+                                <button class="action-btn" onclick="showBlockModal()">
+                                    <i data-lucide="ban" style="width: 16px; height: 16px;"></i>
+                                    Bloquer IP
+                                </button>
+                                <button class="action-btn" onclick="showUnbanModal()">
+                                    <i data-lucide="unlock" style="width: 16px; height: 16px;"></i>
+                                    Débloquer IP
+                                </button>
+                                <button class="action-btn" onclick="updateCrowdSecHub()">
+                                    <i data-lucide="download" style="width: 16px; height: 16px;"></i>
+                                    Mettre à jour Hub
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Firewall Tab -->
+                <div class="tab-page" id="tab-firewall">
+                    <div class="card" style="margin-bottom: 1.5rem;">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="layers" style="width: 18px; height: 18px; color: var(--cyan);"></i>
+                                Zones Firewall
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="zone-grid" id="firewallZones">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-bottom: 1.5rem;">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="arrow-right-left" style="width: 18px; height: 18px; color: var(--emerald);"></i>
+                                Règles de Forwarding
+                            </div>
+                        </div>
+                        <div class="card-body" style="overflow-x: auto;">
+                            <table class="interfaces-table">
+                                <thead>
+                                    <tr>
+                                        <th>Source</th>
+                                        <th>Destination</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="forwardingRulesBody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="zap" style="width: 18px; height: 18px; color: var(--violet);"></i>
+                                Actions Firewall
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="actions-grid">
+                                <button class="action-btn primary" onclick="restartFirewall()">
+                                    <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                                    Redémarrer Firewall
+                                </button>
+                                <button class="action-btn" onclick="reloadFirewall()">
+                                    <i data-lucide="rotate-cw" style="width: 16px; height: 16px;"></i>
+                                    Recharger Règles
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logs Tab -->
+                <div class="tab-page" id="tab-logs">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="scroll-text" style="width: 18px; height: 18px; color: var(--amber);"></i>
+                                Journaux Système
+                            </div>
+                            <div class="card-badge">
+                                <span class="live-dot"></span>
+                                Live
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="logs-header">
+                                <button class="logs-filter active" data-filter="all">Tous</button>
+                                <button class="logs-filter" data-filter="error">Erreurs</button>
+                                <button class="logs-filter" data-filter="warn">Warnings</button>
+                                <button class="logs-filter" data-filter="crowdsec">CrowdSec</button>
+                                <input type="text" class="logs-search" id="logsSearch" placeholder="Rechercher dans les logs...">
+                            </div>
+                            <div class="full-logs-container" id="fullLogsContainer">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Services Tab -->
+                <div class="tab-page" id="tab-services">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="box" style="width: 18px; height: 18px; color: var(--cyan);"></i>
+                                Services Système
+                            </div>
+                            <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.5rem 0.75rem;" onclick="refreshServices()">
+                                <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+                                Actualiser
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="service-list" id="servicesList">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Tab -->
+                <div class="tab-page" id="tab-settings">
+                    <div class="card" style="margin-bottom: 1.5rem;">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="settings" style="width: 18px; height: 18px; color: var(--cyan);"></i>
+                                Paramètres Dashboard
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">Intervalle de rafraîchissement</label>
+                                <select class="form-input" id="settingsRefreshInterval" onchange="updateRefreshInterval()">
+                                    <option value="3000">3 secondes</option>
+                                    <option value="5000" selected>5 secondes</option>
+                                    <option value="10000">10 secondes</option>
+                                    <option value="30000">30 secondes</option>
+                                    <option value="60000">1 minute</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-bottom: 1.5rem;">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="link" style="width: 18px; height: 18px; color: var(--violet);"></i>
+                                Liens Utiles
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="actions-grid">
+                                <a href="/cgi-bin/luci/" target="_blank" class="action-btn">
+                                    <i data-lucide="external-link" style="width: 16px; height: 16px;"></i>
+                                    LuCI Admin
+                                </a>
+                                <a href="/cgi-bin/luci/admin/status/overview" target="_blank" class="action-btn">
+                                    <i data-lucide="activity" style="width: 16px; height: 16px;"></i>
+                                    Status LuCI
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="power" style="width: 18px; height: 18px; color: var(--rose);"></i>
+                                Actions Système
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="actions-grid">
+                                <button class="action-btn danger" onclick="confirmReboot()">
+                                    <i data-lucide="power" style="width: 16px; height: 16px;"></i>
+                                    Redémarrer
+                                </button>
+                                <button class="action-btn" onclick="logout()">
+                                    <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                                    Déconnexion
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Footer -->
                 <footer class="footer">
                     <p class="footer-text">
-                        SecuBox Control Center v2.0 • Propulsé par
+                        SecuBox Control Center v2.2 • Propulsé par
                         <span class="cyan">CrowdSec</span> +
                         <span class="emerald">OpenWrt</span> +
                         <span class="violet">LuCI</span>
@@ -2068,18 +2841,43 @@
         </div>
     </div>
 
+    <!-- Unban Modal -->
+    <div class="modal" id="unbanModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Débloquer une IP</h3>
+                <button class="modal-close" onclick="closeModal('unbanModal')">
+                    <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+                </button>
+            </div>
+            <form id="unbanForm" onsubmit="unbanIP(event)">
+                <div class="form-group">
+                    <label class="form-label">Adresse IP à débloquer</label>
+                    <input type="text" class="form-input mono" id="unbanIp" placeholder="192.168.1.100" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, var(--emerald), #059669);">
+                    <i data-lucide="unlock" style="width: 18px; height: 18px;"></i>
+                    Débloquer l'IP
+                </button>
+            </form>
+        </div>
+    </div>
+
     <script>
         // =====================================================
         // SecuBox Dashboard - OpenWrt/LuCI/rpcd Authentication
         // =====================================================
 
         const CONFIG = {
-            serverUrl: '',
+            // Auto-detect server URL from current page location
+            serverUrl: window.location.origin,
             username: '',
             sessionToken: null,
             ubusSession: '00000000000000000000000000000000',
-            refreshInterval: 10000,
-            sessionTimeout: 3600000 // 1 hour
+            refreshInterval: 5000, // 5 seconds for more responsive updates
+            sessionTimeout: 3600000, // 1 hour
+            cpuPrevious: null, // For CPU delta calculation
+            networkPrevious: null // For network rate calculation
         };
 
         let refreshTimer = null;
@@ -2457,7 +3255,7 @@
             refreshBtn.classList.add('loading');
 
             try {
-                // Get system info
+                // Get system info - run all queries in parallel for faster updates
                 const [boardInfo, systemInfo, interfaces, devices] = await Promise.all([
                     UBUS.getSystemBoard().catch(() => null),
                     UBUS.getSystemInfo().catch(() => null),
@@ -2468,6 +3266,7 @@
                 // Update board info
                 if (boardInfo) {
                     document.getElementById('deviceHostname').textContent = boardInfo.hostname || 'SecuBox';
+                    document.title = `${boardInfo.hostname || 'SecuBox'} - Control Center`;
                 }
 
                 // Update system info
@@ -2479,7 +3278,13 @@
                 updateNetworkInterfaces(interfaces.interface || []);
                 updateNetworkStats(devices);
 
-                // Get CrowdSec data
+                // Run additional metrics in parallel (non-blocking)
+                Promise.all([
+                    updateDiskUsage().catch(() => {}),
+                    updateConnectionsCount().catch(() => {})
+                ]);
+
+                // Get CrowdSec data (in parallel)
                 const [decisions, bouncers, alerts] = await Promise.all([
                     CROWDSEC.getDecisions(),
                     CROWDSEC.getBouncers(),
@@ -2501,6 +3306,7 @@
                     logout();
                 } else {
                     setConnectionStatus(false);
+                    showToast('Erreur de connexion au serveur', 'error');
                 }
             } finally {
                 refreshBtn.classList.remove('loading');
@@ -2519,14 +3325,6 @@
                 updateGauge('ramGauge', memPercent);
             }
 
-            // Swap (as disk approximation if no disk info)
-            if (info.swap) {
-                const swapUsed = info.swap.total - info.swap.free;
-                const swapPercent = info.swap.total > 0 ? Math.round((swapUsed / info.swap.total) * 100) : 0;
-                document.getElementById('diskValue').textContent = swapPercent;
-                updateGauge('diskGauge', swapPercent);
-            }
-
             // Load average (as CPU approximation)
             if (info.load) {
                 const load1 = info.load[0] / 65536;
@@ -2542,12 +3340,64 @@
                 document.getElementById('uptime').textContent = uptime.short;
                 document.getElementById('uptimeSub').textContent = uptime.full;
             }
+        }
 
-            // Connections (from conntrack if available)
-            if (info.swap && info.swap.total) {
-                // Estimate active connections
-                document.getElementById('connections').textContent = '--';
+        // Get real disk usage via df command
+        async function updateDiskUsage() {
+            try {
+                const result = await UBUS.execCommand('/bin/df', ['-P', '/']);
+                if (result.stdout) {
+                    const lines = result.stdout.trim().split('\n');
+                    if (lines.length >= 2) {
+                        const parts = lines[1].split(/\s+/);
+                        if (parts.length >= 5) {
+                            const used = parseInt(parts[2]) || 0;
+                            const available = parseInt(parts[3]) || 0;
+                            const total = used + available;
+                            const percent = total > 0 ? Math.round((used / total) * 100) : 0;
+                            document.getElementById('diskValue').textContent = percent;
+                            updateGauge('diskGauge', percent);
+                            return;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Disk usage error:', e);
             }
+            // Fallback to showing '--'
+            document.getElementById('diskValue').textContent = '--';
+        }
+
+        // Get active connections count
+        async function updateConnectionsCount() {
+            try {
+                // Try conntrack first
+                let result = await UBUS.execCommand('/usr/sbin/conntrack', ['-C']).catch(() => null);
+                if (result && result.stdout) {
+                    const count = parseInt(result.stdout.trim()) || 0;
+                    document.getElementById('connections').textContent = count;
+                    return;
+                }
+
+                // Fallback: count lines in /proc/net/nf_conntrack
+                result = await UBUS.execCommand('/bin/cat', ['/proc/net/nf_conntrack']).catch(() => null);
+                if (result && result.stdout) {
+                    const lines = result.stdout.trim().split('\n').filter(l => l);
+                    document.getElementById('connections').textContent = lines.length;
+                    return;
+                }
+
+                // Fallback: use netstat
+                result = await UBUS.execCommand('/bin/netstat', ['-tn']).catch(() => null);
+                if (result && result.stdout) {
+                    const lines = result.stdout.trim().split('\n').filter(l => l.includes('ESTABLISHED'));
+                    document.getElementById('connections').textContent = lines.length;
+                    return;
+                }
+            } catch (e) {
+                console.warn('Connections count error:', e);
+            }
+            document.getElementById('connections').textContent = '--';
         }
 
         function updateNetworkInterfaces(interfaces) {
@@ -2606,6 +3456,29 @@
         }
 
         function updateCrowdSecMetrics(decisions, bouncers, alerts) {
+            const crowdsecStatus = document.getElementById('crowdsecStatus');
+
+            // Check if CrowdSec is available
+            const isAvailable = (decisions !== null && decisions !== undefined) ||
+                                (bouncers !== null && bouncers !== undefined) ||
+                                (alerts !== null && alerts !== undefined);
+
+            if (!isAvailable) {
+                // CrowdSec not installed or not responding
+                crowdsecStatus.innerHTML = '<span class="live-dot" style="background: var(--text-muted); animation: none;"></span> Non installé';
+                document.getElementById('activeDecisions').textContent = 'N/A';
+                document.getElementById('alertsCount').textContent = 'N/A';
+                document.getElementById('alertsBadge').textContent = '0';
+                document.getElementById('navAlertsBadge').textContent = '0';
+                document.getElementById('parsersCount').textContent = '--';
+                document.getElementById('scenariosCount').textContent = '--';
+                renderBouncers([]);
+                return;
+            }
+
+            // CrowdSec is active
+            crowdsecStatus.innerHTML = '<span class="live-dot"></span> Actif';
+
             // Decisions count
             const decisionCount = Array.isArray(decisions) ? decisions.length : 0;
             document.getElementById('activeDecisions').textContent = decisionCount;
@@ -2617,11 +3490,26 @@
             document.getElementById('navAlertsBadge').textContent = alertCount;
 
             // Bouncers
-            renderBouncers(bouncers);
+            renderBouncers(bouncers || []);
 
-            // Parsers/Scenarios (mock for now)
-            document.getElementById('parsersCount').textContent = '12';
-            document.getElementById('scenariosCount').textContent = '8';
+            // Get actual parser and scenario counts from metrics if available
+            updateCrowdSecCounts();
+        }
+
+        async function updateCrowdSecCounts() {
+            try {
+                // Get hub status for parsers and scenarios count
+                const result = await UBUS.execCommand('/usr/bin/cscli', ['hub', 'list', '-o', 'json']).catch(() => null);
+                if (result && result.stdout) {
+                    const hub = JSON.parse(result.stdout);
+                    const parsers = hub.parsers ? hub.parsers.filter(p => p.status === 'installed').length : 0;
+                    const scenarios = hub.scenarios ? hub.scenarios.filter(s => s.status === 'installed').length : 0;
+                    document.getElementById('parsersCount').textContent = parsers || '--';
+                    document.getElementById('scenariosCount').textContent = scenarios || '--';
+                }
+            } catch (e) {
+                // Keep default values
+            }
         }
 
         function renderBouncers(bouncers) {
@@ -2861,7 +3749,12 @@
         }
 
         function updateLastUpdate() {
-            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('fr-FR');
+            const element = document.getElementById('lastUpdate');
+            element.textContent = new Date().toLocaleTimeString('fr-FR');
+
+            // Add visual flash to indicate data update
+            element.classList.add('value-update');
+            setTimeout(() => element.classList.remove('value-update'), 300);
         }
 
         function formatUptime(seconds) {
@@ -2956,11 +3849,773 @@
         }
 
         // =====================================================
+        // Tab Navigation
+        // =====================================================
+
+        let currentTab = 'overview';
+        const tabTitles = {
+            overview: 'Tableau de Bord',
+            system: 'Informations Système',
+            network: 'Réseau',
+            crowdsec: 'CrowdSec',
+            firewall: 'Pare-feu',
+            logs: 'Journaux Système',
+            services: 'Services',
+            settings: 'Paramètres'
+        };
+
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-page').forEach(tab => tab.classList.remove('active'));
+            // Show selected tab
+            const tabEl = document.getElementById(`tab-${tabName}`);
+            if (tabEl) {
+                tabEl.classList.add('active');
+                currentTab = tabName;
+                document.getElementById('pageTitle').textContent = tabTitles[tabName] || 'Dashboard';
+
+                // Load tab-specific data
+                loadTabData(tabName);
+            }
+        }
+
+        async function loadTabData(tabName) {
+            switch(tabName) {
+                case 'system':
+                    await loadSystemInfo();
+                    break;
+                case 'network':
+                    await loadNetworkInfo();
+                    break;
+                case 'crowdsec':
+                    await loadCrowdSecInfo();
+                    break;
+                case 'firewall':
+                    await loadFirewallInfo();
+                    break;
+                case 'logs':
+                    await loadFullLogs();
+                    break;
+                case 'services':
+                    await loadServices();
+                    break;
+            }
+            lucide.createIcons();
+        }
+
+        // =====================================================
+        // System Tab Functions
+        // =====================================================
+
+        async function loadSystemInfo() {
+            try {
+                const [boardInfo, systemInfo] = await Promise.all([
+                    UBUS.getSystemBoard().catch(() => null),
+                    UBUS.getSystemInfo().catch(() => null)
+                ]);
+
+                if (boardInfo) {
+                    document.getElementById('sysHostname').textContent = boardInfo.hostname || '--';
+                    document.getElementById('sysModel').textContent = boardInfo.model || '--';
+                    document.getElementById('sysArch').textContent = boardInfo.system || '--';
+                    document.getElementById('sysKernel').textContent = boardInfo.kernel || '--';
+                    document.getElementById('sysRelease').textContent = boardInfo.release?.description || '--';
+                }
+
+                if (systemInfo) {
+                    document.getElementById('sysUptime').textContent = formatUptime(systemInfo.uptime).full;
+                    document.getElementById('sysLocaltime').textContent = new Date(systemInfo.localtime * 1000).toLocaleString('fr-FR');
+
+                    // Memory info
+                    if (systemInfo.memory) {
+                        const mem = systemInfo.memory;
+                        document.getElementById('memTotal').textContent = formatBytes(mem.total);
+                        document.getElementById('memUsed').textContent = formatBytes(mem.total - mem.free - (mem.buffered || 0) - (mem.cached || 0));
+                        document.getElementById('memFree').textContent = formatBytes(mem.free);
+                        document.getElementById('memBuffers').textContent = formatBytes((mem.buffered || 0) + (mem.cached || 0));
+                    }
+                }
+
+                // Load storage info
+                await loadStorageInfo();
+
+                // Get timezone
+                const tzResult = await UBUS.execCommand('/bin/cat', ['/etc/TZ']).catch(() => null);
+                if (tzResult && tzResult.stdout) {
+                    document.getElementById('sysTimezone').textContent = tzResult.stdout.trim() || 'UTC';
+                }
+            } catch (e) {
+                console.error('System info error:', e);
+            }
+        }
+
+        async function loadStorageInfo() {
+            try {
+                const result = await UBUS.execCommand('/bin/df', ['-h']);
+                if (result && result.stdout) {
+                    const lines = result.stdout.trim().split('\n');
+                    lines.forEach(line => {
+                        const parts = line.split(/\s+/);
+                        if (parts[5] === '/') {
+                            document.getElementById('storageRoot').textContent = `${parts[2]} / ${parts[1]} (${parts[4]})`;
+                        } else if (parts[5] === '/tmp') {
+                            document.getElementById('storageTmp').textContent = `${parts[2]} / ${parts[1]} (${parts[4]})`;
+                        } else if (parts[5] === '/overlay') {
+                            document.getElementById('storageOverlay').textContent = `${parts[2]} / ${parts[1]} (${parts[4]})`;
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error('Storage info error:', e);
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        // =====================================================
+        // Network Tab Functions
+        // =====================================================
+
+        let trafficHistory = { rx: [], tx: [], labels: [] };
+        const maxTrafficPoints = 30;
+
+        async function loadNetworkInfo() {
+            await Promise.all([
+                loadWifiNetworks(),
+                loadFullInterfaces(),
+                loadDHCPLeases()
+            ]);
+            initTrafficGraph();
+        }
+
+        async function loadWifiNetworks() {
+            const container = document.getElementById('wifiNetworks');
+            try {
+                const result = await UBUS.call('network.wireless', 'status').catch(() => null);
+
+                if (!result || Object.keys(result).length === 0) {
+                    container.innerHTML = '<div class="empty-state">Aucun réseau WiFi configuré</div>';
+                    return;
+                }
+
+                let html = '';
+                for (const [radio, data] of Object.entries(result)) {
+                    if (data.interfaces) {
+                        data.interfaces.forEach(iface => {
+                            const ssid = iface.config?.ssid || 'N/A';
+                            const channel = data.config?.channel || '?';
+                            const mode = iface.config?.mode || 'ap';
+                            const encryption = iface.config?.encryption || 'none';
+                            const disabled = data.disabled || iface.config?.disabled;
+
+                            html += `
+                                <div class="wifi-card">
+                                    <div class="wifi-header">
+                                        <div class="wifi-ssid">
+                                            <i data-lucide="wifi" style="width: 16px; height: 16px; color: ${disabled ? 'var(--text-muted)' : 'var(--emerald)'};"></i>
+                                            ${escapeHtml(ssid)}
+                                            <span class="wifi-band">${radio.includes('5g') ? '5GHz' : '2.4GHz'}</span>
+                                        </div>
+                                        <span class="interface-status ${disabled ? 'down' : 'up'}">${disabled ? 'OFF' : 'ON'}</span>
+                                    </div>
+                                    <div class="wifi-stats">
+                                        <div class="wifi-stat">
+                                            <div class="wifi-stat-value">${channel}</div>
+                                            <div class="wifi-stat-label">Canal</div>
+                                        </div>
+                                        <div class="wifi-stat">
+                                            <div class="wifi-stat-value">${mode.toUpperCase()}</div>
+                                            <div class="wifi-stat-label">Mode</div>
+                                        </div>
+                                        <div class="wifi-stat">
+                                            <div class="wifi-stat-value">${encryption}</div>
+                                            <div class="wifi-stat-label">Chiffrement</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    }
+                }
+
+                container.innerHTML = html || '<div class="empty-state">Aucun réseau WiFi configuré</div>';
+            } catch (e) {
+                container.innerHTML = '<div class="empty-state">Erreur chargement WiFi</div>';
+            }
+        }
+
+        async function loadFullInterfaces() {
+            try {
+                const interfaces = await UBUS.getNetworkInterfaces().catch(() => ({ interface: [] }));
+                const tbody = document.getElementById('fullInterfacesBody');
+
+                if (!interfaces.interface || interfaces.interface.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Aucune interface</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = interfaces.interface.map(iface => {
+                    const ip = iface['ipv4-address']?.[0]?.address || iface['ipv6-address']?.[0]?.address || '--';
+                    const gateway = iface.route?.[0]?.nexthop || '--';
+                    const dns = iface['dns-server']?.join(', ') || '--';
+                    const isUp = iface.up;
+
+                    return `
+                        <tr>
+                            <td class="interface-name">${escapeHtml(iface.interface)}</td>
+                            <td class="mono" style="font-size: 0.75rem;">${ip}</td>
+                            <td class="mono" style="font-size: 0.75rem;">${gateway}</td>
+                            <td class="mono" style="font-size: 0.7rem;">${dns}</td>
+                            <td><span class="interface-status ${isUp ? 'up' : 'down'}">${isUp ? 'UP' : 'DOWN'}</span></td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error('Full interfaces error:', e);
+            }
+        }
+
+        async function loadDHCPLeases() {
+            try {
+                const result = await UBUS.call('luci-rpc', 'getDHCPLeases').catch(() => null);
+                const tbody = document.getElementById('dhcpLeasesBody');
+                const countBadge = document.getElementById('dhcpCount');
+
+                let leases = [];
+                if (result && result.dhcp_leases) {
+                    leases = result.dhcp_leases;
+                } else {
+                    // Fallback: read lease file
+                    const fileResult = await UBUS.execCommand('/bin/cat', ['/tmp/dhcp.leases']).catch(() => null);
+                    if (fileResult && fileResult.stdout) {
+                        const lines = fileResult.stdout.trim().split('\n').filter(l => l);
+                        leases = lines.map(line => {
+                            const parts = line.split(' ');
+                            return {
+                                expires: parseInt(parts[0]) || 0,
+                                macaddr: parts[1] || '',
+                                ipaddr: parts[2] || '',
+                                hostname: parts[3] || '*'
+                            };
+                        });
+                    }
+                }
+
+                countBadge.textContent = `${leases.length} client${leases.length !== 1 ? 's' : ''}`;
+
+                if (leases.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Aucun bail DHCP</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = leases.map(lease => {
+                    const expires = lease.expires ? new Date(lease.expires * 1000).toLocaleString('fr-FR') : '--';
+                    return `
+                        <tr>
+                            <td>${escapeHtml(lease.hostname || '*')}</td>
+                            <td class="mono">${lease.ipaddr || '--'}</td>
+                            <td class="mono" style="font-size: 0.7rem;">${lease.macaddr || '--'}</td>
+                            <td style="font-size: 0.75rem;">${expires}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error('DHCP leases error:', e);
+            }
+        }
+
+        function initTrafficGraph() {
+            const canvas = document.getElementById('trafficCanvas');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+
+            drawTrafficGraph(ctx, canvas);
+        }
+
+        function drawTrafficGraph(ctx, canvas) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 5; i++) {
+                const y = (canvas.height / 5) * i;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            if (trafficHistory.rx.length < 2) return;
+
+            const maxVal = Math.max(...trafficHistory.rx, ...trafficHistory.tx, 1);
+            const xStep = canvas.width / (maxTrafficPoints - 1);
+
+            // Draw RX line (download - green)
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            trafficHistory.rx.forEach((val, i) => {
+                const x = i * xStep;
+                const y = canvas.height - (val / maxVal) * canvas.height * 0.9;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Draw TX line (upload - cyan)
+            ctx.strokeStyle = '#06b6d4';
+            ctx.beginPath();
+            trafficHistory.tx.forEach((val, i) => {
+                const x = i * xStep;
+                const y = canvas.height - (val / maxVal) * canvas.height * 0.9;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+        }
+
+        function updateTrafficGraph(rxRate, txRate) {
+            trafficHistory.rx.push(parseFloat(rxRate) || 0);
+            trafficHistory.tx.push(parseFloat(txRate) || 0);
+
+            if (trafficHistory.rx.length > maxTrafficPoints) {
+                trafficHistory.rx.shift();
+                trafficHistory.tx.shift();
+            }
+
+            const canvas = document.getElementById('trafficCanvas');
+            if (canvas && currentTab === 'network') {
+                const ctx = canvas.getContext('2d');
+                drawTrafficGraph(ctx, canvas);
+            }
+        }
+
+        // =====================================================
+        // CrowdSec Tab Functions
+        // =====================================================
+
+        async function loadCrowdSecInfo() {
+            try {
+                const [decisions, bouncers, alerts, machines] = await Promise.all([
+                    CROWDSEC.getDecisions(),
+                    CROWDSEC.getBouncers(),
+                    CROWDSEC.getAlerts(),
+                    getCrowdSecMachines()
+                ]);
+
+                document.getElementById('csDecisions').textContent = Array.isArray(decisions) ? decisions.length : '--';
+                document.getElementById('csAlerts').textContent = Array.isArray(alerts) ? alerts.length : '--';
+                document.getElementById('csBouncers').textContent = Array.isArray(bouncers) ? bouncers.length : '--';
+                document.getElementById('csMachines').textContent = Array.isArray(machines) ? machines.length : '--';
+
+                // Render decisions table with unban button
+                renderCrowdSecDecisions(decisions);
+            } catch (e) {
+                console.error('CrowdSec info error:', e);
+            }
+        }
+
+        async function getCrowdSecMachines() {
+            try {
+                const result = await UBUS.execCommand('/usr/bin/cscli', ['machines', 'list', '-o', 'json']);
+                if (result.stdout) {
+                    return JSON.parse(result.stdout);
+                }
+            } catch (e) {}
+            return [];
+        }
+
+        function renderCrowdSecDecisions(decisions) {
+            const tbody = document.getElementById('csDecisionsBody');
+
+            if (!decisions || decisions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Aucune décision active</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = decisions.slice(0, 50).map(d => {
+                const ip = d.value || d.ip || '--';
+                const reason = (d.scenario || d.reason || '--').substring(0, 40);
+                return `
+                    <tr>
+                        <td class="ip mono">${escapeHtml(ip)}</td>
+                        <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(d.scenario || d.reason || '')}">${escapeHtml(reason)}</td>
+                        <td><span class="action">${d.type || 'ban'}</span></td>
+                        <td class="mono" style="font-size: 0.7rem;">${d.duration || '--'}</td>
+                        <td>
+                            <button class="service-btn success" onclick="unbanIPDirect('${escapeHtml(ip)}')" title="Débloquer">
+                                <i data-lucide="unlock" style="width: 14px; height: 14px;"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function refreshCrowdSecDecisions() {
+            showToast('Actualisation...', 'info');
+            await loadCrowdSecInfo();
+            lucide.createIcons();
+            showToast('Décisions actualisées', 'success');
+        }
+
+        function showUnbanModal() {
+            document.getElementById('unbanModal').classList.add('active');
+        }
+
+        async function unbanIP(event) {
+            event.preventDefault();
+            const ip = document.getElementById('unbanIp').value;
+            await unbanIPDirect(ip);
+            closeModal('unbanModal');
+            document.getElementById('unbanIp').value = '';
+        }
+
+        async function unbanIPDirect(ip) {
+            try {
+                showToast(`Déblocage de ${ip}...`, 'info');
+                await UBUS.execCommand('/usr/bin/cscli', ['decisions', 'delete', '--ip', ip]);
+                showToast(`IP ${ip} débloquée`, 'success');
+                if (currentTab === 'crowdsec') {
+                    await loadCrowdSecInfo();
+                    lucide.createIcons();
+                }
+                await refreshData();
+            } catch (e) {
+                showToast(`Erreur: ${e.message}`, 'error');
+            }
+        }
+
+        async function updateCrowdSecHub() {
+            try {
+                showToast('Mise à jour du hub CrowdSec...', 'info');
+                await UBUS.execCommand('/usr/bin/cscli', ['hub', 'update']);
+                await UBUS.execCommand('/usr/bin/cscli', ['hub', 'upgrade']);
+                showToast('Hub CrowdSec mis à jour', 'success');
+            } catch (e) {
+                showToast(`Erreur: ${e.message}`, 'error');
+            }
+        }
+
+        // =====================================================
+        // Firewall Tab Functions
+        // =====================================================
+
+        async function loadFirewallInfo() {
+            try {
+                // Get firewall zones via uci
+                const result = await UBUS.execCommand('/sbin/fw4', ['zone']).catch(() => null);
+
+                // Fallback: use UCI to get zones
+                const zonesResult = await UBUS.execCommand('/bin/uci', ['show', 'firewall']).catch(() => null);
+
+                const zonesContainer = document.getElementById('firewallZones');
+                const forwardingBody = document.getElementById('forwardingRulesBody');
+
+                // Parse zones from UCI output
+                const zones = [];
+                const forwardings = [];
+
+                if (zonesResult && zonesResult.stdout) {
+                    const lines = zonesResult.stdout.split('\n');
+                    let currentZone = null;
+
+                    lines.forEach(line => {
+                        if (line.includes('.name=')) {
+                            const match = line.match(/firewall\.(@zone\[\d+\]|zone\d+)\.name='?(\w+)'?/);
+                            if (match) {
+                                currentZone = { name: match[2], input: 'ACCEPT', output: 'ACCEPT', forward: 'REJECT', network: [] };
+                                zones.push(currentZone);
+                            }
+                        }
+                        if (currentZone && line.includes('.input=')) {
+                            const match = line.match(/\.input='?(\w+)'?/);
+                            if (match) currentZone.input = match[1];
+                        }
+                        if (currentZone && line.includes('.output=')) {
+                            const match = line.match(/\.output='?(\w+)'?/);
+                            if (match) currentZone.output = match[1];
+                        }
+                        if (currentZone && line.includes('.forward=')) {
+                            const match = line.match(/\.forward='?(\w+)'?/);
+                            if (match) currentZone.forward = match[1];
+                        }
+                        if (currentZone && line.includes('.network=')) {
+                            const match = line.match(/\.network='([^']+)'/);
+                            if (match) currentZone.network = match[1].split(' ');
+                        }
+                        // Forwarding rules
+                        if (line.includes('forwarding') && line.includes('.src=')) {
+                            const srcMatch = line.match(/\.src='?(\w+)'?/);
+                            if (srcMatch) {
+                                forwardings.push({ src: srcMatch[1], dest: '' });
+                            }
+                        }
+                        if (forwardings.length > 0 && line.includes('.dest=')) {
+                            const destMatch = line.match(/\.dest='?(\w+)'?/);
+                            if (destMatch && forwardings[forwardings.length - 1].dest === '') {
+                                forwardings[forwardings.length - 1].dest = destMatch[1];
+                            }
+                        }
+                    });
+                }
+
+                // Default zones if none found
+                if (zones.length === 0) {
+                    zones.push(
+                        { name: 'lan', input: 'ACCEPT', output: 'ACCEPT', forward: 'ACCEPT', network: ['lan'] },
+                        { name: 'wan', input: 'REJECT', output: 'ACCEPT', forward: 'REJECT', network: ['wan', 'wan6'] }
+                    );
+                }
+
+                zonesContainer.innerHTML = zones.map(zone => {
+                    const zoneClass = zone.name.toLowerCase();
+                    return `
+                        <div class="zone-card ${zoneClass}">
+                            <div class="zone-name">${escapeHtml(zone.name)}</div>
+                            <div class="zone-policy">
+                                Input: ${zone.input} | Output: ${zone.output} | Forward: ${zone.forward}
+                            </div>
+                            <div class="zone-interfaces">${zone.network?.join(', ') || '--'}</div>
+                        </div>
+                    `;
+                }).join('');
+
+                // Forwarding rules
+                if (forwardings.length === 0) {
+                    forwardings.push({ src: 'lan', dest: 'wan' });
+                }
+
+                forwardingBody.innerHTML = forwardings.filter(f => f.dest).map(fwd => `
+                    <tr>
+                        <td><span class="interface-status up">${escapeHtml(fwd.src)}</span></td>
+                        <td><span class="interface-status up">${escapeHtml(fwd.dest)}</span></td>
+                        <td>ACCEPT</td>
+                    </tr>
+                `).join('');
+
+            } catch (e) {
+                console.error('Firewall info error:', e);
+            }
+        }
+
+        async function reloadFirewall() {
+            try {
+                showToast('Rechargement des règles...', 'info');
+                await UBUS.execCommand('/etc/init.d/firewall', ['reload']);
+                showToast('Règles rechargées', 'success');
+                await loadFirewallInfo();
+                lucide.createIcons();
+            } catch (e) {
+                showToast(`Erreur: ${e.message}`, 'error');
+            }
+        }
+
+        // =====================================================
+        // Logs Tab Functions
+        // =====================================================
+
+        let allLogs = [];
+        let currentLogFilter = 'all';
+
+        async function loadFullLogs() {
+            const container = document.getElementById('fullLogsContainer');
+
+            try {
+                const result = await UBUS.execCommand('/sbin/logread', ['-l', '100']);
+
+                if (result && result.stdout) {
+                    allLogs = result.stdout.trim().split('\n').filter(l => l).reverse();
+                    renderFilteredLogs();
+                } else {
+                    container.innerHTML = '<div class="empty-state">Aucun log disponible</div>';
+                }
+            } catch (e) {
+                container.innerHTML = '<div class="empty-state">Erreur chargement logs</div>';
+            }
+        }
+
+        function renderFilteredLogs() {
+            const container = document.getElementById('fullLogsContainer');
+            const searchTerm = document.getElementById('logsSearch')?.value?.toLowerCase() || '';
+
+            let filteredLogs = allLogs;
+
+            // Apply filter
+            if (currentLogFilter !== 'all') {
+                filteredLogs = filteredLogs.filter(log => {
+                    const lower = log.toLowerCase();
+                    switch(currentLogFilter) {
+                        case 'error': return lower.includes('error') || lower.includes('fail');
+                        case 'warn': return lower.includes('warn');
+                        case 'crowdsec': return lower.includes('crowdsec');
+                        default: return true;
+                    }
+                });
+            }
+
+            // Apply search
+            if (searchTerm) {
+                filteredLogs = filteredLogs.filter(log => log.toLowerCase().includes(searchTerm));
+            }
+
+            if (filteredLogs.length === 0) {
+                container.innerHTML = '<div class="empty-state">Aucun log correspondant</div>';
+                return;
+            }
+
+            container.innerHTML = filteredLogs.slice(0, 100).map(line => {
+                const type = getLogType(line);
+                const icons = { ban: 'x-circle', alert: 'alert-triangle', info: 'info', success: 'check-circle' };
+
+                const parts = line.match(/^(\w+\s+\d+\s+[\d:]+)\s+\S+\s+(.+)$/);
+                const time = parts?.[1] || '';
+                const message = parts?.[2] || line;
+
+                return `
+                    <div class="log-entry ${type}">
+                        <i data-lucide="${icons[type]}" class="log-icon ${type}" style="width: 16px; height: 16px;"></i>
+                        <div class="log-content">
+                            <div class="log-message">${escapeHtml(message)}</div>
+                            <div class="log-meta">
+                                <span>system</span>
+                                <span>•</span>
+                                <span>${time}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        // =====================================================
+        // Services Tab Functions
+        // =====================================================
+
+        const importantServices = [
+            'crowdsec', 'firewall', 'network', 'dnsmasq', 'uhttpd', 'rpcd',
+            'dropbear', 'odhcpd', 'ntpd', 'sysntpd', 'cron', 'log', 'urngd'
+        ];
+
+        async function loadServices() {
+            const container = document.getElementById('servicesList');
+
+            try {
+                // Get init scripts
+                const result = await UBUS.execCommand('/bin/ls', ['/etc/init.d/']);
+
+                if (!result || !result.stdout) {
+                    container.innerHTML = '<div class="empty-state">Aucun service trouvé</div>';
+                    return;
+                }
+
+                const scripts = result.stdout.trim().split('\n').filter(s => s);
+
+                // Filter to important services first, then others
+                const sortedServices = [
+                    ...scripts.filter(s => importantServices.includes(s)),
+                    ...scripts.filter(s => !importantServices.includes(s))
+                ];
+
+                // Get status for each service
+                const servicesHtml = await Promise.all(sortedServices.slice(0, 30).map(async (svc) => {
+                    const statusResult = await UBUS.execCommand('/etc/init.d/' + svc, ['status']).catch(() => ({ code: 1 }));
+                    const running = statusResult && statusResult.code === 0;
+
+                    return `
+                        <div class="service-item">
+                            <div class="service-info">
+                                <div class="service-icon ${running ? 'running' : 'stopped'}">
+                                    <i data-lucide="${running ? 'play-circle' : 'stop-circle'}" style="width: 18px; height: 18px;"></i>
+                                </div>
+                                <div>
+                                    <div class="service-name">${escapeHtml(svc)}</div>
+                                    <div class="service-status">${running ? 'En cours d\'exécution' : 'Arrêté'}</div>
+                                </div>
+                            </div>
+                            <div class="service-actions">
+                                ${running ? `
+                                    <button class="service-btn" onclick="serviceAction('${svc}', 'restart')" title="Redémarrer">
+                                        <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+                                    </button>
+                                    <button class="service-btn danger" onclick="serviceAction('${svc}', 'stop')" title="Arrêter">
+                                        <i data-lucide="square" style="width: 14px; height: 14px;"></i>
+                                    </button>
+                                ` : `
+                                    <button class="service-btn success" onclick="serviceAction('${svc}', 'start')" title="Démarrer">
+                                        <i data-lucide="play" style="width: 14px; height: 14px;"></i>
+                                    </button>
+                                `}
+                            </div>
+                        </div>
+                    `;
+                }));
+
+                container.innerHTML = servicesHtml.join('');
+                lucide.createIcons();
+            } catch (e) {
+                container.innerHTML = '<div class="empty-state">Erreur chargement services</div>';
+            }
+        }
+
+        async function refreshServices() {
+            showToast('Actualisation...', 'info');
+            await loadServices();
+            showToast('Services actualisés', 'success');
+        }
+
+        async function serviceAction(service, action) {
+            try {
+                showToast(`${action === 'start' ? 'Démarrage' : action === 'stop' ? 'Arrêt' : 'Redémarrage'} de ${service}...`, 'info');
+                await UBUS.execCommand('/etc/init.d/' + service, [action]);
+                showToast(`${service} ${action === 'start' ? 'démarré' : action === 'stop' ? 'arrêté' : 'redémarré'}`, 'success');
+                await loadServices();
+            } catch (e) {
+                showToast(`Erreur: ${e.message}`, 'error');
+            }
+        }
+
+        // =====================================================
+        // Settings Functions
+        // =====================================================
+
+        function updateRefreshInterval() {
+            const select = document.getElementById('settingsRefreshInterval');
+            const newInterval = parseInt(select.value);
+            CONFIG.refreshInterval = newInterval;
+
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+                refreshTimer = setInterval(refreshData, CONFIG.refreshInterval);
+            }
+
+            showToast(`Intervalle mis à jour: ${newInterval / 1000}s`, 'success');
+        }
+
+        // =====================================================
         // Event Listeners
         // =====================================================
 
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
+
+            // Initialize server URL with current location
+            const serverUrlInput = document.getElementById('serverUrl');
+            if (serverUrlInput && !serverUrlInput.value) {
+                serverUrlInput.value = window.location.origin;
+            }
 
             // Login form
             document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -3003,9 +4658,26 @@
                 item.addEventListener('click', () => {
                     document.querySelectorAll('[data-tab]').forEach(i => i.classList.remove('active'));
                     document.querySelectorAll(`[data-tab="${item.dataset.tab}"]`).forEach(i => i.classList.add('active'));
+                    switchTab(item.dataset.tab);
                     closeSidebar();
                 });
             });
+
+            // Logs filter buttons
+            document.querySelectorAll('.logs-filter').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.logs-filter').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentLogFilter = btn.dataset.filter;
+                    renderFilteredLogs();
+                });
+            });
+
+            // Logs search
+            const logsSearch = document.getElementById('logsSearch');
+            if (logsSearch) {
+                logsSearch.addEventListener('input', renderFilteredLogs);
+            }
 
             // Close modals on escape
             document.addEventListener('keydown', (e) => {
