@@ -18,9 +18,17 @@ load_config() {
 	config_get CONTEXT_SIZE main context_size "2048"
 }
 
-# Check if LocalAI is running
+# Check if LocalAI is running (supports Docker/Podman container)
 is_running() {
-	pgrep local-ai >/dev/null 2>&1
+	# Check for container first (Docker/Podman)
+	if command -v podman >/dev/null 2>&1; then
+		podman ps --format '{{.Names}}' 2>/dev/null | grep -q "^localai$" && return 0
+	fi
+	if command -v docker >/dev/null 2>&1; then
+		docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^localai$" && return 0
+	fi
+	# Fallback to direct process check (LXC or native)
+	pgrep -f "local-ai" >/dev/null 2>&1
 }
 
 # Get service status
@@ -31,12 +39,36 @@ get_status() {
 
 	if is_running; then
 		running="true"
-		# Get process uptime
-		local pid=$(pgrep local-ai | head -1)
-		if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
-			local start_time=$(stat -c %Y /proc/$pid 2>/dev/null || echo 0)
-			local now=$(date +%s)
-			uptime=$((now - start_time))
+		# Try to get container uptime first
+		if command -v podman >/dev/null 2>&1; then
+			local status=$(podman ps --filter "name=localai" --format '{{.Status}}' 2>/dev/null | head -1)
+			if [ -n "$status" ]; then
+				# Parse "Up X minutes/hours" format - just estimate
+				case "$status" in
+					*minute*) uptime=$(($(echo "$status" | grep -oE '[0-9]+' | head -1) * 60)) ;;
+					*hour*) uptime=$(($(echo "$status" | grep -oE '[0-9]+' | head -1) * 3600)) ;;
+					*second*) uptime=$(echo "$status" | grep -oE '[0-9]+' | head -1) ;;
+					*) uptime=0 ;;
+				esac
+			fi
+		elif command -v docker >/dev/null 2>&1; then
+			local status=$(docker ps --filter "name=localai" --format '{{.Status}}' 2>/dev/null | head -1)
+			if [ -n "$status" ]; then
+				case "$status" in
+					*minute*) uptime=$(($(echo "$status" | grep -oE '[0-9]+' | head -1) * 60)) ;;
+					*hour*) uptime=$(($(echo "$status" | grep -oE '[0-9]+' | head -1) * 3600)) ;;
+					*second*) uptime=$(echo "$status" | grep -oE '[0-9]+' | head -1) ;;
+					*) uptime=0 ;;
+				esac
+			fi
+		else
+			# Fallback to process uptime
+			local pid=$(pgrep -f "local-ai" | head -1)
+			if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+				local start_time=$(stat -c %Y /proc/$pid 2>/dev/null || echo 0)
+				local now=$(date +%s)
+				uptime=$((now - start_time))
+			fi
 		fi
 	fi
 
@@ -322,7 +354,7 @@ do_chat() {
 	local messages="$2"
 
 	if ! is_running; then
-		echo '{"response":"","error":"LocalAI is not running"}'
+		echo '{"response":"","error":"LocalAI is not running. Start with: /etc/init.d/localai start"}'
 		return
 	fi
 
@@ -330,37 +362,59 @@ do_chat() {
 	[ -z "$model" ] && { echo '{"response":"","error":"Model not specified"}'; return; }
 	[ -z "$messages" ] && { echo '{"response":"","error":"Messages not provided"}'; return; }
 
-	# Build request body - messages should already be a JSON array string
+	# Messages comes as JSON string from LuCI RPC - it should be a valid JSON array
+	# Build request body for LocalAI /v1/chat/completions endpoint
 	local request_body="{\"model\":\"$model\",\"messages\":$messages}"
 
-	# Call LocalAI API using a temp file for better handling
-	local tmpfile="/tmp/localai_chat_$$"
-	local http_code
+	# Log for debugging
+	logger -t localai-chat "Request to model: $model"
 
-	http_code=$(wget -q -O "$tmpfile" --post-data "$request_body" \
-		--header="Content-Type: application/json" \
-		"http://127.0.0.1:$API_PORT/v1/chat/completions" 2>/dev/null; echo $?)
+	# Call LocalAI API using curl if available, otherwise wget
+	local tmpfile="/tmp/localai_chat_$$"
+	local tmpfile_err="/tmp/localai_chat_err_$$"
+
+	if command -v curl >/dev/null 2>&1; then
+		curl -s -X POST "http://127.0.0.1:$API_PORT/v1/chat/completions" \
+			-H "Content-Type: application/json" \
+			-d "$request_body" \
+			-o "$tmpfile" 2>"$tmpfile_err"
+	else
+		wget -q -O "$tmpfile" --post-data "$request_body" \
+			--header="Content-Type: application/json" \
+			"http://127.0.0.1:$API_PORT/v1/chat/completions" 2>"$tmpfile_err"
+	fi
 
 	if [ -f "$tmpfile" ] && [ -s "$tmpfile" ]; then
+		# Log raw response for debugging
+		logger -t localai-chat "Raw response: $(head -c 200 "$tmpfile")"
+
 		# Extract message content using jsonfilter
 		local content=$(jsonfilter -i "$tmpfile" -e '@.choices[0].message.content' 2>/dev/null)
 		local error=$(jsonfilter -i "$tmpfile" -e '@.error.message' 2>/dev/null)
-		rm -f "$tmpfile"
 
 		if [ -n "$error" ]; then
 			# Escape quotes and newlines in error
 			error=$(echo "$error" | sed 's/"/\\"/g' | tr '\n' ' ')
 			echo "{\"response\":\"\",\"error\":\"$error\"}"
 		elif [ -n "$content" ]; then
-			# Escape quotes and newlines in content
-			content=$(echo "$content" | sed 's/"/\\"/g' | tr '\n' '\\n')
+			# Properly escape the content for JSON output
+			# Handle quotes, backslashes, and newlines
+			content=$(printf '%s' "$content" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n", $0}' | sed 's/\\n$//')
 			echo "{\"response\":\"$content\"}"
 		else
-			echo '{"response":"","error":"Empty response from API"}'
+			echo '{"response":"","error":"Empty response from LocalAI API - model may not support chat format"}'
 		fi
+		rm -f "$tmpfile" "$tmpfile_err" 2>/dev/null
 	else
-		rm -f "$tmpfile" 2>/dev/null
-		echo '{"response":"","error":"API request failed - no response"}'
+		local err_msg=""
+		[ -f "$tmpfile_err" ] && err_msg=$(cat "$tmpfile_err" | head -c 200 | sed 's/"/\\"/g')
+		rm -f "$tmpfile" "$tmpfile_err" 2>/dev/null
+
+		if [ -n "$err_msg" ]; then
+			echo "{\"response\":\"\",\"error\":\"API request failed: $err_msg\"}"
+		else
+			echo '{"response":"","error":"API request failed - check if LocalAI is running and model is loaded"}'
+		fi
 	fi
 }
 
