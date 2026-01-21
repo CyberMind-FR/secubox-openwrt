@@ -15,11 +15,11 @@ config main 'main'
 # LXC settings (for runtime=lxc)
 config lxc 'lxc'
 	option path '/srv/lxc'
-	option version 'v2.25.0'
+	option version 'v3.10.0'
 
 # Docker/Podman settings (for runtime=docker or podman)
 config docker 'docker'
-	option image 'localai/localai:v2.25.0-ffmpeg'
+	option image 'localai/localai:v3.10.0-ffmpeg'
 
 # Default model to load on startup
 config model 'default'
