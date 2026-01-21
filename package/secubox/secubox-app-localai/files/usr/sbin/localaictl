@@ -185,15 +185,19 @@ lxc_install() {
 	local rootfs="$lxc_path/$CONTAINER_NAME/rootfs"
 	local config="$lxc_path/$CONTAINER_NAME/config"
 
-	# Check if we should extract from Docker image (preferred - includes all backends)
+	# Check if we can extract from Docker image (preferred - includes all backends)
 	local use_docker_extract=0
-	if command -v podman >/dev/null 2>&1 || command -v docker >/dev/null 2>&1; then
+	if command -v podman >/dev/null 2>&1 && runtime_is_working podman; then
+		use_docker_extract=1
+	elif command -v docker >/dev/null 2>&1 && runtime_is_working docker; then
 		use_docker_extract=1
 	fi
 
 	if [ "$use_docker_extract" = "1" ]; then
 		lxc_install_from_docker "$rootfs" || return 1
 	else
+		log_warn "No working Docker/Podman daemon - using standalone binary"
+		log_warn "For full backend support, start Docker: /etc/init.d/dockerd start"
 		lxc_install_standalone "$rootfs" || return 1
 	fi
 
@@ -205,18 +209,37 @@ lxc_install() {
 	return 0
 }
 
+# Check if container runtime daemon is actually working
+runtime_is_working() {
+	local rt="$1"
+	case "$rt" in
+		podman)
+			# Podman is daemonless, just check command works
+			podman info >/dev/null 2>&1
+			;;
+		docker)
+			# Docker needs daemon running
+			docker info >/dev/null 2>&1
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
 # Extract rootfs from Docker image (includes all backends)
 lxc_install_from_docker() {
 	local rootfs="$1"
 	local rt=""
 
-	# Detect available runtime for extraction
-	if command -v podman >/dev/null 2>&1; then
+	# Detect available AND WORKING runtime for extraction
+	if command -v podman >/dev/null 2>&1 && runtime_is_working podman; then
 		rt="podman"
-	elif command -v docker >/dev/null 2>&1; then
+	elif command -v docker >/dev/null 2>&1 && runtime_is_working docker; then
 		rt="docker"
 	else
-		log_error "Need podman or docker to extract image"
+		log_error "Need working podman or docker to extract image"
+		log_error "Docker installed but daemon not running? Start with: /etc/init.d/dockerd start"
 		return 1
 	fi
 
