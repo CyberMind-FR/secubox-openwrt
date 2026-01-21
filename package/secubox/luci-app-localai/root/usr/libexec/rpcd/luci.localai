@@ -18,16 +18,21 @@ load_config() {
 	config_get CONTEXT_SIZE main context_size "2048"
 }
 
-# Check if LocalAI is running (supports Docker/Podman container)
+# Check if LocalAI is running (supports LXC, Docker, Podman)
 is_running() {
-	# Check for container first (Docker/Podman)
+	# Check LXC container
+	if command -v lxc-info >/dev/null 2>&1; then
+		lxc-info -n localai -s 2>/dev/null | grep -q "RUNNING" && return 0
+	fi
+	# Check Podman container
 	if command -v podman >/dev/null 2>&1; then
 		podman ps --format '{{.Names}}' 2>/dev/null | grep -q "^localai$" && return 0
 	fi
+	# Check Docker container
 	if command -v docker >/dev/null 2>&1; then
 		docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^localai$" && return 0
 	fi
-	# Fallback to direct process check (LXC or native)
+	# Fallback to direct process check (native binary)
 	pgrep -f "local-ai" >/dev/null 2>&1
 }
 
@@ -39,11 +44,20 @@ get_status() {
 
 	if is_running; then
 		running="true"
-		# Try to get container uptime first
-		if command -v podman >/dev/null 2>&1; then
+		# Try to get container/process uptime
+		# LXC container
+		if command -v lxc-info >/dev/null 2>&1 && lxc-info -n localai -s 2>/dev/null | grep -q "RUNNING"; then
+			# Get LXC container PID and calculate uptime
+			local lxc_pid=$(lxc-info -n localai -p 2>/dev/null | awk '{print $2}')
+			if [ -n "$lxc_pid" ] && [ -d "/proc/$lxc_pid" ]; then
+				local start_time=$(stat -c %Y /proc/$lxc_pid 2>/dev/null || echo 0)
+				local now=$(date +%s)
+				uptime=$((now - start_time))
+			fi
+		# Podman container
+		elif command -v podman >/dev/null 2>&1; then
 			local status=$(podman ps --filter "name=localai" --format '{{.Status}}' 2>/dev/null | head -1)
 			if [ -n "$status" ]; then
-				# Parse "Up X minutes/hours" format - just estimate
 				case "$status" in
 					*minute*) uptime=$(($(echo "$status" | grep -oE '[0-9]+' | head -1) * 60)) ;;
 					*hour*) uptime=$(($(echo "$status" | grep -oE '[0-9]+' | head -1) * 3600)) ;;
@@ -51,6 +65,7 @@ get_status() {
 					*) uptime=0 ;;
 				esac
 			fi
+		# Docker container
 		elif command -v docker >/dev/null 2>&1; then
 			local status=$(docker ps --filter "name=localai" --format '{{.Status}}' 2>/dev/null | head -1)
 			if [ -n "$status" ]; then
@@ -61,8 +76,8 @@ get_status() {
 					*) uptime=0 ;;
 				esac
 			fi
+		# Native process
 		else
-			# Fallback to process uptime
 			local pid=$(pgrep -f "local-ai" | head -1)
 			if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
 				local start_time=$(stat -c %Y /proc/$pid 2>/dev/null || echo 0)
