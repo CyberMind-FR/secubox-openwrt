@@ -31,9 +31,11 @@ Service Control:
   service-stop       Stop container
 
 Runtimes:
-  lxc     - Lightweight, uses standalone binary (no backends compiled)
-  docker  - Full image with all backends (llama-cpp, whisper, etc.)
-  podman  - Same as docker, rootless containers
+  lxc     - LXC container with rootfs extracted from Docker image
+            (includes all backends: llama-cpp, whisper, etc.)
+            Falls back to standalone binary if no docker/podman available
+  docker  - Run Docker container directly
+  podman  - Run Podman container directly (rootless)
 
 Configuration: /etc/config/localai
   Set runtime with: uci set localai.main.runtime=<lxc|docker|podman|auto>
@@ -183,6 +185,95 @@ lxc_install() {
 	local rootfs="$lxc_path/$CONTAINER_NAME/rootfs"
 	local config="$lxc_path/$CONTAINER_NAME/config"
 
+	# Check if we should extract from Docker image (preferred - includes all backends)
+	local use_docker_extract=0
+	if command -v podman >/dev/null 2>&1 || command -v docker >/dev/null 2>&1; then
+		use_docker_extract=1
+	fi
+
+	if [ "$use_docker_extract" = "1" ]; then
+		lxc_install_from_docker "$rootfs" || return 1
+	else
+		lxc_install_standalone "$rootfs" || return 1
+	fi
+
+	# Create LXC config
+	lxc_create_config "$config" "$rootfs"
+
+	log_info "LXC container configured at $lxc_path/$CONTAINER_NAME"
+	uci_set main.runtime 'lxc'
+	return 0
+}
+
+# Extract rootfs from Docker image (includes all backends)
+lxc_install_from_docker() {
+	local rootfs="$1"
+	local rt=""
+
+	# Detect available runtime for extraction
+	if command -v podman >/dev/null 2>&1; then
+		rt="podman"
+	elif command -v docker >/dev/null 2>&1; then
+		rt="docker"
+	else
+		log_error "Need podman or docker to extract image"
+		return 1
+	fi
+
+	log_info "Extracting LocalAI rootfs from Docker image..."
+	log_info "Image: $docker_image"
+	log_info "This includes ALL backends (llama-cpp, whisper, etc.)"
+
+	# Pull the image
+	log_info "Pulling image (this may take a while)..."
+	if ! $rt pull "$docker_image"; then
+		log_error "Failed to pull image"
+		return 1
+	fi
+
+	# Create temp container to export
+	local temp_container="localai-extract-$$"
+	log_info "Creating temporary container..."
+	$rt create --name "$temp_container" "$docker_image" >/dev/null 2>&1
+
+	# Export and extract rootfs
+	mkdir -p "$rootfs"
+	log_info "Exporting rootfs (2-4GB, please wait)..."
+
+	if $rt export "$temp_container" | tar -xf - -C "$rootfs" 2>/dev/null; then
+		log_info "Rootfs extracted successfully"
+	else
+		log_error "Failed to extract rootfs"
+		$rt rm -f "$temp_container" >/dev/null 2>&1
+		return 1
+	fi
+
+	# Cleanup temp container
+	$rt rm -f "$temp_container" >/dev/null 2>&1
+
+	# Optionally remove the Docker image to save space
+	# $rt rmi "$docker_image" >/dev/null 2>&1
+
+	# Create necessary directories
+	mkdir -p "$rootfs/models" "$rootfs/build" "$rootfs/tmp"
+
+	# Setup resolv.conf
+	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
+
+	local rootfs_size=$(du -sh "$rootfs" 2>/dev/null | cut -f1)
+	log_info "Rootfs size: $rootfs_size"
+	log_info "All LocalAI backends are now available!"
+
+	return 0
+}
+
+# Fallback: Download standalone binary (limited backends)
+lxc_install_standalone() {
+	local rootfs="$1"
+
+	log_warn "No Docker/Podman available - using standalone binary"
+	log_warn "Note: Standalone binary has LIMITED backend support"
+
 	# Create directories
 	mkdir -p "$rootfs/usr/bin" "$rootfs/data" "$rootfs/models" "$rootfs/tmp" "$rootfs/etc"
 	mkdir -p "$rootfs/bin" "$rootfs/lib" "$rootfs/proc" "$rootfs/sys" "$rootfs/dev"
@@ -199,8 +290,6 @@ lxc_install() {
 	# Download LocalAI binary
 	local binary_url="https://github.com/mudler/LocalAI/releases/download/${lxc_version}/local-ai-${lxc_version}-${arch}"
 	log_info "Downloading LocalAI $lxc_version for $arch..."
-	log_info "URL: $binary_url"
-	log_warn "Note: Standalone binary has limited backend support"
 
 	if ! wget -q --show-progress -O "$rootfs/usr/bin/local-ai" "$binary_url"; then
 		log_error "Failed to download LocalAI binary"
@@ -212,30 +301,64 @@ lxc_install() {
 	# Create resolv.conf
 	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
 
+	return 0
+}
+
+# Create LXC configuration file
+lxc_create_config() {
+	local config="$1"
+	local rootfs="$2"
+
 	# Build command flags
 	local cors_flag="" debug_flag=""
 	[ "$cors" = "1" ] && cors_flag=" --cors"
 	[ "$debug" = "1" ] && debug_flag=" --debug"
 
-	# Create LXC config
+	# Detect init command based on rootfs type
+	local init_cmd="/usr/bin/local-ai"
+	if [ -f "$rootfs/build/entrypoint.sh" ]; then
+		# Docker image has entrypoint script
+		init_cmd="/build/entrypoint.sh"
+	fi
+
 	cat > "$config" << EOF
 # LocalAI LXC Configuration
 lxc.uts.name = $CONTAINER_NAME
 lxc.rootfs.path = dir:$rootfs
+
+# Network - use host network
 lxc.net.0.type = none
+
+# Mount points
 lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
-lxc.mount.entry = $data_path data none bind,create=dir 0 0
 lxc.mount.entry = $models_path models none bind,create=dir 0 0
+lxc.mount.entry = $data_path build none bind,create=dir 0 0
+lxc.mount.entry = /dev/null dev/null none bind,create=file 0 0
+lxc.mount.entry = /dev/zero dev/zero none bind,create=file 0 0
+lxc.mount.entry = /dev/urandom dev/urandom none bind,create=file 0 0
+
+# Environment variables
+lxc.environment = LOCALAI_THREADS=$threads
+lxc.environment = LOCALAI_CONTEXT_SIZE=$context_size
+lxc.environment = LOCALAI_ADDRESS=${api_host}:${api_port}
+lxc.environment = LOCALAI_MODELS_PATH=/models
+lxc.environment = LOCALAI_DEBUG=$debug
+lxc.environment = LOCALAI_CORS=$cors
+lxc.environment = PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Security
 lxc.cap.drop = sys_admin sys_module mac_admin mac_override
+
+# Resources
 lxc.cgroup.memory.limit_in_bytes = $memory_limit
-lxc.init.cmd = /usr/bin/local-ai --address ${api_host}:${api_port} --models-path /models --threads $threads --context-size $context_size${cors_flag}${debug_flag}
+
+# Init command
+lxc.init.cmd = $init_cmd --address ${api_host}:${api_port} --models-path /models --threads $threads --context-size $context_size${cors_flag}${debug_flag}
+
+# Console
 lxc.console.size = 4096
 lxc.pty.max = 1024
 EOF
-
-	log_info "LXC container configured at $lxc_path/$CONTAINER_NAME"
-	uci_set main.runtime 'lxc'
-	return 0
 }
 
 lxc_run() {
