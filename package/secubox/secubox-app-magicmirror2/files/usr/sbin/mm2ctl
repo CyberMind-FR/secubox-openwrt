@@ -672,10 +672,25 @@ install_module() {
 		return 1
 	fi
 
+	# Check if container is running
+	if ! lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		log_error "Container not running. Start it first: /etc/init.d/magicmirror2 start"
+		return 1
+	fi
+
+	# Use MMPM if available (has module registry)
+	if command -v mmpmctl >/dev/null 2>&1; then
+		log_info "Using MMPM to install: $module_name"
+		mmpmctl install-module "$module_name"
+		return $?
+	fi
+
+	# Fallback: manual git clone
 	local modules_dir="$data_path/modules"
 	ensure_dir "$modules_dir"
 
 	local git_url=""
+	local node_path="/opt/nodejs/node-v24.13.0/bin:/usr/local/bin:/usr/bin:/bin"
 
 	# Check if it's a URL
 	case "$module_name" in
@@ -684,13 +699,12 @@ install_module() {
 			module_name=$(basename "$git_url" .git)
 			;;
 		MMM-*|mm-*)
-			# Try to find in registry
-			git_url="https://github.com/MagicMirror-modules/$module_name"
-			# Also check MichMich's repos
+			# Direct URL - no registry lookup
+			git_url=""
 			;;
 		*)
 			module_name="MMM-$module_name"
-			git_url="https://github.com/MagicMirror-modules/$module_name"
+			git_url=""
 			;;
 	esac
 
@@ -699,26 +713,27 @@ install_module() {
 		return 0
 	fi
 
-	log_info "Installing module: $module_name"
-
-	# Clone the module
-	if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
-		# Use container's git
-		lxc-attach -n "$LXC_NAME" -- sh -c "cd /opt/magic_mirror/modules && git clone --depth 1 '$git_url' '$module_name'" || {
-			log_error "Failed to clone module"
-			return 1
-		}
-
-		# Install dependencies if package.json exists
-		if lxc-attach -n "$LXC_NAME" -- test -f "/opt/magic_mirror/modules/$module_name/package.json"; then
-			log_info "Installing module dependencies..."
-			lxc-attach -n "$LXC_NAME" -- sh -c "cd /opt/magic_mirror/modules/$module_name && npm install --production" || {
-				log_warn "Failed to install dependencies (module may still work)"
-			}
-		fi
-	else
-		log_error "Container not running. Start it first: /etc/init.d/magicmirror2 start"
+	# If no URL provided, we need MMPM for registry lookup
+	if [ -z "$git_url" ]; then
+		log_error "Cannot install $module_name without URL"
+		log_error "Please provide full Git URL or install MMPM (opkg install secubox-app-mmpm)"
 		return 1
+	fi
+
+	log_info "Installing module: $module_name from $git_url"
+
+	# Clone the module with proper PATH
+	lxc-attach -n "$LXC_NAME" -- sh -c "export PATH=$node_path:\$PATH && cd /opt/magic_mirror/modules && git clone --depth 1 '$git_url' '$module_name'" || {
+		log_error "Failed to clone module"
+		return 1
+	}
+
+	# Install dependencies if package.json exists
+	if lxc-attach -n "$LXC_NAME" -- test -f "/opt/magic_mirror/modules/$module_name/package.json"; then
+		log_info "Installing module dependencies..."
+		lxc-attach -n "$LXC_NAME" -- sh -c "export PATH=$node_path:\$PATH && cd /opt/magic_mirror/modules/$module_name && npm install --production" || {
+			log_warn "Failed to install dependencies (module may still work)"
+		}
 	fi
 
 	log_info "Module $module_name installed successfully"
@@ -755,6 +770,21 @@ update_module() {
 	local module_name="$1"
 	load_config
 
+	# Check if container is running
+	if ! lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		log_error "Container not running. Start it first: /etc/init.d/magicmirror2 start"
+		return 1
+	fi
+
+	# Use MMPM if available
+	if command -v mmpmctl >/dev/null 2>&1; then
+		log_info "Using MMPM to update modules"
+		mmpmctl upgrade "$module_name"
+		return $?
+	fi
+
+	local node_path="/opt/nodejs/node-v24.13.0/bin:/usr/local/bin:/usr/bin:/bin"
+
 	if [ -z "$module_name" ]; then
 		# Update all modules
 		log_info "Updating all modules..."
@@ -763,14 +793,14 @@ update_module() {
 			[ -d "$module_dir/.git" ] || continue
 			local name=$(basename "$module_dir")
 			log_info "Updating $name..."
-			lxc-attach -n "$LXC_NAME" -- sh -c "cd /opt/magic_mirror/modules/$name && git pull" || true
+			lxc-attach -n "$LXC_NAME" -- sh -c "export PATH=$node_path:\$PATH && cd /opt/magic_mirror/modules/$name && git pull && npm install --production 2>/dev/null" || true
 		done
 		# Update mm-* modules
 		for module_dir in "$data_path/modules"/mm-*; do
 			[ -d "$module_dir/.git" ] || continue
 			local name=$(basename "$module_dir")
 			log_info "Updating $name..."
-			lxc-attach -n "$LXC_NAME" -- sh -c "cd /opt/magic_mirror/modules/$name && git pull" || true
+			lxc-attach -n "$LXC_NAME" -- sh -c "export PATH=$node_path:\$PATH && cd /opt/magic_mirror/modules/$name && git pull && npm install --production 2>/dev/null" || true
 		done
 	else
 		local module_path="$data_path/modules/$module_name"
@@ -780,7 +810,7 @@ update_module() {
 		fi
 
 		log_info "Updating module: $module_name"
-		lxc-attach -n "$LXC_NAME" -- sh -c "cd /opt/magic_mirror/modules/$module_name && git pull" || {
+		lxc-attach -n "$LXC_NAME" -- sh -c "export PATH=$node_path:\$PATH && cd /opt/magic_mirror/modules/$module_name && git pull && npm install --production 2>/dev/null" || {
 			log_error "Failed to update module"
 			return 1
 		}
