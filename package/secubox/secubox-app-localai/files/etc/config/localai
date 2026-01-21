@@ -9,8 +9,15 @@ config main 'main'
 	option context_size '2048'
 	option debug '0'
 	option cors '1'
+	# Runtime: 'lxc', 'docker', 'podman', or 'auto' (auto-detect)
+	option runtime 'auto'
 
-# Docker/Podman settings
+# LXC settings (for runtime=lxc)
+config lxc 'lxc'
+	option path '/srv/lxc'
+	option version 'v2.25.0'
+
+# Docker/Podman settings (for runtime=docker or podman)
 config docker 'docker'
 	option image 'localai/localai:v2.25.0-ffmpeg'
 
