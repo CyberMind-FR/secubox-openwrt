@@ -1,0 +1,38 @@
+{
+	"admin/secubox/monitoring/glances": {
+		"title": "Glances",
+		"order": 10,
+		"action": {
+			"type": "firstchild",
+			"recurse": true
+		},
+		"depends": {
+			"acl": ["luci-app-glances"],
+			"uci": {"glances": true}
+		}
+	},
+	"admin/secubox/monitoring/glances/dashboard": {
+		"title": "Dashboard",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "glances/dashboard"
+		}
+	},
+	"admin/secubox/monitoring/glances/webui": {
+		"title": "Web UI",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "glances/webui"
+		}
+	},
+	"admin/secubox/monitoring/glances/settings": {
+		"title": "Settings",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "glances/settings"
+		}
+	}
+}

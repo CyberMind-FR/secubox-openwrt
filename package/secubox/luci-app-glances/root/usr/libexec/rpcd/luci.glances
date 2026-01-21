@@ -1,0 +1,220 @@
+#!/bin/sh
+#
+# RPCD backend for Glances LuCI interface
+# Copyright (C) 2025-2026 CyberMind.fr (SecuBox)
+#
+
+. /lib/functions.sh
+
+LXC_NAME="glances"
+
+# Get service status
+get_status() {
+	local running=0
+	local pid=""
+	local lxc_state=""
+	local web_url=""
+
+	# Check LXC container status
+	if command -v lxc-info >/dev/null 2>&1; then
+		lxc_state=$(lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -oE 'RUNNING|STOPPED' || echo "UNKNOWN")
+		if [ "$lxc_state" = "RUNNING" ]; then
+			running=1
+			pid=$(lxc-info -n "$LXC_NAME" -p 2>/dev/null | grep -oE '[0-9]+' || echo "0")
+		fi
+	fi
+
+	local enabled=$(uci -q get glances.main.enabled || echo "0")
+	local web_port=$(uci -q get glances.main.web_port || echo "61208")
+	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+	[ "$running" = "1" ] && web_url="http://${router_ip}:${web_port}"
+
+	cat <<EOF
+{
+	"running": $([ "$running" = "1" ] && echo "true" || echo "false"),
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"pid": ${pid:-0},
+	"lxc_state": "$lxc_state",
+	"web_port": $web_port,
+	"web_url": "$web_url"
+}
+EOF
+}
+
+# Get main configuration
+get_config() {
+	local enabled=$(uci -q get glances.main.enabled || echo "0")
+	local web_port=$(uci -q get glances.main.web_port || echo "61208")
+	local api_port=$(uci -q get glances.main.api_port || echo "61209")
+	local web_host=$(uci -q get glances.main.web_host || echo "0.0.0.0")
+	local refresh_rate=$(uci -q get glances.main.refresh_rate || echo "3")
+	local memory_limit=$(uci -q get glances.main.memory_limit || echo "128M")
+
+	cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"web_port": $web_port,
+	"api_port": $api_port,
+	"web_host": "$web_host",
+	"refresh_rate": $refresh_rate,
+	"memory_limit": "$memory_limit"
+}
+EOF
+}
+
+# Get monitoring configuration
+get_monitoring_config() {
+	local monitor_docker=$(uci -q get glances.monitoring.monitor_docker || echo "1")
+	local monitor_network=$(uci -q get glances.monitoring.monitor_network || echo "1")
+	local monitor_diskio=$(uci -q get glances.monitoring.monitor_diskio || echo "1")
+	local monitor_sensors=$(uci -q get glances.monitoring.monitor_sensors || echo "1")
+	local monitor_processes=$(uci -q get glances.monitoring.monitor_processes || echo "1")
+
+	cat <<EOF
+{
+	"monitor_docker": $([ "$monitor_docker" = "1" ] && echo "true" || echo "false"),
+	"monitor_network": $([ "$monitor_network" = "1" ] && echo "true" || echo "false"),
+	"monitor_diskio": $([ "$monitor_diskio" = "1" ] && echo "true" || echo "false"),
+	"monitor_sensors": $([ "$monitor_sensors" = "1" ] && echo "true" || echo "false"),
+	"monitor_processes": $([ "$monitor_processes" = "1" ] && echo "true" || echo "false")
+}
+EOF
+}
+
+# Get alerts configuration
+get_alerts_config() {
+	local cpu_warning=$(uci -q get glances.alerts.cpu_warning || echo "70")
+	local cpu_critical=$(uci -q get glances.alerts.cpu_critical || echo "90")
+	local mem_warning=$(uci -q get glances.alerts.mem_warning || echo "70")
+	local mem_critical=$(uci -q get glances.alerts.mem_critical || echo "90")
+	local disk_warning=$(uci -q get glances.alerts.disk_warning || echo "70")
+	local disk_critical=$(uci -q get glances.alerts.disk_critical || echo "90")
+
+	cat <<EOF
+{
+	"cpu_warning": $cpu_warning,
+	"cpu_critical": $cpu_critical,
+	"mem_warning": $mem_warning,
+	"mem_critical": $mem_critical,
+	"disk_warning": $disk_warning,
+	"disk_critical": $disk_critical
+}
+EOF
+}
+
+# Get web URL for iframe
+get_web_url() {
+	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+	local web_port=$(uci -q get glances.main.web_port || echo "61208")
+
+	cat <<EOF
+{
+	"web_url": "http://$router_ip:$web_port"
+}
+EOF
+}
+
+# Service control
+service_start() {
+	/etc/init.d/glances start >/dev/null 2>&1
+	sleep 2
+	get_status
+}
+
+service_stop() {
+	/etc/init.d/glances stop >/dev/null 2>&1
+	sleep 1
+	get_status
+}
+
+service_restart() {
+	/etc/init.d/glances restart >/dev/null 2>&1
+	sleep 2
+	get_status
+}
+
+# Set configuration
+set_config() {
+	local key="$1"
+	local value="$2"
+	local section="main"
+
+	case "$key" in
+		monitor_*)
+			section="monitoring"
+			;;
+		cpu_*|mem_*|disk_*)
+			section="alerts"
+			;;
+	esac
+
+	# Handle boolean conversion
+	case "$value" in
+		true) value="1" ;;
+		false) value="0" ;;
+	esac
+
+	uci set "glances.$section.$key=$value"
+	uci commit glances
+	echo '{"success":true}'
+}
+
+# RPCD list method
+case "$1" in
+	list)
+		cat <<EOF
+{
+	"get_status": {},
+	"get_config": {},
+	"get_monitoring_config": {},
+	"get_alerts_config": {},
+	"get_web_url": {},
+	"service_start": {},
+	"service_stop": {},
+	"service_restart": {},
+	"set_config": {"key": "string", "value": "string"}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			get_status)
+				get_status
+				;;
+			get_config)
+				get_config
+				;;
+			get_monitoring_config)
+				get_monitoring_config
+				;;
+			get_alerts_config)
+				get_alerts_config
+				;;
+			get_web_url)
+				get_web_url
+				;;
+			service_start)
+				service_start
+				;;
+			service_stop)
+				service_stop
+				;;
+			service_restart)
+				service_restart
+				;;
+			set_config)
+				read -r input
+				key=$(echo "$input" | jsonfilter -e '@.key' 2>/dev/null)
+				value=$(echo "$input" | jsonfilter -e '@.value' 2>/dev/null)
+				set_config "$key" "$value"
+				;;
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+	*)
+		echo '{"error":"Unknown command"}'
+		;;
+esac
