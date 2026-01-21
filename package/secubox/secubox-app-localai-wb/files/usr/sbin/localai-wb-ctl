@@ -1,0 +1,568 @@
+#!/bin/sh
+# SecuBox LocalAI-WB (With Build) - Compile from source with llama-cpp backend
+# Copyright (C) 2025 CyberMind.fr
+#
+# This package builds LocalAI natively on ARM64 with llama-cpp backend
+
+CONFIG="localai-wb"
+LOCALAI_VERSION="v2.25.0"
+BUILD_DIR="/opt/localai-build"
+INSTALL_DIR="/opt/localai"
+DATA_DIR="/srv/localai"
+
+usage() {
+	cat <<'EOF'
+Usage: localai-wb-ctl <command>
+
+Build Commands:
+  check              Check build prerequisites
+  install-deps       Install build dependencies
+  build              Build LocalAI with llama-cpp backend
+  build-minimal      Build LocalAI with minimal backends (faster)
+  clean              Clean build directory
+
+Service Commands:
+  start              Start LocalAI service
+  stop               Stop LocalAI service
+  restart            Restart LocalAI service
+  status             Show service status
+  logs               Show logs (use -f to follow)
+
+Model Commands:
+  models             List installed models
+  model-install <n>  Install model from preset or URL
+  model-remove <n>   Remove installed model
+
+Backend Commands:
+  backends           List available backends
+  backend-install <n> Install additional backend
+
+This package compiles LocalAI from source with llama-cpp backend.
+Requires: ~4GB RAM, ~10GB storage, 30-60 min build time.
+
+Configuration: /etc/config/localai-wb
+EOF
+}
+
+require_root() { [ "$(id -u)" -eq 0 ] || { echo "Root required" >&2; exit 1; }; }
+
+log_info() { echo "[INFO] $*"; logger -t localai-wb "$*"; }
+log_warn() { echo "[WARN] $*" >&2; logger -t localai-wb -p warning "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t localai-wb -p err "$*"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+load_config() {
+	api_port="$(uci_get main.api_port || echo 8080)"
+	api_host="$(uci_get main.api_host || echo 0.0.0.0)"
+	data_path="$(uci_get main.data_path || echo $DATA_DIR)"
+	models_path="$(uci_get main.models_path || echo $DATA_DIR/models)"
+	threads="$(uci_get main.threads || echo 4)"
+	context_size="$(uci_get main.context_size || echo 2048)"
+	debug="$(uci_get main.debug || echo 0)"
+
+	mkdir -p "$data_path" "$models_path"
+}
+
+# =============================================================================
+# BUILD PREREQUISITES
+# =============================================================================
+
+cmd_check() {
+	echo "=== LocalAI Build Prerequisites Check ==="
+	echo ""
+
+	local all_ok=1
+
+	# Check Go
+	if command -v go >/dev/null 2>&1; then
+		local go_ver=$(go version | grep -oE 'go[0-9]+\.[0-9]+' | head -1)
+		echo "[OK] Go: $go_ver"
+	else
+		echo "[FAIL] Go not installed"
+		echo "       Install: opkg install golang"
+		all_ok=0
+	fi
+
+	# Check Git
+	if command -v git >/dev/null 2>&1; then
+		echo "[OK] Git installed"
+	else
+		echo "[FAIL] Git not installed"
+		echo "       Install: opkg install git git-http"
+		all_ok=0
+	fi
+
+	# Check make
+	if command -v make >/dev/null 2>&1; then
+		echo "[OK] Make installed"
+	else
+		echo "[FAIL] Make not installed"
+		echo "       Install: opkg install make"
+		all_ok=0
+	fi
+
+	# Check gcc/g++
+	if command -v gcc >/dev/null 2>&1 && command -v g++ >/dev/null 2>&1; then
+		echo "[OK] GCC/G++ installed"
+	else
+		echo "[FAIL] GCC/G++ not installed"
+		echo "       Install: opkg install gcc g++"
+		all_ok=0
+	fi
+
+	# Check cmake
+	if command -v cmake >/dev/null 2>&1; then
+		echo "[OK] CMake installed"
+	else
+		echo "[WARN] CMake not installed (optional)"
+		echo "       Install: opkg install cmake"
+	fi
+
+	echo ""
+
+	# Check memory
+	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+	local mem_gb=$((mem_total / 1024 / 1024))
+	echo "System Memory: ${mem_gb}GB"
+	if [ "$mem_gb" -lt 2 ]; then
+		echo "[WARN] Low memory! Build needs at least 2GB RAM"
+		echo "       Consider using swap or building on another machine"
+	else
+		echo "[OK] Memory sufficient for build"
+	fi
+
+	# Check storage
+	local storage_avail=$(df -m /opt 2>/dev/null | tail -1 | awk '{print $4}')
+	if [ -n "$storage_avail" ]; then
+		local storage_gb=$((storage_avail / 1024))
+		echo "Storage available: ${storage_gb}GB at /opt"
+		if [ "$storage_avail" -lt 5000 ]; then
+			echo "[WARN] Low storage! Build needs ~10GB"
+		else
+			echo "[OK] Storage sufficient"
+		fi
+	fi
+
+	echo ""
+
+	# Check architecture
+	local arch=$(uname -m)
+	echo "Architecture: $arch"
+	case "$arch" in
+		aarch64) echo "[OK] ARM64 supported" ;;
+		x86_64) echo "[OK] x86_64 supported" ;;
+		*) echo "[WARN] Architecture may have limited support" ;;
+	esac
+
+	echo ""
+	if [ $all_ok -eq 1 ]; then
+		echo "Ready to build! Run: localai-wb-ctl build"
+	else
+		echo "Install missing dependencies first: localai-wb-ctl install-deps"
+	fi
+}
+
+cmd_install_deps() {
+	require_root
+	log_info "Installing build dependencies..."
+
+	opkg update
+
+	# Core build tools
+	opkg install git git-http make gcc g++ cmake
+
+	# Go compiler
+	opkg install golang
+
+	# Additional libraries
+	opkg install libc libstdcpp libpthread
+
+	log_info "Dependencies installed. Run: localai-wb-ctl check"
+}
+
+# =============================================================================
+# BUILD LOCALAI FROM SOURCE
+# =============================================================================
+
+cmd_build() {
+	require_root
+	load_config
+
+	log_info "Building LocalAI from source with llama-cpp backend..."
+	log_info "This will take 30-60 minutes. Go get coffee!"
+	echo ""
+
+	# Create build directory
+	mkdir -p "$BUILD_DIR"
+	cd "$BUILD_DIR"
+
+	# Clone or update repository
+	if [ -d "$BUILD_DIR/LocalAI" ]; then
+		log_info "Updating existing repository..."
+		cd "$BUILD_DIR/LocalAI"
+		git fetch --all
+		git checkout "$LOCALAI_VERSION" 2>/dev/null || git checkout main
+		git pull || true
+	else
+		log_info "Cloning LocalAI repository..."
+		git clone --depth 1 --branch "$LOCALAI_VERSION" https://github.com/mudler/LocalAI.git 2>/dev/null || \
+		git clone https://github.com/mudler/LocalAI.git
+		cd "$BUILD_DIR/LocalAI"
+		git checkout "$LOCALAI_VERSION" 2>/dev/null || true
+	fi
+
+	log_info "Repository ready at $BUILD_DIR/LocalAI"
+	log_info ""
+	log_info "Starting build with llama-cpp backend..."
+	log_info "Build options:"
+	log_info "  - Backend: llama-cpp (GGUF models)"
+	log_info "  - Type: generic CPU"
+	log_info ""
+
+	# Set build environment
+	export CGO_ENABLED=1
+	export GOFLAGS="-mod=mod"
+
+	# Build with llama-cpp backend only (fastest)
+	BUILD_GRPC_FOR_BACKEND_LLAMA=true \
+	GRPC_BACKENDS="backend-assets/grpc/llama-cpp" \
+	BUILD_TYPE=generic \
+	make build 2>&1 | tee "$BUILD_DIR/build.log"
+
+	if [ -f "$BUILD_DIR/LocalAI/local-ai" ]; then
+		log_info "Build successful!"
+
+		# Install binary
+		mkdir -p "$INSTALL_DIR/bin"
+		cp "$BUILD_DIR/LocalAI/local-ai" "$INSTALL_DIR/bin/"
+		chmod +x "$INSTALL_DIR/bin/local-ai"
+
+		# Copy backend assets
+		if [ -d "$BUILD_DIR/LocalAI/backend-assets" ]; then
+			cp -r "$BUILD_DIR/LocalAI/backend-assets" "$INSTALL_DIR/"
+		fi
+
+		# Create symlink
+		ln -sf "$INSTALL_DIR/bin/local-ai" /usr/bin/local-ai
+
+		log_info ""
+		log_info "LocalAI installed to $INSTALL_DIR"
+		log_info "Binary: $INSTALL_DIR/bin/local-ai"
+		log_info ""
+		log_info "Enable and start service:"
+		log_info "  uci set localai-wb.main.enabled=1 && uci commit"
+		log_info "  /etc/init.d/localai-wb start"
+		log_info ""
+		log_info "Check backends:"
+		log_info "  local-ai backends list"
+
+		uci_set main.installed '1'
+	else
+		log_error "Build failed! Check $BUILD_DIR/build.log"
+		return 1
+	fi
+}
+
+cmd_build_minimal() {
+	require_root
+	load_config
+
+	log_info "Building LocalAI with minimal configuration..."
+
+	mkdir -p "$BUILD_DIR"
+	cd "$BUILD_DIR"
+
+	if [ ! -d "$BUILD_DIR/LocalAI" ]; then
+		log_info "Cloning repository..."
+		git clone --depth 1 https://github.com/mudler/LocalAI.git
+	fi
+
+	cd "$BUILD_DIR/LocalAI"
+
+	# Minimal build - just the core with llama-cpp
+	log_info "Building minimal LocalAI (llama-cpp only)..."
+
+	export CGO_ENABLED=1
+
+	# Build only llama-cpp grpc backend
+	make BUILD_TYPE=generic \
+		BUILD_GRPC_FOR_BACKEND_LLAMA=true \
+		GRPC_BACKENDS="backend-assets/grpc/llama-cpp" \
+		build 2>&1 | tee "$BUILD_DIR/build-minimal.log"
+
+	if [ -f "$BUILD_DIR/LocalAI/local-ai" ]; then
+		mkdir -p "$INSTALL_DIR/bin"
+		cp "$BUILD_DIR/LocalAI/local-ai" "$INSTALL_DIR/bin/"
+		chmod +x "$INSTALL_DIR/bin/local-ai"
+		ln -sf "$INSTALL_DIR/bin/local-ai" /usr/bin/local-ai
+
+		log_info "Minimal build complete!"
+		uci_set main.installed '1'
+	else
+		log_error "Build failed!"
+		return 1
+	fi
+}
+
+cmd_clean() {
+	require_root
+	log_info "Cleaning build directory..."
+	rm -rf "$BUILD_DIR"
+	log_info "Build directory cleaned"
+}
+
+# =============================================================================
+# SERVICE MANAGEMENT
+# =============================================================================
+
+is_running() {
+	pgrep -f "$INSTALL_DIR/bin/local-ai" >/dev/null 2>&1 || \
+	pgrep -x "local-ai" >/dev/null 2>&1
+}
+
+cmd_start() {
+	require_root
+	load_config
+
+	if ! [ -x "$INSTALL_DIR/bin/local-ai" ]; then
+		log_error "LocalAI not installed. Run: localai-wb-ctl build"
+		return 1
+	fi
+
+	if is_running; then
+		log_warn "Already running"
+		return 0
+	fi
+
+	log_info "Starting LocalAI..."
+	/etc/init.d/localai-wb start
+}
+
+cmd_stop() {
+	require_root
+	/etc/init.d/localai-wb stop
+}
+
+cmd_restart() {
+	require_root
+	/etc/init.d/localai-wb restart
+}
+
+cmd_status() {
+	load_config
+
+	echo "=== LocalAI-WB Status ==="
+	echo ""
+
+	if [ -x "$INSTALL_DIR/bin/local-ai" ]; then
+		echo "Installation: INSTALLED"
+		echo "Binary: $INSTALL_DIR/bin/local-ai"
+		local version=$("$INSTALL_DIR/bin/local-ai" --version 2>/dev/null | head -1 || echo "unknown")
+		echo "Version: $version"
+	else
+		echo "Installation: NOT INSTALLED"
+		echo "Run: localai-wb-ctl build"
+		return
+	fi
+
+	echo ""
+
+	if is_running; then
+		echo "Service: RUNNING"
+		local pid=$(pgrep -f "$INSTALL_DIR/bin/local-ai" | head -1)
+		echo "PID: $pid"
+	else
+		echo "Service: STOPPED"
+	fi
+
+	echo ""
+	echo "Configuration:"
+	echo "  API: http://${api_host}:${api_port}"
+	echo "  Models: $models_path"
+	echo "  Threads: $threads"
+	echo "  Context: $context_size"
+
+	echo ""
+
+	# Check API health
+	if is_running; then
+		if wget -q -O /dev/null "http://127.0.0.1:$api_port/readyz" 2>/dev/null; then
+			echo "API Status: HEALTHY"
+		else
+			echo "API Status: NOT RESPONDING"
+		fi
+	fi
+
+	# List backends
+	if [ -x "$INSTALL_DIR/bin/local-ai" ]; then
+		echo ""
+		echo "=== Backends ==="
+		"$INSTALL_DIR/bin/local-ai" backends list 2>/dev/null || echo "  (service not running)"
+	fi
+}
+
+cmd_logs() {
+	if [ "$1" = "-f" ]; then
+		logread -f -e localai-wb
+	else
+		logread -e localai-wb | tail -100
+	fi
+}
+
+# =============================================================================
+# BACKEND MANAGEMENT
+# =============================================================================
+
+cmd_backends() {
+	if [ -x "$INSTALL_DIR/bin/local-ai" ]; then
+		"$INSTALL_DIR/bin/local-ai" backends list
+	else
+		log_error "LocalAI not installed"
+	fi
+}
+
+cmd_backend_install() {
+	local backend="$1"
+	[ -z "$backend" ] && { echo "Usage: localai-wb-ctl backend-install <backend>"; return 1; }
+
+	if [ -x "$INSTALL_DIR/bin/local-ai" ]; then
+		log_info "Installing backend: $backend"
+		"$INSTALL_DIR/bin/local-ai" backends install "$backend"
+	else
+		log_error "LocalAI not installed"
+	fi
+}
+
+# =============================================================================
+# MODEL MANAGEMENT
+# =============================================================================
+
+cmd_models() {
+	load_config
+	echo "=== Installed Models ==="
+	echo ""
+
+	if [ -d "$models_path" ]; then
+		local count=0
+		for model in "$models_path"/*.gguf "$models_path"/*.bin; do
+			[ -f "$model" ] || continue
+			count=$((count + 1))
+			local name=$(basename "$model")
+			local size=$(ls -lh "$model" | awk '{print $5}')
+			echo "  $count. $name ($size)"
+		done
+		[ "$count" -eq 0 ] && echo "  No models installed"
+	fi
+
+	echo ""
+	echo "=== Available Presets ==="
+	echo "  tinyllama    - 669MB  - TinyLlama 1.1B"
+	echo "  phi2         - 1.6GB  - Microsoft Phi-2"
+	echo "  mistral      - 4.1GB  - Mistral 7B Instruct"
+	echo ""
+	echo "Install: localai-wb-ctl model-install <name>"
+}
+
+cmd_model_install() {
+	load_config
+	require_root
+
+	local model_name="$1"
+	[ -z "$model_name" ] && { echo "Usage: localai-wb-ctl model-install <name|url>"; return 1; }
+
+	mkdir -p "$models_path"
+
+	# Preset URLs
+	case "$model_name" in
+		tinyllama)
+			local url="https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+			local filename="tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+			;;
+		phi2)
+			local url="https://huggingface.co/TheBloke/phi-2-GGUF/resolve/main/phi-2.Q4_K_M.gguf"
+			local filename="phi-2.Q4_K_M.gguf"
+			;;
+		mistral)
+			local url="https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+			local filename="mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+			;;
+		http*)
+			local url="$model_name"
+			local filename=$(basename "$url")
+			;;
+		*)
+			log_error "Unknown model: $model_name"
+			log_error "Use preset name or full URL"
+			return 1
+			;;
+	esac
+
+	log_info "Downloading: $filename"
+	log_info "URL: $url"
+
+	if wget --show-progress -O "$models_path/$filename" "$url"; then
+		# Create YAML config for the model
+		local model_id="${filename%.*}"
+		cat > "$models_path/$model_id.yaml" << EOF
+name: $model_id
+backend: llama-cpp
+parameters:
+  model: $filename
+context_size: $context_size
+threads: $threads
+EOF
+		log_info "Model installed: $model_id"
+		log_info "Restart service to load: /etc/init.d/localai-wb restart"
+	else
+		log_error "Download failed"
+		return 1
+	fi
+}
+
+cmd_model_remove() {
+	load_config
+	require_root
+
+	local model_name="$1"
+	[ -z "$model_name" ] && { echo "Usage: localai-wb-ctl model-remove <name>"; return 1; }
+
+	local found=0
+	for ext in gguf bin yaml yml; do
+		if [ -f "$models_path/$model_name.$ext" ]; then
+			rm -f "$models_path/$model_name.$ext"
+			found=1
+		fi
+	done
+
+	for file in "$models_path"/*"$model_name"*; do
+		[ -f "$file" ] && rm -f "$file" && found=1
+	done
+
+	[ $found -eq 1 ] && log_info "Model removed: $model_name" || log_warn "Model not found"
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+case "${1:-}" in
+	check) cmd_check ;;
+	install-deps) cmd_install_deps ;;
+	build) cmd_build ;;
+	build-minimal) cmd_build_minimal ;;
+	clean) cmd_clean ;;
+	start) cmd_start ;;
+	stop) cmd_stop ;;
+	restart) cmd_restart ;;
+	status) cmd_status ;;
+	logs) shift; cmd_logs "$@" ;;
+	backends) cmd_backends ;;
+	backend-install) shift; cmd_backend_install "$@" ;;
+	models) cmd_models ;;
+	model-install) shift; cmd_model_install "$@" ;;
+	model-remove) shift; cmd_model_remove "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown: $1" >&2; usage >&2; exit 1 ;;
+esac
