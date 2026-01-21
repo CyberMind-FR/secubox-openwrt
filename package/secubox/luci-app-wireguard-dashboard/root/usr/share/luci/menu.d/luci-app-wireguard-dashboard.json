@@ -9,6 +9,14 @@
 			"acl": ["luci-app-wireguard-dashboard"]
 		}
 	},
+	"admin/secubox/network/wireguard/wizard": {
+		"title": "Setup Wizard",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "wireguard-dashboard/wizard"
+		}
+	},
 	"admin/secubox/network/wireguard/overview": {
 		"title": "Overview",
 		"order": 10,

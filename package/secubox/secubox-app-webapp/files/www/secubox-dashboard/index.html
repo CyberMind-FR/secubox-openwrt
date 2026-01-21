@@ -2553,6 +2553,65 @@
                     </div>
                 </div>
 
+                <!-- Third Row - Admin Sessions -->
+                <div class="cards-grid-2" style="margin-top: 1.5rem;">
+                    <!-- Admin Sessions -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="users" style="width: 18px; height: 18px; color: var(--rose);"></i>
+                                Sessions Admin LuCI
+                            </div>
+                            <div class="card-badge" id="adminSessionsCount">0 sessions</div>
+                        </div>
+                        <div class="card-body" style="overflow-x: auto; max-height: 200px; overflow-y: auto;">
+                            <table class="interfaces-table">
+                                <thead>
+                                    <tr>
+                                        <th>Utilisateur</th>
+                                        <th>IP Source</th>
+                                        <th>Expiration</th>
+                                        <th>Statut</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="adminSessionsBody">
+                                    <!-- Sessions dynamically loaded -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Firewall Stats Overview -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <i data-lucide="shield-ban" style="width: 18px; height: 18px; color: var(--amber);"></i>
+                                Statistiques Blocage
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr);">
+                                <div class="stat-item">
+                                    <div class="stat-value" id="totalBansToday">--</div>
+                                    <div class="stat-label">Bans Aujourd'hui</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-value" id="totalBlockedAttempts">--</div>
+                                    <div class="stat-label">Tentatives Bloquées</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-value" id="topScenario">--</div>
+                                    <div class="stat-label">Top Scénario</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-value" id="uniqueIPs">--</div>
+                                    <div class="stat-label">IPs Uniques</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Quick Actions -->
                 <div class="card" style="margin-top: 1.5rem;">
                     <div class="card-header">
@@ -3691,6 +3750,16 @@
                         CROWDSEC.getAlerts()
                     ]);
                     updateCrowdSecMetrics(decisions, bouncers, alerts);
+
+                    // Update firewall blocking statistics
+                    if (currentTab === 'overview') {
+                        updateBlockingStats(decisions, alerts);
+                    }
+                }
+
+                // Load admin sessions on overview tab
+                if (currentTab === 'overview') {
+                    loadAdminSessions().catch(e => console.warn('Admin sessions error:', e));
                 }
 
                 // Get logs only when on overview or logs tab
@@ -4026,6 +4095,181 @@
             }).join('');
 
             lucide.createIcons();
+        }
+
+        // =====================================================
+        // Admin Sessions & Blocking Statistics
+        // =====================================================
+
+        async function loadAdminSessions() {
+            const tbody = document.getElementById('adminSessionsBody');
+            const countBadge = document.getElementById('adminSessionsCount');
+
+            try {
+                // Get LuCI sessions by listing session files
+                const result = await UBUS.execCommand('/bin/sh', ['-c',
+                    'for f in /tmp/luci-sessions/*; do [ -f "$f" ] && echo "$(basename $f)|$(cat $f 2>/dev/null | jsonfilter -e @.data.username 2>/dev/null)|$(cat $f 2>/dev/null | jsonfilter -e @.data.localtime 2>/dev/null)|$(stat -c %Y $f 2>/dev/null)"; done 2>/dev/null || ls -la /tmp/luci-sessions/ 2>/dev/null'
+                ]);
+
+                let sessions = [];
+
+                if (result && result.stdout) {
+                    const lines = result.stdout.trim().split('\n').filter(l => l && l.includes('|'));
+                    sessions = lines.map(line => {
+                        const parts = line.split('|');
+                        return {
+                            id: parts[0] || 'unknown',
+                            username: parts[1] || 'root',
+                            ip: parts[2] || 'local',
+                            mtime: parseInt(parts[3]) || 0
+                        };
+                    }).filter(s => s.id !== 'unknown');
+                }
+
+                // Also try to get session via ubus session.list (requires admin)
+                try {
+                    const ubusResult = await UBUS.call('session', 'list', {});
+                    if (ubusResult && typeof ubusResult === 'object') {
+                        // Add current session info
+                        const currentSession = {
+                            id: STATE.sessionId ? STATE.sessionId.substring(0, 8) : 'current',
+                            username: ubusResult.username || 'root',
+                            ip: window.location.hostname,
+                            mtime: Math.floor(Date.now() / 1000),
+                            expires: ubusResult.expires || 300,
+                            current: true
+                        };
+
+                        // Add if not already in list
+                        if (!sessions.find(s => s.current)) {
+                            sessions.unshift(currentSession);
+                        }
+                    }
+                } catch (e) {
+                    // Session.list might not be available
+                }
+
+                // Update badge
+                countBadge.textContent = `${sessions.length} session${sessions.length > 1 ? 's' : ''}`;
+
+                if (sessions.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: var(--text-muted);">
+                                Aucune session active
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                const now = Math.floor(Date.now() / 1000);
+                tbody.innerHTML = sessions.map(session => {
+                    const age = now - session.mtime;
+                    const isActive = age < 3600; // Active if less than 1 hour old
+                    const expireText = session.expires ?
+                        `${Math.floor(session.expires / 60)} min` :
+                        (age < 60 ? 'maintenant' : `${Math.floor(age / 60)} min`);
+
+                    return `
+                        <tr>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <i data-lucide="user" style="width: 14px; height: 14px; color: var(--cyan);"></i>
+                                    ${escapeHtml(session.username)}
+                                    ${session.current ? '<span style="font-size: 0.65rem; background: var(--cyan); color: var(--bg); padding: 1px 4px; border-radius: 3px;">vous</span>' : ''}
+                                </div>
+                            </td>
+                            <td>
+                                <code style="font-size: 0.7rem; background: var(--surface); padding: 2px 6px; border-radius: 3px;">
+                                    ${escapeHtml(session.ip)}
+                                </code>
+                            </td>
+                            <td style="font-size: 0.75rem;">${expireText}</td>
+                            <td>
+                                <span class="status-badge ${isActive ? 'online' : 'offline'}" style="font-size: 0.65rem;">
+                                    ${isActive ? 'Actif' : 'Expiré'}
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+                lucide.createIcons();
+
+            } catch (e) {
+                console.warn('Error loading admin sessions:', e);
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" style="text-align: center; color: var(--text-muted);">
+                            Impossible de charger les sessions
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function updateBlockingStats(decisions, alerts) {
+            const totalBansEl = document.getElementById('totalBansToday');
+            const blockedEl = document.getElementById('totalBlockedAttempts');
+            const topScenarioEl = document.getElementById('topScenario');
+            const uniqueIPsEl = document.getElementById('uniqueIPs');
+
+            // Calculate stats from decisions and alerts
+            const decisionsList = Array.isArray(decisions) ? decisions : [];
+            const alertsList = Array.isArray(alerts) ? alerts : [];
+
+            // Today's date
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            // Count today's bans
+            const todayBans = decisionsList.filter(d => {
+                if (d.created_at) {
+                    const created = new Date(d.created_at);
+                    return created >= today;
+                }
+                return true; // Count all if no date
+            }).length;
+
+            // Total blocked attempts (sum of events from alerts)
+            const totalBlocked = alertsList.reduce((sum, alert) => {
+                return sum + (alert.events_count || 1);
+            }, 0);
+
+            // Find top scenario
+            const scenarioCounts = {};
+            alertsList.forEach(alert => {
+                const scenario = alert.scenario || 'unknown';
+                scenarioCounts[scenario] = (scenarioCounts[scenario] || 0) + 1;
+            });
+
+            let topScenario = '--';
+            let maxCount = 0;
+            Object.entries(scenarioCounts).forEach(([scenario, count]) => {
+                if (count > maxCount) {
+                    maxCount = count;
+                    // Extract short name from scenario (e.g., "crowdsecurity/ssh-bf" -> "ssh-bf")
+                    const parts = scenario.split('/');
+                    topScenario = parts[parts.length - 1] || scenario;
+                }
+            });
+
+            // Count unique IPs
+            const uniqueIPs = new Set();
+            decisionsList.forEach(d => {
+                if (d.value) uniqueIPs.add(d.value);
+            });
+            alertsList.forEach(a => {
+                if (a.source && a.source.ip) uniqueIPs.add(a.source.ip);
+            });
+
+            // Update UI
+            totalBansEl.textContent = todayBans;
+            blockedEl.textContent = totalBlocked || '--';
+            topScenarioEl.textContent = topScenario.length > 10 ? topScenario.substring(0, 10) + '...' : topScenario;
+            topScenarioEl.title = topScenario; // Full name on hover
+            uniqueIPsEl.textContent = uniqueIPs.size;
         }
 
         async function loadSystemLogs() {
