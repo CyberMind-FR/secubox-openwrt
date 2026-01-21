@@ -301,18 +301,19 @@ lxc_install_standalone() {
 	mkdir -p "$rootfs/usr/bin" "$rootfs/data" "$rootfs/models" "$rootfs/tmp" "$rootfs/etc"
 	mkdir -p "$rootfs/bin" "$rootfs/lib" "$rootfs/proc" "$rootfs/sys" "$rootfs/dev"
 
-	# Detect architecture
+	# Detect architecture (GitHub releases use: local-ai-Linux-arm64, local-ai-Linux-x86_64)
 	local arch
 	case "$(uname -m)" in
-		x86_64) arch="linux-amd64" ;;
-		aarch64) arch="linux-arm64" ;;
-		armv7l) arch="linux-arm" ;;
-		*) arch="linux-amd64" ;;
+		x86_64) arch="Linux-x86_64" ;;
+		aarch64) arch="Linux-arm64" ;;
+		armv7l) arch="Linux-arm64" ;;  # Try arm64 for armv7
+		*) arch="Linux-x86_64" ;;
 	esac
 
 	# Download LocalAI binary
-	local binary_url="https://github.com/mudler/LocalAI/releases/download/${lxc_version}/local-ai-${lxc_version}-${arch}"
+	local binary_url="https://github.com/mudler/LocalAI/releases/download/${lxc_version}/local-ai-${arch}"
 	log_info "Downloading LocalAI $lxc_version for $arch..."
+	log_info "URL: $binary_url"
 
 	if ! wget -q --show-progress -O "$rootfs/usr/bin/local-ai" "$binary_url"; then
 		log_error "Failed to download LocalAI binary"
