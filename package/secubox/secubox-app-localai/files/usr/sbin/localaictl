@@ -1,0 +1,578 @@
+#!/bin/sh
+# SecuBox LocalAI manager - LXC container support
+# Copyright (C) 2025 CyberMind.fr
+
+CONFIG="localai"
+LXC_NAME="localai"
+OPKG_UPDATED=0
+LOCALAI_VERSION="v3.10.0"
+
+# Paths
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+
+usage() {
+	cat <<'EOF'
+Usage: localaictl <command>
+
+Commands:
+  install            Install prerequisites and create LXC container
+  check              Run prerequisite checks
+  update             Update LocalAI in container
+  status             Show container and service status
+  logs               Show LocalAI logs (use -f to follow)
+  shell              Open shell in container
+
+Model Management:
+  models             List installed models
+  model-install <n>  Install model from preset or URL
+  model-remove <n>   Remove installed model
+  model-load <n>     Load model into memory
+  model-unload <n>   Unload model from memory
+
+Service Control:
+  service-run        Internal: run container under procd
+  service-stop       Stop container
+
+API Endpoints (default port 8080):
+  /v1/chat/completions   - Chat completion (OpenAI compatible)
+  /v1/completions        - Text completion
+  /v1/embeddings         - Generate embeddings
+  /v1/models             - List available models
+  /                      - Web UI
+
+Configuration: /etc/config/localai
+EOF
+}
+
+require_root() { [ "$(id -u)" -eq 0 ] || { echo "Root required" >&2; exit 1; }; }
+
+log_info() { echo "[INFO] $*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+uci_get_list() { uci -q get ${CONFIG}.$1 2>/dev/null; }
+
+# Load configuration with defaults
+load_config() {
+	api_port="$(uci_get main.api_port || echo 8080)"
+	api_host="$(uci_get main.api_host || echo 0.0.0.0)"
+	data_path="$(uci_get main.data_path || echo /srv/localai)"
+	models_path="$(uci_get main.models_path || echo /srv/localai/models)"
+	memory_limit="$(uci_get main.memory_limit || echo 2G)"
+	threads="$(uci_get main.threads || echo 4)"
+	context_size="$(uci_get main.context_size || echo 2048)"
+	debug="$(uci_get main.debug || echo 0)"
+	cors="$(uci_get main.cors || echo 1)"
+	gpu_enabled="$(uci_get gpu.enabled || echo 0)"
+	gpu_backend="$(uci_get gpu.backend || echo vulkan)"
+}
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+has_lxc() {
+	command -v lxc-start >/dev/null 2>&1 && \
+	command -v lxc-stop >/dev/null 2>&1
+}
+
+# Ensure required packages are installed
+ensure_packages() {
+	require_root
+	for pkg in "$@"; do
+		if ! opkg list-installed | grep -q "^$pkg "; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+# =============================================================================
+# LXC CONTAINER FUNCTIONS
+# =============================================================================
+
+lxc_check_prereqs() {
+	log_info "Checking LXC prerequisites..."
+	ensure_packages lxc lxc-common lxc-attach lxc-start lxc-stop lxc-destroy || return 1
+
+	if [ ! -d /sys/fs/cgroup ]; then
+		log_error "cgroups not mounted at /sys/fs/cgroup"
+		return 1
+	fi
+
+	log_info "LXC ready"
+}
+
+lxc_create_rootfs() {
+	load_config
+
+	if [ -d "$LXC_ROOTFS" ] && [ -x "$LXC_ROOTFS/usr/bin/local-ai" ]; then
+		log_info "LXC rootfs already exists with LocalAI"
+		return 0
+	fi
+
+	log_info "Creating LXC rootfs for LocalAI..."
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+
+	lxc_download_binary || return 1
+	lxc_create_config || return 1
+
+	log_info "LXC rootfs created successfully"
+}
+
+lxc_download_binary() {
+	local rootfs="$LXC_ROOTFS"
+	local arch
+
+	# Detect architecture - LocalAI uses lowercase format: local-ai-vX.X.X-linux-arm64
+	case "$(uname -m)" in
+		x86_64) arch="linux-x86_64" ;;
+		aarch64) arch="linux-arm64" ;;
+		armv7l) arch="linux-arm" ;;
+		*) arch="linux-x86_64" ;;
+	esac
+
+	log_info "Downloading LocalAI $LOCALAI_VERSION for $arch..."
+	ensure_dir "$rootfs/usr/bin"
+	ensure_dir "$rootfs/data"
+	ensure_dir "$rootfs/models"
+	ensure_dir "$rootfs/tmp"
+	ensure_dir "$rootfs/etc"
+
+	# Download LocalAI binary - format: local-ai-v3.10.0-linux-arm64
+	local binary_url="https://github.com/mudler/LocalAI/releases/download/${LOCALAI_VERSION}/local-ai-${LOCALAI_VERSION}-${arch}"
+
+	log_info "Downloading from: $binary_url"
+	if wget -q --show-progress -O "$rootfs/usr/bin/local-ai" "$binary_url"; then
+		chmod +x "$rootfs/usr/bin/local-ai"
+		log_info "LocalAI binary downloaded successfully ($(ls -sh "$rootfs/usr/bin/local-ai" | cut -d' ' -f1))"
+	else
+		log_error "Failed to download LocalAI binary"
+		log_error "URL: $binary_url"
+		return 1
+	fi
+
+	# Create minimal rootfs structure
+	mkdir -p "$rootfs/bin" "$rootfs/lib" "$rootfs/proc" "$rootfs/sys" "$rootfs/dev"
+
+	# Create resolv.conf
+	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
+
+	# Create startup script
+	cat > "$rootfs/usr/bin/start-localai.sh" << 'START'
+#!/bin/sh
+export PATH="/usr/bin:/bin:$PATH"
+cd /data
+
+# Read environment variables
+API_PORT="${LOCALAI_API_PORT:-8080}"
+API_HOST="${LOCALAI_API_HOST:-0.0.0.0}"
+THREADS="${LOCALAI_THREADS:-4}"
+CONTEXT_SIZE="${LOCALAI_CONTEXT_SIZE:-2048}"
+DEBUG="${LOCALAI_DEBUG:-0}"
+CORS="${LOCALAI_CORS:-1}"
+GPU_ENABLED="${LOCALAI_GPU_ENABLED:-0}"
+
+# Build args
+ARGS="--address ${API_HOST}:${API_PORT}"
+ARGS="$ARGS --models-path /models"
+ARGS="$ARGS --threads $THREADS"
+ARGS="$ARGS --context-size $CONTEXT_SIZE"
+
+[ "$DEBUG" = "1" ] && ARGS="$ARGS --debug"
+[ "$CORS" = "1" ] && ARGS="$ARGS --cors"
+
+echo "Starting LocalAI..."
+echo "API: http://${API_HOST}:${API_PORT}"
+echo "Models path: /models"
+echo "Threads: $THREADS, Context: $CONTEXT_SIZE"
+
+exec /usr/bin/local-ai $ARGS
+START
+	chmod +x "$rootfs/usr/bin/start-localai.sh"
+
+	log_info "LocalAI binary and startup script installed"
+}
+
+lxc_create_config() {
+	load_config
+
+	# Build command line flags
+	local cors_flag=""
+	local debug_flag=""
+	[ "$cors" = "1" ] && cors_flag=" --cors"
+	[ "$debug" = "1" ] && debug_flag=" --debug"
+
+	cat > "$LXC_CONFIG" << EOF
+# LocalAI LXC Configuration
+lxc.uts.name = $LXC_NAME
+
+# Root filesystem
+lxc.rootfs.path = dir:$LXC_ROOTFS
+
+# Network - use host network for simplicity
+lxc.net.0.type = none
+
+# Mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $data_path data none bind,create=dir 0 0
+lxc.mount.entry = $models_path models none bind,create=dir 0 0
+
+# Environment variables for configuration
+lxc.environment = LOCALAI_API_PORT=$api_port
+lxc.environment = LOCALAI_API_HOST=$api_host
+lxc.environment = LOCALAI_THREADS=$threads
+lxc.environment = LOCALAI_CONTEXT_SIZE=$context_size
+lxc.environment = LOCALAI_DEBUG=$debug
+lxc.environment = LOCALAI_CORS=$cors
+lxc.environment = LOCALAI_GPU_ENABLED=$gpu_enabled
+
+# Capabilities
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override
+
+# cgroups limits
+lxc.cgroup.memory.limit_in_bytes = $memory_limit
+
+# Run binary directly (no shell needed in minimal rootfs)
+lxc.init.cmd = /usr/bin/local-ai --address ${api_host}:${api_port} --models-path /models --threads $threads --context-size $context_size${cors_flag}${debug_flag}
+
+# Console
+lxc.console.size = 4096
+lxc.pty.max = 1024
+EOF
+
+	log_info "LXC config created at $LXC_CONFIG"
+}
+
+lxc_stop() {
+	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
+		lxc-stop -n "$LXC_NAME" -k >/dev/null 2>&1 || true
+	fi
+}
+
+lxc_run() {
+	load_config
+	lxc_stop
+
+	if [ ! -f "$LXC_CONFIG" ]; then
+		log_error "LXC not configured. Run 'localaictl install' first."
+		return 1
+	fi
+
+	# Regenerate config to pick up any UCI changes
+	lxc_create_config
+
+	# Ensure mount points exist
+	ensure_dir "$data_path"
+	ensure_dir "$models_path"
+
+	log_info "Starting LocalAI LXC container..."
+	log_info "API endpoint: http://0.0.0.0:$api_port/v1"
+	log_info "Web UI: http://0.0.0.0:$api_port"
+	log_info "Models path: $models_path"
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
+}
+
+lxc_status() {
+	load_config
+	echo "=== LocalAI Status ==="
+	echo ""
+
+	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
+		lxc-info -n "$LXC_NAME"
+	else
+		echo "LXC container '$LXC_NAME' not found or not configured"
+	fi
+
+	echo ""
+	echo "=== Configuration ==="
+	echo "API port: $api_port"
+	echo "Data path: $data_path"
+	echo "Models path: $models_path"
+	echo "Memory limit: $memory_limit"
+	echo "Threads: $threads"
+	echo "Context size: $context_size"
+	echo ""
+
+	# Check API health
+	if wget -q -O - "http://127.0.0.1:$api_port/readyz" 2>/dev/null | grep -q "ok"; then
+		echo "API Status: HEALTHY"
+	else
+		echo "API Status: NOT RESPONDING"
+	fi
+}
+
+lxc_logs() {
+	if [ "$1" = "-f" ]; then
+		logread -f -e localai
+	else
+		logread -e localai | tail -100
+	fi
+}
+
+lxc_shell() {
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+lxc_destroy() {
+	lxc_stop
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		rm -rf "$LXC_PATH/$LXC_NAME"
+		log_info "LXC container destroyed"
+	fi
+}
+
+# =============================================================================
+# MODEL MANAGEMENT
+# =============================================================================
+
+cmd_models() {
+	load_config
+	echo "=== Installed Models ==="
+	echo ""
+
+	if [ -d "$models_path" ]; then
+		local count=0
+		for model in "$models_path"/*.gguf "$models_path"/*.bin "$models_path"/*.onnx; do
+			[ -f "$model" ] || continue
+			count=$((count + 1))
+			local name=$(basename "$model")
+			local size=$(ls -lh "$model" | awk '{print $5}')
+			echo "  $count. $name ($size)"
+		done
+
+		if [ "$count" -eq 0 ]; then
+			echo "  No models installed"
+			echo ""
+			echo "Install a model with:"
+			echo "  localaictl model-install phi2"
+			echo "  localaictl model-install tinyllama"
+		fi
+	else
+		echo "  Models directory not found: $models_path"
+	fi
+
+	echo ""
+	echo "=== Available Presets ==="
+	echo ""
+
+	# List presets from UCI config
+	uci show localai 2>/dev/null | grep "preset\[" | while read line; do
+		local section=$(echo "$line" | cut -d. -f2 | cut -d= -f1)
+		local name=$(uci_get "$section.name")
+		local desc=$(uci_get "$section.description")
+		local size=$(uci_get "$section.size")
+		[ -n "$name" ] && echo "  $name - $desc ($size)"
+	done
+}
+
+cmd_model_install() {
+	load_config
+	require_root
+
+	local model_name="$1"
+	[ -z "$model_name" ] && { echo "Usage: localaictl model-install <preset-name|url>"; return 1; }
+
+	ensure_dir "$models_path"
+
+	# Check if it's a preset
+	local preset_url=""
+	local preset_file=""
+
+	# Search presets
+	for section in $(uci show localai 2>/dev/null | grep "=preset" | cut -d. -f2 | cut -d= -f1); do
+		local pname=$(uci_get "$section.name")
+		if [ "$pname" = "$model_name" ]; then
+			preset_url=$(uci_get "$section.url")
+			preset_file=$(basename "$preset_url")
+			break
+		fi
+	done
+
+	if [ -n "$preset_url" ]; then
+		log_info "Installing preset model: $model_name"
+		log_info "URL: $preset_url"
+
+		if wget -O "$models_path/$preset_file" "$preset_url"; then
+			log_info "Model installed: $models_path/$preset_file"
+
+			# Create model config YAML
+			cat > "$models_path/$model_name.yaml" << EOF
+name: $model_name
+backend: llama-cpp
+parameters:
+  model: $preset_file
+context_size: $context_size
+threads: $threads
+EOF
+			log_info "Model config created: $models_path/$model_name.yaml"
+		else
+			log_error "Failed to download model"
+			return 1
+		fi
+	elif echo "$model_name" | grep -q "^http"; then
+		# Direct URL download
+		local filename=$(basename "$model_name")
+		log_info "Downloading model from URL..."
+
+		if wget -O "$models_path/$filename" "$model_name"; then
+			log_info "Model installed: $models_path/$filename"
+		else
+			log_error "Failed to download model"
+			return 1
+		fi
+	else
+		log_error "Unknown model or preset: $model_name"
+		# List available presets from UCI
+		local presets=""
+		for section in $(uci show localai 2>/dev/null | grep "=preset" | cut -d. -f2 | cut -d= -f1); do
+			local pname=$(uci_get "$section.name")
+			[ -n "$pname" ] && presets="$presets $pname"
+		done
+		log_info "Available presets:$presets"
+		return 1
+	fi
+}
+
+cmd_model_remove() {
+	load_config
+	require_root
+
+	local model_name="$1"
+	[ -z "$model_name" ] && { echo "Usage: localaictl model-remove <model-name>"; return 1; }
+
+	# Find and remove model files
+	local found=0
+	for ext in gguf bin onnx yaml; do
+		local file="$models_path/$model_name.$ext"
+		if [ -f "$file" ]; then
+			rm -f "$file"
+			log_info "Removed: $file"
+			found=1
+		fi
+	done
+
+	[ "$found" -eq 0 ] && log_warn "Model not found: $model_name"
+}
+
+# =============================================================================
+# COMMANDS
+# =============================================================================
+
+cmd_install() {
+	require_root
+	load_config
+
+	if ! has_lxc; then
+		log_error "LXC not available. Install lxc packages first."
+		exit 1
+	fi
+
+	log_info "Installing LocalAI..."
+
+	# Create directories
+	ensure_dir "$data_path"
+	ensure_dir "$models_path"
+
+	lxc_check_prereqs || exit 1
+	lxc_create_rootfs || exit 1
+
+	uci_set main.enabled '1'
+	/etc/init.d/localai enable
+
+	log_info "LocalAI installed."
+	log_info "Start with: /etc/init.d/localai start"
+	log_info "API endpoint: http://<router-ip>:$api_port/v1"
+	log_info ""
+	log_info "Install a model to get started:"
+	log_info "  localaictl model-install tinyllama   # Lightweight (669MB)"
+	log_info "  localaictl model-install phi2        # Balanced (1.6GB)"
+}
+
+cmd_check() {
+	load_config
+
+	log_info "Checking prerequisites..."
+	if has_lxc; then
+		log_info "LXC: available"
+		lxc_check_prereqs
+	else
+		log_warn "LXC: not available"
+	fi
+
+	# Check memory
+	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+	local mem_gb=$((mem_total / 1024 / 1024))
+	log_info "System memory: ${mem_gb}GB"
+
+	if [ "$mem_gb" -lt 2 ]; then
+		log_warn "Low memory! LocalAI requires at least 2GB RAM for most models"
+	fi
+}
+
+cmd_update() {
+	require_root
+	load_config
+
+	log_info "Updating LocalAI..."
+	lxc_destroy
+	lxc_create_rootfs || exit 1
+
+	if /etc/init.d/localai enabled >/dev/null 2>&1; then
+		/etc/init.d/localai restart
+	else
+		log_info "Update complete. Restart manually to apply."
+	fi
+}
+
+cmd_status() {
+	lxc_status
+}
+
+cmd_logs() {
+	lxc_logs "$@"
+}
+
+cmd_shell() {
+	lxc_shell
+}
+
+cmd_service_run() {
+	require_root
+	load_config
+
+	if ! has_lxc; then
+		log_error "LXC not available"
+		exit 1
+	fi
+
+	lxc_check_prereqs || exit 1
+	lxc_run
+}
+
+cmd_service_stop() {
+	require_root
+	lxc_stop
+}
+
+# Main Entry Point
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	check) shift; cmd_check "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	shell) shift; cmd_shell "$@" ;;
+	models) shift; cmd_models "$@" ;;
+	model-install) shift; cmd_model_install "$@" ;;
+	model-remove) shift; cmd_model_remove "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac

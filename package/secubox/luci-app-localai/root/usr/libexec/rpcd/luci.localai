@@ -1,0 +1,445 @@
+#!/bin/sh
+# RPCD backend for LocalAI LuCI integration
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+
+CONFIG="localai"
+LOCALAI_CTL="/usr/sbin/localaictl"
+
+# Load UCI config
+load_config() {
+	config_load "$CONFIG"
+	config_get API_PORT main api_port "8080"
+	config_get DATA_PATH main data_path "/srv/localai"
+	config_get MODELS_PATH main models_path "/srv/localai/models"
+	config_get MEMORY_LIMIT main memory_limit "2G"
+	config_get THREADS main threads "4"
+	config_get CONTEXT_SIZE main context_size "2048"
+}
+
+# Check if LocalAI is running
+is_running() {
+	pgrep local-ai >/dev/null 2>&1
+}
+
+# Get service status
+get_status() {
+	load_config
+	local running="false"
+	local uptime=0
+
+	if is_running; then
+		running="true"
+		# Get process uptime
+		local pid=$(pgrep local-ai | head -1)
+		if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+			local start_time=$(stat -c %Y /proc/$pid 2>/dev/null || echo 0)
+			local now=$(date +%s)
+			uptime=$((now - start_time))
+		fi
+	fi
+
+	# Get enabled status
+	local enabled="false"
+	[ "$(uci -q get ${CONFIG}.main.enabled)" = "1" ] && enabled="true"
+
+	cat <<EOF
+{
+	"running": $running,
+	"enabled": $enabled,
+	"uptime": $uptime,
+	"api_port": $API_PORT,
+	"memory_limit": "$MEMORY_LIMIT",
+	"threads": $THREADS,
+	"context_size": $CONTEXT_SIZE,
+	"data_path": "$DATA_PATH",
+	"models_path": "$MODELS_PATH"
+}
+EOF
+}
+
+# Get installed models - queries both LocalAI API and filesystem
+get_models() {
+	load_config
+
+	local tmpfile="/tmp/localai_models_$$"
+	local first=1
+	local seen=""
+
+	echo '{"models":['
+
+	# First, try to get models from LocalAI API (shows loaded/active models)
+	if is_running; then
+		wget -q -O "$tmpfile" "http://127.0.0.1:$API_PORT/v1/models" 2>/dev/null
+		if [ -f "$tmpfile" ] && [ -s "$tmpfile" ]; then
+			# Try indexed access for each model (max 20)
+			local i=0
+			while [ $i -lt 20 ]; do
+				local model_id=$(jsonfilter -i "$tmpfile" -e "@.data[$i].id" 2>/dev/null)
+				[ -z "$model_id" ] && break
+				[ $first -eq 0 ] && echo ","
+				first=0
+				seen="$seen $model_id"
+				cat <<EOF
+{
+	"id": "$model_id",
+	"name": "$model_id",
+	"size": 0,
+	"type": "loaded",
+	"loaded": true
+}
+EOF
+				i=$((i + 1))
+			done
+		fi
+		rm -f "$tmpfile"
+	fi
+
+	# Scan filesystem for model files
+	if [ -d "$MODELS_PATH" ]; then
+		for model in "$MODELS_PATH"/*.gguf "$MODELS_PATH"/*.bin "$MODELS_PATH"/*.onnx; do
+			[ -f "$model" ] || continue
+			local name=$(basename "$model")
+			local basename_no_ext="${name%.*}"
+			local size=$(stat -c %s "$model" 2>/dev/null || echo 0)
+			local ext="${name##*.}"
+			local type="unknown"
+			local loaded="false"
+
+			case "$ext" in
+				gguf) type="llama-cpp" ;;
+				bin) type="transformers" ;;
+				onnx) type="onnx" ;;
+			esac
+
+			# Check if this model is in the seen list (loaded from API)
+			case " $seen " in
+				*" $basename_no_ext "*) continue ;;
+			esac
+
+			[ $first -eq 0 ] && echo ","
+			first=0
+
+			cat <<EOF
+{
+	"id": "$basename_no_ext",
+	"name": "$name",
+	"size": $size,
+	"type": "$type",
+	"path": "$model",
+	"loaded": $loaded
+}
+EOF
+		done
+	fi
+
+	# Also scan for YAML model configs (LocalAI model definitions)
+	if [ -d "$MODELS_PATH" ]; then
+		for yaml in "$MODELS_PATH"/*.yaml "$MODELS_PATH"/*.yml; do
+			[ -f "$yaml" ] || continue
+			local name=$(basename "$yaml")
+			local basename_no_ext="${name%.*}"
+
+			# Skip if already seen
+			case " $seen " in
+				*" $basename_no_ext "*) continue ;;
+			esac
+
+			# Check if there's a model file with same base name already shown
+			local already_shown=0
+			for ext in gguf bin onnx; do
+				[ -f "$MODELS_PATH/$basename_no_ext.$ext" ] && already_shown=1
+			done
+			[ $already_shown -eq 1 ] && continue
+
+			[ $first -eq 0 ] && echo ","
+			first=0
+
+			cat <<EOF
+{
+	"id": "$basename_no_ext",
+	"name": "$basename_no_ext",
+	"size": 0,
+	"type": "config",
+	"path": "$yaml",
+	"loaded": false
+}
+EOF
+		done
+	fi
+
+	echo ']}'
+}
+
+# Get configuration
+get_config() {
+	load_config
+
+	cat <<EOF
+{
+	"api_port": $API_PORT,
+	"data_path": "$DATA_PATH",
+	"models_path": "$MODELS_PATH",
+	"memory_limit": "$MEMORY_LIMIT",
+	"threads": $THREADS,
+	"context_size": $CONTEXT_SIZE
+}
+EOF
+}
+
+# Health check
+get_health() {
+	load_config
+
+	local healthy="false"
+	local api_status="unknown"
+
+	if is_running; then
+		# Check API health endpoint
+		local response=$(wget -q -O - "http://127.0.0.1:$API_PORT/readyz" 2>/dev/null)
+		if echo "$response" | grep -q "ok"; then
+			healthy="true"
+			api_status="ok"
+		else
+			api_status="unhealthy"
+		fi
+	else
+		api_status="stopped"
+	fi
+
+	cat <<EOF
+{
+	"healthy": $healthy,
+	"api_status": "$api_status"
+}
+EOF
+}
+
+# Get metrics
+get_metrics() {
+	load_config
+
+	local mem_used=0
+	local cpu_percent=0
+
+	if is_running; then
+		local pid=$(pgrep local-ai | head -1)
+		if [ -n "$pid" ]; then
+			# Get memory usage from /proc
+			mem_used=$(awk '/VmRSS/ {print $2*1024}' /proc/$pid/status 2>/dev/null || echo 0)
+
+			# Get CPU from ps
+			cpu_percent=$(ps -o %cpu= -p $pid 2>/dev/null | tr -d ' ' || echo "0")
+		fi
+	fi
+
+	cat <<EOF
+{
+	"memory_used": $mem_used,
+	"cpu_percent": $cpu_percent
+}
+EOF
+}
+
+# Start service
+do_start() {
+	if is_running; then
+		echo '{"success":false,"error":"Already running"}'
+		return
+	fi
+
+	/etc/init.d/localai start >/dev/null 2>&1
+	sleep 2
+
+	if is_running; then
+		echo '{"success":true}'
+	else
+		echo '{"success":false,"error":"Failed to start"}'
+	fi
+}
+
+# Stop service
+do_stop() {
+	/etc/init.d/localai stop >/dev/null 2>&1
+	sleep 1
+
+	if ! is_running; then
+		echo '{"success":true}'
+	else
+		echo '{"success":false,"error":"Failed to stop"}'
+	fi
+}
+
+# Restart service
+do_restart() {
+	/etc/init.d/localai restart >/dev/null 2>&1
+	sleep 3
+
+	if is_running; then
+		echo '{"success":true}'
+	else
+		echo '{"success":false,"error":"Failed to restart"}'
+	fi
+}
+
+# Install model
+do_model_install() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"success":false,"error":"Model name required"}'; return; }
+
+	local output=$($LOCALAI_CTL model-install "$name" 2>&1)
+	local ret=$?
+
+	if [ $ret -eq 0 ]; then
+		echo '{"success":true}'
+	else
+		local error=$(echo "$output" | tail -1 | sed 's/"/\\"/g')
+		echo "{\"success\":false,\"error\":\"$error\"}"
+	fi
+}
+
+# Remove model
+do_model_remove() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"success":false,"error":"Model name required"}'; return; }
+
+	local output=$($LOCALAI_CTL model-remove "$name" 2>&1)
+	local ret=$?
+
+	if [ $ret -eq 0 ]; then
+		echo '{"success":true}'
+	else
+		local error=$(echo "$output" | tail -1 | sed 's/"/\\"/g')
+		echo "{\"success\":false,\"error\":\"$error\"}"
+	fi
+}
+
+# Chat completion (proxy to LocalAI API)
+do_chat() {
+	load_config
+	local model="$1"
+	local messages="$2"
+
+	if ! is_running; then
+		echo '{"response":"","error":"LocalAI is not running"}'
+		return
+	fi
+
+	# Validate inputs
+	[ -z "$model" ] && { echo '{"response":"","error":"Model not specified"}'; return; }
+	[ -z "$messages" ] && { echo '{"response":"","error":"Messages not provided"}'; return; }
+
+	# Build request body - messages should already be a JSON array string
+	local request_body="{\"model\":\"$model\",\"messages\":$messages}"
+
+	# Call LocalAI API using a temp file for better handling
+	local tmpfile="/tmp/localai_chat_$$"
+	local http_code
+
+	http_code=$(wget -q -O "$tmpfile" --post-data "$request_body" \
+		--header="Content-Type: application/json" \
+		"http://127.0.0.1:$API_PORT/v1/chat/completions" 2>/dev/null; echo $?)
+
+	if [ -f "$tmpfile" ] && [ -s "$tmpfile" ]; then
+		# Extract message content using jsonfilter
+		local content=$(jsonfilter -i "$tmpfile" -e '@.choices[0].message.content' 2>/dev/null)
+		local error=$(jsonfilter -i "$tmpfile" -e '@.error.message' 2>/dev/null)
+		rm -f "$tmpfile"
+
+		if [ -n "$error" ]; then
+			# Escape quotes and newlines in error
+			error=$(echo "$error" | sed 's/"/\\"/g' | tr '\n' ' ')
+			echo "{\"response\":\"\",\"error\":\"$error\"}"
+		elif [ -n "$content" ]; then
+			# Escape quotes and newlines in content
+			content=$(echo "$content" | sed 's/"/\\"/g' | tr '\n' '\\n')
+			echo "{\"response\":\"$content\"}"
+		else
+			echo '{"response":"","error":"Empty response from API"}'
+		fi
+	else
+		rm -f "$tmpfile" 2>/dev/null
+		echo '{"response":"","error":"API request failed - no response"}'
+	fi
+}
+
+# Text completion
+do_complete() {
+	load_config
+	local model="$1"
+	local prompt="$2"
+
+	if ! is_running; then
+		echo '{"text":"","error":"LocalAI is not running"}'
+		return
+	fi
+
+	local response=$(wget -q -O - --post-data "{\"model\":\"$model\",\"prompt\":\"$prompt\"}" \
+		--header="Content-Type: application/json" \
+		"http://127.0.0.1:$API_PORT/v1/completions" 2>/dev/null)
+
+	if [ -n "$response" ]; then
+		local text=$(echo "$response" | jsonfilter -e '@.choices[0].text' 2>/dev/null)
+		echo "{\"text\":\"$(echo "$text" | sed 's/"/\\"/g')\"}"
+	else
+		echo '{"text":"","error":"API request failed"}'
+	fi
+}
+
+# UBUS method list
+case "$1" in
+	list)
+		cat <<'EOF'
+{
+	"status": {},
+	"models": {},
+	"config": {},
+	"health": {},
+	"metrics": {},
+	"start": {},
+	"stop": {},
+	"restart": {},
+	"model_install": {"name": "string"},
+	"model_remove": {"name": "string"},
+	"chat": {"model": "string", "messages": "array"},
+	"complete": {"model": "string", "prompt": "string"}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status) get_status ;;
+			models) get_models ;;
+			config) get_config ;;
+			health) get_health ;;
+			metrics) get_metrics ;;
+			start) do_start ;;
+			stop) do_stop ;;
+			restart) do_restart ;;
+			model_install)
+				read -r input
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				do_model_install "$name"
+				;;
+			model_remove)
+				read -r input
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				do_model_remove "$name"
+				;;
+			chat)
+				read -r input
+				model=$(echo "$input" | jsonfilter -e '@.model' 2>/dev/null)
+				messages=$(echo "$input" | jsonfilter -e '@.messages' 2>/dev/null)
+				do_chat "$model" "$messages"
+				;;
+			complete)
+				read -r input
+				model=$(echo "$input" | jsonfilter -e '@.model' 2>/dev/null)
+				prompt=$(echo "$input" | jsonfilter -e '@.prompt' 2>/dev/null)
+				do_complete "$model" "$prompt"
+				;;
+			*) echo '{"error":"Unknown method"}' ;;
+		esac
+		;;
+esac
