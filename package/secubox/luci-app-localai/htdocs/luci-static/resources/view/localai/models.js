@@ -35,12 +35,20 @@ return view.extend({
 	title: _('LocalAI Models'),
 
 	load: function() {
-		return callModels();
+		return callModels().then(function(result) {
+			console.log('LocalAI models RPC result:', JSON.stringify(result));
+			return result;
+		}).catch(function(err) {
+			console.error('LocalAI models RPC error:', err);
+			return { models: [] };
+		});
 	},
 
 	render: function(data) {
 		var self = this;
-		var models = data.models || [];
+		console.log('LocalAI render data:', JSON.stringify(data));
+		// RPC with expect returns array directly, not {models: [...]}
+		var models = Array.isArray(data) ? data : (data && data.models ? data.models : []);
 
 		var presets = [
 			{ name: 'tinyllama', desc: 'TinyLlama 1.1B - Ultra-lightweight', size: '669 MB' },

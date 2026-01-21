@@ -27,7 +27,8 @@ return view.extend({
 
 	render: function(data) {
 		var self = this;
-		var models = data.models || [];
+		// RPC with expect returns array directly
+		var models = Array.isArray(data) ? data : (data && data.models ? data.models : []);
 
 		var container = E('div', { 'class': 'localai-chat' }, [
 			E('style', {}, this.getCSS()),

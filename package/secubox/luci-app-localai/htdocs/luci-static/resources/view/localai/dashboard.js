@@ -75,10 +75,13 @@ return view.extend({
 			callHealth(),
 			callMetrics()
 		]).then(function(results) {
+			console.log('LocalAI Dashboard RPC results:', JSON.stringify(results));
+			// RPC with expect returns arrays directly, not wrapped objects
+			var modelsData = Array.isArray(results[1]) ? results[1] : [];
 			return {
 				status: results[0] || {},
-				models: results[1] || { models: [] },
-				health: results[2] || { healthy: false },
+				models: modelsData,
+				health: results[2] || {},
 				metrics: results[3] || {}
 			};
 		});
@@ -117,7 +120,7 @@ return view.extend({
 						E('span', { 'class': 'lai-quick-stat-label' }, _('Models'))
 					]),
 					E('div', { 'class': 'lai-quick-stat-value', 'id': 'models-count' },
-						(data.models.models || []).length.toString()
+						(data.models || []).length.toString()
 					),
 					E('div', { 'class': 'lai-quick-stat-sub' }, _('Installed'))
 				]),
@@ -216,11 +219,11 @@ return view.extend({
 							_('Installed Models')
 						]),
 						E('div', { 'class': 'lai-card-badge' },
-							(data.models.models || []).length + ' ' + _('models')
+							(data.models || []).length + ' ' + _('models')
 						)
 					]),
 					E('div', { 'class': 'lai-card-body' }, [
-						this.renderModelsList(data.models.models || [])
+						this.renderModelsList(data.models || [])
 					])
 				])
 			]),
