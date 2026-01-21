@@ -181,7 +181,15 @@ lxc_create_docker_rootfs() {
 	cat > "$rootfs/opt/start-glances.sh" << 'START'
 #!/bin/sh
 export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+export PYTHONPATH="/app:$PYTHONPATH"
 cd /
+
+# Setup hostname resolution (required for socket.gethostbyname to work)
+REAL_HOSTNAME=$(hostname 2>/dev/null || echo glances)
+cat > /etc/hosts << EOF
+127.0.0.1       localhost $REAL_HOSTNAME glances
+::1             localhost ip6-localhost ip6-loopback
+EOF
 
 # Read environment variables
 WEB_PORT="${GLANCES_WEB_PORT:-61208}"
@@ -189,14 +197,16 @@ WEB_HOST="${GLANCES_WEB_HOST:-0.0.0.0}"
 REFRESH="${GLANCES_REFRESH:-3}"
 
 # Build args for web server mode
-ARGS="-w --bind $WEB_HOST:$WEB_PORT -t $REFRESH"
+# Use -B for bind address and -p for port separately
+# Disable autodiscover and check-update to avoid DNS resolution issues
+ARGS="-w -B $WEB_HOST -p $WEB_PORT -t $REFRESH --disable-autodiscover --disable-check-update"
 
 # Disable plugins if configured
 [ "$GLANCES_NO_DOCKER" = "1" ] && ARGS="$ARGS --disable-plugin docker"
 [ "$GLANCES_NO_SENSORS" = "1" ] && ARGS="$ARGS --disable-plugin sensors"
 
 echo "Starting Glances web server on $WEB_HOST:$WEB_PORT..."
-exec /usr/local/bin/glances $ARGS
+exec /venv/bin/python -m glances $ARGS
 START
 	chmod +x "$rootfs/opt/start-glances.sh"
 
@@ -216,15 +226,8 @@ lxc.rootfs.path = dir:$LXC_ROOTFS
 # Network - use host network for full system visibility
 lxc.net.0.type = none
 
-# Mounts - give access to host system info
+# Mounts - give access to host system info via proc:mixed
 lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
-lxc.mount.entry = /proc/stat proc/stat none bind,ro 0 0
-lxc.mount.entry = /proc/meminfo proc/meminfo none bind,ro 0 0
-lxc.mount.entry = /proc/cpuinfo proc/cpuinfo none bind,ro 0 0
-lxc.mount.entry = /proc/uptime proc/uptime none bind,ro 0 0
-lxc.mount.entry = /proc/loadavg proc/loadavg none bind,ro 0 0
-lxc.mount.entry = /proc/net proc/net none bind,ro 0 0
-lxc.mount.entry = /proc/diskstats proc/diskstats none bind,ro 0 0
 
 # Environment variables
 lxc.environment = GLANCES_WEB_PORT=$web_port
