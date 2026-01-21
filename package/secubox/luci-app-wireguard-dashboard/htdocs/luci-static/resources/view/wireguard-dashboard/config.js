@@ -3,7 +3,7 @@
 'require secubox-theme/theme as Theme';
 'require dom';
 'require ui';
-'require wireguard-dashboard.api as api';
+'require wireguard-dashboard/api as api';
 
 return view.extend({
 	title: _('WireGuard Configuration'),

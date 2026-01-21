@@ -1,7 +1,7 @@
 'use strict';
 'require view';
 'require secubox-theme/theme as Theme';
-'require auth-guardian.api as api';
+'require auth-guardian/api as api';
 
 return view.extend({
     load: function() { return api.getOAuthProviders(); },

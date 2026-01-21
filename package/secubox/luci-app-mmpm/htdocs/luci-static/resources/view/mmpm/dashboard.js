@@ -2,7 +2,7 @@
 'require view';
 'require dom';
 'require ui';
-'require mmpm.api as api';
+'require mmpm/api as api';
 
 return view.extend({
 	title: _('MMPM Dashboard'),

@@ -1,7 +1,7 @@
 'use strict';
 'require view';
-'require secubox-admin.api as API';
-'require secubox-admin.data-utils as DataUtils';
+'require secubox-admin/api as API';
+'require secubox-admin/data-utils as DataUtils';
 'require poll';
 'require ui';
 'require secubox-theme/theme as Theme';

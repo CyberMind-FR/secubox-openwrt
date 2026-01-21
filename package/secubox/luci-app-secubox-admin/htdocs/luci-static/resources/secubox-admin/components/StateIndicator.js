@@ -1,6 +1,6 @@
 'use strict';
 'require baseclass';
-'require secubox-admin.state-utils as stateUtils';
+'require secubox-admin/state-utils as stateUtils';
 
 /**
  * StateIndicator Component

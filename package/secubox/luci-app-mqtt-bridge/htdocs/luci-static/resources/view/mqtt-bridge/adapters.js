@@ -4,8 +4,8 @@
 'require ui';
 'require uci';
 'require rpc';
-'require mqtt-bridge.api as API';
-'require secubox-theme.theme as Theme';
+'require mqtt-bridge/api as API';
+'require secubox-theme/theme as Theme';
 
 return view.extend({
 	load: function() {

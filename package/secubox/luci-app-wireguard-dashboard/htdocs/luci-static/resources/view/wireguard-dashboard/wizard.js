@@ -4,7 +4,7 @@
 'require rpc';
 'require form';
 'require network';
-'require wireguard-dashboard.api as api';
+'require wireguard-dashboard/api as api';
 
 // Zone presets for peer creation
 var ZONE_PRESETS = {

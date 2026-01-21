@@ -2,7 +2,7 @@
 'require view';
 'require dom';
 'require ui';
-'require mitmproxy.api as api';
+'require mitmproxy/api as api';
 'require secubox-theme/theme as Theme';
 'require secubox-portal/header as SbHeader';
 

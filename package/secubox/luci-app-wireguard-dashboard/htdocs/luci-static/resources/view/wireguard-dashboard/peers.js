@@ -4,8 +4,8 @@
 'require poll';
 'require dom';
 'require ui';
-'require wireguard-dashboard.api as API';
-'require wireguard-dashboard.qrcode as qrcode';
+'require wireguard-dashboard/api as API';
+'require wireguard-dashboard/qrcode as qrcode';
 
 return view.extend({
 	title: _('WireGuard Peers'),

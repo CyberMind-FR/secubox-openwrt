@@ -1,7 +1,7 @@
 'use strict';
 'require baseclass';
-'require secubox-admin.state-utils as stateUtils';
-'require secubox-admin.components.StateIndicator as StateIndicator';
+'require secubox-admin/state-utils as stateUtils';
+'require secubox-admin/components.StateIndicator as StateIndicator';
 
 /**
  * StateTimeline Component

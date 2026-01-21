@@ -1,8 +1,8 @@
 'use strict';
 'require baseclass';
-'require secubox-admin.api as API';
-'require secubox-admin.chart-utils as ChartUtils';
-'require secubox-admin.realtime-client as RealtimeClient';
+'require secubox-admin/api as API';
+'require secubox-admin/chart-utils as ChartUtils';
+'require secubox-admin/realtime-client as RealtimeClient';
 'require poll';
 
 function WidgetRendererInstance(options) {

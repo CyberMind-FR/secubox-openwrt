@@ -4,7 +4,7 @@
 'require ui';
 'require dom';
 'require poll';
-'require network-modes.helpers as helpers';
+'require network-modes/helpers as helpers';
 'require network-modes/api as API';
 'require secubox-theme/theme as Theme';
 'require secubox-portal/header as SbHeader';

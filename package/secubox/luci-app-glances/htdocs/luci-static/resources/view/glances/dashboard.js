@@ -2,7 +2,7 @@
 'require view';
 'require dom';
 'require ui';
-'require glances.api as api';
+'require glances/api as api';
 'require secubox-theme/theme as Theme';
 'require secubox-portal/header as SbHeader';
 

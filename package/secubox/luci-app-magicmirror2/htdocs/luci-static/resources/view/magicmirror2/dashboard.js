@@ -3,7 +3,7 @@
 'require poll';
 'require dom';
 'require ui';
-'require magicmirror2.api as api';
+'require magicmirror2/api as api';
 'require secubox-theme/theme as Theme';
 'require secubox-portal/header as SbHeader';
 

@@ -3,8 +3,8 @@
 'require secubox-theme/theme as Theme';
 'require dom';
 'require ui';
-'require wireguard-dashboard.api as api';
-'require wireguard-dashboard.qrcode as qrcode';
+'require wireguard-dashboard/api as api';
+'require wireguard-dashboard/qrcode as qrcode';
 
 return view.extend({
 	title: _('QR Code Generator'),

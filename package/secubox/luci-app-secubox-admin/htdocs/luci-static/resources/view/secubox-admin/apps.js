@@ -1,8 +1,8 @@
 'use strict';
 'require view';
-'require secubox-admin.api as API';
-'require secubox-admin.components as Components';
-'require secubox-admin.data-utils as DataUtils';
+'require secubox-admin/api as API';
+'require secubox-admin/components as Components';
+'require secubox-admin/data-utils as DataUtils';
 'require ui';
 'require form';
 'require secubox-theme/theme as Theme';
