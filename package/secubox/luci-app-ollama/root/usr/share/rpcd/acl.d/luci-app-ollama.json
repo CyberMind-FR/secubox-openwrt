@@ -1,0 +1,36 @@
+{
+	"luci-app-ollama": {
+		"description": "Grant access to LuCI Ollama Dashboard",
+		"read": {
+			"ubus": {
+				"luci.ollama": [
+					"status",
+					"models",
+					"config",
+					"health"
+				],
+				"system": [ "info", "board" ],
+				"file": [ "read", "stat", "exec" ]
+			},
+			"uci": [ "ollama" ],
+			"file": {
+				"/etc/config/ollama": [ "read" ],
+				"/srv/ollama/*": [ "read" ]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.ollama": [
+					"start",
+					"stop",
+					"restart",
+					"model_pull",
+					"model_remove",
+					"chat",
+					"generate"
+				]
+			},
+			"uci": [ "ollama" ]
+		}
+	}
+}

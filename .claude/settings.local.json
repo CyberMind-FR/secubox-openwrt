@@ -103,7 +103,9 @@
       "Bash(./build.sh:*)",
       "Bash(cd /home/reepost/CyberMindStudio/_files/secubox-openwrt/secubox-tools/sdk ./scripts/feeds update secubox)",
       "Bash(./staging_dir/host/bin/ipkg-build:*)",
-      "Bash(./scripts/ipkg-build:*)"
+      "Bash(./scripts/ipkg-build:*)",
+      "WebFetch(domain:hub.docker.com)",
+      "WebFetch(domain:localai.io)"
     ]
   }
 }
