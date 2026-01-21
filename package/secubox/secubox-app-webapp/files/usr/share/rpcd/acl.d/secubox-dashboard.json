@@ -1,0 +1,35 @@
+{
+    "secubox-dashboard": {
+        "description": "SecuBox Dashboard full access",
+        "read": {
+            "ubus": {
+                "session": ["access", "get", "list"],
+                "system": ["board", "info"],
+                "network": ["get_proto_handlers"],
+                "network.interface": ["dump", "status"],
+                "network.device": ["status"],
+                "network.wireless": ["status"],
+                "service": ["list"],
+                "file": ["list", "read", "stat", "exec"],
+                "luci": ["getLocaltime", "getTimezones", "getInitList", "getRealtimeStats"],
+                "luci-rpc": ["getBoardJSON", "getNetworkDevices", "getDHCPLeases"]
+            },
+            "file": {
+                "/etc/crowdsec/*": ["read"],
+                "/var/log/*": ["read"],
+                "/tmp/*": ["read"]
+            }
+        },
+        "write": {
+            "ubus": {
+                "file": ["exec"],
+                "service": ["signal", "delete"],
+                "system": ["reboot"],
+                "network.interface": ["up", "down", "renew"]
+            },
+            "file": {
+                "/tmp/*": ["write"]
+            }
+        }
+    }
+}

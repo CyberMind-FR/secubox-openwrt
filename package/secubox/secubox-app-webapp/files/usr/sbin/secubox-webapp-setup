@@ -1,0 +1,167 @@
+#!/bin/sh
+#
+# SecuBox Dashboard - Configuration utility
+# Copyright (C) 2025-2026 CyberMind.FR
+#
+
+CONFIG="secubox-webapp"
+
+usage() {
+    cat <<'EOF'
+Usage: secubox-webapp-setup <command>
+
+Commands:
+  status      Show dashboard configuration status
+  enable      Enable CORS and ubus access
+  disable     Disable CORS access
+  check       Check rpcd/uhttpd configuration
+  info        Show access URLs
+
+Dashboard URL: http://<router-ip>/secubox-dashboard/
+EOF
+}
+
+log_info() { echo "[INFO] $*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+cmd_status() {
+    echo "=== SecuBox Dashboard Status ==="
+    echo ""
+
+    # Check uhttpd ubus
+    local ubus_prefix=$(uci -q get uhttpd.main.ubus_prefix)
+    local ubus_cors=$(uci -q get uhttpd.main.ubus_cors)
+
+    if [ -n "$ubus_prefix" ]; then
+        echo "UBUS endpoint: $ubus_prefix (enabled)"
+    else
+        echo "UBUS endpoint: not configured"
+    fi
+
+    if [ "$ubus_cors" = "1" ]; then
+        echo "CORS: enabled"
+    else
+        echo "CORS: disabled"
+    fi
+
+    # Check rpcd
+    if /etc/init.d/rpcd status >/dev/null 2>&1; then
+        echo "rpcd: running"
+    else
+        echo "rpcd: not running"
+    fi
+
+    # Check ACL
+    if [ -f /usr/share/rpcd/acl.d/secubox-dashboard.json ]; then
+        echo "ACL: installed"
+    else
+        echo "ACL: not found"
+    fi
+
+    # Check dashboard files
+    if [ -f /www/secubox-dashboard/index.html ]; then
+        echo "Dashboard: installed"
+    else
+        echo "Dashboard: not found"
+    fi
+
+    echo ""
+    echo "=== Access URL ==="
+    local lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+    echo "http://$lan_ip/secubox-dashboard/"
+}
+
+cmd_enable() {
+    log_info "Enabling SecuBox Dashboard access..."
+
+    # Configure uhttpd
+    uci set uhttpd.main.ubus_prefix='/ubus'
+    uci set uhttpd.main.ubus_cors='1'
+    uci commit uhttpd
+
+    # Restart services
+    /etc/init.d/rpcd restart
+    /etc/init.d/uhttpd restart
+
+    log_info "Dashboard access enabled"
+}
+
+cmd_disable() {
+    log_info "Disabling CORS access..."
+
+    uci set uhttpd.main.ubus_cors='0'
+    uci commit uhttpd
+    /etc/init.d/uhttpd restart
+
+    log_info "CORS disabled (local access still works)"
+}
+
+cmd_check() {
+    echo "=== Configuration Check ==="
+    echo ""
+
+    # Check packages
+    echo "Packages:"
+    for pkg in uhttpd uhttpd-mod-ubus rpcd rpcd-mod-file; do
+        if opkg list-installed | grep -q "^$pkg "; then
+            echo "  ✓ $pkg"
+        else
+            echo "  ✗ $pkg (missing)"
+        fi
+    done
+
+    echo ""
+    echo "Services:"
+
+    if /etc/init.d/uhttpd status >/dev/null 2>&1; then
+        echo "  ✓ uhttpd running"
+    else
+        echo "  ✗ uhttpd not running"
+    fi
+
+    if /etc/init.d/rpcd status >/dev/null 2>&1; then
+        echo "  ✓ rpcd running"
+    else
+        echo "  ✗ rpcd not running"
+    fi
+
+    echo ""
+    echo "UBUS test:"
+    if command -v curl >/dev/null 2>&1; then
+        local result=$(curl -s -X POST http://127.0.0.1/ubus -d '{"jsonrpc":"2.0","id":1,"method":"list"}' 2>/dev/null)
+        if echo "$result" | grep -q "jsonrpc"; then
+            echo "  ✓ UBUS responding"
+        else
+            echo "  ✗ UBUS not responding"
+        fi
+    else
+        echo "  ? curl not available for test"
+    fi
+}
+
+cmd_info() {
+    local lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+    echo "╔════════════════════════════════════════════════════════════╗"
+    echo "║           SecuBox Dashboard - Access Information          ║"
+    echo "╠════════════════════════════════════════════════════════════╣"
+    echo "║                                                            ║"
+    printf "║  Dashboard: %-46s ║\n" "http://$lan_ip/secubox-dashboard/"
+    printf "║  UBUS API:  %-46s ║\n" "http://$lan_ip/ubus"
+    echo "║                                                            ║"
+    echo "║  Login: Use OpenWrt root credentials                       ║"
+    echo "║                                                            ║"
+    echo "╚════════════════════════════════════════════════════════════╝"
+}
+
+# Main
+case "${1:-}" in
+    status) cmd_status ;;
+    enable) cmd_enable ;;
+    disable) cmd_disable ;;
+    check) cmd_check ;;
+    info) cmd_info ;;
+    help|--help|-h|'') usage ;;
+    *) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac

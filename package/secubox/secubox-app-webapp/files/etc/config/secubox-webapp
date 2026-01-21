@@ -1,0 +1,9 @@
+config webapp 'main'
+	option enabled '1'
+	option title 'SecuBox Control Center'
+	option refresh_interval '10'
+	option session_timeout '3600'
+
+config access 'cors'
+	option enabled '1'
+	option allow_origin '*'
