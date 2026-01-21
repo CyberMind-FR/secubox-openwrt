@@ -408,15 +408,37 @@ get_web_token() {
 	local web_port=$(uci -q get mitmproxy.main.web_port || echo "8081")
 	local token=""
 
+	# Try reading token from host-mounted path
 	if [ -f "$token_file" ]; then
 		token=$(cat "$token_file" 2>/dev/null | tr -d '\n\r')
+	fi
+
+	# Fallback: read token directly from container if host file is missing/empty
+	if [ -z "$token" ] && command -v lxc-attach >/dev/null 2>&1; then
+		if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+			token=$(lxc-attach -n "$LXC_NAME" -- cat /data/.mitmproxy_token 2>/dev/null | tr -d '\n\r')
+		fi
+	fi
+
+	# Second fallback: parse token from mitmweb log inside container
+	if [ -z "$token" ] && command -v lxc-attach >/dev/null 2>&1; then
+		if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+			token=$(lxc-attach -n "$LXC_NAME" -- grep -o 'token=[a-zA-Z0-9_-]*' /tmp/mitmweb.log 2>/dev/null | head -1 | cut -d= -f2)
+		fi
+	fi
+
+	# Construct URL - only add token parameter if token exists
+	local web_url="http://$router_ip:$web_port"
+	local web_url_with_token="$web_url"
+	if [ -n "$token" ]; then
+		web_url_with_token="$web_url/?token=$token"
 	fi
 
 	cat <<EOF
 {
 	"token": "$token",
-	"web_url": "http://$router_ip:$web_port",
-	"web_url_with_token": "http://$router_ip:$web_port/?token=$token"
+	"web_url": "$web_url",
+	"web_url_with_token": "$web_url_with_token"
 }
 EOF
 }
