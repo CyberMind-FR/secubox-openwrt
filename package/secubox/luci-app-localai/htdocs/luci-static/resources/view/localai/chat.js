@@ -19,29 +19,36 @@ function callChatWithTimeout(model, messages, timeoutMs) {
 			reject(new Error('Request timed out - model may need more time'));
 		}, timeout);
 
-		// Use ubus directly via L.Request or fetch
+		// Use ubus RPC endpoint
+		var ubusUrl = L.url('admin/ubus');
 		var payload = JSON.stringify({
 			jsonrpc: '2.0',
-			id: 1,
+			id: Date.now(),
 			method: 'call',
 			params: [
-				L.env.sessionid || '00000000000000000000000000000000',
+				rpc.getSessionID() || '00000000000000000000000000000000',
 				'luci.localai',
 				'chat',
-				{ model: model, messages: JSON.parse(messages) }
+				{ model: model, messages: messages }
 			]
 		});
 
-		fetch(L.env.requestpath + 'admin/ubus', {
+		fetch(ubusUrl, {
 			method: 'POST',
+			credentials: 'same-origin',
 			headers: { 'Content-Type': 'application/json' },
 			body: payload,
 			signal: controller.signal
 		})
-		.then(function(response) { return response.json(); })
+		.then(function(response) {
+			if (!response.ok) {
+				throw new Error('HTTP ' + response.status);
+			}
+			return response.json();
+		})
 		.then(function(data) {
 			clearTimeout(timeoutId);
-			if (data.result && data.result[1]) {
+			if (data.result && Array.isArray(data.result) && data.result[1]) {
 				resolve(data.result[1]);
 			} else if (data.error) {
 				reject(new Error(data.error.message || 'RPC error'));
@@ -51,7 +58,11 @@ function callChatWithTimeout(model, messages, timeoutMs) {
 		})
 		.catch(function(err) {
 			clearTimeout(timeoutId);
-			reject(err);
+			if (err.name === 'AbortError') {
+				reject(new Error('Request timed out - model may need more time'));
+			} else {
+				reject(err);
+			}
 		});
 	});
 }
@@ -178,7 +189,8 @@ return view.extend({
 		this.messages.push({ role: 'user', content: message });
 
 		// Send to API (120s timeout for slow models)
-		callChatWithTimeout(this.selectedModel, JSON.stringify(this.messages), 120000)
+		// Pass messages as array - RPCD will handle JSON serialization
+		callChatWithTimeout(this.selectedModel, this.messages, 120000)
 			.then(function(result) {
 				var loading = document.getElementById('loading-msg');
 				if (loading) loading.remove();
