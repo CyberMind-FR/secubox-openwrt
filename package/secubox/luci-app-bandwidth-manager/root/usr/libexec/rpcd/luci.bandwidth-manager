@@ -591,7 +591,7 @@ get_dpi_applications() {
 	json_init
 	json_add_array "applications"
 
-	if [ -f "$NDPID_FLOWS" ] && pgrep -x ndpid >/dev/null 2>&1; then
+	if [ -f "$NDPID_FLOWS" ] && pgrep ndpid >/dev/null 2>&1; then
 		# Extract unique applications from nDPId flows
 		jq -r '.flows[]? | .app // "Unknown"' "$NDPID_FLOWS" 2>/dev/null | sort -u | while read app; do
 			[ -z "$app" ] && continue
@@ -610,9 +610,9 @@ get_dpi_applications() {
 
 	# Check DPI source status
 	local dpi_source="none"
-	if [ -f "$NDPID_FLOWS" ] && pgrep -x ndpid >/dev/null 2>&1; then
+	if [ -f "$NDPID_FLOWS" ] && pgrep ndpid >/dev/null 2>&1; then
 		dpi_source="ndpid"
-	elif [ -f "/var/run/netifyd/status.json" ] && pgrep -x netifyd >/dev/null 2>&1; then
+	elif [ -f "/var/run/netifyd/status.json" ] && pgrep netifyd >/dev/null 2>&1; then
 		dpi_source="netifyd"
 	fi
 	json_add_string "dpi_source" "$dpi_source"

@@ -27,7 +27,7 @@ enabled=$(uci -q get media_flow.global.enabled 2>/dev/null || echo "1")
 [ "$enabled" != "1" ] && exit 0
 
 # Check if netifyd is running
-pgrep -x netifyd > /dev/null 2>&1 || exit 0
+pgrep netifyd > /dev/null 2>&1 || exit 0
 
 # Initialize history file
 [ ! -f "$HISTORY_FILE" ] && echo '[]' > "$HISTORY_FILE"

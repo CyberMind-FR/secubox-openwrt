@@ -105,7 +105,9 @@
       "Bash(./staging_dir/host/bin/ipkg-build:*)",
       "Bash(./scripts/ipkg-build:*)",
       "WebFetch(domain:hub.docker.com)",
-      "WebFetch(domain:localai.io)"
+      "WebFetch(domain:localai.io)",
+      "WebFetch(domain:downloads.lms-community.org)",
+      "Bash(./secubox-tools/sdk/build-package.sh:*)"
     ]
   }
 }
