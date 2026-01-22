@@ -56,7 +56,7 @@ CWD_GO_VENDOR_MODULES:= \
 	github.com/moby/moby/client@v0.1.1-0.20251116162601-e9ff10bf365a \
 	golang.org/x/crypto@v0.42.0 \
 	golang.org/x/mod@v0.28.0 \
-	golang.org/x/net@v0.44.0 \
+	golang.org/x/net@v0.33.0 \
 	golang.org/x/sync@v0.17.0 \
 	golang.org/x/sys@v0.37.0 \
 	golang.org/x/term@v0.35.0 \
@@ -99,7 +99,7 @@ define Build/Prepare
 	$(call CWD/StageVendorModule,github.com/moby/moby/client,v0.1.1-0.20251116162601-e9ff10bf365a)
 	$(call CWD/StageVendorModule,golang.org/x/crypto,v0.42.0)
 	$(call CWD/StageVendorModule,golang.org/x/mod,v0.28.0)
-	$(call CWD/StageVendorModule,golang.org/x/net,v0.44.0)
+	$(call CWD/StageVendorModule,golang.org/x/net,v0.33.0)
 	$(call CWD/StageVendorModule,golang.org/x/sync,v0.17.0)
 	$(call CWD/StageVendorModule,golang.org/x/sys,v0.37.0)
 	$(call CWD/StageVendorModule,golang.org/x/term,v0.35.0)
@@ -114,6 +114,11 @@ define Build/Prepare
 		$(PKG_BUILD_DIR)/pkg/appsec/appsec_rules_collection.go
 	$(SED) 's,strings.SplitSeq,strings.Split,g' \
 		$(PKG_BUILD_DIR)/pkg/parser/runtime.go
+	# Patch strings.SplitSeq in CLI files (Go 1.24+ feature)
+	$(SED) 's@for \([a-zA-Z_]*\) := range strings.SplitSeq@for _, \1 := range strings.Split@g' \
+		$(PKG_BUILD_DIR)/cmd/crowdsec-cli/clisetup/acquisition.go
+	$(SED) 's@for \([a-zA-Z_]*\) := range strings.SplitSeq@for _, \1 := range strings.Split@g' \
+		$(PKG_BUILD_DIR)/cmd/crowdsec/flags.go
 
 	$(SED) 's@for line := range strings.SplitSeq(description, "\\n") {@for _, line := range strings.Split(description, "\\n") {@g' \
 		$(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/golang.org/x/tools/internal/mcp/generate.go
@@ -121,6 +126,26 @@ define Build/Prepare
 		$(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/golang.org/x/tools/internal/mcp/generate.go
 	$(SED) 's@for line := range strings.SplitSeq(stdout.String(), "\\n") {@for _, line := range strings.Split(stdout.String(), "\\n") {@g' \
 		$(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/golang.org/x/tools/internal/stdlib/generate.go
+	# Patch out http.Protocols usage (Go 1.24+ feature) from crowdsec HTTP acquisition module
+	$(SED) '/Protocols:.*http\.Protocols/d' \
+		$(PKG_BUILD_DIR)/pkg/acquisition/modules/http/run.go
+	$(SED) '/\.Server\.Protocols\./d' \
+		$(PKG_BUILD_DIR)/pkg/acquisition/modules/http/run.go
+	# Patch out http.Protocols usage from crowdsec AppSec module
+	$(SED) '/Protocols:.*http\.Protocols/d' \
+		$(PKG_BUILD_DIR)/pkg/acquisition/modules/appsec/config.go
+	$(SED) '/\.server\.Protocols\./d' \
+		$(PKG_BUILD_DIR)/pkg/acquisition/modules/appsec/config.go
+	# Patch out http.Protocols usage from crowdsec kubernetesaudit module
+	$(SED) '/Protocols:.*http\.Protocols/d' \
+		$(PKG_BUILD_DIR)/pkg/acquisition/modules/kubernetesaudit/config.go
+	$(SED) '/\.server\.Protocols\./d' \
+		$(PKG_BUILD_DIR)/pkg/acquisition/modules/kubernetesaudit/config.go
+	# Patch out http.Protocols usage from crowdsec apiserver
+	$(SED) '/Protocols:.*http\.Protocols/d' \
+		$(PKG_BUILD_DIR)/pkg/apiserver/apiserver.go
+	$(SED) '/\.httpServer\.Protocols\./d' \
+		$(PKG_BUILD_DIR)/pkg/apiserver/apiserver.go
 endef
 
 define Package/crowdsec/Default
