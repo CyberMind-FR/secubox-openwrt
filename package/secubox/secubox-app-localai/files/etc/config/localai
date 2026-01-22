@@ -1,57 +1,30 @@
 config main 'main'
 	option enabled '0'
-	option api_port '8080'
+	option installed '0'
+	option api_port '8081'
 	option api_host '0.0.0.0'
 	option data_path '/srv/localai'
 	option models_path '/srv/localai/models'
-	option memory_limit '2g'
 	option threads '4'
 	option context_size '2048'
 	option debug '0'
 	option cors '1'
-	# Runtime: 'lxc', 'docker', 'podman', or 'auto' (auto-detect)
-	option runtime 'auto'
 
-# LXC settings (for runtime=lxc)
-config lxc 'lxc'
-	option path '/srv/lxc'
-	option version 'v3.10.0'
-
-# Docker/Podman settings (for runtime=docker or podman)
-config docker 'docker'
-	option image 'localai/localai:v3.10.0-ffmpeg'
-
-# Default model to load on startup
-config model 'default'
-	option enabled '1'
-	option name 'tinyllama'
-	option backend 'llama-cpp'
-
-# Model presets - GGUF format for llama-cpp backend
+# Model presets
 config preset 'tinyllama'
 	option name 'tinyllama'
 	option url 'https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf'
 	option size '669M'
-	option type 'text-generation'
 	option description 'TinyLlama 1.1B - Ultra-lightweight'
 
 config preset 'phi2'
 	option name 'phi-2'
 	option url 'https://huggingface.co/TheBloke/phi-2-GGUF/resolve/main/phi-2.Q4_K_M.gguf'
 	option size '1.6G'
-	option type 'text-generation'
 	option description 'Microsoft Phi-2 - Compact and efficient'
 
 config preset 'mistral'
 	option name 'mistral-7b'
 	option url 'https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf'
 	option size '4.1G'
-	option type 'text-generation'
-	option description 'Mistral 7B Instruct - High quality assistant'
-
-config preset 'gte_small'
-	option name 'gte-small'
-	option url 'https://huggingface.co/Supabase/gte-small/resolve/main/model.onnx'
-	option size '67M'
-	option type 'embeddings'
-	option description 'GTE Small - Fast embeddings'
+	option description 'Mistral 7B Instruct - High quality'

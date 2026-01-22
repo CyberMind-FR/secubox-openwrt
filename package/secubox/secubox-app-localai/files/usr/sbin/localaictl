@@ -1,44 +1,45 @@
 #!/bin/sh
-# SecuBox LocalAI manager - Multi-runtime support (LXC, Docker, Podman)
+# SecuBox LocalAI Controller
 # Copyright (C) 2025 CyberMind.fr
+#
+# LocalAI native binary management
 
 CONFIG="localai"
-CONTAINER_NAME="localai"
-LOCALAI_VERSION="v3.10.0"
+BINARY="/usr/bin/local-ai"
+DATA_DIR="/srv/localai"
+BACKEND_ASSETS="/usr/share/localai/backend-assets"
+LOCALAI_VERSION="2.25.0"
 
 usage() {
 	cat <<'EOF'
 Usage: localaictl <command>
 
-Commands:
-  install            Install LocalAI (auto-detect or use configured runtime)
-  install --lxc      Force LXC installation (standalone binary)
-  install --docker   Force Docker installation (full image with backends)
-  install --podman   Force Podman installation (full image with backends)
-  check              Run prerequisite checks
-  update             Update LocalAI
-  status             Show container and service status
-  logs               Show LocalAI logs (use -f to follow)
-  shell              Open shell in container
+Install Commands:
+  install            Download LocalAI binary from GitHub
+  uninstall          Remove LocalAI binary
 
-Model Management:
+Service Commands:
+  start              Start LocalAI service
+  stop               Stop LocalAI service
+  restart            Restart LocalAI service
+  status             Show service status
+  logs               Show logs (use -f to follow)
+
+Model Commands:
   models             List installed models
   model-install <n>  Install model from preset or URL
   model-remove <n>   Remove installed model
 
-Service Control:
-  service-run        Internal: run container under procd
-  service-stop       Stop container
+Backend Commands:
+  backends           List available backends
 
-Runtimes:
-  lxc     - LXC container with rootfs extracted from Docker image
-            (includes all backends: llama-cpp, whisper, etc.)
-            Downloads via Docker Registry API - no daemon required!
-  docker  - Run Docker container directly (requires dockerd)
-  podman  - Run Podman container directly (rootless)
+API Endpoints (default port 8081):
+  /v1/models         - List models
+  /v1/chat/completions - Chat completion
+  /v1/completions    - Text completion
+  /readyz            - Health check
 
 Configuration: /etc/config/localai
-  Set runtime with: uci set localai.main.runtime=<lxc|docker|podman|auto>
 EOF
 }
 
@@ -51,582 +52,238 @@ log_error() { echo "[ERROR] $*" >&2; logger -t localai -p err "$*"; }
 uci_get() { uci -q get ${CONFIG}.$1; }
 uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
 
-# Load configuration with defaults
 load_config() {
-	api_port="$(uci_get main.api_port || echo 8080)"
+	api_port="$(uci_get main.api_port || echo 8081)"
 	api_host="$(uci_get main.api_host || echo 0.0.0.0)"
-	data_path="$(uci_get main.data_path || echo /srv/localai)"
-	models_path="$(uci_get main.models_path || echo /srv/localai/models)"
-	memory_limit="$(uci_get main.memory_limit || echo 2g)"
+	data_path="$(uci_get main.data_path || echo $DATA_DIR)"
+	models_path="$(uci_get main.models_path || echo $DATA_DIR/models)"
 	threads="$(uci_get main.threads || echo 4)"
 	context_size="$(uci_get main.context_size || echo 2048)"
-	debug="$(uci_get main.debug || echo 0)"
-	cors="$(uci_get main.cors || echo 1)"
-	runtime="$(uci_get main.runtime || echo auto)"
 
-	# LXC settings
-	lxc_path="$(uci_get lxc.path || echo /srv/lxc)"
-	lxc_version="$(uci_get lxc.version || echo $LOCALAI_VERSION)"
-
-	# Docker settings
-	docker_image="$(uci_get docker.image || echo localai/localai:${LOCALAI_VERSION}-ffmpeg)"
-
-	# Ensure paths exist
-	[ -d "$data_path" ] || mkdir -p "$data_path"
-	[ -d "$models_path" ] || mkdir -p "$models_path"
+	mkdir -p "$data_path" "$models_path"
 }
 
 # =============================================================================
-# RUNTIME DETECTION
+# INSTALL/UNINSTALL
 # =============================================================================
 
-detect_runtime() {
-	local configured="$runtime"
-
-	# If auto or empty, detect available runtime
-	if [ "$configured" = "auto" ] || [ -z "$configured" ]; then
-		# Check what's already running first
-		if command -v lxc-info >/dev/null 2>&1 && lxc-info -n "$CONTAINER_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
-			echo "lxc"
-			return
-		fi
-		if command -v podman >/dev/null 2>&1 && podman ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
-			echo "podman"
-			return
-		fi
-		if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
-			echo "docker"
-			return
-		fi
-
-		# Nothing running, check what's installed (prefer docker/podman for backends)
-		if command -v podman >/dev/null 2>&1; then
-			echo "podman"
-		elif command -v docker >/dev/null 2>&1; then
-			echo "docker"
-		elif command -v lxc-start >/dev/null 2>&1; then
-			echo "lxc"
-		else
-			echo ""
-		fi
-	else
-		echo "$configured"
-	fi
-}
-
-has_runtime() {
-	local rt=$(detect_runtime)
-	[ -n "$rt" ]
-}
-
-# =============================================================================
-# CONTAINER STATE CHECKS
-# =============================================================================
-
-is_running() {
-	load_config
-	local rt=$(detect_runtime)
-
-	case "$rt" in
-		lxc)
-			lxc-info -n "$CONTAINER_NAME" -s 2>/dev/null | grep -q "RUNNING"
-			;;
-		podman)
-			podman ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"
-			;;
-		docker)
-			docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"
-			;;
-		*)
-			pgrep -f "local-ai" >/dev/null 2>&1
-			;;
+get_arch() {
+	local arch=$(uname -m)
+	case "$arch" in
+		aarch64) echo "arm64" ;;
+		x86_64) echo "amd64" ;;
+		*) echo "" ;;
 	esac
 }
-
-container_exists() {
-	load_config
-	local rt=$(detect_runtime)
-
-	case "$rt" in
-		lxc)
-			[ -d "$lxc_path/$CONTAINER_NAME" ]
-			;;
-		podman)
-			podman ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"
-			;;
-		docker)
-			docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"
-			;;
-		*)
-			return 1
-			;;
-	esac
-}
-
-# =============================================================================
-# LXC FUNCTIONS
-# =============================================================================
-
-lxc_stop() {
-	if lxc-info -n "$CONTAINER_NAME" >/dev/null 2>&1; then
-		lxc-stop -n "$CONTAINER_NAME" -k >/dev/null 2>&1 || true
-	fi
-}
-
-lxc_install() {
-	log_info "Installing LocalAI using LXC..."
-
-	# Check LXC packages
-	if ! command -v lxc-start >/dev/null 2>&1; then
-		log_error "LXC not installed. Install with: opkg install lxc lxc-common"
-		return 1
-	fi
-
-	local rootfs="$lxc_path/$CONTAINER_NAME/rootfs"
-	local config="$lxc_path/$CONTAINER_NAME/config"
-
-	# Extract Docker image via Registry API (no daemon needed)
-	lxc_create_docker_rootfs "$rootfs" || return 1
-
-	# Create LXC config
-	lxc_create_config "$config" "$rootfs"
-
-	log_info "LXC container configured at $lxc_path/$CONTAINER_NAME"
-	uci_set main.runtime 'lxc'
-	return 0
-}
-
-# Extract Docker image via Registry API (no daemon required!)
-lxc_create_docker_rootfs() {
-	local rootfs="$1"
-	local image="localai/localai"
-	local tag="${LOCALAI_VERSION}-ffmpeg"
-	local registry="registry-1.docker.io"
-	local arch
-
-	# Detect architecture for Docker manifest
-	case "$(uname -m)" in
-		x86_64) arch="amd64" ;;
-		aarch64) arch="arm64" ;;
-		armv7l) arch="arm" ;;
-		*) arch="amd64" ;;
-	esac
-
-	log_info "Extracting LocalAI Docker image ($arch)..."
-	log_info "Image: $image:$tag"
-	log_info "This includes ALL backends (llama-cpp, whisper, etc.)"
-	mkdir -p "$rootfs"
-
-	# Get Docker Hub token
-	log_info "Authenticating with Docker Hub..."
-	local token=$(wget -q -O - "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$image:pull" | jsonfilter -e '@.token')
-	[ -z "$token" ] && { log_error "Failed to get Docker Hub token"; return 1; }
-
-	# Get manifest list (multi-arch)
-	log_info "Fetching manifest..."
-	local manifest=$(wget -q -O - --header="Authorization: Bearer $token" \
-		--header="Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
-		"https://$registry/v2/$image/manifests/$tag")
-
-	# Find digest for our architecture
-	local digest=$(echo "$manifest" | jsonfilter -e "@.manifests[@.platform.architecture='$arch'].digest")
-	[ -z "$digest" ] && { log_error "No manifest found for $arch"; return 1; }
-
-	# Get image manifest with layer digests
-	local img_manifest=$(wget -q -O - --header="Authorization: Bearer $token" \
-		--header="Accept: application/vnd.docker.distribution.manifest.v2+json" \
-		"https://$registry/v2/$image/manifests/$digest")
-
-	# Extract layer digests
-	local layers=$(echo "$img_manifest" | jsonfilter -e '@.layers[*].digest')
-	local layer_count=$(echo "$layers" | wc -w)
-	log_info "Downloading $layer_count layers (this will take a while, ~4GB)..."
-
-	local i=0
-	for layer_digest in $layers; do
-		i=$((i + 1))
-		log_info "  Layer $i/$layer_count: ${layer_digest:7:12}..."
-		wget -q -O - --header="Authorization: Bearer $token" \
-			"https://$registry/v2/$image/blobs/$layer_digest" | \
-			tar xzf - -C "$rootfs" 2>&1 | grep -v "Cannot change ownership" || true
-	done
-
-	# Configure container
-	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
-	mkdir -p "$rootfs/models" "$rootfs/build" "$rootfs/tmp"
-
-	# Ensure /bin/sh exists
-	if [ ! -x "$rootfs/bin/sh" ]; then
-		log_warn "/bin/sh not found, attempting to fix..."
-		if [ -x "$rootfs/bin/bash" ]; then
-			ln -sf bash "$rootfs/bin/sh"
-		elif [ -x "$rootfs/bin/dash" ]; then
-			ln -sf dash "$rootfs/bin/sh"
-		fi
-	fi
-
-	local rootfs_size=$(du -sh "$rootfs" 2>/dev/null | cut -f1)
-	log_info "Rootfs size: $rootfs_size"
-	log_info "LocalAI Docker image extracted successfully"
-	log_info "All backends available: llama-cpp, whisper, stablediffusion, etc."
-
-	return 0
-}
-
-# Create LXC configuration file
-lxc_create_config() {
-	local config="$1"
-	local rootfs="$2"
-
-	# Build command flags
-	local cors_flag="" debug_flag=""
-	[ "$cors" = "1" ] && cors_flag=" --cors"
-	[ "$debug" = "1" ] && debug_flag=" --debug"
-
-	# Detect init command based on rootfs type
-	local init_cmd="/usr/bin/local-ai"
-	if [ -f "$rootfs/build/entrypoint.sh" ]; then
-		# Docker image has entrypoint script
-		init_cmd="/build/entrypoint.sh"
-	fi
-
-	cat > "$config" << EOF
-# LocalAI LXC Configuration
-lxc.uts.name = $CONTAINER_NAME
-lxc.rootfs.path = dir:$rootfs
-
-# Network - use host network
-lxc.net.0.type = none
-
-# Mount points
-lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
-lxc.mount.entry = $models_path models none bind,create=dir 0 0
-lxc.mount.entry = $data_path build none bind,create=dir 0 0
-lxc.mount.entry = /dev/null dev/null none bind,create=file 0 0
-lxc.mount.entry = /dev/zero dev/zero none bind,create=file 0 0
-lxc.mount.entry = /dev/urandom dev/urandom none bind,create=file 0 0
-
-# Environment variables
-lxc.environment = LOCALAI_THREADS=$threads
-lxc.environment = LOCALAI_CONTEXT_SIZE=$context_size
-lxc.environment = LOCALAI_ADDRESS=${api_host}:${api_port}
-lxc.environment = LOCALAI_MODELS_PATH=/models
-lxc.environment = LOCALAI_DEBUG=$debug
-lxc.environment = LOCALAI_CORS=$cors
-lxc.environment = PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-
-# Security
-lxc.cap.drop = sys_admin sys_module mac_admin mac_override
-
-# Resources
-lxc.cgroup.memory.limit_in_bytes = $memory_limit
-
-# Init command
-lxc.init.cmd = $init_cmd --address ${api_host}:${api_port} --models-path /models --threads $threads --context-size $context_size${cors_flag}${debug_flag}
-
-# Console
-lxc.console.size = 4096
-lxc.pty.max = 1024
-EOF
-}
-
-lxc_run() {
-	load_config
-	lxc_stop
-
-	local config="$lxc_path/$CONTAINER_NAME/config"
-	if [ ! -f "$config" ]; then
-		log_error "LXC not configured. Run 'localaictl install --lxc' first."
-		return 1
-	fi
-
-	log_info "Starting LocalAI LXC container..."
-	log_info "API: http://${api_host}:${api_port}"
-	exec lxc-start -n "$CONTAINER_NAME" -F -f "$config"
-}
-
-# =============================================================================
-# DOCKER/PODMAN FUNCTIONS
-# =============================================================================
-
-docker_stop() {
-	local rt="$1"
-	if $rt ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
-		$rt stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
-	fi
-	if $rt ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"; then
-		$rt rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-	fi
-}
-
-docker_install() {
-	local rt="$1"
-
-	log_info "Installing LocalAI using $rt..."
-	log_info "Image: $docker_image"
-	log_info "This includes all backends (llama-cpp, whisper, etc.)"
-
-	if ! $rt pull "$docker_image"; then
-		log_error "Failed to pull image"
-		return 1
-	fi
-
-	log_info "Image pulled successfully"
-	uci_set main.runtime "$rt"
-	return 0
-}
-
-docker_run() {
-	local rt="$1"
-	load_config
-	docker_stop "$rt"
-
-	log_info "Starting LocalAI container ($rt)..."
-	log_info "Image: $docker_image"
-	log_info "API: http://${api_host}:${api_port}"
-
-	local env_args="-e LOCALAI_THREADS=$threads -e LOCALAI_CONTEXT_SIZE=$context_size"
-	[ "$debug" = "1" ] && env_args="$env_args -e LOCALAI_DEBUG=true"
-	[ "$cors" = "1" ] && env_args="$env_args -e LOCALAI_CORS=true"
-
-	exec $rt run --rm \
-		--name "$CONTAINER_NAME" \
-		-p "${api_port}:8080" \
-		-v "${models_path}:/models:rw" \
-		-v "${data_path}:/build:rw" \
-		--memory="$memory_limit" \
-		$env_args \
-		"$docker_image"
-}
-
-# =============================================================================
-# UNIFIED COMMANDS
-# =============================================================================
 
 cmd_install() {
 	require_root
 	load_config
 
-	local force_runtime=""
-	case "$1" in
-		--lxc) force_runtime="lxc" ;;
-		--docker) force_runtime="docker" ;;
-		--podman) force_runtime="podman" ;;
-	esac
-
-	local rt="${force_runtime:-$(detect_runtime)}"
-
-	if [ -z "$rt" ]; then
-		log_error "No container runtime found!"
-		log_error "Install one of:"
-		log_error "  opkg install lxc lxc-common     # For LXC"
-		log_error "  opkg install podman             # For Podman"
-		log_error "  opkg install docker             # For Docker"
+	local arch=$(get_arch)
+	if [ -z "$arch" ]; then
+		log_error "Unsupported architecture: $(uname -m)"
 		return 1
 	fi
 
-	mkdir -p "$data_path" "$models_path"
+	if [ -x "$BINARY" ]; then
+		log_warn "LocalAI already installed at $BINARY"
+		local ver=$("$BINARY" run --help 2>&1 | grep -i version | head -1 || echo "installed")
+		log_info "Status: $ver"
+		echo ""
+		echo "To reinstall, run: localaictl uninstall && localaictl install"
+		return 0
+	fi
 
-	case "$rt" in
-		lxc)
-			lxc_install || return 1
-			;;
-		podman|docker)
-			if ! command -v $rt >/dev/null 2>&1; then
-				log_error "$rt not installed"
-				return 1
-			fi
-			docker_install "$rt" || return 1
-			;;
-		*)
-			log_error "Unknown runtime: $rt"
+	# LocalAI v2.x binary URL format
+	local url="https://github.com/mudler/LocalAI/releases/download/v${LOCALAI_VERSION}/local-ai-Linux-${arch}"
+
+	log_info "Downloading LocalAI v${LOCALAI_VERSION} for ${arch}..."
+	log_info "URL: $url"
+	echo ""
+
+	# Create temp file
+	local tmp_file="/tmp/local-ai-download"
+	rm -f "$tmp_file"
+
+	# Use -L to follow redirects (GitHub uses redirects)
+	if wget -L --show-progress -O "$tmp_file" "$url" 2>&1; then
+		# Verify it's an ELF binary by checking magic bytes
+		local magic=$(head -c 4 "$tmp_file" | hexdump -e '4/1 "%02x"' 2>/dev/null)
+		if [ "$magic" = "7f454c46" ]; then
+			mv "$tmp_file" "$BINARY"
+			chmod +x "$BINARY"
+			log_info "LocalAI installed: $BINARY"
+
+			# Mark as installed in config
+			uci_set main.installed 1
+
+			echo ""
+			log_info "Binary downloaded successfully!"
+			echo ""
+			echo "To start the service:"
+			echo "  uci set localai.main.enabled=1"
+			echo "  uci commit localai"
+			echo "  /etc/init.d/localai enable"
+			echo "  /etc/init.d/localai start"
+			echo ""
+			echo "To download a model:"
+			echo "  localaictl model-install tinyllama"
+		else
+			log_error "Downloaded file is not a valid ELF binary"
+			rm -f "$tmp_file"
 			return 1
-			;;
-	esac
+		fi
+	else
+		log_error "Failed to download LocalAI"
+		rm -f "$tmp_file"
+		return 1
+	fi
+}
 
-	uci_set main.enabled '1'
-	/etc/init.d/localai enable
+cmd_uninstall() {
+	require_root
 
-	log_info ""
-	log_info "LocalAI installed successfully! (runtime: $rt)"
-	log_info ""
-	log_info "Start with: /etc/init.d/localai start"
-	log_info "API: http://<router-ip>:$api_port/v1"
-	log_info ""
-	log_info "Install a model:"
-	log_info "  localaictl model-install tinyllama"
+	if [ -x "$BINARY" ]; then
+		# Stop service first
+		/etc/init.d/localai stop 2>/dev/null
+
+		rm -f "$BINARY"
+		uci_set main.installed 0
+		uci_set main.enabled 0
+		log_info "LocalAI binary removed"
+	else
+		log_warn "LocalAI not installed"
+	fi
+}
+
+# =============================================================================
+# SERVICE MANAGEMENT
+# =============================================================================
+
+is_running() {
+	pgrep -f "$BINARY" >/dev/null 2>&1 || pgrep -f "local-ai" >/dev/null 2>&1
+}
+
+cmd_start() {
+	require_root
+	load_config
+
+	if ! [ -x "$BINARY" ]; then
+		log_error "LocalAI binary not found: $BINARY"
+		log_error "Run: localaictl install"
+		return 1
+	fi
+
+	if is_running; then
+		log_warn "Already running"
+		return 0
+	fi
+
+	log_info "Starting LocalAI..."
+	/etc/init.d/localai start
 }
 
 cmd_stop() {
 	require_root
-	load_config
-	local rt=$(detect_runtime)
-
-	case "$rt" in
-		lxc) lxc_stop ;;
-		podman) docker_stop podman ;;
-		docker) docker_stop docker ;;
-	esac
+	/etc/init.d/localai stop
 }
 
-cmd_run() {
+cmd_restart() {
 	require_root
-	load_config
-	local rt=$(detect_runtime)
-
-	if [ -z "$rt" ]; then
-		log_error "No runtime configured. Run 'localaictl install' first."
-		return 1
-	fi
-
-	case "$rt" in
-		lxc) lxc_run ;;
-		podman) docker_run podman ;;
-		docker) docker_run docker ;;
-		*)
-			log_error "Unknown runtime: $rt"
-			return 1
-			;;
-	esac
+	/etc/init.d/localai restart
 }
 
 cmd_status() {
 	load_config
-	local rt=$(detect_runtime)
 
 	echo "=== LocalAI Status ==="
 	echo ""
-	echo "Runtime: ${rt:-NOT CONFIGURED}"
-	echo ""
 
-	if is_running; then
-		echo "Status: RUNNING"
-	elif container_exists; then
-		echo "Status: STOPPED"
+	if [ -x "$BINARY" ]; then
+		echo "Binary: $BINARY"
+		local size=$(ls -lh "$BINARY" 2>/dev/null | awk '{print $5}')
+		echo "Size: $size"
 	else
-		echo "Status: NOT INSTALLED"
+		echo "Binary: NOT FOUND"
+		echo ""
+		echo "Run: localaictl install"
+		return 1
 	fi
 
 	echo ""
-	echo "=== Configuration ==="
-	echo "API port: $api_port"
-	echo "Data path: $data_path"
-	echo "Models path: $models_path"
-	echo "Memory limit: $memory_limit"
-	echo "Threads: $threads"
+
+	if is_running; then
+		echo "Service: RUNNING"
+		local pid=$(pgrep -f "$BINARY" | head -1)
+		echo "PID: $pid"
+	else
+		echo "Service: STOPPED"
+	fi
+
+	echo ""
+	echo "Configuration:"
+	echo "  API: http://${api_host}:${api_port}"
+	echo "  Models: $models_path"
+	echo "  Threads: $threads"
+	echo "  Context: $context_size"
+
 	echo ""
 
-	if wget -q -O - "http://127.0.0.1:$api_port/readyz" 2>/dev/null | grep -q "ok"; then
-		echo "API Status: HEALTHY"
+	# Check backend assets
+	echo "Backends:"
+	if [ -d "$BACKEND_ASSETS/grpc" ]; then
+		local backend_count=0
+		for b in "$BACKEND_ASSETS/grpc"/*; do
+			[ -x "$b" ] && backend_count=$((backend_count + 1))
+		done
+		echo "  GRPC backends: $backend_count installed"
 	else
-		echo "API Status: NOT RESPONDING"
+		echo "  GRPC backends: none (using built-in)"
+	fi
+
+	echo ""
+
+	# Check API health
+	if is_running; then
+		if wget -q -O /dev/null "http://127.0.0.1:$api_port/readyz" 2>/dev/null; then
+			echo "API Status: HEALTHY"
+		else
+			echo "API Status: NOT RESPONDING (may be loading)"
+		fi
 	fi
 }
 
 cmd_logs() {
-	load_config
-	local rt=$(detect_runtime)
-
-	case "$rt" in
-		lxc)
-			if [ "$1" = "-f" ]; then
-				logread -f -e localai
-			else
-				logread -e localai | tail -100
-			fi
-			;;
-		podman|docker)
-			if [ "$1" = "-f" ]; then
-				$rt logs -f "$CONTAINER_NAME"
-			else
-				$rt logs --tail 100 "$CONTAINER_NAME"
-			fi
-			;;
-		*)
-			logread -e localai | tail -100
-			;;
-	esac
-}
-
-cmd_shell() {
-	load_config
-	local rt=$(detect_runtime)
-
-	if ! is_running; then
-		log_error "Container not running"
-		return 1
+	if [ "$1" = "-f" ]; then
+		logread -f -e localai
+	else
+		logread -e localai | tail -100
 	fi
-
-	case "$rt" in
-		lxc) lxc-attach -n "$CONTAINER_NAME" -- /bin/sh ;;
-		podman|docker) $rt exec -it "$CONTAINER_NAME" /bin/sh ;;
-	esac
 }
 
-cmd_check() {
-	load_config
+# =============================================================================
+# BACKEND MANAGEMENT
+# =============================================================================
 
-	echo "=== Prerequisite Check ==="
+cmd_backends() {
+	echo "=== Available Backends ==="
 	echo ""
 
-	# LXC
-	if command -v lxc-start >/dev/null 2>&1; then
-		echo "[OK] LXC available"
+	# Check installed backend binaries
+	if [ -d "$BACKEND_ASSETS/grpc" ]; then
+		echo "Installed GRPC backends:"
+		for backend in "$BACKEND_ASSETS/grpc"/*; do
+			[ -x "$backend" ] || continue
+			local name=$(basename "$backend")
+			echo "  - $name"
+		done
 	else
-		echo "[--] LXC not installed"
-	fi
-
-	# Podman
-	if command -v podman >/dev/null 2>&1; then
-		echo "[OK] Podman available"
-	else
-		echo "[--] Podman not installed"
-	fi
-
-	# Docker
-	if command -v docker >/dev/null 2>&1; then
-		echo "[OK] Docker available"
-	else
-		echo "[--] Docker not installed"
+		echo "No external GRPC backends installed"
+		echo "Using built-in backends from binary"
 	fi
 
 	echo ""
-	echo "Configured runtime: $runtime"
-	echo "Detected runtime: $(detect_runtime)"
-	echo ""
-
-	# Memory
-	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-	local mem_gb=$((mem_total / 1024 / 1024))
-	echo "System memory: ${mem_gb}GB"
-	[ "$mem_gb" -lt 2 ] && echo "[WARN] Low memory - need at least 2GB"
-
-	# Storage
-	local storage=$(df -h "$data_path" 2>/dev/null | tail -1 | awk '{print $4}')
-	echo "Storage available: $storage"
-}
-
-cmd_update() {
-	require_root
-	load_config
-	local rt=$(detect_runtime)
-
-	log_info "Updating LocalAI..."
-	cmd_stop
-
-	case "$rt" in
-		lxc)
-			rm -rf "$lxc_path/$CONTAINER_NAME"
-			lxc_install
-			;;
-		podman|docker)
-			docker_install "$rt"
-			;;
-	esac
-
-	if [ "$(uci_get main.enabled)" = "1" ]; then
-		/etc/init.d/localai restart
-	fi
 }
 
 # =============================================================================
@@ -640,26 +297,23 @@ cmd_models() {
 
 	if [ -d "$models_path" ]; then
 		local count=0
-		for model in "$models_path"/*.gguf "$models_path"/*.bin "$models_path"/*.onnx; do
+		for model in "$models_path"/*.gguf "$models_path"/*.bin; do
 			[ -f "$model" ] || continue
 			count=$((count + 1))
 			local name=$(basename "$model")
 			local size=$(ls -lh "$model" | awk '{print $5}')
 			echo "  $count. $name ($size)"
 		done
-
 		[ "$count" -eq 0 ] && echo "  No models installed"
 	fi
 
 	echo ""
 	echo "=== Available Presets ==="
-	uci show localai 2>/dev/null | grep "=preset" | while read line; do
-		local section=$(echo "$line" | cut -d. -f2 | cut -d= -f1)
-		local name=$(uci_get "$section.name")
-		local desc=$(uci_get "$section.description")
-		local size=$(uci_get "$section.size")
-		[ -n "$name" ] && echo "  $name - $desc ($size)"
-	done
+	echo "  tinyllama    - 669MB  - TinyLlama 1.1B"
+	echo "  phi2         - 1.6GB  - Microsoft Phi-2"
+	echo "  mistral      - 4.1GB  - Mistral 7B Instruct"
+	echo ""
+	echo "Install: localaictl model-install <name>"
 }
 
 cmd_model_install() {
@@ -667,46 +321,56 @@ cmd_model_install() {
 	require_root
 
 	local model_name="$1"
-	[ -z "$model_name" ] && { echo "Usage: localaictl model-install <name>"; return 1; }
+	[ -z "$model_name" ] && { echo "Usage: localaictl model-install <name|url>"; return 1; }
 
 	mkdir -p "$models_path"
 
-	# Find preset
-	local preset_url="" preset_file=""
-	for section in $(uci show localai 2>/dev/null | grep "=preset" | cut -d. -f2 | cut -d= -f1); do
-		if [ "$(uci_get "$section.name")" = "$model_name" ]; then
-			preset_url=$(uci_get "$section.url")
-			preset_file=$(basename "$preset_url")
-			break
-		fi
-	done
+	# Preset URLs
+	local url="" filename=""
+	case "$model_name" in
+		tinyllama)
+			url="https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+			filename="tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+			;;
+		phi2|phi-2)
+			url="https://huggingface.co/TheBloke/phi-2-GGUF/resolve/main/phi-2.Q4_K_M.gguf"
+			filename="phi-2.Q4_K_M.gguf"
+			;;
+		mistral)
+			url="https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+			filename="mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+			;;
+		http*)
+			url="$model_name"
+			filename=$(basename "$url")
+			;;
+		*)
+			log_error "Unknown model: $model_name"
+			log_error "Use preset name (tinyllama, phi2, mistral) or full URL"
+			return 1
+			;;
+	esac
 
-	if [ -n "$preset_url" ]; then
-		log_info "Installing model: $model_name"
-		log_info "URL: $preset_url"
+	log_info "Downloading: $filename"
+	log_info "URL: $url"
+	log_info "This may take several minutes..."
 
-		if wget --show-progress -O "$models_path/$preset_file" "$preset_url"; then
-			cat > "$models_path/$model_name.yaml" << EOF
-name: $model_name
+	if wget -L --show-progress -O "$models_path/$filename" "$url"; then
+		# Create YAML config for the model
+		local model_id="${filename%.*}"
+		cat > "$models_path/$model_id.yaml" << EOF
+name: $model_id
 backend: llama-cpp
 parameters:
-  model: $preset_file
+  model: $filename
 context_size: $context_size
 threads: $threads
 EOF
-			log_info "Model installed: $model_name"
-			log_info "Restart LocalAI to load: /etc/init.d/localai restart"
-		else
-			log_error "Download failed"
-			return 1
-		fi
-	elif echo "$model_name" | grep -q "^http"; then
-		local filename=$(basename "$model_name")
-		log_info "Downloading: $model_name"
-		wget --show-progress -O "$models_path/$filename" "$model_name" || return 1
-		log_info "Model installed: $filename"
+		log_info "Model installed: $model_id"
+		log_info "Restart service to load: /etc/init.d/localai restart"
 	else
-		log_error "Unknown model: $model_name"
+		log_error "Download failed"
+		rm -f "$models_path/$filename"
 		return 1
 	fi
 }
@@ -719,15 +383,19 @@ cmd_model_remove() {
 	[ -z "$model_name" ] && { echo "Usage: localaictl model-remove <name>"; return 1; }
 
 	local found=0
-	for ext in gguf bin onnx yaml; do
-		[ -f "$models_path/$model_name.$ext" ] && rm -f "$models_path/$model_name.$ext" && found=1
+	for ext in gguf bin yaml yml; do
+		if [ -f "$models_path/$model_name.$ext" ]; then
+			rm -f "$models_path/$model_name.$ext"
+			found=1
+		fi
 	done
 
+	# Also try to match partial names
 	for file in "$models_path"/*"$model_name"*; do
 		[ -f "$file" ] && rm -f "$file" && found=1
 	done
 
-	[ "$found" -eq 1 ] && log_info "Model removed: $model_name" || log_warn "Model not found: $model_name"
+	[ $found -eq 1 ] && log_info "Model removed: $model_name" || log_warn "Model not found: $model_name"
 }
 
 # =============================================================================
@@ -735,17 +403,17 @@ cmd_model_remove() {
 # =============================================================================
 
 case "${1:-}" in
-	install) shift; cmd_install "$@" ;;
-	check) cmd_check ;;
-	update) cmd_update ;;
+	install) cmd_install ;;
+	uninstall) cmd_uninstall ;;
+	start) cmd_start ;;
+	stop) cmd_stop ;;
+	restart) cmd_restart ;;
 	status) cmd_status ;;
 	logs) shift; cmd_logs "$@" ;;
-	shell) cmd_shell ;;
+	backends) cmd_backends ;;
 	models) cmd_models ;;
 	model-install) shift; cmd_model_install "$@" ;;
 	model-remove) shift; cmd_model_remove "$@" ;;
-	service-run) cmd_run ;;
-	service-stop) cmd_stop ;;
 	help|--help|-h|'') usage ;;
 	*) echo "Unknown: $1" >&2; usage >&2; exit 1 ;;
 esac

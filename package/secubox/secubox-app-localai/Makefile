@@ -1,35 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (C) 2025 CyberMind.fr
+#
+# LocalAI - Native LLM with pre-built binary
+# Downloads ARM64/x86_64 binary from GitHub releases
+#
+
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-localai
-PKG_RELEASE:=12
-PKG_VERSION:=0.1.0
-PKG_ARCH:=all
+PKG_VERSION:=2.25.0
+PKG_RELEASE:=1
+
+PKG_LICENSE:=MIT
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
-PKG_LICENSE:=Apache-2.0
 
 include $(INCLUDE_DIR)/package.mk
 
 define Package/secubox-app-localai
   SECTION:=utils
   CATEGORY:=Utilities
-  PKGARCH:=all
   SUBMENU:=SecuBox Apps
-  TITLE:=SecuBox LocalAI - Self-hosted LLM (Docker)
-  DEPENDS:=+uci +libuci +jsonfilter +wget-ssl
+  TITLE:=LocalAI - Native LLM Server
+  URL:=https://localai.io
+  DEPENDS:=@(aarch64||x86_64) +libstdcpp +libpthread +wget-ssl +ca-certificates
+  PKGARCH:=all
 endef
 
 define Package/secubox-app-localai/description
-LocalAI - Self-hosted, privacy-first AI/LLM for SecuBox-powered OpenWrt systems.
+LocalAI native binary package for OpenWrt.
 
 Features:
-- OpenAI-compatible API (drop-in replacement)
-- No cloud dependency - all processing on-device
-- Support for various models (LLaMA, Mistral, Phi, etc.)
-- All backends included (llama-cpp, whisper, etc.)
-- Text generation, embeddings, transcription
+- OpenAI-compatible REST API
+- GGUF model support (LLaMA, Mistral, Phi, TinyLlama, etc.)
+- Controller CLI (localaictl)
+- Automatic binary download from GitHub
 
-Runs in Docker/Podman container with all backends.
-Configure in /etc/config/localai.
+The binary is downloaded on first run via 'localaictl install'.
+
+API: http://<router-ip>:8081/v1
 endef
 
 define Package/secubox-app-localai/conffiles
@@ -37,6 +46,7 @@ define Package/secubox-app-localai/conffiles
 endef
 
 define Build/Compile
+	# Nothing to compile - binary downloaded at runtime
 endef
 
 define Package/secubox-app-localai/install
@@ -48,27 +58,23 @@ define Package/secubox-app-localai/install
 
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/usr/sbin/localaictl $(1)/usr/sbin/localaictl
+
+	$(INSTALL_DIR) $(1)/srv/localai/models
 endef
 
 define Package/secubox-app-localai/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
 	echo ""
-	echo "LocalAI installed (Docker/Podman version)."
+	echo "SecuBox LocalAI installed"
 	echo ""
-	echo "Prerequisites: Install podman or docker first"
-	echo "  opkg install podman"
-	echo ""
-	echo "To install and start LocalAI:"
-	echo "  localaictl install   # Pull Docker image (~2-4GB)"
+	echo "Quick start:"
+	echo "  localaictl install"
+	echo "  localaictl model-install tinyllama"
+	echo "  /etc/init.d/localai enable"
 	echo "  /etc/init.d/localai start"
 	echo ""
-	echo "API endpoint: http://<router-ip>:8080/v1"
-	echo "Web UI: http://<router-ip>:8080"
-	echo ""
-	echo "Download models with:"
-	echo "  localaictl model-install tinyllama"
-	echo ""
+	echo "API: http://<router-ip>:8081/v1"
 }
 exit 0
 endef
