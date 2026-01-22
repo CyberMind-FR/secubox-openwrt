@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-mailinabox
-PKG_RELEASE:=2
-PKG_VERSION:=1.0.0
+PKG_RELEASE:=1
+PKG_VERSION:=2.0.0
 PKG_ARCH:=all
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
 PKG_LICENSE:=CC0-1.0
@@ -14,14 +14,26 @@ define Package/secubox-app-mailinabox
   CATEGORY:=Utilities
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
-  TITLE:=SecuBox Mail-in-a-Box docker app
+  TITLE:=SecuBox Mail Server (docker-mailserver)
   DEPENDS:=+uci +libuci
 endef
 
 define Package/secubox-app-mailinabox/description
-Installer, configuration, and service manager for running Mail-in-a-Box
-inside Docker on SecuBox-powered OpenWrt systems. Complete email server
-solution with webmail, calendar, contacts, spam filtering, and DNS.
+Complete email server solution using docker-mailserver for SecuBox.
+
+Features:
+- Full email server (SMTP, IMAP, POP3)
+- User account management (add/remove/list)
+- Email aliases support
+- SpamAssassin spam filtering
+- ClamAV antivirus (optional)
+- Fail2ban intrusion prevention
+- Let's Encrypt SSL certificates
+- Backup and restore functionality
+- DNS configuration verification
+- Health monitoring and diagnostics
+
+Commands: mailinaboxctl --help
 endef
 
 define Package/secubox-app-mailinabox/conffiles

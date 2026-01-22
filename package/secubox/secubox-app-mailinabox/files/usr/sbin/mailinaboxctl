@@ -1,68 +1,116 @@
 #!/bin/sh
-# SecuBox Mail-in-a-Box manager
+# SecuBox Mail-in-a-Box manager - Docker Mailserver Edition
+# Copyright (C) 2024 CyberMind.fr
+#
+# Based on docker-mailserver for lightweight email hosting
 
 CONFIG="mailinabox"
-CONTAINER="secbx-mailinabox"
+CONTAINER_NAME="secbx-mailserver"
 OPKG_UPDATED=0
 
+# Paths
+DATA_BASE="/srv/mailserver"
+
 usage() {
-	cat <<'USAGE'
+	cat <<'EOF'
 Usage: mailinaboxctl <command>
 
-Commands:
+Container Management:
   install         Install prerequisites, prepare directories, pull image
-  check           Run prerequisite checks
+  check           Run prerequisite checks (ports, DNS, storage)
   update          Pull new image and restart
-  status          Show container status
+  status          Show container and service status
   logs            Show container logs (use -f to follow)
-  admin           Open admin interface in browser (shows URL)
+  shell           Open shell in container
   service-run     Internal: run container via procd
   service-stop    Stop container
 
-Post-Installation:
-  1. Configure hostname and admin_email in /etc/config/mailinabox
-  2. Ensure proper DNS configuration (A, MX, SPF, DKIM, DMARC records)
-  3. Start with: /etc/init.d/mailinabox start
-  4. Access admin panel at https://your-hostname/admin
+Email Account Management:
+  user-add <email> [password]    Add email account
+  user-del <email>               Remove email account
+  user-list                      List all email accounts
+  user-passwd <email>            Change user password
+  alias-add <alias> <target>     Add email alias
+  alias-del <alias>              Remove email alias
+  alias-list                     List all aliases
 
-Important Notes:
-  - Requires public IP and proper DNS configuration
-  - Port 25 must be open (some ISPs block it)
-  - Valid domain name required for SSL certificates
-  - Initial setup may take 10-15 minutes
-USAGE
+Domain & SSL:
+  domain-add <domain>            Add email domain
+  domain-list                    List configured domains
+  ssl-status                     Show SSL certificate status
+  ssl-renew                      Force SSL certificate renewal
+
+Backup & Restore:
+  backup [path]                  Backup mail data and config
+  restore <backup-file>          Restore from backup
+
+Diagnostics:
+  health                         Run health checks
+  dns-check [domain]             Verify DNS records for domain
+  ports                          Check required ports
+  config                         Show current configuration
+  test-email <to>                Send test email
+
+Post-Installation:
+  1. Configure hostname and domain in /etc/config/mailinabox
+  2. Set proper DNS records (A, MX, SPF, DKIM, DMARC)
+  3. Start with: /etc/init.d/mailinabox start
+  4. Add users with: mailinaboxctl user-add admin@yourdomain.com
+
+Required DNS Records:
+  A       mail.domain.com  -> your-public-ip
+  MX      domain.com       -> mail.domain.com (priority 10)
+  TXT     domain.com       -> "v=spf1 mx -all"
+  TXT     _dmarc.domain.com -> "v=DMARC1; p=quarantine"
+  TXT     mail._domainkey.domain.com -> (DKIM key from container)
+EOF
 }
 
-require_root() { [ "$(id -u)" -eq 0 ]; }
+require_root() { [ "$(id -u)" -eq 0 ] || { echo "Root required" >&2; exit 1; }; }
+
+log_info() { echo "[INFO] $*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
 
 uci_get() { uci -q get ${CONFIG}.main.$1; }
+uci_set() { uci set ${CONFIG}.main.$1="$2" && uci commit ${CONFIG}; }
 
-defaults() {
-	image="$(uci_get image || echo docker-mailserver/docker-mailserver:latest)"
-	data_path="$(uci_get data_path || echo /srv/mailinabox)"
+# Load configuration with defaults
+load_config() {
+	enabled="$(uci_get enabled || echo 0)"
+	image="$(uci_get image || echo ghcr.io/docker-mailserver/docker-mailserver:latest)"
+	data_path="$(uci_get data_path || echo /srv/mailserver)"
 	hostname="$(uci_get hostname || echo mail.example.com)"
-	admin_email="$(uci_get admin_email || echo admin@example.com)"
-	timezone="$(uci_get timezone || echo UTC)"
+	domain="$(uci_get domain || echo example.com)"
+	timezone="$(uci_get timezone || cat /etc/TZ 2>/dev/null || echo UTC)"
 
+	# Ports
 	smtp_port="$(uci_get smtp_port || echo 25)"
-	dns_port="$(uci_get dns_port || echo 53)"
-	http_port="$(uci_get http_port || echo 80)"
-	https_port="$(uci_get https_port || echo 443)"
 	submission_port="$(uci_get submission_port || echo 587)"
+	submissions_port="$(uci_get submissions_port || echo 465)"
+	imap_port="$(uci_get imap_port || echo 143)"
 	imaps_port="$(uci_get imaps_port || echo 993)"
+	pop3_port="$(uci_get pop3_port || echo 110)"
 	pop3s_port="$(uci_get pop3s_port || echo 995)"
-	sieve_port="$(uci_get sieve_port || echo 4190)"
 
-	enable_dns="$(uci_get enable_dns || echo 1)"
-	enable_webmail="$(uci_get enable_webmail || echo 1)"
-	letsencrypt="$(uci_get letsencrypt || echo 1)"
+	# Features
+	enable_pop3="$(uci_get enable_pop3 || echo 0)"
+	enable_clamav="$(uci_get enable_clamav || echo 0)"
+	enable_spamassassin="$(uci_get enable_spamassassin || echo 1)"
+	enable_fail2ban="$(uci_get enable_fail2ban || echo 1)"
+	ssl_type="$(uci_get ssl_type || echo letsencrypt)"
+	letsencrypt_email="$(uci_get letsencrypt_email)"
 }
 
 ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
 
+# =============================================================================
+# Docker Functions
+# =============================================================================
+
 ensure_packages() {
 	for pkg in "$@"; do
-		if ! opkg status "$pkg" >/dev/null 2>&1; then
+		if ! opkg list-installed 2>/dev/null | grep -q "^$pkg "; then
 			if [ "$OPKG_UPDATED" -eq 0 ]; then
 				opkg update || return 1
 				OPKG_UPDATED=1
@@ -72,135 +120,553 @@ ensure_packages() {
 	done
 }
 
+docker_ready() {
+	command -v docker >/dev/null 2>&1 && [ -S /var/run/docker.sock ]
+}
+
 check_prereqs() {
-	defaults
+	load_config
+	log_info "Checking prerequisites..."
 
 	# Check hostname configuration
-	if [ "$hostname" = "mail.example.com" ]; then
-		echo "[WARNING] Please configure hostname in /etc/config/mailinabox" >&2
-		echo "[WARNING] Mail-in-a-Box requires a valid domain name" >&2
+	if [ "$hostname" = "mail.example.com" ] || [ "$domain" = "example.com" ]; then
+		log_warn "Please configure hostname and domain in /etc/config/mailinabox"
+		log_warn "docker-mailserver requires a valid domain name"
 	fi
+
+	# Check cgroups
+	[ -d /sys/fs/cgroup ] || { log_error "/sys/fs/cgroup missing"; return 1; }
+
+	# Install Docker
+	ensure_packages dockerd docker containerd || return 1
+
+	# Enable and start Docker
+	/etc/init.d/dockerd enable >/dev/null 2>&1
+	if ! /etc/init.d/dockerd status >/dev/null 2>&1; then
+		/etc/init.d/dockerd start || return 1
+		sleep 3
+	fi
+
+	# Wait for Docker socket
+	local retry=0
+	while [ ! -S /var/run/docker.sock ] && [ $retry -lt 30 ]; do
+		sleep 1
+		retry=$((retry + 1))
+	done
+
+	[ -S /var/run/docker.sock ] || { log_error "Docker socket not available"; return 1; }
 
 	# Create data directories
 	ensure_dir "$data_path"
-	ensure_dir "$data_path/mail"
-	ensure_dir "$data_path/ssl"
-	ensure_dir "$data_path/data"
-	ensure_dir "$data_path/dns"
+	ensure_dir "$data_path/mail-data"
+	ensure_dir "$data_path/mail-state"
+	ensure_dir "$data_path/mail-logs"
+	ensure_dir "$data_path/config"
 
-	# Check system requirements
-	[ -d /sys/fs/cgroup ] || { echo "[ERROR] /sys/fs/cgroup missing" >&2; return 1; }
-
-	# Install Docker
-	ensure_packages dockerd docker containerd
-	/etc/init.d/dockerd enable >/dev/null 2>&1
-	/etc/init.d/dockerd start >/dev/null 2>&1
-
-	# Port conflict checks
-	if [ "$smtp_port" = "25" ]; then
-		if netstat -tln 2>/dev/null | grep -q ":25 "; then
-			echo "[WARNING] Port 25 already in use - potential conflict" >&2
-		fi
-	fi
-
-	if [ "$dns_port" = "53" ] && [ "$enable_dns" = "1" ]; then
-		if netstat -uln 2>/dev/null | grep -q ":53 "; then
-			echo "[WARNING] Port 53 already in use - DNS may conflict with dnsmasq" >&2
-			echo "[WARNING] Consider disabling Mail-in-a-Box DNS or moving dnsmasq" >&2
-		fi
-	fi
+	log_info "Docker ready, directories created"
+	return 0
 }
 
-pull_image() { defaults; docker pull "$image"; }
+pull_image() {
+	load_config
+	log_info "Pulling Docker image: $image"
+	docker pull "$image"
+}
 
 stop_container() {
-	docker stop "$CONTAINER" >/dev/null 2>&1 || true
-	docker rm "$CONTAINER" >/dev/null 2>&1 || true
+	docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+	docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
 }
 
+container_running() {
+	docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"
+}
+
+# Execute setup.sh in container
+docker_setup() {
+	if ! container_running; then
+		log_error "Container not running. Start with: /etc/init.d/mailinabox start"
+		return 1
+	fi
+	docker exec -it "$CONTAINER_NAME" setup "$@"
+}
+
+# =============================================================================
+# User Management Commands
+# =============================================================================
+
+cmd_user_add() {
+	local email="$1"
+	local password="$2"
+
+	[ -z "$email" ] && { log_error "Usage: mailinaboxctl user-add <email> [password]"; return 1; }
+
+	if [ -n "$password" ]; then
+		docker_setup email add "$email" "$password"
+	else
+		docker_setup email add "$email"
+	fi
+}
+
+cmd_user_del() {
+	local email="$1"
+	[ -z "$email" ] && { log_error "Usage: mailinaboxctl user-del <email>"; return 1; }
+	docker_setup email del "$email"
+}
+
+cmd_user_list() {
+	docker_setup email list
+}
+
+cmd_user_passwd() {
+	local email="$1"
+	[ -z "$email" ] && { log_error "Usage: mailinaboxctl user-passwd <email>"; return 1; }
+	docker_setup email update "$email"
+}
+
+cmd_alias_add() {
+	local alias="$1"
+	local target="$2"
+	[ -z "$alias" ] || [ -z "$target" ] && { log_error "Usage: mailinaboxctl alias-add <alias> <target>"; return 1; }
+	docker_setup alias add "$alias" "$target"
+}
+
+cmd_alias_del() {
+	local alias="$1"
+	[ -z "$alias" ] && { log_error "Usage: mailinaboxctl alias-del <alias>"; return 1; }
+	docker_setup alias del "$alias"
+}
+
+cmd_alias_list() {
+	docker_setup alias list
+}
+
+# =============================================================================
+# Domain & SSL Commands
+# =============================================================================
+
+cmd_domain_add() {
+	local domain="$1"
+	[ -z "$domain" ] && { log_error "Usage: mailinaboxctl domain-add <domain>"; return 1; }
+
+	# Create virtual domain entry
+	load_config
+	local vhost_file="$data_path/config/postfix-virtual.cf"
+	if ! grep -q "^$domain" "$vhost_file" 2>/dev/null; then
+		echo "$domain" >> "$vhost_file"
+		log_info "Domain $domain added. Restart service to apply."
+	else
+		log_warn "Domain $domain already exists"
+	fi
+}
+
+cmd_domain_list() {
+	load_config
+	log_info "Configured domains:"
+	if [ -f "$data_path/config/postfix-virtual.cf" ]; then
+		cat "$data_path/config/postfix-virtual.cf" | grep -v "^#" | grep -v "^$"
+	fi
+	echo ""
+	echo "Primary domain: $domain"
+	echo "Mail hostname: $hostname"
+}
+
+cmd_ssl_status() {
+	load_config
+	log_info "SSL Configuration:"
+	echo "  Type: $ssl_type"
+
+	if container_running; then
+		docker_setup debug show-mail-logs | grep -i "ssl\|cert\|tls" | tail -20
+	fi
+
+	# Check certificate files
+	if [ -d "$data_path/config/ssl" ]; then
+		echo ""
+		echo "Certificate files:"
+		ls -la "$data_path/config/ssl/" 2>/dev/null || echo "  No certificates found"
+	fi
+}
+
+cmd_ssl_renew() {
+	load_config
+	if [ "$ssl_type" = "letsencrypt" ]; then
+		log_info "Triggering Let's Encrypt renewal..."
+		if container_running; then
+			docker exec "$CONTAINER_NAME" certbot renew
+		else
+			log_error "Container not running"
+		fi
+	else
+		log_warn "SSL type is not letsencrypt"
+	fi
+}
+
+# =============================================================================
+# Backup & Restore Commands
+# =============================================================================
+
+cmd_backup() {
+	require_root
+	load_config
+
+	local backup_path="${1:-/tmp}"
+	local timestamp=$(date +%Y%m%d_%H%M%S)
+	local backup_file="$backup_path/mailserver_backup_$timestamp.tar.gz"
+
+	log_info "Creating backup..."
+
+	# Stop container for consistent backup
+	local was_running=0
+	if container_running; then
+		was_running=1
+		log_info "Stopping container for backup..."
+		stop_container
+	fi
+
+	# Create backup
+	tar czf "$backup_file" -C "$(dirname $data_path)" "$(basename $data_path)" 2>/dev/null || {
+		log_error "Backup failed"
+		[ $was_running -eq 1 ] && /etc/init.d/mailinabox start
+		return 1
+	}
+
+	# Restart if was running
+	[ $was_running -eq 1 ] && /etc/init.d/mailinabox start
+
+	log_info "Backup created: $backup_file"
+	ls -lh "$backup_file"
+}
+
+cmd_restore() {
+	require_root
+	load_config
+
+	local backup_file="$1"
+	[ -z "$backup_file" ] || [ ! -f "$backup_file" ] && {
+		log_error "Usage: mailinaboxctl restore <backup-file>"
+		return 1
+	}
+
+	log_warn "This will OVERWRITE existing mail data!"
+	echo -n "Continue? [y/N] "
+	read answer
+	[ "$answer" != "y" ] && [ "$answer" != "Y" ] && { echo "Aborted"; return 1; }
+
+	# Stop container
+	if container_running; then
+		log_info "Stopping container..."
+		stop_container
+	fi
+
+	# Remove existing data
+	log_info "Removing existing data..."
+	rm -rf "$data_path"
+
+	# Restore
+	log_info "Restoring from backup..."
+	tar xzf "$backup_file" -C "$(dirname $data_path)" || {
+		log_error "Restore failed"
+		return 1
+	}
+
+	log_info "Restore complete. Start service with: /etc/init.d/mailinabox start"
+}
+
+# =============================================================================
+# Diagnostic Commands
+# =============================================================================
+
+cmd_health() {
+	load_config
+
+	echo "=== Mail Server Health Check ==="
+	echo ""
+
+	# Container status
+	echo "Container Status:"
+	if container_running; then
+		echo "  [OK] Container is running"
+		local uptime=$(docker inspect --format='{{.State.StartedAt}}' "$CONTAINER_NAME" 2>/dev/null)
+		echo "  Started: $uptime"
+	else
+		echo "  [FAIL] Container is not running"
+	fi
+	echo ""
+
+	# Port checks
+	echo "Port Status:"
+	for port in $smtp_port $submission_port $imaps_port; do
+		if netstat -tln 2>/dev/null | grep -q ":$port "; then
+			echo "  [OK] Port $port is listening"
+		else
+			echo "  [WARN] Port $port is not listening"
+		fi
+	done
+	echo ""
+
+	# Service checks inside container
+	if container_running; then
+		echo "Services Status:"
+		docker exec "$CONTAINER_NAME" supervisorctl status 2>/dev/null || echo "  Unable to check services"
+	fi
+	echo ""
+
+	# Disk usage
+	echo "Disk Usage:"
+	if [ -d "$data_path" ]; then
+		du -sh "$data_path" 2>/dev/null
+		du -sh "$data_path"/* 2>/dev/null | head -10
+	fi
+}
+
+cmd_dns_check() {
+	load_config
+	local check_domain="${1:-$domain}"
+
+	echo "=== DNS Check for $check_domain ==="
+	echo ""
+
+	# A record
+	echo "A Record (mail.$check_domain):"
+	local a_record=$(nslookup "mail.$check_domain" 2>/dev/null | grep -A1 "Name:" | tail -1)
+	if [ -n "$a_record" ]; then
+		echo "  [OK] $a_record"
+	else
+		echo "  [FAIL] No A record found"
+	fi
+	echo ""
+
+	# MX record
+	echo "MX Record ($check_domain):"
+	local mx_record=$(nslookup -type=mx "$check_domain" 2>/dev/null | grep "mail exchanger")
+	if [ -n "$mx_record" ]; then
+		echo "  [OK] $mx_record"
+	else
+		echo "  [FAIL] No MX record found"
+	fi
+	echo ""
+
+	# SPF record
+	echo "SPF Record ($check_domain):"
+	local spf=$(nslookup -type=txt "$check_domain" 2>/dev/null | grep "v=spf1")
+	if [ -n "$spf" ]; then
+		echo "  [OK] $spf"
+	else
+		echo "  [WARN] No SPF record found"
+		echo "  Recommended: \"v=spf1 mx -all\""
+	fi
+	echo ""
+
+	# DMARC record
+	echo "DMARC Record (_dmarc.$check_domain):"
+	local dmarc=$(nslookup -type=txt "_dmarc.$check_domain" 2>/dev/null | grep "v=DMARC1")
+	if [ -n "$dmarc" ]; then
+		echo "  [OK] $dmarc"
+	else
+		echo "  [WARN] No DMARC record found"
+		echo "  Recommended: \"v=DMARC1; p=quarantine; rua=mailto:postmaster@$check_domain\""
+	fi
+}
+
+cmd_ports() {
+	load_config
+
+	echo "=== Port Status ==="
+	echo ""
+	echo "Required ports for mail server:"
+	echo ""
+
+	local ports="25:SMTP 587:Submission 465:SMTPS 143:IMAP 993:IMAPS"
+	[ "$enable_pop3" = "1" ] && ports="$ports 110:POP3 995:POP3S"
+
+	for entry in $ports; do
+		local port=$(echo "$entry" | cut -d: -f1)
+		local name=$(echo "$entry" | cut -d: -f2)
+
+		printf "  %-6s %-12s " "$port" "$name"
+
+		if netstat -tln 2>/dev/null | grep -q ":$port "; then
+			echo "[LISTENING]"
+		else
+			echo "[NOT LISTENING]"
+		fi
+	done
+
+	echo ""
+	echo "Note: Port 25 may be blocked by some ISPs"
+}
+
+cmd_config() {
+	load_config
+
+	echo "=== Mail Server Configuration ==="
+	echo ""
+	echo "General:"
+	echo "  Enabled: $enabled"
+	echo "  Image: $image"
+	echo "  Hostname: $hostname"
+	echo "  Domain: $domain"
+	echo "  Data path: $data_path"
+	echo "  Timezone: $timezone"
+	echo ""
+	echo "Features:"
+	echo "  SpamAssassin: $enable_spamassassin"
+	echo "  ClamAV: $enable_clamav"
+	echo "  Fail2ban: $enable_fail2ban"
+	echo "  POP3: $enable_pop3"
+	echo "  SSL Type: $ssl_type"
+	echo ""
+	echo "Ports:"
+	echo "  SMTP: $smtp_port"
+	echo "  Submission: $submission_port"
+	echo "  IMAPS: $imaps_port"
+}
+
+cmd_test_email() {
+	local to="$1"
+	[ -z "$to" ] && { log_error "Usage: mailinaboxctl test-email <to-address>"; return 1; }
+
+	load_config
+
+	if ! container_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	log_info "Sending test email to $to..."
+	docker exec "$CONTAINER_NAME" sh -c "echo 'Test email from SecuBox Mail Server' | mail -s 'Test from $hostname' $to"
+
+	log_info "Test email sent (check spam folder if not received)"
+}
+
+# =============================================================================
+# Main Container Commands
+# =============================================================================
+
 cmd_install() {
-	require_root || { echo Root required >&2; exit 1; }
+	require_root
 	check_prereqs || exit 1
 	pull_image || exit 1
-	uci set ${CONFIG}.main.enabled='1'
+
+	uci_set enabled '1'
 	uci commit ${CONFIG}
 	/etc/init.d/mailinabox enable
+
+	load_config
 	echo ""
-	echo "Mail-in-a-Box prerequisites installed."
+	log_info "Mail server installed successfully!"
 	echo ""
-	echo "CRITICAL NEXT STEPS:"
-	echo "  1. Edit /etc/config/mailinabox and set:"
-	echo "     - hostname (must be a valid FQDN)"
-	echo "     - admin_email"
-	echo "  2. Configure DNS records for your domain:"
-	echo "     - A record: $hostname -> your-public-ip"
-	echo "     - MX record: @ -> $hostname"
-	echo "  3. Ensure port 25 is not blocked by your ISP"
-	echo "  4. Start with: /etc/init.d/mailinabox start"
-	echo "  5. Access admin at: https://$hostname/admin"
+	echo "NEXT STEPS:"
+	echo "  1. Edit /etc/config/mailinabox and configure:"
+	echo "     - hostname (e.g., mail.yourdomain.com)"
+	echo "     - domain (e.g., yourdomain.com)"
+	echo "  2. Set up DNS records (see 'mailinaboxctl dns-check')"
+	echo "  3. Start: /etc/init.d/mailinabox start"
+	echo "  4. Add first user: mailinaboxctl user-add admin@$domain"
 	echo ""
 }
 
 cmd_check() {
 	check_prereqs
-	echo "Prerequisite check completed."
 	echo ""
-	defaults
-	echo "Current configuration:"
-	echo "  Hostname: $hostname"
-	echo "  Admin email: $admin_email"
-	echo "  Data path: $data_path"
-	echo "  DNS enabled: $enable_dns"
+	cmd_config
 	echo ""
+	cmd_ports
 }
 
 cmd_update() {
-	require_root || { echo Root required >&2; exit 1; }
+	require_root
 	pull_image || exit 1
-	/etc/init.d/mailinabox restart
+
+	if container_running; then
+		/etc/init.d/mailinabox restart
+	else
+		log_info "Image updated. Start manually when ready."
+	fi
 }
 
-cmd_status() { docker ps -a --filter "name=$CONTAINER"; }
-
-cmd_logs() { docker logs "$@" "$CONTAINER"; }
-
-cmd_admin() {
-	defaults
-	echo "Admin interface: https://$hostname/admin"
+cmd_status() {
+	echo "=== Container Status ==="
+	docker ps -a --filter "name=$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 	echo ""
-	echo "If accessing locally, you may need to:"
-	echo "  - Add '$hostname' to your hosts file"
-	echo "  - Or use: https://$(uci get network.lan.ipaddr 2>/dev/null || echo 'router-ip')/admin"
+
+	if container_running; then
+		echo "=== Service Status ==="
+		docker exec "$CONTAINER_NAME" supervisorctl status 2>/dev/null || true
+	fi
+}
+
+cmd_logs() {
+	docker logs "$@" "$CONTAINER_NAME"
+}
+
+cmd_shell() {
+	if container_running; then
+		docker exec -it "$CONTAINER_NAME" /bin/bash
+	else
+		log_error "Container not running"
+	fi
 }
 
 cmd_service_run() {
-	require_root || { echo Root required >&2; exit 1; }
+	require_root
 	check_prereqs || exit 1
-	defaults
+	load_config
 	stop_container
 
-	local docker_args="--name $CONTAINER"
+	log_info "Starting mail server container..."
 
-	# Network mode: host for mail server functionality
-	docker_args="$docker_args --network host"
+	# Build docker run command
+	local docker_args="--name $CONTAINER_NAME"
 
-	# Volume mounts
-	docker_args="$docker_args -v $data_path/mail:/var/mail"
-	docker_args="$docker_args -v $data_path/ssl:/etc/ssl/mail"
-	docker_args="$docker_args -v $data_path/data:/var/mail-state"
-	docker_args="$docker_args -v $data_path/dns:/etc/bind"
+	# Hostname
+	docker_args="$docker_args --hostname $hostname"
+	docker_args="$docker_args --domainname $domain"
 
-	# Environment variables for docker-mailserver
+	# Ports
+	docker_args="$docker_args -p $smtp_port:25"
+	docker_args="$docker_args -p $submission_port:587"
+	docker_args="$docker_args -p $submissions_port:465"
+	docker_args="$docker_args -p $imap_port:143"
+	docker_args="$docker_args -p $imaps_port:993"
+
+	if [ "$enable_pop3" = "1" ]; then
+		docker_args="$docker_args -p $pop3_port:110"
+		docker_args="$docker_args -p $pop3s_port:995"
+	fi
+
+	# Volumes
+	docker_args="$docker_args -v $data_path/mail-data:/var/mail"
+	docker_args="$docker_args -v $data_path/mail-state:/var/mail-state"
+	docker_args="$docker_args -v $data_path/mail-logs:/var/log/mail"
+	docker_args="$docker_args -v $data_path/config:/tmp/docker-mailserver"
+
+	# Let's Encrypt volume if using certbot
+	if [ "$ssl_type" = "letsencrypt" ]; then
+		ensure_dir "$data_path/letsencrypt"
+		docker_args="$docker_args -v $data_path/letsencrypt:/etc/letsencrypt"
+	fi
+
+	# Environment variables
 	docker_args="$docker_args -e TZ=$timezone"
 	docker_args="$docker_args -e OVERRIDE_HOSTNAME=$hostname"
-	docker_args="$docker_args -e ENABLE_SPAMASSASSIN=1"
-	docker_args="$docker_args -e ENABLE_CLAMAV=1"
-	docker_args="$docker_args -e ENABLE_FAIL2BAN=1"
-	docker_args="$docker_args -e SSL_TYPE=letsencrypt"
+	docker_args="$docker_args -e ENABLE_SPAMASSASSIN=$enable_spamassassin"
+	docker_args="$docker_args -e ENABLE_CLAMAV=$enable_clamav"
+	docker_args="$docker_args -e ENABLE_FAIL2BAN=$enable_fail2ban"
+	docker_args="$docker_args -e ENABLE_POP3=$enable_pop3"
+	docker_args="$docker_args -e SSL_TYPE=$ssl_type"
+	docker_args="$docker_args -e PERMIT_DOCKER=network"
+	docker_args="$docker_args -e ONE_DIR=1"
+	docker_args="$docker_args -e POSTMASTER_ADDRESS=postmaster@$domain"
 
-	# Capabilities for mail server
+	if [ -n "$letsencrypt_email" ]; then
+		docker_args="$docker_args -e LETSENCRYPT_EMAIL=$letsencrypt_email"
+	fi
+
+	# Capabilities
 	docker_args="$docker_args --cap-add=NET_ADMIN"
-	docker_args="$docker_args --cap-add=NET_BIND_SERVICE"
+	docker_args="$docker_args --cap-add=SYS_PTRACE"
 
 	# Restart policy
 	docker_args="$docker_args --restart=unless-stopped"
@@ -209,19 +675,51 @@ cmd_service_run() {
 }
 
 cmd_service_stop() {
-	require_root || { echo Root required >&2; exit 1; }
+	require_root
 	stop_container
 }
 
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
 case "${1:-}" in
+	# Container management
 	install) shift; cmd_install "$@" ;;
 	check) shift; cmd_check "$@" ;;
 	update) shift; cmd_update "$@" ;;
 	status) shift; cmd_status "$@" ;;
 	logs) shift; cmd_logs "$@" ;;
-	admin) shift; cmd_admin "$@" ;;
+	shell) shift; cmd_shell "$@" ;;
 	service-run) shift; cmd_service_run "$@" ;;
 	service-stop) shift; cmd_service_stop "$@" ;;
+
+	# User management
+	user-add) shift; cmd_user_add "$@" ;;
+	user-del) shift; cmd_user_del "$@" ;;
+	user-list) shift; cmd_user_list "$@" ;;
+	user-passwd) shift; cmd_user_passwd "$@" ;;
+	alias-add) shift; cmd_alias_add "$@" ;;
+	alias-del) shift; cmd_alias_del "$@" ;;
+	alias-list) shift; cmd_alias_list "$@" ;;
+
+	# Domain & SSL
+	domain-add) shift; cmd_domain_add "$@" ;;
+	domain-list) shift; cmd_domain_list "$@" ;;
+	ssl-status) shift; cmd_ssl_status "$@" ;;
+	ssl-renew) shift; cmd_ssl_renew "$@" ;;
+
+	# Backup & restore
+	backup) shift; cmd_backup "$@" ;;
+	restore) shift; cmd_restore "$@" ;;
+
+	# Diagnostics
+	health) shift; cmd_health "$@" ;;
+	dns-check) shift; cmd_dns_check "$@" ;;
+	ports) shift; cmd_ports "$@" ;;
+	config) shift; cmd_config "$@" ;;
+	test-email) shift; cmd_test_email "$@" ;;
+
 	help|--help|-h|'') usage ;;
 	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
 esac
