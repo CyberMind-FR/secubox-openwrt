@@ -1,0 +1,18 @@
+# CrowdSec whitelist for SecuBox trusted networks
+# Prevents banning of internal/trusted IPs
+
+name: crowdsecurity/secubox-whitelist
+description: "Whitelist trusted IPs for SecuBox admin access"
+whitelist:
+  reason: "SecuBox trusted network"
+  ip:
+    # Localhost
+    - "127.0.0.1"
+    - "::1"
+  cidr:
+    # Private networks (RFC1918)
+    - "192.168.0.0/16"
+    - "172.16.0.0/12"
+    - "10.0.0.0/8"
+    # Add custom admin IPs here if needed
+    # - "YOUR_ADMIN_IP/32"

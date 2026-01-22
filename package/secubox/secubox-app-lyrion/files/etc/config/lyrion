@@ -1,7 +1,7 @@
 config lyrion 'main'
 	option enabled '0'
 	option runtime 'auto'
-	option image 'ghcr.io/lyrion/lyrion:latest'
+	option image 'ghcr.io/lms-community/lyrionmusicserver:stable'
 	option data_path '/srv/lyrion'
 	option media_path '/srv/media'
 	option port '9000'

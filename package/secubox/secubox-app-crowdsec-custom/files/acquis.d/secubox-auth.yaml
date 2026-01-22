@@ -1,0 +1,17 @@
+# CrowdSec acquisition for SecuBox/LuCI authentication
+# Monitors syslog for auth failures
+
+# Monitor OpenWrt syslog
+source: file
+filenames:
+  - /var/log/messages
+  - /tmp/log/messages
+labels:
+  type: syslog
+---
+# Monitor auth.log if available
+source: file
+filenames:
+  - /var/log/auth.log
+labels:
+  type: syslog

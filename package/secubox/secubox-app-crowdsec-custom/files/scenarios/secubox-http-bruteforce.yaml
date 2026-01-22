@@ -1,0 +1,39 @@
+# CrowdSec scenario for SecuBox HTTP authentication bruteforce
+# Detects repeated 401/403 errors indicating auth failures
+
+type: leaky
+name: secubox/http-auth-bruteforce
+description: "Detect HTTP authentication bruteforce on SecuBox web interface"
+filter: |
+  evt.Meta.http_status in ['401', '403'] &&
+  evt.Parsed.request contains '/cgi-bin/luci' ||
+  evt.Parsed.request contains '/secubox/' ||
+  evt.Parsed.request contains '/ubus'
+groupby: evt.Meta.source_ip
+capacity: 5
+leakspeed: 30s
+blackhole: 5m
+labels:
+  service: secubox
+  type: http_bruteforce
+  remediation: true
+---
+# Detect path scanning/enumeration
+type: leaky
+name: secubox/path-scanning
+description: "Detect path scanning on SecuBox web interface"
+filter: |
+  evt.Meta.http_status == '404' &&
+  (evt.Parsed.request contains '/secubox/' ||
+   evt.Parsed.request contains '/cgi-bin/' ||
+   evt.Parsed.request contains '/admin' ||
+   evt.Parsed.request contains '/wp-' ||
+   evt.Parsed.request contains '.php')
+groupby: evt.Meta.source_ip
+capacity: 20
+leakspeed: 10s
+blackhole: 10m
+labels:
+  service: secubox
+  type: path_scan
+  remediation: true

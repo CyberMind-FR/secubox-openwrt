@@ -49,7 +49,7 @@ uci_set() { uci set ${CONFIG}.main.$1="$2" && uci commit ${CONFIG}; }
 # Load configuration with defaults
 load_config() {
 	runtime="$(uci_get runtime || echo auto)"
-	image="$(uci_get image || echo ghcr.io/lyrion/lyrion:latest)"
+	image="$(uci_get image || echo ghcr.io/lms-community/lyrionmusicserver:stable)"
 	data_path="$(uci_get data_path || echo /srv/lyrion)"
 	media_path="$(uci_get media_path || echo /srv/media)"
 	port="$(uci_get port || echo 9000)"

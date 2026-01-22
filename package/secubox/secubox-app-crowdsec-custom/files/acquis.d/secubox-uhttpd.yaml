@@ -1,0 +1,8 @@
+# CrowdSec acquisition for SecuBox web interface (uhttpd)
+# Monitors uhttpd logs for web attacks
+
+filenames:
+  - /var/log/uhttpd.log
+  - /tmp/log/uhttpd.log
+labels:
+  type: syslog

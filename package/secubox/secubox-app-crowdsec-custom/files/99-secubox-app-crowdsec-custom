@@ -1,0 +1,36 @@
+#!/bin/sh
+# SecuBox CrowdSec Custom - First boot setup
+# Configures logging for CrowdSec monitoring
+
+# Enable uhttpd syslog logging
+if command -v uci >/dev/null 2>&1; then
+    uci set uhttpd.main.syslog='1' 2>/dev/null
+    uci commit uhttpd 2>/dev/null
+fi
+
+# Ensure syslog writes to file for CrowdSec
+if [ -f /etc/config/system ]; then
+    uci set system.@system[0].log_file='/var/log/messages' 2>/dev/null
+    uci set system.@system[0].log_size='512' 2>/dev/null
+    uci commit system 2>/dev/null
+fi
+
+# Restart logging service
+/etc/init.d/log restart 2>/dev/null || true
+
+# Restart uhttpd to apply logging changes
+/etc/init.d/uhttpd restart 2>/dev/null || true
+
+# Register firewall bouncer if not already registered
+if [ -f /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml ]; then
+    if command -v cscli >/dev/null 2>&1; then
+        if ! cscli bouncers list 2>/dev/null | grep -q "firewall-bouncer"; then
+            API_KEY=$(cscli bouncers add firewall-bouncer -o raw 2>/dev/null)
+            if [ -n "$API_KEY" ]; then
+                sed -i "s/^api_key:.*/api_key: $API_KEY/" /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
+            fi
+        fi
+    fi
+fi
+
+exit 0

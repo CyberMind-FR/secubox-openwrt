@@ -1,0 +1,43 @@
+# CrowdSec parser for SecuBox/LuCI authentication logs
+# Parses authentication events from uhttpd, luci, and rpcd
+
+onsuccess: next_stage
+name: secubox/luci-auth-logs
+description: "Parse SecuBox/LuCI authentication events"
+filter: "evt.Parsed.program == 'uhttpd' || evt.Parsed.program == 'luci' || evt.Parsed.program == 'rpcd'"
+grok:
+  pattern: "%{GREEDYDATA:message}"
+  apply_on: message
+statics:
+  - meta: log_type
+    value: luci_auth
+  - meta: service
+    value: secubox
+---
+# Parse LuCI login failures
+onsuccess: next_stage
+name: secubox/luci-auth-failure
+description: "Parse LuCI authentication failures"
+filter: "evt.Parsed.program == 'luci' && evt.Parsed.message contains 'auth'"
+grok:
+  pattern: "luci: %{WORD:action} from %{IP:source_ip}.*(?:failed|denied|invalid)"
+  apply_on: message
+statics:
+  - meta: auth_success
+    value: "false"
+  - meta: source_ip
+    expression: evt.Parsed.source_ip
+---
+# Parse uhttpd/rpcd auth attempts
+onsuccess: next_stage
+name: secubox/uhttpd-auth
+description: "Parse uhttpd authentication events"
+filter: "evt.Parsed.program == 'uhttpd' || evt.Parsed.program == 'rpcd'"
+grok:
+  pattern: "%{IP:source_ip}.*(?:login|auth|session).*(?:failed|denied|invalid|error)"
+  apply_on: message
+statics:
+  - meta: auth_success
+    value: "false"
+  - meta: log_type
+    value: luci_auth
