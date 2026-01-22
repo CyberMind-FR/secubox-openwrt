@@ -9,12 +9,52 @@ var callModels = rpc.declare({
 	expect: { models: [] }
 });
 
-var callChat = rpc.declare({
-	object: 'luci.localai',
-	method: 'chat',
-	params: ['model', 'messages'],
-	expect: { response: '' }
-});
+// Custom chat function with longer timeout (LLMs can be slow)
+function callChatWithTimeout(model, messages, timeoutMs) {
+	return new Promise(function(resolve, reject) {
+		var timeout = timeoutMs || 120000; // 2 minutes default
+		var controller = new AbortController();
+		var timeoutId = setTimeout(function() {
+			controller.abort();
+			reject(new Error('Request timed out - model may need more time'));
+		}, timeout);
+
+		// Use ubus directly via L.Request or fetch
+		var payload = JSON.stringify({
+			jsonrpc: '2.0',
+			id: 1,
+			method: 'call',
+			params: [
+				L.env.sessionid || '00000000000000000000000000000000',
+				'luci.localai',
+				'chat',
+				{ model: model, messages: JSON.parse(messages) }
+			]
+		});
+
+		fetch(L.env.requestpath + 'admin/ubus', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: payload,
+			signal: controller.signal
+		})
+		.then(function(response) { return response.json(); })
+		.then(function(data) {
+			clearTimeout(timeoutId);
+			if (data.result && data.result[1]) {
+				resolve(data.result[1]);
+			} else if (data.error) {
+				reject(new Error(data.error.message || 'RPC error'));
+			} else {
+				resolve({ response: '', error: 'Unexpected response format' });
+			}
+		})
+		.catch(function(err) {
+			clearTimeout(timeoutId);
+			reject(err);
+		});
+	});
+}
 
 return view.extend({
 	title: _('LocalAI Chat'),
@@ -137,8 +177,8 @@ return view.extend({
 		// Build messages array
 		this.messages.push({ role: 'user', content: message });
 
-		// Send to API
-		callChat(this.selectedModel, JSON.stringify(this.messages))
+		// Send to API (120s timeout for slow models)
+		callChatWithTimeout(this.selectedModel, JSON.stringify(this.messages), 120000)
 			.then(function(result) {
 				var loading = document.getElementById('loading-msg');
 				if (loading) loading.remove();

@@ -10,7 +10,7 @@ LOCALAI_CTL="/usr/sbin/localaictl"
 # Load UCI config
 load_config() {
 	config_load "$CONFIG"
-	config_get API_PORT main api_port "8080"
+	config_get API_PORT main api_port "8081"
 	config_get DATA_PATH main data_path "/srv/localai"
 	config_get MODELS_PATH main models_path "/srv/localai/models"
 	config_get MEMORY_LIMIT main memory_limit "2G"
@@ -388,13 +388,14 @@ do_chat() {
 	local tmpfile="/tmp/localai_chat_$$"
 	local tmpfile_err="/tmp/localai_chat_err_$$"
 
+	# Use longer timeout for LLM responses (120 seconds)
 	if command -v curl >/dev/null 2>&1; then
-		curl -s -X POST "http://127.0.0.1:$API_PORT/v1/chat/completions" \
+		curl -s -m 120 -X POST "http://127.0.0.1:$API_PORT/v1/chat/completions" \
 			-H "Content-Type: application/json" \
 			-d "$request_body" \
 			-o "$tmpfile" 2>"$tmpfile_err"
 	else
-		wget -q -O "$tmpfile" --post-data "$request_body" \
+		wget -q -T 120 -O "$tmpfile" --post-data "$request_body" \
 			--header="Content-Type: application/json" \
 			"http://127.0.0.1:$API_PORT/v1/chat/completions" 2>"$tmpfile_err"
 	fi
