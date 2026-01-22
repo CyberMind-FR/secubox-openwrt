@@ -21,6 +21,7 @@ Commands:
   install         Install prerequisites, prep folders, pull/create container
   check           Run prerequisite checks (storage, runtime)
   update          Update container image and restart service
+  destroy         Remove container and rootfs (for reinstall)
   status          Show container status
   logs            Show container logs (use -f to follow)
   shell           Open shell in container
@@ -206,9 +207,17 @@ lxc_check_prereqs() {
 lxc_create_rootfs() {
 	load_config
 
-	if [ -d "$LXC_ROOTFS" ] && [ -f "$LXC_ROOTFS/etc/alpine-release" ]; then
-		log_info "LXC rootfs already exists"
+	# Check for COMPLETE installation (Lyrion installed, not just Alpine)
+	if [ -d "$LXC_ROOTFS" ] && [ -f "$LXC_ROOTFS/opt/lyrion/slimserver.pl" ] && [ -f "$LXC_CONFIG" ]; then
+		log_info "LXC rootfs already exists with Lyrion installed"
 		return 0
+	fi
+
+	# Check for incomplete installation (Alpine exists but Lyrion not installed)
+	if [ -d "$LXC_ROOTFS" ] && [ -f "$LXC_ROOTFS/etc/alpine-release" ] && [ ! -f "$LXC_ROOTFS/opt/lyrion/slimserver.pl" ]; then
+		log_warn "Incomplete installation detected (Alpine downloaded but Lyrion not installed)"
+		log_info "Cleaning up incomplete rootfs..."
+		rm -rf "$LXC_PATH/$LXC_NAME"
 	fi
 
 	log_info "Creating LXC rootfs for Lyrion..."
@@ -220,6 +229,13 @@ lxc_create_rootfs() {
 	else
 		# Inline rootfs creation
 		lxc_create_alpine_rootfs || return 1
+	fi
+
+	# Verify Lyrion was actually installed
+	if [ ! -f "$LXC_ROOTFS/opt/lyrion/slimserver.pl" ]; then
+		log_error "Lyrion installation failed - slimserver.pl not found"
+		log_error "Check network connectivity and try again"
+		return 1
 	fi
 
 	# Create LXC config
@@ -555,6 +571,36 @@ cmd_update() {
 	fi
 }
 
+cmd_destroy() {
+	require_root
+	load_config
+
+	local rt=$(detect_runtime 2>/dev/null)
+
+	case "$rt" in
+		docker)
+			docker_stop
+			log_info "Docker container stopped. Image kept for reinstall."
+			log_info "To remove image: docker rmi $image"
+			;;
+		lxc)
+			lxc_destroy
+			;;
+		*)
+			# No runtime detected, but try to clean up LXC anyway
+			if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+				log_info "Removing LXC rootfs..."
+				rm -rf "$LXC_PATH/$LXC_NAME"
+				log_info "LXC container destroyed"
+			else
+				log_info "No container found to destroy"
+			fi
+			;;
+	esac
+
+	log_info "To reinstall: lyrionctl install"
+}
+
 cmd_status() {
 	local rt=$(detect_runtime 2>/dev/null)
 	case "$rt" in
@@ -634,6 +680,7 @@ case "${1:-}" in
 	install) shift; cmd_install "$@" ;;
 	check) shift; cmd_check "$@" ;;
 	update) shift; cmd_update "$@" ;;
+	destroy) shift; cmd_destroy "$@" ;;
 	status) shift; cmd_status "$@" ;;
 	logs) shift; cmd_logs "$@" ;;
 	shell) shift; cmd_shell "$@" ;;
