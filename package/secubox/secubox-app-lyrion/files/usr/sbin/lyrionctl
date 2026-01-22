@@ -311,13 +311,45 @@ apk add --no-cache \
     curl \
     wget
 
-# Download and install Lyrion (full tarball with CPAN modules)
+# Download and install Lyrion
 cd /tmp
-wget -q "https://downloads.lms-community.org/LyrionMusicServer_v9.0.3/lyrionmusicserver-9.0.3.tgz" -O lyrion.tar.gz || \
-wget -q "https://downloads.lms-community.org/nightly/lyrionmusicserver-9.0.4-1768197566.tgz" -O lyrion.tar.gz
+
+# Detect architecture for appropriate tarball
+LYRION_ARCH=""
+case "$(uname -m)" in
+    aarch64|arm*) LYRION_ARCH="arm-linux" ;;
+esac
+
+# Try ARM-specific tarball first (smaller ~60MB), then fall back to multi-arch (~126MB)
+echo "Downloading Lyrion Music Server..."
+LYRION_URL=""
+if [ -n "$LYRION_ARCH" ]; then
+    LYRION_URL="https://downloads.lms-community.org/LyrionMusicServer_v9.0.3/lyrionmusicserver-9.0.3-${LYRION_ARCH}.tgz"
+else
+    LYRION_URL="https://downloads.lms-community.org/LyrionMusicServer_v9.0.3/lyrionmusicserver-9.0.3.tgz"
+fi
+
+echo "URL: $LYRION_URL"
+wget -O lyrion.tar.gz "$LYRION_URL" || {
+    echo "Primary download failed, trying multi-arch tarball..."
+    LYRION_URL="https://downloads.lms-community.org/LyrionMusicServer_v9.0.3/lyrionmusicserver-9.0.3.tgz"
+    wget -O lyrion.tar.gz "$LYRION_URL" || {
+        echo "ERROR: All download attempts failed"
+        exit 1
+    }
+}
+
+# Verify download succeeded
+if [ ! -f lyrion.tar.gz ] || [ ! -s lyrion.tar.gz ]; then
+    echo "ERROR: Failed to download Lyrion tarball"
+    exit 1
+fi
 
 mkdir -p /opt/lyrion
-tar xzf lyrion.tar.gz -C /opt/lyrion --strip-components=1
+tar xzf lyrion.tar.gz -C /opt/lyrion --strip-components=1 || {
+    echo "ERROR: Failed to extract Lyrion tarball"
+    exit 1
+}
 rm -f lyrion.tar.gz
 
 # Remove conflicting bundled CPAN modules (use system modules instead)
