@@ -107,7 +107,17 @@
       "WebFetch(domain:hub.docker.com)",
       "WebFetch(domain:localai.io)",
       "WebFetch(domain:downloads.lms-community.org)",
-      "Bash(./secubox-tools/sdk/build-package.sh:*)"
+      "Bash(./secubox-tools/sdk/build-package.sh:*)",
+      "Bash(./secubox-tools/scripts/expand-openwrt-image.sh:*)",
+      "Bash(parted:*)",
+      "Bash(fdisk:*)",
+      "Bash(sudo ./secubox-tools/scripts/expand-openwrt-image.sh:*)",
+      "Bash(gunzip:*)",
+      "Bash(xxd:*)",
+      "Bash(sfdisk:*)",
+      "Bash(xzcat:*)",
+      "Bash(head:*)",
+      "Bash(docker search:*)"
     ]
   }
 }

@@ -39,7 +39,8 @@ log_message() {
 	local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
 
 	echo "[$timestamp] [$level] $message" >> "$STATE_LOG"
-	logger -t secubox-state "[$level] $message"
+	# Only log INFO and above to syslog (skip DEBUG)
+	[ "$level" != "DEBUG" ] && logger -t secubox-state "[$level] $message"
 }
 
 # Read state database
