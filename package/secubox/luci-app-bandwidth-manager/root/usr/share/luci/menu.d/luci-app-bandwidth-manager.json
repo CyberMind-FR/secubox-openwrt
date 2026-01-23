@@ -41,9 +41,41 @@
 			"path": "bandwidth-manager/usage"
 		}
 	},
+	"admin/secubox/network/bandwidth-manager/traffic-graphs": {
+		"title": "Traffic Graphs",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/traffic-graphs"
+		}
+	},
+	"admin/secubox/network/bandwidth-manager/profiles": {
+		"title": "Device Profiles",
+		"order": 6,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/profiles"
+		}
+	},
+	"admin/secubox/network/bandwidth-manager/parental-controls": {
+		"title": "Parental Controls",
+		"order": 7,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/parental-controls"
+		}
+	},
+	"admin/secubox/network/bandwidth-manager/alerts": {
+		"title": "Alerts",
+		"order": 8,
+		"action": {
+			"type": "view",
+			"path": "bandwidth-manager/alerts"
+		}
+	},
 	"admin/secubox/network/bandwidth-manager/settings": {
 		"title": "Settings",
-		"order": 5,
+		"order": 9,
 		"action": {
 			"type": "view",
 			"path": "bandwidth-manager/settings"
@@ -51,7 +83,7 @@
 	},
 	"admin/secubox/network/bandwidth-manager/media": {
 		"title": "Media Detection",
-		"order": 6,
+		"order": 10,
 		"action": {
 			"type": "view",
 			"path": "bandwidth-manager/media"
@@ -59,7 +91,7 @@
 	},
 	"admin/secubox/network/bandwidth-manager/classes": {
 		"title": "QoS Classes",
-		"order": 7,
+		"order": 11,
 		"action": {
 			"type": "view",
 			"path": "bandwidth-manager/classes"
@@ -67,7 +99,7 @@
 	},
 	"admin/secubox/network/bandwidth-manager/clients": {
 		"title": "Connected Clients",
-		"order": 8,
+		"order": 12,
 		"action": {
 			"type": "view",
 			"path": "bandwidth-manager/clients"
@@ -75,7 +107,7 @@
 	},
 	"admin/secubox/network/bandwidth-manager/schedules": {
 		"title": "Schedules",
-		"order": 9,
+		"order": 13,
 		"action": {
 			"type": "view",
 			"path": "bandwidth-manager/schedules"
@@ -83,7 +115,7 @@
 	},
 	"admin/secubox/network/bandwidth-manager/smart-qos": {
 		"title": "Smart QoS",
-		"order": 10,
+		"order": 14,
 		"action": {
 			"type": "view",
 			"path": "bandwidth-manager/smart-qos"
@@ -91,7 +123,7 @@
 	},
 	"admin/secubox/network/bandwidth-manager/groups": {
 		"title": "Device Groups",
-		"order": 11,
+		"order": 15,
 		"action": {
 			"type": "view",
 			"path": "bandwidth-manager/groups"
@@ -99,7 +131,7 @@
 	},
 	"admin/secubox/network/bandwidth-manager/analytics": {
 		"title": "Analytics",
-		"order": 12,
+		"order": 16,
 		"action": {
 			"type": "view",
 			"path": "bandwidth-manager/analytics"

@@ -1033,6 +1033,1654 @@ remove_from_group() {
 }
 
 # ============================================
+# Device Profiles
+# ============================================
+
+PROFILES_CACHE="/tmp/bandwidth_profiles.cache"
+
+# Get built-in profile definitions
+get_builtin_profiles() {
+	json_init
+	json_add_array "profiles"
+
+	# Gaming profile
+	json_add_object ""
+	json_add_string "id" "builtin_gaming"
+	json_add_string "name" "Gaming"
+	json_add_string "description" "Low latency, high priority for gaming"
+	json_add_string "icon" "gamepad"
+	json_add_string "color" "#8b5cf6"
+	json_add_int "priority" 1
+	json_add_int "limit_down" 0
+	json_add_int "limit_up" 0
+	json_add_string "latency_mode" "ultra"
+	json_add_boolean "builtin" 1
+	json_close_object
+
+	# Streaming profile
+	json_add_object ""
+	json_add_string "id" "builtin_streaming"
+	json_add_string "name" "Streaming"
+	json_add_string "description" "Optimized for video streaming"
+	json_add_string "icon" "play"
+	json_add_string "color" "#06b6d4"
+	json_add_int "priority" 4
+	json_add_int "limit_down" 25000
+	json_add_int "limit_up" 5000
+	json_add_string "latency_mode" "normal"
+	json_add_boolean "builtin" 1
+	json_close_object
+
+	# IoT profile
+	json_add_object ""
+	json_add_string "id" "builtin_iot"
+	json_add_string "name" "IoT Devices"
+	json_add_string "description" "Low bandwidth, network isolated"
+	json_add_string "icon" "cpu"
+	json_add_string "color" "#10b981"
+	json_add_int "priority" 7
+	json_add_int "limit_down" 1000
+	json_add_int "limit_up" 500
+	json_add_string "latency_mode" "normal"
+	json_add_boolean "isolate" 1
+	json_add_boolean "builtin" 1
+	json_close_object
+
+	# Work profile
+	json_add_object ""
+	json_add_string "id" "builtin_work"
+	json_add_string "name" "Work"
+	json_add_string "description" "Business-critical apps prioritized"
+	json_add_string "icon" "briefcase"
+	json_add_string "color" "#3b82f6"
+	json_add_int "priority" 3
+	json_add_int "limit_down" 0
+	json_add_int "limit_up" 0
+	json_add_string "latency_mode" "normal"
+	json_add_boolean "builtin" 1
+	json_close_object
+
+	# Kids profile
+	json_add_object ""
+	json_add_string "id" "builtin_kids"
+	json_add_string "name" "Kids"
+	json_add_string "description" "Parental controls, content filtered"
+	json_add_string "icon" "child"
+	json_add_string "color" "#f59e0b"
+	json_add_int "priority" 5
+	json_add_int "limit_down" 10000
+	json_add_int "limit_up" 2000
+	json_add_string "latency_mode" "normal"
+	json_add_string "content_filter" "kids_safe"
+	json_add_boolean "builtin" 1
+	json_close_object
+
+	json_close_array
+	json_dump
+}
+
+# List all profiles (custom + builtin)
+list_profiles() {
+	config_load bandwidth
+	json_init
+	json_add_array "profiles"
+
+	_add_profile() {
+		local name description icon color priority limit_down limit_up latency_mode content_filter isolate schedule enabled
+		config_get name "$1" name ""
+		config_get description "$1" description ""
+		config_get icon "$1" icon "tag"
+		config_get color "$1" color "#6366f1"
+		config_get priority "$1" priority "5"
+		config_get limit_down "$1" limit_down "0"
+		config_get limit_up "$1" limit_up "0"
+		config_get latency_mode "$1" latency_mode "normal"
+		config_get content_filter "$1" content_filter ""
+		config_get isolate "$1" isolate "0"
+		config_get schedule "$1" schedule ""
+		config_get enabled "$1" enabled "1"
+
+		# Count assigned devices
+		local assigned_count=0
+		_count_assigned() {
+			local profile
+			config_get profile "$1" profile ""
+			[ "$profile" = "$2" ] && assigned_count=$(( assigned_count + 1 ))
+		}
+		config_foreach _count_assigned device_profile "$1"
+
+		json_add_object ""
+		json_add_string "id" "$1"
+		json_add_string "name" "$name"
+		json_add_string "description" "$description"
+		json_add_string "icon" "$icon"
+		json_add_string "color" "$color"
+		json_add_int "priority" "$priority"
+		json_add_int "limit_down" "$limit_down"
+		json_add_int "limit_up" "$limit_up"
+		json_add_string "latency_mode" "$latency_mode"
+		json_add_string "content_filter" "$content_filter"
+		json_add_boolean "isolate" "$isolate"
+		json_add_string "schedule" "$schedule"
+		json_add_boolean "enabled" "$enabled"
+		json_add_int "assigned_count" "$assigned_count"
+		json_add_boolean "builtin" 0
+		json_close_object
+	}
+
+	config_foreach _add_profile profile
+
+	json_close_array
+	json_dump
+}
+
+# Get single profile details
+get_profile() {
+	read -r input
+	json_load "$input"
+
+	local profile_id
+	json_get_var profile_id profile_id
+	json_cleanup
+
+	if [ -z "$profile_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Profile ID is required"
+		json_dump
+		return 1
+	fi
+
+	config_load bandwidth
+
+	local name description icon color priority limit_down limit_up latency_mode content_filter isolate schedule enabled
+	config_get name "$profile_id" name ""
+	config_get description "$profile_id" description ""
+	config_get icon "$profile_id" icon "tag"
+	config_get color "$profile_id" color "#6366f1"
+	config_get priority "$profile_id" priority "5"
+	config_get limit_down "$profile_id" limit_down "0"
+	config_get limit_up "$profile_id" limit_up "0"
+	config_get latency_mode "$profile_id" latency_mode "normal"
+	config_get content_filter "$profile_id" content_filter ""
+	config_get isolate "$profile_id" isolate "0"
+	config_get schedule "$profile_id" schedule ""
+	config_get enabled "$profile_id" enabled "1"
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Profile not found"
+		json_dump
+		return 1
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$profile_id"
+	json_add_string "name" "$name"
+	json_add_string "description" "$description"
+	json_add_string "icon" "$icon"
+	json_add_string "color" "$color"
+	json_add_int "priority" "$priority"
+	json_add_int "limit_down" "$limit_down"
+	json_add_int "limit_up" "$limit_up"
+	json_add_string "latency_mode" "$latency_mode"
+	json_add_string "content_filter" "$content_filter"
+	json_add_boolean "isolate" "$isolate"
+	json_add_string "schedule" "$schedule"
+	json_add_boolean "enabled" "$enabled"
+
+	# Get assigned devices
+	json_add_array "assigned_devices"
+	_add_assigned() {
+		local mac profile custom_limit_down custom_limit_up
+		config_get mac "$1" mac ""
+		config_get profile "$1" profile ""
+		config_get custom_limit_down "$1" custom_limit_down "0"
+		config_get custom_limit_up "$1" custom_limit_up "0"
+
+		if [ "$profile" = "$profile_id" ]; then
+			local hostname ip
+			hostname=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $4}')
+			ip=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $3}')
+
+			json_add_object ""
+			json_add_string "mac" "$mac"
+			json_add_string "hostname" "${hostname:-unknown}"
+			json_add_string "ip" "${ip:-}"
+			json_add_int "custom_limit_down" "$custom_limit_down"
+			json_add_int "custom_limit_up" "$custom_limit_up"
+			json_close_object
+		fi
+	}
+	config_foreach _add_assigned device_profile
+	json_close_array
+
+	json_dump
+}
+
+# Create new profile
+create_profile() {
+	read -r input
+	json_load "$input"
+
+	local name description icon color priority limit_down limit_up latency_mode content_filter isolate schedule
+	json_get_var name name
+	json_get_var description description ""
+	json_get_var icon icon "tag"
+	json_get_var color color "#6366f1"
+	json_get_var priority priority "5"
+	json_get_var limit_down limit_down "0"
+	json_get_var limit_up limit_up "0"
+	json_get_var latency_mode latency_mode "normal"
+	json_get_var content_filter content_filter ""
+	json_get_var isolate isolate "0"
+	json_get_var schedule schedule ""
+	json_cleanup
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Profile name is required"
+		json_dump
+		return 1
+	fi
+
+	local profile_id="profile_$(date +%s)"
+
+	uci -q batch << EOF
+set bandwidth.$profile_id=profile
+set bandwidth.$profile_id.name='$name'
+set bandwidth.$profile_id.description='$description'
+set bandwidth.$profile_id.icon='$icon'
+set bandwidth.$profile_id.color='$color'
+set bandwidth.$profile_id.priority='$priority'
+set bandwidth.$profile_id.limit_down='$limit_down'
+set bandwidth.$profile_id.limit_up='$limit_up'
+set bandwidth.$profile_id.latency_mode='$latency_mode'
+set bandwidth.$profile_id.content_filter='$content_filter'
+set bandwidth.$profile_id.isolate='$isolate'
+set bandwidth.$profile_id.schedule='$schedule'
+set bandwidth.$profile_id.enabled='1'
+commit bandwidth
+EOF
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "profile_id" "$profile_id"
+	json_add_string "message" "Profile created successfully"
+	json_dump
+}
+
+# Update profile
+update_profile() {
+	read -r input
+	json_load "$input"
+
+	local profile_id name description icon color priority limit_down limit_up latency_mode content_filter isolate schedule enabled
+	json_get_var profile_id profile_id
+	json_get_var name name
+	json_get_var description description ""
+	json_get_var icon icon "tag"
+	json_get_var color color "#6366f1"
+	json_get_var priority priority "5"
+	json_get_var limit_down limit_down "0"
+	json_get_var limit_up limit_up "0"
+	json_get_var latency_mode latency_mode "normal"
+	json_get_var content_filter content_filter ""
+	json_get_var isolate isolate "0"
+	json_get_var schedule schedule ""
+	json_get_var enabled enabled "1"
+	json_cleanup
+
+	if [ -z "$profile_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Profile ID is required"
+		json_dump
+		return 1
+	fi
+
+	# Check if profile exists
+	config_load bandwidth
+	local existing_name
+	config_get existing_name "$profile_id" name ""
+	if [ -z "$existing_name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Profile not found"
+		json_dump
+		return 1
+	fi
+
+	uci -q batch << EOF
+set bandwidth.$profile_id.name='$name'
+set bandwidth.$profile_id.description='$description'
+set bandwidth.$profile_id.icon='$icon'
+set bandwidth.$profile_id.color='$color'
+set bandwidth.$profile_id.priority='$priority'
+set bandwidth.$profile_id.limit_down='$limit_down'
+set bandwidth.$profile_id.limit_up='$limit_up'
+set bandwidth.$profile_id.latency_mode='$latency_mode'
+set bandwidth.$profile_id.content_filter='$content_filter'
+set bandwidth.$profile_id.isolate='$isolate'
+set bandwidth.$profile_id.schedule='$schedule'
+set bandwidth.$profile_id.enabled='$enabled'
+commit bandwidth
+EOF
+
+	# Apply QoS rules for assigned devices
+	apply_profile_qos "$profile_id"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Profile updated successfully"
+	json_dump
+}
+
+# Delete profile
+delete_profile() {
+	read -r input
+	json_load "$input"
+
+	local profile_id
+	json_get_var profile_id profile_id
+	json_cleanup
+
+	if [ -z "$profile_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Profile ID is required"
+		json_dump
+		return 1
+	fi
+
+	# Check if profile exists
+	if ! uci -q get bandwidth.$profile_id >/dev/null 2>&1; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Profile not found"
+		json_dump
+		return 1
+	fi
+
+	# Remove profile assignments first
+	config_load bandwidth
+	_remove_assignments() {
+		local profile
+		config_get profile "$1" profile ""
+		[ "$profile" = "$profile_id" ] && uci -q delete bandwidth.$1
+	}
+	config_foreach _remove_assignments device_profile
+
+	uci -q delete bandwidth.$profile_id
+	uci -q commit bandwidth
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Profile deleted successfully"
+	json_dump
+}
+
+# Clone an existing profile
+clone_profile() {
+	read -r input
+	json_load "$input"
+
+	local source_id new_name
+	json_get_var source_id source_id
+	json_get_var new_name new_name
+	json_cleanup
+
+	if [ -z "$source_id" ] || [ -z "$new_name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Source profile ID and new name are required"
+		json_dump
+		return 1
+	fi
+
+	config_load bandwidth
+
+	local description icon color priority limit_down limit_up latency_mode content_filter isolate schedule
+	config_get description "$source_id" description ""
+	config_get icon "$source_id" icon "tag"
+	config_get color "$source_id" color "#6366f1"
+	config_get priority "$source_id" priority "5"
+	config_get limit_down "$source_id" limit_down "0"
+	config_get limit_up "$source_id" limit_up "0"
+	config_get latency_mode "$source_id" latency_mode "normal"
+	config_get content_filter "$source_id" content_filter ""
+	config_get isolate "$source_id" isolate "0"
+	config_get schedule "$source_id" schedule ""
+
+	local profile_id="profile_$(date +%s)"
+
+	uci -q batch << EOF
+set bandwidth.$profile_id=profile
+set bandwidth.$profile_id.name='$new_name'
+set bandwidth.$profile_id.description='$description (copy)'
+set bandwidth.$profile_id.icon='$icon'
+set bandwidth.$profile_id.color='$color'
+set bandwidth.$profile_id.priority='$priority'
+set bandwidth.$profile_id.limit_down='$limit_down'
+set bandwidth.$profile_id.limit_up='$limit_up'
+set bandwidth.$profile_id.latency_mode='$latency_mode'
+set bandwidth.$profile_id.content_filter='$content_filter'
+set bandwidth.$profile_id.isolate='$isolate'
+set bandwidth.$profile_id.schedule='$schedule'
+set bandwidth.$profile_id.enabled='1'
+commit bandwidth
+EOF
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "profile_id" "$profile_id"
+	json_add_string "message" "Profile cloned successfully"
+	json_dump
+}
+
+# Assign profile to device
+assign_profile_to_device() {
+	read -r input
+	json_load "$input"
+
+	local mac profile_id custom_limit_down custom_limit_up
+	json_get_var mac mac
+	json_get_var profile_id profile_id
+	json_get_var custom_limit_down custom_limit_down "0"
+	json_get_var custom_limit_up custom_limit_up "0"
+	json_cleanup
+
+	if [ -z "$mac" ] || [ -z "$profile_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "MAC address and profile ID are required"
+		json_dump
+		return 1
+	fi
+
+	# Check if device already has an assignment
+	config_load bandwidth
+	local existing_assignment=""
+	_find_assignment() {
+		local this_mac
+		config_get this_mac "$1" mac ""
+		[ "$this_mac" = "$mac" ] && existing_assignment="$1"
+	}
+	config_foreach _find_assignment device_profile
+
+	if [ -n "$existing_assignment" ]; then
+		# Update existing
+		uci -q batch << EOF
+set bandwidth.$existing_assignment.profile='$profile_id'
+set bandwidth.$existing_assignment.custom_limit_down='$custom_limit_down'
+set bandwidth.$existing_assignment.custom_limit_up='$custom_limit_up'
+commit bandwidth
+EOF
+	else
+		# Create new
+		local dp_id="dp_$(date +%s)_$(echo "$mac" | tr ':' '' | tail -c 7)"
+		uci -q batch << EOF
+set bandwidth.$dp_id=device_profile
+set bandwidth.$dp_id.mac='$mac'
+set bandwidth.$dp_id.profile='$profile_id'
+set bandwidth.$dp_id.custom_limit_down='$custom_limit_down'
+set bandwidth.$dp_id.custom_limit_up='$custom_limit_up'
+commit bandwidth
+EOF
+	fi
+
+	# Apply QoS
+	apply_device_qos "$mac" "$profile_id" "$custom_limit_down" "$custom_limit_up"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Profile assigned to device"
+	json_dump
+}
+
+# Assign profile to group
+assign_profile_to_group() {
+	read -r input
+	json_load "$input"
+
+	local group_id profile_id
+	json_get_var group_id group_id
+	json_get_var profile_id profile_id
+	json_cleanup
+
+	if [ -z "$group_id" ] || [ -z "$profile_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Group ID and profile ID are required"
+		json_dump
+		return 1
+	fi
+
+	config_load bandwidth
+	local members
+	config_get members "$group_id" members ""
+
+	local assigned=0
+	for mac in $members; do
+		local dp_id="dp_$(date +%s)_$(echo "$mac" | tr ':' '' | tail -c 7)"
+
+		# Check existing
+		local existing=""
+		_find_dev() {
+			local this_mac
+			config_get this_mac "$1" mac ""
+			[ "$this_mac" = "$mac" ] && existing="$1"
+		}
+		config_foreach _find_dev device_profile
+
+		if [ -n "$existing" ]; then
+			uci -q set bandwidth.$existing.profile="$profile_id"
+		else
+			uci -q batch << EOF
+set bandwidth.$dp_id=device_profile
+set bandwidth.$dp_id.mac='$mac'
+set bandwidth.$dp_id.profile='$profile_id'
+set bandwidth.$dp_id.custom_limit_down='0'
+set bandwidth.$dp_id.custom_limit_up='0'
+EOF
+		fi
+		assigned=$(( assigned + 1 ))
+	done
+
+	uci -q commit bandwidth
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_int "assigned_count" "$assigned"
+	json_add_string "message" "Profile assigned to $assigned devices in group"
+	json_dump
+}
+
+# Remove profile assignment
+remove_profile_assignment() {
+	read -r input
+	json_load "$input"
+
+	local mac
+	json_get_var mac mac
+	json_cleanup
+
+	if [ -z "$mac" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "MAC address is required"
+		json_dump
+		return 1
+	fi
+
+	config_load bandwidth
+	local found=""
+	_find_dp() {
+		local this_mac
+		config_get this_mac "$1" mac ""
+		[ "$this_mac" = "$mac" ] && found="$1"
+	}
+	config_foreach _find_dp device_profile
+
+	if [ -n "$found" ]; then
+		uci -q delete bandwidth.$found
+		uci -q commit bandwidth
+		# Remove QoS rules for this device
+		remove_device_qos "$mac"
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Profile assignment removed"
+	json_dump
+}
+
+# List profile assignments
+list_profile_assignments() {
+	config_load bandwidth
+	json_init
+	json_add_array "assignments"
+
+	_add_assignment() {
+		local mac profile custom_limit_down custom_limit_up
+		config_get mac "$1" mac ""
+		config_get profile "$1" profile ""
+		config_get custom_limit_down "$1" custom_limit_down "0"
+		config_get custom_limit_up "$1" custom_limit_up "0"
+
+		local hostname ip
+		hostname=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $4}')
+		ip=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $3}')
+
+		# Get profile name
+		local profile_name
+		config_get profile_name "$profile" name ""
+
+		json_add_object ""
+		json_add_string "id" "$1"
+		json_add_string "mac" "$mac"
+		json_add_string "hostname" "${hostname:-unknown}"
+		json_add_string "ip" "${ip:-}"
+		json_add_string "profile" "$profile"
+		json_add_string "profile_name" "$profile_name"
+		json_add_int "custom_limit_down" "$custom_limit_down"
+		json_add_int "custom_limit_up" "$custom_limit_up"
+		json_close_object
+	}
+
+	config_foreach _add_assignment device_profile
+
+	json_close_array
+	json_dump
+}
+
+# Apply QoS for profile (internal)
+apply_profile_qos() {
+	local profile_id="$1"
+	config_load bandwidth
+
+	local priority limit_down limit_up
+	config_get priority "$profile_id" priority "5"
+	config_get limit_down "$profile_id" limit_down "0"
+	config_get limit_up "$profile_id" limit_up "0"
+
+	# Apply to all assigned devices
+	_apply_device() {
+		local mac profile custom_down custom_up
+		config_get mac "$1" mac ""
+		config_get profile "$1" profile ""
+		config_get custom_down "$1" custom_limit_down "0"
+		config_get custom_up "$1" custom_limit_up "0"
+
+		if [ "$profile" = "$profile_id" ]; then
+			local eff_down=$(( custom_down > 0 ? custom_down : limit_down ))
+			local eff_up=$(( custom_up > 0 ? custom_up : limit_up ))
+			apply_device_qos "$mac" "$profile_id" "$eff_down" "$eff_up"
+		fi
+	}
+	config_foreach _apply_device device_profile
+}
+
+# Apply QoS for single device (internal)
+apply_device_qos() {
+	local mac="$1"
+	local profile_id="$2"
+	local limit_down="$3"
+	local limit_up="$4"
+
+	# Get profile priority
+	config_load bandwidth
+	local priority
+	config_get priority "$profile_id" priority "5"
+
+	local interface
+	config_get interface global interface "br-lan"
+
+	# Apply tc rules if limits are set
+	if [ "$limit_down" -gt 0 ] || [ "$limit_up" -gt 0 ]; then
+		# Mark packets from this MAC for QoS class
+		iptables -t mangle -D PREROUTING -m mac --mac-source "$mac" -j MARK --set-mark "$priority" 2>/dev/null
+		iptables -t mangle -A PREROUTING -m mac --mac-source "$mac" -j MARK --set-mark "$priority"
+
+		# Could add tc filter here for rate limiting
+		# tc filter add dev $interface parent 1: protocol ip prio $priority handle $priority fw flowid 1:$priority
+	fi
+}
+
+# Remove QoS for device (internal)
+remove_device_qos() {
+	local mac="$1"
+	# Remove iptables rules
+	for i in 1 2 3 4 5 6 7 8; do
+		iptables -t mangle -D PREROUTING -m mac --mac-source "$mac" -j MARK --set-mark "$i" 2>/dev/null
+	done
+}
+
+# ============================================
+# Parental Controls
+# ============================================
+
+# List parental schedules
+list_parental_schedules() {
+	config_load bandwidth
+	json_init
+	json_add_array "schedules"
+
+	_add_parental_schedule() {
+		local name enabled target_type target action start_time end_time days
+		config_get name "$1" name ""
+		config_get enabled "$1" enabled "1"
+		config_get target_type "$1" target_type "device"
+		config_get target "$1" target ""
+		config_get action "$1" action "block"
+		config_get start_time "$1" start_time "21:00"
+		config_get end_time "$1" end_time "07:00"
+		config_get days "$1" days ""
+
+		# Check if currently active
+		local active=0
+		local current_day=$(date +%a | tr '[:upper:]' '[:lower:]')
+		local current_time=$(date +%H:%M)
+		if [ "$enabled" = "1" ] && echo "$days" | grep -qi "$current_day"; then
+			if [ "$start_time" \< "$end_time" ]; then
+				[ "$current_time" \> "$start_time" ] && [ "$current_time" \< "$end_time" ] && active=1
+			else
+				# Overnight schedule
+				[ "$current_time" \> "$start_time" ] || [ "$current_time" \< "$end_time" ] && active=1
+			fi
+		fi
+
+		json_add_object ""
+		json_add_string "id" "$1"
+		json_add_string "name" "$name"
+		json_add_boolean "enabled" "$enabled"
+		json_add_string "target_type" "$target_type"
+		json_add_string "target" "$target"
+		json_add_string "action" "$action"
+		json_add_string "start_time" "$start_time"
+		json_add_string "end_time" "$end_time"
+		json_add_string "days" "$days"
+		json_add_boolean "active" "$active"
+		json_close_object
+	}
+
+	config_foreach _add_parental_schedule parental_schedule
+
+	json_close_array
+	json_dump
+}
+
+# Create parental schedule
+create_parental_schedule() {
+	read -r input
+	json_load "$input"
+
+	local name target_type target action start_time end_time days
+	json_get_var name name
+	json_get_var target_type target_type "device"
+	json_get_var target target
+	json_get_var action action "block"
+	json_get_var start_time start_time "21:00"
+	json_get_var end_time end_time "07:00"
+	json_get_var days days "mon tue wed thu fri"
+	json_cleanup
+
+	if [ -z "$name" ] || [ -z "$target" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Name and target are required"
+		json_dump
+		return 1
+	fi
+
+	local schedule_id="ps_$(date +%s)"
+
+	uci -q batch << EOF
+set bandwidth.$schedule_id=parental_schedule
+set bandwidth.$schedule_id.name='$name'
+set bandwidth.$schedule_id.enabled='1'
+set bandwidth.$schedule_id.target_type='$target_type'
+set bandwidth.$schedule_id.target='$target'
+set bandwidth.$schedule_id.action='$action'
+set bandwidth.$schedule_id.start_time='$start_time'
+set bandwidth.$schedule_id.end_time='$end_time'
+set bandwidth.$schedule_id.days='$days'
+commit bandwidth
+EOF
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "schedule_id" "$schedule_id"
+	json_add_string "message" "Parental schedule created"
+	json_dump
+}
+
+# Update parental schedule
+update_parental_schedule() {
+	read -r input
+	json_load "$input"
+
+	local schedule_id name target_type target action start_time end_time days enabled
+	json_get_var schedule_id schedule_id
+	json_get_var name name
+	json_get_var target_type target_type "device"
+	json_get_var target target
+	json_get_var action action "block"
+	json_get_var start_time start_time "21:00"
+	json_get_var end_time end_time "07:00"
+	json_get_var days days "mon tue wed thu fri"
+	json_get_var enabled enabled "1"
+	json_cleanup
+
+	if [ -z "$schedule_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Schedule ID is required"
+		json_dump
+		return 1
+	fi
+
+	uci -q batch << EOF
+set bandwidth.$schedule_id.name='$name'
+set bandwidth.$schedule_id.enabled='$enabled'
+set bandwidth.$schedule_id.target_type='$target_type'
+set bandwidth.$schedule_id.target='$target'
+set bandwidth.$schedule_id.action='$action'
+set bandwidth.$schedule_id.start_time='$start_time'
+set bandwidth.$schedule_id.end_time='$end_time'
+set bandwidth.$schedule_id.days='$days'
+commit bandwidth
+EOF
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Parental schedule updated"
+	json_dump
+}
+
+# Delete parental schedule
+delete_parental_schedule() {
+	read -r input
+	json_load "$input"
+
+	local schedule_id
+	json_get_var schedule_id schedule_id
+	json_cleanup
+
+	if [ -z "$schedule_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Schedule ID is required"
+		json_dump
+		return 1
+	fi
+
+	uci -q delete bandwidth.$schedule_id
+	uci -q commit bandwidth
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Parental schedule deleted"
+	json_dump
+}
+
+# Toggle parental schedule
+toggle_parental_schedule() {
+	read -r input
+	json_load "$input"
+
+	local schedule_id enabled
+	json_get_var schedule_id schedule_id
+	json_get_var enabled enabled
+	json_cleanup
+
+	if [ -z "$schedule_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Schedule ID is required"
+		json_dump
+		return 1
+	fi
+
+	uci -q set bandwidth.$schedule_id.enabled="$enabled"
+	uci -q commit bandwidth
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Schedule toggled"
+	json_dump
+}
+
+# List preset modes
+list_preset_modes() {
+	config_load bandwidth
+	json_init
+	json_add_array "presets"
+
+	_add_preset() {
+		local name icon enabled action allowed_categories blocked_categories
+		config_get name "$1" name ""
+		config_get icon "$1" icon "clock"
+		config_get enabled "$1" enabled "0"
+		config_get action "$1" action "block"
+		config_get allowed_categories "$1" allowed_categories ""
+		config_get blocked_categories "$1" blocked_categories ""
+
+		json_add_object ""
+		json_add_string "id" "$1"
+		json_add_string "name" "$name"
+		json_add_string "icon" "$icon"
+		json_add_boolean "enabled" "$enabled"
+		json_add_string "action" "$action"
+		json_add_string "allowed_categories" "$allowed_categories"
+		json_add_string "blocked_categories" "$blocked_categories"
+		json_close_object
+	}
+
+	config_foreach _add_preset preset_mode
+
+	# Add built-in presets if none exist
+	local preset_count=0
+	config_foreach _count_preset preset_mode
+	_count_preset() { preset_count=$(( preset_count + 1 )); }
+
+	if [ "$preset_count" -eq 0 ]; then
+		json_add_object ""
+		json_add_string "id" "preset_bedtime"
+		json_add_string "name" "Bedtime"
+		json_add_string "icon" "moon"
+		json_add_boolean "enabled" 0
+		json_add_string "action" "block"
+		json_add_string "blocked_categories" "all"
+		json_add_boolean "builtin" 1
+		json_close_object
+
+		json_add_object ""
+		json_add_string "id" "preset_homework"
+		json_add_string "name" "Homework"
+		json_add_string "icon" "book"
+		json_add_boolean "enabled" 0
+		json_add_string "action" "filter"
+		json_add_string "allowed_categories" "education reference"
+		json_add_string "blocked_categories" "gaming social streaming"
+		json_add_boolean "builtin" 1
+		json_close_object
+
+		json_add_object ""
+		json_add_string "id" "preset_family"
+		json_add_string "name" "Family Time"
+		json_add_string "icon" "users"
+		json_add_boolean "enabled" 0
+		json_add_string "action" "filter"
+		json_add_string "allowed_categories" "streaming education"
+		json_add_string "blocked_categories" "adult gambling"
+		json_add_boolean "builtin" 1
+		json_close_object
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Activate preset mode
+activate_preset_mode() {
+	read -r input
+	json_load "$input"
+
+	local preset_id enabled
+	json_get_var preset_id preset_id
+	json_get_var enabled enabled "1"
+	json_cleanup
+
+	if [ -z "$preset_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Preset ID is required"
+		json_dump
+		return 1
+	fi
+
+	# Deactivate all other presets first
+	config_load bandwidth
+	_deactivate_other() {
+		[ "$1" != "$preset_id" ] && uci -q set bandwidth.$1.enabled='0'
+	}
+	config_foreach _deactivate_other preset_mode
+
+	# Activate this one
+	uci -q set bandwidth.$preset_id.enabled="$enabled"
+	uci -q commit bandwidth
+
+	# Apply firewall rules based on preset
+	apply_preset_rules "$preset_id" "$enabled"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Preset mode activated"
+	json_dump
+}
+
+# Apply preset firewall rules (internal)
+apply_preset_rules() {
+	local preset_id="$1"
+	local enabled="$2"
+
+	# Would add iptables/nftables rules here for content filtering
+	# For now, just log the action
+	logger -t bandwidth-manager "Preset $preset_id set to enabled=$enabled"
+}
+
+# Get filter categories
+get_filter_categories() {
+	json_init
+	json_add_array "categories"
+
+	# Standard categories
+	local categories="adult gambling gaming social streaming education news shopping finance health travel technology sports entertainment reference downloads"
+
+	for cat in $categories; do
+		json_add_object ""
+		json_add_string "id" "$cat"
+		json_add_string "name" "$(echo "$cat" | sed 's/.*/\u&/')"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# ============================================
+# Bandwidth Alerts
+# ============================================
+
+ALERT_HISTORY="/tmp/bandwidth_alerts.log"
+PENDING_ALERTS="/tmp/bandwidth_pending_alerts.json"
+
+# Get alert settings
+get_alert_settings() {
+	config_load bandwidth
+	json_init
+
+	local enabled quota_threshold_80 quota_threshold_90 quota_threshold_100 new_device_alert high_bandwidth_alert high_bandwidth_threshold
+	config_get enabled alerts enabled "0"
+	config_get quota_threshold_80 alerts quota_threshold_80 "1"
+	config_get quota_threshold_90 alerts quota_threshold_90 "1"
+	config_get quota_threshold_100 alerts quota_threshold_100 "1"
+	config_get new_device_alert alerts new_device_alert "0"
+	config_get high_bandwidth_alert alerts high_bandwidth_alert "0"
+	config_get high_bandwidth_threshold alerts high_bandwidth_threshold "100"
+
+	json_add_boolean "enabled" "$enabled"
+	json_add_boolean "quota_threshold_80" "$quota_threshold_80"
+	json_add_boolean "quota_threshold_90" "$quota_threshold_90"
+	json_add_boolean "quota_threshold_100" "$quota_threshold_100"
+	json_add_boolean "new_device_alert" "$new_device_alert"
+	json_add_boolean "high_bandwidth_alert" "$high_bandwidth_alert"
+	json_add_int "high_bandwidth_threshold" "$high_bandwidth_threshold"
+
+	# Email config
+	local smtp_server smtp_port smtp_user smtp_tls recipient sender
+	config_get smtp_server email smtp_server ""
+	config_get smtp_port email smtp_port "587"
+	config_get smtp_user email smtp_user ""
+	config_get smtp_tls email smtp_tls "1"
+	config_get recipient email recipient ""
+	config_get sender email sender ""
+
+	json_add_object "email"
+	json_add_string "smtp_server" "$smtp_server"
+	json_add_int "smtp_port" "$smtp_port"
+	json_add_string "smtp_user" "$smtp_user"
+	json_add_boolean "smtp_tls" "$smtp_tls"
+	json_add_string "recipient" "$recipient"
+	json_add_string "sender" "$sender"
+	json_add_boolean "configured" "$([ -n "$smtp_server" ] && [ -n "$recipient" ] && echo 1 || echo 0)"
+	json_close_object
+
+	# SMS config
+	local sms_provider account_sid from_number to_number
+	config_get sms_provider sms provider ""
+	config_get account_sid sms account_sid ""
+	config_get from_number sms from_number ""
+	config_get to_number sms to_number ""
+
+	json_add_object "sms"
+	json_add_string "provider" "$sms_provider"
+	json_add_string "from_number" "$from_number"
+	json_add_string "to_number" "$to_number"
+	json_add_boolean "configured" "$([ -n "$sms_provider" ] && [ -n "$to_number" ] && echo 1 || echo 0)"
+	json_close_object
+
+	json_dump
+}
+
+# Update alert settings
+update_alert_settings() {
+	read -r input
+	json_load "$input"
+
+	local enabled quota_threshold_80 quota_threshold_90 quota_threshold_100 new_device_alert high_bandwidth_alert high_bandwidth_threshold
+	json_get_var enabled enabled "0"
+	json_get_var quota_threshold_80 quota_threshold_80 "1"
+	json_get_var quota_threshold_90 quota_threshold_90 "1"
+	json_get_var quota_threshold_100 quota_threshold_100 "1"
+	json_get_var new_device_alert new_device_alert "0"
+	json_get_var high_bandwidth_alert high_bandwidth_alert "0"
+	json_get_var high_bandwidth_threshold high_bandwidth_threshold "100"
+	json_cleanup
+
+	uci -q batch << EOF
+set bandwidth.alerts.enabled='$enabled'
+set bandwidth.alerts.quota_threshold_80='$quota_threshold_80'
+set bandwidth.alerts.quota_threshold_90='$quota_threshold_90'
+set bandwidth.alerts.quota_threshold_100='$quota_threshold_100'
+set bandwidth.alerts.new_device_alert='$new_device_alert'
+set bandwidth.alerts.high_bandwidth_alert='$high_bandwidth_alert'
+set bandwidth.alerts.high_bandwidth_threshold='$high_bandwidth_threshold'
+commit bandwidth
+EOF
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Alert settings updated"
+	json_dump
+}
+
+# Configure email settings
+configure_email() {
+	read -r input
+	json_load "$input"
+
+	local smtp_server smtp_port smtp_user smtp_password smtp_tls recipient sender
+	json_get_var smtp_server smtp_server
+	json_get_var smtp_port smtp_port "587"
+	json_get_var smtp_user smtp_user ""
+	json_get_var smtp_password smtp_password ""
+	json_get_var smtp_tls smtp_tls "1"
+	json_get_var recipient recipient
+	json_get_var sender sender ""
+	json_cleanup
+
+	if [ -z "$smtp_server" ] || [ -z "$recipient" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "SMTP server and recipient are required"
+		json_dump
+		return 1
+	fi
+
+	uci -q batch << EOF
+set bandwidth.email.smtp_server='$smtp_server'
+set bandwidth.email.smtp_port='$smtp_port'
+set bandwidth.email.smtp_user='$smtp_user'
+set bandwidth.email.smtp_password='$smtp_password'
+set bandwidth.email.smtp_tls='$smtp_tls'
+set bandwidth.email.recipient='$recipient'
+set bandwidth.email.sender='$sender'
+commit bandwidth
+EOF
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Email settings configured"
+	json_dump
+}
+
+# Configure SMS settings
+configure_sms() {
+	read -r input
+	json_load "$input"
+
+	local provider account_sid auth_token from_number to_number
+	json_get_var provider provider
+	json_get_var account_sid account_sid ""
+	json_get_var auth_token auth_token ""
+	json_get_var from_number from_number ""
+	json_get_var to_number to_number
+	json_cleanup
+
+	if [ -z "$provider" ] || [ -z "$to_number" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "Provider and to_number are required"
+		json_dump
+		return 1
+	fi
+
+	uci -q batch << EOF
+set bandwidth.sms.provider='$provider'
+set bandwidth.sms.account_sid='$account_sid'
+set bandwidth.sms.auth_token='$auth_token'
+set bandwidth.sms.from_number='$from_number'
+set bandwidth.sms.to_number='$to_number'
+commit bandwidth
+EOF
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "SMS settings configured"
+	json_dump
+}
+
+# Test notification
+test_notification() {
+	read -r input
+	json_load "$input"
+
+	local type
+	json_get_var type type "email"
+	json_cleanup
+
+	config_load bandwidth
+
+	if [ "$type" = "email" ]; then
+		local smtp_server recipient sender
+		config_get smtp_server email smtp_server ""
+		config_get recipient email recipient ""
+		config_get sender email sender "secubox@router.local"
+
+		if [ -z "$smtp_server" ] || [ -z "$recipient" ]; then
+			json_init
+			json_add_boolean "success" 0
+			json_add_string "message" "Email not configured"
+			json_dump
+			return 1
+		fi
+
+		# Send test email using msmtp or sendmail
+		if command -v msmtp >/dev/null 2>&1; then
+			echo -e "Subject: SecuBox Test Alert\n\nThis is a test notification from SecuBox Bandwidth Manager." | \
+				msmtp -a default "$recipient" 2>/dev/null
+		elif command -v sendmail >/dev/null 2>&1; then
+			echo -e "To: $recipient\nFrom: $sender\nSubject: SecuBox Test Alert\n\nThis is a test notification from SecuBox Bandwidth Manager." | \
+				sendmail "$recipient" 2>/dev/null
+		else
+			json_init
+			json_add_boolean "success" 0
+			json_add_string "message" "No mail client available (msmtp or sendmail)"
+			json_dump
+			return 1
+		fi
+	elif [ "$type" = "sms" ]; then
+		local provider to_number
+		config_get provider sms provider ""
+		config_get to_number sms to_number ""
+
+		if [ -z "$provider" ] || [ -z "$to_number" ]; then
+			json_init
+			json_add_boolean "success" 0
+			json_add_string "message" "SMS not configured"
+			json_dump
+			return 1
+		fi
+
+		# SMS sending would require provider-specific implementation
+		# For now, just log
+		logger -t bandwidth-manager "Test SMS would be sent to $to_number via $provider"
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Test notification sent"
+	json_dump
+}
+
+# Get alert history
+get_alert_history() {
+	read -r input
+	json_load "$input"
+
+	local limit
+	json_get_var limit limit "50"
+	json_cleanup
+
+	json_init
+	json_add_array "alerts"
+
+	if [ -f "$ALERT_HISTORY" ]; then
+		tail -n "$limit" "$ALERT_HISTORY" | while IFS='|' read timestamp type severity message acknowledged; do
+			json_add_object ""
+			json_add_string "timestamp" "$timestamp"
+			json_add_string "type" "$type"
+			json_add_string "severity" "$severity"
+			json_add_string "message" "$message"
+			json_add_boolean "acknowledged" "${acknowledged:-0}"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Acknowledge alert
+acknowledge_alert() {
+	read -r input
+	json_load "$input"
+
+	local timestamp
+	json_get_var timestamp timestamp
+	json_cleanup
+
+	if [ -f "$ALERT_HISTORY" ] && [ -n "$timestamp" ]; then
+		sed -i "s/^${timestamp}|\\(.*\\)|0\$/\1|1/" "$ALERT_HISTORY"
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Alert acknowledged"
+	json_dump
+}
+
+# Get pending (unacknowledged) alerts
+get_pending_alerts() {
+	json_init
+	json_add_array "alerts"
+
+	local count=0
+	if [ -f "$ALERT_HISTORY" ]; then
+		grep '|0$' "$ALERT_HISTORY" 2>/dev/null | while IFS='|' read timestamp type severity message acknowledged; do
+			json_add_object ""
+			json_add_string "timestamp" "$timestamp"
+			json_add_string "type" "$type"
+			json_add_string "severity" "$severity"
+			json_add_string "message" "$message"
+			json_close_object
+			count=$(( count + 1 ))
+		done
+	fi
+
+	json_close_array
+	json_add_int "count" "$count"
+	json_dump
+}
+
+# Check thresholds and create alerts (called by cron)
+check_alert_thresholds() {
+	config_load bandwidth
+
+	local enabled
+	config_get enabled alerts enabled "0"
+	[ "$enabled" != "1" ] && return
+
+	local quota_threshold_80 quota_threshold_90 quota_threshold_100
+	config_get quota_threshold_80 alerts quota_threshold_80 "1"
+	config_get quota_threshold_90 alerts quota_threshold_90 "1"
+	config_get quota_threshold_100 alerts quota_threshold_100 "1"
+
+	# Check each quota
+	_check_quota() {
+		local mac name limit_mb enabled
+		config_get mac "$1" mac ""
+		config_get name "$1" name ""
+		config_get limit_mb "$1" limit_mb "0"
+		config_get enabled "$1" enabled "1"
+
+		[ "$enabled" != "1" ] || [ "$limit_mb" -eq 0 ] && return
+
+		local used_mb=$(get_mac_usage "$mac")
+		local percent=$(( (used_mb * 100) / limit_mb ))
+
+		local alert_key="${mac}_${percent}"
+		local sent_file="/tmp/bandwidth_alert_sent_$alert_key"
+
+		if [ "$percent" -ge 100 ] && [ "$quota_threshold_100" = "1" ] && [ ! -f "$sent_file" ]; then
+			create_alert "quota" "critical" "Device $name ($mac) has exceeded 100% of quota ($used_mb MB / $limit_mb MB)"
+			touch "$sent_file"
+		elif [ "$percent" -ge 90 ] && [ "$quota_threshold_90" = "1" ] && [ ! -f "/tmp/bandwidth_alert_sent_${mac}_90" ]; then
+			create_alert "quota" "warning" "Device $name ($mac) has reached 90% of quota ($used_mb MB / $limit_mb MB)"
+			touch "/tmp/bandwidth_alert_sent_${mac}_90"
+		elif [ "$percent" -ge 80 ] && [ "$quota_threshold_80" = "1" ] && [ ! -f "/tmp/bandwidth_alert_sent_${mac}_80" ]; then
+			create_alert "quota" "info" "Device $name ($mac) has reached 80% of quota ($used_mb MB / $limit_mb MB)"
+			touch "/tmp/bandwidth_alert_sent_${mac}_80"
+		fi
+	}
+	config_foreach _check_quota quota
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Create alert (internal)
+create_alert() {
+	local type="$1"
+	local severity="$2"
+	local message="$3"
+
+	local timestamp=$(date +%s)
+	echo "${timestamp}|${type}|${severity}|${message}|0" >> "$ALERT_HISTORY"
+
+	# Send notification if configured
+	send_alert_notification "$type" "$severity" "$message"
+}
+
+# Send alert notification (internal)
+send_alert_notification() {
+	local type="$1"
+	local severity="$2"
+	local message="$3"
+
+	config_load bandwidth
+
+	# Check if email is configured and send
+	local smtp_server recipient
+	config_get smtp_server email smtp_server ""
+	config_get recipient email recipient ""
+
+	if [ -n "$smtp_server" ] && [ -n "$recipient" ]; then
+		local sender
+		config_get sender email sender "secubox@router.local"
+
+		if command -v msmtp >/dev/null 2>&1; then
+			echo -e "Subject: [SecuBox] ${severity}: ${type} alert\n\n${message}" | \
+				msmtp -a default "$recipient" 2>/dev/null &
+		fi
+	fi
+
+	# Log to syslog
+	logger -t bandwidth-manager "ALERT [$severity] $type: $message"
+}
+
+# ============================================
+# Traffic Graphs Data
+# ============================================
+
+# Get real-time bandwidth (current Mbps)
+get_realtime_bandwidth() {
+	local interface
+	config_load bandwidth
+	config_get interface global interface "br-lan"
+
+	# Get current values
+	local rx1=$(cat /sys/class/net/$interface/statistics/rx_bytes 2>/dev/null || echo 0)
+	local tx1=$(cat /sys/class/net/$interface/statistics/tx_bytes 2>/dev/null || echo 0)
+
+	# Wait 1 second
+	sleep 1
+
+	# Get new values
+	local rx2=$(cat /sys/class/net/$interface/statistics/rx_bytes 2>/dev/null || echo 0)
+	local tx2=$(cat /sys/class/net/$interface/statistics/tx_bytes 2>/dev/null || echo 0)
+
+	# Calculate Mbps
+	local rx_bps=$(( (rx2 - rx1) * 8 ))
+	local tx_bps=$(( (tx2 - tx1) * 8 ))
+	local rx_mbps=$(( rx_bps / 1000000 ))
+	local tx_mbps=$(( tx_bps / 1000000 ))
+
+	json_init
+	json_add_int "rx_mbps" "$rx_mbps"
+	json_add_int "tx_mbps" "$tx_mbps"
+	json_add_int "rx_bps" "$rx_bps"
+	json_add_int "tx_bps" "$tx_bps"
+	json_add_int "timestamp" "$(date +%s)"
+	json_dump
+}
+
+# Get historical traffic data
+get_historical_traffic() {
+	read -r input
+	json_load "$input"
+
+	local period granularity
+	json_get_var period period "24h"
+	json_get_var granularity granularity "hour"
+	json_cleanup
+
+	init_analytics_db
+
+	json_init
+	json_add_array "data"
+
+	local now=$(date +%s)
+	local threshold=0
+
+	case "$period" in
+		"1h") threshold=$(( now - 3600 )) ;;
+		"6h") threshold=$(( now - 21600 )) ;;
+		"24h") threshold=$(( now - 86400 )) ;;
+		"7d") threshold=$(( now - 604800 )) ;;
+		"30d") threshold=$(( now - 2592000 )) ;;
+	esac
+
+	if [ -f "$ANALYTICS_DB" ]; then
+		while IFS='|' read hour date rx tx peak_rx peak_tx clients; do
+			[ "$hour" = "# Hour" ] && continue
+
+			# Convert date to timestamp for comparison
+			local entry_ts=$(date -d "${date:0:4}-${date:4:2}-${date:6:2} ${hour}:00" +%s 2>/dev/null || echo 0)
+			[ "$entry_ts" -lt "$threshold" ] && continue
+
+			json_add_object ""
+			json_add_int "timestamp" "$entry_ts"
+			json_add_int "hour" "$hour"
+			json_add_string "date" "$date"
+			json_add_int "rx_bytes" "$rx"
+			json_add_int "tx_bytes" "$tx"
+			json_add_int "clients" "$clients"
+			json_close_object
+		done < "$ANALYTICS_DB"
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Get device-specific traffic
+get_device_traffic() {
+	read -r input
+	json_load "$input"
+
+	local mac period
+	json_get_var mac mac
+	json_get_var period period "24h"
+	json_cleanup
+
+	if [ -z "$mac" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "message" "MAC address is required"
+		json_dump
+		return 1
+	fi
+
+	json_init
+
+	# Get current stats from iptables
+	local rx_bytes=0 tx_bytes=0
+	if iptables -L $IPTABLES_CHAIN -n -v -x 2>/dev/null | grep -qi "$mac"; then
+		rx_bytes=$(iptables -L $IPTABLES_CHAIN -n -v -x 2>/dev/null | grep -i "$mac" | awk '{sum+=$2} END {print sum}')
+	fi
+
+	# Get hostname
+	local hostname ip
+	hostname=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $4}')
+	ip=$(grep -i "$mac" /tmp/dhcp.leases 2>/dev/null | awk '{print $3}')
+
+	json_add_string "mac" "$mac"
+	json_add_string "hostname" "${hostname:-unknown}"
+	json_add_string "ip" "${ip:-}"
+	json_add_int "rx_bytes" "${rx_bytes:-0}"
+	json_add_int "tx_bytes" "${tx_bytes:-0}"
+
+	# Historical data from usage DB
+	json_add_array "history"
+	if [ -f "$USAGE_DB" ]; then
+		local now=$(date +%s)
+		local threshold=0
+		case "$period" in
+			"1h") threshold=$(( now - 3600 )) ;;
+			"6h") threshold=$(( now - 21600 )) ;;
+			"24h") threshold=$(( now - 86400 )) ;;
+			"7d") threshold=$(( now - 604800 )) ;;
+		esac
+
+		grep -i "^$mac|" "$USAGE_DB" 2>/dev/null | while IFS='|' read db_mac timestamp rx tx; do
+			[ "$timestamp" -lt "$threshold" ] && continue
+			json_add_object ""
+			json_add_int "timestamp" "$timestamp"
+			json_add_int "rx_bytes" "$rx"
+			json_add_int "tx_bytes" "$tx"
+			json_close_object
+		done
+	fi
+	json_close_array
+
+	json_dump
+}
+
+# Get top bandwidth consumers
+get_top_talkers() {
+	read -r input
+	json_load "$input"
+
+	local period limit
+	json_get_var period period "24h"
+	json_get_var limit limit "10"
+	json_cleanup
+
+	json_init
+	json_add_array "talkers"
+
+	if [ -f /tmp/dhcp.leases ]; then
+		while read -r expires mac ip hostname clientid; do
+			local used_mb=$(get_mac_usage "$mac")
+			[ "$used_mb" -gt 0 ] && echo "$used_mb|$mac|$ip|${hostname:-unknown}"
+		done < /tmp/dhcp.leases | sort -t'|' -k1 -nr | head -n "$limit" | while IFS='|' read used mac ip hostname; do
+			json_add_object ""
+			json_add_string "mac" "$mac"
+			json_add_string "ip" "$ip"
+			json_add_string "hostname" "$hostname"
+			json_add_int "used_mb" "$used"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Get protocol breakdown
+get_protocol_breakdown() {
+	read -r input
+	json_load "$input"
+
+	local period
+	json_get_var period period "24h"
+	json_cleanup
+
+	json_init
+	json_add_array "protocols"
+
+	if [ -f "$NDPID_FLOWS" ] && command -v jq >/dev/null 2>&1; then
+		jq -r '[.flows[]? | {protocol: (.l4_proto // "Unknown"), bytes: (.bytes_rx + .bytes_tx)}] | group_by(.protocol) | map({protocol: .[0].protocol, total_bytes: (map(.bytes) | add)}) | sort_by(.total_bytes) | reverse | .[:10][] | "\(.protocol)|\(.total_bytes)"' "$NDPID_FLOWS" 2>/dev/null | while IFS='|' read proto bytes; do
+			json_add_object ""
+			json_add_string "protocol" "$proto"
+			json_add_int "bytes" "${bytes:-0}"
+			json_close_object
+		done
+	else
+		# Fallback: basic protocol info from conntrack
+		if [ -f /proc/net/nf_conntrack ]; then
+			for proto in tcp udp icmp; do
+				local count=$(grep -c "$proto" /proc/net/nf_conntrack 2>/dev/null || echo 0)
+				json_add_object ""
+				json_add_string "protocol" "$proto"
+				json_add_int "connections" "$count"
+				json_close_object
+			done
+		fi
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# ============================================
 # Analytics
 # ============================================
 
@@ -1298,7 +2946,40 @@ case "$1" in
 	"remove_from_group": { "group_id": "string", "mac": "string" },
 	"get_analytics_summary": { "period": "24h" },
 	"get_hourly_data": { "days": 7 },
-	"record_stats": {}
+	"record_stats": {},
+	"get_builtin_profiles": {},
+	"list_profiles": {},
+	"get_profile": { "profile_id": "string" },
+	"create_profile": { "name": "string", "description": "", "icon": "tag", "color": "#6366f1", "priority": 5, "limit_down": 0, "limit_up": 0, "latency_mode": "normal", "content_filter": "", "isolate": 0, "schedule": "" },
+	"update_profile": { "profile_id": "string", "name": "string", "description": "", "icon": "tag", "color": "#6366f1", "priority": 5, "limit_down": 0, "limit_up": 0, "latency_mode": "normal", "content_filter": "", "isolate": 0, "schedule": "", "enabled": 1 },
+	"delete_profile": { "profile_id": "string" },
+	"clone_profile": { "source_id": "string", "new_name": "string" },
+	"assign_profile_to_device": { "mac": "string", "profile_id": "string", "custom_limit_down": 0, "custom_limit_up": 0 },
+	"assign_profile_to_group": { "group_id": "string", "profile_id": "string" },
+	"remove_profile_assignment": { "mac": "string" },
+	"list_profile_assignments": {},
+	"list_parental_schedules": {},
+	"create_parental_schedule": { "name": "string", "target_type": "device", "target": "string", "action": "block", "start_time": "21:00", "end_time": "07:00", "days": "mon tue wed thu fri" },
+	"update_parental_schedule": { "schedule_id": "string", "name": "string", "target_type": "device", "target": "string", "action": "block", "start_time": "21:00", "end_time": "07:00", "days": "mon tue wed thu fri", "enabled": 1 },
+	"delete_parental_schedule": { "schedule_id": "string" },
+	"toggle_parental_schedule": { "schedule_id": "string", "enabled": 1 },
+	"list_preset_modes": {},
+	"activate_preset_mode": { "preset_id": "string", "enabled": 1 },
+	"get_filter_categories": {},
+	"get_alert_settings": {},
+	"update_alert_settings": { "enabled": 0, "quota_threshold_80": 1, "quota_threshold_90": 1, "quota_threshold_100": 1, "new_device_alert": 0, "high_bandwidth_alert": 0, "high_bandwidth_threshold": 100 },
+	"configure_email": { "smtp_server": "string", "smtp_port": 587, "smtp_user": "", "smtp_password": "", "smtp_tls": 1, "recipient": "string", "sender": "" },
+	"configure_sms": { "provider": "string", "account_sid": "", "auth_token": "", "from_number": "", "to_number": "string" },
+	"test_notification": { "type": "email" },
+	"get_alert_history": { "limit": 50 },
+	"acknowledge_alert": { "timestamp": "string" },
+	"get_pending_alerts": {},
+	"check_alert_thresholds": {},
+	"get_realtime_bandwidth": {},
+	"get_historical_traffic": { "period": "24h", "granularity": "hour" },
+	"get_device_traffic": { "mac": "string", "period": "24h" },
+	"get_top_talkers": { "period": "24h", "limit": 10 },
+	"get_protocol_breakdown": { "period": "24h" }
 }
 EOF
 		;;
@@ -1329,6 +3010,39 @@ EOF
 			get_analytics_summary) get_analytics_summary ;;
 			get_hourly_data) get_hourly_data ;;
 			record_stats) record_stats ;;
+			get_builtin_profiles) get_builtin_profiles ;;
+			list_profiles) list_profiles ;;
+			get_profile) get_profile ;;
+			create_profile) create_profile ;;
+			update_profile) update_profile ;;
+			delete_profile) delete_profile ;;
+			clone_profile) clone_profile ;;
+			assign_profile_to_device) assign_profile_to_device ;;
+			assign_profile_to_group) assign_profile_to_group ;;
+			remove_profile_assignment) remove_profile_assignment ;;
+			list_profile_assignments) list_profile_assignments ;;
+			list_parental_schedules) list_parental_schedules ;;
+			create_parental_schedule) create_parental_schedule ;;
+			update_parental_schedule) update_parental_schedule ;;
+			delete_parental_schedule) delete_parental_schedule ;;
+			toggle_parental_schedule) toggle_parental_schedule ;;
+			list_preset_modes) list_preset_modes ;;
+			activate_preset_mode) activate_preset_mode ;;
+			get_filter_categories) get_filter_categories ;;
+			get_alert_settings) get_alert_settings ;;
+			update_alert_settings) update_alert_settings ;;
+			configure_email) configure_email ;;
+			configure_sms) configure_sms ;;
+			test_notification) test_notification ;;
+			get_alert_history) get_alert_history ;;
+			acknowledge_alert) acknowledge_alert ;;
+			get_pending_alerts) get_pending_alerts ;;
+			check_alert_thresholds) check_alert_thresholds ;;
+			get_realtime_bandwidth) get_realtime_bandwidth ;;
+			get_historical_traffic) get_historical_traffic ;;
+			get_device_traffic) get_device_traffic ;;
+			get_top_talkers) get_top_talkers ;;
+			get_protocol_breakdown) get_protocol_breakdown ;;
 			*)
 				json_init
 				json_add_boolean "success" 0
