@@ -1,0 +1,462 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# LuCI RPC backend for PicoBrew Server
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG="picobrew"
+LXC_NAME="picobrew"
+LXC_PATH="/srv/lxc"
+REPO_PATH="/srv/picobrew/app"
+
+# JSON helpers
+json_init_obj() { json_init; json_add_object "result"; }
+json_close_obj() { json_close_object; json_dump; }
+
+json_error() {
+	json_init
+	json_add_object "error"
+	json_add_string "message" "$1"
+	json_close_object
+	json_dump
+}
+
+json_success() {
+	json_init_obj
+	json_add_boolean "success" 1
+	[ -n "$1" ] && json_add_string "message" "$1"
+	json_close_obj
+}
+
+# Check if container is running
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+# Check if container exists
+lxc_exists() {
+	[ -f "$LXC_PATH/$LXC_NAME/config" ] && [ -d "$LXC_PATH/$LXC_NAME/rootfs" ]
+}
+
+# Get service status
+get_status() {
+	local enabled running installed uptime
+	local http_port data_path memory_limit
+
+	config_load "$CONFIG"
+	config_get enabled main enabled "0"
+	config_get http_port main http_port "8080"
+	config_get data_path main data_path "/srv/picobrew"
+	config_get memory_limit main memory_limit "512M"
+
+	running="false"
+	installed="false"
+	uptime=""
+
+	if lxc_exists; then
+		installed="true"
+	fi
+
+	if lxc_running; then
+		running="true"
+		uptime=$(lxc-info -n "$LXC_NAME" 2>/dev/null | grep -i "cpu use" | head -1 | awk '{print $3}')
+	fi
+
+	# Check if repo exists
+	local repo_installed="false"
+	[ -d "$REPO_PATH/.git" ] && repo_installed="true"
+
+	# Get LAN IP for URL
+	local lan_ip
+	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+	json_init_obj
+	json_add_boolean "enabled" "$( [ "$enabled" = "1" ] && echo 1 || echo 0 )"
+	json_add_boolean "running" "$( [ "$running" = "true" ] && echo 1 || echo 0 )"
+	json_add_boolean "installed" "$( [ "$installed" = "true" ] && echo 1 || echo 0 )"
+	json_add_boolean "repo_installed" "$( [ "$repo_installed" = "true" ] && echo 1 || echo 0 )"
+	json_add_string "uptime" "$uptime"
+	json_add_int "http_port" "$http_port"
+	json_add_string "data_path" "$data_path"
+	json_add_string "memory_limit" "$memory_limit"
+	json_add_string "web_url" "http://${lan_ip}:${http_port}"
+	json_add_string "container_name" "$LXC_NAME"
+	json_close_obj
+}
+
+# Get configuration
+get_config() {
+	local http_port http_host data_path memory_limit log_level
+	local dns_name https_enabled cert_path key_path
+	local default_boil_temp default_mash_temp units
+
+	config_load "$CONFIG"
+
+	# Main settings
+	config_get http_port main http_port "8080"
+	config_get http_host main http_host "0.0.0.0"
+	config_get data_path main data_path "/srv/picobrew"
+	config_get memory_limit main memory_limit "512M"
+	config_get log_level main log_level "INFO"
+	config_get enabled main enabled "0"
+
+	# Server settings
+	config_get dns_name server dns_name ""
+	config_get https_enabled server https_enabled "0"
+	config_get cert_path server cert_path ""
+	config_get key_path server key_path ""
+
+	# Brewing settings
+	config_get default_boil_temp brewing default_boil_temp "100"
+	config_get default_mash_temp brewing default_mash_temp "67"
+	config_get units brewing units "metric"
+
+	json_init_obj
+	json_add_object "main"
+	json_add_boolean "enabled" "$( [ "$enabled" = "1" ] && echo 1 || echo 0 )"
+	json_add_int "http_port" "$http_port"
+	json_add_string "http_host" "$http_host"
+	json_add_string "data_path" "$data_path"
+	json_add_string "memory_limit" "$memory_limit"
+	json_add_string "log_level" "$log_level"
+	json_close_object
+
+	json_add_object "server"
+	json_add_string "dns_name" "$dns_name"
+	json_add_boolean "https_enabled" "$( [ "$https_enabled" = "1" ] && echo 1 || echo 0 )"
+	json_add_string "cert_path" "$cert_path"
+	json_add_string "key_path" "$key_path"
+	json_close_object
+
+	json_add_object "brewing"
+	json_add_int "default_boil_temp" "$default_boil_temp"
+	json_add_int "default_mash_temp" "$default_mash_temp"
+	json_add_string "units" "$units"
+	json_close_object
+
+	json_close_obj
+}
+
+# Set configuration value
+set_config() {
+	local section="$1"
+	local option="$2"
+	local value="$3"
+
+	if [ -z "$section" ] || [ -z "$option" ]; then
+		json_error "Missing section or option"
+		return
+	fi
+
+	uci set "${CONFIG}.${section}.${option}=${value}"
+	uci commit "$CONFIG"
+
+	json_success "Configuration updated"
+}
+
+# Start service
+start_service() {
+	if lxc_running; then
+		json_error "Service is already running"
+		return
+	fi
+
+	if ! lxc_exists; then
+		json_error "Container not installed. Run install first."
+		return
+	fi
+
+	/etc/init.d/picobrew start >/dev/null 2>&1 &
+
+	sleep 2
+	if lxc_running; then
+		json_success "Service started"
+	else
+		json_error "Failed to start service"
+	fi
+}
+
+# Stop service
+stop_service() {
+	if ! lxc_running; then
+		json_error "Service is not running"
+		return
+	fi
+
+	/etc/init.d/picobrew stop >/dev/null 2>&1
+
+	sleep 2
+	if ! lxc_running; then
+		json_success "Service stopped"
+	else
+		json_error "Failed to stop service"
+	fi
+}
+
+# Restart service
+restart_service() {
+	/etc/init.d/picobrew restart >/dev/null 2>&1 &
+
+	sleep 3
+	if lxc_running; then
+		json_success "Service restarted"
+	else
+		json_error "Service restart failed"
+	fi
+}
+
+# Install PicoBrew
+install() {
+	if lxc_exists; then
+		json_error "Already installed. Use update to refresh."
+		return
+	fi
+
+	# Run install in background
+	/usr/sbin/picobrewctl install >/var/log/picobrew-install.log 2>&1 &
+
+	json_init_obj
+	json_add_boolean "started" 1
+	json_add_string "message" "Installation started in background"
+	json_add_string "log_file" "/var/log/picobrew-install.log"
+	json_close_obj
+}
+
+# Uninstall PicoBrew
+uninstall() {
+	/usr/sbin/picobrewctl uninstall >/dev/null 2>&1
+
+	if ! lxc_exists; then
+		json_success "Uninstalled successfully"
+	else
+		json_error "Uninstall failed"
+	fi
+}
+
+# Update PicoBrew
+update() {
+	if ! [ -d "$REPO_PATH/.git" ]; then
+		json_error "Not installed. Run install first."
+		return
+	fi
+
+	# Run update in background
+	/usr/sbin/picobrewctl update >/var/log/picobrew-update.log 2>&1 &
+
+	json_init_obj
+	json_add_boolean "started" 1
+	json_add_string "message" "Update started in background"
+	json_add_string "log_file" "/var/log/picobrew-update.log"
+	json_close_obj
+}
+
+# Get logs
+get_logs() {
+	local lines="${1:-100}"
+	local data_path
+
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/picobrew"
+
+	json_init_obj
+	json_add_array "logs"
+
+	# Get container logs from data path
+	if [ -d "$data_path/logs" ]; then
+		local logfile
+		for logfile in "$data_path/logs"/*.log; do
+			[ -f "$logfile" ] || continue
+			tail -n "$lines" "$logfile" 2>/dev/null | while IFS= read -r line; do
+				json_add_string "" "$line"
+			done
+		done
+	fi
+
+	# Also check install/update logs
+	for logfile in /var/log/picobrew-install.log /var/log/picobrew-update.log; do
+		[ -f "$logfile" ] || continue
+		tail -n 50 "$logfile" 2>/dev/null | while IFS= read -r line; do
+			json_add_string "" "$line"
+		done
+	done
+
+	json_close_array
+	json_close_obj
+}
+
+# Get brewing sessions (placeholder - depends on picobrew-server API)
+get_sessions() {
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/picobrew"
+
+	json_init_obj
+	json_add_array "sessions"
+
+	# List session files if they exist
+	if [ -d "$data_path/sessions" ]; then
+		for session in "$data_path/sessions"/*.json; do
+			[ -f "$session" ] || continue
+			local name=$(basename "$session" .json)
+			json_add_object ""
+			json_add_string "id" "$name"
+			json_add_string "file" "$session"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_close_obj
+}
+
+# Get recipes (placeholder - depends on picobrew-server API)
+get_recipes() {
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/picobrew"
+
+	json_init_obj
+	json_add_array "recipes"
+
+	# List recipe files if they exist
+	if [ -d "$data_path/recipes" ]; then
+		for recipe in "$data_path/recipes"/*.json; do
+			[ -f "$recipe" ] || continue
+			local name=$(basename "$recipe" .json)
+			json_add_object ""
+			json_add_string "id" "$name"
+			json_add_string "file" "$recipe"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_close_obj
+}
+
+# Check install progress
+get_install_progress() {
+	local log_file="/var/log/picobrew-install.log"
+	local status="unknown"
+	local progress=0
+	local message=""
+
+	if [ -f "$log_file" ]; then
+		# Check for completion markers
+		if grep -q "Installation complete" "$log_file" 2>/dev/null; then
+			status="completed"
+			progress=100
+			message="Installation completed successfully"
+		elif grep -q "ERROR" "$log_file" 2>/dev/null; then
+			status="error"
+			message=$(grep "ERROR" "$log_file" | tail -1)
+		else
+			status="running"
+			# Estimate progress based on log content
+			if grep -q "Extracting rootfs" "$log_file" 2>/dev/null; then
+				progress=60
+				message="Extracting container rootfs..."
+			elif grep -q "Downloading Alpine" "$log_file" 2>/dev/null; then
+				progress=40
+				message="Downloading Alpine rootfs..."
+			elif grep -q "Cloning" "$log_file" 2>/dev/null; then
+				progress=20
+				message="Cloning PicoBrew repository..."
+			else
+				progress=10
+				message="Starting installation..."
+			fi
+		fi
+	else
+		status="not_started"
+		message="Installation has not been started"
+	fi
+
+	# Check if process is still running
+	if pgrep -f "picobrewctl install" >/dev/null 2>&1; then
+		status="running"
+	fi
+
+	json_init_obj
+	json_add_string "status" "$status"
+	json_add_int "progress" "$progress"
+	json_add_string "message" "$message"
+	json_close_obj
+}
+
+# Main RPC handler
+case "$1" in
+	list)
+		cat <<-EOF
+		{
+			"get_status": {},
+			"get_config": {},
+			"set_config": {"section": "str", "option": "str", "value": "str"},
+			"start": {},
+			"stop": {},
+			"restart": {},
+			"install": {},
+			"uninstall": {},
+			"update": {},
+			"get_logs": {"lines": 100},
+			"get_sessions": {},
+			"get_recipes": {},
+			"get_install_progress": {}
+		}
+		EOF
+		;;
+	call)
+		case "$2" in
+			get_status)
+				get_status
+				;;
+			get_config)
+				get_config
+				;;
+			set_config)
+				read -r input
+				section=$(echo "$input" | jsonfilter -e '@.section' 2>/dev/null)
+				option=$(echo "$input" | jsonfilter -e '@.option' 2>/dev/null)
+				value=$(echo "$input" | jsonfilter -e '@.value' 2>/dev/null)
+				set_config "$section" "$option" "$value"
+				;;
+			start)
+				start_service
+				;;
+			stop)
+				stop_service
+				;;
+			restart)
+				restart_service
+				;;
+			install)
+				install
+				;;
+			uninstall)
+				uninstall
+				;;
+			update)
+				update
+				;;
+			get_logs)
+				read -r input
+				lines=$(echo "$input" | jsonfilter -e '@.lines' 2>/dev/null)
+				get_logs "${lines:-100}"
+				;;
+			get_sessions)
+				get_sessions
+				;;
+			get_recipes)
+				get_recipes
+				;;
+			get_install_progress)
+				get_install_progress
+				;;
+			*)
+				json_error "Unknown method: $2"
+				;;
+		esac
+		;;
+esac

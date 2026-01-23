@@ -1,0 +1,17 @@
+{
+	"luci-app-picobrew": {
+		"description": "Grant access to PicoBrew Server management",
+		"read": {
+			"ubus": {
+				"luci.picobrew": ["get_status", "get_config", "get_logs", "get_sessions", "get_recipes", "get_install_progress"]
+			},
+			"uci": ["picobrew"]
+		},
+		"write": {
+			"ubus": {
+				"luci.picobrew": ["set_config", "start", "stop", "restart", "install", "uninstall", "update"]
+			},
+			"uci": ["picobrew"]
+		}
+	}
+}

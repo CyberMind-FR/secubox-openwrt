@@ -1,0 +1,427 @@
+#!/bin/sh
+# SecuBox PicoBrew Server Controller
+# Copyright (C) 2025 CyberMind.fr
+#
+# Manages PicoBrew Server in LXC container
+
+CONFIG="picobrew"
+LXC_NAME="picobrew"
+
+# Paths
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+REPO_URL="https://github.com/CyberMind-FR/picobrew-server.git"
+REPO_PATH="/srv/picobrew/app"
+
+# Logging
+log_info() { echo "[INFO] $*"; logger -t picobrew "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t picobrew -p err "$*"; }
+log_debug() { [ "$DEBUG" = "1" ] && echo "[DEBUG] $*"; }
+
+# Helpers
+require_root() {
+	[ "$(id -u)" -eq 0 ] || {
+		log_error "This command requires root privileges"
+		exit 1
+	}
+}
+
+has_lxc() { command -v lxc-start >/dev/null 2>&1; }
+has_git() { command -v git >/dev/null 2>&1; }
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Load configuration
+load_config() {
+	http_port="$(uci_get main.http_port)" || http_port="8080"
+	http_host="$(uci_get main.http_host)" || http_host="0.0.0.0"
+	data_path="$(uci_get main.data_path)" || data_path="/srv/picobrew"
+	memory_limit="$(uci_get main.memory_limit)" || memory_limit="512M"
+	log_level="$(uci_get main.log_level)" || log_level="INFO"
+	dns_name="$(uci_get server.dns_name)" || dns_name=""
+	https_enabled="$(uci_get server.https_enabled)" || https_enabled="0"
+	units="$(uci_get brewing.units)" || units="metric"
+
+	ensure_dir "$data_path"
+	ensure_dir "$data_path/recipes"
+	ensure_dir "$data_path/sessions"
+	ensure_dir "$data_path/logs"
+}
+
+# Usage
+usage() {
+	cat <<EOF
+SecuBox PicoBrew Server Controller
+
+Usage: $(basename $0) <command> [options]
+
+Commands:
+  install       Download and install PicoBrew Server
+  uninstall     Remove PicoBrew Server container
+  update        Update PicoBrew Server to latest version
+  status        Show service status
+  logs          Show container logs
+  shell         Open shell in container
+
+  service-run   Start service (used by init)
+  service-stop  Stop service (used by init)
+
+Configuration:
+  /etc/config/picobrew
+
+Data directory:
+  /srv/picobrew
+
+EOF
+}
+
+# Check prerequisites
+lxc_check_prereqs() {
+	if ! has_lxc; then
+		log_error "LXC not installed. Install with: opkg install lxc lxc-common"
+		return 1
+	fi
+	if ! has_git; then
+		log_error "Git not installed. Install with: opkg install git"
+		return 1
+	fi
+	return 0
+}
+
+# Clone or update repo
+repo_clone() {
+	load_config
+
+	if [ -d "$REPO_PATH/.git" ]; then
+		log_info "Updating PicoBrew Server repository..."
+		cd "$REPO_PATH" && git pull
+	else
+		log_info "Cloning PicoBrew Server repository..."
+		ensure_dir "$(dirname "$REPO_PATH")"
+		git clone "$REPO_URL" "$REPO_PATH"
+	fi
+}
+
+# Create Python LXC rootfs from Alpine
+lxc_create_rootfs() {
+	local rootfs="$LXC_ROOTFS"
+	local arch=$(uname -m)
+
+	log_info "Creating Alpine rootfs for PicoBrew..."
+
+	ensure_dir "$rootfs"
+
+	# Use Alpine mini rootfs
+	local alpine_version="3.19"
+	case "$arch" in
+		x86_64) alpine_arch="x86_64" ;;
+		aarch64) alpine_arch="aarch64" ;;
+		armv7l) alpine_arch="armv7" ;;
+		*) log_error "Unsupported architecture: $arch"; return 1 ;;
+	esac
+
+	local alpine_url="https://dl-cdn.alpinelinux.org/alpine/v${alpine_version}/releases/${alpine_arch}/alpine-minirootfs-${alpine_version}.0-${alpine_arch}.tar.gz"
+	local tmpfile="/tmp/alpine-rootfs.tar.gz"
+
+	log_info "Downloading Alpine rootfs..."
+	wget -q -O "$tmpfile" "$alpine_url" || {
+		log_error "Failed to download Alpine rootfs"
+		return 1
+	}
+
+	log_info "Extracting rootfs..."
+	tar -xzf "$tmpfile" -C "$rootfs" || {
+		log_error "Failed to extract rootfs"
+		return 1
+	}
+	rm -f "$tmpfile"
+
+	# Setup resolv.conf
+	cp /etc/resolv.conf "$rootfs/etc/resolv.conf" 2>/dev/null || \
+		echo "nameserver 1.1.1.1" > "$rootfs/etc/resolv.conf"
+
+	# Create startup script
+	cat > "$rootfs/opt/start-picobrew.sh" << 'STARTUP'
+#!/bin/sh
+set -e
+
+# Install Python and dependencies on first run
+if [ ! -f /opt/.installed ]; then
+    echo "Installing Python and dependencies..."
+    apk update
+    apk add --no-cache python3 py3-pip py3-flask py3-requests py3-pyyaml git
+
+    # Install PicoBrew dependencies
+    if [ -d /app ]; then
+        cd /app
+        pip3 install --break-system-packages -r requirements.txt 2>/dev/null || \
+        pip3 install -r requirements.txt 2>/dev/null || true
+    fi
+
+    touch /opt/.installed
+fi
+
+# Start PicoBrew Server
+cd /app
+export FLASK_APP=app.py
+export FLASK_ENV=production
+export PICOBREW_HOST="${PICOBREW_HOST:-0.0.0.0}"
+export PICOBREW_PORT="${PICOBREW_PORT:-8080}"
+export PICOBREW_LOG_LEVEL="${PICOBREW_LOG_LEVEL:-INFO}"
+
+echo "Starting PicoBrew Server on ${PICOBREW_HOST}:${PICOBREW_PORT}..."
+exec python3 -m flask run --host="$PICOBREW_HOST" --port="$PICOBREW_PORT"
+STARTUP
+	chmod +x "$rootfs/opt/start-picobrew.sh"
+
+	log_info "Rootfs created successfully"
+	return 0
+}
+
+# Create LXC config
+lxc_create_config() {
+	load_config
+
+	ensure_dir "$(dirname "$LXC_CONFIG")"
+
+	# Convert memory limit to bytes
+	local mem_bytes
+	case "$memory_limit" in
+		*G|*g) mem_bytes=$((${memory_limit%[Gg]} * 1024 * 1024 * 1024)) ;;
+		*M|*m) mem_bytes=$((${memory_limit%[Mm]} * 1024 * 1024)) ;;
+		*K|*k) mem_bytes=$((${memory_limit%[Kk]} * 1024)) ;;
+		*) mem_bytes="$memory_limit" ;;
+	esac
+
+	cat > "$LXC_CONFIG" << EOF
+# PicoBrew Server LXC Configuration
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $(uname -m)
+
+# Network: use host network for device discovery
+lxc.net.0.type = none
+
+# Mount points
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $REPO_PATH app none bind,create=dir 0 0
+lxc.mount.entry = $data_path/recipes app/recipes none bind,create=dir 0 0
+lxc.mount.entry = $data_path/sessions app/sessions none bind,create=dir 0 0
+lxc.mount.entry = $data_path/logs logs none bind,create=dir 0 0
+
+# Environment
+lxc.environment = PICOBREW_HOST=$http_host
+lxc.environment = PICOBREW_PORT=$http_port
+lxc.environment = PICOBREW_LOG_LEVEL=$log_level
+lxc.environment = PICOBREW_UNITS=$units
+
+# Security
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time sys_rawio
+
+# Resource limits
+lxc.cgroup.memory.limit_in_bytes = $mem_bytes
+
+# Init command
+lxc.init.cmd = /opt/start-picobrew.sh
+EOF
+
+	log_info "LXC config created"
+}
+
+# Container control
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONFIG" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+lxc_stop() {
+	if lxc_running; then
+		log_info "Stopping PicoBrew container..."
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 2
+	fi
+}
+
+lxc_run() {
+	load_config
+	lxc_stop
+
+	if ! lxc_exists; then
+		log_error "Container not installed. Run: picobrewctl install"
+		return 1
+	fi
+
+	# Regenerate config in case settings changed
+	lxc_create_config
+
+	log_info "Starting PicoBrew container..."
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
+}
+
+# Commands
+cmd_install() {
+	require_root
+	load_config
+
+	log_info "Installing PicoBrew Server..."
+
+	lxc_check_prereqs || exit 1
+
+	# Clone repository
+	repo_clone || exit 1
+
+	# Create container
+	if ! lxc_exists; then
+		lxc_create_rootfs || exit 1
+	fi
+
+	lxc_create_config || exit 1
+
+	# Enable service
+	uci_set main.enabled '1'
+	/etc/init.d/picobrew enable 2>/dev/null || true
+
+	log_info "Installation complete!"
+	log_info ""
+	log_info "Start with: /etc/init.d/picobrew start"
+	log_info "Web interface: http://<router-ip>:$http_port"
+}
+
+cmd_uninstall() {
+	require_root
+
+	log_info "Uninstalling PicoBrew Server..."
+
+	# Stop service
+	/etc/init.d/picobrew stop 2>/dev/null || true
+	/etc/init.d/picobrew disable 2>/dev/null || true
+
+	lxc_stop
+
+	# Remove container (keep data)
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		rm -rf "$LXC_PATH/$LXC_NAME"
+		log_info "Container removed"
+	fi
+
+	uci_set main.enabled '0'
+
+	log_info "PicoBrew Server uninstalled"
+	log_info "Data preserved in: $(uci_get main.data_path)"
+}
+
+cmd_update() {
+	require_root
+	load_config
+
+	log_info "Updating PicoBrew Server..."
+
+	# Update repo
+	repo_clone || exit 1
+
+	# Recreate container to get fresh dependencies
+	lxc_stop
+	if [ -d "$LXC_ROOTFS" ]; then
+		rm -rf "$LXC_ROOTFS"
+	fi
+	lxc_create_rootfs || exit 1
+
+	# Restart if was running
+	if [ "$(uci_get main.enabled)" = "1" ]; then
+		/etc/init.d/picobrew restart
+	fi
+
+	log_info "Update complete!"
+}
+
+cmd_status() {
+	load_config
+
+	local enabled="$(uci_get main.enabled)"
+	local running="false"
+	local uptime=""
+
+	if lxc_running; then
+		running="true"
+		uptime=$(lxc-info -n "$LXC_NAME" 2>/dev/null | grep -i "cpu use" | head -1)
+	fi
+
+	cat << EOF
+PicoBrew Server Status
+=====================
+Enabled:     $([ "$enabled" = "1" ] && echo "yes" || echo "no")
+Running:     $([ "$running" = "true" ] && echo "yes" || echo "no")
+HTTP Port:   $http_port
+Data Path:   $data_path
+Memory:      $memory_limit
+
+Container:   $LXC_NAME
+Rootfs:      $LXC_ROOTFS
+Config:      $LXC_CONFIG
+
+EOF
+
+	if [ "$running" = "true" ]; then
+		echo "Web interface: http://$(uci -q get network.lan.ipaddr || echo "localhost"):$http_port"
+	fi
+}
+
+cmd_logs() {
+	load_config
+
+	if [ -d "$data_path/logs" ]; then
+		if [ -n "$(ls -A "$data_path/logs" 2>/dev/null)" ]; then
+			tail -f "$data_path/logs"/*.log 2>/dev/null || \
+			cat "$data_path/logs"/*.log 2>/dev/null || \
+			echo "No logs found"
+		else
+			echo "No logs yet"
+		fi
+	else
+		echo "Log directory not found"
+	fi
+}
+
+cmd_shell() {
+	require_root
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		exit 1
+	fi
+
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+cmd_service_run() {
+	require_root
+	load_config
+
+	lxc_check_prereqs || exit 1
+	lxc_run
+}
+
+cmd_service_stop() {
+	require_root
+	lxc_stop
+}
+
+# Main
+case "${1:-}" in
+	install)    shift; cmd_install "$@" ;;
+	uninstall)  shift; cmd_uninstall "$@" ;;
+	update)     shift; cmd_update "$@" ;;
+	status)     shift; cmd_status "$@" ;;
+	logs)       shift; cmd_logs "$@" ;;
+	shell)      shift; cmd_shell "$@" ;;
+	service-run)  shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	*)          usage ;;
+esac
