@@ -84,13 +84,15 @@ return baseclass.extend({
 
 	getFeeds: function() {
 		return callGetFeeds().then(function(res) {
-			return res.feeds || [];
+			// RPC expect already extracts feeds array, res IS the array
+			return Array.isArray(res) ? res : (res.feeds || []);
 		});
 	},
 
 	getItems: function() {
 		return callGetItems().then(function(res) {
-			return res.items || [];
+			// RPC expect already extracts items array, res IS the array
+			return Array.isArray(res) ? res : (res.items || []);
 		});
 	},
 
