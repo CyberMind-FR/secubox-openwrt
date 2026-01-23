@@ -1,5 +1,4 @@
 'use strict';
-'require baseclass';
 
 /**
  * QR Code Generator for WireGuard Dashboard
@@ -444,7 +443,7 @@ function generateSVG(text, displaySize) {
 	}
 }
 
-return baseclass.extend({
+return {
 	/**
 	 * Generate QR code as SVG string
 	 * @param {string} text - Text to encode (up to ~300 bytes)
@@ -489,4 +488,4 @@ return baseclass.extend({
 	getMaxCapacity: function() {
 		return VERSION_CAPACITIES[20]; // 858 bytes
 	}
-});
+};
