@@ -77,20 +77,20 @@ EOF
 
 # Get feeds list
 get_feeds() {
+	local feeds="[]"
 	if [ -x "$CYBERFEED_BIN" ]; then
-		$CYBERFEED_BIN list
-	else
-		echo "[]"
+		feeds=$($CYBERFEED_BIN list)
 	fi
+	echo "{\"feeds\":$feeds}"
 }
 
 # Get feed items
 get_items() {
+	local items="[]"
 	if [ -f "${OUTPUT_DIR}/feeds.json" ]; then
-		cat "${OUTPUT_DIR}/feeds.json"
-	else
-		echo "[]"
+		items=$(cat "${OUTPUT_DIR}/feeds.json")
 	fi
+	echo "{\"items\":$items}"
 }
 
 # Add a feed

@@ -16,13 +16,13 @@ var callGetStatus = rpc.declare({
 var callGetFeeds = rpc.declare({
 	object: 'luci.cyberfeed',
 	method: 'get_feeds',
-	expect: { }
+	expect: { feeds: [] }
 });
 
 var callGetItems = rpc.declare({
 	object: 'luci.cyberfeed',
 	method: 'get_items',
-	expect: { }
+	expect: { items: [] }
 });
 
 var callAddFeed = rpc.declare({
@@ -83,11 +83,15 @@ return baseclass.extend({
 	},
 
 	getFeeds: function() {
-		return callGetFeeds();
+		return callGetFeeds().then(function(res) {
+			return res.feeds || [];
+		});
 	},
 
 	getItems: function() {
-		return callGetItems();
+		return callGetItems().then(function(res) {
+			return res.items || [];
+		});
 	},
 
 	addFeed: function(name, url, type, category) {
