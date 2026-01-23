@@ -10,8 +10,8 @@ LUCI_DEPENDS:=+secubox-app-cyberfeed +luci-base +luci-compat
 LUCI_PKGARCH:=all
 
 PKG_NAME:=luci-app-cyberfeed
-PKG_VERSION:=0.1.0
-PKG_RELEASE:=3
+PKG_VERSION:=0.1.1
+PKG_RELEASE:=1
 
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_LICENSE:=MIT

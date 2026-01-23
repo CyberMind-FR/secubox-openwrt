@@ -51,10 +51,14 @@ return view.extend({
 				E('div', { 'class': 'cf-grid cf-grid-2', 'style': 'gap: 20px;' }, [
 					E('div', { 'class': 'cf-form-group' }, [
 						E('label', { 'class': 'cf-form-label' }, 'Service Enabled'),
-						E('select', { 'id': 'cfg-enabled', 'class': 'cf-form-input' }, [
-							E('option', { 'value': '1', 'selected': config.enabled == 1 }, 'Enabled'),
-							E('option', { 'value': '0', 'selected': config.enabled == 0 }, 'Disabled')
-						])
+						(function() {
+							var sel = E('select', { 'id': 'cfg-enabled', 'class': 'cf-form-input' }, [
+								E('option', { 'value': '1' }, 'Enabled'),
+								E('option', { 'value': '0' }, 'Disabled')
+							]);
+							sel.value = (config.enabled == 1) ? '1' : '0';
+							return sel;
+						})()
 					]),
 					E('div', { 'class': 'cf-form-group' }, [
 						E('label', { 'class': 'cf-form-label' }, 'Refresh Interval (minutes)'),
@@ -110,10 +114,14 @@ return view.extend({
 				E('div', { 'class': 'cf-grid cf-grid-2', 'style': 'gap: 20px;' }, [
 					E('div', { 'class': 'cf-form-group' }, [
 						E('label', { 'class': 'cf-form-label' }, 'RSS-Bridge Enabled'),
-						E('select', { 'id': 'cfg-rssbridge-enabled', 'class': 'cf-form-input' }, [
-							E('option', { 'value': '1', 'selected': config.rssbridge_enabled == 1 }, 'Enabled'),
-							E('option', { 'value': '0', 'selected': config.rssbridge_enabled == 0 }, 'Disabled')
-						])
+						(function() {
+							var sel = E('select', { 'id': 'cfg-rssbridge-enabled', 'class': 'cf-form-input' }, [
+								E('option', { 'value': '1' }, 'Enabled'),
+								E('option', { 'value': '0' }, 'Disabled')
+							]);
+							sel.value = (config.rssbridge_enabled == 1) ? '1' : '0';
+							return sel;
+						})()
 					]),
 					E('div', { 'class': 'cf-form-group' }, [
 						E('label', { 'class': 'cf-form-label' }, 'RSS-Bridge Port'),
