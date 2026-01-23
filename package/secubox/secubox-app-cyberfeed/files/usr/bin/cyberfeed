@@ -52,30 +52,8 @@ mark_seen() {
 	fi
 }
 
-# === CYBERPUNK EMOJI MAPPING ===
-cyberpunk_emojify() {
-	local text="$1"
-	echo "$text" | sed -E '
-		s/(hack|breach|exploit|vulnerab)/🔓\1/gi
-		s/(secur|protect|defense|firewall)/🛡️\1/gi
-		s/(cyber|digital|virtual)/⚡\1/gi
-		s/(encrypt|crypto|cipher)/🔐\1/gi
-		s/(malware|virus|trojan)/☠️\1/gi
-		s/(alert|warning|danger)/⚠️\1/gi
-		s/(attack|threat|risk)/💀\1/gi
-		s/(network|connect|link)/🌐\1/gi
-		s/(server|cloud|data)/💾\1/gi
-		s/(code|program|script)/💻\1/gi
-		s/(linux|opensource|github)/🐧\1/gi
-		s/(robot|automat|ai|machine)/🤖\1/gi
-		s/(update|upgrade|patch)/📡\1/gi
-		s/(launch|deploy|release)/🚀\1/gi
-		s/(podcast|radio|audio)/🎧\1/gi
-		s/(video|stream|watch)/📺\1/gi
-		s/(music|song|album)/🎵\1/gi
-		s/(new|annonce|breaking)/✨\1/gi
-	'
-}
+# === CYBERPUNK EMOJI MAPPING (applied inside AWK) ===
+# Emojification is done inside the AWK parser to avoid corrupting JSON keys
 
 # === RSS FETCHER ===
 fetch_feed() {
@@ -142,6 +120,38 @@ parse_rss() {
 		return ""
 	}
 
+	# Helper: add cyberpunk emojis to text (case-insensitive)
+	function emojify(text) {
+		gsub(/[Hh]ack/, "🔓hack", text)
+		gsub(/[Bb]reach/, "🔓breach", text)
+		gsub(/[Ee]xploit/, "🔓exploit", text)
+		gsub(/[Vv]ulnerab/, "🔓vulnerab", text)
+		gsub(/[Ss]ecur/, "🛡️secur", text)
+		gsub(/[Pp]rotect/, "🛡️protect", text)
+		gsub(/[Ff]irewall/, "🛡️firewall", text)
+		gsub(/[Cc]yber/, "⚡cyber", text)
+		gsub(/[Ee]ncrypt/, "🔐encrypt", text)
+		gsub(/[Cc]rypto/, "🔐crypto", text)
+		gsub(/[Mm]alware/, "☠️malware", text)
+		gsub(/[Vv]irus/, "☠️virus", text)
+		gsub(/[Aa]ttack/, "💀attack", text)
+		gsub(/[Tt]hreat/, "💀threat", text)
+		gsub(/[Nn]etwork/, "🌐network", text)
+		gsub(/[Ss]erver/, "💾server", text)
+		gsub(/[Cc]loud/, "💾cloud", text)
+		gsub(/[Cc]ode/, "💻code", text)
+		gsub(/[Ll]inux/, "🐧linux", text)
+		gsub(/[Gg]ithub/, "🐧github", text)
+		gsub(/AI/, "🤖AI", text)
+		gsub(/[Uu]pdate/, "📡update", text)
+		gsub(/[Ll]aunch/, "🚀launch", text)
+		gsub(/[Rr]elease/, "🚀release", text)
+		gsub(/[Pp]odcast/, "🎧podcast", text)
+		gsub(/[Rr]adio/, "🎧radio", text)
+		gsub(/[Vv]ideo/, "📺video", text)
+		return text
+	}
+
 	BEGIN {
 		RS="</item>|</entry>"
 		item_count=0
@@ -186,6 +196,10 @@ parse_rss() {
 		if (guid == "") guid = link
 
 		if (title != "") {
+			# Apply emojification to title and desc only
+			title = emojify(title)
+			desc = emojify(desc)
+
 			# Clean and escape for JSON
 			gsub(/\\/, "\\\\", title)
 			gsub(/"/, "\\\"", title)
@@ -774,8 +788,7 @@ sync_feeds() {
 		if [ -n "$raw_xml" ]; then
 			parsed=$(parse_rss "$raw_xml" "$name" "$category")
 			if [ -n "$parsed" ]; then
-				emojified=$(cyberpunk_emojify "$parsed")
-				json_items="${json_items}${emojified}"
+				json_items="${json_items}${parsed}"
 				feed_count=$((feed_count + 1))
 			fi
 		fi

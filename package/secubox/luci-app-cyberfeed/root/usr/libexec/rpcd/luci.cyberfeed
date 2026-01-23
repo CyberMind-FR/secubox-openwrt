@@ -49,7 +49,8 @@ get_status() {
 	local rssbridge_running="false"
 
 	if [ -f "${OUTPUT_DIR}/feeds.json" ]; then
-		item_count=$(grep -c '"title"' "${OUTPUT_DIR}/feeds.json" 2>/dev/null || echo 0)
+		item_count=$(grep -o '"title"' "${OUTPUT_DIR}/feeds.json" 2>/dev/null | wc -l)
+		item_count=${item_count:-0}
 		last_sync=$(stat -c %Y "${OUTPUT_DIR}/feeds.json" 2>/dev/null || echo 0)
 	fi
 
