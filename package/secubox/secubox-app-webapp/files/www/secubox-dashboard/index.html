@@ -3901,19 +3901,22 @@
             }
         }
 
-        // Get real disk usage via df command
+        // Get real disk usage via multiple fallback methods
         async function updateDiskUsage() {
+            const setDiskValue = (percent) => {
+                document.getElementById('diskValue').textContent = percent;
+                updateGauge('diskGauge', percent);
+            };
+
             try {
-                // Use luci.system-hub RPC for disk info
+                // Method 1: Use luci.system-hub RPC for disk info
                 const result = await UBUS.call('luci.system-hub', 'get_system_status').catch(() => null);
-                if (result && result.disk) {
-                    const percent = result.disk.usage || 0;
-                    document.getElementById('diskValue').textContent = percent;
-                    updateGauge('diskGauge', percent);
+                if (result && result.disk && typeof result.disk.usage === 'number') {
+                    setDiskValue(result.disk.usage);
                     return;
                 }
 
-                // Fallback: try file.exec with df
+                // Method 2: Try file.exec with df
                 const dfResult = await UBUS.execCommand('/bin/df', ['-P', '/']).catch(() => null);
                 if (dfResult && dfResult.stdout) {
                     const lines = dfResult.stdout.trim().split('\n');
@@ -3923,17 +3926,55 @@
                             const used = parseInt(parts[2]) || 0;
                             const available = parseInt(parts[3]) || 0;
                             const total = used + available;
-                            const percent = total > 0 ? Math.round((used / total) * 100) : 0;
-                            document.getElementById('diskValue').textContent = percent;
-                            updateGauge('diskGauge', percent);
-                            return;
+                            if (total > 0) {
+                                setDiskValue(Math.round((used / total) * 100));
+                                return;
+                            }
                         }
                     }
                 }
+
+                // Method 3: Try reading file directly via file.read
+                const statResult = await UBUS.call('file', 'read', { path: '/proc/mounts' }).catch(() => null);
+                if (statResult && statResult.data) {
+                    // Found mounts, try statfs on root
+                    const statfsResult = await UBUS.call('file', 'stat', { path: '/' }).catch(() => null);
+                    if (statfsResult) {
+                        // If we got here, at least the file API works - try df via CGI
+                        const cgiResult = await fetch(`${CONFIG.serverUrl}/cgi-bin/luci/admin/status/realtime/disk`, {
+                            credentials: 'include'
+                        }).then(r => r.json()).catch(() => null);
+                        if (cgiResult && Array.isArray(cgiResult) && cgiResult.length > 1) {
+                            // LuCI realtime disk format: [timestamp, [[device, free, used], ...]]
+                            const diskData = cgiResult[1];
+                            if (diskData && diskData[0]) {
+                                const [, free, used] = diskData[0];
+                                const total = free + used;
+                                if (total > 0) {
+                                    setDiskValue(Math.round((used / total) * 100));
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Method 4: Try luci-rpc sys namespace
+                const sysResult = await UBUS.call('luci-rpc', 'getSystemInfo').catch(() => null);
+                if (sysResult && sysResult.root) {
+                    const total = sysResult.root.total || 0;
+                    const free = sysResult.root.free || 0;
+                    const used = total - free;
+                    if (total > 0) {
+                        setDiskValue(Math.round((used / total) * 100));
+                        return;
+                    }
+                }
+
             } catch (e) {
                 console.warn('Disk usage error:', e);
             }
-            // Fallback to showing '--'
+            // All methods failed - show '--'
             document.getElementById('diskValue').textContent = '--';
         }
 
