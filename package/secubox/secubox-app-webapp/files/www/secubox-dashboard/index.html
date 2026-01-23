@@ -3512,18 +3512,14 @@
         };
 
         // =====================================================
-        // CrowdSec Integration
+        // CrowdSec Integration via RPC backend
         // =====================================================
 
         const CROWDSEC = {
             async getDecisions() {
                 try {
-                    // Try via shell command
-                    const result = await UBUS.execCommand('/usr/bin/cscli', ['decisions', 'list', '-o', 'json']);
-                    if (result.stdout) {
-                        return JSON.parse(result.stdout);
-                    }
-                    return [];
+                    const result = await UBUS.call('luci.crowdsec-dashboard', 'decisions');
+                    return result?.alerts || [];
                 } catch (e) {
                     console.warn('CrowdSec decisions error:', e);
                     return [];
@@ -3532,11 +3528,8 @@
 
             async getBouncers() {
                 try {
-                    const result = await UBUS.execCommand('/usr/bin/cscli', ['bouncers', 'list', '-o', 'json']);
-                    if (result.stdout) {
-                        return JSON.parse(result.stdout);
-                    }
-                    return [];
+                    const result = await UBUS.call('luci.crowdsec-dashboard', 'bouncers');
+                    return result?.bouncers || [];
                 } catch (e) {
                     console.warn('CrowdSec bouncers error:', e);
                     return [];
@@ -3545,11 +3538,8 @@
 
             async getAlerts() {
                 try {
-                    const result = await UBUS.execCommand('/usr/bin/cscli', ['alerts', 'list', '-o', 'json', '--since', '24h']);
-                    if (result.stdout) {
-                        return JSON.parse(result.stdout);
-                    }
-                    return [];
+                    const result = await UBUS.call('luci.crowdsec-dashboard', 'alerts', { limit: 50 });
+                    return result?.alerts || [];
                 } catch (e) {
                     console.warn('CrowdSec alerts error:', e);
                     return [];
@@ -3558,34 +3548,57 @@
 
             async getMetrics() {
                 try {
-                    const result = await UBUS.execCommand('/usr/bin/cscli', ['metrics', '-o', 'json']);
-                    if (result.stdout) {
-                        return JSON.parse(result.stdout);
-                    }
-                    return null;
+                    const result = await UBUS.call('luci.crowdsec-dashboard', 'metrics');
+                    return result || null;
                 } catch (e) {
                     return null;
                 }
             },
 
+            async getNftablesStats() {
+                try {
+                    const result = await UBUS.call('luci.crowdsec-dashboard', 'nftables_stats');
+                    return result || {};
+                } catch (e) {
+                    console.warn('CrowdSec nftables_stats error:', e);
+                    return {};
+                }
+            },
+
+            async getStatus() {
+                try {
+                    const result = await UBUS.call('luci.crowdsec-dashboard', 'status');
+                    return result || {};
+                } catch (e) {
+                    return {};
+                }
+            },
+
             async addDecision(ip, duration, reason) {
                 try {
-                    const result = await UBUS.execCommand('/usr/bin/cscli', [
-                        'decisions', 'add',
-                        '--ip', ip,
-                        '--duration', duration,
-                        '--reason', reason,
-                        '--type', 'ban'
-                    ]);
+                    const result = await UBUS.call('luci.crowdsec-dashboard', 'ban', {
+                        ip: ip,
+                        duration: duration,
+                        reason: reason
+                    });
                     return result;
                 } catch (e) {
                     throw new Error('Erreur lors du blocage: ' + e.message);
                 }
             },
 
+            async removeDecision(ip) {
+                try {
+                    const result = await UBUS.call('luci.crowdsec-dashboard', 'unban', { ip: ip });
+                    return result;
+                } catch (e) {
+                    throw new Error('Erreur lors du déblocage: ' + e.message);
+                }
+            },
+
             async reload() {
                 try {
-                    await UBUS.execCommand('/etc/init.d/crowdsec', ['reload']);
+                    await UBUS.call('luci.crowdsec-dashboard', 'service_control', { action: 'reload' });
                     return true;
                 } catch (e) {
                     throw new Error('Erreur reload CrowdSec: ' + e.message);
@@ -3744,16 +3757,17 @@
 
                 // Get CrowdSec data (in parallel) - only on overview tab
                 if (currentTab === 'overview' || currentTab === 'crowdsec') {
-                    const [decisions, bouncers, alerts] = await Promise.all([
+                    const [decisions, bouncers, alerts, nftStats] = await Promise.all([
                         CROWDSEC.getDecisions(),
                         CROWDSEC.getBouncers(),
-                        CROWDSEC.getAlerts()
+                        CROWDSEC.getAlerts(),
+                        CROWDSEC.getNftablesStats()
                     ]);
-                    updateCrowdSecMetrics(decisions, bouncers, alerts);
+                    updateCrowdSecMetrics(decisions, bouncers, alerts, nftStats);
 
                     // Update firewall blocking statistics
                     if (currentTab === 'overview') {
-                        updateBlockingStats(decisions, alerts);
+                        updateBlockingStats(decisions, alerts, nftStats);
                     }
                 }
 
@@ -3885,9 +3899,19 @@
         // Get real disk usage via df command
         async function updateDiskUsage() {
             try {
-                const result = await UBUS.execCommand('/bin/df', ['-P', '/']);
-                if (result.stdout) {
-                    const lines = result.stdout.trim().split('\n');
+                // Use luci.system-hub RPC for disk info
+                const result = await UBUS.call('luci.system-hub', 'get_system_status').catch(() => null);
+                if (result && result.disk) {
+                    const percent = result.disk.usage || 0;
+                    document.getElementById('diskValue').textContent = percent;
+                    updateGauge('diskGauge', percent);
+                    return;
+                }
+
+                // Fallback: try file.exec with df
+                const dfResult = await UBUS.execCommand('/bin/df', ['-P', '/']).catch(() => null);
+                if (dfResult && dfResult.stdout) {
+                    const lines = dfResult.stdout.trim().split('\n');
                     if (lines.length >= 2) {
                         const parts = lines[1].split(/\s+/);
                         if (parts.length >= 5) {
@@ -3995,7 +4019,7 @@
             previousNetStats = { rx: totalRx, tx: totalTx, time: Date.now() };
         }
 
-        function updateCrowdSecMetrics(decisions, bouncers, alerts) {
+        function updateCrowdSecMetrics(decisions, bouncers, alerts, nftStats) {
             const crowdsecStatus = document.getElementById('crowdsecStatus');
 
             // Check if CrowdSec is available
@@ -4019,8 +4043,17 @@
             // CrowdSec is active
             crowdsecStatus.innerHTML = '<span class="live-dot"></span> Actif';
 
-            // Decisions count
-            const decisionCount = Array.isArray(decisions) ? decisions.length : 0;
+            // Decisions count - use nftables stats if available for more accurate count
+            let decisionCount = Array.isArray(decisions) ? decisions.length : 0;
+            if (nftStats && nftStats.available) {
+                const ipv4Total = nftStats.ipv4_total_count || 0;
+                const ipv6Total = nftStats.ipv6_total_count || 0;
+                const nftTotal = ipv4Total + ipv6Total;
+                // Use nftables count if it's higher (more accurate for blocked IPs)
+                if (nftTotal > decisionCount) {
+                    decisionCount = nftTotal;
+                }
+            }
             document.getElementById('activeDecisions').textContent = decisionCount;
 
             // Alerts count
@@ -4032,16 +4065,15 @@
             // Bouncers
             renderBouncers(bouncers || []);
 
-            // Get actual parser and scenario counts from metrics if available
+            // Get actual parser and scenario counts from hub
             updateCrowdSecCounts();
         }
 
         async function updateCrowdSecCounts() {
             try {
-                // Get hub status for parsers and scenarios count
-                const result = await UBUS.execCommand('/usr/bin/cscli', ['hub', 'list', '-o', 'json']).catch(() => null);
-                if (result && result.stdout) {
-                    const hub = JSON.parse(result.stdout);
+                // Get hub status for parsers and scenarios count via RPC
+                const hub = await UBUS.call('luci.crowdsec-dashboard', 'hub').catch(() => null);
+                if (hub) {
                     const parsers = hub.parsers ? hub.parsers.filter(p => p.status === 'installed').length : 0;
                     const scenarios = hub.scenarios ? hub.scenarios.filter(s => s.status === 'installed').length : 0;
                     document.getElementById('parsersCount').textContent = parsers || '--';
@@ -4209,7 +4241,7 @@
             }
         }
 
-        function updateBlockingStats(decisions, alerts) {
+        function updateBlockingStats(decisions, alerts, nftStats) {
             const totalBansEl = document.getElementById('totalBansToday');
             const blockedEl = document.getElementById('totalBlockedAttempts');
             const topScenarioEl = document.getElementById('topScenario');
@@ -4255,41 +4287,63 @@
                 }
             });
 
-            // Count unique IPs
-            const uniqueIPs = new Set();
-            decisionsList.forEach(d => {
-                if (d.value) uniqueIPs.add(d.value);
-            });
-            alertsList.forEach(a => {
-                if (a.source && a.source.ip) uniqueIPs.add(a.source.ip);
-            });
+            // Count unique IPs - use nftables stats if available for more accurate count
+            let uniqueIPsCount = 0;
+            if (nftStats && nftStats.available) {
+                const ipv4Total = nftStats.ipv4_total_count || 0;
+                const ipv6Total = nftStats.ipv6_total_count || 0;
+                uniqueIPsCount = ipv4Total + ipv6Total;
+            }
+
+            // Fallback to counting from decisions/alerts if nftStats not available
+            if (uniqueIPsCount === 0) {
+                const uniqueIPs = new Set();
+                decisionsList.forEach(d => {
+                    if (d.value) uniqueIPs.add(d.value);
+                });
+                alertsList.forEach(a => {
+                    if (a.source && a.source.ip) uniqueIPs.add(a.source.ip);
+                });
+                uniqueIPsCount = uniqueIPs.size;
+            }
 
             // Update UI
             totalBansEl.textContent = todayBans;
             blockedEl.textContent = totalBlocked || '--';
             topScenarioEl.textContent = topScenario.length > 10 ? topScenario.substring(0, 10) + '...' : topScenario;
             topScenarioEl.title = topScenario; // Full name on hover
-            uniqueIPsEl.textContent = uniqueIPs.size;
+            uniqueIPsEl.textContent = uniqueIPsCount;
         }
 
         async function loadSystemLogs() {
             const container = document.getElementById('logsContainer');
 
             try {
-                // Get recent logs via logread
-                const result = await UBUS.execCommand('/sbin/logread', ['-l', '20']);
-                
-                if (result.stdout) {
-                    const lines = result.stdout.trim().split('\n').filter(l => l);
-                    
+                // Try luci.system-hub RPC first
+                const result = await UBUS.call('luci.system-hub', 'get_logs', { lines: 20 }).catch(() => null);
+
+                let lines = [];
+                if (result && result.logs && Array.isArray(result.logs)) {
+                    lines = result.logs;
+                } else {
+                    // Fallback: try file.exec with logread
+                    const logResult = await UBUS.execCommand('/sbin/logread', ['-l', '20']).catch(() => null);
+                    if (logResult && logResult.stdout) {
+                        lines = logResult.stdout.trim().split('\n').filter(l => l);
+                    }
+                }
+
+                if (lines.length > 0) {
                     container.innerHTML = lines.slice(-10).reverse().map(line => {
-                        const type = getLogType(line);
+                        // Handle both string and object formats
+                        const logLine = typeof line === 'string' ? line : (line.message || line.line || '');
+                        const type = getLogType(logLine);
                         const icons = { ban: 'x-circle', alert: 'alert-triangle', info: 'info', success: 'check-circle' };
-                        
+
                         // Parse log line
-                        const parts = line.match(/^(\w+\s+\d+\s+[\d:]+)\s+\S+\s+(.+)$/);
-                        const time = parts?.[1] || '';
-                        const message = parts?.[2] || line;
+                        const parts = logLine.match(/^(\w+\s+\d+\s+[\d:]+)\s+\S+\s+(.+)$/);
+                        const time = parts?.[1] || (line.time || '');
+                        const message = parts?.[2] || logLine;
 
                         return `
                             <div class="log-entry ${type}">
@@ -4307,7 +4361,10 @@
                     }).join('');
 
                     lucide.createIcons();
+                    return;
                 }
+
+                throw new Error('No logs available');
             } catch (e) {
                 container.innerHTML = `
                     <div class="empty-state">
@@ -5201,14 +5258,24 @@
 
         async function loadCrowdSecInfo() {
             try {
-                const [decisions, bouncers, alerts, machines] = await Promise.all([
+                const [decisions, bouncers, alerts, machines, nftStats] = await Promise.all([
                     CROWDSEC.getDecisions(),
                     CROWDSEC.getBouncers(),
                     CROWDSEC.getAlerts(),
-                    getCrowdSecMachines()
+                    getCrowdSecMachines(),
+                    CROWDSEC.getNftablesStats()
                 ]);
 
-                document.getElementById('csDecisions').textContent = Array.isArray(decisions) ? decisions.length : '--';
+                // Use nftables stats for more accurate blocked IPs count
+                let decisionsCount = Array.isArray(decisions) ? decisions.length : 0;
+                if (nftStats && nftStats.available) {
+                    const nftTotal = (nftStats.ipv4_total_count || 0) + (nftStats.ipv6_total_count || 0);
+                    if (nftTotal > decisionsCount) {
+                        decisionsCount = nftTotal;
+                    }
+                }
+
+                document.getElementById('csDecisions').textContent = decisionsCount || '--';
                 document.getElementById('csAlerts').textContent = Array.isArray(alerts) ? alerts.length : '--';
                 document.getElementById('csBouncers').textContent = Array.isArray(bouncers) ? bouncers.length : '--';
                 document.getElementById('csMachines').textContent = Array.isArray(machines) ? machines.length : '--';
@@ -5256,10 +5323,8 @@
 
         async function getCrowdSecMachines() {
             try {
-                const result = await UBUS.execCommand('/usr/bin/cscli', ['machines', 'list', '-o', 'json']);
-                if (result.stdout) {
-                    return JSON.parse(result.stdout);
-                }
+                const result = await UBUS.call('luci.crowdsec-dashboard', 'machines');
+                return result?.machines || [];
             } catch (e) {}
             return [];
         }
@@ -5313,7 +5378,7 @@
         async function unbanIPDirect(ip) {
             try {
                 showToast(`Déblocage de ${ip}...`, 'info');
-                await UBUS.execCommand('/usr/bin/cscli', ['decisions', 'delete', '--ip', ip]);
+                await CROWDSEC.removeDecision(ip);
                 showToast(`IP ${ip} débloquée`, 'success');
                 if (currentTab === 'crowdsec') {
                     await loadCrowdSecInfo();
@@ -5328,8 +5393,7 @@
         async function updateCrowdSecHub() {
             try {
                 showToast('Mise à jour du hub CrowdSec...', 'info');
-                await UBUS.execCommand('/usr/bin/cscli', ['hub', 'update']);
-                await UBUS.execCommand('/usr/bin/cscli', ['hub', 'upgrade']);
+                await UBUS.call('luci.crowdsec-dashboard', 'update_hub');
                 showToast('Hub CrowdSec mis à jour', 'success');
             } catch (e) {
                 showToast(`Erreur: ${e.message}`, 'error');
