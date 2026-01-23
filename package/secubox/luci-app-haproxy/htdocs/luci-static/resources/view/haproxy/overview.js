@@ -15,6 +15,7 @@ return view.extend({
 	title: _('HAProxy Dashboard'),
 
 	data: null,
+	pollRegistered: false,
 
 	load: function() {
 		// Load CSS
@@ -36,47 +37,40 @@ return view.extend({
 		var certificates = data.certificates || [];
 
 		var containerRunning = status.container_running;
-		var haproxyRunning = status.haproxy_running;
-		var enabled = status.enabled;
 
-		// Main wrapper
-		var view = E('div', { 'class': 'haproxy-dashboard' }, [
-			// Page Header
+		// Build content array, filtering out nulls
+		var content = [
 			this.renderPageHeader(status),
-
-			// Warning banner if not running
-			!containerRunning ? this.renderWarningBanner() : null,
-
-			// Stats Grid
 			this.renderStatsGrid(status, vhosts, backends, certificates),
-
-			// Health Check Grid
 			this.renderHealthGrid(status),
-
-			// Main content grid
 			E('div', { 'class': 'hp-row' }, [
-				// Left column - Vhosts preview
 				E('div', { 'style': 'flex: 2' }, [
 					this.renderVhostsCard(vhosts)
 				]),
-				// Right column - Backends + Certs
 				E('div', { 'style': 'flex: 1' }, [
 					this.renderBackendsCard(backends),
 					this.renderCertificatesCard(certificates)
 				])
 			]),
-
-			// Quick Actions
 			this.renderQuickActions(status),
-
-			// Connection Info
 			this.renderConnectionInfo(status)
-		]);
+		];
 
-		// Setup polling for auto-refresh
-		poll.add(function() {
-			return self.refreshDashboard();
-		}, 30);
+		// Add warning banner if container not running
+		if (!containerRunning) {
+			content.splice(1, 0, this.renderWarningBanner());
+		}
+
+		// Main wrapper
+		var view = E('div', { 'class': 'haproxy-dashboard' }, content);
+
+		// Setup polling for auto-refresh (only once)
+		if (!this.pollRegistered) {
+			this.pollRegistered = true;
+			poll.add(function() {
+				return self.refreshDashboard();
+			}, 30);
+		}
 
 		return view;
 	},
@@ -87,6 +81,17 @@ return view.extend({
 		var statusText = haproxyRunning ? 'Running' : (containerRunning ? 'Container Only' : 'Stopped');
 		var statusClass = haproxyRunning ? 'running' : (containerRunning ? 'warning' : 'stopped');
 
+		var badges = [
+			E('div', { 'class': 'hp-header-badge' }, [
+				E('span', { 'class': 'hp-badge-dot ' + statusClass }),
+				statusText
+			])
+		];
+
+		if (status.version) {
+			badges.push(E('div', { 'class': 'hp-header-badge' }, 'v' + status.version));
+		}
+
 		return E('div', { 'class': 'hp-page-header' }, [
 			E('div', {}, [
 				E('h1', { 'class': 'hp-page-title' }, [
@@ -95,13 +100,7 @@ return view.extend({
 				]),
 				E('p', { 'class': 'hp-page-subtitle' }, 'High-performance reverse proxy and load balancer')
 			]),
-			E('div', { 'class': 'hp-header-badges' }, [
-				E('div', { 'class': 'hp-header-badge' }, [
-					E('span', { 'class': 'hp-badge-dot ' + statusClass }),
-					statusText
-				]),
-				status.version ? E('div', { 'class': 'hp-header-badge' }, 'v' + status.version) : null
-			])
+			E('div', { 'class': 'hp-header-badges' }, badges)
 		]);
 	},
 
@@ -122,7 +121,7 @@ return view.extend({
 				E('button', {
 					'class': 'hp-btn hp-btn-primary',
 					'click': function() { self.handleInstall(); }
-				}, ['\u{1F4E6}', ' Install Container'])
+				}, '\u{1F4E6} Install Container')
 			])
 		]);
 	},
@@ -176,10 +175,10 @@ return view.extend({
 				status: status.haproxy_running ? 'success' : 'danger'
 			},
 			{
-				icon: status.config_valid ? '\u2705' : '\u26A0\uFE0F',
+				icon: status.config_valid !== false ? '\u2705' : '\u26A0\uFE0F',
 				label: 'Config',
-				value: status.config_valid ? 'Valid' : 'Check Needed',
-				status: status.config_valid ? 'success' : 'warning'
+				value: status.config_valid !== false ? 'Valid' : 'Check Needed',
+				status: status.config_valid !== false ? 'success' : 'warning'
 			},
 			{
 				icon: '\u{1F4E1}',
@@ -221,8 +220,6 @@ return view.extend({
 	},
 
 	renderVhostsCard: function(vhosts) {
-		var self = this;
-
 		if (vhosts.length === 0) {
 			return E('div', { 'class': 'hp-card' }, [
 				E('div', { 'class': 'hp-card-header' }, [
@@ -243,6 +240,47 @@ return view.extend({
 			]);
 		}
 
+		var tableRows = vhosts.slice(0, 5).map(function(vh) {
+			var sslBadges = [];
+			if (vh.ssl) sslBadges.push(E('span', { 'class': 'hp-badge hp-badge-info', 'style': 'margin-right: 4px;' }, 'SSL'));
+			if (vh.acme) sslBadges.push(E('span', { 'class': 'hp-badge hp-badge-success' }, 'ACME'));
+
+			var domainCell = [E('strong', {}, vh.domain)];
+			if (vh.ssl_redirect) {
+				domainCell.push(E('small', { 'style': 'display: block; color: var(--hp-text-muted); font-size: 11px;' },
+					'HTTPS redirect enabled'));
+			}
+
+			return E('tr', {}, [
+				E('td', {}, domainCell),
+				E('td', {}, E('span', { 'class': 'hp-mono' }, vh.backend || '-')),
+				E('td', {}, sslBadges.length > 0 ? sslBadges : '-'),
+				E('td', {}, E('span', {
+					'class': 'hp-badge ' + (vh.enabled ? 'hp-badge-success' : 'hp-badge-danger')
+				}, vh.enabled ? 'Active' : 'Disabled'))
+			]);
+		});
+
+		var cardContent = [
+			E('table', { 'class': 'hp-table' }, [
+				E('thead', {}, [
+					E('tr', {}, [
+						E('th', {}, 'Domain'),
+						E('th', {}, 'Backend'),
+						E('th', {}, 'SSL'),
+						E('th', {}, 'Status')
+					])
+				]),
+				E('tbody', {}, tableRows)
+			])
+		];
+
+		if (vhosts.length > 5) {
+			cardContent.push(E('div', { 'style': 'padding: 12px 16px; text-align: center; border-top: 1px solid var(--hp-border);' },
+				E('a', { 'href': L.url('admin/services/haproxy/vhosts') },
+					'View all ' + vhosts.length + ' virtual hosts \u2192')));
+		}
+
 		return E('div', { 'class': 'hp-card' }, [
 			E('div', { 'class': 'hp-card-header' }, [
 				E('div', { 'class': 'hp-card-title' }, [
@@ -252,44 +290,44 @@ return view.extend({
 				E('a', { 'href': L.url('admin/services/haproxy/vhosts'), 'class': 'hp-btn hp-btn-secondary hp-btn-sm' },
 					'Manage')
 			]),
-			E('div', { 'class': 'hp-card-body no-padding' }, [
-				E('table', { 'class': 'hp-table' }, [
-					E('thead', {}, [
-						E('tr', {}, [
-							E('th', {}, 'Domain'),
-							E('th', {}, 'Backend'),
-							E('th', {}, 'SSL'),
-							E('th', {}, 'Status')
-						])
-					]),
-					E('tbody', {}, vhosts.slice(0, 5).map(function(vh) {
-						return E('tr', {}, [
-							E('td', {}, [
-								E('strong', {}, vh.domain),
-								vh.ssl_redirect ? E('small', { 'style': 'display: block; color: var(--hp-text-muted); font-size: 11px;' },
-									'HTTPS redirect enabled') : null
-							]),
-							E('td', {}, E('span', { 'class': 'hp-mono' }, vh.backend || '-')),
-							E('td', {}, [
-								vh.ssl ? E('span', { 'class': 'hp-badge hp-badge-info', 'style': 'margin-right: 4px;' }, 'SSL') : null,
-								vh.acme ? E('span', { 'class': 'hp-badge hp-badge-success' }, 'ACME') : null
-							]),
-							E('td', {}, E('span', {
-								'class': 'hp-badge ' + (vh.enabled ? 'hp-badge-success' : 'hp-badge-danger')
-							}, vh.enabled ? 'Active' : 'Disabled'))
-						]);
-					}))
-				]),
-				vhosts.length > 5 ? E('div', { 'style': 'padding: 12px 16px; text-align: center; border-top: 1px solid var(--hp-border);' },
-					E('a', { 'href': L.url('admin/services/haproxy/vhosts') },
-						'View all ' + vhosts.length + ' virtual hosts \u2192')
-				) : null
-			])
+			E('div', { 'class': 'hp-card-body no-padding' }, cardContent)
 		]);
 	},
 
 	renderBackendsCard: function(backends) {
-		var activeCount = backends.filter(function(b) { return b.enabled; }).length;
+		var cardBody;
+
+		if (backends.length === 0) {
+			cardBody = E('div', { 'class': 'hp-empty', 'style': 'padding: 20px;' }, [
+				E('div', { 'class': 'hp-empty-icon', 'style': 'font-size: 32px;' }, '\u{1F5A5}\uFE0F'),
+				E('div', { 'class': 'hp-empty-text', 'style': 'font-size: 14px;' }, 'No backends configured')
+			]);
+		} else {
+			var backendItems = backends.slice(0, 4).map(function(b) {
+				return E('div', {
+					'style': 'display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--hp-bg-tertiary); border-radius: 8px;'
+				}, [
+					E('div', {}, [
+						E('div', { 'style': 'font-weight: 500;' }, b.name),
+						E('div', { 'style': 'font-size: 12px; color: var(--hp-text-muted);' },
+							(b.mode || 'http').toUpperCase() + ' / ' + (b.balance || 'roundrobin'))
+					]),
+					E('span', {
+						'class': 'hp-badge ' + (b.enabled ? 'hp-badge-success' : 'hp-badge-danger')
+					}, b.enabled ? 'UP' : 'DOWN')
+				]);
+			});
+
+			var content = [E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, backendItems)];
+
+			if (backends.length > 4) {
+				content.push(E('div', { 'style': 'text-align: center; margin-top: 12px;' },
+					E('a', { 'href': L.url('admin/services/haproxy/backends'), 'style': 'font-size: 13px;' },
+						'+' + (backends.length - 4) + ' more')));
+			}
+
+			cardBody = content;
+		}
 
 		return E('div', { 'class': 'hp-card' }, [
 			E('div', { 'class': 'hp-card-header' }, [
@@ -300,33 +338,7 @@ return view.extend({
 				E('a', { 'href': L.url('admin/services/haproxy/backends'), 'class': 'hp-btn hp-btn-secondary hp-btn-sm' },
 					'Manage')
 			]),
-			E('div', { 'class': 'hp-card-body' }, backends.length === 0 ? [
-				E('div', { 'class': 'hp-empty', 'style': 'padding: 20px;' }, [
-					E('div', { 'class': 'hp-empty-icon', 'style': 'font-size: 32px;' }, '\u{1F5A5}\uFE0F'),
-					E('div', { 'class': 'hp-empty-text', 'style': 'font-size: 14px;' }, 'No backends configured')
-				])
-			] : [
-				E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' },
-					backends.slice(0, 4).map(function(b) {
-						return E('div', {
-							'style': 'display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--hp-bg-tertiary); border-radius: 8px;'
-						}, [
-							E('div', {}, [
-								E('div', { 'style': 'font-weight: 500;' }, b.name),
-								E('div', { 'style': 'font-size: 12px; color: var(--hp-text-muted);' },
-									(b.mode || 'http').toUpperCase() + ' / ' + (b.balance || 'roundrobin'))
-							]),
-							E('span', {
-								'class': 'hp-badge ' + (b.enabled ? 'hp-badge-success' : 'hp-badge-danger')
-							}, b.enabled ? 'UP' : 'DOWN')
-						]);
-					})
-				),
-				backends.length > 4 ? E('div', { 'style': 'text-align: center; margin-top: 12px;' },
-					E('a', { 'href': L.url('admin/services/haproxy/backends'), 'style': 'font-size: 13px;' },
-						'+' + (backends.length - 4) + ' more')
-				) : null
-			])
+			E('div', { 'class': 'hp-card-body' }, Array.isArray(cardBody) ? cardBody : [cardBody])
 		]);
 	},
 
@@ -334,6 +346,47 @@ return view.extend({
 		var expiringCount = certificates.filter(function(c) {
 			return c.days_until_expiry && c.days_until_expiry < 30 && c.days_until_expiry > 0;
 		}).length;
+
+		var cardBody;
+
+		if (certificates.length === 0) {
+			cardBody = E('div', { 'class': 'hp-empty', 'style': 'padding: 20px;' }, [
+				E('div', { 'class': 'hp-empty-icon', 'style': 'font-size: 32px;' }, '\u{1F512}'),
+				E('div', { 'class': 'hp-empty-text', 'style': 'font-size: 14px;' }, 'No certificates')
+			]);
+		} else {
+			var content = [];
+
+			if (expiringCount > 0) {
+				content.push(E('div', {
+					'style': 'display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--hp-warning-soft); border-radius: 8px; margin-bottom: 12px; font-size: 13px; color: var(--hp-warning);'
+				}, ['\u26A0\uFE0F ', expiringCount + ' certificate(s) expiring soon']));
+			}
+
+			var certItems = certificates.slice(0, 3).map(function(c) {
+				var isExpiring = c.days_until_expiry && c.days_until_expiry < 30;
+				var isExpired = c.expired || (c.days_until_expiry && c.days_until_expiry <= 0);
+				var badgeClass = isExpired ? 'hp-badge-danger' : (isExpiring ? 'hp-badge-warning' : 'hp-badge-success');
+				var badgeText = isExpired ? 'Expired' : (c.acme ? 'ACME' : 'Custom');
+
+				return E('div', {
+					'style': 'display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--hp-bg-tertiary); border-radius: 8px;'
+				}, [
+					E('div', { 'class': 'hp-mono', 'style': 'font-size: 13px;' }, c.domain),
+					E('span', { 'class': 'hp-badge ' + badgeClass }, badgeText)
+				]);
+			});
+
+			content.push(E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, certItems));
+
+			if (certificates.length > 3) {
+				content.push(E('div', { 'style': 'text-align: center; margin-top: 12px;' },
+					E('a', { 'href': L.url('admin/services/haproxy/certificates'), 'style': 'font-size: 13px;' },
+						'+' + (certificates.length - 3) + ' more')));
+			}
+
+			cardBody = content;
+		}
 
 		return E('div', { 'class': 'hp-card' }, [
 			E('div', { 'class': 'hp-card-header' }, [
@@ -344,37 +397,7 @@ return view.extend({
 				E('a', { 'href': L.url('admin/services/haproxy/certificates'), 'class': 'hp-btn hp-btn-secondary hp-btn-sm' },
 					'Manage')
 			]),
-			E('div', { 'class': 'hp-card-body' }, certificates.length === 0 ? [
-				E('div', { 'class': 'hp-empty', 'style': 'padding: 20px;' }, [
-					E('div', { 'class': 'hp-empty-icon', 'style': 'font-size: 32px;' }, '\u{1F512}'),
-					E('div', { 'class': 'hp-empty-text', 'style': 'font-size: 14px;' }, 'No certificates')
-				])
-			] : [
-				expiringCount > 0 ? E('div', {
-					'style': 'display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--hp-warning-soft); border-radius: 8px; margin-bottom: 12px; font-size: 13px; color: var(--hp-warning);'
-				}, [
-					'\u26A0\uFE0F',
-					expiringCount + ' certificate(s) expiring soon'
-				]) : null,
-				E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' },
-					certificates.slice(0, 3).map(function(c) {
-						var isExpiring = c.days_until_expiry && c.days_until_expiry < 30;
-						var isExpired = c.expired || (c.days_until_expiry && c.days_until_expiry <= 0);
-						return E('div', {
-							'style': 'display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--hp-bg-tertiary); border-radius: 8px;'
-						}, [
-							E('div', { 'class': 'hp-mono', 'style': 'font-size: 13px;' }, c.domain),
-							E('span', {
-								'class': 'hp-badge ' + (isExpired ? 'hp-badge-danger' : (isExpiring ? 'hp-badge-warning' : 'hp-badge-success'))
-							}, isExpired ? 'Expired' : (c.acme ? 'ACME' : 'Custom'))
-						]);
-					})
-				),
-				certificates.length > 3 ? E('div', { 'style': 'text-align: center; margin-top: 12px;' },
-					E('a', { 'href': L.url('admin/services/haproxy/certificates'), 'style': 'font-size: 13px;' },
-						'+' + (certificates.length - 3) + ' more')
-				) : null
-			])
+			E('div', { 'class': 'hp-card-body' }, Array.isArray(cardBody) ? cardBody : [cardBody])
 		]);
 	},
 
@@ -435,7 +458,7 @@ return view.extend({
 				E('div', { 'class': 'hp-quick-actions' }, actions.map(function(action) {
 					return E('button', {
 						'class': 'hp-action-btn',
-						'disabled': action.disabled,
+						'disabled': action.disabled ? true : null,
 						'click': action.click
 					}, [
 						E('span', { 'class': 'hp-action-icon' }, action.icon),
@@ -449,6 +472,34 @@ return view.extend({
 	renderConnectionInfo: function(status) {
 		var hostname = window.location.hostname;
 
+		var items = [
+			E('div', { 'class': 'hp-connection-item' }, [
+				E('span', { 'class': 'hp-connection-label' }, 'HTTP Endpoint'),
+				E('span', { 'class': 'hp-connection-value' },
+					E('a', { 'href': 'http://' + hostname + ':' + (status.http_port || 80), 'target': '_blank' },
+						hostname + ':' + (status.http_port || 80)))
+			]),
+			E('div', { 'class': 'hp-connection-item' }, [
+				E('span', { 'class': 'hp-connection-label' }, 'HTTPS Endpoint'),
+				E('span', { 'class': 'hp-connection-value' },
+					E('a', { 'href': 'https://' + hostname + ':' + (status.https_port || 443), 'target': '_blank' },
+						hostname + ':' + (status.https_port || 443)))
+			]),
+			E('div', { 'class': 'hp-connection-item' }, [
+				E('span', { 'class': 'hp-connection-label' }, 'Config Path'),
+				E('span', { 'class': 'hp-connection-value' }, '/etc/haproxy/haproxy.cfg')
+			])
+		];
+
+		if (status.stats_enabled) {
+			items.splice(2, 0, E('div', { 'class': 'hp-connection-item' }, [
+				E('span', { 'class': 'hp-connection-label' }, 'Stats Dashboard'),
+				E('span', { 'class': 'hp-connection-value' },
+					E('a', { 'href': 'http://' + hostname + ':' + (status.stats_port || 8404) + '/stats', 'target': '_blank' },
+						hostname + ':' + (status.stats_port || 8404) + '/stats'))
+			]));
+		}
+
 		return E('div', { 'class': 'hp-card' }, [
 			E('div', { 'class': 'hp-card-header' }, [
 				E('div', { 'class': 'hp-card-title' }, [
@@ -457,30 +508,7 @@ return view.extend({
 				])
 			]),
 			E('div', { 'class': 'hp-card-body' }, [
-				E('div', { 'class': 'hp-connection-grid' }, [
-					E('div', { 'class': 'hp-connection-item' }, [
-						E('span', { 'class': 'hp-connection-label' }, 'HTTP Endpoint'),
-						E('span', { 'class': 'hp-connection-value' },
-							E('a', { 'href': 'http://' + hostname + ':' + (status.http_port || 80), 'target': '_blank' },
-								hostname + ':' + (status.http_port || 80)))
-					]),
-					E('div', { 'class': 'hp-connection-item' }, [
-						E('span', { 'class': 'hp-connection-label' }, 'HTTPS Endpoint'),
-						E('span', { 'class': 'hp-connection-value' },
-							E('a', { 'href': 'https://' + hostname + ':' + (status.https_port || 443), 'target': '_blank' },
-								hostname + ':' + (status.https_port || 443)))
-					]),
-					status.stats_enabled ? E('div', { 'class': 'hp-connection-item' }, [
-						E('span', { 'class': 'hp-connection-label' }, 'Stats Dashboard'),
-						E('span', { 'class': 'hp-connection-value' },
-							E('a', { 'href': 'http://' + hostname + ':' + (status.stats_port || 8404) + '/stats', 'target': '_blank' },
-								hostname + ':' + (status.stats_port || 8404) + '/stats'))
-					]) : null,
-					E('div', { 'class': 'hp-connection-item' }, [
-						E('span', { 'class': 'hp-connection-label' }, 'Config Path'),
-						E('span', { 'class': 'hp-connection-value' }, '/etc/haproxy/haproxy.cfg')
-					])
-				])
+				E('div', { 'class': 'hp-connection-grid' }, items)
 			])
 		]);
 	},
@@ -565,10 +593,11 @@ return view.extend({
 		var self = this;
 		return api.getDashboardData().then(function(data) {
 			self.data = data;
-			// Re-render dashboard content
 			var container = document.querySelector('.haproxy-dashboard');
 			if (container) {
-				dom.content(container, self.render(data).childNodes);
+				// Clear and rebuild content
+				var newView = self.render(data);
+				container.parentNode.replaceChild(newView, container);
 			}
 		});
 	},
@@ -585,7 +614,7 @@ return view.extend({
 
 		var toast = E('div', { 'class': 'hp-toast ' + (type || '') }, [
 			E('span', {}, iconMap[type] || '\u2139\uFE0F'),
-			message
+			' ' + message
 		]);
 		document.body.appendChild(toast);
 
