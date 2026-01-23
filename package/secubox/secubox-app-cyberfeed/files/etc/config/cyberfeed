@@ -1,0 +1,15 @@
+config cyberfeed 'main'
+	option enabled '1'
+	option refresh_interval '5'
+	option max_items '20'
+	option cache_ttl '300'
+	option output_dir '/tmp/cyberfeed/output'
+	option theme 'cyberpunk'
+
+config rssbridge 'rssbridge'
+	option enabled '0'
+	option port '3000'
+	option container 'rss-bridge'
+
+# Feed sources - managed via /etc/cyberfeed/feeds.conf
+# or through LuCI interface

@@ -1,0 +1,38 @@
+#!/bin/sh /etc/rc.common
+# CyberFeed init script
+
+START=95
+STOP=10
+USE_PROCD=1
+
+PROG=/usr/bin/cyberfeed
+
+start_service() {
+	local enabled
+	config_load cyberfeed
+	config_get enabled main enabled 0
+
+	[ "$enabled" = "1" ] || return 0
+
+	# Create directories
+	mkdir -p /tmp/cyberfeed/cache /tmp/cyberfeed/output
+
+	# Create web symlink
+	[ -L /www/cyberfeed/index.html ] || ln -sf /tmp/cyberfeed/output/index.html /www/cyberfeed/index.html 2>/dev/null
+
+	# Run initial sync
+	$PROG sync &
+}
+
+stop_service() {
+	# Nothing to stop - runs via cron
+	:
+}
+
+reload_service() {
+	$PROG sync &
+}
+
+service_triggers() {
+	procd_add_reload_trigger "cyberfeed"
+}

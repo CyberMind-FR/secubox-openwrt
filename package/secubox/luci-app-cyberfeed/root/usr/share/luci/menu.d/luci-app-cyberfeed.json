@@ -1,0 +1,45 @@
+{
+	"admin/services/cyberfeed": {
+		"title": "CyberFeed",
+		"order": 85,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-cyberfeed"],
+			"uci": {"cyberfeed": true}
+		}
+	},
+	"admin/services/cyberfeed/overview": {
+		"title": "Dashboard",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "cyberfeed/overview"
+		}
+	},
+	"admin/services/cyberfeed/feeds": {
+		"title": "Feeds",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "cyberfeed/feeds"
+		}
+	},
+	"admin/services/cyberfeed/preview": {
+		"title": "Preview",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "cyberfeed/preview"
+		}
+	},
+	"admin/services/cyberfeed/settings": {
+		"title": "Settings",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "cyberfeed/settings"
+		}
+	}
+}

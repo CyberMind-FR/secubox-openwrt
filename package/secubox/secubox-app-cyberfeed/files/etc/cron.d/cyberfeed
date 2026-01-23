@@ -1,0 +1,3 @@
+# CyberFeed auto-refresh
+# Runs every 5 minutes by default
+*/5 * * * * root [ -x /usr/bin/cyberfeed ] && /usr/bin/cyberfeed sync >/dev/null 2>&1

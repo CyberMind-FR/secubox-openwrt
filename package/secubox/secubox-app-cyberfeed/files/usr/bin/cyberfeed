@@ -1,0 +1,615 @@
+#!/bin/sh
+# ╔═══════════════════════════════════════════════════════════════════╗
+# ║  ⚡ CYBERFEED v0.1 - RSS Aggregator for OpenWrt/SecuBox ⚡        ║
+# ║  Cyberpunk Social Feed Analyzer with Emoji Enhancement            ║
+# ║  Author: CyberMind.FR | License: MIT                              ║
+# ╚═══════════════════════════════════════════════════════════════════╝
+
+. /lib/functions.sh
+
+# === CONFIGURATION ===
+CYBERFEED_DIR="/tmp/cyberfeed"
+CACHE_DIR="${CYBERFEED_DIR}/cache"
+OUTPUT_DIR="${CYBERFEED_DIR}/output"
+CONFIG_FILE="/etc/cyberfeed/feeds.conf"
+TEMPLATE_FILE="/usr/share/cyberfeed/template.html"
+MAX_ITEMS=20
+CACHE_TTL=300
+
+# Load UCI config
+load_config() {
+	config_load cyberfeed
+	config_get MAX_ITEMS main max_items 20
+	config_get CACHE_TTL main cache_ttl 300
+	config_get OUTPUT_DIR main output_dir "/tmp/cyberfeed/output"
+}
+
+# === CYBERPUNK EMOJI MAPPING ===
+cyberpunk_emojify() {
+	local text="$1"
+
+	# Security/Hacking themes
+	echo "$text" | sed -E '
+		s/(hack|breach|exploit|vulnerab)/\xf0\x9f\x94\x93\1/gi
+		s/(secur|protect|defense|firewall)/\xf0\x9f\x9b\xa1\xef\xb8\x8f\1/gi
+		s/(cyber|digital|virtual)/\xe2\x9a\xa1\1/gi
+		s/(encrypt|crypto|cipher)/\xf0\x9f\x94\x90\1/gi
+		s/(malware|virus|trojan)/\xe2\x98\xa0\xef\xb8\x8f\1/gi
+		s/(alert|warning|danger)/\xe2\x9a\xa0\xef\xb8\x8f\1/gi
+		s/(attack|threat|risk)/\xf0\x9f\x92\x80\1/gi
+		s/(network|connect|link)/\xf0\x9f\x8c\x90\1/gi
+		s/(server|cloud|data)/\xf0\x9f\x92\xbe\1/gi
+		s/(code|program|script)/\xf0\x9f\x92\xbb\1/gi
+		s/(linux|opensource|github)/\xf0\x9f\x90\xa7\1/gi
+		s/(robot|automat|ai|machine)/\xf0\x9f\xa4\x96\1/gi
+		s/(update|upgrade|patch)/\xf0\x9f\x93\xa1\1/gi
+		s/(launch|deploy|release)/\xf0\x9f\x9a\x80\1/gi
+		s/(new|annonce|breaking)/\xe2\x9c\xa8\1/gi
+		s/(success|win|achieve)/\xf0\x9f\x8f\x86\1/gi
+		s/(fail|error|bug)/\xf0\x9f\x90\x9b\1/gi
+		s/(magic|mystiq|oracle)/\xf0\x9f\x94\xae\1/gi
+		s/(energy|power|force)/\xe2\x9a\xa1\1/gi
+	'
+}
+
+# === RSS FETCHER ===
+fetch_feed() {
+	local url="$1"
+	local name="$2"
+	local cache_file="${CACHE_DIR}/${name}.xml"
+
+	# Check cache freshness
+	if [ -f "$cache_file" ]; then
+		local file_time=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+		local now=$(date +%s)
+		local age=$((now - file_time))
+		if [ "$age" -lt "$CACHE_TTL" ]; then
+			cat "$cache_file"
+			return 0
+		fi
+	fi
+
+	# Fetch with wget (OpenWrt standard)
+	wget -q -T 15 -O "$cache_file" "$url" 2>/dev/null
+
+	if [ -f "$cache_file" ] && [ -s "$cache_file" ]; then
+		cat "$cache_file"
+	else
+		rm -f "$cache_file"
+		return 1
+	fi
+}
+
+# === RSS PARSER (Pure AWK for OpenWrt) ===
+parse_rss() {
+	local xml="$1"
+	local source="$2"
+	local category="$3"
+
+	echo "$xml" | awk -v source="$source" -v category="$category" -v max="$MAX_ITEMS" '
+	BEGIN {
+		RS="</item>|</entry>"
+		item_count=0
+	}
+	{
+		title=""
+		link=""
+		date=""
+		desc=""
+
+		# Extract title
+		if (match($0, /<title[^>]*>([^<]+)<\/title>/, arr)) title=arr[1]
+		else if (match($0, /<title[^>]*><!\[CDATA\[([^\]]+)\]\]><\/title>/, arr)) title=arr[1]
+
+		# Extract link
+		if (match($0, /<link[^>]*>([^<]+)<\/link>/, arr)) link=arr[1]
+		else if (match($0, /<link[^>]*href="([^"]+)"/, arr)) link=arr[1]
+
+		# Extract date
+		if (match($0, /<pubDate>([^<]+)</, arr)) date=arr[1]
+		else if (match($0, /<published>([^<]+)</, arr)) date=arr[1]
+		else if (match($0, /<updated>([^<]+)</, arr)) date=arr[1]
+
+		# Extract description
+		if (match($0, /<description[^>]*>([^<]+)</, arr)) desc=arr[1]
+		else if (match($0, /<summary[^>]*>([^<]+)</, arr)) desc=arr[1]
+		else if (match($0, /<description[^>]*><!\[CDATA\[(.{1,500})/, arr)) desc=arr[1]
+
+		if (title != "" && item_count < max) {
+			# Escape JSON special chars
+			gsub(/"/, "\\\"", title)
+			gsub(/"/, "\\\"", desc)
+			gsub(/[\r\n\t]/, " ", title)
+			gsub(/[\r\n\t]/, " ", desc)
+			gsub(/<[^>]+>/, "", desc)
+			desc = substr(desc, 1, 280)
+
+			printf "{\"title\":\"%s\",\"link\":\"%s\",\"date\":\"%s\",\"desc\":\"%s\",\"source\":\"%s\",\"category\":\"%s\"},", title, link, date, desc, source, category
+			item_count++
+		}
+	}
+	'
+}
+
+# === HTML GENERATOR ===
+generate_html() {
+	local json_file="$1"
+	local output_file="${OUTPUT_DIR}/index.html"
+	local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+	local feed_count=$(grep -c '"title"' "$json_file" 2>/dev/null || echo 0)
+
+	cat > "$output_file" << 'HTMLEOF'
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚡ CYBERFEED ⚡ Neural RSS Matrix</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+:root {
+	--neon-cyan: #0ff;
+	--neon-magenta: #f0f;
+	--neon-yellow: #ff0;
+	--dark-bg: #0a0a0f;
+	--darker-bg: #050508;
+	--grid-color: rgba(0, 255, 255, 0.03);
+	--text-primary: #e0e0e0;
+	--text-dim: #606080;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+	font-family: 'Share Tech Mono', monospace;
+	background: var(--dark-bg);
+	color: var(--text-primary);
+	min-height: 100vh;
+}
+body::before {
+	content: '';
+	position: fixed;
+	top: 0; left: 0;
+	width: 100%; height: 100%;
+	background-image:
+		linear-gradient(var(--grid-color) 1px, transparent 1px),
+		linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+	background-size: 50px 50px;
+	animation: gridScroll 20s linear infinite;
+	pointer-events: none;
+	z-index: -1;
+}
+@keyframes gridScroll {
+	0% { transform: translateY(0); }
+	100% { transform: translateY(50px); }
+}
+body::after {
+	content: '';
+	position: fixed;
+	top: 0; left: 0;
+	width: 100%; height: 100%;
+	background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px);
+	pointer-events: none;
+	z-index: 1000;
+}
+.cyber-header {
+	text-align: center;
+	padding: 2rem;
+	border-bottom: 1px solid var(--neon-cyan);
+	background: linear-gradient(180deg, rgba(0,255,255,0.1) 0%, transparent 100%);
+}
+.cyber-header h1 {
+	font-family: 'Orbitron', sans-serif;
+	font-size: clamp(2rem, 5vw, 3.5rem);
+	font-weight: 900;
+	text-transform: uppercase;
+	letter-spacing: 0.2em;
+	color: var(--neon-cyan);
+	text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan), 0 0 40px var(--neon-cyan);
+	animation: flicker 3s infinite;
+}
+@keyframes flicker {
+	0%, 100% { opacity: 1; }
+	92% { opacity: 1; }
+	93% { opacity: 0.8; }
+	94% { opacity: 1; }
+}
+.cyber-header .subtitle {
+	font-size: 0.85rem;
+	color: var(--neon-magenta);
+	margin-top: 0.5rem;
+	letter-spacing: 0.4em;
+}
+.status-bar {
+	display: flex;
+	justify-content: center;
+	gap: 2rem;
+	margin-top: 1rem;
+	font-size: 0.75rem;
+	color: var(--text-dim);
+	flex-wrap: wrap;
+}
+.status-bar span::before { content: '▸ '; color: var(--neon-cyan); }
+.category-filter {
+	display: flex;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 1rem;
+	flex-wrap: wrap;
+}
+.category-btn {
+	background: rgba(0,255,255,0.1);
+	border: 1px solid var(--neon-cyan);
+	color: var(--neon-cyan);
+	padding: 0.4rem 1rem;
+	font-family: 'Orbitron', sans-serif;
+	font-size: 0.7rem;
+	cursor: pointer;
+	transition: all 0.3s;
+	text-transform: uppercase;
+}
+.category-btn:hover, .category-btn.active {
+	background: var(--neon-cyan);
+	color: var(--dark-bg);
+	box-shadow: 0 0 15px var(--neon-cyan);
+}
+.feed-container {
+	max-width: 900px;
+	margin: 0 auto;
+	padding: 1.5rem;
+}
+.feed-item {
+	background: linear-gradient(135deg, rgba(0,255,255,0.05) 0%, rgba(255,0,255,0.02) 100%);
+	border: 1px solid rgba(0,255,255,0.2);
+	border-left: 3px solid var(--neon-cyan);
+	margin-bottom: 1.2rem;
+	padding: 1.2rem;
+	transition: all 0.3s ease;
+	position: relative;
+	overflow: hidden;
+}
+.feed-item::before {
+	content: '';
+	position: absolute;
+	top: 0; left: 0;
+	width: 100%; height: 100%;
+	background: linear-gradient(90deg, transparent, rgba(0,255,255,0.1), transparent);
+	transform: translateX(-100%);
+	transition: transform 0.5s ease;
+}
+.feed-item:hover {
+	border-color: var(--neon-magenta);
+	box-shadow: 0 0 20px rgba(0,255,255,0.2), inset 0 0 20px rgba(255,0,255,0.05);
+}
+.feed-item:hover::before { transform: translateX(100%); }
+.feed-item .meta {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 0.5rem;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+.feed-item .timestamp {
+	font-size: 0.7rem;
+	color: var(--neon-magenta);
+	text-transform: uppercase;
+	letter-spacing: 0.15em;
+}
+.feed-item .source-tag {
+	background: rgba(255,0,255,0.2);
+	border: 1px solid var(--neon-magenta);
+	padding: 0.15rem 0.5rem;
+	font-size: 0.6rem;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+}
+.feed-item .category-tag {
+	background: rgba(0,255,255,0.2);
+	border: 1px solid var(--neon-cyan);
+	padding: 0.15rem 0.5rem;
+	font-size: 0.6rem;
+	text-transform: uppercase;
+}
+.feed-item .title {
+	font-family: 'Orbitron', sans-serif;
+	font-size: 1rem;
+	font-weight: 700;
+	color: var(--neon-cyan);
+	margin-bottom: 0.6rem;
+	line-height: 1.4;
+}
+.feed-item .title a {
+	color: inherit;
+	text-decoration: none;
+	transition: text-shadow 0.3s ease;
+}
+.feed-item .title a:hover { text-shadow: 0 0 10px var(--neon-cyan); }
+.feed-item .description {
+	font-size: 0.85rem;
+	color: var(--text-primary);
+	line-height: 1.5;
+	opacity: 0.85;
+}
+.cyber-footer {
+	text-align: center;
+	padding: 2rem;
+	border-top: 1px solid rgba(0,255,255,0.2);
+	font-size: 0.7rem;
+	color: var(--text-dim);
+}
+.cyber-footer a { color: var(--neon-cyan); text-decoration: none; }
+.empty-state {
+	text-align: center;
+	padding: 4rem 2rem;
+	color: var(--text-dim);
+}
+.empty-state .icon { font-size: 4rem; margin-bottom: 1rem; }
+@media (max-width: 600px) {
+	.feed-container { padding: 1rem; }
+	.feed-item { padding: 1rem; }
+	.status-bar { gap: 1rem; }
+}
+</style>
+</head>
+<body>
+<header class="cyber-header">
+	<h1>⚡ CYBERFEED ⚡</h1>
+	<p class="subtitle">NEURAL RSS MATRIX INTERFACE</p>
+	<div class="status-bar">
+		<span id="feed-count">FEEDS: --</span>
+		<span id="last-update">SYNC: --:--:--</span>
+		<span>STATUS: ONLINE</span>
+	</div>
+</header>
+<div class="category-filter">
+	<button class="category-btn active" onclick="filterCategory('all')">ALL</button>
+	<button class="category-btn" onclick="filterCategory('security')">SECURITY</button>
+	<button class="category-btn" onclick="filterCategory('tech')">TECH</button>
+	<button class="category-btn" onclick="filterCategory('social')">SOCIAL</button>
+	<button class="category-btn" onclick="filterCategory('news')">NEWS</button>
+</div>
+<main class="feed-container" id="feed-items">
+	<div class="empty-state">
+		<div class="icon">🔮</div>
+		<p>Awaiting Neural Feed Connection...</p>
+	</div>
+</main>
+<footer class="cyber-footer">
+	<p>⚡ CYBERFEED v0.1 | Powered by <a href="https://cybermind.fr">CyberMind.FR</a> | SecuBox Module ⚡</p>
+	<p>░▒▓ JACK IN TO THE MATRIX ▓▒░</p>
+</footer>
+<script>
+let feedData = [];
+let currentFilter = 'all';
+
+async function loadFeeds() {
+	try {
+		const resp = await fetch('/cyberfeed/feeds.json?' + Date.now());
+		feedData = await resp.json();
+		renderFeeds();
+		document.getElementById('feed-count').textContent = 'FEEDS: ' + feedData.length;
+		document.getElementById('last-update').textContent = 'SYNC: ' + new Date().toLocaleTimeString('fr-FR', {hour12: false});
+	} catch(e) {
+		console.error('Feed load error:', e);
+	}
+}
+
+function filterCategory(cat) {
+	currentFilter = cat;
+	document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+	event.target.classList.add('active');
+	renderFeeds();
+}
+
+function renderFeeds() {
+	const container = document.getElementById('feed-items');
+	const filtered = currentFilter === 'all' ? feedData : feedData.filter(f => f.category === currentFilter);
+
+	if (filtered.length === 0) {
+		container.innerHTML = '<div class="empty-state"><div class="icon">📡</div><p>No feeds in this category</p></div>';
+		return;
+	}
+
+	container.innerHTML = filtered.map(item => `
+		<article class="feed-item" data-category="${item.category || 'custom'}">
+			<div class="meta">
+				<span class="timestamp">⏰ ${item.date || 'Unknown'}</span>
+				<div>
+					<span class="source-tag">${item.source || 'RSS'}</span>
+					<span class="category-tag">${item.category || 'custom'}</span>
+				</div>
+			</div>
+			<h2 class="title"><a href="${item.link}" target="_blank" rel="noopener">${item.title}</a></h2>
+			<p class="description">${item.desc || ''}</p>
+		</article>
+	`).join('');
+}
+
+loadFeeds();
+setInterval(loadFeeds, 300000);
+</script>
+</body>
+</html>
+HTMLEOF
+
+	echo "$output_file"
+}
+
+# === STATUS ===
+get_status() {
+	local enabled=$(uci -q get cyberfeed.main.enabled || echo 0)
+	local feed_count=0
+	local last_sync="never"
+	local rssbridge_enabled=$(uci -q get cyberfeed.rssbridge.enabled || echo 0)
+	local rssbridge_status="stopped"
+
+	if [ -f "${OUTPUT_DIR}/feeds.json" ]; then
+		feed_count=$(grep -c '"title"' "${OUTPUT_DIR}/feeds.json" 2>/dev/null || echo 0)
+		last_sync=$(stat -c %Y "${OUTPUT_DIR}/feeds.json" 2>/dev/null || echo 0)
+	fi
+
+	if [ "$rssbridge_enabled" = "1" ]; then
+		if pgrep -f "rss-bridge" >/dev/null 2>&1; then
+			rssbridge_status="running"
+		fi
+	fi
+
+	cat << EOF
+{
+	"enabled": $enabled,
+	"feed_count": $feed_count,
+	"last_sync": $last_sync,
+	"cache_ttl": $CACHE_TTL,
+	"max_items": $MAX_ITEMS,
+	"rssbridge_enabled": $rssbridge_enabled,
+	"rssbridge_status": "$rssbridge_status"
+}
+EOF
+}
+
+# === SYNC FEEDS ===
+sync_feeds() {
+	load_config
+
+	mkdir -p "$CACHE_DIR" "$OUTPUT_DIR"
+
+	if [ ! -f "$CONFIG_FILE" ]; then
+		echo '[]' > "${OUTPUT_DIR}/feeds.json"
+		generate_html "${OUTPUT_DIR}/feeds.json"
+		return 0
+	fi
+
+	local json_items="["
+	local feed_count=0
+
+	while IFS='|' read -r name url type category || [ -n "$name" ]; do
+		# Skip comments and empty lines
+		case "$name" in
+			''|\#*) continue ;;
+		esac
+
+		[ -z "$category" ] && category="custom"
+
+		echo "📡 Fetching: $name" >&2
+
+		raw_xml=$(fetch_feed "$url" "$name")
+		if [ -n "$raw_xml" ]; then
+			parsed=$(parse_rss "$raw_xml" "$name" "$category")
+			if [ -n "$parsed" ]; then
+				emojified=$(cyberpunk_emojify "$parsed")
+				json_items="${json_items}${emojified}"
+				feed_count=$((feed_count + 1))
+			fi
+		fi
+	done < "$CONFIG_FILE"
+
+	# Remove trailing comma, close array
+	json_items=$(echo "$json_items" | sed 's/,$//')
+	json_items="${json_items}]"
+
+	echo "$json_items" > "${OUTPUT_DIR}/feeds.json"
+	generate_html "${OUTPUT_DIR}/feeds.json" >/dev/null
+
+	# Create symlink for web access
+	[ -L /www/cyberfeed/index.html ] || ln -sf "${OUTPUT_DIR}/index.html" /www/cyberfeed/index.html 2>/dev/null
+	[ -L /www/cyberfeed/feeds.json ] || ln -sf "${OUTPUT_DIR}/feeds.json" /www/cyberfeed/feeds.json 2>/dev/null
+
+	echo ""
+	echo "╔═══════════════════════════════════════════════════════════╗"
+	echo "║  ⚡ CYBERFEED SYNC COMPLETE ⚡                            ║"
+	echo "╠═══════════════════════════════════════════════════════════╣"
+	printf "║  📊 Feeds processed: %-36s ║\n" "$feed_count"
+	echo "║  📁 Output: /www/cyberfeed/                               ║"
+	echo "╚═══════════════════════════════════════════════════════════╝"
+}
+
+# === LIST FEEDS ===
+list_feeds() {
+	if [ ! -f "$CONFIG_FILE" ]; then
+		echo "[]"
+		return
+	fi
+
+	echo "["
+	local first=1
+	while IFS='|' read -r name url type category || [ -n "$name" ]; do
+		case "$name" in
+			''|\#*) continue ;;
+		esac
+		[ "$first" = "1" ] || echo ","
+		first=0
+		printf '{"name":"%s","url":"%s","type":"%s","category":"%s"}' \
+			"$name" "$url" "${type:-rss}" "${category:-custom}"
+	done < "$CONFIG_FILE"
+	echo "]"
+}
+
+# === ADD FEED ===
+add_feed() {
+	local name="$1"
+	local url="$2"
+	local type="${3:-rss}"
+	local category="${4:-custom}"
+
+	[ -z "$name" ] || [ -z "$url" ] && {
+		echo '{"success":false,"error":"Name and URL required"}'
+		return 1
+	}
+
+	# Check if feed already exists
+	if grep -q "^${name}|" "$CONFIG_FILE" 2>/dev/null; then
+		echo '{"success":false,"error":"Feed already exists"}'
+		return 1
+	fi
+
+	echo "${name}|${url}|${type}|${category}" >> "$CONFIG_FILE"
+	echo '{"success":true}'
+}
+
+# === DELETE FEED ===
+delete_feed() {
+	local name="$1"
+
+	[ -z "$name" ] && {
+		echo '{"success":false,"error":"Name required"}'
+		return 1
+	}
+
+	if grep -q "^${name}|" "$CONFIG_FILE" 2>/dev/null; then
+		sed -i "/^${name}|/d" "$CONFIG_FILE"
+		rm -f "${CACHE_DIR}/${name}.xml"
+		echo '{"success":true}'
+	else
+		echo '{"success":false,"error":"Feed not found"}'
+		return 1
+	fi
+}
+
+# === MAIN ===
+case "$1" in
+	sync)
+		sync_feeds
+		;;
+	status)
+		get_status
+		;;
+	list)
+		list_feeds
+		;;
+	add)
+		add_feed "$2" "$3" "$4" "$5"
+		;;
+	delete)
+		delete_feed "$2"
+		;;
+	*)
+		echo "Usage: $0 {sync|status|list|add|delete}"
+		echo ""
+		echo "Commands:"
+		echo "  sync              Fetch and process all feeds"
+		echo "  status            Show service status (JSON)"
+		echo "  list              List configured feeds (JSON)"
+		echo "  add NAME URL [TYPE] [CATEGORY]"
+		echo "                    Add a new feed"
+		echo "  delete NAME       Remove a feed"
+		;;
+esac
