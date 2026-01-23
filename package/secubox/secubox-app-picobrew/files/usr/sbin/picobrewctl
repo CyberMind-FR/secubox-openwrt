@@ -153,21 +153,40 @@ set -e
 if [ ! -f /opt/.installed ]; then
     echo "Installing Python and dependencies..."
     apk update
-    apk add --no-cache python3 py3-pip py3-flask py3-requests py3-pyyaml git
+    apk add --no-cache python3 py3-pip
 
-    # Install PicoBrew dependencies
-    if [ -d /app ]; then
-        cd /app
-        pip3 install --break-system-packages -r requirements.txt 2>/dev/null || \
-        pip3 install -r requirements.txt 2>/dev/null || true
-    fi
+    # Install picobrew_server with compatible dependency versions
+    # Flask 1.1.2 requires old versions of Jinja2, markupsafe, itsdangerous, werkzeug
+    echo "Installing compatible dependencies..."
+    pip3 install --break-system-packages \
+        "Jinja2==2.11.3" \
+        "markupsafe==1.1.1" \
+        "itsdangerous==1.1.0" \
+        "Werkzeug==1.0.1" \
+        "click==7.1.2" \
+        2>/dev/null || \
+    pip3 install \
+        "Jinja2==2.11.3" \
+        "markupsafe==1.1.1" \
+        "itsdangerous==1.1.0" \
+        "Werkzeug==1.0.1" \
+        "click==7.1.2" \
+        2>/dev/null || true
+
+    echo "Installing picobrew_server package..."
+    pip3 install --break-system-packages --no-deps picobrew_server 2>/dev/null || \
+    pip3 install --no-deps picobrew_server 2>/dev/null || true
+
+    # Install remaining deps (pybeerxml<2.0 required for Parser import)
+    pip3 install --break-system-packages Flask==1.1.2 Flask-Cors==3.0.8 "pybeerxml<2.0.0" webargs==6.0.0 "marshmallow<4.0.0" 2>/dev/null || \
+    pip3 install Flask==1.1.2 Flask-Cors==3.0.8 "pybeerxml<2.0.0" webargs==6.0.0 "marshmallow<4.0.0" 2>/dev/null || true
 
     touch /opt/.installed
 fi
 
-# Start PicoBrew Server
-cd /app
-export FLASK_APP=app.py
+# Start PicoBrew Server (use pip-installed package, not /app)
+cd /
+export FLASK_APP=picobrew_server
 export FLASK_ENV=production
 export PICOBREW_HOST="${PICOBREW_HOST:-0.0.0.0}"
 export PICOBREW_PORT="${PICOBREW_PORT:-8080}"
@@ -208,10 +227,9 @@ lxc.net.0.type = none
 
 # Mount points
 lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
-lxc.mount.entry = $REPO_PATH app none bind,create=dir 0 0
-lxc.mount.entry = $data_path/recipes app/recipes none bind,create=dir 0 0
-lxc.mount.entry = $data_path/sessions app/sessions none bind,create=dir 0 0
-lxc.mount.entry = $data_path/logs logs none bind,create=dir 0 0
+lxc.mount.entry = $data_path/recipes srv/recipes none bind,create=dir 0 0
+lxc.mount.entry = $data_path/sessions srv/sessions none bind,create=dir 0 0
+lxc.mount.entry = $data_path/logs srv/logs none bind,create=dir 0 0
 
 # Environment
 lxc.environment = PICOBREW_HOST=$http_host
