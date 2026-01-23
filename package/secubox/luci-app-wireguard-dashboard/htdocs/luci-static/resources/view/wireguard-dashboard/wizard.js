@@ -5,6 +5,7 @@
 'require form';
 'require network';
 'require wireguard-dashboard/api as api';
+'require wireguard-dashboard/qrcode as qrcode';
 
 // Zone presets for peer creation
 var ZONE_PRESETS = {
@@ -718,15 +719,12 @@ return view.extend({
 			])
 		]);
 
-		// Load QR library and generate
-		if (typeof QRCode !== 'undefined') {
-			new QRCode(qrContainer, {
-				text: config,
-				width: 256,
-				height: 256
-			});
+		// Generate QR code using our library
+		var svg = qrcode.generateSVG(config, 256);
+		if (svg) {
+			qrContainer.innerHTML = svg;
 		} else {
-			qrContainer.innerHTML = '<p>' + _('QR library not loaded') + '</p>';
+			qrContainer.innerHTML = '<p>' + _('QR generation failed - config too long') + '</p>';
 		}
 	},
 
