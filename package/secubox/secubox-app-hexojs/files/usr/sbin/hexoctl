@@ -276,7 +276,24 @@ lxc_run() {
 	# Regenerate config in case settings changed
 	lxc_create_config
 
-	log_info "Starting Hexo container..."
+	# Ensure start script exists in container
+	local start_script="$LXC_ROOTFS/opt/start-hexo.sh"
+	if [ ! -f "$start_script" ]; then
+		cat > "$start_script" << 'STARTEOF'
+#!/bin/sh
+export PATH=/usr/local/bin:/usr/bin:/bin:$PATH
+export HOME=/root
+export NODE_ENV=production
+HEXO_PORT="${HEXO_PORT:-4000}"
+SITE_DIR="/opt/hexojs/site"
+cd "$SITE_DIR" 2>/dev/null || exec tail -f /dev/null
+[ -d "$SITE_DIR/public" ] || hexo generate
+exec hexo server -p "$HEXO_PORT"
+STARTEOF
+		chmod +x "$start_script"
+	fi
+
+	log_info "Starting Hexo container on port $http_port..."
 	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
 }
 
@@ -285,7 +302,7 @@ lxc_exec() {
 		log_error "Container not running. Start with: /etc/init.d/hexojs start"
 		return 1
 	fi
-	lxc-attach -n "$LXC_NAME" -- "$@"
+	lxc-attach -n "$LXC_NAME" -- env PATH=/usr/local/bin:/usr/bin:/bin "$@"
 }
 
 # Commands
