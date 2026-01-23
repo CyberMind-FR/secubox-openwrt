@@ -78,7 +78,8 @@ return view.extend({
 							E('option', { 'value': 'security' }, 'Security'),
 							E('option', { 'value': 'tech' }, 'Tech'),
 							E('option', { 'value': 'social' }, 'Social'),
-							E('option', { 'value': 'news' }, 'News')
+							E('option', { 'value': 'news' }, 'News'),
+							E('option', { 'value': 'radio' }, 'Radio/Podcasts')
 						])
 					])
 				]),
@@ -127,6 +128,70 @@ return view.extend({
 						'class': 'cf-btn cf-btn-sm',
 						'click': function() { self.showBridgeModal('Instagram'); }
 					}, ['\uD83D\uDCF7', ' Instagram'])
+				])
+			])
+		]));
+
+		// Radio Presets
+		content.push(E('div', { 'class': 'cf-card' }, [
+			E('div', { 'class': 'cf-card-header' }, [
+				E('div', { 'class': 'cf-card-title' }, [
+					E('span', { 'class': 'cf-card-title-icon' }, '\uD83D\uDCFB'),
+					'Radio & Podcast Presets'
+				])
+			]),
+			E('div', { 'class': 'cf-card-body' }, [
+				E('p', { 'style': 'margin-bottom: 16px; color: var(--cf-text-dim);' },
+					'Quick-add popular radio stations and podcasts'),
+				E('div', { 'style': 'margin-bottom: 12px;' }, [
+					E('strong', { 'style': 'color: var(--cf-neon-cyan);' }, 'Radio France')
+				]),
+				E('div', { 'class': 'cf-grid cf-grid-3', 'style': 'gap: 12px; margin-bottom: 16px;' }, [
+					E('button', {
+						'class': 'cf-btn cf-btn-sm',
+						'click': function() { self.addRadioPreset('franceinter', 'https://radiofrance-podcast.net/podcast09/rss_10239.xml', 'France Inter'); }
+					}, '\uD83C\uDDEB\uD83C\uDDF7 France Inter'),
+					E('button', {
+						'class': 'cf-btn cf-btn-sm',
+						'click': function() { self.addRadioPreset('franceculture', 'https://radiofrance-podcast.net/podcast09/rss_10351.xml', 'France Culture'); }
+					}, '\uD83C\uDDEB\uD83C\uDDF7 France Culture'),
+					E('button', {
+						'class': 'cf-btn cf-btn-sm',
+						'click': function() { self.addRadioPreset('franceinfo', 'https://radiofrance-podcast.net/podcast09/rss_10134.xml', 'France Info'); }
+					}, '\uD83C\uDDEB\uD83C\uDDF7 France Info'),
+					E('button', {
+						'class': 'cf-btn cf-btn-sm',
+						'click': function() { self.addRadioPreset('fip', 'https://radiofrance-podcast.net/podcast09/rss_18981.xml', 'FIP'); }
+					}, '\uD83C\uDFA7 FIP'),
+					E('button', {
+						'class': 'cf-btn cf-btn-sm',
+						'click': function() { self.addRadioPreset('mouv', 'https://radiofrance-podcast.net/podcast09/rss_21649.xml', 'Mouv'); }
+					}, '\uD83C\uDFA4 Mouv')
+				]),
+				E('div', { 'style': 'margin-bottom: 12px;' }, [
+					E('strong', { 'style': 'color: var(--cf-neon-cyan);' }, 'International & Tech')
+				]),
+				E('div', { 'class': 'cf-grid cf-grid-3', 'style': 'gap: 12px;' }, [
+					E('button', {
+						'class': 'cf-btn cf-btn-sm',
+						'click': function() { self.addRadioPreset('bbc_world', 'https://feeds.bbci.co.uk/news/world/rss.xml', 'BBC World'); }
+					}, '\uD83C\uDDEC\uD83C\uDDE7 BBC World'),
+					E('button', {
+						'class': 'cf-btn cf-btn-sm',
+						'click': function() { self.addRadioPreset('npr', 'https://feeds.npr.org/1001/rss.xml', 'NPR News'); }
+					}, '\uD83C\uDDFA\uD83C\uDDF8 NPR'),
+					E('button', {
+						'class': 'cf-btn cf-btn-sm',
+						'click': function() { self.addRadioPreset('darknet_diaries', 'https://feeds.megaphone.fm/darknetdiaries', 'Darknet Diaries'); }
+					}, '\uD83D\uDD75 Darknet Diaries'),
+					E('button', {
+						'class': 'cf-btn cf-btn-sm',
+						'click': function() { self.addRadioPreset('changelog', 'https://changelog.com/podcast/feed', 'The Changelog'); }
+					}, '\uD83D\uDCBB Changelog'),
+					E('button', {
+						'class': 'cf-btn cf-btn-sm',
+						'click': function() { self.addRadioPreset('syntax', 'https://feed.syntax.fm/rss', 'Syntax.fm'); }
+					}, '\uD83D\uDCBB Syntax.fm')
 				])
 			])
 		]));
@@ -212,6 +277,19 @@ return view.extend({
 		return api.addFeed(name, url, type, category).then(function(res) {
 			if (res && res.success) {
 				self.showToast('Feed added successfully', 'success');
+				window.location.reload();
+			} else {
+				self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
+			}
+		});
+	},
+
+	addRadioPreset: function(name, url, displayName) {
+		var self = this;
+
+		return api.addFeed(name, url, 'rss', 'radio').then(function(res) {
+			if (res && res.success) {
+				self.showToast(displayName + ' added', 'success');
 				window.location.reload();
 			} else {
 				self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
