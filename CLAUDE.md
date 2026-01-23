@@ -40,3 +40,21 @@ When checking if a port is listening, use this order of fallbacks:
 - OpenWrt uses `logread` instead of traditional log files
 - Use `logread -l N` to get last N lines
 - CrowdSec writes to `/var/log/crowdsec.log`
+
+## Build & Sync Workflow
+
+### Local Feeds Hygiene
+- Clean and resync local feeds before build iterations when dependency drift is suspected
+- Prefer the repo helpers; avoid ad-hoc `rm` unless explicitly needed
+
+### Local Build Flow
+- Use `./secubox-tools/local-build.sh build <module>` for cached SDK builds
+- If CI parity is required, use `make package/<module>/compile V=s`
+
+### Sync Build Artifacts
+- After building, synchronize results into the build output folder used by local-build.sh
+- Use the repo sync helper scripts where available to avoid missing `root/` vs `htdocs/` payloads
+
+### Toolchain Usage
+- Use the OpenWrt toolchain when a module requires it (native SDK packages, toolchain-bound dependencies)
+- If unsure, start with `local-build.sh`; fall back to full toolchain builds when SDK cache cannot resolve dependencies

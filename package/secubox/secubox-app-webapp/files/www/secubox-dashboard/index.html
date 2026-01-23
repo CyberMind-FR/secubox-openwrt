@@ -3369,15 +3369,20 @@
 
                     // UBUS returns [code, result] - code 0 means success
                     if (data.result && Array.isArray(data.result)) {
-                        if (data.result[0] === 0) {
+                        const code = data.result[0];
+                        if (code === 0) {
                             return data.result[1] || {};
-                        } else if (data.result[0] === 6) {
+                        } else if (code === 6) {
                             // Session expired
                             throw new Error('SESSION_EXPIRED');
+                        } else {
+                            // Other error codes: 1=invalid cmd, 2=invalid arg, 4=not found, 5=no data, 7=permission denied
+                            console.warn(`UBUS error code ${code} for ${object}.${method}`);
+                            return null;
                         }
                     }
 
-                    return data.result || data;
+                    return data.result?.[1] || null;
                 } catch (error) {
                     console.error(`UBUS Error [${object}.${method}]:`, error);
                     throw error;
@@ -4138,47 +4143,44 @@
             const countBadge = document.getElementById('adminSessionsCount');
 
             try {
-                // Get LuCI sessions by listing session files
-                const result = await UBUS.execCommand('/bin/sh', ['-c',
-                    'for f in /tmp/luci-sessions/*; do [ -f "$f" ] && echo "$(basename $f)|$(cat $f 2>/dev/null | jsonfilter -e @.data.username 2>/dev/null)|$(cat $f 2>/dev/null | jsonfilter -e @.data.localtime 2>/dev/null)|$(stat -c %Y $f 2>/dev/null)"; done 2>/dev/null || ls -la /tmp/luci-sessions/ 2>/dev/null'
-                ]);
-
                 let sessions = [];
 
-                if (result && result.stdout) {
-                    const lines = result.stdout.trim().split('\n').filter(l => l && l.includes('|'));
-                    sessions = lines.map(line => {
-                        const parts = line.split('|');
-                        return {
-                            id: parts[0] || 'unknown',
-                            username: parts[1] || 'root',
-                            ip: parts[2] || 'local',
-                            mtime: parseInt(parts[3]) || 0
-                        };
-                    }).filter(s => s.id !== 'unknown');
-                }
-
-                // Also try to get session via ubus session.list (requires admin)
+                // Get current session info via session.get
                 try {
-                    const ubusResult = await UBUS.call('session', 'list', {});
-                    if (ubusResult && typeof ubusResult === 'object') {
-                        // Add current session info
+                    const sessionData = await UBUS.call('session', 'get', {});
+                    if (sessionData) {
+                        // Extract username from session data
+                        let username = 'root';
+                        if (sessionData.data && sessionData.data.username) {
+                            username = sessionData.data.username;
+                        } else if (sessionData.values && sessionData.values.username) {
+                            username = sessionData.values.username;
+                        }
+
                         const currentSession = {
                             id: STATE.sessionId ? STATE.sessionId.substring(0, 8) : 'current',
-                            username: ubusResult.username || 'root',
+                            username: username,
                             ip: window.location.hostname,
                             mtime: Math.floor(Date.now() / 1000),
-                            expires: ubusResult.expires || 300,
+                            expires: sessionData.expires || 300,
                             current: true
                         };
-
-                        // Add if not already in list
-                        if (!sessions.find(s => s.current)) {
-                            sessions.unshift(currentSession);
-                        }
+                        sessions.push(currentSession);
                     }
                 } catch (e) {
-                    // Session.list might not be available
+                    console.warn('session.get error:', e);
+                }
+
+                // If no session from API, add current session from STATE (user IS logged in)
+                if (sessions.length === 0 && STATE.sessionId) {
+                    sessions.push({
+                        id: STATE.sessionId.substring(0, 8),
+                        username: 'root',
+                        ip: window.location.hostname,
+                        mtime: Math.floor(Date.now() / 1000),
+                        expires: 300,
+                        current: true
+                    });
                 }
 
                 // Update badge
@@ -4326,8 +4328,8 @@
                 if (result && result.logs && Array.isArray(result.logs)) {
                     lines = result.logs;
                 } else {
-                    // Fallback: try file.exec with logread
-                    const logResult = await UBUS.execCommand('/sbin/logread', ['-l', '20']).catch(() => null);
+                    // Fallback: use shell to get last 20 lines (logread -l N not available on BusyBox)
+                    const logResult = await UBUS.execCommand('/bin/sh', ['-c', 'logread | tail -n 20']).catch(() => null);
                     if (logResult && logResult.stdout) {
                         lines = logResult.stdout.trim().split('\n').filter(l => l);
                     }
@@ -5003,17 +5005,35 @@
 
         async function loadStorageInfo() {
             try {
-                const result = await UBUS.execCommand('/bin/df', ['-h']);
+                // Try luci.system-hub RPC first
+                const rpcResult = await UBUS.call('luci.system-hub', 'get_storage_info').catch(() => null);
+                if (rpcResult && rpcResult.filesystems) {
+                    rpcResult.filesystems.forEach(fs => {
+                        if (fs.mount === '/') {
+                            document.getElementById('storageRoot').textContent = `${fs.used_human || fs.used} / ${fs.size_human || fs.size} (${fs.percent || '--'}%)`;
+                        } else if (fs.mount === '/tmp') {
+                            document.getElementById('storageTmp').textContent = `${fs.used_human || fs.used} / ${fs.size_human || fs.size} (${fs.percent || '--'}%)`;
+                        } else if (fs.mount === '/overlay') {
+                            document.getElementById('storageOverlay').textContent = `${fs.used_human || fs.used} / ${fs.size_human || fs.size} (${fs.percent || '--'}%)`;
+                        }
+                    });
+                    return;
+                }
+
+                // Fallback: use shell command
+                const result = await UBUS.execCommand('/bin/sh', ['-c', 'df -h']).catch(() => null);
                 if (result && result.stdout) {
                     const lines = result.stdout.trim().split('\n');
                     lines.forEach(line => {
                         const parts = line.split(/\s+/);
-                        if (parts[5] === '/') {
-                            document.getElementById('storageRoot').textContent = `${parts[2]} / ${parts[1]} (${parts[4]})`;
-                        } else if (parts[5] === '/tmp') {
-                            document.getElementById('storageTmp').textContent = `${parts[2]} / ${parts[1]} (${parts[4]})`;
-                        } else if (parts[5] === '/overlay') {
-                            document.getElementById('storageOverlay').textContent = `${parts[2]} / ${parts[1]} (${parts[4]})`;
+                        if (parts.length >= 6) {
+                            if (parts[5] === '/') {
+                                document.getElementById('storageRoot').textContent = `${parts[2]} / ${parts[1]} (${parts[4]})`;
+                            } else if (parts[5] === '/tmp') {
+                                document.getElementById('storageTmp').textContent = `${parts[2]} / ${parts[1]} (${parts[4]})`;
+                            } else if (parts[5] === '/overlay') {
+                                document.getElementById('storageOverlay').textContent = `${parts[2]} / ${parts[1]} (${parts[4]})`;
+                            }
                         }
                     });
                 }
@@ -5577,7 +5597,8 @@
             const container = document.getElementById('fullLogsContainer');
 
             try {
-                const result = await UBUS.execCommand('/sbin/logread', ['-l', '100']);
+                // Use shell to get last 100 lines (logread -l N not available on BusyBox)
+                const result = await UBUS.execCommand('/bin/sh', ['-c', 'logread | tail -n 100']);
 
                 if (result && result.stdout) {
                     allLogs = result.stdout.trim().split('\n').filter(l => l).reverse();
