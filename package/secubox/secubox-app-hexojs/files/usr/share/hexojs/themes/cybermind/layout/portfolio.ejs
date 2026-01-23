@@ -1,0 +1,750 @@
+<%
+// Métadonnées portfolio
+var itemIcon = page.icon || '💼';
+var itemType = page.type || 'project';  // client | project | opensource
+
+// Couleurs selon type
+var typeColors = {
+    'client': '#10b981',
+    'project': '#3b82f6',
+    'opensource': '#f59e0b'
+};
+var typeColor = typeColors[itemType] || '#f97316';
+
+// Type labels
+var typeLabels = {
+    'client': { icon: '🏢', text: 'Client' },
+    'project': { icon: '🚀', text: 'Projet' },
+    'opensource': { icon: '🔓', text: 'Open Source' }
+};
+var typeLabel = typeLabels[itemType] || typeLabels['project'];
+
+// Status
+var statusLabels = {
+    'live': { icon: '🟢', text: 'En ligne', color: '#10b981' },
+    'archived': { icon: '📦', text: 'Archivé', color: '#6b7280' },
+    'demo': { icon: '🧪', text: 'Démo', color: '#f59e0b' }
+};
+var itemStatus = page.status || 'live';
+var statusLabel = statusLabels[itemStatus] || statusLabels['live'];
+
+// Données client/projet
+var client = page.client || {};
+var project = page.project || {};
+var screenshots = page.screenshots || [];
+var beforeAfter = page.before_after || null;
+var testimonial = page.testimonial || null;
+%>
+
+<article class="portfolio-single" style="--portfolio-color: <%= typeColor %>;">
+    
+    <!-- Header -->
+    <header class="portfolio-header">
+        <div class="portfolio-window-bar">
+            <div class="window-dots">
+                <span class="dot close"></span>
+                <span class="dot minimize"></span>
+                <span class="dot maximize"></span>
+            </div>
+            <div class="window-title">
+                <%= typeLabel.icon %> <%= typeLabel.text %> — <%= page.title %>
+            </div>
+            <div class="window-status" style="background: <%= statusLabel.color %>20; color: <%= statusLabel.color %>;">
+                <%= statusLabel.icon %> <%= statusLabel.text %>
+            </div>
+        </div>
+        
+        <div class="portfolio-hero">
+            <!-- Thumbnail principal -->
+            <div class="portfolio-visual">
+                <% if (page.thumbnail) { %>
+                <img src="<%= page.thumbnail %>" alt="<%= page.title %>" class="main-thumbnail">
+                <% } else { %>
+                <div class="thumbnail-placeholder">
+                    <span><%= itemIcon %></span>
+                </div>
+                <% } %>
+                
+                <!-- Overlay avec liens -->
+                <div class="visual-overlay">
+                    <% if (page.live_url) { %>
+                    <a href="<%= page.live_url %>" target="_blank" class="btn btn-primary">
+                        🌐 Voir le site ↗
+                    </a>
+                    <% } %>
+                    <% if (page.demo_url) { %>
+                    <a href="<%= page.demo_url %>" target="_blank" class="btn btn-secondary">
+                        🧪 Version démo
+                    </a>
+                    <% } %>
+                    <% if (page.github_url) { %>
+                    <a href="<%= page.github_url %>" target="_blank" class="btn btn-secondary">
+                        💻 GitHub
+                    </a>
+                    <% } %>
+                </div>
+            </div>
+            
+            <!-- Infos -->
+            <div class="portfolio-info">
+                <div class="type-badge" style="background: <%= typeColor %>;">
+                    <%= typeLabel.icon %> <%= typeLabel.text %>
+                </div>
+                
+                <h1><%= page.title %></h1>
+                <p class="portfolio-description"><%= page.description || '' %></p>
+                
+                <!-- Info client -->
+                <% if (client.name) { %>
+                <div class="client-card">
+                    <% if (client.logo) { %>
+                    <img src="<%= client.logo %>" alt="<%= client.name %>" class="client-logo">
+                    <% } %>
+                    <div class="client-info">
+                        <strong><%= client.name %></strong>
+                        <% if (client.sector) { %><span><%= client.sector %></span><% } %>
+                        <% if (client.location) { %><span>📍 <%= client.location %></span><% } %>
+                    </div>
+                </div>
+                <% } %>
+                
+                <!-- Détails projet -->
+                <% if (project.type || project.technologies) { %>
+                <div class="project-details">
+                    <% if (project.type) { %>
+                    <div class="detail-item">
+                        <span class="detail-label">Type</span>
+                        <span class="detail-value"><%= project.type %></span>
+                    </div>
+                    <% } %>
+                    <% if (project.year) { %>
+                    <div class="detail-item">
+                        <span class="detail-label">Année</span>
+                        <span class="detail-value"><%= project.year %></span>
+                    </div>
+                    <% } %>
+                    <% if (project.duration) { %>
+                    <div class="detail-item">
+                        <span class="detail-label">Durée</span>
+                        <span class="detail-value"><%= project.duration %></span>
+                    </div>
+                    <% } %>
+                </div>
+                <% } %>
+                
+                <!-- Technologies -->
+                <% if (project.technologies && project.technologies.length) { %>
+                <div class="tech-stack">
+                    <span class="tech-label">Technologies :</span>
+                    <div class="tech-badges">
+                        <% project.technologies.forEach(function(tech) { %>
+                        <span class="tech-badge"><%= tech %></span>
+                        <% }); %>
+                    </div>
+                </div>
+                <% } %>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Screenshots Gallery -->
+    <% if (screenshots.length > 0) { %>
+    <section class="portfolio-gallery">
+        <h2>📸 Captures d'écran</h2>
+        <div class="screenshots-grid">
+            <% screenshots.forEach(function(shot, index) { %>
+            <div class="screenshot-item" onclick="openLightbox(<%= index %>)">
+                <img src="<%= shot.url %>" alt="<%= shot.caption || page.title %>" loading="lazy">
+                <% if (shot.caption) { %>
+                <div class="screenshot-caption"><%= shot.caption %></div>
+                <% } %>
+            </div>
+            <% }); %>
+        </div>
+    </section>
+    <% } %>
+    
+    <!-- Before/After -->
+    <% if (beforeAfter && beforeAfter.before && beforeAfter.after) { %>
+    <section class="portfolio-before-after">
+        <h2>🔄 Avant / Après</h2>
+        <div class="ba-container">
+            <div class="ba-item before">
+                <div class="ba-label">Avant</div>
+                <img src="<%= beforeAfter.before %>" alt="Avant">
+            </div>
+            <div class="ba-arrow">→</div>
+            <div class="ba-item after">
+                <div class="ba-label">Après</div>
+                <img src="<%= beforeAfter.after %>" alt="Après">
+            </div>
+        </div>
+    </section>
+    <% } %>
+    
+    <!-- Contenu -->
+    <section class="portfolio-content">
+        <div class="content-wrapper">
+            <%- page.content %>
+        </div>
+    </section>
+    
+    <!-- Témoignage -->
+    <% if (testimonial && testimonial.text) { %>
+    <section class="portfolio-testimonial">
+        <blockquote>
+            <p>"<%= testimonial.text %>"</p>
+            <% if (testimonial.author) { %>
+            <cite>— <%= testimonial.author %></cite>
+            <% } %>
+        </blockquote>
+    </section>
+    <% } %>
+    
+    <!-- Liens associés -->
+    <section class="portfolio-links">
+        <h2>🔗 Liens</h2>
+        <div class="links-grid">
+            <% if (page.live_url) { %>
+            <a href="<%= page.live_url %>" target="_blank" class="link-card live">
+                <span class="link-icon">🌐</span>
+                <span class="link-text">Site en ligne</span>
+                <span class="link-url"><%= page.live_url.replace('https://', '') %></span>
+            </a>
+            <% } %>
+            <% if (page.demo_url) { %>
+            <a href="<%= page.demo_url %>" target="_blank" class="link-card demo">
+                <span class="link-icon">🧪</span>
+                <span class="link-text">Version démo</span>
+                <span class="link-url"><%= page.demo_url.replace('https://', '') %></span>
+            </a>
+            <% } %>
+            <% if (page.github_url) { %>
+            <a href="<%= page.github_url %>" target="_blank" class="link-card github">
+                <span class="link-icon">💻</span>
+                <span class="link-text">Code source</span>
+                <span class="link-url">GitHub</span>
+            </a>
+            <% } %>
+            <% if (page.related_article) { %>
+            <a href="<%= page.related_article %>" class="link-card article">
+                <span class="link-icon">📝</span>
+                <span class="link-text">Article associé</span>
+                <span class="link-url">Blog</span>
+            </a>
+            <% } %>
+        </div>
+    </section>
+    
+    <!-- Navigation -->
+    <nav class="portfolio-nav">
+        <a href="/portfolio/" class="btn btn-secondary">← Tout le portfolio</a>
+        <a href="/showcase/" class="btn btn-secondary">🏪 Showcase</a>
+        <a href="/" class="btn btn-secondary">🏠 Accueil</a>
+    </nav>
+    
+</article>
+
+<!-- Lightbox -->
+<% if (screenshots.length > 0) { %>
+<div id="lightbox" class="lightbox" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+    <button class="lightbox-prev" onclick="event.stopPropagation(); prevImage()">❮</button>
+    <img id="lightbox-img" src="" alt="">
+    <div id="lightbox-caption" class="lightbox-caption"></div>
+    <button class="lightbox-next" onclick="event.stopPropagation(); nextImage()">❯</button>
+</div>
+
+<script>
+var screenshots = <%- JSON.stringify(screenshots) %>;
+var currentIndex = 0;
+
+function openLightbox(index) {
+    currentIndex = index;
+    updateLightbox();
+    document.getElementById('lightbox').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+function updateLightbox() {
+    var shot = screenshots[currentIndex];
+    document.getElementById('lightbox-img').src = shot.url;
+    document.getElementById('lightbox-caption').textContent = shot.caption || '';
+}
+
+function nextImage() {
+    currentIndex = (currentIndex + 1) % screenshots.length;
+    updateLightbox();
+}
+
+function prevImage() {
+    currentIndex = (currentIndex - 1 + screenshots.length) % screenshots.length;
+    updateLightbox();
+}
+
+document.addEventListener('keydown', function(e) {
+    if (!document.getElementById('lightbox').classList.contains('active')) return;
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowRight') nextImage();
+    if (e.key === 'ArrowLeft') prevImage();
+});
+</script>
+<% } %>
+
+<style>
+.portfolio-single {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+/* Header */
+.portfolio-header {
+    background: var(--bg-secondary);
+    border: 2px solid var(--portfolio-color);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+.portfolio-window-bar {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: var(--portfolio-color);
+    color: #000;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    gap: 1rem;
+}
+
+.window-dots {
+    display: flex;
+    gap: 6px;
+}
+
+.window-dots .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.dot.close { background: #ff5f57; }
+.dot.minimize { background: #ffbd2e; }
+.dot.maximize { background: #28ca42; }
+
+.window-title {
+    flex: 1;
+    font-weight: 600;
+}
+
+.window-status {
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+/* Hero */
+.portfolio-hero {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    padding: 2rem;
+}
+
+.portfolio-visual {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.main-thumbnail {
+    width: 100%;
+    display: block;
+}
+
+.thumbnail-placeholder {
+    aspect-ratio: 16/10;
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 4rem;
+}
+
+.visual-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.portfolio-visual:hover .visual-overlay {
+    opacity: 1;
+}
+
+/* Info */
+.type-badge {
+    display: inline-block;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #000;
+    margin-bottom: 1rem;
+}
+
+.portfolio-info h1 {
+    font-size: 1.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.portfolio-description {
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+/* Client card */
+.client-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+}
+
+.client-logo {
+    width: 50px;
+    height: 50px;
+    object-fit: contain;
+}
+
+.client-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.client-info span {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+/* Project details */
+.project-details {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.detail-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.detail-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.detail-value {
+    font-weight: 600;
+    color: var(--portfolio-color);
+}
+
+/* Tech stack */
+.tech-stack {
+    margin-top: 1rem;
+}
+
+.tech-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.tech-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.tech-badge {
+    padding: 0.25rem 0.6rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Screenshots */
+.portfolio-gallery {
+    margin-bottom: 2rem;
+}
+
+.portfolio-gallery h2 {
+    margin-bottom: 1.5rem;
+}
+
+.screenshots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+.screenshot-item {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.3s ease;
+}
+
+.screenshot-item:hover {
+    transform: scale(1.02);
+}
+
+.screenshot-item img {
+    width: 100%;
+    display: block;
+}
+
+.screenshot-caption {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.5rem;
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+/* Before/After */
+.portfolio-before-after {
+    margin-bottom: 2rem;
+}
+
+.ba-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.ba-item {
+    position: relative;
+    max-width: 400px;
+}
+
+.ba-label {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 0.25rem 0.75rem;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.ba-item.before .ba-label { color: #ef4444; }
+.ba-item.after .ba-label { color: #10b981; }
+
+.ba-item img {
+    width: 100%;
+    border-radius: 8px;
+}
+
+.ba-arrow {
+    font-size: 2rem;
+    color: var(--portfolio-color);
+}
+
+/* Content */
+.portfolio-content {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.content-wrapper {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Testimonial */
+.portfolio-testimonial {
+    margin-bottom: 2rem;
+}
+
+.portfolio-testimonial blockquote {
+    background: linear-gradient(135deg, var(--portfolio-color)20, var(--portfolio-color)05);
+    border-left: 4px solid var(--portfolio-color);
+    padding: 2rem;
+    border-radius: 0 12px 12px 0;
+    margin: 0;
+}
+
+.portfolio-testimonial p {
+    font-size: 1.1rem;
+    font-style: italic;
+    margin-bottom: 1rem;
+}
+
+.portfolio-testimonial cite {
+    color: var(--portfolio-color);
+    font-weight: 600;
+}
+
+/* Links */
+.portfolio-links {
+    margin-bottom: 2rem;
+}
+
+.links-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.link-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+}
+
+.link-card:hover {
+    border-color: var(--portfolio-color);
+    transform: translateY(-3px);
+}
+
+.link-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.link-text {
+    font-weight: 600;
+}
+
+.link-url {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* Nav */
+.portfolio-nav {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+/* Lightbox */
+.lightbox {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.lightbox.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.lightbox img {
+    max-width: 90%;
+    max-height: 80vh;
+    border-radius: 8px;
+}
+
+.lightbox-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 2rem;
+    cursor: pointer;
+}
+
+.lightbox-prev,
+.lightbox-next {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: #fff;
+    font-size: 2rem;
+    padding: 1rem;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.lightbox-prev { left: 20px; }
+.lightbox-next { right: 20px; }
+
+.lightbox-caption {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    background: rgba(0,0,0,0.7);
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .portfolio-hero {
+        grid-template-columns: 1fr;
+    }
+    
+    .ba-container {
+        flex-direction: column;
+    }
+    
+    .ba-arrow {
+        transform: rotate(90deg);
+    }
+}
+</style>

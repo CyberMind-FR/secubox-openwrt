@@ -1,0 +1,57 @@
+# Portfolio Preset
+# Showcase your work and projects
+
+name: Portfolio
+description: Professional portfolio with project showcase
+icon: briefcase
+
+theme:
+  default_mode: dark
+  allow_toggle: true
+  accent_color: "#8b5cf6"
+
+branding:
+  logo_symbol: "*"
+  logo_text: "Portfolio_"
+  tagline: "My Work"
+
+menu:
+  Home: /
+  Projects: /portfolio/
+  Services: /services/
+  Blog: /blog/
+  Contact: /contact/
+
+sections:
+  hero: true
+  services: true
+  apps: false
+  portfolio: true
+  articles: true
+  categories: false
+  youtube: false
+  about: true
+
+limits:
+  posts: 3
+  services: 4
+  portfolio: 6
+
+hero:
+  badge: "Portfolio"
+  title: "Creative<br><span class='highlight'>Developer</span>"
+  subtitle: "Building amazing digital experiences"
+  stats:
+    - value: "10+"
+      label: "Years Experience"
+    - value: "50+"
+      label: "Projects"
+    - value: "100%"
+      label: "Passion"
+  cta:
+    - text: "View Work"
+      url: "/portfolio/"
+      style: primary
+    - text: "Contact"
+      url: "/contact/"
+      style: secondary

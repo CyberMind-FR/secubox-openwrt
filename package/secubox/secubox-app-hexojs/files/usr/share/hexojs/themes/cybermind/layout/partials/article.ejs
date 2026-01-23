@@ -1,0 +1,637 @@
+<%
+var categoryClass = '';
+var categoryColor = '#f97316';
+var categoryEmojis = ['📝'];
+var categoryName = '';
+
+// Mapping des catégories vers emojis
+var categoryEmojiMap = {
+    'security': ['🔐', '🛡️', '🔒'],
+    'sécurité': ['🔐', '🛡️', '🔒'],
+    'securite': ['🔐', '🛡️', '🔒'],
+    'pentest': ['⚔️', '🕵️', '🎯'],
+    'forensic': ['🔬', '🔎', '🕵️‍♂️'],
+    'investigation': ['🔬', '🔎', '📋'],
+    'linux': ['🐧', '🖥️', '⚙️'],
+    'kernel': ['🐧', '⚙️', '🔧'],
+    'embedded': ['🔌', '📟', '🤖'],
+    'embarqué': ['🔌', '📟', '⚡'],
+    'arm': ['💪', '🔌', '⚡'],
+    'raspberry': ['🍇', '🔌', '📟'],
+    'openwrt': ['🌐', '📡', '🔧'],
+    'network': ['🌐', '🔗', '📡'],
+    'réseau': ['🌐', '🔗', '📡'],
+    'dev': ['💻', '👨‍💻', '⌨️'],
+    'développement': ['💻', '👨‍💻', '🧑‍💻'],
+    'python': ['🐍', '💻', '⚡'],
+    'javascript': ['📜', '💻', '🌐'],
+    'code': ['💻', '⌨️', '🖱️'],
+    'iot': ['📡', '🏠', '💡'],
+    'domotique': ['🏠', '💡', '📲'],
+    'cloud': ['☁️', '💾', '🔐'],
+    'nextcloud': ['☁️', '🏠', '💾'],
+    'art': ['🎨', '✨', '🖌️'],
+    'création': ['🎨', '✨', '🌟'],
+    'photo': ['📸', '🖼️', '✨'],
+    'musique': ['🎵', '🎶', '🎸'],
+    'music': ['🎵', '🎶', '🎹'],
+    'poésie': ['✍️', '📜', '🌙'],
+    'philosophy': ['🧘', '☯️', '🔮'],
+    'philosophie': ['🧘', '☯️', '📿'],
+    'yijing': ['☯️', '🔮', '📿'],
+    'yi jing': ['☯️', '🔮', '🌙'],
+    'tools': ['🔧', '🛠️', '⚒️'],
+    'outils': ['🔧', '🛠️', '🧰'],
+    'tutorial': ['📖', '🎓', '💡'],
+    'tuto': ['📖', '🎓', '✨'],
+    'news': ['📰', '📢', '🗞️'],
+    'actualité': ['📰', '📢', '🔔'],
+    'default': ['📝', '📄', '✏️']
+};
+
+// Mapping des tags vers emojis pour lettrine
+var tagEmojiMap = {
+    'howto': '📖',
+    'guide': '📚',
+    'tutorial': '🎓',
+    'tuto': '🎓',
+    'tip': '💡',
+    'astuce': '💡',
+    'warning': '⚠️',
+    'security': '🔐',
+    'important': '❗',
+    'new': '🆕',
+    'update': '🔄',
+    'fix': '🔧',
+    'bug': '🐛',
+    'feature': '✨',
+    'release': '🚀',
+    'deprecated': '⚰️',
+    'experimental': '🧪',
+    'beta': '🅱️',
+    'alpha': '🅰️',
+    'stable': '✅',
+    'linux': '🐧',
+    'windows': '🪟',
+    'macos': '🍎',
+    'docker': '🐳',
+    'kubernetes': '☸️',
+    'git': '📦',
+    'python': '🐍',
+    'javascript': '📜',
+    'rust': '🦀',
+    'go': '🐹',
+    'php': '🐘',
+    'java': '☕',
+    'bash': '💲',
+    'shell': '🐚',
+    'api': '🔌',
+    'database': '🗄️',
+    'ai': '🤖',
+    'ml': '🧠',
+    'privacy': '🔒',
+    'opensource': '🔓',
+    'free': '🆓',
+    'paid': '💰',
+    'pro': '👔',
+    'beginner': '🌱',
+    'advanced': '🚀',
+    'expert': '🎖️'
+};
+
+var displayCategoryName = '';
+
+// Détection robuste de la catégorie
+var cat = null;
+
+// Méthode 1: depuis post.category (string)
+if (post.category && typeof post.category === 'string') {
+    categoryName = post.category.toLowerCase();
+    displayCategoryName = post.category;
+    categoryClass = categoryName;
+}
+
+// Méthode 2: depuis post.categories (Hexo)
+if (!categoryName && post.categories && post.categories.length > 0) {
+    try {
+        var cats = [];
+        if (typeof post.categories.toArray === 'function') {
+            cats = post.categories.toArray();
+        } else if (post.categories.data && Array.isArray(post.categories.data)) {
+            cats = post.categories.data;
+        } else if (Array.isArray(post.categories)) {
+            cats = post.categories;
+        }
+        
+        if (cats.length > 0 && cats[0]) {
+            cat = cats[0];
+            if (typeof cat === 'string') {
+                categoryName = cat.toLowerCase();
+                displayCategoryName = cat;
+                categoryClass = categoryName;
+            } else if (cat.name) {
+                categoryName = cat.name.toLowerCase();
+                displayCategoryName = cat.name;
+                categoryClass = cat.slug || categoryName;
+            } else if (cat.slug) {
+                categoryName = cat.slug.toLowerCase();
+                displayCategoryName = cat.slug;
+                categoryClass = cat.slug;
+            }
+        }
+    } catch(e) {
+        // Ignorer les erreurs
+    }
+}
+
+// Méthode 3: depuis le chemin source
+if (!categoryName && post.source) {
+    var pathMatch = post.source.match(/blog\/([^\/]+)\//);
+    if (pathMatch) {
+        categoryName = pathMatch[1].toLowerCase();
+        displayCategoryName = categoryName;
+        categoryClass = categoryName;
+    }
+}
+
+// Appliquer la couleur depuis le thème
+if (categoryName && theme.categories && theme.categories[categoryClass]) {
+    categoryColor = theme.categories[categoryClass].color || categoryColor;
+    displayCategoryName = theme.categories[categoryClass].name || displayCategoryName;
+}
+
+// Trouver les emojis correspondants
+if (categoryName) {
+    for (var key in categoryEmojiMap) {
+        if (categoryName.indexOf(key) >= 0) {
+            categoryEmojis = categoryEmojiMap[key];
+            break;
+        }
+    }
+}
+
+// Extraire les mots-clés principaux du titre pour la lettrine
+var titleWords = (post.title || '').split(/[\s\-:,]+/);
+var keywordLettrines = [];
+titleWords.forEach(function(word) {
+    var w = word.toLowerCase().replace(/[^a-zàâäéèêëïîôùûüÿœæç0-9]/g, '');
+    if (tagEmojiMap[w]) {
+        keywordLettrines.push({ word: word, emoji: tagEmojiMap[w] });
+    }
+});
+
+// Extraire aussi des tags
+var tagLettrines = [];
+if (post.tags && post.tags.length > 0) {
+    try {
+        var tagsArray = post.tags.toArray ? post.tags.toArray() : [];
+        tagsArray.forEach(function(tag) {
+            if (tag && tag.name) {
+                var tagName = tag.name.toLowerCase();
+                if (tagEmojiMap[tagName]) {
+                    tagLettrines.push({ word: tag.name, emoji: tagEmojiMap[tagName] });
+                }
+            }
+        });
+    } catch(e) {
+        // Ignorer les erreurs de tags
+    }
+}
+
+// Générer un ID unique pour l'article
+var articleId = 'art-' + (post._id || Math.random().toString(36).substr(2, 9));
+%>
+
+<article class="article-card gui-window <%= categoryClass %>" style="--article-color: <%= categoryColor %>;" id="<%= articleId %>">
+    <!-- Barre de titre style fenêtre GUI -->
+    <div class="window-titlebar" style="background: <%= categoryColor %>;">
+        <div class="window-buttons">
+            <span class="window-btn close" title="Fermer">●</span>
+            <span class="window-btn minimize" title="Réduire">●</span>
+            <span class="window-btn maximize" title="Agrandir">●</span>
+        </div>
+        <div class="window-title">
+            <span class="window-emojis">
+                <% categoryEmojis.slice(0, 2).forEach(function(e) { %><%= e %><% }); %>
+            </span>
+            <span class="window-category"><%= displayCategoryName || 'Article' %></span>
+            <span class="window-separator">—</span>
+            <span class="window-filename"><%= post.title.substring(0, 30) %><%= post.title.length > 30 ? '...' : '' %></span>
+        </div>
+        <div class="window-lettrines">
+            <% keywordLettrines.slice(0, 2).forEach(function(kw) { %>
+            <span class="lettrine" title="<%= kw.word %>"><%= kw.emoji %></span>
+            <% }); %>
+            <% tagLettrines.slice(0, 1).forEach(function(tl) { %>
+            <span class="lettrine" title="<%= tl.word %>"><%= tl.emoji %></span>
+            <% }); %>
+        </div>
+    </div>
+    
+    <!-- Contenu de la fenêtre -->
+    <div class="window-content">
+        <h3 class="article-title">
+            <a href="<%= url_for(post.path) %>"><%= post.title %></a>
+        </h3>
+        
+        <% if (post.excerpt) { %>
+        <p class="article-excerpt"><%- strip_html(post.excerpt).substring(0, theme.excerpt_length || 180) %>...</p>
+        <% } else if (post.description) { %>
+        <p class="article-excerpt"><%= post.description %></p>
+        <% } else { %>
+        <p class="article-excerpt"><%- strip_html(post.content).substring(0, theme.excerpt_length || 180) %>...</p>
+        <% } %>
+        
+        <!-- Barre de status style terminal -->
+        <div class="window-statusbar">
+            <div class="status-left">
+                <span class="status-date">
+                    📅 <%= post.date.format('DD/MM/YYYY') %>
+                </span>
+                <span class="status-separator">|</span>
+                <span class="status-time">
+                    🕐 <%= post.date.format('HH:mm') %>
+                </span>
+            </div>
+            <div class="status-right">
+                <% if (post.tags && post.tags.length > 0) { %>
+                <div class="status-tags">
+                    <% 
+                    var tagsToShow = [];
+                    try {
+                        if (post.tags.limit) {
+                            tagsToShow = post.tags.limit(3).toArray ? post.tags.limit(3).toArray() : [];
+                        } else if (post.tags.toArray) {
+                            tagsToShow = post.tags.toArray().slice(0, 3);
+                        }
+                    } catch(e) {}
+                    
+                    tagsToShow.forEach(function(tag) { 
+                        if (!tag || !tag.name) return;
+                        var tagEmoji = tagEmojiMap[tag.name.toLowerCase()] || '🏷️';
+                    %>
+                    <a href="<%= url_for(tag.path) %>" class="status-tag">
+                        <%= tagEmoji %><%= tag.name %>
+                    </a>
+                    <% }); %>
+                </div>
+                <% } %>
+            </div>
+        </div>
+        
+        <!-- Bouton action -->
+        <a href="<%= url_for(post.path) %>" class="window-action-btn" style="background: <%= categoryColor %>;">
+            <span class="action-icon">▶</span>
+            <span class="action-text"><%= theme.read_more || 'EXEC' %></span>
+            <span class="action-arrow">→</span>
+        </a>
+    </div>
+</article>
+
+<style>
+/* Style fenêtre GUI */
+.article-card.gui-window {
+    position: relative;
+    background: var(--bg-primary);
+    border: 2px solid var(--article-color);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 
+        0 4px 20px rgba(0,0,0,0.4),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+    transition: all 0.3s ease;
+}
+
+.article-card.gui-window:hover {
+    transform: translateY(-5px);
+    box-shadow: 
+        0 10px 40px rgba(0,0,0,0.5),
+        0 0 30px var(--article-color)30,
+        inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+/* Barre de titre */
+.window-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    background: var(--article-color);
+    color: #000;
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    gap: 0.5rem;
+    min-height: 36px;
+}
+
+/* Boutons de fenêtre */
+.window-buttons {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.window-btn {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    font-size: 10px;
+    line-height: 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    opacity: 0.8;
+}
+
+.window-btn.close {
+    background: #ff5f57;
+    color: #ff5f57;
+}
+
+.window-btn.minimize {
+    background: #ffbd2e;
+    color: #ffbd2e;
+}
+
+.window-btn.maximize {
+    background: #28ca42;
+    color: #28ca42;
+}
+
+.window-btn:hover {
+    opacity: 1;
+    transform: scale(1.2);
+}
+
+/* Titre de la fenêtre */
+.window-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.window-emojis {
+    display: flex;
+    gap: 2px;
+    animation: emojiPulse 2s ease-in-out infinite;
+}
+
+@keyframes emojiPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+.window-category {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.window-separator {
+    opacity: 0.5;
+}
+
+.window-filename {
+    opacity: 0.7;
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Lettrines dans la barre */
+.window-lettrines {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.window-lettrines .lettrine {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+}
+
+.window-lettrines .lettrine:hover {
+    background: rgba(0,0,0,0.4);
+    transform: scale(1.15);
+}
+
+/* Contenu de la fenêtre */
+.window-content {
+    padding: 1.25rem;
+    background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+}
+
+.article-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0 0 0.75rem 0;
+    line-height: 1.4;
+}
+
+.article-title a {
+    color: var(--text-primary);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.article-title a:hover {
+    color: var(--article-color);
+}
+
+.article-excerpt {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin: 0 0 1rem 0;
+}
+
+/* Barre de status */
+.window-statusbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    margin: 0 -1.25rem;
+    background: var(--bg-tertiary);
+    border-top: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.status-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.status-separator {
+    opacity: 0.3;
+}
+
+.status-right {
+    display: flex;
+    align-items: center;
+}
+
+.status-tags {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.status-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0.15rem 0.4rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.65rem;
+    transition: all 0.2s ease;
+}
+
+.status-tag:hover {
+    background: var(--article-color);
+    color: #000;
+    border-color: var(--article-color);
+}
+
+/* Bouton action */
+.window-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    background: var(--article-color);
+    color: #000;
+    text-decoration: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.window-action-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    transition: left 0.5s ease;
+}
+
+.window-action-btn:hover::before {
+    left: 100%;
+}
+
+.window-action-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 15px var(--article-color)50;
+}
+
+.action-icon {
+    font-size: 0.7rem;
+}
+
+.action-arrow {
+    transition: transform 0.3s ease;
+}
+
+.window-action-btn:hover .action-arrow {
+    transform: translateX(5px);
+}
+
+/* Animation scanlines effet CRT */
+.article-card.gui-window::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(0,0,0,0.03),
+        rgba(0,0,0,0.03) 1px,
+        transparent 1px,
+        transparent 2px
+    );
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.article-card.gui-window:hover::after {
+    opacity: 1;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .window-titlebar {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.7rem;
+        flex-wrap: wrap;
+    }
+    
+    .window-filename {
+        display: none;
+    }
+    
+    .window-separator {
+        display: none;
+    }
+    
+    .window-lettrines {
+        display: none;
+    }
+    
+    .window-content {
+        padding: 1rem;
+    }
+    
+    .article-title {
+        font-size: 1rem;
+    }
+    
+    .article-excerpt {
+        font-size: 0.85rem;
+    }
+    
+    .window-statusbar {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 0.5rem;
+        margin: 0 -1rem;
+    }
+    
+    .status-tags {
+        margin-top: 0.25rem;
+    }
+}
+</style>

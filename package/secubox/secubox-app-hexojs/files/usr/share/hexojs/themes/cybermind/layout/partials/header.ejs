@@ -1,0 +1,701 @@
+<%
+// Configuration du branding
+var logoSymbol = (theme.branding && theme.branding.logo_symbol) || '◆';
+var logoText = (theme.branding && theme.branding.logo_text) || 'CyberMind_';
+var logoImage = (theme.branding && theme.branding.logo_image) || '';
+
+// Configuration du thème
+var defaultMode = (theme.theme && theme.theme.default_mode) || 'dark';
+var allowToggle = theme.theme ? (theme.theme.allow_toggle !== false) : true;
+var accentColor = (theme.theme && theme.theme.accent_color) || '#f97316';
+
+// Helper pour vérifier si un item de menu a des sous-menus
+function hasSubmenu(item) {
+    return item && typeof item === 'object' && !Array.isArray(item);
+}
+
+// Helper pour obtenir le chemin principal d'un menu avec sous-menus
+function getMenuPath(item) {
+    if (typeof item === 'string') return item;
+    if (item && item._path) return item._path;
+    return '#';
+}
+%>
+
+<nav id="mainNav">
+    <!-- Logo -->
+    <a href="<%= config.root %>" class="nav-logo">
+        <% if (logoImage) { %>
+        <img src="<%= logoImage %>" alt="<%= logoText %>" class="logo-img">
+        <% } else { %>
+        <span class="logo-symbol"><%= logoSymbol %></span>
+        <span class="logo-text"><%= logoText %></span>
+        <% } %>
+    </a>
+    
+    <!-- Actions (theme toggle + hamburger) -->
+    <div class="nav-actions">
+        <% if (allowToggle) { %>
+        <button id="themeToggle" type="button" aria-label="Changer le thème" title="Mode clair/sombre">
+            <span class="theme-icon sun">☀️</span>
+            <span class="theme-icon moon">🌙</span>
+        </button>
+        <% } %>
+        
+        <button id="menuToggle" type="button" aria-label="Menu">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+    </div>
+    
+    <!-- Menu -->
+    <ul id="menuList">
+        <% if (theme.menu) { %>
+            <% for (let name in theme.menu) { %>
+                <% var menuItem = theme.menu[name]; %>
+                
+                <% if (hasSubmenu(menuItem)) { %>
+                    <%# Menu avec sous-menus (dropdown) %>
+                    <li class="has-submenu">
+                        <a href="<%= url_for(getMenuPath(menuItem)) %>" class="menu-parent">
+                            <%= name %>
+                            <span class="dropdown-arrow">▾</span>
+                        </a>
+                        <ul class="submenu">
+                            <% for (let subName in menuItem) { %>
+                                <% if (subName !== '_path') { %>
+                                <li>
+                                    <a href="<%= url_for(menuItem[subName]) %>"><%= subName %></a>
+                                </li>
+                                <% } %>
+                            <% } %>
+                        </ul>
+                    </li>
+                <% } else { %>
+                    <%# Menu simple %>
+                    <li>
+                        <a href="<%= url_for(menuItem) %>"><%= name %></a>
+                    </li>
+                <% } %>
+            <% } %>
+        <% } %>
+        
+        <% if (allowToggle) { %>
+        <li class="mobile-theme-toggle">
+            <button id="themeToggleMobile" type="button">
+                <span class="theme-icon sun">☀️</span>
+                <span class="theme-icon moon">🌙</span>
+                <span class="theme-label">Mode</span>
+            </button>
+        </li>
+        <% } %>
+    </ul>
+</nav>
+
+<style>
+/* Variables dynamiques */
+:root {
+    --accent-color: <%= accentColor %>;
+}
+
+#mainNav {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 9999;
+    background: var(--nav-bg, rgba(0, 0, 0, 0.98));
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--nav-border, rgba(255,255,255,0.1));
+    transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+/* Logo */
+.nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--accent-color);
+    text-decoration: none;
+}
+
+.nav-logo .logo-img {
+    height: 32px;
+    width: auto;
+}
+
+.nav-logo .logo-symbol {
+    font-size: 1.2rem;
+}
+
+/* Actions container */
+.nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* Theme Toggle */
+#themeToggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: var(--toggle-bg, rgba(255,255,255,0.05));
+    border: 1px solid var(--toggle-border, rgba(255,255,255,0.1));
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+#themeToggle:hover {
+    background: var(--toggle-bg-hover, rgba(255,255,255,0.1));
+    border-color: var(--accent-color);
+    transform: scale(1.05);
+}
+
+#themeToggle .theme-icon {
+    position: absolute;
+    font-size: 1.2rem;
+    transition: all 0.4s ease;
+}
+
+/* Dark mode: show moon */
+[data-theme="dark"] #themeToggle .sun { opacity: 0; transform: rotate(90deg) scale(0); }
+[data-theme="dark"] #themeToggle .moon { opacity: 1; transform: rotate(0) scale(1); }
+
+/* Light mode: show sun */
+[data-theme="light"] #themeToggle .sun { opacity: 1; transform: rotate(0) scale(1); }
+[data-theme="light"] #themeToggle .moon { opacity: 0; transform: rotate(-90deg) scale(0); }
+
+/* Default state (before JS loads) */
+#themeToggle .sun { opacity: 0; transform: rotate(90deg) scale(0); }
+#themeToggle .moon { opacity: 1; transform: rotate(0) scale(1); }
+
+/* Hamburger Menu Toggle */
+#menuToggle {
+    display: none;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 30px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    z-index: 10001;
+}
+
+#menuToggle span {
+    display: block;
+    width: 100%;
+    height: 3px;
+    background: var(--accent-color);
+    border-radius: 3px;
+    transition: all 0.3s ease;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MENU LIST AVEC SUPPORT SOUS-MENUS
+   ══════════════════════════════════════════════════════════════ */
+
+#menuList {
+    display: flex;
+    gap: 1.5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    align-items: center;
+}
+
+#menuList > li {
+    position: relative;
+}
+
+#menuList > li > a {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--nav-link, #9898a6);
+    text-decoration: none;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.5rem 0;
+}
+
+#menuList > li > a:hover {
+    color: var(--accent-color);
+}
+
+/* Dropdown arrow */
+.dropdown-arrow {
+    font-size: 0.7rem;
+    transition: transform 0.3s ease;
+}
+
+.has-submenu:hover .dropdown-arrow {
+    transform: rotate(180deg);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SOUS-MENUS (DROPDOWN)
+   ══════════════════════════════════════════════════════════════ */
+
+.submenu {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    min-width: 200px;
+    background: var(--submenu-bg, #0a0a0f);
+    border: 1px solid var(--submenu-border, rgba(255,255,255,0.1));
+    border-radius: 12px;
+    padding: 0.5rem 0;
+    list-style: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    z-index: 10000;
+}
+
+/* Triangle pointer */
+.submenu::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 6px solid var(--submenu-border, rgba(255,255,255,0.1));
+}
+
+.submenu::after {
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 5px solid var(--submenu-bg, #0a0a0f);
+}
+
+/* Show submenu on hover */
+.has-submenu:hover .submenu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* Submenu items */
+.submenu li {
+    margin: 0;
+}
+
+.submenu a {
+    display: block;
+    padding: 0.75rem 1.25rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--nav-link, #9898a6);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.submenu a:hover {
+    color: var(--accent-color);
+    background: var(--submenu-hover, rgba(249, 115, 22, 0.1));
+    padding-left: 1.5rem;
+}
+
+/* Active state */
+.submenu li.active a {
+    color: var(--accent-color);
+    background: var(--submenu-active, rgba(249, 115, 22, 0.15));
+}
+
+.mobile-theme-toggle {
+    display: none;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MOBILE STYLES
+   ══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 900px) {
+    #mainNav {
+        padding: 1rem 1.5rem;
+    }
+    
+    #themeToggle {
+        width: 36px;
+        height: 36px;
+    }
+    
+    #menuToggle {
+        display: flex;
+    }
+    
+    #menuList {
+        position: fixed;
+        top: 0;
+        right: -100%;
+        width: 85%;
+        max-width: 320px;
+        height: 100vh;
+        background: var(--mobile-menu-bg, #0a0a0f);
+        flex-direction: column;
+        gap: 0;
+        padding: 80px 0 2rem 0;
+        transition: right 0.3s ease;
+        box-shadow: -5px 0 20px rgba(0,0,0,0.5);
+        z-index: 10000;
+        overflow-y: auto;
+        align-items: stretch;
+    }
+    
+    #menuList.open {
+        right: 0;
+    }
+    
+    #menuList > li {
+        width: 100%;
+        border-bottom: 1px solid var(--mobile-menu-border, rgba(255,255,255,0.1));
+    }
+    
+    #menuList > li > a {
+        display: flex;
+        justify-content: space-between;
+        padding: 1.2rem 1.5rem;
+        font-size: 1rem;
+        color: var(--mobile-menu-link, #e8e8ed);
+        text-transform: none;
+        letter-spacing: 0;
+    }
+    
+    #menuList > li > a:hover,
+    #menuList > li > a:active {
+        background: var(--mobile-menu-hover, rgba(249, 115, 22, 0.15));
+        color: var(--accent-color);
+    }
+    
+    /* Mobile submenu - toujours visible, accordéon style */
+    .submenu {
+        position: static;
+        transform: none;
+        opacity: 1;
+        visibility: visible;
+        min-width: auto;
+        width: 100%;
+        background: var(--mobile-submenu-bg, rgba(0,0,0,0.3));
+        border: none;
+        border-radius: 0;
+        padding: 0;
+        box-shadow: none;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+    }
+    
+    .submenu::before,
+    .submenu::after {
+        display: none;
+    }
+    
+    .has-submenu.open .submenu {
+        max-height: 500px;
+    }
+    
+    .submenu a {
+        padding: 1rem 2rem 1rem 2.5rem;
+        font-size: 0.9rem;
+        border-left: 3px solid transparent;
+    }
+    
+    .submenu a:hover {
+        padding-left: 2.5rem;
+        border-left-color: var(--accent-color);
+    }
+    
+    /* Dropdown arrow rotation */
+    .dropdown-arrow {
+        font-size: 0.9rem;
+        transition: transform 0.3s ease;
+    }
+    
+    .has-submenu.open .dropdown-arrow {
+        transform: rotate(180deg);
+    }
+    
+    /* Mobile theme toggle dans menu */
+    .mobile-theme-toggle {
+        display: block !important;
+        margin-top: auto;
+        padding-top: 1rem;
+        border-bottom: none !important;
+    }
+    
+    #themeToggleMobile {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 1rem 2rem;
+        background: transparent;
+        border: none;
+        color: var(--mobile-menu-link, #e8e8ed);
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1rem;
+        cursor: pointer;
+    }
+    
+    #themeToggleMobile:hover {
+        background: var(--mobile-menu-hover, rgba(249, 115, 22, 0.15));
+        color: var(--accent-color);
+    }
+    
+    #themeToggleMobile .theme-icon {
+        font-size: 1.2rem;
+    }
+    
+    [data-theme="dark"] #themeToggleMobile .sun { display: none; }
+    [data-theme="dark"] #themeToggleMobile .moon { display: inline; }
+    [data-theme="light"] #themeToggleMobile .sun { display: inline; }
+    [data-theme="light"] #themeToggleMobile .moon { display: none; }
+    
+    /* Hamburger animation */
+    #menuToggle.open span:nth-child(1) {
+        transform: rotate(45deg) translate(6px, 6px);
+    }
+    
+    #menuToggle.open span:nth-child(2) {
+        opacity: 0;
+    }
+    
+    #menuToggle.open span:nth-child(3) {
+        transform: rotate(-45deg) translate(6px, -6px);
+    }
+}
+
+/* Overlay */
+#menuOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 9998;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+#menuOverlay.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LIGHT MODE OVERRIDES
+   ══════════════════════════════════════════════════════════════ */
+
+[data-theme="light"] #mainNav {
+    background: rgba(255, 255, 255, 0.98);
+    border-bottom-color: rgba(0,0,0,0.1);
+}
+
+[data-theme="light"] #menuList > li > a {
+    color: #4a4a5a;
+}
+
+[data-theme="light"] .submenu {
+    background: #ffffff;
+    border-color: rgba(0,0,0,0.1);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+}
+
+[data-theme="light"] .submenu::after {
+    border-bottom-color: #ffffff;
+}
+
+[data-theme="light"] .submenu a {
+    color: #4a4a5a;
+}
+
+[data-theme="light"] .submenu a:hover {
+    background: rgba(249, 115, 22, 0.1);
+}
+
+[data-theme="light"] #themeToggle {
+    background: rgba(0,0,0,0.05);
+    border-color: rgba(0,0,0,0.1);
+}
+
+@media (max-width: 900px) {
+    [data-theme="light"] #menuList {
+        background: #ffffff;
+    }
+    
+    [data-theme="light"] #menuList > li {
+        border-bottom-color: rgba(0,0,0,0.1);
+    }
+    
+    [data-theme="light"] #menuList > li > a {
+        color: #2a2a3a;
+    }
+    
+    [data-theme="light"] .submenu {
+        background: rgba(0,0,0,0.03);
+    }
+    
+    [data-theme="light"] #themeToggleMobile {
+        color: #2a2a3a;
+    }
+}
+</style>
+
+<div id="menuOverlay"></div>
+
+<script>
+(function() {
+    // ═══════════════════════════════════════════════════════════════════════
+    // THEME MANAGER
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    var STORAGE_KEY = 'cybermind-theme';
+    var DEFAULT_THEME = '<%= defaultMode %>';
+    
+    function getStoredTheme() {
+        try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return null; }
+    }
+    
+    function setStoredTheme(theme) {
+        try { localStorage.setItem(STORAGE_KEY, theme); } catch (e) {}
+    }
+    
+    function getPreferredTheme() {
+        var stored = getStoredTheme();
+        if (stored) return stored;
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) return 'light';
+        return DEFAULT_THEME;
+    }
+    
+    function setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        setStoredTheme(theme);
+        window.dispatchEvent(new CustomEvent('themechange', { detail: { theme: theme } }));
+    }
+    
+    function toggleTheme() {
+        var current = document.documentElement.getAttribute('data-theme') || DEFAULT_THEME;
+        setTheme(current === 'dark' ? 'light' : 'dark');
+    }
+    
+    // Apply theme immediately
+    setTheme(getPreferredTheme());
+    
+    // Listen for system preference changes
+    if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+            if (!getStoredTheme()) setTheme(e.matches ? 'dark' : 'light');
+        });
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // MENU MANAGER
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // Theme toggle buttons
+        var themeToggle = document.getElementById('themeToggle');
+        var themeToggleMobile = document.getElementById('themeToggleMobile');
+        
+        if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
+        if (themeToggleMobile) themeToggleMobile.addEventListener('click', toggleTheme);
+        
+        // Mobile menu
+        var menuToggle = document.getElementById('menuToggle');
+        var menu = document.getElementById('menuList');
+        var overlay = document.getElementById('menuOverlay');
+        
+        if (!menuToggle || !menu) return;
+        
+        function openMenu() {
+            menu.classList.add('open');
+            menuToggle.classList.add('open');
+            if (overlay) overlay.classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        function closeMenu() {
+            menu.classList.remove('open');
+            menuToggle.classList.remove('open');
+            if (overlay) overlay.classList.remove('show');
+            document.body.style.overflow = '';
+        }
+        
+        menuToggle.addEventListener('click', function(e) {
+            e.preventDefault();
+            menu.classList.contains('open') ? closeMenu() : openMenu();
+        });
+        
+        if (overlay) overlay.addEventListener('click', closeMenu);
+        
+        // ═══════════════════════════════════════════════════════════════════
+        // MOBILE SUBMENU ACCORDÉON
+        // ═══════════════════════════════════════════════════════════════════
+        
+        var submenus = menu.querySelectorAll('.has-submenu');
+        
+        submenus.forEach(function(item) {
+            var parentLink = item.querySelector('.menu-parent');
+            
+            if (parentLink) {
+                parentLink.addEventListener('click', function(e) {
+                    // Sur mobile, toggle le sous-menu
+                    if (window.innerWidth <= 900) {
+                        e.preventDefault();
+                        
+                        // Fermer les autres sous-menus
+                        submenus.forEach(function(other) {
+                            if (other !== item) other.classList.remove('open');
+                        });
+                        
+                        // Toggle celui-ci
+                        item.classList.toggle('open');
+                    }
+                    // Sur desktop, laisser le lien fonctionner normalement
+                });
+            }
+        });
+        
+        // Close on regular link click
+        var links = menu.querySelectorAll('a:not(.menu-parent)');
+        links.forEach(function(link) {
+            link.addEventListener('click', closeMenu);
+        });
+        
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeMenu();
+        });
+    });
+})();
+</script>

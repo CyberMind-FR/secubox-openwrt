@@ -1,0 +1,49 @@
+<% 
+var pageTitle = page.title || config.title;
+var pageDescription = page.description || page.excerpt || config.description;
+var pageKeywords = page.tags ? page.tags.map(tag => tag.name).join(', ') : config.keywords;
+var pageUrl = config.url + '/' + (page.path || '');
+var pageImage = page.thumbnail || config.thumbnail || config.url + '/images/default-og.jpg';
+%>
+
+<!-- SEO Meta Tags -->
+<meta name="description" content="<%= strip_html(pageDescription).substring(0, 200) %>">
+<meta name="keywords" content="<%= pageKeywords %>">
+<meta name="author" content="<%= config.author || 'Gandalf' %>">
+
+<!-- Open Graph -->
+<meta property="og:type" content="<%= is_post() ? 'article' : 'website' %>">
+<meta property="og:title" content="<%= pageTitle %>">
+<meta property="og:description" content="<%= strip_html(pageDescription).substring(0, 200) %>">
+<meta property="og:url" content="<%= pageUrl %>">
+<meta property="og:site_name" content="<%= config.title %>">
+<meta property="og:image" content="<%= pageImage %>">
+<meta property="og:locale" content="<%= config.language || 'fr_FR' %>">
+
+<% if (is_post() && page.date) { %>
+<meta property="article:published_time" content="<%= page.date.toISOString() %>">
+<% } %>
+
+<% if (page.updated) { %>
+<meta property="article:modified_time" content="<%= page.updated.toISOString() %>">
+<% } %>
+
+<% if (page.tags && page.tags.length) { %>
+<% page.tags.forEach(tag => { %>
+<meta property="article:tag" content="<%= tag.name %>">
+<% }); %>
+<% } %>
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="<%= pageTitle %>">
+<meta name="twitter:description" content="<%= strip_html(pageDescription).substring(0, 200) %>">
+<meta name="twitter:image" content="<%= pageImage %>">
+
+<!-- Canonical URL -->
+<link rel="canonical" href="<%= pageUrl %>">
+
+<!-- RSS Feed -->
+<% if (config.feed && config.feed.path) { %>
+<link rel="alternate" type="application/rss+xml" title="<%= config.title %>" href="<%= config.url %>/<%= config.feed.path %>">
+<% } %>

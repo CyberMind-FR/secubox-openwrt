@@ -1,0 +1,60 @@
+{
+	"luci-app-hexojs": {
+		"description": "Grant access to Hexo CMS",
+		"read": {
+			"ubus": {
+				"luci.hexojs": [
+					"status",
+					"site_stats",
+					"list_posts",
+					"get_post",
+					"list_drafts",
+					"search_posts",
+					"list_categories",
+					"list_tags",
+					"list_media",
+					"list_apps",
+					"deploy_status",
+					"preview_status",
+					"get_config",
+					"get_theme_config",
+					"list_presets",
+					"git_status",
+					"git_log",
+					"git_get_credentials"
+				]
+			},
+			"uci": ["hexojs"]
+		},
+		"write": {
+			"ubus": {
+				"luci.hexojs": [
+					"create_post",
+					"update_post",
+					"delete_post",
+					"publish_post",
+					"delete_media",
+					"create_app",
+					"generate",
+					"clean",
+					"deploy",
+					"preview_start",
+					"save_config",
+					"save_theme_config",
+					"apply_preset",
+					"service_start",
+					"service_stop",
+					"service_restart",
+					"git_init",
+					"git_clone",
+					"git_pull",
+					"git_push",
+					"git_fetch",
+					"git_reset",
+					"git_set_credentials"
+				]
+			},
+			"uci": ["hexojs"]
+		}
+	}
+}

@@ -1,0 +1,404 @@
+<%#
+  Layout: apps-index.ejs
+  Page listant toutes les applications avec vignettes intelligentes
+  
+  Usage: source/apps/index.md avec layout: apps-index
+  
+  Hiérarchie des vignettes (fallback):
+  1. cover/thumbnail - Image spécifiée
+  2. images[0] - Première image du contenu
+  3. embed-preview - Miniature de l'embed
+  4. summary - Carte avec description
+  5. generated - Image avec tags/catégories
+%>
+
+<%
+// Récupérer toutes les pages qui sont des apps
+var apps = [];
+
+if (site.pages && site.pages.length) {
+  site.pages.forEach(function(p) {
+    if (p.layout === 'app' && !p.source.endsWith('apps/index.md')) {
+      apps.push(p);
+    }
+  });
+}
+
+// Trier par featured puis par titre
+apps.sort(function(a, b) {
+  if (a.featured && !b.featured) return -1;
+  if (!a.featured && b.featured) return 1;
+  return (a.title || '').localeCompare(b.title || '');
+});
+
+// Couleurs par catégorie
+var catColors = {
+  'meditation': '#06b6d4',
+  'wellness': '#10b981',
+  'creative': '#ec4899',
+  'philosophy': '#a855f7',
+  'security': '#ef4444',
+  'cybersecurity': '#00ff88',
+  'dev': '#3b82f6',
+  'tools': '#f97316'
+};
+%>
+
+<div class="apps-index">
+  
+  <header class="apps-hero">
+    <h1><%= page.title || '🚀 Applications' %></h1>
+    <% if (page.description) { %>
+    <p class="tagline"><%= page.description %></p>
+    <% } else { %>
+    <p class="tagline">Applications web et outils développés par CyberMind</p>
+    <% } %>
+    <div class="stats"><%= apps.length %> application<%= apps.length > 1 ? 's' : '' %></div>
+  </header>
+
+  <% if (apps.length > 0) { %>
+  <section class="apps-grid">
+    <% apps.forEach(function(app) { 
+      var appColor = catColors[app.category] || '#6366f1';
+    %>
+    <article class="app-card" style="--app-color: <%= appColor %>">
+      <a href="<%= url_for(app.path) %>" class="app-cover-link">
+        <% if (typeof render_smart_thumbnail === 'function') { %>
+        <%- render_smart_thumbnail(app, { class: 'app-thumb' }) %>
+        <% } else if (typeof render_thumbnail === 'function') { %>
+        <%- render_thumbnail(app, { class: 'app-thumb', width: 400, height: 225 }) %>
+        <% } else { %>
+        <div class="app-thumb app-thumb-fallback" style="
+          aspect-ratio: 16/9;
+          background: linear-gradient(135deg, <%= appColor %>15, <%= appColor %>30);
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        ">
+          <span style="font-size: 3rem;"><%= app.icon || '🚀' %></span>
+        </div>
+        <% } %>
+        <div class="app-overlay">
+          <span class="play-icon">▶</span>
+        </div>
+      </a>
+      
+      <div class="app-card-body">
+        <div class="app-card-header">
+          <span class="app-icon"><%= app.icon || '🚀' %></span>
+          <h3><a href="<%= url_for(app.path) %>"><%= app.title %></a></h3>
+        </div>
+        
+        <p class="app-desc"><%= app.description || '' %></p>
+        
+        <div class="app-meta">
+          <span class="app-category" style="background: <%= appColor %>20; color: <%= appColor %>;">
+            <%= app.category || 'app' %>
+          </span>
+          <% if (app.featured) { %>
+          <span class="app-featured">⭐ Featured</span>
+          <% } %>
+        </div>
+        
+        <div class="app-actions">
+          <a href="<%= url_for(app.path) %>" class="btn btn-sm btn-primary">Voir →</a>
+          <% if (app.embed_url) { %>
+          <a href="<%= app.embed_url %>" target="_blank" class="btn btn-sm btn-secondary">Lancer ↗</a>
+          <% } %>
+          <% if (app.github) { %>
+          <a href="<%= app.github %>" target="_blank" class="btn btn-sm btn-github">GitHub</a>
+          <% } %>
+        </div>
+      </div>
+    </article>
+    <% }); %>
+  </section>
+  <% } else { %>
+  <div class="no-apps">
+    <p>🚧 Aucune application pour le moment.</p>
+  </div>
+  <% } %>
+
+  <% if (page.content && page.content.trim()) { %>
+  <section class="custom-content"><%- page.content %></section>
+  <% } %>
+
+</div>
+
+<style>
+.apps-index {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.apps-hero {
+  text-align: center;
+  padding: 2rem 0;
+  margin-bottom: 2rem;
+}
+
+.apps-hero h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, #06b6d4, #a855f7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.apps-hero .tagline {
+  color: #9898a6;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.apps-hero .stats {
+  color: #6a6a7a;
+  font-size: 0.9rem;
+}
+
+/* Grid d'apps */
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.5rem;
+}
+
+/* Carte d'app */
+.app-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.app-card:hover {
+  border-color: var(--app-color);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+}
+
+/* Cover / Vignette */
+.app-cover-link {
+  display: block;
+  position: relative;
+  overflow: hidden;
+}
+
+.app-thumb {
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.app-card:hover .app-thumb img {
+  transform: scale(1.05);
+}
+
+/* Pour les cartes générées, pas de scale */
+.app-thumb.summary-card,
+.app-thumb.generated-card,
+.app-thumb.placeholder-card {
+  transition: filter 0.3s ease;
+}
+
+.app-card:hover .app-thumb.summary-card,
+.app-card:hover .app-thumb.generated-card,
+.app-card:hover .app-thumb.placeholder-card {
+  filter: brightness(1.1);
+}
+
+.app-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.app-card:hover .app-overlay {
+  opacity: 1;
+}
+
+.play-icon {
+  width: 60px;
+  height: 60px;
+  background: var(--app-color);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  color: #000;
+  transform: scale(0.8);
+  transition: transform 0.3s ease;
+}
+
+.app-card:hover .play-icon {
+  transform: scale(1);
+}
+
+/* Body de la carte */
+.app-card-body {
+  padding: 1.25rem;
+}
+
+.app-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.app-card-header .app-icon {
+  font-size: 1.5rem;
+}
+
+.app-card-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.app-card-header h3 a {
+  color: #e8e8ed;
+  text-decoration: none;
+}
+
+.app-card-header h3 a:hover {
+  color: var(--app-color);
+}
+
+.app-desc {
+  font-size: 0.85rem;
+  color: #9898a6;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.app-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.app-category {
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.app-featured {
+  font-size: 0.75rem;
+  color: #f59e0b;
+}
+
+.app-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.app-actions .btn {
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--app-color);
+  color: #000;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+.btn-secondary {
+  background: rgba(255,255,255,0.1);
+  color: #e8e8ed;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+.btn-secondary:hover {
+  border-color: var(--app-color);
+  color: var(--app-color);
+}
+
+.btn-github {
+  background: #24292e;
+  color: #fff;
+}
+
+.btn-github:hover {
+  background: #3a3f44;
+}
+
+.no-apps {
+  text-align: center;
+  padding: 3rem;
+  color: #6a6a7a;
+}
+
+.custom-content {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: rgba(255,255,255,0.03);
+  border-radius: 12px;
+}
+
+/* Embed preview special */
+.embed-preview iframe {
+  border-radius: 12px 12px 0 0;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .apps-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .apps-hero h1 {
+    font-size: 1.8rem;
+  }
+}
+
+/* Light theme */
+[data-theme="light"] .apps-index {
+  background: #fff;
+}
+
+[data-theme="light"] .app-card {
+  background: #f8f9fa;
+  border-color: #e0e0e0;
+}
+
+[data-theme="light"] .app-card-header h3 a {
+  color: #2a2a3a;
+}
+
+[data-theme="light"] .app-desc {
+  color: #555;
+}
+
+[data-theme="light"] .btn-secondary {
+  background: #e9ecef;
+  color: #333;
+  border-color: #dee2e6;
+}
+</style>

@@ -1,0 +1,33 @@
+{
+  "name": "hexo-theme-cybermind",
+  "version": "1.0.0",
+  "description": "Un thème Hexo moderne pour blogs techniques - cybersécurité, développement Linux et technologies",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CyberMind-FR/hexo-theme-cybermind.git"
+  },
+  "keywords": [
+    "hexo",
+    "theme",
+    "blog",
+    "cybersecurity",
+    "linux",
+    "technical",
+    "dark-theme"
+  ],
+  "author": "Gandalf <contact@cybermind.fr>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/CyberMind-FR/hexo-theme-cybermind/issues"
+  },
+  "homepage": "https://github.com/CyberMind-FR/hexo-theme-cybermind#readme",
+  "dependencies": {},
+  "devDependencies": {},
+  "peerDependencies": {
+    "hexo": "^6.0.0 || ^7.0.0"
+  }
+}

@@ -1,0 +1,73 @@
+<%/* Layout */%>
+<section style="padding: 4rem 2rem; min-height: 60vh;">
+    <div class="section-header">
+        <div class="section-tag">Services</div>
+        <h2 class="section-title">Nos Expertises</h2>
+        <p style="text-align: center; color: var(--text-muted); max-width: 700px; margin: 1rem auto 2rem;">
+            Fort de plus de 25 ans d'expérience, nous proposons des prestations en cybersécurité et développement embarqué
+        </p>
+    </div>
+
+    <%
+    var allServices = [];
+    
+    site.pages.forEach(function(page) {
+        var src = page.source || '';
+        var pth = page.path || '';
+        
+        var isServicePage = (src.indexOf('services/') >= 0 || pth.indexOf('services/') >= 0) &&
+                           src !== 'services/index.md' &&
+                           pth !== 'services/' &&
+                           pth !== 'services/index.html' &&
+                           page.layout !== 'services';
+        
+        if (isServicePage) {
+            var exists = allServices.some(function(s) { return s.path === page.path; });
+            if (!exists) {
+                allServices.push(page);
+            }
+        }
+    });
+    
+    allServices.sort(function(a, b) { 
+        return (a.order || 999) - (b.order || 999); 
+    });
+    %>
+
+    <% if (allServices.length > 0) { %>
+    <div class="services-detailed">
+        <% allServices.forEach(function(service) { 
+            var icon = service.icon || '⚙️';
+            var features = service.features || [];
+        %>
+        <div class="service-detail-card">
+            <div class="service-detail-icon"><%= icon %></div>
+            <h3><%= service.title %></h3>
+            <p><%= service.description || '' %></p>
+            <% if (features.length > 0) { %>
+            <ul class="service-features">
+                <% features.forEach(function(feature) { %>
+                <li>✓ <%= feature %></li>
+                <% }); %>
+            </ul>
+            <% } %>
+            <a href="<%= url_for(service.path) %>" class="btn btn-primary">En savoir plus →</a>
+        </div>
+        <% }); %>
+    </div>
+    <% } else { %>
+    <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+        <p style="font-size: 1.2rem;">Aucun service configuré.</p>
+        <p>Créez des fichiers .md dans <code>source/services/</code></p>
+    </div>
+    <% } %>
+
+    <div style="text-align: center; margin-top: 4rem;">
+        <h3 style="margin-bottom: 1rem;">Intéressé par nos services ?</h3>
+        <p style="color: var(--text-muted); margin-bottom: 2rem;">
+            Contactez-nous pour discuter de votre projet
+        </p>
+        <a href="/contact/" class="btn btn-primary" style="margin-right: 1rem;">📧 Nous contacter</a>
+        <a href="/#articles" class="btn btn-secondary">📝 Lire le blog</a>
+    </div>
+</section>

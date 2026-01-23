@@ -1,0 +1,36 @@
+<%/* Layout */%>
+<section class="archive-section">
+    <div class="section-header">
+        <div class="section-tag">Archives</div>
+        <h2 class="section-title">
+            <% if (is_category()) { %>
+                <%= page.category %>
+            <% } else if (is_tag()) { %>
+                <%= page.tag %>
+            <% } else if (is_year()) { %>
+                <%= page.year %>
+            <% } else if (is_month()) { %>
+                <%= page.month %>/<%= page.year %>
+            <% } else { %>
+                Tous les articles
+            <% } %>
+        </h2>
+    </div>
+
+    <div class="articles-grid">
+        <% page.posts.each(post => { %>
+            <%- partial('partials/article', {post: post}) %>
+        <% }); %>
+    </div>
+
+    <% if (page.total > 1) { %>
+    <nav class="pagination">
+        <%- paginator({
+            prev_text: '← Précédent',
+            next_text: 'Suivant →',
+            mid_size: 2,
+            end_size: 1
+        }) %>
+    </nav>
+    <% } %>
+</section>
