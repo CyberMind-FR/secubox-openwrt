@@ -1,0 +1,526 @@
+#!/bin/sh
+# SecuBox Tor Shield - CLI management tool
+# Copyright (C) 2025 CyberMind.fr
+
+CONFIG="tor-shield"
+TOR_CONTROL="/var/run/tor/control"
+TOR_DATA="/var/lib/tor"
+
+. /lib/functions.sh
+
+usage() {
+	cat << EOF
+Usage: torctl <command> [options]
+
+Commands:
+  status          Show Tor Shield status
+  enable [preset] Enable Tor Shield (presets: anonymous, selective, censored)
+  disable         Disable Tor Shield
+  restart         Restart Tor Shield
+  identity        Get new Tor identity (new circuits)
+  circuits        Show active circuits
+  exit-ip         Show current exit IP address
+  leak-test       Test for DNS/IP leaks
+  bridges         Manage bridge configuration
+  hidden          Manage hidden services
+
+Options:
+  -h, --help      Show this help
+
+Examples:
+  torctl enable anonymous    Enable with full anonymity preset
+  torctl status              Show current status
+  torctl identity            Request new circuits
+  torctl exit-ip             Show Tor exit IP
+EOF
+}
+
+# Send command to Tor control socket
+tor_control() {
+	if [ ! -S "$TOR_CONTROL" ]; then
+		echo "Error: Tor control socket not available"
+		return 1
+	fi
+	echo -e "$1" | nc -U "$TOR_CONTROL" 2>/dev/null
+}
+
+# Get bootstrap percentage
+get_bootstrap() {
+	local status=$(tor_control "GETINFO status/bootstrap-phase")
+	echo "$status" | grep "PROGRESS=" | sed 's/.*PROGRESS=\([0-9]*\).*/\1/'
+}
+
+# Check if Tor is running
+is_running() {
+	pgrep tor >/dev/null 2>&1
+}
+
+# Get current exit IP
+get_exit_ip() {
+	# Try multiple services to get external IP through Tor
+	local socks_port=$(uci -q get tor-shield.socks.port || echo "9050")
+	local ip=""
+
+	# Try check.torproject.org first
+	ip=$(curl -s --socks5-hostname 127.0.0.1:$socks_port https://check.torproject.org/api/ip 2>/dev/null | jsonfilter -e '@.IP' 2>/dev/null)
+
+	if [ -z "$ip" ]; then
+		# Fallback to ipinfo.io
+		ip=$(curl -s --socks5-hostname 127.0.0.1:$socks_port https://ipinfo.io/ip 2>/dev/null)
+	fi
+
+	echo "${ip:-unknown}"
+}
+
+# Get real IP (without Tor)
+get_real_ip() {
+	local ip=$(curl -s --max-time 5 https://ipinfo.io/ip 2>/dev/null)
+	echo "${ip:-unknown}"
+}
+
+# Status command
+cmd_status() {
+	local enabled mode bootstrap exit_ip circuit_count
+
+	config_load "$CONFIG"
+	config_get enabled main enabled '0'
+	config_get mode main mode 'transparent'
+
+	echo "Tor Shield Status"
+	echo "================="
+
+	if [ "$enabled" != "1" ]; then
+		echo "Status: DISABLED"
+		echo ""
+		echo "Enable with: torctl enable"
+		return 0
+	fi
+
+	if ! is_running; then
+		echo "Status: ENABLED but NOT RUNNING"
+		echo ""
+		echo "Start with: /etc/init.d/tor-shield start"
+		return 1
+	fi
+
+	bootstrap=$(get_bootstrap)
+	bootstrap=${bootstrap:-0}
+
+	echo "Status: ACTIVE"
+	echo "Mode: $mode"
+	echo "Bootstrap: ${bootstrap}%"
+
+	if [ "$bootstrap" -ge 100 ]; then
+		exit_ip=$(get_exit_ip)
+		echo "Exit IP: $exit_ip"
+
+		# Get circuit count
+		circuit_count=$(tor_control "GETINFO circuit-status" | grep -c "BUILT")
+		echo "Circuits: ${circuit_count:-0}"
+	else
+		echo "Exit IP: (bootstrapping...)"
+	fi
+
+	# Show config details
+	local dns_over_tor kill_switch
+	config_get dns_over_tor main dns_over_tor '1'
+	config_get kill_switch main kill_switch '1'
+
+	echo ""
+	echo "Configuration:"
+	echo "  DNS over Tor: $([ "$dns_over_tor" = "1" ] && echo "Yes" || echo "No")"
+	echo "  Kill Switch: $([ "$kill_switch" = "1" ] && echo "Yes" || echo "No")"
+
+	# Bridge status
+	local bridges_enabled
+	config_get bridges_enabled bridges enabled '0'
+	if [ "$bridges_enabled" = "1" ]; then
+		local bridge_type
+		config_get bridge_type bridges type 'obfs4'
+		echo "  Bridges: $bridge_type"
+	fi
+}
+
+# Enable command
+cmd_enable() {
+	local preset="${1:-anonymous}"
+
+	echo "Enabling Tor Shield with preset: $preset"
+
+	# Load preset configuration
+	config_load "$CONFIG"
+
+	local preset_mode preset_dns preset_kill preset_bridges
+	config_get preset_mode "$preset" mode 'transparent'
+	config_get preset_dns "$preset" dns_over_tor '1'
+	config_get preset_kill "$preset" kill_switch '1'
+	config_get preset_bridges "$preset" use_bridges '0'
+
+	# Apply preset settings
+	uci set tor-shield.main.enabled='1'
+	uci set tor-shield.main.mode="$preset_mode"
+	uci set tor-shield.main.dns_over_tor="$preset_dns"
+	uci set tor-shield.main.kill_switch="$preset_kill"
+
+	if [ "$preset_bridges" = "1" ]; then
+		uci set tor-shield.bridges.enabled='1'
+	fi
+
+	uci commit tor-shield
+
+	# Start service
+	/etc/init.d/tor-shield restart
+
+	echo "Tor Shield enabled. Waiting for bootstrap..."
+
+	# Wait for bootstrap
+	local count=0
+	while [ $count -lt 60 ]; do
+		if is_running; then
+			local progress=$(get_bootstrap)
+			if [ -n "$progress" ] && [ "$progress" -ge 100 ]; then
+				echo "Bootstrap complete!"
+				cmd_status
+				return 0
+			fi
+			echo "Bootstrap: ${progress:-0}%"
+		fi
+		sleep 2
+		count=$((count + 1))
+	done
+
+	echo "Warning: Bootstrap taking longer than expected"
+	cmd_status
+}
+
+# Disable command
+cmd_disable() {
+	echo "Disabling Tor Shield..."
+
+	uci set tor-shield.main.enabled='0'
+	uci commit tor-shield
+
+	/etc/init.d/tor-shield stop
+
+	echo "Tor Shield disabled."
+}
+
+# Restart command
+cmd_restart() {
+	echo "Restarting Tor Shield..."
+	/etc/init.d/tor-shield restart
+	sleep 2
+	cmd_status
+}
+
+# New identity command
+cmd_identity() {
+	if ! is_running; then
+		echo "Error: Tor is not running"
+		return 1
+	fi
+
+	echo "Requesting new identity..."
+
+	# Send NEWNYM signal
+	local result=$(tor_control "SIGNAL NEWNYM")
+
+	if echo "$result" | grep -q "250 OK"; then
+		echo "New identity requested successfully."
+		echo "New circuits will be established shortly."
+		sleep 3
+		echo ""
+		echo "New exit IP: $(get_exit_ip)"
+	else
+		echo "Failed to request new identity"
+		return 1
+	fi
+}
+
+# Circuits command
+cmd_circuits() {
+	if ! is_running; then
+		echo "Error: Tor is not running"
+		return 1
+	fi
+
+	echo "Active Circuits"
+	echo "==============="
+
+	local circuits=$(tor_control "GETINFO circuit-status")
+
+	echo "$circuits" | grep "BUILT" | while read line; do
+		# Parse circuit info
+		local id=$(echo "$line" | awk '{print $1}')
+		local status=$(echo "$line" | awk '{print $2}')
+		local path=$(echo "$line" | awk '{print $3}')
+
+		if [ -n "$path" ]; then
+			# Extract node names/fingerprints
+			echo "Circuit $id: $path"
+		fi
+	done
+
+	# Get circuit count
+	local count=$(echo "$circuits" | grep -c "BUILT")
+	echo ""
+	echo "Total built circuits: ${count:-0}"
+}
+
+# Exit IP command
+cmd_exit_ip() {
+	if ! is_running; then
+		echo "Error: Tor is not running"
+		return 1
+	fi
+
+	local bootstrap=$(get_bootstrap)
+	if [ -z "$bootstrap" ] || [ "$bootstrap" -lt 100 ]; then
+		echo "Tor is still bootstrapping (${bootstrap:-0}%)"
+		return 1
+	fi
+
+	local exit_ip=$(get_exit_ip)
+	local real_ip=$(get_real_ip)
+
+	echo "Real IP: $real_ip"
+	echo "Tor Exit IP: $exit_ip"
+
+	if [ "$exit_ip" != "$real_ip" ] && [ "$exit_ip" != "unknown" ]; then
+		echo "Status: PROTECTED"
+	else
+		echo "Status: WARNING - IPs match or unknown"
+	fi
+}
+
+# Leak test command
+cmd_leak_test() {
+	if ! is_running; then
+		echo "Error: Tor is not running"
+		return 1
+	fi
+
+	echo "Running leak test..."
+	echo ""
+
+	local socks_port=$(uci -q get tor-shield.socks.port || echo "9050")
+	local leaks=0
+
+	# Test 1: IP leak
+	echo "1. IP Leak Test"
+	local tor_ip=$(get_exit_ip)
+	local real_ip=$(get_real_ip)
+
+	if [ "$tor_ip" = "$real_ip" ] || [ "$tor_ip" = "unknown" ]; then
+		echo "   FAIL: IP may be leaking"
+		leaks=$((leaks + 1))
+	else
+		echo "   PASS: Tor IP ($tor_ip) differs from real IP ($real_ip)"
+	fi
+
+	# Test 2: DNS leak (via Tor check)
+	echo ""
+	echo "2. Tor Detection Test"
+	local tor_check=$(curl -s --socks5-hostname 127.0.0.1:$socks_port https://check.torproject.org/api/ip 2>/dev/null)
+	local is_tor=$(echo "$tor_check" | jsonfilter -e '@.IsTor' 2>/dev/null)
+
+	if [ "$is_tor" = "true" ]; then
+		echo "   PASS: Traffic confirmed going through Tor"
+	else
+		echo "   FAIL: Traffic may not be going through Tor"
+		leaks=$((leaks + 1))
+	fi
+
+	# Test 3: DNS resolution through Tor
+	echo ""
+	echo "3. DNS Over Tor Test"
+	local dns_over_tor=$(uci -q get tor-shield.main.dns_over_tor)
+	if [ "$dns_over_tor" = "1" ]; then
+		# Try resolving a .onion address (only works through Tor)
+		local dns_test=$(curl -s --socks5-hostname 127.0.0.1:$socks_port http://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/ 2>/dev/null | head -c 100)
+		if [ -n "$dns_test" ]; then
+			echo "   PASS: DNS resolution working through Tor"
+		else
+			echo "   WARNING: Could not verify DNS over Tor"
+		fi
+	else
+		echo "   SKIP: DNS over Tor is disabled"
+	fi
+
+	echo ""
+	echo "===================="
+	if [ $leaks -eq 0 ]; then
+		echo "Result: ALL TESTS PASSED"
+	else
+		echo "Result: $leaks POTENTIAL LEAK(S) DETECTED"
+	fi
+}
+
+# Bridges command
+cmd_bridges() {
+	local action="${1:-status}"
+
+	case "$action" in
+		status)
+			local enabled type
+			config_load "$CONFIG"
+			config_get enabled bridges enabled '0'
+			config_get type bridges type 'obfs4'
+
+			echo "Bridge Configuration"
+			echo "===================="
+			echo "Enabled: $([ "$enabled" = "1" ] && echo "Yes" || echo "No")"
+			echo "Type: $type"
+			echo ""
+			echo "Bridge lines:"
+			config_list_foreach bridges bridge_lines echo_bridge
+			;;
+		enable)
+			uci set tor-shield.bridges.enabled='1'
+			uci commit tor-shield
+			echo "Bridges enabled. Restart Tor Shield to apply."
+			;;
+		disable)
+			uci set tor-shield.bridges.enabled='0'
+			uci commit tor-shield
+			echo "Bridges disabled. Restart Tor Shield to apply."
+			;;
+		add)
+			shift
+			local bridge_line="$*"
+			if [ -n "$bridge_line" ]; then
+				uci add_list tor-shield.bridges.bridge_lines="$bridge_line"
+				uci commit tor-shield
+				echo "Bridge added. Restart Tor Shield to apply."
+			else
+				echo "Usage: torctl bridges add <bridge_line>"
+			fi
+			;;
+		*)
+			echo "Usage: torctl bridges [status|enable|disable|add <line>]"
+			;;
+	esac
+}
+
+echo_bridge() {
+	echo "  $1"
+}
+
+# Hidden services command
+cmd_hidden() {
+	local action="${1:-list}"
+
+	case "$action" in
+		list)
+			echo "Hidden Services"
+			echo "==============="
+			config_load "$CONFIG"
+			config_foreach list_hidden_service hidden_service
+			;;
+		add)
+			shift
+			local name="$1"
+			local local_port="${2:-80}"
+			local virtual_port="${3:-80}"
+
+			if [ -z "$name" ]; then
+				echo "Usage: torctl hidden add <name> [local_port] [virtual_port]"
+				return 1
+			fi
+
+			# Create new hidden service config
+			uci set tor-shield.hs_$name=hidden_service
+			uci set tor-shield.hs_$name.name="$name"
+			uci set tor-shield.hs_$name.enabled='1'
+			uci set tor-shield.hs_$name.local_port="$local_port"
+			uci set tor-shield.hs_$name.virtual_port="$virtual_port"
+			uci commit tor-shield
+
+			echo "Hidden service '$name' created."
+			echo "Restart Tor Shield to generate .onion address."
+			;;
+		remove)
+			local name="$2"
+			if [ -z "$name" ]; then
+				echo "Usage: torctl hidden remove <name>"
+				return 1
+			fi
+
+			uci delete tor-shield.hs_$name 2>/dev/null
+			uci commit tor-shield
+
+			echo "Hidden service '$name' removed."
+			;;
+		*)
+			echo "Usage: torctl hidden [list|add|remove]"
+			;;
+	esac
+}
+
+list_hidden_service() {
+	local cfg="$1"
+	local enabled name local_port virtual_port
+
+	config_get enabled "$cfg" enabled '0'
+	config_get name "$cfg" name "$cfg"
+	config_get local_port "$cfg" local_port '80'
+	config_get virtual_port "$cfg" virtual_port '80'
+
+	local status="disabled"
+	[ "$enabled" = "1" ] && status="enabled"
+
+	local hostname_file="$TOR_DATA/hidden_service_$name/hostname"
+	local onion_addr="(not generated)"
+	if [ -f "$hostname_file" ]; then
+		onion_addr=$(cat "$hostname_file")
+	fi
+
+	echo ""
+	echo "Service: $name ($status)"
+	echo "  Address: $onion_addr"
+	echo "  Port: $virtual_port -> 127.0.0.1:$local_port"
+}
+
+# Main dispatcher
+case "$1" in
+	status)
+		cmd_status
+		;;
+	enable)
+		shift
+		cmd_enable "$@"
+		;;
+	disable)
+		cmd_disable
+		;;
+	restart)
+		cmd_restart
+		;;
+	identity|new-identity|newnym)
+		cmd_identity
+		;;
+	circuits|circuit)
+		cmd_circuits
+		;;
+	exit-ip|ip)
+		cmd_exit_ip
+		;;
+	leak-test|leaks|test)
+		cmd_leak_test
+		;;
+	bridges|bridge)
+		shift
+		cmd_bridges "$@"
+		;;
+	hidden|hs|onion)
+		shift
+		cmd_hidden "$@"
+		;;
+	-h|--help|help)
+		usage
+		;;
+	*)
+		usage
+		exit 1
+		;;
+esac

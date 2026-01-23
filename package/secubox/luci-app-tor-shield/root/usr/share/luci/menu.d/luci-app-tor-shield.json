@@ -1,0 +1,52 @@
+{
+	"admin/services/tor-shield": {
+		"title": "Tor Shield",
+		"order": 30,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-tor-shield"]
+		}
+	},
+	"admin/services/tor-shield/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "tor-shield/overview"
+		}
+	},
+	"admin/services/tor-shield/circuits": {
+		"title": "Circuits",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "tor-shield/circuits"
+		}
+	},
+	"admin/services/tor-shield/hidden-services": {
+		"title": "Hidden Services",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "tor-shield/hidden-services"
+		}
+	},
+	"admin/services/tor-shield/bridges": {
+		"title": "Bridges",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "tor-shield/bridges"
+		}
+	},
+	"admin/services/tor-shield/settings": {
+		"title": "Settings",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "tor-shield/settings"
+		}
+	}
+}

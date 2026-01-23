@@ -1,0 +1,707 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Tor Shield RPCD backend
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG="tor-shield"
+TOR_CONTROL="/var/run/tor/control"
+TOR_DATA="/var/lib/tor"
+
+# Send command to Tor control socket
+tor_control() {
+	if [ ! -S "$TOR_CONTROL" ]; then
+		return 1
+	fi
+	echo -e "$1" | nc -U "$TOR_CONTROL" 2>/dev/null
+}
+
+# Check if Tor is running
+is_running() {
+	pgrep tor >/dev/null 2>&1
+}
+
+# Get bootstrap percentage
+get_bootstrap() {
+	local status=$(tor_control "GETINFO status/bootstrap-phase")
+	local progress=$(echo "$status" | grep "PROGRESS=" | sed 's/.*PROGRESS=\([0-9]*\).*/\1/')
+	echo "${progress:-0}"
+}
+
+# Get overall status
+get_status() {
+	json_init
+
+	local enabled mode dns_over_tor kill_switch
+	config_load "$CONFIG"
+	config_get enabled main enabled '0'
+	config_get mode main mode 'transparent'
+	config_get dns_over_tor main dns_over_tor '1'
+	config_get kill_switch main kill_switch '1'
+
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "mode" "$mode"
+	json_add_boolean "dns_over_tor" "$dns_over_tor"
+	json_add_boolean "kill_switch" "$kill_switch"
+
+	# Running state
+	if is_running; then
+		json_add_boolean "running" 1
+
+		# Bootstrap percentage
+		local bootstrap=$(get_bootstrap)
+		json_add_int "bootstrap" "${bootstrap:-0}"
+
+		# Get exit IP if bootstrapped
+		if [ "$bootstrap" -ge 100 ]; then
+			local socks_port
+			config_get socks_port socks port '9050'
+			local exit_ip=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:$socks_port https://check.torproject.org/api/ip 2>/dev/null | jsonfilter -e '@.IP' 2>/dev/null)
+			json_add_string "exit_ip" "${exit_ip:-unknown}"
+
+			# Check if using Tor
+			local is_tor=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:$socks_port https://check.torproject.org/api/ip 2>/dev/null | jsonfilter -e '@.IsTor' 2>/dev/null)
+			json_add_boolean "is_tor" "$([ "$is_tor" = "true" ] && echo 1 || echo 0)"
+
+			# Get circuit count
+			local circuits=$(tor_control "GETINFO circuit-status" | grep -c "BUILT" 2>/dev/null)
+			json_add_int "circuit_count" "${circuits:-0}"
+
+			# Get bandwidth
+			local bw_read=$(tor_control "GETINFO traffic/read" | grep "250" | awk '{print $2}')
+			local bw_written=$(tor_control "GETINFO traffic/written" | grep "250" | awk '{print $2}')
+			json_add_int "bytes_read" "${bw_read:-0}"
+			json_add_int "bytes_written" "${bw_written:-0}"
+		fi
+
+		# Uptime from pid file
+		local pidfile="/var/run/tor/tor.pid"
+		if [ -f "$pidfile" ]; then
+			local pid=$(cat "$pidfile")
+			if [ -d "/proc/$pid" ]; then
+				local start_time=$(stat -c %Y "/proc/$pid" 2>/dev/null)
+				local now=$(date +%s)
+				json_add_int "uptime" "$((now - start_time))"
+			fi
+		fi
+	else
+		json_add_boolean "running" 0
+		json_add_int "bootstrap" 0
+	fi
+
+	# Bridge status
+	local bridges_enabled bridge_type
+	config_get bridges_enabled bridges enabled '0'
+	config_get bridge_type bridges type 'obfs4'
+	json_add_boolean "bridges_enabled" "$bridges_enabled"
+	json_add_string "bridge_type" "$bridge_type"
+
+	# Get real IP
+	local real_ip=$(curl -s --max-time 5 https://ipinfo.io/ip 2>/dev/null)
+	json_add_string "real_ip" "${real_ip:-unknown}"
+
+	json_dump
+}
+
+# Enable Tor Shield
+do_enable() {
+	read input
+	json_load "$input"
+	json_get_var preset preset
+
+	json_init
+
+	[ -z "$preset" ] && preset="anonymous"
+
+	# Load preset configuration
+	config_load "$CONFIG"
+
+	local preset_mode preset_dns preset_kill preset_bridges
+	config_get preset_mode "$preset" mode 'transparent'
+	config_get preset_dns "$preset" dns_over_tor '1'
+	config_get preset_kill "$preset" kill_switch '1'
+	config_get preset_bridges "$preset" use_bridges '0'
+
+	# Apply preset settings
+	uci set tor-shield.main.enabled='1'
+	uci set tor-shield.main.mode="$preset_mode"
+	uci set tor-shield.main.dns_over_tor="$preset_dns"
+	uci set tor-shield.main.kill_switch="$preset_kill"
+
+	if [ "$preset_bridges" = "1" ]; then
+		uci set tor-shield.bridges.enabled='1'
+	fi
+
+	uci commit tor-shield
+
+	# Restart service
+	/etc/init.d/tor-shield restart >/dev/null 2>&1 &
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Tor Shield enabling with preset: $preset"
+	json_add_string "preset" "$preset"
+
+	json_dump
+}
+
+# Disable Tor Shield
+do_disable() {
+	json_init
+
+	uci set tor-shield.main.enabled='0'
+	uci commit tor-shield
+
+	/etc/init.d/tor-shield stop >/dev/null 2>&1
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Tor Shield disabled"
+
+	json_dump
+}
+
+# Get circuits
+get_circuits() {
+	json_init
+	json_add_array "circuits"
+
+	if ! is_running; then
+		json_close_array
+		json_dump
+		return
+	fi
+
+	local circuits=$(tor_control "GETINFO circuit-status")
+
+	echo "$circuits" | grep "BUILT" | while read line; do
+		local id=$(echo "$line" | awk '{print $1}')
+		local status=$(echo "$line" | awk '{print $2}')
+		local path=$(echo "$line" | awk '{print $3}')
+		local purpose=$(echo "$line" | grep -o 'PURPOSE=[^ ]*' | cut -d= -f2)
+
+		if [ -n "$id" ] && [ "$id" != "250" ]; then
+			json_add_object
+			json_add_string "id" "$id"
+			json_add_string "status" "$status"
+			json_add_string "path" "$path"
+			json_add_string "purpose" "${purpose:-GENERAL}"
+
+			# Parse path into nodes
+			json_add_array "nodes"
+			local IFS=','
+			for node in $path; do
+				local fingerprint=$(echo "$node" | cut -d'~' -f1 | tr -d '$')
+				local name=$(echo "$node" | cut -d'~' -f2)
+
+				json_add_object
+				json_add_string "fingerprint" "$fingerprint"
+				json_add_string "name" "${name:-$fingerprint}"
+				json_close_object
+			done
+			json_close_array
+
+			json_close_object
+		fi
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Request new identity
+new_identity() {
+	json_init
+
+	if ! is_running; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Tor is not running"
+		json_dump
+		return
+	fi
+
+	local result=$(tor_control "SIGNAL NEWNYM")
+
+	if echo "$result" | grep -q "250 OK"; then
+		json_add_boolean "success" 1
+		json_add_string "message" "New identity requested"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to request new identity"
+	fi
+
+	json_dump
+}
+
+# Check for leaks
+check_leaks() {
+	json_init
+
+	if ! is_running; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Tor is not running"
+		json_dump
+		return
+	fi
+
+	local socks_port
+	config_load "$CONFIG"
+	config_get socks_port socks port '9050'
+
+	local leaks=0
+	json_add_array "tests"
+
+	# IP leak test
+	json_add_object
+	json_add_string "name" "IP Leak"
+	local tor_ip=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:$socks_port https://check.torproject.org/api/ip 2>/dev/null | jsonfilter -e '@.IP' 2>/dev/null)
+	local real_ip=$(curl -s --max-time 5 https://ipinfo.io/ip 2>/dev/null)
+
+	if [ -n "$tor_ip" ] && [ "$tor_ip" != "$real_ip" ]; then
+		json_add_boolean "passed" 1
+		json_add_string "message" "IP protected"
+	else
+		json_add_boolean "passed" 0
+		json_add_string "message" "Potential IP leak"
+		leaks=$((leaks + 1))
+	fi
+	json_close_object
+
+	# Tor detection test
+	json_add_object
+	json_add_string "name" "Tor Detection"
+	local is_tor=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:$socks_port https://check.torproject.org/api/ip 2>/dev/null | jsonfilter -e '@.IsTor' 2>/dev/null)
+
+	if [ "$is_tor" = "true" ]; then
+		json_add_boolean "passed" 1
+		json_add_string "message" "Traffic via Tor confirmed"
+	else
+		json_add_boolean "passed" 0
+		json_add_string "message" "Traffic may not be through Tor"
+		leaks=$((leaks + 1))
+	fi
+	json_close_object
+
+	json_close_array
+
+	json_add_int "leak_count" "$leaks"
+	json_add_boolean "protected" "$([ $leaks -eq 0 ] && echo 1 || echo 0)"
+
+	json_dump
+}
+
+# Get hidden services
+get_hidden_services() {
+	json_init
+	json_add_array "services"
+
+	config_load "$CONFIG"
+	config_foreach add_hidden_service_json hidden_service
+
+	json_close_array
+	json_dump
+}
+
+add_hidden_service_json() {
+	local cfg="$1"
+	local enabled name local_port virtual_port
+
+	config_get enabled "$cfg" enabled '0'
+	config_get name "$cfg" name "$cfg"
+	config_get local_port "$cfg" local_port '80'
+	config_get virtual_port "$cfg" virtual_port '80'
+
+	local hostname_file="$TOR_DATA/hidden_service_$name/hostname"
+	local onion_addr=""
+	if [ -f "$hostname_file" ]; then
+		onion_addr=$(cat "$hostname_file")
+	fi
+
+	json_add_object
+	json_add_string "id" "$cfg"
+	json_add_string "name" "$name"
+	json_add_boolean "enabled" "$enabled"
+	json_add_int "local_port" "$local_port"
+	json_add_int "virtual_port" "$virtual_port"
+	json_add_string "onion_address" "$onion_addr"
+	json_close_object
+}
+
+# Add hidden service
+add_hidden_service() {
+	read input
+	json_load "$input"
+	json_get_var name name
+	json_get_var local_port local_port
+	json_get_var virtual_port virtual_port
+
+	json_init
+
+	if [ -z "$name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Name is required"
+		json_dump
+		return
+	fi
+
+	[ -z "$local_port" ] && local_port="80"
+	[ -z "$virtual_port" ] && virtual_port="80"
+
+	# Sanitize name
+	name=$(echo "$name" | tr -cd 'a-zA-Z0-9_-')
+
+	uci set tor-shield.hs_$name=hidden_service
+	uci set tor-shield.hs_$name.name="$name"
+	uci set tor-shield.hs_$name.enabled='1'
+	uci set tor-shield.hs_$name.local_port="$local_port"
+	uci set tor-shield.hs_$name.virtual_port="$virtual_port"
+	uci commit tor-shield
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Hidden service created"
+	json_add_string "name" "$name"
+
+	json_dump
+}
+
+# Remove hidden service
+remove_hidden_service() {
+	read input
+	json_load "$input"
+	json_get_var name name
+
+	json_init
+
+	if [ -z "$name" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Name is required"
+		json_dump
+		return
+	fi
+
+	uci delete tor-shield.hs_$name 2>/dev/null
+	uci commit tor-shield
+
+	# Remove data directory
+	rm -rf "$TOR_DATA/hidden_service_$name" 2>/dev/null
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Hidden service removed"
+
+	json_dump
+}
+
+# Get exit IP
+get_exit_ip() {
+	json_init
+
+	if ! is_running; then
+		json_add_string "error" "Tor is not running"
+		json_dump
+		return
+	fi
+
+	local socks_port
+	config_load "$CONFIG"
+	config_get socks_port socks port '9050'
+
+	local exit_info=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:$socks_port https://ipinfo.io 2>/dev/null)
+
+	if [ -n "$exit_info" ]; then
+		local ip=$(echo "$exit_info" | jsonfilter -e '@.ip' 2>/dev/null)
+		local city=$(echo "$exit_info" | jsonfilter -e '@.city' 2>/dev/null)
+		local region=$(echo "$exit_info" | jsonfilter -e '@.region' 2>/dev/null)
+		local country=$(echo "$exit_info" | jsonfilter -e '@.country' 2>/dev/null)
+		local org=$(echo "$exit_info" | jsonfilter -e '@.org' 2>/dev/null)
+
+		json_add_string "ip" "${ip:-unknown}"
+		json_add_string "city" "${city:-unknown}"
+		json_add_string "region" "${region:-unknown}"
+		json_add_string "country" "${country:-unknown}"
+		json_add_string "org" "${org:-unknown}"
+	else
+		json_add_string "ip" "unknown"
+		json_add_string "error" "Could not determine exit IP"
+	fi
+
+	json_dump
+}
+
+# Get bandwidth stats
+get_bandwidth() {
+	json_init
+
+	if ! is_running; then
+		json_add_int "read" 0
+		json_add_int "written" 0
+		json_add_int "read_rate" 0
+		json_add_int "write_rate" 0
+		json_dump
+		return
+	fi
+
+	local bw_read=$(tor_control "GETINFO traffic/read" | grep "250" | awk '{print $2}')
+	local bw_written=$(tor_control "GETINFO traffic/written" | grep "250" | awk '{print $2}')
+
+	json_add_int "read" "${bw_read:-0}"
+	json_add_int "written" "${bw_written:-0}"
+
+	# Calculate rates from previous measurement
+	local prev_file="/tmp/tor_bandwidth"
+	local prev_read=0 prev_written=0 prev_time=0
+	local now=$(date +%s)
+
+	if [ -f "$prev_file" ]; then
+		read prev_read prev_written prev_time < "$prev_file"
+	fi
+
+	local read_rate=0 write_rate=0
+	local time_diff=$((now - prev_time))
+
+	if [ $time_diff -gt 0 ] && [ $prev_time -gt 0 ]; then
+		read_rate=$(( (${bw_read:-0} - prev_read) / time_diff ))
+		write_rate=$(( (${bw_written:-0} - prev_written) / time_diff ))
+		[ $read_rate -lt 0 ] && read_rate=0
+		[ $write_rate -lt 0 ] && write_rate=0
+	fi
+
+	echo "${bw_read:-0} ${bw_written:-0} $now" > "$prev_file"
+
+	json_add_int "read_rate" "$read_rate"
+	json_add_int "write_rate" "$write_rate"
+
+	json_dump
+}
+
+# Get presets
+get_presets() {
+	json_init
+	json_add_array "presets"
+
+	config_load "$CONFIG"
+
+	# Anonymous preset
+	json_add_object
+	json_add_string "id" "anonymous"
+	json_add_string "name" "Full Anonymity"
+	json_add_string "icon" "shield"
+	json_add_string "description" "Route all traffic through Tor with kill switch"
+	json_close_object
+
+	# Selective preset
+	json_add_object
+	json_add_string "id" "selective"
+	json_add_string "name" "Selective Apps"
+	json_add_string "icon" "target"
+	json_add_string "description" "SOCKS proxy for specific applications"
+	json_close_object
+
+	# Censored preset
+	json_add_object
+	json_add_string "id" "censored"
+	json_add_string "name" "Bypass Censorship"
+	json_add_string "icon" "unlock"
+	json_add_string "description" "Use bridges to bypass network restrictions"
+	json_close_object
+
+	json_close_array
+	json_dump
+}
+
+# Get bridges config
+get_bridges() {
+	json_init
+
+	local enabled type
+	config_load "$CONFIG"
+	config_get enabled bridges enabled '0'
+	config_get type bridges type 'obfs4'
+
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "type" "$type"
+
+	json_add_array "bridge_lines"
+	config_list_foreach bridges bridge_lines add_bridge_json
+	json_close_array
+
+	json_dump
+}
+
+add_bridge_json() {
+	json_add_string "" "$1"
+}
+
+# Set bridges config
+set_bridges() {
+	read input
+	json_load "$input"
+	json_get_var enabled enabled
+	json_get_var type type
+
+	json_init
+
+	[ -n "$enabled" ] && uci set tor-shield.bridges.enabled="$enabled"
+	[ -n "$type" ] && uci set tor-shield.bridges.type="$type"
+
+	uci commit tor-shield
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Bridge configuration updated"
+
+	json_dump
+}
+
+# Get settings
+get_settings() {
+	json_init
+
+	config_load "$CONFIG"
+
+	# Main settings
+	local mode dns_over_tor kill_switch auto_bridges
+	config_get mode main mode 'transparent'
+	config_get dns_over_tor main dns_over_tor '1'
+	config_get kill_switch main kill_switch '1'
+	config_get auto_bridges main auto_bridges '0'
+
+	json_add_string "mode" "$mode"
+	json_add_boolean "dns_over_tor" "$dns_over_tor"
+	json_add_boolean "kill_switch" "$kill_switch"
+	json_add_boolean "auto_bridges" "$auto_bridges"
+
+	# SOCKS settings
+	local socks_port socks_addr
+	config_get socks_port socks port '9050'
+	config_get socks_addr socks address '127.0.0.1'
+
+	json_add_int "socks_port" "$socks_port"
+	json_add_string "socks_address" "$socks_addr"
+
+	# Transparent proxy settings
+	local trans_port dns_port
+	config_get trans_port trans port '9040'
+	config_get dns_port trans dns_port '9053'
+
+	json_add_int "trans_port" "$trans_port"
+	json_add_int "dns_port" "$dns_port"
+
+	# Security settings
+	local exit_nodes exclude_exit strict_nodes
+	config_get exit_nodes security exit_nodes ''
+	config_get exclude_exit security exclude_exit_nodes ''
+	config_get strict_nodes security strict_nodes '0'
+
+	json_add_string "exit_nodes" "$exit_nodes"
+	json_add_string "exclude_exit_nodes" "$exclude_exit"
+	json_add_boolean "strict_nodes" "$strict_nodes"
+
+	# Excluded IPs
+	json_add_array "excluded_ips"
+	config_list_foreach trans excluded_ips add_excluded_ip_json
+	json_close_array
+
+	json_dump
+}
+
+add_excluded_ip_json() {
+	json_add_string "" "$1"
+}
+
+# Save settings
+save_settings() {
+	read input
+	json_load "$input"
+
+	json_init
+
+	# Get values from input
+	json_get_var mode mode
+	json_get_var dns_over_tor dns_over_tor
+	json_get_var kill_switch kill_switch
+	json_get_var socks_port socks_port
+	json_get_var trans_port trans_port
+	json_get_var dns_port dns_port
+	json_get_var exit_nodes exit_nodes
+	json_get_var exclude_exit exclude_exit_nodes
+	json_get_var strict_nodes strict_nodes
+
+	# Apply settings
+	[ -n "$mode" ] && uci set tor-shield.main.mode="$mode"
+	[ -n "$dns_over_tor" ] && uci set tor-shield.main.dns_over_tor="$dns_over_tor"
+	[ -n "$kill_switch" ] && uci set tor-shield.main.kill_switch="$kill_switch"
+	[ -n "$socks_port" ] && uci set tor-shield.socks.port="$socks_port"
+	[ -n "$trans_port" ] && uci set tor-shield.trans.port="$trans_port"
+	[ -n "$dns_port" ] && uci set tor-shield.trans.dns_port="$dns_port"
+	[ -n "$exit_nodes" ] && uci set tor-shield.security.exit_nodes="$exit_nodes"
+	[ -n "$exclude_exit" ] && uci set tor-shield.security.exclude_exit_nodes="$exclude_exit"
+	[ -n "$strict_nodes" ] && uci set tor-shield.security.strict_nodes="$strict_nodes"
+
+	uci commit tor-shield
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Settings saved"
+
+	json_dump
+}
+
+# Main dispatcher
+case "$1" in
+	list)
+		echo '{"status":{},"enable":{"preset":"str"},"disable":{},"circuits":{},"new_identity":{},"check_leaks":{},"hidden_services":{},"add_hidden_service":{"name":"str","local_port":"int","virtual_port":"int"},"remove_hidden_service":{"name":"str"},"exit_ip":{},"bandwidth":{},"presets":{},"bridges":{},"set_bridges":{"enabled":"bool","type":"str"},"settings":{},"save_settings":{"mode":"str","dns_over_tor":"bool","kill_switch":"bool","socks_port":"int","trans_port":"int","dns_port":"int","exit_nodes":"str","exclude_exit_nodes":"str","strict_nodes":"bool"}}'
+		;;
+	call)
+		case "$2" in
+			status)
+				get_status
+				;;
+			enable)
+				do_enable
+				;;
+			disable)
+				do_disable
+				;;
+			circuits)
+				get_circuits
+				;;
+			new_identity)
+				new_identity
+				;;
+			check_leaks)
+				check_leaks
+				;;
+			hidden_services)
+				get_hidden_services
+				;;
+			add_hidden_service)
+				add_hidden_service
+				;;
+			remove_hidden_service)
+				remove_hidden_service
+				;;
+			exit_ip)
+				get_exit_ip
+				;;
+			bandwidth)
+				get_bandwidth
+				;;
+			presets)
+				get_presets
+				;;
+			bridges)
+				get_bridges
+				;;
+			set_bridges)
+				set_bridges
+				;;
+			settings)
+				get_settings
+				;;
+			save_settings)
+				save_settings
+				;;
+			*)
+				echo '{"error": "Unknown method"}'
+				;;
+		esac
+		;;
+esac
