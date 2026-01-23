@@ -1,6 +1,6 @@
 'use strict';
 'require view';
-'require secubox-admin.api as API';
+'require secubox-admin/api as API';
 'require poll';
 'require secubox-theme/theme as Theme';
 'require secubox-portal/header as SbHeader';

@@ -1,0 +1,1500 @@
+<%
+// 
+// INDEX.EJS - Page d'accueil 100% dynamique
+// 
+
+// 
+// CONFIGURATION
+// 
+
+// Sections à afficher
+var sections = theme.sections || {};
+var showHero = sections.hero !== false;
+var showServices = sections.services !== false;
+var showApps = sections.apps !== false;
+var showPortfolio = sections.portfolio !== false;
+var showArticles = sections.articles !== false;
+var showCategories = sections.categories !== false;
+var showYoutube = sections.youtube !== false && theme.youtube && theme.youtube.playlist_id;
+var showAbout = sections.about !== false;
+
+// Limites d'affichage
+var limits = theme.limits || theme.index || {};
+var postsLimit = limits.posts || limits.posts_limit || 6;
+var servicesLimit = limits.services || limits.services_limit || 3;
+var appsLimit = limits.apps || limits.apps_limit || 2;
+var portfolioLimit = limits.portfolio || 4;
+var categoriesLimit = limits.categories || limits.categories_limit || 6;
+
+// 
+// COLLECTE DES CONTENUS DYNAMIQUES
+// 
+
+// Services depuis source/services/*.md
+var allServices = [];
+site.pages.forEach(function(p) {
+    var src = p.source || '';
+    var pth = p.path || '';
+    if ((src.indexOf('services/') === 0 || pth.indexOf('services/') === 0) &&
+        src !== 'services/index.md' && pth !== 'services/' && p.layout !== 'services') {
+        if (!allServices.find(function(s) { return s.path === p.path; })) {
+            allServices.push({
+                title: p.title || 'Service',
+                path: p.path,
+                icon: p.icon || '🔧',
+                description: p.description || '',
+                order: p.order || 999,
+                tags: p.tags ? (Array.isArray(p.tags) ? p.tags : []) : []
+            });
+        }
+    }
+});
+allServices.sort(function(a, b) { return a.order - b.order; });
+
+// Apps depuis source/apps/*.md OU theme.apps
+var allApps = [];
+site.pages.forEach(function(p) {
+    var src = p.source || '';
+    if (p.layout === 'app' || (src.indexOf('apps/') === 0 && src !== 'apps/index.md')) {
+        if (!allApps.find(function(a) { return a.path === p.path; })) {
+            allApps.push({
+                title: p.title,
+                path: p.path,
+                icon: p.icon || '🚀',
+                description: p.description || '',
+                embed_url: p.embed_url || '',
+                category: p.category || 'tools',
+                featured: p.featured || false,
+                order: p.order || 999,
+                // Données pour vignettes
+                cover: p.cover || '',
+                thumbnail: p.thumbnail || '',
+                images: p.images || [],
+                tags: p.tags || [],
+                _page: p  // Référence à la page pour render_smart_thumbnail
+            });
+        }
+    }
+});
+// Ajouter aussi depuis theme.apps si configuré
+if (theme.apps && theme.apps.length) {
+    theme.apps.forEach(function(app) {
+        if (!allApps.find(function(a) { return a.title === app.name; })) {
+            allApps.push({
+                title: app.name,
+                path: app.url,
+                icon: app.icon || '🚀',
+                description: app.description || '',
+                embed_url: app.url,
+                category: app.category || 'tools',
+                featured: app.featured || false,
+                order: app.order || 999,
+                isExternal: true,
+                cover: app.cover || '',
+                thumbnail: app.thumbnail || ''
+            });
+        }
+    });
+}
+allApps.sort(function(a, b) {
+    if (a.featured && !b.featured) return -1;
+    if (!a.featured && b.featured) return 1;
+    return a.order - b.order;
+});
+
+// Portfolio depuis source/portfolio/*.md
+var allPortfolio = [];
+site.pages.forEach(function(p) {
+    var src = p.source || '';
+    if (p.layout === 'portfolio' || (src.indexOf('portfolio/') === 0 && src !== 'portfolio/index.md')) {
+        if (!allPortfolio.find(function(a) { return a.path === p.path; })) {
+            allPortfolio.push({
+                title: p.title,
+                path: p.path,
+                icon: p.icon || '💼',
+                description: p.description || '',
+                thumbnail: p.thumbnail || '',
+                cover: p.cover || '',
+                images: p.images || [],
+                type: p.type || 'project',
+                category: p.category || p.type || 'project',
+                client: p.client || {},
+                featured: p.featured || false,
+                order: p.order || 999,
+                tags: p.tags || [],
+                _page: p  // Référence pour render_smart_thumbnail
+            });
+        }
+    }
+});
+allPortfolio.sort(function(a, b) {
+    if (a.featured && !b.featured) return -1;
+    if (!a.featured && b.featured) return 1;
+    return a.order - b.order;
+});
+
+// Grille tech configurable
+var techGrid = theme.tech_grid || [
+    { icon: '🔐', label: 'Security', filter: 'security' },
+    { icon: '🐧', label: 'Linux', filter: 'linux' },
+    { icon: '💻', label: 'Dev', filter: 'dev' },
+    { icon: '📡', label: 'IoT', filter: 'iot' },
+    { icon: '⚙️', label: 'Embedded', filter: 'embedded' },
+    { icon: '🔬', label: 'Forensic', filter: 'forensic' },
+    { icon: '🌐', label: 'Web', filter: 'web' },
+    { icon: '🎓', label: 'Formation', filter: 'formation' },
+    { icon: '🎲', label: 'Random', filter: 'all' }
+];
+
+// Hero configuration
+var hero = theme.hero || {};
+var heroTitle = hero.title || 'Bienvenue';
+var heroSubtitle = hero.subtitle || '';
+var heroBadge = hero.badge || '';
+var heroStats = hero.stats || [];
+var heroCta = hero.cta || [
+    { text: 'Découvrir', url: '#articles', style: 'primary' },
+    { text: 'Services', url: '#services', style: 'secondary' }
+];
+
+// About configuration
+var about = theme.about || {};
+%>
+
+<!-- 
+     HERO SECTION
+      -->
+<% if (showHero) { %>
+<section class="hero">
+    <div class="hero-content">
+        <% if (heroBadge) { %>
+        <div class="hero-badge"><%= heroBadge %></div>
+        <% } %>
+        
+        <h1 class="hero-title"><%- heroTitle %></h1>
+        
+        <% if (heroSubtitle) { %>
+        <p class="hero-subtitle"><%= heroSubtitle %></p>
+        <% } %>
+        
+        <!-- Services highlight (rempli par JS) -->
+        <div class="services-hero" id="heroServices"></div>
+        
+        <p id="filterInfo" class="filter-info"></p>
+        
+        <% if (heroStats.length > 0) { %>
+        <div class="hero-stats">
+            <% heroStats.forEach(function(stat) { %>
+            <div class="stat">
+                <span class="stat-value"><%= stat.value %></span>
+                <span class="stat-label"><%= stat.label %></span>
+            </div>
+            <% }); %>
+        </div>
+        <% } %>
+        
+        <div class="hero-cta">
+            <% heroCta.forEach(function(btn) { %>
+            <a href="<%= btn.url %>" class="btn btn-<%= btn.style || 'primary' %>"><%= btn.text %></a>
+            <% }); %>
+        </div>
+    </div>
+
+    <div class="hero-visual">
+        <div class="tech-grid-visual" id="techGrid">
+            <% techGrid.forEach(function(tech) { %>
+            <div class="tech-cell" data-filter="<%= tech.filter %>" tabindex="0">
+                <span class="tech-cell-icon"><%= tech.icon %></span>
+                <span class="tech-cell-label"><%= tech.label %></span>
+            </div>
+            <% }); %>
+        </div>
+    </div>
+</section>
+<% } %>
+
+<!-- 
+     SERVICES SECTION
+      -->
+<% if (showServices && allServices.length > 0) { %>
+<section id="services" class="section-alt">
+    <div class="section-header">
+        <div class="section-tag">Expertise</div>
+        <h2 class="section-title">Services</h2>
+    </div>
+    
+    <div class="services-grid" id="servicesGrid">
+        <% 
+        var servicesToShow = servicesLimit > 0 ? allServices.slice(0, servicesLimit) : allServices;
+        servicesToShow.forEach(function(service) { 
+        %>
+        <a href="<%= url_for(service.path) %>" class="service-card" data-tags="<%= (service.tags || []).join(',') %>">
+            <div class="service-icon"><%= service.icon %></div>
+            <h3><%= service.title %></h3>
+            <p><%= service.description %></p>
+            <span class="service-link">En savoir plus →</span>
+        </a>
+        <% }); %>
+    </div>
+    
+    <% if (servicesLimit > 0 && allServices.length > servicesLimit) { %>
+    <div class="section-footer">
+        <a href="/services/" class="btn btn-secondary">Tous les services (<%= allServices.length %>) →</a>
+    </div>
+    <% } %>
+</section>
+<% } %>
+
+<!-- 
+     APPS SECTION
+      -->
+<% if (showApps && allApps.length > 0) { %>
+<section id="applications" class="section">
+    <div class="section-header">
+        <div class="section-tag">Outils</div>
+        <h2 class="section-title">Applications</h2>
+    </div>
+    
+    <div class="apps-grid">
+        <% 
+        var appsToShow = appsLimit > 0 ? allApps.slice(0, appsLimit) : allApps;
+        
+        // Couleurs par catégorie
+        var appCatColors = {
+            'meditation': '#06b6d4', 'wellness': '#10b981', 'creative': '#ec4899',
+            'philosophy': '#a855f7', 'security': '#ef4444', 'cybersecurity': '#00ff88',
+            'dev': '#3b82f6', 'tools': '#f97316', 'default': '#6366f1'
+        };
+        
+        appsToShow.forEach(function(app) { 
+            var appColor = appCatColors[app.category] || appCatColors.default;
+            var hasImage = app.cover || app.thumbnail || (app.images && app.images.length > 0);
+        %>
+        <div class="app-card" style="--app-color: <%= appColor %>">
+            <a href="<%= app.isExternal ? app.path : url_for(app.path) %>" class="app-preview-link" <%= app.isExternal ? 'target="_blank"' : '' %>>
+                <div class="app-preview">
+                    <% if (hasImage) { %>
+                        <% var imgSrc = app.cover || app.thumbnail || app.images[0]; %>
+                        <img src="<%= imgSrc %>" alt="<%= app.title %>" loading="lazy" class="app-thumb-img">
+                    <% } else if (app._page && typeof render_smart_thumbnail === 'function') { %>
+                        <%- render_smart_thumbnail(app._page, { class: 'app-thumb-dynamic' }) %>
+                    <% } else { %>
+                        <!-- Vignette CSS générée -->
+                        <div class="app-thumb-generated" style="
+                            background: linear-gradient(135deg, <%= appColor %>15, <%= appColor %>30);
+                        ">
+                            <span class="app-thumb-icon"><%= app.icon %></span>
+                            <span class="app-thumb-title"><%= app.title %></span>
+                            <span class="app-thumb-category" style="background: <%= appColor %>"><%= app.category %></span>
+                        </div>
+                    <% } %>
+                    <div class="app-overlay">
+                        <span class="play-icon">▶</span>
+                    </div>
+                </div>
+            </a>
+            <div class="app-info">
+                <h3><%= app.icon %> <%= app.title %></h3>
+                <p><%= app.description %></p>
+                <div class="app-actions">
+                    <a href="<%= app.isExternal ? app.path : url_for(app.path) %>" <%= app.isExternal ? 'target="_blank"' : '' %> class="btn btn-sm btn-primary">
+                        <%= app.isExternal ? 'Ouvrir ↗' : 'Voir →' %>
+                    </a>
+                    <% if (app.embed_url && !app.isExternal) { %>
+                    <a href="<%= app.embed_url %>" target="_blank" class="btn btn-sm btn-secondary">Lancer ↗</a>
+                    <% } %>
+                </div>
+            </div>
+        </div>
+        <% }); %>
+    </div>
+    
+    <% if (appsLimit > 0 && allApps.length > appsLimit) { %>
+    <div class="section-footer">
+        <a href="/apps/" class="btn btn-secondary">Toutes les applications (<%= allApps.length %>) →</a>
+    </div>
+    <% } %>
+</section>
+<% } %>
+
+<!-- 
+     PORTFOLIO SECTION
+      -->
+<% if (showPortfolio && allPortfolio.length > 0) { %>
+<section id="portfolio" class="section-alt">
+    <div class="section-header">
+        <div class="section-tag">Réalisations</div>
+        <h2 class="section-title">Portfolio</h2>
+    </div>
+    
+    <div class="portfolio-grid">
+        <% 
+        var portfolioToShow = portfolioLimit > 0 ? allPortfolio.slice(0, portfolioLimit) : allPortfolio;
+        
+        // Couleurs et labels par type
+        var typeColors = { client: '#10b981', project: '#3b82f6', opensource: '#f59e0b', security: '#ef4444' };
+        var typeLabels = { client: '🏢 Client', project: '🚀 Projet', opensource: '🔓 OSS', security: '🛡️ Sécurité' };
+        
+        portfolioToShow.forEach(function(item) { 
+            var itemColor = typeColors[item.type] || '#f97316';
+            var hasImage = item.cover || item.thumbnail || (item.images && item.images.length > 0);
+        %>
+        <a href="<%= url_for(item.path) %>" class="portfolio-card" style="--item-color: <%= itemColor %>">
+            <div class="portfolio-visual">
+                <% if (hasImage) { %>
+                    <% var imgSrc = item.cover || item.thumbnail || item.images[0]; %>
+                    <img src="<%= imgSrc %>" alt="<%= item.title %>" loading="lazy" class="portfolio-thumb-img">
+                <% } else if (item._page && typeof render_smart_thumbnail === 'function') { %>
+                    <%- render_smart_thumbnail(item._page, { class: 'portfolio-thumb-dynamic' }) %>
+                <% } else { %>
+                    <!-- Vignette CSS générée pour portfolio -->
+                    <div class="portfolio-thumb-generated" style="
+                        background: linear-gradient(135deg, <%= itemColor %>15, <%= itemColor %>30);
+                    ">
+                        <span class="portfolio-thumb-icon"><%= item.icon %></span>
+                        <span class="portfolio-thumb-title"><%= item.title %></span>
+                        <% if (item.client && item.client.name) { %>
+                        <span class="portfolio-thumb-client">🏢 <%= item.client.name %></span>
+                        <% } %>
+                    </div>
+                <% } %>
+                <div class="portfolio-type"><%= typeLabels[item.type] || '📦 Projet' %></div>
+                <div class="portfolio-overlay">
+                    <span class="view-icon">👁️</span>
+                </div>
+            </div>
+            <div class="portfolio-info">
+                <h3><%= item.icon %> <%= item.title %></h3>
+                <p><%= item.description %></p>
+                <% if (item.client && item.client.name) { %>
+                <span class="portfolio-client">🏢 <%= item.client.name %></span>
+                <% } %>
+            </div>
+        </a>
+        <% }); %>
+    </div>
+    
+    <% if (portfolioLimit > 0 && allPortfolio.length > portfolioLimit) { %>
+    <div class="section-footer">
+        <a href="/portfolio/" class="btn btn-secondary">Tout le portfolio (<%= allPortfolio.length %>) →</a>
+    </div>
+    <% } %>
+</section>
+<% } %>
+
+<!-- 
+     ARTICLES SECTION
+      -->
+<% if (showArticles) { %>
+<section id="articles" class="section">
+    <div class="section-header">
+        <div class="section-tag">Blog</div>
+        <h2 class="section-title">Articles Récents</h2>
+    </div>
+    
+    <div class="articles-grid">
+        <% 
+        // Utiliser get_blog_posts() si disponible (supporte source/blog/)
+        var allBlogPosts = [];
+        if (typeof get_blog_posts === 'function') {
+            allBlogPosts = get_blog_posts();
+        } else if (page.posts && page.posts.length) {
+            allBlogPosts = page.posts.toArray ? page.posts.toArray() : [];
+        }
+        var postsToShow = allBlogPosts.slice(0, postsLimit);
+        postsToShow.forEach(function(post) { 
+        %>
+        <%- partial('partials/article', {post: post}) %>
+        <% }); %>
+    </div>
+    
+    <% if (page.total > 1) { %>
+    <nav class="pagination">
+        <%- paginator({ prev_text: '← Précédent', next_text: 'Suivant →', mid_size: 2 }) %>
+    </nav>
+    <% } %>
+    
+    <div class="section-footer">
+        <a href="/archives/" class="btn btn-secondary">Tous les articles →</a>
+    </div>
+</section>
+<% } %>
+
+<!-- 
+     CATEGORIES SECTION
+      -->
+<% 
+// Utiliser get_blog_categories() pour les catégories dynamiques depuis source/blog/
+var blogCategories = [];
+var hasCategories = false;
+
+if (typeof get_blog_categories === 'function') {
+    blogCategories = get_blog_categories();
+    hasCategories = blogCategories.length > 0;
+} else if (site.categories && site.categories.length > 0) {
+    hasCategories = true;
+}
+%>
+<% if (showCategories && hasCategories) { %>
+<section id="categories" class="section-alt">
+    <div class="section-header">
+        <div class="section-tag">Thématiques</div>
+        <h2 class="section-title">Catégories</h2>
+    </div>
+    
+    <div class="categories-grid">
+        <% if (blogCategories.length > 0) { %>
+            <% blogCategories.slice(0, categoriesLimit).forEach(function(cat) { %>
+            <a href="<%= cat.path %>" class="category-card" style="--cat-color: <%= cat.color %>">
+                <span class="category-icon"><%= cat.icon %></span>
+                <span class="category-name"><%= cat.name %></span>
+                <span class="category-count"><%= cat.count %></span>
+            </a>
+            <% }); %>
+        <% } else { %>
+            <% 
+            var defaultColors = ['#00d4ff', '#3b82f6', '#9945ff', '#10b981', '#f59e0b', '#ef4444'];
+            var defaultIcons = ['📁', '📂', '🗂️', '📋', '📄', '📝'];
+            var allCategories = site.categories.sort('name');
+            var categoriesToShow = categoriesLimit > 0 ? allCategories.limit(categoriesLimit) : allCategories;
+            var idx = 0;
+            categoriesToShow.each(function(cat) {
+                var icon = defaultIcons[idx % defaultIcons.length];
+                var color = defaultColors[idx % defaultColors.length];
+                if (theme.categories && theme.categories[cat.name.toLowerCase()]) {
+                    var conf = theme.categories[cat.name.toLowerCase()];
+                    icon = conf.icon || icon;
+                    color = conf.color || color;
+                }
+                idx++;
+            %>
+            <a href="<%= url_for(cat.path) %>" class="category-card" style="--cat-color: <%= color %>">
+                <span class="category-icon"><%= icon %></span>
+                <span class="category-name"><%= cat.name %></span>
+                <span class="category-count"><%= cat.posts.length %></span>
+            </a>
+            <% }); %>
+        <% } %>
+    </div>
+    
+    <div class="section-footer">
+        <a href="/blog/" class="btn btn-secondary">Voir le blog →</a>
+    </div>
+</section>
+<% } %>
+
+<!-- 
+     YOUTUBE SECTION
+      -->
+<% if (showYoutube) { %>
+<section id="youtube" class="section">
+    <div class="section-header">
+        <div class="section-tag">Vidéos</div>
+        <h2 class="section-title"><%= theme.youtube.title || 'Chaîne YouTube' %></h2>
+        <% if (theme.youtube.description) { %>
+        <p class="section-subtitle"><%= theme.youtube.description %></p>
+        <% } %>
+    </div>
+    
+    <div class="youtube-embed">
+        <iframe 
+            src="https://www.youtube.com/embed/videoseries?list=<%= theme.youtube.playlist_id %>" 
+            frameborder="0" 
+            allowfullscreen
+            loading="lazy">
+        </iframe>
+    </div>
+</section>
+<% } %>
+
+<!-- 
+     ABOUT SECTION
+      -->
+<% if (showAbout && about.name) { %>
+<section id="about" class="section-alt">
+    <div class="section-header">
+        <div class="section-tag">Qui suis-je</div>
+        <h2 class="section-title">À propos</h2>
+    </div>
+    
+    <div class="about-content">
+        <div class="about-avatar">
+            <% if (about.avatar_image) { %>
+            <img src="<%= about.avatar_image %>" alt="<%= about.name %>">
+            <% } else { %>
+            <span class="avatar-emoji"><%= about.avatar || '👨‍💻' %></span>
+            <% } %>
+        </div>
+        
+        <div class="about-info">
+            <h3><%= about.name %></h3>
+            <% if (about.title) { %>
+            <p class="about-title"><%= about.title %></p>
+            <% } %>
+            
+            <% if (about.description) { %>
+            <div class="about-description"><%- about.description.replace(/\n/g, '<br>') %></div>
+            <% } %>
+            
+            <% if (about.expertise && about.expertise.length) { %>
+            <div class="about-expertise">
+                <% about.expertise.forEach(function(skill) { %>
+                <span class="expertise-tag"><%= skill %></span>
+                <% }); %>
+            </div>
+            <% } %>
+            
+            <% if (about.stats && about.stats.length) { %>
+            <div class="about-stats">
+                <% about.stats.forEach(function(stat) { %>
+                <div class="about-stat">
+                    <span class="stat-value"><%= stat.value %></span>
+                    <span class="stat-label"><%= stat.label %></span>
+                </div>
+                <% }); %>
+            </div>
+            <% } %>
+        </div>
+    </div>
+</section>
+<% } %>
+
+<!-- 
+     DATA POUR JAVASCRIPT
+      -->
+<script type="application/json" id="servicesData">
+<%- JSON.stringify(allServices) %>
+</script>
+
+<!-- 
+     STYLES
+      -->
+<style>
+/* 
+   SECTIONS
+    */
+.section {
+    padding: 4rem 2rem;
+}
+
+.section-alt {
+    padding: 4rem 2rem;
+    background: var(--bg-secondary);
+}
+
+.section-header {
+    text-align: center;
+    margin-bottom: 3rem;
+}
+
+.section-tag {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: var(--accent-primary);
+    color: var(--text-inverted);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    margin-bottom: 1rem;
+}
+
+.section-title {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.section-subtitle {
+    color: var(--text-muted);
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.section-footer {
+    text-align: center;
+    margin-top: 3rem;
+}
+
+/* 
+   HERO
+    */
+.hero {
+    min-height: 90vh;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+    padding: 4rem;
+    align-items: center;
+}
+
+.hero-badge {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: var(--glow-primary);
+    border: 1px solid var(--accent-primary);
+    border-radius: 20px;
+    font-size: 0.85rem;
+    margin-bottom: 1.5rem;
+}
+
+.hero-title {
+    font-size: 3.5rem;
+    line-height: 1.1;
+    margin-bottom: 1.5rem;
+}
+
+.hero-title .highlight {
+    color: var(--accent-primary);
+}
+
+.hero-subtitle {
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+    margin-bottom: 2rem;
+    max-width: 500px;
+}
+
+.services-hero {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.filter-info {
+    color: var(--accent-primary);
+    font-size: 0.85rem;
+    margin-bottom: 1.5rem;
+    min-height: 1.5rem;
+    opacity: 0;
+    transition: opacity var(--transition-normal);
+}
+
+.filter-info.visible {
+    opacity: 1;
+}
+
+.hero-stats {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.hero-stats .stat {
+    text-align: center;
+}
+
+.hero-stats .stat-value {
+    display: block;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--accent-primary);
+}
+
+.hero-stats .stat-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.hero-cta {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+/* Tech Grid */
+.tech-grid-visual {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.tech-cell {
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.tech-cell:hover,
+.tech-cell.active {
+    border-color: var(--accent-primary);
+    background: var(--glow-primary);
+    transform: scale(1.05);
+}
+
+.tech-cell-icon {
+    font-size: 2rem;
+}
+
+.tech-cell-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+/* 
+   SERVICES
+    */
+.services-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.service-card {
+    display: flex;
+    flex-direction: column;
+    padding: 2rem;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-xl);
+    text-decoration: none;
+    color: inherit;
+    transition: all var(--transition-normal);
+}
+
+.service-card:hover {
+    border-color: var(--accent-primary);
+    transform: translateY(-5px);
+    box-shadow: var(--card-hover-shadow);
+}
+
+.service-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.service-card h3 {
+    font-size: 1.25rem;
+    margin-bottom: 0.75rem;
+}
+
+.service-card p {
+    color: var(--text-secondary);
+    flex: 1;
+    margin-bottom: 1rem;
+}
+
+.service-link {
+    color: var(--accent-primary);
+    font-weight: 500;
+}
+
+/* 
+   APPS - avec vignettes intelligentes
+    */
+.apps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.app-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    transition: all var(--transition-normal);
+}
+
+.app-card:hover {
+    border-color: var(--app-color, var(--accent-primary));
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+}
+
+.app-preview-link {
+    display: block;
+    text-decoration: none;
+}
+
+.app-preview {
+    position: relative;
+    aspect-ratio: 16/9;
+    background: var(--bg-tertiary);
+    overflow: hidden;
+}
+
+.app-thumb-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.app-card:hover .app-thumb-img {
+    transform: scale(1.05);
+}
+
+.app-thumb-dynamic {
+    width: 100%;
+    height: 100%;
+}
+
+.app-thumb-generated {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    position: relative;
+}
+
+.app-thumb-icon {
+    font-size: 3rem;
+}
+
+.app-thumb-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--app-color, var(--accent-primary));
+}
+
+.app-thumb-category {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #000;
+}
+
+.app-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity var(--transition-normal);
+}
+
+.app-card:hover .app-overlay {
+    opacity: 1;
+}
+
+.play-icon {
+    width: 60px;
+    height: 60px;
+    background: var(--app-color, var(--accent-primary));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: #000;
+    transform: scale(0.8);
+    transition: transform 0.3s ease;
+}
+
+.app-card:hover .play-icon {
+    transform: scale(1);
+}
+
+.app-info {
+    padding: 1.25rem;
+}
+
+.app-info h3 {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+}
+
+.app-info p {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.app-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.app-actions .btn {
+    padding: 0.5rem 0.9rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.btn-sm.btn-primary {
+    background: var(--app-color, var(--accent-primary));
+    color: #000;
+}
+
+.btn-sm.btn-secondary {
+    background: rgba(255,255,255,0.1);
+    color: var(--text-primary);
+    border: 1px solid var(--border-subtle);
+}
+
+.btn-sm.btn-secondary:hover {
+    border-color: var(--app-color, var(--accent-primary));
+}
+
+/* 
+   PORTFOLIO - avec vignettes intelligentes
+    */
+.portfolio-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.portfolio-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    transition: all var(--transition-normal);
+}
+
+.portfolio-card:hover {
+    border-color: var(--item-color);
+    transform: translateY(-4px);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+}
+
+.portfolio-visual {
+    position: relative;
+    aspect-ratio: 16/10;
+    background: var(--bg-tertiary);
+    overflow: hidden;
+}
+
+.portfolio-thumb-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.portfolio-card:hover .portfolio-thumb-img {
+    transform: scale(1.05);
+}
+
+.portfolio-thumb-dynamic {
+    width: 100%;
+    height: 100%;
+}
+
+.portfolio-thumb-generated {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1rem;
+}
+
+.portfolio-thumb-icon {
+    font-size: 2.5rem;
+}
+
+.portfolio-thumb-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--item-color);
+    text-align: center;
+}
+
+.portfolio-thumb-client {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.portfolio-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.portfolio-card:hover .portfolio-overlay {
+    opacity: 1;
+}
+
+.view-icon {
+    width: 50px;
+    height: 50px;
+    background: var(--item-color);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    transform: scale(0.8);
+    transition: transform 0.3s ease;
+}
+
+.portfolio-card:hover .view-icon {
+    transform: scale(1);
+}
+
+.portfolio-type {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 0.25rem 0.75rem;
+    background: var(--item-color);
+    color: #000;
+    border-radius: var(--radius-sm);
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.portfolio-info {
+    padding: 1.25rem;
+}
+
+.portfolio-info h3 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.portfolio-info p {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.portfolio-client {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* 
+   ARTICLES
+    */
+.articles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 3rem;
+}
+
+.pagination a,
+.pagination span {
+    padding: 0.5rem 1rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    text-decoration: none;
+}
+
+.pagination a:hover {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.pagination .current {
+    background: var(--accent-primary);
+    color: var(--text-inverted);
+    border-color: var(--accent-primary);
+}
+
+/* 
+   CATEGORIES
+    */
+.categories-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.category-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-lg);
+    text-decoration: none;
+    color: inherit;
+    transition: all var(--transition-normal);
+}
+
+.category-card:hover {
+    border-color: var(--cat-color);
+    transform: translateY(-2px);
+}
+
+.category-icon {
+    font-size: 1.5rem;
+}
+
+.category-name {
+    font-weight: 500;
+}
+
+.category-count {
+    padding: 0.2rem 0.5rem;
+    background: var(--cat-color)20;
+    color: var(--cat-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* 
+   YOUTUBE
+    */
+.youtube-embed {
+    position: relative;
+    padding-bottom: 56.25%;
+    max-width: 900px;
+    margin: 0 auto;
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+}
+
+.youtube-embed iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* 
+   ABOUT
+    */
+.about-content {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3rem;
+    max-width: 900px;
+    margin: 0 auto;
+    align-items: start;
+}
+
+.about-avatar {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid var(--accent-primary);
+}
+
+.about-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.avatar-emoji {
+    font-size: 4rem;
+}
+
+.about-info h3 {
+    font-size: 1.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.about-title {
+    color: var(--accent-primary);
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+}
+
+.about-description {
+    color: var(--text-secondary);
+    line-height: 1.8;
+    margin-bottom: 1.5rem;
+}
+
+.about-expertise {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.expertise-tag {
+    padding: 0.4rem 0.75rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+}
+
+.about-stats {
+    display: flex;
+    gap: 2rem;
+}
+
+.about-stat {
+    text-align: center;
+}
+
+.about-stat .stat-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent-primary);
+}
+
+.about-stat .stat-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* 
+   RESPONSIVE
+    */
+@media (max-width: 968px) {
+    .hero {
+        grid-template-columns: 1fr;
+        min-height: auto;
+        padding: 2rem;
+        text-align: center;
+    }
+    
+    .hero-title {
+        font-size: 2.5rem;
+    }
+    
+    .hero-subtitle {
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    .hero-cta {
+        justify-content: center;
+    }
+    
+    .hero-visual {
+        order: -1;
+    }
+    
+    .tech-grid-visual {
+        max-width: 300px;
+    }
+    
+    .about-content {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+    
+    .about-avatar {
+        margin: 0 auto;
+    }
+    
+    .about-expertise,
+    .about-stats {
+        justify-content: center;
+    }
+}
+
+@media (max-width: 600px) {
+    .section,
+    .section-alt {
+        padding: 3rem 1rem;
+    }
+    
+    .section-title {
+        font-size: 2rem;
+    }
+    
+    .hero-title {
+        font-size: 2rem;
+    }
+    
+    .services-grid,
+    .apps-grid,
+    .articles-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .portfolio-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+}
+</style>
+
+<!-- 
+     JAVASCRIPT - Interactions
+      -->
+<script>
+(function() {
+    // Récupérer les services
+    var servicesDataEl = document.getElementById('servicesData');
+    var allServices = [];
+    try {
+        allServices = JSON.parse(servicesDataEl.textContent);
+    } catch(e) {
+        console.warn('No services data');
+    }
+    
+    var currentFilter = 'all';
+    
+    // Fisher-Yates shuffle
+    function shuffle(array) {
+        var arr = array.slice();
+        for (var i = arr.length - 1; i > 0; i--) {
+            var j = Math.floor(Math.random() * (i + 1));
+            var temp = arr[i];
+            arr[i] = arr[j];
+            arr[j] = temp;
+        }
+        return arr;
+    }
+    
+    // Filtrer les services par tags
+    function filterServices(filter) {
+        if (filter === 'all') return allServices;
+        return allServices.filter(function(s) {
+            return s.tags && s.tags.indexOf(filter) >= 0;
+        });
+    }
+    
+    // Afficher les services dans le hero
+    function displayHeroServices(services) {
+        var container = document.getElementById('heroServices');
+        if (!container) return;
+        
+        var toShow = shuffle(services).slice(0, 2);
+        container.innerHTML = toShow.map(function(s) {
+            return '<a href="' + s.path + '" class="hero-service-card">' +
+                   '<span class="hsc-icon">' + s.icon + '</span>' +
+                   '<span class="hsc-title">' + s.title + '</span>' +
+                   '</a>';
+        }).join('');
+    }
+    
+    // Mettre à jour l'affichage
+    function updateDisplay(filter) {
+        currentFilter = filter;
+        var filtered = filterServices(filter);
+        displayHeroServices(filtered.length > 0 ? filtered : allServices);
+        
+        // Update filter info
+        var filterInfo = document.getElementById('filterInfo');
+        if (filterInfo) {
+            if (filter !== 'all' && filtered.length > 0) {
+                filterInfo.textContent = '🔍 Filtré: ' + filter + ' (' + filtered.length + ' services)';
+                filterInfo.classList.add('visible');
+            } else {
+                filterInfo.classList.remove('visible');
+            }
+        }
+        
+        // Update active cell
+        var cells = document.querySelectorAll('.tech-cell');
+        cells.forEach(function(cell) {
+            cell.classList.toggle('active', cell.dataset.filter === filter);
+        });
+    }
+    
+    // Init tech grid interactions
+    function initTechGrid() {
+        var cells = document.querySelectorAll('.tech-cell');
+        cells.forEach(function(cell) {
+            cell.addEventListener('click', function() {
+                updateDisplay(this.dataset.filter);
+            });
+            cell.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    updateDisplay(this.dataset.filter);
+                }
+            });
+        });
+    }
+    
+    // Inject hero service card styles
+    var style = document.createElement('style');
+    style.textContent = `
+        .hero-service-card {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem 1.5rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            text-decoration: none;
+            color: inherit;
+            transition: all var(--transition-normal);
+        }
+        .hero-service-card:hover {
+            border-color: var(--accent-primary);
+            transform: translateY(-2px);
+        }
+        .hsc-icon { font-size: 1.5rem; }
+        .hsc-title { font-weight: 500; }
+    `;
+    document.head.appendChild(style);
+    
+    // Init
+    function init() {
+        initTechGrid();
+        updateDisplay('all');
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>

@@ -13,6 +13,13 @@ PLUGIN_CATALOG_DIR="/usr/share/secubox/plugins/catalog"
 REGISTRY_FILE="/var/lib/secubox/component-registry.json"
 SYNC_LOG="/var/log/secubox-sync.log"
 
+# Cache opkg output to avoid repeated calls (major performance optimization)
+OPKG_CACHE=""
+get_opkg_cache() {
+	[ -z "$OPKG_CACHE" ] && OPKG_CACHE=$(opkg list-installed 2>/dev/null)
+	echo "$OPKG_CACHE"
+}
+
 # Log message
 log_message() {
 	local level="$1"
@@ -21,7 +28,8 @@ log_message() {
 	local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
 
 	echo "[$timestamp] [$level] $message" >> "$SYNC_LOG"
-	logger -t secubox-sync "[$level] $message"
+	# Only log INFO and above to syslog (skip DEBUG)
+	[ "$level" != "DEBUG" ] && logger -t secubox-sync "[$level] $message"
 }
 
 # Sync catalog apps to component registry
@@ -176,8 +184,11 @@ sync_installed_packages() {
 
 	log_message "INFO" "Detecting installed packages"
 
-	# Get list of SecuBox-related packages
-	local secubox_packages=$(opkg list-installed | grep -E "^(secubox-|luci-app-|luci-mod-)" | awk '{print $1}')
+	# Pre-populate the opkg cache (single call instead of multiple)
+	local opkg_output=$(get_opkg_cache)
+
+	# Get list of SecuBox-related packages from cache
+	local secubox_packages=$(echo "$opkg_output" | grep -E "^(secubox-|luci-app-|luci-mod-)" | awk '{print $1}')
 
 	for pkg_name in $secubox_packages; do
 		# Check if already registered
@@ -185,8 +196,8 @@ sync_installed_packages() {
 			continue
 		fi
 
-		# Get package version
-		local pkg_version=$(opkg list-installed | grep "^$pkg_name " | awk '{print $3}')
+		# Get package version from cache
+		local pkg_version=$(echo "$opkg_output" | grep "^$pkg_name " | awk '{print $3}')
 
 		# Register as module component
 		local metadata=$(cat <<EOF
@@ -223,32 +234,10 @@ EOF
 }
 
 # Update state references for all registered components
+# Note: State initialization is now deferred to first access for performance
+# Components will auto-initialize their state when first queried
 update_state_references() {
-	log_message "INFO" "Updating state references"
-
-	# Get all registered components
-	local components=$(/usr/sbin/secubox-component list 2>/dev/null)
-
-	if [ -z "$components" ] || [ "$components" = "[]" ]; then
-		log_message "INFO" "No components to update"
-		return 0
-	fi
-
-	# For each component, ensure it has a state entry
-	local component_ids=$(echo "$components" | jq -r '.[].id' 2>/dev/null)
-
-	for comp_id in $component_ids; do
-		# Check if state exists
-		local state=$(/usr/sbin/secubox-state get "$comp_id" 2>/dev/null)
-
-		if [ -z "$state" ] || echo "$state" | grep -q "Error:"; then
-			# Initialize state as available
-			/usr/sbin/secubox-state set "$comp_id" available "auto_sync" > /dev/null 2>&1 || true
-			log_message "DEBUG" "Initialized state for: $comp_id"
-		fi
-	done
-
-	log_message "INFO" "State references updated"
+	log_message "INFO" "State references will be initialized on first access (deferred for performance)"
 	return 0
 }
 

@@ -132,6 +132,11 @@ nft_setup() {
 
 	log_info "Setting up nftables for transparent proxy..."
 
+	# Enable IP forwarding (required for transparent proxying)
+	log_info "Enabling IP forwarding..."
+	sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1
+	sysctl -w net.ipv6.conf.all.forwarding=1 >/dev/null 2>&1
+
 	# Create mitmproxy table
 	nft add table inet $NFT_TABLE 2>/dev/null || true
 
@@ -169,8 +174,9 @@ nft_setup() {
 	nft add rule inet $NFT_TABLE prerouting ip daddr @bypass_ipv4 return 2>/dev/null || true
 	nft add rule inet $NFT_TABLE prerouting ip6 daddr @bypass_ipv6 return 2>/dev/null || true
 
-	# Don't intercept traffic from the proxy itself
-	nft add rule inet $NFT_TABLE prerouting meta skuid mitmproxy return 2>/dev/null || true
+	# Don't intercept traffic destined for the router itself (local services)
+	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+	nft add rule inet $NFT_TABLE prerouting ip daddr "$router_ip" return 2>/dev/null || true
 
 	# Redirect HTTP traffic
 	if [ "$redirect_http" = "1" ]; then
@@ -385,17 +391,37 @@ rm -f /data/.mitmproxy_token /tmp/mitmweb.log
 
 echo "Starting mitmweb..."
 
-# Run mitmweb with unbuffered output and inline token capture
-/usr/local/bin/mitmweb $ARGS 2>&1 | while IFS= read -r line; do
-    echo "$line"
-    echo "$line" >> /tmp/mitmweb.log
-    case "$line" in
-        *token=*)
-            token=$(echo "$line" | grep -o 'token=[a-f0-9]*' | cut -d= -f2)
-            [ -n "$token" ] && echo "$token" > /data/.mitmproxy_token
-            ;;
-    esac
+# Start mitmweb in background, output to log file
+/usr/local/bin/mitmweb $ARGS 2>&1 | tee /tmp/mitmweb.log &
+MITMWEB_PID=$!
+
+# Wait for token to appear in log (with timeout)
+echo "Waiting for authentication token..."
+ATTEMPTS=0
+MAX_ATTEMPTS=30
+while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+    sleep 1
+    ATTEMPTS=$((ATTEMPTS + 1))
+
+    if [ -f /tmp/mitmweb.log ]; then
+        # Extract token from log - mitmweb outputs: "Web server listening at http://x.x.x.x:8081/?token=XXXXX"
+        # Token can be alphanumeric, not just hex
+        TOKEN=$(grep -o 'token=[a-zA-Z0-9_-]*' /tmp/mitmweb.log 2>/dev/null | head -1 | cut -d= -f2)
+        if [ -n "$TOKEN" ]; then
+            echo "$TOKEN" > /data/.mitmproxy_token
+            echo "Token captured: $(echo "$TOKEN" | cut -c1-8)..."
+            break
+        fi
+    fi
 done
+
+if [ ! -f /data/.mitmproxy_token ]; then
+    echo "Warning: Could not capture authentication token after ${MAX_ATTEMPTS}s"
+    echo "Check /tmp/mitmweb.log for details"
+fi
+
+# Wait for mitmweb process to keep container running
+wait $MITMWEB_PID
 START
 	chmod +x "$rootfs/opt/start-mitmproxy.sh"
 

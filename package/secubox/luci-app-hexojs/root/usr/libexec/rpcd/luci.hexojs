@@ -1,0 +1,1561 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Hexo CMS RPCD backend
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG="hexojs"
+HEXOCTL="/usr/sbin/hexoctl"
+DATA_PATH="/srv/hexojs"
+
+# Helper functions
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+is_running() {
+	pgrep -f "lxc.*hexojs" >/dev/null 2>&1
+}
+
+get_site_path() {
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+	echo "$data_path/site"
+}
+
+# ============================================
+# Status Methods
+# ============================================
+
+get_status() {
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+	local site_path="$data_path/site"
+	local enabled=$(uci_get main.enabled) || enabled="0"
+	local http_port=$(uci_get main.http_port) || http_port="4000"
+	local active_site=$(uci_get main.active_site) || active_site="default"
+
+	json_init
+
+	json_add_boolean "enabled" "$enabled"
+	json_add_boolean "running" "$(is_running && echo 1 || echo 0)"
+	json_add_int "http_port" "$http_port"
+	json_add_string "active_site" "$active_site"
+	json_add_string "data_path" "$data_path"
+
+	# Site info
+	if [ -d "$site_path" ]; then
+		json_add_boolean "site_exists" 1
+
+		local post_count=0
+		local draft_count=0
+		local page_count=0
+
+		[ -d "$site_path/source/_posts" ] && post_count=$(ls -1 "$site_path/source/_posts/"*.md 2>/dev/null | wc -l)
+		[ -d "$site_path/source/_drafts" ] && draft_count=$(ls -1 "$site_path/source/_drafts/"*.md 2>/dev/null | wc -l)
+
+		json_add_int "post_count" "$post_count"
+		json_add_int "draft_count" "$draft_count"
+
+		# Site config
+		local title=$(uci_get ${active_site}.title) || title="Blog"
+		local author=$(uci_get ${active_site}.author) || author="Admin"
+		local theme=$(uci_get ${active_site}.theme) || theme="cybermind"
+
+		json_add_object "site"
+		json_add_string "title" "$title"
+		json_add_string "author" "$author"
+		json_add_string "theme" "$theme"
+		json_close_object
+	else
+		json_add_boolean "site_exists" 0
+		json_add_int "post_count" 0
+		json_add_int "draft_count" 0
+	fi
+
+	json_dump
+}
+
+get_site_stats() {
+	local site_path=$(get_site_path)
+
+	json_init
+
+	if [ ! -d "$site_path" ]; then
+		json_add_int "posts" 0
+		json_add_int "drafts" 0
+		json_add_int "pages" 0
+		json_add_int "categories" 0
+		json_add_int "tags" 0
+		json_add_int "media" 0
+		json_dump
+		return
+	fi
+
+	local post_count=0
+	local draft_count=0
+	local page_count=0
+	local media_count=0
+
+	[ -d "$site_path/source/_posts" ] && post_count=$(ls -1 "$site_path/source/_posts/"*.md 2>/dev/null | wc -l)
+	[ -d "$site_path/source/_drafts" ] && draft_count=$(ls -1 "$site_path/source/_drafts/"*.md 2>/dev/null | wc -l)
+	[ -d "$site_path/source/images" ] && media_count=$(find "$site_path/source/images" -type f 2>/dev/null | wc -l)
+
+	# Count unique categories and tags from posts
+	local categories=""
+	local tags=""
+
+	if [ -d "$site_path/source/_posts" ]; then
+		for f in "$site_path/source/_posts/"*.md; do
+			[ -f "$f" ] || continue
+			local cat=$(grep -m1 "^categories:" "$f" 2>/dev/null | sed 's/^categories:[[:space:]]*//' | tr -d '[]' | tr ',' '\n')
+			local tag=$(grep -m1 "^tags:" "$f" 2>/dev/null | sed 's/^tags:[[:space:]]*//' | tr -d '[]' | tr ',' '\n')
+			categories="$categories
+$cat"
+			tags="$tags
+$tag"
+		done
+	fi
+
+	local cat_count=$(echo "$categories" | grep -v '^$' | sort -u | wc -l)
+	local tag_count=$(echo "$tags" | grep -v '^$' | sort -u | wc -l)
+
+	json_add_int "posts" "$post_count"
+	json_add_int "drafts" "$draft_count"
+	json_add_int "pages" "$page_count"
+	json_add_int "categories" "$cat_count"
+	json_add_int "tags" "$tag_count"
+	json_add_int "media" "$media_count"
+
+	json_dump
+}
+
+# ============================================
+# Post Methods
+# ============================================
+
+list_posts() {
+	local site_path=$(get_site_path)
+	local posts_dir="$site_path/source/_posts"
+
+	json_init
+	json_add_array "posts"
+
+	if [ -d "$posts_dir" ]; then
+		for f in "$posts_dir"/*.md; do
+			[ -f "$f" ] || continue
+
+			local filename=$(basename "$f")
+			local slug="${filename%.md}"
+
+			# Parse front matter
+			local title=$(grep -m1 "^title:" "$f" | sed 's/^title:[[:space:]]*//' | tr -d '"' | tr -d "'")
+			local date=$(grep -m1 "^date:" "$f" | sed 's/^date:[[:space:]]*//')
+			local categories=$(grep -m1 "^categories:" "$f" | sed 's/^categories:[[:space:]]*//' | tr -d '[]')
+			local tags=$(grep -m1 "^tags:" "$f" | sed 's/^tags:[[:space:]]*//' | tr -d '[]')
+			local excerpt=$(grep -m1 "^excerpt:" "$f" | sed 's/^excerpt:[[:space:]]*//' | tr -d '"')
+
+			json_add_object
+			json_add_string "slug" "$slug"
+			json_add_string "title" "${title:-$slug}"
+			json_add_string "date" "$date"
+			json_add_string "categories" "$categories"
+			json_add_string "tags" "$tags"
+			json_add_string "excerpt" "$excerpt"
+			json_add_string "path" "$f"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+get_post() {
+	read input
+	json_load "$input"
+	json_get_var slug slug
+
+	json_init
+
+	if [ -z "$slug" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Slug required"
+		json_dump
+		return
+	fi
+
+	local site_path=$(get_site_path)
+	local post_file="$site_path/source/_posts/${slug}.md"
+
+	if [ ! -f "$post_file" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Post not found"
+		json_dump
+		return
+	fi
+
+	# Parse front matter and content
+	local title=$(grep -m1 "^title:" "$post_file" | sed 's/^title:[[:space:]]*//' | tr -d '"' | tr -d "'")
+	local date=$(grep -m1 "^date:" "$post_file" | sed 's/^date:[[:space:]]*//')
+	local categories=$(grep -m1 "^categories:" "$post_file" | sed 's/^categories:[[:space:]]*//' | tr -d '[]')
+	local tags=$(grep -m1 "^tags:" "$post_file" | sed 's/^tags:[[:space:]]*//' | tr -d '[]')
+	local cover=$(grep -m1 "^cover:" "$post_file" | sed 's/^cover:[[:space:]]*//')
+	local excerpt=$(grep -m1 "^excerpt:" "$post_file" | sed 's/^excerpt:[[:space:]]*//' | tr -d '"')
+
+	# Get content after front matter
+	local content=$(awk '/^---$/,/^---$/{next} {print}' "$post_file" | tail -n +2)
+
+	json_add_boolean "success" 1
+	json_add_string "slug" "$slug"
+	json_add_string "title" "$title"
+	json_add_string "date" "$date"
+	json_add_string "categories" "$categories"
+	json_add_string "tags" "$tags"
+	json_add_string "cover" "$cover"
+	json_add_string "excerpt" "$excerpt"
+	json_add_string "content" "$content"
+	json_add_string "path" "$post_file"
+
+	json_dump
+}
+
+create_post() {
+	read input
+	json_load "$input"
+	json_get_var title title
+	json_get_var content content
+	json_get_var categories categories
+	json_get_var tags tags
+	json_get_var excerpt excerpt
+
+	json_init
+
+	if [ -z "$title" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Title required"
+		json_dump
+		return
+	fi
+
+	# Generate slug from title
+	local slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
+	local date=$(date "+%Y-%m-%d %H:%M:%S")
+
+	local site_path=$(get_site_path)
+	local posts_dir="$site_path/source/_posts"
+	local post_file="$posts_dir/${slug}.md"
+
+	[ -d "$posts_dir" ] || mkdir -p "$posts_dir"
+
+	# Check if file exists
+	if [ -f "$post_file" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Post with this slug already exists"
+		json_dump
+		return
+	fi
+
+	# Create post file
+	cat > "$post_file" << EOF
+---
+title: $title
+date: $date
+categories: [$categories]
+tags: [$tags]
+excerpt: $excerpt
+---
+
+$content
+EOF
+
+	json_add_boolean "success" 1
+	json_add_string "slug" "$slug"
+	json_add_string "path" "$post_file"
+	json_add_string "message" "Post created"
+
+	json_dump
+}
+
+update_post() {
+	read input
+	json_load "$input"
+	json_get_var slug slug
+	json_get_var title title
+	json_get_var content content
+	json_get_var categories categories
+	json_get_var tags tags
+	json_get_var excerpt excerpt
+	json_get_var cover cover
+
+	json_init
+
+	if [ -z "$slug" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Slug required"
+		json_dump
+		return
+	fi
+
+	local site_path=$(get_site_path)
+	local post_file="$site_path/source/_posts/${slug}.md"
+
+	if [ ! -f "$post_file" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Post not found"
+		json_dump
+		return
+	fi
+
+	# Get original date
+	local date=$(grep -m1 "^date:" "$post_file" | sed 's/^date:[[:space:]]*//')
+
+	# Rewrite post file
+	cat > "$post_file" << EOF
+---
+title: $title
+date: $date
+categories: [$categories]
+tags: [$tags]
+cover: $cover
+excerpt: $excerpt
+---
+
+$content
+EOF
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Post updated"
+
+	json_dump
+}
+
+delete_post() {
+	read input
+	json_load "$input"
+	json_get_var slug slug
+
+	json_init
+
+	if [ -z "$slug" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Slug required"
+		json_dump
+		return
+	fi
+
+	local site_path=$(get_site_path)
+	local post_file="$site_path/source/_posts/${slug}.md"
+
+	if [ ! -f "$post_file" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Post not found"
+		json_dump
+		return
+	fi
+
+	rm -f "$post_file"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Post deleted"
+
+	json_dump
+}
+
+publish_post() {
+	read input
+	json_load "$input"
+	json_get_var slug slug
+
+	json_init
+
+	if [ -z "$slug" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Slug required"
+		json_dump
+		return
+	fi
+
+	local site_path=$(get_site_path)
+	local draft_file="$site_path/source/_drafts/${slug}.md"
+	local posts_dir="$site_path/source/_posts"
+	local post_file="$posts_dir/${slug}.md"
+
+	if [ ! -f "$draft_file" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Draft not found"
+		json_dump
+		return
+	fi
+
+	[ -d "$posts_dir" ] || mkdir -p "$posts_dir"
+
+	# Add date if not present
+	if ! grep -q "^date:" "$draft_file"; then
+		local date=$(date "+%Y-%m-%d %H:%M:%S")
+		sed -i "/^title:/a date: $date" "$draft_file"
+	fi
+
+	mv "$draft_file" "$post_file"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Draft published"
+	json_add_string "path" "$post_file"
+
+	json_dump
+}
+
+list_drafts() {
+	local site_path=$(get_site_path)
+	local drafts_dir="$site_path/source/_drafts"
+
+	json_init
+	json_add_array "drafts"
+
+	if [ -d "$drafts_dir" ]; then
+		for f in "$drafts_dir"/*.md; do
+			[ -f "$f" ] || continue
+
+			local filename=$(basename "$f")
+			local slug="${filename%.md}"
+			local title=$(grep -m1 "^title:" "$f" | sed 's/^title:[[:space:]]*//' | tr -d '"' | tr -d "'")
+
+			json_add_object
+			json_add_string "slug" "$slug"
+			json_add_string "title" "${title:-$slug}"
+			json_add_string "path" "$f"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+search_posts() {
+	read input
+	json_load "$input"
+	json_get_var query query
+	json_get_var category category
+	json_get_var tag tag
+
+	local site_path=$(get_site_path)
+	local posts_dir="$site_path/source/_posts"
+
+	json_init
+	json_add_array "posts"
+
+	if [ -d "$posts_dir" ]; then
+		for f in "$posts_dir"/*.md; do
+			[ -f "$f" ] || continue
+
+			local match=1
+
+			# Filter by query
+			if [ -n "$query" ]; then
+				grep -qi "$query" "$f" || match=0
+			fi
+
+			# Filter by category
+			if [ -n "$category" ] && [ "$match" = "1" ]; then
+				grep -qi "categories:.*$category" "$f" || match=0
+			fi
+
+			# Filter by tag
+			if [ -n "$tag" ] && [ "$match" = "1" ]; then
+				grep -qi "tags:.*$tag" "$f" || match=0
+			fi
+
+			if [ "$match" = "1" ]; then
+				local filename=$(basename "$f")
+				local slug="${filename%.md}"
+				local title=$(grep -m1 "^title:" "$f" | sed 's/^title:[[:space:]]*//' | tr -d '"' | tr -d "'")
+				local date=$(grep -m1 "^date:" "$f" | sed 's/^date:[[:space:]]*//')
+
+				json_add_object
+				json_add_string "slug" "$slug"
+				json_add_string "title" "${title:-$slug}"
+				json_add_string "date" "$date"
+				json_close_object
+			fi
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# ============================================
+# Taxonomy Methods
+# ============================================
+
+list_categories() {
+	local site_path=$(get_site_path)
+	local posts_dir="$site_path/source/_posts"
+
+	json_init
+	json_add_array "categories"
+
+	if [ -d "$posts_dir" ]; then
+		local cats=""
+		for f in "$posts_dir"/*.md; do
+			[ -f "$f" ] || continue
+			local cat=$(grep -m1 "^categories:" "$f" | sed 's/^categories:[[:space:]]*//' | tr -d '[]' | tr ',' '\n')
+			cats="$cats
+$cat"
+		done
+
+		# Count unique categories
+		echo "$cats" | grep -v '^$' | sort | uniq -c | while read count name; do
+			name=$(echo "$name" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+			[ -n "$name" ] || continue
+			json_add_object
+			json_add_string "name" "$name"
+			json_add_int "count" "$count"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+list_tags() {
+	local site_path=$(get_site_path)
+	local posts_dir="$site_path/source/_posts"
+
+	json_init
+	json_add_array "tags"
+
+	if [ -d "$posts_dir" ]; then
+		local tags=""
+		for f in "$posts_dir"/*.md; do
+			[ -f "$f" ] || continue
+			local tag=$(grep -m1 "^tags:" "$f" | sed 's/^tags:[[:space:]]*//' | tr -d '[]' | tr ',' '\n')
+			tags="$tags
+$tag"
+		done
+
+		# Count unique tags
+		echo "$tags" | grep -v '^$' | sort | uniq -c | while read count name; do
+			name=$(echo "$name" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+			[ -n "$name" ] || continue
+			json_add_object
+			json_add_string "name" "$name"
+			json_add_int "count" "$count"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# ============================================
+# Media Methods
+# ============================================
+
+list_media() {
+	local site_path=$(get_site_path)
+	local media_dir="$site_path/source/images"
+
+	json_init
+	json_add_array "media"
+
+	if [ -d "$media_dir" ]; then
+		find "$media_dir" -type f | while read f; do
+			local filename=$(basename "$f")
+			local size=$(stat -c %s "$f" 2>/dev/null || echo 0)
+			local mtime=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+			local relpath="${f#$site_path/source}"
+
+			json_add_object
+			json_add_string "name" "$filename"
+			json_add_string "path" "$relpath"
+			json_add_string "full_path" "$f"
+			json_add_int "size" "$size"
+			json_add_int "mtime" "$mtime"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+delete_media() {
+	read input
+	json_load "$input"
+	json_get_var path path
+
+	json_init
+
+	if [ -z "$path" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Path required"
+		json_dump
+		return
+	fi
+
+	local site_path=$(get_site_path)
+	local full_path="$site_path/source$path"
+
+	if [ ! -f "$full_path" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "File not found"
+		json_dump
+		return
+	fi
+
+	rm -f "$full_path"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Media deleted"
+
+	json_dump
+}
+
+# ============================================
+# Apps (Portfolio) Methods
+# ============================================
+
+list_apps() {
+	local site_path=$(get_site_path)
+	local apps_dir="$site_path/source/apps"
+
+	json_init
+	json_add_array "apps"
+
+	if [ -d "$apps_dir" ]; then
+		for f in "$apps_dir"/*.md; do
+			[ -f "$f" ] || continue
+
+			local filename=$(basename "$f")
+			local slug="${filename%.md}"
+			local title=$(grep -m1 "^title:" "$f" | sed 's/^title:[[:space:]]*//' | tr -d '"' | tr -d "'")
+			local icon=$(grep -m1 "^icon:" "$f" | sed 's/^icon:[[:space:]]*//')
+			local description=$(grep -m1 "^description:" "$f" | sed 's/^description:[[:space:]]*//' | tr -d '"')
+			local url=$(grep -m1 "^url:" "$f" | sed 's/^url:[[:space:]]*//')
+			local category=$(grep -m1 "^category:" "$f" | sed 's/^category:[[:space:]]*//')
+			local featured=$(grep -m1 "^featured:" "$f" | sed 's/^featured:[[:space:]]*//')
+
+			json_add_object
+			json_add_string "slug" "$slug"
+			json_add_string "title" "${title:-$slug}"
+			json_add_string "icon" "$icon"
+			json_add_string "description" "$description"
+			json_add_string "url" "$url"
+			json_add_string "category" "$category"
+			json_add_boolean "featured" "$([ "$featured" = "true" ] && echo 1 || echo 0)"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+create_app() {
+	read input
+	json_load "$input"
+	json_get_var title title
+	json_get_var icon icon
+	json_get_var description description
+	json_get_var url url
+	json_get_var category category
+	json_get_var content content
+
+	json_init
+
+	if [ -z "$title" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Title required"
+		json_dump
+		return
+	fi
+
+	local slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
+	local date=$(date "+%Y-%m-%d %H:%M:%S")
+
+	local site_path=$(get_site_path)
+	local apps_dir="$site_path/source/apps"
+	local app_file="$apps_dir/${slug}.md"
+
+	[ -d "$apps_dir" ] || mkdir -p "$apps_dir"
+
+	if [ -f "$app_file" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "App with this slug already exists"
+		json_dump
+		return
+	fi
+
+	cat > "$app_file" << EOF
+---
+title: $title
+date: $date
+layout: app
+icon: $icon
+description: $description
+url: $url
+category: ${category:-tools}
+featured: false
+status: active
+---
+
+$content
+EOF
+
+	json_add_boolean "success" 1
+	json_add_string "slug" "$slug"
+	json_add_string "message" "App created"
+
+	json_dump
+}
+
+# ============================================
+# Build & Deploy Methods
+# ============================================
+
+do_generate() {
+	json_init
+
+	if ! is_running; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Container not running"
+		json_dump
+		return
+	fi
+
+	local output=$("$HEXOCTL" exec sh -c "cd /opt/hexojs/site && hexo generate" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Site generated successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+do_clean() {
+	json_init
+
+	if ! is_running; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Container not running"
+		json_dump
+		return
+	fi
+
+	local output=$("$HEXOCTL" exec sh -c "cd /opt/hexojs/site && hexo clean" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Site cleaned"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+do_deploy() {
+	json_init
+
+	if ! is_running; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Container not running"
+		json_dump
+		return
+	fi
+
+	local repo=$(uci_get deploy.repo)
+	if [ -z "$repo" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Deploy repository not configured"
+		json_dump
+		return
+	fi
+
+	# Run deploy in background
+	"$HEXOCTL" exec sh -c "cd /opt/hexojs/site && hexo deploy" > /tmp/hexo-deploy.log 2>&1 &
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Deploy started"
+	json_add_string "log_file" "/tmp/hexo-deploy.log"
+
+	json_dump
+}
+
+get_deploy_status() {
+	json_init
+
+	if pgrep -f "hexo deploy" >/dev/null 2>&1; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "idle"
+	fi
+
+	if [ -f /tmp/hexo-deploy.log ]; then
+		local log=$(tail -20 /tmp/hexo-deploy.log 2>/dev/null)
+		json_add_string "log" "$log"
+	fi
+
+	json_dump
+}
+
+# ============================================
+# Preview Methods
+# ============================================
+
+preview_start() {
+	json_init
+
+	if ! is_running; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Container not running. Start service first."
+		json_dump
+		return
+	fi
+
+	local http_port=$(uci_get main.http_port) || http_port="4000"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Preview server running"
+	json_add_int "port" "$http_port"
+	json_add_string "url" "http://$(uci -q get network.lan.ipaddr || echo "localhost"):$http_port"
+
+	json_dump
+}
+
+preview_status() {
+	json_init
+
+	local running=$(is_running && echo 1 || echo 0)
+	local http_port=$(uci_get main.http_port) || http_port="4000"
+
+	json_add_boolean "running" "$running"
+	json_add_int "port" "$http_port"
+
+	if [ "$running" = "1" ]; then
+		json_add_string "url" "http://$(uci -q get network.lan.ipaddr || echo "localhost"):$http_port"
+	fi
+
+	json_dump
+}
+
+# ============================================
+# Configuration Methods
+# ============================================
+
+get_config() {
+	json_init
+
+	local enabled=$(uci_get main.enabled) || enabled="0"
+	local http_port=$(uci_get main.http_port) || http_port="4000"
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+	local active_site=$(uci_get main.active_site) || active_site="default"
+	local memory_limit=$(uci_get main.memory_limit) || memory_limit="512M"
+
+	json_add_boolean "enabled" "$enabled"
+	json_add_int "http_port" "$http_port"
+	json_add_string "data_path" "$data_path"
+	json_add_string "active_site" "$active_site"
+	json_add_string "memory_limit" "$memory_limit"
+
+	# Site config
+	json_add_object "site"
+	json_add_string "title" "$(uci_get ${active_site}.title)"
+	json_add_string "subtitle" "$(uci_get ${active_site}.subtitle)"
+	json_add_string "author" "$(uci_get ${active_site}.author)"
+	json_add_string "language" "$(uci_get ${active_site}.language)"
+	json_add_string "theme" "$(uci_get ${active_site}.theme)"
+	json_add_string "url" "$(uci_get ${active_site}.url)"
+	json_close_object
+
+	# Deploy config
+	json_add_object "deploy"
+	json_add_string "type" "$(uci_get deploy.type)"
+	json_add_string "repo" "$(uci_get deploy.repo)"
+	json_add_string "branch" "$(uci_get deploy.branch)"
+	json_close_object
+
+	json_dump
+}
+
+save_config() {
+	read input
+	json_load "$input"
+
+	json_get_var enabled enabled
+	json_get_var http_port http_port
+	json_get_var title title
+	json_get_var subtitle subtitle
+	json_get_var author author
+	json_get_var language language
+	json_get_var url url
+	json_get_var deploy_repo deploy_repo
+	json_get_var deploy_branch deploy_branch
+
+	json_init
+
+	local active_site=$(uci_get main.active_site) || active_site="default"
+
+	[ -n "$enabled" ] && uci_set main.enabled "$enabled"
+	[ -n "$http_port" ] && uci_set main.http_port "$http_port"
+	[ -n "$title" ] && uci_set ${active_site}.title "$title"
+	[ -n "$subtitle" ] && uci_set ${active_site}.subtitle "$subtitle"
+	[ -n "$author" ] && uci_set ${active_site}.author "$author"
+	[ -n "$language" ] && uci_set ${active_site}.language "$language"
+	[ -n "$url" ] && uci_set ${active_site}.url "$url"
+	[ -n "$deploy_repo" ] && uci_set deploy.repo "$deploy_repo"
+	[ -n "$deploy_branch" ] && uci_set deploy.branch "$deploy_branch"
+
+	# Update site _config.yml
+	"$HEXOCTL" exec sh -c "cd /opt/hexojs && hexoctl update_site_config" 2>/dev/null || true
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Configuration saved"
+
+	json_dump
+}
+
+get_theme_config() {
+	json_init
+
+	json_add_string "default_mode" "$(uci_get theme_config.default_mode)"
+	json_add_boolean "allow_toggle" "$(uci_get theme_config.allow_toggle)"
+	json_add_string "accent_color" "$(uci_get theme_config.accent_color)"
+	json_add_string "logo_symbol" "$(uci_get theme_config.logo_symbol)"
+	json_add_string "logo_text" "$(uci_get theme_config.logo_text)"
+
+	json_dump
+}
+
+save_theme_config() {
+	read input
+	json_load "$input"
+
+	json_get_var default_mode default_mode
+	json_get_var allow_toggle allow_toggle
+	json_get_var accent_color accent_color
+	json_get_var logo_symbol logo_symbol
+	json_get_var logo_text logo_text
+
+	json_init
+
+	[ -n "$default_mode" ] && uci_set theme_config.default_mode "$default_mode"
+	[ -n "$allow_toggle" ] && uci_set theme_config.allow_toggle "$allow_toggle"
+	[ -n "$accent_color" ] && uci_set theme_config.accent_color "$accent_color"
+	[ -n "$logo_symbol" ] && uci_set theme_config.logo_symbol "$logo_symbol"
+	[ -n "$logo_text" ] && uci_set theme_config.logo_text "$logo_text"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Theme configuration saved"
+
+	json_dump
+}
+
+list_presets() {
+	json_init
+	json_add_array "presets"
+
+	local presets_dir="/usr/share/hexojs/presets"
+	if [ -d "$presets_dir" ]; then
+		for f in "$presets_dir"/*.yml; do
+			[ -f "$f" ] || continue
+
+			local filename=$(basename "$f")
+			local id="${filename%.yml}"
+			local name=$(grep -m1 "^name:" "$f" | sed 's/^name:[[:space:]]*//')
+			local description=$(grep -m1 "^description:" "$f" | sed 's/^description:[[:space:]]*//')
+			local icon=$(grep -m1 "^icon:" "$f" | sed 's/^icon:[[:space:]]*//')
+
+			json_add_object
+			json_add_string "id" "$id"
+			json_add_string "name" "$name"
+			json_add_string "description" "$description"
+			json_add_string "icon" "$icon"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+apply_preset() {
+	read input
+	json_load "$input"
+	json_get_var preset_id preset_id
+
+	json_init
+
+	if [ -z "$preset_id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Preset ID required"
+		json_dump
+		return
+	fi
+
+	local preset_file="/usr/share/hexojs/presets/${preset_id}.yml"
+	if [ ! -f "$preset_file" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Preset not found"
+		json_dump
+		return
+	fi
+
+	local site_path=$(get_site_path)
+	local theme_config="$site_path/themes/cybermind/_config.yml"
+
+	if [ -f "$theme_config" ]; then
+		cp "$preset_file" "$theme_config"
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Preset applied"
+
+	json_dump
+}
+
+# ============================================
+# GitHub Sync Methods
+# ============================================
+
+git_status() {
+	local site_path=$(get_site_path)
+
+	json_init
+
+	if [ ! -d "$site_path" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	cd "$site_path" 2>/dev/null || {
+		json_add_boolean "success" 0
+		json_add_string "error" "Cannot access site directory"
+		json_dump
+		return
+	}
+
+	# Check if it's a git repo
+	if [ ! -d "$site_path/.git" ]; then
+		json_add_boolean "success" 1
+		json_add_boolean "is_repo" 0
+		json_add_string "message" "Not a git repository"
+		json_dump
+		return
+	fi
+
+	json_add_boolean "success" 1
+	json_add_boolean "is_repo" 1
+
+	# Get remote URL
+	local remote=$(git remote get-url origin 2>/dev/null || echo "")
+	json_add_string "remote" "$remote"
+
+	# Get current branch
+	local branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+	json_add_string "branch" "$branch"
+
+	# Get status summary
+	local modified=$(git status --porcelain 2>/dev/null | grep -c '^.M' || echo 0)
+	local untracked=$(git status --porcelain 2>/dev/null | grep -c '^??' || echo 0)
+	local staged=$(git status --porcelain 2>/dev/null | grep -c '^M' || echo 0)
+
+	json_add_int "modified" "$modified"
+	json_add_int "untracked" "$untracked"
+	json_add_int "staged" "$staged"
+
+	# Check for unpushed commits
+	local ahead=$(git rev-list --count @{u}..HEAD 2>/dev/null || echo 0)
+	local behind=$(git rev-list --count HEAD..@{u} 2>/dev/null || echo 0)
+
+	json_add_int "ahead" "$ahead"
+	json_add_int "behind" "$behind"
+
+	# Last commit info
+	local last_commit=$(git log -1 --format="%h - %s (%cr)" 2>/dev/null || echo "No commits")
+	json_add_string "last_commit" "$last_commit"
+
+	# Full status output
+	local status_output=$(git status --short 2>/dev/null | head -20)
+	json_add_string "status_output" "$status_output"
+
+	json_dump
+}
+
+git_init() {
+	read input
+	json_load "$input"
+	json_get_var repo repo
+	json_get_var branch branch
+
+	json_init
+
+	local site_path=$(get_site_path)
+
+	if [ -z "$repo" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Repository URL required"
+		json_dump
+		return
+	fi
+
+	[ -z "$branch" ] && branch="main"
+
+	# Initialize git if not already a repo
+	if [ ! -d "$site_path/.git" ]; then
+		cd "$site_path" && git init >/dev/null 2>&1
+	fi
+
+	cd "$site_path"
+
+	# Remove existing origin if present
+	git remote remove origin 2>/dev/null || true
+
+	# Add remote
+	git remote add origin "$repo"
+
+	# Set default branch
+	git branch -M "$branch" 2>/dev/null || true
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Repository initialized with remote: $repo"
+
+	json_dump
+}
+
+git_clone() {
+	read input
+	json_load "$input"
+	json_get_var repo repo
+	json_get_var branch branch
+
+	json_init
+
+	if [ -z "$repo" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Repository URL required"
+		json_dump
+		return
+	fi
+
+	[ -z "$branch" ] && branch="main"
+
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+	local site_path="$data_path/site"
+
+	# Backup existing site if present
+	if [ -d "$site_path" ]; then
+		local backup="$data_path/site.backup.$(date +%Y%m%d%H%M%S)"
+		mv "$site_path" "$backup"
+	fi
+
+	# Clone repository
+	local output=$(git clone --branch "$branch" --single-branch "$repo" "$site_path" 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Repository cloned successfully"
+		json_add_string "branch" "$branch"
+	else
+		# Restore backup on failure
+		[ -d "$backup" ] && mv "$backup" "$site_path"
+		json_add_boolean "success" 0
+		json_add_string "error" "Clone failed: $output"
+	fi
+
+	json_dump
+}
+
+git_pull() {
+	json_init
+
+	local site_path=$(get_site_path)
+
+	if [ ! -d "$site_path/.git" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Not a git repository"
+		json_dump
+		return
+	fi
+
+	cd "$site_path"
+
+	# Stash local changes first
+	git stash push -m "auto-stash-$(date +%Y%m%d%H%M%S)" 2>/dev/null
+
+	# Pull changes
+	local output=$(git pull --rebase 2>&1)
+	local result=$?
+
+	# Pop stash if it was created
+	git stash pop 2>/dev/null || true
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Pull successful"
+		json_add_string "output" "$output"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Pull failed: $output"
+	fi
+
+	json_dump
+}
+
+git_push() {
+	read input
+	json_load "$input"
+	json_get_var message message
+	json_get_var force force
+
+	json_init
+
+	local site_path=$(get_site_path)
+
+	if [ ! -d "$site_path/.git" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Not a git repository"
+		json_dump
+		return
+	fi
+
+	cd "$site_path"
+
+	# Check if there's a remote
+	local remote=$(git remote get-url origin 2>/dev/null || echo "")
+	if [ -z "$remote" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "No remote repository configured"
+		json_dump
+		return
+	fi
+
+	# Stage all changes
+	git add -A
+
+	# Commit if there are staged changes
+	local staged=$(git diff --cached --quiet; echo $?)
+	if [ "$staged" = "1" ]; then
+		local commit_msg="${message:-Auto-commit from SecuBox CMS $(date +%Y-%m-%d\ %H:%M:%S)}"
+		git commit -m "$commit_msg" 2>/dev/null
+	fi
+
+	# Push changes
+	local push_args=""
+	[ "$force" = "1" ] && push_args="--force"
+
+	local output=$(git push $push_args origin HEAD 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Push successful"
+		json_add_string "output" "$output"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Push failed: $output"
+	fi
+
+	json_dump
+}
+
+git_fetch() {
+	json_init
+
+	local site_path=$(get_site_path)
+
+	if [ ! -d "$site_path/.git" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Not a git repository"
+		json_dump
+		return
+	fi
+
+	cd "$site_path"
+
+	local output=$(git fetch --all 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Fetch successful"
+		json_add_string "output" "$output"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Fetch failed: $output"
+	fi
+
+	json_dump
+}
+
+git_log() {
+	json_init
+
+	local site_path=$(get_site_path)
+
+	if [ ! -d "$site_path/.git" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Not a git repository"
+		json_dump
+		return
+	fi
+
+	cd "$site_path"
+
+	json_add_boolean "success" 1
+	json_add_array "commits"
+
+	git log --oneline -20 2>/dev/null | while read line; do
+		local hash=$(echo "$line" | cut -d' ' -f1)
+		local msg=$(echo "$line" | cut -d' ' -f2-)
+
+		json_add_object
+		json_add_string "hash" "$hash"
+		json_add_string "message" "$msg"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+git_reset() {
+	read input
+	json_load "$input"
+	json_get_var hard hard
+
+	json_init
+
+	local site_path=$(get_site_path)
+
+	if [ ! -d "$site_path/.git" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Not a git repository"
+		json_dump
+		return
+	fi
+
+	cd "$site_path"
+
+	if [ "$hard" = "1" ]; then
+		local output=$(git reset --hard HEAD 2>&1)
+		local result=$?
+
+		if [ "$result" -eq 0 ]; then
+			git clean -fd 2>/dev/null
+			json_add_boolean "success" 1
+			json_add_string "message" "Hard reset complete. All local changes discarded."
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "Reset failed: $output"
+		fi
+	else
+		git reset HEAD 2>/dev/null
+		json_add_boolean "success" 1
+		json_add_string "message" "Unstaged all changes"
+	fi
+
+	json_dump
+}
+
+git_set_credentials() {
+	read input
+	json_load "$input"
+	json_get_var name name
+	json_get_var email email
+
+	json_init
+
+	local site_path=$(get_site_path)
+
+	if [ ! -d "$site_path/.git" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Not a git repository"
+		json_dump
+		return
+	fi
+
+	cd "$site_path"
+
+	[ -n "$name" ] && git config user.name "$name"
+	[ -n "$email" ] && git config user.email "$email"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Git credentials configured"
+
+	json_dump
+}
+
+git_get_credentials() {
+	json_init
+
+	local site_path=$(get_site_path)
+
+	if [ ! -d "$site_path/.git" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Not a git repository"
+		json_dump
+		return
+	fi
+
+	cd "$site_path"
+
+	local name=$(git config user.name 2>/dev/null || echo "")
+	local email=$(git config user.email 2>/dev/null || echo "")
+
+	json_add_boolean "success" 1
+	json_add_string "name" "$name"
+	json_add_string "email" "$email"
+
+	json_dump
+}
+
+# ============================================
+# Service Control
+# ============================================
+
+service_start() {
+	json_init
+
+	/etc/init.d/hexojs start >/dev/null 2>&1 &
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Service starting"
+
+	json_dump
+}
+
+service_stop() {
+	json_init
+
+	/etc/init.d/hexojs stop >/dev/null 2>&1
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Service stopped"
+
+	json_dump
+}
+
+service_restart() {
+	json_init
+
+	/etc/init.d/hexojs restart >/dev/null 2>&1 &
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Service restarting"
+
+	json_dump
+}
+
+# ============================================
+# Main dispatcher
+# ============================================
+
+case "$1" in
+	list)
+		cat << 'EOF'
+{
+  "status": {},
+  "site_stats": {},
+  "list_posts": {},
+  "get_post": {"slug": "str"},
+  "create_post": {"title": "str", "content": "str", "categories": "str", "tags": "str", "excerpt": "str"},
+  "update_post": {"slug": "str", "title": "str", "content": "str", "categories": "str", "tags": "str", "excerpt": "str", "cover": "str"},
+  "delete_post": {"slug": "str"},
+  "publish_post": {"slug": "str"},
+  "list_drafts": {},
+  "search_posts": {"query": "str", "category": "str", "tag": "str"},
+  "list_categories": {},
+  "list_tags": {},
+  "list_media": {},
+  "delete_media": {"path": "str"},
+  "list_apps": {},
+  "create_app": {"title": "str", "icon": "str", "description": "str", "url": "str", "category": "str", "content": "str"},
+  "generate": {},
+  "clean": {},
+  "deploy": {},
+  "deploy_status": {},
+  "preview_start": {},
+  "preview_status": {},
+  "get_config": {},
+  "save_config": {"enabled": "bool", "http_port": "int", "title": "str", "subtitle": "str", "author": "str", "language": "str", "url": "str", "deploy_repo": "str", "deploy_branch": "str"},
+  "get_theme_config": {},
+  "save_theme_config": {"default_mode": "str", "allow_toggle": "bool", "accent_color": "str", "logo_symbol": "str", "logo_text": "str"},
+  "list_presets": {},
+  "apply_preset": {"preset_id": "str"},
+  "service_start": {},
+  "service_stop": {},
+  "service_restart": {},
+  "git_status": {},
+  "git_init": {"repo": "str", "branch": "str"},
+  "git_clone": {"repo": "str", "branch": "str"},
+  "git_pull": {},
+  "git_push": {"message": "str", "force": "bool"},
+  "git_fetch": {},
+  "git_log": {},
+  "git_reset": {"hard": "bool"},
+  "git_set_credentials": {"name": "str", "email": "str"},
+  "git_get_credentials": {}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status) get_status ;;
+			site_stats) get_site_stats ;;
+			list_posts) list_posts ;;
+			get_post) get_post ;;
+			create_post) create_post ;;
+			update_post) update_post ;;
+			delete_post) delete_post ;;
+			publish_post) publish_post ;;
+			list_drafts) list_drafts ;;
+			search_posts) search_posts ;;
+			list_categories) list_categories ;;
+			list_tags) list_tags ;;
+			list_media) list_media ;;
+			delete_media) delete_media ;;
+			list_apps) list_apps ;;
+			create_app) create_app ;;
+			generate) do_generate ;;
+			clean) do_clean ;;
+			deploy) do_deploy ;;
+			deploy_status) get_deploy_status ;;
+			preview_start) preview_start ;;
+			preview_status) preview_status ;;
+			get_config) get_config ;;
+			save_config) save_config ;;
+			get_theme_config) get_theme_config ;;
+			save_theme_config) save_theme_config ;;
+			list_presets) list_presets ;;
+			apply_preset) apply_preset ;;
+			service_start) service_start ;;
+			service_stop) service_stop ;;
+			service_restart) service_restart ;;
+			git_status) git_status ;;
+			git_init) git_init ;;
+			git_clone) git_clone ;;
+			git_pull) git_pull ;;
+			git_push) git_push ;;
+			git_fetch) git_fetch ;;
+			git_log) git_log ;;
+			git_reset) git_reset ;;
+			git_set_credentials) git_set_credentials ;;
+			git_get_credentials) git_get_credentials ;;
+			*) echo '{"error": "Unknown method"}' ;;
+		esac
+		;;
+esac

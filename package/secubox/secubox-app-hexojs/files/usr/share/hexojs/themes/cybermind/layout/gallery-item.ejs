@@ -1,0 +1,447 @@
+<%
+// Métadonnées de l'élément galerie
+var itemIcon = page.icon || '🎨';
+var itemType = page.type || 'art';
+
+// Couleurs selon type
+var typeColors = {
+    'art-ia': '#9945ff',
+    'art': '#9945ff',
+    'photo': '#3b82f6',
+    'music': '#ec4899',
+    'video': '#ef4444',
+    'design': '#10b981'
+};
+var typeColor = typeColors[itemType] || '#f97316';
+
+// Labels
+var typeLabels = {
+    'art-ia': { icon: '🤖', name: 'Art IA' },
+    'art': { icon: '🎨', name: 'Art' },
+    'photo': { icon: '📸', name: 'Photo' },
+    'music': { icon: '🎵', name: 'Musique' },
+    'video': { icon: '🎬', name: 'Vidéo' },
+    'design': { icon: '✨', name: 'Design' }
+};
+var typeLabel = typeLabels[itemType] || { icon: '🎨', name: 'Création' };
+
+// Images
+var images = page.images || [];
+var artwork = page.artwork || {};
+%>
+
+<article class="gallery-item-single" style="--item-color: <%= typeColor %>;">
+    
+    <!-- Header -->
+    <header class="gallery-header">
+        <div class="type-badge"><%= typeLabel.icon %> <%= typeLabel.name %></div>
+        <h1><%= itemIcon %> <%= page.title %></h1>
+        <p class="description"><%= page.description || '' %></p>
+        
+        <% if (artwork.medium || artwork.style) { %>
+        <div class="artwork-meta">
+            <% if (artwork.medium) { %><span>🖌️ <%= artwork.medium %></span><% } %>
+            <% if (artwork.style) { %><span>🎭 <%= artwork.style %></span><% } %>
+            <% if (artwork.dimensions) { %><span>📐 <%= artwork.dimensions %></span><% } %>
+            <% if (artwork.license) { %><span>📜 <%= artwork.license %></span><% } %>
+        </div>
+        <% } %>
+    </header>
+    
+    <!-- Galerie d'images -->
+    <% if (images.length > 0) { %>
+    <section class="gallery-grid">
+        <% images.forEach(function(img, idx) { %>
+        <div class="gallery-image" onclick="openLightbox(<%= idx %>)">
+            <img src="<%= img.url %>" alt="<%= img.title || page.title %>" loading="lazy">
+            <div class="image-overlay">
+                <% if (img.title) { %><span class="image-title"><%= img.title %></span><% } %>
+                <span class="zoom-icon">🔍</span>
+            </div>
+        </div>
+        <% }); %>
+    </section>
+    <% } %>
+    
+    <!-- Audio player -->
+    <% if (page.audio_url) { %>
+    <section class="audio-section">
+        <h2>🎵 Écouter</h2>
+        <audio controls src="<%= page.audio_url %>">
+            Votre navigateur ne supporte pas l'élément audio.
+        </audio>
+    </section>
+    <% } %>
+    
+    <!-- YouTube/Spotify embed -->
+    <% if (page.youtube_url) { %>
+    <section class="video-section">
+        <h2>🎬 Voir</h2>
+        <div class="video-embed">
+            <iframe src="<%= page.youtube_url.replace('watch?v=', 'embed/') %>" frameborder="0" allowfullscreen></iframe>
+        </div>
+    </section>
+    <% } %>
+    
+    <!-- Contenu -->
+    <section class="gallery-content">
+        <%- page.content %>
+    </section>
+    
+    <!-- Actions -->
+    <section class="gallery-actions">
+        <% if (page.shop_url) { %>
+        <a href="<%= page.shop_url %>" target="_blank" class="btn btn-primary">🛒 Acheter</a>
+        <% } %>
+        <% if (page.download_url) { %>
+        <a href="<%= page.download_url %>" class="btn btn-secondary">⬇️ Télécharger</a>
+        <% } %>
+        <% if (page.related_article) { %>
+        <a href="<%= page.related_article %>" class="btn btn-secondary">📖 Article associé</a>
+        <% } %>
+    </section>
+    
+    <!-- Tags -->
+    <% if (page.tags && page.tags.length) { %>
+    <section class="gallery-tags">
+        <% page.tags.forEach(function(tag) { %>
+        <a href="<%= url_for(tag.path) %>" class="tag">#<%= tag.name %></a>
+        <% }); %>
+    </section>
+    <% } %>
+    
+    <!-- Navigation -->
+    <nav class="gallery-nav">
+        <a href="/gallery/" class="btn btn-secondary">← Retour à la galerie</a>
+        <a href="/" class="btn btn-secondary">🏠 Accueil</a>
+    </nav>
+</article>
+
+<!-- Lightbox -->
+<% if (images.length > 0) { %>
+<div id="lightbox" class="lightbox">
+    <button class="lb-close" onclick="closeLightbox()">✕</button>
+    <button class="lb-prev" onclick="prevImage()">❮</button>
+    <div class="lb-content">
+        <img id="lb-img" src="" alt="">
+        <div id="lb-caption"></div>
+    </div>
+    <button class="lb-next" onclick="nextImage()">❯</button>
+    <div class="lb-counter"><span id="lb-current">1</span> / <%= images.length %></div>
+</div>
+
+<script>
+var images = <%- JSON.stringify(images) %>;
+var currentIdx = 0;
+
+function openLightbox(idx) {
+    currentIdx = idx;
+    updateLightbox();
+    document.getElementById('lightbox').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+function updateLightbox() {
+    var img = images[currentIdx];
+    document.getElementById('lb-img').src = img.url;
+    document.getElementById('lb-caption').textContent = img.title || '';
+    document.getElementById('lb-current').textContent = currentIdx + 1;
+}
+
+function nextImage() {
+    currentIdx = (currentIdx + 1) % images.length;
+    updateLightbox();
+}
+
+function prevImage() {
+    currentIdx = (currentIdx - 1 + images.length) % images.length;
+    updateLightbox();
+}
+
+document.addEventListener('keydown', function(e) {
+    var lb = document.getElementById('lightbox');
+    if (!lb.classList.contains('active')) return;
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowRight') nextImage();
+    if (e.key === 'ArrowLeft') prevImage();
+});
+
+document.getElementById('lightbox').addEventListener('click', function(e) {
+    if (e.target === this) closeLightbox();
+});
+</script>
+<% } %>
+
+<style>
+.gallery-item-single {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 4rem 2rem;
+}
+
+/* Header */
+.gallery-header {
+    text-align: center;
+    margin-bottom: 3rem;
+}
+
+.type-badge {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: var(--item-color)20;
+    color: var(--item-color);
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.gallery-header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.description {
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.artwork-meta {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+/* Gallery Grid */
+.gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-bottom: 3rem;
+}
+
+.gallery-image {
+    position: relative;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    cursor: pointer;
+    aspect-ratio: 1;
+}
+
+.gallery-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--transition-slow);
+}
+
+.gallery-image:hover img {
+    transform: scale(1.05);
+}
+
+.image-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(transparent 50%, rgba(0,0,0,0.8));
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 1rem;
+    opacity: 0;
+    transition: opacity var(--transition-normal);
+}
+
+.gallery-image:hover .image-overlay {
+    opacity: 1;
+}
+
+.image-title {
+    color: #fff;
+    font-weight: 600;
+}
+
+.zoom-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 2rem;
+    opacity: 0;
+    transition: opacity var(--transition-normal);
+}
+
+.gallery-image:hover .zoom-icon {
+    opacity: 1;
+}
+
+/* Audio */
+.audio-section {
+    margin-bottom: 3rem;
+    text-align: center;
+}
+
+.audio-section audio {
+    width: 100%;
+    max-width: 500px;
+    margin-top: 1rem;
+}
+
+/* Video */
+.video-section {
+    margin-bottom: 3rem;
+}
+
+.video-embed {
+    position: relative;
+    padding-bottom: 56.25%;
+    height: 0;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.video-embed iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Content */
+.gallery-content {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-xl);
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+/* Actions */
+.gallery-actions {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+/* Tags */
+.gallery-tags {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+}
+
+.gallery-tags .tag {
+    padding: 0.3rem 0.75rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.gallery-tags .tag:hover {
+    border-color: var(--item-color);
+    color: var(--item-color);
+}
+
+/* Nav */
+.gallery-nav {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+/* Lightbox */
+.lightbox {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.95);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--transition-normal);
+}
+
+.lightbox.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.lb-content {
+    max-width: 90vw;
+    max-height: 80vh;
+    text-align: center;
+}
+
+.lb-content img {
+    max-width: 100%;
+    max-height: 75vh;
+    border-radius: var(--radius-lg);
+}
+
+#lb-caption {
+    color: #fff;
+    margin-top: 1rem;
+    font-size: 1.1rem;
+}
+
+.lb-close,
+.lb-prev,
+.lb-next {
+    position: absolute;
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: #fff;
+    font-size: 1.5rem;
+    padding: 1rem;
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    transition: background var(--transition-fast);
+}
+
+.lb-close:hover,
+.lb-prev:hover,
+.lb-next:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.lb-close { top: 20px; right: 20px; }
+.lb-prev { left: 20px; top: 50%; transform: translateY(-50%); }
+.lb-next { right: 20px; top: 50%; transform: translateY(-50%); }
+
+.lb-counter {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.7);
+    font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+    .gallery-header h1 {
+        font-size: 1.75rem;
+    }
+    
+    .gallery-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+}
+</style>

@@ -1,10 +1,10 @@
 'use strict';
 'require view';
 'require poll';
-'require secubox-admin.api as api';
-'require secubox-admin.state-utils as stateUtils';
-'require secubox-admin.components.StateIndicator as StateIndicator';
-'require secubox-admin.components.StateTimeline as StateTimeline';
+'require secubox-admin/api as api';
+'require secubox-admin/state-utils as stateUtils';
+'require secubox-admin/components.StateIndicator as StateIndicator';
+'require secubox-admin/components.StateTimeline as StateTimeline';
 
 /**
  * Admin Control Center - Main Dashboard

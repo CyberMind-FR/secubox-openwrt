@@ -1,0 +1,412 @@
+#!/bin/sh
+# SecuBox Glances manager - LXC container support
+# Copyright (C) 2025-2026 CyberMind.fr
+
+CONFIG="glances"
+LXC_NAME="glances"
+OPKG_UPDATED=0
+
+# Paths
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+
+usage() {
+	cat <<'EOF'
+Usage: glancesctl <command>
+
+Commands:
+  install         Install prerequisites and create LXC container
+  check           Run prerequisite checks
+  update          Update Glances in container
+  status          Show container status
+  logs            Show Glances logs (use -f to follow)
+  shell           Open shell in container
+  service-run     Internal: run container under procd
+  service-stop    Stop container
+
+Web Interface: http://<router-ip>:61208
+API Endpoint:  http://<router-ip>:61209
+EOF
+}
+
+require_root() { [ "$(id -u)" -eq 0 ] || { echo "Root required" >&2; exit 1; }; }
+
+log_info() { echo "[INFO] $*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Load configuration with defaults
+load_config() {
+	web_port="$(uci_get main.web_port || echo 61208)"
+	api_port="$(uci_get main.api_port || echo 61209)"
+	web_host="$(uci_get main.web_host || echo 0.0.0.0)"
+	refresh_rate="$(uci_get main.refresh_rate || echo 3)"
+	memory_limit="$(uci_get main.memory_limit || echo 128M)"
+
+	# Monitoring options
+	monitor_docker="$(uci_get monitoring.monitor_docker || echo 1)"
+	monitor_network="$(uci_get monitoring.monitor_network || echo 1)"
+	monitor_diskio="$(uci_get monitoring.monitor_diskio || echo 1)"
+	monitor_sensors="$(uci_get monitoring.monitor_sensors || echo 1)"
+
+	# Alert thresholds
+	cpu_warning="$(uci_get alerts.cpu_warning || echo 70)"
+	cpu_critical="$(uci_get alerts.cpu_critical || echo 90)"
+	mem_warning="$(uci_get alerts.mem_warning || echo 70)"
+	mem_critical="$(uci_get alerts.mem_critical || echo 90)"
+}
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+has_lxc() {
+	command -v lxc-start >/dev/null 2>&1 && \
+	command -v lxc-stop >/dev/null 2>&1
+}
+
+# Ensure required packages are installed
+ensure_packages() {
+	require_root
+	for pkg in "$@"; do
+		if ! opkg list-installed | grep -q "^$pkg "; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+# =============================================================================
+# LXC CONTAINER FUNCTIONS
+# =============================================================================
+
+lxc_check_prereqs() {
+	log_info "Checking LXC prerequisites..."
+	ensure_packages lxc lxc-common lxc-attach lxc-start lxc-stop lxc-destroy || return 1
+
+	if [ ! -d /sys/fs/cgroup ]; then
+		log_error "cgroups not mounted at /sys/fs/cgroup"
+		return 1
+	fi
+
+	log_info "LXC ready"
+}
+
+lxc_create_rootfs() {
+	load_config
+
+	if [ -d "$LXC_ROOTFS" ] && [ -x "$LXC_ROOTFS/usr/local/bin/glances" ]; then
+		log_info "LXC rootfs already exists with Glances"
+		return 0
+	fi
+
+	log_info "Creating LXC rootfs for Glances..."
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+
+	lxc_create_docker_rootfs || return 1
+	lxc_create_config || return 1
+
+	log_info "LXC rootfs created successfully"
+}
+
+lxc_create_docker_rootfs() {
+	local rootfs="$LXC_ROOTFS"
+	local image="nicolargo/glances"
+	local tag="latest-full"
+	local registry="registry-1.docker.io"
+	local arch
+
+	# Detect architecture for Docker manifest
+	case "$(uname -m)" in
+		x86_64) arch="amd64" ;;
+		aarch64) arch="arm64" ;;
+		armv7l) arch="arm" ;;
+		*) arch="amd64" ;;
+	esac
+
+	log_info "Extracting Glances Docker image ($arch)..."
+	ensure_dir "$rootfs"
+
+	# Get Docker Hub token
+	local token=$(wget -q -O - "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$image:pull" | jsonfilter -e '@.token')
+	[ -z "$token" ] && { log_error "Failed to get Docker Hub token"; return 1; }
+
+	# Get manifest list
+	local manifest=$(wget -q -O - --header="Authorization: Bearer $token" \
+		--header="Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+		"https://$registry/v2/$image/manifests/$tag")
+
+	# Find digest for our architecture
+	local digest=$(echo "$manifest" | jsonfilter -e "@.manifests[@.platform.architecture='$arch'].digest")
+	[ -z "$digest" ] && { log_error "No manifest found for $arch"; return 1; }
+
+	# Get image manifest
+	local img_manifest=$(wget -q -O - --header="Authorization: Bearer $token" \
+		--header="Accept: application/vnd.docker.distribution.manifest.v2+json" \
+		"https://$registry/v2/$image/manifests/$digest")
+
+	# Extract layers and download them
+	log_info "Downloading and extracting layers..."
+	local layers=$(echo "$img_manifest" | jsonfilter -e '@.layers[*].digest')
+
+	for layer_digest in $layers; do
+		log_info "  Layer: ${layer_digest:7:12}..."
+		wget -q -O - --header="Authorization: Bearer $token" \
+			"https://$registry/v2/$image/blobs/$layer_digest" | \
+			tar xzf - -C "$rootfs" 2>&1 | grep -v "Cannot change ownership" || true
+	done
+
+	# Configure container
+	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
+	mkdir -p "$rootfs/var/log/glances" "$rootfs/etc/glances" "$rootfs/tmp"
+
+	# Ensure /bin/sh exists
+	if [ ! -x "$rootfs/bin/sh" ]; then
+		if [ -x "$rootfs/bin/dash" ]; then
+			ln -sf dash "$rootfs/bin/sh"
+		elif [ -x "$rootfs/bin/bash" ]; then
+			ln -sf bash "$rootfs/bin/sh"
+		elif [ -x "$rootfs/usr/bin/dash" ]; then
+			mkdir -p "$rootfs/bin"
+			ln -sf /usr/bin/dash "$rootfs/bin/sh"
+		fi
+	fi
+
+	# Create startup script
+	cat > "$rootfs/opt/start-glances.sh" << 'START'
+#!/bin/sh
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+export PYTHONPATH="/app:$PYTHONPATH"
+cd /
+
+# Setup hostname resolution (required for socket.gethostbyname to work)
+REAL_HOSTNAME=$(hostname 2>/dev/null || echo glances)
+cat > /etc/hosts << EOF
+127.0.0.1       localhost $REAL_HOSTNAME glances
+::1             localhost ip6-localhost ip6-loopback
+EOF
+
+# Read environment variables
+WEB_PORT="${GLANCES_WEB_PORT:-61208}"
+WEB_HOST="${GLANCES_WEB_HOST:-0.0.0.0}"
+REFRESH="${GLANCES_REFRESH:-3}"
+
+# Build args for web server mode
+# Use -B for bind address and -p for port separately
+# Disable autodiscover and check-update to avoid DNS resolution issues
+ARGS="-w -B $WEB_HOST -p $WEB_PORT -t $REFRESH --disable-autodiscover --disable-check-update"
+
+# Disable plugins if configured
+[ "$GLANCES_NO_DOCKER" = "1" ] && ARGS="$ARGS --disable-plugin docker"
+[ "$GLANCES_NO_SENSORS" = "1" ] && ARGS="$ARGS --disable-plugin sensors"
+
+echo "Starting Glances web server on $WEB_HOST:$WEB_PORT..."
+exec /venv/bin/python -m glances $ARGS
+START
+	chmod +x "$rootfs/opt/start-glances.sh"
+
+	log_info "Glances Docker image extracted successfully"
+}
+
+lxc_create_config() {
+	load_config
+
+	cat > "$LXC_CONFIG" << EOF
+# Glances LXC Configuration
+lxc.uts.name = $LXC_NAME
+
+# Root filesystem
+lxc.rootfs.path = dir:$LXC_ROOTFS
+
+# Network - use host network for full system visibility
+lxc.net.0.type = none
+
+# Mounts - give access to host system info via proc:mixed
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+
+# Environment variables
+lxc.environment = GLANCES_WEB_PORT=$web_port
+lxc.environment = GLANCES_WEB_HOST=$web_host
+lxc.environment = GLANCES_REFRESH=$refresh_rate
+lxc.environment = GLANCES_NO_DOCKER=$([ "$monitor_docker" = "0" ] && echo 1 || echo 0)
+lxc.environment = GLANCES_NO_SENSORS=$([ "$monitor_sensors" = "0" ] && echo 1 || echo 0)
+
+# Capabilities - minimal for monitoring
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_rawio
+
+# cgroups limits
+lxc.cgroup.memory.limit_in_bytes = $memory_limit
+
+# Init
+lxc.init.cmd = /opt/start-glances.sh
+
+# Console
+lxc.console.size = 1024
+lxc.pty.max = 1024
+EOF
+
+	log_info "LXC config created at $LXC_CONFIG"
+}
+
+lxc_stop() {
+	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
+		lxc-stop -n "$LXC_NAME" -k >/dev/null 2>&1 || true
+	fi
+}
+
+lxc_run() {
+	load_config
+	lxc_stop
+
+	if [ ! -f "$LXC_CONFIG" ]; then
+		log_error "LXC not configured. Run 'glancesctl install' first."
+		return 1
+	fi
+
+	# Regenerate config to pick up any UCI changes
+	lxc_create_config
+
+	log_info "Starting Glances LXC container..."
+	log_info "Web interface: http://0.0.0.0:$web_port"
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
+}
+
+lxc_status() {
+	load_config
+	echo "=== Glances Status ==="
+	echo ""
+
+	if lxc-info -n "$LXC_NAME" >/dev/null 2>&1; then
+		lxc-info -n "$LXC_NAME"
+	else
+		echo "LXC container '$LXC_NAME' not found or not configured"
+	fi
+
+	echo ""
+	echo "=== Configuration ==="
+	echo "Web port: $web_port"
+	echo "Refresh rate: ${refresh_rate}s"
+	echo "Memory limit: $memory_limit"
+}
+
+lxc_logs() {
+	if [ "$1" = "-f" ]; then
+		logread -f -e glances
+	else
+		logread -e glances | tail -100
+	fi
+}
+
+lxc_shell() {
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+lxc_destroy() {
+	lxc_stop
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		rm -rf "$LXC_PATH/$LXC_NAME"
+		log_info "LXC container destroyed"
+	fi
+}
+
+# =============================================================================
+# COMMANDS
+# =============================================================================
+
+cmd_install() {
+	require_root
+	load_config
+
+	if ! has_lxc; then
+		log_error "LXC not available. Install lxc packages first."
+		exit 1
+	fi
+
+	log_info "Installing Glances..."
+
+	lxc_check_prereqs || exit 1
+	lxc_create_rootfs || exit 1
+
+	uci_set main.enabled '1'
+	/etc/init.d/glances enable
+
+	log_info "Glances installed."
+	log_info "Start with: /etc/init.d/glances start"
+	log_info "Web interface: http://<router-ip>:$web_port"
+}
+
+cmd_check() {
+	load_config
+
+	log_info "Checking prerequisites..."
+	if has_lxc; then
+		log_info "LXC: available"
+		lxc_check_prereqs
+	else
+		log_warn "LXC: not available"
+	fi
+}
+
+cmd_update() {
+	require_root
+	load_config
+
+	log_info "Updating Glances..."
+	lxc_destroy
+	lxc_create_rootfs || exit 1
+
+	if /etc/init.d/glances enabled >/dev/null 2>&1; then
+		/etc/init.d/glances restart
+	else
+		log_info "Update complete. Restart manually to apply."
+	fi
+}
+
+cmd_status() {
+	lxc_status
+}
+
+cmd_logs() {
+	lxc_logs "$@"
+}
+
+cmd_shell() {
+	lxc_shell
+}
+
+cmd_service_run() {
+	require_root
+	load_config
+
+	if ! has_lxc; then
+		log_error "LXC not available"
+		exit 1
+	fi
+
+	lxc_check_prereqs || exit 1
+	lxc_run
+}
+
+cmd_service_stop() {
+	require_root
+	lxc_stop
+}
+
+# Main Entry Point
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	check) shift; cmd_check "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	shell) shift; cmd_shell "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac

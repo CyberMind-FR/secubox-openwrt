@@ -1,0 +1,228 @@
+<%#
+  Layout: category.ejs
+  Page de catégorie
+  
+  Utilise get_category_info() et get_posts_by_category() 
+  avec les catégories découvertes dynamiquement depuis source/blog/
+%>
+
+<%
+// Détecter la catégorie de cette page
+var categorySlug = '';
+
+// 1. Depuis le front matter
+if (page.category) {
+  categorySlug = String(page.category).toLowerCase();
+}
+
+// 2. Depuis le chemin du fichier
+if (!categorySlug && page.source) {
+  var match = page.source.match(/blog\/([^\/]+)\//);
+  if (match) categorySlug = match[1].toLowerCase();
+}
+
+// 3. Depuis le path URL
+if (!categorySlug && page.path) {
+  var pathMatch = page.path.match(/blog\/([^\/]+)/);
+  if (pathMatch) categorySlug = pathMatch[1].toLowerCase();
+}
+
+// Obtenir les infos de la catégorie dynamiquement
+var catInfo = { name: page.title || 'Catégorie', color: '#888888', icon: '📁', description: '' };
+if (typeof get_category_info === 'function' && categorySlug) {
+  catInfo = get_category_info(categorySlug);
+}
+
+// Utiliser les valeurs du front matter en priorité
+var catColor = page.color || catInfo.color;
+var catIcon = page.icon || catInfo.icon;
+var catName = page.title || catInfo.name;
+var catDesc = page.description || catInfo.description || '';
+
+// Récupérer les articles de cette catégorie
+var categoryPosts = [];
+
+if (typeof get_posts_by_category === 'function' && categorySlug) {
+  categoryPosts = get_posts_by_category(categorySlug);
+}
+
+// Fallback: page.posts (catégorie Hexo native)
+if (categoryPosts.length === 0 && page.posts && page.posts.length) {
+  categoryPosts = page.posts.toArray ? page.posts.toArray() : [];
+}
+
+var postCount = categoryPosts.length;
+
+// Obtenir toutes les catégories pour la navigation
+var allCategories = [];
+if (typeof get_blog_categories === 'function') {
+  allCategories = get_blog_categories();
+}
+%>
+
+<div class="category-page">
+  
+  <header class="cat-header" style="--cat-color: <%= catColor %>">
+    <span class="cat-icon"><%= catIcon %></span>
+    <h1><%= catName %></h1>
+    <% if (catDesc) { %><p class="cat-desc"><%= catDesc %></p><% } %>
+    <p class="cat-count"><%= postCount %> article<%= postCount > 1 ? 's' : '' %></p>
+    <nav class="breadcrumb">
+      <a href="/">Accueil</a> / <a href="/blog/">Blog</a> / <span><%= catName %></span>
+    </nav>
+  </header>
+
+  <% if (page.featured_apps || page.featured_services) { %>
+  <section class="resources">
+    <% if (page.featured_apps && page.featured_apps.length) { %>
+    <div class="res-group">
+      <h3>🚀 Apps</h3>
+      <% page.featured_apps.forEach(function(app) { %>
+      <a href="/apps/<%= app %>/" class="res-link"><%= app %></a>
+      <% }); %>
+    </div>
+    <% } %>
+    <% if (page.featured_services && page.featured_services.length) { %>
+    <div class="res-group">
+      <h3>🛡️ Services</h3>
+      <% page.featured_services.forEach(function(svc) { %>
+      <a href="/services/<%= svc %>/" class="res-link"><%= svc %></a>
+      <% }); %>
+    </div>
+    <% } %>
+  </section>
+  <% } %>
+
+  <% if (page.content && page.content.trim()) { %>
+  <section class="cat-content"><%- page.content %></section>
+  <% } %>
+
+  <section class="posts-section">
+    <h2>📝 Articles</h2>
+    
+    <% if (postCount > 0) { %>
+    <div class="posts-list">
+      <% categoryPosts.forEach(function(post) { %>
+      <article class="post-item">
+        <a href="<%- url_for(post.path) %>">
+          <span class="post-date"><%= date(post.date, 'DD/MM/YYYY') %></span>
+          <h3><%= post.title %></h3>
+          <% if (post.description || post.excerpt) { %><p><%= post.description || strip_html(post.excerpt).substring(0, 150) %></p><% } %>
+          <% if (post.tags && post.tags.length) { %>
+          <div class="post-tags">
+            <% 
+            var tags = [];
+            try { tags = post.tags.toArray ? post.tags.toArray() : []; } catch(e) {}
+            tags.slice(0, 4).forEach(function(tag) { 
+              if (!tag || !tag.name) return;
+            %>
+            <span class="tag">#<%= tag.name %></span>
+            <% }); %>
+          </div>
+          <% } %>
+        </a>
+      </article>
+      <% }); %>
+    </div>
+    <% } else { %>
+    <div class="no-posts">
+      <p>🚧 Aucun article dans cette catégorie pour le moment.</p>
+      <p><a href="/blog/">← Retour au blog</a></p>
+    </div>
+    <% } %>
+  </section>
+
+  <% if (allCategories.length > 1) { %>
+  <section class="other-categories">
+    <h2>📁 Autres catégories</h2>
+    <div class="cat-nav">
+      <% allCategories.forEach(function(cat) { 
+        if (cat.slug === categorySlug) return;
+      %>
+      <a href="<%= cat.path %>" class="cat-nav-item" style="--nav-color: <%= cat.color %>">
+        <span><%= cat.icon %></span>
+        <span><%= cat.name %></span>
+        <span class="nav-count"><%= cat.count %></span>
+      </a>
+      <% }); %>
+    </div>
+  </section>
+  <% } %>
+
+</div>
+
+<style>
+.category-page { max-width: 900px; margin: 0 auto; padding: 2rem; }
+
+.cat-header {
+  text-align: center; padding: 2rem 0; margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.cat-header .cat-icon { font-size: 3rem; display: block; margin-bottom: 0.5rem; }
+.cat-header h1 { font-size: 2rem; color: var(--cat-color); margin: 0 0 0.5rem; }
+.cat-header .cat-desc { color: #9898a6; margin: 0 0 0.5rem; }
+.cat-header .cat-count { color: #6a6a7a; font-size: 0.9rem; margin: 0 0 0.5rem; }
+.breadcrumb { font-size: 0.85rem; color: #6a6a7a; }
+.breadcrumb a { color: var(--cat-color); text-decoration: none; }
+
+.resources {
+  display: flex; flex-wrap: wrap; gap: 1.5rem; padding: 1rem;
+  background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 1.5rem;
+}
+.res-group h3 { font-size: 0.9rem; color: #9898a6; margin: 0 0 0.5rem; }
+.res-link {
+  display: inline-block; padding: 0.3rem 0.6rem; margin-right: 0.5rem;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px; color: #e8e8ed; text-decoration: none; font-size: 0.85rem;
+}
+.res-link:hover { border-color: var(--cat-color); color: var(--cat-color); }
+
+.cat-content {
+  padding: 1.5rem; margin-bottom: 1.5rem;
+  background: rgba(255,255,255,0.03); border-radius: 8px;
+  border-left: 3px solid var(--cat-color);
+}
+
+.posts-section h2 { color: var(--cat-color, #e8e8ed); margin-bottom: 1rem; }
+
+.posts-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.post-item {
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; transition: border-color 0.2s, transform 0.2s;
+}
+.post-item:hover { border-color: var(--cat-color); transform: translateX(4px); }
+.post-item a { display: block; padding: 1rem; text-decoration: none; color: inherit; }
+.post-item .post-date { font-size: 0.8rem; color: #6a6a7a; }
+.post-item h3 { margin: 0.3rem 0 0.5rem; font-size: 1.05rem; color: #e8e8ed; }
+.post-item p { margin: 0 0 0.5rem; font-size: 0.9rem; color: #9898a6; }
+.post-item .post-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.post-item .tag { font-size: 0.75rem; color: var(--cat-color); opacity: 0.7; }
+
+.no-posts {
+  text-align: center; padding: 2rem;
+  background: rgba(255,255,255,0.03); border-radius: 8px; color: #6a6a7a;
+}
+.no-posts a { color: var(--cat-color); }
+
+.other-categories { margin-top: 2rem; }
+.other-categories h2 { color: #9898a6; font-size: 1rem; margin-bottom: 1rem; }
+.cat-nav { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.cat-nav-item {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 0.8rem; background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;
+  text-decoration: none; color: #c8c8d0; font-size: 0.85rem;
+  transition: all 0.2s;
+}
+.cat-nav-item:hover { border-color: var(--nav-color); color: var(--nav-color); }
+.cat-nav-item .nav-count {
+  background: rgba(255,255,255,0.1); padding: 0.1rem 0.4rem;
+  border-radius: 4px; font-size: 0.7rem;
+}
+
+@media (max-width: 600px) { .cat-header h1 { font-size: 1.5rem; } }
+[data-theme="light"] .category-page { background: #fff; }
+[data-theme="light"] .post-item, [data-theme="light"] .resources, 
+[data-theme="light"] .cat-content { background: #f8f9fa; border-color: #e0e0e0; }
+[data-theme="light"] .post-item h3, [data-theme="light"] h2 { color: #2a2a3a; }
+</style>

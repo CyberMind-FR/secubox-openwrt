@@ -1,0 +1,306 @@
+<%
+// GALLERY INDEX - Scan automatique des créations artistiques
+
+function extractTags(tags) {
+    if (!tags) return [];
+    if (typeof tags.toArray === 'function') {
+        return tags.toArray().map(function(t) { return t.name || t; });
+    }
+    if (Array.isArray(tags)) {
+        return tags.map(function(t) { return typeof t === 'object' ? t.name : t; });
+    }
+    return [];
+}
+
+var galleryItems = [];
+
+site.pages.forEach(function(p) {
+    var src = (p.source || '').toLowerCase();
+    var pth = (p.path || '').toLowerCase();
+    var layout = (p.layout || '').toLowerCase();
+    
+    if (src.indexOf('index.md') >= 0 || pth === 'gallery/' || layout === 'gallery') return;
+    
+    var isGallery = layout === 'gallery-item' || 
+                    src.indexOf('gallery/') >= 0 ||
+                    pth.indexOf('gallery/') >= 0;
+    
+    if (isGallery) {
+        var exists = galleryItems.some(function(item) { return item.path === p.path; });
+        if (!exists) {
+            var itemTags = extractTags(p.tags);
+            if (itemTags.length === 0 && p.tags_list) {
+                itemTags = Array.isArray(p.tags_list) ? p.tags_list : [];
+            }
+            
+            galleryItems.push({
+                title: p.title || 'Sans titre',
+                path: p.path,
+                icon: p.icon || '🖼️',
+                type: p.type || 'art-ia',
+                description: p.description || '',
+                thumbnail: p.thumbnail || (p.images && p.images.length ? p.images[0].url : ''),
+                images: p.images || [],
+                featured: p.featured || false,
+                order: p.order || 999,
+                tags: itemTags
+            });
+        }
+    }
+});
+
+galleryItems.sort(function(a, b) {
+    if (a.featured && !b.featured) return -1;
+    if (!a.featured && b.featured) return 1;
+    return a.order - b.order;
+});
+
+var typeColors = {
+    'art-ia': '#9945ff',
+    'photo': '#10b981',
+    'music': '#f59e0b',
+    'video': '#ef4444',
+    'design': '#3b82f6'
+};
+
+var typeLabels = {
+    'art-ia': { icon: '🎨', name: 'Art IA' },
+    'photo': { icon: '📷', name: 'Photo' },
+    'music': { icon: '🎵', name: 'Musique' },
+    'video': { icon: '🎬', name: 'Vidéo' },
+    'design': { icon: '✏️', name: 'Design' }
+};
+%>
+<div class="gallery-index">
+    <header class="gallery-header">
+        <div class="section-header">
+            <div class="section-tag">Créations</div>
+            <h1 class="section-title"><%= page.icon || '🖼️' %> <%= page.title || 'Galerie' %></h1>
+            <p class="section-subtitle"><%= page.description || 'Découvrez mes créations artistiques' %></p>
+        </div>
+        
+        <div class="gallery-stats">
+            <div class="stat"><span class="stat-value"><%= galleryItems.length %></span><span class="stat-label">Œuvres</span></div>
+            <div class="stat"><span class="stat-value"><%= galleryItems.filter(function(i) { return i.type === 'art-ia'; }).length %></span><span class="stat-label">Art IA</span></div>
+            <div class="stat"><span class="stat-value"><%= galleryItems.filter(function(i) { return i.type === 'music'; }).length %></span><span class="stat-label">Musique</span></div>
+        </div>
+        
+        <div class="gallery-filters">
+            <button class="filter-btn active" data-filter="all">🎲 Tous</button>
+            <% Object.keys(typeLabels).forEach(function(type) { 
+                var label = typeLabels[type];
+                var count = galleryItems.filter(function(i) { return i.type === type; }).length;
+                if (count > 0) {
+            %>
+            <button class="filter-btn" data-filter="<%= type %>"><%= label.icon %> <%= label.name %></button>
+            <% } }); %>
+        </div>
+    </header>
+    
+    <% if (galleryItems.length > 0) { %>
+    
+    <div class="gallery-grid" id="galleryGrid">
+        <% galleryItems.forEach(function(item) { 
+            var color = typeColors[item.type] || '#f97316';
+            var label = typeLabels[item.type] || { icon: '🎨', name: 'Art' };
+        %>
+        <a href="<%= url_for(item.path) %>" class="gallery-card" data-type="<%= item.type %>">
+            <% if (item.featured) { %>
+            <div class="featured-star">⭐</div>
+            <% } %>
+            
+            <div class="card-image">
+                <% if (item.thumbnail) { %>
+                <img src="<%= item.thumbnail %>" alt="<%= item.title %>" loading="lazy">
+                <% } else { %>
+                <div class="card-placeholder"><%= item.icon %></div>
+                <% } %>
+                
+                <div class="card-overlay">
+                    <span class="overlay-icon"><%= item.icon %></span>
+                    <span class="overlay-title"><%= item.title %></span>
+                </div>
+                
+                <div class="card-type" style="background: <%= color %>;"><%= label.icon %></div>
+            </div>
+        </a>
+        <% }); %>
+    </div>
+    
+    <% } else { %>
+    
+    <div class="empty-state">
+        <div class="empty-icon">🖼️</div>
+        <h3>Galerie vide</h3>
+        <p>Debug: <%= site.pages.length %> pages scannées</p>
+        <p>Ajoutez des fichiers .md dans <code>source/gallery/</code> avec <code>layout: gallery-item</code></p>
+    </div>
+    
+    <% } %>
+    
+    <nav class="gallery-nav">
+        <a href="/portfolio/" class="btn btn-secondary">💼 Portfolio</a>
+        <a href="/" class="btn btn-secondary">← Accueil</a>
+    </nav>
+</div>
+
+<style>
+.gallery-index {
+    padding: 4rem 2rem;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+.gallery-header {
+    text-align: center;
+    margin-bottom: 3rem;
+}
+
+.section-subtitle {
+    color: var(--text-muted);
+    max-width: 600px;
+    margin: 1rem auto 2rem;
+}
+
+.gallery-stats {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.stat { text-align: center; }
+.stat-value { font-size: 2rem; font-weight: 700; color: var(--accent-primary); display: block; }
+.stat-label { font-size: 0.85rem; color: var(--text-muted); }
+
+.gallery-filters {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: 0.5rem 1rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 20px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.filter-btn:hover { border-color: var(--accent-primary); }
+.filter-btn.active { background: var(--accent-primary); color: #000; }
+
+.gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.gallery-card {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    aspect-ratio: 1;
+    text-decoration: none;
+}
+
+.gallery-card:hover { transform: scale(1.02); }
+
+.card-image {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.card-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 4rem;
+    background: var(--bg-secondary);
+}
+
+.card-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.gallery-card:hover .card-overlay { opacity: 1; }
+
+.overlay-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+.overlay-title { color: white; font-weight: 600; }
+
+.card-type {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+
+.featured-star {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 10;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-muted);
+}
+
+.empty-icon { font-size: 4rem; margin-bottom: 1rem; }
+
+.gallery-nav {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 3rem;
+}
+
+.gallery-card.hidden { display: none; }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var filterBtns = document.querySelectorAll('.filter-btn');
+    var cards = document.querySelectorAll('.gallery-card');
+    
+    filterBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var filter = this.dataset.filter;
+            filterBtns.forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            
+            cards.forEach(function(card) {
+                if (filter === 'all' || card.dataset.type === filter) {
+                    card.classList.remove('hidden');
+                } else {
+                    card.classList.add('hidden');
+                }
+            });
+        });
+    });
+});
+</script>

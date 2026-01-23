@@ -1,9 +1,9 @@
 'use strict';
 'require view';
-'require secubox-admin.api as API';
-'require secubox-admin.components as Components';
-'require secubox-admin.widget-renderer as WidgetRenderer';
-'require secubox-admin.data-utils as DataUtils';
+'require secubox-admin/api as API';
+'require secubox-admin/components as Components';
+'require secubox-admin/widget-renderer as WidgetRenderer';
+'require secubox-admin/data-utils as DataUtils';
 'require poll';
 'require ui';
 'require secubox-theme/theme as Theme';

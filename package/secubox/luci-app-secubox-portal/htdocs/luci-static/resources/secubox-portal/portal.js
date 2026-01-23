@@ -235,6 +235,30 @@ return baseclass.extend({
 			path: 'admin/secubox/services/mmpm/dashboard',
 			service: 'mmpm',
 			version: '3.1.0'
+		},
+		'glances': {
+			id: 'glances',
+			name: 'Glances',
+			desc: 'Cross-platform system monitoring tool with web interface',
+			icon: '\ud83d\udcca',
+			iconBg: 'rgba(16, 185, 129, 0.15)',
+			iconColor: '#10b981',
+			section: 'monitoring',
+			path: 'admin/secubox/monitoring/glances/dashboard',
+			service: 'glances',
+			version: '4.2.1'
+		},
+		'localai': {
+			id: 'localai',
+			name: 'LocalAI',
+			desc: 'Self-hosted, privacy-first AI/LLM with OpenAI-compatible API',
+			icon: '\ud83e\udd16',
+			iconBg: 'rgba(168, 85, 247, 0.15)',
+			iconColor: '#a855f7',
+			section: 'services',
+			path: 'admin/secubox/services/localai/dashboard',
+			service: 'localai',
+			version: '3.10.0'
 		}
 	},
 

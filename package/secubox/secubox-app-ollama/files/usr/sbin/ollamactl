@@ -1,0 +1,462 @@
+#!/bin/sh
+# SecuBox Ollama manager - Docker/Podman container support
+# Copyright (C) 2025 CyberMind.fr
+#
+# Ollama is a simpler alternative to LocalAI with better ARM64 support
+
+CONFIG="ollama"
+CONTAINER_NAME="ollama"
+OLLAMA_IMAGE="ollama/ollama:latest"
+
+# Paths
+DATA_PATH="/srv/ollama"
+
+usage() {
+	cat <<'EOF'
+Usage: ollamactl <command>
+
+Commands:
+  install            Pull Docker image and setup Ollama
+  check              Run prerequisite checks
+  update             Update Ollama Docker image
+  status             Show container and service status
+  logs               Show Ollama logs (use -f to follow)
+  shell              Open shell in container
+
+Model Management:
+  list               List downloaded models
+  pull <model>       Download a model (e.g., tinyllama, mistral, llama2)
+  rm <model>         Remove a model
+  run <model>        Interactive chat with a model (CLI)
+
+Service Control:
+  service-run        Internal: run container under procd
+  service-stop       Stop container
+
+API Endpoints (default port 11434):
+  /api/generate      - Generate text completion
+  /api/chat          - Chat completion
+  /api/embeddings    - Generate embeddings
+  /api/tags          - List models
+
+Configuration: /etc/config/ollama
+EOF
+}
+
+require_root() { [ "$(id -u)" -eq 0 ] || { echo "Root required" >&2; exit 1; }; }
+
+log_info() { echo "[INFO] $*"; logger -t ollama "$*"; }
+log_warn() { echo "[WARN] $*" >&2; logger -t ollama -p warning "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t ollama -p err "$*"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Load configuration with defaults
+load_config() {
+	api_port="$(uci_get main.api_port || echo 11434)"
+	api_host="$(uci_get main.api_host || echo 0.0.0.0)"
+	data_path="$(uci_get main.data_path || echo /srv/ollama)"
+	memory_limit="$(uci_get main.memory_limit || echo 2g)"
+
+	# Docker settings
+	docker_image="$(uci_get docker.image || echo $OLLAMA_IMAGE)"
+
+	# Ensure paths exist
+	[ -d "$data_path" ] || mkdir -p "$data_path"
+}
+
+# =============================================================================
+# CONTAINER RUNTIME DETECTION
+# =============================================================================
+
+detect_runtime() {
+	if command -v podman >/dev/null 2>&1; then
+		RUNTIME="podman"
+	elif command -v docker >/dev/null 2>&1; then
+		RUNTIME="docker"
+	else
+		RUNTIME=""
+	fi
+	echo "$RUNTIME"
+}
+
+has_runtime() {
+	[ -n "$(detect_runtime)" ]
+}
+
+run_container() {
+	local runtime=$(detect_runtime)
+	[ -z "$runtime" ] && { log_error "No container runtime found"; return 1; }
+	$runtime "$@"
+}
+
+# =============================================================================
+# CONTAINER MANAGEMENT
+# =============================================================================
+
+container_exists() {
+	run_container ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"
+}
+
+container_running() {
+	run_container ps --format '{{.Names}}' 2>/dev/null | grep -q "^${CONTAINER_NAME}$"
+}
+
+container_stop() {
+	if container_running; then
+		log_info "Stopping container..."
+		run_container stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+	fi
+	if container_exists; then
+		run_container rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+	fi
+}
+
+container_pull() {
+	load_config
+	log_info "Pulling Ollama Docker image: $docker_image"
+	log_info "This may take a few minutes (~1GB)..."
+
+	if run_container pull "$docker_image"; then
+		log_info "Image pulled successfully"
+		return 0
+	else
+		log_error "Failed to pull image"
+		return 1
+	fi
+}
+
+container_run() {
+	load_config
+	container_stop
+
+	log_info "Starting Ollama container..."
+	log_info "Image: $docker_image"
+	log_info "API: http://${api_host}:${api_port}"
+	log_info "Data: $data_path"
+
+	# Run container in foreground (for procd)
+	exec run_container run --rm \
+		--name "$CONTAINER_NAME" \
+		-p "${api_port}:11434" \
+		-v "${data_path}:/root/.ollama:rw" \
+		--memory="$memory_limit" \
+		"$docker_image"
+}
+
+container_status() {
+	load_config
+	local runtime=$(detect_runtime)
+
+	echo "=== Ollama Status ==="
+	echo ""
+	echo "Container Runtime: ${runtime:-NOT FOUND}"
+	echo ""
+
+	if [ -n "$runtime" ]; then
+		if container_running; then
+			echo "Container Status: RUNNING"
+			echo ""
+			run_container ps --filter "name=$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+		elif container_exists; then
+			echo "Container Status: STOPPED"
+		else
+			echo "Container Status: NOT CREATED"
+		fi
+	fi
+
+	echo ""
+	echo "=== Configuration ==="
+	echo "Image: $docker_image"
+	echo "API port: $api_port"
+	echo "Data path: $data_path"
+	echo "Memory limit: $memory_limit"
+	echo ""
+
+	# Check API health
+	if wget -q -O /dev/null "http://127.0.0.1:$api_port" 2>/dev/null; then
+		echo "API Status: HEALTHY"
+
+		# List models via API
+		echo ""
+		echo "=== Downloaded Models ==="
+		local models=$(wget -q -O - "http://127.0.0.1:$api_port/api/tags" 2>/dev/null)
+		if [ -n "$models" ]; then
+			echo "$models" | jsonfilter -e '@.models[*].name' 2>/dev/null | while read model; do
+				echo "  - $model"
+			done
+		else
+			echo "  No models downloaded yet"
+		fi
+	else
+		echo "API Status: NOT RESPONDING"
+	fi
+}
+
+container_logs() {
+	if [ "$1" = "-f" ]; then
+		run_container logs -f "$CONTAINER_NAME"
+	else
+		run_container logs --tail 100 "$CONTAINER_NAME"
+	fi
+}
+
+container_shell() {
+	run_container exec -it "$CONTAINER_NAME" /bin/sh
+}
+
+# =============================================================================
+# MODEL MANAGEMENT (via Ollama API/CLI)
+# =============================================================================
+
+cmd_list() {
+	load_config
+
+	if container_running; then
+		# Use API to list models
+		local models=$(wget -q -O - "http://127.0.0.1:$api_port/api/tags" 2>/dev/null)
+		if [ -n "$models" ]; then
+			echo "=== Downloaded Models ==="
+			echo ""
+			echo "$models" | jsonfilter -e '@.models[*].name' 2>/dev/null | while read model; do
+				# Get size from same response
+				local size=$(echo "$models" | jsonfilter -e "@.models[@.name='$model'].size" 2>/dev/null)
+				if [ -n "$size" ]; then
+					# Convert to human readable
+					local size_gb=$(echo "scale=2; $size / 1024 / 1024 / 1024" | bc 2>/dev/null || echo "?")
+					echo "  $model (${size_gb}GB)"
+				else
+					echo "  $model"
+				fi
+			done
+		else
+			echo "No models downloaded yet"
+			echo ""
+			echo "Download a model with:"
+			echo "  ollamactl pull tinyllama"
+		fi
+	else
+		log_error "Ollama not running. Start with: /etc/init.d/ollama start"
+		return 1
+	fi
+
+	echo ""
+	echo "=== Available Models (popular) ==="
+	echo "  tinyllama    - 637MB  - Ultra-lightweight"
+	echo "  phi          - 1.6GB  - Microsoft Phi-2"
+	echo "  gemma:2b     - 1.4GB  - Google Gemma 2B"
+	echo "  mistral      - 4.1GB  - High quality assistant"
+	echo "  llama2       - 3.8GB  - Meta LLaMA 2 7B"
+	echo "  codellama    - 3.8GB  - Code specialized"
+	echo ""
+	echo "More at: https://ollama.com/library"
+}
+
+cmd_pull() {
+	load_config
+	local model_name="$1"
+	[ -z "$model_name" ] && { echo "Usage: ollamactl pull <model-name>"; return 1; }
+
+	if ! container_running; then
+		log_error "Ollama not running. Start with: /etc/init.d/ollama start"
+		return 1
+	fi
+
+	log_info "Pulling model: $model_name"
+	log_info "This may take several minutes depending on model size..."
+
+	# Use exec to run ollama pull inside container
+	run_container exec "$CONTAINER_NAME" ollama pull "$model_name"
+}
+
+cmd_rm() {
+	load_config
+	local model_name="$1"
+	[ -z "$model_name" ] && { echo "Usage: ollamactl rm <model-name>"; return 1; }
+
+	if ! container_running; then
+		log_error "Ollama not running. Start with: /etc/init.d/ollama start"
+		return 1
+	fi
+
+	log_info "Removing model: $model_name"
+	run_container exec "$CONTAINER_NAME" ollama rm "$model_name"
+}
+
+cmd_run() {
+	load_config
+	local model_name="$1"
+	[ -z "$model_name" ] && { echo "Usage: ollamactl run <model-name>"; return 1; }
+
+	if ! container_running; then
+		log_error "Ollama not running. Start with: /etc/init.d/ollama start"
+		return 1
+	fi
+
+	log_info "Starting chat with: $model_name"
+	log_info "Type your message and press Enter. Use Ctrl+D to exit."
+	echo ""
+
+	# Interactive chat
+	run_container exec -it "$CONTAINER_NAME" ollama run "$model_name"
+}
+
+# =============================================================================
+# COMMANDS
+# =============================================================================
+
+cmd_install() {
+	require_root
+	load_config
+
+	if ! has_runtime; then
+		log_error "No container runtime found!"
+		log_error "Install podman or docker first:"
+		log_error "  opkg update && opkg install podman"
+		exit 1
+	fi
+
+	local runtime=$(detect_runtime)
+	log_info "Installing Ollama using $runtime..."
+	log_info "Image: $docker_image"
+
+	# Create directories
+	mkdir -p "$data_path"
+
+	# Pull the image
+	container_pull || exit 1
+
+	# Enable service
+	uci_set main.enabled '1'
+	/etc/init.d/ollama enable
+
+	log_info ""
+	log_info "Ollama installed successfully!"
+	log_info ""
+	log_info "Start with: /etc/init.d/ollama start"
+	log_info "API endpoint: http://<router-ip>:$api_port/api"
+	log_info ""
+	log_info "Download and use a model:"
+	log_info "  ollamactl pull tinyllama"
+	log_info "  ollamactl run tinyllama"
+}
+
+cmd_check() {
+	load_config
+
+	echo "=== Prerequisite Check ==="
+	echo ""
+
+	# Check container runtime
+	local runtime=$(detect_runtime)
+	if [ -n "$runtime" ]; then
+		echo "[OK] Container runtime: $runtime"
+		$runtime --version 2>/dev/null | head -1
+	else
+		echo "[FAIL] No container runtime found"
+		echo "       Install: opkg install podman"
+	fi
+	echo ""
+
+	# Check storage
+	local storage_path=$(dirname "$data_path")
+	local storage_avail=$(df -h "$storage_path" 2>/dev/null | tail -1 | awk '{print $4}')
+	echo "Storage available: $storage_avail (at $storage_path)"
+	echo "  Note: Ollama image requires ~1GB"
+	echo "        Models require 500MB-8GB each"
+	echo ""
+
+	# Check memory
+	local mem_total=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+	local mem_gb=$((mem_total / 1024 / 1024))
+	echo "System memory: ${mem_gb}GB"
+
+	if [ "$mem_gb" -lt 2 ]; then
+		echo "[WARN] Low memory! Ollama requires at least 2GB RAM"
+	else
+		echo "[OK] Memory sufficient"
+	fi
+	echo ""
+
+	# Check if image exists
+	if [ -n "$runtime" ]; then
+		if $runtime images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -q "ollama"; then
+			echo "[OK] Ollama image found"
+		else
+			echo "[INFO] Ollama image not downloaded yet"
+			echo "       Run: ollamactl install"
+		fi
+	fi
+}
+
+cmd_update() {
+	require_root
+	load_config
+
+	log_info "Updating Ollama..."
+
+	# Stop if running
+	container_stop
+
+	# Pull latest image
+	container_pull || exit 1
+
+	# Restart if was enabled
+	if [ "$(uci_get main.enabled)" = "1" ]; then
+		/etc/init.d/ollama restart
+	else
+		log_info "Update complete. Start manually with: /etc/init.d/ollama start"
+	fi
+}
+
+cmd_status() {
+	container_status
+}
+
+cmd_logs() {
+	container_logs "$@"
+}
+
+cmd_shell() {
+	if ! container_running; then
+		log_error "Container not running. Start with: /etc/init.d/ollama start"
+		exit 1
+	fi
+	container_shell
+}
+
+cmd_service_run() {
+	require_root
+	load_config
+
+	if ! has_runtime; then
+		log_error "No container runtime found"
+		exit 1
+	fi
+
+	container_run
+}
+
+cmd_service_stop() {
+	require_root
+	container_stop
+}
+
+# Main Entry Point
+case "${1:-}" in
+	install) shift; cmd_install "$@" ;;
+	check) shift; cmd_check "$@" ;;
+	update) shift; cmd_update "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	logs) shift; cmd_logs "$@" ;;
+	shell) shift; cmd_shell "$@" ;;
+	list) shift; cmd_list "$@" ;;
+	pull) shift; cmd_pull "$@" ;;
+	rm) shift; cmd_rm "$@" ;;
+	run) shift; cmd_run "$@" ;;
+	service-run) shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac

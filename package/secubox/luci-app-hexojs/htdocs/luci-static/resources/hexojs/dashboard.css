@@ -1,0 +1,487 @@
+/* Hexo CMS Dashboard Styles */
+
+:root {
+	--hexo-primary: #f97316;
+	--hexo-primary-hover: #ea580c;
+	--hexo-success: #10b981;
+	--hexo-warning: #f59e0b;
+	--hexo-danger: #ef4444;
+	--hexo-info: #3b82f6;
+	--hexo-bg: #0f172a;
+	--hexo-bg-card: #1e293b;
+	--hexo-bg-input: #334155;
+	--hexo-text: #f1f5f9;
+	--hexo-text-muted: #94a3b8;
+	--hexo-border: #334155;
+	--hexo-radius: 12px;
+	--hexo-radius-sm: 8px;
+}
+
+.hexo-dashboard {
+	max-width: 1400px;
+	margin: 0 auto;
+	padding: 20px;
+	color: var(--hexo-text);
+}
+
+/* Header */
+.hexo-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 24px;
+	padding-bottom: 16px;
+	border-bottom: 1px solid var(--hexo-border);
+}
+
+.hexo-logo {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.hexo-logo-icon {
+	font-size: 32px;
+	background: linear-gradient(135deg, var(--hexo-primary), #f59e0b);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+	background-clip: text;
+}
+
+.hexo-logo-text {
+	font-size: 24px;
+	font-weight: 700;
+	color: var(--hexo-text);
+}
+
+.hexo-logo-text span {
+	color: var(--hexo-primary);
+}
+
+/* Status Badge */
+.hexo-status-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 16px;
+	border-radius: 20px;
+	font-size: 14px;
+	font-weight: 500;
+}
+
+.hexo-status-badge.running {
+	background: rgba(16, 185, 129, 0.15);
+	color: var(--hexo-success);
+}
+
+.hexo-status-badge.stopped {
+	background: rgba(148, 163, 184, 0.15);
+	color: var(--hexo-text-muted);
+}
+
+.hexo-status-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+/* Cards */
+.hexo-card {
+	background: var(--hexo-bg-card);
+	border-radius: var(--hexo-radius);
+	padding: 20px;
+	margin-bottom: 20px;
+}
+
+.hexo-card-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 16px;
+}
+
+.hexo-card-title {
+	font-size: 18px;
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.hexo-card-title-icon {
+	font-size: 20px;
+}
+
+/* Stats Grid */
+.hexo-stats-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 16px;
+	margin-bottom: 24px;
+}
+
+.hexo-stat {
+	background: var(--hexo-bg-card);
+	border-radius: var(--hexo-radius);
+	padding: 20px;
+	text-align: center;
+}
+
+.hexo-stat-icon {
+	font-size: 28px;
+	margin-bottom: 8px;
+}
+
+.hexo-stat-value {
+	font-size: 32px;
+	font-weight: 700;
+	color: var(--hexo-primary);
+}
+
+.hexo-stat-label {
+	font-size: 14px;
+	color: var(--hexo-text-muted);
+	margin-top: 4px;
+}
+
+/* Buttons */
+.hexo-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 20px;
+	border-radius: var(--hexo-radius-sm);
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+	border: none;
+	transition: all 0.2s;
+	text-decoration: none;
+}
+
+.hexo-btn-primary {
+	background: var(--hexo-primary);
+	color: white;
+}
+
+.hexo-btn-primary:hover {
+	background: var(--hexo-primary-hover);
+}
+
+.hexo-btn-secondary {
+	background: var(--hexo-bg-input);
+	color: var(--hexo-text);
+}
+
+.hexo-btn-secondary:hover {
+	background: #475569;
+}
+
+.hexo-btn-success {
+	background: var(--hexo-success);
+	color: white;
+}
+
+.hexo-btn-danger {
+	background: var(--hexo-danger);
+	color: white;
+}
+
+.hexo-btn-sm {
+	padding: 6px 12px;
+	font-size: 12px;
+}
+
+.hexo-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Quick Actions */
+.hexo-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+
+/* Posts Table */
+.hexo-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.hexo-table th,
+.hexo-table td {
+	padding: 12px;
+	text-align: left;
+	border-bottom: 1px solid var(--hexo-border);
+}
+
+.hexo-table th {
+	color: var(--hexo-text-muted);
+	font-weight: 500;
+	font-size: 12px;
+	text-transform: uppercase;
+}
+
+.hexo-table tr:hover {
+	background: rgba(255, 255, 255, 0.02);
+}
+
+.hexo-post-title {
+	font-weight: 500;
+	color: var(--hexo-text);
+}
+
+.hexo-post-meta {
+	font-size: 12px;
+	color: var(--hexo-text-muted);
+}
+
+/* Tags */
+.hexo-tag {
+	display: inline-block;
+	padding: 4px 10px;
+	border-radius: 12px;
+	font-size: 12px;
+	background: var(--hexo-bg-input);
+	color: var(--hexo-text-muted);
+	margin-right: 4px;
+	margin-bottom: 4px;
+}
+
+.hexo-tag.category {
+	background: rgba(249, 115, 22, 0.15);
+	color: var(--hexo-primary);
+}
+
+/* Editor */
+.hexo-editor {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 20px;
+}
+
+.hexo-editor-input,
+.hexo-editor-preview {
+	background: var(--hexo-bg-card);
+	border-radius: var(--hexo-radius);
+	padding: 20px;
+	min-height: 500px;
+}
+
+.hexo-editor-toolbar {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 12px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid var(--hexo-border);
+}
+
+.hexo-editor-toolbar button {
+	background: transparent;
+	border: none;
+	color: var(--hexo-text-muted);
+	cursor: pointer;
+	padding: 8px;
+	border-radius: 4px;
+}
+
+.hexo-editor-toolbar button:hover {
+	background: var(--hexo-bg-input);
+	color: var(--hexo-text);
+}
+
+.hexo-editor textarea {
+	width: 100%;
+	height: calc(100% - 60px);
+	background: transparent;
+	border: none;
+	color: var(--hexo-text);
+	font-family: 'Fira Code', monospace;
+	font-size: 14px;
+	line-height: 1.6;
+	resize: none;
+}
+
+.hexo-editor textarea:focus {
+	outline: none;
+}
+
+/* Form inputs */
+.hexo-input,
+.hexo-select {
+	width: 100%;
+	padding: 10px 14px;
+	background: var(--hexo-bg-input);
+	border: 1px solid var(--hexo-border);
+	border-radius: var(--hexo-radius-sm);
+	color: var(--hexo-text);
+	font-size: 14px;
+}
+
+.hexo-input:focus,
+.hexo-select:focus {
+	outline: none;
+	border-color: var(--hexo-primary);
+}
+
+.hexo-form-group {
+	margin-bottom: 16px;
+}
+
+.hexo-form-label {
+	display: block;
+	margin-bottom: 6px;
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--hexo-text-muted);
+}
+
+/* Media Grid */
+.hexo-media-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	gap: 16px;
+}
+
+.hexo-media-item {
+	background: var(--hexo-bg-input);
+	border-radius: var(--hexo-radius-sm);
+	overflow: hidden;
+	position: relative;
+}
+
+.hexo-media-item img {
+	width: 100%;
+	height: 120px;
+	object-fit: cover;
+}
+
+.hexo-media-item-info {
+	padding: 8px;
+	font-size: 12px;
+}
+
+.hexo-media-item-name {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.hexo-media-item-size {
+	color: var(--hexo-text-muted);
+}
+
+.hexo-media-item-actions {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	display: none;
+}
+
+.hexo-media-item:hover .hexo-media-item-actions {
+	display: flex;
+	gap: 4px;
+}
+
+/* Preview iframe */
+.hexo-preview-frame {
+	width: 100%;
+	height: 600px;
+	border: none;
+	border-radius: var(--hexo-radius);
+	background: white;
+}
+
+/* Deploy log */
+.hexo-deploy-log {
+	background: var(--hexo-bg-input);
+	border-radius: var(--hexo-radius-sm);
+	padding: 16px;
+	font-family: 'Fira Code', monospace;
+	font-size: 12px;
+	max-height: 300px;
+	overflow-y: auto;
+	white-space: pre-wrap;
+}
+
+/* Theme presets */
+.hexo-presets {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 16px;
+}
+
+.hexo-preset {
+	background: var(--hexo-bg-input);
+	border-radius: var(--hexo-radius);
+	padding: 20px;
+	cursor: pointer;
+	border: 2px solid transparent;
+	transition: all 0.2s;
+}
+
+.hexo-preset:hover {
+	border-color: var(--hexo-primary);
+}
+
+.hexo-preset.active {
+	border-color: var(--hexo-primary);
+	background: rgba(249, 115, 22, 0.1);
+}
+
+.hexo-preset-icon {
+	font-size: 32px;
+	margin-bottom: 12px;
+}
+
+.hexo-preset-name {
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+
+.hexo-preset-desc {
+	font-size: 12px;
+	color: var(--hexo-text-muted);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+	.hexo-editor {
+		grid-template-columns: 1fr;
+	}
+
+	.hexo-stats-grid {
+		grid-template-columns: repeat(2, 1fr);
+	}
+
+	.hexo-header {
+		flex-direction: column;
+		gap: 12px;
+	}
+}
+
+/* Animation */
+@keyframes hexo-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.5; }
+}
+
+.hexo-loading {
+	animation: hexo-pulse 1.5s infinite;
+}
+
+/* Empty state */
+.hexo-empty {
+	text-align: center;
+	padding: 40px;
+	color: var(--hexo-text-muted);
+}
+
+.hexo-empty-icon {
+	font-size: 48px;
+	margin-bottom: 16px;
+	opacity: 0.5;
+}

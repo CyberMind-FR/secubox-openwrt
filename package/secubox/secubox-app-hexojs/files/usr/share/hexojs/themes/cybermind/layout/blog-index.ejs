@@ -1,0 +1,148 @@
+<%#
+  Layout: blog-index.ejs
+  Page d'accueil du blog
+  
+  Utilise get_blog_categories() pour récupérer les catégories
+  découvertes dynamiquement depuis source/blog/
+%>
+
+<%
+// Récupérer tous les articles via le helper
+var allPosts = [];
+if (typeof get_blog_posts === 'function') {
+  allPosts = get_blog_posts();
+}
+
+var totalPosts = allPosts.length;
+
+// Catégories découvertes dynamiquement avec counts
+var categories = [];
+if (typeof get_blog_categories === 'function') {
+  categories = get_blog_categories();
+}
+
+// Articles récents (6 derniers)
+var recentPosts = allPosts.slice(0, 6);
+%>
+
+<div class="blog-index">
+  
+  <header class="blog-hero">
+    <h1><%= page.title || '📚 Blog' %></h1>
+    <% if (page.description) { %>
+    <p class="tagline"><%= page.description %></p>
+    <% } else { %>
+    <p class="tagline">Articles sur la cybersécurité, les systèmes embarqués, Linux, la créativité et la philosophie.</p>
+    <% } %>
+    <div class="stats"><%= totalPosts %> articles • <%= categories.length %> catégories</div>
+  </header>
+
+  <% if (categories.length > 0) { %>
+  <section class="categories-section">
+    <h2>📁 Catégories</h2>
+    <div class="categories-grid">
+      <% categories.forEach(function(cat) { %>
+      <a href="<%= cat.path %>" class="cat-card" style="border-left-color: <%= cat.color %>">
+        <div class="cat-head">
+          <span class="cat-icon"><%= cat.icon %></span>
+          <span class="cat-name" style="color: <%= cat.color %>"><%= cat.name %></span>
+          <span class="cat-count" style="background: <%= cat.color %>"><%= cat.count %></span>
+        </div>
+        <% if (cat.description) { %>
+        <p class="cat-desc"><%= cat.description %></p>
+        <% } %>
+      </a>
+      <% }); %>
+    </div>
+  </section>
+  <% } %>
+
+  <section class="recent-section">
+    <h2>🕐 Articles récents</h2>
+    <% if (recentPosts.length > 0) { %>
+    <div class="recent-list">
+      <% recentPosts.forEach(function(post) { 
+        // Obtenir la catégorie du post
+        var postCat = '';
+        var catInfo = { name: '', color: '#888', icon: '' };
+        
+        if (typeof get_post_category === 'function') {
+          postCat = get_post_category(post);
+        }
+        
+        if (postCat && typeof get_category_info === 'function') {
+          catInfo = get_category_info(postCat);
+        }
+      %>
+      <article class="recent-item">
+        <a href="<%- url_for(post.path) %>">
+          <span class="item-date"><%= date(post.date, 'DD/MM/YYYY') %></span>
+          <% if (catInfo.name) { %>
+          <span class="item-cat" style="color: <%= catInfo.color %>"><%= catInfo.icon %> <%= catInfo.name %></span>
+          <% } %>
+          <h3><%= post.title %></h3>
+          <% if (post.description || post.excerpt) { %><p><%= post.description || strip_html(post.excerpt).substring(0, 150) %></p><% } %>
+        </a>
+      </article>
+      <% }); %>
+    </div>
+    <% if (totalPosts > 6) { %>
+    <div class="see-all"><a href="/archives/">Voir tous les articles →</a></div>
+    <% } %>
+    <% } else { %>
+    <p class="no-posts">Aucun article pour le moment.</p>
+    <% } %>
+  </section>
+
+  <% if (page.content && page.content.trim()) { %>
+  <section class="custom-content"><%- page.content %></section>
+  <% } %>
+
+</div>
+
+<style>
+.blog-index { max-width: 1000px; margin: 0 auto; padding: 2rem; }
+.blog-hero { text-align: center; padding: 2rem 0; margin-bottom: 2rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.blog-hero h1 { font-size: 2rem; color: #f97316; margin: 0 0 0.5rem; }
+.blog-hero .tagline { color: #9898a6; margin: 0 0 0.5rem; }
+.blog-hero .stats { color: #6a6a7a; font-size: 0.85rem; }
+
+.categories-section, .recent-section { margin-bottom: 2.5rem; }
+.categories-section h2, .recent-section h2 { margin-bottom: 1rem; color: #e8e8ed; }
+
+.categories-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+.cat-card {
+  display: block; padding: 1rem; text-decoration: none;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  border-left: 4px solid; border-radius: 8px; transition: transform 0.2s, box-shadow 0.2s;
+}
+.cat-card:hover { transform: translateY(-3px); box-shadow: 0 5px 20px rgba(0,0,0,0.3); }
+.cat-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+.cat-icon { font-size: 1.2rem; }
+.cat-name { font-weight: 600; flex: 1; }
+.cat-count { color: #000; padding: 0.1rem 0.4rem; border-radius: 8px; font-size: 0.7rem; font-weight: 700; }
+.cat-desc { margin: 0; color: #9898a6; font-size: 0.8rem; }
+
+.recent-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.recent-item {
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; transition: border-color 0.2s, transform 0.2s;
+}
+.recent-item:hover { border-color: #f97316; transform: translateX(4px); }
+.recent-item a { display: block; padding: 1rem; text-decoration: none; color: inherit; }
+.recent-item .item-date { font-size: 0.8rem; color: #6a6a7a; margin-right: 1rem; }
+.recent-item .item-cat { font-size: 0.8rem; font-weight: 500; }
+.recent-item h3 { margin: 0.3rem 0; font-size: 1rem; color: #e8e8ed; }
+.recent-item p { margin: 0; font-size: 0.85rem; color: #9898a6; }
+
+.see-all { text-align: center; margin-top: 1rem; }
+.see-all a { color: #f97316; text-decoration: none; }
+.see-all a:hover { text-decoration: underline; }
+.no-posts { text-align: center; color: #6a6a7a; padding: 2rem; }
+.custom-content { padding: 1.5rem; background: rgba(255,255,255,0.03); border-radius: 8px; }
+
+@media (max-width: 600px) { .categories-grid { grid-template-columns: 1fr; } }
+[data-theme="light"] .blog-index { background: #fff; }
+[data-theme="light"] .cat-card, [data-theme="light"] .recent-item { background: #f8f9fa; border-color: #e0e0e0; }
+[data-theme="light"] .recent-item h3, [data-theme="light"] h2 { color: #2a2a3a; }
+</style>

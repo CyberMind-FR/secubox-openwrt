@@ -486,7 +486,7 @@ case "$1" in
 				json_add_boolean "enabled" 1
 				json_add_string "module" "vhost-manager"
 				json_add_string "version" "$PKG_VERSION"
-				if pgrep -x nginx >/dev/null 2>&1; then
+				if pgrep nginx >/dev/null 2>&1; then
 					json_add_boolean "nginx_running" 1
 					json_add_string "nginx_version" "$(nginx -v 2>&1 | grep -o 'nginx/[0-9.]*' | cut -d'/' -f2)"
 				else

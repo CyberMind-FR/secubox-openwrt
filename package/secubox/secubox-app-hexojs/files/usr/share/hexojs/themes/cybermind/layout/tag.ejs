@@ -1,0 +1,101 @@
+<%
+// Tags dynamiques avec couleurs par défaut
+var defaultColors = ['#00d4ff', '#3b82f6', '#9945ff', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#84cc16'];
+
+// Hash basé sur le nom du tag pour couleur cohérente
+var hash = 0;
+for (var i = 0; i < page.tag.length; i++) {
+    hash = page.tag.charCodeAt(i) + ((hash << 5) - hash);
+}
+var tagColor = defaultColors[Math.abs(hash) % defaultColors.length];
+%>
+
+<section style="padding: 4rem 2rem; min-height: 60vh;">
+    <div class="tag-hero" style="text-align: center; margin-bottom: 4rem;">
+        <div class="tag-icon" style="font-size: 5rem; margin-bottom: 1rem;">
+            🏷️
+        </div>
+        <div class="section-tag">Tag</div>
+        <h1 class="section-title" style="margin: 1rem 0;">
+            <span style="color: <%= tagColor %>">#<%= page.tag %></span>
+        </h1>
+        <p style="color: var(--text-muted); font-size: 1.1rem;">
+            <%= page.posts.length %> article<%= page.posts.length > 1 ? 's' : '' %> avec ce tag
+        </p>
+    </div>
+
+    <div class="articles-grid">
+        <% page.posts.sort('date', -1).each(function(post) { %>
+            <%- partial('partials/article', {post: post}) %>
+        <% }); %>
+    </div>
+
+    <% if (page.total > 1) { %>
+    <nav class="pagination">
+        <%- paginator({
+            prev_text: '← Précédent',
+            next_text: 'Suivant →',
+            mid_size: 2,
+            end_size: 1
+        }) %>
+    </nav>
+    <% } %>
+
+    <div style="text-align: center; margin-top: 3rem;">
+        <a href="/tags/" class="btn btn-secondary">← Tous les tags</a>
+        <a href="/archives/" class="btn btn-secondary" style="margin-left: 1rem;">Tous les articles</a>
+    </div>
+</section>
+
+<!-- Related Tags -->
+<% if (site.tags.length > 1) { %>
+<section style="background: var(--bg-secondary); padding: 4rem 2rem;">
+    <div class="section-header">
+        <div class="section-tag">Tags connexes</div>
+        <h2 class="section-title">Découvrez aussi</h2>
+    </div>
+
+    <div class="tags-cloud" style="max-width: 1000px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center;">
+        <% 
+        var tagIndex = 0;
+        
+        site.tags.sort('length', -1).limit(20).each(function(tag) {
+            // Ne pas afficher le tag actuel
+            if (tag.name === page.tag) return;
+            
+            var color = defaultColors[tagIndex % defaultColors.length];
+            var size = Math.min(Math.max(tag.posts.length, 1), 10);
+            var fontSize = 0.85 + (size * 0.1);
+            
+            tagIndex++;
+        %>
+        <a href="<%= url_for(tag.path) %>" 
+           class="tag-item" 
+           style="
+               font-size: <%= fontSize %>rem;
+               color: <%= color %>;
+               text-decoration: none;
+               padding: 0.5rem 1rem;
+               background: linear-gradient(135deg, <%= color %>15, <%= color %>08);
+               border: 1px solid <%= color %>30;
+               border-radius: 8px;
+               transition: all 0.3s ease;
+               display: inline-flex;
+               align-items: center;
+               gap: 0.5rem;
+           "
+           onmouseover="this.style.background='<%= color %>25'; this.style.borderColor='<%= color %>'; this.style.transform='translateY(-2px)';"
+           onmouseout="this.style.background='linear-gradient(135deg, <%= color %>15, <%= color %>08)'; this.style.borderColor='<%= color %>30'; this.style.transform='translateY(0)';">
+            #<%= tag.name %>
+            <span style="
+                background: <%= color %>25;
+                padding: 0.2rem 0.5rem;
+                border-radius: 4px;
+                font-size: 0.85rem;
+                font-weight: 600;
+            "><%= tag.posts.length %></span>
+        </a>
+        <% }); %>
+    </div>
+</section>
+<% } %>

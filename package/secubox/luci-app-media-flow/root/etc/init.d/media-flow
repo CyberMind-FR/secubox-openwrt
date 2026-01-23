@@ -98,13 +98,13 @@ status() {
 	echo "UCI enabled: $enabled"
 
 	# DPI engine status
-	if pgrep -x ndpid >/dev/null 2>&1; then
+	if pgrep ndpid >/dev/null 2>&1; then
 		echo "nDPId: Running"
 	else
 		echo "nDPId: Not running"
 	fi
 
-	if pgrep -x netifyd >/dev/null 2>&1; then
+	if pgrep netifyd >/dev/null 2>&1; then
 		echo "Netifyd: Running"
 	else
 		echo "Netifyd: Not running"

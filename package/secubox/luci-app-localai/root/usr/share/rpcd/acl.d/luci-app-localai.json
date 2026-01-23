@@ -1,0 +1,39 @@
+{
+	"luci-app-localai": {
+		"description": "Grant access to LuCI LocalAI Dashboard",
+		"read": {
+			"ubus": {
+				"luci.localai": [
+					"status",
+					"models",
+					"config",
+					"health",
+					"metrics"
+				],
+				"system": [ "info", "board" ],
+				"file": [ "read", "stat", "exec" ]
+			},
+			"uci": [ "localai" ],
+			"file": {
+				"/etc/config/localai": [ "read" ],
+				"/srv/localai/*": [ "read" ]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.localai": [
+					"start",
+					"stop",
+					"restart",
+					"model_install",
+					"model_remove",
+					"model_load",
+					"model_unload",
+					"chat",
+					"complete"
+				]
+			},
+			"uci": [ "localai" ]
+		}
+	}
+}

@@ -2,7 +2,7 @@
 'require view';
 'require secubox-theme/theme as Theme';
 'require ui';
-'require wireguard-dashboard.api as API';
+'require wireguard-dashboard/api as API';
 
 return view.extend({
 	load: function() {

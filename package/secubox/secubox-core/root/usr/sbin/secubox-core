@@ -22,7 +22,8 @@ log() {
     local message="$*"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[$timestamp] [$level] $message" | tee -a "$LOG_FILE"
-    logger -t secubox-core -p "user.$level" "$message"
+    # Only log info and above to syslog (skip debug)
+    [ "$level" != "debug" ] && logger -t secubox-core -p "user.$level" "$message"
 }
 
 # Get system status

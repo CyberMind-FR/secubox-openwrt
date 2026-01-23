@@ -1,0 +1,32 @@
+{
+	"luci-app-glances": {
+		"description": "Grant access to Glances LuCI app",
+		"read": {
+			"ubus": {
+				"luci.glances": [
+					"get_status",
+					"get_config",
+					"get_monitoring_config",
+					"get_alerts_config",
+					"get_web_url"
+				]
+			},
+			"uci": [
+				"glances"
+			]
+		},
+		"write": {
+			"ubus": {
+				"luci.glances": [
+					"service_start",
+					"service_stop",
+					"service_restart",
+					"set_config"
+				]
+			},
+			"uci": [
+				"glances"
+			]
+		}
+	}
+}

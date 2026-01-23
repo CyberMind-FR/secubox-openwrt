@@ -2,8 +2,8 @@
 'require view';
 'require dom';
 'require ui';
-'require network-modes.api as api';
-'require network-modes.helpers as helpers';
+'require network-modes/api as api';
+'require network-modes/helpers as helpers';
 'require secubox/help as Help';
 'require secubox-theme/theme as Theme';
 'require secubox-portal/header as SbHeader';

@@ -1,0 +1,46 @@
+{
+	"luci-app-tor-shield": {
+		"description": "Grant access to LuCI Tor Shield",
+		"read": {
+			"ubus": {
+				"luci.tor-shield": [
+					"status",
+					"circuits",
+					"hidden_services",
+					"exit_ip",
+					"bandwidth",
+					"presets",
+					"bridges",
+					"settings"
+				],
+				"system": [ "info", "board" ],
+				"file": [ "read", "stat", "exec" ]
+			},
+			"uci": [ "tor-shield" ],
+			"file": {
+				"/etc/config/tor-shield": [ "read" ],
+				"/var/lib/tor": [ "read" ],
+				"/var/run/tor": [ "read" ],
+				"/var/log/tor.log": [ "read" ]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.tor-shield": [
+					"enable",
+					"disable",
+					"new_identity",
+					"check_leaks",
+					"add_hidden_service",
+					"remove_hidden_service",
+					"set_bridges",
+					"save_settings"
+				]
+			},
+			"uci": [ "tor-shield" ],
+			"file": {
+				"/etc/config/tor-shield": [ "write" ]
+			}
+		}
+	}
+}

@@ -19,7 +19,9 @@ LUCI_PKGARCH:=all
 # - Helper scripts: 755 (if executable)
 # - Config files: 644 (readable by all, writable by root)
 # - CSS/JS files: 644 (set automatically by luci.mk)
-PKG_FILE_MODES:=/usr/libexec/rpcd/luci.bandwidth-manager:root:root:755
+PKG_FILE_MODES:=/usr/libexec/rpcd/luci.bandwidth-manager:root:root:755 \
+	/usr/share/secubox/lib/alerts.sh:root:root:755 \
+	/etc/cron.d/bandwidth-alerts:root:root:644
 
 include $(TOPDIR)/feeds/luci/luci.mk
 

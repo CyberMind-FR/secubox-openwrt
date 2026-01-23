@@ -1,0 +1,368 @@
+#!/bin/sh
+# RPCD backend for Ollama LuCI integration
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+
+CONFIG="ollama"
+OLLAMA_CTL="/usr/sbin/ollamactl"
+
+# Load UCI config
+load_config() {
+	config_load "$CONFIG"
+	config_get API_PORT main api_port "11434"
+	config_get DATA_PATH main data_path "/srv/ollama"
+	config_get MEMORY_LIMIT main memory_limit "2g"
+}
+
+# Detect container runtime
+detect_runtime() {
+	if command -v podman >/dev/null 2>&1; then
+		echo "podman"
+	elif command -v docker >/dev/null 2>&1; then
+		echo "docker"
+	else
+		echo ""
+	fi
+}
+
+# Check if Ollama is running
+is_running() {
+	local rt=$(detect_runtime)
+	[ -z "$rt" ] && return 1
+	$rt ps --format '{{.Names}}' 2>/dev/null | grep -q "^ollama$"
+}
+
+# Get service status
+get_status() {
+	load_config
+	local running="false"
+	local uptime=0
+	local rt=$(detect_runtime)
+
+	if is_running; then
+		running="true"
+		# Get container uptime
+		if [ -n "$rt" ]; then
+			local status=$($rt ps --filter "name=ollama" --format '{{.Status}}' 2>/dev/null | head -1)
+			if [ -n "$status" ]; then
+				case "$status" in
+					*minute*) uptime=$(($(echo "$status" | grep -oE '[0-9]+' | head -1) * 60)) ;;
+					*hour*) uptime=$(($(echo "$status" | grep -oE '[0-9]+' | head -1) * 3600)) ;;
+					*second*) uptime=$(echo "$status" | grep -oE '[0-9]+' | head -1) ;;
+					*) uptime=0 ;;
+				esac
+			fi
+		fi
+	fi
+
+	local enabled="false"
+	[ "$(uci -q get ${CONFIG}.main.enabled)" = "1" ] && enabled="true"
+
+	cat <<EOF
+{
+	"running": $running,
+	"enabled": $enabled,
+	"uptime": $uptime,
+	"api_port": $API_PORT,
+	"memory_limit": "$MEMORY_LIMIT",
+	"data_path": "$DATA_PATH",
+	"runtime": "${rt:-none}"
+}
+EOF
+}
+
+# Get installed models from Ollama API
+get_models() {
+	load_config
+	local tmpfile="/tmp/ollama_models_$$"
+	local first=1
+
+	echo '{"models":['
+
+	if is_running; then
+		wget -q -O "$tmpfile" "http://127.0.0.1:$API_PORT/api/tags" 2>/dev/null
+		if [ -f "$tmpfile" ] && [ -s "$tmpfile" ]; then
+			local i=0
+			while [ $i -lt 50 ]; do
+				local model_name=$(jsonfilter -i "$tmpfile" -e "@.models[$i].name" 2>/dev/null)
+				[ -z "$model_name" ] && break
+
+				local model_size=$(jsonfilter -i "$tmpfile" -e "@.models[$i].size" 2>/dev/null)
+				[ -z "$model_size" ] && model_size=0
+
+				local modified=$(jsonfilter -i "$tmpfile" -e "@.models[$i].modified_at" 2>/dev/null)
+
+				[ $first -eq 0 ] && echo ","
+				first=0
+
+				cat <<EOF
+{
+	"name": "$model_name",
+	"size": $model_size,
+	"modified": "$modified"
+}
+EOF
+				i=$((i + 1))
+			done
+		fi
+		rm -f "$tmpfile"
+	fi
+
+	echo ']}'
+}
+
+# Get configuration
+get_config() {
+	load_config
+
+	cat <<EOF
+{
+	"api_port": $API_PORT,
+	"data_path": "$DATA_PATH",
+	"memory_limit": "$MEMORY_LIMIT"
+}
+EOF
+}
+
+# Health check
+get_health() {
+	load_config
+
+	local healthy="false"
+	local api_status="unknown"
+
+	if is_running; then
+		if wget -q -O /dev/null "http://127.0.0.1:$API_PORT" 2>/dev/null; then
+			healthy="true"
+			api_status="ok"
+		else
+			api_status="unhealthy"
+		fi
+	else
+		api_status="stopped"
+	fi
+
+	cat <<EOF
+{
+	"healthy": $healthy,
+	"api_status": "$api_status"
+}
+EOF
+}
+
+# Start service
+do_start() {
+	if is_running; then
+		echo '{"success":false,"error":"Already running"}'
+		return
+	fi
+
+	/etc/init.d/ollama start >/dev/null 2>&1
+	sleep 3
+
+	if is_running; then
+		echo '{"success":true}'
+	else
+		echo '{"success":false,"error":"Failed to start"}'
+	fi
+}
+
+# Stop service
+do_stop() {
+	/etc/init.d/ollama stop >/dev/null 2>&1
+	sleep 1
+
+	if ! is_running; then
+		echo '{"success":true}'
+	else
+		echo '{"success":false,"error":"Failed to stop"}'
+	fi
+}
+
+# Restart service
+do_restart() {
+	/etc/init.d/ollama restart >/dev/null 2>&1
+	sleep 3
+
+	if is_running; then
+		echo '{"success":true}'
+	else
+		echo '{"success":false,"error":"Failed to restart"}'
+	fi
+}
+
+# Pull model
+do_model_pull() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"success":false,"error":"Model name required"}'; return; }
+
+	if ! is_running; then
+		echo '{"success":false,"error":"Ollama not running"}'
+		return
+	fi
+
+	local rt=$(detect_runtime)
+	local output=$($rt exec ollama ollama pull "$name" 2>&1)
+	local ret=$?
+
+	if [ $ret -eq 0 ]; then
+		echo '{"success":true}'
+	else
+		local error=$(echo "$output" | tail -1 | sed 's/"/\\"/g')
+		echo "{\"success\":false,\"error\":\"$error\"}"
+	fi
+}
+
+# Remove model
+do_model_remove() {
+	local name="$1"
+	[ -z "$name" ] && { echo '{"success":false,"error":"Model name required"}'; return; }
+
+	if ! is_running; then
+		echo '{"success":false,"error":"Ollama not running"}'
+		return
+	fi
+
+	local rt=$(detect_runtime)
+	local output=$($rt exec ollama ollama rm "$name" 2>&1)
+	local ret=$?
+
+	if [ $ret -eq 0 ]; then
+		echo '{"success":true}'
+	else
+		local error=$(echo "$output" | tail -1 | sed 's/"/\\"/g')
+		echo "{\"success\":false,\"error\":\"$error\"}"
+	fi
+}
+
+# Chat completion (proxy to Ollama API)
+do_chat() {
+	load_config
+	local model="$1"
+	local message="$2"
+
+	if ! is_running; then
+		echo '{"response":"","error":"Ollama is not running. Start with: /etc/init.d/ollama start"}'
+		return
+	fi
+
+	[ -z "$model" ] && { echo '{"response":"","error":"Model not specified"}'; return; }
+	[ -z "$message" ] && { echo '{"response":"","error":"Message not provided"}'; return; }
+
+	# Build request body for Ollama /api/chat endpoint
+	local request_body="{\"model\":\"$model\",\"messages\":[{\"role\":\"user\",\"content\":\"$message\"}],\"stream\":false}"
+
+	logger -t ollama-chat "Request to model: $model"
+
+	local tmpfile="/tmp/ollama_chat_$$"
+
+	if command -v curl >/dev/null 2>&1; then
+		curl -s -X POST "http://127.0.0.1:$API_PORT/api/chat" \
+			-H "Content-Type: application/json" \
+			-d "$request_body" \
+			-o "$tmpfile" 2>/dev/null
+	else
+		wget -q -O "$tmpfile" --post-data "$request_body" \
+			--header="Content-Type: application/json" \
+			"http://127.0.0.1:$API_PORT/api/chat" 2>/dev/null
+	fi
+
+	if [ -f "$tmpfile" ] && [ -s "$tmpfile" ]; then
+		local content=$(jsonfilter -i "$tmpfile" -e '@.message.content' 2>/dev/null)
+		local error=$(jsonfilter -i "$tmpfile" -e '@.error' 2>/dev/null)
+
+		if [ -n "$error" ]; then
+			error=$(echo "$error" | sed 's/"/\\"/g' | tr '\n' ' ')
+			echo "{\"response\":\"\",\"error\":\"$error\"}"
+		elif [ -n "$content" ]; then
+			content=$(printf '%s' "$content" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n", $0}' | sed 's/\\n$//')
+			echo "{\"response\":\"$content\"}"
+		else
+			echo '{"response":"","error":"Empty response from Ollama API"}'
+		fi
+		rm -f "$tmpfile"
+	else
+		rm -f "$tmpfile"
+		echo '{"response":"","error":"API request failed"}'
+	fi
+}
+
+# Generate completion
+do_generate() {
+	load_config
+	local model="$1"
+	local prompt="$2"
+
+	if ! is_running; then
+		echo '{"text":"","error":"Ollama not running"}'
+		return
+	fi
+
+	local response=$(wget -q -O - --post-data "{\"model\":\"$model\",\"prompt\":\"$prompt\",\"stream\":false}" \
+		--header="Content-Type: application/json" \
+		"http://127.0.0.1:$API_PORT/api/generate" 2>/dev/null)
+
+	if [ -n "$response" ]; then
+		local text=$(echo "$response" | jsonfilter -e '@.response' 2>/dev/null)
+		text=$(printf '%s' "$text" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n", $0}' | sed 's/\\n$//')
+		echo "{\"text\":\"$text\"}"
+	else
+		echo '{"text":"","error":"API request failed"}'
+	fi
+}
+
+# UBUS method list
+case "$1" in
+	list)
+		cat <<'EOF'
+{
+	"status": {},
+	"models": {},
+	"config": {},
+	"health": {},
+	"start": {},
+	"stop": {},
+	"restart": {},
+	"model_pull": {"name": "string"},
+	"model_remove": {"name": "string"},
+	"chat": {"model": "string", "message": "string"},
+	"generate": {"model": "string", "prompt": "string"}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status) get_status ;;
+			models) get_models ;;
+			config) get_config ;;
+			health) get_health ;;
+			start) do_start ;;
+			stop) do_stop ;;
+			restart) do_restart ;;
+			model_pull)
+				read -r input
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				do_model_pull "$name"
+				;;
+			model_remove)
+				read -r input
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				do_model_remove "$name"
+				;;
+			chat)
+				read -r input
+				model=$(echo "$input" | jsonfilter -e '@.model' 2>/dev/null)
+				message=$(echo "$input" | jsonfilter -e '@.message' 2>/dev/null)
+				do_chat "$model" "$message"
+				;;
+			generate)
+				read -r input
+				model=$(echo "$input" | jsonfilter -e '@.model' 2>/dev/null)
+				prompt=$(echo "$input" | jsonfilter -e '@.prompt' 2>/dev/null)
+				do_generate "$model" "$prompt"
+				;;
+			*) echo '{"error":"Unknown method"}' ;;
+		esac
+		;;
+esac

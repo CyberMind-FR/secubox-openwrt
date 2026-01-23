@@ -1,0 +1,50 @@
+config main 'main'
+	option enabled '0'
+	option api_port '11434'
+	option api_host '0.0.0.0'
+	option data_path '/srv/ollama'
+	option memory_limit '2g'
+
+# Docker/Podman settings
+config docker 'docker'
+	option image 'ollama/ollama:latest'
+
+# Default model to pull on install
+config model 'default'
+	option enabled '1'
+	option name 'tinyllama'
+
+# Available models (informational - managed by Ollama)
+# Use: ollamactl pull <model> to download
+
+# Lightweight models (< 2GB)
+config model_info 'tinyllama'
+	option name 'tinyllama'
+	option size '637M'
+	option description 'TinyLlama 1.1B - Ultra-lightweight, fast responses'
+
+config model_info 'phi'
+	option name 'phi'
+	option size '1.6G'
+	option description 'Microsoft Phi-2 - Small but capable'
+
+config model_info 'gemma'
+	option name 'gemma:2b'
+	option size '1.4G'
+	option description 'Google Gemma 2B - Efficient and modern'
+
+# Medium models (2-5GB)
+config model_info 'mistral'
+	option name 'mistral'
+	option size '4.1G'
+	option description 'Mistral 7B - High quality general assistant'
+
+config model_info 'llama2'
+	option name 'llama2'
+	option size '3.8G'
+	option description 'Meta LLaMA 2 7B - Popular general model'
+
+config model_info 'codellama'
+	option name 'codellama'
+	option size '3.8G'
+	option description 'Code LLaMA - Specialized for coding tasks'

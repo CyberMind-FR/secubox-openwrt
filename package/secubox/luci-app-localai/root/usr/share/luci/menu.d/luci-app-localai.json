@@ -1,0 +1,56 @@
+{
+	"admin/secubox/services/localai": {
+		"title": "LocalAI",
+		"order": 50,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-localai"]
+		}
+	},
+	"admin/secubox/services/localai/dashboard": {
+		"title": "Dashboard",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "localai/dashboard"
+		},
+		"depends": {
+			"acl": ["luci-app-localai"]
+		}
+	},
+	"admin/secubox/services/localai/models": {
+		"title": "Models",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "localai/models"
+		},
+		"depends": {
+			"acl": ["luci-app-localai"]
+		}
+	},
+	"admin/secubox/services/localai/chat": {
+		"title": "Chat",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "localai/chat"
+		},
+		"depends": {
+			"acl": ["luci-app-localai"]
+		}
+	},
+	"admin/secubox/services/localai/settings": {
+		"title": "Settings",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "localai/settings"
+		},
+		"depends": {
+			"acl": ["luci-app-localai"]
+		}
+	}
+}

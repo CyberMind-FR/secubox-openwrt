@@ -1,0 +1,9 @@
+# CrowdSec acquisition for nginx reverse proxy (if used)
+# Monitors nginx logs for web attacks
+
+filenames:
+  - /var/log/nginx/access.log
+  - /var/log/nginx/error.log
+  - /var/log/nginx/*access*.log
+labels:
+  type: nginx

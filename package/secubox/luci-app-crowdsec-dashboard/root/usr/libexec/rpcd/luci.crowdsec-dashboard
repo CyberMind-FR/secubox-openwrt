@@ -987,16 +987,23 @@ get_nftables_stats() {
 	# Check decisions sync (compare cscli decisions count vs nftables)
 	local cscli_decisions=0
 	local nft_elements=0
+	local capi_elements=0
 	local sync_ok=0
 	if command -v cscli >/dev/null 2>&1; then
 		cscli_decisions=$(cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l || echo "0")
 	fi
 	nft_elements=$((ipv4_capi + ipv4_cscli + ipv4_other + ipv6_capi + ipv6_cscli))
-	# Sync is OK if nft has at least some elements when decisions exist
+	capi_elements=$((ipv4_capi + ipv6_capi))
+	# Sync is OK if:
+	# - Local decisions exist and firewall has entries
+	# - No local decisions but CAPI blocklists are active
+	# - Both local decisions and firewall are empty
 	[ "$cscli_decisions" -gt 0 ] && [ "$nft_elements" -gt 0 ] && sync_ok=1
+	[ "$cscli_decisions" -eq 0 ] && [ "$capi_elements" -gt 0 ] && sync_ok=1
 	[ "$cscli_decisions" -eq 0 ] && [ "$nft_elements" -eq 0 ] && sync_ok=1
 	json_add_int "cscli_decisions_count" "$cscli_decisions"
 	json_add_int "nft_elements_count" "$nft_elements"
+	json_add_int "capi_elements_count" "$capi_elements"
 	json_add_boolean "decisions_synced" "$sync_ok"
 
 	# Overall health status

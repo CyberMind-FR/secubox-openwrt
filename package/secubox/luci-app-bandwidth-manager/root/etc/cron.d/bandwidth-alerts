@@ -1,0 +1,3 @@
+# SecuBox Bandwidth Manager - Alert Monitoring
+# Check bandwidth thresholds every 5 minutes
+*/5 * * * * root /bin/sh -c '. /usr/share/secubox/lib/alerts.sh && run_alert_checks' >/dev/null 2>&1

@@ -1,0 +1,265 @@
+#!/bin/sh /etc/rc.common
+# SecuBox Tor Shield - Tor anonymization service
+# Copyright (C) 2025 CyberMind.fr
+
+START=95
+STOP=10
+USE_PROCD=1
+
+PROG=/usr/sbin/torctl
+CONFIG=tor-shield
+TORRC=/var/run/tor/torrc
+TOR_DATA=/var/lib/tor
+TOR_RUN=/var/run/tor
+
+. /lib/functions.sh
+
+generate_torrc() {
+	local enabled mode dns_over_tor socks_port socks_addr trans_port dns_port
+	local bridges_enabled bridge_type exit_nodes exclude_exit_nodes strict_nodes
+
+	config_load "$CONFIG"
+	config_get enabled main enabled '0'
+	config_get mode main mode 'transparent'
+	config_get dns_over_tor main dns_over_tor '1'
+
+	config_get socks_port socks port '9050'
+	config_get socks_addr socks address '127.0.0.1'
+
+	config_get trans_port trans port '9040'
+	config_get dns_port trans dns_port '9053'
+
+	config_get bridges_enabled bridges enabled '0'
+	config_get bridge_type bridges type 'obfs4'
+
+	config_get exit_nodes security exit_nodes ''
+	config_get exclude_exit_nodes security exclude_exit_nodes ''
+	config_get strict_nodes security strict_nodes '0'
+
+	mkdir -p "$TOR_RUN" "$TOR_DATA"
+	chmod 700 "$TOR_DATA"
+
+	cat > "$TORRC" << EOF
+# SecuBox Tor Shield - Auto-generated config
+# Do not edit - managed by tor-shield
+
+User tor
+DataDirectory $TOR_DATA
+PidFile $TOR_RUN/tor.pid
+Log notice file /var/log/tor.log
+ControlSocket $TOR_RUN/control
+ControlSocketsGroupWritable 1
+
+# SOCKS proxy
+SocksPort $socks_addr:$socks_port
+SocksPolicy accept 127.0.0.1
+SocksPolicy accept 192.168.0.0/16
+SocksPolicy accept 10.0.0.0/8
+SocksPolicy reject *
+EOF
+
+	# Transparent proxy mode
+	if [ "$mode" = "transparent" ]; then
+		cat >> "$TORRC" << EOF
+
+# Transparent proxy
+TransPort 0.0.0.0:$trans_port
+EOF
+	fi
+
+	# DNS over Tor
+	if [ "$dns_over_tor" = "1" ]; then
+		cat >> "$TORRC" << EOF
+
+# DNS over Tor
+DNSPort 0.0.0.0:$dns_port
+AutomapHostsOnResolve 1
+AutomapHostsSuffixes .onion,.exit
+VirtualAddrNetworkIPv4 10.192.0.0/10
+EOF
+	fi
+
+	# Bridge configuration
+	if [ "$bridges_enabled" = "1" ]; then
+		cat >> "$TORRC" << EOF
+
+# Bridge mode
+UseBridges 1
+EOF
+		# Add bridge lines from config
+		config_list_foreach bridges bridge_lines add_bridge_line
+	fi
+
+	# Exit node restrictions
+	if [ -n "$exit_nodes" ]; then
+		echo "ExitNodes $exit_nodes" >> "$TORRC"
+	fi
+	if [ -n "$exclude_exit_nodes" ]; then
+		echo "ExcludeExitNodes $exclude_exit_nodes" >> "$TORRC"
+	fi
+	if [ "$strict_nodes" = "1" ]; then
+		echo "StrictNodes 1" >> "$TORRC"
+	fi
+
+	# Hidden services
+	config_foreach add_hidden_service hidden_service
+
+	# GeoIP files
+	if [ -f /usr/share/tor/geoip ]; then
+		echo "GeoIPFile /usr/share/tor/geoip" >> "$TORRC"
+	fi
+	if [ -f /usr/share/tor/geoip6 ]; then
+		echo "GeoIPv6File /usr/share/tor/geoip6" >> "$TORRC"
+	fi
+}
+
+add_bridge_line() {
+	echo "Bridge $1" >> "$TORRC"
+}
+
+add_hidden_service() {
+	local cfg="$1"
+	local enabled name local_port virtual_port
+
+	config_get enabled "$cfg" enabled '0'
+	[ "$enabled" = "1" ] || return
+
+	config_get name "$cfg" name "hidden_$cfg"
+	config_get local_port "$cfg" local_port '80'
+	config_get virtual_port "$cfg" virtual_port '80'
+
+	local hs_dir="$TOR_DATA/hidden_service_$name"
+	mkdir -p "$hs_dir"
+	chmod 700 "$hs_dir"
+
+	cat >> "$TORRC" << EOF
+
+# Hidden Service: $name
+HiddenServiceDir $hs_dir
+HiddenServicePort $virtual_port 127.0.0.1:$local_port
+EOF
+}
+
+setup_iptables() {
+	local mode trans_port dns_port dns_over_tor kill_switch
+
+	config_load "$CONFIG"
+	config_get mode main mode 'transparent'
+	config_get kill_switch main kill_switch '1'
+	config_get dns_over_tor main dns_over_tor '1'
+	config_get trans_port trans port '9040'
+	config_get dns_port trans dns_port '9053'
+
+	# Get Tor user ID
+	local tor_uid=$(id -u tor 2>/dev/null || echo "tor")
+
+	# Clear existing Tor rules
+	iptables -t nat -F TOR_SHIELD 2>/dev/null
+	iptables -t nat -X TOR_SHIELD 2>/dev/null
+	iptables -t filter -F TOR_SHIELD 2>/dev/null
+	iptables -t filter -X TOR_SHIELD 2>/dev/null
+
+	[ "$mode" = "transparent" ] || return 0
+
+	# Create chains
+	iptables -t nat -N TOR_SHIELD
+	iptables -t filter -N TOR_SHIELD
+
+	# Exclude Tor traffic
+	iptables -t nat -A TOR_SHIELD -m owner --uid-owner $tor_uid -j RETURN
+
+	# Exclude local networks
+	config_list_foreach trans excluded_ips add_excluded_ip
+
+	# Redirect DNS if enabled
+	if [ "$dns_over_tor" = "1" ]; then
+		iptables -t nat -A TOR_SHIELD -p udp --dport 53 -j REDIRECT --to-ports $dns_port
+		iptables -t nat -A TOR_SHIELD -p tcp --dport 53 -j REDIRECT --to-ports $dns_port
+	fi
+
+	# Redirect TCP to transparent proxy
+	iptables -t nat -A TOR_SHIELD -p tcp -j REDIRECT --to-ports $trans_port
+
+	# Add to OUTPUT chain
+	iptables -t nat -A OUTPUT -j TOR_SHIELD
+
+	# Kill switch - block non-Tor traffic
+	if [ "$kill_switch" = "1" ]; then
+		iptables -t filter -A TOR_SHIELD -m owner --uid-owner $tor_uid -j ACCEPT
+		iptables -t filter -A TOR_SHIELD -d 127.0.0.0/8 -j ACCEPT
+		config_list_foreach trans excluded_ips add_excluded_filter_ip
+		iptables -t filter -A TOR_SHIELD -j REJECT
+		iptables -t filter -A OUTPUT -j TOR_SHIELD
+	fi
+}
+
+add_excluded_ip() {
+	iptables -t nat -A TOR_SHIELD -d "$1" -j RETURN
+}
+
+add_excluded_filter_ip() {
+	iptables -t filter -A TOR_SHIELD -d "$1" -j ACCEPT
+}
+
+remove_iptables() {
+	# Remove from OUTPUT chain
+	iptables -t nat -D OUTPUT -j TOR_SHIELD 2>/dev/null
+	iptables -t filter -D OUTPUT -j TOR_SHIELD 2>/dev/null
+
+	# Flush and remove chains
+	iptables -t nat -F TOR_SHIELD 2>/dev/null
+	iptables -t nat -X TOR_SHIELD 2>/dev/null
+	iptables -t filter -F TOR_SHIELD 2>/dev/null
+	iptables -t filter -X TOR_SHIELD 2>/dev/null
+}
+
+start_service() {
+	local enabled
+
+	config_load "$CONFIG"
+	config_get enabled main enabled '0'
+
+	[ "$enabled" = "1" ] || {
+		echo "Tor Shield is disabled. Enable with: uci set tor-shield.main.enabled=1"
+		return 0
+	}
+
+	# Generate torrc
+	generate_torrc
+
+	# Setup iptables rules
+	setup_iptables
+
+	# Start Tor via procd
+	procd_open_instance tor
+	procd_set_param command /usr/sbin/tor -f "$TORRC"
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param pidfile "$TOR_RUN/tor.pid"
+	procd_close_instance
+}
+
+stop_service() {
+	# Remove iptables rules
+	remove_iptables
+
+	# Kill tor process
+	if [ -f "$TOR_RUN/tor.pid" ]; then
+		kill $(cat "$TOR_RUN/tor.pid") 2>/dev/null
+		rm -f "$TOR_RUN/tor.pid"
+	fi
+}
+
+service_triggers() {
+	procd_add_reload_trigger "$CONFIG"
+}
+
+reload_service() {
+	stop
+	start
+}
+
+status() {
+	"$PROG" status
+}

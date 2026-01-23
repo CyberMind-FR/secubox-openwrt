@@ -18,13 +18,13 @@ var callStatus = rpc.declare({
 
 var callGetPeers = rpc.declare({
 	object: 'luci.wireguard-dashboard',
-	method: 'get_peers',
+	method: 'peers',
 	expect: { peers: [] }
 });
 
 var callGetInterfaces = rpc.declare({
 	object: 'luci.wireguard-dashboard',
-	method: 'get_interfaces',
+	method: 'interfaces',
 	expect: { interfaces: [] }
 });
 
@@ -74,6 +74,32 @@ var callGetTraffic = rpc.declare({
 	expect: { }
 });
 
+var callInterfaceControl = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'interface_control',
+	params: ['interface', 'action'],
+	expect: { success: false }
+});
+
+var callPeerDescriptions = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'peer_descriptions',
+	expect: { descriptions: {} }
+});
+
+var callBandwidthRates = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'bandwidth_rates',
+	expect: { rates: [] }
+});
+
+var callPingPeer = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'ping_peer',
+	params: ['ip'],
+	expect: { reachable: false }
+});
+
 function formatBytes(bytes) {
 	if (bytes === 0) return '0 B';
 	var k = 1024;
@@ -112,6 +138,15 @@ function formatHandshake(seconds) {
 	return Math.floor(seconds / 86400) + 'd ago';
 }
 
+function formatRate(bytesPerSec) {
+	if (!bytesPerSec || bytesPerSec === 0) return '0 B/s';
+	var k = 1024;
+	var sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+	var i = Math.floor(Math.log(bytesPerSec) / Math.log(k));
+	if (i >= sizes.length) i = sizes.length - 1;
+	return parseFloat((bytesPerSec / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
 return baseclass.extend({
 	getStatus: callStatus,
 	getPeers: callGetPeers,
@@ -123,11 +158,16 @@ return baseclass.extend({
 	removePeer: callRemovePeer,
 	generateConfig: callGenerateConfig,
 	generateQR: callGenerateQR,
+	interfaceControl: callInterfaceControl,
+	getPeerDescriptions: callPeerDescriptions,
+	getBandwidthRates: callBandwidthRates,
+	pingPeer: callPingPeer,
 	formatBytes: formatBytes,
 	formatLastHandshake: formatLastHandshake,
 	getPeerStatusClass: getPeerStatusClass,
 	shortenKey: shortenKey,
 	formatHandshake: formatHandshake,
+	formatRate: formatRate,
 
 	// Aggregate function for overview page
 	getAllData: function() {
@@ -135,13 +175,32 @@ return baseclass.extend({
 			callStatus(),
 			callGetPeers(),
 			callGetInterfaces(),
-			callGetTraffic()
+			callGetTraffic(),
+			callPeerDescriptions()
 		]).then(function(results) {
 			return {
 				status: results[0] || {},
 				peers: results[1] || { peers: [] },
 				interfaces: results[2] || { interfaces: [] },
-				traffic: results[3] || {}
+				traffic: results[3] || {},
+				descriptions: (results[4] || {}).descriptions || {}
+			};
+		});
+	},
+
+	// Get data with bandwidth rates for real-time monitoring
+	getMonitoringData: function() {
+		return Promise.all([
+			callStatus(),
+			callGetPeers(),
+			callBandwidthRates(),
+			callPeerDescriptions()
+		]).then(function(results) {
+			return {
+				status: results[0] || {},
+				peers: results[1] || { peers: [] },
+				rates: (results[2] || {}).rates || [],
+				descriptions: (results[3] || {}).descriptions || {}
 			};
 		});
 	}

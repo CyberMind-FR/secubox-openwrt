@@ -82,7 +82,7 @@ status() {
 
 	# Check nodogsplash
 	local captive_portal=0
-	pgrep -x nodogsplash >/dev/null 2>&1 && captive_portal=1
+	pgrep nodogsplash >/dev/null 2>&1 && captive_portal=1
 	json_add_boolean "captive_portal_active" "$captive_portal"
 
 	json_dump

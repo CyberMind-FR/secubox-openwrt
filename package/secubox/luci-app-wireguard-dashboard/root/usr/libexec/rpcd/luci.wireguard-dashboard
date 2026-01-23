@@ -752,10 +752,148 @@ ping_peer() {
 	json_dump
 }
 
+# Interface up/down control
+interface_control() {
+	read input
+	json_load "$input"
+	json_get_var iface interface
+	json_get_var action action
+
+	json_init
+
+	if [ -z "$iface" ] || [ -z "$action" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing interface or action"
+		json_dump
+		return
+	fi
+
+	# Validate action
+	case "$action" in
+		up|down|restart)
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Invalid action. Use: up, down, restart"
+			json_dump
+			return
+			;;
+	esac
+
+	# Check if interface exists
+	if ! uci -q get network.$iface >/dev/null; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Interface not found: $iface"
+		json_dump
+		return
+	fi
+
+	# Execute action
+	case "$action" in
+		up)
+			ifup "$iface" 2>/dev/null
+			;;
+		down)
+			ifdown "$iface" 2>/dev/null
+			;;
+		restart)
+			ifdown "$iface" 2>/dev/null
+			sleep 1
+			ifup "$iface" 2>/dev/null
+			;;
+	esac
+
+	local rc=$?
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Interface $iface $action completed"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to $action interface $iface"
+	fi
+
+	json_dump
+}
+
+# Get peer descriptions from UCI
+get_peer_descriptions() {
+	json_init
+	json_add_object "descriptions"
+
+	local interfaces=$($WG_CMD show interfaces 2>/dev/null)
+
+	for iface in $interfaces; do
+		local sections=$(uci show network 2>/dev/null | grep "=wireguard_$iface$" | cut -d'.' -f2 | cut -d'=' -f1)
+		for section in $sections; do
+			local pubkey=$(uci -q get network.$section.public_key)
+			local desc=$(uci -q get network.$section.description)
+			if [ -n "$pubkey" ] && [ -n "$desc" ]; then
+				json_add_string "$pubkey" "$desc"
+			fi
+		done
+	done
+
+	json_close_object
+	json_dump
+}
+
+# Get current bandwidth rates (requires previous call to calculate delta)
+get_bandwidth_rates() {
+	json_init
+
+	local interfaces=$($WG_CMD show interfaces 2>/dev/null)
+	local now=$(date +%s)
+
+	json_add_array "rates"
+
+	for iface in $interfaces; do
+		local rx_bytes=$(cat /sys/class/net/$iface/statistics/rx_bytes 2>/dev/null || echo 0)
+		local tx_bytes=$(cat /sys/class/net/$iface/statistics/tx_bytes 2>/dev/null || echo 0)
+
+		# Get previous values from temp file
+		local prev_file="/tmp/wg_rate_$iface"
+		local prev_rx=0
+		local prev_tx=0
+		local prev_time=0
+
+		if [ -f "$prev_file" ]; then
+			read prev_rx prev_tx prev_time < "$prev_file"
+		fi
+
+		# Calculate rates
+		local rx_rate=0
+		local tx_rate=0
+		local time_diff=$((now - prev_time))
+
+		if [ $time_diff -gt 0 ] && [ $prev_time -gt 0 ]; then
+			rx_rate=$(( (rx_bytes - prev_rx) / time_diff ))
+			tx_rate=$(( (tx_bytes - prev_tx) / time_diff ))
+			# Ensure non-negative rates
+			[ $rx_rate -lt 0 ] && rx_rate=0
+			[ $tx_rate -lt 0 ] && tx_rate=0
+		fi
+
+		# Save current values
+		echo "$rx_bytes $tx_bytes $now" > "$prev_file"
+
+		json_add_object
+		json_add_string "interface" "$iface"
+		json_add_int "rx_rate" "$rx_rate"
+		json_add_int "tx_rate" "$tx_rate"
+		json_add_int "rx_total" "$rx_bytes"
+		json_add_int "tx_total" "$tx_bytes"
+		json_close_object
+	done
+
+	json_close_array
+	json_add_int "timestamp" "$now"
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_keys":{},"add_peer":{"interface":"str","name":"str","allowed_ips":"str","public_key":"str","preshared_key":"str","endpoint":"str","persistent_keepalive":"str"},"remove_peer":{"interface":"str","public_key":"str"},"generate_config":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"generate_qr":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"}}'
+		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_keys":{},"add_peer":{"interface":"str","name":"str","allowed_ips":"str","public_key":"str","preshared_key":"str","endpoint":"str","persistent_keepalive":"str"},"remove_peer":{"interface":"str","public_key":"str"},"generate_config":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"generate_qr":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"},"interface_control":{"interface":"str","action":"str"},"peer_descriptions":{},"bandwidth_rates":{}}'
 		;;
 	call)
 		case "$2" in
@@ -797,6 +935,15 @@ case "$1" in
 				;;
 			ping_peer)
 				ping_peer
+				;;
+			interface_control)
+				interface_control
+				;;
+			peer_descriptions)
+				get_peer_descriptions
+				;;
+			bandwidth_rates)
+				get_bandwidth_rates
 				;;
 			*)
 				echo '{"error": "Unknown method"}'

@@ -1,8 +1,8 @@
 'use strict';
 'require view';
 'require ui';
-'require network-modes.api as api';
-'require network-modes.helpers as helpers';
+'require network-modes/api as api';
+'require network-modes/helpers as helpers';
 'require secubox-theme/theme as Theme';
 'require secubox-portal/header as SbHeader';
 

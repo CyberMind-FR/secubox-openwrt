@@ -37,7 +37,8 @@ log_message() {
 	local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
 
 	echo "[$timestamp] [$level] $message" >> "$REGISTRY_LOG"
-	logger -t secubox-component "[$level] $message"
+	# Only log INFO and above to syslog (skip DEBUG)
+	[ "$level" != "DEBUG" ] && logger -t secubox-component "[$level] $message"
 }
 
 # Read registry database

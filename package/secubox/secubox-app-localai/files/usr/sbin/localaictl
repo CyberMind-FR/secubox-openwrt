@@ -1,0 +1,419 @@
+#!/bin/sh
+# SecuBox LocalAI Controller
+# Copyright (C) 2025 CyberMind.fr
+#
+# LocalAI native binary management
+
+CONFIG="localai"
+BINARY="/usr/bin/local-ai"
+DATA_DIR="/srv/localai"
+BACKEND_ASSETS="/usr/share/localai/backend-assets"
+LOCALAI_VERSION="2.25.0"
+
+usage() {
+	cat <<'EOF'
+Usage: localaictl <command>
+
+Install Commands:
+  install            Download LocalAI binary from GitHub
+  uninstall          Remove LocalAI binary
+
+Service Commands:
+  start              Start LocalAI service
+  stop               Stop LocalAI service
+  restart            Restart LocalAI service
+  status             Show service status
+  logs               Show logs (use -f to follow)
+
+Model Commands:
+  models             List installed models
+  model-install <n>  Install model from preset or URL
+  model-remove <n>   Remove installed model
+
+Backend Commands:
+  backends           List available backends
+
+API Endpoints (default port 8081):
+  /v1/models         - List models
+  /v1/chat/completions - Chat completion
+  /v1/completions    - Text completion
+  /readyz            - Health check
+
+Configuration: /etc/config/localai
+EOF
+}
+
+require_root() { [ "$(id -u)" -eq 0 ] || { echo "Root required" >&2; exit 1; }; }
+
+log_info() { echo "[INFO] $*"; logger -t localai "$*"; }
+log_warn() { echo "[WARN] $*" >&2; logger -t localai -p warning "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t localai -p err "$*"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+load_config() {
+	api_port="$(uci_get main.api_port || echo 8081)"
+	api_host="$(uci_get main.api_host || echo 0.0.0.0)"
+	data_path="$(uci_get main.data_path || echo $DATA_DIR)"
+	models_path="$(uci_get main.models_path || echo $DATA_DIR/models)"
+	threads="$(uci_get main.threads || echo 4)"
+	context_size="$(uci_get main.context_size || echo 2048)"
+
+	mkdir -p "$data_path" "$models_path"
+}
+
+# =============================================================================
+# INSTALL/UNINSTALL
+# =============================================================================
+
+get_arch() {
+	local arch=$(uname -m)
+	case "$arch" in
+		aarch64) echo "arm64" ;;
+		x86_64) echo "amd64" ;;
+		*) echo "" ;;
+	esac
+}
+
+cmd_install() {
+	require_root
+	load_config
+
+	local arch=$(get_arch)
+	if [ -z "$arch" ]; then
+		log_error "Unsupported architecture: $(uname -m)"
+		return 1
+	fi
+
+	if [ -x "$BINARY" ]; then
+		log_warn "LocalAI already installed at $BINARY"
+		local ver=$("$BINARY" run --help 2>&1 | grep -i version | head -1 || echo "installed")
+		log_info "Status: $ver"
+		echo ""
+		echo "To reinstall, run: localaictl uninstall && localaictl install"
+		return 0
+	fi
+
+	# LocalAI v2.x binary URL format
+	local url="https://github.com/mudler/LocalAI/releases/download/v${LOCALAI_VERSION}/local-ai-Linux-${arch}"
+
+	log_info "Downloading LocalAI v${LOCALAI_VERSION} for ${arch}..."
+	log_info "URL: $url"
+	echo ""
+
+	# Create temp file
+	local tmp_file="/tmp/local-ai-download"
+	rm -f "$tmp_file"
+
+	# Use -L to follow redirects (GitHub uses redirects)
+	if wget -L --show-progress -O "$tmp_file" "$url" 2>&1; then
+		# Verify it's an ELF binary by checking magic bytes
+		local magic=$(head -c 4 "$tmp_file" | hexdump -e '4/1 "%02x"' 2>/dev/null)
+		if [ "$magic" = "7f454c46" ]; then
+			mv "$tmp_file" "$BINARY"
+			chmod +x "$BINARY"
+			log_info "LocalAI installed: $BINARY"
+
+			# Mark as installed in config
+			uci_set main.installed 1
+
+			echo ""
+			log_info "Binary downloaded successfully!"
+			echo ""
+			echo "To start the service:"
+			echo "  uci set localai.main.enabled=1"
+			echo "  uci commit localai"
+			echo "  /etc/init.d/localai enable"
+			echo "  /etc/init.d/localai start"
+			echo ""
+			echo "To download a model:"
+			echo "  localaictl model-install tinyllama"
+		else
+			log_error "Downloaded file is not a valid ELF binary"
+			rm -f "$tmp_file"
+			return 1
+		fi
+	else
+		log_error "Failed to download LocalAI"
+		rm -f "$tmp_file"
+		return 1
+	fi
+}
+
+cmd_uninstall() {
+	require_root
+
+	if [ -x "$BINARY" ]; then
+		# Stop service first
+		/etc/init.d/localai stop 2>/dev/null
+
+		rm -f "$BINARY"
+		uci_set main.installed 0
+		uci_set main.enabled 0
+		log_info "LocalAI binary removed"
+	else
+		log_warn "LocalAI not installed"
+	fi
+}
+
+# =============================================================================
+# SERVICE MANAGEMENT
+# =============================================================================
+
+is_running() {
+	pgrep -f "$BINARY" >/dev/null 2>&1 || pgrep -f "local-ai" >/dev/null 2>&1
+}
+
+cmd_start() {
+	require_root
+	load_config
+
+	if ! [ -x "$BINARY" ]; then
+		log_error "LocalAI binary not found: $BINARY"
+		log_error "Run: localaictl install"
+		return 1
+	fi
+
+	if is_running; then
+		log_warn "Already running"
+		return 0
+	fi
+
+	log_info "Starting LocalAI..."
+	/etc/init.d/localai start
+}
+
+cmd_stop() {
+	require_root
+	/etc/init.d/localai stop
+}
+
+cmd_restart() {
+	require_root
+	/etc/init.d/localai restart
+}
+
+cmd_status() {
+	load_config
+
+	echo "=== LocalAI Status ==="
+	echo ""
+
+	if [ -x "$BINARY" ]; then
+		echo "Binary: $BINARY"
+		local size=$(ls -lh "$BINARY" 2>/dev/null | awk '{print $5}')
+		echo "Size: $size"
+	else
+		echo "Binary: NOT FOUND"
+		echo ""
+		echo "Run: localaictl install"
+		return 1
+	fi
+
+	echo ""
+
+	if is_running; then
+		echo "Service: RUNNING"
+		local pid=$(pgrep -f "$BINARY" | head -1)
+		echo "PID: $pid"
+	else
+		echo "Service: STOPPED"
+	fi
+
+	echo ""
+	echo "Configuration:"
+	echo "  API: http://${api_host}:${api_port}"
+	echo "  Models: $models_path"
+	echo "  Threads: $threads"
+	echo "  Context: $context_size"
+
+	echo ""
+
+	# Check backend assets
+	echo "Backends:"
+	if [ -d "$BACKEND_ASSETS/grpc" ]; then
+		local backend_count=0
+		for b in "$BACKEND_ASSETS/grpc"/*; do
+			[ -x "$b" ] && backend_count=$((backend_count + 1))
+		done
+		echo "  GRPC backends: $backend_count installed"
+	else
+		echo "  GRPC backends: none (using built-in)"
+	fi
+
+	echo ""
+
+	# Check API health
+	if is_running; then
+		if wget -q -O /dev/null "http://127.0.0.1:$api_port/readyz" 2>/dev/null; then
+			echo "API Status: HEALTHY"
+		else
+			echo "API Status: NOT RESPONDING (may be loading)"
+		fi
+	fi
+}
+
+cmd_logs() {
+	if [ "$1" = "-f" ]; then
+		logread -f -e localai
+	else
+		logread -e localai | tail -100
+	fi
+}
+
+# =============================================================================
+# BACKEND MANAGEMENT
+# =============================================================================
+
+cmd_backends() {
+	echo "=== Available Backends ==="
+	echo ""
+
+	# Check installed backend binaries
+	if [ -d "$BACKEND_ASSETS/grpc" ]; then
+		echo "Installed GRPC backends:"
+		for backend in "$BACKEND_ASSETS/grpc"/*; do
+			[ -x "$backend" ] || continue
+			local name=$(basename "$backend")
+			echo "  - $name"
+		done
+	else
+		echo "No external GRPC backends installed"
+		echo "Using built-in backends from binary"
+	fi
+
+	echo ""
+}
+
+# =============================================================================
+# MODEL MANAGEMENT
+# =============================================================================
+
+cmd_models() {
+	load_config
+	echo "=== Installed Models ==="
+	echo ""
+
+	if [ -d "$models_path" ]; then
+		local count=0
+		for model in "$models_path"/*.gguf "$models_path"/*.bin; do
+			[ -f "$model" ] || continue
+			count=$((count + 1))
+			local name=$(basename "$model")
+			local size=$(ls -lh "$model" | awk '{print $5}')
+			echo "  $count. $name ($size)"
+		done
+		[ "$count" -eq 0 ] && echo "  No models installed"
+	fi
+
+	echo ""
+	echo "=== Available Presets ==="
+	echo "  tinyllama    - 669MB  - TinyLlama 1.1B"
+	echo "  phi2         - 1.6GB  - Microsoft Phi-2"
+	echo "  mistral      - 4.1GB  - Mistral 7B Instruct"
+	echo ""
+	echo "Install: localaictl model-install <name>"
+}
+
+cmd_model_install() {
+	load_config
+	require_root
+
+	local model_name="$1"
+	[ -z "$model_name" ] && { echo "Usage: localaictl model-install <name|url>"; return 1; }
+
+	mkdir -p "$models_path"
+
+	# Preset URLs
+	local url="" filename=""
+	case "$model_name" in
+		tinyllama)
+			url="https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+			filename="tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+			;;
+		phi2|phi-2)
+			url="https://huggingface.co/TheBloke/phi-2-GGUF/resolve/main/phi-2.Q4_K_M.gguf"
+			filename="phi-2.Q4_K_M.gguf"
+			;;
+		mistral)
+			url="https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+			filename="mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+			;;
+		http*)
+			url="$model_name"
+			filename=$(basename "$url")
+			;;
+		*)
+			log_error "Unknown model: $model_name"
+			log_error "Use preset name (tinyllama, phi2, mistral) or full URL"
+			return 1
+			;;
+	esac
+
+	log_info "Downloading: $filename"
+	log_info "URL: $url"
+	log_info "This may take several minutes..."
+
+	if wget -L --show-progress -O "$models_path/$filename" "$url"; then
+		# Create YAML config for the model
+		local model_id="${filename%.*}"
+		cat > "$models_path/$model_id.yaml" << EOF
+name: $model_id
+backend: llama-cpp
+parameters:
+  model: $filename
+context_size: $context_size
+threads: $threads
+EOF
+		log_info "Model installed: $model_id"
+		log_info "Restart service to load: /etc/init.d/localai restart"
+	else
+		log_error "Download failed"
+		rm -f "$models_path/$filename"
+		return 1
+	fi
+}
+
+cmd_model_remove() {
+	load_config
+	require_root
+
+	local model_name="$1"
+	[ -z "$model_name" ] && { echo "Usage: localaictl model-remove <name>"; return 1; }
+
+	local found=0
+	for ext in gguf bin yaml yml; do
+		if [ -f "$models_path/$model_name.$ext" ]; then
+			rm -f "$models_path/$model_name.$ext"
+			found=1
+		fi
+	done
+
+	# Also try to match partial names
+	for file in "$models_path"/*"$model_name"*; do
+		[ -f "$file" ] && rm -f "$file" && found=1
+	done
+
+	[ $found -eq 1 ] && log_info "Model removed: $model_name" || log_warn "Model not found: $model_name"
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+case "${1:-}" in
+	install) cmd_install ;;
+	uninstall) cmd_uninstall ;;
+	start) cmd_start ;;
+	stop) cmd_stop ;;
+	restart) cmd_restart ;;
+	status) cmd_status ;;
+	logs) shift; cmd_logs "$@" ;;
+	backends) cmd_backends ;;
+	models) cmd_models ;;
+	model-install) shift; cmd_model_install "$@" ;;
+	model-remove) shift; cmd_model_remove "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown: $1" >&2; usage >&2; exit 1 ;;
+esac

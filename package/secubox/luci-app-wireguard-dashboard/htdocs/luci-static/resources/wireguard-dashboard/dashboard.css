@@ -816,6 +816,62 @@
 	font-size: 12px;
 }
 
+.wg-btn-xs {
+	padding: 4px 8px;
+	font-size: 11px;
+	gap: 4px;
+}
+
+.wg-btn-success {
+	background: linear-gradient(135deg, var(--wg-accent-green), #059669);
+	border: none;
+	color: white;
+}
+
+.wg-btn-success:hover {
+	box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+}
+
+.wg-btn-warning {
+	background: linear-gradient(135deg, var(--wg-accent-yellow), #d97706);
+	border: none;
+	color: white;
+}
+
+.wg-btn-warning:hover {
+	box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+}
+
+.wg-btn-danger {
+	background: linear-gradient(135deg, var(--wg-accent-red), #dc2626);
+	border: none;
+	color: white;
+}
+
+.wg-btn-danger:hover {
+	box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+}
+
+/* Interface controls */
+.wg-interface-controls {
+	display: flex;
+	gap: 8px;
+	padding-top: 12px;
+	margin-top: 12px;
+	border-top: 1px solid var(--wg-border);
+	justify-content: flex-end;
+}
+
+/* Peer actions */
+.wg-peer-actions {
+	display: flex;
+	gap: 6px;
+	padding-top: 10px;
+	margin-top: 10px;
+	border-top: 1px solid var(--wg-border);
+	justify-content: center;
+}
+
 /* Auto-refresh control */
 .wg-refresh-control {
 	display: flex;
@@ -1139,4 +1195,529 @@
 
 .wg-chart-legend-dot.tx {
 	background: var(--wg-accent-blue);
+}
+
+/* ========== Wizard Styles ========== */
+
+/* Tunnel type selection */
+.wg-tunnel-types {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+	gap: 16px;
+	margin: 20px 0;
+}
+
+.wg-tunnel-type-card {
+	background: var(--wg-bg-tertiary);
+	border: 2px solid var(--wg-border);
+	border-radius: var(--wg-radius-lg);
+	padding: 24px;
+	cursor: pointer;
+	transition: all 0.3s;
+	position: relative;
+	overflow: hidden;
+}
+
+.wg-tunnel-type-card:hover {
+	border-color: var(--wg-accent-cyan);
+	transform: translateY(-2px);
+}
+
+.wg-tunnel-type-card.selected {
+	border-color: var(--wg-accent-green);
+	background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), transparent);
+}
+
+.wg-tunnel-type-card.selected::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 4px;
+	background: var(--wg-accent-green);
+}
+
+.wg-tunnel-type-icon {
+	font-size: 40px;
+	margin-bottom: 12px;
+}
+
+.wg-tunnel-type-name {
+	font-size: 18px;
+	font-weight: 600;
+	margin-bottom: 8px;
+}
+
+.wg-tunnel-type-desc {
+	font-size: 13px;
+	color: var(--wg-text-secondary);
+	line-height: 1.5;
+}
+
+.wg-tunnel-type-features {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 12px;
+}
+
+.wg-tunnel-type-feature {
+	font-size: 10px;
+	padding: 4px 8px;
+	background: var(--wg-bg-primary);
+	border-radius: 10px;
+	color: var(--wg-text-muted);
+}
+
+/* Zone preset cards */
+.wg-zone-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 14px;
+	margin: 20px 0;
+}
+
+.wg-zone-card {
+	background: var(--wg-bg-tertiary);
+	border: 2px solid var(--wg-border);
+	border-radius: var(--wg-radius-lg);
+	padding: 20px;
+	cursor: pointer;
+	transition: all 0.3s;
+	text-align: center;
+}
+
+.wg-zone-card:hover {
+	border-color: var(--wg-accent-cyan);
+	transform: translateY(-2px);
+}
+
+.wg-zone-card.selected {
+	border-color: var(--zone-color, var(--wg-accent-green));
+	background: linear-gradient(135deg, rgba(var(--zone-color-rgb, 16, 185, 129), 0.1), transparent);
+}
+
+.wg-zone-icon {
+	font-size: 36px;
+	margin-bottom: 10px;
+}
+
+.wg-zone-name {
+	font-size: 14px;
+	font-weight: 600;
+	margin-bottom: 6px;
+}
+
+.wg-zone-desc {
+	font-size: 11px;
+	color: var(--wg-text-muted);
+	line-height: 1.4;
+}
+
+/* Wizard form */
+.wg-wizard-form {
+	max-width: 600px;
+	margin: 0 auto;
+}
+
+.wg-wizard-section {
+	margin-bottom: 24px;
+}
+
+.wg-wizard-section-title {
+	font-size: 14px;
+	font-weight: 600;
+	margin-bottom: 12px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.wg-wizard-section-title::before {
+	content: '';
+	width: 4px;
+	height: 16px;
+	background: var(--wg-tunnel-gradient);
+	border-radius: 2px;
+}
+
+/* Input styles */
+.wg-input {
+	width: 100%;
+	padding: 12px 14px;
+	background: var(--wg-bg-primary);
+	border: 1px solid var(--wg-border);
+	border-radius: var(--wg-radius);
+	color: var(--wg-text-primary);
+	font-family: var(--wg-font-mono);
+	font-size: 13px;
+	transition: all 0.2s;
+}
+
+.wg-input:focus {
+	outline: none;
+	border-color: var(--wg-accent-cyan);
+	box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
+}
+
+.wg-input::placeholder {
+	color: var(--wg-text-muted);
+}
+
+.wg-select {
+	width: 100%;
+	padding: 12px 14px;
+	background: var(--wg-bg-primary);
+	border: 1px solid var(--wg-border);
+	border-radius: var(--wg-radius);
+	color: var(--wg-text-primary);
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.wg-select:focus {
+	outline: none;
+	border-color: var(--wg-accent-cyan);
+}
+
+.wg-checkbox-group {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 14px;
+	background: var(--wg-bg-tertiary);
+	border-radius: var(--wg-radius);
+	cursor: pointer;
+}
+
+.wg-checkbox-group:hover {
+	background: var(--wg-bg-secondary);
+}
+
+.wg-checkbox {
+	width: 18px;
+	height: 18px;
+	accent-color: var(--wg-accent-cyan);
+}
+
+/* Peer list in wizard */
+.wg-peer-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin: 16px 0;
+}
+
+.wg-peer-list-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px 16px;
+	background: var(--wg-bg-tertiary);
+	border: 1px solid var(--wg-border);
+	border-radius: var(--wg-radius);
+}
+
+.wg-peer-list-info {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.wg-peer-list-icon {
+	width: 40px;
+	height: 40px;
+	border-radius: 10px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 20px;
+	background: var(--wg-bg-primary);
+}
+
+.wg-peer-list-details h4 {
+	font-size: 14px;
+	font-weight: 600;
+	margin: 0 0 4px 0;
+}
+
+.wg-peer-list-details p {
+	font-size: 11px;
+	color: var(--wg-text-muted);
+	margin: 0;
+	font-family: var(--wg-font-mono);
+}
+
+.wg-peer-list-actions {
+	display: flex;
+	gap: 8px;
+}
+
+/* QR Code Modal */
+.wg-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.8);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+	animation: fade-in 0.2s ease-out;
+}
+
+@keyframes fade-in {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+.wg-modal {
+	background: var(--wg-bg-secondary);
+	border: 1px solid var(--wg-border);
+	border-radius: var(--wg-radius-lg);
+	max-width: 500px;
+	width: 90%;
+	max-height: 90vh;
+	overflow-y: auto;
+	animation: modal-slide 0.3s ease-out;
+}
+
+@keyframes modal-slide {
+	from {
+		opacity: 0;
+		transform: translateY(-20px) scale(0.95);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+.wg-modal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px 20px;
+	border-bottom: 1px solid var(--wg-border);
+}
+
+.wg-modal-title {
+	font-size: 16px;
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.wg-modal-close {
+	width: 32px;
+	height: 32px;
+	border: none;
+	background: transparent;
+	color: var(--wg-text-muted);
+	font-size: 24px;
+	cursor: pointer;
+	border-radius: 6px;
+	transition: all 0.2s;
+}
+
+.wg-modal-close:hover {
+	background: var(--wg-bg-tertiary);
+	color: var(--wg-text-primary);
+}
+
+.wg-modal-body {
+	padding: 24px;
+}
+
+.wg-modal-footer {
+	display: flex;
+	gap: 12px;
+	justify-content: flex-end;
+	padding: 16px 20px;
+	border-top: 1px solid var(--wg-border);
+}
+
+/* QR Code display */
+.wg-qr-container {
+	text-align: center;
+	margin: 20px 0;
+}
+
+.wg-qr-code {
+	display: inline-block;
+	padding: 16px;
+	background: white;
+	border-radius: var(--wg-radius-lg);
+}
+
+.wg-qr-code img,
+.wg-qr-code svg {
+	display: block;
+	max-width: 200px;
+	height: auto;
+}
+
+.wg-qr-hint {
+	font-size: 12px;
+	color: var(--wg-text-muted);
+	margin-top: 12px;
+}
+
+/* Config preview */
+.wg-config-preview {
+	background: var(--wg-bg-primary);
+	border: 1px solid var(--wg-border);
+	border-radius: var(--wg-radius);
+	padding: 16px;
+	font-family: var(--wg-font-mono);
+	font-size: 12px;
+	line-height: 1.6;
+	white-space: pre-wrap;
+	word-break: break-all;
+	max-height: 300px;
+	overflow-y: auto;
+}
+
+/* Wizard navigation */
+.wg-wizard-nav {
+	display: flex;
+	justify-content: space-between;
+	margin-top: 30px;
+	padding-top: 20px;
+	border-top: 1px solid var(--wg-border);
+}
+
+/* Success state */
+.wg-success-state {
+	text-align: center;
+	padding: 40px 20px;
+}
+
+.wg-success-icon {
+	font-size: 64px;
+	margin-bottom: 20px;
+	animation: bounce-in 0.5s ease-out;
+}
+
+@keyframes bounce-in {
+	0% { transform: scale(0); }
+	50% { transform: scale(1.2); }
+	100% { transform: scale(1); }
+}
+
+.wg-success-title {
+	font-size: 24px;
+	font-weight: 700;
+	margin-bottom: 12px;
+	color: var(--wg-accent-green);
+}
+
+.wg-success-desc {
+	font-size: 14px;
+	color: var(--wg-text-secondary);
+	margin-bottom: 24px;
+}
+
+/* Loading state */
+.wg-loading {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 60px 20px;
+}
+
+.wg-loading-spinner {
+	width: 48px;
+	height: 48px;
+	border: 3px solid var(--wg-border);
+	border-top-color: var(--wg-accent-cyan);
+	border-radius: 50%;
+	animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+	to { transform: rotate(360deg); }
+}
+
+.wg-loading-text {
+	margin-top: 16px;
+	font-size: 14px;
+	color: var(--wg-text-secondary);
+}
+
+/* Info box */
+.wg-info-box {
+	display: flex;
+	gap: 12px;
+	padding: 14px 16px;
+	background: rgba(6, 182, 212, 0.1);
+	border: 1px solid rgba(6, 182, 212, 0.3);
+	border-radius: var(--wg-radius);
+	margin: 16px 0;
+}
+
+.wg-info-box-icon {
+	font-size: 20px;
+	flex-shrink: 0;
+}
+
+.wg-info-box-content {
+	font-size: 13px;
+	color: var(--wg-text-secondary);
+	line-height: 1.5;
+}
+
+.wg-info-box.warning {
+	background: rgba(245, 158, 11, 0.1);
+	border-color: rgba(245, 158, 11, 0.3);
+}
+
+/* Copy button */
+.wg-copy-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	background: var(--wg-bg-tertiary);
+	border: 1px solid var(--wg-border);
+	border-radius: 6px;
+	color: var(--wg-text-secondary);
+	font-size: 12px;
+	cursor: pointer;
+	transition: all 0.2s;
+}
+
+.wg-copy-btn:hover {
+	border-color: var(--wg-accent-cyan);
+	color: var(--wg-text-primary);
+}
+
+.wg-copy-btn.copied {
+	border-color: var(--wg-accent-green);
+	color: var(--wg-accent-green);
+}
+
+/* Endpoint detection */
+.wg-endpoint-detect {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+}
+
+.wg-endpoint-detect .wg-input {
+	flex: 1;
+}
+
+.wg-endpoint-status {
+	font-size: 11px;
+	color: var(--wg-text-muted);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
 }

@@ -1,0 +1,48 @@
+{
+    "secubox-dashboard": {
+        "description": "SecuBox Dashboard full access",
+        "read": {
+            "ubus": {
+                "session": ["access", "get", "list"],
+                "system": ["board", "info"],
+                "network": ["get_proto_handlers"],
+                "network.interface": ["dump", "status"],
+                "network.device": ["status"],
+                "network.wireless": ["status"],
+                "service": ["list"],
+                "file": ["list", "read", "stat", "exec"],
+                "luci": ["getLocaltime", "getTimezones", "getInitList", "getRealtimeStats"],
+                "luci-rpc": ["getBoardJSON", "getNetworkDevices", "getDHCPLeases"],
+                "luci.crowdsec-dashboard": [
+                    "decisions", "alerts", "metrics", "bouncers", "machines",
+                    "hub", "status", "stats", "nftables_stats", "firewall_bouncer_status",
+                    "firewall_bouncer_config", "health_check", "acquisition_config",
+                    "acquisition_metrics", "console_status", "capi_metrics"
+                ],
+                "luci.system-hub": [
+                    "get_system_status", "get_logs", "get_health_score",
+                    "get_storage_info", "get_services_status"
+                ]
+            },
+            "file": {
+                "/etc/crowdsec/*": ["read"],
+                "/var/log/*": ["read"],
+                "/tmp/*": ["read"]
+            }
+        },
+        "write": {
+            "ubus": {
+                "file": ["exec"],
+                "service": ["signal", "delete"],
+                "system": ["reboot"],
+                "network.interface": ["up", "down", "renew"],
+                "luci.crowdsec-dashboard": [
+                    "ban", "unban", "service_control", "update_hub"
+                ]
+            },
+            "file": {
+                "/tmp/*": ["write"]
+            }
+        }
+    }
+}

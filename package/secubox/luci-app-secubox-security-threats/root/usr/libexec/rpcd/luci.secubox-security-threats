@@ -339,7 +339,7 @@ case "$1" in
 				json_add_boolean "enabled" 1
 				json_add_string "module" "secubox-security-threats"
 				json_add_string "version" "1.0.0"
-				json_add_boolean "netifyd_running" $(pgrep -x netifyd >/dev/null && echo 1 || echo 0)
+				json_add_boolean "netifyd_running" $(pgrep netifyd >/dev/null && echo 1 || echo 0)
 				json_add_boolean "crowdsec_running" $(pgrep crowdsec >/dev/null && echo 1 || echo 0)
 				json_add_boolean "cscli_available" $([ -x "$CSCLI" ] && echo 1 || echo 0)
 				json_dump

@@ -138,10 +138,10 @@ EOF
 	# Register with rpcd
 	/etc/init.d/rpcd restart
 
-	# Sync component registry from catalog
+	# Sync component registry from catalog (run in background so installation completes quickly)
 	if [ -x /usr/sbin/secubox-sync-registry ]; then
-		echo "Syncing component registry..."
-		/usr/sbin/secubox-sync-registry sync
+		echo "Starting component registry sync in background..."
+		(/usr/sbin/secubox-sync-registry sync &) >/dev/null 2>&1
 	fi
 
 	echo "SecuBox Core Framework v0.9.0 installed successfully"

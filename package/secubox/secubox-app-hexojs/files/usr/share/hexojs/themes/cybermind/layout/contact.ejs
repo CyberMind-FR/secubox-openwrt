@@ -1,0 +1,321 @@
+<%/* Layout */%>
+<section style="padding: 4rem 2rem; min-height: 60vh;">
+
+    <!-- Hero Contact -->
+    <div style="display: flex; align-items: center; gap: 2rem; margin-bottom: 3rem; flex-wrap: wrap; justify-content: center;">
+        <div style="text-align: center;">
+            <img src="/images/custom-logo.jpg" alt="CyberMind Logo" style="max-width: 180px; border-radius: 50%; box-shadow: 0 0 30px rgba(249, 115, 22, 0.4);">
+        </div>
+        <div style="min-width: 300px;">
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem;">
+                <span style="color: var(--accent-orange);">Cyber</span>Mind<span style="color: var(--accent-orange);">.FR</span>
+            </h1>
+            <p style="font-size: 1.2rem; color: var(--text-muted);">
+                Cybersécurité • Développement Embarqué • Formation • Creative Thinking
+            </p>
+        </div>
+    </div>
+
+    <!-- Présentation : 2 cartes -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem; margin-bottom: 3rem; max-width: 800px; margin-left: auto; margin-right: auto;">
+        
+        <!-- Carte Gérald -->
+        <div style="background: var(--bg-secondary); border-radius: 16px; padding: 2rem; text-align: center; border: 1px solid var(--border-subtle);">
+            <img src="/images/avatar.jpg" alt="Gérald Kerma - Gandalf" style="width: 150px; height: 150px; border-radius: 50%; object-fit: cover; border: 3px solid var(--accent-orange); margin-bottom: 1rem;">
+            <h3 style="margin-bottom: 0.25rem;">Gérald Kerma</h3>
+            <p style="color: var(--accent-orange); font-style: italic; margin-bottom: 1rem;">aka "Gandalf"</p>
+            <p style="color: var(--text-muted); font-size: 0.95rem;">
+                25+ ans d'expérience en cybersécurité et systèmes embarqués.<br>
+                Contributeur Linux Kernel • Ambassadeur CrowdSec • Ex-Thales
+            </p>
+        </div>
+
+        <!-- Carte Localisation -->
+        <div style="background: var(--bg-secondary); border-radius: 16px; padding: 2rem; text-align: center; border: 1px solid var(--border-subtle);">
+            <img src="/images/NDDC_H240.png" alt="Notre-Dame-du-Cruet - Savoie" style="height: 120px; margin-bottom: 1rem;">
+            <h3 style="margin-bottom: 0.5rem;">📍 Localisation</h3>
+            <p style="color: var(--text-secondary); line-height: 1.8;">
+                <strong>CyberMind.FR</strong><br>
+                785 route du Cruet l'Église<br>
+                73130 Notre-Dame-du-Cruet<br>
+                <span style="color: var(--accent-orange);">Savoie, France</span>
+            </p>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 1rem;">
+                🌐 GPS: 45.4833° N, 6.3167° E
+            </p>
+        </div>
+
+    </div>
+
+    <!-- Coordonnées -->
+    <div style="background: linear-gradient(135deg, var(--bg-secondary), var(--bg-primary)); border-radius: 16px; padding: 2rem; margin-bottom: 3rem; border: 1px solid var(--border-subtle); max-width: 900px; margin-left: auto; margin-right: auto;">
+        <h2 style="text-align: center; margin-bottom: 2rem;">📞 Coordonnées</h2>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem;">
+            
+            <!-- Téléphone -->
+            <a href="tel:+33775744172" class="contact-card">
+                <div style="font-size: 2rem;">📱</div>
+                <div>
+                    <div style="font-weight: 600;">Téléphone</div>
+                    <div style="color: var(--accent-orange);">(+33) 7 75 74 41 72</div>
+                </div>
+            </a>
+
+            <!-- Email CyberMind -->
+            <a href="mailto:contact@cybermind.fr" class="contact-card">
+                <div style="font-size: 2rem;">🔐</div>
+                <div>
+                    <div style="font-weight: 600;">contact@cybermind.fr</div>
+                    <div style="color: var(--text-muted); font-size: 0.9rem;">Cyber Ethical School & Lab</div>
+                </div>
+            </a>
+
+            <!-- Email Gk2 -->
+            <a href="mailto:gandalf@Gk2.NET" class="contact-card">
+                <div style="font-size: 2rem;">🧙</div>
+                <div>
+                    <div style="font-weight: 600;">gandalf@Gk2.NET</div>
+                    <div style="color: var(--text-muted); font-size: 0.9rem;">Historic ISP for Artists</div>
+                </div>
+            </a>
+
+            <!-- Site Web -->
+            <a href="https://cybermind.fr" target="_blank" class="contact-card">
+                <div style="font-size: 2rem;">🌐</div>
+                <div>
+                    <div style="font-weight: 600;">cybermind.fr</div>
+                    <div style="color: var(--text-muted); font-size: 0.9rem;">Blog & Publications</div>
+                </div>
+            </a>
+
+        </div>
+
+        <!-- Réseaux sociaux -->
+        <div style="display: flex; justify-content: center; gap: 1.5rem; margin-top: 2rem; flex-wrap: wrap;">
+            <a href="https://github.com/CyberMind-FR" target="_blank" class="social-btn">💻 GitHub</a>
+            <a href="https://www.linkedin.com/company/cybermindfr" target="_blank" class="social-btn">💼 LinkedIn</a>
+            <a href="https://www.youtube.com/playlist?list=PLOM3KtkUpYguBbTFVc_rUK2qbF0qKxWLd" target="_blank" class="social-btn">🎬 YouTube</a>
+        </div>
+    </div>
+
+    <!-- About CyberMind -->
+    <div style="background: linear-gradient(135deg, rgba(249, 115, 22, 0.1), rgba(139, 92, 246, 0.1)); border-radius: 16px; padding: 2rem; margin-bottom: 3rem; border: 1px solid var(--border-subtle); max-width: 900px; margin-left: auto; margin-right: auto;">
+        <h2 style="text-align: center; margin-bottom: 1.5rem;">🧠 About CyberMind</h2>
+        
+        <p style="text-align: center; color: var(--text-secondary); line-height: 1.8; margin-bottom: 2rem;">
+            CyberMind propose des développements de logiciels libres spécifiques et des solutions de cybersécurité sur-mesure…<br>
+            En plus des domaines de vulgarisation technique de conceptions de solutions innovantes…
+        </p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+            
+            <!-- Cyber -->
+            <div style="background: var(--bg-primary); border-radius: 12px; padding: 1.5rem; border-left: 4px solid #00d4ff;">
+                <h3 style="color: #00d4ff; margin-bottom: 0.5rem;">🤖 Cyber</h3>
+                <p style="color: var(--text-muted); font-size: 1.2rem; font-family: monospace;">
+                    🤖 + 🎲 = 💡 → 💧
+                </p>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">
+                    Intelligence • Aléatoire • Innovation • Fluidité
+                </p>
+            </div>
+
+            <!-- Mind -->
+            <div style="background: var(--bg-primary); border-radius: 12px; padding: 1.5rem; border-left: 4px solid #f59e0b;">
+                <h3 style="color: #f59e0b; margin-bottom: 0.5rem;">🧠 Mind</h3>
+                <p style="color: var(--text-muted); font-size: 1.2rem; font-family: monospace;">
+                    🧠 + 🧩 = 🧙 → 🔥
+                </p>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">
+                    Réflexion • Puzzle • Sagesse • Énergie
+                </p>
+            </div>
+
+            <!-- Mood -->
+            <div style="background: var(--bg-primary); border-radius: 12px; padding: 1.5rem; border-left: 4px solid #9945ff;">
+                <h3 style="color: #9945ff; margin-bottom: 0.5rem;">🎭 Mood</h3>
+                <p style="color: var(--text-muted); font-size: 1.2rem; font-family: monospace;">
+                    🧠 − 🧩 = 🧙 ← 🔥 + 💧
+                </p>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">
+                    Intuition • Lâcher-prise • Équilibre
+                </p>
+            </div>
+
+        </div>
+
+        <!-- Projets -->
+        <div style="background: var(--bg-primary); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem;">
+            <h3 style="margin-bottom: 1rem;">📦 Projets & Analyses</h3>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--border-subtle);">
+                    <span style="color: var(--accent-orange);">🔐</span> 
+                    <strong>#SéCube</strong> — Le Projet de Box Sécurité 
+                    <span style="color: var(--text-muted);">🕸️ → 🐭 & 🦉</span>
+                </li>
+                <li style="padding: 0.5rem 0;">
+                    <span style="color: var(--accent-orange);">📝</span> 
+                    Articles techniques en cours de publication...
+                </li>
+            </ul>
+        </div>
+
+        <!-- Formule -->
+        <div style="text-align: center; padding: 1rem; background: var(--bg-secondary); border-radius: 8px;">
+            <p style="font-family: monospace; font-size: 1.1rem; color: var(--text-secondary); margin: 0;">
+                Stay tuned & enjoy ! <span style="color: var(--accent-orange);">( 🤖 = 🍀 + 🎵 ) ~ ( 🪤 + 🧞‍♂️ = 🧠 )</span>
+            </p>
+        </div>
+    </div>
+
+    <!-- Formulaire de contact -->
+    <div style="background: var(--bg-secondary); border-radius: 16px; padding: 2rem; border: 1px solid var(--border-subtle); max-width: 700px; margin-left: auto; margin-right: auto;">
+        <h2 style="text-align: center; margin-bottom: 0.5rem;">✉️ Envoyez-nous un message</h2>
+        <p style="text-align: center; color: var(--text-muted); margin-bottom: 2rem;">
+            Une question ? Un projet ? Nous vous répondrons rapidement.
+        </p>
+
+        <form action="https://formspree.io/f/<%= theme.contact && theme.contact.formspree_id ? theme.contact.formspree_id : 'mnnekqnp' %>" method="POST">
+            <input type="hidden" name="_subject" value="📧 Contact CyberMind.FR">
+            <input type="hidden" name="_next" value="<%= config.url %>/merci/">
+            <input type="text" name="_gotcha" style="display:none">
+
+            <div class="form-group">
+                <label for="name">Nom / Organisation *</label>
+                <input type="text" id="name" name="name" required>
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email *</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+
+            <div class="form-group">
+                <label for="phone">Téléphone</label>
+                <input type="tel" id="phone" name="phone">
+            </div>
+
+            <div class="form-group">
+                <label for="subject">Sujet *</label>
+                <select id="subject" name="subject" required>
+                    <option value="">-- Choisir un sujet --</option>
+                    <option value="prestation-pentest">🛡️ Prestation Pentest / Audit</option>
+                    <option value="prestation-dev">⚙️ Prestation Développement</option>
+                    <option value="formation">🎓 Formation / Atelier</option>
+                    <option value="conseil">💡 Conseil Technique</option>
+                    <option value="contribution">📝 Contribution au blog</option>
+                    <option value="collaboration">🤝 Proposition de collaboration</option>
+                    <option value="question">❓ Question technique</option>
+                    <option value="autre">📌 Autre</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="message">Message *</label>
+                <textarea id="message" name="message" rows="6" required placeholder="Décrivez votre demande, projet ou question..."></textarea>
+            </div>
+
+            <div style="text-align: center;">
+                <button type="submit" class="btn btn-primary btn-submit">
+                    📤 Envoyer le message
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Info légale -->
+    <div style="text-align: center; margin-top: 3rem; padding: 1.5rem; color: var(--text-muted); font-size: 0.9rem;">
+        <p>
+            <strong>CyberMind.FR</strong> — Conseil et Formation en Cybersécurité<br>
+            SIRET à venir • TVA non applicable (art. 293 B du CGI)
+        </p>
+        <p style="margin-top: 1rem;">
+            🔒 Vos données sont traitées conformément au RGPD.<br>
+            Elles ne sont utilisées que pour répondre à votre demande.
+        </p>
+    </div>
+
+</section>
+
+<style>
+.contact-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--bg-primary);
+    border-radius: 12px;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+.contact-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    border-color: var(--accent-orange);
+}
+
+.social-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    text-decoration: none;
+    color: inherit;
+    border: 1px solid var(--border-subtle);
+    transition: all 0.2s ease;
+}
+.social-btn:hover {
+    border-color: var(--accent-orange);
+    transform: translateY(-2px);
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 1rem;
+    transition: all 0.2s ease;
+}
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--accent-orange);
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2);
+}
+.form-group textarea {
+    resize: vertical;
+    min-height: 120px;
+}
+
+.btn-submit {
+    padding: 1rem 3rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+@media (max-width: 600px) {
+    .contact-card {
+        flex-direction: column;
+        text-align: center;
+    }
+}
+</style>

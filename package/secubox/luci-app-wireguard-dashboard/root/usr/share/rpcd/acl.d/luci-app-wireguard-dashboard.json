@@ -5,10 +5,14 @@
 			"ubus": {
 				"luci.wireguard-dashboard": [
 					"status",
-					"get_interfaces",
-					"get_peers",
+					"interfaces",
+					"peers",
 					"config",
-					"traffic"
+					"traffic",
+					"peer_descriptions",
+					"bandwidth_rates",
+					"bandwidth_history",
+					"endpoint_info"
 				],
 				"system": [ "info", "board" ],
 				"file": [ "read", "stat", "exec" ]
@@ -26,10 +30,12 @@
 					"add_peer",
 					"remove_peer",
 					"generate_config",
-					"generate_qr"
+					"generate_qr",
+					"interface_control",
+					"ping_peer"
 				]
 			},
-			"uci": [ "wireguard-dashboard" ]
+			"uci": [ "wireguard-dashboard", "network" ]
 		}
 	}
 }

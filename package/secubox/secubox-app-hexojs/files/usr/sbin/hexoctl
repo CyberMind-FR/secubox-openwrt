@@ -1,0 +1,898 @@
+#!/bin/sh
+# SecuBox Hexo CMS Controller
+# Copyright (C) 2025 CyberMind.fr
+#
+# Manages Hexo static site generator in LXC container
+
+CONFIG="hexojs"
+LXC_NAME="hexojs"
+
+# Paths
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+SHARE_PATH="/usr/share/hexojs"
+
+# Logging
+log_info() { echo "[INFO] $*"; logger -t hexojs "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t hexojs -p err "$*"; }
+log_debug() { [ "$DEBUG" = "1" ] && echo "[DEBUG] $*"; }
+
+# Helpers
+require_root() {
+	[ "$(id -u)" -eq 0 ] || {
+		log_error "This command requires root privileges"
+		exit 1
+	}
+}
+
+has_lxc() { command -v lxc-start >/dev/null 2>&1; }
+has_git() { command -v git >/dev/null 2>&1; }
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Load configuration
+load_config() {
+	http_port="$(uci_get main.http_port)" || http_port="4000"
+	data_path="$(uci_get main.data_path)" || data_path="/srv/hexojs"
+	active_site="$(uci_get main.active_site)" || active_site="default"
+	memory_limit="$(uci_get main.memory_limit)" || memory_limit="512M"
+
+	# Site config
+	site_title="$(uci_get ${active_site}.title)" || site_title="My Blog"
+	site_subtitle="$(uci_get ${active_site}.subtitle)" || site_subtitle=""
+	site_author="$(uci_get ${active_site}.author)" || site_author="Admin"
+	site_language="$(uci_get ${active_site}.language)" || site_language="en"
+	site_theme="$(uci_get ${active_site}.theme)" || site_theme="cybermind"
+	site_url="$(uci_get ${active_site}.url)" || site_url="http://localhost:$http_port"
+	site_root="$(uci_get ${active_site}.root)" || site_root="/"
+	site_per_page="$(uci_get ${active_site}.per_page)" || site_per_page="10"
+
+	# Deploy config
+	deploy_type="$(uci_get deploy.type)" || deploy_type="git"
+	deploy_repo="$(uci_get deploy.repo)" || deploy_repo=""
+	deploy_branch="$(uci_get deploy.branch)" || deploy_branch="gh-pages"
+
+	ensure_dir "$data_path"
+	ensure_dir "$data_path/sites"
+	ensure_dir "$data_path/media"
+}
+
+# Usage
+usage() {
+	cat <<EOF
+SecuBox Hexo CMS Controller
+
+Usage: $(basename $0) <command> [options]
+
+Container Commands:
+  install           Download and setup Hexo LXC container
+  uninstall         Remove Hexo container (keeps data)
+  update            Update Hexo and dependencies
+  status            Show service status
+
+Site Management:
+  site create <name>   Create new Hexo site
+  site list            List all sites
+  site delete <name>   Delete a site
+  site switch <name>   Switch active site
+
+Content Commands:
+  new post "Title"     Create new blog post
+  new page "Title"     Create new page
+  new draft "Title"    Create new draft
+  publish <slug>       Publish a draft
+  list posts           List all posts
+  list drafts          List all drafts
+
+Build Commands:
+  serve               Start preview server (port $http_port)
+  build               Generate static files
+  clean               Clean generated files
+  deploy              Deploy to configured target
+
+Service Commands:
+  service-run         Run in foreground (for init)
+  service-stop        Stop service
+
+Utility:
+  shell               Open shell in container
+  logs                View container logs
+  exec <cmd>          Execute command in container
+
+Configuration:
+  /etc/config/hexojs
+
+Data directory:
+  /srv/hexojs
+
+EOF
+}
+
+# Check prerequisites
+lxc_check_prereqs() {
+	if ! has_lxc; then
+		log_error "LXC not installed. Install with: opkg install lxc lxc-common"
+		return 1
+	fi
+	return 0
+}
+
+# Create Node.js LXC rootfs from Alpine
+lxc_create_rootfs() {
+	local rootfs="$LXC_ROOTFS"
+	local arch=$(uname -m)
+
+	log_info "Creating Alpine rootfs for Hexo..."
+
+	ensure_dir "$rootfs"
+
+	# Use Alpine mini rootfs
+	local alpine_version="3.21"
+	case "$arch" in
+		x86_64) alpine_arch="x86_64" ;;
+		aarch64) alpine_arch="aarch64" ;;
+		armv7l) alpine_arch="armv7" ;;
+		*) log_error "Unsupported architecture: $arch"; return 1 ;;
+	esac
+
+	local alpine_url="https://dl-cdn.alpinelinux.org/alpine/v${alpine_version}/releases/${alpine_arch}/alpine-minirootfs-${alpine_version}.0-${alpine_arch}.tar.gz"
+	local tmpfile="/tmp/alpine-rootfs.tar.gz"
+
+	log_info "Downloading Alpine rootfs..."
+	wget -q -O "$tmpfile" "$alpine_url" || {
+		log_error "Failed to download Alpine rootfs"
+		return 1
+	}
+
+	log_info "Extracting rootfs..."
+	tar -xzf "$tmpfile" -C "$rootfs" || {
+		log_error "Failed to extract rootfs"
+		return 1
+	}
+	rm -f "$tmpfile"
+
+	# Setup resolv.conf
+	cp /etc/resolv.conf "$rootfs/etc/resolv.conf" 2>/dev/null || \
+		echo "nameserver 1.1.1.1" > "$rootfs/etc/resolv.conf"
+
+	# Create Hexo directory
+	ensure_dir "$rootfs/opt/hexojs"
+
+	# Create startup script
+	cat > "$rootfs/opt/start-hexo.sh" << 'STARTUP'
+#!/bin/sh
+set -e
+
+# Install Node.js and Hexo on first run
+if [ ! -f /opt/.installed ]; then
+    echo "Installing Node.js and Hexo..."
+    apk update
+    apk add --no-cache nodejs npm git openssh-client
+
+    # Install Hexo CLI globally
+    npm install -g hexo-cli
+
+    touch /opt/.installed
+fi
+
+# Start Hexo server if site exists
+cd /opt/hexojs
+if [ -d "site" ] && [ -f "site/package.json" ]; then
+    cd site
+
+    # Install dependencies if needed
+    [ -d "node_modules" ] || npm install
+
+    # Run server
+    echo "Starting Hexo server on port ${HEXO_PORT:-4000}..."
+    exec npx hexo server -p "${HEXO_PORT:-4000}"
+else
+    echo "No site found. Create one with: hexoctl site create default"
+    # Keep container running
+    exec sleep infinity
+fi
+STARTUP
+	chmod +x "$rootfs/opt/start-hexo.sh"
+
+	log_info "Rootfs created successfully"
+	return 0
+}
+
+# Create LXC config
+lxc_create_config() {
+	load_config
+
+	ensure_dir "$(dirname "$LXC_CONFIG")"
+
+	# Convert memory limit to bytes
+	local mem_bytes
+	case "$memory_limit" in
+		*G|*g) mem_bytes=$((${memory_limit%[Gg]} * 1024 * 1024 * 1024)) ;;
+		*M|*m) mem_bytes=$((${memory_limit%[Mm]} * 1024 * 1024)) ;;
+		*K|*k) mem_bytes=$((${memory_limit%[Kk]} * 1024)) ;;
+		*) mem_bytes="$memory_limit" ;;
+	esac
+
+	cat > "$LXC_CONFIG" << EOF
+# Hexo CMS LXC Configuration
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $(uname -m)
+
+# Network: use host network
+lxc.net.0.type = none
+
+# Mount points
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $data_path opt/hexojs none bind,create=dir 0 0
+
+# Environment
+lxc.environment = HEXO_PORT=$http_port
+lxc.environment = NODE_ENV=production
+
+# Security
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time sys_rawio
+
+# Resource limits
+lxc.cgroup.memory.limit_in_bytes = $mem_bytes
+
+# Init command
+lxc.init.cmd = /opt/start-hexo.sh
+EOF
+
+	log_info "LXC config created"
+}
+
+# Container control
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONFIG" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+lxc_stop() {
+	if lxc_running; then
+		log_info "Stopping Hexo container..."
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 2
+	fi
+}
+
+lxc_run() {
+	load_config
+	lxc_stop
+
+	if ! lxc_exists; then
+		log_error "Container not installed. Run: hexoctl install"
+		return 1
+	fi
+
+	# Regenerate config in case settings changed
+	lxc_create_config
+
+	# Ensure start script exists in container
+	local start_script="$LXC_ROOTFS/opt/start-hexo.sh"
+	if [ ! -f "$start_script" ]; then
+		cat > "$start_script" << 'STARTEOF'
+#!/bin/sh
+export PATH=/usr/local/bin:/usr/bin:/bin:$PATH
+export HOME=/root
+export NODE_ENV=production
+HEXO_PORT="${HEXO_PORT:-4000}"
+SITE_DIR="/opt/hexojs/site"
+cd "$SITE_DIR" 2>/dev/null || exec tail -f /dev/null
+[ -d "$SITE_DIR/public" ] || hexo generate
+exec hexo server -p "$HEXO_PORT"
+STARTEOF
+		chmod +x "$start_script"
+	fi
+
+	log_info "Starting Hexo container on port $http_port..."
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
+}
+
+lxc_exec() {
+	if ! lxc_running; then
+		log_error "Container not running. Start with: /etc/init.d/hexojs start"
+		return 1
+	fi
+	lxc-attach -n "$LXC_NAME" -- env PATH=/usr/local/bin:/usr/bin:/bin "$@"
+}
+
+# Commands
+cmd_install() {
+	require_root
+	load_config
+
+	log_info "Installing Hexo CMS..."
+
+	lxc_check_prereqs || exit 1
+
+	# Create container
+	if ! lxc_exists; then
+		lxc_create_rootfs || exit 1
+	fi
+
+	lxc_create_config || exit 1
+
+	# Copy theme
+	if [ -d "$SHARE_PATH/themes/cybermind" ]; then
+		log_info "Installing CyberMind theme..."
+		ensure_dir "$data_path/themes"
+		cp -r "$SHARE_PATH/themes/cybermind" "$data_path/themes/"
+	fi
+
+	# Copy scaffolds
+	if [ -d "$SHARE_PATH/scaffolds" ]; then
+		ensure_dir "$data_path/scaffolds"
+		cp -r "$SHARE_PATH/scaffolds/"* "$data_path/scaffolds/"
+	fi
+
+	log_info "Installation complete!"
+	log_info ""
+	log_info "Next steps:"
+	log_info "  1. Create a site: hexoctl site create default"
+	log_info "  2. Enable service: uci set hexojs.main.enabled=1 && uci commit hexojs"
+	log_info "  3. Start service: /etc/init.d/hexojs start"
+	log_info ""
+	log_info "Web preview: http://<router-ip>:$http_port"
+}
+
+cmd_uninstall() {
+	require_root
+
+	log_info "Uninstalling Hexo CMS..."
+
+	# Stop service
+	/etc/init.d/hexojs stop 2>/dev/null || true
+	/etc/init.d/hexojs disable 2>/dev/null || true
+
+	lxc_stop
+
+	# Remove container (keep data)
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		rm -rf "$LXC_PATH/$LXC_NAME"
+		log_info "Container removed"
+	fi
+
+	uci_set main.enabled '0'
+
+	log_info "Hexo CMS uninstalled"
+	log_info "Data preserved in: $(uci_get main.data_path)"
+}
+
+cmd_update() {
+	require_root
+	load_config
+
+	log_info "Updating Hexo CMS..."
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	lxc_exec sh -c 'npm update -g hexo-cli && cd /opt/hexojs/site && npm update'
+
+	log_info "Update complete!"
+}
+
+cmd_status() {
+	load_config
+
+	local enabled="$(uci_get main.enabled)"
+	local running="false"
+	local site_exists="false"
+	local post_count=0
+	local draft_count=0
+
+	if lxc_running; then
+		running="true"
+	fi
+
+	if [ -d "$data_path/site/source/_posts" ]; then
+		site_exists="true"
+		post_count=$(ls -1 "$data_path/site/source/_posts/"*.md 2>/dev/null | wc -l)
+		draft_count=$(ls -1 "$data_path/site/source/_drafts/"*.md 2>/dev/null | wc -l)
+	fi
+
+	cat << EOF
+{
+  "enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+  "running": $running,
+  "site_exists": $site_exists,
+  "active_site": "$active_site",
+  "http_port": $http_port,
+  "data_path": "$data_path",
+  "post_count": $post_count,
+  "draft_count": $draft_count,
+  "memory_limit": "$memory_limit",
+  "container": "$LXC_NAME",
+  "site": {
+    "title": "$site_title",
+    "author": "$site_author",
+    "theme": "$site_theme",
+    "language": "$site_language"
+  }
+}
+EOF
+}
+
+cmd_status_text() {
+	load_config
+
+	local enabled="$(uci_get main.enabled)"
+	local running="false"
+
+	if lxc_running; then
+		running="true"
+	fi
+
+	cat << EOF
+Hexo CMS Status
+===============
+Enabled:     $([ "$enabled" = "1" ] && echo "yes" || echo "no")
+Running:     $([ "$running" = "true" ] && echo "yes" || echo "no")
+HTTP Port:   $http_port
+Data Path:   $data_path
+Memory:      $memory_limit
+
+Active Site: $active_site
+Title:       $site_title
+Author:      $site_author
+Theme:       $site_theme
+
+Container:   $LXC_NAME
+Rootfs:      $LXC_ROOTFS
+Config:      $LXC_CONFIG
+
+EOF
+
+	if [ "$running" = "true" ]; then
+		echo "Preview: http://$(uci -q get network.lan.ipaddr || echo "localhost"):$http_port"
+	fi
+}
+
+# Site management
+cmd_site_create() {
+	require_root
+	load_config
+
+	local name="${1:-default}"
+	local site_dir="$data_path/site"
+
+	log_info "Creating Hexo site: $name"
+
+	if [ -d "$site_dir" ]; then
+		log_error "Site already exists at $site_dir"
+		log_info "Delete it first with: hexoctl site delete $name"
+		return 1
+	fi
+
+	# Start container if not running
+	local was_stopped=0
+	if ! lxc_running; then
+		was_stopped=1
+		lxc_create_config
+		lxc-start -n "$LXC_NAME" -d -f "$LXC_CONFIG"
+		sleep 5
+	fi
+
+	# Create site in container
+	lxc_exec sh -c "cd /opt/hexojs && hexo init site" || {
+		log_error "Failed to initialize site"
+		return 1
+	}
+
+	# Install dependencies
+	lxc_exec sh -c "cd /opt/hexojs/site && npm install" || {
+		log_error "Failed to install dependencies"
+		return 1
+	}
+
+	# Install deploy plugin
+	lxc_exec sh -c "cd /opt/hexojs/site && npm install hexo-deployer-git --save" || true
+
+	# Install theme
+	if [ -d "$data_path/themes/cybermind" ]; then
+		log_info "Installing CyberMind theme..."
+		cp -r "$data_path/themes/cybermind" "$site_dir/themes/"
+
+		# Update _config.yml to use cybermind theme
+		if [ -f "$site_dir/_config.yml" ]; then
+			sed -i 's/^theme:.*/theme: cybermind/' "$site_dir/_config.yml"
+		fi
+	fi
+
+	# Copy scaffolds
+	if [ -d "$data_path/scaffolds" ]; then
+		cp -r "$data_path/scaffolds/"* "$site_dir/scaffolds/" 2>/dev/null || true
+	fi
+
+	# Update site config
+	cmd_update_site_config
+
+	# Create apps directory for CyberMind theme
+	ensure_dir "$site_dir/source/apps"
+	ensure_dir "$site_dir/source/portfolio"
+	ensure_dir "$site_dir/source/services"
+
+	# Stop if we started it
+	if [ "$was_stopped" = "1" ]; then
+		lxc_stop
+	fi
+
+	log_info "Site created successfully!"
+	log_info ""
+	log_info "Start preview server with: /etc/init.d/hexojs start"
+}
+
+cmd_update_site_config() {
+	load_config
+	local config_file="$data_path/site/_config.yml"
+
+	if [ ! -f "$config_file" ]; then
+		return 1
+	fi
+
+	# Update basic settings
+	sed -i "s/^title:.*/title: $site_title/" "$config_file"
+	sed -i "s/^subtitle:.*/subtitle: $site_subtitle/" "$config_file"
+	sed -i "s/^author:.*/author: $site_author/" "$config_file"
+	sed -i "s/^language:.*/language: $site_language/" "$config_file"
+	sed -i "s|^url:.*|url: $site_url|" "$config_file"
+	sed -i "s|^root:.*|root: $site_root|" "$config_file"
+	sed -i "s/^per_page:.*/per_page: $site_per_page/" "$config_file"
+	sed -i "s/^theme:.*/theme: $site_theme/" "$config_file"
+
+	# Add deploy config if repo is set
+	if [ -n "$deploy_repo" ]; then
+		# Remove existing deploy section
+		sed -i '/^deploy:/,/^[^ ]/{ /^deploy:/d; /^  /d; }' "$config_file"
+
+		# Add new deploy section
+		cat >> "$config_file" << EOF
+
+deploy:
+  type: $deploy_type
+  repo: $deploy_repo
+  branch: $deploy_branch
+EOF
+	fi
+}
+
+cmd_site_list() {
+	load_config
+
+	echo "Sites:"
+	if [ -d "$data_path/site" ]; then
+		local active="*"
+		echo "  $active default ($([ -f "$data_path/site/_config.yml" ] && echo "active" || echo "empty"))"
+	else
+		echo "  (no sites)"
+	fi
+}
+
+cmd_site_delete() {
+	require_root
+	load_config
+
+	local name="${1:-default}"
+	local site_dir="$data_path/site"
+
+	log_info "Deleting site: $name"
+
+	if [ ! -d "$site_dir" ]; then
+		log_error "Site does not exist"
+		return 1
+	fi
+
+	rm -rf "$site_dir"
+	log_info "Site deleted"
+}
+
+# Content commands
+cmd_new_post() {
+	require_root
+	load_config
+
+	local title="$1"
+	if [ -z "$title" ]; then
+		log_error "Title required"
+		echo "Usage: hexoctl new post \"My Title\""
+		return 1
+	fi
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	lxc_exec sh -c "cd /opt/hexojs/site && hexo new post \"$title\""
+}
+
+cmd_new_page() {
+	require_root
+	load_config
+
+	local title="$1"
+	if [ -z "$title" ]; then
+		log_error "Title required"
+		return 1
+	fi
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	lxc_exec sh -c "cd /opt/hexojs/site && hexo new page \"$title\""
+}
+
+cmd_new_draft() {
+	require_root
+	load_config
+
+	local title="$1"
+	if [ -z "$title" ]; then
+		log_error "Title required"
+		return 1
+	fi
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	lxc_exec sh -c "cd /opt/hexojs/site && hexo new draft \"$title\""
+}
+
+cmd_publish() {
+	require_root
+	load_config
+
+	local slug="$1"
+	if [ -z "$slug" ]; then
+		log_error "Slug required"
+		echo "Usage: hexoctl publish <slug>"
+		return 1
+	fi
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	lxc_exec sh -c "cd /opt/hexojs/site && hexo publish \"$slug\""
+}
+
+cmd_list_posts() {
+	load_config
+
+	local posts_dir="$data_path/site/source/_posts"
+	if [ ! -d "$posts_dir" ]; then
+		echo "[]"
+		return
+	fi
+
+	echo "["
+	local first=1
+	for f in "$posts_dir"/*.md; do
+		[ -f "$f" ] || continue
+
+		local filename=$(basename "$f")
+		local slug="${filename%.md}"
+		local title=$(grep -m1 "^title:" "$f" | sed 's/^title:[[:space:]]*//' | tr -d '"' | tr -d "'")
+		local date=$(grep -m1 "^date:" "$f" | sed 's/^date:[[:space:]]*//')
+		local categories=$(grep -m1 "^categories:" "$f" | sed 's/^categories:[[:space:]]*//' | tr -d '[]')
+		local tags=$(grep -m1 "^tags:" "$f" | sed 's/^tags:[[:space:]]*//' | tr -d '[]')
+
+		[ "$first" = "1" ] || echo ","
+		first=0
+
+		cat << EOF
+  {
+    "slug": "$slug",
+    "title": "$title",
+    "date": "$date",
+    "categories": "$categories",
+    "tags": "$tags",
+    "path": "$f"
+  }
+EOF
+	done
+	echo "]"
+}
+
+cmd_list_drafts() {
+	load_config
+
+	local drafts_dir="$data_path/site/source/_drafts"
+	if [ ! -d "$drafts_dir" ]; then
+		echo "[]"
+		return
+	fi
+
+	echo "["
+	local first=1
+	for f in "$drafts_dir"/*.md; do
+		[ -f "$f" ] || continue
+
+		local filename=$(basename "$f")
+		local slug="${filename%.md}"
+		local title=$(grep -m1 "^title:" "$f" | sed 's/^title:[[:space:]]*//' | tr -d '"' | tr -d "'")
+
+		[ "$first" = "1" ] || echo ","
+		first=0
+
+		echo "  {\"slug\": \"$slug\", \"title\": \"$title\", \"path\": \"$f\"}"
+	done
+	echo "]"
+}
+
+# Build commands
+cmd_serve() {
+	require_root
+	load_config
+
+	if ! lxc_running; then
+		log_error "Container not running. Start with: /etc/init.d/hexojs start"
+		return 1
+	fi
+
+	log_info "Starting preview server on port $http_port..."
+	lxc_exec sh -c "cd /opt/hexojs/site && hexo server -p $http_port"
+}
+
+cmd_build() {
+	require_root
+	load_config
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	log_info "Generating static files..."
+	lxc_exec sh -c "cd /opt/hexojs/site && hexo generate"
+	log_info "Build complete! Files in: $data_path/site/public/"
+}
+
+cmd_clean() {
+	require_root
+	load_config
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	log_info "Cleaning generated files..."
+	lxc_exec sh -c "cd /opt/hexojs/site && hexo clean"
+	log_info "Clean complete!"
+}
+
+cmd_deploy() {
+	require_root
+	load_config
+
+	if [ -z "$deploy_repo" ]; then
+		log_error "Deploy repository not configured"
+		log_info "Set with: uci set hexojs.deploy.repo='git@github.com:user/repo.git'"
+		return 1
+	fi
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	log_info "Deploying to $deploy_repo..."
+	lxc_exec sh -c "cd /opt/hexojs/site && hexo deploy"
+	log_info "Deploy complete!"
+}
+
+cmd_logs() {
+	load_config
+
+	if lxc_running; then
+		lxc_exec sh -c "cat /var/log/hexo.log 2>/dev/null || echo 'No logs yet'"
+	else
+		echo "Container not running"
+	fi
+}
+
+cmd_shell() {
+	require_root
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		exit 1
+	fi
+
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+cmd_exec() {
+	require_root
+	lxc_exec "$@"
+}
+
+cmd_service_run() {
+	require_root
+	load_config
+
+	lxc_check_prereqs || exit 1
+	lxc_run
+}
+
+cmd_service_stop() {
+	require_root
+	lxc_stop
+}
+
+# Main
+case "${1:-}" in
+	install)    shift; cmd_install "$@" ;;
+	uninstall)  shift; cmd_uninstall "$@" ;;
+	update)     shift; cmd_update "$@" ;;
+	status)
+		shift
+		if [ "$1" = "--json" ] || [ "$1" = "-j" ]; then
+			cmd_status
+		else
+			cmd_status_text
+		fi
+		;;
+
+	site)
+		shift
+		case "${1:-}" in
+			create) shift; cmd_site_create "$@" ;;
+			list)   shift; cmd_site_list "$@" ;;
+			delete) shift; cmd_site_delete "$@" ;;
+			*)      echo "Usage: hexoctl site {create|list|delete} [name]" ;;
+		esac
+		;;
+
+	new)
+		shift
+		case "${1:-}" in
+			post)  shift; cmd_new_post "$@" ;;
+			page)  shift; cmd_new_page "$@" ;;
+			draft) shift; cmd_new_draft "$@" ;;
+			*)     echo "Usage: hexoctl new {post|page|draft} \"Title\"" ;;
+		esac
+		;;
+
+	publish)    shift; cmd_publish "$@" ;;
+
+	list)
+		shift
+		case "${1:-}" in
+			posts)  cmd_list_posts ;;
+			drafts) cmd_list_drafts ;;
+			*)      echo "Usage: hexoctl list {posts|drafts}" ;;
+		esac
+		;;
+
+	serve)      shift; cmd_serve "$@" ;;
+	build)      shift; cmd_build "$@" ;;
+	clean)      shift; cmd_clean "$@" ;;
+	deploy)     shift; cmd_deploy "$@" ;;
+
+	logs)       shift; cmd_logs "$@" ;;
+	shell)      shift; cmd_shell "$@" ;;
+	exec)       shift; cmd_exec "$@" ;;
+
+	service-run)  shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+
+	*)          usage ;;
+esac

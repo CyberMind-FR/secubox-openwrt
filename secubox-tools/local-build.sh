@@ -1672,6 +1672,11 @@ CONFIG_PACKAGE_kmod-usb-storage=y
 CONFIG_PACKAGE_kmod-fs-ext4=y
 CONFIG_PACKAGE_kmod-fs-vfat=y
 
+# Container/LXC support
+CONFIG_PACKAGE_kmod-veth=y
+CONFIG_PACKAGE_kmod-br-netfilter=y
+CONFIG_PACKAGE_kmod-nf-conntrack-netlink=y
+
 # SecuBox packages - Core
 CONFIG_PACKAGE_secubox-app=y
 CONFIG_PACKAGE_luci-app-secubox=y

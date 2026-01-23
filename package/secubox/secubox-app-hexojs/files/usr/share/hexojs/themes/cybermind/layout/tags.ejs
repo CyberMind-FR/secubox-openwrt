@@ -1,0 +1,130 @@
+<%/* Layout */%>
+<section style="padding: 4rem 2rem; min-height: 60vh;">
+    <div class="section-header">
+        <div class="section-tag">Tous les mots-clés</div>
+        <h2 class="section-title">Tags</h2>
+        <p style="text-align: center; color: var(--text-muted); max-width: 600px; margin: 1rem auto 2rem;">
+            Explorez tous les articles classés par mots-clés techniques
+        </p>
+    </div>
+
+    <div class="tags-cloud" style="max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center;">
+        <% 
+        var defaultColors = ['#00d4ff', '#3b82f6', '#9945ff', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#84cc16'];
+        var tagIndex = 0;
+        
+        // Trier par popularité
+        site.tags.sort('length', -1).each(function(tag) {
+            var color = defaultColors[tagIndex % defaultColors.length];
+            var size = Math.min(Math.max(tag.posts.length, 1), 10); // 1-10
+            var fontSize = 0.85 + (size * 0.15); // 0.85rem à 2.35rem
+            
+            tagIndex++;
+        %>
+        <a href="<%= url_for(tag.path) %>" 
+           class="tag-item" 
+           style="
+               font-size: <%= fontSize %>rem;
+               color: <%= color %>;
+               text-decoration: none;
+               padding: 0.5rem 1rem;
+               background: linear-gradient(135deg, <%= color %>15, <%= color %>08);
+               border: 1px solid <%= color %>30;
+               border-radius: 8px;
+               transition: all 0.3s ease;
+               display: inline-flex;
+               align-items: center;
+               gap: 0.5rem;
+           "
+           onmouseover="this.style.background='<%= color %>25'; this.style.borderColor='<%= color %>'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 15px <%= color %>30';"
+           onmouseout="this.style.background='linear-gradient(135deg, <%= color %>15, <%= color %>08)'; this.style.borderColor='<%= color %>30'; this.style.transform='translateY(0)'; this.style.boxShadow='none';">
+            #<%= tag.name %>
+            <span style="
+                background: <%= color %>25;
+                padding: 0.2rem 0.5rem;
+                border-radius: 4px;
+                font-size: 0.85rem;
+                font-weight: 600;
+            "><%= tag.posts.length %></span>
+        </a>
+        <% }); %>
+    </div>
+
+    <% if (site.tags.length === 0) { %>
+    <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+        <p style="font-size: 1.2rem;">Aucun tag pour le moment.</p>
+        <p>Ajoutez des tags à vos articles pour les voir apparaître ici.</p>
+    </div>
+    <% } %>
+
+    <div style="text-align: center; margin-top: 4rem;">
+        <a href="/" class="btn btn-secondary">← Retour à l'accueil</a>
+        <a href="/archives/" class="btn btn-secondary" style="margin-left: 1rem;">Tous les articles</a>
+    </div>
+</section>
+
+<!-- Stats -->
+<% if (site.tags.length > 0) { %>
+<section style="background: var(--bg-secondary); padding: 4rem 2rem;">
+    <div class="section-header">
+        <div class="section-tag">Statistiques</div>
+        <h2 class="section-title">Vue d'ensemble</h2>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2rem; max-width: 1000px; margin: 0 auto;">
+        <div style="background: var(--bg-primary); padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid var(--border-subtle);">
+            <div style="font-size: 3rem; margin-bottom: 0.5rem;">🏷️</div>
+            <div style="font-size: 2rem; font-weight: 700; color: var(--accent-orange);"><%= site.tags.length %></div>
+            <div style="color: var(--text-muted);">Tags</div>
+        </div>
+
+        <div style="background: var(--bg-primary); padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid var(--border-subtle);">
+            <div style="font-size: 3rem; margin-bottom: 0.5rem;">📝</div>
+            <div style="font-size: 2rem; font-weight: 700; color: var(--accent-orange);"><%= site.posts.length %></div>
+            <div style="color: var(--text-muted);">Articles</div>
+        </div>
+
+        <div style="background: var(--bg-primary); padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid var(--border-subtle);">
+            <div style="font-size: 3rem; margin-bottom: 0.5rem;">🏆</div>
+            <div style="font-size: 2rem; font-weight: 700; color: var(--accent-orange);">
+                <%
+                var topTag = site.tags.sort('length', -1).data[0];
+                %>
+                <%= topTag ? topTag.posts.length : 0 %>
+            </div>
+            <div style="color: var(--text-muted);">Plus populaire</div>
+        </div>
+
+        <div style="background: var(--bg-primary); padding: 2rem; border-radius: 12px; text-align: center; border: 1px solid var(--border-subtle);">
+            <div style="font-size: 3rem; margin-bottom: 0.5rem;">📊</div>
+            <div style="font-size: 2rem; font-weight: 700; color: var(--accent-orange);">
+                <%= Math.round((site.posts.length / site.tags.length) * 10) / 10 || 0 %>
+            </div>
+            <div style="color: var(--text-muted);">Moyenne/tag</div>
+        </div>
+    </div>
+
+    <% if (site.tags.length > 0) { %>
+    <div style="margin-top: 3rem; text-align: center;">
+        <h3 style="margin-bottom: 1.5rem;">Top 10 tags les plus utilisés</h3>
+        <div style="max-width: 800px; margin: 0 auto;">
+            <% 
+            site.tags.sort('length', -1).limit(10).each(function(tag, index) {
+                var percentage = Math.round((tag.posts.length / site.posts.length) * 100);
+                var barColor = defaultColors[index % defaultColors.length];
+            %>
+            <div style="margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                    <span><%= index + 1 %>. #<%= tag.name %></span>
+                    <span style="color: var(--text-muted);"><%= tag.posts.length %> articles (<%= percentage %>%)</span>
+                </div>
+                <div style="width: 100%; height: 8px; background: var(--bg-primary); border-radius: 4px; overflow: hidden;">
+                    <div style="width: <%= percentage %>%; height: 100%; background: <%= barColor %>; transition: width 0.3s ease;"></div>
+                </div>
+            </div>
+            <% }); %>
+        </div>
+    </div>
+    <% } %>
+</section>
+<% } %>

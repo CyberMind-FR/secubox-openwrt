@@ -1,0 +1,74 @@
+# Tech Blog Preset
+# Full-featured technical blog
+
+name: Tech Blog
+description: Full-featured technical blog with categories and tags
+icon: code
+
+theme:
+  default_mode: dark
+  allow_toggle: true
+  accent_color: "#10b981"
+
+branding:
+  logo_symbol: "<>"
+  logo_text: "TechBlog_"
+  tagline: "Code, Security, Linux"
+
+menu:
+  Home: /
+  Blog:
+    _path: /blog/
+    Security: /blog/security/
+    Linux: /blog/linux/
+    Development: /blog/dev/
+    Tutorials: /blog/tutorials/
+  Projects: /portfolio/
+  About: /about/
+
+sections:
+  hero: true
+  services: false
+  apps: true
+  portfolio: true
+  articles: true
+  categories: true
+  youtube: false
+  about: true
+
+limits:
+  posts: 6
+  apps: 6
+  portfolio: 4
+  categories: 6
+  tags: 12
+
+categories:
+  security:
+    name: "Security"
+    icon: "lock"
+    color: "#ef4444"
+  linux:
+    name: "Linux"
+    icon: "terminal"
+    color: "#f59e0b"
+  dev:
+    name: "Development"
+    icon: "code"
+    color: "#3b82f6"
+  tutorials:
+    name: "Tutorials"
+    icon: "book"
+    color: "#10b981"
+
+hero:
+  badge: "Tech Blog"
+  title: "Code &<br><span class='highlight'>Security</span><br>Articles"
+  subtitle: "Technical articles, tutorials, and project documentation"
+  cta:
+    - text: "Explore"
+      url: "#articles"
+      style: primary
+    - text: "Projects"
+      url: "/portfolio/"
+      style: secondary

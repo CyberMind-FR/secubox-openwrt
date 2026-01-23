@@ -1,0 +1,494 @@
+<%
+// Récupérer les métadonnées de l'app
+var appIcon = page.icon || '🚀';
+var appCategory = page.category || 'tools';
+var embedUrl = page.embed_url || '';
+var embedHeight = page.embed_height || 500;
+var appStatus = page.status || 'active';
+var appVersion = page.version || '1.0';
+
+// Couleur selon catégorie
+var catColors = {
+    'philosophy': '#a855f7',
+    'security': '#ef4444',
+    'creative': '#9945ff',
+    'dev': '#10b981',
+    'network': '#3b82f6',
+    'tools': '#f97316',
+    'meditation': '#06b6d4',
+    'projects': '#06b6d4'
+};
+var catColor = catColors[appCategory] || '#f97316';
+
+// Status badge
+var statusBadges = {
+    'active': { icon: '✅', text: 'Active', color: '#10b981' },
+    'beta': { icon: '🧪', text: 'Beta', color: '#f59e0b' },
+    'deprecated': { icon: '⚠️', text: 'Deprecated', color: '#ef4444' }
+};
+var statusBadge = statusBadges[appStatus] || statusBadges['active'];
+%>
+
+<article class="app-single" style="--app-color: <%= catColor %>;">
+    
+    <!-- Header style fenêtre -->
+    <header class="app-header">
+        <div class="app-window-bar">
+            <div class="window-dots">
+                <span class="dot close"></span>
+                <span class="dot minimize"></span>
+                <span class="dot maximize"></span>
+            </div>
+            <div class="window-title">
+                <%= appIcon %> <%= page.title %>
+            </div>
+            <div class="window-meta">
+                <span class="app-version">v<%= appVersion %></span>
+                <span class="app-status" style="background: <%= statusBadge.color %>20; color: <%= statusBadge.color %>;">
+                    <%= statusBadge.icon %> <%= statusBadge.text %>
+                </span>
+            </div>
+        </div>
+        
+        <div class="app-hero">
+            <div class="app-info">
+                <h1><%= appIcon %> <%= page.title %></h1>
+                <p class="app-description"><%= page.description || '' %></p>
+                
+                <div class="app-badges">
+                    <span class="badge category" style="background: <%= catColor %>20; color: <%= catColor %>;">
+                        <%= appCategory %>
+                    </span>
+                    <% if (page.tags && page.tags.length) { %>
+                        <% 
+                        var tagsArr = [];
+                        try { tagsArr = page.tags.toArray ? page.tags.toArray() : []; } catch(e) {}
+                        tagsArr.slice(0, 5).forEach(function(tag) { 
+                            if (!tag || !tag.name) return;
+                        %>
+                        <a href="<%= url_for(tag.path) %>" class="badge tag">#<%= tag.name %></a>
+                        <% }); %>
+                    <% } %>
+                </div>
+                
+                <div class="app-actions-header">
+                    <% if (embedUrl) { %>
+                    <a href="<%= embedUrl %>" target="_blank" class="btn btn-primary">
+                        ▶ Lancer l'application ↗
+                    </a>
+                    <% } %>
+                    <% if (page.blog_article) { %>
+                    <a href="<%= page.blog_article %>" class="btn btn-secondary">
+                        📖 Lire l'article
+                    </a>
+                    <% } %>
+                    <% if (page.github) { %>
+                    <a href="<%= page.github %>" target="_blank" class="btn btn-github">
+                        💻 GitHub
+                    </a>
+                    <% } %>
+                    <% if (page.related_article) { %>
+                    <a href="<%= page.related_article %>" class="btn btn-secondary">
+                        📖 Article
+                    </a>
+                    <% } %>
+                </div>
+            </div>
+            
+            <% 
+            // Utiliser le système de vignettes intelligentes
+            var thumbType = 'none';
+            var thumbSrc = null;
+            
+            if (page.cover) { thumbType = 'cover'; thumbSrc = page.cover; }
+            else if (page.thumbnail) { thumbType = 'thumbnail'; thumbSrc = page.thumbnail; }
+            else if (page.images && page.images.length) { thumbType = 'images'; thumbSrc = page.images[0]; }
+            %>
+            
+            <% if (thumbSrc) { %>
+            <div class="app-thumbnail">
+                <img src="<%= thumbSrc %>" alt="<%= page.title %>" loading="lazy">
+            </div>
+            <% } else if (typeof render_smart_thumbnail === 'function') { %>
+            <div class="app-thumbnail app-thumbnail-generated">
+                <%- render_smart_thumbnail(page, { class: 'hero-thumb' }) %>
+            </div>
+            <% } else if (typeof render_thumbnail === 'function') { %>
+            <div class="app-thumbnail app-thumbnail-generated">
+                <%- render_thumbnail(page, { class: 'hero-thumb', width: 400, height: 225 }) %>
+            </div>
+            <% } %>
+        </div>
+    </header>
+    
+    <!-- Embed de l'application -->
+    <% if (embedUrl) { %>
+    <section class="app-embed-section">
+        <div class="app-embed-container">
+            <div class="embed-toolbar">
+                <span class="embed-label">🖥️ Démonstration interactive</span>
+                <div class="embed-controls">
+                    <button onclick="reloadEmbed()" title="Recharger">🔄</button>
+                    <a href="<%= embedUrl %>" target="_blank" title="Plein écran">⛶</a>
+                </div>
+            </div>
+            <iframe 
+                id="appEmbed"
+                src="<%= embedUrl %>?embedded=true" 
+                height="<%= embedHeight %>"
+                title="<%= page.title %>"
+                loading="lazy">
+            </iframe>
+        </div>
+    </section>
+    <% } %>
+    
+    <!-- Contenu de la page -->
+    <section class="app-content">
+        <div class="content-wrapper">
+            <%- page.content %>
+        </div>
+    </section>
+    
+    <!-- Références croisées -->
+    <% if (page.related_article || page.related_portfolio) { %>
+    <section class="app-related">
+        <h2>📚 Voir aussi</h2>
+        <div class="related-grid">
+            <% if (page.related_article) { %>
+            <a href="<%= page.related_article %>" class="related-card article">
+                <span class="related-icon">📝</span>
+                <span class="related-label">Article associé</span>
+            </a>
+            <% } %>
+            <% if (page.related_portfolio) { %>
+            <a href="<%= page.related_portfolio %>" class="related-card portfolio">
+                <span class="related-icon">💼</span>
+                <span class="related-label">Projet associé</span>
+            </a>
+            <% } %>
+        </div>
+    </section>
+    <% } %>
+    
+    <!-- Navigation -->
+    <nav class="app-nav">
+        <a href="/apps/" class="btn btn-secondary">← Toutes les applications</a>
+        <a href="/" class="btn btn-secondary">🏠 Accueil</a>
+    </nav>
+    
+</article>
+
+<style>
+.app-single {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+/* Header fenêtre */
+.app-header {
+    background: var(--bg-secondary);
+    border: 2px solid var(--app-color);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+.app-window-bar {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: var(--app-color);
+    color: #000;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    gap: 1rem;
+}
+
+.window-dots {
+    display: flex;
+    gap: 6px;
+}
+
+.window-dots .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.dot.close { background: #ff5f57; }
+.dot.minimize { background: #ffbd2e; }
+.dot.maximize { background: #28ca42; }
+
+.window-title {
+    flex: 1;
+    font-weight: 600;
+}
+
+.window-meta {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.app-version {
+    background: rgba(0,0,0,0.2);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+}
+
+.app-status {
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+/* Hero */
+.app-hero {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2rem;
+    padding: 2rem;
+    align-items: center;
+}
+
+.app-info h1 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    color: var(--app-color);
+}
+
+.app-description {
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+.app-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.badge {
+    padding: 0.3rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    text-decoration: none;
+}
+
+.badge.category {
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.badge.tag {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+}
+
+.badge.tag:hover {
+    border-color: var(--app-color);
+    color: var(--app-color);
+}
+
+.app-actions-header {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.btn-github {
+    background: #24292e !important;
+    color: #fff !important;
+    border: none !important;
+}
+.btn-github:hover {
+    background: #3a3f44 !important;
+}
+
+.app-thumbnail {
+    max-width: 400px;
+    flex-shrink: 0;
+}
+
+.app-thumbnail img {
+    width: 100%;
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    border: 2px solid var(--app-color);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.app-thumbnail img:hover {
+    transform: scale(1.02);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+
+.app-thumbnail-generated {
+    max-width: 400px;
+}
+
+.app-thumbnail-generated .hero-thumb {
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    border: 2px solid var(--app-color);
+}
+
+/* Embed section */
+.app-embed-section {
+    margin-bottom: 2rem;
+}
+
+.app-embed-container {
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.embed-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.embed-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.embed-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.embed-controls button,
+.embed-controls a {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.embed-controls button:hover,
+.embed-controls a:hover {
+    border-color: var(--app-color);
+}
+
+.app-embed-container iframe {
+    width: 100%;
+    border: none;
+    display: block;
+}
+
+/* Content */
+.app-content {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.content-wrapper {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.content-wrapper h2 {
+    color: var(--app-color);
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+}
+
+.content-wrapper h2:first-child {
+    margin-top: 0;
+}
+
+/* Related */
+.app-related {
+    margin-bottom: 2rem;
+}
+
+.app-related h2 {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.related-grid {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.related-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+}
+
+.related-card:hover {
+    border-color: var(--app-color);
+    transform: translateY(-2px);
+}
+
+.related-icon {
+    font-size: 1.5rem;
+}
+
+/* Nav */
+.app-nav {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .app-hero {
+        grid-template-columns: 1fr;
+    }
+    
+    .app-thumbnail {
+        max-width: 100%;
+        order: -1;
+    }
+    
+    .app-info h1 {
+        font-size: 1.5rem;
+    }
+    
+    .window-meta {
+        display: none;
+    }
+}
+</style>
+
+<script>
+function reloadEmbed() {
+    var iframe = document.getElementById('appEmbed');
+    if (iframe) {
+        iframe.src = iframe.src;
+    }
+}
+</script>

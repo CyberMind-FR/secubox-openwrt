@@ -1,0 +1,51 @@
+# SecuBox Tor Shield configuration
+# /etc/config/tor-shield
+
+config tor-shield 'main'
+	option enabled '0'
+	option mode 'transparent'
+	option dns_over_tor '1'
+	option kill_switch '1'
+	option auto_bridges '0'
+
+config preset 'anonymous'
+	option name 'Full Anonymity'
+	option icon 'shield'
+	option mode 'transparent'
+	option dns_over_tor '1'
+	option kill_switch '1'
+
+config preset 'selective'
+	option name 'Selective Apps'
+	option icon 'target'
+	option mode 'socks'
+	option dns_over_tor '0'
+	option kill_switch '0'
+
+config preset 'censored'
+	option name 'Bypass Censorship'
+	option icon 'unlock'
+	option mode 'transparent'
+	option use_bridges '1'
+	option dns_over_tor '1'
+
+config proxy 'socks'
+	option port '9050'
+	option address '127.0.0.1'
+
+config transparent 'trans'
+	option port '9040'
+	option dns_port '9053'
+	list excluded_ips '192.168.0.0/16'
+	list excluded_ips '10.0.0.0/8'
+	list excluded_ips '172.16.0.0/12'
+	list excluded_ips '127.0.0.0/8'
+
+config bridges 'bridges'
+	option enabled '0'
+	option type 'obfs4'
+
+config security 'security'
+	option exit_nodes ''
+	option exclude_exit_nodes ''
+	option strict_nodes '0'

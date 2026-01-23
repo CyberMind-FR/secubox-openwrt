@@ -18,6 +18,11 @@ var callSystemInfo = rpc.declare({
 	method: 'info'
 });
 
+var callCrowdSecStats = rpc.declare({
+	object: 'luci.crowdsec-dashboard',
+	method: 'nftables_stats'
+});
+
 return view.extend({
 	currentSection: 'dashboard',
 	appStatuses: {},
@@ -26,7 +31,8 @@ return view.extend({
 		return Promise.all([
 			callSystemBoard(),
 			callSystemInfo(),
-			this.loadAppStatuses()
+			this.loadAppStatuses(),
+			callCrowdSecStats().catch(function() { return null; })
 		]);
 	},
 
@@ -80,6 +86,7 @@ return view.extend({
 	render: function(data) {
 		var boardInfo = data[0] || {};
 		var sysInfo = data[1] || {};
+		var crowdSecStats = data[3] || {};
 		var self = this;
 
 		// Set portal app context and hide LuCI navigation
@@ -118,7 +125,7 @@ return view.extend({
 			this.renderHeader(),
 			// Content
 			E('div', { 'class': 'sb-portal-content' }, [
-				this.renderDashboardSection(boardInfo, sysInfo),
+				this.renderDashboardSection(boardInfo, sysInfo, crowdSecStats),
 				this.renderSecuritySection(),
 				this.renderNetworkSection(),
 				this.renderMonitoringSection(),
@@ -204,7 +211,7 @@ return view.extend({
 		});
 	},
 
-	renderDashboardSection: function(boardInfo, sysInfo) {
+	renderDashboardSection: function(boardInfo, sysInfo, crowdSecStats) {
 		var self = this;
 		var securityApps = portal.getAppsBySection('security');
 		var networkApps = portal.getAppsBySection('network');
@@ -213,6 +220,13 @@ return view.extend({
 		// Count running services
 		var runningCount = Object.values(this.appStatuses).filter(function(s) { return s === 'running'; }).length;
 		var totalServices = Object.keys(this.appStatuses).length;
+
+		// CrowdSec blocked IPs count
+		var blockedIPv4 = (crowdSecStats.ipv4_total_count || 0);
+		var blockedIPv6 = (crowdSecStats.ipv6_total_count || 0);
+		var totalBlocked = blockedIPv4 + blockedIPv6;
+		var crowdSecHealth = crowdSecStats.firewall_health || {};
+		var crowdSecActive = crowdSecHealth.bouncer_running && crowdSecHealth.decisions_synced;
 
 		return E('div', { 'class': 'sb-portal-section active', 'data-section': 'dashboard' }, [
 			E('div', { 'class': 'sb-section-header' }, [
@@ -244,14 +258,15 @@ return view.extend({
 					E('div', { 'class': 'sb-quick-stat-label' }, 'Services Running')
 				]),
 
-				// Security Apps
+				// CrowdSec Blocked IPs
 				E('div', { 'class': 'sb-quick-stat' }, [
 					E('div', { 'class': 'sb-quick-stat-header' }, [
-						E('div', { 'class': 'sb-quick-stat-icon security' }, '\ud83d\udee1\ufe0f'),
-						E('span', { 'class': 'sb-quick-stat-status running' }, 'Protected')
+						E('div', { 'class': 'sb-quick-stat-icon security' }, '\ud83d\udeab'),
+						E('span', { 'class': 'sb-quick-stat-status ' + (crowdSecActive ? 'running' : 'warning') },
+							crowdSecActive ? 'Active' : 'Inactive')
 					]),
-					E('div', { 'class': 'sb-quick-stat-value' }, securityApps.length),
-					E('div', { 'class': 'sb-quick-stat-label' }, 'Security Modules')
+					E('div', { 'class': 'sb-quick-stat-value' }, totalBlocked.toLocaleString()),
+					E('div', { 'class': 'sb-quick-stat-label' }, 'IPs Blocked')
 				]),
 
 				// Network Apps
@@ -300,8 +315,18 @@ return view.extend({
 							' / ' + this.formatBytes(sysInfo.memory ? sysInfo.memory.total : 0) + ' used'),
 						E('span', { 'class': 'sb-events-meta' }, 'Resource Usage')
 					])
-				])
-			])
+				]),
+				totalBlocked > 0 ? E('div', { 'class': 'sb-events-item' }, [
+					E('div', { 'class': 'sb-events-icon security' }, '\ud83d\udee1\ufe0f'),
+					E('div', { 'class': 'sb-events-content' }, [
+						E('p', { 'class': 'sb-events-message' },
+							'IPv4: ' + blockedIPv4.toLocaleString() + ' (' +
+							(crowdSecStats.ipv4_capi_count || 0) + ' CAPI + ' +
+							(crowdSecStats.ipv4_cscli_count || 0) + ' local) | IPv6: ' + blockedIPv6.toLocaleString()),
+						E('span', { 'class': 'sb-events-meta' }, 'CrowdSec Firewall Protection')
+					])
+				]) : null
+			].filter(Boolean))
 		]);
 	},
 

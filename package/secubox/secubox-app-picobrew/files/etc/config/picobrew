@@ -1,0 +1,18 @@
+config picobrew 'main'
+	option enabled '0'
+	option http_port '8080'
+	option http_host '0.0.0.0'
+	option data_path '/srv/picobrew'
+	option memory_limit '512M'
+	option log_level 'INFO'
+
+config server 'server'
+	option dns_name ''
+	option https_enabled '0'
+	option cert_path ''
+	option key_path ''
+
+config brewing 'brewing'
+	option default_boil_temp '100'
+	option default_mash_temp '67'
+	option units 'metric'

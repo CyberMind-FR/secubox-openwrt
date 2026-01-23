@@ -21,6 +21,16 @@
 			"acl": ["luci-app-secubox-portal"]
 		}
 	},
+	"admin/secubox/services": {
+		"title": "Services",
+		"order": 50,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-secubox-portal"]
+		}
+	},
 	"admin/secubox/apps": {
 		"title": "Apps",
 		"order": 60,

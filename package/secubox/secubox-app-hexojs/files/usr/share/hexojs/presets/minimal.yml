@@ -1,0 +1,45 @@
+# Minimal Blog Preset
+# Clean, simple blog with essential features
+
+name: Minimal Blog
+description: Clean and simple blog layout
+icon: book
+
+theme:
+  default_mode: light
+  allow_toggle: true
+  accent_color: "#3b82f6"
+
+branding:
+  logo_symbol: ">"
+  logo_text: "Blog_"
+  tagline: "Simple thoughts"
+
+menu:
+  Home: /
+  Archive: /archives/
+  About: /about/
+
+sections:
+  hero: true
+  services: false
+  apps: false
+  portfolio: false
+  articles: true
+  categories: false
+  youtube: false
+  about: true
+
+limits:
+  posts: 10
+  categories: 0
+  tags: 0
+
+hero:
+  badge: "Blog"
+  title: "My<br><span class='highlight'>Blog</span>"
+  subtitle: "Thoughts and ideas"
+  cta:
+    - text: "Read"
+      url: "#articles"
+      style: primary

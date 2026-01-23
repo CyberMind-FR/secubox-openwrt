@@ -1,0 +1,751 @@
+<%
+// Récupérer tous les contenus
+var apps = [];
+var portfolio = [];
+var gallery = [];
+
+// Collecter les apps
+if (site.pages && site.pages.length) {
+    site.pages.forEach(function(p) {
+        if (p.layout === 'app') {
+            apps.push(p);
+        }
+        if (p.layout === 'portfolio') {
+            portfolio.push(p);
+        }
+        if (p.layout === 'gallery-item') {
+            gallery.push(p);
+        }
+    });
+}
+
+// Aussi depuis la config theme.apps si disponible
+if (theme.apps && theme.apps.length) {
+    theme.apps.forEach(function(app) {
+        if (!apps.find(a => a.title === app.name)) {
+            apps.push({
+                title: app.name,
+                icon: app.icon || '🚀',
+                description: app.description,
+                path: app.url,
+                embed_url: app.url,
+                category: app.category,
+                featured: app.featured,
+                isExternal: true
+            });
+        }
+    });
+}
+
+// Trier par featured puis order
+apps.sort(function(a, b) {
+    if (a.featured && !b.featured) return -1;
+    if (!a.featured && b.featured) return 1;
+    return (a.order || 999) - (b.order || 999);
+});
+
+portfolio.sort(function(a, b) {
+    if (a.featured && !b.featured) return -1;
+    if (!a.featured && b.featured) return 1;
+    return (a.order || 999) - (b.order || 999);
+});
+
+// Séparer portfolio par type
+var clients = portfolio.filter(function(p) { return p.type === 'client'; });
+var projects = portfolio.filter(function(p) { return p.type === 'project'; });
+var opensource = portfolio.filter(function(p) { return p.type === 'opensource'; });
+%>
+
+<div class="showcase-page">
+    
+    <!-- Hero Showcase -->
+    <section class="showcase-hero">
+        <div class="hero-content">
+            <div class="hero-badge">🏪 Vitrine</div>
+            <h1>Réalisations & Services</h1>
+            <p class="hero-subtitle">
+                Sites web, applications interactives, créations artistiques et contributions open source
+            </p>
+            
+            <!-- Stats rapides -->
+            <div class="showcase-stats">
+                <div class="stat">
+                    <span class="stat-value"><%= clients.length + projects.length %></span>
+                    <span class="stat-label">Projets</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value"><%= apps.length %></span>
+                    <span class="stat-label">Applications</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value"><%= opensource.length %></span>
+                    <span class="stat-label">Open Source</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value">25+</span>
+                    <span class="stat-label">Années XP</span>
+                </div>
+            </div>
+            
+            <div class="hero-cta">
+                <a href="#sites-clients" class="btn btn-primary">🏢 Sites Clients</a>
+                <a href="#applications" class="btn btn-secondary">📱 Applications</a>
+                <a href="/contact/" class="btn btn-secondary">💬 Contact</a>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Section Sites Clients -->
+    <section id="sites-clients" class="showcase-section">
+        <div class="section-header">
+            <div class="section-icon">🏢</div>
+            <h2>Sites Web Clients</h2>
+            <p>Réalisations pour entreprises et associations</p>
+        </div>
+        
+        <div class="showcase-grid portfolio-grid">
+            <% if (clients.length > 0) { %>
+                <% clients.slice(0, 6).forEach(function(item) { %>
+                <a href="<%= item.isExternal ? item.path : url_for(item.path) %>" class="showcase-card client" <%= item.isExternal ? 'target="_blank"' : '' %>>
+                    <div class="card-visual">
+                        <% if (item.thumbnail) { %>
+                        <img src="<%= item.thumbnail %>" alt="<%= item.title %>" loading="lazy">
+                        <% } else { %>
+                        <div class="card-placeholder"><%= item.icon || '🌐' %></div>
+                        <% } %>
+                        <div class="card-overlay">
+                            <span class="view-btn">Voir le projet →</span>
+                        </div>
+                    </div>
+                    <div class="card-info">
+                        <h3><%= item.icon || '🌐' %> <%= item.title %></h3>
+                        <p><%= item.description || '' %></p>
+                        <% if (item.client && item.client.sector) { %>
+                        <span class="card-tag"><%= item.client.sector %></span>
+                        <% } %>
+                    </div>
+                </a>
+                <% }); %>
+            <% } else { %>
+                <!-- Exemples statiques -->
+                <a href="https://ganimed.fr" target="_blank" class="showcase-card client">
+                    <div class="card-visual">
+                        <div class="card-placeholder">🌐</div>
+                        <div class="card-overlay">
+                            <span class="view-btn">Visiter ↗</span>
+                        </div>
+                    </div>
+                    <div class="card-info">
+                        <h3>🌐 Ganimed.fr</h3>
+                        <p>Site vitrine professionnel</p>
+                        <span class="card-tag">Services</span>
+                    </div>
+                </a>
+                
+                <a href="https://icieb.fr" target="_blank" class="showcase-card client">
+                    <div class="card-visual">
+                        <div class="card-placeholder">🏪</div>
+                        <div class="card-overlay">
+                            <span class="view-btn">Visiter ↗</span>
+                        </div>
+                    </div>
+                    <div class="card-info">
+                        <h3>🏪 icieb.fr</h3>
+                        <p>Boutique en ligne artisanale</p>
+                        <span class="card-tag">E-commerce</span>
+                    </div>
+                </a>
+            <% } %>
+        </div>
+        
+        <div class="section-footer">
+            <a href="/portfolio/clients/" class="btn btn-secondary">Voir tous les sites clients →</a>
+        </div>
+    </section>
+    
+    <!-- Section Projets Personnels -->
+    <section id="projets" class="showcase-section alt-bg">
+        <div class="section-header">
+            <div class="section-icon">🚀</div>
+            <h2>Projets & Évolutions</h2>
+            <p>Développements personnels et mises à jour</p>
+        </div>
+        
+        <div class="showcase-grid projects-grid">
+            <% if (projects.length > 0) { %>
+                <% projects.slice(0, 4).forEach(function(item) { %>
+                <a href="<%= url_for(item.path) %>" class="showcase-card project">
+                    <div class="card-visual">
+                        <% if (item.thumbnail) { %>
+                        <img src="<%= item.thumbnail %>" alt="<%= item.title %>" loading="lazy">
+                        <% } else { %>
+                        <div class="card-placeholder"><%= item.icon || '🚀' %></div>
+                        <% } %>
+                        <% if (item.before_after) { %>
+                        <div class="card-badge">🔄 Avant/Après</div>
+                        <% } %>
+                    </div>
+                    <div class="card-info">
+                        <h3><%= item.icon || '🚀' %> <%= item.title %></h3>
+                        <p><%= item.description || '' %></p>
+                    </div>
+                </a>
+                <% }); %>
+            <% } else { %>
+                <!-- Exemple CyberMind évolution -->
+                <div class="showcase-card project evolution">
+                    <div class="card-visual">
+                        <div class="card-placeholder">🔮</div>
+                        <div class="card-badge">🔄 Évolution</div>
+                    </div>
+                    <div class="card-info">
+                        <h3>🔮 CyberMind.fr v1 → v3</h3>
+                        <p>Évolution du site de 2020 à aujourd'hui</p>
+                        <div class="evolution-timeline">
+                            <span class="timeline-dot">2020</span>
+                            <span class="timeline-line"></span>
+                            <span class="timeline-dot">2022</span>
+                            <span class="timeline-line"></span>
+                            <span class="timeline-dot active">2024</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="showcase-card project">
+                    <div class="card-visual">
+                        <div class="card-placeholder">🌐</div>
+                    </div>
+                    <div class="card-info">
+                        <h3>🌐 Gk2.NET Historic</h3>
+                        <p>Premier FAI français pour artistes (1996)</p>
+                        <span class="card-tag vintage">🏛️ Depuis 1996</span>
+                    </div>
+                </div>
+            <% } %>
+        </div>
+        
+        <div class="section-footer">
+            <a href="/portfolio/projects/" class="btn btn-secondary">Tous les projets →</a>
+        </div>
+    </section>
+    
+    <!-- Section Applications -->
+    <section id="applications" class="showcase-section">
+        <div class="section-header">
+            <div class="section-icon">📱</div>
+            <h2>Applications Interactives</h2>
+            <p>Outils et démos en ligne</p>
+        </div>
+        
+        <div class="showcase-grid apps-grid">
+            <% apps.slice(0, 4).forEach(function(app) { %>
+            <a href="<%= app.isExternal ? app.embed_url : url_for(app.path) %>" class="showcase-card app" <%= app.isExternal ? 'target="_blank"' : '' %>>
+                <div class="card-visual app-preview">
+                    <% if (app.embed_url) { %>
+                    <iframe src="<%= app.embed_url %>?embedded=true" loading="lazy" title="<%= app.title %>"></iframe>
+                    <% } else { %>
+                    <div class="card-placeholder"><%= app.icon || '🚀' %></div>
+                    <% } %>
+                    <div class="card-overlay">
+                        <span class="view-btn">▶ Lancer</span>
+                    </div>
+                </div>
+                <div class="card-info">
+                    <h3><%= app.icon || '🚀' %> <%= app.title %></h3>
+                    <p><%= app.description || '' %></p>
+                    <% if (app.category) { %>
+                    <span class="card-tag <%= app.category %>"><%= app.category %></span>
+                    <% } %>
+                </div>
+            </a>
+            <% }); %>
+        </div>
+        
+        <div class="section-footer">
+            <a href="/apps/" class="btn btn-secondary">Toutes les applications →</a>
+        </div>
+    </section>
+    
+    <!-- Section Open Source -->
+    <section id="opensource" class="showcase-section alt-bg">
+        <div class="section-header">
+            <div class="section-icon">🔓</div>
+            <h2>Contributions Open Source</h2>
+            <p>Projets libres et contributions communautaires</p>
+        </div>
+        
+        <div class="opensource-grid">
+            <div class="oss-card">
+                <div class="oss-icon">🐧</div>
+                <h3>Linux Kernel</h3>
+                <p>Drivers SD/MMC, Marvell Armada</p>
+                <a href="https://github.com/torvalds/linux" target="_blank" class="oss-link">Voir sur GitHub →</a>
+            </div>
+            
+            <div class="oss-card">
+                <div class="oss-icon">📡</div>
+                <h3>OpenWrt</h3>
+                <p>Packages et support ESPRESSObin</p>
+                <a href="https://github.com/openwrt/openwrt" target="_blank" class="oss-link">Voir sur GitHub →</a>
+            </div>
+            
+            <div class="oss-card">
+                <div class="oss-icon">🖥️</div>
+                <h3>Armbian</h3>
+                <p>Support MOCHAbin, ESPRESSObin</p>
+                <a href="https://github.com/armbian/build" target="_blank" class="oss-link">Voir sur GitHub →</a>
+            </div>
+            
+            <div class="oss-card highlight">
+                <div class="oss-icon">🎨</div>
+                <h3>Theme CyberMind</h3>
+                <p>Ce thème Hexo est open source !</p>
+                <a href="https://github.com/CyberMind-FR/hexo-theme-cybermind" target="_blank" class="oss-link">⭐ Voir sur GitHub →</a>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Section Services -->
+    <section id="services-showcase" class="showcase-section">
+        <div class="section-header">
+            <div class="section-icon">💼</div>
+            <h2>Services Proposés</h2>
+            <p>Expertise à votre service</p>
+        </div>
+        
+        <div class="services-showcase-grid">
+            <a href="/services/pentest/" class="service-showcase-card">
+                <span class="service-icon">🛡️</span>
+                <h3>Pentest & Sécurité</h3>
+                <p>Audits, tests d'intrusion</p>
+            </a>
+            <a href="/services/dev/" class="service-showcase-card">
+                <span class="service-icon">⚙️</span>
+                <h3>Développement</h3>
+                <p>Embarqué, Linux, IoT</p>
+            </a>
+            <a href="/services/formation/" class="service-showcase-card">
+                <span class="service-icon">🎓</span>
+                <h3>Formation</h3>
+                <p>Cybersécurité, Creative Thinking</p>
+            </a>
+            <a href="/services/gk2net/" class="service-showcase-card">
+                <span class="service-icon">🌐</span>
+                <h3>Création Web</h3>
+                <p>Sites & Hébergement</p>
+            </a>
+        </div>
+        
+        <div class="section-footer">
+            <a href="/services/" class="btn btn-primary">Découvrir tous les services →</a>
+        </div>
+    </section>
+    
+    <!-- CTA Contact -->
+    <section class="showcase-cta">
+        <div class="cta-content">
+            <h2>💬 Un projet en tête ?</h2>
+            <p>Discutons de vos besoins et trouvons la meilleure solution ensemble.</p>
+            <div class="cta-buttons">
+                <a href="/contact/" class="btn btn-primary btn-large">Demander un devis</a>
+                <a href="mailto:contact@cybermind.fr" class="btn btn-secondary btn-large">📧 contact@cybermind.fr</a>
+            </div>
+        </div>
+    </section>
+    
+</div>
+
+<style>
+.showcase-page {
+    --section-padding: 4rem 2rem;
+}
+
+/* Hero */
+.showcase-hero {
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+    padding: 6rem 2rem;
+    text-align: center;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.hero-badge {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: var(--accent-orange)20;
+    color: var(--accent-orange);
+    border-radius: 20px;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.showcase-hero h1 {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.hero-subtitle {
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+    max-width: 600px;
+    margin: 0 auto 2rem;
+}
+
+.showcase-stats {
+    display: flex;
+    justify-content: center;
+    gap: 3rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.showcase-stats .stat {
+    text-align: center;
+}
+
+.showcase-stats .stat-value {
+    display: block;
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--accent-orange);
+}
+
+.showcase-stats .stat-label {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.hero-cta {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+/* Sections */
+.showcase-section {
+    padding: var(--section-padding);
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.showcase-section.alt-bg {
+    background: var(--bg-secondary);
+    max-width: none;
+}
+
+.showcase-section.alt-bg > * {
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.section-header {
+    text-align: center;
+    margin-bottom: 3rem;
+}
+
+.section-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.section-header h2 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.section-header p {
+    color: var(--text-muted);
+}
+
+.section-footer {
+    text-align: center;
+    margin-top: 2rem;
+}
+
+/* Showcase Grid */
+.showcase-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+/* Showcase Card */
+.showcase-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.3s ease;
+}
+
+.showcase-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+    border-color: var(--accent-orange);
+}
+
+.card-visual {
+    position: relative;
+    aspect-ratio: 16/10;
+    background: var(--bg-secondary);
+    overflow: hidden;
+}
+
+.card-visual img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.card-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 4rem;
+    background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+}
+
+.card-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.showcase-card:hover .card-overlay {
+    opacity: 1;
+}
+
+.view-btn {
+    padding: 0.75rem 1.5rem;
+    background: var(--accent-orange);
+    color: #000;
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+.card-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 0.25rem 0.75rem;
+    background: var(--accent-orange);
+    color: #000;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.card-info {
+    padding: 1.25rem;
+}
+
+.card-info h3 {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+}
+
+.card-info p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+}
+
+.card-tag {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.card-tag.vintage {
+    background: var(--accent-orange)20;
+    color: var(--accent-orange);
+}
+
+/* App preview */
+.app-preview iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    pointer-events: none;
+}
+
+/* Evolution timeline */
+.evolution-timeline {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.timeline-dot {
+    padding: 0.2rem 0.5rem;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    font-size: 0.7rem;
+}
+
+.timeline-dot.active {
+    background: var(--accent-orange);
+    color: #000;
+}
+
+.timeline-line {
+    flex: 1;
+    height: 2px;
+    background: var(--border-subtle);
+}
+
+/* Open Source Grid */
+.opensource-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.oss-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.oss-card:hover {
+    border-color: var(--accent-orange);
+}
+
+.oss-card.highlight {
+    border-color: var(--accent-orange);
+    background: var(--accent-orange)10;
+}
+
+.oss-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.oss-card h3 {
+    margin-bottom: 0.5rem;
+}
+
+.oss-card p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.oss-link {
+    color: var(--accent-orange);
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.oss-link:hover {
+    text-decoration: underline;
+}
+
+/* Services Grid */
+.services-showcase-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+}
+
+.service-showcase-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    text-decoration: none;
+    color: inherit;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.service-showcase-card:hover {
+    border-color: var(--accent-orange);
+    transform: translateY(-3px);
+}
+
+.service-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.service-showcase-card h3 {
+    margin-bottom: 0.5rem;
+}
+
+.service-showcase-card p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+/* CTA */
+.showcase-cta {
+    background: linear-gradient(135deg, var(--accent-orange)20, var(--accent-amber)10);
+    padding: 4rem 2rem;
+    text-align: center;
+}
+
+.cta-content h2 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.cta-content p {
+    color: var(--text-secondary);
+    margin-bottom: 2rem;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.cta-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.btn-large {
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .showcase-hero h1 {
+        font-size: 2rem;
+    }
+    
+    .showcase-stats {
+        gap: 1.5rem;
+    }
+    
+    .showcase-stats .stat-value {
+        font-size: 2rem;
+    }
+    
+    .showcase-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>

@@ -1,7 +1,7 @@
 'use strict';
 'require baseclass';
 'require ui';
-'require network-modes.api as api';
+'require network-modes/api as api';
 
 var NAV_BLUEPRINT = [
 	{ id: 'overview', icon: '📊', labelKey: 'Overview' },

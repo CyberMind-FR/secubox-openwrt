@@ -1,0 +1,56 @@
+{
+	"admin/secubox/services/ollama": {
+		"title": "Ollama",
+		"order": 51,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-ollama"]
+		}
+	},
+	"admin/secubox/services/ollama/dashboard": {
+		"title": "Dashboard",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "ollama/dashboard"
+		},
+		"depends": {
+			"acl": ["luci-app-ollama"]
+		}
+	},
+	"admin/secubox/services/ollama/models": {
+		"title": "Models",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "ollama/models"
+		},
+		"depends": {
+			"acl": ["luci-app-ollama"]
+		}
+	},
+	"admin/secubox/services/ollama/chat": {
+		"title": "Chat",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "ollama/chat"
+		},
+		"depends": {
+			"acl": ["luci-app-ollama"]
+		}
+	},
+	"admin/secubox/services/ollama/settings": {
+		"title": "Settings",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "ollama/settings"
+		},
+		"depends": {
+			"acl": ["luci-app-ollama"]
+		}
+	}
+}

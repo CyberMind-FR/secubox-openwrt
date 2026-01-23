@@ -1,0 +1,119 @@
+'use strict';
+'require view';
+'require dom';
+'require ui';
+'require glances/api as api';
+'require secubox-theme/theme as Theme';
+'require secubox-portal/header as SbHeader';
+
+var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+	(document.documentElement && document.documentElement.getAttribute('lang')) ||
+	(navigator.language ? navigator.language.split('-')[0] : 'en');
+Theme.init({ language: lang });
+
+var GLANCES_NAV = [
+	{ id: 'dashboard', icon: '📊', label: 'Dashboard' },
+	{ id: 'webui', icon: '🖥️', label: 'Web UI' },
+	{ id: 'settings', icon: '⚙️', label: 'Settings' }
+];
+
+function renderGlancesNav(activeId) {
+	return E('div', {
+		'class': 'gl-app-nav',
+		'style': 'display:flex;gap:8px;margin-bottom:20px;padding:12px 16px;background:#141419;border:1px solid rgba(255,255,255,0.08);border-radius:12px;'
+	}, GLANCES_NAV.map(function(item) {
+		var isActive = activeId === item.id;
+		return E('a', {
+			'href': L.url('admin', 'secubox', 'monitoring', 'glances', item.id),
+			'style': 'display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:500;transition:all 0.2s;' +
+				(isActive ? 'background:linear-gradient(135deg,#27ae60,#1e8449);color:white;' : 'color:#a0a0b0;background:transparent;')
+		}, [
+			E('span', {}, item.icon),
+			E('span', {}, _(item.label))
+		]);
+	}));
+}
+
+return view.extend({
+	title: _('Glances Web UI'),
+
+	load: function() {
+		return Promise.all([
+			api.getStatus(),
+			api.getWebUrl()
+		]);
+	},
+
+	render: function(data) {
+		var status = data[0] || {};
+		var urlData = data[1] || {};
+
+		var content;
+
+		if (!status.running) {
+			content = E('div', { 'class': 'gl-card', 'style': 'text-align: center; padding: 60px 20px; background: #1a1a1f; border-radius: 12px;' }, [
+				E('div', { 'style': 'font-size: 64px; margin-bottom: 20px;' }, '⚠️'),
+				E('h2', { 'style': 'margin: 0 0 10px 0; color: #f39c12;' }, _('Glances is not running')),
+				E('p', { 'style': 'color: #a0a0b0; margin: 0 0 20px 0;' }, _('Start the service to access the Web UI')),
+				E('button', {
+					'class': 'btn cbi-button-positive',
+					'click': function() {
+						ui.showModal(_('Starting...'), [
+							E('p', { 'class': 'spinning' }, _('Starting Glances...'))
+						]);
+						api.serviceStart().then(function() {
+							ui.hideModal();
+							setTimeout(function() { location.reload(); }, 3000);
+						});
+					}
+				}, '▶ ' + _('Start Glances'))
+			]);
+		} else {
+			var iframeSrc = urlData.web_url;
+
+			content = E('div', { 'style': 'display: flex; flex-direction: column; height: calc(100vh - 200px); min-height: 600px;' }, [
+				// Toolbar
+				E('div', { 'style': 'display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px 16px; background: #141419; border-radius: 8px;' }, [
+					E('span', { 'style': 'color: #27ae60; font-weight: 500;' }, '● ' + _('Connected')),
+					E('span', { 'style': 'color: #a0a0b0; font-size: 13px;' }, iframeSrc),
+					E('div', { 'style': 'flex: 1;' }),
+					E('button', {
+						'class': 'btn',
+						'click': function() {
+							var iframe = document.querySelector('.glances-iframe');
+							if (iframe) iframe.src = iframe.src;
+						}
+					}, '🔄 ' + _('Refresh')),
+					E('a', {
+						'class': 'btn',
+						'href': iframeSrc,
+						'target': '_blank',
+						'style': 'text-decoration: none;'
+					}, '↗ ' + _('Open in New Tab'))
+				]),
+
+				// Iframe container
+				E('div', {
+					'style': 'flex: 1; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1);'
+				}, [
+					E('iframe', {
+						'class': 'glances-iframe',
+						'src': iframeSrc,
+						'style': 'width: 100%; height: 100%; border: none; background: #1a1a1f;',
+						'allow': 'fullscreen'
+					})
+				])
+			]);
+		}
+
+		var wrapper = E('div', { 'class': 'secubox-page-wrapper' });
+		wrapper.appendChild(SbHeader.render());
+		wrapper.appendChild(renderGlancesNav('webui'));
+		wrapper.appendChild(content);
+		return wrapper;
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
+});

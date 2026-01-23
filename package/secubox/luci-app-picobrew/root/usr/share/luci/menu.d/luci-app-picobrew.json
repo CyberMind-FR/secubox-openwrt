@@ -1,0 +1,29 @@
+{
+	"admin/services/picobrew": {
+		"title": "PicoBrew",
+		"order": 85,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-picobrew"],
+			"uci": {"picobrew": true}
+		}
+	},
+	"admin/services/picobrew/dashboard": {
+		"title": "Dashboard",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "picobrew/dashboard"
+		}
+	},
+	"admin/services/picobrew/settings": {
+		"title": "Settings",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "picobrew/settings"
+		}
+	}
+}

@@ -1,0 +1,209 @@
+<%#
+  Layout: post.ejs
+  Affichage d'un article - VERSION SIMPLE ET ROBUSTE
+%>
+
+<%
+// Catégories avec leurs couleurs/icônes
+var categoriesInfo = {
+  'cybersecurity': { name: 'Cybersécurité', color: '#00ff88', icon: '🛡️' },
+  'embedded': { name: 'Embarqué', color: '#ff6600', icon: '⚙️' },
+  'linux': { name: 'Linux', color: '#ffcc00', icon: '🐧' },
+  'creative': { name: 'Créativité', color: '#ff6699', icon: '🎨' },
+  'philosophy': { name: 'Philosophie', color: '#9966ff', icon: '🧘' },
+  'tutorials': { name: 'Tutoriels', color: '#66ccff', icon: '📖' },
+  'security': { name: 'Sécurité', color: '#ef4444', icon: '🔐' },
+  'dev': { name: 'Dev', color: '#10b981', icon: '💻' },
+  'tools': { name: 'Outils', color: '#f97316', icon: '🔧' }
+};
+
+// Détecter la catégorie du post
+var categorySlug = '';
+var categoryName = '';
+var categoryColor = '#f97316';
+var categoryIcon = '📝';
+
+// 1. Depuis page.category (string)
+if (page.category && typeof page.category === 'string') {
+  categorySlug = page.category.toLowerCase();
+}
+
+// 2. Depuis page.categories (Hexo natif) - AVEC PROTECTION
+if (!categorySlug && page.categories && page.categories.length > 0) {
+  try {
+    var cats = [];
+    if (typeof page.categories.toArray === 'function') {
+      cats = page.categories.toArray();
+    } else if (Array.isArray(page.categories)) {
+      cats = page.categories;
+    }
+    
+    if (cats.length > 0 && cats[0]) {
+      var firstCat = cats[0];
+      if (typeof firstCat === 'string') {
+        categorySlug = firstCat.toLowerCase();
+        categoryName = firstCat;
+      } else if (firstCat.name) {
+        categorySlug = (firstCat.slug || firstCat.name).toLowerCase();
+        categoryName = firstCat.name;
+      } else if (firstCat.slug) {
+        categorySlug = firstCat.slug.toLowerCase();
+        categoryName = firstCat.slug;
+      }
+    }
+  } catch(e) {
+    // Ignorer les erreurs
+  }
+}
+
+// Appliquer les infos de catégorie
+if (categorySlug && categoriesInfo[categorySlug]) {
+  var info = categoriesInfo[categorySlug];
+  categoryName = info.name;
+  categoryColor = info.color;
+  categoryIcon = info.icon;
+} else if (categorySlug) {
+  categoryName = categoryName || categorySlug;
+}
+
+var hasCategory = (categorySlug !== '');
+
+// Tags
+var hasTags = false;
+var tagsList = [];
+if (page.tags && page.tags.length > 0) {
+  try {
+    tagsList = page.tags.toArray ? page.tags.toArray() : [];
+    hasTags = tagsList.length > 0;
+  } catch(e) {}
+}
+%>
+
+<article class="post-article" style="--post-color: <%= categoryColor %>">
+  <header class="post-header">
+    <% if (hasCategory) { %>
+    <div class="post-category">
+      <a href="/blog/<%= categorySlug %>/" style="color: <%= categoryColor %>">
+        <%= categoryIcon %> <%= categoryName %>
+      </a>
+    </div>
+    <% } %>
+    
+    <h1 class="post-title"><%= page.title %></h1>
+    
+    <div class="post-meta">
+      <span class="post-date">
+        📅 <%= date(page.date, 'DD MMMM YYYY') %>
+      </span>
+      
+      <% if (page.updated && page.updated.valueOf() !== page.date.valueOf()) { %>
+      <span class="post-updated">
+        (mis à jour le <%= date(page.updated, 'DD/MM/YYYY') %>)
+      </span>
+      <% } %>
+    </div>
+    
+    <% if (hasTags) { %>
+    <div class="post-tags-header">
+      <% tagsList.forEach(function(tag) { %>
+      <a href="<%= url_for(tag.path) %>" class="tag">#<%= tag.name %></a>
+      <% }); %>
+    </div>
+    <% } %>
+  </header>
+  
+  <div class="post-content">
+    <%- page.content %>
+  </div>
+  
+  <footer class="post-footer">
+    <% if (hasTags) { %>
+    <div class="post-tags-footer">
+      <span class="label">Tags:</span>
+      <% tagsList.forEach(function(tag) { %>
+      <a href="<%= url_for(tag.path) %>" class="tag-link"><%= tag.name %></a>
+      <% }); %>
+    </div>
+    <% } %>
+    
+    <div class="post-nav">
+      <% if (page.prev) { %>
+      <a href="<%= url_for(page.prev.path) %>" class="nav-link prev">
+        <span class="nav-label">← Précédent</span>
+        <span class="nav-title"><%= page.prev.title %></span>
+      </a>
+      <% } %>
+      <% if (page.next) { %>
+      <a href="<%= url_for(page.next.path) %>" class="nav-link next">
+        <span class="nav-label">Suivant →</span>
+        <span class="nav-title"><%= page.next.title %></span>
+      </a>
+      <% } %>
+    </div>
+  </footer>
+</article>
+
+<style>
+.post-article { max-width: 800px; margin: 0 auto; padding: 2rem; }
+
+.post-header { margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.post-category { margin-bottom: 0.75rem; }
+.post-category a {
+  display: inline-block; padding: 0.3rem 0.8rem;
+  background: rgba(255,255,255,0.05); border-radius: 20px;
+  text-decoration: none; font-size: 0.85rem; font-weight: 500;
+}
+.post-category a:hover { background: rgba(255,255,255,0.1); }
+
+.post-title { font-size: 2rem; color: #e8e8ed; margin: 0 0 0.75rem; line-height: 1.3; }
+.post-meta { font-size: 0.9rem; color: #6a6a7a; margin-bottom: 0.75rem; }
+.post-updated { font-style: italic; }
+
+.post-tags-header { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.post-tags-header .tag {
+  font-size: 0.8rem; color: var(--post-color); text-decoration: none; opacity: 0.8;
+}
+.post-tags-header .tag:hover { opacity: 1; text-decoration: underline; }
+
+.post-content { line-height: 1.8; color: #c8c8d0; }
+.post-content h2 { color: var(--post-color); margin: 2rem 0 1rem; }
+.post-content h3 { color: #e8e8ed; margin: 1.5rem 0 0.75rem; }
+.post-content a { color: var(--post-color); }
+.post-content code { background: rgba(255,255,255,0.05); padding: 0.2rem 0.4rem; border-radius: 4px; }
+.post-content pre { background: #0d0d12; padding: 1rem; border-radius: 8px; overflow-x: auto; }
+.post-content img { max-width: 100%; height: auto; border-radius: 8px; }
+.post-content blockquote {
+  border-left: 3px solid var(--post-color); margin: 1.5rem 0;
+  padding: 0.5rem 1rem; background: rgba(255,255,255,0.02); color: #9898a6;
+}
+
+.post-footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); }
+.post-tags-footer { margin-bottom: 1.5rem; }
+.post-tags-footer .label { color: #6a6a7a; margin-right: 0.5rem; }
+.post-tags-footer .tag-link {
+  display: inline-block; margin-right: 0.5rem;
+  color: var(--post-color); text-decoration: none;
+}
+.post-tags-footer .tag-link:hover { text-decoration: underline; }
+
+.post-nav { display: flex; justify-content: space-between; gap: 1rem; }
+.nav-link {
+  flex: 1; padding: 1rem; text-decoration: none;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; transition: border-color 0.2s;
+}
+.nav-link:hover { border-color: var(--post-color); }
+.nav-link.next { text-align: right; }
+.nav-label { display: block; font-size: 0.8rem; color: #6a6a7a; margin-bottom: 0.25rem; }
+.nav-title { display: block; color: #e8e8ed; font-weight: 500; }
+
+@media (max-width: 600px) {
+  .post-title { font-size: 1.5rem; }
+  .post-nav { flex-direction: column; }
+}
+
+[data-theme="light"] .post-article { background: #fff; }
+[data-theme="light"] .post-title, [data-theme="light"] .nav-title { color: #2a2a3a; }
+[data-theme="light"] .post-content { color: #4a4a5a; }
+[data-theme="light"] .nav-link { background: #f8f9fa; border-color: #e0e0e0; }
+</style>

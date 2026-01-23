@@ -1,0 +1,15 @@
+# CrowdSec scenario for SecuBox/LuCI authentication bruteforce
+# Detects repeated authentication failures
+
+type: leaky
+name: secubox/luci-auth-bruteforce
+description: "Detect bruteforce attempts on SecuBox/LuCI web interface"
+filter: "evt.Meta.log_type == 'luci_auth' && evt.Meta.auth_success == 'false'"
+groupby: evt.Meta.source_ip
+capacity: 5
+leakspeed: 30s
+blackhole: 5m
+labels:
+  service: secubox
+  type: bruteforce
+  remediation: true

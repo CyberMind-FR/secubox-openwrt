@@ -6,10 +6,15 @@
 				"luci.mitmproxy": [
 					"get_status",
 					"get_config",
+					"get_transparent_config",
+					"get_whitelist_config",
+					"get_filtering_config",
+					"get_all_config",
 					"get_stats",
 					"get_requests",
 					"get_top_hosts",
-					"get_ca_info"
+					"get_ca_info",
+					"get_web_token"
 				]
 			},
 			"uci": [
@@ -22,7 +27,11 @@
 					"service_start",
 					"service_stop",
 					"service_restart",
+					"firewall_setup",
+					"firewall_clear",
 					"set_config",
+					"add_to_list",
+					"remove_from_list",
 					"clear_data"
 				]
 			},

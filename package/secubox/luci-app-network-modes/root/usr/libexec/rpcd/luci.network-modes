@@ -80,11 +80,11 @@ get_status() {
 	
 	# Services status
 	json_add_object "services"
-	json_add_boolean "firewall" "$(pgrep -x fw4 >/dev/null && echo 1 || echo 0)"
-	json_add_boolean "dnsmasq" "$(pgrep -x dnsmasq >/dev/null && echo 1 || echo 0)"
-	json_add_boolean "netifyd" "$(pgrep -x netifyd >/dev/null && echo 1 || echo 0)"
-	json_add_boolean "nginx" "$(pgrep -x nginx >/dev/null && echo 1 || echo 0)"
-	json_add_boolean "squid" "$(pgrep -x squid >/dev/null && echo 1 || echo 0)"
+	json_add_boolean "firewall" "$(pgrep fw4 >/dev/null && echo 1 || echo 0)"
+	json_add_boolean "dnsmasq" "$(pgrep dnsmasq >/dev/null && echo 1 || echo 0)"
+	json_add_boolean "netifyd" "$(pgrep netifyd >/dev/null && echo 1 || echo 0)"
+	json_add_boolean "nginx" "$(pgrep nginx >/dev/null && echo 1 || echo 0)"
+	json_add_boolean "squid" "$(pgrep squid >/dev/null && echo 1 || echo 0)"
 	json_close_object
 	
 	json_dump
@@ -192,7 +192,7 @@ get_sniffer_config() {
 	
 	# Netifyd status
 	local netifyd_running=0
-	pgrep -x netifyd >/dev/null && netifyd_running=1
+	pgrep netifyd >/dev/null && netifyd_running=1
 	json_add_boolean "netifyd_running" "$netifyd_running"
 	
 	# Sample config preview

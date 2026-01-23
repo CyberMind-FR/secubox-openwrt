@@ -1,0 +1,109 @@
+{
+	"admin/services/hexojs": {
+		"title": "Hexo CMS",
+		"order": 80,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-hexojs"],
+			"uci": { "hexojs": true }
+		}
+	},
+	"admin/services/hexojs/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "hexojs/overview"
+		}
+	},
+	"admin/services/hexojs/posts": {
+		"title": "Posts",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "hexojs/posts"
+		}
+	},
+	"admin/services/hexojs/editor": {
+		"title": "Editor",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "hexojs/editor"
+		}
+	},
+	"admin/services/hexojs/media": {
+		"title": "Media",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "hexojs/media"
+		}
+	},
+	"admin/services/hexojs/categories": {
+		"title": "Categories",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "hexojs/categories"
+		}
+	},
+	"admin/services/hexojs/tags": {
+		"title": "Tags",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "hexojs/tags"
+		}
+	},
+	"admin/services/hexojs/apps": {
+		"title": "Apps",
+		"order": 70,
+		"action": {
+			"type": "view",
+			"path": "hexojs/apps"
+		}
+	},
+	"admin/services/hexojs/preview": {
+		"title": "Preview",
+		"order": 80,
+		"action": {
+			"type": "view",
+			"path": "hexojs/preview"
+		}
+	},
+	"admin/services/hexojs/deploy": {
+		"title": "Deploy",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "hexojs/deploy"
+		}
+	},
+	"admin/services/hexojs/sync": {
+		"title": "GitHub Sync",
+		"order": 95,
+		"action": {
+			"type": "view",
+			"path": "hexojs/sync"
+		}
+	},
+	"admin/services/hexojs/theme": {
+		"title": "Theme",
+		"order": 100,
+		"action": {
+			"type": "view",
+			"path": "hexojs/theme"
+		}
+	},
+	"admin/services/hexojs/settings": {
+		"title": "Settings",
+		"order": 110,
+		"action": {
+			"type": "view",
+			"path": "hexojs/settings"
+		}
+	}
+}

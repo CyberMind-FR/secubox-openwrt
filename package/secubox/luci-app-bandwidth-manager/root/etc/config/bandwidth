@@ -16,8 +16,146 @@ config tracking 'tracking'
 
 config alerts 'alerts'
 	option enabled '0'
-	option quota_threshold '90'
-	option email ''
+	option quota_threshold_80 '1'
+	option quota_threshold_90 '1'
+	option quota_threshold_100 '1'
+	option new_device_alert '0'
+	option high_bandwidth_alert '0'
+	option high_bandwidth_threshold '100'
+
+config email 'email'
+	option smtp_server ''
+	option smtp_port '587'
+	option smtp_user ''
+	option smtp_password ''
+	option smtp_tls '1'
+	option recipient ''
+	option sender ''
+
+config sms 'sms'
+	option provider ''
+	option account_sid ''
+	option auth_token ''
+	option from_number ''
+	option to_number ''
+
+# ============================================
+# Device Profiles
+# ============================================
+
+# Built-in profile: Gaming (low latency)
+#config profile 'profile_gaming'
+#	option name 'Gaming'
+#	option description 'Low latency, high priority for gaming'
+#	option icon 'gamepad'
+#	option color '#8b5cf6'
+#	option priority '1'
+#	option limit_down '0'
+#	option limit_up '0'
+#	option latency_mode 'ultra'
+#	option enabled '1'
+
+# Built-in profile: Streaming
+#config profile 'profile_streaming'
+#	option name 'Streaming'
+#	option description 'Optimized for video streaming'
+#	option icon 'play'
+#	option color '#06b6d4'
+#	option priority '4'
+#	option limit_down '25000'
+#	option limit_up '5000'
+#	option latency_mode 'normal'
+#	option enabled '1'
+
+# Built-in profile: IoT
+#config profile 'profile_iot'
+#	option name 'IoT Devices'
+#	option description 'Low bandwidth, isolated network'
+#	option icon 'cpu'
+#	option color '#10b981'
+#	option priority '7'
+#	option limit_down '1000'
+#	option limit_up '500'
+#	option isolate '1'
+#	option enabled '1'
+
+# Built-in profile: Kids
+#config profile 'profile_kids'
+#	option name 'Kids'
+#	option description 'Parental controls enabled, content filtered'
+#	option icon 'child'
+#	option color '#f59e0b'
+#	option priority '5'
+#	option limit_down '10000'
+#	option limit_up '2000'
+#	option content_filter 'kids_safe'
+#	option enabled '1'
+
+# Built-in profile: Work
+#config profile 'profile_work'
+#	option name 'Work'
+#	option description 'Business-critical applications prioritized'
+#	option icon 'briefcase'
+#	option color '#3b82f6'
+#	option priority '3'
+#	option limit_down '0'
+#	option limit_up '0'
+#	option latency_mode 'normal'
+#	option enabled '1'
+
+# Device profile assignment example
+#config device_profile 'dp_example'
+#	option mac 'AA:BB:CC:DD:EE:FF'
+#	option profile 'profile_gaming'
+#	option custom_limit_down '0'
+#	option custom_limit_up '0'
+
+# ============================================
+# Parental Controls
+# ============================================
+
+# Preset modes
+#config preset_mode 'preset_bedtime'
+#	option name 'Bedtime'
+#	option icon 'moon'
+#	option enabled '0'
+#	option action 'block'
+#	list allowed_categories ''
+#	list blocked_categories 'all'
+
+#config preset_mode 'preset_homework'
+#	option name 'Homework'
+#	option icon 'book'
+#	option enabled '0'
+#	option action 'filter'
+#	list allowed_categories 'education' 'reference'
+#	list blocked_categories 'gaming' 'social' 'streaming'
+
+#config preset_mode 'preset_family'
+#	option name 'Family Time'
+#	option icon 'users'
+#	option enabled '0'
+#	option action 'filter'
+#	list allowed_categories 'streaming' 'education'
+#	list blocked_categories 'adult' 'gambling'
+
+# Parental schedule example
+#config parental_schedule 'ps_example'
+#	option name 'School Night Internet Off'
+#	option enabled '1'
+#	option target_type 'group'
+#	option target 'group_kids'
+#	option action 'block'
+#	option start_time '21:00'
+#	option end_time '07:00'
+#	list days 'mon' 'tue' 'wed' 'thu' 'sun'
+
+# Content filter categories
+#config content_filter 'filter_kids_safe'
+#	option name 'Kids Safe'
+#	option enabled '1'
+#	option use_ndpi '1'
+#	list categories 'adult' 'gambling' 'violence' 'drugs' 'weapons'
 
 # Example QoS rule
 #config rule 'rule_youtube'

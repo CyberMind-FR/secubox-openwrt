@@ -4,16 +4,74 @@
 'require poll';
 'require dom';
 'require ui';
-'require wireguard-dashboard.api as api';
+'require wireguard-dashboard/api as api';
 
 return view.extend({
 	title: _('WireGuard Dashboard'),
 	pollInterval: 5,
 	pollActive: true,
 	selectedInterface: 'all',
+	peerDescriptions: {},
+	bandwidthRates: {},
 
 	load: function() {
 		return api.getAllData();
+	},
+
+	// Interface control actions
+	handleInterfaceAction: function(iface, action) {
+		var self = this;
+		ui.showModal(_('Interface Control'), [
+			E('p', { 'class': 'spinning' }, _('Executing %s on %s...').format(action, iface))
+		]);
+
+		api.interfaceControl(iface, action).then(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', result.message || _('Action completed')), 'info');
+			} else {
+				ui.addNotification(null, E('p', result.error || _('Action failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
+		});
+	},
+
+	// Ping peer
+	handlePingPeer: function(peerIp, peerName) {
+		var self = this;
+		if (!peerIp || peerIp === '(none)') {
+			ui.addNotification(null, E('p', _('No endpoint IP available for this peer')), 'warning');
+			return;
+		}
+
+		// Extract IP from endpoint (remove port)
+		var ip = peerIp.split(':')[0];
+
+		ui.showModal(_('Ping Peer'), [
+			E('p', { 'class': 'spinning' }, _('Pinging %s (%s)...').format(peerName, ip))
+		]);
+
+		api.pingPeer(ip).then(function(result) {
+			ui.hideModal();
+			if (result.reachable) {
+				ui.addNotification(null, E('p', _('Peer %s is reachable (RTT: %s ms)').format(peerName, result.rtt_ms)), 'info');
+			} else {
+				ui.addNotification(null, E('p', _('Peer %s is not reachable').format(peerName)), 'warning');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Ping failed: %s').format(err.message || err)), 'error');
+		});
+	},
+
+	// Get peer display name
+	getPeerName: function(peer) {
+		if (this.peerDescriptions && this.peerDescriptions[peer.public_key]) {
+			return this.peerDescriptions[peer.public_key];
+		}
+		return 'Peer ' + peer.short_key;
 	},
 
 	// Interface tab filtering
@@ -184,7 +242,10 @@ return view.extend({
 		var status = data.status || {};
 		var interfaces = (data.interfaces || {}).interfaces || [];
 		var peers = (data.peers || {}).peers || [];
-		
+
+		// Store peer descriptions
+		this.peerDescriptions = data.descriptions || {};
+
 		var activePeers = peers.filter(function(p) { return p.status === 'active'; }).length;
 		
 		var view = E('div', { 'class': 'wireguard-dashboard' }, [
@@ -323,6 +384,25 @@ return view.extend({
 										E('div', { 'class': 'wg-interface-detail-value wg-interface-traffic' },
 											'↓' + api.formatBytes(iface.rx_bytes) + ' / ↑' + api.formatBytes(iface.tx_bytes))
 									])
+								]),
+								// Interface control buttons
+								E('div', { 'class': 'wg-interface-controls' }, [
+									iface.state === 'up' ?
+										E('button', {
+											'class': 'wg-btn wg-btn-sm wg-btn-warning',
+											'click': L.bind(self.handleInterfaceAction, self, iface.name, 'down'),
+											'title': _('Bring interface down')
+										}, '⏹ Stop') :
+										E('button', {
+											'class': 'wg-btn wg-btn-sm wg-btn-success',
+											'click': L.bind(self.handleInterfaceAction, self, iface.name, 'up'),
+											'title': _('Bring interface up')
+										}, '▶ Start'),
+									E('button', {
+										'class': 'wg-btn wg-btn-sm',
+										'click': L.bind(self.handleInterfaceAction, self, iface.name, 'restart'),
+										'title': _('Restart interface')
+									}, '🔄 Restart')
 								])
 							]);
 						})
@@ -347,12 +427,13 @@ return view.extend({
 				E('div', { 'class': 'wg-card-body' }, [
 					E('div', { 'class': 'wg-peer-grid' },
 						peers.slice(0, 6).map(function(peer) {
+							var peerName = self.getPeerName(peer);
 							return E('div', { 'class': 'wg-peer-card ' + (peer.status === 'active' ? 'active' : ''), 'data-peer': peer.public_key, 'data-interface': peer.interface || '' }, [
 								E('div', { 'class': 'wg-peer-header' }, [
 									E('div', { 'class': 'wg-peer-info' }, [
 										E('div', { 'class': 'wg-peer-icon' }, peer.status === 'active' ? '✅' : '👤'),
 										E('div', {}, [
-											E('p', { 'class': 'wg-peer-name' }, 'Peer ' + peer.short_key),
+											E('p', { 'class': 'wg-peer-name' }, peerName),
 											E('p', { 'class': 'wg-peer-key' }, api.shortenKey(peer.public_key, 16))
 										])
 									]),
@@ -383,7 +464,16 @@ return view.extend({
 										E('div', { 'class': 'wg-peer-traffic-value tx' }, api.formatBytes(peer.tx_bytes)),
 										E('div', { 'class': 'wg-peer-traffic-label' }, 'Sent')
 									])
-								])
+								]),
+								// Peer action buttons
+								peer.endpoint && peer.endpoint !== '(none)' ?
+									E('div', { 'class': 'wg-peer-actions' }, [
+										E('button', {
+											'class': 'wg-btn wg-btn-xs',
+											'click': L.bind(self.handlePingPeer, self, peer.endpoint, peerName),
+											'title': _('Ping peer')
+										}, '📡 Ping')
+									]) : ''
 							]);
 						})
 					)
