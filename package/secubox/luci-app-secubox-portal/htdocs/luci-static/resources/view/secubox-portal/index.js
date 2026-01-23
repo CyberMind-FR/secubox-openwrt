@@ -26,14 +26,21 @@ var callCrowdSecStats = rpc.declare({
 return view.extend({
 	currentSection: 'dashboard',
 	appStatuses: {},
+	installedApps: {},
 
 	load: function() {
+		var self = this;
 		return Promise.all([
 			callSystemBoard(),
 			callSystemInfo(),
 			this.loadAppStatuses(),
-			callCrowdSecStats().catch(function() { return null; })
-		]);
+			callCrowdSecStats().catch(function() { return null; }),
+			portal.checkInstalledApps()
+		]).then(function(results) {
+			// Store installed apps info from the last promise
+			self.installedApps = results[4] || {};
+			return results;
+		});
 	},
 
 	loadAppStatuses: function() {
@@ -332,7 +339,20 @@ return view.extend({
 
 	renderFeaturedApps: function(appIds) {
 		var self = this;
-		return appIds.map(function(id) {
+		// Filter to only show installed apps
+		var installedAppIds = appIds.filter(function(id) {
+			var app = portal.apps[id];
+			if (!app) return false;
+			// Include if no service (always show) or if service is installed
+			return !app.service || self.installedApps[id];
+		});
+
+		if (installedAppIds.length === 0) {
+			return [E('p', { 'class': 'sb-empty-text', 'style': 'grid-column: 1 / -1' },
+				'No featured apps installed. Install SecuBox packages to see quick access apps here.')];
+		}
+
+		return installedAppIds.map(function(id) {
 			var app = portal.apps[id];
 			if (!app) return null;
 
@@ -363,37 +383,52 @@ return view.extend({
 	},
 
 	renderSecuritySection: function() {
-		var apps = portal.getAppsBySection('security');
+		var apps = portal.getInstalledAppsBySection('security', this.installedApps);
 		return this.renderAppSection('security', 'Security',
 			'Protect your network with advanced security tools', apps);
 	},
 
 	renderNetworkSection: function() {
-		var apps = portal.getAppsBySection('network');
+		var apps = portal.getInstalledAppsBySection('network', this.installedApps);
 		return this.renderAppSection('network', 'Network',
 			'Configure and optimize your network connections', apps);
 	},
 
 	renderMonitoringSection: function() {
-		var apps = portal.getAppsBySection('monitoring');
+		var apps = portal.getInstalledAppsBySection('monitoring', this.installedApps);
 		return this.renderAppSection('monitoring', 'Monitoring',
 			'Monitor traffic, applications, and system performance', apps);
 	},
 
 	renderSystemSection: function() {
-		var apps = portal.getAppsBySection('system');
+		var apps = portal.getInstalledAppsBySection('system', this.installedApps);
 		return this.renderAppSection('system', 'System',
 			'System administration and configuration tools', apps);
 	},
 
 	renderServicesSection: function() {
-		var apps = portal.getAppsBySection('services');
+		var apps = portal.getInstalledAppsBySection('services', this.installedApps);
 		return this.renderAppSection('services', 'Services',
 			'Application services and server platforms', apps);
 	},
 
 	renderAppSection: function(sectionId, title, subtitle, apps) {
 		var self = this;
+
+		// Show empty state if no apps installed in this section
+		if (!apps || apps.length === 0) {
+			return E('div', { 'class': 'sb-portal-section', 'data-section': sectionId }, [
+				E('div', { 'class': 'sb-section-header' }, [
+					E('h2', { 'class': 'sb-section-title' }, title),
+					E('p', { 'class': 'sb-section-subtitle' }, subtitle)
+				]),
+				E('div', { 'class': 'sb-section-empty' }, [
+					E('div', { 'class': 'sb-empty-icon' }, '\ud83d\udce6'),
+					E('p', { 'class': 'sb-empty-text' }, 'No ' + title.toLowerCase() + ' apps installed'),
+					E('p', { 'class': 'sb-empty-hint' }, 'Install packages from the SecuBox repository to add apps here')
+				])
+			]);
+		}
 
 		return E('div', { 'class': 'sb-portal-section', 'data-section': sectionId }, [
 			E('div', { 'class': 'sb-section-header' }, [

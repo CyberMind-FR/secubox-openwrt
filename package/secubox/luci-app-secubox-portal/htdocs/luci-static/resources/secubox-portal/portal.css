@@ -691,3 +691,35 @@ body:has(.secubox-portal) .page-header {
 		font-size: 0.75rem;
 	}
 }
+
+/* Empty State - No apps installed */
+.sb-section-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 3rem 1.5rem;
+	text-align: center;
+	background: var(--cyber-bg-secondary, #141419);
+	border: 1px dashed var(--cyber-border-subtle, rgba(255, 255, 255, 0.1));
+	border-radius: 12px;
+}
+
+.sb-empty-icon {
+	font-size: 3rem;
+	margin-bottom: 1rem;
+	opacity: 0.5;
+}
+
+.sb-empty-text {
+	font-size: 1rem;
+	font-weight: 500;
+	color: var(--cyber-text-secondary, #a1a1aa);
+	margin: 0 0 0.5rem 0;
+}
+
+.sb-empty-hint {
+	font-size: 0.875rem;
+	color: var(--cyber-text-tertiary, #71717a);
+	margin: 0;
+}

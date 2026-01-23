@@ -1,0 +1,934 @@
+#!/bin/sh
+# SecuBox HAProxy Controller
+# Copyright (C) 2025 CyberMind.fr
+
+CONFIG="haproxy"
+LXC_NAME="haproxy"
+
+# Paths
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+DATA_PATH="/srv/haproxy"
+SHARE_PATH="/usr/share/haproxy"
+CERTS_PATH="$DATA_PATH/certs"
+CONFIG_PATH="$DATA_PATH/config"
+
+# Logging
+log_info() { echo "[INFO] $*"; logger -t haproxy "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t haproxy -p err "$*"; }
+log_debug() { [ "$DEBUG" = "1" ] && echo "[DEBUG] $*"; }
+
+# Helpers
+require_root() {
+	[ "$(id -u)" -eq 0 ] || { log_error "Root required"; exit 1; }
+}
+
+has_lxc() { command -v lxc-start >/dev/null 2>&1; }
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Load configuration
+load_config() {
+	http_port="$(uci_get main.http_port)" || http_port="80"
+	https_port="$(uci_get main.https_port)" || https_port="443"
+	stats_port="$(uci_get main.stats_port)" || stats_port="8404"
+	stats_enabled="$(uci_get main.stats_enabled)" || stats_enabled="1"
+	stats_user="$(uci_get main.stats_user)" || stats_user="admin"
+	stats_password="$(uci_get main.stats_password)" || stats_password="secubox"
+	data_path="$(uci_get main.data_path)" || data_path="$DATA_PATH"
+	memory_limit="$(uci_get main.memory_limit)" || memory_limit="256M"
+	maxconn="$(uci_get main.maxconn)" || maxconn="4096"
+	log_level="$(uci_get main.log_level)" || log_level="warning"
+
+	CERTS_PATH="$data_path/certs"
+	CONFIG_PATH="$data_path/config"
+
+	ensure_dir "$data_path"
+	ensure_dir "$CERTS_PATH"
+	ensure_dir "$CONFIG_PATH"
+}
+
+# Usage
+usage() {
+	cat <<EOF
+SecuBox HAProxy Controller
+
+Usage: $(basename $0) <command> [options]
+
+Container Commands:
+  install             Setup HAProxy LXC container
+  uninstall           Remove container (keeps config)
+  update              Update HAProxy in container
+  status              Show service status
+
+Configuration:
+  generate            Generate haproxy.cfg from UCI
+  validate            Validate configuration
+  reload              Reload HAProxy config (no downtime)
+
+Virtual Hosts:
+  vhost list          List all virtual hosts
+  vhost add <domain>  Add virtual host
+  vhost remove <domain> Remove virtual host
+  vhost sync          Sync vhosts to config
+
+Backends:
+  backend list        List all backends
+  backend add <name>  Add backend
+  backend remove <name> Remove backend
+
+Servers:
+  server list <backend>           List servers in backend
+  server add <backend> <addr:port> Add server to backend
+  server remove <backend> <name>  Remove server
+
+Certificates:
+  cert list           List certificates
+  cert add <domain>   Request ACME certificate
+  cert import <domain> <cert> <key> Import certificate
+  cert renew [domain] Renew certificate(s)
+  cert remove <domain> Remove certificate
+
+Service Commands:
+  service-run         Run in foreground (for init)
+  service-stop        Stop service
+
+Stats:
+  stats               Show HAProxy stats
+  connections         Show active connections
+
+EOF
+}
+
+# ===========================================
+# LXC Container Management
+# ===========================================
+
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONFIG" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+lxc_stop() {
+	if lxc_running; then
+		log_info "Stopping HAProxy container..."
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 2
+	fi
+}
+
+lxc_create_rootfs() {
+	log_info "Creating Alpine rootfs for HAProxy..."
+
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+
+	local arch="x86_64"
+	case "$(uname -m)" in
+		aarch64) arch="aarch64" ;;
+		armv7l)  arch="armv7" ;;
+	esac
+
+	local alpine_url="https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/$arch/alpine-minirootfs-3.21.2-$arch.tar.gz"
+	local rootfs_tar="/tmp/alpine-haproxy.tar.gz"
+
+	log_info "Downloading Alpine rootfs..."
+	wget -q -O "$rootfs_tar" "$alpine_url" || {
+		log_error "Failed to download Alpine rootfs"
+		return 1
+	}
+
+	log_info "Extracting rootfs..."
+	ensure_dir "$LXC_ROOTFS"
+	tar -xzf "$rootfs_tar" -C "$LXC_ROOTFS" || {
+		log_error "Failed to extract rootfs"
+		return 1
+	}
+	rm -f "$rootfs_tar"
+
+	# Configure Alpine
+	cat > "$LXC_ROOTFS/etc/resolv.conf" << 'EOF'
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+EOF
+
+	cat > "$LXC_ROOTFS/etc/apk/repositories" << 'EOF'
+https://dl-cdn.alpinelinux.org/alpine/v3.21/main
+https://dl-cdn.alpinelinux.org/alpine/v3.21/community
+EOF
+
+	# Install HAProxy
+	log_info "Installing HAProxy..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		apk update
+		apk add --no-cache haproxy openssl curl socat lua5.4 lua5.4-socket
+	" || {
+		log_error "Failed to install HAProxy"
+		return 1
+	}
+
+	log_info "Rootfs created successfully"
+}
+
+lxc_create_config() {
+	load_config
+
+	local arch="x86_64"
+	case "$(uname -m)" in
+		aarch64) arch="aarch64" ;;
+		armv7l)  arch="armhf" ;;
+	esac
+
+	local mem_bytes=$(echo "$memory_limit" | sed 's/M/000000/;s/G/000000000/')
+
+	cat > "$LXC_CONFIG" << EOF
+# HAProxy LXC Configuration
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $arch
+
+# Network: use host network for binding ports
+lxc.net.0.type = none
+
+# Mount points
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $data_path /opt/haproxy none bind,create=dir 0 0
+
+# Environment
+lxc.environment = HTTP_PORT=$http_port
+lxc.environment = HTTPS_PORT=$https_port
+lxc.environment = STATS_PORT=$stats_port
+
+# Security
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time
+
+# Resource limits
+lxc.cgroup.memory.limit_in_bytes = $mem_bytes
+
+# Init command
+lxc.init.cmd = /opt/start-haproxy.sh
+EOF
+
+	log_info "LXC config created"
+}
+
+lxc_run() {
+	load_config
+	lxc_stop
+
+	if ! lxc_exists; then
+		log_error "Container not installed. Run: haproxyctl install"
+		return 1
+	fi
+
+	lxc_create_config
+
+	# Ensure start script exists
+	local start_script="$LXC_ROOTFS/opt/start-haproxy.sh"
+	cat > "$start_script" << 'STARTEOF'
+#!/bin/sh
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+CONFIG_FILE="/opt/haproxy/config/haproxy.cfg"
+PID_FILE="/var/run/haproxy.pid"
+
+# Wait for config
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "[haproxy] Config not found, generating default..."
+    mkdir -p /opt/haproxy/config
+    cat > "$CONFIG_FILE" << 'CFGEOF'
+global
+    log stdout format raw local0
+    maxconn 4096
+    stats socket /var/run/haproxy.sock mode 660 level admin expose-fd listeners
+    stats timeout 30s
+
+defaults
+    mode http
+    log global
+    option httplog
+    option dontlognull
+    timeout connect 5s
+    timeout client 30s
+    timeout server 30s
+
+frontend stats
+    bind *:8404
+    mode http
+    stats enable
+    stats uri /stats
+    stats refresh 10s
+    stats admin if TRUE
+
+frontend http-in
+    bind *:80
+    mode http
+    default_backend fallback
+
+backend fallback
+    mode http
+    server local 127.0.0.1:8080 check
+CFGEOF
+fi
+
+echo "[haproxy] Starting HAProxy..."
+exec haproxy -f "$CONFIG_FILE" -W -db
+STARTEOF
+	chmod +x "$start_script"
+
+	# Generate config before starting
+	generate_config
+
+	log_info "Starting HAProxy container..."
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
+}
+
+lxc_exec() {
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+	lxc-attach -n "$LXC_NAME" -- "$@"
+}
+
+# ===========================================
+# Configuration Generation
+# ===========================================
+
+generate_config() {
+	load_config
+
+	local cfg_file="$CONFIG_PATH/haproxy.cfg"
+
+	log_info "Generating HAProxy configuration..."
+
+	# Global section
+	cat > "$cfg_file" << EOF
+# HAProxy Configuration - Generated by SecuBox
+# DO NOT EDIT - Use UCI configuration
+
+global
+    log stdout format raw local0 $log_level
+    maxconn $maxconn
+    stats socket /var/run/haproxy.sock mode 660 level admin expose-fd listeners
+    stats timeout 30s
+    ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256
+    ssl-default-bind-ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384
+    ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
+    tune.ssl.default-dh-param 2048
+
+EOF
+
+	# Defaults section
+	local mode=$(uci_get defaults.mode) || mode="http"
+	local timeout_connect=$(uci_get defaults.timeout_connect) || timeout_connect="5s"
+	local timeout_client=$(uci_get defaults.timeout_client) || timeout_client="30s"
+	local timeout_server=$(uci_get defaults.timeout_server) || timeout_server="30s"
+
+	cat >> "$cfg_file" << EOF
+defaults
+    mode $mode
+    log global
+    option httplog
+    option dontlognull
+    option forwardfor
+    timeout connect $timeout_connect
+    timeout client $timeout_client
+    timeout server $timeout_server
+    timeout http-request 10s
+    timeout http-keep-alive 10s
+    retries 3
+
+EOF
+
+	# Stats frontend
+	if [ "$stats_enabled" = "1" ]; then
+		cat >> "$cfg_file" << EOF
+frontend stats
+    bind *:$stats_port
+    mode http
+    stats enable
+    stats uri /stats
+    stats refresh 10s
+    stats auth $stats_user:$stats_password
+    stats admin if TRUE
+
+EOF
+	fi
+
+	# Generate frontends from UCI
+	_generate_frontends >> "$cfg_file"
+
+	# Generate backends from UCI
+	_generate_backends >> "$cfg_file"
+
+	log_info "Configuration generated: $cfg_file"
+}
+
+_generate_frontends() {
+	# HTTP Frontend
+	cat << EOF
+frontend http-in
+    bind *:$http_port
+    mode http
+EOF
+
+	# Add HTTPS redirect rules for vhosts with ssl_redirect
+	config_load haproxy
+	config_foreach _add_ssl_redirect vhost
+
+	# Add vhost ACLs for HTTP
+	config_foreach _add_vhost_acl vhost "http"
+
+	echo "    default_backend fallback"
+	echo ""
+
+	# HTTPS Frontend (if certificates exist)
+	if [ -d "$CERTS_PATH" ] && ls "$CERTS_PATH"/*.pem >/dev/null 2>&1; then
+		cat << EOF
+frontend https-in
+    bind *:$https_port ssl crt $CERTS_PATH/ alpn h2,http/1.1
+    mode http
+    http-request set-header X-Forwarded-Proto https
+    http-request set-header X-Real-IP %[src]
+EOF
+		# Add vhost ACLs for HTTPS
+		config_foreach _add_vhost_acl vhost "https"
+
+		echo "    default_backend fallback"
+		echo ""
+	fi
+}
+
+_add_ssl_redirect() {
+	local section="$1"
+	local enabled domain ssl_redirect
+
+	config_get enabled "$section" enabled "0"
+	[ "$enabled" = "1" ] || return
+
+	config_get domain "$section" domain
+	config_get ssl_redirect "$section" ssl_redirect "0"
+
+	[ -n "$domain" ] || return
+	[ "$ssl_redirect" = "1" ] || return
+
+	local acl_name=$(echo "$domain" | tr '.' '_' | tr '-' '_')
+	echo "    acl host_${acl_name} hdr(host) -i $domain"
+	echo "    http-request redirect scheme https code 301 if host_${acl_name} !{ ssl_fc }"
+}
+
+_add_vhost_acl() {
+	local section="$1"
+	local proto="$2"
+	local enabled domain backend ssl
+
+	config_get enabled "$section" enabled "0"
+	[ "$enabled" = "1" ] || return
+
+	config_get domain "$section" domain
+	config_get backend "$section" backend
+	config_get ssl "$section" ssl "0"
+
+	[ -n "$domain" ] || return
+	[ -n "$backend" ] || return
+
+	# For HTTP frontend, skip SSL-only vhosts
+	[ "$proto" = "http" ] && [ "$ssl" = "1" ] && return
+
+	local acl_name=$(echo "$domain" | tr '.' '_' | tr '-' '_')
+	echo "    acl host_${acl_name} hdr(host) -i $domain"
+	echo "    use_backend $backend if host_${acl_name}"
+}
+
+_generate_backends() {
+	config_load haproxy
+
+	# Generate each backend
+	config_foreach _generate_backend backend
+
+	# Fallback backend
+	cat << EOF
+backend fallback
+    mode http
+    http-request deny deny_status 503
+EOF
+}
+
+_generate_backend() {
+	local section="$1"
+	local enabled name mode balance health_check
+
+	config_get enabled "$section" enabled "0"
+	[ "$enabled" = "1" ] || return
+
+	config_get name "$section" name "$section"
+	config_get mode "$section" mode "http"
+	config_get balance "$section" balance "roundrobin"
+	config_get health_check "$section" health_check ""
+
+	echo ""
+	echo "backend $name"
+	echo "    mode $mode"
+	echo "    balance $balance"
+
+	[ -n "$health_check" ] && echo "    option $health_check"
+
+	# Add servers for this backend
+	config_foreach _add_server_to_backend server "$name"
+}
+
+_add_server_to_backend() {
+	local section="$1"
+	local target_backend="$2"
+	local backend server_name address port weight check enabled
+
+	config_get backend "$section" backend
+	[ "$backend" = "$target_backend" ] || return
+
+	config_get enabled "$section" enabled "0"
+	[ "$enabled" = "1" ] || return
+
+	config_get server_name "$section" name "$section"
+	config_get address "$section" address
+	config_get port "$section" port "80"
+	config_get weight "$section" weight "100"
+	config_get check "$section" check "1"
+
+	[ -n "$address" ] || return
+
+	local check_opt=""
+	[ "$check" = "1" ] && check_opt="check"
+
+	echo "    server $server_name $address:$port weight $weight $check_opt"
+}
+
+# ===========================================
+# Certificate Management
+# ===========================================
+
+cmd_cert_list() {
+	load_config
+
+	echo "Certificates in $CERTS_PATH:"
+	echo "----------------------------"
+
+	if [ -d "$CERTS_PATH" ]; then
+		for cert in "$CERTS_PATH"/*.pem; do
+			[ -f "$cert" ] || continue
+			local name=$(basename "$cert" .pem)
+			local expiry=$(openssl x509 -in "$cert" -noout -enddate 2>/dev/null | cut -d= -f2)
+			echo "  $name - Expires: ${expiry:-Unknown}"
+		done
+	else
+		echo "  No certificates found"
+	fi
+}
+
+cmd_cert_add() {
+	require_root
+	load_config
+
+	local domain="$1"
+	[ -z "$domain" ] && { log_error "Domain required"; return 1; }
+
+	local email=$(uci_get acme.email)
+	local staging=$(uci_get acme.staging)
+	local key_type=$(uci_get acme.key_type) || key_type="ec-256"
+
+	[ -z "$email" ] && { log_error "ACME email not configured"; return 1; }
+
+	log_info "Requesting certificate for $domain..."
+
+	local staging_flag=""
+	[ "$staging" = "1" ] && staging_flag="--staging"
+
+	# Use acme.sh or certbot if available
+	if command -v acme.sh >/dev/null 2>&1; then
+		acme.sh --issue -d "$domain" --standalone --httpport $http_port \
+			--keylength $key_type $staging_flag \
+			--cert-file "$CERTS_PATH/$domain.crt" \
+			--key-file "$CERTS_PATH/$domain.key" \
+			--fullchain-file "$CERTS_PATH/$domain.pem" \
+			--reloadcmd "haproxyctl reload"
+	elif command -v certbot >/dev/null 2>&1; then
+		certbot certonly --standalone -d "$domain" \
+			--email "$email" --agree-tos -n \
+			--http-01-port $http_port $staging_flag
+
+		# Copy to HAProxy certs dir
+		local le_path="/etc/letsencrypt/live/$domain"
+		cat "$le_path/fullchain.pem" "$le_path/privkey.pem" > "$CERTS_PATH/$domain.pem"
+	else
+		log_error "No ACME client found. Install acme.sh or certbot"
+		return 1
+	fi
+
+	# Add to UCI
+	uci set haproxy.cert_${domain//[.-]/_}=certificate
+	uci set haproxy.cert_${domain//[.-]/_}.domain="$domain"
+	uci set haproxy.cert_${domain//[.-]/_}.type="acme"
+	uci set haproxy.cert_${domain//[.-]/_}.enabled="1"
+	uci commit haproxy
+
+	log_info "Certificate installed for $domain"
+}
+
+cmd_cert_import() {
+	require_root
+	load_config
+
+	local domain="$1"
+	local cert_file="$2"
+	local key_file="$3"
+
+	[ -z "$domain" ] && { log_error "Domain required"; return 1; }
+	[ -z "$cert_file" ] && { log_error "Certificate file required"; return 1; }
+	[ -z "$key_file" ] && { log_error "Key file required"; return 1; }
+
+	[ -f "$cert_file" ] || { log_error "Certificate file not found"; return 1; }
+	[ -f "$key_file" ] || { log_error "Key file not found"; return 1; }
+
+	# Combine cert and key for HAProxy
+	cat "$cert_file" "$key_file" > "$CERTS_PATH/$domain.pem"
+	chmod 600 "$CERTS_PATH/$domain.pem"
+
+	# Add to UCI
+	uci set haproxy.cert_${domain//[.-]/_}=certificate
+	uci set haproxy.cert_${domain//[.-]/_}.domain="$domain"
+	uci set haproxy.cert_${domain//[.-]/_}.type="manual"
+	uci set haproxy.cert_${domain//[.-]/_}.enabled="1"
+	uci commit haproxy
+
+	log_info "Certificate imported for $domain"
+}
+
+# ===========================================
+# Virtual Host Management
+# ===========================================
+
+cmd_vhost_list() {
+	load_config
+
+	echo "Virtual Hosts:"
+	echo "--------------"
+
+	config_load haproxy
+	config_foreach _print_vhost vhost
+}
+
+_print_vhost() {
+	local section="$1"
+	local enabled domain backend ssl ssl_redirect acme
+
+	config_get domain "$section" domain
+	config_get backend "$section" backend
+	config_get enabled "$section" enabled "0"
+	config_get ssl "$section" ssl "0"
+	config_get ssl_redirect "$section" ssl_redirect "0"
+	config_get acme "$section" acme "0"
+
+	local status="disabled"
+	[ "$enabled" = "1" ] && status="enabled"
+
+	local flags=""
+	[ "$ssl" = "1" ] && flags="${flags}SSL "
+	[ "$ssl_redirect" = "1" ] && flags="${flags}REDIRECT "
+	[ "$acme" = "1" ] && flags="${flags}ACME "
+
+	printf "  %-30s -> %-20s [%s] %s\n" "$domain" "$backend" "$status" "$flags"
+}
+
+cmd_vhost_add() {
+	require_root
+	load_config
+
+	local domain="$1"
+	local backend="$2"
+
+	[ -z "$domain" ] && { log_error "Domain required"; return 1; }
+	[ -z "$backend" ] && backend="fallback"
+
+	local section="vhost_${domain//[.-]/_}"
+
+	uci set haproxy.$section=vhost
+	uci set haproxy.$section.domain="$domain"
+	uci set haproxy.$section.backend="$backend"
+	uci set haproxy.$section.ssl="1"
+	uci set haproxy.$section.ssl_redirect="1"
+	uci set haproxy.$section.acme="1"
+	uci set haproxy.$section.enabled="1"
+	uci commit haproxy
+
+	log_info "Virtual host added: $domain -> $backend"
+}
+
+cmd_vhost_remove() {
+	require_root
+
+	local domain="$1"
+	[ -z "$domain" ] && { log_error "Domain required"; return 1; }
+
+	local section="vhost_${domain//[.-]/_}"
+	uci delete haproxy.$section 2>/dev/null
+	uci commit haproxy
+
+	log_info "Virtual host removed: $domain"
+}
+
+# ===========================================
+# Backend Management
+# ===========================================
+
+cmd_backend_list() {
+	load_config
+
+	echo "Backends:"
+	echo "---------"
+
+	config_load haproxy
+	config_foreach _print_backend backend
+}
+
+_print_backend() {
+	local section="$1"
+	local enabled name mode balance
+
+	config_get name "$section" name "$section"
+	config_get enabled "$section" enabled "0"
+	config_get mode "$section" mode "http"
+	config_get balance "$section" balance "roundrobin"
+
+	local status="disabled"
+	[ "$enabled" = "1" ] && status="enabled"
+
+	printf "  %-20s mode=%-6s balance=%-12s [%s]\n" "$name" "$mode" "$balance" "$status"
+}
+
+cmd_backend_add() {
+	require_root
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "Backend name required"; return 1; }
+
+	local section="backend_${name//[.-]/_}"
+
+	uci set haproxy.$section=backend
+	uci set haproxy.$section.name="$name"
+	uci set haproxy.$section.mode="http"
+	uci set haproxy.$section.balance="roundrobin"
+	uci set haproxy.$section.enabled="1"
+	uci commit haproxy
+
+	log_info "Backend added: $name"
+}
+
+cmd_server_add() {
+	require_root
+
+	local backend="$1"
+	local addr_port="$2"
+	local server_name="$3"
+
+	[ -z "$backend" ] && { log_error "Backend name required"; return 1; }
+	[ -z "$addr_port" ] && { log_error "Address:port required"; return 1; }
+
+	local address=$(echo "$addr_port" | cut -d: -f1)
+	local port=$(echo "$addr_port" | cut -d: -f2)
+	[ -z "$port" ] && port="80"
+	[ -z "$server_name" ] && server_name="srv_$(echo $address | tr '.' '_')_$port"
+
+	local section="server_${server_name//[.-]/_}"
+
+	uci set haproxy.$section=server
+	uci set haproxy.$section.backend="$backend"
+	uci set haproxy.$section.name="$server_name"
+	uci set haproxy.$section.address="$address"
+	uci set haproxy.$section.port="$port"
+	uci set haproxy.$section.weight="100"
+	uci set haproxy.$section.check="1"
+	uci set haproxy.$section.enabled="1"
+	uci commit haproxy
+
+	log_info "Server added: $server_name ($address:$port) to backend $backend"
+}
+
+# ===========================================
+# Commands
+# ===========================================
+
+cmd_install() {
+	require_root
+	load_config
+
+	log_info "Installing HAProxy..."
+
+	has_lxc || { log_error "LXC not installed"; exit 1; }
+
+	if ! lxc_exists; then
+		lxc_create_rootfs || exit 1
+	fi
+
+	lxc_create_config || exit 1
+
+	log_info "Installation complete!"
+	log_info ""
+	log_info "Next steps:"
+	log_info "  1. Enable: uci set haproxy.main.enabled=1 && uci commit haproxy"
+	log_info "  2. Add vhost: haproxyctl vhost add example.com backend_name"
+	log_info "  3. Start: /etc/init.d/haproxy start"
+}
+
+cmd_status() {
+	load_config
+
+	local enabled=$(uci_get main.enabled)
+	local running="no"
+	lxc_running && running="yes"
+
+	cat << EOF
+HAProxy Status
+==============
+Enabled:     $([ "$enabled" = "1" ] && echo "yes" || echo "no")
+Running:     $running
+HTTP Port:   $http_port
+HTTPS Port:  $https_port
+Stats Port:  $stats_port
+Stats URL:   http://localhost:$stats_port/stats
+
+Container:   $LXC_NAME
+Rootfs:      $LXC_ROOTFS
+Config:      $CONFIG_PATH/haproxy.cfg
+Certs:       $CERTS_PATH
+EOF
+}
+
+cmd_reload() {
+	require_root
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	generate_config
+
+	log_info "Reloading HAProxy configuration..."
+	lxc_exec sh -c "echo 'reload' | socat stdio /var/run/haproxy.sock" || \
+		lxc_exec killall -HUP haproxy
+
+	log_info "Reload complete"
+}
+
+cmd_validate() {
+	load_config
+	generate_config
+
+	log_info "Validating configuration..."
+
+	if lxc_running; then
+		lxc_exec haproxy -c -f /opt/haproxy/config/haproxy.cfg
+	else
+		# Validate locally if possible
+		if [ -f "$CONFIG_PATH/haproxy.cfg" ]; then
+			log_info "Config file: $CONFIG_PATH/haproxy.cfg"
+			head -50 "$CONFIG_PATH/haproxy.cfg"
+		fi
+	fi
+}
+
+cmd_stats() {
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	lxc_exec sh -c "echo 'show stat' | socat stdio /var/run/haproxy.sock" 2>/dev/null || \
+		curl -s "http://localhost:$stats_port/stats;csv"
+}
+
+cmd_service_run() {
+	require_root
+	load_config
+
+	has_lxc || { log_error "LXC not installed"; exit 1; }
+	lxc_run
+}
+
+cmd_service_stop() {
+	require_root
+	lxc_stop
+}
+
+# ===========================================
+# Main
+# ===========================================
+
+case "${1:-}" in
+	install)    shift; cmd_install "$@" ;;
+	uninstall)  shift; lxc_stop; log_info "Uninstall: rm -rf $LXC_PATH/$LXC_NAME" ;;
+	update)     shift; lxc_exec apk update && lxc_exec apk upgrade haproxy ;;
+	status)     shift; cmd_status "$@" ;;
+
+	generate)   shift; generate_config "$@" ;;
+	validate)   shift; cmd_validate "$@" ;;
+	reload)     shift; cmd_reload "$@" ;;
+
+	vhost)
+		shift
+		case "${1:-}" in
+			list)   shift; cmd_vhost_list "$@" ;;
+			add)    shift; cmd_vhost_add "$@" ;;
+			remove) shift; cmd_vhost_remove "$@" ;;
+			sync)   shift; generate_config && cmd_reload ;;
+			*)      echo "Usage: haproxyctl vhost {list|add|remove|sync}" ;;
+		esac
+		;;
+
+	backend)
+		shift
+		case "${1:-}" in
+			list)   shift; cmd_backend_list "$@" ;;
+			add)    shift; cmd_backend_add "$@" ;;
+			remove) shift; uci delete haproxy.backend_${2//[.-]/_} 2>/dev/null; uci commit haproxy ;;
+			*)      echo "Usage: haproxyctl backend {list|add|remove}" ;;
+		esac
+		;;
+
+	server)
+		shift
+		case "${1:-}" in
+			list)   shift; config_load haproxy; config_foreach _print_server server "$1" ;;
+			add)    shift; cmd_server_add "$@" ;;
+			remove) shift; uci delete haproxy.server_${3//[.-]/_} 2>/dev/null; uci commit haproxy ;;
+			*)      echo "Usage: haproxyctl server {list|add|remove} <backend> [addr:port]" ;;
+		esac
+		;;
+
+	cert)
+		shift
+		case "${1:-}" in
+			list)   shift; cmd_cert_list "$@" ;;
+			add)    shift; cmd_cert_add "$@" ;;
+			import) shift; cmd_cert_import "$@" ;;
+			renew)  shift; cmd_cert_add "$@" ;;
+			remove) shift; rm -f "$CERTS_PATH/$1.pem"; uci delete haproxy.cert_${1//[.-]/_} 2>/dev/null ;;
+			*)      echo "Usage: haproxyctl cert {list|add|import|renew|remove}" ;;
+		esac
+		;;
+
+	stats)       shift; cmd_stats "$@" ;;
+	connections) shift; lxc_exec sh -c "echo 'show sess' | socat stdio /var/run/haproxy.sock" ;;
+
+	service-run)  shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+
+	shell)       shift; lxc_exec /bin/sh ;;
+	exec)        shift; lxc_exec "$@" ;;
+
+	*)           usage ;;
+esac

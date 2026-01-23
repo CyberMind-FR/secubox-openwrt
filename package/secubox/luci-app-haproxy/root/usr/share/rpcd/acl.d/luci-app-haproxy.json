@@ -1,0 +1,56 @@
+{
+	"luci-app-haproxy": {
+		"description": "Grant access to HAProxy load balancer",
+		"read": {
+			"ubus": {
+				"luci.haproxy": [
+					"status",
+					"get_stats",
+					"list_vhosts",
+					"get_vhost",
+					"list_backends",
+					"get_backend",
+					"list_servers",
+					"list_certificates",
+					"list_acls",
+					"list_redirects",
+					"get_settings",
+					"get_logs"
+				]
+			},
+			"uci": ["haproxy"]
+		},
+		"write": {
+			"ubus": {
+				"luci.haproxy": [
+					"create_vhost",
+					"update_vhost",
+					"delete_vhost",
+					"create_backend",
+					"update_backend",
+					"delete_backend",
+					"create_server",
+					"update_server",
+					"delete_server",
+					"request_certificate",
+					"import_certificate",
+					"delete_certificate",
+					"create_acl",
+					"update_acl",
+					"delete_acl",
+					"create_redirect",
+					"delete_redirect",
+					"save_settings",
+					"install",
+					"start",
+					"stop",
+					"restart",
+					"reload",
+					"generate",
+					"validate"
+				]
+			},
+			"uci": ["haproxy"]
+		}
+	}
+}

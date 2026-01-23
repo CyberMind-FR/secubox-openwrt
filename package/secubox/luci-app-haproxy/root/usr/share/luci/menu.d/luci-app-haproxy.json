@@ -1,0 +1,69 @@
+{
+	"admin/services/haproxy": {
+		"title": "HAProxy",
+		"order": 45,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-haproxy"],
+			"uci": { "haproxy": true }
+		}
+	},
+	"admin/services/haproxy/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "haproxy/overview"
+		}
+	},
+	"admin/services/haproxy/vhosts": {
+		"title": "Virtual Hosts",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "haproxy/vhosts"
+		}
+	},
+	"admin/services/haproxy/backends": {
+		"title": "Backends",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "haproxy/backends"
+		}
+	},
+	"admin/services/haproxy/certificates": {
+		"title": "Certificates",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "haproxy/certificates"
+		}
+	},
+	"admin/services/haproxy/acls": {
+		"title": "ACLs & Routing",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "haproxy/acls"
+		}
+	},
+	"admin/services/haproxy/stats": {
+		"title": "Statistics",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "haproxy/stats"
+		}
+	},
+	"admin/services/haproxy/settings": {
+		"title": "Settings",
+		"order": 70,
+		"action": {
+			"type": "view",
+			"path": "haproxy/settings"
+		}
+	}
+}
