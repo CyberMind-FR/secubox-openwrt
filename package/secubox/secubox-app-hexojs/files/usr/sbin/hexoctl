@@ -819,13 +819,43 @@ cmd_publish() {
 
 	local public_dir="$data_path/site/public"
 	local portal_path="/www/blog"
+	local config_file="$data_path/site/_config.yml"
 
 	# Allow custom portal path from config
 	local custom_path=$(uci_get portal.path)
 	[ -n "$custom_path" ] && portal_path="$custom_path"
 
+	# Calculate web root from portal path (strip /www prefix)
+	local web_root="${portal_path#/www}"
+	[ -z "$web_root" ] && web_root="/"
+	# Ensure trailing slash
+	[ "${web_root%/}" = "$web_root" ] && web_root="$web_root/"
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	if [ ! -f "$config_file" ]; then
+		log_error "No Hexo config found at $config_file"
+		return 1
+	fi
+
+	log_info "Setting Hexo root to: $web_root"
+
+	# Update root in _config.yml (use sed to replace existing root line)
+	if grep -q "^root:" "$config_file"; then
+		sed -i "s|^root:.*|root: $web_root|" "$config_file"
+	else
+		# Add root config if not present
+		echo "root: $web_root" >> "$config_file"
+	fi
+
+	log_info "Regenerating static files for $web_root..."
+	lxc_exec sh -c "cd /opt/hexojs/site && hexo clean && hexo generate"
+
 	if [ ! -d "$public_dir" ]; then
-		log_error "No public directory found. Run: hexoctl build"
+		log_error "Build failed - no public directory"
 		return 1
 	fi
 
@@ -838,7 +868,7 @@ cmd_publish() {
 	rsync -av --delete "$public_dir/" "$portal_path/"
 
 	log_info "Published $(find "$portal_path" -type f | wc -l) files to $portal_path"
-	log_info "Access at: http://$(uci -q get network.lan.ipaddr || echo 'router')/blog/"
+	log_info "Access at: http://$(uci -q get network.lan.ipaddr || echo 'router')$web_root"
 }
 
 cmd_logs() {
