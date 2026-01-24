@@ -1424,6 +1424,127 @@ git_get_credentials() {
 }
 
 # ============================================
+# Gitea Integration Methods
+# ============================================
+
+gitea_status() {
+	json_init
+
+	local enabled=$(uci -q get hexojs.gitea.enabled) || enabled="0"
+	local gitea_url=$(uci -q get hexojs.gitea.url) || gitea_url=""
+	local gitea_user=$(uci -q get hexojs.gitea.user) || gitea_user=""
+	local content_repo=$(uci -q get hexojs.gitea.content_repo) || content_repo=""
+	local content_branch=$(uci -q get hexojs.gitea.content_branch) || content_branch="main"
+	local auto_sync=$(uci -q get hexojs.gitea.auto_sync) || auto_sync="0"
+
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+	local content_path="$data_path/content"
+	local has_repo="false"
+	local last_commit=""
+	local branch=""
+
+	if [ -d "$content_path/.git" ]; then
+		has_repo="true"
+		cd "$content_path"
+		last_commit=$(git log -1 --format="%h %s" 2>/dev/null || echo "unknown")
+		branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+	fi
+
+	json_add_boolean "enabled" "$enabled"
+	json_add_string "gitea_url" "$gitea_url"
+	json_add_string "gitea_user" "$gitea_user"
+	json_add_string "content_repo" "$content_repo"
+	json_add_string "content_branch" "$content_branch"
+	json_add_boolean "auto_sync" "$auto_sync"
+	json_add_boolean "has_local_repo" "$([ "$has_repo" = "true" ] && echo 1 || echo 0)"
+	json_add_string "local_branch" "$branch"
+	json_add_string "last_commit" "$last_commit"
+
+	json_dump
+}
+
+gitea_setup() {
+	json_init
+
+	local output=$("$HEXOCTL" gitea setup 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Git credentials configured"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+gitea_clone() {
+	json_init
+
+	local output=$("$HEXOCTL" gitea clone 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Content cloned from Gitea"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+gitea_sync() {
+	json_init
+
+	local output=$("$HEXOCTL" gitea sync 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Content synced from Gitea"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
+gitea_save_config() {
+	read input
+	json_load "$input"
+
+	json_get_var enabled enabled
+	json_get_var gitea_url gitea_url
+	json_get_var gitea_user gitea_user
+	json_get_var gitea_token gitea_token
+	json_get_var content_repo content_repo
+	json_get_var content_branch content_branch
+	json_get_var auto_sync auto_sync
+
+	json_init
+
+	[ -n "$enabled" ] && uci set hexojs.gitea.enabled="$enabled"
+	[ -n "$gitea_url" ] && uci set hexojs.gitea.url="$gitea_url"
+	[ -n "$gitea_user" ] && uci set hexojs.gitea.user="$gitea_user"
+	[ -n "$gitea_token" ] && uci set hexojs.gitea.token="$gitea_token"
+	[ -n "$content_repo" ] && uci set hexojs.gitea.content_repo="$content_repo"
+	[ -n "$content_branch" ] && uci set hexojs.gitea.content_branch="$content_branch"
+	[ -n "$auto_sync" ] && uci set hexojs.gitea.auto_sync="$auto_sync"
+
+	uci commit hexojs
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Gitea configuration saved"
+
+	json_dump
+}
+
+# ============================================
 # Service Control
 # ============================================
 
@@ -1508,7 +1629,12 @@ case "$1" in
   "git_log": {},
   "git_reset": {"hard": "bool"},
   "git_set_credentials": {"name": "str", "email": "str"},
-  "git_get_credentials": {}
+  "git_get_credentials": {},
+  "gitea_status": {},
+  "gitea_setup": {},
+  "gitea_clone": {},
+  "gitea_sync": {},
+  "gitea_save_config": {"enabled": "bool", "gitea_url": "str", "gitea_user": "str", "gitea_token": "str", "content_repo": "str", "content_branch": "str", "auto_sync": "bool"}
 }
 EOF
 		;;
@@ -1555,6 +1681,11 @@ EOF
 			git_reset) git_reset ;;
 			git_set_credentials) git_set_credentials ;;
 			git_get_credentials) git_get_credentials ;;
+			gitea_status) gitea_status ;;
+			gitea_setup) gitea_setup ;;
+			gitea_clone) gitea_clone ;;
+			gitea_sync) gitea_sync ;;
+			gitea_save_config) gitea_save_config ;;
 			*) echo '{"error": "Unknown method"}' ;;
 		esac
 		;;
