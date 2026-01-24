@@ -248,11 +248,12 @@ fi
 # Ensure git user exists
 id -u git >/dev/null 2>&1 || adduser -D -s /bin/bash -h /data git
 
-# Ensure directories exist and have correct ownership
+# Ensure directories exist with correct ownership
 mkdir -p /data/git/repositories
 mkdir -p /data/custom/conf
-chown -R git:git /data/git 2>/dev/null || true
-chown -R git:git /data/custom 2>/dev/null || true
+mkdir -p /data/log
+chown -R git:git /data
+chmod 755 /data /data/git /data/custom /data/custom/conf
 
 # Generate SSH host keys if needed
 if [ ! -f /data/ssh/ssh_host_rsa_key ]; then
