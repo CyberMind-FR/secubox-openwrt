@@ -111,31 +111,16 @@ st.info("""
 - **Settings** - Configure Git and Hexo integration
 """)
 
-# Quick actions
+# Quick actions - simplified without switch_page
 st.subheader("Quick Actions")
 
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    if st.button("📝 New Post", use_container_width=True):
-        st.switch_page("pages/1_editor.py")
-
-with col2:
-    if st.button("🔄 Sync & Build", use_container_width=True):
-        import subprocess
-        with st.spinner("Building..."):
-            result = subprocess.run(
-                ['/usr/sbin/metabolizerctl', 'build'],
-                capture_output=True, text=True
-            )
-            if result.returncode == 0:
-                st.success("Build complete!")
-            else:
-                st.error(f"Build failed: {result.stderr}")
-
-with col3:
-    if st.button("🌐 View Blog", use_container_width=True):
-        st.markdown("[Open Blog](/blog/)", unsafe_allow_html=True)
+st.markdown("""
+Use the **sidebar** on the left to navigate to:
+- 📝 **1_editor** - Write new posts
+- 📚 **2_posts** - Manage posts
+- 🖼️ **3_media** - Media library
+- ⚙️ **4_settings** - Settings
+""")
 
 # Footer
 st.divider()

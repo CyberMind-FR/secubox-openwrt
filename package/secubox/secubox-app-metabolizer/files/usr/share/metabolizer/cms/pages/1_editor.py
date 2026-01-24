@@ -5,13 +5,12 @@ import streamlit as st
 from datetime import datetime
 from pathlib import Path
 import subprocess
-import yaml
 import os
 
 st.set_page_config(page_title="Editor - Metabolizer", page_icon="✏️", layout="wide")
 
 # Paths
-CONTENT_PATH = Path("/srv/metabolizer/content")
+CONTENT_PATH = Path(os.environ.get('METABOLIZER_CONTENT', '/srv/content'))
 POSTS_PATH = CONTENT_PATH / "_posts"
 DRAFTS_PATH = CONTENT_PATH / "_drafts"
 
@@ -112,16 +111,28 @@ def generate_filename(title, date):
     return f"{date}-{slug}.md"
 
 def generate_frontmatter(title, date, time, categories, tags, excerpt):
-    """Generate YAML front matter"""
-    fm = {
-        'title': title,
-        'date': f"{date} {time.strftime('%H:%M:%S')}",
-        'categories': categories,
-        'tags': [t.strip() for t in tags.split(",")] if tags else [],
-    }
+    """Generate YAML front matter without yaml module"""
+    lines = ["---"]
+    lines.append(f"title: {title}")
+    lines.append(f"date: {date} {time.strftime('%H:%M:%S')}")
+
+    if categories:
+        lines.append(f"categories: [{', '.join(categories)}]")
+    else:
+        lines.append("categories: []")
+
+    if tags:
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+        lines.append(f"tags: [{', '.join(tag_list)}]")
+    else:
+        lines.append("tags: []")
+
     if excerpt:
-        fm['excerpt'] = excerpt
-    return "---\n" + yaml.dump(fm, default_flow_style=False) + "---\n\n"
+        lines.append(f"excerpt: \"{excerpt}\"")
+
+    lines.append("---")
+    lines.append("")
+    return "\n".join(lines)
 
 def save_post(path, title, date, time, categories, tags, excerpt, content):
     """Save post to file"""
@@ -136,10 +147,12 @@ def save_post(path, title, date, time, categories, tags, excerpt, content):
 
 def git_commit_push(message):
     """Commit and push to Gitea"""
-    os.chdir(CONTENT_PATH)
-    subprocess.run(['git', 'add', '-A'], capture_output=True)
-    subprocess.run(['git', 'commit', '-m', message], capture_output=True)
-    subprocess.run(['git', 'push', 'origin', 'main'], capture_output=True)
+    try:
+        subprocess.run(['git', 'add', '-A'], cwd=CONTENT_PATH, capture_output=True)
+        subprocess.run(['git', 'commit', '-m', message], cwd=CONTENT_PATH, capture_output=True)
+        subprocess.run(['git', 'push', 'origin', 'master'], cwd=CONTENT_PATH, capture_output=True)
+    except:
+        pass
 
 with col1:
     if st.button("💾 Save Draft", use_container_width=True):
@@ -159,21 +172,18 @@ with col2:
                 git_commit_push(f"Add post: {title}")
 
             st.success(f"Published: {filepath.name}")
-            st.info("Webhook will trigger rebuild automatically")
+            st.info("Post saved to repository")
         else:
             st.error("Title and content required")
 
 with col3:
-    if st.button("🔄 Build Now", use_container_width=True):
-        with st.spinner("Building..."):
-            result = subprocess.run(
-                ['/usr/sbin/metabolizerctl', 'build'],
-                capture_output=True, text=True
-            )
-            if result.returncode == 0:
-                st.success("Build complete!")
-            else:
-                st.error(f"Build failed")
+    if st.button("🔄 Sync", use_container_width=True):
+        with st.spinner("Syncing..."):
+            try:
+                subprocess.run(['git', 'pull', 'origin', 'master'], cwd=CONTENT_PATH, capture_output=True)
+                st.success("Synced!")
+            except:
+                st.error("Sync failed")
 
 with col4:
     if st.button("🗑️ Clear", use_container_width=True):

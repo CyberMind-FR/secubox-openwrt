@@ -4,32 +4,28 @@ Metabolizer CMS - Settings
 import streamlit as st
 import subprocess
 import json
+import os
+from pathlib import Path
 
 st.set_page_config(page_title="Settings - Metabolizer", page_icon="⚙️", layout="wide")
 
 st.title("⚙️ Settings")
 
-def get_status():
-    """Get metabolizer status"""
+# Paths
+CONTENT_PATH = Path(os.environ.get('METABOLIZER_CONTENT', '/srv/content'))
+GITEA_URL = os.environ.get('GITEA_URL', 'http://host.containers.internal:3000')
+
+def git_command(args, cwd=None):
+    """Run git command"""
     try:
         result = subprocess.run(
-            ['/usr/sbin/metabolizerctl', 'status'],
+            ['git'] + args,
+            cwd=cwd or CONTENT_PATH,
             capture_output=True, text=True
         )
-        return json.loads(result.stdout)
-    except:
-        return {}
-
-def run_command(cmd):
-    """Run metabolizerctl command"""
-    result = subprocess.run(
-        ['/usr/sbin/metabolizerctl'] + cmd,
-        capture_output=True, text=True
-    )
-    return result.returncode == 0, result.stdout, result.stderr
-
-# Get current status
-status = get_status()
+        return result.returncode == 0, result.stdout, result.stderr
+    except Exception as e:
+        return False, "", str(e)
 
 # Pipeline Status
 st.subheader("📊 Pipeline Status")
@@ -37,43 +33,45 @@ st.subheader("📊 Pipeline Status")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    gitea_status = status.get('gitea', {}).get('status', 'unknown')
-    st.metric(
-        "Gitea",
-        gitea_status.upper(),
-        delta="OK" if gitea_status == "running" else "DOWN"
-    )
+    st.metric("Gitea", "EXTERNAL", delta="Host")
 
 with col2:
-    streamlit_status = status.get('streamlit', {}).get('status', 'unknown')
-    st.metric(
-        "Streamlit",
-        streamlit_status.upper(),
-        delta="OK" if streamlit_status == "running" else "DOWN"
-    )
+    st.metric("Streamlit", "RUNNING", delta="OK")
 
 with col3:
-    hexo_status = status.get('hexo', {}).get('status', 'unknown')
-    st.metric(
-        "HexoJS",
-        hexo_status.upper(),
-        delta="OK" if hexo_status == "running" else "DOWN"
-    )
+    st.metric("HexoJS", "EXTERNAL", delta="Host")
 
 st.divider()
 
 # Content Repository
 st.subheader("📁 Content Repository")
 
-content = status.get('content', {})
 col1, col2 = st.columns(2)
 
 with col1:
-    st.text_input("Repository", value=content.get('repo', 'blog-content'), disabled=True)
-    st.text_input("Path", value=content.get('path', '/srv/metabolizer/content'), disabled=True)
+    st.text_input("Content Path", value=str(CONTENT_PATH), disabled=True)
+
+    # Check if git repo exists
+    if (CONTENT_PATH / '.git').exists():
+        success, stdout, _ = git_command(['remote', '-v'])
+        if success and stdout:
+            remote = stdout.split('\n')[0] if stdout else "No remote"
+            st.text_input("Remote", value=remote.split()[1] if '\t' in remote or ' ' in remote else remote, disabled=True)
+
+        success, stdout, _ = git_command(['rev-parse', '--abbrev-ref', 'HEAD'])
+        st.text_input("Branch", value=stdout.strip() if success else "unknown", disabled=True)
+    else:
+        st.warning("Content directory is not a git repository")
 
 with col2:
-    st.metric("Posts", content.get('post_count', 0))
+    # Count posts
+    posts_path = CONTENT_PATH / '_posts'
+    post_count = len(list(posts_path.glob('*.md'))) if posts_path.exists() else 0
+    st.metric("Posts", post_count)
+
+    drafts_path = CONTENT_PATH / '_drafts'
+    draft_count = len(list(drafts_path.glob('*.md'))) if drafts_path.exists() else 0
+    st.metric("Drafts", draft_count)
 
 # Git Operations
 st.subheader("🔗 Git Operations")
@@ -83,7 +81,7 @@ col1, col2, col3 = st.columns(3)
 with col1:
     if st.button("🔄 Pull Latest", use_container_width=True):
         with st.spinner("Pulling..."):
-            success, stdout, stderr = run_command(['sync'])
+            success, stdout, stderr = git_command(['pull', 'origin', 'master'])
             if success:
                 st.success("Pulled latest changes")
             else:
@@ -91,96 +89,49 @@ with col1:
 
 with col2:
     if st.button("📊 Git Status", use_container_width=True):
-        import os
-        os.chdir("/srv/metabolizer/content")
-        result = subprocess.run(['git', 'status', '--short'], capture_output=True, text=True)
-        if result.stdout:
-            st.code(result.stdout)
+        success, stdout, stderr = git_command(['status', '--short'])
+        if stdout:
+            st.code(stdout)
         else:
             st.info("Working tree clean")
 
 with col3:
-    github_url = st.text_input("Mirror from GitHub URL")
-    if st.button("🔗 Mirror", use_container_width=True):
-        if github_url:
-            with st.spinner("Mirroring..."):
-                success, stdout, stderr = run_command(['mirror', github_url])
-                if success:
-                    st.success(f"Mirrored: {stdout}")
-                else:
-                    st.error(f"Mirror failed: {stderr}")
-        else:
-            st.warning("Enter a GitHub URL")
-
-st.divider()
-
-# Portal Settings
-st.subheader("🌐 Portal")
-
-portal = status.get('portal', {})
-col1, col2 = st.columns(2)
-
-with col1:
-    st.text_input("Blog URL", value=portal.get('url', 'http://router/blog/'), disabled=True)
-    st.text_input("Static Path", value=portal.get('path', '/www/blog'), disabled=True)
-
-with col2:
-    if portal.get('enabled'):
-        st.success("Portal Enabled")
-        if st.button("🌐 View Blog", use_container_width=True):
-            st.markdown(f"[Open Blog]({portal.get('url', '/blog/')})")
-    else:
-        st.warning("Portal Disabled")
-
-st.divider()
-
-# Build Actions
-st.subheader("🏗️ Build Pipeline")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    if st.button("🧹 Clean", use_container_width=True):
-        with st.spinner("Cleaning..."):
-            result = subprocess.run(
-                ['/usr/sbin/hexoctl', 'clean'],
-                capture_output=True, text=True
-            )
-            st.success("Cleaned build cache")
-
-with col2:
-    if st.button("🔨 Generate", use_container_width=True):
-        with st.spinner("Generating..."):
-            result = subprocess.run(
-                ['/usr/sbin/hexoctl', 'generate'],
-                capture_output=True, text=True
-            )
-            if result.returncode == 0:
-                st.success("Generated static site")
-            else:
-                st.error("Generation failed")
-
-with col3:
-    if st.button("📤 Publish", use_container_width=True):
-        with st.spinner("Publishing..."):
-            success, stdout, stderr = run_command(['publish'])
+    if st.button("📤 Push Changes", use_container_width=True):
+        with st.spinner("Pushing..."):
+            success, stdout, stderr = git_command(['push', 'origin', 'master'])
             if success:
-                st.success("Published to portal")
+                st.success("Pushed changes")
             else:
-                st.error(f"Publish failed: {stderr}")
-
-# Full pipeline
-if st.button("🚀 Full Pipeline (Clean → Generate → Publish)", use_container_width=True, type="primary"):
-    with st.spinner("Running full pipeline..."):
-        success, stdout, stderr = run_command(['build'])
-        if success:
-            st.success("Full pipeline complete!")
-            st.balloons()
-        else:
-            st.error(f"Pipeline failed: {stderr}")
+                st.error(f"Push failed: {stderr}")
 
 st.divider()
 
-# Raw Status JSON
-with st.expander("🔧 Debug: Raw Status"):
-    st.json(status)
+# Initialize Repository
+st.subheader("🆕 Initialize Content Repository")
+
+with st.expander("Setup New Repository"):
+    repo_url = st.text_input("Gitea Repository URL", placeholder="http://host:3000/user/blog-content.git")
+
+    if st.button("Clone Repository", use_container_width=True):
+        if repo_url:
+            with st.spinner("Cloning..."):
+                CONTENT_PATH.mkdir(parents=True, exist_ok=True)
+                success, stdout, stderr = git_command(['clone', repo_url, str(CONTENT_PATH)], cwd='/srv')
+                if success:
+                    st.success("Repository cloned!")
+                    st.rerun()
+                else:
+                    st.error(f"Clone failed: {stderr}")
+        else:
+            st.warning("Enter a repository URL")
+
+st.divider()
+
+# Environment Info
+with st.expander("🔧 Debug: Environment"):
+    st.json({
+        "CONTENT_PATH": str(CONTENT_PATH),
+        "GITEA_URL": GITEA_URL,
+        "CWD": os.getcwd(),
+        "PATH": os.environ.get('PATH', ''),
+    })

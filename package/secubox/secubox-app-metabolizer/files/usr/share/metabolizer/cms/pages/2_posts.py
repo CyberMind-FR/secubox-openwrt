@@ -5,27 +5,41 @@ import streamlit as st
 from pathlib import Path
 from datetime import datetime
 import subprocess
-import yaml
 import os
+import re
 
 st.set_page_config(page_title="Posts - Metabolizer", page_icon="📚", layout="wide")
 
 # Paths
-CONTENT_PATH = Path("/srv/metabolizer/content")
+CONTENT_PATH = Path(os.environ.get('METABOLIZER_CONTENT', '/srv/content'))
 POSTS_PATH = CONTENT_PATH / "_posts"
 DRAFTS_PATH = CONTENT_PATH / "_drafts"
 
 st.title("📚 Post Management")
 
 def parse_frontmatter(filepath):
-    """Parse YAML front matter from markdown file"""
+    """Parse YAML front matter from markdown file (without yaml module)"""
     try:
         content = filepath.read_text()
         if content.startswith("---"):
             parts = content.split("---", 2)
             if len(parts) >= 3:
-                fm = yaml.safe_load(parts[1])
+                fm_text = parts[1].strip()
                 body = parts[2].strip()
+
+                # Simple parsing
+                fm = {}
+                for line in fm_text.split('\n'):
+                    if ':' in line:
+                        key, value = line.split(':', 1)
+                        key = key.strip()
+                        value = value.strip()
+                        # Handle arrays
+                        if value.startswith('[') and value.endswith(']'):
+                            value = [v.strip().strip('"\'') for v in value[1:-1].split(',') if v.strip()]
+                        elif value.startswith('"') and value.endswith('"'):
+                            value = value[1:-1]
+                        fm[key] = value
                 return fm, body
     except Exception as e:
         pass
@@ -51,10 +65,12 @@ def get_posts(path):
 
 def git_commit_push(message):
     """Commit and push to Gitea"""
-    os.chdir(CONTENT_PATH)
-    subprocess.run(['git', 'add', '-A'], capture_output=True)
-    subprocess.run(['git', 'commit', '-m', message], capture_output=True)
-    subprocess.run(['git', 'push', 'origin', 'main'], capture_output=True)
+    try:
+        subprocess.run(['git', 'add', '-A'], cwd=CONTENT_PATH, capture_output=True)
+        subprocess.run(['git', 'commit', '-m', message], cwd=CONTENT_PATH, capture_output=True)
+        subprocess.run(['git', 'push', 'origin', 'master'], cwd=CONTENT_PATH, capture_output=True)
+    except:
+        pass
 
 # Tabs for Published and Drafts
 tab1, tab2 = st.tabs(["📰 Published", "📝 Drafts"])
@@ -74,14 +90,15 @@ with tab1:
                 with col1:
                     st.caption(f"📅 {post['date']}")
                     if post['categories']:
-                        st.caption(f"📁 {', '.join(post['categories'])}")
+                        cats = post['categories'] if isinstance(post['categories'], list) else [post['categories']]
+                        st.caption(f"📁 {', '.join(cats)}")
                     if post['tags']:
-                        st.caption(f"🏷️ {', '.join(post['tags'])}")
+                        tags = post['tags'] if isinstance(post['tags'], list) else [post['tags']]
+                        st.caption(f"🏷️ {', '.join(tags)}")
                     st.markdown(post['excerpt'])
 
                 with col2:
                     if st.button("✏️ Edit", key=f"edit_{post['filename']}"):
-                        # Load into editor
                         st.session_state.post_title = post['title']
                         st.session_state.post_content = post['body']
                         st.switch_page("pages/1_editor.py")
@@ -93,7 +110,7 @@ with tab1:
                         st.rerun()
 
                     if st.button("📥 Unpublish", key=f"unpub_{post['filename']}"):
-                        # Move to drafts
+                        DRAFTS_PATH.mkdir(parents=True, exist_ok=True)
                         new_path = DRAFTS_PATH / post['filename']
                         post['path'].rename(new_path)
                         git_commit_push(f"Unpublish: {post['title']}")
@@ -123,7 +140,7 @@ with tab2:
                         st.switch_page("pages/1_editor.py")
 
                     if st.button("📤 Publish", key=f"pub_{draft['filename']}"):
-                        # Move to posts
+                        POSTS_PATH.mkdir(parents=True, exist_ok=True)
                         new_path = POSTS_PATH / draft['filename']
                         draft['path'].rename(new_path)
                         git_commit_push(f"Publish: {draft['title']}")
@@ -135,28 +152,22 @@ with tab2:
                         st.success(f"Deleted")
                         st.rerun()
 
-# Build action
+# Sync action
 st.divider()
 col1, col2 = st.columns(2)
 
 with col1:
     if st.button("🔄 Sync from Git", use_container_width=True):
         with st.spinner("Syncing..."):
-            result = subprocess.run(
-                ['/usr/sbin/metabolizerctl', 'sync'],
-                capture_output=True, text=True
-            )
-            st.success("Synced!")
-            st.rerun()
+            try:
+                subprocess.run(['git', 'pull', 'origin', 'master'], cwd=CONTENT_PATH, capture_output=True)
+                st.success("Synced!")
+                st.rerun()
+            except:
+                st.error("Sync failed")
 
 with col2:
-    if st.button("🏗️ Rebuild Blog", use_container_width=True):
-        with st.spinner("Building..."):
-            result = subprocess.run(
-                ['/usr/sbin/metabolizerctl', 'build'],
-                capture_output=True, text=True
-            )
-            if result.returncode == 0:
-                st.success("Build complete!")
-            else:
-                st.error("Build failed")
+    if st.button("📤 Push to Git", use_container_width=True):
+        with st.spinner("Pushing..."):
+            git_commit_push("Update posts")
+            st.success("Pushed!")
