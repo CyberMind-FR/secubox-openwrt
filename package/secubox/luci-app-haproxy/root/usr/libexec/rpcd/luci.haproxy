@@ -55,15 +55,15 @@ method_status() {
 	stats_enabled=$(get_uci main stats_enabled 1)
 
 	# Check container status
-	if lxc-info -n haproxy-lxc >/dev/null 2>&1; then
-		container_running=$(lxc-info -n haproxy-lxc -s 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0")
+	if lxc-info -n haproxy >/dev/null 2>&1; then
+		container_running=$(lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0")
 	else
 		container_running="0"
 	fi
 
 	# Check HAProxy process in container
 	if [ "$container_running" = "1" ]; then
-		haproxy_running=$(lxc-attach -n haproxy-lxc -- pgrep haproxy >/dev/null 2>&1 && echo "1" || echo "0")
+		haproxy_running=$(lxc-attach -n haproxy -- pgrep haproxy >/dev/null 2>&1 && echo "1" || echo "0")
 	else
 		haproxy_running="0"
 	fi
@@ -83,7 +83,7 @@ method_status() {
 method_get_stats() {
 	local stats_output
 
-	if lxc-info -n haproxy-lxc -s 2>/dev/null | grep -q "RUNNING"; then
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
 		# Get stats via HAProxy socket
 		stats_output=$(run_ctl stats 2>/dev/null)
 		if [ -n "$stats_output" ]; then
