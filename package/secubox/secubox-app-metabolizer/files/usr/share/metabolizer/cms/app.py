@@ -1,8 +1,13 @@
 """
 Metabolizer CMS - SecuBox Blog Management
-Main entry point with navigation sidebar
+Multi-page Streamlit app for blog content management
 """
 import streamlit as st
+import os
+from pathlib import Path
+
+# Configuration
+CONTENT_PATH = Path(os.environ.get('METABOLIZER_CONTENT', '/srv/content'))
 
 st.set_page_config(
     page_title="Metabolizer CMS",
@@ -11,117 +16,104 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Cyberpunk styling
+# Custom CSS
 st.markdown("""
 <style>
-/* CRT Monitor Effect */
-@keyframes scanline {
-    0% { transform: translateY(-100%); }
-    100% { transform: translateY(100%); }
-}
-
-.stApp {
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%);
-}
-
-/* Neon glow effect */
-h1, h2, h3 {
-    color: #ff5f1f !important;
-    text-shadow: 0 0 10px rgba(255, 95, 31, 0.5);
-}
-
-/* Sidebar styling */
-.css-1d391kg {
-    background: rgba(10, 10, 20, 0.95);
-    border-right: 1px solid #ff5f1f;
-}
-
-/* Button styling */
-.stButton > button {
-    background: transparent;
-    border: 1px solid #ff5f1f;
-    color: #ff5f1f;
-    transition: all 0.3s ease;
-}
-
-.stButton > button:hover {
-    background: rgba(255, 95, 31, 0.2);
-    box-shadow: 0 0 15px rgba(255, 95, 31, 0.3);
-}
-
-/* Text area styling */
-.stTextArea textarea {
-    background: #0a0a0a;
-    border: 1px solid #333;
-    color: #00ff88;
-    font-family: 'Courier New', monospace;
-}
-
-/* Success/Error messages */
-.stSuccess {
-    background: rgba(0, 255, 136, 0.1);
-    border: 1px solid #00ff88;
-}
-
-.stError {
-    background: rgba(255, 68, 68, 0.1);
-    border: 1px solid #ff4444;
-}
-
-/* Metric styling */
-.css-1xarl3l {
-    background: rgba(20, 20, 30, 0.8);
-    border: 1px solid #333;
-    border-radius: 8px;
-    padding: 10px;
-}
-
-/* Code blocks */
-code {
-    color: #0ff !important;
-    background: rgba(0, 255, 255, 0.1) !important;
-}
+.stApp { background: linear-gradient(135deg, #0d1117 0%, #161b22 100%); }
+h1, h2, h3 { color: #58a6ff !important; }
+.stMetric { background: rgba(22, 27, 34, 0.8); border-radius: 8px; padding: 10px; }
+.stButton>button { border: 1px solid #30363d; background: #21262d; color: #c9d1d9; }
+.stButton>button:hover { background: #30363d; border-color: #58a6ff; }
 </style>
 """, unsafe_allow_html=True)
 
-# Header
-st.title("📝 METABOLIZER CMS")
-st.markdown("### Neural Blog Matrix for SecuBox")
+# Sidebar
+with st.sidebar:
+    st.image("https://img.icons8.com/fluency/96/blog.png", width=64)
+    st.title("Metabolizer")
+    st.caption("SecuBox Blog CMS")
+    st.divider()
 
-# Quick stats in columns
+    # Content path status
+    if CONTENT_PATH.exists():
+        post_count = len(list((CONTENT_PATH / "_posts").glob("*.md"))) if (CONTENT_PATH / "_posts").exists() else 0
+        draft_count = len(list((CONTENT_PATH / "_drafts").glob("*.md"))) if (CONTENT_PATH / "_drafts").exists() else 0
+        st.success(f"📁 Content: {post_count} posts, {draft_count} drafts")
+    else:
+        st.warning("📁 Content path not found")
+
+    st.divider()
+    st.caption("v1.0.0 | CyberMind Studio")
+
+# Main content
+st.title("📝 Metabolizer CMS")
+st.markdown("### Blog Content Management System")
+
+# Status cards
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     st.metric("Status", "ONLINE", delta="Active")
+
 with col2:
-    st.metric("Posts", "0", delta=None)
+    posts = len(list((CONTENT_PATH / "_posts").glob("*.md"))) if (CONTENT_PATH / "_posts").exists() else 0
+    st.metric("Published", posts)
+
 with col3:
-    st.metric("Drafts", "0", delta=None)
+    drafts = len(list((CONTENT_PATH / "_drafts").glob("*.md"))) if (CONTENT_PATH / "_drafts").exists() else 0
+    st.metric("Drafts", drafts)
+
 with col4:
-    st.metric("Pipeline", "Ready")
+    git_ok = (CONTENT_PATH / ".git").exists()
+    st.metric("Git", "Connected" if git_ok else "Not Init")
 
 st.divider()
 
-# Navigation info
-st.info("""
-**Navigation:** Use the sidebar to access different sections:
-- **Editor** - Create and edit blog posts with live preview
-- **Posts** - Manage published posts
-- **Media** - Upload and manage images
-- **Settings** - Configure Git and Hexo integration
-""")
+# Quick start guide
+st.subheader("🚀 Quick Start")
 
-# Quick actions - simplified without switch_page
-st.subheader("Quick Actions")
+col1, col2 = st.columns(2)
 
-st.markdown("""
-Use the **sidebar** on the left to navigate to:
-- 📝 **1_editor** - Write new posts
-- 📚 **2_posts** - Manage posts
-- 🖼️ **3_media** - Media library
-- ⚙️ **4_settings** - Settings
-""")
+with col1:
+    st.markdown("""
+    **Navigation** (use sidebar pages):
+    - **✏️ Editor** - Create new posts with live preview
+    - **📚 Posts** - Manage published posts and drafts
+    - **🖼️ Media** - Upload and manage images
+    - **⚙️ Settings** - Git sync and configuration
+    """)
+
+with col2:
+    st.markdown("""
+    **Workflow**:
+    1. Write posts in the **Editor**
+    2. Save as draft or publish directly
+    3. Posts sync to **Gitea** repository
+    4. **HexoJS** generates static site
+    5. View blog at `/blog/`
+    """)
+
+st.divider()
+
+# Recent activity
+st.subheader("📋 Recent Posts")
+
+posts_path = CONTENT_PATH / "_posts"
+if posts_path.exists():
+    posts = sorted(posts_path.glob("*.md"), reverse=True)[:5]
+    if posts:
+        for post in posts:
+            with st.container():
+                cols = st.columns([4, 1])
+                with cols[0]:
+                    st.markdown(f"📄 **{post.stem}**")
+                with cols[1]:
+                    st.caption(post.stat().st_mtime)
+    else:
+        st.info("No posts yet. Create your first post in the Editor!")
+else:
+    st.warning("Content directory not initialized. Go to Settings to set up.")
 
 # Footer
 st.divider()
-st.caption("Metabolizer CMS v1.0 | SecuBox Blog Pipeline")
+st.caption("Metabolizer CMS | Powered by Streamlit + Gitea + HexoJS")

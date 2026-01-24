@@ -1,0 +1,156 @@
+#!/bin/sh
+# RPCD backend for Metabolizer CMS LuCI app
+
+. /lib/functions.sh
+
+# Helpers
+json_output() {
+	echo "$1"
+}
+
+get_status() {
+	local enabled running cms_running post_count draft_count
+	local gitea_connected hexo_running
+
+	# Check metabolizer enabled
+	enabled=$(uci -q get metabolizer.main.enabled || echo "0")
+
+	# Check Streamlit CMS app
+	if pgrep -f "streamlit.*metabolizer" >/dev/null 2>&1; then
+		cms_running="true"
+	else
+		cms_running="false"
+	fi
+
+	# Check Hexo
+	if lxc-info -n hexojs -s 2>/dev/null | grep -q "RUNNING"; then
+		hexo_running="true"
+	else
+		hexo_running="false"
+	fi
+
+	# Check Gitea
+	if lxc-info -n gitea -s 2>/dev/null | grep -q "RUNNING"; then
+		gitea_connected="true"
+	else
+		gitea_connected="false"
+	fi
+
+	# Count posts/drafts
+	local content_path=$(uci -q get metabolizer.content.repo_path || echo "/srv/metabolizer/content")
+	post_count=0
+	draft_count=0
+	if [ -d "$content_path/_posts" ]; then
+		post_count=$(ls -1 "$content_path/_posts/"*.md 2>/dev/null | wc -l)
+	fi
+	if [ -d "$content_path/_drafts" ]; then
+		draft_count=$(ls -1 "$content_path/_drafts/"*.md 2>/dev/null | wc -l)
+	fi
+
+	cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"cms_running": $cms_running,
+	"hexo_running": $hexo_running,
+	"gitea_connected": $gitea_connected,
+	"post_count": $post_count,
+	"draft_count": $draft_count,
+	"cms_url": "http://$(uci -q get network.lan.ipaddr || echo "192.168.1.1"):8501",
+	"blog_url": "/blog/"
+}
+EOF
+}
+
+list_posts() {
+	local content_path=$(uci -q get metabolizer.content.repo_path || echo "/srv/metabolizer/content")
+	local posts_dir="$content_path/_posts"
+
+	echo "["
+	local first=1
+	if [ -d "$posts_dir" ]; then
+		for f in "$posts_dir"/*.md; do
+			[ -f "$f" ] || continue
+			local filename=$(basename "$f")
+			local slug="${filename%.md}"
+			local title=$(grep -m1 "^title:" "$f" 2>/dev/null | sed 's/^title:[[:space:]]*//' | tr -d '"' | tr -d "'")
+			local date=$(grep -m1 "^date:" "$f" 2>/dev/null | sed 's/^date:[[:space:]]*//')
+
+			[ "$first" = "1" ] || echo ","
+			first=0
+			echo "  {\"slug\": \"$slug\", \"title\": \"$title\", \"date\": \"$date\"}"
+		done
+	fi
+	echo "]"
+}
+
+gitea_status() {
+	local content_path=$(uci -q get metabolizer.content.repo_path || echo "/srv/metabolizer/content")
+
+	local has_repo="false"
+	local last_sync=""
+	local branch=""
+
+	if [ -d "$content_path/.git" ]; then
+		has_repo="true"
+		cd "$content_path"
+		last_sync=$(git log -1 --format="%ci" 2>/dev/null || echo "never")
+		branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+	fi
+
+	cat <<EOF
+{
+	"has_repo": $has_repo,
+	"last_sync": "$last_sync",
+	"branch": "$branch"
+}
+EOF
+}
+
+do_sync() {
+	metabolizerctl sync 2>&1
+	echo '{"status": "ok"}'
+}
+
+do_build() {
+	metabolizerctl build 2>&1
+	echo '{"status": "ok"}'
+}
+
+do_publish() {
+	metabolizerctl publish 2>&1
+	echo '{"status": "ok"}'
+}
+
+do_gitea_sync() {
+	hexoctl gitea sync 2>&1
+	echo '{"status": "ok"}'
+}
+
+# RPCD interface
+case "$1" in
+	list)
+		cat <<EOF
+{
+	"status": {},
+	"list_posts": {},
+	"gitea_status": {},
+	"sync": {},
+	"build": {},
+	"publish": {},
+	"gitea_sync": {}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status)       get_status ;;
+			list_posts)   list_posts ;;
+			gitea_status) gitea_status ;;
+			sync)         do_sync ;;
+			build)        do_build ;;
+			publish)      do_publish ;;
+			gitea_sync)   do_gitea_sync ;;
+			*)            echo '{"error": "unknown method"}' ;;
+		esac
+		;;
+esac
