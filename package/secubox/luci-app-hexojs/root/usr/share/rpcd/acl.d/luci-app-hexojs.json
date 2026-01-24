@@ -21,7 +21,8 @@
 					"list_presets",
 					"git_status",
 					"git_log",
-					"git_get_credentials"
+					"git_get_credentials",
+					"gitea_status"
 				]
 			},
 			"uci": ["hexojs"]
@@ -51,7 +52,11 @@
 					"git_push",
 					"git_fetch",
 					"git_reset",
-					"git_set_credentials"
+					"git_set_credentials",
+					"gitea_setup",
+					"gitea_clone",
+					"gitea_sync",
+					"gitea_save_config"
 				]
 			},
 			"uci": ["hexojs"]

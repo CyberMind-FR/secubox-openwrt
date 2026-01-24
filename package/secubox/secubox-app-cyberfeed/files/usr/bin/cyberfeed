@@ -1,0 +1,988 @@
+#!/bin/sh
+# ╔═══════════════════════════════════════════════════════════════════╗
+# ║  ⚡ CYBERFEED v0.2 - RSS Aggregator for OpenWrt/SecuBox ⚡        ║
+# ║  Cyberpunk Feed Analyzer with Timeline & Audio Preview            ║
+# ║  Author: CyberMind.FR | License: MIT                              ║
+# ╚═══════════════════════════════════════════════════════════════════╝
+
+. /lib/functions.sh
+
+# === CONFIGURATION ===
+CYBERFEED_DIR="/tmp/cyberfeed"
+CACHE_DIR="${CYBERFEED_DIR}/cache"
+OUTPUT_DIR="${CYBERFEED_DIR}/output"
+CONFIG_FILE="/etc/cyberfeed/feeds.conf"
+HISTORY_FILE="/var/lib/cyberfeed/history.json"
+MEDIA_DIR="/srv/cyberfeed/media"
+MAX_ITEMS=20
+CACHE_TTL=300
+DOWNLOAD_MEDIA=0
+GENERATE_TIMELINE=1
+
+# Load UCI config
+load_config() {
+	config_load cyberfeed
+	config_get MAX_ITEMS main max_items 20
+	config_get CACHE_TTL main cache_ttl 300
+	config_get OUTPUT_DIR main output_dir "/tmp/cyberfeed/output"
+	config_get HISTORY_FILE main history_file "/var/lib/cyberfeed/history.json"
+	config_get MEDIA_DIR main media_dir "/srv/cyberfeed/media"
+	config_get DOWNLOAD_MEDIA main download_media 0
+	config_get GENERATE_TIMELINE main generate_timeline 1
+}
+
+# === HISTORY MANAGEMENT ===
+init_history() {
+	local dir=$(dirname "$HISTORY_FILE")
+	mkdir -p "$dir"
+	[ -f "$HISTORY_FILE" ] || echo '{"seen":[],"downloaded":[]}' > "$HISTORY_FILE"
+}
+
+is_seen() {
+	local id="$1"
+	grep -q "\"$id\"" "$HISTORY_FILE" 2>/dev/null
+}
+
+mark_seen() {
+	local id="$1"
+	if [ -f "$HISTORY_FILE" ]; then
+		local seen=$(jsonfilter -i "$HISTORY_FILE" -e '@.seen' 2>/dev/null || echo '[]')
+		# Simple append (proper JSON manipulation would need jq)
+		sed -i "s/\"seen\":\[/\"seen\":[\"$id\",/" "$HISTORY_FILE" 2>/dev/null
+	fi
+}
+
+# === CYBERPUNK EMOJI MAPPING (applied inside AWK) ===
+# Emojification is done inside the AWK parser to avoid corrupting JSON keys
+
+# === RSS FETCHER ===
+fetch_feed() {
+	local url="$1"
+	local name="$2"
+	local cache_file="${CACHE_DIR}/${name}.xml"
+
+	if [ -f "$cache_file" ]; then
+		local file_time=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+		local now=$(date +%s)
+		local age=$((now - file_time))
+		if [ "$age" -lt "$CACHE_TTL" ]; then
+			cat "$cache_file"
+			return 0
+		fi
+	fi
+
+	wget -q -T 15 -O "$cache_file" "$url" 2>/dev/null
+
+	if [ -f "$cache_file" ] && [ -s "$cache_file" ]; then
+		cat "$cache_file"
+	else
+		rm -f "$cache_file"
+		return 1
+	fi
+}
+
+# === ENHANCED RSS PARSER (BusyBox AWK compatible) ===
+parse_rss() {
+	local xml="$1"
+	local source="$2"
+	local category="$3"
+
+	echo "$xml" | awk -v source="$source" -v category="$category" -v max="$MAX_ITEMS" '
+	# Helper: extract content between XML tags
+	function extract_tag(str, tag,    start, end, rest, content) {
+		# Try <tag>content</tag>
+		if (match(str, "<" tag "[^>]*>")) {
+			start = RSTART + RLENGTH
+			rest = substr(str, start)
+			if (match(rest, "</" tag ">")) {
+				content = substr(rest, 1, RSTART - 1)
+				# Handle CDATA
+				if (match(content, "^<!\\[CDATA\\[")) {
+					content = substr(content, 10)
+					sub(/\]\]>$/, "", content)
+				}
+				return content
+			}
+		}
+		return ""
+	}
+
+	# Helper: extract attribute value
+	function extract_attr(str, tag, attr,    tagstart, tagend, tagstr, attrpos, rest, val) {
+		if (match(str, "<" tag "[^>]*>")) {
+			tagstr = substr(str, RSTART, RLENGTH)
+			if (match(tagstr, attr "=\"[^\"]*\"")) {
+				val = substr(tagstr, RSTART + length(attr) + 2)
+				sub(/".*/, "", val)
+				return val
+			}
+		}
+		return ""
+	}
+
+	# Helper: add cyberpunk emojis to text (case-insensitive)
+	function emojify(text) {
+		gsub(/[Hh]ack/, "🔓hack", text)
+		gsub(/[Bb]reach/, "🔓breach", text)
+		gsub(/[Ee]xploit/, "🔓exploit", text)
+		gsub(/[Vv]ulnerab/, "🔓vulnerab", text)
+		gsub(/[Ss]ecur/, "🛡️secur", text)
+		gsub(/[Pp]rotect/, "🛡️protect", text)
+		gsub(/[Ff]irewall/, "🛡️firewall", text)
+		gsub(/[Cc]yber/, "⚡cyber", text)
+		gsub(/[Ee]ncrypt/, "🔐encrypt", text)
+		gsub(/[Cc]rypto/, "🔐crypto", text)
+		gsub(/[Mm]alware/, "☠️malware", text)
+		gsub(/[Vv]irus/, "☠️virus", text)
+		gsub(/[Aa]ttack/, "💀attack", text)
+		gsub(/[Tt]hreat/, "💀threat", text)
+		gsub(/[Nn]etwork/, "🌐network", text)
+		gsub(/[Ss]erver/, "💾server", text)
+		gsub(/[Cc]loud/, "💾cloud", text)
+		gsub(/[Cc]ode/, "💻code", text)
+		gsub(/[Ll]inux/, "🐧linux", text)
+		gsub(/[Gg]ithub/, "🐧github", text)
+		gsub(/AI/, "🤖AI", text)
+		gsub(/[Uu]pdate/, "📡update", text)
+		gsub(/[Ll]aunch/, "🚀launch", text)
+		gsub(/[Rr]elease/, "🚀release", text)
+		gsub(/[Pp]odcast/, "🎧podcast", text)
+		gsub(/[Rr]adio/, "🎧radio", text)
+		gsub(/[Vv]ideo/, "📺video", text)
+		return text
+	}
+
+	BEGIN {
+		RS="</item>|</entry>"
+		item_count=0
+	}
+	{
+		if (item_count >= max) next
+
+		title = extract_tag($0, "title")
+		link = extract_tag($0, "link")
+
+		# Atom links use href attribute
+		if (link == "") {
+			link = extract_attr($0, "link", "href")
+		}
+
+		# Extract date (multiple formats)
+		date = extract_tag($0, "pubDate")
+		if (date == "") date = extract_tag($0, "published")
+		if (date == "") date = extract_tag($0, "updated")
+		if (date == "") date = extract_tag($0, "dc:date")
+
+		# Extract description
+		desc = extract_tag($0, "description")
+		if (desc == "") desc = extract_tag($0, "summary")
+		if (desc == "") desc = extract_tag($0, "content")
+
+		# Extract enclosure URL and type (podcasts)
+		enclosure = extract_attr($0, "enclosure", "url")
+		enclosure_type = extract_attr($0, "enclosure", "type")
+
+		# Fallback to media:content
+		if (enclosure == "") {
+			enclosure = extract_attr($0, "media:content", "url")
+			enclosure_type = extract_attr($0, "media:content", "type")
+		}
+
+		# Extract iTunes duration
+		duration = extract_tag($0, "itunes:duration")
+
+		# Extract GUID
+		guid = extract_tag($0, "guid")
+		if (guid == "") guid = link
+
+		if (title != "") {
+			# Apply emojification to title and desc only
+			title = emojify(title)
+			desc = emojify(desc)
+
+			# Clean and escape for JSON
+			gsub(/\\/, "\\\\", title)
+			gsub(/"/, "\\\"", title)
+			gsub(/[\r\n\t]/, " ", title)
+
+			gsub(/\\/, "\\\\", desc)
+			gsub(/"/, "\\\"", desc)
+			gsub(/[\r\n\t]/, " ", desc)
+			gsub(/<[^>]+>/, "", desc)
+			desc = substr(desc, 1, 280)
+
+			gsub(/\\/, "\\\\", link)
+			gsub(/"/, "\\\"", link)
+
+			gsub(/\\/, "\\\\", enclosure)
+			gsub(/"/, "\\\"", enclosure)
+
+			# Determine media type
+			media_type = ""
+			if (enclosure_type ~ /audio/) media_type = "audio"
+			else if (enclosure_type ~ /video/) media_type = "video"
+			else if (enclosure ~ /\.mp3|\.m4a|\.ogg|\.wav/) media_type = "audio"
+			else if (enclosure ~ /\.mp4|\.webm|\.mkv/) media_type = "video"
+
+			printf "{\"title\":\"%s\",\"link\":\"%s\",\"date\":\"%s\",\"desc\":\"%s\",\"source\":\"%s\",\"category\":\"%s\",\"enclosure\":\"%s\",\"media_type\":\"%s\",\"duration\":\"%s\",\"guid\":\"%s\"},", title, link, date, desc, source, category, enclosure, media_type, duration, guid
+			item_count++
+		}
+	}
+	'
+}
+
+# === TIMELINE HTML GENERATOR (Amber & Green CRT Colors) ===
+generate_timeline() {
+	local json_file="$1"
+	local output_file="${OUTPUT_DIR}/timeline.html"
+
+	cat > "$output_file" << 'TIMELINEHTML'
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚡ CYBERFEED TIMELINE ⚡</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+:root {
+	--amber: #ffb000;
+	--amber-dim: #cc8800;
+	--amber-glow: rgba(255,176,0,0.4);
+	--green: #33ff33;
+	--green-dim: #22aa22;
+	--green-glow: rgba(51,255,51,0.4);
+	--dark-bg: #0a0a0a;
+	--darker-bg: #050505;
+	--text-dim: #555;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+	font-family: 'Share Tech Mono', monospace;
+	background: var(--dark-bg);
+	color: var(--amber);
+	min-height: 100vh;
+	padding: 20px;
+}
+.header {
+	text-align: center;
+	padding: 20px;
+	margin-bottom: 30px;
+	border-bottom: 2px solid var(--amber);
+	box-shadow: 0 2px 20px var(--amber-glow);
+}
+.header h1 {
+	font-family: 'Orbitron', sans-serif;
+	font-size: 2rem;
+	color: var(--amber);
+	text-shadow: 0 0 10px var(--amber), 0 0 20px var(--amber-glow);
+	letter-spacing: 0.1em;
+}
+.header .subtitle {
+	color: var(--green);
+	margin-top: 8px;
+	font-size: 0.85rem;
+	text-shadow: 0 0 8px var(--green-glow);
+}
+.nav-links {
+	text-align: center;
+	margin-bottom: 25px;
+}
+.nav-links a {
+	color: var(--green);
+	margin: 0 15px;
+	text-decoration: none;
+	padding: 8px 16px;
+	border: 1px solid var(--green-dim);
+	transition: all 0.3s;
+}
+.nav-links a:hover {
+	background: var(--green);
+	color: var(--dark-bg);
+	box-shadow: 0 0 15px var(--green-glow);
+}
+.timeline {
+	max-width: 800px;
+	margin: 0 auto;
+	position: relative;
+	padding-left: 40px;
+}
+.timeline::before {
+	content: '';
+	position: absolute;
+	left: 15px;
+	top: 0;
+	bottom: 0;
+	width: 3px;
+	background: linear-gradient(180deg, var(--amber), var(--green), var(--amber));
+	box-shadow: 0 0 15px var(--amber-glow);
+}
+.timeline-date {
+	font-family: 'Orbitron', sans-serif;
+	font-size: 1.1rem;
+	color: var(--green);
+	margin: 30px 0 15px -40px;
+	padding-left: 40px;
+	text-shadow: 0 0 8px var(--green-glow);
+	letter-spacing: 0.05em;
+}
+.timeline-item {
+	position: relative;
+	margin-bottom: 20px;
+	padding: 15px;
+	background: rgba(255,176,0,0.03);
+	border: 1px solid rgba(255,176,0,0.2);
+	border-left: 3px solid var(--amber);
+	border-radius: 4px;
+	transition: all 0.3s;
+}
+.timeline-item:hover {
+	background: rgba(255,176,0,0.08);
+	border-color: var(--amber);
+	box-shadow: 0 0 20px var(--amber-glow);
+}
+.timeline-item::before {
+	content: '●';
+	position: absolute;
+	left: -32px;
+	top: 18px;
+	color: var(--amber);
+	font-size: 12px;
+	text-shadow: 0 0 10px var(--amber);
+}
+.timeline-item.has-audio {
+	border-left-color: var(--green);
+}
+.timeline-item.has-audio::before {
+	content: '♪';
+	color: var(--green);
+	text-shadow: 0 0 10px var(--green);
+}
+.timeline-item.has-video::before {
+	content: '▶';
+	color: var(--green);
+	text-shadow: 0 0 10px var(--green);
+}
+.item-time {
+	font-size: 0.75rem;
+	color: var(--green-dim);
+	margin-bottom: 6px;
+	letter-spacing: 0.05em;
+}
+.item-title {
+	font-family: 'Orbitron', sans-serif;
+	font-size: 1rem;
+	color: var(--amber);
+	margin-bottom: 8px;
+	line-height: 1.4;
+}
+.item-title a {
+	color: inherit;
+	text-decoration: none;
+	transition: text-shadow 0.3s;
+}
+.item-title a:hover {
+	text-shadow: 0 0 15px var(--amber);
+}
+.item-desc {
+	font-size: 0.85rem;
+	color: var(--amber-dim);
+	opacity: 0.85;
+	margin-bottom: 10px;
+	line-height: 1.5;
+}
+.item-source {
+	display: inline-block;
+	background: rgba(51,255,51,0.1);
+	border: 1px solid var(--green-dim);
+	color: var(--green);
+	padding: 3px 10px;
+	font-size: 0.65rem;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+}
+.item-source.duration {
+	background: rgba(255,176,0,0.1);
+	border-color: var(--amber-dim);
+	color: var(--amber);
+}
+.audio-player {
+	margin-top: 12px;
+}
+.audio-player audio {
+	width: 100%;
+	height: 40px;
+	border-radius: 20px;
+	filter: sepia(100%) hue-rotate(-10deg) saturate(200%);
+}
+.status-bar {
+	text-align: center;
+	padding: 15px;
+	margin-top: 30px;
+	border-top: 1px solid var(--green-dim);
+	font-size: 0.7rem;
+	color: var(--text-dim);
+}
+.status-bar span {
+	color: var(--green);
+	margin: 0 10px;
+}
+</style>
+</head>
+<body>
+<header class="header">
+	<h1>⚡ TIMELINE ⚡</h1>
+	<p class="subtitle">[ NEURAL FEED MATRIX ]</p>
+</header>
+<nav class="nav-links">
+	<a href="/cyberfeed/">← DASHBOARD</a>
+	<a href="/cyberfeed/timeline.html">↻ REFRESH</a>
+</nav>
+<div class="timeline" id="timeline">
+	<p style="text-align:center; color: var(--amber-dim);">LOADING DATA STREAM...</p>
+</div>
+<div class="status-bar">
+	<span id="item-count">-- ITEMS</span> |
+	<span id="last-update">SYNCING...</span> |
+	CYBERFEED v0.2
+</div>
+
+<script>
+async function loadTimeline() {
+	try {
+		const resp = await fetch('/cyberfeed/feeds.json?' + Date.now());
+		const items = await resp.json();
+
+		document.getElementById('item-count').textContent = items.length + ' ITEMS';
+		document.getElementById('last-update').textContent = new Date().toLocaleTimeString('fr-FR', {hour12: false});
+
+		// Group by date
+		const grouped = {};
+		items.forEach(item => {
+			const dateStr = item.date ? new Date(item.date).toLocaleDateString('fr-FR', {
+				weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+			}).toUpperCase() : 'DATE INCONNUE';
+			if (!grouped[dateStr]) grouped[dateStr] = [];
+			grouped[dateStr].push(item);
+		});
+
+		let html = '';
+		Object.keys(grouped).forEach(date => {
+			html += '<div class="timeline-date">► ' + date + '</div>';
+			grouped[date].forEach(item => {
+				const hasMedia = item.media_type ? ' has-' + item.media_type : '';
+				html += '<div class="timeline-item' + hasMedia + '">';
+				html += '<div class="item-time">◷ ' + (item.date || '') + '</div>';
+				html += '<div class="item-title"><a href="' + item.link + '" target="_blank">' + item.title + '</a></div>';
+				if (item.desc) html += '<div class="item-desc">' + item.desc + '</div>';
+				if (item.enclosure && item.media_type === 'audio') {
+					html += '<div class="audio-player"><audio controls preload="none"><source src="' + item.enclosure + '" type="audio/mpeg"></audio></div>';
+				}
+				html += '<span class="item-source">' + (item.source || 'RSS') + '</span>';
+				if (item.duration) html += ' <span class="item-source duration">◷ ' + item.duration + '</span>';
+				html += '</div>';
+			});
+		});
+
+		document.getElementById('timeline').innerHTML = html || '<p style="text-align:center; color: var(--amber);">NO DATA</p>';
+	} catch(e) {
+		document.getElementById('timeline').innerHTML = '<p style="text-align:center; color: #ff3333;">ERROR: CONNECTION LOST</p>';
+	}
+}
+
+loadTimeline();
+setInterval(loadTimeline, 180000);
+</script>
+</body>
+</html>
+TIMELINEHTML
+}
+
+# === MAIN HTML GENERATOR (with audio player) ===
+generate_html() {
+	local json_file="$1"
+	local output_file="${OUTPUT_DIR}/index.html"
+
+	cat > "$output_file" << 'HTMLEOF'
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚡ CYBERFEED ⚡ Neural RSS Matrix</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+:root {
+	--neon-cyan: #0ff;
+	--neon-magenta: #f0f;
+	--neon-yellow: #ff0;
+	--dark-bg: #0a0a0f;
+	--grid-color: rgba(0, 255, 255, 0.03);
+	--text-primary: #e0e0e0;
+	--text-dim: #606080;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+	font-family: 'Share Tech Mono', monospace;
+	background: var(--dark-bg);
+	color: var(--text-primary);
+	min-height: 100vh;
+}
+body::before {
+	content: '';
+	position: fixed;
+	top: 0; left: 0;
+	width: 100%; height: 100%;
+	background-image:
+		linear-gradient(var(--grid-color) 1px, transparent 1px),
+		linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+	background-size: 50px 50px;
+	animation: gridScroll 20s linear infinite;
+	pointer-events: none;
+	z-index: -1;
+}
+@keyframes gridScroll {
+	0% { transform: translateY(0); }
+	100% { transform: translateY(50px); }
+}
+.cyber-header {
+	text-align: center;
+	padding: 2rem;
+	border-bottom: 1px solid var(--neon-cyan);
+	background: linear-gradient(180deg, rgba(0,255,255,0.1) 0%, transparent 100%);
+}
+.cyber-header h1 {
+	font-family: 'Orbitron', sans-serif;
+	font-size: clamp(2rem, 5vw, 3.5rem);
+	font-weight: 900;
+	text-transform: uppercase;
+	letter-spacing: 0.2em;
+	color: var(--neon-cyan);
+	text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan), 0 0 40px var(--neon-cyan);
+}
+.cyber-header .subtitle {
+	font-size: 0.85rem;
+	color: var(--neon-magenta);
+	margin-top: 0.5rem;
+	letter-spacing: 0.4em;
+}
+.nav-bar {
+	display: flex;
+	justify-content: center;
+	gap: 20px;
+	padding: 15px;
+	background: rgba(0,0,0,0.3);
+	border-bottom: 1px solid rgba(0,255,255,0.2);
+}
+.nav-bar a {
+	color: var(--neon-cyan);
+	text-decoration: none;
+	padding: 8px 16px;
+	border: 1px solid var(--neon-cyan);
+	transition: all 0.3s;
+}
+.nav-bar a:hover {
+	background: var(--neon-cyan);
+	color: var(--dark-bg);
+	box-shadow: 0 0 15px var(--neon-cyan);
+}
+.status-bar {
+	display: flex;
+	justify-content: center;
+	gap: 2rem;
+	margin-top: 1rem;
+	font-size: 0.75rem;
+	color: var(--text-dim);
+	flex-wrap: wrap;
+}
+.status-bar span::before { content: '▸ '; color: var(--neon-cyan); }
+.category-filter {
+	display: flex;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 1rem;
+	flex-wrap: wrap;
+}
+.category-btn {
+	background: rgba(0,255,255,0.1);
+	border: 1px solid var(--neon-cyan);
+	color: var(--neon-cyan);
+	padding: 0.4rem 1rem;
+	font-family: 'Orbitron', sans-serif;
+	font-size: 0.7rem;
+	cursor: pointer;
+	transition: all 0.3s;
+	text-transform: uppercase;
+}
+.category-btn:hover, .category-btn.active {
+	background: var(--neon-cyan);
+	color: var(--dark-bg);
+	box-shadow: 0 0 15px var(--neon-cyan);
+}
+.feed-container {
+	max-width: 900px;
+	margin: 0 auto;
+	padding: 1.5rem;
+}
+.feed-item {
+	background: linear-gradient(135deg, rgba(0,255,255,0.05) 0%, rgba(255,0,255,0.02) 100%);
+	border: 1px solid rgba(0,255,255,0.2);
+	border-left: 3px solid var(--neon-cyan);
+	margin-bottom: 1.2rem;
+	padding: 1.2rem;
+	transition: all 0.3s ease;
+	position: relative;
+}
+.feed-item.has-audio { border-left-color: var(--neon-magenta); }
+.feed-item.has-video { border-left-color: var(--neon-yellow); }
+.feed-item:hover {
+	border-color: var(--neon-magenta);
+	box-shadow: 0 0 20px rgba(0,255,255,0.2);
+}
+.feed-item .meta {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 0.5rem;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+.feed-item .timestamp {
+	font-size: 0.7rem;
+	color: var(--neon-magenta);
+	text-transform: uppercase;
+	letter-spacing: 0.15em;
+}
+.feed-item .source-tag {
+	background: rgba(255,0,255,0.2);
+	border: 1px solid var(--neon-magenta);
+	padding: 0.15rem 0.5rem;
+	font-size: 0.6rem;
+	text-transform: uppercase;
+}
+.feed-item .media-tag {
+	background: rgba(255,255,0,0.2);
+	border: 1px solid var(--neon-yellow);
+	padding: 0.15rem 0.5rem;
+	font-size: 0.6rem;
+	text-transform: uppercase;
+}
+.feed-item .title {
+	font-family: 'Orbitron', sans-serif;
+	font-size: 1rem;
+	font-weight: 700;
+	color: var(--neon-cyan);
+	margin-bottom: 0.6rem;
+	line-height: 1.4;
+}
+.feed-item .title a {
+	color: inherit;
+	text-decoration: none;
+}
+.feed-item .title a:hover { text-shadow: 0 0 10px var(--neon-cyan); }
+.feed-item .description {
+	font-size: 0.85rem;
+	color: var(--text-primary);
+	line-height: 1.5;
+	opacity: 0.85;
+}
+.audio-player {
+	margin-top: 12px;
+}
+.audio-player audio {
+	width: 100%;
+	height: 40px;
+	border-radius: 20px;
+}
+.cyber-footer {
+	text-align: center;
+	padding: 2rem;
+	border-top: 1px solid rgba(0,255,255,0.2);
+	font-size: 0.7rem;
+	color: var(--text-dim);
+}
+.cyber-footer a { color: var(--neon-cyan); text-decoration: none; }
+</style>
+</head>
+<body>
+<header class="cyber-header">
+	<h1>⚡ CYBERFEED ⚡</h1>
+	<p class="subtitle">NEURAL RSS MATRIX INTERFACE</p>
+	<div class="status-bar">
+		<span id="feed-count">FEEDS: --</span>
+		<span id="last-update">SYNC: --:--:--</span>
+		<span>STATUS: ONLINE</span>
+	</div>
+</header>
+<nav class="nav-bar">
+	<a href="/cyberfeed/">Dashboard</a>
+	<a href="/cyberfeed/timeline.html">📅 Timeline</a>
+</nav>
+<div class="category-filter">
+	<button class="category-btn active" onclick="filterCategory('all')">ALL</button>
+	<button class="category-btn" onclick="filterCategory('security')">SECURITY</button>
+	<button class="category-btn" onclick="filterCategory('tech')">TECH</button>
+	<button class="category-btn" onclick="filterCategory('social')">SOCIAL</button>
+	<button class="category-btn" onclick="filterCategory('radio')">RADIO</button>
+	<button class="category-btn" onclick="filterCategory('news')">NEWS</button>
+</div>
+<main class="feed-container" id="feed-items">
+	<div style="text-align:center; padding:40px; color: var(--text-dim);">
+		<p style="font-size:3rem;">🔮</p>
+		<p>Awaiting Neural Feed Connection...</p>
+	</div>
+</main>
+<footer class="cyber-footer">
+	<p>⚡ CYBERFEED v0.2 | Powered by <a href="https://cybermind.fr">CyberMind.FR</a> | SecuBox Module ⚡</p>
+	<p>░▒▓ JACK IN TO THE MATRIX ▓▒░</p>
+</footer>
+<script>
+let feedData = [];
+let currentFilter = 'all';
+
+async function loadFeeds() {
+	try {
+		const resp = await fetch('/cyberfeed/feeds.json?' + Date.now());
+		feedData = await resp.json();
+		renderFeeds();
+		document.getElementById('feed-count').textContent = 'FEEDS: ' + feedData.length;
+		document.getElementById('last-update').textContent = 'SYNC: ' + new Date().toLocaleTimeString('fr-FR', {hour12: false});
+	} catch(e) {
+		console.error('Feed load error:', e);
+	}
+}
+
+function filterCategory(cat) {
+	currentFilter = cat;
+	document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+	event.target.classList.add('active');
+	renderFeeds();
+}
+
+function renderFeeds() {
+	const container = document.getElementById('feed-items');
+	const filtered = currentFilter === 'all' ? feedData : feedData.filter(f => f.category === currentFilter);
+
+	if (filtered.length === 0) {
+		container.innerHTML = '<div style="text-align:center; padding:40px; color: var(--text-dim);"><p style="font-size:3rem;">📡</p><p>No feeds in this category</p></div>';
+		return;
+	}
+
+	container.innerHTML = filtered.map(item => {
+		const hasMedia = item.media_type ? ' has-' + item.media_type : '';
+		let audioPlayer = '';
+		if (item.enclosure && item.media_type === 'audio') {
+			audioPlayer = '<div class="audio-player"><audio controls preload="none"><source src="' + item.enclosure + '" type="audio/mpeg">Audio non supporté</audio></div>';
+		}
+		let mediaTag = '';
+		if (item.media_type === 'audio') mediaTag = '<span class="media-tag">🎧 AUDIO</span>';
+		else if (item.media_type === 'video') mediaTag = '<span class="media-tag">📺 VIDEO</span>';
+
+		return '<article class="feed-item' + hasMedia + '" data-category="' + (item.category || 'custom') + '">' +
+			'<div class="meta">' +
+				'<span class="timestamp">⏰ ' + (item.date || 'Unknown') + '</span>' +
+				'<div>' +
+					'<span class="source-tag">' + (item.source || 'RSS') + '</span> ' +
+					mediaTag +
+					(item.duration ? ' <span class="source-tag">⏱ ' + item.duration + '</span>' : '') +
+				'</div>' +
+			'</div>' +
+			'<h2 class="title"><a href="' + item.link + '" target="_blank" rel="noopener">' + item.title + '</a></h2>' +
+			'<p class="description">' + (item.desc || '') + '</p>' +
+			audioPlayer +
+		'</article>';
+	}).join('');
+}
+
+loadFeeds();
+setInterval(loadFeeds, 300000);
+</script>
+</body>
+</html>
+HTMLEOF
+}
+
+# === STATUS ===
+get_status() {
+	local enabled=$(uci -q get cyberfeed.main.enabled || echo 0)
+	local feed_count=0
+	local item_count=0
+	local last_sync=0
+
+	if [ -f "${OUTPUT_DIR}/feeds.json" ]; then
+		item_count=$(grep -c '"title"' "${OUTPUT_DIR}/feeds.json" 2>/dev/null || echo 0)
+		last_sync=$(stat -c %Y "${OUTPUT_DIR}/feeds.json" 2>/dev/null || echo 0)
+	fi
+
+	if [ -f "$CONFIG_FILE" ]; then
+		feed_count=$(grep -v "^#" "$CONFIG_FILE" 2>/dev/null | grep -c "|" || echo 0)
+	fi
+
+	cat << EOF
+{
+	"enabled": $enabled,
+	"feed_count": $feed_count,
+	"item_count": $item_count,
+	"last_sync": $last_sync,
+	"has_timeline": $([ -f "${OUTPUT_DIR}/timeline.html" ] && echo "true" || echo "false")
+}
+EOF
+}
+
+# === SYNC FEEDS ===
+sync_feeds() {
+	load_config
+	init_history
+
+	mkdir -p "$CACHE_DIR" "$OUTPUT_DIR"
+
+	if [ ! -f "$CONFIG_FILE" ]; then
+		echo '[]' > "${OUTPUT_DIR}/feeds.json"
+		generate_html "${OUTPUT_DIR}/feeds.json"
+		return 0
+	fi
+
+	local json_items="["
+	local feed_count=0
+
+	while IFS='|' read -r name url type category || [ -n "$name" ]; do
+		case "$name" in
+			''|\#*) continue ;;
+		esac
+
+		[ -z "$category" ] && category="custom"
+
+		echo "📡 Fetching: $name" >&2
+
+		raw_xml=$(fetch_feed "$url" "$name")
+		if [ -n "$raw_xml" ]; then
+			parsed=$(parse_rss "$raw_xml" "$name" "$category")
+			if [ -n "$parsed" ]; then
+				json_items="${json_items}${parsed}"
+				feed_count=$((feed_count + 1))
+			fi
+		fi
+	done < "$CONFIG_FILE"
+
+	json_items=$(echo "$json_items" | sed 's/,$//')
+	json_items="${json_items}]"
+
+	echo "$json_items" > "${OUTPUT_DIR}/feeds.json"
+	generate_html "${OUTPUT_DIR}/feeds.json"
+
+	# Generate timeline if enabled
+	if [ "$GENERATE_TIMELINE" = "1" ]; then
+		generate_timeline "${OUTPUT_DIR}/feeds.json"
+	fi
+
+	# Create symlinks
+	[ -L /www/cyberfeed/index.html ] || ln -sf "${OUTPUT_DIR}/index.html" /www/cyberfeed/index.html 2>/dev/null
+	[ -L /www/cyberfeed/feeds.json ] || ln -sf "${OUTPUT_DIR}/feeds.json" /www/cyberfeed/feeds.json 2>/dev/null
+	[ -L /www/cyberfeed/timeline.html ] || ln -sf "${OUTPUT_DIR}/timeline.html" /www/cyberfeed/timeline.html 2>/dev/null
+
+	echo ""
+	echo "╔═══════════════════════════════════════════════════════════════╗"
+	echo "║  ⚡ CYBERFEED v0.2 SYNC COMPLETE ⚡                           ║"
+	echo "╠═══════════════════════════════════════════════════════════════╣"
+	printf "║  📊 Feeds processed: %-36s ║\n" "$feed_count"
+	echo "║  📁 Output: /www/cyberfeed/                                   ║"
+	echo "║  📅 Timeline: /www/cyberfeed/timeline.html                    ║"
+	echo "╚═══════════════════════════════════════════════════════════════╝"
+}
+
+# === LIST FEEDS ===
+list_feeds() {
+	if [ ! -f "$CONFIG_FILE" ]; then
+		echo "[]"
+		return
+	fi
+
+	echo "["
+	local first=1
+	while IFS='|' read -r name url type category || [ -n "$name" ]; do
+		case "$name" in
+			''|\#*) continue ;;
+		esac
+		[ "$first" = "1" ] || echo ","
+		first=0
+		printf '{"name":"%s","url":"%s","type":"%s","category":"%s"}' \
+			"$name" "$url" "${type:-rss}" "${category:-custom}"
+	done < "$CONFIG_FILE"
+	echo "]"
+}
+
+# === ADD FEED ===
+add_feed() {
+	local name="$1"
+	local url="$2"
+	local type="${3:-rss}"
+	local category="${4:-custom}"
+
+	[ -z "$name" ] || [ -z "$url" ] && {
+		echo '{"success":false,"error":"Name and URL required"}'
+		return 1
+	}
+
+	if grep -q "^${name}|" "$CONFIG_FILE" 2>/dev/null; then
+		echo '{"success":false,"error":"Feed already exists"}'
+		return 1
+	fi
+
+	echo "${name}|${url}|${type}|${category}" >> "$CONFIG_FILE"
+	echo '{"success":true}'
+}
+
+# === DELETE FEED ===
+delete_feed() {
+	local name="$1"
+
+	[ -z "$name" ] && {
+		echo '{"success":false,"error":"Name required"}'
+		return 1
+	}
+
+	if grep -q "^${name}|" "$CONFIG_FILE" 2>/dev/null; then
+		sed -i "/^${name}|/d" "$CONFIG_FILE"
+		rm -f "${CACHE_DIR}/${name}.xml"
+		echo '{"success":true}'
+	else
+		echo '{"success":false,"error":"Feed not found"}'
+		return 1
+	fi
+}
+
+# === MAIN ===
+case "$1" in
+	sync)
+		sync_feeds
+		;;
+	status)
+		get_status
+		;;
+	list)
+		list_feeds
+		;;
+	add)
+		add_feed "$2" "$3" "$4" "$5"
+		;;
+	delete)
+		delete_feed "$2"
+		;;
+	*)
+		echo "Usage: $0 {sync|status|list|add|delete}"
+		echo ""
+		echo "CyberFeed v0.2 - Enhanced RSS Aggregator"
+		echo ""
+		echo "Commands:"
+		echo "  sync              Fetch feeds, generate HTML + Timeline"
+		echo "  status            Show service status (JSON)"
+		echo "  list              List configured feeds (JSON)"
+		echo "  add NAME URL [TYPE] [CATEGORY]"
+		echo "  delete NAME       Remove a feed"
+		echo ""
+		echo "Output:"
+		echo "  /www/cyberfeed/index.html    - Main dashboard"
+		echo "  /www/cyberfeed/timeline.html - Chronological timeline"
+		echo "  /www/cyberfeed/feeds.json    - Raw JSON data"
+		;;
+esac

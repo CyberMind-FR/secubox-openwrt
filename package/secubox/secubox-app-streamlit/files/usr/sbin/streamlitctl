@@ -1,0 +1,667 @@
+#!/bin/sh
+# SecuBox Streamlit Platform Controller
+# Copyright (C) 2025 CyberMind.fr
+#
+# Manages Streamlit in LXC container
+
+CONFIG="streamlit"
+LXC_NAME="streamlit"
+
+# Paths
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+APPS_PATH="/srv/streamlit/apps"
+DEFAULT_APP="/usr/share/streamlit/hello.py"
+
+# Logging
+log_info() { echo "[INFO] $*"; logger -t streamlit "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t streamlit -p err "$*"; }
+log_debug() { [ "$DEBUG" = "1" ] && echo "[DEBUG] $*"; }
+
+# Helpers
+require_root() {
+	[ "$(id -u)" -eq 0 ] || {
+		log_error "This command requires root privileges"
+		exit 1
+	}
+}
+
+has_lxc() { command -v lxc-start >/dev/null 2>&1; }
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Load configuration
+load_config() {
+	http_port="$(uci_get main.http_port)" || http_port="8501"
+	http_host="$(uci_get main.http_host)" || http_host="0.0.0.0"
+	data_path="$(uci_get main.data_path)" || data_path="/srv/streamlit"
+	memory_limit="$(uci_get main.memory_limit)" || memory_limit="512M"
+	active_app="$(uci_get main.active_app)" || active_app="hello"
+
+	# Server settings
+	headless="$(uci_get server.headless)" || headless="true"
+	gather_stats="$(uci_get server.browser_gather_usage_stats)" || gather_stats="false"
+	theme_base="$(uci_get server.theme_base)" || theme_base="dark"
+	theme_primary="$(uci_get server.theme_primary_color)" || theme_primary="#0ff"
+
+	ensure_dir "$data_path"
+	ensure_dir "$data_path/apps"
+	ensure_dir "$data_path/logs"
+	APPS_PATH="$data_path/apps"
+}
+
+# Usage
+usage() {
+	cat <<EOF
+SecuBox Streamlit Platform Controller
+
+Usage: $(basename $0) <command> [options]
+
+Commands:
+  install       Download Alpine rootfs and setup LXC container
+  uninstall     Remove container (preserves apps)
+  update        Update Streamlit package in container
+  status        Show service status (JSON format)
+  logs          Show container logs
+  shell         Open shell in container
+
+  app list      List deployed apps
+  app add <name> <path>  Deploy new app
+  app remove <name>      Remove app
+  app run <name>         Switch active app
+
+  service-run   Start service (used by init)
+  service-stop  Stop service (used by init)
+
+Configuration:
+  /etc/config/streamlit
+
+Data directory:
+  /srv/streamlit
+
+EOF
+}
+
+# Check prerequisites
+lxc_check_prereqs() {
+	if ! has_lxc; then
+		log_error "LXC not installed. Install with: opkg install lxc lxc-common"
+		return 1
+	fi
+	return 0
+}
+
+# Create Python LXC rootfs from Alpine
+lxc_create_rootfs() {
+	local rootfs="$LXC_ROOTFS"
+	local arch=$(uname -m)
+
+	log_info "Creating Alpine rootfs for Streamlit..."
+
+	ensure_dir "$rootfs"
+
+	# Use Alpine mini rootfs
+	local alpine_version="3.21"
+	case "$arch" in
+		x86_64) alpine_arch="x86_64" ;;
+		aarch64) alpine_arch="aarch64" ;;
+		armv7l) alpine_arch="armv7" ;;
+		*) log_error "Unsupported architecture: $arch"; return 1 ;;
+	esac
+
+	local alpine_url="https://dl-cdn.alpinelinux.org/alpine/v${alpine_version}/releases/${alpine_arch}/alpine-minirootfs-${alpine_version}.0-${alpine_arch}.tar.gz"
+	local tmpfile="/tmp/alpine-rootfs.tar.gz"
+
+	log_info "Downloading Alpine ${alpine_version} rootfs..."
+	wget -q -O "$tmpfile" "$alpine_url" || {
+		log_error "Failed to download Alpine rootfs"
+		return 1
+	}
+
+	log_info "Extracting rootfs..."
+	tar -xzf "$tmpfile" -C "$rootfs" || {
+		log_error "Failed to extract rootfs"
+		return 1
+	}
+	rm -f "$tmpfile"
+
+	# Setup resolv.conf
+	cp /etc/resolv.conf "$rootfs/etc/resolv.conf" 2>/dev/null || \
+		echo "nameserver 1.1.1.1" > "$rootfs/etc/resolv.conf"
+
+	# Create startup script
+	cat > "$rootfs/opt/start-streamlit.sh" << 'STARTUP'
+#!/bin/sh
+set -e
+
+# Install Python and Streamlit on first run
+if [ ! -f /opt/.installed ]; then
+    echo "Installing Python 3.12 and dependencies..."
+    apk update
+    apk add --no-cache python3 py3-pip
+
+    echo "Installing Streamlit..."
+    pip3 install --break-system-packages streamlit 2>/dev/null || \
+    pip3 install streamlit 2>/dev/null
+
+    touch /opt/.installed
+    echo "Installation complete!"
+fi
+
+# Find active app
+ACTIVE_APP="${STREAMLIT_APP:-hello.py}"
+APP_PATH="/srv/apps/${ACTIVE_APP}"
+
+# Fallback to hello.py if app not found
+if [ ! -f "$APP_PATH" ]; then
+    if [ -f "/srv/apps/hello.py" ]; then
+        APP_PATH="/srv/apps/hello.py"
+    else
+        echo "No app found, creating default..."
+        mkdir -p /srv/apps
+        cat > /srv/apps/hello.py << 'HELLO'
+import streamlit as st
+st.set_page_config(page_title="SecuBox Streamlit", page_icon="⚡", layout="wide")
+st.title("⚡ SECUBOX STREAMLIT ⚡")
+st.markdown("### Neural Data App Platform")
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Status", "ONLINE", delta="Active")
+with col2:
+    st.metric("Apps", "1", delta="+1")
+with col3:
+    st.metric("Platform", "SecuBox")
+st.info("Deploy your Streamlit apps via LuCI dashboard")
+HELLO
+        APP_PATH="/srv/apps/hello.py"
+    fi
+fi
+
+echo "Starting Streamlit with app: $APP_PATH"
+cd /srv/apps
+
+exec streamlit run "$APP_PATH" \
+    --server.address="${STREAMLIT_HOST:-0.0.0.0}" \
+    --server.port="${STREAMLIT_PORT:-8501}" \
+    --server.headless="${STREAMLIT_HEADLESS:-true}" \
+    --browser.gatherUsageStats="${STREAMLIT_STATS:-false}" \
+    --theme.base="${STREAMLIT_THEME_BASE:-dark}" \
+    --theme.primaryColor="${STREAMLIT_THEME_PRIMARY:-#0ff}"
+STARTUP
+	chmod +x "$rootfs/opt/start-streamlit.sh"
+
+	log_info "Rootfs created successfully"
+	return 0
+}
+
+# Create LXC config
+lxc_create_config() {
+	load_config
+
+	ensure_dir "$(dirname "$LXC_CONFIG")"
+
+	# Convert memory limit to bytes
+	local mem_bytes
+	case "$memory_limit" in
+		*G|*g) mem_bytes=$((${memory_limit%[Gg]} * 1024 * 1024 * 1024)) ;;
+		*M|*m) mem_bytes=$((${memory_limit%[Mm]} * 1024 * 1024)) ;;
+		*K|*k) mem_bytes=$((${memory_limit%[Kk]} * 1024)) ;;
+		*) mem_bytes="$memory_limit" ;;
+	esac
+
+	# Determine active app file
+	local app_file
+	if [ -f "$APPS_PATH/${active_app}.py" ]; then
+		app_file="${active_app}.py"
+	elif [ -f "$APPS_PATH/${active_app}" ]; then
+		app_file="${active_app}"
+	else
+		app_file="hello.py"
+	fi
+
+	cat > "$LXC_CONFIG" << EOF
+# Streamlit Platform LXC Configuration
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $(uname -m)
+
+# Network: use host network
+lxc.net.0.type = none
+
+# Mount points
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $APPS_PATH srv/apps none bind,create=dir 0 0
+lxc.mount.entry = $data_path/logs srv/logs none bind,create=dir 0 0
+
+# Environment
+lxc.environment = STREAMLIT_HOST=$http_host
+lxc.environment = STREAMLIT_PORT=$http_port
+lxc.environment = STREAMLIT_APP=$app_file
+lxc.environment = STREAMLIT_HEADLESS=$headless
+lxc.environment = STREAMLIT_STATS=$gather_stats
+lxc.environment = STREAMLIT_THEME_BASE=$theme_base
+lxc.environment = STREAMLIT_THEME_PRIMARY=$theme_primary
+
+# Security
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time sys_rawio
+
+# Resource limits
+lxc.cgroup.memory.limit_in_bytes = $mem_bytes
+
+# Init command
+lxc.init.cmd = /opt/start-streamlit.sh
+EOF
+
+	log_info "LXC config created"
+}
+
+# Container control
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONFIG" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+lxc_stop() {
+	if lxc_running; then
+		log_info "Stopping Streamlit container..."
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 2
+	fi
+}
+
+lxc_run() {
+	load_config
+	lxc_stop
+
+	if ! lxc_exists; then
+		log_error "Container not installed. Run: streamlitctl install"
+		return 1
+	fi
+
+	# Regenerate config in case settings changed
+	lxc_create_config
+
+	log_info "Starting Streamlit container..."
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
+}
+
+# App management
+cmd_app_list() {
+	load_config
+
+	echo "{"
+	echo '  "apps": ['
+
+	local first=1
+	if [ -d "$APPS_PATH" ]; then
+		for app in "$APPS_PATH"/*.py; do
+			[ -f "$app" ] || continue
+			local name=$(basename "$app" .py)
+			local size=$(ls -la "$app" 2>/dev/null | awk '{print $5}')
+			local mtime=$(ls -la "$app" 2>/dev/null | awk '{print $6, $7, $8}')
+
+			# Check if this is the active app
+			local is_active="false"
+			if [ "$name" = "$active_app" ] || [ "${name}.py" = "$active_app" ]; then
+				is_active="true"
+			fi
+
+			[ $first -eq 0 ] && echo ","
+			first=0
+			printf '    {"name": "%s", "path": "%s", "size": "%s", "modified": "%s", "active": %s}' \
+				"$name" "$app" "$size" "$mtime" "$is_active"
+		done
+	fi
+
+	echo ""
+	echo "  ],"
+	echo "  \"active_app\": \"$active_app\","
+	echo "  \"apps_path\": \"$APPS_PATH\""
+	echo "}"
+}
+
+cmd_app_add() {
+	local name="$1"
+	local path="$2"
+
+	if [ -z "$name" ] || [ -z "$path" ]; then
+		log_error "Usage: streamlitctl app add <name> <path>"
+		return 1
+	fi
+
+	load_config
+
+	if [ ! -f "$path" ]; then
+		log_error "Source file not found: $path"
+		return 1
+	fi
+
+	# Validate it looks like a Python file
+	if ! echo "$path" | grep -q '\.py$'; then
+		log_error "Source file must be a .py file"
+		return 1
+	fi
+
+	ensure_dir "$APPS_PATH"
+	local dest="$APPS_PATH/${name}.py"
+
+	cp "$path" "$dest" || {
+		log_error "Failed to copy app to $dest"
+		return 1
+	}
+
+	# Register in UCI
+	uci set "${CONFIG}.${name}=app"
+	uci set "${CONFIG}.${name}.name=$name"
+	uci set "${CONFIG}.${name}.path=${name}.py"
+	uci set "${CONFIG}.${name}.enabled=1"
+	uci commit "$CONFIG"
+
+	log_info "App '$name' added successfully"
+	echo '{"success": true, "message": "App added", "name": "'"$name"'"}'
+}
+
+cmd_app_remove() {
+	local name="$1"
+
+	if [ -z "$name" ]; then
+		log_error "Usage: streamlitctl app remove <name>"
+		return 1
+	fi
+
+	if [ "$name" = "hello" ]; then
+		log_error "Cannot remove the default hello app"
+		return 1
+	fi
+
+	load_config
+
+	local app_file="$APPS_PATH/${name}.py"
+	if [ -f "$app_file" ]; then
+		rm -f "$app_file"
+	fi
+
+	# Remove from UCI
+	uci -q delete "${CONFIG}.${name}" 2>/dev/null || true
+	uci commit "$CONFIG"
+
+	# If this was the active app, switch to hello
+	if [ "$active_app" = "$name" ]; then
+		uci_set main.active_app "hello"
+	fi
+
+	log_info "App '$name' removed"
+	echo '{"success": true, "message": "App removed", "name": "'"$name"'"}'
+}
+
+cmd_app_run() {
+	local name="$1"
+
+	if [ -z "$name" ]; then
+		log_error "Usage: streamlitctl app run <name>"
+		return 1
+	fi
+
+	load_config
+
+	local app_file="$APPS_PATH/${name}.py"
+	if [ ! -f "$app_file" ]; then
+		log_error "App not found: $name"
+		return 1
+	fi
+
+	uci_set main.active_app "$name"
+
+	# Restart if running
+	if lxc_running; then
+		log_info "Switching to app: $name (restarting container)"
+		/etc/init.d/streamlit restart
+	else
+		log_info "Active app set to: $name"
+	fi
+
+	echo '{"success": true, "message": "Active app changed", "active_app": "'"$name"'"}'
+}
+
+# Commands
+cmd_install() {
+	require_root
+	load_config
+
+	log_info "Installing Streamlit Platform..."
+
+	lxc_check_prereqs || exit 1
+
+	# Create container
+	if ! lxc_exists; then
+		lxc_create_rootfs || exit 1
+	fi
+
+	lxc_create_config || exit 1
+
+	# Setup default app
+	ensure_dir "$APPS_PATH"
+	if [ -f "$DEFAULT_APP" ] && [ ! -f "$APPS_PATH/hello.py" ]; then
+		cp "$DEFAULT_APP" "$APPS_PATH/hello.py"
+		log_info "Default hello app installed"
+	fi
+
+	# Enable service
+	uci_set main.enabled '1'
+	/etc/init.d/streamlit enable 2>/dev/null || true
+
+	log_info "Installation complete!"
+	log_info ""
+	log_info "Start with: /etc/init.d/streamlit start"
+	log_info "Web interface: http://<router-ip>:$http_port"
+}
+
+cmd_uninstall() {
+	require_root
+
+	log_info "Uninstalling Streamlit Platform..."
+
+	# Stop service
+	/etc/init.d/streamlit stop 2>/dev/null || true
+	/etc/init.d/streamlit disable 2>/dev/null || true
+
+	lxc_stop
+
+	# Remove container (keep apps)
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		rm -rf "$LXC_PATH/$LXC_NAME"
+		log_info "Container removed"
+	fi
+
+	uci_set main.enabled '0'
+
+	log_info "Streamlit Platform uninstalled"
+	log_info "Apps preserved in: $(uci_get main.data_path)/apps"
+}
+
+cmd_update() {
+	require_root
+	load_config
+
+	if ! lxc_exists; then
+		log_error "Container not installed. Run: streamlitctl install"
+		return 1
+	fi
+
+	log_info "Updating Streamlit in container..."
+
+	# Remove installed marker to force reinstall
+	rm -f "$LXC_ROOTFS/opt/.installed"
+
+	# Restart to trigger update
+	if [ "$(uci_get main.enabled)" = "1" ]; then
+		/etc/init.d/streamlit restart
+	fi
+
+	log_info "Update will apply on next start"
+}
+
+cmd_status() {
+	load_config
+
+	local enabled="$(uci_get main.enabled)"
+	local running="false"
+	local installed="false"
+	local uptime=""
+
+	if lxc_exists; then
+		installed="true"
+	fi
+
+	if lxc_running; then
+		running="true"
+		uptime=$(lxc-info -n "$LXC_NAME" 2>/dev/null | grep -i "cpu use" | head -1 | awk '{print $3}')
+	fi
+
+	# Get LAN IP for URL
+	local lan_ip
+	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+	# Count apps
+	local app_count=0
+	if [ -d "$APPS_PATH" ]; then
+		app_count=$(ls -1 "$APPS_PATH"/*.py 2>/dev/null | wc -l)
+	fi
+
+	cat << EOF
+{
+  "enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+  "running": $running,
+  "installed": $installed,
+  "uptime": "$uptime",
+  "http_port": $http_port,
+  "data_path": "$data_path",
+  "memory_limit": "$memory_limit",
+  "active_app": "$active_app",
+  "app_count": $app_count,
+  "web_url": "http://${lan_ip}:${http_port}",
+  "container_name": "$LXC_NAME"
+}
+EOF
+}
+
+cmd_status_text() {
+	load_config
+
+	local enabled="$(uci_get main.enabled)"
+	local running="false"
+	local uptime=""
+
+	if lxc_running; then
+		running="true"
+		uptime=$(lxc-info -n "$LXC_NAME" 2>/dev/null | grep -i "cpu use" | head -1)
+	fi
+
+	cat << EOF
+Streamlit Platform Status
+==========================
+Enabled:     $([ "$enabled" = "1" ] && echo "yes" || echo "no")
+Running:     $([ "$running" = "true" ] && echo "yes" || echo "no")
+HTTP Port:   $http_port
+Data Path:   $data_path
+Memory:      $memory_limit
+Active App:  $active_app
+
+Container:   $LXC_NAME
+Rootfs:      $LXC_ROOTFS
+Config:      $LXC_CONFIG
+
+EOF
+
+	if [ "$running" = "true" ]; then
+		echo "Web interface: http://$(uci -q get network.lan.ipaddr || echo "localhost"):$http_port"
+	fi
+}
+
+cmd_logs() {
+	load_config
+
+	local lines="${1:-100}"
+
+	if [ -d "$data_path/logs" ]; then
+		if [ -n "$(ls -A "$data_path/logs" 2>/dev/null)" ]; then
+			tail -n "$lines" "$data_path/logs"/*.log 2>/dev/null || \
+			cat "$data_path/logs"/*.log 2>/dev/null || \
+			echo "No logs found"
+		else
+			echo "No logs yet"
+		fi
+	else
+		echo "Log directory not found"
+	fi
+
+	# Also check install logs
+	for logfile in /var/log/streamlit-install.log /var/log/streamlit-update.log; do
+		if [ -f "$logfile" ]; then
+			echo ""
+			echo "=== $logfile ==="
+			tail -n 50 "$logfile"
+		fi
+	done
+}
+
+cmd_shell() {
+	require_root
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		exit 1
+	fi
+
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+cmd_service_run() {
+	require_root
+	load_config
+
+	lxc_check_prereqs || exit 1
+	lxc_run
+}
+
+cmd_service_stop() {
+	require_root
+	lxc_stop
+}
+
+# Main
+case "${1:-}" in
+	install)    shift; cmd_install "$@" ;;
+	uninstall)  shift; cmd_uninstall "$@" ;;
+	update)     shift; cmd_update "$@" ;;
+	status)
+		shift
+		if [ "${1:-}" = "--json" ] || [ -t 0 ]; then
+			cmd_status "$@"
+		else
+			cmd_status_text "$@"
+		fi
+		;;
+	logs)       shift; cmd_logs "$@" ;;
+	shell)      shift; cmd_shell "$@" ;;
+	app)
+		shift
+		case "${1:-}" in
+			list)   shift; cmd_app_list "$@" ;;
+			add)    shift; cmd_app_add "$@" ;;
+			remove) shift; cmd_app_remove "$@" ;;
+			run)    shift; cmd_app_run "$@" ;;
+			*)      echo "Usage: streamlitctl app {list|add|remove|run}"; exit 1 ;;
+		esac
+		;;
+	service-run)  shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	*)          usage ;;
+esac

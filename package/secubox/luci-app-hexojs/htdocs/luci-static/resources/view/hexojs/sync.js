@@ -1,14 +1,42 @@
 'use strict';
 'require view';
 'require ui';
+'require rpc';
 'require hexojs/api as api';
 
+var callGiteaStatus = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'gitea_status',
+	expect: {}
+});
+
+var callGiteaSync = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'gitea_sync',
+	expect: {}
+});
+
+var callGiteaClone = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'gitea_clone',
+	expect: {}
+});
+
+var callGiteaSaveConfig = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'gitea_save_config',
+	params: ['enabled', 'gitea_url', 'gitea_user', 'gitea_token', 'content_repo', 'content_branch', 'auto_sync']
+});
+
 return view.extend({
-	title: _('GitHub Sync'),
+	title: _('Content Sync'),
 	wizardStep: 0,
 
 	load: function() {
-		return api.getGitSyncData();
+		return Promise.all([
+			api.getGitSyncData(),
+			callGiteaStatus()
+		]);
 	},
 
 	// ============================================
@@ -183,14 +211,75 @@ return view.extend({
 	},
 
 	// ============================================
+	// Gitea Actions
+	// ============================================
+
+	handleGiteaSync: function() {
+		ui.showModal(_('Syncing from Gitea'), [
+			E('p', { 'class': 'spinning' }, _('Pulling content from Gitea...'))
+		]);
+
+		callGiteaSync().then(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', _('Content synced from Gitea!')), 'info');
+				location.reload();
+			} else {
+				ui.addNotification(null, E('p', result.error || _('Sync failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
+		});
+	},
+
+	handleGiteaClone: function() {
+		ui.showModal(_('Cloning from Gitea'), [
+			E('p', { 'class': 'spinning' }, _('Cloning content repository from Gitea...'))
+		]);
+
+		callGiteaClone().then(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', _('Content cloned from Gitea!')), 'info');
+				location.reload();
+			} else {
+				ui.addNotification(null, E('p', result.error || _('Clone failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
+		});
+	},
+
+	handleGiteaSaveConfig: function() {
+		var enabled = document.querySelector('#gitea-enabled').checked ? '1' : '0';
+		var url = document.querySelector('#gitea-url').value;
+		var user = document.querySelector('#gitea-user').value;
+		var token = document.querySelector('#gitea-token').value;
+		var repo = document.querySelector('#gitea-repo').value;
+		var branch = document.querySelector('#gitea-branch').value || 'main';
+
+		callGiteaSaveConfig(enabled, url, user, token, repo, branch, '0').then(function(result) {
+			if (result.success) {
+				ui.addNotification(null, E('p', _('Gitea configuration saved!')), 'info');
+			} else {
+				ui.addNotification(null, E('p', result.error || _('Save failed')), 'error');
+			}
+		});
+	},
+
+	// ============================================
 	// Render
 	// ============================================
 
 	render: function(data) {
 		var self = this;
-		var status = data.status || {};
-		var credentials = data.credentials || {};
-		var commits = data.commits || [];
+		var gitData = data[0] || {};
+		var giteaStatus = data[1] || {};
+		var status = gitData.status || {};
+		var credentials = gitData.credentials || {};
+		var commits = gitData.commits || [];
 		var isRepo = status.is_repo;
 
 		return E('div', { 'class': 'hexo-dashboard' }, [
@@ -200,12 +289,144 @@ return view.extend({
 			E('div', { 'class': 'hexo-header' }, [
 				E('div', { 'class': 'hexo-card-title' }, [
 					E('span', { 'class': 'hexo-card-title-icon' }, '\uD83D\uDD04'),
-					_('GitHub Sync')
+					_('Content Sync')
 				]),
 				isRepo ? E('div', { 'class': 'hexo-status-badge ' + (status.ahead > 0 ? 'warning' : 'running') }, [
 					E('span', { 'class': 'hexo-status-dot' }),
 					status.branch || 'main'
 				]) : ''
+			]),
+
+			// Gitea Integration Card
+			E('div', { 'class': 'hexo-card' }, [
+				E('div', { 'class': 'hexo-card-header' }, [
+					E('div', { 'class': 'hexo-card-title' }, [
+						E('span', { 'style': 'margin-right: 8px;' }, '\uD83E\uDD8A'),
+						_('Gitea Content Sync')
+					]),
+					giteaStatus.enabled ? E('div', { 'class': 'hexo-status-badge running' }, [
+						E('span', { 'class': 'hexo-status-dot' }),
+						_('Enabled')
+					]) : E('div', { 'class': 'hexo-status-badge stopped' }, [
+						E('span', { 'class': 'hexo-status-dot' }),
+						_('Disabled')
+					])
+				]),
+				E('p', { 'style': 'margin-bottom: 16px; color: var(--hexo-text-muted);' },
+					_('Sync blog content from your local Gitea server.')),
+
+				// Gitea Status
+				giteaStatus.has_local_repo ? E('div', { 'style': 'background: var(--hexo-bg-input); padding: 12px; border-radius: 8px; margin-bottom: 16px;' }, [
+					E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;' }, [
+						E('div', {}, [
+							E('div', { 'style': 'font-size: 11px; color: var(--hexo-text-muted); text-transform: uppercase;' }, _('Repository')),
+							E('div', { 'style': 'font-size: 14px;' }, giteaStatus.content_repo || '-')
+						]),
+						E('div', {}, [
+							E('div', { 'style': 'font-size: 11px; color: var(--hexo-text-muted); text-transform: uppercase;' }, _('Branch')),
+							E('div', { 'style': 'font-size: 14px;' }, giteaStatus.local_branch || '-')
+						]),
+						E('div', {}, [
+							E('div', { 'style': 'font-size: 11px; color: var(--hexo-text-muted); text-transform: uppercase;' }, _('Last Commit')),
+							E('div', { 'style': 'font-size: 13px;' }, giteaStatus.last_commit || '-')
+						])
+					])
+				]) : '',
+
+				// Gitea Actions
+				E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;' }, [
+					giteaStatus.has_local_repo ?
+						E('button', {
+							'class': 'hexo-btn hexo-btn-primary',
+							'click': function() { self.handleGiteaSync(); },
+							'disabled': !giteaStatus.enabled
+						}, ['\uD83D\uDD04 ', _('Sync from Gitea')]) :
+						E('button', {
+							'class': 'hexo-btn hexo-btn-success',
+							'click': function() { self.handleGiteaClone(); },
+							'disabled': !giteaStatus.enabled
+						}, ['\uD83D\uDCE5 ', _('Clone from Gitea')])
+				]),
+
+				// Gitea Config Form
+				E('details', { 'style': 'margin-top: 8px;' }, [
+					E('summary', { 'style': 'cursor: pointer; color: var(--hexo-primary);' }, _('Configure Gitea Connection')),
+					E('div', { 'style': 'margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;' }, [
+						E('div', { 'class': 'hexo-form-group', 'style': 'margin: 0;' }, [
+							E('label', { 'style': 'display: flex; align-items: center; gap: 8px;' }, [
+								E('input', {
+									'type': 'checkbox',
+									'id': 'gitea-enabled',
+									'checked': giteaStatus.enabled
+								}),
+								_('Enable Gitea Sync')
+							])
+						]),
+						E('div', { 'class': 'hexo-form-group', 'style': 'margin: 0;' }, [
+							E('label', { 'class': 'hexo-form-label' }, _('Gitea URL')),
+							E('input', {
+								'type': 'text',
+								'id': 'gitea-url',
+								'class': 'hexo-input',
+								'value': giteaStatus.gitea_url || '',
+								'placeholder': 'http://192.168.255.1:3000'
+							})
+						]),
+						E('div', { 'class': 'hexo-form-group', 'style': 'margin: 0;' }, [
+							E('label', { 'class': 'hexo-form-label' }, _('Username')),
+							E('input', {
+								'type': 'text',
+								'id': 'gitea-user',
+								'class': 'hexo-input',
+								'value': giteaStatus.gitea_user || '',
+								'placeholder': 'admin'
+							})
+						]),
+						E('div', { 'class': 'hexo-form-group', 'style': 'margin: 0;' }, [
+							E('label', { 'class': 'hexo-form-label' }, _('Access Token')),
+							E('input', {
+								'type': 'password',
+								'id': 'gitea-token',
+								'class': 'hexo-input',
+								'placeholder': _('Gitea access token')
+							})
+						]),
+						E('div', { 'class': 'hexo-form-group', 'style': 'margin: 0;' }, [
+							E('label', { 'class': 'hexo-form-label' }, _('Content Repository')),
+							E('input', {
+								'type': 'text',
+								'id': 'gitea-repo',
+								'class': 'hexo-input',
+								'value': giteaStatus.content_repo || '',
+								'placeholder': 'blog-content'
+							})
+						]),
+						E('div', { 'class': 'hexo-form-group', 'style': 'margin: 0;' }, [
+							E('label', { 'class': 'hexo-form-label' }, _('Branch')),
+							E('input', {
+								'type': 'text',
+								'id': 'gitea-branch',
+								'class': 'hexo-input',
+								'value': giteaStatus.content_branch || 'main',
+								'placeholder': 'main'
+							})
+						])
+					]),
+					E('button', {
+						'class': 'hexo-btn hexo-btn-secondary',
+						'style': 'margin-top: 12px;',
+						'click': function() { self.handleGiteaSaveConfig(); }
+					}, _('Save Gitea Config'))
+				])
+			]),
+
+			// Divider
+			E('div', { 'style': 'border-top: 1px solid var(--hexo-border); margin: 24px 0;' }),
+
+			// GitHub Sync Header
+			E('div', { 'class': 'hexo-card-title', 'style': 'margin-bottom: 16px;' }, [
+				E('span', { 'class': 'hexo-card-title-icon' }, '\uD83D\uDC19'),
+				_('GitHub / Git Sync')
 			]),
 
 			// Setup Wizard (shown if not a repo)

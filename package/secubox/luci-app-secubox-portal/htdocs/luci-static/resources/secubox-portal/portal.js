@@ -1,5 +1,6 @@
 'use strict';
 'require baseclass';
+'require fs';
 
 /**
  * SecuBox Portal Module
@@ -259,6 +260,102 @@ return baseclass.extend({
 			path: 'admin/secubox/services/localai/dashboard',
 			service: 'localai',
 			version: '3.10.0'
+		},
+		'haproxy': {
+			id: 'haproxy',
+			name: 'HAProxy',
+			desc: 'High-performance load balancer and reverse proxy with SSL termination',
+			icon: '\u2696\ufe0f',
+			iconBg: 'rgba(34, 197, 94, 0.15)',
+			iconColor: '#22c55e',
+			section: 'services',
+			path: 'admin/services/haproxy/overview',
+			service: 'haproxy',
+			version: '1.0.0'
+		},
+		'hexojs': {
+			id: 'hexojs',
+			name: 'Hexo CMS',
+			desc: 'Fast, simple and powerful blog framework with CyberMind theme',
+			icon: '\u270d\ufe0f',
+			iconBg: 'rgba(59, 130, 246, 0.15)',
+			iconColor: '#3b82f6',
+			section: 'services',
+			path: 'admin/services/hexojs/overview',
+			service: 'hexojs',
+			version: '1.0.0'
+		},
+		'picobrew': {
+			id: 'picobrew',
+			name: 'PicoBrew Server',
+			desc: 'Self-hosted server for PicoBrew Zymatic and Pico brewing systems',
+			icon: '\ud83c\udf7a',
+			iconBg: 'rgba(245, 158, 11, 0.15)',
+			iconColor: '#f59e0b',
+			section: 'services',
+			path: 'admin/services/picobrew/overview',
+			service: 'picobrew',
+			version: '1.0.0'
+		},
+		'tor-shield': {
+			id: 'tor-shield',
+			name: 'Tor Shield',
+			desc: 'Privacy-focused Tor proxy with relay, bridge, and hidden service support',
+			icon: '\ud83e\udde5',
+			iconBg: 'rgba(124, 58, 237, 0.15)',
+			iconColor: '#7c3aed',
+			section: 'services',
+			path: 'admin/services/tor-shield/overview',
+			service: 'tor',
+			version: '1.0.0'
+		},
+		'jellyfin': {
+			id: 'jellyfin',
+			name: 'Jellyfin',
+			desc: 'Free software media system for streaming movies, TV shows, and music',
+			icon: '\ud83c\udf9e\ufe0f',
+			iconBg: 'rgba(139, 92, 246, 0.15)',
+			iconColor: '#8b5cf6',
+			section: 'services',
+			path: 'admin/services/jellyfin/overview',
+			service: 'jellyfin',
+			version: '10.9.0'
+		},
+		'homeassistant': {
+			id: 'homeassistant',
+			name: 'Home Assistant',
+			desc: 'Open-source home automation platform with local control',
+			icon: '\ud83c\udfe0',
+			iconBg: 'rgba(6, 182, 212, 0.15)',
+			iconColor: '#06b6d4',
+			section: 'services',
+			path: 'admin/services/homeassistant/overview',
+			service: 'homeassistant',
+			version: '2024.1'
+		},
+		'adguardhome': {
+			id: 'adguardhome',
+			name: 'AdGuard Home',
+			desc: 'Network-wide ads and trackers blocking DNS server',
+			icon: '\ud83d\udee1\ufe0f',
+			iconBg: 'rgba(34, 197, 94, 0.15)',
+			iconColor: '#22c55e',
+			section: 'security',
+			path: 'admin/services/adguardhome/overview',
+			service: 'adguardhome',
+			version: '0.107'
+		},
+		'nextcloud': {
+			id: 'nextcloud',
+			name: 'Nextcloud',
+			desc: 'Self-hosted productivity platform with file sync, calendar, and contacts',
+			icon: '\u2601\ufe0f',
+			iconBg: 'rgba(59, 130, 246, 0.15)',
+			iconColor: '#3b82f6',
+			section: 'services',
+			path: 'admin/services/nextcloud/overview',
+			service: 'nextcloud',
+			version: '28.0'
 		}
 	},
 
@@ -334,6 +431,57 @@ return baseclass.extend({
 			}
 		});
 		return apps;
+	},
+
+	/**
+	 * Get installed apps by section (filters out apps without init scripts)
+	 */
+	getInstalledAppsBySection: function(sectionId, installedApps) {
+		var self = this;
+		var apps = [];
+		Object.keys(this.apps).forEach(function(key) {
+			var app = self.apps[key];
+			if (app.section === sectionId) {
+				// Include if no service (always show) or if service is installed
+				if (!app.service || installedApps[key]) {
+					apps.push(app);
+				}
+			}
+		});
+		return apps;
+	},
+
+	/**
+	 * Check which apps are installed (have init scripts or LuCI views)
+	 */
+	checkInstalledApps: function() {
+		var self = this;
+		var promises = [];
+		var appKeys = Object.keys(this.apps);
+
+		appKeys.forEach(function(key) {
+			var app = self.apps[key];
+			if (app.service) {
+				// Check if init script exists
+				promises.push(
+					fs.stat('/etc/init.d/' + app.service)
+						.then(function() { return { id: key, installed: true }; })
+						.catch(function() { return { id: key, installed: false }; })
+				);
+			} else {
+				// No service - check if LuCI view exists by path pattern
+				// Apps without services are UI-only and should be shown if their menu exists
+				promises.push(Promise.resolve({ id: key, installed: true }));
+			}
+		});
+
+		return Promise.all(promises).then(function(results) {
+			var installed = {};
+			results.forEach(function(r) {
+				installed[r.id] = r.installed;
+			});
+			return installed;
+		});
 	},
 
 	/**

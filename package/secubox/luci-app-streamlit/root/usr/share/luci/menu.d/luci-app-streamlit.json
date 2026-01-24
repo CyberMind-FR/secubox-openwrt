@@ -1,0 +1,45 @@
+{
+	"admin/services/streamlit": {
+		"title": "Streamlit",
+		"order": 86,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-streamlit"],
+			"uci": {"streamlit": true}
+		}
+	},
+	"admin/services/streamlit/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "streamlit/overview"
+		}
+	},
+	"admin/services/streamlit/apps": {
+		"title": "Apps",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "streamlit/apps"
+		}
+	},
+	"admin/services/streamlit/logs": {
+		"title": "Logs",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "streamlit/logs"
+		}
+	},
+	"admin/services/streamlit/settings": {
+		"title": "Settings",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "streamlit/settings"
+		}
+	}
+}

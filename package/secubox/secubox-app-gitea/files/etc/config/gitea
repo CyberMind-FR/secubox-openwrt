@@ -1,0 +1,23 @@
+config gitea 'main'
+	option enabled '1'
+	option http_port '3000'
+	option ssh_port '2222'
+	option http_host '0.0.0.0'
+	option data_path '/srv/gitea'
+	option memory_limit '512M'
+	option app_name 'SecuBox Git'
+	option domain 'git.local'
+
+config server 'server'
+	option protocol 'http'
+	option disable_registration 'false'
+	option require_signin 'false'
+	option landing_page 'explore'
+
+config database 'database'
+	option type 'sqlite3'
+	option path '/data/gitea.db'
+
+config admin 'admin'
+	option username 'admin'
+	option email 'admin@localhost'

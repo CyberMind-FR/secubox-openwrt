@@ -1,0 +1,27 @@
+config metabolizer 'main'
+	option enabled '0'
+	option gitea_url 'http://127.0.0.1:3000'
+	option gitea_user 'admin'
+	option webhook_port '8088'
+	option webhook_secret ''
+
+config content 'content'
+	option repo_name 'blog-content'
+	option repo_path '/srv/metabolizer/content'
+	option github_mirror ''
+
+config cms 'cms'
+	option repo_name 'metabolizer-cms'
+	option repo_path '/srv/metabolizer/cms'
+	option streamlit_app 'metabolizer'
+
+config hexo 'hexo'
+	option source_path '/srv/hexojs/site/source/_posts'
+	option public_path '/srv/hexojs/site/public'
+	option portal_path '/www/blog'
+	option auto_publish '1'
+
+config portal 'portal'
+	option enabled '1'
+	option url_path '/blog'
+	option title 'SecuBox Blog'

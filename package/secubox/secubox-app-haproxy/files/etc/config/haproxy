@@ -1,0 +1,107 @@
+# SecuBox HAProxy Configuration
+
+config haproxy 'main'
+	option enabled '0'
+	option http_port '80'
+	option https_port '443'
+	option stats_port '8404'
+	option stats_enabled '1'
+	option stats_user 'admin'
+	option stats_password 'secubox'
+	option data_path '/srv/haproxy'
+	option memory_limit '256M'
+	option maxconn '4096'
+	option log_level 'warning'
+
+config defaults 'defaults'
+	option mode 'http'
+	option timeout_connect '5s'
+	option timeout_client '30s'
+	option timeout_server '30s'
+	option timeout_http_request '10s'
+	option timeout_http_keep_alive '10s'
+	option retries '3'
+	option option_httplog '1'
+	option option_dontlognull '1'
+	option option_forwardfor '1'
+
+# Example frontend (HTTP catch-all)
+config frontend 'http_front'
+	option name 'http-in'
+	option bind '*:80'
+	option mode 'http'
+	option default_backend 'fallback'
+	option enabled '1'
+
+# Example frontend (HTTPS with SNI)
+config frontend 'https_front'
+	option name 'https-in'
+	option bind '*:443 ssl crt /etc/haproxy/certs/ alpn h2,http/1.1'
+	option mode 'http'
+	option default_backend 'fallback'
+	option enabled '1'
+
+# Fallback backend
+config backend 'fallback'
+	option name 'fallback'
+	option mode 'http'
+	option balance 'roundrobin'
+	option enabled '1'
+
+# Example vhost
+#config vhost 'example'
+#	option domain 'example.com'
+#	option backend 'web_servers'
+#	option ssl '1'
+#	option ssl_redirect '1'
+#	option acme '1'
+#	option enabled '1'
+
+# Example backend with servers
+#config backend 'web_servers'
+#	option name 'web-servers'
+#	option mode 'http'
+#	option balance 'roundrobin'
+#	option health_check 'httpchk GET /health'
+#	option enabled '1'
+
+# Example server
+#config server 'web1'
+#	option backend 'web_servers'
+#	option name 'web1'
+#	option address '192.168.1.10'
+#	option port '8080'
+#	option weight '100'
+#	option check '1'
+#	option enabled '1'
+
+# ACME/Let's Encrypt settings
+config acme 'acme'
+	option enabled '1'
+	option email 'admin@example.com'
+	option staging '0'
+	option key_type 'ec-256'
+	option renew_days '30'
+
+# Certificate entry (manual or ACME)
+#config certificate 'cert_example'
+#	option domain 'example.com'
+#	option type 'acme'
+#	option enabled '1'
+
+# URL Redirect rule
+#config redirect 'redirect_www'
+#	option name 'www-redirect'
+#	option match_host '^www\.'
+#	option target_host ''
+#	option strip_www '1'
+#	option code '301'
+#	option enabled '1'
+
+# ACL rule
+#config acl 'acl_api'
+#	option name 'is_api'
+#	option type 'path_beg'
+#	option pattern '/api/'
+#	option backend 'api_servers'
+#	option enabled '1'

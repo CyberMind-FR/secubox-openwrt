@@ -1,0 +1,45 @@
+{
+	"admin/services/gitea": {
+		"title": "Gitea",
+		"order": 87,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-gitea"],
+			"uci": {"gitea": true}
+		}
+	},
+	"admin/services/gitea/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "gitea/overview"
+		}
+	},
+	"admin/services/gitea/repos": {
+		"title": "Repositories",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "gitea/repos"
+		}
+	},
+	"admin/services/gitea/users": {
+		"title": "Users",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "gitea/users"
+		}
+	},
+	"admin/services/gitea/settings": {
+		"title": "Settings",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "gitea/settings"
+		}
+	}
+}

@@ -1,0 +1,1286 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# LuCI RPCD backend for HAProxy
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+HAPROXYCTL="/usr/sbin/haproxyctl"
+UCI_CONFIG="haproxy"
+
+# Helper: Run haproxyctl command
+run_ctl() {
+	if [ -x "$HAPROXYCTL" ]; then
+		"$HAPROXYCTL" "$@" 2>&1
+	else
+		echo "haproxyctl not found"
+		return 1
+	fi
+}
+
+# Helper: Get UCI value
+get_uci() {
+	local section="$1"
+	local option="$2"
+	local default="$3"
+	local value
+	value=$(uci -q get "$UCI_CONFIG.$section.$option")
+	echo "${value:-$default}"
+}
+
+# Helper: Set UCI value
+set_uci() {
+	local section="$1"
+	local option="$2"
+	local value="$3"
+	uci set "$UCI_CONFIG.$section.$option=$value"
+}
+
+# Helper: List UCI sections of type
+list_sections() {
+	local type="$1"
+	uci -q show "$UCI_CONFIG" | grep "=$type\$" | cut -d. -f2 | cut -d= -f1
+}
+
+# Status method
+method_status() {
+	local enabled http_port https_port stats_port stats_enabled
+	local container_running haproxy_running
+
+	enabled=$(get_uci main enabled 0)
+	http_port=$(get_uci main http_port 80)
+	https_port=$(get_uci main https_port 443)
+	stats_port=$(get_uci main stats_port 8404)
+	stats_enabled=$(get_uci main stats_enabled 1)
+
+	# Check container status
+	if lxc-info -n haproxy-lxc >/dev/null 2>&1; then
+		container_running=$(lxc-info -n haproxy-lxc -s 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0")
+	else
+		container_running="0"
+	fi
+
+	# Check HAProxy process in container
+	if [ "$container_running" = "1" ]; then
+		haproxy_running=$(lxc-attach -n haproxy-lxc -- pgrep haproxy >/dev/null 2>&1 && echo "1" || echo "0")
+	else
+		haproxy_running="0"
+	fi
+
+	json_init
+	json_add_boolean "enabled" "$enabled"
+	json_add_int "http_port" "$http_port"
+	json_add_int "https_port" "$https_port"
+	json_add_int "stats_port" "$stats_port"
+	json_add_boolean "stats_enabled" "$stats_enabled"
+	json_add_boolean "container_running" "$container_running"
+	json_add_boolean "haproxy_running" "$haproxy_running"
+	json_dump
+}
+
+# Get stats
+method_get_stats() {
+	local stats_output
+
+	if lxc-info -n haproxy-lxc -s 2>/dev/null | grep -q "RUNNING"; then
+		# Get stats via HAProxy socket
+		stats_output=$(run_ctl stats 2>/dev/null)
+		if [ -n "$stats_output" ]; then
+			json_init
+			json_add_boolean "success" 1
+			json_add_string "stats" "$stats_output"
+			json_dump
+			return
+		fi
+	fi
+
+	json_init
+	json_add_boolean "success" 0
+	json_add_string "error" "HAProxy not running or stats unavailable"
+	json_dump
+}
+
+# List vhosts
+method_list_vhosts() {
+	json_init
+	json_add_array "vhosts"
+
+	config_load "$UCI_CONFIG"
+	config_foreach _add_vhost vhost
+
+	json_close_array
+	json_dump
+}
+
+_add_vhost() {
+	local section="$1"
+	local domain backend ssl ssl_redirect acme enabled
+
+	config_get domain "$section" domain ""
+	config_get backend "$section" backend ""
+	config_get ssl "$section" ssl "0"
+	config_get ssl_redirect "$section" ssl_redirect "1"
+	config_get acme "$section" acme "0"
+	config_get enabled "$section" enabled "1"
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "domain" "$domain"
+	json_add_string "backend" "$backend"
+	json_add_boolean "ssl" "$ssl"
+	json_add_boolean "ssl_redirect" "$ssl_redirect"
+	json_add_boolean "acme" "$acme"
+	json_add_boolean "enabled" "$enabled"
+	json_close_object
+}
+
+# Get vhost
+method_get_vhost() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing vhost id"
+		json_dump
+		return
+	fi
+
+	local domain backend ssl ssl_redirect acme enabled
+	domain=$(get_uci "$id" domain "")
+	backend=$(get_uci "$id" backend "")
+	ssl=$(get_uci "$id" ssl "0")
+	ssl_redirect=$(get_uci "$id" ssl_redirect "1")
+	acme=$(get_uci "$id" acme "0")
+	enabled=$(get_uci "$id" enabled "1")
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$id"
+	json_add_string "domain" "$domain"
+	json_add_string "backend" "$backend"
+	json_add_boolean "ssl" "$ssl"
+	json_add_boolean "ssl_redirect" "$ssl_redirect"
+	json_add_boolean "acme" "$acme"
+	json_add_boolean "enabled" "$enabled"
+	json_dump
+}
+
+# Create vhost
+method_create_vhost() {
+	local domain backend ssl ssl_redirect acme enabled
+	local section_id
+
+	read -r input
+	json_load "$input"
+	json_get_var domain domain
+	json_get_var backend backend
+	json_get_var ssl ssl "0"
+	json_get_var ssl_redirect ssl_redirect "1"
+	json_get_var acme acme "0"
+	json_get_var enabled enabled "1"
+
+	if [ -z "$domain" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Domain is required"
+		json_dump
+		return
+	fi
+
+	# Generate section ID from domain
+	section_id=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+
+	uci set "$UCI_CONFIG.$section_id=vhost"
+	uci set "$UCI_CONFIG.$section_id.domain=$domain"
+	uci set "$UCI_CONFIG.$section_id.backend=$backend"
+	uci set "$UCI_CONFIG.$section_id.ssl=$ssl"
+	uci set "$UCI_CONFIG.$section_id.ssl_redirect=$ssl_redirect"
+	uci set "$UCI_CONFIG.$section_id.acme=$acme"
+	uci set "$UCI_CONFIG.$section_id.enabled=$enabled"
+	uci commit "$UCI_CONFIG"
+
+	# Regenerate HAProxy config
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$section_id"
+	json_dump
+}
+
+# Update vhost
+method_update_vhost() {
+	local id domain backend ssl ssl_redirect acme enabled
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+	json_get_var domain domain
+	json_get_var backend backend
+	json_get_var ssl ssl
+	json_get_var ssl_redirect ssl_redirect
+	json_get_var acme acme
+	json_get_var enabled enabled
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing vhost id"
+		json_dump
+		return
+	fi
+
+	[ -n "$domain" ] && uci set "$UCI_CONFIG.$id.domain=$domain"
+	[ -n "$backend" ] && uci set "$UCI_CONFIG.$id.backend=$backend"
+	[ -n "$ssl" ] && uci set "$UCI_CONFIG.$id.ssl=$ssl"
+	[ -n "$ssl_redirect" ] && uci set "$UCI_CONFIG.$id.ssl_redirect=$ssl_redirect"
+	[ -n "$acme" ] && uci set "$UCI_CONFIG.$id.acme=$acme"
+	[ -n "$enabled" ] && uci set "$UCI_CONFIG.$id.enabled=$enabled"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Delete vhost
+method_delete_vhost() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing vhost id"
+		json_dump
+		return
+	fi
+
+	uci delete "$UCI_CONFIG.$id"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# List backends
+method_list_backends() {
+	json_init
+	json_add_array "backends"
+
+	config_load "$UCI_CONFIG"
+	config_foreach _add_backend backend
+
+	json_close_array
+	json_dump
+}
+
+_add_backend() {
+	local section="$1"
+	local name mode balance health_check enabled
+
+	config_get name "$section" name "$section"
+	config_get mode "$section" mode "http"
+	config_get balance "$section" balance "roundrobin"
+	config_get health_check "$section" health_check ""
+	config_get enabled "$section" enabled "1"
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_string "mode" "$mode"
+	json_add_string "balance" "$balance"
+	json_add_string "health_check" "$health_check"
+	json_add_boolean "enabled" "$enabled"
+	json_close_object
+}
+
+# Get backend
+method_get_backend() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing backend id"
+		json_dump
+		return
+	fi
+
+	local name mode balance health_check enabled
+	name=$(get_uci "$id" name "$id")
+	mode=$(get_uci "$id" mode "http")
+	balance=$(get_uci "$id" balance "roundrobin")
+	health_check=$(get_uci "$id" health_check "")
+	enabled=$(get_uci "$id" enabled "1")
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$id"
+	json_add_string "name" "$name"
+	json_add_string "mode" "$mode"
+	json_add_string "balance" "$balance"
+	json_add_string "health_check" "$health_check"
+	json_add_boolean "enabled" "$enabled"
+
+	# Add servers for this backend
+	json_add_array "servers"
+	config_load "$UCI_CONFIG"
+	config_foreach _add_server_for_backend server "$id"
+	json_close_array
+
+	json_dump
+}
+
+_add_server_for_backend() {
+	local section="$1"
+	local backend_filter="$2"
+	local backend name address port weight check enabled
+
+	config_get backend "$section" backend ""
+	[ "$backend" != "$backend_filter" ] && return
+
+	config_get name "$section" name "$section"
+	config_get address "$section" address ""
+	config_get port "$section" port ""
+	config_get weight "$section" weight "100"
+	config_get check "$section" check "1"
+	config_get enabled "$section" enabled "1"
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_string "address" "$address"
+	json_add_int "port" "$port"
+	json_add_int "weight" "$weight"
+	json_add_boolean "check" "$check"
+	json_add_boolean "enabled" "$enabled"
+	json_close_object
+}
+
+# Create backend
+method_create_backend() {
+	local name mode balance health_check enabled
+	local section_id
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+	json_get_var mode mode "http"
+	json_get_var balance balance "roundrobin"
+	json_get_var health_check health_check ""
+	json_get_var enabled enabled "1"
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Backend name is required"
+		json_dump
+		return
+	fi
+
+	section_id=$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')
+
+	uci set "$UCI_CONFIG.$section_id=backend"
+	uci set "$UCI_CONFIG.$section_id.name=$name"
+	uci set "$UCI_CONFIG.$section_id.mode=$mode"
+	uci set "$UCI_CONFIG.$section_id.balance=$balance"
+	[ -n "$health_check" ] && uci set "$UCI_CONFIG.$section_id.health_check=$health_check"
+	uci set "$UCI_CONFIG.$section_id.enabled=$enabled"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$section_id"
+	json_dump
+}
+
+# Update backend
+method_update_backend() {
+	local id name mode balance health_check enabled
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+	json_get_var name name
+	json_get_var mode mode
+	json_get_var balance balance
+	json_get_var health_check health_check
+	json_get_var enabled enabled
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing backend id"
+		json_dump
+		return
+	fi
+
+	[ -n "$name" ] && uci set "$UCI_CONFIG.$id.name=$name"
+	[ -n "$mode" ] && uci set "$UCI_CONFIG.$id.mode=$mode"
+	[ -n "$balance" ] && uci set "$UCI_CONFIG.$id.balance=$balance"
+	[ -n "$health_check" ] && uci set "$UCI_CONFIG.$id.health_check=$health_check"
+	[ -n "$enabled" ] && uci set "$UCI_CONFIG.$id.enabled=$enabled"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Delete backend
+method_delete_backend() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing backend id"
+		json_dump
+		return
+	fi
+
+	# Delete associated servers
+	config_load "$UCI_CONFIG"
+	config_foreach _delete_server_for_backend server "$id"
+
+	uci delete "$UCI_CONFIG.$id"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+_delete_server_for_backend() {
+	local section="$1"
+	local backend_filter="$2"
+	local backend
+
+	config_get backend "$section" backend ""
+	[ "$backend" = "$backend_filter" ] && uci delete "$UCI_CONFIG.$section"
+}
+
+# List servers
+method_list_servers() {
+	local backend_filter
+
+	read -r input
+	json_load "$input"
+	json_get_var backend_filter backend ""
+
+	json_init
+	json_add_array "servers"
+
+	config_load "$UCI_CONFIG"
+	if [ -n "$backend_filter" ]; then
+		config_foreach _add_server_for_backend server "$backend_filter"
+	else
+		config_foreach _add_server server
+	fi
+
+	json_close_array
+	json_dump
+}
+
+_add_server() {
+	local section="$1"
+	local backend name address port weight check enabled
+
+	config_get backend "$section" backend ""
+	config_get name "$section" name "$section"
+	config_get address "$section" address ""
+	config_get port "$section" port ""
+	config_get weight "$section" weight "100"
+	config_get check "$section" check "1"
+	config_get enabled "$section" enabled "1"
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "backend" "$backend"
+	json_add_string "name" "$name"
+	json_add_string "address" "$address"
+	json_add_int "port" "$port"
+	json_add_int "weight" "$weight"
+	json_add_boolean "check" "$check"
+	json_add_boolean "enabled" "$enabled"
+	json_close_object
+}
+
+# Create server
+method_create_server() {
+	local backend name address port weight check enabled
+	local section_id
+
+	read -r input
+	json_load "$input"
+	json_get_var backend backend
+	json_get_var name name
+	json_get_var address address
+	json_get_var port port
+	json_get_var weight weight "100"
+	json_get_var check check "1"
+	json_get_var enabled enabled "1"
+
+	if [ -z "$backend" ] || [ -z "$name" ] || [ -z "$address" ] || [ -z "$port" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Backend, name, address and port are required"
+		json_dump
+		return
+	fi
+
+	section_id="${backend}_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+
+	uci set "$UCI_CONFIG.$section_id=server"
+	uci set "$UCI_CONFIG.$section_id.backend=$backend"
+	uci set "$UCI_CONFIG.$section_id.name=$name"
+	uci set "$UCI_CONFIG.$section_id.address=$address"
+	uci set "$UCI_CONFIG.$section_id.port=$port"
+	uci set "$UCI_CONFIG.$section_id.weight=$weight"
+	uci set "$UCI_CONFIG.$section_id.check=$check"
+	uci set "$UCI_CONFIG.$section_id.enabled=$enabled"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$section_id"
+	json_dump
+}
+
+# Update server
+method_update_server() {
+	local id backend name address port weight check enabled
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+	json_get_var backend backend
+	json_get_var name name
+	json_get_var address address
+	json_get_var port port
+	json_get_var weight weight
+	json_get_var check check
+	json_get_var enabled enabled
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing server id"
+		json_dump
+		return
+	fi
+
+	[ -n "$backend" ] && uci set "$UCI_CONFIG.$id.backend=$backend"
+	[ -n "$name" ] && uci set "$UCI_CONFIG.$id.name=$name"
+	[ -n "$address" ] && uci set "$UCI_CONFIG.$id.address=$address"
+	[ -n "$port" ] && uci set "$UCI_CONFIG.$id.port=$port"
+	[ -n "$weight" ] && uci set "$UCI_CONFIG.$id.weight=$weight"
+	[ -n "$check" ] && uci set "$UCI_CONFIG.$id.check=$check"
+	[ -n "$enabled" ] && uci set "$UCI_CONFIG.$id.enabled=$enabled"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Delete server
+method_delete_server() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing server id"
+		json_dump
+		return
+	fi
+
+	uci delete "$UCI_CONFIG.$id"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# List certificates
+method_list_certificates() {
+	json_init
+	json_add_array "certificates"
+
+	config_load "$UCI_CONFIG"
+	config_foreach _add_certificate certificate
+
+	json_close_array
+	json_dump
+}
+
+_add_certificate() {
+	local section="$1"
+	local domain type enabled
+
+	config_get domain "$section" domain ""
+	config_get type "$section" type "acme"
+	config_get enabled "$section" enabled "1"
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "domain" "$domain"
+	json_add_string "type" "$type"
+	json_add_boolean "enabled" "$enabled"
+	json_close_object
+}
+
+# Request certificate (ACME)
+method_request_certificate() {
+	local domain
+
+	read -r input
+	json_load "$input"
+	json_get_var domain domain
+
+	if [ -z "$domain" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Domain is required"
+		json_dump
+		return
+	fi
+
+	local result
+	result=$(run_ctl cert-issue "$domain" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Certificate requested for $domain"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+	fi
+	json_dump
+}
+
+# Import certificate
+method_import_certificate() {
+	local domain cert_data key_data
+
+	read -r input
+	json_load "$input"
+	json_get_var domain domain
+	json_get_var cert_data cert
+	json_get_var key_data key
+
+	if [ -z "$domain" ] || [ -z "$cert_data" ] || [ -z "$key_data" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Domain, certificate and key are required"
+		json_dump
+		return
+	fi
+
+	local result
+	result=$(run_ctl cert-import "$domain" "$cert_data" "$key_data" 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Certificate imported for $domain"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+	fi
+	json_dump
+}
+
+# Delete certificate
+method_delete_certificate() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing certificate id"
+		json_dump
+		return
+	fi
+
+	local domain
+	domain=$(get_uci "$id" domain "")
+
+	# Remove certificate files
+	run_ctl cert-delete "$domain" >/dev/null 2>&1
+
+	uci delete "$UCI_CONFIG.$id"
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# List ACLs
+method_list_acls() {
+	json_init
+	json_add_array "acls"
+
+	config_load "$UCI_CONFIG"
+	config_foreach _add_acl acl
+
+	json_close_array
+	json_dump
+}
+
+_add_acl() {
+	local section="$1"
+	local name type pattern backend enabled
+
+	config_get name "$section" name "$section"
+	config_get type "$section" type ""
+	config_get pattern "$section" pattern ""
+	config_get backend "$section" backend ""
+	config_get enabled "$section" enabled "1"
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_string "type" "$type"
+	json_add_string "pattern" "$pattern"
+	json_add_string "backend" "$backend"
+	json_add_boolean "enabled" "$enabled"
+	json_close_object
+}
+
+# Create ACL
+method_create_acl() {
+	local name type pattern backend enabled
+	local section_id
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+	json_get_var type type
+	json_get_var pattern pattern
+	json_get_var backend backend
+	json_get_var enabled enabled "1"
+
+	if [ -z "$name" ] || [ -z "$type" ] || [ -z "$pattern" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Name, type and pattern are required"
+		json_dump
+		return
+	fi
+
+	section_id="acl_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+
+	uci set "$UCI_CONFIG.$section_id=acl"
+	uci set "$UCI_CONFIG.$section_id.name=$name"
+	uci set "$UCI_CONFIG.$section_id.type=$type"
+	uci set "$UCI_CONFIG.$section_id.pattern=$pattern"
+	[ -n "$backend" ] && uci set "$UCI_CONFIG.$section_id.backend=$backend"
+	uci set "$UCI_CONFIG.$section_id.enabled=$enabled"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$section_id"
+	json_dump
+}
+
+# Update ACL
+method_update_acl() {
+	local id name type pattern backend enabled
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+	json_get_var name name
+	json_get_var type type
+	json_get_var pattern pattern
+	json_get_var backend backend
+	json_get_var enabled enabled
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing ACL id"
+		json_dump
+		return
+	fi
+
+	[ -n "$name" ] && uci set "$UCI_CONFIG.$id.name=$name"
+	[ -n "$type" ] && uci set "$UCI_CONFIG.$id.type=$type"
+	[ -n "$pattern" ] && uci set "$UCI_CONFIG.$id.pattern=$pattern"
+	[ -n "$backend" ] && uci set "$UCI_CONFIG.$id.backend=$backend"
+	[ -n "$enabled" ] && uci set "$UCI_CONFIG.$id.enabled=$enabled"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Delete ACL
+method_delete_acl() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing ACL id"
+		json_dump
+		return
+	fi
+
+	uci delete "$UCI_CONFIG.$id"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# List redirects
+method_list_redirects() {
+	json_init
+	json_add_array "redirects"
+
+	config_load "$UCI_CONFIG"
+	config_foreach _add_redirect redirect
+
+	json_close_array
+	json_dump
+}
+
+_add_redirect() {
+	local section="$1"
+	local name match_host target_host strip_www code enabled
+
+	config_get name "$section" name "$section"
+	config_get match_host "$section" match_host ""
+	config_get target_host "$section" target_host ""
+	config_get strip_www "$section" strip_www "0"
+	config_get code "$section" code "301"
+	config_get enabled "$section" enabled "1"
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_string "match_host" "$match_host"
+	json_add_string "target_host" "$target_host"
+	json_add_boolean "strip_www" "$strip_www"
+	json_add_int "code" "$code"
+	json_add_boolean "enabled" "$enabled"
+	json_close_object
+}
+
+# Create redirect
+method_create_redirect() {
+	local name match_host target_host strip_www code enabled
+	local section_id
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+	json_get_var match_host match_host
+	json_get_var target_host target_host
+	json_get_var strip_www strip_www "0"
+	json_get_var code code "301"
+	json_get_var enabled enabled "1"
+
+	if [ -z "$name" ] || [ -z "$match_host" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Name and match_host are required"
+		json_dump
+		return
+	fi
+
+	section_id="redirect_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+
+	uci set "$UCI_CONFIG.$section_id=redirect"
+	uci set "$UCI_CONFIG.$section_id.name=$name"
+	uci set "$UCI_CONFIG.$section_id.match_host=$match_host"
+	[ -n "$target_host" ] && uci set "$UCI_CONFIG.$section_id.target_host=$target_host"
+	uci set "$UCI_CONFIG.$section_id.strip_www=$strip_www"
+	uci set "$UCI_CONFIG.$section_id.code=$code"
+	uci set "$UCI_CONFIG.$section_id.enabled=$enabled"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$section_id"
+	json_dump
+}
+
+# Delete redirect
+method_delete_redirect() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing redirect id"
+		json_dump
+		return
+	fi
+
+	uci delete "$UCI_CONFIG.$id"
+	uci commit "$UCI_CONFIG"
+
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Get settings
+method_get_settings() {
+	json_init
+
+	# Main settings
+	json_add_object "main"
+	json_add_boolean "enabled" "$(get_uci main enabled 0)"
+	json_add_int "http_port" "$(get_uci main http_port 80)"
+	json_add_int "https_port" "$(get_uci main https_port 443)"
+	json_add_int "stats_port" "$(get_uci main stats_port 8404)"
+	json_add_boolean "stats_enabled" "$(get_uci main stats_enabled 1)"
+	json_add_string "stats_user" "$(get_uci main stats_user admin)"
+	json_add_string "stats_password" "$(get_uci main stats_password secubox)"
+	json_add_string "data_path" "$(get_uci main data_path /srv/haproxy)"
+	json_add_string "memory_limit" "$(get_uci main memory_limit 256M)"
+	json_add_int "maxconn" "$(get_uci main maxconn 4096)"
+	json_add_string "log_level" "$(get_uci main log_level warning)"
+	json_close_object
+
+	# Defaults
+	json_add_object "defaults"
+	json_add_string "mode" "$(get_uci defaults mode http)"
+	json_add_string "timeout_connect" "$(get_uci defaults timeout_connect 5s)"
+	json_add_string "timeout_client" "$(get_uci defaults timeout_client 30s)"
+	json_add_string "timeout_server" "$(get_uci defaults timeout_server 30s)"
+	json_add_string "timeout_http_request" "$(get_uci defaults timeout_http_request 10s)"
+	json_add_string "timeout_http_keep_alive" "$(get_uci defaults timeout_http_keep_alive 10s)"
+	json_add_int "retries" "$(get_uci defaults retries 3)"
+	json_close_object
+
+	# ACME settings
+	json_add_object "acme"
+	json_add_boolean "enabled" "$(get_uci acme enabled 1)"
+	json_add_string "email" "$(get_uci acme email admin@example.com)"
+	json_add_boolean "staging" "$(get_uci acme staging 0)"
+	json_add_string "key_type" "$(get_uci acme key_type ec-256)"
+	json_add_int "renew_days" "$(get_uci acme renew_days 30)"
+	json_close_object
+
+	json_dump
+}
+
+# Save settings
+method_save_settings() {
+	read -r input
+	json_load "$input"
+
+	# Main settings
+	json_select "main" 2>/dev/null && {
+		local val
+		json_get_var val enabled && uci set "$UCI_CONFIG.main.enabled=$val"
+		json_get_var val http_port && uci set "$UCI_CONFIG.main.http_port=$val"
+		json_get_var val https_port && uci set "$UCI_CONFIG.main.https_port=$val"
+		json_get_var val stats_port && uci set "$UCI_CONFIG.main.stats_port=$val"
+		json_get_var val stats_enabled && uci set "$UCI_CONFIG.main.stats_enabled=$val"
+		json_get_var val stats_user && uci set "$UCI_CONFIG.main.stats_user=$val"
+		json_get_var val stats_password && uci set "$UCI_CONFIG.main.stats_password=$val"
+		json_get_var val data_path && uci set "$UCI_CONFIG.main.data_path=$val"
+		json_get_var val memory_limit && uci set "$UCI_CONFIG.main.memory_limit=$val"
+		json_get_var val maxconn && uci set "$UCI_CONFIG.main.maxconn=$val"
+		json_get_var val log_level && uci set "$UCI_CONFIG.main.log_level=$val"
+		json_select ..
+	}
+
+	# Defaults
+	json_select "defaults" 2>/dev/null && {
+		local val
+		json_get_var val mode && uci set "$UCI_CONFIG.defaults.mode=$val"
+		json_get_var val timeout_connect && uci set "$UCI_CONFIG.defaults.timeout_connect=$val"
+		json_get_var val timeout_client && uci set "$UCI_CONFIG.defaults.timeout_client=$val"
+		json_get_var val timeout_server && uci set "$UCI_CONFIG.defaults.timeout_server=$val"
+		json_get_var val timeout_http_request && uci set "$UCI_CONFIG.defaults.timeout_http_request=$val"
+		json_get_var val timeout_http_keep_alive && uci set "$UCI_CONFIG.defaults.timeout_http_keep_alive=$val"
+		json_get_var val retries && uci set "$UCI_CONFIG.defaults.retries=$val"
+		json_select ..
+	}
+
+	# ACME settings
+	json_select "acme" 2>/dev/null && {
+		local val
+		json_get_var val enabled && uci set "$UCI_CONFIG.acme.enabled=$val"
+		json_get_var val email && uci set "$UCI_CONFIG.acme.email=$val"
+		json_get_var val staging && uci set "$UCI_CONFIG.acme.staging=$val"
+		json_get_var val key_type && uci set "$UCI_CONFIG.acme.key_type=$val"
+		json_get_var val renew_days && uci set "$UCI_CONFIG.acme.renew_days=$val"
+		json_select ..
+	}
+
+	uci commit "$UCI_CONFIG"
+	run_ctl generate >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Service control: install
+method_install() {
+	local result
+	result=$(run_ctl install 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "HAProxy installed successfully"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+	fi
+	json_dump
+}
+
+# Service control: start
+method_start() {
+	/etc/init.d/haproxy start >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Service control: stop
+method_stop() {
+	/etc/init.d/haproxy stop >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Service control: restart
+method_restart() {
+	/etc/init.d/haproxy restart >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Service control: reload
+method_reload() {
+	run_ctl reload >/dev/null 2>&1
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Generate config
+method_generate() {
+	local result
+	result=$(run_ctl generate 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Configuration generated"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+	fi
+	json_dump
+}
+
+# Validate config
+method_validate() {
+	local result
+	result=$(run_ctl validate 2>&1)
+	local rc=$?
+
+	json_init
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "valid" 1
+		json_add_string "message" "Configuration is valid"
+	else
+		json_add_boolean "valid" 0
+		json_add_string "error" "$result"
+	fi
+	json_dump
+}
+
+# Get logs
+method_get_logs() {
+	local lines
+
+	read -r input
+	json_load "$input"
+	json_get_var lines lines "100"
+
+	local logs
+	logs=$(logread -l "$lines" 2>/dev/null | grep -i haproxy || echo "No HAProxy logs found")
+
+	json_init
+	json_add_string "logs" "$logs"
+	json_dump
+}
+
+# Main RPC interface
+case "$1" in
+	list)
+		cat <<'EOF'
+{
+	"status": {},
+	"get_stats": {},
+	"list_vhosts": {},
+	"get_vhost": { "id": "string" },
+	"create_vhost": { "domain": "string", "backend": "string", "ssl": "boolean", "ssl_redirect": "boolean", "acme": "boolean", "enabled": "boolean" },
+	"update_vhost": { "id": "string", "domain": "string", "backend": "string", "ssl": "boolean", "ssl_redirect": "boolean", "acme": "boolean", "enabled": "boolean" },
+	"delete_vhost": { "id": "string" },
+	"list_backends": {},
+	"get_backend": { "id": "string" },
+	"create_backend": { "name": "string", "mode": "string", "balance": "string", "health_check": "string", "enabled": "boolean" },
+	"update_backend": { "id": "string", "name": "string", "mode": "string", "balance": "string", "health_check": "string", "enabled": "boolean" },
+	"delete_backend": { "id": "string" },
+	"list_servers": { "backend": "string" },
+	"create_server": { "backend": "string", "name": "string", "address": "string", "port": "integer", "weight": "integer", "check": "boolean", "enabled": "boolean" },
+	"update_server": { "id": "string", "backend": "string", "name": "string", "address": "string", "port": "integer", "weight": "integer", "check": "boolean", "enabled": "boolean" },
+	"delete_server": { "id": "string" },
+	"list_certificates": {},
+	"request_certificate": { "domain": "string" },
+	"import_certificate": { "domain": "string", "cert": "string", "key": "string" },
+	"delete_certificate": { "id": "string" },
+	"list_acls": {},
+	"create_acl": { "name": "string", "type": "string", "pattern": "string", "backend": "string", "enabled": "boolean" },
+	"update_acl": { "id": "string", "name": "string", "type": "string", "pattern": "string", "backend": "string", "enabled": "boolean" },
+	"delete_acl": { "id": "string" },
+	"list_redirects": {},
+	"create_redirect": { "name": "string", "match_host": "string", "target_host": "string", "strip_www": "boolean", "code": "integer", "enabled": "boolean" },
+	"delete_redirect": { "id": "string" },
+	"get_settings": {},
+	"save_settings": { "main": "object", "defaults": "object", "acme": "object" },
+	"install": {},
+	"start": {},
+	"stop": {},
+	"restart": {},
+	"reload": {},
+	"generate": {},
+	"validate": {},
+	"get_logs": { "lines": "integer" }
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status) method_status ;;
+			get_stats) method_get_stats ;;
+			list_vhosts) method_list_vhosts ;;
+			get_vhost) method_get_vhost ;;
+			create_vhost) method_create_vhost ;;
+			update_vhost) method_update_vhost ;;
+			delete_vhost) method_delete_vhost ;;
+			list_backends) method_list_backends ;;
+			get_backend) method_get_backend ;;
+			create_backend) method_create_backend ;;
+			update_backend) method_update_backend ;;
+			delete_backend) method_delete_backend ;;
+			list_servers) method_list_servers ;;
+			create_server) method_create_server ;;
+			update_server) method_update_server ;;
+			delete_server) method_delete_server ;;
+			list_certificates) method_list_certificates ;;
+			request_certificate) method_request_certificate ;;
+			import_certificate) method_import_certificate ;;
+			delete_certificate) method_delete_certificate ;;
+			list_acls) method_list_acls ;;
+			create_acl) method_create_acl ;;
+			update_acl) method_update_acl ;;
+			delete_acl) method_delete_acl ;;
+			list_redirects) method_list_redirects ;;
+			create_redirect) method_create_redirect ;;
+			delete_redirect) method_delete_redirect ;;
+			get_settings) method_get_settings ;;
+			save_settings) method_save_settings ;;
+			install) method_install ;;
+			start) method_start ;;
+			stop) method_stop ;;
+			restart) method_restart ;;
+			reload) method_reload ;;
+			generate) method_generate ;;
+			validate) method_validate ;;
+			get_logs) method_get_logs ;;
+		esac
+		;;
+esac

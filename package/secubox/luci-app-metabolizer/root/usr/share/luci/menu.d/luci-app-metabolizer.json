@@ -1,0 +1,30 @@
+{
+	"admin/services/metabolizer": {
+		"title": "Metabolizer CMS",
+		"action": {
+			"type": "view",
+			"path": "metabolizer/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-metabolizer"],
+			"uci": {"metabolizer": true}
+		},
+		"order": 85
+	},
+	"admin/services/metabolizer/overview": {
+		"title": "Overview",
+		"action": {
+			"type": "view",
+			"path": "metabolizer/overview"
+		},
+		"order": 10
+	},
+	"admin/services/metabolizer/settings": {
+		"title": "Settings",
+		"action": {
+			"type": "view",
+			"path": "metabolizer/settings"
+		},
+		"order": 20
+	}
+}

@@ -1,0 +1,17 @@
+{
+	"luci-app-gitea": {
+		"description": "Grant access to Gitea Platform management",
+		"read": {
+			"ubus": {
+				"luci.gitea": ["get_status", "get_config", "get_logs", "list_repos", "get_repo", "list_users", "get_stats", "get_install_progress", "list_backups"]
+			},
+			"uci": ["gitea"]
+		},
+		"write": {
+			"ubus": {
+				"luci.gitea": ["save_config", "start", "stop", "restart", "install", "uninstall", "update", "create_backup", "restore_backup", "create_admin"]
+			},
+			"uci": ["gitea"]
+		}
+	}
+}

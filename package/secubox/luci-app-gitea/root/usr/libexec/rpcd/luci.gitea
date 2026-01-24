@@ -1,0 +1,723 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# LuCI RPC backend for Gitea Platform
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG="gitea"
+LXC_NAME="gitea"
+LXC_PATH="/srv/lxc"
+DATA_PATH="/srv/gitea"
+GITEA_VERSION="1.22.6"
+
+# JSON helpers
+json_init_obj() { json_init; json_add_object "result"; }
+json_close_obj() { json_close_object; json_dump; }
+
+json_error() {
+	json_init
+	json_add_object "error"
+	json_add_string "message" "$1"
+	json_close_object
+	json_dump
+}
+
+json_success() {
+	json_init_obj
+	json_add_boolean "success" 1
+	[ -n "$1" ] && json_add_string "message" "$1"
+	json_close_obj
+}
+
+# Check if container is running
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+# Check if container exists
+lxc_exists() {
+	[ -f "$LXC_PATH/$LXC_NAME/config" ] && [ -d "$LXC_PATH/$LXC_NAME/rootfs" ]
+}
+
+# Get service status
+get_status() {
+	local enabled running installed uptime
+	local http_port ssh_port data_path memory_limit app_name domain
+
+	config_load "$CONFIG"
+	config_get enabled main enabled "0"
+	config_get http_port main http_port "3000"
+	config_get ssh_port main ssh_port "2222"
+	config_get data_path main data_path "/srv/gitea"
+	config_get memory_limit main memory_limit "512M"
+	config_get app_name main app_name "SecuBox Git"
+	config_get domain main domain "git.local"
+
+	running="false"
+	installed="false"
+	uptime=""
+
+	if lxc_exists; then
+		installed="true"
+	fi
+
+	if lxc_running; then
+		running="true"
+		uptime=$(lxc-info -n "$LXC_NAME" 2>/dev/null | grep -i "cpu use" | head -1 | awk '{print $3}')
+	fi
+
+	# Count repositories
+	local repo_count=0
+	DATA_PATH="$data_path"
+	if [ -d "$DATA_PATH/git/repositories" ]; then
+		repo_count=$(find "$DATA_PATH/git/repositories" -name "*.git" -type d 2>/dev/null | wc -l)
+	fi
+
+	# Get disk usage
+	local disk_usage="0"
+	if [ -d "$DATA_PATH" ]; then
+		disk_usage=$(du -sh "$DATA_PATH" 2>/dev/null | awk '{print $1}' || echo "0")
+	fi
+
+	# Get LAN IP for URL
+	local lan_ip
+	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+	json_init_obj
+	json_add_boolean "enabled" "$( [ "$enabled" = "1" ] && echo 1 || echo 0 )"
+	json_add_boolean "running" "$( [ "$running" = "true" ] && echo 1 || echo 0 )"
+	json_add_boolean "installed" "$( [ "$installed" = "true" ] && echo 1 || echo 0 )"
+	json_add_string "uptime" "$uptime"
+	json_add_int "http_port" "$http_port"
+	json_add_int "ssh_port" "$ssh_port"
+	json_add_string "data_path" "$data_path"
+	json_add_string "memory_limit" "$memory_limit"
+	json_add_string "app_name" "$app_name"
+	json_add_string "domain" "$domain"
+	json_add_int "repo_count" "$repo_count"
+	json_add_string "disk_usage" "$disk_usage"
+	json_add_string "http_url" "http://${lan_ip}:${http_port}"
+	json_add_string "ssh_url" "ssh://git@${lan_ip}:${ssh_port}"
+	json_add_string "container_name" "$LXC_NAME"
+	json_add_string "version" "$GITEA_VERSION"
+	json_close_obj
+}
+
+# Get statistics
+get_stats() {
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/gitea"
+
+	local repo_count=0
+	local user_count=0
+	local disk_usage="0"
+
+	# Count repositories
+	if [ -d "$data_path/git/repositories" ]; then
+		repo_count=$(find "$data_path/git/repositories" -name "*.git" -type d 2>/dev/null | wc -l)
+	fi
+
+	# Get disk usage
+	if [ -d "$data_path" ]; then
+		disk_usage=$(du -sh "$data_path" 2>/dev/null | awk '{print $1}' || echo "0")
+	fi
+
+	# Count users (if we can query the database)
+	if [ -f "$data_path/gitea.db" ] && command -v sqlite3 >/dev/null 2>&1; then
+		user_count=$(sqlite3 "$data_path/gitea.db" "SELECT COUNT(*) FROM user" 2>/dev/null || echo "0")
+	fi
+
+	json_init_obj
+	json_add_int "repo_count" "$repo_count"
+	json_add_int "user_count" "$user_count"
+	json_add_string "disk_usage" "$disk_usage"
+	json_close_obj
+}
+
+# Get configuration
+get_config() {
+	local http_port ssh_port http_host data_path memory_limit enabled app_name domain
+	local protocol disable_registration require_signin landing_page
+
+	config_load "$CONFIG"
+
+	# Main settings
+	config_get http_port main http_port "3000"
+	config_get ssh_port main ssh_port "2222"
+	config_get http_host main http_host "0.0.0.0"
+	config_get data_path main data_path "/srv/gitea"
+	config_get memory_limit main memory_limit "512M"
+	config_get enabled main enabled "0"
+	config_get app_name main app_name "SecuBox Git"
+	config_get domain main domain "git.local"
+
+	# Server settings
+	config_get protocol server protocol "http"
+	config_get disable_registration server disable_registration "false"
+	config_get require_signin server require_signin "false"
+	config_get landing_page server landing_page "explore"
+
+	json_init_obj
+	json_add_object "main"
+	json_add_boolean "enabled" "$( [ "$enabled" = "1" ] && echo 1 || echo 0 )"
+	json_add_int "http_port" "$http_port"
+	json_add_int "ssh_port" "$ssh_port"
+	json_add_string "http_host" "$http_host"
+	json_add_string "data_path" "$data_path"
+	json_add_string "memory_limit" "$memory_limit"
+	json_add_string "app_name" "$app_name"
+	json_add_string "domain" "$domain"
+	json_close_object
+
+	json_add_object "server"
+	json_add_string "protocol" "$protocol"
+	json_add_boolean "disable_registration" "$( [ "$disable_registration" = "true" ] && echo 1 || echo 0 )"
+	json_add_boolean "require_signin" "$( [ "$require_signin" = "true" ] && echo 1 || echo 0 )"
+	json_add_string "landing_page" "$landing_page"
+	json_close_object
+
+	json_close_obj
+}
+
+# Save configuration
+save_config() {
+	read -r input
+
+	local http_port ssh_port http_host data_path memory_limit enabled app_name domain
+	local protocol disable_registration require_signin landing_page
+
+	http_port=$(echo "$input" | jsonfilter -e '@.http_port' 2>/dev/null)
+	ssh_port=$(echo "$input" | jsonfilter -e '@.ssh_port' 2>/dev/null)
+	http_host=$(echo "$input" | jsonfilter -e '@.http_host' 2>/dev/null)
+	data_path=$(echo "$input" | jsonfilter -e '@.data_path' 2>/dev/null)
+	memory_limit=$(echo "$input" | jsonfilter -e '@.memory_limit' 2>/dev/null)
+	enabled=$(echo "$input" | jsonfilter -e '@.enabled' 2>/dev/null)
+	app_name=$(echo "$input" | jsonfilter -e '@.app_name' 2>/dev/null)
+	domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+	protocol=$(echo "$input" | jsonfilter -e '@.protocol' 2>/dev/null)
+	disable_registration=$(echo "$input" | jsonfilter -e '@.disable_registration' 2>/dev/null)
+	require_signin=$(echo "$input" | jsonfilter -e '@.require_signin' 2>/dev/null)
+	landing_page=$(echo "$input" | jsonfilter -e '@.landing_page' 2>/dev/null)
+
+	[ -n "$http_port" ] && uci set "${CONFIG}.main.http_port=$http_port"
+	[ -n "$ssh_port" ] && uci set "${CONFIG}.main.ssh_port=$ssh_port"
+	[ -n "$http_host" ] && uci set "${CONFIG}.main.http_host=$http_host"
+	[ -n "$data_path" ] && uci set "${CONFIG}.main.data_path=$data_path"
+	[ -n "$memory_limit" ] && uci set "${CONFIG}.main.memory_limit=$memory_limit"
+	[ -n "$enabled" ] && uci set "${CONFIG}.main.enabled=$enabled"
+	[ -n "$app_name" ] && uci set "${CONFIG}.main.app_name=$app_name"
+	[ -n "$domain" ] && uci set "${CONFIG}.main.domain=$domain"
+	[ -n "$protocol" ] && uci set "${CONFIG}.server.protocol=$protocol"
+	[ -n "$disable_registration" ] && uci set "${CONFIG}.server.disable_registration=$disable_registration"
+	[ -n "$require_signin" ] && uci set "${CONFIG}.server.require_signin=$require_signin"
+	[ -n "$landing_page" ] && uci set "${CONFIG}.server.landing_page=$landing_page"
+
+	uci commit "$CONFIG"
+
+	json_success "Configuration saved"
+}
+
+# Start service
+start_service() {
+	if lxc_running; then
+		json_error "Service is already running"
+		return
+	fi
+
+	if ! lxc_exists; then
+		json_error "Container not installed. Run install first."
+		return
+	fi
+
+	/etc/init.d/gitea start >/dev/null 2>&1 &
+
+	sleep 3
+	if lxc_running; then
+		json_success "Service started"
+	else
+		json_error "Failed to start service"
+	fi
+}
+
+# Stop service
+stop_service() {
+	if ! lxc_running; then
+		json_error "Service is not running"
+		return
+	fi
+
+	/etc/init.d/gitea stop >/dev/null 2>&1
+
+	sleep 2
+	if ! lxc_running; then
+		json_success "Service stopped"
+	else
+		json_error "Failed to stop service"
+	fi
+}
+
+# Restart service
+restart_service() {
+	/etc/init.d/gitea restart >/dev/null 2>&1 &
+
+	sleep 4
+	if lxc_running; then
+		json_success "Service restarted"
+	else
+		json_error "Service restart failed"
+	fi
+}
+
+# Install Gitea
+install() {
+	if lxc_exists; then
+		json_error "Already installed. Use update to refresh."
+		return
+	fi
+
+	# Run install in background
+	/usr/sbin/giteactl install >/var/log/gitea-install.log 2>&1 &
+
+	json_init_obj
+	json_add_boolean "started" 1
+	json_add_string "message" "Installation started in background"
+	json_add_string "log_file" "/var/log/gitea-install.log"
+	json_close_obj
+}
+
+# Uninstall Gitea
+uninstall() {
+	/usr/sbin/giteactl uninstall >/dev/null 2>&1
+
+	if ! lxc_exists; then
+		json_success "Uninstalled successfully"
+	else
+		json_error "Uninstall failed"
+	fi
+}
+
+# Update Gitea
+update() {
+	if ! lxc_exists; then
+		json_error "Not installed. Run install first."
+		return
+	fi
+
+	# Run update in background
+	/usr/sbin/giteactl update >/var/log/gitea-update.log 2>&1 &
+
+	json_init_obj
+	json_add_boolean "started" 1
+	json_add_string "message" "Update started in background"
+	json_add_string "log_file" "/var/log/gitea-update.log"
+	json_close_obj
+}
+
+# Get logs
+get_logs() {
+	read -r input
+	local lines
+	lines=$(echo "$input" | jsonfilter -e '@.lines' 2>/dev/null)
+	[ -z "$lines" ] && lines=100
+
+	json_init_obj
+	json_add_array "logs"
+
+	# Get container logs if running
+	if lxc_running; then
+		local data_path
+		config_load "$CONFIG"
+		config_get data_path main data_path "/srv/gitea"
+
+		if [ -f "$data_path/log/gitea.log" ]; then
+			tail -n "$lines" "$data_path/log/gitea.log" 2>/dev/null | while IFS= read -r line; do
+				json_add_string "" "$line"
+			done
+		fi
+	fi
+
+	# Also check install/update logs
+	for logfile in /var/log/gitea-install.log /var/log/gitea-update.log; do
+		[ -f "$logfile" ] || continue
+		tail -n 50 "$logfile" 2>/dev/null | while IFS= read -r line; do
+			json_add_string "" "$line"
+		done
+	done
+
+	json_close_array
+	json_close_obj
+}
+
+# List repositories
+list_repos() {
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/gitea"
+
+	json_init_obj
+	json_add_array "repos"
+
+	local repo_root="$data_path/git/repositories"
+	if [ -d "$repo_root" ]; then
+		find "$repo_root" -name "*.git" -type d 2>/dev/null | while read -r repo; do
+			local rel_path="${repo#$repo_root/}"
+			local name=$(basename "$repo" .git)
+			local owner=$(dirname "$rel_path")
+			local size=$(du -sh "$repo" 2>/dev/null | awk '{print $1}' || echo "0")
+
+			# Get last commit time if possible
+			local mtime=""
+			if [ -f "$repo/refs/heads/master" ]; then
+				mtime=$(stat -c %Y "$repo/refs/heads/master" 2>/dev/null || echo "")
+			elif [ -f "$repo/refs/heads/main" ]; then
+				mtime=$(stat -c %Y "$repo/refs/heads/main" 2>/dev/null || echo "")
+			fi
+
+			json_add_object ""
+			json_add_string "name" "$name"
+			json_add_string "owner" "$owner"
+			json_add_string "path" "$repo"
+			json_add_string "size" "$size"
+			[ -n "$mtime" ] && json_add_int "mtime" "$mtime"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_add_string "repo_root" "$repo_root"
+	json_close_obj
+}
+
+# Get repository details
+get_repo() {
+	read -r input
+	local name owner
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	owner=$(echo "$input" | jsonfilter -e '@.owner' 2>/dev/null)
+
+	if [ -z "$name" ]; then
+		json_error "Missing repository name"
+		return
+	fi
+
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/gitea"
+
+	local repo_path="$data_path/git/repositories"
+	[ -n "$owner" ] && repo_path="$repo_path/$owner"
+	repo_path="$repo_path/${name}.git"
+
+	if [ ! -d "$repo_path" ]; then
+		json_error "Repository not found"
+		return
+	fi
+
+	local size=$(du -sh "$repo_path" 2>/dev/null | awk '{print $1}' || echo "0")
+	local branches=$(ls -1 "$repo_path/refs/heads" 2>/dev/null | wc -l)
+
+	# Get LAN IP
+	local lan_ip
+	local http_port ssh_port
+	config_get http_port main http_port "3000"
+	config_get ssh_port main ssh_port "2222"
+	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+	local clone_url="http://${lan_ip}:${http_port}/${owner}/${name}.git"
+	local ssh_clone="git@${lan_ip}:${ssh_port}/${owner}/${name}.git"
+
+	json_init_obj
+	json_add_string "name" "$name"
+	json_add_string "owner" "$owner"
+	json_add_string "path" "$repo_path"
+	json_add_string "size" "$size"
+	json_add_int "branches" "$branches"
+	json_add_string "clone_url" "$clone_url"
+	json_add_string "ssh_clone" "$ssh_clone"
+	json_close_obj
+}
+
+# List users (from SQLite if available)
+list_users() {
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/gitea"
+
+	json_init_obj
+	json_add_array "users"
+
+	local db_file="$data_path/gitea.db"
+	if [ -f "$db_file" ] && command -v sqlite3 >/dev/null 2>&1; then
+		sqlite3 -separator '|' "$db_file" \
+			"SELECT id, name, lower_name, email, is_admin, created_unix FROM user" 2>/dev/null | \
+		while IFS='|' read -r id name lower_name email is_admin created; do
+			json_add_object ""
+			json_add_int "id" "$id"
+			json_add_string "name" "$name"
+			json_add_string "email" "$email"
+			json_add_boolean "is_admin" "$is_admin"
+			[ -n "$created" ] && json_add_int "created" "$created"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_close_obj
+}
+
+# Create admin user
+create_admin() {
+	read -r input
+	local username password email
+	username=$(echo "$input" | jsonfilter -e '@.username' 2>/dev/null)
+	password=$(echo "$input" | jsonfilter -e '@.password' 2>/dev/null)
+	email=$(echo "$input" | jsonfilter -e '@.email' 2>/dev/null)
+
+	if [ -z "$username" ] || [ -z "$password" ] || [ -z "$email" ]; then
+		json_error "Missing username, password, or email"
+		return
+	fi
+
+	if ! lxc_running; then
+		json_error "Service must be running to create users"
+		return
+	fi
+
+	lxc-attach -n "$LXC_NAME" -- su-exec git /usr/local/bin/gitea admin user create \
+		--username "$username" \
+		--password "$password" \
+		--email "$email" \
+		--admin \
+		--config /data/custom/conf/app.ini >/dev/null 2>&1
+
+	if [ $? -eq 0 ]; then
+		json_success "Admin user created: $username"
+	else
+		json_error "Failed to create admin user"
+	fi
+}
+
+# Create backup
+create_backup() {
+	local result
+	result=$(/usr/sbin/giteactl backup 2>&1)
+
+	if echo "$result" | grep -q "Backup created"; then
+		local backup_file=$(echo "$result" | grep -o '/srv/gitea/backups/[^ ]*')
+		json_init_obj
+		json_add_boolean "success" 1
+		json_add_string "message" "Backup created"
+		json_add_string "file" "$backup_file"
+		json_close_obj
+	else
+		json_error "Backup failed"
+	fi
+}
+
+# List backups
+list_backups() {
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/gitea"
+
+	json_init_obj
+	json_add_array "backups"
+
+	local backup_dir="$data_path/backups"
+	if [ -d "$backup_dir" ]; then
+		ls -1 "$backup_dir"/*.tar.gz 2>/dev/null | while read -r backup; do
+			[ -f "$backup" ] || continue
+			local name=$(basename "$backup")
+			local size=$(ls -lh "$backup" 2>/dev/null | awk '{print $5}')
+			local mtime=$(stat -c %Y "$backup" 2>/dev/null || echo "0")
+
+			json_add_object ""
+			json_add_string "name" "$name"
+			json_add_string "path" "$backup"
+			json_add_string "size" "$size"
+			json_add_int "mtime" "$mtime"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_close_obj
+}
+
+# Restore backup
+restore_backup() {
+	read -r input
+	local file
+	file=$(echo "$input" | jsonfilter -e '@.file' 2>/dev/null)
+
+	if [ -z "$file" ] || [ ! -f "$file" ]; then
+		json_error "Missing or invalid backup file"
+		return
+	fi
+
+	/usr/sbin/giteactl restore "$file" >/dev/null 2>&1
+
+	if [ $? -eq 0 ]; then
+		json_success "Restore completed"
+	else
+		json_error "Restore failed"
+	fi
+}
+
+# Check install progress
+get_install_progress() {
+	local log_file="/var/log/gitea-install.log"
+	local status="unknown"
+	local progress=0
+	local message=""
+
+	if [ -f "$log_file" ]; then
+		# Check for completion markers
+		if grep -q "Installation complete" "$log_file" 2>/dev/null; then
+			status="completed"
+			progress=100
+			message="Installation completed successfully"
+		elif grep -q "ERROR" "$log_file" 2>/dev/null; then
+			status="error"
+			message=$(grep "ERROR" "$log_file" | tail -1)
+		else
+			status="running"
+			# Estimate progress based on log content
+			if grep -q "LXC config created" "$log_file" 2>/dev/null; then
+				progress=90
+				message="Finalizing setup..."
+			elif grep -q "Gitea binary installed" "$log_file" 2>/dev/null; then
+				progress=70
+				message="Configuring container..."
+			elif grep -q "Downloading Gitea" "$log_file" 2>/dev/null; then
+				progress=50
+				message="Downloading Gitea binary..."
+			elif grep -q "Rootfs created" "$log_file" 2>/dev/null; then
+				progress=40
+				message="Setting up container..."
+			elif grep -q "Extracting rootfs" "$log_file" 2>/dev/null; then
+				progress=30
+				message="Extracting container rootfs..."
+			elif grep -q "Downloading Alpine" "$log_file" 2>/dev/null; then
+				progress=20
+				message="Downloading Alpine rootfs..."
+			elif grep -q "Installing Gitea" "$log_file" 2>/dev/null; then
+				progress=10
+				message="Starting installation..."
+			else
+				progress=5
+				message="Initializing..."
+			fi
+		fi
+	else
+		status="not_started"
+		message="Installation has not been started"
+	fi
+
+	# Check if process is still running
+	if pgrep -f "giteactl install" >/dev/null 2>&1; then
+		status="running"
+	fi
+
+	json_init_obj
+	json_add_string "status" "$status"
+	json_add_int "progress" "$progress"
+	json_add_string "message" "$message"
+	json_close_obj
+}
+
+# Main RPC handler
+case "$1" in
+	list)
+		cat <<-EOF
+		{
+			"get_status": {},
+			"get_stats": {},
+			"get_config": {},
+			"save_config": {"http_port": 3000, "ssh_port": 2222, "http_host": "str", "data_path": "str", "memory_limit": "str", "enabled": "str", "app_name": "str", "domain": "str", "protocol": "str", "disable_registration": "str", "require_signin": "str", "landing_page": "str"},
+			"start": {},
+			"stop": {},
+			"restart": {},
+			"install": {},
+			"uninstall": {},
+			"update": {},
+			"get_logs": {"lines": 100},
+			"list_repos": {},
+			"get_repo": {"name": "str", "owner": "str"},
+			"list_users": {},
+			"create_admin": {"username": "str", "password": "str", "email": "str"},
+			"create_backup": {},
+			"list_backups": {},
+			"restore_backup": {"file": "str"},
+			"get_install_progress": {}
+		}
+		EOF
+		;;
+	call)
+		case "$2" in
+			get_status)
+				get_status
+				;;
+			get_stats)
+				get_stats
+				;;
+			get_config)
+				get_config
+				;;
+			save_config)
+				save_config
+				;;
+			start)
+				start_service
+				;;
+			stop)
+				stop_service
+				;;
+			restart)
+				restart_service
+				;;
+			install)
+				install
+				;;
+			uninstall)
+				uninstall
+				;;
+			update)
+				update
+				;;
+			get_logs)
+				get_logs
+				;;
+			list_repos)
+				list_repos
+				;;
+			get_repo)
+				get_repo
+				;;
+			list_users)
+				list_users
+				;;
+			create_admin)
+				create_admin
+				;;
+			create_backup)
+				create_backup
+				;;
+			list_backups)
+				list_backups
+				;;
+			restore_backup)
+				restore_backup
+				;;
+			get_install_progress)
+				get_install_progress
+				;;
+			*)
+				json_error "Unknown method: $2"
+				;;
+		esac
+		;;
+esac

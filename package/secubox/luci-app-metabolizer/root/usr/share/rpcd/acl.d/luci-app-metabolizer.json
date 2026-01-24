@@ -1,0 +1,17 @@
+{
+	"luci-app-metabolizer": {
+		"description": "Grant access to Metabolizer CMS",
+		"read": {
+			"ubus": {
+				"luci.metabolizer": ["status", "list_posts", "gitea_status"]
+			},
+			"uci": ["metabolizer"]
+		},
+		"write": {
+			"ubus": {
+				"luci.metabolizer": ["sync", "build", "publish", "gitea_sync"]
+			},
+			"uci": ["metabolizer"]
+		}
+	}
+}

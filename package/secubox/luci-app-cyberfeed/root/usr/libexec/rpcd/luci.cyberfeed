@@ -1,0 +1,304 @@
+#!/bin/sh
+# RPCD backend for CyberFeed LuCI App
+
+. /lib/functions.sh
+
+CYBERFEED_BIN="/usr/bin/cyberfeed"
+RSSBRIDGE_BIN="/usr/bin/rss-bridge-setup"
+OUTPUT_DIR="/tmp/cyberfeed/output"
+CONFIG_FILE="/etc/cyberfeed/feeds.conf"
+
+json_init() {
+	JSON_OUTPUT=""
+}
+
+json_add_string() {
+	local key="$1" val="$2"
+	val=$(echo "$val" | sed 's/"/\\"/g; s/\\/\\\\/g')
+	[ -n "$JSON_OUTPUT" ] && JSON_OUTPUT="$JSON_OUTPUT,"
+	JSON_OUTPUT="$JSON_OUTPUT\"$key\":\"$val\""
+}
+
+json_add_int() {
+	local key="$1" val="$2"
+	[ -n "$JSON_OUTPUT" ] && JSON_OUTPUT="$JSON_OUTPUT,"
+	JSON_OUTPUT="$JSON_OUTPUT\"$key\":$val"
+}
+
+json_add_bool() {
+	local key="$1" val="$2"
+	[ -n "$JSON_OUTPUT" ] && JSON_OUTPUT="$JSON_OUTPUT,"
+	if [ "$val" = "1" ] || [ "$val" = "true" ]; then
+		JSON_OUTPUT="$JSON_OUTPUT\"$key\":true"
+	else
+		JSON_OUTPUT="$JSON_OUTPUT\"$key\":false"
+	fi
+}
+
+json_dump() {
+	echo "{$JSON_OUTPUT}"
+}
+
+# Get service status
+get_status() {
+	local enabled=$(uci -q get cyberfeed.main.enabled || echo 0)
+	local feed_count=0
+	local item_count=0
+	local last_sync=0
+	local rssbridge_enabled=$(uci -q get cyberfeed.rssbridge.enabled || echo 0)
+	local rssbridge_running="false"
+
+	if [ -f "${OUTPUT_DIR}/feeds.json" ]; then
+		item_count=$(grep -o '"title"' "${OUTPUT_DIR}/feeds.json" 2>/dev/null | wc -l)
+		item_count=${item_count:-0}
+		last_sync=$(stat -c %Y "${OUTPUT_DIR}/feeds.json" 2>/dev/null || echo 0)
+	fi
+
+	if [ -f "$CONFIG_FILE" ]; then
+		feed_count=$(grep -v "^#" "$CONFIG_FILE" 2>/dev/null | grep -c "|" || echo 0)
+	fi
+
+	if [ "$rssbridge_enabled" = "1" ]; then
+		if pgrep -f "rss-bridge\|php.*3000" >/dev/null 2>&1; then
+			rssbridge_running="true"
+		fi
+	fi
+
+	cat << EOF
+{
+	"enabled": $enabled,
+	"feed_count": $feed_count,
+	"item_count": $item_count,
+	"last_sync": $last_sync,
+	"rssbridge_enabled": $rssbridge_enabled,
+	"rssbridge_running": $rssbridge_running
+}
+EOF
+}
+
+# Get feeds list
+get_feeds() {
+	local feeds="[]"
+	if [ -x "$CYBERFEED_BIN" ]; then
+		feeds=$($CYBERFEED_BIN list)
+	fi
+	echo "{\"feeds\":$feeds}"
+}
+
+# Get feed items
+get_items() {
+	local items="[]"
+	if [ -f "${OUTPUT_DIR}/feeds.json" ]; then
+		items=$(cat "${OUTPUT_DIR}/feeds.json")
+	fi
+	echo "{\"items\":$items}"
+}
+
+# Add a feed
+add_feed() {
+	local name="$1"
+	local url="$2"
+	local type="${3:-rss}"
+	local category="${4:-custom}"
+
+	if [ -z "$name" ] || [ -z "$url" ]; then
+		echo '{"success":false,"error":"Name and URL are required"}'
+		return
+	fi
+
+	# Validate name (alphanumeric and underscore only)
+	if ! echo "$name" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+		echo '{"success":false,"error":"Invalid name format"}'
+		return
+	fi
+
+	# Check for duplicates
+	if grep -q "^${name}|" "$CONFIG_FILE" 2>/dev/null; then
+		echo '{"success":false,"error":"Feed already exists"}'
+		return
+	fi
+
+	echo "${name}|${url}|${type}|${category}" >> "$CONFIG_FILE"
+	echo '{"success":true}'
+}
+
+# Delete a feed
+delete_feed() {
+	local name="$1"
+
+	if [ -z "$name" ]; then
+		echo '{"success":false,"error":"Name is required"}'
+		return
+	fi
+
+	if grep -q "^${name}|" "$CONFIG_FILE" 2>/dev/null; then
+		sed -i "/^${name}|/d" "$CONFIG_FILE"
+		rm -f "/tmp/cyberfeed/cache/${name}.xml"
+		echo '{"success":true}'
+	else
+		echo '{"success":false,"error":"Feed not found"}'
+	fi
+}
+
+# Sync feeds
+sync_feeds() {
+	if [ -x "$CYBERFEED_BIN" ]; then
+		$CYBERFEED_BIN sync >/dev/null 2>&1 &
+		echo '{"success":true,"message":"Sync started"}'
+	else
+		echo '{"success":false,"error":"CyberFeed not installed"}'
+	fi
+}
+
+# Get config
+get_config() {
+	local enabled=$(uci -q get cyberfeed.main.enabled || echo 0)
+	local refresh=$(uci -q get cyberfeed.main.refresh_interval || echo 5)
+	local max_items=$(uci -q get cyberfeed.main.max_items || echo 20)
+	local cache_ttl=$(uci -q get cyberfeed.main.cache_ttl || echo 300)
+	local rssbridge_enabled=$(uci -q get cyberfeed.rssbridge.enabled || echo 0)
+	local rssbridge_port=$(uci -q get cyberfeed.rssbridge.port || echo 3000)
+
+	cat << EOF
+{
+	"enabled": $enabled,
+	"refresh_interval": $refresh,
+	"max_items": $max_items,
+	"cache_ttl": $cache_ttl,
+	"rssbridge_enabled": $rssbridge_enabled,
+	"rssbridge_port": $rssbridge_port
+}
+EOF
+}
+
+# Save config
+save_config() {
+	local enabled="$1"
+	local refresh="$2"
+	local max_items="$3"
+	local cache_ttl="$4"
+	local rssbridge_enabled="$5"
+	local rssbridge_port="$6"
+
+	[ -n "$enabled" ] && uci set cyberfeed.main.enabled="$enabled"
+	[ -n "$refresh" ] && uci set cyberfeed.main.refresh_interval="$refresh"
+	[ -n "$max_items" ] && uci set cyberfeed.main.max_items="$max_items"
+	[ -n "$cache_ttl" ] && uci set cyberfeed.main.cache_ttl="$cache_ttl"
+	[ -n "$rssbridge_enabled" ] && uci set cyberfeed.rssbridge.enabled="$rssbridge_enabled"
+	[ -n "$rssbridge_port" ] && uci set cyberfeed.rssbridge.port="$rssbridge_port"
+
+	uci commit cyberfeed
+
+	# Restart service if needed
+	/etc/init.d/cyberfeed reload 2>/dev/null
+
+	echo '{"success":true}'
+}
+
+# RSS-Bridge status
+rssbridge_status() {
+	if [ -x "$RSSBRIDGE_BIN" ]; then
+		$RSSBRIDGE_BIN status
+	else
+		echo '{"installed":false,"enabled":false,"running":false}'
+	fi
+}
+
+# RSS-Bridge install
+rssbridge_install() {
+	if [ -x "$RSSBRIDGE_BIN" ]; then
+		$RSSBRIDGE_BIN install >/dev/null 2>&1 &
+		echo '{"success":true,"message":"Installation started"}'
+	else
+		echo '{"success":false,"error":"Setup script not found"}'
+	fi
+}
+
+# RSS-Bridge start/stop
+rssbridge_control() {
+	local action="$1"
+
+	if [ -x "$RSSBRIDGE_BIN" ]; then
+		$RSSBRIDGE_BIN "$action" >/dev/null 2>&1
+		echo '{"success":true}'
+	else
+		echo '{"success":false,"error":"Setup script not found"}'
+	fi
+}
+
+# RPCD interface
+case "$1" in
+	list)
+		cat << 'EOF'
+{
+	"get_status": {},
+	"get_feeds": {},
+	"get_items": {},
+	"add_feed": {"name":"str","url":"str","type":"str","category":"str"},
+	"delete_feed": {"name":"str"},
+	"sync_feeds": {},
+	"get_config": {},
+	"save_config": {"enabled":"int","refresh_interval":"int","max_items":"int","cache_ttl":"int","rssbridge_enabled":"int","rssbridge_port":"int"},
+	"rssbridge_status": {},
+	"rssbridge_install": {},
+	"rssbridge_control": {"action":"str"}
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			get_status)
+				get_status
+				;;
+			get_feeds)
+				get_feeds
+				;;
+			get_items)
+				get_items
+				;;
+			add_feed)
+				read -r input
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				url=$(echo "$input" | jsonfilter -e '@.url' 2>/dev/null)
+				type=$(echo "$input" | jsonfilter -e '@.type' 2>/dev/null)
+				category=$(echo "$input" | jsonfilter -e '@.category' 2>/dev/null)
+				add_feed "$name" "$url" "$type" "$category"
+				;;
+			delete_feed)
+				read -r input
+				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				delete_feed "$name"
+				;;
+			sync_feeds)
+				sync_feeds
+				;;
+			get_config)
+				get_config
+				;;
+			save_config)
+				read -r input
+				enabled=$(echo "$input" | jsonfilter -e '@.enabled' 2>/dev/null)
+				refresh=$(echo "$input" | jsonfilter -e '@.refresh_interval' 2>/dev/null)
+				max_items=$(echo "$input" | jsonfilter -e '@.max_items' 2>/dev/null)
+				cache_ttl=$(echo "$input" | jsonfilter -e '@.cache_ttl' 2>/dev/null)
+				rssbridge_enabled=$(echo "$input" | jsonfilter -e '@.rssbridge_enabled' 2>/dev/null)
+				rssbridge_port=$(echo "$input" | jsonfilter -e '@.rssbridge_port' 2>/dev/null)
+				save_config "$enabled" "$refresh" "$max_items" "$cache_ttl" "$rssbridge_enabled" "$rssbridge_port"
+				;;
+			rssbridge_status)
+				rssbridge_status
+				;;
+			rssbridge_install)
+				rssbridge_install
+				;;
+			rssbridge_control)
+				read -r input
+				action=$(echo "$input" | jsonfilter -e '@.action' 2>/dev/null)
+				rssbridge_control "$action"
+				;;
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+esac

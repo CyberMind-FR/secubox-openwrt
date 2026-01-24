@@ -1,0 +1,54 @@
+#!/bin/sh
+# Metabolizer Webhook Handler
+# Receives Gitea push events and triggers rebuild
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+
+CONFIG="metabolizer"
+LOG_TAG="metabolizer-webhook"
+
+log_info() { logger -t "$LOG_TAG" "$*"; }
+log_error() { logger -t "$LOG_TAG" -p err "$*"; }
+
+# Load config
+config_load "$CONFIG"
+config_get webhook_secret main webhook_secret ""
+config_get content_repo content repo_name "blog-content"
+config_get cms_repo cms repo_name "metabolizer-cms"
+config_get auto_publish hexo auto_publish "1"
+
+# Read webhook payload from stdin
+read -r payload
+
+# Parse payload
+repo_name=$(echo "$payload" | jsonfilter -e '@.repository.name' 2>/dev/null)
+ref=$(echo "$payload" | jsonfilter -e '@.ref' 2>/dev/null)
+pusher=$(echo "$payload" | jsonfilter -e '@.pusher.name' 2>/dev/null)
+
+if [ -z "$repo_name" ]; then
+	log_error "Invalid webhook payload"
+	exit 1
+fi
+
+log_info "Webhook received: repo=$repo_name ref=$ref pusher=$pusher"
+
+# Handle based on repository
+case "$repo_name" in
+	"$content_repo")
+		log_info "Content repo updated, triggering rebuild..."
+		/usr/sbin/metabolizerctl sync
+		/usr/sbin/metabolizerctl build
+		;;
+
+	"$cms_repo")
+		log_info "CMS repo updated, redeploying..."
+		/usr/sbin/metabolizerctl cms update
+		;;
+
+	*)
+		log_info "Unknown repository: $repo_name"
+		;;
+esac
+
+log_info "Webhook processed"

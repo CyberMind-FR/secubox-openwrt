@@ -1,0 +1,17 @@
+{
+	"luci-app-cyberfeed": {
+		"description": "Grant access to CyberFeed RSS Aggregator",
+		"read": {
+			"ubus": {
+				"luci.cyberfeed": ["get_status", "get_feeds", "get_items", "get_config", "rssbridge_status"]
+			},
+			"uci": ["cyberfeed"]
+		},
+		"write": {
+			"ubus": {
+				"luci.cyberfeed": ["add_feed", "delete_feed", "sync_feeds", "save_config", "rssbridge_install", "rssbridge_control"]
+			},
+			"uci": ["cyberfeed"]
+		}
+	}
+}
