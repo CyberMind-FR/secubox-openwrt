@@ -8,6 +8,16 @@ USE_PROCD=1
 
 PROG=/usr/sbin/giteactl
 CONFIG=gitea
+LXC_NAME="gitea"
+LXC_PATH="/srv/lxc"
+
+is_installed() {
+	[ -f "$LXC_PATH/$LXC_NAME/config" ] && [ -d "$LXC_PATH/$LXC_NAME/rootfs" ]
+}
+
+is_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
 
 start_service() {
 	local enabled
@@ -15,9 +25,14 @@ start_service() {
 	config_get enabled main enabled '0'
 
 	[ "$enabled" = "1" ] || {
-		echo "Gitea is disabled. Enable with: uci set gitea.main.enabled=1"
+		echo "Gitea is disabled. Enable with: uci set gitea.main.enabled=1 && uci commit gitea"
 		return 0
 	}
+
+	if ! is_installed; then
+		echo "Gitea not installed. Run: giteactl install"
+		return 1
+	fi
 
 	procd_open_instance
 	procd_set_param command "$PROG" service-run
@@ -40,6 +55,18 @@ reload_service() {
 	start
 }
 
-status() {
-	"$PROG" status
+status_service() {
+	if is_running; then
+		echo "running"
+		return 0
+	else
+		echo "not running"
+		# Show why
+		local enabled
+		config_load "$CONFIG"
+		config_get enabled main enabled '0'
+		[ "$enabled" = "1" ] || echo "  (disabled in config)"
+		is_installed || echo "  (not installed - run: giteactl install)"
+		return 1
+	fi
 }

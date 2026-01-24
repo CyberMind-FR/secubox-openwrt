@@ -1,5 +1,5 @@
 config gitea 'main'
-	option enabled '0'
+	option enabled '1'
 	option http_port '3000'
 	option ssh_port '2222'
 	option http_host '0.0.0.0'
