@@ -237,16 +237,18 @@ set -e
 export GITEA_WORK_DIR=/data
 export USER=git
 
-# First run: install required packages
-if [ ! -f /tmp/.gitea-deps-installed ]; then
-    echo "Installing dependencies (first run)..."
+# Install packages if needed (check if su-exec exists)
+if ! command -v su-exec >/dev/null 2>&1; then
+    echo "Installing dependencies..."
     apk update
-    apk add --no-cache git git-lfs openssh bash su-exec sqlite
-    touch /tmp/.gitea-deps-installed
+    apk add --no-cache git git-lfs openssh su-exec sqlite
 fi
 
-# Ensure git user exists
-id -u git >/dev/null 2>&1 || adduser -D -s /bin/bash -h /data git
+# Always ensure git user exists (doesn't persist between container restarts)
+if ! id -u git >/dev/null 2>&1; then
+    echo "Creating git user..."
+    adduser -D -s /bin/sh -h /data -u 1000 git
+fi
 
 # Ensure directories exist with correct ownership
 mkdir -p /data/git/repositories
