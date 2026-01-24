@@ -1,0 +1,727 @@
+#!/bin/sh
+# SecuBox Gitea Platform Controller
+# Copyright (C) 2025 CyberMind.fr
+#
+# Manages Gitea in LXC container
+
+CONFIG="gitea"
+LXC_NAME="gitea"
+
+# Paths
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+DATA_PATH="/srv/gitea"
+BACKUP_PATH="/srv/gitea/backups"
+GITEA_VERSION="1.22.6"
+
+# Logging
+log_info() { echo "[INFO] $*"; logger -t gitea "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t gitea -p err "$*"; }
+log_debug() { [ "$DEBUG" = "1" ] && echo "[DEBUG] $*"; }
+
+# Helpers
+require_root() {
+	[ "$(id -u)" -eq 0 ] || {
+		log_error "This command requires root privileges"
+		exit 1
+	}
+}
+
+has_lxc() { command -v lxc-start >/dev/null 2>&1; }
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Load configuration
+load_config() {
+	http_port="$(uci_get main.http_port)" || http_port="3000"
+	ssh_port="$(uci_get main.ssh_port)" || ssh_port="2222"
+	http_host="$(uci_get main.http_host)" || http_host="0.0.0.0"
+	data_path="$(uci_get main.data_path)" || data_path="/srv/gitea"
+	memory_limit="$(uci_get main.memory_limit)" || memory_limit="512M"
+	app_name="$(uci_get main.app_name)" || app_name="SecuBox Git"
+	domain="$(uci_get main.domain)" || domain="git.local"
+
+	# Server settings
+	protocol="$(uci_get server.protocol)" || protocol="http"
+	disable_registration="$(uci_get server.disable_registration)" || disable_registration="false"
+	require_signin="$(uci_get server.require_signin)" || require_signin="false"
+	landing_page="$(uci_get server.landing_page)" || landing_page="explore"
+
+	# Database settings
+	db_type="$(uci_get database.type)" || db_type="sqlite3"
+	db_path="$(uci_get database.path)" || db_path="/data/gitea.db"
+
+	DATA_PATH="$data_path"
+	BACKUP_PATH="$data_path/backups"
+
+	ensure_dir "$data_path"
+	ensure_dir "$data_path/git"
+	ensure_dir "$data_path/custom"
+	ensure_dir "$data_path/custom/conf"
+	ensure_dir "$BACKUP_PATH"
+}
+
+# Usage
+usage() {
+	cat <<EOF
+SecuBox Gitea Platform Controller
+
+Usage: $(basename $0) <command> [options]
+
+Commands:
+  install       Download Alpine rootfs and setup LXC container
+  uninstall     Remove container (preserves repositories)
+  update        Update Gitea binary to latest version
+  start         Start Gitea service (via init)
+  stop          Stop Gitea service (via init)
+  restart       Restart Gitea service
+  status        Show service status (JSON format)
+  logs          Show container logs
+  shell         Open shell in container
+
+  backup        Create backup of repos and database
+  restore <file>  Restore from backup
+
+  admin create-user  Create admin user
+    --username <name>
+    --password <pass>
+    --email <email>
+
+  service-run   Start service (used by init)
+  service-stop  Stop service (used by init)
+
+Configuration:
+  /etc/config/gitea
+
+Data directory:
+  /srv/gitea
+
+EOF
+}
+
+# Check prerequisites
+lxc_check_prereqs() {
+	if ! has_lxc; then
+		log_error "LXC not installed. Install with: opkg install lxc lxc-common"
+		return 1
+	fi
+	return 0
+}
+
+# Detect architecture for Gitea download
+get_gitea_arch() {
+	local arch=$(uname -m)
+	case "$arch" in
+		x86_64) echo "linux-amd64" ;;
+		aarch64) echo "linux-arm64" ;;
+		armv7l) echo "linux-arm-6" ;;
+		*) log_error "Unsupported architecture: $arch"; return 1 ;;
+	esac
+}
+
+# Create LXC rootfs from Alpine
+lxc_create_rootfs() {
+	local rootfs="$LXC_ROOTFS"
+	local arch=$(uname -m)
+
+	log_info "Creating Alpine rootfs for Gitea..."
+
+	ensure_dir "$rootfs"
+
+	# Use Alpine mini rootfs
+	local alpine_version="3.21"
+	case "$arch" in
+		x86_64) alpine_arch="x86_64" ;;
+		aarch64) alpine_arch="aarch64" ;;
+		armv7l) alpine_arch="armv7" ;;
+		*) log_error "Unsupported architecture: $arch"; return 1 ;;
+	esac
+
+	local alpine_url="https://dl-cdn.alpinelinux.org/alpine/v${alpine_version}/releases/${alpine_arch}/alpine-minirootfs-${alpine_version}.0-${alpine_arch}.tar.gz"
+	local tmpfile="/tmp/alpine-rootfs.tar.gz"
+
+	log_info "Downloading Alpine ${alpine_version} rootfs..."
+	wget -q -O "$tmpfile" "$alpine_url" || {
+		log_error "Failed to download Alpine rootfs"
+		return 1
+	}
+
+	log_info "Extracting rootfs..."
+	tar -xzf "$tmpfile" -C "$rootfs" || {
+		log_error "Failed to extract rootfs"
+		return 1
+	}
+	rm -f "$tmpfile"
+
+	# Setup resolv.conf
+	cp /etc/resolv.conf "$rootfs/etc/resolv.conf" 2>/dev/null || \
+		echo "nameserver 1.1.1.1" > "$rootfs/etc/resolv.conf"
+
+	log_info "Rootfs created successfully"
+	return 0
+}
+
+# Download and install Gitea binary
+install_gitea_binary() {
+	local rootfs="$LXC_ROOTFS"
+	local gitea_arch=$(get_gitea_arch)
+
+	[ -z "$gitea_arch" ] && return 1
+
+	log_info "Downloading Gitea ${GITEA_VERSION}..."
+	local gitea_url="https://dl.gitea.com/gitea/${GITEA_VERSION}/gitea-${GITEA_VERSION}-${gitea_arch}"
+
+	ensure_dir "$rootfs/usr/local/bin"
+
+	wget -q -O "$rootfs/usr/local/bin/gitea" "$gitea_url" || {
+		log_error "Failed to download Gitea binary"
+		return 1
+	}
+
+	chmod +x "$rootfs/usr/local/bin/gitea"
+	log_info "Gitea binary installed"
+	return 0
+}
+
+# Install Alpine packages inside container
+install_container_packages() {
+	local rootfs="$LXC_ROOTFS"
+
+	log_info "Installing container packages..."
+
+	# Create install script
+	cat > "$rootfs/tmp/install-deps.sh" << 'SCRIPT'
+#!/bin/sh
+apk update
+apk add --no-cache git git-lfs openssh sqlite bash su-exec
+# Create git user
+adduser -D -s /bin/bash -h /data git 2>/dev/null || true
+# Setup SSH directory
+mkdir -p /data/ssh
+chmod 700 /data/ssh
+touch /tmp/.deps-installed
+SCRIPT
+	chmod +x "$rootfs/tmp/install-deps.sh"
+
+	# Run in a temporary container
+	lxc-execute -n "$LXC_NAME" -f "$LXC_CONFIG" -- /tmp/install-deps.sh 2>/dev/null || {
+		# Fallback: run via start/attach
+		lxc-start -n "$LXC_NAME" -f "$LXC_CONFIG" -d
+		sleep 2
+		lxc-attach -n "$LXC_NAME" -- /tmp/install-deps.sh
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null
+	}
+
+	rm -f "$rootfs/tmp/install-deps.sh"
+	log_info "Container packages installed"
+	return 0
+}
+
+# Create startup script
+create_startup_script() {
+	local rootfs="$LXC_ROOTFS"
+
+	cat > "$rootfs/opt/start-gitea.sh" << 'STARTUP'
+#!/bin/sh
+set -e
+
+export GITEA_WORK_DIR=/data
+export USER=git
+
+# Ensure git user exists
+id -u git >/dev/null 2>&1 || adduser -D -s /bin/bash -h /data git
+
+# Ensure directories have correct ownership
+chown -R git:git /data/git 2>/dev/null || true
+chown -R git:git /data/custom 2>/dev/null || true
+
+# Generate SSH host keys if needed
+if [ ! -f /data/ssh/ssh_host_rsa_key ]; then
+    echo "Generating SSH host keys..."
+    mkdir -p /data/ssh
+    ssh-keygen -A
+    mv /etc/ssh/ssh_host_* /data/ssh/ 2>/dev/null || true
+    chown root:root /data/ssh/ssh_host_*
+    chmod 600 /data/ssh/ssh_host_*_key
+    chmod 644 /data/ssh/ssh_host_*_key.pub
+fi
+
+# Create sshd config for git
+cat > /data/ssh/sshd_config << 'SSHD'
+Port ${GITEA_SSH_PORT:-2222}
+ListenAddress 0.0.0.0
+HostKey /data/ssh/ssh_host_rsa_key
+HostKey /data/ssh/ssh_host_ecdsa_key
+HostKey /data/ssh/ssh_host_ed25519_key
+PermitRootLogin no
+PubkeyAuthentication yes
+AuthorizedKeysFile /data/git/.ssh/authorized_keys
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+UsePAM no
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/lib/ssh/sftp-server
+SSHD
+
+# Start SSH server for git operations (optional, Gitea has built-in SSH)
+# /usr/sbin/sshd -f /data/ssh/sshd_config
+
+# Generate app.ini if not exists
+if [ ! -f /data/custom/conf/app.ini ]; then
+    mkdir -p /data/custom/conf
+    cat > /data/custom/conf/app.ini << EOF
+[server]
+APP_NAME = ${GITEA_APP_NAME:-SecuBox Git}
+DOMAIN = ${GITEA_DOMAIN:-git.local}
+HTTP_ADDR = ${GITEA_HTTP_HOST:-0.0.0.0}
+HTTP_PORT = ${GITEA_HTTP_PORT:-3000}
+ROOT_URL = http://${GITEA_DOMAIN:-git.local}:${GITEA_HTTP_PORT:-3000}/
+DISABLE_SSH = false
+START_SSH_SERVER = true
+SSH_PORT = ${GITEA_SSH_PORT:-2222}
+SSH_LISTEN_HOST = 0.0.0.0
+LFS_START_SERVER = true
+
+[database]
+DB_TYPE = sqlite3
+PATH = /data/gitea.db
+
+[repository]
+ROOT = /data/git/repositories
+
+[security]
+INSTALL_LOCK = true
+SECRET_KEY = $(head -c 32 /dev/urandom | base64 | tr -d '\n')
+INTERNAL_TOKEN = $(head -c 64 /dev/urandom | base64 | tr -d '\n')
+
+[service]
+DISABLE_REGISTRATION = ${GITEA_DISABLE_REGISTRATION:-false}
+REQUIRE_SIGNIN_VIEW = ${GITEA_REQUIRE_SIGNIN:-false}
+
+[log]
+MODE = console
+LEVEL = Info
+
+[ui]
+DEFAULT_THEME = gitea-dark
+EOF
+    chown git:git /data/custom/conf/app.ini
+fi
+
+# Start Gitea
+echo "Starting Gitea..."
+cd /data
+exec su-exec git /usr/local/bin/gitea web --config /data/custom/conf/app.ini
+STARTUP
+	chmod +x "$rootfs/opt/start-gitea.sh"
+}
+
+# Create LXC config
+lxc_create_config() {
+	load_config
+
+	ensure_dir "$(dirname "$LXC_CONFIG")"
+
+	# Convert memory limit to bytes
+	local mem_bytes
+	case "$memory_limit" in
+		*G|*g) mem_bytes=$((${memory_limit%[Gg]} * 1024 * 1024 * 1024)) ;;
+		*M|*m) mem_bytes=$((${memory_limit%[Mm]} * 1024 * 1024)) ;;
+		*K|*k) mem_bytes=$((${memory_limit%[Kk]} * 1024)) ;;
+		*) mem_bytes="$memory_limit" ;;
+	esac
+
+	cat > "$LXC_CONFIG" << EOF
+# Gitea Platform LXC Configuration
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $(uname -m)
+
+# Network: use host network
+lxc.net.0.type = none
+
+# Mount points
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $data_path/git data/git none bind,create=dir 0 0
+lxc.mount.entry = $data_path/custom data/custom none bind,create=dir 0 0
+lxc.mount.entry = $data_path data none bind,create=dir 0 0
+
+# Environment
+lxc.environment = GITEA_HTTP_HOST=$http_host
+lxc.environment = GITEA_HTTP_PORT=$http_port
+lxc.environment = GITEA_SSH_PORT=$ssh_port
+lxc.environment = GITEA_APP_NAME=$app_name
+lxc.environment = GITEA_DOMAIN=$domain
+lxc.environment = GITEA_DISABLE_REGISTRATION=$disable_registration
+lxc.environment = GITEA_REQUIRE_SIGNIN=$require_signin
+
+# Security
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time sys_rawio
+
+# Resource limits
+lxc.cgroup.memory.limit_in_bytes = $mem_bytes
+
+# Init command
+lxc.init.cmd = /opt/start-gitea.sh
+EOF
+
+	log_info "LXC config created"
+}
+
+# Container control
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONFIG" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+lxc_stop() {
+	if lxc_running; then
+		log_info "Stopping Gitea container..."
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 2
+	fi
+}
+
+lxc_run() {
+	load_config
+	lxc_stop
+
+	if ! lxc_exists; then
+		log_error "Container not installed. Run: giteactl install"
+		return 1
+	fi
+
+	# Regenerate config in case settings changed
+	lxc_create_config
+
+	log_info "Starting Gitea container..."
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
+}
+
+# Commands
+cmd_install() {
+	require_root
+	load_config
+
+	log_info "Installing Gitea Platform..."
+
+	lxc_check_prereqs || exit 1
+
+	# Create container
+	if ! lxc_exists; then
+		lxc_create_rootfs || exit 1
+	fi
+
+	# Install Gitea binary
+	install_gitea_binary || exit 1
+
+	# Create startup script
+	create_startup_script
+
+	# Create config
+	lxc_create_config || exit 1
+
+	# Install container packages (do this separately as it needs a running container)
+	# We'll let the startup script handle package installation on first run instead
+
+	# Enable service
+	uci_set main.enabled '1'
+	/etc/init.d/gitea enable 2>/dev/null || true
+
+	log_info "Installation complete!"
+	log_info ""
+	log_info "Start with: /etc/init.d/gitea start"
+	log_info "Web interface: http://<router-ip>:$http_port"
+	log_info "SSH Git access: ssh://git@<router-ip>:$ssh_port"
+	log_info ""
+	log_info "Create admin: giteactl admin create-user --username admin --password secret --email admin@localhost"
+}
+
+cmd_uninstall() {
+	require_root
+
+	log_info "Uninstalling Gitea Platform..."
+
+	# Stop service
+	/etc/init.d/gitea stop 2>/dev/null || true
+	/etc/init.d/gitea disable 2>/dev/null || true
+
+	lxc_stop
+
+	# Remove container (keep data)
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		rm -rf "$LXC_PATH/$LXC_NAME"
+		log_info "Container removed"
+	fi
+
+	uci_set main.enabled '0'
+
+	log_info "Gitea Platform uninstalled"
+	log_info "Data preserved in: $(uci_get main.data_path)"
+}
+
+cmd_update() {
+	require_root
+	load_config
+
+	if ! lxc_exists; then
+		log_error "Container not installed. Run: giteactl install"
+		return 1
+	fi
+
+	log_info "Updating Gitea binary..."
+
+	# Download new binary
+	install_gitea_binary || exit 1
+
+	# Restart if running
+	if [ "$(uci_get main.enabled)" = "1" ]; then
+		/etc/init.d/gitea restart
+	fi
+
+	log_info "Update complete"
+}
+
+cmd_status() {
+	load_config
+
+	local enabled="$(uci_get main.enabled)"
+	local running="false"
+	local installed="false"
+	local uptime=""
+
+	if lxc_exists; then
+		installed="true"
+	fi
+
+	if lxc_running; then
+		running="true"
+		uptime=$(lxc-info -n "$LXC_NAME" 2>/dev/null | grep -i "cpu use" | head -1 | awk '{print $3}')
+	fi
+
+	# Get LAN IP for URL
+	local lan_ip
+	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+	# Count repositories
+	local repo_count=0
+	if [ -d "$data_path/git/repositories" ]; then
+		repo_count=$(find "$data_path/git/repositories" -name "*.git" -type d 2>/dev/null | wc -l)
+	fi
+
+	# Get disk usage
+	local disk_usage="0"
+	if [ -d "$data_path" ]; then
+		disk_usage=$(du -sh "$data_path" 2>/dev/null | awk '{print $1}' || echo "0")
+	fi
+
+	cat << EOF
+{
+  "enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+  "running": $running,
+  "installed": $installed,
+  "uptime": "$uptime",
+  "http_port": $http_port,
+  "ssh_port": $ssh_port,
+  "data_path": "$data_path",
+  "memory_limit": "$memory_limit",
+  "app_name": "$app_name",
+  "domain": "$domain",
+  "repo_count": $repo_count,
+  "disk_usage": "$disk_usage",
+  "http_url": "http://${lan_ip}:${http_port}",
+  "ssh_url": "ssh://git@${lan_ip}:${ssh_port}",
+  "container_name": "$LXC_NAME",
+  "version": "$GITEA_VERSION"
+}
+EOF
+}
+
+cmd_logs() {
+	load_config
+
+	local lines="${1:-100}"
+
+	# Check for gitea logs
+	if lxc_running; then
+		log_info "Container logs (last $lines lines):"
+		lxc-attach -n "$LXC_NAME" -- cat /data/log/gitea.log 2>/dev/null | tail -n "$lines" || \
+		echo "No logs available"
+	else
+		echo "Container not running"
+	fi
+
+	# Also check install logs
+	for logfile in /var/log/gitea-install.log /var/log/gitea-update.log; do
+		if [ -f "$logfile" ]; then
+			echo ""
+			echo "=== $logfile ==="
+			tail -n 50 "$logfile"
+		fi
+	done
+}
+
+cmd_shell() {
+	require_root
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		exit 1
+	fi
+
+	lxc-attach -n "$LXC_NAME" -- /bin/sh
+}
+
+cmd_backup() {
+	require_root
+	load_config
+
+	local backup_file="$BACKUP_PATH/gitea-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+
+	log_info "Creating backup..."
+	ensure_dir "$BACKUP_PATH"
+
+	# Stop service for consistent backup
+	local was_running=0
+	if lxc_running; then
+		was_running=1
+		lxc_stop
+	fi
+
+	# Create backup
+	tar -czf "$backup_file" -C "$data_path" \
+		git \
+		custom \
+		gitea.db 2>/dev/null || true
+
+	if [ $was_running -eq 1 ]; then
+		/etc/init.d/gitea start &
+	fi
+
+	local size=$(ls -lh "$backup_file" 2>/dev/null | awk '{print $5}')
+	log_info "Backup created: $backup_file ($size)"
+	echo "$backup_file"
+}
+
+cmd_restore() {
+	require_root
+	load_config
+
+	local backup_file="$1"
+
+	if [ -z "$backup_file" ] || [ ! -f "$backup_file" ]; then
+		log_error "Usage: giteactl restore <backup-file>"
+		log_error "Available backups:"
+		ls -la "$BACKUP_PATH"/*.tar.gz 2>/dev/null || echo "No backups found"
+		return 1
+	fi
+
+	log_info "Restoring from: $backup_file"
+
+	# Stop service
+	local was_running=0
+	if lxc_running; then
+		was_running=1
+		lxc_stop
+	fi
+
+	# Restore backup
+	tar -xzf "$backup_file" -C "$data_path"
+
+	if [ $was_running -eq 1 ]; then
+		/etc/init.d/gitea start &
+	fi
+
+	log_info "Restore complete"
+}
+
+cmd_admin_create_user() {
+	require_root
+	load_config
+
+	local username=""
+	local password=""
+	local email=""
+
+	# Parse arguments
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--username) username="$2"; shift 2 ;;
+			--password) password="$2"; shift 2 ;;
+			--email) email="$2"; shift 2 ;;
+			*) shift ;;
+		esac
+	done
+
+	if [ -z "$username" ] || [ -z "$password" ] || [ -z "$email" ]; then
+		log_error "Usage: giteactl admin create-user --username <name> --password <pass> --email <email>"
+		return 1
+	fi
+
+	if ! lxc_running; then
+		log_error "Container must be running to create users"
+		return 1
+	fi
+
+	log_info "Creating admin user: $username"
+
+	lxc-attach -n "$LXC_NAME" -- su-exec git /usr/local/bin/gitea admin user create \
+		--username "$username" \
+		--password "$password" \
+		--email "$email" \
+		--admin \
+		--config /data/custom/conf/app.ini
+
+	if [ $? -eq 0 ]; then
+		log_info "Admin user created successfully"
+	else
+		log_error "Failed to create admin user"
+		return 1
+	fi
+}
+
+cmd_service_run() {
+	require_root
+	load_config
+
+	lxc_check_prereqs || exit 1
+	lxc_run
+}
+
+cmd_service_stop() {
+	require_root
+	lxc_stop
+}
+
+# Main
+case "${1:-}" in
+	install)    shift; cmd_install "$@" ;;
+	uninstall)  shift; cmd_uninstall "$@" ;;
+	update)     shift; cmd_update "$@" ;;
+	start)      /etc/init.d/gitea start ;;
+	stop)       /etc/init.d/gitea stop ;;
+	restart)    /etc/init.d/gitea restart ;;
+	status)     shift; cmd_status "$@" ;;
+	logs)       shift; cmd_logs "$@" ;;
+	shell)      shift; cmd_shell "$@" ;;
+	backup)     shift; cmd_backup "$@" ;;
+	restore)    shift; cmd_restore "$@" ;;
+	admin)
+		shift
+		case "${1:-}" in
+			create-user) shift; cmd_admin_create_user "$@" ;;
+			*) echo "Usage: giteactl admin create-user --username <name> --password <pass> --email <email>"; exit 1 ;;
+		esac
+		;;
+	service-run)  shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	*)          usage ;;
+esac
