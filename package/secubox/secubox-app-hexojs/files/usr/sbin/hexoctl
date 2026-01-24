@@ -102,7 +102,7 @@ Build Commands:
   build               Generate static files
   clean               Clean generated files
   deploy              Deploy to configured git target
-  publish             Copy static files to /www/blog/
+  publish             Copy static files to /www/
 
 Service Commands:
   service-run         Run in foreground (for init)
@@ -818,7 +818,7 @@ cmd_publish() {
 	load_config
 
 	local public_dir="$data_path/site/public"
-	local portal_path="/www/blog"
+	local portal_path="/www"
 	local config_file="$data_path/site/_config.yml"
 
 	# Allow custom portal path from config

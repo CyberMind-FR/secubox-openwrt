@@ -83,7 +83,7 @@ if (page.tags && page.tags.length > 0) {
   <header class="post-header">
     <% if (hasCategory) { %>
     <div class="post-category">
-      <a href="/blog/<%= categorySlug %>/" style="color: <%= categoryColor %>">
+      <a href="<%= url_for('/' + categorySlug + '/') %>" style="color: <%= categoryColor %>">
         <%= categoryIcon %> <%= categoryName %>
       </a>
     </div>
