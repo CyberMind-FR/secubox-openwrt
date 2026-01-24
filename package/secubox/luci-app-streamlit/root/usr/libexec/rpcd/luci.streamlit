@@ -1,0 +1,609 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# LuCI RPC backend for Streamlit Platform
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONFIG="streamlit"
+LXC_NAME="streamlit"
+LXC_PATH="/srv/lxc"
+APPS_PATH="/srv/streamlit/apps"
+
+# JSON helpers
+json_init_obj() { json_init; json_add_object "result"; }
+json_close_obj() { json_close_object; json_dump; }
+
+json_error() {
+	json_init
+	json_add_object "error"
+	json_add_string "message" "$1"
+	json_close_object
+	json_dump
+}
+
+json_success() {
+	json_init_obj
+	json_add_boolean "success" 1
+	[ -n "$1" ] && json_add_string "message" "$1"
+	json_close_obj
+}
+
+# Check if container is running
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+# Check if container exists
+lxc_exists() {
+	[ -f "$LXC_PATH/$LXC_NAME/config" ] && [ -d "$LXC_PATH/$LXC_NAME/rootfs" ]
+}
+
+# Get service status
+get_status() {
+	local enabled running installed uptime
+	local http_port data_path memory_limit active_app
+
+	config_load "$CONFIG"
+	config_get enabled main enabled "0"
+	config_get http_port main http_port "8501"
+	config_get data_path main data_path "/srv/streamlit"
+	config_get memory_limit main memory_limit "512M"
+	config_get active_app main active_app "hello"
+
+	running="false"
+	installed="false"
+	uptime=""
+
+	if lxc_exists; then
+		installed="true"
+	fi
+
+	if lxc_running; then
+		running="true"
+		uptime=$(lxc-info -n "$LXC_NAME" 2>/dev/null | grep -i "cpu use" | head -1 | awk '{print $3}')
+	fi
+
+	# Count apps
+	local app_count=0
+	APPS_PATH="$data_path/apps"
+	if [ -d "$APPS_PATH" ]; then
+		app_count=$(ls -1 "$APPS_PATH"/*.py 2>/dev/null | wc -l)
+	fi
+
+	# Get LAN IP for URL
+	local lan_ip
+	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+	json_init_obj
+	json_add_boolean "enabled" "$( [ "$enabled" = "1" ] && echo 1 || echo 0 )"
+	json_add_boolean "running" "$( [ "$running" = "true" ] && echo 1 || echo 0 )"
+	json_add_boolean "installed" "$( [ "$installed" = "true" ] && echo 1 || echo 0 )"
+	json_add_string "uptime" "$uptime"
+	json_add_int "http_port" "$http_port"
+	json_add_string "data_path" "$data_path"
+	json_add_string "memory_limit" "$memory_limit"
+	json_add_string "active_app" "$active_app"
+	json_add_int "app_count" "$app_count"
+	json_add_string "web_url" "http://${lan_ip}:${http_port}"
+	json_add_string "container_name" "$LXC_NAME"
+	json_close_obj
+}
+
+# Get configuration
+get_config() {
+	local http_port http_host data_path memory_limit enabled active_app
+	local headless gather_stats theme_base theme_primary
+
+	config_load "$CONFIG"
+
+	# Main settings
+	config_get http_port main http_port "8501"
+	config_get http_host main http_host "0.0.0.0"
+	config_get data_path main data_path "/srv/streamlit"
+	config_get memory_limit main memory_limit "512M"
+	config_get enabled main enabled "0"
+	config_get active_app main active_app "hello"
+
+	# Server settings
+	config_get headless server headless "true"
+	config_get gather_stats server browser_gather_usage_stats "false"
+	config_get theme_base server theme_base "dark"
+	config_get theme_primary server theme_primary_color "#0ff"
+
+	json_init_obj
+	json_add_object "main"
+	json_add_boolean "enabled" "$( [ "$enabled" = "1" ] && echo 1 || echo 0 )"
+	json_add_int "http_port" "$http_port"
+	json_add_string "http_host" "$http_host"
+	json_add_string "data_path" "$data_path"
+	json_add_string "memory_limit" "$memory_limit"
+	json_add_string "active_app" "$active_app"
+	json_close_object
+
+	json_add_object "server"
+	json_add_boolean "headless" "$( [ "$headless" = "true" ] && echo 1 || echo 0 )"
+	json_add_boolean "browser_gather_usage_stats" "$( [ "$gather_stats" = "true" ] && echo 1 || echo 0 )"
+	json_add_string "theme_base" "$theme_base"
+	json_add_string "theme_primary_color" "$theme_primary"
+	json_close_object
+
+	json_close_obj
+}
+
+# Save configuration
+save_config() {
+	read -r input
+
+	local http_port http_host data_path memory_limit enabled active_app
+	local headless gather_stats theme_base theme_primary
+
+	http_port=$(echo "$input" | jsonfilter -e '@.http_port' 2>/dev/null)
+	http_host=$(echo "$input" | jsonfilter -e '@.http_host' 2>/dev/null)
+	data_path=$(echo "$input" | jsonfilter -e '@.data_path' 2>/dev/null)
+	memory_limit=$(echo "$input" | jsonfilter -e '@.memory_limit' 2>/dev/null)
+	enabled=$(echo "$input" | jsonfilter -e '@.enabled' 2>/dev/null)
+	active_app=$(echo "$input" | jsonfilter -e '@.active_app' 2>/dev/null)
+	headless=$(echo "$input" | jsonfilter -e '@.headless' 2>/dev/null)
+	gather_stats=$(echo "$input" | jsonfilter -e '@.browser_gather_usage_stats' 2>/dev/null)
+	theme_base=$(echo "$input" | jsonfilter -e '@.theme_base' 2>/dev/null)
+	theme_primary=$(echo "$input" | jsonfilter -e '@.theme_primary_color' 2>/dev/null)
+
+	[ -n "$http_port" ] && uci set "${CONFIG}.main.http_port=$http_port"
+	[ -n "$http_host" ] && uci set "${CONFIG}.main.http_host=$http_host"
+	[ -n "$data_path" ] && uci set "${CONFIG}.main.data_path=$data_path"
+	[ -n "$memory_limit" ] && uci set "${CONFIG}.main.memory_limit=$memory_limit"
+	[ -n "$enabled" ] && uci set "${CONFIG}.main.enabled=$enabled"
+	[ -n "$active_app" ] && uci set "${CONFIG}.main.active_app=$active_app"
+	[ -n "$headless" ] && uci set "${CONFIG}.server.headless=$headless"
+	[ -n "$gather_stats" ] && uci set "${CONFIG}.server.browser_gather_usage_stats=$gather_stats"
+	[ -n "$theme_base" ] && uci set "${CONFIG}.server.theme_base=$theme_base"
+	[ -n "$theme_primary" ] && uci set "${CONFIG}.server.theme_primary_color=$theme_primary"
+
+	uci commit "$CONFIG"
+
+	json_success "Configuration saved"
+}
+
+# Start service
+start_service() {
+	if lxc_running; then
+		json_error "Service is already running"
+		return
+	fi
+
+	if ! lxc_exists; then
+		json_error "Container not installed. Run install first."
+		return
+	fi
+
+	/etc/init.d/streamlit start >/dev/null 2>&1 &
+
+	sleep 2
+	if lxc_running; then
+		json_success "Service started"
+	else
+		json_error "Failed to start service"
+	fi
+}
+
+# Stop service
+stop_service() {
+	if ! lxc_running; then
+		json_error "Service is not running"
+		return
+	fi
+
+	/etc/init.d/streamlit stop >/dev/null 2>&1
+
+	sleep 2
+	if ! lxc_running; then
+		json_success "Service stopped"
+	else
+		json_error "Failed to stop service"
+	fi
+}
+
+# Restart service
+restart_service() {
+	/etc/init.d/streamlit restart >/dev/null 2>&1 &
+
+	sleep 3
+	if lxc_running; then
+		json_success "Service restarted"
+	else
+		json_error "Service restart failed"
+	fi
+}
+
+# Install Streamlit
+install() {
+	if lxc_exists; then
+		json_error "Already installed. Use update to refresh."
+		return
+	fi
+
+	# Run install in background
+	/usr/sbin/streamlitctl install >/var/log/streamlit-install.log 2>&1 &
+
+	json_init_obj
+	json_add_boolean "started" 1
+	json_add_string "message" "Installation started in background"
+	json_add_string "log_file" "/var/log/streamlit-install.log"
+	json_close_obj
+}
+
+# Uninstall Streamlit
+uninstall() {
+	/usr/sbin/streamlitctl uninstall >/dev/null 2>&1
+
+	if ! lxc_exists; then
+		json_success "Uninstalled successfully"
+	else
+		json_error "Uninstall failed"
+	fi
+}
+
+# Update Streamlit
+update() {
+	if ! lxc_exists; then
+		json_error "Not installed. Run install first."
+		return
+	fi
+
+	# Run update in background
+	/usr/sbin/streamlitctl update >/var/log/streamlit-update.log 2>&1 &
+
+	json_init_obj
+	json_add_boolean "started" 1
+	json_add_string "message" "Update started in background"
+	json_add_string "log_file" "/var/log/streamlit-update.log"
+	json_close_obj
+}
+
+# Get logs
+get_logs() {
+	read -r input
+	local lines
+	lines=$(echo "$input" | jsonfilter -e '@.lines' 2>/dev/null)
+	[ -z "$lines" ] && lines=100
+
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/streamlit"
+
+	json_init_obj
+	json_add_array "logs"
+
+	# Get container logs from data path
+	if [ -d "$data_path/logs" ]; then
+		local logfile
+		for logfile in "$data_path/logs"/*.log; do
+			[ -f "$logfile" ] || continue
+			tail -n "$lines" "$logfile" 2>/dev/null | while IFS= read -r line; do
+				json_add_string "" "$line"
+			done
+		done
+	fi
+
+	# Also check install/update logs
+	for logfile in /var/log/streamlit-install.log /var/log/streamlit-update.log; do
+		[ -f "$logfile" ] || continue
+		tail -n 50 "$logfile" 2>/dev/null | while IFS= read -r line; do
+			json_add_string "" "$line"
+		done
+	done
+
+	json_close_array
+	json_close_obj
+}
+
+# List apps
+list_apps() {
+	local data_path active_app
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/streamlit"
+	config_get active_app main active_app "hello"
+
+	APPS_PATH="$data_path/apps"
+
+	json_init_obj
+	json_add_array "apps"
+
+	if [ -d "$APPS_PATH" ]; then
+		for app in "$APPS_PATH"/*.py; do
+			[ -f "$app" ] || continue
+			local name=$(basename "$app" .py)
+			local size=$(ls -la "$app" 2>/dev/null | awk '{print $5}')
+			local mtime=$(stat -c %Y "$app" 2>/dev/null || echo "0")
+
+			local is_active=0
+			[ "$name" = "$active_app" ] && is_active=1
+
+			json_add_object ""
+			json_add_string "name" "$name"
+			json_add_string "path" "$app"
+			json_add_string "size" "$size"
+			json_add_int "mtime" "$mtime"
+			json_add_boolean "active" "$is_active"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_add_string "active_app" "$active_app"
+	json_add_string "apps_path" "$APPS_PATH"
+	json_close_obj
+}
+
+# Add app
+add_app() {
+	read -r input
+	local name path
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	path=$(echo "$input" | jsonfilter -e '@.path' 2>/dev/null)
+
+	if [ -z "$name" ] || [ -z "$path" ]; then
+		json_error "Missing name or path"
+		return
+	fi
+
+	/usr/sbin/streamlitctl app add "$name" "$path" >/dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		json_success "App added: $name"
+	else
+		json_error "Failed to add app"
+	fi
+}
+
+# Remove app
+remove_app() {
+	read -r input
+	local name
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	if [ -z "$name" ]; then
+		json_error "Missing app name"
+		return
+	fi
+
+	/usr/sbin/streamlitctl app remove "$name" >/dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		json_success "App removed: $name"
+	else
+		json_error "Failed to remove app"
+	fi
+}
+
+# Set active app
+set_active_app() {
+	read -r input
+	local name
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	if [ -z "$name" ]; then
+		json_error "Missing app name"
+		return
+	fi
+
+	/usr/sbin/streamlitctl app run "$name" >/dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		json_success "Active app set to: $name"
+	else
+		json_error "Failed to set active app"
+	fi
+}
+
+# Get app details
+get_app() {
+	read -r input
+	local name
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	if [ -z "$name" ]; then
+		json_error "Missing app name"
+		return
+	fi
+
+	local data_path active_app
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/streamlit"
+	config_get active_app main active_app "hello"
+
+	local app_file="$data_path/apps/${name}.py"
+
+	if [ ! -f "$app_file" ]; then
+		json_error "App not found"
+		return
+	fi
+
+	local size=$(ls -la "$app_file" 2>/dev/null | awk '{print $5}')
+	local mtime=$(stat -c %Y "$app_file" 2>/dev/null || echo "0")
+	local lines=$(wc -l < "$app_file" 2>/dev/null || echo "0")
+
+	local is_active=0
+	[ "$name" = "$active_app" ] && is_active=1
+
+	json_init_obj
+	json_add_string "name" "$name"
+	json_add_string "path" "$app_file"
+	json_add_string "size" "$size"
+	json_add_int "mtime" "$mtime"
+	json_add_int "lines" "$lines"
+	json_add_boolean "active" "$is_active"
+	json_close_obj
+}
+
+# Upload app (receive base64 content)
+upload_app() {
+	read -r input
+	local name content
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	content=$(echo "$input" | jsonfilter -e '@.content' 2>/dev/null)
+
+	if [ -z "$name" ] || [ -z "$content" ]; then
+		json_error "Missing name or content"
+		return
+	fi
+
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/streamlit"
+
+	local app_file="$data_path/apps/${name}.py"
+	mkdir -p "$data_path/apps"
+
+	# Decode base64 and write
+	echo "$content" | base64 -d > "$app_file" 2>/dev/null
+	if [ $? -eq 0 ]; then
+		# Register in UCI
+		uci set "${CONFIG}.${name}=app"
+		uci set "${CONFIG}.${name}.name=$name"
+		uci set "${CONFIG}.${name}.path=${name}.py"
+		uci set "${CONFIG}.${name}.enabled=1"
+		uci commit "$CONFIG"
+
+		json_success "App uploaded: $name"
+	else
+		json_error "Failed to decode app content"
+	fi
+}
+
+# Check install progress
+get_install_progress() {
+	local log_file="/var/log/streamlit-install.log"
+	local status="unknown"
+	local progress=0
+	local message=""
+
+	if [ -f "$log_file" ]; then
+		# Check for completion markers
+		if grep -q "Installation complete" "$log_file" 2>/dev/null; then
+			status="completed"
+			progress=100
+			message="Installation completed successfully"
+		elif grep -q "ERROR" "$log_file" 2>/dev/null; then
+			status="error"
+			message=$(grep "ERROR" "$log_file" | tail -1)
+		else
+			status="running"
+			# Estimate progress based on log content
+			if grep -q "Rootfs created" "$log_file" 2>/dev/null; then
+				progress=80
+				message="Setting up container..."
+			elif grep -q "Extracting rootfs" "$log_file" 2>/dev/null; then
+				progress=60
+				message="Extracting container rootfs..."
+			elif grep -q "Downloading Alpine" "$log_file" 2>/dev/null; then
+				progress=40
+				message="Downloading Alpine rootfs..."
+			elif grep -q "Installing Streamlit" "$log_file" 2>/dev/null; then
+				progress=20
+				message="Starting installation..."
+			else
+				progress=10
+				message="Initializing..."
+			fi
+		fi
+	else
+		status="not_started"
+		message="Installation has not been started"
+	fi
+
+	# Check if process is still running
+	if pgrep -f "streamlitctl install" >/dev/null 2>&1; then
+		status="running"
+	fi
+
+	json_init_obj
+	json_add_string "status" "$status"
+	json_add_int "progress" "$progress"
+	json_add_string "message" "$message"
+	json_close_obj
+}
+
+# Main RPC handler
+case "$1" in
+	list)
+		cat <<-EOF
+		{
+			"get_status": {},
+			"get_config": {},
+			"save_config": {"http_port": 8501, "http_host": "str", "data_path": "str", "memory_limit": "str", "enabled": "str", "active_app": "str", "headless": "str", "browser_gather_usage_stats": "str", "theme_base": "str", "theme_primary_color": "str"},
+			"start": {},
+			"stop": {},
+			"restart": {},
+			"install": {},
+			"uninstall": {},
+			"update": {},
+			"get_logs": {"lines": 100},
+			"list_apps": {},
+			"get_app": {"name": "str"},
+			"add_app": {"name": "str", "path": "str"},
+			"remove_app": {"name": "str"},
+			"set_active_app": {"name": "str"},
+			"upload_app": {"name": "str", "content": "str"},
+			"get_install_progress": {}
+		}
+		EOF
+		;;
+	call)
+		case "$2" in
+			get_status)
+				get_status
+				;;
+			get_config)
+				get_config
+				;;
+			save_config)
+				save_config
+				;;
+			start)
+				start_service
+				;;
+			stop)
+				stop_service
+				;;
+			restart)
+				restart_service
+				;;
+			install)
+				install
+				;;
+			uninstall)
+				uninstall
+				;;
+			update)
+				update
+				;;
+			get_logs)
+				get_logs
+				;;
+			list_apps)
+				list_apps
+				;;
+			get_app)
+				get_app
+				;;
+			add_app)
+				add_app
+				;;
+			remove_app)
+				remove_app
+				;;
+			set_active_app)
+				set_active_app
+				;;
+			upload_app)
+				upload_app
+				;;
+			get_install_progress)
+				get_install_progress
+				;;
+			*)
+				json_error "Unknown method: $2"
+				;;
+		esac
+		;;
+esac

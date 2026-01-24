@@ -1,0 +1,538 @@
+#!/bin/sh
+# SecuBox Metabolizer Blog Pipeline Controller
+# Copyright (C) 2025 CyberMind.fr
+#
+# Integrates Gitea + Streamlit + HexoJS for blog CMS
+
+CONFIG="metabolizer"
+
+# Logging
+log_info() { echo "[INFO] $*"; logger -t metabolizer "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t metabolizer -p err "$*"; }
+log_debug() { [ "$DEBUG" = "1" ] && echo "[DEBUG] $*"; }
+
+# Helpers
+require_root() {
+	[ "$(id -u)" -eq 0 ] || {
+		log_error "This command requires root privileges"
+		exit 1
+	}
+}
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Load configuration
+load_config() {
+	# Main settings
+	enabled="$(uci_get main.enabled)" || enabled="0"
+	gitea_url="$(uci_get main.gitea_url)" || gitea_url="http://127.0.0.1:3000"
+	gitea_user="$(uci_get main.gitea_user)" || gitea_user="admin"
+	webhook_port="$(uci_get main.webhook_port)" || webhook_port="8088"
+	webhook_secret="$(uci_get main.webhook_secret)" || webhook_secret=""
+
+	# Content settings
+	content_repo="$(uci_get content.repo_name)" || content_repo="blog-content"
+	content_path="$(uci_get content.repo_path)" || content_path="/srv/metabolizer/content"
+	github_mirror="$(uci_get content.github_mirror)" || github_mirror=""
+
+	# CMS settings
+	cms_repo="$(uci_get cms.repo_name)" || cms_repo="metabolizer-cms"
+	cms_path="$(uci_get cms.repo_path)" || cms_path="/srv/metabolizer/cms"
+	streamlit_app="$(uci_get cms.streamlit_app)" || streamlit_app="metabolizer"
+
+	# Hexo settings
+	hexo_source="$(uci_get hexo.source_path)" || hexo_source="/srv/hexojs/site/source/_posts"
+	hexo_public="$(uci_get hexo.public_path)" || hexo_public="/srv/hexojs/site/public"
+	portal_path="$(uci_get hexo.portal_path)" || portal_path="/www/blog"
+	auto_publish="$(uci_get hexo.auto_publish)" || auto_publish="1"
+
+	# Portal settings
+	portal_enabled="$(uci_get portal.enabled)" || portal_enabled="1"
+	portal_url="$(uci_get portal.url_path)" || portal_url="/blog"
+	portal_title="$(uci_get portal.title)" || portal_title="SecuBox Blog"
+
+	# Ensure directories
+	ensure_dir "/srv/metabolizer"
+	ensure_dir "$content_path"
+	ensure_dir "$cms_path"
+}
+
+# Generate webhook secret
+generate_secret() {
+	head -c 32 /dev/urandom | base64 | tr -d '\n/+='
+}
+
+# Check if Gitea is running
+gitea_running() {
+	lxc-info -n gitea -s 2>/dev/null | grep -q "RUNNING"
+}
+
+# Check if Streamlit is running
+streamlit_running() {
+	lxc-info -n streamlit -s 2>/dev/null | grep -q "RUNNING"
+}
+
+# Check if HexoJS is running
+hexo_running() {
+	lxc-info -n hexojs -s 2>/dev/null | grep -q "RUNNING"
+}
+
+# Usage
+usage() {
+	cat <<EOF
+SecuBox Metabolizer Blog Pipeline Controller
+
+Usage: $(basename $0) <command> [options]
+
+Commands:
+  install         Setup repos in Gitea, deploy CMS to Streamlit
+  uninstall       Remove metabolizer setup (preserve content)
+  status          Show pipeline status (JSON)
+
+  mirror <url>    Clone GitHub repo to local Gitea
+  sync            Pull latest from all repos
+  build           Trigger Hexo clean -> generate -> publish
+  publish         Copy static site to portal
+
+  cms deploy      Deploy CMS app to Streamlit
+  cms update      Pull and restart CMS
+
+  webhook-listen  Start webhook listener (used by init)
+  webhook-handle  Handle incoming webhook (internal)
+
+Configuration:
+  /etc/config/metabolizer
+
+Data directories:
+  /srv/metabolizer/content  - Blog content repo
+  /srv/metabolizer/cms      - CMS app repo
+  /www/blog                 - Static site output
+
+EOF
+}
+
+# Install metabolizer pipeline
+cmd_install() {
+	require_root
+	load_config
+
+	log_info "Installing Metabolizer Blog Pipeline..."
+
+	# Check prerequisites
+	if ! gitea_running; then
+		log_error "Gitea is not running. Start with: /etc/init.d/gitea start"
+		return 1
+	fi
+
+	if ! streamlit_running; then
+		log_error "Streamlit is not running. Start with: /etc/init.d/streamlit start"
+		return 1
+	fi
+
+	# Generate webhook secret if not set
+	if [ -z "$webhook_secret" ]; then
+		webhook_secret=$(generate_secret)
+		uci_set main.webhook_secret "$webhook_secret"
+		log_info "Generated webhook secret"
+	fi
+
+	# Create content repo in Gitea (if not exists)
+	log_info "Setting up content repository..."
+	setup_gitea_repo "$content_repo" "Blog content repository"
+
+	# Create CMS repo in Gitea (if not exists)
+	log_info "Setting up CMS repository..."
+	setup_gitea_repo "$cms_repo" "Metabolizer CMS Streamlit app"
+
+	# Clone repos locally
+	log_info "Cloning repositories..."
+	clone_repo "$content_repo" "$content_path"
+	clone_repo "$cms_repo" "$cms_path"
+
+	# Deploy CMS to Streamlit
+	log_info "Deploying CMS to Streamlit..."
+	cmd_cms_deploy
+
+	# Setup portal directory
+	log_info "Setting up portal..."
+	ensure_dir "$portal_path"
+
+	# Enable service
+	uci_set main.enabled '1'
+	/etc/init.d/metabolizer enable 2>/dev/null || true
+
+	log_info "Installation complete!"
+	log_info ""
+	log_info "Access CMS: http://<router-ip>:8501"
+	log_info "View Blog:  http://<router-ip>$portal_url"
+}
+
+# Setup Gitea repository
+setup_gitea_repo() {
+	local repo_name="$1"
+	local description="$2"
+
+	# Check if repo exists via Gitea API
+	local api_url="${gitea_url}/api/v1/repos/${gitea_user}/${repo_name}"
+
+	# Try to get repo info
+	local response=$(wget -q -O - "$api_url" 2>/dev/null)
+	if echo "$response" | grep -q "\"name\":\"$repo_name\""; then
+		log_info "Repository '$repo_name' already exists"
+		return 0
+	fi
+
+	# Create repo via Gitea CLI in container
+	log_info "Creating repository '$repo_name'..."
+	lxc-attach -n gitea -- su-exec git /usr/local/bin/gitea admin repo-create \
+		--username "$gitea_user" \
+		--name "$repo_name" \
+		--private false \
+		--config /data/custom/conf/app.ini 2>/dev/null || {
+		log_error "Failed to create repository '$repo_name'"
+		return 1
+	}
+
+	log_info "Repository '$repo_name' created"
+}
+
+# Clone repository locally
+clone_repo() {
+	local repo_name="$1"
+	local local_path="$2"
+
+	if [ -d "$local_path/.git" ]; then
+		log_info "Repository '$repo_name' already cloned at $local_path"
+		return 0
+	fi
+
+	ensure_dir "$(dirname "$local_path")"
+
+	local clone_url="${gitea_url}/${gitea_user}/${repo_name}.git"
+	git clone "$clone_url" "$local_path" 2>/dev/null || {
+		# If empty repo, init locally
+		log_info "Initializing empty repository..."
+		mkdir -p "$local_path"
+		cd "$local_path"
+		git init
+		git remote add origin "$clone_url"
+	}
+
+	log_info "Repository '$repo_name' ready at $local_path"
+}
+
+# Mirror GitHub repo to Gitea
+cmd_mirror() {
+	require_root
+	load_config
+
+	local github_url="$1"
+
+	if [ -z "$github_url" ]; then
+		log_error "Usage: metabolizerctl mirror <github-url>"
+		return 1
+	fi
+
+	if ! gitea_running; then
+		log_error "Gitea is not running"
+		return 1
+	fi
+
+	# Extract repo name from URL
+	local repo_name=$(basename "$github_url" .git)
+
+	log_info "Mirroring $github_url to local Gitea..."
+
+	# Clone from GitHub
+	local tmp_path="/tmp/metabolizer-mirror-$$"
+	git clone --bare "$github_url" "$tmp_path" || {
+		log_error "Failed to clone from GitHub"
+		return 1
+	}
+
+	# Create repo in Gitea
+	setup_gitea_repo "$repo_name" "Mirrored from $github_url"
+
+	# Push to local Gitea
+	cd "$tmp_path"
+	git remote add gitea "${gitea_url}/${gitea_user}/${repo_name}.git"
+	git push --mirror gitea || {
+		log_error "Failed to push to Gitea"
+		rm -rf "$tmp_path"
+		return 1
+	}
+
+	rm -rf "$tmp_path"
+
+	# Save mirror URL for future syncs
+	uci_set content.github_mirror "$github_url"
+
+	log_info "Mirror complete: $repo_name"
+	echo "${gitea_url}/${gitea_user}/${repo_name}.git"
+}
+
+# Sync all repos
+cmd_sync() {
+	require_root
+	load_config
+
+	log_info "Syncing repositories..."
+
+	# Sync content repo
+	if [ -d "$content_path/.git" ]; then
+		log_info "Pulling content repo..."
+		cd "$content_path" && git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || true
+	fi
+
+	# Sync CMS repo
+	if [ -d "$cms_path/.git" ]; then
+		log_info "Pulling CMS repo..."
+		cd "$cms_path" && git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || true
+	fi
+
+	# Sync from GitHub mirror if configured
+	if [ -n "$github_mirror" ] && [ -d "$content_path/.git" ]; then
+		log_info "Syncing from GitHub mirror..."
+		cd "$content_path"
+		git fetch origin
+		git reset --hard origin/main 2>/dev/null || git reset --hard origin/master 2>/dev/null || true
+	fi
+
+	log_info "Sync complete"
+}
+
+# Build static site with Hexo
+cmd_build() {
+	require_root
+	load_config
+
+	log_info "Building static site..."
+
+	# Sync content to Hexo source
+	if [ -d "$content_path/_posts" ]; then
+		log_info "Syncing posts to Hexo..."
+		rsync -av --delete "$content_path/_posts/" "$hexo_source/" || true
+	fi
+
+	# Sync images if exists
+	if [ -d "$content_path/images" ]; then
+		log_info "Syncing images..."
+		ensure_dir "/srv/hexojs/site/source/images"
+		rsync -av "$content_path/images/" "/srv/hexojs/site/source/images/" || true
+	fi
+
+	# Run Hexo build
+	if command -v hexoctl >/dev/null 2>&1; then
+		log_info "Running Hexo clean..."
+		hexoctl clean 2>/dev/null || true
+
+		log_info "Running Hexo generate..."
+		hexoctl generate || {
+			log_error "Hexo build failed"
+			return 1
+		}
+	else
+		log_error "hexoctl not found"
+		return 1
+	fi
+
+	# Auto-publish if enabled
+	if [ "$auto_publish" = "1" ]; then
+		cmd_publish
+	fi
+
+	log_info "Build complete"
+}
+
+# Publish to portal
+cmd_publish() {
+	require_root
+	load_config
+
+	log_info "Publishing to portal..."
+
+	if [ ! -d "$hexo_public" ]; then
+		log_error "Hexo public directory not found. Run 'metabolizerctl build' first."
+		return 1
+	fi
+
+	ensure_dir "$portal_path"
+	rsync -av --delete "$hexo_public/" "$portal_path/" || {
+		log_error "Failed to publish to portal"
+		return 1
+	}
+
+	log_info "Published to $portal_path"
+}
+
+# Deploy CMS to Streamlit
+cmd_cms_deploy() {
+	require_root
+	load_config
+
+	log_info "Deploying CMS to Streamlit..."
+
+	local streamlit_apps="/srv/streamlit/apps"
+	ensure_dir "$streamlit_apps"
+
+	# Copy CMS app from package or repo
+	if [ -d "$cms_path" ] && [ -f "$cms_path/app.py" ]; then
+		# Use repo version
+		cp -r "$cms_path"/* "$streamlit_apps/metabolizer/" 2>/dev/null || {
+			mkdir -p "$streamlit_apps/metabolizer"
+			cp -r "$cms_path"/* "$streamlit_apps/metabolizer/"
+		}
+	else
+		# Use package default
+		if [ -d "/usr/share/metabolizer/cms" ]; then
+			mkdir -p "$streamlit_apps/metabolizer"
+			cp -r /usr/share/metabolizer/cms/* "$streamlit_apps/metabolizer/"
+		fi
+	fi
+
+	# Create symlink for Streamlit
+	ln -sf "$streamlit_apps/metabolizer/app.py" "$streamlit_apps/metabolizer.py" 2>/dev/null || true
+
+	# Set as active app
+	uci set streamlit.main.active_app='metabolizer'
+	uci commit streamlit
+
+	# Restart Streamlit if running
+	if streamlit_running; then
+		/etc/init.d/streamlit restart 2>/dev/null &
+	fi
+
+	log_info "CMS deployed"
+}
+
+# Update CMS from repo
+cmd_cms_update() {
+	require_root
+	load_config
+
+	log_info "Updating CMS..."
+
+	# Pull latest
+	if [ -d "$cms_path/.git" ]; then
+		cd "$cms_path" && git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || true
+	fi
+
+	# Redeploy
+	cmd_cms_deploy
+
+	log_info "CMS updated"
+}
+
+# Status
+cmd_status() {
+	load_config
+
+	local gitea_status="stopped"
+	local streamlit_status="stopped"
+	local hexo_status="stopped"
+
+	gitea_running && gitea_status="running"
+	streamlit_running && streamlit_status="running"
+	hexo_running && hexo_status="running"
+
+	# Count posts
+	local post_count=0
+	if [ -d "$content_path/_posts" ]; then
+		post_count=$(ls -1 "$content_path/_posts"/*.md 2>/dev/null | wc -l)
+	fi
+
+	# Get LAN IP
+	local lan_ip
+	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+	cat << EOF
+{
+  "enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+  "gitea": {
+    "status": "$gitea_status",
+    "url": "$gitea_url"
+  },
+  "streamlit": {
+    "status": "$streamlit_status",
+    "app": "$streamlit_app"
+  },
+  "hexo": {
+    "status": "$hexo_status"
+  },
+  "content": {
+    "repo": "$content_repo",
+    "path": "$content_path",
+    "post_count": $post_count
+  },
+  "portal": {
+    "enabled": $([ "$portal_enabled" = "1" ] && echo "true" || echo "false"),
+    "url": "http://${lan_ip}${portal_url}",
+    "path": "$portal_path"
+  },
+  "cms_url": "http://${lan_ip}:8501"
+}
+EOF
+}
+
+# Webhook listener
+cmd_webhook_listen() {
+	load_config
+
+	log_info "Starting webhook listener on port $webhook_port..."
+
+	# Simple HTTP server using netcat
+	while true; do
+		echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\"}" | \
+		nc -l -p "$webhook_port" -q 1 | while read -r line; do
+			# Check for POST data
+			if echo "$line" | grep -q "^{"; then
+				echo "$line" | /usr/bin/metabolizer-webhook &
+			fi
+		done
+		sleep 1
+	done
+}
+
+# Uninstall
+cmd_uninstall() {
+	require_root
+	load_config
+
+	log_info "Uninstalling Metabolizer..."
+
+	# Disable service
+	/etc/init.d/metabolizer stop 2>/dev/null || true
+	/etc/init.d/metabolizer disable 2>/dev/null || true
+
+	uci_set main.enabled '0'
+
+	# Remove Streamlit app link (keep data)
+	rm -f /srv/streamlit/apps/metabolizer.py 2>/dev/null || true
+
+	log_info "Metabolizer disabled"
+	log_info "Content preserved in: $content_path"
+}
+
+# Main
+case "${1:-}" in
+	install)    shift; cmd_install "$@" ;;
+	uninstall)  shift; cmd_uninstall "$@" ;;
+	status)     shift; cmd_status "$@" ;;
+	mirror)     shift; cmd_mirror "$@" ;;
+	sync)       shift; cmd_sync "$@" ;;
+	build)      shift; cmd_build "$@" ;;
+	publish)    shift; cmd_publish "$@" ;;
+	cms)
+		shift
+		case "${1:-}" in
+			deploy) shift; cmd_cms_deploy "$@" ;;
+			update) shift; cmd_cms_update "$@" ;;
+			*) echo "Usage: metabolizerctl cms {deploy|update}"; exit 1 ;;
+		esac
+		;;
+	webhook-listen) shift; cmd_webhook_listen "$@" ;;
+	*)          usage ;;
+esac
