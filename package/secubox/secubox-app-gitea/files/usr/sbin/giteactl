@@ -161,6 +161,11 @@ lxc_create_rootfs() {
 	cp /etc/resolv.conf "$rootfs/etc/resolv.conf" 2>/dev/null || \
 		echo "nameserver 1.1.1.1" > "$rootfs/etc/resolv.conf"
 
+	# Create required directories
+	mkdir -p "$rootfs/data"
+	mkdir -p "$rootfs/opt"
+	mkdir -p "$rootfs/run"
+
 	log_info "Rootfs created successfully"
 	return 0
 }
@@ -232,10 +237,20 @@ set -e
 export GITEA_WORK_DIR=/data
 export USER=git
 
+# First run: install required packages
+if [ ! -f /tmp/.gitea-deps-installed ]; then
+    echo "Installing dependencies (first run)..."
+    apk update
+    apk add --no-cache git git-lfs openssh bash su-exec sqlite
+    touch /tmp/.gitea-deps-installed
+fi
+
 # Ensure git user exists
 id -u git >/dev/null 2>&1 || adduser -D -s /bin/bash -h /data git
 
-# Ensure directories have correct ownership
+# Ensure directories exist and have correct ownership
+mkdir -p /data/git/repositories
+mkdir -p /data/custom/conf
 chown -R git:git /data/git 2>/dev/null || true
 chown -R git:git /data/custom 2>/dev/null || true
 
@@ -327,6 +342,11 @@ lxc_create_config() {
 
 	ensure_dir "$(dirname "$LXC_CONFIG")"
 
+	# Ensure host data directories exist
+	ensure_dir "$data_path"
+	ensure_dir "$data_path/git"
+	ensure_dir "$data_path/custom"
+
 	# Convert memory limit to bytes
 	local mem_bytes
 	case "$memory_limit" in
@@ -347,8 +367,6 @@ lxc.net.0.type = none
 
 # Mount points
 lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
-lxc.mount.entry = $data_path/git data/git none bind,create=dir 0 0
-lxc.mount.entry = $data_path/custom data/custom none bind,create=dir 0 0
 lxc.mount.entry = $data_path data none bind,create=dir 0 0
 
 # Environment
