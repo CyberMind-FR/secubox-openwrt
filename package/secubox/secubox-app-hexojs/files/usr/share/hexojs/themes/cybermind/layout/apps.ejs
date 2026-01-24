@@ -155,8 +155,8 @@ allApps.sort(function(a, b) {
     <% } %>
 
     <div class="apps-nav">
-        <a href="/" class="btn btn-secondary">← Accueil</a>
-        <a href="/categories/" class="btn btn-secondary">Catégories</a>
+        <a href="<%= url_for('/') %>" class="btn btn-secondary">← Accueil</a>
+        <a href="<%= url_for('categories/') %>" class="btn btn-secondary">Catégories</a>
     </div>
 </section>
 

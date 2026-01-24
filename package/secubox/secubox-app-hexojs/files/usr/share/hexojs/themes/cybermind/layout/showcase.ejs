@@ -90,7 +90,7 @@ var opensource = portfolio.filter(function(p) { return p.type === 'opensource'; 
             <div class="hero-cta">
                 <a href="#sites-clients" class="btn btn-primary">🏢 Sites Clients</a>
                 <a href="#applications" class="btn btn-secondary">📱 Applications</a>
-                <a href="/contact/" class="btn btn-secondary">💬 Contact</a>
+                <a href="<%= url_for('contact/') %>" class="btn btn-secondary">💬 Contact</a>
             </div>
         </div>
     </section>
@@ -159,7 +159,7 @@ var opensource = portfolio.filter(function(p) { return p.type === 'opensource'; 
         </div>
         
         <div class="section-footer">
-            <a href="/portfolio/clients/" class="btn btn-secondary">Voir tous les sites clients →</a>
+            <a href="<%= url_for('portfolio/clients/') %>" class="btn btn-secondary">Voir tous les sites clients →</a>
         </div>
     </section>
     
@@ -225,10 +225,10 @@ var opensource = portfolio.filter(function(p) { return p.type === 'opensource'; 
         </div>
         
         <div class="section-footer">
-            <a href="/portfolio/projects/" class="btn btn-secondary">Tous les projets →</a>
+            <a href="<%= url_for('portfolio/projects/') %>" class="btn btn-secondary">Tous les projets →</a>
         </div>
     </section>
-    
+
     <!-- Section Applications -->
     <section id="applications" class="showcase-section">
         <div class="section-header">
@@ -262,10 +262,10 @@ var opensource = portfolio.filter(function(p) { return p.type === 'opensource'; 
         </div>
         
         <div class="section-footer">
-            <a href="/apps/" class="btn btn-secondary">Toutes les applications →</a>
+            <a href="<%= url_for('apps/') %>" class="btn btn-secondary">Toutes les applications →</a>
         </div>
     </section>
-    
+
     <!-- Section Open Source -->
     <section id="opensource" class="showcase-section alt-bg">
         <div class="section-header">
@@ -314,30 +314,30 @@ var opensource = portfolio.filter(function(p) { return p.type === 'opensource'; 
         </div>
         
         <div class="services-showcase-grid">
-            <a href="/services/pentest/" class="service-showcase-card">
+            <a href="<%= url_for('services/pentest/') %>" class="service-showcase-card">
                 <span class="service-icon">🛡️</span>
                 <h3>Pentest & Sécurité</h3>
                 <p>Audits, tests d'intrusion</p>
             </a>
-            <a href="/services/dev/" class="service-showcase-card">
+            <a href="<%= url_for('services/dev/') %>" class="service-showcase-card">
                 <span class="service-icon">⚙️</span>
                 <h3>Développement</h3>
                 <p>Embarqué, Linux, IoT</p>
             </a>
-            <a href="/services/formation/" class="service-showcase-card">
+            <a href="<%= url_for('services/formation/') %>" class="service-showcase-card">
                 <span class="service-icon">🎓</span>
                 <h3>Formation</h3>
                 <p>Cybersécurité, Creative Thinking</p>
             </a>
-            <a href="/services/gk2net/" class="service-showcase-card">
+            <a href="<%= url_for('services/gk2net/') %>" class="service-showcase-card">
                 <span class="service-icon">🌐</span>
                 <h3>Création Web</h3>
                 <p>Sites & Hébergement</p>
             </a>
         </div>
-        
+
         <div class="section-footer">
-            <a href="/services/" class="btn btn-primary">Découvrir tous les services →</a>
+            <a href="<%= url_for('services/') %>" class="btn btn-primary">Découvrir tous les services →</a>
         </div>
     </section>
     
@@ -347,7 +347,7 @@ var opensource = portfolio.filter(function(p) { return p.type === 'opensource'; 
             <h2>💬 Un projet en tête ?</h2>
             <p>Discutons de vos besoins et trouvons la meilleure solution ensemble.</p>
             <div class="cta-buttons">
-                <a href="/contact/" class="btn btn-primary btn-large">Demander un devis</a>
+                <a href="<%= url_for('contact/') %>" class="btn btn-primary btn-large">Demander un devis</a>
                 <a href="mailto:contact@cybermind.fr" class="btn btn-secondary btn-large">📧 contact@cybermind.fr</a>
             </div>
         </div>
