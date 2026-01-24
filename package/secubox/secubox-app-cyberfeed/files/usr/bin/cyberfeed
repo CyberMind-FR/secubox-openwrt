@@ -231,7 +231,7 @@ parse_rss() {
 	'
 }
 
-# === TIMELINE HTML GENERATOR (Star Wars Crawl Style) ===
+# === TIMELINE HTML GENERATOR (1/3 CRT + 2/3 Standard) ===
 generate_timeline() {
 	local json_file="$1"
 	local output_file="${OUTPUT_DIR}/timeline.html"
@@ -242,443 +242,387 @@ generate_timeline() {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>⭐ CYBERFEED STAR CRAWL ⭐</title>
+<title>⚡ CYBERFEED TIMELINE ⚡</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=News+Cycle:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=VT323&display=swap');
+:root {
+	--neon-cyan: #0ff;
+	--neon-magenta: #f0f;
+	--neon-green: #0f0;
+	--dark-bg: #0a0a0f;
+	--text-primary: #e0e0e0;
+	--text-dim: #606080;
+	--crt-glow: #33ff33;
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body {
-	width: 100%;
-	height: 100%;
-	overflow: hidden;
-	background: #000;
+body {
+	font-family: 'Share Tech Mono', monospace;
+	background: var(--dark-bg);
+	color: var(--text-primary);
+	min-height: 100vh;
 }
 
-/* === STARFIELD BACKGROUND === */
-.starfield {
-	position: fixed;
-	top: 0; left: 0;
-	width: 100%; height: 100%;
-	background: #000;
-	z-index: 0;
-}
-.stars, .stars2, .stars3 {
-	position: absolute;
-	top: 0; left: 0;
-	width: 100%; height: 100%;
-	background-repeat: repeat;
-}
-.stars {
-	background-image:
-		radial-gradient(1px 1px at 25px 5px, white, transparent),
-		radial-gradient(1px 1px at 50px 25px, white, transparent),
-		radial-gradient(1px 1px at 125px 20px, white, transparent),
-		radial-gradient(1.5px 1.5px at 50px 75px, white, transparent),
-		radial-gradient(2px 2px at 15px 125px, white, transparent),
-		radial-gradient(1px 1px at 100px 150px, white, transparent),
-		radial-gradient(1.5px 1.5px at 75px 50px, rgba(255,255,200,0.8), transparent),
-		radial-gradient(1px 1px at 200px 100px, white, transparent);
-	background-size: 200px 200px;
-	animation: twinkle 4s ease-in-out infinite;
-}
-.stars2 {
-	background-image:
-		radial-gradient(1px 1px at 75px 75px, white, transparent),
-		radial-gradient(1px 1px at 150px 50px, white, transparent),
-		radial-gradient(1.5px 1.5px at 25px 150px, rgba(200,200,255,0.8), transparent),
-		radial-gradient(1px 1px at 175px 125px, white, transparent);
-	background-size: 250px 250px;
-	animation: twinkle 5s ease-in-out infinite reverse;
-}
-.stars3 {
-	background-image:
-		radial-gradient(2px 2px at 100px 25px, rgba(255,220,180,0.9), transparent),
-		radial-gradient(1px 1px at 50px 100px, white, transparent),
-		radial-gradient(1.5px 1.5px at 175px 175px, white, transparent);
-	background-size: 300px 300px;
-	animation: twinkle 6s ease-in-out infinite;
-}
-@keyframes twinkle {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.7; }
-}
-
-/* === INTRO SEQUENCE === */
-.intro {
-	position: fixed;
-	top: 0; left: 0;
-	width: 100%; height: 100%;
+/* === SPLIT LAYOUT === */
+.split-container {
 	display: flex;
-	justify-content: center;
-	align-items: center;
-	z-index: 100;
-	animation: fade-out 1s ease-out 4s forwards;
-}
-.intro-text {
-	font-family: 'News Cycle', sans-serif;
-	font-size: clamp(1rem, 3vw, 1.5rem);
-	color: #0ff;
-	text-align: center;
-	letter-spacing: 0.2em;
-	animation: intro-glow 2s ease-in-out infinite alternate;
-}
-@keyframes intro-glow {
-	from { text-shadow: 0 0 10px #0ff, 0 0 20px #0ff; opacity: 0.7; }
-	to { text-shadow: 0 0 20px #0ff, 0 0 40px #0ff, 0 0 60px #f0f; opacity: 1; }
-}
-@keyframes fade-out {
-	to { opacity: 0; pointer-events: none; }
+	min-height: 100vh;
 }
 
-/* === LOGO === */
-.logo-container {
-	position: fixed;
-	top: 50%; left: 50%;
-	transform: translate(-50%, -50%) scale(1);
-	z-index: 50;
-	animation: logo-zoom 3s ease-in 4s forwards;
-	opacity: 0;
+/* === CRT MONITOR (1/3) === */
+.crt-section {
+	width: 33.33%;
+	padding: 20px;
+	background: #111;
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	border-right: 2px solid #333;
 }
-.logo {
-	font-family: 'Orbitron', sans-serif;
-	font-size: clamp(2rem, 8vw, 5rem);
-	font-weight: 900;
-	color: #ffd700;
-	text-align: center;
-	text-shadow: 0 0 30px rgba(255,215,0,0.8);
-	letter-spacing: 0.1em;
+.crt-monitor {
+	flex: 1;
+	background: #1a1a1a;
+	border-radius: 20px;
+	padding: 15px;
+	position: relative;
+	box-shadow:
+		inset 0 0 50px rgba(0,0,0,0.5),
+		0 0 20px rgba(0,255,0,0.1);
 }
-.logo-sub {
-	font-family: 'Orbitron', sans-serif;
-	font-size: clamp(0.8rem, 2vw, 1.2rem);
-	color: #ffd700;
-	text-align: center;
-	margin-top: 10px;
-	letter-spacing: 0.3em;
-}
-@keyframes logo-zoom {
-	0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-	50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
-	100% { opacity: 0; transform: translate(-50%, -50%) scale(0); pointer-events: none; }
-}
-
-/* === CRAWL CONTAINER === */
-.crawl-container {
-	position: fixed;
-	top: 0; left: 0;
-	width: 100%; height: 100%;
-	perspective: 400px;
-	overflow: hidden;
-	z-index: 10;
-	opacity: 0;
-	animation: crawl-appear 1s ease-out 7s forwards;
-}
-@keyframes crawl-appear {
-	to { opacity: 1; }
-}
-
-/* Fade gradient at top */
-.crawl-container::before {
+/* CRT Bezel */
+.crt-monitor::before {
 	content: '';
 	position: absolute;
-	top: 0; left: 0; right: 0;
-	height: 40%;
-	background: linear-gradient(to bottom, #000 0%, transparent 100%);
-	z-index: 20;
-	pointer-events: none;
+	inset: 0;
+	border-radius: 20px;
+	border: 8px solid #2a2a2a;
+	background: linear-gradient(135deg, #3a3a3a 0%, #1a1a1a 50%, #2a2a2a 100%);
+	z-index: -1;
 }
-
-/* === THE CRAWL === */
-.crawl {
+/* Corner screws */
+.crt-monitor::after {
+	content: '⊕';
 	position: absolute;
-	top: 100%;
-	left: 15%;
-	width: 70%;
-	transform-origin: 50% 100%;
-	transform: rotateX(25deg);
-	animation: crawl-scroll var(--crawl-duration, 120s) linear infinite;
+	top: 8px; left: 12px;
+	color: #555;
+	font-size: 10px;
 }
-.crawl:hover {
-	animation-play-state: paused;
+.crt-screen {
+	background: #001a00;
+	border-radius: 10px;
+	height: 100%;
+	overflow: hidden;
+	position: relative;
+	border: 3px solid #333;
 }
-@keyframes crawl-scroll {
-	0% { top: 100%; }
-	100% { top: -300%; }
+/* Scanlines */
+.crt-screen::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background: repeating-linear-gradient(
+		0deg,
+		rgba(0,0,0,0.15) 0px,
+		rgba(0,0,0,0.15) 1px,
+		transparent 1px,
+		transparent 2px
+	);
+	pointer-events: none;
+	z-index: 10;
 }
+/* Screen curvature */
+.crt-screen::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.4) 100%);
+	pointer-events: none;
+	z-index: 11;
+}
+/* Phosphor glow effect */
+.crt-content {
+	height: 100%;
+	overflow-y: auto;
+	padding: 15px;
+	font-family: 'VT323', monospace;
+	font-size: 14px;
+	color: var(--crt-glow);
+	text-shadow: 0 0 5px var(--crt-glow), 0 0 10px rgba(0,255,0,0.5);
+	animation: flicker 0.15s infinite;
+}
+@keyframes flicker {
+	0%, 100% { opacity: 0.98; }
+	50% { opacity: 1; }
+}
+.crt-content::-webkit-scrollbar { width: 6px; }
+.crt-content::-webkit-scrollbar-track { background: #001a00; }
+.crt-content::-webkit-scrollbar-thumb { background: #0f0; border-radius: 3px; }
 
-/* === CRAWL CONTENT === */
-.crawl-episode {
-	font-family: 'Orbitron', sans-serif;
-	font-size: clamp(1rem, 2vw, 1.5rem);
-	color: #ffd700;
-	text-align: center;
-	margin-bottom: 20px;
-	letter-spacing: 0.2em;
+.crt-item {
+	margin-bottom: 12px;
+	padding-bottom: 10px;
+	border-bottom: 1px dashed rgba(0,255,0,0.3);
 }
-.crawl-title {
-	font-family: 'Orbitron', sans-serif;
-	font-size: clamp(2rem, 5vw, 4rem);
-	font-weight: 900;
-	color: #ffd700;
-	text-align: center;
-	margin-bottom: 50px;
-	text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+.crt-item .time {
+	color: #0a0;
+	font-size: 11px;
 }
-
-.feed-item {
-	margin-bottom: 40px;
-	padding: 20px;
-	text-align: justify;
+.crt-item .title {
+	color: var(--crt-glow);
+	font-size: 13px;
+	margin: 4px 0;
 }
-.feed-item .source-badge {
-	display: inline-block;
-	font-family: 'Orbitron', sans-serif;
-	font-size: clamp(0.6rem, 1vw, 0.8rem);
-	color: #0ff;
-	border: 1px solid #0ff;
-	padding: 4px 12px;
-	margin-bottom: 10px;
-	letter-spacing: 0.15em;
-	text-transform: uppercase;
-}
-.feed-item .item-title {
-	font-family: 'News Cycle', sans-serif;
-	font-size: clamp(1.2rem, 2.5vw, 1.8rem);
-	font-weight: 700;
-	color: #ffd700;
-	margin-bottom: 15px;
-	line-height: 1.4;
-	text-align: center;
-}
-.feed-item .item-title a {
+.crt-item .title a {
 	color: inherit;
 	text-decoration: none;
-	transition: text-shadow 0.3s;
 }
-.feed-item .item-title a:hover {
-	text-shadow: 0 0 20px #ffd700;
+.crt-item .title a:hover {
+	text-decoration: underline;
 }
-.feed-item .item-desc {
-	font-family: 'News Cycle', sans-serif;
-	font-size: clamp(1rem, 1.8vw, 1.3rem);
-	color: #ffd700;
-	line-height: 1.8;
-	text-align: justify;
-	opacity: 0.9;
+.crt-item .source {
+	color: #0a0;
+	font-size: 10px;
 }
-.feed-item .item-time {
-	font-family: 'Orbitron', sans-serif;
-	font-size: clamp(0.7rem, 1vw, 0.9rem);
-	color: #0ff;
-	text-align: center;
-	margin-top: 15px;
-	letter-spacing: 0.1em;
-}
-.feed-item .item-audio {
-	margin-top: 15px;
-	text-align: center;
-}
-.feed-item .item-audio audio {
-	width: 80%;
-	max-width: 400px;
-	filter: sepia(50%) saturate(200%) hue-rotate(10deg);
-}
-
-.date-divider {
-	text-align: center;
-	padding: 30px 0;
-	margin: 20px 0;
-}
-.date-divider span {
-	font-family: 'Orbitron', sans-serif;
-	font-size: clamp(0.9rem, 1.5vw, 1.2rem);
-	color: #0ff;
-	letter-spacing: 0.3em;
-	text-shadow: 0 0 10px #0ff;
-	border-top: 1px solid #0ff;
-	border-bottom: 1px solid #0ff;
-	padding: 10px 30px;
-}
-
-/* === CONTROLS === */
-.controls {
-	position: fixed;
-	bottom: 20px;
-	left: 50%;
-	transform: translateX(-50%);
-	display: flex;
-	gap: 15px;
-	z-index: 100;
-	opacity: 0;
-	animation: controls-appear 1s ease-out 8s forwards;
-}
-@keyframes controls-appear {
-	to { opacity: 1; }
-}
-.ctrl-btn {
-	font-family: 'Orbitron', sans-serif;
-	font-size: 0.8rem;
-	padding: 10px 20px;
-	background: transparent;
-	border: 1px solid #ffd700;
-	color: #ffd700;
-	cursor: pointer;
-	letter-spacing: 0.1em;
-	transition: all 0.3s;
-}
-.ctrl-btn:hover {
-	background: #ffd700;
-	color: #000;
-	box-shadow: 0 0 20px #ffd700;
-}
-
-/* === STATUS BAR === */
-.status-bar {
-	position: fixed;
-	top: 10px;
+/* Power LED */
+.crt-power {
+	position: absolute;
+	bottom: 15px;
 	right: 20px;
-	font-family: 'Orbitron', sans-serif;
-	font-size: 0.7rem;
-	color: #0ff;
-	z-index: 100;
-	opacity: 0;
-	animation: controls-appear 1s ease-out 8s forwards;
+	display: flex;
+	align-items: center;
+	gap: 8px;
 }
-.status-bar span {
-	margin-left: 20px;
+.crt-led {
+	width: 8px;
+	height: 8px;
+	background: #0f0;
+	border-radius: 50%;
+	box-shadow: 0 0 8px #0f0, 0 0 15px #0f0;
+	animation: led-pulse 2s ease-in-out infinite;
+}
+@keyframes led-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.6; }
+}
+.crt-label {
+	font-family: 'Orbitron', sans-serif;
+	font-size: 8px;
+	color: #666;
+	letter-spacing: 2px;
+}
+
+/* === STANDARD TIMELINE (2/3) === */
+.timeline-section {
+	width: 66.66%;
+	padding: 20px;
+	overflow-y: auto;
+	max-height: 100vh;
+}
+.header {
+	text-align: center;
+	padding: 20px;
+	margin-bottom: 20px;
+	border-bottom: 1px solid var(--neon-cyan);
+}
+.header h1 {
+	font-family: 'Orbitron', sans-serif;
+	font-size: 1.8rem;
+	color: var(--neon-cyan);
+	text-shadow: 0 0 10px var(--neon-cyan);
+}
+.nav-links {
+	text-align: center;
+	margin-bottom: 20px;
+}
+.nav-links a {
+	color: var(--neon-cyan);
+	margin: 0 15px;
+	text-decoration: none;
+	font-size: 0.9rem;
+}
+.nav-links a:hover {
+	text-shadow: 0 0 10px var(--neon-cyan);
+}
+.timeline {
+	max-width: 700px;
+	margin: 0 auto;
+	position: relative;
+	padding-left: 35px;
+}
+.timeline::before {
+	content: '';
+	position: absolute;
+	left: 12px;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background: linear-gradient(180deg, var(--neon-cyan), var(--neon-magenta));
+	box-shadow: 0 0 10px var(--neon-cyan);
+}
+.timeline-date {
+	font-family: 'Orbitron', sans-serif;
+	font-size: 1rem;
+	color: var(--neon-magenta);
+	margin: 25px 0 12px -35px;
+	padding-left: 35px;
+	text-shadow: 0 0 5px var(--neon-magenta);
+}
+.timeline-item {
+	position: relative;
+	margin-bottom: 15px;
+	padding: 12px;
+	background: rgba(0,255,255,0.05);
+	border: 1px solid rgba(0,255,255,0.2);
+	border-radius: 6px;
+}
+.timeline-item::before {
+	content: '◆';
+	position: absolute;
+	left: -28px;
+	top: 14px;
+	color: var(--neon-cyan);
+	font-size: 10px;
+	text-shadow: 0 0 10px var(--neon-cyan);
+}
+.timeline-item.has-audio::before { content: '🎧'; font-size: 12px; }
+.timeline-item.has-video::before { content: '📺'; font-size: 12px; }
+.item-time {
+	font-size: 0.7rem;
+	color: var(--neon-magenta);
+	margin-bottom: 4px;
+}
+.item-title {
+	font-family: 'Orbitron', sans-serif;
+	font-size: 0.9rem;
+	color: var(--neon-cyan);
+	margin-bottom: 6px;
+}
+.item-title a {
+	color: inherit;
+	text-decoration: none;
+}
+.item-title a:hover {
+	text-shadow: 0 0 10px var(--neon-cyan);
+}
+.item-desc {
+	font-size: 0.8rem;
+	color: var(--text-primary);
+	opacity: 0.8;
+	margin-bottom: 8px;
+	line-height: 1.4;
+}
+.item-source {
+	display: inline-block;
+	background: rgba(255,0,255,0.2);
+	border: 1px solid var(--neon-magenta);
+	padding: 2px 6px;
+	font-size: 0.6rem;
+	text-transform: uppercase;
+}
+.audio-player { margin-top: 8px; }
+.audio-player audio {
+	width: 100%;
+	height: 35px;
+	border-radius: 18px;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+	.split-container { flex-direction: column; }
+	.crt-section { width: 100%; height: 40vh; border-right: none; border-bottom: 2px solid #333; }
+	.timeline-section { width: 100%; max-height: none; }
 }
 </style>
 </head>
 <body>
-
-<!-- Starfield -->
-<div class="starfield">
-	<div class="stars"></div>
-	<div class="stars2"></div>
-	<div class="stars3"></div>
-</div>
-
-<!-- Intro Text -->
-<div class="intro">
-	<div class="intro-text">
-		A long time ago in a network far, far away....
+<div class="split-container">
+	<!-- CRT Monitor Section (1/3) -->
+	<div class="crt-section">
+		<div class="crt-monitor">
+			<div class="crt-screen">
+				<div class="crt-content" id="crt-feed">
+					<p>> INITIALIZING FEED MATRIX...</p>
+					<p>> AWAITING DATA STREAM...</p>
+				</div>
+			</div>
+			<div class="crt-power">
+				<div class="crt-led"></div>
+				<span class="crt-label">POWER</span>
+			</div>
+		</div>
 	</div>
-</div>
 
-<!-- Logo -->
-<div class="logo-container">
-	<div class="logo">⚡ CYBERFEED ⚡</div>
-	<div class="logo-sub">NEURAL RSS MATRIX</div>
-</div>
-
-<!-- The Crawl -->
-<div class="crawl-container">
-	<div class="crawl" id="crawl">
-		<div class="crawl-episode">EPISODE MMXXVI</div>
-		<div class="crawl-title">THE FEED<br>AWAKENS</div>
-		<div id="feed-content">
-			<p style="color:#ffd700; text-align:center; font-family:'News Cycle',sans-serif; font-size:1.2rem;">
-				Initializing neural feed matrix...
-			</p>
+	<!-- Standard Timeline Section (2/3) -->
+	<div class="timeline-section">
+		<header class="header">
+			<h1>⚡ TIMELINE ⚡</h1>
+			<p style="color: var(--text-dim); margin-top: 8px; font-size: 0.8rem;">Chronological Feed History</p>
+		</header>
+		<nav class="nav-links">
+			<a href="/cyberfeed/">← Dashboard</a>
+			<a href="/cyberfeed/timeline.html">🔄 Refresh</a>
+		</nav>
+		<div class="timeline" id="timeline">
+			<p style="text-align:center; color: var(--text-dim);">Loading timeline...</p>
 		</div>
 	</div>
 </div>
 
-<!-- Controls -->
-<div class="controls">
-	<button class="ctrl-btn" onclick="toggleCrawl()">⏯ PAUSE</button>
-	<button class="ctrl-btn" onclick="resetCrawl()">⏮ RESET</button>
-	<button class="ctrl-btn" onclick="location.href='/cyberfeed/'">🏠 HOME</button>
-	<button class="ctrl-btn" onclick="refreshFeed()">🔄 REFRESH</button>
-</div>
-
-<!-- Status Bar -->
-<div class="status-bar">
-	<span id="item-count">-- ENTRIES</span>
-	<span id="last-update">SYNCING...</span>
-</div>
-
 <script>
-let crawlPaused = false;
-let items = [];
-
 async function loadFeed() {
 	try {
 		const resp = await fetch('/cyberfeed/feeds.json?' + Date.now());
-		items = await resp.json();
+		const items = await resp.json();
 
-		document.getElementById('item-count').textContent = items.length + ' ENTRIES';
-		document.getElementById('last-update').textContent = 'UPDATED: ' + new Date().toLocaleTimeString();
-
-		// Sort by date (newest first)
+		// Sort by date
 		items.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
-		// Group by date
+		// CRT Feed (scrolling latest)
+		let crtHtml = '> CYBERFEED NEURAL MATRIX v0.2\\n> ' + items.length + ' TRANSMISSIONS RECEIVED\\n> ════════════════════════════\\n\\n';
+		items.slice(0, 15).forEach(item => {
+			crtHtml += '<div class="crt-item">';
+			crtHtml += '<div class="time">> ' + (item.date || 'Unknown') + '</div>';
+			crtHtml += '<div class="title"><a href="' + item.link + '" target="_blank">' + (item.title || 'Untitled') + '</a></div>';
+			crtHtml += '<div class="source">[' + (item.source || 'RSS') + ']</div>';
+			crtHtml += '</div>';
+		});
+		document.getElementById('crt-feed').innerHTML = crtHtml;
+
+		// Standard Timeline
 		const grouped = {};
 		items.forEach(item => {
-			const d = item.date ? new Date(item.date) : null;
-			const dateStr = d ? d.toLocaleDateString('fr-FR', {
+			const dateStr = item.date ? new Date(item.date).toLocaleDateString('fr-FR', {
 				weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-			}).toUpperCase() : 'DATE INCONNUE';
+			}) : 'Date inconnue';
 			if (!grouped[dateStr]) grouped[dateStr] = [];
 			grouped[dateStr].push(item);
 		});
 
 		let html = '';
-		const dates = Object.keys(grouped);
-		dates.forEach((date, idx) => {
-			if (idx > 0) {
-				html += '<div class="date-divider"><span>◆ ' + date + ' ◆</span></div>';
-			}
+		Object.keys(grouped).forEach(date => {
+			html += '<div class="timeline-date">' + date + '</div>';
 			grouped[date].forEach(item => {
-				html += '<div class="feed-item">';
-				html += '<div class="source-badge">' + (item.source || 'RSS') + (item.category ? ' • ' + item.category : '') + '</div>';
-				html += '<div class="item-title"><a href="' + (item.link || '#') + '" target="_blank">' + (item.title || 'Untitled') + '</a></div>';
-				if (item.desc) {
-					html += '<div class="item-desc">' + item.desc + '</div>';
-				}
+				const hasMedia = item.media_type ? ' has-' + item.media_type : '';
+				html += '<div class="timeline-item' + hasMedia + '">';
+				html += '<div class="item-time">⏰ ' + (item.date || '') + '</div>';
+				html += '<div class="item-title"><a href="' + item.link + '" target="_blank">' + item.title + '</a></div>';
+				if (item.desc) html += '<div class="item-desc">' + item.desc + '</div>';
 				if (item.enclosure && item.media_type === 'audio') {
-					html += '<div class="item-audio"><audio controls preload="none"><source src="' + item.enclosure + '" type="audio/mpeg"></audio></div>';
+					html += '<div class="audio-player"><audio controls preload="none"><source src="' + item.enclosure + '" type="audio/mpeg"></audio></div>';
 				}
-				html += '<div class="item-time">⏰ ' + (item.date || 'Unknown time') + '</div>';
+				html += '<span class="item-source">' + (item.source || 'RSS') + '</span>';
+				if (item.duration) html += ' <span class="item-source">⏱ ' + item.duration + '</span>';
 				html += '</div>';
 			});
 		});
 
-		document.getElementById('feed-content').innerHTML = html || '<p style="color:#ffd700;text-align:center;">No transmissions received...</p>';
-
-		// Adjust crawl speed based on content length
-		const duration = Math.max(60, items.length * 5);
-		document.querySelector('.crawl').style.setProperty('--crawl-duration', duration + 's');
-
+		document.getElementById('timeline').innerHTML = html || '<p style="text-align:center;">Aucun élément</p>';
 	} catch(e) {
-		document.getElementById('feed-content').innerHTML = '<p style="color:#f00;text-align:center;">ERROR: FEED CONNECTION LOST</p>';
-		console.error('Feed error:', e);
+		document.getElementById('crt-feed').innerHTML = '> ERROR: FEED CONNECTION LOST\\n> RETRYING...';
+		document.getElementById('timeline').innerHTML = '<p style="text-align:center; color: #f00;">Erreur de chargement</p>';
 	}
 }
 
-function toggleCrawl() {
-	crawlPaused = !crawlPaused;
-	document.querySelector('.crawl').style.animationPlayState = crawlPaused ? 'paused' : 'running';
-	event.target.textContent = crawlPaused ? '▶ PLAY' : '⏯ PAUSE';
-}
-
-function resetCrawl() {
-	const crawl = document.querySelector('.crawl');
-	crawl.style.animation = 'none';
-	crawl.offsetHeight; // Trigger reflow
-	crawl.style.animation = '';
-	crawlPaused = false;
-	document.querySelector('.ctrl-btn').textContent = '⏯ PAUSE';
-}
-
-function refreshFeed() {
-	document.getElementById('last-update').textContent = 'SYNCING...';
-	loadFeed();
-}
-
-// Initial load after intro
-setTimeout(loadFeed, 7000);
-// Auto-refresh every 3 minutes
+loadFeed();
 setInterval(loadFeed, 180000);
 </script>
 </body>
