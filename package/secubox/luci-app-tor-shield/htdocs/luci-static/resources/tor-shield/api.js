@@ -203,9 +203,13 @@ return baseclass.extend({
 			callCircuits(),
 			callBandwidth()
 		]).then(function(results) {
+			// Handle RPC expect unwrapping - results[1] may be array or object
+			var circuitsData = results[1] || [];
+			var circuits = Array.isArray(circuitsData) ? circuitsData : (circuitsData.circuits || []);
+
 			return {
 				status: results[0] || {},
-				circuits: (results[1] || {}).circuits || [],
+				circuits: circuits,
 				bandwidth: results[2] || {}
 			};
 		});
