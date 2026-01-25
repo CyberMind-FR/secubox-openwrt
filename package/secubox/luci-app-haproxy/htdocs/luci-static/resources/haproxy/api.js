@@ -115,14 +115,14 @@ var callCreateServer = rpc.declare({
 var callUpdateServer = rpc.declare({
 	object: 'luci.haproxy',
 	method: 'update_server',
-	params: ['id', 'backend', 'name', 'address', 'port', 'weight', 'check', 'enabled'],
+	params: ['id', 'backend', 'name', 'address', 'port', 'weight', 'check', 'enabled', 'inline'],
 	expect: {}
 });
 
 var callDeleteServer = rpc.declare({
 	object: 'luci.haproxy',
 	method: 'delete_server',
-	params: ['id'],
+	params: ['id', 'inline'],
 	expect: {}
 });
 

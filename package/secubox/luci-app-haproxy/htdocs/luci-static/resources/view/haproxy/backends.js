@@ -600,7 +600,8 @@ return view.extend({
 						}
 
 						ui.hideModal();
-						api.updateServer(server.id, backend.id, name, address, port, weight, check, enabled).then(function(res) {
+						var inline = server.inline ? 1 : 0;
+						api.updateServer(server.id, backend.id, name, address, port, weight, check, enabled, inline).then(function(res) {
 							if (res.success) {
 								self.showToast('Server updated', 'success');
 								window.location.reload();
@@ -633,7 +634,8 @@ return view.extend({
 					'class': 'hp-btn hp-btn-danger',
 					'click': function() {
 						ui.hideModal();
-						api.deleteServer(server.id).then(function(res) {
+						var inline = server.inline ? 1 : 0;
+						api.deleteServer(server.id, inline).then(function(res) {
 							if (res.success) {
 								self.showToast('Server deleted', 'success');
 								window.location.reload();
