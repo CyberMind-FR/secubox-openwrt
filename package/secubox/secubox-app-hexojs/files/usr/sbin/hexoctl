@@ -90,19 +90,19 @@ Site Management:
   site switch <name>   Switch active site
 
 Content Commands:
-  new post "Title"     Create new blog post
-  new page "Title"     Create new page
-  new draft "Title"    Create new draft
-  publish <slug>       Publish a draft
-  list posts           List all posts
-  list drafts          List all drafts
+  new post "Title"       Create new blog post
+  new page "Title"       Create new page
+  new draft "Title"      Create new draft
+  publish draft <slug>   Publish a draft
+  list posts             List all posts
+  list drafts            List all drafts
 
 Build Commands:
-  serve               Start preview server (port $http_port)
-  build               Generate static files
-  clean               Clean generated files
-  deploy              Deploy to configured git target
-  publish             Copy static files to /www/
+  serve                 Start preview server (port $http_port)
+  build (generate)      Generate static files
+  clean                 Clean generated files
+  deploy                Deploy to configured git target
+  publish               Copy static files to /www/blog/
 
 Service Commands:
   service-run         Run in foreground (for init)
@@ -668,14 +668,14 @@ cmd_new_draft() {
 	lxc_exec sh -c "cd /opt/hexojs/site && hexo new draft \"$title\""
 }
 
-cmd_publish() {
+cmd_publish_draft() {
 	require_root
 	load_config
 
 	local slug="$1"
 	if [ -z "$slug" ]; then
 		log_error "Slug required"
-		echo "Usage: hexoctl publish <slug>"
+		echo "Usage: hexoctl publish draft <slug>"
 		return 1
 	fi
 
@@ -1132,8 +1132,6 @@ case "${1:-}" in
 		esac
 		;;
 
-	publish)    shift; cmd_publish "$@" ;;
-
 	list)
 		shift
 		case "${1:-}" in
@@ -1144,10 +1142,16 @@ case "${1:-}" in
 		;;
 
 	serve)      shift; cmd_serve "$@" ;;
-	build)      shift; cmd_build "$@" ;;
+	build|generate) shift; cmd_build "$@" ;;
 	clean)      shift; cmd_clean "$@" ;;
 	deploy)     shift; cmd_deploy "$@" ;;
-	publish)    shift; cmd_publish "$@" ;;
+	publish)
+		shift
+		case "${1:-}" in
+			draft) shift; cmd_publish_draft "$@" ;;
+			*)     cmd_publish "$@" ;;
+		esac
+		;;
 
 	logs)       shift; cmd_logs "$@" ;;
 	shell)      shift; cmd_shell "$@" ;;
