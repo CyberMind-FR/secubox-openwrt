@@ -485,7 +485,8 @@ return view.extend({
 		categoryOrder.forEach(function(cat) {
 			if (categories[cat] && categories[cat].length > 0) {
 				categories[cat].forEach(function(svc) {
-					var url = window.location.protocol + '//' + window.location.hostname + svc.url;
+					// Always use http:// for local services (they don't have SSL certs)
+					var url = 'http://' + window.location.hostname + svc.url;
 					var emoji = iconMap[svc.icon] || '⚡';
 					serviceCards.push(E('a', {
 						'class': 'sb-app-card sb-service-card',
