@@ -1,0 +1,63 @@
+# SecuBox Service Exposure Manager Configuration
+
+config settings 'main'
+    option enabled '1'
+    option tor_enabled '1'
+    option ssl_enabled '1'
+    option haproxy_config '/srv/lxc/haproxy/rootfs/etc/haproxy/haproxy.cfg'
+    option haproxy_certs '/srv/lxc/haproxy/rootfs/etc/haproxy/certs'
+    option tor_hidden_dir '/var/lib/tor/hidden_services'
+    option tor_config '/etc/tor/torrc'
+
+# Port ranges for auto-assignment
+config ports 'ranges'
+    option app_start '8100'
+    option app_end '8199'
+    option monitoring_start '8200'
+    option monitoring_end '8299'
+
+# Known service definitions with default ports
+config known 'gitea'
+    option default_port '3000'
+    option config_path 'gitea.main.http_port'
+    option category 'app'
+
+config known 'streamlit'
+    option default_port '8501'
+    option config_path 'streamlit.main.port'
+    option category 'app'
+
+config known 'hexojs'
+    option default_port '4000'
+    option config_path 'hexojs.main.port'
+    option category 'app'
+
+config known 'cyberfeed'
+    option default_port '8082'
+    option config_path 'cyberfeed.main.port'
+    option category 'app'
+
+config known 'crowdsec'
+    option default_port '6060'
+    option config_file '/etc/crowdsec/config.yaml'
+    option category 'security'
+
+config known 'netifyd'
+    option default_port '8086'
+    option config_path 'netifyd.main.port'
+    option category 'monitoring'
+
+config known 'domoticz'
+    option default_port '8080'
+    option config_type 'docker'
+    option category 'app'
+
+# Service exposure entries (dynamically managed)
+# Example:
+# config service 'gitea'
+#     option port '3000'
+#     option local '1'
+#     option tor '1'
+#     option tor_onion 'abc123xyz.onion'
+#     option ssl '1'
+#     option ssl_domain 'git.example.com'
