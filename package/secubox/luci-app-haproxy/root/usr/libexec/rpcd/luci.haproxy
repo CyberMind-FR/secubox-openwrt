@@ -55,15 +55,15 @@ method_status() {
 	stats_enabled=$(get_uci main stats_enabled 1)
 
 	# Check container status
-	if lxc-info -n haproxy-lxc >/dev/null 2>&1; then
-		container_running=$(lxc-info -n haproxy-lxc -s 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0")
+	if lxc-info -n haproxy >/dev/null 2>&1; then
+		container_running=$(lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0")
 	else
 		container_running="0"
 	fi
 
 	# Check HAProxy process in container
 	if [ "$container_running" = "1" ]; then
-		haproxy_running=$(lxc-attach -n haproxy-lxc -- pgrep haproxy >/dev/null 2>&1 && echo "1" || echo "0")
+		haproxy_running=$(lxc-attach -n haproxy -- pgrep haproxy >/dev/null 2>&1 && echo "1" || echo "0")
 	else
 		haproxy_running="0"
 	fi
@@ -83,7 +83,7 @@ method_status() {
 method_get_stats() {
 	local stats_output
 
-	if lxc-info -n haproxy-lxc -s 2>/dev/null | grep -q "RUNNING"; then
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
 		# Get stats via HAProxy socket
 		stats_output=$(run_ctl stats 2>/dev/null)
 		if [ -n "$stats_output" ]; then
@@ -291,13 +291,14 @@ method_list_backends() {
 
 _add_backend() {
 	local section="$1"
-	local name mode balance health_check enabled
+	local name mode balance health_check enabled server_line
 
 	config_get name "$section" name "$section"
 	config_get mode "$section" mode "http"
 	config_get balance "$section" balance "roundrobin"
 	config_get health_check "$section" health_check ""
 	config_get enabled "$section" enabled "1"
+	config_get server_line "$section" server ""
 
 	json_add_object
 	json_add_string "id" "$section"
@@ -306,6 +307,59 @@ _add_backend() {
 	json_add_string "balance" "$balance"
 	json_add_string "health_check" "$health_check"
 	json_add_boolean "enabled" "$enabled"
+
+	# Include servers array - parse inline server option if present
+	json_add_array "servers"
+	if [ -n "$server_line" ]; then
+		# Parse inline format: "name address:port [options]"
+		local srv_name srv_addr_port srv_addr srv_port srv_check
+		srv_name=$(echo "$server_line" | awk '{print $1}')
+		srv_addr_port=$(echo "$server_line" | awk '{print $2}')
+		srv_addr=$(echo "$srv_addr_port" | cut -d: -f1)
+		srv_port=$(echo "$srv_addr_port" | cut -d: -f2)
+		srv_check=$(echo "$server_line" | grep -q "check" && echo "1" || echo "0")
+
+		json_add_object
+		json_add_string "id" "${section}_${srv_name}"
+		json_add_string "name" "$srv_name"
+		json_add_string "address" "$srv_addr"
+		json_add_int "port" "${srv_port:-80}"
+		json_add_int "weight" "100"
+		json_add_boolean "check" "$srv_check"
+		json_add_boolean "enabled" "1"
+		json_add_boolean "inline" "1"
+		json_close_object
+	fi
+	# Also check for separate server sections
+	config_foreach _add_server_for_backend_inline server "$section"
+	json_close_array
+
+	json_close_object
+}
+
+_add_server_for_backend_inline() {
+	local srv_section="$1"
+	local backend_filter="$2"
+	local backend srv_name srv_address srv_port srv_weight srv_check srv_enabled
+
+	config_get backend "$srv_section" backend ""
+	[ "$backend" != "$backend_filter" ] && return
+
+	config_get srv_name "$srv_section" name "$srv_section"
+	config_get srv_address "$srv_section" address ""
+	config_get srv_port "$srv_section" port ""
+	config_get srv_weight "$srv_section" weight "100"
+	config_get srv_check "$srv_section" check "1"
+	config_get srv_enabled "$srv_section" enabled "1"
+
+	json_add_object
+	json_add_string "id" "$srv_section"
+	json_add_string "name" "$srv_name"
+	json_add_string "address" "$srv_address"
+	json_add_int "port" "${srv_port:-80}"
+	json_add_int "weight" "$srv_weight"
+	json_add_boolean "check" "$srv_check"
+	json_add_boolean "enabled" "$srv_enabled"
 	json_close_object
 }
 
@@ -580,7 +634,7 @@ method_create_server() {
 
 # Update server
 method_update_server() {
-	local id backend name address port weight check enabled
+	local id backend name address port weight check enabled inline
 
 	read -r input
 	json_load "$input"
@@ -592,6 +646,7 @@ method_update_server() {
 	json_get_var weight weight
 	json_get_var check check
 	json_get_var enabled enabled
+	json_get_var inline inline ""
 
 	if [ -z "$id" ]; then
 		json_init
@@ -601,13 +656,36 @@ method_update_server() {
 		return
 	fi
 
-	[ -n "$backend" ] && uci set "$UCI_CONFIG.$id.backend=$backend"
-	[ -n "$name" ] && uci set "$UCI_CONFIG.$id.name=$name"
-	[ -n "$address" ] && uci set "$UCI_CONFIG.$id.address=$address"
-	[ -n "$port" ] && uci set "$UCI_CONFIG.$id.port=$port"
-	[ -n "$weight" ] && uci set "$UCI_CONFIG.$id.weight=$weight"
-	[ -n "$check" ] && uci set "$UCI_CONFIG.$id.check=$check"
-	[ -n "$enabled" ] && uci set "$UCI_CONFIG.$id.enabled=$enabled"
+	# Check if this is an inline server (id format: backendname_servername)
+	# If so, we need to convert it to a proper server section
+	if [ "$inline" = "1" ] || ! uci -q get "$UCI_CONFIG.$id" >/dev/null 2>&1; then
+		# This is an inline server - extract backend from id
+		local backend_id
+		backend_id=$(echo "$id" | sed 's/_[^_]*$//')
+
+		# Remove inline server option from backend
+		uci -q delete "$UCI_CONFIG.$backend_id.server"
+
+		# Create new server section
+		local section_id="${backend_id}_${name}"
+		uci set "$UCI_CONFIG.$section_id=server"
+		uci set "$UCI_CONFIG.$section_id.backend=$backend_id"
+		uci set "$UCI_CONFIG.$section_id.name=$name"
+		uci set "$UCI_CONFIG.$section_id.address=$address"
+		uci set "$UCI_CONFIG.$section_id.port=$port"
+		[ -n "$weight" ] && uci set "$UCI_CONFIG.$section_id.weight=$weight"
+		[ -n "$check" ] && uci set "$UCI_CONFIG.$section_id.check=$check"
+		[ -n "$enabled" ] && uci set "$UCI_CONFIG.$section_id.enabled=$enabled"
+	else
+		# Regular server section - update in place
+		[ -n "$backend" ] && uci set "$UCI_CONFIG.$id.backend=$backend"
+		[ -n "$name" ] && uci set "$UCI_CONFIG.$id.name=$name"
+		[ -n "$address" ] && uci set "$UCI_CONFIG.$id.address=$address"
+		[ -n "$port" ] && uci set "$UCI_CONFIG.$id.port=$port"
+		[ -n "$weight" ] && uci set "$UCI_CONFIG.$id.weight=$weight"
+		[ -n "$check" ] && uci set "$UCI_CONFIG.$id.check=$check"
+		[ -n "$enabled" ] && uci set "$UCI_CONFIG.$id.enabled=$enabled"
+	fi
 	uci commit "$UCI_CONFIG"
 
 	run_ctl generate >/dev/null 2>&1
@@ -619,11 +697,12 @@ method_update_server() {
 
 # Delete server
 method_delete_server() {
-	local id
+	local id inline
 
 	read -r input
 	json_load "$input"
 	json_get_var id id
+	json_get_var inline inline ""
 
 	if [ -z "$id" ]; then
 		json_init
@@ -633,7 +712,16 @@ method_delete_server() {
 		return
 	fi
 
-	uci delete "$UCI_CONFIG.$id"
+	# Check if this is an inline server or regular server section
+	if [ "$inline" = "1" ] || ! uci -q get "$UCI_CONFIG.$id" >/dev/null 2>&1; then
+		# Inline server - extract backend id and delete the server option
+		local backend_id
+		backend_id=$(echo "$id" | sed 's/_[^_]*$//')
+		uci -q delete "$UCI_CONFIG.$backend_id.server"
+	else
+		# Regular server section
+		uci delete "$UCI_CONFIG.$id"
+	fi
 	uci commit "$UCI_CONFIG"
 
 	run_ctl generate >/dev/null 2>&1
@@ -688,7 +776,7 @@ method_request_certificate() {
 	fi
 
 	local result
-	result=$(run_ctl cert-issue "$domain" 2>&1)
+	result=$(run_ctl cert add "$domain" 2>&1)
 	local rc=$?
 
 	json_init
@@ -721,7 +809,7 @@ method_import_certificate() {
 	fi
 
 	local result
-	result=$(run_ctl cert-import "$domain" "$cert_data" "$key_data" 2>&1)
+	result=$(run_ctl cert import "$domain" "$cert_data" "$key_data" 2>&1)
 	local rc=$?
 
 	json_init
@@ -755,7 +843,7 @@ method_delete_certificate() {
 	domain=$(get_uci "$id" domain "")
 
 	# Remove certificate files
-	run_ctl cert-delete "$domain" >/dev/null 2>&1
+	run_ctl cert remove "$domain" >/dev/null 2>&1
 
 	uci delete "$UCI_CONFIG.$id"
 	uci commit "$UCI_CONFIG"
@@ -1216,8 +1304,8 @@ case "$1" in
 	"delete_backend": { "id": "string" },
 	"list_servers": { "backend": "string" },
 	"create_server": { "backend": "string", "name": "string", "address": "string", "port": "integer", "weight": "integer", "check": "boolean", "enabled": "boolean" },
-	"update_server": { "id": "string", "backend": "string", "name": "string", "address": "string", "port": "integer", "weight": "integer", "check": "boolean", "enabled": "boolean" },
-	"delete_server": { "id": "string" },
+	"update_server": { "id": "string", "backend": "string", "name": "string", "address": "string", "port": "integer", "weight": "integer", "check": "boolean", "enabled": "boolean", "inline": "boolean" },
+	"delete_server": { "id": "string", "inline": "boolean" },
 	"list_certificates": {},
 	"request_certificate": { "domain": "string" },
 	"import_certificate": { "domain": "string", "cert": "string", "key": "string" },

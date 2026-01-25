@@ -33,13 +33,13 @@ branding:
 menu:
   Accueil: /
   Blog:
-    _path: /blog/
-    🛡️ Cybersécurité: /blog/cybersecurity/
-    ⚙️ Embarqué: /blog/embedded/
-    🐧 Linux: /blog/linux/
-    🎨 Créativité: /blog/creative/
-    🧘 Philosophie: /blog/philosophy/
-    📖 Tutoriels: /blog/tutorials/
+    _path: /categories/
+    🛡️ Cybersécurité: /cybersecurity/
+    ⚙️ Embarqué: /embedded/
+    🐧 Linux: /linux/
+    🎨 Créativité: /creative/
+    🧘 Philosophie: /philosophy/
+    📖 Tutoriels: /tutorials/
   Apps: /apps/
   Services: /services/
   Portfolio: /portfolio/

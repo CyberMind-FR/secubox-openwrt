@@ -90,18 +90,19 @@ Site Management:
   site switch <name>   Switch active site
 
 Content Commands:
-  new post "Title"     Create new blog post
-  new page "Title"     Create new page
-  new draft "Title"    Create new draft
-  publish <slug>       Publish a draft
-  list posts           List all posts
-  list drafts          List all drafts
+  new post "Title"       Create new blog post
+  new page "Title"       Create new page
+  new draft "Title"      Create new draft
+  publish draft <slug>   Publish a draft
+  list posts             List all posts
+  list drafts            List all drafts
 
 Build Commands:
-  serve               Start preview server (port $http_port)
-  build               Generate static files
-  clean               Clean generated files
-  deploy              Deploy to configured target
+  serve                 Start preview server (port $http_port)
+  build (generate)      Generate static files
+  clean                 Clean generated files
+  deploy                Deploy to configured git target
+  publish               Copy static files to /www/blog/
 
 Service Commands:
   service-run         Run in foreground (for init)
@@ -293,8 +294,7 @@ lxc_run() {
 
 	# Ensure start script exists in container
 	local start_script="$LXC_ROOTFS/opt/start-hexo.sh"
-	if [ ! -f "$start_script" ]; then
-		cat > "$start_script" << 'STARTEOF'
+	cat > "$start_script" << 'STARTEOF'
 #!/bin/sh
 export PATH=/usr/local/bin:/usr/bin:/bin:$PATH
 export HOME=/root
@@ -302,11 +302,11 @@ export NODE_ENV=production
 HEXO_PORT="${HEXO_PORT:-4000}"
 SITE_DIR="/opt/hexojs/site"
 cd "$SITE_DIR" 2>/dev/null || exec tail -f /dev/null
+[ -d "node_modules" ] || npm install
 [ -d "$SITE_DIR/public" ] || hexo generate
-exec hexo server -p "$HEXO_PORT"
+exec hexo server -p "$HEXO_PORT" -i 0.0.0.0
 STARTEOF
-		chmod +x "$start_script"
-	fi
+	chmod +x "$start_script"
 
 	log_info "Starting Hexo container on port $http_port..."
 	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
@@ -668,14 +668,14 @@ cmd_new_draft() {
 	lxc_exec sh -c "cd /opt/hexojs/site && hexo new draft \"$title\""
 }
 
-cmd_publish() {
+cmd_publish_draft() {
 	require_root
 	load_config
 
 	local slug="$1"
 	if [ -z "$slug" ]; then
 		log_error "Slug required"
-		echo "Usage: hexoctl publish <slug>"
+		echo "Usage: hexoctl publish draft <slug>"
 		return 1
 	fi
 
@@ -762,7 +762,7 @@ cmd_serve() {
 	fi
 
 	log_info "Starting preview server on port $http_port..."
-	lxc_exec sh -c "cd /opt/hexojs/site && hexo server -p $http_port"
+	lxc_exec sh -c "cd /opt/hexojs/site && hexo server -p $http_port -i 0.0.0.0"
 }
 
 cmd_build() {
@@ -811,6 +811,64 @@ cmd_deploy() {
 	log_info "Deploying to $deploy_repo..."
 	lxc_exec sh -c "cd /opt/hexojs/site && hexo deploy"
 	log_info "Deploy complete!"
+}
+
+cmd_publish() {
+	require_root
+	load_config
+
+	local public_dir="$data_path/site/public"
+	local portal_path="/www"
+	local config_file="$data_path/site/_config.yml"
+
+	# Allow custom portal path from config
+	local custom_path=$(uci_get portal.path)
+	[ -n "$custom_path" ] && portal_path="$custom_path"
+
+	# Calculate web root from portal path (strip /www prefix)
+	local web_root="${portal_path#/www}"
+	[ -z "$web_root" ] && web_root="/"
+	# Ensure trailing slash
+	[ "${web_root%/}" = "$web_root" ] && web_root="$web_root/"
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	if [ ! -f "$config_file" ]; then
+		log_error "No Hexo config found at $config_file"
+		return 1
+	fi
+
+	log_info "Setting Hexo root to: $web_root"
+
+	# Update root in _config.yml (use sed to replace existing root line)
+	if grep -q "^root:" "$config_file"; then
+		sed -i "s|^root:.*|root: $web_root|" "$config_file"
+	else
+		# Add root config if not present
+		echo "root: $web_root" >> "$config_file"
+	fi
+
+	log_info "Regenerating static files for $web_root..."
+	lxc_exec sh -c "cd /opt/hexojs/site && hexo clean && hexo generate"
+
+	if [ ! -d "$public_dir" ]; then
+		log_error "Build failed - no public directory"
+		return 1
+	fi
+
+	log_info "Publishing to $portal_path..."
+
+	# Create portal directory
+	ensure_dir "$portal_path"
+
+	# Sync files
+	rsync -av --delete "$public_dir/" "$portal_path/"
+
+	log_info "Published $(find "$portal_path" -type f | wc -l) files to $portal_path"
+	log_info "Access at: http://$(uci -q get network.lan.ipaddr || echo 'router')$web_root"
 }
 
 cmd_logs() {
@@ -1074,8 +1132,6 @@ case "${1:-}" in
 		esac
 		;;
 
-	publish)    shift; cmd_publish "$@" ;;
-
 	list)
 		shift
 		case "${1:-}" in
@@ -1086,9 +1142,16 @@ case "${1:-}" in
 		;;
 
 	serve)      shift; cmd_serve "$@" ;;
-	build)      shift; cmd_build "$@" ;;
+	build|generate) shift; cmd_build "$@" ;;
 	clean)      shift; cmd_clean "$@" ;;
 	deploy)     shift; cmd_deploy "$@" ;;
+	publish)
+		shift
+		case "${1:-}" in
+			draft) shift; cmd_publish_draft "$@" ;;
+			*)     cmd_publish "$@" ;;
+		esac
+		;;
 
 	logs)       shift; cmd_logs "$@" ;;
 	shell)      shift; cmd_shell "$@" ;;

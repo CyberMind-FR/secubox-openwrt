@@ -135,7 +135,7 @@ return view.extend({
 					E('th', {}, 'Backend'),
 					E('th', {}, 'SSL Configuration'),
 					E('th', {}, 'Status'),
-					E('th', { 'style': 'width: 180px; text-align: right;' }, 'Actions')
+					E('th', { 'style': 'width: 220px; text-align: right;' }, 'Actions')
 				])
 			]),
 			E('tbody', {}, vhosts.map(function(vh) {
@@ -152,11 +152,16 @@ return view.extend({
 						vh.ssl ? E('span', { 'class': 'hp-badge hp-badge-info', 'style': 'margin-right: 6px;' }, '\u{1F512} SSL') : null,
 						vh.acme ? E('span', { 'class': 'hp-badge hp-badge-success' }, '\u{1F504} ACME') : null,
 						!vh.ssl && !vh.acme ? E('span', { 'class': 'hp-badge hp-badge-warning' }, 'No SSL') : null
-					]),
+					].filter(function(e) { return e !== null; })),
 					E('td', {}, E('span', {
 						'class': 'hp-badge ' + (vh.enabled ? 'hp-badge-success' : 'hp-badge-danger')
 					}, vh.enabled ? '\u2705 Active' : '\u26D4 Disabled')),
 					E('td', { 'style': 'text-align: right;' }, [
+						E('button', {
+							'class': 'hp-btn hp-btn-sm hp-btn-primary',
+							'style': 'margin-right: 8px;',
+							'click': function() { self.showEditVhostModal(vh, backends); }
+						}, '\u270F Edit'),
 						E('button', {
 							'class': 'hp-btn hp-btn-sm ' + (vh.enabled ? 'hp-btn-secondary' : 'hp-btn-success'),
 							'style': 'margin-right: 8px;',
@@ -169,6 +174,100 @@ return view.extend({
 					])
 				]);
 			}))
+		]);
+	},
+
+	showEditVhostModal: function(vh, backends) {
+		var self = this;
+
+		ui.showModal('Edit Virtual Host: ' + vh.domain, [
+			E('div', { 'style': 'max-width: 500px;' }, [
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Domain'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', {
+							'type': 'text',
+							'id': 'edit-domain',
+							'class': 'cbi-input-text',
+							'value': vh.domain,
+							'style': 'width: 100%;'
+						})
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Backend'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('select', { 'id': 'edit-backend', 'class': 'cbi-input-select', 'style': 'width: 100%;' },
+							[E('option', { 'value': '' }, '-- Select Backend --')].concat(
+								backends.map(function(b) {
+									var selected = (vh.backend === (b.id || b.name)) ? { 'selected': true } : {};
+									return E('option', Object.assign({ 'value': b.id || b.name }, selected), b.name);
+								})
+							)
+						)
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'SSL Options'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, [
+							E('label', {}, [
+								E('input', { 'type': 'checkbox', 'id': 'edit-ssl', 'checked': vh.ssl }),
+								' Enable SSL/TLS'
+							]),
+							E('label', {}, [
+								E('input', { 'type': 'checkbox', 'id': 'edit-ssl-redirect', 'checked': vh.ssl_redirect }),
+								' Force HTTPS redirect'
+							]),
+							E('label', {}, [
+								E('input', { 'type': 'checkbox', 'id': 'edit-acme', 'checked': vh.acme }),
+								' Auto-renew with ACME (Let\'s Encrypt)'
+							])
+						])
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Status'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('label', {}, [
+							E('input', { 'type': 'checkbox', 'id': 'edit-enabled', 'checked': vh.enabled }),
+							' Enabled'
+						])
+					])
+				])
+			]),
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
+				E('button', {
+					'class': 'hp-btn hp-btn-secondary',
+					'click': ui.hideModal
+				}, 'Cancel'),
+				E('button', {
+					'class': 'hp-btn hp-btn-primary',
+					'click': function() {
+						var domain = document.getElementById('edit-domain').value.trim();
+						var backend = document.getElementById('edit-backend').value;
+						var ssl = document.getElementById('edit-ssl').checked ? 1 : 0;
+						var sslRedirect = document.getElementById('edit-ssl-redirect').checked ? 1 : 0;
+						var acme = document.getElementById('edit-acme').checked ? 1 : 0;
+						var enabled = document.getElementById('edit-enabled').checked ? 1 : 0;
+
+						if (!domain) {
+							self.showToast('Domain is required', 'error');
+							return;
+						}
+
+						ui.hideModal();
+						api.updateVhost(vh.id, domain, backend, ssl, sslRedirect, acme, enabled).then(function(res) {
+							if (res.success) {
+								self.showToast('Virtual host updated', 'success');
+								window.location.reload();
+							} else {
+								self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
+							}
+						});
+					}
+				}, 'Save Changes')
+			])
 		]);
 	},
 

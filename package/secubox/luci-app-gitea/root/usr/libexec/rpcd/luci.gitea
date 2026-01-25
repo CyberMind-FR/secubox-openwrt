@@ -362,7 +362,12 @@ list_repos() {
 
 	local repo_root="$data_path/git/repositories"
 	if [ -d "$repo_root" ]; then
-		find "$repo_root" -name "*.git" -type d 2>/dev/null | while read -r repo; do
+		# Use temp file to avoid subshell issue with piped while loop
+		local tmpfile="/tmp/gitea-repos.$$"
+		find "$repo_root" -name "*.git" -type d 2>/dev/null > "$tmpfile"
+
+		while read -r repo; do
+			[ -z "$repo" ] && continue
 			local rel_path="${repo#$repo_root/}"
 			local name=$(basename "$repo" .git)
 			local owner=$(dirname "$rel_path")
@@ -383,7 +388,9 @@ list_repos() {
 			json_add_string "size" "$size"
 			[ -n "$mtime" ] && json_add_int "mtime" "$mtime"
 			json_close_object
-		done
+		done < "$tmpfile"
+
+		rm -f "$tmpfile"
 	fi
 
 	json_close_array
@@ -528,7 +535,7 @@ list_backups() {
 
 	local backup_dir="$data_path/backups"
 	if [ -d "$backup_dir" ]; then
-		ls -1 "$backup_dir"/*.tar.gz 2>/dev/null | while read -r backup; do
+		for backup in "$backup_dir"/*.tar.gz; do
 			[ -f "$backup" ] || continue
 			local name=$(basename "$backup")
 			local size=$(ls -lh "$backup" 2>/dev/null | awk '{print $5}')

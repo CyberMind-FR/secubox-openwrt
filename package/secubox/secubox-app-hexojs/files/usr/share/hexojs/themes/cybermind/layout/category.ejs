@@ -68,7 +68,7 @@ if (typeof get_blog_categories === 'function') {
     <% if (catDesc) { %><p class="cat-desc"><%= catDesc %></p><% } %>
     <p class="cat-count"><%= postCount %> article<%= postCount > 1 ? 's' : '' %></p>
     <nav class="breadcrumb">
-      <a href="/">Accueil</a> / <a href="/blog/">Blog</a> / <span><%= catName %></span>
+      <a href="<%= url_for('/') %>">Accueil</a> / <a href="<%= url_for('/categories/') %>">Blog</a> / <span><%= catName %></span>
     </nav>
   </header>
 
@@ -78,7 +78,7 @@ if (typeof get_blog_categories === 'function') {
     <div class="res-group">
       <h3>🚀 Apps</h3>
       <% page.featured_apps.forEach(function(app) { %>
-      <a href="/apps/<%= app %>/" class="res-link"><%= app %></a>
+      <a href="<%= url_for('apps/' + app + '/') %>" class="res-link"><%= app %></a>
       <% }); %>
     </div>
     <% } %>
@@ -86,7 +86,7 @@ if (typeof get_blog_categories === 'function') {
     <div class="res-group">
       <h3>🛡️ Services</h3>
       <% page.featured_services.forEach(function(svc) { %>
-      <a href="/services/<%= svc %>/" class="res-link"><%= svc %></a>
+      <a href="<%= url_for('services/' + svc + '/') %>" class="res-link"><%= svc %></a>
       <% }); %>
     </div>
     <% } %>
@@ -127,7 +127,7 @@ if (typeof get_blog_categories === 'function') {
     <% } else { %>
     <div class="no-posts">
       <p>🚧 Aucun article dans cette catégorie pour le moment.</p>
-      <p><a href="/blog/">← Retour au blog</a></p>
+      <p><a href="<%= url_for('/categories/') %>">← Retour au blog</a></p>
     </div>
     <% } %>
   </section>

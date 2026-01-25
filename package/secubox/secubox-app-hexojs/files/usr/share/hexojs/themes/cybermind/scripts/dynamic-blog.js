@@ -126,7 +126,7 @@ function scanCategories(hexo) {
       color: DEFAULT_COLORS[orderIndex % DEFAULT_COLORS.length],
       description: '',
       order: 100 + orderIndex,
-      path: `/blog/${slug}/`
+      path: `/${slug}/`
     };
     
     // Lire les métadonnées depuis index.md si présent
@@ -360,7 +360,7 @@ hexo.extend.helper.register('get_dynamic_menu', function() {
   const blogMenu = {
     name: 'Blog',
     icon: '📚',
-    path: '/blog/',
+    path: '/categories/',
     children: categories.map(cat => ({
       name: cat.name,
       icon: cat.icon,

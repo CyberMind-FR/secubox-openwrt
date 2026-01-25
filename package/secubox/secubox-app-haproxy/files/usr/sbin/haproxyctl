@@ -2,6 +2,9 @@
 # SecuBox HAProxy Controller
 # Copyright (C) 2025 CyberMind.fr
 
+# Source OpenWrt functions for UCI iteration
+. /lib/functions.sh
+
 CONFIG="haproxy"
 LXC_NAME="haproxy"
 
@@ -196,7 +199,7 @@ lxc.net.0.type = none
 
 # Mount points
 lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
-lxc.mount.entry = $data_path /opt/haproxy none bind,create=dir 0 0
+lxc.mount.entry = $data_path opt/haproxy none bind,create=dir 0 0
 
 # Environment
 lxc.environment = HTTP_PORT=$http_port
@@ -206,8 +209,8 @@ lxc.environment = STATS_PORT=$stats_port
 # Security
 lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time
 
-# Resource limits
-lxc.cgroup.memory.limit_in_bytes = $mem_bytes
+# Resource limits (cgroup2)
+lxc.cgroup2.memory.max = $mem_bytes
 
 # Init command
 lxc.init.cmd = /opt/start-haproxy.sh
@@ -234,7 +237,14 @@ lxc_run() {
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 CONFIG_FILE="/opt/haproxy/config/haproxy.cfg"
-PID_FILE="/var/run/haproxy.pid"
+LOG_FILE="/opt/haproxy/startup.log"
+
+# Log all output
+exec >>"$LOG_FILE" 2>&1
+echo "=== HAProxy startup: $(date) ==="
+echo "Config: $CONFIG_FILE"
+ls -la /opt/haproxy/
+ls -la /opt/haproxy/certs/ 2>/dev/null || echo "No certs dir"
 
 # Wait for config
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -273,6 +283,16 @@ backend fallback
     mode http
     server local 127.0.0.1:8080 check
 CFGEOF
+fi
+
+# Validate config first
+echo "[haproxy] Validating config..."
+haproxy -c -f "$CONFIG_FILE"
+RC=$?
+echo "[haproxy] Validation exit code: $RC"
+if [ $RC -ne 0 ]; then
+    echo "[haproxy] Config validation failed!"
+    exit 1
 fi
 
 echo "[haproxy] Starting HAProxy..."
@@ -388,10 +408,12 @@ EOF
 	echo ""
 
 	# HTTPS Frontend (if certificates exist)
+	# Use container path /opt/haproxy/certs/ (not host path)
+	local CONTAINER_CERTS_PATH="/opt/haproxy/certs"
 	if [ -d "$CERTS_PATH" ] && ls "$CERTS_PATH"/*.pem >/dev/null 2>&1; then
 		cat << EOF
 frontend https-in
-    bind *:$https_port ssl crt $CERTS_PATH/ alpn h2,http/1.1
+    bind *:$https_port ssl crt $CONTAINER_CERTS_PATH/ alpn h2,http/1.1
     mode http
     http-request set-header X-Forwarded-Proto https
     http-request set-header X-Real-IP %[src]
@@ -448,15 +470,18 @@ _add_vhost_acl() {
 _generate_backends() {
 	config_load haproxy
 
-	# Generate each backend
+	# Generate each backend from UCI
 	config_foreach _generate_backend backend
 
-	# Fallback backend
-	cat << EOF
+	# Only add default fallback if no "fallback" backend exists in UCI
+	if ! uci -q get haproxy.fallback >/dev/null 2>&1; then
+		cat << EOF
+
 backend fallback
     mode http
     http-request deny deny_status 503
 EOF
+	fi
 }
 
 _generate_backend() {
@@ -478,7 +503,12 @@ _generate_backend() {
 
 	[ -n "$health_check" ] && echo "    option $health_check"
 
-	# Add servers for this backend
+	# Add servers defined in backend section (handles both single and list)
+	local server_line
+	config_get server_line "$section" server ""
+	[ -n "$server_line" ] && echo "    server $server_line"
+
+	# Add servers from separate server UCI sections
 	config_foreach _add_server_to_backend server "$name"
 }
 
@@ -538,41 +568,108 @@ cmd_cert_add() {
 
 	local email=$(uci_get acme.email)
 	local staging=$(uci_get acme.staging)
-	local key_type=$(uci_get acme.key_type) || key_type="ec-256"
+	local key_type_raw=$(uci_get acme.key_type) || key_type_raw="ec-256"
 
-	[ -z "$email" ] && { log_error "ACME email not configured"; return 1; }
+	# Convert key type for acme.sh (rsa-4096 → 4096, ec-256 stays ec-256)
+	local key_type="$key_type_raw"
+	case "$key_type_raw" in
+		rsa-*) key_type="${key_type_raw#rsa-}" ;;  # rsa-4096 → 4096
+		RSA-*) key_type="${key_type_raw#RSA-}" ;;
+	esac
+
+	[ -z "$email" ] && { log_error "ACME email not configured. Set in LuCI > Services > HAProxy > Settings"; return 1; }
 
 	log_info "Requesting certificate for $domain..."
 
 	local staging_flag=""
 	[ "$staging" = "1" ] && staging_flag="--staging"
 
-	# Use acme.sh or certbot if available
-	if command -v acme.sh >/dev/null 2>&1; then
-		acme.sh --issue -d "$domain" --standalone --httpport $http_port \
-			--keylength $key_type $staging_flag \
-			--cert-file "$CERTS_PATH/$domain.crt" \
-			--key-file "$CERTS_PATH/$domain.key" \
-			--fullchain-file "$CERTS_PATH/$domain.pem" \
-			--reloadcmd "haproxyctl reload"
+	# Find acme.sh - check OpenWrt location first, then PATH
+	local ACME_SH=""
+	if [ -x "/usr/lib/acme/client/acme.sh" ]; then
+		ACME_SH="/usr/lib/acme/client/acme.sh"
+	elif command -v acme.sh >/dev/null 2>&1; then
+		ACME_SH="acme.sh"
+	fi
+
+	if [ -n "$ACME_SH" ]; then
+		# Set acme.sh home directory
+		export LE_WORKING_DIR="/etc/acme"
+		export LE_CONFIG_HOME="/etc/acme"
+		ensure_dir "$LE_WORKING_DIR"
+
+		# Register account if needed
+		if [ ! -f "$LE_WORKING_DIR/account.conf" ]; then
+			log_info "Registering ACME account..."
+			"$ACME_SH" --register-account -m "$email" $staging_flag --home "$LE_WORKING_DIR" || true
+		fi
+
+		# Check if HAProxy is using the port
+		local haproxy_was_running=0
+		if lxc_running; then
+			log_info "Temporarily stopping HAProxy for certificate issuance..."
+			haproxy_was_running=1
+			/etc/init.d/haproxy stop 2>/dev/null || true
+			sleep 2
+		fi
+
+		# Issue certificate using standalone mode
+		log_info "Issuing certificate (standalone mode on port $http_port)..."
+		local acme_result=0
+		"$ACME_SH" --issue -d "$domain" \
+			--standalone --httpport "$http_port" \
+			--keylength "$key_type" \
+			$staging_flag \
+			--home "$LE_WORKING_DIR" || acme_result=$?
+
+		# acme.sh returns 0 on success, 2 on "skip/already valid" - both are OK
+		# Install the certificate to our certs path
+		if [ "$acme_result" -eq 0 ] || [ "$acme_result" -eq 2 ]; then
+			log_info "Installing certificate..."
+			"$ACME_SH" --install-cert -d "$domain" \
+				--home "$LE_WORKING_DIR" \
+				--cert-file "$CERTS_PATH/$domain.crt" \
+				--key-file "$CERTS_PATH/$domain.key" \
+				--fullchain-file "$CERTS_PATH/$domain.pem" \
+				--reloadcmd "/etc/init.d/haproxy reload" 2>/dev/null || true
+		fi
+
+		# Restart HAProxy if it was running
+		if [ "$haproxy_was_running" = "1" ]; then
+			log_info "Restarting HAProxy..."
+			/etc/init.d/haproxy start 2>/dev/null || true
+		fi
+
+		# Check if certificate was created
+		if [ ! -f "$CERTS_PATH/$domain.pem" ]; then
+			log_error "Certificate issuance failed. Ensure port $http_port is accessible from internet and domain points to this IP."
+			return 1
+		fi
+		log_info "Certificate ready: $CERTS_PATH/$domain.pem"
 	elif command -v certbot >/dev/null 2>&1; then
 		certbot certonly --standalone -d "$domain" \
 			--email "$email" --agree-tos -n \
-			--http-01-port $http_port $staging_flag
+			--http-01-port "$http_port" $staging_flag || {
+			log_error "Certbot failed"
+			return 1
+		}
 
 		# Copy to HAProxy certs dir
 		local le_path="/etc/letsencrypt/live/$domain"
 		cat "$le_path/fullchain.pem" "$le_path/privkey.pem" > "$CERTS_PATH/$domain.pem"
 	else
-		log_error "No ACME client found. Install acme.sh or certbot"
+		log_error "No ACME client found. Install: opkg install acme acme-acmesh"
 		return 1
 	fi
 
+	chmod 600 "$CERTS_PATH/$domain.pem"
+
 	# Add to UCI
-	uci set haproxy.cert_${domain//[.-]/_}=certificate
-	uci set haproxy.cert_${domain//[.-]/_}.domain="$domain"
-	uci set haproxy.cert_${domain//[.-]/_}.type="acme"
-	uci set haproxy.cert_${domain//[.-]/_}.enabled="1"
+	local section="cert_$(echo "$domain" | tr '.-' '__')"
+	uci set haproxy.$section=certificate
+	uci set haproxy.$section.domain="$domain"
+	uci set haproxy.$section.type="acme"
+	uci set haproxy.$section.enabled="1"
 	uci commit haproxy
 
 	log_info "Certificate installed for $domain"
@@ -818,8 +915,11 @@ cmd_reload() {
 	generate_config
 
 	log_info "Reloading HAProxy configuration..."
-	lxc_exec sh -c "echo 'reload' | socat stdio /var/run/haproxy.sock" || \
-		lxc_exec killall -HUP haproxy
+	# HAProxy in master-worker mode (-W) reloads gracefully on SIGUSR2
+	# Fallback to SIGHUP if USR2 fails
+	lxc_exec killall -USR2 haproxy 2>/dev/null || \
+		lxc_exec killall -HUP haproxy 2>/dev/null || \
+		log_error "Could not signal HAProxy for reload"
 
 	log_info "Reload complete"
 }

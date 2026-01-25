@@ -18,11 +18,11 @@ branding:
 menu:
   Home: /
   Blog:
-    _path: /blog/
-    Security: /blog/security/
-    Linux: /blog/linux/
-    Development: /blog/dev/
-    Tutorials: /blog/tutorials/
+    _path: /categories/
+    Security: /security/
+    Linux: /linux/
+    Development: /dev/
+    Tutorials: /tutorials/
   Projects: /portfolio/
   About: /about/
 

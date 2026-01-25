@@ -38,3 +38,7 @@ config theme_config 'theme'
 	option accent_color '#f97316'
 	option logo_symbol '>'
 	option logo_text 'Blog_'
+
+config portal 'portal'
+	option enabled '1'
+	option path '/www'
