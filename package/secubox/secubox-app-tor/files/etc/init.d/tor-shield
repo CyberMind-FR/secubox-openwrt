@@ -284,6 +284,11 @@ reload_service() {
 	start
 }
 
+restart_service() {
+	stop
+	start
+}
+
 status() {
 	"$PROG" status
 }
