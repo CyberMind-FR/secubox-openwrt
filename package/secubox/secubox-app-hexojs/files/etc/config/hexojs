@@ -40,5 +40,5 @@ config theme_config 'theme'
 	option logo_text 'Blog_'
 
 config portal 'portal'
-	option enabled '1'
+	option enabled '0'
 	option path '/www'
