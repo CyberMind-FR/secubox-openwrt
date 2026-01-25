@@ -19,7 +19,7 @@ config hexo 'hexo'
 	option source_path '/srv/hexojs/site/source/_posts'
 	option public_path '/srv/hexojs/site/public'
 	option portal_path '/www'
-	option auto_publish '1'
+	option auto_publish '0'
 
 config portal 'portal'
 	option enabled '1'

@@ -221,6 +221,10 @@ case "$1" in
 		json_add_object "apply_wan_access"
 		json_close_object
 
+		# Services discovery
+		json_add_object "get_services"
+		json_close_object
+
 	json_dump
 		;;
 
@@ -1173,6 +1177,70 @@ case "$1" in
 				json_add_string "message" "WAN access rules applied"
 				json_dump
 				;;
+
+		get_services)
+			# Discover listening services from netstat
+			# Save to temp file to avoid subshell issues with json
+			TMP_SERVICES="/tmp/services_$$"
+			netstat -tlnp 2>/dev/null | grep LISTEN | awk '{
+				split($4, a, ":")
+				port = a[length(a)]
+				if (!seen[port]++) {
+					split($7, p, "/")
+					proc = p[2]
+					if (proc == "") proc = "unknown"
+					print port, $4, proc
+				}
+			}' | sort -n -u > "$TMP_SERVICES"
+
+			json_init
+			json_add_array "services"
+
+			while read port local proc; do
+				addr=$(echo "$local" | sed 's/:[^:]*$//')
+				name="Service"; icon=""; category="other"; path=""
+
+				case "$port" in
+					22) name="SSH"; icon="lock"; category="system" ;;
+					53) name="DNS"; icon="globe"; category="system" ;;
+					80) name="HTTP"; icon="arrow"; path="/"; category="proxy" ;;
+					443) name="HTTPS"; icon="shield"; path="/"; category="proxy" ;;
+					3000) name="Gitea"; icon="git"; path=":3000"; category="app" ;;
+					4000) name="HexoJS"; icon="blog"; path=":4000"; category="app" ;;
+					8080) name="CrowdSec"; icon="security"; category="security" ;;
+					8081) name="LuCI"; icon="settings"; path=":8081"; category="system" ;;
+					8082) name="CyberFeed"; icon="feed"; path=":8082"; category="app" ;;
+					8086) name="Netifyd"; icon="chart"; path=":8086"; category="monitoring" ;;
+					8404) name="HAProxy Stats"; icon="stats"; path=":8404/stats"; category="monitoring" ;;
+					8444) name="LuCI HTTPS"; icon="admin"; path=":8444"; category="system" ;;
+					8501) name="Streamlit"; icon="app"; path=":8501"; category="app" ;;
+					9000) name="Lyrion"; icon="music"; path=":9000"; category="media" ;;
+					9050) name="Tor SOCKS"; icon="onion"; category="privacy" ;;
+					9090) name="Lyrion CLI"; icon="music"; category="media" ;;
+					2222) name="Gitea SSH"; icon="git"; category="app" ;;
+					3483) name="Squeezebox"; icon="music"; category="media" ;;
+				esac
+
+				external=0
+				case "$addr" in 0.0.0.0|::) external=1 ;; 127.0.0.1|::1) ;; *) external=1 ;; esac
+
+				json_add_object ""
+					json_add_int "port" "$port"
+					json_add_string "address" "$addr"
+					json_add_string "name" "$name"
+					json_add_string "icon" "$icon"
+					json_add_string "process" "$proc"
+					json_add_string "category" "$category"
+					json_add_boolean "external" "$external"
+					[ -n "$path" ] && [ "$external" = "1" ] && json_add_string "url" "$path"
+				json_close_object
+			done < "$TMP_SERVICES"
+
+			rm -f "$TMP_SERVICES"
+			json_close_array
+			json_dump
+			;;
+
 
 			*)
 				json_init
