@@ -630,8 +630,13 @@ cmd_cert_add() {
 				--home "$LE_WORKING_DIR" \
 				--cert-file "$CERTS_PATH/$domain.crt" \
 				--key-file "$CERTS_PATH/$domain.key" \
-				--fullchain-file "$CERTS_PATH/$domain.pem" \
+				--fullchain-file "$CERTS_PATH/$domain.fullchain.pem" \
 				--reloadcmd "/etc/init.d/haproxy reload" 2>/dev/null || true
+
+			# HAProxy needs combined file: fullchain + private key
+			log_info "Creating combined PEM for HAProxy..."
+			cat "$CERTS_PATH/$domain.fullchain.pem" "$CERTS_PATH/$domain.key" > "$CERTS_PATH/$domain.pem"
+			chmod 600 "$CERTS_PATH/$domain.pem"
 		fi
 
 		# Restart HAProxy if it was running
