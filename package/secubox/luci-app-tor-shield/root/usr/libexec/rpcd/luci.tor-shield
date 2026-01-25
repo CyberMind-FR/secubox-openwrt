@@ -32,15 +32,10 @@ tor_control() {
 	} | socat - UNIX-CONNECT:"$TOR_CONTROL" 2>/dev/null
 }
 
-# Check if Tor is running (via tor-shield, not just any tor process)
+# Check if Tor is running
 is_running() {
-	# Check for tor-shield's pid file first
-	if [ -f "$TOR_RUN/tor.pid" ]; then
-		local pid=$(cat "$TOR_RUN/tor.pid" 2>/dev/null)
-		[ -n "$pid" ] && [ -d "/proc/$pid" ] && return 0
-	fi
-	# Fallback to checking any tor process
-	pgrep tor >/dev/null 2>&1
+	# Check for tor process (procd manages the process, no pid file)
+	pgrep -f "/usr/sbin/tor" >/dev/null 2>&1
 }
 
 # Check if tor-shield control socket is available
@@ -113,15 +108,12 @@ get_status() {
 			fi
 		fi
 
-		# Uptime from pid file
-		local pidfile="$TOR_RUN/tor.pid"
-		if [ -f "$pidfile" ]; then
-			local pid=$(cat "$pidfile")
-			if [ -d "/proc/$pid" ]; then
-				local start_time=$(stat -c %Y "/proc/$pid" 2>/dev/null)
-				local now=$(date +%s)
-				json_add_int "uptime" "$((now - start_time))"
-			fi
+		# Uptime from process start time
+		local pid=$(pgrep -f "/usr/sbin/tor" | head -1)
+		if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+			local start_time=$(stat -c %Y "/proc/$pid" 2>/dev/null)
+			local now=$(date +%s)
+			json_add_int "uptime" "$((now - start_time))"
 		fi
 	else
 		json_add_boolean "running" 0
@@ -149,11 +141,14 @@ get_status() {
 do_enable() {
 	read input
 	json_load "$input"
+
+	# Get values from input BEFORE json_init
+	local preset
 	json_get_var preset preset
-
-	json_init
-
 	[ -z "$preset" ] && preset="anonymous"
+
+	# Now initialize output JSON
+	json_init
 
 	# Load preset configuration
 	config_load "$CONFIG"
@@ -383,10 +378,14 @@ add_hidden_service_json() {
 add_hidden_service() {
 	read input
 	json_load "$input"
+
+	# Get values from input BEFORE json_init
+	local name local_port virtual_port
 	json_get_var name name
 	json_get_var local_port local_port
 	json_get_var virtual_port virtual_port
 
+	# Now initialize output JSON
 	json_init
 
 	if [ -z "$name" ]; then
@@ -420,8 +419,12 @@ add_hidden_service() {
 remove_hidden_service() {
 	read input
 	json_load "$input"
+
+	# Get values from input BEFORE json_init
+	local name
 	json_get_var name name
 
+	# Now initialize output JSON
 	json_init
 
 	if [ -z "$name" ]; then
@@ -587,9 +590,13 @@ add_bridge_json() {
 set_bridges() {
 	read input
 	json_load "$input"
+
+	# Get values from input BEFORE json_init
+	local enabled type
 	json_get_var enabled enabled
 	json_get_var type type
 
+	# Now initialize output JSON
 	json_init
 
 	[ -n "$enabled" ] && uci set tor-shield.bridges.enabled="$enabled"
@@ -664,9 +671,9 @@ save_settings() {
 	read input
 	json_load "$input"
 
-	json_init
-
-	# Get values from input
+	# Get values from input BEFORE json_init (which wipes loaded JSON)
+	local mode dns_over_tor kill_switch socks_port trans_port dns_port
+	local exit_nodes exclude_exit strict_nodes
 	json_get_var mode mode
 	json_get_var dns_over_tor dns_over_tor
 	json_get_var kill_switch kill_switch
@@ -676,6 +683,9 @@ save_settings() {
 	json_get_var exit_nodes exit_nodes
 	json_get_var exclude_exit exclude_exit_nodes
 	json_get_var strict_nodes strict_nodes
+
+	# Now initialize output JSON
+	json_init
 
 	# Apply settings
 	[ -n "$mode" ] && uci set tor-shield.main.mode="$mode"

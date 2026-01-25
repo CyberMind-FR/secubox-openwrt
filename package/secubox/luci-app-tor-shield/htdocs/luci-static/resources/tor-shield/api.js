@@ -188,9 +188,13 @@ return baseclass.extend({
 			callPresets(),
 			callBandwidth()
 		]).then(function(results) {
+			// Handle RPC expect unwrapping - results may be array or object
+			var presetsData = results[1] || [];
+			var presets = Array.isArray(presetsData) ? presetsData : (presetsData.presets || []);
+
 			return {
 				status: results[0] || {},
-				presets: (results[1] || {}).presets || [],
+				presets: presets,
 				bandwidth: results[2] || {}
 			};
 		});
