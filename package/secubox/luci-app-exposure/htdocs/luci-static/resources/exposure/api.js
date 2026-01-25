@@ -1,81 +1,82 @@
 'use strict';
+'require baseclass';
 'require rpc';
 
-var callScan = rpc.declare({
-    object: 'luci.exposure',
-    method: 'scan',
-    expect: { services: [] }
-});
+return baseclass.extend({
+    callScan: rpc.declare({
+        object: 'luci.exposure',
+        method: 'scan',
+        expect: { services: [] }
+    }),
 
-var callConflicts = rpc.declare({
-    object: 'luci.exposure',
-    method: 'conflicts',
-    expect: { conflicts: [] }
-});
+    callConflicts: rpc.declare({
+        object: 'luci.exposure',
+        method: 'conflicts',
+        expect: { conflicts: [] }
+    }),
 
-var callStatus = rpc.declare({
-    object: 'luci.exposure',
-    method: 'status'
-});
+    callStatus: rpc.declare({
+        object: 'luci.exposure',
+        method: 'status'
+    }),
 
-var callTorList = rpc.declare({
-    object: 'luci.exposure',
-    method: 'tor_list',
-    expect: { services: [] }
-});
+    callTorList: rpc.declare({
+        object: 'luci.exposure',
+        method: 'tor_list',
+        expect: { services: [] }
+    }),
 
-var callSslList = rpc.declare({
-    object: 'luci.exposure',
-    method: 'ssl_list',
-    expect: { backends: [] }
-});
+    callSslList: rpc.declare({
+        object: 'luci.exposure',
+        method: 'ssl_list',
+        expect: { backends: [] }
+    }),
 
-var callGetConfig = rpc.declare({
-    object: 'luci.exposure',
-    method: 'get_config',
-    expect: { known_services: [] }
-});
+    callGetConfig: rpc.declare({
+        object: 'luci.exposure',
+        method: 'get_config',
+        expect: { known_services: [] }
+    }),
 
-var callFixPort = rpc.declare({
-    object: 'luci.exposure',
-    method: 'fix_port',
-    params: ['service', 'port']
-});
+    callFixPort: rpc.declare({
+        object: 'luci.exposure',
+        method: 'fix_port',
+        params: ['service', 'port']
+    }),
 
-var callTorAdd = rpc.declare({
-    object: 'luci.exposure',
-    method: 'tor_add',
-    params: ['service', 'local_port', 'onion_port']
-});
+    callTorAdd: rpc.declare({
+        object: 'luci.exposure',
+        method: 'tor_add',
+        params: ['service', 'local_port', 'onion_port']
+    }),
 
-var callTorRemove = rpc.declare({
-    object: 'luci.exposure',
-    method: 'tor_remove',
-    params: ['service']
-});
+    callTorRemove: rpc.declare({
+        object: 'luci.exposure',
+        method: 'tor_remove',
+        params: ['service']
+    }),
 
-var callSslAdd = rpc.declare({
-    object: 'luci.exposure',
-    method: 'ssl_add',
-    params: ['service', 'domain', 'local_port']
-});
+    callSslAdd: rpc.declare({
+        object: 'luci.exposure',
+        method: 'ssl_add',
+        params: ['service', 'domain', 'local_port']
+    }),
 
-var callSslRemove = rpc.declare({
-    object: 'luci.exposure',
-    method: 'ssl_remove',
-    params: ['service']
-});
+    callSslRemove: rpc.declare({
+        object: 'luci.exposure',
+        method: 'ssl_remove',
+        params: ['service']
+    }),
 
-return {
-    scan: callScan,
-    conflicts: callConflicts,
-    status: callStatus,
-    torList: callTorList,
-    sslList: callSslList,
-    getConfig: callGetConfig,
-    fixPort: callFixPort,
-    torAdd: callTorAdd,
-    torRemove: callTorRemove,
-    sslAdd: callSslAdd,
-    sslRemove: callSslRemove
-};
+    scan: function() { return this.callScan(); },
+    conflicts: function() { return this.callConflicts(); },
+    status: function() { return this.callStatus(); },
+    torList: function() { return this.callTorList(); },
+    sslList: function() { return this.callSslList(); },
+    getConfig: function() { return this.callGetConfig(); },
+    fixPort: function(s, p) { return this.callFixPort(s, p); },
+    torAdd: function(s, l, o) { return this.callTorAdd(s, l, o); },
+    torRemove: function(s) { return this.callTorRemove(s); },
+    sslAdd: function(s, d, p) { return this.callSslAdd(s, d, p); },
+    sslRemove: function(s) { return this.callSslRemove(s); }
+});

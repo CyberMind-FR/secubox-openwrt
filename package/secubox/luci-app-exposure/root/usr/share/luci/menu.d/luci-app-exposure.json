@@ -7,8 +7,7 @@
             "path": "exposure/overview"
         },
         "depends": {
-            "acl": ["luci-app-exposure"],
-            "uci": { "secubox-exposure": true }
+            "acl": ["luci-app-exposure"]
         }
     },
     "admin/secubox/network/exposure/services": {

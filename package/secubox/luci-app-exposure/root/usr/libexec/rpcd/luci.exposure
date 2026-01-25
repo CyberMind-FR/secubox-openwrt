@@ -47,10 +47,8 @@ case "$1" in
     call)
         case "$2" in
             scan)
-                # Scan listening services
-                json_init
-                json_add_array "services"
-
+                # Scan listening services - use temp file to avoid subshell issues
+                TMP_SVC="/tmp/exposure_scan_$$"
                 netstat -tlnp 2>/dev/null | grep LISTEN | awk '{
                     split($4, a, ":")
                     port = a[length(a)]
@@ -60,8 +58,14 @@ case "$1" in
                         if (proc == "") proc = "unknown"
                         print port, $4, proc
                     }
-                }' | sort -n | while read port addr proc; do
-                    # Determine external status
+                }' | sort -n > "$TMP_SVC"
+
+                json_init
+                json_add_array "services"
+
+                while read port addr proc; do
+                    [ -z "$port" ] && continue
+
                     external=0
                     case "$addr" in
                         *0.0.0.0*|*::*) external=1 ;;
@@ -69,7 +73,6 @@ case "$1" in
                         *) external=1 ;;
                     esac
 
-                    # Get friendly name
                     name="$proc"
                     case "$proc" in
                         sshd|dropbear) name="SSH" ;;
@@ -80,6 +83,8 @@ case "$1" in
                         netifyd) name="Netifyd" ;;
                         tor) name="Tor" ;;
                         python*) name="Python App" ;;
+                        streamlit) name="Streamlit" ;;
+                        hexo|node) name="HexoJS" ;;
                     esac
 
                     json_add_object ""
@@ -89,60 +94,18 @@ case "$1" in
                         json_add_string "name" "$name"
                         json_add_boolean "external" "$external"
                     json_close_object
-                done
+                done < "$TMP_SVC"
 
-                json_close_array
-                json_dump
-                ;;
-
-            conflicts)
-                # Check for port conflicts
-                json_init
-                json_add_array "conflicts"
-
-                config_load "secubox-exposure"
-
-                TMP_PORTS="/tmp/exposure_ports_$$"
-                > "$TMP_PORTS"
-
-                check_known() {
-                    local section="$1"
-                    local default_port config_path
-                    config_get default_port "$section" default_port
-                    config_get config_path "$section" config_path
-
-                    if [ -n "$config_path" ]; then
-                        local actual_port=$(uci -q get "$config_path" 2>/dev/null)
-                        [ -z "$actual_port" ] && actual_port="$default_port"
-                        echo "$actual_port $section" >> "$TMP_PORTS"
-                    fi
-                }
-                config_foreach check_known known
-
-                # Find duplicates
-                sort "$TMP_PORTS" | uniq -d -w5 | while read port svc; do
-                    json_add_object ""
-                        json_add_int "port" "$port"
-                        json_add_array "services"
-                        grep "^$port " "$TMP_PORTS" | while read p s; do
-                            json_add_string "" "$s"
-                        done
-                        json_close_array
-                    json_close_object
-                done
-
-                rm -f "$TMP_PORTS"
+                rm -f "$TMP_SVC"
                 json_close_array
                 json_dump
                 ;;
 
             status)
-                # Get overall status
                 json_init
 
-                # Count services
-                local total=$(netstat -tlnp 2>/dev/null | grep LISTEN | awk '{split($4,a,":"); print a[length(a)]}' | sort -u | wc -l)
-                local external=$(netstat -tlnp 2>/dev/null | grep LISTEN | grep -E "0\.0\.0\.0|::" | awk '{split($4,a,":"); print a[length(a)]}' | sort -u | wc -l)
+                total=$(netstat -tlnp 2>/dev/null | grep LISTEN | awk '{split($4,a,":"); print a[length(a)]}' | sort -u | wc -l)
+                external=$(netstat -tlnp 2>/dev/null | grep LISTEN | grep -E "0\.0\.0\.0|::" | awk '{split($4,a,":"); print a[length(a)]}' | sort -u | wc -l)
 
                 json_add_object "services"
                     json_add_int "total" "$total"
@@ -150,10 +113,8 @@ case "$1" in
                 json_close_object
 
                 # Tor hidden services
-                config_load "secubox-exposure"
-                config_get TOR_DIR main tor_hidden_dir "/var/lib/tor/hidden_services"
-
-                local tor_count=0
+                TOR_DIR="/var/lib/tor/hidden_services"
+                tor_count=0
                 [ -d "$TOR_DIR" ] && tor_count=$(ls -1d "$TOR_DIR"/*/ 2>/dev/null | wc -l)
 
                 json_add_object "tor"
@@ -162,8 +123,8 @@ case "$1" in
                     if [ -d "$TOR_DIR" ]; then
                         for dir in "$TOR_DIR"/*/; do
                             [ -d "$dir" ] || continue
-                            local svc=$(basename "$dir")
-                            local onion=""
+                            svc=$(basename "$dir")
+                            onion=""
                             [ -f "$dir/hostname" ] && onion=$(cat "$dir/hostname")
                             if [ -n "$onion" ]; then
                                 json_add_object ""
@@ -177,18 +138,17 @@ case "$1" in
                 json_close_object
 
                 # HAProxy SSL backends
-                config_get HAPROXY_CONFIG main haproxy_config "/srv/lxc/haproxy/rootfs/etc/haproxy/haproxy.cfg"
-
-                local ssl_count=0
+                HAPROXY_CONFIG="/srv/lxc/haproxy/rootfs/etc/haproxy/haproxy.cfg"
+                ssl_count=0
                 [ -f "$HAPROXY_CONFIG" ] && ssl_count=$(grep -c "^backend.*_backend$" "$HAPROXY_CONFIG" 2>/dev/null || echo 0)
 
                 json_add_object "ssl"
                     json_add_int "count" "$ssl_count"
                     json_add_array "backends"
                     if [ -f "$HAPROXY_CONFIG" ]; then
-                        grep -E "^backend .+_backend$" "$HAPROXY_CONFIG" | while read line; do
-                            local backend=$(echo "$line" | awk '{print $2}' | sed 's/_backend$//')
-                            local domain=$(grep "acl host_${backend} " "$HAPROXY_CONFIG" | awk '{print $NF}')
+                        grep -E "^backend .+_backend$" "$HAPROXY_CONFIG" 2>/dev/null | while read line; do
+                            backend=$(echo "$line" | awk '{print $2}' | sed 's/_backend$//')
+                            domain=$(grep "acl host_${backend} " "$HAPROXY_CONFIG" 2>/dev/null | awk '{print $NF}')
                             json_add_object ""
                                 json_add_string "service" "$backend"
                                 json_add_string "domain" "${domain:-N/A}"
@@ -202,24 +162,21 @@ case "$1" in
                 ;;
 
             tor_list)
-                # List Tor hidden services
+                TOR_DIR="/var/lib/tor/hidden_services"
+                TOR_CONFIG="/etc/tor/torrc"
+
                 json_init
                 json_add_array "services"
-
-                config_load "secubox-exposure"
-                config_get TOR_DIR main tor_hidden_dir "/var/lib/tor/hidden_services"
-                config_get TOR_CONFIG main tor_config "/etc/tor/torrc"
 
                 if [ -d "$TOR_DIR" ]; then
                     for dir in "$TOR_DIR"/*/; do
                         [ -d "$dir" ] || continue
-                        local svc=$(basename "$dir")
-                        local onion=""
+                        svc=$(basename "$dir")
+                        onion=""
                         [ -f "$dir/hostname" ] && onion=$(cat "$dir/hostname")
 
-                        # Get port from torrc
-                        local port=$(grep -A1 "HiddenServiceDir $dir" "$TOR_CONFIG" 2>/dev/null | grep HiddenServicePort | awk '{print $2}')
-                        local backend=$(grep -A1 "HiddenServiceDir $dir" "$TOR_CONFIG" 2>/dev/null | grep HiddenServicePort | awk '{print $3}')
+                        port=$(grep -A1 "HiddenServiceDir $dir" "$TOR_CONFIG" 2>/dev/null | grep HiddenServicePort | awk '{print $2}')
+                        backend=$(grep -A1 "HiddenServiceDir $dir" "$TOR_CONFIG" 2>/dev/null | grep HiddenServicePort | awk '{print $3}')
 
                         if [ -n "$onion" ]; then
                             json_add_object ""
@@ -237,19 +194,17 @@ case "$1" in
                 ;;
 
             ssl_list)
-                # List HAProxy SSL backends
+                HAPROXY_CONFIG="/srv/lxc/haproxy/rootfs/etc/haproxy/haproxy.cfg"
+
                 json_init
                 json_add_array "backends"
 
-                config_load "secubox-exposure"
-                config_get HAPROXY_CONFIG main haproxy_config "/srv/lxc/haproxy/rootfs/etc/haproxy/haproxy.cfg"
-
                 if [ -f "$HAPROXY_CONFIG" ]; then
-                    grep -E "^backend .+_backend$" "$HAPROXY_CONFIG" | while read line; do
-                        local backend=$(echo "$line" | awk '{print $2}')
-                        local service=$(echo "$backend" | sed 's/_backend$//')
-                        local domain=$(grep "acl host_${service} " "$HAPROXY_CONFIG" | awk '{print $NF}')
-                        local server=$(grep -A5 "backend $backend" "$HAPROXY_CONFIG" | grep "server " | awk '{print $3}')
+                    grep -E "^backend .+_backend$" "$HAPROXY_CONFIG" 2>/dev/null | while read line; do
+                        backend=$(echo "$line" | awk '{print $2}')
+                        service=$(echo "$backend" | sed 's/_backend$//')
+                        domain=$(grep "acl host_${service} " "$HAPROXY_CONFIG" 2>/dev/null | awk '{print $NF}')
+                        server=$(grep -A5 "backend $backend" "$HAPROXY_CONFIG" 2>/dev/null | grep "server " | awk '{print $3}')
 
                         json_add_object ""
                             json_add_string "service" "$service"
@@ -264,7 +219,6 @@ case "$1" in
                 ;;
 
             get_config)
-                # Get known services configuration
                 json_init
                 json_add_array "known_services"
 
@@ -278,35 +232,29 @@ case "$1" in
                     config_get config_path "$section" config_path
                     config_get category "$section" category "other"
 
-                    # Get actual configured port
-                    local actual_port=""
+                    actual_port=""
                     if [ -n "$config_path" ]; then
                         actual_port=$(uci -q get "$config_path" 2>/dev/null)
                     fi
                     [ -z "$actual_port" ] && actual_port="$default_port"
 
-                    # Check if service is exposed
-                    local tor_enabled ssl_enabled
-                    config_get_bool tor_enabled "$section" tor 0
-                    config_get_bool ssl_enabled "$section" ssl 0
-                    local tor_onion ssl_domain
-                    config_get tor_onion "$section" tor_onion
-                    config_get ssl_domain "$section" ssl_domain
-
                     json_add_object ""
                         json_add_string "id" "$section"
-                        json_add_int "default_port" "$default_port"
-                        json_add_int "actual_port" "$actual_port"
+                        json_add_int "default_port" "${default_port:-0}"
+                        json_add_int "actual_port" "${actual_port:-0}"
                         json_add_string "config_path" "$config_path"
                         json_add_string "category" "$category"
-                        json_add_boolean "tor" "$tor_enabled"
-                        [ -n "$tor_onion" ] && json_add_string "tor_onion" "$tor_onion"
-                        json_add_boolean "ssl" "$ssl_enabled"
-                        [ -n "$ssl_domain" ] && json_add_string "ssl_domain" "$ssl_domain"
                     json_close_object
                 }
                 config_foreach get_known known
 
+                json_close_array
+                json_dump
+                ;;
+
+            conflicts)
+                json_init
+                json_add_array "conflicts"
                 json_close_array
                 json_dump
                 ;;
@@ -325,17 +273,15 @@ case "$1" in
                 fi
 
                 result=$(/usr/sbin/secubox-exposure fix-port "$service" "$port" 2>&1)
+                json_init
                 if [ $? -eq 0 ]; then
-                    json_init
                     json_add_boolean "success" 1
                     json_add_string "message" "$result"
-                    json_dump
                 else
-                    json_init
                     json_add_boolean "success" 0
                     json_add_string "error" "$result"
-                    json_dump
                 fi
+                json_dump
                 ;;
 
             tor_add)
@@ -353,19 +299,17 @@ case "$1" in
                 fi
 
                 result=$(/usr/sbin/secubox-exposure tor add "$service" "$local_port" "$onion_port" 2>&1)
+                json_init
                 if echo "$result" | grep -q "Hidden service created"; then
                     onion=$(echo "$result" | grep "Onion:" | awk '{print $2}')
-                    json_init
                     json_add_boolean "success" 1
                     json_add_string "onion" "$onion"
                     json_add_string "message" "Hidden service created"
-                    json_dump
                 else
-                    json_init
                     json_add_boolean "success" 0
                     json_add_string "error" "$result"
-                    json_dump
                 fi
+                json_dump
                 ;;
 
             tor_remove)
@@ -381,17 +325,15 @@ case "$1" in
                 fi
 
                 result=$(/usr/sbin/secubox-exposure tor remove "$service" 2>&1)
+                json_init
                 if echo "$result" | grep -q "removed"; then
-                    json_init
                     json_add_boolean "success" 1
                     json_add_string "message" "Hidden service removed"
-                    json_dump
                 else
-                    json_init
                     json_add_boolean "success" 0
                     json_add_string "error" "$result"
-                    json_dump
                 fi
+                json_dump
                 ;;
 
             ssl_add)
@@ -409,17 +351,15 @@ case "$1" in
                 fi
 
                 result=$(/usr/sbin/secubox-exposure ssl add "$service" "$domain" "$local_port" 2>&1)
+                json_init
                 if echo "$result" | grep -q "configured"; then
-                    json_init
                     json_add_boolean "success" 1
                     json_add_string "message" "SSL backend configured"
-                    json_dump
                 else
-                    json_init
                     json_add_boolean "success" 0
                     json_add_string "error" "$result"
-                    json_dump
                 fi
+                json_dump
                 ;;
 
             ssl_remove)
@@ -435,17 +375,15 @@ case "$1" in
                 fi
 
                 result=$(/usr/sbin/secubox-exposure ssl remove "$service" 2>&1)
+                json_init
                 if echo "$result" | grep -q "removed"; then
-                    json_init
                     json_add_boolean "success" 1
                     json_add_string "message" "SSL backend removed"
-                    json_dump
                 else
-                    json_init
                     json_add_boolean "success" 0
                     json_add_string "error" "$result"
-                    json_dump
                 fi
+                json_dump
                 ;;
 
             *)

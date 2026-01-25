@@ -13,7 +13,7 @@ define Package/secubox-app-exposure
   SECTION:=secubox
   CATEGORY:=SecuBox
   TITLE:=SecuBox Service Exposure Manager
-  DEPENDS:=+secubox-core +tor +haproxy
+  DEPENDS:=+secubox-core
   PKGARCH:=all
 endef
 
