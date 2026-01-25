@@ -123,6 +123,18 @@ return baseclass.extend({
 			service: null,
 			version: '0.2.0'
 		},
+		'service-exposure': {
+			id: 'service-exposure',
+			name: 'Service Exposure',
+			desc: 'Manage port conflicts, Tor hidden services, and HAProxy SSL backends',
+			icon: '\ud83d\udd0c',
+			iconBg: 'rgba(155, 89, 182, 0.15)',
+			iconColor: '#9b59b6',
+			section: 'network',
+			path: 'admin/secubox/network/exposure',
+			service: null,
+			version: '1.0.0'
+		},
 
 		// Monitoring Apps
 		'media-flow': {
