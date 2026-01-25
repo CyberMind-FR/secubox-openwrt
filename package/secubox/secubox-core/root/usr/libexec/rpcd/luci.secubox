@@ -1198,28 +1198,54 @@ case "$1" in
 
 			while read port local proc; do
 				addr=$(echo "$local" | sed 's/:[^:]*$//')
-				name="Service"; icon=""; category="other"; path=""
+				name=""; icon=""; category="other"; path=""
 
-				case "$port" in
-					22) name="SSH"; icon="lock"; category="system" ;;
-					53) name="DNS"; icon="globe"; category="system" ;;
-					80) name="HTTP"; icon="arrow"; path="/"; category="proxy" ;;
-					443) name="HTTPS"; icon="shield"; path="/"; category="proxy" ;;
-					3000) name="Gitea"; icon="git"; path=":3000"; category="app" ;;
-					4000) name="HexoJS"; icon="blog"; path=":4000"; category="app" ;;
-					8080) name="CrowdSec"; icon="security"; category="security" ;;
-					8081) name="LuCI"; icon="settings"; path=":8081"; category="system" ;;
-					8082) name="CyberFeed"; icon="feed"; path=":8082"; category="app" ;;
-					8086) name="Netifyd"; icon="chart"; path=":8086"; category="monitoring" ;;
-					8404) name="HAProxy Stats"; icon="stats"; path=":8404/stats"; category="monitoring" ;;
-					8444) name="LuCI HTTPS"; icon="admin"; path=":8444"; category="system" ;;
-					8501) name="Streamlit"; icon="app"; path=":8501"; category="app" ;;
-					9000) name="Lyrion"; icon="music"; path=":9000"; category="media" ;;
-					9050) name="Tor SOCKS"; icon="onion"; category="privacy" ;;
-					9090) name="Lyrion CLI"; icon="music"; category="media" ;;
-					2222) name="Gitea SSH"; icon="git"; category="app" ;;
-					3483) name="Squeezebox"; icon="music"; category="media" ;;
+				# First: identify by process name (most accurate)
+				case "$proc" in
+					sshd|dropbear) name="SSH"; icon="lock"; category="system" ;;
+					dnsmasq|named|unbound) name="DNS"; icon="globe"; category="system" ;;
+					haproxy) name="HAProxy"; icon="arrow"; category="proxy" ;;
+					nginx|uhttpd) name="Web Server"; icon="settings"; category="system" ;;
+					gitea) name="Gitea"; icon="git"; path=":$port"; category="app" ;;
+					hexo|node) [ "$port" = "4000" ] && { name="HexoJS"; icon="blog"; path=":$port"; category="app"; } ;;
+					crowdsec|lapi) name="CrowdSec"; icon="security"; category="security" ;;
+					netifyd) name="Netifyd"; icon="chart"; path=":$port"; category="monitoring" ;;
+					streamlit|python*)
+						[ "$port" = "8501" ] && { name="Streamlit"; icon="app"; path=":$port"; category="app"; }
+						;;
+					slimserver|squeezeboxserver) name="Lyrion"; icon="music"; path=":$port"; category="media" ;;
+					tor) name="Tor"; icon="onion"; category="privacy" ;;
+					cyberfeed*) name="CyberFeed"; icon="feed"; path=":$port"; category="app" ;;
+					metabolizer*) name="Metabolizer"; icon="blog"; path=":$port"; category="app" ;;
+					magicmirror*|electron) name="MagicMirror"; icon="app"; path=":$port"; category="app" ;;
+					picobrew*) name="PicoBrew"; icon="app"; path=":$port"; category="app" ;;
 				esac
+
+				# Fallback: identify by port number if process didn't match
+				if [ -z "$name" ]; then
+					case "$port" in
+						22) name="SSH"; icon="lock"; category="system" ;;
+						53) name="DNS"; icon="globe"; category="system" ;;
+						80) name="HTTP"; icon="arrow"; path="/"; category="proxy" ;;
+						443) name="HTTPS"; icon="shield"; path="/"; category="proxy" ;;
+						3000) name="Gitea"; icon="git"; path=":3000"; category="app" ;;
+						4000) name="HexoJS"; icon="blog"; path=":4000"; category="app" ;;
+						6060) name="CrowdSec LAPI"; icon="security"; category="security" ;;
+						8080) name="Web App"; icon="app"; path=":8080"; category="app" ;;
+						8081) name="LuCI"; icon="settings"; path=":8081"; category="system" ;;
+						8082) name="CyberFeed"; icon="feed"; path=":8082"; category="app" ;;
+						8086) name="Netifyd"; icon="chart"; path=":8086"; category="monitoring" ;;
+						8404) name="HAProxy Stats"; icon="stats"; path=":8404/stats"; category="monitoring" ;;
+						8444) name="LuCI HTTPS"; icon="admin"; path=":8444"; category="system" ;;
+						8501) name="Streamlit"; icon="app"; path=":8501"; category="app" ;;
+						9000) name="Lyrion"; icon="music"; path=":9000"; category="media" ;;
+						9050) name="Tor SOCKS"; icon="onion"; category="privacy" ;;
+						9090) name="Lyrion CLI"; icon="music"; category="media" ;;
+						2222) name="Gitea SSH"; icon="git"; category="app" ;;
+						3483) name="Squeezebox"; icon="music"; category="media" ;;
+						*) name="$proc"; icon=""; category="other"; path=":$port" ;;
+					esac
+				fi
 
 				external=0
 				case "$addr" in 0.0.0.0|::) external=1 ;; 127.0.0.1|::1) ;; *) external=1 ;; esac
