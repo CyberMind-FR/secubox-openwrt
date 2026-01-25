@@ -36,6 +36,11 @@ reload_service() {
 	"$PROG" reload
 }
 
+restart_service() {
+	stop
+	start
+}
+
 service_triggers() {
 	procd_add_reload_trigger "haproxy"
 }
