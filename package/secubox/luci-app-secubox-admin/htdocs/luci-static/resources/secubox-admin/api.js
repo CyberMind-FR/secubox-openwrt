@@ -119,6 +119,13 @@ var callGetWidgetData = rpc.declare({
 	expect: { }
 });
 
+// Services Discovery
+var callGetServices = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_services',
+	expect: { services: [] }
+});
+
 // ===== State Management API =====
 
 var callGetComponentState = rpc.declare({
@@ -333,6 +340,9 @@ return baseclass.extend({
 
 	// Widget Data
 	getWidgetData: debugRPC('getWidgetData', callGetWidgetData, { retries: 1 }),
+
+	// Services Discovery
+	getServices: debugRPC('getServices', callGetServices, { retries: 1 }),
 
 	// ===== State Management =====
 	getComponentState: debugRPC('getComponentState', callGetComponentState, { retries: 2 }),

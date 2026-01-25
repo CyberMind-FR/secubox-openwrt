@@ -198,6 +198,70 @@ return view.extend({
 		]);
 	},
 
+	renderServicesSection: function(services) {
+		if (!services || services.length === 0) {
+			return E('div', { 'class': 'services-section card' }, [
+				E('h3', {}, '🔌 Active Services'),
+				E('p', { 'class': 'text-muted' }, 'No services detected')
+			]);
+		}
+
+		// Filter for external services only (accessible from network)
+		var externalServices = services.filter(function(s) {
+			return s.external && s.url;
+		});
+
+		// Group by category
+		var categories = {};
+		externalServices.forEach(function(s) {
+			var cat = s.category || 'other';
+			if (!categories[cat]) categories[cat] = [];
+			categories[cat].push(s);
+		});
+
+		var categoryOrder = ['app', 'monitoring', 'system', 'proxy', 'security', 'media', 'privacy', 'other'];
+		var categoryLabels = {
+			app: '📦 Applications',
+			monitoring: '📊 Monitoring',
+			system: '⚙️ System',
+			proxy: '🔀 Proxy',
+			security: '🛡️ Security',
+			media: '🎵 Media',
+			privacy: '🧅 Privacy',
+			other: '⚡ Other'
+		};
+
+		var serviceLinks = [];
+		categoryOrder.forEach(function(cat) {
+			if (categories[cat] && categories[cat].length > 0) {
+				categories[cat].forEach(function(svc) {
+					var url = window.location.protocol + '//' + window.location.hostname + svc.url;
+					serviceLinks.push(E('a', {
+						'href': url,
+						'target': '_blank',
+						'class': 'service-link',
+						'style': 'display:inline-flex;align-items:center;gap:8px;padding:10px 16px;' +
+							'background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.3);' +
+							'border-radius:8px;text-decoration:none;color:#e0e0e0;font-size:14px;' +
+							'transition:all 0.2s;margin:4px;'
+					}, [
+						E('span', { 'style': 'font-size:18px;' }, svc.icon || '⚡'),
+						E('span', {}, svc.name),
+						E('span', { 'style': 'color:#888;font-size:12px;' }, ':' + svc.port)
+					]));
+				});
+			}
+		});
+
+		return E('div', { 'class': 'services-section card' }, [
+			E('h3', {}, '🔌 Active Services'),
+			E('div', { 'class': 'services-grid', 'style': 'display:flex;flex-wrap:wrap;gap:8px;' },
+				serviceLinks.length > 0 ? serviceLinks :
+					[E('p', { 'class': 'text-muted' }, 'No external services available')]
+			)
+		]);
+	},
+
 	renderQuickActions: function() {
 		return E('div', { 'class': 'quick-actions card' }, [
 			E('h3', {}, 'Quick Actions'),

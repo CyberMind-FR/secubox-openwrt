@@ -23,6 +23,12 @@ var callCrowdSecStats = rpc.declare({
 	method: 'nftables_stats'
 });
 
+var callGetServices = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_services',
+	expect: { services: [] }
+});
+
 return view.extend({
 	currentSection: 'dashboard',
 	appStatuses: {},
@@ -35,10 +41,14 @@ return view.extend({
 			callSystemInfo(),
 			this.loadAppStatuses(),
 			callCrowdSecStats().catch(function() { return null; }),
-			portal.checkInstalledApps()
+			portal.checkInstalledApps(),
+			callGetServices().catch(function() { return []; })
 		]).then(function(results) {
 			// Store installed apps info from the last promise
 			self.installedApps = results[4] || {};
+			// RPC expect unwraps the services array directly
+			var svcResult = results[5] || [];
+			self.detectedServices = Array.isArray(svcResult) ? svcResult : (svcResult.services || []);
 			return results;
 		});
 	},
@@ -407,9 +417,95 @@ return view.extend({
 	},
 
 	renderServicesSection: function() {
-		var apps = portal.getInstalledAppsBySection('services', this.installedApps);
-		return this.renderAppSection('services', 'Services',
-			'Application services and server platforms', apps);
+		var self = this;
+		var services = this.detectedServices || [];
+
+		// Filter for external services with URLs
+		var externalServices = services.filter(function(s) {
+			return s.external && s.url;
+		});
+
+		// Group by category
+		var categories = {};
+		externalServices.forEach(function(s) {
+			var cat = s.category || 'other';
+			if (!categories[cat]) categories[cat] = [];
+			categories[cat].push(s);
+		});
+
+		var categoryOrder = ['app', 'monitoring', 'system', 'proxy', 'security', 'media', 'privacy', 'other'];
+		var categoryLabels = {
+			app: '📦 Applications',
+			monitoring: '📊 Monitoring',
+			system: '⚙️ System',
+			proxy: '🔀 Proxy',
+			security: '🛡️ Security',
+			media: '🎵 Media',
+			privacy: '🧅 Privacy',
+			other: '⚡ Other'
+		};
+
+		var serviceCards = [];
+
+		// Map icon names to emojis
+		var iconMap = {
+			'lock': '🔐', 'globe': '🌐', 'arrow': '🔀', 'shield': '🔒',
+			'git': '📦', 'blog': '📝', 'security': '🛡️', 'settings': '⚙️',
+			'feed': '📡', 'chart': '📊', 'stats': '📈', 'admin': '🔧',
+			'app': '🎨', 'music': '🎵', 'onion': '🧅', '': '⚡'
+		};
+
+		categoryOrder.forEach(function(cat) {
+			if (categories[cat] && categories[cat].length > 0) {
+				categories[cat].forEach(function(svc) {
+					var url = window.location.protocol + '//' + window.location.hostname + svc.url;
+					var emoji = iconMap[svc.icon] || '⚡';
+					serviceCards.push(E('a', {
+						'class': 'sb-app-card sb-service-card',
+						'href': url,
+						'target': '_blank'
+					}, [
+						E('div', { 'class': 'sb-app-card-header' }, [
+							E('div', {
+								'class': 'sb-app-card-icon',
+								'style': 'background: linear-gradient(135deg, #667eea, #764ba2); font-size: 24px;'
+							}, emoji),
+							E('div', {}, [
+								E('h4', { 'class': 'sb-app-card-title' }, svc.name),
+								E('span', { 'class': 'sb-app-card-version' }, ':' + svc.port)
+							])
+						]),
+						E('p', { 'class': 'sb-app-card-desc' }, categoryLabels[svc.category] || 'Service'),
+						E('div', { 'class': 'sb-app-card-status' }, [
+							E('span', { 'class': 'sb-app-card-status-dot running' }),
+							E('span', { 'class': 'sb-app-card-status-text' }, 'Listening')
+						])
+					]));
+				});
+			}
+		});
+
+		if (serviceCards.length === 0) {
+			return E('div', { 'class': 'sb-portal-section', 'data-section': 'services' }, [
+				E('div', { 'class': 'sb-section-header' }, [
+					E('h2', { 'class': 'sb-section-title' }, '🔌 Active Services'),
+					E('p', { 'class': 'sb-section-subtitle' }, 'Detected services listening on network ports')
+				]),
+				E('div', { 'class': 'sb-section-empty' }, [
+					E('div', { 'class': 'sb-empty-icon' }, '🔌'),
+					E('p', { 'class': 'sb-empty-text' }, 'No external services detected'),
+					E('p', { 'class': 'sb-empty-hint' }, 'Services listening on localhost only are not shown')
+				])
+			]);
+		}
+
+		return E('div', { 'class': 'sb-portal-section', 'data-section': 'services' }, [
+			E('div', { 'class': 'sb-section-header' }, [
+				E('h2', { 'class': 'sb-section-title' }, '🔌 Active Services'),
+				E('p', { 'class': 'sb-section-subtitle' }, 'Detected services listening on network ports')
+			]),
+			E('div', { 'class': 'sb-app-grid' }, serviceCards)
+		]);
 	},
 
 	renderAppSection: function(sectionId, title, subtitle, apps) {

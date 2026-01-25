@@ -18,7 +18,8 @@
 					"get_app_versions",
 					"get_changelog",
 					"get_widget_data",
-					"get_wan_access"
+					"get_wan_access",
+					"get_services"
 				]
 			},
 			"uci": [

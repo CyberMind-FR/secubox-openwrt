@@ -10,7 +10,8 @@
 					"getModuleInfo",
 					"get_theme",
 					"getStatus",
-					"getHealth"
+					"getHealth",
+				"get_services"
 				],
 				"luci.system-hub": [
 					"status",
