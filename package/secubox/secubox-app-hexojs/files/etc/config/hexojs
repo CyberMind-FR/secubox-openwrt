@@ -41,4 +41,4 @@ config theme_config 'theme'
 
 config portal 'portal'
 	option enabled '1'
-	option path '/www/blog'
+	option path '/www'
