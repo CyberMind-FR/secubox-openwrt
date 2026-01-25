@@ -178,7 +178,7 @@ return view.extend({
 			E('div', { 'class': 'sb-portal-brand' }, [
 				E('div', { 'class': 'sb-portal-logo' }, 'S'),
 				E('span', { 'class': 'sb-portal-title' }, 'SecuBox'),
-				E('span', { 'class': 'sb-portal-version' }, 'v0.14.0')
+				E('span', { 'class': 'sb-portal-version' }, 'v0.15.48')
 			]),
 			// Navigation
 			E('nav', { 'class': 'sb-portal-nav' },

@@ -415,7 +415,7 @@ return baseclass.extend({
 			E('div', { 'class': 'sb-header-brand' }, [
 				E('div', { 'class': 'sb-header-logo' }, 'S'),
 				E('span', { 'class': 'sb-header-title' }, 'SecuBox'),
-				E('span', { 'class': 'sb-header-version' }, 'v0.14.0')
+				E('span', { 'class': 'sb-header-version' }, 'v0.15.48')
 			]),
 			// Navigation
 			E('nav', { 'class': 'sb-header-nav' },
