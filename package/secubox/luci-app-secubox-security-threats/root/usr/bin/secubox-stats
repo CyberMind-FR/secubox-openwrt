@@ -1,0 +1,5 @@
+#!/bin/sh
+# SecuBox Security Stats - Quick overview
+# Copyright (C) 2026 CyberMind.fr
+
+ubus call luci.secubox-security-threats get_security_stats 2>/dev/null | jsonfilter -e '@' 2>/dev/null || echo '{"error": "RPCD not available"}'

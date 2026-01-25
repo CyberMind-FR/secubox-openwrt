@@ -91,6 +91,15 @@ Commands:
     --password <pass>
     --email <email>
 
+  mirror-sync <repo>  Sync a mirrored repository
+  mirror-list         List all mirrored repositories
+  mirror-create       Create a new mirror from URL
+    --name <name>
+    --url <github-url>
+    --owner <user>    (default: first admin user)
+
+  repo-list           List all repositories
+
   service-run   Start service (used by init)
   service-stop  Stop service (used by init)
 
@@ -718,6 +727,235 @@ cmd_admin_create_user() {
 	fi
 }
 
+# Get Gitea API token (from admin user or config)
+get_api_token() {
+	local token
+	token="$(uci_get main.api_token)"
+	if [ -n "$token" ]; then
+		echo "$token"
+		return 0
+	fi
+
+	# Try to get token from container
+	if lxc_running; then
+		token=$(lxc-attach -n "$LXC_NAME" -- cat /data/api_token 2>/dev/null)
+		if [ -n "$token" ]; then
+			echo "$token"
+			return 0
+		fi
+	fi
+
+	return 1
+}
+
+# Get Gitea API URL
+get_api_url() {
+	load_config
+	echo "http://127.0.0.1:${http_port}/api/v1"
+}
+
+# Make Gitea API call
+gitea_api() {
+	local method="$1"
+	local endpoint="$2"
+	local data="$3"
+	local token
+
+	token=$(get_api_token) || {
+		log_error "No API token configured. Set with: uci set gitea.main.api_token=<token>"
+		log_error "Generate token in Gitea: Settings → Applications → Generate Token"
+		return 1
+	}
+
+	local api_url=$(get_api_url)
+	local url="${api_url}${endpoint}"
+
+	if [ "$method" = "GET" ]; then
+		wget -q -O- --header="Authorization: token $token" "$url" 2>/dev/null
+	elif [ "$method" = "POST" ]; then
+		if [ -n "$data" ]; then
+			wget -q -O- --header="Authorization: token $token" \
+				--header="Content-Type: application/json" \
+				--post-data="$data" "$url" 2>/dev/null
+		else
+			wget -q -O- --header="Authorization: token $token" \
+				--post-data="" "$url" 2>/dev/null
+		fi
+	fi
+}
+
+cmd_mirror_sync() {
+	load_config
+	local repo_name="$1"
+
+	if [ -z "$repo_name" ]; then
+		log_error "Usage: giteactl mirror-sync <owner/repo> or <repo>"
+		return 1
+	fi
+
+	if ! lxc_running; then
+		log_error "Gitea container is not running"
+		return 1
+	fi
+
+	# If no owner specified, try to find the repo
+	if ! echo "$repo_name" | grep -q "/"; then
+		# Search for repo in all users
+		local found_owner
+		found_owner=$(gitea_api GET "/repos/search?q=$repo_name" 2>/dev/null | \
+			jsonfilter -e '@.data[0].owner.login' 2>/dev/null)
+		if [ -n "$found_owner" ]; then
+			repo_name="${found_owner}/${repo_name}"
+		else
+			log_error "Repository not found: $repo_name"
+			log_error "Specify full path: owner/repo"
+			return 1
+		fi
+	fi
+
+	log_info "Syncing mirror: $repo_name"
+
+	# Trigger mirror sync via API
+	local result
+	result=$(gitea_api POST "/repos/${repo_name}/mirror-sync" 2>&1)
+
+	if [ $? -eq 0 ]; then
+		log_info "Mirror sync triggered for $repo_name"
+		log_info "Check progress in Gitea web UI"
+	else
+		log_error "Failed to sync mirror: $result"
+
+		# Try alternative: use gitea command directly in container
+		log_info "Trying direct sync via container..."
+		lxc-attach -n "$LXC_NAME" -- su-exec git /usr/local/bin/gitea admin repo-sync-releases \
+			--config /data/custom/conf/app.ini 2>/dev/null || true
+
+		return 1
+	fi
+}
+
+cmd_mirror_list() {
+	load_config
+
+	if ! lxc_running; then
+		log_error "Gitea container is not running"
+		return 1
+	fi
+
+	log_info "Fetching mirror repositories..."
+
+	local repos
+	repos=$(gitea_api GET "/repos/search?mirror=true&limit=50" 2>/dev/null)
+
+	if [ -z "$repos" ]; then
+		echo "No mirrored repositories found (or API token not set)"
+		return 1
+	fi
+
+	echo ""
+	echo "Mirrored Repositories:"
+	echo "======================"
+	echo "$repos" | jsonfilter -e '@.data[*]' 2>/dev/null | while read repo; do
+		local name=$(echo "$repo" | jsonfilter -e '@.full_name' 2>/dev/null)
+		local url=$(echo "$repo" | jsonfilter -e '@.original_url' 2>/dev/null)
+		local updated=$(echo "$repo" | jsonfilter -e '@.updated_at' 2>/dev/null)
+		echo "  $name"
+		echo "    Source: $url"
+		echo "    Updated: $updated"
+		echo ""
+	done
+}
+
+cmd_mirror_create() {
+	load_config
+
+	local name=""
+	local url=""
+	local owner=""
+
+	# Parse arguments
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--name) name="$2"; shift 2 ;;
+			--url) url="$2"; shift 2 ;;
+			--owner) owner="$2"; shift 2 ;;
+			*) shift ;;
+		esac
+	done
+
+	if [ -z "$name" ] || [ -z "$url" ]; then
+		log_error "Usage: giteactl mirror-create --name <repo-name> --url <source-url> [--owner <user>]"
+		return 1
+	fi
+
+	if ! lxc_running; then
+		log_error "Gitea container is not running"
+		return 1
+	fi
+
+	# Get default owner if not specified
+	if [ -z "$owner" ]; then
+		owner=$(gitea_api GET "/user" 2>/dev/null | jsonfilter -e '@.login' 2>/dev/null)
+		if [ -z "$owner" ]; then
+			log_error "Could not determine owner. Specify with --owner"
+			return 1
+		fi
+	fi
+
+	log_info "Creating mirror repository: $owner/$name from $url"
+
+	local data=$(cat <<EOF
+{
+  "clone_addr": "$url",
+  "repo_name": "$name",
+  "mirror": true,
+  "private": false,
+  "description": "Mirror of $url"
+}
+EOF
+)
+
+	local result
+	result=$(gitea_api POST "/repos/migrate" "$data" 2>&1)
+
+	if echo "$result" | grep -q '"id":'; then
+		log_info "Mirror created successfully: $owner/$name"
+		log_info "First sync in progress..."
+	else
+		log_error "Failed to create mirror: $result"
+		return 1
+	fi
+}
+
+cmd_repo_list() {
+	load_config
+
+	if ! lxc_running; then
+		log_error "Gitea container is not running"
+		return 1
+	fi
+
+	local repos
+	repos=$(gitea_api GET "/repos/search?limit=100" 2>/dev/null)
+
+	if [ -z "$repos" ]; then
+		echo "No repositories found (or API token not set)"
+		return 1
+	fi
+
+	echo ""
+	echo "Repositories:"
+	echo "============="
+	echo "$repos" | jsonfilter -e '@.data[*].full_name' 2>/dev/null | while read name; do
+		local is_mirror=$(echo "$repos" | jsonfilter -e "@.data[?(@.full_name=='$name')].mirror" 2>/dev/null)
+		if [ "$is_mirror" = "true" ]; then
+			echo "  [mirror] $name"
+		else
+			echo "  $name"
+		fi
+	done
+}
+
 cmd_service_run() {
 	require_root
 	load_config
@@ -751,7 +989,11 @@ case "${1:-}" in
 			*) echo "Usage: giteactl admin create-user --username <name> --password <pass> --email <email>"; exit 1 ;;
 		esac
 		;;
-	service-run)  shift; cmd_service_run "$@" ;;
-	service-stop) shift; cmd_service_stop "$@" ;;
-	*)          usage ;;
+	mirror-sync)   shift; cmd_mirror_sync "$@" ;;
+	mirror-list)   shift; cmd_mirror_list "$@" ;;
+	mirror-create) shift; cmd_mirror_create "$@" ;;
+	repo-list)     shift; cmd_repo_list "$@" ;;
+	service-run)   shift; cmd_service_run "$@" ;;
+	service-stop)  shift; cmd_service_stop "$@" ;;
+	*)             usage ;;
 esac

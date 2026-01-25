@@ -263,6 +263,72 @@ check_block_rules() {
 }
 
 # ==============================================================================
+# SECURITY STATS (Quick Overview)
+# ==============================================================================
+
+# Get overall security statistics from all sources
+get_security_stats() {
+	local wan_drops=0
+	local fw_rejects=0
+	local cs_bans=0
+	local cs_alerts_24h=0
+	local haproxy_conns=0
+	local invalid_conns=0
+
+	# WAN dropped packets (from kernel stats)
+	if [ -f /sys/class/net/br-wan/statistics/rx_dropped ]; then
+		wan_drops=$(cat /sys/class/net/br-wan/statistics/rx_dropped 2>/dev/null)
+	elif [ -f /sys/class/net/eth1/statistics/rx_dropped ]; then
+		wan_drops=$(cat /sys/class/net/eth1/statistics/rx_dropped 2>/dev/null)
+	fi
+	wan_drops=${wan_drops:-0}
+
+	# Firewall rejects from logs (last 24h)
+	fw_rejects=$(logread 2>/dev/null | grep -c "reject\|drop" || echo 0)
+	fw_rejects=$(echo "$fw_rejects" | tr -d '\n')
+	fw_rejects=${fw_rejects:-0}
+
+	# CrowdSec active bans
+	if [ -x "$CSCLI" ]; then
+		cs_bans=$($CSCLI decisions list -o json 2>/dev/null | grep -c '"id":' || echo 0)
+		cs_bans=$(echo "$cs_bans" | tr -d '\n')
+		cs_bans=${cs_bans:-0}
+
+		# CrowdSec alerts in last 24h
+		cs_alerts_24h=$($CSCLI alerts list -o json --since 24h 2>/dev/null | grep -c '"id":' || echo 0)
+		cs_alerts_24h=$(echo "$cs_alerts_24h" | tr -d '\n')
+		cs_alerts_24h=${cs_alerts_24h:-0}
+	fi
+
+	# Invalid connections (conntrack)
+	if [ -f /proc/net/nf_conntrack ]; then
+		invalid_conns=$(grep -c "INVALID\|UNREPLIED" /proc/net/nf_conntrack 2>/dev/null || echo 0)
+	fi
+	invalid_conns=$(echo "$invalid_conns" | tr -d '\n')
+	invalid_conns=${invalid_conns:-0}
+
+	# HAProxy connections (if running in LXC)
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		haproxy_conns=$(lxc-attach -n haproxy -- sh -c 'echo "show stat" | socat stdio /var/run/haproxy/admin.sock 2>/dev/null | tail -n+2 | awk -F, "{sum+=\$8} END {print sum}"' 2>/dev/null || echo 0)
+	fi
+	haproxy_conns=$(echo "$haproxy_conns" | tr -d '\n')
+	haproxy_conns=${haproxy_conns:-0}
+
+	# Output JSON
+	cat << EOF
+{
+	"wan_dropped": $wan_drops,
+	"firewall_rejects": $fw_rejects,
+	"crowdsec_bans": $cs_bans,
+	"crowdsec_alerts_24h": $cs_alerts_24h,
+	"invalid_connections": $invalid_conns,
+	"haproxy_connections": $haproxy_conns,
+	"timestamp": "$(date -Iseconds)"
+}
+EOF
+}
+
+# ==============================================================================
 # STATISTICS
 # ==============================================================================
 
@@ -304,6 +370,8 @@ case "$1" in
 	list)
 		# List available methods
 		json_init
+		json_add_object "get_security_stats"
+		json_close_object
 		json_add_object "status"
 		json_close_object
 		json_add_object "get_active_threats"
@@ -334,6 +402,10 @@ case "$1" in
 
 	call)
 		case "$2" in
+			get_security_stats)
+				get_security_stats
+				;;
+
 			status)
 				json_init
 				json_add_boolean "enabled" 1
