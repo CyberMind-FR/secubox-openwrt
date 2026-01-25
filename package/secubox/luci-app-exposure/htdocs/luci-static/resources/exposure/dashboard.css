@@ -1,0 +1,241 @@
+/* SecuBox Service Exposure Manager - Dashboard Styles */
+
+.exposure-dashboard {
+    padding: 1rem;
+}
+
+.exposure-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.exposure-stat-card {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border: 1px solid #0f3460;
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.exposure-stat-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.exposure-stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #00d4ff;
+}
+
+.exposure-stat-label {
+    font-size: 0.85rem;
+    color: #8892b0;
+    margin-top: 0.25rem;
+}
+
+.exposure-section {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.exposure-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #0f3460;
+}
+
+.exposure-section-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #ccd6f6;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.exposure-section-title .icon {
+    font-size: 1.25rem;
+}
+
+/* Service Table */
+.exposure-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.exposure-table th,
+.exposure-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid #0f3460;
+}
+
+.exposure-table th {
+    color: #8892b0;
+    font-weight: 500;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+}
+
+.exposure-table td {
+    color: #ccd6f6;
+}
+
+.exposure-table tr:hover {
+    background: rgba(0, 212, 255, 0.05);
+}
+
+/* Status badges */
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-external {
+    background: rgba(0, 212, 255, 0.15);
+    color: #00d4ff;
+}
+
+.badge-local {
+    background: rgba(255, 193, 7, 0.15);
+    color: #ffc107;
+}
+
+.badge-tor {
+    background: rgba(116, 78, 182, 0.15);
+    color: #9b59b6;
+}
+
+.badge-ssl {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+}
+
+/* Onion address */
+.onion-address {
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: #9b59b6;
+    word-break: break-all;
+}
+
+/* Buttons */
+.btn-action {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+    color: #fff;
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+}
+
+.btn-danger {
+    background: rgba(231, 76, 60, 0.2);
+    color: #e74c3c;
+    border: 1px solid #e74c3c;
+}
+
+.btn-danger:hover {
+    background: #e74c3c;
+    color: #fff;
+}
+
+.btn-tor {
+    background: rgba(155, 89, 182, 0.2);
+    color: #9b59b6;
+    border: 1px solid #9b59b6;
+}
+
+.btn-ssl {
+    background: rgba(46, 204, 113, 0.2);
+    color: #2ecc71;
+    border: 1px solid #2ecc71;
+}
+
+/* Forms */
+.exposure-form {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.exposure-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.exposure-form-group label {
+    font-size: 0.85rem;
+    color: #8892b0;
+}
+
+.exposure-form-group input,
+.exposure-form-group select {
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid #0f3460;
+    background: #1a1a2e;
+    color: #ccd6f6;
+    font-size: 0.9rem;
+}
+
+.exposure-form-group input:focus,
+.exposure-form-group select:focus {
+    outline: none;
+    border-color: #00d4ff;
+}
+
+/* Empty state */
+.exposure-empty {
+    text-align: center;
+    padding: 2rem;
+    color: #8892b0;
+}
+
+.exposure-empty .icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* Port conflict warning */
+.conflict-warning {
+    background: rgba(231, 76, 60, 0.1);
+    border: 1px solid #e74c3c;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.conflict-warning-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #e74c3c;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}

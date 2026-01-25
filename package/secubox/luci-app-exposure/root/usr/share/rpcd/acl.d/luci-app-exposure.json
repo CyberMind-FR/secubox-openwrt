@@ -1,0 +1,17 @@
+{
+    "luci-app-exposure": {
+        "description": "Grant access to SecuBox Service Exposure Manager",
+        "read": {
+            "ubus": {
+                "luci.exposure": ["scan", "conflicts", "status", "tor_list", "ssl_list", "get_config"]
+            },
+            "uci": ["secubox-exposure"]
+        },
+        "write": {
+            "ubus": {
+                "luci.exposure": ["fix_port", "tor_add", "tor_remove", "ssl_add", "ssl_remove", "set_config"]
+            },
+            "uci": ["secubox-exposure"]
+        }
+    }
+}
