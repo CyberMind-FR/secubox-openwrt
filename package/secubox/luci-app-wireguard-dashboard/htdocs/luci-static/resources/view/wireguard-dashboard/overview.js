@@ -222,8 +222,11 @@ return view.extend({
 
 			return api.getAllData().then(L.bind(function(data) {
 				var status = data.status || {};
-				var interfaces = (data.interfaces || {}).interfaces || [];
-				var peers = (data.peers || {}).peers || [];
+				// Handle RPC expect unwrapping - may be array or object
+				var interfacesData = data.interfaces || [];
+				var peersData = data.peers || [];
+				var interfaces = Array.isArray(interfacesData) ? interfacesData : (interfacesData.interfaces || []);
+				var peers = Array.isArray(peersData) ? peersData : (peersData.peers || []);
 
 				this.updateStats(status);
 				this.updatePeers(peers);
@@ -240,8 +243,11 @@ return view.extend({
 	render: function(data) {
 		var self = this;
 		var status = data.status || {};
-		var interfaces = (data.interfaces || {}).interfaces || [];
-		var peers = (data.peers || {}).peers || [];
+		// Handle RPC expect unwrapping - may be array or object
+		var interfacesData = data.interfaces || [];
+		var peersData = data.peers || [];
+		var interfaces = Array.isArray(interfacesData) ? interfacesData : (interfacesData.interfaces || []);
+		var peers = Array.isArray(peersData) ? peersData : (peersData.peers || []);
 
 		// Store peer descriptions
 		this.peerDescriptions = data.descriptions || {};
