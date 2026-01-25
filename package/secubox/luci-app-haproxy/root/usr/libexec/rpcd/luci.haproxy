@@ -688,7 +688,7 @@ method_request_certificate() {
 	fi
 
 	local result
-	result=$(run_ctl cert-issue "$domain" 2>&1)
+	result=$(run_ctl cert add "$domain" 2>&1)
 	local rc=$?
 
 	json_init
@@ -721,7 +721,7 @@ method_import_certificate() {
 	fi
 
 	local result
-	result=$(run_ctl cert-import "$domain" "$cert_data" "$key_data" 2>&1)
+	result=$(run_ctl cert import "$domain" "$cert_data" "$key_data" 2>&1)
 	local rc=$?
 
 	json_init
@@ -755,7 +755,7 @@ method_delete_certificate() {
 	domain=$(get_uci "$id" domain "")
 
 	# Remove certificate files
-	run_ctl cert-delete "$domain" >/dev/null 2>&1
+	run_ctl cert remove "$domain" >/dev/null 2>&1
 
 	uci delete "$UCI_CONFIG.$id"
 	uci commit "$UCI_CONFIG"

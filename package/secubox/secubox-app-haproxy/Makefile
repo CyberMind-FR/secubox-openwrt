@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-haproxy
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=2
+PKG_RELEASE:=13
 
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_LICENSE:=MIT
@@ -18,7 +18,7 @@ define Package/secubox-app-haproxy
   CATEGORY:=SecuBox
   SUBMENU:=Services
   TITLE:=HAProxy Load Balancer & Reverse Proxy
-  DEPENDS:=+lxc +lxc-common +openssl-util +wget-ssl +tar +jsonfilter +acme +socat
+  DEPENDS:=+lxc +lxc-common +openssl-util +wget-ssl +tar +jsonfilter +acme +acme-acmesh +socat
   PKGARCH:=all
 endef
 

@@ -4,9 +4,23 @@
 'require ui';
 'require haproxy.api as api';
 
+/**
+ * HAProxy Backends Management
+ * Copyright (C) 2025 CyberMind.fr
+ */
+
 return view.extend({
+	title: _('Backends'),
+
 	load: function() {
-		return api.listBackends().then(function(backends) {
+		// Load CSS
+		var cssLink = document.createElement('link');
+		cssLink.rel = 'stylesheet';
+		cssLink.href = L.resource('haproxy/dashboard.css');
+		document.head.appendChild(cssLink);
+
+		return api.listBackends().then(function(result) {
+			var backends = (result && result.backends) || result || [];
 			return Promise.all([
 				Promise.resolve(backends),
 				api.listServers('')
@@ -17,7 +31,8 @@ return view.extend({
 	render: function(data) {
 		var self = this;
 		var backends = data[0] || [];
-		var servers = data[1] || [];
+		var serversResult = data[1] || {};
+		var servers = (serversResult && serversResult.servers) || serversResult || [];
 
 		// Group servers by backend
 		var serversByBackend = {};
@@ -28,42 +43,258 @@ return view.extend({
 			serversByBackend[s.backend].push(s);
 		});
 
-		var view = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, 'Backends'),
-			E('p', {}, 'Manage backend server pools and load balancing settings.'),
+		return E('div', { 'class': 'haproxy-dashboard' }, [
+			// Page Header
+			E('div', { 'class': 'hp-page-header' }, [
+				E('div', {}, [
+					E('h1', { 'class': 'hp-page-title' }, [
+						E('span', { 'class': 'hp-page-title-icon' }, '\u{1F5C4}'),
+						'Backends'
+					]),
+					E('p', { 'class': 'hp-page-subtitle' }, 'Manage backend server pools and load balancing settings')
+				]),
+				E('a', {
+					'href': L.url('admin/services/haproxy/overview'),
+					'class': 'hp-btn hp-btn-secondary'
+				}, ['\u2190', ' Back to Overview'])
+			]),
 
-			// Add backend form
-			E('div', { 'class': 'haproxy-form-section' }, [
-				E('h3', {}, 'Add Backend'),
+			// Add Backend Card
+			E('div', { 'class': 'hp-card' }, [
+				E('div', { 'class': 'hp-card-header' }, [
+					E('div', { 'class': 'hp-card-title' }, [
+						E('span', { 'class': 'hp-card-title-icon' }, '\u2795'),
+						'Add Backend'
+					])
+				]),
+				E('div', { 'class': 'hp-card-body' }, [
+					E('div', { 'class': 'hp-grid hp-grid-2', 'style': 'gap: 16px;' }, [
+						E('div', { 'class': 'hp-form-group' }, [
+							E('label', { 'class': 'hp-form-label' }, 'Name'),
+							E('input', {
+								'type': 'text',
+								'id': 'new-backend-name',
+								'class': 'hp-form-input',
+								'placeholder': 'web-servers'
+							})
+						]),
+						E('div', { 'class': 'hp-form-group' }, [
+							E('label', { 'class': 'hp-form-label' }, 'Mode'),
+							E('select', { 'id': 'new-backend-mode', 'class': 'hp-form-input' }, [
+								E('option', { 'value': 'http', 'selected': true }, 'HTTP'),
+								E('option', { 'value': 'tcp' }, 'TCP')
+							])
+						]),
+						E('div', { 'class': 'hp-form-group' }, [
+							E('label', { 'class': 'hp-form-label' }, 'Balance Algorithm'),
+							E('select', { 'id': 'new-backend-balance', 'class': 'hp-form-input' }, [
+								E('option', { 'value': 'roundrobin', 'selected': true }, 'Round Robin'),
+								E('option', { 'value': 'leastconn' }, 'Least Connections'),
+								E('option', { 'value': 'source' }, 'Source IP Hash'),
+								E('option', { 'value': 'uri' }, 'URI Hash'),
+								E('option', { 'value': 'first' }, 'First Available')
+							])
+						]),
+						E('div', { 'class': 'hp-form-group' }, [
+							E('label', { 'class': 'hp-form-label' }, 'Health Check (optional)'),
+							E('input', {
+								'type': 'text',
+								'id': 'new-backend-health',
+								'class': 'hp-form-input',
+								'placeholder': 'httpchk GET /health'
+							})
+						])
+					]),
+					E('button', {
+						'class': 'hp-btn hp-btn-primary',
+						'style': 'margin-top: 16px;',
+						'click': function() { self.handleAddBackend(); }
+					}, ['\u2795', ' Add Backend'])
+				])
+			]),
+
+			// Backends List
+			E('div', { 'class': 'hp-card' }, [
+				E('div', { 'class': 'hp-card-header' }, [
+					E('div', { 'class': 'hp-card-title' }, [
+						E('span', { 'class': 'hp-card-title-icon' }, '\u{1F4CB}'),
+						'Configured Backends (' + backends.length + ')'
+					])
+				]),
+				E('div', { 'class': 'hp-card-body' },
+					backends.length === 0 ? [
+						E('div', { 'class': 'hp-empty' }, [
+							E('div', { 'class': 'hp-empty-icon' }, '\u{1F5C4}'),
+							E('div', { 'class': 'hp-empty-text' }, 'No backends configured'),
+							E('div', { 'class': 'hp-empty-hint' }, 'Add a backend above to create a server pool')
+						])
+					] : [
+						E('div', { 'class': 'hp-backends-grid' },
+							backends.map(function(backend) {
+								return self.renderBackendCard(backend, serversByBackend[backend.id] || []);
+							})
+						)
+					]
+				)
+			])
+		]);
+	},
+
+	renderBackendCard: function(backend, servers) {
+		var self = this;
+
+		return E('div', { 'class': 'hp-backend-card', 'data-id': backend.id }, [
+			// Header
+			E('div', { 'class': 'hp-backend-header' }, [
+				E('div', {}, [
+					E('h4', { 'style': 'margin: 0 0 4px 0;' }, backend.name),
+					E('small', { 'style': 'color: var(--hp-text-muted);' }, [
+						backend.mode.toUpperCase(),
+						' \u2022 ',
+						this.getBalanceLabel(backend.balance)
+					])
+				]),
+				E('div', { 'style': 'display: flex; gap: 8px; align-items: center;' }, [
+					E('span', {
+						'class': 'hp-badge ' + (backend.enabled ? 'hp-badge-success' : 'hp-badge-danger')
+					}, backend.enabled ? 'Enabled' : 'Disabled'),
+					E('button', {
+						'class': 'hp-btn hp-btn-sm hp-btn-primary',
+						'click': function() { self.showEditBackendModal(backend); }
+					}, '\u270F')
+				])
+			]),
+
+			// Health check info
+			backend.health_check ? E('div', { 'style': 'padding: 8px 16px; background: var(--hp-bg-tertiary, #f5f5f5); font-size: 12px; color: var(--hp-text-muted);' }, [
+				'\u{1F3E5} Health Check: ',
+				E('code', {}, backend.health_check)
+			]) : null,
+
+			// Servers
+			E('div', { 'class': 'hp-backend-servers' },
+				servers.length === 0 ? [
+					E('div', { 'style': 'padding: 20px; text-align: center; color: var(--hp-text-muted);' }, [
+						E('div', {}, '\u{1F4E6} No servers configured'),
+						E('small', {}, 'Add a server to this backend')
+					])
+				] : servers.map(function(server) {
+					return E('div', { 'class': 'hp-server-item' }, [
+						E('div', { 'class': 'hp-server-info' }, [
+							E('span', { 'class': 'hp-server-name' }, server.name),
+							E('span', { 'class': 'hp-server-address' }, server.address + ':' + server.port)
+						]),
+						E('div', { 'class': 'hp-server-actions' }, [
+							E('span', { 'class': 'hp-badge hp-badge-secondary', 'style': 'font-size: 11px;' }, 'W:' + server.weight),
+							server.check ? E('span', { 'class': 'hp-badge hp-badge-info', 'style': 'font-size: 11px;' }, '\u2713 Check') : null,
+							E('button', {
+								'class': 'hp-btn hp-btn-sm hp-btn-secondary',
+								'style': 'padding: 2px 6px;',
+								'click': function() { self.showEditServerModal(server, backend); }
+							}, '\u270F'),
+							E('button', {
+								'class': 'hp-btn hp-btn-sm hp-btn-danger',
+								'style': 'padding: 2px 6px;',
+								'click': function() { self.handleDeleteServer(server); }
+							}, '\u2715')
+						])
+					]);
+				})
+			),
+
+			// Footer Actions
+			E('div', { 'class': 'hp-backend-footer' }, [
+				E('button', {
+					'class': 'hp-btn hp-btn-sm hp-btn-primary',
+					'click': function() { self.showAddServerModal(backend); }
+				}, ['\u2795', ' Add Server']),
+				E('div', { 'style': 'display: flex; gap: 8px;' }, [
+					E('button', {
+						'class': 'hp-btn hp-btn-sm ' + (backend.enabled ? 'hp-btn-secondary' : 'hp-btn-success'),
+						'click': function() { self.handleToggleBackend(backend); }
+					}, backend.enabled ? 'Disable' : 'Enable'),
+					E('button', {
+						'class': 'hp-btn hp-btn-sm hp-btn-danger',
+						'click': function() { self.handleDeleteBackend(backend); }
+					}, 'Delete')
+				])
+			])
+		]);
+	},
+
+	getBalanceLabel: function(balance) {
+		var labels = {
+			'roundrobin': 'Round Robin',
+			'leastconn': 'Least Connections',
+			'source': 'Source IP',
+			'uri': 'URI Hash',
+			'first': 'First Available'
+		};
+		return labels[balance] || balance;
+	},
+
+	handleAddBackend: function() {
+		var self = this;
+		var name = document.getElementById('new-backend-name').value.trim();
+		var mode = document.getElementById('new-backend-mode').value;
+		var balance = document.getElementById('new-backend-balance').value;
+		var healthCheck = document.getElementById('new-backend-health').value.trim();
+
+		if (!name) {
+			self.showToast('Backend name is required', 'error');
+			return;
+		}
+
+		if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(name)) {
+			self.showToast('Invalid backend name format', 'error');
+			return;
+		}
+
+		return api.createBackend(name, mode, balance, healthCheck, 1).then(function(res) {
+			if (res.success) {
+				self.showToast('Backend "' + name + '" created', 'success');
+				window.location.reload();
+			} else {
+				self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
+			}
+		});
+	},
+
+	showEditBackendModal: function(backend) {
+		var self = this;
+
+		ui.showModal('Edit Backend: ' + backend.name, [
+			E('div', { 'style': 'max-width: 500px;' }, [
 				E('div', { 'class': 'cbi-value' }, [
 					E('label', { 'class': 'cbi-value-title' }, 'Name'),
 					E('div', { 'class': 'cbi-value-field' }, [
 						E('input', {
 							'type': 'text',
-							'id': 'new-backend-name',
+							'id': 'edit-backend-name',
 							'class': 'cbi-input-text',
-							'placeholder': 'web-servers'
+							'value': backend.name,
+							'style': 'width: 100%;'
 						})
 					])
 				]),
 				E('div', { 'class': 'cbi-value' }, [
 					E('label', { 'class': 'cbi-value-title' }, 'Mode'),
 					E('div', { 'class': 'cbi-value-field' }, [
-						E('select', { 'id': 'new-backend-mode', 'class': 'cbi-input-select' }, [
-							E('option', { 'value': 'http', 'selected': true }, 'HTTP'),
-							E('option', { 'value': 'tcp' }, 'TCP')
+						E('select', { 'id': 'edit-backend-mode', 'class': 'cbi-input-select', 'style': 'width: 100%;' }, [
+							E('option', { 'value': 'http', 'selected': backend.mode === 'http' }, 'HTTP'),
+							E('option', { 'value': 'tcp', 'selected': backend.mode === 'tcp' }, 'TCP')
 						])
 					])
 				]),
 				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, 'Balance'),
+					E('label', { 'class': 'cbi-value-title' }, 'Balance Algorithm'),
 					E('div', { 'class': 'cbi-value-field' }, [
-						E('select', { 'id': 'new-backend-balance', 'class': 'cbi-input-select' }, [
-							E('option', { 'value': 'roundrobin', 'selected': true }, 'Round Robin'),
-							E('option', { 'value': 'leastconn' }, 'Least Connections'),
-							E('option', { 'value': 'source' }, 'Source IP Hash'),
-							E('option', { 'value': 'uri' }, 'URI Hash'),
-							E('option', { 'value': 'first' }, 'First Available')
+						E('select', { 'id': 'edit-backend-balance', 'class': 'cbi-input-select', 'style': 'width: 100%;' }, [
+							E('option', { 'value': 'roundrobin', 'selected': backend.balance === 'roundrobin' }, 'Round Robin'),
+							E('option', { 'value': 'leastconn', 'selected': backend.balance === 'leastconn' }, 'Least Connections'),
+							E('option', { 'value': 'source', 'selected': backend.balance === 'source' }, 'Source IP Hash'),
+							E('option', { 'value': 'uri', 'selected': backend.balance === 'uri' }, 'URI Hash'),
+							E('option', { 'value': 'first', 'selected': backend.balance === 'first' }, 'First Available')
 						])
 					])
 				]),
@@ -72,135 +303,98 @@ return view.extend({
 					E('div', { 'class': 'cbi-value-field' }, [
 						E('input', {
 							'type': 'text',
-							'id': 'new-backend-health',
+							'id': 'edit-backend-health',
 							'class': 'cbi-input-text',
-							'placeholder': 'httpchk GET /health (optional)'
+							'value': backend.health_check || '',
+							'placeholder': 'httpchk GET /health',
+							'style': 'width: 100%;'
 						})
 					])
 				]),
 				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, ''),
+					E('label', { 'class': 'cbi-value-title' }, 'Status'),
 					E('div', { 'class': 'cbi-value-field' }, [
-						E('button', {
-							'class': 'cbi-button cbi-button-add',
-							'click': function() { self.handleAddBackend(); }
-						}, 'Add Backend')
+						E('label', {}, [
+							E('input', { 'type': 'checkbox', 'id': 'edit-backend-enabled', 'checked': backend.enabled }),
+							' Enabled'
+						])
 					])
 				])
 			]),
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
+				E('button', {
+					'class': 'hp-btn hp-btn-secondary',
+					'click': ui.hideModal
+				}, 'Cancel'),
+				E('button', {
+					'class': 'hp-btn hp-btn-primary',
+					'click': function() {
+						var name = document.getElementById('edit-backend-name').value.trim();
+						var mode = document.getElementById('edit-backend-mode').value;
+						var balance = document.getElementById('edit-backend-balance').value;
+						var healthCheck = document.getElementById('edit-backend-health').value.trim();
+						var enabled = document.getElementById('edit-backend-enabled').checked ? 1 : 0;
 
-			// Backends list
-			E('div', { 'class': 'haproxy-form-section' }, [
-				E('h3', {}, 'Configured Backends (' + backends.length + ')'),
-				E('div', { 'class': 'haproxy-backends-grid' },
-					backends.length === 0
-						? E('p', { 'style': 'color: var(--text-color-medium, #666)' }, 'No backends configured.')
-						: backends.map(function(backend) {
-							return self.renderBackendCard(backend, serversByBackend[backend.id] || []);
-						})
-				)
+						if (!name) {
+							self.showToast('Backend name is required', 'error');
+							return;
+						}
+
+						ui.hideModal();
+						api.updateBackend(backend.id, name, mode, balance, healthCheck, enabled).then(function(res) {
+							if (res.success) {
+								self.showToast('Backend updated', 'success');
+								window.location.reload();
+							} else {
+								self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
+							}
+						});
+					}
+				}, 'Save Changes')
 			])
 		]);
-
-		// Add CSS
-		var style = E('style', {}, `
-			@import url('/luci-static/resources/haproxy/dashboard.css');
-		`);
-		view.insertBefore(style, view.firstChild);
-
-		return view;
 	},
 
-	renderBackendCard: function(backend, servers) {
+	handleToggleBackend: function(backend) {
 		var self = this;
+		var newEnabled = backend.enabled ? 0 : 1;
+		var action = newEnabled ? 'enabled' : 'disabled';
 
-		return E('div', { 'class': 'haproxy-backend-card', 'data-id': backend.id }, [
-			E('div', { 'class': 'haproxy-backend-header' }, [
-				E('div', {}, [
-					E('h4', {}, backend.name),
-					E('small', { 'style': 'color: #666' },
-						backend.mode.toUpperCase() + ' / ' + backend.balance)
-				]),
-				E('div', {}, [
-					E('span', {
-						'class': 'haproxy-badge ' + (backend.enabled ? 'enabled' : 'disabled')
-					}, backend.enabled ? 'Enabled' : 'Disabled')
-				])
-			]),
-			E('div', { 'class': 'haproxy-backend-servers' },
-				servers.length === 0
-					? E('div', { 'style': 'padding: 1rem; color: #666; text-align: center' }, 'No servers configured')
-					: servers.map(function(server) {
-						return E('div', { 'class': 'haproxy-server-item' }, [
-							E('div', { 'class': 'haproxy-server-info' }, [
-								E('span', { 'class': 'haproxy-server-name' }, server.name),
-								E('span', { 'class': 'haproxy-server-address' },
-									server.address + ':' + server.port)
-							]),
-							E('div', { 'class': 'haproxy-server-status' }, [
-								E('span', { 'class': 'haproxy-server-weight' }, 'W:' + server.weight),
-								E('button', {
-									'class': 'cbi-button cbi-button-remove',
-									'style': 'padding: 2px 8px; font-size: 12px',
-									'click': function() { self.handleDeleteServer(server); }
-								}, 'X')
-							])
-						]);
-					})
-			),
-			E('div', { 'style': 'padding: 0.75rem; border-top: 1px solid #eee; display: flex; gap: 0.5rem' }, [
-				E('button', {
-					'class': 'cbi-button cbi-button-action',
-					'style': 'flex: 1',
-					'click': function() { self.showAddServerModal(backend); }
-				}, 'Add Server'),
-				E('button', {
-					'class': 'cbi-button cbi-button-remove',
-					'click': function() { self.handleDeleteBackend(backend); }
-				}, 'Delete')
-			])
-		]);
-	},
-
-	handleAddBackend: function() {
-		var name = document.getElementById('new-backend-name').value.trim();
-		var mode = document.getElementById('new-backend-mode').value;
-		var balance = document.getElementById('new-backend-balance').value;
-		var healthCheck = document.getElementById('new-backend-health').value.trim();
-
-		if (!name) {
-			ui.addNotification(null, E('p', {}, 'Backend name is required'), 'error');
-			return;
-		}
-
-		return api.createBackend(name, mode, balance, healthCheck, 1).then(function(res) {
+		return api.updateBackend(backend.id, null, null, null, null, newEnabled).then(function(res) {
 			if (res.success) {
-				ui.addNotification(null, E('p', {}, 'Backend created'));
+				self.showToast('Backend ' + action, 'success');
 				window.location.reload();
 			} else {
-				ui.addNotification(null, E('p', {}, 'Failed: ' + (res.error || 'Unknown error')), 'error');
+				self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
 			}
 		});
 	},
 
 	handleDeleteBackend: function(backend) {
+		var self = this;
+
 		ui.showModal('Delete Backend', [
-			E('p', {}, 'Are you sure you want to delete backend "' + backend.name + '" and all its servers?'),
-			E('div', { 'class': 'right' }, [
+			E('div', { 'style': 'margin-bottom: 16px;' }, [
+				E('p', { 'style': 'margin: 0;' }, 'Are you sure you want to delete this backend and all its servers?'),
+				E('div', {
+					'style': 'margin-top: 12px; padding: 12px; background: var(--hp-bg-tertiary, #f5f5f5); border-radius: 8px; font-family: monospace;'
+				}, backend.name)
+			]),
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'hp-btn hp-btn-secondary',
 					'click': ui.hideModal
 				}, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'hp-btn hp-btn-danger',
 					'click': function() {
 						ui.hideModal();
 						api.deleteBackend(backend.id).then(function(res) {
 							if (res.success) {
-								ui.addNotification(null, E('p', {}, 'Backend deleted'));
+								self.showToast('Backend deleted', 'success');
 								window.location.reload();
 							} else {
-								ui.addNotification(null, E('p', {}, 'Failed: ' + (res.error || 'Unknown error')), 'error');
+								self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
 							}
 						});
 					}
@@ -213,70 +407,78 @@ return view.extend({
 		var self = this;
 
 		ui.showModal('Add Server to ' + backend.name, [
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, 'Server Name'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'text',
-						'id': 'modal-server-name',
-						'class': 'cbi-input-text',
-						'placeholder': 'server1'
-					})
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, 'Address'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'text',
-						'id': 'modal-server-address',
-						'class': 'cbi-input-text',
-						'placeholder': '192.168.1.10'
-					})
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, 'Port'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'number',
-						'id': 'modal-server-port',
-						'class': 'cbi-input-text',
-						'placeholder': '8080',
-						'value': '80'
-					})
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, 'Weight'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'number',
-						'id': 'modal-server-weight',
-						'class': 'cbi-input-text',
-						'placeholder': '100',
-						'value': '100',
-						'min': '0',
-						'max': '256'
-					})
-				])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, 'Health Check'),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('label', {}, [
-						E('input', { 'type': 'checkbox', 'id': 'modal-server-check', 'checked': true }),
-						' Enable health check'
+			E('div', { 'style': 'max-width: 500px;' }, [
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Server Name'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', {
+							'type': 'text',
+							'id': 'modal-server-name',
+							'class': 'cbi-input-text',
+							'placeholder': 'server1',
+							'style': 'width: 100%;'
+						})
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Address'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', {
+							'type': 'text',
+							'id': 'modal-server-address',
+							'class': 'cbi-input-text',
+							'placeholder': '192.168.1.10',
+							'style': 'width: 100%;'
+						})
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Port'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', {
+							'type': 'number',
+							'id': 'modal-server-port',
+							'class': 'cbi-input-text',
+							'placeholder': '8080',
+							'value': '80',
+							'min': '1',
+							'max': '65535',
+							'style': 'width: 100%;'
+						})
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Weight'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', {
+							'type': 'number',
+							'id': 'modal-server-weight',
+							'class': 'cbi-input-text',
+							'value': '100',
+							'min': '0',
+							'max': '256',
+							'style': 'width: 100%;'
+						}),
+						E('small', { 'style': 'color: var(--hp-text-muted);' }, 'Higher weight = more traffic (0-256)')
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Options'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('label', {}, [
+							E('input', { 'type': 'checkbox', 'id': 'modal-server-check', 'checked': true }),
+							' Enable health check'
+						])
 					])
 				])
 			]),
-			E('div', { 'class': 'right' }, [
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'hp-btn hp-btn-secondary',
 					'click': ui.hideModal
 				}, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button cbi-button-positive',
+					'class': 'hp-btn hp-btn-primary',
 					'click': function() {
 						var name = document.getElementById('modal-server-name').value.trim();
 						var address = document.getElementById('modal-server-address').value.trim();
@@ -285,17 +487,17 @@ return view.extend({
 						var check = document.getElementById('modal-server-check').checked ? 1 : 0;
 
 						if (!name || !address) {
-							ui.addNotification(null, E('p', {}, 'Name and address are required'), 'error');
+							self.showToast('Name and address are required', 'error');
 							return;
 						}
 
 						ui.hideModal();
 						api.createServer(backend.id, name, address, port, weight, check, 1).then(function(res) {
 							if (res.success) {
-								ui.addNotification(null, E('p', {}, 'Server added'));
+								self.showToast('Server added', 'success');
 								window.location.reload();
 							} else {
-								ui.addNotification(null, E('p', {}, 'Failed: ' + (res.error || 'Unknown error')), 'error');
+								self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
 							}
 						});
 					}
@@ -304,30 +506,166 @@ return view.extend({
 		]);
 	},
 
-	handleDeleteServer: function(server) {
-		ui.showModal('Delete Server', [
-			E('p', {}, 'Are you sure you want to delete server "' + server.name + '"?'),
-			E('div', { 'class': 'right' }, [
+	showEditServerModal: function(server, backend) {
+		var self = this;
+
+		ui.showModal('Edit Server: ' + server.name, [
+			E('div', { 'style': 'max-width: 500px;' }, [
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Server Name'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', {
+							'type': 'text',
+							'id': 'edit-server-name',
+							'class': 'cbi-input-text',
+							'value': server.name,
+							'style': 'width: 100%;'
+						})
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Address'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', {
+							'type': 'text',
+							'id': 'edit-server-address',
+							'class': 'cbi-input-text',
+							'value': server.address,
+							'style': 'width: 100%;'
+						})
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Port'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', {
+							'type': 'number',
+							'id': 'edit-server-port',
+							'class': 'cbi-input-text',
+							'value': server.port,
+							'min': '1',
+							'max': '65535',
+							'style': 'width: 100%;'
+						})
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Weight'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', {
+							'type': 'number',
+							'id': 'edit-server-weight',
+							'class': 'cbi-input-text',
+							'value': server.weight,
+							'min': '0',
+							'max': '256',
+							'style': 'width: 100%;'
+						})
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Options'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' }, [
+							E('label', {}, [
+								E('input', { 'type': 'checkbox', 'id': 'edit-server-check', 'checked': server.check }),
+								' Enable health check'
+							]),
+							E('label', {}, [
+								E('input', { 'type': 'checkbox', 'id': 'edit-server-enabled', 'checked': server.enabled }),
+								' Enabled'
+							])
+						])
+					])
+				])
+			]),
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;' }, [
 				E('button', {
-					'class': 'cbi-button',
+					'class': 'hp-btn hp-btn-secondary',
 					'click': ui.hideModal
 				}, 'Cancel'),
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'hp-btn hp-btn-primary',
+					'click': function() {
+						var name = document.getElementById('edit-server-name').value.trim();
+						var address = document.getElementById('edit-server-address').value.trim();
+						var port = parseInt(document.getElementById('edit-server-port').value) || 80;
+						var weight = parseInt(document.getElementById('edit-server-weight').value) || 100;
+						var check = document.getElementById('edit-server-check').checked ? 1 : 0;
+						var enabled = document.getElementById('edit-server-enabled').checked ? 1 : 0;
+
+						if (!name || !address) {
+							self.showToast('Name and address are required', 'error');
+							return;
+						}
+
+						ui.hideModal();
+						api.updateServer(server.id, backend.id, name, address, port, weight, check, enabled).then(function(res) {
+							if (res.success) {
+								self.showToast('Server updated', 'success');
+								window.location.reload();
+							} else {
+								self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
+							}
+						});
+					}
+				}, 'Save Changes')
+			])
+		]);
+	},
+
+	handleDeleteServer: function(server) {
+		var self = this;
+
+		ui.showModal('Delete Server', [
+			E('div', { 'style': 'margin-bottom: 16px;' }, [
+				E('p', { 'style': 'margin: 0;' }, 'Are you sure you want to delete this server?'),
+				E('div', {
+					'style': 'margin-top: 12px; padding: 12px; background: var(--hp-bg-tertiary, #f5f5f5); border-radius: 8px; font-family: monospace;'
+				}, server.name + ' (' + server.address + ':' + server.port + ')')
+			]),
+			E('div', { 'style': 'display: flex; justify-content: flex-end; gap: 12px;' }, [
+				E('button', {
+					'class': 'hp-btn hp-btn-secondary',
+					'click': ui.hideModal
+				}, 'Cancel'),
+				E('button', {
+					'class': 'hp-btn hp-btn-danger',
 					'click': function() {
 						ui.hideModal();
 						api.deleteServer(server.id).then(function(res) {
 							if (res.success) {
-								ui.addNotification(null, E('p', {}, 'Server deleted'));
+								self.showToast('Server deleted', 'success');
 								window.location.reload();
 							} else {
-								ui.addNotification(null, E('p', {}, 'Failed: ' + (res.error || 'Unknown error')), 'error');
+								self.showToast('Failed: ' + (res.error || 'Unknown error'), 'error');
 							}
 						});
 					}
 				}, 'Delete')
 			])
 		]);
+	},
+
+	showToast: function(message, type) {
+		var existing = document.querySelector('.hp-toast');
+		if (existing) existing.remove();
+
+		var iconMap = {
+			'success': '\u2705',
+			'error': '\u274C',
+			'warning': '\u26A0\uFE0F'
+		};
+
+		var toast = E('div', { 'class': 'hp-toast ' + (type || '') }, [
+			E('span', {}, iconMap[type] || '\u2139\uFE0F'),
+			message
+		]);
+		document.body.appendChild(toast);
+
+		setTimeout(function() {
+			toast.remove();
+		}, 4000);
 	},
 
 	handleSaveApply: null,

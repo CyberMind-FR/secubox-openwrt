@@ -293,11 +293,16 @@ function getDashboardData() {
 		callListBackends(),
 		callListCertificates()
 	]).then(function(results) {
+		// Handle both array and object responses from RPC
+		var vhosts = Array.isArray(results[1]) ? results[1] : (results[1] && results[1].vhosts) || [];
+		var backends = Array.isArray(results[2]) ? results[2] : (results[2] && results[2].backends) || [];
+		var certificates = Array.isArray(results[3]) ? results[3] : (results[3] && results[3].certificates) || [];
+
 		return {
 			status: results[0],
-			vhosts: results[1].vhosts || [],
-			backends: results[2].backends || [],
-			certificates: results[3].certificates || []
+			vhosts: vhosts,
+			backends: backends,
+			certificates: certificates
 		};
 	});
 }
