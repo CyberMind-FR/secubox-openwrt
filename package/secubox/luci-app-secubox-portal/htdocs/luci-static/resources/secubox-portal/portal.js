@@ -61,6 +61,18 @@ return baseclass.extend({
 			service: 'mitmproxy',
 			version: '8.1.1'
 		},
+		'threat-monitor': {
+			id: 'threat-monitor',
+			name: 'Threat Monitor',
+			desc: 'Real-time threat detection combining netifyd DPI with CrowdSec intelligence',
+			icon: '\ud83d\udc41\ufe0f',
+			iconBg: 'rgba(239, 68, 68, 0.15)',
+			iconColor: '#ef4444',
+			section: 'security',
+			path: 'admin/secubox/security/threats/dashboard',
+			service: null,
+			version: '1.0.0'
+		},
 
 		// Network Apps
 		'bandwidth-manager': {
