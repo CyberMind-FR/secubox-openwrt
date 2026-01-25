@@ -37,7 +37,13 @@ generate_torrc() {
 	config_get strict_nodes security strict_nodes '0'
 
 	mkdir -p "$TOR_RUN" "$TOR_DATA"
-	chmod 700 "$TOR_DATA"
+
+	# Clean up stale files that may have wrong ownership
+	rm -f "$TOR_RUN/tor.pid" "$TOR_RUN/control" "$TOR_RUN/control_auth_cookie" 2>/dev/null
+	rm -f "$TOR_DATA/lock" 2>/dev/null
+
+	chown tor:tor "$TOR_RUN" "$TOR_DATA"
+	chmod 700 "$TOR_RUN" "$TOR_DATA"
 
 	cat > "$TORRC" << EOF
 # SecuBox Tor Shield - Auto-generated config
@@ -45,10 +51,12 @@ generate_torrc() {
 
 User tor
 DataDirectory $TOR_DATA
-PidFile $TOR_RUN/tor.pid
-Log notice file /var/log/tor.log
+Log notice syslog
 ControlSocket $TOR_RUN/control
 ControlSocketsGroupWritable 1
+CookieAuthentication 1
+CookieAuthFile $TOR_RUN/control_auth_cookie
+CookieAuthFileGroupReadable 1
 
 # SOCKS proxy
 SocksPort $socks_addr:$socks_port
@@ -79,15 +87,23 @@ VirtualAddrNetworkIPv4 10.192.0.0/10
 EOF
 	fi
 
-	# Bridge configuration
+	# Bridge configuration - only enable if bridges are configured
 	if [ "$bridges_enabled" = "1" ]; then
-		cat >> "$TORRC" << EOF
+		# Count bridge lines first
+		BRIDGE_COUNT=0
+		count_bridge() { BRIDGE_COUNT=$((BRIDGE_COUNT + 1)); }
+		config_list_foreach bridges bridge_lines count_bridge
+
+		# Only add UseBridges if there are actual bridges configured
+		if [ "$BRIDGE_COUNT" -gt 0 ]; then
+			cat >> "$TORRC" << EOF
 
 # Bridge mode
 UseBridges 1
 EOF
-		# Add bridge lines from config
-		config_list_foreach bridges bridge_lines add_bridge_line
+			# Add bridge lines from config
+			config_list_foreach bridges bridge_lines add_bridge_line
+		fi
 	fi
 
 	# Exit node restrictions
@@ -111,6 +127,9 @@ EOF
 	if [ -f /usr/share/tor/geoip6 ]; then
 		echo "GeoIPv6File /usr/share/tor/geoip6" >> "$TORRC"
 	fi
+
+	# Ensure torrc is readable by tor user
+	chown tor:tor "$TORRC"
 }
 
 add_bridge_line() {
@@ -130,6 +149,7 @@ add_hidden_service() {
 
 	local hs_dir="$TOR_DATA/hidden_service_$name"
 	mkdir -p "$hs_dir"
+	chown tor:tor "$hs_dir"
 	chmod 700 "$hs_dir"
 
 	cat >> "$TORRC" << EOF
@@ -153,6 +173,10 @@ setup_iptables() {
 	# Get Tor user ID
 	local tor_uid=$(id -u tor 2>/dev/null || echo "tor")
 
+	# Remove from OUTPUT chain first (to allow chain deletion)
+	iptables -t nat -D OUTPUT -j TOR_SHIELD 2>/dev/null
+	iptables -t filter -D OUTPUT -j TOR_SHIELD 2>/dev/null
+
 	# Clear existing Tor rules
 	iptables -t nat -F TOR_SHIELD 2>/dev/null
 	iptables -t nat -X TOR_SHIELD 2>/dev/null
@@ -161,9 +185,9 @@ setup_iptables() {
 
 	[ "$mode" = "transparent" ] || return 0
 
-	# Create chains
-	iptables -t nat -N TOR_SHIELD
-	iptables -t filter -N TOR_SHIELD
+	# Create chains (ignore "already exists" errors)
+	iptables -t nat -N TOR_SHIELD 2>/dev/null || true
+	iptables -t filter -N TOR_SHIELD 2>/dev/null || true
 
 	# Exclude Tor traffic
 	iptables -t nat -A TOR_SHIELD -m owner --uid-owner $tor_uid -j RETURN

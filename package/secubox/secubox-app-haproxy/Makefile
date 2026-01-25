@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-haproxy
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=13
+PKG_RELEASE:=14
 
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_LICENSE:=MIT
@@ -50,11 +50,28 @@ define Package/secubox-app-haproxy/install
 
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/usr/sbin/haproxyctl $(1)/usr/sbin/haproxyctl
+	$(INSTALL_BIN) ./files/usr/sbin/haproxy-sync-certs $(1)/usr/sbin/haproxy-sync-certs
+
+	$(INSTALL_DIR) $(1)/usr/lib/acme/deploy
+	$(INSTALL_BIN) ./files/usr/lib/acme/deploy/haproxy.sh $(1)/usr/lib/acme/deploy/haproxy.sh
 
 	$(INSTALL_DIR) $(1)/usr/share/haproxy/templates
 	$(INSTALL_DATA) ./files/usr/share/haproxy/templates/* $(1)/usr/share/haproxy/templates/
 
 	$(INSTALL_DIR) $(1)/usr/share/haproxy/certs
+
+	# Add cron job for certificate sync after ACME renewals
+	$(INSTALL_DIR) $(1)/etc/cron.d
+	echo "# Sync ACME certs to HAProxy after renewals" > $(1)/etc/cron.d/haproxy-certs
+	echo "15 3 * * * root /usr/sbin/haproxy-sync-certs >/dev/null 2>&1" >> $(1)/etc/cron.d/haproxy-certs
+endef
+
+define Package/secubox-app-haproxy/postinst
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+# Sync existing ACME certificates on install
+/usr/sbin/haproxy-sync-certs 2>/dev/null || true
+exit 0
 endef
 
 $(eval $(call BuildPackage,secubox-app-haproxy))

@@ -7,20 +7,40 @@
 . /usr/share/libubox/jshn.sh
 
 CONFIG="tor-shield"
-TOR_CONTROL="/var/run/tor/control"
+TOR_RUN="/var/run/tor"
+TOR_CONTROL="$TOR_RUN/control"
 TOR_DATA="/var/lib/tor"
 
-# Send command to Tor control socket
+# Send command to Tor control socket with cookie auth
 tor_control() {
 	if [ ! -S "$TOR_CONTROL" ]; then
 		return 1
 	fi
-	echo -e "$1" | nc -U "$TOR_CONTROL" 2>/dev/null
+
+	# Read cookie for authentication
+	local cookie=""
+	local cookie_file="$TOR_RUN/control_auth_cookie"
+	if [ -f "$cookie_file" ]; then
+		cookie=$(hexdump -e '32/1 "%02x"' "$cookie_file" 2>/dev/null)
+	fi
+
+	# Use socat for Unix socket (BusyBox nc doesn't support -U)
+	# Send AUTHENTICATE first, then the actual command
+	{
+		[ -n "$cookie" ] && echo "AUTHENTICATE $cookie"
+		echo "$1"
+	} | socat - UNIX-CONNECT:"$TOR_CONTROL" 2>/dev/null
 }
 
 # Check if Tor is running
 is_running() {
-	pgrep tor >/dev/null 2>&1
+	# Check for tor process (procd manages the process, no pid file)
+	pgrep -f "/usr/sbin/tor" >/dev/null 2>&1
+}
+
+# Check if tor-shield control socket is available
+has_control() {
+	[ -S "$TOR_CONTROL" ]
 }
 
 # Get bootstrap percentage
@@ -49,45 +69,55 @@ get_status() {
 	# Running state
 	if is_running; then
 		json_add_boolean "running" 1
+		json_add_boolean "has_control" "$(has_control && echo 1 || echo 0)"
 
-		# Bootstrap percentage
-		local bootstrap=$(get_bootstrap)
+		# Bootstrap percentage (only if control socket available)
+		local bootstrap=0
+		if has_control; then
+			bootstrap=$(get_bootstrap)
+		fi
 		json_add_int "bootstrap" "${bootstrap:-0}"
 
 		# Get exit IP if bootstrapped
 		if [ "$bootstrap" -ge 100 ]; then
 			local socks_port
 			config_get socks_port socks port '9050'
-			local exit_ip=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:$socks_port https://check.torproject.org/api/ip 2>/dev/null | jsonfilter -e '@.IP' 2>/dev/null)
+			# Single curl call for both IP and IsTor
+			local tor_check=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:$socks_port https://check.torproject.org/api/ip 2>/dev/null)
+			local exit_ip=$(echo "$tor_check" | jsonfilter -e '@.IP' 2>/dev/null)
 			json_add_string "exit_ip" "${exit_ip:-unknown}"
 
 			# Check if using Tor
-			local is_tor=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:$socks_port https://check.torproject.org/api/ip 2>/dev/null | jsonfilter -e '@.IsTor' 2>/dev/null)
+			local is_tor=$(echo "$tor_check" | jsonfilter -e '@.IsTor' 2>/dev/null)
 			json_add_boolean "is_tor" "$([ "$is_tor" = "true" ] && echo 1 || echo 0)"
 
-			# Get circuit count
-			local circuits=$(tor_control "GETINFO circuit-status" | grep -c "BUILT" 2>/dev/null)
-			json_add_int "circuit_count" "${circuits:-0}"
+			# Get circuit count (only if control available)
+			if has_control; then
+				local circuits=$(tor_control "GETINFO circuit-status" | grep -c "BUILT" 2>/dev/null)
+				json_add_int "circuit_count" "${circuits:-0}"
 
-			# Get bandwidth
-			local bw_read=$(tor_control "GETINFO traffic/read" | grep "250" | awk '{print $2}')
-			local bw_written=$(tor_control "GETINFO traffic/written" | grep "250" | awk '{print $2}')
-			json_add_int "bytes_read" "${bw_read:-0}"
-			json_add_int "bytes_written" "${bw_written:-0}"
+				# Get bandwidth
+				local bw_read=$(tor_control "GETINFO traffic/read" | grep "250" | awk '{print $2}')
+				local bw_written=$(tor_control "GETINFO traffic/written" | grep "250" | awk '{print $2}')
+				json_add_int "bytes_read" "${bw_read:-0}"
+				json_add_int "bytes_written" "${bw_written:-0}"
+			else
+				json_add_int "circuit_count" 0
+				json_add_int "bytes_read" 0
+				json_add_int "bytes_written" 0
+			fi
 		fi
 
-		# Uptime from pid file
-		local pidfile="/var/run/tor/tor.pid"
-		if [ -f "$pidfile" ]; then
-			local pid=$(cat "$pidfile")
-			if [ -d "/proc/$pid" ]; then
-				local start_time=$(stat -c %Y "/proc/$pid" 2>/dev/null)
-				local now=$(date +%s)
-				json_add_int "uptime" "$((now - start_time))"
-			fi
+		# Uptime from process start time
+		local pid=$(pgrep -f "/usr/sbin/tor" | head -1)
+		if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+			local start_time=$(stat -c %Y "/proc/$pid" 2>/dev/null)
+			local now=$(date +%s)
+			json_add_int "uptime" "$((now - start_time))"
 		fi
 	else
 		json_add_boolean "running" 0
+		json_add_boolean "has_control" 0
 		json_add_int "bootstrap" 0
 	fi
 
@@ -98,9 +128,11 @@ get_status() {
 	json_add_boolean "bridges_enabled" "$bridges_enabled"
 	json_add_string "bridge_type" "$bridge_type"
 
-	# Get real IP
-	local real_ip=$(curl -s --max-time 5 https://ipinfo.io/ip 2>/dev/null)
-	json_add_string "real_ip" "${real_ip:-unknown}"
+	# Get real IP (try multiple services as fallback)
+	local real_ip=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null)
+	[ -z "$real_ip" ] && real_ip=$(curl -s --max-time 5 https://ifconfig.me/ip 2>/dev/null)
+	[ -z "$real_ip" ] && real_ip="unknown"
+	json_add_string "real_ip" "$real_ip"
 
 	json_dump
 }
@@ -109,11 +141,14 @@ get_status() {
 do_enable() {
 	read input
 	json_load "$input"
+
+	# Get values from input BEFORE json_init
+	local preset
 	json_get_var preset preset
-
-	json_init
-
 	[ -z "$preset" ] && preset="anonymous"
+
+	# Now initialize output JSON
+	json_init
 
 	# Load preset configuration
 	config_load "$CONFIG"
@@ -172,9 +207,18 @@ get_circuits() {
 		return
 	fi
 
-	local circuits=$(tor_control "GETINFO circuit-status")
+	# Check if control socket exists
+	if [ ! -S "$TOR_CONTROL" ]; then
+		json_close_array
+		json_dump
+		return
+	fi
 
-	echo "$circuits" | grep "BUILT" | while read line; do
+	# Use temp file to avoid subshell issue with pipe
+	local TMP_CIRCUITS="/tmp/tor_circuits_$$"
+	tor_control "GETINFO circuit-status" | grep "BUILT" > "$TMP_CIRCUITS" 2>/dev/null
+
+	while read line; do
 		local id=$(echo "$line" | awk '{print $1}')
 		local status=$(echo "$line" | awk '{print $2}')
 		local path=$(echo "$line" | awk '{print $3}')
@@ -189,7 +233,8 @@ get_circuits() {
 
 			# Parse path into nodes
 			json_add_array "nodes"
-			local IFS=','
+			local OLD_IFS="$IFS"
+			IFS=','
 			for node in $path; do
 				local fingerprint=$(echo "$node" | cut -d'~' -f1 | tr -d '$')
 				local name=$(echo "$node" | cut -d'~' -f2)
@@ -199,12 +244,14 @@ get_circuits() {
 				json_add_string "name" "${name:-$fingerprint}"
 				json_close_object
 			done
+			IFS="$OLD_IFS"
 			json_close_array
 
 			json_close_object
 		fi
-	done
+	done < "$TMP_CIRCUITS"
 
+	rm -f "$TMP_CIRCUITS"
 	json_close_array
 	json_dump
 }
@@ -331,10 +378,14 @@ add_hidden_service_json() {
 add_hidden_service() {
 	read input
 	json_load "$input"
+
+	# Get values from input BEFORE json_init
+	local name local_port virtual_port
 	json_get_var name name
 	json_get_var local_port local_port
 	json_get_var virtual_port virtual_port
 
+	# Now initialize output JSON
 	json_init
 
 	if [ -z "$name" ]; then
@@ -368,8 +419,12 @@ add_hidden_service() {
 remove_hidden_service() {
 	read input
 	json_load "$input"
+
+	# Get values from input BEFORE json_init
+	local name
 	json_get_var name name
 
+	# Now initialize output JSON
 	json_init
 
 	if [ -z "$name" ]; then
@@ -535,9 +590,13 @@ add_bridge_json() {
 set_bridges() {
 	read input
 	json_load "$input"
+
+	# Get values from input BEFORE json_init
+	local enabled type
 	json_get_var enabled enabled
 	json_get_var type type
 
+	# Now initialize output JSON
 	json_init
 
 	[ -n "$enabled" ] && uci set tor-shield.bridges.enabled="$enabled"
@@ -612,9 +671,9 @@ save_settings() {
 	read input
 	json_load "$input"
 
-	json_init
-
-	# Get values from input
+	# Get values from input BEFORE json_init (which wipes loaded JSON)
+	local mode dns_over_tor kill_switch socks_port trans_port dns_port
+	local exit_nodes exclude_exit strict_nodes
 	json_get_var mode mode
 	json_get_var dns_over_tor dns_over_tor
 	json_get_var kill_switch kill_switch
@@ -624,6 +683,9 @@ save_settings() {
 	json_get_var exit_nodes exit_nodes
 	json_get_var exclude_exit exclude_exit_nodes
 	json_get_var strict_nodes strict_nodes
+
+	# Now initialize output JSON
+	json_init
 
 	# Apply settings
 	[ -n "$mode" ] && uci set tor-shield.main.mode="$mode"

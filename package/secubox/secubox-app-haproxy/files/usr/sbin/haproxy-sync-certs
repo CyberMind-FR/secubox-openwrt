@@ -1,0 +1,47 @@
+#!/bin/sh
+# Sync ACME certificates to HAProxy format
+# Combines fullchain + private key into .pem files
+# Called by ACME renewal or manually via haproxyctl
+
+ACME_DIR="/etc/acme"
+HAPROXY_CERTS_DIR="/srv/haproxy/certs"
+
+log_info() { echo "[haproxy-sync-certs] $*"; logger -t haproxy-sync-certs "$*"; }
+log_error() { echo "[haproxy-sync-certs] ERROR: $*" >&2; logger -t haproxy-sync-certs -p err "$*"; }
+
+mkdir -p "$HAPROXY_CERTS_DIR"
+
+# Find all ACME certificates and deploy them
+for domain_dir in "$ACME_DIR"/*/; do
+    [ -d "$domain_dir" ] || continue
+
+    # Skip non-domain directories
+    case "$(basename "$domain_dir")" in
+        ca|*.ecc) continue ;;
+    esac
+
+    domain=$(basename "$domain_dir")
+    fullchain="$domain_dir/fullchain.cer"
+    key="$domain_dir/${domain}.key"
+
+    # Try alternate paths
+    [ -f "$fullchain" ] || fullchain="$domain_dir/fullchain.pem"
+    [ -f "$key" ] || key="$domain_dir/privkey.pem"
+    [ -f "$key" ] || key="$domain_dir/${domain}.key"
+
+    if [ -f "$fullchain" ] && [ -f "$key" ]; then
+        log_info "Syncing certificate for $domain"
+        cat "$fullchain" "$key" > "$HAPROXY_CERTS_DIR/$domain.pem"
+        chmod 600 "$HAPROXY_CERTS_DIR/$domain.pem"
+    else
+        log_error "Missing cert or key for $domain (fullchain=$fullchain, key=$key)"
+    fi
+done
+
+log_info "Certificate sync complete"
+
+# Reload HAProxy if running
+if pgrep -x haproxy >/dev/null 2>&1 || lxc-info -n haproxy -s 2>/dev/null | grep -q RUNNING; then
+    log_info "Reloading HAProxy..."
+    /etc/init.d/haproxy reload 2>/dev/null || true
+fi

@@ -178,10 +178,14 @@ return baseclass.extend({
 			callGetTraffic(),
 			callPeerDescriptions()
 		]).then(function(results) {
+			// Handle RPC expect unwrapping - results may be array or object
+			var peersData = results[1] || [];
+			var interfacesData = results[2] || [];
+
 			return {
 				status: results[0] || {},
-				peers: results[1] || { peers: [] },
-				interfaces: results[2] || { interfaces: [] },
+				peers: Array.isArray(peersData) ? peersData : (peersData.peers || []),
+				interfaces: Array.isArray(interfacesData) ? interfacesData : (interfacesData.interfaces || []),
 				traffic: results[3] || {},
 				descriptions: (results[4] || {}).descriptions || {}
 			};
@@ -196,10 +200,14 @@ return baseclass.extend({
 			callBandwidthRates(),
 			callPeerDescriptions()
 		]).then(function(results) {
+			// Handle RPC expect unwrapping - results may be array or object
+			var peersData = results[1] || [];
+			var ratesData = results[2] || [];
+
 			return {
 				status: results[0] || {},
-				peers: results[1] || { peers: [] },
-				rates: (results[2] || {}).rates || [],
+				peers: Array.isArray(peersData) ? peersData : (peersData.peers || []),
+				rates: Array.isArray(ratesData) ? ratesData : (ratesData.rates || []),
 				descriptions: (results[3] || {}).descriptions || {}
 			};
 		});

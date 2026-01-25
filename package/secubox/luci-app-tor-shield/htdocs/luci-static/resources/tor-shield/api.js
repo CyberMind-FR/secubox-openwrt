@@ -188,9 +188,13 @@ return baseclass.extend({
 			callPresets(),
 			callBandwidth()
 		]).then(function(results) {
+			// Handle RPC expect unwrapping - results may be array or object
+			var presetsData = results[1] || [];
+			var presets = Array.isArray(presetsData) ? presetsData : (presetsData.presets || []);
+
 			return {
 				status: results[0] || {},
-				presets: (results[1] || {}).presets || [],
+				presets: presets,
 				bandwidth: results[2] || {}
 			};
 		});
@@ -203,9 +207,13 @@ return baseclass.extend({
 			callCircuits(),
 			callBandwidth()
 		]).then(function(results) {
+			// Handle RPC expect unwrapping - results[1] may be array or object
+			var circuitsData = results[1] || [];
+			var circuits = Array.isArray(circuitsData) ? circuitsData : (circuitsData.circuits || []);
+
 			return {
 				status: results[0] || {},
-				circuits: (results[1] || {}).circuits || [],
+				circuits: circuits,
 				bandwidth: results[2] || {}
 			};
 		});
