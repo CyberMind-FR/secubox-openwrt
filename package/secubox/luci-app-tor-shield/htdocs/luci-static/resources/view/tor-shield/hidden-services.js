@@ -176,7 +176,8 @@ return view.extend({
 
 	render: function(data) {
 		var self = this;
-		var services = data.services || [];
+		// Handle RPC expect unwrapping - data may be array or object
+		var services = Array.isArray(data) ? data : (data.services || []);
 
 		var view = E('div', { 'class': 'tor-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('tor-shield/dashboard.css') }),
