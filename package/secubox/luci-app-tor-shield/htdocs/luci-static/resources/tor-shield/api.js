@@ -27,6 +27,12 @@ var callDisable = rpc.declare({
 	expect: { success: false }
 });
 
+var callRestart = rpc.declare({
+	object: 'luci.tor-shield',
+	method: 'restart',
+	expect: { success: false }
+});
+
 var callCircuits = rpc.declare({
 	object: 'luci.tor-shield',
 	method: 'circuits',
@@ -161,6 +167,7 @@ return baseclass.extend({
 	getStatus: callStatus,
 	enable: callEnable,
 	disable: callDisable,
+	restart: callRestart,
 	getCircuits: callCircuits,
 	newIdentity: callNewIdentity,
 	checkLeaks: callCheckLeaks,

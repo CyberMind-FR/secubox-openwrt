@@ -51,7 +51,7 @@ Examples:
   mm2ctl module list
   mm2ctl config
 
-Web Interface: http://<router-ip>:8082
+Web Interface: http://<router-ip>:8085
 EOF
 }
 
@@ -66,7 +66,7 @@ uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
 
 # Load configuration with defaults
 load_config() {
-	port="$(uci_get main.port || echo 8082)"
+	port="$(uci_get main.port || echo 8085)"
 	address="$(uci_get main.address || echo 0.0.0.0)"
 	data_path="$(uci_get main.data_path || echo /srv/magicmirror2)"
 	memory_limit="$(uci_get main.memory_limit || echo 512M)"
@@ -255,7 +255,7 @@ lxc_create_docker_rootfs() {
 	cat >> "$rootfs/opt/start-mm2.sh" << 'START'
 export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 export NODE_ENV=production
-export MM_PORT="${MM2_PORT:-8082}"
+export MM_PORT="${MM2_PORT:-8085}"
 export MM_ADDRESS="${MM2_ADDRESS:-0.0.0.0}"
 
 MM_DIR="/opt/magic_mirror"

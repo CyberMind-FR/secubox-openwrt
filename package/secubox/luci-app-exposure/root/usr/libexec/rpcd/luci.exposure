@@ -137,23 +137,32 @@ case "$1" in
                     json_close_array
                 json_close_object
 
-                # HAProxy SSL backends
+                # HAProxy SSL backends - use temp file to avoid subshell
                 HAPROXY_CONFIG="/srv/lxc/haproxy/rootfs/etc/haproxy/haproxy.cfg"
                 ssl_count=0
                 [ -f "$HAPROXY_CONFIG" ] && ssl_count=$(grep -c "^backend.*_backend$" "$HAPROXY_CONFIG" 2>/dev/null || echo 0)
 
+                TMP_SSL="/tmp/exposure_ssl_$$"
+                if [ -f "$HAPROXY_CONFIG" ]; then
+                    grep -E "^backend .+_backend$" "$HAPROXY_CONFIG" 2>/dev/null | while read line; do
+                        backend=$(echo "$line" | awk '{print $2}' | sed 's/_backend$//')
+                        domain=$(grep "acl host_${backend} " "$HAPROXY_CONFIG" 2>/dev/null | awk '{print $NF}')
+                        echo "$backend ${domain:-N/A}"
+                    done > "$TMP_SSL"
+                fi
+
                 json_add_object "ssl"
                     json_add_int "count" "$ssl_count"
                     json_add_array "backends"
-                    if [ -f "$HAPROXY_CONFIG" ]; then
-                        grep -E "^backend .+_backend$" "$HAPROXY_CONFIG" 2>/dev/null | while read line; do
-                            backend=$(echo "$line" | awk '{print $2}' | sed 's/_backend$//')
-                            domain=$(grep "acl host_${backend} " "$HAPROXY_CONFIG" 2>/dev/null | awk '{print $NF}')
+                    if [ -f "$TMP_SSL" ]; then
+                        while read backend domain; do
+                            [ -z "$backend" ] && continue
                             json_add_object ""
                                 json_add_string "service" "$backend"
-                                json_add_string "domain" "${domain:-N/A}"
+                                json_add_string "domain" "$domain"
                             json_close_object
-                        done
+                        done < "$TMP_SSL"
+                        rm -f "$TMP_SSL"
                     fi
                     json_close_array
                 json_close_object
@@ -195,23 +204,32 @@ case "$1" in
 
             ssl_list)
                 HAPROXY_CONFIG="/srv/lxc/haproxy/rootfs/etc/haproxy/haproxy.cfg"
+                TMP_SSLLIST="/tmp/exposure_ssllist_$$"
 
-                json_init
-                json_add_array "backends"
-
+                # Extract backend info to temp file to avoid subshell issues
                 if [ -f "$HAPROXY_CONFIG" ]; then
                     grep -E "^backend .+_backend$" "$HAPROXY_CONFIG" 2>/dev/null | while read line; do
                         backend=$(echo "$line" | awk '{print $2}')
                         service=$(echo "$backend" | sed 's/_backend$//')
                         domain=$(grep "acl host_${service} " "$HAPROXY_CONFIG" 2>/dev/null | awk '{print $NF}')
                         server=$(grep -A5 "backend $backend" "$HAPROXY_CONFIG" 2>/dev/null | grep "server " | awk '{print $3}')
+                        echo "$service|${domain:-N/A}|${server:-N/A}"
+                    done > "$TMP_SSLLIST"
+                fi
 
+                json_init
+                json_add_array "backends"
+
+                if [ -f "$TMP_SSLLIST" ]; then
+                    while IFS='|' read service domain server; do
+                        [ -z "$service" ] && continue
                         json_add_object ""
                             json_add_string "service" "$service"
-                            json_add_string "domain" "${domain:-N/A}"
-                            json_add_string "backend" "${server:-N/A}"
+                            json_add_string "domain" "$domain"
+                            json_add_string "backend" "$server"
                         json_close_object
-                    done
+                    done < "$TMP_SSLLIST"
+                    rm -f "$TMP_SSLLIST"
                 fi
 
                 json_close_array

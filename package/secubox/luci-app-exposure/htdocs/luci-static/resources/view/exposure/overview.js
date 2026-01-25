@@ -14,8 +14,10 @@ return view.extend({
 
     render: function(data) {
         var status = data[0] || {};
-        var conflicts = data[1] || [];
+        var conflictsResult = data[1] || {};
 
+        // Handle both direct array and wrapped object responses
+        var conflicts = Array.isArray(conflictsResult) ? conflictsResult : (conflictsResult.conflicts || []);
         var services = status.services || {};
         var tor = status.tor || {};
         var ssl = status.ssl || {};

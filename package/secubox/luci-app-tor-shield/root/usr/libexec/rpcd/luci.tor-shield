@@ -707,9 +707,21 @@ save_settings() {
 }
 
 # Main dispatcher
+# Restart Tor Shield service
+do_restart() {
+	json_init
+
+	/etc/init.d/tor-shield restart >/dev/null 2>&1 &
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Tor Shield restarting"
+
+	json_dump
+}
+
 case "$1" in
 	list)
-		echo '{"status":{},"enable":{"preset":"str"},"disable":{},"circuits":{},"new_identity":{},"check_leaks":{},"hidden_services":{},"add_hidden_service":{"name":"str","local_port":"int","virtual_port":"int"},"remove_hidden_service":{"name":"str"},"exit_ip":{},"bandwidth":{},"presets":{},"bridges":{},"set_bridges":{"enabled":"bool","type":"str"},"settings":{},"save_settings":{"mode":"str","dns_over_tor":"bool","kill_switch":"bool","socks_port":"int","trans_port":"int","dns_port":"int","exit_nodes":"str","exclude_exit_nodes":"str","strict_nodes":"bool"}}'
+		echo '{"status":{},"enable":{"preset":"str"},"disable":{},"restart":{},"circuits":{},"new_identity":{},"check_leaks":{},"hidden_services":{},"add_hidden_service":{"name":"str","local_port":"int","virtual_port":"int"},"remove_hidden_service":{"name":"str"},"exit_ip":{},"bandwidth":{},"presets":{},"bridges":{},"set_bridges":{"enabled":"bool","type":"str"},"settings":{},"save_settings":{"mode":"str","dns_over_tor":"bool","kill_switch":"bool","socks_port":"int","trans_port":"int","dns_port":"int","exit_nodes":"str","exclude_exit_nodes":"str","strict_nodes":"bool"}}'
 		;;
 	call)
 		case "$2" in
@@ -721,6 +733,9 @@ case "$1" in
 				;;
 			disable)
 				do_disable
+				;;
+			restart)
+				do_restart
 				;;
 			circuits)
 				get_circuits

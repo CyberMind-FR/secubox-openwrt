@@ -60,7 +60,7 @@ define Package/secubox-app-magicmirror2/postinst
 	echo "  mm2ctl install"
 	echo "  /etc/init.d/magicmirror2 start"
 	echo ""
-	echo "Web interface: http://<router-ip>:8082"
+	echo "Web interface: http://<router-ip>:8085"
 	echo ""
 	echo "To manage modules:"
 	echo "  mm2ctl module list"

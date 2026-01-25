@@ -440,6 +440,13 @@ return baseclass.extend({
 			icon: '\ud83d\udce6',
 			path: 'admin/secubox/services',
 			order: 8
+		},
+		'active-ports': {
+			id: 'active-ports',
+			name: 'Active Ports',
+			icon: '\ud83d\udd0c',
+			path: 'admin/secubox/services',
+			order: 9
 		}
 	},
 

@@ -13,8 +13,10 @@ return view.extend({
     },
 
     render: function(data) {
-        var torServices = data[0] || [];
-        var allServices = data[1] || [];
+        var torResult = data[0] || {};
+        var scanResult = data[1] || {};
+        var torServices = Array.isArray(torResult) ? torResult : (torResult.services || []);
+        var allServices = Array.isArray(scanResult) ? scanResult : (scanResult.services || []);
         var self = this;
 
         // Inject CSS

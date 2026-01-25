@@ -13,8 +13,10 @@ return view.extend({
     },
 
     render: function(data) {
-        var services = data[0] || [];
-        var config = data[1] || [];
+        var scanResult = data[0] || {};
+        var configResult = data[1] || {};
+        var services = Array.isArray(scanResult) ? scanResult : (scanResult.services || []);
+        var config = Array.isArray(configResult) ? configResult : (configResult.known_services || []);
         var self = this;
 
         // Inject CSS

@@ -13,8 +13,10 @@ return view.extend({
     },
 
     render: function(data) {
-        var sslBackends = data[0] || [];
-        var allServices = data[1] || [];
+        var sslResult = data[0] || {};
+        var scanResult = data[1] || {};
+        var sslBackends = Array.isArray(sslResult) ? sslResult : (sslResult.backends || []);
+        var allServices = Array.isArray(scanResult) ? scanResult : (scanResult.services || []);
         var self = this;
 
         // Inject CSS
