@@ -1,10 +1,9 @@
 config streamlit 'main'
 	option enabled '0'
-	option http_port '8501'
-	option http_host '0.0.0.0'
 	option data_path '/srv/streamlit'
-	option memory_limit '512M'
-	option active_app 'hello'
+	option memory_limit '1024M'
+	# Base port - instances use 8501, 8502, 8503...
+	option base_port '8501'
 
 config server 'server'
 	option headless 'true'
@@ -12,7 +11,19 @@ config server 'server'
 	option theme_base 'dark'
 	option theme_primary_color '#0ff'
 
-config app 'hello'
+# Default hello app on port 8501
+config instance 'hello'
 	option name 'Hello World'
-	option path 'hello.py'
+	option app 'hello.py'
+	option port '8501'
 	option enabled '1'
+	option autostart '1'
+
+# Example: Add more instances
+# config instance 'dashboard'
+# 	option name 'Dashboard App'
+# 	option app 'dashboard.py'
+# 	option port '8502'
+# 	option enabled '1'
+# 	option autostart '1'
+# 	option domain 'dashboard.example.com'

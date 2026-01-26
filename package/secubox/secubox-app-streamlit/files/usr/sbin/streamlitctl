@@ -72,7 +72,12 @@ Commands:
   app list      List deployed apps
   app add <name> <path>  Deploy new app
   app remove <name>      Remove app
-  app run <name>         Switch active app
+
+  instance list                     List running instances
+  instance add <name> <app> <port>  Add instance config
+  instance remove <name>            Remove instance config
+  instance enable <name>            Enable instance
+  instance disable <name>           Disable instance
 
   service-run   Start service (used by init)
   service-stop  Stop service (used by init)
@@ -83,12 +88,18 @@ Configuration:
 Data directory:
   /srv/streamlit
 
+Multi-Instance Mode:
+  Add instances in /etc/config/streamlit:
+    config instance 'myapp'
+      option app 'myapp.py'
+      option port '8502'
+      option enabled '1'
+
 Requirements:
-  Place a requirements.txt file in /srv/streamlit/apps/ to auto-install
-  Python dependencies. Supported naming conventions:
-    - <appname>.requirements.txt  (e.g., sappix.requirements.txt)
-    - <appname>_requirements.txt  (e.g., sappix_requirements.txt)
-    - requirements.txt            (global fallback)
+  Place requirements.txt in /srv/streamlit/apps/
+    - <appname>.requirements.txt
+    - <appname>_requirements.txt
+    - requirements.txt (global)
 
 EOF
 }
@@ -140,16 +151,15 @@ lxc_create_rootfs() {
 	cp /etc/resolv.conf "$rootfs/etc/resolv.conf" 2>/dev/null || \
 		echo "nameserver 1.1.1.1" > "$rootfs/etc/resolv.conf"
 
-	# Create startup script
+	# Create startup script - Multi-instance support
 	cat > "$rootfs/opt/start-streamlit.sh" << 'STARTUP'
 #!/bin/sh
-set -e
 
 # Install Python and Streamlit on first run
 if [ ! -f /opt/.installed ]; then
     echo "Installing Python 3.12 and dependencies..."
     apk update
-    apk add --no-cache python3 py3-pip
+    apk add --no-cache python3 py3-pip procps
 
     echo "Installing Streamlit..."
     pip3 install --break-system-packages streamlit 2>/dev/null || \
@@ -159,18 +169,10 @@ if [ ! -f /opt/.installed ]; then
     echo "Installation complete!"
 fi
 
-# Find active app
-ACTIVE_APP="${STREAMLIT_APP:-hello.py}"
-APP_PATH="/srv/apps/${ACTIVE_APP}"
-
-# Fallback to hello.py if app not found
-if [ ! -f "$APP_PATH" ]; then
-    if [ -f "/srv/apps/hello.py" ]; then
-        APP_PATH="/srv/apps/hello.py"
-    else
-        echo "No app found, creating default..."
-        mkdir -p /srv/apps
-        cat > /srv/apps/hello.py << 'HELLO'
+# Create default hello app if missing
+mkdir -p /srv/apps
+if [ ! -f "/srv/apps/hello.py" ]; then
+    cat > /srv/apps/hello.py << 'HELLO'
 import streamlit as st
 st.set_page_config(page_title="SecuBox Streamlit", page_icon="⚡", layout="wide")
 st.title("⚡ SECUBOX STREAMLIT ⚡")
@@ -184,47 +186,105 @@ with col3:
     st.metric("Platform", "SecuBox")
 st.info("Deploy your Streamlit apps via LuCI dashboard")
 HELLO
-        APP_PATH="/srv/apps/hello.py"
-    fi
 fi
 
-# Get app name without .py extension
-APP_NAME=$(basename "$APP_PATH" .py)
-
-# Install app-specific requirements if present
-# Check for: <app>.requirements.txt, <app>_requirements.txt, or global requirements.txt
-for req_file in "/srv/apps/${APP_NAME}.requirements.txt" \
-                "/srv/apps/${APP_NAME}_requirements.txt" \
-                "/srv/apps/requirements.txt"; do
-    if [ -f "$req_file" ]; then
-        REQ_HASH=$(md5sum "$req_file" 2>/dev/null | cut -d' ' -f1)
-        REQ_MARKER="/opt/.req_${APP_NAME}_${REQ_HASH}"
-        if [ ! -f "$REQ_MARKER" ]; then
-            echo "Installing requirements from: $req_file"
-            pip3 install --break-system-packages -r "$req_file" 2>/dev/null || \
-            pip3 install -r "$req_file" 2>/dev/null || \
-            echo "Warning: Some requirements may have failed to install"
-            touch "$REQ_MARKER"
+# Function to install requirements for an app
+install_requirements() {
+    local app_name="$1"
+    for req_file in "/srv/apps/${app_name}.requirements.txt" \
+                    "/srv/apps/${app_name}_requirements.txt" \
+                    "/srv/apps/requirements.txt"; do
+        if [ -f "$req_file" ]; then
+            REQ_HASH=$(md5sum "$req_file" 2>/dev/null | cut -d' ' -f1)
+            REQ_MARKER="/opt/.req_${app_name}_${REQ_HASH}"
+            if [ ! -f "$REQ_MARKER" ]; then
+                echo "Installing requirements for $app_name from: $req_file"
+                pip3 install --break-system-packages -r "$req_file" 2>/dev/null || \
+                pip3 install -r "$req_file" 2>/dev/null || true
+                touch "$REQ_MARKER"
+            fi
+            break
         fi
-        break
+    done
+}
+
+# Function to start a single Streamlit instance
+start_instance() {
+    local app_file="$1"
+    local port="$2"
+    local app_name=$(basename "$app_file" .py)
+
+    if [ ! -f "/srv/apps/$app_file" ]; then
+        echo "App not found: $app_file"
+        return 1
+    fi
+
+    install_requirements "$app_name"
+
+    echo "Starting instance: $app_name on port $port"
+    cd /srv/apps
+    streamlit run "$app_file" \
+        --server.address="0.0.0.0" \
+        --server.port="$port" \
+        --server.headless=true \
+        --browser.gatherUsageStats=false \
+        --theme.base="${STREAMLIT_THEME_BASE:-dark}" \
+        --theme.primaryColor="${STREAMLIT_THEME_PRIMARY:-#0ff}" &
+    echo $! > "/tmp/streamlit_${app_name}.pid"
+}
+
+# Parse STREAMLIT_INSTANCES env var (format: "app1.py:8501,app2.py:8502")
+if [ -n "$STREAMLIT_INSTANCES" ]; then
+    echo "Multi-instance mode: $STREAMLIT_INSTANCES"
+    IFS=','
+    for instance in $STREAMLIT_INSTANCES; do
+        app_file=$(echo "$instance" | cut -d: -f1)
+        port=$(echo "$instance" | cut -d: -f2)
+        start_instance "$app_file" "$port"
+    done
+    unset IFS
+else
+    # Single instance mode (backward compatible)
+    ACTIVE_APP="${STREAMLIT_APP:-hello.py}"
+    PORT="${STREAMLIT_PORT:-8501}"
+    start_instance "$ACTIVE_APP" "$PORT"
+fi
+
+# Keep container running and monitor processes
+echo "Streamlit instances started. Monitoring..."
+while true; do
+    sleep 30
+    # Check if any streamlit process is running
+    if ! pgrep -f "streamlit" >/dev/null; then
+        echo "No streamlit processes running, exiting..."
+        exit 1
     fi
 done
-
-echo "Starting Streamlit with app: $APP_PATH"
-cd /srv/apps
-
-exec streamlit run "$APP_PATH" \
-    --server.address="${STREAMLIT_HOST:-0.0.0.0}" \
-    --server.port="${STREAMLIT_PORT:-8501}" \
-    --server.headless=true \
-    --browser.gatherUsageStats="${STREAMLIT_STATS:-false}" \
-    --theme.base="${STREAMLIT_THEME_BASE:-dark}" \
-    --theme.primaryColor="${STREAMLIT_THEME_PRIMARY:-#0ff}"
 STARTUP
 	chmod +x "$rootfs/opt/start-streamlit.sh"
 
 	log_info "Rootfs created successfully"
 	return 0
+}
+
+# Build instances string from UCI config
+build_instances_string() {
+	local instances=""
+	local _add_instance() {
+		local section="$1"
+		local inst_enabled inst_app inst_port
+		config_get inst_enabled "$section" enabled "0"
+		config_get inst_app "$section" app ""
+		config_get inst_port "$section" port ""
+
+		if [ "$inst_enabled" = "1" ] && [ -n "$inst_app" ] && [ -n "$inst_port" ]; then
+			[ -n "$instances" ] && instances="${instances},"
+			instances="${instances}${inst_app}:${inst_port}"
+		fi
+	}
+	config_load "$CONFIG"
+	config_foreach _add_instance instance
+	echo "$instances"
 }
 
 # Create LXC config
@@ -242,14 +302,20 @@ lxc_create_config() {
 		*) mem_bytes="$memory_limit" ;;
 	esac
 
-	# Determine active app file
-	local app_file
-	if [ -f "$APPS_PATH/${active_app}.py" ]; then
-		app_file="${active_app}.py"
-	elif [ -f "$APPS_PATH/${active_app}" ]; then
-		app_file="${active_app}"
-	else
-		app_file="hello.py"
+	# Build multi-instance string or fallback to single app
+	local instances_str
+	instances_str=$(build_instances_string)
+
+	# Fallback: if no instances defined, use active_app
+	local app_file=""
+	if [ -z "$instances_str" ]; then
+		if [ -f "$APPS_PATH/${active_app}.py" ]; then
+			app_file="${active_app}.py"
+		elif [ -f "$APPS_PATH/${active_app}" ]; then
+			app_file="${active_app}"
+		else
+			app_file="hello.py"
+		fi
 	fi
 
 	cat > "$LXC_CONFIG" << EOF
@@ -267,13 +333,21 @@ lxc.mount.entry = $APPS_PATH srv/apps none bind,create=dir 0 0
 lxc.mount.entry = $data_path/logs srv/logs none bind,create=dir 0 0
 
 # Environment
-lxc.environment = STREAMLIT_HOST=$http_host
-lxc.environment = STREAMLIT_PORT=$http_port
-lxc.environment = STREAMLIT_APP=$app_file
-lxc.environment = STREAMLIT_HEADLESS=$headless
-lxc.environment = STREAMLIT_STATS=$gather_stats
 lxc.environment = STREAMLIT_THEME_BASE=$theme_base
 lxc.environment = STREAMLIT_THEME_PRIMARY=$theme_primary
+EOF
+
+	# Add multi-instance or single-instance env vars
+	if [ -n "$instances_str" ]; then
+		echo "lxc.environment = STREAMLIT_INSTANCES=$instances_str" >> "$LXC_CONFIG"
+	else
+		cat >> "$LXC_CONFIG" << EOF
+lxc.environment = STREAMLIT_APP=$app_file
+lxc.environment = STREAMLIT_PORT=$http_port
+EOF
+	fi
+
+	cat >> "$LXC_CONFIG" << EOF
 
 # Security
 lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time sys_rawio
@@ -665,6 +739,112 @@ cmd_service_stop() {
 	lxc_stop
 }
 
+# Instance management
+cmd_instance_list() {
+	load_config
+	echo "{"
+	echo '  "instances": ['
+
+	local first=1
+	_list_instance() {
+		local section="$1"
+		local name app port enabled
+		config_get name "$section" name "$section"
+		config_get app "$section" app ""
+		config_get port "$section" port ""
+		config_get enabled "$section" enabled "0"
+
+		[ $first -eq 0 ] && echo ","
+		first=0
+		printf '    {"id": "%s", "name": "%s", "app": "%s", "port": "%s", "enabled": %s}' \
+			"$section" "$name" "$app" "$port" "$([ "$enabled" = "1" ] && echo "true" || echo "false")"
+	}
+	config_load "$CONFIG"
+	config_foreach _list_instance instance
+	echo ""
+	echo "  ]"
+	echo "}"
+}
+
+cmd_instance_add() {
+	local name="$1"
+	local app="$2"
+	local port="$3"
+
+	if [ -z "$name" ] || [ -z "$app" ] || [ -z "$port" ]; then
+		log_error "Usage: streamlitctl instance add <name> <app.py> <port>"
+		return 1
+	fi
+
+	# Validate port is numeric
+	if ! echo "$port" | grep -qE '^[0-9]+$'; then
+		log_error "Port must be a number"
+		return 1
+	fi
+
+	uci set "${CONFIG}.${name}=instance"
+	uci set "${CONFIG}.${name}.name=$name"
+	uci set "${CONFIG}.${name}.app=$app"
+	uci set "${CONFIG}.${name}.port=$port"
+	uci set "${CONFIG}.${name}.enabled=1"
+	uci commit "$CONFIG"
+
+	log_info "Instance '$name' added (app: $app, port: $port)"
+	echo '{"success": true, "message": "Instance added", "name": "'"$name"'", "port": '"$port"'}'
+}
+
+cmd_instance_remove() {
+	local name="$1"
+
+	if [ -z "$name" ]; then
+		log_error "Usage: streamlitctl instance remove <name>"
+		return 1
+	fi
+
+	uci -q delete "${CONFIG}.${name}" 2>/dev/null || {
+		log_error "Instance not found: $name"
+		return 1
+	}
+	uci commit "$CONFIG"
+
+	log_info "Instance '$name' removed"
+	echo '{"success": true, "message": "Instance removed", "name": "'"$name"'"}'
+}
+
+cmd_instance_enable() {
+	local name="$1"
+
+	if [ -z "$name" ]; then
+		log_error "Usage: streamlitctl instance enable <name>"
+		return 1
+	fi
+
+	uci set "${CONFIG}.${name}.enabled=1" && uci commit "$CONFIG" || {
+		log_error "Instance not found: $name"
+		return 1
+	}
+
+	log_info "Instance '$name' enabled"
+	echo '{"success": true, "message": "Instance enabled", "name": "'"$name"'"}'
+}
+
+cmd_instance_disable() {
+	local name="$1"
+
+	if [ -z "$name" ]; then
+		log_error "Usage: streamlitctl instance disable <name>"
+		return 1
+	fi
+
+	uci set "${CONFIG}.${name}.enabled=0" && uci commit "$CONFIG" || {
+		log_error "Instance not found: $name"
+		return 1
+	}
+
+	log_info "Instance '$name' disabled"
+	echo '{"success": true, "message": "Instance disabled", "name": "'"$name"'"}'
+}
+
 # Main
 case "${1:-}" in
 	install)    shift; cmd_install "$@" ;;
@@ -686,8 +866,18 @@ case "${1:-}" in
 			list)   shift; cmd_app_list "$@" ;;
 			add)    shift; cmd_app_add "$@" ;;
 			remove) shift; cmd_app_remove "$@" ;;
-			run)    shift; cmd_app_run "$@" ;;
-			*)      echo "Usage: streamlitctl app {list|add|remove|run}"; exit 1 ;;
+			*)      echo "Usage: streamlitctl app {list|add|remove}"; exit 1 ;;
+		esac
+		;;
+	instance)
+		shift
+		case "${1:-}" in
+			list)    shift; cmd_instance_list "$@" ;;
+			add)     shift; cmd_instance_add "$@" ;;
+			remove)  shift; cmd_instance_remove "$@" ;;
+			enable)  shift; cmd_instance_enable "$@" ;;
+			disable) shift; cmd_instance_disable "$@" ;;
+			*)       echo "Usage: streamlitctl instance {list|add|remove|enable|disable}"; exit 1 ;;
 		esac
 		;;
 	service-run)  shift; cmd_service_run "$@" ;;
