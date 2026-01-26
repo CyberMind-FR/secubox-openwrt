@@ -26,7 +26,7 @@ get_status() {
 	fi
 
 	local enabled=$(uci -q get magicmirror2.main.enabled || echo "0")
-	local port=$(uci -q get magicmirror2.main.port || echo "8082")
+	local port=$(uci -q get magicmirror2.main.port || echo "8085")
 	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
 
 	[ "$running" = "1" ] && web_url="http://${router_ip}:${port}"
@@ -54,7 +54,7 @@ EOF
 # Get main configuration
 get_config() {
 	local enabled=$(uci -q get magicmirror2.main.enabled || echo "0")
-	local port=$(uci -q get magicmirror2.main.port || echo "8082")
+	local port=$(uci -q get magicmirror2.main.port || echo "8085")
 	local address=$(uci -q get magicmirror2.main.address || echo "0.0.0.0")
 	local data_path=$(uci -q get magicmirror2.main.data_path || echo "/srv/magicmirror2")
 	local memory_limit=$(uci -q get magicmirror2.main.memory_limit || echo "512M")
@@ -327,7 +327,7 @@ set_config() {
 # Get web URL for iframe
 get_web_url() {
 	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
-	local port=$(uci -q get magicmirror2.main.port || echo "8082")
+	local port=$(uci -q get magicmirror2.main.port || echo "8085")
 
 	cat <<EOF
 {

@@ -61,6 +61,18 @@ return baseclass.extend({
 			service: 'mitmproxy',
 			version: '8.1.1'
 		},
+		'threat-monitor': {
+			id: 'threat-monitor',
+			name: 'Threat Monitor',
+			desc: 'Real-time threat detection combining netifyd DPI with CrowdSec intelligence',
+			icon: '\ud83d\udc41\ufe0f',
+			iconBg: 'rgba(239, 68, 68, 0.15)',
+			iconColor: '#ef4444',
+			section: 'security',
+			path: 'admin/secubox/security/threats/dashboard',
+			service: null,
+			version: '1.0.0'
+		},
 
 		// Network Apps
 		'bandwidth-manager': {
@@ -110,6 +122,18 @@ return baseclass.extend({
 			path: 'admin/secubox/network/modes',
 			service: null,
 			version: '0.2.0'
+		},
+		'service-exposure': {
+			id: 'service-exposure',
+			name: 'Service Exposure',
+			desc: 'Manage port conflicts, Tor hidden services, and HAProxy SSL backends',
+			icon: '\ud83d\udd0c',
+			iconBg: 'rgba(155, 89, 182, 0.15)',
+			iconColor: '#9b59b6',
+			section: 'network',
+			path: 'admin/secubox/network/exposure',
+			service: null,
+			version: '1.0.0'
 		},
 
 		// Monitoring Apps
@@ -416,6 +440,13 @@ return baseclass.extend({
 			icon: '\ud83d\udce6',
 			path: 'admin/secubox/services',
 			order: 8
+		},
+		'active-ports': {
+			id: 'active-ports',
+			name: 'Active Ports',
+			icon: '\ud83d\udd0c',
+			path: 'admin/secubox/services',
+			order: 9
 		}
 	},
 

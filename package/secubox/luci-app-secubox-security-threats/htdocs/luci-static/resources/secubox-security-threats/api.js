@@ -64,6 +64,12 @@ var callRemoveWhitelist = rpc.declare({
 	expect: { }
 });
 
+var callGetSecurityStats = rpc.declare({
+	object: 'luci.secubox-security-threats',
+	method: 'get_security_stats',
+	expect: { }
+});
+
 // ==============================================================================
 // Utility Functions
 // ==============================================================================
@@ -212,13 +218,15 @@ function getDashboardData() {
 		callStatus(),
 		callGetActiveThreats(),
 		callGetStatsByType(),
-		callGetBlockedIPs()
+		callGetBlockedIPs(),
+		callGetSecurityStats()
 	]).then(function(results) {
 		return {
 			status: results[0] || {},
 			threats: results[1].threats || [],
 			stats: results[2] || {},
-			blocked: results[3].blocked || []
+			blocked: results[3].blocked || [],
+			securityStats: results[4] || {}
 		};
 	});
 }
@@ -235,6 +243,7 @@ return baseclass.extend({
 	getStatsByType: callGetStatsByType,
 	getStatsByHost: callGetStatsByHost,
 	getBlockedIPs: callGetBlockedIPs,
+	getSecurityStats: callGetSecurityStats,
 	blockThreat: callBlockThreat,
 	whitelistHost: callWhitelistHost,
 	removeWhitelist: callRemoveWhitelist,

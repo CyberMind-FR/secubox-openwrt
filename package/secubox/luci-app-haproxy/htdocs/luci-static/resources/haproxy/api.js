@@ -282,6 +282,12 @@ var callGetLogs = rpc.declare({
 	expect: { logs: '' }
 });
 
+var callListExposedServices = rpc.declare({
+	object: 'luci.haproxy',
+	method: 'list_exposed_services',
+	expect: { services: [] }
+});
+
 // ============================================
 // Helper Functions
 // ============================================
@@ -366,6 +372,9 @@ return baseclass.extend({
 	generate: callGenerate,
 	validate: callValidate,
 	getLogs: callGetLogs,
+
+	// Exposed services
+	listExposedServices: callListExposedServices,
 
 	// Helpers
 	getDashboardData: getDashboardData

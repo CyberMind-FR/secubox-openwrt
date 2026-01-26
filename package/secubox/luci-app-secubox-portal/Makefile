@@ -10,8 +10,8 @@ LUCI_TITLE:=SecuBox Portal - Unified WebUI
 LUCI_DESCRIPTION:=Unified entry point for all SecuBox applications with tabbed navigation
 LUCI_DEPENDS:=+luci-base +luci-theme-secubox
 LUCI_PKGARCH:=all
-PKG_VERSION:=0.6.0
-PKG_RELEASE:=9
+PKG_VERSION:=0.7.0
+PKG_RELEASE:=1
 PKG_LICENSE:=GPL-3.0-or-later
 PKG_MAINTAINER:=SecuBox Team <secubox@example.com>
 

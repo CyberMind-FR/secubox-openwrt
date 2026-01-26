@@ -23,6 +23,11 @@ var callCrowdSecStats = rpc.declare({
 	method: 'nftables_stats'
 });
 
+var callSecurityStats = rpc.declare({
+	object: 'luci.secubox-security-threats',
+	method: 'get_security_stats'
+});
+
 var callGetServices = rpc.declare({
 	object: 'luci.secubox',
 	method: 'get_services',
@@ -42,13 +47,16 @@ return view.extend({
 			this.loadAppStatuses(),
 			callCrowdSecStats().catch(function() { return null; }),
 			portal.checkInstalledApps(),
-			callGetServices().catch(function() { return []; })
+			callGetServices().catch(function() { return []; }),
+			callSecurityStats().catch(function() { return null; })
 		]).then(function(results) {
 			// Store installed apps info from the last promise
 			self.installedApps = results[4] || {};
 			// RPC expect unwraps the services array directly
 			var svcResult = results[5] || [];
 			self.detectedServices = Array.isArray(svcResult) ? svcResult : (svcResult.services || []);
+			// Security stats
+			self.securityStats = results[6] || {};
 			return results;
 		});
 	},
@@ -104,6 +112,7 @@ return view.extend({
 		var boardInfo = data[0] || {};
 		var sysInfo = data[1] || {};
 		var crowdSecStats = data[3] || {};
+		var securityStats = this.securityStats || {};
 		var self = this;
 
 		// Set portal app context and hide LuCI navigation
@@ -142,12 +151,13 @@ return view.extend({
 			this.renderHeader(),
 			// Content
 			E('div', { 'class': 'sb-portal-content' }, [
-				this.renderDashboardSection(boardInfo, sysInfo, crowdSecStats),
+				this.renderDashboardSection(boardInfo, sysInfo, crowdSecStats, securityStats),
 				this.renderSecuritySection(),
 				this.renderNetworkSection(),
 				this.renderMonitoringSection(),
 				this.renderSystemSection(),
-				this.renderServicesSection()
+				this.renderServicesAppsSection(),
+				this.renderActivePortsSection()
 			])
 		]);
 
@@ -162,14 +172,14 @@ return view.extend({
 		var sections = portal.getSections();
 		// Sections that link to other pages vs tabs within portal
 		var linkSections = ['portal', 'hub', 'admin'];
-		var tabSections = ['security', 'network', 'monitoring', 'system', 'services'];
+		var tabSections = ['security', 'network', 'monitoring', 'system', 'services', 'active-ports'];
 
 		return E('div', { 'class': 'sb-portal-header' }, [
 			// Brand
 			E('div', { 'class': 'sb-portal-brand' }, [
 				E('div', { 'class': 'sb-portal-logo' }, 'S'),
 				E('span', { 'class': 'sb-portal-title' }, 'SecuBox'),
-				E('span', { 'class': 'sb-portal-version' }, 'v0.14.0')
+				E('span', { 'class': 'sb-portal-version' }, 'v0.15.51')
 			]),
 			// Navigation
 			E('nav', { 'class': 'sb-portal-nav' },
@@ -228,7 +238,7 @@ return view.extend({
 		});
 	},
 
-	renderDashboardSection: function(boardInfo, sysInfo, crowdSecStats) {
+	renderDashboardSection: function(boardInfo, sysInfo, crowdSecStats, securityStats) {
 		var self = this;
 		var securityApps = portal.getAppsBySection('security');
 		var networkApps = portal.getAppsBySection('network');
@@ -244,6 +254,12 @@ return view.extend({
 		var totalBlocked = blockedIPv4 + blockedIPv6;
 		var crowdSecHealth = crowdSecStats.firewall_health || {};
 		var crowdSecActive = crowdSecHealth.bouncer_running && crowdSecHealth.decisions_synced;
+
+		// Security stats
+		var wanDropped = securityStats.wan_dropped || 0;
+		var fwRejects = securityStats.firewall_rejects || 0;
+		var csBans = securityStats.crowdsec_bans || 0;
+		var csAlerts = securityStats.crowdsec_alerts_24h || 0;
 
 		return E('div', { 'class': 'sb-portal-section active', 'data-section': 'dashboard' }, [
 			E('div', { 'class': 'sb-section-header' }, [
@@ -275,32 +291,33 @@ return view.extend({
 					E('div', { 'class': 'sb-quick-stat-label' }, 'Services Running')
 				]),
 
-				// CrowdSec Blocked IPs
+				// Firewall Blocked
 				E('div', { 'class': 'sb-quick-stat' }, [
 					E('div', { 'class': 'sb-quick-stat-header' }, [
 						E('div', { 'class': 'sb-quick-stat-icon security' }, '\ud83d\udeab'),
 						E('span', { 'class': 'sb-quick-stat-status ' + (crowdSecActive ? 'running' : 'warning') },
-							crowdSecActive ? 'Active' : 'Inactive')
+							crowdSecActive ? 'Protected' : 'Monitoring')
 					]),
-					E('div', { 'class': 'sb-quick-stat-value' }, totalBlocked.toLocaleString()),
-					E('div', { 'class': 'sb-quick-stat-label' }, 'IPs Blocked')
+					E('div', { 'class': 'sb-quick-stat-value' }, (wanDropped + fwRejects).toLocaleString()),
+					E('div', { 'class': 'sb-quick-stat-label' }, 'Packets Blocked')
 				]),
 
-				// Network Apps
+				// Threat Alerts
 				E('div', { 'class': 'sb-quick-stat' }, [
 					E('div', { 'class': 'sb-quick-stat-header' }, [
-						E('div', { 'class': 'sb-quick-stat-icon network' }, '\ud83c\udf10'),
-						E('span', { 'class': 'sb-quick-stat-status running' }, 'Configured')
+						E('div', { 'class': 'sb-quick-stat-icon security' }, '\ud83d\udc41\ufe0f'),
+						E('span', { 'class': 'sb-quick-stat-status ' + (csAlerts > 0 ? 'warning' : 'running') },
+							csAlerts > 0 ? 'Alerts' : 'Clear')
 					]),
-					E('div', { 'class': 'sb-quick-stat-value' }, networkApps.length),
-					E('div', { 'class': 'sb-quick-stat-label' }, 'Network Tools')
+					E('div', { 'class': 'sb-quick-stat-value' }, csBans + '/' + csAlerts),
+					E('div', { 'class': 'sb-quick-stat-label' }, 'Bans / Alerts 24h')
 				])
 			]),
 
 			// Featured Apps
 			E('h3', { 'style': 'margin: 1.5rem 0 1rem; color: var(--cyber-text-primary);' }, 'Quick Access'),
 			E('div', { 'class': 'sb-app-grid' },
-				this.renderFeaturedApps(['crowdsec', 'bandwidth-manager', 'media-flow', 'ndpid'])
+				this.renderFeaturedApps(['crowdsec', 'threat-monitor', 'bandwidth-manager', 'media-flow'])
 			),
 
 			// Recent Events placeholder
@@ -341,6 +358,17 @@ return view.extend({
 							(crowdSecStats.ipv4_capi_count || 0) + ' CAPI + ' +
 							(crowdSecStats.ipv4_cscli_count || 0) + ' local) | IPv6: ' + blockedIPv6.toLocaleString()),
 						E('span', { 'class': 'sb-events-meta' }, 'CrowdSec Firewall Protection')
+					])
+				]) : null,
+				wanDropped > 0 ? E('div', { 'class': 'sb-events-item' }, [
+					E('div', { 'class': 'sb-events-icon warning' }, '\ud83d\udc41\ufe0f'),
+					E('div', { 'class': 'sb-events-content' }, [
+						E('p', { 'class': 'sb-events-message' },
+							'WAN Dropped: ' + wanDropped.toLocaleString() + ' | Firewall Rejects: ' + fwRejects),
+						E('span', { 'class': 'sb-events-meta' }, [
+							'Threat Monitor - ',
+							E('a', { 'href': L.url('admin/secubox/security/threats/dashboard') }, 'View Details')
+						])
 					])
 				]) : null
 			].filter(Boolean))
@@ -416,7 +444,13 @@ return view.extend({
 			'System administration and configuration tools', apps);
 	},
 
-	renderServicesSection: function() {
+	renderServicesAppsSection: function() {
+		var apps = portal.getInstalledAppsBySection('services', this.installedApps);
+		return this.renderAppSection('services', 'Services',
+			'Application services running on your network', apps);
+	},
+
+	renderActivePortsSection: function() {
 		var self = this;
 		var services = this.detectedServices || [];
 
@@ -458,7 +492,8 @@ return view.extend({
 		categoryOrder.forEach(function(cat) {
 			if (categories[cat] && categories[cat].length > 0) {
 				categories[cat].forEach(function(svc) {
-					var url = window.location.protocol + '//' + window.location.hostname + svc.url;
+					// Always use http:// for local services (they don't have SSL certs)
+					var url = 'http://' + window.location.hostname + svc.url;
 					var emoji = iconMap[svc.icon] || '⚡';
 					serviceCards.push(E('a', {
 						'class': 'sb-app-card sb-service-card',
@@ -486,9 +521,9 @@ return view.extend({
 		});
 
 		if (serviceCards.length === 0) {
-			return E('div', { 'class': 'sb-portal-section', 'data-section': 'services' }, [
+			return E('div', { 'class': 'sb-portal-section', 'data-section': 'active-ports' }, [
 				E('div', { 'class': 'sb-section-header' }, [
-					E('h2', { 'class': 'sb-section-title' }, '🔌 Active Services'),
+					E('h2', { 'class': 'sb-section-title' }, '🔌 Active Ports'),
 					E('p', { 'class': 'sb-section-subtitle' }, 'Detected services listening on network ports')
 				]),
 				E('div', { 'class': 'sb-section-empty' }, [
@@ -499,9 +534,9 @@ return view.extend({
 			]);
 		}
 
-		return E('div', { 'class': 'sb-portal-section', 'data-section': 'services' }, [
+		return E('div', { 'class': 'sb-portal-section', 'data-section': 'active-ports' }, [
 			E('div', { 'class': 'sb-section-header' }, [
-				E('h2', { 'class': 'sb-section-title' }, '🔌 Active Services'),
+				E('h2', { 'class': 'sb-section-title' }, '🔌 Active Ports'),
 				E('p', { 'class': 'sb-section-subtitle' }, 'Detected services listening on network ports')
 			]),
 			E('div', { 'class': 'sb-app-grid' }, serviceCards)

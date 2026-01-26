@@ -246,6 +246,17 @@ echo "Config: $CONFIG_FILE"
 ls -la /opt/haproxy/
 ls -la /opt/haproxy/certs/ 2>/dev/null || echo "No certs dir"
 
+# Clean up legacy certificate files - only .pem files should exist
+# HAProxy loads all files from certs directory, and extra files cause errors
+if [ -d "/opt/haproxy/certs" ]; then
+    for pem in /opt/haproxy/certs/*.pem; do
+        [ -f "$pem" ] || continue
+        base="${pem%.pem}"
+        # Remove any associated .crt, .key, .fullchain.pem, .crt.key files
+        rm -f "${base}.crt" "${base}.key" "${base}.crt.key" "${base}.fullchain.pem" 2>/dev/null
+    done
+fi
+
 # Wait for config
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "[haproxy] Config not found, generating default..."
@@ -503,10 +514,26 @@ _generate_backend() {
 
 	[ -n "$health_check" ] && echo "    option $health_check"
 
-	# Add servers defined in backend section (handles both single and list)
-	local server_line
-	config_get server_line "$section" server ""
-	[ -n "$server_line" ] && echo "    server $server_line"
+	# Check if there are separate server sections for this backend
+	local has_server_sections=0
+	_check_server_sections() {
+		local srv_section="$1"
+		local srv_backend
+		config_get srv_backend "$srv_section" backend
+		config_get srv_enabled "$srv_section" enabled "0"
+		if [ "$srv_backend" = "$name" ] && [ "$srv_enabled" = "1" ]; then
+			has_server_sections=1
+		fi
+	}
+	config_foreach _check_server_sections server
+
+	# Add inline server ONLY if no separate server sections exist
+	# This prevents duplicate server names
+	if [ "$has_server_sections" = "0" ]; then
+		local server_line
+		config_get server_line "$section" server ""
+		[ -n "$server_line" ] && echo "    server $server_line"
+	fi
 
 	# Add servers from separate server UCI sections
 	config_foreach _add_server_to_backend server "$name"
@@ -541,6 +568,111 @@ _add_server_to_backend() {
 # Certificate Management
 # ===========================================
 
+# Check if certificate is from Let's Encrypt Production (not Staging)
+cert_is_production() {
+	local cert_file="$1"
+	[ -f "$cert_file" ] || return 1
+
+	# Check the issuer - staging certs have "(STAGING)" in the issuer
+	local issuer=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null)
+	if echo "$issuer" | grep -qi "staging\|test\|fake"; then
+		return 1  # Staging certificate
+	fi
+
+	# Check for Let's Encrypt production issuers
+	if echo "$issuer" | grep -qiE "Let's Encrypt|R3|R10|R11|E1|E2|ISRG"; then
+		return 0  # Production certificate
+	fi
+
+	# Check if it's a self-signed or other CA
+	return 0  # Assume production for other CAs
+}
+
+# Validate certificate publicly using external service
+cert_validate_public() {
+	local domain="$1"
+	local timeout=10
+
+	# Try to connect and verify the certificate
+	if command -v curl >/dev/null 2>&1; then
+		if curl -sS --max-time "$timeout" -o /dev/null "https://$domain" 2>/dev/null; then
+			return 0
+		fi
+	fi
+
+	# Fallback: use openssl s_client
+	if command -v openssl >/dev/null 2>&1; then
+		local result=$(echo | timeout "$timeout" openssl s_client -connect "$domain:443" -servername "$domain" 2>/dev/null | openssl x509 -noout -dates 2>/dev/null)
+		if [ -n "$result" ]; then
+			return 0
+		fi
+	fi
+
+	return 1
+}
+
+# Get certificate info
+cert_info() {
+	local cert_file="$1"
+	[ -f "$cert_file" ] || return 1
+
+	local subject=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/subject=//')
+	local issuer=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/issuer=//')
+	local not_after=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | cut -d= -f2)
+	local not_before=$(openssl x509 -in "$cert_file" -noout -startdate 2>/dev/null | cut -d= -f2)
+
+	echo "Subject: $subject"
+	echo "Issuer: $issuer"
+	echo "Valid From: $not_before"
+	echo "Valid Until: $not_after"
+
+	if cert_is_production "$cert_file"; then
+		echo "Type: PRODUCTION (publicly trusted)"
+	else
+		echo "Type: STAGING/TEST (NOT publicly trusted!)"
+	fi
+}
+
+# Verify and report certificate status
+cmd_cert_verify() {
+	load_config
+
+	local domain="$1"
+	if [ -z "$domain" ]; then
+		echo "Usage: haproxyctl cert verify <domain>"
+		return 1
+	fi
+
+	local cert_file="$CERTS_PATH/$domain.pem"
+	if [ ! -f "$cert_file" ]; then
+		log_error "Certificate not found: $cert_file"
+		return 1
+	fi
+
+	echo "Certificate Information for $domain:"
+	echo "======================================"
+	cert_info "$cert_file"
+	echo ""
+
+	# Check if it's production
+	if ! cert_is_production "$cert_file"; then
+		log_warn "This is a STAGING certificate - NOT trusted by browsers!"
+		log_warn "To get a production certificate, ensure staging='0' in config and re-issue"
+		return 1
+	fi
+
+	# Try public validation
+	echo "Public Validation:"
+	if cert_validate_public "$domain"; then
+		log_info "Certificate is publicly valid and accessible"
+		return 0
+	else
+		log_warn "Could not verify certificate publicly"
+		log_warn "Ensure DNS points to this server and port 443 is accessible"
+		return 1
+	fi
+}
+
 cmd_cert_list() {
 	load_config
 
@@ -552,10 +684,24 @@ cmd_cert_list() {
 			[ -f "$cert" ] || continue
 			local name=$(basename "$cert" .pem)
 			local expiry=$(openssl x509 -in "$cert" -noout -enddate 2>/dev/null | cut -d= -f2)
-			echo "  $name - Expires: ${expiry:-Unknown}"
+			local type_icon="✅"
+			if ! cert_is_production "$cert"; then
+				type_icon="⚠️ STAGING"
+			fi
+			echo "  $name - Expires: ${expiry:-Unknown} $type_icon"
 		done
 	else
 		echo "  No certificates found"
+	fi
+
+	# Show current mode
+	local staging=$(uci -q get haproxy.acme.staging)
+	echo ""
+	if [ "$staging" = "1" ]; then
+		echo "⚠️  ACME Mode: STAGING (certificates will NOT be trusted by browsers)"
+		echo "   To use production: uci set haproxy.acme.staging='0' && uci commit haproxy"
+	else
+		echo "✅ ACME Mode: PRODUCTION (certificates will be publicly trusted)"
 	fi
 }
 
@@ -578,6 +724,18 @@ cmd_cert_add() {
 	esac
 
 	[ -z "$email" ] && { log_error "ACME email not configured. Set in LuCI > Services > HAProxy > Settings"; return 1; }
+
+	# Warn about staging mode
+	if [ "$staging" = "1" ]; then
+		log_warn "=========================================="
+		log_warn "STAGING MODE ENABLED!"
+		log_warn "Certificate will NOT be trusted by browsers"
+		log_warn "To use production: uci set haproxy.acme.staging='0' && uci commit haproxy"
+		log_warn "=========================================="
+		sleep 2
+	else
+		log_info "Using Let's Encrypt PRODUCTION (certificates will be publicly trusted)"
+	fi
 
 	log_info "Requesting certificate for $domain..."
 
@@ -637,6 +795,10 @@ cmd_cert_add() {
 			log_info "Creating combined PEM for HAProxy..."
 			cat "$CERTS_PATH/$domain.fullchain.pem" "$CERTS_PATH/$domain.key" > "$CERTS_PATH/$domain.pem"
 			chmod 600 "$CERTS_PATH/$domain.pem"
+
+			# Clean up intermediate files - HAProxy only needs the .pem file
+			# Keeping these causes issues when HAProxy loads certs from directory
+			rm -f "$CERTS_PATH/$domain.crt" "$CERTS_PATH/$domain.key" "$CERTS_PATH/$domain.fullchain.pem" "$CERTS_PATH/$domain.crt.key" 2>/dev/null
 		fi
 
 		# Restart HAProxy if it was running
@@ -669,6 +831,24 @@ cmd_cert_add() {
 
 	chmod 600 "$CERTS_PATH/$domain.pem"
 
+	# Verify certificate type (production vs staging)
+	echo ""
+	if cert_is_production "$CERTS_PATH/$domain.pem"; then
+		log_info "✅ Certificate is from PRODUCTION CA (publicly trusted)"
+	else
+		log_warn "⚠️  Certificate is from STAGING CA (NOT publicly trusted!)"
+		log_warn "   Browsers will show security warnings for this certificate"
+		log_warn "   To get a production certificate:"
+		log_warn "   1. uci set haproxy.acme.staging='0'"
+		log_warn "   2. uci commit haproxy"
+		log_warn "   3. haproxyctl cert remove $domain"
+		log_warn "   4. haproxyctl cert add $domain"
+	fi
+
+	# Show certificate info
+	echo ""
+	cert_info "$CERTS_PATH/$domain.pem"
+
 	# Add to UCI
 	local section="cert_$(echo "$domain" | tr '.-' '__')"
 	uci set haproxy.$section=certificate
@@ -678,6 +858,13 @@ cmd_cert_add() {
 	uci commit haproxy
 
 	log_info "Certificate installed for $domain"
+
+	# Offer to verify publicly if production
+	if cert_is_production "$CERTS_PATH/$domain.pem"; then
+		echo ""
+		log_info "To verify the certificate is working publicly, run:"
+		log_info "  haproxyctl cert verify $domain"
+	fi
 }
 
 cmd_cert_import() {
@@ -1021,8 +1208,9 @@ case "${1:-}" in
 			add)    shift; cmd_cert_add "$@" ;;
 			import) shift; cmd_cert_import "$@" ;;
 			renew)  shift; cmd_cert_add "$@" ;;
+			verify) shift; cmd_cert_verify "$@" ;;
 			remove) shift; rm -f "$CERTS_PATH/$1.pem"; uci delete haproxy.cert_${1//[.-]/_} 2>/dev/null ;;
-			*)      echo "Usage: haproxyctl cert {list|add|import|renew|remove}" ;;
+			*)      echo "Usage: haproxyctl cert {list|add|import|renew|verify|remove}" ;;
 		esac
 		;;
 

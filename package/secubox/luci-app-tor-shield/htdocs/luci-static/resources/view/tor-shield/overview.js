@@ -87,6 +87,27 @@ return view.extend({
 		});
 	},
 
+	// Handle restart
+	handleRestart: function() {
+		var self = this;
+
+		ui.showModal(_('Restart Tor Shield'), [
+			E('p', { 'class': 'spinning' }, _('Restarting Tor Shield service...'))
+		]);
+
+		api.restart().then(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', _('Tor Shield is restarting. Please wait for bootstrap to complete.')), 'info');
+			} else {
+				ui.addNotification(null, E('p', result.error || _('Failed to restart')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
+		});
+	},
+
 	// Handle leak test
 	handleLeakTest: function() {
 		var self = this;
@@ -373,6 +394,54 @@ return view.extend({
 				])
 			]),
 
+			// Health Status Minicard
+			E('div', { 'class': 'tor-health-card', 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px;' }, [
+				E('div', { 'class': 'tor-health-item', 'style': 'display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--tor-bg-card, #1a1a24); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);' }, [
+					E('div', {
+						'class': 'tor-health-indicator',
+						'style': 'width: 12px; height: 12px; border-radius: 50%; background: ' + (isProtected ? '#10b981' : isConnecting ? '#f59e0b' : '#6b7280') + '; box-shadow: 0 0 8px ' + (isProtected ? '#10b981' : isConnecting ? '#f59e0b' : 'transparent') + ';'
+					}),
+					E('div', {}, [
+						E('div', { 'style': 'font-size: 14px; font-weight: 600; color: var(--tor-text, #fff);' }, _('Service')),
+						E('div', { 'style': 'font-size: 12px; color: var(--tor-text-muted, #a0a0b0);' },
+							status.running ? _('Running') : _('Stopped'))
+					])
+				]),
+				E('div', { 'class': 'tor-health-item', 'style': 'display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--tor-bg-card, #1a1a24); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);' }, [
+					E('div', {
+						'class': 'tor-health-indicator',
+						'style': 'width: 12px; height: 12px; border-radius: 50%; background: ' + (status.bootstrap >= 100 ? '#10b981' : status.bootstrap > 0 ? '#f59e0b' : '#6b7280') + '; box-shadow: 0 0 8px ' + (status.bootstrap >= 100 ? '#10b981' : status.bootstrap > 0 ? '#f59e0b' : 'transparent') + ';'
+					}),
+					E('div', {}, [
+						E('div', { 'style': 'font-size: 14px; font-weight: 600; color: var(--tor-text, #fff);' }, _('Bootstrap')),
+						E('div', { 'style': 'font-size: 12px; color: var(--tor-text-muted, #a0a0b0);' },
+							status.bootstrap >= 100 ? _('Complete') : status.bootstrap + '%')
+					])
+				]),
+				E('div', { 'class': 'tor-health-item', 'style': 'display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--tor-bg-card, #1a1a24); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);' }, [
+					E('div', {
+						'class': 'tor-health-indicator',
+						'style': 'width: 12px; height: 12px; border-radius: 50%; background: ' + (status.dns_over_tor ? '#10b981' : '#f59e0b') + '; box-shadow: 0 0 8px ' + (status.dns_over_tor ? '#10b981' : '#f59e0b') + ';'
+					}),
+					E('div', {}, [
+						E('div', { 'style': 'font-size: 14px; font-weight: 600; color: var(--tor-text, #fff);' }, _('DNS')),
+						E('div', { 'style': 'font-size: 12px; color: var(--tor-text-muted, #a0a0b0);' },
+							status.dns_over_tor ? _('Protected') : _('Exposed'))
+					])
+				]),
+				E('div', { 'class': 'tor-health-item', 'style': 'display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--tor-bg-card, #1a1a24); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);' }, [
+					E('div', {
+						'class': 'tor-health-indicator',
+						'style': 'width: 12px; height: 12px; border-radius: 50%; background: ' + (status.kill_switch ? '#10b981' : '#6b7280') + '; box-shadow: 0 0 8px ' + (status.kill_switch ? '#10b981' : 'transparent') + ';'
+					}),
+					E('div', {}, [
+						E('div', { 'style': 'font-size: 14px; font-weight: 600; color: var(--tor-text, #fff);' }, _('Kill Switch')),
+						E('div', { 'style': 'font-size: 12px; color: var(--tor-text-muted, #a0a0b0);' },
+							status.kill_switch ? _('Active') : _('Disabled'))
+					])
+				])
+			]),
+
 			// Actions Card
 			E('div', { 'class': 'tor-card' }, [
 				E('div', { 'class': 'tor-card-header' }, [
@@ -393,6 +462,11 @@ return view.extend({
 							'click': L.bind(this.handleLeakTest, this),
 							'disabled': !isActive
 						}, ['\uD83D\uDD0D ', _('Leak Test')]),
+						E('button', {
+							'class': 'tor-btn tor-btn-warning',
+							'click': L.bind(this.handleRestart, this),
+							'disabled': !status.enabled
+						}, ['\u21BB ', _('Restart')]),
 						E('a', {
 							'class': 'tor-btn',
 							'href': L.url('admin', 'services', 'tor-shield', 'circuits')

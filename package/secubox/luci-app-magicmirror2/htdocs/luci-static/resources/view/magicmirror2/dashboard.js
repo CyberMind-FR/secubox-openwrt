@@ -126,7 +126,7 @@ return view.extend({
 				]),
 				E('div', { 'class': 'mm2-card' }, [
 					E('div', { 'class': 'mm2-stat' }, [
-						E('div', { 'class': 'mm2-stat-value' }, ':' + (config.port || 8082)),
+						E('div', { 'class': 'mm2-stat-value' }, ':' + (config.port || 8085)),
 						E('div', { 'class': 'mm2-stat-label' }, _('Web Port'))
 					])
 				]),

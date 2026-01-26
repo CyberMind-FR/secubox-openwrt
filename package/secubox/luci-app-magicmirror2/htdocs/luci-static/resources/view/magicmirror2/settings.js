@@ -67,7 +67,7 @@ return view.extend({
 
 		o = s.option(form.Value, 'port', _('Web Port'));
 		o.datatype = 'port';
-		o.default = '8082';
+		o.default = '8085';
 		o.rmempty = false;
 
 		o = s.option(form.Value, 'address', _('Listen Address'));

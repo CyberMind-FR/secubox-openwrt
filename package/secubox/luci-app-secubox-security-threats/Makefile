@@ -22,6 +22,10 @@ define Package/luci-app-secubox-security-threats/conffiles
 endef
 
 define Package/luci-app-secubox-security-threats/install
+	# CLI tool
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) ./root/usr/bin/secubox-stats $(1)/usr/bin/
+
 	# RPCD backend (MUST be 755 for ubus calls)
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.secubox-security-threats $(1)/usr/libexec/rpcd/

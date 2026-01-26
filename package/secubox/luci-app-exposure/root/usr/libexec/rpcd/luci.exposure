@@ -1,0 +1,423 @@
+#!/bin/sh
+#
+# RPCD backend for SecuBox Service Exposure Manager
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+case "$1" in
+    list)
+        json_init
+        json_add_object "scan"
+        json_close_object
+        json_add_object "conflicts"
+        json_close_object
+        json_add_object "status"
+        json_close_object
+        json_add_object "tor_list"
+        json_close_object
+        json_add_object "ssl_list"
+        json_close_object
+        json_add_object "get_config"
+        json_close_object
+        json_add_object "fix_port"
+            json_add_string "service" "string"
+            json_add_int "port" "integer"
+        json_close_object
+        json_add_object "tor_add"
+            json_add_string "service" "string"
+            json_add_int "local_port" "integer"
+            json_add_int "onion_port" "integer"
+        json_close_object
+        json_add_object "tor_remove"
+            json_add_string "service" "string"
+        json_close_object
+        json_add_object "ssl_add"
+            json_add_string "service" "string"
+            json_add_string "domain" "string"
+            json_add_int "local_port" "integer"
+        json_close_object
+        json_add_object "ssl_remove"
+            json_add_string "service" "string"
+        json_close_object
+        json_dump
+        ;;
+
+    call)
+        case "$2" in
+            scan)
+                # Scan listening services - use temp file to avoid subshell issues
+                TMP_SVC="/tmp/exposure_scan_$$"
+                netstat -tlnp 2>/dev/null | grep LISTEN | awk '{
+                    split($4, a, ":")
+                    port = a[length(a)]
+                    if (!seen[port]++) {
+                        split($7, p, "/")
+                        proc = p[2]
+                        if (proc == "") proc = "unknown"
+                        print port, $4, proc
+                    }
+                }' | sort -n > "$TMP_SVC"
+
+                json_init
+                json_add_array "services"
+
+                while read port addr proc; do
+                    [ -z "$port" ] && continue
+
+                    external=0
+                    case "$addr" in
+                        *0.0.0.0*|*::*) external=1 ;;
+                        *127.0.0.1*|*::1*) external=0 ;;
+                        *) external=1 ;;
+                    esac
+
+                    name="$proc"
+                    case "$proc" in
+                        sshd|dropbear) name="SSH" ;;
+                        dnsmasq) name="DNS" ;;
+                        haproxy) name="HAProxy" ;;
+                        uhttpd) name="LuCI" ;;
+                        gitea) name="Gitea" ;;
+                        netifyd) name="Netifyd" ;;
+                        tor) name="Tor" ;;
+                        python*) name="Python App" ;;
+                        streamlit) name="Streamlit" ;;
+                        hexo|node) name="HexoJS" ;;
+                    esac
+
+                    json_add_object ""
+                        json_add_int "port" "$port"
+                        json_add_string "address" "$addr"
+                        json_add_string "process" "$proc"
+                        json_add_string "name" "$name"
+                        json_add_boolean "external" "$external"
+                    json_close_object
+                done < "$TMP_SVC"
+
+                rm -f "$TMP_SVC"
+                json_close_array
+                json_dump
+                ;;
+
+            status)
+                json_init
+
+                total=$(netstat -tlnp 2>/dev/null | grep LISTEN | awk '{split($4,a,":"); print a[length(a)]}' | sort -u | wc -l)
+                external=$(netstat -tlnp 2>/dev/null | grep LISTEN | grep -E "0\.0\.0\.0|::" | awk '{split($4,a,":"); print a[length(a)]}' | sort -u | wc -l)
+
+                json_add_object "services"
+                    json_add_int "total" "$total"
+                    json_add_int "external" "$external"
+                json_close_object
+
+                # Tor hidden services
+                TOR_DIR="/var/lib/tor/hidden_services"
+                tor_count=0
+                [ -d "$TOR_DIR" ] && tor_count=$(ls -1d "$TOR_DIR"/*/ 2>/dev/null | wc -l)
+
+                json_add_object "tor"
+                    json_add_int "count" "$tor_count"
+                    json_add_array "services"
+                    if [ -d "$TOR_DIR" ]; then
+                        for dir in "$TOR_DIR"/*/; do
+                            [ -d "$dir" ] || continue
+                            svc=$(basename "$dir")
+                            onion=""
+                            [ -f "$dir/hostname" ] && onion=$(cat "$dir/hostname")
+                            if [ -n "$onion" ]; then
+                                json_add_object ""
+                                    json_add_string "service" "$svc"
+                                    json_add_string "onion" "$onion"
+                                json_close_object
+                            fi
+                        done
+                    fi
+                    json_close_array
+                json_close_object
+
+                # HAProxy SSL backends - read from UCI config
+                TMP_SSL="/tmp/exposure_ssl_$$"
+                ssl_count=0
+
+                # Get vhosts from UCI (enabled ones with domains)
+                for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d'.' -f2 | cut -d'=' -f1); do
+                    domain=$(uci -q get "haproxy.${vhost}.domain")
+                    backend=$(uci -q get "haproxy.${vhost}.backend")
+                    enabled=$(uci -q get "haproxy.${vhost}.enabled")
+                    [ "$enabled" != "1" ] && continue
+                    [ -z "$domain" ] && continue
+                    echo "${backend:-$vhost}|${domain}" >> "$TMP_SSL"
+                    ssl_count=$((ssl_count + 1))
+                done
+
+                json_add_object "ssl"
+                    json_add_int "count" "$ssl_count"
+                    json_add_array "backends"
+                    if [ -f "$TMP_SSL" ]; then
+                        while IFS='|' read backend domain; do
+                            [ -z "$backend" ] && continue
+                            json_add_object ""
+                                json_add_string "service" "$backend"
+                                json_add_string "domain" "$domain"
+                            json_close_object
+                        done < "$TMP_SSL"
+                        rm -f "$TMP_SSL"
+                    fi
+                    json_close_array
+                json_close_object
+
+                json_dump
+                ;;
+
+            tor_list)
+                TOR_DIR="/var/lib/tor/hidden_services"
+                TOR_CONFIG="/etc/tor/torrc"
+
+                json_init
+                json_add_array "services"
+
+                if [ -d "$TOR_DIR" ]; then
+                    for dir in "$TOR_DIR"/*/; do
+                        [ -d "$dir" ] || continue
+                        svc=$(basename "$dir")
+                        onion=""
+                        [ -f "$dir/hostname" ] && onion=$(cat "$dir/hostname")
+
+                        port=$(grep -A1 "HiddenServiceDir $dir" "$TOR_CONFIG" 2>/dev/null | grep HiddenServicePort | awk '{print $2}')
+                        backend=$(grep -A1 "HiddenServiceDir $dir" "$TOR_CONFIG" 2>/dev/null | grep HiddenServicePort | awk '{print $3}')
+
+                        if [ -n "$onion" ]; then
+                            json_add_object ""
+                                json_add_string "service" "$svc"
+                                json_add_string "onion" "$onion"
+                                json_add_string "port" "${port:-80}"
+                                json_add_string "backend" "${backend:-N/A}"
+                            json_close_object
+                        fi
+                    done
+                fi
+
+                json_close_array
+                json_dump
+                ;;
+
+            ssl_list)
+                TMP_SSLLIST="/tmp/exposure_ssllist_$$"
+                > "$TMP_SSLLIST"
+
+                # Read from HAProxy UCI config (vhosts with their backends)
+                for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d'.' -f2 | cut -d'=' -f1); do
+                    domain=$(uci -q get "haproxy.${vhost}.domain")
+                    backend=$(uci -q get "haproxy.${vhost}.backend")
+                    enabled=$(uci -q get "haproxy.${vhost}.enabled")
+
+                    [ "$enabled" != "1" ] && continue
+                    [ -z "$domain" ] && continue
+
+                    # Get server address from backend config
+                    server=""
+                    if [ -n "$backend" ]; then
+                        server=$(uci -q get "haproxy.${backend}.server" 2>/dev/null | head -1 | awk '{print $2}')
+                    fi
+
+                    echo "${backend:-$vhost}|${domain}|${server:-N/A}" >> "$TMP_SSLLIST"
+                done
+
+                json_init
+                json_add_array "backends"
+
+                if [ -s "$TMP_SSLLIST" ]; then
+                    while IFS='|' read service domain server; do
+                        [ -z "$service" ] && continue
+                        json_add_object ""
+                            json_add_string "service" "$service"
+                            json_add_string "domain" "$domain"
+                            json_add_string "backend" "$server"
+                        json_close_object
+                    done < "$TMP_SSLLIST"
+                fi
+                rm -f "$TMP_SSLLIST"
+
+                json_close_array
+                json_dump
+                ;;
+
+            get_config)
+                json_init
+                json_add_array "known_services"
+
+                config_load "secubox-exposure"
+
+                get_known() {
+                    local section="$1"
+                    local default_port config_path category
+
+                    config_get default_port "$section" default_port
+                    config_get config_path "$section" config_path
+                    config_get category "$section" category "other"
+
+                    actual_port=""
+                    if [ -n "$config_path" ]; then
+                        actual_port=$(uci -q get "$config_path" 2>/dev/null)
+                    fi
+                    [ -z "$actual_port" ] && actual_port="$default_port"
+
+                    json_add_object ""
+                        json_add_string "id" "$section"
+                        json_add_int "default_port" "${default_port:-0}"
+                        json_add_int "actual_port" "${actual_port:-0}"
+                        json_add_string "config_path" "$config_path"
+                        json_add_string "category" "$category"
+                    json_close_object
+                }
+                config_foreach get_known known
+
+                json_close_array
+                json_dump
+                ;;
+
+            conflicts)
+                json_init
+                json_add_array "conflicts"
+                json_close_array
+                json_dump
+                ;;
+
+            fix_port)
+                read -r input
+                service=$(echo "$input" | jsonfilter -e '@.service')
+                port=$(echo "$input" | jsonfilter -e '@.port')
+
+                if [ -z "$service" ]; then
+                    json_init
+                    json_add_boolean "success" 0
+                    json_add_string "error" "Service name required"
+                    json_dump
+                    exit 0
+                fi
+
+                result=$(/usr/sbin/secubox-exposure fix-port "$service" "$port" 2>&1)
+                json_init
+                if [ $? -eq 0 ]; then
+                    json_add_boolean "success" 1
+                    json_add_string "message" "$result"
+                else
+                    json_add_boolean "success" 0
+                    json_add_string "error" "$result"
+                fi
+                json_dump
+                ;;
+
+            tor_add)
+                read -r input
+                service=$(echo "$input" | jsonfilter -e '@.service')
+                local_port=$(echo "$input" | jsonfilter -e '@.local_port')
+                onion_port=$(echo "$input" | jsonfilter -e '@.onion_port')
+
+                if [ -z "$service" ]; then
+                    json_init
+                    json_add_boolean "success" 0
+                    json_add_string "error" "Service name required"
+                    json_dump
+                    exit 0
+                fi
+
+                result=$(/usr/sbin/secubox-exposure tor add "$service" "$local_port" "$onion_port" 2>&1)
+                json_init
+                if echo "$result" | grep -q "Hidden service created"; then
+                    onion=$(echo "$result" | grep "Onion:" | awk '{print $2}')
+                    json_add_boolean "success" 1
+                    json_add_string "onion" "$onion"
+                    json_add_string "message" "Hidden service created"
+                else
+                    json_add_boolean "success" 0
+                    json_add_string "error" "$result"
+                fi
+                json_dump
+                ;;
+
+            tor_remove)
+                read -r input
+                service=$(echo "$input" | jsonfilter -e '@.service')
+
+                if [ -z "$service" ]; then
+                    json_init
+                    json_add_boolean "success" 0
+                    json_add_string "error" "Service name required"
+                    json_dump
+                    exit 0
+                fi
+
+                result=$(/usr/sbin/secubox-exposure tor remove "$service" 2>&1)
+                json_init
+                if echo "$result" | grep -q "removed"; then
+                    json_add_boolean "success" 1
+                    json_add_string "message" "Hidden service removed"
+                else
+                    json_add_boolean "success" 0
+                    json_add_string "error" "$result"
+                fi
+                json_dump
+                ;;
+
+            ssl_add)
+                read -r input
+                service=$(echo "$input" | jsonfilter -e '@.service')
+                domain=$(echo "$input" | jsonfilter -e '@.domain')
+                local_port=$(echo "$input" | jsonfilter -e '@.local_port')
+
+                if [ -z "$service" ] || [ -z "$domain" ]; then
+                    json_init
+                    json_add_boolean "success" 0
+                    json_add_string "error" "Service and domain required"
+                    json_dump
+                    exit 0
+                fi
+
+                result=$(/usr/sbin/secubox-exposure ssl add "$service" "$domain" "$local_port" 2>&1)
+                json_init
+                if echo "$result" | grep -q "configured"; then
+                    json_add_boolean "success" 1
+                    json_add_string "message" "SSL backend configured"
+                else
+                    json_add_boolean "success" 0
+                    json_add_string "error" "$result"
+                fi
+                json_dump
+                ;;
+
+            ssl_remove)
+                read -r input
+                service=$(echo "$input" | jsonfilter -e '@.service')
+
+                if [ -z "$service" ]; then
+                    json_init
+                    json_add_boolean "success" 0
+                    json_add_string "error" "Service name required"
+                    json_dump
+                    exit 0
+                fi
+
+                result=$(/usr/sbin/secubox-exposure ssl remove "$service" 2>&1)
+                json_init
+                if echo "$result" | grep -q "removed"; then
+                    json_add_boolean "success" 1
+                    json_add_string "message" "SSL backend removed"
+                else
+                    json_add_boolean "success" 0
+                    json_add_string "error" "$result"
+                fi
+                json_dump
+                ;;
+
+            *)
+                json_init
+                json_add_boolean "error" 1
+                json_add_string "message" "Unknown method: $2"
+                json_dump
+                ;;
+        esac
+        ;;
+esac
