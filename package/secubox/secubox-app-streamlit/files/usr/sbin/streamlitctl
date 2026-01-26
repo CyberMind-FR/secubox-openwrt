@@ -83,6 +83,13 @@ Configuration:
 Data directory:
   /srv/streamlit
 
+Requirements:
+  Place a requirements.txt file in /srv/streamlit/apps/ to auto-install
+  Python dependencies. Supported naming conventions:
+    - <appname>.requirements.txt  (e.g., sappix.requirements.txt)
+    - <appname>_requirements.txt  (e.g., sappix_requirements.txt)
+    - requirements.txt            (global fallback)
+
 EOF
 }
 
@@ -180,6 +187,28 @@ HELLO
         APP_PATH="/srv/apps/hello.py"
     fi
 fi
+
+# Get app name without .py extension
+APP_NAME=$(basename "$APP_PATH" .py)
+
+# Install app-specific requirements if present
+# Check for: <app>.requirements.txt, <app>_requirements.txt, or global requirements.txt
+for req_file in "/srv/apps/${APP_NAME}.requirements.txt" \
+                "/srv/apps/${APP_NAME}_requirements.txt" \
+                "/srv/apps/requirements.txt"; do
+    if [ -f "$req_file" ]; then
+        REQ_HASH=$(md5sum "$req_file" 2>/dev/null | cut -d' ' -f1)
+        REQ_MARKER="/opt/.req_${APP_NAME}_${REQ_HASH}"
+        if [ ! -f "$REQ_MARKER" ]; then
+            echo "Installing requirements from: $req_file"
+            pip3 install --break-system-packages -r "$req_file" 2>/dev/null || \
+            pip3 install -r "$req_file" 2>/dev/null || \
+            echo "Warning: Some requirements may have failed to install"
+            touch "$REQ_MARKER"
+        fi
+        break
+    fi
+done
 
 echo "Starting Streamlit with app: $APP_PATH"
 cd /srv/apps
