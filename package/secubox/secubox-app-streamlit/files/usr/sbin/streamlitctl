@@ -268,23 +268,25 @@ STARTUP
 }
 
 # Build instances string from UCI config
-build_instances_string() {
-	local instances=""
-	local _add_instance() {
-		local section="$1"
-		local inst_enabled inst_app inst_port
-		config_get inst_enabled "$section" enabled "0"
-		config_get inst_app "$section" app ""
-		config_get inst_port "$section" port ""
+_instances_result=""
+_build_instance_entry() {
+	local section="$1"
+	local inst_enabled inst_app inst_port
+	config_get inst_enabled "$section" enabled "0"
+	config_get inst_app "$section" app ""
+	config_get inst_port "$section" port ""
 
-		if [ "$inst_enabled" = "1" ] && [ -n "$inst_app" ] && [ -n "$inst_port" ]; then
-			[ -n "$instances" ] && instances="${instances},"
-			instances="${instances}${inst_app}:${inst_port}"
-		fi
-	}
+	if [ "$inst_enabled" = "1" ] && [ -n "$inst_app" ] && [ -n "$inst_port" ]; then
+		[ -n "$_instances_result" ] && _instances_result="${_instances_result},"
+		_instances_result="${_instances_result}${inst_app}:${inst_port}"
+	fi
+}
+
+build_instances_string() {
+	_instances_result=""
 	config_load "$CONFIG"
-	config_foreach _add_instance instance
-	echo "$instances"
+	config_foreach _build_instance_entry instance
+	echo "$_instances_result"
 }
 
 # Create LXC config
@@ -740,27 +742,29 @@ cmd_service_stop() {
 }
 
 # Instance management
+_instance_list_first=1
+_print_instance_json() {
+	local section="$1"
+	local name app port enabled
+	config_get name "$section" name "$section"
+	config_get app "$section" app ""
+	config_get port "$section" port ""
+	config_get enabled "$section" enabled "0"
+
+	[ "$_instance_list_first" -eq 0 ] && echo ","
+	_instance_list_first=0
+	printf '    {"id": "%s", "name": "%s", "app": "%s", "port": "%s", "enabled": %s}' \
+		"$section" "$name" "$app" "$port" "$([ "$enabled" = "1" ] && echo "true" || echo "false")"
+}
+
 cmd_instance_list() {
 	load_config
 	echo "{"
 	echo '  "instances": ['
 
-	local first=1
-	_list_instance() {
-		local section="$1"
-		local name app port enabled
-		config_get name "$section" name "$section"
-		config_get app "$section" app ""
-		config_get port "$section" port ""
-		config_get enabled "$section" enabled "0"
-
-		[ $first -eq 0 ] && echo ","
-		first=0
-		printf '    {"id": "%s", "name": "%s", "app": "%s", "port": "%s", "enabled": %s}' \
-			"$section" "$name" "$app" "$port" "$([ "$enabled" = "1" ] && echo "true" || echo "false")"
-	}
+	_instance_list_first=1
 	config_load "$CONFIG"
-	config_foreach _list_instance instance
+	config_foreach _print_instance_json instance
 	echo ""
 	echo "  ]"
 	echo "}"
