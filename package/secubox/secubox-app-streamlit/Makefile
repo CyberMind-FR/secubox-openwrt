@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-streamlit
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 PKG_ARCH:=all
 
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
@@ -30,9 +30,10 @@ Streamlit App Platform - Self-hosted Python data app platform
 
 Features:
 - Run Streamlit apps in LXC container
+- Multi-instance support (multiple apps on different ports)
 - Python 3.12 with Streamlit 1.53.x
-- App management (add, remove, switch)
 - Auto-install requirements.txt dependencies
+- HAProxy publish wizard for vhost routing
 - Web dashboard integration
 - Configurable port and memory limits
 
