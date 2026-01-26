@@ -116,6 +116,40 @@ var callGetInstallProgress = rpc.declare({
 	expect: { result: {} }
 });
 
+var callListInstances = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'list_instances',
+	expect: { result: {} }
+});
+
+var callAddInstance = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'add_instance',
+	params: ['id', 'name', 'app', 'port'],
+	expect: { result: {} }
+});
+
+var callRemoveInstance = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'remove_instance',
+	params: ['id'],
+	expect: { result: {} }
+});
+
+var callEnableInstance = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'enable_instance',
+	params: ['id'],
+	expect: { result: {} }
+});
+
+var callDisableInstance = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'disable_instance',
+	params: ['id'],
+	expect: { result: {} }
+});
+
 return baseclass.extend({
 	getStatus: function() {
 		return callGetStatus();
@@ -202,6 +236,28 @@ return baseclass.extend({
 
 	getInstallProgress: function() {
 		return callGetInstallProgress();
+	},
+
+	listInstances: function() {
+		return callListInstances().then(function(res) {
+			return res.instances || [];
+		});
+	},
+
+	addInstance: function(id, name, app, port) {
+		return callAddInstance(id, name, app, port);
+	},
+
+	removeInstance: function(id) {
+		return callRemoveInstance(id);
+	},
+
+	enableInstance: function(id) {
+		return callEnableInstance(id);
+	},
+
+	disableInstance: function(id) {
+		return callDisableInstance(id);
 	},
 
 	getDashboardData: function() {

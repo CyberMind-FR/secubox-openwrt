@@ -470,6 +470,141 @@ upload_app() {
 	fi
 }
 
+# List instances
+list_instances() {
+	json_init_obj
+	json_add_array "instances"
+
+	config_load "$CONFIG"
+
+	_add_instance_json() {
+		local section="$1"
+		local name app port enabled autostart inst_name
+
+		config_get inst_name "$section" name ""
+		config_get app "$section" app ""
+		config_get port "$section" port ""
+		config_get enabled "$section" enabled "0"
+		config_get autostart "$section" autostart "0"
+
+		[ -z "$app" ] && return
+
+		json_add_object ""
+		json_add_string "id" "$section"
+		json_add_string "name" "$inst_name"
+		json_add_string "app" "$app"
+		json_add_int "port" "$port"
+		json_add_boolean "enabled" "$( [ "$enabled" = "1" ] && echo 1 || echo 0 )"
+		json_add_boolean "autostart" "$( [ "$autostart" = "1" ] && echo 1 || echo 0 )"
+		json_close_object
+	}
+
+	config_foreach _add_instance_json instance
+
+	json_close_array
+	json_close_obj
+}
+
+# Add instance
+add_instance() {
+	read -r input
+	local id name app port
+	id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	app=$(echo "$input" | jsonfilter -e '@.app' 2>/dev/null)
+	port=$(echo "$input" | jsonfilter -e '@.port' 2>/dev/null)
+
+	if [ -z "$id" ] || [ -z "$app" ] || [ -z "$port" ]; then
+		json_error "Missing id, app, or port"
+		return
+	fi
+
+	[ -z "$name" ] && name="$id"
+
+	# Validate port number
+	if ! echo "$port" | grep -qE '^[0-9]+$'; then
+		json_error "Invalid port number"
+		return
+	fi
+
+	# Check if instance already exists
+	local existing
+	existing=$(uci -q get "${CONFIG}.${id}")
+	if [ -n "$existing" ]; then
+		json_error "Instance $id already exists"
+		return
+	fi
+
+	uci set "${CONFIG}.${id}=instance"
+	uci set "${CONFIG}.${id}.name=$name"
+	uci set "${CONFIG}.${id}.app=$app"
+	uci set "${CONFIG}.${id}.port=$port"
+	uci set "${CONFIG}.${id}.enabled=1"
+	uci set "${CONFIG}.${id}.autostart=1"
+	uci commit "$CONFIG"
+
+	json_success "Instance added: $id"
+}
+
+# Remove instance
+remove_instance() {
+	read -r input
+	local id
+	id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+
+	if [ -z "$id" ]; then
+		json_error "Missing instance id"
+		return
+	fi
+
+	# Check if instance exists
+	local existing
+	existing=$(uci -q get "${CONFIG}.${id}")
+	if [ -z "$existing" ]; then
+		json_error "Instance $id not found"
+		return
+	fi
+
+	uci delete "${CONFIG}.${id}"
+	uci commit "$CONFIG"
+
+	json_success "Instance removed: $id"
+}
+
+# Enable instance
+enable_instance() {
+	read -r input
+	local id
+	id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+
+	if [ -z "$id" ]; then
+		json_error "Missing instance id"
+		return
+	fi
+
+	uci set "${CONFIG}.${id}.enabled=1"
+	uci commit "$CONFIG"
+
+	json_success "Instance enabled: $id"
+}
+
+# Disable instance
+disable_instance() {
+	read -r input
+	local id
+	id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+
+	if [ -z "$id" ]; then
+		json_error "Missing instance id"
+		return
+	fi
+
+	uci set "${CONFIG}.${id}.enabled=0"
+	uci commit "$CONFIG"
+
+	json_success "Instance disabled: $id"
+}
+
 # Check install progress
 get_install_progress() {
 	local log_file="/var/log/streamlit-install.log"
@@ -544,7 +679,12 @@ case "$1" in
 			"remove_app": {"name": "str"},
 			"set_active_app": {"name": "str"},
 			"upload_app": {"name": "str", "content": "str"},
-			"get_install_progress": {}
+			"get_install_progress": {},
+			"list_instances": {},
+			"add_instance": {"id": "str", "name": "str", "app": "str", "port": 8501},
+			"remove_instance": {"id": "str"},
+			"enable_instance": {"id": "str"},
+			"disable_instance": {"id": "str"}
 		}
 		EOF
 		;;
@@ -600,6 +740,21 @@ case "$1" in
 				;;
 			get_install_progress)
 				get_install_progress
+				;;
+			list_instances)
+				list_instances
+				;;
+			add_instance)
+				add_instance
+				;;
+			remove_instance)
+				remove_instance
+				;;
+			enable_instance)
+				enable_instance
+				;;
+			disable_instance)
+				disable_instance
 				;;
 			*)
 				json_error "Unknown method: $2"

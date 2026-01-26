@@ -117,7 +117,12 @@
       "Bash(sfdisk:*)",
       "Bash(xzcat:*)",
       "Bash(head:*)",
-      "Bash(docker search:*)"
+      "Bash(docker search:*)",
+      "Bash(git merge:*)",
+      "Bash(gh run:*)",
+      "Bash(dig:*)",
+      "Bash(nslookup:*)",
+      "Bash(host:*)"
     ]
   }
 }

@@ -26,6 +26,14 @@
 			"path": "streamlit/apps"
 		}
 	},
+	"admin/services/streamlit/instances": {
+		"title": "Instances",
+		"order": 25,
+		"action": {
+			"type": "view",
+			"path": "streamlit/instances"
+		}
+	},
 	"admin/services/streamlit/logs": {
 		"title": "Logs",
 		"order": 30,

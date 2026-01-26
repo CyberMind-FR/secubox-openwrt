@@ -1,0 +1,177 @@
+#!/bin/sh
+# SecuBox Network Health Monitor
+# Detects CRC errors, link flapping, and interface issues
+
+. /usr/share/libubox/jshn.sh
+
+DMESG_LINES=500
+FLAP_THRESHOLD=5  # Number of link changes to consider flapping
+CRC_THRESHOLD=10  # CRC errors to consider problematic
+
+check_interface_health() {
+    local iface="$1"
+    local status="ok"
+    local issues=""
+    local crc_count=0
+    local link_changes=0
+    local current_state="unknown"
+
+    # Get current link state
+    if [ -d "/sys/class/net/$iface" ]; then
+        current_state=$(cat /sys/class/net/$iface/operstate 2>/dev/null || echo "unknown")
+    fi
+
+    # Count CRC errors from dmesg (last N lines)
+    crc_count=$(dmesg | tail -n $DMESG_LINES | grep -c "$iface.*crc error" 2>/dev/null || echo 0)
+
+    # Count link state changes from dmesg
+    link_up=$(dmesg | tail -n $DMESG_LINES | grep -c "$iface: Link is Up" 2>/dev/null || echo 0)
+    link_down=$(dmesg | tail -n $DMESG_LINES | grep -c "$iface: Link is Down" 2>/dev/null || echo 0)
+    link_changes=$((link_up + link_down))
+
+    # Determine status
+    if [ "$crc_count" -ge "$CRC_THRESHOLD" ]; then
+        status="critical"
+        issues="${issues}CRC errors detected ($crc_count); "
+    fi
+
+    if [ "$link_changes" -ge "$FLAP_THRESHOLD" ]; then
+        if [ "$status" = "ok" ]; then
+            status="warning"
+        fi
+        issues="${issues}Link flapping detected ($link_changes changes); "
+    fi
+
+    # Get interface stats
+    local rx_errors=0 tx_errors=0 rx_dropped=0 tx_dropped=0
+    if [ -f "/sys/class/net/$iface/statistics/rx_errors" ]; then
+        rx_errors=$(cat /sys/class/net/$iface/statistics/rx_errors)
+        tx_errors=$(cat /sys/class/net/$iface/statistics/tx_errors)
+        rx_dropped=$(cat /sys/class/net/$iface/statistics/rx_dropped)
+        tx_dropped=$(cat /sys/class/net/$iface/statistics/tx_dropped)
+    fi
+
+    if [ "$rx_errors" -gt 1000 ] || [ "$tx_errors" -gt 1000 ]; then
+        if [ "$status" = "ok" ]; then
+            status="warning"
+        fi
+        issues="${issues}High error count (rx:$rx_errors tx:$tx_errors); "
+    fi
+
+    # Output JSON for this interface
+    json_add_object "$iface"
+    json_add_string "status" "$status"
+    json_add_string "state" "$current_state"
+    json_add_int "crc_errors" "$crc_count"
+    json_add_int "link_changes" "$link_changes"
+    json_add_int "rx_errors" "$rx_errors"
+    json_add_int "tx_errors" "$tx_errors"
+    json_add_int "rx_dropped" "$rx_dropped"
+    json_add_int "tx_dropped" "$tx_dropped"
+    json_add_string "issues" "${issues%%; }"
+    json_close_object
+}
+
+get_network_health() {
+    json_init
+    json_add_string "timestamp" "$(date -Iseconds)"
+    json_add_object "interfaces"
+
+    # Check all physical interfaces
+    for iface in /sys/class/net/eth* /sys/class/net/wan* /sys/class/net/lan*; do
+        [ -d "$iface" ] || continue
+        iface_name=$(basename "$iface")
+        # Skip virtual interfaces (must have device link)
+        [ -d "$iface/device" ] || continue
+        check_interface_health "$iface_name"
+    done
+
+    json_close_object
+
+    # Overall status
+    local overall="healthy"
+    local critical_count=0
+    local warning_count=0
+
+    # Re-scan for overall status
+    for iface in /sys/class/net/eth* /sys/class/net/wan* /sys/class/net/lan*; do
+        [ -d "$iface" ] || continue
+        [ -d "$iface/device" ] || continue
+        iface_name=$(basename "$iface")
+
+        crc=$(dmesg | tail -n $DMESG_LINES | grep -c "$iface_name.*crc error" 2>/dev/null || echo 0)
+        if [ "$crc" -ge "$CRC_THRESHOLD" ]; then
+            critical_count=$((critical_count + 1))
+        fi
+
+        link_up=$(dmesg | tail -n $DMESG_LINES | grep -c "$iface_name: Link is Up" 2>/dev/null || echo 0)
+        link_down=$(dmesg | tail -n $DMESG_LINES | grep -c "$iface_name: Link is Down" 2>/dev/null || echo 0)
+        if [ $((link_up + link_down)) -ge "$FLAP_THRESHOLD" ]; then
+            warning_count=$((warning_count + 1))
+        fi
+    done
+
+    if [ "$critical_count" -gt 0 ]; then
+        overall="critical"
+    elif [ "$warning_count" -gt 0 ]; then
+        overall="warning"
+    fi
+
+    json_add_string "overall" "$overall"
+    json_add_int "critical_interfaces" "$critical_count"
+    json_add_int "warning_interfaces" "$warning_count"
+
+    # Add recommendations if issues found
+    if [ "$overall" != "healthy" ]; then
+        json_add_array "recommendations"
+        if [ "$critical_count" -gt 0 ]; then
+            json_add_string "" "Check/replace Ethernet cables on affected interfaces"
+            json_add_string "" "Try different port on switch/modem"
+            json_add_string "" "Inspect RJ45 connectors for damage"
+        fi
+        if [ "$warning_count" -gt 0 ]; then
+            json_add_string "" "Monitor link stability"
+            json_add_string "" "Check for EMI interference near cables"
+        fi
+        json_close_array
+    fi
+
+    json_dump
+}
+
+get_interface_detail() {
+    local iface="$1"
+
+    if [ ! -d "/sys/class/net/$iface" ]; then
+        echo '{"error": "Interface not found"}'
+        return 1
+    fi
+
+    json_init
+    json_add_string "interface" "$iface"
+    json_add_string "state" "$(cat /sys/class/net/$iface/operstate 2>/dev/null)"
+    json_add_string "mac" "$(cat /sys/class/net/$iface/address 2>/dev/null)"
+    json_add_int "mtu" "$(cat /sys/class/net/$iface/mtu 2>/dev/null)"
+
+    # Recent dmesg entries for this interface
+    json_add_array "recent_events"
+    dmesg | tail -n 100 | grep "$iface" | tail -n 10 | while read line; do
+        json_add_string "" "$line"
+    done
+    json_close_array
+
+    json_dump
+}
+
+case "$1" in
+    status|health)
+        get_network_health
+        ;;
+    detail)
+        get_interface_detail "$2"
+        ;;
+    *)
+        echo "Usage: $0 {status|health|detail <interface>}"
+        exit 1
+        ;;
+esac
