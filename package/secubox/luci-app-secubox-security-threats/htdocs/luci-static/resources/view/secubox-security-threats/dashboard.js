@@ -16,6 +16,7 @@ return L.view.extend({
 		var status = data.status || {};
 		var stats = data.stats || {};
 		var blocked = data.blocked || [];
+		var securityStats = data.securityStats || {};
 
 		// Calculate statistics
 		var threatStats = {
@@ -30,6 +31,7 @@ return L.view.extend({
 
 		// Build view elements
 		var statusBanner = this.renderStatusBanner(status);
+		var fwStatsGrid = this.renderFirewallStats(securityStats);
 		var statsGrid = this.renderStatsGrid(threatStats, blocked.length);
 		var threatDist = this.renderThreatDistribution(stats);
 		var riskGauge = this.renderRiskGauge(threatStats.avg_score);
@@ -46,7 +48,11 @@ return L.view.extend({
 			E('div', { 'class': 'cbi-map-descr' }, _('Real-time threat detection integrating netifyd DPI and CrowdSec intelligence')),
 			statusBanner,
 			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Overview')),
+				E('h3', {}, _('Firewall & Network Protection')),
+				fwStatsGrid
+			]),
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Threat Overview')),
 				statsGrid
 			]),
 			E('div', { 'class': 'cbi-section', 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;' }, [
@@ -56,6 +62,61 @@ return L.view.extend({
 			E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, _('Recent Threats')),
 				threatsTable
+			])
+		]);
+	},
+
+	renderFirewallStats: function(stats) {
+		var formatNumber = function(n) {
+			if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+			if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+			return n.toString();
+		};
+
+		return E('div', {
+			'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1rem;'
+		}, [
+			E('div', {
+				'style': 'background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); padding: 1.2rem; border-radius: 12px; color: white; text-align: center;'
+			}, [
+				E('div', { 'style': 'font-size: 2.5rem; font-weight: bold;' }, formatNumber(stats.wan_dropped || 0)),
+				E('div', { 'style': 'font-size: 0.9rem; opacity: 0.9; margin-top: 0.3rem;' }, _('WAN Dropped')),
+				E('div', { 'style': 'font-size: 0.75rem; opacity: 0.7; margin-top: 0.2rem;' }, _('Packets blocked at interface'))
+			]),
+			E('div', {
+				'style': 'background: linear-gradient(135deg, #c62828 0%, #e53935 100%); padding: 1.2rem; border-radius: 12px; color: white; text-align: center;'
+			}, [
+				E('div', { 'style': 'font-size: 2.5rem; font-weight: bold;' }, formatNumber(stats.firewall_rejects || 0)),
+				E('div', { 'style': 'font-size: 0.9rem; opacity: 0.9; margin-top: 0.3rem;' }, _('FW Rejects')),
+				E('div', { 'style': 'font-size: 0.75rem; opacity: 0.7; margin-top: 0.2rem;' }, _('Firewall rule blocks'))
+			]),
+			E('div', {
+				'style': 'background: linear-gradient(135deg, #6a1b9a 0%, #8e24aa 100%); padding: 1.2rem; border-radius: 12px; color: white; text-align: center;'
+			}, [
+				E('div', { 'style': 'font-size: 2.5rem; font-weight: bold;' }, formatNumber(stats.crowdsec_bans || 0)),
+				E('div', { 'style': 'font-size: 0.9rem; opacity: 0.9; margin-top: 0.3rem;' }, _('CrowdSec Bans')),
+				E('div', { 'style': 'font-size: 0.75rem; opacity: 0.7; margin-top: 0.2rem;' }, _('Active IP bans'))
+			]),
+			E('div', {
+				'style': 'background: linear-gradient(135deg, #ef6c00 0%, #ff9800 100%); padding: 1.2rem; border-radius: 12px; color: white; text-align: center;'
+			}, [
+				E('div', { 'style': 'font-size: 2.5rem; font-weight: bold;' }, formatNumber(stats.crowdsec_alerts_24h || 0)),
+				E('div', { 'style': 'font-size: 0.9rem; opacity: 0.9; margin-top: 0.3rem;' }, _('Alerts 24h')),
+				E('div', { 'style': 'font-size: 0.75rem; opacity: 0.7; margin-top: 0.2rem;' }, _('CrowdSec detections'))
+			]),
+			E('div', {
+				'style': 'background: linear-gradient(135deg, #455a64 0%, #607d8b 100%); padding: 1.2rem; border-radius: 12px; color: white; text-align: center;'
+			}, [
+				E('div', { 'style': 'font-size: 2.5rem; font-weight: bold;' }, formatNumber(stats.invalid_connections || 0)),
+				E('div', { 'style': 'font-size: 0.9rem; opacity: 0.9; margin-top: 0.3rem;' }, _('Invalid Conns')),
+				E('div', { 'style': 'font-size: 0.75rem; opacity: 0.7; margin-top: 0.2rem;' }, _('Conntrack anomalies'))
+			]),
+			E('div', {
+				'style': 'background: linear-gradient(135deg, #00695c 0%, #00897b 100%); padding: 1.2rem; border-radius: 12px; color: white; text-align: center;'
+			}, [
+				E('div', { 'style': 'font-size: 2.5rem; font-weight: bold;' }, formatNumber(stats.haproxy_connections || 0)),
+				E('div', { 'style': 'font-size: 0.9rem; opacity: 0.9; margin-top: 0.3rem;' }, _('HAProxy Conns')),
+				E('div', { 'style': 'font-size: 0.75rem; opacity: 0.7; margin-top: 0.2rem;' }, _('Reverse proxy sessions'))
 			])
 		]);
 	},
