@@ -58,6 +58,13 @@ return view.extend({
 
 	renderMainSettings: function() {
 		var config = this.configData.main || {};
+		var isEnabled = config.enabled === true || config.enabled === 1 || config.enabled === '1';
+
+		// Normalize memory limit for comparison
+		var memLimit = config.memory_limit || '1024M';
+		if (memLimit === '1G') memLimit = '1024M';
+		if (memLimit === '2G') memLimit = '2048M';
+		if (memLimit === '4G') memLimit = '4096M';
 
 		return E('div', { 'class': 'st-card' }, [
 			E('div', { 'class': 'st-card-header' }, [
@@ -74,8 +81,8 @@ return view.extend({
 						'id': 'cfg-enabled',
 						'style': 'height: 42px;'
 					}, [
-						E('option', { 'value': '1', 'selected': config.enabled }, _('Enabled')),
-						E('option', { 'value': '0', 'selected': !config.enabled }, _('Disabled'))
+						E('option', Object.assign({ 'value': '1' }, isEnabled ? { 'selected': 'selected' } : {}), _('Enabled')),
+						E('option', Object.assign({ 'value': '0' }, !isEnabled ? { 'selected': 'selected' } : {}), _('Disabled'))
 					])
 				]),
 				E('div', { 'class': 'st-form-group' }, [
@@ -116,11 +123,11 @@ return view.extend({
 						'id': 'cfg-memory_limit',
 						'style': 'height: 42px;'
 					}, [
-						E('option', { 'value': '256M', 'selected': config.memory_limit === '256M' }, '256 MB'),
-						E('option', { 'value': '512M', 'selected': config.memory_limit === '512M' }, '512 MB'),
-						E('option', { 'value': '1024M', 'selected': config.memory_limit === '1024M' || !config.memory_limit }, '1 GB'),
-						E('option', { 'value': '2048M', 'selected': config.memory_limit === '2048M' }, '2 GB'),
-						E('option', { 'value': '4096M', 'selected': config.memory_limit === '4096M' }, '4 GB')
+						E('option', Object.assign({ 'value': '256M' }, memLimit === '256M' ? { 'selected': 'selected' } : {}), '256 MB'),
+						E('option', Object.assign({ 'value': '512M' }, memLimit === '512M' ? { 'selected': 'selected' } : {}), '512 MB'),
+						E('option', Object.assign({ 'value': '1024M' }, memLimit === '1024M' ? { 'selected': 'selected' } : {}), '1 GB'),
+						E('option', Object.assign({ 'value': '2048M' }, memLimit === '2048M' ? { 'selected': 'selected' } : {}), '2 GB'),
+						E('option', Object.assign({ 'value': '4096M' }, memLimit === '4096M' ? { 'selected': 'selected' } : {}), '4 GB')
 					])
 				]),
 				E('div', { 'class': 'st-form-group' }, [
@@ -140,6 +147,11 @@ return view.extend({
 	renderServerSettings: function() {
 		var config = this.configData.server || {};
 
+		// Normalize boolean values (can be true/false boolean or "true"/"false" string)
+		var isHeadless = config.headless === true || config.headless === 'true';
+		var gatherStats = config.browser_gather_usage_stats === true || config.browser_gather_usage_stats === 'true';
+		var themeBase = config.theme_base || 'dark';
+
 		return E('div', { 'class': 'st-card' }, [
 			E('div', { 'class': 'st-card-header' }, [
 				E('div', { 'class': 'st-card-title' }, [
@@ -155,8 +167,8 @@ return view.extend({
 						'id': 'cfg-headless',
 						'style': 'height: 42px;'
 					}, [
-						E('option', { 'value': 'true', 'selected': config.headless !== false }, _('Enabled (recommended)')),
-						E('option', { 'value': 'false', 'selected': config.headless === false }, _('Disabled'))
+						E('option', Object.assign({ 'value': 'true' }, isHeadless ? { 'selected': 'selected' } : {}), _('Enabled (recommended)')),
+						E('option', Object.assign({ 'value': 'false' }, !isHeadless ? { 'selected': 'selected' } : {}), _('Disabled'))
 					])
 				]),
 				E('div', { 'class': 'st-form-group' }, [
@@ -166,8 +178,8 @@ return view.extend({
 						'id': 'cfg-gather_stats',
 						'style': 'height: 42px;'
 					}, [
-						E('option', { 'value': 'false', 'selected': !config.browser_gather_usage_stats }, _('Disabled (recommended)')),
-						E('option', { 'value': 'true', 'selected': config.browser_gather_usage_stats }, _('Enabled'))
+						E('option', Object.assign({ 'value': 'false' }, !gatherStats ? { 'selected': 'selected' } : {}), _('Disabled (recommended)')),
+						E('option', Object.assign({ 'value': 'true' }, gatherStats ? { 'selected': 'selected' } : {}), _('Enabled'))
 					])
 				]),
 				E('div', { 'class': 'st-form-group' }, [
@@ -177,8 +189,8 @@ return view.extend({
 						'id': 'cfg-theme_base',
 						'style': 'height: 42px;'
 					}, [
-						E('option', { 'value': 'dark', 'selected': config.theme_base === 'dark' || !config.theme_base }, _('Dark')),
-						E('option', { 'value': 'light', 'selected': config.theme_base === 'light' }, _('Light'))
+						E('option', Object.assign({ 'value': 'dark' }, themeBase === 'dark' ? { 'selected': 'selected' } : {}), _('Dark')),
+						E('option', Object.assign({ 'value': 'light' }, themeBase === 'light' ? { 'selected': 'selected' } : {}), _('Light'))
 					])
 				]),
 				E('div', { 'class': 'st-form-group' }, [
