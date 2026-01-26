@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-streamlit
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_ARCH:=all
 
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
@@ -32,6 +32,7 @@ Features:
 - Run Streamlit apps in LXC container
 - Python 3.12 with Streamlit 1.53.x
 - App management (add, remove, switch)
+- Auto-install requirements.txt dependencies
 - Web dashboard integration
 - Configurable port and memory limits
 
