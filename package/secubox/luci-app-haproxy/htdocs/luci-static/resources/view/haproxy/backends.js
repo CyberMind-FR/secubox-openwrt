@@ -23,7 +23,8 @@ return view.extend({
 			var backends = (result && result.backends) || result || [];
 			return Promise.all([
 				Promise.resolve(backends),
-				api.listServers('')
+				api.listServers(''),
+				api.listExposedServices()
 			]);
 		});
 	},
@@ -33,6 +34,8 @@ return view.extend({
 		var backends = data[0] || [];
 		var serversResult = data[1] || {};
 		var servers = (serversResult && serversResult.servers) || serversResult || [];
+		var exposedResult = data[2] || {};
+		self.exposedServices = (exposedResult && exposedResult.services) || exposedResult || [];
 
 		// Group servers by backend
 		var serversByBackend = {};
@@ -405,9 +408,45 @@ return view.extend({
 
 	showAddServerModal: function(backend) {
 		var self = this;
+		var exposedServices = self.exposedServices || [];
+
+		// Build service selector options
+		var serviceOptions = [E('option', { 'value': '' }, '-- Select a service --')];
+		exposedServices.forEach(function(svc) {
+			var label = svc.name + ' (' + svc.address + ':' + svc.port + ')';
+			if (svc.category) label += ' [' + svc.category + ']';
+			serviceOptions.push(E('option', {
+				'value': JSON.stringify(svc),
+				'data-name': svc.name,
+				'data-address': svc.address,
+				'data-port': svc.port
+			}, label));
+		});
 
 		ui.showModal('Add Server to ' + backend.name, [
 			E('div', { 'style': 'max-width: 500px;' }, [
+				// Quick service selector
+				exposedServices.length > 0 ? E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Quick Select'),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('select', {
+							'id': 'modal-service-select',
+							'class': 'cbi-input-select',
+							'style': 'width: 100%;',
+							'change': function(ev) {
+								var val = ev.target.value;
+								if (val) {
+									var svc = JSON.parse(val);
+									document.getElementById('modal-server-name').value = svc.name;
+									document.getElementById('modal-server-address').value = svc.address;
+									document.getElementById('modal-server-port').value = svc.port;
+								}
+							}
+						}, serviceOptions),
+						E('small', { 'style': 'color: var(--hp-text-muted); display: block; margin-top: 4px;' },
+							'Select a known service to auto-fill details, or enter manually below')
+					])
+				]) : null,
 				E('div', { 'class': 'cbi-value' }, [
 					E('label', { 'class': 'cbi-value-title' }, 'Server Name'),
 					E('div', { 'class': 'cbi-value-field' }, [

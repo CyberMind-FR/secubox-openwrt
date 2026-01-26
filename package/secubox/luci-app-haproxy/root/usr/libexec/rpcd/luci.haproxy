@@ -1285,6 +1285,74 @@ method_get_logs() {
 	json_dump
 }
 
+# List exposed services (from secubox-exposure config)
+method_list_exposed_services() {
+	json_init
+	json_add_array "services"
+
+	# Load known services from exposure config
+	if uci -q show secubox-exposure >/dev/null 2>&1; then
+		config_load "secubox-exposure"
+		config_foreach _add_exposed_service known
+	fi
+
+	# Also scan listening ports for dynamic discovery
+	if command -v netstat >/dev/null 2>&1; then
+		netstat -tlnp 2>/dev/null | grep LISTEN | while read line; do
+			local addr_port=$(echo "$line" | awk '{print $4}')
+			local port=$(echo "$addr_port" | awk -F: '{print $NF}')
+			local proc=$(echo "$line" | awk '{print $7}' | cut -d'/' -f2)
+
+			# Skip if already added from known services or common system ports
+			case "$port" in
+				22|53|80|443|8404) continue ;;
+			esac
+
+			# Only add if process name is useful
+			if [ -n "$proc" ] && [ "$proc" != "-" ] && [ "$proc" != "unknown" ]; then
+				json_add_object
+				json_add_string "id" "dynamic_${proc}_${port}"
+				json_add_string "name" "$proc"
+				json_add_int "port" "$port"
+				json_add_string "address" "127.0.0.1"
+				json_add_string "category" "detected"
+				json_add_boolean "dynamic" 1
+				json_close_object
+			fi
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
+_add_exposed_service() {
+	local section="$1"
+	local default_port config_path category actual_port
+
+	config_get default_port "$section" default_port ""
+	config_get config_path "$section" config_path ""
+	config_get category "$section" category "app"
+
+	[ -z "$default_port" ] && return
+
+	# Try to get actual port from UCI config if available
+	actual_port="$default_port"
+	if [ -n "$config_path" ]; then
+		local configured_port=$(uci -q get "$config_path" 2>/dev/null)
+		[ -n "$configured_port" ] && actual_port="$configured_port"
+	fi
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$section"
+	json_add_int "port" "$actual_port"
+	json_add_string "address" "127.0.0.1"
+	json_add_string "category" "$category"
+	json_add_boolean "dynamic" 0
+	json_close_object
+}
+
 # Main RPC interface
 case "$1" in
 	list)
@@ -1326,7 +1394,8 @@ case "$1" in
 	"reload": {},
 	"generate": {},
 	"validate": {},
-	"get_logs": { "lines": "integer" }
+	"get_logs": { "lines": "integer" },
+	"list_exposed_services": {}
 }
 EOF
 		;;
@@ -1369,6 +1438,7 @@ EOF
 			generate) method_generate ;;
 			validate) method_validate ;;
 			get_logs) method_get_logs ;;
+			list_exposed_services) method_list_exposed_services ;;
 		esac
 		;;
 esac

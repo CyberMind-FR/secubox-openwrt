@@ -270,13 +270,24 @@ EOF
         echo -e "  ${CYAN}Port:${NC}    $onion_port -> 127.0.0.1:$local_port"
         echo ""
 
-        # Save to UCI
+        # Save to exposure UCI
         uci set "${CONFIG_NAME}.${service}=service"
         uci set "${CONFIG_NAME}.${service}.port=$local_port"
         uci set "${CONFIG_NAME}.${service}.tor=1"
         uci set "${CONFIG_NAME}.${service}.tor_onion=$onion"
         uci set "${CONFIG_NAME}.${service}.tor_port=$onion_port"
         uci commit "$CONFIG_NAME"
+
+        # Sync to Tor Shield UCI
+        local hs_name="hs_${service}"
+        uci set "tor-shield.${hs_name}=hidden_service"
+        uci set "tor-shield.${hs_name}.name=${service}"
+        uci set "tor-shield.${hs_name}.enabled=1"
+        uci set "tor-shield.${hs_name}.local_port=${local_port}"
+        uci set "tor-shield.${hs_name}.onion_port=${onion_port}"
+        uci set "tor-shield.${hs_name}.onion_address=${onion}"
+        uci commit tor-shield
+        log_ok "Synced to Tor Shield"
     else
         log_err "Failed to generate onion address"
         return 1
@@ -335,11 +346,19 @@ cmd_tor_remove() {
     # Remove directory
     rm -rf "$hidden_dir"
 
-    # Update UCI
+    # Update exposure UCI
     uci delete "${CONFIG_NAME}.${service}.tor" 2>/dev/null
     uci delete "${CONFIG_NAME}.${service}.tor_onion" 2>/dev/null
     uci delete "${CONFIG_NAME}.${service}.tor_port" 2>/dev/null
     uci commit "$CONFIG_NAME"
+
+    # Remove from Tor Shield UCI
+    local hs_name="hs_${service}"
+    if uci -q get "tor-shield.${hs_name}" >/dev/null 2>&1; then
+        uci delete "tor-shield.${hs_name}"
+        uci commit tor-shield
+        log_ok "Removed from Tor Shield"
+    fi
 
     # Restart Tor
     /etc/init.d/tor restart 2>/dev/null || systemctl restart tor 2>/dev/null
@@ -347,9 +366,56 @@ cmd_tor_remove() {
     log_ok "Hidden service removed"
 }
 
+cmd_tor_sync() {
+    load_config
+
+    log_info "Syncing hidden services to Tor Shield..."
+    local synced=0
+
+    # List from filesystem and sync to Tor Shield
+    if [ -d "$TOR_HIDDEN_DIR" ]; then
+        for dir in "$TOR_HIDDEN_DIR"/*/; do
+            [ -d "$dir" ] || continue
+            local svc=$(basename "$dir")
+            local onion=""
+            [ -f "$dir/hostname" ] && onion=$(cat "$dir/hostname")
+
+            # Get port from torrc
+            local port=$(grep -A1 "HiddenServiceDir $dir" "$TOR_CONFIG" 2>/dev/null | grep HiddenServicePort | awk '{print $2}')
+            local local_port=$(grep -A1 "HiddenServiceDir $dir" "$TOR_CONFIG" 2>/dev/null | grep HiddenServicePort | awk '{split($3,a,":"); print a[2]}')
+
+            if [ -n "$onion" ]; then
+                local hs_name="hs_${svc}"
+                if ! uci -q get "tor-shield.${hs_name}" >/dev/null 2>&1; then
+                    log_info "Adding $svc to Tor Shield"
+                    uci set "tor-shield.${hs_name}=hidden_service"
+                    uci set "tor-shield.${hs_name}.name=${svc}"
+                    uci set "tor-shield.${hs_name}.enabled=1"
+                    uci set "tor-shield.${hs_name}.local_port=${local_port:-80}"
+                    uci set "tor-shield.${hs_name}.onion_port=${port:-80}"
+                    uci set "tor-shield.${hs_name}.onion_address=${onion}"
+                    synced=$((synced + 1))
+                fi
+            fi
+        done
+    fi
+
+    if [ "$synced" -gt 0 ]; then
+        uci commit tor-shield
+        log_ok "Synced $synced hidden service(s) to Tor Shield"
+    else
+        log_info "All hidden services already synced"
+    fi
+}
+
 # ============================================================================
-# HAPROXY SSL BACKENDS
+# HAPROXY SSL BACKENDS (UCI-based integration with haproxyctl)
 # ============================================================================
+
+# Sanitize name for UCI section (replace dots/hyphens with underscores)
+sanitize_uci_name() {
+    echo "$1" | sed 's/[.-]/_/g'
+}
 
 cmd_ssl_add() {
     local service="$1"
@@ -379,80 +445,66 @@ cmd_ssl_add() {
         fi
     fi
 
-    # Check if HAProxy config exists
-    if [ ! -f "$HAPROXY_CONFIG" ]; then
-        log_err "HAProxy config not found: $HAPROXY_CONFIG"
+    # Check if haproxyctl exists
+    if [ ! -x "/usr/sbin/haproxyctl" ]; then
+        log_err "haproxyctl not found. Is secubox-app-haproxy installed?"
         return 1
     fi
 
-    # Check if already configured
-    if grep -q "backend ${service}_backend" "$HAPROXY_CONFIG"; then
-        log_warn "Backend for $service already exists in HAProxy config"
-        return 0
-    fi
+    # Sanitize names for UCI
+    local backend_name="$service"
+    local vhost_name=$(sanitize_uci_name "$domain")
 
-    log_info "Adding SSL backend for $service ($domain -> 127.0.0.1:$local_port)"
-
-    # Create backend config
-    local backend_config="
-# Backend for $service (added by secubox-exposure)
-backend ${service}_backend
-    mode http
-    option httpchk GET /
-    http-request set-header X-Forwarded-Proto https
-    server ${service} 127.0.0.1:$local_port check
-"
-
-    # Add ACL to https frontend
-    local acl_line="    acl host_${service} hdr(host) -i $domain"
-    local use_line="    use_backend ${service}_backend if host_${service}"
-
-    # Check if https-in frontend exists
-    if grep -q "frontend https-in" "$HAPROXY_CONFIG"; then
-        # Add ACL and use_backend before the default_backend line
-        sed -i "/frontend https-in/,/default_backend/ {
-            /default_backend/ i\\
-$acl_line\\
-$use_line
-        }" "$HAPROXY_CONFIG"
+    # Check if backend already exists in UCI
+    if uci -q get "haproxy.${backend_name}" >/dev/null 2>&1; then
+        log_warn "Backend '$backend_name' already exists in HAProxy UCI config"
     else
-        log_warn "No https-in frontend found. Adding basic HTTPS frontend."
-        cat >> "$HAPROXY_CONFIG" << EOF
-
-frontend https-in
-    bind *:443 ssl crt $HAPROXY_CERTS/
-    mode http
-    option httplog
-$acl_line
-$use_line
-    default_backend default_backend
-EOF
+        # Create backend in HAProxy UCI config
+        log_info "Adding backend '$backend_name' (127.0.0.1:$local_port)"
+        uci set "haproxy.${backend_name}=backend"
+        uci set "haproxy.${backend_name}.name=${backend_name}"
+        uci set "haproxy.${backend_name}.mode=http"
+        uci set "haproxy.${backend_name}.balance=roundrobin"
+        uci set "haproxy.${backend_name}.enabled=1"
+        uci add_list "haproxy.${backend_name}.server=${service} 127.0.0.1:${local_port} check"
     fi
 
-    # Add backend at end of file
-    echo "$backend_config" >> "$HAPROXY_CONFIG"
+    # Check if vhost already exists
+    if uci -q get "haproxy.${vhost_name}" >/dev/null 2>&1; then
+        log_warn "Vhost for '$domain' already exists"
+    else
+        # Create vhost in HAProxy UCI config
+        log_info "Adding vhost '$domain' -> backend '$backend_name'"
+        uci set "haproxy.${vhost_name}=vhost"
+        uci set "haproxy.${vhost_name}.domain=${domain}"
+        uci set "haproxy.${vhost_name}.backend=${backend_name}"
+        uci set "haproxy.${vhost_name}.ssl=1"
+        uci set "haproxy.${vhost_name}.ssl_redirect=1"
+        uci set "haproxy.${vhost_name}.enabled=1"
+    fi
 
-    # Save to UCI
+    # Commit HAProxy UCI changes
+    uci commit haproxy
+
+    # Also save to exposure UCI for tracking
     uci set "${CONFIG_NAME}.${service}=service"
     uci set "${CONFIG_NAME}.${service}.port=$local_port"
     uci set "${CONFIG_NAME}.${service}.ssl=1"
     uci set "${CONFIG_NAME}.${service}.ssl_domain=$domain"
     uci commit "$CONFIG_NAME"
 
-    log_ok "HAProxy backend added for $service"
+    log_ok "HAProxy UCI config updated"
     log_info "Domain: $domain -> 127.0.0.1:$local_port"
-    log_warn "Note: You need to add SSL certificate for $domain to $HAPROXY_CERTS/"
-    log_info "Reloading HAProxy..."
 
-    # Reload HAProxy (in LXC container)
-    if [ -x "/usr/sbin/haproxyctl" ]; then
-        /usr/sbin/haproxyctl reload
-    else
-        lxc-attach -n haproxy -- /etc/init.d/haproxy reload 2>/dev/null || \
-        /etc/init.d/haproxy reload 2>/dev/null
-    fi
+    # Regenerate and reload HAProxy
+    log_info "Regenerating HAProxy config..."
+    /usr/sbin/haproxyctl generate
+
+    log_info "Reloading HAProxy..."
+    /usr/sbin/haproxyctl reload
 
     log_ok "SSL backend configured"
+    log_warn "Note: Ensure SSL certificate exists for $domain"
 }
 
 cmd_ssl_list() {
@@ -463,21 +515,27 @@ cmd_ssl_list() {
     printf "%-15s %-30s %-20s\n" "SERVICE" "DOMAIN" "BACKEND"
     printf "%-15s %-30s %-20s\n" "---------------" "------------------------------" "--------------------"
 
-    # Parse from HAProxy config
-    if [ -f "$HAPROXY_CONFIG" ]; then
-        grep -E "^backend .+_backend$" "$HAPROXY_CONFIG" | while read line; do
-            local backend=$(echo "$line" | awk '{print $2}')
-            local service=$(echo "$backend" | sed 's/_backend$//')
+    # Read from HAProxy UCI config (vhosts with their backends)
+    local found=0
+    for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d'.' -f2 | cut -d'=' -f1); do
+        local domain=$(uci -q get "haproxy.${vhost}.domain")
+        local backend=$(uci -q get "haproxy.${vhost}.backend")
+        local enabled=$(uci -q get "haproxy.${vhost}.enabled")
 
-            # Get domain from ACL
-            local domain=$(grep "acl host_${service} " "$HAPROXY_CONFIG" | awk '{print $NF}')
+        [ "$enabled" != "1" ] && continue
+        [ -z "$domain" ] && continue
 
-            # Get server line
-            local server=$(grep -A5 "backend $backend" "$HAPROXY_CONFIG" | grep "server " | awk '{print $3}')
+        # Get server from backend
+        local server=""
+        if [ -n "$backend" ]; then
+            server=$(uci -q get "haproxy.${backend}.server" | head -1 | awk '{print $2}')
+        fi
 
-            printf "%-15s %-30s %-20s\n" "$service" "${domain:-N/A}" "${server:-N/A}"
-        done
-    fi
+        printf "%-15s %-30s %-20s\n" "${backend:-N/A}" "$domain" "${server:-N/A}"
+        found=1
+    done
+
+    [ "$found" = "0" ] && echo "  No SSL backends configured"
     echo ""
 }
 
@@ -491,38 +549,51 @@ cmd_ssl_remove() {
 
     load_config
 
-    if [ ! -f "$HAPROXY_CONFIG" ]; then
-        log_err "HAProxy config not found"
+    # Check if haproxyctl exists
+    if [ ! -x "/usr/sbin/haproxyctl" ]; then
+        log_err "haproxyctl not found"
         return 1
     fi
 
-    if ! grep -q "backend ${service}_backend" "$HAPROXY_CONFIG"; then
-        log_err "No backend found for $service"
+    local backend_name="$service"
+    local removed=0
+
+    # Find and remove vhosts pointing to this backend
+    for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d'.' -f2 | cut -d'=' -f1); do
+        local vhost_backend=$(uci -q get "haproxy.${vhost}.backend")
+        if [ "$vhost_backend" = "$backend_name" ]; then
+            log_info "Removing vhost '$vhost'"
+            uci delete "haproxy.${vhost}"
+            removed=1
+        fi
+    done
+
+    # Remove backend if it exists
+    if uci -q get "haproxy.${backend_name}" >/dev/null 2>&1; then
+        log_info "Removing backend '$backend_name'"
+        uci delete "haproxy.${backend_name}"
+        removed=1
+    fi
+
+    if [ "$removed" = "0" ]; then
+        log_err "No backend or vhost found for '$service'"
         return 1
     fi
 
-    log_info "Removing SSL backend for $service"
+    # Commit HAProxy UCI changes
+    uci commit haproxy
 
-    # Remove ACL and use_backend lines
-    sed -i "/acl host_${service} /d" "$HAPROXY_CONFIG"
-    sed -i "/use_backend ${service}_backend/d" "$HAPROXY_CONFIG"
-
-    # Remove backend block
-    sed -i "/# Backend for $service/,/^$/d" "$HAPROXY_CONFIG"
-    sed -i "/^backend ${service}_backend$/,/^$/d" "$HAPROXY_CONFIG"
-
-    # Update UCI
+    # Update exposure UCI
     uci delete "${CONFIG_NAME}.${service}.ssl" 2>/dev/null
     uci delete "${CONFIG_NAME}.${service}.ssl_domain" 2>/dev/null
     uci commit "$CONFIG_NAME"
 
-    # Reload HAProxy
-    if [ -x "/usr/sbin/haproxyctl" ]; then
-        /usr/sbin/haproxyctl reload
-    else
-        lxc-attach -n haproxy -- /etc/init.d/haproxy reload 2>/dev/null || \
-        /etc/init.d/haproxy reload 2>/dev/null
-    fi
+    # Regenerate and reload HAProxy
+    log_info "Regenerating HAProxy config..."
+    /usr/sbin/haproxyctl generate
+
+    log_info "Reloading HAProxy..."
+    /usr/sbin/haproxyctl reload
 
     log_ok "SSL backend removed"
 }
@@ -563,16 +634,19 @@ cmd_status() {
     fi
     echo ""
 
-    # HAProxy backends
+    # HAProxy backends (from UCI)
     local ssl_backends=0
-    [ -f "$HAPROXY_CONFIG" ] && ssl_backends=$(grep -c "^backend.*_backend$" "$HAPROXY_CONFIG" 2>/dev/null || echo 0)
-    echo -e "${BLUE}HAProxy SSL Backends:${NC} $ssl_backends"
-    if [ "$ssl_backends" -gt 0 ] && [ -f "$HAPROXY_CONFIG" ]; then
-        grep -E "^backend .+_backend$" "$HAPROXY_CONFIG" | while read line; do
-            local backend=$(echo "$line" | awk '{print $2}' | sed 's/_backend$//')
-            echo "  - $backend"
-        done
-    fi
+    echo -e "${BLUE}HAProxy SSL Backends:${NC}"
+    for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d'.' -f2 | cut -d'=' -f1); do
+        local domain=$(uci -q get "haproxy.${vhost}.domain")
+        local backend=$(uci -q get "haproxy.${vhost}.backend")
+        local enabled=$(uci -q get "haproxy.${vhost}.enabled")
+        [ "$enabled" != "1" ] && continue
+        [ -z "$domain" ] && continue
+        echo "  - ${backend}: ${domain}"
+        ssl_backends=$((ssl_backends + 1))
+    done
+    [ "$ssl_backends" = "0" ] && echo "  (none configured)"
     echo ""
     echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
 }
@@ -592,6 +666,7 @@ COMMANDS:
   tor add <svc> [port]    Create Tor hidden service
   tor list                List hidden services
   tor remove <svc>        Remove hidden service
+  tor sync                Sync hidden services to Tor Shield
 
   ssl add <svc> <domain>  Add HAProxy SSL backend
   ssl list                List SSL backends
@@ -636,7 +711,8 @@ case "$1" in
             add) cmd_tor_add "$3" "$4" "$5" ;;
             list) cmd_tor_list ;;
             remove) cmd_tor_remove "$3" ;;
-            *) log_err "Usage: secubox-exposure tor {add|list|remove}"; exit 1 ;;
+            sync) cmd_tor_sync ;;
+            *) log_err "Usage: secubox-exposure tor {add|list|remove|sync}"; exit 1 ;;
         esac
         ;;
     ssl)

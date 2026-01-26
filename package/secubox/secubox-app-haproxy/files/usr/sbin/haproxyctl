@@ -246,6 +246,20 @@ echo "Config: $CONFIG_FILE"
 ls -la /opt/haproxy/
 ls -la /opt/haproxy/certs/ 2>/dev/null || echo "No certs dir"
 
+# Fix certificate key naming for HAProxy compatibility
+# HAProxy expects .crt.key when it finds a .crt file in the directory
+if [ -d "/opt/haproxy/certs" ]; then
+    for crt in /opt/haproxy/certs/*.crt; do
+        [ -f "$crt" ] || continue
+        base="${crt%.crt}"
+        # If .key exists but .crt.key doesn't, rename it
+        if [ -f "${base}.key" ] && [ ! -f "${crt}.key" ]; then
+            echo "[haproxy] Renaming ${base}.key -> ${crt}.key"
+            mv "${base}.key" "${crt}.key"
+        fi
+    done
+fi
+
 # Wait for config
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "[haproxy] Config not found, generating default..."
@@ -637,6 +651,13 @@ cmd_cert_add() {
 			log_info "Creating combined PEM for HAProxy..."
 			cat "$CERTS_PATH/$domain.fullchain.pem" "$CERTS_PATH/$domain.key" > "$CERTS_PATH/$domain.pem"
 			chmod 600 "$CERTS_PATH/$domain.pem"
+
+			# HAProxy expects key files named <cert>.key when loading .crt files from directory
+			# Rename the key file to match the .crt file naming convention
+			if [ -f "$CERTS_PATH/$domain.crt" ] && [ -f "$CERTS_PATH/$domain.key" ]; then
+				mv "$CERTS_PATH/$domain.key" "$CERTS_PATH/$domain.crt.key"
+				chmod 600 "$CERTS_PATH/$domain.crt.key"
+			fi
 		fi
 
 		# Restart HAProxy if it was running
