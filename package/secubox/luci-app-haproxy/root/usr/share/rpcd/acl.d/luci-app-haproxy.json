@@ -15,7 +15,8 @@
 					"list_acls",
 					"list_redirects",
 					"get_settings",
-					"get_logs"
+					"get_logs",
+					"list_exposed_services"
 				]
 			},
 			"uci": ["haproxy"]

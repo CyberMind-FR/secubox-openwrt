@@ -137,25 +137,26 @@ case "$1" in
                     json_close_array
                 json_close_object
 
-                # HAProxy SSL backends - use temp file to avoid subshell
-                HAPROXY_CONFIG="/srv/lxc/haproxy/rootfs/etc/haproxy/haproxy.cfg"
-                ssl_count=0
-                [ -f "$HAPROXY_CONFIG" ] && ssl_count=$(grep -c "^backend.*_backend$" "$HAPROXY_CONFIG" 2>/dev/null || echo 0)
-
+                # HAProxy SSL backends - read from UCI config
                 TMP_SSL="/tmp/exposure_ssl_$$"
-                if [ -f "$HAPROXY_CONFIG" ]; then
-                    grep -E "^backend .+_backend$" "$HAPROXY_CONFIG" 2>/dev/null | while read line; do
-                        backend=$(echo "$line" | awk '{print $2}' | sed 's/_backend$//')
-                        domain=$(grep "acl host_${backend} " "$HAPROXY_CONFIG" 2>/dev/null | awk '{print $NF}')
-                        echo "$backend ${domain:-N/A}"
-                    done > "$TMP_SSL"
-                fi
+                ssl_count=0
+
+                # Get vhosts from UCI (enabled ones with domains)
+                for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d'.' -f2 | cut -d'=' -f1); do
+                    domain=$(uci -q get "haproxy.${vhost}.domain")
+                    backend=$(uci -q get "haproxy.${vhost}.backend")
+                    enabled=$(uci -q get "haproxy.${vhost}.enabled")
+                    [ "$enabled" != "1" ] && continue
+                    [ -z "$domain" ] && continue
+                    echo "${backend:-$vhost}|${domain}" >> "$TMP_SSL"
+                    ssl_count=$((ssl_count + 1))
+                done
 
                 json_add_object "ssl"
                     json_add_int "count" "$ssl_count"
                     json_add_array "backends"
                     if [ -f "$TMP_SSL" ]; then
-                        while read backend domain; do
+                        while IFS='|' read backend domain; do
                             [ -z "$backend" ] && continue
                             json_add_object ""
                                 json_add_string "service" "$backend"
@@ -203,24 +204,31 @@ case "$1" in
                 ;;
 
             ssl_list)
-                HAPROXY_CONFIG="/srv/lxc/haproxy/rootfs/etc/haproxy/haproxy.cfg"
                 TMP_SSLLIST="/tmp/exposure_ssllist_$$"
+                > "$TMP_SSLLIST"
 
-                # Extract backend info to temp file to avoid subshell issues
-                if [ -f "$HAPROXY_CONFIG" ]; then
-                    grep -E "^backend .+_backend$" "$HAPROXY_CONFIG" 2>/dev/null | while read line; do
-                        backend=$(echo "$line" | awk '{print $2}')
-                        service=$(echo "$backend" | sed 's/_backend$//')
-                        domain=$(grep "acl host_${service} " "$HAPROXY_CONFIG" 2>/dev/null | awk '{print $NF}')
-                        server=$(grep -A5 "backend $backend" "$HAPROXY_CONFIG" 2>/dev/null | grep "server " | awk '{print $3}')
-                        echo "$service|${domain:-N/A}|${server:-N/A}"
-                    done > "$TMP_SSLLIST"
-                fi
+                # Read from HAProxy UCI config (vhosts with their backends)
+                for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost$" | cut -d'.' -f2 | cut -d'=' -f1); do
+                    domain=$(uci -q get "haproxy.${vhost}.domain")
+                    backend=$(uci -q get "haproxy.${vhost}.backend")
+                    enabled=$(uci -q get "haproxy.${vhost}.enabled")
+
+                    [ "$enabled" != "1" ] && continue
+                    [ -z "$domain" ] && continue
+
+                    # Get server address from backend config
+                    server=""
+                    if [ -n "$backend" ]; then
+                        server=$(uci -q get "haproxy.${backend}.server" 2>/dev/null | head -1 | awk '{print $2}')
+                    fi
+
+                    echo "${backend:-$vhost}|${domain}|${server:-N/A}" >> "$TMP_SSLLIST"
+                done
 
                 json_init
                 json_add_array "backends"
 
-                if [ -f "$TMP_SSLLIST" ]; then
+                if [ -s "$TMP_SSLLIST" ]; then
                     while IFS='|' read service domain server; do
                         [ -z "$service" ] && continue
                         json_add_object ""
@@ -229,8 +237,8 @@ case "$1" in
                             json_add_string "backend" "$server"
                         json_close_object
                     done < "$TMP_SSLLIST"
-                    rm -f "$TMP_SSLLIST"
                 fi
+                rm -f "$TMP_SSLLIST"
 
                 json_close_array
                 json_dump

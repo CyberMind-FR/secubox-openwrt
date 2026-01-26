@@ -32,7 +32,10 @@
 					"listSnapshots",
 					"get_appstore_apps",
 					"get_appstore_app",
-					"get_public_ips"
+					"get_public_ips",
+					"get_network_health",
+					"get_vital_services",
+					"get_full_health_report"
 				],
                 "uci": [
                     "get",

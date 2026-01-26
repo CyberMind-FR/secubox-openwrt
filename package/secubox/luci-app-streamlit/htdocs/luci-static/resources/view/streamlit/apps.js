@@ -302,7 +302,13 @@ return view.extend({
 
 		var reader = new FileReader();
 		reader.onload = function(e) {
-			var content = btoa(e.target.result);
+			// Convert ArrayBuffer to base64 (handles UTF-8 correctly)
+			var bytes = new Uint8Array(e.target.result);
+			var binary = '';
+			for (var i = 0; i < bytes.byteLength; i++) {
+				binary += String.fromCharCode(bytes[i]);
+			}
+			var content = btoa(binary);
 
 			api.uploadApp(name, content).then(function(result) {
 				if (result && result.success) {
@@ -317,7 +323,7 @@ return view.extend({
 				ui.addNotification(null, E('p', {}, _('Upload failed: ') + err.message), 'error');
 			});
 		};
-		reader.readAsText(file);
+		reader.readAsArrayBuffer(file);
 	},
 
 	handleActivate: function(name) {

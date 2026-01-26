@@ -187,7 +187,7 @@ cd /srv/apps
 exec streamlit run "$APP_PATH" \
     --server.address="${STREAMLIT_HOST:-0.0.0.0}" \
     --server.port="${STREAMLIT_PORT:-8501}" \
-    --server.headless="${STREAMLIT_HEADLESS:-true}" \
+    --server.headless=true \
     --browser.gatherUsageStats="${STREAMLIT_STATS:-false}" \
     --theme.base="${STREAMLIT_THEME_BASE:-dark}" \
     --theme.primaryColor="${STREAMLIT_THEME_PRIMARY:-#0ff}"

@@ -71,6 +71,15 @@ case "$1" in
 		json_add_object "getHealth"
 		json_close_object
 
+		json_add_object "get_network_health"
+		json_close_object
+
+		json_add_object "get_vital_services"
+		json_close_object
+
+		json_add_object "get_full_health_report"
+		json_close_object
+
 		json_add_object "getLogs"
 			json_add_string "service" "string"
 			json_add_int "lines" "integer"
@@ -330,18 +339,385 @@ case "$1" in
 				/usr/sbin/secubox-core health
 				;;
 
+			get_network_health)
+				# Network health monitoring - detects CRC errors, link flapping
+				DMESG_LINES=500
+				FLAP_THRESHOLD=5
+				CRC_THRESHOLD=10
+
+				json_init
+				json_add_string "timestamp" "$(date -Iseconds)"
+				json_add_object "interfaces"
+
+				overall="healthy"
+				critical_count=0
+				warning_count=0
+
+				for iface_path in /sys/class/net/eth* /sys/class/net/wan* /sys/class/net/lan*; do
+					[ -d "$iface_path" ] || continue
+					[ -d "$iface_path/device" ] || continue
+					iface=$(basename "$iface_path")
+
+					current_state=$(cat "$iface_path/operstate" 2>/dev/null || echo "unknown")
+					crc_count=$(dmesg | tail -n $DMESG_LINES | grep -c "$iface.*crc error" 2>/dev/null)
+					crc_count=${crc_count:-0}
+					link_up=$(dmesg | tail -n $DMESG_LINES | grep -c "$iface: Link is Up" 2>/dev/null)
+					link_up=${link_up:-0}
+					link_down=$(dmesg | tail -n $DMESG_LINES | grep -c "$iface: Link is Down" 2>/dev/null)
+					link_down=${link_down:-0}
+					link_changes=$((link_up + link_down))
+
+					status="ok"
+					issues=""
+
+					if [ "$crc_count" -ge "$CRC_THRESHOLD" ]; then
+						status="critical"
+						issues="CRC errors ($crc_count)"
+						critical_count=$((critical_count + 1))
+					fi
+
+					if [ "$link_changes" -ge "$FLAP_THRESHOLD" ]; then
+						[ "$status" = "ok" ] && status="warning"
+						[ -n "$issues" ] && issues="$issues; "
+						issues="${issues}Link flapping ($link_changes changes)"
+						warning_count=$((warning_count + 1))
+					fi
+
+					rx_errors=$(cat "$iface_path/statistics/rx_errors" 2>/dev/null || echo 0)
+					tx_errors=$(cat "$iface_path/statistics/tx_errors" 2>/dev/null || echo 0)
+
+					json_add_object "$iface"
+					json_add_string "status" "$status"
+					json_add_string "state" "$current_state"
+					json_add_int "crc_errors" "$crc_count"
+					json_add_int "link_changes" "$link_changes"
+					json_add_int "rx_errors" "$rx_errors"
+					json_add_int "tx_errors" "$tx_errors"
+					json_add_string "issues" "$issues"
+					json_close_object
+				done
+
+				json_close_object
+
+				if [ "$critical_count" -gt 0 ]; then
+					overall="critical"
+				elif [ "$warning_count" -gt 0 ]; then
+					overall="warning"
+				fi
+
+				json_add_string "overall" "$overall"
+				json_add_int "critical_interfaces" "$critical_count"
+				json_add_int "warning_interfaces" "$warning_count"
+
+				if [ "$overall" != "healthy" ]; then
+					json_add_array "recommendations"
+					[ "$critical_count" -gt 0 ] && json_add_string "" "Check/replace Ethernet cables"
+					[ "$critical_count" -gt 0 ] && json_add_string "" "Try different port on switch/modem"
+					[ "$warning_count" -gt 0 ] && json_add_string "" "Monitor link stability"
+					json_close_array
+				fi
+
+				json_dump
+				;;
+
+			get_vital_services)
+				# Vital services monitoring for web hosting and remote management
+				json_init
+				json_add_string "timestamp" "$(date -Iseconds)"
+
+				# Helper function to check service
+				check_service() {
+					local name="$1"
+					local category="$2"
+					local check_type="$3"
+					local check_value="$4"
+					local description="$5"
+					local critical="$6"
+
+					local status="unknown"
+					local details=""
+
+					case "$check_type" in
+						process)
+							if pgrep -f "$check_value" >/dev/null 2>&1; then
+								status="running"
+							else
+								status="stopped"
+							fi
+							;;
+						port)
+							if netstat -tln 2>/dev/null | grep -q ":${check_value} "; then
+								status="running"
+								details="Port $check_value listening"
+							else
+								status="stopped"
+								details="Port $check_value not listening"
+							fi
+							;;
+						init)
+							if [ -f "/etc/init.d/$check_value" ]; then
+								if /etc/init.d/$check_value enabled 2>/dev/null; then
+									if /etc/init.d/$check_value running 2>/dev/null; then
+										status="running"
+									else
+										status="stopped"
+									fi
+								else
+									status="disabled"
+								fi
+							else
+								status="not_installed"
+							fi
+							;;
+						lxc)
+							if lxc-info -n "$check_value" -s 2>/dev/null | grep -q "RUNNING"; then
+								status="running"
+							elif lxc-info -n "$check_value" 2>/dev/null | grep -q "State"; then
+								status="stopped"
+							else
+								status="not_installed"
+							fi
+							;;
+						file)
+							if [ -f "$check_value" ]; then
+								status="present"
+							else
+								status="missing"
+							fi
+							;;
+					esac
+
+					json_add_object ""
+					json_add_string "name" "$name"
+					json_add_string "category" "$category"
+					json_add_string "status" "$status"
+					json_add_string "description" "$description"
+					json_add_boolean "critical" "${critical:-0}"
+					[ -n "$details" ] && json_add_string "details" "$details"
+					json_close_object
+				}
+
+				# Core Infrastructure Services
+				json_add_array "core"
+				check_service "SSH" "remote" "port" "22" "Remote shell access" 1
+				check_service "HTTPS Admin" "remote" "port" "8444" "LuCI admin interface" 1
+				check_service "DNS" "network" "port" "53" "Domain name resolution" 1
+				check_service "DHCP" "network" "process" "dnsmasq" "IP address assignment" 1
+				check_service "Firewall" "security" "process" "fw4" "Network firewall" 1
+				json_close_array
+
+				# Security Services
+				json_add_array "security"
+				check_service "CrowdSec" "security" "process" "crowdsec" "Intrusion prevention" 1
+				check_service "CrowdSec Bouncer" "security" "process" "crowdsec-firewall-bouncer" "Firewall bouncer" 1
+				check_service "Tor" "privacy" "init" "tor" "Anonymous routing" 0
+				json_close_array
+
+				# Web Publishing Services
+				json_add_array "publishers"
+				check_service "HAProxy" "proxy" "lxc" "haproxy" "Load balancer & reverse proxy" 1
+				check_service "HexoJS" "cms" "lxc" "hexojs" "Static blog generator" 0
+				check_service "Gitea" "devops" "lxc" "gitea" "Git repository hosting" 0
+				check_service "Streamlit" "app" "lxc" "streamlit" "Python web apps" 0
+				json_close_array
+
+				# Media & App Services
+				json_add_array "apps"
+				check_service "Lyrion" "media" "lxc" "lyrion" "Music streaming server" 0
+				check_service "MagicMirror" "display" "lxc" "magicmirror2" "Smart mirror display" 0
+				check_service "PicoBrew" "app" "lxc" "picobrew" "Brewing automation" 0
+				json_close_array
+
+				# Monitoring Services
+				json_add_array "monitoring"
+				check_service "Netifyd" "monitoring" "process" "netifyd" "Network intelligence" 0
+				check_service "Syslog-ng" "logging" "process" "syslog-ng" "System logging" 1
+				json_close_array
+
+				# Calculate summary
+				json_add_object "summary"
+				total=0
+				running=0
+				stopped=0
+				critical_down=0
+
+				for svc in /etc/init.d/*; do
+					[ -x "$svc" ] || continue
+					total=$((total + 1))
+				done
+
+				# Count running LXC containers
+				lxc_running=$(lxc-ls --running 2>/dev/null | wc -w)
+				lxc_total=$(lxc-ls 2>/dev/null | wc -w)
+
+				json_add_int "init_services" "$total"
+				json_add_int "lxc_running" "$lxc_running"
+				json_add_int "lxc_total" "$lxc_total"
+				json_close_object
+
+				json_dump
+				;;
+
+			get_full_health_report)
+				# Combined health report: network + services + system
+				json_init
+				json_add_string "timestamp" "$(date -Iseconds)"
+				json_add_string "hostname" "$(uci get system.@system[0].hostname 2>/dev/null || hostname)"
+
+				# System info
+				json_add_object "system"
+				json_add_int "uptime" "$(cut -d. -f1 /proc/uptime)"
+				json_add_string "load" "$(cut -d' ' -f1-3 /proc/loadavg)"
+
+				mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+				mem_avail=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+				mem_avail=${mem_avail:-0}
+				mem_used=$((mem_total - mem_avail))
+				mem_pct=$((mem_used * 100 / mem_total))
+				json_add_int "memory_percent" "$mem_pct"
+
+				disk_pct=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+				json_add_int "disk_percent" "${disk_pct:-0}"
+				json_close_object
+
+				# Network Health Summary
+				json_add_object "network"
+				net_overall="healthy"
+				net_issues=0
+
+				for iface_path in /sys/class/net/eth* /sys/class/net/wan*; do
+					[ -d "$iface_path" ] || continue
+					[ -d "$iface_path/device" ] || continue
+					iface=$(basename "$iface_path")
+
+					crc=$(dmesg | tail -n 500 | grep -c "$iface.*crc error" 2>/dev/null)
+					crc=${crc:-0}
+					flap=$(dmesg | tail -n 500 | grep -c "$iface: Link is" 2>/dev/null)
+					flap=${flap:-0}
+
+					if [ "$crc" -ge 10 ] || [ "$flap" -ge 10 ]; then
+						net_overall="critical"
+						net_issues=$((net_issues + 1))
+						json_add_object "$iface"
+						json_add_string "status" "critical"
+						json_add_int "crc_errors" "$crc"
+						json_add_int "link_changes" "$flap"
+						json_close_object
+					fi
+				done
+
+				json_add_string "overall" "$net_overall"
+				json_add_int "issues" "$net_issues"
+				json_close_object
+
+				# Critical Services Status
+				json_add_object "services"
+				svc_ok=0
+				svc_down=0
+
+				# Check critical services
+				for svc in sshd dropbear dnsmasq haproxy crowdsec; do
+					if pgrep -x "$svc" >/dev/null 2>&1 || pgrep -f "$svc" >/dev/null 2>&1; then
+						svc_ok=$((svc_ok + 1))
+					else
+						# Check if it's supposed to be running
+						if [ -f "/etc/init.d/$svc" ] && /etc/init.d/$svc enabled 2>/dev/null; then
+							svc_down=$((svc_down + 1))
+						fi
+					fi
+				done
+
+				# Check LXC containers
+				lxc_expected=$(lxc-ls 2>/dev/null | wc -w)
+				lxc_running=$(lxc-ls --running 2>/dev/null | wc -w)
+
+				json_add_int "services_ok" "$svc_ok"
+				json_add_int "services_down" "$svc_down"
+				json_add_int "containers_running" "$lxc_running"
+				json_add_int "containers_total" "$lxc_expected"
+
+				if [ "$svc_down" -gt 0 ]; then
+					json_add_string "overall" "warning"
+				else
+					json_add_string "overall" "healthy"
+				fi
+				json_close_object
+
+				# Overall health score
+				health_score=100
+				[ "$net_overall" = "critical" ] && health_score=$((health_score - 30))
+				[ "$svc_down" -gt 0 ] && health_score=$((health_score - (svc_down * 10)))
+				[ "$mem_pct" -gt 90 ] && health_score=$((health_score - 10))
+				[ "${disk_pct:-0}" -gt 90 ] && health_score=$((health_score - 10))
+
+				json_add_int "health_score" "$health_score"
+
+				if [ "$health_score" -ge 80 ]; then
+					json_add_string "overall_status" "healthy"
+				elif [ "$health_score" -ge 50 ]; then
+					json_add_string "overall_status" "warning"
+				else
+					json_add_string "overall_status" "critical"
+				fi
+
+				# Alerts
+				json_add_array "alerts"
+				[ "$net_overall" = "critical" ] && {
+					json_add_object ""
+					json_add_string "level" "critical"
+					json_add_string "message" "Network interface issues detected - check cables"
+					json_close_object
+				}
+				[ "$svc_down" -gt 0 ] && {
+					json_add_object ""
+					json_add_string "level" "warning"
+					json_add_string "message" "$svc_down critical service(s) not running"
+					json_close_object
+				}
+				[ "$mem_pct" -gt 90 ] && {
+					json_add_object ""
+					json_add_string "level" "warning"
+					json_add_string "message" "High memory usage: ${mem_pct}%"
+					json_close_object
+				}
+				json_close_array
+
+				json_dump
+				;;
+
 			get_dashboard_data)
-				# Return dashboard summary data
+				# Return dashboard summary data (OPTIMIZED - no slow appstore call)
 				json_init
 
-				# Get module stats
-				modules_output=$(/usr/sbin/secubox-appstore list --json 2>/dev/null || echo '{"modules":[]}')
-				total_modules=$(echo "$modules_output" | jsonfilter -e '@.modules[*]' | wc -l)
-				running_modules=$(echo "$modules_output" | jsonfilter -e '@.modules[@.state="running"]' | wc -l 2>/dev/null || echo 0)
+				# Fast module counting: count installed secubox packages
+				# This avoids the slow secubox-appstore list --json call
+				total_modules=0
+				running_modules=0
+
+				# Count from catalog (fast - just count JSON entries)
+				CATALOG_FILE="/usr/share/secubox/catalog.json"
+				if [ -f "$CATALOG_FILE" ]; then
+					total_modules=$(jsonfilter -i "$CATALOG_FILE" -e '@.plugins[*].id' 2>/dev/null | wc -l)
+				fi
+				[ -z "$total_modules" ] || [ "$total_modules" -eq 0 ] && total_modules=0
+
+				# Count running LXC containers (fast)
+				lxc_running=$(lxc-ls --running 2>/dev/null | wc -w)
+				lxc_running=${lxc_running:-0}
+
+				# Count running init services that are SecuBox-related (fast)
+				svc_running=0
+				for svc in crowdsec tor haproxy netifyd syslog-ng; do
+					if pgrep -f "$svc" >/dev/null 2>&1; then
+						svc_running=$((svc_running + 1))
+					fi
+				done
+
+				running_modules=$((lxc_running + svc_running))
 
 				# Get system info
-				uptime_seconds=$(cat /proc/uptime | cut -d' ' -f1 | cut -d'.' -f1)
-				load_avg=$(cat /proc/loadavg | cut -d' ' -f1-3)
+				uptime_seconds=$(cut -d' ' -f1 /proc/uptime | cut -d'.' -f1)
+				load_avg=$(cut -d' ' -f1-3 /proc/loadavg)
 
 				# Build response
 				json_add_object "status"
@@ -353,6 +729,8 @@ case "$1" in
 				json_add_object "counts"
 					json_add_int "total" "$total_modules"
 					json_add_int "running" "$running_modules"
+					json_add_int "lxc_running" "$lxc_running"
+					json_add_int "services_running" "$svc_running"
 				json_close_object
 
 				json_dump

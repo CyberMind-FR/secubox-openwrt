@@ -246,17 +246,14 @@ echo "Config: $CONFIG_FILE"
 ls -la /opt/haproxy/
 ls -la /opt/haproxy/certs/ 2>/dev/null || echo "No certs dir"
 
-# Fix certificate key naming for HAProxy compatibility
-# HAProxy expects .crt.key when it finds a .crt file in the directory
+# Clean up legacy certificate files - only .pem files should exist
+# HAProxy loads all files from certs directory, and extra files cause errors
 if [ -d "/opt/haproxy/certs" ]; then
-    for crt in /opt/haproxy/certs/*.crt; do
-        [ -f "$crt" ] || continue
-        base="${crt%.crt}"
-        # If .key exists but .crt.key doesn't, rename it
-        if [ -f "${base}.key" ] && [ ! -f "${crt}.key" ]; then
-            echo "[haproxy] Renaming ${base}.key -> ${crt}.key"
-            mv "${base}.key" "${crt}.key"
-        fi
+    for pem in /opt/haproxy/certs/*.pem; do
+        [ -f "$pem" ] || continue
+        base="${pem%.pem}"
+        # Remove any associated .crt, .key, .fullchain.pem, .crt.key files
+        rm -f "${base}.crt" "${base}.key" "${base}.crt.key" "${base}.fullchain.pem" 2>/dev/null
     done
 fi
 
@@ -517,10 +514,26 @@ _generate_backend() {
 
 	[ -n "$health_check" ] && echo "    option $health_check"
 
-	# Add servers defined in backend section (handles both single and list)
-	local server_line
-	config_get server_line "$section" server ""
-	[ -n "$server_line" ] && echo "    server $server_line"
+	# Check if there are separate server sections for this backend
+	local has_server_sections=0
+	_check_server_sections() {
+		local srv_section="$1"
+		local srv_backend
+		config_get srv_backend "$srv_section" backend
+		config_get srv_enabled "$srv_section" enabled "0"
+		if [ "$srv_backend" = "$name" ] && [ "$srv_enabled" = "1" ]; then
+			has_server_sections=1
+		fi
+	}
+	config_foreach _check_server_sections server
+
+	# Add inline server ONLY if no separate server sections exist
+	# This prevents duplicate server names
+	if [ "$has_server_sections" = "0" ]; then
+		local server_line
+		config_get server_line "$section" server ""
+		[ -n "$server_line" ] && echo "    server $server_line"
+	fi
 
 	# Add servers from separate server UCI sections
 	config_foreach _add_server_to_backend server "$name"
@@ -783,12 +796,9 @@ cmd_cert_add() {
 			cat "$CERTS_PATH/$domain.fullchain.pem" "$CERTS_PATH/$domain.key" > "$CERTS_PATH/$domain.pem"
 			chmod 600 "$CERTS_PATH/$domain.pem"
 
-			# HAProxy expects key files named <cert>.key when loading .crt files from directory
-			# Rename the key file to match the .crt file naming convention
-			if [ -f "$CERTS_PATH/$domain.crt" ] && [ -f "$CERTS_PATH/$domain.key" ]; then
-				mv "$CERTS_PATH/$domain.key" "$CERTS_PATH/$domain.crt.key"
-				chmod 600 "$CERTS_PATH/$domain.crt.key"
-			fi
+			# Clean up intermediate files - HAProxy only needs the .pem file
+			# Keeping these causes issues when HAProxy loads certs from directory
+			rm -f "$CERTS_PATH/$domain.crt" "$CERTS_PATH/$domain.key" "$CERTS_PATH/$domain.fullchain.pem" "$CERTS_PATH/$domain.crt.key" 2>/dev/null
 		fi
 
 		# Restart HAProxy if it was running
