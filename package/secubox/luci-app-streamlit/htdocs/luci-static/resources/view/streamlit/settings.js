@@ -70,8 +70,9 @@ return view.extend({
 				E('div', { 'class': 'st-form-group' }, [
 					E('label', { 'class': 'st-form-label' }, _('Enabled')),
 					E('select', {
-						'class': 'st-form-select',
-						'id': 'cfg-enabled'
+						'class': 'st-form-input',
+						'id': 'cfg-enabled',
+						'style': 'height: 42px;'
 					}, [
 						E('option', { 'value': '1', 'selected': config.enabled }, _('Enabled')),
 						E('option', { 'value': '0', 'selected': !config.enabled }, _('Disabled'))
@@ -111,13 +112,15 @@ return view.extend({
 				E('div', { 'class': 'st-form-group' }, [
 					E('label', { 'class': 'st-form-label' }, _('Memory Limit')),
 					E('select', {
-						'class': 'st-form-select',
-						'id': 'cfg-memory_limit'
+						'class': 'st-form-input',
+						'id': 'cfg-memory_limit',
+						'style': 'height: 42px;'
 					}, [
 						E('option', { 'value': '256M', 'selected': config.memory_limit === '256M' }, '256 MB'),
-						E('option', { 'value': '512M', 'selected': config.memory_limit === '512M' || !config.memory_limit }, '512 MB'),
-						E('option', { 'value': '1G', 'selected': config.memory_limit === '1G' }, '1 GB'),
-						E('option', { 'value': '2G', 'selected': config.memory_limit === '2G' }, '2 GB')
+						E('option', { 'value': '512M', 'selected': config.memory_limit === '512M' }, '512 MB'),
+						E('option', { 'value': '1024M', 'selected': config.memory_limit === '1024M' || !config.memory_limit }, '1 GB'),
+						E('option', { 'value': '2048M', 'selected': config.memory_limit === '2048M' }, '2 GB'),
+						E('option', { 'value': '4096M', 'selected': config.memory_limit === '4096M' }, '4 GB')
 					])
 				]),
 				E('div', { 'class': 'st-form-group' }, [
@@ -148,8 +151,9 @@ return view.extend({
 				E('div', { 'class': 'st-form-group' }, [
 					E('label', { 'class': 'st-form-label' }, _('Headless Mode')),
 					E('select', {
-						'class': 'st-form-select',
-						'id': 'cfg-headless'
+						'class': 'st-form-input',
+						'id': 'cfg-headless',
+						'style': 'height: 42px;'
 					}, [
 						E('option', { 'value': 'true', 'selected': config.headless !== false }, _('Enabled (recommended)')),
 						E('option', { 'value': 'false', 'selected': config.headless === false }, _('Disabled'))
@@ -158,8 +162,9 @@ return view.extend({
 				E('div', { 'class': 'st-form-group' }, [
 					E('label', { 'class': 'st-form-label' }, _('Usage Statistics')),
 					E('select', {
-						'class': 'st-form-select',
-						'id': 'cfg-gather_stats'
+						'class': 'st-form-input',
+						'id': 'cfg-gather_stats',
+						'style': 'height: 42px;'
 					}, [
 						E('option', { 'value': 'false', 'selected': !config.browser_gather_usage_stats }, _('Disabled (recommended)')),
 						E('option', { 'value': 'true', 'selected': config.browser_gather_usage_stats }, _('Enabled'))
@@ -168,8 +173,9 @@ return view.extend({
 				E('div', { 'class': 'st-form-group' }, [
 					E('label', { 'class': 'st-form-label' }, _('Theme Base')),
 					E('select', {
-						'class': 'st-form-select',
-						'id': 'cfg-theme_base'
+						'class': 'st-form-input',
+						'id': 'cfg-theme_base',
+						'style': 'height: 42px;'
 					}, [
 						E('option', { 'value': 'dark', 'selected': config.theme_base === 'dark' || !config.theme_base }, _('Dark')),
 						E('option', { 'value': 'light', 'selected': config.theme_base === 'light' }, _('Light'))

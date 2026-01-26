@@ -158,15 +158,23 @@ return view.extend({
 
 	renderAddInstanceCard: function() {
 		var self = this;
-		var apps = (this.appsData.apps || []).map(function(app) {
-			return E('option', { 'value': app.name + '.py' }, app.name);
-		});
+		var appsList = this.appsData.apps || [];
 
 		// Calculate next available port
 		var usedPorts = this.instancesData.map(function(i) { return i.port; });
 		var nextPort = 8501;
 		while (usedPorts.indexOf(nextPort) !== -1) {
 			nextPort++;
+		}
+
+		// Build select options array
+		var selectOptions = [E('option', { 'value': '' }, _('-- Select App --'))];
+		if (appsList.length > 0) {
+			appsList.forEach(function(app) {
+				selectOptions.push(E('option', { 'value': app.name + '.py' }, app.name));
+			});
+		} else {
+			selectOptions.push(E('option', { 'disabled': true }, _('No apps available')));
 		}
 
 		return E('div', { 'class': 'st-card' }, [
@@ -202,10 +210,7 @@ return view.extend({
 							'class': 'st-form-input',
 							'id': 'new-inst-app',
 							'style': 'height: 42px;'
-						}, [
-							E('option', { 'value': '' }, _('-- Select App --')),
-							apps.length > 0 ? apps : E('option', { 'disabled': true }, _('No apps available'))
-						])
+						}, selectOptions)
 					]),
 					E('div', { 'class': 'st-form-group' }, [
 						E('label', { 'class': 'st-form-label' }, _('Port')),
