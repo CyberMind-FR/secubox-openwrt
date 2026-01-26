@@ -16,11 +16,10 @@ json_init_obj() { json_init; json_add_object "result"; }
 json_close_obj() { json_close_object; json_dump; }
 
 json_error() {
-	json_init
-	json_add_object "error"
+	json_init_obj
+	json_add_boolean "success" 0
 	json_add_string "message" "$1"
-	json_close_object
-	json_dump
+	json_close_obj
 }
 
 json_success() {

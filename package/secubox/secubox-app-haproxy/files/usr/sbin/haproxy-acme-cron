@@ -1,0 +1,80 @@
+#!/bin/sh
+# HAProxy ACME Certificate Background Processor
+# Processes pending ACME certificate requests via cron
+# Copyright (C) 2025 CyberMind.fr
+
+LOCK_FILE="/var/run/haproxy-acme-cron.lock"
+LOG_TAG="haproxy-acme-cron"
+CERTS_PATH="/srv/haproxy/certs"
+
+log_info() { logger -t "$LOG_TAG" "$*"; }
+log_error() { logger -t "$LOG_TAG" -p err "$*"; }
+
+# Prevent concurrent execution
+if [ -f "$LOCK_FILE" ]; then
+    pid=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        exit 0
+    fi
+    rm -f "$LOCK_FILE"
+fi
+echo $$ > "$LOCK_FILE"
+trap "rm -f $LOCK_FILE" EXIT
+
+# Check if haproxyctl exists
+[ -x /usr/sbin/haproxyctl ] || exit 0
+
+# Load UCI functions
+. /lib/functions.sh
+
+# Find vhosts that need ACME certificates
+process_pending_certs() {
+    local pending_domains=""
+
+    # Callback to check each vhost
+    check_vhost() {
+        local section="$1"
+        local domain acme ssl enabled cert_file
+
+        config_get domain "$section" domain ""
+        config_get acme "$section" acme "0"
+        config_get ssl "$section" ssl "0"
+        config_get enabled "$section" enabled "1"
+
+        # Skip if not enabled, no SSL, or no ACME
+        [ "$enabled" != "1" ] && return
+        [ "$ssl" != "1" ] && return
+        [ "$acme" != "1" ] && return
+        [ -z "$domain" ] && return
+
+        # Check if certificate exists and is valid
+        cert_file="$CERTS_PATH/$domain.pem"
+        if [ ! -f "$cert_file" ]; then
+            log_info "Certificate missing for $domain - queuing for ACME"
+            pending_domains="$pending_domains $domain"
+        elif ! openssl x509 -checkend 604800 -noout -in "$cert_file" 2>/dev/null; then
+            # Certificate expires in less than 7 days
+            log_info "Certificate expiring soon for $domain - queuing for renewal"
+            pending_domains="$pending_domains $domain"
+        fi
+    }
+
+    config_load haproxy
+    config_foreach check_vhost vhost
+
+    # Process pending domains
+    for domain in $pending_domains; do
+        log_info "Processing ACME certificate for: $domain"
+        /usr/sbin/haproxyctl cert add "$domain" >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            log_info "Certificate issued successfully for: $domain"
+        else
+            log_error "Failed to issue certificate for: $domain"
+        fi
+        # Small delay between certificate requests
+        sleep 5
+    done
+}
+
+# Run the processor
+process_pending_certs
