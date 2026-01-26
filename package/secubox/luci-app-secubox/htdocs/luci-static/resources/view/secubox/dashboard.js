@@ -3,6 +3,7 @@
 'require ui';
 'require dom';
 'require poll';
+'require fs';
 'require secubox/api as API';
 'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
@@ -393,6 +394,14 @@ return view.extend({
 			{ id: 'export_config', label: _('Export Configuration'), icon: '📦', variant: 'green' }
 		];
 
+		// Critical services quick restart
+		var criticalServices = [
+			{ id: 'haproxy', label: 'HAProxy', icon: '⚖️' },
+			{ id: 'crowdsec', label: 'CrowdSec', icon: '🛡️' },
+			{ id: 'tor', label: 'Tor Shield', icon: '🧅' },
+			{ id: 'gitea', label: 'Gitea', icon: '🦊' }
+		];
+
 		return E('section', { 'class': 'sb-card' }, [
 			E('div', { 'class': 'sb-card-header' }, [
 				E('h2', {}, _('Quick Actions')),
@@ -410,8 +419,85 @@ return view.extend({
 						E('span', { 'class': 'sb-action-icon' }, action.icon),
 						E('span', { 'class': 'sb-action-label' }, action.label)
 					]);
+				})),
+
+			// Critical Services Quick Restart Section
+			E('div', { 'class': 'sb-card-header', 'style': 'margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);' }, [
+				E('h3', { 'style': 'font-size: 14px; margin: 0;' }, _('Critical Services Quick Restart')),
+				E('p', { 'class': 'sb-card-subtitle', 'style': 'font-size: 12px;' }, _('One-click restart for essential services'))
+			]),
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap; padding: 0 16px 16px;' },
+				criticalServices.map(function(svc) {
+					return E('button', {
+						'class': 'sb-service-restart-btn',
+						'type': 'button',
+						'style': 'display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; color: #3b82f6; cursor: pointer; font-size: 13px; transition: all 0.2s;',
+						'click': function(ev) {
+							self.restartService(svc.id, ev.target);
+						},
+						'onmouseover': function(ev) {
+							ev.target.style.background = 'rgba(59, 130, 246, 0.25)';
+							ev.target.style.borderColor = '#3b82f6';
+						},
+						'onmouseout': function(ev) {
+							ev.target.style.background = 'rgba(59, 130, 246, 0.15)';
+							ev.target.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+						}
+					}, [
+						E('span', {}, svc.icon),
+						E('span', {}, svc.label),
+						E('span', { 'style': 'opacity: 0.7;' }, '🔄')
+					]);
 				}))
 		]);
+	},
+
+	restartService: function(serviceId, btnElement) {
+		var self = this;
+
+		// Visual feedback
+		if (btnElement) {
+			btnElement.style.opacity = '0.6';
+			btnElement.disabled = true;
+		}
+
+		ui.showModal(_('Restarting Service'), [
+			E('p', { 'class': 'spinning' }, _('Restarting ') + serviceId + '...')
+		]);
+
+		// Map service to init.d script
+		var serviceMap = {
+			'haproxy': 'haproxy',
+			'crowdsec': 'crowdsec',
+			'tor': 'tor',
+			'gitea': 'gitea'
+		};
+
+		var initScript = serviceMap[serviceId] || serviceId;
+
+		return L.resolveDefault(
+			L.Request.post(L.env.cgi_base + '/cgi-exec', 'command=/etc/init.d/' + initScript + ' restart'),
+			{}
+		).then(function() {
+			// Also try the standard approach via fs
+			return fs.exec('/etc/init.d/' + initScript, ['restart']);
+		}).then(function() {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, serviceId + ' ' + _('restarted successfully')), 'info');
+		}).catch(function(err) {
+			ui.hideModal();
+			// Fallback: try via API if available
+			return API.quickAction('restart_' + serviceId).then(function() {
+				ui.addNotification(null, E('p', {}, serviceId + ' ' + _('restarted successfully')), 'info');
+			}).catch(function() {
+				ui.addNotification(null, E('p', {}, _('Failed to restart ') + serviceId + ': ' + (err.message || err)), 'error');
+			});
+		}).finally(function() {
+			if (btnElement) {
+				btnElement.style.opacity = '1';
+				btnElement.disabled = false;
+			}
+		});
 	},
 
 	runQuickAction: function(actionId) {

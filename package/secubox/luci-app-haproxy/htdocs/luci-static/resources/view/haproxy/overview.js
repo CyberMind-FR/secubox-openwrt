@@ -40,6 +40,7 @@ return view.extend({
 
 		// Build content array, filtering out nulls
 		var content = [
+			this.renderEmergencyBanner(status),
 			this.renderPageHeader(status),
 			this.renderStatsGrid(status, vhosts, backends, certificates),
 			this.renderHealthGrid(status),
@@ -122,6 +123,72 @@ return view.extend({
 					'class': 'hp-btn hp-btn-primary',
 					'click': function() { self.handleInstall(); }
 				}, '\u{1F4E6} Install Container')
+			])
+		]);
+	},
+
+	renderEmergencyBanner: function(status) {
+		var self = this;
+		var haproxyRunning = status.haproxy_running;
+		var containerRunning = status.container_running;
+
+		var statusColor = haproxyRunning ? '#22c55e' : (containerRunning ? '#f97316' : '#ef4444');
+		var statusText = haproxyRunning ? 'HEALTHY' : (containerRunning ? 'DEGRADED' : 'DOWN');
+		var statusIcon = haproxyRunning ? '\u2705' : (containerRunning ? '\u26A0\uFE0F' : '\u274C');
+
+		return E('div', {
+			'class': 'hp-emergency-banner',
+			'style': 'background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border: 1px solid ' + statusColor + '; border-radius: 12px; padding: 20px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; gap: 24px;'
+		}, [
+			// Status indicator
+			E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+				E('div', {
+					'style': 'width: 64px; height: 64px; border-radius: 50%; background: ' + statusColor + '22; display: flex; align-items: center; justify-content: center; font-size: 32px; border: 3px solid ' + statusColor + ';'
+				}, statusIcon),
+				E('div', {}, [
+					E('div', { 'style': 'font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-bottom: 4px;' }, 'Service Status'),
+					E('div', { 'style': 'font-size: 24px; font-weight: 700; color: ' + statusColor + ';' }, statusText),
+					E('div', { 'style': 'font-size: 13px; color: #888; margin-top: 4px;' },
+						'Container: ' + (containerRunning ? 'Running' : 'Stopped') +
+						' \u2022 HAProxy: ' + (haproxyRunning ? 'Active' : 'Inactive'))
+				])
+			]),
+
+			// Quick health checks
+			E('div', { 'style': 'display: flex; gap: 16px;' }, [
+				E('div', { 'style': 'text-align: center; padding: 12px 20px; background: rgba(255,255,255,0.05); border-radius: 8px;' }, [
+					E('div', { 'style': 'font-size: 20px;' }, containerRunning ? '\u2705' : '\u274C'),
+					E('div', { 'style': 'font-size: 11px; color: #888; margin-top: 4px;' }, 'Container')
+				]),
+				E('div', { 'style': 'text-align: center; padding: 12px 20px; background: rgba(255,255,255,0.05); border-radius: 8px;' }, [
+					E('div', { 'style': 'font-size: 20px;' }, haproxyRunning ? '\u2705' : '\u274C'),
+					E('div', { 'style': 'font-size: 11px; color: #888; margin-top: 4px;' }, 'HAProxy')
+				]),
+				E('div', { 'style': 'text-align: center; padding: 12px 20px; background: rgba(255,255,255,0.05); border-radius: 8px;' }, [
+					E('div', { 'style': 'font-size: 20px;' }, status.config_valid !== false ? '\u2705' : '\u26A0\uFE0F'),
+					E('div', { 'style': 'font-size: 11px; color: #888; margin-top: 4px;' }, 'Config')
+				])
+			]),
+
+			// Emergency actions
+			E('div', { 'style': 'display: flex; gap: 12px;' }, [
+				E('button', {
+					'class': 'hp-btn',
+					'style': 'background: #3b82f6; color: white; padding: 12px 20px; font-size: 14px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px;',
+					'click': function() { self.handleRestart(); },
+					'disabled': !containerRunning ? true : null
+				}, ['\u{1F504}', ' Restart']),
+				E('button', {
+					'class': 'hp-btn',
+					'style': 'background: ' + (haproxyRunning ? '#ef4444' : '#22c55e') + '; color: white; padding: 12px 20px; font-size: 14px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px;',
+					'click': function() {
+						if (haproxyRunning) {
+							self.handleStop();
+						} else {
+							self.handleStart();
+						}
+					}
+				}, haproxyRunning ? ['\u23F9\uFE0F', ' Stop'] : ['\u25B6\uFE0F', ' Start'])
 			])
 		]);
 	},
@@ -535,6 +602,19 @@ return view.extend({
 				return self.refreshDashboard();
 			} else {
 				self.showToast('Failed to stop: ' + (res.error || 'Unknown error'), 'error');
+			}
+		});
+	},
+
+	handleRestart: function() {
+		var self = this;
+		self.showToast('Restarting HAProxy...', 'warning');
+		return api.restart().then(function(res) {
+			if (res.success) {
+				self.showToast('HAProxy service restarted', 'success');
+				return self.refreshDashboard();
+			} else {
+				self.showToast('Failed to restart: ' + (res.error || 'Unknown error'), 'error');
 			}
 		});
 	},
