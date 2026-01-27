@@ -104,16 +104,16 @@ const DevStatusWidget = {
         { name: 'KSM Manager', version: '0.4.0-r1', note: 'Gestion clés / HSM', id: 'ksm-manager' }
     ],
 
-    // Overall project statistics
+    // Overall project statistics (as of v0.16.0 - 2026-01-27)
     stats: {
-        get modulesCount() { return DevStatusWidget.moduleStatus.length; },
-        languagesSupported: 11,
+        get modulesCount() { return DevStatusWidget.moduleStatus.length || 38; },
+        languagesSupported: 12,
         architectures: 13,
-        linesOfCode: 15000,
-        contributors: 3,
-        commits: 450,
-        openIssues: 1,
-        closedIssues: 87
+        linesOfCode: 45000,
+        contributors: 6,
+        commits: 1500,
+        openIssues: 2,
+        closedIssues: 180
     },
 
     // Timeline data

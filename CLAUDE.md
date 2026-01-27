@@ -56,5 +56,28 @@ When checking if a port is listening, use this order of fallbacks:
 - Use the repo sync helper scripts where available to avoid missing `root/` vs `htdocs/` payloads
 
 ### Toolchain Usage
-- Use the OpenWrt toolchain when a module requires it (native SDK packages, toolchain-bound dependencies)
-- If unsure, start with `local-build.sh`; fall back to full toolchain builds when SDK cache cannot resolve dependencies
+- **CRITICAL: Non-LuCI SecuBox apps MUST be built with the full OpenWrt toolchain, NOT the SDK**
+  - Go packages (crowdsec, crowdsec-firewall-bouncer) require the full toolchain due to CGO and ARM64 compatibility
+  - Native C/C++ binaries (netifyd, nodogsplash) require the full toolchain
+  - The SDK produces binaries with LSE atomic instructions that crash on some ARM64 CPUs (like MochaBin's Cortex-A72)
+
+- Packages requiring full toolchain build (in `secubox-tools/openwrt`):
+  - `crowdsec` - Go binary with CGO
+  - `crowdsec-firewall-bouncer` - Go binary with CGO
+  - `netifyd` - C++ native binary
+  - `nodogsplash` - C native binary
+
+- To build with full toolchain:
+  ```bash
+  cd secubox-tools/openwrt
+  make package/<package-name>/compile V=s
+  ```
+
+- LuCI apps and pure shell/Lua packages can use the SDK:
+  ```bash
+  cd secubox-tools/sdk
+  make package/<package-name>/compile V=s
+  # Or use local-build.sh for LuCI apps
+  ```
+
+- If unsure, check `OPENWRT_ONLY_PACKAGES` in `secubox-tools/local-build.sh`

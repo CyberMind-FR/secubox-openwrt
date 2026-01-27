@@ -38,5 +38,21 @@
 - **2025-12-29 – Quick Deploy prompt fix**  
   Adjusted `prompt_select_app()` so menu output goes to stderr, preventing `--src-select` from capturing prompts along with the chosen app.
 
-- **2025-12-29 – System Hub theme sync**  
+- **2025-12-29 – System Hub theme sync**
   `system-hub/common.css` / `dashboard.css` now listen to `data-secubox-theme`, hide the stock LuCI tab bar, and every System Hub view imports `secubox-theme` so UI matches the global toggle.
+
+- **2026-01-20 – Multi-Instance Support**
+  CrowdSec LAPI port fix, Streamlit/HexoJS multi-instance management.
+
+- **2026-01-21 – HexoJS Build & Publish**
+  Gitea workflow integration for static site builds.
+
+- **2026-01-27 – ARM64 Toolchain Build Discovery**
+  SIGILL crash investigation revealed Go CGO packages must use full OpenWrt toolchain.
+  SDK builds produce LSE atomics (casal instructions) incompatible with some Cortex-A72 CPUs.
+  Updated CLAUDE.md and secubox-tools/README.md with critical toolchain requirements.
+
+- **2026-01-27 – Project Documentation Update**
+  README.md updated to v0.16.0 with 38 modules categorized.
+  secubox-tools/README.md updated to v1.1.0.
+  Added SDK vs Toolchain build guidance throughout documentation.
