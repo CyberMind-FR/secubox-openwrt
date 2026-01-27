@@ -50,7 +50,7 @@ init_yaml() {
 	config_get hook_priority $section priority "4"
 	config_get update_frequency $section update_frequency '10s'
 	config_get log_level $section log_level 'info'
-	config_get api_url $section api_url "http://127.0.0.1:8080"
+	config_get api_url $section api_url "http://127.0.0.1:8180"
 	config_get api_key $section api_key "API_KEY"
 	config_get_bool ipv6 $section ipv6 '1'
 	config_get deny_action $section deny_action "drop"

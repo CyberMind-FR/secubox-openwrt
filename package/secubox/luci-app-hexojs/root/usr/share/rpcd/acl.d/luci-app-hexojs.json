@@ -56,7 +56,8 @@
 					"gitea_setup",
 					"gitea_clone",
 					"gitea_sync",
-					"gitea_save_config"
+					"gitea_save_config",
+					"publish_to_www"
 				]
 			},
 			"uci": ["hexojs"]

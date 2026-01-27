@@ -28,6 +28,19 @@ var callGiteaSaveConfig = rpc.declare({
 	params: ['enabled', 'gitea_url', 'gitea_user', 'gitea_token', 'content_repo', 'content_branch', 'auto_sync']
 });
 
+var callBuild = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'generate',
+	expect: {}
+});
+
+var callPublishToWww = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'publish_to_www',
+	params: ['path'],
+	expect: {}
+});
+
 return view.extend({
 	title: _('Content Sync'),
 	wizardStep: 0,
@@ -211,6 +224,50 @@ return view.extend({
 	},
 
 	// ============================================
+	// Build & Publish Actions
+	// ============================================
+
+	handleBuild: function() {
+		ui.showModal(_('Building Site'), [
+			E('p', { 'class': 'spinning' }, _('Generating static files...'))
+		]);
+
+		callBuild().then(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', _('Site built successfully!')), 'info');
+			} else {
+				ui.addNotification(null, E('p', result.error || _('Build failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
+		});
+	},
+
+	handlePublish: function() {
+		var self = this;
+		var path = document.querySelector('#publish-path');
+		var publishPath = path ? path.value : '/www/blog';
+
+		ui.showModal(_('Publishing Site'), [
+			E('p', { 'class': 'spinning' }, _('Building and publishing to %s...').format(publishPath))
+		]);
+
+		callPublishToWww(publishPath).then(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', _('Published to %s!').format(result.path || publishPath)), 'info');
+			} else {
+				ui.addNotification(null, E('p', result.error || _('Publish failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
+		});
+	},
+
+	// ============================================
 	// Gitea Actions
 	// ============================================
 
@@ -295,6 +352,49 @@ return view.extend({
 					E('span', { 'class': 'hexo-status-dot' }),
 					status.branch || 'main'
 				]) : ''
+			]),
+
+			// Build & Publish Card
+			E('div', { 'class': 'hexo-card' }, [
+				E('div', { 'class': 'hexo-card-header' }, [
+					E('div', { 'class': 'hexo-card-title' }, [
+						E('span', { 'style': 'margin-right: 8px;' }, '\uD83D\uDE80'),
+						_('Build & Publish')
+					])
+				]),
+				E('p', { 'style': 'margin-bottom: 16px; color: var(--hexo-text-muted);' },
+					_('Build static files and publish to web server.')),
+				E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px;' }, [
+					// Build Section
+					E('div', { 'class': 'hexo-card', 'style': 'background: var(--hexo-bg-input);' }, [
+						E('h4', { 'style': 'margin-bottom: 8px;' }, ['\uD83D\uDD28 ', _('Build')]),
+						E('p', { 'style': 'font-size: 13px; color: var(--hexo-text-muted); margin-bottom: 12px;' },
+							_('Generate static HTML files from your content.')),
+						E('button', {
+							'class': 'hexo-btn hexo-btn-primary',
+							'click': function() { self.handleBuild(); }
+						}, _('Build Site'))
+					]),
+					// Publish Section
+					E('div', { 'class': 'hexo-card', 'style': 'background: var(--hexo-bg-input);' }, [
+						E('h4', { 'style': 'margin-bottom: 8px;' }, ['\uD83C\uDF10 ', _('Publish')]),
+						E('p', { 'style': 'font-size: 13px; color: var(--hexo-text-muted); margin-bottom: 12px;' },
+							_('Copy built files to web server directory.')),
+						E('div', { 'class': 'hexo-form-group', 'style': 'margin-bottom: 8px;' }, [
+							E('input', {
+								'type': 'text',
+								'id': 'publish-path',
+								'class': 'hexo-input',
+								'value': '/www/blog',
+								'placeholder': '/www/blog'
+							})
+						]),
+						E('button', {
+							'class': 'hexo-btn hexo-btn-success',
+							'click': function() { self.handlePublish(); }
+						}, _('Publish to Web'))
+					])
+				])
 			]),
 
 			// Gitea Integration Card

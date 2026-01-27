@@ -1,0 +1,235 @@
+#!/bin/sh /etc/rc.common
+# SecuBox Extroot Auto-Setup
+# Automatically configures overlay on mmcblk0p3 after fresh install/upgrade
+# Copyright (C) 2025 CyberMind.fr
+
+START=10
+STOP=90
+
+EXTRA_COMMANDS="status setup"
+EXTRA_HELP="        status  Show extroot status
+        setup   Configure extroot on mmcblk0p3"
+
+OVERLAY_DEV="/dev/mmcblk0p3"
+OVERLAY_LABEL="rootfs_data"
+LOG_TAG="secubox-extroot"
+
+log() { logger -t "$LOG_TAG" "$*"; echo "$*"; }
+
+# Check if extroot is already active
+is_extroot_active() {
+    mount | grep -q "on /overlay type" && [ -d /overlay/upper ]
+}
+
+# Check if overlay partition exists
+has_overlay_partition() {
+    [ -b "$OVERLAY_DEV" ] || return 1
+    blkid "$OVERLAY_DEV" >/dev/null 2>&1
+}
+
+# Get filesystem type of overlay partition
+get_overlay_fstype() {
+    blkid "$OVERLAY_DEV" -s TYPE -o value 2>/dev/null
+}
+
+# Get UUID of overlay partition
+get_overlay_uuid() {
+    blkid "$OVERLAY_DEV" -s UUID -o value 2>/dev/null
+}
+
+# Install required filesystem support
+install_fs_support() {
+    local fstype="$1"
+
+    case "$fstype" in
+        f2fs)
+            if ! opkg list-installed 2>/dev/null | grep -q "^kmod-fs-f2fs"; then
+                log "Installing f2fs support..."
+                opkg update >/dev/null 2>&1
+                opkg install kmod-fs-f2fs f2fs-tools 2>/dev/null || true
+            fi
+            ;;
+        ext4)
+            if ! opkg list-installed 2>/dev/null | grep -q "^kmod-fs-ext4"; then
+                log "Installing ext4 support..."
+                opkg update >/dev/null 2>&1
+                opkg install kmod-fs-ext4 e2fsprogs 2>/dev/null || true
+            fi
+            ;;
+    esac
+
+    # Always ensure block-mount is available
+    if ! opkg list-installed 2>/dev/null | grep -q "^block-mount"; then
+        log "Installing block-mount..."
+        opkg install block-mount 2>/dev/null || true
+    fi
+}
+
+# Prepare overlay partition structure
+prepare_overlay() {
+    local fstype="$1"
+    local mount_point="/tmp/extroot_setup"
+
+    mkdir -p "$mount_point"
+
+    # Mount the partition
+    if ! mount -t "$fstype" "$OVERLAY_DEV" "$mount_point" 2>/dev/null; then
+        log "Failed to mount $OVERLAY_DEV"
+        return 1
+    fi
+
+    # Create overlay directories
+    mkdir -p "$mount_point/upper"
+    mkdir -p "$mount_point/work"
+
+    # Copy existing data if overlay was previously active
+    if [ -d /overlay/upper ] && [ "$(ls -A /overlay/upper 2>/dev/null)" ]; then
+        log "Migrating existing overlay data..."
+        cp -a /overlay/upper/* "$mount_point/upper/" 2>/dev/null || true
+    fi
+
+    sync
+    umount "$mount_point"
+    rmdir "$mount_point"
+
+    return 0
+}
+
+# Configure fstab for extroot
+configure_fstab() {
+    local uuid="$1"
+    local fstype="$2"
+
+    # Check if already configured
+    if uci -q get fstab.extroot >/dev/null 2>&1; then
+        local current_uuid=$(uci -q get fstab.extroot.uuid)
+        if [ "$current_uuid" = "$uuid" ]; then
+            log "Extroot already configured"
+            return 0
+        fi
+    fi
+
+    log "Configuring fstab for extroot..."
+
+    # Remove old extroot config if exists
+    uci -q delete fstab.extroot 2>/dev/null || true
+
+    # Add new extroot configuration
+    uci set fstab.extroot=mount
+    uci set fstab.extroot.target="/overlay"
+    uci set fstab.extroot.uuid="$uuid"
+    uci set fstab.extroot.enabled="1"
+
+    if [ "$fstype" = "f2fs" ]; then
+        uci set fstab.extroot.fstype="f2fs"
+        uci set fstab.extroot.options="rw,noatime"
+    fi
+
+    uci commit fstab
+
+    log "Fstab configured - reboot required to activate"
+    return 0
+}
+
+# Main setup function
+setup_extroot() {
+    log "SecuBox Extroot Setup starting..."
+
+    # Check if already active
+    if is_extroot_active; then
+        log "Extroot already active on /overlay"
+        df -h /overlay | tail -1
+        return 0
+    fi
+
+    # Check for overlay partition
+    if ! has_overlay_partition; then
+        log "No overlay partition found at $OVERLAY_DEV"
+        return 1
+    fi
+
+    # Get filesystem info
+    local fstype=$(get_overlay_fstype)
+    local uuid=$(get_overlay_uuid)
+
+    if [ -z "$fstype" ] || [ -z "$uuid" ]; then
+        log "Cannot determine filesystem type or UUID"
+        return 1
+    fi
+
+    log "Found overlay partition: $OVERLAY_DEV ($fstype, UUID=$uuid)"
+
+    # Install filesystem support
+    install_fs_support "$fstype"
+
+    # Prepare the partition
+    if ! prepare_overlay "$fstype"; then
+        log "Failed to prepare overlay partition"
+        return 1
+    fi
+
+    # Configure fstab
+    if ! configure_fstab "$uuid" "$fstype"; then
+        log "Failed to configure fstab"
+        return 1
+    fi
+
+    log "Extroot setup complete - REBOOT REQUIRED"
+
+    # Create flag file to indicate reboot needed
+    touch /tmp/extroot-reboot-required
+
+    return 0
+}
+
+start() {
+    # Only run setup if not already configured or after upgrade
+    if is_extroot_active; then
+        log "Extroot active"
+        return 0
+    fi
+
+    if has_overlay_partition; then
+        setup_extroot
+    fi
+}
+
+stop() {
+    return 0
+}
+
+boot() {
+    start
+}
+
+# Manual commands
+status() {
+    echo "=== SecuBox Extroot Status ==="
+    echo ""
+
+    if is_extroot_active; then
+        echo "Status: ACTIVE"
+        echo ""
+        echo "Overlay mount:"
+        mount | grep overlay
+        echo ""
+        echo "Storage:"
+        df -h /overlay
+    else
+        echo "Status: NOT ACTIVE"
+        echo ""
+        if has_overlay_partition; then
+            echo "Overlay partition available: $OVERLAY_DEV"
+            echo "Filesystem: $(get_overlay_fstype)"
+            echo "UUID: $(get_overlay_uuid)"
+            echo ""
+            echo "Run '/etc/init.d/secubox-extroot setup' to configure"
+        else
+            echo "No overlay partition found"
+        fi
+    fi
+}
+
+setup() {
+    setup_extroot
+}

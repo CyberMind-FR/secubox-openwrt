@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-streamlit
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 PKG_ARCH:=all
 
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
@@ -22,22 +22,25 @@ define Package/secubox-app-streamlit
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Streamlit Platform
-  DEPENDS:=+uci +libuci +jsonfilter +wget-ssl +tar +lxc +lxc-common
+  DEPENDS:=+uci +libuci +jsonfilter +wget-ssl +tar +lxc +lxc-common +git
 endef
 
 define Package/secubox-app-streamlit/description
 Streamlit App Platform - Self-hosted Python data app platform
 
 Features:
-- Run Streamlit apps in LXC container
+- Folder-based app structure (app.py, requirements.txt, .streamlit/)
 - Multi-instance support (multiple apps on different ports)
-- Python 3.12 with Streamlit 1.53.x
-- Auto-install requirements.txt dependencies
+- Gitea integration for app deployment and updates
+- Python 3.12 with Streamlit in LXC container
+- Auto-install requirements.txt with hash-based caching
 - HAProxy publish wizard for vhost routing
 - Web dashboard integration
-- Configurable port and memory limits
 
-Runs in LXC container with Alpine Linux.
+App folder structure:
+  /srv/streamlit/apps/<appname>/
+    app.py, requirements.txt, .streamlit/
+
 Configure in /etc/config/streamlit.
 endef
 
@@ -74,7 +77,9 @@ define Package/secubox-app-streamlit/postinst
 	echo ""
 	echo "Web interface: http://<router-ip>:8501"
 	echo ""
-	echo "Deploy your apps with: streamlitctl app add <name> /path/to/app.py"
+	echo "Create apps:  streamlitctl app create myapp"
+	echo "Add instance: streamlitctl instance add myapp 8502"
+	echo "Gitea clone:  streamlitctl gitea clone myapp user/repo"
 	echo ""
 }
 exit 0

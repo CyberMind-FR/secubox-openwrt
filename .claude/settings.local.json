@@ -122,7 +122,24 @@
       "Bash(gh run:*)",
       "Bash(dig:*)",
       "Bash(nslookup:*)",
-      "Bash(host:*)"
+      "Bash(host:*)",
+      "Bash(git fetch:*)",
+      "Bash(/home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/deploy-remote.sh:*)",
+      "Bash(for i in 1 2 3 4 5)",
+      "Bash(do echo \"Attempt $i...\")",
+      "Bash(if ssh -o ConnectTimeout=10 root@192.168.255.1 'echo \"\"Connected\"\"; df -h /')",
+      "Bash(then break)",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(for i in 1 2 3 4 5 6)",
+      "Bash(do echo \"Checking... \\($i\\)\")",
+      "Bash(if ssh -o ConnectTimeout=10 root@192.168.255.1 'df -h / /overlay 2>/dev/null')",
+      "Bash(./secubox-tools/deploy-remote.sh:*)",
+      "Bash(do)",
+      "Bash(if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@192.168.255.1 \"echo ''Router is back!''\")",
+      "Bash(then)",
+      "Bash(exit 0)",
+      "Bash(if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@192.168.255.1 \"echo ''Router online!''\")"
     ]
   }
 }
