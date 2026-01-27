@@ -15,4 +15,3 @@ filenames:
   - /tmp/log/messages
 labels:
   type: syslog
-filter: "contains(Line, 'haproxy')"

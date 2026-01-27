@@ -4,7 +4,7 @@
 onsuccess: next_stage
 name: secubox/haproxy-logs
 description: "Parse HAProxy access logs"
-filter: "evt.Parsed.program == 'haproxy' || evt.Line contains 'haproxy'"
+filter: "evt.Parsed.program == 'haproxy' || evt.Line.Raw contains 'haproxy'"
 grok:
   pattern: '%{IP:source_ip}:%{INT:source_port} \[%{HAPROXYDATE:timestamp}\] %{NOTSPACE:frontend} %{NOTSPACE:backend}/%{NOTSPACE:server} %{INT:tq}/%{INT:tw}/%{INT:tc}/%{INT:tr}/%{INT:tt} %{INT:http_status} %{INT:bytes_read}'
   apply_on: message
@@ -27,7 +27,7 @@ statics:
 onsuccess: next_stage
 name: secubox/haproxy-backend-failure
 description: "Parse HAProxy backend connection failures"
-filter: "evt.Line contains 'haproxy' && (evt.Line contains 'no server available' || evt.Line contains 'Connection refused')"
+filter: "evt.Line.Raw contains 'haproxy' && (evt.Line.Raw contains 'no server available' || evt.Line.Raw contains 'Connection refused')"
 grok:
   pattern: "%{IP:source_ip}.*%{GREEDYDATA:error_message}"
   apply_on: message

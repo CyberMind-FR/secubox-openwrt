@@ -4,7 +4,7 @@
 onsuccess: next_stage
 name: secubox/streamlit-logs
 description: "Parse Streamlit application logs"
-filter: "evt.Line.Labels.type == 'streamlit' || evt.Line contains 'streamlit'"
+filter: "evt.Line.Labels.type == 'streamlit' || evt.Line.Raw contains 'streamlit'"
 grok:
   pattern: '%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} %{GREEDYDATA:message}'
   apply_on: message
@@ -29,7 +29,7 @@ statics:
 onsuccess: next_stage
 name: secubox/streamlit-ws-failure
 description: "Parse Streamlit WebSocket connection issues"
-filter: "evt.Line contains 'streamlit' && evt.Line contains 'WebSocket'"
+filter: "evt.Line.Raw contains 'streamlit' && evt.Line.Raw contains 'WebSocket'"
 grok:
   pattern: '%{IP:source_ip}.*WebSocket.*(?:failed|error|closed)'
   apply_on: message

@@ -14,4 +14,3 @@ filenames:
   - /var/log/haproxy.log
 labels:
   type: haproxy
-filter: "contains(Line, 'streamlit')"
