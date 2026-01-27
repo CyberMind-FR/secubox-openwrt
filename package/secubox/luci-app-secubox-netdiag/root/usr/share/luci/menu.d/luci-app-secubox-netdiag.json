@@ -1,0 +1,14 @@
+{
+	"admin/secubox/netdiag": {
+		"title": "Network Diagnostics",
+		"order": 45,
+		"action": {
+			"type": "view",
+			"path": "secubox-netdiag/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-secubox-netdiag"],
+			"uci": {}
+		}
+	}
+}

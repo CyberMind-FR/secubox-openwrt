@@ -19,7 +19,8 @@ var appCategories = [
 		description: 'SecuBox administration and app management',
 		apps: [
 			{ id: 'secubox-admin', name: 'SecuBox Admin', icon: '\ud83d\udcbb', path: 'admin/secubox/admin', desc: 'App catalog, updates, and system configuration' },
-			{ id: 'cyber-dashboard', name: 'Cyber Dashboard', icon: '\ud83d\udcca', path: 'admin/secubox/admin/cyber-dashboard', desc: 'Advanced analytics and insights' }
+			{ id: 'cyber-dashboard', name: 'Cyber Dashboard', icon: '\ud83d\udcca', path: 'admin/secubox/admin/cyber-dashboard', desc: 'Advanced analytics and insights' },
+			{ id: 'netdiag', name: 'Network Diagnostics', icon: '\ud83d\udd0c', path: 'admin/secubox/netdiag', desc: 'DSA switch port statistics and error monitoring' }
 		]
 	},
 	{
