@@ -1,0 +1,57 @@
+# CrowdSec scenario for Gitea authentication bruteforce
+# Detects repeated authentication failures on Gitea
+
+type: leaky
+name: secubox/gitea-auth-bruteforce
+description: "Detect bruteforce attempts on Gitea web interface"
+filter: "evt.Meta.service == 'gitea' && evt.Meta.auth_success == 'false' && evt.Meta.protocol != 'ssh'"
+groupby: evt.Meta.source_ip
+capacity: 5
+leakspeed: 30s
+blackhole: 5m
+labels:
+  service: gitea
+  type: bruteforce
+  remediation: true
+---
+# Detect Gitea SSH bruteforce
+type: leaky
+name: secubox/gitea-ssh-bruteforce
+description: "Detect SSH bruteforce attempts on Gitea"
+filter: "evt.Meta.service == 'gitea' && evt.Meta.protocol == 'ssh' && evt.Meta.auth_success == 'false'"
+groupby: evt.Meta.source_ip
+capacity: 5
+leakspeed: 60s
+blackhole: 10m
+labels:
+  service: gitea
+  type: ssh_bruteforce
+  remediation: true
+---
+# Detect Gitea repository enumeration
+type: leaky
+name: secubox/gitea-repo-scan
+description: "Detect repository enumeration on Gitea"
+filter: "evt.Meta.log_type == 'gitea_access' && evt.Parsed.http_status == '404' && evt.Parsed.request contains '.git'"
+groupby: evt.Meta.source_ip
+capacity: 20
+leakspeed: 30s
+blackhole: 5m
+labels:
+  service: gitea
+  type: repo_scan
+  remediation: true
+---
+# Detect Gitea API abuse
+type: leaky
+name: secubox/gitea-api-abuse
+description: "Detect API abuse on Gitea"
+filter: "evt.Meta.log_type == 'gitea_access' && evt.Parsed.request contains '/api/v1'"
+groupby: evt.Meta.source_ip
+capacity: 50
+leakspeed: 10s
+blackhole: 5m
+labels:
+  service: gitea
+  type: api_abuse
+  remediation: true

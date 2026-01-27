@@ -1,0 +1,17 @@
+# CrowdSec acquisition for Streamlit logs
+# Monitors Streamlit application access
+
+source: file
+filenames:
+  - /var/log/streamlit/*.log
+  - /srv/streamlit/*/logs/*.log
+labels:
+  type: streamlit
+---
+# Streamlit via HAProxy backend
+source: file
+filenames:
+  - /var/log/haproxy.log
+labels:
+  type: haproxy
+filter: "contains(Line, 'streamlit')"

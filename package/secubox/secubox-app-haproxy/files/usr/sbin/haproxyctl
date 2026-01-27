@@ -525,7 +525,7 @@ EOF
 
 _generate_backend() {
 	local section="$1"
-	local enabled name mode balance health_check
+	local enabled name mode balance health_check health_check_uri
 
 	config_get enabled "$section" enabled "0"
 	[ "$enabled" = "1" ] || return
@@ -534,6 +534,7 @@ _generate_backend() {
 	config_get mode "$section" mode "http"
 	config_get balance "$section" balance "roundrobin"
 	config_get health_check "$section" health_check ""
+	config_get health_check_uri "$section" health_check_uri ""
 
 	# Track generated backend
 	_generated_backends="$_generated_backends $name"
@@ -543,7 +544,15 @@ _generate_backend() {
 	echo "    mode $mode"
 	echo "    balance $balance"
 
-	[ -n "$health_check" ] && echo "    option $health_check"
+	# Health check configuration
+	if [ -n "$health_check" ]; then
+		echo "    option $health_check"
+		# If health_check_uri specified, use HTTP check with GET method
+		if [ -n "$health_check_uri" ]; then
+			echo "    http-check send meth GET uri $health_check_uri"
+			echo "    http-check expect status 200"
+		fi
+	fi
 
 	# Check if there are separate server sections for this backend
 	local has_server_sections=0

@@ -1,0 +1,38 @@
+# CrowdSec parser for Streamlit logs
+# Parses Streamlit access and connection events
+
+onsuccess: next_stage
+name: secubox/streamlit-logs
+description: "Parse Streamlit application logs"
+filter: "evt.Line.Labels.type == 'streamlit' || evt.Line contains 'streamlit'"
+grok:
+  pattern: '%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} %{GREEDYDATA:message}'
+  apply_on: message
+statics:
+  - meta: log_type
+    value: streamlit
+  - meta: service
+    value: streamlit
+---
+# Parse Streamlit via HAProxy (401/403 auth failures)
+onsuccess: next_stage
+name: secubox/streamlit-auth-failure
+description: "Parse Streamlit authentication failures via HAProxy"
+filter: "evt.Meta.log_type == 'haproxy' && evt.Parsed.backend contains 'streamlit' && evt.Parsed.http_status in ['401', '403']"
+statics:
+  - meta: auth_success
+    value: "false"
+  - meta: service
+    value: streamlit
+---
+# Parse Streamlit WebSocket connection failures
+onsuccess: next_stage
+name: secubox/streamlit-ws-failure
+description: "Parse Streamlit WebSocket connection issues"
+filter: "evt.Line contains 'streamlit' && evt.Line contains 'WebSocket'"
+grok:
+  pattern: '%{IP:source_ip}.*WebSocket.*(?:failed|error|closed)'
+  apply_on: message
+statics:
+  - meta: log_type
+    value: streamlit_ws

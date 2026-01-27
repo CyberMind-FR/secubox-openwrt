@@ -1,0 +1,43 @@
+# CrowdSec scenario for HAProxy authentication bruteforce
+# Detects repeated 401/403 responses indicating auth failures
+
+type: leaky
+name: secubox/haproxy-auth-bruteforce
+description: "Detect bruteforce attempts via HAProxy"
+filter: "evt.Meta.log_type == 'haproxy' && evt.Meta.auth_success == 'false'"
+groupby: evt.Meta.source_ip
+capacity: 5
+leakspeed: 30s
+blackhole: 5m
+labels:
+  service: haproxy
+  type: bruteforce
+  remediation: true
+---
+# Detect rapid HAProxy requests (potential DDoS/scan)
+type: leaky
+name: secubox/haproxy-flooding
+description: "Detect request flooding via HAProxy"
+filter: "evt.Meta.log_type == 'haproxy'"
+groupby: evt.Meta.source_ip
+capacity: 100
+leakspeed: 5s
+blackhole: 10m
+labels:
+  service: haproxy
+  type: flooding
+  remediation: true
+---
+# Detect HAProxy backend targeting (scanning backends)
+type: leaky
+name: secubox/haproxy-backend-scan
+description: "Detect backend scanning via HAProxy"
+filter: "evt.Meta.log_type == 'haproxy' && evt.Parsed.http_status == '503'"
+groupby: evt.Meta.source_ip
+capacity: 10
+leakspeed: 20s
+blackhole: 10m
+labels:
+  service: haproxy
+  type: backend_scan
+  remediation: true

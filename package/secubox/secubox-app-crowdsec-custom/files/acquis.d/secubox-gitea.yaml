@@ -1,0 +1,18 @@
+# CrowdSec acquisition for Gitea logs
+# Monitors Gitea authentication and access events
+
+source: file
+filenames:
+  - /var/log/gitea/gitea.log
+  - /srv/gitea/log/gitea.log
+  - /opt/gitea/log/gitea.log
+labels:
+  type: gitea
+---
+# Gitea access logs (NCSA format)
+source: file
+filenames:
+  - /var/log/gitea/access.log
+  - /srv/gitea/log/http.log
+labels:
+  type: gitea_access

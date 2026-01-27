@@ -1,0 +1,53 @@
+# CrowdSec parser for Gitea logs
+# Parses Gitea authentication and access events
+
+onsuccess: next_stage
+name: secubox/gitea-logs
+description: "Parse Gitea application logs"
+filter: "evt.Line.Labels.type == 'gitea'"
+grok:
+  pattern: '%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} %{GREEDYDATA:message}'
+  apply_on: message
+statics:
+  - meta: log_type
+    value: gitea
+  - meta: service
+    value: gitea
+---
+# Parse Gitea authentication failures
+onsuccess: next_stage
+name: secubox/gitea-auth-failure
+description: "Parse Gitea authentication failures"
+filter: "evt.Meta.log_type == 'gitea' && (evt.Parsed.message contains 'Failed authentication' || evt.Parsed.message contains 'login attempt')"
+grok:
+  pattern: '.*from %{IP:source_ip}.*(?:Failed|failed|invalid|denied)'
+  apply_on: message
+statics:
+  - meta: auth_success
+    value: "false"
+---
+# Parse Gitea SSH authentication failures
+onsuccess: next_stage
+name: secubox/gitea-ssh-failure
+description: "Parse Gitea SSH authentication failures"
+filter: "evt.Meta.log_type == 'gitea' && (evt.Parsed.message contains 'SSH' || evt.Parsed.message contains 'ssh')"
+grok:
+  pattern: '.*SSH.*%{IP:source_ip}.*(?:Failed|failed|denied|invalid)'
+  apply_on: message
+statics:
+  - meta: auth_success
+    value: "false"
+  - meta: protocol
+    value: ssh
+---
+# Parse Gitea access logs (NCSA format)
+onsuccess: next_stage
+name: secubox/gitea-access
+description: "Parse Gitea HTTP access logs"
+filter: "evt.Line.Labels.type == 'gitea_access'"
+grok:
+  pattern: '%{IP:source_ip} - %{NOTSPACE:user} \[%{HTTPDATE:timestamp}\] "%{WORD:method} %{URIPATHPARAM:request} HTTP/%{NUMBER:http_version}" %{INT:http_status} %{INT:bytes}'
+  apply_on: message
+statics:
+  - meta: log_type
+    value: gitea_access
