@@ -1,0 +1,36 @@
+{
+	"luci-app-metablogizer": {
+		"description": "Grant access to MetaBlogizer Static Site Publisher",
+		"read": {
+			"ubus": {
+				"luci.metablogizer": [
+					"status",
+					"list_sites",
+					"get_site",
+					"get_publish_info",
+					"get_settings"
+				]
+			},
+			"uci": ["metablogizer"]
+		},
+		"write": {
+			"ubus": {
+				"luci.metablogizer": [
+					"create_site",
+					"update_site",
+					"delete_site",
+					"sync_site",
+					"save_settings"
+				],
+				"luci.haproxy": [
+					"create_backend",
+					"create_server",
+					"create_vhost",
+					"delete_backend",
+					"delete_vhost"
+				]
+			},
+			"uci": ["metablogizer"]
+		}
+	}
+}

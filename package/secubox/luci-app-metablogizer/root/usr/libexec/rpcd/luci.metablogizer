@@ -1,0 +1,605 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# RPCD backend for MetaBlogizer Static Site Publisher
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+UCI_CONFIG="metablogizer"
+SITES_ROOT="/srv/metablogizer/sites"
+NGINX_CONTAINER="nginx"
+
+# Helper: Get UCI value with default
+get_uci() {
+	local section="$1"
+	local option="$2"
+	local default="$3"
+	local value
+	value=$(uci -q get "$UCI_CONFIG.$section.$option")
+	echo "${value:-$default}"
+}
+
+# Status method - get overall status and list all sites
+method_status() {
+	local enabled nginx_running site_count
+
+	enabled=$(get_uci main enabled 0)
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+	NGINX_CONTAINER=$(get_uci main nginx_container "$NGINX_CONTAINER")
+
+	# Check nginx container
+	if lxc-info -n "$NGINX_CONTAINER" -s 2>/dev/null | grep -q "RUNNING"; then
+		nginx_running="1"
+	else
+		nginx_running="0"
+	fi
+
+	# Count sites
+	site_count=0
+	config_load "$UCI_CONFIG"
+	config_foreach _count_site site
+	site_count="$_site_count"
+
+	json_init
+	json_add_boolean "enabled" "$enabled"
+	json_add_boolean "nginx_running" "$nginx_running"
+	json_add_int "site_count" "$site_count"
+	json_add_string "sites_root" "$SITES_ROOT"
+	json_add_string "nginx_container" "$NGINX_CONTAINER"
+	json_dump
+}
+
+_site_count=0
+_count_site() {
+	_site_count=$((_site_count + 1))
+}
+
+# List all sites with their status
+method_list_sites() {
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+
+	json_init
+	json_add_array "sites"
+
+	config_load "$UCI_CONFIG"
+	config_foreach _add_site site
+
+	json_close_array
+	json_dump
+}
+
+_add_site() {
+	local section="$1"
+	local name domain gitea_repo ssl enabled description
+	local has_content last_sync
+
+	config_get name "$section" name ""
+	config_get domain "$section" domain ""
+	config_get gitea_repo "$section" gitea_repo ""
+	config_get ssl "$section" ssl "1"
+	config_get enabled "$section" enabled "1"
+	config_get description "$section" description ""
+
+	# Check if site has content
+	has_content="0"
+	if [ -d "$SITES_ROOT/$name" ] && [ -f "$SITES_ROOT/$name/index.html" ]; then
+		has_content="1"
+	fi
+
+	# Get last sync time
+	last_sync=""
+	if [ -d "$SITES_ROOT/$name/.git" ]; then
+		last_sync=$(cd "$SITES_ROOT/$name" && git log -1 --format="%ci" 2>/dev/null || echo "")
+	fi
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_string "domain" "$domain"
+	json_add_string "gitea_repo" "$gitea_repo"
+	json_add_string "description" "$description"
+	json_add_boolean "ssl" "$ssl"
+	json_add_boolean "enabled" "$enabled"
+	json_add_boolean "has_content" "$has_content"
+	json_add_string "last_sync" "$last_sync"
+	json_add_string "url" "https://$domain"
+	json_close_object
+}
+
+# Create a new site with auto-vhost
+method_create_site() {
+	local name domain gitea_repo ssl description
+	local section_id gitea_url
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+	json_get_var domain domain
+	json_get_var gitea_repo gitea_repo
+	json_get_var ssl ssl "1"
+	json_get_var description description ""
+
+	# Validate required fields
+	if [ -z "$name" ] || [ -z "$domain" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Name and domain are required"
+		json_dump
+		return
+	fi
+
+	# Sanitize name for section ID
+	section_id="site_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+
+	# Check if site already exists
+	if uci -q get "$UCI_CONFIG.$section_id" >/dev/null 2>&1; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site with this name already exists"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+	NGINX_CONTAINER=$(get_uci main nginx_container "$NGINX_CONTAINER")
+
+	# 1. Create UCI site config
+	uci set "$UCI_CONFIG.$section_id=site"
+	uci set "$UCI_CONFIG.$section_id.name=$name"
+	uci set "$UCI_CONFIG.$section_id.domain=$domain"
+	uci set "$UCI_CONFIG.$section_id.ssl=$ssl"
+	uci set "$UCI_CONFIG.$section_id.enabled=1"
+	[ -n "$gitea_repo" ] && uci set "$UCI_CONFIG.$section_id.gitea_repo=$gitea_repo"
+	[ -n "$description" ] && uci set "$UCI_CONFIG.$section_id.description=$description"
+
+	# 2. Create site directory
+	mkdir -p "$SITES_ROOT/$name"
+
+	# 3. Clone from Gitea if repo specified
+	if [ -n "$gitea_repo" ]; then
+		gitea_url=$(uci -q get gitea.main.url || echo "http://192.168.255.1:3000")
+		git clone "$gitea_url/$gitea_repo.git" "$SITES_ROOT/$name" 2>/dev/null || true
+	fi
+
+	# 4. Create default index.html with OG tags if no content
+	if [ ! -f "$SITES_ROOT/$name/index.html" ]; then
+		cat > "$SITES_ROOT/$name/index.html" <<EOF
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>$name</title>
+    <meta property="og:title" content="$name">
+    <meta property="og:url" content="https://$domain">
+    <meta property="og:type" content="website">
+    <meta property="og:description" content="$description">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="$name">
+    <meta name="twitter:url" content="https://$domain">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+               display: flex; justify-content: center; align-items: center;
+               min-height: 100vh; margin: 0; background: #f5f5f5; }
+        .container { text-align: center; padding: 2rem; }
+        h1 { color: #333; }
+        p { color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>$name</h1>
+        <p>Site published with MetaBlogizer</p>
+    </div>
+</body>
+</html>
+EOF
+	fi
+
+	# 5. Create HAProxy backend
+	local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+
+	# Create backend via HAProxy RPCD
+	echo "{\"name\":\"$backend_name\",\"mode\":\"http\",\"enabled\":\"1\"}" | \
+		/usr/libexec/rpcd/luci.haproxy call create_backend >/dev/null 2>&1
+
+	# Create server pointing to nginx container
+	local nginx_ip
+	nginx_ip=$(lxc-info -n "$NGINX_CONTAINER" -iH 2>/dev/null | head -1)
+	[ -z "$nginx_ip" ] && nginx_ip="nginx"
+
+	echo "{\"backend\":\"$backend_name\",\"name\":\"nginx\",\"address\":\"$nginx_ip\",\"port\":\"80\",\"check\":\"1\"}" | \
+		/usr/libexec/rpcd/luci.haproxy call create_server >/dev/null 2>&1
+
+	# 6. Create HAProxy vhost
+	local acme_val="0"
+	[ "$ssl" = "1" ] && acme_val="1"
+	echo "{\"domain\":\"$domain\",\"backend\":\"$backend_name\",\"ssl\":\"$ssl\",\"ssl_redirect\":\"$ssl\",\"acme\":\"$acme_val\",\"enabled\":\"1\"}" | \
+		/usr/libexec/rpcd/luci.haproxy call create_vhost >/dev/null 2>&1
+
+	# 7. Configure nginx location in container
+	_configure_nginx "$name"
+
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$section_id"
+	json_add_string "url" "https://$domain"
+	json_add_string "name" "$name"
+	json_add_string "domain" "$domain"
+	json_dump
+}
+
+# Configure nginx location for a site
+_configure_nginx() {
+	local site_name="$1"
+	local nginx_conf="/var/lib/lxc/$NGINX_CONTAINER/rootfs/etc/nginx/sites.d"
+
+	# Create nginx config for site
+	mkdir -p "$nginx_conf"
+
+	cat > "$nginx_conf/metablog-$site_name.conf" <<EOF
+location /$site_name/ {
+    alias /srv/sites/$site_name/;
+    index index.html;
+    try_files \$uri \$uri/ /index.html;
+}
+EOF
+
+	# Reload nginx in container
+	lxc-attach -n "$NGINX_CONTAINER" -- nginx -s reload 2>/dev/null || true
+}
+
+# Delete a site and cleanup
+method_delete_site() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name domain
+	name=$(get_uci "$id" name "")
+	domain=$(get_uci "$id" domain "")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+	NGINX_CONTAINER=$(get_uci main nginx_container "$NGINX_CONTAINER")
+
+	# 1. Delete HAProxy vhost
+	local vhost_id=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+	echo "{\"id\":\"$vhost_id\"}" | \
+		/usr/libexec/rpcd/luci.haproxy call delete_vhost >/dev/null 2>&1
+
+	# 2. Delete HAProxy backend
+	local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+	echo "{\"id\":\"$backend_name\"}" | \
+		/usr/libexec/rpcd/luci.haproxy call delete_backend >/dev/null 2>&1
+
+	# 3. Remove nginx config
+	rm -f "/var/lib/lxc/$NGINX_CONTAINER/rootfs/etc/nginx/sites.d/metablog-$name.conf"
+	lxc-attach -n "$NGINX_CONTAINER" -- nginx -s reload 2>/dev/null || true
+
+	# 4. Remove site directory
+	rm -rf "$SITES_ROOT/$name"
+
+	# 5. Delete UCI config
+	uci delete "$UCI_CONFIG.$id"
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Sync site from Gitea (git pull)
+method_sync_site() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name gitea_repo
+	name=$(get_uci "$id" name "")
+	gitea_repo=$(get_uci "$id" gitea_repo "")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+
+	local site_path="$SITES_ROOT/$name"
+
+	if [ -d "$site_path/.git" ]; then
+		# Pull latest changes
+		cd "$site_path"
+		local result
+		result=$(git pull 2>&1)
+		local rc=$?
+
+		json_init
+		if [ $rc -eq 0 ]; then
+			json_add_boolean "success" 1
+			json_add_string "message" "$result"
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "$result"
+		fi
+		json_dump
+	elif [ -n "$gitea_repo" ]; then
+		# Clone if not exists
+		local gitea_url
+		gitea_url=$(uci -q get gitea.main.url || echo "http://192.168.255.1:3000")
+
+		rm -rf "$site_path"
+		local result
+		result=$(git clone "$gitea_url/$gitea_repo.git" "$site_path" 2>&1)
+		local rc=$?
+
+		json_init
+		if [ $rc -eq 0 ]; then
+			json_add_boolean "success" 1
+			json_add_string "message" "Cloned from $gitea_repo"
+		else
+			json_add_boolean "success" 0
+			json_add_string "error" "$result"
+		fi
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "No git repository configured for this site"
+		json_dump
+	fi
+}
+
+# Get publish info for QR code generation
+method_get_publish_info() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name domain description ssl
+	name=$(get_uci "$id" name "")
+	domain=$(get_uci "$id" domain "")
+	description=$(get_uci "$id" description "")
+	ssl=$(get_uci "$id" ssl "1")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	local protocol="http"
+	[ "$ssl" = "1" ] && protocol="https"
+	local url="${protocol}://${domain}"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$id"
+	json_add_string "name" "$name"
+	json_add_string "domain" "$domain"
+	json_add_string "url" "$url"
+	json_add_string "description" "$description"
+	json_add_string "title" "$name - Published with SecuBox"
+	json_dump
+}
+
+# Get site details
+method_get_site() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name domain gitea_repo ssl enabled description
+	name=$(get_uci "$id" name "")
+	domain=$(get_uci "$id" domain "")
+	gitea_repo=$(get_uci "$id" gitea_repo "")
+	ssl=$(get_uci "$id" ssl "1")
+	enabled=$(get_uci "$id" enabled "1")
+	description=$(get_uci "$id" description "")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+
+	local has_content last_sync
+	has_content="0"
+	if [ -d "$SITES_ROOT/$name" ] && [ -f "$SITES_ROOT/$name/index.html" ]; then
+		has_content="1"
+	fi
+	last_sync=""
+	if [ -d "$SITES_ROOT/$name/.git" ]; then
+		last_sync=$(cd "$SITES_ROOT/$name" && git log -1 --format="%ci" 2>/dev/null || echo "")
+	fi
+
+	local protocol="http"
+	[ "$ssl" = "1" ] && protocol="https"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$id"
+	json_add_string "name" "$name"
+	json_add_string "domain" "$domain"
+	json_add_string "gitea_repo" "$gitea_repo"
+	json_add_string "description" "$description"
+	json_add_boolean "ssl" "$ssl"
+	json_add_boolean "enabled" "$enabled"
+	json_add_boolean "has_content" "$has_content"
+	json_add_string "last_sync" "$last_sync"
+	json_add_string "url" "${protocol}://${domain}"
+	json_dump
+}
+
+# Update site settings
+method_update_site() {
+	local id name domain gitea_repo ssl enabled description
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+	json_get_var name name
+	json_get_var domain domain
+	json_get_var gitea_repo gitea_repo
+	json_get_var ssl ssl
+	json_get_var enabled enabled
+	json_get_var description description
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	# Check site exists
+	local current_name
+	current_name=$(get_uci "$id" name "")
+	if [ -z "$current_name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	[ -n "$name" ] && uci set "$UCI_CONFIG.$id.name=$name"
+	[ -n "$domain" ] && uci set "$UCI_CONFIG.$id.domain=$domain"
+	[ -n "$gitea_repo" ] && uci set "$UCI_CONFIG.$id.gitea_repo=$gitea_repo"
+	[ -n "$ssl" ] && uci set "$UCI_CONFIG.$id.ssl=$ssl"
+	[ -n "$enabled" ] && uci set "$UCI_CONFIG.$id.enabled=$enabled"
+	[ -n "$description" ] && uci set "$UCI_CONFIG.$id.description=$description"
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Get global settings
+method_get_settings() {
+	json_init
+	json_add_boolean "enabled" "$(get_uci main enabled 0)"
+	json_add_string "nginx_container" "$(get_uci main nginx_container nginx)"
+	json_add_string "sites_root" "$(get_uci main sites_root /srv/metablogizer/sites)"
+	json_dump
+}
+
+# Save global settings
+method_save_settings() {
+	local enabled nginx_container sites_root
+
+	read -r input
+	json_load "$input"
+	json_get_var enabled enabled
+	json_get_var nginx_container nginx_container
+	json_get_var sites_root sites_root
+
+	# Ensure main section exists
+	uci -q get "$UCI_CONFIG.main" >/dev/null 2>&1 || uci set "$UCI_CONFIG.main=metablogizer"
+
+	[ -n "$enabled" ] && uci set "$UCI_CONFIG.main.enabled=$enabled"
+	[ -n "$nginx_container" ] && uci set "$UCI_CONFIG.main.nginx_container=$nginx_container"
+	[ -n "$sites_root" ] && uci set "$UCI_CONFIG.main.sites_root=$sites_root"
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Main RPC interface
+case "$1" in
+	list)
+		cat <<'EOF'
+{
+	"status": {},
+	"list_sites": {},
+	"get_site": { "id": "string" },
+	"create_site": { "name": "string", "domain": "string", "gitea_repo": "string", "ssl": "boolean", "description": "string" },
+	"update_site": { "id": "string", "name": "string", "domain": "string", "gitea_repo": "string", "ssl": "boolean", "enabled": "boolean", "description": "string" },
+	"delete_site": { "id": "string" },
+	"sync_site": { "id": "string" },
+	"get_publish_info": { "id": "string" },
+	"get_settings": {},
+	"save_settings": { "enabled": "boolean", "nginx_container": "string", "sites_root": "string" }
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			status)           method_status ;;
+			list_sites)       method_list_sites ;;
+			get_site)         method_get_site ;;
+			create_site)      method_create_site ;;
+			update_site)      method_update_site ;;
+			delete_site)      method_delete_site ;;
+			sync_site)        method_sync_site ;;
+			get_publish_info) method_get_publish_info ;;
+			get_settings)     method_get_settings ;;
+			save_settings)    method_save_settings ;;
+			*)                echo '{"error": "unknown method"}' ;;
+		esac
+		;;
+esac

@@ -1,0 +1,30 @@
+{
+	"admin/services/metablogizer": {
+		"title": "MetaBlogizer",
+		"action": {
+			"type": "view",
+			"path": "metablogizer/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-metablogizer"],
+			"uci": {"metablogizer": true}
+		},
+		"order": 85
+	},
+	"admin/services/metablogizer/overview": {
+		"title": "Sites",
+		"action": {
+			"type": "view",
+			"path": "metablogizer/overview"
+		},
+		"order": 10
+	},
+	"admin/services/metablogizer/settings": {
+		"title": "Settings",
+		"action": {
+			"type": "view",
+			"path": "metablogizer/settings"
+		},
+		"order": 20
+	}
+}
