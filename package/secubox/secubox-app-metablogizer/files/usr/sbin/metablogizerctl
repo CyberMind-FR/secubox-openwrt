@@ -18,6 +18,14 @@ log_error() { echo "[ERROR] $*" >&2; }
 uci_get() { uci -q get ${CONFIG}.$1; }
 uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
 
+fix_permissions() {
+	local dir="$1"
+	[ -d "$dir" ] || return 1
+	chmod 755 "$dir"
+	find "$dir" -type d -exec chmod 755 {} \;
+	find "$dir" -type f -exec chmod 644 {} \;
+}
+
 usage() {
 	cat <<'EOF'
 MetaBlogizer - Static Site Publisher
@@ -205,10 +213,10 @@ EOF
 			log_warn "Git clone failed, using placeholder"
 			mkdir -p "$SITES_ROOT/$name"
 		}
-		# Set proper permissions for web serving
-		chmod -R 755 "$SITES_ROOT/$name"
-		find "$SITES_ROOT/$name" -type f -exec chmod 644 {} \;
 	fi
+
+	# Always fix permissions for web serving
+	fix_permissions "$SITES_ROOT/$name"
 
 	# Configure runtime
 	case "$runtime" in
@@ -396,6 +404,9 @@ cmd_sync() {
 		cp -r /tmp/metablog-sync-$$/* "$site_dir/"
 		rm -rf /tmp/metablog-sync-$$
 	fi
+
+	# Fix permissions for web serving
+	fix_permissions "$site_dir"
 
 	log_info "Sync complete"
 }

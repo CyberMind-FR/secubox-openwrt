@@ -41,6 +41,15 @@ get_next_port() {
 	echo $port
 }
 
+# Fix permissions for web serving (755 for dirs, 644 for files)
+fix_permissions() {
+	local dir="$1"
+	[ -d "$dir" ] || return 1
+	chmod 755 "$dir"
+	find "$dir" -type d -exec chmod 755 {} \;
+	find "$dir" -type f -exec chmod 644 {} \;
+}
+
 # Status method - get overall status and list all sites
 method_status() {
 	local enabled runtime detected_runtime nginx_running site_count
@@ -188,7 +197,10 @@ method_create_site() {
 		git clone "$gitea_url/$gitea_repo.git" "$SITES_ROOT/$name" 2>/dev/null || true
 	fi
 
-	# 4. Create default index.html with OG tags if no content
+	# 4. Fix permissions for web serving
+	fix_permissions "$SITES_ROOT/$name"
+
+	# 5. Create default index.html with OG tags if no content
 	if [ ! -f "$SITES_ROOT/$name/index.html" ]; then
 		cat > "$SITES_ROOT/$name/index.html" <<EOF
 <!DOCTYPE html>
@@ -223,7 +235,7 @@ method_create_site() {
 EOF
 	fi
 
-	# 5. Detect runtime and configure accordingly
+	# 6. Detect runtime and configure accordingly
 	local current_runtime=$(detect_runtime)
 	local port=""
 	local server_address="192.168.255.1"
@@ -252,7 +264,7 @@ EOF
 	[ -n "$port" ] && uci set "$UCI_CONFIG.$section_id.port=$port"
 	uci set "$UCI_CONFIG.$section_id.runtime=$current_runtime"
 
-	# 6. Create HAProxy backend
+	# 7. Create HAProxy backend
 	local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
 
 	uci set "haproxy.$backend_name=backend"
@@ -272,7 +284,7 @@ EOF
 	uci set "haproxy.$server_name.check=1"
 	uci set "haproxy.$server_name.enabled=1"
 
-	# 7. Create HAProxy vhost
+	# 8. Create HAProxy vhost
 	local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
 	local acme_val="0"
 	[ "$ssl" = "1" ] && acme_val="1"
@@ -430,6 +442,9 @@ method_sync_site() {
 		result=$(git pull 2>&1)
 		local rc=$?
 
+		# Fix permissions after pull
+		fix_permissions "$site_path"
+
 		json_init
 		if [ $rc -eq 0 ]; then
 			json_add_boolean "success" 1
@@ -448,6 +463,9 @@ method_sync_site() {
 		local result
 		result=$(git clone "$gitea_url/$gitea_repo.git" "$site_path" 2>&1)
 		local rc=$?
+
+		# Fix permissions after clone
+		fix_permissions "$site_path"
 
 		json_init
 		if [ $rc -eq 0 ]; then
@@ -654,6 +672,7 @@ method_upload_file() {
 	# Create directory structure if needed
 	local dir_path=$(dirname "$file_path")
 	mkdir -p "$dir_path"
+	chmod 755 "$dir_path"
 
 	# Decode base64 content and write file
 	echo "$content" | base64 -d > "$file_path" 2>/dev/null
@@ -661,6 +680,8 @@ method_upload_file() {
 
 	if [ $rc -eq 0 ]; then
 		chmod 644 "$file_path"
+		# Ensure parent directories are also accessible
+		chmod 755 "$site_path"
 		json_init
 		json_add_boolean "success" 1
 		json_add_string "filename" "$filename"
