@@ -136,7 +136,7 @@ return view.extend({
 	render: function(data) {
 		var self = this;
 		var status = data[0] || {};
-		var sites = (data[1] && data[1].sites) || [];
+		var sites = data[1] || [];
 
 		// Inject styles
 		var styleEl = document.createElement('style');
