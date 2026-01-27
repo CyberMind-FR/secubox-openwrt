@@ -1,0 +1,17 @@
+# CrowdSec acquisition for HAProxy logs
+# Monitors HAProxy authentication and access events
+
+source: file
+filenames:
+  - /var/log/haproxy.log
+  - /var/log/haproxy/access.log
+labels:
+  type: haproxy
+---
+# HAProxy syslog entries
+source: file
+filenames:
+  - /var/log/messages
+  - /tmp/log/messages
+labels:
+  type: syslog

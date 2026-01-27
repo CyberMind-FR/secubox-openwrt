@@ -3,6 +3,7 @@
 # Copyright (C) 2025 CyberMind.fr
 #
 # Manages Hexo static site generator in LXC container
+# Supports multiple instances on different ports
 
 CONFIG="hexojs"
 LXC_NAME="hexojs"
@@ -15,6 +16,7 @@ SHARE_PATH="/usr/share/hexojs"
 
 # Logging
 log_info() { echo "[INFO] $*"; logger -t hexojs "$*"; }
+log_warn() { echo "[WARN] $*" >&2; logger -t hexojs -p warning "$*"; }
 log_error() { echo "[ERROR] $*" >&2; logger -t hexojs -p err "$*"; }
 log_debug() { [ "$DEBUG" = "1" ] && echo "[DEBUG] $*"; }
 
@@ -34,46 +36,89 @@ ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
 uci_get() { uci -q get ${CONFIG}.$1; }
 uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
 
-# Load configuration
+# Load main configuration
 load_config() {
-	http_port="$(uci_get main.http_port)" || http_port="4000"
 	data_path="$(uci_get main.data_path)" || data_path="/srv/hexojs"
-	active_site="$(uci_get main.active_site)" || active_site="default"
 	memory_limit="$(uci_get main.memory_limit)" || memory_limit="512M"
 
-	# Site config
-	site_title="$(uci_get ${active_site}.title)" || site_title="My Blog"
-	site_subtitle="$(uci_get ${active_site}.subtitle)" || site_subtitle=""
-	site_author="$(uci_get ${active_site}.author)" || site_author="Admin"
-	site_language="$(uci_get ${active_site}.language)" || site_language="en"
-	site_theme="$(uci_get ${active_site}.theme)" || site_theme="cybermind"
-	site_url="$(uci_get ${active_site}.url)" || site_url="http://localhost:$http_port"
-	site_root="$(uci_get ${active_site}.root)" || site_root="/"
-	site_per_page="$(uci_get ${active_site}.per_page)" || site_per_page="10"
+	# Legacy support: active_site for default instance
+	active_site="$(uci_get main.active_site)" || active_site="default"
+	http_port="$(uci_get main.http_port)" || http_port="4000"
 
-	# Deploy config
-	deploy_type="$(uci_get deploy.type)" || deploy_type="git"
-	deploy_repo="$(uci_get deploy.repo)" || deploy_repo=""
-	deploy_branch="$(uci_get deploy.branch)" || deploy_branch="gh-pages"
-
-	# Gitea config
+	# Gitea config (shared)
 	gitea_enabled="$(uci_get gitea.enabled)" || gitea_enabled="0"
 	gitea_url="$(uci_get gitea.url)" || gitea_url="http://192.168.255.1:3000"
 	gitea_user="$(uci_get gitea.user)" || gitea_user="admin"
 	gitea_token="$(uci_get gitea.token)" || gitea_token=""
 	gitea_content_repo="$(uci_get gitea.content_repo)" || gitea_content_repo="blog-content"
 	gitea_content_branch="$(uci_get gitea.content_branch)" || gitea_content_branch="main"
-	gitea_auto_sync="$(uci_get gitea.auto_sync)" || gitea_auto_sync="0"
 
 	ensure_dir "$data_path"
-	ensure_dir "$data_path/sites"
-	ensure_dir "$data_path/media"
+	ensure_dir "$data_path/instances"
+	ensure_dir "$data_path/themes"
+}
+
+# Load instance configuration
+load_instance_config() {
+	local instance="$1"
+	[ -z "$instance" ] && instance="default"
+
+	current_instance="$instance"
+
+	# Check if instance section exists
+	local instance_type=$(uci_get "${instance}")
+	if [ "$instance_type" != "instance" ]; then
+		# Legacy: check if it's old-style site section or doesn't exist
+		if [ -z "$instance_type" ] && [ "$instance" = "default" ]; then
+			# Use legacy main config for default
+			instance_port="$http_port"
+			instance_title="$(uci_get default.title)" || instance_title="My Blog"
+			instance_theme="$(uci_get default.theme)" || instance_theme="cybermind"
+			instance_enabled="1"
+		else
+			instance_port=""
+			instance_title=""
+			instance_theme=""
+			instance_enabled="0"
+			return 1
+		fi
+	else
+		instance_port="$(uci_get ${instance}.port)" || instance_port="4000"
+		instance_title="$(uci_get ${instance}.title)" || instance_title="My Blog"
+		instance_theme="$(uci_get ${instance}.theme)" || instance_theme="cybermind"
+		instance_enabled="$(uci_get ${instance}.enabled)" || instance_enabled="0"
+	fi
+
+	instance_path="$data_path/instances/$instance"
+	instance_site="$instance_path/site"
+
+	return 0
+}
+
+# Get list of all enabled instances
+get_enabled_instances() {
+	local instances=""
+
+	# Check for instance sections in UCI
+	for section in $(uci show hexojs 2>/dev/null | grep '=instance$' | cut -d'.' -f2 | cut -d'=' -f1); do
+		local enabled=$(uci_get "${section}.enabled")
+		[ "$enabled" = "1" ] && instances="$instances $section"
+	done
+
+	# If no instances defined, check for legacy default
+	if [ -z "$instances" ]; then
+		if [ -d "$data_path/site" ] || [ -d "$data_path/instances/default/site" ]; then
+			instances="default"
+		fi
+	fi
+
+	echo "$instances"
 }
 
 # Usage
 usage() {
 	cat <<EOF
-SecuBox Hexo CMS Controller
+SecuBox Hexo CMS Controller (Multi-Instance)
 
 Usage: $(basename $0) <command> [options]
 
@@ -83,47 +128,54 @@ Container Commands:
   update            Update Hexo and dependencies
   status            Show service status
 
-Site Management:
-  site create <name>   Create new Hexo site
-  site list            List all sites
-  site delete <name>   Delete a site
-  site switch <name>   Switch active site
+Instance Management:
+  instance list              List all instances
+  instance create <name>     Create new instance
+  instance delete <name>     Delete an instance
+  instance start <name>      Start instance server
+  instance stop <name>       Stop instance server
+  instance status <name>     Show instance status
+
+Site Management (operates on current/specified instance):
+  site create [instance]     Create Hexo site for instance
+  site delete [instance]     Delete site for instance
 
 Content Commands:
-  new post "Title"       Create new blog post
-  new page "Title"       Create new page
-  new draft "Title"      Create new draft
-  publish draft <slug>   Publish a draft
-  list posts             List all posts
-  list drafts            List all drafts
+  new post "Title" [instance]   Create new blog post
+  new page "Title" [instance]   Create new page
+  new draft "Title" [instance]  Create new draft
+  list posts [instance]         List all posts
+  list drafts [instance]        List all drafts
 
 Build Commands:
-  serve                 Start preview server (port $http_port)
-  build (generate)      Generate static files
-  clean                 Clean generated files
-  deploy                Deploy to configured git target
-  publish               Copy static files to /www/blog/
+  serve [instance]        Start preview server
+  build [instance]        Generate static files
+  clean [instance]        Clean generated files
+  deploy [instance]       Deploy to configured target
+  publish [instance]      Copy static files to /www/
 
 Service Commands:
-  service-run         Run in foreground (for init)
-  service-stop        Stop service
+  service-run         Run all instances (for init)
+  service-stop        Stop all instances
 
 Gitea Integration:
-  gitea setup         Configure git credentials in container
-  gitea clone         Clone content repo from Gitea
-  gitea sync          Pull latest content from Gitea
-  gitea status        Show Gitea sync status
+  gitea setup [instance]   Configure git credentials
+  gitea clone [instance]   Clone content repo
+  gitea sync [instance]    Pull latest content
 
 Utility:
   shell               Open shell in container
-  logs                View container logs
+  logs [instance]     View logs
   exec <cmd>          Execute command in container
+
+Examples:
+  hexoctl instance create myblog    # Create new instance
+  hexoctl instance start myblog     # Start on configured port
+  hexoctl site create myblog        # Initialize Hexo site
+  hexoctl new post "Hello" myblog   # Create post in myblog
 
 Configuration:
   /etc/config/hexojs
-
-Data directory:
-  /srv/hexojs
 
 EOF
 }
@@ -146,7 +198,6 @@ lxc_create_rootfs() {
 
 	ensure_dir "$rootfs"
 
-	# Use Alpine mini rootfs
 	local alpine_version="3.21"
 	case "$arch" in
 		x86_64) alpine_arch="x86_64" ;;
@@ -178,42 +229,6 @@ lxc_create_rootfs() {
 	# Create Hexo directory
 	ensure_dir "$rootfs/opt/hexojs"
 
-	# Create startup script
-	cat > "$rootfs/opt/start-hexo.sh" << 'STARTUP'
-#!/bin/sh
-set -e
-
-# Install Node.js and Hexo on first run
-if [ ! -f /opt/.installed ]; then
-    echo "Installing Node.js and Hexo..."
-    apk update
-    apk add --no-cache nodejs npm git openssh-client
-
-    # Install Hexo CLI globally
-    npm install -g hexo-cli
-
-    touch /opt/.installed
-fi
-
-# Start Hexo server if site exists
-cd /opt/hexojs
-if [ -d "site" ] && [ -f "site/package.json" ]; then
-    cd site
-
-    # Install dependencies if needed
-    [ -d "node_modules" ] || npm install
-
-    # Run server
-    echo "Starting Hexo server on port ${HEXO_PORT:-4000}..."
-    exec npx hexo server -p "${HEXO_PORT:-4000}"
-else
-    echo "No site found. Create one with: hexoctl site create default"
-    # Keep container running
-    exec sleep infinity
-fi
-STARTUP
-	chmod +x "$rootfs/opt/start-hexo.sh"
-
 	log_info "Rootfs created successfully"
 	return 0
 }
@@ -234,7 +249,7 @@ lxc_create_config() {
 	esac
 
 	cat > "$LXC_CONFIG" << EOF
-# Hexo CMS LXC Configuration
+# Hexo CMS LXC Configuration (Multi-Instance)
 lxc.uts.name = $LXC_NAME
 lxc.rootfs.path = dir:$LXC_ROOTFS
 lxc.arch = $(uname -m)
@@ -247,7 +262,6 @@ lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
 lxc.mount.entry = $data_path opt/hexojs none bind,create=dir 0 0
 
 # Environment
-lxc.environment = HEXO_PORT=$http_port
 lxc.environment = NODE_ENV=production
 
 # Security
@@ -256,11 +270,125 @@ lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time sys_rawio
 # Resource limits
 lxc.cgroup.memory.limit_in_bytes = $mem_bytes
 
-# Init command
-lxc.init.cmd = /opt/start-hexo.sh
+# Init command - multi-instance manager
+lxc.init.cmd = /opt/start-hexo-multi.sh
 EOF
 
 	log_info "LXC config created"
+}
+
+# Create multi-instance startup script
+create_startup_script() {
+	load_config
+
+	local start_script="$LXC_ROOTFS/opt/start-hexo-multi.sh"
+	cat > "$start_script" << 'STARTEOF'
+#!/bin/sh
+export PATH=/usr/local/bin:/usr/bin:/bin:$PATH
+export HOME=/root
+export NODE_ENV=production
+
+HEXO_BASE="/opt/hexojs"
+INSTANCES_DIR="$HEXO_BASE/instances"
+PIDS_DIR="/var/run/hexo"
+LOG_DIR="/var/log/hexo"
+
+mkdir -p "$PIDS_DIR" "$LOG_DIR"
+
+# Install dependencies on first run
+if [ ! -f /opt/.installed ]; then
+    echo "Installing Node.js and Hexo..."
+    apk update
+    apk add --no-cache nodejs npm git openssh-client
+    npm install -g hexo-cli
+    touch /opt/.installed
+fi
+
+# Function to start a single instance
+start_instance() {
+    local name="$1"
+    local port="$2"
+    local site_dir="$INSTANCES_DIR/$name/site"
+
+    [ -d "$site_dir" ] || return 1
+    [ -f "$site_dir/package.json" ] || return 1
+
+    echo "Starting instance '$name' on port $port..."
+
+    cd "$site_dir"
+    [ -d "node_modules" ] || npm install
+
+    # Start hexo server in background
+    nohup npx hexo server -p "$port" -i 0.0.0.0 > "$LOG_DIR/$name.log" 2>&1 &
+    echo $! > "$PIDS_DIR/$name.pid"
+
+    echo "Instance '$name' started (PID: $!)"
+}
+
+# Function to stop an instance
+stop_instance() {
+    local name="$1"
+    local pidfile="$PIDS_DIR/$name.pid"
+
+    if [ -f "$pidfile" ]; then
+        local pid=$(cat "$pidfile")
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid"
+            echo "Stopped instance '$name' (PID: $pid)"
+        fi
+        rm -f "$pidfile"
+    fi
+}
+
+# Read instances config from file
+INSTANCES_CONF="$HEXO_BASE/instances.conf"
+
+# Main loop - keep container running
+if [ -f "$INSTANCES_CONF" ]; then
+    echo "Loading instances from config..."
+    while IFS=: read -r name port; do
+        [ -n "$name" ] && [ -n "$port" ] && start_instance "$name" "$port"
+    done < "$INSTANCES_CONF"
+fi
+
+# Legacy: check for old-style single site
+if [ -d "$HEXO_BASE/site" ] && [ ! -L "$HEXO_BASE/site" ]; then
+    echo "Starting legacy site on port ${HEXO_PORT:-4000}..."
+    cd "$HEXO_BASE/site"
+    [ -d "node_modules" ] || npm install
+    nohup npx hexo server -p "${HEXO_PORT:-4000}" -i 0.0.0.0 > "$LOG_DIR/default.log" 2>&1 &
+    echo $! > "$PIDS_DIR/default.pid"
+fi
+
+# Keep container running
+echo "Hexo multi-instance manager running. Instances:"
+ls -1 "$PIDS_DIR"/*.pid 2>/dev/null | while read f; do
+    name=$(basename "$f" .pid)
+    pid=$(cat "$f")
+    echo "  - $name (PID: $pid)"
+done
+
+# Wait forever
+exec tail -f /dev/null
+STARTEOF
+	chmod +x "$start_script"
+}
+
+# Generate instances.conf for container
+generate_instances_conf() {
+	load_config
+
+	local conf_file="$data_path/instances.conf"
+	> "$conf_file"
+
+	for instance in $(get_enabled_instances); do
+		load_instance_config "$instance" || continue
+		[ "$instance_enabled" = "1" ] || continue
+		[ -d "$instance_site" ] || continue
+		echo "${instance}:${instance_port}" >> "$conf_file"
+	done
+
+	log_debug "Generated instances.conf with $(wc -l < "$conf_file") instances"
 }
 
 # Container control
@@ -289,26 +417,12 @@ lxc_run() {
 		return 1
 	fi
 
-	# Regenerate config in case settings changed
+	# Regenerate config
 	lxc_create_config
+	create_startup_script
+	generate_instances_conf
 
-	# Ensure start script exists in container
-	local start_script="$LXC_ROOTFS/opt/start-hexo.sh"
-	cat > "$start_script" << 'STARTEOF'
-#!/bin/sh
-export PATH=/usr/local/bin:/usr/bin:/bin:$PATH
-export HOME=/root
-export NODE_ENV=production
-HEXO_PORT="${HEXO_PORT:-4000}"
-SITE_DIR="/opt/hexojs/site"
-cd "$SITE_DIR" 2>/dev/null || exec tail -f /dev/null
-[ -d "node_modules" ] || npm install
-[ -d "$SITE_DIR/public" ] || hexo generate
-exec hexo server -p "$HEXO_PORT" -i 0.0.0.0
-STARTEOF
-	chmod +x "$start_script"
-
-	log_info "Starting Hexo container on port $http_port..."
+	log_info "Starting Hexo container..."
 	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
 }
 
@@ -320,6 +434,202 @@ lxc_exec() {
 	lxc-attach -n "$LXC_NAME" -- env PATH=/usr/local/bin:/usr/bin:/bin "$@"
 }
 
+# Instance management commands
+cmd_instance_list() {
+	load_config
+
+	echo "Hexo Instances:"
+	echo "---------------"
+
+	local found=0
+	for section in $(uci show hexojs 2>/dev/null | grep '=instance$' | cut -d'.' -f2 | cut -d'=' -f1); do
+		found=1
+		load_instance_config "$section"
+		local status="disabled"
+		[ "$instance_enabled" = "1" ] && status="enabled"
+
+		local site_status="no site"
+		[ -d "$instance_site" ] && site_status="site ready"
+
+		local running=""
+		if lxc_running && [ -f "$LXC_ROOTFS/var/run/hexo/${section}.pid" ]; then
+			running=" [RUNNING]"
+		fi
+
+		printf "  %-15s port:%-5s %s (%s)%s\n" "$section" "$instance_port" "[$status]" "$site_status" "$running"
+	done
+
+	# Check for legacy default
+	if [ "$found" = "0" ] && [ -d "$data_path/site" ]; then
+		echo "  default         port:$http_port [legacy] (site ready)"
+	fi
+
+	[ "$found" = "0" ] && [ ! -d "$data_path/site" ] && echo "  (no instances)"
+}
+
+cmd_instance_create() {
+	require_root
+	load_config
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "Instance name required"; return 1; }
+
+	# Validate name
+	echo "$name" | grep -qE '^[a-z][a-z0-9_]*$' || {
+		log_error "Invalid instance name. Use lowercase letters, numbers, underscore. Start with letter."
+		return 1
+	}
+
+	# Check if exists
+	local existing=$(uci_get "$name")
+	[ -n "$existing" ] && { log_error "Instance '$name' already exists"; return 1; }
+
+	# Find next available port
+	local port=4000
+	while uci show hexojs 2>/dev/null | grep -q "port='$port'"; do
+		port=$((port + 1))
+	done
+
+	# Create UCI config
+	uci set hexojs.${name}=instance
+	uci set hexojs.${name}.enabled='1'
+	uci set hexojs.${name}.port="$port"
+	uci set hexojs.${name}.title="$name Blog"
+	uci set hexojs.${name}.theme='cybermind'
+	uci commit hexojs
+
+	# Create directory
+	ensure_dir "$data_path/instances/$name"
+
+	log_info "Instance '$name' created on port $port"
+	log_info "Next: hexoctl site create $name"
+}
+
+cmd_instance_delete() {
+	require_root
+	load_config
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "Instance name required"; return 1; }
+
+	# Stop instance first
+	cmd_instance_stop "$name" 2>/dev/null
+
+	# Remove UCI config
+	uci delete hexojs.${name} 2>/dev/null
+	uci commit hexojs
+
+	# Optionally remove data (ask user)
+	local instance_dir="$data_path/instances/$name"
+	if [ -d "$instance_dir" ]; then
+		log_warn "Data directory exists: $instance_dir"
+		log_info "Remove manually if needed: rm -rf $instance_dir"
+	fi
+
+	log_info "Instance '$name' deleted"
+}
+
+cmd_instance_start() {
+	require_root
+	load_config
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "Instance name required"; return 1; }
+
+	load_instance_config "$name" || { log_error "Instance '$name' not found"; return 1; }
+
+	if ! lxc_running; then
+		log_error "Container not running. Start with: /etc/init.d/hexojs start"
+		return 1
+	fi
+
+	if [ ! -d "$instance_site" ]; then
+		log_error "No site for instance '$name'. Create with: hexoctl site create $name"
+		return 1
+	fi
+
+	log_info "Starting instance '$name' on port $instance_port..."
+
+	lxc_exec sh -c "
+		cd /opt/hexojs/instances/$name/site || exit 1
+		[ -d node_modules ] || npm install
+
+		# Kill existing if running
+		[ -f /var/run/hexo/$name.pid ] && kill \$(cat /var/run/hexo/$name.pid) 2>/dev/null
+
+		mkdir -p /var/run/hexo /var/log/hexo
+		nohup npx hexo server -p $instance_port -i 0.0.0.0 > /var/log/hexo/$name.log 2>&1 &
+		echo \$! > /var/run/hexo/$name.pid
+		echo \"Started on port $instance_port (PID: \$!)\"
+	"
+
+	# Update instances.conf
+	generate_instances_conf
+}
+
+cmd_instance_stop() {
+	require_root
+	load_config
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "Instance name required"; return 1; }
+
+	if ! lxc_running; then
+		return 0
+	fi
+
+	log_info "Stopping instance '$name'..."
+
+	lxc_exec sh -c "
+		if [ -f /var/run/hexo/$name.pid ]; then
+			kill \$(cat /var/run/hexo/$name.pid) 2>/dev/null
+			rm -f /var/run/hexo/$name.pid
+			echo 'Stopped'
+		else
+			echo 'Not running'
+		fi
+	"
+}
+
+cmd_instance_status() {
+	load_config
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "Instance name required"; return 1; }
+
+	load_instance_config "$name" || { log_error "Instance '$name' not found"; return 1; }
+
+	local running="false"
+	local pid=""
+
+	if lxc_running; then
+		pid=$(lxc_exec cat /var/run/hexo/$name.pid 2>/dev/null)
+		if [ -n "$pid" ] && lxc_exec kill -0 "$pid" 2>/dev/null; then
+			running="true"
+		fi
+	fi
+
+	local site_exists="false"
+	[ -d "$instance_site" ] && site_exists="true"
+
+	cat << EOF
+Instance: $name
+--------------
+Enabled:  $([ "$instance_enabled" = "1" ] && echo "yes" || echo "no")
+Running:  $([ "$running" = "true" ] && echo "yes (PID: $pid)" || echo "no")
+Port:     $instance_port
+Title:    $instance_title
+Theme:    $instance_theme
+Site:     $([ "$site_exists" = "true" ] && echo "ready" || echo "not created")
+Path:     $instance_path
+
+EOF
+
+	if [ "$running" = "true" ]; then
+		echo "URL: http://$(uci -q get network.lan.ipaddr || echo 'localhost'):$instance_port"
+	fi
+}
+
 # Commands
 cmd_install() {
 	require_root
@@ -329,12 +639,12 @@ cmd_install() {
 
 	lxc_check_prereqs || exit 1
 
-	# Create container
 	if ! lxc_exists; then
 		lxc_create_rootfs || exit 1
 	fi
 
 	lxc_create_config || exit 1
+	create_startup_script
 
 	# Copy theme
 	if [ -d "$SHARE_PATH/themes/cybermind" ]; then
@@ -352,11 +662,9 @@ cmd_install() {
 	log_info "Installation complete!"
 	log_info ""
 	log_info "Next steps:"
-	log_info "  1. Create a site: hexoctl site create default"
-	log_info "  2. Enable service: uci set hexojs.main.enabled=1 && uci commit hexojs"
+	log_info "  1. Create instance: hexoctl instance create myblog"
+	log_info "  2. Create site: hexoctl site create myblog"
 	log_info "  3. Start service: /etc/init.d/hexojs start"
-	log_info ""
-	log_info "Web preview: http://<router-ip>:$http_port"
 }
 
 cmd_uninstall() {
@@ -364,19 +672,15 @@ cmd_uninstall() {
 
 	log_info "Uninstalling Hexo CMS..."
 
-	# Stop service
 	/etc/init.d/hexojs stop 2>/dev/null || true
 	/etc/init.d/hexojs disable 2>/dev/null || true
 
 	lxc_stop
 
-	# Remove container (keep data)
 	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
 		rm -rf "$LXC_PATH/$LXC_NAME"
 		log_info "Container removed"
 	fi
-
-	uci_set main.enabled '0'
 
 	log_info "Hexo CMS uninstalled"
 	log_info "Data preserved in: $(uci_get main.data_path)"
@@ -393,7 +697,16 @@ cmd_update() {
 		return 1
 	fi
 
-	lxc_exec sh -c 'npm update -g hexo-cli && cd /opt/hexojs/site && npm update'
+	lxc_exec sh -c 'npm update -g hexo-cli'
+
+	# Update each instance
+	for instance in $(get_enabled_instances); do
+		load_instance_config "$instance" || continue
+		if [ -d "$instance_site" ]; then
+			log_info "Updating instance '$instance'..."
+			lxc_exec sh -c "cd /opt/hexojs/instances/$instance/site && npm update"
+		fi
+	done
 
 	log_info "Update complete!"
 }
@@ -403,233 +716,140 @@ cmd_status() {
 
 	local enabled="$(uci_get main.enabled)"
 	local running="false"
-	local site_exists="false"
-	local post_count=0
-	local draft_count=0
-
-	if lxc_running; then
-		running="true"
-	fi
-
-	if [ -d "$data_path/site/source/_posts" ]; then
-		site_exists="true"
-		post_count=$(ls -1 "$data_path/site/source/_posts/"*.md 2>/dev/null | wc -l)
-		draft_count=$(ls -1 "$data_path/site/source/_drafts/"*.md 2>/dev/null | wc -l)
-	fi
-
-	cat << EOF
-{
-  "enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
-  "running": $running,
-  "site_exists": $site_exists,
-  "active_site": "$active_site",
-  "http_port": $http_port,
-  "data_path": "$data_path",
-  "post_count": $post_count,
-  "draft_count": $draft_count,
-  "memory_limit": "$memory_limit",
-  "container": "$LXC_NAME",
-  "site": {
-    "title": "$site_title",
-    "author": "$site_author",
-    "theme": "$site_theme",
-    "language": "$site_language"
-  }
-}
-EOF
-}
-
-cmd_status_text() {
-	load_config
-
-	local enabled="$(uci_get main.enabled)"
-	local running="false"
-
-	if lxc_running; then
-		running="true"
-	fi
+	lxc_running && running="true"
 
 	cat << EOF
 Hexo CMS Status
 ===============
 Enabled:     $([ "$enabled" = "1" ] && echo "yes" || echo "no")
 Running:     $([ "$running" = "true" ] && echo "yes" || echo "no")
-HTTP Port:   $http_port
 Data Path:   $data_path
 Memory:      $memory_limit
-
-Active Site: $active_site
-Title:       $site_title
-Author:      $site_author
-Theme:       $site_theme
-
 Container:   $LXC_NAME
-Rootfs:      $LXC_ROOTFS
-Config:      $LXC_CONFIG
 
+Instances:
 EOF
 
-	if [ "$running" = "true" ]; then
-		echo "Preview: http://$(uci -q get network.lan.ipaddr || echo "localhost"):$http_port"
-	fi
+	for instance in $(get_enabled_instances); do
+		load_instance_config "$instance" || continue
+		local status="stopped"
+		if [ "$running" = "true" ]; then
+			local pid=$(lxc_exec cat /var/run/hexo/$instance.pid 2>/dev/null)
+			[ -n "$pid" ] && status="running:$instance_port"
+		fi
+		printf "  %-15s %s\n" "$instance" "[$status]"
+	done
 }
 
-# Site management
+# Site management (instance-aware)
 cmd_site_create() {
 	require_root
 	load_config
 
-	local name="${1:-default}"
-	local site_dir="$data_path/site"
+	local instance="${1:-default}"
+	load_instance_config "$instance" || {
+		# Auto-create instance if it doesn't exist
+		log_info "Creating instance '$instance'..."
+		cmd_instance_create "$instance"
+		load_instance_config "$instance"
+	}
 
-	log_info "Creating Hexo site: $name"
+	log_info "Creating Hexo site for instance: $instance"
 
-	if [ -d "$site_dir" ]; then
-		log_error "Site already exists at $site_dir"
-		log_info "Delete it first with: hexoctl site delete $name"
+	if [ -d "$instance_site" ]; then
+		log_error "Site already exists at $instance_site"
 		return 1
 	fi
+
+	ensure_dir "$instance_path"
 
 	# Start container if not running
 	local was_stopped=0
 	if ! lxc_running; then
 		was_stopped=1
 		lxc_create_config
+		create_startup_script
 		lxc-start -n "$LXC_NAME" -d -f "$LXC_CONFIG"
 		sleep 5
 	fi
 
 	# Create site in container
-	lxc_exec sh -c "cd /opt/hexojs && hexo init site" || {
+	lxc_exec sh -c "cd /opt/hexojs/instances/$instance && hexo init site" || {
 		log_error "Failed to initialize site"
 		return 1
 	}
 
 	# Install dependencies
-	lxc_exec sh -c "cd /opt/hexojs/site && npm install" || {
+	lxc_exec sh -c "cd /opt/hexojs/instances/$instance/site && npm install" || {
 		log_error "Failed to install dependencies"
 		return 1
 	}
 
 	# Install deploy plugin
-	lxc_exec sh -c "cd /opt/hexojs/site && npm install hexo-deployer-git --save" || true
+	lxc_exec sh -c "cd /opt/hexojs/instances/$instance/site && npm install hexo-deployer-git --save" || true
 
 	# Install theme
 	if [ -d "$data_path/themes/cybermind" ]; then
 		log_info "Installing CyberMind theme..."
-		cp -r "$data_path/themes/cybermind" "$site_dir/themes/"
-
-		# Update _config.yml to use cybermind theme
-		if [ -f "$site_dir/_config.yml" ]; then
-			sed -i 's/^theme:.*/theme: cybermind/' "$site_dir/_config.yml"
-		fi
+		cp -r "$data_path/themes/cybermind" "$instance_site/themes/"
+		sed -i 's/^theme:.*/theme: cybermind/' "$instance_site/_config.yml"
 	fi
 
 	# Copy scaffolds
 	if [ -d "$data_path/scaffolds" ]; then
-		cp -r "$data_path/scaffolds/"* "$site_dir/scaffolds/" 2>/dev/null || true
+		cp -r "$data_path/scaffolds/"* "$instance_site/scaffolds/" 2>/dev/null || true
 	fi
 
-	# Update site config
-	cmd_update_site_config
+	# Update config
+	if [ -f "$instance_site/_config.yml" ]; then
+		sed -i "s/^title:.*/title: $instance_title/" "$instance_site/_config.yml"
+		sed -i "s|^url:.*|url: http://localhost:$instance_port|" "$instance_site/_config.yml"
+	fi
 
-	# Create apps directory for CyberMind theme
-	ensure_dir "$site_dir/source/apps"
-	ensure_dir "$site_dir/source/portfolio"
-	ensure_dir "$site_dir/source/services"
-
-	# Stop if we started it
 	if [ "$was_stopped" = "1" ]; then
 		lxc_stop
 	fi
 
-	log_info "Site created successfully!"
-	log_info ""
-	log_info "Start preview server with: /etc/init.d/hexojs start"
-}
-
-cmd_update_site_config() {
-	load_config
-	local config_file="$data_path/site/_config.yml"
-
-	if [ ! -f "$config_file" ]; then
-		return 1
-	fi
-
-	# Update basic settings
-	sed -i "s/^title:.*/title: $site_title/" "$config_file"
-	sed -i "s/^subtitle:.*/subtitle: $site_subtitle/" "$config_file"
-	sed -i "s/^author:.*/author: $site_author/" "$config_file"
-	sed -i "s/^language:.*/language: $site_language/" "$config_file"
-	sed -i "s|^url:.*|url: $site_url|" "$config_file"
-	sed -i "s|^root:.*|root: $site_root|" "$config_file"
-	sed -i "s/^per_page:.*/per_page: $site_per_page/" "$config_file"
-	sed -i "s/^theme:.*/theme: $site_theme/" "$config_file"
-
-	# Add deploy config if repo is set
-	if [ -n "$deploy_repo" ]; then
-		# Remove existing deploy section
-		sed -i '/^deploy:/,/^[^ ]/{ /^deploy:/d; /^  /d; }' "$config_file"
-
-		# Add new deploy section
-		cat >> "$config_file" << EOF
-
-deploy:
-  type: $deploy_type
-  repo: $deploy_repo
-  branch: $deploy_branch
-EOF
-	fi
-}
-
-cmd_site_list() {
-	load_config
-
-	echo "Sites:"
-	if [ -d "$data_path/site" ]; then
-		local active="*"
-		echo "  $active default ($([ -f "$data_path/site/_config.yml" ] && echo "active" || echo "empty"))"
-	else
-		echo "  (no sites)"
-	fi
+	log_info "Site created for instance '$instance'!"
+	log_info "Start with: hexoctl instance start $instance"
 }
 
 cmd_site_delete() {
 	require_root
 	load_config
 
-	local name="${1:-default}"
-	local site_dir="$data_path/site"
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
 
-	log_info "Deleting site: $name"
-
-	if [ ! -d "$site_dir" ]; then
-		log_error "Site does not exist"
+	if [ ! -d "$instance_site" ]; then
+		log_error "No site exists for instance '$instance'"
 		return 1
 	fi
 
-	rm -rf "$site_dir"
-	log_info "Site deleted"
+	cmd_instance_stop "$instance" 2>/dev/null
+
+	rm -rf "$instance_site"
+	log_info "Site deleted for instance '$instance'"
 }
 
-# Content commands
+# Content commands (instance-aware)
 cmd_new_post() {
 	require_root
 	load_config
 
 	local title="$1"
-	if [ -z "$title" ]; then
-		log_error "Title required"
-		echo "Usage: hexoctl new post \"My Title\""
-		return 1
-	fi
+	local instance="${2:-default}"
+
+	[ -z "$title" ] && { log_error "Title required"; return 1; }
+
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
 
 	if ! lxc_running; then
 		log_error "Container not running"
 		return 1
 	fi
 
-	lxc_exec sh -c "cd /opt/hexojs/site && hexo new post \"$title\""
+	lxc_exec sh -c "cd /opt/hexojs/instances/$instance/site && hexo new post \"$title\""
 }
 
 cmd_new_page() {
@@ -637,17 +857,18 @@ cmd_new_page() {
 	load_config
 
 	local title="$1"
-	if [ -z "$title" ]; then
-		log_error "Title required"
-		return 1
-	fi
+	local instance="${2:-default}"
+
+	[ -z "$title" ] && { log_error "Title required"; return 1; }
+
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
 
 	if ! lxc_running; then
 		log_error "Container not running"
 		return 1
 	fi
 
-	lxc_exec sh -c "cd /opt/hexojs/site && hexo new page \"$title\""
+	lxc_exec sh -c "cd /opt/hexojs/instances/$instance/site && hexo new page \"$title\""
 }
 
 cmd_new_draft() {
@@ -655,72 +876,40 @@ cmd_new_draft() {
 	load_config
 
 	local title="$1"
-	if [ -z "$title" ]; then
-		log_error "Title required"
-		return 1
-	fi
+	local instance="${2:-default}"
+
+	[ -z "$title" ] && { log_error "Title required"; return 1; }
+
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
 
 	if ! lxc_running; then
 		log_error "Container not running"
 		return 1
 	fi
 
-	lxc_exec sh -c "cd /opt/hexojs/site && hexo new draft \"$title\""
-}
-
-cmd_publish_draft() {
-	require_root
-	load_config
-
-	local slug="$1"
-	if [ -z "$slug" ]; then
-		log_error "Slug required"
-		echo "Usage: hexoctl publish draft <slug>"
-		return 1
-	fi
-
-	if ! lxc_running; then
-		log_error "Container not running"
-		return 1
-	fi
-
-	lxc_exec sh -c "cd /opt/hexojs/site && hexo publish \"$slug\""
+	lxc_exec sh -c "cd /opt/hexojs/instances/$instance/site && hexo new draft \"$title\""
 }
 
 cmd_list_posts() {
 	load_config
 
-	local posts_dir="$data_path/site/source/_posts"
-	if [ ! -d "$posts_dir" ]; then
-		echo "[]"
-		return
-	fi
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
+
+	local posts_dir="$instance_site/source/_posts"
+	[ -d "$posts_dir" ] || { echo "[]"; return; }
 
 	echo "["
 	local first=1
 	for f in "$posts_dir"/*.md; do
 		[ -f "$f" ] || continue
-
 		local filename=$(basename "$f")
 		local slug="${filename%.md}"
 		local title=$(grep -m1 "^title:" "$f" | sed 's/^title:[[:space:]]*//' | tr -d '"' | tr -d "'")
-		local date=$(grep -m1 "^date:" "$f" | sed 's/^date:[[:space:]]*//')
-		local categories=$(grep -m1 "^categories:" "$f" | sed 's/^categories:[[:space:]]*//' | tr -d '[]')
-		local tags=$(grep -m1 "^tags:" "$f" | sed 's/^tags:[[:space:]]*//' | tr -d '[]')
 
 		[ "$first" = "1" ] || echo ","
 		first=0
-
-		cat << EOF
-  {
-    "slug": "$slug",
-    "title": "$title",
-    "date": "$date",
-    "categories": "$categories",
-    "tags": "$tags",
-    "path": "$f"
-  }
-EOF
+		echo "  {\"slug\": \"$slug\", \"title\": \"$title\"}"
 	done
 	echo "]"
 }
@@ -728,154 +917,121 @@ EOF
 cmd_list_drafts() {
 	load_config
 
-	local drafts_dir="$data_path/site/source/_drafts"
-	if [ ! -d "$drafts_dir" ]; then
-		echo "[]"
-		return
-	fi
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
+
+	local drafts_dir="$instance_site/source/_drafts"
+	[ -d "$drafts_dir" ] || { echo "[]"; return; }
 
 	echo "["
 	local first=1
 	for f in "$drafts_dir"/*.md; do
 		[ -f "$f" ] || continue
-
 		local filename=$(basename "$f")
 		local slug="${filename%.md}"
 		local title=$(grep -m1 "^title:" "$f" | sed 's/^title:[[:space:]]*//' | tr -d '"' | tr -d "'")
 
 		[ "$first" = "1" ] || echo ","
 		first=0
-
-		echo "  {\"slug\": \"$slug\", \"title\": \"$title\", \"path\": \"$f\"}"
+		echo "  {\"slug\": \"$slug\", \"title\": \"$title\"}"
 	done
 	echo "]"
 }
 
-# Build commands
+# Build commands (instance-aware)
 cmd_serve() {
 	require_root
 	load_config
 
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
+
 	if ! lxc_running; then
-		log_error "Container not running. Start with: /etc/init.d/hexojs start"
+		log_error "Container not running"
 		return 1
 	fi
 
-	log_info "Starting preview server on port $http_port..."
-	lxc_exec sh -c "cd /opt/hexojs/site && hexo server -p $http_port -i 0.0.0.0"
+	log_info "Starting preview server for '$instance' on port $instance_port..."
+	lxc_exec sh -c "cd /opt/hexojs/instances/$instance/site && hexo server -p $instance_port -i 0.0.0.0"
 }
 
 cmd_build() {
 	require_root
 	load_config
 
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
+
 	if ! lxc_running; then
 		log_error "Container not running"
 		return 1
 	fi
 
-	log_info "Generating static files..."
-	lxc_exec sh -c "cd /opt/hexojs/site && hexo generate"
-	log_info "Build complete! Files in: $data_path/site/public/"
+	log_info "Generating static files for '$instance'..."
+	lxc_exec sh -c "cd /opt/hexojs/instances/$instance/site && hexo generate"
+	log_info "Build complete!"
 }
 
 cmd_clean() {
 	require_root
 	load_config
 
-	if ! lxc_running; then
-		log_error "Container not running"
-		return 1
-	fi
-
-	log_info "Cleaning generated files..."
-	lxc_exec sh -c "cd /opt/hexojs/site && hexo clean"
-	log_info "Clean complete!"
-}
-
-cmd_deploy() {
-	require_root
-	load_config
-
-	if [ -z "$deploy_repo" ]; then
-		log_error "Deploy repository not configured"
-		log_info "Set with: uci set hexojs.deploy.repo='git@github.com:user/repo.git'"
-		return 1
-	fi
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
 
 	if ! lxc_running; then
 		log_error "Container not running"
 		return 1
 	fi
 
-	log_info "Deploying to $deploy_repo..."
-	lxc_exec sh -c "cd /opt/hexojs/site && hexo deploy"
-	log_info "Deploy complete!"
+	log_info "Cleaning generated files for '$instance'..."
+	lxc_exec sh -c "cd /opt/hexojs/instances/$instance/site && hexo clean"
 }
 
 cmd_publish() {
 	require_root
 	load_config
 
-	local public_dir="$data_path/site/public"
-	local portal_path="/www"
-	local config_file="$data_path/site/_config.yml"
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
 
-	# Allow custom portal path from config
-	local custom_path=$(uci_get portal.path)
-	[ -n "$custom_path" ] && portal_path="$custom_path"
-
-	# Calculate web root from portal path (strip /www prefix)
-	local web_root="${portal_path#/www}"
-	[ -z "$web_root" ] && web_root="/"
-	# Ensure trailing slash
-	[ "${web_root%/}" = "$web_root" ] && web_root="$web_root/"
+	local public_dir="$instance_site/public"
+	local portal_path="$(uci_get ${instance}.publish_path)" || portal_path="/www/${instance}"
 
 	if ! lxc_running; then
 		log_error "Container not running"
 		return 1
 	fi
 
-	if [ ! -f "$config_file" ]; then
-		log_error "No Hexo config found at $config_file"
-		return 1
-	fi
+	# Calculate web root
+	local web_root="${portal_path#/www}"
+	[ -z "$web_root" ] && web_root="/"
+	[ "${web_root%/}" = "$web_root" ] && web_root="$web_root/"
 
-	log_info "Setting Hexo root to: $web_root"
+	log_info "Setting root to: $web_root"
 
-	# Update root in _config.yml (use sed to replace existing root line)
-	if grep -q "^root:" "$config_file"; then
-		sed -i "s|^root:.*|root: $web_root|" "$config_file"
-	else
-		# Add root config if not present
-		echo "root: $web_root" >> "$config_file"
-	fi
+	# Update config
+	sed -i "s|^root:.*|root: $web_root|" "$instance_site/_config.yml"
 
-	log_info "Regenerating static files for $web_root..."
-	lxc_exec sh -c "cd /opt/hexojs/site && hexo clean && hexo generate"
+	log_info "Regenerating..."
+	lxc_exec sh -c "cd /opt/hexojs/instances/$instance/site && hexo clean && hexo generate"
 
-	if [ ! -d "$public_dir" ]; then
-		log_error "Build failed - no public directory"
-		return 1
-	fi
+	[ -d "$public_dir" ] || { log_error "Build failed"; return 1; }
 
 	log_info "Publishing to $portal_path..."
-
-	# Create portal directory
 	ensure_dir "$portal_path"
-
-	# Sync files
 	rsync -av --delete "$public_dir/" "$portal_path/"
 
-	log_info "Published $(find "$portal_path" -type f | wc -l) files to $portal_path"
-	log_info "Access at: http://$(uci -q get network.lan.ipaddr || echo 'router')$web_root"
+	log_info "Published $(find "$portal_path" -type f | wc -l) files"
 }
 
 cmd_logs() {
 	load_config
 
+	local instance="${1:-default}"
+
 	if lxc_running; then
-		lxc_exec sh -c "cat /var/log/hexo.log 2>/dev/null || echo 'No logs yet'"
+		lxc_exec cat /var/log/hexo/$instance.log 2>/dev/null || echo "No logs for '$instance'"
 	else
 		echo "Container not running"
 	fi
@@ -910,14 +1066,15 @@ cmd_service_stop() {
 	lxc_stop
 }
 
-# Gitea integration commands
+# Gitea integration (instance-aware)
 cmd_gitea_setup() {
 	require_root
 	load_config
 
+	local instance="${1:-default}"
+
 	if [ -z "$gitea_token" ]; then
 		log_error "Gitea token not configured"
-		log_info "Set with: uci set hexojs.gitea.token='your-token' && uci commit hexojs"
 		return 1
 	fi
 
@@ -926,25 +1083,22 @@ cmd_gitea_setup() {
 		return 1
 	fi
 
-	log_info "Configuring git credentials for Gitea..."
+	log_info "Configuring git credentials..."
 
-	# Extract host from URL
 	local gitea_host=$(echo "$gitea_url" | sed 's|^https\?://||' | sed 's|/.*||')
 
-	# Configure git credential helper in container
 	lxc_exec sh -c "
+		export PATH=/usr/local/bin:\$PATH
 		git config --global user.name '$gitea_user'
 		git config --global user.email '${gitea_user}@localhost'
 		git config --global credential.helper store
 
-		# Store credentials
-		mkdir -p ~/.git-credentials
+		rm -rf ~/.git-credentials
 		cat > ~/.git-credentials << CRED
 https://${gitea_user}:${gitea_token}@${gitea_host}
 http://${gitea_user}:${gitea_token}@${gitea_host}
 CRED
 		chmod 600 ~/.git-credentials
-		git config --global credential.helper 'store --file ~/.git-credentials'
 	"
 
 	log_info "Git credentials configured"
@@ -954,14 +1108,11 @@ cmd_gitea_clone() {
 	require_root
 	load_config
 
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
+
 	if [ "$gitea_enabled" != "1" ]; then
 		log_error "Gitea integration not enabled"
-		log_info "Enable with: uci set hexojs.gitea.enabled=1 && uci commit hexojs"
-		return 1
-	fi
-
-	if [ -z "$gitea_token" ]; then
-		log_error "Gitea token not configured"
 		return 1
 	fi
 
@@ -970,17 +1121,14 @@ cmd_gitea_clone() {
 		return 1
 	fi
 
-	local content_path="$data_path/content"
-	local site_source="$data_path/site/source"
+	local content_path="$instance_path/content"
 
-	# Clone content repo
 	if [ -d "$content_path/.git" ]; then
-		log_info "Content repo already cloned, pulling latest..."
+		log_info "Content repo already cloned, pulling..."
 		cd "$content_path" && git pull
 	else
-		log_info "Cloning content repo from Gitea..."
+		log_info "Cloning content repo..."
 
-		# Build clone URL with token
 		local gitea_host=$(echo "$gitea_url" | sed 's|^https\?://||' | sed 's|/.*||')
 		local clone_url="http://${gitea_user}:${gitea_token}@${gitea_host}/${gitea_user}/${gitea_content_repo}.git"
 
@@ -988,114 +1136,39 @@ cmd_gitea_clone() {
 		rm -rf "$content_path"
 
 		git clone -b "$gitea_content_branch" "$clone_url" "$content_path" || {
-			log_error "Failed to clone content repo"
+			log_error "Failed to clone"
 			return 1
 		}
 	fi
 
-	# Sync to hexo source
-	cmd_gitea_sync_files
+	# Check if content is a full hexo site
+	if [ -f "$content_path/package.json" ] && [ -d "$content_path/source" ]; then
+		log_info "Content is a complete Hexo site, linking..."
+		lxc_exec sh -c "
+			rm -rf /opt/hexojs/instances/$instance/site
+			ln -sf /opt/hexojs/instances/$instance/content /opt/hexojs/instances/$instance/site
+			cd /opt/hexojs/instances/$instance/site && npm install
+		"
+	fi
 
-	log_info "Content cloned successfully"
+	log_info "Content cloned for instance '$instance'"
 }
 
 cmd_gitea_sync() {
 	require_root
 	load_config
 
-	local content_path="$data_path/content"
+	local instance="${1:-default}"
+	load_instance_config "$instance" || { log_error "Instance not found"; return 1; }
 
-	if [ ! -d "$content_path/.git" ]; then
-		log_error "Content repo not cloned. Run: hexoctl gitea clone"
-		return 1
-	fi
+	local content_path="$instance_path/content"
 
-	log_info "Pulling latest content from Gitea..."
+	[ -d "$content_path/.git" ] || { log_error "Content not cloned"; return 1; }
 
-	cd "$content_path" && git pull || {
-		log_error "Git pull failed"
-		return 1
-	}
+	log_info "Pulling latest content..."
+	cd "$content_path" && git pull
 
-	cmd_gitea_sync_files
-
-	log_info "Content synced"
-}
-
-cmd_gitea_sync_files() {
-	load_config
-
-	local content_path="$data_path/content"
-	local site_source="$data_path/site/source"
-
-	if [ ! -d "$site_source" ]; then
-		log_error "Hexo site not created. Run: hexoctl site create default"
-		return 1
-	fi
-
-	log_info "Syncing content files to Hexo source..."
-
-	# Sync _posts
-	if [ -d "$content_path/_posts" ]; then
-		ensure_dir "$site_source/_posts"
-		cp -r "$content_path/_posts/"* "$site_source/_posts/" 2>/dev/null || true
-		log_info "Synced _posts"
-	fi
-
-	# Sync _drafts
-	if [ -d "$content_path/_drafts" ]; then
-		ensure_dir "$site_source/_drafts"
-		cp -r "$content_path/_drafts/"* "$site_source/_drafts/" 2>/dev/null || true
-		log_info "Synced _drafts"
-	fi
-
-	# Sync images
-	if [ -d "$content_path/images" ]; then
-		ensure_dir "$site_source/images"
-		cp -r "$content_path/images/"* "$site_source/images/" 2>/dev/null || true
-		log_info "Synced images"
-	fi
-
-	# Sync pages (about, etc)
-	for page in about portfolio services; do
-		if [ -d "$content_path/$page" ]; then
-			ensure_dir "$site_source/$page"
-			cp -r "$content_path/$page/"* "$site_source/$page/" 2>/dev/null || true
-		fi
-	done
-}
-
-cmd_gitea_status() {
-	load_config
-
-	local content_path="$data_path/content"
-	local has_repo="false"
-	local last_commit=""
-	local remote_url=""
-	local branch=""
-
-	if [ -d "$content_path/.git" ]; then
-		has_repo="true"
-		cd "$content_path"
-		last_commit=$(git log -1 --format="%h %s" 2>/dev/null || echo "unknown")
-		remote_url=$(git remote get-url origin 2>/dev/null | sed "s|${gitea_token}|***|g" || echo "none")
-		branch=$(git branch --show-current 2>/dev/null || echo "unknown")
-	fi
-
-	cat << EOF
-{
-  "gitea_enabled": $([ "$gitea_enabled" = "1" ] && echo "true" || echo "false"),
-  "gitea_url": "$gitea_url",
-  "gitea_user": "$gitea_user",
-  "content_repo": "$gitea_content_repo",
-  "content_branch": "$gitea_content_branch",
-  "has_local_repo": $has_repo,
-  "local_branch": "$branch",
-  "last_commit": "$last_commit",
-  "remote_url": "$remote_url",
-  "auto_sync": $([ "$gitea_auto_sync" = "1" ] && echo "true" || echo "false")
-}
-EOF
+	log_info "Content synced for '$instance'"
 }
 
 # Main
@@ -1103,22 +1176,28 @@ case "${1:-}" in
 	install)    shift; cmd_install "$@" ;;
 	uninstall)  shift; cmd_uninstall "$@" ;;
 	update)     shift; cmd_update "$@" ;;
-	status)
+	status)     shift; cmd_status "$@" ;;
+
+	instance)
 		shift
-		if [ "$1" = "--json" ] || [ "$1" = "-j" ]; then
-			cmd_status
-		else
-			cmd_status_text
-		fi
+		case "${1:-}" in
+			list)   shift; cmd_instance_list "$@" ;;
+			create) shift; cmd_instance_create "$@" ;;
+			delete) shift; cmd_instance_delete "$@" ;;
+			start)  shift; cmd_instance_start "$@" ;;
+			stop)   shift; cmd_instance_stop "$@" ;;
+			status) shift; cmd_instance_status "$@" ;;
+			*)      echo "Usage: hexoctl instance {list|create|delete|start|stop|status} [name]" ;;
+		esac
 		;;
 
 	site)
 		shift
 		case "${1:-}" in
 			create) shift; cmd_site_create "$@" ;;
-			list)   shift; cmd_site_list "$@" ;;
 			delete) shift; cmd_site_delete "$@" ;;
-			*)      echo "Usage: hexoctl site {create|list|delete} [name]" ;;
+			list)   shift; cmd_instance_list "$@" ;;
+			*)      echo "Usage: hexoctl site {create|delete|list} [instance]" ;;
 		esac
 		;;
 
@@ -1128,30 +1207,23 @@ case "${1:-}" in
 			post)  shift; cmd_new_post "$@" ;;
 			page)  shift; cmd_new_page "$@" ;;
 			draft) shift; cmd_new_draft "$@" ;;
-			*)     echo "Usage: hexoctl new {post|page|draft} \"Title\"" ;;
+			*)     echo "Usage: hexoctl new {post|page|draft} \"Title\" [instance]" ;;
 		esac
 		;;
 
 	list)
 		shift
 		case "${1:-}" in
-			posts)  cmd_list_posts ;;
-			drafts) cmd_list_drafts ;;
-			*)      echo "Usage: hexoctl list {posts|drafts}" ;;
+			posts)  shift; cmd_list_posts "$@" ;;
+			drafts) shift; cmd_list_drafts "$@" ;;
+			*)      echo "Usage: hexoctl list {posts|drafts} [instance]" ;;
 		esac
 		;;
 
 	serve)      shift; cmd_serve "$@" ;;
 	build|generate) shift; cmd_build "$@" ;;
 	clean)      shift; cmd_clean "$@" ;;
-	deploy)     shift; cmd_deploy "$@" ;;
-	publish)
-		shift
-		case "${1:-}" in
-			draft) shift; cmd_publish_draft "$@" ;;
-			*)     cmd_publish "$@" ;;
-		esac
-		;;
+	publish)    shift; cmd_publish "$@" ;;
 
 	logs)       shift; cmd_logs "$@" ;;
 	shell)      shift; cmd_shell "$@" ;;
@@ -1166,8 +1238,7 @@ case "${1:-}" in
 			setup)  shift; cmd_gitea_setup "$@" ;;
 			clone)  shift; cmd_gitea_clone "$@" ;;
 			sync)   shift; cmd_gitea_sync "$@" ;;
-			status) shift; cmd_gitea_status "$@" ;;
-			*)      echo "Usage: hexoctl gitea {setup|clone|sync|status}" ;;
+			*)      echo "Usage: hexoctl gitea {setup|clone|sync} [instance]" ;;
 		esac
 		;;
 

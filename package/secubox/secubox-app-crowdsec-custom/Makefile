@@ -4,7 +4,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-crowdsec-custom
-PKG_VERSION:=1.0.0
+PKG_VERSION:=1.1.0
 PKG_RELEASE:=1
 PKG_ARCH:=all
 PKG_LICENSE:=Apache-2.0
@@ -28,6 +28,10 @@ define Package/secubox-app-crowdsec-custom/description
   - Path scanning/enumeration detection
   - LuCI/uhttpd auth failure monitoring
   - Nginx reverse proxy monitoring (if used)
+  - HAProxy backend protection and auth monitoring
+  - Gitea web/SSH/API bruteforce detection
+  - Streamlit app flooding and auth protection
+  - Webapp generic auth bruteforce protection
   - Whitelist for trusted networks
 endef
 
@@ -40,10 +44,18 @@ define Package/secubox-app-crowdsec-custom/install
 	$(INSTALL_DATA) ./files/acquis.d/secubox-uhttpd.yaml $(1)/etc/crowdsec/acquis.d/
 	$(INSTALL_DATA) ./files/acquis.d/secubox-nginx.yaml $(1)/etc/crowdsec/acquis.d/
 	$(INSTALL_DATA) ./files/acquis.d/secubox-auth.yaml $(1)/etc/crowdsec/acquis.d/
+	$(INSTALL_DATA) ./files/acquis.d/secubox-haproxy.yaml $(1)/etc/crowdsec/acquis.d/
+	$(INSTALL_DATA) ./files/acquis.d/secubox-gitea.yaml $(1)/etc/crowdsec/acquis.d/
+	$(INSTALL_DATA) ./files/acquis.d/secubox-streamlit.yaml $(1)/etc/crowdsec/acquis.d/
+	$(INSTALL_DATA) ./files/acquis.d/secubox-webapp.yaml $(1)/etc/crowdsec/acquis.d/
 
 	# Custom parsers
 	$(INSTALL_DIR) $(1)/etc/crowdsec/parsers/s01-parse
 	$(INSTALL_DATA) ./files/parsers/s01-parse/secubox-luci-auth.yaml $(1)/etc/crowdsec/parsers/s01-parse/
+	$(INSTALL_DATA) ./files/parsers/s01-parse/secubox-haproxy.yaml $(1)/etc/crowdsec/parsers/s01-parse/
+	$(INSTALL_DATA) ./files/parsers/s01-parse/secubox-gitea.yaml $(1)/etc/crowdsec/parsers/s01-parse/
+	$(INSTALL_DATA) ./files/parsers/s01-parse/secubox-streamlit.yaml $(1)/etc/crowdsec/parsers/s01-parse/
+	$(INSTALL_DATA) ./files/parsers/s01-parse/secubox-webapp.yaml $(1)/etc/crowdsec/parsers/s01-parse/
 
 	$(INSTALL_DIR) $(1)/etc/crowdsec/parsers/s02-enrich
 	$(INSTALL_DATA) ./files/parsers/s02-enrich/secubox-whitelist.yaml $(1)/etc/crowdsec/parsers/s02-enrich/
@@ -52,6 +64,10 @@ define Package/secubox-app-crowdsec-custom/install
 	$(INSTALL_DIR) $(1)/etc/crowdsec/scenarios
 	$(INSTALL_DATA) ./files/scenarios/secubox-auth-bruteforce.yaml $(1)/etc/crowdsec/scenarios/
 	$(INSTALL_DATA) ./files/scenarios/secubox-http-bruteforce.yaml $(1)/etc/crowdsec/scenarios/
+	$(INSTALL_DATA) ./files/scenarios/secubox-haproxy-bruteforce.yaml $(1)/etc/crowdsec/scenarios/
+	$(INSTALL_DATA) ./files/scenarios/secubox-gitea-bruteforce.yaml $(1)/etc/crowdsec/scenarios/
+	$(INSTALL_DATA) ./files/scenarios/secubox-streamlit-bruteforce.yaml $(1)/etc/crowdsec/scenarios/
+	$(INSTALL_DATA) ./files/scenarios/secubox-webapp-bruteforce.yaml $(1)/etc/crowdsec/scenarios/
 
 	# UCI defaults for first boot setup
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
@@ -70,11 +86,13 @@ define Package/secubox-app-crowdsec-custom/postinst
 	cscli collections install crowdsecurity/http-cve 2>/dev/null || true
 	cscli collections install crowdsecurity/nginx 2>/dev/null || true
 	cscli collections install crowdsecurity/http-dos 2>/dev/null || true
+	cscli collections install crowdsecurity/haproxy 2>/dev/null || true
 
 	# Install parsers
 	cscli parsers install crowdsecurity/syslog-logs 2>/dev/null || true
 	cscli parsers install crowdsecurity/http-logs 2>/dev/null || true
 	cscli parsers install crowdsecurity/nginx-logs 2>/dev/null || true
+	cscli parsers install crowdsecurity/haproxy-logs 2>/dev/null || true
 
 	# Run uci-defaults
 	/etc/uci-defaults/99-secubox-app-crowdsec-custom 2>/dev/null || true
@@ -90,7 +108,7 @@ define Package/secubox-app-crowdsec-custom/postinst
 
 	echo ""
 	echo "SecuBox CrowdSec protection installed!"
-	echo "Protected paths: /secubox/, /cgi-bin/luci, /ubus"
+	echo "Protected services: LuCI, uhttpd, nginx, HAProxy, Gitea, Streamlit, Webapp"
 	echo ""
 	echo "Useful commands:"
 	echo "  cscli metrics         - View detection metrics"

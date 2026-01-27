@@ -1544,6 +1544,45 @@ gitea_save_config() {
 	json_dump
 }
 
+# Publish to /www (portal)
+publish_to_www() {
+	read input
+	json_load "$input"
+	json_get_var path path
+
+	json_init
+
+	if ! is_running; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Container not running"
+		json_dump
+		return
+	fi
+
+	# Default path is /www/blog
+	[ -z "$path" ] && path="/www/blog"
+
+	# Set portal path in UCI for hexoctl
+	uci set hexojs.portal=hexojs
+	uci set hexojs.portal.path="$path"
+	uci commit hexojs
+
+	# Run publish command
+	local output=$("$HEXOCTL" publish 2>&1)
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Published to $path"
+		json_add_string "path" "$path"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$output"
+	fi
+
+	json_dump
+}
+
 # ============================================
 # Service Control
 # ============================================
@@ -1634,7 +1673,8 @@ case "$1" in
   "gitea_setup": {},
   "gitea_clone": {},
   "gitea_sync": {},
-  "gitea_save_config": {"enabled": "bool", "gitea_url": "str", "gitea_user": "str", "gitea_token": "str", "content_repo": "str", "content_branch": "str", "auto_sync": "bool"}
+  "gitea_save_config": {"enabled": "bool", "gitea_url": "str", "gitea_user": "str", "gitea_token": "str", "content_repo": "str", "content_branch": "str", "auto_sync": "bool"},
+  "publish_to_www": {"path": "str"}
 }
 EOF
 		;;
@@ -1686,6 +1726,7 @@ EOF
 			gitea_clone) gitea_clone ;;
 			gitea_sync) gitea_sync ;;
 			gitea_save_config) gitea_save_config ;;
+			publish_to_www) publish_to_www ;;
 			*) echo '{"error": "Unknown method"}' ;;
 		esac
 		;;

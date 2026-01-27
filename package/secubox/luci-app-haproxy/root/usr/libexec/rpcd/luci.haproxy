@@ -291,12 +291,13 @@ method_list_backends() {
 
 _add_backend() {
 	local section="$1"
-	local name mode balance health_check enabled server_line
+	local name mode balance health_check health_check_uri enabled server_line
 
 	config_get name "$section" name "$section"
 	config_get mode "$section" mode "http"
 	config_get balance "$section" balance "roundrobin"
 	config_get health_check "$section" health_check ""
+	config_get health_check_uri "$section" health_check_uri ""
 	config_get enabled "$section" enabled "1"
 	config_get server_line "$section" server ""
 
@@ -306,6 +307,7 @@ _add_backend() {
 	json_add_string "mode" "$mode"
 	json_add_string "balance" "$balance"
 	json_add_string "health_check" "$health_check"
+	json_add_string "health_check_uri" "$health_check_uri"
 	json_add_boolean "enabled" "$enabled"
 
 	# Include servers array - parse inline server option if present
@@ -432,7 +434,7 @@ _add_server_for_backend() {
 
 # Create backend
 method_create_backend() {
-	local name mode balance health_check enabled
+	local name mode balance health_check health_check_uri enabled
 	local section_id
 
 	read -r input
@@ -441,6 +443,7 @@ method_create_backend() {
 	json_get_var mode mode "http"
 	json_get_var balance balance "roundrobin"
 	json_get_var health_check health_check ""
+	json_get_var health_check_uri health_check_uri ""
 	json_get_var enabled enabled "1"
 
 	if [ -z "$name" ]; then
@@ -458,6 +461,7 @@ method_create_backend() {
 	uci set "$UCI_CONFIG.$section_id.mode=$mode"
 	uci set "$UCI_CONFIG.$section_id.balance=$balance"
 	[ -n "$health_check" ] && uci set "$UCI_CONFIG.$section_id.health_check=$health_check"
+	[ -n "$health_check_uri" ] && uci set "$UCI_CONFIG.$section_id.health_check_uri=$health_check_uri"
 	uci set "$UCI_CONFIG.$section_id.enabled=$enabled"
 	uci commit "$UCI_CONFIG"
 
@@ -471,7 +475,7 @@ method_create_backend() {
 
 # Update backend
 method_update_backend() {
-	local id name mode balance health_check enabled
+	local id name mode balance health_check health_check_uri enabled
 
 	read -r input
 	json_load "$input"
@@ -480,6 +484,7 @@ method_update_backend() {
 	json_get_var mode mode
 	json_get_var balance balance
 	json_get_var health_check health_check
+	json_get_var health_check_uri health_check_uri
 	json_get_var enabled enabled
 
 	if [ -z "$id" ]; then
@@ -494,6 +499,7 @@ method_update_backend() {
 	[ -n "$mode" ] && uci set "$UCI_CONFIG.$id.mode=$mode"
 	[ -n "$balance" ] && uci set "$UCI_CONFIG.$id.balance=$balance"
 	[ -n "$health_check" ] && uci set "$UCI_CONFIG.$id.health_check=$health_check"
+	[ -n "$health_check_uri" ] && uci set "$UCI_CONFIG.$id.health_check_uri=$health_check_uri"
 	[ -n "$enabled" ] && uci set "$UCI_CONFIG.$id.enabled=$enabled"
 	uci commit "$UCI_CONFIG"
 
@@ -1367,8 +1373,8 @@ case "$1" in
 	"delete_vhost": { "id": "string" },
 	"list_backends": {},
 	"get_backend": { "id": "string" },
-	"create_backend": { "name": "string", "mode": "string", "balance": "string", "health_check": "string", "enabled": "boolean" },
-	"update_backend": { "id": "string", "name": "string", "mode": "string", "balance": "string", "health_check": "string", "enabled": "boolean" },
+	"create_backend": { "name": "string", "mode": "string", "balance": "string", "health_check": "string", "health_check_uri": "string", "enabled": "boolean" },
+	"update_backend": { "id": "string", "name": "string", "mode": "string", "balance": "string", "health_check": "string", "health_check_uri": "string", "enabled": "boolean" },
 	"delete_backend": { "id": "string" },
 	"list_servers": { "backend": "string" },
 	"create_server": { "backend": "string", "name": "string", "address": "string", "port": "integer", "weight": "integer", "check": "boolean", "enabled": "boolean" },

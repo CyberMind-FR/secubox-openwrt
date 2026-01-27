@@ -29,6 +29,7 @@
 				"luci.tor-shield": [
 					"enable",
 					"disable",
+					"restart",
 					"new_identity",
 					"check_leaks",
 					"add_hidden_service",

@@ -1,14 +1,22 @@
 # Documentation Improvement TODO
 
-**Version:** 1.0.0  
-**Last Updated:** 2025-12-28  
+**Version:** 1.1.0
+**Last Updated:** 2026-01-27
 **Status:** Active
 
 
-**Generated:** 2025-12-28
+**Generated:** 2025-12-28 (Updated: 2026-01-27)
 **Based on:** Documentation Analysis Report
-**Overall Health:** 8.5/10 (Excellent)
-**Status:** 📋 Planning Phase
+**Overall Health:** 9.0/10 (Excellent)
+**Status:** 📋 In Progress
+
+## Recent Completions (2026-01-27)
+
+- [x] README.md updated to v0.16.0 with all 38 modules
+- [x] secubox-tools/README.md updated to v1.1.0
+- [x] Added SDK vs Toolchain build documentation
+- [x] Updated CLAUDE.md with toolchain build rules
+- [x] Updated HISTORY.md files in .claude/ and .codex/
 
 ---
 

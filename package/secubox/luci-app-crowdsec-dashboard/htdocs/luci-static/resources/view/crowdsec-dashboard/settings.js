@@ -1,720 +1,312 @@
 'use strict';
 'require view';
-'require secubox-theme/theme as Theme';
+'require dom';
 'require ui';
-'require crowdsec-dashboard/api as API';
-'require crowdsec-dashboard/nav as CsNav';
+'require crowdsec-dashboard.api as api';
+
+/**
+ * CrowdSec SOC - Settings View
+ * System configuration and management
+ */
 
 return view.extend({
+	title: _('Settings'),
+	status: {},
+	machines: [],
+	collections: [],
+
 	load: function() {
+		var link = document.createElement('link');
+		link.rel = 'stylesheet';
+		link.href = L.resource('crowdsec-dashboard/soc.css');
+		document.head.appendChild(link);
+		document.body.classList.add('cs-soc-fullwidth');
+
 		return Promise.all([
-			API.getStatus(),
-			API.getMachines(),
-			API.getHub(),
-			API.getCollections()
+			api.getStatus(),
+			api.getMachines(),
+			api.getCollections(),
+			api.getAcquisitionConfig()
 		]);
 	},
 
 	render: function(data) {
-		var status = data[0] || {};
+		var self = this;
+		this.status = data[0] || {};
 		var machinesData = data[1] || {};
-		var machines = Array.isArray(machinesData) ? machinesData : (machinesData.machines || []);
-		var hub = data[2] || {};
-		var collectionsData = data[3] || {};
-		var collections = collectionsData.collections || [];
-		if (collections.collections) collections = collections.collections;
+		this.machines = Array.isArray(machinesData) ? machinesData : (machinesData.machines || []);
+		var collectionsData = data[2] || {};
+		this.collections = collectionsData.collections || [];
+		if (this.collections.collections) this.collections = this.collections.collections;
+		this.acquisition = data[3] || {};
 
-		// Load CSS
-		var head = document.head || document.getElementsByTagName('head')[0];
-		var cssLink = E('link', {
-			'rel': 'stylesheet',
-			'href': L.resource('crowdsec-dashboard/dashboard.css')
-		});
-		head.appendChild(cssLink);
-
-		var view = E('div', { 'class': 'crowdsec-dashboard' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			CsNav.renderTabs('settings'),
-			E('h2', { 'class': 'cs-page-title' }, _('CrowdSec Settings')),
-			E('p', { 'style': 'color: var(--cs-text-secondary); margin-bottom: 1.5rem;' },
-				_('Configure and manage your CrowdSec installation, machines, and collections.')),
-
-			// Service Status
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Service Status')),
-				E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1em; margin-top: 1em;' }, [
-					// CrowdSec Status
-					E('div', { 'class': 'cbi-value', 'style': 'background: ' + (status.crowdsec === 'running' ? '#d4edda' : '#f8d7da') + '; padding: 1em; border-radius: 4px; border-left: 4px solid ' + (status.crowdsec === 'running' ? '#28a745' : '#dc3545') + ';' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('CrowdSec Agent')),
-						E('div', { 'class': 'cbi-value-field' }, [
-							E('span', {
-								'class': 'badge',
-								'style': 'background: ' + (status.crowdsec === 'running' ? '#28a745' : '#dc3545') + '; color: white; padding: 0.5em 1em; border-radius: 4px; font-size: 1em;'
-							}, status.crowdsec === 'running' ? _('RUNNING') : _('STOPPED'))
-						])
+		return E('div', { 'class': 'soc-dashboard' }, [
+			this.renderHeader(),
+			this.renderNav('settings'),
+			E('div', { 'class': 'soc-stats' }, this.renderServiceStats()),
+			E('div', { 'class': 'soc-grid-2' }, [
+				E('div', { 'class': 'soc-card' }, [
+					E('div', { 'class': 'soc-card-header' }, [
+						'Service Control',
+						E('span', { 'class': 'soc-severity ' + (this.status.crowdsec === 'running' ? 'low' : 'critical') },
+							this.status.crowdsec === 'running' ? 'RUNNING' : 'STOPPED')
 					]),
-
-					// LAPI Status
-					E('div', { 'class': 'cbi-value', 'style': 'background: ' + (status.lapi_status === 'available' ? '#d4edda' : '#f8d7da') + '; padding: 1em; border-radius: 4px; border-left: 4px solid ' + (status.lapi_status === 'available' ? '#28a745' : '#dc3545') + ';' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('Local API (LAPI)')),
-						E('div', { 'class': 'cbi-value-field' }, [
-							E('span', {
-								'class': 'badge',
-								'style': 'background: ' + (status.lapi_status === 'available' ? '#28a745' : '#dc3545') + '; color: white; padding: 0.5em 1em; border-radius: 4px; font-size: 1em;'
-							}, status.lapi_status === 'available' ? _('AVAILABLE') : _('UNAVAILABLE'))
-						])
-					]),
-
-					// Version Info
-					E('div', { 'class': 'cbi-value', 'style': 'background: #e8f4f8; padding: 1em; border-radius: 4px; border-left: 4px solid #0088cc;' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('Version')),
-						E('div', { 'class': 'cbi-value-field' }, [
-							E('code', { 'style': 'font-size: 1em;' }, status.version || 'Unknown')
-						])
-					])
+					E('div', { 'class': 'soc-card-body' }, this.renderServiceControl())
+				]),
+				E('div', { 'class': 'soc-card' }, [
+					E('div', { 'class': 'soc-card-header' }, 'Acquisition Sources'),
+					E('div', { 'class': 'soc-card-body' }, this.renderAcquisition())
 				])
 			]),
-
-			// Registered Machines
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
-				E('h3', {}, _('Registered Machines')),
-				E('p', { 'style': 'color: #666;' },
-					_('Machines are CrowdSec agents that send alerts to the Local API.')),
-
-				E('div', { 'class': 'table-wrapper', 'style': 'margin-top: 1em;' }, [
-					E('table', { 'class': 'table' }, [
-						E('thead', {}, [
-							E('tr', {}, [
-								E('th', {}, _('Machine ID')),
-								E('th', {}, _('IP Address')),
-								E('th', {}, _('Last Update')),
-								E('th', {}, _('Version')),
-								E('th', {}, _('Status'))
-							])
-						]),
-						E('tbody', {},
-							machines.length > 0 ?
-								machines.map(function(machine) {
-									var isActive = machine.isValidated || machine.is_validated;
-									return E('tr', {}, [
-										E('td', {}, [
-											E('strong', {}, machine.machineId || machine.machine_id || 'Unknown')
-										]),
-										E('td', {}, [
-											E('code', {}, machine.ipAddress || machine.ip_address || 'N/A')
-										]),
-										E('td', {}, API.formatDate(machine.updated_at || machine.updatedAt)),
-										E('td', {}, machine.version || 'N/A'),
-										E('td', {}, [
-											E('span', {
-												'class': 'badge',
-												'style': 'background: ' + (isActive ? '#28a745' : '#6c757d') + '; color: white; padding: 0.25em 0.6em; border-radius: 3px;'
-											}, isActive ? _('Active') : _('Pending'))
-										])
-									]);
-								}) :
-								E('tr', {}, [
-									E('td', { 'colspan': 5, 'style': 'text-align: center; padding: 2em; color: #999;' },
-										_('No machines registered'))
-								])
-						)
-					])
-				])
-			]),
-
-			// Collections Browser
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
-				E('h3', {}, _('CrowdSec Collections')),
-				E('p', { 'style': 'color: #666;' },
-					_('Collections are bundles of parsers, scenarios, and post-overflow stages for specific services.')),
-
-				E('div', { 'style': 'display: flex; gap: 1em; margin: 1em 0;' }, [
-					E('button', {
-						'class': 'cbi-button cbi-button-action',
-						'click': function() {
-							ui.showModal(_('Updating Hub...'), [
-								E('p', {}, _('Fetching latest collections from CrowdSec Hub...')),
-								E('div', { 'class': 'spinning' })
-							]);
-							API.updateHub().then(function(result) {
-								ui.hideModal();
-								if (result && result.success) {
-									ui.addNotification(null, E('p', {}, _('Hub index updated successfully. Please refresh the page.')), 'info');
-								} else {
-									ui.addNotification(null, E('p', {}, result.error || _('Failed to update hub')), 'error');
-								}
-							}).catch(function(err) {
-								ui.hideModal();
-								ui.addNotification(null, E('p', {}, err.message || err), 'error');
-							});
-						}
-					}, _('🔄 Update Hub'))
+			E('div', { 'class': 'soc-card' }, [
+				E('div', { 'class': 'soc-card-header' }, [
+					'Installed Collections (' + this.collections.filter(function(c) { return c.status === 'enabled' || c.installed; }).length + ')',
+					E('button', { 'class': 'soc-btn soc-btn-sm', 'click': L.bind(this.updateHub, this) }, 'Update Hub')
 				]),
-
-				E('div', { 'class': 'table-wrapper', 'style': 'margin-top: 1em;' }, [
-					E('table', { 'class': 'table' }, [
-						E('thead', {}, [
-							E('tr', {}, [
-								E('th', {}, _('Collection')),
-								E('th', {}, _('Description')),
-								E('th', {}, _('Version')),
-								E('th', {}, _('Status')),
-								E('th', {}, _('Actions'))
-							])
-						]),
-						E('tbody', {},
-							collections.length > 0 ?
-								collections.map(function(collection) {
-									var isInstalled = collection.status === 'enabled' || collection.status === 'installed' || collection.installed === 'ok';
-									var collectionName = collection.name || 'Unknown';
-									return E('tr', {}, [
-										E('td', {}, [
-											E('strong', {}, collectionName)
-										]),
-										E('td', {}, collection.description || 'N/A'),
-										E('td', {}, collection.version || collection.local_version || 'N/A'),
-										E('td', {}, [
-											E('span', {
-												'class': 'badge',
-												'style': 'background: ' + (isInstalled ? '#28a745' : '#6c757d') + '; color: white; padding: 0.25em 0.6em; border-radius: 3px;'
-											}, isInstalled ? _('Installed') : _('Available'))
-										]),
-										E('td', {}, [
-											isInstalled ?
-												E('button', {
-													'class': 'cbi-button cbi-button-remove',
-													'click': function() {
-														ui.showModal(_('Removing Collection...'), [
-															E('p', {}, _('Removing %s...').format(collectionName)),
-															E('div', { 'class': 'spinning' })
-														]);
-														API.removeCollection(collectionName).then(function(result) {
-															ui.hideModal();
-															if (result && result.success) {
-																ui.addNotification(null, E('p', {}, _('Collection removed. Please reload CrowdSec and refresh this page.')), 'info');
-															} else {
-																ui.addNotification(null, E('p', {}, result.error || _('Failed to remove collection')), 'error');
-															}
-														}).catch(function(err) {
-															ui.hideModal();
-															ui.addNotification(null, E('p', {}, err.message || err), 'error');
-														});
-													}
-												}, _('Remove')) :
-												E('button', {
-													'class': 'cbi-button cbi-button-add',
-													'click': function() {
-														ui.showModal(_('Installing Collection...'), [
-															E('p', {}, _('Installing %s...').format(collectionName)),
-															E('div', { 'class': 'spinning' })
-														]);
-														API.installCollection(collectionName).then(function(result) {
-															ui.hideModal();
-															if (result && result.success) {
-																ui.addNotification(null, E('p', {}, _('Collection installed. Please reload CrowdSec and refresh this page.')), 'info');
-															} else {
-																ui.addNotification(null, E('p', {}, result.error || _('Failed to install collection')), 'error');
-															}
-														}).catch(function(err) {
-															ui.hideModal();
-															ui.addNotification(null, E('p', {}, err.message || err), 'error');
-														});
-													}
-												}, _('Install'))
-										])
-									]);
-								}) :
-								E('tr', {}, [
-									E('td', { 'colspan': 5, 'style': 'text-align: center; padding: 2em; color: #999;' }, [
-										E('p', {}, _('No collections found. Click "Update Hub" to fetch the collection list.')),
-										E('p', { 'style': 'margin-top: 0.5em; font-size: 0.9em;' }, [
-											_('Or use: '),
-											E('code', {}, 'cscli hub update')
-										])
-									])
-								])
-						)
-					])
-				])
+				E('div', { 'class': 'soc-card-body', 'id': 'collections-list' }, this.renderCollections())
 			]),
+			E('div', { 'class': 'soc-card' }, [
+				E('div', { 'class': 'soc-card-header' }, 'Registered Machines'),
+				E('div', { 'class': 'soc-card-body' }, this.renderMachines())
+			]),
+			E('div', { 'class': 'soc-card' }, [
+				E('div', { 'class': 'soc-card-header' }, 'Configuration Files'),
+				E('div', { 'class': 'soc-card-body' }, this.renderConfigFiles())
+			])
+		]);
+	},
 
-			// Quick Actions
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
-				E('h3', {}, _('Quick Actions')),
+	renderHeader: function() {
+		return E('div', { 'class': 'soc-header' }, [
+			E('div', { 'class': 'soc-title' }, [
+				E('svg', { 'viewBox': '0 0 24 24' }, [E('path', { 'd': 'M12 2L2 7v10l10 5 10-5V7L12 2z' })]),
+				'CrowdSec Security Operations'
+			]),
+			E('div', { 'class': 'soc-status' }, [E('span', { 'class': 'soc-status-dot online' }), 'SETTINGS'])
+		]);
+	},
 
-				// Service Control
-				E('div', { 'style': 'margin-top: 1em;' }, [
-					E('h4', { 'style': 'margin-bottom: 0.5em; color: var(--cyber-text-secondary, #888);' }, _('Service Control')),
-					E('div', { 'style': 'display: flex; gap: 0.5em; flex-wrap: wrap;' }, [
-						E('button', {
-							'class': 'cbi-button cbi-button-positive',
-							'style': 'min-width: 80px;',
-							'click': function(ev) {
-								ev.target.disabled = true;
-								ev.target.classList.add('spinning');
-								API.serviceControl('start').then(function(result) {
-									ev.target.disabled = false;
-									ev.target.classList.remove('spinning');
-									if (result && result.success) {
-										ui.addNotification(null, E('p', {}, _('CrowdSec started successfully')), 'info');
-										window.setTimeout(function() { location.reload(); }, 1500);
-									} else {
-										ui.addNotification(null, E('p', {}, result.error || _('Failed to start service')), 'error');
-									}
-								});
-							}
-						}, _('▶ Start')),
-						E('button', {
-							'class': 'cbi-button cbi-button-negative',
-							'style': 'min-width: 80px;',
-							'click': function(ev) {
-								ev.target.disabled = true;
-								ev.target.classList.add('spinning');
-								API.serviceControl('stop').then(function(result) {
-									ev.target.disabled = false;
-									ev.target.classList.remove('spinning');
-									if (result && result.success) {
-										ui.addNotification(null, E('p', {}, _('CrowdSec stopped')), 'info');
-										window.setTimeout(function() { location.reload(); }, 1500);
-									} else {
-										ui.addNotification(null, E('p', {}, result.error || _('Failed to stop service')), 'error');
-									}
-								});
-							}
-						}, _('■ Stop')),
-						E('button', {
-							'class': 'cbi-button cbi-button-action',
-							'style': 'min-width: 80px;',
-							'click': function(ev) {
-								ev.target.disabled = true;
-								ev.target.classList.add('spinning');
-								API.serviceControl('restart').then(function(result) {
-									ev.target.disabled = false;
-									ev.target.classList.remove('spinning');
-									if (result && result.success) {
-										ui.addNotification(null, E('p', {}, _('CrowdSec restarted')), 'info');
-										window.setTimeout(function() { location.reload(); }, 2000);
-									} else {
-										ui.addNotification(null, E('p', {}, result.error || _('Failed to restart service')), 'error');
-									}
-								});
-							}
-						}, _('↻ Restart')),
-						E('button', {
-							'class': 'cbi-button',
-							'style': 'min-width: 80px;',
-							'click': function(ev) {
-								ev.target.disabled = true;
-								ev.target.classList.add('spinning');
-								API.serviceControl('reload').then(function(result) {
-									ev.target.disabled = false;
-									ev.target.classList.remove('spinning');
-									if (result && result.success) {
-										ui.addNotification(null, E('p', {}, _('Configuration reloaded')), 'info');
-									} else {
-										ui.addNotification(null, E('p', {}, result.error || _('Failed to reload')), 'error');
-									}
-								});
-							}
-						}, _('⟳ Reload'))
+	renderNav: function(active) {
+		var tabs = ['overview', 'alerts', 'decisions', 'bouncers', 'settings'];
+		return E('div', { 'class': 'soc-nav' }, tabs.map(function(t) {
+			return E('a', {
+				'href': L.url('admin/secubox/security/crowdsec/' + t),
+				'class': active === t ? 'active' : ''
+			}, t.charAt(0).toUpperCase() + t.slice(1));
+		}));
+	},
+
+	renderServiceStats: function() {
+		var s = this.status;
+		return [
+			E('div', { 'class': 'soc-stat ' + (s.crowdsec === 'running' ? 'success' : 'danger') }, [
+				E('div', { 'class': 'soc-stat-value' }, s.crowdsec === 'running' ? 'ON' : 'OFF'),
+				E('div', { 'class': 'soc-stat-label' }, 'CrowdSec Agent')
+			]),
+			E('div', { 'class': 'soc-stat ' + (s.lapi_status === 'available' ? 'success' : 'danger') }, [
+				E('div', { 'class': 'soc-stat-value' }, s.lapi_status === 'available' ? 'OK' : 'DOWN'),
+				E('div', { 'class': 'soc-stat-label' }, 'Local API')
+			]),
+			E('div', { 'class': 'soc-stat' }, [
+				E('div', { 'class': 'soc-stat-value' }, s.version || 'N/A'),
+				E('div', { 'class': 'soc-stat-label' }, 'Version')
+			]),
+			E('div', { 'class': 'soc-stat' }, [
+				E('div', { 'class': 'soc-stat-value' }, String(this.machines.length)),
+				E('div', { 'class': 'soc-stat-label' }, 'Machines')
+			])
+		];
+	},
+
+	renderServiceControl: function() {
+		var self = this;
+		var running = this.status.crowdsec === 'running';
+		return E('div', {}, [
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;' }, [
+				E('button', {
+					'class': 'soc-btn ' + (running ? '' : 'primary'),
+					'click': function() { self.serviceAction('start'); }
+				}, 'Start'),
+				E('button', {
+					'class': 'soc-btn ' + (running ? 'danger' : ''),
+					'click': function() { self.serviceAction('stop'); }
+				}, 'Stop'),
+				E('button', {
+					'class': 'soc-btn',
+					'click': function() { self.serviceAction('restart'); }
+				}, 'Restart'),
+				E('button', {
+					'class': 'soc-btn',
+					'click': function() { self.serviceAction('reload'); }
+				}, 'Reload')
+			]),
+			E('div', { 'class': 'soc-health' }, [
+				E('div', { 'class': 'soc-health-item' }, [
+					E('div', { 'class': 'soc-health-icon ' + (running ? 'ok' : 'error') }, running ? '\u2713' : '\u2717'),
+					E('div', {}, [
+						E('div', { 'class': 'soc-health-label' }, 'Agent'),
+						E('div', { 'class': 'soc-health-value' }, running ? 'Running' : 'Stopped')
 					])
 				]),
-
-				// Register Bouncer
-				E('div', { 'style': 'margin-top: 1.5em;' }, [
-					E('h4', { 'style': 'margin-bottom: 0.5em; color: var(--cyber-text-secondary, #888);' }, _('Register New Bouncer')),
-					E('div', { 'style': 'display: flex; gap: 0.5em; flex-wrap: wrap; align-items: center;' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'new-bouncer-name',
-							'placeholder': _('Bouncer name...'),
-							'style': 'padding: 0.5em; border: 1px solid var(--cyber-border, #444); border-radius: 4px; background: var(--cyber-bg-secondary, #1a1a2e); color: var(--cyber-text-primary, #fff); min-width: 200px;'
-						}),
-						E('button', {
-							'class': 'cbi-button cbi-button-add',
-							'click': function(ev) {
-								var nameInput = document.getElementById('new-bouncer-name');
-								var name = nameInput.value.trim();
-								if (!name) {
-									ui.addNotification(null, E('p', {}, _('Please enter a bouncer name')), 'error');
-									return;
-								}
-								ev.target.disabled = true;
-								ev.target.classList.add('spinning');
-								API.registerBouncer(name).then(function(result) {
-									ev.target.disabled = false;
-									ev.target.classList.remove('spinning');
-									if (result && result.success) {
-										nameInput.value = '';
-										ui.showModal(_('Bouncer Registered'), [
-											E('p', {}, _('Bouncer "%s" registered successfully!').format(name)),
-											E('p', { 'style': 'margin-top: 1em;' }, _('API Key:')),
-											E('pre', {
-												'style': 'background: var(--cyber-bg-tertiary, #252538); padding: 1em; border-radius: 4px; word-break: break-all; user-select: all;'
-											}, result.api_key || result.key || 'Check console'),
-											E('p', { 'style': 'margin-top: 1em; color: #f39c12;' },
-												_('Save this key! It will not be shown again.')),
-											E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
-												E('button', {
-													'class': 'cbi-button cbi-button-action',
-													'click': function() {
-														ui.hideModal();
-														location.reload();
-													}
-												}, _('Close'))
-											])
-										]);
-									} else {
-										ui.addNotification(null, E('p', {}, result.error || _('Failed to register bouncer')), 'error');
-									}
-								});
-							}
-						}, _('+ Register'))
+				E('div', { 'class': 'soc-health-item' }, [
+					E('div', { 'class': 'soc-health-icon ' + (this.status.lapi_status === 'available' ? 'ok' : 'error') },
+						this.status.lapi_status === 'available' ? '\u2713' : '\u2717'),
+					E('div', {}, [
+						E('div', { 'class': 'soc-health-label' }, 'LAPI'),
+						E('div', { 'class': 'soc-health-value' }, this.status.lapi_status === 'available' ? 'Available' : 'Unavailable')
 					])
 				]),
-
-				// Hub Update
-				E('div', { 'style': 'margin-top: 1.5em;' }, [
-					E('h4', { 'style': 'margin-bottom: 0.5em; color: var(--cyber-text-secondary, #888);' }, _('Hub Management')),
-					E('div', { 'style': 'display: flex; gap: 0.5em; flex-wrap: wrap;' }, [
-						E('button', {
-							'class': 'cbi-button cbi-button-action',
-							'click': function(ev) {
-								ev.target.disabled = true;
-								ev.target.classList.add('spinning');
-								API.updateHub().then(function(result) {
-									ev.target.disabled = false;
-									ev.target.classList.remove('spinning');
-									if (result && result.success) {
-										ui.addNotification(null, E('p', {}, _('Hub index updated successfully')), 'info');
-										window.setTimeout(function() { location.reload(); }, 1500);
-									} else {
-										ui.addNotification(null, E('p', {}, result.error || _('Failed to update hub')), 'error');
-									}
-								});
-							}
-						}, _('⬇ Update Hub Index'))
-					])
-				]),
-
-				// CrowdSec Console
-				E('div', { 'style': 'margin-top: 1.5em;' }, [
-					E('h4', { 'style': 'margin-bottom: 0.5em; color: var(--cyber-text-secondary, #888);' }, _('CrowdSec Console')),
-					E('div', { 'style': 'display: flex; gap: 0.5em; flex-wrap: wrap;' }, [
-						E('a', {
-							'href': 'https://app.crowdsec.net',
-							'target': '_blank',
-							'class': 'cbi-button cbi-button-action',
-							'style': 'text-decoration: none; display: inline-flex; align-items: center; gap: 0.5em;'
-						}, _('🌐 Open CrowdSec Console'))
-					])
-				])
-			]),
-
-			// Notification Settings
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
-				E('h3', {}, _('Notification Settings')),
-				E('p', { 'style': 'color: #666;' },
-					_('Configure email notifications for security alerts and decisions.')),
-
-				E('div', { 'style': 'background: #f8f9fa; padding: 1.5em; border-radius: 8px; margin-top: 1em;' }, [
-					// Enable notifications
-					E('div', { 'style': 'display: flex; align-items: center; gap: 1em; margin-bottom: 1em;' }, [
-						E('input', {
-							'type': 'checkbox',
-							'id': 'notify-enabled',
-							'style': 'width: 20px; height: 20px;'
-						}),
-						E('label', { 'for': 'notify-enabled', 'style': 'font-weight: bold;' }, _('Enable Email Notifications'))
-					]),
-
-					// SMTP Settings
-					E('h4', { 'style': 'margin: 1em 0 0.5em 0; color: #555;' }, _('SMTP Configuration')),
-					E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 1em;' }, [
-						E('div', {}, [
-							E('label', { 'style': 'display: block; margin-bottom: 0.25em; font-size: 0.9em;' }, _('SMTP Server')),
-							E('input', {
-								'type': 'text',
-								'id': 'smtp-server',
-								'placeholder': 'smtp.example.com',
-								'style': 'width: 100%; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;'
-							})
-						]),
-						E('div', {}, [
-							E('label', { 'style': 'display: block; margin-bottom: 0.25em; font-size: 0.9em;' }, _('SMTP Port')),
-							E('input', {
-								'type': 'number',
-								'id': 'smtp-port',
-								'placeholder': '587',
-								'style': 'width: 100%; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;'
-							})
-						]),
-						E('div', {}, [
-							E('label', { 'style': 'display: block; margin-bottom: 0.25em; font-size: 0.9em;' }, _('Username')),
-							E('input', {
-								'type': 'text',
-								'id': 'smtp-username',
-								'placeholder': _('user@example.com'),
-								'style': 'width: 100%; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;'
-							})
-						]),
-						E('div', {}, [
-							E('label', { 'style': 'display: block; margin-bottom: 0.25em; font-size: 0.9em;' }, _('Password')),
-							E('input', {
-								'type': 'password',
-								'id': 'smtp-password',
-								'placeholder': '••••••••',
-								'style': 'width: 100%; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;'
-							})
-						]),
-						E('div', {}, [
-							E('label', { 'style': 'display: block; margin-bottom: 0.25em; font-size: 0.9em;' }, _('From Address')),
-							E('input', {
-								'type': 'email',
-								'id': 'smtp-from',
-								'placeholder': 'crowdsec@example.com',
-								'style': 'width: 100%; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;'
-							})
-						]),
-						E('div', {}, [
-							E('label', { 'style': 'display: block; margin-bottom: 0.25em; font-size: 0.9em;' }, _('To Address')),
-							E('input', {
-								'type': 'email',
-								'id': 'smtp-to',
-								'placeholder': 'admin@example.com',
-								'style': 'width: 100%; padding: 0.5em; border: 1px solid #ccc; border-radius: 4px;'
-							})
-						])
-					]),
-
-					// TLS Option
-					E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em; margin-top: 1em;' }, [
-						E('input', { 'type': 'checkbox', 'id': 'smtp-tls', 'checked': true }),
-						E('label', { 'for': 'smtp-tls' }, _('Use TLS/STARTTLS'))
-					]),
-
-					// Notification Types
-					E('h4', { 'style': 'margin: 1.5em 0 0.5em 0; color: #555;' }, _('Notification Types')),
-					E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 0.5em;' }, [
-						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
-							E('input', { 'type': 'checkbox', 'id': 'notify-new-ban', 'checked': true }),
-							E('label', { 'for': 'notify-new-ban' }, _('New IP Bans'))
-						]),
-						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
-							E('input', { 'type': 'checkbox', 'id': 'notify-high-alert' }),
-							E('label', { 'for': 'notify-high-alert' }, _('High Severity Alerts'))
-						]),
-						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
-							E('input', { 'type': 'checkbox', 'id': 'notify-service-down' }),
-							E('label', { 'for': 'notify-service-down' }, _('Service Down'))
-						]),
-						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5em;' }, [
-							E('input', { 'type': 'checkbox', 'id': 'notify-mass-ban' }),
-							E('label', { 'for': 'notify-mass-ban' }, _('Mass Ban Events (>10 IPs)'))
-						])
-					]),
-
-					// Actions
-					E('div', { 'style': 'margin-top: 1.5em; display: flex; gap: 0.5em;' }, [
-						E('button', {
-							'class': 'cbi-button cbi-button-positive',
-							'click': function() {
-								ui.addNotification(null, E('p', {}, _('Notification settings saved (Note: Backend implementation pending)')), 'info');
-							}
-						}, _('Save Settings')),
-						E('button', {
-							'class': 'cbi-button',
-							'click': function() {
-								ui.addNotification(null, E('p', {}, _('Test email would be sent (Backend implementation pending)')), 'info');
-							}
-						}, _('Send Test Email'))
-					]),
-
-					E('p', { 'style': 'margin-top: 1em; padding: 0.75em; background: #fff3cd; border-radius: 4px; font-size: 0.9em;' }, [
-						E('strong', {}, _('Note: ')),
-						_('Email notifications require proper SMTP configuration. Ensure your router has internet access and msmtp or similar is installed.')
-					])
-				])
-			]),
-
-			// Interface Configuration
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
-				E('h3', {}, _('Firewall Bouncer Interface Configuration')),
-				E('p', { 'style': 'color: #666;' },
-					_('Configure which interfaces and chains the firewall bouncer protects.')),
-
-				E('div', { 'style': 'background: #f8f9fa; padding: 1.5em; border-radius: 8px; margin-top: 1em;' }, [
-					// Interface Selection
-					E('div', { 'style': 'margin-bottom: 1em;' }, [
-						E('label', { 'style': 'display: block; margin-bottom: 0.5em; font-weight: bold;' }, _('Protected Interfaces')),
-						E('p', { 'style': 'font-size: 0.9em; color: #666; margin-bottom: 0.5em;' },
-							_('Select which network interfaces should have CrowdSec protection enabled.')),
-						E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 1em;' }, [
-							E('label', { 'style': 'display: flex; align-items: center; gap: 0.5em; padding: 0.5em 1em; background: #fff; border: 1px solid #ddd; border-radius: 4px;' }, [
-								E('input', { 'type': 'checkbox', 'name': 'iface', 'value': 'wan', 'checked': true }),
-								E('span', {}, 'WAN')
-							]),
-							E('label', { 'style': 'display: flex; align-items: center; gap: 0.5em; padding: 0.5em 1em; background: #fff; border: 1px solid #ddd; border-radius: 4px;' }, [
-								E('input', { 'type': 'checkbox', 'name': 'iface', 'value': 'wan6' }),
-								E('span', {}, 'WAN6')
-							]),
-							E('label', { 'style': 'display: flex; align-items: center; gap: 0.5em; padding: 0.5em 1em; background: #fff; border: 1px solid #ddd; border-radius: 4px;' }, [
-								E('input', { 'type': 'checkbox', 'name': 'iface', 'value': 'lan' }),
-								E('span', {}, 'LAN')
-							])
-						])
-					]),
-
-					// Chain Configuration
-					E('div', { 'style': 'margin-bottom: 1em;' }, [
-						E('label', { 'style': 'display: block; margin-bottom: 0.5em; font-weight: bold;' }, _('Firewall Chains')),
-						E('div', { 'style': 'display: flex; flex-wrap: wrap; gap: 1em;' }, [
-							E('label', { 'style': 'display: flex; align-items: center; gap: 0.5em; padding: 0.5em 1em; background: #fff; border: 1px solid #ddd; border-radius: 4px;' }, [
-								E('input', { 'type': 'checkbox', 'name': 'chain', 'value': 'input', 'checked': true }),
-								E('span', {}, 'INPUT'),
-								E('span', { 'style': 'font-size: 0.8em; color: #666;' }, _('(connections to router)'))
-							]),
-							E('label', { 'style': 'display: flex; align-items: center; gap: 0.5em; padding: 0.5em 1em; background: #fff; border: 1px solid #ddd; border-radius: 4px;' }, [
-								E('input', { 'type': 'checkbox', 'name': 'chain', 'value': 'forward', 'checked': true }),
-								E('span', {}, 'FORWARD'),
-								E('span', { 'style': 'font-size: 0.8em; color: #666;' }, _('(connections through router)'))
-							])
-						])
-					]),
-
-					// Deny Action
-					E('div', { 'style': 'margin-bottom: 1em;' }, [
-						E('label', { 'style': 'display: block; margin-bottom: 0.5em; font-weight: bold;' }, _('Deny Action')),
-						E('select', {
-							'id': 'deny-action',
-							'style': 'padding: 0.5em; border: 1px solid #ccc; border-radius: 4px; min-width: 150px;'
-						}, [
-							E('option', { 'value': 'DROP', 'selected': true }, 'DROP (silent)'),
-							E('option', { 'value': 'REJECT' }, 'REJECT (with ICMP)')
-						])
-					]),
-
-					// Priority
-					E('div', { 'style': 'margin-bottom: 1em;' }, [
-						E('label', { 'style': 'display: block; margin-bottom: 0.5em; font-weight: bold;' }, _('Rule Priority')),
-						E('input', {
-							'type': 'number',
-							'id': 'rule-priority',
-							'value': '-10',
-							'style': 'padding: 0.5em; border: 1px solid #ccc; border-radius: 4px; width: 100px;'
-						}),
-						E('span', { 'style': 'margin-left: 0.5em; font-size: 0.9em; color: #666;' },
-							_('Lower = higher priority. Default: -10'))
-					]),
-
-					// Save button
-					E('div', { 'style': 'margin-top: 1.5em;' }, [
-						E('button', {
-							'class': 'cbi-button cbi-button-positive',
-							'click': function() {
-								ui.addNotification(null, E('p', {}, _('Interface configuration saved (Note: Uses UCI crowdsec-firewall-bouncer)')), 'info');
-							}
-						}, _('Apply Interface Settings'))
-					])
-				]),
-
-				// Firewall Bouncer quick control
-				E('div', { 'style': 'margin-top: 1em; padding: 1em; background: #fff; border-radius: 6px; border: 1px solid #e6e6e6;' }, [
-					E('h4', { 'style': 'margin-bottom: 0.5em; color: var(--cyber-text-secondary, #888);' }, _('Firewall Bouncer')),
-					E('p', { 'style': 'color: #666; margin-bottom: 0.5em;' }, _('Enable or disable the CrowdSec firewall bouncer (requires nftables and the firewall-bouncer collection).')),
-					E('div', { 'id': 'bouncer-control', 'style': 'display: flex; gap: 0.5em; align-items: center;' }, [
-						E('button', {
-							'class': 'cbi-button cbi-button-action',
-							'click': function(ev) {
-								ev.target.disabled = true;
-								ev.target.classList.add('spinning');
-								API.getFirewallBouncerStatus().then(function(res) {
-									var enabled = res && res.enabled;
-									var action = enabled ? 'disable' : 'enable';
-									API.controlFirewallBouncer(action).then(function(result) {
-										ev.target.disabled = false;
-										ev.target.classList.remove('spinning');
-										if (result && result.success) {
-											ui.addNotification(null, E('p', {}, enabled ? _('Firewall bouncer disabled') : _('Firewall bouncer enabled')), 'info');
-											window.setTimeout(function() { location.reload(); }, 1200);
-										} else {
-											ui.addNotification(null, E('p', {}, result.error || _('Failed to change bouncer state')), 'error');
-										}
-									});
-								}).catch(function(err) {
-									ev.target.disabled = false;
-									ev.target.classList.remove('spinning');
-									ui.addNotification(null, E('p', {}, err.message || err), 'error');
-								});
-							}
-						}, _('Toggle Firewall Bouncer')),
-						E('div', { 'id': 'bouncer-status', 'style': 'color: #666; font-size: 0.95em;' }, _('Checking status...'))
-					])
-				]),
-			]),
-
-			// Configuration Files
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em;' }, [
-				E('h3', {}, _('Configuration Files')),
-				E('div', { 'style': 'background: #f8f9fa; padding: 1em; border-radius: 4px; margin-top: 1em;' }, [
-					E('p', {}, [
-						E('strong', {}, _('Main Configuration:')),
-						' ',
-						E('code', {}, '/etc/crowdsec/config.yaml')
-					]),
-					E('p', {}, [
-						E('strong', {}, _('Acquisition:')),
-						' ',
-						E('code', {}, '/etc/crowdsec/acquis.yaml')
-					]),
-					E('p', {}, [
-						E('strong', {}, _('Profiles:')),
-						' ',
-						E('code', {}, '/etc/crowdsec/profiles.yaml')
-					]),
-					E('p', {}, [
-						E('strong', {}, _('Local API:')),
-						' ',
-						E('code', {}, '/etc/crowdsec/local_api_credentials.yaml')
-					]),
-					E('p', { 'style': 'margin-top: 1em; padding: 0.75em; background: #fff3cd; border-radius: 4px;' }, [
-						E('strong', {}, _('Note:')),
-						' ',
-						_('After modifying configuration files, restart CrowdSec: '),
-						E('code', {}, '/etc/init.d/crowdsec restart')
-					])
-				])
-			]),
-
-			// Documentation Links
-			E('div', { 'class': 'cbi-section', 'style': 'margin-top: 2em; background: #e8f4f8; padding: 1em;' }, [
-				E('h3', {}, _('Documentation & Resources')),
-				E('ul', { 'style': 'margin-top: 0.5em;' }, [
-					E('li', {}, [
-						E('a', { 'href': 'https://docs.crowdsec.net/', 'target': '_blank' },
-							_('Official Documentation'))
-					]),
-					E('li', {}, [
-						E('a', { 'href': 'https://hub.crowdsec.net/', 'target': '_blank' },
-							_('CrowdSec Hub - Collections & Scenarios'))
-					]),
-					E('li', {}, [
-						E('a', { 'href': 'https://app.crowdsec.net/', 'target': '_blank' },
-							_('CrowdSec Console - Global Statistics'))
-					]),
-					E('li', {}, [
-						E('code', {}, 'cscli --help'),
-						' - ',
-						_('CLI help and commands')
+				E('div', { 'class': 'soc-health-item' }, [
+					E('div', { 'class': 'soc-health-icon ' + (this.status.capi_enrolled ? 'ok' : 'warn') },
+						this.status.capi_enrolled ? '\u2713' : '!'),
+					E('div', {}, [
+						E('div', { 'class': 'soc-health-label' }, 'CAPI'),
+						E('div', { 'class': 'soc-health-value' }, this.status.capi_enrolled ? 'Enrolled' : 'Not enrolled')
 					])
 				])
 			])
 		]);
-
-		return view;
 	},
 
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	renderAcquisition: function() {
+		var acq = this.acquisition;
+		var sources = [
+			{ name: 'Syslog', enabled: acq.syslog_enabled, path: acq.syslog_path },
+			{ name: 'SSH', enabled: acq.ssh_enabled },
+			{ name: 'Firewall', enabled: acq.firewall_enabled },
+			{ name: 'HTTP', enabled: acq.http_enabled }
+		];
+		return E('div', { 'class': 'soc-health' }, sources.map(function(src) {
+			return E('div', { 'class': 'soc-health-item' }, [
+				E('div', { 'class': 'soc-health-icon ' + (src.enabled ? 'ok' : 'error') }, src.enabled ? '\u2713' : '\u2717'),
+				E('div', {}, [
+					E('div', { 'class': 'soc-health-label' }, src.name),
+					E('div', { 'class': 'soc-health-value' }, src.enabled ? (src.path || 'Enabled') : 'Disabled')
+				])
+			]);
+		}));
+	},
+
+	renderCollections: function() {
+		var self = this;
+		var installed = this.collections.filter(function(c) {
+			return c.status === 'enabled' || c.installed === 'ok';
+		});
+
+		if (!installed.length) {
+			return E('div', { 'class': 'soc-empty' }, [
+				E('div', { 'class': 'soc-empty-icon' }, '\u26A0'),
+				'No collections installed. Click "Update Hub" to fetch available collections.'
+			]);
+		}
+
+		return E('table', { 'class': 'soc-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', {}, 'Collection'),
+				E('th', {}, 'Version'),
+				E('th', {}, 'Status'),
+				E('th', {}, 'Actions')
+			])),
+			E('tbody', {}, installed.map(function(c) {
+				return E('tr', {}, [
+					E('td', {}, E('span', { 'class': 'soc-scenario' }, c.name || 'Unknown')),
+					E('td', { 'class': 'soc-time' }, c.version || c.local_version || 'N/A'),
+					E('td', {}, E('span', { 'class': 'soc-severity low' }, 'INSTALLED')),
+					E('td', {}, E('button', {
+						'class': 'soc-btn soc-btn-sm danger',
+						'click': function() { self.removeCollection(c.name); }
+					}, 'Remove'))
+				]);
+			}))
+		]);
+	},
+
+	renderMachines: function() {
+		if (!this.machines.length) {
+			return E('div', { 'class': 'soc-empty' }, 'No machines registered');
+		}
+
+		return E('table', { 'class': 'soc-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', {}, 'Machine ID'),
+				E('th', {}, 'IP Address'),
+				E('th', {}, 'Last Update'),
+				E('th', {}, 'Status')
+			])),
+			E('tbody', {}, this.machines.map(function(m) {
+				var isActive = m.isValidated || m.is_validated;
+				return E('tr', {}, [
+					E('td', {}, E('strong', {}, m.machineId || m.machine_id || 'Unknown')),
+					E('td', {}, E('span', { 'class': 'soc-ip' }, m.ipAddress || m.ip_address || 'N/A')),
+					E('td', { 'class': 'soc-time' }, api.formatRelativeTime(m.updated_at || m.updatedAt)),
+					E('td', {}, E('span', { 'class': 'soc-severity ' + (isActive ? 'low' : 'medium') },
+						isActive ? 'ACTIVE' : 'PENDING'))
+				]);
+			}))
+		]);
+	},
+
+	renderConfigFiles: function() {
+		var configs = [
+			{ label: 'Main Config', path: '/etc/crowdsec/config.yaml' },
+			{ label: 'Acquisition', path: '/etc/crowdsec/acquis.yaml' },
+			{ label: 'Profiles', path: '/etc/crowdsec/profiles.yaml' },
+			{ label: 'Local API', path: '/etc/crowdsec/local_api_credentials.yaml' },
+			{ label: 'Firewall Bouncer', path: '/etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml' }
+		];
+
+		return E('div', { 'style': 'display: grid; gap: 8px;' }, configs.map(function(cfg) {
+			return E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; padding: 8px; background: var(--soc-bg); border-radius: 4px;' }, [
+				E('span', { 'style': 'color: var(--soc-text-muted);' }, cfg.label),
+				E('code', { 'class': 'soc-ip' }, cfg.path)
+			]);
+		}));
+	},
+
+	serviceAction: function(action) {
+		var self = this;
+		api.serviceControl(action).then(function(r) {
+			if (r.success) {
+				self.showToast('Service ' + action + ' successful', 'success');
+				setTimeout(function() { location.reload(); }, 1500);
+			} else {
+				self.showToast('Failed: ' + (r.error || 'Unknown'), 'error');
+			}
+		});
+	},
+
+	updateHub: function() {
+		var self = this;
+		api.updateHub().then(function(r) {
+			if (r.success) {
+				self.showToast('Hub updated', 'success');
+				setTimeout(function() { location.reload(); }, 1500);
+			} else {
+				self.showToast('Failed: ' + (r.error || 'Unknown'), 'error');
+			}
+		});
+	},
+
+	removeCollection: function(name) {
+		var self = this;
+		if (!confirm('Remove collection "' + name + '"?')) return;
+		api.removeCollection(name).then(function(r) {
+			if (r.success) {
+				self.showToast('Collection removed', 'success');
+				setTimeout(function() { location.reload(); }, 1500);
+			} else {
+				self.showToast('Failed: ' + (r.error || 'Unknown'), 'error');
+			}
+		});
+	},
+
+	showToast: function(msg, type) {
+		var t = document.querySelector('.soc-toast');
+		if (t) t.remove();
+		t = E('div', { 'class': 'soc-toast ' + type }, msg);
+		document.body.appendChild(t);
+		setTimeout(function() { t.remove(); }, 4000);
+	},
+
+	handleSaveApply: null, handleSave: null, handleReset: null
 });

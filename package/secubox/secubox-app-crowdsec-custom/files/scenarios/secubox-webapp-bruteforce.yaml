@@ -1,0 +1,62 @@
+# CrowdSec scenario for SecuBox Webapp authentication bruteforce
+# Detects repeated authentication failures on web applications
+
+type: leaky
+name: secubox/webapp-auth-bruteforce
+description: "Detect bruteforce attempts on SecuBox Webapp"
+filter: "evt.Meta.service == 'webapp' && evt.Meta.auth_success == 'false'"
+groupby: evt.Meta.source_ip
+capacity: 5
+leakspeed: 30s
+blackhole: 5m
+labels:
+  service: webapp
+  type: bruteforce
+  remediation: true
+---
+# Detect webapp login page abuse
+type: leaky
+name: secubox/webapp-login-abuse
+description: "Detect login page abuse on webapp"
+filter: |
+  evt.Meta.log_type == 'webapp_nginx' &&
+  (evt.Parsed.request contains '/login' ||
+   evt.Parsed.request contains '/auth' ||
+   evt.Parsed.request contains '/signin')
+groupby: evt.Meta.source_ip
+capacity: 10
+leakspeed: 30s
+blackhole: 5m
+labels:
+  service: webapp
+  type: login_abuse
+  remediation: true
+---
+# Detect webapp path enumeration
+type: leaky
+name: secubox/webapp-path-enum
+description: "Detect path enumeration on webapp"
+filter: "evt.Meta.log_type == 'webapp_nginx' && evt.Parsed.http_status == '404'"
+groupby: evt.Meta.source_ip
+capacity: 30
+leakspeed: 20s
+blackhole: 10m
+labels:
+  service: webapp
+  type: path_enum
+  remediation: true
+---
+# Detect webapp credential stuffing (many different users from same IP)
+type: leaky
+name: secubox/webapp-credential-stuffing
+description: "Detect credential stuffing on webapp"
+filter: "evt.Meta.service == 'webapp' && evt.Meta.auth_success == 'false'"
+groupby: evt.Meta.source_ip
+distinct: evt.Parsed.user
+capacity: 10
+leakspeed: 60s
+blackhole: 15m
+labels:
+  service: webapp
+  type: credential_stuffing
+  remediation: true

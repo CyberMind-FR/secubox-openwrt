@@ -1,0 +1,512 @@
+#!/bin/sh
+# SecuBox Network Diagnostics RPCD Backend
+# Provides DSA switch port statistics and error monitoring
+
+. /usr/share/libubox/jshn.sh
+
+# Error history storage (in-memory via temp files)
+HISTORY_DIR="/tmp/secubox-netdiag"
+HISTORY_INTERVAL=5
+HISTORY_SAMPLES=60  # 5 minutes at 5-second intervals
+
+# Ensure history directory exists
+mkdir -p "$HISTORY_DIR" 2>/dev/null
+
+# Helper: Read a sysfs statistic file
+read_stat() {
+    local iface="$1"
+    local stat="$2"
+    local path="/sys/class/net/${iface}/statistics/${stat}"
+    if [ -f "$path" ]; then
+        cat "$path" 2>/dev/null || echo "0"
+    else
+        echo "0"
+    fi
+}
+
+# Helper: Get interface link state
+get_link_state() {
+    local iface="$1"
+    local carrier="/sys/class/net/${iface}/carrier"
+    local operstate="/sys/class/net/${iface}/operstate"
+
+    if [ -f "$carrier" ] && [ "$(cat "$carrier" 2>/dev/null)" = "1" ]; then
+        echo "up"
+    elif [ -f "$operstate" ]; then
+        cat "$operstate" 2>/dev/null
+    else
+        echo "unknown"
+    fi
+}
+
+# Helper: Get DSA master interface
+get_dsa_master() {
+    local iface="$1"
+    local master="/sys/class/net/${iface}/master"
+    if [ -L "$master" ]; then
+        basename "$(readlink "$master")" 2>/dev/null
+    else
+        echo ""
+    fi
+}
+
+# Helper: Get speed and duplex via ethtool
+get_ethtool_info() {
+    local iface="$1"
+    local result
+
+    result=$(ethtool "$iface" 2>/dev/null)
+    if [ -n "$result" ]; then
+        local speed duplex autoneg link
+        speed=$(echo "$result" | grep -i "Speed:" | awk '{print $2}' | sed 's/Mb\/s//')
+        duplex=$(echo "$result" | grep -i "Duplex:" | awk '{print $2}')
+        autoneg=$(echo "$result" | grep -i "Auto-negotiation:" | awk '{print $2}')
+        link=$(echo "$result" | grep -i "Link detected:" | awk '{print $3}')
+
+        json_add_int "speed" "${speed:-0}"
+        json_add_string "duplex" "${duplex:-unknown}"
+        json_add_string "autoneg" "${autoneg:-unknown}"
+        json_add_string "link_detected" "${link:-unknown}"
+    else
+        json_add_int "speed" 0
+        json_add_string "duplex" "unknown"
+        json_add_string "autoneg" "unknown"
+        json_add_string "link_detected" "unknown"
+    fi
+}
+
+# Helper: Get all interface statistics
+get_interface_stats() {
+    local iface="$1"
+
+    json_add_object "stats"
+    json_add_string "rx_bytes" "$(read_stat "$iface" rx_bytes)"
+    json_add_string "tx_bytes" "$(read_stat "$iface" tx_bytes)"
+    json_add_string "rx_packets" "$(read_stat "$iface" rx_packets)"
+    json_add_string "tx_packets" "$(read_stat "$iface" tx_packets)"
+    json_add_string "rx_dropped" "$(read_stat "$iface" rx_dropped)"
+    json_add_string "tx_dropped" "$(read_stat "$iface" tx_dropped)"
+    json_close_object
+}
+
+# Helper: Get error counters
+get_error_stats() {
+    local iface="$1"
+
+    json_add_object "errors"
+    json_add_string "rx_crc_errors" "$(read_stat "$iface" rx_crc_errors)"
+    json_add_string "rx_frame_errors" "$(read_stat "$iface" rx_frame_errors)"
+    json_add_string "rx_fifo_errors" "$(read_stat "$iface" rx_fifo_errors)"
+    json_add_string "rx_missed_errors" "$(read_stat "$iface" rx_missed_errors)"
+    json_add_string "rx_length_errors" "$(read_stat "$iface" rx_length_errors)"
+    json_add_string "rx_over_errors" "$(read_stat "$iface" rx_over_errors)"
+    json_add_string "tx_aborted_errors" "$(read_stat "$iface" tx_aborted_errors)"
+    json_add_string "tx_carrier_errors" "$(read_stat "$iface" tx_carrier_errors)"
+    json_add_string "tx_fifo_errors" "$(read_stat "$iface" tx_fifo_errors)"
+    json_add_string "tx_heartbeat_errors" "$(read_stat "$iface" tx_heartbeat_errors)"
+    json_add_string "tx_window_errors" "$(read_stat "$iface" tx_window_errors)"
+    json_add_string "collisions" "$(read_stat "$iface" collisions)"
+    json_close_object
+}
+
+# Helper: Get ARP/neighbor info for connected devices
+get_connected_device() {
+    local iface="$1"
+    local neighbor
+
+    # Check ARP table for devices on this interface
+    neighbor=$(ip neigh show dev "$iface" 2>/dev/null | grep -v "FAILED" | head -1)
+    if [ -n "$neighbor" ]; then
+        local ip mac
+        ip=$(echo "$neighbor" | awk '{print $1}')
+        mac=$(echo "$neighbor" | grep -oE '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | head -1)
+        json_add_object "neighbor"
+        json_add_string "ip" "${ip:-}"
+        json_add_string "mac" "${mac:-}"
+        json_close_object
+    fi
+}
+
+# Store error history sample
+store_error_sample() {
+    local iface="$1"
+    local history_file="$HISTORY_DIR/${iface}.history"
+    local timestamp=$(date +%s)
+
+    # Collect current error values
+    local rx_crc=$(read_stat "$iface" rx_crc_errors)
+    local rx_frame=$(read_stat "$iface" rx_frame_errors)
+    local rx_fifo=$(read_stat "$iface" rx_fifo_errors)
+    local rx_dropped=$(read_stat "$iface" rx_dropped)
+    local tx_dropped=$(read_stat "$iface" tx_dropped)
+    local collisions=$(read_stat "$iface" collisions)
+
+    # Append to history file
+    echo "$timestamp $rx_crc $rx_frame $rx_fifo $rx_dropped $tx_dropped $collisions" >> "$history_file"
+
+    # Keep only last HISTORY_SAMPLES entries
+    if [ -f "$history_file" ]; then
+        tail -n "$HISTORY_SAMPLES" "$history_file" > "${history_file}.tmp"
+        mv "${history_file}.tmp" "$history_file"
+    fi
+}
+
+# Calculate error rate (errors per minute)
+calc_error_rate() {
+    local iface="$1"
+    local history_file="$HISTORY_DIR/${iface}.history"
+    local now=$(date +%s)
+    local one_minute_ago=$((now - 60))
+
+    if [ ! -f "$history_file" ]; then
+        echo "0"
+        return
+    fi
+
+    # Get oldest and newest samples within last minute
+    local first_sample last_sample
+    first_sample=$(awk -v t="$one_minute_ago" '$1 >= t {print; exit}' "$history_file")
+    last_sample=$(tail -1 "$history_file")
+
+    if [ -z "$first_sample" ] || [ -z "$last_sample" ]; then
+        echo "0"
+        return
+    fi
+
+    # Calculate delta for rx_crc_errors (column 2)
+    local first_crc=$(echo "$first_sample" | awk '{print $2}')
+    local last_crc=$(echo "$last_sample" | awk '{print $2}')
+    local delta=$((last_crc - first_crc))
+
+    [ "$delta" -lt 0 ] && delta=0
+    echo "$delta"
+}
+
+# Get error history for sparkline
+get_error_history() {
+    local iface="$1"
+    local minutes="${2:-5}"
+    local history_file="$HISTORY_DIR/${iface}.history"
+    local now=$(date +%s)
+    local start_time=$((now - minutes * 60))
+
+    json_add_array "timeline"
+
+    if [ -f "$history_file" ]; then
+        local prev_crc=0
+        local first=1
+
+        while read -r line; do
+            local ts=$(echo "$line" | awk '{print $1}')
+            [ "$ts" -lt "$start_time" ] && continue
+
+            local rx_crc=$(echo "$line" | awk '{print $2}')
+            local rx_frame=$(echo "$line" | awk '{print $3}')
+            local rx_fifo=$(echo "$line" | awk '{print $4}')
+
+            # Calculate delta from previous sample
+            local delta_crc=0
+            if [ "$first" = "0" ]; then
+                delta_crc=$((rx_crc - prev_crc))
+                [ "$delta_crc" -lt 0 ] && delta_crc=0
+            fi
+            first=0
+            prev_crc="$rx_crc"
+
+            json_add_object ""
+            json_add_int "timestamp" "$ts"
+            json_add_int "rx_crc_errors" "$delta_crc"
+            json_add_int "rx_crc_total" "$rx_crc"
+            json_add_int "rx_frame_errors" "$rx_frame"
+            json_add_int "rx_fifo_errors" "$rx_fifo"
+            json_close_object
+        done < "$history_file"
+    fi
+
+    json_close_array
+}
+
+# Method: get_switch_status
+# Returns status of all network interfaces with DSA topology
+get_switch_status() {
+    json_init
+    json_add_array "ports"
+
+    # Iterate all network interfaces
+    for iface_path in /sys/class/net/*; do
+        [ ! -d "$iface_path" ] && continue
+
+        local iface=$(basename "$iface_path")
+
+        # Skip virtual/loopback interfaces
+        case "$iface" in
+            lo|br-*|docker*|veth*|tun*|tap*) continue ;;
+        esac
+
+        # Store error sample for history
+        store_error_sample "$iface"
+
+        json_add_object ""
+        json_add_string "name" "$iface"
+
+        # Check if this is a DSA port
+        local master=$(get_dsa_master "$iface")
+        json_add_string "master" "$master"
+        json_add_boolean "is_dsa_port" "$([ -n "$master" ] && echo 1 || echo 0)"
+
+        # Link state
+        local link_state=$(get_link_state "$iface")
+        json_add_string "operstate" "$link_state"
+        json_add_boolean "link" "$([ "$link_state" = "up" ] && echo 1 || echo 0)"
+
+        # Speed/duplex from ethtool
+        get_ethtool_info "$iface"
+
+        # Traffic statistics
+        get_interface_stats "$iface"
+
+        # Error counters
+        get_error_stats "$iface"
+
+        # Error rate (errors/minute)
+        local error_rate=$(calc_error_rate "$iface")
+        json_add_int "error_rate" "$error_rate"
+
+        # Alert level based on error rate
+        local alert_level="normal"
+        [ "$error_rate" -gt 0 ] && [ "$error_rate" -le 10 ] && alert_level="warning"
+        [ "$error_rate" -gt 10 ] && alert_level="critical"
+        json_add_string "alert_level" "$alert_level"
+
+        # Connected device info
+        get_connected_device "$iface"
+
+        # MAC address
+        local mac=""
+        [ -f "/sys/class/net/${iface}/address" ] && mac=$(cat "/sys/class/net/${iface}/address" 2>/dev/null)
+        json_add_string "mac" "${mac:-}"
+
+        # MTU
+        local mtu=""
+        [ -f "/sys/class/net/${iface}/mtu" ] && mtu=$(cat "/sys/class/net/${iface}/mtu" 2>/dev/null)
+        json_add_int "mtu" "${mtu:-1500}"
+
+        json_close_object
+    done
+
+    json_close_array
+    json_dump
+}
+
+# Method: get_interface_details
+# Returns detailed information for a specific interface
+get_interface_details() {
+    local iface="$1"
+
+    # Validate interface exists
+    if [ ! -d "/sys/class/net/${iface}" ]; then
+        json_init
+        json_add_boolean "error" 1
+        json_add_string "message" "Interface not found: $iface"
+        json_dump
+        return
+    fi
+
+    json_init
+    json_add_string "interface" "$iface"
+
+    # Full ethtool output
+    json_add_object "ethtool"
+    local ethtool_out=$(ethtool "$iface" 2>/dev/null)
+    if [ -n "$ethtool_out" ]; then
+        # Parse key fields
+        json_add_string "speed" "$(echo "$ethtool_out" | grep -i 'Speed:' | awk '{print $2}')"
+        json_add_string "duplex" "$(echo "$ethtool_out" | grep -i 'Duplex:' | awk '{print $2}')"
+        json_add_string "auto_negotiation" "$(echo "$ethtool_out" | grep -i 'Auto-negotiation:' | awk '{print $2}')"
+        json_add_string "link_detected" "$(echo "$ethtool_out" | grep -i 'Link detected:' | awk '{print $3}')"
+        json_add_string "port" "$(echo "$ethtool_out" | grep -i 'Port:' | cut -d: -f2 | xargs)"
+        json_add_string "transceiver" "$(echo "$ethtool_out" | grep -i 'Transceiver:' | awk '{print $2}')"
+
+        # Supported modes
+        local modes=$(echo "$ethtool_out" | grep -A20 'Supported link modes:' | grep -E '^\s+[0-9]+' | tr '\n' ' ')
+        json_add_string "supported_modes" "$modes"
+
+        # Link partner
+        local partner=$(echo "$ethtool_out" | grep -A5 'Link partner' | grep -E '^\s+[0-9]+' | tr '\n' ' ')
+        json_add_string "link_partner" "$partner"
+    fi
+    json_close_object
+
+    # Extended statistics (ethtool -S)
+    json_add_object "driver_stats"
+    local ethtool_s=$(ethtool -S "$iface" 2>/dev/null)
+    if [ -n "$ethtool_s" ]; then
+        echo "$ethtool_s" | grep -E '^\s+[a-z_]+:' | while read -r line; do
+            local key=$(echo "$line" | cut -d: -f1 | xargs)
+            local val=$(echo "$line" | cut -d: -f2 | xargs)
+            # Only include first 50 stats to avoid huge output
+            [ -n "$key" ] && [ -n "$val" ] && json_add_string "$key" "$val"
+        done
+    fi
+    json_close_object
+
+    # Driver info (ethtool -i)
+    json_add_object "driver_info"
+    local ethtool_i=$(ethtool -i "$iface" 2>/dev/null)
+    if [ -n "$ethtool_i" ]; then
+        json_add_string "driver" "$(echo "$ethtool_i" | grep 'driver:' | cut -d: -f2 | xargs)"
+        json_add_string "version" "$(echo "$ethtool_i" | grep 'version:' | cut -d: -f2 | xargs)"
+        json_add_string "firmware" "$(echo "$ethtool_i" | grep 'firmware-version:' | cut -d: -f2 | xargs)"
+        json_add_string "bus_info" "$(echo "$ethtool_i" | grep 'bus-info:' | cut -d: -f2 | xargs)"
+    fi
+    json_close_object
+
+    # Recent kernel messages
+    json_add_array "dmesg"
+    dmesg 2>/dev/null | grep -i "$iface" | tail -20 | while read -r line; do
+        json_add_string "" "$line"
+    done
+    json_close_array
+
+    # Current stats
+    get_interface_stats "$iface"
+    get_error_stats "$iface"
+
+    # Error history
+    get_error_history "$iface" 5
+
+    json_dump
+}
+
+# Method: get_error_history (standalone)
+get_error_history_method() {
+    local iface="$1"
+    local minutes="${2:-5}"
+
+    if [ ! -d "/sys/class/net/${iface}" ]; then
+        json_init
+        json_add_boolean "error" 1
+        json_add_string "message" "Interface not found: $iface"
+        json_dump
+        return
+    fi
+
+    json_init
+    json_add_string "interface" "$iface"
+    get_error_history "$iface" "$minutes"
+    json_dump
+}
+
+# Method: clear_counters
+# Clear error history (counters are read-only in sysfs)
+clear_counters() {
+    local iface="$1"
+    local history_file="$HISTORY_DIR/${iface}.history"
+
+    json_init
+    if [ -n "$iface" ] && [ -f "$history_file" ]; then
+        rm -f "$history_file"
+        json_add_boolean "success" 1
+        json_add_string "message" "Cleared history for $iface"
+    elif [ -z "$iface" ]; then
+        rm -f "$HISTORY_DIR"/*.history
+        json_add_boolean "success" 1
+        json_add_string "message" "Cleared all history"
+    else
+        json_add_boolean "success" 0
+        json_add_string "message" "No history found for $iface"
+    fi
+    json_dump
+}
+
+# Method: get_topology
+# Returns DSA switch topology
+get_topology() {
+    json_init
+    json_add_object "topology"
+
+    # Find DSA master interfaces
+    json_add_array "switches"
+
+    for master_path in /sys/class/net/*/dsa; do
+        [ ! -d "$master_path" ] && continue
+        local master=$(dirname "$master_path" | xargs basename)
+
+        json_add_object ""
+        json_add_string "master" "$master"
+        json_add_string "driver" "$(cat /sys/class/net/${master}/device/driver/module/name 2>/dev/null || echo 'unknown')"
+
+        # Find ports belonging to this master
+        json_add_array "ports"
+        for port_path in /sys/class/net/*; do
+            [ ! -d "$port_path" ] && continue
+            local port=$(basename "$port_path")
+            local port_master=$(get_dsa_master "$port")
+
+            if [ "$port_master" = "$master" ]; then
+                json_add_string "" "$port"
+            fi
+        done
+        json_close_array
+
+        json_close_object
+    done
+
+    json_close_array
+
+    # Standalone interfaces (not DSA ports, not virtual)
+    json_add_array "standalone"
+    for iface_path in /sys/class/net/*; do
+        [ ! -d "$iface_path" ] && continue
+        local iface=$(basename "$iface_path")
+        local master=$(get_dsa_master "$iface")
+
+        # Skip if has DSA master or is virtual
+        [ -n "$master" ] && continue
+        case "$iface" in
+            lo|br-*|docker*|veth*|tun*|tap*) continue ;;
+        esac
+
+        # Check if it's a real ethernet device
+        [ -f "/sys/class/net/${iface}/device" ] || [ -d "/sys/class/net/${iface}/device" ] && {
+            json_add_string "" "$iface"
+        }
+    done
+    json_close_array
+
+    json_close_object
+    json_dump
+}
+
+# RPCD list handler
+case "$1" in
+    list)
+        echo '{"get_switch_status":{},"get_interface_details":{"interface":"string"},"get_error_history":{"interface":"string","minutes":5},"clear_counters":{"interface":"string"},"get_topology":{}}'
+        ;;
+    call)
+        case "$2" in
+            get_switch_status)
+                get_switch_status
+                ;;
+            get_interface_details)
+                read -r input
+                iface=$(echo "$input" | jsonfilter -e '@.interface' 2>/dev/null)
+                get_interface_details "$iface"
+                ;;
+            get_error_history)
+                read -r input
+                iface=$(echo "$input" | jsonfilter -e '@.interface' 2>/dev/null)
+                minutes=$(echo "$input" | jsonfilter -e '@.minutes' 2>/dev/null)
+                get_error_history_method "$iface" "${minutes:-5}"
+                ;;
+            clear_counters)
+                read -r input
+                iface=$(echo "$input" | jsonfilter -e '@.interface' 2>/dev/null)
+                clear_counters "$iface"
+                ;;
+            get_topology)
+                get_topology
+                ;;
+        esac
+        ;;
+esac

@@ -78,34 +78,30 @@ get_status() {
 		fi
 		json_add_int "bootstrap" "${bootstrap:-0}"
 
-		# Get exit IP if bootstrapped
-		if [ "$bootstrap" -ge 100 ]; then
-			local socks_port
-			config_get socks_port socks port '9050'
-			# Single curl call for both IP and IsTor
-			local tor_check=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:$socks_port https://check.torproject.org/api/ip 2>/dev/null)
-			local exit_ip=$(echo "$tor_check" | jsonfilter -e '@.IP' 2>/dev/null)
-			json_add_string "exit_ip" "${exit_ip:-unknown}"
+		# Get circuit count and bandwidth (fast, no network calls)
+		if has_control; then
+			local circuits=$(tor_control "GETINFO circuit-status" | grep -c "BUILT" 2>/dev/null)
+			json_add_int "circuit_count" "${circuits:-0}"
 
-			# Check if using Tor
-			local is_tor=$(echo "$tor_check" | jsonfilter -e '@.IsTor' 2>/dev/null)
-			json_add_boolean "is_tor" "$([ "$is_tor" = "true" ] && echo 1 || echo 0)"
+			# Get bandwidth
+			local bw_read=$(tor_control "GETINFO traffic/read" | grep "250" | awk '{print $2}')
+			local bw_written=$(tor_control "GETINFO traffic/written" | grep "250" | awk '{print $2}')
+			json_add_int "bytes_read" "${bw_read:-0}"
+			json_add_int "bytes_written" "${bw_written:-0}"
+		else
+			json_add_int "circuit_count" 0
+			json_add_int "bytes_read" 0
+			json_add_int "bytes_written" 0
+		fi
 
-			# Get circuit count (only if control available)
-			if has_control; then
-				local circuits=$(tor_control "GETINFO circuit-status" | grep -c "BUILT" 2>/dev/null)
-				json_add_int "circuit_count" "${circuits:-0}"
-
-				# Get bandwidth
-				local bw_read=$(tor_control "GETINFO traffic/read" | grep "250" | awk '{print $2}')
-				local bw_written=$(tor_control "GETINFO traffic/written" | grep "250" | awk '{print $2}')
-				json_add_int "bytes_read" "${bw_read:-0}"
-				json_add_int "bytes_written" "${bw_written:-0}"
-			else
-				json_add_int "circuit_count" 0
-				json_add_int "bytes_read" 0
-				json_add_int "bytes_written" 0
-			fi
+		# Exit IP from cache (updated by separate call to avoid blocking)
+		local cached_exit="/tmp/tor_exit_ip"
+		if [ -f "$cached_exit" ]; then
+			json_add_string "exit_ip" "$(cat "$cached_exit")"
+			json_add_boolean "is_tor" 1
+		else
+			json_add_string "exit_ip" "checking..."
+			json_add_boolean "is_tor" 0
 		fi
 
 		# Uptime from process start time
@@ -128,11 +124,13 @@ get_status() {
 	json_add_boolean "bridges_enabled" "$bridges_enabled"
 	json_add_string "bridge_type" "$bridge_type"
 
-	# Get real IP (try multiple services as fallback)
-	local real_ip=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null)
-	[ -z "$real_ip" ] && real_ip=$(curl -s --max-time 5 https://ifconfig.me/ip 2>/dev/null)
-	[ -z "$real_ip" ] && real_ip="unknown"
-	json_add_string "real_ip" "$real_ip"
+	# Real IP from cache (updated separately)
+	local cached_real="/tmp/tor_real_ip"
+	if [ -f "$cached_real" ]; then
+		json_add_string "real_ip" "$(cat "$cached_real")"
+	else
+		json_add_string "real_ip" "checking..."
+	fi
 
 	json_dump
 }
@@ -446,6 +444,31 @@ remove_hidden_service() {
 	json_dump
 }
 
+# Refresh IPs in background (called by frontend periodically)
+refresh_ips() {
+	json_init
+
+	# Run IP fetches in background
+	(
+		# Get real IP
+		local real_ip=$(curl -s --max-time 3 https://api.ipify.org 2>/dev/null)
+		[ -z "$real_ip" ] && real_ip=$(curl -s --max-time 3 https://ifconfig.me/ip 2>/dev/null)
+		[ -n "$real_ip" ] && echo "$real_ip" > /tmp/tor_real_ip
+
+		# Get Tor exit IP if running
+		if pgrep -f "/usr/sbin/tor" >/dev/null 2>&1; then
+			local socks_port=$(uci -q get tor-shield.socks.port || echo 9050)
+			local tor_check=$(curl -s --max-time 5 --socks5-hostname 127.0.0.1:$socks_port https://check.torproject.org/api/ip 2>/dev/null)
+			local exit_ip=$(echo "$tor_check" | jsonfilter -e '@.IP' 2>/dev/null)
+			[ -n "$exit_ip" ] && echo "$exit_ip" > /tmp/tor_exit_ip
+		fi
+	) &
+
+	json_add_boolean "success" 1
+	json_add_string "message" "IP refresh started"
+	json_dump
+}
+
 # Get exit IP
 get_exit_ip() {
 	json_init
@@ -721,7 +744,7 @@ do_restart() {
 
 case "$1" in
 	list)
-		echo '{"status":{},"enable":{"preset":"str"},"disable":{},"restart":{},"circuits":{},"new_identity":{},"check_leaks":{},"hidden_services":{},"add_hidden_service":{"name":"str","local_port":"int","virtual_port":"int"},"remove_hidden_service":{"name":"str"},"exit_ip":{},"bandwidth":{},"presets":{},"bridges":{},"set_bridges":{"enabled":"bool","type":"str"},"settings":{},"save_settings":{"mode":"str","dns_over_tor":"bool","kill_switch":"bool","socks_port":"int","trans_port":"int","dns_port":"int","exit_nodes":"str","exclude_exit_nodes":"str","strict_nodes":"bool"}}'
+		echo '{"status":{},"enable":{"preset":"str"},"disable":{},"restart":{},"circuits":{},"new_identity":{},"check_leaks":{},"hidden_services":{},"add_hidden_service":{"name":"str","local_port":"int","virtual_port":"int"},"remove_hidden_service":{"name":"str"},"exit_ip":{},"refresh_ips":{},"bandwidth":{},"presets":{},"bridges":{},"set_bridges":{"enabled":"bool","type":"str"},"settings":{},"save_settings":{"mode":"str","dns_over_tor":"bool","kill_switch":"bool","socks_port":"int","trans_port":"int","dns_port":"int","exit_nodes":"str","exclude_exit_nodes":"str","strict_nodes":"bool"}}'
 		;;
 	call)
 		case "$2" in
@@ -757,6 +780,9 @@ case "$1" in
 				;;
 			exit_ip)
 				get_exit_ip
+				;;
+			refresh_ips)
+				refresh_ips
 				;;
 			bandwidth)
 				get_bandwidth

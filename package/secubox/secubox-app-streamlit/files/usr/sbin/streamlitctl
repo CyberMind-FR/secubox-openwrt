@@ -3,6 +3,10 @@
 # Copyright (C) 2025 CyberMind.fr
 #
 # Manages Streamlit in LXC container
+# Supports multi-instance with folder-based apps and Gitea integration
+
+# Source OpenWrt UCI functions
+. /lib/functions.sh
 
 CONFIG="streamlit"
 LXC_NAME="streamlit"
@@ -11,11 +15,11 @@ LXC_NAME="streamlit"
 LXC_PATH="/srv/lxc"
 LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
 LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
-APPS_PATH="/srv/streamlit/apps"
 DEFAULT_APP="/usr/share/streamlit/hello.py"
 
 # Logging
 log_info() { echo "[INFO] $*"; logger -t streamlit "$*"; }
+log_warn() { echo "[WARN] $*" >&2; logger -t streamlit -p warning "$*"; }
 log_error() { echo "[ERROR] $*" >&2; logger -t streamlit -p err "$*"; }
 log_debug() { [ "$DEBUG" = "1" ] && echo "[DEBUG] $*"; }
 
@@ -28,6 +32,7 @@ require_root() {
 }
 
 has_lxc() { command -v lxc-start >/dev/null 2>&1; }
+has_git() { command -v git >/dev/null 2>&1; }
 
 ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
 
@@ -48,6 +53,12 @@ load_config() {
 	theme_base="$(uci_get server.theme_base)" || theme_base="dark"
 	theme_primary="$(uci_get server.theme_primary_color)" || theme_primary="#0ff"
 
+	# Gitea config
+	gitea_enabled="$(uci_get gitea.enabled)" || gitea_enabled="0"
+	gitea_url="$(uci_get gitea.url)" || gitea_url="http://192.168.255.1:3000"
+	gitea_user="$(uci_get gitea.user)" || gitea_user="admin"
+	gitea_token="$(uci_get gitea.token)" || gitea_token=""
+
 	ensure_dir "$data_path"
 	ensure_dir "$data_path/apps"
 	ensure_dir "$data_path/logs"
@@ -57,49 +68,54 @@ load_config() {
 # Usage
 usage() {
 	cat <<EOF
-SecuBox Streamlit Platform Controller
+SecuBox Streamlit Platform Controller (Multi-Instance)
 
 Usage: $(basename $0) <command> [options]
 
-Commands:
-  install       Download Alpine rootfs and setup LXC container
-  uninstall     Remove container (preserves apps)
-  update        Update Streamlit package in container
-  status        Show service status (JSON format)
-  logs          Show container logs
-  shell         Open shell in container
+Container Commands:
+  install           Download and setup LXC container
+  uninstall         Remove container (preserves apps)
+  update            Update Streamlit in container
+  status            Show service status
+  logs [app]        Show logs
 
-  app list      List deployed apps
-  app add <name> <path>  Deploy new app
-  app remove <name>      Remove app
+App Management (folder-based):
+  app list                    List all apps
+  app create <name>           Create new app folder
+  app delete <name>           Delete app folder
+  app deploy <name> <path>    Deploy app from path/archive
 
-  instance list                     List running instances
-  instance add <name> <app> <port>  Add instance config
-  instance remove <name>            Remove instance config
-  instance enable <name>            Enable instance
-  instance disable <name>           Disable instance
+Instance Management:
+  instance list               List configured instances
+  instance add <app> <port>   Add instance for app on port
+  instance remove <name>      Remove instance
+  instance start <name>       Start single instance
+  instance stop <name>        Stop single instance
 
-  service-run   Start service (used by init)
-  service-stop  Stop service (used by init)
+Gitea Integration:
+  gitea setup                 Configure git credentials
+  gitea clone <name> <repo>   Clone app from Gitea repo
+  gitea pull <name>           Pull latest from Gitea
 
-Configuration:
-  /etc/config/streamlit
+Service Commands:
+  service-run       Start all instances (for init)
+  service-stop      Stop all instances
 
-Data directory:
-  /srv/streamlit
+Utility:
+  shell             Open shell in container
+  exec <cmd>        Execute command in container
 
-Multi-Instance Mode:
-  Add instances in /etc/config/streamlit:
-    config instance 'myapp'
-      option app 'myapp.py'
-      option port '8502'
-      option enabled '1'
+App Folder Structure:
+  /srv/streamlit/apps/<appname>/
+    app.py              Main Streamlit app (or <appname>.py)
+    requirements.txt    Python dependencies
+    .streamlit/         Streamlit config (optional)
+    ...                 Other files
 
-Requirements:
-  Place requirements.txt in /srv/streamlit/apps/
-    - <appname>.requirements.txt
-    - <appname>_requirements.txt
-    - requirements.txt (global)
+Examples:
+  streamlitctl app create myapp
+  streamlitctl instance add myapp 8502
+  streamlitctl gitea clone myapp myuser/myapp-repo
 
 EOF
 }
@@ -122,7 +138,6 @@ lxc_create_rootfs() {
 
 	ensure_dir "$rootfs"
 
-	# Use Alpine mini rootfs
 	local alpine_version="3.21"
 	case "$arch" in
 		x86_64) alpine_arch="x86_64" ;;
@@ -147,19 +162,35 @@ lxc_create_rootfs() {
 	}
 	rm -f "$tmpfile"
 
-	# Setup resolv.conf
 	cp /etc/resolv.conf "$rootfs/etc/resolv.conf" 2>/dev/null || \
 		echo "nameserver 1.1.1.1" > "$rootfs/etc/resolv.conf"
 
-	# Create startup script - Multi-instance support
-	cat > "$rootfs/opt/start-streamlit.sh" << 'STARTUP'
+	log_info "Rootfs created successfully"
+	return 0
+}
+
+# Create startup script for multi-instance folder-based apps
+create_startup_script() {
+	load_config
+
+	local start_script="$LXC_ROOTFS/opt/start-streamlit.sh"
+	cat > "$start_script" << 'STARTUP'
 #!/bin/sh
+export PATH=/usr/local/bin:/usr/bin:/bin:$PATH
+export HOME=/root
+
+APPS_BASE="/srv/apps"
+PIDS_DIR="/var/run/streamlit"
+LOG_DIR="/var/log/streamlit"
+INSTANCES_CONF="/srv/apps/instances.conf"
+
+mkdir -p "$PIDS_DIR" "$LOG_DIR"
 
 # Install Python and Streamlit on first run
 if [ ! -f /opt/.installed ]; then
     echo "Installing Python 3.12 and dependencies..."
     apk update
-    apk add --no-cache python3 py3-pip procps
+    apk add --no-cache python3 py3-pip git procps
 
     echo "Installing Streamlit..."
     pip3 install --break-system-packages streamlit 2>/dev/null || \
@@ -170,9 +201,9 @@ if [ ! -f /opt/.installed ]; then
 fi
 
 # Create default hello app if missing
-mkdir -p /srv/apps
-if [ ! -f "/srv/apps/hello.py" ]; then
-    cat > /srv/apps/hello.py << 'HELLO'
+if [ ! -d "$APPS_BASE/hello" ]; then
+    mkdir -p "$APPS_BASE/hello"
+    cat > "$APPS_BASE/hello/app.py" << 'HELLO'
 import streamlit as st
 st.set_page_config(page_title="SecuBox Streamlit", page_icon="⚡", layout="wide")
 st.title("⚡ SECUBOX STREAMLIT ⚡")
@@ -181,112 +212,168 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.metric("Status", "ONLINE", delta="Active")
 with col2:
-    st.metric("Apps", "1", delta="+1")
+    st.metric("Apps", "Ready", delta="+1")
 with col3:
     st.metric("Platform", "SecuBox")
-st.info("Deploy your Streamlit apps via LuCI dashboard")
+st.info("Deploy your Streamlit apps via LuCI dashboard or CLI")
 HELLO
 fi
 
-# Function to install requirements for an app
-install_requirements() {
-    local app_name="$1"
-    for req_file in "/srv/apps/${app_name}.requirements.txt" \
-                    "/srv/apps/${app_name}_requirements.txt" \
-                    "/srv/apps/requirements.txt"; do
-        if [ -f "$req_file" ]; then
-            REQ_HASH=$(md5sum "$req_file" 2>/dev/null | cut -d' ' -f1)
-            REQ_MARKER="/opt/.req_${app_name}_${REQ_HASH}"
-            if [ ! -f "$REQ_MARKER" ]; then
-                echo "Installing requirements for $app_name from: $req_file"
-                pip3 install --break-system-packages -r "$req_file" 2>/dev/null || \
-                pip3 install -r "$req_file" 2>/dev/null || true
-                touch "$REQ_MARKER"
-            fi
-            break
-        fi
+# Function to find main app file in folder
+find_app_file() {
+    local app_dir="$1"
+    local app_name=$(basename "$app_dir")
+
+    # Priority: app.py > main.py > <appname>.py > first .py file
+    for candidate in "$app_dir/app.py" "$app_dir/main.py" "$app_dir/${app_name}.py"; do
+        [ -f "$candidate" ] && { echo "$candidate"; return 0; }
     done
+
+    # Fallback to first .py file
+    local first_py=$(ls -1 "$app_dir"/*.py 2>/dev/null | head -1)
+    [ -n "$first_py" ] && { echo "$first_py"; return 0; }
+
+    return 1
 }
 
-# Function to start a single Streamlit instance
-start_instance() {
-    local app_file="$1"
-    local port="$2"
-    local app_name=$(basename "$app_file" .py)
+# Function to install requirements for an app
+install_requirements() {
+    local app_dir="$1"
+    local app_name=$(basename "$app_dir")
+    local req_file="$app_dir/requirements.txt"
 
-    if [ ! -f "/srv/apps/$app_file" ]; then
-        echo "App not found: $app_file"
+    if [ -f "$req_file" ]; then
+        REQ_HASH=$(md5sum "$req_file" 2>/dev/null | cut -d' ' -f1)
+        REQ_MARKER="/opt/.req_${app_name}_${REQ_HASH}"
+        if [ ! -f "$REQ_MARKER" ]; then
+            echo "Installing requirements for $app_name..."
+            pip3 install --break-system-packages -r "$req_file" 2>/dev/null || \
+            pip3 install -r "$req_file" 2>/dev/null || true
+            touch "$REQ_MARKER"
+        fi
+    fi
+}
+
+# Function to start a single instance
+start_instance() {
+    local app_name="$1"
+    local port="$2"
+    local app_dir="$APPS_BASE/$app_name"
+
+    if [ ! -d "$app_dir" ]; then
+        echo "App folder not found: $app_dir"
         return 1
     fi
 
-    install_requirements "$app_name"
+    local app_file=$(find_app_file "$app_dir")
+    if [ -z "$app_file" ]; then
+        echo "No Python app file found in $app_dir"
+        return 1
+    fi
 
-    echo "Starting instance: $app_name on port $port"
-    cd /srv/apps
-    streamlit run "$app_file" \
+    # Install requirements
+    install_requirements "$app_dir"
+
+    echo "Starting instance: $app_name on port $port (file: $(basename $app_file))"
+
+    # Change to app directory so relative imports work
+    cd "$app_dir"
+
+    nohup streamlit run "$(basename $app_file)" \
         --server.address="0.0.0.0" \
         --server.port="$port" \
         --server.headless=true \
         --browser.gatherUsageStats=false \
         --theme.base="${STREAMLIT_THEME_BASE:-dark}" \
-        --theme.primaryColor="${STREAMLIT_THEME_PRIMARY:-#0ff}" &
-    echo $! > "/tmp/streamlit_${app_name}.pid"
+        --theme.primaryColor="${STREAMLIT_THEME_PRIMARY:-#0ff}" \
+        > "$LOG_DIR/${app_name}.log" 2>&1 &
+
+    echo $! > "$PIDS_DIR/${app_name}.pid"
+    echo "Instance '$app_name' started (PID: $!)"
 }
 
-# Parse STREAMLIT_INSTANCES env var (format: "app1.py:8501,app2.py:8502")
-if [ -n "$STREAMLIT_INSTANCES" ]; then
-    echo "Multi-instance mode: $STREAMLIT_INSTANCES"
-    IFS=','
-    for instance in $STREAMLIT_INSTANCES; do
-        app_file=$(echo "$instance" | cut -d: -f1)
-        port=$(echo "$instance" | cut -d: -f2)
-        start_instance "$app_file" "$port"
-    done
-    unset IFS
+# Function to stop an instance
+stop_instance() {
+    local app_name="$1"
+    local pidfile="$PIDS_DIR/${app_name}.pid"
+
+    if [ -f "$pidfile" ]; then
+        local pid=$(cat "$pidfile")
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid"
+            echo "Stopped instance '$app_name' (PID: $pid)"
+        fi
+        rm -f "$pidfile"
+    fi
+}
+
+# Read instances from config file (format: appname:port)
+if [ -f "$INSTANCES_CONF" ]; then
+    echo "Loading instances from config..."
+    while IFS=: read -r app_name port; do
+        [ -n "$app_name" ] && [ -n "$port" ] && start_instance "$app_name" "$port"
+    done < "$INSTANCES_CONF"
 else
-    # Single instance mode (backward compatible)
-    ACTIVE_APP="${STREAMLIT_APP:-hello.py}"
-    PORT="${STREAMLIT_PORT:-8501}"
-    start_instance "$ACTIVE_APP" "$PORT"
+    # Fallback: single instance mode
+    if [ -n "$STREAMLIT_APP" ] && [ -n "$STREAMLIT_PORT" ]; then
+        start_instance "$STREAMLIT_APP" "$STREAMLIT_PORT"
+    else
+        # Default: start hello on 8501
+        start_instance "hello" "8501"
+    fi
 fi
 
-# Keep container running and monitor processes
-echo "Streamlit instances started. Monitoring..."
+# Keep container running
+echo ""
+echo "Streamlit multi-instance manager running."
+echo "Instances:"
+ls -1 "$PIDS_DIR"/*.pid 2>/dev/null | while read f; do
+    name=$(basename "$f" .pid)
+    pid=$(cat "$f")
+    echo "  - $name (PID: $pid)"
+done
+
+# Monitor loop
 while true; do
     sleep 30
-    # Check if any streamlit process is running
     if ! pgrep -f "streamlit" >/dev/null; then
         echo "No streamlit processes running, exiting..."
         exit 1
     fi
 done
 STARTUP
-	chmod +x "$rootfs/opt/start-streamlit.sh"
-
-	log_info "Rootfs created successfully"
-	return 0
+	chmod +x "$start_script"
 }
 
-# Build instances string from UCI config
-_instances_result=""
-_build_instance_entry() {
-	local section="$1"
-	local inst_enabled inst_app inst_port
-	config_get inst_enabled "$section" enabled "0"
-	config_get inst_app "$section" app ""
-	config_get inst_port "$section" port ""
+# Generate instances.conf from UCI
+generate_instances_conf() {
+	load_config
 
-	if [ "$inst_enabled" = "1" ] && [ -n "$inst_app" ] && [ -n "$inst_port" ]; then
-		[ -n "$_instances_result" ] && _instances_result="${_instances_result},"
-		_instances_result="${_instances_result}${inst_app}:${inst_port}"
-	fi
-}
+	local conf_file="$data_path/apps/instances.conf"
+	> "$conf_file"
 
-build_instances_string() {
-	_instances_result=""
+	# Iterate over instance sections
+	_add_instance_to_conf() {
+		local section="$1"
+		local inst_enabled inst_app inst_port
+		config_get inst_enabled "$section" enabled "0"
+		config_get inst_app "$section" app ""
+		config_get inst_port "$section" port ""
+
+		if [ "$inst_enabled" = "1" ] && [ -n "$inst_app" ] && [ -n "$inst_port" ]; then
+			echo "${inst_app}:${inst_port}" >> "$conf_file"
+		fi
+	}
+
 	config_load "$CONFIG"
-	config_foreach _build_instance_entry instance
-	echo "$_instances_result"
+	config_foreach _add_instance_to_conf instance
+
+	# If no instances, add default
+	if [ ! -s "$conf_file" ]; then
+		echo "hello:8501" > "$conf_file"
+	fi
+
+	log_debug "Generated instances.conf: $(cat $conf_file | tr '\n' ' ')"
 }
 
 # Create LXC config
@@ -295,7 +382,6 @@ lxc_create_config() {
 
 	ensure_dir "$(dirname "$LXC_CONFIG")"
 
-	# Convert memory limit to bytes
 	local mem_bytes
 	case "$memory_limit" in
 		*G|*g) mem_bytes=$((${memory_limit%[Gg]} * 1024 * 1024 * 1024)) ;;
@@ -304,24 +390,8 @@ lxc_create_config() {
 		*) mem_bytes="$memory_limit" ;;
 	esac
 
-	# Build multi-instance string or fallback to single app
-	local instances_str
-	instances_str=$(build_instances_string)
-
-	# Fallback: if no instances defined, use active_app
-	local app_file=""
-	if [ -z "$instances_str" ]; then
-		if [ -f "$APPS_PATH/${active_app}.py" ]; then
-			app_file="${active_app}.py"
-		elif [ -f "$APPS_PATH/${active_app}" ]; then
-			app_file="${active_app}"
-		else
-			app_file="hello.py"
-		fi
-	fi
-
 	cat > "$LXC_CONFIG" << EOF
-# Streamlit Platform LXC Configuration
+# Streamlit Platform LXC Configuration (Multi-Instance)
 lxc.uts.name = $LXC_NAME
 lxc.rootfs.path = dir:$LXC_ROOTFS
 lxc.arch = $(uname -m)
@@ -337,19 +407,6 @@ lxc.mount.entry = $data_path/logs srv/logs none bind,create=dir 0 0
 # Environment
 lxc.environment = STREAMLIT_THEME_BASE=$theme_base
 lxc.environment = STREAMLIT_THEME_PRIMARY=$theme_primary
-EOF
-
-	# Add multi-instance or single-instance env vars
-	if [ -n "$instances_str" ]; then
-		echo "lxc.environment = STREAMLIT_INSTANCES=$instances_str" >> "$LXC_CONFIG"
-	else
-		cat >> "$LXC_CONFIG" << EOF
-lxc.environment = STREAMLIT_APP=$app_file
-lxc.environment = STREAMLIT_PORT=$http_port
-EOF
-	fi
-
-	cat >> "$LXC_CONFIG" << EOF
 
 # Security
 lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time sys_rawio
@@ -390,152 +447,519 @@ lxc_run() {
 		return 1
 	fi
 
-	# Regenerate config in case settings changed
 	lxc_create_config
+	create_startup_script
+	generate_instances_conf
 
 	log_info "Starting Streamlit container..."
 	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
 }
 
-# App management
+lxc_exec() {
+	if ! lxc_running; then
+		log_error "Container not running. Start with: /etc/init.d/streamlit start"
+		return 1
+	fi
+	lxc-attach -n "$LXC_NAME" -- env PATH=/usr/local/bin:/usr/bin:/bin "$@"
+}
+
+# App management commands
 cmd_app_list() {
 	load_config
 
-	echo "{"
-	echo '  "apps": ['
+	echo "Streamlit Apps:"
+	echo "---------------"
 
-	local first=1
 	if [ -d "$APPS_PATH" ]; then
-		for app in "$APPS_PATH"/*.py; do
-			[ -f "$app" ] || continue
-			local name=$(basename "$app" .py)
-			local size=$(ls -la "$app" 2>/dev/null | awk '{print $5}')
-			local mtime=$(ls -la "$app" 2>/dev/null | awk '{print $6, $7, $8}')
+		for app_dir in "$APPS_PATH"/*/; do
+			[ -d "$app_dir" ] || continue
+			local name=$(basename "$app_dir")
 
-			# Check if this is the active app
-			local is_active="false"
-			if [ "$name" = "$active_app" ] || [ "${name}.py" = "$active_app" ]; then
-				is_active="true"
-			fi
+			# Find main file
+			local main_file=""
+			for candidate in "$app_dir/app.py" "$app_dir/main.py" "$app_dir/${name}.py"; do
+				[ -f "$candidate" ] && { main_file=$(basename "$candidate"); break; }
+			done
+			[ -z "$main_file" ] && main_file=$(ls -1 "$app_dir"/*.py 2>/dev/null | head -1 | xargs basename 2>/dev/null)
 
-			[ $first -eq 0 ] && echo ","
-			first=0
-			printf '    {"name": "%s", "path": "%s", "size": "%s", "modified": "%s", "active": %s}' \
-				"$name" "$app" "$size" "$mtime" "$is_active"
+			# Check for requirements
+			local has_req="no"
+			[ -f "$app_dir/requirements.txt" ] && has_req="yes"
+
+			# Check for git repo
+			local has_git="no"
+			[ -d "$app_dir/.git" ] && has_git="yes"
+
+			printf "  %-20s main:%-15s req:%-3s git:%-3s\n" "$name" "${main_file:-none}" "$has_req" "$has_git"
 		done
 	fi
 
-	echo ""
-	echo "  ],"
-	echo "  \"active_app\": \"$active_app\","
-	echo "  \"apps_path\": \"$APPS_PATH\""
-	echo "}"
+	# Also list legacy single-file apps
+	for app_file in "$APPS_PATH"/*.py; do
+		[ -f "$app_file" ] || continue
+		local name=$(basename "$app_file" .py)
+		# Skip if there's a folder with same name
+		[ -d "$APPS_PATH/$name" ] && continue
+		printf "  %-20s (legacy single-file)\n" "$name"
+	done
 }
 
-cmd_app_add() {
-	local name="$1"
-	local path="$2"
-
-	if [ -z "$name" ] || [ -z "$path" ]; then
-		log_error "Usage: streamlitctl app add <name> <path>"
-		return 1
-	fi
-
+cmd_app_create() {
+	require_root
 	load_config
 
-	if [ ! -f "$path" ]; then
-		log_error "Source file not found: $path"
-		return 1
-	fi
+	local name="$1"
+	[ -z "$name" ] && { log_error "App name required"; return 1; }
 
-	# Validate it looks like a Python file
-	if ! echo "$path" | grep -q '\.py$'; then
-		log_error "Source file must be a .py file"
-		return 1
-	fi
-
-	ensure_dir "$APPS_PATH"
-	local dest="$APPS_PATH/${name}.py"
-
-	cp "$path" "$dest" || {
-		log_error "Failed to copy app to $dest"
+	# Validate name
+	echo "$name" | grep -qE '^[a-z][a-z0-9_-]*$' || {
+		log_error "Invalid app name. Use lowercase, numbers, underscore, hyphen."
 		return 1
 	}
+
+	local app_dir="$APPS_PATH/$name"
+
+	if [ -d "$app_dir" ]; then
+		log_error "App '$name' already exists"
+		return 1
+	fi
+
+	log_info "Creating app folder: $name"
+
+	ensure_dir "$app_dir"
+	ensure_dir "$app_dir/.streamlit"
+
+	# Create template app.py
+	cat > "$app_dir/app.py" << 'APPTEMPLATE'
+import streamlit as st
+
+st.set_page_config(
+    page_title="My Streamlit App",
+    page_icon="🚀",
+    layout="wide"
+)
+
+st.title("🚀 My Streamlit App")
+st.write("Edit this file to build your app!")
+
+# Example widgets
+name = st.text_input("Enter your name:")
+if name:
+    st.success(f"Hello, {name}!")
+APPTEMPLATE
+
+	# Create empty requirements.txt
+	cat > "$app_dir/requirements.txt" << 'REQTEMPLATE'
+# Add your Python dependencies here, one per line
+# Example:
+# pandas>=2.0.0
+# numpy
+# plotly
+REQTEMPLATE
+
+	# Create .streamlit/config.toml
+	cat > "$app_dir/.streamlit/config.toml" << 'CONFIGTEMPLATE'
+[theme]
+base = "dark"
+primaryColor = "#0ff"
+
+[server]
+headless = true
+CONFIGTEMPLATE
 
 	# Register in UCI
 	uci set "${CONFIG}.${name}=app"
 	uci set "${CONFIG}.${name}.name=$name"
-	uci set "${CONFIG}.${name}.path=${name}.py"
 	uci set "${CONFIG}.${name}.enabled=1"
 	uci commit "$CONFIG"
 
-	log_info "App '$name' added successfully"
-	echo '{"success": true, "message": "App added", "name": "'"$name"'"}'
+	log_info "App '$name' created at $app_dir"
+	log_info "Next steps:"
+	log_info "  1. Edit $app_dir/app.py"
+	log_info "  2. Add dependencies to $app_dir/requirements.txt"
+	log_info "  3. Start with: streamlitctl instance add $name <port>"
 }
 
-cmd_app_remove() {
-	local name="$1"
-
-	if [ -z "$name" ]; then
-		log_error "Usage: streamlitctl app remove <name>"
-		return 1
-	fi
-
-	if [ "$name" = "hello" ]; then
-		log_error "Cannot remove the default hello app"
-		return 1
-	fi
-
+cmd_app_delete() {
+	require_root
 	load_config
 
-	local app_file="$APPS_PATH/${name}.py"
-	if [ -f "$app_file" ]; then
-		rm -f "$app_file"
+	local name="$1"
+	[ -z "$name" ] && { log_error "App name required"; return 1; }
+
+	if [ "$name" = "hello" ]; then
+		log_error "Cannot delete the default hello app"
+		return 1
+	fi
+
+	local app_dir="$APPS_PATH/$name"
+
+	# Stop any running instance
+	cmd_instance_stop "$name" 2>/dev/null
+
+	# Remove directory
+	if [ -d "$app_dir" ]; then
+		rm -rf "$app_dir"
+		log_info "App folder removed: $app_dir"
+	fi
+
+	# Remove legacy file
+	if [ -f "$APPS_PATH/${name}.py" ]; then
+		rm -f "$APPS_PATH/${name}.py"
 	fi
 
 	# Remove from UCI
-	uci -q delete "${CONFIG}.${name}" 2>/dev/null || true
+	uci -q delete "${CONFIG}.${name}" 2>/dev/null
 	uci commit "$CONFIG"
 
-	# If this was the active app, switch to hello
-	if [ "$active_app" = "$name" ]; then
-		uci_set main.active_app "hello"
-	fi
-
-	log_info "App '$name' removed"
-	echo '{"success": true, "message": "App removed", "name": "'"$name"'"}'
+	log_info "App '$name' deleted"
 }
 
-cmd_app_run() {
-	local name="$1"
-
-	if [ -z "$name" ]; then
-		log_error "Usage: streamlitctl app run <name>"
-		return 1
-	fi
-
+cmd_app_deploy() {
+	require_root
 	load_config
 
-	local app_file="$APPS_PATH/${name}.py"
-	if [ ! -f "$app_file" ]; then
-		log_error "App not found: $name"
+	local name="$1"
+	local source="$2"
+
+	[ -z "$name" ] || [ -z "$source" ] && {
+		log_error "Usage: streamlitctl app deploy <name> <source_path>"
+		return 1
+	}
+
+	local app_dir="$APPS_PATH/$name"
+	ensure_dir "$app_dir"
+
+	if [ -d "$source" ]; then
+		# Copy directory contents
+		log_info "Deploying from directory: $source"
+		cp -r "$source"/* "$app_dir/"
+	elif [ -f "$source" ]; then
+		case "$source" in
+			*.tar.gz|*.tgz)
+				log_info "Extracting archive: $source"
+				tar -xzf "$source" -C "$app_dir"
+				;;
+			*.zip)
+				log_info "Extracting zip: $source"
+				unzip -q "$source" -d "$app_dir"
+				;;
+			*.py)
+				log_info "Deploying single file: $source"
+				cp "$source" "$app_dir/app.py"
+				;;
+			*)
+				log_error "Unsupported file type"
+				return 1
+				;;
+		esac
+	else
+		log_error "Source not found: $source"
 		return 1
 	fi
 
-	uci_set main.active_app "$name"
+	# Register in UCI
+	uci set "${CONFIG}.${name}=app"
+	uci set "${CONFIG}.${name}.name=$name"
+	uci set "${CONFIG}.${name}.enabled=1"
+	uci commit "$CONFIG"
 
-	# Restart if running
-	if lxc_running; then
-		log_info "Switching to app: $name (restarting container)"
-		/etc/init.d/streamlit restart
-	else
-		log_info "Active app set to: $name"
-	fi
-
-	echo '{"success": true, "message": "Active app changed", "active_app": "'"$name"'"}'
+	log_info "App '$name' deployed to $app_dir"
 }
 
-# Commands
+# Instance management
+cmd_instance_list() {
+	load_config
+
+	echo "Streamlit Instances:"
+	echo "--------------------"
+
+	local found=0
+	_print_instance() {
+		local section="$1"
+		local name app port enabled
+		config_get name "$section" name "$section"
+		config_get app "$section" app ""
+		config_get port "$section" port ""
+		config_get enabled "$section" enabled "0"
+
+		[ -z "$app" ] || [ -z "$port" ] && return
+
+		found=1
+		local status="disabled"
+		[ "$enabled" = "1" ] && status="enabled"
+
+		local running=""
+		if lxc_running && [ -f "$LXC_ROOTFS/var/run/streamlit/${app}.pid" ]; then
+			running=" [RUNNING]"
+		fi
+
+		printf "  %-15s app:%-15s port:%-5s [%s]%s\n" "$section" "$app" "$port" "$status" "$running"
+	}
+
+	config_load "$CONFIG"
+	config_foreach _print_instance instance
+
+	[ "$found" = "0" ] && echo "  (no instances configured)"
+}
+
+cmd_instance_add() {
+	require_root
+	load_config
+
+	local app="$1"
+	local port="$2"
+
+	[ -z "$app" ] || [ -z "$port" ] && {
+		log_error "Usage: streamlitctl instance add <app_name> <port>"
+		return 1
+	}
+
+	# Validate port
+	echo "$port" | grep -qE '^[0-9]+$' || {
+		log_error "Port must be a number"
+		return 1
+	}
+
+	# Check app exists
+	if [ ! -d "$APPS_PATH/$app" ] && [ ! -f "$APPS_PATH/${app}.py" ]; then
+		log_error "App not found: $app"
+		log_info "Create with: streamlitctl app create $app"
+		return 1
+	fi
+
+	# Use app name as instance name
+	local instance_name="$app"
+
+	uci set "${CONFIG}.${instance_name}=instance"
+	uci set "${CONFIG}.${instance_name}.name=$instance_name"
+	uci set "${CONFIG}.${instance_name}.app=$app"
+	uci set "${CONFIG}.${instance_name}.port=$port"
+	uci set "${CONFIG}.${instance_name}.enabled=1"
+	uci commit "$CONFIG"
+
+	log_info "Instance added: $app on port $port"
+	log_info "Restart service to apply: /etc/init.d/streamlit restart"
+}
+
+cmd_instance_remove() {
+	require_root
+	load_config
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "Instance name required"; return 1; }
+
+	cmd_instance_stop "$name" 2>/dev/null
+
+	uci -q delete "${CONFIG}.${name}" 2>/dev/null || {
+		log_error "Instance not found: $name"
+		return 1
+	}
+	uci commit "$CONFIG"
+
+	# Regenerate instances.conf
+	generate_instances_conf
+
+	log_info "Instance '$name' removed"
+}
+
+cmd_instance_start() {
+	require_root
+	load_config
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "Instance name required"; return 1; }
+
+	# Get instance config
+	local app=$(uci_get "${name}.app")
+	local port=$(uci_get "${name}.port")
+
+	[ -z "$app" ] || [ -z "$port" ] && {
+		log_error "Instance '$name' not found or incomplete config"
+		return 1
+	}
+
+	if ! lxc_running; then
+		log_error "Container not running. Start with: /etc/init.d/streamlit start"
+		return 1
+	fi
+
+	log_info "Starting instance '$name' (app: $app, port: $port)..."
+
+	lxc_exec sh -c "
+		cd /srv/apps/$app 2>/dev/null || exit 1
+
+		# Find main file
+		APP_FILE=''
+		for f in app.py main.py ${app}.py; do
+			[ -f \"\$f\" ] && { APP_FILE=\"\$f\"; break; }
+		done
+		[ -z \"\$APP_FILE\" ] && APP_FILE=\$(ls -1 *.py 2>/dev/null | head -1)
+		[ -z \"\$APP_FILE\" ] && { echo 'No Python file found'; exit 1; }
+
+		# Install requirements
+		[ -f requirements.txt ] && pip3 install --break-system-packages -r requirements.txt 2>/dev/null
+
+		# Kill existing
+		[ -f /var/run/streamlit/${app}.pid ] && kill \$(cat /var/run/streamlit/${app}.pid) 2>/dev/null
+
+		mkdir -p /var/run/streamlit /var/log/streamlit
+
+		nohup streamlit run \"\$APP_FILE\" \
+			--server.address=0.0.0.0 \
+			--server.port=$port \
+			--server.headless=true \
+			> /var/log/streamlit/${app}.log 2>&1 &
+
+		echo \$! > /var/run/streamlit/${app}.pid
+		echo \"Started \$APP_FILE on port $port (PID: \$!)\"
+	"
+}
+
+cmd_instance_stop() {
+	require_root
+	load_config
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "Instance name required"; return 1; }
+
+	local app=$(uci_get "${name}.app")
+	[ -z "$app" ] && app="$name"
+
+	if ! lxc_running; then
+		return 0
+	fi
+
+	log_info "Stopping instance '$name'..."
+
+	lxc_exec sh -c "
+		if [ -f /var/run/streamlit/${app}.pid ]; then
+			kill \$(cat /var/run/streamlit/${app}.pid) 2>/dev/null
+			rm -f /var/run/streamlit/${app}.pid
+			echo 'Stopped'
+		else
+			echo 'Not running'
+		fi
+	"
+}
+
+# Gitea integration
+cmd_gitea_setup() {
+	require_root
+	load_config
+
+	if [ -z "$gitea_token" ]; then
+		log_error "Gitea token not configured"
+		log_info "Set with: uci set streamlit.gitea.token='your-token' && uci commit streamlit"
+		return 1
+	fi
+
+	if ! lxc_running; then
+		log_error "Container not running"
+		return 1
+	fi
+
+	log_info "Configuring git credentials..."
+
+	local gitea_host=$(echo "$gitea_url" | sed 's|^https\?://||' | sed 's|/.*||')
+
+	lxc_exec sh -c "
+		git config --global user.name '$gitea_user'
+		git config --global user.email '${gitea_user}@localhost'
+		git config --global credential.helper store
+
+		rm -rf ~/.git-credentials
+		cat > ~/.git-credentials << CRED
+https://${gitea_user}:${gitea_token}@${gitea_host}
+http://${gitea_user}:${gitea_token}@${gitea_host}
+CRED
+		chmod 600 ~/.git-credentials
+	"
+
+	log_info "Git credentials configured"
+}
+
+cmd_gitea_clone() {
+	require_root
+	load_config
+
+	local name="$1"
+	local repo="$2"
+
+	[ -z "$name" ] || [ -z "$repo" ] && {
+		log_error "Usage: streamlitctl gitea clone <app_name> <repo>"
+		log_info "  repo can be: username/reponame or full URL"
+		return 1
+	}
+
+	if [ "$gitea_enabled" != "1" ]; then
+		log_error "Gitea integration not enabled"
+		log_info "Enable with: uci set streamlit.gitea.enabled=1 && uci commit streamlit"
+		return 1
+	fi
+
+	if [ -z "$gitea_token" ]; then
+		log_error "Gitea token not configured"
+		return 1
+	fi
+
+	local app_dir="$APPS_PATH/$name"
+
+	# Build clone URL
+	local clone_url
+	if echo "$repo" | grep -q '^http'; then
+		clone_url="$repo"
+	else
+		local gitea_host=$(echo "$gitea_url" | sed 's|^https\?://||' | sed 's|/.*||')
+		clone_url="http://${gitea_user}:${gitea_token}@${gitea_host}/${repo}.git"
+	fi
+
+	if [ -d "$app_dir/.git" ]; then
+		log_info "Repository already cloned, pulling latest..."
+		cd "$app_dir" && git pull
+	else
+		log_info "Cloning $repo to $name..."
+		ensure_dir "$(dirname "$app_dir")"
+		rm -rf "$app_dir"
+
+		git clone "$clone_url" "$app_dir" || {
+			log_error "Failed to clone repository"
+			return 1
+		}
+	fi
+
+	# Register in UCI
+	uci set "${CONFIG}.${name}=app"
+	uci set "${CONFIG}.${name}.name=$name"
+	uci set "${CONFIG}.${name}.repo=$repo"
+	uci set "${CONFIG}.${name}.enabled=1"
+	uci commit "$CONFIG"
+
+	log_info "App '$name' cloned from Gitea"
+	log_info "Add instance with: streamlitctl instance add $name <port>"
+}
+
+cmd_gitea_pull() {
+	require_root
+	load_config
+
+	local name="$1"
+	[ -z "$name" ] && { log_error "App name required"; return 1; }
+
+	local app_dir="$APPS_PATH/$name"
+
+	if [ ! -d "$app_dir/.git" ]; then
+		log_error "App '$name' is not a git repository"
+		return 1
+	fi
+
+	log_info "Pulling latest for '$name'..."
+	cd "$app_dir" && git pull
+
+	log_info "Update complete"
+}
+
+# Main commands
 cmd_install() {
 	require_root
 	load_config
@@ -544,28 +968,25 @@ cmd_install() {
 
 	lxc_check_prereqs || exit 1
 
-	# Create container
 	if ! lxc_exists; then
 		lxc_create_rootfs || exit 1
 	fi
 
 	lxc_create_config || exit 1
+	create_startup_script
 
 	# Setup default app
-	ensure_dir "$APPS_PATH"
-	if [ -f "$DEFAULT_APP" ] && [ ! -f "$APPS_PATH/hello.py" ]; then
-		cp "$DEFAULT_APP" "$APPS_PATH/hello.py"
-		log_info "Default hello app installed"
-	fi
+	ensure_dir "$APPS_PATH/hello"
 
-	# Enable service
 	uci_set main.enabled '1'
 	/etc/init.d/streamlit enable 2>/dev/null || true
 
 	log_info "Installation complete!"
 	log_info ""
-	log_info "Start with: /etc/init.d/streamlit start"
-	log_info "Web interface: http://<router-ip>:$http_port"
+	log_info "Next steps:"
+	log_info "  1. Create app: streamlitctl app create myapp"
+	log_info "  2. Add instance: streamlitctl instance add myapp 8501"
+	log_info "  3. Start: /etc/init.d/streamlit start"
 }
 
 cmd_uninstall() {
@@ -573,13 +994,11 @@ cmd_uninstall() {
 
 	log_info "Uninstalling Streamlit Platform..."
 
-	# Stop service
 	/etc/init.d/streamlit stop 2>/dev/null || true
 	/etc/init.d/streamlit disable 2>/dev/null || true
 
 	lxc_stop
 
-	# Remove container (keep apps)
 	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
 		rm -rf "$LXC_PATH/$LXC_NAME"
 		log_info "Container removed"
@@ -596,16 +1015,14 @@ cmd_update() {
 	load_config
 
 	if ! lxc_exists; then
-		log_error "Container not installed. Run: streamlitctl install"
+		log_error "Container not installed"
 		return 1
 	fi
 
-	log_info "Updating Streamlit in container..."
+	log_info "Updating Streamlit..."
 
-	# Remove installed marker to force reinstall
 	rm -f "$LXC_ROOTFS/opt/.installed"
 
-	# Restart to trigger update
 	if [ "$(uci_get main.enabled)" = "1" ]; then
 		/etc/init.d/streamlit restart
 	fi
@@ -618,103 +1035,49 @@ cmd_status() {
 
 	local enabled="$(uci_get main.enabled)"
 	local running="false"
-	local installed="false"
-	local uptime=""
-
-	if lxc_exists; then
-		installed="true"
-	fi
-
-	if lxc_running; then
-		running="true"
-		uptime=$(lxc-info -n "$LXC_NAME" 2>/dev/null | grep -i "cpu use" | head -1 | awk '{print $3}')
-	fi
-
-	# Get LAN IP for URL
-	local lan_ip
-	lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
-
-	# Count apps
-	local app_count=0
-	if [ -d "$APPS_PATH" ]; then
-		app_count=$(ls -1 "$APPS_PATH"/*.py 2>/dev/null | wc -l)
-	fi
-
-	cat << EOF
-{
-  "enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
-  "running": $running,
-  "installed": $installed,
-  "uptime": "$uptime",
-  "http_port": $http_port,
-  "data_path": "$data_path",
-  "memory_limit": "$memory_limit",
-  "active_app": "$active_app",
-  "app_count": $app_count,
-  "web_url": "http://${lan_ip}:${http_port}",
-  "container_name": "$LXC_NAME"
-}
-EOF
-}
-
-cmd_status_text() {
-	load_config
-
-	local enabled="$(uci_get main.enabled)"
-	local running="false"
-	local uptime=""
-
-	if lxc_running; then
-		running="true"
-		uptime=$(lxc-info -n "$LXC_NAME" 2>/dev/null | grep -i "cpu use" | head -1)
-	fi
+	lxc_running && running="true"
 
 	cat << EOF
 Streamlit Platform Status
 ==========================
 Enabled:     $([ "$enabled" = "1" ] && echo "yes" || echo "no")
 Running:     $([ "$running" = "true" ] && echo "yes" || echo "no")
-HTTP Port:   $http_port
 Data Path:   $data_path
 Memory:      $memory_limit
-Active App:  $active_app
-
 Container:   $LXC_NAME
-Rootfs:      $LXC_ROOTFS
-Config:      $LXC_CONFIG
 
 EOF
 
-	if [ "$running" = "true" ]; then
-		echo "Web interface: http://$(uci -q get network.lan.ipaddr || echo "localhost"):$http_port"
-	fi
+	echo "Apps:"
+	cmd_app_list | tail -n +3
+
+	echo ""
+	echo "Instances:"
+	cmd_instance_list | tail -n +3
 }
 
 cmd_logs() {
 	load_config
 
-	local lines="${1:-100}"
+	local app="${1:-}"
 
-	if [ -d "$data_path/logs" ]; then
-		if [ -n "$(ls -A "$data_path/logs" 2>/dev/null)" ]; then
-			tail -n "$lines" "$data_path/logs"/*.log 2>/dev/null || \
-			cat "$data_path/logs"/*.log 2>/dev/null || \
-			echo "No logs found"
+	if [ -n "$app" ]; then
+		local log_file="$data_path/logs/${app}.log"
+		if [ -f "$log_file" ]; then
+			tail -100 "$log_file"
 		else
-			echo "No logs yet"
+			# Try inside container
+			lxc_exec cat /var/log/streamlit/${app}.log 2>/dev/null || echo "No logs for '$app'"
 		fi
 	else
-		echo "Log directory not found"
-	fi
-
-	# Also check install logs
-	for logfile in /var/log/streamlit-install.log /var/log/streamlit-update.log; do
-		if [ -f "$logfile" ]; then
+		# Show all logs
+		for log_file in "$data_path/logs"/*.log; do
+			[ -f "$log_file" ] || continue
+			echo "=== $(basename "$log_file") ==="
+			tail -50 "$log_file"
 			echo ""
-			echo "=== $logfile ==="
-			tail -n 50 "$logfile"
-		fi
-	done
+		done
+	fi
 }
 
 cmd_shell() {
@@ -741,150 +1104,50 @@ cmd_service_stop() {
 	lxc_stop
 }
 
-# Instance management
-_instance_list_first=1
-_print_instance_json() {
-	local section="$1"
-	local name app port enabled
-	config_get name "$section" name "$section"
-	config_get app "$section" app ""
-	config_get port "$section" port ""
-	config_get enabled "$section" enabled "0"
-
-	[ "$_instance_list_first" -eq 0 ] && echo ","
-	_instance_list_first=0
-	printf '    {"id": "%s", "name": "%s", "app": "%s", "port": "%s", "enabled": %s}' \
-		"$section" "$name" "$app" "$port" "$([ "$enabled" = "1" ] && echo "true" || echo "false")"
-}
-
-cmd_instance_list() {
-	load_config
-	echo "{"
-	echo '  "instances": ['
-
-	_instance_list_first=1
-	config_load "$CONFIG"
-	config_foreach _print_instance_json instance
-	echo ""
-	echo "  ]"
-	echo "}"
-}
-
-cmd_instance_add() {
-	local name="$1"
-	local app="$2"
-	local port="$3"
-
-	if [ -z "$name" ] || [ -z "$app" ] || [ -z "$port" ]; then
-		log_error "Usage: streamlitctl instance add <name> <app.py> <port>"
-		return 1
-	fi
-
-	# Validate port is numeric
-	if ! echo "$port" | grep -qE '^[0-9]+$'; then
-		log_error "Port must be a number"
-		return 1
-	fi
-
-	uci set "${CONFIG}.${name}=instance"
-	uci set "${CONFIG}.${name}.name=$name"
-	uci set "${CONFIG}.${name}.app=$app"
-	uci set "${CONFIG}.${name}.port=$port"
-	uci set "${CONFIG}.${name}.enabled=1"
-	uci commit "$CONFIG"
-
-	log_info "Instance '$name' added (app: $app, port: $port)"
-	echo '{"success": true, "message": "Instance added", "name": "'"$name"'", "port": '"$port"'}'
-}
-
-cmd_instance_remove() {
-	local name="$1"
-
-	if [ -z "$name" ]; then
-		log_error "Usage: streamlitctl instance remove <name>"
-		return 1
-	fi
-
-	uci -q delete "${CONFIG}.${name}" 2>/dev/null || {
-		log_error "Instance not found: $name"
-		return 1
-	}
-	uci commit "$CONFIG"
-
-	log_info "Instance '$name' removed"
-	echo '{"success": true, "message": "Instance removed", "name": "'"$name"'"}'
-}
-
-cmd_instance_enable() {
-	local name="$1"
-
-	if [ -z "$name" ]; then
-		log_error "Usage: streamlitctl instance enable <name>"
-		return 1
-	fi
-
-	uci set "${CONFIG}.${name}.enabled=1" && uci commit "$CONFIG" || {
-		log_error "Instance not found: $name"
-		return 1
-	}
-
-	log_info "Instance '$name' enabled"
-	echo '{"success": true, "message": "Instance enabled", "name": "'"$name"'"}'
-}
-
-cmd_instance_disable() {
-	local name="$1"
-
-	if [ -z "$name" ]; then
-		log_error "Usage: streamlitctl instance disable <name>"
-		return 1
-	fi
-
-	uci set "${CONFIG}.${name}.enabled=0" && uci commit "$CONFIG" || {
-		log_error "Instance not found: $name"
-		return 1
-	}
-
-	log_info "Instance '$name' disabled"
-	echo '{"success": true, "message": "Instance disabled", "name": "'"$name"'"}'
-}
-
 # Main
 case "${1:-}" in
 	install)    shift; cmd_install "$@" ;;
 	uninstall)  shift; cmd_uninstall "$@" ;;
 	update)     shift; cmd_update "$@" ;;
-	status)
-		shift
-		if [ "${1:-}" = "--json" ] || [ -t 0 ]; then
-			cmd_status "$@"
-		else
-			cmd_status_text "$@"
-		fi
-		;;
+	status)     shift; cmd_status "$@" ;;
 	logs)       shift; cmd_logs "$@" ;;
 	shell)      shift; cmd_shell "$@" ;;
+
 	app)
 		shift
 		case "${1:-}" in
 			list)   shift; cmd_app_list "$@" ;;
-			add)    shift; cmd_app_add "$@" ;;
-			remove) shift; cmd_app_remove "$@" ;;
-			*)      echo "Usage: streamlitctl app {list|add|remove}"; exit 1 ;;
+			create) shift; cmd_app_create "$@" ;;
+			delete) shift; cmd_app_delete "$@" ;;
+			deploy) shift; cmd_app_deploy "$@" ;;
+			*)      echo "Usage: streamlitctl app {list|create|delete|deploy}"; exit 1 ;;
 		esac
 		;;
+
 	instance)
 		shift
 		case "${1:-}" in
-			list)    shift; cmd_instance_list "$@" ;;
-			add)     shift; cmd_instance_add "$@" ;;
-			remove)  shift; cmd_instance_remove "$@" ;;
-			enable)  shift; cmd_instance_enable "$@" ;;
-			disable) shift; cmd_instance_disable "$@" ;;
-			*)       echo "Usage: streamlitctl instance {list|add|remove|enable|disable}"; exit 1 ;;
+			list)   shift; cmd_instance_list "$@" ;;
+			add)    shift; cmd_instance_add "$@" ;;
+			remove) shift; cmd_instance_remove "$@" ;;
+			start)  shift; cmd_instance_start "$@" ;;
+			stop)   shift; cmd_instance_stop "$@" ;;
+			*)      echo "Usage: streamlitctl instance {list|add|remove|start|stop}"; exit 1 ;;
 		esac
 		;;
+
+	gitea)
+		shift
+		case "${1:-}" in
+			setup) shift; cmd_gitea_setup "$@" ;;
+			clone) shift; cmd_gitea_clone "$@" ;;
+			pull)  shift; cmd_gitea_pull "$@" ;;
+			*)     echo "Usage: streamlitctl gitea {setup|clone|pull}"; exit 1 ;;
+		esac
+		;;
+
 	service-run)  shift; cmd_service_run "$@" ;;
 	service-stop) shift; cmd_service_stop "$@" ;;
+
 	*)          usage ;;
 esac

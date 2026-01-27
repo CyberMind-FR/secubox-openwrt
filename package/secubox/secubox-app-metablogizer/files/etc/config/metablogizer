@@ -1,0 +1,6 @@
+config metablogizer 'main'
+	option enabled '1'
+	option runtime 'auto'
+	option sites_root '/srv/metablogizer/sites'
+	option gitea_url 'http://localhost:3000'
+	option port_base '8900'

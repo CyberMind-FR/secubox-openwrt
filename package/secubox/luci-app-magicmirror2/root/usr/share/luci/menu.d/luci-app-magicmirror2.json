@@ -1,45 +1,8 @@
 {
 	"admin/secubox/services/magicmirror2": {
-		"title": "MagicMirror2",
-		"order": 60,
-		"action": {
-			"type": "firstchild"
-		},
-		"depends": {
-			"acl": ["luci-app-magicmirror2"],
-			"uci": {"magicmirror2": true}
-		}
-	},
-	"admin/secubox/services/magicmirror2/dashboard": {
-		"title": "Dashboard",
-		"order": 10,
-		"action": {
-			"type": "view",
-			"path": "magicmirror2/dashboard"
-		}
-	},
-	"admin/secubox/services/magicmirror2/webui": {
-		"title": "Display",
-		"order": 15,
-		"action": {
-			"type": "view",
-			"path": "magicmirror2/webui"
-		}
-	},
-	"admin/secubox/services/magicmirror2/modules": {
-		"title": "Modules",
-		"order": 20,
-		"action": {
-			"type": "view",
-			"path": "magicmirror2/modules"
-		}
-	},
-	"admin/secubox/services/magicmirror2/settings": {
-		"title": "Settings",
-		"order": 30,
-		"action": {
-			"type": "view",
-			"path": "magicmirror2/settings"
-		}
+		"title": "MagicMirror",
+		"action": { "type": "view", "path": "magicmirror2/overview" },
+		"depends": { "acl": ["luci-app-magicmirror2"] },
+		"order": 70
 	}
 }

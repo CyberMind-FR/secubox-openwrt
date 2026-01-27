@@ -1,0 +1,550 @@
+/* SecuBox Network Diagnostics Dashboard Styles */
+
+:root {
+	--sb-primary: #1a5f7a;
+	--sb-primary-light: #2980b9;
+	--sb-success: #57cc99;
+	--sb-warning: #ffca3a;
+	--sb-critical: #ff595e;
+	--sb-bg-dark: #0d1b2a;
+	--sb-bg-card: #1b263b;
+	--sb-bg-card-hover: #243b55;
+	--sb-text: #e0e1dd;
+	--sb-text-muted: #8d99ae;
+	--sb-border: #415a77;
+}
+
+.netdiag-container {
+	font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+	background: var(--sb-bg-dark);
+	color: var(--sb-text);
+	min-height: 100vh;
+	padding: 20px;
+}
+
+/* Header */
+.netdiag-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 24px;
+	padding: 16px 20px;
+	background: linear-gradient(135deg, var(--sb-primary) 0%, var(--sb-primary-light) 100%);
+	border-radius: 12px;
+	box-shadow: 0 4px 20px rgba(26, 95, 122, 0.3);
+}
+
+.netdiag-title {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	font-size: 1.5rem;
+	font-weight: 700;
+	margin: 0;
+}
+
+.netdiag-title-icon {
+	font-size: 1.75rem;
+}
+
+.netdiag-refresh-control {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.netdiag-refresh-btn {
+	padding: 8px 16px;
+	background: rgba(255,255,255,0.15);
+	border: 1px solid rgba(255,255,255,0.3);
+	border-radius: 6px;
+	color: white;
+	cursor: pointer;
+	font-size: 0.9rem;
+	transition: all 0.2s;
+}
+
+.netdiag-refresh-btn:hover {
+	background: rgba(255,255,255,0.25);
+}
+
+.netdiag-refresh-select {
+	padding: 8px 12px;
+	background: rgba(255,255,255,0.15);
+	border: 1px solid rgba(255,255,255,0.3);
+	border-radius: 6px;
+	color: white;
+	font-size: 0.9rem;
+	cursor: pointer;
+}
+
+.netdiag-refresh-select option {
+	background: var(--sb-bg-dark);
+	color: var(--sb-text);
+}
+
+/* Section containers */
+.netdiag-section {
+	background: var(--sb-bg-card);
+	border: 1px solid var(--sb-border);
+	border-radius: 12px;
+	padding: 20px;
+	margin-bottom: 20px;
+}
+
+.netdiag-section-header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 16px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid var(--sb-border);
+}
+
+.netdiag-section-icon {
+	font-size: 1.25rem;
+}
+
+.netdiag-section-title {
+	font-size: 1.1rem;
+	font-weight: 600;
+	margin: 0;
+	flex: 1;
+}
+
+/* Port grid */
+.netdiag-ports-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+	gap: 16px;
+}
+
+/* Port card */
+.netdiag-port {
+	background: var(--sb-bg-dark);
+	border: 2px solid var(--sb-border);
+	border-radius: 10px;
+	padding: 16px;
+	text-align: center;
+	cursor: pointer;
+	transition: all 0.2s;
+	position: relative;
+}
+
+.netdiag-port:hover {
+	background: var(--sb-bg-card-hover);
+	border-color: var(--sb-primary);
+	transform: translateY(-2px);
+	box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.netdiag-port.port-up {
+	border-color: var(--sb-success);
+}
+
+.netdiag-port.port-down {
+	border-color: var(--sb-text-muted);
+	opacity: 0.7;
+}
+
+.netdiag-port.port-warning {
+	border-color: var(--sb-warning);
+}
+
+.netdiag-port.port-critical {
+	border-color: var(--sb-critical);
+	animation: pulse-error 1.5s infinite;
+}
+
+@keyframes pulse-error {
+	0%, 100% { box-shadow: 0 0 0 0 rgba(255, 89, 94, 0.4); }
+	50% { box-shadow: 0 0 0 8px rgba(255, 89, 94, 0); }
+}
+
+.netdiag-port-name {
+	font-size: 1rem;
+	font-weight: 600;
+	margin-bottom: 8px;
+	font-family: 'JetBrains Mono', monospace;
+}
+
+.netdiag-port-status {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	font-size: 0.85rem;
+	margin-bottom: 6px;
+}
+
+.netdiag-port-indicator {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	display: inline-block;
+}
+
+.netdiag-port-indicator.up { background: var(--sb-success); }
+.netdiag-port-indicator.down { background: var(--sb-text-muted); }
+.netdiag-port-indicator.warning { background: var(--sb-warning); }
+.netdiag-port-indicator.critical { background: var(--sb-critical); }
+
+.netdiag-port-speed {
+	font-size: 0.8rem;
+	color: var(--sb-text-muted);
+}
+
+.netdiag-port-errors {
+	font-size: 0.75rem;
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--sb-border);
+}
+
+.netdiag-port-errors.ok { color: var(--sb-success); }
+.netdiag-port-errors.warning { color: var(--sb-warning); }
+.netdiag-port-errors.critical { color: var(--sb-critical); }
+
+/* Error monitor widget */
+.netdiag-error-monitor {
+	background: var(--sb-bg-dark);
+	border-radius: 8px;
+	padding: 16px;
+}
+
+.netdiag-error-interface {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 16px;
+	background: var(--sb-bg-card);
+	border-radius: 8px;
+	margin-bottom: 12px;
+	border-left: 4px solid var(--sb-border);
+}
+
+.netdiag-error-interface.warning {
+	border-left-color: var(--sb-warning);
+}
+
+.netdiag-error-interface.critical {
+	border-left-color: var(--sb-critical);
+}
+
+.netdiag-error-info {
+	flex: 1;
+}
+
+.netdiag-error-iface-name {
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+
+.netdiag-error-stats {
+	font-size: 0.85rem;
+	color: var(--sb-text-muted);
+}
+
+.netdiag-error-rate {
+	font-size: 0.9rem;
+	font-weight: 600;
+}
+
+.netdiag-error-rate.warning { color: var(--sb-warning); }
+.netdiag-error-rate.critical { color: var(--sb-critical); }
+
+/* Sparkline */
+.netdiag-sparkline {
+	width: 120px;
+	height: 32px;
+	margin: 0 16px;
+}
+
+.netdiag-sparkline svg {
+	width: 100%;
+	height: 100%;
+}
+
+.netdiag-sparkline-path {
+	fill: none;
+	stroke: var(--sb-warning);
+	stroke-width: 2;
+}
+
+.netdiag-sparkline-area {
+	fill: rgba(255, 202, 58, 0.2);
+}
+
+/* Detail modal */
+.netdiag-modal {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0,0,0,0.8);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+	padding: 20px;
+}
+
+.netdiag-modal-content {
+	background: var(--sb-bg-card);
+	border: 1px solid var(--sb-border);
+	border-radius: 16px;
+	width: 100%;
+	max-width: 700px;
+	max-height: 90vh;
+	overflow-y: auto;
+}
+
+.netdiag-modal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px 20px;
+	border-bottom: 1px solid var(--sb-border);
+	background: var(--sb-primary);
+	border-radius: 16px 16px 0 0;
+}
+
+.netdiag-modal-title {
+	font-size: 1.25rem;
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.netdiag-modal-close {
+	background: rgba(255,255,255,0.2);
+	border: none;
+	color: white;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	cursor: pointer;
+	font-size: 1.25rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.netdiag-modal-close:hover {
+	background: rgba(255,255,255,0.3);
+}
+
+.netdiag-modal-body {
+	padding: 20px;
+}
+
+/* Detail sections */
+.netdiag-detail-section {
+	margin-bottom: 20px;
+}
+
+.netdiag-detail-title {
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--sb-primary-light);
+	margin-bottom: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.netdiag-detail-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	gap: 12px;
+}
+
+.netdiag-detail-item {
+	display: flex;
+	justify-content: space-between;
+	padding: 8px 12px;
+	background: var(--sb-bg-dark);
+	border-radius: 6px;
+}
+
+.netdiag-detail-label {
+	color: var(--sb-text-muted);
+	font-size: 0.85rem;
+}
+
+.netdiag-detail-value {
+	font-weight: 600;
+	font-family: 'JetBrains Mono', monospace;
+	font-size: 0.85rem;
+}
+
+/* Error table in detail */
+.netdiag-error-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.85rem;
+}
+
+.netdiag-error-table th,
+.netdiag-error-table td {
+	padding: 10px 12px;
+	text-align: left;
+	border-bottom: 1px solid var(--sb-border);
+}
+
+.netdiag-error-table th {
+	color: var(--sb-text-muted);
+	font-weight: 500;
+	text-transform: uppercase;
+	font-size: 0.75rem;
+	letter-spacing: 0.5px;
+}
+
+.netdiag-error-table td.delta-up {
+	color: var(--sb-critical);
+}
+
+.netdiag-error-table td.delta-up::after {
+	content: ' \25B2';
+}
+
+/* Kernel log */
+.netdiag-dmesg {
+	background: #000;
+	border-radius: 6px;
+	padding: 12px;
+	max-height: 200px;
+	overflow-y: auto;
+	font-family: 'JetBrains Mono', monospace;
+	font-size: 0.75rem;
+	line-height: 1.6;
+}
+
+.netdiag-dmesg-line {
+	color: #0f0;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.netdiag-dmesg-line.error {
+	color: var(--sb-critical);
+}
+
+/* Action buttons */
+.netdiag-actions {
+	display: flex;
+	gap: 12px;
+	margin-top: 20px;
+	padding-top: 16px;
+	border-top: 1px solid var(--sb-border);
+}
+
+.netdiag-btn {
+	padding: 10px 20px;
+	border-radius: 6px;
+	border: none;
+	cursor: pointer;
+	font-size: 0.9rem;
+	font-weight: 500;
+	transition: all 0.2s;
+}
+
+.netdiag-btn-primary {
+	background: var(--sb-primary);
+	color: white;
+}
+
+.netdiag-btn-primary:hover {
+	background: var(--sb-primary-light);
+}
+
+.netdiag-btn-secondary {
+	background: var(--sb-bg-dark);
+	color: var(--sb-text);
+	border: 1px solid var(--sb-border);
+}
+
+.netdiag-btn-secondary:hover {
+	background: var(--sb-bg-card-hover);
+}
+
+.netdiag-btn-danger {
+	background: var(--sb-critical);
+	color: white;
+}
+
+.netdiag-btn-danger:hover {
+	background: #e04347;
+}
+
+/* Loading state */
+.netdiag-loading {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 40px;
+	color: var(--sb-text-muted);
+}
+
+.netdiag-spinner {
+	width: 24px;
+	height: 24px;
+	border: 3px solid var(--sb-border);
+	border-top-color: var(--sb-primary);
+	border-radius: 50%;
+	animation: spin 1s linear infinite;
+	margin-right: 12px;
+}
+
+@keyframes spin {
+	to { transform: rotate(360deg); }
+}
+
+/* Empty state */
+.netdiag-empty {
+	text-align: center;
+	padding: 40px;
+	color: var(--sb-text-muted);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+	.netdiag-container {
+		padding: 12px;
+	}
+
+	.netdiag-header {
+		flex-direction: column;
+		gap: 12px;
+		text-align: center;
+	}
+
+	.netdiag-ports-grid {
+		grid-template-columns: repeat(2, 1fr);
+	}
+
+	.netdiag-modal-content {
+		max-width: 100%;
+		max-height: 100%;
+		border-radius: 0;
+	}
+
+	.netdiag-modal-header {
+		border-radius: 0;
+	}
+
+	.netdiag-detail-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.netdiag-actions {
+		flex-direction: column;
+	}
+}
+
+@media (max-width: 480px) {
+	.netdiag-ports-grid {
+		grid-template-columns: 1fr;
+	}
+}

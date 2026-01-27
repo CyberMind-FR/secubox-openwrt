@@ -1,0 +1,22 @@
+{
+	"luci-app-secubox-netdiag": {
+		"description": "Grant access to SecuBox Network Diagnostics",
+		"read": {
+			"ubus": {
+				"luci.secubox-netdiag": ["get_switch_status", "get_interface_details", "get_error_history", "get_topology"]
+			},
+			"file": {
+				"/sys/class/net/*/statistics/*": ["read"],
+				"/sys/class/net/*/carrier": ["read"],
+				"/sys/class/net/*/operstate": ["read"],
+				"/sys/class/net/*/address": ["read"],
+				"/sys/class/net/*/mtu": ["read"]
+			}
+		},
+		"write": {
+			"ubus": {
+				"luci.secubox-netdiag": ["clear_counters"]
+			}
+		}
+	}
+}

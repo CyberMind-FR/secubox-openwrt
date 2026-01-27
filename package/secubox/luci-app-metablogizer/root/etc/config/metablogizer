@@ -1,0 +1,4 @@
+config metablogizer 'main'
+	option enabled '1'
+	option nginx_container 'nginx'
+	option sites_root '/srv/metablogizer/sites'

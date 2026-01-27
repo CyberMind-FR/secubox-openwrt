@@ -1,0 +1,235 @@
+#!/bin/sh
+# RPCD backend for Lyrion Music Server LuCI app
+
+. /lib/functions.sh
+
+CONFIG="lyrion"
+
+json_init() { echo "{"; }
+json_close() { echo "}"; }
+json_add_string() { echo "\"$1\": \"$2\""; }
+json_add_int() { echo "\"$1\": $2"; }
+json_add_bool() { [ "$2" = "1" ] && echo "\"$1\": true" || echo "\"$1\": false"; }
+
+uci_get() { uci -q get ${CONFIG}.main.$1; }
+uci_set() { uci set ${CONFIG}.main.$1="$2" && uci commit ${CONFIG}; }
+
+# Get service status
+get_status() {
+	local enabled=$(uci_get enabled)
+	local runtime=$(uci_get runtime)
+	local port=$(uci_get port)
+	local data_path=$(uci_get data_path)
+	local media_path=$(uci_get media_path)
+	local memory_limit=$(uci_get memory_limit)
+	local image=$(uci_get image)
+
+	# Check if service is running
+	local running=0
+	local container_status="stopped"
+
+	if command -v lxc-info >/dev/null 2>&1; then
+		if lxc-info -n lyrion -s 2>/dev/null | grep -q "RUNNING"; then
+			running=1
+			container_status="running"
+		fi
+	elif command -v docker >/dev/null 2>&1; then
+		if docker ps --filter "name=secbx-lyrion" --format "{{.Names}}" 2>/dev/null | grep -q "secbx-lyrion"; then
+			running=1
+			container_status="running"
+		fi
+	fi
+
+	# Check if installed (LXC rootfs or Docker image exists)
+	local installed=0
+	if [ -d "/srv/lxc/lyrion/rootfs" ] && [ -f "/srv/lxc/lyrion/rootfs/opt/lyrion/slimserver.pl" ]; then
+		installed=1
+	elif command -v docker >/dev/null 2>&1 && docker images --format "{{.Repository}}" 2>/dev/null | grep -q "lyrionmusicserver"; then
+		installed=1
+	fi
+
+	# Detect runtime
+	local detected_runtime="none"
+	if command -v lxc-start >/dev/null 2>&1; then
+		detected_runtime="lxc"
+	elif command -v docker >/dev/null 2>&1; then
+		detected_runtime="docker"
+	fi
+
+	# Check web UI accessibility
+	local web_accessible=0
+	if [ "$running" = "1" ]; then
+		wget -q -O /dev/null --timeout=2 "http://127.0.0.1:${port:-9000}/" 2>/dev/null && web_accessible=1
+	fi
+
+	cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"running": $([ "$running" = "1" ] && echo "true" || echo "false"),
+	"installed": $([ "$installed" = "1" ] && echo "true" || echo "false"),
+	"container_status": "$container_status",
+	"runtime": "${runtime:-auto}",
+	"detected_runtime": "$detected_runtime",
+	"port": ${port:-9000},
+	"data_path": "${data_path:-/srv/lyrion}",
+	"media_path": "${media_path:-/srv/media}",
+	"memory_limit": "${memory_limit:-256M}",
+	"image": "${image:-ghcr.io/lms-community/lyrionmusicserver:stable}",
+	"web_accessible": $([ "$web_accessible" = "1" ] && echo "true" || echo "false"),
+	"web_url": "http://192.168.255.1:${port:-9000}"
+}
+EOF
+}
+
+# Get configuration
+get_config() {
+	local enabled=$(uci_get enabled)
+	local runtime=$(uci_get runtime)
+	local port=$(uci_get port)
+	local data_path=$(uci_get data_path)
+	local media_path=$(uci_get media_path)
+	local memory_limit=$(uci_get memory_limit)
+	local timezone=$(uci_get timezone)
+	local image=$(uci_get image)
+
+	cat <<EOF
+{
+	"enabled": "${enabled:-0}",
+	"runtime": "${runtime:-auto}",
+	"port": "${port:-9000}",
+	"data_path": "${data_path:-/srv/lyrion}",
+	"media_path": "${media_path:-/srv/media}",
+	"memory_limit": "${memory_limit:-256M}",
+	"timezone": "${timezone:-UTC}",
+	"image": "${image:-ghcr.io/lms-community/lyrionmusicserver:stable}"
+}
+EOF
+}
+
+# Save configuration
+save_config() {
+	local input
+	read -r input
+
+	local runtime=$(echo "$input" | jsonfilter -e '@.runtime' 2>/dev/null)
+	local port=$(echo "$input" | jsonfilter -e '@.port' 2>/dev/null)
+	local data_path=$(echo "$input" | jsonfilter -e '@.data_path' 2>/dev/null)
+	local media_path=$(echo "$input" | jsonfilter -e '@.media_path' 2>/dev/null)
+	local memory_limit=$(echo "$input" | jsonfilter -e '@.memory_limit' 2>/dev/null)
+	local timezone=$(echo "$input" | jsonfilter -e '@.timezone' 2>/dev/null)
+
+	[ -n "$runtime" ] && uci_set runtime "$runtime"
+	[ -n "$port" ] && uci_set port "$port"
+	[ -n "$data_path" ] && uci_set data_path "$data_path"
+	[ -n "$media_path" ] && uci_set media_path "$media_path"
+	[ -n "$memory_limit" ] && uci_set memory_limit "$memory_limit"
+	[ -n "$timezone" ] && uci_set timezone "$timezone"
+
+	echo '{"success": true}'
+}
+
+# Install Lyrion
+do_install() {
+	if command -v lyrionctl >/dev/null 2>&1; then
+		lyrionctl install >/tmp/lyrion-install.log 2>&1 &
+		echo '{"success": true, "message": "Installation started in background"}'
+	else
+		echo '{"success": false, "error": "lyrionctl not found"}'
+	fi
+}
+
+# Start service
+do_start() {
+	if [ -x /etc/init.d/lyrion ]; then
+		/etc/init.d/lyrion start >/dev/null 2>&1
+		uci_set enabled '1'
+		echo '{"success": true}'
+	else
+		echo '{"success": false, "error": "Service not installed"}'
+	fi
+}
+
+# Stop service
+do_stop() {
+	if [ -x /etc/init.d/lyrion ]; then
+		/etc/init.d/lyrion stop >/dev/null 2>&1
+		echo '{"success": true}'
+	else
+		echo '{"success": false, "error": "Service not installed"}'
+	fi
+}
+
+# Restart service
+do_restart() {
+	if [ -x /etc/init.d/lyrion ]; then
+		/etc/init.d/lyrion restart >/dev/null 2>&1
+		echo '{"success": true}'
+	else
+		echo '{"success": false, "error": "Service not installed"}'
+	fi
+}
+
+# Update container
+do_update() {
+	if command -v lyrionctl >/dev/null 2>&1; then
+		lyrionctl update >/tmp/lyrion-update.log 2>&1 &
+		echo '{"success": true, "message": "Update started in background"}'
+	else
+		echo '{"success": false, "error": "lyrionctl not found"}'
+	fi
+}
+
+# Get logs
+get_logs() {
+	local lines=50
+	local log_content=""
+
+	if [ -f /srv/lxc/lyrion/rootfs/var/log/lyrion/server.log ]; then
+		log_content=$(tail -n $lines /srv/lxc/lyrion/rootfs/var/log/lyrion/server.log 2>/dev/null | sed 's/"/\\"/g' | tr '\n' '|')
+	elif [ -f /tmp/lyrion-install.log ]; then
+		log_content=$(tail -n $lines /tmp/lyrion-install.log 2>/dev/null | sed 's/"/\\"/g' | tr '\n' '|')
+	fi
+
+	echo "{\"logs\": \"$log_content\"}"
+}
+
+# RPCD list method
+list_methods() {
+	cat <<'EOF'
+{
+	"status": {},
+	"get_config": {},
+	"save_config": {"runtime": "string", "port": "string", "data_path": "string", "media_path": "string", "memory_limit": "string", "timezone": "string"},
+	"install": {},
+	"start": {},
+	"stop": {},
+	"restart": {},
+	"update": {},
+	"logs": {}
+}
+EOF
+}
+
+# Main entry point
+case "$1" in
+	list)
+		list_methods
+		;;
+	call)
+		case "$2" in
+			status)      get_status ;;
+			get_config)  get_config ;;
+			save_config) save_config ;;
+			install)     do_install ;;
+			start)       do_start ;;
+			stop)        do_stop ;;
+			restart)     do_restart ;;
+			update)      do_update ;;
+			logs)        get_logs ;;
+			*)           echo '{"error": "Unknown method"}' ;;
+		esac
+		;;
+	*)
+		echo '{"error": "Unknown command"}'
+		;;
+esac

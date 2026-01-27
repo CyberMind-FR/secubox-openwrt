@@ -154,6 +154,13 @@ var callDeployStatus = rpc.declare({
 	expect: {}
 });
 
+var callPublishToWww = rpc.declare({
+	object: 'luci.hexojs',
+	method: 'publish_to_www',
+	params: ['path'],
+	expect: {}
+});
+
 // ============================================
 // Preview
 // ============================================
@@ -478,6 +485,7 @@ return baseclass.extend({
 	clean: callClean,
 	deploy: callDeploy,
 	getDeployStatus: callDeployStatus,
+	publishToWww: callPublishToWww,
 
 	// Preview
 	previewStart: callPreviewStart,

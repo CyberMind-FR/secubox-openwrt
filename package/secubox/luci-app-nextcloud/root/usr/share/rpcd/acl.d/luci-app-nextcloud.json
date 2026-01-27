@@ -1,0 +1,17 @@
+{
+	"luci-app-nextcloud": {
+		"description": "Grant access to Nextcloud",
+		"read": {
+			"ubus": {
+				"luci.nextcloud": ["status", "get_config", "logs"]
+			},
+			"uci": ["nextcloud"]
+		},
+		"write": {
+			"ubus": {
+				"luci.nextcloud": ["install", "start", "stop", "restart", "update", "save_config", "occ"]
+			},
+			"uci": ["nextcloud"]
+		}
+	}
+}
