@@ -18,7 +18,14 @@ PKG_LICENSE:=GPL-2.0
 
 include $(TOPDIR)/feeds/luci/luci.mk
 
+define Package/luci-app-metablogizer/conffiles
+/etc/config/metablogizer
+endef
+
 define Package/luci-app-metablogizer/install
+	$(INSTALL_DIR) $(1)/etc/config
+	$(INSTALL_CONF) ./root/etc/config/metablogizer $(1)/etc/config/metablogizer
+
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.metablogizer $(1)/usr/libexec/rpcd/luci.metablogizer
 
