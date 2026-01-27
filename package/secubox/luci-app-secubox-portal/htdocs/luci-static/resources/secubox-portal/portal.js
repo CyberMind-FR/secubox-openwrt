@@ -328,9 +328,9 @@ return baseclass.extend({
 			icon: '\ud83e\udde5',
 			iconBg: 'rgba(124, 58, 237, 0.15)',
 			iconColor: '#7c3aed',
-			section: 'services',
+			section: 'security',
 			path: 'admin/services/tor-shield/overview',
-			service: 'tor',
+			service: 'tor-shield',
 			version: '1.0.0'
 		},
 		'jellyfin': {
@@ -404,6 +404,78 @@ return baseclass.extend({
 			path: 'admin/secubox/services/gitea/overview',
 			service: 'gitea',
 			version: '1.22.0'
+		},
+		'lyrion': {
+			id: 'lyrion',
+			name: 'Lyrion Music Server',
+			desc: 'Self-hosted music streaming with Squeezebox/Logitech Media Server compatibility',
+			icon: '\ud83c\udfb5',
+			iconBg: 'rgba(236, 72, 153, 0.15)',
+			iconColor: '#ec4899',
+			section: 'services',
+			path: 'admin/secubox/services/lyrion/overview',
+			service: 'lyrion',
+			version: '9.0.3'
+		},
+		'ollama': {
+			id: 'ollama',
+			name: 'Ollama',
+			desc: 'Run large language models locally with easy-to-use CLI and API',
+			icon: '\ud83e\uddac',
+			iconBg: 'rgba(99, 102, 241, 0.15)',
+			iconColor: '#6366f1',
+			section: 'services',
+			path: 'admin/secubox/services/ollama/overview',
+			service: 'ollama',
+			version: '0.5.0'
+		},
+		'streamlit': {
+			id: 'streamlit',
+			name: 'Streamlit',
+			desc: 'Python data apps and dashboards with instant web deployment',
+			icon: '\ud83d\udcca',
+			iconBg: 'rgba(255, 75, 75, 0.15)',
+			iconColor: '#ff4b4b',
+			section: 'services',
+			path: 'admin/secubox/services/streamlit/overview',
+			service: 'streamlit',
+			version: '1.40.0'
+		},
+		'zigbee2mqtt': {
+			id: 'zigbee2mqtt',
+			name: 'Zigbee2MQTT',
+			desc: 'Bridge Zigbee devices to MQTT for smart home automation',
+			icon: '\ud83d\udca1',
+			iconBg: 'rgba(245, 158, 11, 0.15)',
+			iconColor: '#f59e0b',
+			section: 'services',
+			path: 'admin/secubox/services/zigbee2mqtt/overview',
+			service: 'zigbee2mqtt',
+			version: '1.40.0'
+		},
+		'domoticz': {
+			id: 'domoticz',
+			name: 'Domoticz',
+			desc: 'Home automation system with support for various sensors and devices',
+			icon: '\ud83c\udfe0',
+			iconBg: 'rgba(34, 197, 94, 0.15)',
+			iconColor: '#22c55e',
+			section: 'services',
+			path: 'admin/secubox/services/domoticz/overview',
+			service: 'domoticz',
+			version: '2024.7'
+		},
+		'mailinabox': {
+			id: 'mailinabox',
+			name: 'Mail-in-a-Box',
+			desc: 'Self-hosted email server with webmail, calendar, and contacts',
+			icon: '\ud83d\udce7',
+			iconBg: 'rgba(59, 130, 246, 0.15)',
+			iconColor: '#3b82f6',
+			section: 'services',
+			path: 'admin/secubox/services/mailinabox/overview',
+			service: 'mailinabox',
+			version: '2.0.0'
 		}
 	},
 

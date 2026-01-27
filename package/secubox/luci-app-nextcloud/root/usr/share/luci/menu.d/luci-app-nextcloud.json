@@ -1,0 +1,28 @@
+{
+	"admin/secubox/services/nextcloud": {
+		"title": "Nextcloud",
+		"order": 55,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-nextcloud"]
+		}
+	},
+	"admin/secubox/services/nextcloud/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "nextcloud/overview"
+		}
+	},
+	"admin/secubox/services/nextcloud/settings": {
+		"title": "Settings",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "nextcloud/settings"
+		}
+	}
+}

@@ -1,0 +1,17 @@
+{
+	"luci-app-lyrion": {
+		"description": "Grant access to Lyrion Music Server",
+		"read": {
+			"ubus": {
+				"luci.lyrion": ["status", "get_config", "logs"]
+			},
+			"uci": ["lyrion"]
+		},
+		"write": {
+			"ubus": {
+				"luci.lyrion": ["install", "start", "stop", "restart", "update", "save_config"]
+			},
+			"uci": ["lyrion"]
+		}
+	}
+}

@@ -24,17 +24,29 @@ return view.extend({
 		o.default = '1';
 		o.rmempty = false;
 
-		o = s.option(form.Value, 'nginx_container', _('Nginx Container'),
-			_('Name of the LXC container running nginx'));
-		o.placeholder = 'nginx';
-		o.default = 'nginx';
-		o.rmempty = false;
+		o = s.option(form.ListValue, 'runtime', _('Runtime'),
+			_('Web server runtime for serving static sites'));
+		o.value('auto', _('Auto-detect (Recommended)'));
+		o.value('uhttpd', _('uhttpd (Lightweight)'));
+		o.value('nginx', _('nginx LXC (Full-featured)'));
+		o.default = 'auto';
 
 		o = s.option(form.Value, 'sites_root', _('Sites Root Path'),
 			_('Directory where site files are stored'));
 		o.placeholder = '/srv/metablogizer/sites';
 		o.default = '/srv/metablogizer/sites';
 		o.rmempty = false;
+
+		o = s.option(form.Value, 'gitea_url', _('Gitea URL'),
+			_('URL of Gitea server for cloning repositories'));
+		o.placeholder = 'http://localhost:3000';
+		o.default = 'http://localhost:3000';
+
+		o = s.option(form.Value, 'nginx_container', _('Nginx Container'),
+			_('Name of the LXC container running nginx (only for nginx runtime)'));
+		o.placeholder = 'nginx';
+		o.default = 'nginx';
+		o.depends('runtime', 'nginx');
 
 		// Info section
 		s = m.section(form.TypedSection, 'metablogizer', _('Information'));

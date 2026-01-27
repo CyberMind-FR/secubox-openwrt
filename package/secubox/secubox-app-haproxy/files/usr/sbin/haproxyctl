@@ -598,6 +598,24 @@ _add_server_to_backend() {
 
 	[ -n "$address" ] || return
 
+	# Validate address - if it's a hostname (not IP), try to resolve it
+	if ! echo "$address" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+		# It's a hostname, try to resolve it
+		local resolved_ip=""
+		resolved_ip=$(nslookup "$address" 2>/dev/null | awk '/^Address: / { print $2; exit }')
+		if [ -z "$resolved_ip" ]; then
+			# Try getent as fallback
+			resolved_ip=$(getent hosts "$address" 2>/dev/null | awk '{print $1; exit}')
+		fi
+		if [ -z "$resolved_ip" ]; then
+			log_warn "Cannot resolve hostname '$address' for server $server_name in backend $target_backend - skipping"
+			return
+		fi
+		# Use the resolved IP instead
+		log_debug "Resolved $address to $resolved_ip"
+		address="$resolved_ip"
+	fi
+
 	local check_opt=""
 	[ "$check" = "1" ] && check_opt="check"
 

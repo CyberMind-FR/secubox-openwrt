@@ -9,9 +9,13 @@
 					"get_site",
 					"get_publish_info",
 					"get_settings"
-				]
+				],
+				"file": ["read", "list", "stat"]
 			},
-			"uci": ["metablogizer"]
+			"uci": ["metablogizer"],
+			"file": {
+				"/srv/metablogizer/sites/*": ["read", "list"]
+			}
 		},
 		"write": {
 			"ubus": {
@@ -20,7 +24,9 @@
 					"update_site",
 					"delete_site",
 					"sync_site",
-					"save_settings"
+					"save_settings",
+					"upload_file",
+					"list_files"
 				],
 				"luci.haproxy": [
 					"create_backend",
@@ -28,9 +34,13 @@
 					"create_vhost",
 					"delete_backend",
 					"delete_vhost"
-				]
+				],
+				"file": ["write", "remove"]
 			},
-			"uci": ["metablogizer"]
+			"uci": ["metablogizer"],
+			"file": {
+				"/srv/metablogizer/sites/*": ["write"]
+			}
 		}
 	}
 }

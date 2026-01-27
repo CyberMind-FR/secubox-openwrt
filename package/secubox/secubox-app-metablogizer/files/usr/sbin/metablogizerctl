@@ -1,0 +1,512 @@
+#!/bin/sh
+# SecuBox MetaBlogizer - Static Site Publisher
+# Supports uhttpd (default) and nginx LXC runtime
+# Copyright (C) 2025 CyberMind.fr
+
+CONFIG="metablogizer"
+SITES_ROOT="/srv/metablogizer/sites"
+NGINX_LXC="metablogizer-nginx"
+LXC_PATH="/srv/lxc"
+PORT_BASE=8900
+
+. /lib/functions.sh
+
+log_info() { echo "[INFO] $*"; logger -t metablogizer "$*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+usage() {
+	cat <<'EOF'
+MetaBlogizer - Static Site Publisher
+
+Usage: metablogizerctl <command> [options]
+
+Site Commands:
+  list                  List all sites
+  create <name> <domain> [repo]  Create new site
+  delete <name>         Delete site
+  sync <name>           Sync site from git repo
+  publish <name>        Publish site (create HAProxy vhost)
+
+Runtime Commands:
+  runtime               Show current runtime
+  runtime set <uhttpd|nginx>  Set runtime preference
+
+Management:
+  status                Show overall status
+  install-nginx         Install nginx LXC container (optional)
+
+Runtime Selection:
+  auto    - Auto-detect (uhttpd preferred)
+  uhttpd  - Use uhttpd instances (lightweight)
+  nginx   - Use nginx LXC container (more features)
+EOF
+}
+
+# ===========================================
+# Runtime Detection
+# ===========================================
+
+has_uhttpd() { [ -x /etc/init.d/uhttpd ]; }
+
+has_nginx_lxc() {
+	command -v lxc-info >/dev/null 2>&1 && \
+	[ -d "$LXC_PATH/$NGINX_LXC/rootfs" ]
+}
+
+detect_runtime() {
+	local configured=$(uci_get main.runtime)
+
+	case "$configured" in
+		uhttpd)
+			if has_uhttpd; then
+				echo "uhttpd"
+			else
+				log_error "uhttpd requested but not available"
+				return 1
+			fi
+			;;
+		nginx)
+			if has_nginx_lxc; then
+				echo "nginx"
+			else
+				log_error "nginx LXC requested but not installed"
+				return 1
+			fi
+			;;
+		auto|*)
+			# Prefer uhttpd (lighter), fall back to nginx
+			if has_uhttpd; then
+				echo "uhttpd"
+			elif has_nginx_lxc; then
+				echo "nginx"
+			else
+				log_error "No runtime available"
+				return 1
+			fi
+			;;
+	esac
+}
+
+# ===========================================
+# Site Management
+# ===========================================
+
+get_next_port() {
+	local port=$PORT_BASE
+	while uci show uhttpd 2>/dev/null | grep -q "listen_http='0.0.0.0:$port'"; do
+		port=$((port + 1))
+	done
+	echo $port
+}
+
+site_exists() {
+	local name="$1"
+	uci -q get ${CONFIG}.site_${name} >/dev/null 2>&1
+}
+
+cmd_list() {
+	echo "MetaBlogizer Sites:"
+	echo "==================="
+
+	local runtime=$(detect_runtime 2>/dev/null)
+	echo "Runtime: ${runtime:-none}"
+	echo ""
+
+	config_load "$CONFIG"
+
+	local found=0
+	_print_site() {
+		local section="$1"
+		local name domain port enabled gitea_repo
+
+		config_get name "$section" name
+		config_get domain "$section" domain
+		config_get port "$section" port
+		config_get enabled "$section" enabled "0"
+		config_get gitea_repo "$section" gitea_repo ""
+
+		[ -z "$name" ] && return
+
+		local status="disabled"
+		[ "$enabled" = "1" ] && status="enabled"
+
+		local dir_status="missing"
+		[ -d "$SITES_ROOT/$name" ] && dir_status="exists"
+
+		printf "  %-15s %-25s :%-5s [%s] %s\n" "$name" "$domain" "$port" "$status" "$dir_status"
+		found=1
+	}
+	config_foreach _print_site site
+
+	[ "$found" = "0" ] && echo "  No sites configured"
+}
+
+cmd_create() {
+	local name="$1"
+	local domain="$2"
+	local gitea_repo="$3"
+
+	[ -z "$name" ] && { log_error "Site name required"; return 1; }
+	[ -z "$domain" ] && { log_error "Domain required"; return 1; }
+
+	# Sanitize name
+	name=$(echo "$name" | tr -cd 'a-z0-9_-')
+
+	if site_exists "$name"; then
+		log_error "Site '$name' already exists"
+		return 1
+	fi
+
+	local runtime=$(detect_runtime) || return 1
+	local port=$(get_next_port)
+
+	log_info "Creating site: $name ($domain) on port $port using $runtime"
+
+	# Create site directory with proper permissions
+	mkdir -p "$SITES_ROOT/$name"
+	chmod 755 "$SITES_ROOT/$name"
+
+	# Create placeholder index
+	cat > "$SITES_ROOT/$name/index.html" <<EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>$name</title>
+    <meta property="og:title" content="$name">
+    <meta property="og:url" content="https://$domain">
+    <meta property="og:type" content="website">
+    <style>
+        body { font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px; }
+        h1 { color: #3b82f6; }
+    </style>
+</head>
+<body>
+    <h1>$name</h1>
+    <p>Site published with MetaBlogizer</p>
+    <p><a href="https://$domain">https://$domain</a></p>
+</body>
+</html>
+EOF
+	chmod 644 "$SITES_ROOT/$name/index.html"
+
+	# Clone from Gitea if repo specified
+	if [ -n "$gitea_repo" ]; then
+		local gitea_url=$(uci_get main.gitea_url)
+		[ -z "$gitea_url" ] && gitea_url="http://localhost:3000"
+
+		log_info "Cloning from $gitea_url/$gitea_repo..."
+		rm -rf "$SITES_ROOT/$name"
+		git clone "$gitea_url/$gitea_repo.git" "$SITES_ROOT/$name" 2>/dev/null || {
+			log_warn "Git clone failed, using placeholder"
+			mkdir -p "$SITES_ROOT/$name"
+		}
+		# Set proper permissions for web serving
+		chmod -R 755 "$SITES_ROOT/$name"
+		find "$SITES_ROOT/$name" -type f -exec chmod 644 {} \;
+	fi
+
+	# Configure runtime
+	case "$runtime" in
+		uhttpd)
+			_create_uhttpd_site "$name" "$port"
+			;;
+		nginx)
+			_create_nginx_site "$name"
+			;;
+	esac
+
+	# Save site config
+	uci set ${CONFIG}.site_${name}=site
+	uci set ${CONFIG}.site_${name}.name="$name"
+	uci set ${CONFIG}.site_${name}.domain="$domain"
+	uci set ${CONFIG}.site_${name}.port="$port"
+	uci set ${CONFIG}.site_${name}.runtime="$runtime"
+	[ -n "$gitea_repo" ] && uci set ${CONFIG}.site_${name}.gitea_repo="$gitea_repo"
+	uci set ${CONFIG}.site_${name}.enabled="1"
+	uci commit ${CONFIG}
+
+	log_info "Site created: $name"
+	log_info "Directory: $SITES_ROOT/$name"
+	log_info "Local URL: http://localhost:$port"
+
+	echo ""
+	echo "Next: Run 'metablogizerctl publish $name' to create HAProxy vhost"
+}
+
+_create_uhttpd_site() {
+	local name="$1"
+	local port="$2"
+
+	log_info "Creating uhttpd instance for $name on port $port"
+
+	uci set uhttpd.metablog_${name}=uhttpd
+	uci set uhttpd.metablog_${name}.listen_http="0.0.0.0:$port"
+	uci set uhttpd.metablog_${name}.home="$SITES_ROOT/$name"
+	uci set uhttpd.metablog_${name}.index_page="index.html"
+	uci set uhttpd.metablog_${name}.error_page="/index.html"
+	uci commit uhttpd
+
+	/etc/init.d/uhttpd reload 2>/dev/null || /etc/init.d/uhttpd restart
+}
+
+_create_nginx_site() {
+	local name="$1"
+
+	if ! has_nginx_lxc; then
+		log_error "nginx LXC not installed. Run: metablogizerctl install-nginx"
+		return 1
+	fi
+
+	log_info "Creating nginx config for $name"
+
+	local nginx_conf="$LXC_PATH/$NGINX_LXC/rootfs/etc/nginx/sites.d"
+	mkdir -p "$nginx_conf"
+
+	cat > "$nginx_conf/metablog-$name.conf" <<EOF
+location /$name/ {
+    alias /srv/sites/$name/;
+    index index.html;
+    try_files \$uri \$uri/ /index.html;
+}
+EOF
+
+	# Reload nginx in container
+	lxc-attach -n "$NGINX_LXC" -- nginx -s reload 2>/dev/null || true
+}
+
+cmd_publish() {
+	local name="$1"
+	[ -z "$name" ] && { log_error "Site name required"; return 1; }
+
+	if ! site_exists "$name"; then
+		log_error "Site '$name' not found"
+		return 1
+	fi
+
+	local domain=$(uci_get site_${name}.domain)
+	local port=$(uci_get site_${name}.port)
+
+	[ -z "$domain" ] && { log_error "Site domain not configured"; return 1; }
+
+	log_info "Publishing $name to $domain"
+
+	# Create HAProxy backend
+	local backend_name="metablog_${name}"
+	uci set haproxy.${backend_name}=backend
+	uci set haproxy.${backend_name}.name="$backend_name"
+	uci set haproxy.${backend_name}.mode="http"
+	uci set haproxy.${backend_name}.balance="roundrobin"
+	uci set haproxy.${backend_name}.enabled="1"
+
+	# Create HAProxy server
+	local server_name="${backend_name}_srv"
+	uci set haproxy.${server_name}=server
+	uci set haproxy.${server_name}.backend="$backend_name"
+	uci set haproxy.${server_name}.name="uhttpd"
+	uci set haproxy.${server_name}.address="192.168.255.1"
+	uci set haproxy.${server_name}.port="$port"
+	uci set haproxy.${server_name}.weight="100"
+	uci set haproxy.${server_name}.check="1"
+	uci set haproxy.${server_name}.enabled="1"
+
+	# Create HAProxy vhost
+	local vhost_name=$(echo "$domain" | tr '.-' '_')
+	uci set haproxy.${vhost_name}=vhost
+	uci set haproxy.${vhost_name}.domain="$domain"
+	uci set haproxy.${vhost_name}.backend="$backend_name"
+	uci set haproxy.${vhost_name}.ssl="1"
+	uci set haproxy.${vhost_name}.ssl_redirect="1"
+	uci set haproxy.${vhost_name}.acme="1"
+	uci set haproxy.${vhost_name}.enabled="1"
+
+	uci commit haproxy
+
+	# Regenerate HAProxy config
+	/usr/sbin/haproxyctl generate 2>/dev/null
+	/etc/init.d/haproxy reload 2>/dev/null
+
+	log_info "Site published!"
+	echo ""
+	echo "URL: https://$domain"
+	echo ""
+	echo "To request SSL certificate:"
+	echo "  haproxyctl cert add $domain"
+}
+
+cmd_delete() {
+	local name="$1"
+	[ -z "$name" ] && { log_error "Site name required"; return 1; }
+
+	log_info "Deleting site: $name"
+
+	# Remove uhttpd instance
+	uci delete uhttpd.metablog_${name} 2>/dev/null
+	uci commit uhttpd
+	/etc/init.d/uhttpd reload 2>/dev/null
+
+	# Remove HAProxy config
+	local domain=$(uci_get site_${name}.domain)
+	if [ -n "$domain" ]; then
+		local vhost_name=$(echo "$domain" | tr '.-' '_')
+		uci delete haproxy.${vhost_name} 2>/dev/null
+		uci delete haproxy.metablog_${name} 2>/dev/null
+		uci delete haproxy.metablog_${name}_srv 2>/dev/null
+		uci commit haproxy
+		/usr/sbin/haproxyctl generate 2>/dev/null
+		/etc/init.d/haproxy reload 2>/dev/null
+	fi
+
+	# Remove site config
+	uci delete ${CONFIG}.site_${name} 2>/dev/null
+	uci commit ${CONFIG}
+
+	# Optionally remove files
+	if [ -d "$SITES_ROOT/$name" ]; then
+		echo "Site directory: $SITES_ROOT/$name"
+		echo "Remove manually if desired: rm -rf $SITES_ROOT/$name"
+	fi
+
+	log_info "Site deleted"
+}
+
+cmd_sync() {
+	local name="$1"
+	[ -z "$name" ] && { log_error "Site name required"; return 1; }
+
+	local gitea_repo=$(uci_get site_${name}.gitea_repo)
+	[ -z "$gitea_repo" ] && { log_error "No git repo configured for $name"; return 1; }
+
+	local site_dir="$SITES_ROOT/$name"
+	[ ! -d "$site_dir" ] && { log_error "Site directory not found"; return 1; }
+
+	log_info "Syncing $name from git..."
+
+	cd "$site_dir"
+	if [ -d ".git" ]; then
+		git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || git pull
+	else
+		local gitea_url=$(uci_get main.gitea_url)
+		[ -z "$gitea_url" ] && gitea_url="http://localhost:3000"
+		git clone "$gitea_url/$gitea_repo.git" /tmp/metablog-sync-$$
+		cp -r /tmp/metablog-sync-$$/* "$site_dir/"
+		rm -rf /tmp/metablog-sync-$$
+	fi
+
+	log_info "Sync complete"
+}
+
+cmd_runtime() {
+	local action="$1"
+	local value="$2"
+
+	if [ "$action" = "set" ]; then
+		case "$value" in
+			uhttpd|nginx|auto)
+				uci_set main.runtime "$value"
+				log_info "Runtime set to: $value"
+				;;
+			*)
+				log_error "Invalid runtime: $value (use uhttpd, nginx, or auto)"
+				return 1
+				;;
+		esac
+	else
+		local configured=$(uci_get main.runtime)
+		local detected=$(detect_runtime 2>/dev/null)
+		echo "Configured: ${configured:-auto}"
+		echo "Detected:   ${detected:-none}"
+		echo ""
+		echo "Available:"
+		has_uhttpd && echo "  - uhttpd (installed)" || echo "  - uhttpd (not available)"
+		has_nginx_lxc && echo "  - nginx LXC (installed)" || echo "  - nginx LXC (not installed)"
+	fi
+}
+
+cmd_status() {
+	echo "MetaBlogizer Status"
+	echo "==================="
+
+	local enabled=$(uci_get main.enabled)
+	local runtime=$(detect_runtime 2>/dev/null)
+	local sites_count=$(uci show $CONFIG 2>/dev/null | grep -c "=site")
+
+	echo "Enabled:    $([ "$enabled" = "1" ] && echo "yes" || echo "no")"
+	echo "Runtime:    ${runtime:-none}"
+	echo "Sites:      $sites_count"
+	echo "Sites Root: $SITES_ROOT"
+	echo ""
+
+	cmd_list
+}
+
+cmd_install_nginx() {
+	log_info "Installing nginx LXC container..."
+
+	command -v lxc-start >/dev/null 2>&1 || {
+		log_error "LXC not installed. Install with: opkg install lxc lxc-common"
+		return 1
+	}
+
+	local rootfs="$LXC_PATH/$NGINX_LXC/rootfs"
+	mkdir -p "$LXC_PATH/$NGINX_LXC"
+
+	# Download Alpine
+	local arch="aarch64"
+	case "$(uname -m)" in
+		x86_64) arch="x86_64" ;;
+		armv7l) arch="armv7" ;;
+	esac
+
+	log_info "Downloading Alpine Linux..."
+	wget -q -O /tmp/alpine-nginx.tar.gz \
+		"https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/$arch/alpine-minirootfs-3.19.0-$arch.tar.gz" || {
+		log_error "Failed to download Alpine"
+		return 1
+	}
+
+	mkdir -p "$rootfs"
+	tar xzf /tmp/alpine-nginx.tar.gz -C "$rootfs"
+	rm -f /tmp/alpine-nginx.tar.gz
+
+	# Configure
+	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
+
+	# Install nginx
+	chroot "$rootfs" /bin/sh -c "apk update && apk add --no-cache nginx"
+
+	# Create LXC config
+	cat > "$LXC_PATH/$NGINX_LXC/config" <<EOF
+lxc.uts.name = $NGINX_LXC
+lxc.rootfs.path = dir:$rootfs
+lxc.net.0.type = none
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $SITES_ROOT srv/sites none bind,create=dir 0 0
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override
+lxc.init.cmd = /usr/sbin/nginx -g 'daemon off;'
+EOF
+
+	log_info "nginx LXC installed"
+	log_info "Start with: lxc-start -n $NGINX_LXC -d"
+}
+
+# ===========================================
+# Main
+# ===========================================
+
+case "${1:-}" in
+	list)           shift; cmd_list "$@" ;;
+	create)         shift; cmd_create "$@" ;;
+	delete)         shift; cmd_delete "$@" ;;
+	sync)           shift; cmd_sync "$@" ;;
+	publish)        shift; cmd_publish "$@" ;;
+	runtime)        shift; cmd_runtime "$@" ;;
+	status)         shift; cmd_status "$@" ;;
+	install-nginx)  shift; cmd_install_nginx "$@" ;;
+	help|--help|-h) usage ;;
+	*)              usage ;;
+esac

@@ -9,6 +9,7 @@
 UCI_CONFIG="metablogizer"
 SITES_ROOT="/srv/metablogizer/sites"
 NGINX_CONTAINER="nginx"
+PORT_BASE=8900
 
 # Helper: Get UCI value with default
 get_uci() {
@@ -20,19 +21,42 @@ get_uci() {
 	echo "${value:-$default}"
 }
 
+# Runtime detection (uhttpd preferred, nginx fallback)
+detect_runtime() {
+	local configured=$(get_uci main runtime "auto")
+	case "$configured" in
+		uhttpd) [ -x /etc/init.d/uhttpd ] && echo "uhttpd" || echo "none" ;;
+		nginx)  lxc-info -n "$NGINX_CONTAINER" >/dev/null 2>&1 && echo "nginx" || echo "none" ;;
+		auto|*) [ -x /etc/init.d/uhttpd ] && echo "uhttpd" || \
+		        (lxc-info -n "$NGINX_CONTAINER" >/dev/null 2>&1 && echo "nginx" || echo "none") ;;
+	esac
+}
+
+# Get next available port for uhttpd
+get_next_port() {
+	local port=$PORT_BASE
+	while uci show uhttpd 2>/dev/null | grep -q "listen_http='0.0.0.0:$port'"; do
+		port=$((port + 1))
+	done
+	echo $port
+}
+
 # Status method - get overall status and list all sites
 method_status() {
-	local enabled nginx_running site_count
+	local enabled runtime detected_runtime nginx_running site_count
 
 	enabled=$(get_uci main enabled 0)
+	runtime=$(get_uci main runtime "auto")
 	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
 	NGINX_CONTAINER=$(get_uci main nginx_container "$NGINX_CONTAINER")
 
-	# Check nginx container
+	# Detect runtime
+	detected_runtime=$(detect_runtime)
+
+	# Check nginx container if using nginx
+	nginx_running="0"
 	if lxc-info -n "$NGINX_CONTAINER" -s 2>/dev/null | grep -q "RUNNING"; then
 		nginx_running="1"
-	else
-		nginx_running="0"
 	fi
 
 	# Count sites
@@ -43,6 +67,8 @@ method_status() {
 
 	json_init
 	json_add_boolean "enabled" "$enabled"
+	json_add_string "runtime" "$runtime"
+	json_add_string "detected_runtime" "$detected_runtime"
 	json_add_boolean "nginx_running" "$nginx_running"
 	json_add_int "site_count" "$site_count"
 	json_add_string "sites_root" "$SITES_ROOT"
@@ -197,29 +223,72 @@ method_create_site() {
 EOF
 	fi
 
-	# 5. Create HAProxy backend
+	# 5. Detect runtime and configure accordingly
+	local current_runtime=$(detect_runtime)
+	local port=""
+	local server_address="192.168.255.1"
+	local server_port="80"
+
+	if [ "$current_runtime" = "uhttpd" ]; then
+		# Create uhttpd instance
+		port=$(get_next_port)
+		uci set "uhttpd.metablog_${section_id}=uhttpd"
+		uci set "uhttpd.metablog_${section_id}.listen_http=0.0.0.0:$port"
+		uci set "uhttpd.metablog_${section_id}.home=$SITES_ROOT/$name"
+		uci set "uhttpd.metablog_${section_id}.index_page=index.html"
+		uci set "uhttpd.metablog_${section_id}.error_page=/index.html"
+		uci commit uhttpd
+		/etc/init.d/uhttpd reload 2>/dev/null
+		server_port="$port"
+	else
+		# Configure nginx location in container
+		_configure_nginx "$name"
+		local nginx_ip
+		nginx_ip=$(lxc-info -n "$NGINX_CONTAINER" -iH 2>/dev/null | head -1)
+		[ -n "$nginx_ip" ] && server_address="$nginx_ip"
+	fi
+
+	# Save port to site config
+	[ -n "$port" ] && uci set "$UCI_CONFIG.$section_id.port=$port"
+	uci set "$UCI_CONFIG.$section_id.runtime=$current_runtime"
+
+	# 6. Create HAProxy backend
 	local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
 
-	# Create backend via HAProxy RPCD
-	echo "{\"name\":\"$backend_name\",\"mode\":\"http\",\"enabled\":\"1\"}" | \
-		/usr/libexec/rpcd/luci.haproxy call create_backend >/dev/null 2>&1
+	uci set "haproxy.$backend_name=backend"
+	uci set "haproxy.$backend_name.name=$backend_name"
+	uci set "haproxy.$backend_name.mode=http"
+	uci set "haproxy.$backend_name.balance=roundrobin"
+	uci set "haproxy.$backend_name.enabled=1"
 
-	# Create server pointing to nginx container
-	local nginx_ip
-	nginx_ip=$(lxc-info -n "$NGINX_CONTAINER" -iH 2>/dev/null | head -1)
-	[ -z "$nginx_ip" ] && nginx_ip="nginx"
+	# Create server
+	local server_name="${backend_name}_srv"
+	uci set "haproxy.$server_name=server"
+	uci set "haproxy.$server_name.backend=$backend_name"
+	uci set "haproxy.$server_name.name=srv"
+	uci set "haproxy.$server_name.address=$server_address"
+	uci set "haproxy.$server_name.port=$server_port"
+	uci set "haproxy.$server_name.weight=100"
+	uci set "haproxy.$server_name.check=1"
+	uci set "haproxy.$server_name.enabled=1"
 
-	echo "{\"backend\":\"$backend_name\",\"name\":\"nginx\",\"address\":\"$nginx_ip\",\"port\":\"80\",\"check\":\"1\"}" | \
-		/usr/libexec/rpcd/luci.haproxy call create_server >/dev/null 2>&1
-
-	# 6. Create HAProxy vhost
+	# 7. Create HAProxy vhost
+	local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
 	local acme_val="0"
 	[ "$ssl" = "1" ] && acme_val="1"
-	echo "{\"domain\":\"$domain\",\"backend\":\"$backend_name\",\"ssl\":\"$ssl\",\"ssl_redirect\":\"$ssl\",\"acme\":\"$acme_val\",\"enabled\":\"1\"}" | \
-		/usr/libexec/rpcd/luci.haproxy call create_vhost >/dev/null 2>&1
 
-	# 7. Configure nginx location in container
-	_configure_nginx "$name"
+	uci set "haproxy.$vhost_name=vhost"
+	uci set "haproxy.$vhost_name.domain=$domain"
+	uci set "haproxy.$vhost_name.backend=$backend_name"
+	uci set "haproxy.$vhost_name.ssl=$ssl"
+	uci set "haproxy.$vhost_name.ssl_redirect=$ssl"
+	uci set "haproxy.$vhost_name.acme=$acme_val"
+	uci set "haproxy.$vhost_name.enabled=1"
+	uci commit haproxy
+
+	# Regenerate HAProxy config
+	/usr/sbin/haproxyctl generate >/dev/null 2>&1
+	/etc/init.d/haproxy reload >/dev/null 2>&1
 
 	uci commit "$UCI_CONFIG"
 
@@ -283,19 +352,32 @@ method_delete_site() {
 	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
 	NGINX_CONTAINER=$(get_uci main nginx_container "$NGINX_CONTAINER")
 
+	# Get site runtime
+	local site_runtime=$(get_uci "$id" runtime "")
+
 	# 1. Delete HAProxy vhost
 	local vhost_id=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
-	echo "{\"id\":\"$vhost_id\"}" | \
-		/usr/libexec/rpcd/luci.haproxy call delete_vhost >/dev/null 2>&1
+	uci delete "haproxy.$vhost_id" 2>/dev/null
 
-	# 2. Delete HAProxy backend
+	# 2. Delete HAProxy backend and server
 	local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
-	echo "{\"id\":\"$backend_name\"}" | \
-		/usr/libexec/rpcd/luci.haproxy call delete_backend >/dev/null 2>&1
+	uci delete "haproxy.$backend_name" 2>/dev/null
+	uci delete "haproxy.${backend_name}_srv" 2>/dev/null
+	uci commit haproxy
+	/usr/sbin/haproxyctl generate >/dev/null 2>&1
+	/etc/init.d/haproxy reload >/dev/null 2>&1
 
-	# 3. Remove nginx config
-	rm -f "/var/lib/lxc/$NGINX_CONTAINER/rootfs/etc/nginx/sites.d/metablog-$name.conf"
-	lxc-attach -n "$NGINX_CONTAINER" -- nginx -s reload 2>/dev/null || true
+	# 3. Remove runtime config
+	if [ "$site_runtime" = "uhttpd" ]; then
+		# Remove uhttpd instance
+		uci delete "uhttpd.metablog_$id" 2>/dev/null
+		uci commit uhttpd
+		/etc/init.d/uhttpd reload 2>/dev/null
+	else
+		# Remove nginx config
+		rm -f "/var/lib/lxc/$NGINX_CONTAINER/rootfs/etc/nginx/sites.d/metablog-$name.conf"
+		lxc-attach -n "$NGINX_CONTAINER" -- nginx -s reload 2>/dev/null || true
+	fi
 
 	# 4. Remove site directory
 	rm -rf "$SITES_ROOT/$name"
@@ -537,31 +619,141 @@ method_update_site() {
 	json_dump
 }
 
+# Upload file to site
+method_upload_file() {
+	local id filename content
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+	json_get_var filename filename
+	json_get_var content content
+
+	if [ -z "$id" ] || [ -z "$filename" ] || [ -z "$content" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing required fields (id, filename, content)"
+		json_dump
+		return
+	fi
+
+	local name
+	name=$(get_uci "$id" name "")
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+	local site_path="$SITES_ROOT/$name"
+	local file_path="$site_path/$filename"
+
+	# Create directory structure if needed
+	local dir_path=$(dirname "$file_path")
+	mkdir -p "$dir_path"
+
+	# Decode base64 content and write file
+	echo "$content" | base64 -d > "$file_path" 2>/dev/null
+	local rc=$?
+
+	if [ $rc -eq 0 ]; then
+		chmod 644 "$file_path"
+		json_init
+		json_add_boolean "success" 1
+		json_add_string "filename" "$filename"
+		json_add_string "path" "$file_path"
+		json_dump
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to write file"
+		json_dump
+	fi
+}
+
+# List files in a site
+method_list_files() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name
+	name=$(get_uci "$id" name "")
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+	local site_path="$SITES_ROOT/$name"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_array "files"
+
+	if [ -d "$site_path" ]; then
+		find "$site_path" -type f 2>/dev/null | while read -r file; do
+			local rel_path="${file#$site_path/}"
+			local size=$(stat -c%s "$file" 2>/dev/null || echo "0")
+			json_add_object ""
+			json_add_string "name" "$rel_path"
+			json_add_int "size" "$size"
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_dump
+}
+
 # Get global settings
 method_get_settings() {
 	json_init
 	json_add_boolean "enabled" "$(get_uci main enabled 0)"
+	json_add_string "runtime" "$(get_uci main runtime auto)"
+	json_add_string "detected_runtime" "$(detect_runtime)"
 	json_add_string "nginx_container" "$(get_uci main nginx_container nginx)"
 	json_add_string "sites_root" "$(get_uci main sites_root /srv/metablogizer/sites)"
+	json_add_string "gitea_url" "$(get_uci main gitea_url http://localhost:3000)"
 	json_dump
 }
 
 # Save global settings
 method_save_settings() {
-	local enabled nginx_container sites_root
+	local enabled runtime nginx_container sites_root gitea_url
 
 	read -r input
 	json_load "$input"
 	json_get_var enabled enabled
+	json_get_var runtime runtime
 	json_get_var nginx_container nginx_container
 	json_get_var sites_root sites_root
+	json_get_var gitea_url gitea_url
 
 	# Ensure main section exists
 	uci -q get "$UCI_CONFIG.main" >/dev/null 2>&1 || uci set "$UCI_CONFIG.main=metablogizer"
 
 	[ -n "$enabled" ] && uci set "$UCI_CONFIG.main.enabled=$enabled"
+	[ -n "$runtime" ] && uci set "$UCI_CONFIG.main.runtime=$runtime"
 	[ -n "$nginx_container" ] && uci set "$UCI_CONFIG.main.nginx_container=$nginx_container"
 	[ -n "$sites_root" ] && uci set "$UCI_CONFIG.main.sites_root=$sites_root"
+	[ -n "$gitea_url" ] && uci set "$UCI_CONFIG.main.gitea_url=$gitea_url"
 	uci commit "$UCI_CONFIG"
 
 	json_init
@@ -582,6 +774,8 @@ case "$1" in
 	"delete_site": { "id": "string" },
 	"sync_site": { "id": "string" },
 	"get_publish_info": { "id": "string" },
+	"upload_file": { "id": "string", "filename": "string", "content": "string" },
+	"list_files": { "id": "string" },
 	"get_settings": {},
 	"save_settings": { "enabled": "boolean", "nginx_container": "string", "sites_root": "string" }
 }
@@ -597,6 +791,8 @@ EOF
 			delete_site)      method_delete_site ;;
 			sync_site)        method_sync_site ;;
 			get_publish_info) method_get_publish_info ;;
+			upload_file)      method_upload_file ;;
+			list_files)       method_list_files ;;
 			get_settings)     method_get_settings ;;
 			save_settings)    method_save_settings ;;
 			*)                echo '{"error": "unknown method"}' ;;
