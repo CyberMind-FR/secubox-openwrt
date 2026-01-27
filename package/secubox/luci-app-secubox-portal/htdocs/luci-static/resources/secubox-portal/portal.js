@@ -245,7 +245,7 @@ return baseclass.extend({
 			iconBg: 'rgba(155, 89, 182, 0.15)',
 			iconColor: '#9b59b6',
 			section: 'services',
-			path: 'admin/secubox/services/magicmirror2/dashboard',
+			path: 'admin/secubox/services/magicmirror2',
 			service: 'magicmirror2',
 			version: '2.29.0'
 		},
@@ -377,7 +377,7 @@ return baseclass.extend({
 			iconBg: 'rgba(59, 130, 246, 0.15)',
 			iconColor: '#3b82f6',
 			section: 'services',
-			path: 'admin/services/nextcloud/overview',
+			path: 'admin/secubox/services/nextcloud',
 			service: 'nextcloud',
 			version: '28.0'
 		},

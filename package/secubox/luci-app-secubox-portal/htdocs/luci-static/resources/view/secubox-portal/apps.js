@@ -37,9 +37,9 @@ var appCategories = [
 		icon: '\ud83c\udfe0',
 		description: 'Internet of Things and home automation',
 		apps: [
-			{ id: 'zigbee2mqtt', name: 'Zigbee2MQTT', icon: '\ud83d\udca1', path: 'admin/secubox/zigbee2mqtt', desc: 'Zigbee device bridge for smart home' },
-			{ id: 'magicmirror', name: 'MagicMirror', icon: '\ud83e\ude9e', path: 'admin/secubox/iot/magicmirror', desc: 'Smart mirror display management' },
-			{ id: 'mqtt-bridge', name: 'MQTT Bridge', icon: '\ud83d\udd17', path: 'admin/secubox/network/mqtt-bridge', desc: 'MQTT message broker and bridge' }
+			{ id: 'zigbee2mqtt', name: 'Zigbee2MQTT', icon: '\ud83d\udca1', path: 'admin/secubox/services/zigbee2mqtt', desc: 'Zigbee device bridge for smart home' },
+			{ id: 'magicmirror', name: 'MagicMirror\u00B2', icon: '\ud83e\ude9e', path: 'admin/secubox/services/magicmirror2', desc: 'Smart mirror display management' },
+			{ id: 'mqtt-bridge', name: 'MQTT Bridge', icon: '\ud83d\udd17', path: 'admin/secubox/services/mqtt-bridge', desc: 'MQTT message broker and bridge' }
 		]
 	}
 ];
