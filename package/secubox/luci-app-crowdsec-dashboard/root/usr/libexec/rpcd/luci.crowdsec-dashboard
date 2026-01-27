@@ -181,14 +181,14 @@ get_status() {
 		elif ! grep -q "password:" "$creds_file" 2>/dev/null; then
 			lapi_reason="credentials incomplete"
 		else
-			# Check if LAPI port is listening (8080 hex = 1F90)
+			# Check if LAPI port is listening (8180 hex = 1FF4)
 			local port_up=0
-			if grep -qi ":1F90 " /proc/net/tcp 2>/dev/null; then
+			if grep -qi ":1FF4 " /proc/net/tcp 2>/dev/null; then
 				port_up=1
 			fi
 
 			if [ "$port_up" = "0" ]; then
-				lapi_reason="port 8080 not listening"
+				lapi_reason="port 8180 not listening"
 			else
 				# Try actual LAPI status check
 				if run_cscli lapi status >/dev/null 2>&1; then
@@ -746,7 +746,7 @@ get_firewall_bouncer_config() {
 	val=$(uci -q get crowdsec.bouncer.ipv6 || echo "1")
 	json_add_string "ipv6" "$val"
 
-	val=$(uci -q get crowdsec.bouncer.api_url || echo "http://127.0.0.1:8080/")
+	val=$(uci -q get crowdsec.bouncer.api_url || echo "http://127.0.0.1:8180/")
 	json_add_string "api_url" "$val"
 
 	val=$(uci -q get crowdsec.bouncer.update_frequency || echo "10s")
@@ -1822,7 +1822,7 @@ get_health_check() {
 
 	# LAPI status
 	local lapi_status="unavailable"
-	local lapi_url="http://127.0.0.1:8080"
+	local lapi_url="http://127.0.0.1:8180"
 	if [ -x "$CSCLI" ]; then
 		if run_with_timeout 5 "$CSCLI" lapi status >/dev/null 2>&1; then
 			lapi_status="available"

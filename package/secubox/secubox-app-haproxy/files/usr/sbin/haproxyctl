@@ -19,6 +19,7 @@ CONFIG_PATH="$DATA_PATH/config"
 
 # Logging
 log_info() { echo "[INFO] $*"; logger -t haproxy "$*"; }
+log_warn() { echo "[WARN] $*" >&2; logger -t haproxy -p warning "$*"; }
 log_error() { echo "[ERROR] $*" >&2; logger -t haproxy -p err "$*"; }
 log_debug() { [ "$DEBUG" = "1" ] && echo "[DEBUG] $*"; }
 
@@ -44,6 +45,7 @@ load_config() {
 	memory_limit="$(uci_get main.memory_limit)" || memory_limit="256M"
 	maxconn="$(uci_get main.maxconn)" || maxconn="4096"
 	log_level="$(uci_get main.log_level)" || log_level="warning"
+	default_backend="$(uci_get main.default_backend)" || default_backend="default_luci"
 
 	CERTS_PATH="$data_path/certs"
 	CONFIG_PATH="$data_path/config"
@@ -288,11 +290,12 @@ frontend stats
 frontend http-in
     bind *:80
     mode http
-    default_backend fallback
+    default_backend default_luci
 
-backend fallback
+backend default_luci
     mode http
-    server local 127.0.0.1:8080 check
+    balance roundrobin
+    server luci 192.168.255.1:8081 check
 CFGEOF
 fi
 
@@ -415,7 +418,7 @@ EOF
 	# Add vhost ACLs for HTTP
 	config_foreach _add_vhost_acl vhost "http"
 
-	echo "    default_backend fallback"
+	echo "    default_backend $default_backend"
 	echo ""
 
 	# HTTPS Frontend (if certificates exist)
@@ -432,7 +435,7 @@ EOF
 		# Add vhost ACLs for HTTPS
 		config_foreach _add_vhost_acl vhost "https"
 
-		echo "    default_backend fallback"
+		echo "    default_backend $default_backend"
 		echo ""
 	fi
 }
@@ -481,18 +484,43 @@ _add_vhost_acl() {
 _generate_backends() {
 	config_load haproxy
 
+	# Track which backends are generated
+	_generated_backends=""
+
 	# Generate each backend from UCI
 	config_foreach _generate_backend backend
 
-	# Only add default fallback if no "fallback" backend exists in UCI
-	if ! uci -q get haproxy.fallback >/dev/null 2>&1; then
+	# Collect all backends referenced by vhosts
+	_referenced_backends=""
+	_collect_vhost_backend() {
+		local section="$1"
+		local enabled backend
+		config_get enabled "$section" enabled "0"
+		[ "$enabled" = "1" ] || return
+		config_get backend "$section" backend
+		[ -n "$backend" ] && _referenced_backends="$_referenced_backends $backend"
+	}
+	config_foreach _collect_vhost_backend vhost
+
+	# Add default_backend to referenced list
+	_referenced_backends="$_referenced_backends $default_backend"
+
+	# Generate fallback backends for any referenced but not generated
+	# These common backends route to uhttpd on the host
+	for backend_name in default_luci luci apps; do
+		# Check if this backend is referenced
+		echo "$_referenced_backends" | grep -qw "$backend_name" || continue
+		# Check if already generated
+		echo "$_generated_backends" | grep -qw "$backend_name" && continue
+		# Generate fallback
 		cat << EOF
 
-backend fallback
+backend $backend_name
     mode http
-    http-request deny deny_status 503
+    balance roundrobin
+    server $backend_name 192.168.255.1:8081 check
 EOF
-	fi
+	done
 }
 
 _generate_backend() {
@@ -506,6 +534,9 @@ _generate_backend() {
 	config_get mode "$section" mode "http"
 	config_get balance "$section" balance "roundrobin"
 	config_get health_check "$section" health_check ""
+
+	# Track generated backend
+	_generated_backends="$_generated_backends $name"
 
 	echo ""
 	echo "backend $name"
@@ -759,7 +790,7 @@ cmd_cert_add() {
 		# Register account if needed
 		if [ ! -f "$LE_WORKING_DIR/account.conf" ]; then
 			log_info "Registering ACME account..."
-			"$ACME_SH" --register-account -m "$email" $staging_flag --home "$LE_WORKING_DIR" || true
+			"$ACME_SH" --register-account -m "$email" --server letsencrypt $staging_flag --home "$LE_WORKING_DIR" || true
 		fi
 
 		# Check if HAProxy is using the port
@@ -775,6 +806,7 @@ cmd_cert_add() {
 		log_info "Issuing certificate (standalone mode on port $http_port)..."
 		local acme_result=0
 		"$ACME_SH" --issue -d "$domain" \
+			--server letsencrypt \
 			--standalone --httpport "$http_port" \
 			--keylength "$key_type" \
 			$staging_flag \

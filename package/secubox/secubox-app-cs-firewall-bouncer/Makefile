@@ -10,7 +10,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-cs-firewall-bouncer
 PKG_VERSION:=0.0.31
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 
 # Source from upstream CrowdSec
 # Note: v0.0.31 is the last version compatible with Go 1.23 (OpenWrt 24.10 SDK)

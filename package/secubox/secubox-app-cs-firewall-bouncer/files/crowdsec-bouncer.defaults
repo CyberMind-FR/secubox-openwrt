@@ -88,7 +88,7 @@ merge_config() {
 			uci set crowdsec.bouncer.enabled='0'
 			uci set crowdsec.bouncer.ipv4='1'
 			uci set crowdsec.bouncer.ipv6='1'
-			uci set crowdsec.bouncer.api_url='http://127.0.0.1:8080/'
+			uci set crowdsec.bouncer.api_url='http://127.0.0.1:8180/'
 			uci set crowdsec.bouncer.update_frequency='10s'
 			uci set crowdsec.bouncer.deny_action='drop'
 			uci set crowdsec.bouncer.deny_log='1'
