@@ -1816,6 +1816,7 @@ get_health_check() {
 		cs_running=1
 	fi
 	json_add_boolean "crowdsec_running" "$cs_running"
+	json_add_string "crowdsec" "$([ "$cs_running" = "1" ] && echo running || echo stopped)"
 
 	# Version
 	local version=""
@@ -1907,6 +1908,27 @@ get_health_check() {
 	json_add_int "decisions_count" "${decisions_count:-0}"
 	json_add_int "local_decisions" "${local_decisions:-0}"
 	json_add_int "capi_decisions" "${capi_decisions:-0}"
+
+	# GeoIP status - check if GeoIP database exists
+	local geoip_enabled=0
+	[ -f "/var/lib/crowdsec/data/GeoLite2-City.mmdb" ] && geoip_enabled=1
+	[ -f "/var/lib/crowdsec/data/GeoLite2-ASN.mmdb" ] && geoip_enabled=1
+	json_add_boolean "geoip_enabled" "$geoip_enabled"
+
+	# Acquisition sources count
+	local acquisition_count=0
+	if [ -d "/etc/crowdsec/acquis.d" ]; then
+		acquisition_count=$(ls -1 /etc/crowdsec/acquis.d/*.yaml 2>/dev/null | wc -l)
+	fi
+	[ -f "/etc/crowdsec/acquis.yaml" ] && acquisition_count=$((acquisition_count + 1))
+	json_add_int "acquisition_count" "${acquisition_count:-0}"
+
+	# Scenario count (installed scenarios)
+	local scenario_count=0
+	if [ -x "$CSCLI" ]; then
+		scenario_count=$(run_cscli scenarios list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	fi
+	json_add_int "scenario_count" "${scenario_count:-0}"
 
 	json_dump
 }
@@ -2192,7 +2214,28 @@ get_overview() {
 	json_add_int "local_decisions" "${local_decisions:-0}"
 	json_add_int "capi_decisions" "${capi_decisions:-0}"
 	json_add_int "alerts_24h" "${alerts_count:-0}"
-	json_add_int "bouncers" "${bouncers_count:-0}"
+	json_add_int "bouncer_count" "${bouncers_count:-0}"
+
+	# GeoIP status - check if GeoIP database exists
+	local geoip_enabled=0
+	[ -f "/var/lib/crowdsec/data/GeoLite2-City.mmdb" ] && geoip_enabled=1
+	[ -f "/var/lib/crowdsec/data/GeoLite2-ASN.mmdb" ] && geoip_enabled=1
+	json_add_boolean "geoip_enabled" "$geoip_enabled"
+
+	# Acquisition sources count
+	local acquisition_count=0
+	if [ -d "/etc/crowdsec/acquis.d" ]; then
+		acquisition_count=$(ls -1 /etc/crowdsec/acquis.d/*.yaml 2>/dev/null | wc -l)
+	fi
+	[ -f "/etc/crowdsec/acquis.yaml" ] && acquisition_count=$((acquisition_count + 1))
+	json_add_int "acquisition_count" "${acquisition_count:-0}"
+
+	# Scenario count (installed scenarios)
+	local scenario_count=0
+	if [ "$cs_running" = "1" ] && [ -x "$CSCLI" ]; then
+		scenario_count=$(run_cscli scenarios list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	fi
+	json_add_int "scenario_count" "${scenario_count:-0}"
 
 	# Top scenarios (from cached/limited alerts)
 	local scenarios=""

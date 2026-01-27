@@ -1,5 +1,5 @@
 {
-	"admin/services/metablogizer": {
+	"admin/secubox/services/metablogizer": {
 		"title": "MetaBlogizer",
 		"action": {
 			"type": "view",
@@ -11,7 +11,7 @@
 		},
 		"order": 85
 	},
-	"admin/services/metablogizer/overview": {
+	"admin/secubox/services/metablogizer/overview": {
 		"title": "Sites",
 		"action": {
 			"type": "view",
@@ -19,7 +19,7 @@
 		},
 		"order": 10
 	},
-	"admin/services/metablogizer/settings": {
+	"admin/secubox/services/metablogizer/settings": {
 		"title": "Settings",
 		"action": {
 			"type": "view",

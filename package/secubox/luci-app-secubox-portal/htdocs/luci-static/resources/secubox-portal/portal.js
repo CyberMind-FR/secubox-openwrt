@@ -380,6 +380,30 @@ return baseclass.extend({
 			path: 'admin/services/nextcloud/overview',
 			service: 'nextcloud',
 			version: '28.0'
+		},
+		'metablogizer': {
+			id: 'metablogizer',
+			name: 'MetaBlogizer',
+			desc: 'KISS static site publisher with auto-vhost creation, QR codes, and social sharing',
+			icon: '\ud83d\udcdd',
+			iconBg: 'rgba(102, 126, 234, 0.15)',
+			iconColor: '#667eea',
+			section: 'services',
+			path: 'admin/secubox/services/metablogizer/overview',
+			service: null,
+			version: '1.0.0'
+		},
+		'gitea': {
+			id: 'gitea',
+			name: 'Gitea',
+			desc: 'Self-hosted Git service for code hosting, collaboration, and CI/CD',
+			icon: '\ud83d\udc19',
+			iconBg: 'rgba(34, 197, 94, 0.15)',
+			iconColor: '#22c55e',
+			section: 'services',
+			path: 'admin/secubox/services/gitea/overview',
+			service: 'gitea',
+			version: '1.22.0'
 		}
 	},
 
