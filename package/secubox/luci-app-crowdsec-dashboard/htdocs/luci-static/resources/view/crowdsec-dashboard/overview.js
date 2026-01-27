@@ -91,11 +91,14 @@ return view.extend({
 	},
 
 	renderStats: function(d) {
+		var totalBans = (d.total_decisions || 0) + (d.capi_decisions || 0) + (d.local_decisions || 0);
+		// Use total_decisions if set, otherwise sum capi + local
+		if (d.total_decisions > 0) totalBans = d.total_decisions;
 		var stats = [
-			{ label: 'Active Bans', value: d.total_decisions || 0, type: (d.total_decisions || 0) > 0 ? 'danger' : '' },
+			{ label: 'CAPI Blocklist', value: d.capi_decisions || 0, type: (d.capi_decisions || 0) > 0 ? 'success' : '' },
+			{ label: 'Local Bans', value: d.local_decisions || 0, type: (d.local_decisions || 0) > 0 ? 'danger' : '' },
 			{ label: 'Alerts (24h)', value: d.alerts_24h || 0, type: (d.alerts_24h || 0) > 10 ? 'warning' : '' },
 			{ label: 'Scenarios', value: d.scenario_count || 0, type: 'success' },
-			{ label: 'Parsers', value: d.parser_count || 0, type: '' },
 			{ label: 'Bouncers', value: d.bouncer_count || 0, type: (d.bouncer_count || 0) > 0 ? 'success' : 'warning' },
 			{ label: 'Countries', value: Object.keys(d.countries || {}).length, type: '' }
 		];

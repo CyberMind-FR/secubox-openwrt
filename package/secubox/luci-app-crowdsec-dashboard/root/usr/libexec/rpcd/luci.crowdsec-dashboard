@@ -265,17 +265,21 @@ get_dashboard_stats() {
 	check_cscli
 	
 	json_init
-	
-	# Count decisions
-	local decisions_count
-	decisions_count=$(run_cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+
+	# Count decisions - local + CAPI
+	local local_decisions capi_decisions decisions_count
+	local_decisions=$(run_cscli decisions list --no-api -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	capi_decisions=$(run_cscli metrics 2>/dev/null | grep 'CAPI.*ban' | awk -F'|' '{sum += $5} END {print sum+0}')
+	decisions_count=$((local_decisions + capi_decisions))
 	json_add_int "total_decisions" "${decisions_count:-0}"
-	
+	json_add_int "local_decisions" "${local_decisions:-0}"
+	json_add_int "capi_decisions" "${capi_decisions:-0}"
+
 	# Count alerts (last 24h)
 	local alerts_count
 	alerts_count=$(run_cscli alerts list -o json --since 24h 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
 	json_add_int "alerts_24h" "${alerts_count:-0}"
-	
+
 	# Count bouncers
 	local bouncers_count
 	bouncers_count=$(run_cscli bouncers list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
@@ -1893,17 +1897,22 @@ get_health_check() {
 	fi
 	json_add_int "bouncer_count" "${bouncer_count:-0}"
 
-	# Total decisions count
-	local decisions_count=0
+	# Total decisions count (local + CAPI from metrics)
+	local local_decisions=0 capi_decisions=0 decisions_count=0
 	if [ -x "$CSCLI" ]; then
-		decisions_count=$(run_cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*].decisions[*]' 2>/dev/null | wc -l)
+		local_decisions=$(run_cscli decisions list --no-api -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+		capi_decisions=$(run_cscli metrics 2>/dev/null | grep 'CAPI.*ban' | awk -F'|' '{sum += $5} END {print sum+0}')
+		decisions_count=$((local_decisions + capi_decisions))
 	fi
 	json_add_int "decisions_count" "${decisions_count:-0}"
+	json_add_int "local_decisions" "${local_decisions:-0}"
+	json_add_int "capi_decisions" "${capi_decisions:-0}"
 
 	json_dump
 }
 
 # Get CAPI blocklist metrics (decisions by origin and reason)
+# Parses from cscli metrics output since decisions list doesn't show CAPI decisions
 get_capi_metrics() {
 	json_init
 
@@ -1914,67 +1923,43 @@ get_capi_metrics() {
 		return
 	fi
 
-	# Get all decisions
-	local decisions_output=""
-	decisions_output=$(run_cscli decisions list -o json 2>/dev/null)
-
-	if [ -z "$decisions_output" ] || [ "$decisions_output" = "null" ]; then
-		json_add_boolean "available" 1
-		json_add_int "total_capi" 0
-		json_add_int "total_local" 0
-		json_add_string "breakdown" "[]"
-		json_dump
-		return
-	fi
-
 	json_add_boolean "available" 1
 
-	# Count by origin
-	local capi_count=0
-	local local_count=0
+	# Get metrics output
+	local metrics_output=""
+	metrics_output=$(run_cscli metrics 2>/dev/null)
 
-	# Parse decisions and count by origin
-	# The structure is: [{decisions: [...], ...}, ...]
-	# We need to count decisions where origin = "CAPI" or "crowdsec"
+	# Parse Local API Decisions section from metrics
+	# Format: | reason | origin | action | count |
+	local capi_total=0
+	local local_total=0
 
-	# Use a temp file for aggregation
-	local tmp_file="/tmp/capi_metrics.$$"
+	# Extract CAPI decisions count
+	capi_total=$(echo "$metrics_output" | grep 'CAPI.*ban' | awk -F'|' '{sum += $5} END {print sum+0}')
 
-	# Extract all decisions with their origin and scenario
-	echo "$decisions_output" | jsonfilter -e '@[*].decisions[*]' 2>/dev/null | while read -r decision; do
-		local origin=$(echo "$decisions_output" | jsonfilter -e '@[*].decisions[*].origin' 2>/dev/null | head -1)
-		local scenario=$(echo "$decisions_output" | jsonfilter -e '@[*].scenario' 2>/dev/null | head -1)
-		echo "$origin|$scenario"
-	done > "$tmp_file" 2>/dev/null
+	# Extract local decisions count (origin = crowdsec or cscli)
+	local_total=$(echo "$metrics_output" | grep -E '(crowdsec|cscli).*ban' | awk -F'|' '{sum += $5} END {print sum+0}')
 
-	# Count CAPI decisions by scenario using awk
-	capi_count=$(echo "$decisions_output" | grep -o '"origin":"CAPI"' 2>/dev/null | wc -l)
-	local_count=$(echo "$decisions_output" | grep -o '"origin":"crowdsec"' 2>/dev/null | wc -l)
+	json_add_int "total_capi" "${capi_total:-0}"
+	json_add_int "total_local" "${local_total:-0}"
 
-	json_add_int "total_capi" "${capi_count:-0}"
-	json_add_int "total_local" "${local_count:-0}"
-
-	# Build breakdown by scenario for CAPI decisions
-	# Parse the JSON more carefully
+	# Build breakdown by scenario from metrics - parse lines with ban action
 	json_add_array "breakdown"
 
-	# Extract unique scenarios and their counts from CAPI decisions
-	local scenarios=""
-	scenarios=$(echo "$decisions_output" | grep -oE '"scenario":"[^"]*"' | sort | uniq -c | sort -rn | head -10)
-
-	echo "$scenarios" | while read -r count scenario; do
-		if [ -n "$count" ] && [ -n "$scenario" ]; then
-			local name=$(echo "$scenario" | sed 's/"scenario":"//; s/"$//')
+	echo "$metrics_output" | grep '|.*ban.*|' | grep -v "Action" | while IFS='|' read -r _ reason origin action count _; do
+		reason=$(echo "$reason" | xargs)
+		origin=$(echo "$origin" | xargs)
+		count=$(echo "$count" | xargs)
+		if [ -n "$reason" ] && [ -n "$count" ] && [ "$count" != "Count" ]; then
 			json_add_object ""
-			json_add_string "scenario" "$name"
+			json_add_string "scenario" "$reason"
+			json_add_string "origin" "$origin"
 			json_add_int "count" "$count"
 			json_close_object
 		fi
 	done
 
 	json_close_array
-
-	rm -f "$tmp_file" 2>/dev/null
 
 	json_dump
 }
@@ -2184,16 +2169,28 @@ get_overview() {
 
 	# Quick stats
 	local decisions_count=0
+	local local_decisions=0
+	local capi_decisions=0
 	local alerts_count=0
 	local bouncers_count=0
 
 	if [ "$cs_running" = "1" ] && [ -x "$CSCLI" ]; then
-		decisions_count=$(run_cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+		# Local decisions (from local scenarios)
+		local_decisions=$(run_cscli decisions list --no-api -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+
+		# CAPI decisions (blocklists) - parse from metrics output
+		capi_decisions=$(run_cscli metrics 2>/dev/null | grep 'CAPI.*ban' | awk -F'|' '{sum += $5} END {print sum+0}')
+
+		# Total decisions
+		decisions_count=$((local_decisions + capi_decisions))
+
 		alerts_count=$(run_cscli alerts list -o json --since 24h --limit 100 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
 		bouncers_count=$(run_cscli bouncers list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
 	fi
 
 	json_add_int "total_decisions" "${decisions_count:-0}"
+	json_add_int "local_decisions" "${local_decisions:-0}"
+	json_add_int "capi_decisions" "${capi_decisions:-0}"
 	json_add_int "alerts_24h" "${alerts_count:-0}"
 	json_add_int "bouncers" "${bouncers_count:-0}"
 
