@@ -1,0 +1,28 @@
+{
+	"admin/secubox/services/mailinabox": {
+		"title": "Mail Server",
+		"order": 60,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-mailinabox"]
+		}
+	},
+	"admin/secubox/services/mailinabox/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "mailinabox/overview"
+		}
+	},
+	"admin/secubox/services/mailinabox/settings": {
+		"title": "Settings",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "mailinabox/settings"
+		}
+	}
+}

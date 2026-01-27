@@ -1,0 +1,17 @@
+{
+	"luci-app-mailinabox": {
+		"description": "Grant access to Mail-in-a-Box",
+		"read": {
+			"ubus": {
+				"luci.mailinabox": ["status", "get_config", "logs"]
+			},
+			"uci": ["mailinabox"]
+		},
+		"write": {
+			"ubus": {
+				"luci.mailinabox": ["install", "start", "stop", "restart", "update", "save_config", "add_account", "list_accounts"]
+			},
+			"uci": ["mailinabox"]
+		}
+	}
+}

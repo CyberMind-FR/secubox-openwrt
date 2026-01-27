@@ -1,0 +1,41 @@
+# CrowdSec parser for SecuBox Webapp logs
+# Parses generic web application authentication events
+
+onsuccess: next_stage
+name: secubox/webapp-logs
+description: "Parse SecuBox Webapp logs"
+filter: "evt.Line.Labels.type == 'webapp'"
+grok:
+  pattern: '%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} %{GREEDYDATA:message}'
+  apply_on: message
+statics:
+  - meta: log_type
+    value: webapp
+  - meta: service
+    value: webapp
+---
+# Parse webapp authentication failures
+onsuccess: next_stage
+name: secubox/webapp-auth-failure
+description: "Parse webapp authentication failures"
+filter: "evt.Meta.log_type == 'webapp' && (evt.Parsed.message contains 'auth' || evt.Parsed.message contains 'login')"
+grok:
+  pattern: '.*%{IP:source_ip}.*(?:failed|denied|invalid|error)'
+  apply_on: message
+statics:
+  - meta: auth_success
+    value: "false"
+---
+# Parse Nginx access for webapp (401/403)
+onsuccess: next_stage
+name: secubox/webapp-nginx-auth
+description: "Parse Nginx auth failures for webapp"
+filter: "evt.Line.Labels.type == 'nginx' && evt.Parsed.http_status in ['401', '403']"
+grok:
+  pattern: '%{IP:source_ip} - %{NOTSPACE:user} \[%{HTTPDATE:timestamp}\] "%{WORD:method} %{URIPATHPARAM:request} HTTP/%{NUMBER:http_version}" %{INT:http_status}'
+  apply_on: message
+statics:
+  - meta: auth_success
+    value: "false"
+  - meta: log_type
+    value: webapp_nginx

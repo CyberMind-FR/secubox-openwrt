@@ -1,0 +1,43 @@
+# CrowdSec scenario for Streamlit authentication bruteforce
+# Detects repeated authentication failures on Streamlit apps
+
+type: leaky
+name: secubox/streamlit-auth-bruteforce
+description: "Detect bruteforce attempts on Streamlit applications"
+filter: "evt.Meta.service == 'streamlit' && evt.Meta.auth_success == 'false'"
+groupby: evt.Meta.source_ip
+capacity: 5
+leakspeed: 30s
+blackhole: 5m
+labels:
+  service: streamlit
+  type: bruteforce
+  remediation: true
+---
+# Detect Streamlit flooding (rapid requests)
+type: leaky
+name: secubox/streamlit-flooding
+description: "Detect request flooding on Streamlit apps"
+filter: "evt.Meta.log_type == 'haproxy' && evt.Parsed.backend contains 'streamlit'"
+groupby: evt.Meta.source_ip
+capacity: 50
+leakspeed: 5s
+blackhole: 5m
+labels:
+  service: streamlit
+  type: flooding
+  remediation: true
+---
+# Detect Streamlit WebSocket abuse
+type: leaky
+name: secubox/streamlit-ws-abuse
+description: "Detect WebSocket abuse on Streamlit"
+filter: "evt.Meta.log_type == 'streamlit_ws'"
+groupby: evt.Meta.source_ip
+capacity: 20
+leakspeed: 10s
+blackhole: 5m
+labels:
+  service: streamlit
+  type: ws_abuse
+  remediation: true

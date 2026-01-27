@@ -1,0 +1,139 @@
+#!/bin/sh
+# RPCD backend for Mail-in-a-Box LuCI app
+
+CONFIG="mailinabox"
+CONTAINER="secbx-mailserver"
+
+uci_get() { uci -q get ${CONFIG}.main.$1; }
+uci_set() { uci set ${CONFIG}.main.$1="$2" && uci commit ${CONFIG}; }
+
+get_status() {
+	local enabled=$(uci_get enabled)
+	local hostname=$(uci_get hostname)
+	local domain=$(uci_get domain)
+	local data_path=$(uci_get data_path)
+
+	local docker_available=0
+	command -v docker >/dev/null 2>&1 && docker_available=1
+
+	local running=0
+	local container_status="stopped"
+	if [ "$docker_available" = "1" ]; then
+		if docker ps --filter "name=$CONTAINER" --format "{{.Names}}" 2>/dev/null | grep -q "$CONTAINER"; then
+			running=1
+			container_status="running"
+		fi
+	fi
+
+	local installed=0
+	if [ "$docker_available" = "1" ]; then
+		docker images --format "{{.Repository}}" 2>/dev/null | grep -q "docker-mailserver" && installed=1
+	fi
+
+	cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"running": $([ "$running" = "1" ] && echo "true" || echo "false"),
+	"installed": $([ "$installed" = "1" ] && echo "true" || echo "false"),
+	"docker_available": $([ "$docker_available" = "1" ] && echo "true" || echo "false"),
+	"container_status": "$container_status",
+	"hostname": "${hostname:-mail.example.com}",
+	"domain": "${domain:-example.com}",
+	"data_path": "${data_path:-/srv/mailserver}",
+	"smtp_port": $(uci_get smtp_port || echo 25),
+	"imap_port": $(uci_get imap_port || echo 143),
+	"imaps_port": $(uci_get imaps_port || echo 993)
+}
+EOF
+}
+
+get_config() {
+	cat <<EOF
+{
+	"enabled": "$(uci_get enabled || echo 0)",
+	"hostname": "$(uci_get hostname || echo mail.example.com)",
+	"domain": "$(uci_get domain || echo example.com)",
+	"data_path": "$(uci_get data_path || echo /srv/mailserver)",
+	"timezone": "$(uci_get timezone || echo UTC)",
+	"smtp_port": "$(uci_get smtp_port || echo 25)",
+	"submission_port": "$(uci_get submission_port || echo 587)",
+	"imap_port": "$(uci_get imap_port || echo 143)",
+	"imaps_port": "$(uci_get imaps_port || echo 993)",
+	"enable_spamassassin": "$(uci_get enable_spamassassin || echo 1)",
+	"enable_clamav": "$(uci_get enable_clamav || echo 0)",
+	"ssl_type": "$(uci_get ssl_type || echo letsencrypt)"
+}
+EOF
+}
+
+save_config() {
+	local input; read -r input
+	local hostname=$(echo "$input" | jsonfilter -e '@.hostname' 2>/dev/null)
+	local domain=$(echo "$input" | jsonfilter -e '@.domain' 2>/dev/null)
+	[ -n "$hostname" ] && uci_set hostname "$hostname"
+	[ -n "$domain" ] && uci_set domain "$domain"
+	echo '{"success": true}'
+}
+
+do_install() {
+	if command -v mailinaboxctl >/dev/null 2>&1; then
+		mailinaboxctl install >/tmp/mailinabox-install.log 2>&1 &
+		echo '{"success": true, "message": "Installation started"}'
+	else
+		echo '{"success": false, "error": "mailinaboxctl not found"}'
+	fi
+}
+
+do_start() {
+	[ -x /etc/init.d/mailinabox ] && /etc/init.d/mailinabox start >/dev/null 2>&1 && uci_set enabled '1'
+	echo '{"success": true}'
+}
+
+do_stop() {
+	[ -x /etc/init.d/mailinabox ] && /etc/init.d/mailinabox stop >/dev/null 2>&1
+	echo '{"success": true}'
+}
+
+do_restart() {
+	[ -x /etc/init.d/mailinabox ] && /etc/init.d/mailinabox restart >/dev/null 2>&1
+	echo '{"success": true}'
+}
+
+get_logs() {
+	local log_content=""
+	[ -f /tmp/mailinabox-install.log ] && log_content=$(tail -n 50 /tmp/mailinabox-install.log 2>/dev/null | sed 's/"/\\"/g' | tr '\n' '|')
+	echo "{\"logs\": \"$log_content\"}"
+}
+
+list_methods() {
+	cat <<'EOF'
+{
+	"status": {},
+	"get_config": {},
+	"save_config": {"hostname": "string", "domain": "string"},
+	"install": {},
+	"start": {},
+	"stop": {},
+	"restart": {},
+	"logs": {}
+}
+EOF
+}
+
+case "$1" in
+	list) list_methods ;;
+	call)
+		case "$2" in
+			status)      get_status ;;
+			get_config)  get_config ;;
+			save_config) save_config ;;
+			install)     do_install ;;
+			start)       do_start ;;
+			stop)        do_stop ;;
+			restart)     do_restart ;;
+			logs)        get_logs ;;
+			*)           echo '{"error": "Unknown method"}' ;;
+		esac
+		;;
+	*) echo '{"error": "Unknown command"}' ;;
+esac

@@ -464,8 +464,7 @@ return view.extend({
 						}, ['\uD83D\uDD0D ', _('Leak Test')]),
 						E('button', {
 							'class': 'tor-btn tor-btn-warning',
-							'click': L.bind(this.handleRestart, this),
-							'disabled': !status.enabled
+							'click': L.bind(this.handleRestart, this)
 						}, ['\u21BB ', _('Restart')]),
 						E('a', {
 							'class': 'tor-btn',

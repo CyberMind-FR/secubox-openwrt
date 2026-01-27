@@ -525,7 +525,7 @@ EOF
 
 _generate_backend() {
 	local section="$1"
-	local enabled name mode balance health_check
+	local enabled name mode balance health_check health_check_uri
 
 	config_get enabled "$section" enabled "0"
 	[ "$enabled" = "1" ] || return
@@ -534,6 +534,7 @@ _generate_backend() {
 	config_get mode "$section" mode "http"
 	config_get balance "$section" balance "roundrobin"
 	config_get health_check "$section" health_check ""
+	config_get health_check_uri "$section" health_check_uri ""
 
 	# Track generated backend
 	_generated_backends="$_generated_backends $name"
@@ -543,7 +544,15 @@ _generate_backend() {
 	echo "    mode $mode"
 	echo "    balance $balance"
 
-	[ -n "$health_check" ] && echo "    option $health_check"
+	# Health check configuration
+	if [ -n "$health_check" ]; then
+		echo "    option $health_check"
+		# If health_check_uri specified, use HTTP check with GET method
+		if [ -n "$health_check_uri" ]; then
+			echo "    http-check send meth GET uri $health_check_uri"
+			echo "    http-check expect status 200"
+		fi
+	fi
 
 	# Check if there are separate server sections for this backend
 	local has_server_sections=0
@@ -588,6 +597,24 @@ _add_server_to_backend() {
 	config_get check "$section" check "1"
 
 	[ -n "$address" ] || return
+
+	# Validate address - if it's a hostname (not IP), try to resolve it
+	if ! echo "$address" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+		# It's a hostname, try to resolve it
+		local resolved_ip=""
+		resolved_ip=$(nslookup "$address" 2>/dev/null | awk '/^Address: / { print $2; exit }')
+		if [ -z "$resolved_ip" ]; then
+			# Try getent as fallback
+			resolved_ip=$(getent hosts "$address" 2>/dev/null | awk '{print $1; exit}')
+		fi
+		if [ -z "$resolved_ip" ]; then
+			log_warn "Cannot resolve hostname '$address' for server $server_name in backend $target_backend - skipping"
+			return
+		fi
+		# Use the resolved IP instead
+		log_debug "Resolved $address to $resolved_ip"
+		address="$resolved_ip"
+	fi
 
 	local check_opt=""
 	[ "$check" = "1" ] && check_opt="check"

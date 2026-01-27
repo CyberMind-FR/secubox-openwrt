@@ -10,10 +10,15 @@ set -e
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
-SECUBOX_VERSION="0.8.0"
+SECUBOX_VERSION="0.8.1"
 LOG_FILE="/var/log/secubox/core.log"
 PID_FILE="/var/run/secubox/core.pid"
 STATE_DIR="/var/run/secubox"
+WATCHDOG_STATE="/var/run/secubox/watchdog.json"
+
+# Services to monitor (init.d name:check_method:restart_delay)
+# check_method: pid, docker, lxc, port:PORT
+MONITORED_SERVICES="haproxy:pid:5 crowdsec:pid:10 tor:pid:10"
 
 # Logging function
 log() {
@@ -162,6 +167,102 @@ run_health_check() {
     return 0
 }
 
+# Service watchdog function
+run_watchdog() {
+    local watchdog_enabled=$(uci -q get secubox.main.watchdog_enabled || echo "1")
+    [ "$watchdog_enabled" != "1" ] && return 0
+
+    # Get monitored services from UCI or use defaults
+    local services=$(uci -q get secubox.main.watchdog_services || echo "$MONITORED_SERVICES")
+    local restart_count=0
+    local status_json=""
+
+    log debug "Watchdog: Checking services..."
+
+    for service_entry in $services; do
+        local service_name=$(echo "$service_entry" | cut -d: -f1)
+        local check_method=$(echo "$service_entry" | cut -d: -f2)
+        local restart_delay=$(echo "$service_entry" | cut -d: -f3)
+        [ -z "$restart_delay" ] && restart_delay=5
+
+        # Check if service init script exists
+        [ ! -x "/etc/init.d/$service_name" ] && continue
+
+        # Check if service is supposed to be enabled
+        /etc/init.d/$service_name enabled >/dev/null 2>&1 || continue
+
+        local is_running=false
+
+        case "$check_method" in
+            pid)
+                # Check via pidof or pgrep
+                if pgrep "$service_name" >/dev/null 2>&1; then
+                    is_running=true
+                fi
+                ;;
+            docker)
+                # Check Docker container
+                if docker ps --filter "name=$service_name" --format "{{.Names}}" 2>/dev/null | grep -q "$service_name"; then
+                    is_running=true
+                fi
+                ;;
+            lxc)
+                # Check LXC container
+                if lxc-info -n "$service_name" -s 2>/dev/null | grep -q "RUNNING"; then
+                    is_running=true
+                fi
+                ;;
+            port:*)
+                # Check if port is listening
+                local port=$(echo "$check_method" | cut -d: -f2)
+                # Use /proc/net/tcp (ports in hex)
+                local port_hex=$(printf '%04X' "$port")
+                if grep -q ":$port_hex " /proc/net/tcp /proc/net/tcp6 2>/dev/null; then
+                    is_running=true
+                fi
+                ;;
+        esac
+
+        if [ "$is_running" = "false" ]; then
+            log warn "Watchdog: $service_name is down, restarting..."
+            sleep "$restart_delay"
+
+            # Double-check before restart (service might have recovered)
+            case "$check_method" in
+                pid) pgrep "$service_name" >/dev/null 2>&1 && continue ;;
+            esac
+
+            /etc/init.d/$service_name restart >/dev/null 2>&1
+            restart_count=$((restart_count + 1))
+
+            # Log restart event
+            log info "Watchdog: Restarted $service_name"
+        fi
+    done
+
+    # Save watchdog state
+    json_init
+    json_add_string "last_check" "$(date -Iseconds)"
+    json_add_int "restarts" "$restart_count"
+    json_dump > "$WATCHDOG_STATE" 2>/dev/null
+
+    return 0
+}
+
+# Get list of UCI-configured services to watch
+get_watchdog_services() {
+    # Core services always monitored if enabled
+    local core_services="haproxy crowdsec"
+
+    # Scan for secubox apps with watchdog=1
+    for conf in $(uci show 2>/dev/null | grep "\.watchdog=" | grep "'1'" | cut -d. -f1-2); do
+        local service=$(uci -q get "$conf.service")
+        [ -n "$service" ] && core_services="$core_services $service"
+    done
+
+    echo "$core_services"
+}
+
 # Daemon mode
 daemon_mode() {
     log info "SecuBox Core daemon starting (version $SECUBOX_VERSION)"
@@ -172,13 +273,27 @@ daemon_mode() {
     # Get health check interval
     local health_interval=$(uci -q get secubox.main.health_check_interval || echo "300")
 
+    # Get watchdog interval (faster than health check)
+    local watchdog_interval=$(uci -q get secubox.main.watchdog_interval || echo "60")
+
     # Main daemon loop
+    local health_counter=0
+    local health_cycles=$((health_interval / watchdog_interval))
+    [ "$health_cycles" -lt 1 ] && health_cycles=1
+
     while true; do
-        # Run periodic health check
-        run_health_check > /tmp/secubox/health-status.json
+        # Run watchdog every cycle
+        run_watchdog
+
+        # Run health check every N cycles
+        health_counter=$((health_counter + 1))
+        if [ "$health_counter" -ge "$health_cycles" ]; then
+            run_health_check > /tmp/secubox/health-status.json
+            health_counter=0
+        fi
 
         # Sleep until next check
-        sleep "$health_interval"
+        sleep "$watchdog_interval"
     done
 }
 
@@ -197,8 +312,11 @@ case "$1" in
         log info "Reloading configuration"
         killall -HUP secubox-core 2>/dev/null || true
         ;;
+    watchdog)
+        run_watchdog
+        ;;
     *)
-        echo "Usage: $0 {daemon|status|health|reload}"
+        echo "Usage: $0 {daemon|status|health|reload|watchdog}"
         exit 1
         ;;
 esac

@@ -6,13 +6,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=crowdsec
-PKG_VERSION:=1.7.4
-PKG_RELEASE:=3
+PKG_VERSION:=1.7.6
+PKG_RELEASE:=1
 PKG_ARCH:=all
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/crowdsecurity/crowdsec/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=755b5c2c1a8cef24b56fd2fbc7d2942f6fc525c625a78f9c65229e5b3b305327
+PKG_HASH:=1be0c4e7d3e437698203f6badac323b7e4d9c461716274df879ebb3ae054ca4e
 
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
@@ -62,7 +62,8 @@ CWD_GO_VENDOR_MODULES:= \
 	golang.org/x/term@v0.35.0 \
 	golang.org/x/text@v0.29.0 \
 	golang.org/x/tools@v0.37.0 \
-	golang.org/x/telemetry@v0.0.0-20250908211612-aef8a434d053
+	golang.org/x/telemetry@v0.0.0-20250908211612-aef8a434d053 \
+	modernc.org/sqlite@v1.34.2
 
 define CWD/EnsureModuleSource
 	if [ ! -d "$(DL_DIR)/go-mod-cache/$(1)@$(2)" ]; then \
@@ -106,6 +107,7 @@ define Build/Prepare
 	$(call CWD/StageVendorModule,golang.org/x/text,v0.29.0)
 	$(call CWD/StageVendorModule,golang.org/x/tools,v0.37.0)
 	$(call CWD/StageVendorModule,golang.org/x/telemetry,v0.0.0-20250908211612-aef8a434d053)
+	$(call CWD/StageVendorModule,modernc.org/sqlite,v1.34.2)
 	$(SED) 's@for line := range strings.SplitSeq@for _, line := range strings.SplitSeq@g' \
 		$(PKG_BUILD_DIR)/pkg/appsec/appsec_rules_collection.go
 	$(SED) 's@for f := range strings.SplitSeq@for _, f := range strings.SplitSeq@g' \
@@ -119,6 +121,9 @@ define Build/Prepare
 		$(PKG_BUILD_DIR)/cmd/crowdsec-cli/clisetup/acquisition.go
 	$(SED) 's@for \([a-zA-Z_]*\) := range strings.SplitSeq@for _, \1 := range strings.Split@g' \
 		$(PKG_BUILD_DIR)/cmd/crowdsec/flags.go
+	# Patch strings.SplitSeq in hubtest (Go 1.24+ feature)
+	$(SED) 's@for \([a-zA-Z_]*\) := range strings.SplitSeq@for _, \1 := range strings.Split@g' \
+		$(PKG_BUILD_DIR)/pkg/hubtest/hubtest_item.go
 
 	$(SED) 's@for line := range strings.SplitSeq(description, "\\n") {@for _, line := range strings.Split(description, "\\n") {@g' \
 		$(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/golang.org/x/tools/internal/mcp/generate.go
@@ -146,6 +151,8 @@ define Build/Prepare
 		$(PKG_BUILD_DIR)/pkg/apiserver/apiserver.go
 	$(SED) '/\.httpServer\.Protocols\./d' \
 		$(PKG_BUILD_DIR)/pkg/apiserver/apiserver.go
+	# Add replace directive for modernc.org/sqlite to use Go 1.23 compatible version
+	echo 'replace modernc.org/sqlite => $(PKG_BUILD_DIR)/$(CWD_GO_VENDOR_ROOT)/modernc.org/sqlite' >> $(PKG_BUILD_DIR)/go.mod
 endef
 
 define Package/crowdsec/Default

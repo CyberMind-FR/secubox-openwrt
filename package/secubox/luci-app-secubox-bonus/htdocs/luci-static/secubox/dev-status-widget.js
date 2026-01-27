@@ -118,19 +118,19 @@ const DevStatusWidget = {
         { name: 'Domoticz App', version: '1.0.0', note: 'secubox-app-domoticz — home automation stack' }
     ],
 
-    // Overall project statistics
+    // Overall project statistics (as of v0.16.0 - 2026-01-27)
     stats: {
-        get modulesCount() { return DevStatusWidget.moduleStatus.length; },
+        get modulesCount() { return DevStatusWidget.moduleStatus.length || 38; },
         languagesSupported: 12,
-        architectures: 9,
-        linesOfCode: 26638,
+        architectures: 13,
+        linesOfCode: 45000,
         contributors: 6,
-        commits: 1200,
-        openIssues: 3,
-        closedIssues: 140
+        commits: 1500,
+        openIssues: 2,
+        closedIssues: 180
     },
 
-    // Timeline data
+    // Timeline data (updated 2026-01-27)
     timeline: [
         {
             phase: 'Phase 1',
@@ -150,15 +150,15 @@ const DevStatusWidget = {
             phase: 'Phase 3',
             name: 'Hardware Integration',
             period: 'Q2 - Q4 2025',
-            status: 'in-progress',
-            progress: 80
+            status: 'completed',
+            progress: 100
         },
         {
             phase: 'Phase 4',
             name: 'Beta Testing',
             period: 'Q1 2026',
-            status: 'planned',
-            progress: 45
+            status: 'in-progress',
+            progress: 55
         },
         {
             phase: 'Phase 5',

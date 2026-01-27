@@ -2,12 +2,6 @@
 'require baseclass';
 'require rpc';
 
-/**
- * Tor Shield API
- * Package: luci-app-tor
- * RPCD object: luci.tor-shield
- */
-
 var callStatus = rpc.declare({
 	object: 'luci.tor-shield',
 	method: 'status',
@@ -115,7 +109,6 @@ var callSaveSettings = rpc.declare({
 	expect: { success: false }
 });
 
-// Utility functions
 function formatBytes(bytes) {
 	if (bytes === 0) return '0 B';
 	var k = 1024;
@@ -156,31 +149,33 @@ function getCountryFlag(code) {
 
 function getPresetIcon(icon) {
 	switch (icon) {
-		case 'shield': return '&#128737;';
-		case 'target': return '&#127919;';
-		case 'unlock': return '&#128275;';
-		default: return '&#128737;';
+		case 'shield': return '\uD83D\uDEE1';
+		case 'target': return '\uD83C\uDFAF';
+		case 'unlock': return '\uD83D\uDD13';
+		default: return '\uD83D\uDEE1';
 	}
 }
 
 return baseclass.extend({
-	getStatus: callStatus,
-	enable: callEnable,
-	disable: callDisable,
-	restart: callRestart,
-	getCircuits: callCircuits,
-	newIdentity: callNewIdentity,
-	checkLeaks: callCheckLeaks,
-	getHiddenServices: callHiddenServices,
-	addHiddenService: callAddHiddenService,
-	removeHiddenService: callRemoveHiddenService,
-	getExitIp: callExitIp,
-	getBandwidth: callBandwidth,
-	getPresets: callPresets,
-	getBridges: callBridges,
-	setBridges: callSetBridges,
-	getSettings: callSettings,
-	saveSettings: callSaveSettings,
+	getStatus: function() { return callStatus(); },
+	enable: function(preset) { return callEnable(preset); },
+	disable: function() { return callDisable(); },
+	restart: function() { return callRestart(); },
+	getCircuits: function() { return callCircuits(); },
+	newIdentity: function() { return callNewIdentity(); },
+	checkLeaks: function() { return callCheckLeaks(); },
+	getHiddenServices: function() { return callHiddenServices(); },
+	addHiddenService: function(name, local_port, virtual_port) { return callAddHiddenService(name, local_port, virtual_port); },
+	removeHiddenService: function(name) { return callRemoveHiddenService(name); },
+	getExitIp: function() { return callExitIp(); },
+	getBandwidth: function() { return callBandwidth(); },
+	getPresets: function() { return callPresets(); },
+	getBridges: function() { return callBridges(); },
+	setBridges: function(enabled, type) { return callSetBridges(enabled, type); },
+	getSettings: function() { return callSettings(); },
+	saveSettings: function(mode, dns_over_tor, kill_switch, socks_port, trans_port, dns_port, exit_nodes, exclude_exit_nodes, strict_nodes) {
+		return callSaveSettings(mode, dns_over_tor, kill_switch, socks_port, trans_port, dns_port, exit_nodes, exclude_exit_nodes, strict_nodes);
+	},
 
 	formatBytes: formatBytes,
 	formatRate: formatRate,
@@ -188,14 +183,12 @@ return baseclass.extend({
 	getCountryFlag: getCountryFlag,
 	getPresetIcon: getPresetIcon,
 
-	// Aggregate function for dashboard
 	getDashboardData: function() {
 		return Promise.all([
 			callStatus(),
 			callPresets(),
 			callBandwidth()
 		]).then(function(results) {
-			// Handle RPC expect unwrapping - results may be array or object
 			var presetsData = results[1] || [];
 			var presets = Array.isArray(presetsData) ? presetsData : (presetsData.presets || []);
 
@@ -207,14 +200,12 @@ return baseclass.extend({
 		});
 	},
 
-	// Get all data for monitoring
 	getMonitoringData: function() {
 		return Promise.all([
 			callStatus(),
 			callCircuits(),
 			callBandwidth()
 		]).then(function(results) {
-			// Handle RPC expect unwrapping - results[1] may be array or object
 			var circuitsData = results[1] || [];
 			var circuits = Array.isArray(circuitsData) ? circuitsData : (circuitsData.circuits || []);
 

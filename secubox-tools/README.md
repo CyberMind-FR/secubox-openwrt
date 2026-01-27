@@ -1,7 +1,7 @@
 # SecuBox Development Tools
 
-**Version:** 1.0.0  
-**Last Updated:** 2025-12-28  
+**Version:** 1.1.0
+**Last Updated:** 2026-01-27
 **Status:** Active
 
 This directory contains utilities for validating, debugging, and maintaining SecuBox modules.
@@ -108,7 +108,44 @@ sudo apt-get install -y shellcheck nodejs
 - Multiple architecture and device support
 - Device profile verification before building
 
-**Example Workflow - Package Building:**
+**⚠️ IMPORTANT: SDK vs Full Toolchain Builds**
+
+Some packages **MUST** be built with the full OpenWrt toolchain (`openwrt/`) instead of the SDK:
+
+| Package | Reason |
+|---------|--------|
+| `crowdsec` | Go binary with CGO - SDK produces ARM64 LSE atomics that crash on some CPUs |
+| `crowdsec-firewall-bouncer` | Go binary with CGO |
+| `netifyd` | C++ native binary |
+| `nodogsplash` | C native binary |
+
+**To build these packages:**
+```bash
+cd secubox-tools/openwrt
+make package/<package-name>/compile V=s
+```
+
+LuCI apps and shell/Lua packages can use the SDK via `local-build.sh`.
+
+**Example Workflow - Toolchain Build (for Go/native packages):**
+```bash
+# 1. Navigate to the full OpenWrt build directory
+cd secubox-tools/openwrt
+
+# 2. Update feeds if needed
+./scripts/feeds update -a
+./scripts/feeds install -a
+
+# 3. Build CrowdSec with full toolchain
+make package/crowdsec/compile V=s
+
+# 4. Build the firewall bouncer
+make package/crowdsec-firewall-bouncer/compile V=s
+
+# 5. Packages are in: bin/packages/aarch64_cortex-a72/packages/
+```
+
+**Example Workflow - Package Building (SDK):**
 ```bash
 # 1. Make changes to a module
 vim luci-app-system-hub/htdocs/luci-static/resources/view/system-hub/overview.js

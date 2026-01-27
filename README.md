@@ -1,15 +1,16 @@
 # SecuBox - Security Suite for OpenWrt
 
-**Version:** 0.15.3
-**Last Updated:** 2025-01-14
+**Version:** 0.16.0
+**Last Updated:** 2026-01-27
 **Status:** Active Development
+**Modules:** 38 LuCI Applications
 
 [![Build OpenWrt Packages](https://github.com/CyberMind-FR/secubox-openwrt/actions/workflows/build-openwrt-packages.yml/badge.svg)](https://github.com/CyberMind-FR/secubox-openwrt/actions/workflows/build-openwrt-packages.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
 ## Overview
 
-SecuBox is a comprehensive security and network management suite for OpenWrt, providing a unified ecosystem of specialized dashboards and tools. All modules are compiled automatically for multiple OpenWrt architectures via GitHub Actions.
+SecuBox is a comprehensive security and network management suite for OpenWrt, providing a unified ecosystem of 38 specialized dashboards and tools. All modules are compiled automatically for multiple OpenWrt architectures via GitHub Actions.
 
 **Website:** [secubox.cybermood.eu](https://secubox.cybermood.eu)
 **Publisher:** [CyberMind.fr](https://cybermind.fr)
@@ -18,48 +19,88 @@ SecuBox is a comprehensive security and network management suite for OpenWrt, pr
 
 ## SecuBox Modules
 
-### Core
+### SecuBox Core (5 modules)
 
-| Module | Version | Status | Description |
-|--------|---------|--------|-------------|
-| **luci-app-secubox-portal** | 1.0.2 | Stable | Unified dashboard and navigation |
-| **luci-app-system-hub** | 0.5.1 | Stable | Central system management |
-| **luci-app-secubox** | 1.0.0 | Stable | SecuBox central hub |
+| Module | Version | Description |
+|--------|---------|-------------|
+| **luci-app-secubox** | 0.7.1 | Central dashboard/Hub for all SecuBox modules |
+| **luci-app-secubox-portal** | 0.7.0 | Unified entry point with tabbed navigation |
+| **luci-app-secubox-admin** | 1.0.0 | Admin control center with appstore and monitoring |
+| **luci-app-secubox-bonus** | 0.2.0 | Documentation, local repo, and app store |
+| **luci-app-system-hub** | 0.5.1 | Central system control with logs and backup |
 
-### Security & Monitoring
+### Security & Threat Management (9 modules)
 
-| Module | Version | Status | Description |
-|--------|---------|--------|-------------|
-| **luci-app-crowdsec-dashboard** | 0.7.0 | Stable | CrowdSec collaborative threat protection |
-| **luci-app-netdata-dashboard** | 0.5.0 | Stable | Real-time system monitoring |
-| **secubox-auth-logger** | 1.2.2 | Stable | Authentication failure logging for CrowdSec |
+| Module | Version | Description |
+|--------|---------|-------------|
+| **luci-app-crowdsec-dashboard** | 0.7.0 | Real-time CrowdSec security monitoring |
+| **luci-app-secubox-security-threats** | 1.0.0 | Unified netifyd DPI + CrowdSec intelligence |
+| **luci-app-client-guardian** | 0.4.0 | Network access, captive portal, parental controls |
+| **luci-app-auth-guardian** | 0.4.0 | OAuth2/OIDC authentication, voucher system |
+| **luci-app-exposure** | 1.0.0 | Service exposure manager |
+| **luci-app-tor-shield** | 1.0.0 | Tor anonymization dashboard |
+| **luci-app-mitmproxy** | 0.4.0 | HTTPS traffic inspection |
+| **luci-app-cyberfeed** | 0.1.1 | Cyberpunk RSS feed aggregator |
+| **luci-app-ksm-manager** | 0.4.0 | Cryptographic key/HSM management |
 
-### Network & Access Control
+### Deep Packet Inspection (2 modules)
 
-| Module | Version | Status | Description |
-|--------|---------|--------|-------------|
-| **luci-app-client-guardian** | 0.4.0 | Stable | Parental controls and device management |
-| **luci-app-auth-guardian** | 0.4.0 | Stable | Captive portal and authentication |
-| **luci-app-network-modes** | 0.5.0 | Stable | Network configuration (router/AP/bridge) |
-| **luci-app-wireguard-dashboard** | 0.5.0 | Stable | WireGuard VPN management |
+| Module | Version | Description |
+|--------|---------|-------------|
+| **luci-app-ndpid** | 1.1.2 | nDPId deep packet inspection dashboard |
+| **luci-app-secubox-netifyd** | 1.2.1 | netifyd DPI with real-time flow monitoring |
 
-### Bandwidth & Performance
+### Network & Connectivity (8 modules)
 
-| Module | Version | Status | Description |
-|--------|---------|--------|-------------|
-| **luci-app-bandwidth-manager** | 0.5.0 | Stable | QoS and bandwidth quotas |
-| **luci-app-traffic-shaper** | 0.4.0 | Stable | Traffic prioritization |
-| **luci-app-cdn-cache** | 0.5.0 | Stable | Local cache for games and updates |
-| **luci-app-media-flow** | 0.6.3 | Beta | Multimedia streaming |
+| Module | Version | Description |
+|--------|---------|-------------|
+| **luci-app-vhost-manager** | 0.5.0 | Nginx reverse proxy with Let's Encrypt SSL |
+| **luci-app-haproxy** | 1.0.0 | Load balancer with vhosts and SSL |
+| **luci-app-wireguard-dashboard** | 0.7.0 | WireGuard VPN monitoring |
+| **luci-app-network-modes** | 0.5.0 | Sniffer, AP, Relay, Router modes |
+| **luci-app-network-tweaks** | 1.0.0 | Auto Proxy DNS & Hosts from vhosts |
+| **luci-app-mqtt-bridge** | 0.4.0 | USB-to-MQTT IoT hub |
+| **luci-app-cdn-cache** | 0.5.0 | Content delivery optimization |
+| **luci-app-media-flow** | 0.6.4 | Streaming detection (Netflix, YouTube, Spotify) |
 
-### Services & Integration
+### Bandwidth & Traffic Management (2 modules)
 
-| Module | Version | Status | Description |
-|--------|---------|--------|-------------|
-| **luci-app-vhost-manager** | 0.5.0 | Stable | Virtual hosts management |
-| **luci-app-mqtt-bridge** | 0.4.0 | Stable | MQTT home automation integration |
-| **luci-app-ksm-manager** | 0.4.0 | Stable | Kernel memory optimization |
-| **luci-app-network-tweaks** | 1.0.0 | Stable | Advanced network optimizations |
+| Module | Version | Description |
+|--------|---------|-------------|
+| **luci-app-bandwidth-manager** | 0.5.0 | QoS rules, client quotas, SQM integration |
+| **luci-app-traffic-shaper** | 0.4.0 | TC/CAKE traffic shaping |
+
+### Content & Web Platforms (5 modules)
+
+| Module | Version | Description |
+|--------|---------|-------------|
+| **luci-app-gitea** | 1.0.0 | Gitea Platform management |
+| **luci-app-hexojs** | 1.0.0 | Hexo static site generator |
+| **luci-app-metabolizer** | 1.0.0 | Metabolizer CMS support |
+| **luci-app-magicmirror2** | 0.4.0 | MagicMirror2 smart display |
+| **luci-app-mmpm** | 0.2.0 | MagicMirror Package Manager |
+
+### AI/LLM & Analytics (4 modules)
+
+| Module | Version | Description |
+|--------|---------|-------------|
+| **luci-app-localai** | 0.1.0 | LocalAI LLM management |
+| **luci-app-ollama** | 0.1.0 | Ollama LLM management |
+| **luci-app-glances** | 1.0.0 | Glances system monitoring |
+| **luci-app-netdata-dashboard** | 0.5.0 | Real-time Netdata monitoring |
+
+### Streaming & Data Processing (2 modules)
+
+| Module | Version | Description |
+|--------|---------|-------------|
+| **luci-app-streamlit** | 1.0.0 | Streamlit Platform management |
+| **luci-app-picobrew** | 1.0.0 | PicoBrew Server management |
+
+### IoT & Smart Devices (1 module)
+
+| Module | Version | Description |
+|--------|---------|-------------|
+| **luci-app-zigbee2mqtt** | 1.0.0 | Zigbee2MQTT docker management |
 
 ---
 
@@ -140,28 +181,49 @@ make V=s
 
 ```
 secubox-openwrt/
-├── package/secubox/           # All SecuBox packages
+├── package/secubox/           # All 38 SecuBox LuCI packages
+│   ├── luci-app-secubox/      # Core hub
 │   ├── luci-app-secubox-portal/
-│   ├── luci-app-system-hub/
+│   ├── luci-app-secubox-admin/
 │   ├── luci-app-crowdsec-dashboard/
-│   ├── luci-app-client-guardian/
-│   ├── luci-app-wireguard-dashboard/
-│   ├── luci-app-network-modes/
-│   ├── luci-app-bandwidth-manager/
-│   ├── luci-app-traffic-shaper/
-│   ├── luci-app-cdn-cache/
-│   ├── luci-app-auth-guardian/
-│   ├── luci-app-media-flow/
-│   ├── luci-app-vhost-manager/
-│   ├── luci-app-mqtt-bridge/
-│   ├── luci-app-ksm-manager/
-│   ├── luci-app-network-tweaks/
-│   ├── secubox-auth-logger/
-│   └── ...
-├── secubox-tools/             # Build tools and local feed
-├── docs/                      # Documentation
+│   ├── luci-app-secubox-netifyd/
+│   ├── luci-app-haproxy/
+│   ├── luci-app-streamlit/
+│   ├── luci-app-gitea/
+│   ├── luci-app-hexojs/
+│   └── ... (38 modules total)
+├── secubox-tools/             # Build tools and local SDK
+│   ├── local-build.sh         # Local package builder
+│   ├── validate-modules.sh    # Module validation
+│   ├── openwrt/               # Full toolchain (for Go/native builds)
+│   └── sdk/                   # OpenWrt SDK (for LuCI apps)
+├── DOCS/                      # Documentation
+│   ├── DEVELOPMENT-GUIDELINES.md
+│   ├── QUICK-START.md
+│   └── VALIDATION-GUIDE.md
 └── .github/workflows/         # CI/CD
 ```
+
+### Build Requirements
+
+**SDK builds** (for LuCI apps - shell/Lua packages):
+```bash
+./secubox-tools/local-build.sh build luci-app-crowdsec-dashboard
+```
+
+**Full toolchain builds** (for Go/native packages):
+```bash
+cd secubox-tools/openwrt
+make package/crowdsec/compile V=s
+```
+
+| Package | Build Type | Reason |
+|---------|------------|--------|
+| `crowdsec` | Toolchain | Go binary with CGO |
+| `crowdsec-firewall-bouncer` | Toolchain | Go binary with CGO |
+| `netifyd` | Toolchain | C++ native binary |
+| `nodogsplash` | Toolchain | C native binary |
+| All `luci-app-*` | SDK | Shell/Lua/JS packages |
 
 ---
 
@@ -181,9 +243,11 @@ secubox-openwrt/
 
 | Guide | Description |
 |-------|-------------|
-| [DEVELOPMENT-GUIDELINES.md](./DEVELOPMENT-GUIDELINES.md) | Design System, RPCD/ubus, ACL, JavaScript |
-| [QUICK-START.md](./QUICK-START.md) | Quick reference and code templates |
+| [DOCS/DEVELOPMENT-GUIDELINES.md](./DOCS/DEVELOPMENT-GUIDELINES.md) | Design System, RPCD/ubus, ACL, JavaScript |
+| [DOCS/QUICK-START.md](./DOCS/QUICK-START.md) | Quick reference and code templates |
+| [DOCS/VALIDATION-GUIDE.md](./DOCS/VALIDATION-GUIDE.md) | Module validation procedures |
 | [CLAUDE.md](./CLAUDE.md) | OpenWrt shell scripting guidelines |
+| [secubox-tools/README.md](./secubox-tools/README.md) | Build tools and SDK usage |
 
 ### Critical Rules
 
@@ -191,6 +255,7 @@ secubox-openwrt/
 2. **Menu paths**: path = view file (`system-hub/overview.js`)
 3. **Permissions**: RPCD=755, CSS/JS=644
 4. **Validate**: `./secubox-tools/validate-modules.sh`
+5. **Go/native packages**: Use full toolchain, not SDK
 
 ---
 
@@ -217,7 +282,7 @@ Access at: `https://your-secubox/cgi-bin/luci/secubox-public/`
 
 ## License
 
-Apache-2.0 © 2025 CyberMind.fr
+Apache-2.0 © 2024-2026 CyberMind.fr
 
 ---
 

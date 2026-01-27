@@ -99,12 +99,19 @@ return view.extend({
 							])
 						]),
 						E('div', { 'class': 'hp-form-group' }, [
-							E('label', { 'class': 'hp-form-label' }, 'Health Check (optional)'),
+							E('label', { 'class': 'hp-form-label' }, 'Health Check'),
+							E('select', { 'id': 'new-backend-health', 'class': 'hp-form-input' }, [
+								E('option', { 'value': '' }, 'None'),
+								E('option', { 'value': 'httpchk' }, 'HTTP Check')
+							])
+						]),
+						E('div', { 'class': 'hp-form-group' }, [
+							E('label', { 'class': 'hp-form-label' }, 'Health Check URI'),
 							E('input', {
 								'type': 'text',
-								'id': 'new-backend-health',
+								'id': 'new-backend-health-uri',
 								'class': 'hp-form-input',
-								'placeholder': 'httpchk GET /health'
+								'placeholder': '/_stcore/health or /health'
 							})
 						])
 					]),
@@ -171,7 +178,7 @@ return view.extend({
 			// Health check info
 			backend.health_check ? E('div', { 'style': 'padding: 8px 16px; background: var(--hp-bg-tertiary, #f5f5f5); font-size: 12px; color: var(--hp-text-muted);' }, [
 				'\u{1F3E5} Health Check: ',
-				E('code', {}, backend.health_check)
+				E('code', {}, backend.health_check + (backend.health_check_uri ? ' ' + backend.health_check_uri : ''))
 			]) : null,
 
 			// Servers
@@ -241,7 +248,8 @@ return view.extend({
 		var name = document.getElementById('new-backend-name').value.trim();
 		var mode = document.getElementById('new-backend-mode').value;
 		var balance = document.getElementById('new-backend-balance').value;
-		var healthCheck = document.getElementById('new-backend-health').value.trim();
+		var healthCheck = document.getElementById('new-backend-health').value;
+		var healthCheckUri = document.getElementById('new-backend-health-uri').value.trim();
 
 		if (!name) {
 			self.showToast('Backend name is required', 'error');
@@ -253,7 +261,7 @@ return view.extend({
 			return;
 		}
 
-		return api.createBackend(name, mode, balance, healthCheck, 1).then(function(res) {
+		return api.createBackend(name, mode, balance, healthCheck, healthCheckUri, 1).then(function(res) {
 			if (res.success) {
 				self.showToast('Backend "' + name + '" created', 'success');
 				window.location.reload();
@@ -304,14 +312,24 @@ return view.extend({
 				E('div', { 'class': 'cbi-value' }, [
 					E('label', { 'class': 'cbi-value-title' }, 'Health Check'),
 					E('div', { 'class': 'cbi-value-field' }, [
+						E('select', { 'id': 'edit-backend-health', 'class': 'cbi-input-select', 'style': 'width: 100%;' }, [
+							E('option', { 'value': '', 'selected': !backend.health_check }, 'None'),
+							E('option', { 'value': 'httpchk', 'selected': backend.health_check === 'httpchk' }, 'HTTP Check')
+						])
+					])
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, 'Health Check URI'),
+					E('div', { 'class': 'cbi-value-field' }, [
 						E('input', {
 							'type': 'text',
-							'id': 'edit-backend-health',
+							'id': 'edit-backend-health-uri',
 							'class': 'cbi-input-text',
-							'value': backend.health_check || '',
-							'placeholder': 'httpchk GET /health',
+							'value': backend.health_check_uri || '',
+							'placeholder': '/_stcore/health or /health',
 							'style': 'width: 100%;'
-						})
+						}),
+						E('small', { 'style': 'color: var(--hp-text-muted);' }, 'For Streamlit use: /_stcore/health')
 					])
 				]),
 				E('div', { 'class': 'cbi-value' }, [
@@ -335,7 +353,8 @@ return view.extend({
 						var name = document.getElementById('edit-backend-name').value.trim();
 						var mode = document.getElementById('edit-backend-mode').value;
 						var balance = document.getElementById('edit-backend-balance').value;
-						var healthCheck = document.getElementById('edit-backend-health').value.trim();
+						var healthCheck = document.getElementById('edit-backend-health').value;
+						var healthCheckUri = document.getElementById('edit-backend-health-uri').value.trim();
 						var enabled = document.getElementById('edit-backend-enabled').checked ? 1 : 0;
 
 						if (!name) {
@@ -344,7 +363,7 @@ return view.extend({
 						}
 
 						ui.hideModal();
-						api.updateBackend(backend.id, name, mode, balance, healthCheck, enabled).then(function(res) {
+						api.updateBackend(backend.id, name, mode, balance, healthCheck, healthCheckUri, enabled).then(function(res) {
 							if (res.success) {
 								self.showToast('Backend updated', 'success');
 								window.location.reload();
@@ -363,7 +382,7 @@ return view.extend({
 		var newEnabled = backend.enabled ? 0 : 1;
 		var action = newEnabled ? 'enabled' : 'disabled';
 
-		return api.updateBackend(backend.id, null, null, null, null, newEnabled).then(function(res) {
+		return api.updateBackend(backend.id, null, null, null, null, null, newEnabled).then(function(res) {
 			if (res.success) {
 				self.showToast('Backend ' + action, 'success');
 				window.location.reload();

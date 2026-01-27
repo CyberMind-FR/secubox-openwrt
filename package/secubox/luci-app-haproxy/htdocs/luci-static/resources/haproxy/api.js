@@ -76,14 +76,14 @@ var callGetBackend = rpc.declare({
 var callCreateBackend = rpc.declare({
 	object: 'luci.haproxy',
 	method: 'create_backend',
-	params: ['name', 'mode', 'balance', 'health_check', 'enabled'],
+	params: ['name', 'mode', 'balance', 'health_check', 'health_check_uri', 'enabled'],
 	expect: {}
 });
 
 var callUpdateBackend = rpc.declare({
 	object: 'luci.haproxy',
 	method: 'update_backend',
-	params: ['id', 'name', 'mode', 'balance', 'health_check', 'enabled'],
+	params: ['id', 'name', 'mode', 'balance', 'health_check', 'health_check_uri', 'enabled'],
 	expect: {}
 });
 

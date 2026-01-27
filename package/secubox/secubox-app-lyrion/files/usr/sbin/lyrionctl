@@ -396,18 +396,22 @@ STUB
 mkdir -p /config/prefs/plugin /config/cache /music /var/log/lyrion
 chown -R nobody:nobody /config /var/log/lyrion
 
-# Create startup script
+# Create startup script that runs as nobody user
 cat > /opt/lyrion/start.sh << 'START'
 #!/bin/sh
 cd /opt/lyrion
+
+# Ensure directories exist with proper permissions
 mkdir -p /config/prefs/plugin /config/cache /var/log/lyrion
-chown -R nobody:nobody /config /var/log/lyrion 2>/dev/null || true
-exec perl slimserver.pl \
+chown -R nobody:nobody /config /var/log/lyrion /opt/lyrion 2>/dev/null || true
+
+# Run Lyrion as nobody user to avoid permission issues
+exec su -s /bin/sh nobody -c "cd /opt/lyrion && exec perl slimserver.pl \
     --prefsdir /config/prefs \
     --cachedir /config/cache \
     --logdir /var/log/lyrion \
     --httpport 9000 \
-    --cliport 9090
+    --cliport 9090"
 START
 chmod +x /opt/lyrion/start.sh
 

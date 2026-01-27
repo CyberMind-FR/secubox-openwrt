@@ -1,427 +1,54 @@
 #!/bin/sh
-#
-# RPCD backend for MagicMirror2 LuCI interface
-# Copyright (C) 2026 CyberMind.fr (SecuBox)
-#
+# RPCD backend for MagicMirror2 LuCI app
 
-. /lib/functions.sh
+CONFIG="magicmirror2"
+CONTAINER="secbx-magicmirror"
 
-DATA_DIR=$(uci -q get magicmirror2.main.data_path || echo "/srv/magicmirror2")
-LXC_NAME="magicmirror2"
+uci_get() { uci -q get ${CONFIG}.main.$1; }
 
-# Get service status
 get_status() {
+	local enabled=$(uci_get enabled)
+	local port=$(uci_get port)
+	local data_path=$(uci_get data_path)
+
+	local docker_available=0
+	command -v docker >/dev/null 2>&1 && docker_available=1
+
 	local running=0
-	local pid=""
-	local lxc_state=""
-	local web_url=""
-
-	# Check LXC container status
-	if command -v lxc-info >/dev/null 2>&1; then
-		lxc_state=$(lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -oE 'RUNNING|STOPPED' || echo "UNKNOWN")
-		if [ "$lxc_state" = "RUNNING" ]; then
-			running=1
-			pid=$(lxc-info -n "$LXC_NAME" -p 2>/dev/null | grep -oE '[0-9]+' || echo "0")
-		fi
+	if [ "$docker_available" = "1" ]; then
+		docker ps --filter "name=$CONTAINER" --format "{{.Names}}" 2>/dev/null | grep -q "$CONTAINER" && running=1
 	fi
 
-	local enabled=$(uci -q get magicmirror2.main.enabled || echo "0")
-	local port=$(uci -q get magicmirror2.main.port || echo "8085")
-	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+	local installed=0
+	[ "$docker_available" = "1" ] && docker images --format "{{.Repository}}" 2>/dev/null | grep -q "magicmirror" && installed=1
 
-	[ "$running" = "1" ] && web_url="http://${router_ip}:${port}"
-
-	# Count installed modules
-	local module_count=0
-	if [ -d "$DATA_DIR/modules" ]; then
-		module_count=$(ls -d "$DATA_DIR/modules"/MMM-* "$DATA_DIR/modules"/mm-* 2>/dev/null | wc -l)
-	fi
-
-	cat <<EOF
+	cat <<EOFJ
 {
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
 	"running": $([ "$running" = "1" ] && echo "true" || echo "false"),
-	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
-	"pid": ${pid:-0},
-	"lxc_state": "$lxc_state",
-	"port": $port,
-	"web_url": "$web_url",
-	"module_count": $module_count,
-	"data_path": "$DATA_DIR"
+	"installed": $([ "$installed" = "1" ] && echo "true" || echo "false"),
+	"docker_available": $([ "$docker_available" = "1" ] && echo "true" || echo "false"),
+	"port": ${port:-8080},
+	"data_path": "${data_path:-/srv/magicmirror}"
 }
-EOF
+EOFJ
 }
 
-# Get main configuration
-get_config() {
-	local enabled=$(uci -q get magicmirror2.main.enabled || echo "0")
-	local port=$(uci -q get magicmirror2.main.port || echo "8085")
-	local address=$(uci -q get magicmirror2.main.address || echo "0.0.0.0")
-	local data_path=$(uci -q get magicmirror2.main.data_path || echo "/srv/magicmirror2")
-	local memory_limit=$(uci -q get magicmirror2.main.memory_limit || echo "512M")
-	local language=$(uci -q get magicmirror2.main.language || echo "en")
-	local timezone=$(uci -q get magicmirror2.main.timezone || echo "Europe/Paris")
-	local units=$(uci -q get magicmirror2.main.units || echo "metric")
-
-	cat <<EOF
-{
-	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
-	"port": $port,
-	"address": "$address",
-	"data_path": "$data_path",
-	"memory_limit": "$memory_limit",
-	"language": "$language",
-	"timezone": "$timezone",
-	"units": "$units"
-}
-EOF
+do_install() {
+	command -v magicmirror2ctl >/dev/null 2>&1 && { magicmirror2ctl install >/tmp/mm2-install.log 2>&1 & echo '{"success":true,"message":"Installing"}'; } || echo '{"success":false,"error":"magicmirror2ctl not found"}'
 }
 
-# Get display configuration
-get_display_config() {
-	local width=$(uci -q get magicmirror2.display.width || echo "1920")
-	local height=$(uci -q get magicmirror2.display.height || echo "1080")
-	local zoom=$(uci -q get magicmirror2.display.zoom || echo "1.0")
-	local brightness=$(uci -q get magicmirror2.display.brightness || echo "100")
+do_start() { [ -x /etc/init.d/magicmirror2 ] && /etc/init.d/magicmirror2 start >/dev/null 2>&1; echo '{"success":true}'; }
+do_stop() { [ -x /etc/init.d/magicmirror2 ] && /etc/init.d/magicmirror2 stop >/dev/null 2>&1; echo '{"success":true}'; }
+do_restart() { [ -x /etc/init.d/magicmirror2 ] && /etc/init.d/magicmirror2 restart >/dev/null 2>&1; echo '{"success":true}'; }
 
-	cat <<EOF
-{
-	"width": $width,
-	"height": $height,
-	"zoom": $zoom,
-	"brightness": $brightness
-}
-EOF
+list_methods() { cat <<'EOFM'
+{"status":{},"install":{},"start":{},"stop":{},"restart":{}}
+EOFM
 }
 
-# Get weather configuration
-get_weather_config() {
-	local enabled=$(uci -q get magicmirror2.weather.enabled || echo "0")
-	local provider=$(uci -q get magicmirror2.weather.provider || echo "openweathermap")
-	local api_key=$(uci -q get magicmirror2.weather.api_key || echo "")
-	local location=$(uci -q get magicmirror2.weather.location || echo "")
-	local location_id=$(uci -q get magicmirror2.weather.location_id || echo "")
-
-	cat <<EOF
-{
-	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
-	"provider": "$provider",
-	"api_key": "$api_key",
-	"location": "$location",
-	"location_id": "$location_id"
-}
-EOF
-}
-
-# Get module configuration
-get_modules_config() {
-	cat <<EOF
-{
-	"clock": {
-		"enabled": $([ "$(uci -q get magicmirror2.clock.enabled || echo 1)" = "1" ] && echo "true" || echo "false"),
-		"display_seconds": $([ "$(uci -q get magicmirror2.clock.display_seconds || echo 1)" = "1" ] && echo "true" || echo "false"),
-		"show_date": $([ "$(uci -q get magicmirror2.clock.show_date || echo 1)" = "1" ] && echo "true" || echo "false")
-	},
-	"calendar": {
-		"enabled": $([ "$(uci -q get magicmirror2.calendar.enabled || echo 0)" = "1" ] && echo "true" || echo "false"),
-		"max_entries": $(uci -q get magicmirror2.calendar.max_entries || echo 10)
-	},
-	"newsfeed": {
-		"enabled": $([ "$(uci -q get magicmirror2.newsfeed.enabled || echo 0)" = "1" ] && echo "true" || echo "false"),
-		"max_news_items": $(uci -q get magicmirror2.newsfeed.max_news_items || echo 5)
-	},
-	"compliments": {
-		"enabled": $([ "$(uci -q get magicmirror2.compliments.enabled || echo 1)" = "1" ] && echo "true" || echo "false")
-	}
-}
-EOF
-}
-
-# List installed modules
-get_installed_modules() {
-	local modules_dir="$DATA_DIR/modules"
-
-	echo '{"modules":['
-
-	local first=1
-	if [ -d "$modules_dir" ]; then
-		# List MMM-* modules
-		for module_dir in "$modules_dir"/MMM-*; do
-			[ -d "$module_dir" ] || continue
-			[ -f "$module_dir/package.json" ] || continue
-			local name=$(basename "$module_dir")
-			local version=$(jsonfilter -i "$module_dir/package.json" -e '@.version' 2>/dev/null || echo "unknown")
-			local desc=$(jsonfilter -i "$module_dir/package.json" -e '@.description' 2>/dev/null | head -c 100 | sed 's/"/\\"/g')
-			local author=$(jsonfilter -i "$module_dir/package.json" -e '@.author' 2>/dev/null | sed 's/"/\\"/g')
-			local has_config="false"
-			[ -f "$DATA_DIR/config/${name}.json" ] && has_config="true"
-
-			[ "$first" = "1" ] || echo ","
-			first=0
-
-			cat <<EOF
-{
-	"name": "$name",
-	"version": "$version",
-	"description": "$desc",
-	"author": "$author",
-	"has_config": $has_config,
-	"path": "$module_dir"
-}
-EOF
-		done
-		# List mm-* modules
-		for module_dir in "$modules_dir"/mm-*; do
-			[ -d "$module_dir" ] || continue
-			[ -f "$module_dir/package.json" ] || continue
-			local name=$(basename "$module_dir")
-			local version=$(jsonfilter -i "$module_dir/package.json" -e '@.version' 2>/dev/null || echo "unknown")
-			local desc=$(jsonfilter -i "$module_dir/package.json" -e '@.description' 2>/dev/null | head -c 100 | sed 's/"/\\"/g')
-			local author=$(jsonfilter -i "$module_dir/package.json" -e '@.author' 2>/dev/null | sed 's/"/\\"/g')
-			local has_config="false"
-			[ -f "$DATA_DIR/config/${name}.json" ] && has_config="true"
-
-			[ "$first" = "1" ] || echo ","
-			first=0
-
-			cat <<EOF
-{
-	"name": "$name",
-	"version": "$version",
-	"description": "$desc",
-	"author": "$author",
-	"has_config": $has_config,
-	"path": "$module_dir"
-}
-EOF
-		done
-	fi
-
-	echo ']}'
-}
-
-# Service control
-service_start() {
-	/etc/init.d/magicmirror2 start >/dev/null 2>&1
-	sleep 3
-	get_status
-}
-
-service_stop() {
-	/etc/init.d/magicmirror2 stop >/dev/null 2>&1
-	sleep 1
-	get_status
-}
-
-service_restart() {
-	/etc/init.d/magicmirror2 restart >/dev/null 2>&1
-	sleep 3
-	get_status
-}
-
-# Install module
-install_module() {
-	local module_name="$1"
-
-	if [ -z "$module_name" ]; then
-		echo '{"success":false,"message":"Module name required"}'
-		return
-	fi
-
-	local result=$(/usr/sbin/mm2ctl module install "$module_name" 2>&1)
-	local rc=$?
-
-	if [ $rc -eq 0 ]; then
-		echo '{"success":true,"message":"Module installed successfully"}'
-	else
-		local escaped=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
-		echo "{\"success\":false,\"message\":\"$escaped\"}"
-	fi
-}
-
-# Remove module
-remove_module() {
-	local module_name="$1"
-
-	if [ -z "$module_name" ]; then
-		echo '{"success":false,"message":"Module name required"}'
-		return
-	fi
-
-	local result=$(/usr/sbin/mm2ctl module remove "$module_name" 2>&1)
-	local rc=$?
-
-	if [ $rc -eq 0 ]; then
-		echo '{"success":true,"message":"Module removed successfully"}'
-	else
-		local escaped=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
-		echo "{\"success\":false,\"message\":\"$escaped\"}"
-	fi
-}
-
-# Update module(s)
-update_modules() {
-	local module_name="$1"
-
-	local result=$(/usr/sbin/mm2ctl module update $module_name 2>&1)
-	local rc=$?
-
-	if [ $rc -eq 0 ]; then
-		echo '{"success":true,"message":"Modules updated successfully"}'
-	else
-		local escaped=$(echo "$result" | sed 's/"/\\"/g' | tr '\n' ' ')
-		echo "{\"success\":false,\"message\":\"$escaped\"}"
-	fi
-}
-
-# Regenerate config
-regenerate_config() {
-	/usr/sbin/mm2ctl config >/dev/null 2>&1
-	echo '{"success":true,"message":"Configuration regenerated"}'
-}
-
-# Set configuration
-set_config() {
-	local key="$1"
-	local value="$2"
-
-	if [ -z "$key" ] || [ -z "$value" ]; then
-		echo '{"success":false,"message":"Key and value required"}'
-		return
-	fi
-
-	# Handle boolean conversion
-	case "$value" in
-		true) value="1" ;;
-		false) value="0" ;;
-	esac
-
-	# Determine section based on key
-	local section="main"
-	case "$key" in
-		width|height|zoom|brightness)
-			section="display"
-			;;
-		provider|api_key|location|location_id)
-			section="weather"
-			;;
-		display_seconds|show_date|show_week)
-			section="clock"
-			;;
-		max_entries|fetch_interval)
-			section="calendar"
-			;;
-		max_news_items|show_description|show_source_title)
-			section="newsfeed"
-			;;
-		update_interval)
-			section="compliments"
-			;;
-	esac
-
-	uci set "magicmirror2.$section.$key=$value"
-	uci commit magicmirror2
-
-	echo '{"success":true}'
-}
-
-# Get web URL for iframe
-get_web_url() {
-	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
-	local port=$(uci -q get magicmirror2.main.port || echo "8085")
-
-	cat <<EOF
-{
-	"web_url": "http://$router_ip:$port",
-	"port": $port
-}
-EOF
-}
-
-# RPCD list method
 case "$1" in
-	list)
-		cat <<EOF
-{
-	"get_status": {},
-	"get_config": {},
-	"get_display_config": {},
-	"get_weather_config": {},
-	"get_modules_config": {},
-	"get_installed_modules": {},
-	"get_web_url": {},
-	"service_start": {},
-	"service_stop": {},
-	"service_restart": {},
-	"install_module": {"name": "string"},
-	"remove_module": {"name": "string"},
-	"update_modules": {"name": "string"},
-	"regenerate_config": {},
-	"set_config": {"key": "string", "value": "string"}
-}
-EOF
-		;;
-	call)
-		case "$2" in
-			get_status)
-				get_status
-				;;
-			get_config)
-				get_config
-				;;
-			get_display_config)
-				get_display_config
-				;;
-			get_weather_config)
-				get_weather_config
-				;;
-			get_modules_config)
-				get_modules_config
-				;;
-			get_installed_modules)
-				get_installed_modules
-				;;
-			get_web_url)
-				get_web_url
-				;;
-			service_start)
-				service_start
-				;;
-			service_stop)
-				service_stop
-				;;
-			service_restart)
-				service_restart
-				;;
-			install_module)
-				read -r input
-				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
-				install_module "$name"
-				;;
-			remove_module)
-				read -r input
-				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
-				remove_module "$name"
-				;;
-			update_modules)
-				read -r input
-				name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
-				update_modules "$name"
-				;;
-			regenerate_config)
-				regenerate_config
-				;;
-			set_config)
-				read -r input
-				key=$(echo "$input" | jsonfilter -e '@.key' 2>/dev/null)
-				value=$(echo "$input" | jsonfilter -e '@.value' 2>/dev/null)
-				set_config "$key" "$value"
-				;;
-			*)
-				echo '{"error":"Unknown method"}'
-				;;
-		esac
-		;;
-	*)
-		echo '{"error":"Unknown command"}'
-		;;
+	list) list_methods ;;
+	call) case "$2" in status) get_status ;; install) do_install ;; start) do_start ;; stop) do_stop ;; restart) do_restart ;; *) echo '{"error":"Unknown method"}' ;; esac ;;
+	*) echo '{"error":"Unknown command"}' ;;
 esac

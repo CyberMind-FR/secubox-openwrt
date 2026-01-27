@@ -1,0 +1,235 @@
+#!/bin/sh
+# RPCD backend for Nextcloud LuCI app
+
+CONFIG="nextcloud"
+CONTAINER="secbx-nextcloud"
+
+uci_get() { uci -q get ${CONFIG}.main.$1; }
+uci_set() { uci set ${CONFIG}.main.$1="$2" && uci commit ${CONFIG}; }
+
+# Get service status
+get_status() {
+	local enabled=$(uci_get enabled)
+	local port=$(uci_get port)
+	local data_path=$(uci_get data_path)
+	local admin_user=$(uci_get admin_user)
+	local trusted_domains=$(uci_get trusted_domains)
+	local image=$(uci_get image)
+
+	# Check if Docker is available
+	local docker_available=0
+	command -v docker >/dev/null 2>&1 && docker_available=1
+
+	# Check if container is running
+	local running=0
+	local container_status="stopped"
+	if [ "$docker_available" = "1" ]; then
+		if docker ps --filter "name=$CONTAINER" --format "{{.Names}}" 2>/dev/null | grep -q "$CONTAINER"; then
+			running=1
+			container_status="running"
+		elif docker ps -a --filter "name=$CONTAINER" --format "{{.Names}}" 2>/dev/null | grep -q "$CONTAINER"; then
+			container_status="stopped"
+		fi
+	fi
+
+	# Check if installed (image exists)
+	local installed=0
+	if [ "$docker_available" = "1" ]; then
+		docker images --format "{{.Repository}}" 2>/dev/null | grep -q "nextcloud" && installed=1
+	fi
+
+	# Check web UI accessibility
+	local web_accessible=0
+	if [ "$running" = "1" ]; then
+		wget -q -O /dev/null --timeout=2 "http://127.0.0.1:${port:-80}/" 2>/dev/null && web_accessible=1
+	fi
+
+	cat <<EOF
+{
+	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
+	"running": $([ "$running" = "1" ] && echo "true" || echo "false"),
+	"installed": $([ "$installed" = "1" ] && echo "true" || echo "false"),
+	"docker_available": $([ "$docker_available" = "1" ] && echo "true" || echo "false"),
+	"container_status": "$container_status",
+	"port": ${port:-80},
+	"data_path": "${data_path:-/srv/nextcloud}",
+	"admin_user": "${admin_user:-admin}",
+	"trusted_domains": "${trusted_domains:-cloud.local}",
+	"image": "${image:-nextcloud:latest}",
+	"web_accessible": $([ "$web_accessible" = "1" ] && echo "true" || echo "false"),
+	"web_url": "http://192.168.255.1:${port:-80}"
+}
+EOF
+}
+
+# Get configuration
+get_config() {
+	local enabled=$(uci_get enabled)
+	local port=$(uci_get port)
+	local data_path=$(uci_get data_path)
+	local admin_user=$(uci_get admin_user)
+	local admin_password=$(uci_get admin_password)
+	local trusted_domains=$(uci_get trusted_domains)
+	local timezone=$(uci_get timezone)
+	local image=$(uci_get image)
+
+	cat <<EOF
+{
+	"enabled": "${enabled:-0}",
+	"port": "${port:-80}",
+	"data_path": "${data_path:-/srv/nextcloud}",
+	"admin_user": "${admin_user:-admin}",
+	"admin_password": "${admin_password:-}",
+	"trusted_domains": "${trusted_domains:-cloud.local}",
+	"timezone": "${timezone:-UTC}",
+	"image": "${image:-nextcloud:latest}"
+}
+EOF
+}
+
+# Save configuration
+save_config() {
+	local input
+	read -r input
+
+	local port=$(echo "$input" | jsonfilter -e '@.port' 2>/dev/null)
+	local data_path=$(echo "$input" | jsonfilter -e '@.data_path' 2>/dev/null)
+	local admin_user=$(echo "$input" | jsonfilter -e '@.admin_user' 2>/dev/null)
+	local admin_password=$(echo "$input" | jsonfilter -e '@.admin_password' 2>/dev/null)
+	local trusted_domains=$(echo "$input" | jsonfilter -e '@.trusted_domains' 2>/dev/null)
+	local timezone=$(echo "$input" | jsonfilter -e '@.timezone' 2>/dev/null)
+
+	[ -n "$port" ] && uci_set port "$port"
+	[ -n "$data_path" ] && uci_set data_path "$data_path"
+	[ -n "$admin_user" ] && uci_set admin_user "$admin_user"
+	[ -n "$admin_password" ] && uci_set admin_password "$admin_password"
+	[ -n "$trusted_domains" ] && uci_set trusted_domains "$trusted_domains"
+	[ -n "$timezone" ] && uci_set timezone "$timezone"
+
+	echo '{"success": true}'
+}
+
+# Install Nextcloud
+do_install() {
+	if command -v nextcloudctl >/dev/null 2>&1; then
+		nextcloudctl install >/tmp/nextcloud-install.log 2>&1 &
+		echo '{"success": true, "message": "Installation started in background"}'
+	else
+		echo '{"success": false, "error": "nextcloudctl not found"}'
+	fi
+}
+
+# Start service
+do_start() {
+	if [ -x /etc/init.d/nextcloud ]; then
+		/etc/init.d/nextcloud start >/dev/null 2>&1
+		uci_set enabled '1'
+		echo '{"success": true}'
+	else
+		echo '{"success": false, "error": "Service not installed"}'
+	fi
+}
+
+# Stop service
+do_stop() {
+	if [ -x /etc/init.d/nextcloud ]; then
+		/etc/init.d/nextcloud stop >/dev/null 2>&1
+		echo '{"success": true}'
+	else
+		echo '{"success": false, "error": "Service not installed"}'
+	fi
+}
+
+# Restart service
+do_restart() {
+	if [ -x /etc/init.d/nextcloud ]; then
+		/etc/init.d/nextcloud restart >/dev/null 2>&1
+		echo '{"success": true}'
+	else
+		echo '{"success": false, "error": "Service not installed"}'
+	fi
+}
+
+# Update container
+do_update() {
+	if command -v nextcloudctl >/dev/null 2>&1; then
+		nextcloudctl update >/tmp/nextcloud-update.log 2>&1 &
+		echo '{"success": true, "message": "Update started in background"}'
+	else
+		echo '{"success": false, "error": "nextcloudctl not found"}'
+	fi
+}
+
+# Run OCC command
+do_occ() {
+	local input
+	read -r input
+	local cmd=$(echo "$input" | jsonfilter -e '@.command' 2>/dev/null)
+
+	if [ -z "$cmd" ]; then
+		echo '{"success": false, "error": "No command specified"}'
+		return
+	fi
+
+	if command -v nextcloudctl >/dev/null 2>&1; then
+		local output=$(nextcloudctl occ $cmd 2>&1)
+		echo "{\"success\": true, \"output\": \"$(echo "$output" | sed 's/"/\\"/g' | tr '\n' ' ')\"}"
+	else
+		echo '{"success": false, "error": "nextcloudctl not found"}'
+	fi
+}
+
+# Get logs
+get_logs() {
+	local lines=50
+	local log_content=""
+
+	if [ -f /tmp/nextcloud-install.log ]; then
+		log_content=$(tail -n $lines /tmp/nextcloud-install.log 2>/dev/null | sed 's/"/\\"/g' | tr '\n' '|')
+	fi
+
+	echo "{\"logs\": \"$log_content\"}"
+}
+
+# RPCD list method
+list_methods() {
+	cat <<'EOF'
+{
+	"status": {},
+	"get_config": {},
+	"save_config": {"port": "string", "data_path": "string", "admin_user": "string", "admin_password": "string", "trusted_domains": "string", "timezone": "string"},
+	"install": {},
+	"start": {},
+	"stop": {},
+	"restart": {},
+	"update": {},
+	"occ": {"command": "string"},
+	"logs": {}
+}
+EOF
+}
+
+# Main entry point
+case "$1" in
+	list)
+		list_methods
+		;;
+	call)
+		case "$2" in
+			status)      get_status ;;
+			get_config)  get_config ;;
+			save_config) save_config ;;
+			install)     do_install ;;
+			start)       do_start ;;
+			stop)        do_stop ;;
+			restart)     do_restart ;;
+			update)      do_update ;;
+			occ)         do_occ ;;
+			logs)        get_logs ;;
+			*)           echo '{"error": "Unknown method"}' ;;
+		esac
+		;;
+	*)
+		echo '{"error": "Unknown command"}'
+		;;
+esac

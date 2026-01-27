@@ -61,6 +61,11 @@ endef
 define Package/secubox-app-tor/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
+	# Disable default tor init script to prevent conflicts
+	if [ -x /etc/init.d/tor ]; then
+		/etc/init.d/tor disable 2>/dev/null
+		/etc/init.d/tor stop 2>/dev/null
+	fi
 	echo ""
 	echo "SecuBox Tor Shield installed."
 	echo ""
