@@ -50,8 +50,8 @@ return view.extend({
 				E('div', { 'class': 'soc-card-body', 'id': 'health-check' }, this.renderHealth(status))
 			]),
 			E('div', { 'class': 'soc-card' }, [
-				E('div', { 'class': 'soc-card-header' }, 'Active Scenarios'),
-				E('div', { 'class': 'soc-card-body' }, this.renderScenarios(status.scenarios || []))
+				E('div', { 'class': 'soc-card-header' }, 'Threat Types Blocked'),
+				E('div', { 'class': 'soc-card-body' }, this.renderThreatTypes(status.top_scenarios_raw))
 			])
 		]);
 
@@ -91,16 +91,16 @@ return view.extend({
 	},
 
 	renderStats: function(d) {
-		var totalBans = (d.total_decisions || 0) + (d.capi_decisions || 0) + (d.local_decisions || 0);
-		// Use total_decisions if set, otherwise sum capi + local
-		if (d.total_decisions > 0) totalBans = d.total_decisions;
+		var totalBans = d.active_bans || d.total_decisions || 0;
+		var droppedPkts = parseInt(d.dropped_packets || 0);
+		var droppedBytes = parseInt(d.dropped_bytes || 0);
 		var stats = [
-			{ label: 'CAPI Blocklist', value: d.capi_decisions || 0, type: (d.capi_decisions || 0) > 0 ? 'success' : '' },
-			{ label: 'Local Bans', value: d.local_decisions || 0, type: (d.local_decisions || 0) > 0 ? 'danger' : '' },
+			{ label: 'Active Bans', value: this.formatNumber(totalBans), type: totalBans > 0 ? 'success' : '' },
+			{ label: 'Blocked Packets', value: this.formatNumber(droppedPkts), type: droppedPkts > 0 ? 'danger' : '' },
+			{ label: 'Blocked Traffic', value: this.formatBytes(droppedBytes), type: droppedBytes > 0 ? 'danger' : '' },
 			{ label: 'Alerts (24h)', value: d.alerts_24h || 0, type: (d.alerts_24h || 0) > 10 ? 'warning' : '' },
-			{ label: 'Scenarios', value: d.scenario_count || 0, type: 'success' },
-			{ label: 'Bouncers', value: d.bouncer_count || 0, type: (d.bouncer_count || 0) > 0 ? 'success' : 'warning' },
-			{ label: 'Countries', value: Object.keys(d.countries || {}).length, type: '' }
+			{ label: 'Local Bans', value: d.local_decisions || 0, type: (d.local_decisions || 0) > 0 ? 'warning' : '' },
+			{ label: 'Bouncers', value: d.bouncer_count || 0, type: (d.bouncer_count || 0) > 0 ? 'success' : 'warning' }
 		];
 		return E('div', { 'class': 'soc-stats' }, stats.map(function(s) {
 			return E('div', { 'class': 'soc-stat ' + s.type }, [
@@ -108,6 +108,19 @@ return view.extend({
 				E('div', { 'class': 'soc-stat-label' }, s.label)
 			]);
 		}));
+	},
+
+	formatNumber: function(n) {
+		if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+		if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+		return String(n);
+	},
+
+	formatBytes: function(bytes) {
+		if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + 'GB';
+		if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + 'MB';
+		if (bytes >= 1024) return (bytes / 1024).toFixed(1) + 'KB';
+		return bytes + 'B';
 	},
 
 	renderAlerts: function(alerts) {
@@ -200,6 +213,56 @@ return view.extend({
 				]);
 			}))
 		]);
+	},
+
+	renderThreatTypes: function(rawJson) {
+		var self = this;
+		var threats = [];
+		if (rawJson) {
+			try { threats = JSON.parse(rawJson); } catch(e) {}
+		}
+		if (!threats || !threats.length) {
+			return E('div', { 'class': 'soc-empty' }, [
+				E('div', { 'class': 'soc-empty-icon' }, '\u{1F6E1}'),
+				'No threats blocked yet'
+			]);
+		}
+		var total = threats.reduce(function(sum, t) { return sum + (t.count || 0); }, 0);
+		return E('div', { 'class': 'soc-threat-types' }, [
+			E('table', { 'class': 'soc-table' }, [
+				E('thead', {}, E('tr', {}, [
+					E('th', {}, 'Threat Type'),
+					E('th', {}, 'Blocked'),
+					E('th', { 'style': 'width:40%' }, 'Distribution')
+				])),
+				E('tbody', {}, threats.map(function(t) {
+					var pct = total > 0 ? Math.round((t.count / total) * 100) : 0;
+					var severity = t.scenario.includes('bruteforce') ? 'high' :
+					               t.scenario.includes('exploit') ? 'critical' :
+					               t.scenario.includes('scan') ? 'medium' : 'low';
+					return E('tr', {}, [
+						E('td', {}, [
+							E('span', { 'class': 'soc-threat-icon ' + severity }, self.getThreatIcon(t.scenario)),
+							E('span', { 'class': 'soc-scenario' }, t.scenario)
+						]),
+						E('td', { 'class': 'soc-threat-count' }, self.formatNumber(t.count)),
+						E('td', {}, E('div', { 'class': 'soc-bar-wrap' }, [
+							E('div', { 'class': 'soc-bar ' + severity, 'style': 'width:' + pct + '%' }),
+							E('span', { 'class': 'soc-bar-pct' }, pct + '%')
+						]))
+					]);
+				}))
+			]),
+			E('div', { 'class': 'soc-threat-total' }, 'Total blocked: ' + self.formatNumber(total))
+		]);
+	},
+
+	getThreatIcon: function(scenario) {
+		if (scenario.includes('bruteforce')) return '\u{1F510}';
+		if (scenario.includes('exploit')) return '\u{1F4A3}';
+		if (scenario.includes('scan')) return '\u{1F50D}';
+		if (scenario.includes('http')) return '\u{1F310}';
+		return '\u26A0';
 	},
 
 	pollData: function() {

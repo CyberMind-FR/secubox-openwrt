@@ -272,6 +272,66 @@ body.cs-soc-fullwidth #maincontent { margin: 0 !important; width: 100% !importan
 
 .soc-empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.5; }
 
+/* Threat Types */
+.soc-threat-types { }
+
+.soc-threat-icon {
+	display: inline-block;
+	width: 24px;
+	height: 24px;
+	line-height: 24px;
+	text-align: center;
+	border-radius: 4px;
+	margin-right: 8px;
+	font-size: 14px;
+}
+
+.soc-threat-icon.critical { background: rgba(248, 81, 73, 0.2); }
+.soc-threat-icon.high { background: rgba(182, 35, 36, 0.2); }
+.soc-threat-icon.medium { background: rgba(210, 153, 34, 0.2); }
+.soc-threat-icon.low { background: rgba(88, 166, 255, 0.2); }
+
+.soc-threat-count {
+	font-weight: 600;
+	font-family: 'JetBrains Mono', Consolas, monospace;
+	color: var(--soc-danger);
+}
+
+.soc-bar-wrap {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 20px;
+}
+
+.soc-bar {
+	height: 8px;
+	border-radius: 4px;
+	min-width: 4px;
+	transition: width 0.3s ease;
+}
+
+.soc-bar.critical { background: var(--soc-danger); }
+.soc-bar.high { background: #b62324; }
+.soc-bar.medium { background: var(--soc-warning); }
+.soc-bar.low { background: var(--soc-info); }
+
+.soc-bar-pct {
+	font-size: 11px;
+	color: var(--soc-text-muted);
+	font-family: monospace;
+	min-width: 35px;
+}
+
+.soc-threat-total {
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--soc-border);
+	text-align: right;
+	font-size: 12px;
+	color: var(--soc-text-muted);
+}
+
 /* Nav */
 .soc-nav {
 	display: flex;

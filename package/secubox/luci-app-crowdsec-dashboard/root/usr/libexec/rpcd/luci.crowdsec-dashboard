@@ -285,17 +285,18 @@ get_dashboard_stats() {
 	bouncers_count=$(run_cscli bouncers list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
 	json_add_int "bouncers" "${bouncers_count:-0}"
 	
-	# Top scenarios (from alerts)
+	# Top scenarios (from cscli metrics - includes CAPI blocklist breakdown)
 	local scenarios
-	scenarios=$(run_cscli alerts list -o json --limit 100 2>/dev/null | \
-		jsonfilter -e '@[*].scenario' 2>/dev/null | \
-		sort | uniq -c | sort -rn | head -5 | \
+	scenarios=$(run_cscli metrics 2>/dev/null | \
+		grep -E '^\| [a-z].*\| CAPI' | \
+		sed 's/|//g;s/^[ ]*//;s/[ ]*$//' | \
+		awk '{print $4, $1}' | sort -rn | head -5 | \
 		awk '{print "{\"scenario\":\"" $2 "\",\"count\":" $1 "}"}' | \
 		tr '\n' ',' | sed 's/,$//')
-	
+
 	json_add_string "top_scenarios_raw" "[$scenarios]"
-	
-	# Top countries (from alerts - GeoIP enriched)
+
+	# Top countries (from alerts with GeoIP enrichment)
 	local countries
 	countries=$(run_cscli alerts list -o json --limit 500 2>/dev/null | \
 		jsonfilter -e '@[*].source.cn' 2>/dev/null | \
@@ -2216,6 +2217,32 @@ get_overview() {
 	json_add_int "alerts_24h" "${alerts_count:-0}"
 	json_add_int "bouncer_count" "${bouncers_count:-0}"
 
+	# Bouncer effectiveness stats (packets/bytes dropped vs processed)
+	local dropped_packets=0
+	local dropped_bytes=0
+	local processed_packets=0
+	local processed_bytes=0
+	local active_bans=0
+	if [ "$cs_running" = "1" ]; then
+		# Parse Total line from Bouncer Metrics table
+		# Format: | Total | 16.00k | 13.72k | 231 | 356.19k | 6.02k |
+		local totals
+		totals=$(run_cscli metrics 2>/dev/null | grep -E '^\|.*Total' | sed 's/|//g')
+		if [ -n "$totals" ]; then
+			# Convert k/M suffixes to numbers
+			active_bans=$(echo "$totals" | awk '{gsub(/k$/,"",$2); gsub(/M$/,"",$2); if($2~/\./){$2=$2*1000}; print int($2)}')
+			dropped_bytes=$(echo "$totals" | awk '{v=$3; gsub(/k$/,"",v); gsub(/M$/,"",v); if(v~/\./){v=v*1000}; print v}')
+			dropped_packets=$(echo "$totals" | awk '{print $4}')
+			processed_bytes=$(echo "$totals" | awk '{v=$5; gsub(/k$/,"",v); gsub(/M$/,"",v); if(v~/\./){v=v*1000}; if(v=="-")v=0; print v}')
+			processed_packets=$(echo "$totals" | awk '{v=$6; gsub(/k$/,"",v); gsub(/M$/,"",v); if(v~/\./){v=v*1000}; if(v=="-")v=0; print v}')
+		fi
+	fi
+	json_add_int "active_bans" "${active_bans:-0}"
+	json_add_string "dropped_packets" "${dropped_packets:-0}"
+	json_add_string "dropped_bytes" "${dropped_bytes:-0}"
+	json_add_string "processed_packets" "${processed_packets:-0}"
+	json_add_string "processed_bytes" "${processed_bytes:-0}"
+
 	# GeoIP status - check if GeoIP database exists
 	local geoip_enabled=0
 	[ -f "/var/lib/crowdsec/data/GeoLite2-City.mmdb" ] && geoip_enabled=1
@@ -2237,18 +2264,22 @@ get_overview() {
 	fi
 	json_add_int "scenario_count" "${scenario_count:-0}"
 
-	# Top scenarios (from cached/limited alerts)
+	# Top scenarios (from cscli metrics - includes CAPI blocklist breakdown)
 	local scenarios=""
 	if [ "$cs_running" = "1" ]; then
-		scenarios=$(run_cscli alerts list -o json --limit 100 2>/dev/null | \
-			jsonfilter -e '@[*].scenario' 2>/dev/null | \
-			sort | uniq -c | sort -rn | head -5 | \
+		# Parse "Local API Decisions" table from cscli metrics
+		# Lines like: | ssh:bruteforce | CAPI   | ban    | 12095 |
+		scenarios=$(run_cscli metrics 2>/dev/null | \
+			grep -E '^\| [a-z].*\| CAPI' | \
+			sed 's/|//g;s/^[ ]*//;s/[ ]*$//' | \
+			awk '{print $4, $1}' | sort -rn | head -5 | \
 			awk '{print "{\"scenario\":\"" $2 "\",\"count\":" $1 "}"}' | \
 			tr '\n' ',' | sed 's/,$//')
 	fi
 	json_add_string "top_scenarios_raw" "[$scenarios]"
 
-	# Top countries (from alerts with GeoIP)
+	# Top countries (from alerts with GeoIP enrichment)
+	# Note: CAPI decisions don't include country - only local detections have GeoIP
 	local countries=""
 	if [ "$cs_running" = "1" ]; then
 		countries=$(run_cscli alerts list -o json --limit 200 2>/dev/null | \
