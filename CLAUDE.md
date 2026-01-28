@@ -43,6 +43,33 @@ When checking if a port is listening, use this order of fallbacks:
 
 ## Build & Sync Workflow
 
+### CRITICAL: Sync Local Feed Before Building
+- **ALWAYS sync the local-feed before building packages from edited source trees**
+- The build system uses `secubox-tools/local-feed/` NOT `package/secubox/` directly
+- If you edit files in `package/secubox/<pkg>/`, those changes won't be built unless synced
+
+**Before building after edits:**
+```bash
+# Option 1: Sync specific package to local-feed
+rsync -av --delete package/secubox/<package-name>/ secubox-tools/local-feed/<package-name>/
+
+# Option 2: Sync all SecuBox packages
+for pkg in package/secubox/*/; do
+  name=$(basename "$pkg")
+  rsync -av --delete "$pkg" "secubox-tools/local-feed/$name/"
+done
+
+# Then build
+./secubox-tools/local-build.sh build <package-name>
+```
+
+**Quick deploy without rebuild (for RPCD/shell scripts):**
+```bash
+# Copy script directly to router for testing
+scp package/secubox/<pkg>/root/usr/libexec/rpcd/<script> root@192.168.255.1:/usr/libexec/rpcd/
+ssh root@192.168.255.1 '/etc/init.d/rpcd restart'
+```
+
 ### Local Feeds Hygiene
 - Clean and resync local feeds before build iterations when dependency drift is suspected
 - Prefer the repo helpers; avoid ad-hoc `rm` unless explicitly needed

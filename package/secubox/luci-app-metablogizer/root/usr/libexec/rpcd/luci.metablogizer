@@ -776,31 +776,104 @@ get_public_ipv4() {
 	echo "$ip"
 }
 
-# Helper: Check certificate expiry
+# Helper: Check certificate expiry (BusyBox compatible)
 check_cert_expiry() {
 	local domain="$1"
-	local cert_file="/srv/haproxy/certs/${domain}.pem"
+	local cert_file=""
 
-	if [ ! -f "$cert_file" ]; then
+	# Check multiple possible certificate locations
+	# 1. HAProxy LXC container certs
+	if [ -f "/srv/lxc/haproxy/rootfs/srv/haproxy/certs/${domain}.pem" ]; then
+		cert_file="/srv/lxc/haproxy/rootfs/srv/haproxy/certs/${domain}.pem"
+	# 2. HAProxy host path (if not containerized)
+	elif [ -f "/srv/haproxy/certs/${domain}.pem" ]; then
+		cert_file="/srv/haproxy/certs/${domain}.pem"
+	# 3. ACME shared certs
+	elif [ -f "/usr/share/haproxy/certs/${domain}.pem" ]; then
+		cert_file="/usr/share/haproxy/certs/${domain}.pem"
+	# 4. ACME ECC certs
+	elif [ -f "/etc/acme/${domain}_ecc/${domain}.cer" ]; then
 		cert_file="/etc/acme/${domain}_ecc/${domain}.cer"
-		[ ! -f "$cert_file" ] && cert_file="/etc/acme/${domain}/${domain}.cer"
+	# 5. ACME RSA certs
+	elif [ -f "/etc/acme/${domain}/${domain}.cer" ]; then
+		cert_file="/etc/acme/${domain}/${domain}.cer"
+	# 6. ACME fullchain
+	elif [ -f "/etc/acme/${domain}_ecc/fullchain.cer" ]; then
+		cert_file="/etc/acme/${domain}_ecc/fullchain.cer"
+	elif [ -f "/etc/acme/${domain}/fullchain.cer" ]; then
+		cert_file="/etc/acme/${domain}/fullchain.cer"
 	fi
 
-	if [ -f "$cert_file" ]; then
-		local expiry_date
-		expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
-		if [ -n "$expiry_date" ]; then
-			local expiry_epoch now_epoch days_left
-			expiry_epoch=$(date -d "$expiry_date" +%s 2>/dev/null)
-			now_epoch=$(date +%s)
-			if [ -n "$expiry_epoch" ]; then
-				days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
-				echo "$days_left"
-				return 0
-			fi
-		fi
+	if [ -z "$cert_file" ] || [ ! -f "$cert_file" ]; then
+		return 1
 	fi
-	return 1
+
+	# Use openssl x509 -checkend to determine days until expiry
+	# This is BusyBox compatible and doesn't rely on date parsing
+	local days=0
+
+	# Check if certificate is already expired
+	if ! openssl x509 -checkend 0 -noout -in "$cert_file" >/dev/null 2>&1; then
+		echo "-1"
+		return 0
+	fi
+
+	# Binary search to find approximate days until expiry (0-730 days range)
+	local low=0 high=730 mid seconds
+	while [ $low -lt $high ]; do
+		mid=$(( (low + high + 1) / 2 ))
+		seconds=$((mid * 86400))
+		if openssl x509 -checkend "$seconds" -noout -in "$cert_file" >/dev/null 2>&1; then
+			low=$mid
+		else
+			high=$((mid - 1))
+		fi
+	done
+
+	echo "$low"
+	return 0
+}
+
+# Helper: HTTP health check - returns status code
+check_http_health() {
+	local url="$1"
+	local timeout="${2:-5}"
+	local status_code=""
+
+	# Use wget to get HTTP status code (available on OpenWrt)
+	# wget -S prints headers, we extract the status code
+	status_code=$(wget --spider -S -T "$timeout" -t 1 "$url" 2>&1 | \
+		grep "HTTP/" | tail -1 | awk '{print $2}')
+
+	# If wget spider failed, try with -O /dev/null
+	if [ -z "$status_code" ]; then
+		status_code=$(wget -q -O /dev/null -S -T "$timeout" -t 1 "$url" 2>&1 | \
+			grep "HTTP/" | tail -1 | awk '{print $2}')
+	fi
+
+	echo "${status_code:-0}"
+}
+
+# Helper: Check backend (local uhttpd) and frontend (HAProxy) health
+check_site_http_health() {
+	local port="$1"
+	local domain="$2"
+	local ssl="$3"
+	local backend_code="" frontend_code=""
+
+	# Check backend (local uhttpd instance)
+	if [ -n "$port" ]; then
+		backend_code=$(check_http_health "http://127.0.0.1:${port}/" 3)
+	fi
+
+	# Check frontend (through HAProxy)
+	if [ -n "$domain" ]; then
+		local protocol="http"
+		[ "$ssl" = "1" ] && protocol="https"
+		frontend_code=$(check_http_health "${protocol}://${domain}/" 5)
+	fi
+
+	echo "${backend_code:-0}:${frontend_code:-0}"
 }
 
 # Get hosting status for all sites with DNS and cert health
@@ -909,6 +982,46 @@ _add_site_health() {
 		json_add_string "cert_status" "none"
 	fi
 
+	# HTTP health check (backend and frontend)
+	if [ -n "$port" ] || [ -n "$domain" ]; then
+		local http_result backend_code frontend_code
+		http_result=$(check_site_http_health "$port" "$domain" "$ssl")
+		backend_code="${http_result%%:*}"
+		frontend_code="${http_result##*:}"
+
+		# Backend status (local uhttpd)
+		if [ -n "$port" ]; then
+			json_add_int "http_backend" "$backend_code"
+			if [ "$backend_code" = "200" ]; then
+				json_add_string "backend_status" "ok"
+			elif [ "$backend_code" = "0" ]; then
+				json_add_string "backend_status" "down"
+			else
+				json_add_string "backend_status" "error"
+			fi
+		fi
+
+		# Frontend status (HAProxy)
+		if [ -n "$domain" ]; then
+			json_add_int "http_frontend" "$frontend_code"
+			if [ "$frontend_code" = "200" ]; then
+				json_add_string "frontend_status" "ok"
+			elif [ "$frontend_code" = "0" ]; then
+				json_add_string "frontend_status" "down"
+			elif [ "$frontend_code" = "503" ]; then
+				json_add_string "frontend_status" "unavailable"
+			elif [ "$frontend_code" -ge 500 ] 2>/dev/null; then
+				json_add_string "frontend_status" "error"
+			elif [ "$frontend_code" -ge 400 ] 2>/dev/null; then
+				json_add_string "frontend_status" "client_error"
+			elif [ "$frontend_code" -ge 300 ] 2>/dev/null; then
+				json_add_string "frontend_status" "redirect"
+			else
+				json_add_string "frontend_status" "unknown"
+			fi
+		fi
+	fi
+
 	# Publish status
 	local publish_status="draft"
 	if [ "$enabled" = "1" ] && [ "$has_content" = "1" ]; then
@@ -942,10 +1055,11 @@ method_check_site_health() {
 		return
 	fi
 
-	local name domain ssl
+	local name domain ssl port
 	name=$(get_uci "$id" name "")
 	domain=$(get_uci "$id" domain "")
 	ssl=$(get_uci "$id" ssl "1")
+	port=$(get_uci "$id" port "")
 
 	if [ -z "$name" ]; then
 		json_init
@@ -1045,6 +1159,65 @@ method_check_site_health() {
 		json_add_string "status" "running"
 	else
 		json_add_string "status" "stopped"
+	fi
+	json_close_object
+
+	# HTTP health check (backend and frontend)
+	json_add_object "http"
+	if [ -n "$port" ] || [ -n "$domain" ]; then
+		local http_result backend_code frontend_code
+		http_result=$(check_site_http_health "$port" "$domain" "$ssl")
+		backend_code="${http_result%%:*}"
+		frontend_code="${http_result##*:}"
+
+		# Backend (local uhttpd)
+		if [ -n "$port" ]; then
+			json_add_object "backend"
+			json_add_int "code" "$backend_code"
+			json_add_string "url" "http://127.0.0.1:${port}/"
+			if [ "$backend_code" = "200" ]; then
+				json_add_string "status" "ok"
+			elif [ "$backend_code" = "0" ]; then
+				json_add_string "status" "down"
+				json_add_string "message" "Connection failed"
+			else
+				json_add_string "status" "error"
+				json_add_string "message" "HTTP $backend_code"
+			fi
+			json_close_object
+		fi
+
+		# Frontend (through HAProxy)
+		if [ -n "$domain" ]; then
+			local protocol="http"
+			[ "$ssl" = "1" ] && protocol="https"
+			json_add_object "frontend"
+			json_add_int "code" "$frontend_code"
+			json_add_string "url" "${protocol}://${domain}/"
+			if [ "$frontend_code" = "200" ]; then
+				json_add_string "status" "ok"
+			elif [ "$frontend_code" = "0" ]; then
+				json_add_string "status" "down"
+				json_add_string "message" "Connection failed"
+			elif [ "$frontend_code" = "503" ]; then
+				json_add_string "status" "unavailable"
+				json_add_string "message" "Service unavailable (backend down)"
+			elif [ "$frontend_code" -ge 500 ] 2>/dev/null; then
+				json_add_string "status" "error"
+				json_add_string "message" "Server error $frontend_code"
+			elif [ "$frontend_code" -ge 400 ] 2>/dev/null; then
+				json_add_string "status" "client_error"
+				json_add_string "message" "HTTP $frontend_code"
+			elif [ "$frontend_code" -ge 300 ] 2>/dev/null; then
+				json_add_string "status" "redirect"
+				json_add_string "message" "Redirecting ($frontend_code)"
+			else
+				json_add_string "status" "unknown"
+			fi
+			json_close_object
+		fi
+	else
+		json_add_string "status" "no_endpoints"
 	fi
 	json_close_object
 

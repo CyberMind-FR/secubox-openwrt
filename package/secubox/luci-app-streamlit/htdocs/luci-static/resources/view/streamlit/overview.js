@@ -122,7 +122,7 @@ return view.extend({
 		return E('div', { 'class': 'st-main-grid' }, [
 			this.renderControlCard(),
 			this.renderInfoCard(),
-			this.renderLogsCard()
+			this.renderInstancesCard()
 		]);
 	},
 
@@ -236,26 +236,69 @@ return view.extend({
 		]);
 	},
 
-	renderLogsCard: function() {
-		var logs = this.logsData || [];
+	renderInstancesCard: function() {
+		var apps = this.appsData || {};
+		var instances = apps.apps || [];
+		var self = this;
 
 		return E('div', { 'class': 'st-card st-card-full' }, [
 			E('div', { 'class': 'st-card-header' }, [
 				E('div', { 'class': 'st-card-title' }, [
-					E('span', {}, '\uD83D\uDCDC'),
-					' ' + _('Recent Logs')
-				])
+					E('span', {}, '\uD83D\uDCCA'),
+					' ' + _('Instances')
+				]),
+				E('a', {
+					'href': L.url('admin', 'services', 'streamlit', 'apps'),
+					'class': 'st-link'
+				}, _('Manage Apps') + ' \u2192')
 			]),
-			E('div', { 'class': 'st-card-body' }, [
-				logs.length > 0 ?
-					E('div', { 'class': 'st-logs', 'id': 'st-logs' },
-						logs.slice(-20).map(function(line) {
-							return E('div', { 'class': 'st-logs-line' }, line);
-						})
-					) :
+			E('div', { 'class': 'st-card-body st-no-padding' }, [
+				instances.length > 0 ?
+					E('table', { 'class': 'st-instances-table', 'id': 'st-instances' }, [
+						E('thead', {}, [
+							E('tr', {}, [
+								E('th', {}, _('App')),
+								E('th', {}, _('Port')),
+								E('th', {}, _('Status')),
+								E('th', {}, _('Published')),
+								E('th', {}, _('Domain'))
+							])
+						]),
+						E('tbody', {},
+							instances.map(function(app) {
+								var isActive = app.active || (self.statusData && self.statusData.active_app === app.name);
+								var isRunning = isActive && self.statusData && self.statusData.running;
+								var statusIcon = isRunning ? '\uD83D\uDFE2' : '\uD83D\uDD34';
+								var statusText = isRunning ? _('Running') : _('Stopped');
+								var publishedIcon = app.published ? '\u2705' : '\u26AA';
+								var domain = app.domain || (app.published ? app.name + '.example.com' : '-');
+
+								return E('tr', { 'class': isActive ? 'st-row-active' : '' }, [
+									E('td', {}, [
+										E('strong', {}, app.name || app.id),
+										app.description ? E('div', { 'class': 'st-app-desc' }, app.description) : null
+									]),
+									E('td', { 'class': 'st-mono' }, String(app.port || 8501)),
+									E('td', {}, [
+										E('span', { 'class': 'st-status-dot ' + (isRunning ? 'st-running' : 'st-stopped') }, statusIcon),
+										' ' + statusText
+									]),
+									E('td', {}, publishedIcon),
+									E('td', {}, domain !== '-' ?
+										E('a', { 'href': 'https://' + domain, 'target': '_blank' }, domain) :
+										'-'
+									)
+								]);
+							})
+						)
+					]) :
 					E('div', { 'class': 'st-empty' }, [
-						E('div', { 'class': 'st-empty-icon' }, '\uD83D\uDCED'),
-						E('div', {}, _('No logs available'))
+						E('div', { 'class': 'st-empty-icon' }, '\uD83D\uDCE6'),
+						E('div', {}, _('No apps deployed')),
+						E('a', {
+							'href': L.url('admin', 'services', 'streamlit', 'apps'),
+							'class': 'st-btn st-btn-primary st-btn-sm'
+						}, _('Deploy First App'))
 					])
 			])
 		]);
@@ -286,12 +329,26 @@ return view.extend({
 			statActive.textContent = status.active_app || 'hello';
 		}
 
-		// Update logs
-		var logsContainer = document.getElementById('st-logs');
-		if (logsContainer && this.logsData) {
-			logsContainer.innerHTML = '';
-			this.logsData.slice(-20).forEach(function(line) {
-				logsContainer.appendChild(E('div', { 'class': 'st-logs-line' }, line));
+		// Update instances table status indicators
+		var instancesTable = document.getElementById('st-instances');
+		if (instancesTable) {
+			var apps = this.appsData && this.appsData.apps || [];
+			var rows = instancesTable.querySelectorAll('tbody tr');
+			rows.forEach(function(row, idx) {
+				if (apps[idx]) {
+					var app = apps[idx];
+					var isActive = app.active || (self.statusData && self.statusData.active_app === app.name);
+					var isRunning = isActive && self.statusData && self.statusData.running;
+					row.className = isActive ? 'st-row-active' : '';
+					var statusCell = row.querySelector('td:nth-child(3)');
+					if (statusCell) {
+						statusCell.innerHTML = '';
+						var statusIcon = isRunning ? '\uD83D\uDFE2' : '\uD83D\uDD34';
+						var statusText = isRunning ? _('Running') : _('Stopped');
+						statusCell.appendChild(E('span', { 'class': 'st-status-dot ' + (isRunning ? 'st-running' : 'st-stopped') }, statusIcon));
+						statusCell.appendChild(document.createTextNode(' ' + statusText));
+					}
+				}
 			});
 		}
 	},

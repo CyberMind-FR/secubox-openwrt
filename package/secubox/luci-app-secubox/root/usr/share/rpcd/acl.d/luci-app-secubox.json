@@ -35,7 +35,9 @@
 					"get_public_ips",
 					"get_network_health",
 					"get_vital_services",
-					"get_full_health_report"
+					"get_full_health_report",
+					"get_services",
+					"get_proxy_mode"
 				],
                 "uci": [
                     "get",
@@ -71,7 +73,8 @@
 					"apply_profile",
 					"rollback_profile",
 					"install_appstore_app",
-					"remove_appstore_app"
+					"remove_appstore_app",
+					"set_proxy_mode"
 				],
                 "uci": [
                     "set",

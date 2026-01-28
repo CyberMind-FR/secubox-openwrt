@@ -275,16 +275,28 @@ get_security_stats() {
 	local haproxy_conns=0
 	local invalid_conns=0
 
-	# WAN dropped packets (from kernel stats)
-	if [ -f /sys/class/net/br-wan/statistics/rx_dropped ]; then
-		wan_drops=$(cat /sys/class/net/br-wan/statistics/rx_dropped 2>/dev/null)
-	elif [ -f /sys/class/net/eth1/statistics/rx_dropped ]; then
-		wan_drops=$(cat /sys/class/net/eth1/statistics/rx_dropped 2>/dev/null)
+	# Get actual WAN interface from UCI
+	local wan_iface=$(uci -q get network.wan.device || uci -q get network.wan.ifname)
+	[ -z "$wan_iface" ] && wan_iface="eth0"
+
+	# WAN dropped packets from nftables (actual firewall drops on input chain)
+	# Count packets dropped/rejected on wan zone input
+	if command -v nft >/dev/null 2>&1; then
+		# Get drop counters from firewall input chain for wan
+		wan_drops=$(nft list chain inet fw4 input 2>/dev/null | grep -E "iifname.*$wan_iface.*drop|iifname.*$wan_iface.*reject" | grep -oE 'packets [0-9]+' | awk '{sum+=$2} END {print sum+0}')
+		# Also count from forward chain drops (wan to lan blocked)
+		local wan_fwd_drops=$(nft list chain inet fw4 forward 2>/dev/null | grep -E "iifname.*$wan_iface.*drop|iifname.*$wan_iface.*reject" | grep -oE 'packets [0-9]+' | awk '{sum+=$2} END {print sum+0}')
+		wan_drops=$((${wan_drops:-0} + ${wan_fwd_drops:-0}))
 	fi
 	wan_drops=${wan_drops:-0}
 
-	# Firewall rejects from logs (last 24h)
-	fw_rejects=$(logread 2>/dev/null | grep -c "reject\|drop" || echo 0)
+	# Firewall rejects - count from nftables counters (more accurate than logs)
+	if command -v nft >/dev/null 2>&1; then
+		fw_rejects=$(nft list ruleset 2>/dev/null | grep -E "reject|drop" | grep -oE 'packets [0-9]+' | awk '{sum+=$2} END {print sum+0}')
+	else
+		# Fallback to log parsing
+		fw_rejects=$(logread 2>/dev/null | grep -c "reject\|DROP\|REJECT" || echo 0)
+	fi
 	fw_rejects=$(echo "$fw_rejects" | tr -d '\n')
 	fw_rejects=${fw_rejects:-0}
 

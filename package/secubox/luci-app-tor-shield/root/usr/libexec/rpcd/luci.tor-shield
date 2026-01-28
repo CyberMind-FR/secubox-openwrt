@@ -622,6 +622,13 @@ set_bridges() {
 	# Now initialize output JSON
 	json_init
 
+	# Ensure bridges section exists
+	uci -q get tor-shield.bridges >/dev/null 2>&1 || {
+		uci set tor-shield.bridges=bridges
+		uci set tor-shield.bridges.enabled='0'
+		uci set tor-shield.bridges.type='obfs4'
+	}
+
 	[ -n "$enabled" ] && uci set tor-shield.bridges.enabled="$enabled"
 	[ -n "$type" ] && uci set tor-shield.bridges.type="$type"
 
@@ -709,6 +716,28 @@ save_settings() {
 
 	# Now initialize output JSON
 	json_init
+
+	# Ensure required UCI sections exist before setting values
+	uci -q get tor-shield.main >/dev/null 2>&1 || {
+		uci set tor-shield.main=tor-shield
+		uci set tor-shield.main.enabled='0'
+	}
+	uci -q get tor-shield.socks >/dev/null 2>&1 || {
+		uci set tor-shield.socks=proxy
+		uci set tor-shield.socks.port='9050'
+		uci set tor-shield.socks.address='127.0.0.1'
+	}
+	uci -q get tor-shield.trans >/dev/null 2>&1 || {
+		uci set tor-shield.trans=transparent
+		uci set tor-shield.trans.port='9040'
+		uci set tor-shield.trans.dns_port='9053'
+	}
+	uci -q get tor-shield.security >/dev/null 2>&1 || {
+		uci set tor-shield.security=security
+		uci set tor-shield.security.exit_nodes=''
+		uci set tor-shield.security.exclude_exit_nodes=''
+		uci set tor-shield.security.strict_nodes='0'
+	}
 
 	# Apply settings
 	[ -n "$mode" ] && uci set tor-shield.main.mode="$mode"

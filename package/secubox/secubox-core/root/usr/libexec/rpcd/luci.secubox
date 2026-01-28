@@ -237,6 +237,14 @@ case "$1" in
 		json_add_object "get_services"
 		json_close_object
 
+		# Proxy mode management
+		json_add_object "get_proxy_mode"
+		json_close_object
+
+		json_add_object "set_proxy_mode"
+			json_add_string "mode" "string"
+		json_close_object
+
 	json_dump
 		;;
 
@@ -1658,6 +1666,128 @@ case "$1" in
 			json_dump
 			;;
 
+		get_proxy_mode)
+			json_init
+			local mode="direct"
+			local wpad_enabled=0
+
+			# Check if WPAD PAC file exists and determine mode
+			if [ -f "/www/wpad/wpad.dat" ]; then
+				wpad_enabled=1
+				if grep -q "SOCKS5.*9050" /www/wpad/wpad.dat 2>/dev/null; then
+					mode="tor"
+				elif grep -q "PROXY.*3128" /www/wpad/wpad.dat 2>/dev/null; then
+					mode="cdn"
+				elif grep -q "PROXY.*8080" /www/wpad/wpad.dat 2>/dev/null; then
+					mode="mitmproxy"
+				fi
+			fi
+
+			# Check DHCP WPAD option
+			local dhcp_wpad=$(uci -q get dhcp.lan.dhcp_option | grep -c "252")
+
+			json_add_string "mode" "$mode"
+			json_add_boolean "wpad_enabled" "$wpad_enabled"
+			json_add_boolean "dhcp_wpad" "$dhcp_wpad"
+			json_add_string "pac_url" "http://192.168.255.1/wpad/wpad.dat"
+			json_dump
+			;;
+
+		set_proxy_mode)
+			read input
+			json_load "$input"
+			json_get_var mode mode
+
+			json_init
+
+			mkdir -p /www/wpad
+
+			case "$mode" in
+				direct)
+					# Remove PAC file for direct mode
+					rm -f /www/wpad/wpad.dat
+					uci -q delete dhcp.lan.dhcp_option
+					uci commit dhcp
+					json_add_boolean "success" 1
+					json_add_string "message" "Proxy disabled - direct connections"
+					;;
+				cdn)
+					# CDN cache mode - HTTP through nginx cache
+					cat > /www/wpad/wpad.dat << 'PACEOF'
+function FindProxyForURL(url, host) {
+    if (isPlainHostName(host) || shExpMatch(host, "*.local") || shExpMatch(host, "*.lan") ||
+        isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0") ||
+        isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0") ||
+        isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0") ||
+        isInNet(dnsResolve(host), "127.0.0.0", "255.0.0.0")) {
+        return "DIRECT";
+    }
+    if (url.substring(0, 5) == "http:") {
+        return "PROXY 192.168.255.1:3128; DIRECT";
+    }
+    return "DIRECT";
+}
+PACEOF
+					uci set dhcp.lan.dhcp_option="252,http://192.168.255.1/wpad/wpad.dat"
+					uci commit dhcp
+					json_add_boolean "success" 1
+					json_add_string "message" "CDN cache mode enabled - HTTP cached"
+					;;
+				tor)
+					# Tor bypass mode - HTTPS through Tor SOCKS
+					cat > /www/wpad/wpad.dat << 'PACEOF'
+function FindProxyForURL(url, host) {
+    if (isPlainHostName(host) || shExpMatch(host, "*.local") || shExpMatch(host, "*.lan") ||
+        isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0") ||
+        isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0") ||
+        isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0") ||
+        isInNet(dnsResolve(host), "127.0.0.0", "255.0.0.0")) {
+        return "DIRECT";
+    }
+    if (url.substring(0, 5) == "http:") {
+        return "PROXY 192.168.255.1:3128; DIRECT";
+    }
+    if (url.substring(0, 6) == "https:") {
+        return "SOCKS5 192.168.255.1:9050; DIRECT";
+    }
+    return "DIRECT";
+}
+PACEOF
+					uci set dhcp.lan.dhcp_option="252,http://192.168.255.1/wpad/wpad.dat"
+					uci commit dhcp
+					json_add_boolean "success" 1
+					json_add_string "message" "Tor bypass mode enabled - HTTPS through Tor"
+					;;
+				mitmproxy)
+					# mitmproxy mode - all traffic through mitmproxy
+					cat > /www/wpad/wpad.dat << 'PACEOF'
+function FindProxyForURL(url, host) {
+    if (isPlainHostName(host) || shExpMatch(host, "*.local") || shExpMatch(host, "*.lan") ||
+        isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0") ||
+        isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0") ||
+        isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0") ||
+        isInNet(dnsResolve(host), "127.0.0.0", "255.0.0.0")) {
+        return "DIRECT";
+    }
+    return "PROXY 192.168.255.1:8080; DIRECT";
+}
+PACEOF
+					uci set dhcp.lan.dhcp_option="252,http://192.168.255.1/wpad/wpad.dat"
+					uci commit dhcp
+					json_add_boolean "success" 1
+					json_add_string "message" "mitmproxy mode enabled - all traffic inspectable"
+					;;
+				*)
+					json_add_boolean "success" 0
+					json_add_string "error" "Unknown mode: $mode"
+					;;
+			esac
+
+			# Restart dnsmasq to apply DHCP changes
+			/etc/init.d/dnsmasq restart >/dev/null 2>&1 &
+
+			json_dump
+			;;
 
 			*)
 				json_init

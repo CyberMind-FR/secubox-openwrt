@@ -40,6 +40,17 @@ var callDashboardData = rpc.declare({
 	expect: { counts: {} }
 });
 
+var callGetProxyMode = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_proxy_mode'
+});
+
+var callSetProxyMode = rpc.declare({
+	object: 'luci.secubox',
+	method: 'set_proxy_mode',
+	params: ['mode']
+});
+
 return view.extend({
 	currentSection: 'dashboard',
 	appStatuses: {},
@@ -55,7 +66,8 @@ return view.extend({
 			portal.checkInstalledApps(),
 			callGetServices().catch(function() { return []; }),
 			callSecurityStats().catch(function() { return null; }),
-			callDashboardData().catch(function() { return { counts: {} }; })
+			callDashboardData().catch(function() { return { counts: {} }; }),
+			callGetProxyMode().catch(function() { return { mode: 'direct' }; })
 		]).then(function(results) {
 			// Store installed apps info from the last promise
 			self.installedApps = results[4] || {};
@@ -66,6 +78,8 @@ return view.extend({
 			self.detectedServices = Array.isArray(svcResult) ? svcResult : (svcResult.services || []);
 			// Security stats
 			self.securityStats = results[6] || {};
+			// Proxy mode
+			self.proxyMode = results[8] || { mode: 'direct' };
 			return results;
 		});
 	},
@@ -323,6 +337,12 @@ return view.extend({
 					E('div', { 'class': 'sb-quick-stat-label' }, 'Bans / Alerts 24h')
 				])
 			]),
+
+			// Proxy Mode Switcher
+			this.renderProxyModeSwitcher(),
+
+			// Speed Test Widget
+			this.renderSpeedTestWidget(),
 
 			// Featured Apps
 			E('h3', { 'style': 'margin: 1.5rem 0 1rem; color: var(--cyber-text-primary);' }, 'Quick Access'),
@@ -629,6 +649,345 @@ return view.extend({
 			i++;
 		}
 		return bytes.toFixed(1) + ' ' + units[i];
+	},
+
+	renderProxyModeSwitcher: function() {
+		var self = this;
+		var currentMode = (this.proxyMode && this.proxyMode.mode) || 'direct';
+
+		var modes = [
+			{ id: 'direct', name: 'Direct', icon: '🌐', desc: 'No proxy - direct internet access' },
+			{ id: 'cdn', name: 'CDN Cache', icon: '⚡', desc: 'HTTP caching via local proxy (port 3128)' },
+			{ id: 'tor', name: 'Tor', icon: '🧅', desc: 'Route traffic through Tor network' },
+			{ id: 'mitmproxy', name: 'MITM', icon: '🔍', desc: 'Traffic inspection via mitmproxy' }
+		];
+
+		// Quick access buttons based on current mode
+		var quickLinks = {
+			direct: [
+				{ icon: '🔧', label: 'Network', path: 'admin/network/network' },
+				{ icon: '🛡️', label: 'Firewall', path: 'admin/network/firewall' },
+				{ icon: '📡', label: 'DHCP/DNS', path: 'admin/network/dhcp' }
+			],
+			cdn: [
+				{ icon: '⚡', label: 'CDN Cache', path: 'admin/services/cdn-cache' },
+				{ icon: '📊', label: 'Statistics', path: 'admin/services/cdn-cache/statistics' },
+				{ icon: '📄', label: 'View PAC', path: null, external: '/wpad/wpad.dat' }
+			],
+			tor: [
+				{ icon: '🧅', label: 'Tor Shield', path: 'admin/services/tor-shield' },
+				{ icon: '🔒', label: 'Hidden Services', path: 'admin/services/tor-shield/hidden' },
+				{ icon: '📊', label: 'Tor Status', path: 'admin/services/tor-shield' }
+			],
+			mitmproxy: [
+				{ icon: '🔍', label: 'mitmproxy', path: 'admin/services/mitmproxy' },
+				{ icon: '🌐', label: 'Web UI', path: null, external: 'http://192.168.255.1:8080' },
+				{ icon: '📜', label: 'Get CA Cert', path: null, external: 'http://mitm.it' }
+			]
+		};
+
+		var currentLinks = quickLinks[currentMode] || quickLinks.direct;
+
+		var btnStyle = 'display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.75rem; border-radius: 6px; border: 1px solid var(--cyber-border, #444); background: var(--cyber-bg-tertiary, #16213e); color: var(--cyber-text-primary, #fff); font-size: 0.8em; text-decoration: none; cursor: pointer; transition: all 0.2s;';
+
+		return E('div', { 'class': 'sb-proxy-switcher', 'style': 'margin: 1.5rem 0; padding: 1rem; background: var(--cyber-bg-secondary, #1a1a2e); border-radius: 12px; border: 1px solid var(--cyber-border, #333);' }, [
+			E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;' }, [
+				E('span', { 'style': 'font-size: 1.2em;' }, '🔀'),
+				E('h4', { 'style': 'margin: 0; color: var(--cyber-text-primary, #fff);' }, 'Network Proxy Mode'),
+				E('span', { 'style': 'margin-left: auto; font-size: 0.8em; color: var(--cyber-text-secondary, #888);' }, 'WPAD auto-config enabled')
+			]),
+			E('div', { 'class': 'sb-proxy-modes', 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem;' },
+				modes.map(function(mode) {
+					var isActive = currentMode === mode.id;
+					return E('button', {
+						'class': 'sb-proxy-mode-btn' + (isActive ? ' active' : ''),
+						'data-mode': mode.id,
+						'style': 'display: flex; flex-direction: column; align-items: center; padding: 0.75rem; border-radius: 8px; border: 2px solid ' + (isActive ? 'var(--cyber-accent, #0ff)' : 'var(--cyber-border, #333)') + '; background: ' + (isActive ? 'rgba(0, 255, 255, 0.1)' : 'var(--cyber-bg-tertiary, #16213e)') + '; cursor: pointer; transition: all 0.2s;',
+						'click': function() { self.handleProxyModeChange(mode.id); }
+					}, [
+						E('span', { 'style': 'font-size: 1.5em; margin-bottom: 0.25rem;' }, mode.icon),
+						E('span', { 'style': 'font-weight: 600; color: ' + (isActive ? 'var(--cyber-accent, #0ff)' : 'var(--cyber-text-primary, #fff)') + ';' }, mode.name),
+						E('span', { 'style': 'font-size: 0.7em; color: var(--cyber-text-secondary, #888); text-align: center; margin-top: 0.25rem;' }, mode.desc)
+					]);
+				})
+			),
+			// Quick Access Buttons
+			E('div', { 'class': 'sb-proxy-quick-access', 'style': 'display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--cyber-border, #333);' }, [
+				E('span', { 'style': 'font-size: 0.75em; color: var(--cyber-text-secondary, #888); margin-right: 0.5rem; align-self: center;' }, 'Quick Access:')
+			].concat(currentLinks.map(function(link) {
+				if (link.external) {
+					return E('a', {
+						'href': link.external,
+						'target': '_blank',
+						'style': btnStyle
+					}, [
+						E('span', {}, link.icon),
+						E('span', {}, link.label)
+					]);
+				} else if (link.path) {
+					return E('a', {
+						'href': L.url(link.path),
+						'style': btnStyle
+					}, [
+						E('span', {}, link.icon),
+						E('span', {}, link.label)
+					]);
+				}
+				return null;
+			}).filter(Boolean)))
+		]);
+	},
+
+	renderSpeedTestWidget: function() {
+		var self = this;
+
+		return E('div', { 'class': 'sb-speedtest-widget', 'style': 'margin: 1.5rem 0; padding: 1.25rem; background: var(--cyber-bg-secondary, #1a1a2e); border-radius: 12px; border: 1px solid var(--cyber-border, #333);' }, [
+			E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;' }, [
+				E('span', { 'style': 'font-size: 1.2em;' }, '🚀'),
+				E('h4', { 'style': 'margin: 0; color: var(--cyber-text-primary, #fff);' }, 'Speed Test'),
+				E('span', { 'style': 'margin-left: auto; font-size: 0.75em; color: var(--cyber-text-secondary, #888);' }, 'Test your connection speed')
+			]),
+			E('div', { 'class': 'sb-speedtest-results', 'style': 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1rem;' }, [
+				E('div', { 'class': 'sb-speedtest-metric', 'style': 'text-align: center; padding: 1rem; background: var(--cyber-bg-tertiary, #16213e); border-radius: 8px;' }, [
+					E('div', { 'style': 'font-size: 0.75em; color: var(--cyber-text-secondary, #888); margin-bottom: 0.25rem;' }, '⬇️ Download'),
+					E('div', { 'id': 'speedtest-download', 'style': 'font-size: 1.5em; font-weight: bold; color: #10b981;' }, '-- Mbps'),
+					E('div', { 'id': 'speedtest-download-progress', 'style': 'height: 4px; background: #333; border-radius: 2px; margin-top: 0.5rem; overflow: hidden;' }, [
+						E('div', { 'style': 'height: 100%; width: 0%; background: linear-gradient(90deg, #10b981, #0ff); transition: width 0.3s;' })
+					])
+				]),
+				E('div', { 'class': 'sb-speedtest-metric', 'style': 'text-align: center; padding: 1rem; background: var(--cyber-bg-tertiary, #16213e); border-radius: 8px;' }, [
+					E('div', { 'style': 'font-size: 0.75em; color: var(--cyber-text-secondary, #888); margin-bottom: 0.25rem;' }, '⬆️ Upload'),
+					E('div', { 'id': 'speedtest-upload', 'style': 'font-size: 1.5em; font-weight: bold; color: #8b5cf6;' }, '-- Mbps'),
+					E('div', { 'id': 'speedtest-upload-progress', 'style': 'height: 4px; background: #333; border-radius: 2px; margin-top: 0.5rem; overflow: hidden;' }, [
+						E('div', { 'style': 'height: 100%; width: 0%; background: linear-gradient(90deg, #8b5cf6, #ec4899); transition: width 0.3s;' })
+					])
+				]),
+				E('div', { 'class': 'sb-speedtest-metric', 'style': 'text-align: center; padding: 1rem; background: var(--cyber-bg-tertiary, #16213e); border-radius: 8px;' }, [
+					E('div', { 'style': 'font-size: 0.75em; color: var(--cyber-text-secondary, #888); margin-bottom: 0.25rem;' }, '📶 Ping'),
+					E('div', { 'id': 'speedtest-ping', 'style': 'font-size: 1.5em; font-weight: bold; color: #f59e0b;' }, '-- ms'),
+					E('div', { 'id': 'speedtest-jitter', 'style': 'font-size: 0.7em; color: var(--cyber-text-secondary, #888); margin-top: 0.25rem;' }, 'Jitter: -- ms')
+				])
+			]),
+			E('div', { 'style': 'display: flex; align-items: center; gap: 1rem;' }, [
+				E('button', {
+					'id': 'speedtest-btn',
+					'class': 'sb-speedtest-btn',
+					'style': 'flex: 1; padding: 0.75rem 1.5rem; border-radius: 8px; border: none; background: linear-gradient(135deg, #0ff, #00a0a0); color: #000; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 1em;',
+					'click': function(ev) { self.runSpeedTest(ev.target); }
+				}, '▶️ Start Speed Test'),
+				E('select', {
+					'id': 'speedtest-server',
+					'style': 'padding: 0.75rem; border-radius: 8px; border: 1px solid var(--cyber-border, #333); background: var(--cyber-bg-tertiary, #16213e); color: var(--cyber-text-primary, #fff);'
+				}, [
+					E('option', { 'value': 'cloudflare' }, 'Cloudflare'),
+					E('option', { 'value': 'fast' }, 'Fast.com (Netflix)'),
+					E('option', { 'value': 'local' }, 'Local (Router)')
+				])
+			]),
+			E('div', { 'id': 'speedtest-status', 'style': 'margin-top: 0.75rem; font-size: 0.8em; color: var(--cyber-text-secondary, #888); text-align: center;' }, 'Ready to test')
+		]);
+	},
+
+	runSpeedTest: function(btn) {
+		var self = this;
+		var server = document.getElementById('speedtest-server').value;
+		var statusEl = document.getElementById('speedtest-status');
+		var downloadEl = document.getElementById('speedtest-download');
+		var uploadEl = document.getElementById('speedtest-upload');
+		var pingEl = document.getElementById('speedtest-ping');
+		var jitterEl = document.getElementById('speedtest-jitter');
+		var dlProgress = document.querySelector('#speedtest-download-progress > div');
+		var ulProgress = document.querySelector('#speedtest-upload-progress > div');
+
+		// Disable button during test
+		btn.disabled = true;
+		btn.textContent = '⏳ Testing...';
+		btn.style.opacity = '0.7';
+
+		// Reset values
+		downloadEl.textContent = '-- Mbps';
+		uploadEl.textContent = '-- Mbps';
+		pingEl.textContent = '-- ms';
+		jitterEl.textContent = 'Jitter: -- ms';
+		dlProgress.style.width = '0%';
+		ulProgress.style.width = '0%';
+
+		// Test endpoints based on server selection
+		var testUrls = {
+			cloudflare: {
+				download: 'https://speed.cloudflare.com/__down?bytes=10000000',
+				upload: 'https://speed.cloudflare.com/__up',
+				ping: 'https://speed.cloudflare.com/__down?bytes=0'
+			},
+			fast: {
+				download: 'https://api.fast.com/netflix/speedtest/v2?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=1',
+				ping: 'https://api.fast.com/netflix/speedtest/v2?https=true&token=YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm&urlCount=1'
+			},
+			local: {
+				download: '/cgi-bin/luci/admin/status/realtime/bandwidth_status',
+				ping: '/cgi-bin/luci/'
+			}
+		};
+
+		var urls = testUrls[server] || testUrls.cloudflare;
+
+		// Measure ping first
+		statusEl.textContent = '📡 Measuring latency...';
+		var pingStart = performance.now();
+		var pings = [];
+
+		var measurePing = function(attempts) {
+			if (attempts <= 0) {
+				var avgPing = pings.reduce(function(a, b) { return a + b; }, 0) / pings.length;
+				var jitter = Math.max.apply(null, pings) - Math.min.apply(null, pings);
+				pingEl.textContent = avgPing.toFixed(0) + ' ms';
+				jitterEl.textContent = 'Jitter: ' + jitter.toFixed(0) + ' ms';
+				runDownloadTest();
+				return;
+			}
+
+			var start = performance.now();
+			fetch(urls.ping, { method: 'HEAD', cache: 'no-store', mode: 'no-cors' })
+				.then(function() {
+					pings.push(performance.now() - start);
+					measurePing(attempts - 1);
+				})
+				.catch(function() {
+					pings.push(performance.now() - start);
+					measurePing(attempts - 1);
+				});
+		};
+
+		var runDownloadTest = function() {
+			statusEl.textContent = '⬇️ Testing download speed...';
+
+			if (server === 'fast') {
+				// Fast.com requires API call first
+				downloadEl.textContent = 'N/A';
+				dlProgress.style.width = '100%';
+				runUploadTest();
+				return;
+			}
+
+			var downloadStart = performance.now();
+			var receivedBytes = 0;
+			var downloadSize = server === 'local' ? 100000 : 10000000; // 10MB for cloudflare
+
+			fetch(urls.download, { cache: 'no-store' })
+				.then(function(response) {
+					var reader = response.body.getReader();
+					var read = function() {
+						return reader.read().then(function(result) {
+							if (result.done) {
+								var duration = (performance.now() - downloadStart) / 1000;
+								var speedBps = (receivedBytes * 8) / duration;
+								var speedMbps = speedBps / 1000000;
+								downloadEl.textContent = speedMbps.toFixed(2) + ' Mbps';
+								dlProgress.style.width = '100%';
+								runUploadTest();
+								return;
+							}
+							receivedBytes += result.value.length;
+							var progress = Math.min((receivedBytes / downloadSize) * 100, 100);
+							dlProgress.style.width = progress + '%';
+							return read();
+						});
+					};
+					return read();
+				})
+				.catch(function(err) {
+					downloadEl.textContent = 'Error';
+					dlProgress.style.width = '100%';
+					runUploadTest();
+				});
+		};
+
+		var runUploadTest = function() {
+			statusEl.textContent = '⬆️ Testing upload speed...';
+
+			if (server !== 'cloudflare') {
+				uploadEl.textContent = 'N/A';
+				ulProgress.style.width = '100%';
+				finishTest();
+				return;
+			}
+
+			var uploadSize = 2000000; // 2MB
+			var uploadData = new Uint8Array(uploadSize);
+			var uploadStart = performance.now();
+
+			fetch(urls.upload, {
+				method: 'POST',
+				body: uploadData,
+				cache: 'no-store'
+			})
+				.then(function() {
+					var duration = (performance.now() - uploadStart) / 1000;
+					var speedBps = (uploadSize * 8) / duration;
+					var speedMbps = speedBps / 1000000;
+					uploadEl.textContent = speedMbps.toFixed(2) + ' Mbps';
+					ulProgress.style.width = '100%';
+					finishTest();
+				})
+				.catch(function(err) {
+					uploadEl.textContent = 'Error';
+					ulProgress.style.width = '100%';
+					finishTest();
+				});
+		};
+
+		var finishTest = function() {
+			statusEl.textContent = '✅ Test complete - ' + new Date().toLocaleTimeString();
+			btn.disabled = false;
+			btn.textContent = '▶️ Start Speed Test';
+			btn.style.opacity = '1';
+		};
+
+		// Start with ping measurement (5 attempts)
+		measurePing(5);
+	},
+
+	handleProxyModeChange: function(mode) {
+		var self = this;
+		var buttons = document.querySelectorAll('.sb-proxy-mode-btn');
+
+		// Visual feedback - disable all buttons
+		buttons.forEach(function(btn) {
+			btn.disabled = true;
+			btn.style.opacity = '0.6';
+		});
+
+		return callSetProxyMode(mode).then(function(result) {
+			if (result && result.success) {
+				// Update UI
+				self.proxyMode = { mode: mode };
+				buttons.forEach(function(btn) {
+					var isActive = btn.dataset.mode === mode;
+					btn.classList.toggle('active', isActive);
+					btn.style.borderColor = isActive ? 'var(--cyber-accent, #0ff)' : 'var(--cyber-border, #333)';
+					btn.style.background = isActive ? 'rgba(0, 255, 255, 0.1)' : 'var(--cyber-bg-tertiary, #16213e)';
+					var nameSpan = btn.querySelector('span:nth-child(2)');
+					if (nameSpan) {
+						nameSpan.style.color = isActive ? 'var(--cyber-accent, #0ff)' : 'var(--cyber-text-primary, #fff)';
+					}
+					btn.disabled = false;
+					btn.style.opacity = '1';
+				});
+				ui.addNotification(null, E('p', {}, 'Proxy mode changed to: ' + mode), 'info');
+			} else {
+				ui.addNotification(null, E('p', {}, 'Failed to change proxy mode: ' + (result.error || 'unknown error')), 'error');
+				buttons.forEach(function(btn) {
+					btn.disabled = false;
+					btn.style.opacity = '1';
+				});
+			}
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', {}, 'Error changing proxy mode: ' + err.message), 'error');
+			buttons.forEach(function(btn) {
+				btn.disabled = false;
+				btn.style.opacity = '1';
+			});
+		});
 	},
 
 	handleSaveApply: null,

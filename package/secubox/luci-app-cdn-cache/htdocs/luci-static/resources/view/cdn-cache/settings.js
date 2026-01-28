@@ -138,11 +138,13 @@ return view.extend({
 		o.datatype = 'uinteger';
 		o.default = '60';
 
-		return E('div', { 'class': 'cdn-settings-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
-			CdnNav.renderTabs('settings'),
-			m.render()
-		]);
+		return m.render().then(function(formEl) {
+			return E('div', { 'class': 'cdn-settings-page' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
+				CdnNav.renderTabs('settings'),
+				formEl
+			]);
+		});
 	}
 });

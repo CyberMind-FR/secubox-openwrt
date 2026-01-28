@@ -8,6 +8,30 @@ USE_PROCD=1
 
 NAME="haproxy"
 PROG="/usr/sbin/haproxyctl"
+ACME_WEBROOT="/var/www/acme-challenge"
+ACME_PORT="8402"
+
+# Setup ACME challenge webserver for certificate issuance
+# HAProxy routes /.well-known/acme-challenge/ to this server
+setup_acme_webserver() {
+	# Create ACME challenge directory
+	mkdir -p "$ACME_WEBROOT/.well-known/acme-challenge"
+	chmod -R 755 "$ACME_WEBROOT"
+
+	# Configure uhttpd instance for ACME if not exists
+	if ! uci -q get uhttpd.acme >/dev/null 2>&1; then
+		uci set uhttpd.acme=uhttpd
+		uci set uhttpd.acme.listen_http="0.0.0.0:$ACME_PORT"
+		uci set uhttpd.acme.home="$ACME_WEBROOT"
+		uci commit uhttpd
+		/etc/init.d/uhttpd restart 2>/dev/null || true
+	fi
+
+	# Ensure uhttpd is listening on ACME port
+	if ! netstat -tln 2>/dev/null | grep -q ":$ACME_PORT "; then
+		/etc/init.d/uhttpd restart 2>/dev/null || true
+	fi
+}
 
 start_service() {
 	local enabled
@@ -15,6 +39,9 @@ start_service() {
 	config_get enabled main enabled '0'
 
 	[ "$enabled" = "1" ] || return 0
+
+	# Ensure ACME challenge webserver is configured and running
+	setup_acme_webserver
 
 	# Sync ACME certificates to HAProxy format before starting
 	/usr/sbin/haproxy-sync-certs 2>/dev/null || true
