@@ -34,6 +34,12 @@ var callGetServices = rpc.declare({
 	expect: { services: [] }
 });
 
+var callDashboardData = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_dashboard_data',
+	expect: { counts: {} }
+});
+
 return view.extend({
 	currentSection: 'dashboard',
 	appStatuses: {},
@@ -48,10 +54,13 @@ return view.extend({
 			callCrowdSecStats().catch(function() { return null; }),
 			portal.checkInstalledApps(),
 			callGetServices().catch(function() { return []; }),
-			callSecurityStats().catch(function() { return null; })
+			callSecurityStats().catch(function() { return null; }),
+			callDashboardData().catch(function() { return { counts: {} }; })
 		]).then(function(results) {
 			// Store installed apps info from the last promise
 			self.installedApps = results[4] || {};
+			// Store dashboard counts from RPCD (reliable source)
+			self.dashboardCounts = results[7] || {};
 			// RPC expect unwraps the services array directly
 			var svcResult = results[5] || [];
 			self.detectedServices = Array.isArray(svcResult) ? svcResult : (svcResult.services || []);
@@ -244,9 +253,10 @@ return view.extend({
 		var networkApps = portal.getAppsBySection('network');
 		var monitoringApps = portal.getAppsBySection('monitoring');
 
-		// Count running services
-		var runningCount = Object.values(this.appStatuses).filter(function(s) { return s === 'running'; }).length;
-		var totalServices = Object.keys(this.appStatuses).length;
+		// Count running services - prefer RPCD counts (reliable), fallback to local check
+		var counts = this.dashboardCounts || {};
+		var runningCount = counts.running || Object.values(this.appStatuses).filter(function(s) { return s === 'running'; }).length;
+		var totalServices = counts.total || Object.keys(this.appStatuses).length;
 
 		// CrowdSec blocked IPs count
 		var blockedIPv4 = (crowdSecStats.ipv4_total_count || 0);

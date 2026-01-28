@@ -164,7 +164,9 @@
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(nc:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(python3 -m json.tool:*)",
+      "Bash(git restore:*)"
     ]
   }
 }

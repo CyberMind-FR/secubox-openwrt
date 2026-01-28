@@ -1,0 +1,63 @@
+{
+	"luci-app-service-registry": {
+		"description": "Grant access to Service Registry",
+		"read": {
+			"ubus": {
+				"luci.service-registry": [
+					"list_services",
+					"get_service",
+					"list_categories",
+					"get_qr_data",
+					"get_certificate_status",
+					"check_service_health",
+					"check_all_health",
+					"get_network_info",
+					"get_landing_config"
+				],
+				"luci.haproxy": [
+					"status",
+					"list_vhosts",
+					"list_backends",
+					"list_certificates"
+				],
+				"luci.tor-shield": [
+					"status",
+					"hidden_services"
+				],
+				"luci.secubox": [
+					"get_services"
+				]
+			},
+			"uci": ["service-registry", "haproxy", "tor-shield"]
+		},
+		"write": {
+			"ubus": {
+				"luci.service-registry": [
+					"publish_service",
+					"unpublish_service",
+					"sync_providers",
+					"generate_landing_page",
+					"update_service",
+					"delete_service",
+					"save_landing_config"
+				],
+				"luci.haproxy": [
+					"create_vhost",
+					"create_backend",
+					"create_server",
+					"request_certificate",
+					"delete_vhost",
+					"delete_backend"
+				],
+				"luci.tor-shield": [
+					"add_hidden_service",
+					"remove_hidden_service"
+				]
+			},
+			"uci": ["service-registry"],
+			"file": {
+				"/www/secubox-services.html": ["write"]
+			}
+		}
+	}
+}

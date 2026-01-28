@@ -1,0 +1,1550 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Service Registry RPCD backend
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+UCI_CONFIG="service-registry"
+TOR_DATA="/var/lib/tor"
+LAN_IP="192.168.255.1"
+
+# Helper: Get UCI value
+get_uci() {
+	local section="$1"
+	local option="$2"
+	local default="$3"
+	local value
+	value=$(uci -q get "$UCI_CONFIG.$section.$option")
+	echo "${value:-$default}"
+}
+
+# Helper: Get LAN IP address
+get_lan_ip() {
+	local ip
+	ip=$(uci -q get network.lan.ipaddr)
+	[ -z "$ip" ] && ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+	echo "${ip:-$LAN_IP}"
+}
+
+# Helper: Check if port is listening
+is_port_listening() {
+	local port="$1"
+	netstat -tln 2>/dev/null | grep -q ":${port} " && return 0
+	return 1
+}
+
+# Helper: Get process name for port
+get_process_for_port() {
+	local port="$1"
+	netstat -tlnp 2>/dev/null | grep ":${port} " | awk '{print $7}' | cut -d'/' -f2 | head -1
+}
+
+# Helper: Ensure firewall rules for HAProxy (HTTP/HTTPS from WAN)
+ensure_haproxy_firewall_rules() {
+	local http_port="${1:-80}"
+	local https_port="${2:-443}"
+	local changed=0
+
+	# Check and create HTTP rule
+	local http_exists=0
+	local i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		[ "$name" = "HAProxy-HTTP" ] && http_exists=1 && break
+		i=$((i + 1))
+	done
+
+	if [ "$http_exists" = "0" ]; then
+		uci add firewall rule >/dev/null
+		uci set firewall.@rule[-1].name='HAProxy-HTTP'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="$http_port"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci set firewall.@rule[-1].enabled='1'
+		changed=1
+	fi
+
+	# Check and create HTTPS rule
+	local https_exists=0
+	i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		[ "$name" = "HAProxy-HTTPS" ] && https_exists=1 && break
+		i=$((i + 1))
+	done
+
+	if [ "$https_exists" = "0" ]; then
+		uci add firewall rule >/dev/null
+		uci set firewall.@rule[-1].name='HAProxy-HTTPS'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="$https_port"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci set firewall.@rule[-1].enabled='1'
+		changed=1
+	fi
+
+	# Apply firewall changes
+	if [ "$changed" = "1" ]; then
+		uci commit firewall
+		/etc/init.d/firewall reload >/dev/null 2>&1 &
+	fi
+}
+
+# List all services aggregated from providers
+method_list_services() {
+	local lan_ip
+	lan_ip=$(get_lan_ip)
+
+	json_init
+	json_add_array "services"
+
+	# Temporary file for service aggregation (avoid subshell issues)
+	local TMP_SERVICES="/tmp/sr_services_$$"
+	> "$TMP_SERVICES"
+
+	# 1. Get published services from UCI
+	config_load "$UCI_CONFIG"
+	config_foreach _add_published_service service "$lan_ip" "$TMP_SERVICES"
+
+	# 2. Get HAProxy vhosts
+	local haproxy_enabled
+	haproxy_enabled=$(get_uci haproxy enabled 1)
+	if [ "$haproxy_enabled" = "1" ]; then
+		_aggregate_haproxy_services "$lan_ip" "$TMP_SERVICES"
+	fi
+
+	# 3. Get Tor hidden services
+	local tor_enabled
+	tor_enabled=$(get_uci tor enabled 1)
+	if [ "$tor_enabled" = "1" ]; then
+		_aggregate_tor_services "$TMP_SERVICES"
+	fi
+
+	# 4. Get direct listening services (from luci.secubox)
+	local direct_enabled
+	direct_enabled=$(get_uci direct enabled 1)
+	if [ "$direct_enabled" = "1" ]; then
+		_aggregate_direct_services "$lan_ip" "$TMP_SERVICES"
+	fi
+
+	# 5. Get LXC container services
+	local lxc_enabled
+	lxc_enabled=$(get_uci lxc enabled 1)
+	if [ "$lxc_enabled" = "1" ]; then
+		_aggregate_lxc_services "$lan_ip" "$TMP_SERVICES"
+	fi
+
+	rm -f "$TMP_SERVICES"
+	json_close_array
+
+	# Provider status
+	json_add_object "providers"
+
+	json_add_object "haproxy"
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "stopped"
+	fi
+	local haproxy_count
+	haproxy_count=$(uci -q show haproxy | grep -c "=vhost$")
+	json_add_int "count" "${haproxy_count:-0}"
+	json_close_object
+
+	json_add_object "tor"
+	if pgrep -f "/usr/sbin/tor" >/dev/null 2>&1; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "stopped"
+	fi
+	local tor_count
+	tor_count=$(uci -q show tor-shield | grep -c "=hidden_service$")
+	json_add_int "count" "${tor_count:-0}"
+	json_close_object
+
+	json_add_object "direct"
+	local direct_count
+	direct_count=$(netstat -tln 2>/dev/null | grep -c LISTEN)
+	json_add_int "count" "${direct_count:-0}"
+	json_close_object
+
+	json_add_object "lxc"
+	local lxc_running
+	lxc_running=$(lxc-ls --running 2>/dev/null | wc -w)
+	json_add_int "count" "${lxc_running:-0}"
+	json_close_object
+
+	json_close_object
+
+	json_dump
+}
+
+# Add published service from UCI
+_add_published_service() {
+	local section="$1"
+	local lan_ip="$2"
+	local tmp_file="$3"
+	local name category icon local_port published
+	local haproxy_enabled haproxy_domain haproxy_ssl
+	local tor_enabled tor_onion tor_port
+
+	config_get name "$section" name "$section"
+	config_get category "$section" category "services"
+	config_get icon "$section" icon ""
+	config_get local_port "$section" local_port ""
+	config_get published "$section" published "0"
+
+	[ "$published" != "1" ] && return
+	[ -z "$local_port" ] && return
+
+	config_get haproxy_enabled "$section" haproxy_enabled "0"
+	config_get haproxy_domain "$section" haproxy_domain ""
+	config_get haproxy_ssl "$section" haproxy_ssl "0"
+	config_get tor_enabled "$section" tor_enabled "0"
+	config_get tor_onion "$section" tor_onion ""
+	config_get tor_port "$section" tor_port "80"
+
+	# Check if service is running
+	local status="stopped"
+	is_port_listening "$local_port" && status="running"
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_string "category" "$category"
+	json_add_string "icon" "$icon"
+	json_add_int "local_port" "$local_port"
+	json_add_string "status" "$status"
+	json_add_boolean "published" 1
+
+	# URLs
+	json_add_object "urls"
+	json_add_string "local" "http://${lan_ip}:${local_port}"
+	[ "$haproxy_enabled" = "1" ] && [ -n "$haproxy_domain" ] && {
+		if [ "$haproxy_ssl" = "1" ]; then
+			json_add_string "clearnet" "https://${haproxy_domain}"
+		else
+			json_add_string "clearnet" "http://${haproxy_domain}"
+		fi
+	}
+	[ "$tor_enabled" = "1" ] && [ -n "$tor_onion" ] && {
+		json_add_string "onion" "http://${tor_onion}:${tor_port}"
+	}
+	json_close_object
+
+	# HAProxy config
+	json_add_object "haproxy"
+	json_add_boolean "enabled" "$haproxy_enabled"
+	[ -n "$haproxy_domain" ] && json_add_string "domain" "$haproxy_domain"
+	json_add_boolean "ssl" "$haproxy_ssl"
+	json_close_object
+
+	# Tor config
+	json_add_object "tor"
+	json_add_boolean "enabled" "$tor_enabled"
+	[ -n "$tor_onion" ] && json_add_string "onion_address" "$tor_onion"
+	json_add_int "virtual_port" "$tor_port"
+	json_close_object
+
+	json_close_object
+
+	# Mark as processed
+	echo "$local_port" >> "$tmp_file"
+}
+
+# Aggregate HAProxy vhosts
+_aggregate_haproxy_services() {
+	local lan_ip="$1"
+	local tmp_file="$2"
+
+	# Call HAProxy RPCD to get vhosts and backends
+	local vhosts_json backends_json certs_json
+	vhosts_json=$(ubus call luci.haproxy list_vhosts 2>/dev/null)
+	[ -z "$vhosts_json" ] && return
+
+	backends_json=$(ubus call luci.haproxy list_backends 2>/dev/null)
+	certs_json=$(ubus call luci.haproxy list_certificates 2>/dev/null)
+
+	# Get array length
+	local count
+	count=$(echo "$vhosts_json" | jsonfilter -e '@.vhosts[*].domain' 2>/dev/null | wc -l)
+	[ "$count" -eq 0 ] && return
+
+	local i=0
+	while [ $i -lt "$count" ]; do
+		local id domain backend ssl ssl_redirect acme enabled
+		id=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].id" 2>/dev/null)
+		domain=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].domain" 2>/dev/null)
+		backend=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].backend" 2>/dev/null)
+		ssl=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].ssl" 2>/dev/null)
+		ssl_redirect=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].ssl_redirect" 2>/dev/null)
+		acme=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].acme" 2>/dev/null)
+		enabled=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].enabled" 2>/dev/null)
+
+		i=$((i + 1))
+
+		# Skip if domain empty or disabled
+		[ -z "$domain" ] && continue
+
+		# Check if already processed
+		grep -q "^haproxy_${domain}$" "$tmp_file" 2>/dev/null && continue
+
+		# Get backend port from servers
+		local backend_port=""
+		if [ -n "$backends_json" ] && [ -n "$backend" ]; then
+			backend_port=$(echo "$backends_json" | jsonfilter -e "@.backends[@.name='$backend'].servers[0].port" 2>/dev/null)
+			[ -z "$backend_port" ] && backend_port=$(echo "$backends_json" | jsonfilter -e "@.backends[@.id='$backend'].servers[0].port" 2>/dev/null)
+		fi
+
+		# Check certificate status
+		local cert_status="none"
+		if [ "$ssl" = "true" ] || [ "$ssl" = "1" ]; then
+			if [ "$acme" = "true" ] || [ "$acme" = "1" ]; then
+				cert_status="acme"
+			else
+				cert_status="manual"
+			fi
+		fi
+
+		# Determine status based on enabled and HAProxy running
+		local status="stopped"
+		if [ "$enabled" = "true" ] || [ "$enabled" = "1" ]; then
+			# Check if HAProxy container is running
+			if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+				status="running"
+			fi
+		else
+			status="disabled"
+		fi
+
+		json_add_object
+		json_add_string "id" "$id"
+		json_add_string "name" "$domain"
+		json_add_string "category" "proxy"
+		json_add_string "icon" "arrow"
+		json_add_string "status" "$status"
+		json_add_boolean "published" 1
+		json_add_string "source" "haproxy"
+
+		# URLs
+		json_add_object "urls"
+		json_add_string "local" "http://${lan_ip}${backend_port:+:$backend_port}"
+		if [ "$ssl" = "true" ] || [ "$ssl" = "1" ]; then
+			json_add_string "clearnet" "https://${domain}"
+		else
+			json_add_string "clearnet" "http://${domain}"
+		fi
+		json_close_object
+
+		# HAProxy details
+		json_add_object "haproxy"
+		json_add_string "id" "$id"
+		json_add_string "domain" "$domain"
+		json_add_string "backend" "$backend"
+		[ -n "$backend_port" ] && json_add_int "backend_port" "$backend_port"
+		if [ "$ssl" = "true" ] || [ "$ssl" = "1" ]; then
+			json_add_boolean "ssl" 1
+		else
+			json_add_boolean "ssl" 0
+		fi
+		if [ "$ssl_redirect" = "true" ] || [ "$ssl_redirect" = "1" ]; then
+			json_add_boolean "ssl_redirect" 1
+		else
+			json_add_boolean "ssl_redirect" 0
+		fi
+		if [ "$acme" = "true" ] || [ "$acme" = "1" ]; then
+			json_add_boolean "acme" 1
+		else
+			json_add_boolean "acme" 0
+		fi
+		if [ "$enabled" = "true" ] || [ "$enabled" = "1" ]; then
+			json_add_boolean "enabled" 1
+		else
+			json_add_boolean "enabled" 0
+		fi
+		json_add_string "cert_status" "$cert_status"
+		json_close_object
+
+		json_close_object
+
+		echo "haproxy_${domain}" >> "$tmp_file"
+	done
+}
+
+# Aggregate Tor hidden services
+_aggregate_tor_services() {
+	local tmp_file="$1"
+
+	# Get hidden services from tor-shield config
+	config_load "tor-shield"
+	config_foreach _add_tor_hidden_service hidden_service "$tmp_file"
+}
+
+_add_tor_hidden_service() {
+	local section="$1"
+	local tmp_file="$2"
+	local enabled name local_port virtual_port
+
+	config_get enabled "$section" enabled "0"
+	[ "$enabled" != "1" ] && return
+
+	config_get name "$section" name "$section"
+	config_get local_port "$section" local_port "80"
+	config_get virtual_port "$section" virtual_port "80"
+
+	# Check if already processed
+	grep -q "^tor_${name}$" "$tmp_file" 2>/dev/null && continue
+
+	# Get onion address
+	local hostname_file="$TOR_DATA/hidden_service_${name}/hostname"
+	local onion_addr=""
+	[ -f "$hostname_file" ] && onion_addr=$(cat "$hostname_file")
+
+	json_add_object
+	json_add_string "id" "tor_${name}"
+	json_add_string "name" "${name} (Tor)"
+	json_add_string "category" "privacy"
+	json_add_string "icon" "onion"
+	json_add_int "local_port" "$local_port"
+	json_add_string "status" "running"
+	json_add_boolean "published" 1
+	json_add_string "source" "tor"
+
+	json_add_object "urls"
+	[ -n "$onion_addr" ] && json_add_string "onion" "http://${onion_addr}:${virtual_port}"
+	json_close_object
+
+	json_add_object "tor"
+	json_add_boolean "enabled" 1
+	json_add_string "onion_address" "$onion_addr"
+	json_add_int "virtual_port" "$virtual_port"
+	json_close_object
+
+	json_close_object
+
+	echo "tor_${name}" >> "$tmp_file"
+}
+
+# Aggregate direct listening services
+_aggregate_direct_services() {
+	local lan_ip="$1"
+	local tmp_file="$2"
+
+	# Get services from luci.secubox get_services
+	local services_json
+	services_json=$(ubus call luci.secubox get_services 2>/dev/null)
+	[ -z "$services_json" ] && return
+
+	# Parse and add unpublished services
+	local count
+	count=$(echo "$services_json" | jsonfilter -e '@.services[*]' 2>/dev/null | wc -l)
+	local i=0
+
+	while [ $i -lt "$count" ]; do
+		local port name category icon external
+		port=$(echo "$services_json" | jsonfilter -e "@.services[$i].port" 2>/dev/null)
+		name=$(echo "$services_json" | jsonfilter -e "@.services[$i].name" 2>/dev/null)
+		category=$(echo "$services_json" | jsonfilter -e "@.services[$i].category" 2>/dev/null)
+		icon=$(echo "$services_json" | jsonfilter -e "@.services[$i].icon" 2>/dev/null)
+		external=$(echo "$services_json" | jsonfilter -e "@.services[$i].external" 2>/dev/null)
+
+		i=$((i + 1))
+
+		[ -z "$port" ] && continue
+		# Skip if already processed
+		grep -q "^${port}$" "$tmp_file" 2>/dev/null && continue
+
+		json_add_object
+		json_add_string "id" "direct_${port}"
+		json_add_string "name" "${name:-Port $port}"
+		json_add_string "category" "${category:-other}"
+		json_add_string "icon" "$icon"
+		json_add_int "local_port" "$port"
+		json_add_string "status" "running"
+		json_add_boolean "published" 0
+		json_add_string "source" "direct"
+
+		json_add_object "urls"
+		json_add_string "local" "http://${lan_ip}:${port}"
+		json_close_object
+
+		json_close_object
+
+		echo "$port" >> "$tmp_file"
+	done
+}
+
+# Aggregate LXC container services
+_aggregate_lxc_services() {
+	local lan_ip="$1"
+	local tmp_file="$2"
+
+	# Get running containers
+	local containers
+	containers=$(lxc-ls --running 2>/dev/null)
+	[ -z "$containers" ] && return
+
+	for container in $containers; do
+		# Skip if already processed
+		grep -q "^lxc_${container}$" "$tmp_file" 2>/dev/null && continue
+
+		# Get container IP
+		local container_ip
+		container_ip=$(lxc-info -n "$container" -iH 2>/dev/null | head -1)
+
+		json_add_object
+		json_add_string "id" "lxc_${container}"
+		json_add_string "name" "$container"
+		json_add_string "category" "container"
+		json_add_string "icon" "box"
+		json_add_string "status" "running"
+		json_add_boolean "published" 0
+		json_add_string "source" "lxc"
+
+		json_add_object "urls"
+		[ -n "$container_ip" ] && json_add_string "local" "http://${container_ip}"
+		json_close_object
+
+		json_add_object "container"
+		json_add_string "name" "$container"
+		[ -n "$container_ip" ] && json_add_string "ip" "$container_ip"
+		json_close_object
+
+		json_close_object
+
+		echo "lxc_${container}" >> "$tmp_file"
+	done
+}
+
+# Get single service
+method_get_service() {
+	local service_id
+
+	read -r input
+	json_load "$input"
+	json_get_var service_id service_id
+
+	json_init
+
+	if [ -z "$service_id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "service_id is required"
+		json_dump
+		return
+	fi
+
+	# Check if it's a published service
+	if uci -q get "$UCI_CONFIG.$service_id" >/dev/null 2>&1; then
+		local lan_ip
+		lan_ip=$(get_lan_ip)
+
+		json_add_boolean "success" 1
+		config_load "$UCI_CONFIG"
+		_add_published_service "$service_id" "$lan_ip" "/dev/null"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Service not found"
+	fi
+
+	json_dump
+}
+
+# Publish a service
+method_publish_service() {
+	local name local_port domain tor_enabled category icon
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+	json_get_var local_port local_port
+	json_get_var domain domain ""
+	json_get_var tor_enabled tor_enabled "0"
+	json_get_var category category "services"
+	json_get_var icon icon ""
+
+	json_init
+
+	if [ -z "$name" ] || [ -z "$local_port" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "name and local_port are required"
+		json_dump
+		return
+	fi
+
+	# Sanitize name for section ID
+	local section_id
+	section_id=$(echo "$name" | tr -cd 'a-zA-Z0-9_-' | tr '[:upper:]' '[:lower:]')
+
+	# Create UCI service entry
+	uci set "$UCI_CONFIG.$section_id=service"
+	uci set "$UCI_CONFIG.$section_id.name=$name"
+	uci set "$UCI_CONFIG.$section_id.local_port=$local_port"
+	uci set "$UCI_CONFIG.$section_id.category=$category"
+	[ -n "$icon" ] && uci set "$UCI_CONFIG.$section_id.icon=$icon"
+	uci set "$UCI_CONFIG.$section_id.published=1"
+
+	local lan_ip
+	lan_ip=$(get_lan_ip)
+	local urls_local="http://${lan_ip}:${local_port}"
+	local urls_clearnet=""
+	local urls_onion=""
+
+	# Create HAProxy vhost if domain specified
+	if [ -n "$domain" ]; then
+		# Ensure firewall allows HTTP/HTTPS from WAN (for public access + ACME)
+		ensure_haproxy_firewall_rules
+
+		# Create backend
+		ubus call luci.haproxy create_backend "{\"name\":\"$section_id\",\"mode\":\"http\"}" 2>/dev/null
+
+		# Create server pointing to local port
+		ubus call luci.haproxy create_server "{\"backend\":\"$section_id\",\"name\":\"local\",\"address\":\"127.0.0.1\",\"port\":$local_port}" 2>/dev/null
+
+		# Create vhost with SSL
+		ubus call luci.haproxy create_vhost "{\"domain\":\"$domain\",\"backend\":\"$section_id\",\"ssl\":1,\"ssl_redirect\":1,\"acme\":1,\"enabled\":1}" 2>/dev/null
+
+		# Regenerate HAProxy config to include the new vhost
+		ubus call luci.haproxy generate 2>/dev/null
+		ubus call luci.haproxy reload 2>/dev/null
+
+		uci set "$UCI_CONFIG.$section_id.haproxy_enabled=1"
+		uci set "$UCI_CONFIG.$section_id.haproxy_domain=$domain"
+		uci set "$UCI_CONFIG.$section_id.haproxy_ssl=1"
+
+		urls_clearnet="https://${domain}"
+	fi
+
+	# Create Tor hidden service if enabled
+	if [ "$tor_enabled" = "1" ]; then
+		ubus call luci.tor-shield add_hidden_service "{\"name\":\"$section_id\",\"local_port\":$local_port,\"virtual_port\":80}" 2>/dev/null
+
+		uci set "$UCI_CONFIG.$section_id.tor_enabled=1"
+		uci set "$UCI_CONFIG.$section_id.tor_port=80"
+
+		# Wait for onion address (max 5 seconds)
+		local wait_count=0
+		local onion_addr=""
+		while [ $wait_count -lt 5 ]; do
+			sleep 1
+			local hostname_file="$TOR_DATA/hidden_service_${section_id}/hostname"
+			if [ -f "$hostname_file" ]; then
+				onion_addr=$(cat "$hostname_file")
+				break
+			fi
+			wait_count=$((wait_count + 1))
+		done
+
+		if [ -n "$onion_addr" ]; then
+			uci set "$UCI_CONFIG.$section_id.tor_onion=$onion_addr"
+			urls_onion="http://${onion_addr}:80"
+		fi
+	fi
+
+	uci commit "$UCI_CONFIG"
+
+	# Regenerate landing page if auto-regen enabled
+	local auto_regen
+	auto_regen=$(get_uci main landing_auto_regen 1)
+	[ "$auto_regen" = "1" ] && /usr/sbin/secubox-landing-gen >/dev/null 2>&1 &
+
+	json_add_boolean "success" 1
+	json_add_string "id" "$section_id"
+	json_add_string "name" "$name"
+
+	json_add_object "urls"
+	json_add_string "local" "$urls_local"
+	[ -n "$urls_clearnet" ] && json_add_string "clearnet" "$urls_clearnet"
+	[ -n "$urls_onion" ] && json_add_string "onion" "$urls_onion"
+	json_close_object
+
+	json_dump
+}
+
+# Unpublish a service
+method_unpublish_service() {
+	local service_id
+
+	read -r input
+	json_load "$input"
+	json_get_var service_id service_id
+
+	json_init
+
+	if [ -z "$service_id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "service_id is required"
+		json_dump
+		return
+	fi
+
+	# Check if service exists
+	if ! uci -q get "$UCI_CONFIG.$service_id" >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Service not found"
+		json_dump
+		return
+	fi
+
+	# Get service config
+	config_load "$UCI_CONFIG"
+	local haproxy_enabled haproxy_domain tor_enabled
+	config_get haproxy_enabled "$service_id" haproxy_enabled "0"
+	config_get haproxy_domain "$service_id" haproxy_domain ""
+	config_get tor_enabled "$service_id" tor_enabled "0"
+
+	# Remove HAProxy vhost
+	if [ "$haproxy_enabled" = "1" ] && [ -n "$haproxy_domain" ]; then
+		local vhost_id
+		vhost_id=$(echo "$haproxy_domain" | sed 's/[^a-zA-Z0-9]/_/g')
+		ubus call luci.haproxy delete_vhost "{\"id\":\"$vhost_id\"}" 2>/dev/null
+		ubus call luci.haproxy delete_backend "{\"id\":\"$service_id\"}" 2>/dev/null
+	fi
+
+	# Remove Tor hidden service
+	if [ "$tor_enabled" = "1" ]; then
+		ubus call luci.tor-shield remove_hidden_service "{\"name\":\"$service_id\"}" 2>/dev/null
+	fi
+
+	# Remove UCI entry
+	uci delete "$UCI_CONFIG.$service_id"
+	uci commit "$UCI_CONFIG"
+
+	# Regenerate landing page
+	local auto_regen
+	auto_regen=$(get_uci main landing_auto_regen 1)
+	[ "$auto_regen" = "1" ] && /usr/sbin/secubox-landing-gen >/dev/null 2>&1 &
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Service unpublished"
+
+	json_dump
+}
+
+# Update service
+method_update_service() {
+	local service_id name category icon
+
+	read -r input
+	json_load "$input"
+	json_get_var service_id service_id
+	json_get_var name name ""
+	json_get_var category category ""
+	json_get_var icon icon ""
+
+	json_init
+
+	if [ -z "$service_id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "service_id is required"
+		json_dump
+		return
+	fi
+
+	if ! uci -q get "$UCI_CONFIG.$service_id" >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Service not found"
+		json_dump
+		return
+	fi
+
+	[ -n "$name" ] && uci set "$UCI_CONFIG.$service_id.name=$name"
+	[ -n "$category" ] && uci set "$UCI_CONFIG.$service_id.category=$category"
+	[ -n "$icon" ] && uci set "$UCI_CONFIG.$service_id.icon=$icon"
+	uci commit "$UCI_CONFIG"
+
+	json_add_boolean "success" 1
+
+	json_dump
+}
+
+# Delete service
+method_delete_service() {
+	method_unpublish_service
+}
+
+# Sync providers (refresh data)
+method_sync_providers() {
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Providers synced"
+	json_dump
+}
+
+# Generate landing page
+method_generate_landing_page() {
+	json_init
+
+	local result
+	result=$(/usr/sbin/secubox-landing-gen 2>&1)
+	local rc=$?
+
+	if [ $rc -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Landing page generated"
+		json_add_string "path" "$(get_uci main landing_path '/www/secubox-services.html')"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "$result"
+	fi
+
+	json_dump
+}
+
+# Get QR code data for a URL
+method_get_qr_data() {
+	local service_id url_type
+
+	read -r input
+	json_load "$input"
+	json_get_var service_id service_id
+	json_get_var url_type url_type "local"
+
+	json_init
+
+	if [ -z "$service_id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "service_id is required"
+		json_dump
+		return
+	fi
+
+	# Get service URL
+	config_load "$UCI_CONFIG"
+	local lan_ip local_port haproxy_domain haproxy_ssl tor_onion
+	lan_ip=$(get_lan_ip)
+	config_get local_port "$service_id" local_port ""
+	config_get haproxy_domain "$service_id" haproxy_domain ""
+	config_get haproxy_ssl "$service_id" haproxy_ssl "0"
+	config_get tor_onion "$service_id" tor_onion ""
+
+	local url=""
+	case "$url_type" in
+		local)
+			[ -n "$local_port" ] && url="http://${lan_ip}:${local_port}"
+			;;
+		clearnet)
+			if [ -n "$haproxy_domain" ]; then
+				if [ "$haproxy_ssl" = "1" ]; then
+					url="https://${haproxy_domain}"
+				else
+					url="http://${haproxy_domain}"
+				fi
+			fi
+			;;
+		onion)
+			[ -n "$tor_onion" ] && url="http://${tor_onion}"
+			;;
+	esac
+
+	if [ -n "$url" ]; then
+		json_add_boolean "success" 1
+		json_add_string "url" "$url"
+		json_add_string "type" "$url_type"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "URL not available for type: $url_type"
+	fi
+
+	json_dump
+}
+
+# List categories
+method_list_categories() {
+	json_init
+	json_add_array "categories"
+
+	config_load "$UCI_CONFIG"
+	config_foreach _add_category category
+
+	json_close_array
+	json_dump
+}
+
+_add_category() {
+	local section="$1"
+	local name icon order
+
+	config_get name "$section" name "$section"
+	config_get icon "$section" icon ""
+	config_get order "$section" order "99"
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_string "icon" "$icon"
+	json_add_int "order" "$order"
+	json_close_object
+}
+
+# Helper: Check DNS resolution for a domain
+check_dns_resolution() {
+	local domain="$1"
+	local expected_ip="$2"
+
+	# Try nslookup first (most common on OpenWrt)
+	local resolved_ip
+	if command -v nslookup >/dev/null 2>&1; then
+		resolved_ip=$(nslookup "$domain" 2>/dev/null | grep -A1 "Name:" | grep "Address" | head -1 | awk '{print $2}')
+		[ -z "$resolved_ip" ] && resolved_ip=$(nslookup "$domain" 2>/dev/null | grep "Address" | tail -1 | awk '{print $2}' | grep -v "^$")
+	elif command -v host >/dev/null 2>&1; then
+		resolved_ip=$(host "$domain" 2>/dev/null | grep "has address" | head -1 | awk '{print $4}')
+	fi
+
+	if [ -n "$resolved_ip" ]; then
+		echo "$resolved_ip"
+		return 0
+	fi
+	return 1
+}
+
+# Helper: Get WAN IP address (local interface)
+get_wan_ip() {
+	local wan_ip=""
+	# Try to get WAN IP from interface
+	wan_ip=$(uci -q get network.wan.ipaddr)
+	if [ -z "$wan_ip" ]; then
+		# Try to get from ip command
+		wan_ip=$(ip -4 addr show dev eth0 2>/dev/null | grep -oE 'inet [0-9.]+' | head -1 | awk '{print $2}')
+	fi
+	if [ -z "$wan_ip" ]; then
+		# Try to get public IP (uses local IP for comparison)
+		wan_ip=$(ifconfig 2>/dev/null | grep -E "inet addr:[0-9]" | grep -v "127.0.0.1" | head -1 | sed 's/.*inet addr:\([0-9.]*\).*/\1/')
+	fi
+	echo "$wan_ip"
+}
+
+# Helper: Get public IPv4 address (from external service)
+get_public_ipv4() {
+	local ip=""
+	# Try multiple services for reliability
+	ip=$(wget -qO- -T 5 "http://ipv4.icanhazip.com" 2>/dev/null | tr -d '\n')
+	[ -z "$ip" ] && ip=$(wget -qO- -T 5 "http://api.ipify.org" 2>/dev/null | tr -d '\n')
+	[ -z "$ip" ] && ip=$(wget -qO- -T 5 "http://v4.ident.me" 2>/dev/null | tr -d '\n')
+	echo "$ip"
+}
+
+# Helper: Get public IPv6 address (from external service)
+get_public_ipv6() {
+	local ip=""
+	# Try multiple services for reliability
+	ip=$(wget -qO- -T 5 "http://ipv6.icanhazip.com" 2>/dev/null | tr -d '\n')
+	[ -z "$ip" ] && ip=$(wget -qO- -T 5 "http://v6.ident.me" 2>/dev/null | tr -d '\n')
+	echo "$ip"
+}
+
+# Helper: Check external port accessibility using portchecker service
+check_external_port() {
+	local ip="$1"
+	local port="$2"
+	local result=""
+
+	# Use canyouseeme.org API or similar
+	# Try portquiz.net which echoes back on any port
+	result=$(wget -qO- -T 5 "http://portquiz.net:${port}/" 2>/dev/null)
+	if echo "$result" | grep -q "Port ${port}"; then
+		return 0
+	fi
+
+	# Alternative: try to connect to our own IP from outside perspective
+	# Use online port checker API
+	result=$(wget -qO- -T 8 "https://ports.yougetsignal.com/short-url-check-port.php?remoteAddress=${ip}&portNumber=${port}" 2>/dev/null)
+	if echo "$result" | grep -qi "open"; then
+		return 0
+	fi
+
+	return 1
+}
+
+# Helper: Reverse DNS lookup
+get_reverse_dns() {
+	local ip="$1"
+	local hostname=""
+
+	if command -v nslookup >/dev/null 2>&1; then
+		hostname=$(nslookup "$ip" 2>/dev/null | grep "name =" | head -1 | awk '{print $NF}' | sed 's/\.$//')
+	elif command -v host >/dev/null 2>&1; then
+		hostname=$(host "$ip" 2>/dev/null | grep "pointer" | head -1 | awk '{print $NF}' | sed 's/\.$//')
+	fi
+
+	echo "$hostname"
+}
+
+# Helper: Check certificate expiry
+check_cert_expiry() {
+	local domain="$1"
+	local cert_file="/srv/haproxy/certs/${domain}.pem"
+
+	if [ ! -f "$cert_file" ]; then
+		# Try the ACME path
+		cert_file="/etc/acme/${domain}_ecc/${domain}.cer"
+		[ ! -f "$cert_file" ] && cert_file="/etc/acme/${domain}/${domain}.cer"
+	fi
+
+	if [ -f "$cert_file" ]; then
+		# Get expiry date using openssl
+		local expiry_date
+		expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+		if [ -n "$expiry_date" ]; then
+			# Convert to epoch
+			local expiry_epoch
+			expiry_epoch=$(date -d "$expiry_date" +%s 2>/dev/null)
+			local now_epoch
+			now_epoch=$(date +%s)
+			local days_left
+			if [ -n "$expiry_epoch" ]; then
+				days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+				echo "$days_left"
+				return 0
+			fi
+		fi
+	fi
+	return 1
+}
+
+# Helper: Check if external port is accessible (basic check via firewall rules)
+check_port_firewall_open() {
+	local port="$1"
+	local rule_name=""
+
+	case "$port" in
+		80) rule_name="HAProxy-HTTP" ;;
+		443) rule_name="HAProxy-HTTPS" ;;
+	esac
+
+	# Check if firewall rule exists and is enabled
+	local i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		local enabled=$(uci -q get firewall.@rule[$i].enabled)
+		local dest_port=$(uci -q get firewall.@rule[$i].dest_port)
+		if [ "$name" = "$rule_name" ] || [ "$dest_port" = "$port" ]; then
+			if [ "$enabled" != "0" ]; then
+				return 0
+			fi
+		fi
+		i=$((i + 1))
+	done
+	return 1
+}
+
+# Get network connectivity info (public IPs, port accessibility)
+method_get_network_info() {
+	json_init
+	json_add_boolean "success" 1
+
+	local lan_ip
+	lan_ip=$(get_lan_ip)
+	json_add_string "lan_ip" "$lan_ip"
+
+	# Get public IPv4
+	json_add_object "ipv4"
+	local public_ipv4
+	public_ipv4=$(get_public_ipv4)
+	if [ -n "$public_ipv4" ]; then
+		json_add_string "address" "$public_ipv4"
+		json_add_string "status" "ok"
+
+		# Reverse DNS
+		local rdns
+		rdns=$(get_reverse_dns "$public_ipv4")
+		[ -n "$rdns" ] && json_add_string "hostname" "$rdns"
+	else
+		json_add_string "status" "unavailable"
+	fi
+	json_close_object
+
+	# Get public IPv6
+	json_add_object "ipv6"
+	local public_ipv6
+	public_ipv6=$(get_public_ipv6)
+	if [ -n "$public_ipv6" ]; then
+		json_add_string "address" "$public_ipv6"
+		json_add_string "status" "ok"
+
+		# Reverse DNS
+		local rdns6
+		rdns6=$(get_reverse_dns "$public_ipv6")
+		[ -n "$rdns6" ] && json_add_string "hostname" "$rdns6"
+	else
+		json_add_string "status" "unavailable"
+	fi
+	json_close_object
+
+	# External port accessibility (from internet perspective)
+	json_add_object "external_ports"
+	if [ -n "$public_ipv4" ]; then
+		# Check port 80
+		json_add_object "http"
+		if check_external_port "$public_ipv4" 80; then
+			json_add_boolean "accessible" 1
+			json_add_string "status" "open"
+		else
+			json_add_boolean "accessible" 0
+			json_add_string "status" "blocked"
+			json_add_string "hint" "Check upstream router port forwarding"
+		fi
+		json_close_object
+
+		# Check port 443
+		json_add_object "https"
+		if check_external_port "$public_ipv4" 443; then
+			json_add_boolean "accessible" 1
+			json_add_string "status" "open"
+		else
+			json_add_boolean "accessible" 0
+			json_add_string "status" "blocked"
+			json_add_string "hint" "Check upstream router port forwarding"
+		fi
+		json_close_object
+	else
+		json_add_object "http"
+		json_add_string "status" "unknown"
+		json_add_string "error" "No public IP"
+		json_close_object
+		json_add_object "https"
+		json_add_string "status" "unknown"
+		json_add_string "error" "No public IP"
+		json_close_object
+	fi
+	json_close_object
+
+	# Local firewall status
+	json_add_object "firewall"
+	local http_open=0
+	local https_open=0
+	check_port_firewall_open 80 && http_open=1
+	check_port_firewall_open 443 && https_open=1
+	json_add_boolean "http_open" "$http_open"
+	json_add_boolean "https_open" "$https_open"
+	if [ "$http_open" = "1" ] && [ "$https_open" = "1" ]; then
+		json_add_string "status" "ok"
+	elif [ "$http_open" = "1" ] || [ "$https_open" = "1" ]; then
+		json_add_string "status" "partial"
+	else
+		json_add_string "status" "closed"
+	fi
+	json_close_object
+
+	# HAProxy status
+	json_add_object "haproxy"
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "stopped"
+	fi
+	json_close_object
+
+	json_dump
+}
+
+# Check health status for a service
+method_check_service_health() {
+	local service_id domain
+
+	read -r input
+	json_load "$input"
+	json_get_var service_id service_id
+	json_get_var domain domain ""
+
+	json_init
+
+	if [ -z "$service_id" ] && [ -z "$domain" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "service_id or domain is required"
+		json_dump
+		return
+	fi
+
+	# If only service_id provided, get domain from config
+	if [ -z "$domain" ] && [ -n "$service_id" ]; then
+		config_load "$UCI_CONFIG"
+		config_get domain "$service_id" haproxy_domain ""
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "service_id" "$service_id"
+	json_add_string "domain" "$domain"
+
+	# Get public IPs for comparison
+	local public_ipv4 public_ipv6
+	public_ipv4=$(get_public_ipv4)
+	public_ipv6=$(get_public_ipv6)
+
+	# Public IP info
+	json_add_object "public_ip"
+	json_add_string "ipv4" "$public_ipv4"
+	[ -n "$public_ipv6" ] && json_add_string "ipv6" "$public_ipv6"
+	if [ -n "$public_ipv4" ]; then
+		local rdns
+		rdns=$(get_reverse_dns "$public_ipv4")
+		[ -n "$rdns" ] && json_add_string "hostname" "$rdns"
+	fi
+	json_close_object
+
+	# DNS check with public IP comparison
+	json_add_object "dns"
+	if [ -n "$domain" ]; then
+		local resolved_ip
+		resolved_ip=$(check_dns_resolution "$domain")
+		if [ -n "$resolved_ip" ]; then
+			json_add_string "resolved_ip" "$resolved_ip"
+			# Check if DNS points to public IP or private IP
+			case "$resolved_ip" in
+				10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.2*|172.30.*|172.31.*|192.168.*)
+					json_add_string "status" "private"
+					json_add_string "error" "DNS points to private IP (not reachable from internet)"
+					json_add_string "expected" "$public_ipv4"
+					;;
+				*)
+					if [ "$resolved_ip" = "$public_ipv4" ]; then
+						json_add_string "status" "ok"
+					else
+						json_add_string "status" "mismatch"
+						json_add_string "expected" "$public_ipv4"
+						json_add_string "hint" "DNS points to different IP than your public IP"
+					fi
+					;;
+			esac
+		else
+			json_add_string "status" "failed"
+			json_add_string "error" "DNS resolution failed"
+		fi
+	else
+		json_add_string "status" "none"
+	fi
+	json_close_object
+
+	# External port accessibility check
+	json_add_object "external_access"
+	if [ -n "$public_ipv4" ]; then
+		local http_ext=0
+		local https_ext=0
+		check_external_port "$public_ipv4" 80 && http_ext=1
+		check_external_port "$public_ipv4" 443 && https_ext=1
+		json_add_boolean "http_accessible" "$http_ext"
+		json_add_boolean "https_accessible" "$https_ext"
+		if [ "$http_ext" = "1" ] && [ "$https_ext" = "1" ]; then
+			json_add_string "status" "ok"
+		elif [ "$http_ext" = "1" ] || [ "$https_ext" = "1" ]; then
+			json_add_string "status" "partial"
+			json_add_string "hint" "Check upstream router/ISP port forwarding"
+		else
+			json_add_string "status" "blocked"
+			json_add_string "hint" "Ports not accessible from internet - check router/ISP"
+		fi
+	else
+		json_add_string "status" "unknown"
+		json_add_string "error" "Could not determine public IP"
+	fi
+	json_close_object
+
+	# Certificate check
+	json_add_object "certificate"
+	if [ -n "$domain" ]; then
+		local days_left
+		days_left=$(check_cert_expiry "$domain")
+		if [ -n "$days_left" ]; then
+			if [ "$days_left" -lt 0 ]; then
+				json_add_string "status" "expired"
+			elif [ "$days_left" -lt 7 ]; then
+				json_add_string "status" "critical"
+			elif [ "$days_left" -lt 30 ]; then
+				json_add_string "status" "warning"
+			else
+				json_add_string "status" "ok"
+			fi
+			json_add_int "days_left" "$days_left"
+		else
+			json_add_string "status" "missing"
+		fi
+	else
+		json_add_string "status" "none"
+	fi
+	json_close_object
+
+	# Port/Firewall check
+	json_add_object "firewall"
+	local http_open=0
+	local https_open=0
+	check_port_firewall_open 80 && http_open=1
+	check_port_firewall_open 443 && https_open=1
+
+	if [ "$http_open" = "1" ] && [ "$https_open" = "1" ]; then
+		json_add_string "status" "ok"
+	elif [ "$http_open" = "1" ] || [ "$https_open" = "1" ]; then
+		json_add_string "status" "partial"
+	else
+		json_add_string "status" "closed"
+	fi
+	json_add_boolean "http_open" "$http_open"
+	json_add_boolean "https_open" "$https_open"
+	json_close_object
+
+	# HAProxy status
+	json_add_object "haproxy"
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "stopped"
+	fi
+	json_close_object
+
+	json_dump
+}
+
+# Batch health check for all published services (for dashboard)
+method_check_all_health() {
+	json_init
+	json_add_object "health"
+
+	local wan_ip
+	wan_ip=$(get_wan_ip)
+	json_add_string "wan_ip" "$wan_ip"
+
+	# Check HAProxy status
+	json_add_object "haproxy"
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "stopped"
+	fi
+	json_close_object
+
+	# Check Tor status
+	json_add_object "tor"
+	if pgrep -f "/usr/sbin/tor" >/dev/null 2>&1; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "stopped"
+	fi
+	json_close_object
+
+	# Check firewall ports
+	json_add_object "firewall"
+	local http_open=0
+	local https_open=0
+	check_port_firewall_open 80 && http_open=1
+	check_port_firewall_open 443 && https_open=1
+	json_add_boolean "http_open" "$http_open"
+	json_add_boolean "https_open" "$https_open"
+	if [ "$http_open" = "1" ] && [ "$https_open" = "1" ]; then
+		json_add_string "status" "ok"
+	elif [ "$http_open" = "1" ] || [ "$https_open" = "1" ]; then
+		json_add_string "status" "partial"
+	else
+		json_add_string "status" "closed"
+	fi
+	json_close_object
+
+	# Check individual services with domains
+	json_add_array "services"
+
+	# Get all published services with domains from HAProxy
+	local vhosts_json
+	vhosts_json=$(ubus call luci.haproxy list_vhosts 2>/dev/null)
+	if [ -n "$vhosts_json" ]; then
+		local count
+		count=$(echo "$vhosts_json" | jsonfilter -e '@.vhosts[*].domain' 2>/dev/null | wc -l)
+		local i=0
+		while [ $i -lt "$count" ]; do
+			local domain enabled
+			domain=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].domain" 2>/dev/null)
+			enabled=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].enabled" 2>/dev/null)
+
+			i=$((i + 1))
+
+			[ -z "$domain" ] && continue
+			[ "$enabled" = "false" ] || [ "$enabled" = "0" ] && continue
+
+			json_add_object
+			json_add_string "domain" "$domain"
+
+			# DNS check
+			local resolved_ip
+			resolved_ip=$(check_dns_resolution "$domain")
+			if [ -n "$resolved_ip" ]; then
+				json_add_string "dns_status" "ok"
+				json_add_string "dns_ip" "$resolved_ip"
+			else
+				json_add_string "dns_status" "failed"
+			fi
+
+			# Cert check
+			local days_left
+			days_left=$(check_cert_expiry "$domain")
+			if [ -n "$days_left" ]; then
+				if [ "$days_left" -lt 0 ]; then
+					json_add_string "cert_status" "expired"
+				elif [ "$days_left" -lt 7 ]; then
+					json_add_string "cert_status" "critical"
+				elif [ "$days_left" -lt 30 ]; then
+					json_add_string "cert_status" "warning"
+				else
+					json_add_string "cert_status" "ok"
+				fi
+				json_add_int "cert_days" "$days_left"
+			else
+				json_add_string "cert_status" "missing"
+			fi
+
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_close_object
+
+	json_dump
+}
+
+# Get certificate status for service
+method_get_certificate_status() {
+	local service_id
+
+	read -r input
+	json_load "$input"
+	json_get_var service_id service_id
+
+	json_init
+
+	if [ -z "$service_id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "service_id is required"
+		json_dump
+		return
+	fi
+
+	config_load "$UCI_CONFIG"
+	local haproxy_domain
+	config_get haproxy_domain "$service_id" haproxy_domain ""
+
+	if [ -z "$haproxy_domain" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "No domain configured"
+		json_dump
+		return
+	fi
+
+	# Get certificate expiry info
+	local days_left
+	days_left=$(check_cert_expiry "$haproxy_domain")
+
+	json_add_boolean "success" 1
+	json_add_string "domain" "$haproxy_domain"
+
+	if [ -n "$days_left" ]; then
+		if [ "$days_left" -lt 0 ]; then
+			json_add_string "status" "expired"
+		elif [ "$days_left" -lt 7 ]; then
+			json_add_string "status" "critical"
+		elif [ "$days_left" -lt 30 ]; then
+			json_add_string "status" "warning"
+		else
+			json_add_string "status" "valid"
+		fi
+		json_add_int "days_left" "$days_left"
+	else
+		json_add_string "status" "missing"
+	fi
+
+	json_dump
+}
+
+# Get landing page config
+method_get_landing_config() {
+	json_init
+
+	config_load "$UCI_CONFIG"
+	local landing_path auto_regen
+	config_get landing_path main landing_path "/www/secubox-services.html"
+	config_get auto_regen main landing_auto_regen "1"
+
+	json_add_string "path" "$landing_path"
+	json_add_boolean "auto_regen" "$auto_regen"
+
+	# Check if file exists
+	if [ -f "$landing_path" ]; then
+		json_add_boolean "exists" 1
+		local mtime
+		mtime=$(stat -c %Y "$landing_path" 2>/dev/null)
+		json_add_int "modified" "${mtime:-0}"
+	else
+		json_add_boolean "exists" 0
+	fi
+
+	json_dump
+}
+
+# Save landing page config
+method_save_landing_config() {
+	local auto_regen
+
+	read -r input
+	json_load "$input"
+	json_get_var auto_regen auto_regen ""
+
+	json_init
+
+	[ -n "$auto_regen" ] && uci set "$UCI_CONFIG.main.landing_auto_regen=$auto_regen"
+	uci commit "$UCI_CONFIG"
+
+	json_add_boolean "success" 1
+
+	json_dump
+}
+
+# Main RPC interface
+case "$1" in
+	list)
+		cat <<'EOF'
+{
+	"list_services": {},
+	"get_service": { "service_id": "string" },
+	"publish_service": { "name": "string", "local_port": "integer", "domain": "string", "tor_enabled": "boolean", "category": "string", "icon": "string" },
+	"unpublish_service": { "service_id": "string" },
+	"update_service": { "service_id": "string", "name": "string", "category": "string", "icon": "string" },
+	"delete_service": { "service_id": "string" },
+	"sync_providers": {},
+	"generate_landing_page": {},
+	"get_qr_data": { "service_id": "string", "url_type": "string" },
+	"list_categories": {},
+	"get_certificate_status": { "service_id": "string" },
+	"check_service_health": { "service_id": "string", "domain": "string" },
+	"check_all_health": {},
+	"get_network_info": {},
+	"get_landing_config": {},
+	"save_landing_config": { "auto_regen": "boolean" }
+}
+EOF
+		;;
+	call)
+		case "$2" in
+			list_services) method_list_services ;;
+			get_service) method_get_service ;;
+			publish_service) method_publish_service ;;
+			unpublish_service) method_unpublish_service ;;
+			update_service) method_update_service ;;
+			delete_service) method_delete_service ;;
+			sync_providers) method_sync_providers ;;
+			generate_landing_page) method_generate_landing_page ;;
+			get_qr_data) method_get_qr_data ;;
+			list_categories) method_list_categories ;;
+			get_certificate_status) method_get_certificate_status ;;
+			check_service_health) method_check_service_health ;;
+			check_all_health) method_check_all_health ;;
+			get_network_info) method_get_network_info ;;
+			get_landing_config) method_get_landing_config ;;
+			save_landing_config) method_save_landing_config ;;
+			*)
+				json_init
+				json_add_boolean "error" 1
+				json_add_string "message" "Unknown method: $2"
+				json_dump
+				;;
+		esac
+		;;
+esac

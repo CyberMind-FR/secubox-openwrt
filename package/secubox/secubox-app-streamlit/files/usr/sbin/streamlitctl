@@ -113,9 +113,26 @@ App Folder Structure:
     ...                 Other files
 
 Examples:
+  # Create local app
   streamlitctl app create myapp
   streamlitctl instance add myapp 8502
-  streamlitctl gitea clone myapp myuser/myapp-repo
+  /etc/init.d/streamlit restart
+
+  # Deploy from Gitea (complete workflow)
+  uci set streamlit.gitea.enabled=1
+  uci set streamlit.gitea.url='http://192.168.255.1:3000'
+  uci set streamlit.gitea.user='admin'
+  uci set streamlit.gitea.token='your-token'
+  uci commit streamlit
+  streamlitctl gitea setup
+  streamlitctl gitea clone yijing CyberMood/yijing-oracle
+  streamlitctl instance add yijing 8505
+  /etc/init.d/streamlit restart
+  # Access at: http://<device-ip>:8505
+
+  # Update app from Gitea
+  streamlitctl gitea pull yijing
+  /etc/init.d/streamlit restart
 
 EOF
 }
