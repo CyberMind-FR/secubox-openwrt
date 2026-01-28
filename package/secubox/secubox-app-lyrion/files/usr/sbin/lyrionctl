@@ -193,7 +193,12 @@ docker_shell() {
 
 lxc_check_prereqs() {
 	log_info "Checking LXC prerequisites..."
-	ensure_packages lxc lxc-common lxc-attach lxc-start lxc-stop lxc-destroy || return 1
+
+	# Check if LXC binaries are already available (pre-installed)
+	if ! has_lxc; then
+		log_info "LXC not found, attempting to install..."
+		ensure_packages lxc lxc-common lxc-attach lxc-start lxc-stop lxc-destroy || return 1
+	fi
 
 	# Check cgroups
 	if [ ! -d /sys/fs/cgroup ]; then
@@ -392,26 +397,25 @@ sub CvGV { return $ANON_GV }
 1;
 STUB
 
-# Create directories with proper permissions for nobody user
+# Create directories with proper permissions for nobody user (uid 65534)
 mkdir -p /config/prefs/plugin /config/cache /music /var/log/lyrion
-chown -R nobody:nobody /config /var/log/lyrion
+chown -R 65534:65534 /config /var/log/lyrion /opt/lyrion
 
-# Create startup script that runs as nobody user
+# Create startup script (runs as nobody via LXC init.uid/gid)
 cat > /opt/lyrion/start.sh << 'START'
 #!/bin/sh
 cd /opt/lyrion
 
-# Ensure directories exist with proper permissions
-mkdir -p /config/prefs/plugin /config/cache /var/log/lyrion
-chown -R nobody:nobody /config /var/log/lyrion /opt/lyrion 2>/dev/null || true
+# Ensure directories exist (ownership set during LXC config creation)
+mkdir -p /config/prefs/plugin /config/cache /var/log/lyrion 2>/dev/null || true
 
-# Run Lyrion as nobody user to avoid permission issues
-exec su -s /bin/sh nobody -c "cd /opt/lyrion && exec perl slimserver.pl \
+# Run Lyrion (already running as nobody via LXC init.uid/gid settings)
+exec perl slimserver.pl \
     --prefsdir /config/prefs \
     --cachedir /config/cache \
     --logdir /var/log/lyrion \
     --httpport 9000 \
-    --cliport 9090"
+    --cliport 9090
 START
 chmod +x /opt/lyrion/start.sh
 
@@ -433,6 +437,15 @@ SETUP
 lxc_create_config() {
 	load_config
 
+	# Convert memory limit to bytes for cgroup2
+	local mem_bytes
+	case "$memory_limit" in
+		*G) mem_bytes=$(( ${memory_limit%G} * 1073741824 )) ;;
+		*M) mem_bytes=$(( ${memory_limit%M} * 1048576 )) ;;
+		*K) mem_bytes=$(( ${memory_limit%K} * 1024 )) ;;
+		*) mem_bytes="$memory_limit" ;;
+	esac
+
 	cat > "$LXC_CONFIG" << EOF
 # Lyrion LXC Configuration
 lxc.uts.name = $LXC_NAME
@@ -451,8 +464,12 @@ lxc.mount.entry = $media_path music none bind,ro,create=dir 0 0
 # Capabilities
 lxc.cap.drop = sys_admin sys_module mac_admin mac_override
 
-# cgroups limits
-lxc.cgroup.memory.limit_in_bytes = $memory_limit
+# cgroups limits (cgroup2 format)
+lxc.cgroup2.memory.max = $mem_bytes
+
+# Run as nobody user (uid/gid 65534) - Lyrion must not run as root
+lxc.init.uid = 65534
+lxc.init.gid = 65534
 
 # Init
 lxc.init.cmd = /opt/lyrion/start.sh
@@ -461,6 +478,9 @@ lxc.init.cmd = /opt/lyrion/start.sh
 lxc.console.size = 1024
 lxc.pty.max = 1024
 EOF
+
+	# Set ownership on data directory for nobody user
+	chown -R 65534:65534 "$data_path" 2>/dev/null || true
 
 	log_info "LXC config created at $LXC_CONFIG"
 }
