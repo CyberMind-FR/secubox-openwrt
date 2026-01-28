@@ -96,8 +96,10 @@ get_status() {
 
 		# Exit IP from cache (updated by separate call to avoid blocking)
 		local cached_exit="/tmp/tor_exit_ip"
+		local cached_hostname="/tmp/tor_exit_hostname"
 		if [ -f "$cached_exit" ]; then
 			json_add_string "exit_ip" "$(cat "$cached_exit")"
+			[ -f "$cached_hostname" ] && json_add_string "exit_hostname" "$(cat "$cached_hostname")"
 			json_add_boolean "is_tor" 1
 		else
 			json_add_string "exit_ip" "checking..."
@@ -460,7 +462,12 @@ refresh_ips() {
 			local socks_port=$(uci -q get tor-shield.socks.port || echo 9050)
 			local tor_check=$(curl -s --max-time 5 --socks5-hostname 127.0.0.1:$socks_port https://check.torproject.org/api/ip 2>/dev/null)
 			local exit_ip=$(echo "$tor_check" | jsonfilter -e '@.IP' 2>/dev/null)
-			[ -n "$exit_ip" ] && echo "$exit_ip" > /tmp/tor_exit_ip
+			if [ -n "$exit_ip" ]; then
+				echo "$exit_ip" > /tmp/tor_exit_ip
+				# Get reverse DNS hostname for exit IP
+				local exit_hostname=$(nslookup "$exit_ip" 2>/dev/null | grep 'name =' | head -1 | awk '{print $NF}' | sed 's/\.$//')
+				[ -n "$exit_hostname" ] && echo "$exit_hostname" > /tmp/tor_exit_hostname
+			fi
 		fi
 	) &
 
@@ -491,8 +498,15 @@ get_exit_ip() {
 		local region=$(echo "$exit_info" | jsonfilter -e '@.region' 2>/dev/null)
 		local country=$(echo "$exit_info" | jsonfilter -e '@.country' 2>/dev/null)
 		local org=$(echo "$exit_info" | jsonfilter -e '@.org' 2>/dev/null)
+		local hostname=$(echo "$exit_info" | jsonfilter -e '@.hostname' 2>/dev/null)
+
+		# If ipinfo didn't return hostname, try reverse DNS
+		if [ -z "$hostname" ] && [ -n "$ip" ]; then
+			hostname=$(nslookup "$ip" 2>/dev/null | grep 'name =' | head -1 | awk '{print $NF}' | sed 's/\.$//')
+		fi
 
 		json_add_string "ip" "${ip:-unknown}"
+		json_add_string "hostname" "${hostname:-}"
 		json_add_string "city" "${city:-unknown}"
 		json_add_string "region" "${region:-unknown}"
 		json_add_string "country" "${country:-unknown}"

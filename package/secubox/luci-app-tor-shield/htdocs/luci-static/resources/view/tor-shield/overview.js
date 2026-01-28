@@ -220,9 +220,13 @@ return view.extend({
 		// Update IP info
 		var exitIp = document.querySelector('.tor-exit-ip');
 		var realIp = document.querySelector('.tor-real-ip');
+		var exitHostname = document.querySelector('.tor-exit-hostname');
 		if (exitIp) {
 			exitIp.textContent = status.exit_ip || _('Not connected');
 			exitIp.className = 'tor-ip-value ' + (status.is_tor ? 'protected' : 'exposed');
+		}
+		if (exitHostname) {
+			exitHostname.textContent = status.exit_hostname || '';
 		}
 		if (realIp) {
 			realIp.textContent = status.real_ip || _('Unknown');
@@ -436,6 +440,10 @@ return view.extend({
 							E('div', {
 								'class': 'tor-ip-value tor-exit-ip ' + (isProtected ? 'protected' : 'exposed')
 							}, status.exit_ip || _('Not connected')),
+							status.exit_hostname ? E('div', {
+								'class': 'tor-exit-hostname',
+								'style': 'font-size: 11px; color: #888; margin-top: 2px; word-break: break-all;'
+							}, status.exit_hostname) : '',
 							status.exit_ip ? E('div', { 'class': 'tor-exit-location' }, [
 								E('span', { 'class': 'tor-exit-country' }, api.getCountryFlag(status.exit_country) || ''),
 								status.exit_country || ''
