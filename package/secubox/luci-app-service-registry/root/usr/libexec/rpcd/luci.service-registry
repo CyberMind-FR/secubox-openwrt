@@ -125,8 +125,10 @@ method_list_services() {
 	fi
 
 	# 4. Get direct listening services (from luci.secubox)
+	# NOTE: Disabled by default - too slow with many ports (spawns jsonfilter per service)
+	# Enable in UCI: uci set service-registry.direct.enabled=1
 	local direct_enabled
-	direct_enabled=$(get_uci direct enabled 1)
+	direct_enabled=$(get_uci direct enabled 0)
 	if [ "$direct_enabled" = "1" ]; then
 		_aggregate_direct_services "$lan_ip" "$TMP_SERVICES"
 	fi
@@ -439,24 +441,41 @@ _aggregate_direct_services() {
 	services_json=$(ubus call luci.secubox get_services 2>/dev/null)
 	[ -z "$services_json" ] && return
 
-	# Parse and add unpublished services
-	local count
-	count=$(echo "$services_json" | jsonfilter -e '@.services[*]' 2>/dev/null | wc -l)
-	local i=0
+	# Parse all services at once using jsonfilter list mode for better performance
+	# Extract port|name|category|icon tuples in a single pass
+	local data_file="/tmp/sr_direct_$$"
+	echo "$services_json" | jsonfilter -e '@.services[*].port' -e '@.services[*].name' -e '@.services[*].category' -e '@.services[*].icon' > "$data_file" 2>/dev/null
 
+	# Count services
+	local count=0
+	local ports=""
+	local names=""
+	local categories=""
+	local icons=""
+
+	# Read ports line by line (each jsonfilter -e outputs one line per match)
+	count=$(echo "$services_json" | jsonfilter -e '@.services[*].port' 2>/dev/null | wc -l)
+	[ "$count" -eq 0 ] && { rm -f "$data_file"; return; }
+
+	# Limit to first 20 direct services to avoid performance issues
+	[ "$count" -gt 20 ] && count=20
+
+	# Get all values at once using array notation
+	local i=0
 	while [ $i -lt "$count" ]; do
-		local port name category icon external
+		local port name category icon
 		port=$(echo "$services_json" | jsonfilter -e "@.services[$i].port" 2>/dev/null)
 		name=$(echo "$services_json" | jsonfilter -e "@.services[$i].name" 2>/dev/null)
 		category=$(echo "$services_json" | jsonfilter -e "@.services[$i].category" 2>/dev/null)
 		icon=$(echo "$services_json" | jsonfilter -e "@.services[$i].icon" 2>/dev/null)
-		external=$(echo "$services_json" | jsonfilter -e "@.services[$i].external" 2>/dev/null)
 
 		i=$((i + 1))
 
 		[ -z "$port" ] && continue
 		# Skip if already processed
 		grep -q "^${port}$" "$tmp_file" 2>/dev/null && continue
+		# Skip common system ports (often not user services)
+		case "$port" in 22|53|67|68|123|547|953) continue ;; esac
 
 		json_add_object
 		json_add_string "id" "direct_${port}"
@@ -476,6 +495,8 @@ _aggregate_direct_services() {
 
 		echo "$port" >> "$tmp_file"
 	done
+
+	rm -f "$data_file"
 }
 
 # Aggregate LXC container services
