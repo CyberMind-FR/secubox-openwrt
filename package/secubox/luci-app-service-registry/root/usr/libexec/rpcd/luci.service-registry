@@ -41,6 +41,59 @@ get_process_for_port() {
 	netstat -tlnp 2>/dev/null | grep ":${port} " | awk '{print $7}' | cut -d'/' -f2 | head -1
 }
 
+# Helper: Ensure firewall rules for HAProxy (HTTP/HTTPS from WAN)
+ensure_haproxy_firewall_rules() {
+	local http_port="${1:-80}"
+	local https_port="${2:-443}"
+	local changed=0
+
+	# Check and create HTTP rule
+	local http_exists=0
+	local i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		[ "$name" = "HAProxy-HTTP" ] && http_exists=1 && break
+		i=$((i + 1))
+	done
+
+	if [ "$http_exists" = "0" ]; then
+		uci add firewall rule >/dev/null
+		uci set firewall.@rule[-1].name='HAProxy-HTTP'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="$http_port"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci set firewall.@rule[-1].enabled='1'
+		changed=1
+	fi
+
+	# Check and create HTTPS rule
+	local https_exists=0
+	i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		[ "$name" = "HAProxy-HTTPS" ] && https_exists=1 && break
+		i=$((i + 1))
+	done
+
+	if [ "$https_exists" = "0" ]; then
+		uci add firewall rule >/dev/null
+		uci set firewall.@rule[-1].name='HAProxy-HTTPS'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="$https_port"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci set firewall.@rule[-1].enabled='1'
+		changed=1
+	fi
+
+	# Apply firewall changes
+	if [ "$changed" = "1" ]; then
+		uci commit firewall
+		/etc/init.d/firewall reload >/dev/null 2>&1 &
+	fi
+}
+
 # List all services aggregated from providers
 method_list_services() {
 	local lan_ip
@@ -542,6 +595,9 @@ method_publish_service() {
 
 	# Create HAProxy vhost if domain specified
 	if [ -n "$domain" ]; then
+		# Ensure firewall allows HTTP/HTTPS from WAN (for public access + ACME)
+		ensure_haproxy_firewall_rules
+
 		# Create backend
 		ubus call luci.haproxy create_backend "{\"name\":\"$section_id\",\"mode\":\"http\"}" 2>/dev/null
 
@@ -550,6 +606,10 @@ method_publish_service() {
 
 		# Create vhost with SSL
 		ubus call luci.haproxy create_vhost "{\"domain\":\"$domain\",\"backend\":\"$section_id\",\"ssl\":1,\"ssl_redirect\":1,\"acme\":1,\"enabled\":1}" 2>/dev/null
+
+		# Regenerate HAProxy config to include the new vhost
+		ubus call luci.haproxy generate 2>/dev/null
+		ubus call luci.haproxy reload 2>/dev/null
 
 		uci set "$UCI_CONFIG.$section_id.haproxy_enabled=1"
 		uci set "$UCI_CONFIG.$section_id.haproxy_domain=$domain"

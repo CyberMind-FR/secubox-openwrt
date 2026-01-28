@@ -33,6 +33,83 @@ ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
 uci_get() { uci -q get ${CONFIG}.$1; }
 uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
 
+# Firewall management - auto-open ports when publishing
+firewall_ensure_haproxy_rules() {
+	local http_port="${1:-80}"
+	local https_port="${2:-443}"
+	local changed=0
+
+	# Check if HTTP rule exists
+	local http_rule_exists=0
+	local i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		if [ "$name" = "HAProxy-HTTP" ]; then
+			http_rule_exists=1
+			break
+		fi
+		i=$((i + 1))
+	done
+
+	# Create HTTP rule if missing
+	if [ "$http_rule_exists" = "0" ]; then
+		log_info "Creating firewall rule for HTTP (port $http_port)..."
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='HAProxy-HTTP'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="$http_port"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci set firewall.@rule[-1].enabled='1'
+		changed=1
+	fi
+
+	# Check if HTTPS rule exists
+	local https_rule_exists=0
+	i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		if [ "$name" = "HAProxy-HTTPS" ]; then
+			https_rule_exists=1
+			break
+		fi
+		i=$((i + 1))
+	done
+
+	# Create HTTPS rule if missing
+	if [ "$https_rule_exists" = "0" ]; then
+		log_info "Creating firewall rule for HTTPS (port $https_port)..."
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='HAProxy-HTTPS'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="$https_port"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci set firewall.@rule[-1].enabled='1'
+		changed=1
+	fi
+
+	# Apply changes
+	if [ "$changed" = "1" ]; then
+		uci commit firewall
+		/etc/init.d/firewall reload 2>/dev/null || true
+		log_info "Firewall rules updated - ports $http_port and $https_port open on WAN"
+	fi
+}
+
+firewall_check_haproxy_rules() {
+	local http_ok=0 https_ok=0
+	local i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		local enabled=$(uci -q get firewall.@rule[$i].enabled)
+		[ "$name" = "HAProxy-HTTP" ] && [ "$enabled" != "0" ] && http_ok=1
+		[ "$name" = "HAProxy-HTTPS" ] && [ "$enabled" != "0" ] && https_ok=1
+		i=$((i + 1))
+	done
+	[ "$http_ok" = "1" ] && [ "$https_ok" = "1" ]
+}
+
 # Load configuration
 load_config() {
 	http_port="$(uci_get main.http_port)" || http_port="80"
@@ -788,6 +865,10 @@ cmd_cert_add() {
 	# Ensure HAProxy config has ACME backend (for webroot mode)
 	log_info "Ensuring HAProxy config is up to date..."
 	generate_config
+
+	# Ensure firewall allows HTTP/HTTPS from WAN (required for ACME)
+	log_info "Checking firewall rules..."
+	firewall_ensure_haproxy_rules "$http_port" "$https_port"
 
 	local email=$(uci_get acme.email)
 	local staging=$(uci_get acme.staging)
