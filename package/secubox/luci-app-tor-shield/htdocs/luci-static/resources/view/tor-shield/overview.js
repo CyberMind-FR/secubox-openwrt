@@ -15,46 +15,54 @@ return view.extend({
 		return api.getDashboardData();
 	},
 
-	// Handle master toggle
-	handleToggle: function(status) {
+	// Handle master toggle - fetches fresh status first
+	handleToggle: function() {
 		var self = this;
 
-		if (status.enabled && status.running) {
-			// Disable Tor
-			ui.showModal(_('Disable Tor Shield'), [
-				E('p', { 'class': 'spinning' }, _('Stopping Tor Shield...'))
-			]);
+		// Show loading while fetching current status
+		ui.showModal(_('Please wait...'), [
+			E('p', { 'class': 'spinning' }, _('Checking current status...'))
+		]);
 
-			api.disable().then(function(result) {
-				ui.hideModal();
-				if (result.success) {
-					ui.addNotification(null, E('p', _('Tor Shield disabled. Your traffic is no longer anonymized.')), 'warning');
-					self.render();
-				} else {
-					ui.addNotification(null, E('p', result.error || _('Failed to disable')), 'error');
-				}
-			}).catch(function(err) {
-				ui.hideModal();
-				ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
-			});
-		} else {
-			// Enable Tor with selected preset
-			ui.showModal(_('Enable Tor Shield'), [
-				E('p', { 'class': 'spinning' }, _('Starting Tor Shield with %s preset...').format(self.currentPreset))
-			]);
+		// Get fresh status before deciding action
+		api.getStatus().then(function(status) {
+			ui.hideModal();
 
-			api.enable(self.currentPreset).then(function(result) {
-				ui.hideModal();
-				if (result.success) {
-					ui.addNotification(null, E('p', _('Tor Shield is starting. Please wait for bootstrap to complete.')), 'info');
-				} else {
-					ui.addNotification(null, E('p', result.error || _('Failed to enable')), 'error');
-				}
-			}).catch(function(err) {
-				ui.hideModal();
-				ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
-			});
-		}
+			if (status.enabled && status.running) {
+				// Disable Tor
+				ui.showModal(_('Disable Tor Shield'), [
+					E('p', { 'class': 'spinning' }, _('Stopping Tor Shield...'))
+				]);
+
+				return api.disable().then(function(result) {
+					ui.hideModal();
+					if (result.success) {
+						ui.addNotification(null, E('p', _('Tor Shield disabled. Your traffic is no longer anonymized.')), 'warning');
+						window.location.reload();
+					} else {
+						ui.addNotification(null, E('p', result.error || _('Failed to disable')), 'error');
+					}
+				});
+			} else {
+				// Enable Tor with selected preset
+				ui.showModal(_('Enable Tor Shield'), [
+					E('p', { 'class': 'spinning' }, _('Starting Tor Shield with %s preset...').format(self.currentPreset))
+				]);
+
+				return api.enable(self.currentPreset).then(function(result) {
+					ui.hideModal();
+					if (result.success) {
+						ui.addNotification(null, E('p', _('Tor Shield is starting. Please wait for bootstrap to complete.')), 'info');
+						window.location.reload();
+					} else {
+						ui.addNotification(null, E('p', result.error || _('Failed to enable')), 'error');
+					}
+				});
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
+		});
 	},
 
 	// Handle preset selection
@@ -295,9 +303,7 @@ return view.extend({
 							'type': 'checkbox',
 							'checked': isActive ? 'checked' : null,
 							'style': 'opacity: 0; width: 0; height: 0;',
-							'change': L.bind(function(ev) {
-								this.handleToggle(status);
-							}, this)
+							'change': L.bind(this.handleToggle, this)
 						}),
 						E('span', {
 							'style': 'position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: ' + (isActive ? '#fff' : 'rgba(255,255,255,0.3)') + '; transition: 0.3s; border-radius: 34px;'
@@ -381,7 +387,7 @@ return view.extend({
 				E('div', { 'class': 'tor-toggle-section' }, [
 					E('button', {
 						'class': 'tor-master-toggle' + (isActive ? ' active' : ''),
-						'click': L.bind(function() { this.handleToggle(status); }, this),
+						'click': L.bind(this.handleToggle, this),
 						'title': isActive ? _('Click to disable') : _('Click to enable')
 					}, '\uD83E\uDDC5'),
 					E('div', { 'class': 'tor-toggle-label' + (isActive ? ' active' : '') },
