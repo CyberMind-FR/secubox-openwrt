@@ -14,7 +14,9 @@ return view.extend({
 
 	render: function(data) {
 		var status = data[0] || {};
-		var interfaces = (data[1] || {}).interfaces || [];
+		// Handle RPC expect unwrapping - results may be array or object
+		var interfacesData = data[1] || [];
+		var interfaces = Array.isArray(interfacesData) ? interfacesData : (interfacesData.interfaces || []);
 
 		var view = E('div', { 'class': 'cbi-map' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),

@@ -336,6 +336,15 @@ case "$1" in
 		json_add_object "setAdGuardEnabled"
 			json_add_string "enabled" "boolean"
 		json_close_object
+		json_add_object "getOpkgSettings"
+		json_close_object
+		json_add_object "setOpkgIpv4"
+			json_add_string "enabled" "boolean"
+		json_close_object
+		json_add_object "testUrl"
+			json_add_string "url" "string"
+			json_add_string "timeout" "integer"
+		json_close_object
 		json_dump
 		;;
 
@@ -738,6 +747,98 @@ EOF
 					json_add_boolean "success" 1
 					json_add_string "message" "AdGuard Home disabled"
 				fi
+
+				json_dump
+				;;
+
+			getOpkgSettings)
+				# Get opkg network settings
+				json_init
+				json_add_boolean "success" 1
+
+				# Check if IPv4 is forced (via profile alias)
+				ipv4_forced=0
+				if [ -f /etc/profile.d/opkg_ipv4.sh ]; then
+					grep -q "opkg.*-4\|force.*ipv4\|ipv4.*only" /etc/profile.d/opkg_ipv4.sh 2>/dev/null && ipv4_forced=1
+				fi
+
+				json_add_object "opkg"
+					json_add_boolean "ipv4_only" "$ipv4_forced"
+				json_close_object
+
+				json_dump
+				;;
+
+			setOpkgIpv4)
+				# Enable/disable IPv4-only mode for opkg
+				read input
+				json_load "$input"
+
+				json_get_var enabled enabled
+
+				if [ "$enabled" = "1" ] || [ "$enabled" = "true" ]; then
+					# Create profile script to force IPv4 for opkg
+					cat > /etc/profile.d/opkg_ipv4.sh << 'OPKG_EOF'
+# Force opkg to use IPv4 only (uclient-fetch -4)
+# Useful when IPv6 connectivity is broken
+alias opkg='/bin/opkg'
+export UCLIENT_FETCH_OPTS="-4"
+OPKG_EOF
+					chmod +x /etc/profile.d/opkg_ipv4.sh
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "opkg IPv4-only mode enabled"
+				else
+					# Remove IPv4 forcing
+					rm -f /etc/profile.d/opkg_ipv4.sh
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "opkg IPv4-only mode disabled"
+				fi
+
+				json_dump
+				;;
+
+			testUrl)
+				# Test URL connectivity (for network diagnostics)
+				read input
+				json_load "$input"
+
+				json_get_var url url
+				json_get_var timeout timeout
+				[ -z "$timeout" ] && timeout=5
+
+				json_init
+
+				if [ -z "$url" ]; then
+					json_add_boolean "success" 0
+					json_add_string "error" "URL is required"
+					json_dump
+					exit 0
+				fi
+
+				# Test URL with wget --spider (more reliable than uclient-fetch)
+				status_msg=""
+				start_time=$(date +%s)
+
+				# Use wget with timeout and spider mode
+				if wget -4 --spider -q -T "$timeout" --no-check-certificate "$url" 2>/dev/null; then
+					status_msg="reachable"
+				else
+					status_msg="unreachable"
+				fi
+
+				end_time=$(date +%s)
+				response_time=$((end_time - start_time))
+
+				json_add_boolean "success" 1
+				json_add_object "result"
+					json_add_string "url" "$url"
+					json_add_string "status" "$status_msg"
+					json_add_int "response_time_s" "$response_time"
+				json_close_object
 
 				json_dump
 				;;

@@ -5,7 +5,7 @@
 # Main orchestration service for SecuBox framework
 #
 
-set -e
+# Note: Not using set -e as many UCI/service checks legitimately return non-zero
 
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
@@ -18,7 +18,57 @@ WATCHDOG_STATE="/var/run/secubox/watchdog.json"
 
 # Services to monitor (init.d name:check_method:restart_delay)
 # check_method: pid, docker, lxc, port:PORT
-MONITORED_SERVICES="haproxy:pid:5 crowdsec:pid:10 tor:pid:10"
+MONITORED_SERVICES=""
+
+# Auto-discover SecuBox services from ctl scripts
+discover_secubox_services() {
+    local services=""
+
+    # Discover LXC-based services from *ctl scripts
+    for ctl in /usr/sbin/*ctl; do
+        [ -x "$ctl" ] || continue
+        local basename=$(basename "$ctl")
+
+        # Extract service name from xxxctl pattern
+        local svc_name=""
+        case "$basename" in
+            haproxyctl)
+                svc_name="haproxy"
+                services="$services haproxy:lxc:5"
+                ;;
+            lyrionctl)
+                svc_name="lyrion"
+                services="$services lyrion:lxc:10"
+                ;;
+            mitmproxyctl)
+                svc_name="mitmproxy"
+                services="$services mitmproxy:lxc:10"
+                ;;
+            metablogizerctl)
+                svc_name="metablogizer"
+                services="$services metablogizer:lxc:10"
+                ;;
+            hexojsctl)
+                svc_name="hexojs"
+                services="$services hexojs:lxc:10"
+                ;;
+            adguardhomectl)
+                svc_name="adguardhome"
+                services="$services adguardhome:docker:10"
+                ;;
+        esac
+    done
+
+    # Add native services (PID-based)
+    if [ -x "/etc/init.d/crowdsec" ]; then
+        services="$services crowdsec:pid:10"
+    fi
+    if [ -x "/etc/init.d/tor" ]; then
+        services="$services tor:pid:10"
+    fi
+
+    echo "$services"
+}
 
 # Logging function
 log() {
@@ -172,10 +222,14 @@ run_watchdog() {
     local watchdog_enabled=$(uci -q get secubox.main.watchdog_enabled || echo "1")
     [ "$watchdog_enabled" != "1" ] && return 0
 
-    # Get monitored services from UCI or use defaults
-    local services=$(uci -q get secubox.main.watchdog_services || echo "$MONITORED_SERVICES")
+    # Auto-discover services if none configured
+    local services=$(uci -q get secubox.main.watchdog_services)
+    [ -z "$services" ] && services=$(discover_secubox_services)
+
     local restart_count=0
-    local status_json=""
+    local checked_count=0
+    local running_count=0
+    local services_status=""
 
     log debug "Watchdog: Checking services..."
 
@@ -184,66 +238,105 @@ run_watchdog() {
         local check_method=$(echo "$service_entry" | cut -d: -f2)
         local restart_delay=$(echo "$service_entry" | cut -d: -f3)
         [ -z "$restart_delay" ] && restart_delay=5
+        [ -z "$check_method" ] && check_method="pid"
 
-        # Check if service init script exists
-        [ ! -x "/etc/init.d/$service_name" ] && continue
+        # Determine if service is enabled (check ctl script or init.d)
+        local ctl_script="/usr/sbin/${service_name}ctl"
+        local init_script="/etc/init.d/$service_name"
+        local is_enabled=false
 
-        # Check if service is supposed to be enabled
-        /etc/init.d/$service_name enabled >/dev/null 2>&1 || continue
+        if [ -x "$ctl_script" ]; then
+            # Check via UCI for LXC/Docker services
+            local uci_enabled=$(uci -q get "$service_name.main.enabled" 2>/dev/null || echo "0")
+            [ "$uci_enabled" = "1" ] && is_enabled=true
+        elif [ -x "$init_script" ]; then
+            $init_script enabled >/dev/null 2>&1 && is_enabled=true
+        fi
 
+        # Skip disabled services
+        [ "$is_enabled" = "false" ] && continue
+
+        checked_count=$((checked_count + 1))
         local is_running=false
+        local status_detail=""
 
         case "$check_method" in
             pid)
-                # Check via pidof or pgrep
+                # Check via pgrep
                 if pgrep "$service_name" >/dev/null 2>&1; then
                     is_running=true
+                    status_detail="pid=$(pgrep -o "$service_name")"
                 fi
                 ;;
             docker)
-                # Check Docker container
-                if docker ps --filter "name=$service_name" --format "{{.Names}}" 2>/dev/null | grep -q "$service_name"; then
+                # Check Docker container (secbx- prefix)
+                local container_name="secbx-${service_name}"
+                if docker ps --filter "name=$container_name" --format "{{.Names}}" 2>/dev/null | grep -q "$container_name"; then
                     is_running=true
+                    status_detail="container=$container_name"
                 fi
                 ;;
             lxc)
                 # Check LXC container
                 if lxc-info -n "$service_name" -s 2>/dev/null | grep -q "RUNNING"; then
                     is_running=true
+                    # Get container IP if available
+                    local lxc_ip=$(lxc-info -n "$service_name" -i 2>/dev/null | awk '{print $2}' | head -1)
+                    [ -n "$lxc_ip" ] && status_detail="ip=$lxc_ip"
                 fi
                 ;;
             port:*)
                 # Check if port is listening
                 local port=$(echo "$check_method" | cut -d: -f2)
-                # Use /proc/net/tcp (ports in hex)
                 local port_hex=$(printf '%04X' "$port")
                 if grep -q ":$port_hex " /proc/net/tcp /proc/net/tcp6 2>/dev/null; then
                     is_running=true
+                    status_detail="port=$port"
                 fi
                 ;;
         esac
 
-        if [ "$is_running" = "false" ]; then
+        if [ "$is_running" = "true" ]; then
+            running_count=$((running_count + 1))
+            services_status="$services_status ${service_name}:ok"
+        else
+            services_status="$services_status ${service_name}:down"
             log warn "Watchdog: $service_name is down, restarting..."
             sleep "$restart_delay"
 
             # Double-check before restart (service might have recovered)
             case "$check_method" in
-                pid) pgrep "$service_name" >/dev/null 2>&1 && continue ;;
+                pid) pgrep "$service_name" >/dev/null 2>&1 && { running_count=$((running_count + 1)); continue; } ;;
+                lxc) lxc-info -n "$service_name" -s 2>/dev/null | grep -q "RUNNING" && { running_count=$((running_count + 1)); continue; } ;;
             esac
 
-            /etc/init.d/$service_name restart >/dev/null 2>&1
+            # Restart using ctl script if available, otherwise init.d
+            if [ -x "$ctl_script" ]; then
+                $ctl_script restart >/dev/null 2>&1 &
+            elif [ -x "$init_script" ]; then
+                $init_script restart >/dev/null 2>&1 &
+            fi
             restart_count=$((restart_count + 1))
 
-            # Log restart event
             log info "Watchdog: Restarted $service_name"
         fi
     done
 
-    # Save watchdog state
+    # Save detailed watchdog state
     json_init
     json_add_string "last_check" "$(date -Iseconds)"
     json_add_int "restarts" "$restart_count"
+    json_add_int "checked" "$checked_count"
+    json_add_int "running" "$running_count"
+
+    json_add_object "services"
+    for svc_status in $services_status; do
+        local svc=$(echo "$svc_status" | cut -d: -f1)
+        local status=$(echo "$svc_status" | cut -d: -f2)
+        json_add_string "$svc" "$status"
+    done
+    json_close_object
+
     json_dump > "$WATCHDOG_STATE" 2>/dev/null
 
     return 0

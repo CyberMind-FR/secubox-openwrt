@@ -1089,6 +1089,7 @@ check_port_firewall_open() {
 }
 
 # Get network connectivity info (public IPs, port accessibility)
+# NOTE: External port checks disabled - too slow (HTTP requests to external services)
 method_get_network_info() {
 	json_init
 	json_add_boolean "success" 1
@@ -1097,89 +1098,69 @@ method_get_network_info() {
 	lan_ip=$(get_lan_ip)
 	json_add_string "lan_ip" "$lan_ip"
 
-	# Get public IPv4
+	# Get public IPv4 (use uclient-fetch with IPv4 only for faster response)
 	json_add_object "ipv4"
 	local public_ipv4
-	public_ipv4=$(get_public_ipv4)
+	public_ipv4=$(uclient-fetch -4 -q -T 2 -O - "http://ipv4.icanhazip.com" 2>/dev/null | tr -d '\n')
 	if [ -n "$public_ipv4" ]; then
 		json_add_string "address" "$public_ipv4"
 		json_add_string "status" "ok"
-
-		# Reverse DNS
-		local rdns
-		rdns=$(get_reverse_dns "$public_ipv4")
-		[ -n "$rdns" ] && json_add_string "hostname" "$rdns"
 	else
 		json_add_string "status" "unavailable"
 	fi
 	json_close_object
 
-	# Get public IPv6
+	# IPv6 - skip network check (often broken/slow), just report firewall status
 	json_add_object "ipv6"
-	local public_ipv6
-	public_ipv6=$(get_public_ipv6)
-	if [ -n "$public_ipv6" ]; then
-		json_add_string "address" "$public_ipv6"
-		json_add_string "status" "ok"
-
-		# Reverse DNS
-		local rdns6
-		rdns6=$(get_reverse_dns "$public_ipv6")
-		[ -n "$rdns6" ] && json_add_string "hostname" "$rdns6"
+	# Check if IPv6 is enabled in network config
+	local ipv6_enabled=0
+	if uci -q get network.wan6 >/dev/null 2>&1 || \
+	   uci -q get network.wan.ipv6 >/dev/null 2>&1; then
+		ipv6_enabled=1
+	fi
+	if [ "$ipv6_enabled" = "1" ]; then
+		json_add_string "status" "configured"
 	else
-		json_add_string "status" "unavailable"
+		json_add_string "status" "disabled"
 	fi
 	json_close_object
 
-	# External port accessibility (from internet perspective)
+	# External port accessibility - use firewall check only (fast)
+	# NOTE: Real external check would require slow HTTP requests to external services
 	json_add_object "external_ports"
-	if [ -n "$public_ipv4" ]; then
-		# Check port 80
-		json_add_object "http"
-		if check_external_port "$public_ipv4" 80; then
-			json_add_boolean "accessible" 1
-			json_add_string "status" "open"
-		else
-			json_add_boolean "accessible" 0
-			json_add_string "status" "blocked"
-			json_add_string "hint" "Check upstream router port forwarding"
-		fi
-		json_close_object
+	local http_fw=0
+	local https_fw=0
+	check_port_firewall_open 80 && http_fw=1
+	check_port_firewall_open 443 && https_fw=1
 
-		# Check port 443
-		json_add_object "https"
-		if check_external_port "$public_ipv4" 443; then
-			json_add_boolean "accessible" 1
-			json_add_string "status" "open"
-		else
-			json_add_boolean "accessible" 0
-			json_add_string "status" "blocked"
-			json_add_string "hint" "Check upstream router port forwarding"
-		fi
-		json_close_object
+	json_add_object "http"
+	if [ "$http_fw" = "1" ]; then
+		json_add_string "status" "firewall_open"
+		json_add_string "hint" "Firewall allows port 80"
 	else
-		json_add_object "http"
-		json_add_string "status" "unknown"
-		json_add_string "error" "No public IP"
-		json_close_object
-		json_add_object "https"
-		json_add_string "status" "unknown"
-		json_add_string "error" "No public IP"
-		json_close_object
+		json_add_string "status" "firewall_closed"
+		json_add_string "hint" "Add firewall rule for port 80"
 	fi
+	json_close_object
+
+	json_add_object "https"
+	if [ "$https_fw" = "1" ]; then
+		json_add_string "status" "firewall_open"
+		json_add_string "hint" "Firewall allows port 443"
+	else
+		json_add_string "status" "firewall_closed"
+		json_add_string "hint" "Add firewall rule for port 443"
+	fi
+	json_close_object
 	json_close_object
 
 	# Local firewall status
 	json_add_object "firewall"
-	local http_open=0
-	local https_open=0
-	check_port_firewall_open 80 && http_open=1
-	check_port_firewall_open 443 && https_open=1
-	json_add_boolean "http_open" "$http_open"
-	json_add_boolean "https_open" "$https_open"
-	if [ "$http_open" = "1" ] && [ "$https_open" = "1" ]; then
+	json_add_boolean "http_open" "$http_fw"
+	json_add_boolean "https_open" "$https_fw"
+	if [ "$http_fw" = "1" ] && [ "$https_fw" = "1" ]; then
 		json_add_string "status" "ok"
-	elif [ "$http_open" = "1" ] || [ "$https_open" = "1" ]; then
+	elif [ "$http_fw" = "1" ] || [ "$https_fw" = "1" ]; then
 		json_add_string "status" "partial"
 	else
 		json_add_string "status" "closed"
@@ -1226,20 +1207,13 @@ method_check_service_health() {
 	json_add_string "service_id" "$service_id"
 	json_add_string "domain" "$domain"
 
-	# Get public IPs for comparison
-	local public_ipv4 public_ipv6
-	public_ipv4=$(get_public_ipv4)
-	public_ipv6=$(get_public_ipv6)
+	# Get public IPv4 (short timeout for responsiveness)
+	local public_ipv4
+	public_ipv4=$(wget -qO- -T 3 "http://ipv4.icanhazip.com" 2>/dev/null | tr -d '\n')
 
 	# Public IP info
 	json_add_object "public_ip"
-	json_add_string "ipv4" "$public_ipv4"
-	[ -n "$public_ipv6" ] && json_add_string "ipv6" "$public_ipv6"
-	if [ -n "$public_ipv4" ]; then
-		local rdns
-		rdns=$(get_reverse_dns "$public_ipv4")
-		[ -n "$rdns" ] && json_add_string "hostname" "$rdns"
-	fi
+	json_add_string "ipv4" "${public_ipv4:-unknown}"
 	json_close_object
 
 	# DNS check with public IP comparison
@@ -1275,27 +1249,21 @@ method_check_service_health() {
 	fi
 	json_close_object
 
-	# External port accessibility check
+	# External port accessibility check (firewall-based, fast)
 	json_add_object "external_access"
-	if [ -n "$public_ipv4" ]; then
-		local http_ext=0
-		local https_ext=0
-		check_external_port "$public_ipv4" 80 && http_ext=1
-		check_external_port "$public_ipv4" 443 && https_ext=1
-		json_add_boolean "http_accessible" "$http_ext"
-		json_add_boolean "https_accessible" "$https_ext"
-		if [ "$http_ext" = "1" ] && [ "$https_ext" = "1" ]; then
-			json_add_string "status" "ok"
-		elif [ "$http_ext" = "1" ] || [ "$https_ext" = "1" ]; then
-			json_add_string "status" "partial"
-			json_add_string "hint" "Check upstream router/ISP port forwarding"
-		else
-			json_add_string "status" "blocked"
-			json_add_string "hint" "Ports not accessible from internet - check router/ISP"
-		fi
+	local http_fw=0
+	local https_fw=0
+	check_port_firewall_open 80 && http_fw=1
+	check_port_firewall_open 443 && https_fw=1
+	json_add_boolean "http_accessible" "$http_fw"
+	json_add_boolean "https_accessible" "$https_fw"
+	if [ "$http_fw" = "1" ] && [ "$https_fw" = "1" ]; then
+		json_add_string "status" "firewall_ok"
+	elif [ "$http_fw" = "1" ] || [ "$https_fw" = "1" ]; then
+		json_add_string "status" "partial"
 	else
-		json_add_string "status" "unknown"
-		json_add_string "error" "Could not determine public IP"
+		json_add_string "status" "closed"
+		json_add_string "hint" "Open firewall ports 80/443 for external access"
 	fi
 	json_close_object
 

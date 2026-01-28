@@ -842,7 +842,7 @@ save_settings() {
 
 	# Get values from input BEFORE json_init (which wipes loaded JSON)
 	local mode dns_over_tor kill_switch socks_port trans_port dns_port
-	local exit_nodes exclude_exit strict_nodes
+	local exit_nodes exclude_exit strict_nodes apply_now
 	json_get_var mode mode
 	json_get_var dns_over_tor dns_over_tor
 	json_get_var kill_switch kill_switch
@@ -852,6 +852,7 @@ save_settings() {
 	json_get_var exit_nodes exit_nodes
 	json_get_var exclude_exit exclude_exit_nodes
 	json_get_var strict_nodes strict_nodes
+	json_get_var apply_now apply_now
 
 	# Now initialize output JSON
 	json_init
@@ -891,8 +892,25 @@ save_settings() {
 
 	uci commit tor-shield
 
+	# Restart service to apply firewall rules if Tor is enabled and apply_now is set
+	local enabled
+	config_load "$CONFIG"
+	config_get enabled main enabled '0'
+
+	local restarted=0
+	if [ "$enabled" = "1" ] && [ "$apply_now" = "1" ]; then
+		/etc/init.d/tor-shield restart >/dev/null 2>&1 &
+		restarted=1
+	fi
+
 	json_add_boolean "success" 1
-	json_add_string "message" "Settings saved"
+	if [ "$restarted" = "1" ]; then
+		json_add_string "message" "Settings saved and applied"
+		json_add_boolean "restarted" 1
+	else
+		json_add_string "message" "Settings saved"
+		json_add_boolean "restarted" 0
+	fi
 
 	json_dump
 }

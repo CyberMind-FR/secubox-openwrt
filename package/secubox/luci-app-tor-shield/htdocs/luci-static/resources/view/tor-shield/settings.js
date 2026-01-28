@@ -10,7 +10,7 @@ return view.extend({
 		return api.getSettings();
 	},
 
-	handleSave: function(form) {
+	handleSave: function(form, applyNow) {
 		var self = this;
 
 		// Gather form values
@@ -27,7 +27,7 @@ return view.extend({
 		};
 
 		ui.showModal(_('Saving Settings'), [
-			E('p', { 'class': 'spinning' }, _('Saving configuration...'))
+			E('p', { 'class': 'spinning' }, applyNow ? _('Saving and applying configuration...') : _('Saving configuration...'))
 		]);
 
 		api.saveSettings(
@@ -39,11 +39,16 @@ return view.extend({
 			settings.dns_port,
 			settings.exit_nodes,
 			settings.exclude_exit_nodes,
-			settings.strict_nodes
+			settings.strict_nodes,
+			applyNow
 		).then(function(result) {
 			ui.hideModal();
 			if (result.success) {
-				ui.addNotification(null, E('p', _('Settings saved. Restart Tor Shield to apply changes.')), 'info');
+				if (result.restarted) {
+					ui.addNotification(null, E('p', _('Settings saved and applied. Firewall rules updated.')), 'info');
+				} else {
+					ui.addNotification(null, E('p', _('Settings saved. Restart Tor Shield to apply changes.')), 'info');
+				}
 			} else {
 				ui.addNotification(null, E('p', result.error || _('Failed to save settings')), 'error');
 			}
@@ -231,14 +236,22 @@ return view.extend({
 				]),
 
 				// Actions
-				E('div', { 'style': 'display: flex; gap: 12px; margin-top: 20px;' }, [
+				E('div', { 'style': 'display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap;' }, [
 					E('button', {
 						'type': 'button',
 						'class': 'tor-btn tor-btn-primary',
+						'style': 'background: linear-gradient(135deg, #059669 0%, #10b981 100%);',
 						'click': function() {
-							self.handleSave(document.getElementById('tor-settings-form'));
+							self.handleSave(document.getElementById('tor-settings-form'), true);
 						}
-					}, ['\uD83D\uDCBE ', _('Save Settings')]),
+					}, ['\u26A1 ', _('Save & Apply')]),
+					E('button', {
+						'type': 'button',
+						'class': 'tor-btn',
+						'click': function() {
+							self.handleSave(document.getElementById('tor-settings-form'), false);
+						}
+					}, ['\uD83D\uDCBE ', _('Save Only')]),
 					E('a', {
 						'href': L.url('admin', 'services', 'tor-shield'),
 						'class': 'tor-btn'

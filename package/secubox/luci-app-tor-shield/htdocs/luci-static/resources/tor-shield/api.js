@@ -105,7 +105,7 @@ var callSettings = rpc.declare({
 var callSaveSettings = rpc.declare({
 	object: 'luci.tor-shield',
 	method: 'save_settings',
-	params: ['mode', 'dns_over_tor', 'kill_switch', 'socks_port', 'trans_port', 'dns_port', 'exit_nodes', 'exclude_exit_nodes', 'strict_nodes'],
+	params: ['mode', 'dns_over_tor', 'kill_switch', 'socks_port', 'trans_port', 'dns_port', 'exit_nodes', 'exclude_exit_nodes', 'strict_nodes', 'apply_now'],
 	expect: { }
 });
 
@@ -173,8 +173,8 @@ return baseclass.extend({
 	getBridges: function() { return callBridges(); },
 	setBridges: function(enabled, type) { return callSetBridges(enabled, type); },
 	getSettings: function() { return callSettings(); },
-	saveSettings: function(mode, dns_over_tor, kill_switch, socks_port, trans_port, dns_port, exit_nodes, exclude_exit_nodes, strict_nodes) {
-		return callSaveSettings(mode, dns_over_tor, kill_switch, socks_port, trans_port, dns_port, exit_nodes, exclude_exit_nodes, strict_nodes);
+	saveSettings: function(mode, dns_over_tor, kill_switch, socks_port, trans_port, dns_port, exit_nodes, exclude_exit_nodes, strict_nodes, apply_now) {
+		return callSaveSettings(mode, dns_over_tor, kill_switch, socks_port, trans_port, dns_port, exit_nodes, exclude_exit_nodes, strict_nodes, apply_now !== false ? '1' : '0');
 	},
 
 	formatBytes: formatBytes,
