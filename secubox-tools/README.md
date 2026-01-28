@@ -438,6 +438,128 @@ mv htdocs/luci-static/resources/view/example-dashboard \
 chmod +x luci-app-example/root/usr/libexec/rpcd/luci.example
 ```
 
+## SecuBox Package Feed
+
+The SecuBox feed provides custom OpenWrt packages installable via `opkg`. After building packages, they are synced to `/www/secubox-feed` on the router.
+
+### Feed Structure
+
+```
+/www/secubox-feed/
+├── Packages              # Package index (text)
+├── Packages.gz           # Compressed package index
+├── Packages.sig          # Optional signature
+└── *.ipk                 # Package files
+```
+
+### Configuring opkg to Use the Feed
+
+**Option 1: Local File Access (same device)**
+```bash
+echo 'src/gz secubox file:///www/secubox-feed' >> /etc/opkg/customfeeds.conf
+opkg update
+```
+
+**Option 2: HTTP Access (network devices)**
+```bash
+# From other devices on the network (replace IP with your router's address)
+echo 'src/gz secubox http://192.168.255.1/secubox-feed' >> /etc/opkg/customfeeds.conf
+opkg update
+```
+
+**Option 3: HAProxy Published Feed (with SSL)**
+```bash
+# If published via HAProxy with domain
+echo 'src/gz secubox https://feed.example.com' >> /etc/opkg/customfeeds.conf
+opkg update
+```
+
+### Installing Packages from the Feed
+
+```bash
+# Update package lists
+opkg update
+
+# List available SecuBox packages
+opkg list | grep -E '^(luci-app-|secubox-)'
+
+# Install a package
+opkg install luci-app-service-registry
+
+# Install with dependencies
+opkg install --force-depends luci-app-haproxy
+```
+
+### Regenerating the Package Index
+
+After adding new .ipk files to the feed:
+
+```bash
+# On the router
+cd /www/secubox-feed
+/usr/libexec/opkg-make-index . > Packages
+gzip -k Packages
+```
+
+Or use the deploy command:
+```bash
+# From development machine
+./secubox-tools/local-build.sh deploy root@192.168.255.1 "luci-app-*"
+```
+
+### App Store Integration
+
+The LuCI App Store reads from `apps-local.json` to list available packages:
+
+```bash
+# Generate apps manifest from feed
+cat /www/secubox-feed/Packages | awk '
+/^Package:/ { pkg=$2 }
+/^Version:/ { ver=$2 }
+/^Description:/ { desc=substr($0, 14); print pkg, ver, desc }
+'
+```
+
+The Service Registry dashboard aggregates installed apps and their status.
+
+### Exposing Feed via HAProxy
+
+To publish the feed with HTTPS:
+
+```bash
+# Create HAProxy backend for the feed
+ubus call luci.haproxy create_backend '{"name":"secubox-feed","mode":"http"}'
+ubus call luci.haproxy create_server '{"backend":"secubox-feed","address":"127.0.0.1","port":80}'
+ubus call luci.haproxy create_vhost '{"domain":"feed.example.com","backend":"secubox-feed","ssl":1,"acme":1}'
+
+# Request certificate
+ubus call luci.haproxy request_certificate '{"domain":"feed.example.com"}'
+```
+
+### Troubleshooting
+
+**Feed not updating:**
+```bash
+# Check feed URL is accessible
+curl -I http://192.168.255.1/secubox-feed/Packages
+
+# Check opkg config
+cat /etc/opkg/customfeeds.conf
+
+# Force refresh
+rm /var/opkg-lists/secubox
+opkg update
+```
+
+**Package signature errors:**
+```bash
+# Skip signature verification (development only)
+opkg update --no-check-certificate
+opkg install --force-checksum <package>
+```
+
+---
+
 ## Integration with CI/CD
 
 The validation script can be integrated into GitHub Actions workflows:

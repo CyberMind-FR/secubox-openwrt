@@ -2322,9 +2322,17 @@ get_overview() {
 	fi
 	json_close_array
 
-	# LAPI status (quick check)
+	# LAPI status (dynamic port detection from config)
 	local lapi_ok=0
-	if [ "$cs_running" = "1" ] && grep -qi ":1F90 " /proc/net/tcp 2>/dev/null; then
+	local lapi_port=""
+	# Get LAPI port from credentials or config file
+	lapi_port=$(grep -oE ':[0-9]+/?$' /etc/crowdsec/local_api_credentials.yaml 2>/dev/null | tr -d ':/')
+	[ -z "$lapi_port" ] && lapi_port=$(grep 'listen_uri' /etc/crowdsec/config.yaml 2>/dev/null | grep -oE ':[0-9]+$' | tr -d ':')
+	[ -z "$lapi_port" ] && lapi_port=8080
+	# Convert port to hex for /proc/net/tcp lookup
+	local lapi_port_hex
+	lapi_port_hex=$(printf '%04X' "$lapi_port")
+	if [ "$cs_running" = "1" ] && grep -qi ":${lapi_port_hex} " /proc/net/tcp 2>/dev/null; then
 		lapi_ok=1
 	fi
 	json_add_string "lapi_status" "$([ "$lapi_ok" = "1" ] && echo available || echo unavailable)"
