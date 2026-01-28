@@ -11,7 +11,9 @@
 					"bandwidth",
 					"presets",
 					"bridges",
-					"settings"
+					"settings",
+					"excluded_destinations",
+					"refresh_ips"
 				],
 				"system": [ "info", "board" ],
 				"file": [ "read", "stat", "exec" ]
@@ -35,7 +37,10 @@
 					"add_hidden_service",
 					"remove_hidden_service",
 					"set_bridges",
-					"save_settings"
+					"save_settings",
+					"add_excluded_destination",
+					"remove_excluded_destination",
+					"apply_exclusions"
 				]
 			},
 			"uci": [ "tor-shield" ],

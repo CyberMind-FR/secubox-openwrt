@@ -36,6 +36,32 @@ var callGetCumulativeImpact = rpc.declare({
 	expect: { }
 });
 
+var callCdnCacheStatus = rpc.declare({
+	object: 'luci.cdn-cache',
+	method: 'status',
+	expect: { }
+});
+
+var callCdnCacheSetEnabled = rpc.declare({
+	object: 'luci.cdn-cache',
+	method: 'set_enabled',
+	params: ['enabled'],
+	expect: { }
+});
+
+var callGetWpadStatus = rpc.declare({
+	object: 'luci.network-tweaks',
+	method: 'getWpadStatus',
+	expect: { }
+});
+
+var callSetWpadEnabled = rpc.declare({
+	object: 'luci.network-tweaks',
+	method: 'setWpadEnabled',
+	params: ['enabled'],
+	expect: { }
+});
+
 var callSetComponentEnabled = rpc.declare({
 	object: 'luci.network-tweaks',
 	method: 'setComponentEnabled',
@@ -43,7 +69,14 @@ var callSetComponentEnabled = rpc.declare({
 	expect: { }
 });
 
+var callGetProxyStatus = rpc.declare({
+	object: 'luci.network-tweaks',
+	method: 'getProxyStatus',
+	expect: { }
+});
+
 return view.extend({
+	proxyStatusData: {},
 	componentsData: [],
 	cumulativeData: {},
 	networkModeData: {},
@@ -60,7 +93,8 @@ return view.extend({
 		return Promise.all([
 			callNetworkTweaksStatus(),
 			callGetNetworkComponents(),
-			callGetCumulativeImpact()
+			callGetCumulativeImpact(),
+			callGetProxyStatus()
 		]);
 	},
 
@@ -68,10 +102,12 @@ return view.extend({
 		var status = data[0] || {};
 		var componentsResponse = data[1] || {};
 		var cumulativeResponse = data[2] || {};
+		var proxyStatus = data[3] || {};
 
 		this.componentsData = componentsResponse.components || [];
 		this.cumulativeData = cumulativeResponse || {};
 		this.networkModeData = componentsResponse.network_mode || {};
+		this.proxyStatusData = proxyStatus || {};
 
 		var m, s, o;
 
@@ -129,6 +165,7 @@ return view.extend({
 		return E('div', { 'class': 'network-tweaks-dashboard' }, [
 			this.renderCumulativeImpact(),
 			this.renderNetworkModeStatus(),
+			this.renderProxySettings(),
 			this.renderComponentsGrid(),
 			this.renderSyncSection()
 		]);
@@ -196,6 +233,137 @@ return view.extend({
 				])
 			])
 		]);
+	},
+
+	renderProxySettings: function() {
+		var proxy = this.proxyStatusData;
+		var cdnCache = proxy.cdn_cache || {};
+		var wpad = proxy.wpad || {};
+
+		var cdnStatusClass = cdnCache.running ? 'status-running' : 'status-stopped';
+		var cdnStatusText = cdnCache.running ? _('Running') : _('Stopped');
+		var cdnListeningText = cdnCache.listening ?
+			_('Listening on port ') + (cdnCache.port || 3128) :
+			_('Not listening');
+
+		var wpadStatusClass = wpad.enabled ? 'status-running' : 'status-stopped';
+		var wpadStatusText = wpad.enabled ? _('Enabled') : _('Disabled');
+
+		return E('div', { 'class': 'proxy-settings-section' }, [
+			E('h3', {}, _('Proxy & Caching')),
+			E('div', { 'class': 'proxy-grid', 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;' }, [
+				// CDN Cache Card
+				E('div', { 'class': 'proxy-card', 'style': 'background: #16213e; border-radius: 8px; padding: 1rem; border: 1px solid #333;' }, [
+					E('div', { 'class': 'proxy-header', 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;' }, [
+						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem;' }, [
+							E('span', { 'style': 'font-size: 1.5em;' }, '\ud83d\udce6'),
+							E('span', { 'style': 'font-weight: bold;' }, _('CDN Cache'))
+						]),
+						E('span', {
+							'class': 'status-badge ' + cdnStatusClass,
+							'style': 'padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8em; ' +
+								(cdnCache.running ? 'background: #22c55e;' : 'background: #ef4444;')
+						}, cdnStatusText)
+					]),
+					E('div', { 'class': 'proxy-info', 'style': 'font-size: 0.9em; color: #888; margin-bottom: 0.75rem;' }, [
+						E('div', {}, cdnListeningText),
+						E('div', {}, cdnCache.installed ? _('nginx proxy installed') : _('Not installed'))
+					]),
+					E('div', { 'class': 'proxy-actions', 'style': 'display: flex; gap: 0.5rem;' }, [
+						E('button', {
+							'class': 'btn cbi-button',
+							'click': L.bind(this.handleCdnCacheToggle, this),
+							'disabled': !cdnCache.installed
+						}, cdnCache.enabled ? _('Disable') : _('Enable')),
+						E('button', {
+							'class': 'btn cbi-button',
+							'click': L.bind(this.handleCdnCacheRestart, this),
+							'disabled': !cdnCache.installed
+						}, _('Restart'))
+					])
+				]),
+				// WPAD Card
+				E('div', { 'class': 'proxy-card', 'style': 'background: #16213e; border-radius: 8px; padding: 1rem; border: 1px solid #333;' }, [
+					E('div', { 'class': 'proxy-header', 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;' }, [
+						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem;' }, [
+							E('span', { 'style': 'font-size: 1.5em;' }, '\ud83c\udf10'),
+							E('span', { 'style': 'font-weight: bold;' }, _('WPAD Auto-Proxy'))
+						]),
+						E('span', {
+							'class': 'status-badge ' + wpadStatusClass,
+							'style': 'padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8em; ' +
+								(wpad.enabled ? 'background: #22c55e;' : 'background: #ef4444;')
+						}, wpadStatusText)
+					]),
+					E('div', { 'class': 'proxy-info', 'style': 'font-size: 0.9em; color: #888; margin-bottom: 0.75rem;' }, [
+						E('div', {}, wpad.dhcp_configured ? _('DHCP Option 252 configured') : _('DHCP not configured')),
+						E('div', {}, wpad.url ? wpad.url : _('No PAC URL set'))
+					]),
+					E('div', { 'class': 'proxy-actions', 'style': 'display: flex; gap: 0.5rem;' }, [
+						E('button', {
+							'class': 'btn cbi-button',
+							'click': L.bind(this.handleWpadToggle, this)
+						}, wpad.enabled ? _('Disable') : _('Enable'))
+					])
+				])
+			])
+		]);
+	},
+
+	handleCdnCacheToggle: function(ev) {
+		var currentEnabled = this.proxyStatusData.cdn_cache?.enabled || false;
+		var newEnabled = !currentEnabled;
+
+		ui.showModal(_('Updating...'), [
+			E('p', { 'class': 'spinning' }, _('Please wait...'))
+		]);
+
+		return callCdnCacheSetEnabled(newEnabled ? 1 : 0).then(L.bind(function() {
+			ui.hideModal();
+			this.refreshData();
+		}, this)).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: ') + err.message), 'error');
+		});
+	},
+
+	handleCdnCacheRestart: function(ev) {
+		ui.showModal(_('Restarting...'), [
+			E('p', { 'class': 'spinning' }, _('Please wait...'))
+		]);
+
+		return rpc.declare({
+			object: 'luci.cdn-cache',
+			method: 'restart',
+			expect: { }
+		})().then(L.bind(function() {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('CDN Cache restarted')), 'info');
+			this.refreshData();
+		}, this)).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: ') + err.message), 'error');
+		});
+	},
+
+	handleWpadToggle: function(ev) {
+		var currentEnabled = this.proxyStatusData.wpad?.enabled || false;
+		var newEnabled = !currentEnabled;
+
+		ui.showModal(_('Updating...'), [
+			E('p', { 'class': 'spinning' }, _('Please wait...'))
+		]);
+
+		return callSetWpadEnabled(newEnabled ? 1 : 0).then(L.bind(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', result.message || _('WPAD updated')), 'info');
+			}
+			this.refreshData();
+		}, this)).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: ') + err.message), 'error');
+		});
 	},
 
 	renderComponentsGrid: function() {
@@ -362,14 +530,17 @@ return view.extend({
 	refreshData: function() {
 		return Promise.all([
 			callGetNetworkComponents(),
-			callGetCumulativeImpact()
+			callGetCumulativeImpact(),
+			callGetProxyStatus()
 		]).then(L.bind(function(data) {
 			var componentsResponse = data[0] || {};
 			var cumulativeResponse = data[1] || {};
+			var proxyStatus = data[2] || {};
 
 			this.componentsData = componentsResponse.components || [];
 			this.cumulativeData = cumulativeResponse || {};
 			this.networkModeData = componentsResponse.network_mode || {};
+			this.proxyStatusData = proxyStatus || {};
 
 			this.updateDisplay();
 		}, this));
@@ -383,6 +554,7 @@ return view.extend({
 		dom.content(dashboard, [
 			this.renderCumulativeImpact(),
 			this.renderNetworkModeStatus(),
+			this.renderProxySettings(),
 			this.renderComponentsGrid(),
 			this.renderSyncSection()
 		]);

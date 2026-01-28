@@ -3,15 +3,17 @@
 		"description": "Grant access to Network Tweaks",
 		"read": {
 			"ubus": {
-				"luci.network-tweaks": ["getStatus", "getConfig", "getNetworkComponents", "getCumulativeImpact"]
+				"luci.network-tweaks": ["getStatus", "getConfig", "getNetworkComponents", "getCumulativeImpact", "getWpadStatus", "getProxyStatus"],
+				"luci.cdn-cache": ["status", "stats"]
 			},
-			"uci": ["network_tweaks", "vhosts"]
+			"uci": ["network_tweaks", "vhosts", "cdn-cache", "dhcp"]
 		},
 		"write": {
 			"ubus": {
-				"luci.network-tweaks": ["syncNow", "setConfig", "setComponentEnabled"]
+				"luci.network-tweaks": ["syncNow", "setConfig", "setComponentEnabled", "setWpadEnabled"],
+				"luci.cdn-cache": ["set_enabled", "restart"]
 			},
-			"uci": ["network_tweaks"]
+			"uci": ["network_tweaks", "dhcp"]
 		}
 	}
 }

@@ -321,7 +321,12 @@ get_security_stats() {
 
 	# HAProxy connections (if running in LXC)
 	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
-		haproxy_conns=$(lxc-attach -n haproxy -- sh -c 'echo "show stat" | socat stdio /var/run/haproxy/admin.sock 2>/dev/null | tail -n+2 | awk -F, "{sum+=\$8} END {print sum}"' 2>/dev/null || echo 0)
+		# Try multiple socket paths (chroot-relative and absolute)
+		haproxy_conns=$(lxc-attach -n haproxy -- sh -c '
+			for sock in /stats /run/haproxy.sock /var/lib/haproxy/stats /var/run/haproxy/admin.sock; do
+				[ -S "$sock" ] && echo "show stat" | socat stdio "$sock" 2>/dev/null && break
+			done | tail -n+2 | awk -F, "{sum+=\$5} END {print sum+0}"
+		' 2>/dev/null || echo 0)
 	fi
 	haproxy_conns=$(echo "$haproxy_conns" | tr -d '\n')
 	haproxy_conns=${haproxy_conns:-0}

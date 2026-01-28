@@ -284,6 +284,13 @@ case "$1" in
 			json_add_string "app_id" "string"
 			json_add_string "enabled" "boolean"
 		json_close_object
+		json_add_object "getWpadStatus"
+		json_close_object
+		json_add_object "setWpadEnabled"
+			json_add_string "enabled" "boolean"
+		json_close_object
+		json_add_object "getProxyStatus"
+		json_close_object
 		json_dump
 		;;
 
@@ -462,6 +469,166 @@ case "$1" in
 				json_init
 				json_add_boolean "success" 1
 				json_add_string "message" "Component network features updated"
+				json_dump
+				;;
+
+			getWpadStatus)
+				# Get WPAD/PAC file status
+				json_init
+				json_add_boolean "success" 1
+
+				# Check if WPAD file exists
+				wpad_enabled=0
+				wpad_file=""
+				if [ -f /www/wpad.dat ]; then
+					wpad_enabled=1
+					wpad_file="/www/wpad.dat"
+				fi
+
+				# Check DHCP option 252 configuration
+				dhcp_wpad_enabled=0
+				config_load dhcp
+				check_dhcp_option() {
+					local value
+					config_get value "$1" "252"
+					[ -n "$value" ] && dhcp_wpad_enabled=1
+				}
+				config_foreach check_dhcp_option dhcp
+
+				# Check dnsmasq wpad entry
+				dns_wpad_enabled=0
+				if grep -q "wpad" /etc/hosts 2>/dev/null || \
+				   grep -q "wpad" /tmp/hosts.vhosts 2>/dev/null; then
+					dns_wpad_enabled=1
+				fi
+
+				json_add_object "wpad"
+					json_add_boolean "enabled" "$wpad_enabled"
+					json_add_string "file" "$wpad_file"
+					json_add_boolean "dhcp_configured" "$dhcp_wpad_enabled"
+					json_add_boolean "dns_configured" "$dns_wpad_enabled"
+				json_close_object
+
+				json_dump
+				;;
+
+			setWpadEnabled)
+				# Enable/disable WPAD
+				read input
+				json_load "$input"
+
+				json_get_var enabled enabled
+
+				if [ "$enabled" = "1" ] || [ "$enabled" = "true" ]; then
+					# Get LAN IP
+					lan_ip=$(uci get network.lan.ipaddr 2>/dev/null | cut -d'/' -f1)
+					[ -z "$lan_ip" ] && lan_ip="192.168.255.1"
+
+					# Create WPAD/PAC file
+					cat > /www/wpad.dat << EOF
+function FindProxyForURL(url, host) {
+    // Direct access for local network
+    if (isInNet(host, "192.168.0.0", "255.255.0.0") ||
+        isInNet(host, "10.0.0.0", "255.0.0.0") ||
+        isInNet(host, "172.16.0.0", "255.240.0.0") ||
+        shExpMatch(host, "*.local") ||
+        shExpMatch(host, "*.lan")) {
+        return "DIRECT";
+    }
+    // Use CDN Cache proxy for everything else
+    return "PROXY ${lan_ip}:3128; DIRECT";
+}
+EOF
+					chmod 644 /www/wpad.dat
+
+					# Add DHCP option 252 for WPAD discovery
+					uci set dhcp.lan.dhcp_option_force="252,http://${lan_ip}/wpad.dat"
+					uci commit dhcp
+
+					# Add wpad DNS entry
+					if ! grep -q "wpad" /etc/hosts 2>/dev/null; then
+						echo "${lan_ip} wpad wpad.lan" >> /etc/hosts
+					fi
+
+					# Restart dnsmasq
+					/etc/init.d/dnsmasq reload >/dev/null 2>&1
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "WPAD enabled"
+				else
+					# Remove WPAD file
+					rm -f /www/wpad.dat
+
+					# Remove DHCP option
+					uci delete dhcp.lan.dhcp_option_force 2>/dev/null
+					uci commit dhcp
+
+					# Remove wpad DNS entry
+					sed -i '/wpad/d' /etc/hosts 2>/dev/null
+
+					# Restart dnsmasq
+					/etc/init.d/dnsmasq reload >/dev/null 2>&1
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "WPAD disabled"
+				fi
+
+				json_dump
+				;;
+
+			getProxyStatus)
+				# Get comprehensive proxy status (CDN Cache + WPAD)
+				json_init
+				json_add_boolean "success" 1
+
+				# CDN Cache status
+				cdn_running=0
+				cdn_enabled=0
+				cdn_port=3128
+
+				if [ -x /etc/init.d/cdn-cache ]; then
+					/etc/init.d/cdn-cache running >/dev/null 2>&1 && cdn_running=1
+					cdn_enabled=$(uci get cdn-cache.main.enabled 2>/dev/null)
+					[ -z "$cdn_enabled" ] && cdn_enabled=0
+					cdn_port=$(uci get cdn-cache.main.listen_port 2>/dev/null)
+					[ -z "$cdn_port" ] && cdn_port=3128
+				fi
+
+				# Check if port is actually listening
+				cdn_listening=0
+				if netstat -tln 2>/dev/null | grep -q ":${cdn_port}"; then
+					cdn_listening=1
+				fi
+
+				json_add_object "cdn_cache"
+					json_add_boolean "installed" "$([ -x /etc/init.d/cdn-cache ] && echo 1 || echo 0)"
+					json_add_boolean "enabled" "$cdn_enabled"
+					json_add_boolean "running" "$cdn_running"
+					json_add_boolean "listening" "$cdn_listening"
+					json_add_int "port" "$cdn_port"
+				json_close_object
+
+				# WPAD status
+				wpad_enabled=0
+				[ -f /www/wpad.dat ] && wpad_enabled=1
+
+				dhcp_wpad=0
+				wpad_url=""
+				config_load dhcp
+				wpad_opt=$(uci get dhcp.lan.dhcp_option_force 2>/dev/null)
+				if echo "$wpad_opt" | grep -q "252"; then
+					dhcp_wpad=1
+					wpad_url=$(echo "$wpad_opt" | sed 's/252,//')
+				fi
+
+				json_add_object "wpad"
+					json_add_boolean "enabled" "$wpad_enabled"
+					json_add_boolean "dhcp_configured" "$dhcp_wpad"
+					json_add_string "url" "$wpad_url"
+				json_close_object
+
 				json_dump
 				;;
 
