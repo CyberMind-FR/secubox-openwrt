@@ -1,9 +1,9 @@
 config client-guardian 'config'
-	option enabled '1'
-	option default_policy 'quarantine'
+	option enabled '0'
+	option default_policy 'open'
 	option quarantine_zone 'quarantine'
 	option scan_interval '30'
-	option auto_approve '0'
+	option auto_approve '1'
 	option log_level 'info'
 	# Dashboard Reactiveness
 	option auto_refresh '1'
@@ -11,11 +11,11 @@ config client-guardian 'config'
 	# Debug Mode
 	option debug_enabled '0'
 	option debug_level 'INFO'
-	option enable_active_scan '1'
-	# Auto-Zoning / Auto-Parking
-	option auto_zoning_enabled '1'
-	option auto_parking_zone 'guest'
-	option auto_parking_approve '0'
+	option enable_active_scan '0'
+	# Auto-Zoning / Auto-Parking - DISABLED BY DEFAULT for safety
+	option auto_zoning_enabled '0'
+	option auto_parking_zone 'lan_private'
+	option auto_parking_approve '1'
 
 # Alert Configuration
 config alerts 'alerts'
@@ -196,7 +196,7 @@ config schedule 'school_hours'
 
 config schedule 'night_block'
 	option name 'Blocage Nocturne'
-	option enabled '1'
+	option enabled '0'
 	option action 'block'
 	option start_time '22:00'
 	option end_time '07:00'
@@ -216,11 +216,11 @@ config schedule 'weekend_limit'
 	list days 'sat'
 	list days 'sun'
 
-# Threat Intelligence Integration
+# Threat Intelligence Integration - DISABLED by default for safety
 config threat_policy 'threat_policy'
-	option enabled '1'
-	option auto_ban_threshold '80'
-	option auto_quarantine_threshold '60'
+	option enabled '0'
+	option auto_ban_threshold '95'
+	option auto_quarantine_threshold '90'
 	option threat_check_interval '60'
 
 # Auto-Zoning Rules

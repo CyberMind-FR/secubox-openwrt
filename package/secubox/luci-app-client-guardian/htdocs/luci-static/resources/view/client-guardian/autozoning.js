@@ -27,17 +27,17 @@ return view.extend({
 		s = m.section(form.NamedSection, 'config', 'client-guardian', _('Auto-Zoning Settings'));
 
 		o = s.option(form.Flag, 'auto_zoning_enabled', _('Enable Auto-Zoning'),
-			_('Automatically assign clients to zones using matching rules'));
-		o.default = '1';
+			_('Automatically assign clients to zones using matching rules. WARNING: May restrict network access for new devices!'));
+		o.default = '0';
 		o.rmempty = false;
 
 		o = s.option(form.ListValue, 'auto_parking_zone', _('Auto-Parking Zone'),
 			_('Default zone for clients that don\'t match any rule'));
-		o.value('guest', _('Guest'));
-		o.value('quarantine', _('Quarantine'));
-		o.value('iot', _('IoT'));
-		o.value('lan_private', _('LAN Private'));
-		o.default = 'guest';
+		o.value('lan_private', _('LAN Private (Full Access)'));
+		o.value('guest', _('Guest (Internet Only)'));
+		o.value('iot', _('IoT (Isolated)'));
+		o.value('quarantine', _('Quarantine (No Access - Dangerous!)'));
+		o.default = 'lan_private';
 		o.depends('auto_zoning_enabled', '1');
 
 		o = s.option(form.Flag, 'auto_parking_approve', _('Auto-Approve Parked Clients'),
