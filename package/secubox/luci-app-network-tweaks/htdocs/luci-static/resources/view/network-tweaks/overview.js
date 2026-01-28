@@ -285,11 +285,15 @@ return view.extend({
 							_('Install via adguardhomectl'))
 					]),
 					E('div', { 'class': 'proxy-actions', 'style': 'display: flex; gap: 0.5rem;' }, [
-						E('button', {
-							'class': 'btn cbi-button',
-							'click': L.bind(this.handleAdGuardToggle, this),
-							'disabled': !adguard.installed
-						}, adguard.enabled ? _('Disable') : _('Enable')),
+						adguard.installed ?
+							E('button', {
+								'class': 'btn cbi-button',
+								'click': L.bind(this.handleAdGuardToggle, this)
+							}, adguard.enabled ? _('Disable') : _('Enable')) :
+							E('button', {
+								'class': 'btn cbi-button',
+								'disabled': 'disabled'
+							}, _('Not Installed')),
 						adguard.running ? E('a', {
 							'class': 'btn cbi-button',
 							'href': 'http://' + window.location.hostname + ':' + (adguard.port || 3000),
@@ -314,18 +318,23 @@ return view.extend({
 						E('div', {}, cdnListeningText),
 						E('div', {}, cdnCache.installed ? _('nginx proxy installed') : _('Not installed'))
 					]),
-					E('div', { 'class': 'proxy-actions', 'style': 'display: flex; gap: 0.5rem;' }, [
+					E('div', { 'class': 'proxy-actions', 'style': 'display: flex; gap: 0.5rem;' },
+					cdnCache.installed ? [
 						E('button', {
 							'class': 'btn cbi-button',
-							'click': L.bind(this.handleCdnCacheToggle, this),
-							'disabled': !cdnCache.installed
+							'click': L.bind(this.handleCdnCacheToggle, this)
 						}, cdnCache.enabled ? _('Disable') : _('Enable')),
 						E('button', {
 							'class': 'btn cbi-button',
-							'click': L.bind(this.handleCdnCacheRestart, this),
-							'disabled': !cdnCache.installed
+							'click': L.bind(this.handleCdnCacheRestart, this)
 						}, _('Restart'))
-					])
+					] : [
+						E('button', {
+							'class': 'btn cbi-button',
+							'disabled': 'disabled'
+						}, _('Not Installed'))
+					]
+				)
 				]),
 				// WPAD Card
 				E('div', { 'class': 'proxy-card', 'style': 'background: #16213e; border-radius: 8px; padding: 1rem; border: 1px solid #333;' }, [

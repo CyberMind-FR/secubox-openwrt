@@ -601,6 +601,14 @@ return view.extend({
 						}, [
 							E('span', { 'style': 'font-size: 24px; margin-bottom: 4px;' }, '\u{2699}\uFE0F'),
 							E('span', {}, _('Settings'))
+						]),
+						E('a', {
+							'class': 'tor-btn',
+							'style': 'display: flex; flex-direction: column; align-items: center; padding: 16px; border-radius: 12px; text-decoration: none; background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%);',
+							'href': L.url('admin', 'services', 'network-tweaks')
+						}, [
+							E('span', { 'style': 'font-size: 24px; margin-bottom: 4px;' }, '\u{1F310}'),
+							E('span', {}, _('DNS & Proxy'))
 						])
 					])
 				])
