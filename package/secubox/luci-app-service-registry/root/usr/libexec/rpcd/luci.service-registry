@@ -976,26 +976,62 @@ get_reverse_dns() {
 # Helper: Check certificate expiry
 check_cert_expiry() {
 	local domain="$1"
-	local cert_file="/srv/haproxy/certs/${domain}.pem"
+	local cert_file=""
 
-	if [ ! -f "$cert_file" ]; then
-		# Try the ACME path
+	# Try multiple possible certificate locations
+	# 1. HAProxy certs directory (combined pem files)
+	if [ -f "/srv/haproxy/certs/${domain}.pem" ]; then
+		cert_file="/srv/haproxy/certs/${domain}.pem"
+	# 2. ACME standard path
+	elif [ -f "/etc/acme/${domain}/${domain}.cer" ]; then
+		cert_file="/etc/acme/${domain}/${domain}.cer"
+	# 3. ACME fullchain (some setups use this)
+	elif [ -f "/etc/acme/${domain}/fullchain.cer" ]; then
+		cert_file="/etc/acme/${domain}/fullchain.cer"
+	# 4. ACME with _ecc suffix (ECC certs)
+	elif [ -f "/etc/acme/${domain}_ecc/${domain}.cer" ]; then
 		cert_file="/etc/acme/${domain}_ecc/${domain}.cer"
-		[ ! -f "$cert_file" ] && cert_file="/etc/acme/${domain}/${domain}.cer"
+	# 5. Let's Encrypt standard path
+	elif [ -f "/etc/letsencrypt/live/${domain}/cert.pem" ]; then
+		cert_file="/etc/letsencrypt/live/${domain}/cert.pem"
 	fi
 
-	if [ -f "$cert_file" ]; then
+	if [ -n "$cert_file" ] && [ -f "$cert_file" ]; then
 		# Get expiry date using openssl
 		local expiry_date
 		expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
 		if [ -n "$expiry_date" ]; then
-			# Convert to epoch
-			local expiry_epoch
+			# Convert to epoch - try multiple date formats for compatibility
+			local expiry_epoch now_epoch days_left
+
+			# BusyBox date may not support -d with GMT format
+			# Try direct parsing first
 			expiry_epoch=$(date -d "$expiry_date" +%s 2>/dev/null)
-			local now_epoch
+
+			# If that fails, try converting the format
+			if [ -z "$expiry_epoch" ]; then
+				# Parse "Apr 27 04:05:21 2026 GMT" format manually
+				local month day time year
+				month=$(echo "$expiry_date" | awk '{print $1}')
+				day=$(echo "$expiry_date" | awk '{print $2}')
+				time=$(echo "$expiry_date" | awk '{print $3}')
+				year=$(echo "$expiry_date" | awk '{print $4}')
+
+				# Convert month name to number
+				case "$month" in
+					Jan) month="01" ;; Feb) month="02" ;; Mar) month="03" ;;
+					Apr) month="04" ;; May) month="05" ;; Jun) month="06" ;;
+					Jul) month="07" ;; Aug) month="08" ;; Sep) month="09" ;;
+					Oct) month="10" ;; Nov) month="11" ;; Dec) month="12" ;;
+				esac
+
+				# Try with reformatted date
+				expiry_epoch=$(date -d "${year}-${month}-${day}" +%s 2>/dev/null)
+			fi
+
 			now_epoch=$(date +%s)
-			local days_left
-			if [ -n "$expiry_epoch" ]; then
+
+			if [ -n "$expiry_epoch" ] && [ -n "$now_epoch" ]; then
 				days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
 				echo "$days_left"
 				return 0

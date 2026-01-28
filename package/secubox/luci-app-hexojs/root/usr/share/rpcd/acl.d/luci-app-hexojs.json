@@ -22,7 +22,14 @@
 					"git_status",
 					"git_log",
 					"git_get_credentials",
-					"gitea_status"
+					"gitea_status",
+					"get_workflow_status",
+					"list_profiles",
+					"get_haproxy_status",
+					"get_tor_status",
+					"get_instance_endpoints",
+					"get_instance_health",
+					"get_pipeline_status"
 				]
 			},
 			"uci": ["hexojs"]
@@ -57,7 +64,15 @@
 					"gitea_clone",
 					"gitea_sync",
 					"gitea_save_config",
-					"publish_to_www"
+					"publish_to_www",
+					"apply_profile",
+					"publish_to_haproxy",
+					"unpublish_from_haproxy",
+					"publish_to_tor",
+					"unpublish_from_tor",
+					"full_publish",
+					"handle_webhook",
+					"setup_webhook"
 				]
 			},
 			"uci": ["hexojs"]

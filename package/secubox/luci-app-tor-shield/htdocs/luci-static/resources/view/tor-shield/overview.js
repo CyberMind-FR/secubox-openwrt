@@ -250,19 +250,48 @@ return view.extend({
 
 		var statusClass = 'disabled';
 		var statusText = _('Disabled');
+		var statusEmoji = '\u{26AA}';
 		if (isConnecting) {
 			statusClass = 'connecting';
 			statusText = _('Connecting %d%%').format(status.bootstrap);
+			statusEmoji = '\u{1F7E1}';
 		} else if (isProtected) {
 			statusClass = 'protected';
 			statusText = _('Protected');
+			statusEmoji = '\u{1F7E2}';
 		} else if (isActive) {
 			statusClass = 'exposed';
 			statusText = _('Exposed');
+			statusEmoji = '\u{1F534}';
 		}
 
 		var view = E('div', { 'class': 'tor-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('tor-shield/dashboard.css') }),
+
+			// Wizard Welcome Banner (shown when disabled)
+			!isActive ? E('div', { 'class': 'tor-wizard-banner', 'style': 'background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 50%, #06b6d4 100%); border-radius: 16px; padding: 24px; margin-bottom: 20px; color: #fff; text-align: center;' }, [
+				E('div', { 'style': 'font-size: 48px; margin-bottom: 12px;' }, '\u{1F9D9}\u200D\u2642\uFE0F'),
+				E('h2', { 'style': 'margin: 0 0 8px 0; font-size: 24px;' }, '\u{2728} ' + _('Welcome to Tor Shield') + ' \u{2728}'),
+				E('p', { 'style': 'margin: 0 0 16px 0; opacity: 0.9; font-size: 14px;' }, _('Your gateway to anonymous browsing. Choose a protection level below to get started.')),
+				E('div', { 'style': 'display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; margin-top: 16px;' }, [
+					E('div', { 'style': 'text-align: center;' }, [
+						E('div', { 'style': 'font-size: 32px;' }, '\u{1F512}'),
+						E('div', { 'style': 'font-size: 12px; opacity: 0.8;' }, _('Encrypted'))
+					]),
+					E('div', { 'style': 'text-align: center;' }, [
+						E('div', { 'style': 'font-size: 32px;' }, '\u{1F310}'),
+						E('div', { 'style': 'font-size: 12px; opacity: 0.8;' }, _('Anonymous'))
+					]),
+					E('div', { 'style': 'text-align: center;' }, [
+						E('div', { 'style': 'font-size: 32px;' }, '\u{1F6E1}'),
+						E('div', { 'style': 'font-size: 12px; opacity: 0.8;' }, _('Protected'))
+					]),
+					E('div', { 'style': 'text-align: center;' }, [
+						E('div', { 'style': 'font-size: 32px;' }, '\u{1F30D}'),
+						E('div', { 'style': 'font-size: 12px; opacity: 0.8;' }, _('Worldwide'))
+					])
+				])
+			]) : '',
 
 			// Header
 			E('div', { 'class': 'tor-header' }, [
@@ -271,7 +300,7 @@ return view.extend({
 					E('div', { 'class': 'tor-logo-text' }, ['Tor ', E('span', {}, 'Shield')])
 				]),
 				E('div', { 'class': 'tor-status-badge ' + statusClass }, [
-					E('span', { 'class': 'tor-status-dot' }),
+					E('span', { 'style': 'margin-right: 6px;' }, statusEmoji),
 					statusText
 				])
 			]),
@@ -350,20 +379,40 @@ return view.extend({
 				])
 			]),
 
-			// Presets
-			E('div', { 'class': 'tor-presets' },
-				presets.map(function(preset) {
-					return E('div', {
-						'class': 'tor-preset' + (self.currentPreset === preset.id ? ' active' : ''),
-						'data-preset': preset.id,
-						'click': L.bind(function() { this.handlePresetSelect(preset.id); }, self)
-					}, [
-						E('div', { 'class': 'tor-preset-icon' }, api.getPresetIcon(preset.icon)),
-						E('div', { 'class': 'tor-preset-name' }, preset.name),
-						E('div', { 'class': 'tor-preset-desc' }, preset.description)
-					]);
-				})
-			),
+			// Presets - Wizard Style
+			E('div', { 'class': 'tor-presets-wizard', 'style': 'margin-bottom: 24px;' }, [
+				E('div', { 'style': 'text-align: center; margin-bottom: 16px;' }, [
+					E('span', { 'style': 'font-size: 20px;' }, '\u{1F9D9}\u200D\u2642\uFE0F'),
+					E('span', { 'style': 'font-weight: 600; margin-left: 8px;' }, _('Choose Your Protection Level'))
+				]),
+				E('div', { 'class': 'tor-presets', 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;' },
+					[
+						{ id: 'anonymous', name: _('Full Anonymity'), icon: '\u{1F6E1}', emoji: '\u{1F9D9}', desc: _('All traffic through Tor'), features: ['\u{2705} ' + _('Kill Switch'), '\u{2705} ' + _('DNS Protection'), '\u{2705} ' + _('Full Routing')] },
+						{ id: 'selective', name: _('Selective Apps'), icon: '\u{1F3AF}', emoji: '\u{1F50D}', desc: _('SOCKS proxy mode'), features: ['\u{26AA} ' + _('No Kill Switch'), '\u{26AA} ' + _('Manual Config'), '\u{2705} ' + _('App Control')] },
+						{ id: 'censored', name: _('Bypass Censorship'), icon: '\u{1F513}', emoji: '\u{1F30D}', desc: _('Bridge connections'), features: ['\u{2705} ' + _('obfs4 Bridges'), '\u{2705} ' + _('Anti-Censorship'), '\u{2705} ' + _('Stealth Mode')] }
+					].map(function(preset) {
+						var isSelected = self.currentPreset === preset.id;
+						return E('div', {
+							'class': 'tor-preset' + (isSelected ? ' active' : ''),
+							'data-preset': preset.id,
+							'style': 'background: var(--tor-bg-card, #1a1a24); border-radius: 12px; padding: 16px; cursor: pointer; border: 2px solid ' + (isSelected ? '#7c3aed' : 'transparent') + '; transition: all 0.2s;',
+							'click': L.bind(function() { this.handlePresetSelect(preset.id); }, self)
+						}, [
+							E('div', { 'style': 'text-align: center; margin-bottom: 8px;' }, [
+								E('span', { 'style': 'font-size: 32px;' }, preset.emoji),
+								isSelected ? E('span', { 'style': 'position: absolute; margin-left: -8px; font-size: 14px;' }, '\u{2714}\uFE0F') : ''
+							]),
+							E('div', { 'style': 'font-weight: 600; text-align: center; margin-bottom: 4px;' }, preset.name),
+							E('div', { 'style': 'font-size: 11px; color: var(--tor-text-muted, #a0a0b0); text-align: center; margin-bottom: 8px;' }, preset.desc),
+							E('div', { 'style': 'font-size: 10px; color: var(--tor-text-muted, #a0a0b0);' },
+								preset.features.map(function(f) {
+									return E('div', { 'style': 'margin: 2px 0;' }, f);
+								})
+							)
+						]);
+					})
+				)
+			]),
 
 			// Quick Stats
 			E('div', { 'class': 'tor-quick-stats' }, [
@@ -442,42 +491,109 @@ return view.extend({
 				])
 			]),
 
-			// Actions Card
+			// Actions Card - Enhanced Wizard Style
 			E('div', { 'class': 'tor-card' }, [
 				E('div', { 'class': 'tor-card-header' }, [
 					E('div', { 'class': 'tor-card-title' }, [
-						E('span', { 'class': 'tor-card-title-icon' }, '\u26A1'),
+						E('span', { 'class': 'tor-card-title-icon' }, '\u{26A1}'),
 						_('Quick Actions')
+					]),
+					E('span', { 'style': 'font-size: 12px; color: var(--tor-text-muted);' }, '\u{1F9D9} ' + _('Wizard Tools'))
+				]),
+				E('div', { 'class': 'tor-card-body' }, [
+					E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;' }, [
+						E('button', {
+							'class': 'tor-btn tor-btn-primary',
+							'style': 'display: flex; flex-direction: column; align-items: center; padding: 16px; border-radius: 12px;',
+							'click': L.bind(this.handleNewIdentity, this),
+							'disabled': !isActive
+						}, [
+							E('span', { 'style': 'font-size: 24px; margin-bottom: 4px;' }, '\u{1F504}'),
+							E('span', {}, _('New Identity'))
+						]),
+						E('button', {
+							'class': 'tor-btn',
+							'style': 'display: flex; flex-direction: column; align-items: center; padding: 16px; border-radius: 12px;',
+							'click': L.bind(this.handleLeakTest, this),
+							'disabled': !isActive
+						}, [
+							E('span', { 'style': 'font-size: 24px; margin-bottom: 4px;' }, '\u{1F50D}'),
+							E('span', {}, _('Leak Test'))
+						]),
+						E('button', {
+							'class': 'tor-btn tor-btn-warning',
+							'style': 'display: flex; flex-direction: column; align-items: center; padding: 16px; border-radius: 12px;',
+							'click': L.bind(this.handleRestart, this)
+						}, [
+							E('span', { 'style': 'font-size: 24px; margin-bottom: 4px;' }, '\u{1F504}'),
+							E('span', {}, _('Restart'))
+						]),
+						E('a', {
+							'class': 'tor-btn',
+							'style': 'display: flex; flex-direction: column; align-items: center; padding: 16px; border-radius: 12px; text-decoration: none;',
+							'href': L.url('admin', 'services', 'tor-shield', 'circuits')
+						}, [
+							E('span', { 'style': 'font-size: 24px; margin-bottom: 4px;' }, '\u{1F5FA}'),
+							E('span', {}, _('Circuits'))
+						]),
+						E('a', {
+							'class': 'tor-btn',
+							'style': 'display: flex; flex-direction: column; align-items: center; padding: 16px; border-radius: 12px; text-decoration: none;',
+							'href': L.url('admin', 'services', 'tor-shield', 'hidden-services')
+						}, [
+							E('span', { 'style': 'font-size: 24px; margin-bottom: 4px;' }, '\u{1F9C5}'),
+							E('span', {}, _('.onion Sites'))
+						]),
+						E('a', {
+							'class': 'tor-btn',
+							'style': 'display: flex; flex-direction: column; align-items: center; padding: 16px; border-radius: 12px; text-decoration: none;',
+							'href': L.url('admin', 'services', 'tor-shield', 'bridges')
+						}, [
+							E('span', { 'style': 'font-size: 24px; margin-bottom: 4px;' }, '\u{1F309}'),
+							E('span', {}, _('Bridges'))
+						]),
+						E('a', {
+							'class': 'tor-btn',
+							'style': 'display: flex; flex-direction: column; align-items: center; padding: 16px; border-radius: 12px; text-decoration: none;',
+							'href': L.url('admin', 'services', 'tor-shield', 'settings')
+						}, [
+							E('span', { 'style': 'font-size: 24px; margin-bottom: 4px;' }, '\u{2699}\uFE0F'),
+							E('span', {}, _('Settings'))
+						])
+					])
+				])
+			]),
+
+			// Features Guide Card
+			E('div', { 'class': 'tor-card', 'style': 'background: linear-gradient(135deg, rgba(124, 58, 237, 0.1) 0%, rgba(6, 182, 212, 0.1) 100%);' }, [
+				E('div', { 'class': 'tor-card-header' }, [
+					E('div', { 'class': 'tor-card-title' }, [
+						E('span', { 'class': 'tor-card-title-icon' }, '\u{1F4D6}'),
+						_('How Tor Shield Works')
 					])
 				]),
 				E('div', { 'class': 'tor-card-body' }, [
-					E('div', { 'style': 'display: flex; gap: 12px; flex-wrap: wrap;' }, [
-						E('button', {
-							'class': 'tor-btn tor-btn-primary',
-							'click': L.bind(this.handleNewIdentity, this),
-							'disabled': !isActive
-						}, ['\uD83D\uDD04 ', _('New Identity')]),
-						E('button', {
-							'class': 'tor-btn',
-							'click': L.bind(this.handleLeakTest, this),
-							'disabled': !isActive
-						}, ['\uD83D\uDD0D ', _('Leak Test')]),
-						E('button', {
-							'class': 'tor-btn tor-btn-warning',
-							'click': L.bind(this.handleRestart, this)
-						}, ['\u21BB ', _('Restart')]),
-						E('a', {
-							'class': 'tor-btn',
-							'href': L.url('admin', 'services', 'tor-shield', 'circuits')
-						}, ['\uD83D\uDDFA ', _('View Circuits')]),
-						E('a', {
-							'class': 'tor-btn',
-							'href': L.url('admin', 'services', 'tor-shield', 'hidden-services')
-						}, ['\uD83E\uDDC5 ', _('Hidden Services')]),
-						E('a', {
-							'class': 'tor-btn',
-							'href': L.url('admin', 'services', 'tor-shield', 'settings')
-						}, ['\u2699 ', _('Settings')])
+					E('div', { 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;' }, [
+						E('div', { 'style': 'text-align: center; padding: 12px;' }, [
+							E('div', { 'style': 'font-size: 32px; margin-bottom: 8px;' }, '\u{1F512}'),
+							E('div', { 'style': 'font-weight: 600; margin-bottom: 4px;' }, _('Encrypted')),
+							E('div', { 'style': 'font-size: 12px; color: var(--tor-text-muted);' }, _('3 layers of encryption protect your data'))
+						]),
+						E('div', { 'style': 'text-align: center; padding: 12px;' }, [
+							E('div', { 'style': 'font-size: 32px; margin-bottom: 8px;' }, '\u{1F465}'),
+							E('div', { 'style': 'font-weight: 600; margin-bottom: 4px;' }, _('Anonymous')),
+							E('div', { 'style': 'font-size: 12px; color: var(--tor-text-muted);' }, _('Your real IP is hidden from websites'))
+						]),
+						E('div', { 'style': 'text-align: center; padding: 12px;' }, [
+							E('div', { 'style': 'font-size: 32px; margin-bottom: 8px;' }, '\u{1F310}'),
+							E('div', { 'style': 'font-weight: 600; margin-bottom: 4px;' }, _('Decentralized')),
+							E('div', { 'style': 'font-size: 12px; color: var(--tor-text-muted);' }, _('Traffic routed through volunteer relays'))
+						]),
+						E('div', { 'style': 'text-align: center; padding: 12px;' }, [
+							E('div', { 'style': 'font-size: 32px; margin-bottom: 8px;' }, '\u{1F6E1}'),
+							E('div', { 'style': 'font-weight: 600; margin-bottom: 4px;' }, _('Kill Switch')),
+							E('div', { 'style': 'font-size: 12px; color: var(--tor-text-muted);' }, _('Blocks traffic if Tor disconnects'))
+						])
 					])
 				])
 			]),

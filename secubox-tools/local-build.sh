@@ -625,6 +625,85 @@ sync_packages_to_local_feed() {
     print_success "Synchronized $pkg_count packages to local-feed"
 }
 
+# Deploy packages to router
+deploy_packages() {
+    local router="$1"
+    local packages="$2"
+    local ssh_opts="-o StrictHostKeyChecking=no -o ConnectTimeout=10"
+
+    # Test connectivity
+    print_info "Testing connection to router..."
+    if ! ssh $ssh_opts root@$router "echo 'Connected'" 2>/dev/null; then
+        print_error "Cannot connect to router at $router"
+        return 1
+    fi
+
+    # Find packages to deploy
+    local pkg_dir="$SDK_DIR/bin/packages/$ARCH_NAME/secubox"
+    local target_pkg_dir="$SDK_DIR/bin/targets/$SDK_PATH/packages"
+
+    if [[ -n "$packages" ]]; then
+        # Deploy specific packages
+        print_info "Deploying specific packages: $packages"
+        for pkg in $packages; do
+            local ipk=$(find "$pkg_dir" "$target_pkg_dir" -name "${pkg}*.ipk" 2>/dev/null | head -1)
+            if [[ -n "$ipk" ]]; then
+                print_info "Deploying $(basename "$ipk")..."
+                scp $ssh_opts "$ipk" root@$router:/tmp/
+                ssh $ssh_opts root@$router "opkg install /tmp/$(basename "$ipk") --force-reinstall 2>&1"
+            else
+                print_warning "Package not found: $pkg"
+            fi
+        done
+    else
+        # Deploy all recently built packages
+        print_info "Deploying all packages from SDK..."
+
+        # Find all IPK files built today
+        local today=$(date +%Y%m%d)
+        local ipks=$(find "$pkg_dir" -name "*.ipk" -mtime 0 2>/dev/null)
+
+        if [[ -z "$ipks" ]]; then
+            print_warning "No recently built packages found"
+            print_info "Run 'local-build.sh build <package>' first"
+            return 1
+        fi
+
+        # Copy packages
+        print_info "Copying packages to router..."
+        for ipk in $ipks; do
+            scp $ssh_opts "$ipk" root@$router:/tmp/
+        done
+
+        # Install packages
+        print_info "Installing packages..."
+        ssh $ssh_opts root@$router "opkg install /tmp/*.ipk --force-reinstall 2>&1" || true
+    fi
+
+    # Sync feed to router
+    print_info "Syncing package feed to router..."
+    local feed_pkg="$SDK_DIR/bin/packages/$ARCH_NAME/secubox"
+    if [[ -d "$feed_pkg" ]]; then
+        ssh $ssh_opts root@$router "mkdir -p /www/secubox-feed"
+        scp $ssh_opts "$feed_pkg"/*.ipk root@$router:/www/secubox-feed/ 2>/dev/null || true
+
+        # Generate Packages index
+        ssh $ssh_opts root@$router "cd /www/secubox-feed && \
+            rm -f Packages Packages.gz && \
+            for ipk in *.ipk; do \
+                [ -f \"\$ipk\" ] && tar -xzf \"\$ipk\" ./control.tar.gz && \
+                tar -xzf control.tar.gz ./control && \
+                cat control >> Packages && echo '' >> Packages && \
+                rm -f control control.tar.gz; \
+            done && \
+            gzip -k Packages 2>/dev/null || true"
+
+        print_success "Feed synced to /www/secubox-feed"
+    fi
+
+    print_success "Deployment complete"
+}
+
 # Copy packages to SDK feed
 copy_packages() {
     local single_package="$1"
@@ -2249,6 +2328,7 @@ COMMANDS:
     clean                       Clean build directories
     clean-all                   Clean all build directories including OpenWrt source and local-feed
     sync                        Sync packages from package/secubox to local-feed
+    deploy [router] [packages]  Deploy packages to router (default: 192.168.255.1)
     help                        Show this help message
 
 PACKAGES:
@@ -2427,6 +2507,13 @@ main() {
             print_header "Synchronizing packages to local-feed"
             sync_packages_to_local_feed
             print_success "Packages synchronized to local-feed"
+            ;;
+
+        deploy)
+            local router="${1:-192.168.255.1}"
+            local packages="$2"
+            print_header "Deploying Packages to Router ($router)"
+            deploy_packages "$router" "$packages"
             ;;
 
         help|--help|-h)

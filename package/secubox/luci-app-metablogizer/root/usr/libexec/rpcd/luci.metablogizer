@@ -755,6 +755,302 @@ method_get_settings() {
 	json_dump
 }
 
+# Helper: Check DNS resolution for a domain
+check_dns_resolution() {
+	local domain="$1"
+	local resolved_ip=""
+	if command -v nslookup >/dev/null 2>&1; then
+		resolved_ip=$(nslookup "$domain" 2>/dev/null | grep -A1 "Name:" | grep "Address" | head -1 | awk '{print $2}')
+		[ -z "$resolved_ip" ] && resolved_ip=$(nslookup "$domain" 2>/dev/null | grep "Address" | tail -1 | awk '{print $2}' | grep -v "^$")
+	elif command -v host >/dev/null 2>&1; then
+		resolved_ip=$(host "$domain" 2>/dev/null | grep "has address" | head -1 | awk '{print $4}')
+	fi
+	echo "$resolved_ip"
+}
+
+# Helper: Get public IPv4 address
+get_public_ipv4() {
+	local ip=""
+	ip=$(wget -qO- -T 5 "http://ipv4.icanhazip.com" 2>/dev/null | tr -d '\n')
+	[ -z "$ip" ] && ip=$(wget -qO- -T 5 "http://api.ipify.org" 2>/dev/null | tr -d '\n')
+	echo "$ip"
+}
+
+# Helper: Check certificate expiry
+check_cert_expiry() {
+	local domain="$1"
+	local cert_file="/srv/haproxy/certs/${domain}.pem"
+
+	if [ ! -f "$cert_file" ]; then
+		cert_file="/etc/acme/${domain}_ecc/${domain}.cer"
+		[ ! -f "$cert_file" ] && cert_file="/etc/acme/${domain}/${domain}.cer"
+	fi
+
+	if [ -f "$cert_file" ]; then
+		local expiry_date
+		expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+		if [ -n "$expiry_date" ]; then
+			local expiry_epoch now_epoch days_left
+			expiry_epoch=$(date -d "$expiry_date" +%s 2>/dev/null)
+			now_epoch=$(date +%s)
+			if [ -n "$expiry_epoch" ]; then
+				days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+				echo "$days_left"
+				return 0
+			fi
+		fi
+	fi
+	return 1
+}
+
+# Get hosting status for all sites with DNS and cert health
+method_get_hosting_status() {
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+
+	# Get public IP once
+	local public_ip
+	public_ip=$(get_public_ipv4)
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "public_ip" "$public_ip"
+
+	# HAProxy status
+	local haproxy_running="stopped"
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		haproxy_running="running"
+	fi
+	json_add_string "haproxy_status" "$haproxy_running"
+
+	json_add_array "sites"
+
+	config_load "$UCI_CONFIG"
+	config_foreach _add_site_health site "$public_ip"
+
+	json_close_array
+	json_dump
+}
+
+_add_site_health() {
+	local section="$1"
+	local public_ip="$2"
+	local name domain ssl enabled has_content port runtime
+
+	config_get name "$section" name ""
+	config_get domain "$section" domain ""
+	config_get ssl "$section" ssl "1"
+	config_get enabled "$section" enabled "1"
+	config_get port "$section" port ""
+	config_get runtime "$section" runtime ""
+
+	[ -z "$name" ] && return
+
+	# Check content
+	has_content="0"
+	if [ -d "$SITES_ROOT/$name" ] && [ -f "$SITES_ROOT/$name/index.html" ]; then
+		has_content="1"
+	fi
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_string "domain" "$domain"
+	json_add_boolean "enabled" "$enabled"
+	json_add_boolean "has_content" "$has_content"
+	[ -n "$port" ] && json_add_int "port" "$port"
+	json_add_string "runtime" "$runtime"
+
+	# DNS check
+	if [ -n "$domain" ]; then
+		local resolved_ip
+		resolved_ip=$(check_dns_resolution "$domain")
+		if [ -n "$resolved_ip" ]; then
+			json_add_string "dns_ip" "$resolved_ip"
+			# Check if resolves to public IP
+			case "$resolved_ip" in
+				10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.2*|172.30.*|172.31.*|192.168.*)
+					json_add_string "dns_status" "private"
+					;;
+				*)
+					if [ "$resolved_ip" = "$public_ip" ]; then
+						json_add_string "dns_status" "ok"
+					else
+						json_add_string "dns_status" "mismatch"
+					fi
+					;;
+			esac
+		else
+			json_add_string "dns_status" "failed"
+		fi
+
+		# Certificate check
+		if [ "$ssl" = "1" ]; then
+			local days_left
+			days_left=$(check_cert_expiry "$domain")
+			if [ -n "$days_left" ]; then
+				if [ "$days_left" -lt 0 ]; then
+					json_add_string "cert_status" "expired"
+				elif [ "$days_left" -lt 7 ]; then
+					json_add_string "cert_status" "critical"
+				elif [ "$days_left" -lt 30 ]; then
+					json_add_string "cert_status" "warning"
+				else
+					json_add_string "cert_status" "ok"
+				fi
+				json_add_int "cert_days" "$days_left"
+			else
+				json_add_string "cert_status" "missing"
+			fi
+		else
+			json_add_string "cert_status" "none"
+		fi
+	else
+		json_add_string "dns_status" "none"
+		json_add_string "cert_status" "none"
+	fi
+
+	# Publish status
+	local publish_status="draft"
+	if [ "$enabled" = "1" ] && [ "$has_content" = "1" ]; then
+		publish_status="published"
+	elif [ "$enabled" = "1" ]; then
+		publish_status="pending"
+	fi
+	json_add_string "publish_status" "$publish_status"
+
+	# URL
+	local protocol="http"
+	[ "$ssl" = "1" ] && protocol="https"
+	json_add_string "url" "${protocol}://${domain}"
+
+	json_close_object
+}
+
+# Check health for single site
+method_check_site_health() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name domain ssl
+	name=$(get_uci "$id" name "")
+	domain=$(get_uci "$id" domain "")
+	ssl=$(get_uci "$id" ssl "1")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+
+	# Get public IP
+	local public_ip
+	public_ip=$(get_public_ipv4)
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$id"
+	json_add_string "name" "$name"
+	json_add_string "domain" "$domain"
+	json_add_string "public_ip" "$public_ip"
+
+	# DNS check
+	json_add_object "dns"
+	if [ -n "$domain" ]; then
+		local resolved_ip
+		resolved_ip=$(check_dns_resolution "$domain")
+		if [ -n "$resolved_ip" ]; then
+			json_add_string "resolved_ip" "$resolved_ip"
+			case "$resolved_ip" in
+				10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.2*|172.30.*|172.31.*|192.168.*)
+					json_add_string "status" "private"
+					json_add_string "message" "DNS points to private IP"
+					;;
+				*)
+					if [ "$resolved_ip" = "$public_ip" ]; then
+						json_add_string "status" "ok"
+					else
+						json_add_string "status" "mismatch"
+						json_add_string "expected" "$public_ip"
+					fi
+					;;
+			esac
+		else
+			json_add_string "status" "failed"
+			json_add_string "message" "DNS resolution failed"
+		fi
+	else
+		json_add_string "status" "none"
+	fi
+	json_close_object
+
+	# Certificate check
+	json_add_object "certificate"
+	if [ -n "$domain" ] && [ "$ssl" = "1" ]; then
+		local days_left
+		days_left=$(check_cert_expiry "$domain")
+		if [ -n "$days_left" ]; then
+			json_add_int "days_left" "$days_left"
+			if [ "$days_left" -lt 0 ]; then
+				json_add_string "status" "expired"
+			elif [ "$days_left" -lt 7 ]; then
+				json_add_string "status" "critical"
+			elif [ "$days_left" -lt 30 ]; then
+				json_add_string "status" "warning"
+			else
+				json_add_string "status" "ok"
+			fi
+		else
+			json_add_string "status" "missing"
+		fi
+	else
+		json_add_string "status" "none"
+	fi
+	json_close_object
+
+	# Content check
+	json_add_object "content"
+	if [ -d "$SITES_ROOT/$name" ]; then
+		json_add_boolean "exists" 1
+		local file_count
+		file_count=$(find "$SITES_ROOT/$name" -type f 2>/dev/null | wc -l)
+		json_add_int "file_count" "$file_count"
+		if [ -f "$SITES_ROOT/$name/index.html" ]; then
+			json_add_boolean "has_index" 1
+		else
+			json_add_boolean "has_index" 0
+		fi
+	else
+		json_add_boolean "exists" 0
+	fi
+	json_close_object
+
+	# HAProxy status
+	json_add_object "haproxy"
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "stopped"
+	fi
+	json_close_object
+
+	json_dump
+}
+
 # Save global settings
 method_save_settings() {
 	local enabled runtime nginx_container sites_root gitea_url
@@ -798,25 +1094,29 @@ case "$1" in
 	"upload_file": { "id": "string", "filename": "string", "content": "string" },
 	"list_files": { "id": "string" },
 	"get_settings": {},
-	"save_settings": { "enabled": "boolean", "nginx_container": "string", "sites_root": "string" }
+	"save_settings": { "enabled": "boolean", "nginx_container": "string", "sites_root": "string" },
+	"get_hosting_status": {},
+	"check_site_health": { "id": "string" }
 }
 EOF
 		;;
 	call)
 		case "$2" in
-			status)           method_status ;;
-			list_sites)       method_list_sites ;;
-			get_site)         method_get_site ;;
-			create_site)      method_create_site ;;
-			update_site)      method_update_site ;;
-			delete_site)      method_delete_site ;;
-			sync_site)        method_sync_site ;;
-			get_publish_info) method_get_publish_info ;;
-			upload_file)      method_upload_file ;;
-			list_files)       method_list_files ;;
-			get_settings)     method_get_settings ;;
-			save_settings)    method_save_settings ;;
-			*)                echo '{"error": "unknown method"}' ;;
+			status)             method_status ;;
+			list_sites)         method_list_sites ;;
+			get_site)           method_get_site ;;
+			create_site)        method_create_site ;;
+			update_site)        method_update_site ;;
+			delete_site)        method_delete_site ;;
+			sync_site)          method_sync_site ;;
+			get_publish_info)   method_get_publish_info ;;
+			upload_file)        method_upload_file ;;
+			list_files)         method_list_files ;;
+			get_settings)       method_get_settings ;;
+			save_settings)      method_save_settings ;;
+			get_hosting_status) method_get_hosting_status ;;
+			check_site_health)  method_check_site_health ;;
+			*)                  echo '{"error": "unknown method"}' ;;
 		esac
 		;;
 esac
