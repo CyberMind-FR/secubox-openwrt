@@ -1,0 +1,277 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SecuBox Service Registry CLI
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+
+UCI_CONFIG="service-registry"
+
+usage() {
+	cat <<EOF
+SecuBox Service Registry - Unified service management
+
+Usage: secubox-registry <command> [options]
+
+Commands:
+  list                          List all services
+  show <service_id>             Show service details
+  publish <name> <port> [opts]  Publish a new service
+  unpublish <service_id>        Unpublish a service
+  landing regen                 Regenerate landing page
+  categories                    List categories
+
+Publish options:
+  --domain <domain>    Create HAProxy vhost with ACME cert
+  --tor                Enable Tor hidden service
+  --category <cat>     Service category (default: services)
+  --icon <icon>        Service icon
+
+Examples:
+  secubox-registry list
+  secubox-registry publish "Gitea" 3000 --domain git.example.com --tor
+  secubox-registry unpublish gitea
+  secubox-registry landing regen
+
+EOF
+	exit 1
+}
+
+# List services
+cmd_list() {
+	local json_output
+	json_output=$(ubus call luci.service-registry list_services 2>/dev/null)
+
+	if [ -z "$json_output" ]; then
+		echo "Error: Could not fetch services"
+		exit 1
+	fi
+
+	echo "SecuBox Services"
+	echo "================"
+	echo
+
+	# Parse and display services
+	local count
+	count=$(echo "$json_output" | jsonfilter -e '@.services[*]' 2>/dev/null | wc -l)
+
+	if [ "$count" -eq 0 ]; then
+		echo "No services found"
+		return
+	fi
+
+	printf "%-20s %-10s %-8s %-30s %-15s\n" "NAME" "PORT" "STATUS" "CLEARNET" "ONION"
+	printf "%-20s %-10s %-8s %-30s %-15s\n" "----" "----" "------" "--------" "-----"
+
+	local i=0
+	while [ $i -lt "$count" ]; do
+		local name port status clearnet onion
+		name=$(echo "$json_output" | jsonfilter -e "@.services[$i].name" 2>/dev/null)
+		port=$(echo "$json_output" | jsonfilter -e "@.services[$i].local_port" 2>/dev/null)
+		status=$(echo "$json_output" | jsonfilter -e "@.services[$i].status" 2>/dev/null)
+		clearnet=$(echo "$json_output" | jsonfilter -e "@.services[$i].urls.clearnet" 2>/dev/null)
+		onion=$(echo "$json_output" | jsonfilter -e "@.services[$i].urls.onion" 2>/dev/null)
+
+		[ -z "$clearnet" ] && clearnet="-"
+		[ -z "$onion" ] && onion="-"
+		[ -z "$port" ] && port="-"
+
+		# Truncate long strings
+		[ ${#clearnet} -gt 30 ] && clearnet="${clearnet:0:27}..."
+		[ ${#onion} -gt 15 ] && onion="${onion:0:12}..."
+
+		printf "%-20s %-10s %-8s %-30s %-15s\n" "$name" "$port" "$status" "$clearnet" "$onion"
+
+		i=$((i + 1))
+	done
+
+	echo
+	echo "Providers:"
+	local haproxy_status haproxy_count tor_status tor_count
+	haproxy_status=$(echo "$json_output" | jsonfilter -e "@.providers.haproxy.status" 2>/dev/null)
+	haproxy_count=$(echo "$json_output" | jsonfilter -e "@.providers.haproxy.count" 2>/dev/null)
+	tor_status=$(echo "$json_output" | jsonfilter -e "@.providers.tor.status" 2>/dev/null)
+	tor_count=$(echo "$json_output" | jsonfilter -e "@.providers.tor.count" 2>/dev/null)
+
+	echo "  HAProxy: $haproxy_status ($haproxy_count vhosts)"
+	echo "  Tor:     $tor_status ($tor_count hidden services)"
+}
+
+# Show service details
+cmd_show() {
+	local service_id="$1"
+
+	if [ -z "$service_id" ]; then
+		echo "Error: service_id required"
+		usage
+	fi
+
+	local json_output
+	json_output=$(ubus call luci.service-registry get_service "{\"service_id\":\"$service_id\"}" 2>/dev/null)
+
+	if echo "$json_output" | grep -q '"success":false'; then
+		echo "Error: Service not found"
+		exit 1
+	fi
+
+	echo "$json_output" | jsonfilter -e '@' 2>/dev/null
+}
+
+# Publish service
+cmd_publish() {
+	local name="$1"
+	local port="$2"
+	shift 2
+
+	if [ -z "$name" ] || [ -z "$port" ]; then
+		echo "Error: name and port required"
+		usage
+	fi
+
+	local domain=""
+	local tor_enabled="0"
+	local category="services"
+	local icon=""
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--domain)
+				domain="$2"
+				shift 2
+				;;
+			--tor)
+				tor_enabled="1"
+				shift
+				;;
+			--category)
+				category="$2"
+				shift 2
+				;;
+			--icon)
+				icon="$2"
+				shift 2
+				;;
+			*)
+				echo "Unknown option: $1"
+				usage
+				;;
+		esac
+	done
+
+	local params="{\"name\":\"$name\",\"local_port\":$port,\"tor_enabled\":$tor_enabled,\"category\":\"$category\""
+	[ -n "$domain" ] && params="$params,\"domain\":\"$domain\""
+	[ -n "$icon" ] && params="$params,\"icon\":\"$icon\""
+	params="$params}"
+
+	echo "Publishing service: $name on port $port"
+	[ -n "$domain" ] && echo "  Domain: $domain (HAProxy + ACME)"
+	[ "$tor_enabled" = "1" ] && echo "  Tor hidden service: enabled"
+
+	local result
+	result=$(ubus call luci.service-registry publish_service "$params" 2>/dev/null)
+
+	if echo "$result" | grep -q '"success":true'; then
+		echo
+		echo "Service published successfully!"
+		echo
+		echo "URLs:"
+		local url_local url_clearnet url_onion
+		url_local=$(echo "$result" | jsonfilter -e '@.urls.local' 2>/dev/null)
+		url_clearnet=$(echo "$result" | jsonfilter -e '@.urls.clearnet' 2>/dev/null)
+		url_onion=$(echo "$result" | jsonfilter -e '@.urls.onion' 2>/dev/null)
+
+		[ -n "$url_local" ] && echo "  Local:    $url_local"
+		[ -n "$url_clearnet" ] && echo "  Clearnet: $url_clearnet"
+		[ -n "$url_onion" ] && echo "  Onion:    $url_onion"
+	else
+		echo "Error: Failed to publish service"
+		echo "$result"
+		exit 1
+	fi
+}
+
+# Unpublish service
+cmd_unpublish() {
+	local service_id="$1"
+
+	if [ -z "$service_id" ]; then
+		echo "Error: service_id required"
+		usage
+	fi
+
+	echo "Unpublishing service: $service_id"
+
+	local result
+	result=$(ubus call luci.service-registry unpublish_service "{\"service_id\":\"$service_id\"}" 2>/dev/null)
+
+	if echo "$result" | grep -q '"success":true'; then
+		echo "Service unpublished successfully"
+	else
+		echo "Error: Failed to unpublish service"
+		echo "$result"
+		exit 1
+	fi
+}
+
+# Landing page commands
+cmd_landing() {
+	local subcmd="$1"
+
+	case "$subcmd" in
+		regen|regenerate)
+			echo "Regenerating landing page..."
+			/usr/sbin/secubox-landing-gen
+			echo "Done"
+			;;
+		*)
+			echo "Usage: secubox-registry landing regen"
+			exit 1
+			;;
+	esac
+}
+
+# List categories
+cmd_categories() {
+	local json_output
+	json_output=$(ubus call luci.service-registry list_categories 2>/dev/null)
+
+	echo "Categories:"
+	echo "$json_output" | jsonfilter -e '@.categories[*].id' 2>/dev/null | while read id; do
+		local name icon
+		name=$(echo "$json_output" | jsonfilter -e "@.categories[@.id='$id'].name" 2>/dev/null)
+		icon=$(echo "$json_output" | jsonfilter -e "@.categories[@.id='$id'].icon" 2>/dev/null)
+		echo "  $id: $name ($icon)"
+	done
+}
+
+# Main
+case "$1" in
+	list)
+		cmd_list
+		;;
+	show)
+		shift
+		cmd_show "$@"
+		;;
+	publish)
+		shift
+		cmd_publish "$@"
+		;;
+	unpublish)
+		shift
+		cmd_unpublish "$@"
+		;;
+	landing)
+		shift
+		cmd_landing "$@"
+		;;
+	categories)
+		cmd_categories
+		;;
+	-h|--help|help)
+		usage
+		;;
+	*)
+		usage
+		;;
+esac

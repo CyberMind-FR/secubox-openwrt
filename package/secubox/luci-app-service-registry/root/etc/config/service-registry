@@ -1,0 +1,48 @@
+config settings 'main'
+	option enabled '1'
+	option auto_tor '0'
+	option auto_haproxy '0'
+	option landing_path '/www/secubox-services.html'
+	option landing_auto_regen '1'
+	option default_category 'services'
+
+config provider 'haproxy'
+	option enabled '1'
+	option type 'haproxy'
+
+config provider 'tor'
+	option enabled '1'
+	option type 'tor'
+
+config provider 'direct'
+	option enabled '1'
+	option type 'netstat'
+
+config provider 'lxc'
+	option enabled '1'
+	option type 'lxc'
+
+config category 'services'
+	option name 'Services'
+	option icon 'server'
+	option order '10'
+
+config category 'media'
+	option name 'Media'
+	option icon 'music'
+	option order '20'
+
+config category 'security'
+	option name 'Security'
+	option icon 'shield'
+	option order '30'
+
+config category 'monitoring'
+	option name 'Monitoring'
+	option icon 'chart'
+	option order '40'
+
+config category 'system'
+	option name 'System'
+	option icon 'settings'
+	option order '50'
