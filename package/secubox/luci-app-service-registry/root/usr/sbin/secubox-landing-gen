@@ -483,4 +483,7 @@ TMP_OUTPUT="${OUTPUT_PATH}.tmp"
 awk -v json="$SERVICES_JSON" '{gsub(/SERVICES_JSON_PLACEHOLDER/, json); print}' "$OUTPUT_PATH" > "$TMP_OUTPUT"
 mv "$TMP_OUTPUT" "$OUTPUT_PATH"
 
+# Ensure web server can read the file
+chmod 644 "$OUTPUT_PATH"
+
 echo "Landing page generated: $OUTPUT_PATH"

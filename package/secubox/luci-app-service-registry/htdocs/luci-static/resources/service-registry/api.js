@@ -5,8 +5,7 @@
 // RPC method declarations
 var callListServices = rpc.declare({
 	object: 'luci.service-registry',
-	method: 'list_services',
-	expect: { services: [], providers: {} }
+	method: 'list_services'
 });
 
 var callGetService = rpc.declare({
@@ -65,8 +64,7 @@ var callGetQrData = rpc.declare({
 
 var callListCategories = rpc.declare({
 	object: 'luci.service-registry',
-	method: 'list_categories',
-	expect: { categories: [] }
+	method: 'list_categories'
 });
 
 var callGetCertificateStatus = rpc.declare({
@@ -179,9 +177,9 @@ return baseclass.extend({
 	// Get dashboard data (services + provider status)
 	getDashboardData: function() {
 		return Promise.all([
-			callListServices(),
-			callListCategories(),
-			callGetLandingConfig(),
+			callListServices().catch(function(e) { console.error('list_services failed:', e); return { services: [], providers: {} }; }),
+			callListCategories().catch(function(e) { console.error('list_categories failed:', e); return { categories: [] }; }),
+			callGetLandingConfig().catch(function(e) { console.error('get_landing_config failed:', e); return {}; }),
 			callHAProxyStatus().catch(function() { return { enabled: false }; }),
 			callTorStatus().catch(function() { return { enabled: false }; })
 		]).then(function(results) {

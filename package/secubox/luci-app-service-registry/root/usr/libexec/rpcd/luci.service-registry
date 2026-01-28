@@ -208,34 +208,78 @@ _aggregate_haproxy_services() {
 	local lan_ip="$1"
 	local tmp_file="$2"
 
-	# Call HAProxy RPCD to get vhosts
-	local vhosts_json
+	# Call HAProxy RPCD to get vhosts and backends
+	local vhosts_json backends_json certs_json
 	vhosts_json=$(ubus call luci.haproxy list_vhosts 2>/dev/null)
 	[ -z "$vhosts_json" ] && return
 
-	echo "$vhosts_json" | jsonfilter -e '@.vhosts[*]' 2>/dev/null | while read -r line; do
-		local domain backend ssl
-		domain=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$line].domain" 2>/dev/null)
-		backend=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$line].backend" 2>/dev/null)
-		ssl=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$line].ssl" 2>/dev/null)
+	backends_json=$(ubus call luci.haproxy list_backends 2>/dev/null)
+	certs_json=$(ubus call luci.haproxy list_certificates 2>/dev/null)
 
-		# Skip if domain empty
+	# Get array length
+	local count
+	count=$(echo "$vhosts_json" | jsonfilter -e '@.vhosts[*].domain' 2>/dev/null | wc -l)
+	[ "$count" -eq 0 ] && return
+
+	local i=0
+	while [ $i -lt "$count" ]; do
+		local id domain backend ssl ssl_redirect acme enabled
+		id=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].id" 2>/dev/null)
+		domain=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].domain" 2>/dev/null)
+		backend=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].backend" 2>/dev/null)
+		ssl=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].ssl" 2>/dev/null)
+		ssl_redirect=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].ssl_redirect" 2>/dev/null)
+		acme=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].acme" 2>/dev/null)
+		enabled=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].enabled" 2>/dev/null)
+
+		i=$((i + 1))
+
+		# Skip if domain empty or disabled
 		[ -z "$domain" ] && continue
 
-		# Check if already processed by local_port
-		# For HAProxy, we identify by domain
+		# Check if already processed
 		grep -q "^haproxy_${domain}$" "$tmp_file" 2>/dev/null && continue
 
+		# Get backend port from servers
+		local backend_port=""
+		if [ -n "$backends_json" ] && [ -n "$backend" ]; then
+			backend_port=$(echo "$backends_json" | jsonfilter -e "@.backends[@.name='$backend'].servers[0].port" 2>/dev/null)
+			[ -z "$backend_port" ] && backend_port=$(echo "$backends_json" | jsonfilter -e "@.backends[@.id='$backend'].servers[0].port" 2>/dev/null)
+		fi
+
+		# Check certificate status
+		local cert_status="none"
+		if [ "$ssl" = "true" ] || [ "$ssl" = "1" ]; then
+			if [ "$acme" = "true" ] || [ "$acme" = "1" ]; then
+				cert_status="acme"
+			else
+				cert_status="manual"
+			fi
+		fi
+
+		# Determine status based on enabled and HAProxy running
+		local status="stopped"
+		if [ "$enabled" = "true" ] || [ "$enabled" = "1" ]; then
+			# Check if HAProxy container is running
+			if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+				status="running"
+			fi
+		else
+			status="disabled"
+		fi
+
 		json_add_object
-		json_add_string "id" "haproxy_$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')"
+		json_add_string "id" "$id"
 		json_add_string "name" "$domain"
 		json_add_string "category" "proxy"
 		json_add_string "icon" "arrow"
-		json_add_string "status" "running"
+		json_add_string "status" "$status"
 		json_add_boolean "published" 1
 		json_add_string "source" "haproxy"
 
+		# URLs
 		json_add_object "urls"
+		json_add_string "local" "http://${lan_ip}${backend_port:+:$backend_port}"
 		if [ "$ssl" = "true" ] || [ "$ssl" = "1" ]; then
 			json_add_string "clearnet" "https://${domain}"
 		else
@@ -243,11 +287,33 @@ _aggregate_haproxy_services() {
 		fi
 		json_close_object
 
+		# HAProxy details
 		json_add_object "haproxy"
-		json_add_boolean "enabled" 1
+		json_add_string "id" "$id"
 		json_add_string "domain" "$domain"
 		json_add_string "backend" "$backend"
-		json_add_boolean "ssl" "$ssl"
+		[ -n "$backend_port" ] && json_add_int "backend_port" "$backend_port"
+		if [ "$ssl" = "true" ] || [ "$ssl" = "1" ]; then
+			json_add_boolean "ssl" 1
+		else
+			json_add_boolean "ssl" 0
+		fi
+		if [ "$ssl_redirect" = "true" ] || [ "$ssl_redirect" = "1" ]; then
+			json_add_boolean "ssl_redirect" 1
+		else
+			json_add_boolean "ssl_redirect" 0
+		fi
+		if [ "$acme" = "true" ] || [ "$acme" = "1" ]; then
+			json_add_boolean "acme" 1
+		else
+			json_add_boolean "acme" 0
+		fi
+		if [ "$enabled" = "true" ] || [ "$enabled" = "1" ]; then
+			json_add_boolean "enabled" 1
+		else
+			json_add_boolean "enabled" 0
+		fi
+		json_add_string "cert_status" "$cert_status"
 		json_close_object
 
 		json_close_object
