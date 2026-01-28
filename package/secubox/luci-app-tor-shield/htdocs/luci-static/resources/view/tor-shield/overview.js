@@ -268,6 +268,48 @@ return view.extend({
 		var view = E('div', { 'class': 'tor-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('tor-shield/dashboard.css') }),
 
+			// Master Protection Switch - Always visible at top
+			E('div', {
+				'class': 'tor-master-switch',
+				'style': 'background: ' + (isActive ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)' : 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)') + '; border-radius: 16px; padding: 20px 24px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;'
+			}, [
+				E('div', { 'style': 'display: flex; align-items: center; gap: 16px;' }, [
+					E('div', { 'style': 'font-size: 48px;' }, isActive ? '\u{1F6E1}\uFE0F' : '\u{26A0}\uFE0F'),
+					E('div', {}, [
+						E('div', { 'style': 'font-size: 24px; font-weight: bold; color: #fff;' },
+							isActive ? _('Tor Protection ACTIVE') : _('Tor Protection DISABLED')),
+						E('div', { 'style': 'font-size: 14px; color: rgba(255,255,255,0.9);' },
+							isActive ?
+								_('All network traffic is being routed through Tor') :
+								_('Your traffic is NOT anonymized - your real IP is exposed'))
+					])
+				]),
+				E('div', { 'style': 'display: flex; align-items: center; gap: 12px;' }, [
+					E('span', { 'style': 'font-size: 14px; color: rgba(255,255,255,0.9); font-weight: 500;' },
+						isActive ? _('Protected') : _('Exposed')),
+					E('label', {
+						'class': 'tor-switch',
+						'style': 'position: relative; display: inline-block; width: 64px; height: 34px; cursor: pointer;'
+					}, [
+						E('input', {
+							'type': 'checkbox',
+							'checked': isActive ? 'checked' : null,
+							'style': 'opacity: 0; width: 0; height: 0;',
+							'change': L.bind(function(ev) {
+								this.handleToggle(status);
+							}, this)
+						}),
+						E('span', {
+							'style': 'position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: ' + (isActive ? '#fff' : 'rgba(255,255,255,0.3)') + '; transition: 0.3s; border-radius: 34px;'
+						}, [
+							E('span', {
+								'style': 'position: absolute; content: ""; height: 26px; width: 26px; left: ' + (isActive ? '34px' : '4px') + '; bottom: 4px; background-color: ' + (isActive ? '#10b981' : '#fff') + '; transition: 0.3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2);'
+							})
+						])
+					])
+				])
+			]),
+
 			// Wizard Welcome Banner (shown when disabled)
 			!isActive ? E('div', { 'class': 'tor-wizard-banner', 'style': 'background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 50%, #06b6d4 100%); border-radius: 16px; padding: 24px; margin-bottom: 20px; color: #fff; text-align: center;' }, [
 				E('div', { 'style': 'font-size: 48px; margin-bottom: 12px;' }, '\u{1F9D9}\u200D\u2642\uFE0F'),
