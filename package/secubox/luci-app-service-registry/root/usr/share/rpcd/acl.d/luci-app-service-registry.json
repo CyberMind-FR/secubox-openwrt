@@ -9,6 +9,8 @@
 					"list_categories",
 					"get_qr_data",
 					"get_certificate_status",
+					"check_service_health",
+					"check_all_health",
 					"get_landing_config"
 				],
 				"luci.haproxy": [

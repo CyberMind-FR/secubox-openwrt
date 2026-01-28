@@ -12,6 +12,13 @@ var catIcons = {
 	'monitoring': '📊', 'other': '🔗'
 };
 
+// Health status icons
+var healthIcons = {
+	'dns': { 'ok': '🌐', 'failed': '❌', 'none': '⚪' },
+	'cert': { 'ok': '🔒', 'warning': '⚠️', 'critical': '🔴', 'expired': '💀', 'missing': '⚪', 'none': '⚪' },
+	'firewall': { 'ok': '✅', 'partial': '⚠️', 'closed': '🚫' }
+};
+
 // Generate QR code using QR Server API (free, reliable)
 function generateQRCodeImg(data, size) {
 	var url = 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size + '&data=' + encodeURIComponent(data);
@@ -21,15 +28,19 @@ function generateQRCodeImg(data, size) {
 return view.extend({
 	title: _('Service Registry'),
 	pollInterval: 30,
+	healthData: null,
 
 	load: function() {
-		return api.getDashboardData();
+		return api.getDashboardDataWithHealth();
 	},
 
 	render: function(data) {
 		var self = this;
 		var services = data.services || [];
 		var providers = data.providers || {};
+
+		// Store health data for service lookups
+		this.healthData = data.health || {};
 
 		// Load CSS
 		var style = document.createElement('style');
@@ -41,10 +52,175 @@ return view.extend({
 
 		return E('div', { 'class': 'sr-compact' }, [
 			this.renderHeader(services, providers, data.haproxy, data.tor),
+			this.renderHealthSummary(data.health),
+			this.renderUrlChecker(),
 			this.renderSection('📡 Published Services', published, true),
 			this.renderSection('🔍 Discovered Services', unpublished, false),
 			this.renderLandingLink(data.landing)
 		]);
+	},
+
+	renderHealthSummary: function(health) {
+		if (!health || !health.firewall) return E('div');
+
+		var firewallStatus = health.firewall.status || 'unknown';
+		var firewallIcon = healthIcons.firewall[firewallStatus] || '❓';
+		var haproxyStatus = health.haproxy && health.haproxy.status === 'running' ? '🟢' : '🔴';
+		var torStatus = health.tor && health.tor.status === 'running' ? '🟢' : '🔴';
+
+		// Count service health
+		var services = health.services || [];
+		var dnsOk = services.filter(function(s) { return s.dns_status === 'ok'; }).length;
+		var certOk = services.filter(function(s) { return s.cert_status === 'ok'; }).length;
+		var certWarn = services.filter(function(s) { return s.cert_status === 'warning' || s.cert_status === 'critical'; }).length;
+
+		return E('div', { 'class': 'sr-health-bar' }, [
+			E('span', { 'class': 'sr-health-item', 'title': 'Firewall ports 80/443' },
+				firewallIcon + ' Firewall: ' + firewallStatus),
+			E('span', { 'class': 'sr-health-item', 'title': 'HAProxy container' },
+				haproxyStatus + ' HAProxy'),
+			E('span', { 'class': 'sr-health-item', 'title': 'Tor daemon' },
+				torStatus + ' Tor'),
+			services.length > 0 ? E('span', { 'class': 'sr-health-item' },
+				'🌐 DNS: ' + dnsOk + '/' + services.length) : null,
+			services.length > 0 ? E('span', { 'class': 'sr-health-item' },
+				'🔒 Certs: ' + certOk + '/' + services.length +
+				(certWarn > 0 ? ' (⚠️ ' + certWarn + ')' : '')) : null
+		].filter(Boolean));
+	},
+
+	renderUrlChecker: function() {
+		var self = this;
+		return E('div', { 'class': 'sr-wizard-card' }, [
+			E('div', { 'class': 'sr-wizard-header' }, [
+				E('span', { 'class': 'sr-wizard-icon' }, '🔍'),
+				E('span', { 'class': 'sr-wizard-title' }, 'URL Readiness Checker'),
+				E('span', { 'class': 'sr-wizard-desc' }, 'Check if a domain is ready to be hosted')
+			]),
+			E('div', { 'class': 'sr-wizard-form' }, [
+				E('input', {
+					'type': 'text',
+					'id': 'url-check-domain',
+					'placeholder': 'Enter domain (e.g., example.com)',
+					'class': 'sr-wizard-input'
+				}),
+				E('button', {
+					'class': 'cbi-button cbi-button-action',
+					'click': ui.createHandlerFn(this, 'handleUrlCheck')
+				}, '🔍 Check')
+			]),
+			E('div', { 'id': 'url-check-results', 'class': 'sr-check-results' })
+		]);
+	},
+
+	handleUrlCheck: function() {
+		var self = this;
+		var domain = document.getElementById('url-check-domain').value.trim();
+		var resultsDiv = document.getElementById('url-check-results');
+
+		if (!domain) {
+			resultsDiv.innerHTML = '<div class="sr-check-error">Please enter a domain</div>';
+			return;
+		}
+
+		// Clean domain (remove protocol if present)
+		domain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+
+		resultsDiv.innerHTML = '<div class="sr-check-loading">🔄 Checking ' + domain + '...</div>';
+
+		api.checkServiceHealth('', domain).then(function(result) {
+			if (!result.success) {
+				resultsDiv.innerHTML = '<div class="sr-check-error">❌ Check failed: ' + (result.error || 'Unknown error') + '</div>';
+				return;
+			}
+
+			var html = '<div class="sr-check-grid">';
+
+			// DNS Status
+			var dnsStatus = result.dns || {};
+			var dnsIcon = healthIcons.dns[dnsStatus.status] || '❓';
+			var dnsClass = dnsStatus.status === 'ok' ? 'sr-check-ok' : 'sr-check-fail';
+			html += '<div class="sr-check-item ' + dnsClass + '">';
+			html += '<span class="sr-check-icon">' + dnsIcon + '</span>';
+			html += '<span class="sr-check-label">DNS Resolution</span>';
+			if (dnsStatus.status === 'ok') {
+				html += '<span class="sr-check-value">✅ Resolves to ' + dnsStatus.resolved_ip + '</span>';
+			} else {
+				html += '<span class="sr-check-value">❌ DNS not configured or not resolving</span>';
+			}
+			html += '</div>';
+
+			// Firewall Status
+			var fwStatus = result.firewall || {};
+			var fwIcon = healthIcons.firewall[fwStatus.status] || '❓';
+			var fwClass = fwStatus.status === 'ok' ? 'sr-check-ok' : (fwStatus.status === 'partial' ? 'sr-check-warn' : 'sr-check-fail');
+			html += '<div class="sr-check-item ' + fwClass + '">';
+			html += '<span class="sr-check-icon">' + fwIcon + '</span>';
+			html += '<span class="sr-check-label">Firewall Ports</span>';
+			var ports = [];
+			if (fwStatus.http_open) ports.push('80');
+			if (fwStatus.https_open) ports.push('443');
+			html += '<span class="sr-check-value">' + (ports.length ? 'Open: ' + ports.join(', ') : '❌ Ports 80/443 not open') + '</span>';
+			html += '</div>';
+
+			// Certificate Status
+			var certStatus = result.certificate || {};
+			var certIcon = healthIcons.cert[certStatus.status] || '❓';
+			var certClass = certStatus.status === 'ok' ? 'sr-check-ok' : (certStatus.status === 'warning' ? 'sr-check-warn' : 'sr-check-fail');
+			html += '<div class="sr-check-item ' + certClass + '">';
+			html += '<span class="sr-check-icon">' + certIcon + '</span>';
+			html += '<span class="sr-check-label">SSL Certificate</span>';
+			if (certStatus.status === 'ok' || certStatus.status === 'warning') {
+				html += '<span class="sr-check-value">' + certStatus.days_left + ' days remaining</span>';
+			} else if (certStatus.status === 'expired') {
+				html += '<span class="sr-check-value">❌ Certificate expired</span>';
+			} else if (certStatus.status === 'missing') {
+				html += '<span class="sr-check-value">⚪ No certificate (request via HAProxy)</span>';
+			} else {
+				html += '<span class="sr-check-value">⚪ Not applicable</span>';
+			}
+			html += '</div>';
+
+			// HAProxy Status
+			var haStatus = result.haproxy || {};
+			var haIcon = haStatus.status === 'running' ? '🟢' : '🔴';
+			var haClass = haStatus.status === 'running' ? 'sr-check-ok' : 'sr-check-fail';
+			html += '<div class="sr-check-item ' + haClass + '">';
+			html += '<span class="sr-check-icon">' + haIcon + '</span>';
+			html += '<span class="sr-check-label">HAProxy</span>';
+			html += '<span class="sr-check-value">' + (haStatus.status === 'running' ? '✅ Running' : '❌ Not running') + '</span>';
+			html += '</div>';
+
+			html += '</div>';
+
+			// Summary and recommendation
+			var allOk = dnsStatus.status === 'ok' && fwStatus.status === 'ok' && haStatus.status === 'running';
+			var needsCert = certStatus.status === 'missing';
+
+			html += '<div class="sr-check-summary">';
+			if (allOk && !needsCert) {
+				html += '<div class="sr-check-ready">✅ ' + domain + ' is ready and serving!</div>';
+			} else if (allOk && needsCert) {
+				html += '<div class="sr-check-almost">⚠️ ' + domain + ' is ready - just need SSL certificate</div>';
+				html += '<a href="/cgi-bin/luci/admin/services/haproxy/certificates" class="sr-check-action">📜 Request Certificate</a>';
+			} else {
+				html += '<div class="sr-check-notready">❌ ' + domain + ' needs configuration</div>';
+				if (dnsStatus.status !== 'ok') {
+					html += '<div class="sr-check-tip">💡 Point DNS A record to your public IP</div>';
+				}
+				if (fwStatus.status !== 'ok') {
+					html += '<div class="sr-check-tip">💡 Open ports 80 and 443 in firewall</div>';
+				}
+				if (haStatus.status !== 'running') {
+					html += '<div class="sr-check-tip">💡 Start HAProxy container</div>';
+				}
+			}
+			html += '</div>';
+
+			resultsDiv.innerHTML = html;
+		}).catch(function(err) {
+			resultsDiv.innerHTML = '<div class="sr-check-error">❌ Error: ' + err.message + '</div>';
+		});
 	},
 
 	renderHeader: function(services, providers, haproxy, tor) {
@@ -135,20 +311,46 @@ return view.extend({
 			portDisplay = ':' + service.haproxy.backend_port;
 		}
 
-		// SSL/Cert badge
-		var sslBadge = null;
-		if (service.haproxy) {
+		// Get health status for this domain (if available)
+		var healthBadges = [];
+		var domain = service.haproxy && service.haproxy.domain;
+		if (domain && this.healthData && this.healthData.services) {
+			var svcHealth = this.healthData.services.find(function(h) {
+				return h.domain === domain;
+			});
+			if (svcHealth) {
+				// DNS badge
+				var dnsIcon = healthIcons.dns[svcHealth.dns_status] || '❓';
+				var dnsTitle = svcHealth.dns_status === 'ok' ?
+					'DNS OK: ' + svcHealth.dns_ip : 'DNS: ' + svcHealth.dns_status;
+				healthBadges.push(E('span', {
+					'class': 'sr-badge sr-badge-dns sr-badge-' + svcHealth.dns_status,
+					'title': dnsTitle
+				}, dnsIcon));
+
+				// Cert badge
+				var certIcon = healthIcons.cert[svcHealth.cert_status] || '❓';
+				var certTitle = svcHealth.cert_status === 'ok' || svcHealth.cert_status === 'warning' ?
+					'Cert: ' + svcHealth.cert_days + ' days' : 'Cert: ' + svcHealth.cert_status;
+				healthBadges.push(E('span', {
+					'class': 'sr-badge sr-badge-cert sr-badge-' + svcHealth.cert_status,
+					'title': certTitle
+				}, certIcon));
+			}
+		}
+
+		// SSL/Cert badge (fallback if no health data)
+		if (healthBadges.length === 0 && service.haproxy) {
 			if (service.haproxy.acme) {
-				sslBadge = E('span', { 'class': 'sr-badge sr-badge-acme', 'title': 'ACME Certificate' }, '🔒');
+				healthBadges.push(E('span', { 'class': 'sr-badge sr-badge-acme', 'title': 'ACME Certificate' }, '🔒'));
 			} else if (service.haproxy.ssl) {
-				sslBadge = E('span', { 'class': 'sr-badge sr-badge-ssl', 'title': 'SSL Enabled' }, '🔐');
+				healthBadges.push(E('span', { 'class': 'sr-badge sr-badge-ssl', 'title': 'SSL Enabled' }, '🔐'));
 			}
 		}
 
 		// Tor badge
-		var torBadge = null;
 		if (service.tor && service.tor.enabled) {
-			torBadge = E('span', { 'class': 'sr-badge sr-badge-tor', 'title': 'Tor Hidden Service' }, '🧅');
+			healthBadges.push(E('span', { 'class': 'sr-badge sr-badge-tor', 'title': 'Tor Hidden Service' }, '🧅'));
 		}
 
 		// QR button for published services with URLs
@@ -159,6 +361,16 @@ return view.extend({
 				'title': 'Show QR Code',
 				'click': ui.createHandlerFn(this, 'handleShowQR', service)
 			}, '📱');
+		}
+
+		// Health check button for published services with domains
+		var checkBtn = null;
+		if (isPublished && domain) {
+			checkBtn = E('button', {
+				'class': 'sr-btn sr-btn-check',
+				'title': 'Check Health',
+				'click': ui.createHandlerFn(this, 'handleServiceHealthCheck', service)
+			}, '🔍');
 		}
 
 		// Action button
@@ -187,10 +399,22 @@ return view.extend({
 			E('span', { 'class': 'sr-col-url' },
 				urlDisplay ? E('a', { 'href': urlDisplay.startsWith('http') ? urlDisplay : 'http://' + urlDisplay, 'target': '_blank' }, urlDisplay) : '-'
 			),
-			E('span', { 'class': 'sr-col-badges' }, [sslBadge, torBadge].filter(Boolean)),
-			E('span', { 'class': 'sr-col-qr' }, qrBtn),
+			E('span', { 'class': 'sr-col-badges' }, healthBadges),
+			E('span', { 'class': 'sr-col-qr' }, [qrBtn, checkBtn].filter(Boolean)),
 			E('span', { 'class': 'sr-col-action' }, actionBtn)
 		]);
+	},
+
+	handleServiceHealthCheck: function(service) {
+		var self = this;
+		var domain = service.haproxy && service.haproxy.domain;
+		if (!domain) return;
+
+		document.getElementById('url-check-domain').value = domain;
+		this.handleUrlCheck();
+
+		// Scroll to the checker
+		document.querySelector('.sr-wizard-card').scrollIntoView({ behavior: 'smooth' });
 	},
 
 	handleShowQR: function(service) {
@@ -321,6 +545,41 @@ return view.extend({
 			.sr-providers-bar { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
 			.sr-provider-badge { background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 12px; font-size: 0.8em; }
 
+			/* Health Summary Bar */
+			.sr-health-bar { display: flex; gap: 15px; margin-bottom: 15px; padding: 10px 15px; background: #f0f7ff; border-radius: 6px; border-left: 4px solid #0099cc; flex-wrap: wrap; }
+			@media (prefers-color-scheme: dark) { .sr-health-bar { background: #1a2a3e; } }
+			.sr-health-item { font-size: 0.9em; }
+
+			/* URL Checker Wizard Card */
+			.sr-wizard-card { background: linear-gradient(135deg, #0a192f 0%, #172a45 100%); border-radius: 12px; padding: 20px; margin-bottom: 25px; color: #fff; }
+			.sr-wizard-header { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }
+			.sr-wizard-icon { font-size: 1.8em; }
+			.sr-wizard-title { font-size: 1.2em; font-weight: 600; }
+			.sr-wizard-desc { font-size: 0.85em; opacity: 0.7; margin-left: auto; }
+			.sr-wizard-form { display: flex; gap: 10px; align-items: center; }
+			.sr-wizard-input { flex: 1; padding: 10px 15px; border: 1px solid #334155; border-radius: 6px; background: #0f172a; color: #fff; font-size: 1em; }
+			.sr-wizard-input::placeholder { color: #64748b; }
+
+			/* Health Check Results */
+			.sr-check-results { margin-top: 15px; }
+			.sr-check-loading { text-align: center; padding: 20px; font-size: 1.1em; }
+			.sr-check-error { background: #450a0a; padding: 12px 15px; border-radius: 6px; color: #fca5a5; }
+			.sr-check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+			.sr-check-item { background: #0f172a; padding: 12px 15px; border-radius: 8px; display: flex; align-items: center; gap: 10px; border-left: 3px solid #334155; }
+			.sr-check-item.sr-check-ok { border-left-color: #22c55e; }
+			.sr-check-item.sr-check-warn { border-left-color: #eab308; }
+			.sr-check-item.sr-check-fail { border-left-color: #ef4444; }
+			.sr-check-icon { font-size: 1.3em; }
+			.sr-check-label { font-weight: 600; font-size: 0.9em; min-width: 100px; }
+			.sr-check-value { font-size: 0.85em; opacity: 0.8; }
+			.sr-check-summary { margin-top: 15px; padding: 15px; background: #0f172a; border-radius: 8px; text-align: center; }
+			.sr-check-ready { font-size: 1.1em; color: #22c55e; font-weight: 600; }
+			.sr-check-almost { font-size: 1.1em; color: #eab308; font-weight: 600; }
+			.sr-check-notready { font-size: 1.1em; color: #ef4444; font-weight: 600; margin-bottom: 10px; }
+			.sr-check-tip { font-size: 0.85em; opacity: 0.8; margin-top: 5px; }
+			.sr-check-action { display: inline-block; margin-top: 10px; padding: 8px 16px; background: #0099cc; color: #fff; text-decoration: none; border-radius: 6px; font-size: 0.9em; }
+			.sr-check-action:hover { background: #00b3e6; }
+
 			.sr-section { margin-bottom: 25px; }
 			.sr-section-title { font-size: 1.1em; margin: 0 0 10px 0; padding-bottom: 8px; border-bottom: 2px solid #0ff; color: #0ff; }
 			.sr-empty-msg { color: #888; font-style: italic; padding: 15px; }
@@ -345,11 +604,17 @@ return view.extend({
 			.sr-col-url { flex: 2; min-width: 150px; font-size: 0.85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 			.sr-col-url a { color: #0099cc; text-decoration: none; }
 			.sr-col-url a:hover { text-decoration: underline; }
-			.sr-col-badges { width: 50px; display: flex; gap: 4px; }
-			.sr-col-qr { width: 36px; }
+			.sr-col-badges { width: 80px; display: flex; gap: 4px; }
+			.sr-col-qr { width: 60px; display: flex; gap: 4px; }
 			.sr-col-action { width: 36px; }
 
-			.sr-badge { font-size: 0.85em; }
+			.sr-badge { font-size: 0.85em; cursor: help; }
+			.sr-badge-ok { opacity: 1; }
+			.sr-badge-warning { animation: pulse 2s infinite; }
+			.sr-badge-critical, .sr-badge-expired { animation: pulse 1s infinite; }
+			.sr-badge-missing, .sr-badge-none { opacity: 0.5; }
+			.sr-badge-failed { opacity: 1; }
+			@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
 			.sr-btn { border: none; background: transparent; cursor: pointer; font-size: 1em; padding: 4px 8px; border-radius: 4px; transition: all 0.15s; }
 			.sr-btn:hover { background: rgba(0,0,0,0.1); }
@@ -359,6 +624,8 @@ return view.extend({
 			.sr-btn-unpublish:hover { background: rgba(239,68,68,0.15); }
 			.sr-btn-qr { color: #0099cc; }
 			.sr-btn-qr:hover { background: rgba(0,153,204,0.15); }
+			.sr-btn-check { color: #8b5cf6; font-size: 0.9em; }
+			.sr-btn-check:hover { background: rgba(139,92,246,0.15); }
 			.sr-btn-regen { margin-left: 10px; font-size: 0.85em; }
 
 			.sr-qr-modal { display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; padding: 20px 0; }
@@ -380,6 +647,8 @@ return view.extend({
 			@media (max-width: 768px) {
 				.sr-row { flex-wrap: wrap; }
 				.sr-col-url { flex-basis: 100%; order: 10; margin-top: 5px; }
+				.sr-wizard-form { flex-direction: column; }
+				.sr-wizard-input { width: 100%; }
 			}
 		`;
 	}

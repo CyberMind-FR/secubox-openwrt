@@ -880,6 +880,305 @@ _add_category() {
 	json_close_object
 }
 
+# Helper: Check DNS resolution for a domain
+check_dns_resolution() {
+	local domain="$1"
+	local expected_ip="$2"
+
+	# Try nslookup first (most common on OpenWrt)
+	local resolved_ip
+	if command -v nslookup >/dev/null 2>&1; then
+		resolved_ip=$(nslookup "$domain" 2>/dev/null | grep -A1 "Name:" | grep "Address" | head -1 | awk '{print $2}')
+		[ -z "$resolved_ip" ] && resolved_ip=$(nslookup "$domain" 2>/dev/null | grep "Address" | tail -1 | awk '{print $2}' | grep -v "^$")
+	elif command -v host >/dev/null 2>&1; then
+		resolved_ip=$(host "$domain" 2>/dev/null | grep "has address" | head -1 | awk '{print $4}')
+	fi
+
+	if [ -n "$resolved_ip" ]; then
+		echo "$resolved_ip"
+		return 0
+	fi
+	return 1
+}
+
+# Helper: Get WAN IP address
+get_wan_ip() {
+	local wan_ip=""
+	# Try to get WAN IP from interface
+	wan_ip=$(uci -q get network.wan.ipaddr)
+	if [ -z "$wan_ip" ]; then
+		# Try to get from ip command
+		wan_ip=$(ip -4 addr show dev eth0 2>/dev/null | grep -oE 'inet [0-9.]+' | head -1 | awk '{print $2}')
+	fi
+	if [ -z "$wan_ip" ]; then
+		# Try to get public IP (uses local IP for comparison)
+		wan_ip=$(ifconfig 2>/dev/null | grep -E "inet addr:[0-9]" | grep -v "127.0.0.1" | head -1 | sed 's/.*inet addr:\([0-9.]*\).*/\1/')
+	fi
+	echo "$wan_ip"
+}
+
+# Helper: Check certificate expiry
+check_cert_expiry() {
+	local domain="$1"
+	local cert_file="/srv/haproxy/certs/${domain}.pem"
+
+	if [ ! -f "$cert_file" ]; then
+		# Try the ACME path
+		cert_file="/etc/acme/${domain}_ecc/${domain}.cer"
+		[ ! -f "$cert_file" ] && cert_file="/etc/acme/${domain}/${domain}.cer"
+	fi
+
+	if [ -f "$cert_file" ]; then
+		# Get expiry date using openssl
+		local expiry_date
+		expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
+		if [ -n "$expiry_date" ]; then
+			# Convert to epoch
+			local expiry_epoch
+			expiry_epoch=$(date -d "$expiry_date" +%s 2>/dev/null)
+			local now_epoch
+			now_epoch=$(date +%s)
+			local days_left
+			if [ -n "$expiry_epoch" ]; then
+				days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+				echo "$days_left"
+				return 0
+			fi
+		fi
+	fi
+	return 1
+}
+
+# Helper: Check if external port is accessible (basic check via firewall rules)
+check_port_firewall_open() {
+	local port="$1"
+	local rule_name=""
+
+	case "$port" in
+		80) rule_name="HAProxy-HTTP" ;;
+		443) rule_name="HAProxy-HTTPS" ;;
+	esac
+
+	# Check if firewall rule exists and is enabled
+	local i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		local enabled=$(uci -q get firewall.@rule[$i].enabled)
+		local dest_port=$(uci -q get firewall.@rule[$i].dest_port)
+		if [ "$name" = "$rule_name" ] || [ "$dest_port" = "$port" ]; then
+			if [ "$enabled" != "0" ]; then
+				return 0
+			fi
+		fi
+		i=$((i + 1))
+	done
+	return 1
+}
+
+# Check health status for a service
+method_check_service_health() {
+	local service_id domain
+
+	read -r input
+	json_load "$input"
+	json_get_var service_id service_id
+	json_get_var domain domain ""
+
+	json_init
+
+	if [ -z "$service_id" ] && [ -z "$domain" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "service_id or domain is required"
+		json_dump
+		return
+	fi
+
+	# If only service_id provided, get domain from config
+	if [ -z "$domain" ] && [ -n "$service_id" ]; then
+		config_load "$UCI_CONFIG"
+		config_get domain "$service_id" haproxy_domain ""
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "service_id" "$service_id"
+	json_add_string "domain" "$domain"
+
+	# DNS check
+	json_add_object "dns"
+	if [ -n "$domain" ]; then
+		local resolved_ip
+		resolved_ip=$(check_dns_resolution "$domain")
+		if [ -n "$resolved_ip" ]; then
+			json_add_string "status" "ok"
+			json_add_string "resolved_ip" "$resolved_ip"
+		else
+			json_add_string "status" "failed"
+			json_add_string "error" "DNS resolution failed"
+		fi
+	else
+		json_add_string "status" "none"
+	fi
+	json_close_object
+
+	# Certificate check
+	json_add_object "certificate"
+	if [ -n "$domain" ]; then
+		local days_left
+		days_left=$(check_cert_expiry "$domain")
+		if [ -n "$days_left" ]; then
+			if [ "$days_left" -lt 0 ]; then
+				json_add_string "status" "expired"
+			elif [ "$days_left" -lt 7 ]; then
+				json_add_string "status" "critical"
+			elif [ "$days_left" -lt 30 ]; then
+				json_add_string "status" "warning"
+			else
+				json_add_string "status" "ok"
+			fi
+			json_add_int "days_left" "$days_left"
+		else
+			json_add_string "status" "missing"
+		fi
+	else
+		json_add_string "status" "none"
+	fi
+	json_close_object
+
+	# Port/Firewall check
+	json_add_object "firewall"
+	local http_open=0
+	local https_open=0
+	check_port_firewall_open 80 && http_open=1
+	check_port_firewall_open 443 && https_open=1
+
+	if [ "$http_open" = "1" ] && [ "$https_open" = "1" ]; then
+		json_add_string "status" "ok"
+	elif [ "$http_open" = "1" ] || [ "$https_open" = "1" ]; then
+		json_add_string "status" "partial"
+	else
+		json_add_string "status" "closed"
+	fi
+	json_add_boolean "http_open" "$http_open"
+	json_add_boolean "https_open" "$https_open"
+	json_close_object
+
+	# HAProxy status
+	json_add_object "haproxy"
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "stopped"
+	fi
+	json_close_object
+
+	json_dump
+}
+
+# Batch health check for all published services (for dashboard)
+method_check_all_health() {
+	json_init
+	json_add_object "health"
+
+	local wan_ip
+	wan_ip=$(get_wan_ip)
+	json_add_string "wan_ip" "$wan_ip"
+
+	# Check HAProxy status
+	json_add_object "haproxy"
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "stopped"
+	fi
+	json_close_object
+
+	# Check Tor status
+	json_add_object "tor"
+	if pgrep -f "/usr/sbin/tor" >/dev/null 2>&1; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "stopped"
+	fi
+	json_close_object
+
+	# Check firewall ports
+	json_add_object "firewall"
+	local http_open=0
+	local https_open=0
+	check_port_firewall_open 80 && http_open=1
+	check_port_firewall_open 443 && https_open=1
+	json_add_boolean "http_open" "$http_open"
+	json_add_boolean "https_open" "$https_open"
+	if [ "$http_open" = "1" ] && [ "$https_open" = "1" ]; then
+		json_add_string "status" "ok"
+	elif [ "$http_open" = "1" ] || [ "$https_open" = "1" ]; then
+		json_add_string "status" "partial"
+	else
+		json_add_string "status" "closed"
+	fi
+	json_close_object
+
+	# Check individual services with domains
+	json_add_array "services"
+
+	# Get all published services with domains from HAProxy
+	local vhosts_json
+	vhosts_json=$(ubus call luci.haproxy list_vhosts 2>/dev/null)
+	if [ -n "$vhosts_json" ]; then
+		local count
+		count=$(echo "$vhosts_json" | jsonfilter -e '@.vhosts[*].domain' 2>/dev/null | wc -l)
+		local i=0
+		while [ $i -lt "$count" ]; do
+			local domain enabled
+			domain=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].domain" 2>/dev/null)
+			enabled=$(echo "$vhosts_json" | jsonfilter -e "@.vhosts[$i].enabled" 2>/dev/null)
+
+			i=$((i + 1))
+
+			[ -z "$domain" ] && continue
+			[ "$enabled" = "false" ] || [ "$enabled" = "0" ] && continue
+
+			json_add_object
+			json_add_string "domain" "$domain"
+
+			# DNS check
+			local resolved_ip
+			resolved_ip=$(check_dns_resolution "$domain")
+			if [ -n "$resolved_ip" ]; then
+				json_add_string "dns_status" "ok"
+				json_add_string "dns_ip" "$resolved_ip"
+			else
+				json_add_string "dns_status" "failed"
+			fi
+
+			# Cert check
+			local days_left
+			days_left=$(check_cert_expiry "$domain")
+			if [ -n "$days_left" ]; then
+				if [ "$days_left" -lt 0 ]; then
+					json_add_string "cert_status" "expired"
+				elif [ "$days_left" -lt 7 ]; then
+					json_add_string "cert_status" "critical"
+				elif [ "$days_left" -lt 30 ]; then
+					json_add_string "cert_status" "warning"
+				else
+					json_add_string "cert_status" "ok"
+				fi
+				json_add_int "cert_days" "$days_left"
+			else
+				json_add_string "cert_status" "missing"
+			fi
+
+			json_close_object
+		done
+	fi
+
+	json_close_array
+	json_close_object
+
+	json_dump
+}
+
 # Get certificate status for service
 method_get_certificate_status() {
 	local service_id
@@ -908,13 +1207,27 @@ method_get_certificate_status() {
 		return
 	fi
 
-	# Get certificate info from HAProxy
-	local cert_info
-	cert_info=$(ubus call luci.haproxy list_certificates 2>/dev/null)
+	# Get certificate expiry info
+	local days_left
+	days_left=$(check_cert_expiry "$haproxy_domain")
 
 	json_add_boolean "success" 1
 	json_add_string "domain" "$haproxy_domain"
-	json_add_string "status" "unknown"
+
+	if [ -n "$days_left" ]; then
+		if [ "$days_left" -lt 0 ]; then
+			json_add_string "status" "expired"
+		elif [ "$days_left" -lt 7 ]; then
+			json_add_string "status" "critical"
+		elif [ "$days_left" -lt 30 ]; then
+			json_add_string "status" "warning"
+		else
+			json_add_string "status" "valid"
+		fi
+		json_add_int "days_left" "$days_left"
+	else
+		json_add_string "status" "missing"
+	fi
 
 	json_dump
 }
@@ -978,6 +1291,8 @@ case "$1" in
 	"get_qr_data": { "service_id": "string", "url_type": "string" },
 	"list_categories": {},
 	"get_certificate_status": { "service_id": "string" },
+	"check_service_health": { "service_id": "string", "domain": "string" },
+	"check_all_health": {},
 	"get_landing_config": {},
 	"save_landing_config": { "auto_regen": "boolean" }
 }
@@ -996,6 +1311,8 @@ EOF
 			get_qr_data) method_get_qr_data ;;
 			list_categories) method_list_categories ;;
 			get_certificate_status) method_get_certificate_status ;;
+			check_service_health) method_check_service_health ;;
+			check_all_health) method_check_all_health ;;
 			get_landing_config) method_get_landing_config ;;
 			save_landing_config) method_save_landing_config ;;
 			*)

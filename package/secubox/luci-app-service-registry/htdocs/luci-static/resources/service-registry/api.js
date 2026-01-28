@@ -87,6 +87,19 @@ var callSaveLandingConfig = rpc.declare({
 	expect: {}
 });
 
+var callCheckServiceHealth = rpc.declare({
+	object: 'luci.service-registry',
+	method: 'check_service_health',
+	params: ['service_id', 'domain'],
+	expect: {}
+});
+
+var callCheckAllHealth = rpc.declare({
+	object: 'luci.service-registry',
+	method: 'check_all_health',
+	expect: {}
+});
+
 // HAProxy status for provider info
 var callHAProxyStatus = rpc.declare({
 	object: 'luci.haproxy',
@@ -220,5 +233,37 @@ return baseclass.extend({
 	// Full publish with HAProxy + Tor
 	fullPublish: function(name, port, domain) {
 		return this.publishService(name, port, domain, true, 'services', '');
+	},
+
+	// Check health of a single service
+	checkServiceHealth: function(serviceId, domain) {
+		return callCheckServiceHealth(serviceId || '', domain || '');
+	},
+
+	// Check health of all published services
+	checkAllHealth: function() {
+		return callCheckAllHealth();
+	},
+
+	// Get dashboard data with health status
+	getDashboardDataWithHealth: function() {
+		return Promise.all([
+			callListServices().catch(function(e) { console.error('list_services failed:', e); return { services: [], providers: {} }; }),
+			callListCategories().catch(function(e) { console.error('list_categories failed:', e); return { categories: [] }; }),
+			callGetLandingConfig().catch(function(e) { console.error('get_landing_config failed:', e); return {}; }),
+			callHAProxyStatus().catch(function() { return { enabled: false }; }),
+			callTorStatus().catch(function() { return { enabled: false }; }),
+			callCheckAllHealth().catch(function(e) { console.error('check_all_health failed:', e); return { health: {} }; })
+		]).then(function(results) {
+			return {
+				services: results[0].services || [],
+				providers: results[0].providers || {},
+				categories: results[1].categories || [],
+				landing: results[2],
+				haproxy: results[3],
+				tor: results[4],
+				health: results[5].health || {}
+			};
+		});
 	}
 });
