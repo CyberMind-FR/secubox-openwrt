@@ -5,86 +5,18 @@
 'require ui';
 'require service-registry/api as api';
 
-// Icon mapping
-var icons = {
-	'server': '🖥️', 'music': '🎵', 'shield': '🛡️', 'chart': '📊',
-	'settings': '⚙️', 'git': '📦', 'blog': '📝', 'arrow': '➡️',
-	'onion': '🧅', 'lock': '🔒', 'globe': '🌐', 'box': '📦',
-	'app': '📱', 'admin': '👤', 'stats': '📈', 'security': '🔐',
-	'feed': '📡', 'default': '🔗'
+// Category icons
+var catIcons = {
+	'proxy': '🌐', 'privacy': '🧅', 'system': '⚙️', 'app': '📱',
+	'media': '🎵', 'security': '🔐', 'container': '📦', 'services': '🖥️',
+	'monitoring': '📊', 'other': '🔗'
 };
 
-function getIcon(name) {
-	return icons[name] || icons['default'];
+// Generate QR code using QR Server API (free, reliable)
+function generateQRCodeImg(data, size) {
+	var url = 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size + '&data=' + encodeURIComponent(data);
+	return '<img src="' + url + '" alt="QR Code" style="display:block;" />';
 }
-
-// Simple QR code generator
-var QRCode = {
-	generateSVG: function(data, size) {
-		// Basic implementation - generates a simple visual representation
-		var matrix = this.generateMatrix(data);
-		var cellSize = size / matrix.length;
-		var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '">';
-		svg += '<rect width="100%" height="100%" fill="white"/>';
-		for (var row = 0; row < matrix.length; row++) {
-			for (var col = 0; col < matrix[row].length; col++) {
-				if (matrix[row][col]) {
-					svg += '<rect x="' + (col * cellSize) + '" y="' + (row * cellSize) +
-						   '" width="' + cellSize + '" height="' + cellSize + '" fill="black"/>';
-				}
-			}
-		}
-		svg += '</svg>';
-		return svg;
-	},
-	generateMatrix: function(data) {
-		var size = Math.max(21, Math.min(41, Math.ceil(data.length / 2) + 17));
-		var matrix = [];
-		for (var i = 0; i < size; i++) {
-			matrix[i] = [];
-			for (var j = 0; j < size; j++) {
-				matrix[i][j] = 0;
-			}
-		}
-		// Add finder patterns
-		this.addFinderPattern(matrix, 0, 0);
-		this.addFinderPattern(matrix, size - 7, 0);
-		this.addFinderPattern(matrix, 0, size - 7);
-		// Timing
-		for (var i = 8; i < size - 8; i++) {
-			matrix[6][i] = matrix[i][6] = i % 2 === 0 ? 1 : 0;
-		}
-		// Data encoding (simplified)
-		var dataIndex = 0;
-		for (var col = size - 1; col > 0; col -= 2) {
-			if (col === 6) col--;
-			for (var row = 0; row < size; row++) {
-				for (var c = 0; c < 2; c++) {
-					var x = col - c;
-					if (matrix[row][x] === 0 && dataIndex < data.length * 8) {
-						var byteIndex = Math.floor(dataIndex / 8);
-						var bitIndex = dataIndex % 8;
-						var bit = byteIndex < data.length ?
-							(data.charCodeAt(byteIndex) >> (7 - bitIndex)) & 1 : 0;
-						matrix[row][x] = bit;
-						dataIndex++;
-					}
-				}
-			}
-		}
-		return matrix;
-	},
-	addFinderPattern: function(matrix, row, col) {
-		for (var r = 0; r < 7; r++) {
-			for (var c = 0; c < 7; c++) {
-				if ((r === 0 || r === 6 || c === 0 || c === 6) ||
-					(r >= 2 && r <= 4 && c >= 2 && c <= 4)) {
-					matrix[row + r][col + c] = 1;
-				}
-			}
-		}
-	}
-};
 
 return view.extend({
 	title: _('Service Registry'),
@@ -98,232 +30,56 @@ return view.extend({
 		var self = this;
 		var services = data.services || [];
 		var providers = data.providers || {};
-		var categories = data.categories || [];
 
 		// Load CSS
-		var link = document.createElement('link');
-		link.rel = 'stylesheet';
-		link.href = L.resource('service-registry/registry.css');
-		document.head.appendChild(link);
+		var style = document.createElement('style');
+		style.textContent = this.getStyles();
+		document.head.appendChild(style);
 
-		return E('div', { 'class': 'sr-dashboard' }, [
-			this.renderHeader(),
-			this.renderStats(services, providers),
-			this.renderProviders(providers, data.haproxy, data.tor),
-			this.renderQuickPublish(categories),
-			this.renderServiceGrid(services, categories),
+		var published = services.filter(function(s) { return s.published; });
+		var unpublished = services.filter(function(s) { return !s.published; });
+
+		return E('div', { 'class': 'sr-compact' }, [
+			this.renderHeader(services, providers, data.haproxy, data.tor),
+			this.renderSection('📡 Published Services', published, true),
+			this.renderSection('🔍 Discovered Services', unpublished, false),
 			this.renderLandingLink(data.landing)
 		]);
 	},
 
-	renderHeader: function() {
-		return E('h2', { 'class': 'cbi-title' }, _('Service Registry'));
-	},
-
-	renderStats: function(services, providers) {
+	renderHeader: function(services, providers, haproxy, tor) {
 		var published = services.filter(function(s) { return s.published; }).length;
 		var running = services.filter(function(s) { return s.status === 'running'; }).length;
 		var haproxyCount = providers.haproxy ? providers.haproxy.count : 0;
 		var torCount = providers.tor ? providers.tor.count : 0;
 
-		return E('div', { 'class': 'sr-stats' }, [
-			E('div', { 'class': 'sr-stat-card' }, [
-				E('div', { 'class': 'sr-stat-value' }, String(published)),
-				E('div', { 'class': 'sr-stat-label' }, _('Published'))
+		var haproxyStatus = haproxy && haproxy.container_running ? '🟢' : '🔴';
+		var torStatus = tor && tor.running ? '🟢' : '🔴';
+
+		return E('div', { 'class': 'sr-header' }, [
+			E('div', { 'class': 'sr-title' }, [
+				E('h2', {}, '🗂️ Service Registry'),
+				E('span', { 'class': 'sr-subtitle' },
+					published + ' published · ' + running + ' running · ' +
+					haproxyCount + ' domains · ' + torCount + ' onion')
 			]),
-			E('div', { 'class': 'sr-stat-card' }, [
-				E('div', { 'class': 'sr-stat-value' }, String(running)),
-				E('div', { 'class': 'sr-stat-label' }, _('Running'))
-			]),
-			E('div', { 'class': 'sr-stat-card' }, [
-				E('div', { 'class': 'sr-stat-value' }, String(haproxyCount)),
-				E('div', { 'class': 'sr-stat-label' }, _('Domains'))
-			]),
-			E('div', { 'class': 'sr-stat-card' }, [
-				E('div', { 'class': 'sr-stat-value' }, String(torCount)),
-				E('div', { 'class': 'sr-stat-label' }, _('Onion Sites'))
+			E('div', { 'class': 'sr-providers-bar' }, [
+				E('span', { 'class': 'sr-provider-badge' }, haproxyStatus + ' HAProxy'),
+				E('span', { 'class': 'sr-provider-badge' }, torStatus + ' Tor'),
+				E('span', { 'class': 'sr-provider-badge' }, '📊 ' + (providers.direct ? providers.direct.count : 0) + ' ports'),
+				E('span', { 'class': 'sr-provider-badge' }, '📦 ' + (providers.lxc ? providers.lxc.count : 0) + ' LXC')
 			])
 		]);
 	},
 
-	renderProviders: function(providers, haproxy, tor) {
-		return E('div', { 'class': 'sr-providers' }, [
-			E('div', { 'class': 'sr-provider' }, [
-				E('span', { 'class': 'sr-provider-dot ' + (haproxy && haproxy.container_running ? 'running' : 'stopped') }),
-				E('span', {}, _('HAProxy'))
-			]),
-			E('div', { 'class': 'sr-provider' }, [
-				E('span', { 'class': 'sr-provider-dot ' + (tor && tor.running ? 'running' : 'stopped') }),
-				E('span', {}, _('Tor'))
-			]),
-			E('div', { 'class': 'sr-provider' }, [
-				E('span', { 'class': 'sr-provider-dot running' }),
-				E('span', {}, _('Direct: ') + String(providers.direct ? providers.direct.count : 0))
-			]),
-			E('div', { 'class': 'sr-provider' }, [
-				E('span', { 'class': 'sr-provider-dot running' }),
-				E('span', {}, _('LXC: ') + String(providers.lxc ? providers.lxc.count : 0))
-			])
-		]);
-	},
-
-	renderQuickPublish: function(categories) {
-		var self = this;
-
-		var categoryOptions = [E('option', { 'value': 'services' }, _('Services'))];
-		categories.forEach(function(cat) {
-			categoryOptions.push(E('option', { 'value': cat.id }, cat.name));
-		});
-
-		return E('div', { 'class': 'sr-quick-publish' }, [
-			E('h3', {}, _('Quick Publish')),
-			E('div', { 'class': 'sr-form' }, [
-				E('div', { 'class': 'sr-form-group' }, [
-					E('label', {}, _('Service Name')),
-					E('input', { 'type': 'text', 'id': 'pub-name', 'placeholder': 'e.g., Gitea' })
-				]),
-				E('div', { 'class': 'sr-form-group' }, [
-					E('label', {}, _('Local Port')),
-					E('input', { 'type': 'number', 'id': 'pub-port', 'placeholder': '3000' })
-				]),
-				E('div', { 'class': 'sr-form-group' }, [
-					E('label', {}, _('Domain (optional)')),
-					E('input', { 'type': 'text', 'id': 'pub-domain', 'placeholder': 'git.example.com' })
-				]),
-				E('div', { 'class': 'sr-form-group' }, [
-					E('label', {}, _('Category')),
-					E('select', { 'id': 'pub-category' }, categoryOptions)
-				]),
-				E('div', { 'class': 'sr-checkbox-group' }, [
-					E('input', { 'type': 'checkbox', 'id': 'pub-tor' }),
-					E('label', { 'for': 'pub-tor' }, _('Enable Tor Hidden Service'))
-				]),
-				E('button', {
-					'class': 'cbi-button cbi-button-apply',
-					'click': ui.createHandlerFn(this, 'handlePublish')
-				}, _('Publish'))
-			])
-		]);
-	},
-
-	handlePublish: function() {
-		var self = this;
-		var name = document.getElementById('pub-name').value.trim();
-		var port = parseInt(document.getElementById('pub-port').value);
-		var domain = document.getElementById('pub-domain').value.trim();
-		var category = document.getElementById('pub-category').value;
-		var tor = document.getElementById('pub-tor').checked;
-
-		if (!name || !port) {
-			ui.addNotification(null, E('p', _('Name and port are required')), 'error');
-			return;
-		}
-
-		ui.showModal(_('Publishing Service'), [
-			E('p', { 'class': 'spinning' }, _('Creating service endpoints...'))
-		]);
-
-		return api.publishService(name, port, domain, tor, category, '').then(function(result) {
-			ui.hideModal();
-
-			if (result.success) {
-				self.showPublishedModal(result);
-				// Refresh view
-				return self.load().then(function(data) {
-					var container = document.querySelector('.sr-dashboard');
-					if (container) {
-						dom.content(container, self.render(data).childNodes);
-					}
-				});
-			} else {
-				ui.addNotification(null, E('p', _('Failed to publish: ') + (result.error || 'Unknown error')), 'error');
-			}
-		}).catch(function(err) {
-			ui.hideModal();
-			ui.addNotification(null, E('p', _('Error: ') + err.message), 'error');
-		});
-	},
-
-	showPublishedModal: function(result) {
-		var urls = result.urls || {};
-		var content = [
-			E('div', { 'class': 'sr-published-modal' }, [
-				E('h3', {}, _('Service Published Successfully!')),
-				E('p', {}, result.name)
-			])
-		];
-
-		var urlsDiv = E('div', { 'class': 'sr-urls' });
-
-		if (urls.local) {
-			urlsDiv.appendChild(E('div', { 'class': 'sr-url-box' }, [
-				E('label', {}, _('Local')),
-				E('input', { 'readonly': true, 'value': urls.local })
-			]));
-		}
-
-		if (urls.clearnet) {
-			urlsDiv.appendChild(E('div', { 'class': 'sr-url-box' }, [
-				E('label', {}, _('Clearnet')),
-				E('input', { 'readonly': true, 'value': urls.clearnet }),
-				E('div', { 'class': 'sr-qr-code' }),
-			]));
-			var qrDiv = urlsDiv.querySelector('.sr-qr-code:last-child');
-			if (qrDiv) {
-				qrDiv.innerHTML = QRCode.generateSVG(urls.clearnet, 120);
-			}
-		}
-
-		if (urls.onion) {
-			urlsDiv.appendChild(E('div', { 'class': 'sr-url-box' }, [
-				E('label', {}, _('Onion')),
-				E('input', { 'readonly': true, 'value': urls.onion }),
-				E('div', { 'class': 'sr-qr-code' })
-			]));
-			var qrDiv = urlsDiv.querySelectorAll('.sr-qr-code');
-			if (qrDiv.length > 0) {
-				qrDiv[qrDiv.length - 1].innerHTML = QRCode.generateSVG(urls.onion, 120);
-			}
-		}
-
-		content[0].appendChild(urlsDiv);
-
-		// Share buttons
-		var shareUrl = urls.clearnet || urls.onion || urls.local;
-		if (shareUrl) {
-			content[0].appendChild(E('div', { 'class': 'sr-share-buttons' }, [
-				E('a', {
-					'href': 'https://twitter.com/intent/tweet?url=' + encodeURIComponent(shareUrl),
-					'target': '_blank',
-					'title': 'Share on X'
-				}, 'X'),
-				E('a', {
-					'href': 'https://t.me/share/url?url=' + encodeURIComponent(shareUrl),
-					'target': '_blank',
-					'title': 'Share on Telegram'
-				}, 'TG'),
-				E('a', {
-					'href': 'https://wa.me/?text=' + encodeURIComponent(shareUrl),
-					'target': '_blank',
-					'title': 'Share on WhatsApp'
-				}, 'WA')
-			]));
-		}
-
-		content.push(E('div', { 'class': 'right' }, [
-			E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
-		]));
-
-		ui.showModal(_('Service Published'), content);
-	},
-
-	renderServiceGrid: function(services, categories) {
+	renderSection: function(title, services, isPublished) {
 		var self = this;
 
 		if (services.length === 0) {
-			return E('div', { 'class': 'sr-empty' }, [
-				E('h3', {}, _('No Services Found')),
-				E('p', {}, _('Use the quick publish form above to add your first service'))
+			return E('div', { 'class': 'sr-section' }, [
+				E('h3', { 'class': 'sr-section-title' }, title),
+				E('div', { 'class': 'sr-empty-msg' }, isPublished ?
+					'No published services yet' : 'No discovered services')
 			]);
 		}
 
@@ -335,178 +91,296 @@ return view.extend({
 			grouped[cat].push(svc);
 		});
 
-		var sections = [];
+		var lists = [];
 		Object.keys(grouped).sort().forEach(function(cat) {
-			sections.push(E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, cat.charAt(0).toUpperCase() + cat.slice(1)),
-				E('div', { 'class': 'sr-grid' },
+			var catIcon = catIcons[cat] || '🔗';
+			lists.push(E('div', { 'class': 'sr-category' }, [
+				E('div', { 'class': 'sr-cat-header' }, catIcon + ' ' + cat.charAt(0).toUpperCase() + cat.slice(1)),
+				E('div', { 'class': 'sr-list' },
 					grouped[cat].map(function(svc) {
-						return self.renderServiceCard(svc);
+						return self.renderServiceRow(svc, isPublished);
 					})
 				)
 			]));
 		});
 
-		return E('div', {}, sections);
-	},
-
-	renderServiceCard: function(service) {
-		var self = this;
-		var urls = service.urls || {};
-
-		var urlRows = [];
-		if (urls.local) {
-			urlRows.push(this.renderUrlRow('Local', urls.local));
-		}
-		if (urls.clearnet) {
-			urlRows.push(this.renderUrlRow('Clearnet', urls.clearnet));
-		}
-		if (urls.onion) {
-			urlRows.push(this.renderUrlRow('Onion', urls.onion));
-		}
-
-		// QR codes for published services
-		var qrContainer = null;
-		if (service.published && (urls.clearnet || urls.onion)) {
-			var qrBoxes = [];
-			if (urls.clearnet) {
-				var qrBox = E('div', { 'class': 'sr-qr-box' }, [
-					E('div', { 'class': 'sr-qr-code' }),
-					E('div', { 'class': 'sr-qr-label' }, _('Clearnet'))
-				]);
-				qrBox.querySelector('.sr-qr-code').innerHTML = QRCode.generateSVG(urls.clearnet, 80);
-				qrBoxes.push(qrBox);
-			}
-			if (urls.onion) {
-				var qrBox = E('div', { 'class': 'sr-qr-box' }, [
-					E('div', { 'class': 'sr-qr-code' }),
-					E('div', { 'class': 'sr-qr-label' }, _('Onion'))
-				]);
-				qrBox.querySelector('.sr-qr-code').innerHTML = QRCode.generateSVG(urls.onion, 80);
-				qrBoxes.push(qrBox);
-			}
-			qrContainer = E('div', { 'class': 'sr-qr-container' }, qrBoxes);
-		}
-
-		// Action buttons
-		var actions = [];
-		if (service.published) {
-			actions.push(E('button', {
-				'class': 'cbi-button cbi-button-remove',
-				'click': ui.createHandlerFn(this, 'handleUnpublish', service.id)
-			}, _('Unpublish')));
-		} else {
-			actions.push(E('button', {
-				'class': 'cbi-button cbi-button-apply',
-				'click': ui.createHandlerFn(this, 'handleQuickPublishExisting', service)
-			}, _('Publish')));
-		}
-
-		return E('div', { 'class': 'sr-card' }, [
-			E('div', { 'class': 'sr-card-header' }, [
-				E('div', { 'class': 'sr-card-icon' }, getIcon(service.icon)),
-				E('div', { 'class': 'sr-card-title' }, service.name || service.id),
-				E('span', {
-					'class': 'sr-card-status sr-status-' + (service.status || 'stopped')
-				}, service.status || 'unknown')
-			]),
-			E('div', { 'class': 'sr-urls' }, urlRows),
-			qrContainer,
-			E('div', { 'class': 'sr-card-actions' }, actions)
+		return E('div', { 'class': 'sr-section' }, [
+			E('h3', { 'class': 'sr-section-title' }, title + ' (' + services.length + ')'),
+			E('div', { 'class': 'sr-categories' }, lists)
 		]);
 	},
 
-	renderUrlRow: function(label, url) {
-		return E('div', { 'class': 'sr-url-row' }, [
-			E('span', { 'class': 'sr-url-label' }, label),
-			E('a', {
-				'class': 'sr-url-link',
-				'href': url,
-				'target': '_blank'
-			}, url),
-			E('button', {
-				'class': 'cbi-button sr-copy-btn',
-				'click': function() {
-					navigator.clipboard.writeText(url).then(function() {
-						ui.addNotification(null, E('p', _('URL copied to clipboard')), 'info');
-					});
-				}
-			}, _('Copy'))
+	renderServiceRow: function(service, isPublished) {
+		var self = this;
+		var urls = service.urls || {};
+
+		// Status indicators
+		var healthIcon = service.status === 'running' ? '🟢' :
+						 service.status === 'stopped' ? '🔴' : '🟡';
+		var publishIcon = service.published ? '✅' : '⬜';
+
+		// Build URL display
+		var urlDisplay = '';
+		if (urls.clearnet) {
+			urlDisplay = urls.clearnet;
+		} else if (urls.onion) {
+			urlDisplay = urls.onion.substring(0, 25) + '...';
+		} else if (urls.local) {
+			urlDisplay = urls.local;
+		}
+
+		// Port display
+		var portDisplay = service.local_port ? ':' + service.local_port : '';
+		if (service.haproxy && service.haproxy.backend_port) {
+			portDisplay = ':' + service.haproxy.backend_port;
+		}
+
+		// SSL/Cert badge
+		var sslBadge = null;
+		if (service.haproxy) {
+			if (service.haproxy.acme) {
+				sslBadge = E('span', { 'class': 'sr-badge sr-badge-acme', 'title': 'ACME Certificate' }, '🔒');
+			} else if (service.haproxy.ssl) {
+				sslBadge = E('span', { 'class': 'sr-badge sr-badge-ssl', 'title': 'SSL Enabled' }, '🔐');
+			}
+		}
+
+		// Tor badge
+		var torBadge = null;
+		if (service.tor && service.tor.enabled) {
+			torBadge = E('span', { 'class': 'sr-badge sr-badge-tor', 'title': 'Tor Hidden Service' }, '🧅');
+		}
+
+		// QR button for published services with URLs
+		var qrBtn = null;
+		if (service.published && (urls.clearnet || urls.onion)) {
+			qrBtn = E('button', {
+				'class': 'sr-btn sr-btn-qr',
+				'title': 'Show QR Code',
+				'click': ui.createHandlerFn(this, 'handleShowQR', service)
+			}, '📱');
+		}
+
+		// Action button
+		var actionBtn;
+		if (isPublished) {
+			actionBtn = E('button', {
+				'class': 'sr-btn sr-btn-unpublish',
+				'title': 'Unpublish',
+				'click': ui.createHandlerFn(this, 'handleUnpublish', service.id)
+			}, '✖');
+		} else {
+			actionBtn = E('button', {
+				'class': 'sr-btn sr-btn-publish',
+				'title': 'Quick Publish',
+				'click': ui.createHandlerFn(this, 'handleQuickPublish', service)
+			}, '📤');
+		}
+
+		return E('div', { 'class': 'sr-row' }, [
+			E('span', { 'class': 'sr-col-health', 'title': service.status || 'unknown' }, healthIcon),
+			E('span', { 'class': 'sr-col-publish' }, publishIcon),
+			E('span', { 'class': 'sr-col-name' }, [
+				E('strong', {}, service.name || service.id),
+				E('span', { 'class': 'sr-port' }, portDisplay)
+			]),
+			E('span', { 'class': 'sr-col-url' },
+				urlDisplay ? E('a', { 'href': urlDisplay.startsWith('http') ? urlDisplay : 'http://' + urlDisplay, 'target': '_blank' }, urlDisplay) : '-'
+			),
+			E('span', { 'class': 'sr-col-badges' }, [sslBadge, torBadge].filter(Boolean)),
+			E('span', { 'class': 'sr-col-qr' }, qrBtn),
+			E('span', { 'class': 'sr-col-action' }, actionBtn)
+		]);
+	},
+
+	handleShowQR: function(service) {
+		var urls = service.urls || {};
+		var qrBoxes = [];
+
+		if (urls.clearnet) {
+			var qrDiv = E('div', { 'class': 'sr-qr-box' });
+			qrDiv.innerHTML = '<div class="sr-qr-code">' + generateQRCodeImg(urls.clearnet, 150) + '</div>' +
+				'<div class="sr-qr-label">🌐 Clearnet</div>' +
+				'<div class="sr-qr-url">' + urls.clearnet + '</div>';
+			qrBoxes.push(qrDiv);
+		}
+
+		if (urls.onion) {
+			var qrDiv = E('div', { 'class': 'sr-qr-box' });
+			qrDiv.innerHTML = '<div class="sr-qr-code">' + generateQRCodeImg(urls.onion, 150) + '</div>' +
+				'<div class="sr-qr-label">🧅 Onion</div>' +
+				'<div class="sr-qr-url">' + urls.onion + '</div>';
+			qrBoxes.push(qrDiv);
+		}
+
+		ui.showModal('📱 ' + (service.name || service.id), [
+			E('div', { 'class': 'sr-qr-modal' }, qrBoxes),
+			E('div', { 'class': 'right', 'style': 'margin-top: 15px;' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Close'))
+			])
 		]);
 	},
 
 	handleUnpublish: function(serviceId) {
 		var self = this;
+		if (!confirm('Unpublish this service?')) return;
 
-		ui.showModal(_('Unpublish Service'), [
-			E('p', {}, _('Are you sure you want to unpublish this service?')),
-			E('p', {}, _('This will remove HAProxy vhost and Tor hidden service if configured.')),
-			E('div', { 'class': 'right' }, [
+		ui.showModal(_('Unpublishing'), [
+			E('p', { 'class': 'spinning' }, _('Removing service...'))
+		]);
+
+		api.unpublishService(serviceId).then(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', _('Service unpublished')), 'info');
+				location.reload();
+			} else {
+				ui.addNotification(null, E('p', _('Failed to unpublish')), 'error');
+			}
+		});
+	},
+
+	handleQuickPublish: function(service) {
+		var self = this;
+		var name = service.name || service.id;
+		var port = service.local_port || (service.haproxy ? service.haproxy.backend_port : 0);
+
+		ui.showModal(_('Quick Publish: ' + name), [
+			E('div', { 'class': 'sr-publish-form' }, [
+				E('div', { 'class': 'sr-form-row' }, [
+					E('label', {}, 'Domain (optional):'),
+					E('input', { 'type': 'text', 'id': 'qp-domain', 'placeholder': 'example.com' })
+				]),
+				E('div', { 'class': 'sr-form-row' }, [
+					E('label', {}, [
+						E('input', { 'type': 'checkbox', 'id': 'qp-tor' }),
+						' Enable Tor Hidden Service'
+					])
+				])
+			]),
+			E('div', { 'class': 'right', 'style': 'margin-top: 15px;' }, [
 				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
 				E('button', {
-					'class': 'cbi-button cbi-button-negative',
+					'class': 'cbi-button cbi-button-apply',
 					'click': function() {
+						var domain = document.getElementById('qp-domain').value.trim();
+						var tor = document.getElementById('qp-tor').checked;
 						ui.hideModal();
-						ui.showModal(_('Unpublishing'), [
-							E('p', { 'class': 'spinning' }, _('Removing service...'))
+						ui.showModal(_('Publishing'), [
+							E('p', { 'class': 'spinning' }, _('Creating endpoints...'))
 						]);
-
-						api.unpublishService(serviceId).then(function(result) {
+						api.publishService(name, port, domain, tor, service.category || 'services', '').then(function(result) {
 							ui.hideModal();
 							if (result.success) {
-								ui.addNotification(null, E('p', _('Service unpublished')), 'info');
-								return self.load().then(function(data) {
-									var container = document.querySelector('.sr-dashboard');
-									if (container) {
-										dom.content(container, self.render(data).childNodes);
-									}
-								});
+								ui.addNotification(null, E('p', '✅ ' + name + ' published!'), 'info');
+								location.reload();
 							} else {
-								ui.addNotification(null, E('p', _('Failed to unpublish')), 'error');
+								ui.addNotification(null, E('p', '❌ Failed: ' + (result.error || '')), 'error');
 							}
 						});
 					}
-				}, _('Unpublish'))
+				}, '📤 Publish')
 			])
 		]);
 	},
 
-	handleQuickPublishExisting: function(service) {
-		document.getElementById('pub-name').value = service.name || '';
-		document.getElementById('pub-port').value = service.local_port || '';
-		document.getElementById('pub-name').focus();
-	},
-
 	renderLandingLink: function(landing) {
-		var path = landing && landing.path ? landing.path : '/www/secubox-services.html';
 		var exists = landing && landing.exists;
-
-		return E('div', { 'class': 'sr-landing-link' }, [
-			E('span', {}, _('Landing Page:')),
+		return E('div', { 'class': 'sr-footer' }, [
+			E('span', {}, '📄 Landing Page: '),
 			exists ?
-				E('a', { 'href': '/secubox-services.html', 'target': '_blank' }, path) :
-				E('span', {}, _('Not generated')),
+				E('a', { 'href': '/secubox-services.html', 'target': '_blank' }, '/secubox-services.html ↗') :
+				E('span', { 'class': 'sr-muted' }, 'Not generated'),
 			E('button', {
-				'class': 'cbi-button',
+				'class': 'sr-btn sr-btn-regen',
 				'click': ui.createHandlerFn(this, 'handleRegenLanding')
-			}, _('Regenerate'))
+			}, '🔄 Regenerate')
 		]);
 	},
 
 	handleRegenLanding: function() {
-		var self = this;
-
 		ui.showModal(_('Generating'), [
 			E('p', { 'class': 'spinning' }, _('Regenerating landing page...'))
 		]);
-
 		api.generateLandingPage().then(function(result) {
 			ui.hideModal();
 			if (result.success) {
-				ui.addNotification(null, E('p', _('Landing page regenerated')), 'info');
+				ui.addNotification(null, E('p', '✅ Landing page regenerated'), 'info');
 			} else {
-				ui.addNotification(null, E('p', _('Failed: ') + (result.error || '')), 'error');
+				ui.addNotification(null, E('p', '❌ Failed: ' + (result.error || '')), 'error');
 			}
 		});
+	},
+
+	getStyles: function() {
+		return `
+			.sr-compact { font-family: system-ui, -apple-system, sans-serif; }
+			.sr-header { margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 8px; color: #fff; }
+			.sr-title h2 { margin: 0 0 5px 0; font-size: 1.4em; }
+			.sr-subtitle { font-size: 0.85em; opacity: 0.8; }
+			.sr-providers-bar { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+			.sr-provider-badge { background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 12px; font-size: 0.8em; }
+
+			.sr-section { margin-bottom: 25px; }
+			.sr-section-title { font-size: 1.1em; margin: 0 0 10px 0; padding-bottom: 8px; border-bottom: 2px solid #0ff; color: #0ff; }
+			.sr-empty-msg { color: #888; font-style: italic; padding: 15px; }
+
+			.sr-category { margin-bottom: 15px; }
+			.sr-cat-header { font-weight: 600; font-size: 0.9em; padding: 6px 10px; background: #f5f5f5; border-radius: 4px; margin-bottom: 5px; }
+			@media (prefers-color-scheme: dark) { .sr-cat-header { background: #2a2a3e; } }
+
+			.sr-list { border: 1px solid #ddd; border-radius: 6px; overflow: hidden; }
+			@media (prefers-color-scheme: dark) { .sr-list { border-color: #444; } }
+
+			.sr-row { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid #eee; gap: 10px; transition: background 0.15s; }
+			.sr-row:last-child { border-bottom: none; }
+			.sr-row:hover { background: rgba(0,255,255,0.05); }
+			@media (prefers-color-scheme: dark) { .sr-row { border-bottom-color: #333; } }
+
+			.sr-col-health { width: 24px; text-align: center; font-size: 0.9em; }
+			.sr-col-publish { width: 24px; text-align: center; }
+			.sr-col-name { flex: 1; min-width: 120px; }
+			.sr-col-name strong { display: block; }
+			.sr-port { font-size: 0.8em; color: #888; }
+			.sr-col-url { flex: 2; min-width: 150px; font-size: 0.85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+			.sr-col-url a { color: #0099cc; text-decoration: none; }
+			.sr-col-url a:hover { text-decoration: underline; }
+			.sr-col-badges { width: 50px; display: flex; gap: 4px; }
+			.sr-col-qr { width: 36px; }
+			.sr-col-action { width: 36px; }
+
+			.sr-badge { font-size: 0.85em; }
+
+			.sr-btn { border: none; background: transparent; cursor: pointer; font-size: 1em; padding: 4px 8px; border-radius: 4px; transition: all 0.15s; }
+			.sr-btn:hover { background: rgba(0,0,0,0.1); }
+			.sr-btn-publish { color: #22c55e; }
+			.sr-btn-publish:hover { background: rgba(34,197,94,0.15); }
+			.sr-btn-unpublish { color: #ef4444; }
+			.sr-btn-unpublish:hover { background: rgba(239,68,68,0.15); }
+			.sr-btn-qr { color: #0099cc; }
+			.sr-btn-qr:hover { background: rgba(0,153,204,0.15); }
+			.sr-btn-regen { margin-left: 10px; font-size: 0.85em; }
+
+			.sr-qr-modal { display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; padding: 20px 0; }
+			.sr-qr-box { text-align: center; }
+			.sr-qr-code { background: #fff; padding: 10px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+			.sr-qr-code svg { display: block; }
+			.sr-qr-label { margin-top: 10px; font-weight: 600; font-size: 0.9em; }
+			.sr-qr-url { margin-top: 5px; font-size: 0.75em; color: #666; max-width: 180px; word-break: break-all; }
+
+			.sr-footer { margin-top: 20px; padding: 12px 15px; background: #f8f8f8; border-radius: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+			@media (prefers-color-scheme: dark) { .sr-footer { background: #1a1a2e; } }
+			.sr-muted { color: #888; }
+
+			.sr-publish-form { min-width: 300px; }
+			.sr-form-row { margin-bottom: 12px; }
+			.sr-form-row label { display: block; margin-bottom: 5px; }
+			.sr-form-row input[type="text"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+
+			@media (max-width: 768px) {
+				.sr-row { flex-wrap: wrap; }
+				.sr-col-url { flex-basis: 100%; order: 10; margin-top: 5px; }
+			}
+		`;
 	}
 });

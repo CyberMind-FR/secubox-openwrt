@@ -203,8 +203,9 @@ cat > "$OUTPUT_PATH" <<'HTMLHEAD'
             border-radius: 8px;
             display: inline-block;
         }
-        .qr-code svg {
+        .qr-code img {
             display: block;
+            border-radius: 4px;
         }
         .qr-label {
             font-size: 0.7em;
@@ -264,77 +265,11 @@ cat > "$OUTPUT_PATH" <<'HTMLHEAD'
     </div>
 
     <script>
-    // QR Code generator (minimal SVG implementation)
-    var QRCode = (function() {
-        function generateMatrix(data) {
-            // Simple QR matrix generator - uses a basic encoding
-            // For production, use a proper library
-            var size = Math.max(21, Math.ceil(data.length / 2) + 17);
-            size = Math.min(size, 41);
-            var matrix = [];
-            for (var i = 0; i < size; i++) {
-                matrix[i] = [];
-                for (var j = 0; j < size; j++) {
-                    matrix[i][j] = 0;
-                }
-            }
-            // Add finder patterns
-            addFinderPattern(matrix, 0, 0);
-            addFinderPattern(matrix, size - 7, 0);
-            addFinderPattern(matrix, 0, size - 7);
-            // Add timing patterns
-            for (var i = 8; i < size - 8; i++) {
-                matrix[6][i] = matrix[i][6] = i % 2 === 0 ? 1 : 0;
-            }
-            // Encode data (simplified)
-            var dataIndex = 0;
-            for (var col = size - 1; col > 0; col -= 2) {
-                if (col === 6) col--;
-                for (var row = 0; row < size; row++) {
-                    for (var c = 0; c < 2; c++) {
-                        var x = col - c;
-                        if (matrix[row][x] === 0 && dataIndex < data.length * 8) {
-                            var byteIndex = Math.floor(dataIndex / 8);
-                            var bitIndex = dataIndex % 8;
-                            var bit = byteIndex < data.length ?
-                                (data.charCodeAt(byteIndex) >> (7 - bitIndex)) & 1 : 0;
-                            matrix[row][x] = bit;
-                            dataIndex++;
-                        }
-                    }
-                }
-            }
-            return matrix;
-        }
-        function addFinderPattern(matrix, row, col) {
-            for (var r = 0; r < 7; r++) {
-                for (var c = 0; c < 7; c++) {
-                    if ((r === 0 || r === 6 || c === 0 || c === 6) ||
-                        (r >= 2 && r <= 4 && c >= 2 && c <= 4)) {
-                        matrix[row + r][col + c] = 1;
-                    }
-                }
-            }
-        }
-        return {
-            generateSVG: function(data, size) {
-                var matrix = generateMatrix(data);
-                var cellSize = size / matrix.length;
-                var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '">';
-                svg += '<rect width="100%" height="100%" fill="white"/>';
-                for (var row = 0; row < matrix.length; row++) {
-                    for (var col = 0; col < matrix[row].length; col++) {
-                        if (matrix[row][col]) {
-                            svg += '<rect x="' + (col * cellSize) + '" y="' + (row * cellSize) +
-                                   '" width="' + cellSize + '" height="' + cellSize + '" fill="black"/>';
-                        }
-                    }
-                }
-                svg += '</svg>';
-                return svg;
-            }
-        };
-    })();
+    // QR Code generator using QR Server API (free, reliable)
+    function generateQRCodeImg(data, size) {
+        var url = 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size + '&data=' + encodeURIComponent(data);
+        return '<img src="' + url + '" alt="QR Code" width="' + size + '" height="' + size + '" style="display:block;" />';
+    }
 
     // Service data
     var servicesData = SERVICES_JSON_PLACEHOLDER;
@@ -445,7 +380,7 @@ cat > "$OUTPUT_PATH" <<'HTMLHEAD'
             html += '<div class="qr-container">';
             qrUrls.forEach(function(qr) {
                 html += '<div class="qr-box">';
-                html += '<div class="qr-code">' + QRCode.generateSVG(qr.url, 100) + '</div>';
+                html += '<div class="qr-code">' + generateQRCodeImg(qr.url, 120) + '</div>';
                 html += '<div class="qr-label">' + qr.label + '</div>';
                 html += '</div>';
             });

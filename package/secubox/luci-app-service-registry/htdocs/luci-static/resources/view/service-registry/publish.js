@@ -5,6 +5,13 @@
 'require form';
 'require service-registry/api as api';
 
+// Category icons
+var catIcons = {
+	'proxy': '🌐', 'privacy': '🧅', 'system': '⚙️', 'app': '📱',
+	'media': '🎵', 'security': '🔐', 'container': '📦', 'services': '🖥️',
+	'monitoring': '📊', 'other': '🔗'
+};
+
 return view.extend({
 	title: _('Publish Service'),
 
@@ -17,21 +24,20 @@ return view.extend({
 
 	render: function(data) {
 		var self = this;
-		var categories = data[0].categories || [];
+		var categories = (data[0] && data[0].categories) || [];
 		var unpublished = data[1] || [];
 
-		// Load CSS
-		var link = document.createElement('link');
-		link.rel = 'stylesheet';
-		link.href = L.resource('service-registry/registry.css');
-		document.head.appendChild(link);
+		// Inject styles
+		var style = document.createElement('style');
+		style.textContent = this.getStyles();
+		document.head.appendChild(style);
 
 		var m, s, o;
 
-		m = new form.Map('service-registry', _('Publish New Service'),
+		m = new form.Map('service-registry', '📤 ' + _('Publish New Service'),
 			_('Create a new published service with HAProxy reverse proxy and/or Tor hidden service.'));
 
-		s = m.section(form.NamedSection, '_new', 'service', _('Service Details'));
+		s = m.section(form.NamedSection, '_new', 'service', '📋 ' + _('Service Details'));
 		s.anonymous = true;
 		s.addremove = false;
 
@@ -53,10 +59,11 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.option(form.ListValue, 'category', _('Category'));
-		o.value('services', _('Services'));
+		o.value('services', '🖥️ Services');
 		categories.forEach(function(cat) {
 			if (cat.id !== 'services') {
-				o.value(cat.id, cat.name);
+				var icon = catIcons[cat.id] || '🔗';
+				o.value(cat.id, icon + ' ' + cat.name);
 			}
 		});
 		o.default = 'services';
@@ -67,7 +74,7 @@ return view.extend({
 		o.optional = true;
 
 		// HAProxy section
-		s = m.section(form.NamedSection, '_haproxy', 'haproxy', _('HAProxy (Clearnet)'),
+		s = m.section(form.NamedSection, '_haproxy', 'haproxy', '🌐 ' + _('HAProxy (Clearnet)'),
 			_('Configure a public domain with automatic HTTPS certificate'));
 		s.anonymous = true;
 
@@ -85,7 +92,7 @@ return view.extend({
 			return true;
 		};
 
-		o = s.option(form.Flag, 'ssl', _('Enable SSL/TLS'),
+		o = s.option(form.Flag, 'ssl', _('🔒 Enable SSL/TLS'),
 			_('Request ACME certificate automatically'));
 		o.default = '1';
 		o.depends('enabled', '1');
@@ -96,7 +103,7 @@ return view.extend({
 		o.depends('ssl', '1');
 
 		// Tor section
-		s = m.section(form.NamedSection, '_tor', 'tor', _('Tor Hidden Service'),
+		s = m.section(form.NamedSection, '_tor', 'tor', '🧅 ' + _('Tor Hidden Service'),
 			_('Create a .onion address for anonymous access'));
 		s.anonymous = true;
 
@@ -113,20 +120,20 @@ return view.extend({
 			// Add custom publish button
 			var publishBtn = E('button', {
 				'class': 'cbi-button cbi-button-apply',
-				'style': 'margin-top: 20px;',
+				'style': 'margin-top: 20px; font-size: 1.1em; padding: 10px 25px;',
 				'click': ui.createHandlerFn(self, 'handlePublish', m)
-			}, _('Publish Service'));
+			}, '📤 ' + _('Publish Service'));
 
 			mapEl.appendChild(E('div', { 'class': 'cbi-page-actions' }, [publishBtn]));
 
 			// Add discoverable services section
 			if (unpublished.length > 0) {
 				mapEl.appendChild(E('div', { 'class': 'cbi-section', 'style': 'margin-top: 30px;' }, [
-					E('h3', {}, _('Discovered Services')),
-					E('p', {}, _('These services are running but not yet published:')),
-					E('div', { 'class': 'sr-grid' },
-						unpublished.slice(0, 10).map(function(svc) {
-							return self.renderDiscoveredCard(svc);
+					E('h3', { 'class': 'pub-section-title' }, '🔍 ' + _('Discovered Services') + ' (' + unpublished.length + ')'),
+					E('p', { 'class': 'pub-hint' }, _('Click a service to pre-fill the form above')),
+					E('div', { 'class': 'pub-list' },
+						unpublished.slice(0, 15).map(function(svc) {
+							return self.renderDiscoveredRow(svc);
 						})
 					)
 				]));
@@ -136,32 +143,75 @@ return view.extend({
 		});
 	},
 
-	renderDiscoveredCard: function(service) {
+	renderDiscoveredRow: function(service) {
 		var self = this;
+		var catIcon = catIcons[service.category] || '🔗';
+		var statusIcon = service.status === 'running' ? '🟢' : service.status === 'stopped' ? '🔴' : '🟡';
+
 		return E('div', {
-			'class': 'sr-card',
-			'style': 'cursor: pointer;',
+			'class': 'pub-row',
 			'click': function() {
 				self.prefillForm(service);
 			}
 		}, [
-			E('div', { 'class': 'sr-card-header' }, [
-				E('div', { 'class': 'sr-card-title' }, service.name || 'Port ' + service.local_port),
-				E('span', { 'class': 'sr-card-status sr-status-running' }, 'running')
+			E('span', { 'class': 'pub-col-status', 'title': service.status }, statusIcon),
+			E('span', { 'class': 'pub-col-icon' }, catIcon),
+			E('span', { 'class': 'pub-col-name' }, [
+				E('strong', {}, service.name || 'Port ' + service.local_port),
+				service.local_port ? E('span', { 'class': 'pub-port' }, ':' + service.local_port) : null
 			]),
-			E('p', { 'style': 'font-size: 0.9em; color: #666;' },
-				_('Port: ') + service.local_port + ' | ' + _('Category: ') + (service.category || 'other'))
+			E('span', { 'class': 'pub-col-cat' }, service.category || 'other'),
+			E('span', { 'class': 'pub-col-action' }, [
+				E('button', {
+					'class': 'pub-btn',
+					'title': 'Use this service',
+					'click': function(ev) {
+						ev.stopPropagation();
+						self.prefillForm(service);
+					}
+				}, '➡️')
+			])
 		]);
 	},
 
 	prefillForm: function(service) {
-		var nameInput = document.querySelector('input[id*="name"]');
-		var portInput = document.querySelector('input[id*="local_port"]');
+		// Use specific selectors matching the form section
+		var nameInput = document.querySelector('input[id*="_new"][id*="name"]');
+		var portInput = document.querySelector('input[id*="_new"][id*="local_port"]');
+		var categorySelect = document.querySelector('select[id*="_new"][id*="category"]');
+		var iconInput = document.querySelector('input[id*="_new"][id*="icon"]');
 
-		if (nameInput) nameInput.value = service.name || '';
-		if (portInput) portInput.value = service.local_port || '';
+		// Set values and trigger change events for LuCI bindings
+		if (nameInput) {
+			nameInput.value = service.name || '';
+			nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+			nameInput.dispatchEvent(new Event('change', { bubbles: true }));
+		}
+		if (portInput) {
+			portInput.value = service.local_port || '';
+			portInput.dispatchEvent(new Event('input', { bubbles: true }));
+			portInput.dispatchEvent(new Event('change', { bubbles: true }));
+		}
+		if (categorySelect && service.category) {
+			for (var i = 0; i < categorySelect.options.length; i++) {
+				if (categorySelect.options[i].value === service.category) {
+					categorySelect.selectedIndex = i;
+					categorySelect.dispatchEvent(new Event('change', { bubbles: true }));
+					break;
+				}
+			}
+		}
+		if (iconInput && service.icon) {
+			iconInput.value = service.icon;
+			iconInput.dispatchEvent(new Event('input', { bubbles: true }));
+		}
 
-		nameInput && nameInput.focus();
+		// Scroll to form and focus
+		var formSection = document.querySelector('.cbi-section');
+		if (formSection) formSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		setTimeout(function() { nameInput && nameInput.focus(); }, 300);
+
+		ui.addNotification(null, E('p', '✅ ' + _('Form pre-filled with ') + (service.name || 'Port ' + service.local_port)), 'info');
 	},
 
 	handlePublish: function(map) {
@@ -186,25 +236,26 @@ return view.extend({
 
 		// Validation
 		if (!name) {
-			ui.addNotification(null, E('p', _('Service name is required')), 'error');
+			ui.addNotification(null, E('p', '❌ ' + _('Service name is required')), 'error');
 			return;
 		}
 		if (!port || port < 1 || port > 65535) {
-			ui.addNotification(null, E('p', _('Valid port number is required')), 'error');
+			ui.addNotification(null, E('p', '❌ ' + _('Valid port number is required')), 'error');
 			return;
 		}
 		if (haproxyEnabled && !domain) {
-			ui.addNotification(null, E('p', _('Domain is required when HAProxy is enabled')), 'error');
+			ui.addNotification(null, E('p', '❌ ' + _('Domain is required when HAProxy is enabled')), 'error');
 			return;
 		}
 
-		ui.showModal(_('Publishing Service'), [
+		var steps = [];
+		if (haproxyEnabled) steps.push('🌐 Creating HAProxy vhost for ' + domain);
+		if (haproxyEnabled) steps.push('🔒 Requesting SSL certificate...');
+		if (torEnabled) steps.push('🧅 Creating Tor hidden service...');
+
+		ui.showModal('📤 ' + _('Publishing Service'), [
 			E('p', { 'class': 'spinning' }, _('Creating service endpoints...')),
-			E('ul', {}, [
-				haproxyEnabled ? E('li', {}, _('Creating HAProxy vhost for ') + domain) : null,
-				haproxyEnabled ? E('li', {}, _('Requesting SSL certificate...')) : null,
-				torEnabled ? E('li', {}, _('Creating Tor hidden service...')) : null
-			].filter(Boolean))
+			E('ul', { 'style': 'margin-top: 15px;' }, steps.map(function(s) { return E('li', {}, s); }))
 		]);
 
 		return api.publishService(
@@ -220,11 +271,11 @@ return view.extend({
 			if (result.success) {
 				self.showSuccessModal(result);
 			} else {
-				ui.addNotification(null, E('p', _('Failed to publish: ') + (result.error || 'Unknown error')), 'error');
+				ui.addNotification(null, E('p', '❌ ' + _('Failed to publish: ') + (result.error || 'Unknown error')), 'error');
 			}
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', _('Error: ') + err.message), 'error');
+			ui.addNotification(null, E('p', '❌ ' + _('Error: ') + err.message), 'error');
 		});
 	},
 
@@ -233,51 +284,94 @@ return view.extend({
 
 		var content = [
 			E('div', { 'style': 'text-align: center; padding: 20px;' }, [
-				E('h3', { 'style': 'color: #22c55e;' }, _('Service Published!')),
-				E('p', {}, result.name)
+				E('div', { 'style': 'font-size: 3em; margin-bottom: 10px;' }, '✅'),
+				E('h3', { 'style': 'color: #22c55e; margin: 0;' }, _('Service Published!')),
+				E('p', { 'style': 'font-size: 1.2em; margin-top: 10px;' }, result.name)
 			])
 		];
 
-		var urlsDiv = E('div', { 'style': 'margin: 20px 0;' });
+		var urlsDiv = E('div', { 'class': 'pub-urls' });
 
 		if (urls.local) {
-			urlsDiv.appendChild(E('div', { 'style': 'margin: 10px 0;' }, [
-				E('strong', {}, _('Local: ')),
+			urlsDiv.appendChild(E('div', { 'class': 'pub-url-row' }, [
+				E('span', { 'class': 'pub-url-icon' }, '🏠'),
+				E('span', { 'class': 'pub-url-label' }, _('Local')),
 				E('code', {}, urls.local)
 			]));
 		}
 		if (urls.clearnet) {
-			urlsDiv.appendChild(E('div', { 'style': 'margin: 10px 0;' }, [
-				E('strong', {}, _('Clearnet: ')),
-				E('a', { 'href': urls.clearnet, 'target': '_blank' }, urls.clearnet)
+			urlsDiv.appendChild(E('div', { 'class': 'pub-url-row' }, [
+				E('span', { 'class': 'pub-url-icon' }, '🌐'),
+				E('span', { 'class': 'pub-url-label' }, _('Clearnet')),
+				E('a', { 'href': urls.clearnet, 'target': '_blank' }, urls.clearnet + ' ↗')
 			]));
 		}
 		if (urls.onion) {
-			urlsDiv.appendChild(E('div', { 'style': 'margin: 10px 0;' }, [
-				E('strong', {}, _('Onion: ')),
-				E('code', { 'style': 'word-break: break-all;' }, urls.onion)
+			urlsDiv.appendChild(E('div', { 'class': 'pub-url-row' }, [
+				E('span', { 'class': 'pub-url-icon' }, '🧅'),
+				E('span', { 'class': 'pub-url-label' }, _('Onion')),
+				E('code', { 'style': 'font-size: 0.8em; word-break: break-all;' }, urls.onion)
 			]));
 		}
 
 		content.push(urlsDiv);
 
-		content.push(E('div', { 'class': 'right' }, [
+		content.push(E('div', { 'class': 'right', 'style': 'margin-top: 20px;' }, [
 			E('button', {
 				'class': 'cbi-button',
 				'click': function() {
 					ui.hideModal();
 					window.location.href = L.url('admin/services/service-registry/overview');
 				}
-			}, _('Go to Overview')),
+			}, '📋 ' + _('Go to Overview')),
 			E('button', {
 				'class': 'cbi-button cbi-button-apply',
+				'style': 'margin-left: 10px;',
 				'click': function() {
 					ui.hideModal();
 					window.location.reload();
 				}
-			}, _('Publish Another'))
+			}, '➕ ' + _('Publish Another'))
 		]));
 
-		ui.showModal(_('Success'), content);
+		ui.showModal('✅ ' + _('Success'), content);
+	},
+
+	getStyles: function() {
+		return `
+			.pub-section-title { font-size: 1.1em; margin: 0 0 10px 0; padding-bottom: 8px; border-bottom: 2px solid #0ff; color: #0ff; }
+			.pub-hint { color: #888; font-size: 0.9em; margin-bottom: 15px; }
+
+			.pub-list { border: 1px solid #ddd; border-radius: 6px; overflow: hidden; max-height: 400px; overflow-y: auto; }
+			@media (prefers-color-scheme: dark) { .pub-list { border-color: #444; } }
+
+			.pub-row { display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid #eee; gap: 10px; cursor: pointer; transition: background 0.15s; }
+			.pub-row:last-child { border-bottom: none; }
+			.pub-row:hover { background: rgba(0,255,255,0.08); }
+			@media (prefers-color-scheme: dark) { .pub-row { border-bottom-color: #333; } }
+
+			.pub-col-status { width: 24px; text-align: center; }
+			.pub-col-icon { width: 24px; text-align: center; }
+			.pub-col-name { flex: 1; min-width: 120px; }
+			.pub-col-name strong { display: inline; }
+			.pub-port { font-size: 0.85em; color: #888; margin-left: 4px; }
+			.pub-col-cat { width: 80px; font-size: 0.85em; color: #666; }
+			.pub-col-action { width: 36px; }
+
+			.pub-btn { border: none; background: transparent; cursor: pointer; font-size: 1.1em; padding: 4px 8px; border-radius: 4px; transition: all 0.15s; }
+			.pub-btn:hover { background: rgba(0,153,204,0.15); }
+
+			.pub-urls { margin: 20px 0; padding: 15px; background: #f8f8f8; border-radius: 8px; }
+			@media (prefers-color-scheme: dark) { .pub-urls { background: #1a1a2e; } }
+
+			.pub-url-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #eee; }
+			.pub-url-row:last-child { border-bottom: none; }
+			@media (prefers-color-scheme: dark) { .pub-url-row { border-bottom-color: #333; } }
+
+			.pub-url-icon { font-size: 1.2em; }
+			.pub-url-label { font-weight: 600; min-width: 70px; }
+			.pub-url-row a { color: #0099cc; text-decoration: none; }
+			.pub-url-row a:hover { text-decoration: underline; }
+		`;
 	}
 });

@@ -765,7 +765,204 @@ _add_certificate() {
 	json_close_object
 }
 
-# Request certificate (ACME)
+# Async certificate request task directory
+CERT_TASK_DIR="/tmp/haproxy-cert-tasks"
+mkdir -p "$CERT_TASK_DIR" 2>/dev/null
+
+# Start async certificate request (returns immediately with task_id)
+method_start_cert_request() {
+	local domain staging
+
+	read -r input
+	json_load "$input"
+	json_get_var domain domain
+	json_get_var staging staging
+
+	if [ -z "$domain" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Domain is required"
+		json_dump
+		return
+	fi
+
+	# Generate task ID
+	local task_id
+	task_id="cert_$(date +%s)_$$"
+	local task_file="$CERT_TASK_DIR/$task_id"
+
+	# Validate domain format
+	if ! echo "$domain" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$'; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Invalid domain format"
+		json_dump
+		return
+	fi
+
+	# Initialize task status
+	cat > "$task_file" <<EOF
+{
+	"task_id": "$task_id",
+	"domain": "$domain",
+	"staging": ${staging:-0},
+	"status": "pending",
+	"phase": "starting",
+	"message": "Initializing certificate request...",
+	"started": $(date +%s),
+	"updated": $(date +%s)
+}
+EOF
+
+	# Start background process
+	(
+		# Update status: validating
+		sed -i 's/"phase": "[^"]*"/"phase": "validating"/' "$task_file"
+		sed -i 's/"message": "[^"]*"/"message": "Validating domain DNS..."/' "$task_file"
+		sed -i "s/\"updated\": [0-9]*/\"updated\": $(date +%s)/" "$task_file"
+
+		# Check DNS resolution
+		if ! nslookup "$domain" >/dev/null 2>&1; then
+			sed -i 's/"status": "[^"]*"/"status": "failed"/' "$task_file"
+			sed -i 's/"message": "[^"]*"/"message": "DNS lookup failed for domain"/' "$task_file"
+			sed -i "s/\"updated\": [0-9]*/\"updated\": $(date +%s)/" "$task_file"
+			exit 1
+		fi
+
+		# Update status: requesting
+		sed -i 's/"phase": "[^"]*"/"phase": "requesting"/' "$task_file"
+		sed -i 's/"message": "[^"]*"/"message": "Requesting certificate from ACME..."/' "$task_file"
+		sed -i "s/\"updated\": [0-9]*/\"updated\": $(date +%s)/" "$task_file"
+
+		# Run certificate request
+		local acme_result acme_rc
+		if [ "${staging:-0}" = "1" ]; then
+			acme_result=$("$HAPROXYCTL" cert add "$domain" --staging 2>&1)
+		else
+			acme_result=$("$HAPROXYCTL" cert add "$domain" 2>&1)
+		fi
+		acme_rc=$?
+
+		# Update status based on result
+		if [ $acme_rc -eq 0 ]; then
+			# Verify certificate was created
+			sed -i 's/"phase": "[^"]*"/"phase": "verifying"/' "$task_file"
+			sed -i 's/"message": "[^"]*"/"message": "Verifying certificate..."/' "$task_file"
+			sed -i "s/\"updated\": [0-9]*/\"updated\": $(date +%s)/" "$task_file"
+
+			sleep 1
+
+			# Check if cert file exists
+			local cert_file="/srv/haproxy/certs/${domain}.pem"
+			if [ -f "$cert_file" ]; then
+				local expiry issuer
+				expiry=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | sed 's/notAfter=//')
+				issuer=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/.*O = //' | cut -d',' -f1)
+
+				sed -i 's/"status": "[^"]*"/"status": "success"/' "$task_file"
+				sed -i 's/"phase": "[^"]*"/"phase": "complete"/' "$task_file"
+				sed -i "s/\"message\": \"[^\"]*\"/\"message\": \"Certificate issued by $issuer, expires $expiry\"/" "$task_file"
+				sed -i "s/\"updated\": [0-9]*/\"updated\": $(date +%s)/" "$task_file"
+			else
+				sed -i 's/"status": "[^"]*"/"status": "failed"/' "$task_file"
+				sed -i "s/\"message\": \"[^\"]*\"/\"message\": \"Certificate file not found after request\"/" "$task_file"
+				sed -i "s/\"updated\": [0-9]*/\"updated\": $(date +%s)/" "$task_file"
+			fi
+		else
+			sed -i 's/"status": "[^"]*"/"status": "failed"/' "$task_file"
+			# Escape special chars in error message
+			local safe_error
+			safe_error=$(echo "$acme_result" | tr '\n' ' ' | sed 's/"/\\"/g' | cut -c1-200)
+			sed -i "s/\"message\": \"[^\"]*\"/\"message\": \"$safe_error\"/" "$task_file"
+			sed -i "s/\"updated\": [0-9]*/\"updated\": $(date +%s)/" "$task_file"
+		fi
+	) &
+
+	# Return task ID immediately
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "task_id" "$task_id"
+	json_add_string "message" "Certificate request started"
+	json_dump
+}
+
+# Get certificate task status
+method_get_cert_task() {
+	local task_id
+
+	read -r input
+	json_load "$input"
+	json_get_var task_id task_id
+
+	if [ -z "$task_id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "task_id is required"
+		json_dump
+		return
+	fi
+
+	local task_file="$CERT_TASK_DIR/$task_id"
+	if [ ! -f "$task_file" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Task not found"
+		json_dump
+		return
+	fi
+
+	# Return task file contents
+	cat "$task_file"
+}
+
+# List all certificate tasks
+method_list_cert_tasks() {
+	json_init
+	json_add_array "tasks"
+
+	for task_file in "$CERT_TASK_DIR"/cert_*; do
+		[ -f "$task_file" ] || continue
+		local task_id status domain phase
+		task_id=$(basename "$task_file")
+		status=$(jsonfilter -i "$task_file" -e '@.status' 2>/dev/null)
+		domain=$(jsonfilter -i "$task_file" -e '@.domain' 2>/dev/null)
+		phase=$(jsonfilter -i "$task_file" -e '@.phase' 2>/dev/null)
+
+		json_add_object ""
+		json_add_string "task_id" "$task_id"
+		json_add_string "domain" "$domain"
+		json_add_string "status" "$status"
+		json_add_string "phase" "$phase"
+		json_close_object
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Clean old certificate tasks (> 1 hour)
+method_clean_cert_tasks() {
+	local cleaned=0
+	local now
+	now=$(date +%s)
+
+	for task_file in "$CERT_TASK_DIR"/cert_*; do
+		[ -f "$task_file" ] || continue
+		local started
+		started=$(jsonfilter -i "$task_file" -e '@.started' 2>/dev/null)
+		if [ -n "$started" ] && [ $((now - started)) -gt 3600 ]; then
+			rm -f "$task_file"
+			cleaned=$((cleaned + 1))
+		fi
+	done
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_int "cleaned" "$cleaned"
+	json_dump
+}
+
+# Request certificate (ACME) - synchronous (kept for compatibility)
 method_request_certificate() {
 	local domain
 
@@ -1382,6 +1579,10 @@ case "$1" in
 	"delete_server": { "id": "string", "inline": "boolean" },
 	"list_certificates": {},
 	"request_certificate": { "domain": "string" },
+	"start_cert_request": { "domain": "string", "staging": "boolean" },
+	"get_cert_task": { "task_id": "string" },
+	"list_cert_tasks": {},
+	"clean_cert_tasks": {},
 	"import_certificate": { "domain": "string", "cert": "string", "key": "string" },
 	"delete_certificate": { "id": "string" },
 	"list_acls": {},
@@ -1425,6 +1626,10 @@ EOF
 			delete_server) method_delete_server ;;
 			list_certificates) method_list_certificates ;;
 			request_certificate) method_request_certificate ;;
+			start_cert_request) method_start_cert_request ;;
+			get_cert_task) method_get_cert_task ;;
+			list_cert_tasks) method_list_cert_tasks ;;
+			clean_cert_tasks) method_clean_cert_tasks ;;
 			import_certificate) method_import_certificate ;;
 			delete_certificate) method_delete_certificate ;;
 			list_acls) method_list_acls ;;
