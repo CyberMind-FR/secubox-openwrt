@@ -50,6 +50,14 @@ fix_permissions() {
 	find "$dir" -type f -exec chmod 644 {} \;
 }
 
+# Reload HAProxy configuration properly
+reload_haproxy() {
+	/usr/sbin/haproxyctl generate >/dev/null 2>&1
+	if [ -x /etc/init.d/haproxy ]; then
+		/etc/init.d/haproxy reload >/dev/null 2>&1
+	fi
+}
+
 # Status method - get overall status and list all sites
 method_status() {
 	local enabled runtime detected_runtime nginx_running site_count
@@ -238,7 +246,7 @@ EOF
 	# 6. Detect runtime and configure accordingly
 	local current_runtime=$(detect_runtime)
 	local port=""
-	local server_address="192.168.255.1"
+	local server_address="127.0.0.1"
 	local server_port="80"
 
 	if [ "$current_runtime" = "uhttpd" ]; then
@@ -251,6 +259,7 @@ EOF
 		uci set "uhttpd.metablog_${section_id}.error_page=/index.html"
 		uci commit uhttpd
 		/etc/init.d/uhttpd reload 2>/dev/null
+		server_address="127.0.0.1"
 		server_port="$port"
 	else
 		# Configure nginx location in container
@@ -298,9 +307,8 @@ EOF
 	uci set "haproxy.$vhost_name.enabled=1"
 	uci commit haproxy
 
-	# Regenerate HAProxy config
-	/usr/sbin/haproxyctl generate >/dev/null 2>&1
-	/etc/init.d/haproxy reload >/dev/null 2>&1
+	# Regenerate HAProxy config and reload
+	reload_haproxy
 
 	uci commit "$UCI_CONFIG"
 
@@ -376,8 +384,7 @@ method_delete_site() {
 	uci delete "haproxy.$backend_name" 2>/dev/null
 	uci delete "haproxy.${backend_name}_srv" 2>/dev/null
 	uci commit haproxy
-	/usr/sbin/haproxyctl generate >/dev/null 2>&1
-	/etc/init.d/haproxy reload >/dev/null 2>&1
+	reload_haproxy
 
 	# 3. Remove runtime config
 	if [ "$site_runtime" = "uhttpd" ]; then
@@ -679,9 +686,8 @@ method_upload_file() {
 	local rc=$?
 
 	if [ $rc -eq 0 ]; then
-		chmod 644 "$file_path"
-		# Ensure parent directories are also accessible
-		chmod 755 "$site_path"
+		# Fix permissions for entire site directory
+		fix_permissions "$site_path"
 		json_init
 		json_add_boolean "success" 1
 		json_add_string "filename" "$filename"
