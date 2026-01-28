@@ -90,15 +90,18 @@ return view.extend({
 
 		api.enable(presetId).then(function(result) {
 			ui.hideModal();
-			if (result.success) {
+			if (result && result.success) {
 				ui.addNotification(null, E('p', _('Preset %s activated').format(presetId)), 'info');
 				setTimeout(function() { window.location.reload(); }, 1000);
 			} else {
-				ui.addNotification(null, E('p', result.error || _('Failed to apply preset')), 'error');
+				var errMsg = (result && result.error) ? result.error :
+					(result && result.message) ? result.message :
+					'Unknown error - result: ' + JSON.stringify(result);
+				ui.addNotification(null, E('p', _('Failed: %s').format(errMsg)), 'error');
 			}
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', _('Error: %s').format(err.message || String(err))), 'error');
+			ui.addNotification(null, E('p', _('Exception: %s').format(err.message || String(err))), 'error');
 		});
 	},
 
