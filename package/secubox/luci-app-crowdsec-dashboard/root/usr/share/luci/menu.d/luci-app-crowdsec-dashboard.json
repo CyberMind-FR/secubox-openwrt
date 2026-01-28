@@ -1,7 +1,7 @@
 {
-	"admin/secubox/security/crowdsec": {
+	"admin/services/crowdsec": {
 		"title": "CrowdSec",
-		"order": 10,
+		"order": 80,
 		"action": {
 			"type": "firstchild"
 		},
@@ -9,7 +9,7 @@
 			"acl": ["luci-app-crowdsec-dashboard"]
 		}
 	},
-	"admin/secubox/security/crowdsec/overview": {
+	"admin/services/crowdsec/overview": {
 		"title": "Overview",
 		"order": 5,
 		"action": {
@@ -17,7 +17,7 @@
 			"path": "crowdsec-dashboard/overview"
 		}
 	},
-	"admin/secubox/security/crowdsec/wizard": {
+	"admin/services/crowdsec/wizard": {
 		"title": "Setup Wizard",
 		"order": 10,
 		"action": {
@@ -25,7 +25,7 @@
 			"path": "crowdsec-dashboard/wizard"
 		}
 	},
-	"admin/secubox/security/crowdsec/decisions": {
+	"admin/services/crowdsec/decisions": {
 		"title": "Decisions",
 		"order": 20,
 		"action": {
@@ -33,7 +33,7 @@
 			"path": "crowdsec-dashboard/decisions"
 		}
 	},
-	"admin/secubox/security/crowdsec/alerts": {
+	"admin/services/crowdsec/alerts": {
 		"title": "Alerts",
 		"order": 30,
 		"action": {
@@ -41,7 +41,7 @@
 			"path": "crowdsec-dashboard/alerts"
 		}
 	},
-	"admin/secubox/security/crowdsec/bouncers": {
+	"admin/services/crowdsec/bouncers": {
 		"title": "Bouncers",
 		"order": 40,
 		"action": {
@@ -49,7 +49,7 @@
 			"path": "crowdsec-dashboard/bouncers"
 		}
 	},
-	"admin/secubox/security/crowdsec/waf": {
+	"admin/services/crowdsec/waf": {
 		"title": "WAF/AppSec",
 		"order": 45,
 		"action": {
@@ -57,7 +57,7 @@
 			"path": "crowdsec-dashboard/waf"
 		}
 	},
-	"admin/secubox/security/crowdsec/metrics": {
+	"admin/services/crowdsec/metrics": {
 		"title": "Metrics",
 		"order": 50,
 		"action": {
@@ -65,7 +65,7 @@
 			"path": "crowdsec-dashboard/metrics"
 		}
 	},
-	"admin/secubox/security/crowdsec/settings": {
+	"admin/services/crowdsec/settings": {
 		"title": "Settings",
 		"order": 90,
 		"action": {
