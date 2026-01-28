@@ -11,6 +11,7 @@
 					"get_certificate_status",
 					"check_service_health",
 					"check_all_health",
+					"get_network_info",
 					"get_landing_config"
 				],
 				"luci.haproxy": [

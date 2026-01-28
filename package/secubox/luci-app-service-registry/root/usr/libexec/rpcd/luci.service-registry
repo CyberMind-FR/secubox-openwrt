@@ -901,7 +901,7 @@ check_dns_resolution() {
 	return 1
 }
 
-# Helper: Get WAN IP address
+# Helper: Get WAN IP address (local interface)
 get_wan_ip() {
 	local wan_ip=""
 	# Try to get WAN IP from interface
@@ -915,6 +915,62 @@ get_wan_ip() {
 		wan_ip=$(ifconfig 2>/dev/null | grep -E "inet addr:[0-9]" | grep -v "127.0.0.1" | head -1 | sed 's/.*inet addr:\([0-9.]*\).*/\1/')
 	fi
 	echo "$wan_ip"
+}
+
+# Helper: Get public IPv4 address (from external service)
+get_public_ipv4() {
+	local ip=""
+	# Try multiple services for reliability
+	ip=$(wget -qO- -T 5 "http://ipv4.icanhazip.com" 2>/dev/null | tr -d '\n')
+	[ -z "$ip" ] && ip=$(wget -qO- -T 5 "http://api.ipify.org" 2>/dev/null | tr -d '\n')
+	[ -z "$ip" ] && ip=$(wget -qO- -T 5 "http://v4.ident.me" 2>/dev/null | tr -d '\n')
+	echo "$ip"
+}
+
+# Helper: Get public IPv6 address (from external service)
+get_public_ipv6() {
+	local ip=""
+	# Try multiple services for reliability
+	ip=$(wget -qO- -T 5 "http://ipv6.icanhazip.com" 2>/dev/null | tr -d '\n')
+	[ -z "$ip" ] && ip=$(wget -qO- -T 5 "http://v6.ident.me" 2>/dev/null | tr -d '\n')
+	echo "$ip"
+}
+
+# Helper: Check external port accessibility using portchecker service
+check_external_port() {
+	local ip="$1"
+	local port="$2"
+	local result=""
+
+	# Use canyouseeme.org API or similar
+	# Try portquiz.net which echoes back on any port
+	result=$(wget -qO- -T 5 "http://portquiz.net:${port}/" 2>/dev/null)
+	if echo "$result" | grep -q "Port ${port}"; then
+		return 0
+	fi
+
+	# Alternative: try to connect to our own IP from outside perspective
+	# Use online port checker API
+	result=$(wget -qO- -T 8 "https://ports.yougetsignal.com/short-url-check-port.php?remoteAddress=${ip}&portNumber=${port}" 2>/dev/null)
+	if echo "$result" | grep -qi "open"; then
+		return 0
+	fi
+
+	return 1
+}
+
+# Helper: Reverse DNS lookup
+get_reverse_dns() {
+	local ip="$1"
+	local hostname=""
+
+	if command -v nslookup >/dev/null 2>&1; then
+		hostname=$(nslookup "$ip" 2>/dev/null | grep "name =" | head -1 | awk '{print $NF}' | sed 's/\.$//')
+	elif command -v host >/dev/null 2>&1; then
+		hostname=$(host "$ip" 2>/dev/null | grep "pointer" | head -1 | awk '{print $NF}' | sed 's/\.$//')
+	fi
+
+	echo "$hostname"
 }
 
 # Helper: Check certificate expiry
@@ -975,6 +1031,116 @@ check_port_firewall_open() {
 	return 1
 }
 
+# Get network connectivity info (public IPs, port accessibility)
+method_get_network_info() {
+	json_init
+	json_add_boolean "success" 1
+
+	local lan_ip
+	lan_ip=$(get_lan_ip)
+	json_add_string "lan_ip" "$lan_ip"
+
+	# Get public IPv4
+	json_add_object "ipv4"
+	local public_ipv4
+	public_ipv4=$(get_public_ipv4)
+	if [ -n "$public_ipv4" ]; then
+		json_add_string "address" "$public_ipv4"
+		json_add_string "status" "ok"
+
+		# Reverse DNS
+		local rdns
+		rdns=$(get_reverse_dns "$public_ipv4")
+		[ -n "$rdns" ] && json_add_string "hostname" "$rdns"
+	else
+		json_add_string "status" "unavailable"
+	fi
+	json_close_object
+
+	# Get public IPv6
+	json_add_object "ipv6"
+	local public_ipv6
+	public_ipv6=$(get_public_ipv6)
+	if [ -n "$public_ipv6" ]; then
+		json_add_string "address" "$public_ipv6"
+		json_add_string "status" "ok"
+
+		# Reverse DNS
+		local rdns6
+		rdns6=$(get_reverse_dns "$public_ipv6")
+		[ -n "$rdns6" ] && json_add_string "hostname" "$rdns6"
+	else
+		json_add_string "status" "unavailable"
+	fi
+	json_close_object
+
+	# External port accessibility (from internet perspective)
+	json_add_object "external_ports"
+	if [ -n "$public_ipv4" ]; then
+		# Check port 80
+		json_add_object "http"
+		if check_external_port "$public_ipv4" 80; then
+			json_add_boolean "accessible" 1
+			json_add_string "status" "open"
+		else
+			json_add_boolean "accessible" 0
+			json_add_string "status" "blocked"
+			json_add_string "hint" "Check upstream router port forwarding"
+		fi
+		json_close_object
+
+		# Check port 443
+		json_add_object "https"
+		if check_external_port "$public_ipv4" 443; then
+			json_add_boolean "accessible" 1
+			json_add_string "status" "open"
+		else
+			json_add_boolean "accessible" 0
+			json_add_string "status" "blocked"
+			json_add_string "hint" "Check upstream router port forwarding"
+		fi
+		json_close_object
+	else
+		json_add_object "http"
+		json_add_string "status" "unknown"
+		json_add_string "error" "No public IP"
+		json_close_object
+		json_add_object "https"
+		json_add_string "status" "unknown"
+		json_add_string "error" "No public IP"
+		json_close_object
+	fi
+	json_close_object
+
+	# Local firewall status
+	json_add_object "firewall"
+	local http_open=0
+	local https_open=0
+	check_port_firewall_open 80 && http_open=1
+	check_port_firewall_open 443 && https_open=1
+	json_add_boolean "http_open" "$http_open"
+	json_add_boolean "https_open" "$https_open"
+	if [ "$http_open" = "1" ] && [ "$https_open" = "1" ]; then
+		json_add_string "status" "ok"
+	elif [ "$http_open" = "1" ] || [ "$https_open" = "1" ]; then
+		json_add_string "status" "partial"
+	else
+		json_add_string "status" "closed"
+	fi
+	json_close_object
+
+	# HAProxy status
+	json_add_object "haproxy"
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "stopped"
+	fi
+	json_close_object
+
+	json_dump
+}
+
 # Check health status for a service
 method_check_service_health() {
 	local service_id domain
@@ -1003,20 +1169,76 @@ method_check_service_health() {
 	json_add_string "service_id" "$service_id"
 	json_add_string "domain" "$domain"
 
-	# DNS check
+	# Get public IPs for comparison
+	local public_ipv4 public_ipv6
+	public_ipv4=$(get_public_ipv4)
+	public_ipv6=$(get_public_ipv6)
+
+	# Public IP info
+	json_add_object "public_ip"
+	json_add_string "ipv4" "$public_ipv4"
+	[ -n "$public_ipv6" ] && json_add_string "ipv6" "$public_ipv6"
+	if [ -n "$public_ipv4" ]; then
+		local rdns
+		rdns=$(get_reverse_dns "$public_ipv4")
+		[ -n "$rdns" ] && json_add_string "hostname" "$rdns"
+	fi
+	json_close_object
+
+	# DNS check with public IP comparison
 	json_add_object "dns"
 	if [ -n "$domain" ]; then
 		local resolved_ip
 		resolved_ip=$(check_dns_resolution "$domain")
 		if [ -n "$resolved_ip" ]; then
-			json_add_string "status" "ok"
 			json_add_string "resolved_ip" "$resolved_ip"
+			# Check if DNS points to public IP or private IP
+			case "$resolved_ip" in
+				10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.2*|172.30.*|172.31.*|192.168.*)
+					json_add_string "status" "private"
+					json_add_string "error" "DNS points to private IP (not reachable from internet)"
+					json_add_string "expected" "$public_ipv4"
+					;;
+				*)
+					if [ "$resolved_ip" = "$public_ipv4" ]; then
+						json_add_string "status" "ok"
+					else
+						json_add_string "status" "mismatch"
+						json_add_string "expected" "$public_ipv4"
+						json_add_string "hint" "DNS points to different IP than your public IP"
+					fi
+					;;
+			esac
 		else
 			json_add_string "status" "failed"
 			json_add_string "error" "DNS resolution failed"
 		fi
 	else
 		json_add_string "status" "none"
+	fi
+	json_close_object
+
+	# External port accessibility check
+	json_add_object "external_access"
+	if [ -n "$public_ipv4" ]; then
+		local http_ext=0
+		local https_ext=0
+		check_external_port "$public_ipv4" 80 && http_ext=1
+		check_external_port "$public_ipv4" 443 && https_ext=1
+		json_add_boolean "http_accessible" "$http_ext"
+		json_add_boolean "https_accessible" "$https_ext"
+		if [ "$http_ext" = "1" ] && [ "$https_ext" = "1" ]; then
+			json_add_string "status" "ok"
+		elif [ "$http_ext" = "1" ] || [ "$https_ext" = "1" ]; then
+			json_add_string "status" "partial"
+			json_add_string "hint" "Check upstream router/ISP port forwarding"
+		else
+			json_add_string "status" "blocked"
+			json_add_string "hint" "Ports not accessible from internet - check router/ISP"
+		fi
+	else
+		json_add_string "status" "unknown"
+		json_add_string "error" "Could not determine public IP"
 	fi
 	json_close_object
 
@@ -1293,6 +1515,7 @@ case "$1" in
 	"get_certificate_status": { "service_id": "string" },
 	"check_service_health": { "service_id": "string", "domain": "string" },
 	"check_all_health": {},
+	"get_network_info": {},
 	"get_landing_config": {},
 	"save_landing_config": { "auto_regen": "boolean" }
 }
@@ -1313,6 +1536,7 @@ EOF
 			get_certificate_status) method_get_certificate_status ;;
 			check_service_health) method_check_service_health ;;
 			check_all_health) method_check_all_health ;;
+			get_network_info) method_get_network_info ;;
 			get_landing_config) method_get_landing_config ;;
 			save_landing_config) method_save_landing_config ;;
 			*)

@@ -100,6 +100,12 @@ var callCheckAllHealth = rpc.declare({
 	expect: {}
 });
 
+var callGetNetworkInfo = rpc.declare({
+	object: 'luci.service-registry',
+	method: 'get_network_info',
+	expect: {}
+});
+
 // HAProxy status for provider info
 var callHAProxyStatus = rpc.declare({
 	object: 'luci.haproxy',
@@ -243,6 +249,11 @@ return baseclass.extend({
 	// Check health of all published services
 	checkAllHealth: function() {
 		return callCheckAllHealth();
+	},
+
+	// Get network connectivity info (public IPs, port accessibility)
+	getNetworkInfo: function() {
+		return callGetNetworkInfo();
 	},
 
 	// Get dashboard data with health status

@@ -50,14 +50,122 @@ return view.extend({
 		var published = services.filter(function(s) { return s.published; });
 		var unpublished = services.filter(function(s) { return !s.published; });
 
+		// Load network info asynchronously
+		var networkPanel = E('div', { 'id': 'sr-network-panel', 'class': 'sr-network-loading' },
+			E('span', { 'class': 'spinning' }, 'Loading network info...'));
+		this.loadNetworkInfo(networkPanel);
+
 		return E('div', { 'class': 'sr-compact' }, [
 			this.renderHeader(services, providers, data.haproxy, data.tor),
 			this.renderHealthSummary(data.health),
+			networkPanel,
 			this.renderUrlChecker(),
 			this.renderSection('📡 Published Services', published, true),
 			this.renderSection('🔍 Discovered Services', unpublished, false),
 			this.renderLandingLink(data.landing)
 		]);
+	},
+
+	loadNetworkInfo: function(container) {
+		api.getNetworkInfo().then(function(data) {
+			if (!data.success) {
+				container.innerHTML = '<div class="sr-network-error">Failed to load network info</div>';
+				return;
+			}
+
+			var ipv4 = data.ipv4 || {};
+			var ipv6 = data.ipv6 || {};
+			var extPorts = data.external_ports || {};
+			var firewall = data.firewall || {};
+
+			var html = '<div class="sr-network-card">';
+			html += '<div class="sr-network-header">🌍 Network Connectivity</div>';
+			html += '<div class="sr-network-grid">';
+
+			// IPv4
+			html += '<div class="sr-network-item">';
+			html += '<span class="sr-network-label">IPv4</span>';
+			if (ipv4.address) {
+				html += '<span class="sr-network-value sr-network-ok">' + ipv4.address + '</span>';
+				if (ipv4.hostname) {
+					html += '<span class="sr-network-sub">' + ipv4.hostname + '</span>';
+				}
+			} else {
+				html += '<span class="sr-network-value sr-network-na">Not available</span>';
+			}
+			html += '</div>';
+
+			// IPv6
+			html += '<div class="sr-network-item">';
+			html += '<span class="sr-network-label">IPv6</span>';
+			if (ipv6.address) {
+				html += '<span class="sr-network-value sr-network-ok" style="font-size:0.75em;">' + ipv6.address + '</span>';
+				if (ipv6.hostname) {
+					html += '<span class="sr-network-sub">' + ipv6.hostname + '</span>';
+				}
+			} else {
+				html += '<span class="sr-network-value sr-network-na">Not available</span>';
+			}
+			html += '</div>';
+
+			// External Port 80
+			html += '<div class="sr-network-item">';
+			html += '<span class="sr-network-label">Port 80 (HTTP)</span>';
+			var http = extPorts.http || {};
+			if (http.status === 'open') {
+				html += '<span class="sr-network-value sr-network-ok">✅ Open from Internet</span>';
+			} else if (http.status === 'blocked') {
+				html += '<span class="sr-network-value sr-network-fail">🚫 Blocked</span>';
+				html += '<span class="sr-network-sub">' + (http.hint || 'Check router') + '</span>';
+			} else {
+				html += '<span class="sr-network-value sr-network-na">Unknown</span>';
+			}
+			html += '</div>';
+
+			// External Port 443
+			html += '<div class="sr-network-item">';
+			html += '<span class="sr-network-label">Port 443 (HTTPS)</span>';
+			var https = extPorts.https || {};
+			if (https.status === 'open') {
+				html += '<span class="sr-network-value sr-network-ok">✅ Open from Internet</span>';
+			} else if (https.status === 'blocked') {
+				html += '<span class="sr-network-value sr-network-fail">🚫 Blocked</span>';
+				html += '<span class="sr-network-sub">' + (https.hint || 'Check router') + '</span>';
+			} else {
+				html += '<span class="sr-network-value sr-network-na">Unknown</span>';
+			}
+			html += '</div>';
+
+			// Local Firewall
+			html += '<div class="sr-network-item">';
+			html += '<span class="sr-network-label">Local Firewall</span>';
+			if (firewall.status === 'ok') {
+				html += '<span class="sr-network-value sr-network-ok">✅ Ports 80/443 open</span>';
+			} else if (firewall.status === 'partial') {
+				html += '<span class="sr-network-value sr-network-warn">⚠️ Partial</span>';
+			} else {
+				html += '<span class="sr-network-value sr-network-fail">🚫 Closed</span>';
+			}
+			html += '</div>';
+
+			// HAProxy
+			html += '<div class="sr-network-item">';
+			html += '<span class="sr-network-label">HAProxy</span>';
+			var haproxy = data.haproxy || {};
+			if (haproxy.status === 'running') {
+				html += '<span class="sr-network-value sr-network-ok">🟢 Running</span>';
+			} else {
+				html += '<span class="sr-network-value sr-network-fail">🔴 Stopped</span>';
+			}
+			html += '</div>';
+
+			html += '</div></div>';
+
+			container.className = 'sr-network-loaded';
+			container.innerHTML = html;
+		}).catch(function(err) {
+			container.innerHTML = '<div class="sr-network-error">Error: ' + err.message + '</div>';
+		});
 	},
 
 	renderHealthSummary: function(health) {
@@ -136,46 +244,90 @@ return view.extend({
 
 			var html = '<div class="sr-check-grid">';
 
-			// DNS Status
+			// Public IP Info
+			var publicIp = result.public_ip || {};
+			html += '<div class="sr-check-item sr-check-info">';
+			html += '<span class="sr-check-icon">🌍</span>';
+			html += '<span class="sr-check-label">Your Public IP</span>';
+			html += '<span class="sr-check-value">';
+			if (publicIp.ipv4) {
+				html += 'IPv4: <strong>' + publicIp.ipv4 + '</strong>';
+				if (publicIp.hostname) html += ' (' + publicIp.hostname + ')';
+			}
+			if (publicIp.ipv6) {
+				html += '<br>IPv6: <strong style="font-size:0.8em;">' + publicIp.ipv6 + '</strong>';
+			}
+			html += '</span></div>';
+
+			// DNS Status with IP comparison
 			var dnsStatus = result.dns || {};
-			var dnsIcon = healthIcons.dns[dnsStatus.status] || '❓';
-			var dnsClass = dnsStatus.status === 'ok' ? 'sr-check-ok' : 'sr-check-fail';
+			var dnsClass = 'sr-check-fail';
+			if (dnsStatus.status === 'ok') dnsClass = 'sr-check-ok';
+			else if (dnsStatus.status === 'private' || dnsStatus.status === 'mismatch') dnsClass = 'sr-check-warn';
+
 			html += '<div class="sr-check-item ' + dnsClass + '">';
-			html += '<span class="sr-check-icon">' + dnsIcon + '</span>';
+			html += '<span class="sr-check-icon">🌐</span>';
 			html += '<span class="sr-check-label">DNS Resolution</span>';
 			if (dnsStatus.status === 'ok') {
-				html += '<span class="sr-check-value">✅ Resolves to ' + dnsStatus.resolved_ip + '</span>';
+				html += '<span class="sr-check-value">✅ Resolves to ' + dnsStatus.resolved_ip + ' (matches public IP)</span>';
+			} else if (dnsStatus.status === 'private') {
+				html += '<span class="sr-check-value">⚠️ Resolves to <strong>' + dnsStatus.resolved_ip + '</strong> (private IP!)</span>';
+				html += '<span class="sr-check-sub">Should be: ' + dnsStatus.expected + '</span>';
+			} else if (dnsStatus.status === 'mismatch') {
+				html += '<span class="sr-check-value">⚠️ Resolves to ' + dnsStatus.resolved_ip + '</span>';
+				html += '<span class="sr-check-sub">Your public IP: ' + dnsStatus.expected + '</span>';
 			} else {
 				html += '<span class="sr-check-value">❌ DNS not configured or not resolving</span>';
 			}
 			html += '</div>';
 
-			// Firewall Status
+			// External Port Accessibility
+			var extAccess = result.external_access || {};
+			var extClass = extAccess.status === 'ok' ? 'sr-check-ok' : (extAccess.status === 'partial' ? 'sr-check-warn' : 'sr-check-fail');
+			html += '<div class="sr-check-item ' + extClass + '">';
+			html += '<span class="sr-check-icon">🔌</span>';
+			html += '<span class="sr-check-label">Internet Accessibility</span>';
+			if (extAccess.status === 'ok') {
+				html += '<span class="sr-check-value">✅ Ports 80 & 443 reachable from internet</span>';
+			} else if (extAccess.status === 'partial') {
+				var open = [];
+				var closed = [];
+				if (extAccess.http_accessible) open.push('80'); else closed.push('80');
+				if (extAccess.https_accessible) open.push('443'); else closed.push('443');
+				html += '<span class="sr-check-value">⚠️ Open: ' + open.join(',') + ' | Blocked: ' + closed.join(',') + '</span>';
+				html += '<span class="sr-check-sub">' + (extAccess.hint || '') + '</span>';
+			} else if (extAccess.status === 'blocked') {
+				html += '<span class="sr-check-value">🚫 Ports NOT reachable from internet</span>';
+				html += '<span class="sr-check-sub">' + (extAccess.hint || 'Check upstream router/ISP port forwarding') + '</span>';
+			} else {
+				html += '<span class="sr-check-value">❓ Could not test external accessibility</span>';
+			}
+			html += '</div>';
+
+			// Local Firewall Status
 			var fwStatus = result.firewall || {};
-			var fwIcon = healthIcons.firewall[fwStatus.status] || '❓';
 			var fwClass = fwStatus.status === 'ok' ? 'sr-check-ok' : (fwStatus.status === 'partial' ? 'sr-check-warn' : 'sr-check-fail');
 			html += '<div class="sr-check-item ' + fwClass + '">';
-			html += '<span class="sr-check-icon">' + fwIcon + '</span>';
-			html += '<span class="sr-check-label">Firewall Ports</span>';
+			html += '<span class="sr-check-icon">🛡️</span>';
+			html += '<span class="sr-check-label">Local Firewall</span>';
 			var ports = [];
 			if (fwStatus.http_open) ports.push('80');
 			if (fwStatus.https_open) ports.push('443');
-			html += '<span class="sr-check-value">' + (ports.length ? 'Open: ' + ports.join(', ') : '❌ Ports 80/443 not open') + '</span>';
+			html += '<span class="sr-check-value">' + (ports.length === 2 ? '✅ Ports 80/443 open' : (ports.length ? '⚠️ Only port ' + ports.join(',') + ' open' : '❌ Ports closed')) + '</span>';
 			html += '</div>';
 
 			// Certificate Status
 			var certStatus = result.certificate || {};
-			var certIcon = healthIcons.cert[certStatus.status] || '❓';
 			var certClass = certStatus.status === 'ok' ? 'sr-check-ok' : (certStatus.status === 'warning' ? 'sr-check-warn' : 'sr-check-fail');
 			html += '<div class="sr-check-item ' + certClass + '">';
-			html += '<span class="sr-check-icon">' + certIcon + '</span>';
+			html += '<span class="sr-check-icon">🔒</span>';
 			html += '<span class="sr-check-label">SSL Certificate</span>';
 			if (certStatus.status === 'ok' || certStatus.status === 'warning') {
-				html += '<span class="sr-check-value">' + certStatus.days_left + ' days remaining</span>';
+				html += '<span class="sr-check-value">' + (certStatus.status === 'ok' ? '✅' : '⚠️') + ' ' + certStatus.days_left + ' days remaining</span>';
 			} else if (certStatus.status === 'expired') {
 				html += '<span class="sr-check-value">❌ Certificate expired</span>';
 			} else if (certStatus.status === 'missing') {
-				html += '<span class="sr-check-value">⚪ No certificate (request via HAProxy)</span>';
+				html += '<span class="sr-check-value">⚪ No certificate yet</span>';
 			} else {
 				html += '<span class="sr-check-value">⚪ Not applicable</span>';
 			}
@@ -183,10 +335,9 @@ return view.extend({
 
 			// HAProxy Status
 			var haStatus = result.haproxy || {};
-			var haIcon = haStatus.status === 'running' ? '🟢' : '🔴';
 			var haClass = haStatus.status === 'running' ? 'sr-check-ok' : 'sr-check-fail';
 			html += '<div class="sr-check-item ' + haClass + '">';
-			html += '<span class="sr-check-icon">' + haIcon + '</span>';
+			html += '<span class="sr-check-icon">' + (haStatus.status === 'running' ? '🟢' : '🔴') + '</span>';
 			html += '<span class="sr-check-label">HAProxy</span>';
 			html += '<span class="sr-check-value">' + (haStatus.status === 'running' ? '✅ Running' : '❌ Not running') + '</span>';
 			html += '</div>';
@@ -194,24 +345,36 @@ return view.extend({
 			html += '</div>';
 
 			// Summary and recommendation
-			var allOk = dnsStatus.status === 'ok' && fwStatus.status === 'ok' && haStatus.status === 'running';
+			var dnsOk = dnsStatus.status === 'ok';
+			var extOk = extAccess.status === 'ok';
+			var fwOk = fwStatus.status === 'ok';
+			var haOk = haStatus.status === 'running';
+			var certOk = certStatus.status === 'ok' || certStatus.status === 'warning';
 			var needsCert = certStatus.status === 'missing';
+			var allOk = dnsOk && extOk && fwOk && haOk;
 
 			html += '<div class="sr-check-summary">';
-			if (allOk && !needsCert) {
-				html += '<div class="sr-check-ready">✅ ' + domain + ' is ready and serving!</div>';
+			if (allOk && certOk) {
+				html += '<div class="sr-check-ready">✅ ' + domain + ' is fully operational!</div>';
 			} else if (allOk && needsCert) {
 				html += '<div class="sr-check-almost">⚠️ ' + domain + ' is ready - just need SSL certificate</div>';
 				html += '<a href="/cgi-bin/luci/admin/services/haproxy/certificates" class="sr-check-action">📜 Request Certificate</a>';
 			} else {
 				html += '<div class="sr-check-notready">❌ ' + domain + ' needs configuration</div>';
-				if (dnsStatus.status !== 'ok') {
-					html += '<div class="sr-check-tip">💡 Point DNS A record to your public IP</div>';
+				if (dnsStatus.status === 'private') {
+					html += '<div class="sr-check-tip">💡 <strong>DNS points to private IP!</strong> Update A record to: <code>' + publicIp.ipv4 + '</code></div>';
+				} else if (dnsStatus.status === 'mismatch') {
+					html += '<div class="sr-check-tip">💡 DNS points to different IP. Update A record to: <code>' + publicIp.ipv4 + '</code></div>';
+				} else if (dnsStatus.status !== 'ok') {
+					html += '<div class="sr-check-tip">💡 Create DNS A record: ' + domain + ' → ' + publicIp.ipv4 + '</div>';
 				}
-				if (fwStatus.status !== 'ok') {
-					html += '<div class="sr-check-tip">💡 Open ports 80 and 443 in firewall</div>';
+				if (!extOk && extAccess.status !== 'unknown') {
+					html += '<div class="sr-check-tip">💡 <strong>Port forwarding needed!</strong> Forward ports 80/443 on your router to this device</div>';
 				}
-				if (haStatus.status !== 'running') {
+				if (!fwOk) {
+					html += '<div class="sr-check-tip">💡 Open ports 80 and 443 in local firewall</div>';
+				}
+				if (!haOk) {
 					html += '<div class="sr-check-tip">💡 Start HAProxy container</div>';
 				}
 			}
@@ -550,6 +713,24 @@ return view.extend({
 			@media (prefers-color-scheme: dark) { .sr-health-bar { background: #1a2a3e; } }
 			.sr-health-item { font-size: 0.9em; }
 
+			/* Network Info Panel */
+			.sr-network-loading { padding: 20px; text-align: center; background: #f8f8f8; border-radius: 8px; margin-bottom: 15px; }
+			@media (prefers-color-scheme: dark) { .sr-network-loading { background: #1a1a2e; } }
+			.sr-network-loaded { margin-bottom: 15px; }
+			.sr-network-error { padding: 15px; background: #fef2f2; color: #dc2626; border-radius: 8px; margin-bottom: 15px; }
+			@media (prefers-color-scheme: dark) { .sr-network-error { background: #450a0a; color: #fca5a5; } }
+			.sr-network-card { background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%); border-radius: 12px; padding: 20px; color: #fff; }
+			.sr-network-header { font-size: 1.1em; font-weight: 600; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+			.sr-network-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }
+			.sr-network-item { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; }
+			.sr-network-label { display: block; font-size: 0.8em; color: #94a3b8; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
+			.sr-network-value { display: block; font-size: 0.95em; font-weight: 500; word-break: break-all; }
+			.sr-network-value.sr-network-ok { color: #22c55e; }
+			.sr-network-value.sr-network-fail { color: #ef4444; }
+			.sr-network-value.sr-network-warn { color: #eab308; }
+			.sr-network-value.sr-network-na { color: #64748b; font-style: italic; }
+			.sr-network-sub { display: block; font-size: 0.75em; color: #64748b; margin-top: 4px; }
+
 			/* URL Checker Wizard Card */
 			.sr-wizard-card { background: linear-gradient(135deg, #0a192f 0%, #172a45 100%); border-radius: 12px; padding: 20px; margin-bottom: 25px; color: #fff; }
 			.sr-wizard-header { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }
@@ -569,14 +750,20 @@ return view.extend({
 			.sr-check-item.sr-check-ok { border-left-color: #22c55e; }
 			.sr-check-item.sr-check-warn { border-left-color: #eab308; }
 			.sr-check-item.sr-check-fail { border-left-color: #ef4444; }
-			.sr-check-icon { font-size: 1.3em; }
-			.sr-check-label { font-weight: 600; font-size: 0.9em; min-width: 100px; }
-			.sr-check-value { font-size: 0.85em; opacity: 0.8; }
+			.sr-check-item.sr-check-info { border-left-color: #0099cc; }
+			.sr-check-icon { font-size: 1.3em; flex-shrink: 0; }
+			.sr-check-label { font-weight: 600; font-size: 0.9em; min-width: 100px; flex-shrink: 0; }
+			.sr-check-value { font-size: 0.85em; opacity: 0.9; flex: 1; }
+			.sr-check-value code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+			.sr-check-value strong { color: #fff; }
+			.sr-check-sub { display: block; font-size: 0.8em; color: #94a3b8; margin-top: 4px; }
 			.sr-check-summary { margin-top: 15px; padding: 15px; background: #0f172a; border-radius: 8px; text-align: center; }
 			.sr-check-ready { font-size: 1.1em; color: #22c55e; font-weight: 600; }
 			.sr-check-almost { font-size: 1.1em; color: #eab308; font-weight: 600; }
 			.sr-check-notready { font-size: 1.1em; color: #ef4444; font-weight: 600; margin-bottom: 10px; }
-			.sr-check-tip { font-size: 0.85em; opacity: 0.8; margin-top: 5px; }
+			.sr-check-tip { font-size: 0.85em; opacity: 0.9; margin-top: 8px; text-align: left; padding: 0 20px; }
+			.sr-check-tip code { background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 3px; font-family: monospace; color: #0ff; }
+			.sr-check-tip strong { color: #fbbf24; }
 			.sr-check-action { display: inline-block; margin-top: 10px; padding: 8px 16px; background: #0099cc; color: #fff; text-decoration: none; border-radius: 6px; font-size: 0.9em; }
 			.sr-check-action:hover { background: #00b3e6; }
 

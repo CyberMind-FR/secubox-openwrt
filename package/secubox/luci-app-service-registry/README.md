@@ -17,6 +17,15 @@ Unified service aggregation dashboard with automatic publishing to HAProxy (clea
 
 ## Dashboard
 
+### Network Connectivity Panel
+
+Real-time network status showing:
+- **Public IPv4** - Your external IP address with reverse DNS hostname
+- **Public IPv6** - IPv6 address if available
+- **External Port 80/443** - Whether ports are reachable from the internet (tests upstream router/ISP forwarding)
+- **Local Firewall** - OpenWrt firewall rule status
+- **HAProxy** - Reverse proxy container status
+
 ### Health Summary Bar
 
 Shows overall system status at a glance:
@@ -32,12 +41,17 @@ Before publishing a service, verify the domain is properly configured:
 
 1. Enter a domain in the checker (e.g., `example.com`)
 2. Click "Check" to verify:
-   - **DNS Resolution** - Domain resolves to expected IP
-   - **Firewall Ports** - Ports 80 and 443 open from WAN
+   - **Your Public IP** - Shows your IPv4/IPv6 addresses and reverse DNS
+   - **DNS Resolution** - Verifies domain resolves to your public IP (detects private IP misconfiguration)
+   - **Internet Accessibility** - Tests if ports 80/443 are reachable from internet (upstream router check)
+   - **Local Firewall** - OpenWrt firewall rule status
    - **SSL Certificate** - Valid certificate with expiry status
    - **HAProxy** - Reverse proxy container running
 
-The checker provides actionable recommendations when issues are found.
+The checker provides specific actionable recommendations:
+- If DNS points to private IP (e.g., 192.168.x.x), shows the correct public IP to use
+- If ports are blocked externally, advises checking upstream router port forwarding
+- Shows exact DNS A record to create: `domain.com → your.public.ip`
 
 ### Service Health Indicators
 
@@ -96,6 +110,39 @@ When you publish a service with a domain:
 
 ## Health Check API
 
+### Get Network Info
+
+```bash
+ubus call luci.service-registry get_network_info
+```
+
+Response:
+```json
+{
+  "success": true,
+  "lan_ip": "192.168.255.1",
+  "ipv4": {
+    "address": "185.220.101.12",
+    "status": "ok",
+    "hostname": "server.example.com"
+  },
+  "ipv6": {
+    "address": "2001:db8::1",
+    "status": "ok"
+  },
+  "external_ports": {
+    "http": { "accessible": true, "status": "open" },
+    "https": { "accessible": true, "status": "open" }
+  },
+  "firewall": {
+    "status": "ok",
+    "http_open": true,
+    "https_open": true
+  },
+  "haproxy": { "status": "running" }
+}
+```
+
 ### Check Single Domain
 
 ```bash
@@ -107,24 +154,40 @@ Response:
 {
   "success": true,
   "domain": "example.com",
+  "public_ip": {
+    "ipv4": "185.220.101.12",
+    "ipv6": "2001:db8::1",
+    "hostname": "server.example.com"
+  },
   "dns": {
     "status": "ok",
-    "resolved_ip": "203.0.113.10"
+    "resolved_ip": "185.220.101.12"
   },
-  "certificate": {
+  "external_access": {
     "status": "ok",
-    "days_left": 45
+    "http_accessible": true,
+    "https_accessible": true
   },
   "firewall": {
     "status": "ok",
     "http_open": true,
     "https_open": true
   },
+  "certificate": {
+    "status": "ok",
+    "days_left": 45
+  },
   "haproxy": {
     "status": "running"
   }
 }
 ```
+
+DNS status values:
+- `ok` - Domain resolves to your public IP
+- `private` - Domain resolves to a private IP (192.168.x.x, 10.x.x.x, etc.)
+- `mismatch` - Domain resolves to a different public IP
+- `failed` - DNS resolution failed
 
 ### Check All Services
 
@@ -222,8 +285,9 @@ uci commit service-registry
 | `list_services` | List all services from all providers |
 | `publish_service` | Publish a service to HAProxy/Tor |
 | `unpublish_service` | Remove service from HAProxy/Tor |
-| `check_service_health` | Check DNS/cert/firewall for domain |
+| `check_service_health` | Check DNS/cert/firewall/external access for domain |
 | `check_all_health` | Batch health check all services |
+| `get_network_info` | Get public IPs, external port accessibility, firewall status |
 | `generate_landing_page` | Regenerate static landing page |
 
 ## License
