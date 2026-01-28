@@ -291,6 +291,9 @@ case "$1" in
 		json_close_object
 		json_add_object "getProxyStatus"
 		json_close_object
+		json_add_object "setAdGuardEnabled"
+			json_add_string "enabled" "boolean"
+		json_close_object
 		json_dump
 		;;
 
@@ -579,9 +582,36 @@ EOF
 				;;
 
 			getProxyStatus)
-				# Get comprehensive proxy status (CDN Cache + WPAD)
+				# Get comprehensive proxy status (CDN Cache + WPAD + AdGuard Home)
 				json_init
 				json_add_boolean "success" 1
+
+				# AdGuard Home status (Docker container)
+				adguard_installed=0
+				adguard_enabled=0
+				adguard_running=0
+				adguard_port=3000
+				adguard_dns_port=53
+
+				if [ -x /usr/sbin/adguardhomectl ]; then
+					adguard_installed=1
+					adguard_enabled=$(uci -q get adguardhome.main.enabled || echo 0)
+					adguard_port=$(uci -q get adguardhome.main.port || echo 3000)
+					adguard_dns_port=$(uci -q get adguardhome.main.dns_port || echo 53)
+
+					# Check if container is running
+					if command -v docker >/dev/null 2>&1; then
+						docker ps --filter "name=secbx-adguardhome" --format "{{.Status}}" 2>/dev/null | grep -q "Up" && adguard_running=1
+					fi
+				fi
+
+				json_add_object "adguard_home"
+					json_add_boolean "installed" "$adguard_installed"
+					json_add_boolean "enabled" "$adguard_enabled"
+					json_add_boolean "running" "$adguard_running"
+					json_add_int "port" "$adguard_port"
+					json_add_int "dns_port" "$adguard_dns_port"
+				json_close_object
 
 				# CDN Cache status
 				cdn_running=0
@@ -628,6 +658,44 @@ EOF
 					json_add_boolean "dhcp_configured" "$dhcp_wpad"
 					json_add_string "url" "$wpad_url"
 				json_close_object
+
+				json_dump
+				;;
+
+			setAdGuardEnabled)
+				# Enable/disable AdGuard Home
+				read input
+				json_load "$input"
+
+				json_get_var enabled enabled
+
+				if [ ! -x /usr/sbin/adguardhomectl ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "AdGuard Home not installed"
+					json_dump
+					exit 0
+				fi
+
+				if [ "$enabled" = "1" ] || [ "$enabled" = "true" ]; then
+					uci set adguardhome.main.enabled='1'
+					uci commit adguardhome
+					/etc/init.d/adguardhome enable >/dev/null 2>&1
+					/etc/init.d/adguardhome start >/dev/null 2>&1 &
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "AdGuard Home enabled and starting"
+				else
+					/etc/init.d/adguardhome stop >/dev/null 2>&1
+					/etc/init.d/adguardhome disable >/dev/null 2>&1
+					uci set adguardhome.main.enabled='0'
+					uci commit adguardhome
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "AdGuard Home disabled"
+				fi
 
 				json_dump
 				;;

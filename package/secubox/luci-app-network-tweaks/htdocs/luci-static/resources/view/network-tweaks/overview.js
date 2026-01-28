@@ -75,6 +75,13 @@ var callGetProxyStatus = rpc.declare({
 	expect: { }
 });
 
+var callSetAdGuardEnabled = rpc.declare({
+	object: 'luci.network-tweaks',
+	method: 'setAdGuardEnabled',
+	params: ['enabled'],
+	expect: { }
+});
+
 return view.extend({
 	proxyStatusData: {},
 	componentsData: [],
@@ -239,6 +246,7 @@ return view.extend({
 		var proxy = this.proxyStatusData;
 		var cdnCache = proxy.cdn_cache || {};
 		var wpad = proxy.wpad || {};
+		var adguard = proxy.adguard_home || {};
 
 		var cdnStatusClass = cdnCache.running ? 'status-running' : 'status-stopped';
 		var cdnStatusText = cdnCache.running ? _('Running') : _('Stopped');
@@ -249,9 +257,46 @@ return view.extend({
 		var wpadStatusClass = wpad.enabled ? 'status-running' : 'status-stopped';
 		var wpadStatusText = wpad.enabled ? _('Enabled') : _('Disabled');
 
+		var adguardStatusClass = adguard.running ? 'status-running' : 'status-stopped';
+		var adguardStatusText = adguard.running ? _('Running') : _('Stopped');
+
 		return E('div', { 'class': 'proxy-settings-section' }, [
-			E('h3', {}, _('Proxy & Caching')),
-			E('div', { 'class': 'proxy-grid', 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;' }, [
+			E('h3', {}, _('DNS & Proxy Services')),
+			E('div', { 'class': 'proxy-grid', 'style': 'display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;' }, [
+				// AdGuard Home Card
+				E('div', { 'class': 'proxy-card', 'style': 'background: #16213e; border-radius: 8px; padding: 1rem; border: 1px solid #333;' }, [
+					E('div', { 'class': 'proxy-header', 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;' }, [
+						E('div', { 'style': 'display: flex; align-items: center; gap: 0.5rem;' }, [
+							E('span', { 'style': 'font-size: 1.5em;' }, '\ud83d\udee1\ufe0f'),
+							E('span', { 'style': 'font-weight: bold;' }, _('AdGuard Home'))
+						]),
+						E('span', {
+							'class': 'status-badge ' + adguardStatusClass,
+							'style': 'padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8em; ' +
+								(adguard.running ? 'background: #22c55e;' : 'background: #ef4444;')
+						}, adguardStatusText)
+					]),
+					E('div', { 'class': 'proxy-info', 'style': 'font-size: 0.9em; color: #888; margin-bottom: 0.75rem;' }, [
+						E('div', {}, adguard.installed ?
+							_('Web UI: port ') + (adguard.port || 3000) :
+							_('Not installed')),
+						E('div', {}, adguard.installed ?
+							_('DNS: port ') + (adguard.dns_port || 53) :
+							_('Install via adguardhomectl'))
+					]),
+					E('div', { 'class': 'proxy-actions', 'style': 'display: flex; gap: 0.5rem;' }, [
+						E('button', {
+							'class': 'btn cbi-button',
+							'click': L.bind(this.handleAdGuardToggle, this),
+							'disabled': !adguard.installed
+						}, adguard.enabled ? _('Disable') : _('Enable')),
+						adguard.running ? E('a', {
+							'class': 'btn cbi-button',
+							'href': 'http://' + window.location.hostname + ':' + (adguard.port || 3000),
+							'target': '_blank'
+						}, _('Open UI')) : null
+					].filter(Boolean))
+				]),
 				// CDN Cache Card
 				E('div', { 'class': 'proxy-card', 'style': 'background: #16213e; border-radius: 8px; padding: 1rem; border: 1px solid #333;' }, [
 					E('div', { 'class': 'proxy-header', 'style': 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;' }, [
@@ -360,6 +405,29 @@ return view.extend({
 				ui.addNotification(null, E('p', result.message || _('WPAD updated')), 'info');
 			}
 			this.refreshData();
+		}, this)).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: ') + err.message), 'error');
+		});
+	},
+
+	handleAdGuardToggle: function(ev) {
+		var currentEnabled = this.proxyStatusData.adguard_home?.enabled || false;
+		var newEnabled = !currentEnabled;
+
+		ui.showModal(newEnabled ? _('Starting AdGuard Home...') : _('Stopping AdGuard Home...'), [
+			E('p', { 'class': 'spinning' }, _('Please wait, this may take a moment...'))
+		]);
+
+		return callSetAdGuardEnabled(newEnabled ? 1 : 0).then(L.bind(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', result.message || _('AdGuard Home updated')), 'info');
+			} else {
+				ui.addNotification(null, E('p', _('Error: ') + (result.error || 'Unknown error')), 'error');
+			}
+			// Delay refresh to allow container to start/stop
+			setTimeout(L.bind(this.refreshData, this), 2000);
 		}, this)).catch(function(err) {
 			ui.hideModal();
 			ui.addNotification(null, E('p', _('Error: ') + err.message), 'error');
