@@ -200,34 +200,76 @@ discover_network_components() {
 
 # Calculate cumulative impact summary
 calculate_cumulative_impact() {
-	[ ! -d "$PLUGINS_CATALOG" ] && return
-
 	local total_components=0
 	local active_components=0
 	local total_dns=0
 	local total_vhosts=0
 	local total_ports=0
 
-	for manifest_file in "$PLUGINS_CATALOG"/*.json; do
-		[ ! -f "$manifest_file" ] && continue
-		check_network_relevance "$manifest_file" || continue
+	# 1. Count from plugins catalog if exists
+	if [ -d "$PLUGINS_CATALOG" ]; then
+		for manifest_file in "$PLUGINS_CATALOG"/*.json; do
+			[ ! -f "$manifest_file" ] && continue
+			check_network_relevance "$manifest_file" || continue
 
-		local id=$(jsonfilter -i "$manifest_file" -e '@.id' 2>/dev/null)
-		[ -z "$id" ] && continue
+			local id=$(jsonfilter -i "$manifest_file" -e '@.id' 2>/dev/null)
+			[ -z "$id" ] && continue
 
-		total_components=$((total_components + 1))
+			total_components=$((total_components + 1))
 
-		local service_state=$(query_service_state "$id" "$manifest_file")
-		if [ "$service_state" = "running" ]; then
-			active_components=$((active_components + 1))
+			local service_state=$(query_service_state "$id" "$manifest_file")
+			if [ "$service_state" = "running" ]; then
+				active_components=$((active_components + 1))
 
-			local impact=$(calculate_network_impact "$id" "$manifest_file")
-			set -- $impact
-			total_dns=$((total_dns + $1))
-			total_vhosts=$((total_vhosts + $4))
-			total_ports=$((total_ports + $3))
+				local impact=$(calculate_network_impact "$id" "$manifest_file")
+				set -- $impact
+				total_dns=$((total_dns + ${1:-0}))
+				total_vhosts=$((total_vhosts + ${4:-0}))
+				total_ports=$((total_ports + ${3:-0}))
+			fi
+		done
+	fi
+
+	# 2. Count HAProxy vhosts directly
+	local haproxy_vhosts=0
+	if uci -q show haproxy 2>/dev/null | grep -q "=vhost$"; then
+		haproxy_vhosts=$(uci show haproxy 2>/dev/null | grep -c "=vhost$" || echo 0)
+		total_vhosts=$((total_vhosts + haproxy_vhosts))
+	fi
+
+	# 3. Count DNS entries from dnsmasq config
+	if [ -f /tmp/dnsmasq.d/50-vhosts.conf ]; then
+		local dnsmasq_dns=$(grep -c '^address=' /tmp/dnsmasq.d/50-vhosts.conf 2>/dev/null || echo 0)
+		total_dns=$((total_dns + dnsmasq_dns))
+	fi
+
+	# 4. Count active LXC containers as components
+	local lxc_running=0
+	if command -v lxc-ls >/dev/null 2>&1; then
+		lxc_running=$(lxc-ls --running 2>/dev/null | wc -w)
+		active_components=$((active_components + lxc_running))
+		total_components=$((total_components + lxc_running))
+	fi
+
+	# 5. Count exposed ports (firewall rules allowing WAN access)
+	local i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local src=$(uci -q get firewall.@rule[$i].src)
+		local target=$(uci -q get firewall.@rule[$i].target)
+		local enabled=$(uci -q get firewall.@rule[$i].enabled)
+		local dest_port=$(uci -q get firewall.@rule[$i].dest_port)
+		if [ "$src" = "wan" ] && [ "$target" = "ACCEPT" ] && [ "$enabled" != "0" ] && [ -n "$dest_port" ]; then
+			total_ports=$((total_ports + 1))
 		fi
+		i=$((i + 1))
 	done
+
+	# 6. Count Docker containers as components
+	if command -v docker >/dev/null 2>&1; then
+		local docker_running=$(docker ps -q 2>/dev/null | wc -l)
+		active_components=$((active_components + docker_running))
+		total_components=$((total_components + docker_running))
+	fi
 
 	json_add_int "total_components" "$total_components"
 	json_add_int "active_components" "$active_components"
