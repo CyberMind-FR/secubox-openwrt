@@ -1,7 +1,7 @@
 {
-	"admin/secubox/network/wireguard": {
+	"admin/services/wireguard": {
 		"title": "WireGuard",
-		"order": 10,
+		"order": 30,
 		"action": {
 			"type": "firstchild"
 		},
@@ -9,7 +9,7 @@
 			"acl": ["luci-app-wireguard-dashboard"]
 		}
 	},
-	"admin/secubox/network/wireguard/wizard": {
+	"admin/services/wireguard/wizard": {
 		"title": "Setup Wizard",
 		"order": 5,
 		"action": {
@@ -17,7 +17,7 @@
 			"path": "wireguard-dashboard/wizard"
 		}
 	},
-	"admin/secubox/network/wireguard/overview": {
+	"admin/services/wireguard/overview": {
 		"title": "Overview",
 		"order": 10,
 		"action": {
@@ -25,7 +25,7 @@
 			"path": "wireguard-dashboard/overview"
 		}
 	},
-	"admin/secubox/network/wireguard/peers": {
+	"admin/services/wireguard/peers": {
 		"title": "Peers",
 		"order": 20,
 		"action": {
@@ -33,7 +33,7 @@
 			"path": "wireguard-dashboard/peers"
 		}
 	},
-	"admin/secubox/network/wireguard/qrcodes": {
+	"admin/services/wireguard/qrcodes": {
 		"title": "QR Codes",
 		"order": 30,
 		"action": {
@@ -41,7 +41,7 @@
 			"path": "wireguard-dashboard/qrcodes"
 		}
 	},
-	"admin/secubox/network/wireguard/traffic": {
+	"admin/services/wireguard/traffic": {
 		"title": "Traffic Stats",
 		"order": 40,
 		"action": {
@@ -49,7 +49,7 @@
 			"path": "wireguard-dashboard/traffic"
 		}
 	},
-	"admin/secubox/network/wireguard/config": {
+	"admin/services/wireguard/config": {
 		"title": "Configuration",
 		"order": 50,
 		"action": {
@@ -57,7 +57,7 @@
 			"path": "wireguard-dashboard/config"
 		}
 	},
-	"admin/secubox/network/wireguard/settings": {
+	"admin/services/wireguard/settings": {
 		"title": "Settings",
 		"order": 90,
 		"action": {
