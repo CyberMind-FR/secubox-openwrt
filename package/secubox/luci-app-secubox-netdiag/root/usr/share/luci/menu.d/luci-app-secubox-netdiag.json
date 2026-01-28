@@ -1,7 +1,7 @@
 {
-	"admin/secubox/netdiag": {
+	"admin/services/network-diagnostics": {
 		"title": "Network Diagnostics",
-		"order": 45,
+		"order": 75,
 		"action": {
 			"type": "view",
 			"path": "secubox-netdiag/overview"
