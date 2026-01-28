@@ -1,5 +1,5 @@
 {
-	"admin/secubox/services/magicmirror2": {
+	"admin/services/magicmirror2": {
 		"title": "MagicMirror",
 		"action": { "type": "view", "path": "magicmirror2/overview" },
 		"depends": { "acl": ["luci-app-magicmirror2"] },

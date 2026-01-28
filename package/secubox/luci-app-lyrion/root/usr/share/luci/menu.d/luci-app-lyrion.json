@@ -1,5 +1,5 @@
 {
-	"admin/secubox/services/lyrion": {
+	"admin/services/lyrion": {
 		"title": "Lyrion",
 		"order": 50,
 		"action": {
@@ -9,7 +9,7 @@
 			"acl": ["luci-app-lyrion"]
 		}
 	},
-	"admin/secubox/services/lyrion/overview": {
+	"admin/services/lyrion/overview": {
 		"title": "Overview",
 		"order": 10,
 		"action": {
@@ -17,7 +17,7 @@
 			"path": "lyrion/overview"
 		}
 	},
-	"admin/secubox/services/lyrion/settings": {
+	"admin/services/lyrion/settings": {
 		"title": "Settings",
 		"order": 90,
 		"action": {
