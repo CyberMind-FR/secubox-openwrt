@@ -19,6 +19,7 @@ return view.extend({
 	handleToggle: function() {
 		var self = this;
 
+
 		// Show loading while fetching current status
 		ui.showModal(_('Please wait...'), [
 			E('p', { 'class': 'spinning' }, _('Checking current status...'))
@@ -38,10 +39,13 @@ return view.extend({
 					ui.hideModal();
 					if (result.success) {
 						ui.addNotification(null, E('p', _('Tor Shield disabled. Your traffic is no longer anonymized.')), 'warning');
-						window.location.reload();
+						setTimeout(function() { window.location.reload(); }, 1000);
 					} else {
 						ui.addNotification(null, E('p', result.error || _('Failed to disable')), 'error');
 					}
+				}).catch(function(err) {
+					ui.hideModal();
+					ui.addNotification(null, E('p', _('Disable error: %s').format(err.message || String(err))), 'error');
 				});
 			} else {
 				// Enable Tor with selected preset
@@ -53,26 +57,48 @@ return view.extend({
 					ui.hideModal();
 					if (result.success) {
 						ui.addNotification(null, E('p', _('Tor Shield is starting. Please wait for bootstrap to complete.')), 'info');
-						window.location.reload();
+						setTimeout(function() { window.location.reload(); }, 1000);
 					} else {
 						ui.addNotification(null, E('p', result.error || _('Failed to enable')), 'error');
 					}
+				}).catch(function(err) {
+					ui.hideModal();
+					ui.addNotification(null, E('p', _('Enable error: %s').format(err.message || String(err))), 'error');
 				});
 			}
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
+			ui.addNotification(null, E('p', _('Status error: %s').format(err.message || String(err))), 'error');
 		});
 	},
 
-	// Handle preset selection
+	// Handle preset selection - immediately activates the preset
 	handlePresetSelect: function(presetId) {
+		var self = this;
 		this.currentPreset = presetId;
 
-		// Update UI
+		// Update UI immediately
 		var presets = document.querySelectorAll('.tor-preset');
 		presets.forEach(function(p) {
 			p.classList.toggle('active', p.dataset.preset === presetId);
+		});
+
+		// Enable/restart with selected preset
+		ui.showModal(_('Applying Preset'), [
+			E('p', { 'class': 'spinning' }, _('Activating %s preset...').format(presetId))
+		]);
+
+		api.enable(presetId).then(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', _('Preset %s activated').format(presetId)), 'info');
+				setTimeout(function() { window.location.reload(); }, 1000);
+			} else {
+				ui.addNotification(null, E('p', result.error || _('Failed to apply preset')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: %s').format(err.message || String(err))), 'error');
 		});
 	},
 
