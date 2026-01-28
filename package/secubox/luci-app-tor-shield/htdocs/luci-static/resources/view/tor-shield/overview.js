@@ -285,6 +285,9 @@ return view.extend({
 		var presets = data.presets || [];
 		var bandwidth = data.bandwidth || {};
 
+		// Initialize currentPreset from stored UCI value
+		this.currentPreset = status.current_preset || 'anonymous';
+
 		var isActive = status.enabled && status.running;
 		var isProtected = isActive && status.is_tor;
 		var isConnecting = isActive && status.bootstrap < 100;

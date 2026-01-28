@@ -54,17 +54,19 @@ get_bootstrap() {
 get_status() {
 	json_init
 
-	local enabled mode dns_over_tor kill_switch
+	local enabled mode dns_over_tor kill_switch current_preset
 	config_load "$CONFIG"
 	config_get enabled main enabled '0'
 	config_get mode main mode 'transparent'
 	config_get dns_over_tor main dns_over_tor '1'
 	config_get kill_switch main kill_switch '1'
+	config_get current_preset main current_preset 'anonymous'
 
 	json_add_boolean "enabled" "$enabled"
 	json_add_string "mode" "$mode"
 	json_add_boolean "dns_over_tor" "$dns_over_tor"
 	json_add_boolean "kill_switch" "$kill_switch"
+	json_add_string "current_preset" "$current_preset"
 
 	# Running state
 	if is_running; then
@@ -164,6 +166,7 @@ do_enable() {
 	uci set tor-shield.main.mode="$preset_mode"
 	uci set tor-shield.main.dns_over_tor="$preset_dns"
 	uci set tor-shield.main.kill_switch="$preset_kill"
+	uci set tor-shield.main.current_preset="$preset"
 
 	if [ "$preset_bridges" = "1" ]; then
 		uci set tor-shield.bridges.enabled='1'
