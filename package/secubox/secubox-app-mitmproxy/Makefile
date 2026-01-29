@@ -15,7 +15,7 @@ define Package/secubox-app-mitmproxy
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox mitmproxy HTTPS Intercepting Proxy (LXC)
-  DEPENDS:=+uci +libuci +wget +tar
+  DEPENDS:=wget +tar
 endef
 
 define Package/secubox-app-mitmproxy/description

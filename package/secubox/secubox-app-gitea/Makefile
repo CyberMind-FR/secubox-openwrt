@@ -22,7 +22,7 @@ define Package/secubox-app-gitea
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Gitea Platform
-  DEPENDS:=+uci +libuci +jsonfilter +wget-ssl +tar +lxc +lxc-common +git
+  DEPENDS:=jsonfilter +wget-ssl +tar +lxc +lxc-common +git
 endef
 
 define Package/secubox-app-gitea/description

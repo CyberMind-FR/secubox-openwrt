@@ -15,7 +15,7 @@ define Package/secubox-app-glances
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Glances System Monitor (LXC)
-  DEPENDS:=+uci +libuci +wget +tar
+  DEPENDS:=wget +tar
 endef
 
 define Package/secubox-app-glances/description

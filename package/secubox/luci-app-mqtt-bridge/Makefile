@@ -9,7 +9,7 @@ PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
 LUCI_TITLE:=SecuBox MQTT Bridge
 LUCI_DESCRIPTION:=USB-to-MQTT IoT hub with SecuBox theme
-LUCI_DEPENDS:=+luci-base +luci-lib-jsonc +libuci
+LUCI_DEPENDS:=luci-base +luci-lib-jsonc 
 LUCI_PKGARCH:=all
 PKG_FILE_MODES:=/usr/libexec/rpcd/luci.mqtt-bridge:root:root:755
 

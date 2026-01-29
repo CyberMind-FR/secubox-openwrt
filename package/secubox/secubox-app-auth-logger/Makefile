@@ -16,7 +16,7 @@ define Package/secubox-app-auth-logger
   SECTION:=secubox
   CATEGORY:=SecuBox
   TITLE:=Authentication Failure Logger for CrowdSec
-  DEPENDS:=+rpcd +uhttpd +libubox-lua
+  DEPENDS:=rpcd +uhttpd 
   PKGARCH:=all
   PROVIDES:=secubox-auth-logger
 endef

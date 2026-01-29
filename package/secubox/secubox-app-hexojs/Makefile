@@ -22,7 +22,7 @@ define Package/secubox-app-hexojs
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Hexo CMS
-  DEPENDS:=+uci +libuci +jsonfilter +wget-ssl +tar +lxc +lxc-common +git +rsync
+  DEPENDS:=jsonfilter +wget-ssl +tar +lxc +lxc-common +git +rsync
 endef
 
 define Package/secubox-app-hexojs/description

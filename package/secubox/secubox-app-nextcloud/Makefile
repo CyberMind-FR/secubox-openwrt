@@ -15,7 +15,7 @@ define Package/secubox-app-nextcloud
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Nextcloud docker app
-  DEPENDS:=+uci +libuci +dockerd +docker +containerd
+  DEPENDS:=dockerd +docker +containerd
 endef
 
 define Package/secubox-app-nextcloud/description

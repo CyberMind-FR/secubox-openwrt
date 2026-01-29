@@ -175,7 +175,9 @@
       "Bash(zstd:*)",
       "Bash(source /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-build.sh)",
       "Bash(strip_libc_from_ipk:*)",
-      "Bash(sort:*)"
+      "Bash(sort:*)",
+      "Bash(FEED=\"/home/reepost/CyberMindStudio/secubox-openwrt/package/secubox/secubox-app-bonus/root/www/secubox-feed\" grep:*)",
+      "Bash(zcat:*)"
     ]
   }
 }

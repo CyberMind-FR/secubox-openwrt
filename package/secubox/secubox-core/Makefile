@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
 PKG_VERSION:=0.10.0
-PKG_RELEASE:=7
+PKG_RELEASE:=8
 PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
@@ -19,8 +19,8 @@ define Package/secubox-core
   SECTION:=admin
   CATEGORY:=Administration
   TITLE:=SecuBox Core Framework
-  # Runtime dependencies (libc not needed - these packages handle their own deps)
-  DEPENDS:=+libubox +libubus +libuci +rpcd +bash +coreutils-base64 +jsonfilter +jq
+  # Runtime dependencies - only high-level packages, not base libs (libubox/libubus/libuci cause version conflicts)
+  DEPENDS:=+rpcd +bash +coreutils-base64 +jsonfilter +jq
   PKGARCH:=all
 endef
 

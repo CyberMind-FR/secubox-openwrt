@@ -15,7 +15,7 @@ define Package/secubox-app-ollama
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Ollama - Local LLM Runtime
-  DEPENDS:=+uci +libuci +jsonfilter +wget-ssl
+  DEPENDS:=jsonfilter +wget-ssl
 endef
 
 define Package/secubox-app-ollama/description
