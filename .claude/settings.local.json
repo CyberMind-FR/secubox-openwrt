@@ -168,7 +168,9 @@
       "Bash(python3 -m json.tool:*)",
       "Bash(git restore:*)",
       "Bash(__NEW_LINE_80f7f5dbdf93db8a__ echo \"\")",
-      "Bash(# Check for other service-like apps in other secubox menus echo \"\"=== Mitmproxy location ===\"\" grep -h ''\"\"admin/'' package/secubox/luci-app-mitmproxy/root/usr/share/luci/menu.d/*.json)"
+      "Bash(# Check for other service-like apps in other secubox menus echo \"\"=== Mitmproxy location ===\"\" grep -h ''\"\"admin/'' package/secubox/luci-app-mitmproxy/root/usr/share/luci/menu.d/*.json)",
+      "Bash(ar -p:*)",
+      "WebFetch(domain:openwrt.org)"
     ]
   }
 }

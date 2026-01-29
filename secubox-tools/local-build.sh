@@ -1196,25 +1196,21 @@ clean_old_ipk_versions() {
     fi
 }
 
-# Generate Packages.sig for feed signing (creates empty sig to satisfy opkg)
+# Note: We intentionally do NOT generate Packages.sig for local feeds
+# opkg will skip signature verification if no .sig file exists
+# This avoids "Failed to decode signature" errors for local/offline feeds
 generate_packages_sig() {
     local feed_dir="$1"
-
-    # Create a simple placeholder Packages.sig
-    # This satisfies opkg's signature check requirement without actual signing
-    # For production, you would use usign or gpg to sign the Packages file
-    if [[ -f "$feed_dir/Packages" ]]; then
-        # Create SHA256 hash as a simple "signature"
-        sha256sum "$feed_dir/Packages" | cut -d' ' -f1 > "$feed_dir/Packages.sig"
-        print_success "Generated Packages.sig"
-    fi
+    # Remove any existing .sig file to ensure opkg skips signature verification
+    rm -f "$feed_dir/Packages.sig" 2>/dev/null || true
+    print_info "Local feed configured without signature (opkg will skip verification)"
 }
 
-# Embed built packages into luci-app-secubox-bonus as local feed
+# Embed built packages into secubox-app-bonus as local feed
 embed_local_feed() {
     print_header "Embedding Local Package Feed"
 
-    local feed_dir="$SCRIPT_DIR/../package/secubox/luci-app-secubox-bonus/root/www/secubox-feed"
+    local feed_dir="$SCRIPT_DIR/../package/secubox/secubox-app-bonus/root/www/secubox-feed"
     local pkg_ext="${PKG_EXT:-ipk}"
     local src_dir="$BUILD_DIR/$ARCH"
 
@@ -1588,7 +1584,7 @@ run_build() {
 
     print_header "Build Complete!"
     print_success "Packages available in: $BUILD_DIR/$ARCH/"
-    print_info "Local feed embedded in luci-app-secubox-bonus"
+    print_info "Local feed embedded in secubox-app-bonus"
 
     return 0
 }
@@ -2604,7 +2600,7 @@ main() {
 
         sync-feed|regenerate-feed)
             print_header "Regenerating Local Feed"
-            local feed_dir="$SCRIPT_DIR/../package/secubox/luci-app-secubox-bonus/root/www/secubox-feed"
+            local feed_dir="$SCRIPT_DIR/../package/secubox/secubox-app-bonus/root/www/secubox-feed"
             local pkg_ext="ipk"
 
             if [[ ! -d "$feed_dir" ]]; then
