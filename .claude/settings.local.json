@@ -174,7 +174,8 @@
       "Bash(ar -t:*)",
       "Bash(zstd:*)",
       "Bash(source /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-build.sh)",
-      "Bash(strip_libc_from_ipk:*)"
+      "Bash(strip_libc_from_ipk:*)",
+      "Bash(sort:*)"
     ]
   }
 }

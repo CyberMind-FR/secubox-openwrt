@@ -2,10 +2,12 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-bonus
 PKG_VERSION:=0.3.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_ARCH:=all
+# Prevent automatic libc dependency - this is a pure data/script package
+PKG_FLAGS:=nonshared
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -14,6 +16,8 @@ define Package/secubox-app-bonus
   CATEGORY:=SecuBox
   TITLE:=SecuBox Local Package Feed & Documentation
   PKGARCH:=all
+  # Explicitly no dependencies - pure shell scripts and static files
+  DEPENDS:=
 endef
 
 define Package/secubox-app-bonus/description
