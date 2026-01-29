@@ -21,4 +21,6 @@ docs/.DS_Store
 .claude/settings.local.json
 ##package/secubox/luci-app-secubox-bonus/root/www/
 
-openwrt
+openwrt# Large package files - should not be in git
+package/secubox/secubox-app-bonus/root/www/secubox-feed/luci-app-secubox-bonus_*.ipk
+package/secubox/secubox-app-bonus/root/www/secubox-feed/secubox-app-bonus_*.ipk

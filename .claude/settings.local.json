@@ -170,7 +170,11 @@
       "Bash(__NEW_LINE_80f7f5dbdf93db8a__ echo \"\")",
       "Bash(# Check for other service-like apps in other secubox menus echo \"\"=== Mitmproxy location ===\"\" grep -h ''\"\"admin/'' package/secubox/luci-app-mitmproxy/root/usr/share/luci/menu.d/*.json)",
       "Bash(ar -p:*)",
-      "WebFetch(domain:openwrt.org)"
+      "WebFetch(domain:openwrt.org)",
+      "Bash(ar -t:*)",
+      "Bash(zstd:*)",
+      "Bash(source /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-build.sh)",
+      "Bash(strip_libc_from_ipk:*)"
     ]
   }
 }

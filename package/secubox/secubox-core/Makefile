@@ -78,6 +78,9 @@ define Package/secubox-core/install
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-component $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-sync-registry $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-wan-access $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-feed-manager $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-skill $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-feedback $(1)/usr/sbin/
 
 	# WAN Access hotplug for interface events
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
@@ -110,6 +113,10 @@ define Package/secubox-core/postinst
 	mkdir -p /var/log
 	chmod 755 /var/cache/secubox/catalogs
 	chmod 700 /var/lib/secubox
+
+	# Create feedback directory
+	mkdir -p /var/lib/secubox/feedback
+	chmod 700 /var/lib/secubox/feedback
 
 	# Initialize state database and component registry
 	if [ ! -f /var/lib/secubox/state-db.json ]; then

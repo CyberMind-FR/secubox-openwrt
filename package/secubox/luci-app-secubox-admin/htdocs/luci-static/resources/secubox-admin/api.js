@@ -207,6 +207,124 @@ var callValidateComponentState = rpc.declare({
 	expect: { valid: true }
 });
 
+// ===== Feed Management API =====
+
+var callListFeeds = rpc.declare({
+	object: 'luci.secubox',
+	method: 'list_feeds',
+	expect: { feeds: [] }
+});
+
+var callAddFeed = rpc.declare({
+	object: 'luci.secubox',
+	method: 'add_feed',
+	params: ['name', 'url', 'feed_type', 'visibility'],
+	expect: { success: false }
+});
+
+var callRemoveFeed = rpc.declare({
+	object: 'luci.secubox',
+	method: 'remove_feed',
+	params: ['feed_id'],
+	expect: { success: false }
+});
+
+var callShareFeed = rpc.declare({
+	object: 'luci.secubox',
+	method: 'share_feed',
+	params: ['feed_id'],
+	expect: { share_url: '' }
+});
+
+var callImportFeed = rpc.declare({
+	object: 'luci.secubox',
+	method: 'import_feed',
+	params: ['share_url'],
+	expect: { success: false }
+});
+
+// ===== Profile Management API =====
+
+var callExportProfile = rpc.declare({
+	object: 'luci.secubox',
+	method: 'export_profile',
+	params: ['name', 'include_feeds'],
+	expect: { profile: {} }
+});
+
+var callImportProfile = rpc.declare({
+	object: 'luci.secubox',
+	method: 'import_profile',
+	params: ['profile_data', 'mode'],
+	expect: { success: false }
+});
+
+var callShareProfile = rpc.declare({
+	object: 'luci.secubox',
+	method: 'share_profile',
+	params: ['profile_id'],
+	expect: { share_url: '' }
+});
+
+// ===== Skill Management API =====
+
+var callListSkills = rpc.declare({
+	object: 'luci.secubox',
+	method: 'list_skills',
+	expect: { skills: [] }
+});
+
+var callGetSkillProviders = rpc.declare({
+	object: 'luci.secubox',
+	method: 'get_skill_providers',
+	params: ['skill_id'],
+	expect: { providers: [] }
+});
+
+var callInstallSkill = rpc.declare({
+	object: 'luci.secubox',
+	method: 'install_skill',
+	params: ['skill_id'],
+	expect: { success: false }
+});
+
+var callCheckSkills = rpc.declare({
+	object: 'luci.secubox',
+	method: 'check_skills',
+	params: ['profile_id'],
+	expect: { }
+});
+
+// ===== Feedback Management API =====
+
+var callReportIssue = rpc.declare({
+	object: 'luci.secubox',
+	method: 'report_issue',
+	params: ['app_id', 'issue_type', 'summary', 'description'],
+	expect: { success: false, issue_id: '' }
+});
+
+var callResolveIssue = rpc.declare({
+	object: 'luci.secubox',
+	method: 'resolve_issue',
+	params: ['issue_id', 'resolution'],
+	expect: { success: false }
+});
+
+var callSearchResolutions = rpc.declare({
+	object: 'luci.secubox',
+	method: 'search_resolutions',
+	params: ['keyword'],
+	expect: { results: [] }
+});
+
+var callListIssues = rpc.declare({
+	object: 'luci.secubox',
+	method: 'list_issues',
+	params: ['status'],
+	expect: { issues: [] }
+});
+
 // Utility functions
 function formatBytes(bytes) {
 	if (bytes === 0) return '0 B';
@@ -447,6 +565,30 @@ return baseclass.extend({
 			return { total: 0, by_state: {}, by_type: {}, by_category: {} };
 		});
 	},
+
+	// ===== Feed Management =====
+	listFeeds: debugRPC('listFeeds', callListFeeds, { retries: 2 }),
+	addFeed: debugRPC('addFeed', callAddFeed, { retries: 1 }),
+	removeFeed: debugRPC('removeFeed', callRemoveFeed, { retries: 1 }),
+	shareFeed: debugRPC('shareFeed', callShareFeed, { retries: 1 }),
+	importFeed: debugRPC('importFeed', callImportFeed, { retries: 1 }),
+
+	// ===== Profile Management =====
+	exportProfile: debugRPC('exportProfile', callExportProfile, { retries: 1 }),
+	importProfile: debugRPC('importProfile', callImportProfile, { retries: 1 }),
+	shareProfile: debugRPC('shareProfile', callShareProfile, { retries: 1 }),
+
+	// ===== Skill Management =====
+	listSkills: debugRPC('listSkills', callListSkills, { retries: 2 }),
+	getSkillProviders: debugRPC('getSkillProviders', callGetSkillProviders, { retries: 1 }),
+	installSkill: debugRPC('installSkill', callInstallSkill, { retries: 1 }),
+	checkSkills: debugRPC('checkSkills', callCheckSkills, { retries: 1 }),
+
+	// ===== Feedback Management =====
+	reportIssue: debugRPC('reportIssue', callReportIssue, { retries: 1 }),
+	resolveIssue: debugRPC('resolveIssue', callResolveIssue, { retries: 1 }),
+	searchResolutions: debugRPC('searchResolutions', callSearchResolutions, { retries: 2 }),
+	listIssues: debugRPC('listIssues', callListIssues, { retries: 2 }),
 
 	// Utilities
 	formatBytes: formatBytes,

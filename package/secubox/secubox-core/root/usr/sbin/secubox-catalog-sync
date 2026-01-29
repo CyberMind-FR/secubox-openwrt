@@ -55,6 +55,76 @@ get_sources_by_priority() {
 	echo -e "$sources_list" | sort -n | cut -d':' -f2
 }
 
+# Get feed type for a source (published/unpublished/development)
+get_feed_type() {
+	local source="$1"
+	local feed_type
+	config_get feed_type "$source" feed_type "published"
+	echo "$feed_type"
+}
+
+# Get visibility for a source (public/private/local)
+get_visibility() {
+	local source="$1"
+	local visibility
+	config_get visibility "$source" visibility "public"
+	echo "$visibility"
+}
+
+# Get share token for a source (for unpublished feeds)
+get_share_token() {
+	local source="$1"
+	local share_token
+	config_get share_token "$source" share_token ""
+	echo "$share_token"
+}
+
+# Generate a new share token
+generate_share_token() {
+	head -c 16 /dev/urandom | md5sum | cut -c1-32
+}
+
+# List all sources with their feed types
+list_sources_json() {
+	config_load "$CONFIG_NAME"
+
+	json_init
+	json_add_array "sources"
+
+	_list_source() {
+		local section="$1"
+		local enabled type feed_type visibility url path priority description share_token
+
+		config_get_bool enabled "$section" enabled 0
+		config_get type "$section" type ""
+		config_get feed_type "$section" feed_type "published"
+		config_get visibility "$section" visibility "public"
+		config_get url "$section" url ""
+		config_get path "$section" path ""
+		config_get priority "$section" priority 999
+		config_get description "$section" description ""
+		config_get share_token "$section" share_token ""
+
+		json_add_object
+		json_add_string "name" "$section"
+		json_add_boolean "enabled" "$enabled"
+		json_add_string "type" "$type"
+		json_add_string "feed_type" "$feed_type"
+		json_add_string "visibility" "$visibility"
+		json_add_string "url" "$url"
+		json_add_string "path" "$path"
+		json_add_int "priority" "$priority"
+		json_add_string "description" "$description"
+		[ -n "$share_token" ] && json_add_string "share_token" "$share_token"
+		json_close_object
+	}
+
+	config_foreach _list_source source
+
+	json_close_array
+	json_dump
+}
+
 # Get ETag for source from metadata
 get_etag() {
 	local source="$1"
@@ -140,6 +210,7 @@ sync_remote() {
 	local url="$2"
 	local timeout="$3"
 	local verify_ssl="$4"
+	local auth_token="$5"
 
 	local output="$CACHE_DIR/${source}.json"
 	local temp="/tmp/catalog-sync-$$"
@@ -154,14 +225,17 @@ sync_remote() {
 		download_cmd="uclient-fetch --timeout=$timeout"
 		[ "$verify_ssl" -eq 0 ] && download_cmd="$download_cmd --no-check-certificate"
 		[ -n "$etag" ] && download_cmd="$download_cmd --header='If-None-Match: $etag'"
+		[ -n "$auth_token" ] && download_cmd="$download_cmd --header='Authorization: Bearer $auth_token'"
 		download_cmd="$download_cmd -O $temp $url"
 	elif command -v wget >/dev/null 2>&1; then
 		download_cmd="wget --timeout=$timeout --tries=3"
 		[ "$verify_ssl" -eq 0 ] && download_cmd="$download_cmd --no-check-certificate"
+		[ -n "$auth_token" ] && download_cmd="$download_cmd --header='Authorization: Bearer $auth_token'"
 		download_cmd="$download_cmd -O $temp $url"
 	elif command -v curl >/dev/null 2>&1; then
 		download_cmd="curl --max-time $timeout --retry 3"
 		[ "$verify_ssl" -eq 0 ] && download_cmd="$download_cmd --insecure"
+		[ -n "$auth_token" ] && download_cmd="$download_cmd -H 'Authorization: Bearer $auth_token'"
 		download_cmd="$download_cmd -o $temp $url"
 	else
 		log "ERROR: No download tool available (uclient-fetch, wget, curl)"
@@ -257,16 +331,21 @@ sync_embedded() {
 # Attempt sync from a source
 attempt_sync() {
 	local source="$1"
-	local type url path timeout verify_ssl
+	local type url path timeout verify_ssl share_token feed_type
 
 	config_get type "$source" type
+	config_get feed_type "$source" feed_type "published"
+	config_get share_token "$source" share_token ""
 
 	case "$type" in
 		remote)
 			config_get url "$source" url
 			config_get timeout "$source" timeout 30
 			config_get_bool verify_ssl "$source" verify_ssl 1
-			sync_remote "$source" "$url" "$timeout" "$verify_ssl"
+			# Pass share_token as auth for unpublished feeds
+			local auth_token=""
+			[ "$feed_type" = "unpublished" ] && auth_token="$share_token"
+			sync_remote "$source" "$url" "$timeout" "$verify_ssl" "$auth_token"
 			;;
 		local)
 			config_get path "$source" path
@@ -331,15 +410,27 @@ main() {
 # Usage
 usage() {
 	cat <<EOF
-Usage: secubox-catalog-sync [options]
+Usage: secubox-catalog-sync [command] [options]
+
+Commands:
+  sync                    Auto-fallback sync (default)
+  list                    List all sources with feed types (JSON)
+  generate-token          Generate a new share token
 
 Options:
   -f, --force <source>    Force sync from specific source
-  -h, --help             Show this help message
+  -h, --help              Show this help message
+
+Feed Types:
+  published               Public feed (official, community)
+  unpublished             Private feed (requires auth token)
+  development             Local development feed
 
 Examples:
   secubox-catalog-sync                 # Auto-fallback sync
+  secubox-catalog-sync list            # List sources with types
   secubox-catalog-sync --force github  # Force GitHub source
+  secubox-catalog-sync generate-token  # Generate share token
 EOF
 	exit 0
 }
@@ -349,6 +440,13 @@ case "${1:-}" in
 	-h|--help)
 		usage
 		;;
+	list)
+		config_load "$CONFIG_NAME"
+		list_sources_json
+		;;
+	generate-token)
+		generate_share_token
+		;;
 	-f|--force)
 		shift
 		# Temporarily set force_source
@@ -357,7 +455,11 @@ case "${1:-}" in
 		uci delete ${CONFIG_NAME}.settings.force_source
 		uci commit ${CONFIG_NAME}
 		;;
-	*)
+	sync|"")
 		main "$@"
+		;;
+	*)
+		echo "Unknown command: $1" >&2
+		usage
 		;;
 esac

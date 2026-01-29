@@ -269,6 +269,25 @@ return view.extend({
 		if (source.active) itemClass += ' active';
 		if (!source.enabled) itemClass += ' offline';
 
+		// Feed type badge colors
+		var feedTypeBadge = null;
+		var feedType = source.feed_type || 'published';
+		switch (feedType) {
+			case 'published':
+				feedTypeBadge = E('span', { 'class': 'cyber-badge', 'style': 'background: rgba(16, 185, 129, 0.2); color: #10b981; border-color: rgba(16, 185, 129, 0.3);' }, 'PUB');
+				break;
+			case 'unpublished':
+				feedTypeBadge = E('span', { 'class': 'cyber-badge', 'style': 'background: rgba(245, 158, 11, 0.2); color: #f59e0b; border-color: rgba(245, 158, 11, 0.3);' }, 'PRV');
+				break;
+			case 'development':
+				feedTypeBadge = E('span', { 'class': 'cyber-badge', 'style': 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border-color: rgba(59, 130, 246, 0.3);' }, 'DEV');
+				break;
+		}
+
+		// Visibility indicator
+		var visibility = source.visibility || 'public';
+		var visibilityIcon = visibility === 'public' ? '🌍' : visibility === 'private' ? '🔒' : '💻';
+
 		return E('div', {
 			'class': itemClass,
 			'data-source': source.name
@@ -284,6 +303,9 @@ return view.extend({
 			E('div', { 'class': 'cyber-list-content' }, [
 				E('div', { 'class': 'cyber-list-title' }, [
 					source.name.toUpperCase(),
+					' ',
+					feedTypeBadge,
+					' ',
 					source.active ? E('span', { 'class': 'cyber-badge success' }, [
 						E('span', { 'class': 'cyber-status-dot online' }),
 						' ACTIVE'
@@ -296,6 +318,10 @@ return view.extend({
 					])
 				]),
 				E('div', { 'class': 'cyber-list-meta' }, [
+					E('span', { 'class': 'cyber-list-meta-item' }, [
+						E('span', {}, visibilityIcon + ' '),
+						visibility
+					]),
 					E('span', { 'class': 'cyber-list-meta-item' }, [
 						E('span', {}, '🔢 '),
 						'Priority: ' + source.priority
@@ -312,6 +338,10 @@ return view.extend({
 					source.path ? E('span', { 'class': 'cyber-list-meta-item' }, [
 						E('span', {}, '📁 '),
 						source.path
+					]) : null,
+					source.description ? E('span', { 'class': 'cyber-list-meta-item' }, [
+						E('span', {}, '📝 '),
+						source.description
 					]) : null,
 					source.last_success ? E('span', { 'class': 'cyber-list-meta-item' }, [
 						E('span', {}, '⏱️ '),
@@ -336,6 +366,14 @@ return view.extend({
 						self.testSource(source.name);
 					}
 				}, '🧪 TEST') : null,
+				// Share button for non-development feeds
+				(feedType !== 'development' && source.enabled) ? E('button', {
+					'class': 'cyber-btn',
+					'click': function() {
+						console.log('[CATALOG-SOURCES] Share source:', source.name);
+						self.shareSource(source);
+					}
+				}, '🔗 SHARE') : null,
 				!source.active && source.enabled ? E('button', {
 					'class': 'cyber-btn warning',
 					'click': function() {
@@ -352,6 +390,51 @@ return view.extend({
 				}, source.enabled ? '⊗ DISABLE' : '⊕ ENABLE')
 			])
 		]);
+	},
+
+	shareSource: function(source) {
+		var feedType = source.feed_type || 'published';
+		var shareUrl = 'secubox://feed/' + source.name + '?url=' + encodeURIComponent(source.url || source.path || '');
+
+		if (feedType === 'unpublished' && source.share_token) {
+			shareUrl += '&token=' + source.share_token;
+		}
+
+		var modalContent = [
+			E('h3', { 'style': 'margin-bottom: 15px; color: var(--cyber-text-bright);' }, 'Share Feed: ' + source.name),
+			E('p', { 'style': 'color: var(--cyber-text-dim); margin-bottom: 15px;' },
+				feedType === 'unpublished'
+					? 'This is a private feed. The share URL includes an auth token - only share with trusted users.'
+					: 'This is a public feed. Anyone can import it.'
+			),
+			E('div', { 'style': 'background: rgba(99, 102, 241, 0.1); padding: 15px; border-radius: 8px; margin-bottom: 15px;' }, [
+				E('code', { 'style': 'word-break: break-all; font-size: 12px; color: var(--cyber-accent-cyan);' }, shareUrl)
+			]),
+			E('div', { 'style': 'display: flex; gap: 10px;' }, [
+				E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'click': function() {
+						navigator.clipboard.writeText(shareUrl).then(function() {
+							ui.addNotification(null, E('p', 'Share URL copied to clipboard!'), 'success');
+						}).catch(function() {
+							ui.addNotification(null, E('p', 'Failed to copy - please copy manually'), 'warning');
+						});
+					}
+				}, 'Copy to Clipboard'),
+				E('button', {
+					'class': 'cbi-button',
+					'click': function() { ui.hideModal(); }
+				}, 'Close')
+			])
+		];
+
+		if (feedType === 'unpublished') {
+			modalContent.splice(3, 0, E('p', { 'style': 'color: #f59e0b; font-size: 12px; margin-bottom: 10px;' },
+				'⚠️ Warning: This URL contains your authentication token. Only share with trusted parties.'
+			));
+		}
+
+		ui.showModal('Share Feed Source', modalContent);
 	},
 
 	getStatusClass: function(status) {

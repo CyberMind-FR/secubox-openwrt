@@ -38,12 +38,36 @@
 			"path": "secubox-admin/updates"
 		}
 	},
-	"admin/secubox/admin/catalog-sources": {
-		"title": "Catalog Sources",
+	"admin/secubox/admin/profiles": {
+		"title": "Profiles",
+		"order": 26,
+		"action": {
+			"type": "view",
+			"path": "secubox-admin/profiles"
+		}
+	},
+	"admin/secubox/admin/skills": {
+		"title": "Skills",
 		"order": 27,
 		"action": {
 			"type": "view",
+			"path": "secubox-admin/skills"
+		}
+	},
+	"admin/secubox/admin/catalog-sources": {
+		"title": "Catalog Sources",
+		"order": 28,
+		"action": {
+			"type": "view",
 			"path": "secubox-admin/catalog-sources"
+		}
+	},
+	"admin/secubox/admin/feedback": {
+		"title": "Feedback",
+		"order": 29,
+		"action": {
+			"type": "view",
+			"path": "secubox-admin/feedback"
 		}
 	},
 	"admin/secubox/admin/settings": {

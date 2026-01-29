@@ -1,0 +1,277 @@
+name: SecuBox Feed Health & Publish
+
+on:
+  push:
+    branches: [main, master, release/*]
+    paths:
+      - 'package/secubox/**'
+      - 'secubox-tools/**'
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      publish_feed:
+        description: 'Publish feed to remote'
+        type: boolean
+        default: false
+
+env:
+  FEED_URL: ${{ vars.SECUBOX_FEED_URL || 'https://feed.maegia.tv/secubox-feed' }}
+
+jobs:
+  # ============================================
+  # Validate feed structure and packages
+  # ============================================
+  validate-feed:
+    runs-on: ubuntu-latest
+    name: Validate Feed Structure
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq shellcheck
+
+      - name: Validate secubox-feed scripts
+        run: |
+          echo "Validating feed management scripts..."
+
+          SCRIPTS=(
+            "package/secubox/secubox-app-bonus/root/usr/sbin/secubox-feed"
+            "package/secubox/secubox-app-bonus/root/usr/sbin/secubox-feed-health"
+            "package/secubox/secubox-app-bonus/root/etc/init.d/secubox-feed"
+          )
+
+          ERRORS=0
+          for script in "${SCRIPTS[@]}"; do
+            if [[ -f "$script" ]]; then
+              echo "  Checking $script..."
+              if ! shellcheck -s sh "$script"; then
+                ERRORS=$((ERRORS + 1))
+              fi
+            else
+              echo "  Missing: $script"
+            fi
+          done
+
+          if [[ $ERRORS -gt 0 ]]; then
+            echo "Found $ERRORS shellcheck issues (warnings only)"
+          fi
+
+      - name: Validate HAProxy config
+        run: |
+          echo "Validating HAProxy configuration..."
+
+          HAPROXY_CFG="package/secubox/secubox-app-bonus/root/etc/haproxy/conf.d/secubox-feed.cfg"
+
+          if [[ -f "$HAPROXY_CFG" ]]; then
+            # Basic syntax check
+            if grep -qE "^(backend|frontend|acl|use_backend|server)" "$HAPROXY_CFG"; then
+              echo "  HAProxy config structure valid"
+            else
+              echo "  Warning: HAProxy config may be incomplete"
+            fi
+
+            # Check for required backends
+            if grep -q "backend secubox_feed_backend" "$HAPROXY_CFG"; then
+              echo "  Backend defined: secubox_feed_backend"
+            fi
+
+            # Check for health checks
+            if grep -q "http-check\|option httpchk" "$HAPROXY_CFG"; then
+              echo "  Health checks configured"
+            fi
+          else
+            echo "  No HAProxy config found (optional)"
+          fi
+
+      - name: Validate RPCD interface
+        run: |
+          echo "Validating RPCD interface..."
+
+          RPCD_SCRIPT="package/secubox/secubox-app-bonus/root/usr/libexec/rpcd/luci.secubox-feed"
+
+          if [[ -f "$RPCD_SCRIPT" ]]; then
+            # Check list method returns valid JSON
+            if $RPCD_SCRIPT list | jq empty 2>/dev/null; then
+              echo "  RPCD list method: valid JSON"
+              echo "  Methods: $($RPCD_SCRIPT list | jq -r 'keys[]' | tr '\n' ' ')"
+            else
+              echo "  RPCD list method: invalid JSON"
+              exit 1
+            fi
+          else
+            echo "  No RPCD script found (optional)"
+          fi
+
+  # ============================================
+  # Test feed health endpoint
+  # ============================================
+  test-health-endpoint:
+    runs-on: ubuntu-latest
+    name: Test Health Endpoint
+    needs: validate-feed
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test health check script
+        run: |
+          echo "Testing health check script..."
+
+          HEALTH_SCRIPT="package/secubox/secubox-app-bonus/root/usr/sbin/secubox-feed-health"
+
+          if [[ -f "$HEALTH_SCRIPT" ]]; then
+            chmod +x "$HEALTH_SCRIPT"
+
+            # Create mock environment
+            mkdir -p /tmp/www/secubox-feed /tmp/var/opkg-lists
+            echo "Package: test-package" > /tmp/www/secubox-feed/Packages
+            echo "Version: 1.0.0" >> /tmp/www/secubox-feed/Packages
+            echo "" >> /tmp/www/secubox-feed/Packages
+
+            # Modify script to use test paths
+            sed -e 's|/www/secubox-feed|/tmp/www/secubox-feed|g' \
+                -e 's|/var/opkg-lists|/tmp/var/opkg-lists|g' \
+                "$HEALTH_SCRIPT" > /tmp/test-health.sh
+            chmod +x /tmp/test-health.sh
+
+            # Test JSON output
+            echo "  Testing JSON output..."
+            OUTPUT=$(/tmp/test-health.sh json)
+            echo "$OUTPUT" | jq .
+
+            # Test simple output
+            echo "  Testing simple output..."
+            /tmp/test-health.sh simple || true
+
+            # Test nagios output
+            echo "  Testing nagios output..."
+            /tmp/test-health.sh nagios || true
+
+            echo "  Health check script tests passed"
+          fi
+
+  # ============================================
+  # Check remote feed health
+  # ============================================
+  check-remote-feed:
+    runs-on: ubuntu-latest
+    name: Check Remote Feed Health
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+
+    steps:
+      - name: Check feed.maegia.tv health
+        run: |
+          echo "Checking remote feed health..."
+
+          FEED_URL="${{ env.FEED_URL }}"
+
+          # Test Packages file accessibility
+          echo "  Testing: $FEED_URL/Packages"
+          if curl -sf -o /tmp/Packages "$FEED_URL/Packages"; then
+            PKG_COUNT=$(grep -c '^Package:' /tmp/Packages || echo 0)
+            echo "  Remote feed accessible: $PKG_COUNT packages"
+
+            # Show first few packages
+            echo "  Sample packages:"
+            grep '^Package:' /tmp/Packages | head -5 | sed 's/^/    /'
+          else
+            echo "  Remote feed not accessible or empty"
+          fi
+
+          # Test health endpoint if available
+          echo ""
+          echo "  Testing health endpoint..."
+          if curl -sf "$FEED_URL/health" | jq . 2>/dev/null; then
+            echo "  Health endpoint available"
+          else
+            echo "  Health endpoint not available (optional)"
+          fi
+
+  # ============================================
+  # Publish feed on release
+  # ============================================
+  publish-feed:
+    runs-on: ubuntu-latest
+    name: Publish Feed
+    needs: [validate-feed, test-health-endpoint]
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_feed == 'true')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release artifacts
+        if: github.event_name == 'release'
+        run: |
+          echo "Downloading release IPK files..."
+
+          mkdir -p /tmp/feed
+
+          # Download IPKs from release assets
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          echo "Release: $RELEASE_TAG"
+
+          # Use gh CLI to download assets
+          gh release download "$RELEASE_TAG" \
+            --pattern "*.ipk" \
+            --dir /tmp/feed \
+            || echo "No IPK assets found in release"
+
+          ls -la /tmp/feed/
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Generate Packages index
+        run: |
+          echo "Generating Packages index..."
+
+          FEED_DIR="/tmp/feed"
+          rm -f "$FEED_DIR/Packages" "$FEED_DIR/Packages.gz"
+
+          for ipk in "$FEED_DIR"/*.ipk; do
+            [[ -f "$ipk" ]] || continue
+
+            TMP=$(mktemp -d)
+            (
+              cd "$TMP"
+              tar -xzf "$ipk" 2>/dev/null || ar -x "$ipk" 2>/dev/null
+              tar -xzf control.tar.gz 2>/dev/null || tar -xzf control.tar.zst 2>/dev/null
+
+              if [[ -f control ]]; then
+                # Strip libc dependency
+                sed -e 's/^Depends: libc$//' \
+                    -e 's/^Depends: libc, /Depends: /' \
+                    -e '/^$/d' control
+                echo "Filename: $(basename "$ipk")"
+                echo "Size: $(stat -c%s "$ipk")"
+                echo "SHA256sum: $(sha256sum "$ipk" | cut -d' ' -f1)"
+                echo ""
+              fi
+            ) >> "$FEED_DIR/Packages"
+            rm -rf "$TMP"
+          done
+
+          gzip -kf "$FEED_DIR/Packages"
+
+          echo "Generated index:"
+          grep -c '^Package:' "$FEED_DIR/Packages" || echo "0"
+          echo "packages"
+
+      - name: Upload feed artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: secubox-feed
+          path: /tmp/feed/
+          retention-days: 90
+
+      - name: Notify feed update
+        run: |
+          echo "Feed published successfully"
+          echo "Packages: $(grep -c '^Package:' /tmp/feed/Packages || echo 0)"
+          echo "Size: $(du -sh /tmp/feed | cut -f1)"

@@ -1,0 +1,118 @@
+#!/bin/sh
+# SecuBox Feed Health Check
+# Returns JSON status for HAProxy health monitoring and Gitea CI/CD
+# Copyright 2026 CyberMind <contact@cybermind.fr>
+
+FEED_DIR="/www/secubox-feed"
+OPKG_LIST="/var/opkg-lists/secubox"
+OUTPUT_FORMAT="${1:-json}"
+
+# Check components
+check_feed_dir() {
+    [ -d "$FEED_DIR" ] && return 0
+    return 1
+}
+
+check_packages_file() {
+    [ -f "$FEED_DIR/Packages" ] && return 0
+    return 1
+}
+
+check_packages_count() {
+    if [ -f "$FEED_DIR/Packages" ]; then
+        grep -c '^Package:' "$FEED_DIR/Packages" 2>/dev/null || echo 0
+    else
+        echo 0
+    fi
+}
+
+check_opkg_synced() {
+    [ -f "$OPKG_LIST" ] && return 0
+    return 1
+}
+
+check_uhttpd() {
+    pgrep uhttpd >/dev/null 2>&1 && return 0
+    return 1
+}
+
+check_feed_accessible() {
+    if command -v curl >/dev/null 2>&1; then
+        curl -sf -o /dev/null "http://127.0.0.1/secubox-feed/Packages" 2>/dev/null && return 0
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q --spider "http://127.0.0.1/secubox-feed/Packages" 2>/dev/null && return 0
+    fi
+    return 1
+}
+
+# Calculate overall status
+calculate_status() {
+    local score=0
+    local max=5
+
+    check_feed_dir && score=$((score + 1))
+    check_packages_file && score=$((score + 1))
+    [ "$(check_packages_count)" -gt 0 ] && score=$((score + 1))
+    check_opkg_synced && score=$((score + 1))
+    check_uhttpd && score=$((score + 1))
+
+    if [ "$score" -eq "$max" ]; then
+        echo "healthy"
+    elif [ "$score" -ge 3 ]; then
+        echo "degraded"
+    else
+        echo "unhealthy"
+    fi
+}
+
+# Output results
+case "$OUTPUT_FORMAT" in
+    json)
+        cat << EOF
+{
+  "status": "$(calculate_status)",
+  "timestamp": "$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)",
+  "checks": {
+    "feed_directory": $(check_feed_dir && echo true || echo false),
+    "packages_file": $(check_packages_file && echo true || echo false),
+    "packages_count": $(check_packages_count),
+    "opkg_synced": $(check_opkg_synced && echo true || echo false),
+    "uhttpd_running": $(check_uhttpd && echo true || echo false),
+    "http_accessible": $(check_feed_accessible && echo true || echo false)
+  },
+  "feed_path": "$FEED_DIR",
+  "opkg_list": "$OPKG_LIST"
+}
+EOF
+        ;;
+    simple)
+        status=$(calculate_status)
+        count=$(check_packages_count)
+        echo "$status:$count"
+        [ "$status" = "healthy" ] && exit 0
+        [ "$status" = "degraded" ] && exit 1
+        exit 2
+        ;;
+    nagios)
+        status=$(calculate_status)
+        count=$(check_packages_count)
+        case "$status" in
+            healthy)
+                echo "OK - SecuBox feed healthy, $count packages"
+                exit 0
+                ;;
+            degraded)
+                echo "WARNING - SecuBox feed degraded, $count packages"
+                exit 1
+                ;;
+            *)
+                echo "CRITICAL - SecuBox feed unhealthy"
+                exit 2
+                ;;
+        esac
+        ;;
+    *)
+        echo "Usage: $0 [json|simple|nagios]"
+        exit 1
+        ;;
+esac

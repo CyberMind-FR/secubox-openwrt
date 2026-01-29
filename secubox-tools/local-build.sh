@@ -1206,6 +1206,71 @@ generate_packages_sig() {
     print_info "Local feed configured without signature (opkg will skip verification)"
 }
 
+# Strip libc dependency from IPK control file and repack
+# This is needed because opkg reads the control file from inside the IPK
+strip_libc_from_ipk() {
+    local ipk_file="$1"
+    # Get absolute path
+    ipk_file="$(cd "$(dirname "$ipk_file")" && pwd)/$(basename "$ipk_file")"
+
+    local tmp_dir=$(mktemp -d)
+    local orig_dir=$(pwd)
+
+    cd "$tmp_dir" || return 1
+
+    # Try tar format first (newer OpenWrt), then ar format (older)
+    if ! tar -xzf "$ipk_file" 2>/dev/null; then
+        if ! ar -x "$ipk_file" 2>/dev/null; then
+            cd "$orig_dir"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+    fi
+
+    # Extract and modify control file
+    local control_archive=""
+    if [[ -f control.tar.gz ]]; then
+        control_archive="control.tar.gz"
+        mkdir -p control_dir
+        tar -xzf control.tar.gz -C control_dir
+    elif [[ -f control.tar.zst ]]; then
+        control_archive="control.tar.zst"
+        mkdir -p control_dir
+        zstd -d control.tar.zst -o control.tar 2>/dev/null
+        tar -xf control.tar -C control_dir
+        rm -f control.tar
+    else
+        cd "$orig_dir"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    # Strip libc from control file and remove blank lines
+    if [[ -f control_dir/control ]]; then
+        sed -i \
+            -e 's/^Depends: libc$//' \
+            -e 's/^Depends: libc, /Depends: /g' \
+            -e 's/, libc$//g' \
+            -e 's/, libc,/,/g' \
+            control_dir/control
+        # Remove any blank lines (critical for opkg to parse correctly)
+        sed -i '/^$/d' control_dir/control
+    fi
+
+    # Repack control archive
+    rm -f control.tar.gz control.tar.zst
+    tar -czf control.tar.gz -C control_dir .
+    rm -rf control_dir
+
+    # Repack IPK (tar.gz format) - order matters: debian-binary, control, data
+    rm -f "$ipk_file"
+    tar -czf "$ipk_file" debian-binary control.tar.gz data.tar.*
+
+    cd "$orig_dir"
+    rm -rf "$tmp_dir"
+    return 0
+}
+
 # Embed built packages into secubox-app-bonus as local feed
 embed_local_feed() {
     print_header "Embedding Local Package Feed"
@@ -1230,6 +1295,17 @@ embed_local_feed() {
 
     # Clean old versions, keep only latest
     clean_old_ipk_versions "$feed_dir" "$pkg_ext"
+
+    # Strip libc from all IPK control files
+    print_info "Stripping libc from IPK control files..."
+    local stripped=0
+    for pkg in "$feed_dir"/*.${pkg_ext}; do
+        [[ -f "$pkg" ]] || continue
+        if strip_libc_from_ipk "$pkg"; then
+            stripped=$((stripped + 1))
+        fi
+    done
+    print_success "Processed $stripped packages"
 
     local pkg_count=$(ls -1 "$feed_dir"/*.${pkg_ext} 2>/dev/null | wc -l)
     print_info "Final package count: $pkg_count"
@@ -1262,16 +1338,32 @@ embed_local_feed() {
         gzip -k Packages 2>/dev/null || true
     )
 
-    # Strip libc dependency from Architecture: all packages
-    # The SDK adds libc to all packages, but for pure Lua/shell packages
-    # this causes opkg to fail when using a local feed that doesn't have libc
-    print_info "Stripping libc dependency from packages..."
-    sed -i 's/^Depends: libc, /Depends: /g; s/^Depends: libc$/Depends:/g' "$feed_dir/Packages"
+    # Strip libc dependency from all packages
+    # The SDK adds libc to all packages, but for local feeds without libc
+    # this causes opkg to fail with "incompatible architectures" error
+    print_info "Stripping libc dependencies from packages..."
+    sed -i \
+        -e 's/^Depends: libc$/Depends:/g' \
+        -e 's/^Depends: libc, /Depends: /g' \
+        -e 's/, libc$//g' \
+        -e 's/, libc,/,/g' \
+        -e 's/^Depends:$/Depends:/g' \
+        "$feed_dir/Packages"
+
+    # Clean up any empty or malformed Depends lines
+    sed -i \
+        -e 's/^Depends: ,/Depends: /g' \
+        -e 's/, ,/, /g' \
+        -e 's/,$//' \
+        "$feed_dir/Packages"
+
     # Regenerate compressed index after modification
     gzip -kf "$feed_dir/Packages" 2>/dev/null || true
 
-    # Generate Packages.sig for feed signature
-    generate_packages_sig "$feed_dir"
+    # Do NOT create Packages.sig - opkg will skip signature verification if absent
+    # Creating an empty or invalid sig causes opkg to discard the package list
+    rm -f "$feed_dir/Packages.sig" 2>/dev/null || true
+    print_info "Local feed configured without signature (opkg will skip verification)"
 
     # Generate apps-local.json for appstore UI
     print_info "Generating local apps manifest..."
@@ -1279,7 +1371,7 @@ embed_local_feed() {
 
     print_success "Local feed embedded with $pkg_count packages"
     echo "   Feed location: /www/secubox-feed/"
-    echo "   opkg config: src/gz secubox file:///www/secubox-feed"
+    echo "   opkg config: src secubox file:///www/secubox-feed"
 
     return 0
 }
@@ -2637,9 +2729,20 @@ main() {
                 gzip -k Packages 2>/dev/null || true
             )
 
-            # Strip libc dependency from packages
-            print_info "Stripping libc dependency..."
-            sed -i 's/^Depends: libc, /Depends: /g; s/^Depends: libc$/Depends:/g' "$feed_dir/Packages"
+            # Strip libc dependency from all packages
+            print_info "Stripping libc dependencies..."
+            sed -i \
+                -e 's/^Depends: libc$/Depends:/g' \
+                -e 's/^Depends: libc, /Depends: /g' \
+                -e 's/, libc$//g' \
+                -e 's/, libc,/,/g' \
+                "$feed_dir/Packages"
+            # Clean up any empty or malformed Depends lines
+            sed -i \
+                -e 's/^Depends: ,/Depends: /g' \
+                -e 's/, ,/, /g' \
+                -e 's/,$//' \
+                "$feed_dir/Packages"
             gzip -kf "$feed_dir/Packages" 2>/dev/null || true
 
             # Generate Packages.sig

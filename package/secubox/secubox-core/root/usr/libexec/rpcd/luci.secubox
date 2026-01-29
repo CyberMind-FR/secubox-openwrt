@@ -245,6 +245,81 @@ case "$1" in
 			json_add_string "mode" "string"
 		json_close_object
 
+		# Feed management (new)
+		json_add_object "list_feeds"
+		json_close_object
+
+		json_add_object "add_feed"
+			json_add_string "name" "string"
+			json_add_string "url" "string"
+			json_add_string "feed_type" "string"
+			json_add_string "description" "string"
+		json_close_object
+
+		json_add_object "remove_feed"
+			json_add_string "name" "string"
+		json_close_object
+
+		json_add_object "share_feed"
+			json_add_string "name" "string"
+		json_close_object
+
+		json_add_object "import_feed"
+			json_add_string "url" "string"
+		json_close_object
+
+		# Profile management (extended)
+		json_add_object "export_profile"
+			json_add_string "name" "string"
+			json_add_boolean "include_feeds" "boolean"
+		json_close_object
+
+		json_add_object "import_profile"
+			json_add_string "url" "string"
+			json_add_string "mode" "string"
+		json_close_object
+
+		json_add_object "share_profile"
+			json_add_string "profile" "string"
+		json_close_object
+
+		# Skill management (new)
+		json_add_object "list_skills"
+		json_close_object
+
+		json_add_object "get_skill_providers"
+			json_add_string "skill" "string"
+		json_close_object
+
+		json_add_object "install_skill"
+			json_add_string "skill" "string"
+		json_close_object
+
+		json_add_object "check_skills"
+			json_add_string "profile" "string"
+		json_close_object
+
+		# Feedback management (new)
+		json_add_object "report_issue"
+			json_add_string "app_id" "string"
+			json_add_string "type" "string"
+			json_add_string "summary" "string"
+			json_add_string "details" "string"
+		json_close_object
+
+		json_add_object "resolve_issue"
+			json_add_string "issue_id" "string"
+			json_add_string "description" "string"
+		json_close_object
+
+		json_add_object "search_resolutions"
+			json_add_string "keyword" "string"
+		json_close_object
+
+		json_add_object "list_issues"
+			json_add_string "filter" "string"
+		json_close_object
+
 	json_dump
 		;;
 
@@ -1786,6 +1861,347 @@ PACEOF
 			# Restart dnsmasq to apply DHCP changes
 			/etc/init.d/dnsmasq restart >/dev/null 2>&1 &
 
+			json_dump
+			;;
+
+		# Feed management handlers
+		list_feeds)
+			/usr/sbin/secubox-feed-manager list --json
+			;;
+
+		add_feed)
+			read -r input
+			name=$(echo "$input" | jsonfilter -e '@.name')
+			url=$(echo "$input" | jsonfilter -e '@.url')
+			feed_type=$(echo "$input" | jsonfilter -e '@.feed_type')
+			description=$(echo "$input" | jsonfilter -e '@.description')
+
+			result=$(/usr/sbin/secubox-feed-manager add "$name" "$url" --type "${feed_type:-unpublished}" --description "$description" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Feed added successfully"
+				json_add_string "name" "$name"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		remove_feed)
+			read -r input
+			name=$(echo "$input" | jsonfilter -e '@.name')
+
+			result=$(/usr/sbin/secubox-feed-manager remove "$name" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Feed removed"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		share_feed)
+			read -r input
+			name=$(echo "$input" | jsonfilter -e '@.name')
+			/usr/sbin/secubox-feed-manager share "$name"
+			;;
+
+		import_feed)
+			read -r input
+			url=$(echo "$input" | jsonfilter -e '@.url')
+
+			result=$(/usr/sbin/secubox-feed-manager import "$url" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Feed imported"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		# Profile management handlers (extended)
+		export_profile)
+			read -r input
+			name=$(echo "$input" | jsonfilter -e '@.name')
+			include_feeds=$(echo "$input" | jsonfilter -e '@.include_feeds')
+
+			args=""
+			[ -n "$name" ] && args="$args --name \"$name\""
+			[ "$include_feeds" = "true" ] && args="$args --include-feeds"
+
+			output="/tmp/secubox-profile-export-$$.json"
+			eval /usr/sbin/secubox-profile export $args --output "$output" >/dev/null 2>&1
+
+			if [ -f "$output" ]; then
+				cat "$output"
+				rm -f "$output"
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "Export failed"
+				json_dump
+			fi
+			;;
+
+		import_profile)
+			read -r input
+			url=$(echo "$input" | jsonfilter -e '@.url')
+			mode=$(echo "$input" | jsonfilter -e '@.mode')
+
+			result=$(/usr/sbin/secubox-profile import "$url" "${mode:---merge}" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Profile imported"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		share_profile)
+			read -r input
+			profile=$(echo "$input" | jsonfilter -e '@.profile')
+			/usr/sbin/secubox-profile share "$profile"
+			;;
+
+		# Skill management handlers
+		list_skills)
+			/usr/sbin/secubox-skill list --json
+			;;
+
+		get_skill_providers)
+			read -r input
+			skill=$(echo "$input" | jsonfilter -e '@.skill')
+
+			# Return JSON list of providers for skill
+			json_init
+			json_add_string "skill" "$skill"
+			json_add_array "providers"
+
+			CATALOG_FILE="/usr/share/secubox/catalog.json"
+			if [ -f "$CATALOG_FILE" ]; then
+				idx=0
+				while true; do
+					pid=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].id" 2>/dev/null)
+					[ -z "$pid" ] && break
+
+					caps=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].capabilities[@]" 2>/dev/null)
+					for cap in $caps; do
+						cap_norm=$(echo "$cap" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+						if [ "$cap_norm" = "$skill" ]; then
+							pname=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].name" 2>/dev/null)
+							pstatus=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].status" 2>/dev/null)
+							featured=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].featured" 2>/dev/null)
+
+							json_add_object ""
+							json_add_string "id" "$pid"
+							json_add_string "name" "$pname"
+							json_add_string "status" "$pstatus"
+							json_add_boolean "featured" "$([ "$featured" = "true" ] && echo 1 || echo 0)"
+
+							# Check if installed
+							main_pkg=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].packages.required[0]" 2>/dev/null)
+							installed=0
+							if [ -n "$main_pkg" ] && opkg list-installed 2>/dev/null | grep -q "^$main_pkg "; then
+								installed=1
+							fi
+							json_add_boolean "installed" "$installed"
+							json_close_object
+							break
+						fi
+					done
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			json_close_array
+			json_dump
+			;;
+
+		install_skill)
+			read -r input
+			skill=$(echo "$input" | jsonfilter -e '@.skill')
+
+			result=$(/usr/sbin/secubox-skill install "$skill" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Skill provider installed"
+				json_add_string "skill" "$skill"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		check_skills)
+			read -r input
+			profile=$(echo "$input" | jsonfilter -e '@.profile')
+
+			# Check skills for profile or system
+			if [ -n "$profile" ]; then
+				/usr/sbin/secubox-skill check "$profile"
+			else
+				/usr/sbin/secubox-skill check
+			fi
+			;;
+
+		# Feedback management handlers
+		report_issue)
+			read -r input
+			app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+			type=$(echo "$input" | jsonfilter -e '@.type')
+			summary=$(echo "$input" | jsonfilter -e '@.summary')
+			details=$(echo "$input" | jsonfilter -e '@.details')
+
+			result=$(/usr/sbin/secubox-feedback report "$app_id" --type "${type:-bug}" --summary "$summary" --details "$details" 2>&1)
+			if [ $? -eq 0 ]; then
+				# Extract issue number from result
+				issue_num=$(echo "$result" | grep -oE 'Issue #[0-9]+' | grep -oE '[0-9]+')
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Issue reported"
+				[ -n "$issue_num" ] && json_add_int "issue_number" "$issue_num"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		resolve_issue)
+			read -r input
+			issue_id=$(echo "$input" | jsonfilter -e '@.issue_id')
+			description=$(echo "$input" | jsonfilter -e '@.description')
+
+			result=$(/usr/sbin/secubox-feedback resolve "$issue_id" --description "$description" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Resolution added"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		search_resolutions)
+			read -r input
+			keyword=$(echo "$input" | jsonfilter -e '@.keyword')
+
+			# Return JSON search results
+			RESOLUTIONS_FILE="/var/lib/secubox/feedback/resolutions.json"
+			ISSUES_FILE="/var/lib/secubox/feedback/issues.json"
+
+			json_init
+			json_add_string "keyword" "$keyword"
+			json_add_array "results"
+
+			if [ -f "$RESOLUTIONS_FILE" ]; then
+				idx=0
+				while true; do
+					res_id=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].id" 2>/dev/null)
+					[ -z "$res_id" ] && break
+
+					description=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].description" 2>/dev/null)
+					issue_summary=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].issue_summary" 2>/dev/null)
+					app_id=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].app_id" 2>/dev/null)
+
+					if echo "$description $issue_summary $app_id" | grep -qi "$keyword"; then
+						issue_num=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].issue_number" 2>/dev/null)
+						upvotes=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].upvotes" 2>/dev/null)
+						verified=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].verified" 2>/dev/null)
+
+						json_add_object ""
+						json_add_string "id" "$res_id"
+						json_add_int "issue_number" "$issue_num"
+						json_add_string "app_id" "$app_id"
+						json_add_string "issue_summary" "$issue_summary"
+						json_add_string "description" "$description"
+						json_add_int "upvotes" "${upvotes:-0}"
+						json_add_boolean "verified" "$([ "$verified" = "true" ] && echo 1 || echo 0)"
+						json_close_object
+					fi
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			json_close_array
+			json_dump
+			;;
+
+		list_issues)
+			read -r input
+			filter=$(echo "$input" | jsonfilter -e '@.filter')
+
+			ISSUES_FILE="/var/lib/secubox/feedback/issues.json"
+
+			json_init
+			json_add_array "issues"
+
+			if [ -f "$ISSUES_FILE" ]; then
+				idx=0
+				while true; do
+					issue_id=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].id" 2>/dev/null)
+					[ -z "$issue_id" ] && break
+
+					status=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].status" 2>/dev/null)
+
+					# Apply filter
+					if [ -n "$filter" ] && [ "$filter" != "all" ] && [ "$filter" != "$status" ]; then
+						idx=$((idx + 1))
+						continue
+					fi
+
+					issue_num=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].number" 2>/dev/null)
+					app_id=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].app_id" 2>/dev/null)
+					summary=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].summary" 2>/dev/null)
+					issue_type=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].type" 2>/dev/null)
+					created=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].created_at" 2>/dev/null)
+
+					json_add_object ""
+					json_add_string "id" "$issue_id"
+					json_add_int "number" "$issue_num"
+					json_add_string "app_id" "$app_id"
+					json_add_string "summary" "$summary"
+					json_add_string "type" "$issue_type"
+					json_add_string "status" "$status"
+					json_add_string "created_at" "$created"
+					json_close_object
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			json_close_array
 			json_dump
 			;;
 

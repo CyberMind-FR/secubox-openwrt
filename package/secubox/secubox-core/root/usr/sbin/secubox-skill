@@ -1,0 +1,572 @@
+#!/bin/sh
+#
+# SecuBox Skill System - Capability discovery and management
+# Skills are capabilities that modules can provide or require
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+CATALOG_FILE="/usr/share/secubox/catalog.json"
+CATALOG_DIR="/usr/share/secubox/plugins/catalog"
+SKILLS_CACHE="/var/cache/secubox/skills.json"
+STATE_DIR="/var/run/secubox"
+
+# Color output (using printf for POSIX shell compatibility)
+ESC=$(printf '\033')
+RED="${ESC}[0;31m"
+GREEN="${ESC}[0;32m"
+YELLOW="${ESC}[1;33m"
+BLUE="${ESC}[0;34m"
+CYAN="${ESC}[0;36m"
+MAGENTA="${ESC}[0;35m"
+BOLD="${ESC}[1m"
+NC="${ESC}[0m"
+
+# Skill categories for better organization
+SKILL_CATEGORIES="network security media iot system authentication monitoring"
+
+# Logging
+log() {
+	logger -t secubox-skill "$@"
+}
+
+# Build skills index from catalog
+build_skills_index() {
+	local output="${1:-$SKILLS_CACHE}"
+
+	mkdir -p "$(dirname "$output")"
+
+	json_init
+	json_add_object "skills"
+
+	# Track unique skills
+	local skills_seen=""
+
+	_process_plugin() {
+		local plugin_file="$1"
+		local plugin_id=$(jsonfilter -i "$plugin_file" -e '@.id' 2>/dev/null)
+		local plugin_name=$(jsonfilter -i "$plugin_file" -e '@.name' 2>/dev/null)
+		local capabilities=$(jsonfilter -i "$plugin_file" -e '@.capabilities[@]' 2>/dev/null)
+		local status=$(jsonfilter -i "$plugin_file" -e '@.status' 2>/dev/null)
+
+		# Extract skills from capabilities and tags
+		for cap in $capabilities; do
+			# Normalize skill name
+			local skill=$(echo "$cap" | tr 'A-Z' 'a-z' | tr ' ' '-')
+
+			# Check if we've already seen this skill
+			if ! echo "$skills_seen" | grep -q ":${skill}:"; then
+				skills_seen="${skills_seen}:${skill}:"
+
+				# Add skill entry
+				json_add_object "$skill"
+				json_add_string "id" "$skill"
+				json_add_string "name" "$(echo "$skill" | tr '-' ' ' | sed 's/.*/\u&/')"
+				json_add_array "providers"
+				json_close_array
+				json_close_object
+			fi
+		done
+	}
+
+	# Process all catalog files
+	if [ -d "$CATALOG_DIR" ]; then
+		for plugin in "$CATALOG_DIR"/*.json; do
+			[ -f "$plugin" ] && _process_plugin "$plugin"
+		done
+	fi
+
+	# Also process main catalog
+	if [ -f "$CATALOG_FILE" ]; then
+		local plugins=$(jsonfilter -i "$CATALOG_FILE" -e '@.plugins[@].id' 2>/dev/null)
+		for plugin_id in $plugins; do
+			local idx=0
+			while true; do
+				local pid=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].id" 2>/dev/null)
+				[ -z "$pid" ] && break
+
+				if [ "$pid" = "$plugin_id" ]; then
+					local capabilities=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].capabilities[@]" 2>/dev/null)
+					for cap in $capabilities; do
+						local skill=$(echo "$cap" | tr 'A-Z' 'a-z' | tr ' ' '-')
+						if ! echo "$skills_seen" | grep -q ":${skill}:"; then
+							skills_seen="${skills_seen}:${skill}:"
+						fi
+					done
+					break
+				fi
+				idx=$((idx + 1))
+			done
+		done
+	fi
+
+	json_close_object
+	json_dump > "$output"
+}
+
+# List all available skills
+cmd_list() {
+	local format="${1:-text}"
+
+	echo -e "${BOLD}SecuBox Skills${NC}"
+	echo "═══════════════════════════════════════════════════════════════"
+	echo ""
+
+	# Build skills index with providers count
+	local skills_data=""
+	local skill_count=0
+
+	# Collect skills from all plugins (as newline-separated data)
+	_collect_skills() {
+		local plugin_file="$1"
+		local plugin_id=$(jsonfilter -i "$plugin_file" -e '@.id' 2>/dev/null)
+		local plugin_name=$(jsonfilter -i "$plugin_file" -e '@.name' 2>/dev/null)
+		local capabilities=$(jsonfilter -i "$plugin_file" -e '@.capabilities[@]' 2>/dev/null)
+		local status=$(jsonfilter -i "$plugin_file" -e '@.status' 2>/dev/null)
+
+		for cap in $capabilities; do
+			local skill=$(echo "$cap" | tr 'A-Z' 'a-z' | tr ' ' '-')
+			echo "$skill:$plugin_id:$plugin_name:$status"
+		done
+	}
+
+	# Process catalog
+	local all_skills=""
+	if [ -d "$CATALOG_DIR" ]; then
+		for plugin in "$CATALOG_DIR"/*.json; do
+			[ -f "$plugin" ] || continue
+			all_skills="${all_skills}$(_collect_skills "$plugin")
+"
+		done
+	fi
+
+	# Also from main catalog
+	if [ -f "$CATALOG_FILE" ]; then
+		local idx=0
+		while true; do
+			local pid=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].id" 2>/dev/null)
+			[ -z "$pid" ] && break
+
+			local pname=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].name" 2>/dev/null)
+			local caps=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].capabilities[@]" 2>/dev/null)
+			local pstatus=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].status" 2>/dev/null)
+
+			for cap in $caps; do
+				local skill=$(echo "$cap" | tr 'A-Z' 'a-z' | tr ' ' '-')
+				all_skills="${all_skills}${skill}:${pid}:${pname}:${pstatus}
+"
+			done
+
+			idx=$((idx + 1))
+		done
+	fi
+
+	# Extract unique skills and count providers
+	local unique_skills=$(echo "$all_skills" | cut -d':' -f1 | sort -u | grep -v '^$')
+
+	if [ "$format" = "--json" ]; then
+		echo -n '{"skills":['
+		local first=1
+		for skill in $unique_skills; do
+			local provider_count=$(echo "$all_skills" | grep "^${skill}:" | wc -l)
+			[ "$first" = "1" ] || echo -n ','
+			echo -n "{\"id\":\"$skill\",\"providers\":$provider_count}"
+			first=0
+		done
+		echo ']}'
+		return
+	fi
+
+	# Group skills by category
+	for skill in $unique_skills; do
+		local provider_count=$(echo "$all_skills" | grep "^${skill}:" | wc -l)
+		local display_name=$(echo "$skill" | tr '-' ' ')
+
+		# Determine quality based on provider count
+		local quality_badge=""
+		if [ "$provider_count" -ge 3 ]; then
+			quality_badge="${GREEN}[★★★]${NC}"
+		elif [ "$provider_count" -ge 2 ]; then
+			quality_badge="${YELLOW}[★★☆]${NC}"
+		else
+			quality_badge="${BLUE}[★☆☆]${NC}"
+		fi
+
+		printf "  ${CYAN}%-25s${NC} %s ${BOLD}%d${NC} provider(s)\n" "$display_name" "$quality_badge" "$provider_count"
+		skill_count=$((skill_count + 1))
+	done
+
+	echo ""
+	echo "═══════════════════════════════════════════════════════════════"
+	echo -e " ${BOLD}Total:${NC} $skill_count unique skills"
+	echo ""
+	echo -e " ${BOLD}Quality:${NC} ${GREEN}[★★★]${NC} 3+ providers  ${YELLOW}[★★☆]${NC} 2 providers  ${BLUE}[★☆☆]${NC} 1 provider"
+	echo ""
+	echo -e " ${CYAN}Use 'secubox skill providers <skill>' to see which apps provide a skill${NC}"
+}
+
+# Show providers for a specific skill
+cmd_providers() {
+	local skill="$1"
+
+	if [ -z "$skill" ]; then
+		echo "Usage: secubox skill providers <skill-id>"
+		return 1
+	fi
+
+	# Normalize skill name
+	skill=$(echo "$skill" | tr 'A-Z' 'a-z' | tr ' ' '-')
+
+	echo -e "${BOLD}Providers for: $skill${NC}"
+	echo "═══════════════════════════════════════════════════════════════"
+	echo ""
+
+	local found=0
+
+	# Search in catalog
+	if [ -f "$CATALOG_FILE" ]; then
+		local idx=0
+		while true; do
+			local pid=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].id" 2>/dev/null)
+			[ -z "$pid" ] && break
+
+			local caps=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].capabilities[@]" 2>/dev/null)
+
+			for cap in $caps; do
+				local cap_norm=$(echo "$cap" | tr 'A-Z' 'a-z' | tr ' ' '-')
+				if [ "$cap_norm" = "$skill" ]; then
+					local pname=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].name" 2>/dev/null)
+					local pstatus=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].status" 2>/dev/null)
+					local pdesc=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].description" 2>/dev/null | head -c 60)
+					local featured=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].featured" 2>/dev/null)
+
+					local status_badge=""
+					case "$pstatus" in
+						stable) status_badge="${GREEN}[STABLE]${NC}" ;;
+						beta)   status_badge="${YELLOW}[BETA]${NC}" ;;
+						alpha)  status_badge="${RED}[ALPHA]${NC}" ;;
+						*)      status_badge="[$pstatus]" ;;
+					esac
+
+					local featured_badge=""
+					[ "$featured" = "true" ] && featured_badge="${MAGENTA}★${NC} "
+
+					echo -e "  ${featured_badge}${BOLD}$pname${NC} ($pid) $status_badge"
+					echo -e "    ${CYAN}$pdesc...${NC}"
+
+					# Check if installed
+					local main_pkg=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].packages.required[0]" 2>/dev/null)
+					if [ -n "$main_pkg" ] && opkg list-installed 2>/dev/null | grep -q "^$main_pkg "; then
+						echo -e "    ${GREEN}✓ Installed${NC}"
+					else
+						echo -e "    ○ Not installed"
+					fi
+					echo ""
+
+					found=$((found + 1))
+				fi
+			done
+
+			idx=$((idx + 1))
+		done
+	fi
+
+	# Also search individual catalog files
+	if [ -d "$CATALOG_DIR" ]; then
+		for plugin in "$CATALOG_DIR"/*.json; do
+			[ -f "$plugin" ] || continue
+
+			local caps=$(jsonfilter -i "$plugin" -e '@.capabilities[@]' 2>/dev/null)
+			for cap in $caps; do
+				local cap_norm=$(echo "$cap" | tr 'A-Z' 'a-z' | tr ' ' '-')
+				if [ "$cap_norm" = "$skill" ]; then
+					local pid=$(jsonfilter -i "$plugin" -e '@.id' 2>/dev/null)
+
+					# Skip if already shown from main catalog
+					if [ -f "$CATALOG_FILE" ] && jsonfilter -i "$CATALOG_FILE" -e "@.plugins[@].id" 2>/dev/null | grep -q "^${pid}$"; then
+						continue
+					fi
+
+					local pname=$(jsonfilter -i "$plugin" -e '@.name' 2>/dev/null)
+					local pstatus=$(jsonfilter -i "$plugin" -e '@.status' 2>/dev/null)
+					local pdesc=$(jsonfilter -i "$plugin" -e '@.description' 2>/dev/null | head -c 60)
+
+					local status_badge=""
+					case "$pstatus" in
+						stable) status_badge="${GREEN}[STABLE]${NC}" ;;
+						beta)   status_badge="${YELLOW}[BETA]${NC}" ;;
+						alpha)  status_badge="${RED}[ALPHA]${NC}" ;;
+						*)      status_badge="[$pstatus]" ;;
+					esac
+
+					echo -e "  ${BOLD}$pname${NC} ($pid) $status_badge"
+					echo -e "    ${CYAN}$pdesc...${NC}"
+					echo ""
+
+					found=$((found + 1))
+				fi
+			done
+		done
+	fi
+
+	if [ "$found" -eq 0 ]; then
+		echo -e "  ${YELLOW}No providers found for skill: $skill${NC}"
+		echo ""
+		echo "  Try 'secubox skill list' to see available skills"
+	else
+		echo "═══════════════════════════════════════════════════════════════"
+		echo -e " ${BOLD}Total:${NC} $found provider(s) for '$skill'"
+		echo ""
+		echo -e " ${CYAN}Install with: secubox skill install $skill${NC}"
+	fi
+}
+
+# Install best provider for a skill
+cmd_install() {
+	local skill="$1"
+
+	if [ -z "$skill" ]; then
+		echo "Usage: secubox skill install <skill-id>"
+		return 1
+	fi
+
+	# Normalize skill name
+	skill=$(echo "$skill" | tr 'A-Z' 'a-z' | tr ' ' '-')
+
+	echo -e "${BOLD}Installing provider for: $skill${NC}"
+	echo "═══════════════════════════════════════════════════════════════"
+
+	# Find best provider (featured first, then stable)
+	local best_provider=""
+	local best_name=""
+
+	if [ -f "$CATALOG_FILE" ]; then
+		local idx=0
+		while true; do
+			local pid=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].id" 2>/dev/null)
+			[ -z "$pid" ] && break
+
+			local caps=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].capabilities[@]" 2>/dev/null)
+
+			for cap in $caps; do
+				local cap_norm=$(echo "$cap" | tr 'A-Z' 'a-z' | tr ' ' '-')
+				if [ "$cap_norm" = "$skill" ]; then
+					local pstatus=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].status" 2>/dev/null)
+					local featured=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].featured" 2>/dev/null)
+					local pname=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].name" 2>/dev/null)
+
+					# Prefer featured and stable
+					if [ "$featured" = "true" ] && [ "$pstatus" = "stable" ]; then
+						best_provider="$pid"
+						best_name="$pname"
+						break 2
+					elif [ -z "$best_provider" ] && [ "$pstatus" = "stable" ]; then
+						best_provider="$pid"
+						best_name="$pname"
+					elif [ -z "$best_provider" ]; then
+						best_provider="$pid"
+						best_name="$pname"
+					fi
+				fi
+			done
+
+			idx=$((idx + 1))
+		done
+	fi
+
+	if [ -z "$best_provider" ]; then
+		echo -e "${RED}ERROR: No provider found for skill: $skill${NC}"
+		return 1
+	fi
+
+	echo -e "  Selected provider: ${BOLD}$best_name${NC} ($best_provider)"
+	echo ""
+
+	# Install using appstore
+	/usr/sbin/secubox-appstore install "$best_provider"
+	local result=$?
+
+	if [ "$result" -eq 0 ]; then
+		echo ""
+		echo -e "${GREEN}✓ Skill '$skill' is now available via $best_name${NC}"
+	fi
+
+	return $result
+}
+
+# Check skills in a profile or system
+cmd_check() {
+	local profile="$1"
+
+	echo -e "${BOLD}Skill Check${NC}"
+	echo "═══════════════════════════════════════════════════════════════"
+
+	if [ -n "$profile" ]; then
+		# Check profile skills
+		local profile_file=""
+
+		for dir in "/usr/share/secubox/profiles" "/etc/secubox/profiles"; do
+			[ -d "$dir" ] || continue
+			if [ -f "$dir/${profile}.json" ]; then
+				profile_file="$dir/${profile}.json"
+				break
+			fi
+		done
+
+		if [ -z "$profile_file" ]; then
+			echo -e "${RED}ERROR: Profile not found: $profile${NC}"
+			return 1
+		fi
+
+		echo -e "Checking skills for profile: ${CYAN}$profile${NC}"
+		echo ""
+
+		local required_skills=$(jsonfilter -i "$profile_file" -e '@.skills_required[@]' 2>/dev/null)
+
+		if [ -z "$required_skills" ]; then
+			echo -e "  ${YELLOW}No skills required by this profile${NC}"
+			return 0
+		fi
+
+		local missing=0
+
+		for skill in $required_skills; do
+			echo -n "  Checking skill: $skill... "
+
+			# Check if any provider is installed
+			local has_provider=0
+
+			if [ -f "$CATALOG_FILE" ]; then
+				local idx=0
+				while true; do
+					local pid=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].id" 2>/dev/null)
+					[ -z "$pid" ] && break
+
+					local caps=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].capabilities[@]" 2>/dev/null)
+
+					for cap in $caps; do
+						local cap_norm=$(echo "$cap" | tr 'A-Z' 'a-z' | tr ' ' '-')
+						if [ "$cap_norm" = "$skill" ]; then
+							local main_pkg=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].packages.required[0]" 2>/dev/null)
+							if [ -n "$main_pkg" ] && opkg list-installed 2>/dev/null | grep -q "^$main_pkg "; then
+								has_provider=1
+								echo -e "${GREEN}✓${NC} (via $pid)"
+								break 2
+							fi
+						fi
+					done
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			if [ "$has_provider" -eq 0 ]; then
+				echo -e "${RED}✗ Missing${NC}"
+				missing=$((missing + 1))
+			fi
+		done
+
+		echo ""
+		if [ "$missing" -gt 0 ]; then
+			echo -e "${YELLOW}⚠ $missing required skill(s) missing${NC}"
+			echo -e "  Install with: secubox skill install <skill-id>"
+			return 1
+		else
+			echo -e "${GREEN}✓ All required skills are available${NC}"
+		fi
+	else
+		# Check system skills (what's installed)
+		echo "Installed skills:"
+		echo ""
+
+		local installed_skills=""
+
+		if [ -f "$CATALOG_FILE" ]; then
+			local idx=0
+			while true; do
+				local pid=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].id" 2>/dev/null)
+				[ -z "$pid" ] && break
+
+				local main_pkg=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].packages.required[0]" 2>/dev/null)
+
+				if [ -n "$main_pkg" ] && opkg list-installed 2>/dev/null | grep -q "^$main_pkg "; then
+					local caps=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].capabilities[@]" 2>/dev/null)
+					local pname=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].name" 2>/dev/null)
+
+					for cap in $caps; do
+						local skill=$(echo "$cap" | tr 'A-Z' 'a-z' | tr ' ' '-')
+						if ! echo "$installed_skills" | grep -q ":${skill}:"; then
+							installed_skills="${installed_skills}:${skill}:"
+							echo -e "  ${GREEN}✓${NC} ${CYAN}$skill${NC} (via $pname)"
+						fi
+					done
+				fi
+
+				idx=$((idx + 1))
+			done
+		fi
+
+		if [ -z "$installed_skills" ]; then
+			echo -e "  ${YELLOW}No skills installed${NC}"
+		fi
+	fi
+}
+
+# Usage
+usage() {
+	cat <<EOF
+SecuBox Skill System - Capability discovery and management
+
+Usage: secubox-skill <command> [options]
+
+Commands:
+  list [--json]           List all available skills
+  providers <skill>       Show apps that provide a skill
+  install <skill>         Install best provider for skill
+  check [profile]         Verify skills in profile or system
+
+Skills are capabilities that modules can provide. Multiple modules
+may provide the same skill with different implementations.
+
+Examples:
+  secubox-skill list                     # List all skills
+  secubox-skill providers captive-portal # Show apps with captive portal
+  secubox-skill install vpn              # Install best VPN provider
+  secubox-skill check home-media         # Check skills in profile
+  secubox-skill check                    # List installed skills
+
+Quality Indicators:
+  [★★★] - Well supported (3+ providers)
+  [★★☆] - Good support (2 providers)
+  [★☆☆] - Limited support (1 provider)
+EOF
+}
+
+# Main
+case "${1:-}" in
+	list)
+		shift
+		cmd_list "$@"
+		;;
+	providers)
+		shift
+		cmd_providers "$@"
+		;;
+	install)
+		shift
+		cmd_install "$@"
+		;;
+	check)
+		shift
+		cmd_check "$@"
+		;;
+	-h|--help|help|"")
+		usage
+		;;
+	*)
+		echo "Unknown command: $1" >&2
+		usage
+		exit 1
+		;;
+esac
