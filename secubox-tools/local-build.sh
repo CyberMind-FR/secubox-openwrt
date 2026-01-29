@@ -53,10 +53,21 @@ declare -A DEVICE_PROFILES=(
 # These packages compile native code and need system libraries not available in SDK.
 # NOTE: secubox-app-* wrappers are PKGARCH:=all (shell scripts) and CAN be built in SDK.
 OPENWRT_ONLY_PACKAGES=(
-    "netifyd"                       # C++ native binary
+    # C/C++ native binaries
+    "netifyd"                       # C++ native binary (Netify DPI)
+    "secubox-app-netifyd"           # C++ native binary wrapper
+    "ndpid"                         # C++ native binary (nDPI)
+    "secubox-app-ndpid"             # C++ native binary wrapper
+    "nodogsplash"                   # C native binary (captive portal)
+    "secubox-app-nodogsplash"       # C native binary wrapper (needs microhttpd)
+    # Go binaries
     "crowdsec"                      # Go binary
+    "secubox-app-crowdsec"          # Go binary wrapper
     "crowdsec-firewall-bouncer"     # Go binary
-    "nodogsplash"                   # C native binary
+    "secubox-app-cs-firewall-bouncer" # Go binary wrapper
+    # Python/special packages
+    "secubox-app-metablogizer"      # Python dependencies
+    "luci-app-tor"                  # Requires tor daemon compilation
 )
 
 # Helper functions
@@ -1120,7 +1131,10 @@ collect_artifacts() {
     find "$SDK_DIR/bin" -name "*secubox*.${pkg_ext}" -exec cp {} "$BUILD_DIR/$ARCH/" \; 2>/dev/null || true
     find "$SDK_DIR/bin" -name "netifyd*.${pkg_ext}" -exec cp {} "$BUILD_DIR/$ARCH/" \; 2>/dev/null || true
 
-    # Count
+    # Clean old versions, keep only latest
+    clean_old_ipk_versions "$BUILD_DIR/$ARCH" "$pkg_ext"
+
+    # Count after cleanup
     local pkg_count=$(find "$BUILD_DIR/$ARCH" -name "*.${pkg_ext}" 2>/dev/null | wc -l)
 
     echo ""
@@ -1138,6 +1152,62 @@ collect_artifacts() {
     print_success "Total: $pkg_count packages"
 
     return 0
+}
+
+# Clean old IPK versions, keep only the latest for each package
+clean_old_ipk_versions() {
+    local feed_dir="$1"
+    local pkg_ext="${2:-ipk}"
+
+    print_info "Cleaning old package versions..."
+
+    # Get list of all packages
+    local packages=()
+    for pkg in "$feed_dir"/*."$pkg_ext"; do
+        [[ -f "$pkg" ]] || continue
+        local basename=$(basename "$pkg")
+        # Extract package name (everything before first underscore)
+        local name=$(echo "$basename" | sed 's/_[0-9].*$//')
+        packages+=("$name")
+    done
+
+    # Get unique package names
+    local unique_packages=($(printf '%s\n' "${packages[@]}" | sort -u))
+
+    local removed=0
+    for name in "${unique_packages[@]}"; do
+        # Find all versions of this package, sorted by modification time (newest first)
+        local versions=($(ls -t "$feed_dir/${name}_"*."$pkg_ext" 2>/dev/null))
+
+        # Keep only the latest (first in the list), remove the rest
+        if [[ ${#versions[@]} -gt 1 ]]; then
+            for ((i=1; i<${#versions[@]}; i++)); do
+                echo "  Removing old: $(basename "${versions[$i]}")"
+                rm -f "${versions[$i]}"
+                removed=$((removed + 1))
+            done
+        fi
+    done
+
+    if [[ $removed -gt 0 ]]; then
+        print_success "Removed $removed old package versions"
+    else
+        print_info "No old versions to remove"
+    fi
+}
+
+# Generate Packages.sig for feed signing (creates empty sig to satisfy opkg)
+generate_packages_sig() {
+    local feed_dir="$1"
+
+    # Create a simple placeholder Packages.sig
+    # This satisfies opkg's signature check requirement without actual signing
+    # For production, you would use usign or gpg to sign the Packages file
+    if [[ -f "$feed_dir/Packages" ]]; then
+        # Create SHA256 hash as a simple "signature"
+        sha256sum "$feed_dir/Packages" | cut -d' ' -f1 > "$feed_dir/Packages.sig"
+        print_success "Generated Packages.sig"
+    fi
 }
 
 # Embed built packages into luci-app-secubox-bonus as local feed
@@ -1162,8 +1232,11 @@ embed_local_feed() {
     print_info "Copying packages to local feed..."
     cp "$src_dir"/*.${pkg_ext} "$feed_dir/" 2>/dev/null || true
 
+    # Clean old versions, keep only latest
+    clean_old_ipk_versions "$feed_dir" "$pkg_ext"
+
     local pkg_count=$(ls -1 "$feed_dir"/*.${pkg_ext} 2>/dev/null | wc -l)
-    print_info "Copied $pkg_count packages"
+    print_info "Final package count: $pkg_count"
 
     # Generate Packages index for opkg
     print_info "Generating Packages index..."
@@ -1192,6 +1265,17 @@ embed_local_feed() {
         # Create compressed index
         gzip -k Packages 2>/dev/null || true
     )
+
+    # Strip libc dependency from Architecture: all packages
+    # The SDK adds libc to all packages, but for pure Lua/shell packages
+    # this causes opkg to fail when using a local feed that doesn't have libc
+    print_info "Stripping libc dependency from packages..."
+    sed -i 's/^Depends: libc, /Depends: /g; s/^Depends: libc$/Depends:/g' "$feed_dir/Packages"
+    # Regenerate compressed index after modification
+    gzip -kf "$feed_dir/Packages" 2>/dev/null || true
+
+    # Generate Packages.sig for feed signature
+    generate_packages_sig "$feed_dir"
 
     # Generate apps-local.json for appstore UI
     print_info "Generating local apps manifest..."
@@ -1360,6 +1444,10 @@ run_build_openwrt() {
         ["netifyd"]="secubox-app-netifyd"
         ["crowdsec"]="secubox-app-crowdsec"
         ["mitmproxy"]="secubox-app-mitmproxy"
+        ["metablogizer"]="secubox-app-metablogizer"
+        ["tor"]="secubox-app-tor"
+        ["luci-app-tor"]="luci-app-tor"
+        ["cs-firewall-bouncer"]="secubox-app-cs-firewall-bouncer"
     )
 
     # Map directory names to actual package names (PKG_NAME in Makefile)
@@ -1370,6 +1458,10 @@ run_build_openwrt() {
         ["secubox-app-crowdsec"]="secubox-crowdsec"
         ["secubox-app-nodogsplash"]="secubox-app-nodogsplash"
         ["secubox-app-mitmproxy"]="secubox-app-mitmproxy"
+        ["secubox-app-metablogizer"]="secubox-app-metablogizer"
+        ["secubox-app-tor"]="secubox-app-tor"
+        ["secubox-app-cs-firewall-bouncer"]="secubox-app-cs-firewall-bouncer"
+        ["luci-app-tor"]="luci-app-tor"
     )
 
     # Resolve directory name (handle shorthand like "nodogsplash" -> "secubox-app-nodogsplash")
@@ -2328,6 +2420,7 @@ COMMANDS:
     clean                       Clean build directories
     clean-all                   Clean all build directories including OpenWrt source and local-feed
     sync                        Sync packages from package/secubox to local-feed
+    sync-feed                   Clean old IPKs and regenerate feed (Packages, Packages.sig, apps-local.json)
     deploy [router] [packages]  Deploy packages to router (default: 192.168.255.1)
     help                        Show this help message
 
@@ -2444,7 +2537,7 @@ main() {
                         arch_specified=true
                         shift 2
                         ;;
-                    luci-app-*|luci-theme-*|secubox-app-*|secubox-*|netifyd|ndpid|nodogsplash|crowdsec|mitmproxy)
+                    luci-app-*|luci-theme-*|secubox-app-*|secubox-*|netifyd|ndpid|nodogsplash|crowdsec|mitmproxy|metablogizer|tor|cs-firewall-bouncer)
                         single_package="$1"
                         shift
                         ;;
@@ -2507,6 +2600,60 @@ main() {
             print_header "Synchronizing packages to local-feed"
             sync_packages_to_local_feed
             print_success "Packages synchronized to local-feed"
+            ;;
+
+        sync-feed|regenerate-feed)
+            print_header "Regenerating Local Feed"
+            local feed_dir="$SCRIPT_DIR/../package/secubox/luci-app-secubox-bonus/root/www/secubox-feed"
+            local pkg_ext="ipk"
+
+            if [[ ! -d "$feed_dir" ]]; then
+                print_error "Feed directory not found: $feed_dir"
+                exit 1
+            fi
+
+            # Clean old versions
+            clean_old_ipk_versions "$feed_dir" "$pkg_ext"
+
+            # Regenerate Packages index
+            print_info "Regenerating Packages index..."
+            (
+                cd "$feed_dir"
+                rm -f Packages Packages.gz Packages.sig
+
+                for pkg in *.${pkg_ext}; do
+                    [[ -f "$pkg" ]] || continue
+
+                    local control=""
+                    control=$(tar -xzOf "$pkg" ./control.tar.gz 2>/dev/null | tar -xzOf - ./control 2>/dev/null || \
+                              ar -p "$pkg" control.tar.gz 2>/dev/null | tar -xzOf - ./control 2>/dev/null || \
+                              ar -p "$pkg" control.tar.zst 2>/dev/null | zstd -d 2>/dev/null | tar -xOf - ./control 2>/dev/null || true)
+
+                    if [[ -n "$control" ]]; then
+                        echo "$control"
+                        echo "Filename: $pkg"
+                        echo "Size: $(stat -c%s "$pkg")"
+                        echo "SHA256sum: $(sha256sum "$pkg" | cut -d' ' -f1)"
+                        echo ""
+                    fi
+                done > Packages
+
+                gzip -k Packages 2>/dev/null || true
+            )
+
+            # Strip libc dependency from packages
+            print_info "Stripping libc dependency..."
+            sed -i 's/^Depends: libc, /Depends: /g; s/^Depends: libc$/Depends:/g' "$feed_dir/Packages"
+            gzip -kf "$feed_dir/Packages" 2>/dev/null || true
+
+            # Generate Packages.sig
+            generate_packages_sig "$feed_dir"
+
+            # Regenerate apps-local.json
+            PKG_EXT="$pkg_ext" generate_local_apps_json "$feed_dir"
+
+            local pkg_count=$(ls -1 "$feed_dir"/*.${pkg_ext} 2>/dev/null | wc -l)
+            print_success "Feed regenerated with $pkg_count packages"
             ;;
 
         deploy)

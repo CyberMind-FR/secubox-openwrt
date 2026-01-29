@@ -22,7 +22,7 @@ define Package/secubox-app-tor
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Tor Shield
-  DEPENDS:=+tor +tor-geoip +iptables +curl +jsonfilter +socat
+  DEPENDS:=+iptables +curl +jsonfilter +socat
 endef
 
 define Package/secubox-app-tor/description

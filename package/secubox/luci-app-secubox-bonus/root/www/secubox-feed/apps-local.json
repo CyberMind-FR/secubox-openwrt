@@ -1,0 +1,894 @@
+{
+  "feed_url": "/secubox-feed",
+  "generated": "2026-01-29T06:24:48+01:00",
+  "packages": [
+    {
+      "name": "luci-app-auth-guardian",
+      "version": "0.4.0-r3",
+      "filename": "luci-app-auth-guardian_0.4.0-r3_all.ipk",
+      "size": 12042,
+      "category": "security",
+      "icon": "key",
+      "description": "Authentication management",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-bandwidth-manager",
+      "version": "0.5.0-r2",
+      "filename": "luci-app-bandwidth-manager_0.5.0-r2_all.ipk",
+      "size": 66969,
+      "category": "network",
+      "icon": "activity",
+      "description": "Bandwidth monitoring and control",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-cdn-cache",
+      "version": "0.5.0-r3",
+      "filename": "luci-app-cdn-cache_0.5.0-r3_all.ipk",
+      "size": 20400,
+      "category": "network",
+      "icon": "globe",
+      "description": "CDN caching",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-client-guardian",
+      "version": "0.4.0-r7",
+      "filename": "luci-app-client-guardian_0.4.0-r7_all.ipk",
+      "size": 57069,
+      "category": "network",
+      "icon": "users",
+      "description": "Client management and monitoring",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-crowdsec-dashboard",
+      "version": "0.7.0-r29",
+      "filename": "luci-app-crowdsec-dashboard_0.7.0-r29_all.ipk",
+      "size": 53295,
+      "category": "security",
+      "icon": "shield",
+      "description": "CrowdSec security monitoring",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-cyberfeed",
+      "version": "0.1.1-r1",
+      "filename": "luci-app-cyberfeed_0.1.1-r1_all.ipk",
+      "size": 12804,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-exposure",
+      "version": "1.0.0-r3",
+      "filename": "luci-app-exposure_1.0.0-r3_all.ipk",
+      "size": 20505,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-gitea",
+      "version": "1.0.0-r2",
+      "filename": "luci-app-gitea_1.0.0-r2_all.ipk",
+      "size": 15552,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-glances",
+      "version": "1.0.0-r2",
+      "filename": "luci-app-glances_1.0.0-r2_all.ipk",
+      "size": 6937,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-haproxy",
+      "version": "1.0.0-r8",
+      "filename": "luci-app-haproxy_1.0.0-r8_all.ipk",
+      "size": 33975,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-hexojs",
+      "version": "1.0.0-r3",
+      "filename": "luci-app-hexojs_1.0.0-r3_all.ipk",
+      "size": 32982,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-ksm-manager",
+      "version": "0.4.0-r2",
+      "filename": "luci-app-ksm-manager_0.4.0-r2_all.ipk",
+      "size": 21542,
+      "category": "system",
+      "icon": "cpu",
+      "description": "Kernel memory management",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-localai",
+      "version": "0.1.0-r15",
+      "filename": "luci-app-localai_0.1.0-r15_all.ipk",
+      "size": 14329,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-lyrion",
+      "version": "1.0.0-r1",
+      "filename": "luci-app-lyrion_1.0.0-r1_all.ipk",
+      "size": 6697,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-magicmirror2",
+      "version": "0.4.0-r6",
+      "filename": "luci-app-magicmirror2_0.4.0-r6_all.ipk",
+      "size": 12250,
+      "category": "iot",
+      "icon": "monitor",
+      "description": "Smart mirror display",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-mailinabox",
+      "version": "1.0.0-r1",
+      "filename": "luci-app-mailinabox_1.0.0-r1_all.ipk",
+      "size": 5452,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-media-flow",
+      "version": "0.6.4-r1",
+      "filename": "luci-app-media-flow_0.6.4-r1_all.ipk",
+      "size": 19087,
+      "category": "media",
+      "icon": "film",
+      "description": "Media streaming",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-metablogizer",
+      "version": "1.0.0-r3",
+      "filename": "luci-app-metablogizer_1.0.0-r3_all.ipk",
+      "size": 21617,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-metabolizer",
+      "version": "1.0.0-r2",
+      "filename": "luci-app-metabolizer_1.0.0-r2_all.ipk",
+      "size": 4724,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-mitmproxy",
+      "version": "0.4.0-r6",
+      "filename": "luci-app-mitmproxy_0.4.0-r6_all.ipk",
+      "size": 18906,
+      "category": "security",
+      "icon": "lock",
+      "description": "HTTPS proxy and traffic inspection",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-mmpm",
+      "version": "0.2.0-r3",
+      "filename": "luci-app-mmpm_0.2.0-r3_all.ipk",
+      "size": 7874,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-mqtt-bridge",
+      "version": "0.4.0-r4",
+      "filename": "luci-app-mqtt-bridge_0.4.0-r4_all.ipk",
+      "size": 23861,
+      "category": "iot",
+      "icon": "message-square",
+      "description": "MQTT bridge",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-ndpid",
+      "version": "1.1.2-r2",
+      "filename": "luci-app-ndpid_1.1.2-r2_all.ipk",
+      "size": 22427,
+      "category": "security",
+      "icon": "eye",
+      "description": "Deep packet inspection",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-netdata-dashboard",
+      "version": "0.5.0-r2",
+      "filename": "luci-app-netdata-dashboard_0.5.0-r2_all.ipk",
+      "size": 22367,
+      "category": "monitoring",
+      "icon": "bar-chart-2",
+      "description": "System monitoring dashboard",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-network-modes",
+      "version": "0.5.0-r3",
+      "filename": "luci-app-network-modes_0.5.0-r3_all.ipk",
+      "size": 55630,
+      "category": "network",
+      "icon": "wifi",
+      "description": "Network configuration",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-network-tweaks",
+      "version": "1.0.0-r7",
+      "filename": "luci-app-network-tweaks_1.0.0-r7_all.ipk",
+      "size": 15421,
+      "category": "network",
+      "icon": "wifi",
+      "description": "Network configuration",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-nextcloud",
+      "version": "1.0.0-r1",
+      "filename": "luci-app-nextcloud_1.0.0-r1_all.ipk",
+      "size": 6450,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-ollama",
+      "version": "0.1.0-r1",
+      "filename": "luci-app-ollama_0.1.0-r1_all.ipk",
+      "size": 11957,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-picobrew",
+      "version": "1.0.0-r1",
+      "filename": "luci-app-picobrew_1.0.0-r1_all.ipk",
+      "size": 9939,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-secubox",
+      "version": "0.7.1-r4",
+      "filename": "luci-app-secubox_0.7.1-r4_all.ipk",
+      "size": 54932,
+      "category": "system",
+      "icon": "box",
+      "description": "SecuBox system component",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-secubox-admin",
+      "version": "1.0.0-r17",
+      "filename": "luci-app-secubox-admin_1.0.0-r17_all.ipk",
+      "size": 59699,
+      "category": "system",
+      "icon": "box",
+      "description": "SecuBox system component",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-secubox-bonus",
+      "version": "0.2.0-r2",
+      "filename": "luci-app-secubox-bonus_0.2.0-r2_all.ipk",
+      "size": 99042972,
+      "category": "system",
+      "icon": "box",
+      "description": "SecuBox system component",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-secubox-crowdsec",
+      "version": "1.0.0-r3",
+      "filename": "luci-app-secubox-crowdsec_1.0.0-r3_all.ipk",
+      "size": 13882,
+      "category": "system",
+      "icon": "box",
+      "description": "SecuBox system component",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-secubox-netdiag",
+      "version": "1.0.0-r1",
+      "filename": "luci-app-secubox-netdiag_1.0.0-r1_all.ipk",
+      "size": 11963,
+      "category": "system",
+      "icon": "box",
+      "description": "SecuBox system component",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-secubox-netifyd",
+      "version": "1.2.1-r1",
+      "filename": "luci-app-secubox-netifyd_1.2.1-r1_all.ipk",
+      "size": 39525,
+      "category": "system",
+      "icon": "box",
+      "description": "SecuBox system component",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-secubox-portal",
+      "version": "0.7.0-r2",
+      "filename": "luci-app-secubox-portal_0.7.0-r2_all.ipk",
+      "size": 32196,
+      "category": "system",
+      "icon": "box",
+      "description": "SecuBox system component",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-secubox-security-threats",
+      "version": "1.0.0-r4",
+      "filename": "luci-app-secubox-security-threats_1.0.0-r4_all.ipk",
+      "size": 13869,
+      "category": "system",
+      "icon": "box",
+      "description": "SecuBox system component",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-service-registry",
+      "version": "1.0.0-r1",
+      "filename": "luci-app-service-registry_1.0.0-r1_all.ipk",
+      "size": 33365,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-streamlit",
+      "version": "1.0.0-r9",
+      "filename": "luci-app-streamlit_1.0.0-r9_all.ipk",
+      "size": 20434,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-system-hub",
+      "version": "0.5.1-r4",
+      "filename": "luci-app-system-hub_0.5.1-r4_all.ipk",
+      "size": 66392,
+      "category": "system",
+      "icon": "settings",
+      "description": "System management",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-tor-shield",
+      "version": "1.0.0-r10",
+      "filename": "luci-app-tor-shield_1.0.0-r10_all.ipk",
+      "size": 24496,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-traffic-shaper",
+      "version": "0.4.0-r2",
+      "filename": "luci-app-traffic-shaper_0.4.0-r2_all.ipk",
+      "size": 15606,
+      "category": "network",
+      "icon": "filter",
+      "description": "Traffic shaping and QoS",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-vhost-manager",
+      "version": "0.5.0-r5",
+      "filename": "luci-app-vhost-manager_0.5.0-r5_all.ipk",
+      "size": 29193,
+      "category": "network",
+      "icon": "server",
+      "description": "Virtual host management",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-wireguard-dashboard",
+      "version": "0.7.0-r5",
+      "filename": "luci-app-wireguard-dashboard_0.7.0-r5_all.ipk",
+      "size": 45383,
+      "category": "vpn",
+      "icon": "shield",
+      "description": "WireGuard VPN dashboard",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-app-zigbee2mqtt",
+      "version": "1.0.0-r2",
+      "filename": "luci-app-zigbee2mqtt_1.0.0-r2_all.ipk",
+      "size": 7052,
+      "category": "iot",
+      "icon": "radio",
+      "description": "Zigbee device management",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "luci-theme-secubox",
+      "version": "0.4.7-r1",
+      "filename": "luci-theme-secubox_0.4.7-r1_all.ipk",
+      "size": 111820,
+      "category": "theme",
+      "icon": "palette",
+      "description": "LuCI theme",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "secubox-app",
+      "version": "1.0.0-r2",
+      "filename": "secubox-app_1.0.0-r2_all.ipk",
+      "size": 11150,
+      "category": "utility",
+      "icon": "package",
+      "description": "SecuBox package",
+      "installed": false,
+      "luci_app": null
+    }
+,
+    {
+      "name": "secubox-app-adguardhome",
+      "version": "1.0.0-r2",
+      "filename": "secubox-app-adguardhome_1.0.0-r2_all.ipk",
+      "size": 2837,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-adguardhome"
+    }
+,
+    {
+      "name": "secubox-app-auth-logger",
+      "version": "1.2.2-r1",
+      "filename": "secubox-app-auth-logger_1.2.2-r1_all.ipk",
+      "size": 9357,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-auth-logger"
+    }
+,
+    {
+      "name": "secubox-app-crowdsec-custom",
+      "version": "1.1.0-r1",
+      "filename": "secubox-app-crowdsec-custom_1.1.0-r1_all.ipk",
+      "size": 5731,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-crowdsec-custom"
+    }
+,
+    {
+      "name": "secubox-app-cs-firewall-bouncer",
+      "version": "0.0.31-r4_aarch64",
+      "filename": "secubox-app-cs-firewall-bouncer_0.0.31-r4_aarch64_cortex-a72.ipk",
+      "size": 5049378,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-cs-firewall-bouncer"
+    }
+,
+    {
+      "name": "secubox-app-cyberfeed",
+      "version": "0.2.1-r1",
+      "filename": "secubox-app-cyberfeed_0.2.1-r1_all.ipk",
+      "size": 12417,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-cyberfeed"
+    }
+,
+    {
+      "name": "secubox-app-domoticz",
+      "version": "1.0.0-r2",
+      "filename": "secubox-app-domoticz_1.0.0-r2_all.ipk",
+      "size": 2518,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-domoticz"
+    }
+,
+    {
+      "name": "secubox-app-exposure",
+      "version": "1.0.0-r1",
+      "filename": "secubox-app-exposure_1.0.0-r1_all.ipk",
+      "size": 6791,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-exposure"
+    }
+,
+    {
+      "name": "secubox-app-gitea",
+      "version": "1.0.0-r5",
+      "filename": "secubox-app-gitea_1.0.0-r5_all.ipk",
+      "size": 9379,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-gitea"
+    }
+,
+    {
+      "name": "secubox-app-glances",
+      "version": "1.0.0-r1",
+      "filename": "secubox-app-glances_1.0.0-r1_all.ipk",
+      "size": 5506,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-glances"
+    }
+,
+    {
+      "name": "secubox-app-haproxy",
+      "version": "1.0.0-r23",
+      "filename": "secubox-app-haproxy_1.0.0-r23_all.ipk",
+      "size": 15640,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-haproxy"
+    }
+,
+    {
+      "name": "secubox-app-hexojs",
+      "version": "1.0.0-r8",
+      "filename": "secubox-app-hexojs_1.0.0-r8_all.ipk",
+      "size": 94958,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-hexojs"
+    }
+,
+    {
+      "name": "secubox-app-localai",
+      "version": "2.25.0-r1",
+      "filename": "secubox-app-localai_2.25.0-r1_all.ipk",
+      "size": 5679,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-localai"
+    }
+,
+    {
+      "name": "secubox-app-localai-wb",
+      "version": "2.25.0-r1",
+      "filename": "secubox-app-localai-wb_2.25.0-r1_all.ipk",
+      "size": 7911,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-localai-wb"
+    }
+,
+    {
+      "name": "secubox-app-lyrion",
+      "version": "2.0.2-r1",
+      "filename": "secubox-app-lyrion_2.0.2-r1_all.ipk",
+      "size": 7261,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-lyrion"
+    }
+,
+    {
+      "name": "secubox-app-magicmirror2",
+      "version": "0.4.0-r8",
+      "filename": "secubox-app-magicmirror2_0.4.0-r8_all.ipk",
+      "size": 9218,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-magicmirror2"
+    }
+,
+    {
+      "name": "secubox-app-mailinabox",
+      "version": "2.0.0-r1",
+      "filename": "secubox-app-mailinabox_2.0.0-r1_all.ipk",
+      "size": 7536,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-mailinabox"
+    }
+,
+    {
+      "name": "secubox-app-metabolizer",
+      "version": "1.0.0-r3",
+      "filename": "secubox-app-metabolizer_1.0.0-r3_all.ipk",
+      "size": 13937,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-metabolizer"
+    }
+,
+    {
+      "name": "secubox-app-mitmproxy",
+      "version": "0.4.0-r16",
+      "filename": "secubox-app-mitmproxy_0.4.0-r16_all.ipk",
+      "size": 10179,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-mitmproxy"
+    }
+,
+    {
+      "name": "secubox-app-mmpm",
+      "version": "0.2.0-r5",
+      "filename": "secubox-app-mmpm_0.2.0-r5_all.ipk",
+      "size": 3936,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-mmpm"
+    }
+,
+    {
+      "name": "secubox-app-nextcloud",
+      "version": "1.0.0-r2",
+      "filename": "secubox-app-nextcloud_1.0.0-r2_all.ipk",
+      "size": 2918,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-nextcloud"
+    }
+,
+    {
+      "name": "secubox-app-ollama",
+      "version": "0.1.0-r1",
+      "filename": "secubox-app-ollama_0.1.0-r1_all.ipk",
+      "size": 5699,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-ollama"
+    }
+,
+    {
+      "name": "secubox-app-picobrew",
+      "version": "1.0.0-r7",
+      "filename": "secubox-app-picobrew_1.0.0-r7_all.ipk",
+      "size": 5510,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-picobrew"
+    }
+,
+    {
+      "name": "secubox-app-streamlit",
+      "version": "1.0.0-r5",
+      "filename": "secubox-app-streamlit_1.0.0-r5_all.ipk",
+      "size": 11684,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-streamlit"
+    }
+,
+    {
+      "name": "secubox-app-tor",
+      "version": "1.0.0-r1",
+      "filename": "secubox-app-tor_1.0.0-r1_all.ipk",
+      "size": 7341,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-tor"
+    }
+,
+    {
+      "name": "secubox-app-webapp",
+      "version": "1.5.0-r7",
+      "filename": "secubox-app-webapp_1.5.0-r7_all.ipk",
+      "size": 39185,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-webapp"
+    }
+,
+    {
+      "name": "secubox-app-zigbee2mqtt",
+      "version": "1.0.0-r3",
+      "filename": "secubox-app-zigbee2mqtt_1.0.0-r3_all.ipk",
+      "size": 3501,
+      "category": "secubox",
+      "icon": "package",
+      "description": "SecuBox backend service",
+      "installed": false,
+      "luci_app": "luci-app-zigbee2mqtt"
+    }
+,
+    {
+      "name": "secubox-core",
+      "version": "0.10.0-r6",
+      "filename": "secubox-core_0.10.0-r6_all.ipk",
+      "size": 64034,
+      "category": "system",
+      "icon": "box",
+      "description": "SecuBox core components",
+      "installed": false,
+      "luci_app": null
+    }
+
+  ]
+}
