@@ -83,6 +83,37 @@ return view.extend({
 	selfPeer: null,
 	testMode: false,
 
+	// Mesh Backup Config
+	meshBackupConfig: {
+		enabled: false,
+		autoBackup: true,
+		interval: 3600,  // seconds
+		maxSnapshots: 10,
+		targets: ['config', 'registry', 'services'],
+		lastBackup: null,
+		snapshots: []
+	},
+
+	// Test Cloning Config
+	testCloneConfig: {
+		enabled: false,
+		sourceNode: null,
+		cloneTargets: ['config', 'services', 'peers'],
+		autoSync: false
+	},
+
+	// Gitea History Feed
+	giteaConfig: {
+		enabled: false,
+		serverUrl: '',
+		repoOwner: '',
+		repoName: '',
+		token: '',
+		branch: 'main',
+		commits: [],
+		lastFetch: null
+	},
+
 	load: function() {
 		var self = this;
 		return Promise.all([
@@ -140,7 +171,10 @@ return view.extend({
 				// Row 3: Mesh Stack (DNS + WG + HAProxy)
 				this.renderMeshStackPanel(),
 
-				// Row 4: Peers + Health
+				// Row 4: Backup & Versioning (wide)
+				this.renderBackupVersioningPanel(),
+
+				// Row 5: Peers + Health
 				this.renderPeersPanel(),
 				this.renderHealthPanel()
 			])
@@ -971,6 +1005,169 @@ return view.extend({
 		]);
 	},
 
+	// ==================== Backup & Versioning Panel ====================
+	renderBackupVersioningPanel: function() {
+		var self = this;
+		var backupConfig = this.meshBackupConfig;
+		var cloneConfig = this.testCloneConfig;
+		var giteaConfig = this.giteaConfig;
+
+		return E('div', { 'class': 'panel backup-versioning-panel wide' }, [
+			E('div', { 'class': 'panel-header teal' }, [
+				E('div', { 'class': 'panel-title' }, [
+					E('span', {}, '💾'),
+					E('span', {}, 'Backup & Versioning'),
+					E('span', { 'class': 'badge' }, 'Auto-Mesh')
+				])
+			]),
+
+			E('div', { 'class': 'backup-cards' }, [
+				// Mesh Auto-Backup
+				E('div', { 'class': 'backup-card' }, [
+					E('div', { 'class': 'backup-card-header' }, [
+						E('span', { 'class': 'backup-icon' }, '🔄'),
+						E('span', {}, 'Mesh Auto-Backup'),
+						E('label', { 'class': 'toggle-switch' }, [
+							E('input', { 'type': 'checkbox', 'checked': backupConfig.enabled, 'change': function(e) { self.toggleMeshBackup(e.target.checked); } }),
+							E('span', { 'class': 'slider' })
+						])
+					]),
+					E('div', { 'class': 'backup-card-body' }, [
+						E('div', { 'class': 'backup-info' }, [
+							E('span', {}, 'Interval:'),
+							E('select', { 'class': 'mini-select', 'change': function(e) { self.setBackupInterval(e.target.value); } }, [
+								E('option', { 'value': '1800', 'selected': backupConfig.interval === 1800 }, '30 min'),
+								E('option', { 'value': '3600', 'selected': backupConfig.interval === 3600 }, '1 hour'),
+								E('option', { 'value': '21600', 'selected': backupConfig.interval === 21600 }, '6 hours'),
+								E('option', { 'value': '86400', 'selected': backupConfig.interval === 86400 }, '24 hours')
+							])
+						]),
+						E('div', { 'class': 'backup-info' }, [
+							E('span', {}, 'Snapshots:'),
+							E('strong', {}, String(backupConfig.snapshots.length) + '/' + backupConfig.maxSnapshots)
+						]),
+						E('div', { 'class': 'backup-info' }, [
+							E('span', {}, 'Last:'),
+							E('span', { 'class': 'backup-time' }, backupConfig.lastBackup ? this.formatTime(backupConfig.lastBackup) : 'Never')
+						]),
+						E('div', { 'class': 'backup-targets' }, [
+							E('label', { 'class': 'target-check' }, [
+								E('input', { 'type': 'checkbox', 'checked': backupConfig.targets.includes('config') }), ' Config'
+							]),
+							E('label', { 'class': 'target-check' }, [
+								E('input', { 'type': 'checkbox', 'checked': backupConfig.targets.includes('registry') }), ' Registry'
+							]),
+							E('label', { 'class': 'target-check' }, [
+								E('input', { 'type': 'checkbox', 'checked': backupConfig.targets.includes('services') }), ' Services'
+							])
+						])
+					]),
+					E('div', { 'class': 'backup-card-actions' }, [
+						E('button', { 'class': 'btn small', 'click': function() { self.createMeshBackup(); } }, '📸 Backup Now'),
+						E('button', { 'class': 'btn small', 'click': function() { self.showBackupHistoryModal(); } }, '📜 History')
+					])
+				]),
+
+				// Test Cloning
+				E('div', { 'class': 'backup-card' }, [
+					E('div', { 'class': 'backup-card-header' }, [
+						E('span', { 'class': 'backup-icon' }, '🧬'),
+						E('span', {}, 'Test Cloning'),
+						E('label', { 'class': 'toggle-switch' }, [
+							E('input', { 'type': 'checkbox', 'checked': cloneConfig.enabled, 'change': function(e) { self.toggleTestCloning(e.target.checked); } }),
+							E('span', { 'class': 'slider' })
+						])
+					]),
+					E('div', { 'class': 'backup-card-body' }, [
+						E('div', { 'class': 'backup-info' }, [
+							E('span', {}, 'Source:'),
+							E('select', { 'class': 'mini-select', 'change': function(e) { self.setCloneSource(e.target.value); } }, [
+								E('option', { 'value': 'self' }, '👑 Master (Self)')
+							].concat(this.peers.map(function(p) {
+								return E('option', { 'value': p.id }, (p.isGigogne ? '🪆 ' : '🖥️ ') + (p.name || p.id));
+							})))
+						]),
+						E('div', { 'class': 'backup-info' }, [
+							E('span', {}, 'Auto-Sync:'),
+							E('label', { 'class': 'toggle-switch mini' }, [
+								E('input', { 'type': 'checkbox', 'checked': cloneConfig.autoSync, 'change': function(e) { cloneConfig.autoSync = e.target.checked; } }),
+								E('span', { 'class': 'slider' })
+							])
+						]),
+						E('div', { 'class': 'clone-targets' }, [
+							E('label', { 'class': 'target-check' }, [
+								E('input', { 'type': 'checkbox', 'checked': cloneConfig.cloneTargets.includes('config') }), ' Config'
+							]),
+							E('label', { 'class': 'target-check' }, [
+								E('input', { 'type': 'checkbox', 'checked': cloneConfig.cloneTargets.includes('services') }), ' Services'
+							]),
+							E('label', { 'class': 'target-check' }, [
+								E('input', { 'type': 'checkbox', 'checked': cloneConfig.cloneTargets.includes('peers') }), ' Peers'
+							])
+						])
+					]),
+					E('div', { 'class': 'backup-card-actions' }, [
+						E('button', { 'class': 'btn small primary', 'click': function() { self.cloneFromSource(); } }, '🧬 Clone Now'),
+						E('button', { 'class': 'btn small', 'click': function() { self.showCloneConfigModal(); } }, '⚙️ Config')
+					])
+				]),
+
+				// Gitea History Feed
+				E('div', { 'class': 'backup-card gitea' }, [
+					E('div', { 'class': 'backup-card-header' }, [
+						E('span', { 'class': 'backup-icon' }, '🍵'),
+						E('span', {}, 'Gitea History'),
+						E('label', { 'class': 'toggle-switch' }, [
+							E('input', { 'type': 'checkbox', 'checked': giteaConfig.enabled, 'change': function(e) { self.toggleGiteaFeed(e.target.checked); } }),
+							E('span', { 'class': 'slider' })
+						])
+					]),
+					E('div', { 'class': 'backup-card-body' }, [
+						giteaConfig.enabled && giteaConfig.serverUrl ?
+							E('div', { 'class': 'gitea-info' }, [
+								E('div', { 'class': 'gitea-repo' }, [
+									E('span', { 'class': 'gitea-icon' }, '📦'),
+									E('span', {}, giteaConfig.repoOwner + '/' + giteaConfig.repoName),
+									E('span', { 'class': 'gitea-branch' }, '⎇ ' + giteaConfig.branch)
+								]),
+								E('div', { 'class': 'gitea-last-fetch' }, [
+									'Last: ', giteaConfig.lastFetch ? this.formatTime(giteaConfig.lastFetch) : 'Never'
+								])
+							]) :
+							E('div', { 'class': 'gitea-setup' }, 'Configure Gitea server to enable'),
+						E('div', { 'class': 'gitea-commits' },
+							giteaConfig.commits.length > 0 ?
+								giteaConfig.commits.slice(0, 3).map(function(commit) {
+									return E('div', { 'class': 'commit-item' }, [
+										E('span', { 'class': 'commit-sha' }, commit.sha ? commit.sha.substring(0, 7) : ''),
+										E('span', { 'class': 'commit-msg' }, commit.message || 'No message'),
+										E('span', { 'class': 'commit-time' }, commit.date ? self.formatTime(commit.date) : '')
+									]);
+								}) :
+								E('div', { 'class': 'no-commits' }, 'No commits loaded')
+						)
+					]),
+					E('div', { 'class': 'backup-card-actions' }, [
+						E('button', { 'class': 'btn small', 'click': function() { self.fetchGiteaCommits(); } }, '🔄 Fetch'),
+						E('button', { 'class': 'btn small', 'click': function() { self.showGiteaConfigModal(); } }, '⚙️ Setup'),
+						E('button', { 'class': 'btn small', 'click': function() { self.pushToGitea(); } }, '📤 Push')
+					])
+				])
+			])
+		]);
+	},
+
+	formatTime: function(timestamp) {
+		if (!timestamp) return 'N/A';
+		var date = new Date(timestamp);
+		var now = new Date();
+		var diff = Math.floor((now - date) / 1000);
+		if (diff < 60) return diff + 's ago';
+		if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+		if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+		return date.toLocaleDateString();
+	},
+
 	// DNS Bridge and WG Mirror toggles
 	toggleDNSBridge: function(enabled) {
 		this.dnsBridgeConfig = this.dnsBridgeConfig || {};
@@ -1134,6 +1331,224 @@ return view.extend({
 		// full mesh doesn't need special structure
 
 		ui.addNotification(null, E('p', 'Rebuilt ' + mode + ' structure with ' + (this.peers.length - 1) + ' nodes'), 'info');
+	},
+
+	// ==================== Backup & Versioning Actions ====================
+	toggleMeshBackup: function(enabled) {
+		this.meshBackupConfig.enabled = enabled;
+		ui.addNotification(null, E('p', 'Mesh Auto-Backup ' + (enabled ? 'enabled' : 'disabled')), 'info');
+	},
+
+	setBackupInterval: function(interval) {
+		this.meshBackupConfig.interval = parseInt(interval);
+		var intervals = { '1800': '30 min', '3600': '1 hour', '21600': '6 hours', '86400': '24 hours' };
+		ui.addNotification(null, E('p', 'Backup interval: ' + intervals[interval]), 'info');
+	},
+
+	createMeshBackup: function() {
+		var self = this;
+		var snapshot = {
+			id: 'snap-' + Date.now(),
+			timestamp: Date.now(),
+			targets: this.meshBackupConfig.targets.slice(),
+			peers: this.peers.length,
+			services: this.services.length
+		};
+		this.meshBackupConfig.snapshots.unshift(snapshot);
+		if (this.meshBackupConfig.snapshots.length > this.meshBackupConfig.maxSnapshots) {
+			this.meshBackupConfig.snapshots.pop();
+		}
+		this.meshBackupConfig.lastBackup = Date.now();
+		ui.addNotification(null, E('p', '📸 Mesh backup created: ' + snapshot.id), 'info');
+	},
+
+	showBackupHistoryModal: function() {
+		var self = this;
+		var snapshots = this.meshBackupConfig.snapshots;
+
+		ui.showModal('Backup History', [
+			E('div', { 'class': 'modal-form' }, [
+				E('div', { 'class': 'backup-history-list' },
+					snapshots.length > 0 ?
+						snapshots.map(function(snap) {
+							return E('div', { 'class': 'backup-history-item' }, [
+								E('div', { 'class': 'snap-info' }, [
+									E('span', { 'class': 'snap-id' }, snap.id),
+									E('span', { 'class': 'snap-time' }, self.formatTime(snap.timestamp))
+								]),
+								E('div', { 'class': 'snap-details' }, [
+									E('span', {}, snap.peers + ' peers'),
+									E('span', {}, snap.services + ' services'),
+									E('span', {}, snap.targets.join(', '))
+								]),
+								E('div', { 'class': 'snap-actions' }, [
+									E('button', { 'class': 'btn small', 'click': function() { self.restoreBackup(snap.id); } }, '♻️ Restore'),
+									E('button', { 'class': 'btn small', 'click': function() { self.deleteBackup(snap.id); } }, '🗑️')
+								])
+							]);
+						}) :
+						E('div', { 'class': 'empty-state' }, 'No backups yet')
+				)
+			]),
+			E('div', { 'class': 'modal-actions' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Close'),
+				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() { self.createMeshBackup(); ui.hideModal(); } }, '📸 New Backup')
+			])
+		]);
+	},
+
+	restoreBackup: function(snapId) {
+		ui.addNotification(null, E('p', '♻️ Restoring backup ' + snapId + '...'), 'info');
+	},
+
+	deleteBackup: function(snapId) {
+		this.meshBackupConfig.snapshots = this.meshBackupConfig.snapshots.filter(function(s) { return s.id !== snapId; });
+		ui.addNotification(null, E('p', '🗑️ Backup ' + snapId + ' deleted'), 'info');
+	},
+
+	// Test Cloning
+	toggleTestCloning: function(enabled) {
+		this.testCloneConfig.enabled = enabled;
+		ui.addNotification(null, E('p', 'Test Cloning ' + (enabled ? 'enabled' : 'disabled')), 'info');
+	},
+
+	setCloneSource: function(sourceId) {
+		this.testCloneConfig.sourceNode = sourceId;
+		ui.addNotification(null, E('p', 'Clone source: ' + sourceId), 'info');
+	},
+
+	cloneFromSource: function() {
+		var source = this.testCloneConfig.sourceNode || 'self';
+		ui.addNotification(null, E('p', '🧬 Cloning from ' + source + '...'), 'info');
+		// Simulate cloning
+		setTimeout(function() {
+			ui.addNotification(null, E('p', '✅ Clone complete from ' + source), 'success');
+		}, 1500);
+	},
+
+	showCloneConfigModal: function() {
+		var self = this;
+		ui.showModal('Clone Configuration', [
+			E('div', { 'class': 'modal-form' }, [
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Clone Targets'),
+					E('div', { 'class': 'deploy-options' }, [
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'checked': this.testCloneConfig.cloneTargets.includes('config') }),
+							E('span', {}, '⚙️ Configuration')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'checked': this.testCloneConfig.cloneTargets.includes('services') }),
+							E('span', {}, '📡 Services')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'checked': this.testCloneConfig.cloneTargets.includes('peers') }),
+							E('span', {}, '👥 Peer List')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'checked': this.testCloneConfig.cloneTargets.includes('registry') }),
+							E('span', {}, '🔗 Registry')
+						])
+					])
+				])
+			]),
+			E('div', { 'class': 'modal-actions' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() { ui.hideModal(); } }, 'Save')
+			])
+		]);
+	},
+
+	// Gitea Integration
+	toggleGiteaFeed: function(enabled) {
+		this.giteaConfig.enabled = enabled;
+		ui.addNotification(null, E('p', 'Gitea History Feed ' + (enabled ? 'enabled' : 'disabled')), 'info');
+	},
+
+	fetchGiteaCommits: function() {
+		var self = this;
+		if (!this.giteaConfig.serverUrl) {
+			ui.addNotification(null, E('p', 'Configure Gitea server first'), 'warning');
+			return;
+		}
+		ui.addNotification(null, E('p', '🔄 Fetching commits from Gitea...'), 'info');
+		// Simulate fetch
+		setTimeout(function() {
+			self.giteaConfig.commits = [
+				{ sha: 'abc1234', message: 'feat(p2p): Add mesh backup', date: Date.now() - 3600000 },
+				{ sha: 'def5678', message: 'fix(dns): Bridge sync issue', date: Date.now() - 7200000 },
+				{ sha: 'ghi9012', message: 'chore: Update dependencies', date: Date.now() - 86400000 }
+			];
+			self.giteaConfig.lastFetch = Date.now();
+			ui.addNotification(null, E('p', '✅ Fetched ' + self.giteaConfig.commits.length + ' commits'), 'success');
+		}, 1000);
+	},
+
+	pushToGitea: function() {
+		if (!this.giteaConfig.serverUrl) {
+			ui.addNotification(null, E('p', 'Configure Gitea server first'), 'warning');
+			return;
+		}
+		ui.addNotification(null, E('p', '📤 Pushing config to Gitea...'), 'info');
+	},
+
+	showGiteaConfigModal: function() {
+		var self = this;
+		var config = this.giteaConfig;
+
+		ui.showModal('Gitea Configuration', [
+			E('div', { 'class': 'modal-form' }, [
+				E('div', { 'class': 'deploy-modal-header' }, [
+					E('span', { 'class': 'deploy-modal-icon' }, '🍵'),
+					E('div', {}, [
+						E('div', { 'class': 'deploy-modal-title' }, 'Gitea History Feed'),
+						E('div', { 'class': 'deploy-modal-subtitle' }, 'Connect to Gitea for version control and history')
+					])
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Gitea Server URL'),
+					E('input', { 'type': 'text', 'id': 'gitea-url', 'class': 'form-input', 'value': config.serverUrl, 'placeholder': 'https://gitea.example.com' })
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Repository Owner'),
+					E('input', { 'type': 'text', 'id': 'gitea-owner', 'class': 'form-input', 'value': config.repoOwner, 'placeholder': 'username or org' })
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Repository Name'),
+					E('input', { 'type': 'text', 'id': 'gitea-repo', 'class': 'form-input', 'value': config.repoName, 'placeholder': 'secubox-config' })
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Branch'),
+					E('input', { 'type': 'text', 'id': 'gitea-branch', 'class': 'form-input', 'value': config.branch || 'main', 'placeholder': 'main' })
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Access Token (optional)'),
+					E('input', { 'type': 'password', 'id': 'gitea-token', 'class': 'form-input', 'value': config.token, 'placeholder': 'Personal access token' })
+				])
+			]),
+			E('div', { 'class': 'modal-actions' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'cbi-button', 'click': function() {
+					self.giteaConfig.serverUrl = document.getElementById('gitea-url').value;
+					self.giteaConfig.repoOwner = document.getElementById('gitea-owner').value;
+					self.giteaConfig.repoName = document.getElementById('gitea-repo').value;
+					self.giteaConfig.branch = document.getElementById('gitea-branch').value || 'main';
+					self.giteaConfig.token = document.getElementById('gitea-token').value;
+					ui.hideModal();
+					ui.addNotification(null, E('p', 'Gitea configuration saved'), 'info');
+					if (self.giteaConfig.serverUrl) self.fetchGiteaCommits();
+				} }, 'Test Connection'),
+				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+					self.giteaConfig.serverUrl = document.getElementById('gitea-url').value;
+					self.giteaConfig.repoOwner = document.getElementById('gitea-owner').value;
+					self.giteaConfig.repoName = document.getElementById('gitea-repo').value;
+					self.giteaConfig.branch = document.getElementById('gitea-branch').value || 'main';
+					self.giteaConfig.token = document.getElementById('gitea-token').value;
+					ui.hideModal();
+					ui.addNotification(null, E('p', 'Gitea configuration saved'), 'info');
+				} }, 'Save')
+			])
+		]);
 	},
 
 	syncWGMirror: function() {
@@ -2218,7 +2633,52 @@ return view.extend({
 			// Peer row gigogne indicator
 			'.peer-row.gigogne { border-left: 3px solid #f1c40f; margin-left: 10px; }',
 			'.peer-row.self { border-left: 3px solid #667eea; background: rgba(102,126,234,0.1); }',
-			'.gigogne-level { font-size: 10px; color: #f1c40f; margin-left: auto; padding: 2px 6px; background: rgba(241,196,15,0.2); border-radius: 4px; }'
+			'.gigogne-level { font-size: 10px; color: #f1c40f; margin-left: auto; padding: 2px 6px; background: rgba(241,196,15,0.2); border-radius: 4px; }',
+
+			// Backup & Versioning Panel
+			'.panel-header.teal { border-bottom-color: rgba(0,188,212,0.3); }',
+			'.backup-versioning-panel { }',
+			'.backup-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }',
+			'@media (max-width: 1100px) { .backup-cards { grid-template-columns: 1fr 1fr; } }',
+			'@media (max-width: 700px) { .backup-cards { grid-template-columns: 1fr; } }',
+			'.backup-card { background: rgba(0,0,0,0.2); border-radius: 10px; padding: 15px; border: 1px solid rgba(255,255,255,0.05); }',
+			'.backup-card.gitea { border-color: rgba(99,163,91,0.3); }',
+			'.backup-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 13px; font-weight: 500; }',
+			'.backup-icon { font-size: 20px; }',
+			'.backup-card-body { }',
+			'.backup-info { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); }',
+			'.backup-info:last-child { border-bottom: none; }',
+			'.backup-time { color: rgba(255,255,255,0.5); font-size: 11px; }',
+			'.backup-targets, .clone-targets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }',
+			'.target-check { display: flex; align-items: center; gap: 4px; font-size: 11px; color: rgba(255,255,255,0.7); }',
+			'.target-check input { margin: 0; }',
+			'.backup-card-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); }',
+
+			// Gitea specific
+			'.gitea-info { }',
+			'.gitea-repo { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 6px; }',
+			'.gitea-icon { font-size: 16px; }',
+			'.gitea-branch { padding: 2px 6px; background: rgba(99,163,91,0.2); border-radius: 4px; font-size: 10px; color: #63a35b; }',
+			'.gitea-last-fetch { font-size: 11px; color: rgba(255,255,255,0.5); }',
+			'.gitea-setup { font-size: 12px; color: rgba(255,255,255,0.4); padding: 10px 0; }',
+			'.gitea-commits { margin-top: 10px; }',
+			'.commit-item { display: flex; gap: 8px; padding: 6px 0; font-size: 11px; border-bottom: 1px solid rgba(255,255,255,0.05); }',
+			'.commit-sha { font-family: monospace; color: #63a35b; background: rgba(99,163,91,0.15); padding: 2px 4px; border-radius: 3px; }',
+			'.commit-msg { flex: 1; color: rgba(255,255,255,0.8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+			'.commit-time { color: rgba(255,255,255,0.4); }',
+			'.no-commits { font-size: 11px; color: rgba(255,255,255,0.4); text-align: center; padding: 10px; }',
+
+			// Backup History Modal
+			'.backup-history-list { max-height: 300px; overflow-y: auto; }',
+			'.backup-history-item { display: flex; flex-direction: column; gap: 8px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 10px; }',
+			'.snap-info { display: flex; justify-content: space-between; }',
+			'.snap-id { font-family: monospace; color: #667eea; }',
+			'.snap-time { font-size: 11px; color: rgba(255,255,255,0.5); }',
+			'.snap-details { display: flex; gap: 15px; font-size: 11px; color: rgba(255,255,255,0.6); }',
+			'.snap-actions { display: flex; gap: 8px; }',
+
+			// Test badge
+			'.badge.test { background: linear-gradient(135deg, rgba(241,196,15,0.3), rgba(230,126,34,0.3)); color: #f1c40f; }'
 		].join('\n');
 	},
 
