@@ -3,7 +3,7 @@
 'require uci';
 
 /**
- * CrowdSec Dashboard Theme Manager
+ * CrowdSec Dashboard Theme Manager (Singleton)
  * Handles loading and switching between UI themes
  *
  * Available themes:
@@ -13,11 +13,10 @@
  *
  * Profiles can extend themes with custom configurations
  *
- * Usage: var theme = new (require('crowdsec-dashboard.theme'))();
- *        theme.init().then(function() { ... });
+ * Usage: theme.init().then(function() { ... });
  */
 
-return baseclass.extend({
+return baseclass.singleton({
 	// Available themes
 	themes: {
 		'classic': {
