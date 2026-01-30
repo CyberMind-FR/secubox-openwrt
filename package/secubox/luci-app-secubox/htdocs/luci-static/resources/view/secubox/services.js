@@ -4,180 +4,245 @@
 'require ui';
 'require poll';
 
+// Use Service Registry API - no expect to get raw response
+var callListServices = rpc.declare({
+	object: 'luci.service-registry',
+	method: 'list_services'
+});
+
+var callGenerateLanding = rpc.declare({
+	object: 'luci.service-registry',
+	method: 'generate_landing_page',
+	expect: {}
+});
+
+// Fallback to basic secubox services
 var callGetServices = rpc.declare({
 	object: 'luci.secubox',
 	method: 'get_services',
 	expect: { services: [] }
 });
 
+// Network info
+var callGetNetworkInfo = rpc.declare({
+	object: 'luci.service-registry',
+	method: 'get_network_info'
+});
+
+// Health check
+var callCheckAllHealth = rpc.declare({
+	object: 'luci.service-registry',
+	method: 'check_all_health'
+});
+
 return view.extend({
 	servicesData: [],
+	providersData: {},
 	selectedCategory: 'all',
 
 	load: function() {
-		return callGetServices().then(function(result) {
-			return { services: result.services || result || [] };
+		// Try Service Registry first, fallback to basic secubox
+		console.log('[SERVICES] Starting load...');
+		return callListServices().then(function(result) {
+			console.log('[SERVICES] list_services raw result:', result);
+			// Handle both array format and object format
+			var services = [];
+			var providers = {};
+			if (Array.isArray(result)) {
+				services = result;
+			} else if (result && result.services) {
+				services = result.services;
+				providers = result.providers || {};
+			}
+			console.log('[SERVICES] services count:', services.length);
+			return {
+				services: services,
+				providers: providers,
+				source: 'service-registry'
+			};
+		}).catch(function(err) {
+			console.error('[SERVICES] list_services failed:', err);
+			return callGetServices().then(function(result) {
+				console.log('[SERVICES] get_services fallback result:', result);
+				var services = Array.isArray(result) ? result : (result.services || []);
+				return {
+					services: services,
+					providers: {},
+					source: 'secubox'
+				};
+			});
 		}).catch(function(err) {
 			console.error('[SERVICES] Load error:', err);
-			return { services: [] };
+			return { services: [], providers: {}, source: 'error' };
 		});
 	},
 
 	render: function(data) {
 		var services = data.services || [];
+		var providers = data.providers || {};
+		var source = data.source || 'unknown';
 		this.servicesData = services;
+		this.providersData = providers;
 		var self = this;
 
 		// Categorize services
 		var categories = {
 			'all': { name: 'All Services', icon: '📡', count: services.length },
+			'published': { name: 'Published', icon: '🌐', count: 0 },
 			'security': { name: 'Security', icon: '🛡️', count: 0 },
-			'network': { name: 'Network', icon: '🌐', count: 0 },
-			'monitoring': { name: 'Monitoring', icon: '📊', count: 0 },
-			'dns': { name: 'DNS', icon: '🔍', count: 0 },
-			'web': { name: 'Web', icon: '🌍', count: 0 },
+			'network': { name: 'Network', icon: '🔌', count: 0 },
+			'proxy': { name: 'Proxy/HAProxy', icon: '⚡', count: 0 },
+			'privacy': { name: 'Privacy/Tor', icon: '🧅', count: 0 },
+			'container': { name: 'Containers', icon: '📦', count: 0 },
 			'system': { name: 'System', icon: '⚙️', count: 0 }
 		};
 
 		services.forEach(function(svc) {
-			var cat = self.categorizeService(svc);
+			if (svc.published) categories['published'].count++;
+			var cat = svc.category || self.categorizeService(svc);
 			if (categories[cat]) categories[cat].count++;
 		});
 
-		var container = E('div', { 'class': 'cbi-map secubox-services', 'style': 'background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%); min-height: 100vh; padding: 20px;' }, [
-			// CSS
+		// Provider stats
+		var haproxyCount = providers.haproxy ? providers.haproxy.count : 0;
+		var torCount = providers.tor ? providers.tor.count : 0;
+		var runningCount = services.filter(function(s) { return s.status === 'running'; }).length;
+		var publishedCount = services.filter(function(s) { return s.published; }).length;
+
+		var container = E('div', { 'class': 'cbi-map secubox-services' }, [
 			E('style', {}, this.getStyles()),
 
 			// Header
-			E('div', { 'class': 'services-header' }, [
-				E('div', { 'class': 'services-title' }, [
-					E('span', { 'class': 'services-icon' }, '📡'),
-					E('span', {}, 'SERVICES REGISTRY')
+			E('div', { 'class': 'sr-header' }, [
+				E('div', { 'class': 'sr-title' }, [
+					E('span', { 'class': 'sr-logo' }, '📡'),
+					E('div', { 'class': 'sr-title-text' }, [
+						E('h1', {}, 'Services Registry'),
+						E('p', {}, services.length + ' services discovered · Source: ' + source)
+					])
 				]),
-				E('div', { 'class': 'services-subtitle' },
-					services.length + ' services discovered · P2P Hub Integration Ready')
+				E('div', { 'class': 'sr-actions-top' }, [
+					E('a', {
+						'class': 'sr-btn primary',
+						'href': L.url('admin', 'services', 'service-registry')
+					}, [E('span', {}, '🚀'), ' Full Registry']),
+					E('a', {
+						'class': 'sr-btn',
+						'href': '/secubox-services.html',
+						'target': '_blank'
+					}, [E('span', {}, '🌐'), ' Landing Page'])
+				])
 			]),
 
-			// Category filters
-			E('div', { 'class': 'services-categories' },
+			// Stats Grid
+			E('div', { 'class': 'sr-stats' }, [
+				E('div', { 'class': 'stat-card' }, [
+					E('div', { 'class': 'stat-icon' }, '📡'),
+					E('div', { 'class': 'stat-info' }, [
+						E('div', { 'class': 'stat-value' }, services.length),
+						E('div', { 'class': 'stat-label' }, 'Total Services')
+					])
+				]),
+				E('div', { 'class': 'stat-card success' }, [
+					E('div', { 'class': 'stat-icon' }, '✅'),
+					E('div', { 'class': 'stat-info' }, [
+						E('div', { 'class': 'stat-value' }, runningCount),
+						E('div', { 'class': 'stat-label' }, 'Running')
+					])
+				]),
+				E('div', { 'class': 'stat-card accent' }, [
+					E('div', { 'class': 'stat-icon' }, '🌐'),
+					E('div', { 'class': 'stat-info' }, [
+						E('div', { 'class': 'stat-value' }, publishedCount),
+						E('div', { 'class': 'stat-label' }, 'Published')
+					])
+				]),
+				E('div', { 'class': 'stat-card info' }, [
+					E('div', { 'class': 'stat-icon' }, '⚡'),
+					E('div', { 'class': 'stat-info' }, [
+						E('div', { 'class': 'stat-value' }, haproxyCount),
+						E('div', { 'class': 'stat-label' }, 'HAProxy Vhosts')
+					])
+				]),
+				E('div', { 'class': 'stat-card purple' }, [
+					E('div', { 'class': 'stat-icon' }, '🧅'),
+					E('div', { 'class': 'stat-info' }, [
+						E('div', { 'class': 'stat-value' }, torCount),
+						E('div', { 'class': 'stat-label' }, 'Tor Services')
+					])
+				])
+			]),
+
+			// Category Filters
+			E('div', { 'class': 'sr-categories' },
 				Object.keys(categories).map(function(key) {
 					var cat = categories[key];
+					if (cat.count === 0 && key !== 'all') return null;
 					return E('button', {
-						'class': 'category-btn' + (self.selectedCategory === key ? ' active' : ''),
+						'class': 'cat-btn' + (self.selectedCategory === key ? ' active' : ''),
 						'data-category': key,
 						'click': function() { self.filterByCategory(key); }
 					}, [
 						E('span', { 'class': 'cat-icon' }, cat.icon),
 						E('span', { 'class': 'cat-name' }, cat.name),
-						E('span', { 'class': 'cat-count' }, cat.count)
+						E('span', { 'class': 'cat-count' }, String(cat.count))
 					]);
-				})
+				}).filter(Boolean)
 			),
 
-			// Stats panel
-			E('div', { 'class': 'services-stats' }, [
-				E('div', { 'class': 'stat-card' }, [
-					E('div', { 'class': 'stat-value' }, services.length),
-					E('div', { 'class': 'stat-label' }, 'Total Services')
-				]),
-				E('div', { 'class': 'stat-card accent' }, [
-					E('div', { 'class': 'stat-value' }, services.filter(function(s) { return s.status === 'running' || s.running; }).length),
-					E('div', { 'class': 'stat-label' }, 'Running')
-				]),
-				E('div', { 'class': 'stat-card warning' }, [
-					E('div', { 'class': 'stat-value' }, services.filter(function(s) { return s.shared || s.p2p_enabled; }).length),
-					E('div', { 'class': 'stat-label' }, 'P2P Shared')
-				]),
-				E('div', { 'class': 'stat-card info' }, [
-					E('div', { 'class': 'stat-value' }, services.filter(function(s) { return s.port; }).length),
-					E('div', { 'class': 'stat-label' }, 'With Ports')
-				])
-			]),
-
 			// Quick Actions
-			E('div', { 'class': 'services-actions' }, [
+			E('div', { 'class': 'sr-quick-actions' }, [
 				E('button', {
-					'class': 'action-btn primary',
-					'click': function() { self.discoverServices(); }
-				}, [
-					E('span', {}, '🔄'),
-					E('span', {}, 'Discover Services')
-				]),
+					'class': 'sr-btn primary',
+					'click': function() { self.refreshServices(); }
+				}, [E('span', {}, '🔄'), ' Refresh']),
 				E('button', {
-					'class': 'action-btn',
-					'click': function() { self.registerService(); }
-				}, [
-					E('span', {}, '➕'),
-					E('span', {}, 'Register Service')
-				]),
+					'class': 'sr-btn accent',
+					'click': function() { self.showNetworkDiagnostics(); }
+				}, [E('span', {}, '🌐'), ' Network Diagnostics']),
 				E('button', {
-					'class': 'action-btn',
-					'click': function() { self.exportRegistry(); }
-				}, [
-					E('span', {}, '📤'),
-					E('span', {}, 'Export Registry')
-				]),
+					'class': 'sr-btn',
+					'click': function() { self.checkAllHealth(); }
+				}, [E('span', {}, '🩺'), ' Health Check']),
 				E('button', {
-					'class': 'action-btn',
-					'click': function() { window.location.href = L.url('admin', 'secubox', 'apps') + '#p2p-hub'; }
-				}, [
-					E('span', {}, '🌐'),
-					E('span', {}, 'P2P Hub')
-				])
+					'class': 'sr-btn',
+					'click': function() { self.regenerateLanding(); }
+				}, [E('span', {}, '📄'), ' Regenerate Landing']),
+				E('button', {
+					'class': 'sr-btn',
+					'click': function() { self.exportServices(); }
+				}, [E('span', {}, '📤'), ' Export JSON']),
+				E('a', {
+					'class': 'sr-btn',
+					'href': L.url('admin', 'services', 'service-registry', 'publish')
+				}, [E('span', {}, '➕'), ' Publish Service'])
 			]),
 
-			// Services grid
-			E('div', { 'class': 'services-panel' }, [
+			// Services Grid
+			E('div', { 'class': 'sr-panel' }, [
 				E('div', { 'class': 'panel-header' }, [
-					E('span', { 'class': 'panel-title' }, 'ACTIVE SERVICES'),
-					E('span', { 'class': 'panel-badge' }, services.length + ' discovered')
+					E('h2', {}, 'Discovered Services'),
+					E('span', { 'class': 'panel-badge' }, services.length + ' total')
 				]),
-				E('div', { 'class': 'services-grid', 'id': 'services-container' },
+				E('div', { 'class': 'sr-grid', 'id': 'services-grid' },
 					services.length > 0 ?
 						services.map(function(svc) { return self.renderServiceCard(svc); }) :
 						[E('div', { 'class': 'empty-state' }, [
 							E('div', { 'class': 'empty-icon' }, '📡'),
-							E('div', { 'class': 'empty-text' }, 'No services discovered'),
-							E('div', { 'class': 'empty-hint' }, 'Click "Discover Services" to scan for available services')
+							E('h3', {}, 'No Services Found'),
+							E('p', {}, 'Click Refresh to discover services or use the Full Registry for more options')
 						])]
 				)
 			]),
 
-			// P2P Integration panel
-			E('div', { 'class': 'services-panel p2p-panel' }, [
-				E('div', { 'class': 'panel-header' }, [
-					E('span', { 'class': 'panel-title' }, '🌐 P2P HUB INTEGRATION'),
-					E('span', { 'class': 'panel-badge accent' }, 'Ready')
-				]),
-				E('div', { 'class': 'p2p-info' }, [
-					E('div', { 'class': 'p2p-feature' }, [
-						E('span', { 'class': 'feature-icon' }, '📡'),
-						E('div', { 'class': 'feature-content' }, [
-							E('div', { 'class': 'feature-title' }, 'Service Discovery'),
-							E('div', { 'class': 'feature-desc' }, 'mDNS/Avahi automatic peer discovery')
-						])
-					]),
-					E('div', { 'class': 'p2p-feature' }, [
-						E('span', { 'class': 'feature-icon' }, '🔗'),
-						E('div', { 'class': 'feature-content' }, [
-							E('div', { 'class': 'feature-title' }, 'Mesh Networking'),
-							E('div', { 'class': 'feature-desc' }, 'WireGuard-secured P2P connections')
-						])
-					]),
-					E('div', { 'class': 'p2p-feature' }, [
-						E('span', { 'class': 'feature-icon' }, '⚖️'),
-						E('div', { 'class': 'feature-content' }, [
-							E('div', { 'class': 'feature-title' }, 'Load Balancing'),
-							E('div', { 'class': 'feature-desc' }, 'HAProxy distributed service balancing')
-						])
-					]),
-					E('div', { 'class': 'p2p-feature' }, [
-						E('span', { 'class': 'feature-icon' }, '💚'),
-						E('div', { 'class': 'feature-content' }, [
-							E('div', { 'class': 'feature-title' }, 'Health Monitoring'),
-							E('div', { 'class': 'feature-desc' }, 'Auto-repair with peer failover')
-						])
-					])
+			// Provider Status
+			E('div', { 'class': 'sr-providers' }, [
+				E('h2', {}, 'Provider Status'),
+				E('div', { 'class': 'provider-grid' }, [
+					this.renderProviderCard('HAProxy', providers.haproxy, '⚡', 'Reverse Proxy'),
+					this.renderProviderCard('Tor', providers.tor, '🧅', 'Hidden Services'),
+					this.renderProviderCard('Direct', providers.direct, '🔌', 'Direct Ports'),
+					this.renderProviderCard('LXC', providers.lxc, '📦', 'Containers')
 				])
 			])
 		]);
@@ -185,71 +250,86 @@ return view.extend({
 		return container;
 	},
 
+	renderProviderCard: function(name, data, icon, desc) {
+		var status = data ? data.status : 'unknown';
+		var count = data ? (data.count || 0) : 0;
+		var isRunning = status === 'running';
+
+		return E('div', { 'class': 'provider-card' + (isRunning ? ' active' : '') }, [
+			E('div', { 'class': 'provider-icon' }, icon),
+			E('div', { 'class': 'provider-info' }, [
+				E('div', { 'class': 'provider-name' }, name),
+				E('div', { 'class': 'provider-desc' }, desc)
+			]),
+			E('div', { 'class': 'provider-stats' }, [
+				E('div', { 'class': 'provider-count' }, String(count)),
+				E('div', { 'class': 'provider-status ' + status }, isRunning ? '● Online' : '○ Offline')
+			])
+		]);
+	},
+
 	categorizeService: function(svc) {
-		var name = (svc.name || svc.service || '').toLowerCase();
-		if (name.match(/crowdsec|firewall|guard|security|fail2ban/)) return 'security';
-		if (name.match(/dns|dnsmasq|unbound|pihole/)) return 'dns';
-		if (name.match(/nginx|apache|httpd|luci|uhttpd/)) return 'web';
-		if (name.match(/netdata|prometheus|grafana|monitor/)) return 'monitoring';
-		if (name.match(/network|wan|lan|wifi|wireguard|vpn/)) return 'network';
+		var name = (svc.name || svc.service || svc.id || '').toLowerCase();
+		var source = svc.source || '';
+
+		if (source === 'haproxy' || svc.haproxy) return 'proxy';
+		if (source === 'tor' || svc.tor) return 'privacy';
+		if (source === 'lxc' || svc.container) return 'container';
+		if (name.match(/crowdsec|firewall|guard|security|fail2ban|auth/)) return 'security';
+		if (name.match(/network|wan|lan|wifi|wireguard|vpn|dns/)) return 'network';
 		return 'system';
 	},
 
 	renderServiceCard: function(svc) {
 		var self = this;
-		var name = svc.name || svc.service || 'Unknown';
+		var name = svc.name || svc.service || svc.id || 'Unknown';
 		var status = svc.status || (svc.running ? 'running' : 'stopped');
-		var port = svc.port || svc.listen_port || '';
-		var protocol = svc.protocol || 'tcp';
-		var category = this.categorizeService(svc);
+		var category = svc.category || this.categorizeService(svc);
+		var source = svc.source || 'direct';
+		var published = svc.published;
+		var urls = svc.urls || {};
 
-		var statusColors = {
-			'running': { bg: 'rgba(16, 185, 129, 0.15)', color: '#10b981', text: 'RUNNING' },
-			'stopped': { bg: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', text: 'STOPPED' },
-			'unknown': { bg: 'rgba(156, 163, 175, 0.15)', color: '#9ca3af', text: 'UNKNOWN' }
-		};
-		var statusStyle = statusColors[status] || statusColors['unknown'];
+		var statusClass = status === 'running' ? 'running' : (status === 'disabled' ? 'disabled' : 'stopped');
 
 		var categoryIcons = {
-			'security': '🛡️', 'dns': '🔍', 'web': '🌍',
-			'monitoring': '📊', 'network': '🌐', 'system': '⚙️'
+			'proxy': '⚡', 'privacy': '🧅', 'security': '🛡️',
+			'network': '🔌', 'container': '📦', 'system': '⚙️',
+			'services': '📡', 'other': '📁'
 		};
 
-		return E('div', { 'class': 'service-card', 'data-category': category, 'data-status': status }, [
-			E('div', { 'class': 'service-header' }, [
-				E('span', { 'class': 'service-icon' }, categoryIcons[category] || '📡'),
-				E('span', {
-					'class': 'service-status',
-					'style': 'background:' + statusStyle.bg + ';color:' + statusStyle.color
-				}, statusStyle.text)
+		return E('div', {
+			'class': 'service-card' + (published ? ' published' : ''),
+			'data-category': category,
+			'data-status': status
+		}, [
+			E('div', { 'class': 'svc-header' }, [
+				E('span', { 'class': 'svc-icon' }, categoryIcons[category] || '📡'),
+				E('div', { 'class': 'svc-badges' }, [
+					published ? E('span', { 'class': 'badge published' }, '🌐 Published') : null,
+					E('span', { 'class': 'badge source' }, source)
+				])
 			]),
-			E('div', { 'class': 'service-name' }, name.toUpperCase()),
-			E('div', { 'class': 'service-meta' }, [
-				port ? E('span', { 'class': 'meta-item' }, '🔌 ' + protocol.toUpperCase() + ':' + port) : null,
-				E('span', { 'class': 'meta-item' }, '📁 ' + category)
+			E('h3', { 'class': 'svc-name' }, name),
+			E('div', { 'class': 'svc-status ' + statusClass }, [
+				E('span', { 'class': 'status-dot' }),
+				status.charAt(0).toUpperCase() + status.slice(1)
 			]),
-			E('div', { 'class': 'service-actions' }, [
-				E('button', {
-					'class': 'svc-btn',
-					'title': 'Share to P2P Hub',
-					'click': function() { self.shareService(svc); }
-				}, '🌐'),
+			urls.local || urls.clearnet || urls.onion ? E('div', { 'class': 'svc-urls' }, [
+				urls.local ? E('a', { 'href': urls.local, 'target': '_blank', 'class': 'url-link local' }, '🏠 Local') : null,
+				urls.clearnet ? E('a', { 'href': urls.clearnet, 'target': '_blank', 'class': 'url-link clearnet' }, '🌐 Web') : null,
+				urls.onion ? E('span', { 'class': 'url-link onion', 'title': urls.onion }, '🧅 Onion') : null
+			]) : null,
+			E('div', { 'class': 'svc-actions' }, [
 				E('button', {
 					'class': 'svc-btn',
 					'title': 'View Details',
-					'click': function() { self.viewServiceDetails(svc); }
+					'click': function() { self.viewDetails(svc); }
 				}, '👁️'),
-				status === 'running' ?
-					E('button', {
-						'class': 'svc-btn danger',
-						'title': 'Stop Service',
-						'click': function() { self.controlService(name, 'stop'); }
-					}, '⏹️') :
-					E('button', {
-						'class': 'svc-btn success',
-						'title': 'Start Service',
-						'click': function() { self.controlService(name, 'start'); }
-					}, '▶️')
+				!published ? E('a', {
+					'class': 'svc-btn primary',
+					'title': 'Publish',
+					'href': L.url('admin', 'services', 'service-registry', 'publish')
+				}, '📤') : null
 			])
 		]);
 	},
@@ -257,185 +337,994 @@ return view.extend({
 	filterByCategory: function(category) {
 		this.selectedCategory = category;
 		var cards = document.querySelectorAll('.service-card');
-		var buttons = document.querySelectorAll('.category-btn');
+		var buttons = document.querySelectorAll('.cat-btn');
 
 		buttons.forEach(function(btn) {
 			btn.classList.toggle('active', btn.dataset.category === category);
 		});
 
 		cards.forEach(function(card) {
-			if (category === 'all' || card.dataset.category === category) {
-				card.style.display = '';
-			} else {
-				card.style.display = 'none';
-			}
+			var cardCat = card.dataset.category;
+			var isPublished = card.classList.contains('published');
+
+			var show = category === 'all' ||
+			           (category === 'published' && isPublished) ||
+			           cardCat === category;
+
+			card.style.display = show ? '' : 'none';
 		});
 	},
 
-	discoverServices: function() {
+	refreshServices: function() {
 		var self = this;
-		ui.showModal('Discovering Services', [
-			E('div', { 'style': 'text-align:center;padding:30px;' }, [
-				E('div', { 'class': 'spinning', 'style': 'font-size:48px;margin-bottom:20px;' }, '🔄'),
-				E('div', {}, 'Scanning for services...')
-			])
+		ui.showModal('Refreshing', [
+			E('p', { 'class': 'spinning' }, '🔄 Discovering services...')
 		]);
 
-		callGetServices().then(function(result) {
+		this.load().then(function(data) {
 			ui.hideModal();
-			var services = result.services || result || [];
-			ui.addNotification(null, E('p', 'Discovered ' + services.length + ' services'), 'info');
+			ui.addNotification(null, E('p', '✅ Found ' + data.services.length + ' services'), 'info');
 			window.location.reload();
 		}).catch(function(err) {
 			ui.hideModal();
-			ui.addNotification(null, E('p', 'Discovery failed: ' + err.message), 'error');
+			ui.addNotification(null, E('p', '❌ Error: ' + err.message), 'error');
 		});
 	},
 
-	registerService: function() {
-		var self = this;
-		var nameInput = E('input', { 'type': 'text', 'class': 'modal-input', 'placeholder': 'Service name' });
-		var portInput = E('input', { 'type': 'number', 'class': 'modal-input', 'placeholder': 'Port (e.g., 8080)' });
-		var protocolSelect = E('select', { 'class': 'modal-input' }, [
-			E('option', { 'value': 'tcp' }, 'TCP'),
-			E('option', { 'value': 'udp' }, 'UDP'),
-			E('option', { 'value': 'http' }, 'HTTP'),
-			E('option', { 'value': 'https' }, 'HTTPS')
+	regenerateLanding: function() {
+		ui.showModal('Generating', [
+			E('p', { 'class': 'spinning' }, '📄 Regenerating landing page...')
 		]);
 
-		ui.showModal('Register New Service', [
-			E('div', { 'class': 'modal-form' }, [
-				E('label', {}, 'Service Name'),
-				nameInput,
-				E('label', {}, 'Port'),
-				portInput,
-				E('label', {}, 'Protocol'),
-				protocolSelect
-			]),
-			E('div', { 'class': 'modal-actions' }, [
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
-					var name = nameInput.value;
-					var port = portInput.value;
-					if (name && port) {
-						ui.addNotification(null, E('p', 'Service "' + name + '" registered on port ' + port), 'success');
-						ui.hideModal();
-					}
-				}}, 'Register'),
-				E('button', { 'class': 'cbi-button', 'click': function() { ui.hideModal(); }}, 'Cancel')
-			])
-		]);
+		callGenerateLanding().then(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', '✅ Landing page regenerated'), 'info');
+			} else {
+				ui.addNotification(null, E('p', '❌ ' + (result.error || 'Failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', '❌ Error: ' + err.message), 'error');
+		});
 	},
 
-	shareService: function(svc) {
-		var name = svc.name || svc.service || 'Unknown';
-		ui.showModal('Share Service to P2P Hub', [
-			E('div', { 'style': 'padding:20px;text-align:center;' }, [
-				E('div', { 'style': 'font-size:48px;margin-bottom:20px;' }, '🌐'),
-				E('div', { 'style': 'font-size:18px;font-weight:600;margin-bottom:10px;' }, name.toUpperCase()),
-				E('div', { 'style': 'color:#888;margin-bottom:20px;' }, 'Share this service with connected P2P peers?'),
-				E('div', { 'class': 'share-options', 'style': 'display:flex;gap:10px;justify-content:center;margin-bottom:20px;' }, [
-					E('label', { 'style': 'display:flex;align-items:center;gap:8px;' }, [
-						E('input', { 'type': 'checkbox', 'checked': true }),
-						'Enable load balancing'
-					]),
-					E('label', { 'style': 'display:flex;align-items:center;gap:8px;' }, [
-						E('input', { 'type': 'checkbox', 'checked': true }),
-						'Health monitoring'
-					])
-				])
-			]),
-			E('div', { 'class': 'modal-actions', 'style': 'display:flex;gap:10px;justify-content:center;' }, [
-				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
-					ui.addNotification(null, E('p', 'Service "' + name + '" shared to P2P Hub'), 'success');
-					ui.hideModal();
-				}}, 'Share'),
-				E('button', { 'class': 'cbi-button', 'click': function() { ui.hideModal(); }}, 'Cancel')
-			])
-		]);
-	},
+	exportServices: function() {
+		var data = JSON.stringify({
+			services: this.servicesData,
+			providers: this.providersData,
+			exported: new Date().toISOString()
+		}, null, 2);
 
-	viewServiceDetails: function(svc) {
-		var name = svc.name || svc.service || 'Unknown';
-		ui.showModal('Service Details: ' + name, [
-			E('pre', { 'style': 'background:#1a1a2e;padding:15px;border-radius:8px;color:#e0e0e0;overflow:auto;max-height:400px;' },
-				JSON.stringify(svc, null, 2)),
-			E('div', { 'style': 'margin-top:15px;' }, [
-				E('button', { 'class': 'cbi-button', 'click': function() { ui.hideModal(); }}, 'Close')
-			])
-		]);
-	},
-
-	controlService: function(name, action) {
-		ui.addNotification(null, E('p', 'Service ' + action + ' command sent for ' + name), 'info');
-	},
-
-	exportRegistry: function() {
-		var data = JSON.stringify(this.servicesData, null, 2);
 		var blob = new Blob([data], { type: 'application/json' });
 		var url = URL.createObjectURL(blob);
 		var a = document.createElement('a');
 		a.href = url;
-		a.download = 'secubox-services-registry.json';
+		a.download = 'secubox-services-' + new Date().toISOString().split('T')[0] + '.json';
 		a.click();
 		URL.revokeObjectURL(url);
-		ui.addNotification(null, E('p', 'Services registry exported'), 'success');
+
+		ui.addNotification(null, E('p', '✅ Exported ' + this.servicesData.length + ' services'), 'success');
+	},
+
+	viewDetails: function(svc) {
+		ui.showModal('Service Details: ' + (svc.name || svc.id), [
+			E('pre', { 'class': 'json-view' }, JSON.stringify(svc, null, 2)),
+			E('div', { 'class': 'modal-footer' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Close')
+			])
+		]);
+	},
+
+	showNetworkDiagnostics: function() {
+		var self = this;
+		ui.showModal('Network Diagnostics', [
+			E('div', { 'class': 'diagnostics-loading' }, [
+				E('p', { 'class': 'spinning' }, '🌐'),
+				E('p', {}, 'Gathering network information...')
+			])
+		]);
+
+		callGetNetworkInfo().then(function(info) {
+			console.log('[DIAG] Network info:', info);
+			var content = [];
+
+			// Public IP Section
+			var ipv4 = info.ipv4 ? info.ipv4.address : (info.public_ipv4 || 'Not detected');
+			var ipv6 = info.ipv6 ? (info.ipv6.address || info.ipv6.status) : (info.public_ipv6 || 'Not configured');
+
+			content.push(E('div', { 'class': 'diag-section' }, [
+				E('h3', {}, '🌍 Public IP Addresses'),
+				E('div', { 'class': 'diag-grid' }, [
+					E('div', { 'class': 'diag-item' }, [
+						E('span', { 'class': 'diag-label' }, 'IPv4'),
+						E('span', { 'class': 'diag-value' }, ipv4)
+					]),
+					E('div', { 'class': 'diag-item' }, [
+						E('span', { 'class': 'diag-label' }, 'IPv6'),
+						E('span', { 'class': 'diag-value mono' }, ipv6)
+					])
+				])
+			]));
+
+			// LAN Info Section
+			content.push(E('div', { 'class': 'diag-section' }, [
+				E('h3', {}, '🏠 Local Network'),
+				E('div', { 'class': 'diag-grid' }, [
+					E('div', { 'class': 'diag-item' }, [
+						E('span', { 'class': 'diag-label' }, 'LAN IP'),
+						E('span', { 'class': 'diag-value' }, info.lan_ip || info.local_ip || 'Unknown')
+					]),
+					E('div', { 'class': 'diag-item' }, [
+						E('span', { 'class': 'diag-label' }, 'HAProxy'),
+						E('span', { 'class': 'diag-value ' + (info.haproxy && info.haproxy.status === 'running' ? 'success' : '') },
+							info.haproxy ? info.haproxy.status : 'Unknown')
+					])
+				])
+			]));
+
+			// Firewall/Ports Section
+			var firewall = info.firewall || {};
+			var extPorts = info.external_ports || {};
+			var portItems = [];
+
+			// HTTP port
+			var httpOpen = firewall.http_open || (extPorts.http && extPorts.http.status === 'firewall_open');
+			portItems.push(E('div', { 'class': 'diag-port ' + (httpOpen ? 'open' : 'closed') }, [
+				E('span', { 'class': 'port-num' }, '80'),
+				E('span', { 'class': 'port-name' }, 'HTTP'),
+				E('span', { 'class': 'port-status' }, httpOpen ? '✓ Open' : '✗ Closed')
+			]));
+
+			// HTTPS port
+			var httpsOpen = firewall.https_open || (extPorts.https && extPorts.https.status === 'firewall_open');
+			portItems.push(E('div', { 'class': 'diag-port ' + (httpsOpen ? 'open' : 'closed') }, [
+				E('span', { 'class': 'port-num' }, '443'),
+				E('span', { 'class': 'port-name' }, 'HTTPS'),
+				E('span', { 'class': 'port-status' }, httpsOpen ? '✓ Open' : '✗ Closed')
+			]));
+
+			content.push(E('div', { 'class': 'diag-section' }, [
+				E('h3', {}, '🔌 Firewall Ports'),
+				E('div', { 'class': 'diag-ports' }, portItems)
+			]));
+
+			// Overall Status
+			var allGood = ipv4 !== 'Not detected' && httpOpen && httpsOpen;
+			content.push(E('div', { 'class': 'diag-section' }, [
+				E('h3', {}, '📊 Overall Status'),
+				E('div', { 'class': 'diag-grid' }, [
+					E('div', { 'class': 'diag-item' }, [
+						E('span', { 'class': 'diag-label' }, 'Internet'),
+						E('span', { 'class': 'diag-value ' + (ipv4 !== 'Not detected' ? 'success' : 'error') },
+							ipv4 !== 'Not detected' ? '✓ Connected' : '✗ Offline')
+					]),
+					E('div', { 'class': 'diag-item' }, [
+						E('span', { 'class': 'diag-label' }, 'Ready for Services'),
+						E('span', { 'class': 'diag-value ' + (allGood ? 'success' : 'error') },
+							allGood ? '✓ Yes' : '⚠ Check ports')
+					])
+				])
+			]));
+
+			// Update modal content
+			ui.showModal('🌐 Network Diagnostics', [
+				E('div', { 'class': 'diagnostics-panel' }, content),
+				E('div', { 'class': 'modal-footer' }, [
+					E('button', {
+						'class': 'cbi-button',
+						'click': function() { self.showNetworkDiagnostics(); }
+					}, '🔄 Refresh'),
+					E('button', { 'class': 'cbi-button cbi-button-positive', 'click': ui.hideModal }, 'Close')
+				])
+			]);
+		}).catch(function(err) {
+			ui.showModal('Network Diagnostics Error', [
+				E('p', { 'class': 'error' }, '❌ Failed to get network info: ' + err.message),
+				E('div', { 'class': 'modal-footer' }, [
+					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Close')
+				])
+			]);
+		});
+	},
+
+	checkAllHealth: function() {
+		var self = this;
+		ui.showModal('Health Check', [
+			E('div', { 'class': 'diagnostics-loading' }, [
+				E('p', { 'class': 'spinning' }, '🩺'),
+				E('p', {}, 'Checking service health...')
+			])
+		]);
+
+		callCheckAllHealth().then(function(result) {
+			console.log('[HEALTH] Result:', result);
+			var health = result.health || result || {};
+			var healthItems = [];
+
+			// Provider status section
+			var providers = [];
+			if (health.haproxy) {
+				var hStatus = health.haproxy.status === 'running';
+				providers.push(E('div', { 'class': 'health-item ' + (hStatus ? 'healthy' : 'unhealthy') }, [
+					E('div', { 'class': 'health-svc' }, [
+						E('span', { 'class': 'health-icon' }, hStatus ? '✅' : '❌'),
+						E('span', { 'class': 'health-name' }, '⚡ HAProxy')
+					]),
+					E('div', { 'class': 'health-details' }, [
+						E('span', { 'class': 'health-status' }, health.haproxy.status)
+					])
+				]));
+			}
+			if (health.tor) {
+				var tStatus = health.tor.status === 'running';
+				providers.push(E('div', { 'class': 'health-item ' + (tStatus ? 'healthy' : 'unhealthy') }, [
+					E('div', { 'class': 'health-svc' }, [
+						E('span', { 'class': 'health-icon' }, tStatus ? '✅' : '❌'),
+						E('span', { 'class': 'health-name' }, '🧅 Tor')
+					]),
+					E('div', { 'class': 'health-details' }, [
+						E('span', { 'class': 'health-status' }, health.tor.status)
+					])
+				]));
+			}
+			if (health.firewall) {
+				var fwOk = health.firewall.status === 'ok';
+				providers.push(E('div', { 'class': 'health-item ' + (fwOk ? 'healthy' : 'unknown') }, [
+					E('div', { 'class': 'health-svc' }, [
+						E('span', { 'class': 'health-icon' }, fwOk ? '✅' : '⚠️'),
+						E('span', { 'class': 'health-name' }, '🔥 Firewall')
+					]),
+					E('div', { 'class': 'health-details' }, [
+						E('span', { 'class': 'health-status' },
+							(health.firewall.http_open ? 'HTTP ✓ ' : 'HTTP ✗ ') +
+							(health.firewall.https_open ? 'HTTPS ✓' : 'HTTPS ✗'))
+					])
+				]));
+			}
+
+			if (providers.length > 0) {
+				healthItems.push(E('div', { 'class': 'health-section' }, [
+					E('h4', {}, '🔧 Providers'),
+					E('div', { 'class': 'health-list' }, providers)
+				]));
+			}
+
+			// Services health section
+			var services = health.services || [];
+			if (services.length > 0) {
+				var svcItems = services.map(function(svc) {
+					var dnsOk = svc.dns_status === 'ok';
+					var certOk = svc.cert_status === 'ok';
+					var allOk = dnsOk && certOk;
+					var statusClass = allOk ? 'healthy' : (!dnsOk ? 'unhealthy' : 'unknown');
+
+					return E('div', { 'class': 'health-item ' + statusClass }, [
+						E('div', { 'class': 'health-svc' }, [
+							E('span', { 'class': 'health-icon' }, allOk ? '✅' : (!dnsOk ? '❌' : '⚠️')),
+							E('span', { 'class': 'health-name' }, svc.domain)
+						]),
+						E('div', { 'class': 'health-details' }, [
+							E('span', { 'class': 'health-badge ' + (dnsOk ? 'ok' : 'err') }, 'DNS ' + (dnsOk ? '✓' : '✗')),
+							E('span', { 'class': 'health-badge ' + (certOk ? 'ok' : 'warn') },
+								certOk ? '🔒 ' + svc.cert_days + 'd' : '🔓 No cert')
+						])
+					]);
+				});
+
+				healthItems.push(E('div', { 'class': 'health-section' }, [
+					E('h4', {}, '🌐 Published Services (' + services.length + ')'),
+					E('div', { 'class': 'health-list' }, svcItems)
+				]));
+			}
+
+			if (healthItems.length === 0) {
+				healthItems.push(E('div', { 'class': 'empty-health' }, [
+					E('p', {}, 'No health data available')
+				]));
+			}
+
+			ui.showModal('🩺 Service Health Check', [
+				E('div', { 'class': 'health-panel' }, healthItems),
+				E('div', { 'class': 'modal-footer' }, [
+					E('button', {
+						'class': 'cbi-button',
+						'click': function() { self.checkAllHealth(); }
+					}, '🔄 Recheck'),
+					E('button', { 'class': 'cbi-button cbi-button-positive', 'click': ui.hideModal }, 'Close')
+				])
+			]);
+		}).catch(function(err) {
+			ui.showModal('Health Check Error', [
+				E('p', { 'class': 'error' }, '❌ ' + err.message),
+				E('div', { 'class': 'modal-footer' }, [
+					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Close')
+				])
+			]);
+		});
 	},
 
 	getStyles: function() {
-		return [
-			'.services-header { text-align:center; margin-bottom:30px; }',
-			'.services-title { font-size:28px; font-weight:700; color:#fff; display:flex; align-items:center; justify-content:center; gap:12px; }',
-			'.services-icon { font-size:36px; }',
-			'.services-subtitle { color:#888; margin-top:8px; font-size:14px; }',
-			'.services-categories { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-bottom:25px; }',
-			'.category-btn { display:flex; align-items:center; gap:8px; padding:10px 16px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; color:#a0a0b0; cursor:pointer; transition:all 0.2s; }',
-			'.category-btn:hover { background:rgba(99,102,241,0.1); border-color:rgba(99,102,241,0.3); }',
-			'.category-btn.active { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; border-color:transparent; }',
-			'.cat-count { background:rgba(0,0,0,0.2); padding:2px 8px; border-radius:10px; font-size:12px; }',
-			'.services-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:15px; margin-bottom:25px; }',
-			'.stat-card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px; text-align:center; }',
-			'.stat-card.accent { border-color:rgba(16,185,129,0.3); }',
-			'.stat-card.warning { border-color:rgba(245,158,11,0.3); }',
-			'.stat-card.info { border-color:rgba(59,130,246,0.3); }',
-			'.stat-value { font-size:32px; font-weight:700; color:#fff; }',
-			'.stat-label { color:#888; font-size:12px; margin-top:5px; }',
-			'.services-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-bottom:25px; }',
-			'.action-btn { display:flex; align-items:center; gap:8px; padding:12px 20px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; color:#e0e0e0; cursor:pointer; transition:all 0.2s; }',
-			'.action-btn:hover { background:rgba(99,102,241,0.15); border-color:rgba(99,102,241,0.4); }',
-			'.action-btn.primary { background:linear-gradient(135deg,#667eea,#764ba2); border:none; color:#fff; }',
-			'.services-panel { background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:20px; margin-bottom:20px; }',
-			'.panel-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom:15px; border-bottom:1px solid rgba(255,255,255,0.08); }',
-			'.panel-title { font-size:14px; font-weight:600; color:#fff; letter-spacing:1px; }',
-			'.panel-badge { background:rgba(99,102,241,0.2); color:#818cf8; padding:4px 12px; border-radius:20px; font-size:12px; }',
-			'.panel-badge.accent { background:rgba(16,185,129,0.2); color:#10b981; }',
-			'.services-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:15px; }',
-			'.service-card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; transition:all 0.2s; }',
-			'.service-card:hover { border-color:rgba(99,102,241,0.4); transform:translateY(-2px); }',
-			'.service-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }',
-			'.service-icon { font-size:24px; }',
-			'.service-status { padding:4px 10px; border-radius:20px; font-size:10px; font-weight:600; letter-spacing:0.5px; }',
-			'.service-name { font-size:16px; font-weight:600; color:#fff; margin-bottom:8px; }',
-			'.service-meta { display:flex; gap:12px; color:#888; font-size:12px; margin-bottom:12px; }',
-			'.service-actions { display:flex; gap:8px; }',
-			'.svc-btn { width:32px; height:32px; border-radius:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); cursor:pointer; transition:all 0.2s; }',
-			'.svc-btn:hover { background:rgba(99,102,241,0.2); }',
-			'.svc-btn.success:hover { background:rgba(16,185,129,0.2); }',
-			'.svc-btn.danger:hover { background:rgba(239,68,68,0.2); }',
-			'.empty-state { text-align:center; padding:60px 20px; color:#888; }',
-			'.empty-icon { font-size:64px; margin-bottom:20px; opacity:0.5; }',
-			'.empty-text { font-size:18px; margin-bottom:10px; }',
-			'.empty-hint { font-size:14px; }',
-			'.p2p-info { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:15px; }',
-			'.p2p-feature { display:flex; gap:15px; padding:15px; background:rgba(255,255,255,0.02); border-radius:10px; }',
-			'.feature-icon { font-size:28px; }',
-			'.feature-title { font-weight:600; color:#fff; margin-bottom:4px; }',
-			'.feature-desc { font-size:12px; color:#888; }',
-			'.modal-input { width:100%; padding:10px; margin:8px 0 15px; background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.3); border-radius:8px; color:#fff; }',
-			'.modal-form label { display:block; color:#888; font-size:12px; }',
-			'.modal-actions { display:flex; gap:10px; margin-top:20px; }',
-			'@keyframes spin { to { transform:rotate(360deg); } }',
-			'.spinning { animation:spin 1s linear infinite; }'
-		].join('\n');
+		return `
+.secubox-services {
+	background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 100%);
+	min-height: 100vh;
+	padding: 24px;
+	margin: -20px;
+	font-family: system-ui, -apple-system, sans-serif;
+	color: #e0e0e0;
+}
+
+.sr-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 20px;
+	margin-bottom: 30px;
+}
+
+.sr-title {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+}
+
+.sr-logo {
+	font-size: 48px;
+	background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2));
+	padding: 16px;
+	border-radius: 16px;
+	border: 1px solid rgba(99,102,241,0.3);
+}
+
+.sr-title-text h1 {
+	font-size: 28px;
+	font-weight: 700;
+	margin: 0;
+	background: linear-gradient(135deg, #fff, #a78bfa);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+}
+
+.sr-title-text p {
+	margin: 4px 0 0;
+	color: #888;
+	font-size: 14px;
+}
+
+.sr-actions-top {
+	display: flex;
+	gap: 10px;
+}
+
+.sr-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 20px;
+	background: rgba(255,255,255,0.05);
+	border: 1px solid rgba(255,255,255,0.1);
+	border-radius: 10px;
+	color: #e0e0e0;
+	cursor: pointer;
+	text-decoration: none;
+	font-size: 14px;
+	transition: all 0.2s;
+}
+
+.sr-btn:hover {
+	background: rgba(99,102,241,0.15);
+	border-color: rgba(99,102,241,0.4);
+	color: #fff;
+}
+
+.sr-btn.primary {
+	background: linear-gradient(135deg, #6366f1, #8b5cf6);
+	border: none;
+	color: #fff;
+}
+
+.sr-btn.primary:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 4px 20px rgba(99,102,241,0.4);
+}
+
+.sr-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	gap: 16px;
+	margin-bottom: 24px;
+}
+
+.stat-card {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 20px;
+	background: rgba(255,255,255,0.03);
+	border: 1px solid rgba(255,255,255,0.08);
+	border-radius: 14px;
+	transition: all 0.2s;
+}
+
+.stat-card:hover {
+	border-color: rgba(99,102,241,0.3);
+}
+
+.stat-card.success { border-left: 3px solid #10b981; }
+.stat-card.accent { border-left: 3px solid #6366f1; }
+.stat-card.info { border-left: 3px solid #3b82f6; }
+.stat-card.purple { border-left: 3px solid #a855f7; }
+
+.stat-icon {
+	font-size: 32px;
+	opacity: 0.8;
+}
+
+.stat-value {
+	font-size: 28px;
+	font-weight: 700;
+	color: #fff;
+}
+
+.stat-label {
+	font-size: 12px;
+	color: #888;
+}
+
+.sr-categories {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-bottom: 20px;
+}
+
+.cat-btn {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 16px;
+	background: rgba(255,255,255,0.03);
+	border: 1px solid rgba(255,255,255,0.08);
+	border-radius: 10px;
+	color: #a0a0b0;
+	cursor: pointer;
+	transition: all 0.2s;
+}
+
+.cat-btn:hover {
+	background: rgba(99,102,241,0.1);
+	border-color: rgba(99,102,241,0.3);
+}
+
+.cat-btn.active {
+	background: linear-gradient(135deg, #6366f1, #8b5cf6);
+	border-color: transparent;
+	color: #fff;
+}
+
+.cat-count {
+	background: rgba(0,0,0,0.2);
+	padding: 2px 8px;
+	border-radius: 8px;
+	font-size: 12px;
+}
+
+.sr-quick-actions {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-bottom: 24px;
+}
+
+.sr-panel {
+	background: rgba(255,255,255,0.02);
+	border: 1px solid rgba(255,255,255,0.06);
+	border-radius: 16px;
+	padding: 24px;
+	margin-bottom: 24px;
+}
+
+.panel-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 20px;
+	padding-bottom: 16px;
+	border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.panel-header h2 {
+	font-size: 18px;
+	font-weight: 600;
+	color: #fff;
+	margin: 0;
+}
+
+.panel-badge {
+	background: rgba(99,102,241,0.15);
+	color: #a78bfa;
+	padding: 4px 12px;
+	border-radius: 20px;
+	font-size: 12px;
+}
+
+.sr-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+	gap: 16px;
+}
+
+.service-card {
+	background: rgba(255,255,255,0.02);
+	border: 1px solid rgba(255,255,255,0.06);
+	border-radius: 14px;
+	padding: 20px;
+	transition: all 0.2s;
+}
+
+.service-card:hover {
+	border-color: rgba(99,102,241,0.4);
+	transform: translateY(-2px);
+}
+
+.service-card.published {
+	border-color: rgba(16,185,129,0.3);
+}
+
+.svc-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	margin-bottom: 12px;
+}
+
+.svc-icon {
+	font-size: 28px;
+}
+
+.svc-badges {
+	display: flex;
+	gap: 6px;
+}
+
+.badge {
+	padding: 3px 8px;
+	border-radius: 6px;
+	font-size: 10px;
+	font-weight: 600;
+}
+
+.badge.published {
+	background: rgba(16,185,129,0.15);
+	color: #10b981;
+}
+
+.badge.source {
+	background: rgba(99,102,241,0.15);
+	color: #a78bfa;
+}
+
+.svc-name {
+	font-size: 16px;
+	font-weight: 600;
+	color: #fff;
+	margin: 0 0 8px;
+}
+
+.svc-status {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	margin-bottom: 12px;
+}
+
+.status-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+}
+
+.svc-status.running { color: #10b981; }
+.svc-status.running .status-dot { background: #10b981; box-shadow: 0 0 8px rgba(16,185,129,0.5); }
+.svc-status.stopped { color: #ef4444; }
+.svc-status.stopped .status-dot { background: #ef4444; }
+.svc-status.disabled { color: #6b7280; }
+.svc-status.disabled .status-dot { background: #6b7280; }
+
+.svc-urls {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin-bottom: 12px;
+}
+
+.url-link {
+	padding: 4px 10px;
+	border-radius: 6px;
+	font-size: 11px;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.url-link.local { background: rgba(59,130,246,0.15); color: #3b82f6; }
+.url-link.clearnet { background: rgba(16,185,129,0.15); color: #10b981; }
+.url-link.onion { background: rgba(168,85,247,0.15); color: #a855f7; }
+
+.svc-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.svc-btn {
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	background: rgba(255,255,255,0.05);
+	border: 1px solid rgba(255,255,255,0.1);
+	cursor: pointer;
+	transition: all 0.2s;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-decoration: none;
+}
+
+.svc-btn:hover {
+	background: rgba(99,102,241,0.2);
+}
+
+.svc-btn.primary {
+	background: rgba(99,102,241,0.2);
+	border-color: rgba(99,102,241,0.4);
+}
+
+.empty-state {
+	text-align: center;
+	padding: 60px 20px;
+	grid-column: 1 / -1;
+}
+
+.empty-icon {
+	font-size: 64px;
+	margin-bottom: 16px;
+	opacity: 0.5;
+}
+
+.empty-state h3 {
+	font-size: 20px;
+	margin: 0 0 8px;
+	color: #fff;
+}
+
+.empty-state p {
+	color: #888;
+	margin: 0;
+}
+
+.sr-providers h2 {
+	font-size: 18px;
+	font-weight: 600;
+	color: #fff;
+	margin: 0 0 16px;
+}
+
+.provider-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 16px;
+}
+
+.provider-card {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 16px;
+	background: rgba(255,255,255,0.02);
+	border: 1px solid rgba(255,255,255,0.06);
+	border-radius: 12px;
+}
+
+.provider-card.active {
+	border-color: rgba(16,185,129,0.3);
+}
+
+.provider-icon {
+	font-size: 28px;
+}
+
+.provider-info {
+	flex: 1;
+}
+
+.provider-name {
+	font-weight: 600;
+	color: #fff;
+}
+
+.provider-desc {
+	font-size: 12px;
+	color: #888;
+}
+
+.provider-stats {
+	text-align: right;
+}
+
+.provider-count {
+	font-size: 24px;
+	font-weight: 700;
+	color: #fff;
+}
+
+.provider-status {
+	font-size: 11px;
+}
+
+.provider-status.running { color: #10b981; }
+.provider-status.stopped { color: #ef4444; }
+.provider-status.unknown { color: #6b7280; }
+
+.json-view {
+	background: #0a0a1a;
+	padding: 16px;
+	border-radius: 10px;
+	color: #a78bfa;
+	font-size: 12px;
+	overflow: auto;
+	max-height: 400px;
+}
+
+.modal-footer {
+	margin-top: 16px;
+	text-align: right;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinning { animation: spin 1s linear infinite; display: inline-block; }
+
+.sr-btn.accent {
+	background: linear-gradient(135deg, #06b6d4, #0891b2);
+	border: none;
+	color: #fff;
+}
+
+/* Diagnostics Modal Styles */
+.diagnostics-loading {
+	text-align: center;
+	padding: 40px;
+}
+
+.diagnostics-loading p:first-child {
+	font-size: 48px;
+	margin-bottom: 16px;
+}
+
+.diagnostics-panel {
+	max-height: 60vh;
+	overflow-y: auto;
+}
+
+.diag-section {
+	background: rgba(0,0,0,0.3);
+	border-radius: 12px;
+	padding: 16px;
+	margin-bottom: 16px;
+}
+
+.diag-section h3 {
+	font-size: 14px;
+	font-weight: 600;
+	margin: 0 0 12px;
+	color: #a78bfa;
+}
+
+.diag-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 12px;
+}
+
+.diag-item {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.diag-label {
+	font-size: 11px;
+	color: #888;
+	text-transform: uppercase;
+}
+
+.diag-value {
+	font-size: 14px;
+	font-weight: 500;
+	color: #fff;
+}
+
+.diag-value.mono {
+	font-family: monospace;
+	font-size: 12px;
+}
+
+.diag-value.success { color: #10b981; }
+.diag-value.error { color: #ef4444; }
+
+.diag-ports {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+	gap: 10px;
+}
+
+.diag-port {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 12px;
+	border-radius: 10px;
+	background: rgba(255,255,255,0.03);
+	border: 1px solid rgba(255,255,255,0.08);
+}
+
+.diag-port.open {
+	border-color: rgba(16,185,129,0.4);
+	background: rgba(16,185,129,0.1);
+}
+
+.diag-port.closed {
+	border-color: rgba(239,68,68,0.3);
+	background: rgba(239,68,68,0.05);
+}
+
+.port-num {
+	font-size: 18px;
+	font-weight: 700;
+	color: #fff;
+}
+
+.port-name {
+	font-size: 11px;
+	color: #888;
+	margin: 4px 0;
+}
+
+.port-status {
+	font-size: 11px;
+	font-weight: 500;
+}
+
+.diag-port.open .port-status { color: #10b981; }
+.diag-port.closed .port-status { color: #ef4444; }
+
+/* Health Panel Styles */
+.health-panel {
+	max-height: 60vh;
+	overflow-y: auto;
+}
+
+.health-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 14px 16px;
+	background: rgba(255,255,255,0.02);
+	border: 1px solid rgba(255,255,255,0.06);
+	border-radius: 10px;
+	margin-bottom: 8px;
+}
+
+.health-item.healthy {
+	border-left: 3px solid #10b981;
+}
+
+.health-item.unhealthy {
+	border-left: 3px solid #ef4444;
+}
+
+.health-item.unknown {
+	border-left: 3px solid #f59e0b;
+}
+
+.health-svc {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.health-icon {
+	font-size: 18px;
+}
+
+.health-name {
+	font-weight: 500;
+	color: #fff;
+}
+
+.health-details {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.health-latency {
+	font-size: 12px;
+	color: #888;
+	background: rgba(255,255,255,0.05);
+	padding: 4px 8px;
+	border-radius: 6px;
+}
+
+.health-status {
+	font-size: 12px;
+	text-transform: capitalize;
+}
+
+.health-item.healthy .health-status { color: #10b981; }
+.health-item.unhealthy .health-status { color: #ef4444; }
+.health-item.unknown .health-status { color: #f59e0b; }
+
+.empty-health {
+	text-align: center;
+	padding: 40px;
+	color: #888;
+}
+
+.health-section {
+	margin-bottom: 20px;
+}
+
+.health-section h4 {
+	font-size: 13px;
+	font-weight: 600;
+	color: #a78bfa;
+	margin: 0 0 12px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.health-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.health-badge {
+	font-size: 11px;
+	padding: 3px 8px;
+	border-radius: 6px;
+	font-weight: 500;
+}
+
+.health-badge.ok {
+	background: rgba(16,185,129,0.15);
+	color: #10b981;
+}
+
+.health-badge.warn {
+	background: rgba(245,158,11,0.15);
+	color: #f59e0b;
+}
+
+.health-badge.err {
+	background: rgba(239,68,68,0.15);
+	color: #ef4444;
+}
+
+.error {
+	color: #ef4444;
+	text-align: center;
+	padding: 20px;
+}
+
+@media (max-width: 768px) {
+	.sr-header { flex-direction: column; align-items: flex-start; }
+	.sr-stats { grid-template-columns: repeat(2, 1fr); }
+	.sr-grid { grid-template-columns: 1fr; }
+}
+`;
 	},
 
 	handleSaveApply: null,

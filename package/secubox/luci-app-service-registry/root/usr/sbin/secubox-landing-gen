@@ -1,16 +1,18 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
-# SecuBox Landing Page Generator
+# SecuBox Landing Page Generator - Multi-Theme Support
 # Copyright (C) 2025 CyberMind.fr
 
 . /lib/functions.sh
 
 UCI_CONFIG="service-registry"
 OUTPUT_PATH="/www/secubox-services.html"
+THEME="mirrorbox"
 
-# Get output path from config
+# Get config values
 config_load "$UCI_CONFIG"
 config_get OUTPUT_PATH main landing_path "$OUTPUT_PATH"
+config_get THEME main landing_theme "mirrorbox"
 
 # Get services JSON
 SERVICES_JSON=$(ubus call luci.service-registry list_services 2>/dev/null)
@@ -22,7 +24,110 @@ fi
 # Get hostname
 HOSTNAME=$(uci -q get system.@system[0].hostname || echo "SecuBox")
 
-# Generate HTML
+# Theme CSS variables
+get_theme_css() {
+	case "$1" in
+		mirrorbox)
+			cat <<'CSS'
+            --primary: #00d4ff;
+            --primary-rgb: 0, 212, 255;
+            --secondary: #7c3aed;
+            --secondary-rgb: 124, 58, 237;
+            --accent: #f472b6;
+            --accent-rgb: 244, 114, 182;
+            --bg-start: #0a0a1a;
+            --bg-mid: #0f0f2a;
+            --bg-end: #1a0a2e;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-hover: rgba(255, 255, 255, 0.06);
+            --text: #f0f0f5;
+            --text-dim: #8b8b9e;
+            --text-muted: #5a5a6e;
+CSS
+			;;
+		cyberpunk)
+			cat <<'CSS'
+            --primary: #ff00ff;
+            --primary-rgb: 255, 0, 255;
+            --secondary: #00ffff;
+            --secondary-rgb: 0, 255, 255;
+            --accent: #ffff00;
+            --accent-rgb: 255, 255, 0;
+            --bg-start: #0d0221;
+            --bg-mid: #150734;
+            --bg-end: #0a0612;
+            --glass-bg: rgba(255, 0, 255, 0.05);
+            --glass-border: rgba(255, 0, 255, 0.2);
+            --glass-hover: rgba(0, 255, 255, 0.1);
+            --text: #ffffff;
+            --text-dim: #b0b0ff;
+            --text-muted: #7070aa;
+CSS
+			;;
+		minimal)
+			cat <<'CSS'
+            --primary: #6366f1;
+            --primary-rgb: 99, 102, 241;
+            --secondary: #8b5cf6;
+            --secondary-rgb: 139, 92, 246;
+            --accent: #ec4899;
+            --accent-rgb: 236, 72, 153;
+            --bg-start: #111827;
+            --bg-mid: #1f2937;
+            --bg-end: #111827;
+            --glass-bg: rgba(255, 255, 255, 0.02);
+            --glass-border: rgba(255, 255, 255, 0.05);
+            --glass-hover: rgba(255, 255, 255, 0.04);
+            --text: #f9fafb;
+            --text-dim: #9ca3af;
+            --text-muted: #6b7280;
+CSS
+			;;
+		terminal)
+			cat <<'CSS'
+            --primary: #00ff00;
+            --primary-rgb: 0, 255, 0;
+            --secondary: #00cc00;
+            --secondary-rgb: 0, 204, 0;
+            --accent: #00ff00;
+            --accent-rgb: 0, 255, 0;
+            --bg-start: #000000;
+            --bg-mid: #001100;
+            --bg-end: #000000;
+            --glass-bg: rgba(0, 255, 0, 0.03);
+            --glass-border: rgba(0, 255, 0, 0.15);
+            --glass-hover: rgba(0, 255, 0, 0.08);
+            --text: #00ff00;
+            --text-dim: #00cc00;
+            --text-muted: #008800;
+CSS
+			;;
+		light)
+			cat <<'CSS'
+            --primary: #3b82f6;
+            --primary-rgb: 59, 130, 246;
+            --secondary: #8b5cf6;
+            --secondary-rgb: 139, 92, 246;
+            --accent: #ec4899;
+            --accent-rgb: 236, 72, 153;
+            --bg-start: #ffffff;
+            --bg-mid: #f8fafc;
+            --bg-end: #f1f5f9;
+            --glass-bg: rgba(0, 0, 0, 0.02);
+            --glass-border: rgba(0, 0, 0, 0.08);
+            --glass-hover: rgba(0, 0, 0, 0.04);
+            --text: #1e293b;
+            --text-dim: #64748b;
+            --text-muted: #94a3b8;
+CSS
+			;;
+	esac
+}
+
+THEME_CSS=$(get_theme_css "$THEME")
+
+# Generate HTML (quoted heredoc to preserve JS variables)
 cat > "$OUTPUT_PATH" <<'HTMLHEAD'
 <!DOCTYPE html>
 <html lang="en">
@@ -30,270 +135,686 @@ cat > "$OUTPUT_PATH" <<'HTMLHEAD'
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SecuBox Services</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #0ff;
-            --primary-dim: #099;
-            --bg: #1a1a2e;
-            --card: #16213e;
-            --card-hover: #1c2a4a;
-            --text: #e4e4e7;
-            --text-dim: #a1a1aa;
-            --success: #22c55e;
+            /* Theme: THEME_NAME_PLACEHOLDER */
+THEME_CSS_PLACEHOLDER
+
+            /* Status Colors */
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.4);
             --warning: #f59e0b;
             --error: #ef4444;
+            --error-glow: rgba(239, 68, 68, 0.4);
+
+            /* Category Colors */
+            --cat-security: #f472b6;
+            --cat-media: #a78bfa;
+            --cat-network: #38bdf8;
+            --cat-development: #4ade80;
+            --cat-system: #fb923c;
+            --cat-other: #94a3b8;
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background: var(--bg);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg-start);
             color: var(--text);
             min-height: 100vh;
-            padding: 20px;
+            overflow-x: hidden;
         }
+
+        /* Animated Gradient Background */
+        .background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: linear-gradient(135deg, var(--bg-start) 0%, var(--bg-mid) 50%, var(--bg-end) 100%);
+        }
+
+        .background::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(ellipse 80% 50% at 20% 40%, rgba(var(--primary-rgb), 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 40% at 80% 60%, rgba(var(--secondary-rgb), 0.06) 0%, transparent 50%),
+                radial-gradient(ellipse 50% 30% at 50% 80%, rgba(var(--accent-rgb), 0.04) 0%, transparent 50%);
+            animation: pulse 15s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0.7; transform: scale(1.1); }
+        }
+
+        /* Grid Pattern Overlay */
+        .grid-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+            background-size: 60px 60px;
+            mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+        }
+
         .container {
-            max-width: 1400px;
+            max-width: 1440px;
             margin: 0 auto;
+            padding: 40px 24px;
+            position: relative;
         }
+
+        /* Header */
         .header {
             text-align: center;
-            margin-bottom: 40px;
-            padding: 20px;
+            margin-bottom: 60px;
+            padding: 40px;
+            position: relative;
         }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            box-shadow:
+                0 0 40px rgba(var(--primary-rgb), 0.3),
+                0 20px 40px rgba(0, 0, 0, 0.3);
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
         .header h1 {
-            color: var(--primary);
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            text-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--text) 0%, var(--primary) 50%, var(--secondary) 100%);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+            animation: shimmer 3s linear infinite;
         }
+
+        @keyframes shimmer {
+            0% { background-position: 0% center; }
+            100% { background-position: 200% center; }
+        }
+
         .header p {
             color: var(--text-dim);
-            font-size: 1.1em;
-        }
-        .stats {
-            display: flex;
-            justify-content: center;
-            gap: 30px;
-            margin-top: 20px;
-            flex-wrap: wrap;
-        }
-        .stat {
-            text-align: center;
-        }
-        .stat-value {
-            font-size: 2em;
-            font-weight: bold;
-            color: var(--primary);
-        }
-        .stat-label {
-            font-size: 0.85em;
-            color: var(--text-dim);
-        }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 20px;
-            padding: 10px;
-        }
-        .card {
-            background: var(--card);
-            border-radius: 12px;
-            padding: 20px;
-            border: 1px solid #333;
-            transition: all 0.2s ease;
-        }
-        .card:hover {
-            background: var(--card-hover);
-            border-color: var(--primary-dim);
-            transform: translateY(-2px);
-        }
-        .card-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 15px;
-        }
-        .card-icon {
-            font-size: 1.8em;
-            width: 45px;
-            height: 45px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(0, 255, 255, 0.1);
-            border-radius: 10px;
-        }
-        .card-title {
-            font-size: 1.15em;
-            font-weight: 600;
-            flex: 1;
-        }
-        .card-status {
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 0.75em;
-            font-weight: 500;
-        }
-        .status-running { background: var(--success); color: #000; }
-        .status-stopped { background: var(--error); color: #fff; }
-        .urls {
-            margin: 15px 0;
-        }
-        .url-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin: 8px 0;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.25);
-            border-radius: 8px;
-        }
-        .url-label {
-            min-width: 70px;
-            font-size: 0.75em;
-            color: var(--text-dim);
-            text-transform: uppercase;
+            font-size: 1.1rem;
+            font-weight: 400;
             letter-spacing: 0.5px;
         }
-        .url-link {
-            color: var(--primary);
-            text-decoration: none;
+
+        /* Stats Bar */
+        .stats-bar {
+            display: flex;
+            justify-content: center;
+            gap: 48px;
+            margin-top: 40px;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 16px 32px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .stat-item:hover {
+            background: var(--glass-hover);
+            border-color: rgba(var(--primary-rgb), 0.3);
+            transform: translateY(-2px);
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-top: 4px;
+        }
+
+        /* Category Section */
+        .category-section {
+            margin-bottom: 48px;
+        }
+
+        .category-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-left: 8px;
+        }
+
+        .category-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .category-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .category-count {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-dim);
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+        }
+
+        /* Cards Grid */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            gap: 24px;
+        }
+
+        /* Service Card */
+        .card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 24px;
+            backdrop-filter: blur(20px);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--primary), transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .card:hover {
+            background: var(--glass-hover);
+            border-color: rgba(var(--primary-rgb), 0.2);
+            transform: translateY(-4px);
+            box-shadow:
+                0 20px 40px rgba(0, 0, 0, 0.3),
+                0 0 60px rgba(var(--primary-rgb), 0.1);
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .card-icon {
+            width: 52px;
+            height: 52px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            border-radius: 14px;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .card-icon::after {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 16px;
+            padding: 2px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-mask:
+                linear-gradient(#fff 0 0) content-box,
+                linear-gradient(#fff 0 0);
+            mask:
+                linear-gradient(#fff 0 0) content-box,
+                linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            opacity: 0.5;
+        }
+
+        .card-info {
             flex: 1;
+            min-width: 0;
+        }
+
+        .card-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+
+        .card-desc {
+            font-size: 0.85rem;
+            color: var(--text-dim);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            font-size: 0.9em;
         }
+
+        .card-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            flex-shrink: 0;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+
+        .status-running {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .status-running .status-dot {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success-glow);
+        }
+
+        .status-stopped {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--error);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .status-stopped .status-dot {
+            background: var(--error);
+            box-shadow: 0 0 8px var(--error-glow);
+            animation: none;
+        }
+
+        /* URL Rows */
+        .urls-section {
+            margin-top: 16px;
+        }
+
+        .url-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            margin: 8px 0;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .url-row:hover {
+            background: rgba(0, 0, 0, 0.3);
+            border-color: rgba(var(--primary-rgb), 0.2);
+        }
+
+        .url-badge {
+            min-width: 70px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .badge-local {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+
+        .badge-clearnet {
+            background: rgba(74, 222, 128, 0.15);
+            color: #4ade80;
+            border: 1px solid rgba(74, 222, 128, 0.3);
+        }
+
+        .badge-onion {
+            background: rgba(167, 139, 250, 0.15);
+            color: #a78bfa;
+            border: 1px solid rgba(167, 139, 250, 0.3);
+        }
+
+        .url-link {
+            flex: 1;
+            color: var(--text);
+            text-decoration: none;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            transition: color 0.2s ease;
+        }
+
         .url-link:hover {
-            text-decoration: underline;
-        }
-        .copy-btn {
-            background: transparent;
-            border: 1px solid #444;
-            color: var(--text-dim);
-            padding: 5px 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 0.8em;
-            transition: all 0.2s;
-        }
-        .copy-btn:hover {
-            border-color: var(--primary);
             color: var(--primary);
         }
+
+        .copy-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: var(--text-dim);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+        }
+
+        .copy-btn:hover {
+            background: rgba(var(--primary-rgb), 0.15);
+            border-color: rgba(var(--primary-rgb), 0.4);
+            color: var(--primary);
+        }
+
         .copy-btn.copied {
-            border-color: var(--success);
+            background: rgba(16, 185, 129, 0.15);
+            border-color: rgba(16, 185, 129, 0.4);
             color: var(--success);
         }
-        .qr-container {
+
+        .copy-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* QR Codes Section */
+        .qr-section {
             display: flex;
             justify-content: center;
-            gap: 20px;
+            gap: 24px;
             flex-wrap: wrap;
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid #333;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--glass-border);
         }
-        .qr-box {
+
+        .qr-item {
             text-align: center;
         }
-        .qr-code {
-            background: #fff;
-            padding: 8px;
-            border-radius: 8px;
+
+        .qr-wrapper {
+            padding: 10px;
+            background: white;
+            border-radius: 12px;
             display: inline-block;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
         }
-        .qr-code img {
+
+        .qr-wrapper img {
             display: block;
-            border-radius: 4px;
+            border-radius: 6px;
         }
+
         .qr-label {
-            font-size: 0.7em;
-            color: var(--text-dim);
-            margin-top: 6px;
+            margin-top: 8px;
+            font-size: 0.7rem;
+            color: var(--text-muted);
             text-transform: uppercase;
+            letter-spacing: 1px;
         }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 80px 24px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            backdrop-filter: blur(20px);
+        }
+
+        .empty-icon {
+            font-size: 64px;
+            margin-bottom: 24px;
+            opacity: 0.5;
+        }
+
+        .empty-state h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            color: var(--text-dim);
+            font-size: 1rem;
+        }
+
+        /* Footer */
         .footer {
             text-align: center;
-            color: var(--text-dim);
-            font-size: 0.85em;
-            margin-top: 40px;
-            padding: 20px;
+            margin-top: 60px;
+            padding: 40px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
         }
+
         .footer a {
             color: var(--primary);
             text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s ease;
         }
-        .category-section {
-            margin-bottom: 40px;
+
+        .footer a:hover {
+            color: var(--secondary);
         }
-        .category-title {
-            font-size: 1.3em;
-            color: var(--text-dim);
-            margin-bottom: 15px;
-            padding-left: 10px;
-            border-left: 3px solid var(--primary);
+
+        .footer-brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 8px;
         }
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--text-dim);
+
+        .footer-logo {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 5px;
         }
-        .empty-state h2 {
-            margin-bottom: 10px;
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container { padding: 24px 16px; }
+            .header { padding: 24px 16px; }
+            .header h1 { font-size: 2rem; }
+            .logo { width: 60px; height: 60px; font-size: 28px; }
+            .stats-bar { gap: 16px; }
+            .stat-item { padding: 12px 20px; }
+            .stat-value { font-size: 1.8rem; }
+            .cards-grid { grid-template-columns: 1fr; gap: 16px; }
+            .card { padding: 20px; }
+            .url-link { font-size: 0.75rem; }
+            .qr-section { flex-direction: column; align-items: center; }
         }
-        @media (max-width: 600px) {
-            .header h1 { font-size: 1.8em; }
-            .grid { grid-template-columns: 1fr; }
-            .stats { gap: 15px; }
-            .qr-container { flex-direction: column; align-items: center; }
+
+        @media (max-width: 480px) {
+            .header h1 { font-size: 1.6rem; }
+            .url-badge { min-width: 60px; font-size: 0.6rem; }
+            .card-header { flex-direction: column; align-items: flex-start; }
+            .card-status { align-self: flex-start; }
         }
     </style>
 </head>
 <body>
+    <div class="background"></div>
+    <div class="grid-overlay"></div>
+
     <div class="container">
         <header class="header">
+            <div class="logo">SB</div>
             <h1>SecuBox Services</h1>
-            <p>Published endpoints and access links</p>
-            <div class="stats" id="stats"></div>
+            <p>Your secure gateway to published endpoints</p>
+            <div class="stats-bar" id="stats"></div>
         </header>
+
         <main id="services-container"></main>
+
         <footer class="footer">
+            <div class="footer-brand">
+                <div class="footer-logo"></div>
+                <span>Powered by <a href="#">SecuBox</a></span>
+            </div>
             <p>Generated: <span id="timestamp"></span></p>
-            <p>Powered by <a href="#">SecuBox</a></p>
         </footer>
     </div>
 
     <script>
-    // QR Code generator using QR Server API (free, reliable)
+    // QR Code generator
     function generateQRCodeImg(data, size) {
-        var url = 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size + '&data=' + encodeURIComponent(data);
-        return '<img src="' + url + '" alt="QR Code" width="' + size + '" height="' + size + '" style="display:block;" />';
+        var url = 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size + '&data=' + encodeURIComponent(data) + '&bgcolor=ffffff&color=1a1a2e';
+        return '<img src="' + url + '" alt="QR Code" width="' + size + '" height="' + size + '" loading="lazy" />';
     }
 
     // Service data
     var servicesData = SERVICES_JSON_PLACEHOLDER;
 
+    // Icons mapping
+    var icons = {
+        'server': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="6" rx="2"/><rect x="2" y="15" width="20" height="6" rx="2"/><line x1="6" y1="6" x2="6" y2="6"/><line x1="6" y1="18" x2="6" y2="18"/></svg>',
+        'shield': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+        'globe': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+        'lock': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+        'default': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
+    };
+
+    var emojiIcons = {
+        'server': '&#128421;', 'music': '&#127925;', 'shield': '&#128737;', 'chart': '&#128200;',
+        'settings': '&#9881;', 'git': '&#128230;', 'blog': '&#128221;', 'arrow': '&#10145;',
+        'onion': '&#129477;', 'lock': '&#128274;', 'globe': '&#127760;', 'box': '&#128230;',
+        'app': '&#128241;', 'admin': '&#128100;', 'stats': '&#128200;', 'security': '&#128272;',
+        'feed': '&#128225;', 'default': '&#128279;'
+    };
+
+    // Category colors
+    var categoryColors = {
+        'security': { bg: 'rgba(244, 114, 182, 0.1)', border: 'rgba(244, 114, 182, 0.3)', text: '#f472b6', icon: '&#128737;' },
+        'media': { bg: 'rgba(167, 139, 250, 0.1)', border: 'rgba(167, 139, 250, 0.3)', text: '#a78bfa', icon: '&#127925;' },
+        'network': { bg: 'rgba(56, 189, 248, 0.1)', border: 'rgba(56, 189, 248, 0.3)', text: '#38bdf8', icon: '&#127760;' },
+        'development': { bg: 'rgba(74, 222, 128, 0.1)', border: 'rgba(74, 222, 128, 0.3)', text: '#4ade80', icon: '&#128187;' },
+        'system': { bg: 'rgba(251, 146, 60, 0.1)', border: 'rgba(251, 146, 60, 0.3)', text: '#fb923c', icon: '&#128421;' },
+        'other': { bg: 'rgba(148, 163, 184, 0.1)', border: 'rgba(148, 163, 184, 0.3)', text: '#94a3b8', icon: '&#128230;' }
+    };
+
     function getIcon(iconName) {
-        var icons = {
-            'server': '🖥️', 'music': '🎵', 'shield': '🛡️', 'chart': '📊',
-            'settings': '⚙️', 'git': '📦', 'blog': '📝', 'arrow': '➡️',
-            'onion': '🧅', 'lock': '🔒', 'globe': '🌐', 'box': '📦',
-            'app': '📱', 'admin': '👤', 'stats': '📈', 'security': '🔐',
-            'feed': '📡', 'default': '🔗'
-        };
-        return icons[iconName] || icons['default'];
+        return emojiIcons[iconName] || emojiIcons['default'];
+    }
+
+    function getCategoryStyle(cat) {
+        return categoryColors[cat] || categoryColors['other'];
     }
 
     function copyToClipboard(text, btn) {
         navigator.clipboard.writeText(text).then(function() {
-            btn.textContent = 'Copied!';
             btn.classList.add('copied');
+            btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>';
             setTimeout(function() {
-                btn.textContent = 'Copy';
                 btn.classList.remove('copied');
+                btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
             }, 2000);
         });
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        var div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 
     function renderServices() {
@@ -306,28 +827,33 @@ cat > "$OUTPUT_PATH" <<'HTMLHEAD'
         var haproxy = servicesData.providers?.haproxy || {};
         var tor = servicesData.providers?.tor || {};
         statsEl.innerHTML =
-            '<div class="stat"><div class="stat-value">' + published.length + '</div><div class="stat-label">Services</div></div>' +
-            '<div class="stat"><div class="stat-value">' + (haproxy.count || 0) + '</div><div class="stat-label">Domains</div></div>' +
-            '<div class="stat"><div class="stat-value">' + (tor.count || 0) + '</div><div class="stat-label">Onion Sites</div></div>';
+            '<div class="stat-item"><div class="stat-value">' + published.length + '</div><div class="stat-label">Services</div></div>' +
+            '<div class="stat-item"><div class="stat-value">' + (haproxy.count || 0) + '</div><div class="stat-label">Domains</div></div>' +
+            '<div class="stat-item"><div class="stat-value">' + (tor.count || 0) + '</div><div class="stat-label">Onion Sites</div></div>';
 
         if (published.length === 0) {
-            container.innerHTML = '<div class="empty-state"><h2>No Published Services</h2><p>Publish services using the Service Registry dashboard</p></div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128230;</div><h2>No Published Services</h2><p>Publish services from the Service Registry dashboard to see them here</p></div>';
             return;
         }
 
         // Group by category
         var categories = {};
         published.forEach(function(service) {
-            var cat = service.category || 'other';
+            var cat = (service.category || 'other').toLowerCase();
             if (!categories[cat]) categories[cat] = [];
             categories[cat].push(service);
         });
 
         var html = '';
         Object.keys(categories).sort().forEach(function(cat) {
+            var style = getCategoryStyle(cat);
             html += '<section class="category-section">';
+            html += '<div class="category-header">';
+            html += '<div class="category-icon" style="background:' + style.bg + ';border:1px solid ' + style.border + ';color:' + style.text + '">' + style.icon + '</div>';
             html += '<h2 class="category-title">' + cat.charAt(0).toUpperCase() + cat.slice(1) + '</h2>';
-            html += '<div class="grid">';
+            html += '<span class="category-count">' + categories[cat].length + ' service' + (categories[cat].length > 1 ? 's' : '') + '</span>';
+            html += '</div>';
+            html += '<div class="cards-grid">';
 
             categories[cat].forEach(function(service) {
                 html += renderServiceCard(service);
@@ -338,7 +864,7 @@ cat > "$OUTPUT_PATH" <<'HTMLHEAD'
 
         container.innerHTML = html;
 
-        // Add event listeners for copy buttons
+        // Add event listeners
         document.querySelectorAll('.copy-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 copyToClipboard(this.dataset.url, this);
@@ -348,61 +874,56 @@ cat > "$OUTPUT_PATH" <<'HTMLHEAD'
 
     function renderServiceCard(service) {
         var urls = service.urls || {};
-        var html = '<div class="card">';
+        var html = '<article class="card">';
 
         // Header
         html += '<div class="card-header">';
         html += '<div class="card-icon">' + getIcon(service.icon) + '</div>';
-        html += '<div class="card-title">' + escapeHtml(service.name) + '</div>';
-        html += '<span class="card-status status-' + (service.status || 'stopped') + '">' +
-                (service.status || 'unknown') + '</span>';
+        html += '<div class="card-info">';
+        html += '<h3 class="card-title">' + escapeHtml(service.name) + '</h3>';
+        if (service.description) {
+            html += '<p class="card-desc">' + escapeHtml(service.description) + '</p>';
+        }
+        html += '</div>';
+        html += '<div class="card-status status-' + (service.status || 'stopped') + '">';
+        html += '<span class="status-dot"></span>' + (service.status || 'unknown');
+        html += '</div>';
         html += '</div>';
 
         // URLs
-        html += '<div class="urls">';
-        if (urls.local) {
-            html += renderUrlRow('Local', urls.local);
-        }
-        if (urls.clearnet) {
-            html += renderUrlRow('Clearnet', urls.clearnet);
-        }
-        if (urls.onion) {
-            html += renderUrlRow('Onion', urls.onion);
-        }
+        html += '<div class="urls-section">';
+        if (urls.local) html += renderUrlRow('local', urls.local);
+        if (urls.clearnet) html += renderUrlRow('clearnet', urls.clearnet);
+        if (urls.onion) html += renderUrlRow('onion', urls.onion);
         html += '</div>';
 
         // QR Codes
         var qrUrls = [];
         if (urls.clearnet) qrUrls.push({ label: 'Clearnet', url: urls.clearnet });
-        if (urls.onion) qrUrls.push({ label: 'Onion', url: urls.onion });
+        if (urls.onion) qrUrls.push({ label: 'Tor', url: urls.onion });
 
         if (qrUrls.length > 0) {
-            html += '<div class="qr-container">';
+            html += '<div class="qr-section">';
             qrUrls.forEach(function(qr) {
-                html += '<div class="qr-box">';
-                html += '<div class="qr-code">' + generateQRCodeImg(qr.url, 120) + '</div>';
+                html += '<div class="qr-item">';
+                html += '<div class="qr-wrapper">' + generateQRCodeImg(qr.url, 100) + '</div>';
                 html += '<div class="qr-label">' + qr.label + '</div>';
                 html += '</div>';
             });
             html += '</div>';
         }
 
-        html += '</div>';
+        html += '</article>';
         return html;
     }
 
-    function renderUrlRow(label, url) {
+    function renderUrlRow(type, url) {
+        var copyIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
         return '<div class="url-row">' +
-               '<span class="url-label">' + label + '</span>' +
-               '<a href="' + escapeHtml(url) + '" class="url-link" target="_blank">' + escapeHtml(url) + '</a>' +
-               '<button class="copy-btn" data-url="' + escapeHtml(url) + '">Copy</button>' +
+               '<span class="url-badge badge-' + type + '">' + type + '</span>' +
+               '<a href="' + escapeHtml(url) + '" class="url-link" target="_blank" rel="noopener">' + escapeHtml(url) + '</a>' +
+               '<button class="copy-btn" data-url="' + escapeHtml(url) + '" aria-label="Copy URL">' + copyIcon + '</button>' +
                '</div>';
-    }
-
-    function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
     }
 
     // Initialize
@@ -413,12 +934,35 @@ cat > "$OUTPUT_PATH" <<'HTMLHEAD'
 </html>
 HTMLHEAD
 
-# Replace placeholder with actual JSON using awk (more reliable than sed for JSON)
+# Replace placeholders
 TMP_OUTPUT="${OUTPUT_PATH}.tmp"
+
+# Replace theme name
+sed -i "s/THEME_NAME_PLACEHOLDER/$THEME/g" "$OUTPUT_PATH"
+
+# Replace theme CSS (multi-line, use a temp file approach)
+# First, escape special characters in THEME_CSS for sed
+THEME_CSS_ESCAPED=$(printf '%s\n' "$THEME_CSS" | sed 's/[&/\]/\\&/g')
+
+# Create a temp file with the CSS
+echo "$THEME_CSS" > "${TMP_OUTPUT}.css"
+
+# Use awk for multi-line replacement
+awk -v cssfile="${TMP_OUTPUT}.css" '
+/THEME_CSS_PLACEHOLDER/ {
+    while ((getline line < cssfile) > 0) print line
+    next
+}
+{print}
+' "$OUTPUT_PATH" > "$TMP_OUTPUT"
+mv "$TMP_OUTPUT" "$OUTPUT_PATH"
+rm -f "${TMP_OUTPUT}.css"
+
+# Replace JSON placeholder
 awk -v json="$SERVICES_JSON" '{gsub(/SERVICES_JSON_PLACEHOLDER/, json); print}' "$OUTPUT_PATH" > "$TMP_OUTPUT"
 mv "$TMP_OUTPUT" "$OUTPUT_PATH"
 
 # Ensure web server can read the file
 chmod 644 "$OUTPUT_PATH"
 
-echo "Landing page generated: $OUTPUT_PATH"
+echo "Landing page generated: $OUTPUT_PATH (theme: $THEME)"

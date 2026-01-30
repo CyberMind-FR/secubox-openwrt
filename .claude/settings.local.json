@@ -187,7 +187,11 @@
       "Bash(gzip:*)",
       "Bash(python3:*)",
       "WebFetch(domain:192.168.255.1)",
-      "Bash(ssh-add:*)"
+      "Bash(ssh-add:*)",
+      "Bash(SSH_AUTH_SOCK=\"\" ssh -i ~/.ssh/id_rsa root@192.168.255.1 'grep \"\"s.anonymous\"\" /www/luci-static/resources/view/cdn-cache/settings.js')",
+      "Bash(SSH_AUTH_SOCK=\"\" ssh -i ~/.ssh/id_rsa root@192.168.255.1 'grep \"\"s.anonymous\"\" /www/luci-static/resources/view/cdn-cache/settings.js; rm -f /tmp/luci-indexcache*')",
+      "Bash(SSH_AUTH_SOCK=\"\" ssh -i ~/.ssh/id_ed25519 root@192.168.255.1 'grep \"\"s.anonymous\"\" /www/luci-static/resources/view/cdn-cache/settings.js; rm -f /tmp/luci-indexcache*')",
+      "Bash(SSH_AUTH_SOCK=\"\" ssh -i ~/.ssh/id_ed25519 root@192.168.255.1 'echo \"\"=== CrowdSec Decisions ===\"\"; cscli decisions list 2>/dev/null | head -10; echo \"\"\"\"; echo \"\"=== Auth Guardian Status ===\"\"; ubus call luci.auth-guardian status 2>/dev/null | head -20')"
     ]
   }
 }

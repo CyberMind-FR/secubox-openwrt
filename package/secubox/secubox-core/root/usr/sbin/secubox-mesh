@@ -1,0 +1,11 @@
+#!/bin/sh
+# SecuBox Mesh - Main CLI
+# Distributed P2P recovery infrastructure
+
+MESH_LIB="/usr/lib/secubox/p2p-mesh.sh"
+
+# Source mesh library
+[ -f "$MESH_LIB" ] && . "$MESH_LIB"
+
+# Forward to library
+exec /bin/sh "$MESH_LIB" "$@"

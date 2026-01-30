@@ -1484,12 +1484,14 @@ method_get_landing_config() {
 	json_init
 
 	config_load "$UCI_CONFIG"
-	local landing_path auto_regen
+	local landing_path auto_regen theme
 	config_get landing_path main landing_path "/www/secubox-services.html"
 	config_get auto_regen main landing_auto_regen "1"
+	config_get theme main landing_theme "mirrorbox"
 
 	json_add_string "path" "$landing_path"
 	json_add_boolean "auto_regen" "$auto_regen"
+	json_add_string "theme" "$theme"
 
 	# Check if file exists
 	if [ -f "$landing_path" ]; then
@@ -1522,6 +1524,33 @@ method_save_landing_config() {
 	json_dump
 }
 
+# Set landing page theme
+method_set_landing_theme() {
+	local theme
+
+	read -r input
+	json_load "$input"
+	json_get_var theme theme "mirrorbox"
+
+	json_init
+
+	# Validate theme
+	case "$theme" in
+		mirrorbox|cyberpunk|minimal|terminal|light)
+			uci set "$UCI_CONFIG.main.landing_theme=$theme"
+			uci commit "$UCI_CONFIG"
+			json_add_boolean "success" 1
+			json_add_string "theme" "$theme"
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Invalid theme: $theme"
+			;;
+	esac
+
+	json_dump
+}
+
 # Main RPC interface
 case "$1" in
 	list)
@@ -1542,7 +1571,8 @@ case "$1" in
 	"check_all_health": {},
 	"get_network_info": {},
 	"get_landing_config": {},
-	"save_landing_config": { "auto_regen": "boolean" }
+	"save_landing_config": { "auto_regen": "boolean" },
+	"set_landing_theme": { "theme": "string" }
 }
 EOF
 		;;
@@ -1564,6 +1594,7 @@ EOF
 			get_network_info) method_get_network_info ;;
 			get_landing_config) method_get_landing_config ;;
 			save_landing_config) method_save_landing_config ;;
+			set_landing_theme) method_set_landing_theme ;;
 			*)
 				json_init
 				json_add_boolean "error" 1

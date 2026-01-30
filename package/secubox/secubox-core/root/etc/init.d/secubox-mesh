@@ -1,0 +1,51 @@
+#!/bin/sh /etc/rc.common
+# SecuBox P2P Mesh Daemon
+# Background synchronization of distributed recovery infrastructure
+
+START=95
+STOP=10
+USE_PROCD=1
+
+MESH_BIN="/usr/sbin/secubox-mesh"
+MESH_LIB="/usr/lib/secubox/p2p-mesh.sh"
+PID_FILE="/var/run/secubox-mesh.pid"
+SYNC_INTERVAL=300  # 5 minutes
+
+start_service() {
+    # Initialize mesh if needed
+    $MESH_BIN init
+
+    procd_open_instance
+    procd_set_param command /bin/sh -c "
+        while true; do
+            $MESH_BIN sync 2>/dev/null
+            $MESH_BIN discover 2>/dev/null
+            sleep $SYNC_INTERVAL
+        done
+    "
+    procd_set_param respawn
+    procd_set_param pidfile $PID_FILE
+    procd_close_instance
+
+    # Start API server
+    $MESH_BIN api &
+}
+
+stop_service() {
+    killall -q secubox-mesh 2>/dev/null
+}
+
+reload_service() {
+    $MESH_BIN sync
+}
+
+status() {
+    if [ -f "$PID_FILE" ] && kill -0 $(cat "$PID_FILE") 2>/dev/null; then
+        echo "SecuBox Mesh: running"
+        echo "Node ID: $(cat /srv/secubox/mesh/node.id 2>/dev/null)"
+        echo "Peers: $(cat /srv/secubox/mesh/peers.json 2>/dev/null | jsonfilter -e '@.peers[*]' | wc -l)"
+        echo "Blocks: $(find /srv/secubox/mesh/blocks -type f 2>/dev/null | wc -l)"
+    else
+        echo "SecuBox Mesh: stopped"
+    fi
+}

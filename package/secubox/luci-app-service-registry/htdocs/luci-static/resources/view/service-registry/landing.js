@@ -199,6 +199,24 @@ return view.extend({
 				E('div', { 'class': 'settings-grid' }, [
 					E('div', { 'class': 'setting-item' }, [
 						E('div', { 'class': 'setting-label' }, [
+							E('span', {}, '🎨'),
+							E('span', {}, 'Theme')
+						]),
+						E('div', { 'class': 'theme-selector' }, [
+							E('select', {
+								'class': 'theme-select',
+								'change': function(e) { self.handleThemeChange(e.target.value); }
+							}, [
+								E('option', { 'value': 'mirrorbox', 'selected': (config.theme || 'mirrorbox') === 'mirrorbox' }, 'MirrorBox (Glassmorphism)'),
+								E('option', { 'value': 'cyberpunk', 'selected': config.theme === 'cyberpunk' }, 'Cyberpunk (Neon)'),
+								E('option', { 'value': 'minimal', 'selected': config.theme === 'minimal' }, 'Minimal Dark'),
+								E('option', { 'value': 'terminal', 'selected': config.theme === 'terminal' }, 'Terminal (Matrix)'),
+								E('option', { 'value': 'light', 'selected': config.theme === 'light' }, 'Clean Light')
+							])
+						])
+					]),
+					E('div', { 'class': 'setting-item' }, [
+						E('div', { 'class': 'setting-label' }, [
 							E('span', {}, '🔄'),
 							E('span', {}, 'Auto-Regenerate')
 						]),
@@ -267,6 +285,31 @@ return view.extend({
 	toggleAutoRegen: function(enabled) {
 		// Save setting via API
 		ui.addNotification(null, E('p', (enabled ? '✅' : '❌') + ' Auto-regenerate ' + (enabled ? 'enabled' : 'disabled')), 'info');
+	},
+
+	handleThemeChange: function(theme) {
+		var self = this;
+		ui.showModal(_('Applying Theme'), [
+			E('p', { 'class': 'spinning' }, _('🎨 Applying theme: ' + theme + '...'))
+		]);
+
+		return api.setLandingTheme(theme).then(function(result) {
+			if (result.success) {
+				return api.generateLandingPage();
+			}
+			throw new Error(result.error || 'Failed to set theme');
+		}).then(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', '✅ ' + _('Theme applied: ') + theme), 'info');
+				window.location.reload();
+			} else {
+				ui.addNotification(null, E('p', '❌ ' + _('Failed to regenerate page')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', '❌ ' + _('Error: ') + err.message), 'error');
+		});
 	},
 
 	getStyles: function() {
@@ -344,7 +387,14 @@ return view.extend({
 			'.toggle-slider { position: absolute; inset: 0; background: rgba(255,255,255,0.1); border-radius: 13px; cursor: pointer; transition: 0.3s; }',
 			'.toggle-slider::before { content: ""; position: absolute; width: 20px; height: 20px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: 0.3s; }',
 			'.toggle-switch input:checked + .toggle-slider { background: #2ecc71; }',
-			'.toggle-switch input:checked + .toggle-slider::before { transform: translateX(24px); }'
+			'.toggle-switch input:checked + .toggle-slider::before { transform: translateX(24px); }',
+
+			// Theme Selector
+			'.theme-selector { display: flex; align-items: center; gap: 10px; }',
+			'.theme-select { padding: 10px 15px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: #fff; font-size: 14px; cursor: pointer; min-width: 200px; }',
+			'.theme-select:hover { border-color: rgba(52,152,219,0.5); }',
+			'.theme-select:focus { outline: none; border-color: #3498db; }',
+			'.theme-select option { background: #1a1a2e; color: #fff; padding: 10px; }'
 		].join('\n');
 	}
 });
