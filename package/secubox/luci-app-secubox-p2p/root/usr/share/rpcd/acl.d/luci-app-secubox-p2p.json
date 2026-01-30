@@ -13,7 +13,11 @@
 					"get_wireguard_config",
 					"get_haproxy_config",
 					"get_registry",
-					"health_check"
+					"health_check",
+					"get_gitea_config",
+					"list_gitea_repos",
+					"get_gitea_commits",
+					"list_local_backups"
 				],
 				"uci": ["get", "state"]
 			},
@@ -30,7 +34,13 @@
 					"set_dns_config",
 					"set_wireguard_config",
 					"set_haproxy_config",
-					"register_url"
+					"register_url",
+					"set_gitea_config",
+					"create_gitea_repo",
+					"push_gitea_backup",
+					"pull_gitea_backup",
+					"create_local_backup",
+					"restore_local_backup"
 				],
 				"uci": ["set", "delete", "commit", "apply"]
 			},
