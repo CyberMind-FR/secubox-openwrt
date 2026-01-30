@@ -42,12 +42,27 @@ get_next_port() {
 }
 
 # Fix permissions for web serving (755 for dirs, 644 for files)
+# Also ensure proper ownership for uhttpd
 fix_permissions() {
 	local dir="$1"
 	[ -d "$dir" ] || return 1
+
+	# Set umask to ensure files are world-readable
+	umask 022
+
+	# Fix directory permissions (755 = rwxr-xr-x)
 	chmod 755 "$dir"
-	find "$dir" -type d -exec chmod 755 {} \;
-	find "$dir" -type f -exec chmod 644 {} \;
+	find "$dir" -type d -exec chmod 755 {} \; 2>/dev/null
+
+	# Fix file permissions (644 = rw-r--r--)
+	find "$dir" -type f -exec chmod 644 {} \; 2>/dev/null
+
+	# Ensure parent directories are traversable
+	local parent_dir=$(dirname "$dir")
+	while [ "$parent_dir" != "/" ] && [ -d "$parent_dir" ]; do
+		chmod a+rx "$parent_dir" 2>/dev/null || true
+		parent_dir=$(dirname "$parent_dir")
+	done
 }
 
 # Reload HAProxy configuration properly
@@ -676,14 +691,18 @@ method_upload_file() {
 	local site_path="$SITES_ROOT/$name"
 	local file_path="$site_path/$filename"
 
-	# Create directory structure if needed
+	# Create directory structure if needed with proper permissions
 	local dir_path=$(dirname "$file_path")
+	umask 022
 	mkdir -p "$dir_path"
 	chmod 755 "$dir_path"
 
-	# Decode base64 content and write file
+	# Decode base64 content and write file with world-readable permissions
 	echo "$content" | base64 -d > "$file_path" 2>/dev/null
 	local rc=$?
+
+	# Immediately set readable permissions on the file
+	chmod 644 "$file_path" 2>/dev/null
 
 	if [ $rc -eq 0 ]; then
 		# Fix permissions for entire site directory
@@ -1230,6 +1249,84 @@ method_check_site_health() {
 	json_dump
 }
 
+# Repair site - fix permissions and restart backend
+method_repair_site() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name domain port runtime
+	name=$(get_uci "$id" name "")
+	domain=$(get_uci "$id" domain "")
+	port=$(get_uci "$id" port "")
+	runtime=$(get_uci "$id" runtime "")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+	local site_path="$SITES_ROOT/$name"
+
+	local repairs=""
+
+	# 1. Fix permissions
+	if [ -d "$site_path" ]; then
+		fix_permissions "$site_path"
+		repairs="$repairs permissions_fixed"
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site directory not found: $site_path"
+		json_dump
+		return
+	fi
+
+	# 2. Ensure index.html exists
+	if [ ! -f "$site_path/index.html" ]; then
+		# Create minimal index
+		cat > "$site_path/index.html" <<EOF
+<!DOCTYPE html>
+<html>
+<head><title>$name</title></head>
+<body><h1>$name</h1><p>Site placeholder</p></body>
+</html>
+EOF
+		chmod 644 "$site_path/index.html"
+		repairs="$repairs index_created"
+	fi
+
+	# 3. Restart uhttpd if using it
+	if [ "$runtime" = "uhttpd" ] && [ -n "$port" ]; then
+		/etc/init.d/uhttpd reload 2>/dev/null
+		repairs="$repairs uhttpd_reloaded"
+	fi
+
+	# 4. Reload HAProxy
+	reload_haproxy
+	repairs="$repairs haproxy_reloaded"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "repairs" "$repairs"
+	json_add_string "site_path" "$site_path"
+	json_dump
+}
+
 # Save global settings
 method_save_settings() {
 	local enabled runtime nginx_container sites_root gitea_url
@@ -1275,7 +1372,8 @@ case "$1" in
 	"get_settings": {},
 	"save_settings": { "enabled": "boolean", "nginx_container": "string", "sites_root": "string" },
 	"get_hosting_status": {},
-	"check_site_health": { "id": "string" }
+	"check_site_health": { "id": "string" },
+	"repair_site": { "id": "string" }
 }
 EOF
 		;;
@@ -1295,6 +1393,7 @@ EOF
 			save_settings)      method_save_settings ;;
 			get_hosting_status) method_get_hosting_status ;;
 			check_site_health)  method_check_site_health ;;
+			repair_site)        method_repair_site ;;
 			*)                  echo '{"error": "unknown method"}' ;;
 		esac
 		;;
