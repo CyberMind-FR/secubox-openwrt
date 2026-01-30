@@ -227,6 +227,60 @@ var callRemoveAppstoreApp = rpc.declare({
 	expect: { success: false }
 });
 
+// P2P Hub methods - Collaborative peer-to-peer app catalog sharing
+var callGetP2PPeers = rpc.declare({
+	object: 'luci.secubox',
+	method: 'p2p_get_peers',
+	expect: { peers: [] }
+});
+
+var callP2PDiscover = rpc.declare({
+	object: 'luci.secubox',
+	method: 'p2p_discover',
+	expect: { peers: [], discovered: 0 }
+});
+
+var callP2PAddPeer = rpc.declare({
+	object: 'luci.secubox',
+	method: 'p2p_add_peer',
+	params: ['address', 'name'],
+	expect: { success: false }
+});
+
+var callP2PRemovePeer = rpc.declare({
+	object: 'luci.secubox',
+	method: 'p2p_remove_peer',
+	params: ['peer_id'],
+	expect: { success: false }
+});
+
+var callP2PGetPeerCatalog = rpc.declare({
+	object: 'luci.secubox',
+	method: 'p2p_get_peer_catalog',
+	params: ['peer_id'],
+	expect: { apps: [] }
+});
+
+var callP2PShareCatalog = rpc.declare({
+	object: 'luci.secubox',
+	method: 'p2p_share_catalog',
+	params: ['enabled'],
+	expect: { success: false }
+});
+
+var callP2PGetSettings = rpc.declare({
+	object: 'luci.secubox',
+	method: 'p2p_get_settings',
+	expect: { }
+});
+
+var callP2PSetSettings = rpc.declare({
+	object: 'luci.secubox',
+	method: 'p2p_set_settings',
+	params: ['settings'],
+	expect: { success: false }
+});
+
 function formatUptime(seconds) {
 	if (!seconds) return '0s';
 	var d = Math.floor(seconds / 86400);
@@ -284,6 +338,15 @@ return baseclass.extend({
 	getAppstoreApp: callGetAppstoreApp,
 	installAppstoreApp: callInstallAppstoreApp,
 	removeAppstoreApp: callRemoveAppstoreApp,
+	// P2P Hub - Collaborative catalog sharing
+	getP2PPeers: callGetP2PPeers,
+	p2pDiscover: callP2PDiscover,
+	p2pAddPeer: callP2PAddPeer,
+	p2pRemovePeer: callP2PRemovePeer,
+	p2pGetPeerCatalog: callP2PGetPeerCatalog,
+	p2pShareCatalog: callP2PShareCatalog,
+	p2pGetSettings: callP2PGetSettings,
+	p2pSetSettings: callP2PSetSettings,
 	// Utilities
 	formatUptime: formatUptime,
 	formatBytes: formatBytes

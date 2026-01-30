@@ -5,7 +5,7 @@
 'require ui';
 'require uci';
 'require crowdsec-dashboard.api as api';
-'require crowdsec-dashboard.theme as theme';
+'require crowdsec-dashboard.theme as ThemeClass';
 
 /**
  * CrowdSec SOC Dashboard - Overview
@@ -13,12 +13,16 @@
  * Version 1.1.0
  */
 
+var themeInstance = new ThemeClass();
+
 return view.extend({
 	title: _('CrowdSec SOC'),
+	theme: themeInstance,
 
 	load: function() {
+		var self = this;
 		return Promise.all([
-			theme.init(),
+			self.theme.init(),
 			api.getOverview().catch(function() { return {}; })
 		]);
 	},
@@ -30,7 +34,7 @@ return view.extend({
 		// Apply theme class
 		document.body.classList.add('cs-fullwidth');
 
-		var view = E('div', { 'class': theme.getDashboardClass() }, [
+		var view = E('div', { 'class': self.theme.getDashboardClass() }, [
 			this.renderHeader(status),
 			this.renderNav('overview'),
 			E('div', { 'id': 'cs-stats' }, this.renderStats(status)),

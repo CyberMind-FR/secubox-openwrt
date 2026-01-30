@@ -4,7 +4,7 @@
 'require ui';
 'require uci';
 'require crowdsec-dashboard.api as api';
-'require crowdsec-dashboard.theme as theme';
+'require crowdsec-dashboard.theme as ThemeClass';
 
 /**
  * CrowdSec SOC - Settings View
@@ -12,15 +12,19 @@
  * With theme/appearance settings
  */
 
+var themeInstance = new ThemeClass();
+
 return view.extend({
 	title: _('Settings'),
 	status: {},
 	machines: [],
 	collections: [],
+	theme: themeInstance,
 
 	load: function() {
+		var self = this;
 		return Promise.all([
-			theme.init(),
+			self.theme.init(),
 			api.getStatus(),
 			api.getMachines(),
 			api.getCollections(),
@@ -42,7 +46,7 @@ return view.extend({
 
 		document.body.classList.add('cs-fullwidth');
 
-		return E('div', { 'class': theme.getDashboardClass() }, [
+		return E('div', { 'class': self.theme.getDashboardClass() }, [
 			this.renderHeader(),
 			this.renderNav('settings'),
 			E('div', { 'class': 'cs-stats' }, this.renderServiceStats()),
@@ -89,8 +93,8 @@ return view.extend({
 		var currentTheme = uci.get('crowdsec-dashboard', 'main', 'theme') || 'classic';
 		var currentProfile = uci.get('crowdsec-dashboard', 'main', 'profile') || 'default';
 
-		var themes = theme.getThemes();
-		var profiles = theme.getProfiles();
+		var themes = this.theme.getThemes();
+		var profiles = this.theme.getProfiles();
 
 		return E('div', {}, [
 			E('div', { 'style': 'margin-bottom: 16px;' }, [
@@ -127,11 +131,11 @@ return view.extend({
 	},
 
 	previewTheme: function(themeName) {
-		theme.switchTheme(themeName);
+		this.theme.switchTheme(themeName);
 	},
 
 	previewProfile: function(profileName) {
-		theme.switchProfile(profileName);
+		this.theme.switchProfile(profileName);
 	},
 
 	saveAppearance: function() {

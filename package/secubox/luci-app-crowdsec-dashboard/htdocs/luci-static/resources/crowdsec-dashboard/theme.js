@@ -12,9 +12,12 @@
  * - cyberpunk: Neon glow effects with orange/cyan accents
  *
  * Profiles can extend themes with custom configurations
+ *
+ * Usage: var theme = new (require('crowdsec-dashboard.theme'))();
+ *        theme.init().then(function() { ... });
  */
 
-var ThemeManager = baseclass.extend({
+return baseclass.extend({
 	// Available themes
 	themes: {
 		'classic': {
@@ -241,5 +244,3 @@ var ThemeManager = baseclass.extend({
 		return 'cs-dashboard theme-' + (this.currentTheme || 'classic');
 	}
 });
-
-return new ThemeManager();
