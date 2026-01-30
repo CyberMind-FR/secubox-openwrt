@@ -71,6 +71,18 @@ return view.extend({
 		inverseTunnel: false
 	},
 
+	// Distribution Config - Gigogne (nested cycle)
+	distributionConfig: {
+		mode: 'gigogne',  // gigogne = nested cycle, mono = single hop, full = all-to-all, ring = circular
+		cycleDepth: 3,
+		autoPropagate: true,
+		selfLoop: true
+	},
+
+	// Self-peer for testing
+	selfPeer: null,
+	testMode: false,
+
 	load: function() {
 		var self = this;
 		return Promise.all([
@@ -204,10 +216,15 @@ return view.extend({
 					peerNodes.map(function(node) {
 						var opacity = 0.4 + (node.z + 1) * 0.3;
 						var scale = 0.6 + (node.z + 1) * 0.2;
+						var peerClass = 'globe-peer';
+						if (node.peer.status === 'online') peerClass += ' online';
+						else peerClass += ' offline';
+						if (node.peer.isSelf) peerClass += ' self';
+						if (node.peer.isGigogne) peerClass += ' gigogne';
 						return E('div', {
-							'class': 'globe-peer ' + (node.peer.status === 'online' ? 'online' : 'offline'),
+							'class': peerClass,
 							'style': 'left: ' + node.x + '%; top: ' + node.y + '%; opacity: ' + opacity + '; transform: scale(' + scale + ');',
-							'title': (node.peer.name || node.peer.id) + ' - ' + (node.peer.address || 'Unknown')
+							'title': (node.peer.name || node.peer.id) + ' - ' + (node.peer.address || 'Unknown') + (node.peer.isGigogne ? ' [L' + node.peer.level + ']' : '')
 						}, [
 							E('span', { 'class': 'peer-dot' }),
 							E('span', { 'class': 'peer-label' }, node.peer.name || node.peer.id)
@@ -283,7 +300,31 @@ return view.extend({
 				E('div', { 'class': 'globe-actions' }, [
 					E('button', { 'class': 'globe-btn primary', 'click': function() { self.discoverPeers(); } }, '🔍 Discover'),
 					E('button', { 'class': 'globe-btn', 'click': function() { self.syncAll(); } }, '🔄 Sync All'),
-					E('button', { 'class': 'globe-btn', 'click': function() { self.showAddPeerModal(); } }, '➕ Add Peer')
+					E('button', { 'class': 'globe-btn', 'click': function() { self.showAddPeerModal(); } }, '➕ Add Peer'),
+					E('button', { 'class': 'globe-btn test', 'click': function() { self.addSelfPeer(); } }, '🔁 Self Peer')
+				]),
+
+				// Distribution Mode Selector
+				E('div', { 'class': 'globe-distribution' }, [
+					E('span', { 'class': 'dist-label' }, '🪆 Distribution:'),
+					E('select', { 'class': 'dist-select', 'change': function(e) { self.setDistributionMode(e.target.value); } }, [
+						E('option', { 'value': 'gigogne', 'selected': this.distributionConfig.mode === 'gigogne' }, '🪆 Gigogne (Nested)'),
+						E('option', { 'value': 'mono', 'selected': this.distributionConfig.mode === 'mono' }, '1️⃣ Mono (Single)'),
+						E('option', { 'value': 'ring', 'selected': this.distributionConfig.mode === 'ring' }, '⭕ Ring (Cycle)'),
+						E('option', { 'value': 'full', 'selected': this.distributionConfig.mode === 'full' }, '🕸️ Full Mesh')
+					]),
+					E('span', { 'class': 'dist-depth' }, [
+						'Depth: ',
+						E('input', {
+							'type': 'number',
+							'class': 'depth-input',
+							'value': this.distributionConfig.cycleDepth,
+							'min': 1,
+							'max': 10,
+							'change': function(e) { self.distributionConfig.cycleDepth = parseInt(e.target.value); }
+						})
+					]),
+					this.testMode ? E('span', { 'class': 'test-badge' }, '🧪 TEST') : null
 				])
 			])
 		]);
@@ -961,6 +1002,140 @@ return view.extend({
 		ui.addNotification(null, E('p', 'WireGuard Mirror mode: ' + mode), 'info');
 	},
 
+	// ==================== Self Peer & Distribution ====================
+	addSelfPeer: function() {
+		var self = this;
+		this.testMode = true;
+
+		// Create self-peer with loopback
+		this.selfPeer = {
+			id: 'self-' + Date.now(),
+			name: '🔁 Self (Test)',
+			address: '127.0.0.1',
+			status: 'online',
+			isSelf: true,
+			services: this.services.slice(),  // Mirror own services
+			wgMirror: true
+		};
+
+		// Add to peers list
+		this.peers.push(this.selfPeer);
+
+		// Create gigogne nested peers (matryoshka style)
+		var depth = this.distributionConfig.cycleDepth;
+		for (var i = 1; i < depth; i++) {
+			var nestedPeer = {
+				id: 'gigogne-' + i + '-' + Date.now(),
+				name: '🪆 Gigogne L' + i,
+				address: '127.0.0.' + (i + 1),
+				status: 'online',
+				isSelf: true,
+				isGigogne: true,
+				level: i,
+				parentId: i === 1 ? this.selfPeer.id : 'gigogne-' + (i - 1) + '-' + Date.now(),
+				services: this.services.slice(),
+				wgMirror: true
+			};
+			this.peers.push(nestedPeer);
+		}
+
+		ui.addNotification(null, E('p', '🪆 Self peer added with ' + depth + ' gigogne levels (mono cycle)'), 'info');
+
+		// Trigger refresh
+		setTimeout(function() {
+			var container = document.querySelector('.p2p-hub-master');
+			if (container) {
+				container.innerHTML = '';
+				container.appendChild(self.render().firstChild);
+			}
+		}, 100);
+	},
+
+	removeSelfPeer: function() {
+		var self = this;
+		this.testMode = false;
+		this.selfPeer = null;
+
+		// Remove all test peers
+		this.peers = this.peers.filter(function(p) {
+			return !p.isSelf && !p.isGigogne;
+		});
+
+		ui.addNotification(null, E('p', 'Self peer and gigogne levels removed'), 'info');
+	},
+
+	setDistributionMode: function(mode) {
+		this.distributionConfig.mode = mode;
+		var modeNames = {
+			'gigogne': '🪆 Gigogne (Nested Matryoshka)',
+			'mono': '1️⃣ Mono (Single Hop)',
+			'ring': '⭕ Ring (Circular Cycle)',
+			'full': '🕸️ Full Mesh (All-to-All)'
+		};
+		ui.addNotification(null, E('p', 'Distribution mode: ' + modeNames[mode]), 'info');
+
+		// If we have self-peer, recreate the gigogne structure
+		if (this.testMode && this.selfPeer) {
+			this.rebuildGigogneStructure();
+		}
+	},
+
+	rebuildGigogneStructure: function() {
+		var self = this;
+
+		// Remove existing gigogne peers
+		this.peers = this.peers.filter(function(p) {
+			return !p.isGigogne;
+		});
+
+		var mode = this.distributionConfig.mode;
+		var depth = this.distributionConfig.cycleDepth;
+
+		if (mode === 'gigogne') {
+			// Nested matryoshka - each level contains the next
+			for (var i = 1; i < depth; i++) {
+				this.peers.push({
+					id: 'gigogne-' + i,
+					name: '🪆 Gigogne L' + i,
+					address: '127.0.0.' + (i + 1),
+					status: 'online',
+					isGigogne: true,
+					level: i,
+					parentId: i === 1 ? this.selfPeer.id : 'gigogne-' + (i - 1),
+					services: this.services.slice()
+				});
+			}
+		} else if (mode === 'ring') {
+			// Circular - each points to next, last points to first
+			for (var i = 1; i < depth; i++) {
+				this.peers.push({
+					id: 'ring-' + i,
+					name: '⭕ Ring N' + i,
+					address: '127.0.0.' + (i + 1),
+					status: 'online',
+					isGigogne: true,
+					level: i,
+					nextId: i < depth - 1 ? 'ring-' + (i + 1) : this.selfPeer.id,
+					services: this.services.slice()
+				});
+			}
+		} else if (mode === 'mono') {
+			// Single hop - just one peer
+			this.peers.push({
+				id: 'mono-1',
+				name: '1️⃣ Mono Target',
+				address: '127.0.0.2',
+				status: 'online',
+				isGigogne: true,
+				level: 1,
+				services: this.services.slice()
+			});
+		}
+		// full mesh doesn't need special structure
+
+		ui.addNotification(null, E('p', 'Rebuilt ' + mode + ' structure with ' + (this.peers.length - 1) + ' nodes'), 'info');
+	},
+
 	syncWGMirror: function() {
 		ui.addNotification(null, E('p', '🔄 Syncing WireGuard mirror configurations...'), 'info');
 	},
@@ -1086,27 +1261,45 @@ return view.extend({
 			E('div', { 'class': 'panel-header orange' }, [
 				E('div', { 'class': 'panel-title' }, [
 					E('span', {}, '👥'),
-					E('span', {}, 'Connected Peers')
+					E('span', {}, 'Connected Peers'),
+					this.testMode ? E('span', { 'class': 'badge test' }, '🧪 TEST') : null
 				]),
 				E('button', { 'class': 'btn small', 'click': function() { self.discoverPeers(); } }, '🔍 Discover')
 			]),
 			E('div', { 'class': 'peers-list' },
 				this.peers.length > 0 ?
 					this.peers.map(function(p) {
-						return E('div', { 'class': 'peer-row' }, [
-							E('span', { 'class': 'peer-icon' }, '🖥️'),
+						var rowClass = 'peer-row';
+						var icon = '🖥️';
+						if (p.isSelf) {
+							rowClass += ' self';
+							icon = '🔁';
+						} else if (p.isGigogne) {
+							rowClass += ' gigogne';
+							icon = '🪆';
+						}
+						return E('div', { 'class': rowClass }, [
+							E('span', { 'class': 'peer-icon' }, icon),
 							E('div', { 'class': 'peer-info' }, [
 								E('div', { 'class': 'peer-name' }, p.name || p.id),
 								E('div', { 'class': 'peer-addr' }, p.address || 'Unknown')
 							]),
+							p.isGigogne ? E('span', { 'class': 'gigogne-level' }, 'L' + p.level) : null,
 							E('span', { 'class': 'peer-status ' + (p.status === 'online' ? 'online' : 'offline') }),
-							E('button', { 'class': 'btn-icon', 'click': function() { self.removePeer(p.id); } }, '✕')
+							(p.isSelf || p.isGigogne) ?
+								E('button', { 'class': 'btn-icon', 'click': function() { self.removeSelfPeer(); }, 'title': 'Remove test peers' }, '🗑️') :
+								E('button', { 'class': 'btn-icon', 'click': function() { self.removePeer(p.id); } }, '✕')
 						]);
 					}) :
-					E('div', { 'class': 'empty-state' }, 'No peers. Click Discover to find peers.')
+					E('div', { 'class': 'empty-state' }, [
+						'No peers. ',
+						E('button', { 'class': 'btn small', 'click': function() { self.addSelfPeer(); } }, '🔁 Add Self for Testing')
+					])
 			),
 			E('div', { 'class': 'panel-actions' }, [
-				E('button', { 'class': 'btn', 'click': function() { self.showAddPeerModal(); } }, '➕ Add Peer')
+				E('button', { 'class': 'btn', 'click': function() { self.showAddPeerModal(); } }, '➕ Add Peer'),
+				this.testMode ?
+					E('button', { 'class': 'btn', 'click': function() { self.removeSelfPeer(); } }, '🗑️ Clear Test') : null
 			])
 		]);
 	},
@@ -2003,7 +2196,29 @@ return view.extend({
 			'.toggle-switch.mini input:checked + .slider:before { transform: translateX(14px); }',
 
 			// Registry green stat value
-			'.reg-stat-value.green { color: #2ecc71; }'
+			'.reg-stat-value.green { color: #2ecc71; }',
+
+			// Self Peer & Distribution
+			'.globe-btn.test { background: linear-gradient(135deg, rgba(241,196,15,0.3), rgba(230,126,34,0.3)); border-color: rgba(241,196,15,0.5); }',
+			'.globe-btn.test:hover { background: linear-gradient(135deg, rgba(241,196,15,0.5), rgba(230,126,34,0.5)); }',
+			'.globe-distribution { display: flex; align-items: center; gap: 15px; margin-top: 15px; padding: 12px 15px; background: rgba(0,0,0,0.3); border-radius: 10px; flex-wrap: wrap; }',
+			'.dist-label { font-size: 13px; font-weight: 500; }',
+			'.dist-select { padding: 6px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: #e0e0e0; font-size: 12px; }',
+			'.dist-depth { display: flex; align-items: center; gap: 8px; font-size: 12px; }',
+			'.depth-input { width: 50px; padding: 4px 8px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; color: #e0e0e0; font-size: 12px; text-align: center; }',
+			'.test-badge { padding: 4px 10px; background: linear-gradient(135deg, #f1c40f, #e67e22); color: #000; border-radius: 12px; font-size: 10px; font-weight: 700; animation: pulse-badge 2s ease-in-out infinite; }',
+			'@keyframes pulse-badge { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }',
+
+			// Gigogne peer styles
+			'.globe-peer.gigogne { }',
+			'.globe-peer.gigogne .peer-dot { background: linear-gradient(135deg, #f1c40f, #e67e22); box-shadow: 0 0 10px rgba(241,196,15,0.6); }',
+			'.globe-peer.self .peer-dot { background: linear-gradient(135deg, #667eea, #764ba2); box-shadow: 0 0 15px rgba(102,126,234,0.8); animation: self-pulse 1.5s ease-in-out infinite; }',
+			'@keyframes self-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.3); } }',
+
+			// Peer row gigogne indicator
+			'.peer-row.gigogne { border-left: 3px solid #f1c40f; margin-left: 10px; }',
+			'.peer-row.self { border-left: 3px solid #667eea; background: rgba(102,126,234,0.1); }',
+			'.gigogne-level { font-size: 10px; color: #f1c40f; margin-left: auto; padding: 2px 6px; background: rgba(241,196,15,0.2); border-radius: 4px; }'
 		].join('\n');
 	},
 
