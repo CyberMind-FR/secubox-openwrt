@@ -1,48 +1,64 @@
 {
-	"admin/secubox/p2p-hub": {
-		"title": "P2P Hub",
+	"admin/secubox/mirrorbox": {
+		"title": "MirrorBox",
 		"order": 15,
 		"action": {
 			"type": "view",
-			"path": "secubox-p2p/hub"
+			"path": "secubox-p2p/overview"
 		},
 		"depends": {
 			"acl": ["luci-app-secubox-p2p"]
 		}
 	},
-	"admin/secubox/p2p-hub/overview": {
+	"admin/secubox/mirrorbox/overview": {
 		"title": "Overview",
 		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "secubox-p2p/overview"
+		}
+	},
+	"admin/secubox/mirrorbox/hub": {
+		"title": "P2P Hub",
+		"order": 20,
 		"action": {
 			"type": "view",
 			"path": "secubox-p2p/hub"
 		}
 	},
-	"admin/secubox/p2p-hub/peers": {
+	"admin/secubox/mirrorbox/peers": {
 		"title": "Peers",
-		"order": 20,
+		"order": 30,
 		"action": {
 			"type": "view",
 			"path": "secubox-p2p/peers"
 		}
 	},
-	"admin/secubox/p2p-hub/services": {
+	"admin/secubox/mirrorbox/services": {
 		"title": "Services",
-		"order": 30,
+		"order": 40,
 		"action": {
 			"type": "view",
 			"path": "secubox-p2p/services"
 		}
 	},
-	"admin/secubox/p2p-hub/mesh": {
+	"admin/secubox/mirrorbox/profiles": {
+		"title": "Profiles",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "secubox-p2p/profiles"
+		}
+	},
+	"admin/secubox/mirrorbox/mesh": {
 		"title": "Mesh Network",
-		"order": 40,
+		"order": 60,
 		"action": {
 			"type": "view",
 			"path": "secubox-p2p/mesh"
 		}
 	},
-	"admin/secubox/p2p-hub/settings": {
+	"admin/secubox/mirrorbox/settings": {
 		"title": "Settings",
 		"order": 90,
 		"action": {
