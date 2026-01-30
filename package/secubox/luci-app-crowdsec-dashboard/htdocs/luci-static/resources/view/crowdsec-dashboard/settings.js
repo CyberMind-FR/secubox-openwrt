@@ -3,6 +3,7 @@
 'require dom';
 'require ui';
 'require uci';
+'require fs';
 'require crowdsec-dashboard.api as api';
 'require crowdsec-dashboard.theme as theme';
 
@@ -89,6 +90,8 @@ return view.extend({
 		var currentTheme = uci.get('crowdsec-dashboard', 'main', 'theme') || 'classic';
 		var currentProfile = uci.get('crowdsec-dashboard', 'main', 'profile') || 'default';
 
+		console.log('CrowdSec Settings: Loading appearance - theme:', currentTheme, 'profile:', currentProfile);
+
 		var themes = theme.getThemes();
 		var profiles = theme.getProfiles();
 
@@ -139,15 +142,27 @@ return view.extend({
 		var selectedTheme = document.getElementById('theme-select').value;
 		var selectedProfile = document.getElementById('profile-select').value;
 
+		// Ensure the section exists (type is 'settings' per UCI convention)
+		var section = uci.get('crowdsec-dashboard', 'main');
+		if (!section) {
+			uci.add('crowdsec-dashboard', 'settings', 'main');
+		}
+
 		uci.set('crowdsec-dashboard', 'main', 'theme', selectedTheme);
 		uci.set('crowdsec-dashboard', 'main', 'profile', selectedProfile);
 
+		// Save to UCI staging area, then commit via shell
 		uci.save().then(function() {
-			return uci.apply();
+			// Commit using fs.exec for reliable persistence
+			return fs.exec('/sbin/uci', ['commit', 'crowdsec-dashboard']);
 		}).then(function() {
-			self.showToast('Theme saved', 'success');
+			// Switch theme visually
+			theme.switchTheme(selectedTheme);
+			theme.switchProfile(selectedProfile);
+			self.showToast('Theme saved successfully', 'success');
 		}).catch(function(e) {
-			self.showToast('Failed to save: ' + e.message, 'error');
+			console.error('Failed to save theme:', e);
+			self.showToast('Failed to save: ' + (e.message || e), 'error');
 		});
 	},
 

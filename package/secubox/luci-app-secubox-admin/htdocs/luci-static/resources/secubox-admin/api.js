@@ -245,6 +245,12 @@ var callImportFeed = rpc.declare({
 
 // ===== Profile Management API =====
 
+var callListProfiles = rpc.declare({
+	object: 'luci.secubox',
+	method: 'listProfiles',
+	expect: { profiles: [] }
+});
+
 var callExportProfile = rpc.declare({
 	object: 'luci.secubox',
 	method: 'export_profile',
@@ -264,6 +270,13 @@ var callShareProfile = rpc.declare({
 	method: 'share_profile',
 	params: ['profile_id'],
 	expect: { share_url: '' }
+});
+
+var callApplyProfile = rpc.declare({
+	object: 'luci.secubox',
+	method: 'applyProfile',
+	params: ['profile', 'dryrun'],
+	expect: { success: false }
 });
 
 // ===== Skill Management API =====
@@ -574,9 +587,11 @@ return baseclass.extend({
 	importFeed: debugRPC('importFeed', callImportFeed, { retries: 1 }),
 
 	// ===== Profile Management =====
+	listProfiles: debugRPC('listProfiles', callListProfiles, { retries: 2 }),
 	exportProfile: debugRPC('exportProfile', callExportProfile, { retries: 1 }),
 	importProfile: debugRPC('importProfile', callImportProfile, { retries: 1 }),
 	shareProfile: debugRPC('shareProfile', callShareProfile, { retries: 1 }),
+	applyProfile: debugRPC('applyProfile', callApplyProfile, { retries: 1 }),
 
 	// ===== Skill Management =====
 	listSkills: debugRPC('listSkills', callListSkills, { retries: 2 }),

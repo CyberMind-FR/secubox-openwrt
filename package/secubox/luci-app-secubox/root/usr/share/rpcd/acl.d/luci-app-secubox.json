@@ -37,7 +37,13 @@
 					"get_vital_services",
 					"get_full_health_report",
 					"get_services",
-					"get_proxy_mode"
+					"get_proxy_mode",
+					"p2p_get_peers",
+					"p2p_get_settings",
+					"p2p_discover",
+					"p2p_get_catalog",
+					"p2p_get_peer_catalog",
+					"p2p_get_shared_services"
 				],
                 "uci": [
                     "get",
@@ -74,7 +80,15 @@
 					"rollback_profile",
 					"install_appstore_app",
 					"remove_appstore_app",
-					"set_proxy_mode"
+					"set_proxy_mode",
+					"p2p_add_peer",
+					"p2p_remove_peer",
+					"p2p_set_settings",
+					"p2p_share_app",
+					"p2p_unshare_app",
+					"p2p_install_from_peer",
+					"p2p_sync_catalog",
+					"p2p_broadcast_command"
 				],
                 "uci": [
                     "set",

@@ -1,0 +1,315 @@
+#!/bin/sh
+# SecuBox P2P Hub Manager
+# Handles peer discovery, mesh networking, and service federation
+
+VERSION="0.1.0"
+CONFIG_FILE="/etc/config/secubox-p2p"
+PEERS_FILE="/tmp/secubox-p2p-peers.json"
+SERVICES_FILE="/tmp/secubox-p2p-services.json"
+STATE_DIR="/var/run/secubox-p2p"
+
+# Initialize
+init() {
+	mkdir -p "$STATE_DIR"
+	[ -f "$PEERS_FILE" ] || echo '{"peers":[]}' > "$PEERS_FILE"
+	[ -f "$SERVICES_FILE" ] || echo '{"services":[]}' > "$SERVICES_FILE"
+}
+
+# Get config value
+get_config() {
+	local section="$1"
+	local option="$2"
+	local default="$3"
+	uci -q get "secubox-p2p.${section}.${option}" || echo "$default"
+}
+
+# Set config value
+set_config() {
+	local section="$1"
+	local option="$2"
+	local value="$3"
+	uci set "secubox-p2p.${section}.${option}=$value"
+	uci commit secubox-p2p
+}
+
+# Discover peers via mDNS
+discover_mdns() {
+	local timeout="${1:-5}"
+	local peers="[]"
+
+	# Check if avahi-browse is available
+	if command -v avahi-browse >/dev/null 2>&1; then
+		# Discover _secubox._tcp services
+		local discovered=$(avahi-browse -t -r _secubox._tcp 2>/dev/null | grep -E "^=|hostname|address" || true)
+
+		if [ -n "$discovered" ]; then
+			# Parse discovered services into JSON
+			echo "$discovered" | awk '
+				/^=/ { name=$4 }
+				/hostname/ { host=$3 }
+				/address/ {
+					addr=$3
+					if (name && addr) {
+						printf "{\"id\":\"%s\",\"name\":\"%s\",\"address\":\"%s\",\"status\":\"online\"},", name, name, addr
+					}
+				}
+			' | sed 's/,$//' | awk '{print "["$0"]"}'
+		else
+			echo "[]"
+		fi
+	else
+		# Fallback: scan local network
+		local gateway=$(ip route | grep default | awk '{print $3}')
+		local subnet=$(echo "$gateway" | sed 's/\.[0-9]*$/./')
+
+		# Quick ping scan
+		for i in $(seq 1 254); do
+			ping -c1 -W1 "${subnet}${i}" >/dev/null 2>&1 &
+		done
+		wait
+
+		# Check for SecuBox peers via HTTP
+		arp -n | grep -v incomplete | awk '{print $1}' | while read ip; do
+			if curl -s --connect-timeout 1 "http://${ip}/cgi-bin/luci/admin/secubox" >/dev/null 2>&1; then
+				echo "{\"id\":\"peer-${ip}\",\"name\":\"SecuBox@${ip}\",\"address\":\"${ip}\",\"status\":\"online\"}"
+			fi
+		done | jq -s '.' 2>/dev/null || echo "[]"
+	fi
+}
+
+# Get peers list
+get_peers() {
+	if [ -f "$PEERS_FILE" ]; then
+		cat "$PEERS_FILE"
+	else
+		echo '{"peers":[]}'
+	fi
+}
+
+# Add peer
+add_peer() {
+	local address="$1"
+	local name="${2:-Peer}"
+	local id="peer-$(echo "$address" | md5sum | cut -c1-8)"
+
+	local peers=$(get_peers)
+	local new_peer="{\"id\":\"$id\",\"name\":\"$name\",\"address\":\"$address\",\"status\":\"unknown\",\"added\":\"$(date -Iseconds)\"}"
+
+	echo "$peers" | jq ".peers += [$new_peer]" > "$PEERS_FILE"
+	echo "{\"success\":true,\"peer_id\":\"$id\"}"
+}
+
+# Remove peer
+remove_peer() {
+	local peer_id="$1"
+	local peers=$(get_peers)
+	echo "$peers" | jq ".peers = [.peers[] | select(.id != \"$peer_id\")]" > "$PEERS_FILE"
+	echo "{\"success\":true}"
+}
+
+# Get settings
+get_settings() {
+	cat <<EOF
+{
+	"enabled": $(get_config main enabled 1),
+	"node_name": "$(get_config main node_name "")",
+	"discovery_enabled": $(get_config main discovery_enabled 1),
+	"sharing_enabled": $(get_config main sharing_enabled 1),
+	"auto_sync": $(get_config main auto_sync 1),
+	"sync_interval": $(get_config main sync_interval 60),
+	"dns_federation": {
+		"enabled": $(get_config dns enabled 0),
+		"primary_dns": "$(get_config dns primary_dns "127.0.0.1:53")",
+		"base_domain": "$(get_config dns base_domain "sb.local")"
+	},
+	"wireguard": {
+		"enabled": $(get_config wireguard enabled 0),
+		"listen_port": $(get_config wireguard listen_port 51820),
+		"network_cidr": "$(get_config wireguard network_cidr "10.100.0.0/24")"
+	},
+	"haproxy": {
+		"enabled": $(get_config haproxy enabled 0),
+		"strategy": "$(get_config haproxy strategy "round-robin")"
+	},
+	"registry": {
+		"base_url": "$(get_config registry base_url "sb.local")",
+		"cache_enabled": $(get_config registry cache_enabled 1)
+	}
+}
+EOF
+}
+
+# Set settings
+set_settings() {
+	local json="$1"
+
+	# Parse and apply settings
+	local enabled=$(echo "$json" | jsonfilter -e '@.enabled')
+	local sharing=$(echo "$json" | jsonfilter -e '@.sharing_enabled')
+	local discovery=$(echo "$json" | jsonfilter -e '@.discovery_enabled')
+
+	[ -n "$enabled" ] && set_config main enabled "$enabled"
+	[ -n "$sharing" ] && set_config main sharing_enabled "$sharing"
+	[ -n "$discovery" ] && set_config main discovery_enabled "$discovery"
+
+	echo "{\"success\":true}"
+}
+
+# Get local services
+get_services() {
+	local services="[]"
+
+	# Detect running services
+	for svc in dnsmasq uhttpd nginx crowdsec haproxy wireguard; do
+		if pgrep "$svc" >/dev/null 2>&1; then
+			local port=""
+			local protocol="tcp"
+
+			case "$svc" in
+				dnsmasq) port="53"; protocol="udp" ;;
+				uhttpd) port="80" ;;
+				nginx) port="80" ;;
+				crowdsec) port="8080" ;;
+				haproxy) port="80" ;;
+			esac
+
+			services=$(echo "$services" | jq ". += [{\"name\":\"$svc\",\"status\":\"running\",\"port\":\"$port\",\"protocol\":\"$protocol\"}]")
+		fi
+	done
+
+	echo "{\"services\":$services}"
+}
+
+# Get shared services (from peers)
+get_shared_services() {
+	local all_services="[]"
+	local peers=$(get_peers | jq -r '.peers[] | select(.status=="online") | .address')
+
+	for peer_addr in $peers; do
+		local peer_services=$(curl -s --connect-timeout 2 "http://${peer_addr}:8080/p2p/services" 2>/dev/null || echo "[]")
+		all_services=$(echo "$all_services" | jq ". += $peer_services")
+	done
+
+	echo "{\"shared_services\":$all_services}"
+}
+
+# Sync with peers
+sync_catalog() {
+	local peers=$(get_peers | jq -r '.peers[].address')
+	local synced=0
+
+	for peer_addr in $peers; do
+		if curl -s --connect-timeout 2 "http://${peer_addr}/cgi-bin/luci" >/dev/null 2>&1; then
+			synced=$((synced + 1))
+		fi
+	done
+
+	echo "{\"success\":true,\"synced_peers\":$synced}"
+}
+
+# Broadcast command to all peers
+broadcast_command() {
+	local cmd="$1"
+	local peers=$(get_peers | jq -r '.peers[] | select(.status=="online") | .address')
+	local success=0
+	local failed=0
+
+	for peer_addr in $peers; do
+		if curl -s --connect-timeout 5 -X POST "http://${peer_addr}:8080/p2p/command" -d "{\"command\":\"$cmd\"}" >/dev/null 2>&1; then
+			success=$((success + 1))
+		else
+			failed=$((failed + 1))
+		fi
+	done
+
+	echo "{\"success\":true,\"broadcast_success\":$success,\"broadcast_failed\":$failed}"
+}
+
+# Daemon mode
+daemon_loop() {
+	init
+
+	while true; do
+		# Auto-discovery if enabled
+		if [ "$(get_config main discovery_enabled 1)" = "1" ]; then
+			local discovered=$(discover_mdns 3)
+			if [ "$discovered" != "[]" ]; then
+				# Update peers file with discovered peers
+				local current=$(get_peers)
+				for peer in $(echo "$discovered" | jq -c '.[]'); do
+					local peer_id=$(echo "$peer" | jq -r '.id')
+					local exists=$(echo "$current" | jq ".peers[] | select(.id==\"$peer_id\")")
+					if [ -z "$exists" ]; then
+						current=$(echo "$current" | jq ".peers += [$peer]")
+					fi
+				done
+				echo "$current" > "$PEERS_FILE"
+			fi
+		fi
+
+		# Update peer status
+		local peers=$(get_peers)
+		local updated_peers=$(echo "$peers" | jq '.peers | map(. + {"status": "checking"})' | jq -c '.[]')
+
+		for peer in $updated_peers; do
+			local addr=$(echo "$peer" | jq -r '.address')
+			local id=$(echo "$peer" | jq -r '.id')
+
+			if ping -c1 -W1 "$addr" >/dev/null 2>&1; then
+				peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).status = \"online\"")
+			else
+				peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).status = \"offline\"")
+			fi
+		done
+
+		echo "$peers" > "$PEERS_FILE"
+
+		# Sleep interval
+		local interval=$(get_config main sync_interval 60)
+		sleep "$interval"
+	done
+}
+
+# Main
+case "$1" in
+	daemon)
+		daemon_loop
+		;;
+	discover)
+		discover_mdns "${2:-5}"
+		;;
+	peers)
+		get_peers
+		;;
+	add-peer)
+		add_peer "$2" "$3"
+		;;
+	remove-peer)
+		remove_peer "$2"
+		;;
+	settings)
+		get_settings
+		;;
+	set-settings)
+		set_settings "$2"
+		;;
+	services)
+		get_services
+		;;
+	shared-services)
+		get_shared_services
+		;;
+	sync)
+		sync_catalog
+		;;
+	broadcast)
+		broadcast_command "$2"
+		;;
+	version)
+		echo "$VERSION"
+		;;
+	*)
+		echo "Usage: $0 {daemon|discover|peers|add-peer|remove-peer|settings|set-settings|services|shared-services|sync|broadcast|version}"
+		exit 1
+		;;
+esac

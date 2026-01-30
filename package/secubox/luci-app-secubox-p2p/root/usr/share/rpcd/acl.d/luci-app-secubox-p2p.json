@@ -1,0 +1,40 @@
+{
+	"luci-app-secubox-p2p": {
+		"description": "SecuBox P2P Hub",
+		"read": {
+			"ubus": {
+				"luci.secubox-p2p": [
+					"get_peers",
+					"get_settings",
+					"get_services",
+					"get_shared_services",
+					"discover",
+					"get_dns_config",
+					"get_wireguard_config",
+					"get_haproxy_config",
+					"get_registry",
+					"health_check"
+				],
+				"uci": ["get", "state"]
+			},
+			"uci": ["secubox-p2p"]
+		},
+		"write": {
+			"ubus": {
+				"luci.secubox-p2p": [
+					"add_peer",
+					"remove_peer",
+					"set_settings",
+					"sync_catalog",
+					"broadcast_command",
+					"set_dns_config",
+					"set_wireguard_config",
+					"set_haproxy_config",
+					"register_url"
+				],
+				"uci": ["set", "delete", "commit", "apply"]
+			},
+			"uci": ["secubox-p2p"]
+		}
+	}
+}

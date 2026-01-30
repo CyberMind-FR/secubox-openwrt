@@ -1,0 +1,227 @@
+#!/bin/sh
+# SecuBox P2P RPCD Handler
+
+. /usr/share/libubox/jshn.sh
+
+P2P_CMD="/usr/sbin/secubox-p2p"
+
+case "$1" in
+	list)
+		cat <<EOF
+{
+	"get_peers": {},
+	"get_settings": {},
+	"get_services": {},
+	"get_shared_services": {},
+	"discover": { "timeout": 5 },
+	"add_peer": { "address": "string", "name": "string" },
+	"remove_peer": { "peer_id": "string" },
+	"set_settings": { "settings": "object" },
+	"sync_catalog": {},
+	"broadcast_command": { "command": "string" },
+	"get_dns_config": {},
+	"set_dns_config": { "config": "object" },
+	"get_wireguard_config": {},
+	"set_wireguard_config": { "config": "object" },
+	"get_haproxy_config": {},
+	"set_haproxy_config": { "config": "object" },
+	"get_registry": {},
+	"register_url": { "short_url": "string", "target_url": "string" },
+	"health_check": {}
+}
+EOF
+		;;
+
+	call)
+		case "$2" in
+			get_peers)
+				$P2P_CMD peers
+				;;
+
+			get_settings)
+				$P2P_CMD settings
+				;;
+
+			get_services)
+				$P2P_CMD services
+				;;
+
+			get_shared_services)
+				$P2P_CMD shared-services
+				;;
+
+			discover)
+				read input
+				timeout=$(echo "$input" | jsonfilter -e '@.timeout' 2>/dev/null || echo "5")
+				$P2P_CMD discover "$timeout"
+				;;
+
+			add_peer)
+				read input
+				address=$(echo "$input" | jsonfilter -e '@.address')
+				name=$(echo "$input" | jsonfilter -e '@.name')
+				if [ -n "$address" ]; then
+					$P2P_CMD add-peer "$address" "$name"
+				else
+					echo '{"success":false,"error":"Address required"}'
+				fi
+				;;
+
+			remove_peer)
+				read input
+				peer_id=$(echo "$input" | jsonfilter -e '@.peer_id')
+				if [ -n "$peer_id" ]; then
+					$P2P_CMD remove-peer "$peer_id"
+				else
+					echo '{"success":false,"error":"Peer ID required"}'
+				fi
+				;;
+
+			set_settings)
+				read input
+				settings=$(echo "$input" | jsonfilter -e '@.settings')
+				$P2P_CMD set-settings "$settings"
+				;;
+
+			sync_catalog)
+				$P2P_CMD sync
+				;;
+
+			broadcast_command)
+				read input
+				command=$(echo "$input" | jsonfilter -e '@.command')
+				$P2P_CMD broadcast "$command"
+				;;
+
+			get_dns_config)
+				cat <<EOF
+{
+	"enabled": $(uci -q get secubox-p2p.dns.enabled || echo 0),
+	"primary_dns": "$(uci -q get secubox-p2p.dns.primary_dns || echo "127.0.0.1:53")",
+	"sync_enabled": $(uci -q get secubox-p2p.dns.sync_enabled || echo 1),
+	"base_domain": "$(uci -q get secubox-p2p.dns.base_domain || echo "sb.local")"
+}
+EOF
+				;;
+
+			set_dns_config)
+				read input
+				enabled=$(echo "$input" | jsonfilter -e '@.config.enabled')
+				primary_dns=$(echo "$input" | jsonfilter -e '@.config.primary_dns')
+				base_domain=$(echo "$input" | jsonfilter -e '@.config.base_domain')
+
+				[ -n "$enabled" ] && uci set secubox-p2p.dns.enabled="$enabled"
+				[ -n "$primary_dns" ] && uci set secubox-p2p.dns.primary_dns="$primary_dns"
+				[ -n "$base_domain" ] && uci set secubox-p2p.dns.base_domain="$base_domain"
+				uci commit secubox-p2p
+
+				echo '{"success":true}'
+				;;
+
+			get_wireguard_config)
+				cat <<EOF
+{
+	"enabled": $(uci -q get secubox-p2p.wireguard.enabled || echo 0),
+	"listen_port": $(uci -q get secubox-p2p.wireguard.listen_port || echo 51820),
+	"network_cidr": "$(uci -q get secubox-p2p.wireguard.network_cidr || echo "10.100.0.0/24")",
+	"auto_configure": $(uci -q get secubox-p2p.wireguard.auto_configure || echo 1)
+}
+EOF
+				;;
+
+			set_wireguard_config)
+				read input
+				enabled=$(echo "$input" | jsonfilter -e '@.config.enabled')
+				listen_port=$(echo "$input" | jsonfilter -e '@.config.listen_port')
+				network_cidr=$(echo "$input" | jsonfilter -e '@.config.network_cidr')
+
+				[ -n "$enabled" ] && uci set secubox-p2p.wireguard.enabled="$enabled"
+				[ -n "$listen_port" ] && uci set secubox-p2p.wireguard.listen_port="$listen_port"
+				[ -n "$network_cidr" ] && uci set secubox-p2p.wireguard.network_cidr="$network_cidr"
+				uci commit secubox-p2p
+
+				echo '{"success":true}'
+				;;
+
+			get_haproxy_config)
+				cat <<EOF
+{
+	"enabled": $(uci -q get secubox-p2p.haproxy.enabled || echo 0),
+	"strategy": "$(uci -q get secubox-p2p.haproxy.strategy || echo "round-robin")",
+	"health_check": $(uci -q get secubox-p2p.haproxy.health_check || echo 1),
+	"failover": $(uci -q get secubox-p2p.haproxy.failover || echo 1)
+}
+EOF
+				;;
+
+			set_haproxy_config)
+				read input
+				enabled=$(echo "$input" | jsonfilter -e '@.config.enabled')
+				strategy=$(echo "$input" | jsonfilter -e '@.config.strategy')
+
+				[ -n "$enabled" ] && uci set secubox-p2p.haproxy.enabled="$enabled"
+				[ -n "$strategy" ] && uci set secubox-p2p.haproxy.strategy="$strategy"
+				uci commit secubox-p2p
+
+				echo '{"success":true}'
+				;;
+
+			get_registry)
+				cat <<EOF
+{
+	"base_url": "$(uci -q get secubox-p2p.registry.base_url || echo "sb.local")",
+	"cache_enabled": $(uci -q get secubox-p2p.registry.cache_enabled || echo 1),
+	"cache_ttl": $(uci -q get secubox-p2p.registry.cache_ttl || echo 300),
+	"services": []
+}
+EOF
+				;;
+
+			register_url)
+				read input
+				short_url=$(echo "$input" | jsonfilter -e '@.short_url')
+				target_url=$(echo "$input" | jsonfilter -e '@.target_url')
+
+				if [ -n "$short_url" ] && [ -n "$target_url" ]; then
+					# Store in UCI or file
+					echo "{\"success\":true,\"registered_url\":\"$(uci -q get secubox-p2p.registry.base_url)/${short_url}\"}"
+				else
+					echo '{"success":false,"error":"short_url and target_url required"}'
+				fi
+				;;
+
+			health_check)
+				local peers_online=0
+				local peers_total=0
+				local services_running=0
+
+				# Count online peers
+				if [ -f /tmp/secubox-p2p-peers.json ]; then
+					peers_total=$(jsonfilter -i /tmp/secubox-p2p-peers.json -e '@.peers[*]' 2>/dev/null | wc -l)
+					peers_online=$(jsonfilter -i /tmp/secubox-p2p-peers.json -e '@.peers[*].status' 2>/dev/null | grep -c "online" || echo 0)
+				fi
+
+				# Count running services
+				for svc in dnsmasq uhttpd crowdsec haproxy; do
+					pgrep "$svc" >/dev/null 2>&1 && services_running=$((services_running + 1))
+				done
+
+				cat <<EOF
+{
+	"status": "healthy",
+	"peers_online": $peers_online,
+	"peers_total": $peers_total,
+	"services_running": $services_running,
+	"dns_federation": $(uci -q get secubox-p2p.dns.enabled || echo 0),
+	"wireguard_mesh": $(uci -q get secubox-p2p.wireguard.enabled || echo 0),
+	"haproxy": $(uci -q get secubox-p2p.haproxy.enabled || echo 0)
+}
+EOF
+				;;
+
+			*)
+				echo '{"error":"Unknown method"}'
+				;;
+		esac
+		;;
+esac

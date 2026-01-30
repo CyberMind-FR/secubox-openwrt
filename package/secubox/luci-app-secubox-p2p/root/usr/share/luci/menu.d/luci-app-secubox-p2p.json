@@ -1,0 +1,53 @@
+{
+	"admin/secubox/p2p-hub": {
+		"title": "P2P Hub",
+		"order": 15,
+		"action": {
+			"type": "view",
+			"path": "secubox-p2p/hub"
+		},
+		"depends": {
+			"acl": ["luci-app-secubox-p2p"]
+		}
+	},
+	"admin/secubox/p2p-hub/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "secubox-p2p/hub"
+		}
+	},
+	"admin/secubox/p2p-hub/peers": {
+		"title": "Peers",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "secubox-p2p/peers"
+		}
+	},
+	"admin/secubox/p2p-hub/services": {
+		"title": "Services",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "secubox-p2p/services"
+		}
+	},
+	"admin/secubox/p2p-hub/mesh": {
+		"title": "Mesh Network",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "secubox-p2p/mesh"
+		}
+	},
+	"admin/secubox/p2p-hub/settings": {
+		"title": "Settings",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "secubox-p2p/settings"
+		}
+	}
+}

@@ -30,7 +30,7 @@
 					"hub_available"
 				],
 				"uci": [ "get", "state", "configs" ],
-				"file": [ "read", "stat" ]
+				"file": [ "read", "stat", "exec" ]
 			},
 			"uci": [ "crowdsec", "crowdsec-dashboard" ]
 		},
@@ -57,7 +57,8 @@
 					"install_hub_item",
 					"remove_hub_item"
 				],
-				"uci": [ "set", "add", "delete", "rename", "order", "commit", "apply", "confirm", "rollback" ]
+				"uci": [ "set", "add", "delete", "rename", "order", "commit", "apply", "confirm", "rollback" ],
+				"file": [ "exec" ]
 			},
 			"uci": [ "crowdsec", "crowdsec-dashboard" ]
 		}
