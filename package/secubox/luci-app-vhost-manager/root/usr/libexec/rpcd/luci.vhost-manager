@@ -603,7 +603,6 @@ case "$1" in
 				if [ -z "$domain" ]; then
 					json_init; json_add_boolean "success" 0; json_add_string "message" "Domain required"; json_dump; exit 0
 				fi
-				local section
 				section=$(find_section "$domain")
 				if [ -z "$section" ]; then
 					json_init; json_add_boolean "success" 0; json_add_string "message" "VHost not found"; json_dump; exit 0
@@ -618,7 +617,6 @@ case "$1" in
 				if [ -z "$enabled" ]; then
 					config_get_bool enabled "$section" enabled 1
 				fi
-				local current_tls current_cert_path current_key_path
 				config_get current_tls "$section" tls
 				config_get current_cert_path "$section" cert_path
 				config_get current_key_path "$section" key_path
