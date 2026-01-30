@@ -1,0 +1,10 @@
+#!/bin/sh
+# P2P API - List services endpoint
+# Responds to requests on port 7331
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo ""
+
+# Get services from secubox-p2p
+/usr/sbin/secubox-p2p services 2>/dev/null || echo '{"services":[],"error":"daemon_unavailable"}'

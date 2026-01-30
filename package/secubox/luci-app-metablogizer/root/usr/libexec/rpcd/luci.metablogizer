@@ -66,8 +66,31 @@ fix_permissions() {
 	done
 }
 
-# Reload HAProxy configuration properly
+# Check if HAProxy is available and running
+haproxy_available() {
+	# Check if HAProxy container is running (preferred method)
+	if command -v lxc-info >/dev/null 2>&1; then
+		lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING" && return 0
+	fi
+
+	# Fallback: check if haproxy process is running
+	pgrep haproxy >/dev/null 2>&1 && return 0
+
+	# Fallback: check if init script exists and service is enabled
+	if [ -x /etc/init.d/haproxy ]; then
+		/etc/init.d/haproxy status >/dev/null 2>&1 && return 0
+	fi
+
+	return 1
+}
+
+# Reload HAProxy configuration properly (with availability check)
 reload_haproxy() {
+	if ! haproxy_available; then
+		logger -t metablogizer "HAProxy not available, skipping reload"
+		return 1
+	fi
+
 	/usr/sbin/haproxyctl generate >/dev/null 2>&1
 	if [ -x /etc/init.d/haproxy ]; then
 		/etc/init.d/haproxy reload >/dev/null 2>&1
@@ -362,42 +385,48 @@ EOF
 	[ -n "$port" ] && uci set "$UCI_CONFIG.$section_id.port=$port"
 	uci set "$UCI_CONFIG.$section_id.runtime=$current_runtime"
 
-	# 7. Create HAProxy backend
-	local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+	# 7. Create HAProxy backend (if HAProxy is available)
+	local haproxy_configured=0
+	if haproxy_available; then
+		local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
 
-	uci set "haproxy.$backend_name=backend"
-	uci set "haproxy.$backend_name.name=$backend_name"
-	uci set "haproxy.$backend_name.mode=http"
-	uci set "haproxy.$backend_name.balance=roundrobin"
-	uci set "haproxy.$backend_name.enabled=1"
+		uci set "haproxy.$backend_name=backend"
+		uci set "haproxy.$backend_name.name=$backend_name"
+		uci set "haproxy.$backend_name.mode=http"
+		uci set "haproxy.$backend_name.balance=roundrobin"
+		uci set "haproxy.$backend_name.enabled=1"
 
-	# Create server
-	local server_name="${backend_name}_srv"
-	uci set "haproxy.$server_name=server"
-	uci set "haproxy.$server_name.backend=$backend_name"
-	uci set "haproxy.$server_name.name=srv"
-	uci set "haproxy.$server_name.address=$server_address"
-	uci set "haproxy.$server_name.port=$server_port"
-	uci set "haproxy.$server_name.weight=100"
-	uci set "haproxy.$server_name.check=1"
-	uci set "haproxy.$server_name.enabled=1"
+		# Create server
+		local server_name="${backend_name}_srv"
+		uci set "haproxy.$server_name=server"
+		uci set "haproxy.$server_name.backend=$backend_name"
+		uci set "haproxy.$server_name.name=srv"
+		uci set "haproxy.$server_name.address=$server_address"
+		uci set "haproxy.$server_name.port=$server_port"
+		uci set "haproxy.$server_name.weight=100"
+		uci set "haproxy.$server_name.check=1"
+		uci set "haproxy.$server_name.enabled=1"
 
-	# 8. Create HAProxy vhost
-	local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
-	local acme_val="0"
-	[ "$ssl" = "1" ] && acme_val="1"
+		# 8. Create HAProxy vhost
+		local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+		local acme_val="0"
+		[ "$ssl" = "1" ] && acme_val="1"
 
-	uci set "haproxy.$vhost_name=vhost"
-	uci set "haproxy.$vhost_name.domain=$domain"
-	uci set "haproxy.$vhost_name.backend=$backend_name"
-	uci set "haproxy.$vhost_name.ssl=$ssl"
-	uci set "haproxy.$vhost_name.ssl_redirect=$ssl"
-	uci set "haproxy.$vhost_name.acme=$acme_val"
-	uci set "haproxy.$vhost_name.enabled=1"
-	uci commit haproxy
+		uci set "haproxy.$vhost_name=vhost"
+		uci set "haproxy.$vhost_name.domain=$domain"
+		uci set "haproxy.$vhost_name.backend=$backend_name"
+		uci set "haproxy.$vhost_name.ssl=$ssl"
+		uci set "haproxy.$vhost_name.ssl_redirect=$ssl"
+		uci set "haproxy.$vhost_name.acme=$acme_val"
+		uci set "haproxy.$vhost_name.enabled=1"
+		uci commit haproxy
 
-	# Regenerate HAProxy config and reload
-	reload_haproxy
+		# Regenerate HAProxy config and reload
+		reload_haproxy
+		haproxy_configured=1
+	else
+		logger -t metablogizer "HAProxy not available, site created without proxy config"
+	fi
 
 	uci commit "$UCI_CONFIG"
 
@@ -464,16 +493,22 @@ method_delete_site() {
 	# Get site runtime
 	local site_runtime=$(get_uci "$id" runtime "")
 
-	# 1. Delete HAProxy vhost
-	local vhost_id=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
-	uci delete "haproxy.$vhost_id" 2>/dev/null
+	# 1. Delete HAProxy vhost (if HAProxy config exists)
+	if uci -q get haproxy >/dev/null 2>&1; then
+		local vhost_id=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+		uci delete "haproxy.$vhost_id" 2>/dev/null
 
-	# 2. Delete HAProxy backend and server
-	local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
-	uci delete "haproxy.$backend_name" 2>/dev/null
-	uci delete "haproxy.${backend_name}_srv" 2>/dev/null
-	uci commit haproxy
-	reload_haproxy
+		# 2. Delete HAProxy backend and server
+		local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+		uci delete "haproxy.$backend_name" 2>/dev/null
+		uci delete "haproxy.${backend_name}_srv" 2>/dev/null
+		uci commit haproxy
+
+		# Only reload if HAProxy is actually running
+		if haproxy_available; then
+			reload_haproxy
+		fi
+	fi
 
 	# 3. Remove runtime config
 	if [ "$site_runtime" = "uhttpd" ]; then

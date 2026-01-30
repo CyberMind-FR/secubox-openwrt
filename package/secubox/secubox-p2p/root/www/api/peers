@@ -1,0 +1,10 @@
+#!/bin/sh
+# P2P API - List peers endpoint
+# Responds to requests on port 7331
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo ""
+
+# Get peers from secubox-p2p
+/usr/sbin/secubox-p2p peers 2>/dev/null || echo '{"peers":[],"error":"daemon_unavailable"}'

@@ -2,17 +2,44 @@
 # SecuBox P2P Hub Manager
 # Handles peer discovery, mesh networking, and service federation
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 CONFIG_FILE="/etc/config/secubox-p2p"
 PEERS_FILE="/tmp/secubox-p2p-peers.json"
 SERVICES_FILE="/tmp/secubox-p2p-services.json"
 STATE_DIR="/var/run/secubox-p2p"
+MDNS_PID_FILE="$STATE_DIR/mdns.pid"
+API_PORT=7331
 
 # Initialize
 init() {
 	mkdir -p "$STATE_DIR"
 	[ -f "$PEERS_FILE" ] || echo '{"peers":[]}' > "$PEERS_FILE"
 	[ -f "$SERVICES_FILE" ] || echo '{"services":[]}' > "$SERVICES_FILE"
+
+	# Initialize node info
+	_init_node_info
+}
+
+# Initialize node identity
+_init_node_info() {
+	local node_name
+	node_name=$(get_config main node_name "")
+
+	# Generate node name from hostname if not set
+	if [ -z "$node_name" ]; then
+		node_name=$(cat /proc/sys/kernel/hostname 2>/dev/null || echo "secubox")
+		set_config main node_name "$node_name"
+	fi
+
+	# Generate node ID if not exists
+	local node_id_file="$STATE_DIR/node.id"
+	if [ ! -f "$node_id_file" ]; then
+		# Generate unique node ID from MAC address
+		local mac
+		mac=$(ip link show br-lan 2>/dev/null | grep ether | awk '{print $2}' | tr -d ':')
+		[ -z "$mac" ] && mac=$(cat /proc/sys/kernel/random/uuid | tr -d '-' | head -c 12)
+		echo "sb-${mac}" > "$node_id_file"
+	fi
 }
 
 # Get config value
@@ -276,44 +303,146 @@ broadcast_command() {
 	echo "{\"success\":true,\"broadcast_success\":$success,\"broadcast_failed\":$failed}"
 }
 
+# Publish mDNS service announcement
+publish_mdns() {
+	local node_name
+	node_name=$(get_config main node_name "secubox")
+
+	# Kill any existing avahi-publish process
+	[ -f "$MDNS_PID_FILE" ] && kill $(cat "$MDNS_PID_FILE") 2>/dev/null
+	rm -f "$MDNS_PID_FILE"
+
+	# Check if avahi-publish is available
+	if command -v avahi-publish >/dev/null 2>&1; then
+		# Get LAN IP for service registration
+		local lan_ip
+		lan_ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+		[ -z "$lan_ip" ] && lan_ip=$(uci -q get network.lan.ipaddr)
+
+		# Publish _secubox._tcp service
+		avahi-publish -s "$node_name" "_secubox._tcp" "$API_PORT" \
+			"version=$VERSION" \
+			"type=mesh-node" \
+			"ip=$lan_ip" &
+		echo $! > "$MDNS_PID_FILE"
+
+		logger -t secubox-p2p "mDNS service published: $node_name._secubox._tcp on port $API_PORT"
+		return 0
+	else
+		logger -t secubox-p2p "WARNING: avahi-publish not available, mDNS disabled"
+		return 1
+	fi
+}
+
+# Stop mDNS service announcement
+stop_mdns() {
+	if [ -f "$MDNS_PID_FILE" ]; then
+		kill $(cat "$MDNS_PID_FILE") 2>/dev/null
+		rm -f "$MDNS_PID_FILE"
+		logger -t secubox-p2p "mDNS service stopped"
+	fi
+}
+
+# Get node status JSON (for REST API)
+get_node_status() {
+	local node_name node_id lan_ip uptime
+	node_name=$(get_config main node_name "secubox")
+	node_id=$(cat "$STATE_DIR/node.id" 2>/dev/null || echo "unknown")
+	lan_ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+	uptime=$(cat /proc/uptime | cut -d' ' -f1)
+
+	cat <<EOF
+{
+	"node_id": "$node_id",
+	"node_name": "$node_name",
+	"version": "$VERSION",
+	"address": "$lan_ip",
+	"api_port": $API_PORT,
+	"uptime": $uptime,
+	"discovery_enabled": $(get_config main discovery_enabled 1),
+	"sharing_enabled": $(get_config main sharing_enabled 1),
+	"peer_count": $(get_peers | jsonfilter -e '@.peers[*]' 2>/dev/null | wc -l)
+}
+EOF
+}
+
+# Register self in peer list (ensure node is visible in its own mesh view)
+register_self() {
+	local node_name node_id lan_ip
+	node_name=$(get_config main node_name "secubox")
+	node_id=$(cat "$STATE_DIR/node.id" 2>/dev/null || echo "unknown")
+	lan_ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+
+	# Check if self is already registered
+	local current=$(get_peers)
+	local exists
+	exists=$(echo "$current" | jsonfilter -e "@.peers[@.id='$node_id']" 2>/dev/null)
+
+	if [ -z "$exists" ]; then
+		local self_peer="{\"id\":\"$node_id\",\"name\":\"$node_name (local)\",\"address\":\"$lan_ip\",\"status\":\"online\",\"is_local\":true,\"added\":\"$(date -Iseconds)\"}"
+		echo "$current" | jsonfilter -e '@' 2>/dev/null | sed "s/\"peers\":\[/\"peers\":[$self_peer,/" > "$PEERS_FILE.tmp"
+		if [ -s "$PEERS_FILE.tmp" ]; then
+			mv "$PEERS_FILE.tmp" "$PEERS_FILE"
+		else
+			# Fallback: just create a fresh peers file with self
+			echo "{\"peers\":[$self_peer]}" > "$PEERS_FILE"
+		fi
+		logger -t secubox-p2p "Registered local node: $node_name ($node_id)"
+	fi
+}
+
 # Daemon mode
 daemon_loop() {
 	init
+
+	# Publish mDNS service
+	publish_mdns
+
+	# Register self in peer list
+	register_self
+
+	# Setup signal handlers
+	trap 'stop_mdns; exit 0' INT TERM
 
 	while true; do
 		# Auto-discovery if enabled
 		if [ "$(get_config main discovery_enabled 1)" = "1" ]; then
 			local discovered=$(discover_mdns 3)
-			if [ "$discovered" != "[]" ]; then
+			if [ "$discovered" != "[]" ] && [ -n "$discovered" ]; then
 				# Update peers file with discovered peers
 				local current=$(get_peers)
-				for peer in $(echo "$discovered" | jq -c '.[]'); do
-					local peer_id=$(echo "$peer" | jq -r '.id')
-					local exists=$(echo "$current" | jq ".peers[] | select(.id==\"$peer_id\")")
-					if [ -z "$exists" ]; then
-						current=$(echo "$current" | jq ".peers += [$peer]")
-					fi
-				done
-				echo "$current" > "$PEERS_FILE"
+				# Parse discovered peers (handle jq or jsonfilter)
+				if command -v jq >/dev/null 2>&1; then
+					for peer in $(echo "$discovered" | jq -c '.[]' 2>/dev/null); do
+						local peer_id=$(echo "$peer" | jq -r '.id')
+						local exists=$(echo "$current" | jq ".peers[] | select(.id==\"$peer_id\")")
+						if [ -z "$exists" ]; then
+							current=$(echo "$current" | jq ".peers += [$peer]")
+						fi
+					done
+					echo "$current" > "$PEERS_FILE"
+				fi
 			fi
 		fi
 
-		# Update peer status
+		# Update peer status (skip local node)
 		local peers=$(get_peers)
-		local updated_peers=$(echo "$peers" | jq '.peers | map(. + {"status": "checking"})' | jq -c '.[]')
+		if command -v jq >/dev/null 2>&1; then
+			local updated_peers=$(echo "$peers" | jq -c '.peers[] | select(.is_local != true)' 2>/dev/null)
 
-		for peer in $updated_peers; do
-			local addr=$(echo "$peer" | jq -r '.address')
-			local id=$(echo "$peer" | jq -r '.id')
+			for peer in $updated_peers; do
+				local addr=$(echo "$peer" | jq -r '.address')
+				local id=$(echo "$peer" | jq -r '.id')
 
-			if ping -c1 -W1 "$addr" >/dev/null 2>&1; then
-				peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).status = \"online\"")
-			else
-				peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).status = \"offline\"")
-			fi
-		done
+				if ping -c1 -W1 "$addr" >/dev/null 2>&1; then
+					peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).status = \"online\"")
+				else
+					peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).status = \"offline\"")
+				fi
+			done
 
-		echo "$peers" > "$PEERS_FILE"
+			echo "$peers" > "$PEERS_FILE"
+		fi
 
 		# Sleep interval
 		local interval=$(get_config main sync_interval 60)
@@ -359,8 +488,21 @@ case "$1" in
 	version)
 		echo "$VERSION"
 		;;
+	status)
+		get_node_status
+		;;
+	publish-mdns)
+		publish_mdns
+		;;
+	stop-mdns)
+		stop_mdns
+		;;
+	register-self)
+		init
+		register_self
+		;;
 	*)
-		echo "Usage: $0 {daemon|discover|peers|add-peer|remove-peer|settings|set-settings|services|shared-services|sync|broadcast|version}"
+		echo "Usage: $0 {daemon|discover|peers|add-peer|remove-peer|settings|set-settings|services|shared-services|sync|broadcast|version|status|publish-mdns|stop-mdns|register-self}"
 		exit 1
 		;;
 esac

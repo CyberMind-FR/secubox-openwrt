@@ -1,0 +1,41 @@
+#!/bin/sh
+# Configure uhttpd instance for P2P REST API on port 7331
+
+# Check if p2p_api instance already exists
+if ! uci -q get uhttpd.p2p_api >/dev/null 2>&1; then
+	uci set uhttpd.p2p_api=uhttpd
+	uci set uhttpd.p2p_api.listen_http='0.0.0.0:7331'
+	uci set uhttpd.p2p_api.home='/www/api'
+	uci set uhttpd.p2p_api.cgi_prefix='/'
+	uci set uhttpd.p2p_api.no_symlinks='0'
+	uci set uhttpd.p2p_api.no_dirlists='1'
+	uci set uhttpd.p2p_api.script_timeout='60'
+	uci set uhttpd.p2p_api.network_timeout='30'
+	uci commit uhttpd
+fi
+
+# Add firewall rule for P2P API port (LAN only by default)
+if ! uci show firewall 2>/dev/null | grep -q "P2P-API"; then
+	uci add firewall rule
+	uci set firewall.@rule[-1].name='P2P-API'
+	uci set firewall.@rule[-1].src='lan'
+	uci set firewall.@rule[-1].dest_port='7331'
+	uci set firewall.@rule[-1].proto='tcp'
+	uci set firewall.@rule[-1].target='ACCEPT'
+	uci set firewall.@rule[-1].enabled='1'
+	uci commit firewall
+fi
+
+# Add mDNS firewall rule if not exists
+if ! uci show firewall 2>/dev/null | grep -q "mDNS"; then
+	uci add firewall rule
+	uci set firewall.@rule[-1].name='mDNS'
+	uci set firewall.@rule[-1].src='lan'
+	uci set firewall.@rule[-1].dest_port='5353'
+	uci set firewall.@rule[-1].proto='udp'
+	uci set firewall.@rule[-1].target='ACCEPT'
+	uci set firewall.@rule[-1].enabled='1'
+	uci commit firewall
+fi
+
+exit 0

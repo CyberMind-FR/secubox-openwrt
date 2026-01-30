@@ -35,6 +35,22 @@ is_port_listening() {
 	return 1
 }
 
+# Helper: Check if HAProxy is available and running
+haproxy_available() {
+	# Check if HAProxy container is running (preferred method)
+	if command -v lxc-info >/dev/null 2>&1; then
+		lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING" && return 0
+	fi
+
+	# Fallback: check if haproxy process is running
+	pgrep haproxy >/dev/null 2>&1 && return 0
+
+	# Fallback: check if RPCD haproxy interface is available
+	ubus call luci.haproxy list 2>/dev/null | jsonfilter -e '@' >/dev/null 2>&1 && return 0
+
+	return 1
+}
+
 # Helper: Get process name for port
 get_process_for_port() {
 	local port="$1"
@@ -262,6 +278,11 @@ _add_published_service() {
 _aggregate_haproxy_services() {
 	local lan_ip="$1"
 	local tmp_file="$2"
+
+	# Check if HAProxy is available before calling RPCD
+	if ! haproxy_available; then
+		return 0
+	fi
 
 	# Call HAProxy RPCD to get vhosts and backends
 	local vhosts_json backends_json certs_json
@@ -614,29 +635,37 @@ method_publish_service() {
 	local urls_clearnet=""
 	local urls_onion=""
 
-	# Create HAProxy vhost if domain specified
+	# Create HAProxy vhost if domain specified and HAProxy is available
 	if [ -n "$domain" ]; then
-		# Ensure firewall allows HTTP/HTTPS from WAN (for public access + ACME)
-		ensure_haproxy_firewall_rules
+		if haproxy_available; then
+			# Ensure firewall allows HTTP/HTTPS from WAN (for public access + ACME)
+			ensure_haproxy_firewall_rules
 
-		# Create backend
-		ubus call luci.haproxy create_backend "{\"name\":\"$section_id\",\"mode\":\"http\"}" 2>/dev/null
+			# Create backend
+			ubus call luci.haproxy create_backend "{\"name\":\"$section_id\",\"mode\":\"http\"}" 2>/dev/null
 
-		# Create server pointing to local port
-		ubus call luci.haproxy create_server "{\"backend\":\"$section_id\",\"name\":\"local\",\"address\":\"127.0.0.1\",\"port\":$local_port}" 2>/dev/null
+			# Create server pointing to local port
+			ubus call luci.haproxy create_server "{\"backend\":\"$section_id\",\"name\":\"local\",\"address\":\"127.0.0.1\",\"port\":$local_port}" 2>/dev/null
 
-		# Create vhost with SSL
-		ubus call luci.haproxy create_vhost "{\"domain\":\"$domain\",\"backend\":\"$section_id\",\"ssl\":1,\"ssl_redirect\":1,\"acme\":1,\"enabled\":1}" 2>/dev/null
+			# Create vhost with SSL
+			ubus call luci.haproxy create_vhost "{\"domain\":\"$domain\",\"backend\":\"$section_id\",\"ssl\":1,\"ssl_redirect\":1,\"acme\":1,\"enabled\":1}" 2>/dev/null
 
-		# Regenerate HAProxy config to include the new vhost
-		ubus call luci.haproxy generate 2>/dev/null
-		ubus call luci.haproxy reload 2>/dev/null
+			# Regenerate HAProxy config to include the new vhost
+			ubus call luci.haproxy generate 2>/dev/null
+			ubus call luci.haproxy reload 2>/dev/null
 
-		uci set "$UCI_CONFIG.$section_id.haproxy_enabled=1"
-		uci set "$UCI_CONFIG.$section_id.haproxy_domain=$domain"
-		uci set "$UCI_CONFIG.$section_id.haproxy_ssl=1"
+			uci set "$UCI_CONFIG.$section_id.haproxy_enabled=1"
+			uci set "$UCI_CONFIG.$section_id.haproxy_domain=$domain"
+			uci set "$UCI_CONFIG.$section_id.haproxy_ssl=1"
 
-		urls_clearnet="https://${domain}"
+			urls_clearnet="https://${domain}"
+		else
+			# Store domain for later HAProxy configuration when it becomes available
+			uci set "$UCI_CONFIG.$section_id.haproxy_enabled=0"
+			uci set "$UCI_CONFIG.$section_id.haproxy_domain=$domain"
+			uci set "$UCI_CONFIG.$section_id.haproxy_pending=1"
+			logger -t service-registry "HAProxy unavailable, domain $domain saved for later"
+		fi
 	fi
 
 	# Create Tor hidden service if enabled
@@ -717,12 +746,14 @@ method_unpublish_service() {
 	config_get haproxy_domain "$service_id" haproxy_domain ""
 	config_get tor_enabled "$service_id" tor_enabled "0"
 
-	# Remove HAProxy vhost
+	# Remove HAProxy vhost (if HAProxy is available)
 	if [ "$haproxy_enabled" = "1" ] && [ -n "$haproxy_domain" ]; then
-		local vhost_id
-		vhost_id=$(echo "$haproxy_domain" | sed 's/[^a-zA-Z0-9]/_/g')
-		ubus call luci.haproxy delete_vhost "{\"id\":\"$vhost_id\"}" 2>/dev/null
-		ubus call luci.haproxy delete_backend "{\"id\":\"$service_id\"}" 2>/dev/null
+		if haproxy_available; then
+			local vhost_id
+			vhost_id=$(echo "$haproxy_domain" | sed 's/[^a-zA-Z0-9]/_/g')
+			ubus call luci.haproxy delete_vhost "{\"id\":\"$vhost_id\"}" 2>/dev/null
+			ubus call luci.haproxy delete_backend "{\"id\":\"$service_id\"}" 2>/dev/null
+		fi
 	fi
 
 	# Remove Tor hidden service
@@ -1368,9 +1399,11 @@ method_check_all_health() {
 	# Check individual services with domains
 	json_add_array "services"
 
-	# Get all published services with domains from HAProxy
+	# Get all published services with domains from HAProxy (if available)
 	local vhosts_json
-	vhosts_json=$(ubus call luci.haproxy list_vhosts 2>/dev/null)
+	if haproxy_available; then
+		vhosts_json=$(ubus call luci.haproxy list_vhosts 2>/dev/null)
+	fi
 	if [ -n "$vhosts_json" ]; then
 		local count
 		count=$(echo "$vhosts_json" | jsonfilter -e '@.vhosts[*].domain' 2>/dev/null | wc -l)

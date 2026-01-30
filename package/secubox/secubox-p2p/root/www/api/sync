@@ -1,0 +1,10 @@
+#!/bin/sh
+# P2P API - Trigger sync endpoint
+# Responds to requests on port 7331
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo ""
+
+# Trigger catalog sync
+/usr/sbin/secubox-p2p sync 2>/dev/null || echo '{"success":false,"error":"daemon_unavailable"}'
