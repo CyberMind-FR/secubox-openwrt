@@ -1197,9 +1197,9 @@ return view.extend({
 						)
 					]),
 					E('div', { 'class': 'backup-card-actions' }, [
-						E('button', { 'class': 'btn small primary', 'click': function() { self.createGiteaRepo(); } }, '➕ Create'),
+						E('button', { 'class': 'btn small primary', 'click': function() { self.autoCreateMeshRepo(); } }, '🚀 Auto Setup'),
 						E('button', { 'class': 'btn small', 'click': function() { self.fetchGiteaCommits(); } }, '🔄 Fetch'),
-						E('button', { 'class': 'btn small', 'click': function() { self.showGiteaConfigModal(); } }, '⚙️ Setup'),
+						E('button', { 'class': 'btn small', 'click': function() { self.showGiteaConfigModal(); } }, '⚙️ Config'),
 						E('button', { 'class': 'btn small', 'click': function() { self.pushToGitea(); } }, '📤 Push')
 					])
 				])
@@ -1603,6 +1603,148 @@ return view.extend({
 	toggleGiteaFeed: function(enabled) {
 		this.giteaConfig.enabled = enabled;
 		ui.addNotification(null, E('p', 'Gitea History Feed ' + (enabled ? 'enabled' : 'disabled')), 'info');
+	},
+
+	autoCreateMeshRepo: function() {
+		var self = this;
+
+		// Get hostname for repo name
+		var hostname = this.settings.node_name || 'secubox';
+		var repoName = 'secubox-mesh-' + hostname.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+		var repoDesc = 'SecuBox P2P Mesh configuration and state backups for ' + hostname;
+
+		// Default Gitea servers to try (local first)
+		var giteaServers = [
+			'http://gitea.local:3000',
+			'http://git.local:3000',
+			'http://192.168.255.1:3000',
+			'http://localhost:3000'
+		];
+
+		// Use configured server if available, otherwise detect
+		var serverUrl = this.giteaConfig.serverUrl;
+
+		if (!serverUrl) {
+			ui.addNotification(null, E('p', '🔍 Detecting local Gitea server...'), 'info');
+
+			// Try to detect Gitea server
+			var detectServer = function(servers, index) {
+				if (index >= servers.length) {
+					// No server found, prompt for manual config
+					ui.addNotification(null, E('p', '⚠️ No Gitea server detected. Please configure manually.'), 'warning');
+					self.showGiteaConfigModal();
+					return;
+				}
+
+				var testUrl = servers[index];
+				// Simple detection - try to access Gitea API
+				fetch(testUrl + '/api/v1/version', { method: 'GET', mode: 'no-cors' })
+					.then(function() {
+						// Server might be reachable, use it
+						serverUrl = testUrl;
+						self.proceedAutoCreate(serverUrl, repoName, repoDesc);
+					})
+					.catch(function() {
+						detectServer(servers, index + 1);
+					});
+			};
+
+			detectServer(giteaServers, 0);
+		} else {
+			this.proceedAutoCreate(serverUrl, repoName, repoDesc);
+		}
+	},
+
+	proceedAutoCreate: function(serverUrl, repoName, repoDesc) {
+		var self = this;
+
+		// Check if we have a token
+		if (!this.giteaConfig.hasToken && !this.giteaConfig.token) {
+			// Need token - show minimal prompt
+			ui.showModal('Gitea Access Token Required', [
+				E('div', { 'class': 'modal-form' }, [
+					E('div', { 'class': 'deploy-modal-header' }, [
+						E('span', { 'class': 'deploy-modal-icon' }, '🔑'),
+						E('div', {}, [
+							E('div', { 'class': 'deploy-modal-title' }, 'One-time Setup'),
+							E('div', { 'class': 'deploy-modal-subtitle' }, 'Enter your Gitea access token to enable auto-backup')
+						])
+					]),
+					E('div', { 'class': 'form-group' }, [
+						E('label', {}, 'Gitea Server'),
+						E('input', { 'type': 'text', 'id': 'auto-gitea-url', 'class': 'form-input', 'value': serverUrl })
+					]),
+					E('div', { 'class': 'form-group' }, [
+						E('label', {}, 'Access Token'),
+						E('input', { 'type': 'password', 'id': 'auto-gitea-token', 'class': 'form-input', 'placeholder': 'Paste your Gitea personal access token' }),
+						E('small', { 'style': 'color: #666; margin-top: 4px; display: block;' }, 'Generate at: ' + serverUrl + '/user/settings/applications')
+					])
+				]),
+				E('div', { 'class': 'modal-actions' }, [
+					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+					E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+						var finalUrl = document.getElementById('auto-gitea-url').value;
+						var token = document.getElementById('auto-gitea-token').value;
+
+						if (!token) {
+							ui.addNotification(null, E('p', 'Access token is required'), 'warning');
+							return;
+						}
+
+						ui.hideModal();
+						self.executeAutoCreate(finalUrl, repoName, repoDesc, token);
+					} }, '🚀 Create Repository')
+				])
+			]);
+		} else {
+			// Already have token, proceed
+			this.executeAutoCreate(serverUrl, repoName, repoDesc, this.giteaConfig.token);
+		}
+	},
+
+	executeAutoCreate: function(serverUrl, repoName, repoDesc, token) {
+		var self = this;
+
+		ui.addNotification(null, E('p', '🚀 Auto-creating mesh repository...'), 'info');
+
+		// Step 1: Save Gitea config
+		P2PAPI.setGiteaConfig({
+			server_url: serverUrl,
+			repo_name: repoName,
+			access_token: token,
+			enabled: 1,
+			auto_backup: 1,
+			backup_on_change: 1
+		}).then(function() {
+			// Step 2: Create repository
+			ui.addNotification(null, E('p', '📦 Creating repository: ' + repoName), 'info');
+			return P2PAPI.createGiteaRepo(repoName, repoDesc, true, true);
+		}).then(function(result) {
+			if (result.success) {
+				// Update local state
+				self.giteaConfig.serverUrl = serverUrl;
+				self.giteaConfig.repoName = result.repo_name || repoName;
+				self.giteaConfig.repoOwner = result.owner || '';
+				self.giteaConfig.enabled = true;
+				self.giteaConfig.hasToken = true;
+				self.giteaConfig.lastFetch = Date.now();
+
+				ui.addNotification(null, E('p', '✅ Repository created: ' + self.giteaConfig.repoOwner + '/' + self.giteaConfig.repoName), 'success');
+
+				// Step 3: Push initial state
+				ui.addNotification(null, E('p', '📤 Pushing initial mesh state...'), 'info');
+				return P2PAPI.pushGiteaBackup('Initial SecuBox mesh configuration', {});
+			} else {
+				throw new Error(result.error || 'Failed to create repository');
+			}
+		}).then(function(pushResult) {
+			if (pushResult && pushResult.success) {
+				ui.addNotification(null, E('p', '🎉 Mesh repository ready! ' + pushResult.files_pushed + ' files uploaded'), 'success');
+				self.refreshGiteaCommits();
+			}
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Auto-setup failed: ' + err.message), 'error');
+		});
 	},
 
 	fetchGiteaCommits: function() {
