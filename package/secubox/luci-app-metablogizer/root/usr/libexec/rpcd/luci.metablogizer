@@ -10,6 +10,7 @@ UCI_CONFIG="metablogizer"
 SITES_ROOT="/srv/metablogizer/sites"
 NGINX_CONTAINER="nginx"
 PORT_BASE=8900
+TOR_DATA="/var/lib/tor"
 
 # Helper: Get UCI value with default
 get_uci() {
@@ -73,6 +74,66 @@ reload_haproxy() {
 	fi
 }
 
+# Get .onion address for a site if Tor hidden service exists
+get_onion_address() {
+	local site_name="$1"
+	local hs_name="metablog_$(echo "$site_name" | tr -cd 'a-zA-Z0-9_')"
+	local hostname_file="$TOR_DATA/hidden_service_$hs_name/hostname"
+
+	if [ -f "$hostname_file" ]; then
+		cat "$hostname_file"
+	fi
+}
+
+# Check if Tor hidden service exists for site
+has_tor_service() {
+	local site_name="$1"
+	local hs_name="metablog_$(echo "$site_name" | tr -cd 'a-zA-Z0-9_')"
+	uci -q get "tor-shield.hs_$hs_name" >/dev/null 2>&1
+}
+
+# Create Tor hidden service for a site
+create_tor_hidden_service() {
+	local site_name="$1"
+	local local_port="$2"
+
+	local hs_name="metablog_$(echo "$site_name" | tr -cd 'a-zA-Z0-9_')"
+
+	# Create hidden service in tor-shield config
+	uci set "tor-shield.hs_$hs_name=hidden_service"
+	uci set "tor-shield.hs_$hs_name.name=$hs_name"
+	uci set "tor-shield.hs_$hs_name.enabled=1"
+	uci set "tor-shield.hs_$hs_name.local_port=$local_port"
+	uci set "tor-shield.hs_$hs_name.virtual_port=80"
+	uci commit tor-shield
+
+	# Restart Tor to generate .onion address
+	/etc/init.d/tor-shield restart >/dev/null 2>&1 &
+
+	return 0
+}
+
+# Remove Tor hidden service for a site
+remove_tor_hidden_service() {
+	local site_name="$1"
+	local hs_name="metablog_$(echo "$site_name" | tr -cd 'a-zA-Z0-9_')"
+
+	uci delete "tor-shield.hs_$hs_name" 2>/dev/null
+	uci commit tor-shield
+
+	# Remove hidden service data directory
+	rm -rf "$TOR_DATA/hidden_service_$hs_name" 2>/dev/null
+
+	# Restart Tor
+	/etc/init.d/tor-shield restart >/dev/null 2>&1 &
+}
+
+# Check if Tor is running and ready
+is_tor_ready() {
+	pgrep -f "/usr/sbin/tor" >/dev/null 2>&1 && \
+	[ -S "/var/run/tor/control" ]
+}
+
 # Status method - get overall status and list all sites
 method_status() {
 	local enabled runtime detected_runtime nginx_running site_count
@@ -129,8 +190,8 @@ method_list_sites() {
 
 _add_site() {
 	local section="$1"
-	local name domain gitea_repo ssl enabled description
-	local has_content last_sync
+	local name domain gitea_repo ssl enabled description tor_enabled
+	local has_content last_sync onion_address
 
 	config_get name "$section" name ""
 	config_get domain "$section" domain ""
@@ -138,6 +199,7 @@ _add_site() {
 	config_get ssl "$section" ssl "1"
 	config_get enabled "$section" enabled "1"
 	config_get description "$section" description ""
+	config_get tor_enabled "$section" tor_enabled "0"
 
 	# Check if site has content
 	has_content="0"
@@ -151,6 +213,12 @@ _add_site() {
 		last_sync=$(cd "$SITES_ROOT/$name" && git log -1 --format="%ci" 2>/dev/null || echo "")
 	fi
 
+	# Get Tor .onion address if available
+	onion_address=""
+	if [ "$tor_enabled" = "1" ] || has_tor_service "$name"; then
+		onion_address=$(get_onion_address "$name")
+	fi
+
 	json_add_object
 	json_add_string "id" "$section"
 	json_add_string "name" "$name"
@@ -162,6 +230,12 @@ _add_site() {
 	json_add_boolean "has_content" "$has_content"
 	json_add_string "last_sync" "$last_sync"
 	json_add_string "url" "https://$domain"
+
+	# Tor hidden service info
+	json_add_boolean "tor_enabled" "$(has_tor_service "$name" && echo 1 || echo 0)"
+	[ -n "$onion_address" ] && json_add_string "onion_address" "$onion_address"
+	[ -n "$onion_address" ] && json_add_string "onion_url" "http://$onion_address"
+
 	json_close_object
 }
 
@@ -1342,6 +1416,134 @@ EOF
 	json_dump
 }
 
+# Enable Tor hidden service for a site
+method_enable_tor() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name port
+	name=$(get_uci "$id" name "")
+	port=$(get_uci "$id" port "")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	# Default to port 80 if not set (site uses nginx)
+	[ -z "$port" ] && port="80"
+
+	# Create Tor hidden service
+	create_tor_hidden_service "$name" "$port"
+
+	# Mark site as Tor-enabled
+	uci set "$UCI_CONFIG.$id.tor_enabled=1"
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Tor hidden service created. Restart Tor Shield to get .onion address."
+	json_add_string "name" "$name"
+	json_add_int "port" "$port"
+	json_dump
+}
+
+# Disable Tor hidden service for a site
+method_disable_tor() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name
+	name=$(get_uci "$id" name "")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	# Remove Tor hidden service
+	remove_tor_hidden_service "$name"
+
+	# Mark site as Tor-disabled
+	uci set "$UCI_CONFIG.$id.tor_enabled=0"
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Tor hidden service removed"
+	json_dump
+}
+
+# Get Tor status for all sites
+method_get_tor_status() {
+	json_init
+	json_add_boolean "tor_running" "$(is_tor_ready && echo 1 || echo 0)"
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+
+	json_add_array "sites"
+
+	config_load "$UCI_CONFIG"
+	config_foreach _add_tor_status site
+
+	json_close_array
+	json_dump
+}
+
+_add_tor_status() {
+	local section="$1"
+	local name port
+
+	config_get name "$section" name ""
+	config_get port "$section" port ""
+
+	[ -z "$name" ] && return
+
+	local onion_address=""
+	local tor_enabled=0
+
+	if has_tor_service "$name"; then
+		tor_enabled=1
+		onion_address=$(get_onion_address "$name")
+	fi
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_boolean "tor_enabled" "$tor_enabled"
+	[ -n "$onion_address" ] && json_add_string "onion_address" "$onion_address"
+	[ -n "$onion_address" ] && json_add_boolean "onion_ready" 1 || json_add_boolean "onion_ready" 0
+	json_close_object
+}
+
 # Save global settings
 method_save_settings() {
 	local enabled runtime nginx_container sites_root gitea_url
@@ -1388,7 +1590,10 @@ case "$1" in
 	"save_settings": { "enabled": "boolean", "nginx_container": "string", "sites_root": "string" },
 	"get_hosting_status": {},
 	"check_site_health": { "id": "string" },
-	"repair_site": { "id": "string" }
+	"repair_site": { "id": "string" },
+	"enable_tor": { "id": "string" },
+	"disable_tor": { "id": "string" },
+	"get_tor_status": {}
 }
 EOF
 		;;
@@ -1409,6 +1614,9 @@ EOF
 			get_hosting_status) method_get_hosting_status ;;
 			check_site_health)  method_check_site_health ;;
 			repair_site)        method_repair_site ;;
+			enable_tor)         method_enable_tor ;;
+			disable_tor)        method_disable_tor ;;
+			get_tor_status)     method_get_tor_status ;;
 			*)                  echo '{"error": "unknown method"}' ;;
 		esac
 		;;
