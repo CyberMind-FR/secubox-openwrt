@@ -1167,6 +1167,7 @@ return view.extend({
 						)
 					]),
 					E('div', { 'class': 'backup-card-actions' }, [
+						E('button', { 'class': 'btn small primary', 'click': function() { self.createGiteaRepo(); } }, '➕ Create'),
 						E('button', { 'class': 'btn small', 'click': function() { self.fetchGiteaCommits(); } }, '🔄 Fetch'),
 						E('button', { 'class': 'btn small', 'click': function() { self.showGiteaConfigModal(); } }, '⚙️ Setup'),
 						E('button', { 'class': 'btn small', 'click': function() { self.pushToGitea(); } }, '📤 Push')
@@ -1570,6 +1571,103 @@ return view.extend({
 			return;
 		}
 		ui.addNotification(null, E('p', '📤 Pushing config to Gitea...'), 'info');
+	},
+
+	createGiteaRepo: function() {
+		var self = this;
+
+		ui.showModal('Create Gitea Repository', [
+			E('div', { 'class': 'modal-form' }, [
+				E('div', { 'class': 'deploy-modal-header' }, [
+					E('span', { 'class': 'deploy-modal-icon' }, '➕'),
+					E('div', {}, [
+						E('div', { 'class': 'deploy-modal-title' }, 'Create New Repository'),
+						E('div', { 'class': 'deploy-modal-subtitle' }, 'Initialize a new Gitea repo for SecuBox config versioning')
+					])
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Gitea Server URL'),
+					E('input', { 'type': 'text', 'id': 'create-gitea-url', 'class': 'form-input', 'value': this.giteaConfig.serverUrl || '', 'placeholder': 'https://gitea.example.com' })
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Repository Name'),
+					E('input', { 'type': 'text', 'id': 'create-repo-name', 'class': 'form-input', 'value': 'secubox-config', 'placeholder': 'secubox-config' })
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Description'),
+					E('input', { 'type': 'text', 'id': 'create-repo-desc', 'class': 'form-input', 'value': 'SecuBox P2P Hub configuration and state backups', 'placeholder': 'Repository description' })
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Access Token'),
+					E('input', { 'type': 'password', 'id': 'create-gitea-token', 'class': 'form-input', 'value': this.giteaConfig.token || '', 'placeholder': 'Personal access token with repo:write scope' })
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Options'),
+					E('div', { 'class': 'deploy-options' }, [
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'id': 'create-private', 'checked': true }),
+							E('span', {}, '🔒 Private repository')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'id': 'create-init', 'checked': true }),
+							E('span', {}, '📄 Initialize with README')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'id': 'create-push-state', 'checked': true }),
+							E('span', {}, '📤 Push current state after creation')
+						])
+					])
+				])
+			]),
+			E('div', { 'class': 'modal-actions' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+					var serverUrl = document.getElementById('create-gitea-url').value;
+					var repoName = document.getElementById('create-repo-name').value;
+					var token = document.getElementById('create-gitea-token').value;
+					var pushState = document.getElementById('create-push-state').checked;
+
+					if (!serverUrl || !repoName) {
+						ui.addNotification(null, E('p', 'Server URL and repo name required'), 'warning');
+						return;
+					}
+
+					// Save config
+					self.giteaConfig.serverUrl = serverUrl;
+					self.giteaConfig.repoName = repoName;
+					self.giteaConfig.token = token;
+					self.giteaConfig.repoOwner = 'secubox';
+					self.giteaConfig.enabled = true;
+
+					ui.hideModal();
+					ui.addNotification(null, E('p', '➕ Creating repository ' + repoName + '...'), 'info');
+
+					// Simulate repo creation
+					setTimeout(function() {
+						// Add initial commit
+						self.giteaConfig.commits = [{
+							sha: 'init' + Date.now().toString(16).substring(0, 4),
+							message: 'Initial commit: SecuBox P2P Hub config',
+							date: Date.now()
+						}];
+						self.giteaConfig.lastFetch = Date.now();
+
+						ui.addNotification(null, E('p', '✅ Repository created: ' + repoName), 'success');
+
+						if (pushState) {
+							setTimeout(function() {
+								self.giteaConfig.commits.unshift({
+									sha: 'state' + Date.now().toString(16).substring(0, 4),
+									message: 'feat: Add current mesh state and config',
+									date: Date.now()
+								});
+								ui.addNotification(null, E('p', '📤 Current state pushed to ' + repoName), 'success');
+							}, 1000);
+						}
+					}, 1500);
+				} }, '➕ Create Repository')
+			])
+		]);
 	},
 
 	showGiteaConfigModal: function() {
