@@ -33,6 +33,83 @@ ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
 uci_get() { uci -q get ${CONFIG}.$1; }
 uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
 
+# Firewall management - auto-open ports when publishing
+firewall_ensure_haproxy_rules() {
+	local http_port="${1:-80}"
+	local https_port="${2:-443}"
+	local changed=0
+
+	# Check if HTTP rule exists
+	local http_rule_exists=0
+	local i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		if [ "$name" = "HAProxy-HTTP" ]; then
+			http_rule_exists=1
+			break
+		fi
+		i=$((i + 1))
+	done
+
+	# Create HTTP rule if missing
+	if [ "$http_rule_exists" = "0" ]; then
+		log_info "Creating firewall rule for HTTP (port $http_port)..."
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='HAProxy-HTTP'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="$http_port"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci set firewall.@rule[-1].enabled='1'
+		changed=1
+	fi
+
+	# Check if HTTPS rule exists
+	local https_rule_exists=0
+	i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		if [ "$name" = "HAProxy-HTTPS" ]; then
+			https_rule_exists=1
+			break
+		fi
+		i=$((i + 1))
+	done
+
+	# Create HTTPS rule if missing
+	if [ "$https_rule_exists" = "0" ]; then
+		log_info "Creating firewall rule for HTTPS (port $https_port)..."
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='HAProxy-HTTPS'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].dest_port="$https_port"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci set firewall.@rule[-1].enabled='1'
+		changed=1
+	fi
+
+	# Apply changes
+	if [ "$changed" = "1" ]; then
+		uci commit firewall
+		/etc/init.d/firewall reload 2>/dev/null || true
+		log_info "Firewall rules updated - ports $http_port and $https_port open on WAN"
+	fi
+}
+
+firewall_check_haproxy_rules() {
+	local http_ok=0 https_ok=0
+	local i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local name=$(uci -q get firewall.@rule[$i].name)
+		local enabled=$(uci -q get firewall.@rule[$i].enabled)
+		[ "$name" = "HAProxy-HTTP" ] && [ "$enabled" != "0" ] && http_ok=1
+		[ "$name" = "HAProxy-HTTPS" ] && [ "$enabled" != "0" ] && https_ok=1
+		i=$((i + 1))
+	done
+	[ "$http_ok" = "1" ] && [ "$https_ok" = "1" ]
+}
+
 # Load configuration
 load_config() {
 	http_port="$(uci_get main.http_port)" || http_port="80"
@@ -409,6 +486,11 @@ _generate_frontends() {
 frontend http-in
     bind *:$http_port
     mode http
+
+    # ACME challenge routing (no HAProxy restart needed for cert issuance)
+    acl is_acme_challenge path_beg /.well-known/acme-challenge/
+    use_backend acme_challenge if is_acme_challenge
+
 EOF
 
 	# Add HTTPS redirect rules for vhosts with ssl_redirect
@@ -483,6 +565,16 @@ _add_vhost_acl() {
 
 _generate_backends() {
 	config_load haproxy
+
+	# ACME challenge backend (for certificate issuance without HAProxy restart)
+	# Serves /.well-known/acme-challenge/ from /var/www/acme-challenge/
+	cat << EOF
+
+backend acme_challenge
+    mode http
+    server acme_webroot 192.168.255.1:8402 check
+
+EOF
 
 	# Track which backends are generated
 	_generated_backends=""
@@ -770,6 +862,14 @@ cmd_cert_add() {
 	local domain="$1"
 	[ -z "$domain" ] && { log_error "Domain required"; return 1; }
 
+	# Ensure HAProxy config has ACME backend (for webroot mode)
+	log_info "Ensuring HAProxy config is up to date..."
+	generate_config
+
+	# Ensure firewall allows HTTP/HTTPS from WAN (required for ACME)
+	log_info "Checking firewall rules..."
+	firewall_ensure_haproxy_rules "$http_port" "$https_port"
+
 	local email=$(uci_get acme.email)
 	local staging=$(uci_get acme.staging)
 	local key_type_raw=$(uci_get acme.key_type) || key_type_raw="ec-256"
@@ -820,21 +920,34 @@ cmd_cert_add() {
 			"$ACME_SH" --register-account -m "$email" --server letsencrypt $staging_flag --home "$LE_WORKING_DIR" || true
 		fi
 
-		# Check if HAProxy is using the port
-		local haproxy_was_running=0
-		if lxc_running; then
-			log_info "Temporarily stopping HAProxy for certificate issuance..."
-			haproxy_was_running=1
-			/etc/init.d/haproxy stop 2>/dev/null || true
+		# Setup webroot for ACME challenges (HAProxy routes /.well-known/acme-challenge/ here)
+		local ACME_WEBROOT="/var/www/acme-challenge"
+		ensure_dir "$ACME_WEBROOT/.well-known/acme-challenge"
+		chmod 755 "$ACME_WEBROOT" "$ACME_WEBROOT/.well-known" "$ACME_WEBROOT/.well-known/acme-challenge"
+
+		# Start simple webserver for ACME challenges (if not already running)
+		local ACME_PORT=8402
+		if ! netstat -tln 2>/dev/null | grep -q ":$ACME_PORT "; then
+			log_info "Starting ACME challenge webserver on port $ACME_PORT..."
+			# Use busybox httpd (available on OpenWrt)
+			start-stop-daemon -S -b -x /usr/sbin/httpd -- -p $ACME_PORT -h "$ACME_WEBROOT" -f 2>/dev/null || \
+				busybox httpd -p $ACME_PORT -h "$ACME_WEBROOT" &
+			sleep 1
+		fi
+
+		# Ensure HAProxy is running with ACME backend
+		if ! lxc_running; then
+			log_info "Starting HAProxy..."
+			/etc/init.d/haproxy start 2>/dev/null || true
 			sleep 2
 		fi
 
-		# Issue certificate using standalone mode
-		log_info "Issuing certificate (standalone mode on port $http_port)..."
+		# Issue certificate using webroot mode (NO HAProxy restart needed!)
+		log_info "Issuing certificate (webroot mode - HAProxy stays running)..."
 		local acme_result=0
 		"$ACME_SH" --issue -d "$domain" \
 			--server letsencrypt \
-			--standalone --httpport "$http_port" \
+			--webroot "$ACME_WEBROOT" \
 			--keylength "$key_type" \
 			$staging_flag \
 			--home "$LE_WORKING_DIR" || acme_result=$?
@@ -856,19 +969,19 @@ cmd_cert_add() {
 			chmod 600 "$CERTS_PATH/$domain.pem"
 
 			# Clean up intermediate files - HAProxy only needs the .pem file
-			# Keeping these causes issues when HAProxy loads certs from directory
 			rm -f "$CERTS_PATH/$domain.crt" "$CERTS_PATH/$domain.key" "$CERTS_PATH/$domain.fullchain.pem" "$CERTS_PATH/$domain.crt.key" 2>/dev/null
-		fi
 
-		# Restart HAProxy if it was running
-		if [ "$haproxy_was_running" = "1" ]; then
-			log_info "Restarting HAProxy..."
-			/etc/init.d/haproxy start 2>/dev/null || true
+			# Reload HAProxy to pick up new cert
+			log_info "Reloading HAProxy to use new certificate..."
+			/etc/init.d/haproxy reload 2>/dev/null || true
 		fi
 
 		# Check if certificate was created
 		if [ ! -f "$CERTS_PATH/$domain.pem" ]; then
-			log_error "Certificate issuance failed. Ensure port $http_port is accessible from internet and domain points to this IP."
+			log_error "Certificate issuance failed. Check:"
+			log_error "  1. Domain $domain points to this server's public IP"
+			log_error "  2. Port 80 is accessible from internet"
+			log_error "  3. HAProxy is running with ACME backend (haproxyctl generate)"
 			return 1
 		fi
 		log_info "Certificate ready: $CERTS_PATH/$domain.pem"

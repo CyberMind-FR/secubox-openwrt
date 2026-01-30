@@ -1,0 +1,424 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# SecuBox Landing Page Generator
+# Copyright (C) 2025 CyberMind.fr
+
+. /lib/functions.sh
+
+UCI_CONFIG="service-registry"
+OUTPUT_PATH="/www/secubox-services.html"
+
+# Get output path from config
+config_load "$UCI_CONFIG"
+config_get OUTPUT_PATH main landing_path "$OUTPUT_PATH"
+
+# Get services JSON
+SERVICES_JSON=$(ubus call luci.service-registry list_services 2>/dev/null)
+if [ -z "$SERVICES_JSON" ]; then
+	echo "Error: Could not fetch services"
+	exit 1
+fi
+
+# Get hostname
+HOSTNAME=$(uci -q get system.@system[0].hostname || echo "SecuBox")
+
+# Generate HTML
+cat > "$OUTPUT_PATH" <<'HTMLHEAD'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SecuBox Services</title>
+    <style>
+        :root {
+            --primary: #0ff;
+            --primary-dim: #099;
+            --bg: #1a1a2e;
+            --card: #16213e;
+            --card-hover: #1c2a4a;
+            --text: #e4e4e7;
+            --text-dim: #a1a1aa;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --error: #ef4444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 20px;
+        }
+        .header h1 {
+            color: var(--primary);
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+        .header p {
+            color: var(--text-dim);
+            font-size: 1.1em;
+        }
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: var(--primary);
+        }
+        .stat-label {
+            font-size: 0.85em;
+            color: var(--text-dim);
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+            padding: 10px;
+        }
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #333;
+            transition: all 0.2s ease;
+        }
+        .card:hover {
+            background: var(--card-hover);
+            border-color: var(--primary-dim);
+            transform: translateY(-2px);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 15px;
+        }
+        .card-icon {
+            font-size: 1.8em;
+            width: 45px;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        .card-title {
+            font-size: 1.15em;
+            font-weight: 600;
+            flex: 1;
+        }
+        .card-status {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 500;
+        }
+        .status-running { background: var(--success); color: #000; }
+        .status-stopped { background: var(--error); color: #fff; }
+        .urls {
+            margin: 15px 0;
+        }
+        .url-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 8px;
+        }
+        .url-label {
+            min-width: 70px;
+            font-size: 0.75em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .url-link {
+            color: var(--primary);
+            text-decoration: none;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 0.9em;
+        }
+        .url-link:hover {
+            text-decoration: underline;
+        }
+        .copy-btn {
+            background: transparent;
+            border: 1px solid #444;
+            color: var(--text-dim);
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: all 0.2s;
+        }
+        .copy-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        .copy-btn.copied {
+            border-color: var(--success);
+            color: var(--success);
+        }
+        .qr-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #333;
+        }
+        .qr-box {
+            text-align: center;
+        }
+        .qr-code {
+            background: #fff;
+            padding: 8px;
+            border-radius: 8px;
+            display: inline-block;
+        }
+        .qr-code img {
+            display: block;
+            border-radius: 4px;
+        }
+        .qr-label {
+            font-size: 0.7em;
+            color: var(--text-dim);
+            margin-top: 6px;
+            text-transform: uppercase;
+        }
+        .footer {
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.85em;
+            margin-top: 40px;
+            padding: 20px;
+        }
+        .footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+        .category-section {
+            margin-bottom: 40px;
+        }
+        .category-title {
+            font-size: 1.3em;
+            color: var(--text-dim);
+            margin-bottom: 15px;
+            padding-left: 10px;
+            border-left: 3px solid var(--primary);
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-dim);
+        }
+        .empty-state h2 {
+            margin-bottom: 10px;
+        }
+        @media (max-width: 600px) {
+            .header h1 { font-size: 1.8em; }
+            .grid { grid-template-columns: 1fr; }
+            .stats { gap: 15px; }
+            .qr-container { flex-direction: column; align-items: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>SecuBox Services</h1>
+            <p>Published endpoints and access links</p>
+            <div class="stats" id="stats"></div>
+        </header>
+        <main id="services-container"></main>
+        <footer class="footer">
+            <p>Generated: <span id="timestamp"></span></p>
+            <p>Powered by <a href="#">SecuBox</a></p>
+        </footer>
+    </div>
+
+    <script>
+    // QR Code generator using QR Server API (free, reliable)
+    function generateQRCodeImg(data, size) {
+        var url = 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size + '&data=' + encodeURIComponent(data);
+        return '<img src="' + url + '" alt="QR Code" width="' + size + '" height="' + size + '" style="display:block;" />';
+    }
+
+    // Service data
+    var servicesData = SERVICES_JSON_PLACEHOLDER;
+
+    function getIcon(iconName) {
+        var icons = {
+            'server': '🖥️', 'music': '🎵', 'shield': '🛡️', 'chart': '📊',
+            'settings': '⚙️', 'git': '📦', 'blog': '📝', 'arrow': '➡️',
+            'onion': '🧅', 'lock': '🔒', 'globe': '🌐', 'box': '📦',
+            'app': '📱', 'admin': '👤', 'stats': '📈', 'security': '🔐',
+            'feed': '📡', 'default': '🔗'
+        };
+        return icons[iconName] || icons['default'];
+    }
+
+    function copyToClipboard(text, btn) {
+        navigator.clipboard.writeText(text).then(function() {
+            btn.textContent = 'Copied!';
+            btn.classList.add('copied');
+            setTimeout(function() {
+                btn.textContent = 'Copy';
+                btn.classList.remove('copied');
+            }, 2000);
+        });
+    }
+
+    function renderServices() {
+        var container = document.getElementById('services-container');
+        var services = servicesData.services || [];
+        var published = services.filter(function(s) { return s.published; });
+
+        // Update stats
+        var statsEl = document.getElementById('stats');
+        var haproxy = servicesData.providers?.haproxy || {};
+        var tor = servicesData.providers?.tor || {};
+        statsEl.innerHTML =
+            '<div class="stat"><div class="stat-value">' + published.length + '</div><div class="stat-label">Services</div></div>' +
+            '<div class="stat"><div class="stat-value">' + (haproxy.count || 0) + '</div><div class="stat-label">Domains</div></div>' +
+            '<div class="stat"><div class="stat-value">' + (tor.count || 0) + '</div><div class="stat-label">Onion Sites</div></div>';
+
+        if (published.length === 0) {
+            container.innerHTML = '<div class="empty-state"><h2>No Published Services</h2><p>Publish services using the Service Registry dashboard</p></div>';
+            return;
+        }
+
+        // Group by category
+        var categories = {};
+        published.forEach(function(service) {
+            var cat = service.category || 'other';
+            if (!categories[cat]) categories[cat] = [];
+            categories[cat].push(service);
+        });
+
+        var html = '';
+        Object.keys(categories).sort().forEach(function(cat) {
+            html += '<section class="category-section">';
+            html += '<h2 class="category-title">' + cat.charAt(0).toUpperCase() + cat.slice(1) + '</h2>';
+            html += '<div class="grid">';
+
+            categories[cat].forEach(function(service) {
+                html += renderServiceCard(service);
+            });
+
+            html += '</div></section>';
+        });
+
+        container.innerHTML = html;
+
+        // Add event listeners for copy buttons
+        document.querySelectorAll('.copy-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                copyToClipboard(this.dataset.url, this);
+            });
+        });
+    }
+
+    function renderServiceCard(service) {
+        var urls = service.urls || {};
+        var html = '<div class="card">';
+
+        // Header
+        html += '<div class="card-header">';
+        html += '<div class="card-icon">' + getIcon(service.icon) + '</div>';
+        html += '<div class="card-title">' + escapeHtml(service.name) + '</div>';
+        html += '<span class="card-status status-' + (service.status || 'stopped') + '">' +
+                (service.status || 'unknown') + '</span>';
+        html += '</div>';
+
+        // URLs
+        html += '<div class="urls">';
+        if (urls.local) {
+            html += renderUrlRow('Local', urls.local);
+        }
+        if (urls.clearnet) {
+            html += renderUrlRow('Clearnet', urls.clearnet);
+        }
+        if (urls.onion) {
+            html += renderUrlRow('Onion', urls.onion);
+        }
+        html += '</div>';
+
+        // QR Codes
+        var qrUrls = [];
+        if (urls.clearnet) qrUrls.push({ label: 'Clearnet', url: urls.clearnet });
+        if (urls.onion) qrUrls.push({ label: 'Onion', url: urls.onion });
+
+        if (qrUrls.length > 0) {
+            html += '<div class="qr-container">';
+            qrUrls.forEach(function(qr) {
+                html += '<div class="qr-box">';
+                html += '<div class="qr-code">' + generateQRCodeImg(qr.url, 120) + '</div>';
+                html += '<div class="qr-label">' + qr.label + '</div>';
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    function renderUrlRow(label, url) {
+        return '<div class="url-row">' +
+               '<span class="url-label">' + label + '</span>' +
+               '<a href="' + escapeHtml(url) + '" class="url-link" target="_blank">' + escapeHtml(url) + '</a>' +
+               '<button class="copy-btn" data-url="' + escapeHtml(url) + '">Copy</button>' +
+               '</div>';
+    }
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // Initialize
+    document.getElementById('timestamp').textContent = new Date().toLocaleString();
+    renderServices();
+    </script>
+</body>
+</html>
+HTMLHEAD
+
+# Replace placeholder with actual JSON using awk (more reliable than sed for JSON)
+TMP_OUTPUT="${OUTPUT_PATH}.tmp"
+awk -v json="$SERVICES_JSON" '{gsub(/SERVICES_JSON_PLACEHOLDER/, json); print}' "$OUTPUT_PATH" > "$TMP_OUTPUT"
+mv "$TMP_OUTPUT" "$OUTPUT_PATH"
+
+# Ensure web server can read the file
+chmod 644 "$OUTPUT_PATH"
+
+echo "Landing page generated: $OUTPUT_PATH"
