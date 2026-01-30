@@ -604,6 +604,114 @@ disable_instance() {
 	json_success "Instance disabled: $id"
 }
 
+# Preview ZIP contents
+preview_zip() {
+	read -r input
+	local content
+	content=$(echo "$input" | jsonfilter -e '@.content' 2>/dev/null)
+
+	if [ -z "$content" ]; then
+		json_error "Missing content"
+		return
+	fi
+
+	# Write to temp file and list contents
+	local tmpzip="/tmp/preview_$$.zip"
+	echo "$content" | base64 -d > "$tmpzip" 2>/dev/null
+
+	if [ ! -f "$tmpzip" ]; then
+		json_error "Failed to decode ZIP"
+		return
+	fi
+
+	json_init_obj
+	json_add_array "files"
+
+	# Use unzip to list contents
+	unzip -l "$tmpzip" 2>/dev/null | tail -n +4 | head -n -2 | while read -r size date time name; do
+		[ -z "$name" ] && continue
+		local is_dir=0
+		echo "$name" | grep -q '/$' && is_dir=1
+
+		json_add_object ""
+		json_add_string "path" "$name"
+		json_add_int "size" "$size"
+		json_add_boolean "is_dir" "$is_dir"
+		json_close_object
+	done
+
+	json_close_array
+	json_close_obj
+
+	rm -f "$tmpzip"
+}
+
+# Upload ZIP with selected files
+upload_zip() {
+	read -r input
+	local name content selected_files
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	content=$(echo "$input" | jsonfilter -e '@.content' 2>/dev/null)
+	selected_files=$(echo "$input" | jsonfilter -e '@.selected_files' 2>/dev/null)
+
+	if [ -z "$name" ] || [ -z "$content" ]; then
+		json_error "Missing name or content"
+		return
+	fi
+
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/streamlit"
+
+	local app_dir="$data_path/apps/$name"
+	local tmpzip="/tmp/upload_$$.zip"
+
+	# Decode ZIP
+	echo "$content" | base64 -d > "$tmpzip" 2>/dev/null
+	if [ ! -f "$tmpzip" ]; then
+		json_error "Failed to decode ZIP"
+		return
+	fi
+
+	mkdir -p "$app_dir"
+
+	# Extract selected files or all if none specified
+	if [ -n "$selected_files" ] && [ "$selected_files" != "[]" ]; then
+		# Parse selected files array and extract each
+		echo "$selected_files" | jsonfilter -e '@[*]' 2>/dev/null | while read -r filepath; do
+			[ -z "$filepath" ] && continue
+			unzip -o "$tmpzip" "$filepath" -d "$app_dir" 2>/dev/null
+		done
+	else
+		# Extract all
+		unzip -o "$tmpzip" -d "$app_dir" 2>/dev/null
+	fi
+
+	rm -f "$tmpzip"
+
+	# Find main .py file for registration
+	local main_py
+	main_py=$(find "$app_dir" -maxdepth 2 -name "*.py" -type f | head -1)
+
+	if [ -n "$main_py" ]; then
+		# Register in UCI
+		uci set "${CONFIG}.${name}=app"
+		uci set "${CONFIG}.${name}.name=$name"
+		uci set "${CONFIG}.${name}.path=$main_py"
+		uci set "${CONFIG}.${name}.enabled=1"
+		uci commit "$CONFIG"
+
+		json_init_obj
+		json_add_boolean "success" 1
+		json_add_string "message" "App deployed: $name"
+		json_add_string "path" "$app_dir"
+		json_add_string "main_file" "$main_py"
+		json_close_obj
+	else
+		json_error "No Python files found in extracted archive"
+	fi
+}
+
 # Check install progress
 get_install_progress() {
 	local log_file="/var/log/streamlit-install.log"
@@ -678,6 +786,8 @@ case "$1" in
 			"remove_app": {"name": "str"},
 			"set_active_app": {"name": "str"},
 			"upload_app": {"name": "str", "content": "str"},
+			"preview_zip": {"content": "str"},
+			"upload_zip": {"name": "str", "content": "str", "selected_files": []},
 			"get_install_progress": {},
 			"list_instances": {},
 			"add_instance": {"id": "str", "name": "str", "app": "str", "port": 8501},
@@ -736,6 +846,12 @@ case "$1" in
 				;;
 			upload_app)
 				upload_app
+				;;
+			preview_zip)
+				preview_zip
+				;;
+			upload_zip)
+				upload_zip
 				;;
 			get_install_progress)
 				get_install_progress

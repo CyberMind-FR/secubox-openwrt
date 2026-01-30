@@ -231,14 +231,14 @@ return view.extend({
 				}, [
 					E('div', { 'class': 'st-upload-icon' }, '\uD83D\uDCC1'),
 					E('div', { 'class': 'st-upload-text' }, [
-						E('p', {}, _('Drop your .py file here or click to browse')),
-						E('p', { 'style': 'font-size: 12px; color: #64748b;' }, _('Supported: Python (.py) files'))
+						E('p', {}, _('Drop your .py or .zip file here or click to browse')),
+						E('p', { 'style': 'font-size: 12px; color: #64748b;' }, _('Supported: Python (.py) or ZIP archive (.zip)'))
 					])
 				]),
 				E('input', {
 					'type': 'file',
 					'id': 'upload-file',
-					'accept': '.py',
+					'accept': '.py,.zip',
 					'style': 'display: none;',
 					'change': function(e) {
 						if (e.target.files.length > 0) {
@@ -319,15 +319,19 @@ return view.extend({
 	handleFileSelect: function(file) {
 		var self = this;
 
-		if (!file.name.endsWith('.py')) {
-			ui.addNotification(null, E('p', {}, _('Please select a Python (.py) file')), 'error');
+		// Check for valid file types
+		var isPy = file.name.endsWith('.py');
+		var isZip = file.name.endsWith('.zip');
+
+		if (!isPy && !isZip) {
+			ui.addNotification(null, E('p', {}, _('Please select a Python (.py) or ZIP (.zip) file')), 'error');
 			return;
 		}
 
 		var nameInput = document.getElementById('upload-name');
 		if (!nameInput.value) {
 			// Auto-fill name from filename
-			nameInput.value = file.name.replace('.py', '');
+			nameInput.value = file.name.replace(/\.(py|zip)$/, '');
 		}
 
 		var statusDiv = document.getElementById('upload-status');
@@ -336,12 +340,342 @@ return view.extend({
 		statusDiv.appendChild(E('p', { 'style': 'color: #0ff;' },
 			_('Selected: ') + file.name + ' (' + this.formatSize(file.size) + ')'));
 
-		// Add upload button
-		statusDiv.appendChild(E('button', {
-			'class': 'st-btn st-btn-success',
-			'style': 'margin-top: 10px;',
-			'click': function() { self.uploadFile(file); }
-		}, [E('span', {}, '\uD83D\uDCE4'), ' ' + _('Upload App')]));
+		if (isZip) {
+			// For ZIP files, show tree selection dialog
+			statusDiv.appendChild(E('button', {
+				'class': 'st-btn st-btn-success',
+				'style': 'margin-top: 10px;',
+				'click': function() { self.showZipTreeDialog(file); }
+			}, [E('span', {}, '\uD83D\uDCC2'), ' ' + _('Select Files from ZIP')]));
+		} else {
+			// For .py files, direct upload
+			statusDiv.appendChild(E('button', {
+				'class': 'st-btn st-btn-success',
+				'style': 'margin-top: 10px;',
+				'click': function() { self.uploadFile(file); }
+			}, [E('span', {}, '\uD83D\uDCE4'), ' ' + _('Upload App')]));
+		}
+	},
+
+	pendingZipFile: null,
+	pendingZipContent: null,
+	zipTreeData: [],
+
+	showZipTreeDialog: function(file) {
+		var self = this;
+
+		ui.showModal(_('Loading ZIP...'), [
+			E('p', { 'class': 'spinning' }, _('Reading ZIP archive contents...'))
+		]);
+
+		var reader = new FileReader();
+		reader.onload = function(e) {
+			var bytes = new Uint8Array(e.target.result);
+			var binary = '';
+			for (var i = 0; i < bytes.byteLength; i++) {
+				binary += String.fromCharCode(bytes[i]);
+			}
+			var content = btoa(binary);
+			self.pendingZipContent = content;
+			self.pendingZipFile = file;
+
+			// Call backend to preview ZIP contents
+			api.previewZip(content).then(function(result) {
+				ui.hideModal();
+				if (result && result.files) {
+					self.zipTreeData = result.files;
+					self.renderZipTreeModal(result.files);
+				} else if (result && result.error) {
+					ui.addNotification(null, E('p', {}, _('Failed to read ZIP: ') + result.error), 'error');
+				} else {
+					// Fallback: parse ZIP client-side using JSZip-like approach
+					self.parseZipClientSide(content);
+				}
+			}).catch(function(err) {
+				ui.hideModal();
+				// Fallback: try client-side parsing
+				self.parseZipClientSide(content);
+			});
+		};
+		reader.readAsArrayBuffer(file);
+	},
+
+	parseZipClientSide: function(content) {
+		var self = this;
+		// Basic ZIP parsing - extract file list from central directory
+		try {
+			var raw = atob(content);
+			var files = [];
+			var offset = 0;
+
+			// Find End of Central Directory
+			var eocdOffset = raw.lastIndexOf('PK\x05\x06');
+			if (eocdOffset === -1) {
+				throw new Error('Invalid ZIP file');
+			}
+
+			// Read number of entries
+			var numEntries = raw.charCodeAt(eocdOffset + 10) | (raw.charCodeAt(eocdOffset + 11) << 8);
+			var cdOffset = raw.charCodeAt(eocdOffset + 16) | (raw.charCodeAt(eocdOffset + 17) << 8) |
+			               (raw.charCodeAt(eocdOffset + 18) << 16) | (raw.charCodeAt(eocdOffset + 19) << 24);
+
+			offset = cdOffset;
+			for (var i = 0; i < numEntries && offset < eocdOffset; i++) {
+				if (raw.substr(offset, 4) !== 'PK\x01\x02') break;
+
+				var nameLen = raw.charCodeAt(offset + 28) | (raw.charCodeAt(offset + 29) << 8);
+				var extraLen = raw.charCodeAt(offset + 30) | (raw.charCodeAt(offset + 31) << 8);
+				var commentLen = raw.charCodeAt(offset + 32) | (raw.charCodeAt(offset + 33) << 8);
+				var compSize = raw.charCodeAt(offset + 20) | (raw.charCodeAt(offset + 21) << 8) |
+				               (raw.charCodeAt(offset + 22) << 16) | (raw.charCodeAt(offset + 23) << 24);
+				var uncompSize = raw.charCodeAt(offset + 24) | (raw.charCodeAt(offset + 25) << 8) |
+				                 (raw.charCodeAt(offset + 26) << 16) | (raw.charCodeAt(offset + 27) << 24);
+
+				var fileName = raw.substr(offset + 46, nameLen);
+				var isDir = fileName.endsWith('/');
+
+				files.push({
+					path: fileName,
+					size: uncompSize,
+					is_dir: isDir,
+					selected: fileName.endsWith('.py') || isDir
+				});
+
+				offset += 46 + nameLen + extraLen + commentLen;
+			}
+
+			self.zipTreeData = files;
+			self.renderZipTreeModal(files);
+		} catch (err) {
+			ui.addNotification(null, E('p', {}, _('Failed to parse ZIP: ') + err.message), 'error');
+		}
+	},
+
+	renderZipTreeModal: function(files) {
+		var self = this;
+		var nameInput = document.getElementById('upload-name');
+		var appName = nameInput ? nameInput.value.trim() : 'app';
+
+		// Build tree structure
+		var tree = this.buildFileTree(files);
+		var treeHtml = this.renderTreeNode(tree, '', 0);
+
+		ui.showModal(_('Select Files to Deploy'), [
+			E('div', { 'style': 'margin-bottom: 16px;' }, [
+				E('p', {}, _('Select which files to extract from the ZIP archive:')),
+				E('div', { 'style': 'margin-top: 8px;' }, [
+					E('button', {
+						'class': 'st-btn',
+						'style': 'padding: 4px 8px; font-size: 11px; margin-right: 8px;',
+						'click': function() { self.selectAllZipFiles(true); }
+					}, _('Select All')),
+					E('button', {
+						'class': 'st-btn',
+						'style': 'padding: 4px 8px; font-size: 11px; margin-right: 8px;',
+						'click': function() { self.selectAllZipFiles(false); }
+					}, _('Deselect All')),
+					E('button', {
+						'class': 'st-btn',
+						'style': 'padding: 4px 8px; font-size: 11px;',
+						'click': function() { self.selectPythonFiles(); }
+					}, _('Python Only'))
+				])
+			]),
+			E('div', {
+				'id': 'zip-tree-container',
+				'style': 'max-height: 400px; overflow-y: auto; background: #0f172a; border: 1px solid #334155; border-radius: 4px; padding: 12px; font-family: monospace; font-size: 13px;'
+			}, treeHtml),
+			E('div', { 'style': 'margin-top: 16px; padding: 12px; background: #1e293b; border-radius: 4px;' }, [
+				E('span', { 'id': 'zip-selected-count', 'style': 'color: #94a3b8;' },
+					this.getSelectedCount() + ' ' + _('files selected'))
+			]),
+			E('div', { 'class': 'right', 'style': 'margin-top: 16px;' }, [
+				E('button', {
+					'class': 'btn',
+					'click': function() {
+						ui.hideModal();
+						self.pendingZipFile = null;
+						self.pendingZipContent = null;
+					}
+				}, _('Cancel')),
+				E('button', {
+					'class': 'btn cbi-button-positive',
+					'style': 'margin-left: 8px;',
+					'click': function() { self.uploadSelectedZipFiles(); }
+				}, ['\uD83D\uDCE4 ', _('Deploy Selected')])
+			])
+		]);
+	},
+
+	buildFileTree: function(files) {
+		var root = { name: '', children: {}, files: [] };
+
+		files.forEach(function(file) {
+			var parts = file.path.split('/').filter(function(p) { return p; });
+			var current = root;
+
+			for (var i = 0; i < parts.length; i++) {
+				var part = parts[i];
+				var isLast = i === parts.length - 1;
+
+				if (isLast && !file.is_dir) {
+					current.files.push({
+						name: part,
+						path: file.path,
+						size: file.size,
+						selected: file.selected !== false
+					});
+				} else {
+					if (!current.children[part]) {
+						current.children[part] = { name: part, children: {}, files: [], path: file.path };
+					}
+					current = current.children[part];
+				}
+			}
+		});
+
+		return root;
+	},
+
+	renderTreeNode: function(node, indent, level) {
+		var self = this;
+		var elements = [];
+
+		// Render subdirectories
+		var dirs = Object.keys(node.children).sort();
+		dirs.forEach(function(dirName) {
+			var dir = node.children[dirName];
+			var dirPath = dir.path || (indent ? indent + '/' + dirName : dirName);
+
+			elements.push(E('div', {
+				'class': 'zip-tree-dir',
+				'style': 'padding: 4px 0; padding-left: ' + (level * 16) + 'px;',
+				'data-path': dirPath
+			}, [
+				E('span', {
+					'class': 'zip-tree-toggle',
+					'style': 'cursor: pointer; color: #60a5fa; margin-right: 4px;',
+					'click': function(e) {
+						var next = this.parentNode.nextSibling;
+						while (next && next.classList && next.classList.contains('zip-tree-child-' + level)) {
+							next.style.display = next.style.display === 'none' ? 'block' : 'none';
+							next = next.nextSibling;
+						}
+						this.textContent = this.textContent === '\u25BC' ? '\u25B6' : '\u25BC';
+					}
+				}, '\u25BC'),
+				E('span', { 'style': 'color: #fbbf24;' }, '\uD83D\uDCC1 '),
+				E('span', { 'style': 'color: #f1f5f9;' }, dirName + '/')
+			]));
+
+			// Render children
+			var childElements = self.renderTreeNode(dir, dirPath, level + 1);
+			childElements.forEach(function(el) {
+				el.classList.add('zip-tree-child-' + level);
+				elements.push(el);
+			});
+		});
+
+		// Render files
+		node.files.sort(function(a, b) { return a.name.localeCompare(b.name); });
+		node.files.forEach(function(file) {
+			var isPy = file.name.endsWith('.py');
+			var icon = isPy ? '\uD83D\uDC0D' : '\uD83D\uDCC4';
+			var color = isPy ? '#22c55e' : '#94a3b8';
+
+			elements.push(E('div', {
+				'class': 'zip-tree-file',
+				'style': 'padding: 4px 0; padding-left: ' + (level * 16) + 'px;'
+			}, [
+				E('label', { 'style': 'cursor: pointer; display: flex; align-items: center;' }, [
+					E('input', {
+						'type': 'checkbox',
+						'class': 'zip-file-checkbox',
+						'data-path': file.path,
+						'checked': file.selected,
+						'style': 'margin-right: 8px;',
+						'change': function() { self.updateSelectedCount(); }
+					}),
+					E('span', { 'style': 'margin-right: 4px;' }, icon),
+					E('span', { 'style': 'color: ' + color + ';' }, file.name),
+					E('span', { 'style': 'color: #64748b; margin-left: 8px; font-size: 11px;' },
+						'(' + self.formatSize(file.size) + ')')
+				])
+			]));
+		});
+
+		return elements;
+	},
+
+	selectAllZipFiles: function(select) {
+		var checkboxes = document.querySelectorAll('.zip-file-checkbox');
+		checkboxes.forEach(function(cb) { cb.checked = select; });
+		this.updateSelectedCount();
+	},
+
+	selectPythonFiles: function() {
+		var checkboxes = document.querySelectorAll('.zip-file-checkbox');
+		checkboxes.forEach(function(cb) {
+			cb.checked = cb.dataset.path.endsWith('.py');
+		});
+		this.updateSelectedCount();
+	},
+
+	getSelectedCount: function() {
+		var checkboxes = document.querySelectorAll('.zip-file-checkbox:checked');
+		return checkboxes ? checkboxes.length : 0;
+	},
+
+	updateSelectedCount: function() {
+		var countEl = document.getElementById('zip-selected-count');
+		if (countEl) {
+			countEl.textContent = this.getSelectedCount() + ' ' + _('files selected');
+		}
+	},
+
+	uploadSelectedZipFiles: function() {
+		var self = this;
+		var nameInput = document.getElementById('upload-name');
+		var name = nameInput ? nameInput.value.trim() : '';
+
+		if (!name) {
+			ui.addNotification(null, E('p', {}, _('Please enter an app name')), 'error');
+			return;
+		}
+
+		// Collect selected files
+		var selectedFiles = [];
+		var checkboxes = document.querySelectorAll('.zip-file-checkbox:checked');
+		checkboxes.forEach(function(cb) {
+			selectedFiles.push(cb.dataset.path);
+		});
+
+		if (selectedFiles.length === 0) {
+			ui.addNotification(null, E('p', {}, _('Please select at least one file')), 'error');
+			return;
+		}
+
+		ui.hideModal();
+		ui.showModal(_('Deploying...'), [
+			E('p', { 'class': 'spinning' }, _('Extracting and deploying selected files...'))
+		]);
+
+		api.uploadZip(name, self.pendingZipContent, selectedFiles).then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				ui.addNotification(null, E('p', {}, _('App deployed successfully: ') + name), 'success');
+				nameInput.value = '';
+				document.getElementById('upload-status').style.display = 'none';
+				self.pendingZipFile = null;
+				self.pendingZipContent = null;
+				self.refreshData();
+			} else {
+				ui.addNotification(null, E('p', {}, result.message || result.error || _('Deploy failed')), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, _('Deploy failed: ') + err.message), 'error');
+		});
 	},
 
 	uploadFile: function(file) {
