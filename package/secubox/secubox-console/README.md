@@ -1,8 +1,13 @@
-# SecuBox Console
+# SecuBox Console & Frontend
 
 **Remote Management Point for SecuBox Devices**
 
-A lightweight Python CLI/TUI application for centralized management of multiple SecuBox devices. KISS modular self-enhancing architecture.
+Two applications for centralized management of multiple SecuBox devices:
+
+1. **secubox-console** - CLI-focused management tool
+2. **secubox-frontend** - Modern TUI dashboard with Textual
+
+KISS modular self-enhancing architecture.
 
 ## Features
 

@@ -1,0 +1,12 @@
+# SecuBox Frontend Requirements
+# Core TUI (modern interface)
+textual>=0.40.0
+
+# SSH connections
+paramiko>=3.0.0
+
+# HTTP/API calls
+httpx>=0.25.0
+
+# Rich console (fallback TUI)
+rich>=13.0.0
