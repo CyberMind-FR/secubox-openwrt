@@ -89,8 +89,8 @@ return view.extend({
 		var container = E('div', { 'class': 'p2p-hub-master' }, [
 			E('style', {}, this.getStyles()),
 
-			// Header with view selector
-			this.renderHeader(),
+			// Globe Hero Section
+			this.renderGlobeHero(),
 
 			// Quick Stats Bar
 			this.renderQuickStats(),
@@ -137,6 +137,138 @@ return view.extend({
 		}).catch(function() {});
 	},
 
+	// ==================== Globe Hero ====================
+	renderGlobeHero: function() {
+		var self = this;
+		var onlinePeers = this.peers.filter(function(p) { return p.status === 'online'; }).length;
+		var totalPeers = this.peers.length;
+		var healthStatus = this.health.status || 'unknown';
+		var healthEmoji = healthStatus === 'healthy' ? '💚' : healthStatus === 'unhealthy' ? '❤️' : '💛';
+
+		// Generate peer positions around globe (pseudo-geographic)
+		var peerNodes = this.peers.map(function(peer, i) {
+			// Distribute peers around the globe
+			var lat = (Math.random() - 0.5) * 140; // -70 to 70 degrees
+			var lon = (i / Math.max(totalPeers, 1)) * 360 - 180; // Spread around
+			return {
+				peer: peer,
+				lat: lat,
+				lon: lon,
+				x: 50 + Math.cos(lon * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * 40,
+				y: 50 + Math.sin(lat * Math.PI / 180) * 35,
+				z: Math.sin(lon * Math.PI / 180) * Math.cos(lat * Math.PI / 180)
+			};
+		}).sort(function(a, b) { return a.z - b.z; }); // Sort by depth
+
+		return E('div', { 'class': 'globe-hero' }, [
+			// Background stars
+			E('div', { 'class': 'stars-bg' }),
+
+			// Globe container
+			E('div', { 'class': 'globe-container' }, [
+				// Globe sphere
+				E('div', { 'class': 'globe' }, [
+					E('div', { 'class': 'globe-inner' }),
+					E('div', { 'class': 'globe-grid' }),
+					E('div', { 'class': 'globe-glow' })
+				]),
+
+				// Master node (center)
+				E('div', { 'class': 'globe-master-node' }, [
+					E('span', { 'class': 'master-icon' }, '👑'),
+					E('span', { 'class': 'master-pulse' })
+				]),
+
+				// Peer nodes on globe
+				E('div', { 'class': 'globe-peers' },
+					peerNodes.map(function(node) {
+						var opacity = 0.4 + (node.z + 1) * 0.3;
+						var scale = 0.6 + (node.z + 1) * 0.2;
+						return E('div', {
+							'class': 'globe-peer ' + (node.peer.status === 'online' ? 'online' : 'offline'),
+							'style': 'left: ' + node.x + '%; top: ' + node.y + '%; opacity: ' + opacity + '; transform: scale(' + scale + ');',
+							'title': (node.peer.name || node.peer.id) + ' - ' + (node.peer.address || 'Unknown')
+						}, [
+							E('span', { 'class': 'peer-dot' }),
+							E('span', { 'class': 'peer-label' }, node.peer.name || node.peer.id)
+						]);
+					})
+				),
+
+				// Connection lines (animated)
+				E('svg', { 'class': 'globe-connections', 'viewBox': '0 0 100 100' },
+					peerNodes.filter(function(n) { return n.z > -0.3; }).map(function(node) {
+						return E('line', {
+							'class': 'connection-line ' + (node.peer.status === 'online' ? 'active' : ''),
+							'x1': '50', 'y1': '50',
+							'x2': String(node.x), 'y2': String(node.y)
+						});
+					})
+				)
+			]),
+
+			// Hero Info Panel
+			E('div', { 'class': 'globe-info' }, [
+				E('div', { 'class': 'globe-title' }, [
+					E('span', { 'class': 'globe-icon' }, '🌐'),
+					E('span', {}, 'SecuBox Global Network')
+				]),
+				E('div', { 'class': 'globe-subtitle' }, 'Distributed P2P Mesh • MaaS Federation'),
+
+				// Health indicators
+				E('div', { 'class': 'globe-health' }, [
+					E('div', { 'class': 'health-item' }, [
+						E('span', { 'class': 'health-emoji' }, healthEmoji),
+						E('span', {}, 'System'),
+						E('span', { 'class': 'health-status ' + healthStatus }, healthStatus)
+					]),
+					E('div', { 'class': 'health-item' }, [
+						E('span', { 'class': 'health-emoji' }, this.dnsConfig.enabled ? '🌐' : '⚫'),
+						E('span', {}, 'DNS'),
+						E('span', { 'class': 'health-status ' + (this.dnsConfig.enabled ? 'healthy' : 'off') }, this.dnsConfig.enabled ? 'ON' : 'OFF')
+					]),
+					E('div', { 'class': 'health-item' }, [
+						E('span', { 'class': 'health-emoji' }, this.wgConfig.enabled ? '🔒' : '🔓'),
+						E('span', {}, 'WG'),
+						E('span', { 'class': 'health-status ' + (this.wgConfig.enabled ? 'healthy' : 'off') }, this.wgConfig.enabled ? 'ON' : 'OFF')
+					]),
+					E('div', { 'class': 'health-item' }, [
+						E('span', { 'class': 'health-emoji' }, this.haConfig.enabled ? '⚖️' : '⚫'),
+						E('span', {}, 'LB'),
+						E('span', { 'class': 'health-status ' + (this.haConfig.enabled ? 'healthy' : 'off') }, this.haConfig.enabled ? 'ON' : 'OFF')
+					])
+				]),
+
+				// Network stats
+				E('div', { 'class': 'globe-stats' }, [
+					E('div', { 'class': 'globe-stat' }, [
+						E('div', { 'class': 'gs-value' }, String(totalPeers)),
+						E('div', { 'class': 'gs-label' }, 'Peers')
+					]),
+					E('div', { 'class': 'globe-stat online' }, [
+						E('div', { 'class': 'gs-value' }, String(onlinePeers)),
+						E('div', { 'class': 'gs-label' }, 'Online')
+					]),
+					E('div', { 'class': 'globe-stat' }, [
+						E('div', { 'class': 'gs-value' }, String(this.services.length)),
+						E('div', { 'class': 'gs-label' }, 'Services')
+					]),
+					E('div', { 'class': 'globe-stat' }, [
+						E('div', { 'class': 'gs-value' }, String(this.getRegisteredServices().length)),
+						E('div', { 'class': 'gs-label' }, 'Registry')
+					])
+				]),
+
+				// Quick actions
+				E('div', { 'class': 'globe-actions' }, [
+					E('button', { 'class': 'globe-btn primary', 'click': function() { self.discoverPeers(); } }, '🔍 Discover'),
+					E('button', { 'class': 'globe-btn', 'click': function() { self.syncAll(); } }, '🔄 Sync All'),
+					E('button', { 'class': 'globe-btn', 'click': function() { self.showAddPeerModal(); } }, '➕ Add Peer')
+				])
+			])
+		]);
+	},
+
 	// ==================== Header ====================
 	renderHeader: function() {
 		var self = this;
@@ -147,20 +279,13 @@ return view.extend({
 
 		return E('div', { 'class': 'hub-header' }, [
 			E('div', { 'class': 'hub-title-row' }, [
-				E('div', { 'class': 'hub-title' }, [
-					E('span', { 'class': 'title-icon' }, '🌐'),
-					E('span', {}, 'SecuBox P2P Hub'),
-					E('span', { 'class': 'hub-badge maas' }, 'MaaS')
-				]),
 				E('select', {
 					'class': 'view-selector',
 					'change': function(e) { self.switchView(e.target.value); }
 				}, viewNodes.map(function(n) {
 					return E('option', { 'value': n.id }, n.icon + ' ' + n.name);
 				}))
-			]),
-			E('div', { 'class': 'hub-subtitle' },
-				this.peers.length + ' peers • ' + this.services.length + ' services • Mesh Federation Ready')
+			])
 		]);
 	},
 
@@ -947,6 +1072,81 @@ return view.extend({
 		return [
 			// Base
 			'.p2p-hub-master { background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%); min-height: 100vh; padding: 20px; color: #e0e0e0; }',
+
+			// Globe Hero
+			'.globe-hero { display: flex; align-items: center; justify-content: center; gap: 60px; padding: 40px 20px; margin-bottom: 30px; position: relative; overflow: hidden; background: radial-gradient(ellipse at center, rgba(102,126,234,0.1) 0%, transparent 70%); border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); min-height: 350px; }',
+			'@media (max-width: 900px) { .globe-hero { flex-direction: column; gap: 30px; padding: 30px 15px; } }',
+
+			// Stars background
+			'.stars-bg { position: absolute; inset: 0; background-image: radial-gradient(2px 2px at 20px 30px, rgba(255,255,255,0.3), transparent), radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.2), transparent), radial-gradient(1px 1px at 90px 40px, rgba(255,255,255,0.4), transparent), radial-gradient(2px 2px at 130px 80px, rgba(255,255,255,0.2), transparent), radial-gradient(1px 1px at 160px 120px, rgba(255,255,255,0.3), transparent), radial-gradient(2px 2px at 200px 50px, rgba(255,255,255,0.2), transparent), radial-gradient(1px 1px at 250px 100px, rgba(255,255,255,0.4), transparent), radial-gradient(2px 2px at 300px 60px, rgba(255,255,255,0.2), transparent); background-repeat: repeat; background-size: 350px 150px; animation: twinkle 4s ease-in-out infinite; }',
+			'@keyframes twinkle { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }',
+
+			// Globe container
+			'.globe-container { position: relative; width: 280px; height: 280px; flex-shrink: 0; }',
+
+			// Globe sphere
+			'.globe { position: absolute; inset: 20px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, rgba(102,126,234,0.4), rgba(118,75,162,0.2) 50%, rgba(10,10,15,0.8)); box-shadow: inset -20px -20px 40px rgba(0,0,0,0.6), inset 10px 10px 30px rgba(102,126,234,0.3), 0 0 60px rgba(102,126,234,0.3); animation: globe-rotate 30s linear infinite; overflow: hidden; }',
+			'@keyframes globe-rotate { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }',
+
+			'.globe-inner { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle at 25% 25%, rgba(255,255,255,0.1), transparent 50%); }',
+
+			'.globe-grid { position: absolute; inset: 0; border-radius: 50%; background: repeating-linear-gradient(0deg, transparent, transparent 18px, rgba(102,126,234,0.15) 18px, rgba(102,126,234,0.15) 20px), repeating-linear-gradient(90deg, transparent, transparent 18px, rgba(102,126,234,0.15) 18px, rgba(102,126,234,0.15) 20px); opacity: 0.5; }',
+
+			'.globe-glow { position: absolute; inset: -10px; border-radius: 50%; background: radial-gradient(circle, transparent 60%, rgba(102,126,234,0.2) 80%, transparent); animation: pulse-glow 3s ease-in-out infinite; }',
+			'@keyframes pulse-glow { 0%, 100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } }',
+
+			// Master node
+			'.globe-master-node { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; }',
+			'.master-icon { font-size: 32px; display: block; filter: drop-shadow(0 0 10px rgba(241,196,15,0.8)); animation: master-float 3s ease-in-out infinite; }',
+			'@keyframes master-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }',
+			'.master-pulse { position: absolute; inset: -15px; border-radius: 50%; border: 2px solid rgba(241,196,15,0.5); animation: master-pulse 2s ease-out infinite; }',
+			'@keyframes master-pulse { 0% { transform: scale(0.8); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }',
+
+			// Peer nodes on globe
+			'.globe-peers { position: absolute; inset: 0; }',
+			'.globe-peer { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 4px; transition: all 0.3s; cursor: pointer; }',
+			'.globe-peer:hover { transform: translate(-50%, -50%) scale(1.2); z-index: 20; }',
+			'.peer-dot { width: 12px; height: 12px; border-radius: 50%; background: #10b981; box-shadow: 0 0 10px rgba(16,185,129,0.6); }',
+			'.globe-peer.offline .peer-dot { background: #ef4444; box-shadow: 0 0 10px rgba(239,68,68,0.6); }',
+			'.peer-label { font-size: 9px; color: rgba(255,255,255,0.7); white-space: nowrap; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px; opacity: 0; transition: opacity 0.3s; }',
+			'.globe-peer:hover .peer-label { opacity: 1; }',
+
+			// Connection lines
+			'.globe-connections { position: absolute; inset: 0; pointer-events: none; }',
+			'.connection-line { stroke: rgba(102,126,234,0.2); stroke-width: 0.5; stroke-dasharray: 4 2; }',
+			'.connection-line.active { stroke: rgba(16,185,129,0.4); animation: line-flow 2s linear infinite; }',
+			'@keyframes line-flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -20; } }',
+
+			// Globe info panel
+			'.globe-info { max-width: 400px; }',
+			'.globe-title { display: flex; align-items: center; gap: 12px; font-size: 28px; font-weight: 700; margin-bottom: 8px; }',
+			'.globe-icon { font-size: 36px; animation: globe-icon-spin 10s linear infinite; }',
+			'@keyframes globe-icon-spin { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }',
+			'.globe-subtitle { color: #888; font-size: 14px; margin-bottom: 20px; }',
+
+			// Health indicators
+			'.globe-health { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }',
+			'.health-item { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 8px; font-size: 12px; }',
+			'.health-emoji { font-size: 16px; }',
+			'.health-status { font-weight: 600; margin-left: 4px; }',
+			'.health-status.healthy { color: #2ecc71; }',
+			'.health-status.unhealthy { color: #e74c3c; }',
+			'.health-status.unknown { color: #f39c12; }',
+			'.health-status.off { color: #95a5a6; }',
+
+			// Globe stats
+			'.globe-stats { display: flex; gap: 20px; margin-bottom: 20px; }',
+			'.globe-stat { text-align: center; padding: 15px 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; }',
+			'.globe-stat.online { border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.1); }',
+			'.gs-value { font-size: 28px; font-weight: 700; }',
+			'.globe-stat.online .gs-value { color: #10b981; }',
+			'.gs-label { font-size: 11px; color: #888; margin-top: 4px; }',
+
+			// Globe actions
+			'.globe-actions { display: flex; gap: 10px; flex-wrap: wrap; }',
+			'.globe-btn { padding: 10px 20px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; color: #e0e0e0; cursor: pointer; font-size: 13px; transition: all 0.3s; }',
+			'.globe-btn:hover { background: rgba(102,126,234,0.2); border-color: rgba(102,126,234,0.4); transform: translateY(-2px); }',
+			'.globe-btn.primary { background: linear-gradient(135deg, #667eea, #764ba2); border: none; }',
 
 			// Header
 			'.hub-header { margin-bottom: 20px; }',
