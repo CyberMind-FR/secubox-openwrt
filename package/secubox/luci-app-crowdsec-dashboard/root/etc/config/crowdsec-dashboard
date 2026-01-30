@@ -2,3 +2,7 @@ config settings 'main'
 	option enrollment_key ''
 	option machine_name ''
 	option auto_enroll '0'
+	# Theme: classic, cards, cyberpunk
+	option theme 'classic'
+	# Profile: default, soc, modern, hacker
+	option profile 'default'

@@ -2,11 +2,14 @@
 'require view';
 'require dom';
 'require ui';
+'require uci';
 'require crowdsec-dashboard.api as api';
+'require crowdsec-dashboard.theme as theme';
 
 /**
  * CrowdSec SOC - Settings View
  * System configuration and management
+ * With theme/appearance settings
  */
 
 return view.extend({
@@ -16,79 +19,151 @@ return view.extend({
 	collections: [],
 
 	load: function() {
-		var link = document.createElement('link');
-		link.rel = 'stylesheet';
-		link.href = L.resource('crowdsec-dashboard/soc.css');
-		document.head.appendChild(link);
-		document.body.classList.add('cs-soc-fullwidth');
-
 		return Promise.all([
+			theme.init(),
 			api.getStatus(),
 			api.getMachines(),
 			api.getCollections(),
-			api.getAcquisitionConfig()
+			api.getAcquisitionConfig(),
+			uci.load('crowdsec-dashboard')
 		]);
 	},
 
 	render: function(data) {
 		var self = this;
-		this.status = data[0] || {};
-		var machinesData = data[1] || {};
+		// data[0] is theme.init() result
+		this.status = data[1] || {};
+		var machinesData = data[2] || {};
 		this.machines = Array.isArray(machinesData) ? machinesData : (machinesData.machines || []);
-		var collectionsData = data[2] || {};
+		var collectionsData = data[3] || {};
 		this.collections = collectionsData.collections || [];
 		if (this.collections.collections) this.collections = this.collections.collections;
-		this.acquisition = data[3] || {};
+		this.acquisition = data[4] || {};
 
-		return E('div', { 'class': 'soc-dashboard' }, [
+		document.body.classList.add('cs-fullwidth');
+
+		return E('div', { 'class': theme.getDashboardClass() }, [
 			this.renderHeader(),
 			this.renderNav('settings'),
-			E('div', { 'class': 'soc-stats' }, this.renderServiceStats()),
-			E('div', { 'class': 'soc-grid-2' }, [
-				E('div', { 'class': 'soc-card' }, [
-					E('div', { 'class': 'soc-card-header' }, [
+			E('div', { 'class': 'cs-stats' }, this.renderServiceStats()),
+			E('div', { 'class': 'cs-grid-2' }, [
+				E('div', { 'class': 'cs-card' }, [
+					E('div', { 'class': 'cs-card-header' }, [
 						'Service Control',
-						E('span', { 'class': 'soc-severity ' + (this.status.crowdsec === 'running' ? 'low' : 'critical') },
+						E('span', { 'class': 'cs-severity ' + (this.status.crowdsec === 'running' ? 'low' : 'critical') },
 							this.status.crowdsec === 'running' ? 'RUNNING' : 'STOPPED')
 					]),
-					E('div', { 'class': 'soc-card-body' }, this.renderServiceControl())
+					E('div', { 'class': 'cs-card-body' }, this.renderServiceControl())
 				]),
-				E('div', { 'class': 'soc-card' }, [
-					E('div', { 'class': 'soc-card-header' }, 'Acquisition Sources'),
-					E('div', { 'class': 'soc-card-body' }, this.renderAcquisition())
+				E('div', { 'class': 'cs-card' }, [
+					E('div', { 'class': 'cs-card-header' }, 'Appearance'),
+					E('div', { 'class': 'cs-card-body' }, this.renderAppearance())
 				])
 			]),
-			E('div', { 'class': 'soc-card' }, [
-				E('div', { 'class': 'soc-card-header' }, [
-					'Installed Collections (' + this.collections.filter(function(c) { return c.status === 'enabled' || c.installed; }).length + ')',
-					E('button', { 'class': 'soc-btn soc-btn-sm', 'click': L.bind(this.updateHub, this) }, 'Update Hub')
+			E('div', { 'class': 'cs-grid-2' }, [
+				E('div', { 'class': 'cs-card' }, [
+					E('div', { 'class': 'cs-card-header' }, 'Acquisition Sources'),
+					E('div', { 'class': 'cs-card-body' }, this.renderAcquisition())
 				]),
-				E('div', { 'class': 'soc-card-body', 'id': 'collections-list' }, this.renderCollections())
+				E('div', { 'class': 'cs-card' }, [
+					E('div', { 'class': 'cs-card-header' }, 'Registered Machines'),
+					E('div', { 'class': 'cs-card-body' }, this.renderMachines())
+				])
 			]),
-			E('div', { 'class': 'soc-card' }, [
-				E('div', { 'class': 'soc-card-header' }, 'Registered Machines'),
-				E('div', { 'class': 'soc-card-body' }, this.renderMachines())
+			E('div', { 'class': 'cs-card' }, [
+				E('div', { 'class': 'cs-card-header' }, [
+					'Installed Collections (' + this.collections.filter(function(c) { return c.status === 'enabled' || c.installed; }).length + ')',
+					E('button', { 'class': 'cs-btn cs-btn-sm', 'click': L.bind(this.updateHub, this) }, 'Update Hub')
+				]),
+				E('div', { 'class': 'cs-card-body', 'id': 'collections-list' }, this.renderCollections())
 			]),
-			E('div', { 'class': 'soc-card' }, [
-				E('div', { 'class': 'soc-card-header' }, 'Configuration Files'),
-				E('div', { 'class': 'soc-card-body' }, this.renderConfigFiles())
+			E('div', { 'class': 'cs-card' }, [
+				E('div', { 'class': 'cs-card-header' }, 'Configuration Files'),
+				E('div', { 'class': 'cs-card-body' }, this.renderConfigFiles())
 			])
 		]);
 	},
 
+	renderAppearance: function() {
+		var self = this;
+		var currentTheme = uci.get('crowdsec-dashboard', 'main', 'theme') || 'classic';
+		var currentProfile = uci.get('crowdsec-dashboard', 'main', 'profile') || 'default';
+
+		var themes = theme.getThemes();
+		var profiles = theme.getProfiles();
+
+		return E('div', {}, [
+			E('div', { 'style': 'margin-bottom: 16px;' }, [
+				E('label', { 'style': 'display: block; margin-bottom: 8px; color: var(--cs-text-muted); font-size: 12px; text-transform: uppercase;' }, 'Theme'),
+				E('select', {
+					'id': 'theme-select',
+					'style': 'width: 100%; padding: 8px; background: var(--cs-bg-primary); border: 1px solid var(--cs-border); border-radius: 4px; color: var(--cs-text);',
+					'change': function(ev) { self.previewTheme(ev.target.value); }
+				}, themes.map(function(t) {
+					return E('option', { 'value': t.id, 'selected': t.id === currentTheme }, t.name + ' - ' + t.description);
+				}))
+			]),
+			E('div', { 'style': 'margin-bottom: 16px;' }, [
+				E('label', { 'style': 'display: block; margin-bottom: 8px; color: var(--cs-text-muted); font-size: 12px; text-transform: uppercase;' }, 'Profile'),
+				E('select', {
+					'id': 'profile-select',
+					'style': 'width: 100%; padding: 8px; background: var(--cs-bg-primary); border: 1px solid var(--cs-border); border-radius: 4px; color: var(--cs-text);',
+					'change': function(ev) { self.previewProfile(ev.target.value); }
+				}, profiles.map(function(p) {
+					return E('option', { 'value': p.id, 'selected': p.id === currentProfile }, p.id.charAt(0).toUpperCase() + p.id.slice(1));
+				}))
+			]),
+			E('div', { 'style': 'display: flex; gap: 8px;' }, [
+				E('button', {
+					'class': 'cs-btn',
+					'click': L.bind(this.saveAppearance, this)
+				}, 'Save Theme'),
+				E('button', {
+					'class': 'cs-btn',
+					'click': function() { location.reload(); }
+				}, 'Reset')
+			])
+		]);
+	},
+
+	previewTheme: function(themeName) {
+		theme.switchTheme(themeName);
+	},
+
+	previewProfile: function(profileName) {
+		theme.switchProfile(profileName);
+	},
+
+	saveAppearance: function() {
+		var self = this;
+		var selectedTheme = document.getElementById('theme-select').value;
+		var selectedProfile = document.getElementById('profile-select').value;
+
+		uci.set('crowdsec-dashboard', 'main', 'theme', selectedTheme);
+		uci.set('crowdsec-dashboard', 'main', 'profile', selectedProfile);
+
+		uci.save().then(function() {
+			return uci.apply();
+		}).then(function() {
+			self.showToast('Theme saved', 'success');
+		}).catch(function(e) {
+			self.showToast('Failed to save: ' + e.message, 'error');
+		});
+	},
+
 	renderHeader: function() {
-		return E('div', { 'class': 'soc-header' }, [
-			E('div', { 'class': 'soc-title' }, [
+		return E('div', { 'class': 'cs-header' }, [
+			E('div', { 'class': 'cs-title' }, [
 				E('svg', { 'viewBox': '0 0 24 24' }, [E('path', { 'd': 'M12 2L2 7v10l10 5 10-5V7L12 2z' })]),
 				'CrowdSec Security Operations'
 			]),
-			E('div', { 'class': 'soc-status' }, [E('span', { 'class': 'soc-status-dot online' }), 'SETTINGS'])
+			E('div', { 'class': 'cs-status' }, [E('span', { 'class': 'cs-status-dot online' }), 'SETTINGS'])
 		]);
 	},
 
 	renderNav: function(active) {
 		var tabs = ['overview', 'alerts', 'decisions', 'bouncers', 'settings'];
-		return E('div', { 'class': 'soc-nav' }, tabs.map(function(t) {
+		return E('div', { 'class': 'cs-nav' }, tabs.map(function(t) {
 			return E('a', {
 				'href': L.url('admin/secubox/security/crowdsec/' + t),
 				'class': active === t ? 'active' : ''
@@ -99,21 +174,21 @@ return view.extend({
 	renderServiceStats: function() {
 		var s = this.status;
 		return [
-			E('div', { 'class': 'soc-stat ' + (s.crowdsec === 'running' ? 'success' : 'danger') }, [
-				E('div', { 'class': 'soc-stat-value' }, s.crowdsec === 'running' ? 'ON' : 'OFF'),
-				E('div', { 'class': 'soc-stat-label' }, 'CrowdSec Agent')
+			E('div', { 'class': 'cs-stat ' + (s.crowdsec === 'running' ? 'success' : 'danger') }, [
+				E('div', { 'class': 'cs-stat-value' }, s.crowdsec === 'running' ? 'ON' : 'OFF'),
+				E('div', { 'class': 'cs-stat-label' }, 'CrowdSec Agent')
 			]),
-			E('div', { 'class': 'soc-stat ' + (s.lapi_status === 'available' ? 'success' : 'danger') }, [
-				E('div', { 'class': 'soc-stat-value' }, s.lapi_status === 'available' ? 'OK' : 'DOWN'),
-				E('div', { 'class': 'soc-stat-label' }, 'Local API')
+			E('div', { 'class': 'cs-stat ' + (s.lapi_status === 'available' ? 'success' : 'danger') }, [
+				E('div', { 'class': 'cs-stat-value' }, s.lapi_status === 'available' ? 'OK' : 'DOWN'),
+				E('div', { 'class': 'cs-stat-label' }, 'Local API')
 			]),
-			E('div', { 'class': 'soc-stat' }, [
-				E('div', { 'class': 'soc-stat-value' }, s.version || 'N/A'),
-				E('div', { 'class': 'soc-stat-label' }, 'Version')
+			E('div', { 'class': 'cs-stat' }, [
+				E('div', { 'class': 'cs-stat-value' }, s.version || 'N/A'),
+				E('div', { 'class': 'cs-stat-label' }, 'Version')
 			]),
-			E('div', { 'class': 'soc-stat' }, [
-				E('div', { 'class': 'soc-stat-value' }, String(this.machines.length)),
-				E('div', { 'class': 'soc-stat-label' }, 'Machines')
+			E('div', { 'class': 'cs-stat' }, [
+				E('div', { 'class': 'cs-stat-value' }, String(this.machines.length)),
+				E('div', { 'class': 'cs-stat-label' }, 'Machines')
 			])
 		];
 	},
@@ -124,44 +199,44 @@ return view.extend({
 		return E('div', {}, [
 			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;' }, [
 				E('button', {
-					'class': 'soc-btn ' + (running ? '' : 'primary'),
+					'class': 'cs-btn ' + (running ? '' : 'primary'),
 					'click': function() { self.serviceAction('start'); }
 				}, 'Start'),
 				E('button', {
-					'class': 'soc-btn ' + (running ? 'danger' : ''),
+					'class': 'cs-btn ' + (running ? 'danger' : ''),
 					'click': function() { self.serviceAction('stop'); }
 				}, 'Stop'),
 				E('button', {
-					'class': 'soc-btn',
+					'class': 'cs-btn',
 					'click': function() { self.serviceAction('restart'); }
 				}, 'Restart'),
 				E('button', {
-					'class': 'soc-btn',
+					'class': 'cs-btn',
 					'click': function() { self.serviceAction('reload'); }
 				}, 'Reload')
 			]),
-			E('div', { 'class': 'soc-health' }, [
-				E('div', { 'class': 'soc-health-item' }, [
-					E('div', { 'class': 'soc-health-icon ' + (running ? 'ok' : 'error') }, running ? '\u2713' : '\u2717'),
+			E('div', { 'class': 'cs-health' }, [
+				E('div', { 'class': 'cs-health-item' }, [
+					E('div', { 'class': 'cs-health-icon ' + (running ? 'ok' : 'error') }, running ? '\u2713' : '\u2717'),
 					E('div', {}, [
-						E('div', { 'class': 'soc-health-label' }, 'Agent'),
-						E('div', { 'class': 'soc-health-value' }, running ? 'Running' : 'Stopped')
+						E('div', { 'class': 'cs-health-label' }, 'Agent'),
+						E('div', { 'class': 'cs-health-value' }, running ? 'Running' : 'Stopped')
 					])
 				]),
-				E('div', { 'class': 'soc-health-item' }, [
-					E('div', { 'class': 'soc-health-icon ' + (this.status.lapi_status === 'available' ? 'ok' : 'error') },
+				E('div', { 'class': 'cs-health-item' }, [
+					E('div', { 'class': 'cs-health-icon ' + (this.status.lapi_status === 'available' ? 'ok' : 'error') },
 						this.status.lapi_status === 'available' ? '\u2713' : '\u2717'),
 					E('div', {}, [
-						E('div', { 'class': 'soc-health-label' }, 'LAPI'),
-						E('div', { 'class': 'soc-health-value' }, this.status.lapi_status === 'available' ? 'Available' : 'Unavailable')
+						E('div', { 'class': 'cs-health-label' }, 'LAPI'),
+						E('div', { 'class': 'cs-health-value' }, this.status.lapi_status === 'available' ? 'Available' : 'Unavailable')
 					])
 				]),
-				E('div', { 'class': 'soc-health-item' }, [
-					E('div', { 'class': 'soc-health-icon ' + (this.status.capi_enrolled ? 'ok' : 'warn') },
+				E('div', { 'class': 'cs-health-item' }, [
+					E('div', { 'class': 'cs-health-icon ' + (this.status.capi_enrolled ? 'ok' : 'warn') },
 						this.status.capi_enrolled ? '\u2713' : '!'),
 					E('div', {}, [
-						E('div', { 'class': 'soc-health-label' }, 'CAPI'),
-						E('div', { 'class': 'soc-health-value' }, this.status.capi_enrolled ? 'Enrolled' : 'Not enrolled')
+						E('div', { 'class': 'cs-health-label' }, 'CAPI'),
+						E('div', { 'class': 'cs-health-value' }, this.status.capi_enrolled ? 'Enrolled' : 'Not enrolled')
 					])
 				])
 			])
@@ -176,12 +251,12 @@ return view.extend({
 			{ name: 'Firewall', enabled: acq.firewall_enabled },
 			{ name: 'HTTP', enabled: acq.http_enabled }
 		];
-		return E('div', { 'class': 'soc-health' }, sources.map(function(src) {
-			return E('div', { 'class': 'soc-health-item' }, [
-				E('div', { 'class': 'soc-health-icon ' + (src.enabled ? 'ok' : 'error') }, src.enabled ? '\u2713' : '\u2717'),
+		return E('div', { 'class': 'cs-health' }, sources.map(function(src) {
+			return E('div', { 'class': 'cs-health-item' }, [
+				E('div', { 'class': 'cs-health-icon ' + (src.enabled ? 'ok' : 'error') }, src.enabled ? '\u2713' : '\u2717'),
 				E('div', {}, [
-					E('div', { 'class': 'soc-health-label' }, src.name),
-					E('div', { 'class': 'soc-health-value' }, src.enabled ? (src.path || 'Enabled') : 'Disabled')
+					E('div', { 'class': 'cs-health-label' }, src.name),
+					E('div', { 'class': 'cs-health-value' }, src.enabled ? (src.path || 'Enabled') : 'Disabled')
 				])
 			]);
 		}));
@@ -194,13 +269,13 @@ return view.extend({
 		});
 
 		if (!installed.length) {
-			return E('div', { 'class': 'soc-empty' }, [
-				E('div', { 'class': 'soc-empty-icon' }, '\u26A0'),
+			return E('div', { 'class': 'cs-empty' }, [
+				E('div', { 'class': 'cs-empty-icon' }, '\u26A0'),
 				'No collections installed. Click "Update Hub" to fetch available collections.'
 			]);
 		}
 
-		return E('table', { 'class': 'soc-table' }, [
+		return E('table', { 'class': 'cs-table' }, [
 			E('thead', {}, E('tr', {}, [
 				E('th', {}, 'Collection'),
 				E('th', {}, 'Version'),
@@ -209,11 +284,11 @@ return view.extend({
 			])),
 			E('tbody', {}, installed.map(function(c) {
 				return E('tr', {}, [
-					E('td', {}, E('span', { 'class': 'soc-scenario' }, c.name || 'Unknown')),
-					E('td', { 'class': 'soc-time' }, c.version || c.local_version || 'N/A'),
-					E('td', {}, E('span', { 'class': 'soc-severity low' }, 'INSTALLED')),
+					E('td', {}, E('span', { 'class': 'cs-scenario' }, c.name || 'Unknown')),
+					E('td', { 'class': 'cs-time' }, c.version || c.local_version || 'N/A'),
+					E('td', {}, E('span', { 'class': 'cs-severity low' }, 'INSTALLED')),
 					E('td', {}, E('button', {
-						'class': 'soc-btn soc-btn-sm danger',
+						'class': 'cs-btn cs-btn-sm danger',
 						'click': function() { self.removeCollection(c.name); }
 					}, 'Remove'))
 				]);
@@ -223,10 +298,10 @@ return view.extend({
 
 	renderMachines: function() {
 		if (!this.machines.length) {
-			return E('div', { 'class': 'soc-empty' }, 'No machines registered');
+			return E('div', { 'class': 'cs-empty' }, 'No machines registered');
 		}
 
-		return E('table', { 'class': 'soc-table' }, [
+		return E('table', { 'class': 'cs-table' }, [
 			E('thead', {}, E('tr', {}, [
 				E('th', {}, 'Machine ID'),
 				E('th', {}, 'IP Address'),
@@ -237,9 +312,9 @@ return view.extend({
 				var isActive = m.isValidated || m.is_validated;
 				return E('tr', {}, [
 					E('td', {}, E('strong', {}, m.machineId || m.machine_id || 'Unknown')),
-					E('td', {}, E('span', { 'class': 'soc-ip' }, m.ipAddress || m.ip_address || 'N/A')),
-					E('td', { 'class': 'soc-time' }, api.formatRelativeTime(m.updated_at || m.updatedAt)),
-					E('td', {}, E('span', { 'class': 'soc-severity ' + (isActive ? 'low' : 'medium') },
+					E('td', {}, E('span', { 'class': 'cs-ip' }, m.ipAddress || m.ip_address || 'N/A')),
+					E('td', { 'class': 'cs-time' }, api.formatRelativeTime(m.updated_at || m.updatedAt)),
+					E('td', {}, E('span', { 'class': 'cs-severity ' + (isActive ? 'low' : 'medium') },
 						isActive ? 'ACTIVE' : 'PENDING'))
 				]);
 			}))
@@ -256,9 +331,9 @@ return view.extend({
 		];
 
 		return E('div', { 'style': 'display: grid; gap: 8px;' }, configs.map(function(cfg) {
-			return E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; padding: 8px; background: var(--soc-bg); border-radius: 4px;' }, [
-				E('span', { 'style': 'color: var(--soc-text-muted);' }, cfg.label),
-				E('code', { 'class': 'soc-ip' }, cfg.path)
+			return E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; padding: 8px; background: var(--cs-bg); border-radius: 4px;' }, [
+				E('span', { 'style': 'color: var(--cs-text-muted);' }, cfg.label),
+				E('code', { 'class': 'cs-ip' }, cfg.path)
 			]);
 		}));
 	},
@@ -301,9 +376,9 @@ return view.extend({
 	},
 
 	showToast: function(msg, type) {
-		var t = document.querySelector('.soc-toast');
+		var t = document.querySelector('.cs-toast');
 		if (t) t.remove();
-		t = E('div', { 'class': 'soc-toast ' + type }, msg);
+		t = E('div', { 'class': 'cs-toast ' + type }, msg);
 		document.body.appendChild(t);
 		setTimeout(function() { t.remove(); }, 4000);
 	},
