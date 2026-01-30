@@ -767,16 +767,22 @@ method_upload_file() {
 
 	# Create directory structure if needed with proper permissions
 	local dir_path=$(dirname "$file_path")
+
+	# CRITICAL: Set umask BEFORE any file operations
 	umask 022
+
 	mkdir -p "$dir_path"
 	chmod 755 "$dir_path"
 
-	# Decode base64 content and write file with world-readable permissions
+	# Write file - umask 022 ensures 644 permissions
 	echo "$content" | base64 -d > "$file_path" 2>/dev/null
 	local rc=$?
 
-	# Immediately set readable permissions on the file
+	# ALWAYS set readable permissions immediately after write
 	chmod 644 "$file_path" 2>/dev/null
+
+	# Also ensure parent dirs are traversable
+	chmod 755 "$site_path" 2>/dev/null
 
 	if [ $rc -eq 0 ]; then
 		# Fix permissions for entire site directory
