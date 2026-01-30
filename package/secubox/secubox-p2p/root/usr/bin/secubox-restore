@@ -1,0 +1,446 @@
+#!/bin/sh
+#
+# SecuBox Self-Recovery Bootstrap Script
+# Downloads and restores a SecuBox appliance configuration from Gitea
+#
+# Usage:
+#   curl -sL http://gitea-server/user/repo/raw/branch/master/bootstrap.sh | sh
+#   # OR
+#   wget -qO- http://gitea-server/user/repo/raw/branch/master/bootstrap.sh | sh
+#   # OR
+#   secubox-restore <gitea-url> <repo-owner> <repo-name> [access-token]
+#
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+print_banner() {
+	cat << 'EOF'
+  ____                 ____
+ / ___|  ___  ___ _   | __ )  _____  __
+ \___ \ / _ \/ __| | | |  _ \ / _ \ \/ /
+  ___) |  __/ (__| |_| | |_) | (_) >  <
+ |____/ \___|\___|\__,_|____/ \___/_/\_\
+
+       Self-Recovery Bootstrap v1.0
+EOF
+}
+
+# Check if we're on OpenWrt
+check_openwrt() {
+	if [ ! -f /etc/openwrt_release ]; then
+		log_error "This script must be run on OpenWrt"
+		exit 1
+	fi
+	. /etc/openwrt_release
+	log_info "Detected OpenWrt $DISTRIB_RELEASE on $(cat /tmp/sysinfo/model 2>/dev/null || echo 'unknown device')"
+}
+
+# Install dependencies if missing
+install_deps() {
+	log_info "Checking dependencies..."
+
+	# Required packages
+	for pkg in curl git-http jsonfilter; do
+		if ! command -v "$pkg" >/dev/null 2>&1 && ! opkg list-installed | grep -q "^$pkg "; then
+			log_info "Installing $pkg..."
+			opkg update >/dev/null 2>&1 || true
+			opkg install "$pkg" 2>/dev/null || log_warn "Could not install $pkg"
+		fi
+	done
+
+	log_success "Dependencies ready"
+}
+
+# Fetch manifest from Gitea repository
+fetch_manifest() {
+	local server_url="$1"
+	local repo_owner="$2"
+	local repo_name="$3"
+	local token="$4"
+	local branch="${5:-master}"
+
+	log_info "Fetching backup manifest..."
+
+	local manifest_url="${server_url}/api/v1/repos/${repo_owner}/${repo_name}/contents/manifest.json?ref=${branch}"
+
+	if [ -n "$token" ]; then
+		response=$(curl -sL "$manifest_url" -H "Authorization: token $token")
+	else
+		response=$(curl -sL "$manifest_url")
+	fi
+
+	# Check for error
+	if echo "$response" | jsonfilter -e '@.message' 2>/dev/null | grep -qi "not found"; then
+		log_error "Repository or manifest not found"
+		return 1
+	fi
+
+	# Decode base64 content
+	content=$(echo "$response" | jsonfilter -e '@.content' 2>/dev/null | base64 -d 2>/dev/null)
+
+	if [ -z "$content" ]; then
+		log_error "Failed to fetch manifest"
+		return 1
+	fi
+
+	echo "$content"
+}
+
+# Fetch and restore a file from Gitea
+fetch_file() {
+	local server_url="$1"
+	local repo_owner="$2"
+	local repo_name="$3"
+	local file_path="$4"
+	local dest_path="$5"
+	local token="$6"
+	local branch="${7:-master}"
+
+	local file_url="${server_url}/api/v1/repos/${repo_owner}/${repo_name}/contents/${file_path}?ref=${branch}"
+
+	if [ -n "$token" ]; then
+		response=$(curl -sL "$file_url" -H "Authorization: token $token")
+	else
+		response=$(curl -sL "$file_url")
+	fi
+
+	# Check if it's a file (has content) or directory
+	content=$(echo "$response" | jsonfilter -e '@.content' 2>/dev/null)
+
+	if [ -n "$content" ]; then
+		# Single file - decode and save
+		mkdir -p "$(dirname "$dest_path")"
+		echo "$content" | base64 -d > "$dest_path" 2>/dev/null
+		return 0
+	fi
+
+	return 1
+}
+
+# Fetch directory contents recursively
+fetch_directory() {
+	local server_url="$1"
+	local repo_owner="$2"
+	local repo_name="$3"
+	local dir_path="$4"
+	local dest_base="$5"
+	local token="$6"
+	local branch="${7:-master}"
+
+	local dir_url="${server_url}/api/v1/repos/${repo_owner}/${repo_name}/contents/${dir_path}?ref=${branch}"
+
+	if [ -n "$token" ]; then
+		response=$(curl -sL "$dir_url" -H "Authorization: token $token")
+	else
+		response=$(curl -sL "$dir_url")
+	fi
+
+	# Parse each entry
+	echo "$response" | jsonfilter -e '@[*].path' 2>/dev/null | while read -r path; do
+		type=$(echo "$response" | jsonfilter -e "@[@.path='$path'].type" 2>/dev/null)
+
+		if [ "$type" = "file" ]; then
+			local rel_path="${path#$dir_path/}"
+			local dest_path="${dest_base}/${rel_path}"
+			fetch_file "$server_url" "$repo_owner" "$repo_name" "$path" "$dest_path" "$token" "$branch"
+		elif [ "$type" = "dir" ]; then
+			fetch_directory "$server_url" "$repo_owner" "$repo_name" "$path" "$dest_base" "$token" "$branch"
+		fi
+	done
+}
+
+# Restore configs from backup
+restore_configs() {
+	local backup_dir="$1"
+	local configs_dir="$backup_dir/configs"
+
+	if [ ! -d "$configs_dir" ]; then
+		log_warn "No configs directory found in backup"
+		return 0
+	fi
+
+	log_info "Restoring UCI configurations..."
+
+	local count=0
+	for cfg in "$configs_dir"/*; do
+		[ -f "$cfg" ] || continue
+		local name=$(basename "$cfg")
+
+		# Skip system-critical configs unless explicitly requested
+		case "$name" in
+			network|wireless|firewall)
+				log_warn "Skipping critical config: $name (use --include-network to restore)"
+				continue
+				;;
+		esac
+
+		cp "$cfg" "/etc/config/$name"
+		count=$((count + 1))
+	done
+
+	log_success "Restored $count configuration files"
+}
+
+# Restore scripts
+restore_scripts() {
+	local backup_dir="$1"
+	local scripts_dir="$backup_dir/scripts"
+
+	if [ ! -d "$scripts_dir" ]; then
+		return 0
+	fi
+
+	log_info "Restoring custom scripts..."
+
+	mkdir -p /usr/share/secubox/scripts
+	cp -r "$scripts_dir"/* /usr/share/secubox/scripts/ 2>/dev/null
+	chmod +x /usr/share/secubox/scripts/* 2>/dev/null
+
+	log_success "Scripts restored"
+}
+
+# Restore cron jobs
+restore_cron() {
+	local backup_dir="$1"
+	local cron_file="$backup_dir/cron/root"
+
+	if [ ! -f "$cron_file" ]; then
+		return 0
+	fi
+
+	log_info "Restoring cron jobs..."
+
+	# Append to existing crontab (don't overwrite)
+	cat "$cron_file" >> /etc/crontabs/root 2>/dev/null
+	/etc/init.d/cron restart 2>/dev/null
+
+	log_success "Cron jobs restored"
+}
+
+# Install SecuBox packages if not present
+install_secubox() {
+	log_info "Checking SecuBox installation..."
+
+	# Check if secubox-core is installed
+	if ! opkg list-installed | grep -q "secubox-core"; then
+		log_info "SecuBox not installed, attempting installation..."
+
+		# Try to add SecuBox feed
+		if ! grep -q "secubox" /etc/opkg/customfeeds.conf 2>/dev/null; then
+			log_warn "SecuBox feed not configured"
+			log_info "Please configure SecuBox feed manually and re-run this script"
+			return 1
+		fi
+
+		opkg update
+		opkg install secubox-core luci-app-secubox
+	fi
+
+	log_success "SecuBox is installed"
+}
+
+# Main restore function
+do_restore() {
+	local server_url="$1"
+	local repo_owner="$2"
+	local repo_name="$3"
+	local token="$4"
+	local branch="${5:-master}"
+
+	# Create temp directory
+	local backup_dir="/tmp/secubox-restore-$$"
+	mkdir -p "$backup_dir"
+
+	# Fetch manifest first
+	manifest=$(fetch_manifest "$server_url" "$repo_owner" "$repo_name" "$token" "$branch")
+
+	if [ -z "$manifest" ]; then
+		log_error "Failed to fetch backup manifest"
+		rm -rf "$backup_dir"
+		return 1
+	fi
+
+	# Display backup info
+	local backup_hostname=$(echo "$manifest" | jsonfilter -e '@.hostname' 2>/dev/null)
+	local backup_timestamp=$(echo "$manifest" | jsonfilter -e '@.timestamp' 2>/dev/null)
+	local backup_version=$(echo "$manifest" | jsonfilter -e '@.secubox_version' 2>/dev/null)
+
+	echo ""
+	log_info "Backup Information:"
+	echo "  Source Hostname: $backup_hostname"
+	echo "  Backup Date: $backup_timestamp"
+	echo "  SecuBox Version: $backup_version"
+	echo ""
+
+	# Ask for confirmation if interactive
+	if [ -t 0 ]; then
+		printf "Proceed with restore? [y/N] "
+		read -r confirm
+		case "$confirm" in
+			[yY][eE][sS]|[yY]) ;;
+			*) log_info "Restore cancelled"; rm -rf "$backup_dir"; return 0 ;;
+		esac
+	fi
+
+	# Fetch each component
+	log_info "Downloading backup components..."
+
+	for component in configs profiles presets manifests scripts cron ssh certificates; do
+		log_info "Fetching $component..."
+		fetch_directory "$server_url" "$repo_owner" "$repo_name" "$component" "$backup_dir/$component" "$token" "$branch" 2>/dev/null || true
+	done
+
+	# Perform restore
+	log_info "Applying backup..."
+
+	restore_configs "$backup_dir"
+	restore_scripts "$backup_dir"
+	restore_cron "$backup_dir"
+
+	# Save Gitea config for future backups
+	uci set secubox-p2p.gitea=gitea
+	uci set secubox-p2p.gitea.enabled='1'
+	uci set secubox-p2p.gitea.server_url="$server_url"
+	uci set secubox-p2p.gitea.repo_owner="$repo_owner"
+	uci set secubox-p2p.gitea.repo_name="$repo_name"
+	[ -n "$token" ] && uci set secubox-p2p.gitea.access_token="$token"
+	uci commit secubox-p2p
+
+	# Cleanup
+	rm -rf "$backup_dir"
+
+	log_success "Restore completed!"
+	echo ""
+	log_info "Please reboot to apply all changes: reboot"
+}
+
+# Interactive mode - prompt for settings
+interactive_mode() {
+	print_banner
+	echo ""
+
+	check_openwrt
+	install_deps
+
+	echo ""
+	log_info "Enter Gitea repository details:"
+	echo ""
+
+	printf "Gitea Server URL (e.g., http://192.168.1.1:3000): "
+	read -r server_url
+
+	printf "Repository Owner (username): "
+	read -r repo_owner
+
+	printf "Repository Name: "
+	read -r repo_name
+
+	printf "Access Token (leave empty for public repos): "
+	read -r token
+
+	echo ""
+	do_restore "$server_url" "$repo_owner" "$repo_name" "$token"
+}
+
+# Show usage
+usage() {
+	cat << EOF
+SecuBox Self-Recovery Bootstrap Script
+
+Usage:
+  $0 [options] <server-url> <repo-owner> <repo-name> [access-token]
+  $0 --interactive
+
+Options:
+  --interactive, -i    Run in interactive mode with prompts
+  --branch, -b         Git branch to restore from (default: master)
+  --include-network    Also restore network/wireless/firewall configs
+  --help, -h           Show this help message
+
+Examples:
+  # Interactive mode
+  $0 -i
+
+  # Direct restore from public repo
+  $0 http://gitea.local:3000 admin secubox-backup
+
+  # Restore with token
+  $0 http://gitea.local:3000 admin secubox-backup abc123token
+
+  # Restore from specific branch
+  $0 -b dev http://gitea.local:3000 admin secubox-backup
+
+Quick Bootstrap (paste into new OpenWrt shell):
+  wget -qO- http://your-gitea/user/repo/raw/master/bootstrap.sh | sh
+
+EOF
+}
+
+# Parse arguments
+BRANCH="master"
+INCLUDE_NETWORK=0
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--interactive|-i)
+			interactive_mode
+			exit 0
+			;;
+		--branch|-b)
+			BRANCH="$2"
+			shift 2
+			;;
+		--include-network)
+			INCLUDE_NETWORK=1
+			shift
+			;;
+		--help|-h)
+			usage
+			exit 0
+			;;
+		-*)
+			log_error "Unknown option: $1"
+			usage
+			exit 1
+			;;
+		*)
+			break
+			;;
+	esac
+done
+
+# If no arguments, run interactive
+if [ $# -eq 0 ]; then
+	interactive_mode
+	exit 0
+fi
+
+# Validate arguments
+if [ $# -lt 3 ]; then
+	log_error "Missing required arguments"
+	usage
+	exit 1
+fi
+
+SERVER_URL="$1"
+REPO_OWNER="$2"
+REPO_NAME="$3"
+ACCESS_TOKEN="${4:-}"
+
+print_banner
+echo ""
+check_openwrt
+install_deps
+do_restore "$SERVER_URL" "$REPO_OWNER" "$REPO_NAME" "$ACCESS_TOKEN" "$BRANCH"

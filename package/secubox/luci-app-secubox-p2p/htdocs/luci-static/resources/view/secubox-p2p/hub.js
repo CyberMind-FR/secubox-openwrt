@@ -2,8 +2,23 @@
 'require view';
 'require ui';
 'require dom';
+'require rpc';
 'require secubox-p2p/api as P2PAPI';
 'require poll';
+
+// Gitea RPC for token generation
+var callGiteaGenerateToken = rpc.declare({
+	object: 'luci.gitea',
+	method: 'generate_token',
+	params: ['username', 'token_name', 'scopes'],
+	expect: {}
+});
+
+var callGiteaGetStatus = rpc.declare({
+	object: 'luci.gitea',
+	method: 'get_status',
+	expect: {}
+});
 
 return view.extend({
 	// State
@@ -76,12 +91,14 @@ return view.extend({
 		mode: 'gigogne',  // gigogne = nested cycle, mono = single hop, full = all-to-all, ring = circular
 		cycleDepth: 3,
 		autoPropagate: true,
-		selfLoop: true
+		selfLoop: true,
+		autoSelfMesh: true  // Auto-create peer zero MirrorBox on init
 	},
 
-	// Self-peer for testing
+	// Self-peer for MirrorBox mesh
 	selfPeer: null,
 	testMode: false,
+	mirrorBoxInit: false,  // Track if MirrorBox is initialized
 
 	// Mesh Backup Config
 	meshBackupConfig: {
@@ -191,6 +208,11 @@ return view.extend({
 				}).catch(function() {});
 			}
 
+			// Auto-init MirrorBox (peer zero) in load phase
+			if (self.distributionConfig.autoSelfMesh && !self.mirrorBoxInit) {
+				self.initMirrorBox();
+			}
+
 			return {};
 		});
 	},
@@ -239,13 +261,23 @@ return view.extend({
 
 	refreshData: function() {
 		var self = this;
+
+		// Preserve MirrorBox peers before refresh
+		var mirrorBoxPeers = this.peers.filter(function(p) {
+			return p.isMirrorBox || p.isSelf || p.isGigogne;
+		});
+
 		return Promise.all([
 			P2PAPI.getPeers(),
 			P2PAPI.getServices(),
 			P2PAPI.getSharedServices(),
 			P2PAPI.healthCheck()
 		]).then(function(results) {
-			self.peers = results[0].peers || [];
+			// Merge API peers with preserved MirrorBox peers
+			var apiPeers = results[0].peers || [];
+			self.peers = mirrorBoxPeers.concat(apiPeers.filter(function(p) {
+				return !mirrorBoxPeers.some(function(m) { return m.id === p.id; });
+			}));
 			self.services = results[1].services || [];
 			self.sharedServices = results[2].shared_services || [];
 			self.health = results[3] || {};
@@ -407,7 +439,7 @@ return view.extend({
 							'change': function(e) { self.distributionConfig.cycleDepth = parseInt(e.target.value); }
 						})
 					]),
-					this.testMode ? E('span', { 'class': 'test-badge' }, '🧪 TEST') : null
+					this.testMode ? E('span', { 'class': 'test-badge' }, '🧪 TEST') : ''
 				])
 			])
 		]);
@@ -1310,7 +1342,62 @@ return view.extend({
 		ui.addNotification(null, E('p', 'WireGuard Mirror mode: ' + mode), 'info');
 	},
 
-	// ==================== Self Peer & Distribution ====================
+	// ==================== MirrorBox Auto-Init & Self Peer ====================
+	initMirrorBox: function() {
+		var self = this;
+
+		// Already initialized or no peers needed
+		if (this.mirrorBoxInit || !this.distributionConfig.autoSelfMesh) return;
+
+		this.mirrorBoxInit = true;
+
+		// Get hostname for peer zero naming
+		var hostname = (this.settings && this.settings.node_name) || 'secubox';
+
+		// Create peer zero - the genesis MirrorBox node
+		this.selfPeer = {
+			id: 'mirrorbox-0-' + Date.now(),
+			name: '👑 ' + hostname + ' (P0)',
+			address: '127.0.0.1',
+			status: 'online',
+			isSelf: true,
+			isMirrorBox: true,
+			peerNumber: 0,
+			services: this.services.slice(),
+			wgMirror: true,
+			blockchainGenesis: true
+		};
+
+		this.peers.unshift(this.selfPeer);
+		this.testMode = true;
+
+		// Create gigogne nested peers (blockchain-like structure)
+		var depth = this.distributionConfig.cycleDepth;
+		var prevId = this.selfPeer.id;
+
+		for (var i = 1; i < depth; i++) {
+			var nestedPeer = {
+				id: 'gigogne-' + i + '-' + Date.now(),
+				name: '🪆 Gigogne L' + i,
+				address: '127.0.0.' + (i + 1),
+				status: 'online',
+				isSelf: true,
+				isGigogne: true,
+				isMirrorBox: true,
+				level: i,
+				peerNumber: i,
+				parentId: prevId,
+				services: this.services.slice(),
+				wgMirror: true,
+				blockchainPrev: prevId
+			};
+			prevId = nestedPeer.id;
+			this.peers.push(nestedPeer);
+		}
+
+		console.log('🔗 MirrorBox initialized: peer zero + ' + (depth - 1) + ' gigogne levels');
+	},
+
 	addSelfPeer: function() {
 		var self = this;
 		this.testMode = true;
@@ -1702,49 +1789,68 @@ return view.extend({
 		}
 	},
 
-	executeAutoCreate: function(serverUrl, repoName, repoDesc, token) {
+	executeAutoCreate: function(serverUrl, repoName, repoDesc, providedToken) {
 		var self = this;
 
 		ui.addNotification(null, E('p', '🚀 Auto-creating mesh repository...'), 'info');
 
-		// Step 1: Save Gitea config
-		P2PAPI.setGiteaConfig({
-			server_url: serverUrl,
-			repo_name: repoName,
-			access_token: token,
-			enabled: 1,
-			auto_backup: 1,
-			backup_on_change: 1
-		}).then(function() {
-			// Step 2: Create repository
-			ui.addNotification(null, E('p', '📦 Creating repository: ' + repoName), 'info');
-			return P2PAPI.createGiteaRepo(repoName, repoDesc, true, true);
-		}).then(function(result) {
-			if (result.success) {
-				// Update local state
-				self.giteaConfig.serverUrl = serverUrl;
-				self.giteaConfig.repoName = result.repo_name || repoName;
-				self.giteaConfig.repoOwner = result.owner || '';
-				self.giteaConfig.enabled = true;
-				self.giteaConfig.hasToken = true;
-				self.giteaConfig.lastFetch = Date.now();
+		// Step 1: Generate new token with full scopes via Gitea RPCD
+		ui.addNotification(null, E('p', '🔑 Generating access token...'), 'info');
 
-				ui.addNotification(null, E('p', '✅ Repository created: ' + self.giteaConfig.repoOwner + '/' + self.giteaConfig.repoName), 'success');
+		callGiteaGenerateToken('gandalf', repoName + '-token', 'write:repository,write:user,read:user')
+			.then(function(result) {
+				var token = providedToken;
+				if (result && result.result && result.result.token) {
+					token = result.result.token;
+					ui.addNotification(null, E('p', '✅ Token generated successfully'), 'success');
+				} else if (!token) {
+					throw new Error('Failed to generate token and no token provided');
+				}
 
-				// Step 3: Push initial state
-				ui.addNotification(null, E('p', '📤 Pushing initial mesh state...'), 'info');
-				return P2PAPI.pushGiteaBackup('Initial SecuBox mesh configuration', {});
-			} else {
-				throw new Error(result.error || 'Failed to create repository');
-			}
-		}).then(function(pushResult) {
-			if (pushResult && pushResult.success) {
-				ui.addNotification(null, E('p', '🎉 Mesh repository ready! ' + pushResult.files_pushed + ' files uploaded'), 'success');
-				self.refreshGiteaCommits();
-			}
-		}).catch(function(err) {
-			ui.addNotification(null, E('p', '❌ Auto-setup failed: ' + err.message), 'error');
-		});
+				// Step 2: Save Gitea config with new token
+				ui.addNotification(null, E('p', '💾 Saving configuration...'), 'info');
+				return P2PAPI.setGiteaConfig({
+					server_url: serverUrl,
+					repo_name: repoName,
+					access_token: token,
+					enabled: 1,
+					auto_backup: 1,
+					backup_on_change: 1
+				});
+			})
+			.then(function() {
+				// Step 3: Create repository
+				ui.addNotification(null, E('p', '📦 Creating repository: ' + repoName), 'info');
+				return P2PAPI.createGiteaRepo(repoName, repoDesc, true, true);
+			})
+			.then(function(result) {
+				if (result.success) {
+					// Update local state
+					self.giteaConfig.serverUrl = serverUrl;
+					self.giteaConfig.repoName = result.repo_name || repoName;
+					self.giteaConfig.repoOwner = result.owner || '';
+					self.giteaConfig.enabled = true;
+					self.giteaConfig.hasToken = true;
+					self.giteaConfig.lastFetch = Date.now();
+
+					ui.addNotification(null, E('p', '✅ Repository created: ' + self.giteaConfig.repoOwner + '/' + self.giteaConfig.repoName), 'success');
+
+					// Step 4: Push initial state
+					ui.addNotification(null, E('p', '📤 Pushing initial mesh state...'), 'info');
+					return P2PAPI.pushGiteaBackup('Initial SecuBox mesh configuration', {});
+				} else {
+					throw new Error(result.error || 'Failed to create repository');
+				}
+			})
+			.then(function(pushResult) {
+				if (pushResult && pushResult.success) {
+					ui.addNotification(null, E('p', '🎉 Mesh repository ready! ' + pushResult.files_pushed + ' files uploaded'), 'success');
+					self.refreshGiteaCommits();
+				}
+			})
+			.catch(function(err) {
+				ui.addNotification(null, E('p', '❌ Auto-setup failed: ' + err.message), 'error');
+			});
 	},
 
 	fetchGiteaCommits: function() {
@@ -2340,7 +2446,7 @@ return view.extend({
 				E('div', { 'class': 'panel-title' }, [
 					E('span', {}, '👥'),
 					E('span', {}, 'Connected Peers'),
-					this.testMode ? E('span', { 'class': 'badge test' }, '🧪 TEST') : null
+					this.testMode ? E('span', { 'class': 'badge test' }, '🧪 TEST') : ''
 				]),
 				E('button', { 'class': 'btn small', 'click': function() { self.discoverPeers(); } }, '🔍 Discover')
 			]),
@@ -2377,7 +2483,7 @@ return view.extend({
 			E('div', { 'class': 'panel-actions' }, [
 				E('button', { 'class': 'btn', 'click': function() { self.showAddPeerModal(); } }, '➕ Add Peer'),
 				this.testMode ?
-					E('button', { 'class': 'btn', 'click': function() { self.removeSelfPeer(); } }, '🗑️ Clear Test') : null
+					E('button', { 'class': 'btn', 'click': function() { self.removeSelfPeer(); } }, '🗑️ Clear Test') : ''
 			])
 		]);
 	},

@@ -17,7 +17,9 @@
 					"get_gitea_config",
 					"list_gitea_repos",
 					"get_gitea_commits",
-					"list_local_backups"
+					"list_local_backups",
+					"get_dns_bridge_config",
+					"get_wg_mirror_config"
 				],
 				"uci": ["get", "state"]
 			},
@@ -40,7 +42,17 @@
 					"push_gitea_backup",
 					"pull_gitea_backup",
 					"create_local_backup",
-					"restore_local_backup"
+					"restore_local_backup",
+					"deploy_registry",
+					"deploy_registry_entry",
+					"deploy_services",
+					"deploy_local_services",
+					"deploy_service",
+					"pull_mesh_services",
+					"pull_service",
+					"set_dns_bridge_config",
+					"set_wg_mirror_config",
+					"sync_wg_mirror"
 				],
 				"uci": ["set", "delete", "commit", "apply"]
 			},

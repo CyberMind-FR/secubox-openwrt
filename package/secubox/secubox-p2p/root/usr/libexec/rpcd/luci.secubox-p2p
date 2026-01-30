@@ -390,36 +390,201 @@ EOF
 				backup_dir="/tmp/secubox-gitea-backup-$$"
 				mkdir -p "$backup_dir"
 
-				# Collect configs
-				if [ "$(uci -q get secubox-p2p.gitea.include_configs)" = "1" ]; then
-					mkdir -p "$backup_dir/configs"
-					cp -r /etc/config/secubox* "$backup_dir/configs/" 2>/dev/null
-					cp -r /etc/config/network "$backup_dir/configs/" 2>/dev/null
-					cp -r /etc/config/firewall "$backup_dir/configs/" 2>/dev/null
-					cp -r /etc/config/wireless "$backup_dir/configs/" 2>/dev/null
+				# 1. UCI Configs - Core system configuration
+				mkdir -p "$backup_dir/configs"
+				for cfg in secubox secubox-appstore secubox-appstore-opkg secubox-exposure \
+				           secubox-netifyd secubox-p2p secubox-core network firewall \
+				           wireless dhcp system dropbear uhttpd haproxy crowdsec acme \
+				           wireguard wireguard_* gitea nodogsplash; do
+					[ -f "/etc/config/$cfg" ] && cp "/etc/config/$cfg" "$backup_dir/configs/" 2>/dev/null
+				done
+
+				# 2. Profiles - Deployment templates
+				if [ -d "/usr/share/secubox/profiles" ]; then
+					mkdir -p "$backup_dir/profiles"
+					cp -r /usr/share/secubox/profiles/* "$backup_dir/profiles/" 2>/dev/null
 				fi
 
-				# Collect package list
-				if [ "$(uci -q get secubox-p2p.gitea.include_packages)" = "1" ]; then
-					mkdir -p "$backup_dir/packages"
-					opkg list-installed > "$backup_dir/packages/installed.txt" 2>/dev/null
+				# 3. Presets - Settings presets
+				if [ -d "/etc/secubox/presets" ]; then
+					mkdir -p "$backup_dir/presets"
+					cp -r /etc/secubox/presets/* "$backup_dir/presets/" 2>/dev/null
 				fi
 
-				# Collect scripts
-				if [ "$(uci -q get secubox-p2p.gitea.include_scripts)" = "1" ]; then
+				# 4. App Manifests - Plugin definitions
+				if [ -d "/usr/share/secubox/plugins" ]; then
+					mkdir -p "$backup_dir/manifests"
+					cp -r /usr/share/secubox/plugins/* "$backup_dir/manifests/" 2>/dev/null
+				fi
+
+				# 5. Scripts - Automation scripts
+				if [ -d "/etc/secubox/scripts" ]; then
 					mkdir -p "$backup_dir/scripts"
 					cp -r /etc/secubox/scripts/* "$backup_dir/scripts/" 2>/dev/null
 				fi
 
-				# Create manifest
+				# 6. Macros - Macro definitions
+				if [ -d "/etc/secubox/macros" ]; then
+					mkdir -p "$backup_dir/macros"
+					cp -r /etc/secubox/macros/* "$backup_dir/macros/" 2>/dev/null
+				fi
+
+				# 7. Workflows - Automation workflows
+				if [ -d "/etc/secubox/workflows" ]; then
+					mkdir -p "$backup_dir/workflows"
+					cp -r /etc/secubox/workflows/* "$backup_dir/workflows/" 2>/dev/null
+				fi
+
+				# 8. Package lists
+				mkdir -p "$backup_dir/packages"
+				opkg list-installed > "$backup_dir/packages/installed.txt" 2>/dev/null
+				# Also save SecuBox-specific package list
+				opkg list-installed | grep -E "^(secubox|luci-app-secubox)" > "$backup_dir/packages/secubox-packages.txt" 2>/dev/null
+
+				# 9. Service states
+				mkdir -p "$backup_dir/services"
+				for svc in /etc/init.d/secubox*; do
+					[ -x "$svc" ] && basename "$svc" >> "$backup_dir/services/enabled.txt"
+				done
+
+				# 10. Crontabs
+				if [ -f "/etc/crontabs/root" ]; then
+					mkdir -p "$backup_dir/cron"
+					cp /etc/crontabs/root "$backup_dir/cron/root" 2>/dev/null
+				fi
+
+				# 11. SSH authorized keys (for mesh access)
+				if [ -f "/etc/dropbear/authorized_keys" ]; then
+					mkdir -p "$backup_dir/ssh"
+					cp /etc/dropbear/authorized_keys "$backup_dir/ssh/" 2>/dev/null
+				fi
+
+				# 12. SSL Certificates (ACME)
+				if [ -d "/etc/acme" ]; then
+					mkdir -p "$backup_dir/certificates"
+					for cert in /etc/acme/*.cer; do
+						[ -f "$cert" ] && cp "$cert" "$backup_dir/certificates/" 2>/dev/null
+					done
+				fi
+
+				# 13. HAProxy configs
+				if [ -d "/etc/haproxy" ]; then
+					mkdir -p "$backup_dir/haproxy"
+					cp /etc/haproxy/*.cfg "$backup_dir/haproxy/" 2>/dev/null
+				fi
+
+				# 14. DNS/Hosts
+				mkdir -p "$backup_dir/dns"
+				[ -f "/etc/hosts" ] && cp /etc/hosts "$backup_dir/dns/" 2>/dev/null
+				[ -f "/etc/dnsmasq.conf" ] && cp /etc/dnsmasq.conf "$backup_dir/dns/" 2>/dev/null
+				[ -d "/etc/dnsmasq.d" ] && cp /etc/dnsmasq.d/* "$backup_dir/dns/" 2>/dev/null
+
+				# 15. Device info
+				mkdir -p "$backup_dir/device"
+				ubus call system board > "$backup_dir/device/board.json" 2>/dev/null
+				cat /proc/cpuinfo > "$backup_dir/device/cpuinfo.txt" 2>/dev/null
+				free -h > "$backup_dir/device/memory.txt" 2>/dev/null
+
+				# Create comprehensive manifest
+				config_count=$(find "$backup_dir/configs" -type f 2>/dev/null | wc -l)
+				profile_count=$(find "$backup_dir/profiles" -type f 2>/dev/null | wc -l)
+				manifest_count=$(find "$backup_dir/manifests" -type f 2>/dev/null | wc -l)
+				script_count=$(find "$backup_dir/scripts" -type f 2>/dev/null | wc -l)
+
 				cat > "$backup_dir/manifest.json" <<MANIFEST
 {
+	"schema_version": "1.0",
 	"timestamp": "$(date -Iseconds)",
 	"hostname": "$(uci -q get system.@system[0].hostname || echo "secubox")",
-	"version": "$(cat /etc/secubox-version 2>/dev/null || echo "unknown")",
-	"message": "$message"
+	"secubox_version": "$(cat /etc/secubox-version 2>/dev/null || echo "unknown")",
+	"openwrt_version": "$(. /etc/openwrt_release 2>/dev/null && echo $DISTRIB_RELEASE || echo unknown)",
+	"device_model": "$(cat /tmp/sysinfo/model 2>/dev/null || echo "unknown")",
+	"message": "$message",
+	"contents": {
+		"configs": $config_count,
+		"profiles": $profile_count,
+		"manifests": $manifest_count,
+		"scripts": $script_count
+	},
+	"components": [
+		"configs",
+		"profiles",
+		"presets",
+		"manifests",
+		"scripts",
+		"macros",
+		"workflows",
+		"packages",
+		"services",
+		"cron",
+		"ssh",
+		"certificates",
+		"haproxy",
+		"dns",
+		"device"
+	]
 }
 MANIFEST
+
+				# Create bootstrap.sh for quick restore
+				cat > "$backup_dir/bootstrap.sh" <<'BOOTSTRAP'
+#!/bin/sh
+# SecuBox Quick Restore Bootstrap
+# Run: wget -qO- URL | sh  OR  curl -sL URL | sh
+set -e
+SERVER_URL="__SERVER_URL__"
+REPO_OWNER="__REPO_OWNER__"
+REPO_NAME="__REPO_NAME__"
+
+echo "SecuBox Quick Restore"
+echo "====================="
+echo "From: $SERVER_URL/$REPO_OWNER/$REPO_NAME"
+echo ""
+
+# Check OpenWrt
+[ -f /etc/openwrt_release ] || { echo "Error: Not OpenWrt"; exit 1; }
+
+# Install deps
+opkg update >/dev/null 2>&1 || true
+opkg install curl git-http 2>/dev/null || true
+
+# Download restore script
+RESTORE_URL="$SERVER_URL/api/v1/repos/$REPO_OWNER/$REPO_NAME/contents/scripts/secubox-restore?ref=master"
+SCRIPT=$(curl -sL "$RESTORE_URL" | jsonfilter -e '@.content' 2>/dev/null | base64 -d 2>/dev/null)
+
+if [ -n "$SCRIPT" ]; then
+	echo "$SCRIPT" > /tmp/secubox-restore
+	chmod +x /tmp/secubox-restore
+	/tmp/secubox-restore "$SERVER_URL" "$REPO_OWNER" "$REPO_NAME"
+else
+	echo "Fallback: Direct config restore..."
+	# Minimal restore - fetch and apply configs
+	API_BASE="$SERVER_URL/api/v1/repos/$REPO_OWNER/$REPO_NAME/contents"
+	mkdir -p /tmp/secubox-restore-$$
+
+	# Get configs list
+	configs=$(curl -sL "$API_BASE/configs" | jsonfilter -e '@[*].name' 2>/dev/null)
+	for cfg in $configs; do
+		echo "Restoring: $cfg"
+		content=$(curl -sL "$API_BASE/configs/$cfg" | jsonfilter -e '@.content' 2>/dev/null | base64 -d)
+		[ -n "$content" ] && echo "$content" > "/etc/config/$cfg"
+	done
+
+	echo ""
+	echo "Basic restore complete. Reboot recommended."
+fi
+BOOTSTRAP
+
+				# Replace placeholders in bootstrap
+				sed -i "s|__SERVER_URL__|$server_url|g" "$backup_dir/bootstrap.sh"
+				sed -i "s|__REPO_OWNER__|$repo_owner|g" "$backup_dir/bootstrap.sh"
+				sed -i "s|__REPO_NAME__|$repo_name|g" "$backup_dir/bootstrap.sh"
+
+				# Also copy the full restore script
+				mkdir -p "$backup_dir/scripts"
+				if [ -f "/usr/bin/secubox-restore" ]; then
+					cp /usr/bin/secubox-restore "$backup_dir/scripts/"
+				fi
 
 				# Push each file via Gitea API
 				pushed_files=0
@@ -429,24 +594,24 @@ MANIFEST
 					rel_path="${file#$backup_dir/}"
 					content=$(base64 "$file" | tr -d '\n')
 
-					# Check if file exists (to update vs create)
-					existing=$(curl -s "${api_base}/${rel_path}" \
+					# Check if file exists (to update vs create) - use main branch
+					existing=$(curl -s "${api_base}/${rel_path}?ref=main" \
 						-H "Authorization: token $access_token" 2>/dev/null)
 					sha=$(echo "$existing" | jsonfilter -e '@.sha' 2>/dev/null)
 
 					if [ -n "$sha" ]; then
-						# Update existing file
+						# Update existing file with branch specification
 						curl -s -X PUT "${api_base}/${rel_path}" \
 							-H "Authorization: token $access_token" \
 							-H "Content-Type: application/json" \
-							-d "{\"message\":\"$message\",\"content\":\"$content\",\"sha\":\"$sha\"}" \
+							-d "{\"message\":\"$message\",\"content\":\"$content\",\"sha\":\"$sha\",\"branch\":\"main\"}" \
 							>/dev/null 2>&1
 					else
-						# Create new file
+						# Create new file on main branch
 						curl -s -X POST "${api_base}/${rel_path}" \
 							-H "Authorization: token $access_token" \
 							-H "Content-Type: application/json" \
-							-d "{\"message\":\"$message\",\"content\":\"$content\"}" \
+							-d "{\"message\":\"$message\",\"content\":\"$content\",\"branch\":\"main\"}" \
 							>/dev/null 2>&1
 					fi
 					pushed_files=$((pushed_files + 1))

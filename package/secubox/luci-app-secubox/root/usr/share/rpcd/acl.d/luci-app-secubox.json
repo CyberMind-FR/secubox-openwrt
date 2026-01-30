@@ -45,6 +45,15 @@
 					"p2p_get_peer_catalog",
 					"p2p_get_shared_services"
 				],
+				"luci.gitea": [
+					"get_status"
+				],
+				"luci.secubox-p2p": [
+					"get_gitea_config",
+					"list_gitea_repos",
+					"get_gitea_commits",
+					"list_local_backups"
+				],
                 "uci": [
                     "get",
                     "state"
@@ -89,6 +98,18 @@
 					"p2p_install_from_peer",
 					"p2p_sync_catalog",
 					"p2p_broadcast_command"
+				],
+				"luci.gitea": [
+					"generate_token",
+					"create_repo"
+				],
+				"luci.secubox-p2p": [
+					"set_gitea_config",
+					"create_gitea_repo",
+					"push_gitea_backup",
+					"pull_gitea_backup",
+					"create_local_backup",
+					"restore_local_backup"
 				],
                 "uci": [
                     "set",
