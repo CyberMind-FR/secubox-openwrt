@@ -1,0 +1,17 @@
+#!/bin/sh
+# CDN Cache Firewall Setup - Adds redirect rule for transparent proxy
+
+# Check if redirect rule already exists
+if ! uci -q get firewall.cdn_cache_redirect >/dev/null; then
+	uci set firewall.cdn_cache_redirect=redirect
+	uci set firewall.cdn_cache_redirect.name='CDN-Cache-Transparent'
+	uci set firewall.cdn_cache_redirect.src='lan'
+	uci set firewall.cdn_cache_redirect.proto='tcp'
+	uci set firewall.cdn_cache_redirect.src_dport='80'
+	uci set firewall.cdn_cache_redirect.dest_port='3129'
+	uci set firewall.cdn_cache_redirect.target='DNAT'
+	uci set firewall.cdn_cache_redirect.enabled='0'
+	uci commit firewall
+fi
+
+exit 0

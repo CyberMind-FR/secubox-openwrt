@@ -155,29 +155,80 @@ set_settings() {
 	echo "{\"success\":true}"
 }
 
-# Get local services
+# Get local services - scan init.d and detect running status
 get_services() {
-	local services="[]"
+	local services=""
+	local count=0
 
-	# Detect running services
-	for svc in dnsmasq uhttpd nginx crowdsec haproxy wireguard; do
-		if pgrep "$svc" >/dev/null 2>&1; then
-			local port=""
-			local protocol="tcp"
+	# Service port mapping
+	get_service_port() {
+		case "$1" in
+			dnsmasq) echo "53" ;;
+			uhttpd) echo "80" ;;
+			nginx) echo "80" ;;
+			haproxy) echo "80,443" ;;
+			crowdsec) echo "8080" ;;
+			crowdsec-firewall-bouncer) echo "" ;;
+			dropbear) echo "22" ;;
+			sshd) echo "22" ;;
+			firewall*) echo "" ;;
+			wireguard|wg*) echo "51820" ;;
+			gitea) echo "3000" ;;
+			localai) echo "8080" ;;
+			ollama) echo "11434" ;;
+			nextcloud) echo "8080" ;;
+			lxc*) echo "" ;;
+			rpcd) echo "" ;;
+			*) echo "" ;;
+		esac
+	}
 
-			case "$svc" in
-				dnsmasq) port="53"; protocol="udp" ;;
-				uhttpd) port="80" ;;
-				nginx) port="80" ;;
-				crowdsec) port="8080" ;;
-				haproxy) port="80" ;;
-			esac
+	# Scan init.d services
+	for init_script in /etc/init.d/*; do
+		[ -x "$init_script" ] || continue
+		local svc_name=$(basename "$init_script")
 
-			services=$(echo "$services" | jq ". += [{\"name\":\"$svc\",\"status\":\"running\",\"port\":\"$port\",\"protocol\":\"$protocol\"}]")
+		# Skip system services
+		case "$svc_name" in
+			boot|done|rcS|rc.local|umount|sysfixtime|sysntpd|gpio_switch) continue ;;
+		esac
+
+		# Check if service is running
+		local status="stopped"
+		local pid=""
+
+		# Method 1: Check via init script status
+		if "$init_script" status >/dev/null 2>&1; then
+			if "$init_script" status 2>&1 | grep -qiE "running|active"; then
+				status="running"
+			fi
 		fi
+
+		# Method 2: Check via pgrep (fallback)
+		if [ "$status" = "stopped" ]; then
+			if pgrep -f "$svc_name" >/dev/null 2>&1; then
+				status="running"
+				pid=$(pgrep -f "$svc_name" | head -1)
+			fi
+		fi
+
+		# Method 3: Check if enabled in UCI/procd
+		local enabled="0"
+		if "$init_script" enabled 2>/dev/null; then
+			enabled="1"
+		fi
+
+		local port=$(get_service_port "$svc_name")
+
+		# Build JSON entry
+		if [ $count -gt 0 ]; then
+			services="$services,"
+		fi
+		services="$services{\"name\":\"$svc_name\",\"status\":\"$status\",\"enabled\":$enabled,\"port\":\"$port\",\"pid\":\"$pid\"}"
+		count=$((count + 1))
 	done
 
-	echo "{\"services\":$services}"
+	echo "{\"services\":[$services],\"total\":$count}"
 }
 
 # Get shared services (from peers)

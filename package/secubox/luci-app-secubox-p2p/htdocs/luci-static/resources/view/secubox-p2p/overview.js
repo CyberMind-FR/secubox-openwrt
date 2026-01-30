@@ -18,16 +18,32 @@ return view.extend({
 		return Promise.all([
 			P2PAPI.healthCheck().catch(function() { return {}; }),
 			P2PAPI.getPeers().catch(function() { return { peers: [] }; }),
-			P2PAPI.getServices().catch(function() { return { services: [] }; })
+			P2PAPI.getServices().catch(function() { return { services: [] }; }),
+			P2PAPI.getSettings().catch(function() { return {}; })
 		]).then(function(results) {
 			self.health = results[0] || {};
 			self.peers = results[1].peers || [];
 			self.services = results[2].services || [];
+			var settings = results[3] || {};
+			self.settings = {
+				enabled: settings.enabled !== 0,
+				discovery_enabled: settings.discovery_enabled !== 0,
+				sharing_enabled: settings.sharing_enabled !== 0,
+				auto_sync: settings.auto_sync !== 0
+			};
 		});
 	},
 
 	render: function() {
 		var self = this;
+
+		// Settings state
+		this.settings = this.settings || {
+			enabled: true,
+			discovery_enabled: true,
+			sharing_enabled: true,
+			auto_sync: true
+		};
 
 		// Architecture modules definition
 		this.modules = [
@@ -117,6 +133,9 @@ return view.extend({
 		var container = E('div', { 'class': 'mirrorbox-overview' }, [
 			E('style', {}, this.getStyles()),
 
+			// Quick Actions Bar
+			this.renderQuickActions(),
+
 			// Hero Banner
 			this.renderHeroBanner(),
 
@@ -137,6 +156,104 @@ return view.extend({
 		]);
 
 		return container;
+	},
+
+	renderQuickActions: function() {
+		var self = this;
+
+		return E('div', { 'class': 'quick-actions-bar' }, [
+			E('div', { 'class': 'actions-left' }, [
+				E('button', {
+					'class': 'action-btn primary',
+					'click': function() { self.toggleP2P(); }
+				}, [E('span', {}, '⚡'), ' P2P ', E('span', { 'class': 'status-dot ' + (self.settings.enabled ? 'on' : 'off') })]),
+				E('button', {
+					'class': 'action-btn',
+					'click': function() { self.toggleDiscovery(); }
+				}, [E('span', {}, '🔍'), ' Discovery ', E('span', { 'class': 'status-dot ' + (self.settings.discovery_enabled ? 'on' : 'off') })]),
+				E('button', {
+					'class': 'action-btn',
+					'click': function() { self.toggleSharing(); }
+				}, [E('span', {}, '📤'), ' Sharing ', E('span', { 'class': 'status-dot ' + (self.settings.sharing_enabled ? 'on' : 'off') })]),
+				E('button', {
+					'class': 'action-btn',
+					'click': function() { self.toggleAutoSync(); }
+				}, [E('span', {}, '🔄'), ' Auto-Sync ', E('span', { 'class': 'status-dot ' + (self.settings.auto_sync ? 'on' : 'off') })])
+			]),
+			E('div', { 'class': 'actions-right' }, [
+				E('button', {
+					'class': 'action-btn refresh',
+					'click': function() { self.refreshData(); }
+				}, [E('span', {}, '🔃'), ' Refresh']),
+				E('button', {
+					'class': 'action-btn scan',
+					'click': function() { self.scanPeers(); }
+				}, [E('span', {}, '📡'), ' Scan Peers']),
+				E('a', {
+					'class': 'action-btn settings',
+					'href': L.url('admin/secubox/mirrorbox/settings')
+				}, [E('span', {}, '⚙️'), ' Settings'])
+			])
+		]);
+	},
+
+	toggleP2P: function() {
+		var self = this;
+		this.settings.enabled = !this.settings.enabled;
+		P2PAPI.setSettings({ enabled: this.settings.enabled ? 1 : 0 }).then(function() {
+			ui.addNotification(null, E('p', {}, 'P2P ' + (self.settings.enabled ? 'enabled' : 'disabled')), 'info');
+			self.render();
+		});
+	},
+
+	toggleDiscovery: function() {
+		var self = this;
+		this.settings.discovery_enabled = !this.settings.discovery_enabled;
+		P2PAPI.setSettings({ discovery_enabled: this.settings.discovery_enabled ? 1 : 0 }).then(function() {
+			ui.addNotification(null, E('p', {}, 'Discovery ' + (self.settings.discovery_enabled ? 'enabled' : 'disabled')), 'info');
+			self.render();
+		});
+	},
+
+	toggleSharing: function() {
+		var self = this;
+		this.settings.sharing_enabled = !this.settings.sharing_enabled;
+		P2PAPI.setSettings({ sharing_enabled: this.settings.sharing_enabled ? 1 : 0 }).then(function() {
+			ui.addNotification(null, E('p', {}, 'Sharing ' + (self.settings.sharing_enabled ? 'enabled' : 'disabled')), 'info');
+			self.render();
+		});
+	},
+
+	toggleAutoSync: function() {
+		var self = this;
+		this.settings.auto_sync = !this.settings.auto_sync;
+		P2PAPI.setSettings({ auto_sync: this.settings.auto_sync ? 1 : 0 }).then(function() {
+			ui.addNotification(null, E('p', {}, 'Auto-Sync ' + (self.settings.auto_sync ? 'enabled' : 'disabled')), 'info');
+			self.render();
+		});
+	},
+
+	refreshData: function() {
+		var self = this;
+		ui.showModal(_('Refreshing...'), E('p', { 'class': 'spinning' }, _('Loading data...')));
+		this.load().then(function() {
+			ui.hideModal();
+			self.render();
+		});
+	},
+
+	scanPeers: function() {
+		var self = this;
+		ui.showModal(_('Scanning...'), E('p', { 'class': 'spinning' }, _('Discovering peers...')));
+		P2PAPI.discoverPeers().then(function(result) {
+			ui.hideModal();
+			var count = (result && result.length) || 0;
+			ui.addNotification(null, E('p', {}, 'Found ' + count + ' peer(s)'), 'info');
+			self.load().then(function() { self.render(); });
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', {}, 'Scan failed: ' + (err.message || err)), 'error');
+		});
 	},
 
 	renderHeroBanner: function() {
@@ -401,6 +518,23 @@ return view.extend({
 		return [
 			// Base
 			'.mirrorbox-overview { font-family: system-ui, -apple-system, sans-serif; color: #e0e0e0; background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 50%, #0f0f23 100%); min-height: 100vh; padding: 0; }',
+
+			// Quick Actions Bar
+			'.quick-actions-bar { display: flex; justify-content: space-between; align-items: center; padding: 15px 40px; background: rgba(0,0,0,0.4); border-bottom: 1px solid rgba(255,255,255,0.1); position: sticky; top: 0; z-index: 100; backdrop-filter: blur(10px); }',
+			'.actions-left, .actions-right { display: flex; gap: 10px; flex-wrap: wrap; }',
+			'.action-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; background: rgba(52,73,94,0.6); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #e0e0e0; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; text-decoration: none; }',
+			'.action-btn:hover { background: rgba(52,73,94,0.9); border-color: rgba(255,255,255,0.3); transform: translateY(-2px); }',
+			'.action-btn.primary { background: linear-gradient(135deg, rgba(52,152,219,0.6), rgba(155,89,182,0.4)); border-color: rgba(52,152,219,0.5); }',
+			'.action-btn.primary:hover { background: linear-gradient(135deg, rgba(52,152,219,0.8), rgba(155,89,182,0.6)); }',
+			'.action-btn.refresh { background: rgba(46,204,113,0.3); border-color: rgba(46,204,113,0.4); }',
+			'.action-btn.refresh:hover { background: rgba(46,204,113,0.5); }',
+			'.action-btn.scan { background: rgba(241,196,15,0.3); border-color: rgba(241,196,15,0.4); }',
+			'.action-btn.scan:hover { background: rgba(241,196,15,0.5); }',
+			'.action-btn.settings { background: rgba(155,89,182,0.3); border-color: rgba(155,89,182,0.4); }',
+			'.action-btn.settings:hover { background: rgba(155,89,182,0.5); }',
+			'.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 4px; }',
+			'.status-dot.on { background: #2ecc71; box-shadow: 0 0 6px #2ecc71; }',
+			'.status-dot.off { background: #e74c3c; box-shadow: 0 0 6px #e74c3c; }',
 
 			// Hero Banner
 			'.hero-banner { position: relative; padding: 60px 40px; text-align: center; overflow: hidden; }',

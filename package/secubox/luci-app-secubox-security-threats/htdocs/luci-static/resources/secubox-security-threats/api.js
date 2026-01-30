@@ -71,6 +71,34 @@ var callGetSecurityStats = rpc.declare({
 });
 
 // ==============================================================================
+// nDPId Integration for Device Detection
+// ==============================================================================
+
+var callNdpidStatus = rpc.declare({
+	object: 'luci.ndpid',
+	method: 'get_service_status',
+	expect: { }
+});
+
+var callNdpidFlows = rpc.declare({
+	object: 'luci.ndpid',
+	method: 'get_detailed_flows',
+	expect: { flows: [] }
+});
+
+var callNdpidTopApps = rpc.declare({
+	object: 'luci.ndpid',
+	method: 'get_top_applications',
+	expect: { applications: [] }
+});
+
+var callNdpidCategories = rpc.declare({
+	object: 'luci.ndpid',
+	method: 'get_categories',
+	expect: { categories: [] }
+});
+
+// ==============================================================================
 // Utility Functions
 // ==============================================================================
 
@@ -210,7 +238,115 @@ function getSeverityBadge(severity) {
 }
 
 /**
- * Composite data fetcher for dashboard
+ * Device type classification based on applications/protocols
+ */
+var deviceTypes = {
+	'streaming': { icon: '📺', zone: 'media', apps: ['Netflix', 'YouTube', 'Twitch', 'Spotify', 'AppleTV', 'Disney'] },
+	'gaming': { icon: '🎮', zone: 'gaming', apps: ['Steam', 'PlayStation', 'Xbox', 'Nintendo', 'Discord'] },
+	'iot': { icon: '🏠', zone: 'iot', apps: ['MQTT', 'CoAP', 'Zigbee', 'HomeKit', 'Alexa', 'GoogleHome'] },
+	'work': { icon: '💼', zone: 'trusted', apps: ['Teams', 'Zoom', 'Slack', 'Office365', 'Webex'] },
+	'mobile': { icon: '📱', zone: 'mobile', apps: ['WhatsApp', 'Telegram', 'Instagram', 'TikTok', 'Facebook'] },
+	'security': { icon: '🔒', zone: 'secure', apps: ['VPN', 'WireGuard', 'OpenVPN', 'SSH', 'HTTPS'] },
+	'unknown': { icon: '❓', zone: 'guest', apps: [] }
+};
+
+/**
+ * Zone definitions with firewall suggestions
+ */
+var networkZones = {
+	'trusted': { icon: '🏠', color: '#2ecc71', access: 'full', desc: 'Full network access' },
+	'media': { icon: '📺', color: '#9b59b6', access: 'streaming', desc: 'Streaming services only' },
+	'gaming': { icon: '🎮', color: '#3498db', access: 'gaming', desc: 'Gaming ports & services' },
+	'iot': { icon: '🤖', color: '#e67e22', access: 'limited', desc: 'Local network only, no WAN' },
+	'mobile': { icon: '📱', color: '#1abc9c', access: 'filtered', desc: 'Web access with filtering' },
+	'guest': { icon: '👤', color: '#95a5a6', access: 'isolated', desc: 'Internet only, no LAN' },
+	'secure': { icon: '🔐', color: '#e74c3c', access: 'vpn', desc: 'VPN/encrypted traffic only' },
+	'quarantine': { icon: '⛔', color: '#c0392b', access: 'blocked', desc: 'No network access' }
+};
+
+/**
+ * Classify device based on detected applications
+ * @param {Array} apps - List of detected applications
+ * @returns {Object} Device classification
+ */
+function classifyDevice(apps) {
+	if (!apps || !Array.isArray(apps)) return { type: 'unknown', ...deviceTypes.unknown };
+
+	for (var type in deviceTypes) {
+		var typeApps = deviceTypes[type].apps;
+		for (var i = 0; i < apps.length; i++) {
+			for (var j = 0; j < typeApps.length; j++) {
+				if (apps[i].toLowerCase().indexOf(typeApps[j].toLowerCase()) !== -1) {
+					return { type: type, ...deviceTypes[type] };
+				}
+			}
+		}
+	}
+	return { type: 'unknown', ...deviceTypes.unknown };
+}
+
+/**
+ * Get suggested firewall rules for a device
+ * @param {Object} device - Device info with classification
+ * @returns {Array} Suggested firewall rules
+ */
+function getSuggestedRules(device) {
+	var zone = device.zone || 'guest';
+	var rules = [];
+
+	switch (zone) {
+		case 'trusted':
+			rules.push({ action: 'ACCEPT', desc: 'Allow all traffic' });
+			break;
+		case 'media':
+			rules.push({ action: 'ACCEPT', ports: '443,80,8080', proto: 'tcp', desc: 'HTTPS/HTTP streaming' });
+			rules.push({ action: 'ACCEPT', ports: '1935', proto: 'tcp', desc: 'RTMP streaming' });
+			rules.push({ action: 'DROP', desc: 'Block other traffic' });
+			break;
+		case 'gaming':
+			rules.push({ action: 'ACCEPT', ports: '443,80', proto: 'tcp', desc: 'Web services' });
+			rules.push({ action: 'ACCEPT', ports: '3478-3480,27000-27050', proto: 'udp', desc: 'Gaming ports' });
+			rules.push({ action: 'DROP', desc: 'Block other traffic' });
+			break;
+		case 'iot':
+			rules.push({ action: 'ACCEPT', dest: 'lan', desc: 'Local network only' });
+			rules.push({ action: 'DROP', dest: 'wan', desc: 'Block internet access' });
+			break;
+		case 'guest':
+			rules.push({ action: 'ACCEPT', dest: 'wan', ports: '443,80,53', desc: 'Web + DNS only' });
+			rules.push({ action: 'DROP', dest: 'lan', desc: 'Block local network' });
+			break;
+		case 'quarantine':
+			rules.push({ action: 'DROP', desc: 'Block all traffic' });
+			break;
+		default:
+			rules.push({ action: 'ACCEPT', ports: '443,80,53', desc: 'Basic web access' });
+	}
+	return rules;
+}
+
+/**
+ * Get device icon based on MAC vendor or app detection
+ * @param {Object} device - Device information
+ * @returns {string} Emoji icon
+ */
+function getDeviceIcon(device) {
+	if (device.classification) return device.classification.icon;
+	if (device.vendor) {
+		var vendor = device.vendor.toLowerCase();
+		if (vendor.indexOf('apple') !== -1) return '🍎';
+		if (vendor.indexOf('samsung') !== -1) return '📱';
+		if (vendor.indexOf('amazon') !== -1) return '📦';
+		if (vendor.indexOf('google') !== -1) return '🔍';
+		if (vendor.indexOf('microsoft') !== -1) return '🪟';
+		if (vendor.indexOf('sony') !== -1 || vendor.indexOf('playstation') !== -1) return '🎮';
+		if (vendor.indexOf('intel') !== -1 || vendor.indexOf('dell') !== -1 || vendor.indexOf('hp') !== -1) return '💻';
+	}
+	return '📟';
+}
+
+/**
+ * Composite data fetcher for dashboard (with ndpid)
  * @returns {Promise} Promise resolving to dashboard data
  */
 function getDashboardData() {
@@ -219,14 +355,67 @@ function getDashboardData() {
 		callGetActiveThreats(),
 		callGetStatsByType(),
 		callGetBlockedIPs(),
-		callGetSecurityStats()
+		callGetSecurityStats(),
+		callNdpidStatus().catch(function() { return { running: false }; }),
+		callNdpidFlows().catch(function() { return { flows: [] }; }),
+		callNdpidTopApps().catch(function() { return { applications: [] }; })
 	]).then(function(results) {
+		var ndpidFlows = results[6].flows || [];
+		var ndpidApps = results[7].applications || [];
+
+		// Build device list from ndpid flows
+		var devicesMap = {};
+		ndpidFlows.forEach(function(flow) {
+			var ip = flow.src_ip || flow.local_ip;
+			if (!ip || ip.indexOf('192.168') === -1) return; // Only local devices
+
+			if (!devicesMap[ip]) {
+				devicesMap[ip] = {
+					ip: ip,
+					mac: flow.src_mac || flow.local_mac || '',
+					hostname: flow.hostname || '',
+					apps: [],
+					protocols: [],
+					bytes_rx: 0,
+					bytes_tx: 0,
+					flows: 0,
+					last_seen: flow.timestamp
+				};
+			}
+			var dev = devicesMap[ip];
+			if (flow.application && dev.apps.indexOf(flow.application) === -1) {
+				dev.apps.push(flow.application);
+			}
+			if (flow.protocol && dev.protocols.indexOf(flow.protocol) === -1) {
+				dev.protocols.push(flow.protocol);
+			}
+			dev.bytes_rx += flow.bytes_rx || 0;
+			dev.bytes_tx += flow.bytes_tx || 0;
+			dev.flows++;
+		});
+
+		// Classify devices and suggest zones
+		var devices = Object.values(devicesMap).map(function(dev) {
+			dev.classification = classifyDevice(dev.apps);
+			dev.suggestedZone = dev.classification.zone;
+			dev.suggestedRules = getSuggestedRules(dev.classification);
+			dev.icon = getDeviceIcon(dev);
+			return dev;
+		});
+
 		return {
 			status: results[0] || {},
 			threats: results[1].threats || [],
 			stats: results[2] || {},
 			blocked: results[3].blocked || [],
-			securityStats: results[4] || {}
+			securityStats: results[4] || {},
+			ndpid: {
+				running: results[5].running || false,
+				uptime: results[5].uptime || 0
+			},
+			devices: devices,
+			topApps: ndpidApps,
+			zones: networkZones
 		};
 	});
 }
@@ -248,6 +437,12 @@ return baseclass.extend({
 	whitelistHost: callWhitelistHost,
 	removeWhitelist: callRemoveWhitelist,
 
+	// nDPId Methods
+	getNdpidStatus: callNdpidStatus,
+	getNdpidFlows: callNdpidFlows,
+	getNdpidTopApps: callNdpidTopApps,
+	getNdpidCategories: callNdpidCategories,
+
 	// Utility Functions
 	getSeverityColor: getSeverityColor,
 	getThreatIcon: getThreatIcon,
@@ -258,6 +453,13 @@ return baseclass.extend({
 	formatRelativeTime: formatRelativeTime,
 	formatBytes: formatBytes,
 	getSeverityBadge: getSeverityBadge,
+
+	// Device Classification
+	classifyDevice: classifyDevice,
+	getSuggestedRules: getSuggestedRules,
+	getDeviceIcon: getDeviceIcon,
+	deviceTypes: deviceTypes,
+	networkZones: networkZones,
 
 	// Composite Fetchers
 	getDashboardData: getDashboardData

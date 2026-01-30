@@ -28,7 +28,7 @@ create_snapshot() {
 		cleanup_old_snapshots
 
 		json_init
-		json_add_boolean "success" true
+		json_add_boolean "success" 1
 		json_add_string "snapshot" "$snapshot_name"
 		json_add_string "path" "$backup_file"
 		json_dump
@@ -37,7 +37,7 @@ create_snapshot() {
 	else
 		echo "✗ Failed to create snapshot"
 		json_init
-		json_add_boolean "success" false
+		json_add_boolean "success" 0
 		json_add_string "error" "Backup failed"
 		json_dump
 		return 1
