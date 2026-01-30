@@ -10,6 +10,10 @@ USE_PROCD=1
 SQUID_CONF="/var/etc/cdn-cache-squid.conf"
 CACHE_DIR="/var/cache/cdn-squid"
 LOG_DIR="/var/log/cdn-cache"
+SSL_DB="/var/lib/ssl_db"
+CA_DIR="/etc/squid/ssl"
+CA_CERT="$CA_DIR/ca.pem"
+CA_KEY="$CA_DIR/ca.key"
 
 validate_section() {
 	uci_load_validate cdn-cache main "$1" "$2" \
@@ -20,7 +24,43 @@ validate_section() {
 		'cache_valid:uinteger:10080' \
 		'listen_port:port:3128' \
 		'transparent:bool:1' \
+		'ssl_bump:bool:0' \
 		'log_level:string:1'
+}
+
+# Generate CA certificate for SSL bumping
+generate_ca_cert() {
+	mkdir -p "$CA_DIR"
+
+	if [ ! -f "$CA_CERT" ] || [ ! -f "$CA_KEY" ]; then
+		logger -t cdn-cache "Generating CA certificate for SSL bumping..."
+
+		# Generate CA private key
+		openssl genrsa -out "$CA_KEY" 4096 2>/dev/null
+
+		# Generate self-signed CA certificate
+		openssl req -new -x509 -days 3650 -key "$CA_KEY" -out "$CA_CERT" \
+			-subj "/C=FR/ST=Paris/L=Paris/O=SecuBox/OU=CDN-Cache/CN=SecuBox CDN Cache CA" 2>/dev/null
+
+		# Set proper permissions
+		chmod 600 "$CA_KEY"
+		chmod 644 "$CA_CERT"
+		chown squid:squid "$CA_KEY" "$CA_CERT" 2>/dev/null
+
+		logger -t cdn-cache "CA certificate generated at $CA_CERT"
+	fi
+}
+
+# Initialize SSL certificate database
+init_ssl_db() {
+	if [ ! -d "$SSL_DB/certs" ]; then
+		logger -t cdn-cache "Initializing SSL certificate database..."
+		rm -rf "$SSL_DB"
+		mkdir -p "$SSL_DB"
+		# Note: Size must be in bytes, not MB
+		/usr/lib/squid/security_file_certgen -s "$SSL_DB" -M 4194304 -c 2>/dev/null
+		chown -R squid:squid "$SSL_DB" 2>/dev/null
+	fi
 }
 
 generate_squid_config() {
@@ -30,6 +70,7 @@ generate_squid_config() {
 	local cache_valid="$4"
 	local listen_port="$5"
 	local transparent="$6"
+	local ssl_bump="$7"
 
 	mkdir -p "$(dirname $SQUID_CONF)"
 	mkdir -p "$cache_dir"
@@ -39,6 +80,7 @@ generate_squid_config() {
 	# Build listen directives
 	# Need both a regular port (for client configuration) and optionally intercept port
 	local intercept_port=$((listen_port + 1))
+	local ssl_bump_port=$((listen_port + 2))
 
 	cat > "$SQUID_CONF" << EOF
 # CDN Cache Squid Configuration
@@ -51,8 +93,51 @@ EOF
 
 	if [ "$transparent" = "1" ]; then
 		cat >> "$SQUID_CONF" << EOF
-# Transparent proxy intercept port
+# Transparent proxy intercept port (HTTP)
 http_port $intercept_port intercept
+EOF
+	fi
+
+	# SSL Bump configuration for HTTPS caching
+	if [ "$ssl_bump" = "1" ] && [ -f "$CA_CERT" ] && [ -f "$CA_KEY" ]; then
+		cat >> "$SQUID_CONF" << EOF
+
+# SSL Bump (HTTPS intercept) port
+https_port $ssl_bump_port intercept ssl-bump \\
+    cert=$CA_CERT \\
+    key=$CA_KEY \\
+    generate-host-certificates=on \\
+    dynamic_cert_mem_cache_size=4MB
+
+# SSL certificate database (size in bytes)
+sslcrtd_program /usr/lib/squid/security_file_certgen -s $SSL_DB -M 4194304
+sslcrtd_children 5
+
+# SSL Bump ACLs
+acl step1 at_step SslBump1
+acl step2 at_step SslBump2
+acl step3 at_step SslBump3
+
+# Sites to NOT intercept (security sensitive)
+acl ssl_exclude_domains ssl::server_name .paypal.com .stripe.com .braintreegateway.com
+acl ssl_exclude_domains ssl::server_name .bank .banking .hsbc.com .chase.com .wellsfargo.com
+acl ssl_exclude_domains ssl::server_name .google.com/accounts .accounts.google.com
+acl ssl_exclude_domains ssl::server_name .apple.com/id .icloud.com
+acl ssl_exclude_domains ssl::server_name .github.com .gitlab.com
+
+# Sites to bump (cacheable content)
+acl ssl_bump_domains ssl::server_name .windowsupdate.com .microsoft.com .officecdn.microsoft.com
+acl ssl_bump_domains ssl::server_name .steamcontent.com .steampowered.com .steamcdn-a.akamaihd.net
+acl ssl_bump_domains ssl::server_name .epicgames.com .epicgames-download1.akamaized.net
+acl ssl_bump_domains ssl::server_name .download.nvidia.com .cdn.jsdelivr.net .cdnjs.cloudflare.com
+acl ssl_bump_domains ssl::server_name .archive.ubuntu.com .security.ubuntu.com
+acl ssl_bump_domains ssl::server_name .downloads.openwrt.org
+
+# SSL bump rules
+ssl_bump peek step1 all
+ssl_bump splice ssl_exclude_domains
+ssl_bump bump ssl_bump_domains
+ssl_bump splice all
 EOF
 	fi
 
@@ -194,37 +279,53 @@ EOF
 setup_transparent() {
 	local listen_port="$1"
 	local transparent="$2"
+	local ssl_bump="$3"
 
-	# Intercept port is listen_port + 1
+	# Intercept ports
 	local intercept_port=$((listen_port + 1))
+	local ssl_bump_port=$((listen_port + 2))
 
-	# Setup firewall redirect rule via UCI
+	# Setup firewall redirect rules via UCI
 	if [ "$transparent" = "1" ]; then
-		# Create or update firewall redirect rule
+		# HTTP redirect rule
 		uci -q delete firewall.cdn_cache_redirect
 		uci set firewall.cdn_cache_redirect=redirect
-		uci set firewall.cdn_cache_redirect.name='CDN-Cache-Transparent'
+		uci set firewall.cdn_cache_redirect.name='CDN-Cache-HTTP'
 		uci set firewall.cdn_cache_redirect.src='lan'
 		uci set firewall.cdn_cache_redirect.proto='tcp'
 		uci set firewall.cdn_cache_redirect.src_dport='80'
 		uci set firewall.cdn_cache_redirect.dest_port="$intercept_port"
 		uci set firewall.cdn_cache_redirect.target='DNAT'
 		uci set firewall.cdn_cache_redirect.enabled='1'
-		uci commit firewall
-		/etc/init.d/firewall reload 2>/dev/null
-		logger -t cdn-cache "Transparent proxy enabled on port $intercept_port via firewall"
+		logger -t cdn-cache "HTTP transparent proxy on port $intercept_port"
 	else
-		# Disable transparent redirect
 		uci -q set firewall.cdn_cache_redirect.enabled='0'
-		uci commit firewall
-		/etc/init.d/firewall reload 2>/dev/null
-		logger -t cdn-cache "Transparent proxy disabled"
 	fi
+
+	# HTTPS/SSL bump redirect rule
+	if [ "$ssl_bump" = "1" ] && [ "$transparent" = "1" ]; then
+		uci -q delete firewall.cdn_cache_ssl_redirect
+		uci set firewall.cdn_cache_ssl_redirect=redirect
+		uci set firewall.cdn_cache_ssl_redirect.name='CDN-Cache-HTTPS'
+		uci set firewall.cdn_cache_ssl_redirect.src='lan'
+		uci set firewall.cdn_cache_ssl_redirect.proto='tcp'
+		uci set firewall.cdn_cache_ssl_redirect.src_dport='443'
+		uci set firewall.cdn_cache_ssl_redirect.dest_port="$ssl_bump_port"
+		uci set firewall.cdn_cache_ssl_redirect.target='DNAT'
+		uci set firewall.cdn_cache_ssl_redirect.enabled='1'
+		logger -t cdn-cache "HTTPS SSL bump on port $ssl_bump_port"
+	else
+		uci -q set firewall.cdn_cache_ssl_redirect.enabled='0'
+	fi
+
+	uci commit firewall
+	/etc/init.d/firewall reload 2>/dev/null
 }
 
 remove_transparent() {
-	# Disable the firewall redirect rule
+	# Disable the firewall redirect rules
 	uci -q set firewall.cdn_cache_redirect.enabled='0'
+	uci -q set firewall.cdn_cache_ssl_redirect.enabled='0'
 	uci commit firewall
 	/etc/init.d/firewall reload 2>/dev/null
 }
@@ -255,8 +356,14 @@ start_cdn_cache() {
 	mkdir -p "$cache_dir" "$LOG_DIR" /var/spool/squid
 	chown -R squid:squid "$cache_dir" "$LOG_DIR" /var/spool/squid 2>/dev/null
 
+	# Setup SSL if enabled
+	if [ "$ssl_bump" = "1" ]; then
+		generate_ca_cert
+		init_ssl_db
+	fi
+
 	generate_squid_config "$cache_dir" "$cache_size" "$max_object_size" \
-		"$cache_valid" "$listen_port" "$transparent"
+		"$cache_valid" "$listen_port" "$transparent" "$ssl_bump"
 
 	# Initialize cache if needed (blocking call, run once)
 	if [ ! -d "$cache_dir/00" ]; then
@@ -265,7 +372,7 @@ start_cdn_cache() {
 	fi
 
 	# Setup transparent proxy if enabled
-	setup_transparent "$listen_port" "$transparent"
+	setup_transparent "$listen_port" "$transparent" "$ssl_bump"
 
 	# Remove any stale PID file
 	rm -f /var/run/cdn-cache.pid

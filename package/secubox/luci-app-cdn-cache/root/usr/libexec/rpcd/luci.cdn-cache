@@ -22,6 +22,7 @@ STATS_FILE="/var/run/cdn-cache-stats.json"
 LOG_DIR="/var/log/cdn-cache"
 LOG_FILE="$LOG_DIR/cache.log"
 SQUID_CONF="/var/etc/cdn-cache-squid.conf"
+CA_CERT="/etc/squid/ssl/ca.pem"
 
 # Initialize stats file if not exists
 init_stats() {
@@ -84,6 +85,7 @@ get_status() {
 
 	local listen_port=$(uci -q get cdn-cache.main.listen_port || echo "3128")
 	local transparent=$(uci -q get cdn-cache.main.transparent || echo "1")
+	local ssl_bump=$(uci -q get cdn-cache.main.ssl_bump || echo "0")
 	local max_size=$(uci -q get cdn-cache.main.cache_size || echo "2048")
 
 	# Get Squid version if installed
@@ -91,6 +93,10 @@ get_status() {
 	if [ "$squid_installed" = "1" ]; then
 		squid_version=$(squid -v 2>/dev/null | head -1 | sed 's/.*Version //' | cut -d' ' -f1)
 	fi
+
+	# Check if CA cert exists
+	local ca_cert_exists=0
+	[ -f "$CA_CERT" ] && ca_cert_exists=1
 
 	json_init
 	json_add_string "version" "$PKG_VERSION"
@@ -106,6 +112,8 @@ get_status() {
 	json_add_int "max_size_mb" "$max_size"
 	json_add_int "listen_port" "$listen_port"
 	json_add_boolean "transparent" "$transparent"
+	json_add_boolean "ssl_bump" "$ssl_bump"
+	json_add_boolean "ca_cert_exists" "$ca_cert_exists"
 	json_add_string "cache_dir" "$CACHE_DIR"
 	json_dump
 }
@@ -683,9 +691,51 @@ EOF
 # Restart service
 do_restart() {
 	/etc/init.d/cdn-cache restart
-	
+
 	json_init
 	json_add_boolean "success" 1
+	json_dump
+}
+
+# Get CA certificate for download
+get_ca_cert() {
+	json_init
+
+	if [ -f "$CA_CERT" ]; then
+		local cert_content=$(cat "$CA_CERT" | base64 -w0)
+		local cert_fingerprint=$(openssl x509 -in "$CA_CERT" -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//')
+		local cert_subject=$(openssl x509 -in "$CA_CERT" -noout -subject 2>/dev/null | sed 's/subject=//')
+		local cert_expires=$(openssl x509 -in "$CA_CERT" -noout -enddate 2>/dev/null | sed 's/notAfter=//')
+
+		json_add_boolean "success" 1
+		json_add_string "certificate" "$cert_content"
+		json_add_string "fingerprint" "$cert_fingerprint"
+		json_add_string "subject" "$cert_subject"
+		json_add_string "expires" "$cert_expires"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "CA certificate not found"
+	fi
+
+	json_dump
+}
+
+# Enable/disable SSL bump
+set_ssl_bump() {
+	local enabled="${1:-0}"
+
+	uci set cdn-cache.main.ssl_bump="$enabled"
+	uci commit cdn-cache
+
+	if [ "$enabled" = "1" ]; then
+		logger -t cdn-cache "SSL bump enabled - restart required"
+	else
+		logger -t cdn-cache "SSL bump disabled - restart required"
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_boolean "restart_required" 1
 	json_dump
 }
 
@@ -766,6 +816,11 @@ case "$1" in
 		json_add_object "clear_stats"
 		json_close_object
 		json_add_object "restart"
+		json_close_object
+		json_add_object "get_ca_cert"
+		json_close_object
+		json_add_object "set_ssl_bump"
+		json_add_boolean "enabled" false
 		json_close_object
 		json_dump
 		;;
@@ -872,6 +927,13 @@ case "$1" in
 				;;
 			clear_stats) clear_stats ;;
 			restart) do_restart ;;
+			get_ca_cert) get_ca_cert ;;
+			set_ssl_bump)
+				read -r input
+				json_load "$input"
+				json_get_var enabled enabled 0
+				set_ssl_bump "$enabled"
+				;;
 			*) echo '{"error":"Unknown method"}' ;;
 		esac
 		;;

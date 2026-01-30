@@ -6,6 +6,7 @@ config cdn_cache 'main'
 	option cache_valid '10080'
 	option listen_port '3128'
 	option transparent '1'
+	option ssl_bump '0'
 	option log_level '1'
 
 config cache_policy 'windows_update'
