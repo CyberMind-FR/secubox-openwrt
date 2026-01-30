@@ -780,16 +780,31 @@ method_get_settings() {
 	json_dump
 }
 
-# Helper: Check DNS resolution for a domain
+# Helper: Check DNS resolution for a domain (KISS approach)
+# Returns the resolved IP address, not the DNS server
 check_dns_resolution() {
 	local domain="$1"
 	local resolved_ip=""
-	if command -v nslookup >/dev/null 2>&1; then
-		resolved_ip=$(nslookup "$domain" 2>/dev/null | grep -A1 "Name:" | grep "Address" | head -1 | awk '{print $2}')
-		[ -z "$resolved_ip" ] && resolved_ip=$(nslookup "$domain" 2>/dev/null | grep "Address" | tail -1 | awk '{print $2}' | grep -v "^$")
-	elif command -v host >/dev/null 2>&1; then
-		resolved_ip=$(host "$domain" 2>/dev/null | grep "has address" | head -1 | awk '{print $4}')
+
+	# Method 1: Use external DNS API (most reliable, avoids local resolver issues)
+	resolved_ip=$(wget -qO- -T 3 "https://dns.google/resolve?name=${domain}&type=A" 2>/dev/null | \
+		jsonfilter -e '@.Answer[0].data' 2>/dev/null)
+
+	# Method 2: Fallback to nslookup with careful parsing
+	if [ -z "$resolved_ip" ] && command -v nslookup >/dev/null 2>&1; then
+		# Get last Address line (skip DNS server which comes first)
+		resolved_ip=$(nslookup "$domain" 2>/dev/null | \
+			grep "Address" | tail -1 | \
+			sed 's/.*: *//' | sed 's/#.*//' | \
+			grep -v '^127\.')
 	fi
+
+	# Method 3: Fallback to host command
+	if [ -z "$resolved_ip" ] && command -v host >/dev/null 2>&1; then
+		resolved_ip=$(host -t A "$domain" 2>/dev/null | \
+			grep "has address" | head -1 | awk '{print $NF}')
+	fi
+
 	echo "$resolved_ip"
 }
 
