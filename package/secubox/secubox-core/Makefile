@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
 PKG_VERSION:=0.10.0
-PKG_RELEASE:=8
+PKG_RELEASE:=9
 PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
@@ -19,8 +19,9 @@ define Package/secubox-core
   SECTION:=admin
   CATEGORY:=Administration
   TITLE:=SecuBox Core Framework
-  # Runtime dependencies - only high-level packages, not base libs (libubox/libubus/libuci cause version conflicts)
-  DEPENDS:=+rpcd +bash +coreutils-base64 +jsonfilter +jq
+  # No explicit dependencies - all required packages (rpcd, bash, jsonfilter, jq) are part of base OpenWrt
+  # Declaring them causes opkg to pull from feed, triggering libc version conflicts
+  DEPENDS:=
   PKGARCH:=all
 endef
 
