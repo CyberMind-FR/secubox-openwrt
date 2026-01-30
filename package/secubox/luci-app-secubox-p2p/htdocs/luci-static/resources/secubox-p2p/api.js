@@ -132,6 +132,87 @@ var callHealthCheck = rpc.declare({
 	expect: {}
 });
 
+// Deployment - Registry
+var callDeployRegistry = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'deploy_registry',
+	expect: { success: false, deployed_peers: 0 }
+});
+
+var callDeployRegistryEntry = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'deploy_registry_entry',
+	params: ['short_url'],
+	expect: { success: false, deployed_peers: 0 }
+});
+
+// Deployment - Services
+var callDeployServices = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'deploy_services',
+	expect: { success: false, services_deployed: 0, deployed_peers: 0 }
+});
+
+var callDeployLocalServices = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'deploy_local_services',
+	expect: { success: false, deployed_peers: 0 }
+});
+
+var callDeployService = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'deploy_service',
+	params: ['service_id'],
+	expect: { success: false, deployed_peers: 0 }
+});
+
+var callPullMeshServices = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'pull_mesh_services',
+	expect: { success: false, services_pulled: 0 }
+});
+
+var callPullService = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'pull_service',
+	params: ['service_id', 'peer_id'],
+	expect: { success: false }
+});
+
+// DNS Bridge
+var callGetDNSBridgeConfig = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'get_dns_bridge_config',
+	expect: {}
+});
+
+var callSetDNSBridgeConfig = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'set_dns_bridge_config',
+	params: ['config'],
+	expect: { success: false }
+});
+
+// WireGuard Mirror
+var callGetWGMirrorConfig = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'get_wg_mirror_config',
+	expect: {}
+});
+
+var callSetWGMirrorConfig = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'set_wg_mirror_config',
+	params: ['config'],
+	expect: { success: false }
+});
+
+var callSyncWGMirror = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'sync_wg_mirror',
+	expect: { success: false, synced_peers: 0 }
+});
+
 return baseclass.extend({
 	// Peers
 	getPeers: function() { return callGetPeers(); },
@@ -168,5 +249,25 @@ return baseclass.extend({
 	registerURL: function(shortUrl, targetUrl) { return callRegisterURL(shortUrl, targetUrl); },
 
 	// Health
-	healthCheck: function() { return callHealthCheck(); }
+	healthCheck: function() { return callHealthCheck(); },
+
+	// Deployment - Registry
+	deployRegistry: function() { return callDeployRegistry(); },
+	deployRegistryEntry: function(shortUrl) { return callDeployRegistryEntry(shortUrl); },
+
+	// Deployment - Services
+	deployServices: function() { return callDeployServices(); },
+	deployLocalServices: function() { return callDeployLocalServices(); },
+	deployService: function(serviceId) { return callDeployService(serviceId); },
+	pullMeshServices: function() { return callPullMeshServices(); },
+	pullService: function(serviceId, peerId) { return callPullService(serviceId, peerId); },
+
+	// DNS Bridge
+	getDNSBridgeConfig: function() { return callGetDNSBridgeConfig(); },
+	setDNSBridgeConfig: function(config) { return callSetDNSBridgeConfig(config); },
+
+	// WireGuard Mirror
+	getWGMirrorConfig: function() { return callGetWGMirrorConfig(); },
+	setWGMirrorConfig: function(config) { return callSetWGMirrorConfig(config); },
+	syncWGMirror: function() { return callSyncWGMirror(); }
 });

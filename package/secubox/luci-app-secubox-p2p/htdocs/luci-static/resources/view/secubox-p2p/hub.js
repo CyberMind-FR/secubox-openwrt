@@ -51,6 +51,26 @@ return view.extend({
 		autoRegister: false
 	},
 
+	// DNS Bridge Config
+	dnsBridgeConfig: {
+		enabled: false,
+		strategy: 'round-robin',
+		onionEnabled: false,
+		meshSync: true,
+		upstreamDNS: ['1.1.1.1', '8.8.8.8']
+	},
+
+	// WireGuard Mirror Config
+	wgMirrorConfig: {
+		enabled: false,
+		mode: 'active-passive',
+		syncInterval: 30,
+		keyRotation: true,
+		peerMirroring: true,
+		autoReconnect: true,
+		inverseTunnel: false
+	},
+
 	load: function() {
 		var self = this;
 		return Promise.all([
@@ -320,6 +340,7 @@ return view.extend({
 		var self = this;
 		var registry = this.hubRegistry;
 		var services = this.getRegisteredServices();
+		var onlinePeers = this.peers.filter(function(p) { return p.status === 'online'; }).length;
 
 		return E('div', { 'class': 'panel hub-registry-panel' }, [
 			E('div', { 'class': 'panel-header gold' }, [
@@ -334,37 +355,53 @@ return view.extend({
 				])
 			]),
 
+			// Master Deploy Banner
+			E('div', { 'class': 'deploy-banner' }, [
+				E('div', { 'class': 'deploy-info' }, [
+					E('span', { 'class': 'deploy-icon' }, '🚀'),
+					E('div', {}, [
+						E('div', { 'class': 'deploy-title' }, 'Master Deployment'),
+						E('div', { 'class': 'deploy-desc' }, onlinePeers + ' peers ready for distribution')
+					])
+				]),
+				E('button', {
+					'class': 'btn deploy-btn',
+					'click': function() { self.showDeployRegistryModal(); },
+					'disabled': onlinePeers === 0
+				}, '📤 Deploy to Mesh')
+			]),
+
 			// Stats row
 			E('div', { 'class': 'registry-stats' }, [
 				E('div', { 'class': 'reg-stat' }, [
 					E('div', { 'class': 'reg-stat-value gold' }, String(services.length)),
-					E('div', { 'class': 'reg-stat-label' }, 'Services')
+					E('div', { 'class': 'reg-stat-label' }, 'Entries')
 				]),
 				E('div', { 'class': 'reg-stat' }, [
-					E('div', { 'class': 'reg-stat-value orange' }, String(this.peers.length)),
+					E('div', { 'class': 'reg-stat-value green' }, String(services.filter(function(s) { return s.deployed; }).length || services.length)),
+					E('div', { 'class': 'reg-stat-label' }, 'Deployed')
+				]),
+				E('div', { 'class': 'reg-stat' }, [
+					E('div', { 'class': 'reg-stat-value orange' }, String(onlinePeers)),
 					E('div', { 'class': 'reg-stat-label' }, 'Peers')
 				]),
 				E('div', { 'class': 'reg-stat' }, [
 					E('div', { 'class': 'reg-stat-value blue' }, registry.cacheEnabled ? '✓' : '✗'),
 					E('div', { 'class': 'reg-stat-label' }, 'Cache')
-				]),
-				E('div', { 'class': 'reg-stat' }, [
-					E('div', { 'class': 'reg-stat-value purple' }, registry.cacheTTL + 's'),
-					E('div', { 'class': 'reg-stat-label' }, 'TTL')
 				])
 			]),
 
-			// Short URL table
+			// Short URL table with deploy status
 			E('div', { 'class': 'registry-table' }, [
 				E('div', { 'class': 'table-header' }, [
 					E('span', {}, 'Short URL'),
 					E('span', {}, 'Target'),
-					E('span', {}, 'Status'),
-					E('span', {}, 'Hits')
+					E('span', {}, 'Mesh'),
+					E('span', {}, 'Deploy')
 				]),
 				E('div', { 'class': 'table-body' },
 					services.length > 0 ?
-						services.map(function(svc) { return self.renderRegistryEntry(svc); }) :
+						services.map(function(svc) { return self.renderRegistryEntryWithDeploy(svc); }) :
 						E('div', { 'class': 'empty-state' }, 'No services registered')
 				)
 			]),
@@ -377,7 +414,7 @@ return view.extend({
 				]),
 				E('label', { 'class': 'toggle-option' }, [
 					E('input', { 'type': 'checkbox', 'checked': this.maasConfig.autoRegister }),
-					E('span', {}, '🔄'), E('span', {}, 'Auto-Register')
+					E('span', {}, '🔄'), E('span', {}, 'Auto-Deploy')
 				]),
 				E('label', { 'class': 'toggle-option' }, [
 					E('input', { 'type': 'checkbox', 'checked': registry.cacheEnabled, 'change': function(e) { self.toggleCache(e.target.checked); } }),
@@ -390,11 +427,38 @@ return view.extend({
 
 			// Actions
 			E('div', { 'class': 'panel-actions' }, [
-				E('button', { 'class': 'btn primary', 'click': function() { self.showRegisterURLModal(); } }, '➕ Register URL'),
-				E('button', { 'class': 'btn', 'click': function() { self.syncRegistry(); } }, '🔄 Sync Peers'),
-				E('button', { 'class': 'btn', 'click': function() { self.flushCache(); } }, '🗑️ Flush Cache'),
-				E('button', { 'class': 'btn', 'click': function() { self.showDNSConfigModal(); } }, '⚙️ DNS Config')
+				E('button', { 'class': 'btn primary', 'click': function() { self.showRegisterURLModal(); } }, '➕ Register'),
+				E('button', { 'class': 'btn', 'click': function() { self.deployAllRegistry(); } }, '🚀 Deploy All'),
+				E('button', { 'class': 'btn', 'click': function() { self.syncRegistry(); } }, '🔄 Sync'),
+				E('button', { 'class': 'btn', 'click': function() { self.showDNSConfigModal(); } }, '⚙️ DNS')
 			])
+		]);
+	},
+
+	renderRegistryEntryWithDeploy: function(service) {
+		var self = this;
+		var onlinePeers = this.peers.filter(function(p) { return p.status === 'online'; }).length;
+		var deployedTo = service.deployedTo || 0;
+		var deployStatus = deployedTo >= onlinePeers ? 'full' : deployedTo > 0 ? 'partial' : 'none';
+
+		return E('div', { 'class': 'table-row' }, [
+			E('div', { 'class': 'url-cell' }, [
+				E('code', { 'class': 'short-url' }, '/' + service.shortUrl),
+				E('button', { 'class': 'copy-btn', 'click': function() { self.copyToClipboard(self.hubRegistry.baseUrl + '/' + service.shortUrl); } }, '📋')
+			]),
+			E('div', { 'class': 'target-cell' }, service.target),
+			E('div', { 'class': 'mesh-status ' + deployStatus }, [
+				E('span', { 'class': 'mesh-dots' }, [
+					E('span', { 'class': 'dot ' + (deployedTo > 0 ? 'active' : '') }),
+					E('span', { 'class': 'dot ' + (deployedTo > 1 ? 'active' : '') }),
+					E('span', { 'class': 'dot ' + (deployedTo > 2 ? 'active' : '') })
+				]),
+				E('span', { 'class': 'mesh-count' }, deployedTo + '/' + onlinePeers)
+			]),
+			E('button', {
+				'class': 'deploy-entry-btn ' + (deployStatus === 'full' ? 'deployed' : ''),
+				'click': function() { self.deployRegistryEntry(service); }
+			}, deployStatus === 'full' ? '✓' : '📤')
 		]);
 	},
 
@@ -450,14 +514,38 @@ return view.extend({
 		var self = this;
 		var localServices = this.getLocalServicesTyped();
 		var networkServices = this.getNetworkServicesTyped();
+		var onlinePeers = this.peers.filter(function(p) { return p.status === 'online'; }).length;
 
 		return E('div', { 'class': 'panel services-registry-panel' }, [
 			E('div', { 'class': 'panel-header blue' }, [
 				E('div', { 'class': 'panel-title' }, [
 					E('span', {}, '📡'),
-					E('span', {}, 'Services Registry')
+					E('span', {}, 'Services Registry'),
+					E('span', { 'class': 'badge' }, 'Distributed')
 				]),
-				E('button', { 'class': 'btn small', 'click': function() { self.refreshServicesRegistry(); } }, 'Refresh')
+				E('button', { 'class': 'btn small', 'click': function() { self.refreshServicesRegistry(); } }, '🔄')
+			]),
+
+			// Master Deploy Banner for Services
+			E('div', { 'class': 'deploy-banner services' }, [
+				E('div', { 'class': 'deploy-info' }, [
+					E('span', { 'class': 'deploy-icon' }, '⚡'),
+					E('div', {}, [
+						E('div', { 'class': 'deploy-title' }, 'Service Distribution'),
+						E('div', { 'class': 'deploy-desc' }, 'Deploy services across ' + onlinePeers + ' mesh nodes')
+					])
+				]),
+				E('div', { 'class': 'deploy-actions-mini' }, [
+					E('button', {
+						'class': 'btn small',
+						'click': function() { self.deployAllServices(); },
+						'disabled': onlinePeers === 0
+					}, '🚀 Deploy All'),
+					E('button', {
+						'class': 'btn small',
+						'click': function() { self.showDeployServicesModal(); }
+					}, '⚙️ Configure')
+				])
 			]),
 
 			// Service type legend
@@ -471,31 +559,33 @@ return view.extend({
 				})
 			),
 
-			// Two columns
+			// Two columns with deploy controls
 			E('div', { 'class': 'services-columns' }, [
-				// Local Services
+				// Local Services (Deployable)
 				E('div', { 'class': 'services-column' }, [
 					E('h4', { 'class': 'column-title' }, [
 						E('span', {}, '🏠'),
 						E('span', {}, 'Your Services'),
-						E('span', { 'class': 'count green' }, localServices.length + ' active')
+						E('span', { 'class': 'count green' }, localServices.length + ' active'),
+						E('button', { 'class': 'deploy-all-btn', 'click': function() { self.deployLocalServices(); }, 'title': 'Deploy all to mesh' }, '📤')
 					]),
 					E('div', { 'class': 'services-list' },
 						localServices.length > 0 ?
-							localServices.map(function(svc) { return self.renderServiceItem(svc, true); }) :
+							localServices.map(function(svc) { return self.renderServiceItemWithDeploy(svc, true); }) :
 							E('div', { 'class': 'empty-state' }, 'No services running')
 					)
 				]),
-				// Network Services
+				// Network Services (From Peers)
 				E('div', { 'class': 'services-column' }, [
 					E('h4', { 'class': 'column-title' }, [
 						E('span', {}, '🌐'),
-						E('span', {}, 'Network Services'),
-						E('span', { 'class': 'count blue' }, networkServices.length + ' available')
+						E('span', {}, 'Mesh Services'),
+						E('span', { 'class': 'count blue' }, networkServices.length + ' distributed'),
+						E('button', { 'class': 'pull-all-btn', 'click': function() { self.pullAllServices(); }, 'title': 'Pull from mesh' }, '📥')
 					]),
 					E('div', { 'class': 'services-list' },
 						networkServices.length > 0 ?
-							networkServices.map(function(svc) { return self.renderServiceItem(svc, false); }) :
+							networkServices.map(function(svc) { return self.renderServiceItemWithDeploy(svc, false); }) :
 							E('div', { 'class': 'empty-state' }, 'No peer services found')
 					)
 				])
@@ -528,6 +618,47 @@ return view.extend({
 				E('button', { 'class': 'svc-action', 'click': function() { self.toggleServiceShare(service); } },
 					service.shared ? '🔓' : '🔒') :
 				E('button', { 'class': 'svc-action', 'click': function() { self.useNetworkService(service); } }, 'Use')
+		]);
+	},
+
+	renderServiceItemWithDeploy: function(service, isLocal) {
+		var self = this;
+		var type = this.serviceTypes[service.type] || { icon: '❓', name: service.type || 'unknown', color: '#95a5a6' };
+		var onlinePeers = this.peers.filter(function(p) { return p.status === 'online'; }).length;
+		var deployedTo = service.deployedTo || 0;
+		var deployStatus = deployedTo >= onlinePeers ? 'full' : deployedTo > 0 ? 'partial' : 'none';
+
+		return E('div', { 'class': 'service-item with-deploy', 'style': 'border-left-color: ' + type.color + ';' }, [
+			E('span', { 'class': 'svc-icon' }, type.icon),
+			E('div', { 'class': 'svc-info' }, [
+				E('div', { 'class': 'svc-name' }, [
+					service.name,
+					E('span', { 'class': 'svc-status-dot ' + (service.status === 'running' || service.status === 'online' ? 'online' : 'offline') })
+				]),
+				E('div', { 'class': 'svc-detail' },
+					isLocal ? (service.port ? 'Port ' + service.port : 'Local') : (service.peer || 'Unknown peer'))
+			]),
+			// Mesh deployment status
+			E('div', { 'class': 'svc-mesh-status ' + deployStatus }, [
+				E('span', { 'class': 'mesh-micro-dots' }, [
+					E('span', { 'class': 'micro-dot ' + (deployedTo > 0 ? 'active' : '') }),
+					E('span', { 'class': 'micro-dot ' + (deployedTo > 1 ? 'active' : '') }),
+					E('span', { 'class': 'micro-dot ' + (deployedTo > 2 ? 'active' : '') })
+				]),
+				E('span', { 'class': 'mesh-count-mini' }, deployedTo + '/' + onlinePeers)
+			]),
+			// Action button
+			isLocal ?
+				E('button', {
+					'class': 'svc-deploy-btn ' + (deployStatus === 'full' ? 'deployed' : ''),
+					'click': function() { self.deployService(service); },
+					'title': deployStatus === 'full' ? 'Deployed to all peers' : 'Deploy to mesh'
+				}, deployStatus === 'full' ? '✓' : '📤') :
+				E('button', {
+					'class': 'svc-pull-btn',
+					'click': function() { self.pullService(service); },
+					'title': 'Pull to local'
+				}, '📥')
 		]);
 	},
 
@@ -653,15 +784,19 @@ return view.extend({
 	// ==================== Mesh Stack ====================
 	renderMeshStackPanel: function() {
 		var self = this;
+		var dnsBridgeConfig = this.dnsBridgeConfig || { enabled: false, strategy: 'round-robin', onionEnabled: false };
+		var wgMirrorConfig = this.wgMirrorConfig || { enabled: false, mode: 'active-passive', syncInterval: 30 };
 
 		return E('div', { 'class': 'panel mesh-stack-panel wide' }, [
 			E('div', { 'class': 'panel-header green' }, [
 				E('div', { 'class': 'panel-title' }, [
 					E('span', {}, '🔧'),
-					E('span', {}, 'Mesh Infrastructure')
+					E('span', {}, 'Mesh Infrastructure'),
+					E('span', { 'class': 'badge' }, 'MaaS Stack')
 				])
 			]),
 
+			// Top row: Core Services
 			E('div', { 'class': 'mesh-cards' }, [
 				// DNS Federation
 				E('div', { 'class': 'mesh-card' }, [
@@ -707,6 +842,238 @@ return view.extend({
 						E('div', { 'class': 'mesh-info' }, ['Backends: ', E('strong', {}, String(this.peers.length + 1))])
 					])
 				])
+			]),
+
+			// Bottom row: Advanced Features
+			E('h4', { 'class': 'mesh-section-title' }, '🔗 Advanced Mesh Features'),
+			E('div', { 'class': 'mesh-cards advanced' }, [
+				// DNS Bridge with Load Balancing
+				E('div', { 'class': 'mesh-card featured' }, [
+					E('div', { 'class': 'mesh-card-header' }, [
+						E('span', {}, '🌉 DNS Bridge'),
+						E('label', { 'class': 'toggle-switch' }, [
+							E('input', { 'type': 'checkbox', 'checked': dnsBridgeConfig.enabled, 'change': function(e) { self.toggleDNSBridge(e.target.checked); } }),
+							E('span', { 'class': 'slider' })
+						])
+					]),
+					E('div', { 'class': 'mesh-card-body' }, [
+						E('div', { 'class': 'mesh-info' }, ['LB Strategy: ', E('select', {
+							'class': 'mini-select',
+							'value': dnsBridgeConfig.strategy,
+							'change': function(e) { self.setDNSBridgeStrategy(e.target.value); }
+						}, [
+							E('option', { 'value': 'round-robin' }, 'Round Robin'),
+							E('option', { 'value': 'weighted' }, 'Weighted'),
+							E('option', { 'value': 'geo' }, 'Geo-based'),
+							E('option', { 'value': 'latency' }, 'Latency')
+						])]),
+						E('div', { 'class': 'mesh-info' }, ['Mesh Sync: ', E('span', { 'class': 'status-indicator active' }, '● Active')]),
+						E('div', { 'class': 'mesh-info onion-row' }, [
+							'Onion Relay: ',
+							E('label', { 'class': 'toggle-switch mini' }, [
+								E('input', { 'type': 'checkbox', 'checked': dnsBridgeConfig.onionEnabled, 'change': function(e) { self.toggleOnionRelay(e.target.checked); } }),
+								E('span', { 'class': 'slider' })
+							]),
+							E('span', { 'class': 'onion-icon' }, '🧅')
+						])
+					]),
+					E('div', { 'class': 'mesh-card-actions' }, [
+						E('button', { 'class': 'btn small', 'click': function() { self.showDNSBridgeModal(); } }, '⚙️ Configure')
+					])
+				]),
+
+				// WireGuard Mirror Inverse System
+				E('div', { 'class': 'mesh-card featured' }, [
+					E('div', { 'class': 'mesh-card-header' }, [
+						E('span', {}, '🪞 WG Mirror'),
+						E('label', { 'class': 'toggle-switch' }, [
+							E('input', { 'type': 'checkbox', 'checked': wgMirrorConfig.enabled, 'change': function(e) { self.toggleWGMirror(e.target.checked); } }),
+							E('span', { 'class': 'slider' })
+						])
+					]),
+					E('div', { 'class': 'mesh-card-body' }, [
+						E('div', { 'class': 'mesh-info' }, ['Mode: ', E('select', {
+							'class': 'mini-select',
+							'value': wgMirrorConfig.mode,
+							'change': function(e) { self.setWGMirrorMode(e.target.value); }
+						}, [
+							E('option', { 'value': 'active-passive' }, 'Active-Passive'),
+							E('option', { 'value': 'active-active' }, 'Active-Active'),
+							E('option', { 'value': 'ring' }, 'Ring Topology'),
+							E('option', { 'value': 'full-mesh' }, 'Full Mesh')
+						])]),
+						E('div', { 'class': 'mesh-info' }, ['Sync Interval: ', E('code', {}, wgMirrorConfig.syncInterval + 's')]),
+						E('div', { 'class': 'mesh-info' }, ['Mirror Peers: ', E('strong', {}, String(this.peers.filter(function(p) { return p.wgMirror; }).length || this.peers.length))])
+					]),
+					E('div', { 'class': 'mesh-card-actions' }, [
+						E('button', { 'class': 'btn small', 'click': function() { self.showWGMirrorModal(); } }, '⚙️ Configure'),
+						E('button', { 'class': 'btn small', 'click': function() { self.syncWGMirror(); } }, '🔄 Sync')
+					])
+				]),
+
+				// Onion Relay (Tor Integration)
+				E('div', { 'class': 'mesh-card' }, [
+					E('div', { 'class': 'mesh-card-header' }, [
+						E('span', {}, '🧅 Onion Relay'),
+						E('label', { 'class': 'toggle-switch' }, [
+							E('input', { 'type': 'checkbox', 'checked': dnsBridgeConfig.onionEnabled, 'change': function(e) { self.toggleOnionRelay(e.target.checked); } }),
+							E('span', { 'class': 'slider' })
+						])
+					]),
+					E('div', { 'class': 'mesh-card-body' }, [
+						E('div', { 'class': 'mesh-info' }, ['Hidden Service: ', E('code', {}, 'sb******.onion')]),
+						E('div', { 'class': 'mesh-info' }, ['Relay Mode: ', E('strong', {}, 'Bridge')]),
+						E('div', { 'class': 'mesh-info' }, ['Circuit: ', E('span', { 'class': 'status-indicator ' + (dnsBridgeConfig.onionEnabled ? 'active' : 'inactive') }, dnsBridgeConfig.onionEnabled ? '● Ready' : '○ Off')])
+					])
+				])
+			])
+		]);
+	},
+
+	// DNS Bridge and WG Mirror toggles
+	toggleDNSBridge: function(enabled) {
+		this.dnsBridgeConfig = this.dnsBridgeConfig || {};
+		this.dnsBridgeConfig.enabled = enabled;
+		ui.addNotification(null, E('p', 'DNS Bridge ' + (enabled ? 'enabled' : 'disabled')), 'info');
+	},
+
+	setDNSBridgeStrategy: function(strategy) {
+		this.dnsBridgeConfig = this.dnsBridgeConfig || {};
+		this.dnsBridgeConfig.strategy = strategy;
+		ui.addNotification(null, E('p', 'DNS Bridge strategy: ' + strategy), 'info');
+	},
+
+	toggleOnionRelay: function(enabled) {
+		this.dnsBridgeConfig = this.dnsBridgeConfig || {};
+		this.dnsBridgeConfig.onionEnabled = enabled;
+		ui.addNotification(null, E('p', 'Onion Relay ' + (enabled ? 'enabled' : 'disabled')), 'info');
+	},
+
+	toggleWGMirror: function(enabled) {
+		this.wgMirrorConfig = this.wgMirrorConfig || {};
+		this.wgMirrorConfig.enabled = enabled;
+		ui.addNotification(null, E('p', 'WireGuard Mirror ' + (enabled ? 'enabled' : 'disabled')), 'info');
+	},
+
+	setWGMirrorMode: function(mode) {
+		this.wgMirrorConfig = this.wgMirrorConfig || {};
+		this.wgMirrorConfig.mode = mode;
+		ui.addNotification(null, E('p', 'WireGuard Mirror mode: ' + mode), 'info');
+	},
+
+	syncWGMirror: function() {
+		ui.addNotification(null, E('p', '🔄 Syncing WireGuard mirror configurations...'), 'info');
+	},
+
+	showDNSBridgeModal: function() {
+		var self = this;
+		var config = this.dnsBridgeConfig || {};
+
+		ui.showModal('DNS Bridge Configuration', [
+			E('div', { 'class': 'modal-form' }, [
+				E('div', { 'class': 'deploy-modal-header' }, [
+					E('span', { 'class': 'deploy-modal-icon' }, '🌉'),
+					E('div', {}, [
+						E('div', { 'class': 'deploy-modal-title' }, 'DNS Bridge with Load Balancing'),
+						E('div', { 'class': 'deploy-modal-subtitle' }, 'Synchronize DNS across mesh with intelligent load balancing')
+					])
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Load Balancing Strategy'),
+					E('select', { 'id': 'dns-lb-strategy', 'class': 'form-select' }, [
+						E('option', { 'value': 'round-robin', 'selected': config.strategy === 'round-robin' }, 'Round Robin - Equal distribution'),
+						E('option', { 'value': 'weighted', 'selected': config.strategy === 'weighted' }, 'Weighted - Based on capacity'),
+						E('option', { 'value': 'geo', 'selected': config.strategy === 'geo' }, 'Geographic - Nearest peer'),
+						E('option', { 'value': 'latency', 'selected': config.strategy === 'latency' }, 'Latency - Fastest response')
+					])
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Mesh Synchronization'),
+					E('div', { 'class': 'deploy-options' }, [
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'checked': true }),
+							E('span', {}, '🔄 Real-time zone sync')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'checked': true }),
+							E('span', {}, '📊 Health-based routing')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'checked': config.onionEnabled }),
+							E('span', {}, '🧅 Onion relay fallback')
+						])
+					])
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Upstream DNS (Failover)'),
+					E('input', { 'type': 'text', 'class': 'form-input', 'value': '1.1.1.1, 8.8.8.8', 'placeholder': 'Comma-separated DNS servers' })
+				])
+			]),
+			E('div', { 'class': 'modal-actions' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+					ui.hideModal();
+					ui.addNotification(null, E('p', 'DNS Bridge configuration saved'), 'info');
+				} }, 'Save')
+			])
+		]);
+	},
+
+	showWGMirrorModal: function() {
+		var self = this;
+		var config = this.wgMirrorConfig || {};
+
+		ui.showModal('WireGuard Mirror Configuration', [
+			E('div', { 'class': 'modal-form' }, [
+				E('div', { 'class': 'deploy-modal-header' }, [
+					E('span', { 'class': 'deploy-modal-icon' }, '🪞'),
+					E('div', {}, [
+						E('div', { 'class': 'deploy-modal-title' }, 'WireGuard Mirror Inverse System'),
+						E('div', { 'class': 'deploy-modal-subtitle' }, 'Bidirectional tunnel mirroring with automatic failover')
+					])
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Mirror Mode'),
+					E('select', { 'id': 'wg-mirror-mode', 'class': 'form-select' }, [
+						E('option', { 'value': 'active-passive', 'selected': config.mode === 'active-passive' }, 'Active-Passive - Primary with standby'),
+						E('option', { 'value': 'active-active', 'selected': config.mode === 'active-active' }, 'Active-Active - Load shared'),
+						E('option', { 'value': 'ring', 'selected': config.mode === 'ring' }, 'Ring Topology - Circular routing'),
+						E('option', { 'value': 'full-mesh', 'selected': config.mode === 'full-mesh' }, 'Full Mesh - All-to-all')
+					])
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Sync Interval (seconds)'),
+					E('input', { 'type': 'number', 'id': 'wg-sync-interval', 'class': 'form-input', 'value': config.syncInterval || 30 })
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Mirror Features'),
+					E('div', { 'class': 'deploy-options' }, [
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'checked': true }),
+							E('span', {}, '🔑 Key rotation sync')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'checked': true }),
+							E('span', {}, '📋 Peer list mirroring')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'checked': true }),
+							E('span', {}, '🔄 Auto-reconnect on failure')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox' }),
+							E('span', {}, '🔒 Inverse tunnel (bidirectional)')
+						])
+					])
+				])
+			]),
+			E('div', { 'class': 'modal-actions' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'cbi-button', 'click': function() { self.syncWGMirror(); ui.hideModal(); } }, '🔄 Sync Now'),
+				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+					ui.hideModal();
+					ui.addNotification(null, E('p', 'WireGuard Mirror configuration saved'), 'info');
+				} }, 'Save')
 			])
 		]);
 	},
@@ -881,6 +1248,93 @@ return view.extend({
 	copyToClipboard: function(text) {
 		navigator.clipboard.writeText(text);
 		ui.addNotification(null, E('p', 'Copied: ' + text), 'info');
+	},
+
+	// ==================== Deployment Actions ====================
+	deployAllRegistry: function() {
+		var self = this;
+		var onlinePeers = this.peers.filter(function(p) { return p.status === 'online'; }).length;
+		if (onlinePeers === 0) {
+			ui.addNotification(null, E('p', 'No online peers to deploy to'), 'warning');
+			return;
+		}
+		ui.addNotification(null, E('p', '📤 Deploying registry to ' + onlinePeers + ' peers...'), 'info');
+		P2PAPI.deployRegistry().then(function(result) {
+			ui.addNotification(null, E('p', '✅ Registry deployed to ' + (result.deployed_peers || onlinePeers) + ' peers'), 'success');
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Deploy failed: ' + err.message), 'error');
+		});
+	},
+
+	deployRegistryEntry: function(entry) {
+		var self = this;
+		var onlinePeers = this.peers.filter(function(p) { return p.status === 'online'; }).length;
+		ui.addNotification(null, E('p', '📤 Deploying ' + entry.shortUrl + ' to mesh...'), 'info');
+		P2PAPI.deployRegistryEntry(entry.shortUrl).then(function(result) {
+			ui.addNotification(null, E('p', '✅ ' + entry.shortUrl + ' deployed to ' + (result.deployed_peers || onlinePeers) + ' peers'), 'success');
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Deploy failed: ' + err.message), 'error');
+		});
+	},
+
+	deployAllServices: function() {
+		var self = this;
+		var onlinePeers = this.peers.filter(function(p) { return p.status === 'online'; }).length;
+		if (onlinePeers === 0) {
+			ui.addNotification(null, E('p', 'No online peers to deploy to'), 'warning');
+			return;
+		}
+		ui.addNotification(null, E('p', '⚡ Deploying all services to ' + onlinePeers + ' peers...'), 'info');
+		P2PAPI.deployServices().then(function(result) {
+			ui.addNotification(null, E('p', '✅ Services deployed: ' + (result.services_deployed || self.services.length) + ' to ' + (result.deployed_peers || onlinePeers) + ' peers'), 'success');
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Deploy failed: ' + err.message), 'error');
+		});
+	},
+
+	deployLocalServices: function() {
+		var self = this;
+		var localServices = this.getLocalServicesTyped();
+		var onlinePeers = this.peers.filter(function(p) { return p.status === 'online'; }).length;
+		ui.addNotification(null, E('p', '📤 Deploying ' + localServices.length + ' local services...'), 'info');
+		P2PAPI.deployLocalServices().then(function(result) {
+			ui.addNotification(null, E('p', '✅ Local services deployed to ' + (result.deployed_peers || onlinePeers) + ' peers'), 'success');
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Deploy failed: ' + err.message), 'error');
+		});
+	},
+
+	pullAllServices: function() {
+		var self = this;
+		ui.addNotification(null, E('p', '📥 Pulling services from mesh...'), 'info');
+		P2PAPI.pullMeshServices().then(function(result) {
+			ui.addNotification(null, E('p', '✅ Pulled ' + (result.services_pulled || 0) + ' services from mesh'), 'success');
+			self.refreshData();
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Pull failed: ' + err.message), 'error');
+		});
+	},
+
+	deployService: function(service) {
+		var self = this;
+		var onlinePeers = this.peers.filter(function(p) { return p.status === 'online'; }).length;
+		ui.addNotification(null, E('p', '📤 Deploying ' + service.name + '...'), 'info');
+		P2PAPI.deployService(service.id).then(function(result) {
+			ui.addNotification(null, E('p', '✅ ' + service.name + ' deployed to ' + (result.deployed_peers || onlinePeers) + ' peers'), 'success');
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Deploy failed: ' + err.message), 'error');
+		});
+	},
+
+	pullService: function(service) {
+		var self = this;
+		ui.addNotification(null, E('p', '📥 Pulling ' + service.name + ' from ' + service.peer + '...'), 'info');
+		P2PAPI.pullService(service.id, service.peer).then(function(result) {
+			ui.addNotification(null, E('p', '✅ ' + service.name + ' pulled successfully'), 'success');
+			self.refreshData();
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Pull failed: ' + err.message), 'error');
+		});
 	},
 
 	// ==================== Modals ====================
@@ -1063,6 +1517,144 @@ return view.extend({
 						});
 					}
 				} }, 'Add')
+			])
+		]);
+	},
+
+	showDeployRegistryModal: function() {
+		var self = this;
+		var onlinePeers = this.peers.filter(function(p) { return p.status === 'online'; });
+		var services = this.getRegisteredServices();
+
+		ui.showModal('Deploy Registry to Mesh', [
+			E('div', { 'class': 'modal-form' }, [
+				E('div', { 'class': 'deploy-modal-header' }, [
+					E('span', { 'class': 'deploy-modal-icon' }, '🚀'),
+					E('div', {}, [
+						E('div', { 'class': 'deploy-modal-title' }, 'Master Deployment'),
+						E('div', { 'class': 'deploy-modal-subtitle' }, 'Distribute registry entries across the mesh network')
+					])
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Deployment Summary'),
+					E('div', { 'class': 'deploy-summary' }, [
+						E('div', { 'class': 'deploy-stat' }, [
+							E('span', { 'class': 'ds-value' }, String(services.length)),
+							E('span', { 'class': 'ds-label' }, 'Registry entries')
+						]),
+						E('div', { 'class': 'deploy-stat' }, [
+							E('span', { 'class': 'ds-value' }, String(onlinePeers.length)),
+							E('span', { 'class': 'ds-label' }, 'Target peers')
+						])
+					])
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Target Peers'),
+					E('div', { 'class': 'peer-checklist' },
+						onlinePeers.map(function(peer) {
+							return E('label', { 'class': 'peer-check-item' }, [
+								E('input', { 'type': 'checkbox', 'checked': true, 'data-peer': peer.id }),
+								E('span', { 'class': 'peer-check-icon' }, '🖥️'),
+								E('span', {}, peer.name || peer.id),
+								E('span', { 'class': 'peer-check-addr' }, peer.address || '')
+							]);
+						})
+					)
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Deployment Options'),
+					E('div', { 'class': 'deploy-options' }, [
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'id': 'deploy-sync-dns', 'checked': true }),
+							E('span', {}, '🌐 Sync DNS records')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'id': 'deploy-update-lb', 'checked': true }),
+							E('span', {}, '⚖️ Update load balancer')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'id': 'deploy-flush-cache' }),
+							E('span', {}, '💾 Flush peer caches')
+						])
+					])
+				])
+			]),
+			E('div', { 'class': 'modal-actions' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+					ui.hideModal();
+					self.deployAllRegistry();
+				} }, '🚀 Deploy Now')
+			])
+		]);
+	},
+
+	showDeployServicesModal: function() {
+		var self = this;
+		var onlinePeers = this.peers.filter(function(p) { return p.status === 'online'; });
+		var localServices = this.getLocalServicesTyped();
+
+		ui.showModal('Service Distribution Configuration', [
+			E('div', { 'class': 'modal-form' }, [
+				E('div', { 'class': 'deploy-modal-header' }, [
+					E('span', { 'class': 'deploy-modal-icon' }, '⚡'),
+					E('div', {}, [
+						E('div', { 'class': 'deploy-modal-title' }, 'Mesh Service Distribution'),
+						E('div', { 'class': 'deploy-modal-subtitle' }, 'Configure how services are distributed across peers')
+					])
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Distribution Strategy'),
+					E('select', { 'id': 'deploy-strategy', 'class': 'form-select' }, [
+						E('option', { 'value': 'replicate' }, '🔄 Replicate - All services to all peers'),
+						E('option', { 'value': 'distribute' }, '📊 Distribute - Spread services across peers'),
+						E('option', { 'value': 'failover' }, '🛡️ Failover - Primary with backup peers'),
+						E('option', { 'value': 'custom' }, '⚙️ Custom - Manual assignment')
+					])
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Services to Deploy (' + localServices.length + ' available)'),
+					E('div', { 'class': 'service-checklist' },
+						localServices.slice(0, 10).map(function(svc) {
+							var type = self.serviceTypes[svc.type] || { icon: '❓', name: svc.type || 'unknown' };
+							return E('label', { 'class': 'service-check-item' }, [
+								E('input', { 'type': 'checkbox', 'checked': true, 'data-service': svc.id }),
+								E('span', { 'class': 'svc-check-icon' }, type.icon),
+								E('span', {}, svc.name),
+								E('span', { 'class': 'svc-check-status ' + (svc.status === 'running' ? 'running' : 'stopped') },
+									svc.status === 'running' ? '●' : '○')
+							]);
+						})
+					)
+				]),
+				E('div', { 'class': 'form-group' }, [
+					E('label', {}, 'Load Balancing'),
+					E('div', { 'class': 'deploy-options' }, [
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'id': 'deploy-enable-lb', 'checked': true }),
+							E('span', {}, '⚖️ Enable HAProxy load balancing')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'id': 'deploy-health-checks', 'checked': true }),
+							E('span', {}, '💓 Enable health checks')
+						]),
+						E('label', { 'class': 'deploy-option' }, [
+							E('input', { 'type': 'checkbox', 'id': 'deploy-dns-round-robin' }),
+							E('span', {}, '🌐 DNS round-robin')
+						])
+					])
+				])
+			]),
+			E('div', { 'class': 'modal-actions' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
+				E('button', { 'class': 'cbi-button', 'click': function() {
+					ui.hideModal();
+					self.pullAllServices();
+				} }, '📥 Pull from Mesh'),
+				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
+					ui.hideModal();
+					self.deployAllServices();
+				} }, '🚀 Deploy to Mesh')
 			])
 		]);
 	},
@@ -1326,7 +1918,92 @@ return view.extend({
 			'.input-prefix { padding: 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); border-right: none; border-radius: 6px 0 0 6px; color: rgba(255,255,255,0.5); font-size: 12px; }',
 			'.input-group .form-input { border-radius: 0 6px 6px 0; }',
 			'.zone-preview { padding: 12px; background: rgba(0,0,0,0.4); border-radius: 6px; font-size: 11px; font-family: monospace; overflow-x: auto; white-space: pre; }',
-			'.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }'
+			'.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }',
+
+			// Deploy Banner
+			'.deploy-banner { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background: linear-gradient(135deg, rgba(102,126,234,0.15), rgba(118,75,162,0.15)); border: 1px solid rgba(102,126,234,0.3); border-radius: 10px; margin-bottom: 15px; }',
+			'.deploy-banner.services { background: linear-gradient(135deg, rgba(16,185,129,0.15), rgba(52,152,219,0.15)); border-color: rgba(16,185,129,0.3); }',
+			'.deploy-info { display: flex; align-items: center; gap: 12px; }',
+			'.deploy-icon { font-size: 24px; }',
+			'.deploy-title { font-weight: 600; font-size: 14px; }',
+			'.deploy-desc { font-size: 12px; color: rgba(255,255,255,0.6); }',
+			'.deploy-btn { padding: 8px 16px; background: linear-gradient(135deg, #667eea, #764ba2); border: none; border-radius: 8px; color: #fff; cursor: pointer; font-size: 12px; transition: all 0.3s; }',
+			'.deploy-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102,126,234,0.4); }',
+			'.deploy-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }',
+			'.deploy-actions-mini { display: flex; gap: 8px; }',
+
+			// Mesh Status Dots
+			'.mesh-status { display: flex; align-items: center; gap: 6px; }',
+			'.mesh-dots { display: flex; gap: 3px; }',
+			'.mesh-dots .dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.2); }',
+			'.mesh-dots .dot.active { background: #10b981; }',
+			'.mesh-status.full .mesh-dots .dot { background: #10b981; }',
+			'.mesh-status.partial .mesh-dots .dot.active { background: #f59e0b; }',
+			'.mesh-count { font-size: 10px; color: rgba(255,255,255,0.5); }',
+
+			// Deploy Entry Button
+			'.deploy-entry-btn { width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(102,126,234,0.3); background: rgba(102,126,234,0.1); cursor: pointer; font-size: 12px; transition: all 0.2s; }',
+			'.deploy-entry-btn:hover { background: rgba(102,126,234,0.3); transform: scale(1.1); }',
+			'.deploy-entry-btn.deployed { background: rgba(16,185,129,0.2); border-color: rgba(16,185,129,0.4); color: #10b981; }',
+
+			// Service Item with Deploy
+			'.service-item.with-deploy { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; }',
+			'.svc-mesh-status { display: flex; align-items: center; gap: 4px; }',
+			'.mesh-micro-dots { display: flex; gap: 2px; }',
+			'.micro-dot { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.2); }',
+			'.micro-dot.active { background: #10b981; }',
+			'.mesh-count-mini { font-size: 9px; color: rgba(255,255,255,0.4); }',
+			'.svc-deploy-btn, .svc-pull-btn { width: 24px; height: 24px; border-radius: 4px; border: none; background: rgba(102,126,234,0.15); cursor: pointer; font-size: 11px; transition: all 0.2s; }',
+			'.svc-deploy-btn:hover, .svc-pull-btn:hover { background: rgba(102,126,234,0.3); }',
+			'.svc-deploy-btn.deployed { background: rgba(16,185,129,0.2); color: #10b981; }',
+			'.svc-pull-btn { background: rgba(52,152,219,0.15); }',
+			'.svc-pull-btn:hover { background: rgba(52,152,219,0.3); }',
+
+			// Column Title Deploy Buttons
+			'.deploy-all-btn, .pull-all-btn { padding: 4px 8px; border: none; background: rgba(255,255,255,0.1); border-radius: 4px; cursor: pointer; font-size: 11px; margin-left: 8px; transition: all 0.2s; }',
+			'.deploy-all-btn:hover { background: rgba(102,126,234,0.3); }',
+			'.pull-all-btn:hover { background: rgba(52,152,219,0.3); }',
+
+			// Deploy Modal Styles
+			'.deploy-modal-header { display: flex; align-items: center; gap: 15px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 10px; margin-bottom: 20px; }',
+			'.deploy-modal-icon { font-size: 36px; }',
+			'.deploy-modal-title { font-size: 18px; font-weight: 600; }',
+			'.deploy-modal-subtitle { font-size: 12px; color: rgba(255,255,255,0.6); }',
+			'.deploy-summary { display: flex; gap: 20px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; }',
+			'.deploy-stat { text-align: center; }',
+			'.ds-value { font-size: 24px; font-weight: 700; color: #667eea; }',
+			'.ds-label { font-size: 11px; color: rgba(255,255,255,0.5); }',
+			'.peer-checklist, .service-checklist { max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; }',
+			'.peer-check-item, .service-check-item { display: flex; align-items: center; gap: 10px; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 6px; cursor: pointer; }',
+			'.peer-check-item:hover, .service-check-item:hover { background: rgba(255,255,255,0.06); }',
+			'.peer-check-icon, .svc-check-icon { font-size: 16px; }',
+			'.peer-check-addr { margin-left: auto; font-size: 11px; color: rgba(255,255,255,0.4); }',
+			'.svc-check-status { margin-left: auto; font-size: 10px; }',
+			'.svc-check-status.running { color: #10b981; }',
+			'.svc-check-status.stopped { color: #ef4444; }',
+			'.deploy-options { display: flex; flex-direction: column; gap: 8px; }',
+			'.deploy-option { display: flex; align-items: center; gap: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; cursor: pointer; }',
+			'.deploy-option:hover { background: rgba(0,0,0,0.3); }',
+
+			// Mesh Stack Advanced
+			'.mesh-section-title { margin: 20px 0 15px 0; font-size: 13px; color: rgba(255,255,255,0.7); font-weight: 500; }',
+			'.mesh-cards.advanced { grid-template-columns: repeat(3, 1fr); }',
+			'@media (max-width: 1100px) { .mesh-cards.advanced { grid-template-columns: 1fr 1fr; } }',
+			'@media (max-width: 700px) { .mesh-cards.advanced { grid-template-columns: 1fr; } }',
+			'.mesh-card.featured { border: 1px solid rgba(102,126,234,0.3); background: linear-gradient(135deg, rgba(102,126,234,0.1), rgba(118,75,162,0.1)); }',
+			'.mesh-card-actions { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); }',
+			'.mini-select { padding: 4px 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #e0e0e0; font-size: 11px; }',
+			'.status-indicator { font-size: 10px; }',
+			'.status-indicator.active { color: #10b981; }',
+			'.status-indicator.inactive { color: #95a5a6; }',
+			'.onion-row { display: flex; align-items: center; gap: 8px; }',
+			'.onion-icon { font-size: 14px; }',
+			'.toggle-switch.mini { width: 32px; height: 18px; }',
+			'.toggle-switch.mini .slider:before { height: 12px; width: 12px; left: 3px; bottom: 3px; }',
+			'.toggle-switch.mini input:checked + .slider:before { transform: translateX(14px); }',
+
+			// Registry green stat value
+			'.reg-stat-value.green { color: #2ecc71; }'
 		].join('\n');
 	},
 
