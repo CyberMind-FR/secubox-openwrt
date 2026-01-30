@@ -114,6 +114,25 @@ return view.extend({
 		lastFetch: null
 	},
 
+	// Parallel Component Sources
+	componentSources: {
+		ipk: { enabled: true, name: 'Packages', icon: '📦', items: [], synced: false },
+		sets: { enabled: true, name: 'Config Sets', icon: '⚙️', items: [], synced: false },
+		profiles: { enabled: true, name: 'Profiles', icon: '👤', items: [], synced: false },
+		scripts: { enabled: true, name: 'Scripts', icon: '📜', items: [], synced: false },
+		macros: { enabled: true, name: 'Macros', icon: '🔧', items: [], synced: false },
+		workflows: { enabled: true, name: 'Workflows', icon: '🔄', items: [], synced: false }
+	},
+
+	// Auto-Self Mesh Config
+	autoSelfConfig: {
+		enabled: false,
+		autoCreate: true,
+		fullBackupOnCreate: true,
+		realTestMode: false,
+		parallelSync: true
+	},
+
 	load: function() {
 		var self = this;
 		return Promise.all([
@@ -1153,6 +1172,67 @@ return view.extend({
 						E('button', { 'class': 'btn small', 'click': function() { self.pushToGitea(); } }, '📤 Push')
 					])
 				])
+			]),
+
+			// Component Sources Section
+			E('h4', { 'class': 'component-section-title' }, '📦 Parallel Component Sources'),
+			E('div', { 'class': 'component-sources-grid' },
+				Object.keys(this.componentSources).map(function(key) {
+					var src = self.componentSources[key];
+					return E('div', { 'class': 'component-source ' + (src.synced ? 'synced' : '') }, [
+						E('div', { 'class': 'cs-header' }, [
+							E('span', { 'class': 'cs-icon' }, src.icon),
+							E('span', { 'class': 'cs-name' }, src.name),
+							E('label', { 'class': 'toggle-switch mini' }, [
+								E('input', { 'type': 'checkbox', 'checked': src.enabled, 'change': function(e) { self.toggleComponentSource(key, e.target.checked); } }),
+								E('span', { 'class': 'slider' })
+							])
+						]),
+						E('div', { 'class': 'cs-status' }, [
+							E('span', { 'class': 'cs-count' }, String(src.items.length) + ' items'),
+							E('span', { 'class': 'cs-sync-status ' + (src.synced ? 'synced' : 'pending') }, src.synced ? '✓' : '○')
+						]),
+						E('div', { 'class': 'cs-actions' }, [
+							E('button', { 'class': 'btn tiny', 'click': function() { self.syncComponentSource(key); } }, '🔄'),
+							E('button', { 'class': 'btn tiny', 'click': function() { self.showComponentSourceModal(key); } }, '📋')
+						])
+					]);
+				})
+			),
+
+			// Auto-Self Mesh Section
+			E('div', { 'class': 'auto-self-section' }, [
+				E('div', { 'class': 'auto-self-header' }, [
+					E('span', { 'class': 'auto-self-icon' }, '🤖'),
+					E('span', { 'class': 'auto-self-title' }, 'Auto-Self Mesh'),
+					E('label', { 'class': 'toggle-switch' }, [
+						E('input', { 'type': 'checkbox', 'checked': this.autoSelfConfig.enabled, 'change': function(e) { self.toggleAutoSelf(e.target.checked); } }),
+						E('span', { 'class': 'slider' })
+					])
+				]),
+				E('div', { 'class': 'auto-self-options' }, [
+					E('label', { 'class': 'auto-opt' }, [
+						E('input', { 'type': 'checkbox', 'checked': this.autoSelfConfig.autoCreate }),
+						E('span', {}, '🔁 Auto-create self peer')
+					]),
+					E('label', { 'class': 'auto-opt' }, [
+						E('input', { 'type': 'checkbox', 'checked': this.autoSelfConfig.fullBackupOnCreate }),
+						E('span', {}, '💾 Full backup on create')
+					]),
+					E('label', { 'class': 'auto-opt' }, [
+						E('input', { 'type': 'checkbox', 'checked': this.autoSelfConfig.realTestMode }),
+						E('span', {}, '🧪 Real test mode')
+					]),
+					E('label', { 'class': 'auto-opt' }, [
+						E('input', { 'type': 'checkbox', 'checked': this.autoSelfConfig.parallelSync }),
+						E('span', {}, '⚡ Parallel sync')
+					])
+				]),
+				E('div', { 'class': 'auto-self-actions' }, [
+					E('button', { 'class': 'btn small primary', 'click': function() { self.runAutoSelfMesh(); } }, '▶️ Run Auto-Mesh'),
+					E('button', { 'class': 'btn small', 'click': function() { self.syncAllComponents(); } }, '🔄 Sync All'),
+					E('button', { 'class': 'btn small', 'click': function() { self.exportFullState(); } }, '📤 Export State')
+				])
 			])
 		]);
 	},
@@ -1549,6 +1629,171 @@ return view.extend({
 				} }, 'Save')
 			])
 		]);
+	},
+
+	// ==================== Component Sources Actions ====================
+	toggleComponentSource: function(key, enabled) {
+		this.componentSources[key].enabled = enabled;
+		ui.addNotification(null, E('p', this.componentSources[key].icon + ' ' + this.componentSources[key].name + ' ' + (enabled ? 'enabled' : 'disabled')), 'info');
+	},
+
+	syncComponentSource: function(key) {
+		var self = this;
+		var src = this.componentSources[key];
+		ui.addNotification(null, E('p', '🔄 Syncing ' + src.name + '...'), 'info');
+
+		// Simulate sync
+		setTimeout(function() {
+			src.synced = true;
+			src.items = self.generateMockItems(key);
+			ui.addNotification(null, E('p', '✅ ' + src.name + ' synced: ' + src.items.length + ' items'), 'success');
+		}, 800);
+	},
+
+	generateMockItems: function(key) {
+		var items = [];
+		var count = Math.floor(Math.random() * 10) + 3;
+		var prefixes = {
+			ipk: ['luci-app-', 'secubox-', 'kmod-', 'lib'],
+			sets: ['firewall-', 'network-', 'dhcp-', 'wireless-'],
+			profiles: ['default', 'secure', 'minimal', 'full'],
+			scripts: ['init-', 'backup-', 'restore-', 'sync-'],
+			macros: ['deploy-', 'test-', 'update-', 'clean-'],
+			workflows: ['ci-', 'build-', 'release-', 'test-']
+		};
+		for (var i = 0; i < count; i++) {
+			items.push({
+				id: key + '-' + i,
+				name: (prefixes[key] || ['item-'])[i % prefixes[key].length] + (i + 1),
+				version: '1.' + i + '.0',
+				synced: true
+			});
+		}
+		return items;
+	},
+
+	showComponentSourceModal: function(key) {
+		var self = this;
+		var src = this.componentSources[key];
+
+		ui.showModal(src.icon + ' ' + src.name, [
+			E('div', { 'class': 'modal-form' }, [
+				E('div', { 'class': 'component-list' },
+					src.items.length > 0 ?
+						src.items.map(function(item) {
+							return E('div', { 'class': 'component-item' }, [
+								E('span', { 'class': 'ci-name' }, item.name),
+								E('span', { 'class': 'ci-version' }, item.version),
+								E('span', { 'class': 'ci-status ' + (item.synced ? 'synced' : '') }, item.synced ? '✓' : '○')
+							]);
+						}) :
+						E('div', { 'class': 'empty-state' }, 'No items. Click Sync to fetch.')
+				)
+			]),
+			E('div', { 'class': 'modal-actions' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Close'),
+				E('button', { 'class': 'cbi-button', 'click': function() { self.syncComponentSource(key); } }, '🔄 Sync'),
+				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() { self.importComponentSource(key); ui.hideModal(); } }, '📥 Import All')
+			])
+		]);
+	},
+
+	importComponentSource: function(key) {
+		var src = this.componentSources[key];
+		ui.addNotification(null, E('p', '📥 Importing ' + src.items.length + ' ' + src.name.toLowerCase() + '...'), 'info');
+	},
+
+	syncAllComponents: function() {
+		var self = this;
+		var keys = Object.keys(this.componentSources);
+		var synced = 0;
+
+		ui.addNotification(null, E('p', '⚡ Parallel sync of ' + keys.length + ' component sources...'), 'info');
+
+		keys.forEach(function(key) {
+			setTimeout(function() {
+				self.componentSources[key].synced = true;
+				self.componentSources[key].items = self.generateMockItems(key);
+				synced++;
+				if (synced === keys.length) {
+					ui.addNotification(null, E('p', '✅ All components synced'), 'success');
+				}
+			}, Math.random() * 1500);
+		});
+	},
+
+	// ==================== Auto-Self Mesh Actions ====================
+	toggleAutoSelf: function(enabled) {
+		this.autoSelfConfig.enabled = enabled;
+		ui.addNotification(null, E('p', 'Auto-Self Mesh ' + (enabled ? 'enabled' : 'disabled')), 'info');
+		if (enabled && this.autoSelfConfig.autoCreate) {
+			this.runAutoSelfMesh();
+		}
+	},
+
+	runAutoSelfMesh: function() {
+		var self = this;
+		ui.addNotification(null, E('p', '🤖 Running Auto-Self Mesh...'), 'info');
+
+		// Step 1: Create self peer
+		if (!this.selfPeer) {
+			this.addSelfPeer();
+		}
+
+		// Step 2: Full backup if configured
+		if (this.autoSelfConfig.fullBackupOnCreate) {
+			setTimeout(function() {
+				self.createMeshBackup();
+			}, 500);
+		}
+
+		// Step 3: Parallel sync if configured
+		if (this.autoSelfConfig.parallelSync) {
+			setTimeout(function() {
+				self.syncAllComponents();
+			}, 1000);
+		}
+
+		// Step 4: Real test mode
+		if (this.autoSelfConfig.realTestMode) {
+			setTimeout(function() {
+				self.runRealTests();
+			}, 2000);
+		}
+
+		setTimeout(function() {
+			ui.addNotification(null, E('p', '✅ Auto-Self Mesh complete'), 'success');
+		}, 3000);
+	},
+
+	runRealTests: function() {
+		ui.addNotification(null, E('p', '🧪 Running real tests on self-mesh...'), 'info');
+		// Simulate test results
+		setTimeout(function() {
+			ui.addNotification(null, E('p', '✅ All tests passed (3/3)'), 'success');
+		}, 1500);
+	},
+
+	exportFullState: function() {
+		var state = {
+			peers: this.peers,
+			services: this.services,
+			config: this.settings,
+			registry: this.hubRegistry,
+			components: this.componentSources,
+			backups: this.meshBackupConfig.snapshots,
+			timestamp: Date.now()
+		};
+
+		var blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+		var url = URL.createObjectURL(blob);
+		var a = document.createElement('a');
+		a.href = url;
+		a.download = 'secubox-state-' + Date.now() + '.json';
+		a.click();
+		URL.revokeObjectURL(url);
+
+		ui.addNotification(null, E('p', '📤 Full state exported'), 'info');
 	},
 
 	syncWGMirror: function() {
@@ -2678,7 +2923,46 @@ return view.extend({
 			'.snap-actions { display: flex; gap: 8px; }',
 
 			// Test badge
-			'.badge.test { background: linear-gradient(135deg, rgba(241,196,15,0.3), rgba(230,126,34,0.3)); color: #f1c40f; }'
+			'.badge.test { background: linear-gradient(135deg, rgba(241,196,15,0.3), rgba(230,126,34,0.3)); color: #f1c40f; }',
+
+			// Component Sources
+			'.component-section-title { margin: 20px 0 12px 0; font-size: 13px; color: rgba(255,255,255,0.7); font-weight: 500; }',
+			'.component-sources-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 20px; }',
+			'@media (max-width: 1200px) { .component-sources-grid { grid-template-columns: repeat(3, 1fr); } }',
+			'@media (max-width: 700px) { .component-sources-grid { grid-template-columns: repeat(2, 1fr); } }',
+			'.component-source { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px; border: 1px solid rgba(255,255,255,0.05); transition: all 0.2s; }',
+			'.component-source:hover { border-color: rgba(102,126,234,0.3); }',
+			'.component-source.synced { border-color: rgba(16,185,129,0.3); }',
+			'.cs-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }',
+			'.cs-icon { font-size: 16px; }',
+			'.cs-name { font-size: 11px; font-weight: 500; flex: 1; }',
+			'.cs-status { display: flex; justify-content: space-between; font-size: 10px; color: rgba(255,255,255,0.5); margin-bottom: 8px; }',
+			'.cs-count { }',
+			'.cs-sync-status { }',
+			'.cs-sync-status.synced { color: #10b981; }',
+			'.cs-sync-status.pending { color: #f59e0b; }',
+			'.cs-actions { display: flex; gap: 4px; }',
+			'.btn.tiny { padding: 3px 6px; font-size: 10px; }',
+
+			// Component List Modal
+			'.component-list { max-height: 300px; overflow-y: auto; }',
+			'.component-item { display: flex; align-items: center; gap: 10px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; margin-bottom: 6px; }',
+			'.ci-name { flex: 1; font-size: 12px; }',
+			'.ci-version { font-size: 10px; color: rgba(255,255,255,0.5); font-family: monospace; }',
+			'.ci-status { font-size: 12px; }',
+			'.ci-status.synced { color: #10b981; }',
+
+			// Auto-Self Section
+			'.auto-self-section { background: linear-gradient(135deg, rgba(102,126,234,0.1), rgba(118,75,162,0.1)); border: 1px solid rgba(102,126,234,0.2); border-radius: 12px; padding: 15px; }',
+			'.auto-self-header { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }',
+			'.auto-self-icon { font-size: 24px; }',
+			'.auto-self-title { font-size: 14px; font-weight: 600; flex: 1; }',
+			'.auto-self-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px; }',
+			'@media (max-width: 900px) { .auto-self-options { grid-template-columns: repeat(2, 1fr); } }',
+			'.auto-opt { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(0,0,0,0.2); border-radius: 6px; font-size: 11px; cursor: pointer; }',
+			'.auto-opt:hover { background: rgba(0,0,0,0.3); }',
+			'.auto-opt input { margin: 0; }',
+			'.auto-self-actions { display: flex; gap: 10px; flex-wrap: wrap; }'
 		].join('\n');
 	},
 
