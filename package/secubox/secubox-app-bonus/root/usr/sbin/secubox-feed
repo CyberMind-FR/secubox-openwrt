@@ -208,21 +208,38 @@ package_info() {
     fi
 }
 
-# Install package with force-depends
+# Install package from local feed (handles dependencies)
 install_package() {
     local pkg="$1"
-    local ipk_file="$FEED_DIR/${pkg}_"*.ipk
+    local ipk_pattern="$FEED_DIR/${pkg}_"*.ipk
 
     # Find the IPK file
-    local found=$(ls $ipk_file 2>/dev/null | head -1)
+    local found=$(ls $ipk_pattern 2>/dev/null | head -1)
 
-    if [ -n "$found" ]; then
-        log "Installing $pkg..."
-        opkg install --force-depends "$found"
-    else
+    if [ -z "$found" ]; then
         error "Package $pkg not found in local feed"
         return 1
     fi
+
+    log "Installing $pkg..."
+
+    # Get dependencies from the package
+    local deps=$(tar -xOzf "$found" control.tar.gz 2>/dev/null | tar -xOzf - ./control 2>/dev/null | grep "^Depends:" | sed 's/^Depends: //')
+
+    # Install local dependencies first
+    if [ -n "$deps" ]; then
+        for dep in $(echo "$deps" | tr ',' '\n' | sed 's/^ *//; s/ *$//; s/ (.*)//' | sort -u); do
+            [ -z "$dep" ] && continue
+            local dep_ipk=$(ls "$FEED_DIR/${dep}_"*.ipk 2>/dev/null | head -1)
+            if [ -n "$dep_ipk" ]; then
+                verbose "Installing dependency: $dep"
+                opkg install "$dep_ipk" 2>/dev/null || true
+            fi
+        done
+    fi
+
+    # Install the main package
+    opkg install "$found"
 }
 
 # Clean old versions

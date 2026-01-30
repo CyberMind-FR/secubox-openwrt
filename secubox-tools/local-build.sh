@@ -1289,9 +1289,18 @@ embed_local_feed() {
         return 0
     fi
 
-    # Copy all built packages
+    # Copy all built packages EXCEPT secubox-app-bonus itself (avoid recursive inclusion)
     print_info "Copying packages to local feed..."
-    cp "$src_dir"/*.${pkg_ext} "$feed_dir/" 2>/dev/null || true
+    for pkg in "$src_dir"/*.${pkg_ext}; do
+        [[ -f "$pkg" ]] || continue
+        local basename=$(basename "$pkg")
+        # Skip secubox-app-bonus to avoid recursive inclusion (package including itself)
+        if [[ "$basename" =~ ^secubox-app-bonus_ ]]; then
+            print_info "Skipping $basename (avoid recursive inclusion)"
+            continue
+        fi
+        cp "$pkg" "$feed_dir/"
+    done
 
     # Clean old versions, keep only latest
     clean_old_ipk_versions "$feed_dir" "$pkg_ext"
@@ -1312,31 +1321,30 @@ embed_local_feed() {
 
     # Generate Packages index for opkg
     print_info "Generating Packages index..."
-    (
-        cd "$feed_dir"
-        for pkg in *.${pkg_ext}; do
-            [[ -f "$pkg" ]] || continue
+    rm -f "$feed_dir/Packages" "$feed_dir/Packages.gz"
 
-            # Extract control file from package
-            local control=""
-            if [[ "$pkg_ext" == "ipk" ]]; then
-                control=$(tar -xzOf "$pkg" ./control.tar.gz 2>/dev/null | tar -xzOf - ./control 2>/dev/null || \
-                          ar -p "$pkg" control.tar.gz 2>/dev/null | tar -xzOf - ./control 2>/dev/null || \
-                          ar -p "$pkg" control.tar.zst 2>/dev/null | zstd -d 2>/dev/null | tar -xOf - ./control 2>/dev/null || true)
-            fi
+    for pkg in "$feed_dir"/*.${pkg_ext}; do
+        [[ -f "$pkg" ]] || continue
+        local pkg_basename=$(basename "$pkg")
 
-            if [[ -n "$control" ]]; then
-                echo "$control"
-                echo "Filename: $pkg"
-                echo "Size: $(stat -c%s "$pkg")"
-                echo "SHA256sum: $(sha256sum "$pkg" | cut -d' ' -f1)"
-                echo ""
-            fi
-        done > Packages
+        # Extract control file from package (IPK is tar.gz containing control.tar.gz)
+        local control=""
+        if [[ "$pkg_ext" == "ipk" ]]; then
+            control=$(tar -xOzf "$pkg" control.tar.gz 2>/dev/null | tar -xOzf - ./control 2>/dev/null || true)
+        fi
 
-        # Create compressed index
-        gzip -k Packages 2>/dev/null || true
-    )
+        if [[ -n "$control" ]]; then
+            # Strip Source/SourceName/SourceDateEpoch/URL fields (cause opkg parsing issues)
+            echo "$control" | grep -v "^Source:\|^SourceName:\|^SourceDateEpoch:\|^URL:" >> "$feed_dir/Packages"
+            echo "Filename: $pkg_basename" >> "$feed_dir/Packages"
+            echo "Size: $(stat -c%s "$pkg")" >> "$feed_dir/Packages"
+            echo "" >> "$feed_dir/Packages"
+        fi
+    done
+
+    # Create compressed index
+    gzip -kf "$feed_dir/Packages" 2>/dev/null || true
+    print_info "Generated Packages with $(grep -c '^Package:' "$feed_dir/Packages" 2>/dev/null || echo 0) packages"
 
     # Strip libc dependency from all packages
     # The SDK adds libc to all packages, but for local feeds without libc
@@ -1655,6 +1663,106 @@ run_build_openwrt() {
     return 0
 }
 
+# Rebuild secubox-app-bonus with populated local feed
+rebuild_bonus_package() {
+    print_header "Rebuilding secubox-app-bonus with Local Feed"
+
+    local pkg_ext="${PKG_EXT:-ipk}"
+    local bonus_pkg="secubox-app-bonus"
+
+    # Sync the updated secubox-app-bonus to local-feed
+    print_info "Syncing secubox-app-bonus to local-feed..."
+    local src_dir="$SCRIPT_DIR/../package/secubox/$bonus_pkg"
+    local feed_dir="$SDK_DIR/../local-feed/$bonus_pkg"
+
+    if [[ ! -d "$src_dir" ]]; then
+        print_error "Source directory not found: $src_dir"
+        return 1
+    fi
+
+    rsync -av --delete "$src_dir/" "$feed_dir/"
+    print_success "Synced to local-feed"
+
+    # Update the feed and install the package
+    cd "$SDK_DIR"
+
+    print_info "Updating feeds..."
+    ./scripts/feeds update secubox
+    ./scripts/feeds install "$bonus_pkg" 2>&1 | grep -v "WARNING:" || true
+
+    # Enable and rebuild the package
+    echo "CONFIG_PACKAGE_${bonus_pkg}=m" >> .config
+    make defconfig FORCE=1 2>/dev/null
+
+    print_info "Building $bonus_pkg..."
+    local build_log="/tmp/build-${bonus_pkg}.log"
+
+    if timeout 600 make "package/feeds/secubox/${bonus_pkg}/compile" V=s -j1 NO_DEPS=1 FORCE=1 > "$build_log" 2>&1; then
+        local pkg_file=$(find bin -name "${bonus_pkg}*.${pkg_ext}" 2>/dev/null | head -1)
+
+        if [[ -n "$pkg_file" ]]; then
+            print_success "Built: $bonus_pkg"
+            echo "   → $pkg_file"
+
+            # Copy to build directory (but NOT into the feed - avoid recursive inclusion)
+            mkdir -p "$BUILD_DIR/$ARCH"
+            cp "$pkg_file" "$BUILD_DIR/$ARCH/"
+
+            # NOTE: We do NOT copy secubox-app-bonus into its own feed directory
+            # This would cause infinite size growth (package including itself)
+
+            # Regenerate Packages index (without secubox-app-bonus)
+            print_info "Regenerating Packages index..."
+            (
+                cd "$feed_src_dir"
+                rm -f Packages Packages.gz
+
+                for pkg in *.${pkg_ext}; do
+                    [[ -f "$pkg" ]] || continue
+
+                    local control=""
+                    if [[ "$pkg_ext" == "ipk" ]]; then
+                        control=$(tar -xzOf "$pkg" ./control.tar.gz 2>/dev/null | tar -xzOf - ./control 2>/dev/null || \
+                                  ar -p "$pkg" control.tar.gz 2>/dev/null | tar -xzOf - ./control 2>/dev/null || \
+                                  ar -p "$pkg" control.tar.zst 2>/dev/null | zstd -d 2>/dev/null | tar -xOf - ./control 2>/dev/null || true)
+                    fi
+
+                    if [[ -n "$control" ]]; then
+                        echo "$control"
+                        echo "Filename: $pkg"
+                        echo "Size: $(stat -c%s "$pkg")"
+                        echo ""
+                    fi
+                done > Packages
+
+                # Strip libc dependencies
+                sed -i \
+                    -e 's/^Depends: libc$/Depends:/g' \
+                    -e 's/^Depends: libc, /Depends: /g' \
+                    -e 's/, libc$//g' \
+                    -e 's/, libc,/,/g' \
+                    Packages
+
+                gzip -kf Packages 2>/dev/null || true
+                rm -f Packages.sig 2>/dev/null || true
+            )
+            print_success "Packages index regenerated"
+        else
+            print_warning "No .${pkg_ext} generated for $bonus_pkg"
+            tail -50 "$build_log"
+            return 1
+        fi
+    else
+        print_error "Build failed: $bonus_pkg"
+        tail -100 "$build_log"
+        return 1
+    fi
+
+    cd - > /dev/null
+    print_success "secubox-app-bonus rebuilt with local feed"
+    return 0
+}
+
 # Run build
 run_build() {
     local single_package="$1"
@@ -1673,10 +1781,11 @@ run_build() {
     build_packages "$single_package" || return 1
     collect_artifacts || return 1
     embed_local_feed || return 1
+    rebuild_bonus_package || return 1
 
     print_header "Build Complete!"
     print_success "Packages available in: $BUILD_DIR/$ARCH/"
-    print_info "Local feed embedded in secubox-app-bonus"
+    print_info "Local feed embedded in secubox-app-bonus with Packages index"
 
     return 0
 }
