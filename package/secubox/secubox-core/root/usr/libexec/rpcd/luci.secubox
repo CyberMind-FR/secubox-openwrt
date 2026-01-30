@@ -325,6 +325,37 @@ case "$1" in
 			json_add_string "filter" "string"
 		json_close_object
 
+		# P2P Hub - Collaborative catalog sharing
+		json_add_object "p2p_get_peers"
+		json_close_object
+
+		json_add_object "p2p_discover"
+		json_close_object
+
+		json_add_object "p2p_add_peer"
+			json_add_string "address" "string"
+			json_add_string "name" "string"
+		json_close_object
+
+		json_add_object "p2p_remove_peer"
+			json_add_string "peer_id" "string"
+		json_close_object
+
+		json_add_object "p2p_get_peer_catalog"
+			json_add_string "peer_id" "string"
+		json_close_object
+
+		json_add_object "p2p_share_catalog"
+			json_add_boolean "enabled" "boolean"
+		json_close_object
+
+		json_add_object "p2p_get_settings"
+		json_close_object
+
+		json_add_object "p2p_set_settings"
+			json_add_object "settings"
+		json_close_object
+
 	json_dump
 		;;
 
@@ -2270,6 +2301,234 @@ PACEOF
 			fi
 
 			json_close_array
+			json_dump
+			;;
+
+		# P2P Hub - Collaborative catalog sharing
+		p2p_get_peers)
+			P2P_PEERS_FILE="/var/lib/secubox/p2p/peers.json"
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			json_init
+			json_add_array "peers"
+
+			if [ -f "$P2P_PEERS_FILE" ]; then
+				idx=0
+				while true; do
+					peer_id=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].id" 2>/dev/null)
+					[ -z "$peer_id" ] && break
+
+					peer_name=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].name" 2>/dev/null)
+					peer_addr=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].address" 2>/dev/null)
+					peer_status=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].status" 2>/dev/null)
+					last_seen=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].last_seen" 2>/dev/null)
+
+					json_add_object ""
+					json_add_string "id" "$peer_id"
+					json_add_string "name" "${peer_name:-$peer_id}"
+					json_add_string "address" "$peer_addr"
+					json_add_string "status" "${peer_status:-unknown}"
+					json_add_string "last_seen" "$last_seen"
+					json_close_object
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			json_close_array
+			json_dump
+			;;
+
+		p2p_discover)
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			# mDNS discovery for SecuBox peers
+			discovered=0
+			json_init
+			json_add_array "peers"
+
+			# Try to discover using avahi-browse if available
+			if command -v avahi-browse >/dev/null 2>&1; then
+				avahi-browse -t -r _secubox._tcp 2>/dev/null | grep -E "^\+" | while read -r line; do
+					addr=$(echo "$line" | awk '{print $7}')
+					name=$(echo "$line" | awk '{print $4}')
+					if [ -n "$addr" ]; then
+						json_add_object ""
+						json_add_string "address" "$addr"
+						json_add_string "name" "$name"
+						json_add_string "discovered" "mdns"
+						json_close_object
+						discovered=$((discovered + 1))
+					fi
+				done
+			fi
+
+			json_close_array
+			json_add_int "discovered" "$discovered"
+			json_dump
+			;;
+
+		p2p_add_peer)
+			read -r input
+			address=$(echo "$input" | jsonfilter -e '@.address')
+			name=$(echo "$input" | jsonfilter -e '@.name')
+
+			P2P_PEERS_FILE="/var/lib/secubox/p2p/peers.json"
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			# Generate peer ID
+			peer_id="peer_$(echo "$address" | md5sum | cut -c1-8)"
+
+			# Initialize file if not exists
+			[ ! -f "$P2P_PEERS_FILE" ] && echo '{"peers":[]}' > "$P2P_PEERS_FILE"
+
+			# Add peer using jsonfilter/sed
+			timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+			tmp_file="${P2P_PEERS_FILE}.tmp"
+			{
+				echo '{"peers":['
+				# Existing peers
+				if [ -f "$P2P_PEERS_FILE" ]; then
+					jsonfilter -i "$P2P_PEERS_FILE" -e '@.peers[*]' 2>/dev/null | while read -r p; do
+						echo "$p,"
+					done
+				fi
+				# New peer
+				echo "{\"id\":\"$peer_id\",\"name\":\"$name\",\"address\":\"$address\",\"status\":\"added\",\"last_seen\":\"$timestamp\"}"
+				echo ']}'
+			} > "$tmp_file"
+			mv "$tmp_file" "$P2P_PEERS_FILE"
+
+			json_init
+			json_add_boolean "success" 1
+			json_add_string "peer_id" "$peer_id"
+			json_dump
+			;;
+
+		p2p_remove_peer)
+			read -r input
+			peer_id=$(echo "$input" | jsonfilter -e '@.peer_id')
+
+			P2P_PEERS_FILE="/var/lib/secubox/p2p/peers.json"
+
+			if [ -f "$P2P_PEERS_FILE" ] && [ -n "$peer_id" ]; then
+				# Filter out the peer
+				tmp_file="${P2P_PEERS_FILE}.tmp"
+				{
+					echo '{"peers":['
+					first=1
+					idx=0
+					while true; do
+						id=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].id" 2>/dev/null)
+						[ -z "$id" ] && break
+						if [ "$id" != "$peer_id" ]; then
+							[ "$first" -eq 0 ] && echo ","
+							jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx]" 2>/dev/null
+							first=0
+						fi
+						idx=$((idx + 1))
+					done
+					echo ']}'
+				} > "$tmp_file"
+				mv "$tmp_file" "$P2P_PEERS_FILE"
+			fi
+
+			json_init
+			json_add_boolean "success" 1
+			json_dump
+			;;
+
+		p2p_get_peer_catalog)
+			read -r input
+			peer_id=$(echo "$input" | jsonfilter -e '@.peer_id')
+
+			P2P_PEERS_FILE="/var/lib/secubox/p2p/peers.json"
+
+			# Get peer address
+			idx=0
+			peer_addr=""
+			while true; do
+				id=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].id" 2>/dev/null)
+				[ -z "$id" ] && break
+				if [ "$id" = "$peer_id" ]; then
+					peer_addr=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].address" 2>/dev/null)
+					break
+				fi
+				idx=$((idx + 1))
+			done
+
+			json_init
+
+			if [ -n "$peer_addr" ]; then
+				# Fetch catalog from peer
+				catalog=$(wget -q -O - "http://${peer_addr}:8080/api/catalog" 2>/dev/null)
+				if [ -n "$catalog" ]; then
+					echo "$catalog"
+					exit 0
+				fi
+			fi
+
+			json_add_array "apps"
+			json_close_array
+			json_add_string "error" "Could not fetch catalog from peer"
+			json_dump
+			;;
+
+		p2p_share_catalog)
+			read -r input
+			enabled=$(echo "$input" | jsonfilter -e '@.enabled')
+
+			P2P_CONFIG="/var/lib/secubox/p2p/config.json"
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			# Update config
+			echo "{\"sharing_enabled\":$enabled}" > "$P2P_CONFIG"
+
+			json_init
+			json_add_boolean "success" 1
+			json_add_boolean "sharing_enabled" "$enabled"
+			json_dump
+			;;
+
+		p2p_get_settings)
+			P2P_CONFIG="/var/lib/secubox/p2p/config.json"
+
+			json_init
+			if [ -f "$P2P_CONFIG" ]; then
+				sharing=$(jsonfilter -i "$P2P_CONFIG" -e '@.sharing_enabled' 2>/dev/null)
+				json_add_boolean "sharing_enabled" "${sharing:-0}"
+			else
+				json_add_boolean "sharing_enabled" 0
+			fi
+			json_add_string "hub_version" "1.0.0"
+			json_add_string "protocol" "http"
+			json_add_int "port" 8080
+			json_dump
+			;;
+
+		p2p_set_settings)
+			read -r input
+
+			P2P_CONFIG="/var/lib/secubox/p2p/config.json"
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			# Extract settings
+			sharing=$(echo "$input" | jsonfilter -e '@.settings.sharing_enabled' 2>/dev/null)
+
+			# Save config
+			{
+				echo '{'
+				echo "\"sharing_enabled\":${sharing:-false}"
+				echo '}'
+			} > "$P2P_CONFIG"
+
+			json_init
+			json_add_boolean "success" 1
 			json_dump
 			;;
 
