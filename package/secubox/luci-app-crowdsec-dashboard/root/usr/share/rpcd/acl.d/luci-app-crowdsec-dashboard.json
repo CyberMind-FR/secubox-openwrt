@@ -29,6 +29,7 @@
 					"capi_metrics",
 					"hub_available"
 				],
+				"uci": [ "get", "state", "configs" ],
 				"file": [ "read", "stat" ]
 			},
 			"uci": [ "crowdsec", "crowdsec-dashboard" ]
@@ -55,7 +56,8 @@
 					"reset_wizard",
 					"install_hub_item",
 					"remove_hub_item"
-				]
+				],
+				"uci": [ "set", "add", "delete", "rename", "order", "commit", "apply", "confirm", "rollback" ]
 			},
 			"uci": [ "crowdsec", "crowdsec-dashboard" ]
 		}
