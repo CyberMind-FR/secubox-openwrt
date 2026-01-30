@@ -22,7 +22,8 @@ Commands:
     fetch-release <pkg> Fetch latest release from GitHub/Gitea
     list                List packages in local feed
     info <pkg>          Show package info
-    install <pkg>       Install package from local feed (force-depends)
+    install <pkg>       Install package from local feed
+    install all         Install all packages from local feed
     clean               Remove old package versions
     serve               Start simple HTTP server for WAN access
     export              Export feed URL for sharing
@@ -211,6 +212,13 @@ package_info() {
 # Install package from local feed (handles dependencies)
 install_package() {
     local pkg="$1"
+
+    # Handle "all" - install all packages
+    if [ "$pkg" = "all" ]; then
+        install_all_packages
+        return $?
+    fi
+
     local ipk_pattern="$FEED_DIR/${pkg}_"*.ipk
 
     # Find the IPK file
@@ -240,6 +248,73 @@ install_package() {
 
     # Install the main package
     opkg install "$found"
+}
+
+# Install all packages from local feed
+install_all_packages() {
+    log "Installing all packages from local feed..."
+
+    local total=0
+    local installed=0
+    local failed=0
+
+    # First pass: install secubox-core and dependencies
+    for ipk in "$FEED_DIR"/secubox-core_*.ipk "$FEED_DIR"/secubox-app_*.ipk; do
+        [ -f "$ipk" ] || continue
+        total=$((total + 1))
+        local name=$(basename "$ipk" | sed 's/_[0-9].*//')
+        log "  Installing $name..."
+        if opkg install "$ipk" 2>/dev/null; then
+            installed=$((installed + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+
+    # Second pass: install secubox-app-* backend packages
+    for ipk in "$FEED_DIR"/secubox-app-*.ipk; do
+        [ -f "$ipk" ] || continue
+        # Skip secubox-app-bonus (meta package)
+        echo "$ipk" | grep -q "secubox-app-bonus" && continue
+        total=$((total + 1))
+        local name=$(basename "$ipk" | sed 's/_[0-9].*//')
+        log "  Installing $name..."
+        if opkg install "$ipk" 2>/dev/null; then
+            installed=$((installed + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+
+    # Third pass: install luci-app-* frontend packages
+    for ipk in "$FEED_DIR"/luci-app-*.ipk; do
+        [ -f "$ipk" ] || continue
+        total=$((total + 1))
+        local name=$(basename "$ipk" | sed 's/_[0-9].*//')
+        log "  Installing $name..."
+        if opkg install "$ipk" 2>/dev/null; then
+            installed=$((installed + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+
+    # Fourth pass: install luci-theme-* packages
+    for ipk in "$FEED_DIR"/luci-theme-*.ipk; do
+        [ -f "$ipk" ] || continue
+        total=$((total + 1))
+        local name=$(basename "$ipk" | sed 's/_[0-9].*//')
+        log "  Installing $name..."
+        if opkg install "$ipk" 2>/dev/null; then
+            installed=$((installed + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+
+    log ""
+    log "Installation complete: $installed/$total succeeded, $failed failed"
+    return 0
 }
 
 # Clean old versions

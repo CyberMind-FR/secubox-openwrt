@@ -21,7 +21,7 @@ define Package/secubox-core
   TITLE:=SecuBox Core Framework
   # No explicit dependencies - all required packages (rpcd, bash, jsonfilter, jq) are part of base OpenWrt
   # Declaring them causes opkg to pull from feed, triggering libc version conflicts
-  DEPENDS:=
+  DEPENDS:=jq jsonfilter
   PKGARCH:=all
 endef
 
