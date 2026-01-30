@@ -2,14 +2,19 @@
 	"luci-app-cdn-cache": {
 		"description": "Grant access to CDN Cache Dashboard",
 		"read": {
+			"file": {
+				"/var/cache/cdn-squid/*": ["list", "read"],
+				"/var/log/cdn-cache/*": ["list", "read"],
+				"/etc/squid/ssl/*": ["list", "read"]
+			},
 			"ubus": {
-				"luci.cdn-cache": ["status", "stats", "cache_list", "top_domains", "bandwidth_savings", "hit_ratio", "cache_size", "policies", "exclusions", "logs"]
+				"luci.cdn-cache": ["status", "stats", "cache_list", "top_domains", "bandwidth_savings", "hit_ratio", "cache_size", "policies", "exclusions", "logs", "get_ca_cert"]
 			},
 			"uci": ["cdn-cache"]
 		},
 		"write": {
 			"ubus": {
-				"luci.cdn-cache": ["set_enabled", "purge_cache", "purge_domain", "purge_expired", "preload_url", "add_policy", "remove_policy", "add_exclusion", "remove_exclusion", "clear_stats", "restart"]
+				"luci.cdn-cache": ["set_enabled", "purge_cache", "purge_domain", "purge_expired", "preload_url", "add_policy", "remove_policy", "add_exclusion", "remove_exclusion", "clear_stats", "restart", "set_ssl_bump"]
 			},
 			"uci": ["cdn-cache"]
 		}
