@@ -87,7 +87,7 @@ get_status() {
 
     # Core info
     json_add_string "version" "$SECUBOX_VERSION"
-    json_add_boolean "running" true
+    json_add_boolean "running" 1
     json_add_string "hostname" "$(uci -q get system.@system[0].hostname)"
     json_add_string "uptime" "$(uptime | awk '{print $3,$4}' | sed 's/,//')"
 
@@ -121,8 +121,8 @@ get_status() {
         # WAN status
         local wan_device=$(uci -q get network.wan.device || uci -q get network.wan.ifname || echo "unknown")
         local wan_ip=$(ip -4 addr show dev "$wan_device" 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1 | head -1 || echo "none")
-        local wan_connected="false"
-        [ -n "$wan_ip" ] && wan_connected="true"
+        local wan_connected=0
+        [ -n "$wan_ip" ] && wan_connected=1
 
         json_add_object "wan"
             json_add_boolean "connected" "$wan_connected"
@@ -138,7 +138,15 @@ get_status() {
         json_close_object
     json_close_object
 
-    # Installed modules
+    # Installed modules - use cached opkg status for performance
+    # Build installed packages cache from opkg status db (fast, no subprocess per pkg)
+    local OPKG_STATUS_DB="/usr/lib/opkg/status"
+    local installed_cache="/tmp/secubox-installed-status"
+    if [ -r "$OPKG_STATUS_DB" ]; then
+        # BusyBox-compatible: use grep instead of awk
+        grep "^Package: " "$OPKG_STATUS_DB" | cut -d' ' -f2 > "$installed_cache" 2>/dev/null
+    fi
+
     json_add_array "modules"
         if [ -d "/usr/share/secubox/plugins/catalog" ]; then
             for catalog in /usr/share/secubox/plugins/catalog/*.json; do
@@ -146,11 +154,12 @@ get_status() {
                 local module_id=$(jsonfilter -i "$catalog" -e '@.id' 2>/dev/null)
                 local module_name=$(jsonfilter -i "$catalog" -e '@.name' 2>/dev/null)
 
-                # Check if module package is installed
-                local packages=$(jsonfilter -i "$catalog" -e '@.packages[0]' 2>/dev/null)
-                local installed=false
-                if [ -n "$packages" ]; then
-                    opkg list-installed | grep -q "^$packages " && installed=true
+                # Check if module package is installed (try both paths for compatibility)
+                local packages=$(jsonfilter -i "$catalog" -e '@.packages.required[0]' 2>/dev/null)
+                [ -z "$packages" ] && packages=$(jsonfilter -i "$catalog" -e '@.packages[0]' 2>/dev/null)
+                local installed=0
+                if [ -n "$packages" ] && [ -f "$installed_cache" ]; then
+                    grep -q "^${packages}$" "$installed_cache" && installed=1
                 fi
 
                 json_add_object ""
@@ -161,6 +170,7 @@ get_status() {
             done
         fi
     json_close_array
+    rm -f "$installed_cache"
 
     json_dump
 }
@@ -170,10 +180,12 @@ run_health_check() {
     local overall_status="healthy"
     local warnings=0
     local errors=0
+    local details=""
 
     # Check CPU
     local cpu_threshold=$(uci -q get secubox.settings.health_threshold_cpu || echo "80")
     local cpu_load=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | tr -d ',' | cut -d'.' -f1)
+    local cpu_load_full=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | tr -d ',')
     if [ "$cpu_load" -gt "$cpu_threshold" ]; then
         log warn "CPU load high: $cpu_load"
         warnings=$((warnings + 1))
@@ -201,9 +213,37 @@ run_health_check() {
     fi
 
     # Check network connectivity
+    local network_ok=1
     if ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
         log warn "No internet connectivity"
         warnings=$((warnings + 1))
+        network_ok=0
+    fi
+
+    # Module health check - use appstore output for accurate data
+    local modules_installed=0
+    local modules_enabled=0
+    local modules_active=0
+    local modules_total=0
+    local modules_failed=0
+
+    if [ -x /usr/sbin/secubox-appstore ]; then
+        local appstore_out=$(/usr/sbin/secubox-appstore list --json 2>/dev/null)
+        if [ -n "$appstore_out" ]; then
+            modules_total=$(echo "$appstore_out" | jsonfilter -e '@.modules[*].id' 2>/dev/null | wc -l)
+            modules_installed=$(echo "$appstore_out" | jsonfilter -e '@.modules[*]' 2>/dev/null | grep '"installed": true' | wc -l)
+            modules_enabled=$(echo "$appstore_out" | jsonfilter -e '@.modules[*]' 2>/dev/null | grep '"enabled": true' | wc -l)
+            modules_active=$(echo "$appstore_out" | jsonfilter -e '@.modules[*]' 2>/dev/null | grep '"active": true' | wc -l)
+            # Count enabled but not active as potentially failed
+            modules_failed=$((modules_enabled - modules_active))
+            [ "$modules_failed" -lt 0 ] && modules_failed=0
+
+            if [ "$modules_failed" -gt 0 ]; then
+                log warn "$modules_failed enabled modules not running"
+                warnings=$((warnings + modules_failed))
+                [ "$overall_status" = "healthy" ] && overall_status="warning"
+            fi
+        fi
     fi
 
     # Output health status
@@ -212,6 +252,32 @@ run_health_check() {
     json_add_int "warnings" "$warnings"
     json_add_int "errors" "$errors"
     json_add_string "timestamp" "$(date -Iseconds)"
+
+    # Resource details
+    json_add_object "resources"
+        json_add_string "cpu_load" "$cpu_load_full"
+        json_add_int "cpu_threshold" "$cpu_threshold"
+        json_add_int "memory_percent" "$mem_percent"
+        json_add_int "memory_threshold" "$mem_threshold"
+        json_add_int "memory_total_mb" "$((mem_total / 1024))"
+        json_add_int "storage_percent" "$storage_percent"
+        json_add_int "storage_threshold" "$storage_threshold"
+    json_close_object
+
+    # Network status
+    json_add_object "network"
+        json_add_boolean "internet" "$network_ok"
+    json_close_object
+
+    # Module status
+    json_add_object "modules"
+        json_add_int "total" "$modules_total"
+        json_add_int "installed" "$modules_installed"
+        json_add_int "enabled" "$modules_enabled"
+        json_add_int "active" "$modules_active"
+        json_add_int "failed" "$modules_failed"
+    json_close_object
+
     json_dump
 
     return 0

@@ -54,16 +54,23 @@ method_status() {
 	stats_port=$(get_uci main stats_port 8404)
 	stats_enabled=$(get_uci main stats_enabled 1)
 
-	# Check container status
-	if lxc-info -n haproxy >/dev/null 2>&1; then
+	# Check container status - prefer lxc-info, fallback to pgrep lxc-start
+	if command -v lxc-info >/dev/null 2>&1; then
 		container_running=$(lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0")
 	else
-		container_running="0"
+		# Fallback: check if lxc-start is running for haproxy
+		container_running=$(pgrep -f "lxc-start.*-n haproxy" >/dev/null 2>&1 && echo "1" || echo "0")
 	fi
 
-	# Check HAProxy process in container
+	# Check HAProxy process
 	if [ "$container_running" = "1" ]; then
-		haproxy_running=$(lxc-attach -n haproxy -- pgrep haproxy >/dev/null 2>&1 && echo "1" || echo "0")
+		# Try lxc-attach first, fallback to direct pgrep
+		if command -v lxc-attach >/dev/null 2>&1; then
+			haproxy_running=$(lxc-attach -n haproxy -- pgrep haproxy >/dev/null 2>&1 && echo "1" || echo "0")
+		else
+			# Fallback: check if haproxy process exists (it runs in container but visible from host)
+			haproxy_running=$(pgrep -f "haproxy.*haproxy.cfg" >/dev/null 2>&1 && echo "1" || echo "0")
+		fi
 	else
 		haproxy_running="0"
 	fi
@@ -81,9 +88,16 @@ method_status() {
 
 # Get stats
 method_get_stats() {
-	local stats_output
+	local stats_output container_running
 
-	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+	# Check if container is running (use same detection as status method)
+	if command -v lxc-info >/dev/null 2>&1; then
+		container_running=$(lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING" && echo "1" || echo "0")
+	else
+		container_running=$(pgrep -f "lxc-start.*-n haproxy" >/dev/null 2>&1 && echo "1" || echo "0")
+	fi
+
+	if [ "$container_running" = "1" ]; then
 		# Get stats via HAProxy socket
 		stats_output=$(run_ctl stats 2>/dev/null)
 		if [ -n "$stats_output" ]; then

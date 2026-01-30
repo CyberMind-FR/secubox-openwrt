@@ -163,6 +163,11 @@ case "$1" in
 		json_add_object "get_alerts"
 		json_close_object
 
+		# Quick actions
+		json_add_object "quick_action"
+			json_add_string "action" "string"
+		json_close_object
+
 		# State management
 		json_add_object "get_component_state"
 			json_add_string "component_id" "string"
@@ -980,7 +985,70 @@ case "$1" in
 				json_dump
 				;;
 
+			quick_action)
+				read -r input
+				action=$(echo "$input" | jsonfilter -e '@.action')
+				json_init
 
+				case "$action" in
+					restart_services)
+						# Restart all SecuBox services
+						for svc in haproxy crowdsec tor netifyd; do
+							if [ -x "/etc/init.d/$svc" ]; then
+								/etc/init.d/$svc restart 2>/dev/null &
+							elif [ -x "/usr/sbin/${svc}ctl" ]; then
+								/usr/sbin/${svc}ctl restart 2>/dev/null &
+							fi
+						done
+						json_add_boolean "success" 1
+						json_add_string "message" "Services restart initiated"
+						;;
+					restart_*)
+						# Restart specific service: restart_haproxy, restart_crowdsec, etc.
+						svc_name="${action#restart_}"
+						if [ -x "/etc/init.d/$svc_name" ]; then
+							/etc/init.d/$svc_name restart 2>/dev/null
+							json_add_boolean "success" 1
+							json_add_string "message" "Service $svc_name restarted"
+						elif [ -x "/usr/sbin/${svc_name}ctl" ]; then
+							/usr/sbin/${svc_name}ctl restart 2>/dev/null
+							json_add_boolean "success" 1
+							json_add_string "message" "Service $svc_name restarted"
+						else
+							json_add_boolean "success" 0
+							json_add_string "message" "Service $svc_name not found"
+						fi
+						;;
+					update_packages)
+						opkg update 2>/dev/null &
+						json_add_boolean "success" 1
+						json_add_string "message" "Package update initiated"
+						;;
+					view_logs)
+						# Return recent system logs
+						json_add_boolean "success" 1
+						json_add_string "redirect" "/cgi-bin/luci/admin/status/syslog"
+						;;
+					export_config)
+						# Export configuration
+						if [ -x "/usr/sbin/secubox-recovery" ]; then
+							snapshot_name="export-$(date +%Y%m%d-%H%M%S)"
+							/usr/sbin/secubox-recovery snapshot "$snapshot_name" 2>/dev/null
+							json_add_boolean "success" 1
+							json_add_string "message" "Configuration exported as $snapshot_name"
+						else
+							json_add_boolean "success" 0
+							json_add_string "message" "Recovery system not available"
+						fi
+						;;
+					*)
+						json_add_boolean "success" 0
+						json_add_string "message" "Unknown action: $action"
+						;;
+				esac
+
+				json_dump
+				;;
 
 			getLogs)
 				read -r input
