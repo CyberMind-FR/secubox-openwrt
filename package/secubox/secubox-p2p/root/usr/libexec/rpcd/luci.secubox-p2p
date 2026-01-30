@@ -27,7 +27,17 @@ case "$1" in
 	"set_haproxy_config": { "config": "object" },
 	"get_registry": {},
 	"register_url": { "short_url": "string", "target_url": "string" },
-	"health_check": {}
+	"health_check": {},
+	"get_gitea_config": {},
+	"set_gitea_config": { "config": "object" },
+	"create_gitea_repo": { "name": "string", "description": "string", "private": true, "init_readme": true },
+	"list_gitea_repos": {},
+	"get_gitea_commits": { "limit": 20 },
+	"push_gitea_backup": { "message": "string", "components": "object" },
+	"pull_gitea_backup": { "commit_sha": "string" },
+	"create_local_backup": { "name": "string", "components": "object" },
+	"list_local_backups": {},
+	"restore_local_backup": { "backup_id": "string" }
 }
 EOF
 		;;
@@ -217,6 +227,389 @@ EOF
 	"haproxy": $(uci -q get secubox-p2p.haproxy.enabled || echo 0)
 }
 EOF
+				;;
+
+			get_gitea_config)
+				cat <<EOF
+{
+	"enabled": $(uci -q get secubox-p2p.gitea.enabled || echo 0),
+	"server_url": "$(uci -q get secubox-p2p.gitea.server_url || echo "")",
+	"repo_name": "$(uci -q get secubox-p2p.gitea.repo_name || echo "secubox-backup")",
+	"repo_owner": "$(uci -q get secubox-p2p.gitea.repo_owner || echo "")",
+	"auto_backup": $(uci -q get secubox-p2p.gitea.auto_backup || echo 0),
+	"backup_interval": $(uci -q get secubox-p2p.gitea.backup_interval || echo 3600),
+	"backup_on_change": $(uci -q get secubox-p2p.gitea.backup_on_change || echo 1),
+	"include_configs": $(uci -q get secubox-p2p.gitea.include_configs || echo 1),
+	"include_packages": $(uci -q get secubox-p2p.gitea.include_packages || echo 1),
+	"include_scripts": $(uci -q get secubox-p2p.gitea.include_scripts || echo 1),
+	"has_token": $([ -n "$(uci -q get secubox-p2p.gitea.access_token)" ] && echo "true" || echo "false")
+}
+EOF
+				;;
+
+			set_gitea_config)
+				read input
+				server_url=$(echo "$input" | jsonfilter -e '@.config.server_url' 2>/dev/null)
+				repo_name=$(echo "$input" | jsonfilter -e '@.config.repo_name' 2>/dev/null)
+				repo_owner=$(echo "$input" | jsonfilter -e '@.config.repo_owner' 2>/dev/null)
+				access_token=$(echo "$input" | jsonfilter -e '@.config.access_token' 2>/dev/null)
+				enabled=$(echo "$input" | jsonfilter -e '@.config.enabled' 2>/dev/null)
+				auto_backup=$(echo "$input" | jsonfilter -e '@.config.auto_backup' 2>/dev/null)
+				backup_interval=$(echo "$input" | jsonfilter -e '@.config.backup_interval' 2>/dev/null)
+
+				[ -n "$server_url" ] && uci set secubox-p2p.gitea.server_url="$server_url"
+				[ -n "$repo_name" ] && uci set secubox-p2p.gitea.repo_name="$repo_name"
+				[ -n "$repo_owner" ] && uci set secubox-p2p.gitea.repo_owner="$repo_owner"
+				[ -n "$access_token" ] && uci set secubox-p2p.gitea.access_token="$access_token"
+				[ -n "$enabled" ] && uci set secubox-p2p.gitea.enabled="$enabled"
+				[ -n "$auto_backup" ] && uci set secubox-p2p.gitea.auto_backup="$auto_backup"
+				[ -n "$backup_interval" ] && uci set secubox-p2p.gitea.backup_interval="$backup_interval"
+				uci commit secubox-p2p
+
+				echo '{"success":true}'
+				;;
+
+			create_gitea_repo)
+				read input
+				repo_name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+				description=$(echo "$input" | jsonfilter -e '@.description' 2>/dev/null)
+				is_private=$(echo "$input" | jsonfilter -e '@.private' 2>/dev/null)
+				init_readme=$(echo "$input" | jsonfilter -e '@.init_readme' 2>/dev/null)
+
+				server_url=$(uci -q get secubox-p2p.gitea.server_url)
+				access_token=$(uci -q get secubox-p2p.gitea.access_token)
+
+				if [ -z "$server_url" ] || [ -z "$access_token" ]; then
+					echo '{"success":false,"error":"Gitea server URL and access token required"}'
+					exit 0
+				fi
+
+				if [ -z "$repo_name" ]; then
+					echo '{"success":false,"error":"Repository name required"}'
+					exit 0
+				fi
+
+				# Create repo via Gitea API
+				api_url="${server_url}/api/v1/user/repos"
+				[ "$is_private" = "true" ] && private_val="true" || private_val="false"
+				[ "$init_readme" = "true" ] && readme_val="true" || readme_val="false"
+
+				response=$(curl -s -X POST "$api_url" \
+					-H "Authorization: token $access_token" \
+					-H "Content-Type: application/json" \
+					-d "{\"name\":\"$repo_name\",\"description\":\"$description\",\"private\":$private_val,\"auto_init\":$readme_val}" \
+					2>/dev/null)
+
+				if echo "$response" | jsonfilter -e '@.id' >/dev/null 2>&1; then
+					clone_url=$(echo "$response" | jsonfilter -e '@.clone_url' 2>/dev/null)
+					html_url=$(echo "$response" | jsonfilter -e '@.html_url' 2>/dev/null)
+					owner=$(echo "$response" | jsonfilter -e '@.owner.login' 2>/dev/null)
+
+					# Save repo config
+					uci set secubox-p2p.gitea.repo_name="$repo_name"
+					uci set secubox-p2p.gitea.repo_owner="$owner"
+					uci set secubox-p2p.gitea.enabled=1
+					uci commit secubox-p2p
+
+					cat <<EOF
+{
+	"success": true,
+	"repo_name": "$repo_name",
+	"clone_url": "$clone_url",
+	"html_url": "$html_url",
+	"owner": "$owner"
+}
+EOF
+				else
+					error_msg=$(echo "$response" | jsonfilter -e '@.message' 2>/dev/null || echo "Failed to create repository")
+					echo "{\"success\":false,\"error\":\"$error_msg\"}"
+				fi
+				;;
+
+			list_gitea_repos)
+				server_url=$(uci -q get secubox-p2p.gitea.server_url)
+				access_token=$(uci -q get secubox-p2p.gitea.access_token)
+
+				if [ -z "$server_url" ] || [ -z "$access_token" ]; then
+					echo '{"success":false,"repos":[],"error":"Gitea not configured"}'
+					exit 0
+				fi
+
+				response=$(curl -s "${server_url}/api/v1/user/repos" \
+					-H "Authorization: token $access_token" \
+					2>/dev/null)
+
+				if [ -n "$response" ]; then
+					echo "{\"success\":true,\"repos\":$response}"
+				else
+					echo '{"success":false,"repos":[],"error":"Failed to fetch repositories"}'
+				fi
+				;;
+
+			get_gitea_commits)
+				read input
+				limit=$(echo "$input" | jsonfilter -e '@.limit' 2>/dev/null || echo "20")
+
+				server_url=$(uci -q get secubox-p2p.gitea.server_url)
+				access_token=$(uci -q get secubox-p2p.gitea.access_token)
+				repo_owner=$(uci -q get secubox-p2p.gitea.repo_owner)
+				repo_name=$(uci -q get secubox-p2p.gitea.repo_name)
+
+				if [ -z "$server_url" ] || [ -z "$access_token" ] || [ -z "$repo_owner" ] || [ -z "$repo_name" ]; then
+					echo '{"success":false,"commits":[],"error":"Gitea repository not configured"}'
+					exit 0
+				fi
+
+				response=$(curl -s "${server_url}/api/v1/repos/${repo_owner}/${repo_name}/commits?limit=${limit}" \
+					-H "Authorization: token $access_token" \
+					2>/dev/null)
+
+				if [ -n "$response" ] && echo "$response" | jsonfilter -e '@[0].sha' >/dev/null 2>&1; then
+					echo "{\"success\":true,\"commits\":$response}"
+				else
+					echo '{"success":false,"commits":[],"error":"Failed to fetch commits or repository empty"}'
+				fi
+				;;
+
+			push_gitea_backup)
+				read input
+				message=$(echo "$input" | jsonfilter -e '@.message' 2>/dev/null || echo "SecuBox backup $(date +%Y%m%d-%H%M%S)")
+				components=$(echo "$input" | jsonfilter -e '@.components' 2>/dev/null)
+
+				server_url=$(uci -q get secubox-p2p.gitea.server_url)
+				access_token=$(uci -q get secubox-p2p.gitea.access_token)
+				repo_owner=$(uci -q get secubox-p2p.gitea.repo_owner)
+				repo_name=$(uci -q get secubox-p2p.gitea.repo_name)
+
+				if [ -z "$server_url" ] || [ -z "$access_token" ] || [ -z "$repo_owner" ] || [ -z "$repo_name" ]; then
+					echo '{"success":false,"error":"Gitea repository not configured"}'
+					exit 0
+				fi
+
+				# Create backup directory
+				backup_dir="/tmp/secubox-gitea-backup-$$"
+				mkdir -p "$backup_dir"
+
+				# Collect configs
+				if [ "$(uci -q get secubox-p2p.gitea.include_configs)" = "1" ]; then
+					mkdir -p "$backup_dir/configs"
+					cp -r /etc/config/secubox* "$backup_dir/configs/" 2>/dev/null
+					cp -r /etc/config/network "$backup_dir/configs/" 2>/dev/null
+					cp -r /etc/config/firewall "$backup_dir/configs/" 2>/dev/null
+					cp -r /etc/config/wireless "$backup_dir/configs/" 2>/dev/null
+				fi
+
+				# Collect package list
+				if [ "$(uci -q get secubox-p2p.gitea.include_packages)" = "1" ]; then
+					mkdir -p "$backup_dir/packages"
+					opkg list-installed > "$backup_dir/packages/installed.txt" 2>/dev/null
+				fi
+
+				# Collect scripts
+				if [ "$(uci -q get secubox-p2p.gitea.include_scripts)" = "1" ]; then
+					mkdir -p "$backup_dir/scripts"
+					cp -r /etc/secubox/scripts/* "$backup_dir/scripts/" 2>/dev/null
+				fi
+
+				# Create manifest
+				cat > "$backup_dir/manifest.json" <<MANIFEST
+{
+	"timestamp": "$(date -Iseconds)",
+	"hostname": "$(uci -q get system.@system[0].hostname || echo "secubox")",
+	"version": "$(cat /etc/secubox-version 2>/dev/null || echo "unknown")",
+	"message": "$message"
+}
+MANIFEST
+
+				# Push each file via Gitea API
+				pushed_files=0
+				api_base="${server_url}/api/v1/repos/${repo_owner}/${repo_name}/contents"
+
+				for file in $(find "$backup_dir" -type f); do
+					rel_path="${file#$backup_dir/}"
+					content=$(base64 "$file" | tr -d '\n')
+
+					# Check if file exists (to update vs create)
+					existing=$(curl -s "${api_base}/${rel_path}" \
+						-H "Authorization: token $access_token" 2>/dev/null)
+					sha=$(echo "$existing" | jsonfilter -e '@.sha' 2>/dev/null)
+
+					if [ -n "$sha" ]; then
+						# Update existing file
+						curl -s -X PUT "${api_base}/${rel_path}" \
+							-H "Authorization: token $access_token" \
+							-H "Content-Type: application/json" \
+							-d "{\"message\":\"$message\",\"content\":\"$content\",\"sha\":\"$sha\"}" \
+							>/dev/null 2>&1
+					else
+						# Create new file
+						curl -s -X POST "${api_base}/${rel_path}" \
+							-H "Authorization: token $access_token" \
+							-H "Content-Type: application/json" \
+							-d "{\"message\":\"$message\",\"content\":\"$content\"}" \
+							>/dev/null 2>&1
+					fi
+					pushed_files=$((pushed_files + 1))
+				done
+
+				# Cleanup
+				rm -rf "$backup_dir"
+
+				echo "{\"success\":true,\"files_pushed\":$pushed_files,\"message\":\"$message\"}"
+				;;
+
+			pull_gitea_backup)
+				read input
+				commit_sha=$(echo "$input" | jsonfilter -e '@.commit_sha' 2>/dev/null)
+
+				server_url=$(uci -q get secubox-p2p.gitea.server_url)
+				access_token=$(uci -q get secubox-p2p.gitea.access_token)
+				repo_owner=$(uci -q get secubox-p2p.gitea.repo_owner)
+				repo_name=$(uci -q get secubox-p2p.gitea.repo_name)
+
+				if [ -z "$server_url" ] || [ -z "$access_token" ] || [ -z "$repo_owner" ] || [ -z "$repo_name" ]; then
+					echo '{"success":false,"error":"Gitea repository not configured"}'
+					exit 0
+				fi
+
+				# Get file tree at commit
+				ref_param=""
+				[ -n "$commit_sha" ] && ref_param="?ref=$commit_sha"
+
+				tree=$(curl -s "${server_url}/api/v1/repos/${repo_owner}/${repo_name}/contents${ref_param}" \
+					-H "Authorization: token $access_token" 2>/dev/null)
+
+				if [ -z "$tree" ]; then
+					echo '{"success":false,"error":"Failed to fetch repository contents"}'
+					exit 0
+				fi
+
+				# Create restore directory
+				restore_dir="/tmp/secubox-restore-$$"
+				mkdir -p "$restore_dir"
+				restored_files=0
+
+				# Download configs directory
+				configs=$(curl -s "${server_url}/api/v1/repos/${repo_owner}/${repo_name}/contents/configs${ref_param}" \
+					-H "Authorization: token $access_token" 2>/dev/null)
+
+				if echo "$configs" | jsonfilter -e '@[0].name' >/dev/null 2>&1; then
+					mkdir -p "$restore_dir/configs"
+					for file_info in $(echo "$configs" | jsonfilter -e '@[*].name'); do
+						file_content=$(curl -s "${server_url}/api/v1/repos/${repo_owner}/${repo_name}/contents/configs/${file_info}${ref_param}" \
+							-H "Authorization: token $access_token" 2>/dev/null)
+						content_b64=$(echo "$file_content" | jsonfilter -e '@.content' 2>/dev/null)
+						if [ -n "$content_b64" ]; then
+							echo "$content_b64" | base64 -d > "$restore_dir/configs/$file_info"
+							restored_files=$((restored_files + 1))
+						fi
+					done
+
+					# Apply configs (with backup)
+					if [ -d "$restore_dir/configs" ]; then
+						cp -r /etc/config /etc/config.bak.$(date +%Y%m%d%H%M%S) 2>/dev/null
+						for cfg in "$restore_dir"/configs/secubox*; do
+							[ -f "$cfg" ] && cp "$cfg" /etc/config/ 2>/dev/null
+						done
+					fi
+				fi
+
+				# Cleanup
+				rm -rf "$restore_dir"
+
+				echo "{\"success\":true,\"files_restored\":$restored_files,\"commit\":\"${commit_sha:-HEAD}\"}"
+				;;
+
+			create_local_backup)
+				read input
+				backup_name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null || echo "backup-$(date +%Y%m%d-%H%M%S)")
+
+				backup_base=$(uci -q get secubox-p2p.backup.backup_dir || echo "/etc/secubox/backups")
+				mkdir -p "$backup_base"
+
+				backup_dir="$backup_base/$backup_name"
+				mkdir -p "$backup_dir"
+
+				# Backup configs
+				mkdir -p "$backup_dir/configs"
+				cp -r /etc/config/secubox* "$backup_dir/configs/" 2>/dev/null
+				cp /etc/config/network "$backup_dir/configs/" 2>/dev/null
+				cp /etc/config/firewall "$backup_dir/configs/" 2>/dev/null
+				cp /etc/config/wireless "$backup_dir/configs/" 2>/dev/null
+
+				# Backup package list
+				opkg list-installed > "$backup_dir/packages.txt" 2>/dev/null
+
+				# Create manifest
+				cat > "$backup_dir/manifest.json" <<MANIFEST
+{
+	"name": "$backup_name",
+	"timestamp": "$(date -Iseconds)",
+	"hostname": "$(uci -q get system.@system[0].hostname || echo "secubox")",
+	"version": "$(cat /etc/secubox-version 2>/dev/null || echo "unknown")"
+}
+MANIFEST
+
+				# Cleanup old backups
+				max_backups=$(uci -q get secubox-p2p.backup.max_backups || echo 10)
+				if [ "$(uci -q get secubox-p2p.backup.auto_cleanup)" = "1" ]; then
+					ls -1dt "$backup_base"/*/ 2>/dev/null | tail -n +$((max_backups + 1)) | xargs rm -rf 2>/dev/null
+				fi
+
+				backup_size=$(du -sh "$backup_dir" 2>/dev/null | cut -f1)
+				echo "{\"success\":true,\"backup_id\":\"$backup_name\",\"path\":\"$backup_dir\",\"size\":\"$backup_size\"}"
+				;;
+
+			list_local_backups)
+				backup_base=$(uci -q get secubox-p2p.backup.backup_dir || echo "/etc/secubox/backups")
+				mkdir -p "$backup_base"
+
+				echo '{"success":true,"backups":['
+				first=1
+				for dir in "$backup_base"/*/; do
+					[ -d "$dir" ] || continue
+					backup_id=$(basename "$dir")
+					if [ -f "$dir/manifest.json" ]; then
+						timestamp=$(jsonfilter -i "$dir/manifest.json" -e '@.timestamp' 2>/dev/null || echo "")
+						hostname=$(jsonfilter -i "$dir/manifest.json" -e '@.hostname' 2>/dev/null || echo "")
+					else
+						timestamp=""
+						hostname=""
+					fi
+					size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+					[ $first -eq 1 ] || echo ","
+					first=0
+					echo "{\"id\":\"$backup_id\",\"timestamp\":\"$timestamp\",\"hostname\":\"$hostname\",\"size\":\"$size\"}"
+				done
+				echo ']}'
+				;;
+
+			restore_local_backup)
+				read input
+				backup_id=$(echo "$input" | jsonfilter -e '@.backup_id' 2>/dev/null)
+
+				backup_base=$(uci -q get secubox-p2p.backup.backup_dir || echo "/etc/secubox/backups")
+				backup_dir="$backup_base/$backup_id"
+
+				if [ ! -d "$backup_dir" ]; then
+					echo '{"success":false,"error":"Backup not found"}'
+					exit 0
+				fi
+
+				# Create pre-restore backup
+				pre_restore="$backup_base/pre-restore-$(date +%Y%m%d-%H%M%S)"
+				mkdir -p "$pre_restore/configs"
+				cp -r /etc/config/secubox* "$pre_restore/configs/" 2>/dev/null
+
+				# Restore configs
+				restored=0
+				if [ -d "$backup_dir/configs" ]; then
+					for cfg in "$backup_dir"/configs/*; do
+						[ -f "$cfg" ] && cp "$cfg" /etc/config/ 2>/dev/null && restored=$((restored + 1))
+					done
+				fi
+
+				echo "{\"success\":true,\"files_restored\":$restored,\"pre_restore_backup\":\"$pre_restore\"}"
 				;;
 
 			*)

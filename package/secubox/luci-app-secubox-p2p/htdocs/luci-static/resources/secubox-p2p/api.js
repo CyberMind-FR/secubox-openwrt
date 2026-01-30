@@ -213,6 +213,75 @@ var callSyncWGMirror = rpc.declare({
 	expect: { success: false, synced_peers: 0 }
 });
 
+// Gitea Integration
+var callGetGiteaConfig = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'get_gitea_config',
+	expect: {}
+});
+
+var callSetGiteaConfig = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'set_gitea_config',
+	params: ['config'],
+	expect: { success: false }
+});
+
+var callCreateGiteaRepo = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'create_gitea_repo',
+	params: ['name', 'description', 'private', 'init_readme'],
+	expect: { success: false }
+});
+
+var callListGiteaRepos = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'list_gitea_repos',
+	expect: { success: false, repos: [] }
+});
+
+var callGetGiteaCommits = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'get_gitea_commits',
+	params: ['limit'],
+	expect: { success: false, commits: [] }
+});
+
+var callPushGiteaBackup = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'push_gitea_backup',
+	params: ['message', 'components'],
+	expect: { success: false }
+});
+
+var callPullGiteaBackup = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'pull_gitea_backup',
+	params: ['commit_sha'],
+	expect: { success: false }
+});
+
+// Local Backup
+var callCreateLocalBackup = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'create_local_backup',
+	params: ['name', 'components'],
+	expect: { success: false }
+});
+
+var callListLocalBackups = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'list_local_backups',
+	expect: { success: false, backups: [] }
+});
+
+var callRestoreLocalBackup = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'restore_local_backup',
+	params: ['backup_id'],
+	expect: { success: false }
+});
+
 return baseclass.extend({
 	// Peers
 	getPeers: function() { return callGetPeers(); },
@@ -269,5 +338,21 @@ return baseclass.extend({
 	// WireGuard Mirror
 	getWGMirrorConfig: function() { return callGetWGMirrorConfig(); },
 	setWGMirrorConfig: function(config) { return callSetWGMirrorConfig(config); },
-	syncWGMirror: function() { return callSyncWGMirror(); }
+	syncWGMirror: function() { return callSyncWGMirror(); },
+
+	// Gitea Integration
+	getGiteaConfig: function() { return callGetGiteaConfig(); },
+	setGiteaConfig: function(config) { return callSetGiteaConfig(config); },
+	createGiteaRepo: function(name, description, isPrivate, initReadme) {
+		return callCreateGiteaRepo(name, description, isPrivate, initReadme);
+	},
+	listGiteaRepos: function() { return callListGiteaRepos(); },
+	getGiteaCommits: function(limit) { return callGetGiteaCommits(limit || 20); },
+	pushGiteaBackup: function(message, components) { return callPushGiteaBackup(message, components); },
+	pullGiteaBackup: function(commitSha) { return callPullGiteaBackup(commitSha); },
+
+	// Local Backup
+	createLocalBackup: function(name, components) { return callCreateLocalBackup(name, components); },
+	listLocalBackups: function() { return callListLocalBackups(); },
+	restoreLocalBackup: function(backupId) { return callRestoreLocalBackup(backupId); }
 });

@@ -144,7 +144,9 @@ return view.extend({
 			P2PAPI.getWireGuardConfig().catch(function() { return {}; }),
 			P2PAPI.getHAProxyConfig().catch(function() { return {}; }),
 			P2PAPI.getRegistry().catch(function() { return {}; }),
-			P2PAPI.healthCheck().catch(function() { return {}; })
+			P2PAPI.healthCheck().catch(function() { return {}; }),
+			P2PAPI.getGiteaConfig().catch(function() { return {}; }),
+			P2PAPI.listLocalBackups().catch(function() { return { backups: [] }; })
 		]).then(function(results) {
 			self.peers = results[0].peers || [];
 			self.settings = results[1] || {};
@@ -156,10 +158,38 @@ return view.extend({
 			self.registry = results[7] || {};
 			self.health = results[8] || {};
 
+			// Populate Gitea config from backend
+			var giteaCfg = results[9] || {};
+			if (giteaCfg.server_url) self.giteaConfig.serverUrl = giteaCfg.server_url;
+			if (giteaCfg.repo_name) self.giteaConfig.repoName = giteaCfg.repo_name;
+			if (giteaCfg.repo_owner) self.giteaConfig.repoOwner = giteaCfg.repo_owner;
+			if (giteaCfg.enabled) self.giteaConfig.enabled = !!giteaCfg.enabled;
+			if (giteaCfg.has_token) self.giteaConfig.hasToken = giteaCfg.has_token;
+
+			// Populate local backups
+			var backupList = results[10] || {};
+			if (backupList.backups) self.meshBackupConfig.snapshots = backupList.backups;
+
 			// Populate hubRegistry from API
 			if (self.registry.base_url) self.hubRegistry.baseUrl = self.registry.base_url;
 			if (self.registry.cache_enabled !== undefined) self.hubRegistry.cacheEnabled = self.registry.cache_enabled;
 			if (self.registry.cache_ttl) self.hubRegistry.cacheTTL = self.registry.cache_ttl;
+
+			// If Gitea is configured, fetch commits
+			if (self.giteaConfig.enabled && self.giteaConfig.serverUrl) {
+				P2PAPI.getGiteaCommits(20).then(function(result) {
+					if (result.success && result.commits) {
+						self.giteaConfig.commits = result.commits.map(function(c) {
+							return {
+								sha: c.sha,
+								message: c.commit ? c.commit.message : c.message,
+								date: c.commit ? new Date(c.commit.author.date).getTime() : Date.now()
+							};
+						});
+						self.giteaConfig.lastFetch = Date.now();
+					}
+				}).catch(function() {});
+			}
 
 			return {};
 		});
@@ -1428,19 +1458,34 @@ return view.extend({
 
 	createMeshBackup: function() {
 		var self = this;
-		var snapshot = {
-			id: 'snap-' + Date.now(),
-			timestamp: Date.now(),
-			targets: this.meshBackupConfig.targets.slice(),
-			peers: this.peers.length,
-			services: this.services.length
-		};
-		this.meshBackupConfig.snapshots.unshift(snapshot);
-		if (this.meshBackupConfig.snapshots.length > this.meshBackupConfig.maxSnapshots) {
-			this.meshBackupConfig.snapshots.pop();
-		}
-		this.meshBackupConfig.lastBackup = Date.now();
-		ui.addNotification(null, E('p', '📸 Mesh backup created: ' + snapshot.id), 'info');
+		var backupName = 'backup-' + new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+
+		ui.addNotification(null, E('p', '📸 Creating backup...'), 'info');
+
+		P2PAPI.createLocalBackup(backupName, {
+			configs: true,
+			packages: true,
+			scripts: true
+		}).then(function(result) {
+			if (result.success) {
+				// Update local snapshots list
+				self.meshBackupConfig.snapshots.unshift({
+					id: result.backup_id,
+					timestamp: Date.now(),
+					size: result.size,
+					path: result.path
+				});
+				if (self.meshBackupConfig.snapshots.length > self.meshBackupConfig.maxSnapshots) {
+					self.meshBackupConfig.snapshots.pop();
+				}
+				self.meshBackupConfig.lastBackup = Date.now();
+				ui.addNotification(null, E('p', '✅ Backup created: ' + result.backup_id + ' (' + result.size + ')'), 'success');
+			} else {
+				ui.addNotification(null, E('p', '❌ Backup failed: ' + (result.error || 'Unknown error')), 'error');
+			}
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Backup error: ' + err.message), 'error');
+		});
 	},
 
 	showBackupHistoryModal: function() {
@@ -1479,7 +1524,21 @@ return view.extend({
 	},
 
 	restoreBackup: function(snapId) {
+		var self = this;
 		ui.addNotification(null, E('p', '♻️ Restoring backup ' + snapId + '...'), 'info');
+
+		P2PAPI.restoreLocalBackup(snapId).then(function(result) {
+			if (result.success) {
+				ui.addNotification(null, E('p', '✅ Restored ' + result.files_restored + ' files from ' + snapId), 'success');
+				if (result.pre_restore_backup) {
+					ui.addNotification(null, E('p', '💾 Pre-restore backup saved: ' + result.pre_restore_backup), 'info');
+				}
+			} else {
+				ui.addNotification(null, E('p', '❌ Restore failed: ' + (result.error || 'Unknown error')), 'error');
+			}
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Restore error: ' + err.message), 'error');
+		});
 	},
 
 	deleteBackup: function(snapId) {
@@ -1548,29 +1607,72 @@ return view.extend({
 
 	fetchGiteaCommits: function() {
 		var self = this;
-		if (!this.giteaConfig.serverUrl) {
+		if (!this.giteaConfig.enabled) {
 			ui.addNotification(null, E('p', 'Configure Gitea server first'), 'warning');
 			return;
 		}
 		ui.addNotification(null, E('p', '🔄 Fetching commits from Gitea...'), 'info');
-		// Simulate fetch
-		setTimeout(function() {
-			self.giteaConfig.commits = [
-				{ sha: 'abc1234', message: 'feat(p2p): Add mesh backup', date: Date.now() - 3600000 },
-				{ sha: 'def5678', message: 'fix(dns): Bridge sync issue', date: Date.now() - 7200000 },
-				{ sha: 'ghi9012', message: 'chore: Update dependencies', date: Date.now() - 86400000 }
-			];
-			self.giteaConfig.lastFetch = Date.now();
-			ui.addNotification(null, E('p', '✅ Fetched ' + self.giteaConfig.commits.length + ' commits'), 'success');
-		}, 1000);
+
+		P2PAPI.getGiteaCommits(20).then(function(result) {
+			if (result.success && result.commits) {
+				self.giteaConfig.commits = result.commits.map(function(c) {
+					return {
+						sha: c.sha,
+						message: c.commit ? c.commit.message : c.message,
+						date: c.commit ? new Date(c.commit.author.date).getTime() : Date.now()
+					};
+				});
+				self.giteaConfig.lastFetch = Date.now();
+				ui.addNotification(null, E('p', '✅ Fetched ' + self.giteaConfig.commits.length + ' commits'), 'success');
+			} else {
+				ui.addNotification(null, E('p', '⚠️ ' + (result.error || 'Failed to fetch commits')), 'warning');
+			}
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Error: ' + err.message), 'error');
+		});
 	},
 
 	pushToGitea: function() {
-		if (!this.giteaConfig.serverUrl) {
+		var self = this;
+		if (!this.giteaConfig.enabled) {
 			ui.addNotification(null, E('p', 'Configure Gitea server first'), 'warning');
 			return;
 		}
+
+		var commitMsg = 'SecuBox backup ' + new Date().toISOString().substring(0, 19).replace('T', ' ');
 		ui.addNotification(null, E('p', '📤 Pushing config to Gitea...'), 'info');
+
+		P2PAPI.pushGiteaBackup(commitMsg, {}).then(function(result) {
+			if (result.success) {
+				ui.addNotification(null, E('p', '✅ Pushed ' + result.files_pushed + ' files to Gitea'), 'success');
+				// Refresh commits
+				self.refreshGiteaCommits();
+			} else {
+				ui.addNotification(null, E('p', '❌ Push failed: ' + (result.error || 'Unknown error')), 'error');
+			}
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Error: ' + err.message), 'error');
+		});
+	},
+
+	pullFromGitea: function(commitSha) {
+		var self = this;
+		if (!this.giteaConfig.enabled) {
+			ui.addNotification(null, E('p', 'Configure Gitea server first'), 'warning');
+			return;
+		}
+
+		ui.addNotification(null, E('p', '📥 Pulling from Gitea' + (commitSha ? ' (commit ' + commitSha.substring(0, 7) + ')' : '') + '...'), 'info');
+
+		P2PAPI.pullGiteaBackup(commitSha || '').then(function(result) {
+			if (result.success) {
+				ui.addNotification(null, E('p', '✅ Restored ' + result.files_restored + ' files from Gitea'), 'success');
+			} else {
+				ui.addNotification(null, E('p', '❌ Pull failed: ' + (result.error || 'Unknown error')), 'error');
+			}
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', '❌ Error: ' + err.message), 'error');
+		});
 	},
 
 	createGiteaRepo: function() {
@@ -1624,47 +1726,61 @@ return view.extend({
 				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
 					var serverUrl = document.getElementById('create-gitea-url').value;
 					var repoName = document.getElementById('create-repo-name').value;
+					var repoDesc = document.getElementById('create-repo-desc').value;
 					var token = document.getElementById('create-gitea-token').value;
+					var isPrivate = document.getElementById('create-private').checked;
+					var initReadme = document.getElementById('create-init').checked;
 					var pushState = document.getElementById('create-push-state').checked;
 
-					if (!serverUrl || !repoName) {
-						ui.addNotification(null, E('p', 'Server URL and repo name required'), 'warning');
+					if (!serverUrl || !repoName || !token) {
+						ui.addNotification(null, E('p', 'Server URL, repo name and access token required'), 'warning');
 						return;
 					}
-
-					// Save config
-					self.giteaConfig.serverUrl = serverUrl;
-					self.giteaConfig.repoName = repoName;
-					self.giteaConfig.token = token;
-					self.giteaConfig.repoOwner = 'secubox';
-					self.giteaConfig.enabled = true;
 
 					ui.hideModal();
 					ui.addNotification(null, E('p', '➕ Creating repository ' + repoName + '...'), 'info');
 
-					// Simulate repo creation
-					setTimeout(function() {
-						// Add initial commit
-						self.giteaConfig.commits = [{
-							sha: 'init' + Date.now().toString(16).substring(0, 4),
-							message: 'Initial commit: SecuBox P2P Hub config',
-							date: Date.now()
-						}];
-						self.giteaConfig.lastFetch = Date.now();
+					// First save the Gitea config to backend
+					P2PAPI.setGiteaConfig({
+						server_url: serverUrl,
+						repo_name: repoName,
+						access_token: token,
+						enabled: 1
+					}).then(function() {
+						// Now create the repository via backend
+						return P2PAPI.createGiteaRepo(repoName, repoDesc, isPrivate, initReadme);
+					}).then(function(result) {
+						if (result.success) {
+							// Update local state
+							self.giteaConfig.serverUrl = serverUrl;
+							self.giteaConfig.repoName = result.repo_name || repoName;
+							self.giteaConfig.repoOwner = result.owner || '';
+							self.giteaConfig.enabled = true;
+							self.giteaConfig.lastFetch = Date.now();
 
-						ui.addNotification(null, E('p', '✅ Repository created: ' + repoName), 'success');
+							ui.addNotification(null, E('p', '✅ Repository created: ' + repoName), 'success');
 
-						if (pushState) {
-							setTimeout(function() {
-								self.giteaConfig.commits.unshift({
-									sha: 'state' + Date.now().toString(16).substring(0, 4),
-									message: 'feat: Add current mesh state and config',
-									date: Date.now()
+							// Push current state if requested
+							if (pushState) {
+								ui.addNotification(null, E('p', '📤 Pushing current state...'), 'info');
+								P2PAPI.pushGiteaBackup('Initial SecuBox mesh state', {}).then(function(pushResult) {
+									if (pushResult.success) {
+										ui.addNotification(null, E('p', '📤 Current state pushed (' + pushResult.files_pushed + ' files)'), 'success');
+										// Refresh commits
+										self.refreshGiteaCommits();
+									} else {
+										ui.addNotification(null, E('p', 'Push failed: ' + (pushResult.error || 'Unknown error')), 'error');
+									}
 								});
-								ui.addNotification(null, E('p', '📤 Current state pushed to ' + repoName), 'success');
-							}, 1000);
+							} else {
+								self.refreshGiteaCommits();
+							}
+						} else {
+							ui.addNotification(null, E('p', 'Failed to create repo: ' + (result.error || 'Unknown error')), 'error');
 						}
-					}, 1500);
+					}).catch(function(err) {
+						ui.addNotification(null, E('p', 'Error: ' + err.message), 'error');
+					});
 				} }, '➕ Create Repository')
 			])
 		]);
@@ -1707,26 +1823,88 @@ return view.extend({
 			E('div', { 'class': 'modal-actions' }, [
 				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, 'Cancel'),
 				E('button', { 'class': 'cbi-button', 'click': function() {
-					self.giteaConfig.serverUrl = document.getElementById('gitea-url').value;
-					self.giteaConfig.repoOwner = document.getElementById('gitea-owner').value;
-					self.giteaConfig.repoName = document.getElementById('gitea-repo').value;
-					self.giteaConfig.branch = document.getElementById('gitea-branch').value || 'main';
-					self.giteaConfig.token = document.getElementById('gitea-token').value;
-					ui.hideModal();
-					ui.addNotification(null, E('p', 'Gitea configuration saved'), 'info');
-					if (self.giteaConfig.serverUrl) self.fetchGiteaCommits();
+					var serverUrl = document.getElementById('gitea-url').value;
+					var repoOwner = document.getElementById('gitea-owner').value;
+					var repoName = document.getElementById('gitea-repo').value;
+					var token = document.getElementById('gitea-token').value;
+
+					// Test connection via backend
+					ui.addNotification(null, E('p', '🔄 Testing connection...'), 'info');
+					P2PAPI.setGiteaConfig({
+						server_url: serverUrl,
+						repo_owner: repoOwner,
+						repo_name: repoName,
+						access_token: token
+					}).then(function() {
+						return P2PAPI.getGiteaCommits(5);
+					}).then(function(result) {
+						if (result.success) {
+							self.giteaConfig.serverUrl = serverUrl;
+							self.giteaConfig.repoOwner = repoOwner;
+							self.giteaConfig.repoName = repoName;
+							self.giteaConfig.token = token;
+							self.giteaConfig.enabled = true;
+							ui.hideModal();
+							ui.addNotification(null, E('p', '✅ Connection successful! ' + result.commits.length + ' commits found'), 'success');
+							self.refreshGiteaCommits();
+						} else {
+							ui.addNotification(null, E('p', '⚠️ ' + (result.error || 'Connection failed')), 'warning');
+						}
+					}).catch(function(err) {
+						ui.addNotification(null, E('p', '❌ Error: ' + err.message), 'error');
+					});
 				} }, 'Test Connection'),
 				E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function() {
-					self.giteaConfig.serverUrl = document.getElementById('gitea-url').value;
-					self.giteaConfig.repoOwner = document.getElementById('gitea-owner').value;
-					self.giteaConfig.repoName = document.getElementById('gitea-repo').value;
-					self.giteaConfig.branch = document.getElementById('gitea-branch').value || 'main';
-					self.giteaConfig.token = document.getElementById('gitea-token').value;
-					ui.hideModal();
-					ui.addNotification(null, E('p', 'Gitea configuration saved'), 'info');
+					var serverUrl = document.getElementById('gitea-url').value;
+					var repoOwner = document.getElementById('gitea-owner').value;
+					var repoName = document.getElementById('gitea-repo').value;
+					var branch = document.getElementById('gitea-branch').value || 'main';
+					var token = document.getElementById('gitea-token').value;
+
+					// Save config via backend
+					P2PAPI.setGiteaConfig({
+						server_url: serverUrl,
+						repo_owner: repoOwner,
+						repo_name: repoName,
+						access_token: token,
+						enabled: 1
+					}).then(function(result) {
+						if (result.success) {
+							self.giteaConfig.serverUrl = serverUrl;
+							self.giteaConfig.repoOwner = repoOwner;
+							self.giteaConfig.repoName = repoName;
+							self.giteaConfig.branch = branch;
+							self.giteaConfig.token = token;
+							self.giteaConfig.enabled = true;
+							ui.hideModal();
+							ui.addNotification(null, E('p', '✅ Gitea configuration saved'), 'success');
+						} else {
+							ui.addNotification(null, E('p', '❌ Failed to save config'), 'error');
+						}
+					}).catch(function(err) {
+						ui.addNotification(null, E('p', '❌ Error: ' + err.message), 'error');
+					});
 				} }, 'Save')
 			])
 		]);
+	},
+
+	refreshGiteaCommits: function() {
+		var self = this;
+		P2PAPI.getGiteaCommits(20).then(function(result) {
+			if (result.success && result.commits) {
+				self.giteaConfig.commits = result.commits.map(function(c) {
+					return {
+						sha: c.sha,
+						message: c.commit ? c.commit.message : c.message,
+						date: c.commit ? new Date(c.commit.author.date).getTime() : Date.now()
+					};
+				});
+				self.giteaConfig.lastFetch = Date.now();
+			}
+		}).catch(function() {
+			// Silent fail for background refresh
+		});
 	},
 
 	// ==================== Component Sources Actions ====================
