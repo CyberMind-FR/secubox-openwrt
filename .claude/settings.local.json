@@ -193,7 +193,14 @@
       "Bash(SSH_AUTH_SOCK=\"\" ssh -i ~/.ssh/id_ed25519 root@192.168.255.1 'grep \"\"s.anonymous\"\" /www/luci-static/resources/view/cdn-cache/settings.js; rm -f /tmp/luci-indexcache*')",
       "Bash(SSH_AUTH_SOCK=\"\" ssh -i ~/.ssh/id_ed25519 root@192.168.255.1 'echo \"\"=== CrowdSec Decisions ===\"\"; cscli decisions list 2>/dev/null | head -10; echo \"\"\"\"; echo \"\"=== Auth Guardian Status ===\"\"; ubus call luci.auth-guardian status 2>/dev/null | head -20')",
       "Bash(for:*)",
-      "Bash(if [ -d \"package/secubox/$pkg\" ])"
+      "Bash(if [ -d \"package/secubox/$pkg\" ])",
+      "Bash(SSH_ASKPASS=\"\" SSH_AUTH_SOCK=\"\" ssh:*)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt log --oneline -3)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt push origin master)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt pull --rebase origin master)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt stash)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt stash pop)"
     ]
   }
 }

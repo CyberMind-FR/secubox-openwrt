@@ -1089,6 +1089,7 @@ _add_site_health() {
 	json_add_string "runtime" "$runtime"
 
 	# DNS check
+	local dns_status="none"
 	if [ -n "$domain" ]; then
 		local resolved_ip
 		resolved_ip=$(check_dns_resolution "$domain")
@@ -1097,19 +1098,20 @@ _add_site_health() {
 			# Check if resolves to public IP
 			case "$resolved_ip" in
 				10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.2*|172.30.*|172.31.*|192.168.*)
-					json_add_string "dns_status" "private"
+					dns_status="private"
 					;;
 				*)
 					if [ "$resolved_ip" = "$public_ip" ]; then
-						json_add_string "dns_status" "ok"
+						dns_status="ok"
 					else
-						json_add_string "dns_status" "mismatch"
+						dns_status="mismatch"
 					fi
 					;;
 			esac
 		else
-			json_add_string "dns_status" "failed"
+			dns_status="failed"
 		fi
+		json_add_string "dns_status" "$dns_status"
 
 		# Certificate check
 		if [ "$ssl" = "1" ]; then
@@ -1138,9 +1140,12 @@ _add_site_health() {
 	fi
 
 	# HTTP health check (backend and frontend)
-	if [ -n "$port" ] || [ -n "$domain" ]; then
+	# Skip frontend check if DNS is not pointing to us (avoids timeouts)
+	local check_domain=""
+	[ "$dns_status" = "ok" ] && check_domain="$domain"
+	if [ -n "$port" ] || [ -n "$check_domain" ]; then
 		local http_result backend_code frontend_code
-		http_result=$(check_site_http_health "$port" "$domain" "$ssl")
+		http_result=$(check_site_http_health "$port" "$check_domain" "$ssl")
 		backend_code="${http_result%%:*}"
 		frontend_code="${http_result##*:}"
 
@@ -1158,21 +1163,27 @@ _add_site_health() {
 
 		# Frontend status (HAProxy)
 		if [ -n "$domain" ]; then
-			json_add_int "http_frontend" "$frontend_code"
-			if [ "$frontend_code" = "200" ]; then
-				json_add_string "frontend_status" "ok"
-			elif [ "$frontend_code" = "0" ]; then
-				json_add_string "frontend_status" "down"
-			elif [ "$frontend_code" = "503" ]; then
-				json_add_string "frontend_status" "unavailable"
-			elif [ "$frontend_code" -ge 500 ] 2>/dev/null; then
-				json_add_string "frontend_status" "error"
-			elif [ "$frontend_code" -ge 400 ] 2>/dev/null; then
-				json_add_string "frontend_status" "client_error"
-			elif [ "$frontend_code" -ge 300 ] 2>/dev/null; then
-				json_add_string "frontend_status" "redirect"
+			if [ -n "$check_domain" ]; then
+				json_add_int "http_frontend" "$frontend_code"
+				if [ "$frontend_code" = "200" ]; then
+					json_add_string "frontend_status" "ok"
+				elif [ "$frontend_code" = "0" ]; then
+					json_add_string "frontend_status" "down"
+				elif [ "$frontend_code" = "503" ]; then
+					json_add_string "frontend_status" "unavailable"
+				elif [ "$frontend_code" -ge 500 ] 2>/dev/null; then
+					json_add_string "frontend_status" "error"
+				elif [ "$frontend_code" -ge 400 ] 2>/dev/null; then
+					json_add_string "frontend_status" "client_error"
+				elif [ "$frontend_code" -ge 300 ] 2>/dev/null; then
+					json_add_string "frontend_status" "redirect"
+				else
+					json_add_string "frontend_status" "unknown"
+				fi
 			else
-				json_add_string "frontend_status" "unknown"
+				# DNS mismatch - skip external check to avoid timeout
+				json_add_int "http_frontend" 0
+				json_add_string "frontend_status" "dns_mismatch"
 			fi
 		fi
 	fi
