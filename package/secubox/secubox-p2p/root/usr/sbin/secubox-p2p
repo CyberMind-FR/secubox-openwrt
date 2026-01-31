@@ -106,10 +106,25 @@ discover_mdns() {
 
 # Get peers list
 get_peers() {
+	# Ensure state dir and node info exist
+	mkdir -p "$STATE_DIR"
+	_init_node_info
+
+	# If no peers file or empty, ensure local node is registered
+	if [ ! -f "$PEERS_FILE" ] || grep -q '"peers":\[\]' "$PEERS_FILE" 2>/dev/null; then
+		register_self
+	fi
+
 	if [ -f "$PEERS_FILE" ]; then
 		cat "$PEERS_FILE"
 	else
-		echo '{"peers":[]}'
+		# Still no file? Create with local node
+		local node_name node_id lan_ip
+		node_name=$(get_config main node_name "secubox")
+		node_id=$(cat "$STATE_DIR/node.id" 2>/dev/null || echo "unknown")
+		lan_ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+		[ -z "$lan_ip" ] && lan_ip=$(uci -q get network.lan.ipaddr || echo "127.0.0.1")
+		echo "{\"peers\":[{\"id\":\"$node_id\",\"name\":\"$node_name (local)\",\"address\":\"$lan_ip\",\"status\":\"online\",\"is_local\":true}]}"
 	fi
 }
 
@@ -372,20 +387,36 @@ register_self() {
 	node_name=$(get_config main node_name "secubox")
 	node_id=$(cat "$STATE_DIR/node.id" 2>/dev/null || echo "unknown")
 	lan_ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+	[ -z "$lan_ip" ] && lan_ip=$(uci -q get network.lan.ipaddr || echo "127.0.0.1")
 
-	# Check if self is already registered
-	local current=$(get_peers)
-	local exists
-	exists=$(echo "$current" | jsonfilter -e "@.peers[@.id='$node_id']" 2>/dev/null)
+	# Always recreate with local node first to ensure it's visible
+	local self_peer="{\"id\":\"$node_id\",\"name\":\"$node_name (local)\",\"address\":\"$lan_ip\",\"status\":\"online\",\"is_local\":true,\"added\":\"$(date -Iseconds)\"}"
+
+	# Check if self is already registered using grep (jsonfilter syntax workaround)
+	local current=$(cat "$PEERS_FILE" 2>/dev/null || echo '{"peers":[]}')
+	local exists=""
+
+	if echo "$current" | grep -q "\"$node_id\""; then
+		exists="yes"
+	fi
 
 	if [ -z "$exists" ]; then
-		local self_peer="{\"id\":\"$node_id\",\"name\":\"$node_name (local)\",\"address\":\"$lan_ip\",\"status\":\"online\",\"is_local\":true,\"added\":\"$(date -Iseconds)\"}"
-		echo "$current" | jsonfilter -e '@' 2>/dev/null | sed "s/\"peers\":\[/\"peers\":[$self_peer,/" > "$PEERS_FILE.tmp"
-		if [ -s "$PEERS_FILE.tmp" ]; then
-			mv "$PEERS_FILE.tmp" "$PEERS_FILE"
-		else
-			# Fallback: just create a fresh peers file with self
+		# Check if peers array is empty (handle whitespace variations)
+		if echo "$current" | grep -qE '"peers"[[:space:]]*:[[:space:]]*\[[[:space:]]*\]'; then
+			# Empty array - just set self as first peer
 			echo "{\"peers\":[$self_peer]}" > "$PEERS_FILE"
+		else
+			# Array has entries - prepend self using awk for reliable JSON manipulation
+			echo "$current" | awk -v self="$self_peer" '{
+				gsub(/"peers"[[:space:]]*:[[:space:]]*\[/, "\"peers\": [" self ", ")
+				print
+			}' > "$PEERS_FILE.tmp"
+			if [ -s "$PEERS_FILE.tmp" ]; then
+				mv "$PEERS_FILE.tmp" "$PEERS_FILE"
+			else
+				# Fallback: fresh peers file
+				echo "{\"peers\":[$self_peer]}" > "$PEERS_FILE"
+			fi
 		fi
 		logger -t secubox-p2p "Registered local node: $node_name ($node_id)"
 	fi
