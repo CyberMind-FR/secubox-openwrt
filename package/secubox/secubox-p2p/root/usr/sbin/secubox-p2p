@@ -1,8 +1,9 @@
 #!/bin/sh
 # SecuBox P2P Hub Manager
 # Handles peer discovery, mesh networking, and service federation
+# Supports WAN IP, LAN IP, and WireGuard tunnel redundancy
 
-VERSION="0.2.0"
+VERSION="0.3.0"
 CONFIG_FILE="/etc/config/secubox-p2p"
 PEERS_FILE="/tmp/secubox-p2p-peers.json"
 SERVICES_FILE="/tmp/secubox-p2p-services.json"
@@ -18,6 +19,77 @@ init() {
 
 	# Initialize node info
 	_init_node_info
+}
+
+# Get LAN IP address
+get_lan_ip() {
+	local lan_ip
+	lan_ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+	[ -z "$lan_ip" ] && lan_ip=$(uci -q get network.lan.ipaddr)
+	echo "${lan_ip:-127.0.0.1}"
+}
+
+# Get WAN IP address (real external IP)
+get_wan_ip() {
+	local wan_ip wan_iface
+
+	# Get WAN interface
+	wan_iface=$(uci -q get network.wan.device || uci -q get network.wan.ifname || echo "eth0")
+
+	# Try to get IP from WAN interface
+	wan_ip=$(ip -4 addr show "$wan_iface" 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+
+	# If no direct WAN IP, try to get public IP via external service
+	if [ -z "$wan_ip" ] || echo "$wan_ip" | grep -qE '^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)'; then
+		# Behind NAT - try to get public IP
+		wan_ip=$(curl -s --connect-timeout 3 https://api.ipify.org 2>/dev/null)
+		[ -z "$wan_ip" ] && wan_ip=$(curl -s --connect-timeout 3 https://ifconfig.me 2>/dev/null)
+	fi
+
+	echo "${wan_ip:-}"
+}
+
+# Get WireGuard tunnel IP(s)
+get_wg_ips() {
+	local wg_ips=""
+
+	# Check all WireGuard interfaces
+	for wg_iface in $(ip link show type wireguard 2>/dev/null | grep -oE 'wg[0-9]+' | head -5); do
+		local wg_ip
+		wg_ip=$(ip -4 addr show "$wg_iface" 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}')
+		if [ -n "$wg_ip" ]; then
+			[ -n "$wg_ips" ] && wg_ips="$wg_ips,"
+			wg_ips="${wg_ips}$wg_ip"
+		fi
+	done
+
+	echo "$wg_ips"
+}
+
+# Get all node addresses as JSON array
+get_node_addresses() {
+	local lan_ip wan_ip wg_ips addresses
+
+	lan_ip=$(get_lan_ip)
+	wan_ip=$(get_wan_ip)
+	wg_ips=$(get_wg_ips)
+
+	# Build addresses JSON array
+	addresses="[{\"type\":\"lan\",\"address\":\"$lan_ip\",\"port\":$API_PORT}"
+
+	if [ -n "$wan_ip" ]; then
+		addresses="$addresses,{\"type\":\"wan\",\"address\":\"$wan_ip\",\"port\":$API_PORT}"
+	fi
+
+	# Add WireGuard IPs
+	if [ -n "$wg_ips" ]; then
+		for wg_ip in $(echo "$wg_ips" | tr ',' ' '); do
+			addresses="$addresses,{\"type\":\"wireguard\",\"address\":\"$wg_ip\",\"port\":$API_PORT}"
+		done
+	fi
+
+	addresses="$addresses]"
+	echo "$addresses"
 }
 
 # Initialize node identity
@@ -128,14 +200,23 @@ get_peers() {
 	fi
 }
 
-# Add peer
+# Add peer with optional WAN and WireGuard addresses
 add_peer() {
 	local address="$1"
 	local name="${2:-Peer}"
+	local wan_address="${3:-}"
+	local wg_address="${4:-}"
 	local id="peer-$(echo "$address" | md5sum | cut -c1-8)"
 
 	local peers=$(get_peers)
-	local new_peer="{\"id\":\"$id\",\"name\":\"$name\",\"address\":\"$address\",\"status\":\"unknown\",\"added\":\"$(date -Iseconds)\"}"
+
+	# Build addresses array
+	local addresses="[{\"type\":\"lan\",\"address\":\"$address\",\"port\":$API_PORT}"
+	[ -n "$wan_address" ] && addresses="$addresses,{\"type\":\"wan\",\"address\":\"$wan_address\",\"port\":$API_PORT}"
+	[ -n "$wg_address" ] && addresses="$addresses,{\"type\":\"wireguard\",\"address\":\"$wg_address\",\"port\":$API_PORT}"
+	addresses="$addresses]"
+
+	local new_peer="{\"id\":\"$id\",\"name\":\"$name\",\"address\":\"$address\",\"wan_address\":\"${wan_address:-}\",\"wg_addresses\":\"${wg_address:-}\",\"addresses\":$addresses,\"status\":\"unknown\",\"added\":\"$(date -Iseconds)\"}"
 
 	echo "$peers" | jq ".peers += [$new_peer]" > "$PEERS_FILE"
 	echo "{\"success\":true,\"peer_id\":\"$id\"}"
@@ -359,11 +440,15 @@ stop_mdns() {
 }
 
 # Get node status JSON (for REST API)
+# Now includes WAN IP and WireGuard tunnel addresses
 get_node_status() {
-	local node_name node_id lan_ip uptime
+	local node_name node_id lan_ip wan_ip wg_ips addresses uptime
 	node_name=$(get_config main node_name "secubox")
 	node_id=$(cat "$STATE_DIR/node.id" 2>/dev/null || echo "unknown")
-	lan_ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+	lan_ip=$(get_lan_ip)
+	wan_ip=$(get_wan_ip)
+	wg_ips=$(get_wg_ips)
+	addresses=$(get_node_addresses)
 	uptime=$(cat /proc/uptime | cut -d' ' -f1)
 
 	cat <<EOF
@@ -372,6 +457,9 @@ get_node_status() {
 	"node_name": "$node_name",
 	"version": "$VERSION",
 	"address": "$lan_ip",
+	"wan_address": "${wan_ip:-null}",
+	"wg_addresses": "${wg_ips:-}",
+	"addresses": $addresses,
 	"api_port": $API_PORT,
 	"uptime": $uptime,
 	"discovery_enabled": $(get_config main discovery_enabled 1),
@@ -382,15 +470,21 @@ EOF
 }
 
 # Register self in peer list (ensure node is visible in its own mesh view)
+# Now includes WAN IP and WireGuard tunnel addresses for redundancy
 register_self() {
-	local node_name node_id lan_ip
+	local node_name node_id lan_ip wan_ip wg_ips addresses
 	node_name=$(get_config main node_name "secubox")
 	node_id=$(cat "$STATE_DIR/node.id" 2>/dev/null || echo "unknown")
-	lan_ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
-	[ -z "$lan_ip" ] && lan_ip=$(uci -q get network.lan.ipaddr || echo "127.0.0.1")
 
-	# Always recreate with local node first to ensure it's visible
-	local self_peer="{\"id\":\"$node_id\",\"name\":\"$node_name (local)\",\"address\":\"$lan_ip\",\"status\":\"online\",\"is_local\":true,\"added\":\"$(date -Iseconds)\"}"
+	# Get all available addresses
+	lan_ip=$(get_lan_ip)
+	wan_ip=$(get_wan_ip)
+	wg_ips=$(get_wg_ips)
+	addresses=$(get_node_addresses)
+
+	# Build peer entry with all addresses
+	# Primary address is LAN for local network, but WAN and WG are included for external/redundancy
+	local self_peer="{\"id\":\"$node_id\",\"name\":\"$node_name (local)\",\"address\":\"$lan_ip\",\"wan_address\":\"${wan_ip:-}\",\"wg_addresses\":\"${wg_ips:-}\",\"addresses\":$addresses,\"status\":\"online\",\"is_local\":true,\"added\":\"$(date -Iseconds)\"}"
 
 	# Check if self is already registered using grep (jsonfilter syntax workaround)
 	local current=$(cat "$PEERS_FILE" 2>/dev/null || echo '{"peers":[]}')
@@ -418,7 +512,7 @@ register_self() {
 				echo "{\"peers\":[$self_peer]}" > "$PEERS_FILE"
 			fi
 		fi
-		logger -t secubox-p2p "Registered local node: $node_name ($node_id)"
+		logger -t secubox-p2p "Registered local node: $node_name ($node_id) LAN=$lan_ip WAN=${wan_ip:-none} WG=${wg_ips:-none}"
 	fi
 }
 
@@ -457,18 +551,52 @@ daemon_loop() {
 		fi
 
 		# Update peer status (skip local node)
+		# Try all available addresses: WireGuard first (secure tunnel), then WAN, then LAN
 		local peers=$(get_peers)
 		if command -v jq >/dev/null 2>&1; then
 			local updated_peers=$(echo "$peers" | jq -c '.peers[] | select(.is_local != true)' 2>/dev/null)
 
 			for peer in $updated_peers; do
 				local addr=$(echo "$peer" | jq -r '.address')
+				local wan_addr=$(echo "$peer" | jq -r '.wan_address // empty')
+				local wg_addrs=$(echo "$peer" | jq -r '.wg_addresses // empty')
 				local id=$(echo "$peer" | jq -r '.id')
+				local reachable=""
+				local best_addr=""
 
-				if ping -c1 -W1 "$addr" >/dev/null 2>&1; then
+				# Try WireGuard addresses first (secure redundancy)
+				if [ -n "$wg_addrs" ]; then
+					for wg_addr in $(echo "$wg_addrs" | tr ',' ' '); do
+						if ping -c1 -W1 "$wg_addr" >/dev/null 2>&1; then
+							reachable="yes"
+							best_addr="$wg_addr (wg)"
+							break
+						fi
+					done
+				fi
+
+				# Try WAN address if WG failed
+				if [ -z "$reachable" ] && [ -n "$wan_addr" ] && [ "$wan_addr" != "null" ]; then
+					if ping -c1 -W1 "$wan_addr" >/dev/null 2>&1; then
+						reachable="yes"
+						best_addr="$wan_addr (wan)"
+					fi
+				fi
+
+				# Try LAN address as fallback
+				if [ -z "$reachable" ]; then
+					if ping -c1 -W1 "$addr" >/dev/null 2>&1; then
+						reachable="yes"
+						best_addr="$addr (lan)"
+					fi
+				fi
+
+				if [ -n "$reachable" ]; then
 					peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).status = \"online\"")
+					peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).active_address = \"$best_addr\"")
 				else
 					peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).status = \"offline\"")
+					peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).active_address = null")
 				fi
 			done
 

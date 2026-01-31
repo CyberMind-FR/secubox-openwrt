@@ -6,6 +6,10 @@ config p2p 'main'
 	option sharing_enabled '1'
 	option auto_sync '1'
 	option sync_interval '60'
+	# Multi-address mesh support
+	option advertise_wan '1'
+	option advertise_wireguard '1'
+	option prefer_wireguard '1'
 
 config dns_federation 'dns'
 	option enabled '0'
