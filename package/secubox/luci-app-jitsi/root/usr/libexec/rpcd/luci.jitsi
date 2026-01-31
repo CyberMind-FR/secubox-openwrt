@@ -1,0 +1,120 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+JITSI_DIR="/srv/jitsi"
+
+case "$1" in
+	list)
+		echo '{"status":{},"start":{},"stop":{},"restart":{},"install":{},"generate_config":{},"add_user":{"username":"str","password":"str"},"remove_user":{"username":"str"},"list_users":{},"logs":{"service":"str","lines":"int"}}'
+		;;
+	call)
+		case "$2" in
+			status)
+				# Get service status
+				json_init
+
+				# Check enabled
+				enabled=$(uci -q get jitsi.main.enabled)
+				domain=$(uci -q get jitsi.main.domain)
+
+				json_add_boolean "enabled" ${enabled:-0}
+				json_add_string "domain" "$domain"
+
+				# Check containers
+				if command -v docker >/dev/null 2>&1; then
+					json_add_boolean "docker_available" 1
+
+					json_add_object "containers"
+					for container in jitsi-web jitsi-prosody jitsi-jicofo jitsi-jvb; do
+						state=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null)
+						json_add_string "$container" "${state:-not_found}"
+					done
+					json_close_object
+
+					# Get stats from JVB if running
+					stats=$(docker exec jitsi-jvb curl -s http://localhost:8080/colibri/stats 2>/dev/null)
+					if [ -n "$stats" ]; then
+						conferences=$(echo "$stats" | jsonfilter -e '@.conferences' 2>/dev/null)
+						participants=$(echo "$stats" | jsonfilter -e '@.participants' 2>/dev/null)
+						json_add_object "stats"
+						json_add_int "conferences" ${conferences:-0}
+						json_add_int "participants" ${participants:-0}
+						json_close_object
+					fi
+				else
+					json_add_boolean "docker_available" 0
+				fi
+
+				json_dump
+				;;
+			start)
+				/etc/init.d/jitsi start >/dev/null 2>&1
+				echo '{"success":true}'
+				;;
+			stop)
+				/etc/init.d/jitsi stop >/dev/null 2>&1
+				echo '{"success":true}'
+				;;
+			restart)
+				/etc/init.d/jitsi restart >/dev/null 2>&1
+				echo '{"success":true}'
+				;;
+			install)
+				output=$(/usr/sbin/jitsctl install 2>&1)
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "output" "$output"
+				json_dump
+				;;
+			generate_config)
+				output=$(/usr/sbin/jitsctl generate-config 2>&1)
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "output" "$output"
+				json_dump
+				;;
+			add_user)
+				read -r input
+				username=$(echo "$input" | jsonfilter -e '@.username')
+				password=$(echo "$input" | jsonfilter -e '@.password')
+				output=$(/usr/sbin/jitsctl add-user "$username" "$password" 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+			remove_user)
+				read -r input
+				username=$(echo "$input" | jsonfilter -e '@.username')
+				output=$(/usr/sbin/jitsctl remove-user "$username" 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+			list_users)
+				domain=$(uci -q get jitsi.main.domain)
+				users=$(docker exec jitsi-prosody ls -1 /config/data/"$domain"/accounts/ 2>/dev/null | sed 's/\.dat$//' | tr '\n' ',')
+				json_init
+				json_add_string "users" "$users"
+				json_dump
+				;;
+			logs)
+				read -r input
+				service=$(echo "$input" | jsonfilter -e '@.service')
+				lines=$(echo "$input" | jsonfilter -e '@.lines')
+				[ -z "$lines" ] && lines=50
+				logs=$(cd "$JITSI_DIR" && docker-compose logs --tail="$lines" ${service:-} 2>&1 | tail -100)
+				json_init
+				json_add_string "logs" "$logs"
+				json_dump
+				;;
+		esac
+		;;
+esac
+
+exit 0

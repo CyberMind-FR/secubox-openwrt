@@ -1,0 +1,53 @@
+# Jitsi Meet Video Conferencing Configuration
+
+config jitsi 'main'
+	option enabled '0'
+	option domain 'meet.secubox.local'
+	option public_url ''
+	option container_type 'docker'
+	option timezone 'Europe/Paris'
+	option letsencrypt '0'
+	option letsencrypt_email ''
+
+config jitsi 'web'
+	option port '8443'
+	option enable_guests '1'
+	option enable_auth '0'
+	option default_language 'en'
+	option enable_transcription '0'
+	option enable_recording '0'
+	option watermark_link ''
+
+config jitsi 'jvb'
+	option port '10000'
+	option enable_tcp_fallback '0'
+	option tcp_port '4443'
+	option stun_servers 'meet-jit-si-turnrelay.jitsi.net:443'
+	option max_bandwidth '10000000'
+
+config jitsi 'prosody'
+	option c2s_port '5222'
+	option http_port '5280'
+	option guest_domain_enabled '1'
+
+config jitsi 'jicofo'
+	option port '8888'
+	option enable_ocontrol '0'
+
+config jitsi 'security'
+	option jwt_enabled '0'
+	option jwt_app_id ''
+	option jwt_app_secret ''
+	option lobby_enabled '1'
+	option password_required '0'
+
+config jitsi 'mesh'
+	option enabled '0'
+	option announce_service '1'
+	option cascade_jvb '0'
+
+config jitsi 'turn'
+	option enabled '0'
+	option server ''
+	option username ''
+	option password ''

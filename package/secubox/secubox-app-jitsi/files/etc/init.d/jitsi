@@ -1,0 +1,49 @@
+#!/bin/sh /etc/rc.common
+# Jitsi Meet Video Conferencing Service
+
+START=95
+STOP=15
+USE_PROCD=1
+
+JITSI_DIR="/srv/jitsi"
+COMPOSE_FILE="$JITSI_DIR/docker-compose.yml"
+
+start_service() {
+	local enabled=$(uci -q get jitsi.main.enabled)
+	[ "$enabled" != "1" ] && return 0
+
+	# Check Docker
+	if ! command -v docker >/dev/null 2>&1; then
+		logger -t jitsi "Docker not available"
+		return 1
+	fi
+
+	# Generate config if needed
+	if [ ! -f "$JITSI_DIR/.env" ]; then
+		/usr/sbin/jitsctl generate-config
+	fi
+
+	# Start containers
+	cd "$JITSI_DIR"
+	docker-compose up -d
+
+	logger -t jitsi "Jitsi Meet started"
+}
+
+stop_service() {
+	if [ -f "$COMPOSE_FILE" ]; then
+		cd "$JITSI_DIR"
+		docker-compose down
+	fi
+	logger -t jitsi "Jitsi Meet stopped"
+}
+
+reload_service() {
+	/usr/sbin/jitsctl generate-config
+	cd "$JITSI_DIR"
+	docker-compose restart
+}
+
+status() {
+	/usr/sbin/jitsctl status
+}

@@ -1,0 +1,14 @@
+{
+	"admin/services/jitsi": {
+		"title": "Jitsi Meet",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "jitsi/config"
+		},
+		"depends": {
+			"acl": ["luci-app-jitsi"],
+			"uci": {"jitsi": true}
+		}
+	}
+}
