@@ -1,8 +1,18 @@
 {
 	"admin/services/mitmproxy": {
 		"title": "mitmproxy",
-		"action": { "type": "view", "path": "mitmproxy/overview" },
+		"action": { "type": "view", "path": "mitmproxy/status" },
 		"depends": { "acl": ["luci-app-mitmproxy"] },
 		"order": 60
+	},
+	"admin/services/mitmproxy/status": {
+		"title": "Status",
+		"action": { "type": "view", "path": "mitmproxy/status" },
+		"order": 1
+	},
+	"admin/services/mitmproxy/settings": {
+		"title": "Settings",
+		"action": { "type": "view", "path": "mitmproxy/settings" },
+		"order": 2
 	}
 }
