@@ -140,10 +140,8 @@
     let tools = [];
     let refreshInterval = null;
 
-    // API helpers - API runs on port 7331
-    const apiBase = window.location.port === '7331'
-        ? '/factory/'
-        : 'http://' + window.location.hostname + ':7331/factory/';
+    // API helpers - use same origin (HAProxy routes /factory/* to API)
+    const apiBase = '/factory/';
 
     const api = {
         get: async (path) => {
