@@ -288,8 +288,8 @@
     let catalogFilter = { search: '', type: 'all', status: 'all' };
     let expandedServices = new Set();
 
-    // API helpers - use same origin (HAProxy routes /factory/* to API)
-    const apiBase = '/factory/';
+    // API helpers - use same origin (HAProxy routes /api/factory/* to P2P API backend)
+    const apiBase = '/api/factory/';
 
     const api = {
         get: async (path) => {

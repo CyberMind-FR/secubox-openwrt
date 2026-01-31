@@ -1,24 +1,26 @@
 #!/bin/sh
 # Configure uhttpd instance for P2P REST API and Factory UI on port 7331
+# - Static files served from /www (includes /factory/index.html)
+# - CGI scripts executed from /www/api/* (includes /api/factory/*)
 
 # Check if p2p_api instance already exists
 if ! uci -q get uhttpd.p2p_api >/dev/null 2>&1; then
 	uci set uhttpd.p2p_api=uhttpd
 	uci set uhttpd.p2p_api.listen_http='0.0.0.0:7331'
-	uci set uhttpd.p2p_api.home='/www/api'
-	uci set uhttpd.p2p_api.cgi_prefix='/'
+	uci set uhttpd.p2p_api.home='/www'
+	uci set uhttpd.p2p_api.cgi_prefix='/api'
+	uci set uhttpd.p2p_api.index_page='index.html'
 	uci set uhttpd.p2p_api.no_symlinks='0'
 	uci set uhttpd.p2p_api.no_dirlists='1'
 	uci set uhttpd.p2p_api.script_timeout='60'
 	uci set uhttpd.p2p_api.network_timeout='30'
 	uci commit uhttpd
-fi
-
-# Add alias for Factory UI (serves /www/factory at /factory/)
-# This allows Factory UI to be served alongside the API on port 7331
-current_aliases=$(uci -q get uhttpd.p2p_api.alias 2>/dev/null)
-if ! echo "$current_aliases" | grep -q "/factory/"; then
-	uci add_list uhttpd.p2p_api.alias='/factory/=/www/factory'
+else
+	# Update existing config to fix paths
+	uci set uhttpd.p2p_api.home='/www'
+	uci set uhttpd.p2p_api.cgi_prefix='/api'
+	uci set uhttpd.p2p_api.index_page='index.html'
+	uci delete uhttpd.p2p_api.alias 2>/dev/null || true
 	uci commit uhttpd
 fi
 
