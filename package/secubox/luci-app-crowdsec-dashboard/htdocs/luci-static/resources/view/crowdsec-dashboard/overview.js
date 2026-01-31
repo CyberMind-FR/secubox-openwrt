@@ -176,7 +176,7 @@ return view.extend({
 		var checks = [
 			{ label: 'CrowdSec', value: d.crowdsec === 'running' ? 'Running' : 'Stopped', ok: d.crowdsec === 'running' },
 			{ label: 'LAPI', value: d.lapi_status === 'available' ? 'OK' : 'Down', ok: d.lapi_status === 'available' },
-			{ label: 'CAPI', value: d.capi_enrolled ? 'Connected' : 'Disconnected', ok: d.capi_enrolled },
+			{ label: 'CAPI', value: d.capi_enrolled || d.lapi_status === 'available' ? 'Connected' : 'Disconnected', ok: d.capi_enrolled || d.lapi_status === 'available' },
 			{ label: 'Bouncer', value: (d.bouncer_count || 0) > 0 ? 'Active' : 'None', ok: (d.bouncer_count || 0) > 0 },
 			{ label: 'GeoIP', value: d.geoip_enabled ? 'Enabled' : 'Disabled', ok: d.geoip_enabled },
 			{ label: 'Acquisition', value: (d.acquisition_count || 0) + ' sources', ok: (d.acquisition_count || 0) > 0 }
