@@ -34,6 +34,21 @@ var callClearAlerts = rpc.declare({
 	method: 'clear_alerts'
 });
 
+var callHaproxyEnable = rpc.declare({
+	object: 'luci.mitmproxy',
+	method: 'haproxy_enable'
+});
+
+var callHaproxyDisable = rpc.declare({
+	object: 'luci.mitmproxy',
+	method: 'haproxy_disable'
+});
+
+var callSyncRoutes = rpc.declare({
+	object: 'luci.mitmproxy',
+	method: 'sync_routes'
+});
+
 function severityColor(sev) {
 	return { critical: '#e74c3c', high: '#e67e22', medium: '#f39c12', low: '#3498db' }[sev] || '#666';
 }
@@ -84,10 +99,38 @@ return view.extend({
 						E('tr', { 'class': 'tr' }, [
 							E('td', { 'class': 'td' }, E('strong', {}, _('Web UI'))),
 							E('td', { 'class': 'td' }, status.running ?
-								E('a', { 'href': 'http://' + window.location.hostname + ':' + (status.web_port || 8082), 'target': '_blank' },
-									'http://' + window.location.hostname + ':' + (status.web_port || 8082)) :
+								E('a', {
+									'href': 'http://' + window.location.hostname + ':' + (status.web_port || 8081) + (status.token ? '/?token=' + status.token : ''),
+									'target': '_blank'
+								}, 'http://' + window.location.hostname + ':' + (status.web_port || 8081) + (status.token ? '/?token=***' : '')) :
 								_('Not available'))
-						])
+						]),
+						status.token ? E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td' }, E('strong', {}, _('Auth Token'))),
+							E('td', { 'class': 'td' }, [
+								E('code', { 'style': 'font-size: 11px; background: #f0f0f0; padding: 2px 6px; border-radius: 3px;' },
+									status.token.substring(0, 12) + '...'),
+								' ',
+								E('button', {
+									'class': 'btn cbi-button cbi-button-action',
+									'style': 'font-size: 11px; padding: 2px 8px;',
+									'click': function() {
+										navigator.clipboard.writeText(status.token);
+										this.textContent = _('Copied!');
+										setTimeout(function() { this.textContent = _('Copy'); }.bind(this), 1500);
+									}
+								}, _('Copy'))
+							])
+						]) : null,
+						status.haproxy_router_enabled ? E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td' }, E('strong', {}, _('HAProxy Router'))),
+							E('td', { 'class': 'td' }, [
+								E('span', {
+									'style': 'display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #27ae60;'
+								}),
+								_('Enabled (port ') + (status.haproxy_listen_port || 8889) + ')'
+							])
+						]) : null
 					])
 				]),
 				E('div', { 'style': 'margin-top: 16px;' }, [
@@ -116,6 +159,78 @@ return view.extend({
 							callRestart().then(function() { ui.hideModal(); location.reload(); });
 						}
 					}, _('Restart'))
+				])
+			]),
+
+			// HAProxy Backend Inspection Card
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('HAProxy Backend Inspection')),
+				E('div', { 'class': 'cbi-section-node' }, [
+					E('p', {}, _('Route all HAProxy vhost traffic through mitmproxy for threat detection. When enabled, backends are inspected before reaching their destination.')),
+					E('table', { 'class': 'table', 'style': 'margin: 16px 0;' }, [
+						E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td', 'width': '33%' }, E('strong', {}, _('Status'))),
+							E('td', { 'class': 'td' }, [
+								E('span', {
+									'style': 'display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; background: ' + (status.haproxy_router_enabled ? '#27ae60' : '#95a5a6')
+								}),
+								status.haproxy_router_enabled ? _('Enabled') : _('Disabled')
+							])
+						]),
+						E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td' }, E('strong', {}, _('Inspection Port'))),
+							E('td', { 'class': 'td' }, status.haproxy_listen_port || 8889)
+						])
+					]),
+					E('div', {}, [
+						!status.haproxy_router_enabled ?
+							E('button', {
+								'class': 'btn cbi-button cbi-button-apply',
+								'click': function() {
+									ui.showModal(_('Enabling HAProxy Inspection...'), [
+										E('p', { 'class': 'spinning' }, _('Updating HAProxy backends and restarting services...'))
+									]);
+									callHaproxyEnable().then(function(res) {
+										ui.hideModal();
+										if (res && res.success) {
+											ui.addNotification(null, E('p', {}, _('HAProxy backend inspection enabled')), 'success');
+										} else {
+											ui.addNotification(null, E('p', {}, _('Failed: ') + (res.error || 'Unknown error')), 'error');
+										}
+										location.reload();
+									});
+								},
+								'disabled': !status.running
+							}, _('Enable HAProxy Inspection')) :
+							E('button', {
+								'class': 'btn cbi-button cbi-button-reset',
+								'click': function() {
+									ui.showModal(_('Disabling HAProxy Inspection...'), [
+										E('p', { 'class': 'spinning' }, _('Restoring original HAProxy backends...'))
+									]);
+									callHaproxyDisable().then(function(res) {
+										ui.hideModal();
+										if (res && res.success) {
+											ui.addNotification(null, E('p', {}, _('HAProxy backend inspection disabled')), 'success');
+										} else {
+											ui.addNotification(null, E('p', {}, _('Failed: ') + (res.error || 'Unknown error')), 'error');
+										}
+										location.reload();
+									});
+								}
+							}, _('Disable HAProxy Inspection')),
+						' ',
+						E('button', {
+							'class': 'btn cbi-button',
+							'click': function() {
+								callSyncRoutes().then(function(res) {
+									if (res && res.success) {
+										ui.addNotification(null, E('p', {}, _('Routes synced from HAProxy')), 'success');
+									}
+								});
+							}
+						}, _('Sync Routes'))
+					])
 				])
 			]),
 

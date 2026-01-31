@@ -17,6 +17,8 @@ get_status() {
 	local proxy_port=$(uci_get main.proxy_port)
 	local data_path=$(uci_get main.data_path)
 	local mode=$(uci_get main.mode)
+	local haproxy_router_enabled=$(uci_get haproxy_router.enabled)
+	local haproxy_listen_port=$(uci_get haproxy_router.listen_port)
 
 	# Check for LXC availability
 	local lxc_available=0
@@ -38,6 +40,11 @@ get_status() {
 		nft list table inet mitmproxy >/dev/null 2>&1 && nft_active=1
 	fi
 
+	# Get authentication token from container data path
+	local token=""
+	local token_file="${data_path:-/srv/mitmproxy}/.mitmproxy_token"
+	[ -f "$token_file" ] && token=$(cat "$token_file" 2>/dev/null | tr -d '\n')
+
 	cat <<EOFJ
 {
 	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
@@ -49,7 +56,10 @@ get_status() {
 	"proxy_port": ${proxy_port:-8888},
 	"data_path": "${data_path:-/srv/mitmproxy}",
 	"mode": "${mode:-regular}",
-	"nft_active": $([ "$nft_active" = "1" ] && echo "true" || echo "false")
+	"nft_active": $([ "$nft_active" = "1" ] && echo "true" || echo "false"),
+	"token": "${token:-}",
+	"haproxy_router_enabled": $([ "$haproxy_router_enabled" = "1" ] && echo "true" || echo "false"),
+	"haproxy_listen_port": ${haproxy_listen_port:-8889}
 }
 EOFJ
 }
@@ -397,8 +407,82 @@ clear_alerts() {
 	echo '{"success":true,"message":"Alerts cleared"}'
 }
 
+haproxy_enable() {
+	json_init
+
+	if ! command -v mitmproxyctl >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "mitmproxyctl not found"
+		json_dump
+		return
+	fi
+
+	mitmproxyctl haproxy-enable >/tmp/haproxy-enable.log 2>&1
+	local result=$?
+
+	if [ $result -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "HAProxy backend inspection enabled"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to enable HAProxy inspection"
+		local log=$(cat /tmp/haproxy-enable.log 2>/dev/null)
+		[ -n "$log" ] && json_add_string "details" "$log"
+	fi
+
+	json_dump
+}
+
+haproxy_disable() {
+	json_init
+
+	if ! command -v mitmproxyctl >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "mitmproxyctl not found"
+		json_dump
+		return
+	fi
+
+	mitmproxyctl haproxy-disable >/tmp/haproxy-disable.log 2>&1
+	local result=$?
+
+	if [ $result -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "HAProxy backend inspection disabled"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to disable HAProxy inspection"
+	fi
+
+	json_dump
+}
+
+sync_routes() {
+	json_init
+
+	if ! command -v mitmproxyctl >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "mitmproxyctl not found"
+		json_dump
+		return
+	fi
+
+	mitmproxyctl sync-routes >/tmp/sync-routes.log 2>&1
+	local result=$?
+
+	if [ $result -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Routes synced from HAProxy"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to sync routes"
+	fi
+
+	json_dump
+}
+
 list_methods() { cat <<'EOFM'
-{"status":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"install":{},"start":{},"stop":{},"restart":{},"alerts":{},"threat_stats":{},"clear_alerts":{}}
+{"status":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"install":{},"start":{},"stop":{},"restart":{},"alerts":{},"threat_stats":{},"clear_alerts":{},"haproxy_enable":{},"haproxy_disable":{},"sync_routes":{}}
 EOFM
 }
 
@@ -419,6 +503,9 @@ case "$1" in
 			alerts) get_alerts ;;
 			threat_stats) get_threat_stats ;;
 			clear_alerts) clear_alerts ;;
+			haproxy_enable) haproxy_enable ;;
+			haproxy_disable) haproxy_disable ;;
+			sync_routes) sync_routes ;;
 			*) echo '{"error":"Unknown method"}' ;;
 		esac
 		;;
