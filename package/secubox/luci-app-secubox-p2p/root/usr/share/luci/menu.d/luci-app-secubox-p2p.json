@@ -58,6 +58,14 @@
 			"path": "secubox-p2p/mesh"
 		}
 	},
+	"admin/secubox/mirrorbox/factory": {
+		"title": "Factory",
+		"order": 70,
+		"action": {
+			"type": "view",
+			"path": "secubox-p2p/factory"
+		}
+	},
 	"admin/secubox/mirrorbox/settings": {
 		"title": "Settings",
 		"order": 90,

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Configure uhttpd instance for P2P REST API on port 7331
+# Configure uhttpd instance for P2P REST API and Factory UI on port 7331
 
 # Check if p2p_api instance already exists
 if ! uci -q get uhttpd.p2p_api >/dev/null 2>&1; then
@@ -11,6 +11,14 @@ if ! uci -q get uhttpd.p2p_api >/dev/null 2>&1; then
 	uci set uhttpd.p2p_api.no_dirlists='1'
 	uci set uhttpd.p2p_api.script_timeout='60'
 	uci set uhttpd.p2p_api.network_timeout='30'
+	uci commit uhttpd
+fi
+
+# Add alias for Factory UI (serves /www/factory at /factory/)
+# This allows Factory UI to be served alongside the API on port 7331
+current_aliases=$(uci -q get uhttpd.p2p_api.alias 2>/dev/null)
+if ! echo "$current_aliases" | grep -q "/factory/"; then
+	uci add_list uhttpd.p2p_api.alias='/factory/=/www/factory'
 	uci commit uhttpd
 fi
 

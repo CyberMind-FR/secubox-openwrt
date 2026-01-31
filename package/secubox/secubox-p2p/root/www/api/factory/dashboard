@@ -1,0 +1,132 @@
+#!/bin/sh
+# Factory Dashboard - Aggregated mesh status
+# CGI endpoint for SecuBox Factory
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: GET, OPTIONS"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Load factory library
+. /usr/lib/secubox/factory.sh 2>/dev/null
+
+# Get local node status
+get_local_status() {
+	if [ -x /usr/sbin/secubox-p2p ]; then
+		/usr/sbin/secubox-p2p status 2>/dev/null
+	else
+		echo '{"error":"p2p_unavailable"}'
+	fi
+}
+
+# Get services status
+get_services_status() {
+	local running=0
+	local total=0
+
+	for init_script in /etc/init.d/*; do
+		[ -x "$init_script" ] || continue
+		local svc_name=$(basename "$init_script")
+
+		# Skip system services
+		case "$svc_name" in
+			boot|done|rcS|rc.local|umount|sysfixtime|sysntpd|gpio_switch) continue ;;
+		esac
+
+		total=$((total + 1))
+		if pgrep "$svc_name" >/dev/null 2>&1; then
+			running=$((running + 1))
+		fi
+	done
+
+	echo "{\"running\":$running,\"total\":$total}"
+}
+
+# Get system stats
+get_system_stats() {
+	local uptime_val=$(cat /proc/uptime 2>/dev/null | cut -d' ' -f1)
+	local load=$(cat /proc/loadavg 2>/dev/null | cut -d' ' -f1)
+	local mem_info=$(cat /proc/meminfo 2>/dev/null)
+	local mem_total=$(echo "$mem_info" | grep MemTotal | awk '{print $2}')
+	local mem_free=$(echo "$mem_info" | grep MemAvailable | awk '{print $2}')
+	[ -z "$mem_free" ] && mem_free=$(echo "$mem_info" | grep MemFree | awk '{print $2}')
+
+	local mem_used=0
+	local mem_pct=0
+	if [ -n "$mem_total" ] && [ "$mem_total" -gt 0 ]; then
+		mem_used=$((mem_total - mem_free))
+		mem_pct=$((mem_used * 100 / mem_total))
+	fi
+
+	echo "{\"uptime\":${uptime_val:-0},\"load\":\"${load:-0}\",\"mem_used_kb\":$mem_used,\"mem_total_kb\":${mem_total:-0},\"mem_pct\":$mem_pct}"
+}
+
+# Get peer statuses
+get_peer_statuses() {
+	local peers_file="/tmp/secubox-p2p-peers.json"
+	local result="["
+	local first=1
+
+	if [ -f "$peers_file" ]; then
+		# Parse each peer
+		local peers=$(jsonfilter -i "$peers_file" -e '@.peers[*]' 2>/dev/null)
+		local count=$(jsonfilter -i "$peers_file" -e '@.peers[*]' 2>/dev/null | wc -l)
+		local i=0
+
+		while [ $i -lt $count ]; do
+			local addr=$(jsonfilter -i "$peers_file" -e "@.peers[$i].address" 2>/dev/null)
+			local name=$(jsonfilter -i "$peers_file" -e "@.peers[$i].name" 2>/dev/null)
+			local is_local=$(jsonfilter -i "$peers_file" -e "@.peers[$i].is_local" 2>/dev/null)
+
+			if [ -n "$addr" ] && [ "$is_local" != "true" ]; then
+				# Try to get peer status (with timeout)
+				local peer_status=$(curl -s --connect-timeout 2 "http://$addr:7331/api/status" 2>/dev/null)
+				local status="offline"
+				local peer_merkle=""
+
+				if [ -n "$peer_status" ] && echo "$peer_status" | grep -q "node_id"; then
+					status="online"
+					# Try to get peer's merkle root
+					peer_merkle=$(curl -s --connect-timeout 1 "http://$addr:7331/api/factory/snapshot" 2>/dev/null | jsonfilter -e '@.merkle_root' 2>/dev/null)
+				fi
+
+				[ $first -eq 0 ] && result="$result,"
+				first=0
+				result="$result{\"address\":\"$addr\",\"name\":\"$name\",\"status\":\"$status\",\"merkle_root\":\"${peer_merkle:-}\"}"
+			fi
+			i=$((i + 1))
+		done
+	fi
+
+	result="$result]"
+	echo "$result"
+}
+
+# Main response
+local_status=$(get_local_status)
+local_merkle=$(merkle_config 2>/dev/null || echo "")
+snapshot=$(get_snapshot 2>/dev/null | tr '\n' ' ' | tr '\t' ' ')
+services=$(get_services_status)
+system=$(get_system_stats)
+peers=$(get_peer_statuses)
+pending=$(pending_count 2>/dev/null || echo "0")
+fingerprint=$(factory_fingerprint 2>/dev/null || echo "")
+
+# Build response
+cat << EOF
+{
+	"local": $local_status,
+	"merkle_root": "$local_merkle",
+	"snapshot": $snapshot,
+	"services": $services,
+	"system": $system,
+	"peers": $peers,
+	"pending_ops": $pending,
+	"fingerprint": "$fingerprint"
+}
+EOF

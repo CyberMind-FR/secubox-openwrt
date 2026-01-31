@@ -1,0 +1,159 @@
+#!/bin/sh
+# Factory Run - Execute tools
+# CGI endpoint for SecuBox Factory
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: POST, OPTIONS"
+echo "Access-Control-Allow-Headers: Content-Type"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Only allow POST
+if [ "$REQUEST_METHOD" != "POST" ]; then
+	echo '{"success":false,"error":"method_not_allowed"}'
+	exit 1
+fi
+
+# Load factory library
+. /usr/lib/secubox/factory.sh 2>/dev/null
+
+# Read POST body
+read -r body
+
+# Parse tool ID from body
+tool_id=$(echo "$body" | jsonfilter -e '@.tool' 2>/dev/null)
+params=$(echo "$body" | jsonfilter -e '@.params' 2>/dev/null)
+
+if [ -z "$tool_id" ]; then
+	echo '{"success":false,"error":"missing_tool_id"}'
+	exit 1
+fi
+
+# Log the action
+factory_audit_log "tool_run" "$tool_id" 2>/dev/null
+
+# Execute tool
+output=""
+success=1
+
+case "$tool_id" in
+	snapshot)
+		hash=$(create_snapshot 2>&1)
+		output="Snapshot created with hash: $hash"
+		;;
+
+	verify)
+		result=$(verify_snapshot 2>&1)
+		output="Snapshot verification: $result"
+		[ "$result" != "valid" ] && success=0
+		;;
+
+	gossip)
+		result=$(gossip_sync 2>&1)
+		output="Gossip sync result: $result"
+		;;
+
+	discover)
+		if [ -x /usr/sbin/secubox-p2p ]; then
+			result=$(/usr/sbin/secubox-p2p discover 5 2>&1)
+			output="Discovery result: $result"
+		else
+			output="P2P daemon not available"
+			success=0
+		fi
+		;;
+
+	services)
+		if [ -x /usr/sbin/secubox-p2p ]; then
+			result=$(/usr/sbin/secubox-p2p services 2>&1)
+			output="$result"
+		else
+			output='{"error":"p2p_unavailable"}'
+			success=0
+		fi
+		;;
+
+	validate)
+		if [ -x /secubox-tools/validate-modules.sh ]; then
+			result=$(/secubox-tools/validate-modules.sh 2>&1 | tail -50)
+			output="$result"
+		else
+			output="Validation script not found on this device"
+			success=0
+		fi
+		;;
+
+	repair)
+		if [ -x /secubox-tools/secubox-repair.sh ]; then
+			result=$(/secubox-tools/secubox-repair.sh 2>&1 | tail -50)
+			output="$result"
+		else
+			output="Repair script not found on this device"
+			success=0
+		fi
+		;;
+
+	backup)
+		# Create sysupgrade backup
+		backup_file="/tmp/backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+		if sysupgrade --create-backup "$backup_file" 2>/dev/null; then
+			size=$(ls -lh "$backup_file" 2>/dev/null | awk '{print $5}')
+			output="Backup created: $backup_file ($size)"
+		else
+			# Fallback: tar the config directory
+			backup_file="/tmp/backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+			if tar -czf "$backup_file" /etc/config 2>/dev/null; then
+				size=$(ls -lh "$backup_file" 2>/dev/null | awk '{print $5}')
+				output="Config backup created: $backup_file ($size)"
+			else
+				output="Backup failed"
+				success=0
+			fi
+		fi
+		;;
+
+	pending)
+		count=$(pending_count 2>/dev/null || echo "0")
+		output="Pending operations: $count"
+		;;
+
+	replay)
+		result=$(replay_pending 2>&1)
+		output="Replay result: $result"
+		;;
+
+	fingerprint)
+		fp=$(factory_fingerprint 2>&1)
+		output="Node fingerprint: $fp"
+		;;
+
+	merkle)
+		merkle=$(merkle_config 2>&1)
+		output="Merkle root: $merkle"
+		;;
+
+	*)
+		output="Unknown tool: $tool_id"
+		success=0
+		;;
+esac
+
+# Update snapshot after action (if successful)
+if [ $success -eq 1 ]; then
+	create_snapshot >/dev/null 2>&1
+fi
+
+# Escape output for JSON (basic escaping)
+output_escaped=$(echo "$output" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' ' ' | tr '\t' ' ')
+
+# Return result
+if [ $success -eq 1 ]; then
+	echo "{\"success\":true,\"tool\":\"$tool_id\",\"output\":\"$output_escaped\"}"
+else
+	echo "{\"success\":false,\"tool\":\"$tool_id\",\"error\":\"$output_escaped\"}"
+fi

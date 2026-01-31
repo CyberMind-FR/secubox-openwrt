@@ -1,0 +1,27 @@
+#!/bin/sh
+# Factory Pubkey - Return node's public key for trust verification
+# CGI endpoint for SecuBox Factory
+
+echo "Content-Type: text/plain"
+echo "Access-Control-Allow-Origin: *"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+PUBKEY="/etc/secubox/factory.pub"
+
+if [ -f "$PUBKEY" ]; then
+	cat "$PUBKEY"
+else
+	# Initialize keys if not present
+	. /usr/lib/secubox/factory.sh 2>/dev/null
+	factory_init_keys 2>/dev/null
+	if [ -f "$PUBKEY" ]; then
+		cat "$PUBKEY"
+	else
+		echo "ERROR: Keys not initialized"
+	fi
+fi

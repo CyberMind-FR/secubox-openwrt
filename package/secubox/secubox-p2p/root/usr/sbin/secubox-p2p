@@ -3,7 +3,7 @@
 # Handles peer discovery, mesh networking, and service federation
 # Supports WAN IP, LAN IP, and WireGuard tunnel redundancy
 
-VERSION="0.3.0"
+VERSION="0.4.0"
 CONFIG_FILE="/etc/config/secubox-p2p"
 PEERS_FILE="/tmp/secubox-p2p-peers.json"
 SERVICES_FILE="/tmp/secubox-p2p-services.json"

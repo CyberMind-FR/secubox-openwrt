@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-p2p
-PKG_VERSION:=0.3.0
+PKG_VERSION:=0.4.0
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=SecuBox Team
@@ -20,7 +20,9 @@ endef
 define Package/secubox-p2p/description
   SecuBox P2P Hub backend providing peer discovery, mesh networking,
   DNS federation, and distributed service management. Includes mDNS
-  service announcement and REST API on port 7331 for mesh visibility.
+  service announcement, REST API on port 7331 for mesh visibility,
+  and SecuBox Factory unified dashboard with Ed25519 signed Merkle
+  snapshots for cryptographic configuration validation.
 endef
 
 define Package/secubox-p2p/conffiles
@@ -54,6 +56,22 @@ define Package/secubox-p2p/install
 	$(INSTALL_BIN) ./root/www/api/status $(1)/www/api/
 	$(INSTALL_BIN) ./root/www/api/services $(1)/www/api/
 	$(INSTALL_BIN) ./root/www/api/sync $(1)/www/api/
+
+	# Factory API endpoints
+	$(INSTALL_DIR) $(1)/www/api/factory
+	$(INSTALL_BIN) ./root/www/api/factory/dashboard $(1)/www/api/factory/
+	$(INSTALL_BIN) ./root/www/api/factory/tools $(1)/www/api/factory/
+	$(INSTALL_BIN) ./root/www/api/factory/run $(1)/www/api/factory/
+	$(INSTALL_BIN) ./root/www/api/factory/snapshot $(1)/www/api/factory/
+	$(INSTALL_BIN) ./root/www/api/factory/pubkey $(1)/www/api/factory/
+
+	# Factory Web UI
+	$(INSTALL_DIR) $(1)/www/factory
+	$(INSTALL_DATA) ./root/www/factory/index.html $(1)/www/factory/
+
+	# Factory library
+	$(INSTALL_DIR) $(1)/usr/lib/secubox
+	$(INSTALL_BIN) ./root/usr/lib/secubox/factory.sh $(1)/usr/lib/secubox/
 endef
 
 define Package/secubox-p2p/postinst

@@ -1,0 +1,58 @@
+#!/bin/sh
+# Factory Snapshot - Get or update signed Merkle snapshot
+# CGI endpoint for SecuBox Factory
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: GET, POST, OPTIONS"
+echo "Access-Control-Allow-Headers: Content-Type"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Load factory library
+. /usr/lib/secubox/factory.sh 2>/dev/null
+
+case "$REQUEST_METHOD" in
+	GET)
+		# Return current snapshot
+		get_snapshot
+		;;
+
+	POST)
+		# Receive snapshot from peer (for gossip sync)
+		read -r body
+
+		if [ -z "$body" ]; then
+			echo '{"error":"empty_body"}'
+			exit 1
+		fi
+
+		# Validate incoming snapshot has required fields
+		peer_merkle=$(echo "$body" | jsonfilter -e '@.merkle_root' 2>/dev/null)
+		peer_ts=$(echo "$body" | jsonfilter -e '@.timestamp' 2>/dev/null)
+		peer_node=$(echo "$body" | jsonfilter -e '@.node_id' 2>/dev/null)
+
+		if [ -z "$peer_merkle" ] || [ -z "$peer_ts" ]; then
+			echo '{"error":"invalid_snapshot_format"}'
+			exit 1
+		fi
+
+		# Log the received snapshot (don't auto-apply, just log for audit)
+		factory_audit_log "snapshot_received" "from=$peer_node merkle=$peer_merkle ts=$peer_ts" 2>/dev/null
+
+		# Store in pending for manual review (don't auto-overwrite local config)
+		mkdir -p /var/lib/secubox-factory/pending
+		echo "$body" > "/var/lib/secubox-factory/pending/snapshot-${peer_node}-$(date +%s).json"
+
+		echo "{\"success\":true,\"message\":\"snapshot_queued_for_review\"}"
+		;;
+
+	*)
+		echo '{"error":"method_not_allowed"}'
+		exit 1
+		;;
+esac
