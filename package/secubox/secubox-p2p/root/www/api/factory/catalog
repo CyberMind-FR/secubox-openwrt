@@ -1,0 +1,351 @@
+#!/bin/sh
+# Factory Catalog - Distributed Service Registry
+# CGI endpoint for MirrorBox NetMesh Catalog
+# Returns services with multiple access endpoints (HAProxy vhosts, mesh, local)
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: GET, OPTIONS"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Source OpenWrt functions for UCI iteration
+. /lib/functions.sh
+
+# Load factory library
+. /usr/lib/secubox/factory.sh 2>/dev/null
+
+# Get local node info
+P2P_STATE_DIR="/var/run/secubox-p2p"
+LOCAL_NODE_ID=$(cat "$P2P_STATE_DIR/node.id" 2>/dev/null || hostname)
+LOCAL_NODE_NAME=$(uci -q get system.@system[0].hostname || hostname)
+LOCAL_IP=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+UPDATED=$(date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')
+
+# DNS Federation settings
+DNS_ENABLED=$(uci -q get secubox-p2p.dns.enabled || echo "0")
+DNS_DOMAIN=$(uci -q get secubox-p2p.dns.base_domain || echo "mesh.local")
+
+# Generate DNS hostname from node name
+get_dns_hostname() {
+	local name="$1"
+	# Remove "(local)" suffix, lowercase, replace special chars with dashes
+	echo "$name" | sed -e 's/ (local)//' -e 's/[^a-zA-Z0-9-]/-/g' | tr 'A-Z' 'a-z'
+}
+
+# Get WAN IP (for external access)
+get_wan_ip() {
+	# Try to get WAN IP from interface
+	local wan_ip=$(ip -4 addr show wan 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+	[ -z "$wan_ip" ] && wan_ip=$(ip -4 addr show pppoe-wan 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+	[ -z "$wan_ip" ] && wan_ip=$(ip -4 addr show eth1 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+	# Fallback: try to detect via external service (cached)
+	if [ -z "$wan_ip" ] && [ -f "/tmp/secubox-wan-ip" ]; then
+		wan_ip=$(cat /tmp/secubox-wan-ip)
+	fi
+	echo "$wan_ip"
+}
+
+# Get WireGuard mesh IP
+get_mesh_ip() {
+	local mesh_ip=$(ip -4 addr show wg0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+	echo "$mesh_ip"
+}
+
+# Build HAProxy vhost map: domain -> backend
+# Returns: domain|backend|ssl|enabled for each vhost
+get_haproxy_vhosts() {
+	config_load haproxy 2>/dev/null || return
+
+	# Callback function for each vhost
+	_emit_vhost() {
+		local section="$1"
+		local enabled domain backend ssl ssl_redirect
+
+		config_get enabled "$section" enabled "0"
+		[ "$enabled" = "1" ] || return
+
+		config_get domain "$section" domain
+		config_get backend "$section" backend
+		config_get ssl "$section" ssl "0"
+		config_get ssl_redirect "$section" ssl_redirect "0"
+
+		[ -n "$domain" ] || return
+		[ -n "$backend" ] || return
+
+		# Determine scheme
+		local scheme="http"
+		[ "$ssl" = "1" ] && scheme="https"
+
+		echo "${domain}|${backend}|${scheme}|${ssl_redirect}"
+	}
+
+	config_foreach _emit_vhost vhost
+}
+
+# Map backend name to service name (normalize)
+# E.g., backend_gitea -> gitea, srv_domoticz -> domoticz
+normalize_backend_name() {
+	local backend="$1"
+	# Strip common prefixes
+	echo "$backend" | sed -e 's/^backend_//' -e 's/^srv_//' -e 's/^be_//' -e 's/_/-/g'
+}
+
+# Get service status and port from init scripts
+get_service_info() {
+	local svc_name="$1"
+	local status="unknown"
+	local port=""
+	local enabled=false
+
+	# Check init script
+	local init_script="/etc/init.d/$svc_name"
+	if [ -x "$init_script" ]; then
+		enabled=$("$init_script" enabled 2>/dev/null && echo true || echo false)
+		# Check if running
+		if pgrep "$svc_name" >/dev/null 2>&1; then
+			status="running"
+		else
+			status="stopped"
+		fi
+	fi
+
+	# Try to find port from UCI or known mappings
+	case "$svc_name" in
+		gitea)      port="3000" ;;
+		domoticz)   port="8080" ;;
+		crowdsec)   port="8080" ;;
+		haproxy)    port="8404" ;;
+		adguardhome) port="3000" ;;
+		netdata)    port="19999" ;;
+		glances)    port="61208" ;;
+		streamlit)  port="8501" ;;
+		zigbee2mqtt) port="8080" ;;
+		nextcloud)  port="8080" ;;
+		ollama)     port="11434" ;;
+		localai)    port="8080" ;;
+		wireguard-dashboard|wg-dashboard) port="10086" ;;
+		mitmproxy)  port="8081" ;;
+		*)
+			# Try to get from UCI config
+			port=$(uci -q get "$svc_name.main.port" 2>/dev/null)
+			[ -z "$port" ] && port=$(uci -q get "$svc_name.@server[0].port" 2>/dev/null)
+			;;
+	esac
+
+	echo "$status|$port|$enabled"
+}
+
+# Build catalog entries from HAProxy vhosts and local services
+build_catalog() {
+	local wan_ip=$(get_wan_ip)
+	local mesh_ip=$(get_mesh_ip)
+	local first_service=1
+
+	# Start services array
+	echo '"services": ['
+
+	# Track processed backends to avoid duplicates
+	local processed_backends=""
+
+	# First, enumerate HAProxy vhosts (primary access method)
+	local vhosts=$(get_haproxy_vhosts)
+	for vhost_line in $vhosts; do
+		local domain=$(echo "$vhost_line" | cut -d'|' -f1)
+		local backend=$(echo "$vhost_line" | cut -d'|' -f2)
+		local scheme=$(echo "$vhost_line" | cut -d'|' -f3)
+		local ssl_redirect=$(echo "$vhost_line" | cut -d'|' -f4)
+
+		local svc_name=$(normalize_backend_name "$backend")
+
+		# Skip if already processed
+		echo "$processed_backends" | grep -qw "$svc_name" && continue
+		processed_backends="$processed_backends $svc_name"
+
+		# Get service status
+		local svc_info=$(get_service_info "$svc_name")
+		local status=$(echo "$svc_info" | cut -d'|' -f1)
+		local port=$(echo "$svc_info" | cut -d'|' -f2)
+		local enabled=$(echo "$svc_info" | cut -d'|' -f3)
+
+		[ $first_service -eq 0 ] && echo ","
+		first_service=0
+
+		# Build endpoints array
+		local endpoints='['
+		local first_ep=1
+
+		# Primary: HAProxy vhost (published domain)
+		[ $first_ep -eq 0 ] && endpoints="$endpoints,"
+		first_ep=0
+		endpoints="$endpoints{\"type\":\"haproxy\",\"url\":\"${scheme}://${domain}\",\"ssl\":$([ \"$scheme\" = \"https\" ] && echo true || echo false),\"primary\":true}"
+
+		# Collect all vhosts for this backend
+		for other_vhost in $vhosts; do
+			local other_domain=$(echo "$other_vhost" | cut -d'|' -f1)
+			local other_backend=$(echo "$other_vhost" | cut -d'|' -f2)
+			local other_scheme=$(echo "$other_vhost" | cut -d'|' -f3)
+
+			[ "$other_backend" = "$backend" ] || continue
+			[ "$other_domain" = "$domain" ] && continue  # Skip primary
+
+			endpoints="$endpoints,{\"type\":\"haproxy\",\"url\":\"${other_scheme}://${other_domain}\",\"ssl\":$([ \"$other_scheme\" = \"https\" ] && echo true || echo false),\"primary\":false}"
+		done
+
+		# Mesh endpoint (WireGuard)
+		if [ -n "$mesh_ip" ] && [ -n "$port" ]; then
+			endpoints="$endpoints,{\"type\":\"mesh\",\"url\":\"http://${mesh_ip}:${port}\",\"ssl\":false,\"primary\":false}"
+		fi
+
+		# Local endpoint (LAN)
+		if [ -n "$port" ]; then
+			endpoints="$endpoints,{\"type\":\"local\",\"url\":\"http://${LOCAL_IP}:${port}\",\"ssl\":false,\"primary\":false}"
+		fi
+
+		endpoints="$endpoints]"
+
+		# Output service entry
+		cat << SVCEOF
+{
+	"name": "$svc_name",
+	"backend": "$backend",
+	"status": "$status",
+	"enabled": $enabled,
+	"port": "${port:-}",
+	"endpoints": $endpoints,
+	"health": {
+		"last_check": "$UPDATED",
+		"status": "$([ \"$status\" = \"running\" ] && echo healthy || echo unhealthy)",
+		"latency_ms": 0
+	}
+}
+SVCEOF
+	done
+
+	# Now add services without HAProxy vhosts (mesh/local only)
+	local services_json=$(/usr/sbin/secubox-p2p services 2>/dev/null)
+	if [ -n "$services_json" ]; then
+		local svc_count=$(echo "$services_json" | jsonfilter -e '@.services[*]' 2>/dev/null | wc -l)
+		local i=0
+
+		while [ $i -lt $svc_count ]; do
+			local svc_name=$(echo "$services_json" | jsonfilter -e "@.services[$i].name" 2>/dev/null)
+			local svc_status=$(echo "$services_json" | jsonfilter -e "@.services[$i].status" 2>/dev/null)
+			local svc_enabled=$(echo "$services_json" | jsonfilter -e "@.services[$i].enabled" 2>/dev/null)
+			local svc_port=$(echo "$services_json" | jsonfilter -e "@.services[$i].port" 2>/dev/null)
+
+			# Skip if already processed via HAProxy
+			if ! echo "$processed_backends" | grep -qw "$svc_name"; then
+				[ $first_service -eq 0 ] && echo ","
+				first_service=0
+
+				# Build endpoints (mesh + local only, no HAProxy)
+				local endpoints='['
+				local first_ep=1
+
+				# Mesh endpoint
+				if [ -n "$mesh_ip" ] && [ -n "$svc_port" ] && [ "$svc_port" != "0" ]; then
+					[ $first_ep -eq 0 ] && endpoints="$endpoints,"
+					first_ep=0
+					endpoints="$endpoints{\"type\":\"mesh\",\"url\":\"http://${mesh_ip}:${svc_port}\",\"ssl\":false,\"primary\":true}"
+				fi
+
+				# Local endpoint
+				if [ -n "$svc_port" ] && [ "$svc_port" != "0" ]; then
+					[ $first_ep -eq 0 ] && endpoints="$endpoints,"
+					first_ep=0
+					endpoints="$endpoints{\"type\":\"local\",\"url\":\"http://${LOCAL_IP}:${svc_port}\",\"ssl\":false,\"primary\":$([ $first_ep -eq 1 ] && echo true || echo false)}"
+				fi
+
+				endpoints="$endpoints]"
+
+				cat << SVCEOF
+{
+	"name": "$svc_name",
+	"backend": "",
+	"status": "$svc_status",
+	"enabled": ${svc_enabled:-false},
+	"port": "${svc_port:-}",
+	"endpoints": $endpoints,
+	"health": {
+		"last_check": "$UPDATED",
+		"status": "$([ \"$svc_status\" = \"running\" ] && echo healthy || echo unhealthy)",
+		"latency_ms": 0
+	}
+}
+SVCEOF
+			fi
+
+			i=$((i + 1))
+		done
+	fi
+
+	echo ']'
+}
+
+# Get DNS hostname for this node
+LOCAL_DNS_HOST=$(get_dns_hostname "$LOCAL_NODE_NAME")
+
+# Get linked peers for navigation
+get_peer_links() {
+	local peers_file="/tmp/secubox-p2p-peers.json"
+	[ -f "$peers_file" ] || { echo '[]'; return; }
+
+	local result='['
+	local first=1
+	local peer_count=$(jsonfilter -i "$peers_file" -e '@.peers[*]' 2>/dev/null | wc -l)
+	local i=0
+
+	while [ $i -lt $peer_count ]; do
+		local is_local=$(jsonfilter -i "$peers_file" -e "@.peers[$i].is_local" 2>/dev/null)
+		[ "$is_local" = "true" ] && { i=$((i + 1)); continue; }
+
+		local peer_addr=$(jsonfilter -i "$peers_file" -e "@.peers[$i].address" 2>/dev/null)
+		local peer_name=$(jsonfilter -i "$peers_file" -e "@.peers[$i].name" 2>/dev/null)
+		local peer_status=$(jsonfilter -i "$peers_file" -e "@.peers[$i].status" 2>/dev/null)
+		local peer_wg=$(jsonfilter -i "$peers_file" -e "@.peers[$i].wg_addresses" 2>/dev/null | cut -d',' -f1)
+
+		[ -n "$peer_addr" ] || { i=$((i + 1)); continue; }
+
+		local peer_dns=$(get_dns_hostname "$peer_name")
+
+		[ $first -eq 0 ] && result="$result,"
+		first=0
+
+		result="$result{\"name\":\"$peer_name\",\"address\":\"$peer_addr\",\"status\":\"$peer_status\""
+		result="$result,\"dns_hostname\":\"$peer_dns\""
+		result="$result,\"dns_fqdn\":\"$peer_dns.$DNS_DOMAIN\""
+		result="$result,\"wg_address\":\"$peer_wg\""
+		result="$result,\"factory_url\":\"http://$peer_addr:7331/factory/\""
+		result="$result,\"catalog_url\":\"http://$peer_addr:7331/api/factory/catalog\"}"
+
+		i=$((i + 1))
+	done
+
+	result="$result]"
+	echo "$result"
+}
+
+# Main output
+cat << EOF
+{
+	"node_id": "$LOCAL_NODE_ID",
+	"node_name": "$LOCAL_NODE_NAME",
+	"updated": "$UPDATED",
+	"local_ip": "$LOCAL_IP",
+	"wan_ip": "$(get_wan_ip)",
+	"mesh_ip": "$(get_mesh_ip)",
+	"dns": {
+		"enabled": $DNS_ENABLED,
+		"domain": "$DNS_DOMAIN",
+		"hostname": "$LOCAL_DNS_HOST",
+		"fqdn": "$LOCAL_DNS_HOST.$DNS_DOMAIN"
+	},
+	"linked_peers": $(get_peer_links),
+	$(build_catalog)
+}
+EOF

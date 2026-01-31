@@ -295,6 +295,177 @@ factory_audit_log() {
 	fi
 }
 
+# ===========================================
+# Distributed Catalog Functions
+# ===========================================
+
+CATALOG_DIR="$FACTORY_DIR/catalog"
+LOCAL_CATALOG="$CATALOG_DIR/local.json"
+MERGED_CATALOG="$CATALOG_DIR/merged.json"
+
+# Initialize catalog directory
+catalog_init() {
+	factory_init
+	mkdir -p "$CATALOG_DIR"
+	mkdir -p "$CATALOG_DIR/peers"
+}
+
+# Generate local catalog (calls the CGI endpoint logic)
+catalog_generate_local() {
+	catalog_init
+	local node_id=$(cat "$P2P_STATE_DIR/node.id" 2>/dev/null || hostname)
+	local node_name=$(uci -q get system.@system[0].hostname || hostname)
+	local updated=$(date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')
+
+	# Fetch from local catalog API
+	local catalog=$(curl -s "http://127.0.0.1:7331/api/factory/catalog" 2>/dev/null)
+
+	if [ -n "$catalog" ] && echo "$catalog" | grep -q "node_id"; then
+		echo "$catalog" > "$LOCAL_CATALOG"
+		echo "$LOCAL_CATALOG"
+	else
+		echo '{"error":"catalog_generation_failed"}' > "$LOCAL_CATALOG"
+		echo "$LOCAL_CATALOG"
+	fi
+}
+
+# Pull catalog from a peer
+catalog_pull_peer() {
+	local peer_addr="$1"
+	local peer_name="${2:-$peer_addr}"
+
+	[ -z "$peer_addr" ] && return 1
+
+	catalog_init
+
+	local peer_catalog=$(curl -s --connect-timeout 3 --max-time 10 "http://$peer_addr:7331/api/factory/catalog" 2>/dev/null)
+
+	if [ -n "$peer_catalog" ] && echo "$peer_catalog" | grep -q "node_id"; then
+		local peer_node_name=$(echo "$peer_catalog" | jsonfilter -e '@.node_name' 2>/dev/null || echo "$peer_name")
+		echo "$peer_catalog" > "$CATALOG_DIR/peers/${peer_node_name}.json"
+		echo "pulled:$peer_node_name"
+	else
+		echo "failed:$peer_addr"
+	fi
+}
+
+# Sync catalogs with all known peers
+catalog_sync() {
+	catalog_init
+
+	local peers_file="/tmp/secubox-p2p-peers.json"
+	[ -f "$peers_file" ] || { echo '{"synced":0,"error":"no_peers"}'; return 1; }
+
+	# Generate local catalog first
+	catalog_generate_local >/dev/null 2>&1
+
+	# Pull from all online peers
+	local synced=0
+	local failed=0
+	local peer_count=$(jsonfilter -i "$peers_file" -e '@.peers[*]' 2>/dev/null | wc -l)
+	local p=0
+
+	while [ $p -lt $peer_count ]; do
+		local peer_addr=$(jsonfilter -i "$peers_file" -e "@.peers[$p].address" 2>/dev/null)
+		local peer_name=$(jsonfilter -i "$peers_file" -e "@.peers[$p].name" 2>/dev/null)
+		local is_local=$(jsonfilter -i "$peers_file" -e "@.peers[$p].is_local" 2>/dev/null)
+
+		if [ "$is_local" != "true" ] && [ -n "$peer_addr" ]; then
+			local result=$(catalog_pull_peer "$peer_addr" "$peer_name")
+			if echo "$result" | grep -q "^pulled:"; then
+				synced=$((synced + 1))
+			else
+				failed=$((failed + 1))
+			fi
+		fi
+		p=$((p + 1))
+	done
+
+	# Merge all catalogs
+	catalog_merge
+
+	# Push to Gitea if enabled
+	if [ "$(uci -q get secubox-p2p.gitea.enabled)" = "1" ]; then
+		catalog_push_gitea
+	fi
+
+	echo "{\"synced\":$synced,\"failed\":$failed}"
+}
+
+# Merge all catalogs into unified view (CRDT union)
+catalog_merge() {
+	catalog_init
+
+	local merged_services='{"nodes":['
+	local first_node=1
+
+	# Add local catalog
+	if [ -f "$LOCAL_CATALOG" ]; then
+		[ $first_node -eq 0 ] && merged_services="$merged_services,"
+		first_node=0
+		cat "$LOCAL_CATALOG" | tr '\n' ' ' | tr '\t' ' ' >> /tmp/catalog_merge_local.tmp
+		local local_entry=$(cat /tmp/catalog_merge_local.tmp)
+		merged_services="$merged_services$local_entry"
+		rm -f /tmp/catalog_merge_local.tmp
+	fi
+
+	# Add peer catalogs
+	for peer_catalog in "$CATALOG_DIR/peers"/*.json; do
+		[ -f "$peer_catalog" ] || continue
+		[ $first_node -eq 0 ] && merged_services="$merged_services,"
+		first_node=0
+		cat "$peer_catalog" | tr '\n' ' ' | tr '\t' ' ' >> /tmp/catalog_merge_peer.tmp
+		local peer_entry=$(cat /tmp/catalog_merge_peer.tmp)
+		merged_services="$merged_services$peer_entry"
+		rm -f /tmp/catalog_merge_peer.tmp
+	done
+
+	merged_services="$merged_services],\"updated\":\"$(date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')\"}"
+
+	echo "$merged_services" > "$MERGED_CATALOG"
+}
+
+# Push catalog to Gitea repository
+catalog_push_gitea() {
+	local gitea_enabled=$(uci -q get secubox-p2p.gitea.enabled)
+	[ "$gitea_enabled" = "1" ] || return 0
+
+	local node_name=$(uci -q get system.@system[0].hostname || hostname)
+
+	# This would push to secubox-catalog repo in Gitea
+	# For now, just log the action
+	logger -t factory "Catalog sync: would push to Gitea nodes/${node_name}.json"
+
+	# Future: use ubus call to trigger actual git push
+	# ubus call luci.secubox-p2p push_catalog_gitea "{\"file\":\"nodes/${node_name}.json\"}" 2>/dev/null
+}
+
+# Get merged catalog JSON
+catalog_get_merged() {
+	if [ -f "$MERGED_CATALOG" ]; then
+		cat "$MERGED_CATALOG"
+	elif [ -f "$LOCAL_CATALOG" ]; then
+		# Return local only if no merge yet
+		echo "{\"nodes\":[$(cat "$LOCAL_CATALOG" | tr '\n' ' ')],\"updated\":\"$(date -Iseconds)\"}"
+	else
+		echo '{"nodes":[],"updated":"","error":"no_catalog"}'
+	fi
+}
+
+# List available catalogs
+catalog_list() {
+	catalog_init
+	echo "Local catalog: $LOCAL_CATALOG"
+	[ -f "$LOCAL_CATALOG" ] && echo "  - $(jsonfilter -i "$LOCAL_CATALOG" -e '@.node_name' 2>/dev/null || echo 'unknown')"
+
+	echo "Peer catalogs:"
+	for peer_catalog in "$CATALOG_DIR/peers"/*.json; do
+		[ -f "$peer_catalog" ] || continue
+		local name=$(basename "$peer_catalog" .json)
+		echo "  - $name"
+	done
+}
+
 # Main entry point for CLI usage
 case "${1:-}" in
 	init)
@@ -330,6 +501,33 @@ case "${1:-}" in
 		;;
 	merkle)
 		merkle_config
+		;;
+	# Catalog commands
+	catalog)
+		case "${2:-}" in
+			sync)
+				catalog_sync
+				;;
+			list)
+				catalog_list
+				;;
+			generate)
+				catalog_generate_local
+				;;
+			merge)
+				catalog_merge
+				echo "Merged catalog: $MERGED_CATALOG"
+				;;
+			get)
+				catalog_get_merged
+				;;
+			pull)
+				catalog_pull_peer "$3" "$4"
+				;;
+			*)
+				echo "Usage: factory.sh catalog {sync|list|generate|merge|get|pull <peer_addr>}"
+				;;
+		esac
 		;;
 	*)
 		# Sourced as library - do nothing

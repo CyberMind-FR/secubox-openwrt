@@ -3,7 +3,7 @@
 # Handles peer discovery, mesh networking, and service federation
 # Supports WAN IP, LAN IP, and WireGuard tunnel redundancy
 
-VERSION="0.4.0"
+VERSION="0.6.0"
 CONFIG_FILE="/etc/config/secubox-p2p"
 PEERS_FILE="/tmp/secubox-p2p-peers.json"
 SERVICES_FILE="/tmp/secubox-p2p-services.json"
@@ -439,6 +439,210 @@ stop_mdns() {
 	fi
 }
 
+# ===========================================
+# DNS Federation - Dynamic mesh DNS entries
+# ===========================================
+
+DNS_HOSTS_FILE="/tmp/hosts/secubox-mesh"
+DNS_DOMAIN_BASE="mesh.local"
+
+# Initialize DNS federation
+dns_init() {
+	local dns_enabled=$(get_config dns enabled 0)
+	[ "$dns_enabled" = "1" ] || return 0
+
+	DNS_DOMAIN_BASE=$(get_config dns base_domain "mesh.local")
+
+	# Ensure hosts directory exists
+	mkdir -p /tmp/hosts
+
+	# Create or update mesh hosts file
+	touch "$DNS_HOSTS_FILE"
+
+	# Ensure dnsmasq reads from /tmp/hosts
+	# Check if addn-hosts is configured
+	if ! uci -q get dhcp.@dnsmasq[0].addnhosts | grep -q "/tmp/hosts"; then
+		uci add_list dhcp.@dnsmasq[0].addnhosts="/tmp/hosts"
+		uci commit dhcp
+		logger -t secubox-p2p "Added /tmp/hosts to dnsmasq additional hosts"
+	fi
+}
+
+# Update DNS entries for all mesh peers
+dns_update_peers() {
+	local dns_enabled=$(get_config dns enabled 0)
+	[ "$dns_enabled" = "1" ] || return 0
+
+	dns_init
+
+	local base_domain=$(get_config dns base_domain "mesh.local")
+	local hosts_content=""
+	local count=0
+
+	# Get all peers (including local)
+	local peers_json=$(cat "$PEERS_FILE" 2>/dev/null || echo '{"peers":[]}')
+
+	# Parse peers and build hosts entries
+	# Format: IP hostname hostname.mesh.local
+	if command -v jq >/dev/null 2>&1; then
+		hosts_content=$(echo "$peers_json" | jq -r '.peers[] | select(.status == "online" or .is_local == true) |
+			# Build hostname entries
+			(
+				(.address // empty) as $lan |
+				(.wan_address // empty) as $wan |
+				(.wg_addresses // empty) as $wg |
+				(.name // "peer") | gsub(" \\(local\\)"; "") | gsub("[^a-zA-Z0-9-]"; "-") | ascii_downcase as $hostname |
+
+				# LAN entry (primary for local network)
+				(if $lan != "" and $lan != null then
+					"\($lan)\t\($hostname)\t\($hostname).'$base_domain'"
+				else empty end),
+
+				# WireGuard entry (for mesh access)
+				(if $wg != "" and $wg != null then
+					($wg | split(",")[0]) as $wg_ip |
+					if $wg_ip != "" then
+						"\($wg_ip)\t\($hostname)-wg\t\($hostname)-wg.'$base_domain'"
+					else empty end
+				else empty end)
+			)
+		' 2>/dev/null)
+	else
+		# Fallback without jq - use jsonfilter
+		local peer_count=$(echo "$peers_json" | jsonfilter -e '@.peers[*]' 2>/dev/null | wc -l)
+		local i=0
+
+		while [ $i -lt $peer_count ]; do
+			local addr=$(echo "$peers_json" | jsonfilter -e "@.peers[$i].address" 2>/dev/null)
+			local name=$(echo "$peers_json" | jsonfilter -e "@.peers[$i].name" 2>/dev/null)
+			local status=$(echo "$peers_json" | jsonfilter -e "@.peers[$i].status" 2>/dev/null)
+			local is_local=$(echo "$peers_json" | jsonfilter -e "@.peers[$i].is_local" 2>/dev/null)
+			local wg_addr=$(echo "$peers_json" | jsonfilter -e "@.peers[$i].wg_addresses" 2>/dev/null | cut -d',' -f1)
+
+			# Only add online peers or local node
+			if [ "$status" = "online" ] || [ "$is_local" = "true" ]; then
+				# Clean hostname (remove special chars)
+				local hostname=$(echo "$name" | sed -e 's/ (local)//' -e 's/[^a-zA-Z0-9-]/-/g' | tr 'A-Z' 'a-z')
+
+				# Add LAN entry
+				if [ -n "$addr" ]; then
+					hosts_content="$hosts_content$addr	$hostname	$hostname.$base_domain
+"
+					count=$((count + 1))
+				fi
+
+				# Add WireGuard entry
+				if [ -n "$wg_addr" ]; then
+					hosts_content="$hosts_content$wg_addr	${hostname}-wg	${hostname}-wg.$base_domain
+"
+					count=$((count + 1))
+				fi
+			fi
+			i=$((i + 1))
+		done
+	fi
+
+	# Write hosts file
+	echo "# SecuBox Mesh DNS Federation - Auto-generated" > "$DNS_HOSTS_FILE"
+	echo "# Domain: $base_domain" >> "$DNS_HOSTS_FILE"
+	echo "# Updated: $(date -Iseconds 2>/dev/null || date)" >> "$DNS_HOSTS_FILE"
+	echo "" >> "$DNS_HOSTS_FILE"
+	echo "$hosts_content" >> "$DNS_HOSTS_FILE"
+
+	# Count actual entries (non-comment, non-empty lines)
+	count=$(grep -c "^[0-9]" "$DNS_HOSTS_FILE" 2>/dev/null || echo "0")
+
+	# Signal dnsmasq to reload hosts
+	killall -HUP dnsmasq 2>/dev/null || /etc/init.d/dnsmasq reload 2>/dev/null
+
+	logger -t secubox-p2p "DNS federation updated: $count mesh host entries in $base_domain"
+	echo "{\"success\":true,\"entries\":$count,\"domain\":\"$base_domain\"}"
+}
+
+# Add a single peer to DNS
+dns_add_peer() {
+	local hostname="$1"
+	local ip="$2"
+
+	local dns_enabled=$(get_config dns enabled 0)
+	[ "$dns_enabled" = "1" ] || return 0
+
+	local base_domain=$(get_config dns base_domain "mesh.local")
+
+	# Clean hostname
+	hostname=$(echo "$hostname" | sed -e 's/[^a-zA-Z0-9-]/-/g' | tr 'A-Z' 'a-z')
+
+	# Append to hosts file (avoid duplicates)
+	if ! grep -q "	$hostname	" "$DNS_HOSTS_FILE" 2>/dev/null; then
+		echo "$ip	$hostname	$hostname.$base_domain" >> "$DNS_HOSTS_FILE"
+		killall -HUP dnsmasq 2>/dev/null
+		logger -t secubox-p2p "DNS: Added $hostname.$base_domain -> $ip"
+	fi
+}
+
+# Remove a peer from DNS
+dns_remove_peer() {
+	local hostname="$1"
+
+	local dns_enabled=$(get_config dns enabled 0)
+	[ "$dns_enabled" = "1" ] || return 0
+
+	# Clean hostname
+	hostname=$(echo "$hostname" | sed -e 's/[^a-zA-Z0-9-]/-/g' | tr 'A-Z' 'a-z')
+
+	# Remove from hosts file
+	sed -i "/	$hostname	/d" "$DNS_HOSTS_FILE" 2>/dev/null
+	killall -HUP dnsmasq 2>/dev/null
+	logger -t secubox-p2p "DNS: Removed $hostname"
+}
+
+# Get DNS federation status
+dns_status() {
+	local dns_enabled=$(get_config dns enabled 0)
+	local base_domain=$(get_config dns base_domain "mesh.local")
+	local entry_count=0
+
+	if [ -f "$DNS_HOSTS_FILE" ]; then
+		entry_count=$(grep -c "^[0-9]" "$DNS_HOSTS_FILE" 2>/dev/null || echo "0")
+	fi
+
+	cat << EOF
+{
+	"enabled": $dns_enabled,
+	"domain": "$base_domain",
+	"hosts_file": "$DNS_HOSTS_FILE",
+	"entries": $entry_count,
+	"dnsmasq_running": $(pgrep dnsmasq >/dev/null && echo "true" || echo "false")
+}
+EOF
+}
+
+# Enable DNS federation
+dns_enable() {
+	set_config dns enabled 1
+
+	local base_domain="${1:-mesh.local}"
+	set_config dns base_domain "$base_domain"
+
+	dns_init
+	dns_update_peers
+
+	logger -t secubox-p2p "DNS federation enabled with domain: $base_domain"
+	echo "{\"success\":true,\"domain\":\"$base_domain\"}"
+}
+
+# Disable DNS federation
+dns_disable() {
+	set_config dns enabled 0
+
+	# Clear hosts file
+	echo "# SecuBox Mesh DNS Federation - Disabled" > "$DNS_HOSTS_FILE"
+	killall -HUP dnsmasq 2>/dev/null
+
+	logger -t secubox-p2p "DNS federation disabled"
+	echo "{\"success\":true}"
+}
+
 # Get node status JSON (for REST API)
 # Now includes WAN IP and WireGuard tunnel addresses
 get_node_status() {
@@ -526,6 +730,9 @@ daemon_loop() {
 	# Register self in peer list
 	register_self
 
+	# Initialize DNS federation
+	dns_init
+
 	# Setup signal handlers
 	trap 'stop_mdns; exit 0' INT TERM
 
@@ -603,6 +810,9 @@ daemon_loop() {
 			echo "$peers" > "$PEERS_FILE"
 		fi
 
+		# Update DNS federation with current peer list
+		dns_update_peers >/dev/null 2>&1
+
 		# Sleep interval
 		local interval=$(get_config main sync_interval 60)
 		sleep "$interval"
@@ -660,8 +870,28 @@ case "$1" in
 		init
 		register_self
 		;;
+	# DNS Federation commands
+	dns-status)
+		dns_status
+		;;
+	dns-enable)
+		dns_enable "$2"
+		;;
+	dns-disable)
+		dns_disable
+		;;
+	dns-update)
+		init
+		dns_update_peers
+		;;
+	dns-add)
+		dns_add_peer "$2" "$3"
+		;;
+	dns-remove)
+		dns_remove_peer "$2"
+		;;
 	*)
-		echo "Usage: $0 {daemon|discover|peers|add-peer|remove-peer|settings|set-settings|services|shared-services|sync|broadcast|version|status|publish-mdns|stop-mdns|register-self}"
+		echo "Usage: $0 {daemon|discover|peers|add-peer|remove-peer|settings|set-settings|services|shared-services|sync|broadcast|version|status|publish-mdns|stop-mdns|register-self|dns-status|dns-enable|dns-disable|dns-update|dns-add|dns-remove}"
 		exit 1
 		;;
 esac

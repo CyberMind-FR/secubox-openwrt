@@ -112,15 +112,73 @@ cat << 'EOF'
 			"category": "security",
 			"icon": "hash",
 			"dangerous": false
+		},
+		{
+			"id": "catalog-sync",
+			"name": "Sync Catalog",
+			"description": "Sync service catalog with mesh peers and merge registries",
+			"category": "catalog",
+			"icon": "book",
+			"dangerous": false
+		},
+		{
+			"id": "catalog-list",
+			"name": "List Catalogs",
+			"description": "Show local and peer catalog files",
+			"category": "catalog",
+			"icon": "list",
+			"dangerous": false
+		},
+		{
+			"id": "catalog-generate",
+			"name": "Generate Catalog",
+			"description": "Regenerate local service catalog from HAProxy vhosts",
+			"category": "catalog",
+			"icon": "refresh",
+			"dangerous": false
+		},
+		{
+			"id": "dns-status",
+			"name": "DNS Federation Status",
+			"description": "Show mesh DNS federation status and entries",
+			"category": "dns",
+			"icon": "globe",
+			"dangerous": false
+		},
+		{
+			"id": "dns-enable",
+			"name": "Enable DNS Federation",
+			"description": "Enable automatic DNS entries for mesh peers (.mesh.local)",
+			"category": "dns",
+			"icon": "toggle-on",
+			"dangerous": false
+		},
+		{
+			"id": "dns-disable",
+			"name": "Disable DNS Federation",
+			"description": "Disable mesh DNS federation",
+			"category": "dns",
+			"icon": "toggle-off",
+			"dangerous": false
+		},
+		{
+			"id": "dns-update",
+			"name": "Update DNS Entries",
+			"description": "Refresh DNS entries from current peer list",
+			"category": "dns",
+			"icon": "refresh",
+			"dangerous": false
 		}
 	],
 	"categories": [
 		{"id": "security", "name": "Security", "order": 1},
 		{"id": "mesh", "name": "Mesh Network", "order": 2},
-		{"id": "monitoring", "name": "Monitoring", "order": 3},
-		{"id": "maintenance", "name": "Maintenance", "order": 4},
-		{"id": "backup", "name": "Backup", "order": 5},
-		{"id": "queue", "name": "Queue", "order": 6}
+		{"id": "dns", "name": "DNS Federation", "order": 3},
+		{"id": "catalog", "name": "Catalog", "order": 4},
+		{"id": "monitoring", "name": "Monitoring", "order": 5},
+		{"id": "maintenance", "name": "Maintenance", "order": 6},
+		{"id": "backup", "name": "Backup", "order": 7},
+		{"id": "queue", "name": "Queue", "order": 8}
 	]
 }
 EOF

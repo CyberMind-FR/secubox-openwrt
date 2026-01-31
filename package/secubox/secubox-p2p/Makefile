@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-p2p
-PKG_VERSION:=0.5.0
+PKG_VERSION:=0.6.0
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=SecuBox Team
@@ -22,8 +22,10 @@ define Package/secubox-p2p/description
   DNS federation, and distributed service management. Includes mDNS
   service announcement, REST API on port 7331 for mesh visibility,
   SecuBox Factory unified dashboard with Ed25519 signed Merkle
-  snapshots for cryptographic configuration validation, and distributed
-  mesh services panel for aggregated service discovery across all nodes.
+  snapshots for cryptographic configuration validation, distributed
+  mesh services panel for aggregated service discovery across all nodes,
+  and MirrorBox NetMesh Catalog for cross-chain distributed service
+  registry with HAProxy vhost discovery and multi-endpoint access URLs.
 endef
 
 define Package/secubox-p2p/conffiles
@@ -66,6 +68,7 @@ define Package/secubox-p2p/install
 	$(INSTALL_BIN) ./root/www/api/factory/snapshot $(1)/www/api/factory/
 	$(INSTALL_BIN) ./root/www/api/factory/pubkey $(1)/www/api/factory/
 	$(INSTALL_BIN) ./root/www/api/factory/mesh-services $(1)/www/api/factory/
+	$(INSTALL_BIN) ./root/www/api/factory/catalog $(1)/www/api/factory/
 
 	# Factory Web UI
 	$(INSTALL_DIR) $(1)/www/factory

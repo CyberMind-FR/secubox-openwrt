@@ -98,12 +98,12 @@
         /* Fingerprint display */
         .fingerprint { font-family: ui-monospace, monospace; font-size: 0.8rem; background: var(--bg); padding: 0.35rem 0.5rem; border-radius: 0.25rem; letter-spacing: 0.05em; }
 
-        /* Tab navigation */
-        .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
-        .tab { padding: 0.5rem 1rem; background: transparent; border: none; color: var(--muted); cursor: pointer; font-weight: 500; position: relative; }
-        .tab.active { color: var(--accent); }
-        .tab.active::after { content: ''; position: absolute; bottom: -0.5rem; left: 0; right: 0; height: 2px; background: var(--accent); }
-        .tab:hover { color: var(--text); }
+        /* Emoji nav */
+        .emoji-nav { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        .emoji-btn { font-size: 1.5rem; padding: 0.5rem; background: var(--card); border: 2px solid transparent; border-radius: 0.5rem; cursor: pointer; transition: all 0.2s; filter: grayscale(0.5); opacity: 0.7; }
+        .emoji-btn:hover { filter: grayscale(0); opacity: 1; transform: scale(1.1); }
+        .emoji-btn.active { filter: grayscale(0); opacity: 1; border-color: var(--accent); background: rgba(99, 102, 241, 0.2); }
+        .emoji-btn[title]:hover::after { content: attr(title); position: absolute; bottom: -1.5rem; left: 50%; transform: translateX(-50%); font-size: 0.65rem; background: var(--card); padding: 0.2rem 0.4rem; border-radius: 0.2rem; white-space: nowrap; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
@@ -137,6 +137,78 @@
         .filter-input { flex: 1; min-width: 200px; padding: 0.5rem 0.75rem; background: var(--card); border: 1px solid var(--border); border-radius: 0.25rem; color: var(--text); font-size: 0.85rem; }
         .filter-input:focus { outline: none; border-color: var(--accent); }
         .filter-select { padding: 0.5rem 0.75rem; background: var(--card); border: 1px solid var(--border); border-radius: 0.25rem; color: var(--text); font-size: 0.85rem; }
+
+        /* Health emoji status */
+        .health-emoji { cursor: pointer; font-size: 1rem; transition: transform 0.2s; }
+        .health-emoji:hover { transform: scale(1.3); }
+        .health-emoji.clickable { cursor: pointer; }
+
+        /* Service URL display */
+        .service-url { font-size: 0.65rem; color: var(--accent); font-family: ui-monospace, monospace; word-break: break-all; }
+        .service-url a { color: var(--accent); text-decoration: none; }
+        .service-url a:hover { text-decoration: underline; }
+
+        /* QR code modal */
+        .qr-modal { text-align: center; }
+        .qr-modal canvas { margin: 1rem auto; display: block; background: white; padding: 1rem; border-radius: 0.5rem; }
+        .qr-url { font-family: ui-monospace, monospace; font-size: 0.8rem; color: var(--accent); margin-top: 0.5rem; word-break: break-all; }
+
+        /* Stat emoji clickable */
+        .stat-emoji { font-size: 1.5rem; cursor: pointer; transition: transform 0.2s; }
+        .stat-emoji:hover { transform: scale(1.2); }
+
+        /* Catalog styles */
+        .catalog-service { background: var(--card); border-radius: 0.5rem; overflow: hidden; margin-bottom: 0.75rem; }
+        .catalog-service-header { padding: 0.75rem 1rem; background: rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-bottom: 1px solid var(--border); }
+        .catalog-service-header:hover { background: rgba(0,0,0,0.3); }
+        .catalog-service-name { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+        .catalog-service-meta { display: flex; gap: 0.5rem; align-items: center; }
+        .catalog-endpoints { padding: 0; max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease; }
+        .catalog-endpoints.open { padding: 0.75rem 1rem; max-height: 500px; }
+        .endpoint-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; margin-bottom: 0.5rem; background: rgba(0,0,0,0.15); border-radius: 0.25rem; border-left: 3px solid var(--border); }
+        .endpoint-item.primary { border-left-color: var(--accent); }
+        .endpoint-item.haproxy { border-left-color: var(--success); }
+        .endpoint-item.mesh { border-left-color: #818cf8; }
+        .endpoint-item.local { border-left-color: var(--muted); }
+        .endpoint-type { font-size: 0.65rem; text-transform: uppercase; padding: 0.15rem 0.4rem; border-radius: 0.15rem; background: var(--border); margin-right: 0.5rem; }
+        .endpoint-type.haproxy { background: var(--success); color: #000; }
+        .endpoint-type.mesh { background: #818cf8; }
+        .endpoint-type.local { background: var(--muted); }
+        .endpoint-url { flex: 1; font-family: ui-monospace, monospace; font-size: 0.8rem; color: var(--accent); word-break: break-all; }
+        .endpoint-url a { color: inherit; text-decoration: none; }
+        .endpoint-url a:hover { text-decoration: underline; }
+        .endpoint-actions { display: flex; gap: 0.35rem; }
+        .endpoint-badge { font-size: 0.6rem; padding: 0.1rem 0.3rem; border-radius: 0.15rem; background: var(--accent); }
+        .endpoint-badge.ssl { background: var(--success); color: #000; }
+
+        /* Catalog node grouping */
+        .catalog-node-group { margin-bottom: 1.5rem; }
+        .catalog-node-header { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 2px solid var(--accent); margin-bottom: 0.75rem; }
+        .catalog-node-name { font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
+        .catalog-node-stats { font-size: 0.75rem; color: var(--muted); }
+
+        /* URL tabs in QR modal */
+        .url-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; flex-wrap: wrap; justify-content: center; }
+        .url-tab { padding: 0.35rem 0.6rem; border-radius: 0.25rem; font-size: 0.7rem; cursor: pointer; background: var(--border); border: none; color: var(--text); }
+        .url-tab.active { background: var(--accent); }
+        .url-tab.haproxy { border-bottom: 2px solid var(--success); }
+        .url-tab.mesh { border-bottom: 2px solid #818cf8; }
+        .url-tab.local { border-bottom: 2px solid var(--muted); }
+
+        /* Linked peers / mesh navigation */
+        .peer-links { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; padding: 0.75rem; background: var(--card); border-radius: 0.5rem; border-left: 3px solid #818cf8; }
+        .peer-links-title { font-size: 0.75rem; color: var(--muted); width: 100%; margin-bottom: 0.25rem; }
+        .peer-link { display: flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.6rem; background: rgba(0,0,0,0.2); border-radius: 0.25rem; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; text-decoration: none; color: var(--text); }
+        .peer-link:hover { background: var(--accent); transform: translateY(-1px); }
+        .peer-link.online { border-left: 2px solid var(--success); }
+        .peer-link.offline { border-left: 2px solid var(--danger); opacity: 0.6; }
+        .peer-link-name { font-weight: 500; }
+        .peer-link-dns { font-family: ui-monospace, monospace; font-size: 0.65rem; color: var(--accent); }
+
+        /* DNS info badge */
+        .dns-info { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.5rem; background: rgba(129, 140, 248, 0.2); border-radius: 0.25rem; font-size: 0.7rem; font-family: ui-monospace, monospace; color: #818cf8; }
+        .dns-enabled { color: var(--success); }
+        .dns-disabled { color: var(--muted); }
     </style>
 </head>
 <body>
@@ -145,19 +217,20 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M9 8h6M9 12h6M9 16h6M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16"/></svg>
             SecuBox Factory
         </div>
+        <div class="emoji-nav">
+            <button class="emoji-btn active" onclick="switchTab('dashboard')" title="Dashboard">🏭</button>
+            <button class="emoji-btn" onclick="switchTab('services')" title="Mesh Services">🔗</button>
+            <button class="emoji-btn" onclick="switchTab('catalog')" title="Distributed Catalog">📚</button>
+        </div>
         <div class="header-right">
             <span class="badge badge-muted" id="node-count">- nodes</span>
             <span class="badge" id="snapshot-status">...</span>
             <span class="fingerprint" id="fingerprint" title="Node Fingerprint">...</span>
-            <button onclick="toggleTools()" title="Tools">Tools</button>
+            <button onclick="toggleTools()" title="Tools">🧰</button>
         </div>
     </header>
 
     <main style="padding: 1rem;">
-        <div class="tabs">
-            <button class="tab active" onclick="switchTab('dashboard')">Dashboard</button>
-            <button class="tab" onclick="switchTab('services')">Mesh Services</button>
-        </div>
 
         <div id="dashboard" class="tab-content active" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">
             <div class="card accent">
@@ -168,6 +241,12 @@
         <div id="services" class="tab-content">
             <div class="card accent">
                 <div class="stat"><div class="spinner"></div><div class="stat-label">Loading services...</div></div>
+            </div>
+        </div>
+
+        <div id="catalog" class="tab-content">
+            <div class="card accent">
+                <div class="stat"><div class="spinner"></div><div class="stat-label">Loading catalog...</div></div>
             </div>
         </div>
     </main>
@@ -187,14 +266,27 @@
         </div>
     </dialog>
 
+    <dialog id="qr-modal" class="qr-modal">
+        <h3><span id="qr-title">Service Access</span><button onclick="closeQR()" style="background:transparent;font-size:1.25rem;padding:0.25rem;">&times;</button></h3>
+        <canvas id="qr-canvas" width="200" height="200"></canvas>
+        <div class="qr-url" id="qr-url"></div>
+        <div class="actions">
+            <button onclick="copyUrl()">📋 Copy URL</button>
+            <button onclick="closeQR()">Close</button>
+        </div>
+    </dialog>
+
     <script>
     // State
     let data = { local: {}, peers: [], snapshot: {}, services: {}, system: {} };
     let meshServices = { nodes: [], summary: {} };
+    let catalogData = { services: [], node_name: '', updated: '' };
     let tools = [];
     let refreshInterval = null;
     let activeTab = 'dashboard';
     let serviceFilter = { search: '', status: 'all', node: 'all' };
+    let catalogFilter = { search: '', type: 'all', status: 'all' };
+    let expandedServices = new Set();
 
     // API helpers - use same origin (HAProxy routes /factory/* to API)
     const apiBase = '/factory/';
@@ -234,17 +326,45 @@
         }
     }
 
+    // Refresh catalog data
+    async function refreshCatalog() {
+        try {
+            catalogData = await api.get('catalog');
+            renderCatalog();
+        } catch (e) {
+            console.error('Catalog refresh failed:', e);
+        }
+    }
+
     // Switch tabs
     function switchTab(tab) {
         activeTab = tab;
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.emoji-btn').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        document.querySelector(`.tab[onclick*="${tab}"]`).classList.add('active');
+        document.querySelector(`.emoji-btn[onclick*="${tab}"]`).classList.add('active');
         document.getElementById(tab).classList.add('active');
 
         if (tab === 'services') {
             refreshMeshServices();
+        } else if (tab === 'catalog') {
+            refreshCatalog();
         }
+    }
+
+    // Filter catalog
+    function filterCatalog(type, value) {
+        catalogFilter[type] = value;
+        renderCatalog();
+    }
+
+    // Toggle service expansion
+    function toggleServiceExpand(name) {
+        if (expandedServices.has(name)) {
+            expandedServices.delete(name);
+        } else {
+            expandedServices.add(name);
+        }
+        renderCatalog();
     }
 
     // Filter services
@@ -472,19 +592,20 @@
                 html += `<div style="padding: 1rem; text-align: center; color: var(--muted);">No matching services</div>`;
             } else {
                 services.forEach(svc => {
-                    const statusClass = svc.status === 'running' ? 'running' : (svc.enabled ? 'stopped' : 'disabled');
                     const hasPort = svc.port && svc.port !== '' && svc.port !== '0';
                     const accessUrl = hasPort ? (node.is_local ? `http://${location.hostname}:${svc.port}` : `http://${nodeAddr}:${svc.port}`) : null;
+                    const healthEmoji = svc.status === 'running' ? '🟢' : (svc.enabled ? '🔴' : '⚫');
+                    const healthTitle = svc.status === 'running' ? 'Running' : (svc.enabled ? 'Stopped' : 'Disabled');
 
                     html += `
                     <div class="service-item">
                         <div class="service-info">
                             <div class="service-name">${svc.name}</div>
-                            ${hasPort ? `<div class="service-port">Port: ${svc.port}</div>` : ''}
+                            ${accessUrl ? `<div class="service-url"><a href="${accessUrl}" target="_blank">${accessUrl}</a></div>` : (hasPort ? `<div class="service-port">:${svc.port}</div>` : '')}
                         </div>
                         <div class="service-status">
-                            ${accessUrl ? `<a href="${accessUrl}" target="_blank" class="service-link">Open</a>` : ''}
-                            <span class="status-dot ${statusClass}" title="${svc.status}"></span>
+                            ${accessUrl ? `<span class="health-emoji clickable" onclick="showQR('${svc.name}', '${accessUrl}')" title="Show QR">📱</span>` : ''}
+                            <span class="health-emoji" title="${healthTitle}" onclick="toggleService('${svc.name}', '${svc.status}')">${healthEmoji}</span>
                         </div>
                     </div>`;
                 });
@@ -498,6 +619,262 @@
         html += `</div>`;
 
         document.getElementById('services').innerHTML = html;
+    }
+
+    // Render catalog panel
+    function renderCatalog() {
+        const services = catalogData.services || [];
+        const nodeName = catalogData.node_name || 'Local';
+        const nodeId = catalogData.node_id || '';
+        const updated = catalogData.updated || '';
+        const dns = catalogData.dns || { enabled: false, domain: 'mesh.local', hostname: '', fqdn: '' };
+        const linkedPeers = catalogData.linked_peers || [];
+
+        // Count stats
+        let totalServices = services.length;
+        let runningServices = services.filter(s => s.status === 'running').length;
+        let haproxyCount = 0;
+        let meshCount = 0;
+        let localCount = 0;
+
+        services.forEach(s => {
+            (s.endpoints || []).forEach(ep => {
+                if (ep.type === 'haproxy') haproxyCount++;
+                else if (ep.type === 'mesh') meshCount++;
+                else if (ep.type === 'local') localCount++;
+            });
+        });
+
+        // Filter services
+        let filteredServices = services;
+        if (catalogFilter.search) {
+            const search = catalogFilter.search.toLowerCase();
+            filteredServices = filteredServices.filter(s => s.name.toLowerCase().includes(search));
+        }
+        if (catalogFilter.status !== 'all') {
+            filteredServices = filteredServices.filter(s => s.status === catalogFilter.status);
+        }
+        if (catalogFilter.type !== 'all') {
+            filteredServices = filteredServices.filter(s =>
+                (s.endpoints || []).some(ep => ep.type === catalogFilter.type)
+            );
+        }
+
+        // Build linked peers section
+        let peersHtml = '';
+        if (linkedPeers.length > 0) {
+            peersHtml = `
+            <div class="peer-links">
+                <div class="peer-links-title">🔗 Linked Mesh Nodes</div>
+                ${linkedPeers.map(peer => `
+                    <a href="${peer.factory_url}" target="_blank" class="peer-link ${peer.status}" title="Open ${peer.name} Factory Dashboard">
+                        <span>${peer.status === 'online' ? '🟢' : '🔴'}</span>
+                        <span class="peer-link-name">${peer.name}</span>
+                        ${dns.enabled && peer.dns_fqdn ? `<span class="peer-link-dns">${peer.dns_fqdn}</span>` : ''}
+                    </a>
+                `).join('')}
+            </div>`;
+        }
+
+        let html = `
+        <div class="services-summary">
+            <div class="summary-item">
+                <span class="summary-count">${runningServices}/${totalServices}</span>
+                <span class="summary-label">Services</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-count" style="color: var(--success);">${haproxyCount}</span>
+                <span class="summary-label">HAProxy URLs</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-count" style="color: #818cf8;">${meshCount}</span>
+                <span class="summary-label">Mesh URLs</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-count" style="color: var(--muted);">${localCount}</span>
+                <span class="summary-label">Local URLs</span>
+            </div>
+            <div class="summary-item">
+                <span class="dns-info ${dns.enabled ? 'dns-enabled' : 'dns-disabled'}">
+                    ${dns.enabled ? '🌐' : '⚫'} ${dns.enabled ? dns.fqdn : 'DNS off'}
+                </span>
+            </div>
+            <button class="sm" onclick="refreshCatalog()">Refresh</button>
+            <button class="sm primary" onclick="syncCatalog()">Sync Peers</button>
+        </div>
+
+        ${peersHtml}
+
+        <div class="filter-bar">
+            <input type="text" class="filter-input" placeholder="Search services..."
+                   value="${catalogFilter.search}"
+                   oninput="filterCatalog('search', this.value)">
+            <select class="filter-select" onchange="filterCatalog('status', this.value)">
+                <option value="all" ${catalogFilter.status === 'all' ? 'selected' : ''}>All Status</option>
+                <option value="running" ${catalogFilter.status === 'running' ? 'selected' : ''}>Running</option>
+                <option value="stopped" ${catalogFilter.status === 'stopped' ? 'selected' : ''}>Stopped</option>
+            </select>
+            <select class="filter-select" onchange="filterCatalog('type', this.value)">
+                <option value="all" ${catalogFilter.type === 'all' ? 'selected' : ''}>All Endpoints</option>
+                <option value="haproxy" ${catalogFilter.type === 'haproxy' ? 'selected' : ''}>HAProxy (WAN)</option>
+                <option value="mesh" ${catalogFilter.type === 'mesh' ? 'selected' : ''}>Mesh (WG)</option>
+                <option value="local" ${catalogFilter.type === 'local' ? 'selected' : ''}>Local (LAN)</option>
+            </select>
+        </div>
+
+        <div class="catalog-node-group">
+            <div class="catalog-node-header">
+                <div class="catalog-node-name">
+                    <span>📍</span> ${nodeName}
+                </div>
+                <div class="catalog-node-stats">
+                    ${updated ? `Updated: ${new Date(updated).toLocaleString()}` : ''}
+                </div>
+            </div>`;
+
+        if (filteredServices.length === 0) {
+            html += `<div class="card"><div style="text-align: center; padding: 2rem; color: var(--muted);">No services found matching filters</div></div>`;
+        } else {
+            filteredServices.forEach(svc => {
+                const isExpanded = expandedServices.has(svc.name);
+                const healthEmoji = svc.status === 'running' ? '🟢' : (svc.enabled ? '🔴' : '⚫');
+                const endpoints = svc.endpoints || [];
+                const primaryEndpoint = endpoints.find(ep => ep.primary) || endpoints[0];
+                const endpointCount = endpoints.length;
+
+                html += `
+                <div class="catalog-service">
+                    <div class="catalog-service-header" onclick="toggleServiceExpand('${svc.name}')">
+                        <div class="catalog-service-name">
+                            <span>${healthEmoji}</span>
+                            <span>${svc.name}</span>
+                            ${svc.port ? `<span class="badge badge-muted">:${svc.port}</span>` : ''}
+                        </div>
+                        <div class="catalog-service-meta">
+                            <span class="badge badge-muted">${endpointCount} URL${endpointCount !== 1 ? 's' : ''}</span>
+                            ${primaryEndpoint ? `<span class="badge ${primaryEndpoint.ssl ? 'badge-ok' : 'badge-muted'}">${primaryEndpoint.type}</span>` : ''}
+                            <span style="font-size: 0.8rem;">${isExpanded ? '▼' : '▶'}</span>
+                        </div>
+                    </div>
+                    <div class="catalog-endpoints ${isExpanded ? 'open' : ''}">`;
+
+                // Sort endpoints: haproxy first, then mesh, then local
+                const sortOrder = { haproxy: 0, mesh: 1, local: 2 };
+                const sortedEndpoints = [...endpoints].sort((a, b) =>
+                    (sortOrder[a.type] || 99) - (sortOrder[b.type] || 99)
+                );
+
+                sortedEndpoints.forEach(ep => {
+                    const isPrimary = ep.primary === true;
+                    html += `
+                        <div class="endpoint-item ${ep.type} ${isPrimary ? 'primary' : ''}">
+                            <span class="endpoint-type ${ep.type}">${ep.type}</span>
+                            <div class="endpoint-url">
+                                <a href="${ep.url}" target="_blank">${ep.url}</a>
+                            </div>
+                            <div class="endpoint-actions">
+                                ${ep.ssl ? '<span class="endpoint-badge ssl">SSL</span>' : ''}
+                                ${isPrimary ? '<span class="endpoint-badge">Primary</span>' : ''}
+                                <button class="sm" onclick="event.stopPropagation(); showQRMulti('${svc.name}', ${JSON.stringify(endpoints).replace(/"/g, '&quot;')}, '${ep.url}')" title="QR Code">📱</button>
+                                <button class="sm" onclick="event.stopPropagation(); copyToClipboard('${ep.url}')" title="Copy URL">📋</button>
+                            </div>
+                        </div>`;
+                });
+
+                html += `
+                    </div>
+                </div>`;
+            });
+        }
+
+        html += `</div>`;
+
+        document.getElementById('catalog').innerHTML = html;
+    }
+
+    // Sync catalog with peers
+    async function syncCatalog() {
+        const modal = document.getElementById('modal');
+        document.getElementById('modal-title').textContent = 'Catalog Sync';
+        document.getElementById('modal-output').innerHTML = '<span class="spinner"></span> Syncing catalogs with peers...';
+        modal.showModal();
+
+        try {
+            const result = await api.post('run', { tool: 'catalog-sync' });
+            if (result.success) {
+                document.getElementById('modal-output').textContent = result.output || 'Sync completed';
+                refreshCatalog();
+            } else {
+                document.getElementById('modal-output').textContent = 'Error: ' + (result.error || 'Sync failed');
+            }
+        } catch (e) {
+            document.getElementById('modal-output').textContent = 'Error: ' + e.message;
+        }
+    }
+
+    // Show QR with multiple URL options
+    function showQRMulti(name, endpoints, selectedUrl) {
+        currentQRUrl = selectedUrl;
+        document.getElementById('qr-title').textContent = name;
+
+        // Build URL tabs
+        let tabsHtml = '<div class="url-tabs">';
+        endpoints.forEach(ep => {
+            const isActive = ep.url === selectedUrl;
+            tabsHtml += `<button class="url-tab ${ep.type} ${isActive ? 'active' : ''}" onclick="switchQRUrl('${name}', '${ep.url}', '${ep.type}')">${ep.type}${ep.ssl ? ' 🔒' : ''}</button>`;
+        });
+        tabsHtml += '</div>';
+
+        // Insert tabs before URL display
+        const qrUrlEl = document.getElementById('qr-url');
+        qrUrlEl.innerHTML = tabsHtml + `<div style="margin-top: 0.5rem;">${selectedUrl}</div>`;
+
+        // Generate QR
+        const canvas = document.getElementById('qr-canvas');
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 200, 200);
+            ctx.drawImage(img, 0, 0, 200, 200);
+        };
+        img.src = `https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=${encodeURIComponent(selectedUrl)}&choe=UTF-8`;
+
+        document.getElementById('qr-modal').showModal();
+    }
+
+    // Switch QR URL tab
+    function switchQRUrl(name, url, type) {
+        currentQRUrl = url;
+
+        // Update active tab
+        document.querySelectorAll('.url-tab').forEach(t => t.classList.remove('active'));
+        document.querySelector(`.url-tab.${type}`).classList.add('active');
+
+        // Update URL display
+        const qrUrlEl = document.getElementById('qr-url');
+        const tabsHtml = qrUrlEl.querySelector('.url-tabs').outerHTML;
+        qrUrlEl.innerHTML = tabsHtml + `<div style="margin-top: 0.5rem;">${url}</div>`;
+
+        // Regenerate QR
+        const canvas = document.getElementById('qr-canvas');
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 200, 200);
+            ctx.drawImage(img, 0, 0, 200, 200);
+        };
+        img.src = `https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=${encodeURIComponent(url)}&choe=UTF-8`;
+    }
+
+    // Copy to clipboard helper
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            // Brief visual feedback could be added here
+        });
     }
 
     // Render tools panel
@@ -559,10 +936,51 @@
         document.getElementById('modal').close();
     }
 
+    // QR Code functions
+    let currentQRUrl = '';
+
+    function showQR(name, url) {
+        currentQRUrl = url;
+        document.getElementById('qr-title').textContent = name;
+        document.getElementById('qr-url').textContent = url;
+
+        // Simple QR code using Google Charts API (zero deps)
+        const canvas = document.getElementById('qr-canvas');
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 200, 200);
+            ctx.drawImage(img, 0, 0, 200, 200);
+        };
+        img.src = `https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=${encodeURIComponent(url)}&choe=UTF-8`;
+
+        document.getElementById('qr-modal').showModal();
+    }
+
+    function closeQR() {
+        document.getElementById('qr-modal').close();
+    }
+
+    function copyUrl() {
+        navigator.clipboard.writeText(currentQRUrl).then(() => {
+            const btn = event.target;
+            btn.textContent = '✓ Copied!';
+            setTimeout(() => btn.textContent = '📋 Copy URL', 2000);
+        });
+    }
+
+    function toggleService(name, status) {
+        // Could be extended to start/stop services
+        console.log(`Toggle service ${name} (currently ${status})`);
+    }
+
     // Handle ESC key
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (document.getElementById('modal').open) closeModal();
+            if (document.getElementById('qr-modal').open) closeQR();
+            else if (document.getElementById('modal').open) closeModal();
             else if (document.getElementById('tools').classList.contains('open')) toggleTools();
         }
     });
