@@ -328,8 +328,77 @@ do_start() { [ -x /etc/init.d/mitmproxy ] && /etc/init.d/mitmproxy start >/dev/n
 do_stop() { [ -x /etc/init.d/mitmproxy ] && /etc/init.d/mitmproxy stop >/dev/null 2>&1; echo '{"success":true}'; }
 do_restart() { [ -x /etc/init.d/mitmproxy ] && /etc/init.d/mitmproxy restart >/dev/null 2>&1; echo '{"success":true}'; }
 
+get_alerts() {
+	# Read alerts from container
+	local alerts_file="/tmp/secubox-mitm-alerts.json"
+	local container_alerts=""
+
+	# Try to get alerts from LXC container
+	if command -v lxc-attach >/dev/null 2>&1; then
+		container_alerts=$(lxc-attach -n "$LXC_NAME" -- cat /tmp/secubox-mitm-alerts.json 2>/dev/null)
+	fi
+
+	# Fall back to host path if container method fails
+	if [ -z "$container_alerts" ] || [ "$container_alerts" = "[]" ]; then
+		[ -f "$alerts_file" ] && container_alerts=$(cat "$alerts_file" 2>/dev/null)
+	fi
+
+	# Default to empty array
+	[ -z "$container_alerts" ] && container_alerts="[]"
+
+	json_init
+	json_add_boolean "success" 1
+
+	# Output raw alerts array
+	cat <<EOFJ
+{
+	"success": true,
+	"alerts": $container_alerts,
+	"timestamp": "$(date -Iseconds)"
+}
+EOFJ
+}
+
+get_threat_stats() {
+	local stats_file="/tmp/secubox-mitm-stats.json"
+	local container_stats=""
+
+	# Try to get stats from LXC container
+	if command -v lxc-attach >/dev/null 2>&1; then
+		container_stats=$(lxc-attach -n "$LXC_NAME" -- cat /tmp/secubox-mitm-stats.json 2>/dev/null)
+	fi
+
+	# Fall back to host path
+	if [ -z "$container_stats" ]; then
+		[ -f "$stats_file" ] && container_stats=$(cat "$stats_file" 2>/dev/null)
+	fi
+
+	# Default stats
+	[ -z "$container_stats" ] && container_stats='{"total":{"requests":0,"threats":0,"bots":0}}'
+
+	cat <<EOFJ
+{
+	"success": true,
+	"stats": $container_stats,
+	"timestamp": "$(date -Iseconds)"
+}
+EOFJ
+}
+
+clear_alerts() {
+	# Clear alerts in container
+	if command -v lxc-attach >/dev/null 2>&1; then
+		lxc-attach -n "$LXC_NAME" -- sh -c 'echo "[]" > /tmp/secubox-mitm-alerts.json' 2>/dev/null
+	fi
+
+	# Also clear on host
+	echo "[]" > /tmp/secubox-mitm-alerts.json 2>/dev/null
+
+	echo '{"success":true,"message":"Alerts cleared"}'
+}
+
 list_methods() { cat <<'EOFM'
-{"status":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"install":{},"start":{},"stop":{},"restart":{}}
+{"status":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"install":{},"start":{},"stop":{},"restart":{},"alerts":{},"threat_stats":{},"clear_alerts":{}}
 EOFM
 }
 
@@ -347,6 +416,9 @@ case "$1" in
 			start) do_start ;;
 			stop) do_stop ;;
 			restart) do_restart ;;
+			alerts) get_alerts ;;
+			threat_stats) get_threat_stats ;;
+			clear_alerts) clear_alerts ;;
 			*) echo '{"error":"Unknown method"}' ;;
 		esac
 		;;

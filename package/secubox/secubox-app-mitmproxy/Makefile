@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-mitmproxy
-PKG_RELEASE:=16
-PKG_VERSION:=0.4.0
+PKG_RELEASE:=17
+PKG_VERSION:=0.5.0
 PKG_ARCH:=all
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
 PKG_LICENSE:=Apache-2.0
@@ -26,6 +26,12 @@ Features:
 - Modify requests and responses on the fly
 - Web interface (mitmweb) for easy analysis
 - Export traffic for offline analysis
+- Enhanced threat detection addon (v2.0):
+  * SQL injection, XSS, command injection
+  * Path traversal, SSRF, XXE, LDAP injection
+  * Log4Shell and known CVE detection
+  * Rate limiting and suspicious header detection
+  * CrowdSec integration for blocking
 
 Runs in LXC container for isolation and security.
 Configure in /etc/config/mitmproxy.
@@ -47,6 +53,10 @@ define Package/secubox-app-mitmproxy/install
 
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/usr/sbin/mitmproxyctl $(1)/usr/sbin/mitmproxyctl
+
+	# Analytics addon for threat detection
+	$(INSTALL_DIR) $(1)/srv/mitmproxy/addons
+	$(INSTALL_DATA) ./root/srv/mitmproxy/addons/secubox_analytics.py $(1)/srv/mitmproxy/addons/
 endef
 
 define Package/secubox-app-mitmproxy/postinst

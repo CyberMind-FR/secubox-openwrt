@@ -1,345 +1,829 @@
 #!/bin/sh
-# ============================================================================
-# SecuBox Swiss Army Knife - Unified Management & Recovery Tool
-# Combines: mesh, recover, console, monitoring, and self-enhancement
-# ============================================================================
+# SecuBox Swiss Army Knife - Unified CLI Tool
+# KISS modular self-enhancing architecture
+#
+# Usage:
+#   secubox-swiss              # Interactive menu
+#   secubox-swiss <command>    # Direct command
+#   secubox-swiss help         # Show all commands
 
 VERSION="1.0.0"
-SCRIPT_PATH="$(readlink -f "$0")"
-SECUBOX_DIR="/srv/secubox"
+SCRIPT_NAME="secubox-swiss"
 
-# Colors
-C_CYAN='\033[0;36m'
-C_GREEN='\033[0;32m'
-C_YELLOW='\033[1;33m'
-C_RED='\033[0;31m'
-C_BOLD='\033[1m'
-C_NC='\033[0m'
+# Colors - use printf for BusyBox compatibility
+RED=$(printf '\033[0;31m')
+GREEN=$(printf '\033[0;32m')
+YELLOW=$(printf '\033[1;33m')
+BLUE=$(printf '\033[0;34m')
+CYAN=$(printf '\033[0;36m')
+BOLD=$(printf '\033[1m')
+NC=$(printf '\033[0m')
 
-banner() {
-    echo "${C_CYAN}"
-    cat << 'BANNER'
-   _____ _____ _____ _   _ ____   _____  __
-  / ____| ____/ ____| | | |  _ \ / _ \ \/ /
- | (___ |  _|| |    | | | | |_) | | | \  /
-  \___ \| |__| |    | |_| |  _ <| |_| /  \
-  ____) |____| |____| |_| | |_) \___/_/\_\
- |_____/______\_____|_____|____/
-                                    SWISS
-BANNER
-    echo "${C_NC}"
-    echo "${C_BOLD}SecuBox Swiss Army Knife v$VERSION${C_NC}"
-    echo "Unified Management • Recovery • Mesh • Self-Enhancement"
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+print_header() {
+    echo ""
+    echo "${CYAN}╔══════════════════════════════════════════════════════════════════╗${NC}"
+    echo "${CYAN}║${NC}     ${BOLD}SecuBox Swiss Army Knife${NC} v${VERSION}                            ${CYAN}║${NC}"
+    echo "${CYAN}║${NC}     KISS modular self-enhancing architecture                    ${CYAN}║${NC}"
+    echo "${CYAN}╚══════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
 
-# ============================================================================
-# Tool Dispatch
-# ============================================================================
-tool_mesh() {
-    exec /usr/sbin/secubox-mesh "$@"
+print_section() {
+    echo "${YELLOW}━━━ $1 ━━━${NC}"
 }
 
-tool_recover() {
-    exec /usr/sbin/secubox-recover "$@"
+cmd_exists() {
+    command -v "$1" >/dev/null 2>&1
 }
 
-tool_console() {
-    if [ -f /usr/lib/secubox-console/secubox_console.py ]; then
-        exec python3 /usr/lib/secubox-console/secubox_console.py "$@"
+run_or_warn() {
+    local cmd="$1"
+    shift
+    if cmd_exists "$cmd"; then
+        "$cmd" "$@"
     else
-        echo "Console not installed. Install with: opkg install secubox-console"
-        exit 1
+        echo "${RED}[!] Command not found: $cmd${NC}"
+        echo "    Install with: opkg install <package>"
+        return 1
     fi
 }
 
-tool_mitm() {
-    exec /usr/sbin/secubox-mitm-logs "$@"
-}
-
 # ============================================================================
-# Quick Actions
+# Status & Info Commands
 # ============================================================================
-action_status() {
-    echo "${C_CYAN}=== SecuBox Status ===${C_NC}"
-    echo ""
 
-    # System
-    echo "${C_BOLD}System:${C_NC}"
-    echo "  Hostname: $(uci get system.@system[0].hostname 2>/dev/null || hostname)"
-    echo "  Version:  $(cat /etc/secubox-version 2>/dev/null || echo 'unknown')"
-    echo "  Uptime:   $(uptime | cut -d',' -f1 | cut -d' ' -f4-)"
-    echo ""
+cmd_status() {
+    print_section "System Status"
 
-    # Mesh
-    echo "${C_BOLD}Mesh:${C_NC}"
-    if [ -f /srv/secubox/mesh/node.id ]; then
-        echo "  Node ID:  $(cat /srv/secubox/mesh/node.id)"
-        echo "  Peers:    $(cat /srv/secubox/mesh/peers.json 2>/dev/null | jsonfilter -e '@.peers[*]' 2>/dev/null | wc -l)"
-        echo "  Blocks:   $(find /srv/secubox/mesh/blocks -type f 2>/dev/null | wc -l)"
-    else
-        echo "  Not initialized. Run: secubox-swiss mesh init"
-    fi
-    echo ""
+    # Node info
+    local node_id=$(cat /etc/secubox-node-id 2>/dev/null || echo "unknown")
+    local hostname=$(uci -q get system.@system[0].hostname || hostname)
+    local version=$(cat /etc/secubox-version 2>/dev/null || echo "unknown")
+    local uptime_info=$(uptime | sed 's/.*up //' | sed 's/,.*//')
 
-    # Recovery
-    echo "${C_BOLD}Recovery:${C_NC}"
-    echo "  Snapshots: $(ls /srv/secubox/recover/archives/*.tar.gz 2>/dev/null | wc -l)"
-    echo "  Profiles:  $(ls /srv/secubox/recover/profiles/*.json 2>/dev/null | wc -l)"
-    echo ""
-
-    # Services
-    echo "${C_BOLD}Key Services:${C_NC}"
-    for svc in haproxy crowdsec mitmproxy; do
-        if pgrep -x "$svc" >/dev/null 2>&1; then
-            echo "  $svc: ${C_GREEN}running${C_NC}"
-        else
-            echo "  $svc: ${C_RED}stopped${C_NC}"
-        fi
-    done
-}
-
-action_backup() {
-    local name="${1:-backup-$(date +%Y%m%d-%H%M%S)}"
-    echo "${C_CYAN}Creating backup: $name${C_NC}"
-    /usr/sbin/secubox-recover snapshot "$name"
-}
-
-action_reborn() {
-    local output="${1:-/tmp/secubox-reborn.sh}"
-    echo "${C_CYAN}Generating reborn script: $output${C_NC}"
-    /usr/sbin/secubox-recover reborn "$output"
-    echo ""
-    echo "${C_GREEN}Reborn script ready!${C_NC}"
-    echo "Copy to any machine and run to restore SecuBox."
-}
-
-action_sync() {
-    echo "${C_CYAN}Syncing mesh...${C_NC}"
-    /usr/sbin/secubox-mesh sync
-    echo ""
-    echo "${C_CYAN}Syncing recovery catalog...${C_NC}"
-    /usr/sbin/secubox-recover apps-sync
-}
-
-action_health() {
-    echo "${C_CYAN}=== Health Check ===${C_NC}"
-    echo ""
-
-    # Disk
-    echo "${C_BOLD}Disk Usage:${C_NC}"
-    df -h / /srv /opt 2>/dev/null | grep -v "^Filesystem"
+    echo "${BOLD}Node:${NC}     $hostname (${node_id:0:12})"
+    echo "${BOLD}Version:${NC}  $version"
+    echo "${BOLD}Uptime:${NC}   $uptime_info"
     echo ""
 
     # Memory
-    echo "${C_BOLD}Memory:${C_NC}"
-    free -m 2>/dev/null || cat /proc/meminfo | head -3
+    local mem_info=$(free | grep Mem)
+    local mem_total=$(echo "$mem_info" | awk '{print int($2/1024)}')
+    local mem_used=$(echo "$mem_info" | awk '{print int($3/1024)}')
+    local mem_pct=$((mem_used * 100 / mem_total))
+    echo "${BOLD}Memory:${NC}   ${mem_used}MB / ${mem_total}MB (${mem_pct}%)"
+
+    # Disk
+    local disk_info=$(df /overlay 2>/dev/null | tail -1)
+    local disk_pct=$(echo "$disk_info" | awk '{print $5}')
+    echo "${BOLD}Disk:${NC}     ${disk_pct} used"
     echo ""
 
-    # Network
-    echo "${C_BOLD}Network:${C_NC}"
-    echo "  WAN IP: $(curl -s --connect-timeout 2 ifconfig.me 2>/dev/null || echo 'unavailable')"
-    echo "  LAN IP: $(uci get network.lan.ipaddr 2>/dev/null)"
+    # Services
+    print_section "Core Services"
+    for svc in crowdsec haproxy dockerd nginx uhttpd dnsmasq; do
+        if pgrep "$svc" >/dev/null 2>&1; then
+            echo "  ${GREEN}●${NC} $svc"
+        elif [ -f "/etc/init.d/$svc" ]; then
+            echo "  ${RED}●${NC} $svc (stopped)"
+        fi
+    done
     echo ""
 
-    # Security
-    echo "${C_BOLD}Security:${C_NC}"
-    if [ -f /var/log/secubox-access.log ]; then
-        scans=$(grep -c '"is_scan":true' /var/log/secubox-access.log 2>/dev/null || echo 0)
-        auths=$(grep -c '"is_auth_attempt":true' /var/log/secubox-access.log 2>/dev/null || echo 0)
-        echo "  Scan attempts: $scans"
-        echo "  Auth attempts: $auths"
-    else
-        echo "  MITM logging not active"
+    # Docker containers
+    if cmd_exists docker; then
+        local containers=$(docker ps --format '{{.Names}}' 2>/dev/null | wc -l)
+        if [ "$containers" -gt 0 ]; then
+            print_section "Docker Containers"
+            docker ps --format '  {{.Names}}: {{.Status}}' 2>/dev/null
+            echo ""
+        fi
+    fi
+
+    # Mesh status
+    if [ -f /tmp/secubox-p2p-status.json ]; then
+        print_section "Mesh Network"
+        local peers=$(jsonfilter -i /tmp/secubox-p2p-status.json -e '@.peers_online' 2>/dev/null || echo "0")
+        local services=$(jsonfilter -i /tmp/secubox-p2p-status.json -e '@.services_count' 2>/dev/null || echo "0")
+        echo "  Peers online: $peers"
+        echo "  Services: $services"
     fi
 }
 
-action_logs() {
-    local component="${1:-all}"
+cmd_info() {
+    print_section "System Information"
 
-    case "$component" in
-        mitm)
-            /usr/sbin/secubox-mitm-logs tail
+    echo "${BOLD}Hardware:${NC}"
+    echo "  Model:    $(cat /tmp/sysinfo/model 2>/dev/null || uname -m)"
+    echo "  CPU:      $(grep -c processor /proc/cpuinfo) cores"
+    echo "  Arch:     $(uname -m)"
+    echo ""
+
+    echo "${BOLD}Network:${NC}"
+    local wan_ip=$(ip -4 addr show wan 2>/dev/null | grep inet | awk '{print $2}' | cut -d/ -f1)
+    local lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+    echo "  LAN IP:   $lan_ip"
+    [ -n "$wan_ip" ] && echo "  WAN IP:   $wan_ip"
+
+    # WireGuard
+    if cmd_exists wg; then
+        local wg_peers=$(wg show all peers 2>/dev/null | wc -l)
+        [ "$wg_peers" -gt 0 ] && echo "  WG Peers: $wg_peers"
+    fi
+    echo ""
+
+    echo "${BOLD}SecuBox:${NC}"
+    echo "  Version:  $(cat /etc/secubox-version 2>/dev/null || echo 'unknown')"
+    echo "  Node ID:  $(cat /etc/secubox-node-id 2>/dev/null || echo 'unknown')"
+    echo "  Feed:     $(opkg list-installed | grep -c secubox) packages"
+}
+
+# ============================================================================
+# Mesh & P2P Commands
+# ============================================================================
+
+cmd_mesh() {
+    local subcmd="${1:-status}"
+    shift 2>/dev/null
+
+    case "$subcmd" in
+        status)
+            run_or_warn secubox-p2p status
             ;;
-        mesh)
-            cat /srv/secubox/mesh/chain.json 2>/dev/null | jsonfilter -e '@.blocks[-5:]' 2>/dev/null
+        peers)
+            run_or_warn secubox-p2p peers
             ;;
-        security)
-            /usr/sbin/secubox-mitm-logs scan
+        discover)
+            run_or_warn secubox-p2p discover "$@"
+            ;;
+        sync)
+            run_or_warn secubox-p2p sync
+            ;;
+        services)
+            run_or_warn secubox-p2p shared-services
+            ;;
+        broadcast)
+            run_or_warn secubox-p2p broadcast "$@"
             ;;
         *)
-            echo "${C_CYAN}=== Recent Logs ===${C_NC}"
-            logread -l 30 2>/dev/null || tail -30 /var/log/messages 2>/dev/null
+            echo "Usage: $SCRIPT_NAME mesh <status|peers|discover|sync|services|broadcast>"
+            ;;
+    esac
+}
+
+cmd_factory() {
+    local subcmd="${1:-status}"
+
+    case "$subcmd" in
+        status)
+            curl -s "http://127.0.0.1:7331/api/factory/status" 2>/dev/null | jsonfilter -e '@' || echo "Factory API not available"
+            ;;
+        catalog)
+            curl -s "http://127.0.0.1:7331/api/factory/catalog" 2>/dev/null | jsonfilter -e '@' || echo "Catalog not available"
+            ;;
+        open)
+            local ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+            echo "Factory Dashboard: http://$ip:7331/factory/"
+            ;;
+        *)
+            echo "Usage: $SCRIPT_NAME factory <status|catalog|open>"
             ;;
     esac
 }
 
 # ============================================================================
-# Self-Enhancement
+# Recovery Commands
 # ============================================================================
-action_self_update() {
-    echo "${C_CYAN}Checking for updates...${C_NC}"
 
-    # Check mesh peers for newer version
-    local peers=$(cat /srv/secubox/mesh/peers.json 2>/dev/null | jsonfilter -e '@.peers[*].addr' 2>/dev/null)
+cmd_recover() {
+    local subcmd="${1:-help}"
+    shift 2>/dev/null
 
-    for peer in $peers; do
-        echo "  Checking peer: $peer"
-        local remote_ver=$(curl -s --connect-timeout 3 "http://$peer:7331/api/version" 2>/dev/null | jsonfilter -e '@.swiss' 2>/dev/null)
+    case "$subcmd" in
+        snapshot)
+            run_or_warn secubox-recover snapshot "$@"
+            ;;
+        list)
+            run_or_warn secubox-recover list
+            ;;
+        restore)
+            run_or_warn secubox-recover restore "$@"
+            ;;
+        reborn)
+            run_or_warn secubox-recover reborn
+            ;;
+        profile)
+            run_or_warn secubox-recover profile "$@"
+            ;;
+        help|*)
+            echo "Usage: $SCRIPT_NAME recover <snapshot|list|restore|reborn|profile>"
+            echo ""
+            echo "  snapshot [name]     Create configuration snapshot"
+            echo "  list                List available snapshots"
+            echo "  restore <name>      Restore from snapshot"
+            echo "  reborn              Generate self-restore script"
+            echo "  profile <cmd>       Profile management"
+            ;;
+    esac
+}
 
-        if [ -n "$remote_ver" ] && [ "$remote_ver" != "$VERSION" ]; then
-            echo "  ${C_YELLOW}Update available: $remote_ver${C_NC}"
+cmd_backup() {
+    local target="${1:-/tmp/secubox-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
 
-            # Fetch and verify
-            local update_hash=$(curl -s "http://$peer:7331/api/update/swiss/hash" 2>/dev/null)
-            curl -s "http://$peer:7331/api/update/swiss" -o /tmp/secubox-swiss.new 2>/dev/null
+    print_section "Creating Backup"
+    echo "Target: $target"
+    echo ""
 
-            local local_hash=$(sha256sum /tmp/secubox-swiss.new 2>/dev/null | cut -d' ' -f1)
+    # Create backup
+    tar czf "$target" \
+        /etc/config \
+        /etc/secubox* \
+        /etc/dropbear \
+        /etc/haproxy 2>/dev/null
 
-            if [ "$local_hash" = "$update_hash" ]; then
-                echo "  ${C_GREEN}Hash verified. Installing...${C_NC}"
-                chmod +x /tmp/secubox-swiss.new
-                mv /tmp/secubox-swiss.new "$SCRIPT_PATH"
-                echo "  ${C_GREEN}Updated to $remote_ver${C_NC}"
-                exit 0
-            else
-                echo "  ${C_RED}Hash mismatch. Skipping.${C_NC}"
-            fi
-        fi
-    done
-
-    echo "  ${C_GREEN}Already up to date: $VERSION${C_NC}"
+    if [ -f "$target" ]; then
+        local size=$(ls -lh "$target" | awk '{print $5}')
+        echo "${GREEN}✓${NC} Backup created: $target ($size)"
+    else
+        echo "${RED}✗${NC} Backup failed"
+        return 1
+    fi
 }
 
 # ============================================================================
-# Interactive Mode
+# Apps & Services Commands
 # ============================================================================
+
+cmd_apps() {
+    local subcmd="${1:-list}"
+    shift 2>/dev/null
+
+    case "$subcmd" in
+        list)
+            run_or_warn secubox-app list
+            ;;
+        install)
+            run_or_warn secubox-app install "$@"
+            ;;
+        remove)
+            run_or_warn secubox-app remove "$@"
+            ;;
+        status)
+            run_or_warn secubox-app status "$@"
+            ;;
+        store)
+            run_or_warn secubox-appstore list
+            ;;
+        *)
+            echo "Usage: $SCRIPT_NAME apps <list|install|remove|status|store>"
+            ;;
+    esac
+}
+
+cmd_service() {
+    local svc="$1"
+    local action="${2:-status}"
+
+    if [ -z "$svc" ]; then
+        echo "Usage: $SCRIPT_NAME service <name> <start|stop|restart|status|enable|disable>"
+        echo ""
+        echo "Available services:"
+        ls /etc/init.d/ | grep -E "^(crowdsec|haproxy|jitsi|gitea|docker|nginx)" | sed 's/^/  /'
+        return
+    fi
+
+    case "$action" in
+        start|stop|restart|enable|disable)
+            /etc/init.d/"$svc" "$action"
+            ;;
+        status)
+            if pgrep "$svc" >/dev/null 2>&1; then
+                echo "${GREEN}●${NC} $svc is running"
+                pgrep -a "$svc" | head -3
+            else
+                echo "${RED}●${NC} $svc is stopped"
+            fi
+            ;;
+        *)
+            echo "Unknown action: $action"
+            ;;
+    esac
+}
+
+# ============================================================================
+# Security Commands
+# ============================================================================
+
+cmd_security() {
+    local subcmd="${1:-status}"
+
+    case "$subcmd" in
+        status)
+            print_section "Security Status"
+
+            # CrowdSec
+            if pgrep crowdsec >/dev/null 2>&1; then
+                echo "${GREEN}●${NC} CrowdSec: running"
+                local decisions=$(cscli decisions list -o json 2>/dev/null | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+                echo "    Active decisions: $decisions"
+            else
+                echo "${RED}●${NC} CrowdSec: stopped"
+            fi
+
+            # Firewall
+            local fw_rules=$(iptables -L INPUT 2>/dev/null | wc -l)
+            echo "${GREEN}●${NC} Firewall: $fw_rules rules"
+
+            # Tor
+            if pgrep tor >/dev/null 2>&1; then
+                echo "${GREEN}●${NC} Tor: running"
+            fi
+            ;;
+
+        scan)
+            print_section "Security Scan"
+            run_or_warn secubox-exposure scan
+            ;;
+
+        threats)
+            run_or_warn cscli alerts list -l 10
+            ;;
+
+        block)
+            if [ -n "$2" ]; then
+                cscli decisions add -i "$2" -d 24h -r "manual block via swiss"
+                echo "${GREEN}✓${NC} Blocked: $2"
+            else
+                echo "Usage: $SCRIPT_NAME security block <ip>"
+            fi
+            ;;
+
+        unblock)
+            if [ -n "$2" ]; then
+                cscli decisions delete -i "$2"
+                echo "${GREEN}✓${NC} Unblocked: $2"
+            else
+                echo "Usage: $SCRIPT_NAME security unblock <ip>"
+            fi
+            ;;
+
+        *)
+            echo "Usage: $SCRIPT_NAME security <status|scan|threats|block|unblock>"
+            ;;
+    esac
+}
+
+# ============================================================================
+# Network Commands
+# ============================================================================
+
+cmd_network() {
+    local subcmd="${1:-status}"
+
+    case "$subcmd" in
+        status)
+            print_section "Network Status"
+
+            # Interfaces
+            echo "${BOLD}Interfaces:${NC}"
+            ip -br addr show | grep -v "^lo" | while read -r line; do
+                iface=$(echo "$line" | awk '{print $1}')
+                state=$(echo "$line" | awk '{print $2}')
+                addr=$(echo "$line" | awk '{print $3}')
+
+                if [ "$state" = "UP" ]; then
+                    echo "  ${GREEN}●${NC} $iface: $addr"
+                else
+                    echo "  ${RED}●${NC} $iface: $state"
+                fi
+            done
+            echo ""
+
+            # DNS
+            echo "${BOLD}DNS:${NC}"
+            grep nameserver /tmp/resolv.conf.d/resolv.conf.auto 2>/dev/null | head -3 | sed 's/^/  /'
+            echo ""
+
+            # WireGuard
+            if cmd_exists wg && wg show interfaces | grep -q .; then
+                echo "${BOLD}WireGuard:${NC}"
+                wg show all | grep -E "^(interface|peer|endpoint)" | sed 's/^/  /'
+            fi
+            ;;
+
+        diag)
+            print_section "Network Diagnostics"
+            run_or_warn secubox-diagnostics network
+            ;;
+
+        ports)
+            print_section "Listening Ports"
+            netstat -tlnp 2>/dev/null | grep LISTEN | awk '{print "  " $4 " " $7}' | sort -t: -k2 -n
+            ;;
+
+        connections)
+            print_section "Active Connections"
+            netstat -tn 2>/dev/null | grep ESTABLISHED | awk '{print "  " $5}' | sort | uniq -c | sort -rn | head -10
+            ;;
+
+        *)
+            echo "Usage: $SCRIPT_NAME network <status|diag|ports|connections>"
+            ;;
+    esac
+}
+
+# ============================================================================
+# Docker Commands
+# ============================================================================
+
+cmd_docker() {
+    local subcmd="${1:-ps}"
+    shift 2>/dev/null
+
+    if ! cmd_exists docker; then
+        echo "${RED}Docker not installed${NC}"
+        return 1
+    fi
+
+    case "$subcmd" in
+        ps)
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            ;;
+        logs)
+            docker logs --tail 50 "$@"
+            ;;
+        restart)
+            docker restart "$@"
+            ;;
+        stats)
+            docker stats --no-stream
+            ;;
+        prune)
+            echo "Cleaning unused Docker resources..."
+            docker system prune -f
+            ;;
+        *)
+            echo "Usage: $SCRIPT_NAME docker <ps|logs|restart|stats|prune>"
+            ;;
+    esac
+}
+
+# ============================================================================
+# HAProxy Commands
+# ============================================================================
+
+cmd_haproxy() {
+    local subcmd="${1:-status}"
+
+    case "$subcmd" in
+        status)
+            if pgrep haproxy >/dev/null 2>&1; then
+                echo "${GREEN}●${NC} HAProxy is running"
+                run_or_warn haproxyctl status 2>/dev/null || true
+            else
+                echo "${RED}●${NC} HAProxy is stopped"
+            fi
+            ;;
+
+        vhosts)
+            print_section "Virtual Hosts"
+            uci show haproxy 2>/dev/null | grep "\.domain=" | sed "s/haproxy\./  /" | sed "s/\.domain=/: /"
+            ;;
+
+        reload)
+            run_or_warn haproxyctl reload
+            ;;
+
+        stats)
+            local ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+            echo "HAProxy Stats: http://$ip:8404/stats"
+            echo "Auth: admin / secubox"
+            ;;
+
+        *)
+            echo "Usage: $SCRIPT_NAME haproxy <status|vhosts|reload|stats>"
+            ;;
+    esac
+}
+
+# ============================================================================
+# Feed Commands
+# ============================================================================
+
+cmd_feed() {
+    local subcmd="${1:-list}"
+    shift 2>/dev/null
+
+    case "$subcmd" in
+        list)
+            run_or_warn secubox-feed list
+            ;;
+        update)
+            run_or_warn secubox-feed update
+            ;;
+        sync)
+            run_or_warn secubox-feed sync
+            ;;
+        install)
+            run_or_warn secubox-feed install "$@"
+            ;;
+        *)
+            echo "Usage: $SCRIPT_NAME feed <list|update|sync|install>"
+            ;;
+    esac
+}
+
+# ============================================================================
+# Console (Remote Management)
+# ============================================================================
+
+cmd_console() {
+    if [ -f /usr/lib/secubox-console/secubox_console.py ]; then
+        python3 /usr/lib/secubox-console/secubox_console.py "$@"
+    else
+        echo "SecuBox Console not installed."
+        echo "Install with: opkg install secubox-console"
+    fi
+}
+
+# ============================================================================
+# Quick Actions
+# ============================================================================
+
+cmd_logs() {
+    local service="${1:-all}"
+    local lines="${2:-50}"
+
+    case "$service" in
+        crowdsec)
+            tail -n "$lines" /var/log/crowdsec.log 2>/dev/null || logread -l "$lines" | grep -i crowdsec
+            ;;
+        haproxy)
+            logread -l "$lines" | grep -i haproxy
+            ;;
+        system)
+            logread -l "$lines"
+            ;;
+        all|*)
+            logread -l "$lines"
+            ;;
+    esac
+}
+
+cmd_restart() {
+    local target="${1:-services}"
+
+    case "$target" in
+        services)
+            echo "Restarting core services..."
+            for svc in haproxy crowdsec uhttpd rpcd; do
+                [ -f "/etc/init.d/$svc" ] && /etc/init.d/"$svc" restart
+            done
+            echo "${GREEN}✓${NC} Services restarted"
+            ;;
+        network)
+            echo "Restarting network..."
+            /etc/init.d/network restart
+            ;;
+        docker)
+            echo "Restarting Docker containers..."
+            docker restart $(docker ps -q) 2>/dev/null
+            ;;
+        all)
+            cmd_restart services
+            cmd_restart docker
+            ;;
+        *)
+            echo "Usage: $SCRIPT_NAME restart <services|network|docker|all>"
+            ;;
+    esac
+}
+
+# ============================================================================
+# Interactive Menu
+# ============================================================================
+
+show_menu() {
+    print_header
+
+    echo "${BOLD}Quick Actions:${NC}"
+    echo "  ${CYAN}1${NC}) Status overview"
+    echo "  ${CYAN}2${NC}) Mesh status & peers"
+    echo "  ${CYAN}3${NC}) Security status"
+    echo "  ${CYAN}4${NC}) Docker containers"
+    echo "  ${CYAN}5${NC}) HAProxy vhosts"
+    echo "  ${CYAN}6${NC}) View logs"
+    echo "  ${CYAN}7${NC}) Create backup"
+    echo "  ${CYAN}8${NC}) Network diagnostics"
+    echo "  ${CYAN}9${NC}) Factory dashboard"
+    echo ""
+    echo "  ${CYAN}h${NC}) Help - all commands"
+    echo "  ${CYAN}q${NC}) Quit"
+    echo ""
+    printf "Select: "
+}
+
 interactive_menu() {
     while true; do
-        clear
-        banner
-        echo "Quick Actions:"
-        echo "  ${C_CYAN}1${C_NC}) Status       - System overview"
-        echo "  ${C_CYAN}2${C_NC}) Backup       - Create snapshot"
-        echo "  ${C_CYAN}3${C_NC}) Reborn       - Generate recovery script"
-        echo "  ${C_CYAN}4${C_NC}) Sync         - Sync mesh & catalog"
-        echo "  ${C_CYAN}5${C_NC}) Health       - Health check"
-        echo "  ${C_CYAN}6${C_NC}) Logs         - View logs"
-        echo "  ${C_CYAN}7${C_NC}) Update       - Self-update"
+        show_menu
+        read -r choice
         echo ""
-        echo "Tools:"
-        echo "  ${C_CYAN}m${C_NC}) Mesh         - P2P mesh management"
-        echo "  ${C_CYAN}r${C_NC}) Recover      - Recovery system"
-        echo "  ${C_CYAN}c${C_NC}) Console      - Remote management (Python)"
-        echo "  ${C_CYAN}s${C_NC}) Security     - MITM/Security logs"
-        echo ""
-        echo "  ${C_CYAN}q${C_NC}) Quit"
-        echo ""
-        printf "Choice: "
-        read choice
 
         case "$choice" in
-            1) action_status; read -p "Press Enter..." ;;
-            2) action_backup; read -p "Press Enter..." ;;
-            3) action_reborn; read -p "Press Enter..." ;;
-            4) action_sync; read -p "Press Enter..." ;;
-            5) action_health; read -p "Press Enter..." ;;
-            6) action_logs; read -p "Press Enter..." ;;
-            7) action_self_update; read -p "Press Enter..." ;;
-            m) tool_mesh; break ;;
-            r) tool_recover; break ;;
-            c) tool_console; break ;;
-            s) tool_mitm; break ;;
-            q|Q) exit 0 ;;
-            *) echo "Invalid choice" ;;
+            1) cmd_status ;;
+            2) cmd_mesh status ;;
+            3) cmd_security status ;;
+            4) cmd_docker ps ;;
+            5) cmd_haproxy vhosts ;;
+            6) cmd_logs ;;
+            7) cmd_backup ;;
+            8) cmd_network diag ;;
+            9) cmd_factory open ;;
+            h) cmd_help ;;
+            q|Q) echo "Bye!"; exit 0 ;;
+            *) echo "Invalid option" ;;
         esac
+
+        echo ""
+        printf "Press Enter to continue..."
+        read -r _
+        clear
     done
 }
 
 # ============================================================================
-# Main
+# Help
 # ============================================================================
-case "$1" in
-    # Quick actions
-    status)
-        action_status
-        ;;
-    backup)
-        shift
-        action_backup "$@"
-        ;;
-    reborn)
-        shift
-        action_reborn "$@"
-        ;;
-    sync)
-        action_sync
-        ;;
-    health)
-        action_health
-        ;;
-    logs)
-        shift
-        action_logs "$@"
-        ;;
-    update)
-        action_self_update
-        ;;
 
-    # Tool dispatch
-    mesh)
-        shift
-        tool_mesh "$@"
-        ;;
-    recover)
-        shift
-        tool_recover "$@"
-        ;;
-    console)
-        shift
-        tool_console "$@"
-        ;;
-    mitm|security)
-        shift
-        tool_mitm "$@"
-        ;;
+cmd_help() {
+    print_header
 
-    # Version
-    -v|--version|version)
-        echo "SecuBox Swiss v$VERSION"
-        ;;
+    cat << 'HELPEOF'
+USAGE:
+    secubox-swiss                   Interactive menu
+    secubox-swiss <command> [args]  Direct command
 
-    # Help
-    -h|--help|help)
-        banner
-        echo "Usage: secubox-swiss [command] [args]"
-        echo ""
-        echo "Quick Actions:"
-        echo "  status              System overview"
-        echo "  backup [name]       Create snapshot"
-        echo "  reborn [file]       Generate recovery script"
-        echo "  sync                Sync mesh & catalog"
-        echo "  health              Health check"
-        echo "  logs [component]    View logs (mitm|mesh|security|all)"
-        echo "  update              Self-update from mesh"
-        echo ""
-        echo "Tools:"
-        echo "  mesh <cmd>          P2P mesh (init|peer-add|sync|...)"
-        echo "  recover <cmd>       Recovery (snapshot|restore|profile-*|...)"
-        echo "  console <cmd>       Remote management console"
-        echo "  mitm <cmd>          Security/MITM logs"
-        echo ""
-        echo "Run without arguments for interactive menu."
-        ;;
+COMMANDS:
+    status                System status overview
+    info                  Detailed system information
 
-    # Interactive
-    "")
-        interactive_menu
-        ;;
+    mesh <cmd>            Mesh network operations
+        status            Mesh status
+        peers             List peers
+        discover          Discover new peers
+        sync              Sync with peers
+        services          Shared services
+        broadcast <cmd>   Execute on all peers
 
-    *)
-        echo "Unknown command: $1"
-        echo "Run 'secubox-swiss help' for usage."
-        exit 1
-        ;;
-esac
+    factory <cmd>         Factory dashboard
+        status            Factory API status
+        catalog           Service catalog
+        open              Show dashboard URL
+
+    recover <cmd>         Backup & recovery
+        snapshot [name]   Create snapshot
+        list              List snapshots
+        restore <name>    Restore snapshot
+        reborn            Generate restore script
+
+    backup [path]         Quick backup to file
+
+    apps <cmd>            Application management
+        list              List installed apps
+        install <app>     Install app
+        remove <app>      Remove app
+        store             Browse app store
+
+    service <name> <act>  Service control
+        start/stop/restart/status/enable/disable
+
+    security <cmd>        Security operations
+        status            Security status
+        scan              Port/exposure scan
+        threats           Recent threats
+        block <ip>        Block IP
+        unblock <ip>      Unblock IP
+
+    network <cmd>         Network operations
+        status            Network status
+        diag              Run diagnostics
+        ports             Listening ports
+        connections       Active connections
+
+    docker <cmd>          Docker operations
+        ps                List containers
+        logs <name>       Container logs
+        restart <name>    Restart container
+        stats             Resource usage
+        prune             Clean unused
+
+    haproxy <cmd>         HAProxy operations
+        status            HAProxy status
+        vhosts            List virtual hosts
+        reload            Reload config
+        stats             Stats URL
+
+    feed <cmd>            Package feed
+        list              List packages
+        update            Update index
+        sync              Sync to opkg
+        install <pkg>     Install package
+
+    console [args]        Remote management console
+    logs [svc] [lines]    View logs
+    restart <target>      Restart services/docker/all
+    help                  Show this help
+
+HELPEOF
+}
+
+# ============================================================================
+# Main Entry Point
+# ============================================================================
+
+main() {
+    case "${1:-menu}" in
+        menu|"")
+            interactive_menu
+            ;;
+        status)
+            cmd_status
+            ;;
+        info)
+            cmd_info
+            ;;
+        mesh)
+            shift
+            cmd_mesh "$@"
+            ;;
+        factory)
+            shift
+            cmd_factory "$@"
+            ;;
+        recover|recovery)
+            shift
+            cmd_recover "$@"
+            ;;
+        backup)
+            shift
+            cmd_backup "$@"
+            ;;
+        apps|app)
+            shift
+            cmd_apps "$@"
+            ;;
+        service|svc)
+            shift
+            cmd_service "$@"
+            ;;
+        security|sec)
+            shift
+            cmd_security "$@"
+            ;;
+        network|net)
+            shift
+            cmd_network "$@"
+            ;;
+        docker)
+            shift
+            cmd_docker "$@"
+            ;;
+        haproxy|ha)
+            shift
+            cmd_haproxy "$@"
+            ;;
+        feed)
+            shift
+            cmd_feed "$@"
+            ;;
+        console)
+            shift
+            cmd_console "$@"
+            ;;
+        logs|log)
+            shift
+            cmd_logs "$@"
+            ;;
+        restart)
+            shift
+            cmd_restart "$@"
+            ;;
+        help|-h|--help)
+            cmd_help
+            ;;
+        version|-v|--version)
+            echo "secubox-swiss v$VERSION"
+            ;;
+        *)
+            echo "Unknown command: $1"
+            echo "Run 'secubox-swiss help' for usage"
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

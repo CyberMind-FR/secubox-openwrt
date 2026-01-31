@@ -1,0 +1,59 @@
+{
+	"id": "secubox-app-jitsi",
+	"name": "Jitsi Meet",
+	"version": "1.0.0",
+	"category": "communication",
+	"description": "Self-hosted video conferencing with end-to-end encryption",
+	"long_description": "Jitsi Meet is a secure, fully featured, and completely free video conferencing solution. Host your own video meetings with end-to-end encryption, no account required for guests, screen sharing, chat, reactions, and more. Runs via Docker containers for easy deployment.",
+	"icon": "video",
+	"author": "CyberMind Studio",
+	"license": "Apache-2.0",
+	"homepage": "https://jitsi.org",
+	"repository": "https://github.com/jitsi/jitsi-meet",
+	"packages": [
+		"secubox-app-jitsi",
+		"luci-app-jitsi"
+	],
+	"dependencies": [
+		"docker",
+		"docker-compose"
+	],
+	"optional": [
+		"secubox-app-haproxy"
+	],
+	"ports": [
+		{"port": 8443, "protocol": "tcp", "description": "Web interface (HTTPS)"},
+		{"port": 10000, "protocol": "udp", "description": "Video/audio streams"},
+		{"port": 4443, "protocol": "tcp", "description": "TCP fallback"}
+	],
+	"resources": {
+		"ram_min": "2048",
+		"ram_recommended": "4096",
+		"disk": "500",
+		"cpu": "medium"
+	},
+	"features": [
+		"End-to-end encrypted video",
+		"No account required for guests",
+		"Screen sharing",
+		"Chat and reactions",
+		"Virtual backgrounds",
+		"Breakout rooms",
+		"Recording (optional)",
+		"Mobile app support",
+		"HAProxy integration",
+		"Mesh federation"
+	],
+	"tags": ["video", "conferencing", "webrtc", "communication", "meetings", "collaboration"],
+	"screenshots": [],
+	"documentation": "https://jitsi.github.io/handbook/docs/intro",
+	"config_file": "/etc/config/jitsi",
+	"service_name": "jitsi",
+	"web_interface": {
+		"port": 8443,
+		"path": "/",
+		"ssl": true
+	},
+	"haproxy_integration": true,
+	"mesh_service": true
+}

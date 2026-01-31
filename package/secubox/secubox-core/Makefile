@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
 PKG_VERSION:=0.10.0
-PKG_RELEASE:=9
+PKG_RELEASE:=11
 PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
@@ -85,6 +85,14 @@ define Package/secubox-core/install
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-feed-manager $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-skill $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-feedback $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-tftp-recovery $(1)/usr/sbin/
+
+	# TFTP Recovery init script
+	$(INSTALL_BIN) ./root/etc/init.d/secubox-tftp-recovery $(1)/etc/init.d/
+
+	# TFTP Mesh library
+	$(INSTALL_DIR) $(1)/usr/lib/secubox
+	$(INSTALL_DATA) ./root/usr/lib/secubox/tftp-mesh.sh $(1)/usr/lib/secubox/
 
 	# WAN Access hotplug for interface events
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface

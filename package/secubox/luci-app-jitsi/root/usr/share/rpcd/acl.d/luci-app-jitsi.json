@@ -1,0 +1,25 @@
+{
+	"luci-app-jitsi": {
+		"description": "Grant access to Jitsi Meet configuration",
+		"read": {
+			"file": {
+				"/etc/config/jitsi": ["read"],
+				"/srv/jitsi/.env": ["read"]
+			},
+			"ubus": {
+				"file": ["read", "stat"],
+				"luci.jitsi": ["*"]
+			},
+			"uci": ["jitsi"]
+		},
+		"write": {
+			"file": {
+				"/etc/config/jitsi": ["write"]
+			},
+			"ubus": {
+				"luci.jitsi": ["*"]
+			},
+			"uci": ["jitsi"]
+		}
+	}
+}
