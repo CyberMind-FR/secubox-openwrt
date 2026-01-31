@@ -23,20 +23,16 @@ factory_init_keys() {
 	factory_init
 	[ -f "$KEYFILE" ] && return 0
 
-	# Check if signify-openbsd is available
-	if command -v signify-openbsd >/dev/null 2>&1; then
-		signify-openbsd -G -n -p "$PUBKEY" -s "$KEYFILE"
-	elif command -v signify >/dev/null 2>&1; then
-		signify -G -n -p "$PUBKEY" -s "$KEYFILE"
-	else
-		# Fallback: generate simple hash-based "signature" for systems without signify
-		# This is less secure but allows the system to function
-		local node_id=$(cat "$P2P_STATE_DIR/node.id" 2>/dev/null || cat /proc/sys/kernel/random/uuid | tr -d '-')
-		local rand=$(head -c 32 /dev/urandom | sha256sum | cut -d' ' -f1)
-		echo "secubox-factory-key:${node_id}:${rand}" > "$KEYFILE"
-		echo "secubox-factory-pub:${node_id}:$(echo "$rand" | sha256sum | cut -d' ' -f1)" > "$PUBKEY"
-		logger -t factory "WARNING: signify not available, using fallback key generation"
-	fi
+	# Generate keys using available method
+	# OpenWrt signify doesn't support -n flag, use fallback hash-based keys
+	# which provide integrity verification without full Ed25519 signing
+	local node_id=$(cat "$P2P_STATE_DIR/node.id" 2>/dev/null || cat /proc/sys/kernel/random/uuid | tr -d '-')
+	local rand=$(head -c 32 /dev/urandom 2>/dev/null | sha256sum | cut -d' ' -f1)
+	[ -z "$rand" ] && rand=$(date +%s%N | sha256sum | cut -d' ' -f1)
+
+	# Create HMAC-style keypair for snapshot integrity
+	echo "secubox-factory-key:${node_id}:${rand}" > "$KEYFILE"
+	echo "secubox-factory-pub:${node_id}:$(echo "$rand" | sha256sum | cut -d' ' -f1)" > "$PUBKEY"
 
 	chmod 600 "$KEYFILE"
 
@@ -87,21 +83,9 @@ create_snapshot() {
 	local sign_data="${merkle}|${ts}|${node_id}|${prev_hash}"
 	local hash=$(echo "$sign_data" | sha256sum | cut -d' ' -f1)
 
-	# Sign with Ed25519 or fallback
-	local signature=""
-	if command -v signify-openbsd >/dev/null 2>&1; then
-		echo "$sign_data" | signify-openbsd -S -s "$KEYFILE" -m - -x /tmp/sig.tmp 2>/dev/null
-		signature=$(cat /tmp/sig.tmp 2>/dev/null | tail -1)
-		rm -f /tmp/sig.tmp
-	elif command -v signify >/dev/null 2>&1; then
-		echo "$sign_data" | signify -S -s "$KEYFILE" -m - -x /tmp/sig.tmp 2>/dev/null
-		signature=$(cat /tmp/sig.tmp 2>/dev/null | tail -1)
-		rm -f /tmp/sig.tmp
-	else
-		# Fallback: HMAC-style signature using key + data
-		local key_data=$(cat "$KEYFILE" 2>/dev/null)
-		signature=$(echo "${key_data}:${sign_data}" | sha256sum | cut -d' ' -f1)
-	fi
+	# HMAC-style signature using key + data
+	local key_data=$(cat "$KEYFILE" 2>/dev/null)
+	local signature=$(echo "${key_data}:${sign_data}" | sha256sum | cut -d' ' -f1)
 
 	# Build snapshot JSON
 	cat > "$SNAPSHOT_FILE" << EOF
@@ -122,9 +106,10 @@ EOF
 # Verify snapshot signature
 verify_snapshot() {
 	local snapshot_file="${1:-$SNAPSHOT_FILE}"
-	local pubkey="${2:-$PUBKEY}"
+	local keyfile="${2:-$KEYFILE}"
 
 	[ -f "$snapshot_file" ] || { echo "missing"; return 1; }
+	[ -f "$keyfile" ] || { echo "no_key"; return 1; }
 
 	local merkle=$(jsonfilter -i "$snapshot_file" -e '@.merkle_root' 2>/dev/null)
 	local ts=$(jsonfilter -i "$snapshot_file" -e '@.timestamp' 2>/dev/null)
@@ -133,36 +118,23 @@ verify_snapshot() {
 	local signature=$(jsonfilter -i "$snapshot_file" -e '@.signature' 2>/dev/null)
 
 	[ -z "$merkle" ] && { echo "invalid"; return 1; }
+	[ -z "$signature" ] && { echo "unsigned"; return 1; }
 
 	local sign_data="${merkle}|${ts}|${node_id}|${prev_hash}"
 
-	# Verify signature
-	if command -v signify-openbsd >/dev/null 2>&1; then
-		echo "$signature" > /tmp/verify.sig
-		if echo "$sign_data" | signify-openbsd -V -p "$pubkey" -m - -x /tmp/verify.sig 2>/dev/null; then
-			rm -f /tmp/verify.sig
-			echo "valid"
-			return 0
-		fi
-		rm -f /tmp/verify.sig
-	elif command -v signify >/dev/null 2>&1; then
-		echo "$signature" > /tmp/verify.sig
-		if echo "$sign_data" | signify -V -p "$pubkey" -m - -x /tmp/verify.sig 2>/dev/null; then
-			rm -f /tmp/verify.sig
-			echo "valid"
-			return 0
-		fi
-		rm -f /tmp/verify.sig
-	else
-		# Fallback verification
-		local key_data=$(cat "$pubkey" 2>/dev/null)
-		# Extract secret from pubkey for fallback (not secure, but functional)
-		local expected=$(echo "${key_data}:${sign_data}" | sha256sum | cut -d' ' -f1)
-		# For fallback keys, the signature is a hash - verify merkle matches current
+	# HMAC-style verification using key + data
+	local key_data=$(cat "$keyfile" 2>/dev/null)
+	local expected=$(echo "${key_data}:${sign_data}" | sha256sum | cut -d' ' -f1)
+
+	if [ "$signature" = "$expected" ]; then
+		# Also verify merkle matches current config
 		local current_merkle=$(merkle_config)
 		if [ "$merkle" = "$current_merkle" ]; then
 			echo "valid"
 			return 0
+		else
+			echo "config_changed"
+			return 1
 		fi
 	fi
 

@@ -5,8 +5,9 @@
 return view.extend({
 	render: function() {
 		// Get the current host to build the factory URL
+		// Factory UI is served from main uhttpd, API is on 7331
 		var host = window.location.hostname;
-		var factoryUrl = 'http://' + host + ':7331/factory/';
+		var factoryUrl = '/factory/';
 
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('SecuBox Factory')),
@@ -21,7 +22,7 @@ return view.extend({
 					'style': 'margin-right: 0.5rem;'
 				}, _('Open in New Tab')),
 				E('span', { 'style': 'color: #888; font-size: 0.85rem;' },
-					_('Factory runs on port 7331')
+					_('Factory API on port 7331')
 				)
 			]),
 			E('iframe', {

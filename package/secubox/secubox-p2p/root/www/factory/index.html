@@ -140,14 +140,18 @@
     let tools = [];
     let refreshInterval = null;
 
-    // API helpers
+    // API helpers - API runs on port 7331
+    const apiBase = window.location.port === '7331'
+        ? '/factory/'
+        : 'http://' + window.location.hostname + ':7331/factory/';
+
     const api = {
         get: async (path) => {
-            const r = await fetch('/api/factory/' + path);
+            const r = await fetch(apiBase + path);
             return r.json();
         },
         post: async (path, body) => {
-            const r = await fetch('/api/factory/' + path, {
+            const r = await fetch(apiBase + path, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
