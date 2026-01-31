@@ -175,8 +175,18 @@
         }
     },
     "admin/secubox/services": {
-        "title": "Services Registry",
+        "title": "Services",
         "order": 60,
+        "action": {
+            "type": "firstchild"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
+        }
+    },
+    "admin/secubox/services/registry": {
+        "title": "Registry",
+        "order": 90,
         "action": {
             "type": "view",
             "path": "secubox/services"
