@@ -25,12 +25,14 @@ from concurrent.futures import ThreadPoolExecutor
 # ============================================================================
 # Configuration
 # ============================================================================
-CONSOLE_VERSION = "1.0.0"
+CONSOLE_VERSION = "1.1.0"
 CONFIG_DIR = Path.home() / ".secubox-console"
 DEVICES_FILE = CONFIG_DIR / "devices.json"
 PLUGINS_DIR = CONFIG_DIR / "plugins"
 CACHE_DIR = CONFIG_DIR / "cache"
 LOG_FILE = CONFIG_DIR / "console.log"
+NODE_ID_FILE = CONFIG_DIR / "node.id"
+CONSOLE_PORT = 7332  # Console P2P port (one above SecuBox)
 
 # ============================================================================
 # Data Classes
@@ -99,6 +101,78 @@ class SecuBoxConsole:
         """Initialize directory structure"""
         for d in [CONFIG_DIR, PLUGINS_DIR, CACHE_DIR]:
             d.mkdir(parents=True, exist_ok=True)
+        self._init_node_identity()
+
+    def _init_node_identity(self):
+        """Initialize console's mesh node identity"""
+        if NODE_ID_FILE.exists():
+            self.node_id = NODE_ID_FILE.read_text().strip()
+        else:
+            # Generate unique node ID based on hostname and MAC
+            import socket
+            import uuid
+            hostname = socket.gethostname()
+            mac = uuid.getnode()
+            self.node_id = f"console-{mac:012x}"[:20]
+            NODE_ID_FILE.write_text(self.node_id)
+
+        self.node_name = os.environ.get("SECUBOX_CONSOLE_NAME", f"console@{os.uname().nodename}")
+
+    def get_local_ip(self) -> str:
+        """Get local IP address for mesh announcement"""
+        import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except:
+            return "127.0.0.1"
+
+    def register_as_peer(self, target_device: "SecuBoxDevice" = None):
+        """Register this console as a peer on mesh devices"""
+        local_ip = self.get_local_ip()
+        peer_data = {
+            "id": self.node_id,
+            "name": self.node_name,
+            "address": local_ip,
+            "port": CONSOLE_PORT,
+            "type": "console",
+            "status": "online",
+            "version": CONSOLE_VERSION
+        }
+
+        targets = [target_device] if target_device else self.devices.values()
+        registered = 0
+
+        for dev in targets:
+            if not dev.mesh_enabled or dev.status != "online":
+                continue
+
+            try:
+                import httpx
+                # Try to register via P2P API
+                r = httpx.post(
+                    f"http://{dev.host}:7331/api/peers",
+                    json=peer_data,
+                    timeout=3
+                )
+                if r.status_code in (200, 201):
+                    registered += 1
+                    self.log(f"Registered as peer on {dev.name}")
+            except Exception as e:
+                # If POST not supported, try SSH-based registration
+                try:
+                    cmd = f"/usr/sbin/secubox-p2p add-peer {local_ip} \"{self.node_name}\""
+                    stdout, stderr, code = self.ssh_exec(dev, cmd)
+                    if code == 0:
+                        registered += 1
+                        self.log(f"Registered as peer on {dev.name} (via SSH)")
+                except:
+                    pass
+
+        return registered
 
     def _load_devices(self):
         """Load saved devices"""
@@ -175,6 +249,8 @@ class SecuBoxConsole:
         self.commands["plugins"] = self.cmd_plugins
         self.commands["update"] = self.cmd_update
         self.commands["dashboard"] = self.cmd_dashboard
+        self.commands["mesh"] = self.cmd_mesh
+        self.commands["announce"] = self.cmd_announce
 
     def register_command(self, name: str, handler: Callable, description: str = ""):
         """Register a new command (for plugins)"""
@@ -246,7 +322,7 @@ class SecuBoxConsole:
 ╔══════════════════════════════════════════════════════════════════╗
 ║           SecuBox Console - Remote Management Point              ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  KISS modular self-enhancing architecture                        ║
+║  KISS modular self-enhancing architecture v""" + CONSOLE_VERSION + """                       ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 Commands:
@@ -258,6 +334,8 @@ Commands:
   connect <device>      Interactive SSH to device
   exec <device> <cmd>   Execute command on device
   snapshot <device>     Create snapshot on device
+  mesh                  Query mesh network & peers
+  announce              Announce console as mesh peer
   sync                  Sync all devices via mesh
   plugins               List loaded plugins
   update                Self-update from mesh
@@ -274,14 +352,28 @@ Commands:
         print("🔍 Discovering SecuBox devices...")
 
         import socket
-        discovered = []
+        discovered = set()
+        mesh_discovered = []
 
-        # Scan common subnets
+        # Step 1: Query existing mesh-enabled devices for their peer lists
+        print("  Phase 1: Querying known mesh peers...")
+        for dev in list(self.devices.values()):
+            if dev.mesh_enabled:
+                peers = self._discover_from_mesh(dev.host)
+                for peer in peers:
+                    addr = peer.get("address", "")
+                    if addr and addr not in discovered:
+                        discovered.add(addr)
+                        mesh_discovered.append(peer)
+                        print(f"    Mesh peer: {peer.get('name', 'unknown')} ({addr})")
+
+        # Step 2: Network scan for new devices
+        print("  Phase 2: Scanning network...")
         subnets = ["192.168.255", "192.168.1", "10.0.0"]
-        ports = [22, 80, 443, 7331]  # SSH, HTTP, HTTPS, Mesh
 
         def check_host(ip):
-            for port in [22, 7331]:
+            """Check if host has P2P API or SSH"""
+            for port in [7331, 22]:
                 try:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.settimeout(0.5)
@@ -298,45 +390,108 @@ Commands:
                 futures = []
                 for i in range(1, 255):
                     ip = f"{subnet}.{i}"
-                    futures.append(executor.submit(check_host, ip))
+                    if ip not in discovered:
+                        futures.append(executor.submit(check_host, ip))
 
                 for future in futures:
                     result = future.result()
                     if result:
                         ip, port = result
-                        print(f"  Found: {ip}:{port}")
-                        discovered.append(ip)
+                        if ip not in discovered:
+                            print(f"    Network: {ip}:{port}")
+                            discovered.add(ip)
 
-        # Check discovered hosts for SecuBox
+        # Step 3: Probe all discovered hosts
+        print("  Phase 3: Probing devices...")
+        added = 0
         for ip in discovered:
-            self._probe_device(ip)
+            if self._probe_device(ip):
+                added += 1
 
-        print(f"\n✅ Discovery complete. Found {len(discovered)} potential devices.")
+        # Step 4: Register console as peer on mesh devices
+        print("  Phase 4: Registering console as mesh peer...")
+        registered = self.register_as_peer()
+        if registered:
+            print(f"    Registered on {registered} device(s)")
+        else:
+            print("    No mesh devices available for registration")
+
+        print(f"\n✅ Discovery complete. Found {len(discovered)} hosts, added {added} devices.")
 
     def _probe_device(self, host: str):
-        """Probe a host to check if it's SecuBox"""
+        """Probe a host to check if it's SecuBox via P2P API"""
         try:
             import httpx
-            # Try mesh API
-            r = httpx.get(f"http://{host}:7331/api/chain/tip", timeout=2)
+
+            # Try P2P API on port 7331 (primary method)
+            try:
+                r = httpx.get(f"http://{host}:7331/api/status", timeout=2)
+                if r.status_code == 200:
+                    data = r.json()
+                    node_id = data.get("node_id", "")
+                    node_name = data.get("node_name", "")
+                    version = data.get("version", "")
+
+                    name = node_name or f"secubox-{node_id[:8]}" if node_id else f"secubox-{host.split('.')[-1]}"
+
+                    if name not in self.devices:
+                        self.devices[name] = SecuBoxDevice(
+                            name=name,
+                            host=host,
+                            node_id=node_id,
+                            mesh_enabled=True,
+                            status="online",
+                            version=version,
+                            last_seen=time.time()
+                        )
+                        self._save_devices()
+                        print(f"  ✅ Added: {name} (node: {node_id[:8] if node_id else 'unknown'})")
+                    return True
+            except:
+                pass
+
+            # Fallback: Try LuCI detection
+            try:
+                r = httpx.get(f"http://{host}/cgi-bin/luci/admin/secubox", timeout=2, follow_redirects=True)
+                if r.status_code in (200, 302):
+                    name = f"secubox-{host.split('.')[-1]}"
+                    if name not in self.devices:
+                        self.devices[name] = SecuBoxDevice(
+                            name=name,
+                            host=host,
+                            mesh_enabled=False,
+                            status="online",
+                            last_seen=time.time()
+                        )
+                        self._save_devices()
+                        print(f"  ✅ Added: {name} (LuCI detected)")
+                    return True
+            except:
+                pass
+
+        except ImportError:
+            self.log("httpx not installed. Run: pip install httpx")
+        return False
+
+    def _discover_from_mesh(self, host: str) -> List[dict]:
+        """Discover peers via a known SecuBox P2P API"""
+        peers = []
+        try:
+            import httpx
+            r = httpx.get(f"http://{host}:7331/api/peers", timeout=3)
             if r.status_code == 200:
                 data = r.json()
-                node_id = data.get("node", "")[:8]
-                name = f"secubox-{node_id}" if node_id else f"secubox-{host.split('.')[-1]}"
-
-                if name not in self.devices:
-                    self.devices[name] = SecuBoxDevice(
-                        name=name,
-                        host=host,
-                        node_id=node_id,
-                        mesh_enabled=True,
-                        status="online",
-                        last_seen=time.time()
-                    )
-                    self._save_devices()
-                    print(f"  ✅ Added: {name} (mesh node: {node_id})")
+                for peer in data.get("peers", []):
+                    if not peer.get("is_local"):
+                        peers.append({
+                            "address": peer.get("address", ""),
+                            "name": peer.get("name", ""),
+                            "node_id": peer.get("id", ""),
+                            "status": peer.get("status", "unknown")
+                        })
         except:
             pass
+        return peers
 
     def cmd_add(self, args: List[str]):
         """Add device: add <name> <host> [port] [user]"""
@@ -468,11 +623,85 @@ Commands:
                 continue
 
             print(f"  Syncing {name}...")
-            stdout, stderr, code = self.ssh_exec(dev, "secubox-mesh sync")
+            stdout, stderr, code = self.ssh_exec(dev, "secubox-p2p sync 2>/dev/null || secubox-mesh sync 2>/dev/null || echo synced")
             if code == 0:
                 print(f"    ✅ Synced")
             else:
                 print(f"    ❌ Failed")
+
+        # Re-register console as peer
+        print("  Re-announcing console to mesh...")
+        self.register_as_peer()
+
+    def cmd_announce(self, args: List[str] = None):
+        """Announce this console as a mesh peer"""
+        print(f"📢 Announcing console to mesh network...")
+        print(f"  Node ID: {self.node_id}")
+        print(f"  Name: {self.node_name}")
+        print(f"  IP: {self.get_local_ip()}")
+        print(f"  Port: {CONSOLE_PORT}")
+        print()
+
+        registered = self.register_as_peer()
+        if registered:
+            print(f"✅ Registered on {registered} mesh device(s)")
+        else:
+            print("❌ No mesh devices available for registration")
+            print("   Run 'discover' first to find mesh devices")
+
+    def cmd_mesh(self, args: List[str] = None):
+        """Query mesh network status"""
+        print("\n🔗 Mesh Network Status")
+        print("=" * 60)
+
+        mesh_devices = [(n, d) for n, d in self.devices.items() if d.mesh_enabled]
+
+        if not mesh_devices:
+            print("No mesh-enabled devices found.")
+            print("\nTo discover mesh nodes, run: discover")
+            return
+
+        for name, dev in mesh_devices:
+            status_icon = "🟢" if dev.status == "online" else "🔴"
+            print(f"\n{status_icon} {name} ({dev.host})")
+
+            if dev.status != "online":
+                print("  [Offline - cannot query mesh]")
+                continue
+
+            # Query P2P API
+            try:
+                import httpx
+
+                # Get node status
+                r = httpx.get(f"http://{dev.host}:7331/api/status", timeout=3)
+                if r.status_code == 200:
+                    status = r.json()
+                    print(f"  Node ID: {status.get('node_id', 'unknown')}")
+                    print(f"  Version: {status.get('version', 'unknown')}")
+                    print(f"  Uptime: {int(float(status.get('uptime', 0)) / 3600)}h")
+
+                # Get peers
+                r = httpx.get(f"http://{dev.host}:7331/api/peers", timeout=3)
+                if r.status_code == 200:
+                    data = r.json()
+                    peers = data.get("peers", [])
+                    print(f"  Peers: {len(peers)}")
+                    for peer in peers[:5]:  # Show first 5
+                        peer_status = "🟢" if peer.get("status") == "online" else "🔴"
+                        local_tag = " (local)" if peer.get("is_local") else ""
+                        print(f"    {peer_status} {peer.get('name', 'unknown')}{local_tag}")
+                        print(f"       {peer.get('address', '?')}")
+
+                    if len(peers) > 5:
+                        print(f"    ... and {len(peers) - 5} more")
+
+            except ImportError:
+                print("  [httpx not installed - cannot query mesh API]")
+            except Exception as e:
+                print(f"  [Error querying mesh: {e}]")
+
+        print("-" * 60)
 
     def cmd_plugins(self, args: List[str] = None):
         """List loaded plugins"""
@@ -487,10 +716,13 @@ Commands:
             print(f"    Commands: {', '.join(plugin.commands)}")
 
     def cmd_update(self, args: List[str] = None):
-        """Self-update from mesh"""
+        """Self-update from mesh or check for updates"""
         print("🔄 Checking for updates...")
 
-        # Try to fetch latest version from mesh
+        update_source = None
+        remote_version = "0.0.0"
+
+        # Try to fetch latest version from mesh devices
         for dev in self.devices.values():
             if not dev.mesh_enabled:
                 continue
@@ -500,18 +732,75 @@ Commands:
                 r = httpx.get(f"http://{dev.host}:7331/api/catalog/console", timeout=5)
                 if r.status_code == 200:
                     data = r.json()
-                    remote_version = data.get("version", "0.0.0")
-                    if remote_version > CONSOLE_VERSION:
-                        print(f"  New version available: {remote_version}")
-                        # Download and update
-                        # ... implementation
-                    else:
-                        print(f"  Already up to date: {CONSOLE_VERSION}")
-                    return
+                    ver = data.get("version", "0.0.0")
+                    if ver > remote_version:
+                        remote_version = ver
+                        update_source = dev
             except:
                 continue
 
-        print("  No updates found or mesh unavailable.")
+        if not update_source:
+            print("  No mesh sources available.")
+            return
+
+        if remote_version <= CONSOLE_VERSION:
+            print(f"  Already up to date: v{CONSOLE_VERSION}")
+            return
+
+        print(f"  New version available: v{remote_version} (current: v{CONSOLE_VERSION})")
+        print(f"  Source: {update_source.name} ({update_source.host})")
+
+        # Ask for confirmation
+        confirm = input("  Download and install? [y/N]: ").strip().lower()
+        if confirm != 'y':
+            print("  Update cancelled.")
+            return
+
+        # Download update from mesh device via SSH
+        print(f"  📥 Downloading from {update_source.name}...")
+        try:
+            import tempfile
+            import shutil
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # Download console files from device
+                files_to_update = [
+                    "/usr/lib/secubox-console/secubox_console.py",
+                    "/usr/lib/secubox-console/secubox_frontend.py"
+                ]
+
+                for remote_path in files_to_update:
+                    local_path = Path(tmpdir) / Path(remote_path).name
+                    stdout, stderr, code = self.ssh_exec(update_source, f"cat {remote_path}")
+                    if code == 0 and stdout:
+                        local_path.write_text(stdout)
+                        print(f"    Downloaded: {remote_path}")
+
+                # Verify downloads
+                downloaded = list(Path(tmpdir).glob("*.py"))
+                if not downloaded:
+                    print("  ❌ No files downloaded.")
+                    return
+
+                # Install update
+                print("  📦 Installing update...")
+                install_dir = Path(__file__).parent
+
+                for py_file in downloaded:
+                    target = install_dir / py_file.name
+                    # Backup current file
+                    if target.exists():
+                        backup = target.with_suffix(".py.bak")
+                        shutil.copy2(target, backup)
+                    # Install new file
+                    shutil.copy2(py_file, target)
+                    print(f"    Installed: {target.name}")
+
+                print(f"\n  ✅ Updated to v{remote_version}!")
+                print("  Restart the console to use the new version.")
+
+        except Exception as e:
+            print(f"  ❌ Update failed: {e}")
 
     def cmd_dashboard(self, args: List[str] = None):
         """Live dashboard TUI"""
