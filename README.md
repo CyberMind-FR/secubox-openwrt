@@ -1,19 +1,72 @@
 # SecuBox - Security Suite for OpenWrt
 
-**Version:** 0.16.0
-**Last Updated:** 2026-01-27
-**Status:** Active Development
+**Version:** 0.17.0 🎉 **First Public Release**  
+**Last Updated:** 2026-01-31  
+**Status:** Production Ready  
 **Modules:** 38 LuCI Applications
 
 [![Build OpenWrt Packages](https://github.com/CyberMind-FR/secubox-openwrt/actions/workflows/build-openwrt-packages.yml/badge.svg)](https://github.com/CyberMind-FR/secubox-openwrt/actions/workflows/build-openwrt-packages.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/CyberMind-FR/secubox-openwrt?include_prereleases&label=release)](https://github.com/CyberMind-FR/secubox-openwrt/releases)
+
+## 🎉 First Public Release
+
+SecuBox v0.17.0 marks the **First Public Release** of the project. All core features are now stable and ready for production deployment.
+
+### What's Ready
+
+- ✅ **38 LuCI modules** — Complete security and network management suite
+- ✅ **Three-Loop Security Architecture** — Operational, Tactical, and Strategic defense layers
+- ✅ **CrowdSec Integration** — Real-time threat intelligence and automated blocking
+- ✅ **Deep Packet Inspection** — netifyd/nDPId protocol analysis
+- ✅ **WireGuard VPN** — Encrypted mesh connectivity
+- ✅ **Multi-architecture support** — ARM64, ARM32, MIPS, x86
+
+### Coming Next (v0.18+)
+
+- 🔵 **P2P Hub** — Decentralized threat intelligence sharing
+- 🔵 **did:plc Identity** — Self-sovereign node identity for trust networks
+
+---
 
 ## Overview
 
 SecuBox is a comprehensive security and network management suite for OpenWrt, providing a unified ecosystem of 38 specialized dashboards and tools. All modules are compiled automatically for multiple OpenWrt architectures via GitHub Actions.
 
-**Website:** [secubox.cybermood.eu](https://secubox.cybermood.eu)
+**Website:** [secubox.maegia.tv](https://secubox.maegia.tv)  
 **Publisher:** [CyberMind.fr](https://cybermind.fr)
+
+---
+
+## Three-Loop Security Architecture
+
+SecuBox implements a **Three-Loop Security Model** for defense in depth:
+
+```
+┌────────────────────────────────────────────────────────┐
+│            LOOP 3: STRATEGIC                           │
+│            (Hours → Days)                              │
+│   ┌────────────────────────────────────────────────┐  │
+│   │         LOOP 2: TACTICAL                       │  │
+│   │         (Minutes → Hours)                      │  │
+│   │   ┌────────────────────────────────────────┐  │  │
+│   │   │      LOOP 1: OPERATIONAL               │  │  │
+│   │   │      (Milliseconds → Seconds)          │  │  │
+│   │   │   DETECT → DECIDE → BLOCK              │  │  │
+│   │   └────────────────────────────────────────┘  │  │
+│   │   CORRELATE → ANALYZE → ADAPT                 │  │
+│   └────────────────────────────────────────────────┘  │
+│   AGGREGATE → ANTICIPATE → EVOLVE                     │
+└────────────────────────────────────────────────────────┘
+```
+
+| Loop | Function | SecuBox Modules |
+|------|----------|-----------------|
+| **Loop 1** | Real-time blocking | nftables/fw4, netifyd DPI, CrowdSec Bouncer |
+| **Loop 2** | Pattern correlation | CrowdSec Agent/LAPI, Scenarios, Netdata |
+| **Loop 3** | Threat intelligence | CrowdSec CAPI, Blocklists, P2P Hub (v0.18+) |
+
+See [DOCS/THREE-LOOP-ARCHITECTURE.md](DOCS/THREE-LOOP-ARCHITECTURE.md) for detailed analysis.
 
 ---
 
@@ -107,6 +160,7 @@ SecuBox is a comprehensive security and network management suite for OpenWrt, pr
 ## Supported Architectures
 
 ### ARM 64-bit (AArch64)
+
 | Target | Devices |
 |--------|---------|
 | `aarch64-cortex-a53` | ESPRESSObin, BananaPi R64 |
@@ -116,6 +170,7 @@ SecuBox is a comprehensive security and network management suite for OpenWrt, pr
 | `bcm27xx-bcm2711` | Raspberry Pi 4, Compute Module 4 |
 
 ### ARM 32-bit
+
 | Target | Devices |
 |--------|---------|
 | `arm-cortex-a7-neon` | Orange Pi, BananaPi, Allwinner |
@@ -123,12 +178,14 @@ SecuBox is a comprehensive security and network management suite for OpenWrt, pr
 | `qualcomm-ipq40xx` | Google WiFi, Zyxel NBG6617 |
 
 ### MIPS
+
 | Target | Devices |
 |--------|---------|
 | `mips-24kc` | TP-Link Archer, Ubiquiti |
 | `mipsel-24kc` | Xiaomi, GL.iNet, Netgear |
 
 ### x86
+
 | Target | Devices |
 |--------|---------|
 | `x86-64` | PC, VMs, Docker, Proxmox |
@@ -163,11 +220,13 @@ make package/secubox/luci-app-secubox-portal/compile V=s
 ### Add as OpenWrt Feed
 
 Add to `feeds.conf.default`:
+
 ```
 src-git secubox https://github.com/CyberMind-FR/secubox-openwrt.git
 ```
 
 Then:
+
 ```bash
 ./scripts/feeds update secubox
 ./scripts/feeds install -a -p secubox
@@ -182,48 +241,14 @@ make V=s
 ```
 secubox-openwrt/
 ├── package/secubox/           # All 38 SecuBox LuCI packages
-│   ├── luci-app-secubox/      # Core hub
-│   ├── luci-app-secubox-portal/
-│   ├── luci-app-secubox-admin/
-│   ├── luci-app-crowdsec-dashboard/
-│   ├── luci-app-secubox-netifyd/
-│   ├── luci-app-haproxy/
-│   ├── luci-app-streamlit/
-│   ├── luci-app-gitea/
-│   ├── luci-app-hexojs/
-│   └── ... (38 modules total)
 ├── secubox-tools/             # Build tools and local SDK
-│   ├── local-build.sh         # Local package builder
-│   ├── validate-modules.sh    # Module validation
-│   ├── openwrt/               # Full toolchain (for Go/native builds)
-│   └── sdk/                   # OpenWrt SDK (for LuCI apps)
 ├── DOCS/                      # Documentation
+│   ├── THREE-LOOP-ARCHITECTURE.md  # Security model analysis
 │   ├── DEVELOPMENT-GUIDELINES.md
 │   ├── QUICK-START.md
 │   └── VALIDATION-GUIDE.md
 └── .github/workflows/         # CI/CD
 ```
-
-### Build Requirements
-
-**SDK builds** (for LuCI apps - shell/Lua packages):
-```bash
-./secubox-tools/local-build.sh build luci-app-crowdsec-dashboard
-```
-
-**Full toolchain builds** (for Go/native packages):
-```bash
-cd secubox-tools/openwrt
-make package/crowdsec/compile V=s
-```
-
-| Package | Build Type | Reason |
-|---------|------------|--------|
-| `crowdsec` | Toolchain | Go binary with CGO |
-| `crowdsec-firewall-bouncer` | Toolchain | Go binary with CGO |
-| `netifyd` | Toolchain | C++ native binary |
-| `nodogsplash` | Toolchain | C native binary |
-| All `luci-app-*` | SDK | Shell/Lua/JS packages |
 
 ---
 
@@ -237,46 +262,24 @@ make package/crowdsec/compile V=s
 
 ---
 
-## Development
+## Roadmap
 
-### Developer Documentation
-
-| Guide | Description |
-|-------|-------------|
-| [DOCS/DEVELOPMENT-GUIDELINES.md](./DOCS/DEVELOPMENT-GUIDELINES.md) | Design System, RPCD/ubus, ACL, JavaScript |
-| [DOCS/QUICK-START.md](./DOCS/QUICK-START.md) | Quick reference and code templates |
-| [DOCS/VALIDATION-GUIDE.md](./DOCS/VALIDATION-GUIDE.md) | Module validation procedures |
-| [CLAUDE.md](./CLAUDE.md) | OpenWrt shell scripting guidelines |
-| [secubox-tools/README.md](./secubox-tools/README.md) | Build tools and SDK usage |
-
-### Critical Rules
-
-1. **RPCD naming**: filename = ubus object (`luci.system-hub`)
-2. **Menu paths**: path = view file (`system-hub/overview.js`)
-3. **Permissions**: RPCD=755, CSS/JS=644
-4. **Validate**: `./secubox-tools/validate-modules.sh`
-5. **Go/native packages**: Use full toolchain, not SDK
-
----
-
-## Public Pages
-
-SecuBox includes public pages accessible without authentication:
-
-- **Crowdfunding Campaign** - Support the project development
-- **Bug Bounty Program** - Security vulnerability reporting
-- **Development Status** - Modules list, roadmap, changelog
-
-Access at: `https://your-secubox/cgi-bin/luci/secubox-public/`
+| Phase | Version | Status | Focus |
+|-------|---------|--------|-------|
+| **Core Mesh** | v0.17 | ✅ Released | Loops 1+2 complete |
+| **Service Mesh** | v0.18 | 🔵 In Progress | P2P Hub foundation |
+| **Intelligence Mesh** | v0.19 | ⚪ Planned | Full P2P intelligence |
+| **AI Mesh** | v0.20 | ⚪ Planned | ML in Loop 2 |
+| **Certification** | v1.0 | ⚪ Planned | ANSSI certification |
 
 ---
 
 ## Links
 
-- **Website**: [secubox.cybermood.eu](https://secubox.cybermood.eu)
-- **GitHub**: [github.com/CyberMind-FR/secubox-openwrt](https://github.com/CyberMind-FR/secubox-openwrt)
-- **Publisher**: [CyberMind.fr](https://cybermind.fr)
-- **Issues**: [GitHub Issues](https://github.com/CyberMind-FR/secubox-openwrt/issues)
+* **Website**: [secubox.maegia.tv](https://secubox.maegia.tv)
+* **GitHub**: [github.com/CyberMind-FR/secubox-openwrt](https://github.com/CyberMind-FR/secubox-openwrt)
+* **Publisher**: [CyberMind.fr](https://cybermind.fr)
+* **Issues**: [GitHub Issues](https://github.com/CyberMind-FR/secubox-openwrt/issues)
 
 ---
 
@@ -300,4 +303,6 @@ Apache-2.0 © 2024-2026 CyberMind.fr
 
 **Gandalf** - [CyberMind.fr](https://cybermind.fr)
 
-**Made with love in France**
+**Ex Tenebris, Lux Securitas**
+
+🇫🇷 Made with love in France
