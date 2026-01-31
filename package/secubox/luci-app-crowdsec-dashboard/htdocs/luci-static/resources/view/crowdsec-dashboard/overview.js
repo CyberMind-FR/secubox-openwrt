@@ -5,12 +5,11 @@
 'require ui';
 'require uci';
 'require crowdsec-dashboard.api as api';
-'require crowdsec-dashboard.theme as theme';
 
 /**
  * CrowdSec SOC Dashboard - Overview
- * Themeable SOC-compliant design with GeoIP
- * Version 1.1.0
+ * SOC-compliant design with GeoIP
+ * Version 1.2.0
  */
 
 return view.extend({
@@ -18,19 +17,18 @@ return view.extend({
 
 	load: function() {
 		return Promise.all([
-			theme.init(),
 			api.getOverview().catch(function() { return {}; })
 		]);
 	},
 
 	render: function(data) {
 		var self = this;
-		var status = data[1] || {};
+		var status = data[0] || {};
 
-		// Apply theme class
+		// Apply dashboard class
 		document.body.classList.add('cs-fullwidth');
 
-		var view = E('div', { 'class': theme.getDashboardClass() }, [
+		var view = E('div', { 'class': 'cs-dashboard cs-theme-classic' }, [
 			this.renderHeader(status),
 			this.renderNav('overview'),
 			E('div', { 'id': 'cs-stats' }, this.renderStats(status)),

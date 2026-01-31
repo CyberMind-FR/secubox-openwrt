@@ -5,12 +5,10 @@
 'require uci';
 'require fs';
 'require crowdsec-dashboard.api as api';
-'require crowdsec-dashboard.theme as theme';
 
 /**
  * CrowdSec SOC - Settings View
  * System configuration and management
- * With theme/appearance settings
  */
 
 return view.extend({
@@ -21,7 +19,6 @@ return view.extend({
 
 	load: function() {
 		return Promise.all([
-			theme.init(),
 			api.getStatus(),
 			api.getMachines(),
 			api.getCollections(),
@@ -32,34 +29,27 @@ return view.extend({
 
 	render: function(data) {
 		var self = this;
-		// data[0] is theme.init() result
-		this.status = data[1] || {};
-		var machinesData = data[2] || {};
+		this.status = data[0] || {};
+		var machinesData = data[1] || {};
 		this.machines = Array.isArray(machinesData) ? machinesData : (machinesData.machines || []);
-		var collectionsData = data[3] || {};
+		var collectionsData = data[2] || {};
 		this.collections = collectionsData.collections || [];
 		if (this.collections.collections) this.collections = this.collections.collections;
-		this.acquisition = data[4] || {};
+		this.acquisition = data[3] || {};
 
 		document.body.classList.add('cs-fullwidth');
 
-		return E('div', { 'class': theme.getDashboardClass() }, [
+		return E('div', { 'class': 'cs-dashboard cs-theme-classic' }, [
 			this.renderHeader(),
 			this.renderNav('settings'),
 			E('div', { 'class': 'cs-stats' }, this.renderServiceStats()),
-			E('div', { 'class': 'cs-grid-2' }, [
-				E('div', { 'class': 'cs-card' }, [
-					E('div', { 'class': 'cs-card-header' }, [
-						'Service Control',
-						E('span', { 'class': 'cs-severity ' + (this.status.crowdsec === 'running' ? 'low' : 'critical') },
-							this.status.crowdsec === 'running' ? 'RUNNING' : 'STOPPED')
-					]),
-					E('div', { 'class': 'cs-card-body' }, this.renderServiceControl())
+			E('div', { 'class': 'cs-card' }, [
+				E('div', { 'class': 'cs-card-header' }, [
+					'Service Control',
+					E('span', { 'class': 'cs-severity ' + (this.status.crowdsec === 'running' ? 'low' : 'critical') },
+						this.status.crowdsec === 'running' ? 'RUNNING' : 'STOPPED')
 				]),
-				E('div', { 'class': 'cs-card' }, [
-					E('div', { 'class': 'cs-card-header' }, 'Appearance'),
-					E('div', { 'class': 'cs-card-body' }, this.renderAppearance())
-				])
+				E('div', { 'class': 'cs-card-body' }, this.renderServiceControl())
 			]),
 			E('div', { 'class': 'cs-grid-2' }, [
 				E('div', { 'class': 'cs-card' }, [
@@ -83,87 +73,6 @@ return view.extend({
 				E('div', { 'class': 'cs-card-body' }, this.renderConfigFiles())
 			])
 		]);
-	},
-
-	renderAppearance: function() {
-		var self = this;
-		var currentTheme = uci.get('crowdsec-dashboard', 'main', 'theme') || 'classic';
-		var currentProfile = uci.get('crowdsec-dashboard', 'main', 'profile') || 'default';
-
-		console.log('CrowdSec Settings: Loading appearance - theme:', currentTheme, 'profile:', currentProfile);
-
-		var themes = theme.getThemes();
-		var profiles = theme.getProfiles();
-
-		return E('div', {}, [
-			E('div', { 'style': 'margin-bottom: 16px;' }, [
-				E('label', { 'style': 'display: block; margin-bottom: 8px; color: var(--cs-text-muted); font-size: 12px; text-transform: uppercase;' }, 'Theme'),
-				E('select', {
-					'id': 'theme-select',
-					'style': 'width: 100%; padding: 8px; background: var(--cs-bg-primary); border: 1px solid var(--cs-border); border-radius: 4px; color: var(--cs-text);',
-					'change': function(ev) { self.previewTheme(ev.target.value); }
-				}, themes.map(function(t) {
-					return E('option', { 'value': t.id, 'selected': t.id === currentTheme }, t.name + ' - ' + t.description);
-				}))
-			]),
-			E('div', { 'style': 'margin-bottom: 16px;' }, [
-				E('label', { 'style': 'display: block; margin-bottom: 8px; color: var(--cs-text-muted); font-size: 12px; text-transform: uppercase;' }, 'Profile'),
-				E('select', {
-					'id': 'profile-select',
-					'style': 'width: 100%; padding: 8px; background: var(--cs-bg-primary); border: 1px solid var(--cs-border); border-radius: 4px; color: var(--cs-text);',
-					'change': function(ev) { self.previewProfile(ev.target.value); }
-				}, profiles.map(function(p) {
-					return E('option', { 'value': p.id, 'selected': p.id === currentProfile }, p.id.charAt(0).toUpperCase() + p.id.slice(1));
-				}))
-			]),
-			E('div', { 'style': 'display: flex; gap: 8px;' }, [
-				E('button', {
-					'class': 'cs-btn',
-					'click': L.bind(this.saveAppearance, this)
-				}, 'Save Theme'),
-				E('button', {
-					'class': 'cs-btn',
-					'click': function() { location.reload(); }
-				}, 'Reset')
-			])
-		]);
-	},
-
-	previewTheme: function(themeName) {
-		theme.switchTheme(themeName);
-	},
-
-	previewProfile: function(profileName) {
-		theme.switchProfile(profileName);
-	},
-
-	saveAppearance: function() {
-		var self = this;
-		var selectedTheme = document.getElementById('theme-select').value;
-		var selectedProfile = document.getElementById('profile-select').value;
-
-		// Ensure the section exists (type is 'settings' per UCI convention)
-		var section = uci.get('crowdsec-dashboard', 'main');
-		if (!section) {
-			uci.add('crowdsec-dashboard', 'settings', 'main');
-		}
-
-		uci.set('crowdsec-dashboard', 'main', 'theme', selectedTheme);
-		uci.set('crowdsec-dashboard', 'main', 'profile', selectedProfile);
-
-		// Save to UCI staging area, then commit via shell
-		uci.save().then(function() {
-			// Commit using fs.exec for reliable persistence
-			return fs.exec('/sbin/uci', ['commit', 'crowdsec-dashboard']);
-		}).then(function() {
-			// Switch theme visually
-			theme.switchTheme(selectedTheme);
-			theme.switchProfile(selectedProfile);
-			self.showToast('Theme saved successfully', 'success');
-		}).catch(function(e) {
-			console.error('Failed to save theme:', e);
-			self.showToast('Failed to save: ' + (e.message || e), 'error');
-		});
 	},
 
 	renderHeader: function() {
