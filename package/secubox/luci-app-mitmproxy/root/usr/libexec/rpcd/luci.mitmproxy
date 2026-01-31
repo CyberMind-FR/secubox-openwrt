@@ -339,31 +339,36 @@ do_stop() { [ -x /etc/init.d/mitmproxy ] && /etc/init.d/mitmproxy stop >/dev/nul
 do_restart() { [ -x /etc/init.d/mitmproxy ] && /etc/init.d/mitmproxy restart >/dev/null 2>&1; echo '{"success":true}'; }
 
 get_alerts() {
-	# Read alerts from container
-	local alerts_file="/tmp/secubox-mitm-alerts.json"
-	local container_alerts=""
+	# Read alerts from container's JSONL log file
+	# The analytics addon writes one JSON object per line to /var/log/crowdsec/secubox-mitm.log
+	local log_file="/var/log/crowdsec/secubox-mitm.log"
+	local max_alerts=50
+	local alerts_json="[]"
 
-	# Try to get alerts from LXC container
+	# Try to get last N alerts from LXC container and convert JSONL to JSON array
 	if command -v lxc-attach >/dev/null 2>&1; then
-		container_alerts=$(lxc-attach -n "$LXC_NAME" -- cat /tmp/secubox-mitm-alerts.json 2>/dev/null)
+		# Read last N lines, wrap in JSON array
+		local lines=$(lxc-attach -n "$LXC_NAME" -- tail -n "$max_alerts" "$log_file" 2>/dev/null)
+		if [ -n "$lines" ]; then
+			# Convert JSONL to JSON array: join lines with commas, wrap in brackets
+			alerts_json=$(echo "$lines" | awk '
+				BEGIN { printf "[" }
+				NR > 1 { printf "," }
+				{ printf "%s", $0 }
+				END { printf "]" }
+			')
+		fi
 	fi
 
-	# Fall back to host path if container method fails
-	if [ -z "$container_alerts" ] || [ "$container_alerts" = "[]" ]; then
-		[ -f "$alerts_file" ] && container_alerts=$(cat "$alerts_file" 2>/dev/null)
+	# Validate JSON - if invalid, return empty array
+	if ! echo "$alerts_json" | jsonfilter -e '@' >/dev/null 2>&1; then
+		alerts_json="[]"
 	fi
 
-	# Default to empty array
-	[ -z "$container_alerts" ] && container_alerts="[]"
-
-	json_init
-	json_add_boolean "success" 1
-
-	# Output raw alerts array
 	cat <<EOFJ
 {
 	"success": true,
-	"alerts": $container_alerts,
+	"alerts": $alerts_json,
 	"timestamp": "$(date -Iseconds)"
 }
 EOFJ

@@ -263,6 +263,12 @@ return view.extend({
 								E('th', { 'class': 'th' }, _('Time'))
 							])
 						].concat(alerts.slice(-20).reverse().map(function(alert) {
+							// Handle both old format (method/path) and new format (request)
+							var requestStr = alert.request || ((alert.method || 'GET') + ' ' + (alert.path || '-'));
+							var sourceIp = alert.source_ip || alert.ip || '-';
+							var timeStr = alert.timestamp || alert.time || '';
+							var timeDisplay = timeStr ? timeStr.split('T')[1].split('.')[0] : '-';
+
 							return E('tr', { 'class': 'tr' }, [
 								E('td', { 'class': 'td' }, [
 									E('span', {
@@ -271,13 +277,12 @@ return view.extend({
 								]),
 								E('td', { 'class': 'td' }, (alert.pattern || alert.type || '-').replace(/_/g, ' ')),
 								E('td', { 'class': 'td', 'style': 'max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' },
-									(alert.method || 'GET') + ' ' + (alert.path || '-')),
+									requestStr),
 								E('td', { 'class': 'td' }, [
-									alert.ip || '-',
+									sourceIp,
 									alert.country ? E('span', { 'style': 'margin-left: 4px; color: #666;' }, '(' + alert.country + ')') : null
 								]),
-								E('td', { 'class': 'td', 'style': 'white-space: nowrap; color: #666;' },
-									alert.time ? alert.time.split('T')[1].split('.')[0] : '-')
+								E('td', { 'class': 'td', 'style': 'white-space: nowrap; color: #666;' }, timeDisplay)
 							]);
 						})))
 					]) :
