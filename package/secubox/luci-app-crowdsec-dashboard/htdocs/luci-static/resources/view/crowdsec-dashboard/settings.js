@@ -16,6 +16,7 @@ return view.extend({
 	status: {},
 	machines: [],
 	collections: [],
+	settings: {},
 
 	load: function() {
 		return Promise.all([
@@ -23,6 +24,7 @@ return view.extend({
 			api.getMachines(),
 			api.getCollections(),
 			api.getAcquisitionConfig(),
+			api.getSettings(),
 			uci.load('crowdsec-dashboard')
 		]);
 	},
@@ -36,6 +38,7 @@ return view.extend({
 		this.collections = collectionsData.collections || [];
 		if (this.collections.collections) this.collections = this.collections.collections;
 		this.acquisition = data[3] || {};
+		this.settings = data[4] || {};
 
 		document.body.classList.add('cs-fullwidth');
 
@@ -50,6 +53,14 @@ return view.extend({
 						this.status.crowdsec === 'running' ? 'RUNNING' : 'STOPPED')
 				]),
 				E('div', { 'class': 'cs-card-body' }, this.renderServiceControl())
+			]),
+			E('div', { 'class': 'cs-card' }, [
+				E('div', { 'class': 'cs-card-header' }, [
+					'Console Enrollment',
+					E('span', { 'class': 'cs-severity ' + (this.status.capi_enrolled ? 'low' : 'medium') },
+						this.status.capi_enrolled ? 'ENROLLED' : 'NOT ENROLLED')
+				]),
+				E('div', { 'class': 'cs-card-body', 'id': 'console-enrollment' }, this.renderConsoleEnrollment())
 			]),
 			E('div', { 'class': 'cs-grid-2' }, [
 				E('div', { 'class': 'cs-card' }, [
@@ -260,6 +271,132 @@ return view.extend({
 				E('code', { 'class': 'cs-ip' }, cfg.path)
 			]);
 		}));
+	},
+
+	renderConsoleEnrollment: function() {
+		var self = this;
+		var enrolled = this.status.capi_enrolled;
+		var savedKey = this.settings.enrollment_key || '';
+		var machineName = this.settings.machine_name || '';
+
+		return E('div', {}, [
+			E('p', { 'style': 'color: var(--cs-text-muted); margin-bottom: 16px;' },
+				'Enroll in CrowdSec Console to receive community blocklists and share threat intelligence.'),
+			E('div', { 'style': 'display: grid; gap: 12px; margin-bottom: 16px;' }, [
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 4px; color: var(--cs-text-muted);' }, 'Enrollment Key'),
+					E('input', {
+						'type': 'text',
+						'id': 'enrollment-key',
+						'class': 'cs-input',
+						'value': savedKey,
+						'placeholder': 'Enter your enrollment key from app.crowdsec.net',
+						'style': 'width: 100%; padding: 8px 12px; border: 1px solid var(--cs-border); border-radius: 4px; background: var(--cs-bg); color: var(--cs-text);'
+					})
+				]),
+				E('div', {}, [
+					E('label', { 'style': 'display: block; margin-bottom: 4px; color: var(--cs-text-muted);' }, 'Machine Name (optional)'),
+					E('input', {
+						'type': 'text',
+						'id': 'machine-name',
+						'class': 'cs-input',
+						'value': machineName,
+						'placeholder': 'Custom name for this machine',
+						'style': 'width: 100%; padding: 8px 12px; border: 1px solid var(--cs-border); border-radius: 4px; background: var(--cs-bg); color: var(--cs-text);'
+					})
+				])
+			]),
+			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
+				E('button', {
+					'class': 'cs-btn primary',
+					'click': function() { self.saveAndEnroll(); }
+				}, enrolled ? 'Re-enroll' : 'Save & Enroll'),
+				E('button', {
+					'class': 'cs-btn',
+					'click': function() { self.saveSettings(); }
+				}, 'Save Only'),
+				enrolled ? E('button', {
+					'class': 'cs-btn danger',
+					'click': function() { self.disableConsole(); }
+				}, 'Disable') : E('span')
+			]),
+			E('div', { 'class': 'cs-health', 'style': 'margin-top: 16px;' }, [
+				E('div', { 'class': 'cs-health-item' }, [
+					E('div', { 'class': 'cs-health-icon ' + (enrolled ? 'ok' : 'error') }, enrolled ? '\u2713' : '\u2717'),
+					E('div', {}, [
+						E('div', { 'class': 'cs-health-label' }, 'Console Status'),
+						E('div', { 'class': 'cs-health-value' }, enrolled ? 'Enrolled and active' : 'Not enrolled')
+					])
+				]),
+				E('div', { 'class': 'cs-health-item' }, [
+					E('div', { 'class': 'cs-health-icon ' + (savedKey ? 'ok' : 'warn') }, savedKey ? '\u2713' : '!'),
+					E('div', {}, [
+						E('div', { 'class': 'cs-health-label' }, 'Key Saved'),
+						E('div', { 'class': 'cs-health-value' }, savedKey ? 'Key stored in config' : 'No key saved')
+					])
+				])
+			])
+		]);
+	},
+
+	saveSettings: function() {
+		var self = this;
+		var key = document.getElementById('enrollment-key').value.trim();
+		var name = document.getElementById('machine-name').value.trim();
+
+		api.saveSettings(key, name, '0').then(function(r) {
+			if (r.success) {
+				self.showToast('Settings saved', 'success');
+			} else {
+				self.showToast('Failed to save: ' + (r.error || 'Unknown'), 'error');
+			}
+		}).catch(function(e) {
+			self.showToast('Error: ' + e.message, 'error');
+		});
+	},
+
+	saveAndEnroll: function() {
+		var self = this;
+		var key = document.getElementById('enrollment-key').value.trim();
+		var name = document.getElementById('machine-name').value.trim();
+
+		if (!key) {
+			self.showToast('Please enter an enrollment key', 'error');
+			return;
+		}
+
+		// First save the settings
+		api.saveSettings(key, name, '1').then(function(r) {
+			if (!r.success) {
+				self.showToast('Failed to save settings', 'error');
+				return;
+			}
+			// Then enroll
+			return api.consoleEnroll(key, name);
+		}).then(function(r) {
+			if (r && r.success) {
+				self.showToast('Enrolled successfully!', 'success');
+				setTimeout(function() { location.reload(); }, 2000);
+			} else if (r) {
+				self.showToast('Enrollment failed: ' + (r.error || 'Unknown'), 'error');
+			}
+		}).catch(function(e) {
+			self.showToast('Error: ' + e.message, 'error');
+		});
+	},
+
+	disableConsole: function() {
+		var self = this;
+		if (!confirm('Disable CrowdSec Console enrollment?')) return;
+
+		api.consoleDisable().then(function(r) {
+			if (r.success) {
+				self.showToast('Console disabled', 'success');
+				setTimeout(function() { location.reload(); }, 1500);
+			} else {
+				self.showToast('Failed: ' + (r.error || 'Unknown'), 'error');
+			}
+		});
 	},
 
 	serviceAction: function(action) {

@@ -56,33 +56,35 @@ body > .main > .main-right,
 	max-width: 100% !important;
 }
 
+/* CrowdSec uses SecuBox global theme variables */
 :root {
-	--cs-bg-primary: #0a0e14;
-	--cs-bg-secondary: #151b23;
-	--cs-bg-tertiary: #1e2632;
-	--cs-bg-card: linear-gradient(145deg, #151b23 0%, #1a2231 100%);
-	--cs-border: #2a3444;
-	--cs-border-glow: rgba(0, 212, 170, 0.3);
-	
-	--cs-text-primary: #e6edf3;
-	--cs-text-secondary: #8b949e;
-	--cs-text-muted: #6e7681;
-	
-	--cs-accent-green: #00d4aa;
-	--cs-accent-green-glow: rgba(0, 212, 170, 0.4);
-	--cs-accent-red: #ff6b6b;
-	--cs-accent-red-glow: rgba(255, 107, 107, 0.4);
-	--cs-accent-orange: #ffa94d;
-	--cs-accent-blue: #4dabf7;
-	--cs-accent-purple: #b197fc;
-	
-	--cs-font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
-	--cs-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-	
-	--cs-radius: 8px;
-	--cs-radius-lg: 12px;
-	--cs-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-	--cs-shadow-glow: 0 0 20px var(--cs-accent-green-glow);
+	/* Map CrowdSec variables to SecuBox theme */
+	--cs-bg-primary: var(--cyber-bg-primary, #0a0e27);
+	--cs-bg-secondary: var(--cyber-bg-secondary, #151932);
+	--cs-bg-tertiary: var(--cyber-bg-tertiary, #1e2139);
+	--cs-bg-card: var(--cyber-surface, #252b4a);
+	--cs-border: var(--cyber-glass-border, rgba(255, 255, 255, 0.1));
+	--cs-border-glow: var(--cyber-accent-primary, #667eea);
+
+	--cs-text-primary: var(--cyber-text-primary, #e2e8f0);
+	--cs-text-secondary: var(--cyber-text-secondary, #94a3b8);
+	--cs-text-muted: var(--cyber-text-muted, #64748b);
+
+	--cs-accent-green: var(--cyber-success, #10b981);
+	--cs-accent-green-glow: var(--cyber-success-soft, rgba(16, 185, 129, 0.12));
+	--cs-accent-red: var(--cyber-danger, #ef4444);
+	--cs-accent-red-glow: var(--cyber-danger-soft, rgba(239, 68, 68, 0.15));
+	--cs-accent-orange: var(--cyber-warning, #f59e0b);
+	--cs-accent-blue: var(--cyber-info, #06b6d4);
+	--cs-accent-purple: var(--cyber-accent-tertiary, #8b5cf6);
+
+	--cs-font-mono: var(--cyber-font-mono, 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace);
+	--cs-font-sans: var(--cyber-font-body, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
+
+	--cs-radius: var(--cyber-radius-sm, 10px);
+	--cs-radius-lg: var(--cyber-radius-md, 16px);
+	--cs-shadow: var(--cyber-shadow-soft, 0 8px 24px rgba(2, 6, 23, 0.35));
+	--cs-shadow-glow: var(--cyber-glass-shadow, 0 8px 32px rgba(0, 0, 0, 0.37));
 }
 
 /* Base styles */

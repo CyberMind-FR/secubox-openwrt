@@ -27,45 +27,25 @@
 /* === Import Fonts === */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
-/* === Design System Variables === */
+/* === Design System Variables - SecuBox Theme Integration === */
 :root {
-	/* Light Mode */
-	--sh-text-primary: #0f172a;
-	--sh-text-secondary: #475569;
-	--sh-bg-primary: #ffffff;
-	--sh-bg-secondary: #f8fafc;
-	--sh-bg-tertiary: #f1f5f9;
-	--sh-bg-card: #ffffff;
-	--sh-border: #e2e8f0;
-	--sh-hover-bg: #f8fafc;
-	--sh-hover-shadow: rgba(0, 0, 0, 0.1);
-	--sh-primary: #6366f1;
-	--sh-primary-end: #8b5cf6;
-	--sh-shadow: rgba(0, 0, 0, 0.08);
-	--sh-success: #22c55e;
-	--sh-danger: #ef4444;
-	--sh-warning: #f59e0b;
-	--sh-info: #3b82f6;
-}
-
-[data-theme="dark"] {
-	/* Dark Mode (Demo-inspired) */
-	--sh-text-primary: #fafafa;
-	--sh-text-secondary: #a0a0b0;
-	--sh-bg-primary: #0a0a0f;
-	--sh-bg-secondary: #12121a;
-	--sh-bg-tertiary: #1a1a24;
-	--sh-bg-card: #12121a;
-	--sh-border: #2a2a35;
-	--sh-hover-bg: #1a1a24;
-	--sh-hover-shadow: rgba(0, 0, 0, 0.6);
-	--sh-primary: #6366f1;
-	--sh-primary-end: #8b5cf6;
-	--sh-shadow: rgba(0, 0, 0, 0.4);
-	--sh-success: #22c55e;
-	--sh-danger: #ef4444;
-	--sh-warning: #f59e0b;
-	--sh-info: #3b82f6;
+	/* Map to SecuBox global theme variables with fallbacks */
+	--sh-text-primary: var(--cyber-text-primary, #e2e8f0);
+	--sh-text-secondary: var(--cyber-text-secondary, #94a3b8);
+	--sh-bg-primary: var(--cyber-bg-primary, #0a0e27);
+	--sh-bg-secondary: var(--cyber-bg-secondary, #151932);
+	--sh-bg-tertiary: var(--cyber-bg-tertiary, #1e2139);
+	--sh-bg-card: var(--cyber-surface, #252b4a);
+	--sh-border: var(--cyber-glass-border, rgba(255, 255, 255, 0.1));
+	--sh-hover-bg: var(--cyber-surface-light, #2d3454);
+	--sh-hover-shadow: var(--cyber-glass-shadow, 0 8px 32px rgba(0, 0, 0, 0.37));
+	--sh-primary: var(--cyber-accent-primary, #667eea);
+	--sh-primary-end: var(--cyber-accent-primary-end, #764ba2);
+	--sh-shadow: var(--cyber-shadow-soft, 0 8px 24px rgba(2, 6, 23, 0.35));
+	--sh-success: var(--cyber-success, #10b981);
+	--sh-danger: var(--cyber-danger, #ef4444);
+	--sh-warning: var(--cyber-warning, #f59e0b);
+	--sh-info: var(--cyber-info, #06b6d4);
 }
 
 /* === Global Typography === */

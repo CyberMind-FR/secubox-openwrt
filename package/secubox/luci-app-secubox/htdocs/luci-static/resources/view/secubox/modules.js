@@ -303,10 +303,12 @@ return view.extend({
 		if (!module.installed) {
 			actions.push(
 				E('button', {
-					'class': 'secubox-btn secubox-btn-secondary secubox-btn-sm sb-cascade-item',
+					'class': 'secubox-btn secubox-btn-primary secubox-btn-sm sb-cascade-item',
 					'data-cascade-action': 'install',
 					'data-module-target': module.id,
-					'disabled': true
+					'click': function(ev) {
+						self.installModule(module, ev.target);
+					}
 				}, [
 					E('span', { 'class': 'sb-cascade-label' }, '📥 Install')
 				])
@@ -435,6 +437,43 @@ return view.extend({
 		}).catch(function(err) {
 			ui.hideModal();
 			ui.addNotification(null, E('p', 'Erreur: ' + err.message), 'error');
+		});
+	},
+
+	installModule: function(module, button) {
+		var self = this;
+		var originalText = button ? button.textContent : '';
+
+		if (button) {
+			button.disabled = true;
+			button.textContent = _('Installing...');
+		}
+
+		ui.showModal(_('Installing Module'), [
+			E('p', { 'class': 'spinning' }, _('Installing ') + module.name + '...')
+		]);
+
+		return API.installAppstoreApp(module.id).then(function(result) {
+			ui.hideModal();
+			if (result && result.success) {
+				ui.addNotification(null, E('p', module.name + ' ' + _('installed successfully')), 'info');
+				return self.refreshData().then(function() {
+					self.updateModulesGrid();
+				});
+			} else {
+				ui.addNotification(null, E('p', _('Installation failed: ') + (result.error || result.details || _('Unknown error'))), 'error');
+				if (button) {
+					button.disabled = false;
+					button.textContent = originalText;
+				}
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Installation error: ') + err.message), 'error');
+			if (button) {
+				button.disabled = false;
+				button.textContent = originalText;
+			}
 		});
 	},
 
