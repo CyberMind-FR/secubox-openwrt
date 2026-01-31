@@ -1,0 +1,36 @@
+#!/bin/sh
+# P2P API - Chain endpoint
+# Returns chain tip or specific operations
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo ""
+
+CHAIN_FILE="/srv/secubox/mesh/chain.json"
+NODE_ID=$(cat /srv/secubox/mesh/node.id 2>/dev/null || echo "unknown")
+
+# Parse PATH_INFO for sub-routes: /chain/tip, /chain/since/<hash>
+case "$PATH_INFO" in
+    /tip|"")
+        # Get the latest block hash and return chain tip info
+        if [ -f "$CHAIN_FILE" ]; then
+            LATEST_HASH=$(jsonfilter -i "$CHAIN_FILE" -e "@.blocks[-1].hash" 2>/dev/null)
+            LATEST_INDEX=$(jsonfilter -i "$CHAIN_FILE" -e "@.blocks[-1].index" 2>/dev/null)
+            echo "{\"node\":\"$NODE_ID\",\"hash\":\"$LATEST_HASH\",\"height\":$LATEST_INDEX}"
+        else
+            echo "{\"node\":\"$NODE_ID\",\"hash\":\"\",\"height\":0}"
+        fi
+        ;;
+    /since/*)
+        SINCE_HASH=${PATH_INFO#/since/}
+        # Return blocks since given hash (for sync)
+        if [ -f "$CHAIN_FILE" ]; then
+            cat "$CHAIN_FILE"
+        else
+            echo "{\"blocks\":[]}"
+        fi
+        ;;
+    *)
+        echo "{\"error\":\"unknown_route\",\"path\":\"$PATH_INFO\"}"
+        ;;
+esac
