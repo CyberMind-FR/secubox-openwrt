@@ -921,43 +921,80 @@ cmd_sync_routes() {
 
 	local routes_file="$data_path/haproxy-routes.json"
 	local tmp_file="/tmp/haproxy-routes.tmp"
+	local count=0
 
 	# Start JSON
 	echo "{" > "$tmp_file"
 
-	local first=1
-	local count=0
+	# Get all vhosts - avoid subshell by using temp file
+	local vhosts_file="/tmp/haproxy-vhosts.tmp"
+	uci show haproxy 2>/dev/null | grep "=vhost" | cut -d'=' -f1 | cut -d'.' -f2 > "$vhosts_file"
 
-	# Get all vhosts and their backends
-	uci show haproxy 2>/dev/null | grep "=vhost" | while read line; do
-		local vhost=$(echo "$line" | cut -d'=' -f1 | cut -d'.' -f2)
+	while read vhost; do
+		[ -z "$vhost" ] && continue
+
 		local domain=$(uci -q get haproxy.$vhost.domain)
 		local backend=$(uci -q get haproxy.$vhost.backend)
 
+		# If currently using mitmproxy_inspector, use the stored original backend
+		if [ "$backend" = "mitmproxy_inspector" ]; then
+			backend=$(uci -q get haproxy.$vhost.original_backend)
+		fi
+
+		# Skip fallback, luci, and mitmproxy backends
+		case "$backend" in
+			fallback|luci|luci_default|mitmproxy_inspector|"") continue ;;
+		esac
+
 		if [ -n "$domain" ] && [ -n "$backend" ]; then
-			# Get backend server details
+			local ip=""
+			local port=""
+
+			# Method 1: Check for inline server field (old style)
 			local server=$(uci -q get haproxy.$backend.server)
 			if [ -n "$server" ]; then
 				# Parse server spec: "name ip:port check [options]"
 				local addr=$(echo "$server" | awk '{print $2}')
-				local ip=$(echo "$addr" | cut -d':' -f1)
-				local port=$(echo "$addr" | cut -d':' -f2)
-
+				ip=$(echo "$addr" | cut -d':' -f1)
+				port=$(echo "$addr" | cut -d':' -f2)
 				# Handle backends without explicit port
 				[ "$ip" = "$port" ] && port="80"
+			fi
 
-				if [ $first -eq 0 ]; then
+			# Method 2: Check for separate server section (new style)
+			if [ -z "$ip" ]; then
+				# Find server section that references this backend
+				local server_section=$(uci show haproxy 2>/dev/null | grep "\.backend='$backend'" | grep "=server" | head -1 | cut -d'=' -f1 | cut -d'.' -f2)
+				if [ -z "$server_section" ]; then
+					# Try pattern: backend_name_servername=server
+					server_section=$(uci show haproxy 2>/dev/null | grep "^haproxy\.${backend}_.*=server" | head -1 | cut -d'=' -f1 | cut -d'.' -f2)
+				fi
+
+				if [ -n "$server_section" ]; then
+					ip=$(uci -q get haproxy.$server_section.address)
+					port=$(uci -q get haproxy.$server_section.port)
+				fi
+			fi
+
+			# Only add route if we found valid ip:port
+			if [ -n "$ip" ] && [ -n "$port" ]; then
+				if [ $count -gt 0 ]; then
 					echo "," >> "$tmp_file"
 				fi
-				first=0
 				count=$((count + 1))
 
-				echo "  \"$domain\": [\"$ip\", $port]" >> "$tmp_file"
-				log_info "  $domain -> $ip:$port"
+				printf '  "%s": ["%s", %s]' "$domain" "$ip" "$port" >> "$tmp_file"
+				log_info "  $domain -> $ip:$port (backend: $backend)"
+			else
+				log_warn "  $domain: could not resolve backend '$backend'"
 			fi
 		fi
-	done
+	done < "$vhosts_file"
 
+	rm -f "$vhosts_file"
+
+	# Close JSON
+	echo "" >> "$tmp_file"
 	echo "}" >> "$tmp_file"
 
 	# Move to final location
