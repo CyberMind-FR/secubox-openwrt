@@ -72,7 +72,7 @@ except ImportError:
 # ============================================================================
 # Configuration
 # ============================================================================
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 CONFIG_DIR = Path.home() / ".secubox-frontend"
 DEVICES_FILE = CONFIG_DIR / "devices.json"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
@@ -136,6 +136,8 @@ class DeviceManager:
         self.devices: Dict[str, Device] = {}
         self.alerts: List[Alert] = []
         self._ssh_cache = {}
+        self._services_cache: Dict[str, tuple] = {}  # {host: (timestamp, services)}
+        self._services_cache_ttl = 60  # Cache services for 60 seconds
         self._executor = ThreadPoolExecutor(max_workers=10)
         self._init_config()
         self._init_node_identity()
@@ -411,6 +413,52 @@ class DeviceManager:
         except:
             pass
         return {}
+
+    def get_peer_services(self, device: Device, force_refresh: bool = False) -> List[dict]:
+        """Get services running on a peer via P2P API or SSH (cached)"""
+        services = []
+        cache_key = device.host
+
+        # Check cache first (unless force refresh)
+        if not force_refresh and cache_key in self._services_cache:
+            cached_time, cached_services = self._services_cache[cache_key]
+            if time.time() - cached_time < self._services_cache_ttl:
+                return cached_services
+
+        # Try P2P API first (uses /services not /api/services on port 7331)
+        if HTTPX_AVAILABLE:
+            try:
+                r = httpx.get(f"http://{device.host}:7331/services", timeout=15)
+                if r.status_code == 200:
+                    data = r.json()
+                    services = data.get("services", [])
+                    self._services_cache[cache_key] = (time.time(), services)
+                    return services
+            except:
+                pass
+
+        # Fallback to SSH
+        out, err, code = self.ssh_exec(device, "/usr/sbin/secubox-p2p services 2>/dev/null")
+        if code == 0 and out.strip():
+            try:
+                data = json.loads(out)
+                services = data.get("services", [])
+                self._services_cache[cache_key] = (time.time(), services)
+                return services
+            except:
+                pass
+
+        return services
+
+    def get_all_peer_services(self) -> Dict[str, List[dict]]:
+        """Get services from all peers (tries all devices)"""
+        all_services = {}
+        for name, dev in self.devices.items():
+            # Try all devices - the API call will fail gracefully if offline
+            services = self.get_peer_services(dev)
+            if services:
+                all_services[name] = services
+        return all_services
 
 
 # ============================================================================
@@ -742,6 +790,9 @@ Services: {services}"""
                         with TabPane("Mesh", id="tab-mesh"):
                             yield Static(id="mesh-content")
 
+                        with TabPane("Services", id="tab-services"):
+                            yield ScrollableContainer(Static(id="services-content"))
+
             with Horizontal(id="actions"):
                 yield Button("🔄 Refresh", id="btn-refresh", variant="primary")
                 yield Button("🔍 Find", id="btn-discover")
@@ -765,6 +816,7 @@ Services: {services}"""
             self._update_dashboard()
             self._update_alerts()
             self._update_mesh()
+            self._update_services()
 
         def _update_device_list(self) -> None:
             """Update sidebar device list"""
@@ -887,6 +939,93 @@ Services: {services}"""
                                     lines.append(f"  {status} {peer.get('name', 'unknown')} ({peer.get('address', '?')})")
                     except:
                         pass
+
+            content.update("\n".join(lines))
+
+        def _update_services(self) -> None:
+            """Update services tab with peer services"""
+            content = self.query_one("#services-content", Static)
+
+            lines = ["[bold cyan]═══ Peer Services ═══[/]\n"]
+
+            # Get services from all peers
+            all_services = self.manager.get_all_peer_services()
+
+            if not all_services:
+                lines.append("[dim]No services data available.[/]")
+                lines.append("\nServices will appear when peers are online")
+                lines.append("and running secubox-p2p daemon.")
+            else:
+                for peer_name, services in all_services.items():
+                    # Count running services
+                    running = sum(1 for s in services if s.get("status") == "running")
+                    total = len(services)
+
+                    lines.append(f"[bold yellow]📦 {peer_name}[/] ({running}/{total} running)")
+                    lines.append("")
+
+                    # Group services by category
+                    web_services = []
+                    security_services = []
+                    ai_services = []
+                    container_services = []
+                    app_services = []
+
+                    for svc in services:
+                        name = svc.get("name", "")
+                        status = svc.get("status", "stopped")
+                        port = svc.get("port", "")
+
+                        # Categorize more comprehensively
+                        if name in ("haproxy", "nginx", "uhttpd", "squid", "cdn-cache", "vhost-manager"):
+                            web_services.append(svc)
+                        elif name in ("crowdsec", "crowdsec-firewall-bouncer", "firewall", "tor", "tor-shield", "mitmproxy", "adguardhome"):
+                            security_services.append(svc)
+                        elif name in ("localai", "ollama", "streamlit"):
+                            ai_services.append(svc)
+                        elif "lxc" in name or "docker" in name or "container" in name:
+                            container_services.append(svc)
+                        elif status == "running" and port:
+                            app_services.append(svc)
+
+                    # Display categories
+                    if web_services:
+                        lines.append("  [bold blue]Web/Proxy:[/]")
+                        for svc in web_services:
+                            icon = "[green]●[/]" if svc["status"] == "running" else "[red]●[/]"
+                            port_info = f" :{svc['port']}" if svc.get("port") else ""
+                            lines.append(f"    {icon} {svc['name']}{port_info}")
+
+                    if security_services:
+                        lines.append("  [bold red]Security:[/]")
+                        for svc in security_services:
+                            icon = "[green]●[/]" if svc["status"] == "running" else "[red]●[/]"
+                            port_info = f" :{svc['port']}" if svc.get("port") else ""
+                            lines.append(f"    {icon} {svc['name']}{port_info}")
+
+                    if ai_services:
+                        lines.append("  [bold magenta]AI/ML:[/]")
+                        for svc in ai_services:
+                            icon = "[green]●[/]" if svc["status"] == "running" else "[red]●[/]"
+                            port_info = f" :{svc['port']}" if svc.get("port") else ""
+                            lines.append(f"    {icon} {svc['name']}{port_info}")
+
+                    if container_services:
+                        lines.append("  [bold cyan]Containers:[/]")
+                        for svc in container_services[:5]:
+                            icon = "[green]●[/]" if svc["status"] == "running" else "[red]●[/]"
+                            lines.append(f"    {icon} {svc['name']}")
+
+                    if app_services:
+                        lines.append("  [bold green]Applications:[/]")
+                        for svc in app_services[:8]:
+                            icon = "[green]●[/]" if svc["status"] == "running" else "[red]●[/]"
+                            port_info = f" :{svc['port']}" if svc.get("port") else ""
+                            lines.append(f"    {icon} {svc['name']}{port_info}")
+                        if len(app_services) > 8:
+                            lines.append(f"    [dim]... and {len(app_services) - 8} more[/]")
+
+                    lines.append("")
 
             content.update("\n".join(lines))
 
