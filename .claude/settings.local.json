@@ -200,7 +200,13 @@
       "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt push origin master)",
       "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt pull --rebase origin master)",
       "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt stash)",
-      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt stash pop)"
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt stash pop)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt diff package/secubox/luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt add package/secubox/luci-app-metablogizer/root/usr/libexec/rpcd/luci.metablogizer)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt commit -m \"$\\(cat <<''EOF''\nfix\\(metablogizer\\): Skip frontend HTTP checks for DNS mismatch sites\n\nWhen a site''s DNS doesn''t point to our public IP, skip the external\nHTTP check to avoid 5-second timeouts. This significantly speeds up\nthe get_hosting_status API call which was causing XHR timeouts in\nthe LuCI frontend.\n\nSites with DNS mismatch now show frontend_status: \"dns_mismatch\"\ninstead of timing out.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt status --short package/secubox/luci-app-metablogizer/)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt log --oneline -5)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt status -sb)"
     ]
   }
 }
