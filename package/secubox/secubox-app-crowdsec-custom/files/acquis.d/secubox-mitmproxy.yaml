@@ -1,0 +1,10 @@
+# CrowdSec acquisition for mitmproxy threat logs
+# Monitors threats detected by SecuBox mitmproxy analytics addon
+# The analytics addon runs inside LXC container and writes to /data/threats.log
+# which is bind-mounted to /srv/mitmproxy/threats.log on the host
+
+source: file
+filenames:
+  - /srv/mitmproxy/threats.log
+labels:
+  type: mitmproxy

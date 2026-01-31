@@ -1,0 +1,65 @@
+# CrowdSec scenario for SecuBox mitmproxy threat detection
+# Triggers bans for detected attacks (SQLi, XSS, command injection, etc.)
+
+type: leaky
+name: secubox/mitmproxy-attack
+description: "Detect web attacks via mitmproxy (SQLi, XSS, command injection, SSRF)"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Parsed.severity in ['critical', 'high'] &&
+  evt.Parsed.pattern in ['sql_injection', 'xss', 'command_injection', 'path_traversal', 'xxe', 'ldap_injection', 'log4shell']
+groupby: evt.Meta.source_ip
+capacity: 3
+leakspeed: 60s
+blackhole: 15m
+labels:
+  service: mitmproxy
+  type: web_attack
+  remediation: true
+---
+# Detect aggressive scanning/probing
+type: leaky
+name: secubox/mitmproxy-scanner
+description: "Detect aggressive web scanning via mitmproxy"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Parsed.pattern in ['admin_scanner', 'config_scan', 'backup_scan', 'env_scan']
+groupby: evt.Meta.source_ip
+capacity: 10
+leakspeed: 30s
+blackhole: 10m
+labels:
+  service: mitmproxy
+  type: web_scan
+  remediation: true
+---
+# Detect SSRF attempts (more lenient - internal IPs might be legitimate)
+type: leaky
+name: secubox/mitmproxy-ssrf
+description: "Detect SSRF attempts via mitmproxy"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Parsed.pattern == 'ssrf' &&
+  evt.Parsed.country != 'LOCAL'
+groupby: evt.Meta.source_ip
+capacity: 5
+leakspeed: 60s
+blackhole: 10m
+labels:
+  service: mitmproxy
+  type: ssrf
+  remediation: true
+---
+# Detect known CVE exploitation attempts (immediate ban)
+type: trigger
+name: secubox/mitmproxy-cve
+description: "Detect CVE exploitation attempts via mitmproxy"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Parsed.cve != '' &&
+  evt.Parsed.severity == 'critical'
+blackhole: 30m
+labels:
+  service: mitmproxy
+  type: cve_exploit
+  remediation: true

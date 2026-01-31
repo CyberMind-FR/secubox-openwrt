@@ -339,16 +339,16 @@ do_stop() { [ -x /etc/init.d/mitmproxy ] && /etc/init.d/mitmproxy stop >/dev/nul
 do_restart() { [ -x /etc/init.d/mitmproxy ] && /etc/init.d/mitmproxy restart >/dev/null 2>&1; echo '{"success":true}'; }
 
 get_alerts() {
-	# Read alerts from container's JSONL log file
-	# The analytics addon writes one JSON object per line to /var/log/crowdsec/secubox-mitm.log
-	local log_file="/var/log/crowdsec/secubox-mitm.log"
+	# Read alerts from host-visible JSONL log file
+	# The analytics addon writes to /data/threats.log inside container
+	# which is bind-mounted to /srv/mitmproxy/threats.log on host
+	local log_file="/srv/mitmproxy/threats.log"
 	local max_alerts=50
 	local alerts_json="[]"
 
-	# Try to get last N alerts from LXC container and convert JSONL to JSON array
-	if command -v lxc-attach >/dev/null 2>&1; then
-		# Read last N lines, wrap in JSON array
-		local lines=$(lxc-attach -n "$LXC_NAME" -- tail -n "$max_alerts" "$log_file" 2>/dev/null)
+	# Read last N lines from the host-accessible log file
+	if [ -f "$log_file" ]; then
+		local lines=$(tail -n "$max_alerts" "$log_file" 2>/dev/null)
 		if [ -n "$lines" ]; then
 			# Convert JSONL to JSON array: join lines with commas, wrap in brackets
 			alerts_json=$(echo "$lines" | awk '
@@ -401,12 +401,11 @@ EOFJ
 }
 
 clear_alerts() {
-	# Clear alerts in container
-	if command -v lxc-attach >/dev/null 2>&1; then
-		lxc-attach -n "$LXC_NAME" -- sh -c 'echo "[]" > /tmp/secubox-mitm-alerts.json' 2>/dev/null
-	fi
+	# Clear the host-visible threats log file
+	local log_file="/srv/mitmproxy/threats.log"
+	> "$log_file" 2>/dev/null
 
-	# Also clear on host
+	# Also clear the legacy alerts file
 	echo "[]" > /tmp/secubox-mitm-alerts.json 2>/dev/null
 
 	echo '{"success":true,"message":"Alerts cleared"}'
