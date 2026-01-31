@@ -6,7 +6,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-haproxy
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=21
+PKG_RELEASE:=23
 
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 PKG_LICENSE:=MIT
@@ -18,7 +18,7 @@ define Package/secubox-app-haproxy
   CATEGORY:=SecuBox
   SUBMENU:=Services
   TITLE:=HAProxy Load Balancer & Reverse Proxy
-  DEPENDS:=+lxc +lxc-common +openssl-util +wget-ssl +tar +jsonfilter +acme +acme-acmesh +socat
+  DEPENDS:=+lxc +lxc-common +openssl-util +wget-ssl +tar +jsonfilter +acme +acme-acmesh +socat +uhttpd
   PKGARCH:=all
 endef
 
@@ -73,6 +73,22 @@ endef
 define Package/secubox-app-haproxy/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
+
+# Setup ACME challenge webserver (uhttpd instance on port 8402)
+ACME_WEBROOT="/var/www/acme-challenge"
+ACME_PORT="8402"
+mkdir -p "$$ACME_WEBROOT/.well-known/acme-challenge"
+chmod -R 755 "$$ACME_WEBROOT"
+
+# Configure uhttpd.acme if not exists
+if ! uci -q get uhttpd.acme >/dev/null 2>&1; then
+	uci set uhttpd.acme=uhttpd
+	uci set uhttpd.acme.listen_http="0.0.0.0:$$ACME_PORT"
+	uci set uhttpd.acme.home="$$ACME_WEBROOT"
+	uci commit uhttpd
+	/etc/init.d/uhttpd restart 2>/dev/null || true
+fi
+
 # Sync existing ACME certificates on install
 /usr/sbin/haproxy-sync-certs 2>/dev/null || true
 exit 0

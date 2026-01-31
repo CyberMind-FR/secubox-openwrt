@@ -275,44 +275,119 @@ get_security_stats() {
 	local haproxy_conns=0
 	local invalid_conns=0
 
-	# WAN dropped packets (from kernel stats)
-	if [ -f /sys/class/net/br-wan/statistics/rx_dropped ]; then
-		wan_drops=$(cat /sys/class/net/br-wan/statistics/rx_dropped 2>/dev/null)
-	elif [ -f /sys/class/net/eth1/statistics/rx_dropped ]; then
-		wan_drops=$(cat /sys/class/net/eth1/statistics/rx_dropped 2>/dev/null)
+	# Get actual WAN interface from UCI
+	local wan_iface=$(uci -q get network.wan.device || uci -q get network.wan.ifname)
+	[ -z "$wan_iface" ] && wan_iface="eth0"
+
+	# WAN dropped packets from nftables (use counter on drop rules)
+	if command -v nft >/dev/null 2>&1; then
+		# Get all drop/reject counters from input_wan zone
+		# nft format: "counter packets X bytes Y"
+		wan_drops=$(nft list chain inet fw4 input_wan 2>/dev/null | \
+			grep -E "counter packets" | \
+			grep -oE 'packets [0-9]+' | \
+			awk '{sum+=$2} END {print sum+0}')
+		[ -z "$wan_drops" ] && wan_drops=0
+
+		# Also try reject chain
+		local reject_drops=$(nft list chain inet fw4 reject_from_wan 2>/dev/null | \
+			grep -E "counter packets" | \
+			grep -oE 'packets [0-9]+' | \
+			awk '{sum+=$2} END {print sum+0}')
+		[ -n "$reject_drops" ] && wan_drops=$((wan_drops + reject_drops))
 	fi
 	wan_drops=${wan_drops:-0}
 
-	# Firewall rejects from logs (last 24h)
-	fw_rejects=$(logread 2>/dev/null | grep -c "reject\|drop" || echo 0)
-	fw_rejects=$(echo "$fw_rejects" | tr -d '\n')
+	# Firewall rejects - count from reject-specific chains
+	if command -v nft >/dev/null 2>&1; then
+		# Count from handle_reject chain which has actual reject rules
+		fw_rejects=$(nft list chain inet fw4 handle_reject 2>/dev/null | \
+			grep -E "counter packets" | \
+			grep -oE 'packets [0-9]+' | \
+			awk '{sum+=$2} END {print sum+0}')
+		[ -z "$fw_rejects" ] && fw_rejects=0
+
+		# If no handle_reject, try counting reject rules in all chains
+		if [ "$fw_rejects" = "0" ]; then
+			fw_rejects=$(nft -a list ruleset 2>/dev/null | \
+				grep -E "reject|drop" | grep "counter" | \
+				grep -oE 'packets [0-9]+' | \
+				awk '{sum+=$2} END {print sum+0}')
+		fi
+	else
+		# Fallback to log parsing
+		fw_rejects=$(logread 2>/dev/null | grep -c "reject\|DROP\|REJECT" || echo 0)
+	fi
 	fw_rejects=${fw_rejects:-0}
 
 	# CrowdSec active bans
 	if [ -x "$CSCLI" ]; then
-		cs_bans=$($CSCLI decisions list -o json 2>/dev/null | grep -c '"id":' || echo 0)
-		cs_bans=$(echo "$cs_bans" | tr -d '\n')
+		# Use jq for proper JSON parsing if available, fallback to grep
+		if command -v jq >/dev/null 2>&1; then
+			cs_bans=$($CSCLI decisions list -o json 2>/dev/null | jq 'length' 2>/dev/null)
+			[ -z "$cs_bans" ] && cs_bans=0
+		else
+			# Count JSON array items
+			local cs_json=$($CSCLI decisions list -o json 2>/dev/null)
+			if [ -n "$cs_json" ] && [ "$cs_json" != "null" ] && [ "$cs_json" != "[]" ]; then
+				cs_bans=$(echo "$cs_json" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+			fi
+		fi
 		cs_bans=${cs_bans:-0}
 
 		# CrowdSec alerts in last 24h
-		cs_alerts_24h=$($CSCLI alerts list -o json --since 24h 2>/dev/null | grep -c '"id":' || echo 0)
-		cs_alerts_24h=$(echo "$cs_alerts_24h" | tr -d '\n')
+		if command -v jq >/dev/null 2>&1; then
+			cs_alerts_24h=$($CSCLI alerts list -o json --since 24h 2>/dev/null | jq 'length' 2>/dev/null)
+			[ -z "$cs_alerts_24h" ] && cs_alerts_24h=0
+		else
+			local alerts_json=$($CSCLI alerts list -o json --since 24h 2>/dev/null)
+			if [ -n "$alerts_json" ] && [ "$alerts_json" != "null" ] && [ "$alerts_json" != "[]" ]; then
+				cs_alerts_24h=$(echo "$alerts_json" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+			fi
+		fi
 		cs_alerts_24h=${cs_alerts_24h:-0}
 	fi
 
-	# Invalid connections (conntrack)
+	# Invalid connections (conntrack) - only count INVALID, not UNREPLIED
 	if [ -f /proc/net/nf_conntrack ]; then
-		invalid_conns=$(grep -c "INVALID\|UNREPLIED" /proc/net/nf_conntrack 2>/dev/null || echo 0)
+		# grep -c returns 1 exit code when no matches, so we can't use || echo 0
+		invalid_conns=$(grep -c "\[INVALID\]" /proc/net/nf_conntrack 2>/dev/null)
+		[ -z "$invalid_conns" ] && invalid_conns=0
 	fi
-	invalid_conns=$(echo "$invalid_conns" | tr -d '\n')
 	invalid_conns=${invalid_conns:-0}
 
-	# HAProxy connections (if running in LXC)
-	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
-		haproxy_conns=$(lxc-attach -n haproxy -- sh -c 'echo "show stat" | socat stdio /var/run/haproxy/admin.sock 2>/dev/null | tail -n+2 | awk -F, "{sum+=\$8} END {print sum}"' 2>/dev/null || echo 0)
+	# HAProxy connections
+	# Try local haproxy first, then LXC
+	if [ -S /var/run/haproxy/admin.sock ]; then
+		haproxy_conns=$(echo "show stat" | socat stdio /var/run/haproxy/admin.sock 2>/dev/null | \
+			tail -n+2 | awk -F, '{sum+=$5} END {print sum+0}')
+	elif [ -S /var/lib/haproxy/stats ]; then
+		haproxy_conns=$(echo "show stat" | socat stdio /var/lib/haproxy/stats 2>/dev/null | \
+			tail -n+2 | awk -F, '{sum+=$5} END {print sum+0}')
+	elif command -v lxc-info >/dev/null 2>&1 && lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		# HAProxy in LXC container
+		haproxy_conns=$(lxc-attach -n haproxy -- sh -c '
+			for sock in /stats /run/haproxy.sock /var/lib/haproxy/stats /var/run/haproxy/admin.sock; do
+				[ -S "$sock" ] && { echo "show stat" | socat stdio "$sock" 2>/dev/null; break; }
+			done' 2>/dev/null | tail -n+2 | awk -F, '{sum+=$5} END {print sum+0}')
 	fi
-	haproxy_conns=$(echo "$haproxy_conns" | tr -d '\n')
 	haproxy_conns=${haproxy_conns:-0}
+
+	# Clean up and ensure numeric values (remove all non-digits)
+	wan_drops=$(printf '%s' "$wan_drops" | tr -cd '0-9')
+	fw_rejects=$(printf '%s' "$fw_rejects" | tr -cd '0-9')
+	cs_bans=$(printf '%s' "$cs_bans" | tr -cd '0-9')
+	cs_alerts_24h=$(printf '%s' "$cs_alerts_24h" | tr -cd '0-9')
+	invalid_conns=$(printf '%s' "$invalid_conns" | tr -cd '0-9')
+	haproxy_conns=$(printf '%s' "$haproxy_conns" | tr -cd '0-9')
+
+	# Default to 0 if empty
+	: ${wan_drops:=0}
+	: ${fw_rejects:=0}
+	: ${cs_bans:=0}
+	: ${cs_alerts_24h:=0}
+	: ${invalid_conns:=0}
+	: ${haproxy_conns:=0}
 
 	# Output JSON
 	cat << EOF

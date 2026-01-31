@@ -137,7 +137,9 @@ return view.extend({
 
 	render: function(data) {
 		var self = this;
-		var interfaces = (data[0] || {}).interfaces || [];
+		// Handle RPC expect unwrapping - results may be array or object
+		var interfacesData = data[0] || [];
+		var interfaces = Array.isArray(interfacesData) ? interfacesData : (interfacesData.interfaces || []);
 		var status = data[1] || {};
 		var publicIP = data[2] || '';
 
@@ -569,20 +571,33 @@ return view.extend({
 	createInterface: function() {
 		var self = this;
 		var data = this.wizardData;
+		var netmask = data.vpnNetwork.split('/')[1] || '24';
+		var addresses = data.serverIP + '/' + netmask;
 
-		// Call backend to create interface
-		return rpc.call('uci', 'add', {
-			config: 'network',
-			type: 'interface',
-			name: data.ifaceName,
-			values: {
-				proto: 'wireguard',
-				private_key: data.privateKey,
-				listen_port: data.listenPort,
-				addresses: [data.serverIP + '/' + data.vpnNetwork.split('/')[1]]
+		// Call backend to create interface using proper RPCD method
+		return api.createInterface(
+			data.ifaceName,
+			data.privateKey,
+			data.listenPort,
+			addresses,
+			data.mtu || '1420'
+		).then(function(result) {
+			// Handle various response formats from RPC
+			// Result could be: boolean, object with success field, or object with error
+			if (result === true) {
+				return { success: true };
 			}
-		}).then(function() {
-			return rpc.call('uci', 'commit', { config: 'network' });
+			if (result === false) {
+				throw new Error('Failed to create interface');
+			}
+			if (typeof result === 'object' && result !== null) {
+				if (result.success === false || result.error) {
+					throw new Error(result.error || 'Failed to create interface');
+				}
+				return result;
+			}
+			// If we got here with no error, assume success
+			return { success: true };
 		});
 	},
 

@@ -2,237 +2,176 @@
 'require baseclass';
 'require rpc';
 
-var callMitmproxy = rpc.declare({
+// Status and settings
+var callStatus = rpc.declare({
 	object: 'luci.mitmproxy',
-	method: 'get_status'
+	method: 'status',
+	expect: {}
 });
 
-var callGetConfig = rpc.declare({
+var callSettings = rpc.declare({
 	object: 'luci.mitmproxy',
-	method: 'get_config'
+	method: 'settings',
+	expect: {}
 });
 
-var callGetTransparentConfig = rpc.declare({
+var callSaveSettings = rpc.declare({
 	object: 'luci.mitmproxy',
-	method: 'get_transparent_config'
+	method: 'save_settings',
+	params: ['mode', 'enabled', 'proxy_port', 'web_port', 'web_host', 'data_path',
+		'memory_limit', 'upstream_proxy', 'reverse_target', 'ssl_insecure',
+		'anticache', 'anticomp', 'transparent_enabled', 'transparent_interface',
+		'redirect_http', 'redirect_https', 'filtering_enabled', 'log_requests',
+		'filter_cdn', 'filter_media', 'block_ads', 'apply_now'],
+	expect: {}
 });
 
-var callGetWhitelistConfig = rpc.declare({
+var callSetMode = rpc.declare({
 	object: 'luci.mitmproxy',
-	method: 'get_whitelist_config'
+	method: 'set_mode',
+	params: ['mode', 'apply_now'],
+	expect: {}
 });
 
-var callGetFilteringConfig = rpc.declare({
+// Service control
+var callInstall = rpc.declare({
 	object: 'luci.mitmproxy',
-	method: 'get_filtering_config'
+	method: 'install',
+	expect: {}
 });
 
-var callGetAllConfig = rpc.declare({
+var callStart = rpc.declare({
 	object: 'luci.mitmproxy',
-	method: 'get_all_config'
+	method: 'start',
+	expect: {}
 });
 
-var callGetStats = rpc.declare({
+var callStop = rpc.declare({
 	object: 'luci.mitmproxy',
-	method: 'get_stats'
+	method: 'stop',
+	expect: {}
 });
 
-var callGetRequests = rpc.declare({
+var callRestart = rpc.declare({
 	object: 'luci.mitmproxy',
-	method: 'get_requests',
-	params: ['limit', 'category']
+	method: 'restart',
+	expect: {}
 });
 
-var callGetTopHosts = rpc.declare({
+// Firewall control
+var callSetupFirewall = rpc.declare({
 	object: 'luci.mitmproxy',
-	method: 'get_top_hosts',
-	params: ['limit']
+	method: 'setup_firewall',
+	expect: {}
 });
 
-var callGetCaInfo = rpc.declare({
+var callClearFirewall = rpc.declare({
 	object: 'luci.mitmproxy',
-	method: 'get_ca_info'
-});
-
-var callGetWebToken = rpc.declare({
-	object: 'luci.mitmproxy',
-	method: 'get_web_token'
-});
-
-var callServiceStart = rpc.declare({
-	object: 'luci.mitmproxy',
-	method: 'service_start'
-});
-
-var callServiceStop = rpc.declare({
-	object: 'luci.mitmproxy',
-	method: 'service_stop'
-});
-
-var callServiceRestart = rpc.declare({
-	object: 'luci.mitmproxy',
-	method: 'service_restart'
-});
-
-var callFirewallSetup = rpc.declare({
-	object: 'luci.mitmproxy',
-	method: 'firewall_setup'
-});
-
-var callFirewallClear = rpc.declare({
-	object: 'luci.mitmproxy',
-	method: 'firewall_clear'
-});
-
-var callSetConfig = rpc.declare({
-	object: 'luci.mitmproxy',
-	method: 'set_config',
-	params: ['key', 'value']
-});
-
-var callAddToList = rpc.declare({
-	object: 'luci.mitmproxy',
-	method: 'add_to_list',
-	params: ['key', 'value']
-});
-
-var callRemoveFromList = rpc.declare({
-	object: 'luci.mitmproxy',
-	method: 'remove_from_list',
-	params: ['key', 'value']
-});
-
-var callClearData = rpc.declare({
-	object: 'luci.mitmproxy',
-	method: 'clear_data'
+	method: 'clear_firewall',
+	expect: {}
 });
 
 return baseclass.extend({
 	getStatus: function() {
-		return callMitmproxy().catch(function() {
-			return { running: false, enabled: false };
-		});
-	},
-
-	getConfig: function() {
-		return callGetConfig().catch(function() {
-			return {};
-		});
-	},
-
-	getTransparentConfig: function() {
-		return callGetTransparentConfig().catch(function() {
-			return { enabled: false };
-		});
-	},
-
-	getWhitelistConfig: function() {
-		return callGetWhitelistConfig().catch(function() {
-			return { enabled: true, bypass_ip: [], bypass_domain: [] };
-		});
-	},
-
-	getFilteringConfig: function() {
-		return callGetFilteringConfig().catch(function() {
-			return { enabled: false };
-		});
-	},
-
-	getAllConfig: function() {
-		return callGetAllConfig().catch(function() {
-			return { main: {}, transparent: {}, whitelist: {}, filtering: {} };
-		});
-	},
-
-	getStats: function() {
-		return callGetStats().catch(function() {
+		return callStatus().catch(function() {
 			return {
-				total_requests: 0,
-				unique_hosts: 0,
-				flow_file_size: 0,
-				cdn_requests: 0,
-				media_requests: 0,
-				blocked_ads: 0
+				running: false,
+				enabled: false,
+				installed: false,
+				lxc_available: false,
+				mode: 'regular',
+				nft_active: false
 			};
 		});
 	},
 
-	getRequests: function(limit, category) {
-		return callGetRequests(limit || 50, category || 'all').catch(function() {
-			return { requests: [] };
+	getSettings: function() {
+		return callSettings().catch(function() {
+			return {
+				enabled: false,
+				mode: 'regular',
+				proxy_port: 8888,
+				web_port: 8081,
+				web_host: '0.0.0.0',
+				data_path: '/srv/mitmproxy',
+				memory_limit: '256M',
+				transparent_enabled: false,
+				transparent_interface: 'br-lan',
+				redirect_http: true,
+				redirect_https: true,
+				filtering_enabled: false,
+				log_requests: true,
+				filter_cdn: false,
+				filter_media: false,
+				block_ads: false
+			};
 		});
 	},
 
-	getTopHosts: function(limit) {
-		return callGetTopHosts(limit || 20).catch(function() {
-			return { hosts: [] };
-		});
+	saveSettings: function(settings) {
+		return callSaveSettings(
+			settings.mode,
+			settings.enabled,
+			settings.proxy_port,
+			settings.web_port,
+			settings.web_host,
+			settings.data_path,
+			settings.memory_limit,
+			settings.upstream_proxy,
+			settings.reverse_target,
+			settings.ssl_insecure,
+			settings.anticache,
+			settings.anticomp,
+			settings.transparent_enabled,
+			settings.transparent_interface,
+			settings.redirect_http,
+			settings.redirect_https,
+			settings.filtering_enabled,
+			settings.log_requests,
+			settings.filter_cdn,
+			settings.filter_media,
+			settings.block_ads,
+			settings.apply_now !== false
+		);
 	},
 
-	getCaInfo: function() {
-		return callGetCaInfo().catch(function() {
-			return { installed: false };
-		});
+	setMode: function(mode, applyNow) {
+		return callSetMode(mode, applyNow !== false);
 	},
 
-	getWebToken: function() {
-		return callGetWebToken().catch(function() {
-			return { token: '', web_url: '', web_url_with_token: '' };
-		});
+	install: function() {
+		return callInstall();
 	},
 
-	serviceStart: function() {
-		return callServiceStart();
+	start: function() {
+		return callStart();
 	},
 
-	serviceStop: function() {
-		return callServiceStop();
+	stop: function() {
+		return callStop();
 	},
 
-	serviceRestart: function() {
-		return callServiceRestart();
+	restart: function() {
+		return callRestart();
 	},
 
-	firewallSetup: function() {
-		return callFirewallSetup();
+	setupFirewall: function() {
+		return callSetupFirewall();
 	},
 
-	firewallClear: function() {
-		return callFirewallClear();
-	},
-
-	setConfig: function(key, value) {
-		return callSetConfig(key, value);
-	},
-
-	addToList: function(key, value) {
-		return callAddToList(key, value);
-	},
-
-	removeFromList: function(key, value) {
-		return callRemoveFromList(key, value);
-	},
-
-	clearData: function() {
-		return callClearData();
+	clearFirewall: function() {
+		return callClearFirewall();
 	},
 
 	getAllData: function() {
 		var self = this;
 		return Promise.all([
 			self.getStatus(),
-			self.getAllConfig(),
-			self.getStats(),
-			self.getTopHosts(10),
-			self.getCaInfo()
+			self.getSettings()
 		]).then(function(results) {
 			return {
 				status: results[0],
-				config: results[1].main || results[1],
-				allConfig: results[1],
-				stats: results[2],
-				topHosts: results[3],
-				caInfo: results[4]
+				settings: results[1]
 			};
 		});
 	},

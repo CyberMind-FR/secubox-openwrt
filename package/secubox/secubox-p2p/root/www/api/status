@@ -1,0 +1,10 @@
+#!/bin/sh
+# P2P API - Node status endpoint
+# Responds to requests on port 7331
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo ""
+
+# Get node status from secubox-p2p
+/usr/sbin/secubox-p2p status 2>/dev/null || echo '{"error":"daemon_unavailable"}'

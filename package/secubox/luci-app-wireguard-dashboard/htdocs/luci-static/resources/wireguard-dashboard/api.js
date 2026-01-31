@@ -34,18 +34,25 @@ var callGenerateKeys = rpc.declare({
 	expect: { }
 });
 
+var callCreateInterface = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'create_interface',
+	params: ['name', 'private_key', 'listen_port', 'addresses', 'mtu'],
+	expect: { }
+});
+
 var callAddPeer = rpc.declare({
 	object: 'luci.wireguard-dashboard',
 	method: 'add_peer',
 	params: ['interface', 'name', 'allowed_ips', 'public_key', 'preshared_key', 'endpoint', 'persistent_keepalive'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callRemovePeer = rpc.declare({
 	object: 'luci.wireguard-dashboard',
 	method: 'remove_peer',
 	params: ['interface', 'public_key'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callGetConfig = rpc.declare({
@@ -78,7 +85,7 @@ var callInterfaceControl = rpc.declare({
 	object: 'luci.wireguard-dashboard',
 	method: 'interface_control',
 	params: ['interface', 'action'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callPeerDescriptions = rpc.declare({
@@ -154,6 +161,7 @@ return baseclass.extend({
 	getConfig: callGetConfig,
 	getTraffic: callGetTraffic,
 	generateKeys: callGenerateKeys,
+	createInterface: callCreateInterface,
 	addPeer: callAddPeer,
 	removePeer: callRemovePeer,
 	generateConfig: callGenerateConfig,

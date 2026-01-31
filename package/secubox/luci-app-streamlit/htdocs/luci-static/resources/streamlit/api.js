@@ -110,6 +110,20 @@ var callUploadApp = rpc.declare({
 	expect: { result: {} }
 });
 
+var callUploadZip = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'upload_zip',
+	params: ['name', 'content', 'selected_files'],
+	expect: { result: {} }
+});
+
+var callPreviewZip = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'preview_zip',
+	params: ['content'],
+	expect: { result: {} }
+});
+
 var callGetInstallProgress = rpc.declare({
 	object: 'luci.streamlit',
 	method: 'get_install_progress',
@@ -232,6 +246,14 @@ return baseclass.extend({
 
 	uploadApp: function(name, content) {
 		return callUploadApp(name, content);
+	},
+
+	uploadZip: function(name, content, selectedFiles) {
+		return callUploadZip(name, content, selectedFiles);
+	},
+
+	previewZip: function(content) {
+		return callPreviewZip(content);
 	},
 
 	getInstallProgress: function() {

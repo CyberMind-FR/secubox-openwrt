@@ -208,7 +208,7 @@ return view.extend({
 				E('button', {
 					'class': 'cbi-button',
 					'click': function() {
-						window.location.href = L.url('admin', 'secubox', 'security', 'crowdsec', 'overview');
+						window.location.href = L.url('admin', 'secubox', 'services', 'crowdsec', 'overview');
 					}
 				}, _('Cancel')),
 				E('button', {
@@ -610,7 +610,7 @@ return view.extend({
 					'class': 'cbi-button cbi-button-positive',
 					'style': 'font-size: 1.1em; padding: 12px 32px;',
 					'click': function() {
-						window.location.href = L.url('admin', 'secubox', 'security', 'crowdsec', 'overview');
+						window.location.href = L.url('admin', 'secubox', 'services', 'crowdsec', 'overview');
 					}
 				}, _('Go to Dashboard'))
 			])

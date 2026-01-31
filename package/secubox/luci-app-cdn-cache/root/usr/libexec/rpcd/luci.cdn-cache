@@ -17,9 +17,12 @@ get_pkg_version() {
 
 PKG_VERSION="$(get_pkg_version)"
 
-CACHE_DIR=$(uci -q get cdn-cache.main.cache_dir || echo "/var/cache/cdn")
+CACHE_DIR=$(uci -q get cdn-cache.main.cache_dir || echo "/var/cache/cdn-squid")
 STATS_FILE="/var/run/cdn-cache-stats.json"
-LOG_FILE="/var/log/cdn-cache.log"
+LOG_DIR="/var/log/cdn-cache"
+LOG_FILE="$LOG_DIR/cache.log"
+SQUID_CONF="/var/etc/cdn-cache-squid.conf"
+CA_CERT="/etc/squid/ssl/ca.pem"
 
 # Initialize stats file if not exists
 init_stats() {
@@ -27,6 +30,15 @@ init_stats() {
 		cat > "$STATS_FILE" << 'EOF'
 {"hits":0,"misses":0,"bytes_saved":0,"bytes_served":0,"requests":0,"start_time":0}
 EOF
+	fi
+}
+
+# Get Squid cache manager info
+get_squid_info() {
+	local mgr_url="http://localhost:$(uci -q get cdn-cache.main.listen_port || echo 3128)/squid-internal-mgr"
+	# Try to get info via squidclient if available
+	if command -v squidclient >/dev/null 2>&1; then
+		squidclient -h localhost mgr:info 2>/dev/null
 	fi
 }
 
@@ -38,30 +50,59 @@ get_status() {
 	local uptime=0
 	local cache_size=0
 	local cache_files=0
-	
-	# Check if nginx proxy is running
-	if pgrep -f "nginx.*cdn-cache" > /dev/null 2>&1; then
-		running=1
-		pid=$(pgrep -f "nginx.*cdn-cache" | head -1)
-		if [ -f "/var/run/cdn-cache.pid" ]; then
+	local squid_installed=0
+	local backend="squid"
+
+	# Check if Squid is installed
+	if command -v squid >/dev/null 2>&1; then
+		squid_installed=1
+	fi
+
+	# Check if Squid is running (cdn-cache instance)
+	if [ -f "/var/run/cdn-cache.pid" ]; then
+		pid=$(cat /var/run/cdn-cache.pid 2>/dev/null)
+		if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+			running=1
 			local start_time=$(stat -c %Y "/var/run/cdn-cache.pid" 2>/dev/null || echo "0")
 			local now=$(date +%s)
 			uptime=$((now - start_time))
 		fi
 	fi
-	
+
+	# Fallback: check by process name
+	if [ "$running" = "0" ]; then
+		pid=$(pgrep -f "squid.*cdn-cache" | head -1)
+		if [ -n "$pid" ]; then
+			running=1
+		fi
+	fi
+
 	# Get cache directory stats
 	if [ -d "$CACHE_DIR" ]; then
 		cache_size=$(du -sk "$CACHE_DIR" 2>/dev/null | cut -f1 || echo "0")
 		cache_files=$(find "$CACHE_DIR" -type f 2>/dev/null | wc -l || echo "0")
 	fi
-	
+
 	local listen_port=$(uci -q get cdn-cache.main.listen_port || echo "3128")
-	local transparent=$(uci -q get cdn-cache.main.transparent || echo "0")
-	local max_size=$(uci -q get cdn-cache.main.cache_size || echo "1024")
-	
+	local transparent=$(uci -q get cdn-cache.main.transparent || echo "1")
+	local ssl_bump=$(uci -q get cdn-cache.main.ssl_bump || echo "0")
+	local max_size=$(uci -q get cdn-cache.main.cache_size || echo "2048")
+
+	# Get Squid version if installed
+	local squid_version=""
+	if [ "$squid_installed" = "1" ]; then
+		squid_version=$(squid -v 2>/dev/null | head -1 | sed 's/.*Version //' | cut -d' ' -f1)
+	fi
+
+	# Check if CA cert exists
+	local ca_cert_exists=0
+	[ -f "$CA_CERT" ] && ca_cert_exists=1
+
 	json_init
 	json_add_string "version" "$PKG_VERSION"
+	json_add_string "backend" "$backend"
+	json_add_string "squid_version" "$squid_version"
+	json_add_boolean "squid_installed" "$squid_installed"
 	json_add_boolean "enabled" "$enabled"
 	json_add_boolean "running" "$running"
 	json_add_string "pid" "$pid"
@@ -71,35 +112,54 @@ get_status() {
 	json_add_int "max_size_mb" "$max_size"
 	json_add_int "listen_port" "$listen_port"
 	json_add_boolean "transparent" "$transparent"
+	json_add_boolean "ssl_bump" "$ssl_bump"
+	json_add_boolean "ca_cert_exists" "$ca_cert_exists"
 	json_add_string "cache_dir" "$CACHE_DIR"
 	json_dump
 }
 
-# Get cache statistics
+# Get cache statistics from Squid access log
 get_stats() {
 	init_stats
-	
-	local stats=$(cat "$STATS_FILE" 2>/dev/null || echo '{}')
-	
-	# Calculate hit ratio
-	json_load "$stats"
-	json_get_var hits hits 0
-	json_get_var misses misses 0
-	
+
+	local hits=0
+	local misses=0
+	local requests=0
+	local bytes_served=0
+	local bytes_saved=0
+
+	# Parse Squid access log for stats
+	local access_log="$LOG_DIR/access.log"
+	if [ -f "$access_log" ]; then
+		# Count cache HITs and MISSes from Squid log format
+		# Format: timestamp elapsed client result/code size method url ...
+		hits=$(grep -c "TCP_HIT\|TCP_MEM_HIT\|TCP_REFRESH_HIT\|TCP_IMS_HIT" "$access_log" 2>/dev/null || echo "0")
+		misses=$(grep -c "TCP_MISS\|TCP_REFRESH_MISS\|TCP_CLIENT_REFRESH_MISS" "$access_log" 2>/dev/null || echo "0")
+		requests=$(wc -l < "$access_log" 2>/dev/null || echo "0")
+
+		# Sum bytes served (field 5 in squid log)
+		bytes_served=$(awk '{sum += $5} END {print sum}' "$access_log" 2>/dev/null || echo "0")
+		[ -z "$bytes_served" ] && bytes_served=0
+
+		# Estimate bytes saved (cached hits * average object size)
+		# This is an approximation - cached bytes don't get re-downloaded
+		local avg_size=0
+		if [ "$requests" -gt 0 ]; then
+			avg_size=$((bytes_served / requests))
+		fi
+		bytes_saved=$((hits * avg_size))
+	fi
+
 	local total=$((hits + misses))
 	local hit_ratio=0
 	if [ "$total" -gt 0 ]; then
 		hit_ratio=$((hits * 100 / total))
 	fi
-	
-	json_get_var bytes_saved bytes_saved 0
-	json_get_var bytes_served bytes_served 0
-	json_get_var requests requests 0
-	
+
 	# Convert to human readable
 	local saved_mb=$((bytes_saved / 1048576))
 	local served_mb=$((bytes_served / 1048576))
-	
+
 	json_init
 	json_add_int "hits" "$hits"
 	json_add_int "misses" "$misses"
@@ -138,28 +198,50 @@ get_cache_list() {
 	json_dump
 }
 
-# Get top domains by cache usage
+# Get top domains by cache usage (parsed from Squid access log)
 get_top_domains() {
 	json_init
 	json_add_array "domains"
-	
-	if [ -d "$CACHE_DIR" ]; then
-		# Aggregate by subdirectory (domain)
-		for domain_dir in "$CACHE_DIR"/*/; do
-			if [ -d "$domain_dir" ]; then
-				local domain=$(basename "$domain_dir")
-				local size=$(du -sk "$domain_dir" 2>/dev/null | cut -f1 || echo "0")
-				local files=$(find "$domain_dir" -type f 2>/dev/null | wc -l || echo "0")
-				
-				json_add_object ""
-				json_add_string "domain" "$domain"
-				json_add_int "size_kb" "$size"
-				json_add_int "files" "$files"
-				json_close_object
-			fi
+
+	local access_log="$LOG_DIR/access.log"
+	if [ -f "$access_log" ]; then
+		# Parse domains from URLs in access log
+		# Extract domain from URL field (field 7) and count hits + bytes
+		awk '
+		{
+			url = $7
+			bytes = $5
+			status = $4
+
+			# Extract domain from URL
+			gsub(/^https?:\/\//, "", url)
+			gsub(/\/.*$/, "", url)
+			gsub(/:[0-9]+$/, "", url)
+
+			if (url != "" && url != "-") {
+				domains[url]++
+				domain_bytes[url] += bytes
+				if (status ~ /HIT/) {
+					domain_hits[url]++
+				}
+			}
+		}
+		END {
+			for (d in domains) {
+				print domains[d], domain_bytes[d], domain_hits[d], d
+			}
+		}
+		' "$access_log" 2>/dev/null | sort -rn | head -20 | while read count bytes hits domain; do
+			local size_kb=$((bytes / 1024))
+			json_add_object ""
+			json_add_string "domain" "$domain"
+			json_add_int "requests" "$count"
+			json_add_int "size_kb" "$size_kb"
+			json_add_int "hits" "${hits:-0}"
+			json_close_object
 		done
 	fi
-	
+
 	json_close_array
 	json_dump
 }
@@ -331,16 +413,24 @@ _add_exclusion() {
 # Get recent logs
 get_logs() {
 	local count="${1:-50}"
-	
+
 	json_init
 	json_add_array "logs"
-	
-	if [ -f "$LOG_FILE" ]; then
-		tail -n "$count" "$LOG_FILE" 2>/dev/null | while read line; do
+
+	# Try access log first (more useful for CDN cache)
+	local access_log="$LOG_DIR/access.log"
+	local cache_log="$LOG_DIR/cache.log"
+
+	if [ -f "$access_log" ]; then
+		tail -n "$count" "$access_log" 2>/dev/null | while read line; do
+			json_add_string "" "$line"
+		done
+	elif [ -f "$cache_log" ]; then
+		tail -n "$count" "$cache_log" 2>/dev/null | while read line; do
 			json_add_string "" "$line"
 		done
 	fi
-	
+
 	json_close_array
 	json_dump
 }
@@ -365,18 +455,33 @@ set_enabled() {
 
 # Purge entire cache
 purge_cache() {
+	# Stop Squid, clear cache, reinitialize
+	/etc/init.d/cdn-cache stop 2>/dev/null
+
 	if [ -d "$CACHE_DIR" ]; then
 		rm -rf "$CACHE_DIR"/*
 		mkdir -p "$CACHE_DIR"
+		chown squid:squid "$CACHE_DIR" 2>/dev/null
 	fi
-	
+
+	# Clear access log
+	[ -f "$LOG_DIR/access.log" ] && : > "$LOG_DIR/access.log"
+
 	# Reset stats
 	cat > "$STATS_FILE" << 'EOF'
 {"hits":0,"misses":0,"bytes_saved":0,"bytes_served":0,"requests":0,"start_time":0}
 EOF
-	
+
+	# Reinitialize Squid cache and restart
+	if [ -f "$SQUID_CONF" ]; then
+		squid -f "$SQUID_CONF" -z 2>/dev/null
+		sleep 2
+	fi
+
+	/etc/init.d/cdn-cache start 2>/dev/null
+
 	logger -t cdn-cache "Cache purged by user"
-	
+
 	json_init
 	json_add_boolean "success" 1
 	json_add_string "message" "Cache purged successfully"
@@ -586,9 +691,51 @@ EOF
 # Restart service
 do_restart() {
 	/etc/init.d/cdn-cache restart
-	
+
 	json_init
 	json_add_boolean "success" 1
+	json_dump
+}
+
+# Get CA certificate for download
+get_ca_cert() {
+	json_init
+
+	if [ -f "$CA_CERT" ]; then
+		local cert_content=$(cat "$CA_CERT" | base64 -w0)
+		local cert_fingerprint=$(openssl x509 -in "$CA_CERT" -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//')
+		local cert_subject=$(openssl x509 -in "$CA_CERT" -noout -subject 2>/dev/null | sed 's/subject=//')
+		local cert_expires=$(openssl x509 -in "$CA_CERT" -noout -enddate 2>/dev/null | sed 's/notAfter=//')
+
+		json_add_boolean "success" 1
+		json_add_string "certificate" "$cert_content"
+		json_add_string "fingerprint" "$cert_fingerprint"
+		json_add_string "subject" "$cert_subject"
+		json_add_string "expires" "$cert_expires"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "CA certificate not found"
+	fi
+
+	json_dump
+}
+
+# Enable/disable SSL bump
+set_ssl_bump() {
+	local enabled="${1:-0}"
+
+	uci set cdn-cache.main.ssl_bump="$enabled"
+	uci commit cdn-cache
+
+	if [ "$enabled" = "1" ]; then
+		logger -t cdn-cache "SSL bump enabled - restart required"
+	else
+		logger -t cdn-cache "SSL bump disabled - restart required"
+	fi
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_boolean "restart_required" 1
 	json_dump
 }
 
@@ -669,6 +816,11 @@ case "$1" in
 		json_add_object "clear_stats"
 		json_close_object
 		json_add_object "restart"
+		json_close_object
+		json_add_object "get_ca_cert"
+		json_close_object
+		json_add_object "set_ssl_bump"
+		json_add_boolean "enabled" false
 		json_close_object
 		json_dump
 		;;
@@ -775,6 +927,13 @@ case "$1" in
 				;;
 			clear_stats) clear_stats ;;
 			restart) do_restart ;;
+			get_ca_cert) get_ca_cert ;;
+			set_ssl_bump)
+				read -r input
+				json_load "$input"
+				json_get_var enabled enabled 0
+				set_ssl_bump "$enabled"
+				;;
 			*) echo '{"error":"Unknown method"}' ;;
 		esac
 		;;

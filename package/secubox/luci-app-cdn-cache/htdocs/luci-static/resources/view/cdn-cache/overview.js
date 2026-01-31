@@ -49,22 +49,23 @@ function formatUptime(seconds) {
 	return minutes + 'm ' + (seconds % 60) + 's';
 }
 
-var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
-	(document.documentElement && document.documentElement.getAttribute('lang')) ||
-	(navigator.language ? navigator.language.split('-')[0] : 'en');
-Theme.init({ language: lang });
-
 return view.extend({
 	load: function() {
 		return Promise.all([
-			callStatus(),
-			callStats(),
-			callCacheSize(),
-			callTopDomains()
+			L.resolveDefault(callStatus(), {}),
+			L.resolveDefault(callStats(), {}),
+			L.resolveDefault(callCacheSize(), {}),
+			L.resolveDefault(callTopDomains(), { domains: [] })
 		]);
 	},
 
 	render: function(data) {
+		// Initialize theme
+		var lang = (typeof L !== 'undefined' && L.env && L.env.lang) ||
+			(document.documentElement && document.documentElement.getAttribute('lang')) ||
+			(navigator.language ? navigator.language.split('-')[0] : 'en');
+		Theme.init({ language: lang });
+
 		var status = data[0] || {};
 		var stats = data[1] || {};
 		var cacheSize = data[2] || {};
@@ -204,5 +205,9 @@ return view.extend({
 			]),
 			E('div', { 'class': 'secubox-stat-label' }, meta)
 		]);
-	}
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

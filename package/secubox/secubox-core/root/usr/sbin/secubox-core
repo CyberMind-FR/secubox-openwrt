@@ -5,7 +5,7 @@
 # Main orchestration service for SecuBox framework
 #
 
-set -e
+# Note: Not using set -e as many UCI/service checks legitimately return non-zero
 
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
@@ -18,7 +18,57 @@ WATCHDOG_STATE="/var/run/secubox/watchdog.json"
 
 # Services to monitor (init.d name:check_method:restart_delay)
 # check_method: pid, docker, lxc, port:PORT
-MONITORED_SERVICES="haproxy:pid:5 crowdsec:pid:10 tor:pid:10"
+MONITORED_SERVICES=""
+
+# Auto-discover SecuBox services from ctl scripts
+discover_secubox_services() {
+    local services=""
+
+    # Discover LXC-based services from *ctl scripts
+    for ctl in /usr/sbin/*ctl; do
+        [ -x "$ctl" ] || continue
+        local basename=$(basename "$ctl")
+
+        # Extract service name from xxxctl pattern
+        local svc_name=""
+        case "$basename" in
+            haproxyctl)
+                svc_name="haproxy"
+                services="$services haproxy:lxc:5"
+                ;;
+            lyrionctl)
+                svc_name="lyrion"
+                services="$services lyrion:lxc:10"
+                ;;
+            mitmproxyctl)
+                svc_name="mitmproxy"
+                services="$services mitmproxy:lxc:10"
+                ;;
+            metablogizerctl)
+                svc_name="metablogizer"
+                services="$services metablogizer:lxc:10"
+                ;;
+            hexojsctl)
+                svc_name="hexojs"
+                services="$services hexojs:lxc:10"
+                ;;
+            adguardhomectl)
+                svc_name="adguardhome"
+                services="$services adguardhome:docker:10"
+                ;;
+        esac
+    done
+
+    # Add native services (PID-based)
+    if [ -x "/etc/init.d/crowdsec" ]; then
+        services="$services crowdsec:pid:10"
+    fi
+    if [ -x "/etc/init.d/tor" ]; then
+        services="$services tor:pid:10"
+    fi
+
+    echo "$services"
+}
 
 # Logging function
 log() {
@@ -37,7 +87,7 @@ get_status() {
 
     # Core info
     json_add_string "version" "$SECUBOX_VERSION"
-    json_add_boolean "running" true
+    json_add_boolean "running" 1
     json_add_string "hostname" "$(uci -q get system.@system[0].hostname)"
     json_add_string "uptime" "$(uptime | awk '{print $3,$4}' | sed 's/,//')"
 
@@ -71,8 +121,8 @@ get_status() {
         # WAN status
         local wan_device=$(uci -q get network.wan.device || uci -q get network.wan.ifname || echo "unknown")
         local wan_ip=$(ip -4 addr show dev "$wan_device" 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1 | head -1 || echo "none")
-        local wan_connected="false"
-        [ -n "$wan_ip" ] && wan_connected="true"
+        local wan_connected=0
+        [ -n "$wan_ip" ] && wan_connected=1
 
         json_add_object "wan"
             json_add_boolean "connected" "$wan_connected"
@@ -88,7 +138,15 @@ get_status() {
         json_close_object
     json_close_object
 
-    # Installed modules
+    # Installed modules - use cached opkg status for performance
+    # Build installed packages cache from opkg status db (fast, no subprocess per pkg)
+    local OPKG_STATUS_DB="/usr/lib/opkg/status"
+    local installed_cache="/tmp/secubox-installed-status"
+    if [ -r "$OPKG_STATUS_DB" ]; then
+        # BusyBox-compatible: use grep instead of awk
+        grep "^Package: " "$OPKG_STATUS_DB" | cut -d' ' -f2 > "$installed_cache" 2>/dev/null
+    fi
+
     json_add_array "modules"
         if [ -d "/usr/share/secubox/plugins/catalog" ]; then
             for catalog in /usr/share/secubox/plugins/catalog/*.json; do
@@ -96,11 +154,12 @@ get_status() {
                 local module_id=$(jsonfilter -i "$catalog" -e '@.id' 2>/dev/null)
                 local module_name=$(jsonfilter -i "$catalog" -e '@.name' 2>/dev/null)
 
-                # Check if module package is installed
-                local packages=$(jsonfilter -i "$catalog" -e '@.packages[0]' 2>/dev/null)
-                local installed=false
-                if [ -n "$packages" ]; then
-                    opkg list-installed | grep -q "^$packages " && installed=true
+                # Check if module package is installed (try both paths for compatibility)
+                local packages=$(jsonfilter -i "$catalog" -e '@.packages.required[0]' 2>/dev/null)
+                [ -z "$packages" ] && packages=$(jsonfilter -i "$catalog" -e '@.packages[0]' 2>/dev/null)
+                local installed=0
+                if [ -n "$packages" ] && [ -f "$installed_cache" ]; then
+                    grep -q "^${packages}$" "$installed_cache" && installed=1
                 fi
 
                 json_add_object ""
@@ -111,6 +170,7 @@ get_status() {
             done
         fi
     json_close_array
+    rm -f "$installed_cache"
 
     json_dump
 }
@@ -120,10 +180,12 @@ run_health_check() {
     local overall_status="healthy"
     local warnings=0
     local errors=0
+    local details=""
 
     # Check CPU
     local cpu_threshold=$(uci -q get secubox.settings.health_threshold_cpu || echo "80")
     local cpu_load=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | tr -d ',' | cut -d'.' -f1)
+    local cpu_load_full=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | tr -d ',')
     if [ "$cpu_load" -gt "$cpu_threshold" ]; then
         log warn "CPU load high: $cpu_load"
         warnings=$((warnings + 1))
@@ -151,9 +213,37 @@ run_health_check() {
     fi
 
     # Check network connectivity
+    local network_ok=1
     if ! ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1; then
         log warn "No internet connectivity"
         warnings=$((warnings + 1))
+        network_ok=0
+    fi
+
+    # Module health check - use appstore output for accurate data
+    local modules_installed=0
+    local modules_enabled=0
+    local modules_active=0
+    local modules_total=0
+    local modules_failed=0
+
+    if [ -x /usr/sbin/secubox-appstore ]; then
+        local appstore_out=$(/usr/sbin/secubox-appstore list --json 2>/dev/null)
+        if [ -n "$appstore_out" ]; then
+            modules_total=$(echo "$appstore_out" | jsonfilter -e '@.modules[*].id' 2>/dev/null | wc -l)
+            modules_installed=$(echo "$appstore_out" | jsonfilter -e '@.modules[*]' 2>/dev/null | grep '"installed": true' | wc -l)
+            modules_enabled=$(echo "$appstore_out" | jsonfilter -e '@.modules[*]' 2>/dev/null | grep '"enabled": true' | wc -l)
+            modules_active=$(echo "$appstore_out" | jsonfilter -e '@.modules[*]' 2>/dev/null | grep '"active": true' | wc -l)
+            # Count enabled but not active as potentially failed
+            modules_failed=$((modules_enabled - modules_active))
+            [ "$modules_failed" -lt 0 ] && modules_failed=0
+
+            if [ "$modules_failed" -gt 0 ]; then
+                log warn "$modules_failed enabled modules not running"
+                warnings=$((warnings + modules_failed))
+                [ "$overall_status" = "healthy" ] && overall_status="warning"
+            fi
+        fi
     fi
 
     # Output health status
@@ -162,6 +252,32 @@ run_health_check() {
     json_add_int "warnings" "$warnings"
     json_add_int "errors" "$errors"
     json_add_string "timestamp" "$(date -Iseconds)"
+
+    # Resource details
+    json_add_object "resources"
+        json_add_string "cpu_load" "$cpu_load_full"
+        json_add_int "cpu_threshold" "$cpu_threshold"
+        json_add_int "memory_percent" "$mem_percent"
+        json_add_int "memory_threshold" "$mem_threshold"
+        json_add_int "memory_total_mb" "$((mem_total / 1024))"
+        json_add_int "storage_percent" "$storage_percent"
+        json_add_int "storage_threshold" "$storage_threshold"
+    json_close_object
+
+    # Network status
+    json_add_object "network"
+        json_add_boolean "internet" "$network_ok"
+    json_close_object
+
+    # Module status
+    json_add_object "modules"
+        json_add_int "total" "$modules_total"
+        json_add_int "installed" "$modules_installed"
+        json_add_int "enabled" "$modules_enabled"
+        json_add_int "active" "$modules_active"
+        json_add_int "failed" "$modules_failed"
+    json_close_object
+
     json_dump
 
     return 0
@@ -172,10 +288,14 @@ run_watchdog() {
     local watchdog_enabled=$(uci -q get secubox.main.watchdog_enabled || echo "1")
     [ "$watchdog_enabled" != "1" ] && return 0
 
-    # Get monitored services from UCI or use defaults
-    local services=$(uci -q get secubox.main.watchdog_services || echo "$MONITORED_SERVICES")
+    # Auto-discover services if none configured
+    local services=$(uci -q get secubox.main.watchdog_services)
+    [ -z "$services" ] && services=$(discover_secubox_services)
+
     local restart_count=0
-    local status_json=""
+    local checked_count=0
+    local running_count=0
+    local services_status=""
 
     log debug "Watchdog: Checking services..."
 
@@ -184,66 +304,105 @@ run_watchdog() {
         local check_method=$(echo "$service_entry" | cut -d: -f2)
         local restart_delay=$(echo "$service_entry" | cut -d: -f3)
         [ -z "$restart_delay" ] && restart_delay=5
+        [ -z "$check_method" ] && check_method="pid"
 
-        # Check if service init script exists
-        [ ! -x "/etc/init.d/$service_name" ] && continue
+        # Determine if service is enabled (check ctl script or init.d)
+        local ctl_script="/usr/sbin/${service_name}ctl"
+        local init_script="/etc/init.d/$service_name"
+        local is_enabled=false
 
-        # Check if service is supposed to be enabled
-        /etc/init.d/$service_name enabled >/dev/null 2>&1 || continue
+        if [ -x "$ctl_script" ]; then
+            # Check via UCI for LXC/Docker services
+            local uci_enabled=$(uci -q get "$service_name.main.enabled" 2>/dev/null || echo "0")
+            [ "$uci_enabled" = "1" ] && is_enabled=true
+        elif [ -x "$init_script" ]; then
+            $init_script enabled >/dev/null 2>&1 && is_enabled=true
+        fi
 
+        # Skip disabled services
+        [ "$is_enabled" = "false" ] && continue
+
+        checked_count=$((checked_count + 1))
         local is_running=false
+        local status_detail=""
 
         case "$check_method" in
             pid)
-                # Check via pidof or pgrep
+                # Check via pgrep
                 if pgrep "$service_name" >/dev/null 2>&1; then
                     is_running=true
+                    status_detail="pid=$(pgrep -o "$service_name")"
                 fi
                 ;;
             docker)
-                # Check Docker container
-                if docker ps --filter "name=$service_name" --format "{{.Names}}" 2>/dev/null | grep -q "$service_name"; then
+                # Check Docker container (secbx- prefix)
+                local container_name="secbx-${service_name}"
+                if docker ps --filter "name=$container_name" --format "{{.Names}}" 2>/dev/null | grep -q "$container_name"; then
                     is_running=true
+                    status_detail="container=$container_name"
                 fi
                 ;;
             lxc)
                 # Check LXC container
                 if lxc-info -n "$service_name" -s 2>/dev/null | grep -q "RUNNING"; then
                     is_running=true
+                    # Get container IP if available
+                    local lxc_ip=$(lxc-info -n "$service_name" -i 2>/dev/null | awk '{print $2}' | head -1)
+                    [ -n "$lxc_ip" ] && status_detail="ip=$lxc_ip"
                 fi
                 ;;
             port:*)
                 # Check if port is listening
                 local port=$(echo "$check_method" | cut -d: -f2)
-                # Use /proc/net/tcp (ports in hex)
                 local port_hex=$(printf '%04X' "$port")
                 if grep -q ":$port_hex " /proc/net/tcp /proc/net/tcp6 2>/dev/null; then
                     is_running=true
+                    status_detail="port=$port"
                 fi
                 ;;
         esac
 
-        if [ "$is_running" = "false" ]; then
+        if [ "$is_running" = "true" ]; then
+            running_count=$((running_count + 1))
+            services_status="$services_status ${service_name}:ok"
+        else
+            services_status="$services_status ${service_name}:down"
             log warn "Watchdog: $service_name is down, restarting..."
             sleep "$restart_delay"
 
             # Double-check before restart (service might have recovered)
             case "$check_method" in
-                pid) pgrep "$service_name" >/dev/null 2>&1 && continue ;;
+                pid) pgrep "$service_name" >/dev/null 2>&1 && { running_count=$((running_count + 1)); continue; } ;;
+                lxc) lxc-info -n "$service_name" -s 2>/dev/null | grep -q "RUNNING" && { running_count=$((running_count + 1)); continue; } ;;
             esac
 
-            /etc/init.d/$service_name restart >/dev/null 2>&1
+            # Restart using ctl script if available, otherwise init.d
+            if [ -x "$ctl_script" ]; then
+                $ctl_script restart >/dev/null 2>&1 &
+            elif [ -x "$init_script" ]; then
+                $init_script restart >/dev/null 2>&1 &
+            fi
             restart_count=$((restart_count + 1))
 
-            # Log restart event
             log info "Watchdog: Restarted $service_name"
         fi
     done
 
-    # Save watchdog state
+    # Save detailed watchdog state
     json_init
     json_add_string "last_check" "$(date -Iseconds)"
     json_add_int "restarts" "$restart_count"
+    json_add_int "checked" "$checked_count"
+    json_add_int "running" "$running_count"
+
+    json_add_object "services"
+    for svc_status in $services_status; do
+        local svc=$(echo "$svc_status" | cut -d: -f1)
+        local status=$(echo "$svc_status" | cut -d: -f2)
+        json_add_string "$svc" "$status"
+    done
+    json_close_object
+
     json_dump > "$WATCHDOG_STATE" 2>/dev/null
 
     return 0

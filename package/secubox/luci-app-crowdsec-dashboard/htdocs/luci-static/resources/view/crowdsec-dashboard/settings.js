@@ -4,309 +4,266 @@
 'require ui';
 'require crowdsec-dashboard.api as api';
 
-/**
- * CrowdSec SOC - Settings View
- * System configuration and management
- */
-
 return view.extend({
-	title: _('Settings'),
 	status: {},
-	machines: [],
-	collections: [],
+	settings: {},
 
 	load: function() {
 		var link = document.createElement('link');
 		link.rel = 'stylesheet';
-		link.href = L.resource('crowdsec-dashboard/soc.css');
+		link.href = L.resource('crowdsec-dashboard/dashboard.css');
 		document.head.appendChild(link);
-		document.body.classList.add('cs-soc-fullwidth');
-
 		return Promise.all([
 			api.getStatus(),
+			api.getSettings(),
 			api.getMachines(),
-			api.getCollections(),
-			api.getAcquisitionConfig()
+			api.getCollections()
 		]);
 	},
 
 	render: function(data) {
 		var self = this;
 		this.status = data[0] || {};
-		var machinesData = data[1] || {};
-		this.machines = Array.isArray(machinesData) ? machinesData : (machinesData.machines || []);
-		var collectionsData = data[2] || {};
-		this.collections = collectionsData.collections || [];
-		if (this.collections.collections) this.collections = this.collections.collections;
-		this.acquisition = data[3] || {};
+		this.settings = data[1] || {};
+		var machines = Array.isArray(data[2]) ? data[2] : (data[2].machines || []);
+		var colData = data[3] || {};
+		var collections = colData.collections || [];
 
-		return E('div', { 'class': 'soc-dashboard' }, [
-			this.renderHeader(),
-			this.renderNav('settings'),
-			E('div', { 'class': 'soc-stats' }, this.renderServiceStats()),
-			E('div', { 'class': 'soc-grid-2' }, [
-				E('div', { 'class': 'soc-card' }, [
-					E('div', { 'class': 'soc-card-header' }, [
-						'Service Control',
-						E('span', { 'class': 'soc-severity ' + (this.status.crowdsec === 'running' ? 'low' : 'critical') },
-							this.status.crowdsec === 'running' ? 'RUNNING' : 'STOPPED')
-					]),
-					E('div', { 'class': 'soc-card-body' }, this.renderServiceControl())
-				]),
-				E('div', { 'class': 'soc-card' }, [
-					E('div', { 'class': 'soc-card-header' }, 'Acquisition Sources'),
-					E('div', { 'class': 'soc-card-body' }, this.renderAcquisition())
+		return E('div', { 'class': 'cs-view' }, [
+			// Header
+			E('div', { 'class': 'cs-header' }, [
+				E('div', { 'class': 'cs-title' }, 'CrowdSec Settings'),
+				E('div', { 'class': 'cs-status' }, [
+					E('span', { 'class': 'cs-dot ' + (this.status.crowdsec === 'running' ? 'online' : 'offline') }),
+					this.status.crowdsec === 'running' ? 'Running' : 'Stopped'
 				])
 			]),
-			E('div', { 'class': 'soc-card' }, [
-				E('div', { 'class': 'soc-card-header' }, [
-					'Installed Collections (' + this.collections.filter(function(c) { return c.status === 'enabled' || c.installed; }).length + ')',
-					E('button', { 'class': 'soc-btn soc-btn-sm', 'click': L.bind(this.updateHub, this) }, 'Update Hub')
-				]),
-				E('div', { 'class': 'soc-card-body', 'id': 'collections-list' }, this.renderCollections())
-			]),
-			E('div', { 'class': 'soc-card' }, [
-				E('div', { 'class': 'soc-card-header' }, 'Registered Machines'),
-				E('div', { 'class': 'soc-card-body' }, this.renderMachines())
-			]),
-			E('div', { 'class': 'soc-card' }, [
-				E('div', { 'class': 'soc-card-header' }, 'Configuration Files'),
-				E('div', { 'class': 'soc-card-body' }, this.renderConfigFiles())
-			])
-		]);
-	},
 
-	renderHeader: function() {
-		return E('div', { 'class': 'soc-header' }, [
-			E('div', { 'class': 'soc-title' }, [
-				E('svg', { 'viewBox': '0 0 24 24' }, [E('path', { 'd': 'M12 2L2 7v10l10 5 10-5V7L12 2z' })]),
-				'CrowdSec Security Operations'
+			// Navigation
+			this.renderNav('settings'),
+
+			// Service Control
+			E('div', { 'class': 'cs-card' }, [
+				E('div', { 'class': 'cs-card-header' }, 'Service Control'),
+				E('div', { 'class': 'cs-card-body' }, [
+					E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem;' }, [
+						E('button', { 'class': 'cs-btn', 'click': function() { self.svcAction('start'); } }, 'Start'),
+						E('button', { 'class': 'cs-btn', 'click': function() { self.svcAction('stop'); } }, 'Stop'),
+						E('button', { 'class': 'cs-btn', 'click': function() { self.svcAction('restart'); } }, 'Restart')
+					]),
+					this.renderHealth()
+				])
 			]),
-			E('div', { 'class': 'soc-status' }, [E('span', { 'class': 'soc-status-dot online' }), 'SETTINGS'])
+
+			// Console Enrollment
+			E('div', { 'class': 'cs-card' }, [
+				E('div', { 'class': 'cs-card-header' }, [
+					'Console Enrollment',
+					E('span', { 'class': 'cs-badge ' + (this.status.capi_enrolled ? 'success' : 'warning') },
+						this.status.capi_enrolled ? 'Enrolled' : 'Not Enrolled')
+				]),
+				E('div', { 'class': 'cs-card-body', 'id': 'enrollment-section' }, this.renderEnrollment())
+			]),
+
+			// Two column
+			E('div', { 'class': 'cs-grid-2' }, [
+				// Machines
+				E('div', { 'class': 'cs-card' }, [
+					E('div', { 'class': 'cs-card-header' }, 'Registered Machines'),
+					E('div', { 'class': 'cs-card-body' }, this.renderMachines(machines))
+				]),
+				// Collections
+				E('div', { 'class': 'cs-card' }, [
+					E('div', { 'class': 'cs-card-header' }, [
+						'Collections',
+						E('button', { 'class': 'cs-btn cs-btn-sm', 'click': function() { self.updateHub(); } }, 'Update')
+					]),
+					E('div', { 'class': 'cs-card-body', 'id': 'collections-list' }, this.renderCollections(collections))
+				])
+			])
 		]);
 	},
 
 	renderNav: function(active) {
-		var tabs = ['overview', 'alerts', 'decisions', 'bouncers', 'settings'];
-		return E('div', { 'class': 'soc-nav' }, tabs.map(function(t) {
+		var tabs = [
+			{ id: 'overview', label: 'Overview' },
+			{ id: 'alerts', label: 'Alerts' },
+			{ id: 'decisions', label: 'Decisions' },
+			{ id: 'bouncers', label: 'Bouncers' },
+			{ id: 'settings', label: 'Settings' }
+		];
+		return E('div', { 'class': 'cs-nav' }, tabs.map(function(t) {
 			return E('a', {
-				'href': L.url('admin/secubox/security/crowdsec/' + t),
-				'class': active === t ? 'active' : ''
-			}, t.charAt(0).toUpperCase() + t.slice(1));
+				'href': L.url('admin/secubox/services/crowdsec/' + t.id),
+				'class': active === t.id ? 'active' : ''
+			}, t.label);
 		}));
 	},
 
-	renderServiceStats: function() {
+	renderHealth: function() {
 		var s = this.status;
-		return [
-			E('div', { 'class': 'soc-stat ' + (s.crowdsec === 'running' ? 'success' : 'danger') }, [
-				E('div', { 'class': 'soc-stat-value' }, s.crowdsec === 'running' ? 'ON' : 'OFF'),
-				E('div', { 'class': 'soc-stat-label' }, 'CrowdSec Agent')
-			]),
-			E('div', { 'class': 'soc-stat ' + (s.lapi_status === 'available' ? 'success' : 'danger') }, [
-				E('div', { 'class': 'soc-stat-value' }, s.lapi_status === 'available' ? 'OK' : 'DOWN'),
-				E('div', { 'class': 'soc-stat-label' }, 'Local API')
-			]),
-			E('div', { 'class': 'soc-stat' }, [
-				E('div', { 'class': 'soc-stat-value' }, s.version || 'N/A'),
-				E('div', { 'class': 'soc-stat-label' }, 'Version')
-			]),
-			E('div', { 'class': 'soc-stat' }, [
-				E('div', { 'class': 'soc-stat-value' }, String(this.machines.length)),
-				E('div', { 'class': 'soc-stat-label' }, 'Machines')
-			])
+		var checks = [
+			{ label: 'Agent', ok: s.crowdsec === 'running' },
+			{ label: 'LAPI', ok: s.lapi_status === 'available' },
+			{ label: 'CAPI', ok: s.capi_enrolled }
 		];
+		return E('div', { 'class': 'cs-health' }, checks.map(function(c) {
+			return E('div', { 'class': 'cs-health-item' }, [
+				E('div', { 'class': 'cs-health-icon ' + (c.ok ? 'ok' : 'error') }, c.ok ? '\u2713' : '\u2717'),
+				E('div', {}, [
+					E('div', { 'class': 'cs-health-label' }, c.label),
+					E('div', { 'class': 'cs-health-value' }, c.ok ? 'OK' : 'Error')
+				])
+			]);
+		}));
 	},
 
-	renderServiceControl: function() {
+	renderEnrollment: function() {
 		var self = this;
-		var running = this.status.crowdsec === 'running';
+		var enrolled = this.status.capi_enrolled;
+		var key = this.settings.enrollment_key || '';
+		var name = this.settings.machine_name || '';
+
 		return E('div', {}, [
-			E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;' }, [
-				E('button', {
-					'class': 'soc-btn ' + (running ? '' : 'primary'),
-					'click': function() { self.serviceAction('start'); }
-				}, 'Start'),
-				E('button', {
-					'class': 'soc-btn ' + (running ? 'danger' : ''),
-					'click': function() { self.serviceAction('stop'); }
-				}, 'Stop'),
-				E('button', {
-					'class': 'soc-btn',
-					'click': function() { self.serviceAction('restart'); }
-				}, 'Restart'),
-				E('button', {
-					'class': 'soc-btn',
-					'click': function() { self.serviceAction('reload'); }
-				}, 'Reload')
+			E('p', { 'style': 'color: var(--cs-muted); margin-bottom: 1rem;' },
+				'Enroll to receive community blocklists from CrowdSec Console.'),
+			E('div', { 'class': 'cs-field' }, [
+				E('label', { 'class': 'cs-label' }, 'Enrollment Key'),
+				E('input', { 'type': 'text', 'id': 'enroll-key', 'class': 'cs-input', 'value': key,
+					'placeholder': 'Get key from app.crowdsec.net' })
 			]),
-			E('div', { 'class': 'soc-health' }, [
-				E('div', { 'class': 'soc-health-item' }, [
-					E('div', { 'class': 'soc-health-icon ' + (running ? 'ok' : 'error') }, running ? '\u2713' : '\u2717'),
-					E('div', {}, [
-						E('div', { 'class': 'soc-health-label' }, 'Agent'),
-						E('div', { 'class': 'soc-health-value' }, running ? 'Running' : 'Stopped')
-					])
-				]),
-				E('div', { 'class': 'soc-health-item' }, [
-					E('div', { 'class': 'soc-health-icon ' + (this.status.lapi_status === 'available' ? 'ok' : 'error') },
-						this.status.lapi_status === 'available' ? '\u2713' : '\u2717'),
-					E('div', {}, [
-						E('div', { 'class': 'soc-health-label' }, 'LAPI'),
-						E('div', { 'class': 'soc-health-value' }, this.status.lapi_status === 'available' ? 'Available' : 'Unavailable')
-					])
-				]),
-				E('div', { 'class': 'soc-health-item' }, [
-					E('div', { 'class': 'soc-health-icon ' + (this.status.capi_enrolled ? 'ok' : 'warn') },
-						this.status.capi_enrolled ? '\u2713' : '!'),
-					E('div', {}, [
-						E('div', { 'class': 'soc-health-label' }, 'CAPI'),
-						E('div', { 'class': 'soc-health-value' }, this.status.capi_enrolled ? 'Enrolled' : 'Not enrolled')
-					])
-				])
-			])
+			E('div', { 'class': 'cs-field' }, [
+				E('label', { 'class': 'cs-label' }, 'Machine Name (optional)'),
+				E('input', { 'type': 'text', 'id': 'machine-name', 'class': 'cs-input', 'value': name,
+					'placeholder': 'Custom name for this machine' })
+			]),
+			E('div', { 'style': 'display: flex; gap: 8px;' }, [
+				E('button', { 'class': 'cs-btn primary', 'click': function() { self.saveAndEnroll(); } },
+					enrolled ? 'Re-enroll' : 'Save & Enroll'),
+				E('button', { 'class': 'cs-btn', 'click': function() { self.saveSettings(); } }, 'Save Only'),
+				enrolled ? E('button', { 'class': 'cs-btn danger', 'click': function() { self.disableConsole(); } }, 'Disable') : null
+			].filter(Boolean))
 		]);
 	},
 
-	renderAcquisition: function() {
-		var acq = this.acquisition;
-		var sources = [
-			{ name: 'Syslog', enabled: acq.syslog_enabled, path: acq.syslog_path },
-			{ name: 'SSH', enabled: acq.ssh_enabled },
-			{ name: 'Firewall', enabled: acq.firewall_enabled },
-			{ name: 'HTTP', enabled: acq.http_enabled }
-		];
-		return E('div', { 'class': 'soc-health' }, sources.map(function(src) {
-			return E('div', { 'class': 'soc-health-item' }, [
-				E('div', { 'class': 'soc-health-icon ' + (src.enabled ? 'ok' : 'error') }, src.enabled ? '\u2713' : '\u2717'),
-				E('div', {}, [
-					E('div', { 'class': 'soc-health-label' }, src.name),
-					E('div', { 'class': 'soc-health-value' }, src.enabled ? (src.path || 'Enabled') : 'Disabled')
-				])
-			]);
-		}));
+	renderMachines: function(machines) {
+		if (!machines.length) {
+			return E('div', { 'class': 'cs-empty' }, 'No machines registered');
+		}
+		return E('table', { 'class': 'cs-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', {}, 'Machine'),
+				E('th', {}, 'Status')
+			])),
+			E('tbody', {}, machines.map(function(m) {
+				var active = m.isValidated || m.is_validated;
+				return E('tr', {}, [
+					E('td', {}, m.machineId || m.machine_id || '-'),
+					E('td', {}, E('span', { 'class': 'cs-badge ' + (active ? 'success' : 'warning') },
+						active ? 'Active' : 'Pending'))
+				]);
+			}))
+		]);
 	},
 
-	renderCollections: function() {
+	renderCollections: function(collections) {
 		var self = this;
-		var installed = this.collections.filter(function(c) {
-			return c.status === 'enabled' || c.installed === 'ok';
+		var installed = collections.filter(function(c) {
+			return c.status === 'enabled' || c.installed;
 		});
-
 		if (!installed.length) {
-			return E('div', { 'class': 'soc-empty' }, [
-				E('div', { 'class': 'soc-empty-icon' }, '\u26A0'),
-				'No collections installed. Click "Update Hub" to fetch available collections.'
-			]);
+			return E('div', { 'class': 'cs-empty' }, 'No collections installed');
 		}
-
-		return E('table', { 'class': 'soc-table' }, [
+		return E('table', { 'class': 'cs-table' }, [
 			E('thead', {}, E('tr', {}, [
 				E('th', {}, 'Collection'),
-				E('th', {}, 'Version'),
-				E('th', {}, 'Status'),
-				E('th', {}, 'Actions')
+				E('th', {}, 'Action')
 			])),
 			E('tbody', {}, installed.map(function(c) {
 				return E('tr', {}, [
-					E('td', {}, E('span', { 'class': 'soc-scenario' }, c.name || 'Unknown')),
-					E('td', { 'class': 'soc-time' }, c.version || c.local_version || 'N/A'),
-					E('td', {}, E('span', { 'class': 'soc-severity low' }, 'INSTALLED')),
-					E('td', {}, E('button', {
-						'class': 'soc-btn soc-btn-sm danger',
-						'click': function() { self.removeCollection(c.name); }
-					}, 'Remove'))
+					E('td', {}, c.name || '-'),
+					E('td', {}, E('button', { 'class': 'cs-btn cs-btn-sm danger',
+						'click': function() { self.removeCollection(c.name); } }, 'Remove'))
 				]);
 			}))
 		]);
 	},
 
-	renderMachines: function() {
-		if (!this.machines.length) {
-			return E('div', { 'class': 'soc-empty' }, 'No machines registered');
-		}
-
-		return E('table', { 'class': 'soc-table' }, [
-			E('thead', {}, E('tr', {}, [
-				E('th', {}, 'Machine ID'),
-				E('th', {}, 'IP Address'),
-				E('th', {}, 'Last Update'),
-				E('th', {}, 'Status')
-			])),
-			E('tbody', {}, this.machines.map(function(m) {
-				var isActive = m.isValidated || m.is_validated;
-				return E('tr', {}, [
-					E('td', {}, E('strong', {}, m.machineId || m.machine_id || 'Unknown')),
-					E('td', {}, E('span', { 'class': 'soc-ip' }, m.ipAddress || m.ip_address || 'N/A')),
-					E('td', { 'class': 'soc-time' }, api.formatRelativeTime(m.updated_at || m.updatedAt)),
-					E('td', {}, E('span', { 'class': 'soc-severity ' + (isActive ? 'low' : 'medium') },
-						isActive ? 'ACTIVE' : 'PENDING'))
-				]);
-			}))
-		]);
-	},
-
-	renderConfigFiles: function() {
-		var configs = [
-			{ label: 'Main Config', path: '/etc/crowdsec/config.yaml' },
-			{ label: 'Acquisition', path: '/etc/crowdsec/acquis.yaml' },
-			{ label: 'Profiles', path: '/etc/crowdsec/profiles.yaml' },
-			{ label: 'Local API', path: '/etc/crowdsec/local_api_credentials.yaml' },
-			{ label: 'Firewall Bouncer', path: '/etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml' }
-		];
-
-		return E('div', { 'style': 'display: grid; gap: 8px;' }, configs.map(function(cfg) {
-			return E('div', { 'style': 'display: flex; justify-content: space-between; align-items: center; padding: 8px; background: var(--soc-bg); border-radius: 4px;' }, [
-				E('span', { 'style': 'color: var(--soc-text-muted);' }, cfg.label),
-				E('code', { 'class': 'soc-ip' }, cfg.path)
-			]);
-		}));
-	},
-
-	serviceAction: function(action) {
+	svcAction: function(action) {
 		var self = this;
 		api.serviceControl(action).then(function(r) {
 			if (r.success) {
-				self.showToast('Service ' + action + ' successful', 'success');
+				self.toast('Service ' + action + ' OK', 'success');
 				setTimeout(function() { location.reload(); }, 1500);
 			} else {
-				self.showToast('Failed: ' + (r.error || 'Unknown'), 'error');
+				self.toast('Failed: ' + (r.error || 'Unknown'), 'error');
 			}
+		});
+	},
+
+	saveSettings: function() {
+		var self = this;
+		var key = document.getElementById('enroll-key').value.trim();
+		var name = document.getElementById('machine-name').value.trim();
+		api.saveSettings(key, name, '0').then(function(r) {
+			self.toast(r.success ? 'Settings saved' : 'Failed', r.success ? 'success' : 'error');
+		});
+	},
+
+	saveAndEnroll: function() {
+		var self = this;
+		var key = document.getElementById('enroll-key').value.trim();
+		var name = document.getElementById('machine-name').value.trim();
+		if (!key) { self.toast('Enter enrollment key', 'error'); return; }
+
+		api.saveSettings(key, name, '1').then(function(r) {
+			if (!r.success) { self.toast('Save failed', 'error'); return; }
+			return api.consoleEnroll(key, name);
+		}).then(function(r) {
+			if (r && r.success) {
+				self.toast('Enrolled!', 'success');
+				setTimeout(function() { location.reload(); }, 2000);
+			} else if (r) {
+				self.toast('Enroll failed: ' + (r.error || ''), 'error');
+			}
+		});
+	},
+
+	disableConsole: function() {
+		var self = this;
+		if (!confirm('Disable console enrollment?')) return;
+		api.consoleDisable().then(function(r) {
+			self.toast(r.success ? 'Disabled' : 'Failed', r.success ? 'success' : 'error');
+			if (r.success) setTimeout(function() { location.reload(); }, 1500);
 		});
 	},
 
 	updateHub: function() {
 		var self = this;
 		api.updateHub().then(function(r) {
-			if (r.success) {
-				self.showToast('Hub updated', 'success');
-				setTimeout(function() { location.reload(); }, 1500);
-			} else {
-				self.showToast('Failed: ' + (r.error || 'Unknown'), 'error');
-			}
+			self.toast(r.success ? 'Hub updated' : 'Failed', r.success ? 'success' : 'error');
+			if (r.success) setTimeout(function() { location.reload(); }, 1500);
 		});
 	},
 
 	removeCollection: function(name) {
 		var self = this;
-		if (!confirm('Remove collection "' + name + '"?')) return;
+		if (!confirm('Remove ' + name + '?')) return;
 		api.removeCollection(name).then(function(r) {
-			if (r.success) {
-				self.showToast('Collection removed', 'success');
-				setTimeout(function() { location.reload(); }, 1500);
-			} else {
-				self.showToast('Failed: ' + (r.error || 'Unknown'), 'error');
-			}
+			self.toast(r.success ? 'Removed' : 'Failed', r.success ? 'success' : 'error');
+			if (r.success) setTimeout(function() { location.reload(); }, 1500);
 		});
 	},
 
-	showToast: function(msg, type) {
-		var t = document.querySelector('.soc-toast');
+	toast: function(msg, type) {
+		var t = document.querySelector('.cs-toast');
 		if (t) t.remove();
-		t = E('div', { 'class': 'soc-toast ' + type }, msg);
+		t = E('div', { 'class': 'cs-toast ' + type }, msg);
 		document.body.appendChild(t);
 		setTimeout(function() { t.remove(); }, 4000);
 	},
 
-	handleSaveApply: null, handleSave: null, handleReset: null
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

@@ -1,7 +1,26 @@
 {
 	"luci-app-mitmproxy": {
 		"description": "Grant access to mitmproxy",
-		"read": { "ubus": { "luci.mitmproxy": ["status"] }, "uci": ["mitmproxy"] },
-		"write": { "ubus": { "luci.mitmproxy": ["install", "start", "stop", "restart"] }, "uci": ["mitmproxy"] }
+		"read": {
+			"ubus": {
+				"luci.mitmproxy": ["status", "settings"]
+			},
+			"uci": ["mitmproxy"]
+		},
+		"write": {
+			"ubus": {
+				"luci.mitmproxy": [
+					"install",
+					"start",
+					"stop",
+					"restart",
+					"save_settings",
+					"set_mode",
+					"setup_firewall",
+					"clear_firewall"
+				]
+			},
+			"uci": ["mitmproxy"]
+		}
 	}
 }

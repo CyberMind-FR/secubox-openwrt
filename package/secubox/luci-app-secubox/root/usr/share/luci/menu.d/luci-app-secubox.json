@@ -9,23 +9,23 @@
             "acl": ["luci-app-secubox"]
         }
     },
+    "admin/secubox/wizard": {
+        "title": "Setup Wizard",
+        "order": 5,
+        "action": {
+            "type": "view",
+            "path": "secubox/wizard"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
+        }
+    },
     "admin/secubox/dashboard": {
         "title": "Dashboard",
         "order": 10,
         "action": {
             "type": "view",
             "path": "secubox/dashboard"
-        },
-        "depends": {
-            "acl": ["luci-app-secubox"]
-        }
-    },
-    "admin/secubox/wizard": {
-        "title": "First-Run Wizard",
-        "order": 15,
-        "action": {
-            "type": "view",
-            "path": "secubox/wizard"
         },
         "depends": {
             "acl": ["luci-app-secubox"]
@@ -175,10 +175,21 @@
         }
     },
     "admin/secubox/services": {
-        "title": "Services & Applications",
+        "title": "Services",
         "order": 60,
         "action": {
             "type": "firstchild"
+        },
+        "depends": {
+            "acl": ["luci-app-secubox"]
+        }
+    },
+    "admin/secubox/services/registry": {
+        "title": "Registry",
+        "order": 90,
+        "action": {
+            "type": "view",
+            "path": "secubox/services"
         },
         "depends": {
             "acl": ["luci-app-secubox"]

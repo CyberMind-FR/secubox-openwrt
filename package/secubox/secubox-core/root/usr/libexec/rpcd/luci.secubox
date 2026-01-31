@@ -163,6 +163,11 @@ case "$1" in
 		json_add_object "get_alerts"
 		json_close_object
 
+		# Quick actions
+		json_add_object "quick_action"
+			json_add_string "action" "string"
+		json_close_object
+
 		# State management
 		json_add_object "get_component_state"
 			json_add_string "component_id" "string"
@@ -235,6 +240,120 @@ case "$1" in
 
 		# Services discovery
 		json_add_object "get_services"
+		json_close_object
+
+		# Proxy mode management
+		json_add_object "get_proxy_mode"
+		json_close_object
+
+		json_add_object "set_proxy_mode"
+			json_add_string "mode" "string"
+		json_close_object
+
+		# Feed management (new)
+		json_add_object "list_feeds"
+		json_close_object
+
+		json_add_object "add_feed"
+			json_add_string "name" "string"
+			json_add_string "url" "string"
+			json_add_string "feed_type" "string"
+			json_add_string "description" "string"
+		json_close_object
+
+		json_add_object "remove_feed"
+			json_add_string "name" "string"
+		json_close_object
+
+		json_add_object "share_feed"
+			json_add_string "name" "string"
+		json_close_object
+
+		json_add_object "import_feed"
+			json_add_string "url" "string"
+		json_close_object
+
+		# Profile management (extended)
+		json_add_object "export_profile"
+			json_add_string "name" "string"
+			json_add_boolean "include_feeds" "boolean"
+		json_close_object
+
+		json_add_object "import_profile"
+			json_add_string "url" "string"
+			json_add_string "mode" "string"
+		json_close_object
+
+		json_add_object "share_profile"
+			json_add_string "profile" "string"
+		json_close_object
+
+		# Skill management (new)
+		json_add_object "list_skills"
+		json_close_object
+
+		json_add_object "get_skill_providers"
+			json_add_string "skill" "string"
+		json_close_object
+
+		json_add_object "install_skill"
+			json_add_string "skill" "string"
+		json_close_object
+
+		json_add_object "check_skills"
+			json_add_string "profile" "string"
+		json_close_object
+
+		# Feedback management (new)
+		json_add_object "report_issue"
+			json_add_string "app_id" "string"
+			json_add_string "type" "string"
+			json_add_string "summary" "string"
+			json_add_string "details" "string"
+		json_close_object
+
+		json_add_object "resolve_issue"
+			json_add_string "issue_id" "string"
+			json_add_string "description" "string"
+		json_close_object
+
+		json_add_object "search_resolutions"
+			json_add_string "keyword" "string"
+		json_close_object
+
+		json_add_object "list_issues"
+			json_add_string "filter" "string"
+		json_close_object
+
+		# P2P Hub - Collaborative catalog sharing
+		json_add_object "p2p_get_peers"
+		json_close_object
+
+		json_add_object "p2p_discover"
+		json_close_object
+
+		json_add_object "p2p_add_peer"
+			json_add_string "address" "string"
+			json_add_string "name" "string"
+		json_close_object
+
+		json_add_object "p2p_remove_peer"
+			json_add_string "peer_id" "string"
+		json_close_object
+
+		json_add_object "p2p_get_peer_catalog"
+			json_add_string "peer_id" "string"
+		json_close_object
+
+		json_add_object "p2p_share_catalog"
+			json_add_boolean "enabled" "boolean"
+		json_close_object
+
+		json_add_object "p2p_get_settings"
+		json_close_object
+
+		json_add_object "p2p_set_settings"
+			json_add_object "settings"
 		json_close_object
 
 	json_dump
@@ -897,7 +1016,70 @@ case "$1" in
 				json_dump
 				;;
 
+			quick_action)
+				read -r input
+				action=$(echo "$input" | jsonfilter -e '@.action')
+				json_init
 
+				case "$action" in
+					restart_services)
+						# Restart all SecuBox services
+						for svc in haproxy crowdsec tor netifyd; do
+							if [ -x "/etc/init.d/$svc" ]; then
+								/etc/init.d/$svc restart 2>/dev/null &
+							elif [ -x "/usr/sbin/${svc}ctl" ]; then
+								/usr/sbin/${svc}ctl restart 2>/dev/null &
+							fi
+						done
+						json_add_boolean "success" 1
+						json_add_string "message" "Services restart initiated"
+						;;
+					restart_*)
+						# Restart specific service: restart_haproxy, restart_crowdsec, etc.
+						svc_name="${action#restart_}"
+						if [ -x "/etc/init.d/$svc_name" ]; then
+							/etc/init.d/$svc_name restart 2>/dev/null
+							json_add_boolean "success" 1
+							json_add_string "message" "Service $svc_name restarted"
+						elif [ -x "/usr/sbin/${svc_name}ctl" ]; then
+							/usr/sbin/${svc_name}ctl restart 2>/dev/null
+							json_add_boolean "success" 1
+							json_add_string "message" "Service $svc_name restarted"
+						else
+							json_add_boolean "success" 0
+							json_add_string "message" "Service $svc_name not found"
+						fi
+						;;
+					update_packages)
+						opkg update 2>/dev/null &
+						json_add_boolean "success" 1
+						json_add_string "message" "Package update initiated"
+						;;
+					view_logs)
+						# Return recent system logs
+						json_add_boolean "success" 1
+						json_add_string "redirect" "/cgi-bin/luci/admin/status/syslog"
+						;;
+					export_config)
+						# Export configuration
+						if [ -x "/usr/sbin/secubox-recovery" ]; then
+							snapshot_name="export-$(date +%Y%m%d-%H%M%S)"
+							/usr/sbin/secubox-recovery snapshot "$snapshot_name" 2>/dev/null
+							json_add_boolean "success" 1
+							json_add_string "message" "Configuration exported as $snapshot_name"
+						else
+							json_add_boolean "success" 0
+							json_add_string "message" "Recovery system not available"
+						fi
+						;;
+					*)
+						json_add_boolean "success" 0
+						json_add_string "message" "Unknown action: $action"
+						;;
+				esac
+
+				json_dump
+				;;
 
 			getLogs)
 				read -r input
@@ -1658,6 +1840,697 @@ case "$1" in
 			json_dump
 			;;
 
+		get_proxy_mode)
+			json_init
+			local mode="direct"
+			local wpad_enabled=0
+
+			# Check if WPAD PAC file exists and determine mode
+			if [ -f "/www/wpad/wpad.dat" ]; then
+				wpad_enabled=1
+				if grep -q "SOCKS5.*9050" /www/wpad/wpad.dat 2>/dev/null; then
+					mode="tor"
+				elif grep -q "PROXY.*3128" /www/wpad/wpad.dat 2>/dev/null; then
+					mode="cdn"
+				elif grep -q "PROXY.*8080" /www/wpad/wpad.dat 2>/dev/null; then
+					mode="mitmproxy"
+				fi
+			fi
+
+			# Check DHCP WPAD option
+			local dhcp_wpad=$(uci -q get dhcp.lan.dhcp_option | grep -c "252")
+
+			json_add_string "mode" "$mode"
+			json_add_boolean "wpad_enabled" "$wpad_enabled"
+			json_add_boolean "dhcp_wpad" "$dhcp_wpad"
+			json_add_string "pac_url" "http://192.168.255.1/wpad/wpad.dat"
+			json_dump
+			;;
+
+		set_proxy_mode)
+			read input
+			json_load "$input"
+			json_get_var mode mode
+
+			json_init
+
+			mkdir -p /www/wpad
+
+			case "$mode" in
+				direct)
+					# Remove PAC file for direct mode
+					rm -f /www/wpad/wpad.dat
+					uci -q delete dhcp.lan.dhcp_option
+					uci commit dhcp
+					json_add_boolean "success" 1
+					json_add_string "message" "Proxy disabled - direct connections"
+					;;
+				cdn)
+					# CDN cache mode - HTTP through nginx cache
+					cat > /www/wpad/wpad.dat << 'PACEOF'
+function FindProxyForURL(url, host) {
+    if (isPlainHostName(host) || shExpMatch(host, "*.local") || shExpMatch(host, "*.lan") ||
+        isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0") ||
+        isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0") ||
+        isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0") ||
+        isInNet(dnsResolve(host), "127.0.0.0", "255.0.0.0")) {
+        return "DIRECT";
+    }
+    if (url.substring(0, 5) == "http:") {
+        return "PROXY 192.168.255.1:3128; DIRECT";
+    }
+    return "DIRECT";
+}
+PACEOF
+					uci set dhcp.lan.dhcp_option="252,http://192.168.255.1/wpad/wpad.dat"
+					uci commit dhcp
+					json_add_boolean "success" 1
+					json_add_string "message" "CDN cache mode enabled - HTTP cached"
+					;;
+				tor)
+					# Tor bypass mode - HTTPS through Tor SOCKS
+					cat > /www/wpad/wpad.dat << 'PACEOF'
+function FindProxyForURL(url, host) {
+    if (isPlainHostName(host) || shExpMatch(host, "*.local") || shExpMatch(host, "*.lan") ||
+        isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0") ||
+        isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0") ||
+        isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0") ||
+        isInNet(dnsResolve(host), "127.0.0.0", "255.0.0.0")) {
+        return "DIRECT";
+    }
+    if (url.substring(0, 5) == "http:") {
+        return "PROXY 192.168.255.1:3128; DIRECT";
+    }
+    if (url.substring(0, 6) == "https:") {
+        return "SOCKS5 192.168.255.1:9050; DIRECT";
+    }
+    return "DIRECT";
+}
+PACEOF
+					uci set dhcp.lan.dhcp_option="252,http://192.168.255.1/wpad/wpad.dat"
+					uci commit dhcp
+					json_add_boolean "success" 1
+					json_add_string "message" "Tor bypass mode enabled - HTTPS through Tor"
+					;;
+				mitmproxy)
+					# mitmproxy mode - all traffic through mitmproxy
+					cat > /www/wpad/wpad.dat << 'PACEOF'
+function FindProxyForURL(url, host) {
+    if (isPlainHostName(host) || shExpMatch(host, "*.local") || shExpMatch(host, "*.lan") ||
+        isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0") ||
+        isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0") ||
+        isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0") ||
+        isInNet(dnsResolve(host), "127.0.0.0", "255.0.0.0")) {
+        return "DIRECT";
+    }
+    return "PROXY 192.168.255.1:8080; DIRECT";
+}
+PACEOF
+					uci set dhcp.lan.dhcp_option="252,http://192.168.255.1/wpad/wpad.dat"
+					uci commit dhcp
+					json_add_boolean "success" 1
+					json_add_string "message" "mitmproxy mode enabled - all traffic inspectable"
+					;;
+				*)
+					json_add_boolean "success" 0
+					json_add_string "error" "Unknown mode: $mode"
+					;;
+			esac
+
+			# Restart dnsmasq to apply DHCP changes
+			/etc/init.d/dnsmasq restart >/dev/null 2>&1 &
+
+			json_dump
+			;;
+
+		# Feed management handlers
+		list_feeds)
+			/usr/sbin/secubox-feed-manager list --json
+			;;
+
+		add_feed)
+			read -r input
+			name=$(echo "$input" | jsonfilter -e '@.name')
+			url=$(echo "$input" | jsonfilter -e '@.url')
+			feed_type=$(echo "$input" | jsonfilter -e '@.feed_type')
+			description=$(echo "$input" | jsonfilter -e '@.description')
+
+			result=$(/usr/sbin/secubox-feed-manager add "$name" "$url" --type "${feed_type:-unpublished}" --description "$description" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Feed added successfully"
+				json_add_string "name" "$name"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		remove_feed)
+			read -r input
+			name=$(echo "$input" | jsonfilter -e '@.name')
+
+			result=$(/usr/sbin/secubox-feed-manager remove "$name" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Feed removed"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		share_feed)
+			read -r input
+			name=$(echo "$input" | jsonfilter -e '@.name')
+			/usr/sbin/secubox-feed-manager share "$name"
+			;;
+
+		import_feed)
+			read -r input
+			url=$(echo "$input" | jsonfilter -e '@.url')
+
+			result=$(/usr/sbin/secubox-feed-manager import "$url" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Feed imported"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		# Profile management handlers (extended)
+		export_profile)
+			read -r input
+			name=$(echo "$input" | jsonfilter -e '@.name')
+			include_feeds=$(echo "$input" | jsonfilter -e '@.include_feeds')
+
+			args=""
+			[ -n "$name" ] && args="$args --name \"$name\""
+			[ "$include_feeds" = "true" ] && args="$args --include-feeds"
+
+			output="/tmp/secubox-profile-export-$$.json"
+			eval /usr/sbin/secubox-profile export $args --output "$output" >/dev/null 2>&1
+
+			if [ -f "$output" ]; then
+				cat "$output"
+				rm -f "$output"
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "Export failed"
+				json_dump
+			fi
+			;;
+
+		import_profile)
+			read -r input
+			url=$(echo "$input" | jsonfilter -e '@.url')
+			mode=$(echo "$input" | jsonfilter -e '@.mode')
+
+			result=$(/usr/sbin/secubox-profile import "$url" "${mode:---merge}" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Profile imported"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		share_profile)
+			read -r input
+			profile=$(echo "$input" | jsonfilter -e '@.profile')
+			/usr/sbin/secubox-profile share "$profile"
+			;;
+
+		# Skill management handlers
+		list_skills)
+			/usr/sbin/secubox-skill list --json
+			;;
+
+		get_skill_providers)
+			read -r input
+			skill=$(echo "$input" | jsonfilter -e '@.skill')
+
+			# Return JSON list of providers for skill
+			json_init
+			json_add_string "skill" "$skill"
+			json_add_array "providers"
+
+			CATALOG_FILE="/usr/share/secubox/catalog.json"
+			if [ -f "$CATALOG_FILE" ]; then
+				idx=0
+				while true; do
+					pid=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].id" 2>/dev/null)
+					[ -z "$pid" ] && break
+
+					caps=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].capabilities[@]" 2>/dev/null)
+					for cap in $caps; do
+						cap_norm=$(echo "$cap" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+						if [ "$cap_norm" = "$skill" ]; then
+							pname=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].name" 2>/dev/null)
+							pstatus=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].status" 2>/dev/null)
+							featured=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].featured" 2>/dev/null)
+
+							json_add_object ""
+							json_add_string "id" "$pid"
+							json_add_string "name" "$pname"
+							json_add_string "status" "$pstatus"
+							json_add_boolean "featured" "$([ "$featured" = "true" ] && echo 1 || echo 0)"
+
+							# Check if installed
+							main_pkg=$(jsonfilter -i "$CATALOG_FILE" -e "@.plugins[$idx].packages.required[0]" 2>/dev/null)
+							installed=0
+							if [ -n "$main_pkg" ] && opkg list-installed 2>/dev/null | grep -q "^$main_pkg "; then
+								installed=1
+							fi
+							json_add_boolean "installed" "$installed"
+							json_close_object
+							break
+						fi
+					done
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			json_close_array
+			json_dump
+			;;
+
+		install_skill)
+			read -r input
+			skill=$(echo "$input" | jsonfilter -e '@.skill')
+
+			result=$(/usr/sbin/secubox-skill install "$skill" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Skill provider installed"
+				json_add_string "skill" "$skill"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		check_skills)
+			read -r input
+			profile=$(echo "$input" | jsonfilter -e '@.profile')
+
+			# Check skills for profile or system
+			if [ -n "$profile" ]; then
+				/usr/sbin/secubox-skill check "$profile"
+			else
+				/usr/sbin/secubox-skill check
+			fi
+			;;
+
+		# Feedback management handlers
+		report_issue)
+			read -r input
+			app_id=$(echo "$input" | jsonfilter -e '@.app_id')
+			type=$(echo "$input" | jsonfilter -e '@.type')
+			summary=$(echo "$input" | jsonfilter -e '@.summary')
+			details=$(echo "$input" | jsonfilter -e '@.details')
+
+			result=$(/usr/sbin/secubox-feedback report "$app_id" --type "${type:-bug}" --summary "$summary" --details "$details" 2>&1)
+			if [ $? -eq 0 ]; then
+				# Extract issue number from result
+				issue_num=$(echo "$result" | grep -oE 'Issue #[0-9]+' | grep -oE '[0-9]+')
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Issue reported"
+				[ -n "$issue_num" ] && json_add_int "issue_number" "$issue_num"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		resolve_issue)
+			read -r input
+			issue_id=$(echo "$input" | jsonfilter -e '@.issue_id')
+			description=$(echo "$input" | jsonfilter -e '@.description')
+
+			result=$(/usr/sbin/secubox-feedback resolve "$issue_id" --description "$description" 2>&1)
+			if [ $? -eq 0 ]; then
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Resolution added"
+				json_dump
+			else
+				json_init
+				json_add_boolean "success" 0
+				json_add_string "error" "$result"
+				json_dump
+			fi
+			;;
+
+		search_resolutions)
+			read -r input
+			keyword=$(echo "$input" | jsonfilter -e '@.keyword')
+
+			# Return JSON search results
+			RESOLUTIONS_FILE="/var/lib/secubox/feedback/resolutions.json"
+			ISSUES_FILE="/var/lib/secubox/feedback/issues.json"
+
+			json_init
+			json_add_string "keyword" "$keyword"
+			json_add_array "results"
+
+			if [ -f "$RESOLUTIONS_FILE" ]; then
+				idx=0
+				while true; do
+					res_id=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].id" 2>/dev/null)
+					[ -z "$res_id" ] && break
+
+					description=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].description" 2>/dev/null)
+					issue_summary=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].issue_summary" 2>/dev/null)
+					app_id=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].app_id" 2>/dev/null)
+
+					if echo "$description $issue_summary $app_id" | grep -qi "$keyword"; then
+						issue_num=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].issue_number" 2>/dev/null)
+						upvotes=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].upvotes" 2>/dev/null)
+						verified=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].verified" 2>/dev/null)
+
+						json_add_object ""
+						json_add_string "id" "$res_id"
+						json_add_int "issue_number" "$issue_num"
+						json_add_string "app_id" "$app_id"
+						json_add_string "issue_summary" "$issue_summary"
+						json_add_string "description" "$description"
+						json_add_int "upvotes" "${upvotes:-0}"
+						json_add_boolean "verified" "$([ "$verified" = "true" ] && echo 1 || echo 0)"
+						json_close_object
+					fi
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			json_close_array
+			json_dump
+			;;
+
+		list_issues)
+			read -r input
+			filter=$(echo "$input" | jsonfilter -e '@.filter')
+
+			ISSUES_FILE="/var/lib/secubox/feedback/issues.json"
+
+			json_init
+			json_add_array "issues"
+
+			if [ -f "$ISSUES_FILE" ]; then
+				idx=0
+				while true; do
+					issue_id=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].id" 2>/dev/null)
+					[ -z "$issue_id" ] && break
+
+					status=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].status" 2>/dev/null)
+
+					# Apply filter
+					if [ -n "$filter" ] && [ "$filter" != "all" ] && [ "$filter" != "$status" ]; then
+						idx=$((idx + 1))
+						continue
+					fi
+
+					issue_num=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].number" 2>/dev/null)
+					app_id=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].app_id" 2>/dev/null)
+					summary=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].summary" 2>/dev/null)
+					issue_type=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].type" 2>/dev/null)
+					created=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].created_at" 2>/dev/null)
+
+					json_add_object ""
+					json_add_string "id" "$issue_id"
+					json_add_int "number" "$issue_num"
+					json_add_string "app_id" "$app_id"
+					json_add_string "summary" "$summary"
+					json_add_string "type" "$issue_type"
+					json_add_string "status" "$status"
+					json_add_string "created_at" "$created"
+					json_close_object
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			json_close_array
+			json_dump
+			;;
+
+		# P2P Hub - Collaborative catalog sharing
+		p2p_get_peers)
+			P2P_PEERS_FILE="/var/lib/secubox/p2p/peers.json"
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			json_init
+			json_add_array "peers"
+
+			if [ -f "$P2P_PEERS_FILE" ]; then
+				idx=0
+				while true; do
+					peer_id=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].id" 2>/dev/null)
+					[ -z "$peer_id" ] && break
+
+					peer_name=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].name" 2>/dev/null)
+					peer_addr=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].address" 2>/dev/null)
+					peer_status=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].status" 2>/dev/null)
+					last_seen=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].last_seen" 2>/dev/null)
+
+					json_add_object ""
+					json_add_string "id" "$peer_id"
+					json_add_string "name" "${peer_name:-$peer_id}"
+					json_add_string "address" "$peer_addr"
+					json_add_string "status" "${peer_status:-unknown}"
+					json_add_string "last_seen" "$last_seen"
+					json_close_object
+
+					idx=$((idx + 1))
+				done
+			fi
+
+			json_close_array
+			json_dump
+			;;
+
+		p2p_discover)
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			# mDNS discovery for SecuBox peers
+			discovered=0
+			json_init
+			json_add_array "peers"
+
+			# Try to discover using avahi-browse if available
+			if command -v avahi-browse >/dev/null 2>&1; then
+				avahi-browse -t -r _secubox._tcp 2>/dev/null | grep -E "^\+" | while read -r line; do
+					addr=$(echo "$line" | awk '{print $7}')
+					name=$(echo "$line" | awk '{print $4}')
+					if [ -n "$addr" ]; then
+						json_add_object ""
+						json_add_string "address" "$addr"
+						json_add_string "name" "$name"
+						json_add_string "discovered" "mdns"
+						json_close_object
+						discovered=$((discovered + 1))
+					fi
+				done
+			fi
+
+			json_close_array
+			json_add_int "discovered" "$discovered"
+			json_dump
+			;;
+
+		p2p_add_peer)
+			read -r input
+			address=$(echo "$input" | jsonfilter -e '@.address')
+			name=$(echo "$input" | jsonfilter -e '@.name')
+
+			P2P_PEERS_FILE="/var/lib/secubox/p2p/peers.json"
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			# Generate peer ID
+			peer_id="peer_$(echo "$address" | md5sum | cut -c1-8)"
+
+			# Initialize file if not exists
+			[ ! -f "$P2P_PEERS_FILE" ] && echo '{"peers":[]}' > "$P2P_PEERS_FILE"
+
+			# Add peer using jsonfilter/sed
+			timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+			tmp_file="${P2P_PEERS_FILE}.tmp"
+			{
+				echo '{"peers":['
+				# Existing peers
+				if [ -f "$P2P_PEERS_FILE" ]; then
+					jsonfilter -i "$P2P_PEERS_FILE" -e '@.peers[*]' 2>/dev/null | while read -r p; do
+						echo "$p,"
+					done
+				fi
+				# New peer
+				echo "{\"id\":\"$peer_id\",\"name\":\"$name\",\"address\":\"$address\",\"status\":\"added\",\"last_seen\":\"$timestamp\"}"
+				echo ']}'
+			} > "$tmp_file"
+			mv "$tmp_file" "$P2P_PEERS_FILE"
+
+			json_init
+			json_add_boolean "success" 1
+			json_add_string "peer_id" "$peer_id"
+			json_dump
+			;;
+
+		p2p_remove_peer)
+			read -r input
+			peer_id=$(echo "$input" | jsonfilter -e '@.peer_id')
+
+			P2P_PEERS_FILE="/var/lib/secubox/p2p/peers.json"
+
+			if [ -f "$P2P_PEERS_FILE" ] && [ -n "$peer_id" ]; then
+				# Filter out the peer
+				tmp_file="${P2P_PEERS_FILE}.tmp"
+				{
+					echo '{"peers":['
+					first=1
+					idx=0
+					while true; do
+						id=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].id" 2>/dev/null)
+						[ -z "$id" ] && break
+						if [ "$id" != "$peer_id" ]; then
+							[ "$first" -eq 0 ] && echo ","
+							jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx]" 2>/dev/null
+							first=0
+						fi
+						idx=$((idx + 1))
+					done
+					echo ']}'
+				} > "$tmp_file"
+				mv "$tmp_file" "$P2P_PEERS_FILE"
+			fi
+
+			json_init
+			json_add_boolean "success" 1
+			json_dump
+			;;
+
+		p2p_get_peer_catalog)
+			read -r input
+			peer_id=$(echo "$input" | jsonfilter -e '@.peer_id')
+
+			P2P_PEERS_FILE="/var/lib/secubox/p2p/peers.json"
+
+			# Get peer address
+			idx=0
+			peer_addr=""
+			while true; do
+				id=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].id" 2>/dev/null)
+				[ -z "$id" ] && break
+				if [ "$id" = "$peer_id" ]; then
+					peer_addr=$(jsonfilter -i "$P2P_PEERS_FILE" -e "@.peers[$idx].address" 2>/dev/null)
+					break
+				fi
+				idx=$((idx + 1))
+			done
+
+			json_init
+
+			if [ -n "$peer_addr" ]; then
+				# Fetch catalog from peer
+				catalog=$(wget -q -O - "http://${peer_addr}:8080/api/catalog" 2>/dev/null)
+				if [ -n "$catalog" ]; then
+					echo "$catalog"
+					exit 0
+				fi
+			fi
+
+			json_add_array "apps"
+			json_close_array
+			json_add_string "error" "Could not fetch catalog from peer"
+			json_dump
+			;;
+
+		p2p_share_catalog)
+			read -r input
+			enabled=$(echo "$input" | jsonfilter -e '@.enabled')
+
+			P2P_CONFIG="/var/lib/secubox/p2p/config.json"
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			# Update config
+			echo "{\"sharing_enabled\":$enabled}" > "$P2P_CONFIG"
+
+			json_init
+			json_add_boolean "success" 1
+			json_add_boolean "sharing_enabled" "$enabled"
+			json_dump
+			;;
+
+		p2p_get_settings)
+			P2P_CONFIG="/var/lib/secubox/p2p/config.json"
+
+			json_init
+			if [ -f "$P2P_CONFIG" ]; then
+				sharing=$(jsonfilter -i "$P2P_CONFIG" -e '@.sharing_enabled' 2>/dev/null)
+				json_add_boolean "sharing_enabled" "${sharing:-0}"
+			else
+				json_add_boolean "sharing_enabled" 0
+			fi
+			json_add_string "hub_version" "1.0.0"
+			json_add_string "protocol" "http"
+			json_add_int "port" 8080
+			json_dump
+			;;
+
+		p2p_set_settings)
+			read -r input
+
+			P2P_CONFIG="/var/lib/secubox/p2p/config.json"
+			P2P_DIR="/var/lib/secubox/p2p"
+			mkdir -p "$P2P_DIR"
+
+			# Extract settings
+			sharing=$(echo "$input" | jsonfilter -e '@.settings.sharing_enabled' 2>/dev/null)
+
+			# Save config
+			{
+				echo '{'
+				echo "\"sharing_enabled\":${sharing:-false}"
+				echo '}'
+			} > "$P2P_CONFIG"
+
+			json_init
+			json_add_boolean "success" 1
+			json_dump
+			;;
 
 			*)
 				json_init

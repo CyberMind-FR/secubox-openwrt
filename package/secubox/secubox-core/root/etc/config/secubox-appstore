@@ -5,28 +5,53 @@ config settings 'main'
 	option force_source ''
 	option notify_updates '1'
 
+# Feed source types:
+#   remote   - HTTP/HTTPS URL
+#   local    - Local filesystem path
+#   embedded - Built-in fallback catalog
+#
+# Feed visibility (for sharing):
+#   published   - Public feed (official, community-maintained)
+#   unpublished - Private feed (requires auth token)
+#   development - Local development feed (not shareable)
+#
+# Share token: Used for sharing unpublished feeds with others
+
 config source 'github'
 	option enabled '1'
 	option type 'remote'
+	option feed_type 'published'
+	option visibility 'public'
 	option url 'https://raw.githubusercontent.com/CyberMind-FR/secubox-openwrt/refs/heads/master/package/secubox/secubox-core/root/usr/share/secubox/catalog.json'
 	option priority '1'
 	option timeout '30'
+	option description 'Official SecuBox catalog from GitHub'
 
 config source 'local_web'
 	option enabled '0'
 	option type 'remote'
+	option feed_type 'unpublished'
+	option visibility 'private'
 	option url 'http://192.168.1.100/secubox/catalog.json'
 	option priority '2'
 	option timeout '10'
+	option share_token ''
+	option description 'Custom local web server catalog'
 
 config source 'usb'
 	option enabled '1'
 	option type 'local'
+	option feed_type 'development'
+	option visibility 'local'
 	option path '/mnt/usb/secubox/catalog.json'
 	option priority '3'
+	option description 'USB drive catalog for development'
 
 config source 'embedded'
 	option enabled '1'
 	option type 'embedded'
+	option feed_type 'published'
+	option visibility 'public'
 	option path '/usr/share/secubox/catalog.json'
 	option priority '999'
+	option description 'Built-in fallback catalog'

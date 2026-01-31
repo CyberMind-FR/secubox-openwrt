@@ -27,6 +27,7 @@
 			"ubus": {
 				"luci.wireguard-dashboard": [
 					"generate_keys",
+					"create_interface",
 					"add_peer",
 					"remove_peer",
 					"generate_config",

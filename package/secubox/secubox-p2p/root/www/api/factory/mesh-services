@@ -1,0 +1,134 @@
+#!/bin/sh
+# Factory Mesh Services - Aggregated service discovery across mesh
+# CGI endpoint for distributed service panel
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: GET, OPTIONS"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Get local node ID
+P2P_STATE_DIR="/var/run/secubox-p2p"
+LOCAL_NODE_ID=$(cat "$P2P_STATE_DIR/node.id" 2>/dev/null || hostname)
+LOCAL_NODE_NAME=$(uci -q get system.@system[0].hostname || hostname)
+
+# Get local services
+get_local_services() {
+	local services_json=$(/usr/sbin/secubox-p2p services 2>/dev/null)
+	if [ -z "$services_json" ]; then
+		echo '{"services":[]}'
+		return
+	fi
+	echo "$services_json"
+}
+
+# Get services from a peer
+get_peer_services() {
+	local peer_addr="$1"
+	local peer_name="$2"
+
+	# Query peer's services endpoint with timeout
+	local peer_services=$(curl -s --connect-timeout 3 --max-time 5 "http://$peer_addr:7331/api/services" 2>/dev/null)
+
+	if [ -n "$peer_services" ] && echo "$peer_services" | grep -q "services"; then
+		echo "$peer_services"
+	else
+		echo '{"services":[],"error":"unreachable"}'
+	fi
+}
+
+# Build aggregated mesh services
+build_mesh_services() {
+	local result='{"nodes":['
+	local first_node=1
+
+	# Add local node
+	local local_services=$(get_local_services)
+	local local_svc_list=$(echo "$local_services" | jsonfilter -e '@.services[*]' 2>/dev/null)
+	local local_svc_count=$(echo "$local_services" | jsonfilter -e '@.services[*]' 2>/dev/null | wc -l)
+
+	result="$result{\"node_id\":\"$LOCAL_NODE_ID\",\"node_name\":\"$LOCAL_NODE_NAME\",\"is_local\":true,\"status\":\"online\","
+	result="$result\"services\":["
+
+	local i=0
+	while [ $i -lt $local_svc_count ]; do
+		local svc_name=$(echo "$local_services" | jsonfilter -e "@.services[$i].name" 2>/dev/null)
+		local svc_status=$(echo "$local_services" | jsonfilter -e "@.services[$i].status" 2>/dev/null)
+		local svc_enabled=$(echo "$local_services" | jsonfilter -e "@.services[$i].enabled" 2>/dev/null)
+		local svc_port=$(echo "$local_services" | jsonfilter -e "@.services[$i].port" 2>/dev/null)
+
+		[ $i -gt 0 ] && result="$result,"
+		result="$result{\"name\":\"$svc_name\",\"status\":\"$svc_status\",\"enabled\":$svc_enabled,\"port\":\"$svc_port\"}"
+		i=$((i + 1))
+	done
+
+	result="$result]}"
+	first_node=0
+
+	# Get peer services
+	local peers_file="/tmp/secubox-p2p-peers.json"
+	if [ -f "$peers_file" ]; then
+		local peer_count=$(jsonfilter -i "$peers_file" -e '@.peers[*]' 2>/dev/null | wc -l)
+		local p=0
+
+		while [ $p -lt $peer_count ]; do
+			local peer_addr=$(jsonfilter -i "$peers_file" -e "@.peers[$p].address" 2>/dev/null)
+			local peer_name=$(jsonfilter -i "$peers_file" -e "@.peers[$p].name" 2>/dev/null)
+			local peer_id=$(jsonfilter -i "$peers_file" -e "@.peers[$p].id" 2>/dev/null)
+			local is_local=$(jsonfilter -i "$peers_file" -e "@.peers[$p].is_local" 2>/dev/null)
+
+			# Skip local node in peers list
+			if [ "$is_local" != "true" ] && [ -n "$peer_addr" ]; then
+				local peer_services=$(get_peer_services "$peer_addr" "$peer_name")
+				local peer_status="offline"
+				local peer_error=""
+
+				if echo "$peer_services" | grep -q '"error"'; then
+					peer_error=$(echo "$peer_services" | jsonfilter -e '@.error' 2>/dev/null)
+				else
+					peer_status="online"
+				fi
+
+				result="$result,{\"node_id\":\"${peer_id:-$peer_addr}\",\"node_name\":\"${peer_name:-$peer_addr}\",\"address\":\"$peer_addr\",\"is_local\":false,\"status\":\"$peer_status\","
+
+				if [ "$peer_status" = "online" ]; then
+					# Parse peer services
+					local peer_svc_count=$(echo "$peer_services" | jsonfilter -e '@.services[*]' 2>/dev/null | wc -l)
+					result="$result\"services\":["
+
+					local j=0
+					while [ $j -lt $peer_svc_count ]; do
+						local svc_name=$(echo "$peer_services" | jsonfilter -e "@.services[$j].name" 2>/dev/null)
+						local svc_status=$(echo "$peer_services" | jsonfilter -e "@.services[$j].status" 2>/dev/null)
+						local svc_enabled=$(echo "$peer_services" | jsonfilter -e "@.services[$j].enabled" 2>/dev/null)
+						local svc_port=$(echo "$peer_services" | jsonfilter -e "@.services[$j].port" 2>/dev/null)
+
+						[ $j -gt 0 ] && result="$result,"
+						result="$result{\"name\":\"$svc_name\",\"status\":\"$svc_status\",\"enabled\":${svc_enabled:-0},\"port\":\"$svc_port\"}"
+						j=$((j + 1))
+					done
+
+					result="$result]}"
+				else
+					result="$result\"services\":[],\"error\":\"$peer_error\"}"
+				fi
+			fi
+			p=$((p + 1))
+		done
+	fi
+
+	result="$result],"
+
+	# Add summary stats
+	result="$result\"summary\":{\"total_nodes\":0,\"online_nodes\":0,\"total_services\":0,\"running_services\":0}}"
+
+	echo "$result"
+}
+
+# Output aggregated mesh services
+build_mesh_services

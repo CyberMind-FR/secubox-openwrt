@@ -71,7 +71,7 @@ return view.extend({
 		s = m.section(form.TableSection, 'cache_policy', 'Cache Policies',
 			'Define caching rules for specific domains and file types');
 		s.addremove = true;
-		s.anonymous = true;
+		s.anonymous = false;
 		s.sortable = true;
 
 		o = s.option(form.Flag, 'enabled', 'Enabled');
@@ -108,7 +108,7 @@ return view.extend({
 		s = m.section(form.TableSection, 'exclusion', 'Exclusions',
 			'Domains that should never be cached');
 		s.addremove = true;
-		s.anonymous = true;
+		s.anonymous = false;
 
 		o = s.option(form.Flag, 'enabled', 'Enabled');
 		o.default = '1';
@@ -138,11 +138,13 @@ return view.extend({
 		o.datatype = 'uinteger';
 		o.default = '60';
 
-		return E('div', { 'class': 'cdn-settings-page' }, [
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
-			E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
-			CdnNav.renderTabs('settings'),
-			m.render()
-		]);
+		return m.render().then(function(formEl) {
+			return E('div', { 'class': 'cdn-settings-page' }, [
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+				E('link', { 'rel': 'stylesheet', 'href': L.resource('cdn-cache/common.css') }),
+				CdnNav.renderTabs('settings'),
+				formEl
+			]);
+		});
 	}
 });

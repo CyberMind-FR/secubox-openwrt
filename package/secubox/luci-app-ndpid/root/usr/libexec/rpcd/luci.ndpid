@@ -34,6 +34,11 @@ check_ndpisrvd_running() {
 	pidof ndpisrvd >/dev/null 2>&1
 }
 
+# Check if netifyd is running
+check_netifyd_running() {
+	pidof netifyd >/dev/null 2>&1
+}
+
 # Get service status
 get_service_status() {
 	json_init
@@ -43,7 +48,13 @@ get_service_status() {
 	local pid=""
 	local uptime=0
 	local version=""
+	local netifyd_running=0
+	local netifyd_pid=""
+	local netifyd_uptime=0
+	local netifyd_version=""
+	local flow_count=0
 
+	# Check nDPId
 	if check_ndpid_running; then
 		running=1
 		pid=$(pidof ndpid | awk '{print $1}')
@@ -61,6 +72,21 @@ get_service_status() {
 
 	check_ndpisrvd_running && distributor_running=1
 
+	# Check netifyd (fallback DPI)
+	if check_netifyd_running; then
+		netifyd_running=1
+		netifyd_pid=$(pidof netifyd | awk '{print $1}')
+
+		# Get uptime from status file
+		if [ -f "$STATUS_FILE" ]; then
+			netifyd_uptime=$(cat "$STATUS_FILE" 2>/dev/null | jsonfilter -e '@.uptime' 2>/dev/null || echo 0)
+			flow_count=$(cat "$STATUS_FILE" 2>/dev/null | jsonfilter -e '@.flow_count' 2>/dev/null || echo 0)
+		fi
+
+		# Get version
+		netifyd_version=$(netifyd -v 2>&1 | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "4.4.7")
+	fi
+
 	json_add_boolean "running" "$running"
 	json_add_boolean "distributor_running" "$distributor_running"
 	json_add_string "pid" "$pid"
@@ -69,10 +95,22 @@ get_service_status() {
 	json_add_string "collector_socket" "$COLLECTOR_SOCK"
 	json_add_string "distributor_socket" "$DISTRIBUTOR_SOCK"
 
+	# Netifyd status
+	json_add_boolean "netifyd_running" "$netifyd_running"
+	json_add_string "netifyd_pid" "$netifyd_pid"
+	json_add_int "netifyd_uptime" "$netifyd_uptime"
+	json_add_string "netifyd_version" "$netifyd_version"
+	json_add_int "flow_count" "$flow_count"
+
 	# Check if compat layer is running
 	local compat_running=0
 	pidof ndpid-compat >/dev/null 2>&1 && compat_running=1
 	json_add_boolean "compat_running" "$compat_running"
+
+	# DPI available if either ndpid or netifyd is running
+	local dpi_available=0
+	[ "$running" = "1" ] || [ "$netifyd_running" = "1" ] && dpi_available=1
+	json_add_boolean "dpi_available" "$dpi_available"
 
 	json_dump
 }

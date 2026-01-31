@@ -425,6 +425,97 @@
 }
 
 /* ============================================
+   Instances Table
+   ============================================ */
+
+.st-instances-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.st-instances-table th,
+.st-instances-table td {
+	padding: 12px 16px;
+	text-align: left;
+	border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+}
+
+.st-instances-table th {
+	color: #0ff;
+	font-weight: 600;
+	text-transform: uppercase;
+	font-size: 11px;
+	letter-spacing: 1px;
+	background: rgba(0, 255, 255, 0.05);
+}
+
+.st-instances-table td {
+	color: #f1f5f9;
+	font-size: 13px;
+}
+
+.st-instances-table tr:hover td {
+	background: rgba(0, 255, 255, 0.05);
+}
+
+.st-instances-table tr.st-row-active td {
+	background: rgba(0, 255, 255, 0.1);
+	border-left: 3px solid #0ff;
+}
+
+.st-instances-table .st-mono {
+	font-family: "Monaco", "Consolas", monospace;
+	color: #8b5cf6;
+}
+
+.st-instances-table a {
+	color: #0ff;
+	text-decoration: none;
+}
+
+.st-instances-table a:hover {
+	text-decoration: underline;
+}
+
+.st-app-desc {
+	font-size: 11px;
+	color: #64748b;
+	margin-top: 2px;
+}
+
+.st-status-dot {
+	display: inline-block;
+}
+
+.st-status-dot.st-running {
+	text-shadow: 0 0 8px #10b981;
+}
+
+.st-status-dot.st-stopped {
+	opacity: 0.7;
+}
+
+.st-no-padding {
+	padding: 0 !important;
+}
+
+.st-link {
+	color: #0ff;
+	text-decoration: none;
+	font-size: 13px;
+}
+
+.st-link:hover {
+	text-decoration: underline;
+}
+
+.st-btn-sm {
+	padding: 8px 16px;
+	font-size: 12px;
+	margin-top: 12px;
+}
+
+/* ============================================
    Empty State
    ============================================ */
 

@@ -10,6 +10,7 @@ UCI_CONFIG="metablogizer"
 SITES_ROOT="/srv/metablogizer/sites"
 NGINX_CONTAINER="nginx"
 PORT_BASE=8900
+TOR_DATA="/var/lib/tor"
 
 # Helper: Get UCI value with default
 get_uci() {
@@ -42,12 +43,118 @@ get_next_port() {
 }
 
 # Fix permissions for web serving (755 for dirs, 644 for files)
+# Also ensure proper ownership for uhttpd
 fix_permissions() {
 	local dir="$1"
 	[ -d "$dir" ] || return 1
+
+	# Set umask to ensure files are world-readable
+	umask 022
+
+	# Fix directory permissions (755 = rwxr-xr-x)
 	chmod 755 "$dir"
-	find "$dir" -type d -exec chmod 755 {} \;
-	find "$dir" -type f -exec chmod 644 {} \;
+	find "$dir" -type d -exec chmod 755 {} \; 2>/dev/null
+
+	# Fix file permissions (644 = rw-r--r--)
+	find "$dir" -type f -exec chmod 644 {} \; 2>/dev/null
+
+	# Ensure parent directories are traversable
+	local parent_dir=$(dirname "$dir")
+	while [ "$parent_dir" != "/" ] && [ -d "$parent_dir" ]; do
+		chmod a+rx "$parent_dir" 2>/dev/null || true
+		parent_dir=$(dirname "$parent_dir")
+	done
+}
+
+# Check if HAProxy is available and running
+haproxy_available() {
+	# Check if HAProxy container is running (preferred method)
+	if command -v lxc-info >/dev/null 2>&1; then
+		lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING" && return 0
+	fi
+
+	# Fallback: check if haproxy process is running
+	pgrep haproxy >/dev/null 2>&1 && return 0
+
+	# Fallback: check if init script exists and service is enabled
+	if [ -x /etc/init.d/haproxy ]; then
+		/etc/init.d/haproxy status >/dev/null 2>&1 && return 0
+	fi
+
+	return 1
+}
+
+# Reload HAProxy configuration properly (with availability check)
+reload_haproxy() {
+	if ! haproxy_available; then
+		logger -t metablogizer "HAProxy not available, skipping reload"
+		return 1
+	fi
+
+	/usr/sbin/haproxyctl generate >/dev/null 2>&1
+	if [ -x /etc/init.d/haproxy ]; then
+		/etc/init.d/haproxy reload >/dev/null 2>&1
+	fi
+}
+
+# Get .onion address for a site if Tor hidden service exists
+get_onion_address() {
+	local site_name="$1"
+	local hs_name="metablog_$(echo "$site_name" | tr -cd 'a-zA-Z0-9_')"
+	local hostname_file="$TOR_DATA/hidden_service_$hs_name/hostname"
+
+	if [ -f "$hostname_file" ]; then
+		cat "$hostname_file"
+	fi
+}
+
+# Check if Tor hidden service exists for site
+has_tor_service() {
+	local site_name="$1"
+	local hs_name="metablog_$(echo "$site_name" | tr -cd 'a-zA-Z0-9_')"
+	uci -q get "tor-shield.hs_$hs_name" >/dev/null 2>&1
+}
+
+# Create Tor hidden service for a site
+create_tor_hidden_service() {
+	local site_name="$1"
+	local local_port="$2"
+
+	local hs_name="metablog_$(echo "$site_name" | tr -cd 'a-zA-Z0-9_')"
+
+	# Create hidden service in tor-shield config
+	uci set "tor-shield.hs_$hs_name=hidden_service"
+	uci set "tor-shield.hs_$hs_name.name=$hs_name"
+	uci set "tor-shield.hs_$hs_name.enabled=1"
+	uci set "tor-shield.hs_$hs_name.local_port=$local_port"
+	uci set "tor-shield.hs_$hs_name.virtual_port=80"
+	uci commit tor-shield
+
+	# Restart Tor to generate .onion address
+	/etc/init.d/tor-shield restart >/dev/null 2>&1 &
+
+	return 0
+}
+
+# Remove Tor hidden service for a site
+remove_tor_hidden_service() {
+	local site_name="$1"
+	local hs_name="metablog_$(echo "$site_name" | tr -cd 'a-zA-Z0-9_')"
+
+	uci delete "tor-shield.hs_$hs_name" 2>/dev/null
+	uci commit tor-shield
+
+	# Remove hidden service data directory
+	rm -rf "$TOR_DATA/hidden_service_$hs_name" 2>/dev/null
+
+	# Restart Tor
+	/etc/init.d/tor-shield restart >/dev/null 2>&1 &
+}
+
+# Check if Tor is running and ready
+is_tor_ready() {
+	pgrep -f "/usr/sbin/tor" >/dev/null 2>&1 && \
+	[ -S "/var/run/tor/control" ]
 }
 
 # Status method - get overall status and list all sites
@@ -106,8 +213,8 @@ method_list_sites() {
 
 _add_site() {
 	local section="$1"
-	local name domain gitea_repo ssl enabled description
-	local has_content last_sync
+	local name domain gitea_repo ssl enabled description tor_enabled
+	local has_content last_sync onion_address
 
 	config_get name "$section" name ""
 	config_get domain "$section" domain ""
@@ -115,6 +222,7 @@ _add_site() {
 	config_get ssl "$section" ssl "1"
 	config_get enabled "$section" enabled "1"
 	config_get description "$section" description ""
+	config_get tor_enabled "$section" tor_enabled "0"
 
 	# Check if site has content
 	has_content="0"
@@ -128,6 +236,12 @@ _add_site() {
 		last_sync=$(cd "$SITES_ROOT/$name" && git log -1 --format="%ci" 2>/dev/null || echo "")
 	fi
 
+	# Get Tor .onion address if available
+	onion_address=""
+	if [ "$tor_enabled" = "1" ] || has_tor_service "$name"; then
+		onion_address=$(get_onion_address "$name")
+	fi
+
 	json_add_object
 	json_add_string "id" "$section"
 	json_add_string "name" "$name"
@@ -139,6 +253,12 @@ _add_site() {
 	json_add_boolean "has_content" "$has_content"
 	json_add_string "last_sync" "$last_sync"
 	json_add_string "url" "https://$domain"
+
+	# Tor hidden service info
+	json_add_boolean "tor_enabled" "$(has_tor_service "$name" && echo 1 || echo 0)"
+	[ -n "$onion_address" ] && json_add_string "onion_address" "$onion_address"
+	[ -n "$onion_address" ] && json_add_string "onion_url" "http://$onion_address"
+
 	json_close_object
 }
 
@@ -238,7 +358,7 @@ EOF
 	# 6. Detect runtime and configure accordingly
 	local current_runtime=$(detect_runtime)
 	local port=""
-	local server_address="192.168.255.1"
+	local server_address="127.0.0.1"
 	local server_port="80"
 
 	if [ "$current_runtime" = "uhttpd" ]; then
@@ -251,6 +371,7 @@ EOF
 		uci set "uhttpd.metablog_${section_id}.error_page=/index.html"
 		uci commit uhttpd
 		/etc/init.d/uhttpd reload 2>/dev/null
+		server_address="127.0.0.1"
 		server_port="$port"
 	else
 		# Configure nginx location in container
@@ -264,43 +385,48 @@ EOF
 	[ -n "$port" ] && uci set "$UCI_CONFIG.$section_id.port=$port"
 	uci set "$UCI_CONFIG.$section_id.runtime=$current_runtime"
 
-	# 7. Create HAProxy backend
-	local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+	# 7. Create HAProxy backend (if HAProxy is available)
+	local haproxy_configured=0
+	if haproxy_available; then
+		local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
 
-	uci set "haproxy.$backend_name=backend"
-	uci set "haproxy.$backend_name.name=$backend_name"
-	uci set "haproxy.$backend_name.mode=http"
-	uci set "haproxy.$backend_name.balance=roundrobin"
-	uci set "haproxy.$backend_name.enabled=1"
+		uci set "haproxy.$backend_name=backend"
+		uci set "haproxy.$backend_name.name=$backend_name"
+		uci set "haproxy.$backend_name.mode=http"
+		uci set "haproxy.$backend_name.balance=roundrobin"
+		uci set "haproxy.$backend_name.enabled=1"
 
-	# Create server
-	local server_name="${backend_name}_srv"
-	uci set "haproxy.$server_name=server"
-	uci set "haproxy.$server_name.backend=$backend_name"
-	uci set "haproxy.$server_name.name=srv"
-	uci set "haproxy.$server_name.address=$server_address"
-	uci set "haproxy.$server_name.port=$server_port"
-	uci set "haproxy.$server_name.weight=100"
-	uci set "haproxy.$server_name.check=1"
-	uci set "haproxy.$server_name.enabled=1"
+		# Create server
+		local server_name="${backend_name}_srv"
+		uci set "haproxy.$server_name=server"
+		uci set "haproxy.$server_name.backend=$backend_name"
+		uci set "haproxy.$server_name.name=srv"
+		uci set "haproxy.$server_name.address=$server_address"
+		uci set "haproxy.$server_name.port=$server_port"
+		uci set "haproxy.$server_name.weight=100"
+		uci set "haproxy.$server_name.check=1"
+		uci set "haproxy.$server_name.enabled=1"
 
-	# 8. Create HAProxy vhost
-	local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
-	local acme_val="0"
-	[ "$ssl" = "1" ] && acme_val="1"
+		# 8. Create HAProxy vhost
+		local vhost_name=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+		local acme_val="0"
+		[ "$ssl" = "1" ] && acme_val="1"
 
-	uci set "haproxy.$vhost_name=vhost"
-	uci set "haproxy.$vhost_name.domain=$domain"
-	uci set "haproxy.$vhost_name.backend=$backend_name"
-	uci set "haproxy.$vhost_name.ssl=$ssl"
-	uci set "haproxy.$vhost_name.ssl_redirect=$ssl"
-	uci set "haproxy.$vhost_name.acme=$acme_val"
-	uci set "haproxy.$vhost_name.enabled=1"
-	uci commit haproxy
+		uci set "haproxy.$vhost_name=vhost"
+		uci set "haproxy.$vhost_name.domain=$domain"
+		uci set "haproxy.$vhost_name.backend=$backend_name"
+		uci set "haproxy.$vhost_name.ssl=$ssl"
+		uci set "haproxy.$vhost_name.ssl_redirect=$ssl"
+		uci set "haproxy.$vhost_name.acme=$acme_val"
+		uci set "haproxy.$vhost_name.enabled=1"
+		uci commit haproxy
 
-	# Regenerate HAProxy config
-	/usr/sbin/haproxyctl generate >/dev/null 2>&1
-	/etc/init.d/haproxy reload >/dev/null 2>&1
+		# Regenerate HAProxy config and reload
+		reload_haproxy
+		haproxy_configured=1
+	else
+		logger -t metablogizer "HAProxy not available, site created without proxy config"
+	fi
 
 	uci commit "$UCI_CONFIG"
 
@@ -367,17 +493,22 @@ method_delete_site() {
 	# Get site runtime
 	local site_runtime=$(get_uci "$id" runtime "")
 
-	# 1. Delete HAProxy vhost
-	local vhost_id=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
-	uci delete "haproxy.$vhost_id" 2>/dev/null
+	# 1. Delete HAProxy vhost (if HAProxy config exists)
+	if uci -q get haproxy >/dev/null 2>&1; then
+		local vhost_id=$(echo "$domain" | sed 's/[^a-zA-Z0-9]/_/g')
+		uci delete "haproxy.$vhost_id" 2>/dev/null
 
-	# 2. Delete HAProxy backend and server
-	local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
-	uci delete "haproxy.$backend_name" 2>/dev/null
-	uci delete "haproxy.${backend_name}_srv" 2>/dev/null
-	uci commit haproxy
-	/usr/sbin/haproxyctl generate >/dev/null 2>&1
-	/etc/init.d/haproxy reload >/dev/null 2>&1
+		# 2. Delete HAProxy backend and server
+		local backend_name="metablog_$(echo "$name" | sed 's/[^a-zA-Z0-9]/_/g')"
+		uci delete "haproxy.$backend_name" 2>/dev/null
+		uci delete "haproxy.${backend_name}_srv" 2>/dev/null
+		uci commit haproxy
+
+		# Only reload if HAProxy is actually running
+		if haproxy_available; then
+			reload_haproxy
+		fi
+	fi
 
 	# 3. Remove runtime config
 	if [ "$site_runtime" = "uhttpd" ]; then
@@ -669,19 +800,28 @@ method_upload_file() {
 	local site_path="$SITES_ROOT/$name"
 	local file_path="$site_path/$filename"
 
-	# Create directory structure if needed
+	# Create directory structure if needed with proper permissions
 	local dir_path=$(dirname "$file_path")
+
+	# CRITICAL: Set umask BEFORE any file operations
+	umask 022
+
 	mkdir -p "$dir_path"
 	chmod 755 "$dir_path"
 
-	# Decode base64 content and write file
+	# Write file - umask 022 ensures 644 permissions
 	echo "$content" | base64 -d > "$file_path" 2>/dev/null
 	local rc=$?
 
+	# ALWAYS set readable permissions immediately after write
+	chmod 644 "$file_path" 2>/dev/null
+
+	# Also ensure parent dirs are traversable
+	chmod 755 "$site_path" 2>/dev/null
+
 	if [ $rc -eq 0 ]; then
-		chmod 644 "$file_path"
-		# Ensure parent directories are also accessible
-		chmod 755 "$site_path"
+		# Fix permissions for entire site directory
+		fix_permissions "$site_path"
 		json_init
 		json_add_boolean "success" 1
 		json_add_string "filename" "$filename"
@@ -755,6 +895,707 @@ method_get_settings() {
 	json_dump
 }
 
+# Helper: Check DNS resolution for a domain (KISS approach)
+# Returns the resolved IP address, not the DNS server
+check_dns_resolution() {
+	local domain="$1"
+	local resolved_ip=""
+
+	# Method 1: Use external DNS API (most reliable, avoids local resolver issues)
+	resolved_ip=$(wget -qO- -T 3 "https://dns.google/resolve?name=${domain}&type=A" 2>/dev/null | \
+		jsonfilter -e '@.Answer[0].data' 2>/dev/null)
+
+	# Method 2: Fallback to nslookup with careful parsing
+	if [ -z "$resolved_ip" ] && command -v nslookup >/dev/null 2>&1; then
+		# Get last Address line (skip DNS server which comes first)
+		resolved_ip=$(nslookup "$domain" 2>/dev/null | \
+			grep "Address" | tail -1 | \
+			sed 's/.*: *//' | sed 's/#.*//' | \
+			grep -v '^127\.')
+	fi
+
+	# Method 3: Fallback to host command
+	if [ -z "$resolved_ip" ] && command -v host >/dev/null 2>&1; then
+		resolved_ip=$(host -t A "$domain" 2>/dev/null | \
+			grep "has address" | head -1 | awk '{print $NF}')
+	fi
+
+	echo "$resolved_ip"
+}
+
+# Helper: Get public IPv4 address
+get_public_ipv4() {
+	local ip=""
+	ip=$(wget -qO- -T 5 "http://ipv4.icanhazip.com" 2>/dev/null | tr -d '\n')
+	[ -z "$ip" ] && ip=$(wget -qO- -T 5 "http://api.ipify.org" 2>/dev/null | tr -d '\n')
+	echo "$ip"
+}
+
+# Helper: Check certificate expiry (BusyBox compatible)
+check_cert_expiry() {
+	local domain="$1"
+	local cert_file=""
+
+	# Check multiple possible certificate locations
+	# 1. HAProxy LXC container certs
+	if [ -f "/srv/lxc/haproxy/rootfs/srv/haproxy/certs/${domain}.pem" ]; then
+		cert_file="/srv/lxc/haproxy/rootfs/srv/haproxy/certs/${domain}.pem"
+	# 2. HAProxy host path (if not containerized)
+	elif [ -f "/srv/haproxy/certs/${domain}.pem" ]; then
+		cert_file="/srv/haproxy/certs/${domain}.pem"
+	# 3. ACME shared certs
+	elif [ -f "/usr/share/haproxy/certs/${domain}.pem" ]; then
+		cert_file="/usr/share/haproxy/certs/${domain}.pem"
+	# 4. ACME ECC certs
+	elif [ -f "/etc/acme/${domain}_ecc/${domain}.cer" ]; then
+		cert_file="/etc/acme/${domain}_ecc/${domain}.cer"
+	# 5. ACME RSA certs
+	elif [ -f "/etc/acme/${domain}/${domain}.cer" ]; then
+		cert_file="/etc/acme/${domain}/${domain}.cer"
+	# 6. ACME fullchain
+	elif [ -f "/etc/acme/${domain}_ecc/fullchain.cer" ]; then
+		cert_file="/etc/acme/${domain}_ecc/fullchain.cer"
+	elif [ -f "/etc/acme/${domain}/fullchain.cer" ]; then
+		cert_file="/etc/acme/${domain}/fullchain.cer"
+	fi
+
+	if [ -z "$cert_file" ] || [ ! -f "$cert_file" ]; then
+		return 1
+	fi
+
+	# Use openssl x509 -checkend to determine days until expiry
+	# This is BusyBox compatible and doesn't rely on date parsing
+	local days=0
+
+	# Check if certificate is already expired
+	if ! openssl x509 -checkend 0 -noout -in "$cert_file" >/dev/null 2>&1; then
+		echo "-1"
+		return 0
+	fi
+
+	# Binary search to find approximate days until expiry (0-730 days range)
+	local low=0 high=730 mid seconds
+	while [ $low -lt $high ]; do
+		mid=$(( (low + high + 1) / 2 ))
+		seconds=$((mid * 86400))
+		if openssl x509 -checkend "$seconds" -noout -in "$cert_file" >/dev/null 2>&1; then
+			low=$mid
+		else
+			high=$((mid - 1))
+		fi
+	done
+
+	echo "$low"
+	return 0
+}
+
+# Helper: HTTP health check - returns status code
+check_http_health() {
+	local url="$1"
+	local timeout="${2:-5}"
+	local status_code=""
+
+	# Use wget to get HTTP status code (available on OpenWrt)
+	# wget -S prints headers, we extract the status code
+	status_code=$(wget --spider -S -T "$timeout" -t 1 "$url" 2>&1 | \
+		grep "HTTP/" | tail -1 | awk '{print $2}')
+
+	# If wget spider failed, try with -O /dev/null
+	if [ -z "$status_code" ]; then
+		status_code=$(wget -q -O /dev/null -S -T "$timeout" -t 1 "$url" 2>&1 | \
+			grep "HTTP/" | tail -1 | awk '{print $2}')
+	fi
+
+	echo "${status_code:-0}"
+}
+
+# Helper: Check backend (local uhttpd) and frontend (HAProxy) health
+check_site_http_health() {
+	local port="$1"
+	local domain="$2"
+	local ssl="$3"
+	local backend_code="" frontend_code=""
+
+	# Check backend (local uhttpd instance)
+	if [ -n "$port" ]; then
+		backend_code=$(check_http_health "http://127.0.0.1:${port}/" 3)
+	fi
+
+	# Check frontend (through HAProxy)
+	if [ -n "$domain" ]; then
+		local protocol="http"
+		[ "$ssl" = "1" ] && protocol="https"
+		frontend_code=$(check_http_health "${protocol}://${domain}/" 5)
+	fi
+
+	echo "${backend_code:-0}:${frontend_code:-0}"
+}
+
+# Get hosting status for all sites with DNS and cert health
+method_get_hosting_status() {
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+
+	# Get public IP once
+	local public_ip
+	public_ip=$(get_public_ipv4)
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "public_ip" "$public_ip"
+
+	# HAProxy status
+	local haproxy_running="stopped"
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		haproxy_running="running"
+	fi
+	json_add_string "haproxy_status" "$haproxy_running"
+
+	json_add_array "sites"
+
+	config_load "$UCI_CONFIG"
+	config_foreach _add_site_health site "$public_ip"
+
+	json_close_array
+	json_dump
+}
+
+_add_site_health() {
+	local section="$1"
+	local public_ip="$2"
+	local name domain ssl enabled has_content port runtime
+
+	config_get name "$section" name ""
+	config_get domain "$section" domain ""
+	config_get ssl "$section" ssl "1"
+	config_get enabled "$section" enabled "1"
+	config_get port "$section" port ""
+	config_get runtime "$section" runtime ""
+
+	[ -z "$name" ] && return
+
+	# Check content
+	has_content="0"
+	if [ -d "$SITES_ROOT/$name" ] && [ -f "$SITES_ROOT/$name/index.html" ]; then
+		has_content="1"
+	fi
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_string "domain" "$domain"
+	json_add_boolean "enabled" "$enabled"
+	json_add_boolean "has_content" "$has_content"
+	[ -n "$port" ] && json_add_int "port" "$port"
+	json_add_string "runtime" "$runtime"
+
+	# DNS check
+	local dns_status="none"
+	if [ -n "$domain" ]; then
+		local resolved_ip
+		resolved_ip=$(check_dns_resolution "$domain")
+		if [ -n "$resolved_ip" ]; then
+			json_add_string "dns_ip" "$resolved_ip"
+			# Check if resolves to public IP
+			case "$resolved_ip" in
+				10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.2*|172.30.*|172.31.*|192.168.*)
+					dns_status="private"
+					;;
+				*)
+					if [ "$resolved_ip" = "$public_ip" ]; then
+						dns_status="ok"
+					else
+						dns_status="mismatch"
+					fi
+					;;
+			esac
+		else
+			dns_status="failed"
+		fi
+		json_add_string "dns_status" "$dns_status"
+
+		# Certificate check
+		if [ "$ssl" = "1" ]; then
+			local days_left
+			days_left=$(check_cert_expiry "$domain")
+			if [ -n "$days_left" ]; then
+				if [ "$days_left" -lt 0 ]; then
+					json_add_string "cert_status" "expired"
+				elif [ "$days_left" -lt 7 ]; then
+					json_add_string "cert_status" "critical"
+				elif [ "$days_left" -lt 30 ]; then
+					json_add_string "cert_status" "warning"
+				else
+					json_add_string "cert_status" "ok"
+				fi
+				json_add_int "cert_days" "$days_left"
+			else
+				json_add_string "cert_status" "missing"
+			fi
+		else
+			json_add_string "cert_status" "none"
+		fi
+	else
+		json_add_string "dns_status" "none"
+		json_add_string "cert_status" "none"
+	fi
+
+	# HTTP health check (backend and frontend)
+	# Skip frontend check if DNS is not pointing to us (avoids timeouts)
+	local check_domain=""
+	[ "$dns_status" = "ok" ] && check_domain="$domain"
+	if [ -n "$port" ] || [ -n "$check_domain" ]; then
+		local http_result backend_code frontend_code
+		http_result=$(check_site_http_health "$port" "$check_domain" "$ssl")
+		backend_code="${http_result%%:*}"
+		frontend_code="${http_result##*:}"
+
+		# Backend status (local uhttpd)
+		if [ -n "$port" ]; then
+			json_add_int "http_backend" "$backend_code"
+			if [ "$backend_code" = "200" ]; then
+				json_add_string "backend_status" "ok"
+			elif [ "$backend_code" = "0" ]; then
+				json_add_string "backend_status" "down"
+			else
+				json_add_string "backend_status" "error"
+			fi
+		fi
+
+		# Frontend status (HAProxy)
+		if [ -n "$domain" ]; then
+			if [ -n "$check_domain" ]; then
+				json_add_int "http_frontend" "$frontend_code"
+				if [ "$frontend_code" = "200" ]; then
+					json_add_string "frontend_status" "ok"
+				elif [ "$frontend_code" = "0" ]; then
+					json_add_string "frontend_status" "down"
+				elif [ "$frontend_code" = "503" ]; then
+					json_add_string "frontend_status" "unavailable"
+				elif [ "$frontend_code" -ge 500 ] 2>/dev/null; then
+					json_add_string "frontend_status" "error"
+				elif [ "$frontend_code" -ge 400 ] 2>/dev/null; then
+					json_add_string "frontend_status" "client_error"
+				elif [ "$frontend_code" -ge 300 ] 2>/dev/null; then
+					json_add_string "frontend_status" "redirect"
+				else
+					json_add_string "frontend_status" "unknown"
+				fi
+			else
+				# DNS mismatch - skip external check to avoid timeout
+				json_add_int "http_frontend" 0
+				json_add_string "frontend_status" "dns_mismatch"
+			fi
+		fi
+	fi
+
+	# Publish status
+	local publish_status="draft"
+	if [ "$enabled" = "1" ] && [ "$has_content" = "1" ]; then
+		publish_status="published"
+	elif [ "$enabled" = "1" ]; then
+		publish_status="pending"
+	fi
+	json_add_string "publish_status" "$publish_status"
+
+	# URL
+	local protocol="http"
+	[ "$ssl" = "1" ] && protocol="https"
+	json_add_string "url" "${protocol}://${domain}"
+
+	json_close_object
+}
+
+# Check health for single site
+method_check_site_health() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name domain ssl port
+	name=$(get_uci "$id" name "")
+	domain=$(get_uci "$id" domain "")
+	ssl=$(get_uci "$id" ssl "1")
+	port=$(get_uci "$id" port "")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+
+	# Get public IP
+	local public_ip
+	public_ip=$(get_public_ipv4)
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$id"
+	json_add_string "name" "$name"
+	json_add_string "domain" "$domain"
+	json_add_string "public_ip" "$public_ip"
+
+	# DNS check
+	json_add_object "dns"
+	if [ -n "$domain" ]; then
+		local resolved_ip
+		resolved_ip=$(check_dns_resolution "$domain")
+		if [ -n "$resolved_ip" ]; then
+			json_add_string "resolved_ip" "$resolved_ip"
+			case "$resolved_ip" in
+				10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.2*|172.30.*|172.31.*|192.168.*)
+					json_add_string "status" "private"
+					json_add_string "message" "DNS points to private IP"
+					;;
+				*)
+					if [ "$resolved_ip" = "$public_ip" ]; then
+						json_add_string "status" "ok"
+					else
+						json_add_string "status" "mismatch"
+						json_add_string "expected" "$public_ip"
+					fi
+					;;
+			esac
+		else
+			json_add_string "status" "failed"
+			json_add_string "message" "DNS resolution failed"
+		fi
+	else
+		json_add_string "status" "none"
+	fi
+	json_close_object
+
+	# Certificate check
+	json_add_object "certificate"
+	if [ -n "$domain" ] && [ "$ssl" = "1" ]; then
+		local days_left
+		days_left=$(check_cert_expiry "$domain")
+		if [ -n "$days_left" ]; then
+			json_add_int "days_left" "$days_left"
+			if [ "$days_left" -lt 0 ]; then
+				json_add_string "status" "expired"
+			elif [ "$days_left" -lt 7 ]; then
+				json_add_string "status" "critical"
+			elif [ "$days_left" -lt 30 ]; then
+				json_add_string "status" "warning"
+			else
+				json_add_string "status" "ok"
+			fi
+		else
+			json_add_string "status" "missing"
+		fi
+	else
+		json_add_string "status" "none"
+	fi
+	json_close_object
+
+	# Content check
+	json_add_object "content"
+	if [ -d "$SITES_ROOT/$name" ]; then
+		json_add_boolean "exists" 1
+		local file_count
+		file_count=$(find "$SITES_ROOT/$name" -type f 2>/dev/null | wc -l)
+		json_add_int "file_count" "$file_count"
+		if [ -f "$SITES_ROOT/$name/index.html" ]; then
+			json_add_boolean "has_index" 1
+		else
+			json_add_boolean "has_index" 0
+		fi
+	else
+		json_add_boolean "exists" 0
+	fi
+	json_close_object
+
+	# HAProxy status
+	json_add_object "haproxy"
+	if lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
+		json_add_string "status" "running"
+	else
+		json_add_string "status" "stopped"
+	fi
+	json_close_object
+
+	# HTTP health check (backend and frontend)
+	json_add_object "http"
+	if [ -n "$port" ] || [ -n "$domain" ]; then
+		local http_result backend_code frontend_code
+		http_result=$(check_site_http_health "$port" "$domain" "$ssl")
+		backend_code="${http_result%%:*}"
+		frontend_code="${http_result##*:}"
+
+		# Backend (local uhttpd)
+		if [ -n "$port" ]; then
+			json_add_object "backend"
+			json_add_int "code" "$backend_code"
+			json_add_string "url" "http://127.0.0.1:${port}/"
+			if [ "$backend_code" = "200" ]; then
+				json_add_string "status" "ok"
+			elif [ "$backend_code" = "0" ]; then
+				json_add_string "status" "down"
+				json_add_string "message" "Connection failed"
+			else
+				json_add_string "status" "error"
+				json_add_string "message" "HTTP $backend_code"
+			fi
+			json_close_object
+		fi
+
+		# Frontend (through HAProxy)
+		if [ -n "$domain" ]; then
+			local protocol="http"
+			[ "$ssl" = "1" ] && protocol="https"
+			json_add_object "frontend"
+			json_add_int "code" "$frontend_code"
+			json_add_string "url" "${protocol}://${domain}/"
+			if [ "$frontend_code" = "200" ]; then
+				json_add_string "status" "ok"
+			elif [ "$frontend_code" = "0" ]; then
+				json_add_string "status" "down"
+				json_add_string "message" "Connection failed"
+			elif [ "$frontend_code" = "503" ]; then
+				json_add_string "status" "unavailable"
+				json_add_string "message" "Service unavailable (backend down)"
+			elif [ "$frontend_code" -ge 500 ] 2>/dev/null; then
+				json_add_string "status" "error"
+				json_add_string "message" "Server error $frontend_code"
+			elif [ "$frontend_code" -ge 400 ] 2>/dev/null; then
+				json_add_string "status" "client_error"
+				json_add_string "message" "HTTP $frontend_code"
+			elif [ "$frontend_code" -ge 300 ] 2>/dev/null; then
+				json_add_string "status" "redirect"
+				json_add_string "message" "Redirecting ($frontend_code)"
+			else
+				json_add_string "status" "unknown"
+			fi
+			json_close_object
+		fi
+	else
+		json_add_string "status" "no_endpoints"
+	fi
+	json_close_object
+
+	json_dump
+}
+
+# Repair site - fix permissions and restart backend
+method_repair_site() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name domain port runtime
+	name=$(get_uci "$id" name "")
+	domain=$(get_uci "$id" domain "")
+	port=$(get_uci "$id" port "")
+	runtime=$(get_uci "$id" runtime "")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+	local site_path="$SITES_ROOT/$name"
+
+	local repairs=""
+
+	# 1. Fix permissions
+	if [ -d "$site_path" ]; then
+		fix_permissions "$site_path"
+		repairs="$repairs permissions_fixed"
+	else
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site directory not found: $site_path"
+		json_dump
+		return
+	fi
+
+	# 2. Ensure index.html exists
+	if [ ! -f "$site_path/index.html" ]; then
+		# Create minimal index
+		cat > "$site_path/index.html" <<EOF
+<!DOCTYPE html>
+<html>
+<head><title>$name</title></head>
+<body><h1>$name</h1><p>Site placeholder</p></body>
+</html>
+EOF
+		chmod 644 "$site_path/index.html"
+		repairs="$repairs index_created"
+	fi
+
+	# 3. Restart uhttpd if using it
+	if [ "$runtime" = "uhttpd" ] && [ -n "$port" ]; then
+		/etc/init.d/uhttpd reload 2>/dev/null
+		repairs="$repairs uhttpd_reloaded"
+	fi
+
+	# 4. Reload HAProxy
+	reload_haproxy
+	repairs="$repairs haproxy_reloaded"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "repairs" "$repairs"
+	json_add_string "site_path" "$site_path"
+	json_dump
+}
+
+# Enable Tor hidden service for a site
+method_enable_tor() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name port
+	name=$(get_uci "$id" name "")
+	port=$(get_uci "$id" port "")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	# Default to port 80 if not set (site uses nginx)
+	[ -z "$port" ] && port="80"
+
+	# Create Tor hidden service
+	create_tor_hidden_service "$name" "$port"
+
+	# Mark site as Tor-enabled
+	uci set "$UCI_CONFIG.$id.tor_enabled=1"
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Tor hidden service created. Restart Tor Shield to get .onion address."
+	json_add_string "name" "$name"
+	json_add_int "port" "$port"
+	json_dump
+}
+
+# Disable Tor hidden service for a site
+method_disable_tor() {
+	local id
+
+	read -r input
+	json_load "$input"
+	json_get_var id id
+
+	if [ -z "$id" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing site id"
+		json_dump
+		return
+	fi
+
+	local name
+	name=$(get_uci "$id" name "")
+
+	if [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Site not found"
+		json_dump
+		return
+	fi
+
+	# Remove Tor hidden service
+	remove_tor_hidden_service "$name"
+
+	# Mark site as Tor-disabled
+	uci set "$UCI_CONFIG.$id.tor_enabled=0"
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "message" "Tor hidden service removed"
+	json_dump
+}
+
+# Get Tor status for all sites
+method_get_tor_status() {
+	json_init
+	json_add_boolean "tor_running" "$(is_tor_ready && echo 1 || echo 0)"
+
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+
+	json_add_array "sites"
+
+	config_load "$UCI_CONFIG"
+	config_foreach _add_tor_status site
+
+	json_close_array
+	json_dump
+}
+
+_add_tor_status() {
+	local section="$1"
+	local name port
+
+	config_get name "$section" name ""
+	config_get port "$section" port ""
+
+	[ -z "$name" ] && return
+
+	local onion_address=""
+	local tor_enabled=0
+
+	if has_tor_service "$name"; then
+		tor_enabled=1
+		onion_address=$(get_onion_address "$name")
+	fi
+
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_boolean "tor_enabled" "$tor_enabled"
+	[ -n "$onion_address" ] && json_add_string "onion_address" "$onion_address"
+	[ -n "$onion_address" ] && json_add_boolean "onion_ready" 1 || json_add_boolean "onion_ready" 0
+	json_close_object
+}
+
 # Save global settings
 method_save_settings() {
 	local enabled runtime nginx_container sites_root gitea_url
@@ -798,25 +1639,37 @@ case "$1" in
 	"upload_file": { "id": "string", "filename": "string", "content": "string" },
 	"list_files": { "id": "string" },
 	"get_settings": {},
-	"save_settings": { "enabled": "boolean", "nginx_container": "string", "sites_root": "string" }
+	"save_settings": { "enabled": "boolean", "nginx_container": "string", "sites_root": "string" },
+	"get_hosting_status": {},
+	"check_site_health": { "id": "string" },
+	"repair_site": { "id": "string" },
+	"enable_tor": { "id": "string" },
+	"disable_tor": { "id": "string" },
+	"get_tor_status": {}
 }
 EOF
 		;;
 	call)
 		case "$2" in
-			status)           method_status ;;
-			list_sites)       method_list_sites ;;
-			get_site)         method_get_site ;;
-			create_site)      method_create_site ;;
-			update_site)      method_update_site ;;
-			delete_site)      method_delete_site ;;
-			sync_site)        method_sync_site ;;
-			get_publish_info) method_get_publish_info ;;
-			upload_file)      method_upload_file ;;
-			list_files)       method_list_files ;;
-			get_settings)     method_get_settings ;;
-			save_settings)    method_save_settings ;;
-			*)                echo '{"error": "unknown method"}' ;;
+			status)             method_status ;;
+			list_sites)         method_list_sites ;;
+			get_site)           method_get_site ;;
+			create_site)        method_create_site ;;
+			update_site)        method_update_site ;;
+			delete_site)        method_delete_site ;;
+			sync_site)          method_sync_site ;;
+			get_publish_info)   method_get_publish_info ;;
+			upload_file)        method_upload_file ;;
+			list_files)         method_list_files ;;
+			get_settings)       method_get_settings ;;
+			save_settings)      method_save_settings ;;
+			get_hosting_status) method_get_hosting_status ;;
+			check_site_health)  method_check_site_health ;;
+			repair_site)        method_repair_site ;;
+			enable_tor)         method_enable_tor ;;
+			disable_tor)        method_disable_tor ;;
+			get_tor_status)     method_get_tor_status ;;
+			*)                  echo '{"error": "unknown method"}' ;;
 		esac
 		;;
 esac

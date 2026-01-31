@@ -17,14 +17,14 @@
 })();
 
 var tabs = [
-	{ id: 'overview', icon: '📊', label: _('Overview'), path: ['admin', 'secubox', 'security', 'crowdsec', 'overview'] },
-	{ id: 'wizard', icon: '🚀', label: _('Wizard'), path: ['admin', 'secubox', 'security', 'crowdsec', 'wizard'] },
-	{ id: 'decisions', icon: '⛔', label: _('Decisions'), path: ['admin', 'secubox', 'security', 'crowdsec', 'decisions'] },
-	{ id: 'alerts', icon: '⚠️', label: _('Alerts'), path: ['admin', 'secubox', 'security', 'crowdsec', 'alerts'] },
-	{ id: 'bouncers', icon: '🛡️', label: _('Bouncers'), path: ['admin', 'secubox', 'security', 'crowdsec', 'bouncers'] },
-	{ id: 'waf', icon: '🔥', label: _('WAF/AppSec'), path: ['admin', 'secubox', 'security', 'crowdsec', 'waf'] },
-	{ id: 'metrics', icon: '📈', label: _('Metrics'), path: ['admin', 'secubox', 'security', 'crowdsec', 'metrics'] },
-	{ id: 'settings', icon: '⚙️', label: _('Settings'), path: ['admin', 'secubox', 'security', 'crowdsec', 'settings'] }
+	{ id: 'overview', icon: '📊', label: _('Overview'), path: ['admin', 'secubox', 'services', 'crowdsec', 'overview'] },
+	{ id: 'wizard', icon: '🚀', label: _('Wizard'), path: ['admin', 'secubox', 'services', 'crowdsec', 'wizard'] },
+	{ id: 'decisions', icon: '⛔', label: _('Decisions'), path: ['admin', 'secubox', 'services', 'crowdsec', 'decisions'] },
+	{ id: 'alerts', icon: '⚠️', label: _('Alerts'), path: ['admin', 'secubox', 'services', 'crowdsec', 'alerts'] },
+	{ id: 'bouncers', icon: '🛡️', label: _('Bouncers'), path: ['admin', 'secubox', 'services', 'crowdsec', 'bouncers'] },
+	{ id: 'waf', icon: '🔥', label: _('WAF/AppSec'), path: ['admin', 'secubox', 'services', 'crowdsec', 'waf'] },
+	{ id: 'metrics', icon: '📈', label: _('Metrics'), path: ['admin', 'secubox', 'services', 'crowdsec', 'metrics'] },
+	{ id: 'settings', icon: '⚙️', label: _('Settings'), path: ['admin', 'secubox', 'services', 'crowdsec', 'settings'] }
 ];
 
 return baseclass.extend({
@@ -68,11 +68,11 @@ body:not([data-page*="crowdsec"]) ul.tabs {
 }
 
 /* All possible LuCI tab selectors */
-body[data-page^="admin-secubox-security-crowdsec"] .tabs,
-body[data-page^="admin-secubox-security-crowdsec"] #tabmenu,
-body[data-page^="admin-secubox-security-crowdsec"] .cbi-tabmenu,
-body[data-page^="admin-secubox-security-crowdsec"] .nav-tabs,
-body[data-page^="admin-secubox-security-crowdsec"] ul.cbi-tabmenu,
+body[data-page^="admin-secubox-services-crowdsec"] .tabs,
+body[data-page^="admin-secubox-services-crowdsec"] #tabmenu,
+body[data-page^="admin-secubox-services-crowdsec"] .cbi-tabmenu,
+body[data-page^="admin-secubox-services-crowdsec"] .nav-tabs,
+body[data-page^="admin-secubox-services-crowdsec"] ul.cbi-tabmenu,
 body[data-page*="crowdsec"] ul.tabs,
 body[data-page*="crowdsec"] .tabs,
 /* Fallback: hide any tabs that appear before our custom nav */

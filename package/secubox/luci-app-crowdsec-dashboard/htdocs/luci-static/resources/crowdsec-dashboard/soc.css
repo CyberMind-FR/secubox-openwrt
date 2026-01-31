@@ -1,17 +1,18 @@
 /* CrowdSec SOC Dashboard - Minimal Professional Theme */
-/* Version: 1.0.0 - SOC Compliant */
+/* Version: 1.1.0 - SecuBox Theme Integration */
 
 :root {
-	--soc-bg: #0d1117;
-	--soc-surface: #161b22;
-	--soc-border: #30363d;
-	--soc-text: #c9d1d9;
-	--soc-text-muted: #8b949e;
-	--soc-primary: #58a6ff;
-	--soc-success: #3fb950;
-	--soc-warning: #d29922;
-	--soc-danger: #f85149;
-	--soc-info: #79c0ff;
+	/* Map SOC variables to SecuBox global theme */
+	--soc-bg: var(--cyber-bg-primary, #0a0e27);
+	--soc-surface: var(--cyber-bg-secondary, #151932);
+	--soc-border: var(--cyber-glass-border, rgba(255, 255, 255, 0.1));
+	--soc-text: var(--cyber-text-primary, #e2e8f0);
+	--soc-text-muted: var(--cyber-text-secondary, #94a3b8);
+	--soc-primary: var(--cyber-accent-primary, #667eea);
+	--soc-success: var(--cyber-success, #10b981);
+	--soc-warning: var(--cyber-warning, #f59e0b);
+	--soc-danger: var(--cyber-danger, #ef4444);
+	--soc-info: var(--cyber-info, #06b6d4);
 }
 
 /* Hide LuCI sidebar for full-width SOC view */

@@ -1,0 +1,423 @@
+#!/bin/sh
+#
+# SecuBox Feed Manager - Catalog feed source management
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+CONFIG_NAME="secubox-appstore"
+SHARE_BASE_URL="secubox://feed"
+
+# Color output (using printf for POSIX shell compatibility)
+ESC=$(printf '\033')
+RED="${ESC}[0;31m"
+GREEN="${ESC}[0;32m"
+YELLOW="${ESC}[1;33m"
+BLUE="${ESC}[0;34m"
+CYAN="${ESC}[0;36m"
+BOLD="${ESC}[1m"
+NC="${ESC}[0m"
+
+# Logging
+log() {
+	logger -t secubox-feed-manager "$@"
+}
+
+# Generate share token
+generate_token() {
+	head -c 16 /dev/urandom | md5sum | cut -c1-32
+}
+
+# Get feed type badge
+get_type_badge() {
+	local feed_type="$1"
+	case "$feed_type" in
+		published)   echo "${GREEN}[PUB]${NC}" ;;
+		unpublished) echo "${YELLOW}[PRV]${NC}" ;;
+		development) echo "${BLUE}[DEV]${NC}" ;;
+		*)           echo "[???]" ;;
+	esac
+}
+
+# List all feed sources
+cmd_list() {
+	local format="${1:-text}"
+
+	config_load "$CONFIG_NAME"
+
+	if [ "$format" = "--json" ]; then
+		/usr/sbin/secubox-catalog-sync list
+		return
+	fi
+
+	echo -e "${BOLD}SecuBox Catalog Feed Sources${NC}"
+	echo "═══════════════════════════════════════════════════════════════"
+	echo ""
+
+	local count=0
+
+	_list_source() {
+		local section="$1"
+		local enabled type feed_type visibility url path priority description share_token
+
+		config_get_bool enabled "$section" enabled 0
+		config_get type "$section" type ""
+		config_get feed_type "$section" feed_type "published"
+		config_get visibility "$section" visibility "public"
+		config_get url "$section" url ""
+		config_get path "$section" path ""
+		config_get priority "$section" priority 999
+		config_get description "$section" description ""
+
+		local badge=$(get_type_badge "$feed_type")
+		local status_icon="○"
+		[ "$enabled" -eq 1 ] && status_icon="${GREEN}●${NC}"
+
+		printf " %s %-4s %-15s %s\n" "$status_icon" "$badge" "$section" "$description"
+
+		if [ -n "$url" ]; then
+			echo -e "        ${CYAN}URL:${NC} $url"
+		elif [ -n "$path" ]; then
+			echo -e "        ${CYAN}Path:${NC} $path"
+		fi
+		echo -e "        ${CYAN}Priority:${NC} $priority  ${CYAN}Visibility:${NC} $visibility"
+		echo ""
+
+		count=$((count + 1))
+	}
+
+	config_foreach _list_source source
+
+	echo "═══════════════════════════════════════════════════════════════"
+	echo -e " ${BOLD}Total:${NC} $count sources"
+	echo ""
+	echo -e " ${BOLD}Legend:${NC} ${GREEN}[PUB]${NC}=Published  ${YELLOW}[PRV]${NC}=Unpublished  ${BLUE}[DEV]${NC}=Development"
+	echo -e "         ${GREEN}●${NC}=Enabled  ○=Disabled"
+}
+
+# Add a new feed source
+cmd_add() {
+	local name="$1"
+	local url="$2"
+	shift 2
+
+	if [ -z "$name" ] || [ -z "$url" ]; then
+		echo "Usage: secubox feed add <name> <url> [--type TYPE] [--priority N] [--description DESC]"
+		return 1
+	fi
+
+	# Parse options
+	local feed_type="unpublished"
+	local priority="10"
+	local description=""
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--type)
+				feed_type="$2"
+				shift 2
+				;;
+			--priority)
+				priority="$2"
+				shift 2
+				;;
+			--description)
+				description="$2"
+				shift 2
+				;;
+			*)
+				shift
+				;;
+		esac
+	done
+
+	# Validate feed type
+	case "$feed_type" in
+		published|unpublished|development) ;;
+		*)
+			echo -e "${RED}Error: Invalid feed type '$feed_type'${NC}"
+			echo "Valid types: published, unpublished, development"
+			return 1
+			;;
+	esac
+
+	# Check if source already exists
+	if uci -q get ${CONFIG_NAME}.$name >/dev/null 2>&1; then
+		echo -e "${RED}Error: Feed source '$name' already exists${NC}"
+		return 1
+	fi
+
+	# Determine visibility based on feed type
+	local visibility="public"
+	case "$feed_type" in
+		unpublished) visibility="private" ;;
+		development) visibility="local" ;;
+	esac
+
+	# Generate share token for unpublished feeds
+	local share_token=""
+	if [ "$feed_type" = "unpublished" ]; then
+		share_token=$(generate_token)
+	fi
+
+	# Add the source
+	uci batch <<EOF
+set ${CONFIG_NAME}.$name=source
+set ${CONFIG_NAME}.$name.enabled='1'
+set ${CONFIG_NAME}.$name.type='remote'
+set ${CONFIG_NAME}.$name.feed_type='$feed_type'
+set ${CONFIG_NAME}.$name.visibility='$visibility'
+set ${CONFIG_NAME}.$name.url='$url'
+set ${CONFIG_NAME}.$name.priority='$priority'
+set ${CONFIG_NAME}.$name.timeout='30'
+set ${CONFIG_NAME}.$name.description='$description'
+EOF
+
+	if [ -n "$share_token" ]; then
+		uci set ${CONFIG_NAME}.$name.share_token="$share_token"
+	fi
+
+	uci commit "$CONFIG_NAME"
+
+	echo -e "${GREEN}✓ Feed source '$name' added successfully${NC}"
+	echo ""
+	echo -e "  ${CYAN}Name:${NC} $name"
+	echo -e "  ${CYAN}URL:${NC} $url"
+	echo -e "  ${CYAN}Type:${NC} $feed_type"
+	echo -e "  ${CYAN}Priority:${NC} $priority"
+
+	if [ -n "$share_token" ]; then
+		echo ""
+		echo -e "  ${YELLOW}Share token (keep secret):${NC} $share_token"
+	fi
+
+	log "Added feed source: $name ($feed_type)"
+}
+
+# Remove a feed source
+cmd_remove() {
+	local name="$1"
+
+	if [ -z "$name" ]; then
+		echo "Usage: secubox feed remove <name>"
+		return 1
+	fi
+
+	# Check if source exists
+	if ! uci -q get ${CONFIG_NAME}.$name >/dev/null 2>&1; then
+		echo -e "${RED}Error: Feed source '$name' not found${NC}"
+		return 1
+	fi
+
+	# Don't allow removing embedded
+	if [ "$name" = "embedded" ]; then
+		echo -e "${RED}Error: Cannot remove embedded fallback source${NC}"
+		return 1
+	fi
+
+	uci delete ${CONFIG_NAME}.$name
+	uci commit "$CONFIG_NAME"
+
+	echo -e "${GREEN}✓ Feed source '$name' removed${NC}"
+	log "Removed feed source: $name"
+}
+
+# Generate share URL for a feed
+cmd_share() {
+	local name="$1"
+
+	if [ -z "$name" ]; then
+		echo "Usage: secubox feed share <name>"
+		return 1
+	fi
+
+	config_load "$CONFIG_NAME"
+
+	local feed_type visibility url share_token
+
+	config_get feed_type "$name" feed_type ""
+	config_get visibility "$name" visibility ""
+	config_get url "$name" url ""
+	config_get share_token "$name" share_token ""
+
+	if [ -z "$feed_type" ]; then
+		echo -e "${RED}Error: Feed source '$name' not found${NC}"
+		return 1
+	fi
+
+	case "$feed_type" in
+		development)
+			echo -e "${RED}Error: Development feeds cannot be shared${NC}"
+			return 1
+			;;
+		published)
+			echo -e "${BOLD}Share URL (public):${NC}"
+			echo ""
+			echo "  ${SHARE_BASE_URL}/${name}?url=$(echo "$url" | sed 's/[&?]/%26/g')"
+			echo ""
+			echo -e "${CYAN}Anyone can import this feed with:${NC}"
+			echo "  secubox feed import '${SHARE_BASE_URL}/${name}?url=...'"
+			;;
+		unpublished)
+			if [ -z "$share_token" ]; then
+				# Generate a new token if none exists
+				share_token=$(generate_token)
+				uci set ${CONFIG_NAME}.$name.share_token="$share_token"
+				uci commit "$CONFIG_NAME"
+			fi
+
+			echo -e "${BOLD}Share URL (private):${NC}"
+			echo ""
+			echo "  ${SHARE_BASE_URL}/${name}?url=$(echo "$url" | sed 's/[&?]/%26/g')&token=${share_token}"
+			echo ""
+			echo -e "${YELLOW}Warning: This URL contains your share token. Only share with trusted users.${NC}"
+			echo ""
+			echo -e "${CYAN}Recipients can import with:${NC}"
+			echo "  secubox feed import '${SHARE_BASE_URL}/${name}?...'"
+			;;
+	esac
+}
+
+# Import a shared feed
+cmd_import() {
+	local input="$1"
+
+	if [ -z "$input" ]; then
+		echo "Usage: secubox feed import <share-url|file>"
+		return 1
+	fi
+
+	# Check if it's a file
+	if [ -f "$input" ]; then
+		# Import from JSON file
+		if ! jsonfilter -i "$input" -e '@.name' >/dev/null 2>&1; then
+			echo -e "${RED}Error: Invalid feed configuration file${NC}"
+			return 1
+		fi
+
+		local name=$(jsonfilter -i "$input" -e '@.name')
+		local url=$(jsonfilter -i "$input" -e '@.url')
+		local feed_type=$(jsonfilter -i "$input" -e '@.feed_type' 2>/dev/null || echo "unpublished")
+		local description=$(jsonfilter -i "$input" -e '@.description' 2>/dev/null || echo "")
+		local share_token=$(jsonfilter -i "$input" -e '@.share_token' 2>/dev/null || echo "")
+
+		cmd_add "$name" "$url" --type "$feed_type" --description "$description"
+
+		if [ -n "$share_token" ]; then
+			uci set ${CONFIG_NAME}.$name.share_token="$share_token"
+			uci commit "$CONFIG_NAME"
+		fi
+
+		return 0
+	fi
+
+	# Parse share URL: secubox://feed/<name>?url=...&token=...
+	if echo "$input" | grep -q "^secubox://feed/"; then
+		local name=$(echo "$input" | sed 's|secubox://feed/||' | cut -d'?' -f1)
+		local params=$(echo "$input" | cut -d'?' -f2)
+
+		local url=""
+		local token=""
+
+		# Parse URL parameters
+		for param in $(echo "$params" | tr '&' '\n'); do
+			local key=$(echo "$param" | cut -d'=' -f1)
+			local value=$(echo "$param" | cut -d'=' -f2- | sed 's/%26/\&/g')
+
+			case "$key" in
+				url) url="$value" ;;
+				token) token="$value" ;;
+			esac
+		done
+
+		if [ -z "$url" ]; then
+			echo -e "${RED}Error: Invalid share URL - missing url parameter${NC}"
+			return 1
+		fi
+
+		local feed_type="published"
+		[ -n "$token" ] && feed_type="unpublished"
+
+		cmd_add "$name" "$url" --type "$feed_type"
+
+		if [ -n "$token" ]; then
+			uci set ${CONFIG_NAME}.$name.share_token="$token"
+			uci commit "$CONFIG_NAME"
+		fi
+
+		echo ""
+		echo -e "${GREEN}✓ Feed imported successfully${NC}"
+		echo -e "${CYAN}Run 'secubox feed sync' to fetch the catalog${NC}"
+
+		return 0
+	fi
+
+	# Assume it's a direct URL - add as unpublished
+	local name="imported_$(date +%s)"
+	cmd_add "$name" "$input" --type "unpublished" --description "Imported from URL"
+}
+
+# Usage
+usage() {
+	cat <<EOF
+SecuBox Feed Manager - Catalog feed source management
+
+Usage: secubox-feed-manager <command> [options]
+
+Commands:
+  list [--json]                     List all feed sources
+  add <name> <url> [options]        Add a new feed source
+  remove <name>                     Remove a feed source
+  share <name>                      Generate share URL
+  import <url|file>                 Import a shared feed
+
+Add Options:
+  --type <type>       published|unpublished|development
+  --priority <n>      Feed priority (lower = higher)
+  --description <d>   Feed description
+
+Feed Types:
+  published     Public feed (official, community-maintained)
+  unpublished   Private feed (requires auth token to share)
+  development   Local development feed (not shareable)
+
+Examples:
+  secubox-feed-manager list
+  secubox-feed-manager add custom https://example.com/catalog.json --type unpublished
+  secubox-feed-manager share custom
+  secubox-feed-manager import 'secubox://feed/name?url=...&token=...'
+EOF
+}
+
+# Main
+case "${1:-}" in
+	list)
+		shift
+		cmd_list "$@"
+		;;
+	add)
+		shift
+		cmd_add "$@"
+		;;
+	remove)
+		shift
+		cmd_remove "$@"
+		;;
+	share)
+		shift
+		cmd_share "$@"
+		;;
+	import)
+		shift
+		cmd_import "$@"
+		;;
+	-h|--help|help|"")
+		usage
+		;;
+	*)
+		echo "Unknown command: $1" >&2
+		usage
+		exit 1
+		;;
+esac

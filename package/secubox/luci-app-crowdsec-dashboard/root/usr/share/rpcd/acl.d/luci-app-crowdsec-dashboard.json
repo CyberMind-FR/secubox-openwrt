@@ -27,9 +27,11 @@
 					"acquisition_metrics",
 					"health_check",
 					"capi_metrics",
-					"hub_available"
+					"hub_available",
+					"get_settings"
 				],
-				"file": [ "read", "stat" ]
+				"uci": [ "get", "state", "configs" ],
+				"file": [ "read", "stat", "exec" ]
 			},
 			"uci": [ "crowdsec", "crowdsec-dashboard" ]
 		},
@@ -54,8 +56,11 @@
 					"configure_acquisition",
 					"reset_wizard",
 					"install_hub_item",
-					"remove_hub_item"
-				]
+					"remove_hub_item",
+					"save_settings"
+				],
+				"uci": [ "set", "add", "delete", "rename", "order", "commit", "apply", "confirm", "rollback" ],
+				"file": [ "exec" ]
 			},
 			"uci": [ "crowdsec", "crowdsec-dashboard" ]
 		}

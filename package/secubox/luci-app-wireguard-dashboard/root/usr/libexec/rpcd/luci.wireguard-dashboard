@@ -387,6 +387,114 @@ generate_keys() {
 	json_dump
 }
 
+# Create a new WireGuard interface
+create_interface() {
+	read input
+	json_load "$input"
+	json_get_var name name
+	json_get_var private_key private_key
+	json_get_var listen_port listen_port
+	json_get_var addresses addresses
+	json_get_var mtu mtu
+
+	json_init
+
+	# Validate required fields
+	if [ -z "$name" ] || [ -z "$private_key" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing required fields: name and private_key"
+		json_dump
+		return
+	fi
+
+	# Check if interface already exists
+	if uci -q get network.$name >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Interface $name already exists"
+		json_dump
+		return
+	fi
+
+	# Validate private key format (base64, 44 chars ending with =)
+	if ! echo "$private_key" | grep -qE '^[A-Za-z0-9+/]{43}=$'; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Invalid private key format"
+		json_dump
+		return
+	fi
+
+	# Default values
+	[ -z "$listen_port" ] && listen_port="51820"
+	[ -z "$mtu" ] && mtu="1420"
+
+	# Create the interface in UCI
+	uci set network.$name=interface
+	uci set network.$name.proto='wireguard'
+	uci set network.$name.private_key="$private_key"
+	uci set network.$name.listen_port="$listen_port"
+	uci set network.$name.mtu="$mtu"
+
+	# Set addresses (can be multiple)
+	if [ -n "$addresses" ]; then
+		uci delete network.$name.addresses 2>/dev/null
+		for addr in $addresses; do
+			uci add_list network.$name.addresses="$addr"
+		done
+	fi
+
+	# Commit changes
+	if uci commit network; then
+		# Create firewall zone for the interface
+		local zone_name="wg_${name}"
+		local zone_exists=$(uci show firewall 2>/dev/null | grep "\.name='$zone_name'" | head -1)
+
+		if [ -z "$zone_exists" ]; then
+			# Add new firewall zone
+			local zone_section=$(uci add firewall zone)
+			uci set firewall.$zone_section.name="$zone_name"
+			uci set firewall.$zone_section.input='ACCEPT'
+			uci set firewall.$zone_section.output='ACCEPT'
+			uci set firewall.$zone_section.forward='ACCEPT'
+			uci add_list firewall.$zone_section.network="$name"
+
+			# Add forwarding to lan
+			local fwd_section=$(uci add firewall forwarding)
+			uci set firewall.$fwd_section.src="$zone_name"
+			uci set firewall.$fwd_section.dest='lan'
+
+			# Add forwarding from lan
+			local fwd2_section=$(uci add firewall forwarding)
+			uci set firewall.$fwd2_section.src='lan'
+			uci set firewall.$fwd2_section.dest="$zone_name"
+
+			# Add rule to allow WireGuard port from wan
+			local rule_section=$(uci add firewall rule)
+			uci set firewall.$rule_section.name="Allow-WireGuard-$name"
+			uci set firewall.$rule_section.src='wan'
+			uci set firewall.$rule_section.dest_port="$listen_port"
+			uci set firewall.$rule_section.proto='udp'
+			uci set firewall.$rule_section.target='ACCEPT'
+
+			uci commit firewall
+		fi
+
+		# Bring up the interface
+		ifup "$name" 2>/dev/null &
+
+		# Reload firewall
+		/etc/init.d/firewall reload 2>/dev/null &
+
+		json_add_boolean "success" 1
+		json_add_string "message" "Interface $name created successfully"
+		json_add_string "interface" "$name"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to commit network configuration"
+	fi
+
+	json_dump
+}
+
 # Add a new peer to interface
 add_peer() {
 	read input
@@ -893,7 +1001,7 @@ get_bandwidth_rates() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_keys":{},"add_peer":{"interface":"str","name":"str","allowed_ips":"str","public_key":"str","preshared_key":"str","endpoint":"str","persistent_keepalive":"str"},"remove_peer":{"interface":"str","public_key":"str"},"generate_config":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"generate_qr":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"},"interface_control":{"interface":"str","action":"str"},"peer_descriptions":{},"bandwidth_rates":{}}'
+		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_keys":{},"create_interface":{"name":"str","private_key":"str","listen_port":"str","addresses":"str","mtu":"str"},"add_peer":{"interface":"str","name":"str","allowed_ips":"str","public_key":"str","preshared_key":"str","endpoint":"str","persistent_keepalive":"str"},"remove_peer":{"interface":"str","public_key":"str"},"generate_config":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"generate_qr":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"},"interface_control":{"interface":"str","action":"str"},"peer_descriptions":{},"bandwidth_rates":{}}'
 		;;
 	call)
 		case "$2" in
@@ -914,6 +1022,9 @@ case "$1" in
 				;;
 			generate_keys)
 				generate_keys
+				;;
+			create_interface)
+				create_interface
 				;;
 			add_peer)
 				add_peer

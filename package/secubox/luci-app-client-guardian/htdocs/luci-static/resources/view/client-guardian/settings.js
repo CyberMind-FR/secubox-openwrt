@@ -29,17 +29,17 @@ return view.extend({
 		s = m.section(form.NamedSection, 'config', 'client-guardian', _('General Settings'));
 
 		o = s.option(form.Flag, 'enabled', _('Enable Client Guardian'));
-		o.default = '1';
+		o.default = '0';
 		o.rmempty = false;
-		o.description = _('Enable or disable the Client Guardian access control system');
+		o.description = _('Enable or disable the Client Guardian access control system. WARNING: Enabling with restrictive policies may block network access!');
 
 		o = s.option(form.ListValue, 'default_policy', _('Default Policy'));
-		o.value('open', _('Open - Allow all clients'));
-		o.value('quarantine', _('Quarantine - Require approval'));
-		o.value('whitelist', _('Whitelist Only - Allow only approved clients'));
-		o.default = 'quarantine';
+		o.value('open', _('Open - Allow all clients (Recommended)'));
+		o.value('quarantine', _('Quarantine - Require approval (Restrictive)'));
+		o.value('whitelist', _('Whitelist Only - Block unknown clients (Very Restrictive)'));
+		o.default = 'open';
 		o.rmempty = false;
-		o.description = _('Default behavior for new/unknown clients');
+		o.description = _('Default behavior for new/unknown clients. WARNING: Quarantine and Whitelist modes will block new devices from accessing the network!');
 
 		o = s.option(form.Flag, 'auto_approve', _('Auto-Approve Known Devices'));
 		o.default = '0';

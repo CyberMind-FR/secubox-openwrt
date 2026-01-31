@@ -1,78 +1,139 @@
 {
     "luci-app-secubox": {
         "description": "SecuBox Dashboard",
-		"read": {
-			"ubus": {
-				"luci.secubox": [
-					"status",
-					"getStatus",
-					"getVersion",
-					"modules",
-					"getModules",
-					"modules_by_category",
-					"module_info",
-					"getModuleInfo",
-					"check_module_enabled",
-					"health",
-					"getHealth",
-					"diagnostics",
-					"runDiagnostics",
-					"getLogs",
-					"get_system_health",
-					"get_alerts",
-					"get_dashboard_data",
-					"get_theme",
-					"first_run_status",
-					"list_apps",
-					"get_app_manifest",
-					"list_profiles",
-					"listProfiles",
-					"getProfile",
-					"validateProfile",
-					"listSnapshots",
-					"get_appstore_apps",
-					"get_appstore_app",
-					"get_public_ips",
-					"get_network_health",
-					"get_vital_services",
-					"get_full_health_report"
-				],
+        "read": {
+            "ubus": {
+                "luci.secubox": [
+                    "status",
+                    "getStatus",
+                    "getVersion",
+                    "modules",
+                    "getModules",
+                    "modules_by_category",
+                    "module_info",
+                    "getModuleInfo",
+                    "check_module_enabled",
+                    "health",
+                    "getHealth",
+                    "diagnostics",
+                    "runDiagnostics",
+                    "getLogs",
+                    "get_system_health",
+                    "get_alerts",
+                    "get_dashboard_data",
+                    "get_theme",
+                    "first_run_status",
+                    "list_apps",
+                    "get_app_manifest",
+                    "list_profiles",
+                    "listProfiles",
+                    "getProfile",
+                    "validateProfile",
+                    "listSnapshots",
+                    "get_appstore_apps",
+                    "get_appstore_app",
+                    "get_public_ips",
+                    "get_network_health",
+                    "get_vital_services",
+                    "get_full_health_report",
+                    "get_services",
+                    "get_proxy_mode",
+                    "p2p_get_peers",
+                    "p2p_get_settings",
+                    "p2p_discover",
+                    "p2p_get_catalog",
+                    "p2p_get_peer_catalog",
+                    "p2p_get_shared_services"
+                ],
+                "luci.service-registry": [
+                    "list_services",
+                    "get_service",
+                    "list_categories",
+                    "get_qr_data",
+                    "get_certificate_status",
+                    "check_service_health",
+                    "check_all_health",
+                    "get_network_info",
+                    "get_landing_config"
+                ],
+                "luci.haproxy": [
+                    "status",
+                    "list_vhosts",
+                    "list_backends",
+                    "list_certificates"
+                ],
+                "luci.gitea": [
+                    "get_status"
+                ],
+                "luci.secubox-p2p": [
+                    "get_gitea_config",
+                    "list_gitea_repos",
+                    "get_gitea_commits",
+                    "list_local_backups"
+                ],
                 "uci": [
                     "get",
                     "state"
                 ]
             },
             "uci": [
-                "secubox"
+                "secubox",
+                "service-registry",
+                "haproxy"
             ]
         },
-		"write": {
-			"ubus": {
-				"luci.secubox": [
-					"reload",
-					"start_module",
-					"stop_module",
-					"restart_module",
-					"enable_module",
-					"disable_module",
-					"installModule",
-					"removeModule",
-					"updateModule",
-					"applyProfile",
-					"createSnapshot",
-					"restoreSnapshot",
-					"quick_action",
-					"set_theme",
-					"dismiss_alert",
-					"clear_alerts",
-					"fix_permissions",
-					"apply_first_run",
-					"apply_app_wizard",
-					"apply_profile",
-					"rollback_profile",
-					"install_appstore_app",
-					"remove_appstore_app"
-				],
+        "write": {
+            "ubus": {
+                "luci.secubox": [
+                    "reload",
+                    "start_module",
+                    "stop_module",
+                    "restart_module",
+                    "enable_module",
+                    "disable_module",
+                    "installModule",
+                    "removeModule",
+                    "updateModule",
+                    "applyProfile",
+                    "createSnapshot",
+                    "restoreSnapshot",
+                    "quick_action",
+                    "set_theme",
+                    "dismiss_alert",
+                    "clear_alerts",
+                    "fix_permissions",
+                    "apply_first_run",
+                    "apply_app_wizard",
+                    "apply_profile",
+                    "rollback_profile",
+                    "install_appstore_app",
+                    "remove_appstore_app",
+                    "set_proxy_mode",
+                    "p2p_add_peer",
+                    "p2p_remove_peer",
+                    "p2p_set_settings",
+                    "p2p_share_app",
+                    "p2p_unshare_app",
+                    "p2p_install_from_peer",
+                    "p2p_sync_catalog",
+                    "p2p_broadcast_command"
+                ],
+                "luci.service-registry": [
+                    "generate_landing_page",
+                    "sync_providers"
+                ],
+                "luci.gitea": [
+                    "generate_token",
+                    "create_repo"
+                ],
+                "luci.secubox-p2p": [
+                    "set_gitea_config",
+                    "create_gitea_repo",
+                    "push_gitea_backup",
+                    "pull_gitea_backup",
+                    "create_local_backup",
+                    "restore_local_backup"
+                ],
                 "uci": [
                     "set",
                     "delete",

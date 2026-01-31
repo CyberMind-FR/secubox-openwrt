@@ -1,5 +1,5 @@
 {
-	"admin/secubox/services/mailinabox": {
+	"admin/services/mailinabox": {
 		"title": "Mail Server",
 		"order": 60,
 		"action": {
@@ -9,7 +9,7 @@
 			"acl": ["luci-app-mailinabox"]
 		}
 	},
-	"admin/secubox/services/mailinabox/overview": {
+	"admin/services/mailinabox/overview": {
 		"title": "Overview",
 		"order": 10,
 		"action": {
@@ -17,7 +17,7 @@
 			"path": "mailinabox/overview"
 		}
 	},
-	"admin/secubox/services/mailinabox/settings": {
+	"admin/services/mailinabox/settings": {
 		"title": "Settings",
 		"order": 90,
 		"action": {

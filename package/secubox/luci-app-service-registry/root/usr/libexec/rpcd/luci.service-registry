@@ -35,6 +35,22 @@ is_port_listening() {
 	return 1
 }
 
+# Helper: Check if HAProxy is available and running
+haproxy_available() {
+	# Check if HAProxy container is running (preferred method)
+	if command -v lxc-info >/dev/null 2>&1; then
+		lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING" && return 0
+	fi
+
+	# Fallback: check if haproxy process is running
+	pgrep haproxy >/dev/null 2>&1 && return 0
+
+	# Fallback: check if RPCD haproxy interface is available
+	ubus call luci.haproxy list 2>/dev/null | jsonfilter -e '@' >/dev/null 2>&1 && return 0
+
+	return 1
+}
+
 # Helper: Get process name for port
 get_process_for_port() {
 	local port="$1"
@@ -125,8 +141,10 @@ method_list_services() {
 	fi
 
 	# 4. Get direct listening services (from luci.secubox)
+	# NOTE: Disabled by default - too slow with many ports (spawns jsonfilter per service)
+	# Enable in UCI: uci set service-registry.direct.enabled=1
 	local direct_enabled
-	direct_enabled=$(get_uci direct enabled 1)
+	direct_enabled=$(get_uci direct enabled 0)
 	if [ "$direct_enabled" = "1" ]; then
 		_aggregate_direct_services "$lan_ip" "$TMP_SERVICES"
 	fi
@@ -260,6 +278,11 @@ _add_published_service() {
 _aggregate_haproxy_services() {
 	local lan_ip="$1"
 	local tmp_file="$2"
+
+	# Check if HAProxy is available before calling RPCD
+	if ! haproxy_available; then
+		return 0
+	fi
 
 	# Call HAProxy RPCD to get vhosts and backends
 	local vhosts_json backends_json certs_json
@@ -439,24 +462,41 @@ _aggregate_direct_services() {
 	services_json=$(ubus call luci.secubox get_services 2>/dev/null)
 	[ -z "$services_json" ] && return
 
-	# Parse and add unpublished services
-	local count
-	count=$(echo "$services_json" | jsonfilter -e '@.services[*]' 2>/dev/null | wc -l)
-	local i=0
+	# Parse all services at once using jsonfilter list mode for better performance
+	# Extract port|name|category|icon tuples in a single pass
+	local data_file="/tmp/sr_direct_$$"
+	echo "$services_json" | jsonfilter -e '@.services[*].port' -e '@.services[*].name' -e '@.services[*].category' -e '@.services[*].icon' > "$data_file" 2>/dev/null
 
+	# Count services
+	local count=0
+	local ports=""
+	local names=""
+	local categories=""
+	local icons=""
+
+	# Read ports line by line (each jsonfilter -e outputs one line per match)
+	count=$(echo "$services_json" | jsonfilter -e '@.services[*].port' 2>/dev/null | wc -l)
+	[ "$count" -eq 0 ] && { rm -f "$data_file"; return; }
+
+	# Limit to first 20 direct services to avoid performance issues
+	[ "$count" -gt 20 ] && count=20
+
+	# Get all values at once using array notation
+	local i=0
 	while [ $i -lt "$count" ]; do
-		local port name category icon external
+		local port name category icon
 		port=$(echo "$services_json" | jsonfilter -e "@.services[$i].port" 2>/dev/null)
 		name=$(echo "$services_json" | jsonfilter -e "@.services[$i].name" 2>/dev/null)
 		category=$(echo "$services_json" | jsonfilter -e "@.services[$i].category" 2>/dev/null)
 		icon=$(echo "$services_json" | jsonfilter -e "@.services[$i].icon" 2>/dev/null)
-		external=$(echo "$services_json" | jsonfilter -e "@.services[$i].external" 2>/dev/null)
 
 		i=$((i + 1))
 
 		[ -z "$port" ] && continue
 		# Skip if already processed
 		grep -q "^${port}$" "$tmp_file" 2>/dev/null && continue
+		# Skip common system ports (often not user services)
+		case "$port" in 22|53|67|68|123|547|953) continue ;; esac
 
 		json_add_object
 		json_add_string "id" "direct_${port}"
@@ -476,6 +516,8 @@ _aggregate_direct_services() {
 
 		echo "$port" >> "$tmp_file"
 	done
+
+	rm -f "$data_file"
 }
 
 # Aggregate LXC container services
@@ -593,29 +635,37 @@ method_publish_service() {
 	local urls_clearnet=""
 	local urls_onion=""
 
-	# Create HAProxy vhost if domain specified
+	# Create HAProxy vhost if domain specified and HAProxy is available
 	if [ -n "$domain" ]; then
-		# Ensure firewall allows HTTP/HTTPS from WAN (for public access + ACME)
-		ensure_haproxy_firewall_rules
+		if haproxy_available; then
+			# Ensure firewall allows HTTP/HTTPS from WAN (for public access + ACME)
+			ensure_haproxy_firewall_rules
 
-		# Create backend
-		ubus call luci.haproxy create_backend "{\"name\":\"$section_id\",\"mode\":\"http\"}" 2>/dev/null
+			# Create backend
+			ubus call luci.haproxy create_backend "{\"name\":\"$section_id\",\"mode\":\"http\"}" 2>/dev/null
 
-		# Create server pointing to local port
-		ubus call luci.haproxy create_server "{\"backend\":\"$section_id\",\"name\":\"local\",\"address\":\"127.0.0.1\",\"port\":$local_port}" 2>/dev/null
+			# Create server pointing to local port
+			ubus call luci.haproxy create_server "{\"backend\":\"$section_id\",\"name\":\"local\",\"address\":\"127.0.0.1\",\"port\":$local_port}" 2>/dev/null
 
-		# Create vhost with SSL
-		ubus call luci.haproxy create_vhost "{\"domain\":\"$domain\",\"backend\":\"$section_id\",\"ssl\":1,\"ssl_redirect\":1,\"acme\":1,\"enabled\":1}" 2>/dev/null
+			# Create vhost with SSL
+			ubus call luci.haproxy create_vhost "{\"domain\":\"$domain\",\"backend\":\"$section_id\",\"ssl\":1,\"ssl_redirect\":1,\"acme\":1,\"enabled\":1}" 2>/dev/null
 
-		# Regenerate HAProxy config to include the new vhost
-		ubus call luci.haproxy generate 2>/dev/null
-		ubus call luci.haproxy reload 2>/dev/null
+			# Regenerate HAProxy config to include the new vhost
+			ubus call luci.haproxy generate 2>/dev/null
+			ubus call luci.haproxy reload 2>/dev/null
 
-		uci set "$UCI_CONFIG.$section_id.haproxy_enabled=1"
-		uci set "$UCI_CONFIG.$section_id.haproxy_domain=$domain"
-		uci set "$UCI_CONFIG.$section_id.haproxy_ssl=1"
+			uci set "$UCI_CONFIG.$section_id.haproxy_enabled=1"
+			uci set "$UCI_CONFIG.$section_id.haproxy_domain=$domain"
+			uci set "$UCI_CONFIG.$section_id.haproxy_ssl=1"
 
-		urls_clearnet="https://${domain}"
+			urls_clearnet="https://${domain}"
+		else
+			# Store domain for later HAProxy configuration when it becomes available
+			uci set "$UCI_CONFIG.$section_id.haproxy_enabled=0"
+			uci set "$UCI_CONFIG.$section_id.haproxy_domain=$domain"
+			uci set "$UCI_CONFIG.$section_id.haproxy_pending=1"
+			logger -t service-registry "HAProxy unavailable, domain $domain saved for later"
+		fi
 	fi
 
 	# Create Tor hidden service if enabled
@@ -696,12 +746,14 @@ method_unpublish_service() {
 	config_get haproxy_domain "$service_id" haproxy_domain ""
 	config_get tor_enabled "$service_id" tor_enabled "0"
 
-	# Remove HAProxy vhost
+	# Remove HAProxy vhost (if HAProxy is available)
 	if [ "$haproxy_enabled" = "1" ] && [ -n "$haproxy_domain" ]; then
-		local vhost_id
-		vhost_id=$(echo "$haproxy_domain" | sed 's/[^a-zA-Z0-9]/_/g')
-		ubus call luci.haproxy delete_vhost "{\"id\":\"$vhost_id\"}" 2>/dev/null
-		ubus call luci.haproxy delete_backend "{\"id\":\"$service_id\"}" 2>/dev/null
+		if haproxy_available; then
+			local vhost_id
+			vhost_id=$(echo "$haproxy_domain" | sed 's/[^a-zA-Z0-9]/_/g')
+			ubus call luci.haproxy delete_vhost "{\"id\":\"$vhost_id\"}" 2>/dev/null
+			ubus call luci.haproxy delete_backend "{\"id\":\"$service_id\"}" 2>/dev/null
+		fi
 	fi
 
 	# Remove Tor hidden service
@@ -976,26 +1028,62 @@ get_reverse_dns() {
 # Helper: Check certificate expiry
 check_cert_expiry() {
 	local domain="$1"
-	local cert_file="/srv/haproxy/certs/${domain}.pem"
+	local cert_file=""
 
-	if [ ! -f "$cert_file" ]; then
-		# Try the ACME path
+	# Try multiple possible certificate locations
+	# 1. HAProxy certs directory (combined pem files)
+	if [ -f "/srv/haproxy/certs/${domain}.pem" ]; then
+		cert_file="/srv/haproxy/certs/${domain}.pem"
+	# 2. ACME standard path
+	elif [ -f "/etc/acme/${domain}/${domain}.cer" ]; then
+		cert_file="/etc/acme/${domain}/${domain}.cer"
+	# 3. ACME fullchain (some setups use this)
+	elif [ -f "/etc/acme/${domain}/fullchain.cer" ]; then
+		cert_file="/etc/acme/${domain}/fullchain.cer"
+	# 4. ACME with _ecc suffix (ECC certs)
+	elif [ -f "/etc/acme/${domain}_ecc/${domain}.cer" ]; then
 		cert_file="/etc/acme/${domain}_ecc/${domain}.cer"
-		[ ! -f "$cert_file" ] && cert_file="/etc/acme/${domain}/${domain}.cer"
+	# 5. Let's Encrypt standard path
+	elif [ -f "/etc/letsencrypt/live/${domain}/cert.pem" ]; then
+		cert_file="/etc/letsencrypt/live/${domain}/cert.pem"
 	fi
 
-	if [ -f "$cert_file" ]; then
+	if [ -n "$cert_file" ] && [ -f "$cert_file" ]; then
 		# Get expiry date using openssl
 		local expiry_date
 		expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" 2>/dev/null | cut -d= -f2)
 		if [ -n "$expiry_date" ]; then
-			# Convert to epoch
-			local expiry_epoch
+			# Convert to epoch - try multiple date formats for compatibility
+			local expiry_epoch now_epoch days_left
+
+			# BusyBox date may not support -d with GMT format
+			# Try direct parsing first
 			expiry_epoch=$(date -d "$expiry_date" +%s 2>/dev/null)
-			local now_epoch
+
+			# If that fails, try converting the format
+			if [ -z "$expiry_epoch" ]; then
+				# Parse "Apr 27 04:05:21 2026 GMT" format manually
+				local month day time year
+				month=$(echo "$expiry_date" | awk '{print $1}')
+				day=$(echo "$expiry_date" | awk '{print $2}')
+				time=$(echo "$expiry_date" | awk '{print $3}')
+				year=$(echo "$expiry_date" | awk '{print $4}')
+
+				# Convert month name to number
+				case "$month" in
+					Jan) month="01" ;; Feb) month="02" ;; Mar) month="03" ;;
+					Apr) month="04" ;; May) month="05" ;; Jun) month="06" ;;
+					Jul) month="07" ;; Aug) month="08" ;; Sep) month="09" ;;
+					Oct) month="10" ;; Nov) month="11" ;; Dec) month="12" ;;
+				esac
+
+				# Try with reformatted date
+				expiry_epoch=$(date -d "${year}-${month}-${day}" +%s 2>/dev/null)
+			fi
+
 			now_epoch=$(date +%s)
-			local days_left
-			if [ -n "$expiry_epoch" ]; then
+
+			if [ -n "$expiry_epoch" ] && [ -n "$now_epoch" ]; then
 				days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
 				echo "$days_left"
 				return 0
@@ -1032,6 +1120,7 @@ check_port_firewall_open() {
 }
 
 # Get network connectivity info (public IPs, port accessibility)
+# NOTE: External port checks disabled - too slow (HTTP requests to external services)
 method_get_network_info() {
 	json_init
 	json_add_boolean "success" 1
@@ -1040,89 +1129,69 @@ method_get_network_info() {
 	lan_ip=$(get_lan_ip)
 	json_add_string "lan_ip" "$lan_ip"
 
-	# Get public IPv4
+	# Get public IPv4 (use uclient-fetch with IPv4 only for faster response)
 	json_add_object "ipv4"
 	local public_ipv4
-	public_ipv4=$(get_public_ipv4)
+	public_ipv4=$(uclient-fetch -4 -q -T 2 -O - "http://ipv4.icanhazip.com" 2>/dev/null | tr -d '\n')
 	if [ -n "$public_ipv4" ]; then
 		json_add_string "address" "$public_ipv4"
 		json_add_string "status" "ok"
-
-		# Reverse DNS
-		local rdns
-		rdns=$(get_reverse_dns "$public_ipv4")
-		[ -n "$rdns" ] && json_add_string "hostname" "$rdns"
 	else
 		json_add_string "status" "unavailable"
 	fi
 	json_close_object
 
-	# Get public IPv6
+	# IPv6 - skip network check (often broken/slow), just report firewall status
 	json_add_object "ipv6"
-	local public_ipv6
-	public_ipv6=$(get_public_ipv6)
-	if [ -n "$public_ipv6" ]; then
-		json_add_string "address" "$public_ipv6"
-		json_add_string "status" "ok"
-
-		# Reverse DNS
-		local rdns6
-		rdns6=$(get_reverse_dns "$public_ipv6")
-		[ -n "$rdns6" ] && json_add_string "hostname" "$rdns6"
+	# Check if IPv6 is enabled in network config
+	local ipv6_enabled=0
+	if uci -q get network.wan6 >/dev/null 2>&1 || \
+	   uci -q get network.wan.ipv6 >/dev/null 2>&1; then
+		ipv6_enabled=1
+	fi
+	if [ "$ipv6_enabled" = "1" ]; then
+		json_add_string "status" "configured"
 	else
-		json_add_string "status" "unavailable"
+		json_add_string "status" "disabled"
 	fi
 	json_close_object
 
-	# External port accessibility (from internet perspective)
+	# External port accessibility - use firewall check only (fast)
+	# NOTE: Real external check would require slow HTTP requests to external services
 	json_add_object "external_ports"
-	if [ -n "$public_ipv4" ]; then
-		# Check port 80
-		json_add_object "http"
-		if check_external_port "$public_ipv4" 80; then
-			json_add_boolean "accessible" 1
-			json_add_string "status" "open"
-		else
-			json_add_boolean "accessible" 0
-			json_add_string "status" "blocked"
-			json_add_string "hint" "Check upstream router port forwarding"
-		fi
-		json_close_object
+	local http_fw=0
+	local https_fw=0
+	check_port_firewall_open 80 && http_fw=1
+	check_port_firewall_open 443 && https_fw=1
 
-		# Check port 443
-		json_add_object "https"
-		if check_external_port "$public_ipv4" 443; then
-			json_add_boolean "accessible" 1
-			json_add_string "status" "open"
-		else
-			json_add_boolean "accessible" 0
-			json_add_string "status" "blocked"
-			json_add_string "hint" "Check upstream router port forwarding"
-		fi
-		json_close_object
+	json_add_object "http"
+	if [ "$http_fw" = "1" ]; then
+		json_add_string "status" "firewall_open"
+		json_add_string "hint" "Firewall allows port 80"
 	else
-		json_add_object "http"
-		json_add_string "status" "unknown"
-		json_add_string "error" "No public IP"
-		json_close_object
-		json_add_object "https"
-		json_add_string "status" "unknown"
-		json_add_string "error" "No public IP"
-		json_close_object
+		json_add_string "status" "firewall_closed"
+		json_add_string "hint" "Add firewall rule for port 80"
 	fi
+	json_close_object
+
+	json_add_object "https"
+	if [ "$https_fw" = "1" ]; then
+		json_add_string "status" "firewall_open"
+		json_add_string "hint" "Firewall allows port 443"
+	else
+		json_add_string "status" "firewall_closed"
+		json_add_string "hint" "Add firewall rule for port 443"
+	fi
+	json_close_object
 	json_close_object
 
 	# Local firewall status
 	json_add_object "firewall"
-	local http_open=0
-	local https_open=0
-	check_port_firewall_open 80 && http_open=1
-	check_port_firewall_open 443 && https_open=1
-	json_add_boolean "http_open" "$http_open"
-	json_add_boolean "https_open" "$https_open"
-	if [ "$http_open" = "1" ] && [ "$https_open" = "1" ]; then
+	json_add_boolean "http_open" "$http_fw"
+	json_add_boolean "https_open" "$https_fw"
+	if [ "$http_fw" = "1" ] && [ "$https_fw" = "1" ]; then
 		json_add_string "status" "ok"
-	elif [ "$http_open" = "1" ] || [ "$https_open" = "1" ]; then
+	elif [ "$http_fw" = "1" ] || [ "$https_fw" = "1" ]; then
 		json_add_string "status" "partial"
 	else
 		json_add_string "status" "closed"
@@ -1169,20 +1238,13 @@ method_check_service_health() {
 	json_add_string "service_id" "$service_id"
 	json_add_string "domain" "$domain"
 
-	# Get public IPs for comparison
-	local public_ipv4 public_ipv6
-	public_ipv4=$(get_public_ipv4)
-	public_ipv6=$(get_public_ipv6)
+	# Get public IPv4 (short timeout for responsiveness)
+	local public_ipv4
+	public_ipv4=$(wget -qO- -T 3 "http://ipv4.icanhazip.com" 2>/dev/null | tr -d '\n')
 
 	# Public IP info
 	json_add_object "public_ip"
-	json_add_string "ipv4" "$public_ipv4"
-	[ -n "$public_ipv6" ] && json_add_string "ipv6" "$public_ipv6"
-	if [ -n "$public_ipv4" ]; then
-		local rdns
-		rdns=$(get_reverse_dns "$public_ipv4")
-		[ -n "$rdns" ] && json_add_string "hostname" "$rdns"
-	fi
+	json_add_string "ipv4" "${public_ipv4:-unknown}"
 	json_close_object
 
 	# DNS check with public IP comparison
@@ -1218,27 +1280,21 @@ method_check_service_health() {
 	fi
 	json_close_object
 
-	# External port accessibility check
+	# External port accessibility check (firewall-based, fast)
 	json_add_object "external_access"
-	if [ -n "$public_ipv4" ]; then
-		local http_ext=0
-		local https_ext=0
-		check_external_port "$public_ipv4" 80 && http_ext=1
-		check_external_port "$public_ipv4" 443 && https_ext=1
-		json_add_boolean "http_accessible" "$http_ext"
-		json_add_boolean "https_accessible" "$https_ext"
-		if [ "$http_ext" = "1" ] && [ "$https_ext" = "1" ]; then
-			json_add_string "status" "ok"
-		elif [ "$http_ext" = "1" ] || [ "$https_ext" = "1" ]; then
-			json_add_string "status" "partial"
-			json_add_string "hint" "Check upstream router/ISP port forwarding"
-		else
-			json_add_string "status" "blocked"
-			json_add_string "hint" "Ports not accessible from internet - check router/ISP"
-		fi
+	local http_fw=0
+	local https_fw=0
+	check_port_firewall_open 80 && http_fw=1
+	check_port_firewall_open 443 && https_fw=1
+	json_add_boolean "http_accessible" "$http_fw"
+	json_add_boolean "https_accessible" "$https_fw"
+	if [ "$http_fw" = "1" ] && [ "$https_fw" = "1" ]; then
+		json_add_string "status" "firewall_ok"
+	elif [ "$http_fw" = "1" ] || [ "$https_fw" = "1" ]; then
+		json_add_string "status" "partial"
 	else
-		json_add_string "status" "unknown"
-		json_add_string "error" "Could not determine public IP"
+		json_add_string "status" "closed"
+		json_add_string "hint" "Open firewall ports 80/443 for external access"
 	fi
 	json_close_object
 
@@ -1343,9 +1399,11 @@ method_check_all_health() {
 	# Check individual services with domains
 	json_add_array "services"
 
-	# Get all published services with domains from HAProxy
+	# Get all published services with domains from HAProxy (if available)
 	local vhosts_json
-	vhosts_json=$(ubus call luci.haproxy list_vhosts 2>/dev/null)
+	if haproxy_available; then
+		vhosts_json=$(ubus call luci.haproxy list_vhosts 2>/dev/null)
+	fi
 	if [ -n "$vhosts_json" ]; then
 		local count
 		count=$(echo "$vhosts_json" | jsonfilter -e '@.vhosts[*].domain' 2>/dev/null | wc -l)
@@ -1459,12 +1517,14 @@ method_get_landing_config() {
 	json_init
 
 	config_load "$UCI_CONFIG"
-	local landing_path auto_regen
+	local landing_path auto_regen theme
 	config_get landing_path main landing_path "/www/secubox-services.html"
 	config_get auto_regen main landing_auto_regen "1"
+	config_get theme main landing_theme "mirrorbox"
 
 	json_add_string "path" "$landing_path"
 	json_add_boolean "auto_regen" "$auto_regen"
+	json_add_string "theme" "$theme"
 
 	# Check if file exists
 	if [ -f "$landing_path" ]; then
@@ -1497,6 +1557,33 @@ method_save_landing_config() {
 	json_dump
 }
 
+# Set landing page theme
+method_set_landing_theme() {
+	local theme
+
+	read -r input
+	json_load "$input"
+	json_get_var theme theme "mirrorbox"
+
+	json_init
+
+	# Validate theme
+	case "$theme" in
+		mirrorbox|cyberpunk|minimal|terminal|light)
+			uci set "$UCI_CONFIG.main.landing_theme=$theme"
+			uci commit "$UCI_CONFIG"
+			json_add_boolean "success" 1
+			json_add_string "theme" "$theme"
+			;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Invalid theme: $theme"
+			;;
+	esac
+
+	json_dump
+}
+
 # Main RPC interface
 case "$1" in
 	list)
@@ -1517,7 +1604,8 @@ case "$1" in
 	"check_all_health": {},
 	"get_network_info": {},
 	"get_landing_config": {},
-	"save_landing_config": { "auto_regen": "boolean" }
+	"save_landing_config": { "auto_regen": "boolean" },
+	"set_landing_theme": { "theme": "string" }
 }
 EOF
 		;;
@@ -1539,6 +1627,7 @@ EOF
 			get_network_info) method_get_network_info ;;
 			get_landing_config) method_get_landing_config ;;
 			save_landing_config) method_save_landing_config ;;
+			set_landing_theme) method_set_landing_theme ;;
 			*)
 				json_init
 				json_add_boolean "error" 1

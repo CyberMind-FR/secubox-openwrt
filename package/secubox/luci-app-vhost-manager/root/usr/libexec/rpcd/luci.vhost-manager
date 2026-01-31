@@ -603,7 +603,6 @@ case "$1" in
 				if [ -z "$domain" ]; then
 					json_init; json_add_boolean "success" 0; json_add_string "message" "Domain required"; json_dump; exit 0
 				fi
-				section
 				section=$(find_section "$domain")
 				if [ -z "$section" ]; then
 					json_init; json_add_boolean "success" 0; json_add_string "message" "VHost not found"; json_dump; exit 0
@@ -618,7 +617,6 @@ case "$1" in
 				if [ -z "$enabled" ]; then
 					config_get_bool enabled "$section" enabled 1
 				fi
-				current_tls current_cert_path current_key_path
 				config_get current_tls "$section" tls
 				config_get current_cert_path "$section" cert_path
 				config_get current_key_path "$section" key_path
@@ -690,9 +688,8 @@ case "$1" in
 				json_add_array "certificates"
 				if [ -d "$ACME_STATE_DIR" ]; then
 					find "$ACME_STATE_DIR" -name "fullchain.cer" -type f 2>/dev/null | while read -r cert_file; do
-						domain
+						local domain expires issuer subject
 						domain=$(basename "$(dirname "$cert_file")")
-						expires issuer subject
 						expires=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | cut -d'=' -f2)
 						issuer=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | cut -d'=' -f2-)
 						subject=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | cut -d'=' -f2-)

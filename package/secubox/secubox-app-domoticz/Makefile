@@ -15,7 +15,7 @@ define Package/secubox-app-domoticz
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Domoticz docker app
-  DEPENDS:=+uci +libuci +dockerd +docker +containerd
+  DEPENDS:=dockerd +docker +containerd
 endef
 
 define Package/secubox-app-domoticz/description

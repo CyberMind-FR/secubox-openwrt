@@ -12,19 +12,19 @@ var callEnable = rpc.declare({
 	object: 'luci.tor-shield',
 	method: 'enable',
 	params: ['preset'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callDisable = rpc.declare({
 	object: 'luci.tor-shield',
 	method: 'disable',
-	expect: { success: false }
+	expect: { }
 });
 
 var callRestart = rpc.declare({
 	object: 'luci.tor-shield',
 	method: 'restart',
-	expect: { success: false }
+	expect: { }
 });
 
 var callCircuits = rpc.declare({
@@ -36,7 +36,7 @@ var callCircuits = rpc.declare({
 var callNewIdentity = rpc.declare({
 	object: 'luci.tor-shield',
 	method: 'new_identity',
-	expect: { success: false }
+	expect: { }
 });
 
 var callCheckLeaks = rpc.declare({
@@ -55,14 +55,14 @@ var callAddHiddenService = rpc.declare({
 	object: 'luci.tor-shield',
 	method: 'add_hidden_service',
 	params: ['name', 'local_port', 'virtual_port'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callRemoveHiddenService = rpc.declare({
 	object: 'luci.tor-shield',
 	method: 'remove_hidden_service',
 	params: ['name'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callExitIp = rpc.declare({
@@ -93,7 +93,7 @@ var callSetBridges = rpc.declare({
 	object: 'luci.tor-shield',
 	method: 'set_bridges',
 	params: ['enabled', 'type'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callSettings = rpc.declare({
@@ -105,8 +105,8 @@ var callSettings = rpc.declare({
 var callSaveSettings = rpc.declare({
 	object: 'luci.tor-shield',
 	method: 'save_settings',
-	params: ['mode', 'dns_over_tor', 'kill_switch', 'socks_port', 'trans_port', 'dns_port', 'exit_nodes', 'exclude_exit_nodes', 'strict_nodes'],
-	expect: { success: false }
+	params: ['mode', 'dns_over_tor', 'kill_switch', 'socks_port', 'trans_port', 'dns_port', 'exit_nodes', 'exclude_exit_nodes', 'strict_nodes', 'apply_now'],
+	expect: { }
 });
 
 function formatBytes(bytes) {
@@ -173,8 +173,8 @@ return baseclass.extend({
 	getBridges: function() { return callBridges(); },
 	setBridges: function(enabled, type) { return callSetBridges(enabled, type); },
 	getSettings: function() { return callSettings(); },
-	saveSettings: function(mode, dns_over_tor, kill_switch, socks_port, trans_port, dns_port, exit_nodes, exclude_exit_nodes, strict_nodes) {
-		return callSaveSettings(mode, dns_over_tor, kill_switch, socks_port, trans_port, dns_port, exit_nodes, exclude_exit_nodes, strict_nodes);
+	saveSettings: function(mode, dns_over_tor, kill_switch, socks_port, trans_port, dns_port, exit_nodes, exclude_exit_nodes, strict_nodes, apply_now) {
+		return callSaveSettings(mode, dns_over_tor, kill_switch, socks_port, trans_port, dns_port, exit_nodes, exclude_exit_nodes, strict_nodes, apply_now !== false ? '1' : '0');
 	},
 
 	formatBytes: formatBytes,

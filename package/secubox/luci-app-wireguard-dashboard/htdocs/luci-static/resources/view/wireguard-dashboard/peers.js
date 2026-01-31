@@ -43,8 +43,11 @@ return view.extend({
 
 	render: function(data) {
 		var self = this;
-		var peers = (data[0] || {}).peers || [];
-		var interfaces = (data[1] || {}).interfaces || [];
+		// Handle RPC expect unwrapping - results may be array or object with .peers/.interfaces
+		var peersData = data[0] || [];
+		var interfacesData = data[1] || [];
+		var peers = Array.isArray(peersData) ? peersData : (peersData.peers || []);
+		var interfaces = Array.isArray(interfacesData) ? interfacesData : (interfacesData.interfaces || []);
 		var activePeers = peers.filter(function(p) { return p.status === 'active'; }).length;
 
 		var view = E('div', { 'class': 'cbi-map' }, [

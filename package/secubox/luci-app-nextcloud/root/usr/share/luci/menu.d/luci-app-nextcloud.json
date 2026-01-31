@@ -1,5 +1,5 @@
 {
-	"admin/secubox/services/nextcloud": {
+	"admin/services/nextcloud": {
 		"title": "Nextcloud",
 		"order": 55,
 		"action": {
@@ -9,7 +9,7 @@
 			"acl": ["luci-app-nextcloud"]
 		}
 	},
-	"admin/secubox/services/nextcloud/overview": {
+	"admin/services/nextcloud/overview": {
 		"title": "Overview",
 		"order": 10,
 		"action": {
@@ -17,7 +17,7 @@
 			"path": "nextcloud/overview"
 		}
 	},
-	"admin/secubox/services/nextcloud/settings": {
+	"admin/services/nextcloud/settings": {
 		"title": "Settings",
 		"order": 90,
 		"action": {

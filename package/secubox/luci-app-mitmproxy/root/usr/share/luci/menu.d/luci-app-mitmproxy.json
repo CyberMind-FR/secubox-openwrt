@@ -1,5 +1,5 @@
 {
-	"admin/secubox/security/mitmproxy": {
+	"admin/services/mitmproxy": {
 		"title": "mitmproxy",
 		"action": { "type": "view", "path": "mitmproxy/overview" },
 		"depends": { "acl": ["luci-app-mitmproxy"] },

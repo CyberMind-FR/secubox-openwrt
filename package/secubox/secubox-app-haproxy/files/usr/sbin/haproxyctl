@@ -484,7 +484,7 @@ _generate_frontends() {
 	# HTTP Frontend
 	cat << EOF
 frontend http-in
-    bind *:$http_port
+    bind *:$http_port,[::]:$http_port
     mode http
 
     # ACME challenge routing (no HAProxy restart needed for cert issuance)
@@ -509,7 +509,7 @@ EOF
 	if [ -d "$CERTS_PATH" ] && ls "$CERTS_PATH"/*.pem >/dev/null 2>&1; then
 		cat << EOF
 frontend https-in
-    bind *:$https_port ssl crt $CONTAINER_CERTS_PATH/ alpn h2,http/1.1
+    bind *:$https_port,[::]:$https_port ssl crt $CONTAINER_CERTS_PATH/ alpn h2,http/1.1
     mode http
     http-request set-header X-Forwarded-Proto https
     http-request set-header X-Real-IP %[src]
@@ -537,7 +537,7 @@ _add_ssl_redirect() {
 
 	local acl_name=$(echo "$domain" | tr '.' '_' | tr '-' '_')
 	echo "    acl host_${acl_name} hdr(host) -i $domain"
-	echo "    http-request redirect scheme https code 301 if host_${acl_name} !{ ssl_fc }"
+	echo "    http-request redirect scheme https code 301 if host_${acl_name} !{ ssl_fc } !is_acme_challenge"
 }
 
 _add_vhost_acl() {

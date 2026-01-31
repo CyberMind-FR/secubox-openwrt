@@ -181,14 +181,23 @@ get_status() {
 		elif ! grep -q "password:" "$creds_file" 2>/dev/null; then
 			lapi_reason="credentials incomplete"
 		else
-			# Check if LAPI port is listening (8180 hex = 1FF4)
+			# Get LAPI port dynamically from credentials file
+			local lapi_port
+			lapi_port=$(grep -oE ':[0-9]+/?$' "$creds_file" 2>/dev/null | tr -d ':/')
+			[ -z "$lapi_port" ] && lapi_port=$(grep 'listen_uri' /etc/crowdsec/config.yaml 2>/dev/null | grep -oE ':[0-9]+$' | tr -d ':')
+			[ -z "$lapi_port" ] && lapi_port=8080
+
+			# Convert port to hex for /proc/net/tcp lookup
+			local lapi_port_hex
+			lapi_port_hex=$(printf '%04X' "$lapi_port")
+
 			local port_up=0
-			if grep -qi ":1FF4 " /proc/net/tcp 2>/dev/null; then
+			if grep -qi ":${lapi_port_hex} " /proc/net/tcp 2>/dev/null; then
 				port_up=1
 			fi
 
 			if [ "$port_up" = "0" ]; then
-				lapi_reason="port 8180 not listening"
+				lapi_reason="port $lapi_port not listening"
 			else
 				# Try actual LAPI status check
 				if run_cscli lapi status >/dev/null 2>&1; then
@@ -751,7 +760,7 @@ get_firewall_bouncer_config() {
 	val=$(uci -q get crowdsec.bouncer.ipv6 || echo "1")
 	json_add_string "ipv6" "$val"
 
-	val=$(uci -q get crowdsec.bouncer.api_url || echo "http://127.0.0.1:8180/")
+	val=$(uci -q get crowdsec.bouncer.api_url || echo "http://127.0.0.1:8090/")
 	json_add_string "api_url" "$val"
 
 	val=$(uci -q get crowdsec.bouncer.update_frequency || echo "10s")
@@ -1826,9 +1835,11 @@ get_health_check() {
 	fi
 	json_add_string "version" "${version:-unknown}"
 
-	# LAPI status
+	# LAPI status (dynamic URL from credentials)
 	local lapi_status="unavailable"
-	local lapi_url="http://127.0.0.1:8180"
+	local lapi_url
+	lapi_url=$(grep "^url:" /etc/crowdsec/local_api_credentials.yaml 2>/dev/null | awk '{print $2}')
+	[ -z "$lapi_url" ] && lapi_url="http://127.0.0.1:8090"
 	if [ -x "$CSCLI" ]; then
 		if run_with_timeout 5 "$CSCLI" lapi status >/dev/null 2>&1; then
 			lapi_status="available"
@@ -1910,10 +1921,15 @@ get_health_check() {
 	json_add_int "local_decisions" "${local_decisions:-0}"
 	json_add_int "capi_decisions" "${capi_decisions:-0}"
 
-	# GeoIP status - check if GeoIP database exists
+	# GeoIP status - check if GeoIP database exists (check multiple paths)
 	local geoip_enabled=0
+	local data_path
+	data_path=$(grep "db_path:" /etc/crowdsec/config.yaml 2>/dev/null | awk '{print $2}' | xargs dirname 2>/dev/null)
+	[ -z "$data_path" ] && data_path="/srv/crowdsec/data"
+	[ -f "${data_path}/GeoLite2-City.mmdb" ] && geoip_enabled=1
+	[ -f "${data_path}/GeoLite2-ASN.mmdb" ] && geoip_enabled=1
+	# Also check common alternative paths
 	[ -f "/var/lib/crowdsec/data/GeoLite2-City.mmdb" ] && geoip_enabled=1
-	[ -f "/var/lib/crowdsec/data/GeoLite2-ASN.mmdb" ] && geoip_enabled=1
 	json_add_boolean "geoip_enabled" "$geoip_enabled"
 
 	# Acquisition sources count
@@ -2243,10 +2259,15 @@ get_overview() {
 	json_add_string "processed_packets" "${processed_packets:-0}"
 	json_add_string "processed_bytes" "${processed_bytes:-0}"
 
-	# GeoIP status - check if GeoIP database exists
+	# GeoIP status - check if GeoIP database exists (check multiple paths)
 	local geoip_enabled=0
+	local data_path
+	data_path=$(grep "db_path:" /etc/crowdsec/config.yaml 2>/dev/null | awk '{print $2}' | xargs dirname 2>/dev/null)
+	[ -z "$data_path" ] && data_path="/srv/crowdsec/data"
+	[ -f "${data_path}/GeoLite2-City.mmdb" ] && geoip_enabled=1
+	[ -f "${data_path}/GeoLite2-ASN.mmdb" ] && geoip_enabled=1
+	# Also check common alternative paths
 	[ -f "/var/lib/crowdsec/data/GeoLite2-City.mmdb" ] && geoip_enabled=1
-	[ -f "/var/lib/crowdsec/data/GeoLite2-ASN.mmdb" ] && geoip_enabled=1
 	json_add_boolean "geoip_enabled" "$geoip_enabled"
 
 	# Acquisition sources count
@@ -2322,9 +2343,17 @@ get_overview() {
 	fi
 	json_close_array
 
-	# LAPI status (quick check)
+	# LAPI status (dynamic port detection from config)
 	local lapi_ok=0
-	if [ "$cs_running" = "1" ] && grep -qi ":1F90 " /proc/net/tcp 2>/dev/null; then
+	local lapi_port=""
+	# Get LAPI port from credentials or config file
+	lapi_port=$(grep -oE ':[0-9]+/?$' /etc/crowdsec/local_api_credentials.yaml 2>/dev/null | tr -d ':/')
+	[ -z "$lapi_port" ] && lapi_port=$(grep 'listen_uri' /etc/crowdsec/config.yaml 2>/dev/null | grep -oE ':[0-9]+$' | tr -d ':')
+	[ -z "$lapi_port" ] && lapi_port=8080
+	# Convert port to hex for /proc/net/tcp lookup
+	local lapi_port_hex
+	lapi_port_hex=$(printf '%04X' "$lapi_port")
+	if [ "$cs_running" = "1" ] && grep -qi ":${lapi_port_hex} " /proc/net/tcp 2>/dev/null; then
 		lapi_ok=1
 	fi
 	json_add_string "lapi_status" "$([ "$lapi_ok" = "1" ] && echo available || echo unavailable)"

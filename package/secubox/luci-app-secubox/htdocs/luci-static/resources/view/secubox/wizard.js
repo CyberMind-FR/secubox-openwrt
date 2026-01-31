@@ -1,10 +1,52 @@
 'use strict';
 'require view';
 'require ui';
+'require rpc';
 'require secubox/api as API';
 'require secubox-theme/theme as Theme';
 'require secubox/nav as SecuNav';
 'require secubox-portal/header as SbHeader';
+
+// P2P Mesh RPC declarations
+var callGetGiteaConfig = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'get_gitea_config',
+	expect: {}
+});
+
+var callSetGiteaConfig = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'set_gitea_config',
+	params: ['config'],
+	expect: { success: false }
+});
+
+var callCreateGiteaRepo = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'create_gitea_repo',
+	params: ['name', 'description', 'private', 'init_readme'],
+	expect: { success: false }
+});
+
+var callPushGiteaBackup = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'push_gitea_backup',
+	params: ['message', 'components'],
+	expect: { success: false }
+});
+
+var callGiteaGenerateToken = rpc.declare({
+	object: 'luci.gitea',
+	method: 'generate_token',
+	params: ['username', 'token_name', 'scopes'],
+	expect: {}
+});
+
+var callGiteaGetStatus = rpc.declare({
+	object: 'luci.gitea',
+	method: 'get_status',
+	expect: {}
+});
 
 // Load theme resources
 document.head.appendChild(E('link', {
@@ -37,7 +79,9 @@ return view.extend({
 		return Promise.all([
 			API.getFirstRunStatus(),
 			API.listApps(),
-			API.listProfiles()
+			API.listProfiles(),
+			callGetGiteaConfig().catch(function() { return {}; }),
+			callGiteaGetStatus().catch(function() { return {}; })
 		]);
 	},
 
@@ -51,8 +95,12 @@ return view.extend({
 		// Filter to only show apps with wizards
 		this.appList = allApps.filter(function(app) { return app.has_wizard === true; });
 		this.profileList = Array.isArray(payload[2]) ? payload[2] : (payload[2] && payload[2].profiles) || [];
+		this.p2pConfig = payload[3] || {};
+		this.giteaStatus = payload[4] || {};
 		console.log('[SecuBox Wizard] Filtered appList (has_wizard only):', this.appList);
 		console.log('[SecuBox Wizard] Parsed profileList:', this.profileList);
+		console.log('[SecuBox Wizard] P2P Config:', this.p2pConfig);
+		console.log('[SecuBox Wizard] Gitea Status:', this.giteaStatus);
 		var container = E('div', { 'class': 'secubox-wizard-page' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/core/variables.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
@@ -82,12 +130,16 @@ return view.extend({
 	},
 
 	renderFirstRunCard: function() {
+		var self = this;
 		var data = this.firstRun || {};
+		var p2pData = this.p2pConfig || {};
+		var giteaData = this.giteaStatus || {};
 		var steps = [
 			{ icon: '🔐', label: _('Secure Admin Account'), description: _('Set a LuCI/root password to protect the router.'), complete: !!data.password_set, content: this.renderPasswordStep(data) },
 			{ icon: '🌍', label: _('Timezone & Locale'), description: _('Align system time with your region.'), complete: false, content: this.renderTimezoneStep(data) },
 			{ icon: '💾', label: _('Storage Path'), description: _('Choose where SecuBox apps store data (USB/NAS recommended).'), complete: !!data.storage_ready, content: this.renderStorageStep(data) },
-			{ icon: '🛡️', label: _('Network Mode'), description: _('Pick a default SecuBox network mode (router or DMZ).'), complete: false, content: this.renderModeStep(data) }
+			{ icon: '🛡️', label: _('Network Mode'), description: _('Pick a default SecuBox network mode (router or DMZ).'), complete: false, content: this.renderModeStep(data) },
+			{ icon: '🌐', label: _('P2P Mesh Backup'), description: _('Auto-configure Gitea repository for mesh config versioning.'), complete: !!(p2pData.enabled && p2pData.repo_name), content: this.renderP2PMeshStep(p2pData, giteaData) }
 		];
 
 		return E('div', { 'class': 'sb-wizard-card' }, [
@@ -157,6 +209,112 @@ return view.extend({
 				'click': this.applyNetworkMode.bind(this)
 			}, _('Switch'))
 		]);
+	},
+
+	renderP2PMeshStep: function(p2pData, giteaData) {
+		var self = this;
+		var giteaRunning = giteaData && giteaData.result && giteaData.result.running;
+		var repoConfigured = p2pData && p2pData.enabled && p2pData.repo_name;
+
+		if (repoConfigured) {
+			return E('div', { 'class': 'sb-wizard-inline' }, [
+				E('div', { 'class': 'sb-wizard-status ok' }, [
+					_('Repository: '),
+					E('strong', {}, (p2pData.repo_owner || 'user') + '/' + p2pData.repo_name)
+				]),
+				E('a', {
+					'class': 'cbi-button cbi-button-action',
+					'href': L.url('admin', 'secubox', 'p2p-hub')
+				}, _('Open P2P Hub'))
+			]);
+		}
+
+		if (!giteaRunning) {
+			return E('div', { 'class': 'sb-wizard-inline' }, [
+				E('div', { 'class': 'sb-wizard-status warn' }, _('Gitea not running')),
+				E('a', {
+					'class': 'cbi-button cbi-button-action',
+					'href': L.url('admin', 'services', 'gitea')
+				}, _('Start Gitea'))
+			]);
+		}
+
+		// Gitea running but repo not configured - show auto-setup
+		return E('div', { 'class': 'sb-wizard-inline' }, [
+			E('div', { 'class': 'sb-wizard-status warn' }, _('Not configured')),
+			E('button', {
+				'class': 'cbi-button cbi-button-action',
+				'id': 'btn-p2p-auto-setup',
+				'click': function() { self.autoSetupP2PMesh(); }
+			}, _('🚀 Auto Setup'))
+		]);
+	},
+
+	autoSetupP2PMesh: function() {
+		var self = this;
+		var btn = document.getElementById('btn-p2p-auto-setup');
+		if (btn) btn.disabled = true;
+
+		ui.showModal(_('P2P Mesh Auto Setup'), [
+			E('div', { 'class': 'spinning', 'style': 'margin: 20px auto;' }),
+			E('p', { 'id': 'p2p-setup-status', 'style': 'text-align: center;' }, _('Initializing...'))
+		]);
+
+		var updateStatus = function(msg) {
+			var el = document.getElementById('p2p-setup-status');
+			if (el) el.textContent = msg;
+		};
+
+		var hostname = (this.firstRun && this.firstRun.hostname) || 'secubox';
+		var repoName = hostname.toLowerCase().replace(/[^a-z0-9-]/g, '-') + '-p2p';
+
+		// Step 1: Generate token with proper scopes
+		updateStatus(_('Generating access token...'));
+		callGiteaGenerateToken('gandalf', repoName + '-token', 'write:repository,write:user,read:user')
+			.then(function(result) {
+				if (!result || !result.result || !result.result.token) {
+					throw new Error(_('Failed to generate token'));
+				}
+				var token = result.result.token;
+
+				// Step 2: Save token to P2P config
+				updateStatus(_('Saving configuration...'));
+				return callSetGiteaConfig({
+					server_url: 'http://localhost:3000',
+					repo_name: repoName,
+					access_token: token,
+					enabled: 1,
+					auto_backup: 1
+				}).then(function() { return token; });
+			})
+			.then(function(token) {
+				// Step 3: Create repository
+				updateStatus(_('Creating repository: ') + repoName);
+				return callCreateGiteaRepo(repoName, 'SecuBox P2P Mesh configuration', true, true);
+			})
+			.then(function(result) {
+				if (!result || !result.success) {
+					throw new Error(result && result.error ? result.error : _('Failed to create repository'));
+				}
+
+				// Step 4: Push initial config
+				updateStatus(_('Pushing initial configuration...'));
+				return callPushGiteaBackup('Initial mesh configuration from wizard', {});
+			})
+			.then(function(result) {
+				ui.hideModal();
+				if (result && result.success) {
+					ui.addNotification(null, E('p', {}, _('🎉 P2P Mesh setup complete! Repository created and initial config pushed.')), 'info');
+					setTimeout(function() { window.location.reload(); }, 1500);
+				} else {
+					throw new Error(_('Failed to push configuration'));
+				}
+			})
+			.catch(function(err) {
+				ui.hideModal();
+				ui.addNotification(null, E('p', {}, '❌ ' + (err.message || err)), 'error');
+				if (btn) btn.disabled = false;
+			});
 	},
 
 	renderAppsCard: function() {

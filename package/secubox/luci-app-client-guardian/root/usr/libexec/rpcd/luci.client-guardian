@@ -11,6 +11,49 @@ LOG_FILE="/var/log/client-guardian.log"
 CLIENTS_DB="/tmp/client-guardian-clients.json"
 ALERTS_QUEUE="/tmp/client-guardian-alerts.json"
 
+# SAFETY LIMITS - prevent accidental mass blocking
+MAX_BLOCKED_DEVICES=10
+SAFETY_BYPASS_FILE="/tmp/client-guardian-safety-bypass"
+
+# Count currently blocked devices (CG_NOLAN, CG_BLOCK, CG_QUARANTINE rules)
+count_blocked_devices() {
+	uci show firewall 2>/dev/null | grep -c "\.name='CG_NOLAN_\|CG_BLOCK_\|CG_QUARANTINE_'" 2>/dev/null || echo "0"
+}
+
+# Check if safety limit is reached
+check_safety_limit() {
+	local force="$1"
+
+	# If safety bypass file exists (set by admin), skip check
+	[ -f "$SAFETY_BYPASS_FILE" ] && return 0
+
+	# If force flag is set, skip check
+	[ "$force" = "1" ] && return 0
+
+	local blocked_count=$(count_blocked_devices)
+	if [ "$blocked_count" -ge "$MAX_BLOCKED_DEVICES" ]; then
+		log_event "warn" "SAFETY LIMIT: Already $blocked_count devices blocked (max: $MAX_BLOCKED_DEVICES)"
+		return 1
+	fi
+	return 0
+}
+
+# Clear all CG firewall rules (emergency restore)
+clear_all_cg_rules() {
+	log_event "warn" "EMERGENCY: Clearing all Client Guardian firewall rules"
+
+	# Find and delete all CG rules
+	local rules=$(uci show firewall 2>/dev/null | grep "\.name='CG_" | cut -d. -f2 | cut -d= -f1 | sort -ru)
+	for rule in $rules; do
+		uci delete firewall.$rule 2>/dev/null
+	done
+	uci commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+
+	log_event "info" "All Client Guardian rules cleared"
+	echo '{"success":true,"message":"All CG rules cleared"}'
+}
+
 # Logging function with debug support
 log_event() {
 	local level="$1"
@@ -1051,8 +1094,17 @@ create_firewall_zone() {
 apply_client_rules() {
 	local mac="$1"
 	local zone="$2"
+	local force="${3:-0}"
 
 	log_event "info" "Applying rules for MAC: $mac -> Zone: $zone"
+
+	# SAFETY CHECK: If zone would block/quarantine and safety limit reached, skip
+	if [ "$zone" = "blocked" ] || [ "$zone" = "quarantine" ]; then
+		if ! check_safety_limit "$force"; then
+			log_event "error" "SAFETY LIMIT REACHED: Refusing to block MAC $mac. Use force=1 or clear existing rules."
+			return 1
+		fi
+	fi
 
 	# Normalize MAC to uppercase for firewall rules
 	local mac_upper=$(echo "$mac" | tr 'a-f' 'A-F')
@@ -1649,7 +1701,7 @@ get_client() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"clients":{},"zones":{},"parental":{},"alerts":{},"logs":{"limit":"int","level":"str"},"approve_client":{"mac":"str","name":"str","zone":"str","notes":"str"},"ban_client":{"mac":"str","reason":"str"},"quarantine_client":{"mac":"str"},"update_client":{"section":"str","name":"str","zone":"str","notes":"str","daily_quota":"int","static_ip":"str"},"update_zone":{"id":"str","name":"str","bandwidth_limit":"int","content_filter":"str"},"send_test_alert":{"type":"str"},"get_policy":{},"set_policy":{"policy":"str","auto_approve":"bool","session_timeout":"int"},"get_client":{"mac":"str"},"sync_zones":{},"list_profiles":{},"apply_profile":{"profile_id":"str","auto_refresh":"str","refresh_interval":"str","threat_enabled":"str","auto_ban_threshold":"str","auto_quarantine_threshold":"str"}}'
+		echo '{"status":{},"clients":{},"zones":{},"parental":{},"alerts":{},"logs":{"limit":"int","level":"str"},"approve_client":{"mac":"str","name":"str","zone":"str","notes":"str"},"ban_client":{"mac":"str","reason":"str"},"quarantine_client":{"mac":"str"},"update_client":{"section":"str","name":"str","zone":"str","notes":"str","daily_quota":"int","static_ip":"str"},"update_zone":{"id":"str","name":"str","bandwidth_limit":"int","content_filter":"str"},"send_test_alert":{"type":"str"},"get_policy":{},"set_policy":{"policy":"str","auto_approve":"bool","session_timeout":"int"},"get_client":{"mac":"str"},"sync_zones":{},"list_profiles":{},"apply_profile":{"profile_id":"str","auto_refresh":"str","refresh_interval":"str","threat_enabled":"str","auto_ban_threshold":"str","auto_quarantine_threshold":"str"},"clear_rules":{},"safety_status":{}}'
 		;;
 	call)
 		case "$2" in
@@ -1677,6 +1729,15 @@ case "$1" in
 				;;
 			list_profiles) list_profiles ;;
 			apply_profile) apply_profile ;;
+			clear_rules) clear_all_cg_rules ;;
+			safety_status)
+				json_init
+				local blocked=$(count_blocked_devices)
+				json_add_int "blocked_devices" "$blocked"
+				json_add_int "max_allowed" "$MAX_BLOCKED_DEVICES"
+				json_add_boolean "safety_limit_reached" $([ "$blocked" -ge "$MAX_BLOCKED_DEVICES" ] && echo 1 || echo 0)
+				json_dump
+				;;
 			*) echo '{"error": "Unknown method"}' ;;
 		esac
 		;;

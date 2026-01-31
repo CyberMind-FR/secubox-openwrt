@@ -200,34 +200,76 @@ discover_network_components() {
 
 # Calculate cumulative impact summary
 calculate_cumulative_impact() {
-	[ ! -d "$PLUGINS_CATALOG" ] && return
-
 	local total_components=0
 	local active_components=0
 	local total_dns=0
 	local total_vhosts=0
 	local total_ports=0
 
-	for manifest_file in "$PLUGINS_CATALOG"/*.json; do
-		[ ! -f "$manifest_file" ] && continue
-		check_network_relevance "$manifest_file" || continue
+	# 1. Count from plugins catalog if exists
+	if [ -d "$PLUGINS_CATALOG" ]; then
+		for manifest_file in "$PLUGINS_CATALOG"/*.json; do
+			[ ! -f "$manifest_file" ] && continue
+			check_network_relevance "$manifest_file" || continue
 
-		local id=$(jsonfilter -i "$manifest_file" -e '@.id' 2>/dev/null)
-		[ -z "$id" ] && continue
+			local id=$(jsonfilter -i "$manifest_file" -e '@.id' 2>/dev/null)
+			[ -z "$id" ] && continue
 
-		total_components=$((total_components + 1))
+			total_components=$((total_components + 1))
 
-		local service_state=$(query_service_state "$id" "$manifest_file")
-		if [ "$service_state" = "running" ]; then
-			active_components=$((active_components + 1))
+			local service_state=$(query_service_state "$id" "$manifest_file")
+			if [ "$service_state" = "running" ]; then
+				active_components=$((active_components + 1))
 
-			local impact=$(calculate_network_impact "$id" "$manifest_file")
-			set -- $impact
-			total_dns=$((total_dns + $1))
-			total_vhosts=$((total_vhosts + $4))
-			total_ports=$((total_ports + $3))
+				local impact=$(calculate_network_impact "$id" "$manifest_file")
+				set -- $impact
+				total_dns=$((total_dns + ${1:-0}))
+				total_vhosts=$((total_vhosts + ${4:-0}))
+				total_ports=$((total_ports + ${3:-0}))
+			fi
+		done
+	fi
+
+	# 2. Count HAProxy vhosts directly
+	local haproxy_vhosts=0
+	if uci -q show haproxy 2>/dev/null | grep -q "=vhost$"; then
+		haproxy_vhosts=$(uci show haproxy 2>/dev/null | grep -c "=vhost$" || echo 0)
+		total_vhosts=$((total_vhosts + haproxy_vhosts))
+	fi
+
+	# 3. Count DNS entries from dnsmasq config
+	if [ -f /tmp/dnsmasq.d/50-vhosts.conf ]; then
+		local dnsmasq_dns=$(grep -c '^address=' /tmp/dnsmasq.d/50-vhosts.conf 2>/dev/null || echo 0)
+		total_dns=$((total_dns + dnsmasq_dns))
+	fi
+
+	# 4. Count active LXC containers as components
+	local lxc_running=0
+	if command -v lxc-ls >/dev/null 2>&1; then
+		lxc_running=$(lxc-ls --running 2>/dev/null | wc -w)
+		active_components=$((active_components + lxc_running))
+		total_components=$((total_components + lxc_running))
+	fi
+
+	# 5. Count exposed ports (firewall rules allowing WAN access)
+	local i=0
+	while uci -q get firewall.@rule[$i] >/dev/null 2>&1; do
+		local src=$(uci -q get firewall.@rule[$i].src)
+		local target=$(uci -q get firewall.@rule[$i].target)
+		local enabled=$(uci -q get firewall.@rule[$i].enabled)
+		local dest_port=$(uci -q get firewall.@rule[$i].dest_port)
+		if [ "$src" = "wan" ] && [ "$target" = "ACCEPT" ] && [ "$enabled" != "0" ] && [ -n "$dest_port" ]; then
+			total_ports=$((total_ports + 1))
 		fi
+		i=$((i + 1))
 	done
+
+	# 6. Count Docker containers as components
+	if command -v docker >/dev/null 2>&1; then
+		local docker_running=$(docker ps -q 2>/dev/null | wc -l)
+		active_components=$((active_components + docker_running))
+		total_components=$((total_components + docker_running))
+	fi
 
 	json_add_int "total_components" "$total_components"
 	json_add_int "active_components" "$active_components"
@@ -283,6 +325,25 @@ case "$1" in
 		json_add_object "setComponentEnabled"
 			json_add_string "app_id" "string"
 			json_add_string "enabled" "boolean"
+		json_close_object
+		json_add_object "getWpadStatus"
+		json_close_object
+		json_add_object "setWpadEnabled"
+			json_add_string "enabled" "boolean"
+		json_close_object
+		json_add_object "getProxyStatus"
+		json_close_object
+		json_add_object "setAdGuardEnabled"
+			json_add_string "enabled" "boolean"
+		json_close_object
+		json_add_object "getOpkgSettings"
+		json_close_object
+		json_add_object "setOpkgIpv4"
+			json_add_string "enabled" "boolean"
+		json_close_object
+		json_add_object "testUrl"
+			json_add_string "url" "string"
+			json_add_string "timeout" "integer"
 		json_close_object
 		json_dump
 		;;
@@ -462,6 +523,323 @@ case "$1" in
 				json_init
 				json_add_boolean "success" 1
 				json_add_string "message" "Component network features updated"
+				json_dump
+				;;
+
+			getWpadStatus)
+				# Get WPAD/PAC file status
+				json_init
+				json_add_boolean "success" 1
+
+				# Check if WPAD file exists
+				wpad_enabled=0
+				wpad_file=""
+				if [ -f /www/wpad.dat ]; then
+					wpad_enabled=1
+					wpad_file="/www/wpad.dat"
+				fi
+
+				# Check DHCP option 252 configuration
+				dhcp_wpad_enabled=0
+				config_load dhcp
+				check_dhcp_option() {
+					local value
+					config_get value "$1" "252"
+					[ -n "$value" ] && dhcp_wpad_enabled=1
+				}
+				config_foreach check_dhcp_option dhcp
+
+				# Check dnsmasq wpad entry
+				dns_wpad_enabled=0
+				if grep -q "wpad" /etc/hosts 2>/dev/null || \
+				   grep -q "wpad" /tmp/hosts.vhosts 2>/dev/null; then
+					dns_wpad_enabled=1
+				fi
+
+				json_add_object "wpad"
+					json_add_boolean "enabled" "$wpad_enabled"
+					json_add_string "file" "$wpad_file"
+					json_add_boolean "dhcp_configured" "$dhcp_wpad_enabled"
+					json_add_boolean "dns_configured" "$dns_wpad_enabled"
+				json_close_object
+
+				json_dump
+				;;
+
+			setWpadEnabled)
+				# Enable/disable WPAD
+				read input
+				json_load "$input"
+
+				json_get_var enabled enabled
+
+				if [ "$enabled" = "1" ] || [ "$enabled" = "true" ]; then
+					# Get LAN IP
+					lan_ip=$(uci get network.lan.ipaddr 2>/dev/null | cut -d'/' -f1)
+					[ -z "$lan_ip" ] && lan_ip="192.168.255.1"
+
+					# Create WPAD/PAC file
+					cat > /www/wpad.dat << EOF
+function FindProxyForURL(url, host) {
+    // Direct access for local network
+    if (isInNet(host, "192.168.0.0", "255.255.0.0") ||
+        isInNet(host, "10.0.0.0", "255.0.0.0") ||
+        isInNet(host, "172.16.0.0", "255.240.0.0") ||
+        shExpMatch(host, "*.local") ||
+        shExpMatch(host, "*.lan")) {
+        return "DIRECT";
+    }
+    // Use CDN Cache proxy for everything else
+    return "PROXY ${lan_ip}:3128; DIRECT";
+}
+EOF
+					chmod 644 /www/wpad.dat
+
+					# Add DHCP option 252 for WPAD discovery
+					uci set dhcp.lan.dhcp_option_force="252,http://${lan_ip}/wpad.dat"
+					uci commit dhcp
+
+					# Add wpad DNS entry
+					if ! grep -q "wpad" /etc/hosts 2>/dev/null; then
+						echo "${lan_ip} wpad wpad.lan" >> /etc/hosts
+					fi
+
+					# Restart dnsmasq
+					/etc/init.d/dnsmasq reload >/dev/null 2>&1
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "WPAD enabled"
+				else
+					# Remove WPAD file
+					rm -f /www/wpad.dat
+
+					# Remove DHCP option
+					uci delete dhcp.lan.dhcp_option_force 2>/dev/null
+					uci commit dhcp
+
+					# Remove wpad DNS entry
+					sed -i '/wpad/d' /etc/hosts 2>/dev/null
+
+					# Restart dnsmasq
+					/etc/init.d/dnsmasq reload >/dev/null 2>&1
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "WPAD disabled"
+				fi
+
+				json_dump
+				;;
+
+			getProxyStatus)
+				# Get comprehensive proxy status (CDN Cache + WPAD + AdGuard Home)
+				json_init
+				json_add_boolean "success" 1
+
+				# AdGuard Home status (Docker container)
+				adguard_installed=0
+				adguard_enabled=0
+				adguard_running=0
+				adguard_port=3000
+				adguard_dns_port=53
+
+				if [ -x /usr/sbin/adguardhomectl ]; then
+					adguard_installed=1
+					adguard_enabled=$(uci -q get adguardhome.main.enabled || echo 0)
+					adguard_port=$(uci -q get adguardhome.main.port || echo 3000)
+					adguard_dns_port=$(uci -q get adguardhome.main.dns_port || echo 53)
+
+					# Check if container is running
+					if command -v docker >/dev/null 2>&1; then
+						docker ps --filter "name=secbx-adguardhome" --format "{{.Status}}" 2>/dev/null | grep -q "Up" && adguard_running=1
+					fi
+				fi
+
+				json_add_object "adguard_home"
+					json_add_boolean "installed" "$adguard_installed"
+					json_add_boolean "enabled" "$adguard_enabled"
+					json_add_boolean "running" "$adguard_running"
+					json_add_int "port" "$adguard_port"
+					json_add_int "dns_port" "$adguard_dns_port"
+				json_close_object
+
+				# CDN Cache status
+				cdn_running=0
+				cdn_enabled=0
+				cdn_port=3128
+
+				if [ -x /etc/init.d/cdn-cache ]; then
+					/etc/init.d/cdn-cache running >/dev/null 2>&1 && cdn_running=1
+					cdn_enabled=$(uci get cdn-cache.main.enabled 2>/dev/null)
+					[ -z "$cdn_enabled" ] && cdn_enabled=0
+					cdn_port=$(uci get cdn-cache.main.listen_port 2>/dev/null)
+					[ -z "$cdn_port" ] && cdn_port=3128
+				fi
+
+				# Check if port is actually listening
+				cdn_listening=0
+				if netstat -tln 2>/dev/null | grep -q ":${cdn_port}"; then
+					cdn_listening=1
+				fi
+
+				json_add_object "cdn_cache"
+					json_add_boolean "installed" "$([ -x /etc/init.d/cdn-cache ] && echo 1 || echo 0)"
+					json_add_boolean "enabled" "$cdn_enabled"
+					json_add_boolean "running" "$cdn_running"
+					json_add_boolean "listening" "$cdn_listening"
+					json_add_int "port" "$cdn_port"
+				json_close_object
+
+				# WPAD status
+				wpad_enabled=0
+				[ -f /www/wpad.dat ] && wpad_enabled=1
+
+				dhcp_wpad=0
+				wpad_url=""
+				config_load dhcp
+				wpad_opt=$(uci get dhcp.lan.dhcp_option_force 2>/dev/null)
+				if echo "$wpad_opt" | grep -q "252"; then
+					dhcp_wpad=1
+					wpad_url=$(echo "$wpad_opt" | sed 's/252,//')
+				fi
+
+				json_add_object "wpad"
+					json_add_boolean "enabled" "$wpad_enabled"
+					json_add_boolean "dhcp_configured" "$dhcp_wpad"
+					json_add_string "url" "$wpad_url"
+				json_close_object
+
+				json_dump
+				;;
+
+			setAdGuardEnabled)
+				# Enable/disable AdGuard Home
+				read input
+				json_load "$input"
+
+				json_get_var enabled enabled
+
+				if [ ! -x /usr/sbin/adguardhomectl ]; then
+					json_init
+					json_add_boolean "success" 0
+					json_add_string "error" "AdGuard Home not installed"
+					json_dump
+					exit 0
+				fi
+
+				if [ "$enabled" = "1" ] || [ "$enabled" = "true" ]; then
+					uci set adguardhome.main.enabled='1'
+					uci commit adguardhome
+					/etc/init.d/adguardhome enable >/dev/null 2>&1
+					/etc/init.d/adguardhome start >/dev/null 2>&1 &
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "AdGuard Home enabled and starting"
+				else
+					/etc/init.d/adguardhome stop >/dev/null 2>&1
+					/etc/init.d/adguardhome disable >/dev/null 2>&1
+					uci set adguardhome.main.enabled='0'
+					uci commit adguardhome
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "AdGuard Home disabled"
+				fi
+
+				json_dump
+				;;
+
+			getOpkgSettings)
+				# Get opkg network settings
+				json_init
+				json_add_boolean "success" 1
+
+				# Check if IPv4 is forced (via profile alias)
+				ipv4_forced=0
+				if [ -f /etc/profile.d/opkg_ipv4.sh ]; then
+					grep -q "opkg.*-4\|force.*ipv4\|ipv4.*only" /etc/profile.d/opkg_ipv4.sh 2>/dev/null && ipv4_forced=1
+				fi
+
+				json_add_object "opkg"
+					json_add_boolean "ipv4_only" "$ipv4_forced"
+				json_close_object
+
+				json_dump
+				;;
+
+			setOpkgIpv4)
+				# Enable/disable IPv4-only mode for opkg
+				read input
+				json_load "$input"
+
+				json_get_var enabled enabled
+
+				if [ "$enabled" = "1" ] || [ "$enabled" = "true" ]; then
+					# Create profile script to force IPv4 for opkg
+					cat > /etc/profile.d/opkg_ipv4.sh << 'OPKG_EOF'
+# Force opkg to use IPv4 only (uclient-fetch -4)
+# Useful when IPv6 connectivity is broken
+alias opkg='/bin/opkg'
+export UCLIENT_FETCH_OPTS="-4"
+OPKG_EOF
+					chmod +x /etc/profile.d/opkg_ipv4.sh
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "opkg IPv4-only mode enabled"
+				else
+					# Remove IPv4 forcing
+					rm -f /etc/profile.d/opkg_ipv4.sh
+
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "opkg IPv4-only mode disabled"
+				fi
+
+				json_dump
+				;;
+
+			testUrl)
+				# Test URL connectivity (for network diagnostics)
+				read input
+				json_load "$input"
+
+				json_get_var url url
+				json_get_var timeout timeout
+				[ -z "$timeout" ] && timeout=5
+
+				json_init
+
+				if [ -z "$url" ]; then
+					json_add_boolean "success" 0
+					json_add_string "error" "URL is required"
+					json_dump
+					exit 0
+				fi
+
+				# Test URL with wget --spider (more reliable than uclient-fetch)
+				status_msg=""
+				start_time=$(date +%s)
+
+				# Use wget with timeout and spider mode
+				if wget -4 --spider -q -T "$timeout" --no-check-certificate "$url" 2>/dev/null; then
+					status_msg="reachable"
+				else
+					status_msg="unreachable"
+				fi
+
+				end_time=$(date +%s)
+				response_time=$((end_time - start_time))
+
+				json_add_boolean "success" 1
+				json_add_object "result"
+					json_add_string "url" "$url"
+					json_add_string "status" "$status_msg"
+					json_add_int "response_time_s" "$response_time"
+				json_close_object
+
 				json_dump
 				;;
 

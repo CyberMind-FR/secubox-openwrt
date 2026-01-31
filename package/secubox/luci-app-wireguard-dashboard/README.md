@@ -1,222 +1,170 @@
 # LuCI WireGuard Dashboard
 
-**Version:** 0.4.0  
-**Last Updated:** 2025-12-28  
-**Status:** Active
-
-
-![Version](https://img.shields.io/badge/version-1.0.0-cyan)
-![License](https://img.shields.io/badge/license-Apache--2.0-green)
-![OpenWrt](https://img.shields.io/badge/OpenWrt-21.02+-orange)
-
-Modern and intuitive dashboard for WireGuard VPN monitoring on OpenWrt. Visualize tunnels, peers, and traffic in real-time.
-
-![Dashboard Preview](screenshots/dashboard-preview.png)
+Modern WireGuard VPN management interface for OpenWrt with setup wizard, peer management, and real-time monitoring.
 
 ## Features
 
-### 🔐 Tunnel Status
-- Real-time interface monitoring
-- Public key display
-- Listen port and MTU info
-- Interface state (up/down)
-
-### 👥 Peer Management
-- Active/idle/inactive status
-- Endpoint tracking
-- Last handshake time
-- Allowed IPs display
-- Preshared key indicator
-
-### 📊 Traffic Statistics
-- Per-peer RX/TX bytes
-- Per-interface totals
-- Combined traffic view
-- Visual progress bars
-
-### ⚙️ Configuration View
-- WireGuard config syntax display
-- Interface and peer sections
-- Tunnel visualization
-- UCI integration info
-
-### 🎨 Modern Interface
-- Cyan/blue VPN tunnel theme
-- Animated status indicators
-- Responsive grid layout
-- Real-time updates
-
-## Screenshots
-
-### Status Overview
-![Status](screenshots/status.png)
-
-### Peers List
-![Peers](screenshots/peers.png)
-
-### Traffic Statistics
-![Traffic](screenshots/traffic.png)
-
-### Configuration
-![Config](screenshots/config.png)
+- **Setup Wizard**: Create tunnels and peers in minutes with presets for common use cases
+- **Dashboard Overview**: Real-time status of all tunnels and peers
+- **Peer Management**: Add, remove, and configure peers with QR code generation
+- **Traffic Monitoring**: Live bandwidth statistics per interface and peer
+- **Client Config Export**: Generate configuration files and QR codes for mobile apps
 
 ## Installation
 
-### Prerequisites
-
-- OpenWrt 21.02 or later
-- WireGuard installed (`kmod-wireguard`, `wireguard-tools`)
-- LuCI web interface
-
 ```bash
-# Install WireGuard
 opkg update
-opkg install kmod-wireguard wireguard-tools luci-proto-wireguard
+opkg install luci-app-wireguard-dashboard
 ```
 
-### From Source
+### Dependencies
+
+- `wireguard-tools` - WireGuard userspace tools
+- `luci-base` - LuCI web interface
+- `qrencode` (optional) - For server-side QR code generation
+
+## Setup Wizard
+
+The wizard provides preset configurations for common VPN scenarios:
+
+### Tunnel Presets
+
+| Preset | Description | Default Port | Network |
+|--------|-------------|--------------|---------|
+| Road Warrior | Remote access for mobile users | 51820 | 10.10.0.0/24 |
+| Site-to-Site | Connect two networks | 51821 | 10.20.0.0/24 |
+| IoT Tunnel | Isolated tunnel for smart devices | 51822 | 10.30.0.0/24 |
+
+### Peer Zone Presets
+
+| Zone | Description | Tunnel Mode |
+|------|-------------|-------------|
+| Home User | Full network access | Full |
+| Remote Worker | Office resources only | Split |
+| Mobile Device | On-the-go access | Full |
+| IoT Device | Limited VPN-only access | Split |
+| Guest | Temporary visitor access | Full |
+| Server/Site | Site-to-site connection | Split |
+
+### Wizard Flow
+
+1. **Select Tunnel Type** - Choose preset (Road Warrior, Site-to-Site, IoT)
+2. **Configure Tunnel** - Set interface name, port, VPN network, public endpoint
+3. **Select Peer Zones** - Choose which peer types to create
+4. **Create** - Wizard generates keys, creates interface, adds peers, shows QR codes
+
+## RPCD API
+
+The dashboard communicates via `luci.wireguard-dashboard` RPCD object.
+
+### Methods
+
+| Method | Parameters | Description |
+|--------|------------|-------------|
+| `status` | - | Get overall WireGuard status |
+| `interfaces` | - | List all WireGuard interfaces |
+| `peers` | - | List all peers with status |
+| `traffic` | - | Get traffic statistics |
+| `generate_keys` | - | Generate new key pair + PSK |
+| `create_interface` | name, private_key, listen_port, addresses, mtu | Create new WireGuard interface with firewall rules |
+| `add_peer` | interface, name, allowed_ips, public_key, preshared_key, endpoint, persistent_keepalive | Add peer to interface |
+| `remove_peer` | interface, public_key | Remove peer from interface |
+| `interface_control` | interface, action (up/down/restart) | Control interface state |
+| `generate_config` | interface, peer, private_key, endpoint | Generate client config file |
+| `generate_qr` | interface, peer, private_key, endpoint | Generate QR code (requires qrencode) |
+
+### Example: Create Interface via CLI
 
 ```bash
-# Clone into OpenWrt build environment
-cd ~/openwrt/feeds/luci/applications/
-git clone https://github.com/gkerma/luci-app-wireguard-dashboard.git
+# Generate keys
+keys=$(ubus call luci.wireguard-dashboard generate_keys '{}')
+privkey=$(echo "$keys" | jsonfilter -e '@.private_key')
 
-# Update feeds and install
-cd ~/openwrt
-./scripts/feeds update -a
-./scripts/feeds install -a
-
-# Enable in menuconfig
-make menuconfig
-# Navigate to: LuCI > Applications > luci-app-wireguard-dashboard
-
-# Build package
-make package/luci-app-wireguard-dashboard/compile V=s
+# Create interface
+ubus call luci.wireguard-dashboard create_interface "{
+  \"name\": \"wg0\",
+  \"private_key\": \"$privkey\",
+  \"listen_port\": \"51820\",
+  \"addresses\": \"10.10.0.1/24\",
+  \"mtu\": \"1420\"
+}"
 ```
 
-### Manual Installation
+### Example: Add Peer via CLI
 
 ```bash
-# Transfer package to router
-scp luci-app-wireguard-dashboard_1.0.0-1_all.ipk root@192.168.1.1:/tmp/
+# Generate peer keys
+peer_keys=$(ubus call luci.wireguard-dashboard generate_keys '{}')
+peer_pubkey=$(echo "$peer_keys" | jsonfilter -e '@.public_key')
+peer_psk=$(echo "$peer_keys" | jsonfilter -e '@.preshared_key')
 
-# Install on router
-ssh root@192.168.1.1
-opkg install /tmp/luci-app-wireguard-dashboard_1.0.0-1_all.ipk
-
-# Restart services
-/etc/init.d/rpcd restart
+# Add peer
+ubus call luci.wireguard-dashboard add_peer "{
+  \"interface\": \"wg0\",
+  \"name\": \"Phone\",
+  \"allowed_ips\": \"10.10.0.2/32\",
+  \"public_key\": \"$peer_pubkey\",
+  \"preshared_key\": \"$peer_psk\",
+  \"persistent_keepalive\": \"25\"
+}"
 ```
 
-## Usage
+## Firewall Integration
 
-After installation, access the dashboard at:
+When creating an interface via the wizard or `create_interface` API, the following firewall rules are automatically created:
 
-**VPN → WireGuard Dashboard**
+1. **Zone** (`wg_<interface>`): INPUT/OUTPUT/FORWARD = ACCEPT
+2. **Forwarding**: Bidirectional forwarding to/from `lan` zone
+3. **WAN Rule**: Allow UDP traffic on listen port from WAN
 
-The dashboard has four tabs:
-1. **Status**: Overview with interfaces and active peers
-2. **Peers**: Detailed peer information and status
-3. **Traffic**: Bandwidth statistics per peer/interface
-4. **Configuration**: Config file view and tunnel visualization
+## File Locations
 
-## Architecture
+| File | Purpose |
+|------|---------|
+| `/usr/libexec/rpcd/luci.wireguard-dashboard` | RPCD backend |
+| `/www/luci-static/resources/wireguard-dashboard/api.js` | JavaScript API wrapper |
+| `/www/luci-static/resources/view/wireguard-dashboard/*.js` | LuCI views |
+| `/usr/share/luci/menu.d/luci-app-wireguard-dashboard.json` | Menu configuration |
+| `/usr/share/rpcd/acl.d/luci-app-wireguard-dashboard.json` | ACL permissions |
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    LuCI JavaScript                       │
-│          (status.js, peers.js, traffic.js)              │
-└───────────────────────────┬─────────────────────────────┘
-                            │ ubus RPC
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                    RPCD Backend                          │
-│           /usr/libexec/rpcd/wireguard-dashboard         │
-└───────────────────────────┬─────────────────────────────┘
-                            │ executes
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                     wg show                              │
-│                  WireGuard CLI Tool                      │
-└───────────────────────────┬─────────────────────────────┘
-                            │ manages
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                   WireGuard Kernel Module                │
-│                    Encrypted Tunnels                     │
-└─────────────────────────────────────────────────────────┘
+## Troubleshooting
+
+### Interface not coming up
+
+```bash
+# Check interface status
+wg show wg0
+
+# Check UCI configuration
+uci show network.wg0
+
+# Manually bring up
+ifup wg0
+
+# Check logs
+logread | grep -i wireguard
 ```
 
-## API Endpoints
+### Peers not connecting
 
-| Method | Description |
-|--------|-------------|
-| `status` | Overall VPN status, interface/peer counts, total traffic |
-| `interfaces` | Detailed interface info (pubkey, port, IPs, state) |
-| `peers` | All peers with endpoint, handshake, traffic, allowed IPs |
-| `traffic` | Per-peer and per-interface RX/TX statistics |
-| `config` | Configuration display (no private keys exposed) |
+1. Verify firewall port is open: `iptables -L -n | grep 51820`
+2. Check endpoint is reachable from client
+3. Verify allowed_ips match on both ends
+4. Check for NAT issues - enable PersistentKeepalive
 
-## Peer Status Indicators
+### QR codes not generating
 
-| Status | Meaning | Handshake Age |
-|--------|---------|---------------|
-| 🟢 Active | Recent communication | < 3 minutes |
-| 🟡 Idle | No recent traffic | 3-10 minutes |
-| ⚪ Inactive | No handshake | > 10 minutes or never |
+Install qrencode for server-side QR generation:
+```bash
+opkg install qrencode
+```
 
-## Requirements
-
-- OpenWrt 21.02+
-- `kmod-wireguard` (kernel module)
-- `wireguard-tools` (wg command)
-- `luci-proto-wireguard` (optional, for LuCI config)
-- LuCI (luci-base)
-- rpcd with luci module
-
-## Dependencies
-
-- `luci-base`
-- `luci-lib-jsonc`
-- `rpcd`
-- `rpcd-mod-luci`
-- `wireguard-tools`
-
-## Security Notes
-
-- Private keys are **never** exposed through the dashboard
-- Only public keys and configuration are displayed
-- All data is read-only (no config modifications)
-- RPCD ACLs restrict access to authorized users
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues and pull requests.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+The dashboard also supports client-side QR generation via JavaScript (no server dependency).
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+Apache-2.0
 
-## Credits
+## Author
 
-- Powered by [WireGuard®](https://www.wireguard.com/)
-- Built for [OpenWrt](https://openwrt.org/)
-- Developed by [Gandalf @ CyberMind.fr](https://cybermind.fr)
-
-## Related Projects
-
-- [luci-proto-wireguard](https://github.com/openwrt/luci) - WireGuard protocol support
-- [wg-easy](https://github.com/WeeJeWel/wg-easy) - Web UI for WireGuard
-- [wireguard-ui](https://github.com/ngoduykhanh/wireguard-ui) - Another WireGuard UI
-
----
-
-Made with 🔐 for secure networking
-
-*WireGuard is a registered trademark of Jason A. Donenfeld.*
+CyberMind.fr - SecuBox Project

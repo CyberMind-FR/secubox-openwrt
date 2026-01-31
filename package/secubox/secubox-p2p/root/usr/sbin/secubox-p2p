@@ -1,0 +1,897 @@
+#!/bin/sh
+# SecuBox P2P Hub Manager
+# Handles peer discovery, mesh networking, and service federation
+# Supports WAN IP, LAN IP, and WireGuard tunnel redundancy
+
+VERSION="0.6.0"
+CONFIG_FILE="/etc/config/secubox-p2p"
+PEERS_FILE="/tmp/secubox-p2p-peers.json"
+SERVICES_FILE="/tmp/secubox-p2p-services.json"
+STATE_DIR="/var/run/secubox-p2p"
+MDNS_PID_FILE="$STATE_DIR/mdns.pid"
+API_PORT=7331
+
+# Initialize
+init() {
+	mkdir -p "$STATE_DIR"
+	[ -f "$PEERS_FILE" ] || echo '{"peers":[]}' > "$PEERS_FILE"
+	[ -f "$SERVICES_FILE" ] || echo '{"services":[]}' > "$SERVICES_FILE"
+
+	# Initialize node info
+	_init_node_info
+}
+
+# Get LAN IP address
+get_lan_ip() {
+	local lan_ip
+	lan_ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+	[ -z "$lan_ip" ] && lan_ip=$(uci -q get network.lan.ipaddr)
+	echo "${lan_ip:-127.0.0.1}"
+}
+
+# Get WAN IP address (real external IP)
+get_wan_ip() {
+	local wan_ip wan_iface
+
+	# Get WAN interface
+	wan_iface=$(uci -q get network.wan.device || uci -q get network.wan.ifname || echo "eth0")
+
+	# Try to get IP from WAN interface
+	wan_ip=$(ip -4 addr show "$wan_iface" 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+
+	# If no direct WAN IP, try to get public IP via external service
+	if [ -z "$wan_ip" ] || echo "$wan_ip" | grep -qE '^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)'; then
+		# Behind NAT - try to get public IP
+		wan_ip=$(curl -s --connect-timeout 3 https://api.ipify.org 2>/dev/null)
+		[ -z "$wan_ip" ] && wan_ip=$(curl -s --connect-timeout 3 https://ifconfig.me 2>/dev/null)
+	fi
+
+	echo "${wan_ip:-}"
+}
+
+# Get WireGuard tunnel IP(s)
+get_wg_ips() {
+	local wg_ips=""
+
+	# Check all WireGuard interfaces
+	for wg_iface in $(ip link show type wireguard 2>/dev/null | grep -oE 'wg[0-9]+' | head -5); do
+		local wg_ip
+		wg_ip=$(ip -4 addr show "$wg_iface" 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}')
+		if [ -n "$wg_ip" ]; then
+			[ -n "$wg_ips" ] && wg_ips="$wg_ips,"
+			wg_ips="${wg_ips}$wg_ip"
+		fi
+	done
+
+	echo "$wg_ips"
+}
+
+# Get all node addresses as JSON array
+get_node_addresses() {
+	local lan_ip wan_ip wg_ips addresses
+
+	lan_ip=$(get_lan_ip)
+	wan_ip=$(get_wan_ip)
+	wg_ips=$(get_wg_ips)
+
+	# Build addresses JSON array
+	addresses="[{\"type\":\"lan\",\"address\":\"$lan_ip\",\"port\":$API_PORT}"
+
+	if [ -n "$wan_ip" ]; then
+		addresses="$addresses,{\"type\":\"wan\",\"address\":\"$wan_ip\",\"port\":$API_PORT}"
+	fi
+
+	# Add WireGuard IPs
+	if [ -n "$wg_ips" ]; then
+		for wg_ip in $(echo "$wg_ips" | tr ',' ' '); do
+			addresses="$addresses,{\"type\":\"wireguard\",\"address\":\"$wg_ip\",\"port\":$API_PORT}"
+		done
+	fi
+
+	addresses="$addresses]"
+	echo "$addresses"
+}
+
+# Initialize node identity
+_init_node_info() {
+	local node_name
+	node_name=$(get_config main node_name "")
+
+	# Generate node name from hostname if not set
+	if [ -z "$node_name" ]; then
+		node_name=$(cat /proc/sys/kernel/hostname 2>/dev/null || echo "secubox")
+		set_config main node_name "$node_name"
+	fi
+
+	# Generate node ID if not exists
+	local node_id_file="$STATE_DIR/node.id"
+	if [ ! -f "$node_id_file" ]; then
+		# Generate unique node ID from MAC address
+		local mac
+		mac=$(ip link show br-lan 2>/dev/null | grep ether | awk '{print $2}' | tr -d ':')
+		[ -z "$mac" ] && mac=$(cat /proc/sys/kernel/random/uuid | tr -d '-' | head -c 12)
+		echo "sb-${mac}" > "$node_id_file"
+	fi
+}
+
+# Get config value
+get_config() {
+	local section="$1"
+	local option="$2"
+	local default="$3"
+	uci -q get "secubox-p2p.${section}.${option}" || echo "$default"
+}
+
+# Set config value
+set_config() {
+	local section="$1"
+	local option="$2"
+	local value="$3"
+	uci set "secubox-p2p.${section}.${option}=$value"
+	uci commit secubox-p2p
+}
+
+# Discover peers via mDNS
+discover_mdns() {
+	local timeout="${1:-5}"
+	local peers="[]"
+
+	# Check if avahi-browse is available
+	if command -v avahi-browse >/dev/null 2>&1; then
+		# Discover _secubox._tcp services
+		local discovered=$(avahi-browse -t -r _secubox._tcp 2>/dev/null | grep -E "^=|hostname|address" || true)
+
+		if [ -n "$discovered" ]; then
+			# Parse discovered services into JSON
+			echo "$discovered" | awk '
+				/^=/ { name=$4 }
+				/hostname/ { host=$3 }
+				/address/ {
+					addr=$3
+					if (name && addr) {
+						printf "{\"id\":\"%s\",\"name\":\"%s\",\"address\":\"%s\",\"status\":\"online\"},", name, name, addr
+					}
+				}
+			' | sed 's/,$//' | awk '{print "["$0"]"}'
+		else
+			echo "[]"
+		fi
+	else
+		# Fallback: scan local network
+		local gateway=$(ip route | grep default | awk '{print $3}')
+		local subnet=$(echo "$gateway" | sed 's/\.[0-9]*$/./')
+
+		# Quick ping scan
+		for i in $(seq 1 254); do
+			ping -c1 -W1 "${subnet}${i}" >/dev/null 2>&1 &
+		done
+		wait
+
+		# Check for SecuBox peers via HTTP
+		arp -n | grep -v incomplete | awk '{print $1}' | while read ip; do
+			if curl -s --connect-timeout 1 "http://${ip}/cgi-bin/luci/admin/secubox" >/dev/null 2>&1; then
+				echo "{\"id\":\"peer-${ip}\",\"name\":\"SecuBox@${ip}\",\"address\":\"${ip}\",\"status\":\"online\"}"
+			fi
+		done | jq -s '.' 2>/dev/null || echo "[]"
+	fi
+}
+
+# Get peers list
+get_peers() {
+	# Ensure state dir and node info exist
+	mkdir -p "$STATE_DIR"
+	_init_node_info
+
+	# If no peers file or empty, ensure local node is registered
+	if [ ! -f "$PEERS_FILE" ] || grep -q '"peers":\[\]' "$PEERS_FILE" 2>/dev/null; then
+		register_self
+	fi
+
+	if [ -f "$PEERS_FILE" ]; then
+		cat "$PEERS_FILE"
+	else
+		# Still no file? Create with local node
+		local node_name node_id lan_ip
+		node_name=$(get_config main node_name "secubox")
+		node_id=$(cat "$STATE_DIR/node.id" 2>/dev/null || echo "unknown")
+		lan_ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+		[ -z "$lan_ip" ] && lan_ip=$(uci -q get network.lan.ipaddr || echo "127.0.0.1")
+		echo "{\"peers\":[{\"id\":\"$node_id\",\"name\":\"$node_name (local)\",\"address\":\"$lan_ip\",\"status\":\"online\",\"is_local\":true}]}"
+	fi
+}
+
+# Add peer with optional WAN and WireGuard addresses
+add_peer() {
+	local address="$1"
+	local name="${2:-Peer}"
+	local wan_address="${3:-}"
+	local wg_address="${4:-}"
+	local id="peer-$(echo "$address" | md5sum | cut -c1-8)"
+
+	local peers=$(get_peers)
+
+	# Build addresses array
+	local addresses="[{\"type\":\"lan\",\"address\":\"$address\",\"port\":$API_PORT}"
+	[ -n "$wan_address" ] && addresses="$addresses,{\"type\":\"wan\",\"address\":\"$wan_address\",\"port\":$API_PORT}"
+	[ -n "$wg_address" ] && addresses="$addresses,{\"type\":\"wireguard\",\"address\":\"$wg_address\",\"port\":$API_PORT}"
+	addresses="$addresses]"
+
+	local new_peer="{\"id\":\"$id\",\"name\":\"$name\",\"address\":\"$address\",\"wan_address\":\"${wan_address:-}\",\"wg_addresses\":\"${wg_address:-}\",\"addresses\":$addresses,\"status\":\"unknown\",\"added\":\"$(date -Iseconds)\"}"
+
+	echo "$peers" | jq ".peers += [$new_peer]" > "$PEERS_FILE"
+	echo "{\"success\":true,\"peer_id\":\"$id\"}"
+}
+
+# Remove peer
+remove_peer() {
+	local peer_id="$1"
+	local peers=$(get_peers)
+	echo "$peers" | jq ".peers = [.peers[] | select(.id != \"$peer_id\")]" > "$PEERS_FILE"
+	echo "{\"success\":true}"
+}
+
+# Get settings
+get_settings() {
+	cat <<EOF
+{
+	"enabled": $(get_config main enabled 1),
+	"node_name": "$(get_config main node_name "")",
+	"discovery_enabled": $(get_config main discovery_enabled 1),
+	"sharing_enabled": $(get_config main sharing_enabled 1),
+	"auto_sync": $(get_config main auto_sync 1),
+	"sync_interval": $(get_config main sync_interval 60),
+	"dns_federation": {
+		"enabled": $(get_config dns enabled 0),
+		"primary_dns": "$(get_config dns primary_dns "127.0.0.1:53")",
+		"base_domain": "$(get_config dns base_domain "sb.local")"
+	},
+	"wireguard": {
+		"enabled": $(get_config wireguard enabled 0),
+		"listen_port": $(get_config wireguard listen_port 51820),
+		"network_cidr": "$(get_config wireguard network_cidr "10.100.0.0/24")"
+	},
+	"haproxy": {
+		"enabled": $(get_config haproxy enabled 0),
+		"strategy": "$(get_config haproxy strategy "round-robin")"
+	},
+	"registry": {
+		"base_url": "$(get_config registry base_url "sb.local")",
+		"cache_enabled": $(get_config registry cache_enabled 1)
+	}
+}
+EOF
+}
+
+# Set settings
+set_settings() {
+	local json="$1"
+
+	# Parse and apply settings
+	local enabled=$(echo "$json" | jsonfilter -e '@.enabled')
+	local sharing=$(echo "$json" | jsonfilter -e '@.sharing_enabled')
+	local discovery=$(echo "$json" | jsonfilter -e '@.discovery_enabled')
+
+	[ -n "$enabled" ] && set_config main enabled "$enabled"
+	[ -n "$sharing" ] && set_config main sharing_enabled "$sharing"
+	[ -n "$discovery" ] && set_config main discovery_enabled "$discovery"
+
+	echo "{\"success\":true}"
+}
+
+# Get local services - scan init.d and detect running status
+get_services() {
+	local services=""
+	local count=0
+
+	# Service port mapping
+	get_service_port() {
+		case "$1" in
+			dnsmasq) echo "53" ;;
+			uhttpd) echo "80" ;;
+			nginx) echo "80" ;;
+			haproxy) echo "80,443" ;;
+			crowdsec) echo "8080" ;;
+			crowdsec-firewall-bouncer) echo "" ;;
+			dropbear) echo "22" ;;
+			sshd) echo "22" ;;
+			firewall*) echo "" ;;
+			wireguard|wg*) echo "51820" ;;
+			gitea) echo "3000" ;;
+			localai) echo "8080" ;;
+			ollama) echo "11434" ;;
+			nextcloud) echo "8080" ;;
+			lxc*) echo "" ;;
+			rpcd) echo "" ;;
+			*) echo "" ;;
+		esac
+	}
+
+	# Scan init.d services
+	for init_script in /etc/init.d/*; do
+		[ -x "$init_script" ] || continue
+		local svc_name=$(basename "$init_script")
+
+		# Skip system services
+		case "$svc_name" in
+			boot|done|rcS|rc.local|umount|sysfixtime|sysntpd|gpio_switch) continue ;;
+		esac
+
+		# Check if service is running
+		local status="stopped"
+		local pid=""
+
+		# Method 1: Check via init script status
+		if "$init_script" status >/dev/null 2>&1; then
+			if "$init_script" status 2>&1 | grep -qiE "running|active"; then
+				status="running"
+			fi
+		fi
+
+		# Method 2: Check via pgrep (fallback)
+		if [ "$status" = "stopped" ]; then
+			if pgrep -f "$svc_name" >/dev/null 2>&1; then
+				status="running"
+				pid=$(pgrep -f "$svc_name" | head -1)
+			fi
+		fi
+
+		# Method 3: Check if enabled in UCI/procd
+		local enabled="0"
+		if "$init_script" enabled 2>/dev/null; then
+			enabled="1"
+		fi
+
+		local port=$(get_service_port "$svc_name")
+
+		# Build JSON entry
+		if [ $count -gt 0 ]; then
+			services="$services,"
+		fi
+		services="$services{\"name\":\"$svc_name\",\"status\":\"$status\",\"enabled\":$enabled,\"port\":\"$port\",\"pid\":\"$pid\"}"
+		count=$((count + 1))
+	done
+
+	echo "{\"services\":[$services],\"total\":$count}"
+}
+
+# Get shared services (from peers)
+get_shared_services() {
+	local all_services="[]"
+	local peers=$(get_peers | jq -r '.peers[] | select(.status=="online") | .address')
+
+	for peer_addr in $peers; do
+		local peer_services=$(curl -s --connect-timeout 2 "http://${peer_addr}:8080/p2p/services" 2>/dev/null || echo "[]")
+		all_services=$(echo "$all_services" | jq ". += $peer_services")
+	done
+
+	echo "{\"shared_services\":$all_services}"
+}
+
+# Sync with peers
+sync_catalog() {
+	local peers=$(get_peers | jq -r '.peers[].address')
+	local synced=0
+
+	for peer_addr in $peers; do
+		if curl -s --connect-timeout 2 "http://${peer_addr}/cgi-bin/luci" >/dev/null 2>&1; then
+			synced=$((synced + 1))
+		fi
+	done
+
+	echo "{\"success\":true,\"synced_peers\":$synced}"
+}
+
+# Broadcast command to all peers
+broadcast_command() {
+	local cmd="$1"
+	local peers=$(get_peers | jq -r '.peers[] | select(.status=="online") | .address')
+	local success=0
+	local failed=0
+
+	for peer_addr in $peers; do
+		if curl -s --connect-timeout 5 -X POST "http://${peer_addr}:8080/p2p/command" -d "{\"command\":\"$cmd\"}" >/dev/null 2>&1; then
+			success=$((success + 1))
+		else
+			failed=$((failed + 1))
+		fi
+	done
+
+	echo "{\"success\":true,\"broadcast_success\":$success,\"broadcast_failed\":$failed}"
+}
+
+# Publish mDNS service announcement
+publish_mdns() {
+	local node_name
+	node_name=$(get_config main node_name "secubox")
+
+	# Kill any existing avahi-publish process
+	[ -f "$MDNS_PID_FILE" ] && kill $(cat "$MDNS_PID_FILE") 2>/dev/null
+	rm -f "$MDNS_PID_FILE"
+
+	# Check if avahi-publish is available
+	if command -v avahi-publish >/dev/null 2>&1; then
+		# Get LAN IP for service registration
+		local lan_ip
+		lan_ip=$(ip -4 addr show br-lan 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1)
+		[ -z "$lan_ip" ] && lan_ip=$(uci -q get network.lan.ipaddr)
+
+		# Publish _secubox._tcp service
+		avahi-publish -s "$node_name" "_secubox._tcp" "$API_PORT" \
+			"version=$VERSION" \
+			"type=mesh-node" \
+			"ip=$lan_ip" &
+		echo $! > "$MDNS_PID_FILE"
+
+		logger -t secubox-p2p "mDNS service published: $node_name._secubox._tcp on port $API_PORT"
+		return 0
+	else
+		logger -t secubox-p2p "WARNING: avahi-publish not available, mDNS disabled"
+		return 1
+	fi
+}
+
+# Stop mDNS service announcement
+stop_mdns() {
+	if [ -f "$MDNS_PID_FILE" ]; then
+		kill $(cat "$MDNS_PID_FILE") 2>/dev/null
+		rm -f "$MDNS_PID_FILE"
+		logger -t secubox-p2p "mDNS service stopped"
+	fi
+}
+
+# ===========================================
+# DNS Federation - Dynamic mesh DNS entries
+# ===========================================
+
+DNS_HOSTS_FILE="/tmp/hosts/secubox-mesh"
+DNS_DOMAIN_BASE="mesh.local"
+
+# Initialize DNS federation
+dns_init() {
+	local dns_enabled=$(get_config dns enabled 0)
+	[ "$dns_enabled" = "1" ] || return 0
+
+	DNS_DOMAIN_BASE=$(get_config dns base_domain "mesh.local")
+
+	# Ensure hosts directory exists
+	mkdir -p /tmp/hosts
+
+	# Create or update mesh hosts file
+	touch "$DNS_HOSTS_FILE"
+
+	# Ensure dnsmasq reads from /tmp/hosts
+	# Check if addn-hosts is configured
+	if ! uci -q get dhcp.@dnsmasq[0].addnhosts | grep -q "/tmp/hosts"; then
+		uci add_list dhcp.@dnsmasq[0].addnhosts="/tmp/hosts"
+		uci commit dhcp
+		logger -t secubox-p2p "Added /tmp/hosts to dnsmasq additional hosts"
+	fi
+}
+
+# Update DNS entries for all mesh peers
+dns_update_peers() {
+	local dns_enabled=$(get_config dns enabled 0)
+	[ "$dns_enabled" = "1" ] || return 0
+
+	dns_init
+
+	local base_domain=$(get_config dns base_domain "mesh.local")
+	local hosts_content=""
+	local count=0
+
+	# Get all peers (including local)
+	local peers_json=$(cat "$PEERS_FILE" 2>/dev/null || echo '{"peers":[]}')
+
+	# Parse peers and build hosts entries
+	# Format: IP hostname hostname.mesh.local
+	if command -v jq >/dev/null 2>&1; then
+		hosts_content=$(echo "$peers_json" | jq -r '.peers[] | select(.status == "online" or .is_local == true) |
+			# Build hostname entries
+			(
+				(.address // empty) as $lan |
+				(.wan_address // empty) as $wan |
+				(.wg_addresses // empty) as $wg |
+				(.name // "peer") | gsub(" \\(local\\)"; "") | gsub("[^a-zA-Z0-9-]"; "-") | ascii_downcase as $hostname |
+
+				# LAN entry (primary for local network)
+				(if $lan != "" and $lan != null then
+					"\($lan)\t\($hostname)\t\($hostname).'$base_domain'"
+				else empty end),
+
+				# WireGuard entry (for mesh access)
+				(if $wg != "" and $wg != null then
+					($wg | split(",")[0]) as $wg_ip |
+					if $wg_ip != "" then
+						"\($wg_ip)\t\($hostname)-wg\t\($hostname)-wg.'$base_domain'"
+					else empty end
+				else empty end)
+			)
+		' 2>/dev/null)
+	else
+		# Fallback without jq - use jsonfilter
+		local peer_count=$(echo "$peers_json" | jsonfilter -e '@.peers[*]' 2>/dev/null | wc -l)
+		local i=0
+
+		while [ $i -lt $peer_count ]; do
+			local addr=$(echo "$peers_json" | jsonfilter -e "@.peers[$i].address" 2>/dev/null)
+			local name=$(echo "$peers_json" | jsonfilter -e "@.peers[$i].name" 2>/dev/null)
+			local status=$(echo "$peers_json" | jsonfilter -e "@.peers[$i].status" 2>/dev/null)
+			local is_local=$(echo "$peers_json" | jsonfilter -e "@.peers[$i].is_local" 2>/dev/null)
+			local wg_addr=$(echo "$peers_json" | jsonfilter -e "@.peers[$i].wg_addresses" 2>/dev/null | cut -d',' -f1)
+
+			# Only add online peers or local node
+			if [ "$status" = "online" ] || [ "$is_local" = "true" ]; then
+				# Clean hostname (remove special chars)
+				local hostname=$(echo "$name" | sed -e 's/ (local)//' -e 's/[^a-zA-Z0-9-]/-/g' | tr 'A-Z' 'a-z')
+
+				# Add LAN entry
+				if [ -n "$addr" ]; then
+					hosts_content="$hosts_content$addr	$hostname	$hostname.$base_domain
+"
+					count=$((count + 1))
+				fi
+
+				# Add WireGuard entry
+				if [ -n "$wg_addr" ]; then
+					hosts_content="$hosts_content$wg_addr	${hostname}-wg	${hostname}-wg.$base_domain
+"
+					count=$((count + 1))
+				fi
+			fi
+			i=$((i + 1))
+		done
+	fi
+
+	# Write hosts file
+	echo "# SecuBox Mesh DNS Federation - Auto-generated" > "$DNS_HOSTS_FILE"
+	echo "# Domain: $base_domain" >> "$DNS_HOSTS_FILE"
+	echo "# Updated: $(date -Iseconds 2>/dev/null || date)" >> "$DNS_HOSTS_FILE"
+	echo "" >> "$DNS_HOSTS_FILE"
+	echo "$hosts_content" >> "$DNS_HOSTS_FILE"
+
+	# Count actual entries (non-comment, non-empty lines)
+	count=$(grep -c "^[0-9]" "$DNS_HOSTS_FILE" 2>/dev/null || echo "0")
+
+	# Signal dnsmasq to reload hosts
+	killall -HUP dnsmasq 2>/dev/null || /etc/init.d/dnsmasq reload 2>/dev/null
+
+	logger -t secubox-p2p "DNS federation updated: $count mesh host entries in $base_domain"
+	echo "{\"success\":true,\"entries\":$count,\"domain\":\"$base_domain\"}"
+}
+
+# Add a single peer to DNS
+dns_add_peer() {
+	local hostname="$1"
+	local ip="$2"
+
+	local dns_enabled=$(get_config dns enabled 0)
+	[ "$dns_enabled" = "1" ] || return 0
+
+	local base_domain=$(get_config dns base_domain "mesh.local")
+
+	# Clean hostname
+	hostname=$(echo "$hostname" | sed -e 's/[^a-zA-Z0-9-]/-/g' | tr 'A-Z' 'a-z')
+
+	# Append to hosts file (avoid duplicates)
+	if ! grep -q "	$hostname	" "$DNS_HOSTS_FILE" 2>/dev/null; then
+		echo "$ip	$hostname	$hostname.$base_domain" >> "$DNS_HOSTS_FILE"
+		killall -HUP dnsmasq 2>/dev/null
+		logger -t secubox-p2p "DNS: Added $hostname.$base_domain -> $ip"
+	fi
+}
+
+# Remove a peer from DNS
+dns_remove_peer() {
+	local hostname="$1"
+
+	local dns_enabled=$(get_config dns enabled 0)
+	[ "$dns_enabled" = "1" ] || return 0
+
+	# Clean hostname
+	hostname=$(echo "$hostname" | sed -e 's/[^a-zA-Z0-9-]/-/g' | tr 'A-Z' 'a-z')
+
+	# Remove from hosts file
+	sed -i "/	$hostname	/d" "$DNS_HOSTS_FILE" 2>/dev/null
+	killall -HUP dnsmasq 2>/dev/null
+	logger -t secubox-p2p "DNS: Removed $hostname"
+}
+
+# Get DNS federation status
+dns_status() {
+	local dns_enabled=$(get_config dns enabled 0)
+	local base_domain=$(get_config dns base_domain "mesh.local")
+	local entry_count=0
+
+	if [ -f "$DNS_HOSTS_FILE" ]; then
+		entry_count=$(grep -c "^[0-9]" "$DNS_HOSTS_FILE" 2>/dev/null || echo "0")
+	fi
+
+	cat << EOF
+{
+	"enabled": $dns_enabled,
+	"domain": "$base_domain",
+	"hosts_file": "$DNS_HOSTS_FILE",
+	"entries": $entry_count,
+	"dnsmasq_running": $(pgrep dnsmasq >/dev/null && echo "true" || echo "false")
+}
+EOF
+}
+
+# Enable DNS federation
+dns_enable() {
+	set_config dns enabled 1
+
+	local base_domain="${1:-mesh.local}"
+	set_config dns base_domain "$base_domain"
+
+	dns_init
+	dns_update_peers
+
+	logger -t secubox-p2p "DNS federation enabled with domain: $base_domain"
+	echo "{\"success\":true,\"domain\":\"$base_domain\"}"
+}
+
+# Disable DNS federation
+dns_disable() {
+	set_config dns enabled 0
+
+	# Clear hosts file
+	echo "# SecuBox Mesh DNS Federation - Disabled" > "$DNS_HOSTS_FILE"
+	killall -HUP dnsmasq 2>/dev/null
+
+	logger -t secubox-p2p "DNS federation disabled"
+	echo "{\"success\":true}"
+}
+
+# Get node status JSON (for REST API)
+# Now includes WAN IP and WireGuard tunnel addresses
+get_node_status() {
+	local node_name node_id lan_ip wan_ip wg_ips addresses uptime
+	node_name=$(get_config main node_name "secubox")
+	node_id=$(cat "$STATE_DIR/node.id" 2>/dev/null || echo "unknown")
+	lan_ip=$(get_lan_ip)
+	wan_ip=$(get_wan_ip)
+	wg_ips=$(get_wg_ips)
+	addresses=$(get_node_addresses)
+	uptime=$(cat /proc/uptime | cut -d' ' -f1)
+
+	cat <<EOF
+{
+	"node_id": "$node_id",
+	"node_name": "$node_name",
+	"version": "$VERSION",
+	"address": "$lan_ip",
+	"wan_address": "${wan_ip:-null}",
+	"wg_addresses": "${wg_ips:-}",
+	"addresses": $addresses,
+	"api_port": $API_PORT,
+	"uptime": $uptime,
+	"discovery_enabled": $(get_config main discovery_enabled 1),
+	"sharing_enabled": $(get_config main sharing_enabled 1),
+	"peer_count": $(get_peers | jsonfilter -e '@.peers[*]' 2>/dev/null | wc -l)
+}
+EOF
+}
+
+# Register self in peer list (ensure node is visible in its own mesh view)
+# Now includes WAN IP and WireGuard tunnel addresses for redundancy
+register_self() {
+	local node_name node_id lan_ip wan_ip wg_ips addresses
+	node_name=$(get_config main node_name "secubox")
+	node_id=$(cat "$STATE_DIR/node.id" 2>/dev/null || echo "unknown")
+
+	# Get all available addresses
+	lan_ip=$(get_lan_ip)
+	wan_ip=$(get_wan_ip)
+	wg_ips=$(get_wg_ips)
+	addresses=$(get_node_addresses)
+
+	# Build peer entry with all addresses
+	# Primary address is LAN for local network, but WAN and WG are included for external/redundancy
+	local self_peer="{\"id\":\"$node_id\",\"name\":\"$node_name (local)\",\"address\":\"$lan_ip\",\"wan_address\":\"${wan_ip:-}\",\"wg_addresses\":\"${wg_ips:-}\",\"addresses\":$addresses,\"status\":\"online\",\"is_local\":true,\"added\":\"$(date -Iseconds)\"}"
+
+	# Check if self is already registered using grep (jsonfilter syntax workaround)
+	local current=$(cat "$PEERS_FILE" 2>/dev/null || echo '{"peers":[]}')
+	local exists=""
+
+	if echo "$current" | grep -q "\"$node_id\""; then
+		exists="yes"
+	fi
+
+	if [ -z "$exists" ]; then
+		# Check if peers array is empty (handle whitespace variations)
+		if echo "$current" | grep -qE '"peers"[[:space:]]*:[[:space:]]*\[[[:space:]]*\]'; then
+			# Empty array - just set self as first peer
+			echo "{\"peers\":[$self_peer]}" > "$PEERS_FILE"
+		else
+			# Array has entries - prepend self using awk for reliable JSON manipulation
+			echo "$current" | awk -v self="$self_peer" '{
+				gsub(/"peers"[[:space:]]*:[[:space:]]*\[/, "\"peers\": [" self ", ")
+				print
+			}' > "$PEERS_FILE.tmp"
+			if [ -s "$PEERS_FILE.tmp" ]; then
+				mv "$PEERS_FILE.tmp" "$PEERS_FILE"
+			else
+				# Fallback: fresh peers file
+				echo "{\"peers\":[$self_peer]}" > "$PEERS_FILE"
+			fi
+		fi
+		logger -t secubox-p2p "Registered local node: $node_name ($node_id) LAN=$lan_ip WAN=${wan_ip:-none} WG=${wg_ips:-none}"
+	fi
+}
+
+# Daemon mode
+daemon_loop() {
+	init
+
+	# Publish mDNS service
+	publish_mdns
+
+	# Register self in peer list
+	register_self
+
+	# Initialize DNS federation
+	dns_init
+
+	# Setup signal handlers
+	trap 'stop_mdns; exit 0' INT TERM
+
+	while true; do
+		# Auto-discovery if enabled
+		if [ "$(get_config main discovery_enabled 1)" = "1" ]; then
+			local discovered=$(discover_mdns 3)
+			if [ "$discovered" != "[]" ] && [ -n "$discovered" ]; then
+				# Update peers file with discovered peers
+				local current=$(get_peers)
+				# Parse discovered peers (handle jq or jsonfilter)
+				if command -v jq >/dev/null 2>&1; then
+					for peer in $(echo "$discovered" | jq -c '.[]' 2>/dev/null); do
+						local peer_id=$(echo "$peer" | jq -r '.id')
+						local exists=$(echo "$current" | jq ".peers[] | select(.id==\"$peer_id\")")
+						if [ -z "$exists" ]; then
+							current=$(echo "$current" | jq ".peers += [$peer]")
+						fi
+					done
+					echo "$current" > "$PEERS_FILE"
+				fi
+			fi
+		fi
+
+		# Update peer status (skip local node)
+		# Try all available addresses: WireGuard first (secure tunnel), then WAN, then LAN
+		local peers=$(get_peers)
+		if command -v jq >/dev/null 2>&1; then
+			local updated_peers=$(echo "$peers" | jq -c '.peers[] | select(.is_local != true)' 2>/dev/null)
+
+			for peer in $updated_peers; do
+				local addr=$(echo "$peer" | jq -r '.address')
+				local wan_addr=$(echo "$peer" | jq -r '.wan_address // empty')
+				local wg_addrs=$(echo "$peer" | jq -r '.wg_addresses // empty')
+				local id=$(echo "$peer" | jq -r '.id')
+				local reachable=""
+				local best_addr=""
+
+				# Try WireGuard addresses first (secure redundancy)
+				if [ -n "$wg_addrs" ]; then
+					for wg_addr in $(echo "$wg_addrs" | tr ',' ' '); do
+						if ping -c1 -W1 "$wg_addr" >/dev/null 2>&1; then
+							reachable="yes"
+							best_addr="$wg_addr (wg)"
+							break
+						fi
+					done
+				fi
+
+				# Try WAN address if WG failed
+				if [ -z "$reachable" ] && [ -n "$wan_addr" ] && [ "$wan_addr" != "null" ]; then
+					if ping -c1 -W1 "$wan_addr" >/dev/null 2>&1; then
+						reachable="yes"
+						best_addr="$wan_addr (wan)"
+					fi
+				fi
+
+				# Try LAN address as fallback
+				if [ -z "$reachable" ]; then
+					if ping -c1 -W1 "$addr" >/dev/null 2>&1; then
+						reachable="yes"
+						best_addr="$addr (lan)"
+					fi
+				fi
+
+				if [ -n "$reachable" ]; then
+					peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).status = \"online\"")
+					peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).active_address = \"$best_addr\"")
+				else
+					peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).status = \"offline\"")
+					peers=$(echo "$peers" | jq "(.peers[] | select(.id==\"$id\")).active_address = null")
+				fi
+			done
+
+			echo "$peers" > "$PEERS_FILE"
+		fi
+
+		# Update DNS federation with current peer list
+		dns_update_peers >/dev/null 2>&1
+
+		# Sleep interval
+		local interval=$(get_config main sync_interval 60)
+		sleep "$interval"
+	done
+}
+
+# Main
+case "$1" in
+	daemon)
+		daemon_loop
+		;;
+	discover)
+		discover_mdns "${2:-5}"
+		;;
+	peers)
+		get_peers
+		;;
+	add-peer)
+		add_peer "$2" "$3"
+		;;
+	remove-peer)
+		remove_peer "$2"
+		;;
+	settings)
+		get_settings
+		;;
+	set-settings)
+		set_settings "$2"
+		;;
+	services)
+		get_services
+		;;
+	shared-services)
+		get_shared_services
+		;;
+	sync)
+		sync_catalog
+		;;
+	broadcast)
+		broadcast_command "$2"
+		;;
+	version)
+		echo "$VERSION"
+		;;
+	status)
+		get_node_status
+		;;
+	publish-mdns)
+		publish_mdns
+		;;
+	stop-mdns)
+		stop_mdns
+		;;
+	register-self)
+		init
+		register_self
+		;;
+	# DNS Federation commands
+	dns-status)
+		dns_status
+		;;
+	dns-enable)
+		dns_enable "$2"
+		;;
+	dns-disable)
+		dns_disable
+		;;
+	dns-update)
+		init
+		dns_update_peers
+		;;
+	dns-add)
+		dns_add_peer "$2" "$3"
+		;;
+	dns-remove)
+		dns_remove_peer "$2"
+		;;
+	*)
+		echo "Usage: $0 {daemon|discover|peers|add-peer|remove-peer|settings|set-settings|services|shared-services|sync|broadcast|version|status|publish-mdns|stop-mdns|register-self|dns-status|dns-enable|dns-disable|dns-update|dns-add|dns-remove}"
+		exit 1
+		;;
+esac

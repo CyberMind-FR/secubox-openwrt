@@ -15,7 +15,7 @@ define Package/secubox-app-magicmirror2
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox MagicMirror2 Smart Display Platform (LXC)
-  DEPENDS:=+uci +libuci +wget +tar +jq +zstd
+  DEPENDS:=wget +tar +jq +zstd
 endef
 
 define Package/secubox-app-magicmirror2/description

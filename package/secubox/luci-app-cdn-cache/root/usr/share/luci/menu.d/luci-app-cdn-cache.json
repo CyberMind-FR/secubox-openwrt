@@ -1,7 +1,7 @@
 {
-	"admin/secubox/network/cdn-cache": {
+	"admin/services/cdn-cache": {
 		"title": "CDN Cache",
-		"order": 30,
+		"order": 35,
 		"action": {
 			"type": "firstchild"
 		},
@@ -10,7 +10,7 @@
 			"uci": {"cdn-cache": true}
 		}
 	},
-	"admin/secubox/network/cdn-cache/overview": {
+	"admin/services/cdn-cache/overview": {
 		"title": "Overview",
 		"order": 10,
 		"action": {
@@ -18,7 +18,7 @@
 			"path": "cdn-cache/overview"
 		}
 	},
-	"admin/secubox/network/cdn-cache/cache": {
+	"admin/services/cdn-cache/cache": {
 		"title": "Cache",
 		"order": 20,
 		"action": {
@@ -26,7 +26,7 @@
 			"path": "cdn-cache/cache"
 		}
 	},
-	"admin/secubox/network/cdn-cache/policies": {
+	"admin/services/cdn-cache/policies": {
 		"title": "Policies",
 		"order": 30,
 		"action": {
@@ -34,7 +34,7 @@
 			"path": "cdn-cache/policies"
 		}
 	},
-	"admin/secubox/network/cdn-cache/statistics": {
+	"admin/services/cdn-cache/statistics": {
 		"title": "Statistics",
 		"order": 40,
 		"action": {
@@ -42,7 +42,7 @@
 			"path": "cdn-cache/statistics"
 		}
 	},
-	"admin/secubox/network/cdn-cache/maintenance": {
+	"admin/services/cdn-cache/maintenance": {
 		"title": "Maintenance",
 		"order": 50,
 		"action": {
@@ -50,7 +50,7 @@
 			"path": "cdn-cache/maintenance"
 		}
 	},
-	"admin/secubox/network/cdn-cache/settings": {
+	"admin/services/cdn-cache/settings": {
 		"title": "Settings",
 		"order": 90,
 		"action": {

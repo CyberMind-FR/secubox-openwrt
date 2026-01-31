@@ -22,7 +22,7 @@ define Package/secubox-app-picobrew
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox PicoBrew Server
-  DEPENDS:=+uci +libuci +jsonfilter +wget-ssl +tar +lxc +lxc-common +git
+  DEPENDS:=jsonfilter +wget-ssl +tar +lxc +lxc-common +git
 endef
 
 define Package/secubox-app-picobrew/description

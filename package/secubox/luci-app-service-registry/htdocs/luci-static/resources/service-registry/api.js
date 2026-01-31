@@ -87,6 +87,13 @@ var callSaveLandingConfig = rpc.declare({
 	expect: {}
 });
 
+var callSetLandingTheme = rpc.declare({
+	object: 'luci.service-registry',
+	method: 'set_landing_theme',
+	params: ['theme'],
+	expect: {}
+});
+
 var callCheckServiceHealth = rpc.declare({
 	object: 'luci.service-registry',
 	method: 'check_service_health',
@@ -191,6 +198,11 @@ return baseclass.extend({
 	// Save landing page configuration
 	saveLandingConfig: function(autoRegen) {
 		return callSaveLandingConfig(autoRegen ? true : false);
+	},
+
+	// Set landing page theme
+	setLandingTheme: function(theme) {
+		return callSetLandingTheme(theme || 'mirrorbox');
 	},
 
 	// Get dashboard data (services + provider status)

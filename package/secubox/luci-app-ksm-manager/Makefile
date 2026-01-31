@@ -9,7 +9,7 @@ PKG_RELEASE:=2
 PKG_ARCH:=all
 
 LUCI_TITLE:=LuCI support for Key Storage Manager
-LUCI_DEPENDS:=+luci-base +rpcd +libubus +libubox +openssl-util +gnupg2 +nitropy +yubikey-manager +opensc +libccid +pcscd +kmod-usb-core +kmod-usb2 +kmod-usb3
+LUCI_DEPENDS:=luci-base +rpcd +openssl-util +gnupg2 +nitropy +yubikey-manager +opensc +libccid +pcscd +kmod-usb-core +kmod-usb2 +kmod-usb3
 LUCI_DESCRIPTION:=Centralized cryptographic key management with hardware security module (HSM) support for Nitrokey and YubiKey devices. \
 	Provides secure key storage, certificate management, SSH key handling, and secret storage with audit logging.
 LUCI_PKGARCH:=all

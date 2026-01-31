@@ -15,7 +15,7 @@ define Package/secubox-app-adguardhome
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox AdGuard Home docker app
-  DEPENDS:=+uci +libuci +dockerd +docker +containerd
+  DEPENDS:=dockerd +docker +containerd
 endef
 
 define Package/secubox-app-adguardhome/description

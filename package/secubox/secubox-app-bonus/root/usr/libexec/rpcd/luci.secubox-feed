@@ -1,0 +1,109 @@
+#!/bin/sh
+# SecuBox Feed RPCD Handler
+# Provides ubus interface for feed management and health checks
+# Copyright 2026 CyberMind <contact@cybermind.fr>
+
+. /usr/share/libubox/jshn.sh
+
+FEED_DIR="/www/secubox-feed"
+OPKG_LIST="/var/opkg-lists/secubox"
+
+case "$1" in
+    list)
+        cat << 'EOF'
+{
+    "health": {},
+    "list": {},
+    "info": {"package": "string"},
+    "sync": {},
+    "update": {}
+}
+EOF
+        ;;
+    call)
+        case "$2" in
+            health)
+                /usr/sbin/secubox-feed-health json 2>/dev/null || echo '{"status":"error","error":"health check failed"}'
+                ;;
+            list)
+                json_init
+                json_add_array "packages"
+                if [ -f "$FEED_DIR/Packages" ]; then
+                    grep "^Package:" "$FEED_DIR/Packages" | sed 's/Package: //' | sort | while read pkg; do
+                        json_add_string "" "$pkg"
+                    done
+                fi
+                json_close_array
+                json_add_int "count" "$(grep -c '^Package:' "$FEED_DIR/Packages" 2>/dev/null || echo 0)"
+                json_dump
+                ;;
+            info)
+                read input
+                json_load "$input"
+                json_get_var pkg package
+
+                if [ -z "$pkg" ]; then
+                    echo '{"error":"package name required"}'
+                    exit 1
+                fi
+
+                json_init
+                if [ -f "$FEED_DIR/Packages" ]; then
+                    info=$(awk -v pkg="$pkg" '
+                        /^Package:/ { found = ($2 == pkg) }
+                        found {
+                            if (/^Package:/) json_pkg = $2
+                            if (/^Version:/) json_ver = $2
+                            if (/^Architecture:/) json_arch = $2
+                            if (/^Size:/) json_size = $2
+                            if (/^Description:/) { $1=""; json_desc = substr($0, 2) }
+                            if (/^Depends:/) { $1=""; json_deps = substr($0, 2) }
+                        }
+                        found && /^$/ {
+                            print json_pkg "|" json_ver "|" json_arch "|" json_size "|" json_desc "|" json_deps
+                            exit
+                        }
+                    ' "$FEED_DIR/Packages")
+
+                    if [ -n "$info" ]; then
+                        IFS='|' read -r p_name p_ver p_arch p_size p_desc p_deps << EOF
+$info
+EOF
+                        json_add_string "package" "$p_name"
+                        json_add_string "version" "$p_ver"
+                        json_add_string "architecture" "$p_arch"
+                        json_add_string "size" "$p_size"
+                        json_add_string "description" "$p_desc"
+                        json_add_string "depends" "$p_deps"
+                    else
+                        json_add_string "error" "package not found"
+                    fi
+                else
+                    json_add_string "error" "no packages file"
+                fi
+                json_dump
+                ;;
+            sync)
+                if [ -f "$FEED_DIR/Packages" ]; then
+                    cp "$FEED_DIR/Packages" "$OPKG_LIST"
+                    count=$(grep -c '^Package:' "$OPKG_LIST" 2>/dev/null || echo 0)
+                    echo "{\"success\":true,\"packages\":$count}"
+                else
+                    echo '{"success":false,"error":"no Packages file found"}'
+                fi
+                ;;
+            update)
+                /usr/sbin/secubox-feed update >/dev/null 2>&1
+                if [ $? -eq 0 ]; then
+                    count=$(grep -c '^Package:' "$FEED_DIR/Packages" 2>/dev/null || echo 0)
+                    echo "{\"success\":true,\"packages\":$count}"
+                else
+                    echo '{"success":false,"error":"update failed"}'
+                fi
+                ;;
+            *)
+                echo '{"error":"unknown method"}'
+                ;;
+        esac
+        ;;
+esac

@@ -8,7 +8,9 @@
 					"list_sites",
 					"get_site",
 					"get_publish_info",
-					"get_settings"
+					"get_settings",
+					"get_hosting_status",
+					"check_site_health"
 				],
 				"file": ["read", "list", "stat"]
 			},

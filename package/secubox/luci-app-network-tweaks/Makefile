@@ -5,13 +5,13 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-network-tweaks
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=3
+PKG_RELEASE:=7
 PKG_ARCH:=all
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
-LUCI_TITLE:=Network Tweaks - Auto Proxy DNS & Hosts
-LUCI_DESCRIPTION:=Automatically generates DNS and hosts entries from enabled vhosts for seamless local domain resolution
+LUCI_TITLE:=Network Tweaks Dashboard
+LUCI_DESCRIPTION:=Unified network services dashboard with DNS/hosts sync, CDN cache control, and WPAD auto-proxy configuration
 LUCI_DEPENDS:=+luci-base +rpcd +luci-app-vhost-manager +dnsmasq
 LUCI_PKGARCH:=all
 

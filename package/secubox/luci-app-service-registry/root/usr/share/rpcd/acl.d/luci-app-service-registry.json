@@ -39,7 +39,8 @@
 					"generate_landing_page",
 					"update_service",
 					"delete_service",
-					"save_landing_config"
+					"save_landing_config",
+					"set_landing_theme"
 				],
 				"luci.haproxy": [
 					"create_vhost",

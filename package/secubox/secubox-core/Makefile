@@ -6,10 +6,12 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-core
 PKG_VERSION:=0.10.0
-PKG_RELEASE:=5
+PKG_RELEASE:=9
 PKG_ARCH:=all
 PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=SecuBox Team
+# Prevent automatic libc dependency - shell scripts only
+PKG_FLAGS:=nonshared
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -17,7 +19,9 @@ define Package/secubox-core
   SECTION:=admin
   CATEGORY:=Administration
   TITLE:=SecuBox Core Framework
-  DEPENDS:=+libubox +libubus +libuci +rpcd +bash +coreutils-base64 +jsonfilter +jq
+  # No explicit dependencies - all required packages (rpcd, bash, jsonfilter, jq) are part of base OpenWrt
+  # Declaring them causes opkg to pull from feed, triggering libc version conflicts
+  DEPENDS:=jq jsonfilter
   PKGARCH:=all
 endef
 
@@ -78,6 +82,9 @@ define Package/secubox-core/install
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-component $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-sync-registry $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-wan-access $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-feed-manager $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-skill $(1)/usr/sbin/
+	$(INSTALL_BIN) ./root/usr/sbin/secubox-feedback $(1)/usr/sbin/
 
 	# WAN Access hotplug for interface events
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
@@ -110,6 +117,10 @@ define Package/secubox-core/postinst
 	mkdir -p /var/log
 	chmod 755 /var/cache/secubox/catalogs
 	chmod 700 /var/lib/secubox
+
+	# Create feedback directory
+	mkdir -p /var/lib/secubox/feedback
+	chmod 700 /var/lib/secubox/feedback
 
 	# Initialize state database and component registry
 	if [ ! -f /var/lib/secubox/state-db.json ]; then

@@ -9,7 +9,7 @@
 		},
 		"write": {
 			"ubus": {
-				"luci.gitea": ["save_config", "start", "stop", "restart", "install", "uninstall", "update", "create_backup", "restore_backup", "create_admin"]
+				"luci.gitea": ["save_config", "start", "stop", "restart", "install", "uninstall", "update", "create_backup", "restore_backup", "create_admin", "create_user", "generate_token", "create_repo"]
 			},
 			"uci": ["gitea"]
 		}

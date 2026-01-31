@@ -1,5 +1,5 @@
 {
-	"admin/secubox/services/localai": {
+	"admin/services/localai": {
 		"title": "LocalAI",
 		"order": 50,
 		"action": {
@@ -9,7 +9,7 @@
 			"acl": ["luci-app-localai"]
 		}
 	},
-	"admin/secubox/services/localai/dashboard": {
+	"admin/services/localai/dashboard": {
 		"title": "Dashboard",
 		"order": 10,
 		"action": {
@@ -20,7 +20,7 @@
 			"acl": ["luci-app-localai"]
 		}
 	},
-	"admin/secubox/services/localai/models": {
+	"admin/services/localai/models": {
 		"title": "Models",
 		"order": 20,
 		"action": {
@@ -31,7 +31,7 @@
 			"acl": ["luci-app-localai"]
 		}
 	},
-	"admin/secubox/services/localai/chat": {
+	"admin/services/localai/chat": {
 		"title": "Chat",
 		"order": 30,
 		"action": {
@@ -42,7 +42,7 @@
 			"acl": ["luci-app-localai"]
 		}
 	},
-	"admin/secubox/services/localai/settings": {
+	"admin/services/localai/settings": {
 		"title": "Settings",
 		"order": 90,
 		"action": {

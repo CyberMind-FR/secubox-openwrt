@@ -5,7 +5,7 @@
 # Unified command-line interface for SecuBox operations
 #
 
-SECUBOX_VERSION="0.8.0"
+SECUBOX_VERSION="0.9.0"
 
 # Color output
 RED='\033[0;31m'
@@ -24,7 +24,10 @@ ${BOLD}Usage:${NC} secubox <command> [subcommand] [options]
 
 ${BOLD}Commands:${NC}
   ${GREEN}app${NC}        Manage modules and AppStore
+  ${GREEN}feed${NC}       Manage catalog feed sources
   ${GREEN}profile${NC}    Manage profiles and templates
+  ${GREEN}skill${NC}      Discover and manage skills
+  ${GREEN}feedback${NC}   Report issues and find resolutions
   ${GREEN}device${NC}     Device information and management
   ${GREEN}net${NC}        Network management
   ${GREEN}diag${NC}       Diagnostics and health checks
@@ -33,12 +36,149 @@ ${BOLD}Commands:${NC}
 ${BOLD}Examples:${NC}
   secubox app list
   secubox app install wireguard-vpn
-  secubox profile apply home-office
+  secubox feed list
+  secubox feed add my-feed http://example.com/catalog.json --type unpublished
+  secubox profile export --name "My Setup" --include-feeds
+  secubox skill list
+  secubox feedback report luci-app-example --type bug --summary "Crash on load"
   secubox diag health
   secubox device status
 
 Run ${BOLD}secubox <command> help${NC} for command-specific help.
 EOF
+}
+
+# Feed commands
+cmd_feed() {
+	case "$1" in
+		list)
+			/usr/sbin/secubox-feed-manager list
+			;;
+		add)
+			shift
+			/usr/sbin/secubox-feed-manager add "$@"
+			;;
+		remove)
+			/usr/sbin/secubox-feed-manager remove "$2"
+			;;
+		share)
+			/usr/sbin/secubox-feed-manager share "$2"
+			;;
+		import)
+			shift
+			/usr/sbin/secubox-feed-manager import "$@"
+			;;
+		sync)
+			/usr/sbin/secubox-catalog-sync sync
+			;;
+		help|*)
+			cat <<EOF
+${BOLD}secubox feed${NC} - Catalog feed source management
+
+${BOLD}Usage:${NC}
+  secubox feed list                          List feeds with type badges
+  secubox feed add <name> <url> [options]    Add a new feed source
+  secubox feed remove <name>                 Remove a feed source
+  secubox feed share <name>                  Generate share URL for feed
+  secubox feed import <url|file>             Import shared feed
+  secubox feed sync                          Sync all enabled feeds
+
+${BOLD}Options for add:${NC}
+  --type <type>       published|unpublished|development (default: unpublished)
+  --priority <n>      Feed priority (lower = higher priority)
+  --description <d>   Feed description
+
+${BOLD}Feed Types:${NC}
+  ${GREEN}published${NC}     Public feed (official, community-maintained)
+  ${YELLOW}unpublished${NC}   Private feed (requires auth token to share)
+  ${BLUE}development${NC}   Local development feed (not shareable)
+
+${BOLD}Examples:${NC}
+  secubox feed add my-feed https://example.com/catalog.json --type unpublished
+  secubox feed share my-feed   # Generate share URL with token
+  secubox feed import secubox://feed/abc123?token=xyz
+EOF
+			;;
+	esac
+}
+
+# Skill commands
+cmd_skill() {
+	case "$1" in
+		list)
+			/usr/sbin/secubox-skill list
+			;;
+		providers)
+			/usr/sbin/secubox-skill providers "$2"
+			;;
+		install)
+			/usr/sbin/secubox-skill install "$2"
+			;;
+		check)
+			/usr/sbin/secubox-skill check "$2"
+			;;
+		help|*)
+			cat <<EOF
+${BOLD}secubox skill${NC} - Capability discovery and management
+
+${BOLD}Usage:${NC}
+  secubox skill list               List all available skills
+  secubox skill providers <skill>  Show apps that provide a skill
+  secubox skill install <skill>    Install best provider for skill
+  secubox skill check [profile]    Verify skills in profile/system
+
+${BOLD}Examples:${NC}
+  secubox skill list                    # List: captive-portal, vpn, etc.
+  secubox skill providers captive-portal # Shows: auth-guardian, nodogsplash
+  secubox skill install vpn             # Installs wireguard-dashboard
+EOF
+			;;
+	esac
+}
+
+# Feedback commands
+cmd_feedback() {
+	case "$1" in
+		report)
+			shift
+			/usr/sbin/secubox-feedback report "$@"
+			;;
+		resolve)
+			shift
+			/usr/sbin/secubox-feedback resolve "$@"
+			;;
+		search)
+			/usr/sbin/secubox-feedback search "$2"
+			;;
+		list)
+			/usr/sbin/secubox-feedback list
+			;;
+		submit)
+			/usr/sbin/secubox-feedback submit
+			;;
+		help|*)
+			cat <<EOF
+${BOLD}secubox feedback${NC} - Issue reporting and resolution tracking
+
+${BOLD}Usage:${NC}
+  secubox feedback report <app> [options]   Report an issue
+  secubox feedback resolve <issue-id> [options]  Record a resolution
+  secubox feedback search <keyword>         Search known resolutions
+  secubox feedback list                     List local issues
+  secubox feedback submit                   Share resolutions upstream (opt-in)
+
+${BOLD}Options for report:${NC}
+  --type <type>      bug|feature|question (default: bug)
+  --summary <text>   Issue summary
+  --details <text>   Detailed description
+
+${BOLD}Examples:${NC}
+  secubox feedback report luci-app-example --type bug --summary "Crash on load"
+  secubox feedback resolve 1 --description "Fixed by updating config"
+  secubox feedback search "vpn connection"
+EOF
+			;;
+	esac
 }
 
 # App commands
@@ -294,9 +434,21 @@ case "$1" in
 		shift
 		cmd_app "$@"
 		;;
+	feed)
+		shift
+		cmd_feed "$@"
+		;;
 	profile)
 		shift
 		cmd_profile "$@"
+		;;
+	skill)
+		shift
+		cmd_skill "$@"
+		;;
+	feedback)
+		shift
+		cmd_feedback "$@"
 		;;
 	device)
 		shift

@@ -1,0 +1,23 @@
+#!/bin/sh /etc/rc.common
+# Copyright 2026 CyberMind <contact@cybermind.fr>
+# SecuBox Local Feed - Syncs package list to opkg on boot
+
+START=99
+USE_PROCD=1
+
+start_service() {
+    # Copy local feed Packages file to opkg lists
+    # This works around opkg's signature verification bug for file:// feeds
+    if [ -f /www/secubox-feed/Packages ]; then
+        cp /www/secubox-feed/Packages /var/opkg-lists/secubox
+        logger -t secubox-feed "Local package feed synced: $(grep -c '^Package:' /var/opkg-lists/secubox) packages"
+    fi
+}
+
+stop_service() {
+    rm -f /var/opkg-lists/secubox
+}
+
+reload_service() {
+    start_service
+}

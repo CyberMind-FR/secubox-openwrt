@@ -26,7 +26,7 @@ function generateQRCodeImg(data, size) {
 }
 
 return view.extend({
-	title: _('Service Registry'),
+	title: _('Web Services Registry'),
 	pollInterval: 30,
 	healthData: null,
 
@@ -112,8 +112,9 @@ return view.extend({
 			html += '<div class="sr-network-item">';
 			html += '<span class="sr-network-label">Port 80 (HTTP)</span>';
 			var http = extPorts.http || {};
-			if (http.status === 'open') {
-				html += '<span class="sr-network-value sr-network-ok">✅ Open from Internet</span>';
+			if (http.status === 'open' || http.status === 'firewall_open') {
+				html += '<span class="sr-network-value sr-network-ok">✅ Open</span>';
+				if (http.hint) html += '<span class="sr-network-sub">' + http.hint + '</span>';
 			} else if (http.status === 'blocked') {
 				html += '<span class="sr-network-value sr-network-fail">🚫 Blocked</span>';
 				html += '<span class="sr-network-sub">' + (http.hint || 'Check router') + '</span>';
@@ -126,8 +127,9 @@ return view.extend({
 			html += '<div class="sr-network-item">';
 			html += '<span class="sr-network-label">Port 443 (HTTPS)</span>';
 			var https = extPorts.https || {};
-			if (https.status === 'open') {
-				html += '<span class="sr-network-value sr-network-ok">✅ Open from Internet</span>';
+			if (https.status === 'open' || https.status === 'firewall_open') {
+				html += '<span class="sr-network-value sr-network-ok">✅ Open</span>';
+				if (https.hint) html += '<span class="sr-network-sub">' + https.hint + '</span>';
 			} else if (https.status === 'blocked') {
 				html += '<span class="sr-network-value sr-network-fail">🚫 Blocked</span>';
 				html += '<span class="sr-network-sub">' + (https.hint || 'Check router') + '</span>';
@@ -397,7 +399,7 @@ return view.extend({
 
 		return E('div', { 'class': 'sr-header' }, [
 			E('div', { 'class': 'sr-title' }, [
-				E('h2', {}, '🗂️ Service Registry'),
+				E('h2', {}, '🗂️ Web Services Registry'),
 				E('span', { 'class': 'sr-subtitle' },
 					published + ' published · ' + running + ' running · ' +
 					haproxyCount + ' domains · ' + torCount + ' onion')

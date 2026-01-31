@@ -507,6 +507,133 @@ create_admin() {
 	fi
 }
 
+# Create regular user
+create_user() {
+	read -r input
+	local username password email
+	username=$(echo "$input" | jsonfilter -e '@.username' 2>/dev/null)
+	password=$(echo "$input" | jsonfilter -e '@.password' 2>/dev/null)
+	email=$(echo "$input" | jsonfilter -e '@.email' 2>/dev/null)
+
+	if [ -z "$username" ] || [ -z "$password" ] || [ -z "$email" ]; then
+		json_error "Missing username, password, or email"
+		return
+	fi
+
+	if ! lxc_running; then
+		json_error "Service must be running to create users"
+		return
+	fi
+
+	lxc-attach -n "$LXC_NAME" -- su-exec git /usr/local/bin/gitea admin user create \
+		--username "$username" \
+		--password "$password" \
+		--email "$email" \
+		--config /data/custom/conf/app.ini >/dev/null 2>&1
+
+	if [ $? -eq 0 ]; then
+		json_success "User created: $username"
+	else
+		json_error "Failed to create user (may already exist)"
+	fi
+}
+
+# Generate access token for user
+generate_token() {
+	read -r input
+	local username token_name scopes
+	username=$(echo "$input" | jsonfilter -e '@.username' 2>/dev/null)
+	token_name=$(echo "$input" | jsonfilter -e '@.token_name' 2>/dev/null || echo "secubox-p2p")
+	scopes=$(echo "$input" | jsonfilter -e '@.scopes' 2>/dev/null || echo "write:repository,write:user,read:user")
+
+	if [ -z "$username" ]; then
+		json_error "Username required"
+		return
+	fi
+
+	if ! lxc_running; then
+		json_error "Service must be running to generate tokens"
+		return
+	fi
+
+	# Generate token via gitea CLI
+	local result
+	result=$(lxc-attach -n "$LXC_NAME" -- su-exec git /usr/local/bin/gitea admin user generate-access-token \
+		--username "$username" \
+		--token-name "$token_name" \
+		--scopes "$scopes" \
+		--config /data/custom/conf/app.ini 2>&1)
+
+	if echo "$result" | grep -q "Access token was successfully created"; then
+		local token=$(echo "$result" | grep -o '[a-f0-9]\{40\}')
+		json_init_obj
+		json_add_boolean "success" 1
+		json_add_string "token" "$token"
+		json_add_string "token_name" "$token_name"
+		json_add_string "username" "$username"
+		json_close_obj
+	else
+		json_error "Failed to generate token: $result"
+	fi
+}
+
+# Create repository for user
+create_repo() {
+	read -r input
+	local owner repo_name description is_private
+	owner=$(echo "$input" | jsonfilter -e '@.owner' 2>/dev/null)
+	repo_name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	description=$(echo "$input" | jsonfilter -e '@.description' 2>/dev/null || echo "")
+	is_private=$(echo "$input" | jsonfilter -e '@.private' 2>/dev/null || echo "true")
+
+	if [ -z "$owner" ] || [ -z "$repo_name" ]; then
+		json_error "Owner and repository name required"
+		return
+	fi
+
+	if ! lxc_running; then
+		json_error "Service must be running to create repositories"
+		return
+	fi
+
+	# Get HTTP port from config
+	local http_port
+	config_load "$CONFIG"
+	config_get http_port main http_port "3000"
+
+	# Use internal API with admin token from config
+	local admin_token
+	config_get admin_token main api_token ""
+
+	if [ -z "$admin_token" ]; then
+		json_error "Admin API token not configured"
+		return
+	fi
+
+	# Create repo via API
+	local response
+	response=$(curl -s -X POST "http://localhost:${http_port}/api/v1/admin/users/${owner}/repos" \
+		-H "Authorization: token $admin_token" \
+		-H "Content-Type: application/json" \
+		-d "{\"name\":\"$repo_name\",\"description\":\"$description\",\"private\":$is_private,\"auto_init\":true}" \
+		2>/dev/null)
+
+	if echo "$response" | jsonfilter -e '@.id' >/dev/null 2>&1; then
+		local clone_url=$(echo "$response" | jsonfilter -e '@.clone_url' 2>/dev/null)
+		local html_url=$(echo "$response" | jsonfilter -e '@.html_url' 2>/dev/null)
+		json_init_obj
+		json_add_boolean "success" 1
+		json_add_string "repo_name" "$repo_name"
+		json_add_string "owner" "$owner"
+		json_add_string "clone_url" "$clone_url"
+		json_add_string "html_url" "$html_url"
+		json_close_obj
+	else
+		local err_msg=$(echo "$response" | jsonfilter -e '@.message' 2>/dev/null || echo "Unknown error")
+		json_error "Failed to create repository: $err_msg"
+	fi
+}
+
 # Create backup
 create_backup() {
 	local result
@@ -656,6 +783,9 @@ case "$1" in
 			"get_repo": {"name": "str", "owner": "str"},
 			"list_users": {},
 			"create_admin": {"username": "str", "password": "str", "email": "str"},
+			"create_user": {"username": "str", "password": "str", "email": "str"},
+			"generate_token": {"username": "str", "token_name": "str", "scopes": "str"},
+			"create_repo": {"owner": "str", "name": "str", "description": "str", "private": true},
 			"create_backup": {},
 			"list_backups": {},
 			"restore_backup": {"file": "str"},
@@ -709,6 +839,15 @@ case "$1" in
 				;;
 			create_admin)
 				create_admin
+				;;
+			create_user)
+				create_user
+				;;
+			generate_token)
+				generate_token
+				;;
+			create_repo)
+				create_repo
 				;;
 			create_backup)
 				create_backup

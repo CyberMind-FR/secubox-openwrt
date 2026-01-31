@@ -1,0 +1,62 @@
+{
+	"luci-app-secubox-p2p": {
+		"description": "SecuBox P2P Hub",
+		"read": {
+			"ubus": {
+				"luci.secubox-p2p": [
+					"get_peers",
+					"get_settings",
+					"get_services",
+					"get_shared_services",
+					"discover",
+					"get_dns_config",
+					"get_wireguard_config",
+					"get_haproxy_config",
+					"get_registry",
+					"health_check",
+					"get_gitea_config",
+					"list_gitea_repos",
+					"get_gitea_commits",
+					"list_local_backups",
+					"get_dns_bridge_config",
+					"get_wg_mirror_config"
+				],
+				"uci": ["get", "state"]
+			},
+			"uci": ["secubox-p2p"]
+		},
+		"write": {
+			"ubus": {
+				"luci.secubox-p2p": [
+					"add_peer",
+					"remove_peer",
+					"set_settings",
+					"sync_catalog",
+					"broadcast_command",
+					"set_dns_config",
+					"set_wireguard_config",
+					"set_haproxy_config",
+					"register_url",
+					"set_gitea_config",
+					"create_gitea_repo",
+					"push_gitea_backup",
+					"pull_gitea_backup",
+					"create_local_backup",
+					"restore_local_backup",
+					"deploy_registry",
+					"deploy_registry_entry",
+					"deploy_services",
+					"deploy_local_services",
+					"deploy_service",
+					"pull_mesh_services",
+					"pull_service",
+					"set_dns_bridge_config",
+					"set_wg_mirror_config",
+					"sync_wg_mirror"
+				],
+				"uci": ["set", "delete", "commit", "apply"]
+			},
+			"uci": ["secubox-p2p"]
+		}
+	}
+}

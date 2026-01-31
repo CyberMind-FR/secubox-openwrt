@@ -1,0 +1,184 @@
+#!/bin/sh
+# Factory Tools - List available SecuBox tools
+# CGI endpoint for SecuBox Factory
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: GET, OPTIONS"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Define available tools
+# Each tool has: id, name, description, category, dangerous flag
+cat << 'EOF'
+{
+	"tools": [
+		{
+			"id": "snapshot",
+			"name": "Create Snapshot",
+			"description": "Create signed Merkle snapshot of current configuration",
+			"category": "security",
+			"icon": "camera",
+			"dangerous": false
+		},
+		{
+			"id": "verify",
+			"name": "Verify Snapshot",
+			"description": "Verify cryptographic signature of current snapshot",
+			"category": "security",
+			"icon": "shield-check",
+			"dangerous": false
+		},
+		{
+			"id": "gossip",
+			"name": "Gossip Sync",
+			"description": "Synchronize snapshots with peer nodes via gossip protocol",
+			"category": "mesh",
+			"icon": "refresh",
+			"dangerous": false
+		},
+		{
+			"id": "discover",
+			"name": "Discover Peers",
+			"description": "Scan network for SecuBox peers via mDNS",
+			"category": "mesh",
+			"icon": "search",
+			"dangerous": false
+		},
+		{
+			"id": "services",
+			"name": "List Services",
+			"description": "Get status of all local services",
+			"category": "monitoring",
+			"icon": "server",
+			"dangerous": false
+		},
+		{
+			"id": "validate",
+			"name": "Validate Modules",
+			"description": "Run module validation checks",
+			"category": "maintenance",
+			"icon": "check-circle",
+			"dangerous": false
+		},
+		{
+			"id": "repair",
+			"name": "Auto-Repair",
+			"description": "Attempt automatic repair of common issues",
+			"category": "maintenance",
+			"icon": "wrench",
+			"dangerous": true
+		},
+		{
+			"id": "backup",
+			"name": "Create Backup",
+			"description": "Create configuration backup",
+			"category": "backup",
+			"icon": "download",
+			"dangerous": false
+		},
+		{
+			"id": "pending",
+			"name": "Pending Operations",
+			"description": "Show queued offline operations",
+			"category": "queue",
+			"icon": "clock",
+			"dangerous": false
+		},
+		{
+			"id": "replay",
+			"name": "Replay Pending",
+			"description": "Execute queued offline operations",
+			"category": "queue",
+			"icon": "play",
+			"dangerous": true
+		},
+		{
+			"id": "fingerprint",
+			"name": "Node Fingerprint",
+			"description": "Show this node's cryptographic fingerprint",
+			"category": "security",
+			"icon": "fingerprint",
+			"dangerous": false
+		},
+		{
+			"id": "merkle",
+			"name": "Merkle Root",
+			"description": "Calculate current Merkle root of configurations",
+			"category": "security",
+			"icon": "hash",
+			"dangerous": false
+		},
+		{
+			"id": "catalog-sync",
+			"name": "Sync Catalog",
+			"description": "Sync service catalog with mesh peers and merge registries",
+			"category": "catalog",
+			"icon": "book",
+			"dangerous": false
+		},
+		{
+			"id": "catalog-list",
+			"name": "List Catalogs",
+			"description": "Show local and peer catalog files",
+			"category": "catalog",
+			"icon": "list",
+			"dangerous": false
+		},
+		{
+			"id": "catalog-generate",
+			"name": "Generate Catalog",
+			"description": "Regenerate local service catalog from HAProxy vhosts",
+			"category": "catalog",
+			"icon": "refresh",
+			"dangerous": false
+		},
+		{
+			"id": "dns-status",
+			"name": "DNS Federation Status",
+			"description": "Show mesh DNS federation status and entries",
+			"category": "dns",
+			"icon": "globe",
+			"dangerous": false
+		},
+		{
+			"id": "dns-enable",
+			"name": "Enable DNS Federation",
+			"description": "Enable automatic DNS entries for mesh peers (.mesh.local)",
+			"category": "dns",
+			"icon": "toggle-on",
+			"dangerous": false
+		},
+		{
+			"id": "dns-disable",
+			"name": "Disable DNS Federation",
+			"description": "Disable mesh DNS federation",
+			"category": "dns",
+			"icon": "toggle-off",
+			"dangerous": false
+		},
+		{
+			"id": "dns-update",
+			"name": "Update DNS Entries",
+			"description": "Refresh DNS entries from current peer list",
+			"category": "dns",
+			"icon": "refresh",
+			"dangerous": false
+		}
+	],
+	"categories": [
+		{"id": "security", "name": "Security", "order": 1},
+		{"id": "mesh", "name": "Mesh Network", "order": 2},
+		{"id": "dns", "name": "DNS Federation", "order": 3},
+		{"id": "catalog", "name": "Catalog", "order": 4},
+		{"id": "monitoring", "name": "Monitoring", "order": 5},
+		{"id": "maintenance", "name": "Maintenance", "order": 6},
+		{"id": "backup", "name": "Backup", "order": 7},
+		{"id": "queue", "name": "Queue", "order": 8}
+	]
+}
+EOF

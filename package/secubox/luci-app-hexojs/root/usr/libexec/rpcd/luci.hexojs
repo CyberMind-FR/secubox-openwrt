@@ -50,8 +50,9 @@ get_status() {
 		local draft_count=0
 		local page_count=0
 
-		[ -d "$site_path/source/_posts" ] && post_count=$(ls -1 "$site_path/source/_posts/"*.md 2>/dev/null | wc -l)
-		[ -d "$site_path/source/_drafts" ] && draft_count=$(ls -1 "$site_path/source/_drafts/"*.md 2>/dev/null | wc -l)
+		# Recursive count for posts (handles subdirectory categories)
+		[ -d "$site_path/source/_posts" ] && post_count=$(find "$site_path/source/_posts" -type f -name "*.md" ! -name "index.md" 2>/dev/null | wc -l)
+		[ -d "$site_path/source/_drafts" ] && draft_count=$(find "$site_path/source/_drafts" -type f -name "*.md" ! -name "index.md" 2>/dev/null | wc -l)
 
 		json_add_int "post_count" "$post_count"
 		json_add_int "draft_count" "$draft_count"
@@ -95,25 +96,35 @@ get_site_stats() {
 	local draft_count=0
 	local page_count=0
 	local media_count=0
+	local tmp_posts="/tmp/hexojs_stats_$$"
 
-	[ -d "$site_path/source/_posts" ] && post_count=$(ls -1 "$site_path/source/_posts/"*.md 2>/dev/null | wc -l)
-	[ -d "$site_path/source/_drafts" ] && draft_count=$(ls -1 "$site_path/source/_drafts/"*.md 2>/dev/null | wc -l)
+	# Recursive counts (handles subdirectory categories)
+	[ -d "$site_path/source/_posts" ] && post_count=$(find "$site_path/source/_posts" -type f -name "*.md" ! -name "index.md" 2>/dev/null | wc -l)
+	[ -d "$site_path/source/_drafts" ] && draft_count=$(find "$site_path/source/_drafts" -type f -name "*.md" ! -name "index.md" 2>/dev/null | wc -l)
 	[ -d "$site_path/source/images" ] && media_count=$(find "$site_path/source/images" -type f 2>/dev/null | wc -l)
 
-	# Count unique categories and tags from posts
+	# Count unique categories and tags from posts (recursive)
 	local categories=""
 	local tags=""
 
 	if [ -d "$site_path/source/_posts" ]; then
-		for f in "$site_path/source/_posts/"*.md; do
+		find "$site_path/source/_posts" -type f -name "*.md" ! -name "index.md" 2>/dev/null > "$tmp_posts"
+		while read f; do
 			[ -f "$f" ] || continue
 			local cat=$(grep -m1 "^categories:" "$f" 2>/dev/null | sed 's/^categories:[[:space:]]*//' | tr -d '[]' | tr ',' '\n')
 			local tag=$(grep -m1 "^tags:" "$f" 2>/dev/null | sed 's/^tags:[[:space:]]*//' | tr -d '[]' | tr ',' '\n')
+			# Also use directory name as category if no category in front matter
+			if [ -z "$cat" ]; then
+				local rel_path="${f#$site_path/source/_posts/}"
+				local cat_dir=$(dirname "$rel_path")
+				[ "$cat_dir" != "." ] && cat="$cat_dir"
+			fi
 			categories="$categories
 $cat"
 			tags="$tags
 $tag"
-		done
+		done < "$tmp_posts"
+		rm -f "$tmp_posts"
 	fi
 
 	local cat_count=$(echo "$categories" | grep -v '^$' | sort -u | wc -l)
@@ -136,23 +147,38 @@ $tag"
 list_posts() {
 	local site_path=$(get_site_path)
 	local posts_dir="$site_path/source/_posts"
+	local tmp_posts="/tmp/hexojs_posts_$$"
 
 	json_init
 	json_add_array "posts"
 
 	if [ -d "$posts_dir" ]; then
-		for f in "$posts_dir"/*.md; do
+		# Recursively find all markdown files (handles subdirectory categories)
+		find "$posts_dir" -type f -name "*.md" ! -name "index.md" 2>/dev/null > "$tmp_posts"
+
+		while read f; do
 			[ -f "$f" ] || continue
 
 			local filename=$(basename "$f")
 			local slug="${filename%.md}"
 
-			# Parse front matter
-			local title=$(grep -m1 "^title:" "$f" | sed 's/^title:[[:space:]]*//' | tr -d '"' | tr -d "'")
-			local date=$(grep -m1 "^date:" "$f" | sed 's/^date:[[:space:]]*//')
-			local categories=$(grep -m1 "^categories:" "$f" | sed 's/^categories:[[:space:]]*//' | tr -d '[]')
-			local tags=$(grep -m1 "^tags:" "$f" | sed 's/^tags:[[:space:]]*//' | tr -d '[]')
-			local excerpt=$(grep -m1 "^excerpt:" "$f" | sed 's/^excerpt:[[:space:]]*//' | tr -d '"')
+			# Get relative path from _posts for category detection
+			local rel_path="${f#$posts_dir/}"
+			local category_dir=$(dirname "$rel_path")
+			[ "$category_dir" = "." ] && category_dir=""
+
+			# Parse front matter (sanitize for JSON)
+			local title=$(grep -m1 "^title:" "$f" 2>/dev/null | sed 's/^title:[[:space:]]*//' | tr -d '"' | tr -d "'" | tr -d '\r')
+			local date=$(grep -m1 "^date:" "$f" 2>/dev/null | sed 's/^date:[[:space:]]*//' | tr -d '\r')
+			local categories=$(grep -m1 "^categories:" "$f" 2>/dev/null | sed 's/^categories:[[:space:]]*//' | tr -d '[]' | tr -d '\r')
+			local tags=$(grep -m1 "^tags:" "$f" 2>/dev/null | sed 's/^tags:[[:space:]]*//' | tr -d '[]' | tr -d '\r')
+			local excerpt=$(grep -m1 "^excerpt:" "$f" 2>/dev/null | sed 's/^excerpt:[[:space:]]*//' | tr -d '"' | tr -d '\r' | cut -c1-200)
+
+			# Use directory as category if not specified in front matter
+			[ -z "$categories" ] && [ -n "$category_dir" ] && categories="$category_dir"
+
+			# Truncate title if too long
+			title=$(echo "$title" | cut -c1-150)
 
 			json_add_object
 			json_add_string "slug" "$slug"
@@ -162,8 +188,11 @@ list_posts() {
 			json_add_string "tags" "$tags"
 			json_add_string "excerpt" "$excerpt"
 			json_add_string "path" "$f"
+			json_add_string "category_dir" "$category_dir"
 			json_close_object
-		done
+		done < "$tmp_posts"
+
+		rm -f "$tmp_posts"
 	fi
 
 	json_close_array
@@ -174,22 +203,35 @@ get_post() {
 	read input
 	json_load "$input"
 	json_get_var slug slug
+	json_get_var path path ""
 
 	json_init
 
-	if [ -z "$slug" ]; then
+	if [ -z "$slug" ] && [ -z "$path" ]; then
 		json_add_boolean "success" 0
-		json_add_string "error" "Slug required"
+		json_add_string "error" "Slug or path required"
 		json_dump
 		return
 	fi
 
 	local site_path=$(get_site_path)
-	local post_file="$site_path/source/_posts/${slug}.md"
+	local post_file=""
 
-	if [ ! -f "$post_file" ]; then
+	# If path provided, use it directly
+	if [ -n "$path" ] && [ -f "$path" ]; then
+		post_file="$path"
+	else
+		# Search for post file (first in root, then recursively)
+		post_file="$site_path/source/_posts/${slug}.md"
+		if [ ! -f "$post_file" ]; then
+			# Search recursively in subdirectories
+			post_file=$(find "$site_path/source/_posts" -type f -name "${slug}.md" 2>/dev/null | head -1)
+		fi
+	fi
+
+	if [ -z "$post_file" ] || [ ! -f "$post_file" ]; then
 		json_add_boolean "success" 0
-		json_add_string "error" "Post not found"
+		json_add_string "error" "Post not found: $slug"
 		json_dump
 		return
 	fi
@@ -440,12 +482,16 @@ search_posts() {
 
 	local site_path=$(get_site_path)
 	local posts_dir="$site_path/source/_posts"
+	local tmp_posts="/tmp/hexojs_search_$$"
 
 	json_init
 	json_add_array "posts"
 
 	if [ -d "$posts_dir" ]; then
-		for f in "$posts_dir"/*.md; do
+		# Recursively find all posts
+		find "$posts_dir" -type f -name "*.md" ! -name "index.md" 2>/dev/null > "$tmp_posts"
+
+		while read f; do
 			[ -f "$f" ] || continue
 
 			local match=1
@@ -455,9 +501,17 @@ search_posts() {
 				grep -qi "$query" "$f" || match=0
 			fi
 
+			# Get category from front matter or directory
+			local file_cat=$(grep -m1 "^categories:" "$f" | sed 's/^categories:[[:space:]]*//' | tr -d '[]')
+			if [ -z "$file_cat" ]; then
+				local rel_path="${f#$posts_dir/}"
+				local cat_dir=$(dirname "$rel_path")
+				[ "$cat_dir" != "." ] && file_cat="$cat_dir"
+			fi
+
 			# Filter by category
 			if [ -n "$category" ] && [ "$match" = "1" ]; then
-				grep -qi "categories:.*$category" "$f" || match=0
+				echo "$file_cat" | grep -qi "$category" || match=0
 			fi
 
 			# Filter by tag
@@ -475,9 +529,13 @@ search_posts() {
 				json_add_string "slug" "$slug"
 				json_add_string "title" "${title:-$slug}"
 				json_add_string "date" "$date"
+				json_add_string "path" "$f"
+				json_add_string "categories" "$file_cat"
 				json_close_object
 			fi
-		done
+		done < "$tmp_posts"
+
+		rm -f "$tmp_posts"
 	fi
 
 	json_close_array
@@ -491,28 +549,44 @@ search_posts() {
 list_categories() {
 	local site_path=$(get_site_path)
 	local posts_dir="$site_path/source/_posts"
+	local tmp_posts="/tmp/hexojs_cats_$$"
+	local tmp_cats="/tmp/hexojs_cats_list_$$"
+	local tmp_counts="/tmp/hexojs_cats_counts_$$"
 
 	json_init
 	json_add_array "categories"
 
 	if [ -d "$posts_dir" ]; then
-		local cats=""
-		for f in "$posts_dir"/*.md; do
+		# Recursively find all posts
+		find "$posts_dir" -type f -name "*.md" ! -name "index.md" 2>/dev/null > "$tmp_posts"
+		: > "$tmp_cats"
+
+		while read f; do
 			[ -f "$f" ] || continue
 			local cat=$(grep -m1 "^categories:" "$f" | sed 's/^categories:[[:space:]]*//' | tr -d '[]' | tr ',' '\n')
-			cats="$cats
-$cat"
-		done
+			# Use directory as category if not in front matter
+			if [ -z "$cat" ]; then
+				local rel_path="${f#$posts_dir/}"
+				local cat_dir=$(dirname "$rel_path")
+				[ "$cat_dir" != "." ] && cat="$cat_dir"
+			fi
+			echo "$cat" >> "$tmp_cats"
+		done < "$tmp_posts"
 
-		# Count unique categories
-		echo "$cats" | grep -v '^$' | sort | uniq -c | while read count name; do
+		# Count unique categories and save to temp file
+		grep -v '^$' "$tmp_cats" 2>/dev/null | sort | uniq -c > "$tmp_counts"
+
+		# Read counts and add to JSON (avoid piped while loop to preserve JSON context)
+		while read count name; do
 			name=$(echo "$name" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
 			[ -n "$name" ] || continue
 			json_add_object
 			json_add_string "name" "$name"
 			json_add_int "count" "$count"
 			json_close_object
-		done
+		done < "$tmp_counts"
+
+		rm -f "$tmp_posts" "$tmp_cats" "$tmp_counts"
 	fi
 
 	json_close_array
@@ -522,28 +596,38 @@ $cat"
 list_tags() {
 	local site_path=$(get_site_path)
 	local posts_dir="$site_path/source/_posts"
+	local tmp_posts="/tmp/hexojs_tags_$$"
+	local tmp_tags="/tmp/hexojs_tags_list_$$"
+	local tmp_counts="/tmp/hexojs_tags_counts_$$"
 
 	json_init
 	json_add_array "tags"
 
 	if [ -d "$posts_dir" ]; then
-		local tags=""
-		for f in "$posts_dir"/*.md; do
+		# Recursively find all posts
+		find "$posts_dir" -type f -name "*.md" ! -name "index.md" 2>/dev/null > "$tmp_posts"
+		: > "$tmp_tags"
+
+		while read f; do
 			[ -f "$f" ] || continue
 			local tag=$(grep -m1 "^tags:" "$f" | sed 's/^tags:[[:space:]]*//' | tr -d '[]' | tr ',' '\n')
-			tags="$tags
-$tag"
-		done
+			echo "$tag" >> "$tmp_tags"
+		done < "$tmp_posts"
 
-		# Count unique tags
-		echo "$tags" | grep -v '^$' | sort | uniq -c | while read count name; do
+		# Count unique tags and save to temp file
+		grep -v '^$' "$tmp_tags" 2>/dev/null | sort | uniq -c > "$tmp_counts"
+
+		# Read counts and add to JSON (avoid piped while loop to preserve JSON context)
+		while read count name; do
 			name=$(echo "$name" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
 			[ -n "$name" ] || continue
 			json_add_object
 			json_add_string "name" "$name"
 			json_add_int "count" "$count"
 			json_close_object
-		done
+		done < "$tmp_counts"
+
+		rm -f "$tmp_posts" "$tmp_tags" "$tmp_counts"
 	fi
 
 	json_close_array
@@ -557,12 +641,17 @@ $tag"
 list_media() {
 	local site_path=$(get_site_path)
 	local media_dir="$site_path/source/images"
+	local tmp_media="/tmp/hexojs_media_$$"
 
 	json_init
 	json_add_array "media"
 
 	if [ -d "$media_dir" ]; then
-		find "$media_dir" -type f | while read f; do
+		# Save find results to temp file to avoid piped while loop
+		find "$media_dir" -type f 2>/dev/null > "$tmp_media"
+
+		while read f; do
+			[ -f "$f" ] || continue
 			local filename=$(basename "$f")
 			local size=$(stat -c %s "$f" 2>/dev/null || echo 0)
 			local mtime=$(stat -c %Y "$f" 2>/dev/null || echo 0)
@@ -575,7 +664,9 @@ list_media() {
 			json_add_int "size" "$size"
 			json_add_int "mtime" "$mtime"
 			json_close_object
-		done
+		done < "$tmp_media"
+
+		rm -f "$tmp_media"
 	fi
 
 	json_close_array
@@ -1305,6 +1396,7 @@ git_log() {
 	json_init
 
 	local site_path=$(get_site_path)
+	local tmp_log="/tmp/hexojs_git_log_$$"
 
 	if [ ! -d "$site_path/.git" ]; then
 		json_add_boolean "success" 0
@@ -1318,7 +1410,10 @@ git_log() {
 	json_add_boolean "success" 1
 	json_add_array "commits"
 
-	git log --oneline -20 2>/dev/null | while read line; do
+	# Save git log to temp file to avoid piped while loop
+	git log --oneline -20 2>/dev/null > "$tmp_log"
+
+	while read line; do
 		local hash=$(echo "$line" | cut -d' ' -f1)
 		local msg=$(echo "$line" | cut -d' ' -f2-)
 
@@ -1326,7 +1421,9 @@ git_log() {
 		json_add_string "hash" "$hash"
 		json_add_string "message" "$msg"
 		json_close_object
-	done
+	done < "$tmp_log"
+
+	rm -f "$tmp_log"
 
 	json_close_array
 	json_dump
@@ -1544,6 +1641,250 @@ gitea_save_config() {
 	json_dump
 }
 
+# ============================================
+# Workflow Status (Gitea → Hexo → HAProxy)
+# ============================================
+
+get_workflow_status() {
+	json_init
+
+	local site_path=$(get_site_path)
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+
+	# ── Gitea Integration Status ──
+	json_add_object "gitea"
+
+	local gitea_enabled=$(uci -q get hexojs.gitea.enabled) || gitea_enabled="0"
+	local gitea_url=$(uci -q get hexojs.gitea.url) || gitea_url=""
+	local content_repo=$(uci -q get hexojs.gitea.content_repo) || content_repo=""
+	local auto_sync=$(uci -q get hexojs.gitea.auto_sync) || auto_sync="0"
+
+	json_add_boolean "enabled" "$gitea_enabled"
+	json_add_string "url" "$gitea_url"
+	json_add_string "repo" "$content_repo"
+	json_add_boolean "auto_sync" "$auto_sync"
+
+	# Check git repo status
+	if [ -d "$site_path/.git" ]; then
+		cd "$site_path"
+		local branch=$(git branch --show-current 2>/dev/null || echo "")
+		local remote=$(git remote get-url origin 2>/dev/null || echo "")
+		local last_commit=$(git log -1 --format="%h - %s" 2>/dev/null || echo "")
+		local last_commit_date=$(git log -1 --format="%ci" 2>/dev/null || echo "")
+		local ahead=$(git rev-list --count @{u}..HEAD 2>/dev/null || echo "0")
+		local behind=$(git rev-list --count HEAD..@{u} 2>/dev/null || echo "0")
+		local modified=$(git status --porcelain 2>/dev/null | grep -c '^.M' || echo "0")
+		local untracked=$(git status --porcelain 2>/dev/null | grep -c '^??' || echo "0")
+
+		json_add_boolean "has_repo" 1
+		json_add_string "branch" "$branch"
+		json_add_string "remote" "$remote"
+		json_add_string "last_commit" "$last_commit"
+		json_add_string "last_commit_date" "$last_commit_date"
+		json_add_int "ahead" "$ahead"
+		json_add_int "behind" "$behind"
+		json_add_int "modified" "$modified"
+		json_add_int "untracked" "$untracked"
+
+		# Sync status
+		if [ "$behind" -gt 0 ]; then
+			json_add_string "sync_status" "behind"
+			json_add_string "sync_message" "Pull required ($behind commits behind)"
+		elif [ "$ahead" -gt 0 ]; then
+			json_add_string "sync_status" "ahead"
+			json_add_string "sync_message" "Push available ($ahead commits ahead)"
+		elif [ "$modified" -gt 0 ] || [ "$untracked" -gt 0 ]; then
+			json_add_string "sync_status" "modified"
+			json_add_string "sync_message" "Local changes pending"
+		else
+			json_add_string "sync_status" "synced"
+			json_add_string "sync_message" "Up to date"
+		fi
+	else
+		json_add_boolean "has_repo" 0
+		json_add_string "sync_status" "not_initialized"
+		json_add_string "sync_message" "Git repository not configured"
+	fi
+
+	json_close_object
+
+	# ── Hexo Build Status ──
+	json_add_object "hexo"
+
+	local running=$(is_running && echo 1 || echo 0)
+	local http_port=$(uci_get main.http_port) || http_port="4000"
+	local post_count=0
+	local draft_count=0
+
+	[ -d "$site_path/source/_posts" ] && post_count=$(find "$site_path/source/_posts" -type f -name "*.md" ! -name "index.md" 2>/dev/null | wc -l)
+	[ -d "$site_path/source/_drafts" ] && draft_count=$(find "$site_path/source/_drafts" -type f -name "*.md" ! -name "index.md" 2>/dev/null | wc -l)
+
+	json_add_boolean "container_running" "$running"
+	json_add_int "http_port" "$http_port"
+	json_add_int "post_count" "$post_count"
+	json_add_int "draft_count" "$draft_count"
+
+	# Check if public/ exists and its freshness
+	local public_dir="$site_path/public"
+	if [ -d "$public_dir" ]; then
+		json_add_boolean "site_built" 1
+		local public_files=$(find "$public_dir" -type f 2>/dev/null | wc -l)
+		json_add_int "public_files" "$public_files"
+
+		# Check build freshness
+		local newest_post=$(find "$site_path/source/_posts" -type f -name "*.md" -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
+		local newest_public=$(find "$public_dir" -type f -name "*.html" -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
+
+		if [ -n "$newest_post" ] && [ -n "$newest_public" ]; then
+			if [ "${newest_post%.*}" -gt "${newest_public%.*}" ]; then
+				json_add_string "build_status" "outdated"
+				json_add_string "build_message" "Rebuild required (source newer than build)"
+			else
+				json_add_string "build_status" "current"
+				json_add_string "build_message" "Build is up to date"
+			fi
+		else
+			json_add_string "build_status" "unknown"
+			json_add_string "build_message" "Unable to determine build freshness"
+		fi
+	else
+		json_add_boolean "site_built" 0
+		json_add_int "public_files" 0
+		json_add_string "build_status" "not_built"
+		json_add_string "build_message" "Site has not been generated"
+	fi
+
+	json_close_object
+
+	# ── HAProxy Publishing Status ──
+	json_add_object "haproxy"
+
+	local site_url=$(uci -q get hexojs.default.url) || site_url=""
+	local domain=""
+	# Extract domain from URL
+	if [ -n "$site_url" ]; then
+		domain=$(echo "$site_url" | sed 's|^https\?://||' | sed 's|/.*$||')
+	fi
+
+	json_add_string "site_url" "$site_url"
+	json_add_string "domain" "$domain"
+
+	# Check HAProxy vhost existence
+	local haproxy_running=$(pgrep haproxy >/dev/null 2>&1 && echo 1 || echo 0)
+	json_add_boolean "running" "$haproxy_running"
+
+	if [ -n "$domain" ]; then
+		# Check if vhost exists via ubus
+		local vhost_exists=$(ubus call luci.haproxy list_vhosts 2>/dev/null | grep -q "\"$domain\"" && echo 1 || echo 0)
+		json_add_boolean "vhost_configured" "$vhost_exists"
+
+		# Check certificate status
+		local cert_status=""
+		local cert_file="/etc/haproxy/certs/${domain}.pem"
+		if [ -f "$cert_file" ]; then
+			local expiry=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | sed 's/notAfter=//')
+			if [ -n "$expiry" ]; then
+				local expiry_epoch=$(date -d "$expiry" +%s 2>/dev/null || echo 0)
+				local now_epoch=$(date +%s)
+				local days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+
+				if [ "$days_left" -lt 0 ]; then
+					cert_status="expired"
+				elif [ "$days_left" -lt 7 ]; then
+					cert_status="critical"
+				elif [ "$days_left" -lt 30 ]; then
+					cert_status="expiring"
+				else
+					cert_status="valid"
+				fi
+				json_add_int "cert_days_left" "$days_left"
+			fi
+		else
+			cert_status="missing"
+		fi
+		json_add_string "cert_status" "$cert_status"
+
+		# Publishing status
+		if [ "$vhost_exists" = "1" ] && [ "$cert_status" = "valid" ]; then
+			json_add_string "publish_status" "published"
+			json_add_string "publish_message" "Live at https://$domain"
+		elif [ "$vhost_exists" = "1" ]; then
+			json_add_string "publish_status" "partial"
+			json_add_string "publish_message" "Vhost configured, certificate issue"
+		else
+			json_add_string "publish_status" "not_published"
+			json_add_string "publish_message" "Not published to HAProxy"
+		fi
+	else
+		json_add_boolean "vhost_configured" 0
+		json_add_string "cert_status" "no_domain"
+		json_add_string "publish_status" "not_configured"
+		json_add_string "publish_message" "No domain configured"
+	fi
+
+	json_close_object
+
+	# ── Portal Status ──
+	json_add_object "portal"
+
+	local portal_path=$(uci -q get hexojs.portal.path) || portal_path="/www/blog"
+	json_add_string "path" "$portal_path"
+
+	if [ -d "$portal_path" ]; then
+		local portal_files=$(find "$portal_path" -type f 2>/dev/null | wc -l)
+		json_add_boolean "deployed" 1
+		json_add_int "file_count" "$portal_files"
+
+		# Check portal freshness vs public/
+		local portal_mtime=$(stat -c %Y "$portal_path/index.html" 2>/dev/null || echo 0)
+		local public_mtime=$(stat -c %Y "$site_path/public/index.html" 2>/dev/null || echo 0)
+
+		if [ "$public_mtime" -gt "$portal_mtime" ]; then
+			json_add_string "deploy_status" "outdated"
+			json_add_string "deploy_message" "Portal needs republishing"
+		else
+			json_add_string "deploy_status" "current"
+			json_add_string "deploy_message" "Portal is up to date"
+		fi
+	else
+		json_add_boolean "deployed" 0
+		json_add_int "file_count" 0
+		json_add_string "deploy_status" "not_deployed"
+		json_add_string "deploy_message" "Not deployed to portal"
+	fi
+
+	json_close_object
+
+	# ── Overall Workflow Status ──
+	json_add_object "workflow"
+
+	# Calculate overall health
+	local issues=0
+	local warnings=0
+
+	# Check each stage
+	[ ! -d "$site_path/.git" ] && issues=$((issues + 1))
+	[ "$running" != "1" ] && issues=$((issues + 1))
+	[ ! -d "$public_dir" ] && issues=$((issues + 1))
+
+	if [ "$issues" -eq 0 ]; then
+		json_add_string "status" "healthy"
+		json_add_string "message" "All workflow stages operational"
+	elif [ "$issues" -eq 1 ]; then
+		json_add_string "status" "warning"
+		json_add_string "message" "One workflow stage needs attention"
+	else
+		json_add_string "status" "critical"
+		json_add_string "message" "Multiple workflow stages need attention"
+	fi
+
+	json_add_int "issues" "$issues"
+
+	json_close_object
+
+	json_dump
+}
+
 # Publish to /www (portal)
 publish_to_www() {
 	read input
@@ -1579,6 +1920,943 @@ publish_to_www() {
 		json_add_boolean "success" 0
 		json_add_string "error" "$output"
 	fi
+
+	json_dump
+}
+
+# ============================================
+# Publishing Profiles (Wizard)
+# ============================================
+
+# List available publishing profiles
+list_profiles() {
+	json_init
+	json_add_array "profiles"
+
+	# Blog Profile
+	json_add_object
+	json_add_string "id" "blog"
+	json_add_string "name" "Blog"
+	json_add_string "description" "Personal blog with public domain and optional Tor"
+	json_add_string "icon" "📝"
+	json_add_boolean "haproxy" 1
+	json_add_boolean "tor" 0
+	json_add_boolean "acme" 1
+	json_add_int "default_port" 4000
+	json_close_object
+
+	# Portfolio Profile
+	json_add_object
+	json_add_string "id" "portfolio"
+	json_add_string "name" "Portfolio"
+	json_add_string "description" "Professional portfolio with SSL"
+	json_add_string "icon" "💼"
+	json_add_boolean "haproxy" 1
+	json_add_boolean "tor" 0
+	json_add_boolean "acme" 1
+	json_add_int "default_port" 4001
+	json_close_object
+
+	# Privacy Blog Profile
+	json_add_object
+	json_add_string "id" "privacy"
+	json_add_string "name" "Privacy Blog"
+	json_add_string "description" "Tor-only hidden service blog"
+	json_add_string "icon" "🧅"
+	json_add_boolean "haproxy" 0
+	json_add_boolean "tor" 1
+	json_add_boolean "acme" 0
+	json_add_int "default_port" 4002
+	json_close_object
+
+	# Dual Access Profile
+	json_add_object
+	json_add_string "id" "dual"
+	json_add_string "name" "Dual Access"
+	json_add_string "description" "Public domain + Tor hidden service"
+	json_add_string "icon" "🌐"
+	json_add_boolean "haproxy" 1
+	json_add_boolean "tor" 1
+	json_add_boolean "acme" 1
+	json_add_int "default_port" 4003
+	json_close_object
+
+	# Documentation Profile
+	json_add_object
+	json_add_string "id" "docs"
+	json_add_string "name" "Documentation"
+	json_add_string "description" "Internal documentation site"
+	json_add_string "icon" "📚"
+	json_add_boolean "haproxy" 1
+	json_add_boolean "tor" 0
+	json_add_boolean "acme" 0
+	json_add_int "default_port" 4004
+	json_close_object
+
+	json_close_array
+	json_dump
+}
+
+# Apply a publishing profile to an instance
+apply_profile() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+	json_get_var profile profile
+	json_get_var domain domain
+	json_get_var enable_tor enable_tor
+
+	json_init
+
+	if [ -z "$instance" ] || [ -z "$profile" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance and profile required"
+		json_dump
+		return
+	fi
+
+	local port=$(uci -q get hexojs.${instance}.port)
+	if [ -z "$port" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance not found: $instance"
+		json_dump
+		return
+	fi
+
+	local results=""
+
+	# Apply profile settings
+	case "$profile" in
+		blog|portfolio|dual|docs)
+			if [ -n "$domain" ]; then
+				# Create HAProxy backend and vhost
+				local haproxy_result=$(create_haproxy_vhost "$instance" "$domain" "$port" 1)
+				results="$results HAProxy:$haproxy_result"
+				uci set hexojs.${instance}.domain="$domain"
+			fi
+			;;
+		privacy)
+			enable_tor="1"
+			;;
+	esac
+
+	# Enable Tor if requested
+	if [ "$enable_tor" = "1" ] || [ "$profile" = "privacy" ] || [ "$profile" = "dual" ]; then
+		local tor_result=$(create_tor_hidden_service "$instance" "$port")
+		results="$results Tor:$tor_result"
+		uci set hexojs.${instance}.tor_enabled="1"
+	fi
+
+	uci set hexojs.${instance}.profile="$profile"
+	uci commit hexojs
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Profile '$profile' applied to instance '$instance'"
+	json_add_string "results" "$results"
+
+	json_dump
+}
+
+# ============================================
+# HAProxy Integration
+# ============================================
+
+# Internal: Create HAProxy vhost for instance
+create_haproxy_vhost() {
+	local instance="$1"
+	local domain="$2"
+	local port="$3"
+	local acme="$4"
+
+	# Check if HAProxy RPCD is available
+	if ! ubus list | grep -q "luci.haproxy"; then
+		echo "haproxy_unavailable"
+		return 1
+	fi
+
+	# Create backend
+	ubus call luci.haproxy create_backend \
+		"{\"name\":\"hexo_${instance}\",\"mode\":\"http\"}" 2>/dev/null
+
+	# Create server in backend
+	ubus call luci.haproxy create_server \
+		"{\"backend\":\"hexo_${instance}\",\"name\":\"${instance}\",\"address\":\"127.0.0.1\",\"port\":${port}}" 2>/dev/null
+
+	# Create vhost
+	local vhost_params="{\"domain\":\"${domain}\",\"backend\":\"hexo_${instance}\",\"ssl\":true,\"ssl_redirect\":true"
+	[ "$acme" = "1" ] && vhost_params="${vhost_params},\"acme\":true"
+	vhost_params="${vhost_params}}"
+
+	ubus call luci.haproxy create_vhost "$vhost_params" 2>/dev/null
+
+	# Request certificate if ACME enabled
+	if [ "$acme" = "1" ]; then
+		ubus call luci.haproxy request_certificate "{\"domain\":\"${domain}\"}" 2>/dev/null &
+	fi
+
+	echo "ok"
+	return 0
+}
+
+# Publish instance to HAProxy
+publish_to_haproxy() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+	json_get_var domain domain
+	json_get_var acme acme
+
+	json_init
+
+	if [ -z "$instance" ] || [ -z "$domain" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance and domain required"
+		json_dump
+		return
+	fi
+
+	local port=$(uci -q get hexojs.${instance}.port)
+	if [ -z "$port" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance not found: $instance"
+		json_dump
+		return
+	fi
+
+	[ -z "$acme" ] && acme="1"
+
+	local result=$(create_haproxy_vhost "$instance" "$domain" "$port" "$acme")
+
+	if [ "$result" = "ok" ]; then
+		uci set hexojs.${instance}.domain="$domain"
+		uci set hexojs.${instance}.haproxy_enabled="1"
+		uci commit hexojs
+
+		json_add_boolean "success" 1
+		json_add_string "message" "Published to HAProxy"
+		json_add_string "domain" "$domain"
+		json_add_string "url" "https://${domain}"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to create HAProxy vhost: $result"
+	fi
+
+	json_dump
+}
+
+# Unpublish from HAProxy
+unpublish_from_haproxy() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+
+	json_init
+
+	if [ -z "$instance" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance required"
+		json_dump
+		return
+	fi
+
+	local domain=$(uci -q get hexojs.${instance}.domain)
+
+	if [ -n "$domain" ]; then
+		# Delete vhost
+		ubus call luci.haproxy delete_vhost "{\"domain\":\"${domain}\"}" 2>/dev/null
+		# Delete backend
+		ubus call luci.haproxy delete_backend "{\"name\":\"hexo_${instance}\"}" 2>/dev/null
+	fi
+
+	uci delete hexojs.${instance}.domain 2>/dev/null
+	uci set hexojs.${instance}.haproxy_enabled="0"
+	uci commit hexojs
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Unpublished from HAProxy"
+
+	json_dump
+}
+
+# Get HAProxy status for instance
+get_haproxy_status() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+
+	json_init
+
+	if [ -z "$instance" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance required"
+		json_dump
+		return
+	fi
+
+	local domain=$(uci -q get hexojs.${instance}.domain)
+	local port=$(uci -q get hexojs.${instance}.port)
+
+	json_add_boolean "success" 1
+	json_add_string "instance" "$instance"
+	json_add_string "domain" "$domain"
+	json_add_int "port" "$port"
+
+	if [ -n "$domain" ]; then
+		json_add_boolean "published" 1
+		json_add_string "url" "https://${domain}"
+
+		# Check certificate
+		local cert_file="/etc/haproxy/certs/${domain}.pem"
+		if [ -f "$cert_file" ]; then
+			local expiry=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | sed 's/notAfter=//')
+			if [ -n "$expiry" ]; then
+				local expiry_epoch=$(date -d "$expiry" +%s 2>/dev/null || echo 0)
+				local now_epoch=$(date +%s)
+				local days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+				json_add_string "cert_status" "valid"
+				json_add_int "cert_days_left" "$days_left"
+				json_add_string "cert_expiry" "$expiry"
+			fi
+		else
+			json_add_string "cert_status" "missing"
+		fi
+
+		# Check DNS
+		local resolved_ip=$(nslookup "$domain" 2>/dev/null | grep -A1 "Name:" | grep "Address:" | awk '{print $2}' | head -1)
+		if [ -n "$resolved_ip" ]; then
+			json_add_string "dns_status" "ok"
+			json_add_string "dns_resolved_ip" "$resolved_ip"
+		else
+			json_add_string "dns_status" "failed"
+		fi
+	else
+		json_add_boolean "published" 0
+	fi
+
+	json_dump
+}
+
+# ============================================
+# Tor Hidden Service Integration
+# ============================================
+
+# Internal: Create Tor hidden service
+create_tor_hidden_service() {
+	local instance="$1"
+	local port="$2"
+
+	# Check if Tor Shield RPCD is available
+	if ! ubus list | grep -q "luci.tor-shield"; then
+		echo "tor_unavailable"
+		return 1
+	fi
+
+	# Create hidden service
+	ubus call luci.tor-shield add_hidden_service \
+		"{\"name\":\"hexo_${instance}\",\"local_port\":${port},\"virtual_port\":80}" 2>/dev/null
+
+	# Wait for onion address (up to 10 seconds)
+	local onion=""
+	local tries=0
+	while [ -z "$onion" ] && [ "$tries" -lt 10 ]; do
+		sleep 1
+		onion=$(cat /var/lib/tor/hidden_service_hexo_${instance}/hostname 2>/dev/null)
+		tries=$((tries + 1))
+	done
+
+	if [ -n "$onion" ]; then
+		echo "$onion"
+		return 0
+	else
+		echo "pending"
+		return 0
+	fi
+}
+
+# Publish instance to Tor
+publish_to_tor() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+
+	json_init
+
+	if [ -z "$instance" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance required"
+		json_dump
+		return
+	fi
+
+	local port=$(uci -q get hexojs.${instance}.port)
+	if [ -z "$port" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance not found: $instance"
+		json_dump
+		return
+	fi
+
+	local onion=$(create_tor_hidden_service "$instance" "$port")
+
+	if [ "$onion" != "tor_unavailable" ]; then
+		uci set hexojs.${instance}.tor_enabled="1"
+		[ "$onion" != "pending" ] && uci set hexojs.${instance}.onion_address="$onion"
+		uci commit hexojs
+
+		json_add_boolean "success" 1
+		json_add_string "message" "Tor hidden service created"
+
+		if [ "$onion" != "pending" ]; then
+			json_add_string "onion_address" "$onion"
+			json_add_string "url" "http://${onion}"
+		else
+			json_add_string "status" "pending"
+			json_add_string "message" "Onion address generating, check back soon"
+		fi
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Tor Shield not available"
+	fi
+
+	json_dump
+}
+
+# Unpublish from Tor
+unpublish_from_tor() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+
+	json_init
+
+	if [ -z "$instance" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance required"
+		json_dump
+		return
+	fi
+
+	# Remove hidden service
+	ubus call luci.tor-shield remove_hidden_service "{\"name\":\"hexo_${instance}\"}" 2>/dev/null
+
+	uci delete hexojs.${instance}.onion_address 2>/dev/null
+	uci set hexojs.${instance}.tor_enabled="0"
+	uci commit hexojs
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Unpublished from Tor"
+
+	json_dump
+}
+
+# Get Tor status for instance
+get_tor_status() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+
+	json_init
+
+	if [ -z "$instance" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance required"
+		json_dump
+		return
+	fi
+
+	local tor_enabled=$(uci -q get hexojs.${instance}.tor_enabled)
+	local onion=$(uci -q get hexojs.${instance}.onion_address)
+
+	# Try to get onion from file if not in UCI
+	if [ -z "$onion" ]; then
+		onion=$(cat /var/lib/tor/hidden_service_hexo_${instance}/hostname 2>/dev/null)
+		[ -n "$onion" ] && uci set hexojs.${instance}.onion_address="$onion" && uci commit hexojs
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "instance" "$instance"
+	json_add_boolean "enabled" "${tor_enabled:-0}"
+
+	if [ -n "$onion" ]; then
+		json_add_string "onion_address" "$onion"
+		json_add_string "url" "http://${onion}"
+		json_add_string "status" "active"
+	elif [ "$tor_enabled" = "1" ]; then
+		json_add_string "status" "pending"
+	else
+		json_add_string "status" "disabled"
+	fi
+
+	json_dump
+}
+
+# ============================================
+# Full Publishing Pipeline
+# ============================================
+
+# Get all publishing endpoints for an instance
+get_instance_endpoints() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+
+	json_init
+
+	if [ -z "$instance" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance required"
+		json_dump
+		return
+	fi
+
+	local port=$(uci -q get hexojs.${instance}.port)
+	local domain=$(uci -q get hexojs.${instance}.domain)
+	local onion=$(uci -q get hexojs.${instance}.onion_address)
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+
+	json_add_boolean "success" 1
+	json_add_string "instance" "$instance"
+
+	json_add_array "endpoints"
+
+	# Local endpoint
+	json_add_object
+	json_add_string "type" "local"
+	json_add_string "url" "http://${lan_ip}:${port}"
+	json_add_string "status" "active"
+	json_add_string "icon" "🏠"
+	json_close_object
+
+	# HAProxy/clearnet endpoint
+	if [ -n "$domain" ]; then
+		json_add_object
+		json_add_string "type" "clearnet"
+		json_add_string "url" "https://${domain}"
+		json_add_string "domain" "$domain"
+
+		# Check health
+		local cert_file="/etc/haproxy/certs/${domain}.pem"
+		if [ -f "$cert_file" ]; then
+			json_add_string "status" "active"
+			json_add_string "ssl" "valid"
+		else
+			json_add_string "status" "no_cert"
+			json_add_string "ssl" "missing"
+		fi
+		json_add_string "icon" "🌐"
+		json_close_object
+	fi
+
+	# Tor endpoint
+	if [ -n "$onion" ]; then
+		json_add_object
+		json_add_string "type" "tor"
+		json_add_string "url" "http://${onion}"
+		json_add_string "onion" "$onion"
+		json_add_string "status" "active"
+		json_add_string "icon" "🧅"
+		json_close_object
+	fi
+
+	json_close_array
+	json_dump
+}
+
+# Full publish pipeline - build, deploy to all configured endpoints
+full_publish() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+	json_get_var rebuild rebuild
+
+	json_init
+
+	if [ -z "$instance" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance required"
+		json_dump
+		return
+	fi
+
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+	local site_path="$data_path/instances/$instance/site"
+
+	json_add_array "steps"
+
+	# Step 1: Rebuild if requested or needed
+	if [ "$rebuild" = "1" ] || [ ! -d "$site_path/public" ]; then
+		json_add_object
+		json_add_string "step" "build"
+		json_add_string "status" "running"
+		json_close_object
+
+		local build_output=$("$HEXOCTL" build "$instance" 2>&1)
+		local build_result=$?
+
+		json_add_object
+		json_add_string "step" "build"
+		if [ "$build_result" -eq 0 ]; then
+			json_add_string "status" "success"
+		else
+			json_add_string "status" "failed"
+			json_add_string "error" "$build_output"
+		fi
+		json_close_object
+	fi
+
+	# Step 2: Refresh HAProxy if configured
+	local domain=$(uci -q get hexojs.${instance}.domain)
+	if [ -n "$domain" ]; then
+		json_add_object
+		json_add_string "step" "haproxy"
+		json_add_string "status" "active"
+		json_add_string "url" "https://${domain}"
+		json_close_object
+	fi
+
+	# Step 3: Refresh Tor if configured
+	local onion=$(uci -q get hexojs.${instance}.onion_address)
+	if [ -n "$onion" ]; then
+		json_add_object
+		json_add_string "step" "tor"
+		json_add_string "status" "active"
+		json_add_string "url" "http://${onion}"
+		json_close_object
+	fi
+
+	json_close_array
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Publishing pipeline complete"
+
+	json_dump
+}
+
+# ============================================
+# Gitea Webhook Handler
+# ============================================
+
+# Handle Gitea webhook push event
+handle_webhook() {
+	read input
+	json_load "$input"
+	json_get_var event event
+	json_get_var repository repository
+	json_get_var ref ref
+	json_get_var secret secret
+
+	json_init
+
+	# Verify webhook secret if configured
+	local configured_secret=$(uci -q get hexojs.gitea.webhook_secret)
+	if [ -n "$configured_secret" ] && [ "$secret" != "$configured_secret" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Invalid webhook secret"
+		json_dump
+		return
+	fi
+
+	# Only handle push events
+	if [ "$event" != "push" ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Event '$event' ignored"
+		json_dump
+		return
+	fi
+
+	local content_repo=$(uci -q get hexojs.gitea.content_repo)
+
+	# Check if this is our content repo
+	if [ -n "$repository" ] && [ "$repository" != "$content_repo" ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Repository '$repository' not configured for sync"
+		json_dump
+		return
+	fi
+
+	# Trigger sync and rebuild
+	local sync_output=$("$HEXOCTL" gitea sync 2>&1)
+	local sync_result=$?
+
+	if [ "$sync_result" -eq 0 ]; then
+		# Auto-rebuild if configured
+		local auto_build=$(uci -q get hexojs.gitea.auto_build)
+		if [ "$auto_build" = "1" ]; then
+			"$HEXOCTL" build 2>&1 &
+		fi
+
+		json_add_boolean "success" 1
+		json_add_string "message" "Content synced from Gitea"
+		json_add_string "ref" "$ref"
+
+		# Log the event
+		logger -t hexojs "Webhook: Synced content from Gitea push to $ref"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Sync failed: $sync_output"
+	fi
+
+	json_dump
+}
+
+# Configure Gitea webhook
+setup_webhook() {
+	read input
+	json_load "$input"
+	json_get_var auto_build auto_build
+	json_get_var webhook_secret webhook_secret
+
+	json_init
+
+	[ -n "$auto_build" ] && uci set hexojs.gitea.auto_build="$auto_build"
+	[ -n "$webhook_secret" ] && uci set hexojs.gitea.webhook_secret="$webhook_secret"
+	uci commit hexojs
+
+	# Generate webhook URL
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.255.1")
+	local webhook_url="http://${lan_ip}/cgi-bin/luci/admin/services/hexojs/webhook"
+
+	json_add_boolean "success" 1
+	json_add_string "message" "Webhook configured"
+	json_add_string "webhook_url" "$webhook_url"
+	json_add_string "hint" "Add this URL to Gitea repository settings > Webhooks"
+
+	json_dump
+}
+
+# ============================================
+# Instance Health & Pipeline Status
+# ============================================
+
+# Get detailed health status for an instance
+get_instance_health() {
+	read input
+	json_load "$input"
+	json_get_var instance instance
+
+	json_init
+
+	if [ -z "$instance" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Instance required"
+		json_dump
+		return
+	fi
+
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+	local site_path="$data_path/instances/$instance/site"
+	local port=$(uci -q get hexojs.${instance}.port)
+	local domain=$(uci -q get hexojs.${instance}.domain)
+	local onion=$(uci -q get hexojs.${instance}.onion_address)
+
+	json_add_boolean "success" 1
+	json_add_string "instance" "$instance"
+
+	# Overall health score (0-100)
+	local health_score=100
+	local issues=""
+
+	# Check container
+	json_add_object "container"
+	if is_running; then
+		json_add_string "status" "running"
+		json_add_boolean "healthy" 1
+	else
+		json_add_string "status" "stopped"
+		json_add_boolean "healthy" 0
+		health_score=$((health_score - 30))
+		issues="$issues container_stopped"
+	fi
+	json_close_object
+
+	# Check site files
+	json_add_object "site"
+	if [ -d "$site_path" ]; then
+		json_add_boolean "exists" 1
+		local post_count=$(find "$site_path/source/_posts" -type f -name "*.md" ! -name "index.md" 2>/dev/null | wc -l)
+		json_add_int "post_count" "$post_count"
+
+		if [ -d "$site_path/public" ]; then
+			json_add_boolean "built" 1
+			local public_files=$(find "$site_path/public" -type f 2>/dev/null | wc -l)
+			json_add_int "public_files" "$public_files"
+		else
+			json_add_boolean "built" 0
+			health_score=$((health_score - 20))
+			issues="$issues not_built"
+		fi
+	else
+		json_add_boolean "exists" 0
+		health_score=$((health_score - 40))
+		issues="$issues no_site"
+	fi
+	json_close_object
+
+	# Check server
+	json_add_object "server"
+	if [ -n "$port" ]; then
+		json_add_int "port" "$port"
+		# Check if port is listening
+		if netstat -tln 2>/dev/null | grep -q ":${port}[[:space:]]"; then
+			json_add_boolean "listening" 1
+		else
+			json_add_boolean "listening" 0
+			health_score=$((health_score - 20))
+			issues="$issues not_listening"
+		fi
+	fi
+	json_close_object
+
+	# Check HAProxy
+	json_add_object "haproxy"
+	if [ -n "$domain" ]; then
+		json_add_boolean "configured" 1
+		json_add_string "domain" "$domain"
+
+		# Check certificate
+		local cert_file="/etc/haproxy/certs/${domain}.pem"
+		if [ -f "$cert_file" ]; then
+			local expiry_epoch=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | sed 's/notAfter=//' | xargs -I{} date -d "{}" +%s 2>/dev/null || echo 0)
+			local now_epoch=$(date +%s)
+			local days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+
+			if [ "$days_left" -lt 0 ]; then
+				json_add_string "cert_status" "expired"
+				health_score=$((health_score - 20))
+				issues="$issues cert_expired"
+			elif [ "$days_left" -lt 7 ]; then
+				json_add_string "cert_status" "critical"
+				health_score=$((health_score - 10))
+				issues="$issues cert_expiring"
+			elif [ "$days_left" -lt 30 ]; then
+				json_add_string "cert_status" "warning"
+			else
+				json_add_string "cert_status" "valid"
+			fi
+			json_add_int "cert_days_left" "$days_left"
+		else
+			json_add_string "cert_status" "missing"
+			health_score=$((health_score - 10))
+			issues="$issues no_cert"
+		fi
+	else
+		json_add_boolean "configured" 0
+	fi
+	json_close_object
+
+	# Check Tor
+	json_add_object "tor"
+	if [ -n "$onion" ]; then
+		json_add_boolean "configured" 1
+		json_add_string "onion_address" "$onion"
+
+		# Check if Tor service file exists
+		if [ -f "/var/lib/tor/hidden_service_hexo_${instance}/hostname" ]; then
+			json_add_string "status" "active"
+		else
+			json_add_string "status" "pending"
+		fi
+	else
+		json_add_boolean "configured" 0
+	fi
+	json_close_object
+
+	# Check Gitea sync
+	json_add_object "gitea"
+	if [ -d "$site_path/.git" ]; then
+		json_add_boolean "configured" 1
+		cd "$site_path"
+		local behind=$(git rev-list --count HEAD..@{u} 2>/dev/null || echo "0")
+		local modified=$(git status --porcelain 2>/dev/null | wc -l)
+
+		if [ "$behind" -gt 0 ]; then
+			json_add_string "sync_status" "behind"
+			json_add_int "commits_behind" "$behind"
+			issues="$issues sync_behind"
+		elif [ "$modified" -gt 0 ]; then
+			json_add_string "sync_status" "modified"
+			json_add_int "local_changes" "$modified"
+		else
+			json_add_string "sync_status" "synced"
+		fi
+	else
+		json_add_boolean "configured" 0
+	fi
+	json_close_object
+
+	# Final health score
+	[ "$health_score" -lt 0 ] && health_score=0
+	json_add_int "health_score" "$health_score"
+
+	if [ "$health_score" -ge 80 ]; then
+		json_add_string "health_status" "healthy"
+	elif [ "$health_score" -ge 50 ]; then
+		json_add_string "health_status" "degraded"
+	else
+		json_add_string "health_status" "critical"
+	fi
+
+	json_add_string "issues" "$issues"
+
+	json_dump
+}
+
+# Get pipeline status for all instances
+get_pipeline_status() {
+	json_init
+
+	local data_path=$(uci_get main.data_path) || data_path="$DATA_PATH"
+
+	json_add_array "instances"
+
+	# Iterate through UCI instances
+	for instance in $(uci -q show hexojs | grep "=instance" | sed 's/hexojs\.\([^=]*\)=instance/\1/'); do
+		local port=$(uci -q get hexojs.${instance}.port)
+		local enabled=$(uci -q get hexojs.${instance}.enabled)
+		local domain=$(uci -q get hexojs.${instance}.domain)
+		local onion=$(uci -q get hexojs.${instance}.onion_address)
+		local profile=$(uci -q get hexojs.${instance}.profile)
+		local site_path="$data_path/instances/$instance/site"
+
+		json_add_object
+		json_add_string "id" "$instance"
+		json_add_int "port" "$port"
+		json_add_boolean "enabled" "${enabled:-0}"
+		json_add_string "profile" "${profile:-default}"
+
+		# Quick status checks
+		local status="unknown"
+		if [ -d "$site_path" ]; then
+			# Check if server is running on this port
+			if netstat -tln 2>/dev/null | grep -q ":${port}[[:space:]]"; then
+				status="running"
+			else
+				status="stopped"
+			fi
+		else
+			status="no_site"
+		fi
+		json_add_string "status" "$status"
+
+		# Endpoints
+		json_add_object "endpoints"
+		json_add_string "local" "http://localhost:${port}"
+		[ -n "$domain" ] && json_add_string "clearnet" "https://${domain}"
+		[ -n "$onion" ] && json_add_string "tor" "http://${onion}"
+		json_close_object
+
+		json_close_object
+	done
+
+	json_close_array
+
+	# Global stats
+	json_add_object "stats"
+	local total=$(uci -q show hexojs | grep -c "=instance" || echo 0)
+	local running=$(netstat -tln 2>/dev/null | grep -c ":400[0-9][[:space:]]" || echo 0)
+	json_add_int "total_instances" "$total"
+	json_add_int "running_instances" "$running"
+	json_close_object
 
 	json_dump
 }
@@ -1674,7 +2952,22 @@ case "$1" in
   "gitea_clone": {},
   "gitea_sync": {},
   "gitea_save_config": {"enabled": "bool", "gitea_url": "str", "gitea_user": "str", "gitea_token": "str", "content_repo": "str", "content_branch": "str", "auto_sync": "bool"},
-  "publish_to_www": {"path": "str"}
+  "publish_to_www": {"path": "str"},
+  "get_workflow_status": {},
+  "list_profiles": {},
+  "apply_profile": {"instance": "str", "profile": "str", "domain": "str", "enable_tor": "bool"},
+  "publish_to_haproxy": {"instance": "str", "domain": "str", "acme": "bool"},
+  "unpublish_from_haproxy": {"instance": "str"},
+  "get_haproxy_status": {"instance": "str"},
+  "publish_to_tor": {"instance": "str"},
+  "unpublish_from_tor": {"instance": "str"},
+  "get_tor_status": {"instance": "str"},
+  "get_instance_endpoints": {"instance": "str"},
+  "full_publish": {"instance": "str", "rebuild": "bool"},
+  "handle_webhook": {"event": "str", "repository": "str", "ref": "str", "secret": "str"},
+  "setup_webhook": {"auto_build": "bool", "webhook_secret": "str"},
+  "get_instance_health": {"instance": "str"},
+  "get_pipeline_status": {}
 }
 EOF
 		;;
@@ -1727,6 +3020,21 @@ EOF
 			gitea_sync) gitea_sync ;;
 			gitea_save_config) gitea_save_config ;;
 			publish_to_www) publish_to_www ;;
+			get_workflow_status) get_workflow_status ;;
+			list_profiles) list_profiles ;;
+			apply_profile) apply_profile ;;
+			publish_to_haproxy) publish_to_haproxy ;;
+			unpublish_from_haproxy) unpublish_from_haproxy ;;
+			get_haproxy_status) get_haproxy_status ;;
+			publish_to_tor) publish_to_tor ;;
+			unpublish_from_tor) unpublish_from_tor ;;
+			get_tor_status) get_tor_status ;;
+			get_instance_endpoints) get_instance_endpoints ;;
+			full_publish) full_publish ;;
+			handle_webhook) handle_webhook ;;
+			setup_webhook) setup_webhook ;;
+			get_instance_health) get_instance_health ;;
+			get_pipeline_status) get_pipeline_status ;;
 			*) echo '{"error": "Unknown method"}' ;;
 		esac
 		;;

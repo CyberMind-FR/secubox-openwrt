@@ -1,39 +1,323 @@
 #!/bin/sh
 # RPCD backend for mitmproxy LuCI app
 
-CONFIG="mitmproxy"
-CONTAINER="secbx-mitmproxy"
+. /usr/share/libubox/jshn.sh
 
-uci_get() { uci -q get ${CONFIG}.main.$1; }
+CONFIG="mitmproxy"
+LXC_NAME="mitmproxy"
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2"; }
 
 get_status() {
-	local enabled=$(uci_get enabled)
-	local web_port=$(uci_get web_port)
-	local proxy_port=$(uci_get proxy_port)
-	local data_path=$(uci_get data_path)
+	local enabled=$(uci_get main.enabled)
+	local web_port=$(uci_get main.web_port)
+	local proxy_port=$(uci_get main.proxy_port)
+	local data_path=$(uci_get main.data_path)
+	local mode=$(uci_get main.mode)
 
-	local docker_available=0
-	command -v docker >/dev/null 2>&1 && docker_available=1
+	# Check for LXC availability
+	local lxc_available=0
+	command -v lxc-start >/dev/null 2>&1 && lxc_available=1
 
+	# Check if container is running
 	local running=0
-	if [ "$docker_available" = "1" ]; then
-		docker ps --filter "name=$CONTAINER" --format "{{.Names}}" 2>/dev/null | grep -q "$CONTAINER" && running=1
+	if [ "$lxc_available" = "1" ]; then
+		lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING" && running=1
 	fi
 
+	# Check if installed (rootfs exists)
 	local installed=0
-	[ "$docker_available" = "1" ] && docker images --format "{{.Repository}}" 2>/dev/null | grep -q "mitmproxy" && installed=1
+	[ -d "$LXC_ROOTFS" ] && [ -x "$LXC_ROOTFS/usr/bin/mitmproxy" ] && installed=1
+
+	# Check nftables status for transparent mode
+	local nft_active=0
+	if [ "$mode" = "transparent" ] && command -v nft >/dev/null 2>&1; then
+		nft list table inet mitmproxy >/dev/null 2>&1 && nft_active=1
+	fi
 
 	cat <<EOFJ
 {
 	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
 	"running": $([ "$running" = "1" ] && echo "true" || echo "false"),
 	"installed": $([ "$installed" = "1" ] && echo "true" || echo "false"),
-	"docker_available": $([ "$docker_available" = "1" ] && echo "true" || echo "false"),
+	"lxc_available": $([ "$lxc_available" = "1" ] && echo "true" || echo "false"),
+	"docker_available": $([ "$lxc_available" = "1" ] && echo "true" || echo "false"),
 	"web_port": ${web_port:-8081},
-	"proxy_port": ${proxy_port:-8080},
-	"data_path": "${data_path:-/srv/mitmproxy}"
+	"proxy_port": ${proxy_port:-8888},
+	"data_path": "${data_path:-/srv/mitmproxy}",
+	"mode": "${mode:-regular}",
+	"nft_active": $([ "$nft_active" = "1" ] && echo "true" || echo "false")
 }
 EOFJ
+}
+
+get_settings() {
+	json_init
+
+	# Main settings
+	local enabled=$(uci_get main.enabled)
+	local mode=$(uci_get main.mode)
+	local proxy_port=$(uci_get main.proxy_port)
+	local web_port=$(uci_get main.web_port)
+	local web_host=$(uci_get main.web_host)
+	local data_path=$(uci_get main.data_path)
+	local memory_limit=$(uci_get main.memory_limit)
+	local upstream_proxy=$(uci_get main.upstream_proxy)
+	local reverse_target=$(uci_get main.reverse_target)
+	local ssl_insecure=$(uci_get main.ssl_insecure)
+	local anticache=$(uci_get main.anticache)
+	local anticomp=$(uci_get main.anticomp)
+
+	json_add_boolean "enabled" "${enabled:-0}"
+	json_add_string "mode" "${mode:-regular}"
+	json_add_int "proxy_port" "${proxy_port:-8888}"
+	json_add_int "web_port" "${web_port:-8081}"
+	json_add_string "web_host" "${web_host:-0.0.0.0}"
+	json_add_string "data_path" "${data_path:-/srv/mitmproxy}"
+	json_add_string "memory_limit" "${memory_limit:-256M}"
+	json_add_string "upstream_proxy" "${upstream_proxy:-}"
+	json_add_string "reverse_target" "${reverse_target:-}"
+	json_add_boolean "ssl_insecure" "${ssl_insecure:-0}"
+	json_add_boolean "anticache" "${anticache:-0}"
+	json_add_boolean "anticomp" "${anticomp:-0}"
+
+	# Transparent settings
+	local transparent_enabled=$(uci_get transparent.enabled)
+	local transparent_iface=$(uci_get transparent.interface)
+	local redirect_http=$(uci_get transparent.redirect_http)
+	local redirect_https=$(uci_get transparent.redirect_https)
+
+	json_add_boolean "transparent_enabled" "${transparent_enabled:-0}"
+	json_add_string "transparent_interface" "${transparent_iface:-br-lan}"
+	json_add_boolean "redirect_http" "${redirect_http:-1}"
+	json_add_boolean "redirect_https" "${redirect_https:-1}"
+
+	# Filtering settings
+	local filtering_enabled=$(uci_get filtering.enabled)
+	local log_requests=$(uci_get filtering.log_requests)
+	local filter_cdn=$(uci_get filtering.filter_cdn)
+	local filter_media=$(uci_get filtering.filter_media)
+	local block_ads=$(uci_get filtering.block_ads)
+
+	json_add_boolean "filtering_enabled" "${filtering_enabled:-0}"
+	json_add_boolean "log_requests" "${log_requests:-1}"
+	json_add_boolean "filter_cdn" "${filter_cdn:-0}"
+	json_add_boolean "filter_media" "${filter_media:-0}"
+	json_add_boolean "block_ads" "${block_ads:-0}"
+
+	json_dump
+}
+
+save_settings() {
+	read input
+	json_load "$input"
+
+	# Get values from input
+	local mode enabled proxy_port web_port web_host data_path memory_limit
+	local upstream_proxy reverse_target ssl_insecure anticache anticomp
+	local transparent_enabled transparent_interface redirect_http redirect_https
+	local filtering_enabled log_requests filter_cdn filter_media block_ads
+	local apply_now
+
+	json_get_var mode mode
+	json_get_var enabled enabled
+	json_get_var proxy_port proxy_port
+	json_get_var web_port web_port
+	json_get_var web_host web_host
+	json_get_var data_path data_path
+	json_get_var memory_limit memory_limit
+	json_get_var upstream_proxy upstream_proxy
+	json_get_var reverse_target reverse_target
+	json_get_var ssl_insecure ssl_insecure
+	json_get_var anticache anticache
+	json_get_var anticomp anticomp
+	json_get_var transparent_enabled transparent_enabled
+	json_get_var transparent_interface transparent_interface
+	json_get_var redirect_http redirect_http
+	json_get_var redirect_https redirect_https
+	json_get_var filtering_enabled filtering_enabled
+	json_get_var log_requests log_requests
+	json_get_var filter_cdn filter_cdn
+	json_get_var filter_media filter_media
+	json_get_var block_ads block_ads
+	json_get_var apply_now apply_now
+
+	# Now initialize output JSON
+	json_init
+
+	# Ensure UCI sections exist
+	uci -q get mitmproxy.main >/dev/null 2>&1 || {
+		uci set mitmproxy.main=mitmproxy
+		uci set mitmproxy.main.enabled='0'
+		uci set mitmproxy.main.mode='regular'
+	}
+	uci -q get mitmproxy.transparent >/dev/null 2>&1 || {
+		uci set mitmproxy.transparent=transparent
+		uci set mitmproxy.transparent.enabled='0'
+	}
+	uci -q get mitmproxy.filtering >/dev/null 2>&1 || {
+		uci set mitmproxy.filtering=filtering
+		uci set mitmproxy.filtering.enabled='0'
+	}
+
+	# Apply main settings
+	[ -n "$mode" ] && uci_set main.mode "$mode"
+	[ -n "$enabled" ] && uci_set main.enabled "$enabled"
+	[ -n "$proxy_port" ] && uci_set main.proxy_port "$proxy_port"
+	[ -n "$web_port" ] && uci_set main.web_port "$web_port"
+	[ -n "$web_host" ] && uci_set main.web_host "$web_host"
+	[ -n "$data_path" ] && uci_set main.data_path "$data_path"
+	[ -n "$memory_limit" ] && uci_set main.memory_limit "$memory_limit"
+	[ -n "$upstream_proxy" ] && uci_set main.upstream_proxy "$upstream_proxy"
+	[ -n "$reverse_target" ] && uci_set main.reverse_target "$reverse_target"
+	[ -n "$ssl_insecure" ] && uci_set main.ssl_insecure "$ssl_insecure"
+	[ -n "$anticache" ] && uci_set main.anticache "$anticache"
+	[ -n "$anticomp" ] && uci_set main.anticomp "$anticomp"
+
+	# Apply transparent settings
+	[ -n "$transparent_enabled" ] && uci_set transparent.enabled "$transparent_enabled"
+	[ -n "$transparent_interface" ] && uci_set transparent.interface "$transparent_interface"
+	[ -n "$redirect_http" ] && uci_set transparent.redirect_http "$redirect_http"
+	[ -n "$redirect_https" ] && uci_set transparent.redirect_https "$redirect_https"
+
+	# Apply filtering settings
+	[ -n "$filtering_enabled" ] && uci_set filtering.enabled "$filtering_enabled"
+	[ -n "$log_requests" ] && uci_set filtering.log_requests "$log_requests"
+	[ -n "$filter_cdn" ] && uci_set filtering.filter_cdn "$filter_cdn"
+	[ -n "$filter_media" ] && uci_set filtering.filter_media "$filter_media"
+	[ -n "$block_ads" ] && uci_set filtering.block_ads "$block_ads"
+
+	uci commit mitmproxy
+
+	# Restart service to apply firewall rules if enabled and apply_now is set
+	local is_enabled=$(uci_get main.enabled)
+	local restarted=0
+	if [ "$is_enabled" = "1" ] && [ "$apply_now" = "1" ]; then
+		/etc/init.d/mitmproxy restart >/dev/null 2>&1 &
+		restarted=1
+	fi
+
+	json_add_boolean "success" 1
+	if [ "$restarted" = "1" ]; then
+		json_add_string "message" "Settings saved and applied"
+		json_add_boolean "restarted" 1
+	else
+		json_add_string "message" "Settings saved"
+		json_add_boolean "restarted" 0
+	fi
+
+	json_dump
+}
+
+set_mode() {
+	read input
+	json_load "$input"
+
+	local mode apply_now
+	json_get_var mode mode
+	json_get_var apply_now apply_now
+
+	json_init
+
+	if [ -z "$mode" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Mode is required"
+		json_dump
+		return
+	fi
+
+	# Validate mode
+	case "$mode" in
+		regular|transparent|upstream|reverse) ;;
+		*)
+			json_add_boolean "success" 0
+			json_add_string "error" "Invalid mode: $mode"
+			json_dump
+			return
+			;;
+	esac
+
+	# Ensure section exists
+	uci -q get mitmproxy.main >/dev/null 2>&1 || {
+		uci set mitmproxy.main=mitmproxy
+		uci set mitmproxy.main.enabled='0'
+	}
+
+	uci_set main.mode "$mode"
+	uci commit mitmproxy
+
+	# Restart to apply firewall rules if needed
+	local is_enabled=$(uci_get main.enabled)
+	local restarted=0
+	if [ "$is_enabled" = "1" ] && [ "$apply_now" = "1" ]; then
+		/etc/init.d/mitmproxy restart >/dev/null 2>&1 &
+		restarted=1
+	fi
+
+	json_add_boolean "success" 1
+	json_add_string "mode" "$mode"
+	if [ "$restarted" = "1" ]; then
+		json_add_string "message" "Mode set to $mode and applied"
+		json_add_boolean "restarted" 1
+	else
+		json_add_string "message" "Mode set to $mode"
+		json_add_boolean "restarted" 0
+	fi
+
+	json_dump
+}
+
+setup_firewall() {
+	json_init
+
+	if ! command -v mitmproxyctl >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "mitmproxyctl not found"
+		json_dump
+		return
+	fi
+
+	mitmproxyctl firewall-setup >/tmp/mitmproxy-fw.log 2>&1
+	local result=$?
+
+	if [ $result -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Firewall rules applied"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to setup firewall rules"
+		local log=$(cat /tmp/mitmproxy-fw.log 2>/dev/null)
+		[ -n "$log" ] && json_add_string "details" "$log"
+	fi
+
+	json_dump
+}
+
+clear_firewall() {
+	json_init
+
+	if ! command -v mitmproxyctl >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "mitmproxyctl not found"
+		json_dump
+		return
+	fi
+
+	mitmproxyctl firewall-clear >/tmp/mitmproxy-fw.log 2>&1
+	local result=$?
+
+	if [ $result -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "Firewall rules cleared"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to clear firewall rules"
+	fi
+
+	json_dump
 }
 
 do_install() {
@@ -45,12 +329,26 @@ do_stop() { [ -x /etc/init.d/mitmproxy ] && /etc/init.d/mitmproxy stop >/dev/nul
 do_restart() { [ -x /etc/init.d/mitmproxy ] && /etc/init.d/mitmproxy restart >/dev/null 2>&1; echo '{"success":true}'; }
 
 list_methods() { cat <<'EOFM'
-{"status":{},"install":{},"start":{},"stop":{},"restart":{}}
+{"status":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"install":{},"start":{},"stop":{},"restart":{}}
 EOFM
 }
 
 case "$1" in
 	list) list_methods ;;
-	call) case "$2" in status) get_status ;; install) do_install ;; start) do_start ;; stop) do_stop ;; restart) do_restart ;; *) echo '{"error":"Unknown method"}' ;; esac ;;
+	call)
+		case "$2" in
+			status) get_status ;;
+			settings) get_settings ;;
+			save_settings) save_settings ;;
+			set_mode) set_mode ;;
+			setup_firewall) setup_firewall ;;
+			clear_firewall) clear_firewall ;;
+			install) do_install ;;
+			start) do_start ;;
+			stop) do_stop ;;
+			restart) do_restart ;;
+			*) echo '{"error":"Unknown method"}' ;;
+		esac
+		;;
 	*) echo '{"error":"Unknown command"}' ;;
 esac

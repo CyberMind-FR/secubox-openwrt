@@ -15,7 +15,7 @@ define Package/secubox-app-mailinabox
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Mail Server (docker-mailserver)
-  DEPENDS:=+uci +libuci
+  DEPENDS:= 
 endef
 
 define Package/secubox-app-mailinabox/description

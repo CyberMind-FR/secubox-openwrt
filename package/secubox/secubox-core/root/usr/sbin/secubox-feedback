@@ -1,0 +1,580 @@
+#!/bin/sh
+#
+# SecuBox Feedback System - Issue reporting and resolution tracking
+# Crowdsourced knowledge improvement loop
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+FEEDBACK_DIR="/var/lib/secubox/feedback"
+ISSUES_FILE="$FEEDBACK_DIR/issues.json"
+RESOLUTIONS_FILE="$FEEDBACK_DIR/resolutions.json"
+
+# Color output (using printf for POSIX shell compatibility)
+ESC=$(printf '\033')
+RED="${ESC}[0;31m"
+GREEN="${ESC}[0;32m"
+YELLOW="${ESC}[1;33m"
+BLUE="${ESC}[0;34m"
+CYAN="${ESC}[0;36m"
+MAGENTA="${ESC}[0;35m"
+BOLD="${ESC}[1m"
+NC="${ESC}[0m"
+
+# Logging
+log() {
+	logger -t secubox-feedback "$@"
+}
+
+# Initialize feedback storage
+init_storage() {
+	mkdir -p "$FEEDBACK_DIR"
+	chmod 700 "$FEEDBACK_DIR"
+
+	if [ ! -f "$ISSUES_FILE" ]; then
+		echo '{"issues":[]}' > "$ISSUES_FILE"
+	fi
+
+	if [ ! -f "$RESOLUTIONS_FILE" ]; then
+		echo '{"resolutions":[]}' > "$RESOLUTIONS_FILE"
+	fi
+}
+
+# Generate unique issue ID
+generate_issue_id() {
+	echo "$(date +%s)-$(head -c 4 /dev/urandom | md5sum | cut -c1-8)"
+}
+
+# Get next issue number
+get_next_issue_number() {
+	if [ -f "$ISSUES_FILE" ]; then
+		local max=$(jsonfilter -i "$ISSUES_FILE" -e '@.issues[@].number' 2>/dev/null | sort -n | tail -1)
+		echo $((${max:-0} + 1))
+	else
+		echo "1"
+	fi
+}
+
+# Report a new issue
+cmd_report() {
+	local app_id="$1"
+	shift
+
+	if [ -z "$app_id" ]; then
+		echo "Usage: secubox feedback report <app-id> [options]"
+		echo ""
+		echo "Options:"
+		echo "  --type <bug|feature|question>  Issue type (default: bug)"
+		echo "  --summary <text>               Issue summary"
+		echo "  --details <text>               Detailed description"
+		return 1
+	fi
+
+	# Parse options
+	local issue_type="bug"
+	local summary=""
+	local details=""
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--type)
+				issue_type="$2"
+				shift 2
+				;;
+			--summary)
+				summary="$2"
+				shift 2
+				;;
+			--details)
+				details="$2"
+				shift 2
+				;;
+			*)
+				shift
+				;;
+		esac
+	done
+
+	# Validate type
+	case "$issue_type" in
+		bug|feature|question) ;;
+		*)
+			echo -e "${RED}Error: Invalid issue type '$issue_type'${NC}"
+			echo "Valid types: bug, feature, question"
+			return 1
+			;;
+	esac
+
+	# Require summary
+	if [ -z "$summary" ]; then
+		echo -e "${YELLOW}Enter issue summary (one line):${NC}"
+		read -r summary
+	fi
+
+	if [ -z "$summary" ]; then
+		echo -e "${RED}Error: Summary is required${NC}"
+		return 1
+	fi
+
+	init_storage
+
+	local issue_id=$(generate_issue_id)
+	local issue_number=$(get_next_issue_number)
+	local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+	# Get app version if installed
+	local app_version=""
+	local main_pkg=$(jsonfilter -i /usr/share/secubox/catalog.json -e "@.plugins[@].id" 2>/dev/null | grep "^${app_id}$")
+	if [ -n "$main_pkg" ]; then
+		app_version=$(opkg info "$app_id" 2>/dev/null | grep "^Version:" | cut -d' ' -f2)
+	fi
+
+	# Get system info
+	local system_info=""
+	if [ -f /etc/openwrt_release ]; then
+		system_info=$(grep "DISTRIB_DESCRIPTION" /etc/openwrt_release | cut -d"'" -f2)
+	fi
+
+	# Create issue JSON
+	local temp_file="/tmp/issue-$$.json"
+
+	cat > "$temp_file" <<EOF
+{
+  "id": "$issue_id",
+  "number": $issue_number,
+  "app_id": "$app_id",
+  "type": "$issue_type",
+  "summary": "$summary",
+  "details": "$details",
+  "status": "open",
+  "created_at": "$timestamp",
+  "app_version": "$app_version",
+  "system_info": "$system_info",
+  "resolutions": []
+}
+EOF
+
+	# Append to issues file
+	if command -v jq >/dev/null 2>&1; then
+		jq --argjson new "$(cat "$temp_file")" '.issues += [$new]' "$ISSUES_FILE" > "${ISSUES_FILE}.tmp"
+		mv "${ISSUES_FILE}.tmp" "$ISSUES_FILE"
+	else
+		# Manual JSON append (less robust)
+		local existing=$(cat "$ISSUES_FILE" | sed 's/]}$//')
+		local new_issue=$(cat "$temp_file")
+		local has_issues=$(jsonfilter -i "$ISSUES_FILE" -e '@.issues[0]' 2>/dev/null)
+
+		if [ -n "$has_issues" ]; then
+			echo "${existing},${new_issue}]}" > "$ISSUES_FILE"
+		else
+			echo "${existing}${new_issue}]}" > "$ISSUES_FILE"
+		fi
+	fi
+
+	rm -f "$temp_file"
+
+	echo -e "${GREEN}✓ Issue #$issue_number created${NC}"
+	echo ""
+	echo -e "  ${CYAN}ID:${NC} $issue_id"
+	echo -e "  ${CYAN}App:${NC} $app_id"
+	echo -e "  ${CYAN}Type:${NC} $issue_type"
+	echo -e "  ${CYAN}Summary:${NC} $summary"
+	echo ""
+	echo -e "${CYAN}Next steps:${NC}"
+	echo "  - If you find a solution, run: secubox feedback resolve $issue_number"
+	echo "  - Search for existing resolutions: secubox feedback search <keyword>"
+
+	log "Issue #$issue_number created for $app_id: $summary"
+}
+
+# Resolve an issue
+cmd_resolve() {
+	local issue_ref="$1"
+	shift
+
+	if [ -z "$issue_ref" ]; then
+		echo "Usage: secubox feedback resolve <issue-number|issue-id> [options]"
+		echo ""
+		echo "Options:"
+		echo "  --description <text>   How the issue was resolved"
+		echo "  --steps <text>         Step-by-step resolution"
+		return 1
+	fi
+
+	# Parse options
+	local description=""
+	local steps=""
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--description)
+				description="$2"
+				shift 2
+				;;
+			--steps)
+				steps="$2"
+				shift 2
+				;;
+			*)
+				shift
+				;;
+		esac
+	done
+
+	# Require description
+	if [ -z "$description" ]; then
+		echo -e "${YELLOW}Enter resolution description:${NC}"
+		read -r description
+	fi
+
+	if [ -z "$description" ]; then
+		echo -e "${RED}Error: Description is required${NC}"
+		return 1
+	fi
+
+	init_storage
+
+	# Find issue by number or ID
+	local issue_id=""
+	local issue_number=""
+	local app_id=""
+	local issue_summary=""
+
+	if echo "$issue_ref" | grep -qE '^[0-9]+$'; then
+		# Search by number
+		issue_id=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[@.number=$issue_ref].id" 2>/dev/null)
+		issue_number="$issue_ref"
+	else
+		# Search by ID
+		issue_id="$issue_ref"
+		issue_number=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[@.id='$issue_ref'].number" 2>/dev/null)
+	fi
+
+	if [ -z "$issue_id" ]; then
+		echo -e "${RED}Error: Issue not found: $issue_ref${NC}"
+		return 1
+	fi
+
+	app_id=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[@.id='$issue_id'].app_id" 2>/dev/null)
+	issue_summary=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[@.id='$issue_id'].summary" 2>/dev/null)
+
+	local resolution_id="res-$(date +%s)-$(head -c 4 /dev/urandom | md5sum | cut -c1-8)"
+	local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+	# Create resolution
+	local temp_file="/tmp/resolution-$$.json"
+
+	cat > "$temp_file" <<EOF
+{
+  "id": "$resolution_id",
+  "issue_id": "$issue_id",
+  "issue_number": $issue_number,
+  "app_id": "$app_id",
+  "issue_summary": "$issue_summary",
+  "description": "$description",
+  "steps": "$steps",
+  "created_at": "$timestamp",
+  "upvotes": 0,
+  "verified": false
+}
+EOF
+
+	# Add to resolutions file
+	if command -v jq >/dev/null 2>&1; then
+		jq --argjson new "$(cat "$temp_file")" '.resolutions += [$new]' "$RESOLUTIONS_FILE" > "${RESOLUTIONS_FILE}.tmp"
+		mv "${RESOLUTIONS_FILE}.tmp" "$RESOLUTIONS_FILE"
+
+		# Update issue status
+		jq --arg id "$issue_id" '(.issues[] | select(.id == $id)).status = "resolved"' "$ISSUES_FILE" > "${ISSUES_FILE}.tmp"
+		mv "${ISSUES_FILE}.tmp" "$ISSUES_FILE"
+	else
+		# Manual JSON append
+		local existing=$(cat "$RESOLUTIONS_FILE" | sed 's/]}$//')
+		local new_res=$(cat "$temp_file")
+		local has_res=$(jsonfilter -i "$RESOLUTIONS_FILE" -e '@.resolutions[0]' 2>/dev/null)
+
+		if [ -n "$has_res" ]; then
+			echo "${existing},${new_res}]}" > "$RESOLUTIONS_FILE"
+		else
+			echo "${existing}${new_res}]}" > "$RESOLUTIONS_FILE"
+		fi
+	fi
+
+	rm -f "$temp_file"
+
+	echo -e "${GREEN}✓ Resolution added for issue #$issue_number${NC}"
+	echo ""
+	echo -e "  ${CYAN}Resolution ID:${NC} $resolution_id"
+	echo -e "  ${CYAN}Issue:${NC} $issue_summary"
+	echo -e "  ${CYAN}Description:${NC} $description"
+	echo ""
+	echo -e "${CYAN}Share with the community:${NC}"
+	echo "  secubox feedback submit"
+
+	log "Resolution added for issue #$issue_number"
+}
+
+# Search resolutions
+cmd_search() {
+	local keyword="$1"
+
+	if [ -z "$keyword" ]; then
+		echo "Usage: secubox feedback search <keyword>"
+		return 1
+	fi
+
+	init_storage
+
+	echo -e "${BOLD}Search Results for: $keyword${NC}"
+	echo "═══════════════════════════════════════════════════════════════"
+	echo ""
+
+	local found=0
+
+	# Search in resolutions
+	if [ -f "$RESOLUTIONS_FILE" ]; then
+		local idx=0
+		while true; do
+			local res_id=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].id" 2>/dev/null)
+			[ -z "$res_id" ] && break
+
+			local description=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].description" 2>/dev/null)
+			local issue_summary=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].issue_summary" 2>/dev/null)
+			local app_id=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].app_id" 2>/dev/null)
+
+			# Search in description and summary
+			if echo "$description $issue_summary $app_id" | grep -qi "$keyword"; then
+				local issue_num=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].issue_number" 2>/dev/null)
+				local upvotes=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].upvotes" 2>/dev/null)
+				local verified=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].verified" 2>/dev/null)
+
+				local verified_badge=""
+				[ "$verified" = "true" ] && verified_badge="${GREEN}[VERIFIED]${NC} "
+
+				echo -e "  ${verified_badge}${BOLD}Issue #$issue_num${NC} ($app_id)"
+				echo -e "    ${CYAN}Problem:${NC} $issue_summary"
+				echo -e "    ${GREEN}Solution:${NC} $description"
+				echo -e "    ${YELLOW}Upvotes:${NC} $upvotes"
+				echo ""
+
+				found=$((found + 1))
+			fi
+
+			idx=$((idx + 1))
+		done
+	fi
+
+	# Also search issues without resolutions
+	if [ -f "$ISSUES_FILE" ]; then
+		local idx=0
+		while true; do
+			local issue_id=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].id" 2>/dev/null)
+			[ -z "$issue_id" ] && break
+
+			local status=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].status" 2>/dev/null)
+
+			# Only show open issues
+			if [ "$status" = "open" ]; then
+				local summary=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].summary" 2>/dev/null)
+				local app_id=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].app_id" 2>/dev/null)
+
+				if echo "$summary $app_id" | grep -qi "$keyword"; then
+					local issue_num=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].number" 2>/dev/null)
+					local issue_type=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].type" 2>/dev/null)
+
+					echo -e "  ${YELLOW}[OPEN]${NC} ${BOLD}Issue #$issue_num${NC} ($app_id)"
+					echo -e "    ${CYAN}Type:${NC} $issue_type"
+					echo -e "    ${CYAN}Summary:${NC} $summary"
+					echo -e "    ${YELLOW}No resolution yet${NC}"
+					echo ""
+
+					found=$((found + 1))
+				fi
+			fi
+
+			idx=$((idx + 1))
+		done
+	fi
+
+	echo "═══════════════════════════════════════════════════════════════"
+	if [ "$found" -eq 0 ]; then
+		echo -e "  ${YELLOW}No results found for '$keyword'${NC}"
+	else
+		echo -e " ${BOLD}Found:${NC} $found result(s)"
+	fi
+}
+
+# List local issues
+cmd_list() {
+	local filter="${1:-all}"
+
+	init_storage
+
+	echo -e "${BOLD}Local Issues${NC}"
+	echo "═══════════════════════════════════════════════════════════════"
+	echo ""
+
+	local count=0
+
+	if [ -f "$ISSUES_FILE" ]; then
+		local idx=0
+		while true; do
+			local issue_id=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].id" 2>/dev/null)
+			[ -z "$issue_id" ] && break
+
+			local status=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].status" 2>/dev/null)
+
+			# Apply filter
+			if [ "$filter" != "all" ] && [ "$filter" != "$status" ]; then
+				idx=$((idx + 1))
+				continue
+			fi
+
+			local issue_num=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].number" 2>/dev/null)
+			local app_id=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].app_id" 2>/dev/null)
+			local summary=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].summary" 2>/dev/null)
+			local issue_type=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].type" 2>/dev/null)
+			local created=$(jsonfilter -i "$ISSUES_FILE" -e "@.issues[$idx].created_at" 2>/dev/null | cut -c1-10)
+
+			local status_badge=""
+			case "$status" in
+				open)     status_badge="${YELLOW}[OPEN]${NC}" ;;
+				resolved) status_badge="${GREEN}[RESOLVED]${NC}" ;;
+				closed)   status_badge="${BLUE}[CLOSED]${NC}" ;;
+			esac
+
+			local type_badge=""
+			case "$issue_type" in
+				bug)      type_badge="${RED}🐛${NC}" ;;
+				feature)  type_badge="${CYAN}✨${NC}" ;;
+				question) type_badge="${YELLOW}❓${NC}" ;;
+			esac
+
+			echo -e "  $status_badge #$issue_num $type_badge ${BOLD}$app_id${NC}"
+			echo -e "    $summary"
+			echo -e "    ${CYAN}Created:${NC} $created"
+			echo ""
+
+			count=$((count + 1))
+			idx=$((idx + 1))
+		done
+	fi
+
+	echo "═══════════════════════════════════════════════════════════════"
+	if [ "$count" -eq 0 ]; then
+		echo -e "  ${YELLOW}No issues found${NC}"
+	else
+		echo -e " ${BOLD}Total:${NC} $count issue(s)"
+	fi
+	echo ""
+	echo -e " ${CYAN}Filter by status:${NC} secubox feedback list [open|resolved|closed|all]"
+}
+
+# Submit resolutions upstream (opt-in)
+cmd_submit() {
+	init_storage
+
+	echo -e "${BOLD}Submit Resolutions Upstream${NC}"
+	echo "═══════════════════════════════════════════════════════════════"
+	echo ""
+	echo -e "${CYAN}This will share your local resolutions with the SecuBox community${NC}"
+	echo -e "${CYAN}to help others who encounter similar issues.${NC}"
+	echo ""
+
+	# Count unsubmitted resolutions
+	local unsubmitted=0
+	if [ -f "$RESOLUTIONS_FILE" ]; then
+		local idx=0
+		while true; do
+			local res_id=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].id" 2>/dev/null)
+			[ -z "$res_id" ] && break
+
+			local submitted=$(jsonfilter -i "$RESOLUTIONS_FILE" -e "@.resolutions[$idx].submitted" 2>/dev/null)
+			[ "$submitted" != "true" ] && unsubmitted=$((unsubmitted + 1))
+
+			idx=$((idx + 1))
+		done
+	fi
+
+	if [ "$unsubmitted" -eq 0 ]; then
+		echo -e "  ${GREEN}✓ All resolutions have been submitted${NC}"
+		return 0
+	fi
+
+	echo -e "  Found ${BOLD}$unsubmitted${NC} unsubmitted resolution(s)"
+	echo ""
+	echo -e "${YELLOW}Note: Upstream submission requires an internet connection.${NC}"
+	echo -e "${YELLOW}Your device ID and resolutions will be sent to the SecuBox API.${NC}"
+	echo ""
+	echo -e "This feature is ${BOLD}coming soon${NC}."
+	echo ""
+	echo -e "${CYAN}For now, you can manually share resolutions by:${NC}"
+	echo "  1. Exporting: cat $RESOLUTIONS_FILE"
+	echo "  2. Creating an issue at: https://github.com/CyberMind-FR/secubox-openwrt/issues"
+
+	log "Submit requested: $unsubmitted resolutions pending"
+}
+
+# Usage
+usage() {
+	cat <<EOF
+SecuBox Feedback System - Issue reporting and resolution tracking
+
+Usage: secubox-feedback <command> [options]
+
+Commands:
+  report <app-id> [options]     Report an issue
+  resolve <issue-id> [options]  Record a resolution
+  search <keyword>              Search known resolutions
+  list [filter]                 List local issues (all|open|resolved)
+  submit                        Share resolutions upstream (opt-in)
+
+Report Options:
+  --type <type>        bug|feature|question (default: bug)
+  --summary <text>     Issue summary
+  --details <text>     Detailed description
+
+Resolve Options:
+  --description <text> How the issue was resolved
+  --steps <text>       Step-by-step resolution
+
+Examples:
+  secubox-feedback report luci-app-example --type bug --summary "Crash on load"
+  secubox-feedback resolve 1 --description "Fixed by updating config"
+  secubox-feedback search "vpn connection"
+  secubox-feedback list open
+EOF
+}
+
+# Main
+case "${1:-}" in
+	report)
+		shift
+		cmd_report "$@"
+		;;
+	resolve)
+		shift
+		cmd_resolve "$@"
+		;;
+	search)
+		shift
+		cmd_search "$@"
+		;;
+	list)
+		shift
+		cmd_list "$@"
+		;;
+	submit)
+		shift
+		cmd_submit "$@"
+		;;
+	-h|--help|help|"")
+		usage
+		;;
+	*)
+		echo "Unknown command: $1" >&2
+		usage
+		exit 1
+		;;
+esac

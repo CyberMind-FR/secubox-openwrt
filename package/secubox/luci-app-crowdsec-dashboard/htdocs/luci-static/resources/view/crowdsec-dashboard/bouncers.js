@@ -5,137 +5,138 @@
 'require ui';
 'require crowdsec-dashboard.api as api';
 
-/**
- * CrowdSec SOC - Bouncers View
- * Bouncer management with firewall integration
- */
-
 return view.extend({
-	title: _('Bouncers'),
 	bouncers: [],
 	fwStatus: {},
 
 	load: function() {
 		var link = document.createElement('link');
 		link.rel = 'stylesheet';
-		link.href = L.resource('crowdsec-dashboard/soc.css');
+		link.href = L.resource('crowdsec-dashboard/dashboard.css');
 		document.head.appendChild(link);
-		document.body.classList.add('cs-soc-fullwidth');
-
 		return Promise.all([
 			api.getBouncers(),
-			api.getFirewallBouncerStatus(),
-			api.getNftablesStats()
-		]);
+			api.getFirewallBouncerStatus()
+		]).catch(function() { return [{}, {}]; });
 	},
 
 	render: function(data) {
 		var self = this;
-		this.bouncers = (data[0] && data[0].bouncers) || data[0] || [];
+		this.bouncers = Array.isArray(data[0]) ? data[0] : (data[0].bouncers || []);
 		this.fwStatus = data[1] || {};
-		this.nftStats = data[2] || {};
 
-		var view = E('div', { 'class': 'soc-dashboard' }, [
-			this.renderHeader(),
+		var view = E('div', { 'class': 'cs-view' }, [
+			E('div', { 'class': 'cs-header' }, [
+				E('div', { 'class': 'cs-title' }, 'CrowdSec Bouncers'),
+				E('div', { 'class': 'cs-status' }, [
+					E('span', { 'class': 'cs-dot ' + (this.fwStatus.running ? 'online' : 'offline') }),
+					this.fwStatus.running ? 'Active' : 'Stopped'
+				])
+			]),
 			this.renderNav('bouncers'),
-			E('div', { 'class': 'soc-stats' }, this.renderBouncerStats()),
-			E('div', { 'class': 'soc-grid-2' }, [
-				E('div', { 'class': 'soc-card' }, [
-					E('div', { 'class': 'soc-card-header' }, [
+			E('div', { 'class': 'cs-stats' }, this.renderStats()),
+			E('div', { 'class': 'cs-grid-2' }, [
+				E('div', { 'class': 'cs-card' }, [
+					E('div', { 'class': 'cs-card-header' }, [
 						'Firewall Bouncer',
 						E('div', { 'style': 'display: flex; gap: 8px;' }, [
 							E('button', {
-								'class': 'soc-btn soc-btn-sm ' + (this.fwStatus.running ? 'danger' : 'primary'),
-								'click': L.bind(this.handleFwControl, this, this.fwStatus.running ? 'stop' : 'start')
+								'class': 'cs-btn cs-btn-sm ' + (this.fwStatus.running ? 'danger' : 'primary'),
+								'click': function() { self.fwControl(self.fwStatus.running ? 'stop' : 'start'); }
 							}, this.fwStatus.running ? 'Stop' : 'Start'),
 							E('button', {
-								'class': 'soc-btn soc-btn-sm',
-								'click': L.bind(this.handleFwControl, this, 'restart')
+								'class': 'cs-btn cs-btn-sm',
+								'click': function() { self.fwControl('restart'); }
 							}, 'Restart')
 						])
 					]),
-					E('div', { 'class': 'soc-card-body' }, this.renderFirewallStatus())
+					E('div', { 'class': 'cs-card-body' }, this.renderFwStatus())
 				]),
-				E('div', { 'class': 'soc-card' }, [
-					E('div', { 'class': 'soc-card-header' }, [
-						'Blocked IPs',
-						E('button', { 'class': 'soc-btn soc-btn-sm', 'click': L.bind(this.showBlockedIPs, this) }, 'View All')
-					]),
-					E('div', { 'class': 'soc-card-body' }, this.renderBlockedStats())
+				E('div', { 'class': 'cs-card' }, [
+					E('div', { 'class': 'cs-card-header' }, 'Blocked IPs'),
+					E('div', { 'class': 'cs-card-body' }, this.renderBlockedStats())
 				])
 			]),
-			E('div', { 'class': 'soc-card' }, [
-				E('div', { 'class': 'soc-card-header' }, [
-					'Registered Bouncers (' + this.bouncers.length + ')',
-					E('button', { 'class': 'soc-btn soc-btn-sm primary', 'click': L.bind(this.showRegisterModal, this) }, '+ Register')
+			E('div', { 'class': 'cs-card' }, [
+				E('div', { 'class': 'cs-card-header' }, [
+					'Registered Bouncers',
+					E('button', { 'class': 'cs-btn cs-btn-sm primary', 'click': function() { self.showRegister(); } }, '+ Register')
 				]),
-				E('div', { 'class': 'soc-card-body', 'id': 'bouncers-list' }, this.renderBouncers(this.bouncers))
+				E('div', { 'class': 'cs-card-body', 'id': 'bouncers-list' }, this.renderBouncers())
 			]),
-			this.renderRegisterModal()
+			E('div', { 'class': 'cs-card', 'id': 'register-form', 'style': 'display: none;' }, [
+				E('div', { 'class': 'cs-card-header' }, 'Register Bouncer'),
+				E('div', { 'class': 'cs-card-body' }, [
+					E('div', { 'class': 'cs-field' }, [
+						E('label', { 'class': 'cs-label' }, 'Bouncer Name'),
+						E('input', { 'type': 'text', 'id': 'bouncer-name', 'class': 'cs-input', 'placeholder': 'firewall-bouncer' })
+					]),
+					E('div', { 'style': 'display: flex; gap: 8px;' }, [
+						E('button', { 'class': 'cs-btn primary', 'click': function() { self.submitRegister(); } }, 'Register'),
+						E('button', { 'class': 'cs-btn', 'click': function() { self.hideRegister(); } }, 'Cancel')
+					])
+				])
+			])
 		]);
 
 		poll.add(L.bind(this.pollData, this), 15);
 		return view;
 	},
 
-	renderHeader: function() {
-		return E('div', { 'class': 'soc-header' }, [
-			E('div', { 'class': 'soc-title' }, [
-				E('svg', { 'viewBox': '0 0 24 24' }, [E('path', { 'd': 'M12 2L2 7v10l10 5 10-5V7L12 2z' })]),
-				'CrowdSec Security Operations'
-			]),
-			E('div', { 'class': 'soc-status' }, [E('span', { 'class': 'soc-status-dot online' }), 'BOUNCERS'])
-		]);
-	},
-
 	renderNav: function(active) {
-		var tabs = ['overview', 'alerts', 'decisions', 'bouncers', 'settings'];
-		return E('div', { 'class': 'soc-nav' }, tabs.map(function(t) {
+		var tabs = [
+			{ id: 'overview', label: 'Overview' },
+			{ id: 'alerts', label: 'Alerts' },
+			{ id: 'decisions', label: 'Decisions' },
+			{ id: 'bouncers', label: 'Bouncers' },
+			{ id: 'settings', label: 'Settings' }
+		];
+		return E('div', { 'class': 'cs-nav' }, tabs.map(function(t) {
 			return E('a', {
-				'href': L.url('admin/secubox/security/crowdsec/' + t),
-				'class': active === t ? 'active' : ''
-			}, t.charAt(0).toUpperCase() + t.slice(1));
+				'href': L.url('admin/secubox/services/crowdsec/' + t.id),
+				'class': active === t.id ? 'active' : ''
+			}, t.label);
 		}));
 	},
 
-	renderBouncerStats: function() {
+	renderStats: function() {
 		var active = this.bouncers.filter(function(b) { return !b.revoked; }).length;
 		var fw = this.fwStatus;
 		return [
-			E('div', { 'class': 'soc-stat ' + (active > 0 ? 'success' : 'warning') }, [
-				E('div', { 'class': 'soc-stat-value' }, String(active)),
-				E('div', { 'class': 'soc-stat-label' }, 'Active Bouncers')
+			E('div', { 'class': 'cs-stat ' + (active > 0 ? 'success' : 'warning') }, [
+				E('div', { 'class': 'cs-stat-value' }, String(active)),
+				E('div', { 'class': 'cs-stat-label' }, 'Active Bouncers')
 			]),
-			E('div', { 'class': 'soc-stat ' + (fw.running ? 'success' : 'danger') }, [
-				E('div', { 'class': 'soc-stat-value' }, fw.running ? 'ON' : 'OFF'),
-				E('div', { 'class': 'soc-stat-label' }, 'Firewall Bouncer')
+			E('div', { 'class': 'cs-stat ' + (fw.running ? 'success' : 'danger') }, [
+				E('div', { 'class': 'cs-stat-value' }, fw.running ? 'ON' : 'OFF'),
+				E('div', { 'class': 'cs-stat-label' }, 'Firewall')
 			]),
-			E('div', { 'class': 'soc-stat danger' }, [
-				E('div', { 'class': 'soc-stat-value' }, String(fw.blocked_ipv4 || 0)),
-				E('div', { 'class': 'soc-stat-label' }, 'Blocked IPv4')
+			E('div', { 'class': 'cs-stat danger' }, [
+				E('div', { 'class': 'cs-stat-value' }, String(fw.blocked_ipv4 || 0)),
+				E('div', { 'class': 'cs-stat-label' }, 'IPv4 Blocked')
 			]),
-			E('div', { 'class': 'soc-stat danger' }, [
-				E('div', { 'class': 'soc-stat-value' }, String(fw.blocked_ipv6 || 0)),
-				E('div', { 'class': 'soc-stat-label' }, 'Blocked IPv6')
+			E('div', { 'class': 'cs-stat danger' }, [
+				E('div', { 'class': 'cs-stat-value' }, String(fw.blocked_ipv6 || 0)),
+				E('div', { 'class': 'cs-stat-label' }, 'IPv6 Blocked')
 			])
 		];
 	},
 
-	renderFirewallStatus: function() {
+	renderFwStatus: function() {
 		var fw = this.fwStatus;
 		var checks = [
-			{ label: 'Service', value: fw.running ? 'Running' : 'Stopped', ok: fw.running },
-			{ label: 'Boot Start', value: fw.enabled ? 'Enabled' : 'Disabled', ok: fw.enabled },
-			{ label: 'Configured', value: fw.configured ? 'Yes' : 'No', ok: fw.configured },
-			{ label: 'IPv4 Table', value: fw.nftables_ipv4 ? 'Active' : 'Inactive', ok: fw.nftables_ipv4 },
-			{ label: 'IPv6 Table', value: fw.nftables_ipv6 ? 'Active' : 'Inactive', ok: fw.nftables_ipv6 }
+			{ label: 'Service', ok: fw.running },
+			{ label: 'Boot Start', ok: fw.enabled },
+			{ label: 'Configured', ok: fw.configured },
+			{ label: 'IPv4 Table', ok: fw.nftables_ipv4 },
+			{ label: 'IPv6 Table', ok: fw.nftables_ipv6 }
 		];
-		return E('div', { 'class': 'soc-health' }, checks.map(function(c) {
-			return E('div', { 'class': 'soc-health-item' }, [
-				E('div', { 'class': 'soc-health-icon ' + (c.ok ? 'ok' : 'error') }, c.ok ? '\u2713' : '\u2717'),
+		return E('div', { 'class': 'cs-health' }, checks.map(function(c) {
+			return E('div', { 'class': 'cs-health-item' }, [
+				E('div', { 'class': 'cs-health-icon ' + (c.ok ? 'ok' : 'error') }, c.ok ? '\u2713' : '\u2717'),
 				E('div', {}, [
-					E('div', { 'class': 'soc-health-label' }, c.label),
-					E('div', { 'class': 'soc-health-value' }, c.value)
+					E('div', { 'class': 'cs-health-label' }, c.label),
+					E('div', { 'class': 'cs-health-value' }, c.ok ? 'OK' : 'Error')
 				])
 			]);
 		}));
@@ -145,153 +146,111 @@ return view.extend({
 		var fw = this.fwStatus;
 		var total = (fw.blocked_ipv4 || 0) + (fw.blocked_ipv6 || 0);
 		if (total === 0) {
-			return E('div', { 'class': 'soc-empty' }, [
-				E('div', { 'class': 'soc-empty-icon' }, '\u2713'),
-				'No IPs currently blocked'
-			]);
+			return E('div', { 'class': 'cs-empty' }, 'No IPs blocked');
 		}
-		return E('div', { 'style': 'text-align: center; padding: 20px;' }, [
-			E('div', { 'style': 'font-size: 48px; font-weight: 700; color: var(--soc-danger);' }, String(total)),
-			E('div', { 'style': 'color: var(--soc-text-muted); margin-top: 8px;' }, 'Total Blocked IPs'),
-			E('div', { 'style': 'margin-top: 16px; display: flex; justify-content: center; gap: 24px;' }, [
+		return E('div', { 'style': 'text-align: center; padding: 1rem;' }, [
+			E('div', { 'style': 'font-size: 2rem; font-weight: 700; color: var(--cs-danger);' }, String(total)),
+			E('div', { 'style': 'color: var(--cs-muted);' }, 'Total Blocked'),
+			E('div', { 'style': 'margin-top: 1rem; display: flex; justify-content: center; gap: 1.5rem;' }, [
 				E('div', {}, [
-					E('div', { 'style': 'font-size: 20px; font-weight: 600;' }, String(fw.blocked_ipv4 || 0)),
-					E('div', { 'style': 'font-size: 11px; color: var(--soc-text-muted);' }, 'IPv4')
+					E('div', { 'style': 'font-weight: 600;' }, String(fw.blocked_ipv4 || 0)),
+					E('div', { 'style': 'font-size: 0.75rem; color: var(--cs-muted);' }, 'IPv4')
 				]),
 				E('div', {}, [
-					E('div', { 'style': 'font-size: 20px; font-weight: 600;' }, String(fw.blocked_ipv6 || 0)),
-					E('div', { 'style': 'font-size: 11px; color: var(--soc-text-muted);' }, 'IPv6')
+					E('div', { 'style': 'font-weight: 600;' }, String(fw.blocked_ipv6 || 0)),
+					E('div', { 'style': 'font-size: 0.75rem; color: var(--cs-muted);' }, 'IPv6')
 				])
 			])
 		]);
 	},
 
-	renderBouncers: function(bouncers) {
-		if (!bouncers || !bouncers.length) {
-			return E('div', { 'class': 'soc-empty' }, [
-				E('div', { 'class': 'soc-empty-icon' }, '\u26A0'),
-				'No bouncers registered'
-			]);
+	renderBouncers: function() {
+		var self = this;
+		if (!this.bouncers.length) {
+			return E('div', { 'class': 'cs-empty' }, 'No bouncers registered');
 		}
-
-		return E('table', { 'class': 'soc-table' }, [
+		return E('table', { 'class': 'cs-table' }, [
 			E('thead', {}, E('tr', {}, [
 				E('th', {}, 'Name'),
-				E('th', {}, 'IP Address'),
+				E('th', {}, 'IP'),
 				E('th', {}, 'Type'),
 				E('th', {}, 'Last Pull'),
 				E('th', {}, 'Status'),
-				E('th', {}, 'Actions')
+				E('th', {}, 'Action')
 			])),
-			E('tbody', {}, bouncers.map(L.bind(function(b) {
+			E('tbody', {}, this.bouncers.map(function(b) {
 				var lastPull = b.last_pull || b.lastPull;
-				var isActive = this.isRecentPull(lastPull);
+				var isActive = self.isRecent(lastPull);
 				return E('tr', {}, [
 					E('td', {}, E('strong', {}, b.name || 'Unknown')),
-					E('td', {}, E('span', { 'class': 'soc-ip' }, b.ip_address || b.ipAddress || 'N/A')),
-					E('td', {}, E('span', { 'class': 'soc-scenario' }, b.type || 'Unknown')),
-					E('td', { 'class': 'soc-time' }, api.formatRelativeTime(lastPull) || 'Never'),
-					E('td', {}, E('span', { 'class': 'soc-severity ' + (isActive ? 'low' : b.revoked ? 'critical' : 'medium') },
-						b.revoked ? 'REVOKED' : isActive ? 'ACTIVE' : 'IDLE')),
+					E('td', {}, E('span', { 'class': 'cs-ip' }, b.ip_address || b.ipAddress || '-')),
+					E('td', {}, b.type || 'Unknown'),
+					E('td', { 'class': 'cs-time' }, api.formatRelativeTime(lastPull) || 'Never'),
+					E('td', {}, E('span', { 'class': 'cs-badge ' + (isActive ? 'success' : b.revoked ? 'danger' : 'warning') },
+						b.revoked ? 'Revoked' : isActive ? 'Active' : 'Idle')),
 					E('td', {}, E('button', {
-						'class': 'soc-btn soc-btn-sm danger',
-						'click': L.bind(this.handleDelete, this, b.name)
+						'class': 'cs-btn cs-btn-sm danger',
+						'click': function() { self.deleteBouncer(b.name); }
 					}, 'Delete'))
 				]);
-			}, this)))
+			}))
 		]);
 	},
 
-	isRecentPull: function(lastPull) {
+	isRecent: function(lastPull) {
 		if (!lastPull) return false;
 		try {
-			var diff = (new Date() - new Date(lastPull)) / 60000;
-			return diff < 5;
+			return (new Date() - new Date(lastPull)) / 60000 < 5;
 		} catch(e) { return false; }
 	},
 
-	handleFwControl: function(action) {
+	fwControl: function(action) {
 		var self = this;
 		api.controlFirewallBouncer(action).then(function(r) {
-			if (r.success) {
-				self.showToast('Firewall bouncer ' + action + ' successful', 'success');
-				self.pollData();
-			} else {
-				self.showToast('Failed: ' + (r.error || 'Unknown'), 'error');
-			}
+			self.toast(r.success ? action + ' successful' : 'Failed: ' + (r.error || 'Unknown'),
+				r.success ? 'success' : 'error');
+			if (r.success) self.pollData();
 		});
 	},
 
-	handleDelete: function(name) {
+	deleteBouncer: function(name) {
 		var self = this;
 		if (!confirm('Delete bouncer "' + name + '"?')) return;
 		api.deleteBouncer(name).then(function(r) {
-			if (r.success) {
-				self.showToast('Bouncer deleted', 'success');
-				self.pollData();
-			} else {
-				self.showToast('Failed: ' + (r.error || 'Unknown'), 'error');
-			}
+			self.toast(r.success ? 'Deleted' : 'Failed', r.success ? 'success' : 'error');
+			if (r.success) self.pollData();
 		});
 	},
 
-	showBlockedIPs: function() {
-		var nft = this.nftStats || {};
-		var ipv4 = nft.ipv4_blocked || [];
-		var ipv6 = nft.ipv6_blocked || [];
-		var content = E('div', { 'style': 'max-height: 400px; overflow-y: auto;' }, [
-			E('h4', { 'style': 'margin-bottom: 8px;' }, 'IPv4 (' + ipv4.length + ')'),
-			ipv4.length ? E('div', { 'style': 'background: var(--soc-bg); padding: 8px; border-radius: 4px; margin-bottom: 16px;' },
-				ipv4.map(function(ip) { return E('div', { 'class': 'soc-ip', 'style': 'margin: 4px 0;' }, ip); })
-			) : E('p', { 'style': 'color: var(--soc-text-muted);' }, 'None'),
-			E('h4', { 'style': 'margin-bottom: 8px;' }, 'IPv6 (' + ipv6.length + ')'),
-			ipv6.length ? E('div', { 'style': 'background: var(--soc-bg); padding: 8px; border-radius: 4px;' },
-				ipv6.map(function(ip) { return E('div', { 'class': 'soc-ip', 'style': 'margin: 4px 0;' }, ip); })
-			) : E('p', { 'style': 'color: var(--soc-text-muted);' }, 'None')
-		]);
-		ui.showModal('Blocked IP Addresses', [content, E('div', { 'class': 'right' }, [
-			E('button', { 'class': 'soc-btn', 'click': ui.hideModal }, 'Close')
-		])]);
+	showRegister: function() {
+		document.getElementById('register-form').style.display = 'block';
 	},
 
-	renderRegisterModal: function() {
-		var self = this;
-		return E('div', { 'id': 'register-modal', 'class': 'soc-modal', 'style': 'display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); z-index:9999; align-items:center; justify-content:center;' }, [
-			E('div', { 'style': 'background:var(--soc-surface); padding:24px; border-radius:8px; min-width:320px;' }, [
-				E('h3', { 'style': 'margin:0 0 16px 0;' }, 'Register New Bouncer'),
-				E('input', { 'id': 'bouncer-name', 'class': 'soc-btn', 'style': 'width:100%; margin-bottom:16px;', 'placeholder': 'Bouncer name (e.g. firewall-bouncer)' }),
-				E('div', { 'style': 'display:flex; gap:8px; justify-content:flex-end;' }, [
-					E('button', { 'class': 'soc-btn', 'click': function() { self.closeRegisterModal(); } }, 'Cancel'),
-					E('button', { 'class': 'soc-btn primary', 'click': function() { self.submitRegister(); } }, 'Register')
-				])
-			])
-		]);
+	hideRegister: function() {
+		document.getElementById('register-form').style.display = 'none';
 	},
-
-	showRegisterModal: function() { document.getElementById('register-modal').style.display = 'flex'; },
-	closeRegisterModal: function() { document.getElementById('register-modal').style.display = 'none'; },
 
 	submitRegister: function() {
 		var self = this;
 		var name = document.getElementById('bouncer-name').value.trim();
 		if (!name || !/^[a-z0-9_-]+$/i.test(name)) {
-			self.showToast('Invalid bouncer name', 'error');
+			self.toast('Invalid name', 'error');
 			return;
 		}
 		api.registerBouncer(name).then(function(r) {
-			self.closeRegisterModal();
+			self.hideRegister();
 			if (r.success && r.api_key) {
 				ui.showModal('Bouncer Registered', [
-					E('p', { 'style': 'color: var(--soc-success);' }, 'Bouncer "' + name + '" registered!'),
-					E('p', { 'style': 'margin-top: 12px;' }, 'API Key:'),
-					E('code', { 'style': 'display: block; background: var(--soc-bg); padding: 12px; border-radius: 4px; word-break: break-all; margin: 8px 0;' }, r.api_key),
-					E('p', { 'style': 'color: var(--soc-warning); font-size: 12px;' }, 'Save this key now - it will not be shown again!'),
-					E('div', { 'class': 'right', 'style': 'margin-top: 16px;' }, [
-						E('button', { 'class': 'soc-btn', 'click': function() { ui.hideModal(); self.pollData(); } }, 'Close')
+					E('p', {}, 'Bouncer "' + name + '" registered!'),
+					E('p', { 'style': 'margin-top: 0.5rem;' }, 'API Key:'),
+					E('code', { 'style': 'display: block; background: var(--cs-bg); padding: 0.75rem; border-radius: 0.25rem; word-break: break-all;' }, r.api_key),
+					E('p', { 'style': 'color: var(--cs-warning); font-size: 0.75rem; margin-top: 0.5rem;' }, 'Save this key - it will not be shown again!'),
+					E('div', { 'class': 'right', 'style': 'margin-top: 1rem;' }, [
+						E('button', { 'class': 'cs-btn', 'click': function() { ui.hideModal(); self.pollData(); } }, 'Close')
 					])
 				]);
 			} else {
-				self.showToast('Failed: ' + (r.error || 'Unknown'), 'error');
+				self.toast('Failed: ' + (r.error || 'Unknown'), 'error');
 			}
 		});
 	},
@@ -300,24 +259,24 @@ return view.extend({
 		var self = this;
 		return Promise.all([
 			api.getBouncers(),
-			api.getFirewallBouncerStatus(),
-			api.getNftablesStats()
+			api.getFirewallBouncerStatus()
 		]).then(function(data) {
-			self.bouncers = (data[0] && data[0].bouncers) || data[0] || [];
+			self.bouncers = Array.isArray(data[0]) ? data[0] : (data[0].bouncers || []);
 			self.fwStatus = data[1] || {};
-			self.nftStats = data[2] || {};
 			var el = document.getElementById('bouncers-list');
-			if (el) dom.content(el, self.renderBouncers(self.bouncers));
+			if (el) dom.content(el, self.renderBouncers());
 		});
 	},
 
-	showToast: function(msg, type) {
-		var t = document.querySelector('.soc-toast');
+	toast: function(msg, type) {
+		var t = document.querySelector('.cs-toast');
 		if (t) t.remove();
-		t = E('div', { 'class': 'soc-toast ' + type }, msg);
+		t = E('div', { 'class': 'cs-toast ' + type }, msg);
 		document.body.appendChild(t);
 		setTimeout(function() { t.remove(); }, 4000);
 	},
 
-	handleSaveApply: null, handleSave: null, handleReset: null
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

@@ -1,0 +1,457 @@
+#!/bin/sh
+# SecuBox Feed Manager
+# Manages local and remote package feeds for SecuBox appstore
+# Copyright 2026 CyberMind <contact@cybermind.fr>
+
+FEED_DIR="/www/secubox-feed"
+OPKG_LIST="/var/opkg-lists/secubox"
+REMOTE_FEED_URL="${SECUBOX_FEED_URL:-https://feed.maegia.tv/secubox-feed}"
+GITEA_API="${SECUBOX_GITEA_API:-}"
+GITHUB_REPO="${SECUBOX_GITHUB_REPO:-}"
+
+usage() {
+    cat << EOF
+SecuBox Feed Manager - Manage local and remote package feeds
+
+Usage: secubox-feed <command> [options]
+
+Commands:
+    update              Update local feed from installed IPKs
+    sync                Sync feed to /var/opkg-lists for opkg
+    fetch <url>         Fetch IPK from URL and add to local feed
+    fetch-release <pkg> Fetch latest release from GitHub/Gitea
+    list                List packages in local feed
+    info <pkg>          Show package info
+    install <pkg>       Install package from local feed
+    install all         Install all packages from local feed
+    clean               Remove old package versions
+    serve               Start simple HTTP server for WAN access
+    export              Export feed URL for sharing
+
+Options:
+    -h, --help          Show this help
+    -v, --verbose       Verbose output
+    -q, --quiet         Quiet mode
+
+Environment:
+    SECUBOX_FEED_URL    Remote feed URL (default: $REMOTE_FEED_URL)
+    SECUBOX_GITEA_API   Gitea API URL for releases
+    SECUBOX_GITHUB_REPO GitHub repo (owner/repo) for releases
+
+EOF
+}
+
+log() {
+    [ "$QUIET" = "1" ] && return
+    echo "$@"
+}
+
+verbose() {
+    [ "$VERBOSE" = "1" ] && echo "$@"
+}
+
+error() {
+    echo "Error: $@" >&2
+}
+
+# Regenerate Packages index from IPK files
+regenerate_packages() {
+    local feed_dir="${1:-$FEED_DIR}"
+
+    log "Regenerating Packages index..."
+    rm -f "$feed_dir/Packages" "$feed_dir/Packages.gz"
+
+    local count=0
+    for pkg in "$feed_dir"/*.ipk; do
+        [ -f "$pkg" ] || continue
+
+        local tmp_dir=$(mktemp -d)
+        (
+            cd "$tmp_dir"
+            tar -xzf "$pkg" 2>/dev/null || return 1
+            tar -xzf control.tar.gz 2>/dev/null || return 1
+
+            if [ -f control ]; then
+                # Strip libc and blank lines
+                sed -e 's/^Depends: libc$//' \
+                    -e 's/^Depends: libc, /Depends: /' \
+                    -e '/^$/d' control
+                echo "Filename: $(basename "$pkg")"
+                echo "Size: $(stat -c%s "$pkg" 2>/dev/null || wc -c < "$pkg")"
+                echo "SHA256sum: $(sha256sum "$pkg" | cut -d' ' -f1)"
+                echo ""
+            fi
+        ) >> "$feed_dir/Packages"
+        rm -rf "$tmp_dir"
+        count=$((count + 1))
+    done
+
+    gzip -kf "$feed_dir/Packages" 2>/dev/null
+    log "Generated index for $count packages"
+}
+
+# Sync feed to opkg lists
+sync_feed() {
+    if [ -f "$FEED_DIR/Packages" ]; then
+        cp "$FEED_DIR/Packages" "$OPKG_LIST"
+        log "Feed synced to $OPKG_LIST"
+        log "$(grep -c '^Package:' "$OPKG_LIST") packages available"
+    else
+        error "No Packages file found. Run 'secubox-feed update' first."
+        return 1
+    fi
+}
+
+# Fetch IPK from URL
+fetch_ipk() {
+    local url="$1"
+    local filename=$(basename "$url")
+
+    log "Fetching $filename..."
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL -o "$FEED_DIR/$filename" "$url"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -O "$FEED_DIR/$filename" "$url"
+    else
+        error "Neither curl nor wget available"
+        return 1
+    fi
+
+    if [ -f "$FEED_DIR/$filename" ]; then
+        log "Downloaded: $filename"
+        regenerate_packages
+        sync_feed
+    else
+        error "Download failed"
+        return 1
+    fi
+}
+
+# Fetch latest release from GitHub
+fetch_github_release() {
+    local pkg="$1"
+    local repo="${GITHUB_REPO:-secubox/secubox-openwrt}"
+
+    log "Fetching latest release for $pkg from GitHub..."
+
+    local api_url="https://api.github.com/repos/$repo/releases/latest"
+    local release_json=$(curl -fsSL "$api_url" 2>/dev/null)
+
+    if [ -z "$release_json" ]; then
+        error "Failed to fetch release info"
+        return 1
+    fi
+
+    # Find IPK matching package name
+    local ipk_url=$(echo "$release_json" | jsonfilter -e "@.assets[*].browser_download_url" 2>/dev/null | grep -i "${pkg}.*\.ipk" | head -1)
+
+    if [ -n "$ipk_url" ]; then
+        fetch_ipk "$ipk_url"
+    else
+        error "No IPK found for $pkg in latest release"
+        return 1
+    fi
+}
+
+# Fetch from Gitea releases
+fetch_gitea_release() {
+    local pkg="$1"
+
+    if [ -z "$GITEA_API" ]; then
+        error "SECUBOX_GITEA_API not set"
+        return 1
+    fi
+
+    log "Fetching latest release for $pkg from Gitea..."
+
+    local api_url="$GITEA_API/repos/secubox/secubox-openwrt/releases/latest"
+    local release_json=$(curl -fsSL "$api_url" 2>/dev/null)
+
+    if [ -z "$release_json" ]; then
+        error "Failed to fetch release info from Gitea"
+        return 1
+    fi
+
+    local ipk_url=$(echo "$release_json" | jsonfilter -e "@.assets[*].browser_download_url" 2>/dev/null | grep -i "${pkg}.*\.ipk" | head -1)
+
+    if [ -n "$ipk_url" ]; then
+        fetch_ipk "$ipk_url"
+    else
+        error "No IPK found for $pkg in Gitea release"
+        return 1
+    fi
+}
+
+# List packages in feed
+list_packages() {
+    if [ -f "$FEED_DIR/Packages" ]; then
+        grep "^Package:" "$FEED_DIR/Packages" | sed 's/Package: //' | sort
+    else
+        error "No Packages file found"
+        return 1
+    fi
+}
+
+# Show package info
+package_info() {
+    local pkg="$1"
+
+    if [ -f "$FEED_DIR/Packages" ]; then
+        awk -v pkg="$pkg" '
+            /^Package:/ { found = ($2 == pkg) }
+            found { print }
+            found && /^$/ { exit }
+        ' "$FEED_DIR/Packages"
+    else
+        error "No Packages file found"
+        return 1
+    fi
+}
+
+# Install package from local feed (handles dependencies)
+install_package() {
+    local pkg="$1"
+
+    # Handle "all" - install all packages
+    if [ "$pkg" = "all" ]; then
+        install_all_packages
+        return $?
+    fi
+
+    local ipk_pattern="$FEED_DIR/${pkg}_"*.ipk
+
+    # Find the IPK file
+    local found=$(ls $ipk_pattern 2>/dev/null | head -1)
+
+    if [ -z "$found" ]; then
+        error "Package $pkg not found in local feed"
+        return 1
+    fi
+
+    log "Installing $pkg..."
+
+    # Get dependencies from the package
+    local deps=$(tar -xOzf "$found" control.tar.gz 2>/dev/null | tar -xOzf - ./control 2>/dev/null | grep "^Depends:" | sed 's/^Depends: //')
+
+    # Install local dependencies first
+    if [ -n "$deps" ]; then
+        for dep in $(echo "$deps" | tr ',' '\n' | sed 's/^ *//; s/ *$//; s/ (.*)//' | sort -u); do
+            [ -z "$dep" ] && continue
+            local dep_ipk=$(ls "$FEED_DIR/${dep}_"*.ipk 2>/dev/null | head -1)
+            if [ -n "$dep_ipk" ]; then
+                verbose "Installing dependency: $dep"
+                opkg install "$dep_ipk" 2>/dev/null || true
+            fi
+        done
+    fi
+
+    # Install the main package
+    opkg install "$found"
+}
+
+# Install all packages from local feed
+install_all_packages() {
+    log "Installing all packages from local feed..."
+
+    local total=0
+    local installed=0
+    local failed=0
+
+    # First pass: install secubox-core and dependencies
+    for ipk in "$FEED_DIR"/secubox-core_*.ipk "$FEED_DIR"/secubox-app_*.ipk; do
+        [ -f "$ipk" ] || continue
+        total=$((total + 1))
+        local name=$(basename "$ipk" | sed 's/_[0-9].*//')
+        log "  Installing $name..."
+        if opkg install "$ipk" 2>/dev/null; then
+            installed=$((installed + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+
+    # Second pass: install secubox-app-* backend packages
+    for ipk in "$FEED_DIR"/secubox-app-*.ipk; do
+        [ -f "$ipk" ] || continue
+        # Skip secubox-app-bonus (meta package)
+        echo "$ipk" | grep -q "secubox-app-bonus" && continue
+        total=$((total + 1))
+        local name=$(basename "$ipk" | sed 's/_[0-9].*//')
+        log "  Installing $name..."
+        if opkg install "$ipk" 2>/dev/null; then
+            installed=$((installed + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+
+    # Third pass: install luci-app-* frontend packages
+    for ipk in "$FEED_DIR"/luci-app-*.ipk; do
+        [ -f "$ipk" ] || continue
+        total=$((total + 1))
+        local name=$(basename "$ipk" | sed 's/_[0-9].*//')
+        log "  Installing $name..."
+        if opkg install "$ipk" 2>/dev/null; then
+            installed=$((installed + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+
+    # Fourth pass: install luci-theme-* packages
+    for ipk in "$FEED_DIR"/luci-theme-*.ipk; do
+        [ -f "$ipk" ] || continue
+        total=$((total + 1))
+        local name=$(basename "$ipk" | sed 's/_[0-9].*//')
+        log "  Installing $name..."
+        if opkg install "$ipk" 2>/dev/null; then
+            installed=$((installed + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+
+    log ""
+    log "Installation complete: $installed/$total succeeded, $failed failed"
+    return 0
+}
+
+# Clean old versions
+clean_old_versions() {
+    log "Cleaning old package versions..."
+
+    local removed=0
+    for name in $(ls "$FEED_DIR"/*.ipk 2>/dev/null | sed 's/_[0-9].*$//' | sort -u); do
+        local basename=$(basename "$name")
+        local versions=$(ls -t "$FEED_DIR/${basename}_"*.ipk 2>/dev/null)
+        local count=$(echo "$versions" | wc -l)
+
+        if [ "$count" -gt 1 ]; then
+            echo "$versions" | tail -n +2 | while read old; do
+                [ -f "$old" ] || continue
+                verbose "Removing: $(basename "$old")"
+                rm -f "$old"
+                removed=$((removed + 1))
+            done
+        fi
+    done
+
+    log "Removed $removed old versions"
+    regenerate_packages
+}
+
+# Start simple HTTP server
+serve_feed() {
+    local port="${1:-8080}"
+
+    if command -v uhttpd >/dev/null 2>&1; then
+        log "Feed available at: http://$(uci get network.lan.ipaddr 2>/dev/null || echo '<router-ip>'):$port/secubox-feed/"
+        log "Add to remote opkg: src/gz secubox http://<router-ip>:$port/secubox-feed"
+        # uhttpd is already running for LuCI, feed is at /www/secubox-feed/
+    else
+        log "uhttpd not available. Feed is at file:///www/secubox-feed/"
+    fi
+}
+
+# Export feed URL
+export_feed() {
+    local ip=$(uci get network.lan.ipaddr 2>/dev/null || echo "192.168.1.1")
+    local wan_ip=$(curl -s ifconfig.me 2>/dev/null || echo "")
+
+    echo "Local feed configuration:"
+    echo "  src secubox file:///www/secubox-feed"
+    echo ""
+    echo "LAN access (for other OpenWrt devices):"
+    echo "  src/gz secubox http://$ip/secubox-feed"
+    echo ""
+    if [ -n "$wan_ip" ]; then
+        echo "WAN access (if port 80 forwarded):"
+        echo "  src/gz secubox http://$wan_ip/secubox-feed"
+    fi
+    echo ""
+    echo "Remote hosted feed:"
+    echo "  src/gz secubox $REMOTE_FEED_URL"
+}
+
+# Main
+main() {
+    local cmd=""
+    VERBOSE=0
+    QUIET=0
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help) usage; exit 0 ;;
+            -v|--verbose) VERBOSE=1; shift ;;
+            -q|--quiet) QUIET=1; shift ;;
+            *)
+                if [ -z "$cmd" ]; then
+                    cmd="$1"
+                else
+                    break
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    # Ensure feed directory exists
+    mkdir -p "$FEED_DIR"
+
+    case "$cmd" in
+        update|regenerate)
+            regenerate_packages
+            sync_feed
+            ;;
+        sync)
+            sync_feed
+            ;;
+        fetch)
+            [ -z "$1" ] && { error "URL required"; exit 1; }
+            fetch_ipk "$1"
+            ;;
+        fetch-release|release)
+            [ -z "$1" ] && { error "Package name required"; exit 1; }
+            if [ -n "$GITEA_API" ]; then
+                fetch_gitea_release "$1"
+            elif [ -n "$GITHUB_REPO" ]; then
+                fetch_github_release "$1"
+            else
+                error "Set SECUBOX_GITEA_API or SECUBOX_GITHUB_REPO"
+                exit 1
+            fi
+            ;;
+        list|ls)
+            list_packages
+            ;;
+        info|show)
+            [ -z "$1" ] && { error "Package name required"; exit 1; }
+            package_info "$1"
+            ;;
+        install)
+            [ -z "$1" ] && { error "Package name required"; exit 1; }
+            install_package "$1"
+            ;;
+        clean)
+            clean_old_versions
+            ;;
+        serve)
+            serve_feed "$1"
+            ;;
+        export|url)
+            export_feed
+            ;;
+        "")
+            usage
+            exit 1
+            ;;
+        *)
+            error "Unknown command: $cmd"
+            usage
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

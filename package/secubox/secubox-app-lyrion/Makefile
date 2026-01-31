@@ -15,7 +15,7 @@ define Package/secubox-app-lyrion
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
   TITLE:=SecuBox Lyrion Media Server (Docker/LXC)
-  DEPENDS:=+uci +libuci +wget +tar
+  DEPENDS:=wget +tar
 endef
 
 define Package/secubox-app-lyrion/description

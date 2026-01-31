@@ -1,0 +1,6 @@
+#!/bin/sh
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo ""
+VERSION=$(cat /etc/secubox-version 2>/dev/null || echo "1.0.0")
+echo "{\"version\":\"$VERSION\",\"name\":\"secubox-console\"}"
