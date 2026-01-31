@@ -97,6 +97,46 @@
 
         /* Fingerprint display */
         .fingerprint { font-family: ui-monospace, monospace; font-size: 0.8rem; background: var(--bg); padding: 0.35rem 0.5rem; border-radius: 0.25rem; letter-spacing: 0.05em; }
+
+        /* Tab navigation */
+        .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+        .tab { padding: 0.5rem 1rem; background: transparent; border: none; color: var(--muted); cursor: pointer; font-weight: 500; position: relative; }
+        .tab.active { color: var(--accent); }
+        .tab.active::after { content: ''; position: absolute; bottom: -0.5rem; left: 0; right: 0; height: 2px; background: var(--accent); }
+        .tab:hover { color: var(--text); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Services mesh panel */
+        .services-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+        .node-services { background: var(--card); border-radius: 0.5rem; overflow: hidden; }
+        .node-services-header { padding: 0.75rem 1rem; background: rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+        .node-services-header h4 { font-size: 0.9rem; font-weight: 600; }
+        .services-list { padding: 0.5rem; max-height: 300px; overflow-y: auto; }
+        .service-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; border-radius: 0.25rem; margin-bottom: 0.25rem; background: rgba(0,0,0,0.15); }
+        .service-item:hover { background: rgba(0,0,0,0.3); }
+        .service-info { flex: 1; min-width: 0; }
+        .service-name { font-size: 0.85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .service-port { font-size: 0.7rem; color: var(--muted); font-family: ui-monospace, monospace; }
+        .service-status { display: flex; align-items: center; gap: 0.5rem; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-dot.running { background: var(--success); }
+        .status-dot.stopped { background: var(--danger); }
+        .status-dot.disabled { background: var(--muted); }
+        .service-link { font-size: 0.7rem; padding: 0.2rem 0.4rem; background: var(--accent); border-radius: 0.15rem; text-decoration: none; color: var(--text); white-space: nowrap; }
+        .service-link:hover { background: #818cf8; }
+
+        /* Services summary bar */
+        .services-summary { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; padding: 1rem; background: var(--card); border-radius: 0.5rem; }
+        .summary-item { display: flex; align-items: center; gap: 0.5rem; }
+        .summary-count { font-size: 1.25rem; font-weight: 700; color: var(--accent); }
+        .summary-label { font-size: 0.75rem; color: var(--muted); }
+
+        /* Search/filter */
+        .filter-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .filter-input { flex: 1; min-width: 200px; padding: 0.5rem 0.75rem; background: var(--card); border: 1px solid var(--border); border-radius: 0.25rem; color: var(--text); font-size: 0.85rem; }
+        .filter-input:focus { outline: none; border-color: var(--accent); }
+        .filter-select { padding: 0.5rem 0.75rem; background: var(--card); border: 1px solid var(--border); border-radius: 0.25rem; color: var(--text); font-size: 0.85rem; }
     </style>
 </head>
 <body>
@@ -113,9 +153,22 @@
         </div>
     </header>
 
-    <main id="dashboard">
-        <div class="card accent">
-            <div class="stat"><div class="spinner"></div><div class="stat-label">Loading...</div></div>
+    <main style="padding: 1rem;">
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('dashboard')">Dashboard</button>
+            <button class="tab" onclick="switchTab('services')">Mesh Services</button>
+        </div>
+
+        <div id="dashboard" class="tab-content active" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">
+            <div class="card accent">
+                <div class="stat"><div class="spinner"></div><div class="stat-label">Loading...</div></div>
+            </div>
+        </div>
+
+        <div id="services" class="tab-content">
+            <div class="card accent">
+                <div class="stat"><div class="spinner"></div><div class="stat-label">Loading services...</div></div>
+            </div>
         </div>
     </main>
 
@@ -137,8 +190,11 @@
     <script>
     // State
     let data = { local: {}, peers: [], snapshot: {}, services: {}, system: {} };
+    let meshServices = { nodes: [], summary: {} };
     let tools = [];
     let refreshInterval = null;
+    let activeTab = 'dashboard';
+    let serviceFilter = { search: '', status: 'all', node: 'all' };
 
     // API helpers - use same origin (HAProxy routes /factory/* to API)
     const apiBase = '/factory/';
@@ -166,6 +222,35 @@
         } catch (e) {
             console.error('Refresh failed:', e);
         }
+    }
+
+    // Refresh mesh services
+    async function refreshMeshServices() {
+        try {
+            meshServices = await api.get('mesh-services');
+            renderServices();
+        } catch (e) {
+            console.error('Mesh services refresh failed:', e);
+        }
+    }
+
+    // Switch tabs
+    function switchTab(tab) {
+        activeTab = tab;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.querySelector(`.tab[onclick*="${tab}"]`).classList.add('active');
+        document.getElementById(tab).classList.add('active');
+
+        if (tab === 'services') {
+            refreshMeshServices();
+        }
+    }
+
+    // Filter services
+    function filterServices(type, value) {
+        serviceFilter[type] = value;
+        renderServices();
     }
 
     // Load tools list
@@ -295,6 +380,124 @@
         </div>`;
 
         document.getElementById('dashboard').innerHTML = html;
+    }
+
+    // Render mesh services panel
+    function renderServices() {
+        const nodes = meshServices.nodes || [];
+
+        // Calculate summary
+        let totalNodes = nodes.length;
+        let onlineNodes = nodes.filter(n => n.status === 'online').length;
+        let totalServices = 0;
+        let runningServices = 0;
+
+        nodes.forEach(n => {
+            (n.services || []).forEach(s => {
+                totalServices++;
+                if (s.status === 'running') runningServices++;
+            });
+        });
+
+        // Get unique node names for filter
+        const nodeNames = nodes.map(n => ({ id: n.node_id, name: n.node_name }));
+
+        let html = `
+        <div class="services-summary">
+            <div class="summary-item">
+                <span class="summary-count">${onlineNodes}/${totalNodes}</span>
+                <span class="summary-label">Nodes Online</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-count">${runningServices}</span>
+                <span class="summary-label">Running Services</span>
+            </div>
+            <div class="summary-item">
+                <span class="summary-count">${totalServices}</span>
+                <span class="summary-label">Total Services</span>
+            </div>
+            <button class="sm" onclick="refreshMeshServices()">Refresh</button>
+        </div>
+
+        <div class="filter-bar">
+            <input type="text" class="filter-input" placeholder="Search services..."
+                   value="${serviceFilter.search}"
+                   oninput="filterServices('search', this.value)">
+            <select class="filter-select" onchange="filterServices('status', this.value)">
+                <option value="all" ${serviceFilter.status === 'all' ? 'selected' : ''}>All Status</option>
+                <option value="running" ${serviceFilter.status === 'running' ? 'selected' : ''}>Running</option>
+                <option value="stopped" ${serviceFilter.status === 'stopped' ? 'selected' : ''}>Stopped</option>
+            </select>
+            <select class="filter-select" onchange="filterServices('node', this.value)">
+                <option value="all" ${serviceFilter.node === 'all' ? 'selected' : ''}>All Nodes</option>
+                ${nodeNames.map(n => `<option value="${n.id}" ${serviceFilter.node === n.id ? 'selected' : ''}>${n.name}</option>`).join('')}
+            </select>
+        </div>
+
+        <div class="services-grid">`;
+
+        // Render each node's services
+        nodes.forEach(node => {
+            // Skip if node filter doesn't match
+            if (serviceFilter.node !== 'all' && serviceFilter.node !== node.node_id) return;
+
+            let services = node.services || [];
+
+            // Apply filters
+            if (serviceFilter.search) {
+                const search = serviceFilter.search.toLowerCase();
+                services = services.filter(s => s.name.toLowerCase().includes(search));
+            }
+            if (serviceFilter.status !== 'all') {
+                services = services.filter(s => s.status === serviceFilter.status);
+            }
+
+            // Skip node if no matching services
+            if (services.length === 0 && serviceFilter.search) return;
+
+            const nodeStatus = node.status || 'offline';
+            const nodeAddr = node.address || '';
+
+            html += `
+            <div class="node-services">
+                <div class="node-services-header">
+                    <h4>${node.node_name || node.node_id}${node.is_local ? ' (local)' : ''}</h4>
+                    <span class="badge ${nodeStatus === 'online' ? 'badge-ok' : 'badge-err'}">${nodeStatus}</span>
+                </div>
+                <div class="services-list">`;
+
+            if (nodeStatus !== 'online' && !node.is_local) {
+                html += `<div style="padding: 1rem; text-align: center; color: var(--muted);">Node offline</div>`;
+            } else if (services.length === 0) {
+                html += `<div style="padding: 1rem; text-align: center; color: var(--muted);">No matching services</div>`;
+            } else {
+                services.forEach(svc => {
+                    const statusClass = svc.status === 'running' ? 'running' : (svc.enabled ? 'stopped' : 'disabled');
+                    const hasPort = svc.port && svc.port !== '' && svc.port !== '0';
+                    const accessUrl = hasPort ? (node.is_local ? `http://${location.hostname}:${svc.port}` : `http://${nodeAddr}:${svc.port}`) : null;
+
+                    html += `
+                    <div class="service-item">
+                        <div class="service-info">
+                            <div class="service-name">${svc.name}</div>
+                            ${hasPort ? `<div class="service-port">Port: ${svc.port}</div>` : ''}
+                        </div>
+                        <div class="service-status">
+                            ${accessUrl ? `<a href="${accessUrl}" target="_blank" class="service-link">Open</a>` : ''}
+                            <span class="status-dot ${statusClass}" title="${svc.status}"></span>
+                        </div>
+                    </div>`;
+                });
+            }
+
+            html += `
+                </div>
+            </div>`;
+        });
+
+        html += `</div>`;
+
+        document.getElementById('services').innerHTML = html;
     }
 
     // Render tools panel
