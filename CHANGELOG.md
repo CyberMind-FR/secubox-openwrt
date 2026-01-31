@@ -5,6 +5,55 @@ All notable changes to the SecuBox project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-01-31 🎉 First Public Release
+
+### Highlights
+
+This release marks the **First Public Release** of SecuBox. All core features are now stable and production-ready.
+
+### Added
+
+- **Three-Loop Security Architecture** documentation (`DOCS/THREE-LOOP-ARCHITECTURE.md`)
+  - Loop 1 (Operational): Real-time threat detection and blocking
+  - Loop 2 (Tactical): Pattern correlation and adaptive response
+  - Loop 3 (Strategic): Threat intelligence aggregation and evolution
+- Architecture mapping showing how 38 modules integrate into the three-loop model
+- Roadmap section in README with 5-phase plan toward ANSSI certification
+- Release badge in README header
+- P2P Hub vision documentation for v0.18+ development
+- did:plc identity model analysis for decentralized node trust
+
+### Changed
+
+- README.md restructured with First Public Release announcement
+- Status changed from "Active Development" to "Production Ready"
+- Website URL updated to secubox.maegia.tv
+- Added Three-Loop Architecture diagram to README overview
+
+### Security
+
+- Documented complete Loop 1 implementation:
+  - nftables/fw4 packet filtering (< 1ms latency)
+  - netifyd DPI classification (< 10ms)
+  - CrowdSec Bouncer enforcement (< 1s propagation)
+- Documented complete Loop 2 implementation:
+  - CrowdSec Agent log parsing
+  - LAPI local decision engine
+  - Custom OpenWrt scenarios
+  - Netdata metrics correlation
+
+### Roadmap
+
+| Phase | Version | Status |
+|-------|---------|--------|
+| Core Mesh | v0.17 | ✅ Released |
+| Service Mesh | v0.18 | 🔵 Next |
+| Intelligence Mesh | v0.19 | ⚪ Planned |
+| AI Mesh | v0.20 | ⚪ Planned |
+| Certification | v1.0 | ⚪ Planned |
+
+---
+
 ## [0.16.0] - 2026-01-27
 
 ### Added
@@ -77,7 +126,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dashboard hero stats and SecuNav top tabs
 - Unified sh-page-header layout component
 
-## Module Inventory (38 modules as of 0.16.0)
+---
+
+## Module Inventory (38 modules as of 0.17.0)
 
 ### SecuBox Core (5)
 - luci-app-secubox
@@ -111,7 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - luci-app-cdn-cache
 - luci-app-media-flow
 
-### Bandwidth & Traffic (2)
+### Bandwidth & Traffic Management (2)
 - luci-app-bandwidth-manager
 - luci-app-traffic-shaper
 
@@ -128,9 +179,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - luci-app-glances
 - luci-app-netdata-dashboard
 
-### Streaming & Data (2)
+### Streaming & Data Processing (2)
 - luci-app-streamlit
 - luci-app-picobrew
 
-### IoT (1)
+### IoT & Smart Devices (1)
 - luci-app-zigbee2mqtt
