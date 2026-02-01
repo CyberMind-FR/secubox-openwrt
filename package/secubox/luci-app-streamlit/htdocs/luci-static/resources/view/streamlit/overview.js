@@ -276,7 +276,7 @@ return view.extend({
 								return E('tr', { 'class': isActive ? 'st-row-active' : '' }, [
 									E('td', {}, [
 										E('strong', {}, app.name || app.id),
-										app.description ? E('div', { 'class': 'st-app-desc' }, app.description) : null
+										app.description ? E('div', { 'class': 'st-app-desc' }, app.description) : ''
 									]),
 									E('td', { 'class': 'st-mono' }, String(app.port || 8501)),
 									E('td', {}, [
