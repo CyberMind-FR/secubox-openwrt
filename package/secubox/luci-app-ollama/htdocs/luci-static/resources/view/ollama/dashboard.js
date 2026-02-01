@@ -98,6 +98,7 @@ return view.extend({
 		var self = this;
 		var status = data[0] || {};
 		var models = (data[1] && data[1].models) || [];
+		this.isRunning = status.running;
 
 		var view = E('div', { 'class': 'ol-wrap' }, [
 			E('style', {}, this.css),
@@ -222,6 +223,16 @@ return view.extend({
 	renderModels: function(models) {
 		var self = this;
 		if (!models || models.length === 0) {
+			// If Ollama isn't running, show start prompt instead of suggestions
+			if (!this.isRunning) {
+				return E('div', {}, [
+					E('div', { 'class': 'ol-empty' }, [
+						E('div', { 'style': 'font-size: 2rem; margin-bottom: 0.5rem;' }, '\u26A0\uFE0F'),
+						E('div', {}, 'Ollama is not running'),
+						E('div', { 'style': 'margin-top: 0.5rem; font-size: 0.85rem;' }, 'Click "Start" above to launch Ollama')
+					])
+				]);
+			}
 			return E('div', {}, [
 				E('div', { 'class': 'ol-empty' }, 'No models installed'),
 				E('div', { 'class': 'ol-suggest' }, [
@@ -258,6 +269,7 @@ return view.extend({
 		]).then(function(data) {
 			var status = data[0] || {};
 			var models = (data[1] && data[1].models) || [];
+			self.isRunning = status.running;
 
 			var badge = document.getElementById('ol-status');
 			if (badge) {
