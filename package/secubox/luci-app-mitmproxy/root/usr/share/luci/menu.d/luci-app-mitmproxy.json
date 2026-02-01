@@ -1,16 +1,16 @@
 {
-	"admin/services/mitmproxy": {
+	"admin/secubox/security/mitmproxy": {
 		"title": "mitmproxy",
-		"action": { "type": "view", "path": "mitmproxy/status" },
+		"action": { "type": "firstchild" },
 		"depends": { "acl": ["luci-app-mitmproxy"] },
-		"order": 60
+		"order": 20
 	},
-	"admin/services/mitmproxy/status": {
+	"admin/secubox/security/mitmproxy/status": {
 		"title": "Status",
 		"action": { "type": "view", "path": "mitmproxy/status" },
 		"order": 1
 	},
-	"admin/services/mitmproxy/settings": {
+	"admin/secubox/security/mitmproxy/settings": {
 		"title": "Settings",
 		"action": { "type": "view", "path": "mitmproxy/settings" },
 		"order": 2
