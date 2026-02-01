@@ -1,0 +1,11 @@
+#!/bin/sh
+# SecuBox Services Status - List init.d services with running status
+# Used by LuCI portal for reliable service enumeration
+
+for s in /etc/init.d/*; do
+    [ -x "$s" ] || continue
+    n=$(basename "$s")
+    r=stopped
+    pgrep -f "$n" >/dev/null 2>&1 && r=running
+    printf "%s:%s\n" "$n" "$r"
+done

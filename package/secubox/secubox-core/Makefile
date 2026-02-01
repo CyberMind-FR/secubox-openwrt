@@ -87,6 +87,9 @@ define Package/secubox-core/install
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-feedback $(1)/usr/sbin/
 	$(INSTALL_BIN) ./root/usr/sbin/secubox-tftp-recovery $(1)/usr/sbin/
 
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) ./root/usr/bin/secubox-services-status $(1)/usr/bin/
+
 	# TFTP Recovery init script
 	$(INSTALL_BIN) ./root/etc/init.d/secubox-tftp-recovery $(1)/etc/init.d/
 
