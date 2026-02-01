@@ -1,0 +1,17 @@
+{
+	"luci-app-dnsguard": {
+		"description": "Grant access to SecuBox DNS Guard",
+		"read": {
+			"ubus": {
+				"luci.dnsguard": ["status", "get_providers", "get_config", "test_dns"]
+			},
+			"uci": ["dhcp", "network"]
+		},
+		"write": {
+			"ubus": {
+				"luci.dnsguard": ["set_provider", "smart_config", "apply"]
+			},
+			"uci": ["dhcp", "network"]
+		}
+	}
+}

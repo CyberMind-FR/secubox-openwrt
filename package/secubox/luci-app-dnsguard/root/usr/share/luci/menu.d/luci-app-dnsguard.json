@@ -1,0 +1,13 @@
+{
+	"admin/secubox/security/dnsguard": {
+		"title": "DNS Guard",
+		"order": 35,
+		"action": {
+			"type": "view",
+			"path": "dnsguard/dashboard"
+		},
+		"depends": {
+			"acl": ["luci-app-dnsguard"]
+		}
+	}
+}
