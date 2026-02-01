@@ -52,6 +52,13 @@ config known 'domoticz'
     option config_type 'docker'
     option category 'app'
 
+config known 'adguardhome'
+    option default_port '3000'
+    option config_file '/etc/adguardhome.yaml'
+    option process_name 'AdGuardHome'
+    option category 'security'
+    option description 'DNS filtering and ad blocking'
+
 # Service exposure entries (dynamically managed)
 # Example:
 # config service 'gitea'
