@@ -67,6 +67,14 @@ return view.extend({
 		.ol-model-name { font-weight: 500; }
 		.ol-model-size { font-size: 0.75rem; color: var(--ol-muted); }
 		.ol-empty { text-align: center; padding: 2rem; color: var(--ol-muted); }
+		.ol-suggest { margin-top: 1rem; }
+		.ol-suggest-title { font-size: 0.85rem; margin-bottom: 0.75rem; color: var(--ol-text); }
+		.ol-suggest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; }
+		.ol-suggest-item { background: var(--ol-bg); border: 1px solid var(--ol-border); border-radius: 0.375rem; padding: 0.75rem; cursor: pointer; transition: all 0.2s; }
+		.ol-suggest-item:hover { border-color: var(--ol-accent); }
+		.ol-suggest-name { font-weight: 600; font-size: 0.9rem; }
+		.ol-suggest-desc { font-size: 0.75rem; color: var(--ol-muted); margin-top: 0.25rem; }
+		.ol-suggest-size { font-size: 0.7rem; color: var(--ol-accent); margin-top: 0.25rem; }
 		.ol-chat-box { height: 200px; overflow-y: auto; background: var(--ol-bg); border: 1px solid var(--ol-border); border-radius: 0.375rem; padding: 0.75rem; margin-bottom: 0.75rem; font-size: 0.875rem; }
 		.ol-chat-msg { margin-bottom: 0.75rem; }
 		.ol-chat-msg.user { color: var(--ol-accent); }
@@ -200,10 +208,36 @@ return view.extend({
 		];
 	},
 
+	suggestedModels: [
+		{ name: 'tinyllama', desc: 'Tiny but capable, fast inference', size: '637 MB' },
+		{ name: 'llama3.2:1b', desc: 'Meta Llama 3.2 1B - lightweight', size: '1.3 GB' },
+		{ name: 'llama3.2:3b', desc: 'Meta Llama 3.2 3B - balanced', size: '2.0 GB' },
+		{ name: 'phi3:mini', desc: 'Microsoft Phi-3 Mini - efficient', size: '2.2 GB' },
+		{ name: 'gemma2:2b', desc: 'Google Gemma 2 2B - compact', size: '1.6 GB' },
+		{ name: 'qwen2.5:1.5b', desc: 'Alibaba Qwen 2.5 - multilingual', size: '986 MB' },
+		{ name: 'mistral', desc: 'Mistral 7B - high quality', size: '4.1 GB' },
+		{ name: 'codellama:7b', desc: 'Meta CodeLlama - coding tasks', size: '3.8 GB' }
+	],
+
 	renderModels: function(models) {
 		var self = this;
 		if (!models || models.length === 0) {
-			return E('div', { 'class': 'ol-empty' }, 'No models installed');
+			return E('div', {}, [
+				E('div', { 'class': 'ol-empty' }, 'No models installed'),
+				E('div', { 'class': 'ol-suggest' }, [
+					E('div', { 'class': 'ol-suggest-title' }, '\uD83D\uDCE5 Click to download a model:'),
+					E('div', { 'class': 'ol-suggest-grid' }, this.suggestedModels.map(function(m) {
+						return E('div', {
+							'class': 'ol-suggest-item',
+							'click': function() { self.pullModel(m.name); }
+						}, [
+							E('div', { 'class': 'ol-suggest-name' }, m.name),
+							E('div', { 'class': 'ol-suggest-desc' }, m.desc),
+							E('div', { 'class': 'ol-suggest-size' }, m.size)
+						]);
+					}))
+				])
+			]);
 		}
 		return E('div', {}, models.map(function(m) {
 			return E('div', { 'class': 'ol-model' }, [
@@ -268,17 +302,17 @@ return view.extend({
 		}).catch(function(e) { self.toast('Error: ' + e.message, false); });
 	},
 
-	pullModel: function() {
+	pullModel: function(modelName) {
 		var self = this;
 		var input = document.getElementById('pull-model');
-		var name = input ? input.value.trim() : '';
+		var name = modelName || (input ? input.value.trim() : '');
 		if (!name) { self.toast('Enter model name', false); return; }
 
-		self.toast('Pulling ' + name + '...', true);
+		self.toast('Pulling ' + name + '... (this may take a while)', true);
 		api.pull(name).then(function(r) {
 			self.toast(r && r.success ? 'Pulled ' + name : 'Failed: ' + ((r && r.error) || 'Unknown'), r && r.success);
 			if (r && r.success) {
-				input.value = '';
+				if (input) input.value = '';
 				self.refresh();
 			}
 		}).catch(function(e) { self.toast('Error: ' + e.message, false); });
