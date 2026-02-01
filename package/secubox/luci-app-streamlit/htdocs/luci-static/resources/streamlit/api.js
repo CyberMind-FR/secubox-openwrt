@@ -164,6 +164,39 @@ var callDisableInstance = rpc.declare({
 	expect: { result: {} }
 });
 
+var callGetGiteaConfig = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'get_gitea_config',
+	expect: { result: {} }
+});
+
+var callSaveGiteaConfig = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'save_gitea_config',
+	params: ['enabled', 'url', 'user', 'token'],
+	expect: { result: {} }
+});
+
+var callGiteaClone = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'gitea_clone',
+	params: ['name', 'repo'],
+	expect: { result: {} }
+});
+
+var callGiteaPull = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'gitea_pull',
+	params: ['name'],
+	expect: { result: {} }
+});
+
+var callGiteaListRepos = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'gitea_list_repos',
+	expect: { result: {} }
+});
+
 return baseclass.extend({
 	getStatus: function() {
 		return callGetStatus();
@@ -280,6 +313,26 @@ return baseclass.extend({
 
 	disableInstance: function(id) {
 		return callDisableInstance(id);
+	},
+
+	getGiteaConfig: function() {
+		return callGetGiteaConfig();
+	},
+
+	saveGiteaConfig: function(enabled, url, user, token) {
+		return callSaveGiteaConfig(enabled, url, user, token);
+	},
+
+	giteaClone: function(name, repo) {
+		return callGiteaClone(name, repo);
+	},
+
+	giteaPull: function(name) {
+		return callGiteaPull(name);
+	},
+
+	giteaListRepos: function() {
+		return callGiteaListRepos();
 	},
 
 	getDashboardData: function() {

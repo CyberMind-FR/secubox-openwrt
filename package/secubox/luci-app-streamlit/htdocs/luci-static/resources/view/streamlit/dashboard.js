@@ -7,7 +7,9 @@
 return view.extend({
 	status: {},
 	apps: [],
+	instances: [],
 	activeApp: '',
+	giteaConfig: {},
 
 	load: function() {
 		return this.refresh();
@@ -17,11 +19,15 @@ return view.extend({
 		var self = this;
 		return Promise.all([
 			api.getStatus(),
-			api.listApps()
+			api.listApps(),
+			api.listInstances(),
+			api.getGiteaConfig().catch(function() { return {}; })
 		]).then(function(r) {
 			self.status = r[0] || {};
 			self.apps = (r[1] && r[1].apps) || [];
 			self.activeApp = (r[1] && r[1].active_app) || '';
+			self.instances = r[2] || [];
+			self.giteaConfig = r[3] || {};
 		});
 	},
 
@@ -33,7 +39,7 @@ return view.extend({
 
 		var view = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Streamlit Platform')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Python data app hosting')),
+			E('div', { 'class': 'cbi-map-descr' }, _('Python data app hosting with multi-instance support')),
 
 			// Status Section
 			E('div', { 'class': 'cbi-section', 'id': 'status-section' }, [
@@ -59,6 +65,18 @@ return view.extend({
 				E('div', { 'class': 'cbi-page-actions' }, this.renderControls(installed, running))
 			]),
 
+			// Instances Section
+			E('div', { 'class': 'cbi-section', 'id': 'instances-section' }, [
+				E('h3', {}, _('Running Instances')),
+				E('div', { 'id': 'instances-table' }, this.renderInstancesTable())
+			]),
+
+			// Add Instance Section
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Add Instance')),
+				this.renderAddInstanceForm()
+			]),
+
 			// Apps Section
 			E('div', { 'class': 'cbi-section', 'id': 'apps-section' }, [
 				E('h3', {}, _('Applications')),
@@ -69,16 +87,23 @@ return view.extend({
 			E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, _('Upload App')),
 				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Python File')),
+					E('label', { 'class': 'cbi-value-title' }, _('File')),
 					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', { 'type': 'file', 'id': 'upload-file', 'accept': '.py' }),
+						E('input', { 'type': 'file', 'id': 'upload-file', 'accept': '.py,.zip' }),
 						E('button', {
 							'class': 'cbi-button cbi-button-action',
 							'style': 'margin-left: 8px',
 							'click': function() { self.uploadApp(); }
 						}, _('Upload'))
-					])
+					]),
+					E('div', { 'class': 'cbi-value-description' }, _('Accepts .py files or .zip archives'))
 				])
+			]),
+
+			// Gitea Section
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Clone from Gitea')),
+				this.renderGiteaSection()
 			])
 		]);
 
@@ -127,6 +152,105 @@ return view.extend({
 		return btns;
 	},
 
+	renderInstancesTable: function() {
+		var self = this;
+		var instances = this.instances;
+
+		if (!instances.length) {
+			return E('em', {}, _('No instances configured. Add one below.'));
+		}
+
+		var rows = instances.map(function(inst) {
+			var statusIcon = inst.enabled ?
+				E('span', { 'style': 'color:#0a0' }, '\u25CF') :
+				E('span', { 'style': 'color:#999' }, '\u25CB');
+
+			return E('tr', {}, [
+				E('td', {}, [
+					E('strong', {}, inst.id),
+					inst.name && inst.name !== inst.id ?
+						E('span', { 'style': 'color:#666; margin-left:4px' }, '(' + inst.name + ')') : ''
+				]),
+				E('td', {}, inst.app || '-'),
+				E('td', {}, ':' + inst.port),
+				E('td', { 'style': 'text-align:center' }, [
+					statusIcon,
+					E('span', { 'style': 'margin-left:4px' }, inst.enabled ? _('Enabled') : _('Disabled'))
+				]),
+				E('td', {}, [
+					inst.enabled ?
+						E('button', {
+							'class': 'cbi-button',
+							'click': function() { self.disableInstance(inst.id); }
+						}, _('Disable')) :
+						E('button', {
+							'class': 'cbi-button cbi-button-positive',
+							'click': function() { self.enableInstance(inst.id); }
+						}, _('Enable')),
+					E('button', {
+						'class': 'cbi-button cbi-button-remove',
+						'style': 'margin-left: 4px',
+						'click': function() { self.deleteInstance(inst.id); }
+					}, _('Delete'))
+				])
+			]);
+		});
+
+		return E('table', { 'class': 'table cbi-section-table' }, [
+			E('tr', { 'class': 'tr table-titles' }, [
+				E('th', { 'class': 'th' }, _('ID')),
+				E('th', { 'class': 'th' }, _('App')),
+				E('th', { 'class': 'th' }, _('Port')),
+				E('th', { 'class': 'th', 'style': 'text-align:center' }, _('Status')),
+				E('th', { 'class': 'th' }, _('Actions'))
+			])
+		].concat(rows));
+	},
+
+	renderAddInstanceForm: function() {
+		var self = this;
+		var appOptions = [E('option', { 'value': '' }, _('-- Select App --'))];
+
+		this.apps.forEach(function(app) {
+			appOptions.push(E('option', { 'value': app.name }, app.name));
+		});
+
+		// Calculate next available port
+		var usedPorts = this.instances.map(function(i) { return i.port; });
+		var nextPort = 8501;
+		while (usedPorts.indexOf(nextPort) !== -1) {
+			nextPort++;
+		}
+
+		return E('div', {}, [
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Instance ID')),
+				E('div', { 'class': 'cbi-value-field' },
+					E('input', { 'type': 'text', 'id': 'new-inst-id', 'class': 'cbi-input-text', 'placeholder': _('myapp') })
+				)
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('App')),
+				E('div', { 'class': 'cbi-value-field' },
+					E('select', { 'id': 'new-inst-app', 'class': 'cbi-input-select' }, appOptions)
+				)
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Port')),
+				E('div', { 'class': 'cbi-value-field' },
+					E('input', { 'type': 'number', 'id': 'new-inst-port', 'class': 'cbi-input-text',
+						'value': nextPort, 'min': '1024', 'max': '65535' })
+				)
+			]),
+			E('div', { 'class': 'cbi-page-actions' }, [
+				E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'click': function() { self.addInstance(); }
+				}, _('Add Instance'))
+			])
+		]);
+	},
+
 	renderAppsTable: function() {
 		var self = this;
 		var apps = this.apps;
@@ -166,11 +290,52 @@ return view.extend({
 		].concat(rows));
 	},
 
+	renderGiteaSection: function() {
+		var self = this;
+		var cfg = this.giteaConfig;
+		var enabled = cfg.enabled;
+
+		return E('div', {}, [
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Status')),
+				E('div', { 'class': 'cbi-value-field' },
+					enabled ?
+						E('span', { 'style': 'color:#0a0' }, _('Configured')) :
+						E('span', { 'style': 'color:#999' }, _('Not configured'))
+				)
+			]),
+			enabled ? E('div', {}, [
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Repository')),
+					E('div', { 'class': 'cbi-value-field' },
+						E('input', { 'type': 'text', 'id': 'gitea-repo', 'class': 'cbi-input-text',
+							'placeholder': _('owner/repo or full URL') })
+					)
+				]),
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('App Name')),
+					E('div', { 'class': 'cbi-value-field' },
+						E('input', { 'type': 'text', 'id': 'gitea-name', 'class': 'cbi-input-text',
+							'placeholder': _('myapp') })
+					)
+				]),
+				E('div', { 'class': 'cbi-page-actions' }, [
+					E('button', {
+						'class': 'cbi-button cbi-button-positive',
+						'click': function() { self.giteaClone(); }
+					}, _('Clone'))
+				])
+			]) : E('div', { 'class': 'cbi-value-description' },
+				_('Configure Gitea in Settings to enable cloning'))
+		]);
+	},
+
 	updateStatus: function() {
 		var s = this.status;
 		var statusEl = document.getElementById('svc-status');
 		var activeEl = document.getElementById('active-app');
 		var appsEl = document.getElementById('apps-table');
+		var instancesEl = document.getElementById('instances-table');
 
 		if (statusEl) {
 			statusEl.innerHTML = '';
@@ -190,6 +355,11 @@ return view.extend({
 		if (appsEl) {
 			appsEl.innerHTML = '';
 			appsEl.appendChild(this.renderAppsTable());
+		}
+
+		if (instancesEl) {
+			instancesEl.innerHTML = '';
+			instancesEl.appendChild(this.renderInstancesTable());
 		}
 	},
 
@@ -280,6 +450,91 @@ return view.extend({
 		]);
 	},
 
+	addInstance: function() {
+		var self = this;
+		var id = document.getElementById('new-inst-id').value.trim();
+		var app = document.getElementById('new-inst-app').value;
+		var port = parseInt(document.getElementById('new-inst-port').value, 10);
+
+		if (!id) {
+			ui.addNotification(null, E('p', {}, _('Please enter an instance ID')), 'error');
+			return;
+		}
+
+		if (!/^[a-zA-Z0-9_]+$/.test(id)) {
+			ui.addNotification(null, E('p', {}, _('ID can only contain letters, numbers, and underscores')), 'error');
+			return;
+		}
+
+		if (!app) {
+			ui.addNotification(null, E('p', {}, _('Please select an app')), 'error');
+			return;
+		}
+
+		if (!port || port < 1024 || port > 65535) {
+			ui.addNotification(null, E('p', {}, _('Please enter a valid port (1024-65535)')), 'error');
+			return;
+		}
+
+		api.addInstance(id, id, app, port).then(function(r) {
+			if (r && r.success) {
+				ui.addNotification(null, E('p', {}, _('Instance added: ') + id), 'success');
+				document.getElementById('new-inst-id').value = '';
+				document.getElementById('new-inst-app').value = '';
+				self.refresh().then(function() { self.updateStatus(); });
+			} else {
+				ui.addNotification(null, E('p', {}, r.message || _('Failed to add instance')), 'error');
+			}
+		});
+	},
+
+	enableInstance: function(id) {
+		var self = this;
+		api.enableInstance(id).then(function(r) {
+			if (r && r.success) {
+				ui.addNotification(null, E('p', {}, _('Instance enabled: ') + id), 'success');
+				self.refresh().then(function() { self.updateStatus(); });
+			} else {
+				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
+			}
+		});
+	},
+
+	disableInstance: function(id) {
+		var self = this;
+		api.disableInstance(id).then(function(r) {
+			if (r && r.success) {
+				ui.addNotification(null, E('p', {}, _('Instance disabled: ') + id), 'success');
+				self.refresh().then(function() { self.updateStatus(); });
+			} else {
+				ui.addNotification(null, E('p', {}, r.message || _('Failed')), 'error');
+			}
+		});
+	},
+
+	deleteInstance: function(id) {
+		var self = this;
+		ui.showModal(_('Confirm'), [
+			E('p', {}, _('Delete instance: ') + id + '?'),
+			E('div', { 'class': 'right' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', {
+					'class': 'cbi-button cbi-button-negative',
+					'style': 'margin-left: 8px',
+					'click': function() {
+						ui.hideModal();
+						api.removeInstance(id).then(function(r) {
+							if (r && r.success) {
+								ui.addNotification(null, E('p', {}, _('Instance deleted')), 'info');
+							}
+							self.refresh().then(function() { self.updateStatus(); });
+						});
+					}
+				}, _('Delete'))
+			])
+		]);
+	},
+
 	activateApp: function(name) {
 		var self = this;
 		api.setActiveApp(name).then(function(r) {
@@ -288,7 +543,7 @@ return view.extend({
 				return api.restart();
 			}
 		}).then(function() {
-			self.refresh();
+			self.refresh().then(function() { self.updateStatus(); });
 		});
 	},
 
@@ -307,7 +562,7 @@ return view.extend({
 							if (r && r.success) {
 								ui.addNotification(null, E('p', {}, _('App deleted')), 'info');
 							}
-							self.refresh();
+							self.refresh().then(function() { self.updateStatus(); });
 						});
 					}
 				}, _('Delete'))
@@ -324,22 +579,63 @@ return view.extend({
 		}
 
 		var file = fileInput.files[0];
-		var name = file.name.replace(/\.py$/, '');
+		var name = file.name.replace(/\.(py|zip)$/, '');
+		var isZip = file.name.endsWith('.zip');
 		var reader = new FileReader();
 
 		reader.onload = function(e) {
 			var content = btoa(e.target.result);
-			api.uploadApp(name, content).then(function(r) {
+			var uploadFn = isZip ? api.uploadZip(name, content, null) : api.uploadApp(name, content);
+
+			uploadFn.then(function(r) {
 				if (r && r.success) {
 					ui.addNotification(null, E('p', {}, _('App uploaded: ') + name), 'success');
 					fileInput.value = '';
-					self.refresh();
+					self.refresh().then(function() { self.updateStatus(); });
 				} else {
 					ui.addNotification(null, E('p', {}, r.message || _('Upload failed')), 'error');
 				}
 			});
 		};
 
-		reader.readAsText(file);
+		if (isZip) {
+			reader.readAsBinaryString(file);
+		} else {
+			reader.readAsText(file);
+		}
+	},
+
+	giteaClone: function() {
+		var self = this;
+		var repo = document.getElementById('gitea-repo').value.trim();
+		var name = document.getElementById('gitea-name').value.trim();
+
+		if (!repo) {
+			ui.addNotification(null, E('p', {}, _('Please enter a repository')), 'error');
+			return;
+		}
+
+		if (!name) {
+			// Extract name from repo
+			name = repo.split('/').pop().replace(/\.git$/, '');
+		}
+
+		ui.showModal(_('Cloning'), [
+			E('p', { 'class': 'spinning' }, _('Cloning ') + repo + '...')
+		]);
+
+		api.giteaClone(name, repo).then(function(r) {
+			ui.hideModal();
+			if (r && r.success) {
+				ui.addNotification(null, E('p', {}, _('Clone started: ') + name), 'success');
+				document.getElementById('gitea-repo').value = '';
+				document.getElementById('gitea-name').value = '';
+				setTimeout(function() {
+					self.refresh().then(function() { self.updateStatus(); });
+				}, 3000);
+			} else {
+				ui.addNotification(null, E('p', {}, r.message || _('Clone failed')), 'error');
+			}
+		});
 	}
 });

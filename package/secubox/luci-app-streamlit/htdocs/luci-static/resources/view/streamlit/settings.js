@@ -5,18 +5,24 @@
 
 return view.extend({
 	config: {},
+	giteaConfig: {},
 
 	load: function() {
-		return api.getConfig().then(function(c) {
-			return c || {};
+		var self = this;
+		return Promise.all([
+			api.getConfig().then(function(c) { return c || {}; }),
+			api.getGiteaConfig().catch(function() { return {}; })
+		]).then(function(r) {
+			self.config = r[0];
+			self.giteaConfig = r[1];
 		});
 	},
 
-	render: function(config) {
+	render: function() {
 		var self = this;
-		this.config = config;
-		var main = config.main || {};
-		var server = config.server || {};
+		var main = this.config.main || {};
+		var server = this.config.server || {};
+		var gitea = this.giteaConfig || {};
 
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Streamlit Settings')),
@@ -113,7 +119,49 @@ return view.extend({
 				])
 			]),
 
-			// Save button
+			// Gitea Settings
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Gitea Integration')),
+				E('div', { 'class': 'cbi-section-descr' }, _('Configure Gitea to clone apps from repositories')),
+
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Enabled')),
+					E('div', { 'class': 'cbi-value-field' },
+						E('select', { 'id': 'cfg-gitea-enabled', 'class': 'cbi-input-select' }, [
+							E('option', { 'value': '1', 'selected': gitea.enabled == true || gitea.enabled == '1' }, _('Yes')),
+							E('option', { 'value': '0', 'selected': !gitea.enabled || gitea.enabled == '0' }, _('No'))
+						])
+					)
+				]),
+
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Gitea URL')),
+					E('div', { 'class': 'cbi-value-field' },
+						E('input', { 'type': 'text', 'id': 'cfg-gitea-url', 'class': 'cbi-input-text',
+							'value': gitea.url || '', 'placeholder': 'http://192.168.255.1:3000' })
+					)
+				]),
+
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Username')),
+					E('div', { 'class': 'cbi-value-field' },
+						E('input', { 'type': 'text', 'id': 'cfg-gitea-user', 'class': 'cbi-input-text',
+							'value': gitea.user || '', 'placeholder': 'admin' })
+					)
+				]),
+
+				E('div', { 'class': 'cbi-value' }, [
+					E('label', { 'class': 'cbi-value-title' }, _('Access Token')),
+					E('div', { 'class': 'cbi-value-field' }, [
+						E('input', { 'type': 'password', 'id': 'cfg-gitea-token', 'class': 'cbi-input-text',
+							'value': '', 'placeholder': gitea.has_token ? _('(token configured)') : _('Enter token') }),
+						E('div', { 'class': 'cbi-value-description' },
+							_('Generate from Gitea: Settings > Applications > Generate Token'))
+					])
+				])
+			]),
+
+			// Save buttons
 			E('div', { 'class': 'cbi-page-actions' }, [
 				E('button', {
 					'class': 'cbi-button cbi-button-positive',
@@ -124,6 +172,9 @@ return view.extend({
 	},
 
 	save: function() {
+		var self = this;
+
+		// Save main config
 		var cfg = {
 			enabled: document.getElementById('cfg-enabled').value,
 			http_port: document.getElementById('cfg-port').value,
@@ -137,12 +188,24 @@ return view.extend({
 			theme_primary_color: document.getElementById('cfg-color').value
 		};
 
-		api.saveConfig(cfg).then(function(r) {
+		// Save Gitea config
+		var giteaEnabled = document.getElementById('cfg-gitea-enabled').value;
+		var giteaUrl = document.getElementById('cfg-gitea-url').value;
+		var giteaUser = document.getElementById('cfg-gitea-user').value;
+		var giteaToken = document.getElementById('cfg-gitea-token').value;
+
+		Promise.all([
+			api.saveConfig(cfg),
+			api.saveGiteaConfig(giteaEnabled, giteaUrl, giteaUser, giteaToken || '')
+		]).then(function(results) {
+			var r = results[0];
 			if (r && r.success) {
 				ui.addNotification(null, E('p', {}, _('Settings saved')), 'info');
 			} else {
 				ui.addNotification(null, E('p', {}, r.message || _('Save failed')), 'error');
 			}
+		}).catch(function(err) {
+			ui.addNotification(null, E('p', {}, _('Save failed: ') + err.message), 'error');
 		});
 	}
 });
