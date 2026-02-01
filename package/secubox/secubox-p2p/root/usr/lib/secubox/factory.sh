@@ -468,19 +468,22 @@ catalog_push_gitea() {
 		existing_sha=$(echo "$existing" | jsonfilter -e '@.sha' 2>/dev/null)
 	fi
 
-	# Build API request body
+	# Build API request body with branch parameter
 	local request_body
 	if [ -n "$existing_sha" ]; then
-		# Update existing file
-		request_body="{\"content\":\"${content}\",\"message\":\"${commit_msg}\",\"sha\":\"${existing_sha}\"}"
+		# Update existing file (PUT requires SHA)
+		request_body="{\"content\":\"${content}\",\"message\":\"${commit_msg}\",\"sha\":\"${existing_sha}\",\"branch\":\"main\"}"
 	else
-		# Create new file
-		request_body="{\"content\":\"${content}\",\"message\":\"${commit_msg}\"}"
+		# Create new file (POST without SHA)
+		request_body="{\"content\":\"${content}\",\"message\":\"${commit_msg}\",\"branch\":\"main\"}"
 	fi
 
-	# Push to Gitea
+	# Push to Gitea - POST for new files, PUT for updates
+	local http_method="POST"
+	[ -n "$existing_sha" ] && http_method="PUT"
+
 	local response=$(curl -s --connect-timeout 5 --max-time 15 \
-		-X PUT \
+		-X "$http_method" \
 		-H "Authorization: token $access_token" \
 		-H "Content-Type: application/json" \
 		-d "$request_body" \
@@ -527,14 +530,16 @@ catalog_push_merged_gitea() {
 	fi
 
 	local request_body
+	local http_method="POST"
 	if [ -n "$existing_sha" ]; then
-		request_body="{\"content\":\"${content}\",\"message\":\"${commit_msg}\",\"sha\":\"${existing_sha}\"}"
+		http_method="PUT"
+		request_body="{\"content\":\"${content}\",\"message\":\"${commit_msg}\",\"sha\":\"${existing_sha}\",\"branch\":\"main\"}"
 	else
-		request_body="{\"content\":\"${content}\",\"message\":\"${commit_msg}\"}"
+		request_body="{\"content\":\"${content}\",\"message\":\"${commit_msg}\",\"branch\":\"main\"}"
 	fi
 
 	curl -s --connect-timeout 5 --max-time 15 \
-		-X PUT \
+		-X "$http_method" \
 		-H "Authorization: token $access_token" \
 		-H "Content-Type: application/json" \
 		-d "$request_body" \
