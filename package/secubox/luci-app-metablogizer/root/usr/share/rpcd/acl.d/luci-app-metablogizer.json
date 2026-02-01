@@ -10,7 +10,9 @@
 					"get_publish_info",
 					"get_settings",
 					"get_hosting_status",
-					"check_site_health"
+					"check_site_health",
+					"get_tor_status",
+					"discover_vhosts"
 				],
 				"file": ["read", "list", "stat"]
 			},
@@ -28,7 +30,12 @@
 					"sync_site",
 					"save_settings",
 					"upload_file",
-					"list_files"
+					"list_files",
+					"repair_site",
+					"enable_tor",
+					"disable_tor",
+					"import_vhost",
+					"sync_config"
 				],
 				"luci.haproxy": [
 					"create_backend",

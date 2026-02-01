@@ -10,12 +10,12 @@
 			"uci": {"metablogizer": true}
 		}
 	},
-	"admin/services/metablogizer/overview": {
-		"title": "Sites",
+	"admin/services/metablogizer/dashboard": {
+		"title": "Dashboard",
 		"order": 10,
 		"action": {
 			"type": "view",
-			"path": "metablogizer/overview"
+			"path": "metablogizer/dashboard"
 		}
 	},
 	"admin/services/metablogizer/settings": {

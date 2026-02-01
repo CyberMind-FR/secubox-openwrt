@@ -213,8 +213,8 @@ method_list_sites() {
 
 _add_site() {
 	local section="$1"
-	local name domain gitea_repo ssl enabled description tor_enabled
-	local has_content last_sync onion_address
+	local name domain gitea_repo ssl enabled description tor_enabled port runtime
+	local has_content last_sync onion_address backend_running
 
 	config_get name "$section" name ""
 	config_get domain "$section" domain ""
@@ -223,6 +223,8 @@ _add_site() {
 	config_get enabled "$section" enabled "1"
 	config_get description "$section" description ""
 	config_get tor_enabled "$section" tor_enabled "0"
+	config_get port "$section" port ""
+	config_get runtime "$section" runtime ""
 
 	# Check if site has content
 	has_content="0"
@@ -242,6 +244,16 @@ _add_site() {
 		onion_address=$(get_onion_address "$name")
 	fi
 
+	# Check if backend is running (uhttpd listening on port)
+	backend_running="0"
+	if [ -n "$port" ]; then
+		# Check if port is listening using /proc/net/tcp (hex port)
+		local hex_port=$(printf '%04X' "$port" 2>/dev/null)
+		if grep -qi ":${hex_port}" /proc/net/tcp 2>/dev/null; then
+			backend_running="1"
+		fi
+	fi
+
 	json_add_object
 	json_add_string "id" "$section"
 	json_add_string "name" "$name"
@@ -253,6 +265,9 @@ _add_site() {
 	json_add_boolean "has_content" "$has_content"
 	json_add_string "last_sync" "$last_sync"
 	json_add_string "url" "https://$domain"
+	[ -n "$port" ] && json_add_int "port" "$port"
+	[ -n "$runtime" ] && json_add_string "runtime" "$runtime"
+	json_add_boolean "backend_running" "$backend_running"
 
 	# Tor hidden service info
 	json_add_boolean "tor_enabled" "$(has_tor_service "$name" && echo 1 || echo 0)"
@@ -1623,6 +1638,149 @@ method_save_settings() {
 	json_dump
 }
 
+# Discover uhttpd vhosts not tracked in metablogizer
+method_discover_vhosts() {
+	SITES_ROOT=$(get_uci main sites_root "$SITES_ROOT")
+
+	json_init
+	json_add_array "discovered"
+
+	# Find all uhttpd instances with metablog prefix
+	uci show uhttpd 2>/dev/null | grep "=uhttpd" | while read -r line; do
+		local instance=$(echo "$line" | cut -d'=' -f1 | cut -d'.' -f2)
+
+		# Skip non-metablog instances
+		case "$instance" in
+			metablog_*) ;;
+			*) continue ;;
+		esac
+
+		# Extract site ID from instance name (metablog_site_xxx -> site_xxx)
+		local section_id="${instance#metablog_}"
+
+		# Check if this site exists in metablogizer config
+		local tracked_name=$(get_uci "$section_id" name "")
+
+		# If not tracked, discover it
+		if [ -z "$tracked_name" ]; then
+			local home=$(uci -q get "uhttpd.${instance}.home")
+			local listen=$(uci -q get "uhttpd.${instance}.listen_http")
+			local port=$(echo "$listen" | sed 's/.*://')
+			local name=$(basename "$home" 2>/dev/null)
+
+			if [ -n "$name" ] && [ -n "$port" ]; then
+				json_add_object
+				json_add_string "instance" "$instance"
+				json_add_string "section_id" "$section_id"
+				json_add_string "name" "$name"
+				json_add_string "home" "$home"
+				json_add_int "port" "$port"
+				json_add_boolean "has_content" "$([ -f "$home/index.html" ] && echo 1 || echo 0)"
+				json_close_object
+			fi
+		fi
+	done
+
+	json_close_array
+	json_dump
+}
+
+# Import a discovered uhttpd vhost into metablogizer
+method_import_vhost() {
+	local instance name domain
+
+	read -r input
+	json_load "$input"
+	json_get_var instance instance
+	json_get_var name name
+	json_get_var domain domain
+
+	if [ -z "$instance" ] || [ -z "$name" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing instance or name"
+		json_dump
+		return
+	fi
+
+	# Get uhttpd instance details
+	local home=$(uci -q get "uhttpd.${instance}.home")
+	local listen=$(uci -q get "uhttpd.${instance}.listen_http")
+	local port=$(echo "$listen" | sed 's/.*://')
+
+	if [ -z "$home" ] || [ -z "$port" ]; then
+		json_init
+		json_add_boolean "success" 0
+		json_add_string "error" "uhttpd instance not found or invalid"
+		json_dump
+		return
+	fi
+
+	# Extract section_id from instance name
+	local section_id="${instance#metablog_}"
+
+	# Create metablogizer site entry
+	uci set "$UCI_CONFIG.$section_id=site"
+	uci set "$UCI_CONFIG.$section_id.name=$name"
+	uci set "$UCI_CONFIG.$section_id.domain=${domain:-$name.local}"
+	uci set "$UCI_CONFIG.$section_id.port=$port"
+	uci set "$UCI_CONFIG.$section_id.runtime=uhttpd"
+	uci set "$UCI_CONFIG.$section_id.ssl=1"
+	uci set "$UCI_CONFIG.$section_id.enabled=1"
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_string "id" "$section_id"
+	json_add_string "name" "$name"
+	json_add_int "port" "$port"
+	json_dump
+}
+
+# Sync all sites - ensure all have correct port/runtime in UCI
+method_sync_config() {
+	local fixed=0
+
+	# Iterate through all metablog uhttpd instances
+	uci show uhttpd 2>/dev/null | grep "=uhttpd" | while read -r line; do
+		local instance=$(echo "$line" | cut -d'=' -f1 | cut -d'.' -f2)
+
+		case "$instance" in
+			metablog_*) ;;
+			*) continue ;;
+		esac
+
+		local section_id="${instance#metablog_}"
+		local listen=$(uci -q get "uhttpd.${instance}.listen_http")
+		local port=$(echo "$listen" | sed 's/.*://')
+		local home=$(uci -q get "uhttpd.${instance}.home")
+
+		# Check if site exists in metablogizer
+		local tracked_name=$(get_uci "$section_id" name "")
+		if [ -n "$tracked_name" ]; then
+			# Update port and runtime if missing
+			local current_port=$(get_uci "$section_id" port "")
+			local current_runtime=$(get_uci "$section_id" runtime "")
+
+			if [ -z "$current_port" ] && [ -n "$port" ]; then
+				uci set "$UCI_CONFIG.$section_id.port=$port"
+				fixed=$((fixed + 1))
+			fi
+			if [ -z "$current_runtime" ]; then
+				uci set "$UCI_CONFIG.$section_id.runtime=uhttpd"
+				fixed=$((fixed + 1))
+			fi
+		fi
+	done
+
+	uci commit "$UCI_CONFIG"
+
+	json_init
+	json_add_boolean "success" 1
+	json_add_int "fixed" "$fixed"
+	json_dump
+}
+
 # Main RPC interface
 case "$1" in
 	list)
@@ -1645,7 +1803,10 @@ case "$1" in
 	"repair_site": { "id": "string" },
 	"enable_tor": { "id": "string" },
 	"disable_tor": { "id": "string" },
-	"get_tor_status": {}
+	"get_tor_status": {},
+	"discover_vhosts": {},
+	"import_vhost": { "instance": "string", "name": "string", "domain": "string" },
+	"sync_config": {}
 }
 EOF
 		;;
@@ -1669,6 +1830,9 @@ EOF
 			enable_tor)         method_enable_tor ;;
 			disable_tor)        method_disable_tor ;;
 			get_tor_status)     method_get_tor_status ;;
+			discover_vhosts)    method_discover_vhosts ;;
+			import_vhost)       method_import_vhost ;;
+			sync_config)        method_sync_config ;;
 			*)                  echo '{"error": "unknown method"}' ;;
 		esac
 		;;
