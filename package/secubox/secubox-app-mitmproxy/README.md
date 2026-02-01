@@ -74,6 +74,118 @@ curl -sL "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.m
 | `/srv/mitmproxy/addons/` | mitmproxy addon scripts |
 | `/srv/mitmproxy/GeoLite2-Country.mmdb` | GeoIP database |
 
+## HAProxy Integration & Routing
+
+### Traffic Flow Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      INTERNET                                   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  HAProxy (ports 80/443)                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Frontend: Receives HTTPS requests                        │   │
+│  │ ACL: Route by Host header to vhosts                      │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Backend: mitmproxy_inspector (127.0.0.1:8889)            │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  mitmproxy LXC Container (port 8889)                            │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ haproxy_router.py: Routes by Host header                 │   │
+│  │ secubox_analytics.py: Threat detection                   │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│           Logs threats to /data/threats.log                     │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Backend Services                                               │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
+│  │  Gitea   │  │ Streamlit│  │ Glances  │  │  LuCI    │        │
+│  │  :3000   │  │  :8501   │  │  :61208  │  │  :8081   │        │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Sync Routes Command
+
+Syncs HAProxy vhost configurations to mitmproxy routing table:
+
+```bash
+mitmproxyctl sync-routes
+```
+
+This generates `/srv/mitmproxy/haproxy-routes.json`:
+
+```json
+{
+  "devel.cybermind.fr": ["192.168.255.1", 3000],
+  "play.cybermind.fr": ["192.168.255.1", 8501],
+  "glances.maegia.tv": ["192.168.255.1", 61208],
+  "factory.maegia.tv": ["192.168.255.1", 7331]
+}
+```
+
+### HAProxy Integration Commands
+
+| Command | Description |
+|---------|-------------|
+| `mitmproxyctl haproxy-enable` | Enable threat inspection for all vhosts |
+| `mitmproxyctl haproxy-disable` | Disable inspection, restore direct backends |
+| `mitmproxyctl sync-routes` | Regenerate routes from current HAProxy config |
+
+### Enabling HAProxy Inspection
+
+```bash
+# Enable inspection mode
+mitmproxyctl haproxy-enable
+
+# This will:
+# 1. Create mitmproxy_inspector backend (127.0.0.1:8889)
+# 2. Store original backends in UCI (haproxy.$vhost.original_backend)
+# 3. Redirect all vhosts through mitmproxy
+# 4. Sync route mappings
+# 5. Restart services
+```
+
+### Ports
+
+| Port | Service |
+|------|---------|
+| 8888 | mitmproxy (direct proxy mode) |
+| 8889 | mitmproxy (HAProxy backend inspection) |
+| 8081 | mitmweb UI |
+
+### haproxy_router.py Addon
+
+The router addon:
+- Loads routes from `/data/haproxy-routes.json`
+- Routes requests by Host header to real backends
+- Stores original host in `flow.metadata['original_host']`
+- Falls back to LuCI (127.0.0.1:8081) for unknown hosts
+
+### Route File Format
+
+```json
+{
+  "hostname": ["ip", port],
+  "*.wildcard.domain": ["ip", port]
+}
+```
+
+Supports wildcard matching with `*.domain.tld` patterns.
+
 ## Dependencies
 
 - `lxc` - Container runtime
