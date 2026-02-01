@@ -95,6 +95,61 @@ normalize_backend_name() {
 	echo "$backend" | sed -e 's/^backend_//' -e 's/^srv_//' -e 's/^be_//' -e 's/_/-/g'
 }
 
+# Health cache directory
+HEALTH_CACHE_DIR="/tmp/secubox-catalog-health"
+HEALTH_CACHE_TTL=60  # Cache TTL in seconds
+
+# Get cached health or probe service
+get_service_health() {
+	local svc_name="$1"
+	local port="$2"
+	local ip="${3:-127.0.0.1}"
+
+	local cache_file="$HEALTH_CACHE_DIR/${svc_name}.health"
+	local now=$(date +%s)
+
+	# Check cache
+	if [ -f "$cache_file" ]; then
+		local cache_time=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+		local age=$((now - cache_time))
+		if [ $age -lt $HEALTH_CACHE_TTL ]; then
+			cat "$cache_file"
+			return
+		fi
+	fi
+
+	# Probe service (quick TCP connect test)
+	local latency=0
+	local health_status="unknown"
+
+	if [ -n "$port" ] && [ "$port" != "0" ]; then
+		# Use curl to measure HTTP response time
+		local start_ms=$(($(date +%s%N 2>/dev/null || echo "0") / 1000000))
+		if curl -s --connect-timeout 1 --max-time 2 -o /dev/null "http://${ip}:${port}/" 2>/dev/null; then
+			local end_ms=$(($(date +%s%N 2>/dev/null || echo "0") / 1000000))
+			if [ $start_ms -gt 0 ] && [ $end_ms -gt 0 ]; then
+				latency=$((end_ms - start_ms))
+			fi
+			health_status="healthy"
+		else
+			# Fallback: check if port is open via /proc/net/tcp
+			local port_hex=$(printf '%04X' "$port" 2>/dev/null)
+			if grep -qi ":${port_hex} " /proc/net/tcp 2>/dev/null; then
+				health_status="degraded"
+				latency=0
+			else
+				health_status="unhealthy"
+				latency=0
+			fi
+		fi
+	fi
+
+	# Cache the result
+	mkdir -p "$HEALTH_CACHE_DIR"
+	echo "${health_status}|${latency}" > "$cache_file"
+	echo "${health_status}|${latency}"
+}
+
 # Get service status and port from init scripts
 get_service_info() {
 	local svc_name="$1"
@@ -208,6 +263,12 @@ build_catalog() {
 
 		endpoints="$endpoints]"
 
+		# Get health with latency measurement
+		local health_data=$(get_service_health "$svc_name" "$port")
+		local health_status=$(echo "$health_data" | cut -d'|' -f1)
+		local health_latency=$(echo "$health_data" | cut -d'|' -f2)
+		[ -z "$health_latency" ] && health_latency=0
+
 		# Output service entry
 		cat << SVCEOF
 {
@@ -219,8 +280,8 @@ build_catalog() {
 	"endpoints": $endpoints,
 	"health": {
 		"last_check": "$UPDATED",
-		"status": "$([ \"$status\" = \"running\" ] && echo healthy || echo unhealthy)",
-		"latency_ms": 0
+		"status": "${health_status:-unknown}",
+		"latency_ms": ${health_latency:-0}
 	}
 }
 SVCEOF
@@ -263,6 +324,12 @@ SVCEOF
 
 				endpoints="$endpoints]"
 
+				# Get health with latency
+				local health_data=$(get_service_health "$svc_name" "$svc_port")
+				local health_status=$(echo "$health_data" | cut -d'|' -f1)
+				local health_latency=$(echo "$health_data" | cut -d'|' -f2)
+				[ -z "$health_latency" ] && health_latency=0
+
 				cat << SVCEOF
 {
 	"name": "$svc_name",
@@ -273,8 +340,8 @@ SVCEOF
 	"endpoints": $endpoints,
 	"health": {
 		"last_check": "$UPDATED",
-		"status": "$([ \"$svc_status\" = \"running\" ] && echo healthy || echo unhealthy)",
-		"latency_ms": 0
+		"status": "${health_status:-unknown}",
+		"latency_ms": ${health_latency:-0}
 	}
 }
 SVCEOF

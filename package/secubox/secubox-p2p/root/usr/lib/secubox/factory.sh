@@ -385,11 +385,15 @@ catalog_sync() {
 	catalog_merge
 
 	# Push to Gitea if enabled
+	local gitea_result=""
 	if [ "$(uci -q get secubox-p2p.gitea.enabled)" = "1" ]; then
-		catalog_push_gitea
+		# Push local node catalog
+		gitea_result=$(catalog_push_gitea)
+		# Push merged catalog
+		catalog_push_merged_gitea
 	fi
 
-	echo "{\"synced\":$synced,\"failed\":$failed}"
+	echo "{\"synced\":$synced,\"failed\":$failed,\"gitea\":\"$gitea_result\"}"
 }
 
 # Merge all catalogs into unified view (CRDT union)
@@ -425,19 +429,116 @@ catalog_merge() {
 	echo "$merged_services" > "$MERGED_CATALOG"
 }
 
-# Push catalog to Gitea repository
+# Push catalog to Gitea repository via REST API
 catalog_push_gitea() {
 	local gitea_enabled=$(uci -q get secubox-p2p.gitea.enabled)
-	[ "$gitea_enabled" = "1" ] || return 0
+	[ "$gitea_enabled" = "1" ] || { echo "gitea_disabled"; return 0; }
+
+	local server_url=$(uci -q get secubox-p2p.gitea.server_url)
+	local access_token=$(uci -q get secubox-p2p.gitea.access_token)
+	local repo_owner=$(uci -q get secubox-p2p.gitea.repo_owner)
+	local repo_name=$(uci -q get secubox-p2p.gitea.repo_name)
+
+	if [ -z "$server_url" ] || [ -z "$access_token" ] || [ -z "$repo_owner" ] || [ -z "$repo_name" ]; then
+		echo "gitea_not_configured"
+		return 1
+	fi
 
 	local node_name=$(uci -q get system.@system[0].hostname || hostname)
 
-	# This would push to secubox-catalog repo in Gitea
-	# For now, just log the action
-	logger -t factory "Catalog sync: would push to Gitea nodes/${node_name}.json"
+	# Check if local catalog exists
+	[ -f "$LOCAL_CATALOG" ] || {
+		catalog_generate_local >/dev/null 2>&1
+	}
+	[ -f "$LOCAL_CATALOG" ] || { echo "no_local_catalog"; return 1; }
 
-	# Future: use ubus call to trigger actual git push
-	# ubus call luci.secubox-p2p push_catalog_gitea "{\"file\":\"nodes/${node_name}.json\"}" 2>/dev/null
+	# Prepare catalog content for Gitea API
+	# Base64 encode the catalog JSON
+	local content=$(cat "$LOCAL_CATALOG" | base64 -w0 2>/dev/null || cat "$LOCAL_CATALOG" | base64 2>/dev/null | tr -d '\n')
+	local file_path="catalog/nodes/${node_name}.json"
+	local commit_msg="Catalog sync: ${node_name} $(date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')"
+
+	# Check if file exists to get SHA for update
+	local existing_sha=""
+	local existing=$(curl -s --connect-timeout 5 --max-time 10 \
+		-H "Authorization: token $access_token" \
+		"${server_url}/api/v1/repos/${repo_owner}/${repo_name}/contents/${file_path}" 2>/dev/null)
+
+	if echo "$existing" | grep -q '"sha"'; then
+		existing_sha=$(echo "$existing" | jsonfilter -e '@.sha' 2>/dev/null)
+	fi
+
+	# Build API request body
+	local request_body
+	if [ -n "$existing_sha" ]; then
+		# Update existing file
+		request_body="{\"content\":\"${content}\",\"message\":\"${commit_msg}\",\"sha\":\"${existing_sha}\"}"
+	else
+		# Create new file
+		request_body="{\"content\":\"${content}\",\"message\":\"${commit_msg}\"}"
+	fi
+
+	# Push to Gitea
+	local response=$(curl -s --connect-timeout 5 --max-time 15 \
+		-X PUT \
+		-H "Authorization: token $access_token" \
+		-H "Content-Type: application/json" \
+		-d "$request_body" \
+		"${server_url}/api/v1/repos/${repo_owner}/${repo_name}/contents/${file_path}" 2>/dev/null)
+
+	if echo "$response" | grep -q '"sha"'; then
+		local new_sha=$(echo "$response" | jsonfilter -e '@.content.sha' 2>/dev/null)
+		logger -t factory "Catalog pushed to Gitea: ${file_path} (sha: ${new_sha})"
+		echo "pushed:${file_path}"
+		return 0
+	else
+		local error_msg=$(echo "$response" | jsonfilter -e '@.message' 2>/dev/null || echo "unknown_error")
+		logger -t factory "Catalog push failed: $error_msg"
+		echo "error:$error_msg"
+		return 1
+	fi
+}
+
+# Push merged catalog to Gitea
+catalog_push_merged_gitea() {
+	local gitea_enabled=$(uci -q get secubox-p2p.gitea.enabled)
+	[ "$gitea_enabled" = "1" ] || return 0
+
+	local server_url=$(uci -q get secubox-p2p.gitea.server_url)
+	local access_token=$(uci -q get secubox-p2p.gitea.access_token)
+	local repo_owner=$(uci -q get secubox-p2p.gitea.repo_owner)
+	local repo_name=$(uci -q get secubox-p2p.gitea.repo_name)
+
+	[ -z "$server_url" ] || [ -z "$access_token" ] && return 1
+	[ -f "$MERGED_CATALOG" ] || return 1
+
+	local content=$(cat "$MERGED_CATALOG" | base64 -w0 2>/dev/null || cat "$MERGED_CATALOG" | base64 2>/dev/null | tr -d '\n')
+	local file_path="catalog/catalog.json"
+	local commit_msg="Merged catalog $(date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')"
+
+	# Get existing SHA if file exists
+	local existing_sha=""
+	local existing=$(curl -s --connect-timeout 5 --max-time 10 \
+		-H "Authorization: token $access_token" \
+		"${server_url}/api/v1/repos/${repo_owner}/${repo_name}/contents/${file_path}" 2>/dev/null)
+
+	if echo "$existing" | grep -q '"sha"'; then
+		existing_sha=$(echo "$existing" | jsonfilter -e '@.sha' 2>/dev/null)
+	fi
+
+	local request_body
+	if [ -n "$existing_sha" ]; then
+		request_body="{\"content\":\"${content}\",\"message\":\"${commit_msg}\",\"sha\":\"${existing_sha}\"}"
+	else
+		request_body="{\"content\":\"${content}\",\"message\":\"${commit_msg}\"}"
+	fi
+
+	curl -s --connect-timeout 5 --max-time 15 \
+		-X PUT \
+		-H "Authorization: token $access_token" \
+		-H "Content-Type: application/json" \
+		-d "$request_body" \
+		"${server_url}/api/v1/repos/${repo_owner}/${repo_name}/contents/${file_path}" >/dev/null 2>&1
 }
 
 # Get merged catalog JSON

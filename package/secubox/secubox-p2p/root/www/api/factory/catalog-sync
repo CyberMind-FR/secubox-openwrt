@@ -1,0 +1,85 @@
+#!/bin/sh
+# Factory Catalog Sync - Trigger distributed catalog synchronization
+# POST endpoint to sync catalogs with mesh peers
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: POST, OPTIONS"
+echo "Access-Control-Allow-Headers: Content-Type"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Only allow POST
+if [ "$REQUEST_METHOD" != "POST" ]; then
+	echo '{"success":false,"error":"method_not_allowed","message":"Use POST to trigger catalog sync"}'
+	exit 0
+fi
+
+# Load factory library
+. /usr/lib/secubox/factory.sh 2>/dev/null
+
+# Optionally parse request body for options
+read -r body 2>/dev/null || body="{}"
+
+# Options from request
+push_gitea=$(echo "$body" | jsonfilter -e '@.push_gitea' 2>/dev/null || echo "true")
+pull_peers=$(echo "$body" | jsonfilter -e '@.pull_peers' 2>/dev/null || echo "true")
+specific_peer=$(echo "$body" | jsonfilter -e '@.peer' 2>/dev/null)
+
+# Initialize catalog directory
+catalog_init
+
+# Generate local catalog first
+local_result=$(catalog_generate_local 2>&1)
+
+synced=0
+failed=0
+gitea_result=""
+
+# Pull from specific peer or all peers
+if [ -n "$specific_peer" ]; then
+	# Sync with specific peer only
+	result=$(catalog_pull_peer "$specific_peer" 2>&1)
+	if echo "$result" | grep -q "^pulled:"; then
+		synced=1
+	else
+		failed=1
+	fi
+elif [ "$pull_peers" = "true" ]; then
+	# Full sync with all peers
+	sync_output=$(catalog_sync 2>&1)
+	synced=$(echo "$sync_output" | jsonfilter -e '@.synced' 2>/dev/null || echo "0")
+	failed=$(echo "$sync_output" | jsonfilter -e '@.failed' 2>/dev/null || echo "0")
+	gitea_result=$(echo "$sync_output" | jsonfilter -e '@.gitea' 2>/dev/null || echo "")
+else
+	# Just regenerate local catalog and merge
+	catalog_merge
+	if [ "$push_gitea" = "true" ] && [ "$(uci -q get secubox-p2p.gitea.enabled)" = "1" ]; then
+		gitea_result=$(catalog_push_gitea 2>&1)
+		catalog_push_merged_gitea 2>&1
+	fi
+fi
+
+# Get summary stats
+node_name=$(uci -q get system.@system[0].hostname || hostname)
+updated=$(date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')
+peer_count=$(ls -1 "$CATALOG_DIR/peers/"*.json 2>/dev/null | wc -l)
+
+# Output result
+cat << EOF
+{
+	"success": true,
+	"node_name": "$node_name",
+	"updated": "$updated",
+	"peers_synced": $synced,
+	"peers_failed": $failed,
+	"peer_catalogs": $peer_count,
+	"gitea": "$gitea_result",
+	"local_catalog": "$LOCAL_CATALOG",
+	"merged_catalog": "$MERGED_CATALOG"
+}
+EOF

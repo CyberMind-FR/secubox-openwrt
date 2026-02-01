@@ -69,6 +69,7 @@ define Package/secubox-p2p/install
 	$(INSTALL_BIN) ./root/www/api/factory/pubkey $(1)/www/api/factory/
 	$(INSTALL_BIN) ./root/www/api/factory/mesh-services $(1)/www/api/factory/
 	$(INSTALL_BIN) ./root/www/api/factory/catalog $(1)/www/api/factory/
+	$(INSTALL_BIN) ./root/www/api/factory/catalog-sync $(1)/www/api/factory/
 
 	# Factory Web UI
 	$(INSTALL_DIR) $(1)/www/factory
