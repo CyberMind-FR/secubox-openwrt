@@ -3,7 +3,7 @@
 'require ui';
 'require fs';
 'require metablogizer.api as api';
-'require metablogizer/qrcode as qrcode';
+'require metablogizer.qrcode as qrcode';
 
 return view.extend({
 	status: {},
@@ -27,6 +27,22 @@ return view.extend({
 		var sites = this.sites;
 		var hosting = this.hosting;
 
+		// Load hosting status asynchronously after render
+		api.getHostingStatus().then(function(h) {
+			self.hosting = h || {};
+			var haproxyEl = document.getElementById('haproxy-status');
+			var ipEl = document.getElementById('public-ip');
+			if (haproxyEl) {
+				haproxyEl.innerHTML = '';
+				haproxyEl.appendChild(h.haproxy_status === 'running' ?
+					E('span', { 'style': 'color:#0a0' }, _('Running')) :
+					E('span', { 'style': 'color:#a00' }, _('Stopped')));
+			}
+			if (ipEl) {
+				ipEl.textContent = h.public_ip || '-';
+			}
+		}).catch(function() {});
+
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('MetaBlogizer')),
 			E('div', { 'class': 'cbi-map-descr' }, _('Static site publisher with HAProxy vhosts and SSL')),
@@ -41,13 +57,11 @@ return view.extend({
 					]),
 					E('tr', { 'class': 'tr' }, [
 						E('td', { 'class': 'td' }, _('HAProxy')),
-						E('td', { 'class': 'td' }, hosting.haproxy_status === 'running' ?
-							E('span', { 'style': 'color:#0a0' }, _('Running')) :
-							E('span', { 'style': 'color:#a00' }, _('Stopped')))
+						E('td', { 'class': 'td', 'id': 'haproxy-status' }, E('em', {}, _('Loading...')))
 					]),
 					E('tr', { 'class': 'tr' }, [
 						E('td', { 'class': 'td' }, _('Public IP')),
-						E('td', { 'class': 'td' }, hosting.public_ip || '-')
+						E('td', { 'class': 'td', 'id': 'public-ip' }, _('Loading...'))
 					]),
 					E('tr', { 'class': 'tr' }, [
 						E('td', { 'class': 'td' }, _('Sites')),

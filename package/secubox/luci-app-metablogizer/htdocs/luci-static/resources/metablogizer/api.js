@@ -202,13 +202,12 @@ return baseclass.extend({
 		var self = this;
 		return Promise.all([
 			self.getStatus(),
-			self.listSites(),
-			self.getHostingStatus().catch(function() { return {}; })
+			self.listSites()
 		]).then(function(results) {
 			return {
 				status: results[0] || {},
 				sites: results[1] || [],
-				hosting: results[2] || {}
+				hosting: {}
 			};
 		});
 	}
