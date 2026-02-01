@@ -1586,7 +1586,12 @@ _add_exposed_service() {
 	# Check if service is running by process name
 	running=0
 	if [ -n "$process_name" ]; then
-		pgrep -f "$process_name" >/dev/null 2>&1 && running=1
+		if pgrep -f "$process_name" >/dev/null 2>&1; then
+			running=1
+			# If running, detect actual listening port from netstat
+			local detected_port=$(netstat -tlnp 2>/dev/null | grep "$process_name" | awk '{print $4}' | awk -F: '{print $NF}' | head -1)
+			[ -n "$detected_port" ] && actual_port="$detected_port"
+		fi
 	fi
 
 	# Track known service ports for dedup (stored in temp file)
