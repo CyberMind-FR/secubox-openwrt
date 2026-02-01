@@ -93,7 +93,7 @@ return view.extend({
 		];
 		return E('div', { 'class': 'cs-nav' }, tabs.map(function(t) {
 			return E('a', {
-				'href': L.url('admin/secubox/services/crowdsec/' + t.id),
+				'href': L.url('admin/secubox/security/crowdsec/' + t.id),
 				'class': active === t.id ? 'active' : ''
 			}, t.label);
 		}));
