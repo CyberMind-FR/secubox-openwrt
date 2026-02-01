@@ -1559,7 +1559,8 @@ method_list_exposed_services() {
 
 _add_exposed_service() {
 	local section="$1"
-	local default_port config_path config_file category process_name description actual_port running
+	local default_port config_path config_file category process_name description
+	local reserved_port listening running
 
 	config_get default_port "$section" default_port ""
 	config_get config_path "$section" config_path ""
@@ -1570,40 +1571,45 @@ _add_exposed_service() {
 
 	[ -z "$default_port" ] && return
 
-	# Try to get actual port from UCI config if available
-	actual_port="$default_port"
+	# Get reserved port from UCI config (takes precedence over default)
+	reserved_port="$default_port"
 	if [ -n "$config_path" ]; then
 		local configured_port=$(uci -q get "$config_path" 2>/dev/null)
-		[ -n "$configured_port" ] && actual_port="$configured_port"
+		[ -n "$configured_port" ] && reserved_port="$configured_port"
 	fi
 
-	# For YAML config files, try to extract port (e.g., AdGuardHome)
+	# For YAML config files, try to extract port
 	if [ -n "$config_file" ] && [ -f "$config_file" ]; then
 		local yaml_port=$(grep -E "^\s*port:\s*[0-9]+" "$config_file" 2>/dev/null | head -1 | awk '{print $2}')
-		[ -n "$yaml_port" ] && actual_port="$yaml_port"
+		[ -n "$yaml_port" ] && reserved_port="$yaml_port"
 	fi
 
-	# Check if service is running by process name
+	# Check if reserved port is actually listening
+	listening=0
 	running=0
-	if [ -n "$process_name" ]; then
-		if pgrep -f "$process_name" >/dev/null 2>&1; then
+	if netstat -tlnp 2>/dev/null | grep -qE ":${reserved_port}\s"; then
+		listening=1
+		# Verify process name if specified
+		if [ -n "$process_name" ]; then
+			if netstat -tlnp 2>/dev/null | grep ":${reserved_port}\s" | grep -q "$process_name"; then
+				running=1
+			fi
+		else
 			running=1
-			# If running, detect actual listening port from netstat
-			local detected_port=$(netstat -tlnp 2>/dev/null | grep "$process_name" | awk '{print $4}' | awk -F: '{print $NF}' | head -1)
-			[ -n "$detected_port" ] && actual_port="$detected_port"
 		fi
 	fi
 
-	# Track known service ports for dedup (stored in temp file)
-	echo "$actual_port" >> /tmp/.known_service_ports
+	# Track reserved ports for dedup (only reserve what's configured)
+	echo "$reserved_port" >> /tmp/.known_service_ports
 
 	json_add_object
 	json_add_string "id" "$section"
 	json_add_string "name" "$section"
-	json_add_int "port" "$actual_port"
+	json_add_int "port" "$reserved_port"
 	json_add_string "address" "127.0.0.1"
 	json_add_string "category" "$category"
 	json_add_boolean "dynamic" 0
+	json_add_boolean "listening" "$listening"
 	json_add_boolean "running" "$running"
 	[ -n "$description" ] && json_add_string "description" "$description"
 	[ -n "$process_name" ] && json_add_string "process" "$process_name"

@@ -18,9 +18,11 @@ config ports 'ranges'
 
 # Known service definitions with default ports
 config known 'gitea'
-    option default_port '3000'
+    option default_port '3001'
     option config_path 'gitea.main.http_port'
+    option process_name 'gitea'
     option category 'app'
+    option description 'Self-hosted Git service'
 
 config known 'streamlit'
     option default_port '8501'
