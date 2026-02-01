@@ -356,12 +356,13 @@ function getDashboardData() {
 		callGetStatsByType(),
 		callGetBlockedIPs(),
 		callGetSecurityStats(),
-		callNdpidStatus().catch(function() { return { running: false }; }),
+		callNdpidStatus().catch(function() { return { running: false, dpi_available: false }; }),
 		callNdpidFlows().catch(function() { return { flows: [] }; }),
 		callNdpidTopApps().catch(function() { return { applications: [] }; })
 	]).then(function(results) {
 		var ndpidFlows = results[6].flows || [];
 		var ndpidApps = results[7].applications || [];
+		var ndpidStatus = results[5] || {};
 
 		// Build device list from ndpid flows
 		var devicesMap = {};
@@ -403,6 +404,10 @@ function getDashboardData() {
 			return dev;
 		});
 
+		// DPI is available if either ndpid or netifyd is running
+		var dpiRunning = ndpidStatus.running || ndpidStatus.netifyd_running || ndpidStatus.dpi_available || false;
+		var dpiUptime = ndpidStatus.uptime || ndpidStatus.netifyd_uptime || 0;
+
 		return {
 			status: results[0] || {},
 			threats: results[1].threats || [],
@@ -410,8 +415,11 @@ function getDashboardData() {
 			blocked: results[3].blocked || [],
 			securityStats: results[4] || {},
 			ndpid: {
-				running: results[5].running || false,
-				uptime: results[5].uptime || 0
+				running: dpiRunning,
+				uptime: dpiUptime,
+				ndpid_running: ndpidStatus.running || false,
+				netifyd_running: ndpidStatus.netifyd_running || false,
+				flow_count: ndpidStatus.flow_count || 0
 			},
 			devices: devices,
 			topApps: ndpidApps,

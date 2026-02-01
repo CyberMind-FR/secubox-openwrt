@@ -1,0 +1,53 @@
+# CrowdSec parser for SecuBox mitmproxy threat logs
+# Parses JSON threat events from mitmproxy analytics addon
+
+onsuccess: next_stage
+name: secubox/mitmproxy-threats
+description: "Parse SecuBox mitmproxy threat detection logs (JSON)"
+filter: "evt.Line.Labels.type == 'mitmproxy'"
+statics:
+  - parsed: source_ip
+    expression: JsonExtract(evt.Line.Raw, "source_ip")
+  - parsed: timestamp
+    expression: JsonExtract(evt.Line.Raw, "timestamp")
+  - parsed: request
+    expression: JsonExtract(evt.Line.Raw, "request")
+  - parsed: host
+    expression: JsonExtract(evt.Line.Raw, "host")
+  - parsed: user_agent
+    expression: JsonExtract(evt.Line.Raw, "user_agent")
+  - parsed: threat_type
+    expression: JsonExtract(evt.Line.Raw, "type")
+  - parsed: pattern
+    expression: JsonExtract(evt.Line.Raw, "pattern")
+  - parsed: category
+    expression: JsonExtract(evt.Line.Raw, "category")
+  - parsed: severity
+    expression: JsonExtract(evt.Line.Raw, "severity")
+  - parsed: cve
+    expression: JsonExtract(evt.Line.Raw, "cve")
+  - parsed: response_code
+    expression: JsonExtract(evt.Line.Raw, "response_code")
+  - parsed: is_bot
+    expression: JsonExtract(evt.Line.Raw, "is_bot")
+  - parsed: country
+    expression: JsonExtract(evt.Line.Raw, "country")
+  - meta: log_type
+    value: mitmproxy_threat
+  - meta: service
+    value: mitmproxy
+  - meta: source_ip
+    expression: JsonExtract(evt.Line.Raw, "source_ip")
+---
+# Filter for critical/high severity threats only (to avoid noise)
+onsuccess: next_stage
+name: secubox/mitmproxy-high-severity
+description: "Filter high severity mitmproxy threats for banning"
+filter: "evt.Meta.log_type == 'mitmproxy_threat' && evt.Parsed.severity in ['critical', 'high']"
+statics:
+  - meta: threat_severity
+    expression: evt.Parsed.severity
+  - meta: threat_type
+    expression: evt.Parsed.threat_type
+  - meta: attack_pattern
+    expression: evt.Parsed.pattern

@@ -45,6 +45,16 @@ config whitelist 'whitelist'
 	# list bypass_ip 'x.x.x.x'
 	# list bypass_domain 'example.com'
 
+# HAProxy backend inspection mode
+config haproxy_router 'haproxy_router'
+	option enabled '0'
+	# Port HAProxy sends traffic to
+	option listen_port '8889'
+	# Enable threat detection on HAProxy traffic
+	option threat_detection '1'
+	# Routes file (auto-generated from HAProxy UCI)
+	option routes_file '/srv/mitmproxy/haproxy-routes.json'
+
 # CDN/MediaFlow filtering addon
 config filtering 'filtering'
 	option enabled '0'
@@ -57,7 +67,7 @@ config filtering 'filtering'
 	# Block ads and trackers
 	option block_ads '0'
 	# Custom filter script path
-	option addon_script '/etc/mitmproxy/addons/secubox_filter.py'
+	option addon_script '/data/addons/secubox_analytics.py'
 
 # Capture settings
 config capture 'capture'

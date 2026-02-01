@@ -86,7 +86,8 @@ return L.view.extend({
 						'🛡️ CrowdSec'
 					]),
 					E('span', { 'class': 'service-badge ' + (ndpid.running ? 'active' : 'inactive') }, [
-						'📡 nDPId'
+						'📡 DPI',
+						ndpid.flow_count ? ' (' + ndpid.flow_count + ')' : ''
 					])
 				])
 			]),

@@ -27,6 +27,9 @@ Commands:
   cert            Show CA certificate info / export path
   firewall-setup  Setup nftables rules for transparent mode
   firewall-clear  Remove nftables transparent mode rules
+  sync-routes     Sync HAProxy backends to mitmproxy routes
+  haproxy-enable  Enable HAProxy backend inspection mode
+  haproxy-disable Disable HAProxy backend inspection mode
   service-run     Internal: run container under procd
   service-stop    Stop container
 
@@ -36,8 +39,13 @@ Modes (configure in /etc/config/mitmproxy):
   upstream     - Forward to upstream proxy
   reverse      - Reverse proxy mode
 
-Web Interface: http://<router-ip>:8081
+HAProxy Integration:
+  When enabled, HAProxy backends route through mitmproxy for
+  threat detection. Use 'mitmproxyctl haproxy-enable' to setup.
+
+Web Interface: http://<router-ip>:8082
 Proxy Port: 8888
+HAProxy Port: 8889
 EOF
 }
 
@@ -84,7 +92,13 @@ load_config() {
 	filter_cdn="$(uci_get filtering.filter_cdn || echo 0)"
 	filter_media="$(uci_get filtering.filter_media || echo 0)"
 	block_ads="$(uci_get filtering.block_ads || echo 0)"
-	addon_script="$(uci_get filtering.addon_script || echo /etc/mitmproxy/addons/secubox_filter.py)"
+	addon_script="$(uci_get filtering.addon_script || echo /data/addons/secubox_analytics.py)"
+
+	# HAProxy router settings
+	haproxy_router_enabled="$(uci_get haproxy_router.enabled || echo 0)"
+	haproxy_listen_port="$(uci_get haproxy_router.listen_port || echo 8889)"
+	haproxy_threat_detection="$(uci_get haproxy_router.threat_detection || echo 1)"
+	haproxy_routes_file="$(uci_get haproxy_router.routes_file || echo /srv/mitmproxy/haproxy-routes.json)"
 }
 
 ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
@@ -367,21 +381,39 @@ WEB_HOST="${MITMPROXY_WEB_HOST:-0.0.0.0}"
 ADDON_SCRIPT="${MITMPROXY_ADDON_SCRIPT:-}"
 FILTERING_ENABLED="${MITMPROXY_FILTERING_ENABLED:-0}"
 
+# HAProxy router mode
+HAPROXY_ROUTER_ENABLED="${MITMPROXY_HAPROXY_ROUTER_ENABLED:-0}"
+HAPROXY_LISTEN_PORT="${MITMPROXY_HAPROXY_LISTEN_PORT:-8889}"
+HAPROXY_ROUTES_FILE="${MITMPROXY_HAPROXY_ROUTES_FILE:-/data/haproxy-routes.json}"
+
 # Build args
 ARGS="--listen-host 0.0.0.0 --listen-port $PROXY_PORT --set confdir=/data"
 ARGS="$ARGS --web-host $WEB_HOST --web-port $WEB_PORT --no-web-open-browser"
 
+# Configure mode
 case "$MODE" in
     transparent) ARGS="$ARGS --mode transparent" ;;
     upstream) [ -n "$UPSTREAM_PROXY" ] && ARGS="$ARGS --mode upstream:$UPSTREAM_PROXY" ;;
     reverse) [ -n "$REVERSE_TARGET" ] && ARGS="$ARGS --mode reverse:$REVERSE_TARGET" ;;
 esac
 
+# HAProxy router mode: add additional listening port for HAProxy traffic
+if [ "$HAPROXY_ROUTER_ENABLED" = "1" ]; then
+    ARGS="$ARGS --mode regular@$HAPROXY_LISTEN_PORT"
+    echo "HAProxy router mode: listening on port $HAPROXY_LISTEN_PORT"
+
+    # Load HAProxy router addon
+    if [ -f "/data/addons/haproxy_router.py" ]; then
+        ARGS="$ARGS -s /data/addons/haproxy_router.py"
+        echo "Loading HAProxy router addon"
+    fi
+fi
+
 [ "$SSL_INSECURE" = "1" ] && ARGS="$ARGS --ssl-insecure"
 [ "$ANTICACHE" = "1" ] && ARGS="$ARGS --anticache"
 [ "$ANTICOMP" = "1" ] && ARGS="$ARGS --anticomp"
 
-# Load addon script if filtering is enabled
+# Load analytics addon if filtering is enabled
 if [ "$FILTERING_ENABLED" = "1" ] && [ -n "$ADDON_SCRIPT" ] && [ -f "$ADDON_SCRIPT" ]; then
     ARGS="$ARGS -s $ADDON_SCRIPT"
     echo "Loading addon: $ADDON_SCRIPT"
@@ -390,6 +422,7 @@ fi
 rm -f /data/.mitmproxy_token /tmp/mitmweb.log
 
 echo "Starting mitmweb..."
+echo "Command: mitmweb $ARGS"
 
 # Start mitmweb in background, output to log file
 /usr/local/bin/mitmweb $ARGS 2>&1 | tee /tmp/mitmweb.log &
@@ -409,7 +442,9 @@ while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
         TOKEN=$(grep -o 'token=[a-zA-Z0-9_-]*' /tmp/mitmweb.log 2>/dev/null | head -1 | cut -d= -f2)
         if [ -n "$TOKEN" ]; then
             echo "$TOKEN" > /data/.mitmproxy_token
+            chmod 644 /data/.mitmproxy_token
             echo "Token captured: $(echo "$TOKEN" | cut -c1-8)..."
+            echo "Web UI: http://$WEB_HOST:$WEB_PORT/?token=$TOKEN"
             break
         fi
     fi
@@ -627,6 +662,11 @@ lxc.environment = MITMPROXY_FILTER_CDN=$filter_cdn
 lxc.environment = MITMPROXY_FILTER_MEDIA=$filter_media
 lxc.environment = MITMPROXY_BLOCK_ADS=$block_ads
 lxc.environment = MITMPROXY_LOG_FILE=/data/requests.log
+
+# HAProxy router mode
+lxc.environment = MITMPROXY_HAPROXY_ROUTER_ENABLED=$haproxy_router_enabled
+lxc.environment = MITMPROXY_HAPROXY_LISTEN_PORT=$haproxy_listen_port
+lxc.environment = MITMPROXY_HAPROXY_ROUTES_FILE=/data/haproxy-routes.json
 
 # Capabilities
 lxc.cap.drop = sys_admin sys_module mac_admin mac_override
@@ -870,6 +910,205 @@ cmd_service_stop() {
 	lxc_stop
 }
 
+# =============================================================================
+# HAPROXY BACKEND INSPECTION
+# =============================================================================
+
+cmd_sync_routes() {
+	load_config
+
+	log_info "Syncing HAProxy backends to mitmproxy routes..."
+
+	local routes_file="$data_path/haproxy-routes.json"
+	local tmp_file="/tmp/haproxy-routes.tmp"
+	local count=0
+
+	# Start JSON
+	echo "{" > "$tmp_file"
+
+	# Get all vhosts - avoid subshell by using temp file
+	local vhosts_file="/tmp/haproxy-vhosts.tmp"
+	uci show haproxy 2>/dev/null | grep "=vhost" | cut -d'=' -f1 | cut -d'.' -f2 > "$vhosts_file"
+
+	while read vhost; do
+		[ -z "$vhost" ] && continue
+
+		local domain=$(uci -q get haproxy.$vhost.domain)
+		local backend=$(uci -q get haproxy.$vhost.backend)
+
+		# If currently using mitmproxy_inspector, use the stored original backend
+		if [ "$backend" = "mitmproxy_inspector" ]; then
+			backend=$(uci -q get haproxy.$vhost.original_backend)
+		fi
+
+		# Skip fallback, luci, and mitmproxy backends
+		case "$backend" in
+			fallback|luci|luci_default|mitmproxy_inspector|"") continue ;;
+		esac
+
+		if [ -n "$domain" ] && [ -n "$backend" ]; then
+			local ip=""
+			local port=""
+
+			# Method 1: Check for inline server field (old style)
+			local server=$(uci -q get haproxy.$backend.server)
+			if [ -n "$server" ]; then
+				# Parse server spec: "name ip:port check [options]"
+				local addr=$(echo "$server" | awk '{print $2}')
+				ip=$(echo "$addr" | cut -d':' -f1)
+				port=$(echo "$addr" | cut -d':' -f2)
+				# Handle backends without explicit port
+				[ "$ip" = "$port" ] && port="80"
+			fi
+
+			# Method 2: Check for separate server section (new style)
+			if [ -z "$ip" ]; then
+				# Find server section that references this backend
+				local server_section=$(uci show haproxy 2>/dev/null | grep "\.backend='$backend'" | grep "=server" | head -1 | cut -d'=' -f1 | cut -d'.' -f2)
+				if [ -z "$server_section" ]; then
+					# Try pattern: backend_name_servername=server
+					server_section=$(uci show haproxy 2>/dev/null | grep "^haproxy\.${backend}_.*=server" | head -1 | cut -d'=' -f1 | cut -d'.' -f2)
+				fi
+
+				if [ -n "$server_section" ]; then
+					ip=$(uci -q get haproxy.$server_section.address)
+					port=$(uci -q get haproxy.$server_section.port)
+				fi
+			fi
+
+			# Only add route if we found valid ip:port
+			if [ -n "$ip" ] && [ -n "$port" ]; then
+				if [ $count -gt 0 ]; then
+					echo "," >> "$tmp_file"
+				fi
+				count=$((count + 1))
+
+				printf '  "%s": ["%s", %s]' "$domain" "$ip" "$port" >> "$tmp_file"
+				log_info "  $domain -> $ip:$port (backend: $backend)"
+			else
+				log_warn "  $domain: could not resolve backend '$backend'"
+			fi
+		fi
+	done < "$vhosts_file"
+
+	rm -f "$vhosts_file"
+
+	# Close JSON
+	echo "" >> "$tmp_file"
+	echo "}" >> "$tmp_file"
+
+	# Move to final location
+	mv "$tmp_file" "$routes_file"
+	chmod 644 "$routes_file"
+
+	log_info "Generated $routes_file with $count routes"
+
+	# Copy to container data path if container is running
+	if lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		cp "$routes_file" "$data_path/haproxy-routes.json"
+		log_info "Routes synced to container"
+	fi
+}
+
+cmd_haproxy_enable() {
+	require_root
+	load_config
+
+	log_info "Enabling HAProxy backend inspection..."
+
+	# 1. Enable HAProxy router in config
+	uci set mitmproxy.haproxy_router.enabled='1'
+	uci commit mitmproxy
+
+	# 2. Sync routes from HAProxy
+	cmd_sync_routes
+
+	# 3. Create HAProxy backend for mitmproxy
+	log_info "Configuring HAProxy backend 'mitmproxy_inspector'..."
+
+	# Check if backend already exists
+	if ! uci -q get haproxy.mitmproxy_inspector >/dev/null 2>&1; then
+		uci set haproxy.mitmproxy_inspector=backend
+		uci set haproxy.mitmproxy_inspector.server="mitmproxy 127.0.0.1:$haproxy_listen_port check"
+	fi
+
+	# 4. Store original backends and update vhosts to use mitmproxy
+	log_info "Updating HAProxy vhosts to route through mitmproxy..."
+
+	local updated=0
+	for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost" | cut -d'=' -f1 | cut -d'.' -f2); do
+		local current_backend=$(uci -q get haproxy.$vhost.backend)
+
+		# Skip if already using mitmproxy or if it's the fallback
+		if [ "$current_backend" = "mitmproxy_inspector" ] || [ "$current_backend" = "fallback" ]; then
+			continue
+		fi
+
+		# Store original backend
+		uci set haproxy.$vhost.original_backend="$current_backend"
+		# Set to mitmproxy
+		uci set haproxy.$vhost.backend="mitmproxy_inspector"
+		updated=$((updated + 1))
+
+		local domain=$(uci -q get haproxy.$vhost.domain)
+		log_info "  $domain: $current_backend -> mitmproxy_inspector"
+	done
+
+	uci commit haproxy
+
+	log_info "Updated $updated vhosts"
+
+	# 5. Restart services
+	log_info "Restarting services..."
+	/etc/init.d/mitmproxy restart
+	/etc/init.d/haproxy reload 2>/dev/null || /etc/init.d/haproxy restart 2>/dev/null
+
+	log_info ""
+	log_info "HAProxy backend inspection ENABLED"
+	log_info "All vhost traffic now flows through mitmproxy for threat detection"
+	log_info "View threats at: http://<router-ip>/cgi-bin/luci/admin/services/mitmproxy"
+}
+
+cmd_haproxy_disable() {
+	require_root
+	load_config
+
+	log_info "Disabling HAProxy backend inspection..."
+
+	# 1. Disable HAProxy router in config
+	uci set mitmproxy.haproxy_router.enabled='0'
+	uci commit mitmproxy
+
+	# 2. Restore original backends
+	log_info "Restoring original HAProxy backends..."
+
+	local restored=0
+	for vhost in $(uci show haproxy 2>/dev/null | grep "=vhost" | cut -d'=' -f1 | cut -d'.' -f2); do
+		local original_backend=$(uci -q get haproxy.$vhost.original_backend)
+
+		if [ -n "$original_backend" ]; then
+			uci set haproxy.$vhost.backend="$original_backend"
+			uci delete haproxy.$vhost.original_backend 2>/dev/null
+			restored=$((restored + 1))
+
+			local domain=$(uci -q get haproxy.$vhost.domain)
+			log_info "  $domain: mitmproxy_inspector -> $original_backend"
+		fi
+	done
+
+	uci commit haproxy
+
+	log_info "Restored $restored vhosts"
+
+	# 3. Restart services
+	log_info "Restarting services..."
+	/etc/init.d/haproxy reload 2>/dev/null || /etc/init.d/haproxy restart 2>/dev/null
+
+	log_info ""
+	log_info "HAProxy backend inspection DISABLED"
+	log_info "Vhosts now route directly to their original backends"
+}
+
 # Main Entry Point
 case "${1:-}" in
 	install) shift; cmd_install "$@" ;;
@@ -881,6 +1120,9 @@ case "${1:-}" in
 	cert) shift; cmd_cert "$@" ;;
 	firewall-setup) shift; cmd_firewall_setup "$@" ;;
 	firewall-clear) shift; cmd_firewall_clear "$@" ;;
+	sync-routes) shift; cmd_sync_routes "$@" ;;
+	haproxy-enable) shift; cmd_haproxy_enable "$@" ;;
+	haproxy-disable) shift; cmd_haproxy_disable "$@" ;;
 	service-run) shift; cmd_service_run "$@" ;;
 	service-stop) shift; cmd_service_stop "$@" ;;
 	help|--help|-h|'') usage ;;

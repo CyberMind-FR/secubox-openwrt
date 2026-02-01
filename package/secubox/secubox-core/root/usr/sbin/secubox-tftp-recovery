@@ -1,0 +1,648 @@
+#!/bin/sh
+# SecuBox TFTP Recovery Server
+# Provides network-based bare-metal recovery for SecuBox devices
+#
+# Usage:
+#   secubox-tftp-recovery start       - Start TFTP recovery server
+#   secubox-tftp-recovery stop        - Stop TFTP recovery server
+#   secubox-tftp-recovery status      - Show server status
+#   secubox-tftp-recovery prepare     - Prepare recovery images
+#   secubox-tftp-recovery mesh        - Discover mesh recovery servers
+#   secubox-tftp-recovery uboot       - Generate U-Boot recovery scripts
+
+VERSION="1.0.0"
+TFTP_ROOT="/srv/tftp"
+RECOVERY_DIR="/srv/secubox/recovery"
+UBOOT_SCRIPTS_DIR="$RECOVERY_DIR/uboot"
+IMAGES_DIR="$RECOVERY_DIR/images"
+STATE_FILE="/var/run/secubox-tftp-recovery.state"
+PID_FILE="/var/run/secubox-tftp-recovery.pid"
+
+# Mesh discovery
+P2P_STATE_DIR="/var/run/secubox-p2p"
+MESH_RECOVERY_FILE="/tmp/secubox-mesh-recovery.json"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() {
+	echo -e "${GREEN}[TFTP]${NC} $1"
+}
+
+warn() {
+	echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+error() {
+	echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# ============================================================================
+# TFTP Server Management
+# ============================================================================
+
+init_dirs() {
+	mkdir -p "$TFTP_ROOT"
+	mkdir -p "$RECOVERY_DIR"
+	mkdir -p "$UBOOT_SCRIPTS_DIR"
+	mkdir -p "$IMAGES_DIR"
+	chmod 755 "$TFTP_ROOT"
+}
+
+# Check if dnsmasq TFTP is available
+check_dnsmasq_tftp() {
+	if grep -q "enable-tftp" /etc/dnsmasq.conf 2>/dev/null; then
+		return 0
+	fi
+	if uci -q get dhcp.@dnsmasq[0].enable_tftp 2>/dev/null | grep -q "1"; then
+		return 0
+	fi
+	return 1
+}
+
+# Configure dnsmasq for TFTP
+configure_dnsmasq_tftp() {
+	log "Configuring dnsmasq TFTP..."
+
+	# Enable TFTP in dnsmasq via UCI
+	uci -q set dhcp.@dnsmasq[0].enable_tftp='1'
+	uci -q set dhcp.@dnsmasq[0].tftp_root="$TFTP_ROOT"
+	uci -q set dhcp.@dnsmasq[0].dhcp_boot='pxelinux.0'
+
+	# Add SecuBox recovery boot option
+	uci -q set dhcp.@dnsmasq[0].tftp_secure='1'
+
+	uci commit dhcp
+
+	log "TFTP configured at $TFTP_ROOT"
+}
+
+# Start TFTP recovery server
+start_server() {
+	log "Starting TFTP recovery server..."
+
+	init_dirs
+
+	# Check if already running
+	if [ -f "$PID_FILE" ] && kill -0 "$(cat $PID_FILE)" 2>/dev/null; then
+		warn "TFTP recovery server already running"
+		return 0
+	fi
+
+	# Configure dnsmasq TFTP if not already done
+	if ! check_dnsmasq_tftp; then
+		configure_dnsmasq_tftp
+	fi
+
+	# Prepare recovery images if not exists
+	if [ ! -f "$TFTP_ROOT/secubox-recovery.bin" ]; then
+		prepare_images
+	fi
+
+	# Generate U-Boot scripts
+	generate_uboot_scripts
+
+	# Restart dnsmasq to apply TFTP config
+	/etc/init.d/dnsmasq restart
+
+	# Announce on mesh
+	announce_mesh_recovery
+
+	# Save state
+	echo "running" > "$STATE_FILE"
+	echo "$$" > "$PID_FILE"
+
+	log "TFTP recovery server started"
+	log "Recovery root: $TFTP_ROOT"
+	log "Listen on: $(uci -q get network.lan.ipaddr):69"
+}
+
+# Stop TFTP recovery server
+stop_server() {
+	log "Stopping TFTP recovery server..."
+
+	# Disable TFTP in dnsmasq
+	uci -q set dhcp.@dnsmasq[0].enable_tftp='0'
+	uci commit dhcp
+	/etc/init.d/dnsmasq restart
+
+	# Remove mesh announcement
+	rm -f "$MESH_RECOVERY_FILE"
+
+	# Clean state
+	rm -f "$STATE_FILE" "$PID_FILE"
+
+	log "TFTP recovery server stopped"
+}
+
+# Show server status
+show_status() {
+	echo ""
+	echo "========================================"
+	echo "  SecuBox TFTP Recovery Server v$VERSION"
+	echo "========================================"
+	echo ""
+
+	# Server status
+	if [ -f "$STATE_FILE" ] && [ "$(cat $STATE_FILE)" = "running" ]; then
+		echo -e "Status:     ${GREEN}Running${NC}"
+	else
+		echo -e "Status:     ${RED}Stopped${NC}"
+	fi
+
+	# TFTP config
+	local tftp_enabled=$(uci -q get dhcp.@dnsmasq[0].enable_tftp)
+	if [ "$tftp_enabled" = "1" ]; then
+		echo -e "TFTP:       ${GREEN}Enabled${NC}"
+	else
+		echo -e "TFTP:       ${RED}Disabled${NC}"
+	fi
+
+	echo "TFTP Root:  $TFTP_ROOT"
+	echo "Listen IP:  $(uci -q get network.lan.ipaddr || echo 'unknown'):69"
+	echo ""
+
+	# Available images
+	echo "Available Recovery Images:"
+	if [ -d "$TFTP_ROOT" ]; then
+		for img in "$TFTP_ROOT"/*.bin "$TFTP_ROOT"/*.itb "$TFTP_ROOT"/*.img 2>/dev/null; do
+			[ -f "$img" ] || continue
+			local size=$(ls -lh "$img" 2>/dev/null | awk '{print $5}')
+			echo "  - $(basename "$img") ($size)"
+		done
+	else
+		echo "  (none)"
+	fi
+	echo ""
+
+	# U-Boot scripts
+	echo "U-Boot Scripts:"
+	if [ -d "$UBOOT_SCRIPTS_DIR" ]; then
+		for script in "$UBOOT_SCRIPTS_DIR"/*.scr "$UBOOT_SCRIPTS_DIR"/*.txt 2>/dev/null; do
+			[ -f "$script" ] || continue
+			echo "  - $(basename "$script")"
+		done
+	else
+		echo "  (none)"
+	fi
+	echo ""
+
+	# Mesh recovery servers
+	echo "Mesh Recovery Servers:"
+	discover_mesh_servers 2>/dev/null
+	echo ""
+}
+
+# ============================================================================
+# Recovery Image Preparation
+# ============================================================================
+
+prepare_images() {
+	log "Preparing recovery images..."
+
+	init_dirs
+
+	# Get current firmware info
+	local board=$(cat /tmp/sysinfo/board_name 2>/dev/null || echo "unknown")
+	local model=$(cat /tmp/sysinfo/model 2>/dev/null || echo "Unknown")
+
+	log "Board: $board"
+	log "Model: $model"
+
+	# Create recovery sysupgrade image
+	local backup_file="$IMAGES_DIR/secubox-backup-$(date +%Y%m%d).tar.gz"
+
+	log "Creating configuration backup..."
+	if command -v sysupgrade >/dev/null 2>&1; then
+		sysupgrade -b "$backup_file" 2>/dev/null
+		if [ -f "$backup_file" ]; then
+			cp "$backup_file" "$TFTP_ROOT/"
+			log "Backup created: $(basename $backup_file)"
+		fi
+	fi
+
+	# Look for existing firmware images
+	local fw_paths="/tmp/firmware /overlay/firmware /www/firmware"
+	for fwdir in $fw_paths; do
+		if [ -d "$fwdir" ]; then
+			for fw in "$fwdir"/*.bin "$fwdir"/*.itb 2>/dev/null; do
+				[ -f "$fw" ] || continue
+				local fname=$(basename "$fw")
+				if [ ! -f "$TFTP_ROOT/$fname" ]; then
+					cp "$fw" "$TFTP_ROOT/"
+					log "Added firmware: $fname"
+				fi
+			done
+		fi
+	done
+
+	# Create recovery manifest
+	cat > "$TFTP_ROOT/recovery-manifest.json" << EOF
+{
+	"version": "$VERSION",
+	"board": "$board",
+	"model": "$model",
+	"node_id": "$(cat $P2P_STATE_DIR/node.id 2>/dev/null || hostname)",
+	"created": "$(date -Iseconds 2>/dev/null || date)",
+	"images": [
+$(ls -1 "$TFTP_ROOT"/*.bin "$TFTP_ROOT"/*.itb "$TFTP_ROOT"/*.tar.gz 2>/dev/null | while read f; do
+	local fname=$(basename "$f")
+	local size=$(stat -c%s "$f" 2>/dev/null || ls -l "$f" | awk '{print $5}')
+	local md5=$(md5sum "$f" 2>/dev/null | cut -d' ' -f1)
+	echo "		{\"name\": \"$fname\", \"size\": $size, \"md5\": \"$md5\"}"
+done | paste -sd ',' -)
+	],
+	"uboot_scripts": [
+$(ls -1 "$TFTP_ROOT"/*.scr 2>/dev/null | while read f; do
+	echo "		\"$(basename "$f")\""
+done | paste -sd ',' -)
+	]
+}
+EOF
+
+	log "Recovery manifest created"
+	log "Images available in: $TFTP_ROOT"
+}
+
+# ============================================================================
+# U-Boot Script Generation
+# ============================================================================
+
+generate_uboot_scripts() {
+	log "Generating U-Boot recovery scripts..."
+
+	init_dirs
+
+	local server_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+	local load_addr="0x48000000"
+
+	# Generic ARM64 recovery script
+	cat > "$UBOOT_SCRIPTS_DIR/recovery-arm64.txt" << EOF
+# SecuBox TFTP Recovery Script - ARM64
+# Load this via: source \$serverip:recovery-arm64.txt
+#
+# Setup:
+#   setenv serverip $server_ip
+#   setenv ipaddr 192.168.1.100
+#   run secubox_recovery
+
+setenv serverip $server_ip
+setenv secubox_recovery 'tftp $load_addr secubox-recovery.bin; source $load_addr'
+setenv secubox_backup 'tftp $load_addr secubox-backup.tar.gz'
+setenv secubox_flash 'tftp $load_addr openwrt-sysupgrade.bin; nand erase.chip; nand write $load_addr 0 \$filesize'
+
+echo "SecuBox TFTP Recovery loaded"
+echo "Commands: run secubox_recovery | run secubox_backup | run secubox_flash"
+EOF
+
+	# MochaBin/Armada specific
+	cat > "$UBOOT_SCRIPTS_DIR/recovery-mochabin.txt" << EOF
+# SecuBox TFTP Recovery Script - MochaBin (Armada 8040)
+#
+# Emergency Recovery Steps:
+#   1. Connect serial console (115200 8N1)
+#   2. Power on, press any key to stop autoboot
+#   3. Run these commands:
+#
+#      setenv serverip $server_ip
+#      setenv ipaddr 192.168.1.100
+#      dhcp
+#      tftpboot 0x20000000 openwrt-mvebu-cortexa72-globalscale_mochabin-initramfs-fit.itb
+#      bootm 0x20000000
+
+setenv serverip $server_ip
+setenv loadaddr 0x20000000
+
+# TFTP boot initramfs for recovery
+setenv tftpboot_recovery 'dhcp; tftpboot \$loadaddr openwrt-mochabin-initramfs.itb; bootm \$loadaddr'
+
+# Flash sysupgrade via TFTP
+setenv tftpflash 'dhcp; tftpboot \$loadaddr openwrt-mochabin-sysupgrade.bin; sf probe; sf erase 0 +\$filesize; sf write \$loadaddr 0 \$filesize'
+
+# MMC boot recovery
+setenv mmcboot_recovery 'mmc dev 1; ext4load mmc 1:1 \$loadaddr /boot/Image; ext4load mmc 1:1 0x21000000 /boot/armada-8040-mcbin.dtb; booti \$loadaddr - 0x21000000'
+
+echo "MochaBin Recovery Commands:"
+echo "  run tftpboot_recovery  - Boot initramfs via TFTP"
+echo "  run tftpflash          - Flash sysupgrade via TFTP"
+echo "  run mmcboot_recovery   - Boot from MMC"
+EOF
+
+	# Raspberry Pi specific
+	cat > "$UBOOT_SCRIPTS_DIR/recovery-rpi.txt" << EOF
+# SecuBox TFTP Recovery Script - Raspberry Pi 4
+#
+# Recovery Steps:
+#   1. Remove SD card, boot from USB/network
+#   2. Or modify config.txt on SD:
+#      kernel=u-boot.bin
+#      arm_64bit=1
+
+setenv serverip $server_ip
+setenv loadaddr 0x01000000
+setenv fdt_addr 0x02600000
+
+# TFTP boot
+setenv tftpboot 'dhcp; tftpboot \$loadaddr openwrt-rpi4-ext4.img.gz; source \$loadaddr'
+
+# Recovery from USB
+setenv usbboot 'usb start; ext4load usb 0:1 \$loadaddr /boot/Image; booti \$loadaddr - \$fdt_addr'
+
+echo "Raspberry Pi Recovery loaded"
+EOF
+
+	# x86/EFI recovery
+	cat > "$UBOOT_SCRIPTS_DIR/recovery-x86.txt" << EOF
+# SecuBox Network Recovery - x86/EFI
+#
+# For x86 devices, use PXE boot:
+#   1. Enable network boot in BIOS/UEFI
+#   2. Configure DHCP to point to TFTP server
+#   3. Boot from network
+
+# DHCP config for dnsmasq (add to /etc/dnsmasq.conf):
+# dhcp-boot=pxelinux.0,$server_ip
+# dhcp-match=set:efi-x86_64,option:client-arch,7
+# dhcp-boot=tag:efi-x86_64,grubx64.efi,$server_ip
+
+# PXE menu file: pxelinux.cfg/default
+# DEFAULT secubox
+# LABEL secubox
+#   KERNEL openwrt-x86-64-generic-kernel.bin
+#   APPEND initrd=openwrt-x86-64-generic-rootfs.img root=/dev/ram0
+EOF
+
+	# Compile scripts to U-Boot format if mkimage available
+	if command -v mkimage >/dev/null 2>&1; then
+		for txt in "$UBOOT_SCRIPTS_DIR"/*.txt; do
+			[ -f "$txt" ] || continue
+			local scr="${txt%.txt}.scr"
+			mkimage -T script -C none -n "SecuBox Recovery" -d "$txt" "$scr" 2>/dev/null
+			if [ -f "$scr" ]; then
+				cp "$scr" "$TFTP_ROOT/"
+				log "Compiled: $(basename $scr)"
+			fi
+		done
+	else
+		# Just copy txt files
+		cp "$UBOOT_SCRIPTS_DIR"/*.txt "$TFTP_ROOT/" 2>/dev/null
+		warn "mkimage not available - scripts not compiled"
+	fi
+
+	log "U-Boot scripts generated in $UBOOT_SCRIPTS_DIR"
+}
+
+# ============================================================================
+# Mesh Integration
+# ============================================================================
+
+announce_mesh_recovery() {
+	local node_id=$(cat "$P2P_STATE_DIR/node.id" 2>/dev/null || hostname)
+	local node_name=$(uci -q get system.@system[0].hostname || hostname)
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+
+	# Create mesh announcement
+	cat > "$MESH_RECOVERY_FILE" << EOF
+{
+	"type": "tftp-recovery",
+	"node_id": "$node_id",
+	"node_name": "$node_name",
+	"address": "$lan_ip",
+	"port": 69,
+	"status": "active",
+	"version": "$VERSION",
+	"announced": "$(date -Iseconds 2>/dev/null || date)",
+	"images": $(cat "$TFTP_ROOT/recovery-manifest.json" 2>/dev/null | jsonfilter -e '@.images' || echo '[]')
+}
+EOF
+
+	log "Mesh recovery service announced"
+}
+
+discover_mesh_servers() {
+	local found=0
+
+	# Check local peers file
+	local peers_file="/tmp/secubox-p2p-peers.json"
+	if [ -f "$peers_file" ]; then
+		local peer_count=$(jsonfilter -i "$peers_file" -e '@.peers[*]' 2>/dev/null | wc -l)
+		local i=0
+
+		while [ $i -lt $peer_count ]; do
+			local peer_addr=$(jsonfilter -i "$peers_file" -e "@.peers[$i].address" 2>/dev/null)
+			local peer_name=$(jsonfilter -i "$peers_file" -e "@.peers[$i].name" 2>/dev/null)
+			local is_local=$(jsonfilter -i "$peers_file" -e "@.peers[$i].is_local" 2>/dev/null)
+
+			[ "$is_local" = "true" ] && { i=$((i + 1)); continue; }
+			[ -z "$peer_addr" ] && { i=$((i + 1)); continue; }
+
+			# Try to fetch recovery manifest from peer
+			local manifest=$(wget -q -O - "http://$peer_addr:7331/tftp/recovery-manifest.json" 2>/dev/null)
+			if [ -n "$manifest" ]; then
+				local peer_board=$(echo "$manifest" | jsonfilter -e '@.board' 2>/dev/null)
+				echo -e "  ${GREEN}*${NC} $peer_name ($peer_addr) - $peer_board"
+				found=$((found + 1))
+			fi
+
+			i=$((i + 1))
+		done
+	fi
+
+	if [ $found -eq 0 ]; then
+		echo "  (no mesh recovery servers found)"
+		echo "  Run 'secubox-p2p discover' to find peers"
+	fi
+}
+
+# Fetch recovery image from mesh peer
+fetch_from_mesh() {
+	local peer_addr="$1"
+	local image_name="$2"
+
+	if [ -z "$peer_addr" ] || [ -z "$image_name" ]; then
+		echo "Usage: secubox-tftp-recovery fetch <peer_ip> <image_name>"
+		return 1
+	fi
+
+	log "Fetching $image_name from $peer_addr..."
+
+	init_dirs
+
+	# Try TFTP first (faster for large files)
+	if command -v tftp >/dev/null 2>&1; then
+		tftp -g -r "$image_name" -l "$IMAGES_DIR/$image_name" "$peer_addr" 2>/dev/null
+		if [ -f "$IMAGES_DIR/$image_name" ]; then
+			log "Downloaded via TFTP: $image_name"
+			cp "$IMAGES_DIR/$image_name" "$TFTP_ROOT/"
+			return 0
+		fi
+	fi
+
+	# Fallback to HTTP
+	wget -q -O "$IMAGES_DIR/$image_name" "http://$peer_addr:7331/tftp/$image_name" 2>/dev/null
+	if [ -f "$IMAGES_DIR/$image_name" ]; then
+		log "Downloaded via HTTP: $image_name"
+		cp "$IMAGES_DIR/$image_name" "$TFTP_ROOT/"
+		return 0
+	fi
+
+	error "Failed to fetch $image_name from $peer_addr"
+	return 1
+}
+
+# ============================================================================
+# Recovery Operations
+# ============================================================================
+
+# Emergency recovery via TFTP
+emergency_recovery() {
+	local server_ip="$1"
+	local image="$2"
+
+	if [ -z "$server_ip" ]; then
+		# Auto-discover from mesh
+		log "Auto-discovering recovery server..."
+		server_ip=$(discover_mesh_servers 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+' | head -1)
+	fi
+
+	if [ -z "$server_ip" ]; then
+		error "No recovery server found. Specify IP: secubox-tftp-recovery emergency <server_ip>"
+		return 1
+	fi
+
+	log "Emergency recovery from $server_ip"
+
+	# Fetch recovery manifest
+	local manifest=$(wget -q -O - "http://$server_ip:7331/tftp/recovery-manifest.json" 2>/dev/null)
+	if [ -z "$manifest" ]; then
+		# Try TFTP directly
+		tftp -g -r recovery-manifest.json -l /tmp/recovery-manifest.json "$server_ip" 2>/dev/null
+		manifest=$(cat /tmp/recovery-manifest.json 2>/dev/null)
+	fi
+
+	if [ -z "$manifest" ]; then
+		error "Cannot reach recovery server at $server_ip"
+		return 1
+	fi
+
+	log "Recovery server found"
+	echo "$manifest" | jsonfilter -e '@.images[*].name' 2>/dev/null | while read img; do
+		echo "  - $img"
+	done
+
+	# Select image
+	if [ -z "$image" ]; then
+		image=$(echo "$manifest" | jsonfilter -e '@.images[0].name' 2>/dev/null)
+	fi
+
+	if [ -z "$image" ]; then
+		error "No recovery image available"
+		return 1
+	fi
+
+	log "Fetching recovery image: $image"
+
+	# Download and apply
+	mkdir -p /tmp/recovery
+
+	if echo "$image" | grep -q "\.tar\.gz$"; then
+		# Config backup - restore it
+		tftp -g -r "$image" -l "/tmp/recovery/$image" "$server_ip" 2>/dev/null || \
+			wget -q -O "/tmp/recovery/$image" "http://$server_ip:7331/tftp/$image"
+
+		if [ -f "/tmp/recovery/$image" ]; then
+			log "Restoring configuration backup..."
+			sysupgrade -r "/tmp/recovery/$image"
+			log "Configuration restored. Rebooting..."
+			reboot
+		fi
+	elif echo "$image" | grep -qE "\.(bin|itb)$"; then
+		# Firmware image - flash it
+		tftp -g -r "$image" -l "/tmp/recovery/$image" "$server_ip" 2>/dev/null || \
+			wget -q -O "/tmp/recovery/$image" "http://$server_ip:7331/tftp/$image"
+
+		if [ -f "/tmp/recovery/$image" ]; then
+			log "Flashing firmware..."
+			sysupgrade -n "/tmp/recovery/$image"
+		fi
+	fi
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+show_help() {
+	cat << EOF
+SecuBox TFTP Recovery Server v$VERSION
+
+Usage: secubox-tftp-recovery <command> [options]
+
+Commands:
+  start             Start TFTP recovery server
+  stop              Stop TFTP recovery server
+  status            Show server status and available images
+  prepare           Prepare recovery images (backup, firmware)
+  uboot             Generate U-Boot recovery scripts
+  mesh              Discover mesh recovery servers
+  fetch <ip> <img>  Fetch recovery image from mesh peer
+  emergency [ip]    Emergency recovery from mesh (auto-discover)
+
+Examples:
+  secubox-tftp-recovery start
+  secubox-tftp-recovery status
+  secubox-tftp-recovery mesh
+  secubox-tftp-recovery fetch 192.168.1.2 secubox-backup.tar.gz
+  secubox-tftp-recovery emergency
+
+U-Boot Recovery (at device console):
+  setenv serverip <this-device-ip>
+  setenv ipaddr 192.168.1.100
+  tftpboot 0x48000000 secubox-recovery.bin
+  source 0x48000000
+
+EOF
+}
+
+case "$1" in
+	start)
+		start_server
+		;;
+	stop)
+		stop_server
+		;;
+	status)
+		show_status
+		;;
+	prepare)
+		prepare_images
+		;;
+	uboot)
+		generate_uboot_scripts
+		;;
+	mesh)
+		echo ""
+		echo "Mesh Recovery Servers:"
+		discover_mesh_servers
+		echo ""
+		;;
+	fetch)
+		fetch_from_mesh "$2" "$3"
+		;;
+	emergency)
+		emergency_recovery "$2" "$3"
+		;;
+	-h|--help|help)
+		show_help
+		;;
+	*)
+		show_help
+		exit 1
+		;;
+esac
+
+exit 0

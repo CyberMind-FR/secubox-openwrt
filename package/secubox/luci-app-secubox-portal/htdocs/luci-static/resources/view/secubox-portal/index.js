@@ -84,27 +84,39 @@ return view.extend({
 	},
 
 	scanInitServices: function() {
-		// Scan /etc/init.d for service status
-		return fs.exec('sh', ['-c',
-			'for s in /etc/init.d/*; do ' +
-			'[ -x "$s" ] || continue; ' +
-			'n=$(basename "$s"); ' +
-			'r="stopped"; ' +
-			'pgrep -f "$n" >/dev/null 2>&1 && r="running"; ' +
-			'echo "$n:$r"; ' +
-			'done'
-		]).then(function(res) {
+		// Use helper script for reliable output capture
+		// Falls back to inline script if helper not available
+		return fs.exec('/usr/bin/secubox-services-status', []).then(function(res) {
 			var services = {};
 			if (res && res.stdout) {
 				res.stdout.trim().split('\n').forEach(function(line) {
 					var parts = line.split(':');
-					if (parts.length === 2) {
+					if (parts.length === 2 && parts[0] && parts[1]) {
 						services[parts[0]] = parts[1];
 					}
 				});
 			}
 			return services;
-		}).catch(function() { return {}; });
+		}).catch(function() {
+			// Fallback: use inline script
+			return fs.exec('/bin/sh', ['-c',
+				'for s in /etc/init.d/*; do [ -x "$s" ] || continue; ' +
+				'n=$(basename "$s"); r=stopped; ' +
+				'pgrep -f "$n" >/dev/null 2>&1 && r=running; ' +
+				'printf "%s:%s\\n" "$n" "$r"; done'
+			]).then(function(res) {
+				var services = {};
+				if (res && res.stdout) {
+					res.stdout.trim().split('\n').forEach(function(line) {
+						var parts = line.split(':');
+						if (parts.length === 2 && parts[0] && parts[1]) {
+							services[parts[0]] = parts[1];
+						}
+					});
+				}
+				return services;
+			}).catch(function() { return {}; });
+		});
 	},
 
 	render: function(data) {

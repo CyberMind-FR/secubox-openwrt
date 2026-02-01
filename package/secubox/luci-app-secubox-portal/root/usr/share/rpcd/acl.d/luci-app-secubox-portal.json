@@ -2,6 +2,10 @@
 	"luci-app-secubox-portal": {
 		"description": "SecuBox Portal - Unified WebUI Dashboard",
 		"read": {
+			"file": {
+				"/usr/bin/secubox-services-status": ["exec"],
+				"/bin/sh": ["exec"]
+			},
 			"ubus": {
 				"luci.secubox": [
 					"modules",
@@ -11,7 +15,7 @@
 					"get_theme",
 					"getStatus",
 					"getHealth",
-				"get_services"
+					"get_services"
 				],
 				"luci.system-hub": [
 					"status",

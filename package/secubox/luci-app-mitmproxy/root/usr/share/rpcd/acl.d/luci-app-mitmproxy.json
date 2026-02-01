@@ -3,7 +3,7 @@
 		"description": "Grant access to mitmproxy",
 		"read": {
 			"ubus": {
-				"luci.mitmproxy": ["status", "settings"]
+				"luci.mitmproxy": ["status", "settings", "alerts", "threat_stats"]
 			},
 			"uci": ["mitmproxy"]
 		},
@@ -17,7 +17,11 @@
 					"save_settings",
 					"set_mode",
 					"setup_firewall",
-					"clear_firewall"
+					"clear_firewall",
+					"clear_alerts",
+					"haproxy_enable",
+					"haproxy_disable",
+					"sync_routes"
 				]
 			},
 			"uci": ["mitmproxy"]

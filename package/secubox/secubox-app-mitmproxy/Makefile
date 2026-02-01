@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=secubox-app-mitmproxy
-PKG_RELEASE:=17
+PKG_RELEASE:=19
 PKG_VERSION:=0.5.0
 PKG_ARCH:=all
 PKG_MAINTAINER:=CyberMind Studio <contact@cybermind.fr>
@@ -54,9 +54,10 @@ define Package/secubox-app-mitmproxy/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/usr/sbin/mitmproxyctl $(1)/usr/sbin/mitmproxyctl
 
-	# Analytics addon for threat detection
+	# Analytics and HAProxy router addons
 	$(INSTALL_DIR) $(1)/srv/mitmproxy/addons
 	$(INSTALL_DATA) ./root/srv/mitmproxy/addons/secubox_analytics.py $(1)/srv/mitmproxy/addons/
+	$(INSTALL_DATA) ./root/srv/mitmproxy/addons/haproxy_router.py $(1)/srv/mitmproxy/addons/
 endef
 
 define Package/secubox-app-mitmproxy/postinst

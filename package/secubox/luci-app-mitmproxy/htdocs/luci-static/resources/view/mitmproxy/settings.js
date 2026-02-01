@@ -75,6 +75,25 @@ return view.extend({
 		o = s.option(form.Flag, 'log_requests', _('Log Requests'));
 		o.depends('enabled', '1');
 
+		// HAProxy Router
+		s = m.section(form.TypedSection, 'haproxy_router', _('HAProxy Backend Inspection'));
+		s.anonymous = true;
+		s.description = _('Route HAProxy vhost traffic through mitmproxy for threat detection. All backends will be inspected before reaching their destination.');
+
+		o = s.option(form.Flag, 'enabled', _('Enable HAProxy Inspection'));
+		o.description = _('When enabled, all HAProxy backends will route through mitmproxy');
+
+		o = s.option(form.Value, 'listen_port', _('Listen Port'));
+		o.datatype = 'port';
+		o.default = '8889';
+		o.description = _('Port for HAProxy to send traffic to mitmproxy');
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'threat_detection', _('Threat Detection'));
+		o.default = '1';
+		o.description = _('Enable threat detection on HAProxy traffic');
+		o.depends('enabled', '1');
+
 		return m.render();
 	}
 });

@@ -17,9 +17,11 @@ from mitmproxy import http, ctx
 from pathlib import Path
 
 # GeoIP database path (MaxMind GeoLite2)
-GEOIP_DB = "/srv/mitmproxy/GeoLite2-Country.mmdb"
+GEOIP_DB = "/data/GeoLite2-Country.mmdb"
 LOG_FILE = "/var/log/secubox-access.log"
-CROWDSEC_LOG = "/var/log/crowdsec/secubox-mitm.log"
+# CrowdSec log - uses /data which is bind-mounted to /srv/mitmproxy on host
+# This allows CrowdSec on the host to read threat logs from the container
+CROWDSEC_LOG = "/data/threats.log"
 ALERTS_FILE = "/tmp/secubox-mitm-alerts.json"
 STATS_FILE = "/tmp/secubox-mitm-stats.json"
 
@@ -200,6 +202,35 @@ SUSPICIOUS_HEADERS = {
     'forwarded': [r'for=.+;.+;.+'],  # Multiple forwards
 }
 
+# Template Injection (SSTI) patterns
+SSTI_PATTERNS = [
+    r'\{\{.*\}\}',  # Jinja2/Twig
+    r'\$\{.*\}',    # FreeMarker/Velocity
+    r'<%.*%>',      # ERB/JSP
+    r'#\{.*\}',     # Thymeleaf
+    r'\[\[.*\]\]',  # Smarty
+]
+
+# Prototype Pollution patterns
+PROTO_POLLUTION_PATTERNS = [
+    r'__proto__', r'constructor\[', r'prototype\[',
+    r'\["__proto__"\]', r'\["constructor"\]', r'\["prototype"\]',
+]
+
+# GraphQL abuse patterns
+GRAPHQL_ABUSE_PATTERNS = [
+    r'__schema', r'__type', r'introspectionQuery',
+    r'query\s*\{.*\{.*\{.*\{.*\{',  # Deep nesting
+    r'fragment.*on.*\{.*fragment',  # Recursive fragments
+]
+
+# JWT/Token patterns
+JWT_PATTERNS = [
+    r'eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*',  # JWT format
+    r'alg.*none',  # Algorithm none attack
+    r'"alg"\s*:\s*"none"',
+]
+
 # Known vulnerability paths (CVE-specific)
 CVE_PATTERNS = {
     # CVE-2021-44228 (Log4Shell)
@@ -214,6 +245,12 @@ CVE_PATTERNS = {
     'moveit': [r'machine2\.aspx.*\?', r'/guestaccess\.aspx'],
     # CVE-2024-3400 (PAN-OS)
     'panos': [r'/global-protect/.*\.css\?'],
+    # CVE-2024-21887 (Ivanti Connect Secure)
+    'ivanti': [r'/api/v1/totp/user-backup-code', r'/api/v1/license/keys-status'],
+    # CVE-2024-1709 (ScreenConnect)
+    'screenconnect': [r'/SetupWizard\.aspx'],
+    # CVE-2024-27198 (TeamCity)
+    'teamcity': [r'/app/rest/users/id:', r'/app/rest/server'],
 }
 
 class SecuBoxAnalytics:
@@ -396,6 +433,41 @@ class SecuBoxAnalytics:
                         'severity': 'critical', 'category': 'known_exploit',
                         'cve': cve_name
                     }
+
+        # Check Template Injection (SSTI)
+        for pattern in SSTI_PATTERNS:
+            if re.search(pattern, combined, re.IGNORECASE):
+                return {
+                    'is_scan': True, 'pattern': 'ssti', 'type': 'injection',
+                    'severity': 'critical', 'category': 'template_injection'
+                }
+
+        # Check Prototype Pollution
+        for pattern in PROTO_POLLUTION_PATTERNS:
+            if re.search(pattern, combined, re.IGNORECASE):
+                return {
+                    'is_scan': True, 'pattern': 'prototype_pollution', 'type': 'injection',
+                    'severity': 'high', 'category': 'javascript_attack'
+                }
+
+        # Check GraphQL abuse (only on graphql endpoints)
+        if 'graphql' in path or 'graphql' in content_type:
+            for pattern in GRAPHQL_ABUSE_PATTERNS:
+                if re.search(pattern, combined, re.IGNORECASE):
+                    return {
+                        'is_scan': True, 'pattern': 'graphql_abuse', 'type': 'api_abuse',
+                        'severity': 'medium', 'category': 'graphql'
+                    }
+
+        # Check JWT attacks (alg:none, token in URL)
+        for pattern in JWT_PATTERNS:
+            if re.search(pattern, combined, re.IGNORECASE):
+                # alg:none is critical, exposed token is medium
+                severity = 'critical' if 'none' in combined.lower() else 'medium'
+                return {
+                    'is_scan': True, 'pattern': 'jwt_attack', 'type': 'auth_bypass',
+                    'severity': severity, 'category': 'authentication'
+                }
 
         return {'is_scan': False, 'pattern': None, 'type': None, 'severity': None, 'category': None}
 

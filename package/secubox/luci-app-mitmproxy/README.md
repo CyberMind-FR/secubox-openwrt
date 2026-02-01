@@ -7,11 +7,12 @@ Interactive HTTPS proxy for debugging, testing, and security analysis with trans
 | Feature | Description |
 |---------|-------------|
 | 🔍 **Traffic Inspection** | View and analyze HTTP/HTTPS requests in real-time |
-| 🖥️ **Web UI** | Built-in mitmweb interface for visual traffic analysis |
+| 🖥️ **Web UI** | Built-in mitmweb interface with auto-auth token |
 | 🎭 **Transparent Mode** | Intercept traffic automatically via nftables |
+| 🛡️ **Threat Detection** | Detect SQL injection, XSS, command injection, Log4Shell |
+| 🔗 **HAProxy Integration** | Inspect all vhost backends with threat detection |
 | 📜 **CA Certificate** | Generate and manage SSL interception certificates |
-| 📊 **Statistics** | Track requests, unique hosts, and flow data |
-| 🔄 **Request Replay** | Replay captured requests for testing |
+| 📊 **CrowdSec Logging** | Log threats to CrowdSec for automatic blocking |
 | ⚙️ **Filtering** | Filter and track CDN, media, ads, and trackers |
 | 🛡️ **Whitelist** | Bypass interception for specific IPs/domains |
 
@@ -126,6 +127,83 @@ nft add rule inet fw4 prerouting tcp dport 80 redirect to :8080
 nft add rule inet fw4 prerouting tcp dport 443 redirect to :8080
 ```
 
+## 🔗 HAProxy Backend Inspection
+
+Route all HAProxy vhost traffic through mitmproxy for threat detection.
+
+### Architecture
+
+```
+Internet → HAProxy (SSL termination) → mitmproxy :8889 → Actual Backends
+                                           ↓
+                                    Threat Detection
+                                           ↓
+                                    CrowdSec Logging
+```
+
+### Enable HAProxy Inspection
+
+```bash
+# Via CLI
+mitmproxyctl haproxy-enable
+
+# What it does:
+# 1. Syncs HAProxy backends to mitmproxy routes
+# 2. Updates all vhosts to route through mitmproxy
+# 3. Restarts both services
+```
+
+### Disable HAProxy Inspection
+
+```bash
+# Restore original backends
+mitmproxyctl haproxy-disable
+```
+
+### Manual Route Sync
+
+```bash
+# Sync routes from HAProxy UCI without enabling inspection
+mitmproxyctl sync-routes
+```
+
+### HAProxy Inspector Commands
+
+| Command | Description |
+|---------|-------------|
+| `mitmproxyctl haproxy-enable` | Enable backend inspection |
+| `mitmproxyctl haproxy-disable` | Restore original backends |
+| `mitmproxyctl sync-routes` | Sync routes from HAProxy UCI |
+
+## 🛡️ Threat Detection
+
+The analytics addon detects 90+ attack patterns including:
+
+| Category | Examples |
+|----------|----------|
+| **SQL Injection** | UNION SELECT, OR 1=1, time-based blind |
+| **XSS** | script tags, event handlers, javascript: |
+| **Command Injection** | shell commands, pipe injection |
+| **Path Traversal** | ../../../etc/passwd |
+| **SSRF** | internal IP access, metadata endpoints |
+| **Log4Shell** | ${jndi:ldap://...} |
+| **Admin Scanners** | /wp-admin, /phpmyadmin, /.env |
+
+### View Threats
+
+Threats are displayed in the LuCI dashboard with:
+- Severity level (critical/high/medium/low)
+- Attack pattern type
+- Source IP and country
+- Request path and method
+
+### CrowdSec Integration
+
+Detected threats are logged to `/var/log/crowdsec/mitmproxy-threats.log` for:
+- Automatic IP blocking via CrowdSec bouncer
+- Threat intelligence sharing
+- Security analytics
+
 ## ⚙️ Configuration
 
 ### UCI Settings
@@ -160,11 +238,18 @@ config whitelist 'whitelist'
     list bypass_domain 'banking.com'
 
 config filtering 'filtering'
-    option enabled '0'
+    option enabled '1'
     option log_requests '1'
     option filter_cdn '0'
     option filter_media '0'
     option block_ads '0'
+    option addon_script '/data/addons/secubox_analytics.py'
+
+config haproxy_router 'haproxy_router'
+    option enabled '0'
+    option listen_port '8889'
+    option threat_detection '1'
+    option routes_file '/srv/mitmproxy/haproxy-routes.json'
 
 config capture 'capture'
     option save_flows '0'
@@ -180,81 +265,109 @@ config capture 'capture'
 
 | Method | Description |
 |--------|-------------|
-| `get_status` | Get service status |
-| `service_start` | Start mitmproxy |
-| `service_stop` | Stop mitmproxy |
-| `service_restart` | Restart service |
+| `status` | Get service status (includes auth token) |
+| `start` | Start mitmproxy |
+| `stop` | Stop mitmproxy |
+| `restart` | Restart service |
 | `install` | Install mitmproxy container |
 
 ### Configuration
 
 | Method | Description |
 |--------|-------------|
-| `get_config` | Get main configuration |
-| `get_all_config` | Get all configuration sections |
-| `get_transparent_config` | Get transparent mode settings |
-| `get_whitelist_config` | Get whitelist settings |
-| `get_filtering_config` | Get filtering settings |
-| `set_config` | Set configuration value |
+| `settings` | Get all settings |
+| `save_settings` | Save configuration |
+| `set_mode` | Set proxy mode |
 
-### Statistics & Data
+### Threat Detection
 
 | Method | Description |
 |--------|-------------|
-| `get_stats` | Get traffic statistics |
-| `get_requests` | Get captured requests |
-| `get_top_hosts` | Get most requested hosts |
-| `get_ca_info` | Get CA certificate info |
-| `clear_data` | Clear captured data |
+| `alerts` | Get detected threats |
+| `threat_stats` | Get threat statistics |
+| `clear_alerts` | Clear all alerts |
+
+### HAProxy Integration
+
+| Method | Description |
+|--------|-------------|
+| `haproxy_enable` | Enable backend inspection |
+| `haproxy_disable` | Restore original backends |
+| `sync_routes` | Sync routes from HAProxy |
 
 ### Firewall
 
 | Method | Description |
 |--------|-------------|
-| `firewall_setup` | Setup transparent mode rules |
-| `firewall_clear` | Remove firewall rules |
+| `setup_firewall` | Setup transparent mode rules |
+| `clear_firewall` | Remove firewall rules |
 
 ### Example Usage
 
 ```bash
-# Get status
-ubus call luci.mitmproxy get_status
+# Get status (includes auth token for Web UI)
+ubus call luci.mitmproxy status
 
 # Response:
 {
   "enabled": true,
   "running": true,
   "installed": true,
-  "docker_available": true,
   "web_port": 8081,
-  "proxy_port": 8080,
-  "listen_port": 8080,
-  "web_url": "http://192.168.255.1:8081"
+  "proxy_port": 8888,
+  "mode": "regular",
+  "token": "abc123xyz...",
+  "haproxy_router_enabled": false,
+  "haproxy_listen_port": 8889
 }
 
-# Get statistics
-ubus call luci.mitmproxy get_stats
+# Get detected threats
+ubus call luci.mitmproxy alerts
 
 # Response:
 {
-  "total_requests": 12500,
-  "unique_hosts": 245,
-  "flow_file_size": 47185920,
-  "cdn_requests": 3200,
-  "media_requests": 890,
-  "blocked_ads": 156
-}
-
-# Get top hosts
-ubus call luci.mitmproxy get_top_hosts '{"limit":10}'
-
-# Response:
-{
-  "hosts": [
-    { "host": "api.example.com", "count": 1234 },
-    { "host": "cdn.cloudflare.com", "count": 890 }
+  "success": true,
+  "alerts": [
+    {
+      "time": "2026-01-31T12:00:00",
+      "severity": "high",
+      "pattern": "sql_injection",
+      "method": "GET",
+      "path": "/api?id=1' OR 1=1--",
+      "ip": "192.168.1.100"
+    }
   ]
 }
+
+# Enable HAProxy backend inspection
+ubus call luci.mitmproxy haproxy_enable
+
+# Response:
+{
+  "success": true,
+  "message": "HAProxy backend inspection enabled"
+}
+```
+
+## 🖥️ Web UI Access
+
+The mitmweb UI requires authentication via token.
+
+### Auto-Auth via LuCI
+
+The LuCI dashboard shows the Web UI link with the token included:
+```
+http://192.168.255.1:8081/?token=abc123xyz
+```
+
+### Manual Token Access
+
+```bash
+# Token is stored in data directory
+cat /srv/mitmproxy/.mitmproxy_token
+
+# Or via RPCD
+ubus call luci.mitmproxy status | jsonfilter -e '@.token'
 ```
 
 ## 🔒 CA Certificate
@@ -263,12 +376,12 @@ ubus call luci.mitmproxy get_top_hosts '{"limit":10}'
 
 ```bash
 # Certificate is auto-generated on first start
-# Located at: /srv/mitmproxy/certs/mitmproxy-ca-cert.pem
+# Located at: /srv/mitmproxy/mitmproxy-ca-cert.pem
 ```
 
 ### Download Certificate
 
-1. Access mitmweb UI at `http://192.168.255.1:8081`
+1. Access mitmweb UI (use token from LuCI dashboard)
 2. Or navigate to `http://mitm.it` from a proxied device
 3. Download certificate for your platform
 
@@ -374,4 +487,4 @@ uci commit mitmproxy
 
 ## 📜 License
 
-MIT License - Copyright (C) 2025 CyberMind.fr
+MIT License - Copyright (C) 2025-2026 CyberMind.fr
