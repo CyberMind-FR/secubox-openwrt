@@ -648,14 +648,18 @@ get_firewall_bouncer_status() {
 	json_add_boolean "nftables_ipv4" "$nft_ipv4"
 	json_add_boolean "nftables_ipv6" "$nft_ipv6"
 
-	# Get blocked IPs count
+	# Get blocked IPs count - count IPs across all crowdsec sets (local + CAPI)
 	local ipv4_count=0
 	local ipv6_count=0
 	if [ "$nft_ipv4" = "1" ]; then
-		ipv4_count=$(nft list set ip crowdsec crowdsec-blacklists 2>/dev/null | grep -c "elements = {" || echo "0")
+		# Count IPs in all crowdsec IPv4 sets (crowdsec-blacklists, crowdsec-blacklists-CAPI, crowdsec-blacklists-crowdsec)
+		ipv4_count=$(nft list table ip crowdsec 2>/dev/null | \
+			grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort -u | wc -l)
 	fi
 	if [ "$nft_ipv6" = "1" ]; then
-		ipv6_count=$(nft list set ip6 crowdsec6 crowdsec6-blacklists 2>/dev/null | grep -c "elements = {" || echo "0")
+		# Count unique IPv6 addresses across all crowdsec6 sets
+		ipv6_count=$(nft list table ip6 crowdsec6 2>/dev/null | \
+			grep -oE '[0-9a-fA-F:]+:+[0-9a-fA-F:]+' | sort -u | wc -l)
 	fi
 	json_add_int "blocked_ipv4" "$ipv4_count"
 	json_add_int "blocked_ipv6" "$ipv6_count"
