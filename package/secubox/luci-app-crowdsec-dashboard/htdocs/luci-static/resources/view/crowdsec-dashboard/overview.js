@@ -30,15 +30,33 @@ return view.extend({
 		}
 		// Also handle direct countries object if present
 		if (data.countries && typeof data.countries === 'object') {
-			Object.assign(countries, data.countries);
+			for (var k in data.countries) countries[k] = data.countries[k];
 		}
 		return countries;
+	},
+
+	parseAlerts: function(data) {
+		var alerts = [];
+		// Handle alerts_raw (JSON string array)
+		if (data.alerts_raw) {
+			try {
+				alerts = typeof data.alerts_raw === 'string'
+					? JSON.parse(data.alerts_raw)
+					: data.alerts_raw;
+			} catch (e) {}
+		}
+		// Also handle direct alerts array if present
+		if (Array.isArray(data.alerts) && data.alerts.length > 0) {
+			alerts = data.alerts;
+		}
+		return Array.isArray(alerts) ? alerts : [];
 	},
 
 	render: function(data) {
 		var self = this;
 		var s = data || {};
 		s.countries = this.parseCountries(s);
+		s.alerts = this.parseAlerts(s);
 
 		var view = E('div', { 'class': 'cs-view' }, [
 			// Header
@@ -178,6 +196,7 @@ return view.extend({
 		var self = this;
 		return api.getOverview().then(function(s) {
 			s.countries = self.parseCountries(s);
+			s.alerts = self.parseAlerts(s);
 			var el = document.getElementById('cs-stats');
 			if (el) dom.content(el, self.renderStats(s));
 			el = document.getElementById('cs-alerts');

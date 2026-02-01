@@ -2317,27 +2317,21 @@ get_overview() {
 	json_add_string "top_countries_raw" "[$countries]"
 
 	# Recent decisions (limited to 10 for display)
-	json_add_array "decisions"
+	# Recent decisions as raw JSON array string
+	local decisions_raw="[]"
 	if [ "$cs_running" = "1" ]; then
-		run_cscli decisions list -o json 2>/dev/null | \
-			jsonfilter -e '@[0]' -e '@[1]' -e '@[2]' -e '@[3]' -e '@[4]' \
-			-e '@[5]' -e '@[6]' -e '@[7]' -e '@[8]' -e '@[9]' 2>/dev/null | \
-			while IFS= read -r line; do
-				[ -n "$line" ] && [ "$line" != "null" ] && json_add_string "" "$line"
-			done
+		decisions_raw=$(run_cscli decisions list -o json --limit 10 2>/dev/null || echo "[]")
+		[ -z "$decisions_raw" ] && decisions_raw="[]"
 	fi
-	json_close_array
+	json_add_string "decisions_raw" "$decisions_raw"
 
-	# Recent alerts (limited to 8)
-	json_add_array "alerts"
+	# Recent alerts as raw JSON array string
+	local alerts_raw="[]"
 	if [ "$cs_running" = "1" ]; then
-		run_cscli alerts list -o json --limit 8 2>/dev/null | \
-			jsonfilter -e '@[*]' 2>/dev/null | head -8 | \
-			while IFS= read -r line; do
-				[ -n "$line" ] && json_add_string "" "$line"
-			done
+		alerts_raw=$(run_cscli alerts list -o json --limit 8 2>/dev/null || echo "[]")
+		[ -z "$alerts_raw" ] && alerts_raw="[]"
 	fi
-	json_close_array
+	json_add_string "alerts_raw" "$alerts_raw"
 
 	# CrowdSec logs (last 30 lines)
 	json_add_array "logs"
