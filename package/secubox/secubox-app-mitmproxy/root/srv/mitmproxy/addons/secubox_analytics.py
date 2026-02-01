@@ -17,7 +17,7 @@ from mitmproxy import http, ctx
 from pathlib import Path
 
 # GeoIP database path (MaxMind GeoLite2)
-GEOIP_DB = "/srv/mitmproxy/GeoLite2-Country.mmdb"
+GEOIP_DB = "/data/GeoLite2-Country.mmdb"
 LOG_FILE = "/var/log/secubox-access.log"
 # CrowdSec log - uses /data which is bind-mounted to /srv/mitmproxy on host
 # This allows CrowdSec on the host to read threat logs from the container
