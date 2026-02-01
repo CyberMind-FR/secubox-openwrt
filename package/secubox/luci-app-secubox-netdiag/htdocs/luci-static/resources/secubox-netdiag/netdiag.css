@@ -83,6 +83,99 @@
 	color: var(--sb-text);
 }
 
+/* Header right section */
+.netdiag-header-right {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+}
+
+/* Temperature display */
+.netdiag-temp-display {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 14px;
+	background: rgba(255,255,255,0.1);
+	border-radius: 8px;
+	font-weight: 600;
+}
+
+.netdiag-temp-display .temp-icon {
+	font-size: 1.1rem;
+}
+
+.netdiag-temp-display .temp-value {
+	font-size: 1.1rem;
+	font-family: 'JetBrains Mono', monospace;
+}
+
+.netdiag-temp-display .temp-unit {
+	font-size: 0.85rem;
+	opacity: 0.8;
+}
+
+.netdiag-temp-display.temp-normal {
+	background: rgba(87, 204, 153, 0.2);
+	color: var(--sb-success);
+}
+
+.netdiag-temp-display.temp-warm {
+	background: rgba(255, 202, 58, 0.2);
+	color: var(--sb-warning);
+}
+
+.netdiag-temp-display.temp-hot {
+	background: rgba(255, 89, 94, 0.2);
+	color: var(--sb-critical);
+	animation: pulse-temp 1.5s infinite;
+}
+
+@keyframes pulse-temp {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.7; }
+}
+
+/* Port mode controls */
+.netdiag-port-mode {
+	background: var(--sb-bg-dark);
+	border-radius: 8px;
+	padding: 16px;
+}
+
+.netdiag-mode-controls {
+	display: flex;
+	gap: 16px;
+	align-items: flex-end;
+	flex-wrap: wrap;
+}
+
+.netdiag-mode-group {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.netdiag-mode-group label {
+	font-size: 0.8rem;
+	color: var(--sb-text-muted);
+}
+
+.netdiag-select {
+	padding: 8px 12px;
+	background: var(--sb-bg-card);
+	border: 1px solid var(--sb-border);
+	border-radius: 6px;
+	color: var(--sb-text);
+	font-size: 0.9rem;
+	min-width: 180px;
+}
+
+.netdiag-select:focus {
+	outline: none;
+	border-color: var(--sb-primary);
+}
+
 /* Section containers */
 .netdiag-section {
 	background: var(--sb-bg-card);

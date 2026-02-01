@@ -38,6 +38,32 @@ var callClearCounters = rpc.declare({
 	expect: {}
 });
 
+var callCollectErrors = rpc.declare({
+	object: 'luci.secubox-netdiag',
+	method: 'collect_errors',
+	expect: {}
+});
+
+var callGetPortModes = rpc.declare({
+	object: 'luci.secubox-netdiag',
+	method: 'get_port_modes',
+	params: ['interface'],
+	expect: {}
+});
+
+var callSetPortMode = rpc.declare({
+	object: 'luci.secubox-netdiag',
+	method: 'set_port_mode',
+	params: ['interface', 'speed', 'duplex', 'eee', 'autoneg'],
+	expect: {}
+});
+
+var callGetTemperature = rpc.declare({
+	object: 'luci.secubox-netdiag',
+	method: 'get_temperature',
+	expect: {}
+});
+
 return view.extend({
 	refreshInterval: 5000,
 	pollHandle: null,
@@ -79,25 +105,139 @@ return view.extend({
 				E('span', { 'class': 'netdiag-title-icon' }, '\uD83D\uDD0C'),
 				_('Network Diagnostics')
 			]),
-			E('div', { 'class': 'netdiag-refresh-control' }, [
+			E('div', { 'class': 'netdiag-header-right' }, [
+				E('div', { 'class': 'netdiag-temp-display', 'id': 'temp-display' }, [
+					E('span', { 'class': 'temp-icon' }, '\uD83C\uDF21\uFE0F'),
+					E('span', { 'class': 'temp-value', 'id': 'temp-value' }, '--'),
+					E('span', { 'class': 'temp-unit' }, '\u00B0C')
+				]),
 				E('button', {
-					'class': 'netdiag-refresh-btn',
-					'click': function() { self.refreshData(); }
-				}, '\u21BB ' + _('Refresh')),
-				E('select', {
-					'class': 'netdiag-refresh-select',
-					'change': function(ev) {
-						self.refreshInterval = parseInt(ev.target.value, 10);
-						self.restartPolling();
-					}
-				}, [
-					E('option', { 'value': '5000', 'selected': true }, _('5 seconds')),
-					E('option', { 'value': '10000' }, _('10 seconds')),
-					E('option', { 'value': '30000' }, _('30 seconds')),
-					E('option', { 'value': '0' }, _('Manual'))
+					'class': 'netdiag-btn netdiag-btn-secondary',
+					'click': function() { self.collectAndExportErrors(); },
+					'title': _('Collect all errors and export')
+				}, '\uD83D\uDCCB ' + _('Collect Errors')),
+				E('div', { 'class': 'netdiag-refresh-control' }, [
+					E('button', {
+						'class': 'netdiag-refresh-btn',
+						'click': function() { self.refreshData(); }
+					}, '\u21BB ' + _('Refresh')),
+					E('select', {
+						'class': 'netdiag-refresh-select',
+						'change': function(ev) {
+							self.refreshInterval = parseInt(ev.target.value, 10);
+							self.restartPolling();
+						}
+					}, [
+						E('option', { 'value': '5000', 'selected': true }, _('5 seconds')),
+						E('option', { 'value': '10000' }, _('10 seconds')),
+						E('option', { 'value': '30000' }, _('30 seconds')),
+						E('option', { 'value': '0' }, _('Manual'))
+					])
 				])
 			])
 		]);
+	},
+
+	updateTemperature: function() {
+		callGetTemperature().then(function(data) {
+			var tempEl = document.getElementById('temp-value');
+			if (!tempEl) return;
+
+			var temp = '--';
+			var zones = data.zones || [];
+			var hwmon = data.hwmon || [];
+
+			// Prefer CPU/SoC temp
+			for (var i = 0; i < zones.length; i++) {
+				if (zones[i].temp_c > 0) {
+					temp = zones[i].temp_c;
+					break;
+				}
+			}
+
+			// Fallback to hwmon
+			if (temp === '--' && hwmon.length > 0) {
+				for (var j = 0; j < hwmon.length; j++) {
+					if (hwmon[j].temp_c > 0) {
+						temp = hwmon[j].temp_c;
+						break;
+					}
+				}
+			}
+
+			tempEl.textContent = temp;
+
+			// Color based on temp
+			var display = document.getElementById('temp-display');
+			if (display && temp !== '--') {
+				display.classList.remove('temp-normal', 'temp-warm', 'temp-hot');
+				if (temp >= 70) display.classList.add('temp-hot');
+				else if (temp >= 55) display.classList.add('temp-warm');
+				else display.classList.add('temp-normal');
+			}
+		}).catch(function() {});
+	},
+
+	collectAndExportErrors: function() {
+		var self = this;
+
+		ui.showModal(_('Collecting Errors'), [
+			E('p', {}, _('Gathering error data from all interfaces...')),
+			E('div', { 'class': 'spinning' })
+		]);
+
+		callCollectErrors().then(function(data) {
+			ui.hideModal();
+
+			var content = 'SecuBox Network Diagnostics - Error Collection\n';
+			content += '==============================================\n';
+			content += 'Timestamp: ' + (data.timestamp || new Date().toISOString()) + '\n';
+			content += 'Hostname: ' + (data.hostname || 'unknown') + '\n';
+			if (data.temperature) content += 'Temperature: ' + data.temperature + '\u00B0C\n';
+			content += '\n';
+
+			var interfaces = data.interfaces || [];
+			if (interfaces.length === 0) {
+				content += 'No errors detected on any interface.\n';
+			} else {
+				content += 'INTERFACE ERRORS\n';
+				content += '----------------\n';
+				interfaces.forEach(function(iface) {
+					content += '\n[' + iface.interface + '] Total: ' + iface.total_errors + '\n';
+					content += '  rx_crc_errors: ' + iface.rx_crc_errors + '\n';
+					content += '  rx_frame_errors: ' + iface.rx_frame_errors + '\n';
+					content += '  rx_fifo_errors: ' + iface.rx_fifo_errors + '\n';
+					content += '  rx_dropped: ' + iface.rx_dropped + '\n';
+					content += '  tx_dropped: ' + iface.tx_dropped + '\n';
+					content += '  collisions: ' + iface.collisions + '\n';
+				});
+			}
+
+			var dmesg = data.dmesg_errors || [];
+			if (dmesg.length > 0) {
+				content += '\nKERNEL MESSAGES (errors/warnings)\n';
+				content += '---------------------------------\n';
+				dmesg.forEach(function(line) {
+					content += line + '\n';
+				});
+			}
+
+			// Download file
+			var blob = new Blob([content], { type: 'text/plain' });
+			var url = URL.createObjectURL(blob);
+			var a = document.createElement('a');
+			a.href = url;
+			a.download = 'netdiag-errors-' + Date.now() + '.txt';
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+
+			ui.addNotification(null, E('p', _('Error report exported')), 'info');
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Failed to collect errors: ') + err), 'error');
+		});
 	},
 
 	renderSwitchSection: function(ports, topology) {
@@ -447,6 +587,43 @@ return view.extend({
 				)
 			]) : E('div'),
 
+			// Port Mode Settings (for temperature control)
+			E('div', { 'class': 'netdiag-detail-section' }, [
+				E('div', { 'class': 'netdiag-detail-title' }, [
+					'\uD83C\uDF21\uFE0F ',
+					_('Port Mode (Temperature Control)')
+				]),
+				E('div', { 'class': 'netdiag-port-mode', 'id': 'port-mode-' + iface }, [
+					E('p', { 'style': 'color: #94a3b8; font-size: 0.85rem; margin-bottom: 1rem;' },
+						_('Reducing port speed or enabling EEE can lower heat generation.')),
+					E('div', { 'class': 'netdiag-mode-controls' }, [
+						E('div', { 'class': 'netdiag-mode-group' }, [
+							E('label', {}, _('Speed/Duplex')),
+							E('select', { 'id': 'speed-select-' + iface, 'class': 'netdiag-select' }, [
+								E('option', { 'value': 'auto' }, _('Auto-negotiate')),
+								E('option', { 'value': '1000-full' }, '1000 Mbps Full'),
+								E('option', { 'value': '100-full' }, '100 Mbps Full'),
+								E('option', { 'value': '100-half' }, '100 Mbps Half'),
+								E('option', { 'value': '10-full' }, '10 Mbps Full'),
+								E('option', { 'value': '10-half' }, '10 Mbps Half')
+							])
+						]),
+						E('div', { 'class': 'netdiag-mode-group' }, [
+							E('label', {}, _('Energy Efficient Ethernet (EEE)')),
+							E('select', { 'id': 'eee-select-' + iface, 'class': 'netdiag-select' }, [
+								E('option', { 'value': '' }, _('No change')),
+								E('option', { 'value': 'on' }, _('Enable (saves power/heat)')),
+								E('option', { 'value': 'off' }, _('Disable'))
+							])
+						]),
+						E('button', {
+							'class': 'netdiag-btn netdiag-btn-primary',
+							'click': function() { self.applyPortMode(iface); }
+						}, _('Apply'))
+					])
+				])
+			]),
+
 			// Actions
 			E('div', { 'class': 'netdiag-actions' }, [
 				E('button', {
@@ -463,6 +640,45 @@ return view.extend({
 				}, _('Export Log'))
 			])
 		]);
+	},
+
+	applyPortMode: function(iface) {
+		var self = this;
+		var speedSelect = document.getElementById('speed-select-' + iface);
+		var eeeSelect = document.getElementById('eee-select-' + iface);
+
+		if (!speedSelect) return;
+
+		var speedVal = speedSelect.value;
+		var eeeVal = eeeSelect ? eeeSelect.value : '';
+
+		var speed = '', duplex = '', autoneg = '';
+		if (speedVal === 'auto') {
+			autoneg = 'on';
+		} else {
+			var parts = speedVal.split('-');
+			speed = parts[0];
+			duplex = parts[1];
+			autoneg = 'off';
+		}
+
+		ui.showModal(_('Applying Port Mode'), [
+			E('p', {}, _('Changing port settings for %s...').format(iface)),
+			E('div', { 'class': 'spinning' })
+		]);
+
+		callSetPortMode(iface, speed, duplex, eeeVal, autoneg).then(function(result) {
+			ui.hideModal();
+			if (result.success) {
+				ui.addNotification(null, E('p', result.message || _('Port mode updated')), 'info');
+				self.refreshData();
+			} else {
+				ui.addNotification(null, E('p', _('Failed: ') + (result.error || _('Unknown error'))), 'error');
+			}
+		}).catch(function(err) {
+			ui.hideModal();
+			ui.addNotification(null, E('p', _('Error: ') + err), 'error');
+		});
 	},
 
 	renderDetailItem: function(label, value) {
@@ -560,9 +776,13 @@ return view.extend({
 	startPolling: function() {
 		var self = this;
 
+		// Initial temperature update
+		this.updateTemperature();
+
 		if (this.refreshInterval > 0) {
 			this.pollHandle = poll.add(function() {
 				self.refreshData();
+				self.updateTemperature();
 			}, this.refreshInterval / 1000);
 		}
 	},

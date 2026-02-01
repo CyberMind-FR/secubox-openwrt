@@ -478,10 +478,216 @@ get_topology() {
     json_dump
 }
 
+# Method: collect_errors
+# Collect comprehensive error logs from all interfaces
+collect_errors() {
+    json_init
+    json_add_string "timestamp" "$(date -Iseconds)"
+    json_add_string "hostname" "$(cat /proc/sys/kernel/hostname)"
+
+    # System temperature if available
+    local temp=""
+    for t in /sys/class/thermal/thermal_zone*/temp; do
+        [ -f "$t" ] && temp=$(cat "$t" 2>/dev/null)
+        break
+    done
+    [ -n "$temp" ] && json_add_int "temperature" "$((temp / 1000))"
+
+    # Collect errors per interface
+    json_add_array "interfaces"
+    for iface_path in /sys/class/net/*; do
+        [ ! -d "$iface_path" ] && continue
+        local iface=$(basename "$iface_path")
+        case "$iface" in lo|br-*|docker*|veth*|tun*|tap*) continue ;; esac
+
+        local rx_crc=$(read_stat "$iface" rx_crc_errors)
+        local rx_frame=$(read_stat "$iface" rx_frame_errors)
+        local rx_fifo=$(read_stat "$iface" rx_fifo_errors)
+        local rx_dropped=$(read_stat "$iface" rx_dropped)
+        local tx_dropped=$(read_stat "$iface" tx_dropped)
+        local collisions=$(read_stat "$iface" collisions)
+        local total_err=$((rx_crc + rx_frame + rx_fifo + rx_dropped + tx_dropped + collisions))
+
+        [ "$total_err" -eq 0 ] && continue
+
+        json_add_object ""
+        json_add_string "interface" "$iface"
+        json_add_int "rx_crc_errors" "$rx_crc"
+        json_add_int "rx_frame_errors" "$rx_frame"
+        json_add_int "rx_fifo_errors" "$rx_fifo"
+        json_add_int "rx_dropped" "$rx_dropped"
+        json_add_int "tx_dropped" "$tx_dropped"
+        json_add_int "collisions" "$collisions"
+        json_add_int "total_errors" "$total_err"
+        json_close_object
+    done
+    json_close_array
+
+    # Recent dmesg errors
+    json_add_array "dmesg_errors"
+    dmesg 2>/dev/null | grep -iE "error|fail|timeout|reset|link" | tail -30 | while read -r line; do
+        json_add_string "" "$line"
+    done
+    json_close_array
+
+    json_dump
+}
+
+# Method: get_port_modes
+# Get current and available speed/duplex modes for an interface
+get_port_modes() {
+    local iface="$1"
+
+    if [ ! -d "/sys/class/net/${iface}" ]; then
+        json_init
+        json_add_boolean "error" 1
+        json_add_string "message" "Interface not found: $iface"
+        json_dump
+        return
+    fi
+
+    json_init
+    json_add_string "interface" "$iface"
+
+    # Current settings
+    local ethtool_out=$(ethtool "$iface" 2>/dev/null)
+    if [ -n "$ethtool_out" ]; then
+        local cur_speed=$(echo "$ethtool_out" | grep -i 'Speed:' | head -1 | awk '{print $2}')
+        local cur_duplex=$(echo "$ethtool_out" | grep -i 'Duplex:' | head -1 | awk '{print $2}')
+        local cur_autoneg=$(echo "$ethtool_out" | grep -E '^\s+Auto-negotiation:' | head -1 | awk '{print $2}')
+        local cur_link=$(echo "$ethtool_out" | grep -i 'Link detected:' | head -1 | awk '{print $3}')
+        json_add_string "current_speed" "${cur_speed:-unknown}"
+        json_add_string "current_duplex" "${cur_duplex:-unknown}"
+        json_add_string "autoneg" "${cur_autoneg:-unknown}"
+        json_add_string "link" "${cur_link:-unknown}"
+
+        # Parse supported modes
+        json_add_array "supported_speeds"
+        echo "$ethtool_out" | grep -A50 'Supported link modes:' | grep -oE '[0-9]+base[A-Za-z/]+' | sort -u | while read -r mode; do
+            json_add_string "" "$mode"
+        done
+        json_close_array
+    fi
+
+    # EEE status (Energy Efficient Ethernet) - reduces heat
+    local eee_out=$(ethtool --show-eee "$iface" 2>/dev/null)
+    if [ -n "$eee_out" ]; then
+        local eee_enabled=$(echo "$eee_out" | grep -i "EEE status:" | grep -q "enabled" && echo "true" || echo "false")
+        local eee_active=$(echo "$eee_out" | grep -i "Link partner" | grep -q "Yes" && echo "true" || echo "false")
+        json_add_boolean "eee_enabled" "$eee_enabled"
+        json_add_boolean "eee_active" "$eee_active"
+        json_add_boolean "eee_supported" "true"
+    else
+        json_add_boolean "eee_supported" "false"
+    fi
+
+    # Wake-on-LAN status
+    local wol_out=$(ethtool "$iface" 2>/dev/null | grep -E '^\s+Wake-on:' | head -1 | awk '{print $2}')
+    json_add_string "wake_on_lan" "${wol_out:-d}"
+
+    json_dump
+}
+
+# Method: set_port_mode
+# Set interface speed/duplex/EEE for temperature control
+set_port_mode() {
+    local iface="$1"
+    local speed="$2"
+    local duplex="$3"
+    local eee="$4"
+    local autoneg="$5"
+
+    if [ ! -d "/sys/class/net/${iface}" ]; then
+        json_init
+        json_add_boolean "success" 0
+        json_add_string "error" "Interface not found: $iface"
+        json_dump
+        return
+    fi
+
+    local result=""
+    local error=""
+
+    # Set speed/duplex
+    if [ -n "$speed" ] && [ -n "$duplex" ]; then
+        if [ "$autoneg" = "on" ]; then
+            result=$(ethtool -s "$iface" autoneg on 2>&1)
+        else
+            result=$(ethtool -s "$iface" speed "$speed" duplex "$duplex" autoneg off 2>&1)
+        fi
+        [ $? -ne 0 ] && error="$result"
+    fi
+
+    # Set EEE (Energy Efficient Ethernet) - key for temperature
+    if [ -n "$eee" ]; then
+        if [ "$eee" = "on" ]; then
+            result=$(ethtool --set-eee "$iface" eee on 2>&1)
+        else
+            result=$(ethtool --set-eee "$iface" eee off 2>&1)
+        fi
+        [ $? -ne 0 ] && [ -z "$error" ] && error="EEE: $result"
+    fi
+
+    json_init
+    if [ -z "$error" ]; then
+        json_add_boolean "success" 1
+        json_add_string "message" "Port mode updated for $iface"
+
+        # Log the change
+        logger -t secubox-netdiag "Port mode changed: $iface speed=$speed duplex=$duplex eee=$eee"
+    else
+        json_add_boolean "success" 0
+        json_add_string "error" "$error"
+    fi
+    json_dump
+}
+
+# Method: get_temperature
+# Get system and interface temperatures
+get_temperature() {
+    json_init
+
+    # CPU/SoC temperature
+    json_add_array "zones"
+    for zone in /sys/class/thermal/thermal_zone*; do
+        [ ! -d "$zone" ] && continue
+        local name=$(cat "$zone/type" 2>/dev/null || basename "$zone")
+        local temp=$(cat "$zone/temp" 2>/dev/null || echo 0)
+        json_add_object ""
+        json_add_string "name" "$name"
+        json_add_int "temp_mc" "$temp"
+        json_add_int "temp_c" "$((temp / 1000))"
+        json_close_object
+    done
+    json_close_array
+
+    # hwmon temperatures
+    json_add_array "hwmon"
+    for hwmon in /sys/class/hwmon/hwmon*; do
+        [ ! -d "$hwmon" ] && continue
+        local name=$(cat "$hwmon/name" 2>/dev/null || basename "$hwmon")
+        for temp_file in "$hwmon"/temp*_input; do
+            [ ! -f "$temp_file" ] && continue
+            local temp=$(cat "$temp_file" 2>/dev/null || echo 0)
+            local label_file="${temp_file%_input}_label"
+            local label=$(cat "$label_file" 2>/dev/null || basename "$temp_file" .input)
+            json_add_object ""
+            json_add_string "sensor" "$name"
+            json_add_string "label" "$label"
+            json_add_int "temp_mc" "$temp"
+            json_add_int "temp_c" "$((temp / 1000))"
+            json_close_object
+        done
+    done
+    json_close_array
+
+    json_dump
+}
+
 # RPCD list handler
 case "$1" in
     list)
-        echo '{"get_switch_status":{},"get_interface_details":{"interface":"string"},"get_error_history":{"interface":"string","minutes":5},"clear_counters":{"interface":"string"},"get_topology":{}}'
+        echo '{"get_switch_status":{},"get_interface_details":{"interface":"string"},"get_error_history":{"interface":"string","minutes":5},"clear_counters":{"interface":"string"},"get_topology":{},"collect_errors":{},"get_port_modes":{"interface":"string"},"set_port_mode":{"interface":"string","speed":"string","duplex":"string","eee":"string","autoneg":"string"},"get_temperature":{}}'
         ;;
     call)
         case "$2" in
@@ -506,6 +712,26 @@ case "$1" in
                 ;;
             get_topology)
                 get_topology
+                ;;
+            collect_errors)
+                collect_errors
+                ;;
+            get_port_modes)
+                read -r input
+                iface=$(echo "$input" | jsonfilter -e '@.interface' 2>/dev/null)
+                get_port_modes "$iface"
+                ;;
+            set_port_mode)
+                read -r input
+                iface=$(echo "$input" | jsonfilter -e '@.interface' 2>/dev/null)
+                speed=$(echo "$input" | jsonfilter -e '@.speed' 2>/dev/null)
+                duplex=$(echo "$input" | jsonfilter -e '@.duplex' 2>/dev/null)
+                eee=$(echo "$input" | jsonfilter -e '@.eee' 2>/dev/null)
+                autoneg=$(echo "$input" | jsonfilter -e '@.autoneg' 2>/dev/null)
+                set_port_mode "$iface" "$speed" "$duplex" "$eee" "$autoneg"
+                ;;
+            get_temperature)
+                get_temperature
                 ;;
         esac
         ;;
