@@ -210,7 +210,9 @@
       "Bash(pip install:*)",
       "WebFetch(domain:secubox.maegia.tv)",
       "Bash(# Find the built packages echo \"\"=== Built packages ===\"\" ls -la secubox-tools/build/aarch64_cortex-a72/*.ipk)",
-      "Bash(__NEW_LINE_2faeb2c9d4f26aa1__ git diff --cached --stat)"
+      "Bash(__NEW_LINE_2faeb2c9d4f26aa1__ git diff --cached --stat)",
+      "Bash(ip addr:*)",
+      "Bash(ip route:*)"
     ]
   }
 }

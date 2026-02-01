@@ -41,15 +41,15 @@ method_status() {
 		mode="unknown"
 	fi
 
-	# Try to identify provider
+	# Try to identify provider (grep avoids subshell issue)
 	provider="custom"
-	echo "$DNS_PROVIDERS" | while IFS='|' read id name primary secondary rest; do
-		[ -z "$id" ] && continue
-		if [ "$current_dns1" = "$primary" ] || [ "$current_dns1" = "$secondary" ]; then
-			provider="$id"
-			break
+	if [ -n "$current_dns1" ]; then
+		# Search for provider by primary or secondary IP
+		matched_line=$(echo "$DNS_PROVIDERS" | grep -E "\|${current_dns1}\||\|${current_dns1}$" | head -1)
+		if [ -n "$matched_line" ]; then
+			provider=$(echo "$matched_line" | cut -d'|' -f1)
 		fi
-	done
+	fi
 
 	json_init
 	json_add_string "mode" "$mode"
@@ -64,7 +64,9 @@ method_get_providers() {
 	json_init
 	json_add_array "providers"
 
-	echo "$DNS_PROVIDERS" | while IFS='|' read id name primary secondary dot_host doh_url category country description; do
+	# Save providers to temp file to avoid subshell issues
+	echo "$DNS_PROVIDERS" > /tmp/.dns_providers
+	while IFS='|' read id name primary secondary dot_host doh_url category country description; do
 		[ -z "$id" ] && continue
 		json_add_object
 		json_add_string "id" "$id"
@@ -77,7 +79,8 @@ method_get_providers() {
 		json_add_string "country" "$country"
 		json_add_string "description" "$description"
 		json_close_object
-	done
+	done < /tmp/.dns_providers
+	rm -f /tmp/.dns_providers
 
 	json_close_array
 	json_dump
@@ -106,17 +109,15 @@ method_get_config() {
 
 method_set_provider() {
 	local provider="$1"
-	local primary secondary
+	local primary secondary provider_line
 
-	# Find provider in feed
-	echo "$DNS_PROVIDERS" | while IFS='|' read id name p1 p2 rest; do
-		[ -z "$id" ] && continue
-		if [ "$id" = "$provider" ]; then
-			primary="$p1"
-			secondary="$p2"
-			break
-		fi
-	done
+	# Find provider in feed using grep (avoids subshell)
+	provider_line=$(echo "$DNS_PROVIDERS" | grep "^${provider}|")
+
+	if [ -n "$provider_line" ]; then
+		primary=$(echo "$provider_line" | cut -d'|' -f3)
+		secondary=$(echo "$provider_line" | cut -d'|' -f4)
+	fi
 
 	if [ -z "$primary" ]; then
 		json_init
