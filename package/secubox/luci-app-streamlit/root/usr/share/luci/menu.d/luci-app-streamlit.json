@@ -10,41 +10,17 @@
 			"uci": {"streamlit": true}
 		}
 	},
-	"admin/services/streamlit/overview": {
-		"title": "Overview",
+	"admin/services/streamlit/dashboard": {
+		"title": "Dashboard",
 		"order": 10,
 		"action": {
 			"type": "view",
-			"path": "streamlit/overview"
-		}
-	},
-	"admin/services/streamlit/apps": {
-		"title": "Apps",
-		"order": 20,
-		"action": {
-			"type": "view",
-			"path": "streamlit/apps"
-		}
-	},
-	"admin/services/streamlit/instances": {
-		"title": "Instances",
-		"order": 25,
-		"action": {
-			"type": "view",
-			"path": "streamlit/instances"
-		}
-	},
-	"admin/services/streamlit/logs": {
-		"title": "Logs",
-		"order": 30,
-		"action": {
-			"type": "view",
-			"path": "streamlit/logs"
+			"path": "streamlit/dashboard"
 		}
 	},
 	"admin/services/streamlit/settings": {
 		"title": "Settings",
-		"order": 40,
+		"order": 20,
 		"action": {
 			"type": "view",
 			"path": "streamlit/settings"
