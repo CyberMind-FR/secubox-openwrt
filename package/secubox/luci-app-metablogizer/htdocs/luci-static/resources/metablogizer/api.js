@@ -9,129 +9,110 @@
 
 var callStatus = rpc.declare({
 	object: 'luci.metablogizer',
-	method: 'status',
-	expect: { result: {} }
+	method: 'status'
 });
 
 var callListSites = rpc.declare({
 	object: 'luci.metablogizer',
-	method: 'list_sites',
-	expect: { sites: [] }
+	method: 'list_sites'
 });
 
 var callCreateSite = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'create_site',
-	params: ['name', 'domain', 'gitea_repo', 'ssl', 'description'],
-	expect: { result: {} }
+	params: ['name', 'domain', 'gitea_repo', 'ssl', 'description']
 });
 
 var callUpdateSite = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'update_site',
-	params: ['id', 'name', 'domain', 'gitea_repo', 'ssl', 'enabled', 'description'],
-	expect: { result: {} }
+	params: ['id', 'name', 'domain', 'gitea_repo', 'ssl', 'enabled', 'description']
 });
 
 var callDeleteSite = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'delete_site',
-	params: ['id'],
-	expect: { result: {} }
+	params: ['id']
 });
 
 var callSyncSite = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'sync_site',
-	params: ['id'],
-	expect: { result: {} }
+	params: ['id']
 });
 
 var callGetHostingStatus = rpc.declare({
 	object: 'luci.metablogizer',
-	method: 'get_hosting_status',
-	expect: { result: {} }
+	method: 'get_hosting_status'
 });
 
 var callCheckSiteHealth = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'check_site_health',
-	params: ['id'],
-	expect: { result: {} }
+	params: ['id']
 });
 
 var callGetPublishInfo = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'get_publish_info',
-	params: ['id'],
-	expect: { result: {} }
+	params: ['id']
 });
 
 var callUploadFile = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'upload_file',
-	params: ['site_id', 'filename', 'content'],
-	expect: { result: {} }
+	params: ['site_id', 'filename', 'content']
 });
 
 var callListFiles = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'list_files',
-	params: ['site_id'],
-	expect: { result: {} }
+	params: ['site_id']
 });
 
 var callGetSettings = rpc.declare({
 	object: 'luci.metablogizer',
-	method: 'get_settings',
-	expect: { result: {} }
+	method: 'get_settings'
 });
 
 var callEnableTor = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'enable_tor',
-	params: ['id'],
-	expect: { result: {} }
+	params: ['id']
 });
 
 var callDisableTor = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'disable_tor',
-	params: ['id'],
-	expect: { result: {} }
+	params: ['id']
 });
 
 var callGetTorStatus = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'get_tor_status',
-	params: ['id'],
-	expect: { result: {} }
+	params: ['id']
 });
 
 var callRepairSite = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'repair_site',
-	params: ['id'],
-	expect: { result: {} }
+	params: ['id']
 });
 
 var callDiscoverVhosts = rpc.declare({
 	object: 'luci.metablogizer',
-	method: 'discover_vhosts',
-	expect: { result: {} }
+	method: 'discover_vhosts'
 });
 
 var callImportVhost = rpc.declare({
 	object: 'luci.metablogizer',
 	method: 'import_vhost',
-	params: ['instance', 'name', 'domain'],
-	expect: { result: {} }
+	params: ['instance', 'name', 'domain']
 });
 
 var callSyncConfig = rpc.declare({
 	object: 'luci.metablogizer',
-	method: 'sync_config',
-	expect: { result: {} }
+	method: 'sync_config'
 });
 
 return baseclass.extend({
