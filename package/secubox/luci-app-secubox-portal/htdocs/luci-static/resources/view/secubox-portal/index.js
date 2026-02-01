@@ -84,27 +84,32 @@ return view.extend({
 	},
 
 	scanInitServices: function() {
-		// Scan /etc/init.d for service status
-		return fs.exec('sh', ['-c',
+		// Scan /etc/init.d for service status using a temp file approach
+		// which is more reliable with LuCI's fs.exec
+		var script =
 			'for s in /etc/init.d/*; do ' +
 			'[ -x "$s" ] || continue; ' +
 			'n=$(basename "$s"); ' +
-			'r="stopped"; ' +
-			'pgrep -f "$n" >/dev/null 2>&1 && r="running"; ' +
-			'echo "$n:$r"; ' +
-			'done'
-		]).then(function(res) {
+			'r=stopped; ' +
+			'pgrep "$n" >/dev/null 2>&1 && r=running; ' +
+			'printf "%s:%s\\n" "$n" "$r"; ' +
+			'done';
+
+		return fs.exec('/bin/sh', ['-c', script]).then(function(res) {
 			var services = {};
 			if (res && res.stdout) {
 				res.stdout.trim().split('\n').forEach(function(line) {
 					var parts = line.split(':');
-					if (parts.length === 2) {
+					if (parts.length === 2 && parts[0] && parts[1]) {
 						services[parts[0]] = parts[1];
 					}
 				});
 			}
 			return services;
-		}).catch(function() { return {}; });
+		}).catch(function(err) {
+			console.error('scanInitServices failed:', err);
+			return {};
+		});
 	},
 
 	render: function(data) {
