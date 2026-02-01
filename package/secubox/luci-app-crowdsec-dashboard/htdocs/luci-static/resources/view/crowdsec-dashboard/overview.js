@@ -13,9 +13,32 @@ return view.extend({
 		return api.getOverview().catch(function() { return {}; });
 	},
 
+	parseCountries: function(data) {
+		var countries = {};
+		// Handle top_countries_raw (JSON string array)
+		if (data.top_countries_raw) {
+			try {
+				var arr = typeof data.top_countries_raw === 'string'
+					? JSON.parse(data.top_countries_raw)
+					: data.top_countries_raw;
+				if (Array.isArray(arr)) {
+					arr.forEach(function(item) {
+						if (item.country) countries[item.country] = item.count || 0;
+					});
+				}
+			} catch (e) {}
+		}
+		// Also handle direct countries object if present
+		if (data.countries && typeof data.countries === 'object') {
+			Object.assign(countries, data.countries);
+		}
+		return countries;
+	},
+
 	render: function(data) {
 		var self = this;
 		var s = data || {};
+		s.countries = this.parseCountries(s);
 
 		var view = E('div', { 'class': 'cs-view' }, [
 			// Header
@@ -68,7 +91,7 @@ return view.extend({
 		];
 		return E('div', { 'class': 'cs-nav' }, tabs.map(function(t) {
 			return E('a', {
-				'href': L.url('admin/secubox/services/crowdsec/' + t.id),
+				'href': L.url('admin/secubox/security/crowdsec/' + t.id),
 				'class': active === t.id ? 'active' : ''
 			}, t.label);
 		}));
@@ -154,6 +177,7 @@ return view.extend({
 	pollData: function() {
 		var self = this;
 		return api.getOverview().then(function(s) {
+			s.countries = self.parseCountries(s);
 			var el = document.getElementById('cs-stats');
 			if (el) dom.content(el, self.renderStats(s));
 			el = document.getElementById('cs-alerts');
