@@ -162,6 +162,54 @@ return view.extend({
 				])
 			]),
 
+			// Auto-Ban Statistics Card
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('WAF Auto-Ban')),
+				E('div', { 'class': 'cbi-section-node' }, [
+					E('table', { 'class': 'table' }, [
+						E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td', 'width': '33%' }, E('strong', {}, _('Auto-Ban'))),
+							E('td', { 'class': 'td' }, [
+								E('span', {
+									'style': 'display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; background: ' + (status.autoban_enabled ? '#27ae60' : '#95a5a6')
+								}),
+								status.autoban_enabled ? _('Enabled') : _('Disabled')
+							])
+						]),
+						E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td' }, E('strong', {}, _('Sensitivity'))),
+							E('td', { 'class': 'td' }, [
+								E('span', {
+									'style': 'background: ' + ({ aggressive: '#e74c3c', moderate: '#f39c12', permissive: '#27ae60' }[status.autoban_sensitivity] || '#666') + '; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase;'
+								}, status.autoban_sensitivity || 'moderate')
+							])
+						]),
+						E('tr', { 'class': 'tr' }, [
+							E('td', { 'class': 'td' }, E('strong', {}, _('Ban Duration'))),
+							E('td', { 'class': 'td' }, status.autoban_duration || '4h')
+						])
+					]),
+					E('div', { 'style': 'display: flex; gap: 24px; margin-top: 16px; padding: 12px; background: #f8f9fa; border-radius: 8px;' }, [
+						E('div', { 'style': 'text-align: center; flex: 1;' }, [
+							E('div', { 'style': 'font-size: 28px; font-weight: bold; color: #e67e22;' }, String(status.threats_today || 0)),
+							E('div', { 'style': 'font-size: 12px; color: #666;' }, _('Threats Today'))
+						]),
+						E('div', { 'style': 'text-align: center; flex: 1;' }, [
+							E('div', { 'style': 'font-size: 28px; font-weight: bold; color: #e74c3c;' }, String(status.autobans_today || 0)),
+							E('div', { 'style': 'font-size: 12px; color: #666;' }, _('Bans Today'))
+						]),
+						E('div', { 'style': 'text-align: center; flex: 1;' }, [
+							E('div', { 'style': 'font-size: 28px; font-weight: bold; color: #3498db;' }, String(status.autobans_total || 0)),
+							E('div', { 'style': 'font-size: 12px; color: #666;' }, _('Total Bans'))
+						]),
+						status.autobans_pending > 0 ? E('div', { 'style': 'text-align: center; flex: 1;' }, [
+							E('div', { 'style': 'font-size: 28px; font-weight: bold; color: #9b59b6;' }, String(status.autobans_pending)),
+							E('div', { 'style': 'font-size: 12px; color: #666;' }, _('Pending'))
+						]) : null
+					])
+				])
+			]),
+
 			// HAProxy Backend Inspection Card
 			E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, _('HAProxy Backend Inspection')),

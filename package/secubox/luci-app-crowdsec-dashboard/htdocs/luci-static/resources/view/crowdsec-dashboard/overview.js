@@ -119,8 +119,8 @@ return view.extend({
 		var stats = [
 			{ label: 'Active Bans', value: s.active_bans || 0, type: (s.active_bans || 0) > 0 ? 'success' : '' },
 			{ label: 'Alerts (24h)', value: s.alerts_24h || 0, type: (s.alerts_24h || 0) > 10 ? 'warning' : '' },
-			{ label: 'Blocked Packets', value: this.fmt(s.dropped_packets || 0), type: (s.dropped_packets || 0) > 0 ? 'danger' : '' },
-			{ label: 'Bouncers', value: s.bouncer_count || 0, type: (s.bouncer_count || 0) > 0 ? 'success' : 'warning' }
+			{ label: 'WAF Threats', value: s.waf_threats_today || 0, type: (s.waf_threats_today || 0) > 0 ? 'warning' : '' },
+			{ label: 'WAF Auto-Bans', value: s.waf_bans_today || 0, type: (s.waf_bans_today || 0) > 0 ? 'danger' : '' }
 		];
 		return stats.map(function(st) {
 			return E('div', { 'class': 'cs-stat ' + st.type }, [
@@ -158,14 +158,16 @@ return view.extend({
 			{ label: 'LAPI', ok: s.lapi_status === 'available' },
 			{ label: 'CAPI', ok: s.capi_enrolled },
 			{ label: 'Bouncer', ok: (s.bouncer_count || 0) > 0 },
-			{ label: 'GeoIP', ok: s.geoip_enabled }
+			{ label: 'GeoIP', ok: s.geoip_enabled },
+			{ label: 'WAF Auto-Ban', ok: s.waf_autoban_enabled, value: s.waf_sensitivity }
 		];
 		return E('div', { 'class': 'cs-health' }, checks.map(function(c) {
+			var valueText = c.value ? c.value : (c.ok ? 'OK' : 'Disabled');
 			return E('div', { 'class': 'cs-health-item' }, [
 				E('div', { 'class': 'cs-health-icon ' + (c.ok ? 'ok' : 'error') }, c.ok ? '\u2713' : '\u2717'),
 				E('div', {}, [
 					E('div', { 'class': 'cs-health-label' }, c.label),
-					E('div', { 'class': 'cs-health-value' }, c.ok ? 'OK' : 'Error')
+					E('div', { 'class': 'cs-health-value' }, valueText)
 				])
 			]);
 		}));

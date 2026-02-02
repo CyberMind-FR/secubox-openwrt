@@ -2373,6 +2373,43 @@ get_overview() {
 	[ -f /etc/crowdsec/online_api_credentials.yaml ] && capi_enrolled=1
 	json_add_boolean "capi_enrolled" "$capi_enrolled"
 
+	# WAF Autoban statistics (from mitmproxy)
+	local waf_autoban_enabled=0
+	local waf_bans_today=0
+	local waf_threats_today=0
+	local waf_sensitivity=""
+
+	# Check if mitmproxy autoban is enabled
+	waf_autoban_enabled=$(uci -q get mitmproxy.autoban.enabled 2>/dev/null || echo 0)
+	waf_sensitivity=$(uci -q get mitmproxy.autoban.sensitivity 2>/dev/null || echo "moderate")
+
+	# Count WAF-originated bans in CrowdSec (reason contains "mitmproxy-waf")
+	if [ "$cs_running" = "1" ] && [ -x "$CSCLI" ]; then
+		waf_bans_today=$(run_cscli decisions list -o json 2>/dev/null | \
+			grep -c "mitmproxy-waf" 2>/dev/null || echo 0)
+	fi
+
+	# Count threats from mitmproxy log today
+	local threats_log="/srv/mitmproxy/threats.log"
+	if [ -f "$threats_log" ]; then
+		local today
+		today=$(date -u +%Y-%m-%d)
+		waf_threats_today=$(grep -c "\"timestamp\": \"$today" "$threats_log" 2>/dev/null || echo 0)
+	fi
+
+	# Count processed autobans
+	local autoban_processed=0
+	local autoban_log="/srv/mitmproxy/autoban-processed.log"
+	if [ -f "$autoban_log" ]; then
+		autoban_processed=$(wc -l < "$autoban_log" 2>/dev/null || echo 0)
+	fi
+
+	json_add_boolean "waf_autoban_enabled" "$waf_autoban_enabled"
+	json_add_string "waf_sensitivity" "$waf_sensitivity"
+	json_add_int "waf_bans_today" "${waf_bans_today:-0}"
+	json_add_int "waf_threats_today" "${waf_threats_today:-0}"
+	json_add_int "waf_autoban_total" "${autoban_processed:-0}"
+
 	json_dump
 }
 

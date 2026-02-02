@@ -57,6 +57,36 @@ get_status() {
 	local token_file="${data_path:-/srv/mitmproxy}/.mitmproxy_token"
 	[ -f "$token_file" ] && token=$(cat "$token_file" 2>/dev/null | tr -d '\n')
 
+	# Auto-ban stats
+	local autoban_enabled=$(uci_get autoban.enabled)
+	local autoban_sensitivity=$(uci_get autoban.sensitivity)
+	local autoban_duration=$(uci_get autoban.ban_duration)
+
+	# Count threats today
+	local threats_today=0
+	local threats_log="${data_path:-/srv/mitmproxy}/threats.log"
+	if [ -f "$threats_log" ]; then
+		local today=$(date -u +%Y-%m-%d)
+		threats_today=$(grep -c "\"timestamp\": \"$today" "$threats_log" 2>/dev/null || echo 0)
+	fi
+
+	# Count processed autobans
+	local autobans_total=0
+	local autobans_today=0
+	local autoban_log="${data_path:-/srv/mitmproxy}/autoban-processed.log"
+	if [ -f "$autoban_log" ]; then
+		autobans_total=$(wc -l < "$autoban_log" 2>/dev/null || echo 0)
+		local today=$(date +%Y-%m-%d)
+		autobans_today=$(grep -c "^$today" "$autoban_log" 2>/dev/null || echo 0)
+	fi
+
+	# Pending autoban requests
+	local autobans_pending=0
+	local autoban_requests="${data_path:-/srv/mitmproxy}/autoban-requests.log"
+	if [ -f "$autoban_requests" ] && [ -s "$autoban_requests" ]; then
+		autobans_pending=$(wc -l < "$autoban_requests" 2>/dev/null || echo 0)
+	fi
+
 	cat <<EOFJ
 {
 	"enabled": $([ "$enabled" = "1" ] && echo "true" || echo "false"),
@@ -76,7 +106,14 @@ get_status() {
 	"wan_protection_enabled": $([ "$wan_protection_enabled" = "1" ] && echo "true" || echo "false"),
 	"wan_interface": "${wan_interface:-wan}",
 	"crowdsec_feed": $([ "$crowdsec_feed" = "1" ] && echo "true" || echo "false"),
-	"block_bots": $([ "$block_bots" = "1" ] && echo "true" || echo "false")
+	"block_bots": $([ "$block_bots" = "1" ] && echo "true" || echo "false"),
+	"autoban_enabled": $([ "$autoban_enabled" = "1" ] && echo "true" || echo "false"),
+	"autoban_sensitivity": "${autoban_sensitivity:-moderate}",
+	"autoban_duration": "${autoban_duration:-4h}",
+	"threats_today": ${threats_today:-0},
+	"autobans_today": ${autobans_today:-0},
+	"autobans_total": ${autobans_total:-0},
+	"autobans_pending": ${autobans_pending:-0}
 }
 EOFJ
 }
