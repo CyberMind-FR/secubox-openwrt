@@ -167,7 +167,15 @@ nft_setup() {
 		return 0
 	fi
 
-	log_info "Setting up nftables for transparent proxy..."
+	# Check if LAN transparent mode is enabled
+	if [ "$transparent_enabled" != "1" ]; then
+		log_warn "LAN transparent mode is disabled. Enable with: uci set mitmproxy.transparent.enabled='1'"
+		log_warn "Note: HTTPS interception requires clients to trust the mitmproxy CA certificate."
+		return 0
+	fi
+
+	log_info "Setting up nftables for LAN transparent proxy..."
+	log_warn "Warning: HTTPS sites may show certificate errors until clients trust the CA."
 
 	# Enable IP forwarding (required for transparent proxying)
 	log_info "Enabling IP forwarding..."
@@ -857,8 +865,8 @@ lxc_run() {
 	ensure_dir "$data_path"
 	ensure_dir "$ADDON_PATH"
 
-	# Setup firewall rules if in transparent mode (LAN)
-	if [ "$mode" = "transparent" ]; then
+	# Setup LAN transparent firewall rules if both mode=transparent AND transparent.enabled=1
+	if [ "$mode" = "transparent" ] && [ "$transparent_enabled" = "1" ]; then
 		nft_setup
 	fi
 

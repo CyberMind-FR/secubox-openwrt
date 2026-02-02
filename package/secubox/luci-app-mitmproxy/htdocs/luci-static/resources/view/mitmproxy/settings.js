@@ -109,12 +109,12 @@ return view.extend({
 		o.depends('enabled', '1');
 
 		// LAN Transparent Mode
-		s = m.section(form.TypedSection, 'transparent', _('LAN Transparent Mode'));
+		s = m.section(form.TypedSection, 'transparent', _('LAN Transparent Mode (Disabled by Default)'));
 		s.anonymous = true;
-		s.description = _('Intercept outbound LAN traffic for inspection. Note: WAN Protection Mode is recommended for most use cases.');
+		s.description = _('<strong>Warning:</strong> LAN transparent mode intercepts HTTPS traffic which requires all LAN clients to trust the mitmproxy CA certificate. Without this, secured websites will show certificate errors. This mode is disabled by default. Use WAN Protection Mode for threat detection without client-side certificate requirements.');
 
 		o = s.option(form.Flag, 'enabled', _('Enable LAN Transparent Redirect'));
-		o.description = _('Redirect outbound LAN HTTP/HTTPS traffic through proxy');
+		o.description = _('Redirect outbound LAN HTTP/HTTPS traffic through proxy. Requires mitmproxy CA certificate installed on all clients.');
 
 		o = s.option(form.Value, 'interface', _('LAN Interface'));
 		o.default = 'br-lan';
