@@ -52,22 +52,29 @@ declare -A DEVICE_PROFILES=(
 # Packages that must be built in the OpenWrt buildroot (toolchain) instead of the SDK.
 # These packages compile native code and need system libraries not available in SDK.
 # NOTE: secubox-app-* wrappers are PKGARCH:=all (shell scripts) and CAN be built in SDK.
+# Include both shorthand names and full directory names for easy CLI usage.
 OPENWRT_ONLY_PACKAGES=(
     # C/C++ native binaries
-    "netifyd"                       # C++ native binary (Netify DPI)
+    "netifyd"                       # Shorthand
     "secubox-app-netifyd"           # C++ native binary wrapper
-    "ndpid"                         # C++ native binary (nDPI)
+    "ndpid"                         # Shorthand
     "secubox-app-ndpid"             # C++ native binary wrapper
-    "nodogsplash"                   # C native binary (captive portal)
+    "nodogsplash"                   # Shorthand
     "secubox-app-nodogsplash"       # C native binary wrapper (needs microhttpd)
     # Go binaries
-    "crowdsec"                      # Go binary
+    "crowdsec"                      # Shorthand
     "secubox-app-crowdsec"          # Go binary wrapper
-    "crowdsec-firewall-bouncer"     # Go binary
+    "crowdsec-firewall-bouncer"     # Full name
+    "cs-firewall-bouncer"           # Shorthand
     "secubox-app-cs-firewall-bouncer" # Go binary wrapper
     # Python/special packages
+    "mitmproxy"                     # Shorthand
+    "secubox-app-mitmproxy"         # Binary download package
+    "metablogizer"                  # Shorthand
     "secubox-app-metablogizer"      # Python dependencies
+    "tor"                           # Shorthand
     "luci-app-tor"                  # Requires tor daemon compilation
+    "secubox-app-tor"               # Tor service wrapper
 )
 
 # Helper functions
@@ -1544,6 +1551,7 @@ run_build_openwrt() {
         ["tor"]="secubox-app-tor"
         ["luci-app-tor"]="luci-app-tor"
         ["cs-firewall-bouncer"]="secubox-app-cs-firewall-bouncer"
+        ["crowdsec-firewall-bouncer"]="secubox-app-cs-firewall-bouncer"
     )
 
     # Map directory names to actual package names (PKG_NAME in Makefile)
@@ -2631,7 +2639,10 @@ PACKAGES:
         netifyd                 Netifyd DPI engine (shorthand for secubox-app-netifyd)
         nodogsplash             Captive portal (shorthand for secubox-app-nodogsplash)
         crowdsec                CrowdSec IPS (shorthand for secubox-app-crowdsec)
-        mitmproxy               mitmproxy HTTPS proxy (shorthand for secubox-app-mitmproxy)
+        cs-firewall-bouncer     CrowdSec Firewall Bouncer (Go binary)
+        mitmproxy               mitmproxy HTTPS proxy (binary download)
+        metablogizer            Metablogizer (Python dependencies)
+        tor                     Tor service (shorthand for secubox-app-tor)
         secubox-app-*           Full directory names also accepted
 
 ARCHITECTURES (for package building):
@@ -2672,6 +2683,15 @@ EXAMPLES:
 
     # Build mitmproxy HTTPS proxy (toolchain - binary download)
     $0 build mitmproxy
+
+    # Build CrowdSec Firewall Bouncer (toolchain - Go)
+    $0 build cs-firewall-bouncer
+
+    # Build Tor service (toolchain)
+    $0 build tor
+
+    # Build Metablogizer (toolchain - Python deps)
+    $0 build metablogizer
 
     # Build using full directory name
     $0 build secubox-app-ndpid
