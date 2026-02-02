@@ -2,12 +2,11 @@
 'require view';
 'require dom';
 'require ui';
-'require crowdsec-dashboard/api as api';
+'require crowdsec-dashboard.api as api';
 
 return view.extend({
 	status: {},
 	settings: {},
-	bouncerStatus: {},
 
 	load: function() {
 		var link = document.createElement('link');
@@ -17,7 +16,8 @@ return view.extend({
 		return Promise.all([
 			api.getStatus(),
 			api.getSettings(),
-			api.getFirewallBouncerStatus()
+			api.getMachines(),
+			api.getCollections()
 		]);
 	},
 
@@ -25,53 +25,60 @@ return view.extend({
 		var self = this;
 		this.status = data[0] || {};
 		this.settings = data[1] || {};
-		this.bouncerStatus = data[2] || {};
-
-		var isFirstRun = !this.status.capi_enrolled;
-		var allGood = this.status.crowdsec === 'running' &&
-		              this.status.lapi_status === 'available' &&
-		              this.status.capi_enrolled &&
-		              this.bouncerStatus.running;
+		var machines = Array.isArray(data[2]) ? data[2] : (data[2].machines || []);
+		var colData = data[3] || {};
+		var collections = colData.collections || [];
 
 		return E('div', { 'class': 'cs-view' }, [
 			// Header
 			E('div', { 'class': 'cs-header' }, [
-				E('div', { 'class': 'cs-title' }, isFirstRun ? 'CrowdSec Setup' : 'CrowdSec Setup'),
+				E('div', { 'class': 'cs-title' }, 'CrowdSec Setup'),
 				E('div', { 'class': 'cs-status' }, [
-					E('span', { 'class': 'cs-dot ' + (allGood ? 'online' : 'offline') }),
-					allGood ? 'All Systems Go' : 'Setup Required'
+					E('span', { 'class': 'cs-dot ' + (this.status.crowdsec === 'running' ? 'online' : 'offline') }),
+					this.status.crowdsec === 'running' ? 'Running' : 'Stopped'
 				])
 			]),
 
 			// Navigation
 			this.renderNav('setup'),
 
-			// Status Card
+			// Service Control
 			E('div', { 'class': 'cs-card' }, [
-				E('div', { 'class': 'cs-card-header' }, 'System Status'),
-				E('div', { 'class': 'cs-card-body' }, this.renderStatus())
+				E('div', { 'class': 'cs-card-header' }, 'Service Control'),
+				E('div', { 'class': 'cs-card-body' }, [
+					E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem;' }, [
+						E('button', { 'class': 'cs-btn', 'click': function() { self.svcAction('start'); } }, 'Start'),
+						E('button', { 'class': 'cs-btn', 'click': function() { self.svcAction('stop'); } }, 'Stop'),
+						E('button', { 'class': 'cs-btn', 'click': function() { self.svcAction('restart'); } }, 'Restart')
+					]),
+					this.renderHealth()
+				])
 			]),
 
-			// Console Enrollment Card
+			// Console Enrollment
 			E('div', { 'class': 'cs-card' }, [
 				E('div', { 'class': 'cs-card-header' }, [
 					'Console Enrollment',
 					E('span', { 'class': 'cs-badge ' + (this.status.capi_enrolled ? 'success' : 'warning') },
 						this.status.capi_enrolled ? 'Enrolled' : 'Not Enrolled')
 				]),
-				E('div', { 'class': 'cs-card-body' }, this.renderEnrollment())
+				E('div', { 'class': 'cs-card-body', 'id': 'enrollment-section' }, this.renderEnrollment())
 			]),
 
-			// Service Control Card
-			E('div', { 'class': 'cs-card' }, [
-				E('div', { 'class': 'cs-card-header' }, 'Service Control'),
-				E('div', { 'class': 'cs-card-body' }, [
-					E('div', { 'style': 'display: flex; gap: 8px; flex-wrap: wrap;' }, [
-						E('button', { 'class': 'cs-btn', 'click': function() { self.svcAction('start'); } }, 'Start'),
-						E('button', { 'class': 'cs-btn', 'click': function() { self.svcAction('stop'); } }, 'Stop'),
-						E('button', { 'class': 'cs-btn', 'click': function() { self.svcAction('restart'); } }, 'Restart'),
-						E('button', { 'class': 'cs-btn primary', 'click': function() { self.repairAll(); } }, 'Repair')
-					])
+			// Two column
+			E('div', { 'class': 'cs-grid-2' }, [
+				// Machines
+				E('div', { 'class': 'cs-card' }, [
+					E('div', { 'class': 'cs-card-header' }, 'Registered Machines'),
+					E('div', { 'class': 'cs-card-body' }, this.renderMachines(machines))
+				]),
+				// Collections
+				E('div', { 'class': 'cs-card' }, [
+					E('div', { 'class': 'cs-card-header' }, [
+						'Collections',
+						E('button', { 'class': 'cs-btn cs-btn-sm', 'click': function() { self.updateHub(); } }, 'Update')
+					]),
+					E('div', { 'class': 'cs-card-body', 'id': 'collections-list' }, this.renderCollections(collections))
 				])
 			])
 		]);
@@ -93,22 +100,19 @@ return view.extend({
 		}));
 	},
 
-	renderStatus: function() {
+	renderHealth: function() {
 		var s = this.status;
-		var b = this.bouncerStatus;
 		var checks = [
-			{ label: 'CrowdSec Agent', ok: s.crowdsec === 'running', detail: s.crowdsec || 'unknown' },
-			{ label: 'Local API (LAPI)', ok: s.lapi_status === 'available', detail: s.lapi_status || 'unknown' },
-			{ label: 'Central API (CAPI)', ok: s.capi_enrolled, detail: s.capi_enrolled ? 'Enrolled' : 'Not enrolled' },
-			{ label: 'Firewall Bouncer', ok: b.running, detail: b.running ? 'Running' : 'Stopped' }
+			{ label: 'Agent', ok: s.crowdsec === 'running' },
+			{ label: 'LAPI', ok: s.lapi_status === 'available' },
+			{ label: 'CAPI', ok: s.capi_enrolled }
 		];
-
-		return E('div', { 'class': 'cs-status-grid' }, checks.map(function(c) {
-			return E('div', { 'class': 'cs-status-item' }, [
-				E('div', { 'class': 'cs-status-icon ' + (c.ok ? 'ok' : 'error') }, c.ok ? '\u2713' : '\u2717'),
-				E('div', { 'class': 'cs-status-info' }, [
-					E('div', { 'class': 'cs-status-label' }, c.label),
-					E('div', { 'class': 'cs-status-detail' }, c.detail)
+		return E('div', { 'class': 'cs-health' }, checks.map(function(c) {
+			return E('div', { 'class': 'cs-health-item' }, [
+				E('div', { 'class': 'cs-health-icon ' + (c.ok ? 'ok' : 'error') }, c.ok ? '\u2713' : '\u2717'),
+				E('div', {}, [
+					E('div', { 'class': 'cs-health-label' }, c.label),
+					E('div', { 'class': 'cs-health-value' }, c.ok ? 'OK' : 'Error')
 				])
 			]);
 		}));
@@ -122,96 +126,74 @@ return view.extend({
 
 		return E('div', {}, [
 			E('p', { 'style': 'color: var(--cs-muted); margin-bottom: 1rem;' },
-				enrolled
-					? 'Your instance is enrolled in the CrowdSec Console and receiving community blocklists.'
-					: 'Enroll to receive community blocklists. Get your key from app.crowdsec.net'),
-
-			!enrolled ? E('div', {}, [
-				E('div', { 'class': 'cs-field' }, [
-					E('label', { 'class': 'cs-label' }, 'Enrollment Key'),
-					E('input', { 'type': 'text', 'id': 'enroll-key', 'class': 'cs-input', 'value': key,
-						'placeholder': 'clxxxxxxxxxxxxxxxxx' })
-				]),
-				E('div', { 'class': 'cs-field' }, [
-					E('label', { 'class': 'cs-label' }, 'Machine Name (optional)'),
-					E('input', { 'type': 'text', 'id': 'machine-name', 'class': 'cs-input', 'value': name,
-						'placeholder': 'my-router' })
-				]),
-				E('button', { 'class': 'cs-btn primary', 'style': 'margin-top: 0.5rem;',
-					'click': function() { self.enroll(); } }, 'Enroll Now')
-			]) : E('div', { 'style': 'display: flex; gap: 8px;' }, [
-				E('button', { 'class': 'cs-btn', 'click': function() { self.showReenroll(); } }, 'Re-enroll'),
-				E('button', { 'class': 'cs-btn danger', 'click': function() { self.disableConsole(); } }, 'Disable')
-			])
+				'Enroll to receive community blocklists from CrowdSec Console.'),
+			E('div', { 'class': 'cs-field' }, [
+				E('label', { 'class': 'cs-label' }, 'Enrollment Key'),
+				E('input', { 'type': 'text', 'id': 'enroll-key', 'class': 'cs-input', 'value': key,
+					'placeholder': 'Get key from app.crowdsec.net' })
+			]),
+			E('div', { 'class': 'cs-field' }, [
+				E('label', { 'class': 'cs-label' }, 'Machine Name (optional)'),
+				E('input', { 'type': 'text', 'id': 'machine-name', 'class': 'cs-input', 'value': name,
+					'placeholder': 'Custom name for this machine' })
+			]),
+			E('div', { 'style': 'display: flex; gap: 8px;' }, [
+				E('button', { 'class': 'cs-btn primary', 'click': function() { self.saveAndEnroll(); } },
+					enrolled ? 'Re-enroll' : 'Save & Enroll'),
+				E('button', { 'class': 'cs-btn', 'click': function() { self.saveSettings(); } }, 'Save Only'),
+				enrolled ? E('button', { 'class': 'cs-btn danger', 'click': function() { self.disableConsole(); } }, 'Disable') : null
+			].filter(Boolean))
 		]);
 	},
 
-	showReenroll: function() {
-		var self = this;
-		var container = document.querySelector('.cs-card-body');
-		if (!container) return;
-
-		// Find the enrollment card body
-		var cards = document.querySelectorAll('.cs-card');
-		for (var i = 0; i < cards.length; i++) {
-			var header = cards[i].querySelector('.cs-card-header');
-			if (header && header.textContent.includes('Console Enrollment')) {
-				var body = cards[i].querySelector('.cs-card-body');
-				body.innerHTML = '';
-				dom.append(body, [
-					E('div', { 'class': 'cs-field' }, [
-						E('label', { 'class': 'cs-label' }, 'New Enrollment Key'),
-						E('input', { 'type': 'text', 'id': 'enroll-key', 'class': 'cs-input',
-							'placeholder': 'clxxxxxxxxxxxxxxxxx' })
-					]),
-					E('div', { 'class': 'cs-field' }, [
-						E('label', { 'class': 'cs-label' }, 'Machine Name (optional)'),
-						E('input', { 'type': 'text', 'id': 'machine-name', 'class': 'cs-input',
-							'value': this.settings.machine_name || '', 'placeholder': 'my-router' })
-					]),
-					E('div', { 'style': 'display: flex; gap: 8px; margin-top: 0.5rem;' }, [
-						E('button', { 'class': 'cs-btn primary', 'click': function() { self.enroll(); } }, 'Enroll'),
-						E('button', { 'class': 'cs-btn', 'click': function() { location.reload(); } }, 'Cancel')
-					])
+	renderMachines: function(machines) {
+		if (!machines.length) {
+			return E('div', { 'class': 'cs-empty' }, 'No machines registered');
+		}
+		return E('table', { 'class': 'cs-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', {}, 'Machine'),
+				E('th', {}, 'Status')
+			])),
+			E('tbody', {}, machines.map(function(m) {
+				var active = m.isValidated || m.is_validated;
+				return E('tr', {}, [
+					E('td', {}, m.machineId || m.machine_id || '-'),
+					E('td', {}, E('span', { 'class': 'cs-badge ' + (active ? 'success' : 'warning') },
+						active ? 'Active' : 'Pending'))
 				]);
-				break;
-			}
-		}
+			}))
+		]);
 	},
 
-	enroll: function() {
+	renderCollections: function(collections) {
 		var self = this;
-		var key = document.getElementById('enroll-key').value.trim();
-		var name = document.getElementById('machine-name').value.trim();
-
-		if (!key) {
-			this.toast('Please enter an enrollment key', 'error');
-			return;
-		}
-
-		this.toast('Enrolling...', 'info');
-
-		api.saveSettings(key, name, '1').then(function() {
-			return api.consoleEnroll(key, name);
-		}).then(function(r) {
-			if (r && r.success) {
-				self.toast('Enrolled successfully!', 'success');
-				setTimeout(function() { location.reload(); }, 2000);
-			} else {
-				self.toast('Enrollment failed: ' + (r.error || 'Unknown error'), 'error');
-			}
-		}).catch(function(e) {
-			self.toast('Error: ' + e.message, 'error');
+		var installed = collections.filter(function(c) {
+			return c.status === 'enabled' || c.installed;
 		});
+		if (!installed.length) {
+			return E('div', { 'class': 'cs-empty' }, 'No collections installed');
+		}
+		return E('table', { 'class': 'cs-table' }, [
+			E('thead', {}, E('tr', {}, [
+				E('th', {}, 'Collection'),
+				E('th', {}, 'Action')
+			])),
+			E('tbody', {}, installed.map(function(c) {
+				return E('tr', {}, [
+					E('td', {}, c.name || '-'),
+					E('td', {}, E('button', { 'class': 'cs-btn cs-btn-sm danger',
+						'click': function() { self.removeCollection(c.name); } }, 'Remove'))
+				]);
+			}))
+		]);
 	},
 
-	disableConsole: function() {
+	svcAction: function(action) {
 		var self = this;
-		if (!confirm('Disable console enrollment? You will stop receiving community blocklists.')) return;
-
-		api.consoleDisable().then(function(r) {
+		api.serviceControl(action).then(function(r) {
 			if (r.success) {
-				self.toast('Console disabled', 'success');
+				self.toast('Service ' + action + ' OK', 'success');
 				setTimeout(function() { location.reload(); }, 1500);
 			} else {
 				self.toast('Failed: ' + (r.error || 'Unknown'), 'error');
@@ -219,50 +201,66 @@ return view.extend({
 		});
 	},
 
-	svcAction: function(action) {
+	saveSettings: function() {
 		var self = this;
-		this.toast(action.charAt(0).toUpperCase() + action.slice(1) + 'ing...', 'info');
+		var key = document.getElementById('enroll-key').value.trim();
+		var name = document.getElementById('machine-name').value.trim();
+		api.saveSettings(key, name, '0').then(function(r) {
+			self.toast(r.success ? 'Settings saved' : 'Failed', r.success ? 'success' : 'error');
+		});
+	},
 
-		api.serviceControl(action).then(function(r) {
-			if (r.success) {
-				self.toast('Service ' + action + ' OK', 'success');
+	saveAndEnroll: function() {
+		var self = this;
+		var key = document.getElementById('enroll-key').value.trim();
+		var name = document.getElementById('machine-name').value.trim();
+		if (!key) { self.toast('Enter enrollment key', 'error'); return; }
+
+		api.saveSettings(key, name, '1').then(function(r) {
+			if (!r.success) { self.toast('Save failed', 'error'); return; }
+			return api.consoleEnroll(key, name);
+		}).then(function(r) {
+			if (r && r.success) {
+				self.toast('Enrolled!', 'success');
 				setTimeout(function() { location.reload(); }, 2000);
-			} else {
-				self.toast('Failed: ' + (r.error || 'Unknown'), 'error');
+			} else if (r) {
+				self.toast('Enroll failed: ' + (r.error || ''), 'error');
 			}
 		});
 	},
 
-	repairAll: function() {
+	disableConsole: function() {
 		var self = this;
-		this.toast('Repairing...', 'info');
+		if (!confirm('Disable console enrollment?')) return;
+		api.consoleDisable().then(function(r) {
+			self.toast(r.success ? 'Disabled' : 'Failed', r.success ? 'success' : 'error');
+			if (r.success) setTimeout(function() { location.reload(); }, 1500);
+		});
+	},
 
-		// Repair LAPI first, then CAPI
-		api.repairLapi().then(function(r) {
-			if (!r.success) {
-				self.toast('LAPI repair failed', 'error');
-				return Promise.reject();
-			}
-			return api.repairCapi();
-		}).then(function(r) {
-			if (r && r.success) {
-				self.toast('Repair complete', 'success');
-				setTimeout(function() { location.reload(); }, 2000);
-			} else if (r) {
-				self.toast('CAPI repair: ' + (r.error || 'check status'), 'warning');
-				setTimeout(function() { location.reload(); }, 2000);
-			}
-		}).catch(function() {
-			// Already showed error
+	updateHub: function() {
+		var self = this;
+		api.updateHub().then(function(r) {
+			self.toast(r.success ? 'Hub updated' : 'Failed', r.success ? 'success' : 'error');
+			if (r.success) setTimeout(function() { location.reload(); }, 1500);
+		});
+	},
+
+	removeCollection: function(name) {
+		var self = this;
+		if (!confirm('Remove ' + name + '?')) return;
+		api.removeCollection(name).then(function(r) {
+			self.toast(r.success ? 'Removed' : 'Failed', r.success ? 'success' : 'error');
+			if (r.success) setTimeout(function() { location.reload(); }, 1500);
 		});
 	},
 
 	toast: function(msg, type) {
 		var t = document.querySelector('.cs-toast');
 		if (t) t.remove();
-		t = E('div', { 'class': 'cs-toast ' + (type || '') }, msg);
+		t = E('div', { 'class': 'cs-toast ' + type }, msg);
 		document.body.appendChild(t);
-		setTimeout(function() { if (t.parentNode) t.remove(); }, 4000);
+		setTimeout(function() { t.remove(); }, 4000);
 	},
 
 	handleSaveApply: null,
