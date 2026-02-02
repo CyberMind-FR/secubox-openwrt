@@ -490,6 +490,18 @@ class SecuBoxAnalytics:
         full_url = request.pretty_url.lower()
         query = request.query
         body = request.content.decode('utf-8', errors='ignore').lower() if request.content else ''
+        content_type = request.headers.get('content-type', '').lower()
+
+        # === CVE-2025-15467 CHECK FIRST (Content-Type based) ===
+        # OpenSSL CMS AuthEnvelopedData stack overflow - must check before SSRF
+        if any(ct in content_type for ct in CMS_CONTENT_TYPES):
+            body_len = len(body) if body else 0
+            severity = 'critical' if body_len > 1024 else 'high'
+            return {
+                'is_scan': True, 'pattern': 'CVE-2025-15467', 'type': 'cve_exploit',
+                'severity': severity, 'category': 'cms_attack',
+                'cve': 'CVE-2025-15467'
+            }
 
         # Build combined search string
         search_targets = [path, full_url, body]
@@ -551,7 +563,6 @@ class SecuBoxAnalytics:
                 }
 
         # Check XXE (in body/headers for XML)
-        content_type = request.headers.get('content-type', '').lower()
         if 'xml' in content_type or body.startswith('<?xml'):
             for pattern in XXE_PATTERNS:
                 if re.search(pattern, body, re.IGNORECASE):
@@ -559,18 +570,6 @@ class SecuBoxAnalytics:
                         'is_scan': True, 'pattern': 'xxe', 'type': 'injection',
                         'severity': 'critical', 'category': 'xml_attack'
                     }
-
-        # Check CVE-2025-15467 (OpenSSL CMS AuthEnvelopedData stack overflow)
-        # Detect potential exploitation attempts via S/MIME/CMS content
-        if any(ct in content_type for ct in CMS_CONTENT_TYPES):
-            # Flag all CMS/S/MIME content as potential CVE-2025-15467 target
-            # Especially suspicious if body is large (oversized IV attack)
-            severity = 'critical' if len(body) > 1024 else 'high'
-            return {
-                'is_scan': True, 'pattern': 'CVE-2025-15467', 'type': 'cve_exploit',
-                'severity': severity, 'category': 'cms_attack',
-                'cve': 'CVE-2025-15467'
-            }
 
         # Check LDAP Injection
         for pattern in LDAP_INJECTION_PATTERNS:
