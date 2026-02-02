@@ -289,32 +289,179 @@ JWT_PATTERNS = [
 ]
 
 # Known vulnerability paths (CVE-specific)
+# Comprehensive CVE detection patterns for WAF filtering
 CVE_PATTERNS = {
-    # CVE-2021-44228 (Log4Shell)
-    'log4shell': [r'\$\{jndi:', r'\$\{env:', r'\$\{lower:', r'\$\{upper:'],
+    # ============================================================================
+    # 2021 CVEs
+    # ============================================================================
+    # CVE-2021-44228 (Log4Shell) - Apache Log4j RCE
+    'CVE-2021-44228': [r'\$\{jndi:', r'\$\{env:', r'\$\{lower:', r'\$\{upper:', r'\$\{base64:'],
     # CVE-2021-41773 / CVE-2021-42013 (Apache path traversal)
-    'apache_traversal': [r'\.%2e/', r'%2e\./', r'\.\.%00', r'cgi-bin/\.%2e/'],
-    # CVE-2022-22963 (Spring Cloud Function)
-    'spring_cloud': [r'spring\.cloud\.function\.routing-expression:'],
+    'CVE-2021-41773': [r'\.%2e/', r'%2e\./', r'\.\.%00', r'cgi-bin/\.%2e/', r'/icons/\.%2e/'],
+    # CVE-2021-26084 (Confluence OGNL Injection)
+    'CVE-2021-26084': [r'/pages/doenterpagevariables\.action', r'queryString=.*ognl'],
+    # CVE-2021-34473 (ProxyShell - Exchange)
+    'CVE-2021-34473': [r'/autodiscover/autodiscover\.json.*@', r'/mapi/nspi'],
+    # CVE-2021-21972 (VMware vCenter RCE)
+    'CVE-2021-21972': [r'/ui/vropspluginui/rest/services/uploadova'],
+    # CVE-2021-22986 (F5 BIG-IP iControl REST RCE)
+    'CVE-2021-22986': [r'/mgmt/tm/util/bash', r'/mgmt/shared/authn/login'],
+
+    # ============================================================================
+    # 2022 CVEs
+    # ============================================================================
+    # CVE-2022-22963 (Spring Cloud Function SpEL Injection)
+    'CVE-2022-22963': [r'spring\.cloud\.function\.routing-expression:', r'spring\.cloud\.function\.definition'],
     # CVE-2022-22965 (Spring4Shell)
-    'spring4shell': [r'class\.module\.classLoader'],
-    # CVE-2023-34362 (MOVEit)
-    'moveit': [r'machine2\.aspx.*\?', r'/guestaccess\.aspx'],
-    # CVE-2024-3400 (PAN-OS)
-    'panos': [r'/global-protect/.*\.css\?'],
-    # CVE-2024-21887 (Ivanti Connect Secure)
-    'ivanti': [r'/api/v1/totp/user-backup-code', r'/api/v1/license/keys-status'],
-    # CVE-2024-1709 (ScreenConnect)
-    'screenconnect': [r'/SetupWizard\.aspx'],
-    # CVE-2024-27198 (TeamCity)
-    'teamcity': [r'/app/rest/users/id:', r'/app/rest/server'],
+    'CVE-2022-22965': [r'class\.module\.classLoader', r'class\.module\.classLoader\.resources'],
+    # CVE-2022-1388 (F5 BIG-IP Authentication Bypass)
+    'CVE-2022-1388': [r'/mgmt/tm/.*\?.*connection.*keep-alive', r'X-F5-Auth-Token:'],
+    # CVE-2022-26134 (Confluence OGNL Injection)
+    'CVE-2022-26134': [r'/\$\{.*\}/', r'%24%7B.*%7D'],
+    # CVE-2022-41040 / CVE-2022-41082 (ProxyNotShell - Exchange)
+    'CVE-2022-41040': [r'/autodiscover/autodiscover\.json.*Powershell', r'/owa/.*RemotePS'],
+    # CVE-2022-42889 (Apache Commons Text RCE)
+    'CVE-2022-42889': [r'\$\{script:', r'\$\{dns:', r'\$\{url:'],
+    # CVE-2022-47966 (ManageEngine RCE)
+    'CVE-2022-47966': [r'/samlLogin', r'/SamlResponseServlet'],
+
+    # ============================================================================
+    # 2023 CVEs
+    # ============================================================================
+    # CVE-2023-34362 (MOVEit Transfer SQL Injection)
+    'CVE-2023-34362': [r'machine2\.aspx', r'/guestaccess\.aspx', r'/human\.aspx'],
+    # CVE-2023-22515 (Confluence Privilege Escalation)
+    'CVE-2023-22515': [r'/server-info\.action\?bootstrapStatusProvider', r'/setup/setupadministrator\.action'],
+    # CVE-2023-22518 (Confluence Authentication Bypass)
+    'CVE-2023-22518': [r'/json/setup-restore\.action', r'/json/setup-restore-local\.action'],
+    # CVE-2023-46747 (F5 BIG-IP Configuration Utility RCE)
+    'CVE-2023-46747': [r'/tmui/login\.jsp.*\;'],
+    # CVE-2023-27997 (Fortinet SSL VPN Heap Overflow)
+    'CVE-2023-27997': [r'/remote/hostcheck_validate', r'/remote/logincheck'],
+    # CVE-2023-20198 (Cisco IOS XE Web UI Command Injection)
+    'CVE-2023-20198': [r'/webui/', r'%2F%2e%2e'],
+    # CVE-2023-42793 (TeamCity Authentication Bypass)
+    'CVE-2023-42793': [r'/app/rest/users/id:\d+/tokens', r'/app/rest/debug/processes'],
+    # CVE-2023-4966 (Citrix Bleed)
+    'CVE-2023-4966': [r'/oauth/idp/.*\.js', r'/vpn/.*\.xml'],
+    # CVE-2023-29357 (SharePoint Privilege Escalation)
+    'CVE-2023-29357': [r'/_api/web/siteusers', r'/_vti_bin/client\.svc'],
+
+    # ============================================================================
+    # 2024 CVEs
+    # ============================================================================
+    # CVE-2024-3400 (PAN-OS GlobalProtect Command Injection)
+    'CVE-2024-3400': [r'/global-protect/.*\.css\?', r'/ssl-vpn/hipreport\.esp'],
+    # CVE-2024-21887 (Ivanti Connect Secure Command Injection)
+    'CVE-2024-21887': [r'/api/v1/totp/user-backup-code', r'/api/v1/license/keys-status', r'/dana-na/'],
+    # CVE-2024-1709 (ScreenConnect Authentication Bypass)
+    'CVE-2024-1709': [r'/SetupWizard\.aspx', r'/SetupWizard\.ashx'],
+    # CVE-2024-27198 (TeamCity Authentication Bypass)
+    'CVE-2024-27198': [r'/app/rest/users/id:', r'/app/rest/server', r'/res/'],
+    # CVE-2024-21762 (Fortinet FortiOS Out-of-Bounds Write)
+    'CVE-2024-21762': [r'/webui/.*auth', r'/api/v2/cmdb'],
+    # CVE-2024-23897 (Jenkins Arbitrary File Read)
+    'CVE-2024-23897': [r'/cli\?remoting=false', r'@/etc/passwd'],
+    # CVE-2024-0012 (PAN-OS Management Interface Authentication Bypass)
+    'CVE-2024-0012': [r'/php/utils/debug\.php', r'/unauth/'],
+    # CVE-2024-9474 (PAN-OS Privilege Escalation)
+    'CVE-2024-9474': [r'/php/utils/createRemoteAppwebSession\.php'],
+    # CVE-2024-47575 (FortiManager/FortiAnalyzer Unauthenticated RCE)
+    'CVE-2024-47575': [r'/jsonrpc', r'FmgAuth'],
+    # CVE-2024-20399 (Cisco NX-OS Command Injection)
+    'CVE-2024-20399': [r'/api/node/class/', r'/api/node/mo/'],
+    # CVE-2024-4577 (PHP-CGI Argument Injection)
+    'CVE-2024-4577': [r'\.php\?.*-d.*allow_url_include', r'%AD'],
+    # CVE-2024-38856 (Apache OFBiz RCE)
+    'CVE-2024-38856': [r'/webtools/control/ProgramExport', r'/webtools/control/SOAPService'],
+    # CVE-2024-6387 (OpenSSH RegreSSHion - check headers)
+    'CVE-2024-6387': [r'SSH-2\.0-OpenSSH_[89]\.[0-7]'],
+    # CVE-2024-23113 (FortiOS Format String)
+    'CVE-2024-23113': [r'fgfm_req_', r'fgfmd'],
+    # CVE-2024-55591 (FortiOS Authentication Bypass)
+    'CVE-2024-55591': [r'/api/v2/authentication', r'LOCAL_ADMIN'],
+
+    # ============================================================================
+    # 2025 CVEs
+    # ============================================================================
     # CVE-2025-15467 (OpenSSL CMS AuthEnvelopedData stack overflow)
-    # Targets S/MIME, CMS endpoints with potentially malicious payloads
     'CVE-2025-15467': [
         r'/smime', r'/s-mime', r'/cms/', r'/pkcs7',
         r'/api/mail', r'/mail/send', r'/email/compose',
         r'/decrypt', r'/verify-signature', r'/enveloped',
     ],
+    # CVE-2025-0282 (Ivanti Connect Secure Stack Overflow)
+    'CVE-2025-0282': [r'/dana-na/auth/url_default/', r'/dana-ws/saml20\.ws'],
+    # CVE-2025-23006 (SonicWall SMA SSRF to RCE)
+    'CVE-2025-23006': [r'/cgi-bin/management', r'/cgi-bin/sslvpnclient'],
+
+    # ============================================================================
+    # CMS-Specific Vulnerabilities
+    # ============================================================================
+    # WordPress vulnerabilities
+    'wordpress_rce': [
+        r'/wp-admin/admin-ajax\.php.*action=.*upload',
+        r'/wp-content/plugins/.*/readme\.txt',
+        r'/xmlrpc\.php.*methodName.*system\.multicall',
+        r'/wp-json/wp/v2/users',
+    ],
+    # Drupal vulnerabilities (Drupalgeddon)
+    'drupal_rce': [
+        r'/node/\d+.*#.*render',
+        r'/user/register.*mail\[#.*\]',
+        r'passthru', r'system\(',
+    ],
+    # Joomla vulnerabilities
+    'joomla_rce': [
+        r'/index\.php\?option=com_.*&view=.*&layout=',
+        r'/administrator/components/',
+    ],
+
+    # ============================================================================
+    # Framework-Specific Vulnerabilities
+    # ============================================================================
+    # Laravel Debug Mode RCE
+    'laravel_debug': [r'/_ignition/execute-solution', r'/_ignition/share-report'],
+    # Symfony Debug Profiler
+    'symfony_debug': [r'/_profiler/', r'/_wdt/'],
+    # Django Debug Mode
+    'django_debug': [r'/__debug__/', r'/debug/'],
+    # Ruby on Rails
+    'rails_rce': [r'/assets/\.\./', r'/rails/actions'],
+    # Node.js Express
+    'express_rce': [r'/\.\./\.\./\.\./etc/passwd'],
+
+    # ============================================================================
+    # Database/Cache Vulnerabilities
+    # ============================================================================
+    # Redis Unauthorized Access
+    'redis_unauth': [r':6379/', r'CONFIG\s+SET', r'SLAVEOF'],
+    # MongoDB Unauthorized Access
+    'mongodb_unauth': [r':27017/', r'/admin\?slaveOk'],
+    # Elasticsearch RCE
+    'elasticsearch_rce': [r'/_search.*script', r'/_all/_search', r'/_nodes'],
+    # Memcached DDoS Amplification
+    'memcached_amp': [r':11211/', r'stats\s+slabs'],
+
+    # ============================================================================
+    # CI/CD Vulnerabilities
+    # ============================================================================
+    # GitLab RCE
+    'gitlab_rce': [r'/api/v4/projects/.*/repository/files', r'/uploads/'],
+    # GitHub Actions Injection
+    'github_actions': [r'/\.github/workflows/', r'workflow_dispatch'],
+    # Jenkins RCE
+    'jenkins_rce': [r'/script', r'/scriptText', r'/descriptorByName/'],
+
+    # ============================================================================
+    # Cloud Service Vulnerabilities
+    # ============================================================================
+    # AWS Metadata SSRF
+    'aws_metadata': [r'169\.254\.169\.254', r'/latest/meta-data/', r'/latest/user-data/'],
+    # Azure Metadata SSRF
+    'azure_metadata': [r'169\.254\.169\.254.*Metadata.*true', r'/metadata/instance'],
+    # GCP Metadata SSRF
+    'gcp_metadata': [r'metadata\.google\.internal', r'/computeMetadata/v1/'],
 }
 
 # Content-Type patterns for CVE-2025-15467 (CMS/S/MIME attacks)
