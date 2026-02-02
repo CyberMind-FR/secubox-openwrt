@@ -17,14 +17,11 @@
 })();
 
 var tabs = [
-	{ id: 'overview', icon: '📊', label: _('Overview'), path: ['admin', 'secubox', 'services', 'crowdsec', 'overview'] },
-	{ id: 'wizard', icon: '🚀', label: _('Wizard'), path: ['admin', 'secubox', 'services', 'crowdsec', 'wizard'] },
-	{ id: 'decisions', icon: '⛔', label: _('Decisions'), path: ['admin', 'secubox', 'services', 'crowdsec', 'decisions'] },
-	{ id: 'alerts', icon: '⚠️', label: _('Alerts'), path: ['admin', 'secubox', 'services', 'crowdsec', 'alerts'] },
-	{ id: 'bouncers', icon: '🛡️', label: _('Bouncers'), path: ['admin', 'secubox', 'services', 'crowdsec', 'bouncers'] },
-	{ id: 'waf', icon: '🔥', label: _('WAF/AppSec'), path: ['admin', 'secubox', 'services', 'crowdsec', 'waf'] },
-	{ id: 'metrics', icon: '📈', label: _('Metrics'), path: ['admin', 'secubox', 'services', 'crowdsec', 'metrics'] },
-	{ id: 'settings', icon: '⚙️', label: _('Settings'), path: ['admin', 'secubox', 'services', 'crowdsec', 'settings'] }
+	{ id: 'overview', icon: '📊', label: _('Overview'), path: ['admin', 'secubox', 'security', 'crowdsec', 'overview'] },
+	{ id: 'decisions', icon: '⛔', label: _('Decisions'), path: ['admin', 'secubox', 'security', 'crowdsec', 'decisions'] },
+	{ id: 'alerts', icon: '⚠️', label: _('Alerts'), path: ['admin', 'secubox', 'security', 'crowdsec', 'alerts'] },
+	{ id: 'bouncers', icon: '🛡️', label: _('Bouncers'), path: ['admin', 'secubox', 'security', 'crowdsec', 'bouncers'] },
+	{ id: 'setup', icon: '⚙️', label: _('Setup'), path: ['admin', 'secubox', 'security', 'crowdsec', 'setup'] }
 ];
 
 return baseclass.extend({

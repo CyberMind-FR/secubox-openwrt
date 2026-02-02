@@ -79,6 +79,19 @@
 .cs-health-label { font-size: 0.75rem; color: var(--cs-muted); }
 .cs-health-value { font-size: 0.875rem; color: var(--cs-text); }
 
+/* Status Grid (Setup page) */
+.cs-status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+.cs-status-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: var(--cs-bg); border-radius: 0.375rem; }
+.cs-status-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+.cs-status-icon.ok { background: rgba(16,185,129,0.2); color: var(--cs-success); }
+.cs-status-icon.error { background: rgba(239,68,68,0.2); color: var(--cs-danger); }
+.cs-status-info { flex: 1; min-width: 0; }
+.cs-status-label { font-size: 0.875rem; font-weight: 500; color: var(--cs-text); }
+.cs-status-detail { font-size: 0.75rem; color: var(--cs-muted); margin-top: 0.125rem; }
+
+/* Toast info variant */
+.cs-toast.info { border-color: var(--cs-accent); }
+
 /* Empty/Loading */
 .cs-empty { text-align: center; padding: 2rem; color: var(--cs-muted); }
 .cs-loading { text-align: center; padding: 2rem; }

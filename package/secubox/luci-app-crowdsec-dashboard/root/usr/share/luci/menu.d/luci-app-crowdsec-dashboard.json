@@ -17,14 +17,6 @@
 			"path": "crowdsec-dashboard/overview"
 		}
 	},
-	"admin/secubox/security/crowdsec/wizard": {
-		"title": "Setup Wizard",
-		"order": 10,
-		"action": {
-			"type": "view",
-			"path": "crowdsec-dashboard/wizard"
-		}
-	},
 	"admin/secubox/security/crowdsec/decisions": {
 		"title": "Decisions",
 		"order": 20,
@@ -49,28 +41,12 @@
 			"path": "crowdsec-dashboard/bouncers"
 		}
 	},
-	"admin/secubox/security/crowdsec/waf": {
-		"title": "WAF/AppSec",
-		"order": 45,
-		"action": {
-			"type": "view",
-			"path": "crowdsec-dashboard/waf"
-		}
-	},
-	"admin/secubox/security/crowdsec/metrics": {
-		"title": "Metrics",
-		"order": 50,
-		"action": {
-			"type": "view",
-			"path": "crowdsec-dashboard/metrics"
-		}
-	},
-	"admin/secubox/security/crowdsec/settings": {
-		"title": "Settings",
+	"admin/secubox/security/crowdsec/setup": {
+		"title": "Setup",
 		"order": 90,
 		"action": {
 			"type": "view",
-			"path": "crowdsec-dashboard/settings"
+			"path": "crowdsec-dashboard/setup"
 		}
 	}
 }
