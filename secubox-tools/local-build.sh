@@ -1591,7 +1591,16 @@ run_build_openwrt() {
         ./scripts/feeds install -a golang
     fi
 
-    ./scripts/feeds install -p secubox "$dir_name"
+    # Force install from secubox feed (override any conflicts)
+    ./scripts/feeds install -f -p secubox "$dir_name"
+
+    # Verify package is installed
+    if [[ ! -d "package/feeds/secubox/$dir_name" ]]; then
+        print_error "Package $dir_name not found in feeds after install"
+        print_info "Check if package exists in package/secubox/$dir_name"
+        cd - > /dev/null
+        return 1
+    fi
 
     # Configure build for target architecture (mochabin = mvebu/cortexa72)
     print_header "Configuring Build"
@@ -1626,8 +1635,8 @@ run_build_openwrt() {
     print_info "This may take several minutes on first build..."
     echo ""
 
-    # Build from SecuBox feed (package/secubox/...)
-    if make package/secubox/"$dir_name"/compile V=s; then
+    # Build from SecuBox feed (via feeds system)
+    if make package/feeds/secubox/"$dir_name"/compile V=s; then
         print_success "Package built successfully"
 
         # Find and display built package (search by actual package name)
