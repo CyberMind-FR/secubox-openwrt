@@ -1,0 +1,187 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+SIMPLEX_DIR="/srv/simplex"
+SMP_DIR="$SIMPLEX_DIR/smp"
+XFTP_DIR="$SIMPLEX_DIR/xftp"
+
+case "$1" in
+	list)
+		echo '{"status":{},"start":{},"stop":{},"restart":{},"install":{},"get_addresses":{},"init_certs":{"hostname":"str"},"logs":{"service":"str","lines":"int"},"get_stats":{}}'
+		;;
+	call)
+		case "$2" in
+			status)
+				json_init
+
+				# Get configuration
+				enabled=$(uci -q get simplex.main.enabled)
+				smp_enabled=$(uci -q get simplex.smp.enabled)
+				xftp_enabled=$(uci -q get simplex.xftp.enabled)
+				smp_hostname=$(uci -q get simplex.smp.hostname)
+				xftp_hostname=$(uci -q get simplex.xftp.hostname)
+				smp_port=$(uci -q get simplex.smp.port || echo "5223")
+				xftp_port=$(uci -q get simplex.xftp.port || echo "443")
+
+				json_add_boolean "enabled" ${enabled:-0}
+				json_add_boolean "smp_enabled" ${smp_enabled:-1}
+				json_add_boolean "xftp_enabled" ${xftp_enabled:-1}
+				json_add_string "smp_hostname" "$smp_hostname"
+				json_add_string "xftp_hostname" "$xftp_hostname"
+				json_add_int "smp_port" $smp_port
+				json_add_int "xftp_port" $xftp_port
+
+				# Check LXC
+				if command -v lxc-info >/dev/null 2>&1; then
+					json_add_boolean "lxc_available" 1
+
+					# Check container status
+					if lxc-info -n simplex >/dev/null 2>&1; then
+						json_add_boolean "container_exists" 1
+						if lxc-info -n simplex -s 2>/dev/null | grep -q "RUNNING"; then
+							json_add_string "container_status" "running"
+						else
+							json_add_string "container_status" "stopped"
+						fi
+					else
+						json_add_boolean "container_exists" 0
+						json_add_string "container_status" "not_installed"
+					fi
+				else
+					json_add_boolean "lxc_available" 0
+					json_add_boolean "container_exists" 0
+					json_add_string "container_status" "lxc_not_installed"
+				fi
+
+				# Check server processes
+				if pgrep smp-server >/dev/null 2>&1; then
+					json_add_string "smp_status" "running"
+				else
+					json_add_string "smp_status" "stopped"
+				fi
+
+				if pgrep xftp-server >/dev/null 2>&1; then
+					json_add_string "xftp_status" "running"
+				else
+					json_add_string "xftp_status" "stopped"
+				fi
+
+				# Check binaries exist
+				if [ -x "$SIMPLEX_DIR/bin/smp-server" ]; then
+					json_add_boolean "smp_binary_exists" 1
+				else
+					json_add_boolean "smp_binary_exists" 0
+				fi
+
+				if [ -x "$SIMPLEX_DIR/bin/xftp-server" ]; then
+					json_add_boolean "xftp_binary_exists" 1
+				else
+					json_add_boolean "xftp_binary_exists" 0
+				fi
+
+				json_dump
+				;;
+
+			start)
+				/etc/init.d/simplex start >/dev/null 2>&1
+				echo '{"success":true}'
+				;;
+
+			stop)
+				/etc/init.d/simplex stop >/dev/null 2>&1
+				echo '{"success":true}'
+				;;
+
+			restart)
+				/etc/init.d/simplex restart >/dev/null 2>&1
+				echo '{"success":true}'
+				;;
+
+			install)
+				output=$(/usr/sbin/simplexctl install 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			get_addresses)
+				json_init
+
+				# SMP address
+				smp_enabled=$(uci -q get simplex.smp.enabled)
+				if [ "$smp_enabled" = "1" ] && [ -f "$SMP_DIR/fingerprint" ]; then
+					smp_fp=$(cat "$SMP_DIR/fingerprint" 2>/dev/null)
+					smp_host=$(uci -q get simplex.smp.hostname)
+					smp_port=$(uci -q get simplex.smp.port || echo "5223")
+					[ -n "$smp_fp" ] && [ -n "$smp_host" ] && \
+						json_add_string "smp_address" "smp://${smp_fp}@${smp_host}:${smp_port}"
+					json_add_string "smp_fingerprint" "$smp_fp"
+				fi
+
+				# XFTP address
+				xftp_enabled=$(uci -q get simplex.xftp.enabled)
+				if [ "$xftp_enabled" = "1" ] && [ -f "$XFTP_DIR/fingerprint" ]; then
+					xftp_fp=$(cat "$XFTP_DIR/fingerprint" 2>/dev/null)
+					xftp_host=$(uci -q get simplex.xftp.hostname)
+					xftp_port=$(uci -q get simplex.xftp.port || echo "443")
+					[ -n "$xftp_fp" ] && [ -n "$xftp_host" ] && \
+						json_add_string "xftp_address" "xftp://${xftp_fp}@${xftp_host}:${xftp_port}"
+					json_add_string "xftp_fingerprint" "$xftp_fp"
+				fi
+
+				json_dump
+				;;
+
+			init_certs)
+				read -r input
+				hostname=$(echo "$input" | jsonfilter -e '@.hostname' 2>/dev/null)
+				output=$(/usr/sbin/simplexctl init-certs "$hostname" 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			logs)
+				read -r input
+				service=$(echo "$input" | jsonfilter -e '@.service' 2>/dev/null)
+				lines=$(echo "$input" | jsonfilter -e '@.lines' 2>/dev/null)
+				[ -z "$lines" ] && lines=50
+
+				logs=$(/usr/sbin/simplexctl logs "$service" "$lines" 2>&1 | tail -100)
+				json_init
+				json_add_string "logs" "$logs"
+				json_dump
+				;;
+
+			get_stats)
+				json_init
+
+				# Storage stats
+				if [ -d "$XFTP_DIR/files" ]; then
+					storage_used=$(du -sb "$XFTP_DIR/files" 2>/dev/null | cut -f1)
+					file_count=$(find "$XFTP_DIR/files" -type f 2>/dev/null | wc -l)
+					json_add_int "storage_used" ${storage_used:-0}
+					json_add_int "file_count" ${file_count:-0}
+				else
+					json_add_int "storage_used" 0
+					json_add_int "file_count" 0
+				fi
+
+				# Parse storage quota
+				quota=$(uci -q get simplex.xftp.storage_quota || echo "10G")
+				quota_bytes=$(echo "$quota" | sed -e 's/G/*1024*1024*1024/' -e 's/M/*1024*1024/' -e 's/K/*1024/' | bc 2>/dev/null || echo "10737418240")
+				json_add_int "storage_quota" $quota_bytes
+
+				json_dump
+				;;
+		esac
+		;;
+esac
+
+exit 0

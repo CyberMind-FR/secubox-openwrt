@@ -1,0 +1,77 @@
+#!/bin/sh /etc/rc.common
+# SimpleX Chat Server Service
+
+START=95
+STOP=15
+USE_PROCD=1
+
+SIMPLEX_DIR="/srv/simplex"
+CONTAINER_NAME="simplex"
+
+start_service() {
+	local enabled=$(uci -q get simplex.main.enabled)
+	[ "$enabled" != "1" ] && return 0
+
+	# Check LXC
+	if ! command -v lxc-start >/dev/null 2>&1; then
+		logger -t simplex "LXC not available"
+		return 1
+	fi
+
+	# Check if container exists
+	if ! lxc-info -n "$CONTAINER_NAME" >/dev/null 2>&1; then
+		logger -t simplex "Container not installed. Run: simplexctl install"
+		return 1
+	fi
+
+	# Start container if not running
+	if ! lxc-info -n "$CONTAINER_NAME" -s 2>/dev/null | grep -q "RUNNING"; then
+		logger -t simplex "Starting SimpleX container..."
+		/usr/sbin/simplexctl start-container
+	fi
+
+	# Start SMP server
+	local smp_enabled=$(uci -q get simplex.smp.enabled)
+	if [ "$smp_enabled" = "1" ]; then
+		procd_open_instance smp
+		procd_set_param command /usr/sbin/simplexctl service-run smp
+		procd_set_param respawn 3600 5 5
+		procd_set_param stdout 1
+		procd_set_param stderr 1
+		procd_close_instance
+	fi
+
+	# Start XFTP server
+	local xftp_enabled=$(uci -q get simplex.xftp.enabled)
+	if [ "$xftp_enabled" = "1" ]; then
+		procd_open_instance xftp
+		procd_set_param command /usr/sbin/simplexctl service-run xftp
+		procd_set_param respawn 3600 5 5
+		procd_set_param stdout 1
+		procd_set_param stderr 1
+		procd_close_instance
+	fi
+
+	logger -t simplex "SimpleX Chat Server started"
+}
+
+stop_service() {
+	# Stop services (procd handles the instances)
+	/usr/sbin/simplexctl stop-services 2>/dev/null
+
+	# Optionally stop container
+	local keep_container=$(uci -q get simplex.main.keep_container_running)
+	if [ "$keep_container" != "1" ]; then
+		/usr/sbin/simplexctl stop-container 2>/dev/null
+	fi
+
+	logger -t simplex "SimpleX Chat Server stopped"
+}
+
+reload_service() {
+	/usr/sbin/simplexctl reload-config
+}
+
+status() {
+	/usr/sbin/simplexctl status
+}

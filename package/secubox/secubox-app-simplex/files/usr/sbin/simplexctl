@@ -1,0 +1,985 @@
+#!/bin/sh
+# SimpleX Chat Server Control Script for SecuBox
+# Manages SMP and XFTP servers in LXC container
+
+VERSION="1.0.0"
+SIMPLEX_DIR="/srv/simplex"
+CONTAINER_NAME="simplex"
+CONTAINER_PATH="/var/lib/lxc/$CONTAINER_NAME"
+SMP_DIR="$SIMPLEX_DIR/smp"
+XFTP_DIR="$SIMPLEX_DIR/xftp"
+CERTS_DIR="$SIMPLEX_DIR/certs"
+
+# SimpleX release information
+SIMPLEX_VERSION="v6.0.4"
+SIMPLEX_BASE_URL="https://github.com/simplex-chat/simplexmq/releases/download"
+
+# Colors for terminal output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[SIMPLEX]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# ============================================================================
+# UCI Configuration Helpers
+# ============================================================================
+
+uci_get() { uci -q get simplex.$1; }
+uci_set() { uci -q set simplex.$1="$2" && uci commit simplex; }
+
+load_config() {
+	# Main settings
+	ENABLED=$(uci_get main.enabled || echo "0")
+	DATA_PATH=$(uci_get main.data_path || echo "$SIMPLEX_DIR")
+	MEMORY_LIMIT=$(uci_get main.memory_limit || echo "256M")
+
+	# SMP settings
+	SMP_ENABLED=$(uci_get smp.enabled || echo "1")
+	SMP_PORT=$(uci_get smp.port || echo "5223")
+	SMP_CONTROL_PORT=$(uci_get smp.control_port || echo "5224")
+	SMP_HOSTNAME=$(uci_get smp.hostname)
+	SMP_STORE_LOG=$(uci_get smp.store_log || echo "1")
+	SMP_QUEUE_PASSWORD=$(uci_get smp.queue_password)
+
+	# XFTP settings
+	XFTP_ENABLED=$(uci_get xftp.enabled || echo "1")
+	XFTP_PORT=$(uci_get xftp.port || echo "443")
+	XFTP_CONTROL_PORT=$(uci_get xftp.control_port || echo "5225")
+	XFTP_HOSTNAME=$(uci_get xftp.hostname)
+	XFTP_STORAGE_QUOTA=$(uci_get xftp.storage_quota || echo "10G")
+	XFTP_FILE_EXPIRY=$(uci_get xftp.file_expiry || echo "48h")
+	XFTP_CREATE_PASSWORD=$(uci_get xftp.create_password)
+
+	# TLS settings
+	USE_LETSENCRYPT=$(uci_get tls.use_letsencrypt || echo "0")
+	CERT_PATH=$(uci_get tls.cert_path || echo "$CERTS_DIR")
+	TLS_DOMAIN=$(uci_get tls.domain)
+	TLS_EMAIL=$(uci_get tls.email)
+
+	# Use hostname from TLS domain if not set specifically
+	[ -z "$SMP_HOSTNAME" ] && SMP_HOSTNAME="$TLS_DOMAIN"
+	[ -z "$XFTP_HOSTNAME" ] && XFTP_HOSTNAME="$TLS_DOMAIN"
+}
+
+# ============================================================================
+# Architecture Detection
+# ============================================================================
+
+detect_arch() {
+	local machine=$(uname -m)
+	case "$machine" in
+		aarch64|arm64)
+			echo "aarch64"
+			;;
+		x86_64|amd64)
+			echo "x86_64"
+			;;
+		*)
+			error "Unsupported architecture: $machine"
+			return 1
+			;;
+	esac
+}
+
+# ============================================================================
+# LXC Container Management
+# ============================================================================
+
+container_exists() {
+	lxc-info -n "$CONTAINER_NAME" >/dev/null 2>&1
+}
+
+container_running() {
+	lxc-info -n "$CONTAINER_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+create_container() {
+	log "Creating Alpine Linux LXC container..."
+
+	# Create container directory
+	mkdir -p "$CONTAINER_PATH/rootfs"
+
+	# Download Alpine minirootfs
+	local arch=$(detect_arch)
+	local alpine_version="3.19"
+	local alpine_url="https://dl-cdn.alpinelinux.org/alpine/v${alpine_version}/releases/${arch}/alpine-minirootfs-${alpine_version}.0-${arch}.tar.gz"
+
+	log "Downloading Alpine Linux minirootfs..."
+	if ! wget -q -O /tmp/alpine-rootfs.tar.gz "$alpine_url"; then
+		error "Failed to download Alpine rootfs"
+		return 1
+	fi
+
+	# Extract rootfs
+	tar -xzf /tmp/alpine-rootfs.tar.gz -C "$CONTAINER_PATH/rootfs"
+	rm -f /tmp/alpine-rootfs.tar.gz
+
+	# Create LXC config
+	cat > "$CONTAINER_PATH/config" << EOF
+# SimpleX Chat LXC Container Configuration
+
+lxc.uts.name = $CONTAINER_NAME
+lxc.arch = linux64
+
+# Rootfs
+lxc.rootfs.path = dir:$CONTAINER_PATH/rootfs
+
+# Network - use host networking for direct port access
+lxc.net.0.type = none
+
+# Resource limits
+lxc.cgroup2.memory.max = $MEMORY_LIMIT
+
+# Mount points for persistent data
+lxc.mount.entry = $DATA_PATH srv/simplex none bind,create=dir 0 0
+
+# Capabilities
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override
+
+# Console
+lxc.tty.max = 1
+lxc.pty.max = 1
+
+# Auto start
+lxc.start.auto = 0
+EOF
+
+	# Setup container init
+	cat > "$CONTAINER_PATH/rootfs/etc/inittab" << 'EOF'
+::sysinit:/sbin/openrc sysinit
+::sysinit:/sbin/openrc boot
+::wait:/sbin/openrc default
+::ctrlaltdel:/sbin/reboot
+::shutdown:/sbin/openrc shutdown
+EOF
+
+	# Configure networking in container
+	cat > "$CONTAINER_PATH/rootfs/etc/resolv.conf" << EOF
+nameserver 127.0.0.1
+nameserver 1.1.1.1
+EOF
+
+	# Install required packages in container
+	cat > "$CONTAINER_PATH/rootfs/tmp/setup.sh" << 'SETUP'
+#!/bin/sh
+apk update
+apk add --no-cache ca-certificates openssl curl
+mkdir -p /srv/simplex/smp /srv/simplex/xftp /srv/simplex/certs
+SETUP
+	chmod +x "$CONTAINER_PATH/rootfs/tmp/setup.sh"
+
+	log "Container created successfully"
+}
+
+start_container() {
+	if ! container_exists; then
+		error "Container does not exist. Run: simplexctl install"
+		return 1
+	fi
+
+	if container_running; then
+		log "Container already running"
+		return 0
+	fi
+
+	log "Starting container..."
+	lxc-start -n "$CONTAINER_NAME" -d
+
+	# Wait for container to be ready
+	local timeout=30
+	while [ $timeout -gt 0 ]; do
+		if container_running; then
+			log "Container started"
+			return 0
+		fi
+		sleep 1
+		timeout=$((timeout - 1))
+	done
+
+	error "Container failed to start"
+	return 1
+}
+
+stop_container() {
+	if container_running; then
+		log "Stopping container..."
+		lxc-stop -n "$CONTAINER_NAME" -t 10
+	fi
+}
+
+# ============================================================================
+# SimpleX Binary Management
+# ============================================================================
+
+download_binaries() {
+	log "Downloading SimpleX binaries (version $SIMPLEX_VERSION)..."
+
+	local arch=$(detect_arch)
+	local bin_suffix=""
+
+	case "$arch" in
+		aarch64) bin_suffix="ubuntu-20_04-aarch64" ;;
+		x86_64) bin_suffix="ubuntu-20_04-x86-64" ;;
+	esac
+
+	local smp_url="$SIMPLEX_BASE_URL/$SIMPLEX_VERSION/smp-server-$bin_suffix"
+	local xftp_url="$SIMPLEX_BASE_URL/$SIMPLEX_VERSION/xftp-server-$bin_suffix"
+
+	mkdir -p "$DATA_PATH/bin"
+
+	# Download SMP server
+	log "Downloading SMP server..."
+	if ! wget -q --show-progress -O "$DATA_PATH/bin/smp-server" "$smp_url"; then
+		error "Failed to download SMP server"
+		return 1
+	fi
+	chmod +x "$DATA_PATH/bin/smp-server"
+
+	# Download XFTP server
+	log "Downloading XFTP server..."
+	if ! wget -q --show-progress -O "$DATA_PATH/bin/xftp-server" "$xftp_url"; then
+		error "Failed to download XFTP server"
+		return 1
+	fi
+	chmod +x "$DATA_PATH/bin/xftp-server"
+
+	log "Binaries downloaded successfully"
+}
+
+# ============================================================================
+# TLS Certificate Management
+# ============================================================================
+
+generate_self_signed_certs() {
+	local hostname="$1"
+	[ -z "$hostname" ] && hostname="simplex.local"
+
+	log "Generating self-signed TLS certificates for $hostname..."
+
+	mkdir -p "$CERT_PATH"
+
+	# Generate CA key and cert
+	openssl genrsa -out "$CERT_PATH/ca.key" 4096 2>/dev/null
+	openssl req -new -x509 -days 3650 -key "$CERT_PATH/ca.key" \
+		-out "$CERT_PATH/ca.crt" -subj "/CN=SimpleX CA" 2>/dev/null
+
+	# Generate server key and CSR
+	openssl genrsa -out "$CERT_PATH/server.key" 4096 2>/dev/null
+	openssl req -new -key "$CERT_PATH/server.key" \
+		-out "$CERT_PATH/server.csr" -subj "/CN=$hostname" 2>/dev/null
+
+	# Create server certificate
+	cat > "$CERT_PATH/server.ext" << EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = DNS:$hostname
+EOF
+
+	openssl x509 -req -in "$CERT_PATH/server.csr" -CA "$CERT_PATH/ca.crt" \
+		-CAkey "$CERT_PATH/ca.key" -CAcreateserial -out "$CERT_PATH/server.crt" \
+		-days 365 -extfile "$CERT_PATH/server.ext" 2>/dev/null
+
+	# Cleanup
+	rm -f "$CERT_PATH/server.csr" "$CERT_PATH/server.ext"
+
+	log "Certificates generated at $CERT_PATH"
+}
+
+init_letsencrypt() {
+	local domain="$1"
+	local email="$2"
+
+	if [ -z "$domain" ]; then
+		error "Domain required for Let's Encrypt"
+		return 1
+	fi
+
+	log "Initializing Let's Encrypt for $domain..."
+
+	# Use acme.sh if available, or certbot
+	if command -v acme.sh >/dev/null 2>&1; then
+		acme.sh --issue -d "$domain" --standalone --keylength 4096 \
+			--cert-file "$CERT_PATH/server.crt" \
+			--key-file "$CERT_PATH/server.key" \
+			--fullchain-file "$CERT_PATH/fullchain.crt"
+	else
+		error "acme.sh not found. Install with: opkg install acme"
+		return 1
+	fi
+}
+
+# ============================================================================
+# Server Configuration
+# ============================================================================
+
+init_smp_server() {
+	log "Initializing SMP server..."
+
+	mkdir -p "$SMP_DIR"
+
+	# Initialize server if not already done
+	if [ ! -f "$SMP_DIR/smp-server.ini" ]; then
+		local hostname="${SMP_HOSTNAME:-$(hostname)}"
+
+		# Create SMP config
+		cat > "$SMP_DIR/smp-server.ini" << EOF
+[STORE_LOG]
+enable: ${SMP_STORE_LOG}
+restore_messages: on
+
+[AUTH]
+new_queues: ${SMP_QUEUE_PASSWORD:+on}
+
+[TRANSPORT]
+host: $hostname
+port: $SMP_PORT
+control_port: ${SMP_CONTROL_PORT}
+websockets: off
+
+[SERVER]
+information: SimpleX SMP Server
+source_code: https://github.com/simplex-chat/simplexmq
+EOF
+
+		# Add password if set
+		if [ -n "$SMP_QUEUE_PASSWORD" ]; then
+			echo "create_password: $SMP_QUEUE_PASSWORD" >> "$SMP_DIR/smp-server.ini"
+		fi
+	fi
+
+	# Generate server keys if not present
+	if [ ! -f "$SMP_DIR/server.key" ]; then
+		log "Generating SMP server keys..."
+		if [ -x "$DATA_PATH/bin/smp-server" ]; then
+			cd "$SMP_DIR"
+			"$DATA_PATH/bin/smp-server" init --store-log
+		fi
+	fi
+
+	log "SMP server initialized"
+}
+
+init_xftp_server() {
+	log "Initializing XFTP server..."
+
+	mkdir -p "$XFTP_DIR/files"
+
+	# Parse storage quota
+	local quota_bytes=$(echo "$XFTP_STORAGE_QUOTA" | \
+		sed -e 's/G/*1024*1024*1024/' -e 's/M/*1024*1024/' -e 's/K/*1024/' | bc)
+
+	# Create XFTP config
+	if [ ! -f "$XFTP_DIR/xftp-server.ini" ]; then
+		local hostname="${XFTP_HOSTNAME:-$(hostname)}"
+
+		cat > "$XFTP_DIR/xftp-server.ini" << EOF
+[STORE_LOG]
+enable: on
+file_path: $XFTP_DIR/files
+
+[AUTH]
+new_files: ${XFTP_CREATE_PASSWORD:+on}
+
+[TRANSPORT]
+host: $hostname
+port: $XFTP_PORT
+control_port: ${XFTP_CONTROL_PORT}
+
+[SERVER]
+information: SimpleX XFTP Server
+source_code: https://github.com/simplex-chat/simplexmq
+
+[QUOTA]
+storage_quota: $quota_bytes
+file_expiration: $XFTP_FILE_EXPIRY
+EOF
+
+		# Add password if set
+		if [ -n "$XFTP_CREATE_PASSWORD" ]; then
+			echo "create_password: $XFTP_CREATE_PASSWORD" >> "$XFTP_DIR/xftp-server.ini"
+		fi
+	fi
+
+	# Generate server keys if not present
+	if [ ! -f "$XFTP_DIR/server.key" ]; then
+		log "Generating XFTP server keys..."
+		if [ -x "$DATA_PATH/bin/xftp-server" ]; then
+			cd "$XFTP_DIR"
+			"$DATA_PATH/bin/xftp-server" init
+		fi
+	fi
+
+	log "XFTP server initialized"
+}
+
+# ============================================================================
+# Service Control
+# ============================================================================
+
+service_run() {
+	local service="$1"
+	load_config
+
+	case "$service" in
+		smp)
+			if [ -x "$DATA_PATH/bin/smp-server" ]; then
+				cd "$SMP_DIR"
+				exec "$DATA_PATH/bin/smp-server" start
+			else
+				error "SMP server binary not found"
+				exit 1
+			fi
+			;;
+		xftp)
+			if [ -x "$DATA_PATH/bin/xftp-server" ]; then
+				cd "$XFTP_DIR"
+				exec "$DATA_PATH/bin/xftp-server" start
+			else
+				error "XFTP server binary not found"
+				exit 1
+			fi
+			;;
+		*)
+			error "Unknown service: $service"
+			exit 1
+			;;
+	esac
+}
+
+stop_services() {
+	# Send SIGTERM to any running servers
+	pgrep smp-server && pkill smp-server
+	pgrep xftp-server && pkill xftp-server
+}
+
+reload_config() {
+	load_config
+	init_smp_server
+	init_xftp_server
+	log "Configuration reloaded"
+}
+
+# ============================================================================
+# Server Addresses
+# ============================================================================
+
+get_server_fingerprint() {
+	local key_file="$1"
+	if [ -f "$key_file" ]; then
+		# Extract base64-encoded fingerprint from key
+		openssl x509 -in "$key_file" -noout -fingerprint -sha256 2>/dev/null | \
+			sed 's/.*=//' | tr -d ':' | xxd -r -p | base64 | tr '+/' '-_' | tr -d '='
+	fi
+}
+
+show_addresses() {
+	load_config
+
+	echo ""
+	echo "=========================================="
+	echo "  SimpleX Server Addresses"
+	echo "=========================================="
+	echo ""
+
+	# SMP address
+	if [ "$SMP_ENABLED" = "1" ] && [ -f "$SMP_DIR/fingerprint" ]; then
+		local smp_fp=$(cat "$SMP_DIR/fingerprint" 2>/dev/null)
+		local smp_host="${SMP_HOSTNAME:-$(hostname)}"
+		echo "SMP Server:"
+		echo "  smp://${smp_fp}@${smp_host}:${SMP_PORT}"
+		echo ""
+	fi
+
+	# XFTP address
+	if [ "$XFTP_ENABLED" = "1" ] && [ -f "$XFTP_DIR/fingerprint" ]; then
+		local xftp_fp=$(cat "$XFTP_DIR/fingerprint" 2>/dev/null)
+		local xftp_host="${XFTP_HOSTNAME:-$(hostname)}"
+		echo "XFTP Server:"
+		echo "  xftp://${xftp_fp}@${xftp_host}:${XFTP_PORT}"
+		echo ""
+	fi
+
+	echo "Add these addresses to your SimpleX Chat app"
+	echo "under Settings > Network & Servers"
+	echo ""
+}
+
+# ============================================================================
+# Firewall Configuration
+# ============================================================================
+
+configure_firewall() {
+	load_config
+	log "Configuring firewall..."
+
+	# SMP port
+	if [ "$SMP_ENABLED" = "1" ]; then
+		if ! uci show firewall 2>/dev/null | grep -q "SimpleX-SMP"; then
+			uci add firewall rule
+			uci set firewall.@rule[-1].name='SimpleX-SMP'
+			uci set firewall.@rule[-1].src='wan'
+			uci set firewall.@rule[-1].dest_port="$SMP_PORT"
+			uci set firewall.@rule[-1].proto='tcp'
+			uci set firewall.@rule[-1].target='ACCEPT'
+			uci set firewall.@rule[-1].enabled='1'
+		fi
+	fi
+
+	# XFTP port
+	if [ "$XFTP_ENABLED" = "1" ]; then
+		if ! uci show firewall 2>/dev/null | grep -q "SimpleX-XFTP"; then
+			uci add firewall rule
+			uci set firewall.@rule[-1].name='SimpleX-XFTP'
+			uci set firewall.@rule[-1].src='wan'
+			uci set firewall.@rule[-1].dest_port="$XFTP_PORT"
+			uci set firewall.@rule[-1].proto='tcp'
+			uci set firewall.@rule[-1].target='ACCEPT'
+			uci set firewall.@rule[-1].enabled='1'
+		fi
+	fi
+
+	uci commit firewall
+	/etc/init.d/firewall reload 2>/dev/null
+
+	log "Firewall configured"
+}
+
+# ============================================================================
+# HAProxy Integration
+# ============================================================================
+
+configure_haproxy() {
+	load_config
+
+	if [ ! -x /usr/sbin/haproxyctl ]; then
+		warn "HAProxy not installed, skipping integration"
+		return 0
+	fi
+
+	log "Configuring HAProxy..."
+
+	local domain="${TLS_DOMAIN:-simplex.local}"
+
+	# Check if vhost already exists
+	if uci show haproxy 2>/dev/null | grep -q "\.domain='$domain'"; then
+		warn "HAProxy vhost for $domain already exists"
+		return 0
+	fi
+
+	# Add SMP backend (TCP mode for TLS passthrough)
+	uci -q add haproxy backend
+	uci -q set haproxy.@backend[-1].name='simplex_smp'
+	uci -q set haproxy.@backend[-1].mode='tcp'
+	uci -q add_list haproxy.@backend[-1].server="simplex-smp 127.0.0.1:$SMP_PORT check"
+
+	uci commit haproxy
+	/etc/init.d/haproxy reload 2>/dev/null
+
+	log "HAProxy configured"
+}
+
+# ============================================================================
+# Status Display
+# ============================================================================
+
+show_status() {
+	load_config
+
+	echo ""
+	echo "=========================================="
+	echo "  SimpleX Chat Server Status v$VERSION"
+	echo "=========================================="
+	echo ""
+
+	echo "Configuration:"
+	echo -e "  Enabled:      $([ "$ENABLED" = "1" ] && echo "${GREEN}Yes${NC}" || echo "${RED}No${NC}")"
+	echo "  Data Path:    $DATA_PATH"
+	echo ""
+
+	# Container status
+	echo "Container:"
+	if container_exists; then
+		if container_running; then
+			echo -e "  Status:       ${GREEN}Running${NC}"
+		else
+			echo -e "  Status:       ${YELLOW}Stopped${NC}"
+		fi
+	else
+		echo -e "  Status:       ${RED}Not installed${NC}"
+		echo ""
+		echo "Run 'simplexctl install' to set up the server"
+		return
+	fi
+	echo ""
+
+	# SMP server status
+	echo "SMP Server:"
+	echo -e "  Enabled:      $([ "$SMP_ENABLED" = "1" ] && echo "${GREEN}Yes${NC}" || echo "${RED}No${NC}")"
+	if [ "$SMP_ENABLED" = "1" ]; then
+		echo "  Port:         $SMP_PORT"
+		echo "  Hostname:     ${SMP_HOSTNAME:-<not set>}"
+		if pgrep smp-server >/dev/null 2>&1; then
+			echo -e "  Status:       ${GREEN}Running${NC}"
+		else
+			echo -e "  Status:       ${RED}Stopped${NC}"
+		fi
+		if [ -f "$SMP_DIR/fingerprint" ]; then
+			echo "  Fingerprint:  $(cat "$SMP_DIR/fingerprint" | head -c 20)..."
+		fi
+	fi
+	echo ""
+
+	# XFTP server status
+	echo "XFTP Server:"
+	echo -e "  Enabled:      $([ "$XFTP_ENABLED" = "1" ] && echo "${GREEN}Yes${NC}" || echo "${RED}No${NC}")"
+	if [ "$XFTP_ENABLED" = "1" ]; then
+		echo "  Port:         $XFTP_PORT"
+		echo "  Hostname:     ${XFTP_HOSTNAME:-<not set>}"
+		echo "  Quota:        $XFTP_STORAGE_QUOTA"
+		echo "  File Expiry:  $XFTP_FILE_EXPIRY"
+		if pgrep xftp-server >/dev/null 2>&1; then
+			echo -e "  Status:       ${GREEN}Running${NC}"
+		else
+			echo -e "  Status:       ${RED}Stopped${NC}"
+		fi
+	fi
+	echo ""
+
+	# Storage usage
+	if [ -d "$XFTP_DIR/files" ]; then
+		local storage_used=$(du -sh "$XFTP_DIR/files" 2>/dev/null | cut -f1)
+		echo "Storage:"
+		echo "  Used:         ${storage_used:-0}"
+		echo "  Quota:        $XFTP_STORAGE_QUOTA"
+	fi
+	echo ""
+}
+
+# ============================================================================
+# Logs
+# ============================================================================
+
+show_logs() {
+	local service="${1:-all}"
+	local lines="${2:-50}"
+
+	case "$service" in
+		smp)
+			if [ -f "$SMP_DIR/smp-server-store.log" ]; then
+				tail -n "$lines" "$SMP_DIR/smp-server-store.log"
+			else
+				echo "No SMP logs found"
+			fi
+			;;
+		xftp)
+			if [ -f "$XFTP_DIR/xftp-server-store.log" ]; then
+				tail -n "$lines" "$XFTP_DIR/xftp-server-store.log"
+			else
+				echo "No XFTP logs found"
+			fi
+			;;
+		all)
+			echo "=== SMP Logs ==="
+			show_logs smp "$lines"
+			echo ""
+			echo "=== XFTP Logs ==="
+			show_logs xftp "$lines"
+			;;
+		*)
+			echo "Usage: simplexctl logs [smp|xftp|all] [lines]"
+			;;
+	esac
+}
+
+# ============================================================================
+# Installation
+# ============================================================================
+
+install_simplex() {
+	log "Installing SimpleX Chat Server..."
+
+	# Check LXC
+	if ! command -v lxc-start >/dev/null 2>&1; then
+		error "LXC is required. Install with: opkg install lxc lxc-common"
+		return 1
+	fi
+
+	load_config
+
+	# Create directories
+	mkdir -p "$DATA_PATH" "$SMP_DIR" "$XFTP_DIR" "$CERT_PATH"
+
+	# Create LXC container
+	if ! container_exists; then
+		create_container || return 1
+	fi
+
+	# Start container
+	start_container || return 1
+
+	# Run setup inside container
+	lxc-attach -n "$CONTAINER_NAME" -- /tmp/setup.sh
+
+	# Download binaries
+	download_binaries || return 1
+
+	# Generate certificates
+	local hostname="${TLS_DOMAIN:-$(hostname)}"
+	if [ "$USE_LETSENCRYPT" = "1" ] && [ -n "$TLS_DOMAIN" ]; then
+		init_letsencrypt "$TLS_DOMAIN" "$TLS_EMAIL"
+	else
+		generate_self_signed_certs "$hostname"
+	fi
+
+	# Initialize servers
+	init_smp_server
+	init_xftp_server
+
+	# Configure firewall
+	configure_firewall
+
+	# Configure HAProxy if available
+	configure_haproxy
+
+	log ""
+	log "SimpleX Chat Server installed successfully!"
+	log ""
+	log "Next steps:"
+	log "  1. Set hostnames: uci set simplex.smp.hostname='smp.example.com'"
+	log "  2. Commit:        uci commit simplex"
+	log "  3. Enable:        uci set simplex.main.enabled=1 && uci commit simplex"
+	log "  4. Start:         /etc/init.d/simplex start"
+	log ""
+	log "Get server addresses: simplexctl get-address"
+	log ""
+}
+
+uninstall_simplex() {
+	log "Uninstalling SimpleX Chat Server..."
+
+	# Stop services
+	/etc/init.d/simplex stop 2>/dev/null
+
+	# Stop and destroy container
+	if container_exists; then
+		stop_container
+		log "Removing container..."
+		lxc-destroy -n "$CONTAINER_NAME"
+	fi
+
+	# Remove firewall rules
+	local rules=$(uci show firewall 2>/dev/null | grep "SimpleX-" | cut -d'.' -f2 | cut -d'=' -f1 | sort -ru)
+	for rule in $rules; do
+		uci delete firewall.@rule[$rule]
+	done
+	uci commit firewall 2>/dev/null
+
+	warn "Data preserved at $DATA_PATH"
+	warn "Remove manually if desired: rm -rf $DATA_PATH"
+
+	log "Uninstall complete"
+}
+
+# ============================================================================
+# Backup / Restore
+# ============================================================================
+
+backup() {
+	local backup_file="${1:-/tmp/simplex-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
+
+	load_config
+	log "Creating backup..."
+
+	tar -czf "$backup_file" \
+		-C / \
+		etc/config/simplex \
+		"$SMP_DIR" \
+		"$XFTP_DIR" \
+		"$CERT_PATH" \
+		2>/dev/null
+
+	if [ -f "$backup_file" ]; then
+		local size=$(ls -lh "$backup_file" | awk '{print $5}')
+		log "Backup created: $backup_file ($size)"
+	else
+		error "Backup failed"
+		return 1
+	fi
+}
+
+restore() {
+	local backup_file="$1"
+
+	if [ -z "$backup_file" ] || [ ! -f "$backup_file" ]; then
+		echo "Usage: simplexctl restore <backup_file>"
+		return 1
+	fi
+
+	log "Restoring from $backup_file..."
+
+	# Stop services
+	/etc/init.d/simplex stop 2>/dev/null
+
+	# Extract backup
+	tar -xzf "$backup_file" -C /
+
+	# Restart
+	/etc/init.d/simplex start
+
+	log "Restore complete"
+}
+
+# ============================================================================
+# Shell Access
+# ============================================================================
+
+container_shell() {
+	if ! container_running; then
+		start_container || return 1
+	fi
+
+	log "Entering container shell..."
+	lxc-attach -n "$CONTAINER_NAME"
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+show_help() {
+	cat << EOF
+SimpleX Chat Server Control v$VERSION
+
+Usage: simplexctl <command> [options]
+
+Installation:
+  install             Install SimpleX servers in LXC container
+  uninstall           Remove container (preserves data)
+  update              Update SimpleX binaries to latest version
+
+Service Control:
+  start               Start SMP and XFTP servers
+  stop                Stop servers
+  restart             Restart servers
+  status              Show service status
+
+Server Addresses:
+  get-address         Display server addresses for clients
+
+Certificates:
+  init-certs          Generate self-signed TLS certificates
+  init-letsencrypt    Request Let's Encrypt certificates
+
+Logs & Debug:
+  logs [smp|xftp]     View server logs
+  shell               Access container shell
+
+Backup:
+  backup [file]       Create configuration backup
+  restore <file>      Restore from backup
+
+Configuration:
+  configure-fw        Configure firewall rules
+  configure-haproxy   Add HAProxy integration
+  reload-config       Reload configuration
+
+Internal (used by init script):
+  service-run <svc>   Run service in foreground
+  start-container     Start LXC container
+  stop-container      Stop LXC container
+  stop-services       Stop server processes
+
+Examples:
+  simplexctl install
+  simplexctl status
+  simplexctl get-address
+  simplexctl logs smp 100
+
+EOF
+}
+
+case "$1" in
+	install)
+		install_simplex
+		;;
+	uninstall)
+		uninstall_simplex
+		;;
+	update)
+		load_config
+		download_binaries
+		;;
+	start)
+		start_container
+		/etc/init.d/simplex start
+		;;
+	stop)
+		/etc/init.d/simplex stop
+		;;
+	restart)
+		/etc/init.d/simplex restart
+		;;
+	status)
+		show_status
+		;;
+	get-address|get-addresses)
+		show_addresses
+		;;
+	init-certs)
+		load_config
+		generate_self_signed_certs "${2:-$TLS_DOMAIN}"
+		;;
+	init-letsencrypt)
+		load_config
+		init_letsencrypt "${2:-$TLS_DOMAIN}" "${3:-$TLS_EMAIL}"
+		;;
+	logs)
+		show_logs "$2" "$3"
+		;;
+	shell)
+		container_shell
+		;;
+	backup)
+		backup "$2"
+		;;
+	restore)
+		restore "$2"
+		;;
+	configure-fw)
+		configure_firewall
+		;;
+	configure-haproxy)
+		configure_haproxy
+		;;
+	reload-config)
+		reload_config
+		;;
+	service-run)
+		service_run "$2"
+		;;
+	start-container)
+		start_container
+		;;
+	stop-container)
+		stop_container
+		;;
+	stop-services)
+		stop_services
+		;;
+	-h|--help|help)
+		show_help
+		;;
+	*)
+		show_help
+		exit 1
+		;;
+esac
+
+exit 0

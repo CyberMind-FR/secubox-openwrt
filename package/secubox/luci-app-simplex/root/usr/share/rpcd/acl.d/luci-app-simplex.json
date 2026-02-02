@@ -1,0 +1,26 @@
+{
+	"luci-app-simplex": {
+		"description": "Grant access to SimpleX Chat Server configuration",
+		"read": {
+			"file": {
+				"/etc/config/simplex": ["read"],
+				"/srv/simplex/smp/fingerprint": ["read"],
+				"/srv/simplex/xftp/fingerprint": ["read"]
+			},
+			"ubus": {
+				"file": ["read", "stat"],
+				"luci.simplex": ["*"]
+			},
+			"uci": ["simplex"]
+		},
+		"write": {
+			"file": {
+				"/etc/config/simplex": ["write"]
+			},
+			"ubus": {
+				"luci.simplex": ["*"]
+			},
+			"uci": ["simplex"]
+		}
+	}
+}
