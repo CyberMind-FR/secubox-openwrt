@@ -33,8 +33,17 @@ Commands:
   sync-routes     Sync HAProxy backends to mitmproxy routes
   haproxy-enable  Enable HAProxy backend inspection mode
   haproxy-disable Disable HAProxy backend inspection mode
+  process-autoban Process auto-ban requests from WAF (run via cron)
+  reload-autoban  Reload auto-ban config after UCI changes
   service-run     Internal: run container under procd
   service-stop    Stop container
+
+Auto-ban Sensitivity Levels:
+  aggressive    - Ban immediately on first critical threat
+  moderate      - Ban after repeated attempts (default: 3 in 5 min)
+  permissive    - Ban after persistent attempts (default: 5 in 1 hour)
+
+  Configure with: uci set mitmproxy.autoban.sensitivity='moderate'
 
 Modes (configure in /etc/config/mitmproxy):
   regular      - Standard HTTP/HTTPS proxy (default)
@@ -66,6 +75,65 @@ log_error() { echo "[ERROR] $*" >&2; }
 uci_get() { uci -q get ${CONFIG}.$1; }
 uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
 uci_get_list() { uci -q get ${CONFIG}.$1 2>/dev/null; }
+
+# Write autoban config to JSON for container to read
+write_autoban_config() {
+	load_config
+
+	local autoban_enabled=$(uci_get autoban.enabled || echo 0)
+	local ban_duration=$(uci_get autoban.ban_duration || echo "4h")
+	local min_severity=$(uci_get autoban.min_severity || echo "critical")
+	local ban_cve=$(uci_get autoban.ban_cve_exploits || echo 1)
+	local ban_sqli=$(uci_get autoban.ban_sqli || echo 1)
+	local ban_cmdi=$(uci_get autoban.ban_cmdi || echo 1)
+	local ban_traversal=$(uci_get autoban.ban_traversal || echo 1)
+	local ban_scanners=$(uci_get autoban.ban_scanners || echo 1)
+	local ban_rate_limit=$(uci_get autoban.ban_rate_limit || echo 0)
+	local whitelist=$(uci_get autoban.whitelist || echo "")
+	local sensitivity=$(uci_get autoban.sensitivity || echo "moderate")
+	local moderate_threshold=$(uci_get autoban.moderate_threshold || echo 3)
+	local moderate_window=$(uci_get autoban.moderate_window || echo 300)
+	local permissive_threshold=$(uci_get autoban.permissive_threshold || echo 5)
+	local permissive_window=$(uci_get autoban.permissive_window || echo 3600)
+
+	# Convert 0/1 to true/false for JSON
+	local enabled_json="false"
+	[ "$autoban_enabled" = "1" ] && enabled_json="true"
+	local cve_json="false"
+	[ "$ban_cve" = "1" ] && cve_json="true"
+	local sqli_json="false"
+	[ "$ban_sqli" = "1" ] && sqli_json="true"
+	local cmdi_json="false"
+	[ "$ban_cmdi" = "1" ] && cmdi_json="true"
+	local traversal_json="false"
+	[ "$ban_traversal" = "1" ] && traversal_json="true"
+	local scanners_json="false"
+	[ "$ban_scanners" = "1" ] && scanners_json="true"
+	local rate_json="false"
+	[ "$ban_rate_limit" = "1" ] && rate_json="true"
+
+	# Write JSON config
+	cat > "$data_path/autoban.json" << EOF
+{
+  "enabled": $enabled_json,
+  "ban_duration": "$ban_duration",
+  "min_severity": "$min_severity",
+  "ban_cve_exploits": $cve_json,
+  "ban_sqli": $sqli_json,
+  "ban_cmdi": $cmdi_json,
+  "ban_traversal": $traversal_json,
+  "ban_scanners": $scanners_json,
+  "ban_rate_limit": $rate_json,
+  "whitelist": "$whitelist",
+  "sensitivity": "$sensitivity",
+  "moderate_threshold": $moderate_threshold,
+  "moderate_window": $moderate_window,
+  "permissive_threshold": $permissive_threshold,
+  "permissive_window": $permissive_window
+}
+EOF
+	chmod 644 "$data_path/autoban.json"
+}
 
 # Load configuration with defaults
 load_config() {
@@ -865,6 +933,9 @@ lxc_run() {
 	ensure_dir "$data_path"
 	ensure_dir "$ADDON_PATH"
 
+	# Write autoban config for container
+	write_autoban_config
+
 	# Setup LAN transparent firewall rules if both mode=transparent AND transparent.enabled=1
 	if [ "$mode" = "transparent" ] && [ "$transparent_enabled" = "1" ]; then
 		nft_setup
@@ -1255,6 +1326,103 @@ cmd_haproxy_enable() {
 	log_info "View threats at: http://<router-ip>/cgi-bin/luci/admin/services/mitmproxy"
 }
 
+# =============================================================================
+# AUTOBAN PROCESSOR
+# =============================================================================
+
+cmd_reload_autoban_config() {
+	load_config
+
+	log_info "Reloading auto-ban configuration..."
+	write_autoban_config
+	log_info "Auto-ban config updated at $data_path/autoban.json"
+}
+
+cmd_process_autoban() {
+	load_config
+
+	# Refresh config before processing
+	write_autoban_config 2>/dev/null || true
+
+	local autoban_enabled=$(uci_get autoban.enabled || echo 0)
+	if [ "$autoban_enabled" != "1" ]; then
+		return 0
+	fi
+
+	local autoban_log="$data_path/autoban-requests.log"
+	local processed_log="$data_path/autoban-processed.log"
+	local ban_duration=$(uci_get autoban.ban_duration || echo "4h")
+	local whitelist=$(uci_get autoban.whitelist || echo "")
+
+	# Check if log exists and has content
+	[ ! -f "$autoban_log" ] && return 0
+	[ ! -s "$autoban_log" ] && return 0
+
+	# Check if CrowdSec CLI is available
+	if ! command -v cscli >/dev/null 2>&1; then
+		log_warn "cscli not found - cannot process auto-bans"
+		return 1
+	fi
+
+	# Process each line in the log
+	local processed=0
+	local skipped=0
+
+	while IFS= read -r line; do
+		[ -z "$line" ] && continue
+
+		# Parse JSON line: {"ip": "x.x.x.x", "reason": "...", "duration": "4h", ...}
+		local ip=$(echo "$line" | jsonfilter -e '@.ip' 2>/dev/null)
+		local reason=$(echo "$line" | jsonfilter -e '@.reason' 2>/dev/null)
+		local req_duration=$(echo "$line" | jsonfilter -e '@.duration' 2>/dev/null)
+
+		[ -z "$ip" ] && continue
+
+		# Use request duration or default
+		local duration="${req_duration:-$ban_duration}"
+
+		# Check whitelist
+		local skip=0
+		if [ -n "$whitelist" ]; then
+			for wl_ip in $(echo "$whitelist" | tr ',' ' '); do
+				if [ "$ip" = "$wl_ip" ]; then
+					log_info "Skipping whitelisted IP: $ip"
+					skip=1
+					break
+				fi
+			done
+		fi
+
+		if [ "$skip" = "1" ]; then
+			skipped=$((skipped + 1))
+			continue
+		fi
+
+		# Check if IP is already banned
+		if cscli decisions list -i "$ip" 2>/dev/null | grep -q "$ip"; then
+			log_info "IP already banned: $ip"
+			skipped=$((skipped + 1))
+			continue
+		fi
+
+		# Add ban via CrowdSec
+		log_info "Auto-banning IP: $ip for $duration (reason: $reason)"
+		if cscli decisions add -i "$ip" -d "$duration" -R "mitmproxy-waf: $reason" -t ban >/dev/null 2>&1; then
+			processed=$((processed + 1))
+			# Log to processed file
+			echo "$(date -Iseconds) BANNED $ip $duration $reason" >> "$processed_log"
+		else
+			log_error "Failed to ban IP: $ip"
+		fi
+	done < "$autoban_log"
+
+	# Clear the processed log
+	if [ $processed -gt 0 ] || [ $skipped -gt 0 ]; then
+		log_info "Processed $processed bans, skipped $skipped"
+		: > "$autoban_log"  # Truncate the file
+	fi
+}
+
 cmd_haproxy_disable() {
 	require_root
 	load_config
@@ -1311,6 +1479,8 @@ case "${1:-}" in
 	sync-routes) shift; cmd_sync_routes "$@" ;;
 	haproxy-enable) shift; cmd_haproxy_enable "$@" ;;
 	haproxy-disable) shift; cmd_haproxy_disable "$@" ;;
+	process-autoban) shift; cmd_process_autoban "$@" ;;
+	reload-autoban) shift; cmd_reload_autoban_config "$@" ;;
 	service-run) shift; cmd_service_run "$@" ;;
 	service-stop) shift; cmd_service_stop "$@" ;;
 	help|--help|-h|'') usage ;;

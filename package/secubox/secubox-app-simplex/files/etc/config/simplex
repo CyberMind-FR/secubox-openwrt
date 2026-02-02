@@ -1,0 +1,32 @@
+# SimpleX Chat Server Configuration
+
+config simplex 'main'
+	option enabled '0'
+	option data_path '/srv/simplex'
+	option memory_limit '256M'
+	option container_type 'lxc'
+
+config smp 'smp'
+	option enabled '1'
+	option port '5223'
+	option control_port '5224'
+	option hostname ''
+	option store_log '1'
+	option daily_stats '1'
+	option log_stats '0'
+	option queue_password ''
+
+config xftp 'xftp'
+	option enabled '1'
+	option port '443'
+	option control_port '5225'
+	option hostname ''
+	option storage_quota '10G'
+	option file_expiry '48h'
+	option create_password ''
+
+config tls 'tls'
+	option use_letsencrypt '0'
+	option cert_path '/srv/simplex/certs'
+	option domain ''
+	option email ''

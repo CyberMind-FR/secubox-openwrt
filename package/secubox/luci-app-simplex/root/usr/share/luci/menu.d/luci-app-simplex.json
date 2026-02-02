@@ -1,0 +1,14 @@
+{
+	"admin/services/simplex": {
+		"title": "SimpleX Chat",
+		"order": 65,
+		"action": {
+			"type": "view",
+			"path": "simplex/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-simplex"],
+			"uci": {"simplex": true}
+		}
+	}
+}
