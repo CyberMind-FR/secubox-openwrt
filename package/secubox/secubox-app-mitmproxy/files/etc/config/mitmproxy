@@ -33,6 +33,48 @@ config wan_protection 'wan_protection'
 	# Rate limiting: max requests per IP per minute (0=disabled)
 	option rate_limit '0'
 
+# Auto-ban configuration - automatically ban IPs via CrowdSec
+config autoban 'autoban'
+	# Enable automatic banning of detected threats
+	option enabled '0'
+	# Ban duration (e.g., 1h, 4h, 24h, 7d)
+	option ban_duration '4h'
+	# Minimum severity to trigger auto-ban: critical, high, medium
+	option min_severity 'critical'
+	# Auto-ban on CVE exploit attempts
+	option ban_cve_exploits '1'
+	# Auto-ban SQL injection attempts
+	option ban_sqli '1'
+	# Auto-ban command injection attempts
+	option ban_cmdi '1'
+	# Auto-ban path traversal attempts
+	option ban_traversal '1'
+	# Auto-ban known vulnerability scanners
+	option ban_scanners '1'
+	# Auto-ban on rate limit exceeded
+	option ban_rate_limit '0'
+	# Whitelist IPs from auto-ban (comma-separated)
+	option whitelist ''
+	#
+	# Sensitivity level: aggressive, moderate, permissive
+	# - aggressive: Ban immediately on first detection (critical threats only)
+	# - moderate: Ban after repeated attempts within minutes (default)
+	# - permissive: Ban after persistent attempts over longer period
+	option sensitivity 'moderate'
+	#
+	# Aggressive level: Immediate ban on first critical threat
+	# (CVE exploits, SQL injection, command injection always trigger immediately)
+	#
+	# Moderate level thresholds
+	# Ban after N attempts within the time window
+	option moderate_threshold '3'
+	option moderate_window '300'
+	#
+	# Permissive level thresholds
+	# Ban after N attempts within the time window
+	option permissive_threshold '5'
+	option permissive_window '3600'
+
 # LAN Transparent mode settings (outbound traffic interception)
 config transparent 'transparent'
 	option enabled '0'

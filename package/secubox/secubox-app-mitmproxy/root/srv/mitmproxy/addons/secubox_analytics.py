@@ -24,6 +24,10 @@ LOG_FILE = "/var/log/secubox-access.log"
 CROWDSEC_LOG = "/data/threats.log"
 ALERTS_FILE = "/tmp/secubox-mitm-alerts.json"
 STATS_FILE = "/tmp/secubox-mitm-stats.json"
+# Auto-ban request file - host script watches this to trigger CrowdSec bans
+AUTOBAN_FILE = "/data/autoban-requests.log"
+# Auto-ban config file (written by host from UCI)
+AUTOBAN_CONFIG = "/data/autoban.json"
 
 # ============================================================================
 # THREAT DETECTION PATTERNS
@@ -481,9 +485,15 @@ class SecuBoxAnalytics:
         self.stats = defaultdict(lambda: defaultdict(int))
         self.ip_request_count = defaultdict(list)  # For rate limiting
         self.blocked_ips = set()
+        self.autoban_config = {}
+        self.autoban_requested = set()  # Track IPs we've already requested to ban
+        # Attempt tracking for sensitivity-based auto-ban
+        # Structure: {ip: [(timestamp, severity, reason), ...]}
+        self.threat_attempts = defaultdict(list)
         self._load_geoip()
         self._load_blocked_ips()
-        ctx.log.info("SecuBox Analytics addon v2.0 loaded - Enhanced threat detection")
+        self._load_autoban_config()
+        ctx.log.info("SecuBox Analytics addon v2.2 loaded - Enhanced threat detection with sensitivity-based auto-ban")
 
     def _load_geoip(self):
         """Load GeoIP database if available"""
@@ -507,6 +517,241 @@ class SecuBoxAnalytics:
                 ctx.log.info("CrowdSec decisions database found")
         except Exception as e:
             ctx.log.debug(f"Could not load blocked IPs: {e}")
+
+    def _load_autoban_config(self):
+        """Load auto-ban configuration from host"""
+        try:
+            if os.path.exists(AUTOBAN_CONFIG):
+                with open(AUTOBAN_CONFIG, 'r') as f:
+                    self.autoban_config = json.load(f)
+                    if self.autoban_config.get('enabled'):
+                        sensitivity = self.autoban_config.get('sensitivity', 'moderate')
+                        ctx.log.info(f"Auto-ban enabled: sensitivity={sensitivity}, min_severity={self.autoban_config.get('min_severity', 'critical')}, duration={self.autoban_config.get('ban_duration', '4h')}")
+            else:
+                # Default config if file doesn't exist
+                self.autoban_config = {
+                    'enabled': False,
+                    'ban_duration': '4h',
+                    'min_severity': 'critical',
+                    'ban_cve_exploits': True,
+                    'ban_sqli': True,
+                    'ban_cmdi': True,
+                    'ban_traversal': True,
+                    'ban_scanners': True,
+                    'ban_rate_limit': False,
+                    'whitelist': [],
+                    # Sensitivity levels
+                    'sensitivity': 'moderate',
+                    'moderate_threshold': 3,
+                    'moderate_window': 300,
+                    'permissive_threshold': 5,
+                    'permissive_window': 3600
+                }
+        except Exception as e:
+            ctx.log.warn(f"Could not load auto-ban config: {e}")
+            self.autoban_config = {'enabled': False}
+
+    def _clean_old_attempts(self, ip: str, window: int):
+        """Remove attempts older than the window for an IP"""
+        now = time.time()
+        self.threat_attempts[ip] = [
+            a for a in self.threat_attempts[ip]
+            if now - a[0] < window
+        ]
+
+    def _record_attempt(self, ip: str, severity: str, reason: str):
+        """Record a threat attempt for an IP"""
+        self.threat_attempts[ip].append((time.time(), severity, reason))
+
+    def _check_threshold(self, ip: str, threshold: int, window: int) -> tuple:
+        """Check if IP has exceeded attempt threshold within window"""
+        self._clean_old_attempts(ip, window)
+        attempts = self.threat_attempts[ip]
+        if len(attempts) >= threshold:
+            reasons = [a[2] for a in attempts[-threshold:]]
+            return True, f"Repeated threats ({len(attempts)} in {window}s): {reasons[0]}"
+        return False, ''
+
+    def _should_autoban(self, ip: str, scan_result: dict, client_fp: dict, rate_limited: bool) -> tuple:
+        """
+        Determine if an IP should be auto-banned based on threat detection and sensitivity level.
+
+        Returns: (should_ban: bool, reason: str)
+
+        Sensitivity Levels:
+        - aggressive: Ban immediately on first critical threat (CVE, SQLi, CMDi)
+        - moderate: Ban after N threats within M minutes (default: 3 in 5 min)
+        - permissive: Ban after N threats within M minutes (default: 5 in 1 hour)
+
+        Critical threats (always immediate in aggressive mode):
+        - CVE exploits, SQL injection, Command injection, XXE, Log4Shell, SSTI
+
+        Other triggers (follow sensitivity thresholds):
+        - XSS, Path traversal, SSRF, LDAP injection
+        - Known vulnerability scanners
+        - Rate limit exceeded (if enabled)
+        """
+        if not self.autoban_config.get('enabled'):
+            return False, ''
+
+        # Check whitelist
+        whitelist = self.autoban_config.get('whitelist', [])
+        if isinstance(whitelist, str):
+            whitelist = [w.strip() for w in whitelist.split(',') if w.strip()]
+        if ip in whitelist:
+            return False, ''
+
+        # Skip local IPs
+        if ip.startswith(('10.', '172.16.', '172.17.', '172.18.', '172.19.',
+                          '172.20.', '172.21.', '172.22.', '172.23.', '172.24.',
+                          '172.25.', '172.26.', '172.27.', '172.28.', '172.29.',
+                          '172.30.', '172.31.', '192.168.', '127.')):
+            return False, ''
+
+        # Already requested ban for this IP
+        if ip in self.autoban_requested:
+            return False, ''
+
+        sensitivity = self.autoban_config.get('sensitivity', 'moderate')
+        min_severity = self.autoban_config.get('min_severity', 'critical')
+        severity_order = {'low': 0, 'medium': 1, 'high': 2, 'critical': 3}
+
+        # Get threshold settings based on sensitivity
+        if sensitivity == 'aggressive':
+            threshold = 1  # Immediate ban
+            window = 60
+        elif sensitivity == 'permissive':
+            threshold = int(self.autoban_config.get('permissive_threshold', 5))
+            window = int(self.autoban_config.get('permissive_window', 3600))
+        else:  # moderate (default)
+            threshold = int(self.autoban_config.get('moderate_threshold', 3))
+            window = int(self.autoban_config.get('moderate_window', 300))
+
+        threat_detected = False
+        threat_reason = ''
+        threat_severity = 'medium'
+        is_critical_threat = False
+
+        # Check threat patterns
+        if scan_result.get('is_scan'):
+            threat_severity = scan_result.get('severity', 'medium')
+            threat_type = scan_result.get('type', '')
+            pattern = scan_result.get('pattern', '')
+            category = scan_result.get('category', '')
+            cve = scan_result.get('cve', '')
+
+            # Critical threats - always ban immediately in aggressive mode
+            # CVE exploits
+            if cve and self.autoban_config.get('ban_cve_exploits', True):
+                threat_detected = True
+                threat_reason = f"CVE exploit attempt: {cve}"
+                is_critical_threat = True
+
+            # SQL injection
+            elif threat_type == 'injection' and 'sql' in pattern.lower():
+                if self.autoban_config.get('ban_sqli', True):
+                    threat_detected = True
+                    threat_reason = f"SQL injection attempt: {pattern}"
+                    is_critical_threat = True
+
+            # Command injection
+            elif threat_type == 'injection' and 'command' in pattern.lower():
+                if self.autoban_config.get('ban_cmdi', True):
+                    threat_detected = True
+                    threat_reason = f"Command injection attempt: {pattern}"
+                    is_critical_threat = True
+
+            # XXE (critical)
+            elif pattern == 'xxe':
+                threat_detected = True
+                threat_reason = "XXE attack attempt"
+                is_critical_threat = True
+
+            # Log4Shell (critical)
+            elif pattern == 'log4shell':
+                threat_detected = True
+                threat_reason = f"Log4Shell attempt: {cve or 'CVE-2021-44228'}"
+                is_critical_threat = True
+
+            # SSTI (critical)
+            elif pattern == 'ssti':
+                threat_detected = True
+                threat_reason = "SSTI attack attempt"
+                is_critical_threat = True
+
+            # Path traversal (high - follows threshold)
+            elif threat_type == 'traversal' or 'traversal' in pattern.lower():
+                if self.autoban_config.get('ban_traversal', True):
+                    threat_detected = True
+                    threat_reason = f"Path traversal attempt: {pattern}"
+
+            # Other threats based on severity threshold
+            elif severity_order.get(threat_severity, 0) >= severity_order.get(min_severity, 3):
+                threat_detected = True
+                threat_reason = f"Threat detected ({threat_severity}): {pattern or category}"
+
+        # Check for known scanners
+        if not threat_detected and self.autoban_config.get('ban_scanners', True):
+            bot_type = client_fp.get('bot_type', '')
+            if bot_type in ['vulnerability_scanner', 'injection_tool', 'exploitation_tool', 'directory_scanner']:
+                threat_detected = True
+                threat_reason = f"Vulnerability scanner detected: {bot_type}"
+                # Scanners are high severity but not critical
+                threat_severity = 'high'
+
+        # Rate limit exceeded
+        if not threat_detected and rate_limited and self.autoban_config.get('ban_rate_limit', False):
+            threat_detected = True
+            threat_reason = "Rate limit exceeded"
+            threat_severity = 'medium'
+
+        if not threat_detected:
+            return False, ''
+
+        # Record the attempt
+        self._record_attempt(ip, threat_severity, threat_reason)
+
+        # Decision logic based on sensitivity
+        if sensitivity == 'aggressive':
+            # Aggressive: ban immediately on first critical threat
+            if is_critical_threat:
+                return True, threat_reason
+            # For non-critical, still check threshold (but threshold=1)
+            return self._check_threshold(ip, threshold, window)
+
+        elif sensitivity == 'permissive':
+            # Permissive: always require threshold to be met
+            return self._check_threshold(ip, threshold, window)
+
+        else:  # moderate
+            # Moderate: critical threats ban immediately, others follow threshold
+            if is_critical_threat:
+                return True, threat_reason
+            return self._check_threshold(ip, threshold, window)
+
+    def _request_autoban(self, ip: str, reason: str, severity: str = 'high'):
+        """Write auto-ban request for host to process"""
+        if ip in self.autoban_requested:
+            return
+
+        self.autoban_requested.add(ip)
+        duration = self.autoban_config.get('ban_duration', '4h')
+
+        ban_request = {
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'ip': ip,
+            'reason': reason,
+            'severity': severity,
+            'duration': duration,
+            'source': 'waf'
+        }
+
+        try:
+            with open(AUTOBAN_FILE, 'a') as f:
+                f.write(json.dumps(ban_request) + '\n')
+            ctx.log.warn(f"AUTO-BAN REQUESTED: {ip} for {duration} - {reason}")
+        except Exception as e:
+            ctx.log.error(f"Failed to write auto-ban request: {e}")
 
     def _get_country(self, ip: str) -> str:
         """Get country code from IP"""
@@ -1128,6 +1373,16 @@ class SecuBoxAnalytics:
         # Log bot detection
         if client_fp.get('is_bot'):
             ctx.log.info(f"BOT DETECTED: {source_ip} - {client_fp.get('user_agent', '')[:80]}")
+
+        # Check for auto-ban
+        should_ban, ban_reason = self._should_autoban(
+            source_ip,
+            scan_result,
+            client_fp,
+            rate_limit.get('is_limited', False)
+        )
+        if should_ban:
+            self._request_autoban(source_ip, ban_reason, scan_result.get('severity', 'high'))
 
     def response(self, flow: http.HTTPFlow):
         """Process response to complete log entry"""

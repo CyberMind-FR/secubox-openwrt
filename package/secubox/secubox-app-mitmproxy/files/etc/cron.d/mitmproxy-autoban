@@ -1,0 +1,4 @@
+# mitmproxy WAF auto-ban processor
+# Runs every minute to process auto-ban requests from threat detection
+# Bans are sent to CrowdSec for enforcement
+* * * * * root [ -x /usr/sbin/mitmproxyctl ] && /usr/sbin/mitmproxyctl process-autoban >/dev/null 2>&1

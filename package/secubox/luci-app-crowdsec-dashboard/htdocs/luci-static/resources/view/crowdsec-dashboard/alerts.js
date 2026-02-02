@@ -2,17 +2,40 @@
 'require view';
 'require dom';
 'require poll';
+'require ui';
 'require crowdsec-dashboard.api as api';
 
 return view.extend({
 	alerts: [],
+	bannedIPs: new Set(),
 
 	load: function() {
+		var self = this;
 		var link = document.createElement('link');
 		link.rel = 'stylesheet';
 		link.href = L.resource('crowdsec-dashboard/dashboard.css');
 		document.head.appendChild(link);
-		return api.getAlerts(100).catch(function() { return []; });
+
+		// Load both alerts and current decisions to know which IPs are already banned
+		return Promise.all([
+			api.getAlerts(100).catch(function() { return []; }),
+			api.getDecisions().catch(function() { return []; })
+		]).then(function(results) {
+			var decisions = results[1];
+			// Track banned IPs
+			if (Array.isArray(decisions)) {
+				decisions.forEach(function(d) {
+					if (d.decisions) {
+						d.decisions.forEach(function(dec) {
+							if (dec.value) self.bannedIPs.add(dec.value);
+						});
+					} else if (d.value) {
+						self.bannedIPs.add(d.value);
+					}
+				});
+			}
+			return results[0];
+		});
 	},
 
 	render: function(data) {
@@ -94,6 +117,7 @@ return view.extend({
 	},
 
 	renderAlerts: function(alerts) {
+		var self = this;
 		if (!alerts.length) {
 			return E('div', { 'class': 'cs-empty' }, 'No alerts');
 		}
@@ -103,22 +127,92 @@ return view.extend({
 				E('th', {}, 'Source'),
 				E('th', {}, 'Country'),
 				E('th', {}, 'Scenario'),
-				E('th', {}, 'Events')
+				E('th', {}, 'Events'),
+				E('th', { 'style': 'width: 80px;' }, 'Action')
 			])),
 			E('tbody', {}, alerts.slice(0, 50).map(function(a) {
 				var src = a.source || {};
+				var ip = src.ip || '';
 				var country = src.cn || src.country || '';
+				var isBanned = self.bannedIPs.has(ip);
+
 				return E('tr', {}, [
 					E('td', { 'class': 'cs-time' }, api.formatRelativeTime(a.created_at)),
-					E('td', {}, E('span', { 'class': 'cs-ip' }, src.ip || '-')),
+					E('td', {}, E('span', { 'class': 'cs-ip' }, ip || '-')),
 					E('td', {}, [
 						E('span', { 'class': 'cs-flag' }, api.getCountryFlag(country)),
 						' ', country
 					]),
 					E('td', {}, E('span', { 'class': 'cs-scenario' }, api.parseScenario(a.scenario))),
-					E('td', {}, String(a.events_count || 0))
+					E('td', {}, String(a.events_count || 0)),
+					E('td', {}, ip ? self.renderBanButton(ip, a.scenario, isBanned) : '-')
 				]);
 			}))
+		]);
+	},
+
+	renderBanButton: function(ip, scenario, isBanned) {
+		var self = this;
+
+		if (isBanned) {
+			return E('button', {
+				'class': 'cbi-button cbi-button-neutral',
+				'style': 'padding: 2px 8px; font-size: 11px;',
+				'disabled': 'disabled',
+				'title': 'Already banned'
+			}, 'Banned');
+		}
+
+		return E('button', {
+			'class': 'cbi-button cbi-button-negative',
+			'style': 'padding: 2px 8px; font-size: 11px;',
+			'click': function(ev) {
+				ev.preventDefault();
+				self.banIP(ip, scenario);
+			},
+			'title': 'Ban this IP for 24 hours'
+		}, 'Ban');
+	},
+
+	banIP: function(ip, scenario) {
+		var self = this;
+		var reason = 'Manual ban from alert: ' + (scenario || 'unknown');
+
+		ui.showModal('Ban IP', [
+			E('p', {}, 'Ban ' + ip + ' for 24 hours?'),
+			E('p', { 'style': 'font-size: 12px; color: #666;' }, 'Reason: ' + reason),
+			E('div', { 'class': 'right' }, [
+				E('button', {
+					'class': 'cbi-button',
+					'click': ui.hideModal
+				}, 'Cancel'),
+				' ',
+				E('button', {
+					'class': 'cbi-button cbi-button-negative',
+					'click': function() {
+						ui.hideModal();
+						ui.showModal('Banning...', [
+							E('p', { 'class': 'spinning' }, 'Adding ban for ' + ip + '...')
+						]);
+
+						api.addBan(ip, '24h', reason).then(function(result) {
+							ui.hideModal();
+							if (result && result.success !== false) {
+								self.bannedIPs.add(ip);
+								ui.addNotification(null, E('p', {}, 'IP ' + ip + ' has been banned for 24 hours'), 'success');
+								// Refresh the alerts list
+								var el = document.getElementById('alerts-list');
+								if (el) dom.content(el, self.renderAlerts(self.alerts));
+							} else {
+								ui.addNotification(null, E('p', {}, 'Failed to ban IP: ' + (result.error || 'Unknown error')), 'error');
+							}
+						}).catch(function(err) {
+							ui.hideModal();
+							ui.addNotification(null, E('p', {}, 'Failed to ban IP: ' + err), 'error');
+						});
+					}
+				}, 'Ban')
+			])
 		]);
 	},
 
