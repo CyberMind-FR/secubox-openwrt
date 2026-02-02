@@ -15,7 +15,25 @@ config mitmproxy 'main'
 	option anticomp '0'
 	option flow_detail '1'
 
-# Transparent mode settings
+# WAN Protection Mode - protect services exposed to internet
+# Acts as WAF/reverse proxy for incoming WAN traffic
+config wan_protection 'wan_protection'
+	# Enable WAN protection mode (acts as WAF for incoming traffic)
+	option enabled '0'
+	# WAN interface name (incoming traffic interface)
+	option wan_interface 'wan'
+	# Ports to intercept on WAN (HTTP)
+	option wan_http_port '80'
+	# Ports to intercept on WAN (HTTPS)
+	option wan_https_port '443'
+	# Feed detected threats to CrowdSec for automatic blocking
+	option crowdsec_feed '1'
+	# Block requests from known bot scanners immediately
+	option block_bots '0'
+	# Rate limiting: max requests per IP per minute (0=disabled)
+	option rate_limit '0'
+
+# LAN Transparent mode settings (outbound traffic interception)
 config transparent 'transparent'
 	option enabled '0'
 	# Interface to intercept traffic from (e.g., br-lan)
@@ -28,6 +46,16 @@ config transparent 'transparent'
 	option http_port '80'
 	# Custom HTTPS port (default 443)
 	option https_port '443'
+
+# DPI Mirror Mode - feed traffic to network inspection engines
+config dpi_mirror 'dpi_mirror'
+	option enabled '0'
+	# Interface for DPI mirroring (netifyd/ndpid listens on this)
+	option dpi_interface 'br-lan'
+	# Enable DPI for WAN traffic (incoming)
+	option mirror_wan '0'
+	# Enable DPI for LAN traffic (outgoing)
+	option mirror_lan '0'
 
 # Whitelist/bypass - IPs and domains that bypass the proxy
 config whitelist 'whitelist'

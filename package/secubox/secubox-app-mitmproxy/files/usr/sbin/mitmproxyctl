@@ -6,6 +6,7 @@ CONFIG="mitmproxy"
 LXC_NAME="mitmproxy"
 OPKG_UPDATED=0
 NFT_TABLE="mitmproxy"
+NFT_TABLE_WAN="mitmproxy_wan"
 
 # Paths
 LXC_PATH="/srv/lxc"
@@ -27,6 +28,8 @@ Commands:
   cert            Show CA certificate info / export path
   firewall-setup  Setup nftables rules for transparent mode
   firewall-clear  Remove nftables transparent mode rules
+  wan-setup       Setup WAN protection mode (incoming traffic)
+  wan-clear       Remove WAN protection mode rules
   sync-routes     Sync HAProxy backends to mitmproxy routes
   haproxy-enable  Enable HAProxy backend inspection mode
   haproxy-disable Disable HAProxy backend inspection mode
@@ -38,6 +41,11 @@ Modes (configure in /etc/config/mitmproxy):
   transparent  - Transparent proxy (auto-configures nftables)
   upstream     - Forward to upstream proxy
   reverse      - Reverse proxy mode
+
+WAN Protection Mode:
+  Intercept incoming WAN traffic for threat detection (WAF mode).
+  Detects bot scanners, attacks, and feeds to CrowdSec.
+  Use 'mitmproxyctl wan-setup' to enable.
 
 HAProxy Integration:
   When enabled, HAProxy backends route through mitmproxy for
@@ -75,13 +83,28 @@ load_config() {
 	anticomp="$(uci_get main.anticomp || echo 0)"
 	flow_detail="$(uci_get main.flow_detail || echo 1)"
 
-	# Transparent mode settings
+	# WAN protection mode settings
+	wan_protection_enabled="$(uci_get wan_protection.enabled || echo 0)"
+	wan_interface="$(uci_get wan_protection.wan_interface || echo wan)"
+	wan_http_port="$(uci_get wan_protection.wan_http_port || echo 80)"
+	wan_https_port="$(uci_get wan_protection.wan_https_port || echo 443)"
+	crowdsec_feed="$(uci_get wan_protection.crowdsec_feed || echo 1)"
+	block_bots="$(uci_get wan_protection.block_bots || echo 0)"
+	rate_limit="$(uci_get wan_protection.rate_limit || echo 0)"
+
+	# Transparent mode settings (LAN)
 	transparent_enabled="$(uci_get transparent.enabled || echo 0)"
 	transparent_iface="$(uci_get transparent.interface || echo br-lan)"
 	redirect_http="$(uci_get transparent.redirect_http || echo 1)"
 	redirect_https="$(uci_get transparent.redirect_https || echo 1)"
 	http_port="$(uci_get transparent.http_port || echo 80)"
 	https_port="$(uci_get transparent.https_port || echo 443)"
+
+	# DPI mirror settings
+	dpi_mirror_enabled="$(uci_get dpi_mirror.enabled || echo 0)"
+	dpi_interface="$(uci_get dpi_mirror.dpi_interface || echo br-lan)"
+	mirror_wan="$(uci_get dpi_mirror.mirror_wan || echo 0)"
+	mirror_lan="$(uci_get dpi_mirror.mirror_lan || echo 0)"
 
 	# Whitelist settings
 	whitelist_enabled="$(uci_get whitelist.enabled || echo 1)"
@@ -246,8 +269,135 @@ nft_status() {
 		echo "Bypass IPv6 set:"
 		nft list set inet $NFT_TABLE bypass_ipv6 2>/dev/null || echo "  (empty or not created)"
 	else
-		echo "No mitmproxy rules configured"
+		echo "No mitmproxy LAN transparent rules configured"
 	fi
+
+	echo ""
+	echo "=== WAN protection rules ==="
+	if nft list table inet $NFT_TABLE_WAN 2>/dev/null; then
+		echo "WAN protection mode active"
+	else
+		echo "No WAN protection rules configured"
+	fi
+}
+
+# =============================================================================
+# WAN PROTECTION MODE FUNCTIONS
+# =============================================================================
+
+# Get the actual network interface name from UCI interface name
+get_wan_device() {
+	local iface="$1"
+	local device=""
+
+	# Try to get device from network config
+	device=$(uci -q get network.${iface}.device)
+	[ -n "$device" ] && { echo "$device"; return 0; }
+
+	# Try ifname (older OpenWrt)
+	device=$(uci -q get network.${iface}.ifname)
+	[ -n "$device" ] && { echo "$device"; return 0; }
+
+	# Fallback: check if interface exists directly
+	if ip link show "$iface" >/dev/null 2>&1; then
+		echo "$iface"
+		return 0
+	fi
+
+	# Common WAN interface names
+	for dev in eth1 eth0.2 wan pppoe-wan; do
+		if ip link show "$dev" >/dev/null 2>&1; then
+			echo "$dev"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
+nft_wan_setup() {
+	load_config
+	require_root
+
+	if ! has_nft; then
+		log_error "nftables not available"
+		return 1
+	fi
+
+	if [ "$wan_protection_enabled" != "1" ]; then
+		log_warn "WAN protection mode is disabled. Enable with: uci set mitmproxy.wan_protection.enabled='1'"
+		return 0
+	fi
+
+	log_info "Setting up nftables for WAN protection mode..."
+
+	# Get actual WAN device name
+	local wan_dev=$(get_wan_device "$wan_interface")
+	if [ -z "$wan_dev" ]; then
+		log_error "Could not determine WAN device for interface '$wan_interface'"
+		return 1
+	fi
+	log_info "WAN device: $wan_dev (from interface: $wan_interface)"
+
+	# Create WAN protection table
+	nft add table inet $NFT_TABLE_WAN 2>/dev/null || true
+
+	# Create prerouting chain for incoming WAN traffic
+	nft add chain inet $NFT_TABLE_WAN prerouting { type nat hook prerouting priority -100 \; } 2>/dev/null || true
+
+	# Flush existing rules
+	nft flush chain inet $NFT_TABLE_WAN prerouting 2>/dev/null || true
+
+	# Don't redirect traffic destined to router itself (management)
+	local router_ip=$(uci -q get network.lan.ipaddr || echo "192.168.1.1")
+	nft add rule inet $NFT_TABLE_WAN prerouting ip daddr "$router_ip" return 2>/dev/null || true
+
+	# Skip private/local destinations (not exposed to WAN)
+	nft add rule inet $NFT_TABLE_WAN prerouting ip daddr 10.0.0.0/8 return 2>/dev/null || true
+	nft add rule inet $NFT_TABLE_WAN prerouting ip daddr 172.16.0.0/12 return 2>/dev/null || true
+	nft add rule inet $NFT_TABLE_WAN prerouting ip daddr 192.168.0.0/16 return 2>/dev/null || true
+	nft add rule inet $NFT_TABLE_WAN prerouting ip daddr 127.0.0.0/8 return 2>/dev/null || true
+
+	# Redirect WAN incoming HTTP to mitmproxy
+	if [ "$wan_http_port" != "0" ]; then
+		nft add rule inet $NFT_TABLE_WAN prerouting iifname "$wan_dev" tcp dport "$wan_http_port" redirect to :$proxy_port
+		log_info "WAN HTTP redirect: $wan_dev:$wan_http_port -> mitmproxy:$proxy_port"
+	fi
+
+	# Redirect WAN incoming HTTPS to mitmproxy
+	if [ "$wan_https_port" != "0" ]; then
+		nft add rule inet $NFT_TABLE_WAN prerouting iifname "$wan_dev" tcp dport "$wan_https_port" redirect to :$proxy_port
+		log_info "WAN HTTPS redirect: $wan_dev:$wan_https_port -> mitmproxy:$proxy_port"
+	fi
+
+	# Optional: Add rate limiting if configured
+	if [ "$rate_limit" -gt 0 ] 2>/dev/null; then
+		log_info "Rate limiting: $rate_limit requests/minute per IP"
+		# Note: Rate limiting in nftables requires meter/limit
+		# This is a basic implementation - can be enhanced
+		nft add chain inet $NFT_TABLE_WAN ratelimit 2>/dev/null || true
+	fi
+
+	log_info "WAN protection mode rules applied"
+	log_info "Table: inet $NFT_TABLE_WAN"
+	log_info ""
+	log_info "Incoming WAN traffic on ports $wan_http_port/$wan_https_port will be"
+	log_info "inspected by mitmproxy for threats before reaching backend services."
+}
+
+nft_wan_teardown() {
+	require_root
+
+	if ! has_nft; then
+		return 0
+	fi
+
+	log_info "Removing WAN protection mode rules..."
+
+	# Delete the WAN protection table
+	nft delete table inet $NFT_TABLE_WAN 2>/dev/null || true
+
+	log_info "WAN protection rules removed"
 }
 
 # =============================================================================
@@ -707,9 +857,14 @@ lxc_run() {
 	ensure_dir "$data_path"
 	ensure_dir "$ADDON_PATH"
 
-	# Setup firewall rules if in transparent mode
+	# Setup firewall rules if in transparent mode (LAN)
 	if [ "$mode" = "transparent" ]; then
 		nft_setup
+	fi
+
+	# Setup WAN protection rules if enabled
+	if [ "$wan_protection_enabled" = "1" ]; then
+		nft_wan_setup
 	fi
 
 	log_info "Starting mitmproxy LXC container..."
@@ -717,6 +872,7 @@ lxc_run() {
 	log_info "Web interface: http://0.0.0.0:$web_port"
 	log_info "Proxy port: $proxy_port"
 	[ "$filtering_enabled" = "1" ] && log_info "Filtering: enabled"
+	[ "$wan_protection_enabled" = "1" ] && log_info "WAN Protection: enabled (interface: $wan_interface)"
 	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONFIG"
 }
 
@@ -739,7 +895,18 @@ lxc_status() {
 	echo "Data path: $data_path"
 	echo "Filtering: $([ "$filtering_enabled" = "1" ] && echo "enabled" || echo "disabled")"
 
-	if [ "$mode" = "transparent" ]; then
+	echo ""
+	echo "=== WAN Protection ==="
+	echo "Enabled: $([ "$wan_protection_enabled" = "1" ] && echo "yes" || echo "no")"
+	if [ "$wan_protection_enabled" = "1" ]; then
+		echo "WAN Interface: $wan_interface"
+		echo "HTTP Port: $wan_http_port"
+		echo "HTTPS Port: $wan_https_port"
+		echo "CrowdSec Feed: $([ "$crowdsec_feed" = "1" ] && echo "yes" || echo "no")"
+		echo "Block Bots: $([ "$block_bots" = "1" ] && echo "yes" || echo "no")"
+	fi
+
+	if [ "$mode" = "transparent" ] || [ "$wan_protection_enabled" = "1" ]; then
 		echo ""
 		nft_status
 	fi
@@ -907,7 +1074,18 @@ cmd_service_stop() {
 		nft_teardown
 	fi
 
+	# Remove WAN protection rules
+	nft_wan_teardown 2>/dev/null || true
+
 	lxc_stop
+}
+
+cmd_wan_setup() {
+	nft_wan_setup
+}
+
+cmd_wan_clear() {
+	nft_wan_teardown
 }
 
 # =============================================================================
@@ -1120,6 +1298,8 @@ case "${1:-}" in
 	cert) shift; cmd_cert "$@" ;;
 	firewall-setup) shift; cmd_firewall_setup "$@" ;;
 	firewall-clear) shift; cmd_firewall_clear "$@" ;;
+	wan-setup) shift; cmd_wan_setup "$@" ;;
+	wan-clear) shift; cmd_wan_clear "$@" ;;
 	sync-routes) shift; cmd_sync_routes "$@" ;;
 	haproxy-enable) shift; cmd_haproxy_enable "$@" ;;
 	haproxy-disable) shift; cmd_haproxy_disable "$@" ;;

@@ -63,3 +63,67 @@ labels:
   service: mitmproxy
   type: cve_exploit
   remediation: true
+---
+# Detect automated bot/scanner reconnaissance
+type: leaky
+name: secubox/mitmproxy-botscan
+description: "Detect automated bot/scanner reconnaissance via mitmproxy"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  (evt.Parsed.is_bot == 'true' ||
+   evt.Parsed.bot_type in ['vulnerability_scanner', 'directory_scanner', 'port_scanner', 'cms_scanner'] ||
+   evt.Parsed.bot_behavior in ['config_hunting', 'admin_hunting', 'backup_hunting', 'shell_hunting', 'api_discovery'])
+groupby: evt.Meta.source_ip
+capacity: 5
+leakspeed: 30s
+blackhole: 30m
+labels:
+  service: mitmproxy
+  type: bot_scanner
+  remediation: true
+---
+# Detect shell/backdoor hunting (critical - immediate action)
+type: trigger
+name: secubox/mitmproxy-shell-hunter
+description: "Detect shell/backdoor hunting attempts via mitmproxy"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Parsed.bot_behavior == 'shell_hunting'
+blackhole: 60m
+labels:
+  service: mitmproxy
+  type: shell_hunter
+  remediation: true
+---
+# Detect credential/config file hunting
+type: leaky
+name: secubox/mitmproxy-config-hunter
+description: "Detect credential/config file hunting via mitmproxy"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Parsed.bot_behavior == 'config_hunting'
+groupby: evt.Meta.source_ip
+capacity: 3
+leakspeed: 60s
+blackhole: 30m
+labels:
+  service: mitmproxy
+  type: config_hunter
+  remediation: true
+---
+# Detect suspicious user agents (empty, minimal, or clearly fake)
+type: leaky
+name: secubox/mitmproxy-suspicious-ua
+description: "Detect requests with suspicious user agents via mitmproxy"
+filter: |
+  evt.Meta.log_type == 'mitmproxy_threat' &&
+  evt.Parsed.suspicious_ua == 'true' &&
+  evt.Parsed.is_bot != 'true'
+groupby: evt.Meta.source_ip
+capacity: 15
+leakspeed: 60s
+blackhole: 15m
+labels:
+  service: mitmproxy
+  type: suspicious_ua
+  remediation: true

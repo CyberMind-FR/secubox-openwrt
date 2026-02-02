@@ -172,22 +172,79 @@ AUTH_PATHS = [
 BOT_SIGNATURES = [
     # Generic bots
     'bot', 'crawler', 'spider', 'scraper', 'scan',
-    # HTTP clients
+    # HTTP clients (often used by scanners)
     'curl', 'wget', 'python-requests', 'python-urllib', 'httpx',
     'go-http-client', 'java/', 'axios', 'node-fetch', 'got/',
     'okhttp', 'apache-httpclient', 'guzzlehttp', 'libwww-perl',
-    # Security scanners
+
+    # ==== VULNERABILITY SCANNERS ====
     'zgrab', 'masscan', 'nmap', 'nikto', 'nuclei', 'sqlmap',
+    'censys', 'shodan', 'internetmeasurement', 'binaryedge', 'leakix',
+    'onyphe', 'criminalip', 'netcraft', 'greynoise',
+
+    # ==== WEB DIRECTORY SCANNERS ====
     'dirb', 'dirbuster', 'gobuster', 'ffuf', 'wfuzz', 'feroxbuster',
+    'skipfish', 'whatweb', 'wpscan', 'joomscan', 'droopescan',
+    'drupwn', 'cmsmap', 'vbscan',
+
+    # ==== EXPLOITATION TOOLS ====
     'burpsuite', 'owasp', 'acunetix', 'nessus', 'qualys', 'openvas',
-    'w3af', 'arachni', 'skipfish', 'vega', 'zap', 'appscan',
-    'webinspect', 'metasploit', 'hydra', 'medusa',
-    # Known bad bots
+    'w3af', 'arachni', 'vega', 'zap', 'appscan',
+    'webinspect', 'metasploit', 'hydra', 'medusa', 'cobalt',
+    'havij', 'commix', 'tplmap', 'xsstrike', 'dalfox',
+
+    # ==== GENERIC SUSPICIOUS PATTERNS ====
+    'scanner', 'exploit', 'attack', 'hack', 'pwn',
+    'fuzz', 'brute', 'inject', 'payload', 'pentest',
+
+    # ==== KNOWN BAD BOTS ====
     'ahrefsbot', 'semrushbot', 'dotbot', 'mj12bot', 'blexbot',
     'seznambot', 'yandexbot', 'baiduspider', 'sogou',
-    # Empty or suspicious UAs
+    'bytespider', 'petalbot', 'dataforseo', 'serpstatbot',
+
+    # ==== EMPTY/SUSPICIOUS USER AGENTS ====
     '-', '', 'mozilla/4.0', 'mozilla/5.0',
 ]
+
+# Behavioral patterns for bot detection (request path based)
+BOT_BEHAVIOR_PATHS = [
+    # Credential/config file hunting
+    r'/\.git/config', r'/\.git/HEAD', r'/\.gitignore',
+    r'/\.env', r'/\.env\.local', r'/\.env\.production',
+    r'/\.aws/credentials', r'/\.docker/config\.json',
+    r'/wp-config\.php\.bak', r'/config\.php\.old', r'/config\.php\.save',
+    r'/\.npmrc', r'/\.pypirc', r'/\.netrc',
+
+    # Admin panel hunting
+    r'/administrator', r'/wp-login\.php', r'/wp-admin',
+    r'/phpmyadmin', r'/pma', r'/myadmin', r'/mysql',
+    r'/cpanel', r'/webmail', r'/admin', r'/manager',
+    r'/login', r'/signin', r'/dashboard',
+
+    # Backup file hunting
+    r'\.sql\.gz$', r'\.sql\.bz2$', r'\.sql\.zip$',
+    r'\.tar\.gz$', r'\.tar\.bz2$', r'\.zip$', r'\.rar$',
+    r'\.bak$', r'\.old$', r'\.backup$', r'\.orig$',
+    r'/backup', r'/dump', r'/export', r'/db\.sql',
+
+    # Shell/webshell hunting
+    r'/c99\.php', r'/r57\.php', r'/shell\.php', r'/cmd\.php',
+    r'/exec\.php', r'/webshell', r'/backdoor', r'/b374k',
+    r'\.php\?cmd=', r'\.php\?c=', r'\.asp\?cmd=',
+
+    # API/endpoint discovery
+    r'/api/v\d+', r'/rest/', r'/graphql', r'/swagger',
+    r'/api-docs', r'/_cat/', r'/_cluster/', r'/actuator',
+    r'/__debug__', r'/debug/', r'/trace/', r'/metrics',
+]
+
+# Rate limiting thresholds for different attack patterns
+RATE_LIMITS = {
+    'path_scan': {'window': 60, 'max': 20},      # 20 scans per minute
+    'auth_attempt': {'window': 60, 'max': 10},   # 10 auth attempts per minute
+    'bot_request': {'window': 60, 'max': 30},    # 30 bot requests per minute
+    'normal': {'window': 60, 'max': 100},        # 100 normal requests per minute
+}
 
 # Suspicious headers indicating attack tools
 SUSPICIOUS_HEADERS = {
@@ -308,28 +365,107 @@ class SecuBoxAnalytics:
         fp_str = f"{ua}|{accept}|{accept_lang}|{accept_enc}"
         fp_hash = hashlib.md5(fp_str.encode()).hexdigest()[:12]
 
-        # Detect bot
-        is_bot = any(sig in ua.lower() for sig in BOT_SIGNATURES)
+        # Detect bot from user agent
+        ua_lower = ua.lower()
+        is_bot = any(sig in ua_lower for sig in BOT_SIGNATURES)
+
+        # Additional bot detection heuristics
+        bot_type = None
+        if is_bot:
+            # Categorize the bot
+            if any(s in ua_lower for s in ['masscan', 'zgrab', 'censys', 'shodan', 'nmap']):
+                bot_type = 'port_scanner'
+            elif any(s in ua_lower for s in ['nikto', 'nuclei', 'acunetix', 'nessus', 'qualys']):
+                bot_type = 'vulnerability_scanner'
+            elif any(s in ua_lower for s in ['dirb', 'gobuster', 'ffuf', 'wfuzz', 'feroxbuster']):
+                bot_type = 'directory_scanner'
+            elif any(s in ua_lower for s in ['sqlmap', 'havij', 'commix']):
+                bot_type = 'injection_tool'
+            elif any(s in ua_lower for s in ['wpscan', 'joomscan', 'droopescan', 'cmsmap']):
+                bot_type = 'cms_scanner'
+            elif any(s in ua_lower for s in ['metasploit', 'cobalt', 'hydra', 'medusa']):
+                bot_type = 'exploitation_tool'
+            elif any(s in ua_lower for s in ['curl', 'wget', 'python', 'go-http', 'java/']):
+                bot_type = 'http_client'
+            else:
+                bot_type = 'generic_bot'
+
+        # Suspicious UA patterns (empty, minimal, or clearly fake)
+        is_suspicious_ua = False
+        if not ua or ua == '-' or len(ua) < 10:
+            is_suspicious_ua = True
+        elif ua.lower() in ['mozilla/4.0', 'mozilla/5.0']:
+            is_suspicious_ua = True
+        elif not accept_lang and not accept_enc:
+            # Real browsers always send these
+            is_suspicious_ua = True
 
         # Parse UA for device info
         device = 'unknown'
-        if 'mobile' in ua.lower() or 'android' in ua.lower():
+        if 'mobile' in ua_lower or 'android' in ua_lower:
             device = 'mobile'
-        elif 'iphone' in ua.lower() or 'ipad' in ua.lower():
+        elif 'iphone' in ua_lower or 'ipad' in ua_lower:
             device = 'ios'
-        elif 'windows' in ua.lower():
+        elif 'windows' in ua_lower:
             device = 'windows'
-        elif 'mac' in ua.lower():
+        elif 'mac' in ua_lower:
             device = 'macos'
-        elif 'linux' in ua.lower():
+        elif 'linux' in ua_lower:
             device = 'linux'
 
         return {
             'fingerprint': fp_hash,
             'user_agent': ua[:200],
             'is_bot': is_bot,
+            'bot_type': bot_type,
+            'is_suspicious_ua': is_suspicious_ua,
             'device': device
         }
+
+    def _detect_bot_behavior(self, request: http.Request) -> dict:
+        """Detect bot-like behavior based on request patterns"""
+        path = request.path.lower()
+
+        for pattern in BOT_BEHAVIOR_PATHS:
+            if re.search(pattern, path, re.IGNORECASE):
+                # Categorize the behavior
+                if any(p in pattern for p in [r'\.git', r'\.env', r'\.aws', r'config', r'credential']):
+                    return {
+                        'is_bot_behavior': True,
+                        'behavior_type': 'config_hunting',
+                        'pattern': pattern,
+                        'severity': 'high'
+                    }
+                elif any(p in pattern for p in ['admin', 'login', 'cpanel', 'phpmyadmin']):
+                    return {
+                        'is_bot_behavior': True,
+                        'behavior_type': 'admin_hunting',
+                        'pattern': pattern,
+                        'severity': 'medium'
+                    }
+                elif any(p in pattern for p in ['backup', r'\.sql', r'\.tar', r'\.zip', 'dump']):
+                    return {
+                        'is_bot_behavior': True,
+                        'behavior_type': 'backup_hunting',
+                        'pattern': pattern,
+                        'severity': 'high'
+                    }
+                elif any(p in pattern for p in ['shell', 'cmd', 'exec', 'backdoor', 'c99', 'r57']):
+                    return {
+                        'is_bot_behavior': True,
+                        'behavior_type': 'shell_hunting',
+                        'pattern': pattern,
+                        'severity': 'critical'
+                    }
+                elif any(p in pattern for p in ['api', 'swagger', 'graphql', 'actuator']):
+                    return {
+                        'is_bot_behavior': True,
+                        'behavior_type': 'api_discovery',
+                        'pattern': pattern,
+                        'severity': 'low'
+                    }
+
+        return {'is_bot_behavior': False, 'behavior_type': None, 'pattern': None, 'severity': None}
 
     def _detect_scan(self, request: http.Request) -> dict:
         """Comprehensive threat detection with categorized patterns"""
@@ -553,25 +689,63 @@ class SecuBoxAnalytics:
 
         # CrowdSec compatible log (enhanced format)
         scan_data = entry.get('scan', {})
-        if scan_data.get('is_scan') or entry.get('is_auth_attempt') or entry.get('suspicious_headers') or entry.get('rate_limit', {}).get('is_limited'):
+        bot_behavior_data = entry.get('bot_behavior', {})
+        client_data = entry.get('client', {})
+
+        # Log to CrowdSec if any threat indicator is present
+        should_log = (
+            scan_data.get('is_scan') or
+            bot_behavior_data.get('is_bot_behavior') or
+            client_data.get('is_bot') or
+            entry.get('is_auth_attempt') or
+            entry.get('suspicious_headers') or
+            entry.get('rate_limit', {}).get('is_limited')
+        )
+
+        if should_log:
             try:
+                # Determine the primary threat type for categorization
+                threat_type = 'suspicious'
+                if scan_data.get('is_scan'):
+                    threat_type = scan_data.get('type', 'scan')
+                elif bot_behavior_data.get('is_bot_behavior'):
+                    threat_type = bot_behavior_data.get('behavior_type', 'bot_behavior')
+                elif client_data.get('is_bot'):
+                    threat_type = client_data.get('bot_type', 'bot')
+                elif entry.get('is_auth_attempt'):
+                    threat_type = 'auth_attempt'
+
+                # Determine severity
+                severity = 'low'
+                if scan_data.get('severity'):
+                    severity = scan_data.get('severity')
+                elif bot_behavior_data.get('severity'):
+                    severity = bot_behavior_data.get('severity')
+                elif client_data.get('bot_type') in ['exploitation_tool', 'injection_tool']:
+                    severity = 'high'
+                elif client_data.get('bot_type') in ['vulnerability_scanner', 'directory_scanner']:
+                    severity = 'medium'
+
                 cs_entry = {
                     'timestamp': entry['timestamp'],
                     'source_ip': entry['client_ip'],
                     'country': entry['country'],
                     'request': f"{entry['method']} {entry['path']}",
                     'host': entry.get('host', ''),
-                    'user_agent': entry['client'].get('user_agent', ''),
-                    'type': scan_data.get('type') or ('auth_attempt' if entry['is_auth_attempt'] else 'suspicious'),
-                    'pattern': scan_data.get('pattern', ''),
-                    'category': scan_data.get('category', ''),
-                    'severity': scan_data.get('severity', 'low'),
+                    'user_agent': client_data.get('user_agent', ''),
+                    'type': threat_type,
+                    'pattern': scan_data.get('pattern') or bot_behavior_data.get('pattern', ''),
+                    'category': scan_data.get('category') or bot_behavior_data.get('behavior_type', ''),
+                    'severity': severity,
                     'cve': scan_data.get('cve', ''),
                     'response_code': entry.get('response', {}).get('status', 0),
-                    'fingerprint': entry['client'].get('fingerprint', ''),
-                    'is_bot': entry['client'].get('is_bot', False),
+                    'fingerprint': client_data.get('fingerprint', ''),
+                    'is_bot': client_data.get('is_bot', False),
+                    'bot_type': client_data.get('bot_type', ''),
+                    'bot_behavior': bot_behavior_data.get('behavior_type', ''),
                     'rate_limited': entry.get('rate_limit', {}).get('is_limited', False),
                     'suspicious_headers': len(entry.get('suspicious_headers', [])) > 0,
+                    'suspicious_ua': client_data.get('is_suspicious_ua', False),
                 }
                 with open(CROWDSEC_LOG, 'a') as f:
                     f.write(json.dumps(cs_entry) + '\n')
@@ -644,6 +818,7 @@ class SecuBoxAnalytics:
         suspicious_headers = self._detect_suspicious_headers(request)
         rate_limit = self._check_rate_limit(source_ip)
         client_fp = self._get_client_fingerprint(request)
+        bot_behavior = self._detect_bot_behavior(request)
 
         # Build log entry
         entry = {
@@ -658,6 +833,7 @@ class SecuBoxAnalytics:
             'query': request.query.get('q', '')[:100] if request.query else '',
             'client': client_fp,
             'scan': scan_result,
+            'bot_behavior': bot_behavior,
             'is_auth_attempt': self._is_auth_attempt(request),
             'content_length': len(request.content) if request.content else 0,
             'routing': routing,
@@ -720,6 +896,32 @@ class SecuBoxAnalytics:
                 'path': request.path,
                 'method': request.method,
                 'host': request.host
+            })
+
+        # Log bot behavior detection
+        if bot_behavior.get('is_bot_behavior'):
+            behavior_type = bot_behavior.get('behavior_type', 'unknown')
+            severity = bot_behavior.get('severity', 'medium')
+
+            log_msg = f"BOT BEHAVIOR [{severity.upper()}]: {source_ip} ({entry['country']}) - {behavior_type}"
+            log_msg += f" - {request.method} {request.path}"
+
+            if severity in ['critical', 'high']:
+                ctx.log.warn(log_msg)
+            else:
+                ctx.log.info(log_msg)
+
+            self._add_alert({
+                'time': entry['timestamp'],
+                'ip': source_ip,
+                'country': entry['country'],
+                'type': 'bot_behavior',
+                'behavior_type': behavior_type,
+                'severity': severity,
+                'path': request.path,
+                'method': request.method,
+                'host': request.host,
+                'bot_type': client_fp.get('bot_type')
             })
 
         # Log suspicious headers

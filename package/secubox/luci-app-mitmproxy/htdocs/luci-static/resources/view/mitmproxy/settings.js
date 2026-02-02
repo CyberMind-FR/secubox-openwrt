@@ -2,17 +2,21 @@
 'require view';
 'require form';
 'require uci';
+'require network';
 
 return view.extend({
 	load: function() {
-		return uci.load('mitmproxy');
+		return Promise.all([
+			uci.load('mitmproxy'),
+			uci.load('network')
+		]);
 	},
 
 	render: function() {
 		var m, s, o;
 
 		m = new form.Map('mitmproxy', _('mitmproxy Settings'),
-			_('Configure the HTTPS intercepting proxy.'));
+			_('Configure the HTTPS intercepting proxy for traffic inspection and threat detection.'));
 
 		// Main Settings
 		s = m.section(form.TypedSection, 'mitmproxy', _('General'));
@@ -23,10 +27,10 @@ return view.extend({
 
 		o = s.option(form.ListValue, 'mode', _('Mode'));
 		o.value('regular', _('Regular Proxy'));
-		o.value('transparent', _('Transparent Proxy'));
+		o.value('transparent', _('Transparent Proxy (LAN)'));
 		o.value('upstream', _('Upstream Proxy'));
 		o.value('reverse', _('Reverse Proxy'));
-		o.default = 'transparent';
+		o.default = 'regular';
 
 		o = s.option(form.Value, 'proxy_port', _('Proxy Port'));
 		o.datatype = 'port';
@@ -51,28 +55,114 @@ return view.extend({
 
 		o = s.option(form.Flag, 'anticomp', _('Disable Compression'));
 
-		// Transparent Mode
-		s = m.section(form.TypedSection, 'transparent', _('Transparent Mode'));
+		// WAN Protection Mode
+		s = m.section(form.TypedSection, 'wan_protection', _('WAN Protection Mode'));
 		s.anonymous = true;
+		s.description = _('Protect services exposed to the internet. Intercept incoming WAN traffic for threat detection (WAF mode). Detects bot scanners, attacks, and feeds to CrowdSec for automatic blocking.');
 
-		o = s.option(form.Flag, 'enabled', _('Enable Transparent Redirect'));
+		o = s.option(form.Flag, 'enabled', _('Enable WAN Protection'));
+		o.description = _('Intercept incoming WAN traffic for threat analysis');
+		o.default = '0';
 
-		o = s.option(form.Value, 'interface', _('Interface'));
+		o = s.option(form.ListValue, 'wan_interface', _('WAN Interface'));
+		o.description = _('Network interface for incoming traffic');
+		o.default = 'wan';
+		o.depends('enabled', '1');
+		// Add common WAN interface options
+		o.value('wan', _('wan'));
+		o.value('wan6', _('wan6'));
+		o.value('eth1', _('eth1'));
+		o.value('eth0', _('eth0'));
+		// Try to populate from network config
+		uci.sections('network', 'interface', function(iface) {
+			if (iface['.name'] && iface['.name'].match(/wan/i)) {
+				o.value(iface['.name'], iface['.name']);
+			}
+		});
+
+		o = s.option(form.Value, 'wan_http_port', _('WAN HTTP Port'));
+		o.datatype = 'port';
+		o.default = '80';
+		o.description = _('HTTP port to intercept on WAN (0 to disable)');
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'wan_https_port', _('WAN HTTPS Port'));
+		o.datatype = 'port';
+		o.default = '443';
+		o.description = _('HTTPS port to intercept on WAN (0 to disable)');
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'crowdsec_feed', _('CrowdSec Integration'));
+		o.description = _('Feed detected threats to CrowdSec for automatic blocking');
+		o.default = '1';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'block_bots', _('Block Known Bots'));
+		o.description = _('Immediately block requests from known bot scanners (Nikto, SQLMap, etc.)');
+		o.default = '0';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Value, 'rate_limit', _('Rate Limit'));
+		o.datatype = 'uinteger';
+		o.default = '0';
+		o.description = _('Max requests per IP per minute (0 to disable rate limiting)');
+		o.depends('enabled', '1');
+
+		// LAN Transparent Mode
+		s = m.section(form.TypedSection, 'transparent', _('LAN Transparent Mode'));
+		s.anonymous = true;
+		s.description = _('Intercept outbound LAN traffic for inspection. Note: WAN Protection Mode is recommended for most use cases.');
+
+		o = s.option(form.Flag, 'enabled', _('Enable LAN Transparent Redirect'));
+		o.description = _('Redirect outbound LAN HTTP/HTTPS traffic through proxy');
+
+		o = s.option(form.Value, 'interface', _('LAN Interface'));
 		o.default = 'br-lan';
 		o.depends('enabled', '1');
 
-		// Filtering
-		s = m.section(form.TypedSection, 'filtering', _('Analytics'));
+		o = s.option(form.Flag, 'redirect_http', _('Redirect HTTP'));
+		o.default = '1';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'redirect_https', _('Redirect HTTPS'));
+		o.default = '1';
+		o.depends('enabled', '1');
+
+		// DPI Mirror Mode
+		s = m.section(form.TypedSection, 'dpi_mirror', _('DPI Mirror Mode'));
+		s.anonymous = true;
+		s.description = _('Mirror traffic to DPI engines (netifyd/ndpid) for deep packet inspection. This is a secondary feature for advanced network analysis.');
+
+		o = s.option(form.Flag, 'enabled', _('Enable DPI Mirror'));
+		o.description = _('Mirror traffic to DPI interface for analysis');
+		o.default = '0';
+
+		o = s.option(form.Value, 'dpi_interface', _('DPI Interface'));
+		o.default = 'br-lan';
+		o.description = _('Interface where DPI engines listen');
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'mirror_wan', _('Mirror WAN Traffic'));
+		o.default = '0';
+		o.depends('enabled', '1');
+
+		o = s.option(form.Flag, 'mirror_lan', _('Mirror LAN Traffic'));
+		o.default = '0';
+		o.depends('enabled', '1');
+
+		// Filtering/Analytics
+		s = m.section(form.TypedSection, 'filtering', _('Threat Analytics'));
 		s.anonymous = true;
 
-		o = s.option(form.Flag, 'enabled', _('Enable Analytics'));
-		o.description = _('Enable threat detection addon');
+		o = s.option(form.Flag, 'enabled', _('Enable Threat Analytics'));
+		o.description = _('Enable threat detection addon for attack analysis');
 
-		o = s.option(form.Value, 'addon_script', _('Addon Script'));
+		o = s.option(form.Value, 'addon_script', _('Analytics Addon'));
 		o.default = '/data/addons/secubox_analytics.py';
 		o.depends('enabled', '1');
 
-		o = s.option(form.Flag, 'log_requests', _('Log Requests'));
+		o = s.option(form.Flag, 'log_requests', _('Log All Requests'));
+		o.description = _('Log all requests (not just threats) for analysis');
 		o.depends('enabled', '1');
 
 		// HAProxy Router
