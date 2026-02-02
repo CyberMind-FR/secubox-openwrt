@@ -172,22 +172,79 @@ AUTH_PATHS = [
 BOT_SIGNATURES = [
     # Generic bots
     'bot', 'crawler', 'spider', 'scraper', 'scan',
-    # HTTP clients
+    # HTTP clients (often used by scanners)
     'curl', 'wget', 'python-requests', 'python-urllib', 'httpx',
     'go-http-client', 'java/', 'axios', 'node-fetch', 'got/',
     'okhttp', 'apache-httpclient', 'guzzlehttp', 'libwww-perl',
-    # Security scanners
+
+    # ==== VULNERABILITY SCANNERS ====
     'zgrab', 'masscan', 'nmap', 'nikto', 'nuclei', 'sqlmap',
+    'censys', 'shodan', 'internetmeasurement', 'binaryedge', 'leakix',
+    'onyphe', 'criminalip', 'netcraft', 'greynoise',
+
+    # ==== WEB DIRECTORY SCANNERS ====
     'dirb', 'dirbuster', 'gobuster', 'ffuf', 'wfuzz', 'feroxbuster',
+    'skipfish', 'whatweb', 'wpscan', 'joomscan', 'droopescan',
+    'drupwn', 'cmsmap', 'vbscan',
+
+    # ==== EXPLOITATION TOOLS ====
     'burpsuite', 'owasp', 'acunetix', 'nessus', 'qualys', 'openvas',
-    'w3af', 'arachni', 'skipfish', 'vega', 'zap', 'appscan',
-    'webinspect', 'metasploit', 'hydra', 'medusa',
-    # Known bad bots
+    'w3af', 'arachni', 'vega', 'zap', 'appscan',
+    'webinspect', 'metasploit', 'hydra', 'medusa', 'cobalt',
+    'havij', 'commix', 'tplmap', 'xsstrike', 'dalfox',
+
+    # ==== GENERIC SUSPICIOUS PATTERNS ====
+    'scanner', 'exploit', 'attack', 'hack', 'pwn',
+    'fuzz', 'brute', 'inject', 'payload', 'pentest',
+
+    # ==== KNOWN BAD BOTS ====
     'ahrefsbot', 'semrushbot', 'dotbot', 'mj12bot', 'blexbot',
     'seznambot', 'yandexbot', 'baiduspider', 'sogou',
-    # Empty or suspicious UAs
+    'bytespider', 'petalbot', 'dataforseo', 'serpstatbot',
+
+    # ==== EMPTY/SUSPICIOUS USER AGENTS ====
     '-', '', 'mozilla/4.0', 'mozilla/5.0',
 ]
+
+# Behavioral patterns for bot detection (request path based)
+BOT_BEHAVIOR_PATHS = [
+    # Credential/config file hunting
+    r'/\.git/config', r'/\.git/HEAD', r'/\.gitignore',
+    r'/\.env', r'/\.env\.local', r'/\.env\.production',
+    r'/\.aws/credentials', r'/\.docker/config\.json',
+    r'/wp-config\.php\.bak', r'/config\.php\.old', r'/config\.php\.save',
+    r'/\.npmrc', r'/\.pypirc', r'/\.netrc',
+
+    # Admin panel hunting
+    r'/administrator', r'/wp-login\.php', r'/wp-admin',
+    r'/phpmyadmin', r'/pma', r'/myadmin', r'/mysql',
+    r'/cpanel', r'/webmail', r'/admin', r'/manager',
+    r'/login', r'/signin', r'/dashboard',
+
+    # Backup file hunting
+    r'\.sql\.gz$', r'\.sql\.bz2$', r'\.sql\.zip$',
+    r'\.tar\.gz$', r'\.tar\.bz2$', r'\.zip$', r'\.rar$',
+    r'\.bak$', r'\.old$', r'\.backup$', r'\.orig$',
+    r'/backup', r'/dump', r'/export', r'/db\.sql',
+
+    # Shell/webshell hunting
+    r'/c99\.php', r'/r57\.php', r'/shell\.php', r'/cmd\.php',
+    r'/exec\.php', r'/webshell', r'/backdoor', r'/b374k',
+    r'\.php\?cmd=', r'\.php\?c=', r'\.asp\?cmd=',
+
+    # API/endpoint discovery
+    r'/api/v\d+', r'/rest/', r'/graphql', r'/swagger',
+    r'/api-docs', r'/_cat/', r'/_cluster/', r'/actuator',
+    r'/__debug__', r'/debug/', r'/trace/', r'/metrics',
+]
+
+# Rate limiting thresholds for different attack patterns
+RATE_LIMITS = {
+    'path_scan': {'window': 60, 'max': 20},      # 20 scans per minute
+    'auth_attempt': {'window': 60, 'max': 10},   # 10 auth attempts per minute
+    'bot_request': {'window': 60, 'max': 30},    # 30 bot requests per minute
+    'normal': {'window': 60, 'max': 100},        # 100 normal requests per minute
+}
 
 # Suspicious headers indicating attack tools
 SUSPICIOUS_HEADERS = {
@@ -232,26 +289,190 @@ JWT_PATTERNS = [
 ]
 
 # Known vulnerability paths (CVE-specific)
+# Comprehensive CVE detection patterns for WAF filtering
 CVE_PATTERNS = {
-    # CVE-2021-44228 (Log4Shell)
-    'log4shell': [r'\$\{jndi:', r'\$\{env:', r'\$\{lower:', r'\$\{upper:'],
+    # ============================================================================
+    # 2021 CVEs
+    # ============================================================================
+    # CVE-2021-44228 (Log4Shell) - Apache Log4j RCE
+    'CVE-2021-44228': [r'\$\{jndi:', r'\$\{env:', r'\$\{lower:', r'\$\{upper:', r'\$\{base64:'],
     # CVE-2021-41773 / CVE-2021-42013 (Apache path traversal)
-    'apache_traversal': [r'\.%2e/', r'%2e\./', r'\.\.%00', r'cgi-bin/\.%2e/'],
-    # CVE-2022-22963 (Spring Cloud Function)
-    'spring_cloud': [r'spring\.cloud\.function\.routing-expression:'],
+    'CVE-2021-41773': [r'\.%2e/', r'%2e\./', r'\.\.%00', r'cgi-bin/\.%2e/', r'/icons/\.%2e/'],
+    # CVE-2021-26084 (Confluence OGNL Injection)
+    'CVE-2021-26084': [r'/pages/doenterpagevariables\.action', r'queryString=.*ognl'],
+    # CVE-2021-34473 (ProxyShell - Exchange)
+    'CVE-2021-34473': [r'/autodiscover/autodiscover\.json.*@', r'/mapi/nspi'],
+    # CVE-2021-21972 (VMware vCenter RCE)
+    'CVE-2021-21972': [r'/ui/vropspluginui/rest/services/uploadova'],
+    # CVE-2021-22986 (F5 BIG-IP iControl REST RCE)
+    'CVE-2021-22986': [r'/mgmt/tm/util/bash', r'/mgmt/shared/authn/login'],
+
+    # ============================================================================
+    # 2022 CVEs
+    # ============================================================================
+    # CVE-2022-22963 (Spring Cloud Function SpEL Injection)
+    'CVE-2022-22963': [r'spring\.cloud\.function\.routing-expression:', r'spring\.cloud\.function\.definition'],
     # CVE-2022-22965 (Spring4Shell)
-    'spring4shell': [r'class\.module\.classLoader'],
-    # CVE-2023-34362 (MOVEit)
-    'moveit': [r'machine2\.aspx.*\?', r'/guestaccess\.aspx'],
-    # CVE-2024-3400 (PAN-OS)
-    'panos': [r'/global-protect/.*\.css\?'],
-    # CVE-2024-21887 (Ivanti Connect Secure)
-    'ivanti': [r'/api/v1/totp/user-backup-code', r'/api/v1/license/keys-status'],
-    # CVE-2024-1709 (ScreenConnect)
-    'screenconnect': [r'/SetupWizard\.aspx'],
-    # CVE-2024-27198 (TeamCity)
-    'teamcity': [r'/app/rest/users/id:', r'/app/rest/server'],
+    'CVE-2022-22965': [r'class\.module\.classLoader', r'class\.module\.classLoader\.resources'],
+    # CVE-2022-1388 (F5 BIG-IP Authentication Bypass)
+    'CVE-2022-1388': [r'/mgmt/tm/.*\?.*connection.*keep-alive', r'X-F5-Auth-Token:'],
+    # CVE-2022-26134 (Confluence OGNL Injection)
+    'CVE-2022-26134': [r'/\$\{.*\}/', r'%24%7B.*%7D'],
+    # CVE-2022-41040 / CVE-2022-41082 (ProxyNotShell - Exchange)
+    'CVE-2022-41040': [r'/autodiscover/autodiscover\.json.*Powershell', r'/owa/.*RemotePS'],
+    # CVE-2022-42889 (Apache Commons Text RCE)
+    'CVE-2022-42889': [r'\$\{script:', r'\$\{dns:', r'\$\{url:'],
+    # CVE-2022-47966 (ManageEngine RCE)
+    'CVE-2022-47966': [r'/samlLogin', r'/SamlResponseServlet'],
+
+    # ============================================================================
+    # 2023 CVEs
+    # ============================================================================
+    # CVE-2023-34362 (MOVEit Transfer SQL Injection)
+    'CVE-2023-34362': [r'machine2\.aspx', r'/guestaccess\.aspx', r'/human\.aspx'],
+    # CVE-2023-22515 (Confluence Privilege Escalation)
+    'CVE-2023-22515': [r'/server-info\.action\?bootstrapStatusProvider', r'/setup/setupadministrator\.action'],
+    # CVE-2023-22518 (Confluence Authentication Bypass)
+    'CVE-2023-22518': [r'/json/setup-restore\.action', r'/json/setup-restore-local\.action'],
+    # CVE-2023-46747 (F5 BIG-IP Configuration Utility RCE)
+    'CVE-2023-46747': [r'/tmui/login\.jsp.*\;'],
+    # CVE-2023-27997 (Fortinet SSL VPN Heap Overflow)
+    'CVE-2023-27997': [r'/remote/hostcheck_validate', r'/remote/logincheck'],
+    # CVE-2023-20198 (Cisco IOS XE Web UI Command Injection)
+    'CVE-2023-20198': [r'/webui/', r'%2F%2e%2e'],
+    # CVE-2023-42793 (TeamCity Authentication Bypass)
+    'CVE-2023-42793': [r'/app/rest/users/id:\d+/tokens', r'/app/rest/debug/processes'],
+    # CVE-2023-4966 (Citrix Bleed)
+    'CVE-2023-4966': [r'/oauth/idp/.*\.js', r'/vpn/.*\.xml'],
+    # CVE-2023-29357 (SharePoint Privilege Escalation)
+    'CVE-2023-29357': [r'/_api/web/siteusers', r'/_vti_bin/client\.svc'],
+
+    # ============================================================================
+    # 2024 CVEs
+    # ============================================================================
+    # CVE-2024-3400 (PAN-OS GlobalProtect Command Injection)
+    'CVE-2024-3400': [r'/global-protect/.*\.css\?', r'/ssl-vpn/hipreport\.esp'],
+    # CVE-2024-21887 (Ivanti Connect Secure Command Injection)
+    'CVE-2024-21887': [r'/api/v1/totp/user-backup-code', r'/api/v1/license/keys-status', r'/dana-na/'],
+    # CVE-2024-1709 (ScreenConnect Authentication Bypass)
+    'CVE-2024-1709': [r'/SetupWizard\.aspx', r'/SetupWizard\.ashx'],
+    # CVE-2024-27198 (TeamCity Authentication Bypass)
+    'CVE-2024-27198': [r'/app/rest/users/id:', r'/app/rest/server', r'/res/'],
+    # CVE-2024-21762 (Fortinet FortiOS Out-of-Bounds Write)
+    'CVE-2024-21762': [r'/webui/.*auth', r'/api/v2/cmdb'],
+    # CVE-2024-23897 (Jenkins Arbitrary File Read)
+    'CVE-2024-23897': [r'/cli\?remoting=false', r'@/etc/passwd'],
+    # CVE-2024-0012 (PAN-OS Management Interface Authentication Bypass)
+    'CVE-2024-0012': [r'/php/utils/debug\.php', r'/unauth/'],
+    # CVE-2024-9474 (PAN-OS Privilege Escalation)
+    'CVE-2024-9474': [r'/php/utils/createRemoteAppwebSession\.php'],
+    # CVE-2024-47575 (FortiManager/FortiAnalyzer Unauthenticated RCE)
+    'CVE-2024-47575': [r'/jsonrpc', r'FmgAuth'],
+    # CVE-2024-20399 (Cisco NX-OS Command Injection)
+    'CVE-2024-20399': [r'/api/node/class/', r'/api/node/mo/'],
+    # CVE-2024-4577 (PHP-CGI Argument Injection)
+    'CVE-2024-4577': [r'\.php\?.*-d.*allow_url_include', r'%AD'],
+    # CVE-2024-38856 (Apache OFBiz RCE)
+    'CVE-2024-38856': [r'/webtools/control/ProgramExport', r'/webtools/control/SOAPService'],
+    # CVE-2024-6387 (OpenSSH RegreSSHion - check headers)
+    'CVE-2024-6387': [r'SSH-2\.0-OpenSSH_[89]\.[0-7]'],
+    # CVE-2024-23113 (FortiOS Format String)
+    'CVE-2024-23113': [r'fgfm_req_', r'fgfmd'],
+    # CVE-2024-55591 (FortiOS Authentication Bypass)
+    'CVE-2024-55591': [r'/api/v2/authentication', r'LOCAL_ADMIN'],
+
+    # ============================================================================
+    # 2025 CVEs
+    # ============================================================================
+    # CVE-2025-15467 (OpenSSL CMS AuthEnvelopedData stack overflow)
+    'CVE-2025-15467': [
+        r'/smime', r'/s-mime', r'/cms/', r'/pkcs7',
+        r'/api/mail', r'/mail/send', r'/email/compose',
+        r'/decrypt', r'/verify-signature', r'/enveloped',
+    ],
+    # CVE-2025-0282 (Ivanti Connect Secure Stack Overflow)
+    'CVE-2025-0282': [r'/dana-na/auth/url_default/', r'/dana-ws/saml20\.ws'],
+    # CVE-2025-23006 (SonicWall SMA SSRF to RCE)
+    'CVE-2025-23006': [r'/cgi-bin/management', r'/cgi-bin/sslvpnclient'],
+
+    # ============================================================================
+    # CMS-Specific Vulnerabilities
+    # ============================================================================
+    # WordPress vulnerabilities
+    'wordpress_rce': [
+        r'/wp-admin/admin-ajax\.php.*action=.*upload',
+        r'/wp-content/plugins/.*/readme\.txt',
+        r'/xmlrpc\.php.*methodName.*system\.multicall',
+        r'/wp-json/wp/v2/users',
+    ],
+    # Drupal vulnerabilities (Drupalgeddon)
+    'drupal_rce': [
+        r'/node/\d+.*#.*render',
+        r'/user/register.*mail\[#.*\]',
+        r'passthru', r'system\(',
+    ],
+    # Joomla vulnerabilities
+    'joomla_rce': [
+        r'/index\.php\?option=com_.*&view=.*&layout=',
+        r'/administrator/components/',
+    ],
+
+    # ============================================================================
+    # Framework-Specific Vulnerabilities
+    # ============================================================================
+    # Laravel Debug Mode RCE
+    'laravel_debug': [r'/_ignition/execute-solution', r'/_ignition/share-report'],
+    # Symfony Debug Profiler
+    'symfony_debug': [r'/_profiler/', r'/_wdt/'],
+    # Django Debug Mode
+    'django_debug': [r'/__debug__/', r'/debug/'],
+    # Ruby on Rails
+    'rails_rce': [r'/assets/\.\./', r'/rails/actions'],
+    # Node.js Express
+    'express_rce': [r'/\.\./\.\./\.\./etc/passwd'],
+
+    # ============================================================================
+    # Database/Cache Vulnerabilities
+    # ============================================================================
+    # Redis Unauthorized Access
+    'redis_unauth': [r':6379/', r'CONFIG\s+SET', r'SLAVEOF'],
+    # MongoDB Unauthorized Access
+    'mongodb_unauth': [r':27017/', r'/admin\?slaveOk'],
+    # Elasticsearch RCE
+    'elasticsearch_rce': [r'/_search.*script', r'/_all/_search', r'/_nodes'],
+    # Memcached DDoS Amplification
+    'memcached_amp': [r':11211/', r'stats\s+slabs'],
+
+    # ============================================================================
+    # CI/CD Vulnerabilities
+    # ============================================================================
+    # GitLab RCE
+    'gitlab_rce': [r'/api/v4/projects/.*/repository/files', r'/uploads/'],
+    # GitHub Actions Injection
+    'github_actions': [r'/\.github/workflows/', r'workflow_dispatch'],
+    # Jenkins RCE
+    'jenkins_rce': [r'/script', r'/scriptText', r'/descriptorByName/'],
+
+    # ============================================================================
+    # Cloud Service Vulnerabilities
+    # ============================================================================
+    # AWS Metadata SSRF
+    'aws_metadata': [r'169\.254\.169\.254', r'/latest/meta-data/', r'/latest/user-data/'],
+    # Azure Metadata SSRF
+    'azure_metadata': [r'169\.254\.169\.254.*Metadata.*true', r'/metadata/instance'],
+    # GCP Metadata SSRF
+    'gcp_metadata': [r'metadata\.google\.internal', r'/computeMetadata/v1/'],
 }
+
+# Content-Type patterns for CVE-2025-15467 (CMS/S/MIME attacks)
+CMS_CONTENT_TYPES = [
+    'application/pkcs7-mime',
+    'application/pkcs7-signature',
+    'application/x-pkcs7-mime',
+    'application/x-pkcs7-signature',
+    'application/cms',
+    'multipart/signed',
+]
 
 class SecuBoxAnalytics:
     def __init__(self):
@@ -308,28 +529,107 @@ class SecuBoxAnalytics:
         fp_str = f"{ua}|{accept}|{accept_lang}|{accept_enc}"
         fp_hash = hashlib.md5(fp_str.encode()).hexdigest()[:12]
 
-        # Detect bot
-        is_bot = any(sig in ua.lower() for sig in BOT_SIGNATURES)
+        # Detect bot from user agent
+        ua_lower = ua.lower()
+        is_bot = any(sig in ua_lower for sig in BOT_SIGNATURES)
+
+        # Additional bot detection heuristics
+        bot_type = None
+        if is_bot:
+            # Categorize the bot
+            if any(s in ua_lower for s in ['masscan', 'zgrab', 'censys', 'shodan', 'nmap']):
+                bot_type = 'port_scanner'
+            elif any(s in ua_lower for s in ['nikto', 'nuclei', 'acunetix', 'nessus', 'qualys']):
+                bot_type = 'vulnerability_scanner'
+            elif any(s in ua_lower for s in ['dirb', 'gobuster', 'ffuf', 'wfuzz', 'feroxbuster']):
+                bot_type = 'directory_scanner'
+            elif any(s in ua_lower for s in ['sqlmap', 'havij', 'commix']):
+                bot_type = 'injection_tool'
+            elif any(s in ua_lower for s in ['wpscan', 'joomscan', 'droopescan', 'cmsmap']):
+                bot_type = 'cms_scanner'
+            elif any(s in ua_lower for s in ['metasploit', 'cobalt', 'hydra', 'medusa']):
+                bot_type = 'exploitation_tool'
+            elif any(s in ua_lower for s in ['curl', 'wget', 'python', 'go-http', 'java/']):
+                bot_type = 'http_client'
+            else:
+                bot_type = 'generic_bot'
+
+        # Suspicious UA patterns (empty, minimal, or clearly fake)
+        is_suspicious_ua = False
+        if not ua or ua == '-' or len(ua) < 10:
+            is_suspicious_ua = True
+        elif ua.lower() in ['mozilla/4.0', 'mozilla/5.0']:
+            is_suspicious_ua = True
+        elif not accept_lang and not accept_enc:
+            # Real browsers always send these
+            is_suspicious_ua = True
 
         # Parse UA for device info
         device = 'unknown'
-        if 'mobile' in ua.lower() or 'android' in ua.lower():
+        if 'mobile' in ua_lower or 'android' in ua_lower:
             device = 'mobile'
-        elif 'iphone' in ua.lower() or 'ipad' in ua.lower():
+        elif 'iphone' in ua_lower or 'ipad' in ua_lower:
             device = 'ios'
-        elif 'windows' in ua.lower():
+        elif 'windows' in ua_lower:
             device = 'windows'
-        elif 'mac' in ua.lower():
+        elif 'mac' in ua_lower:
             device = 'macos'
-        elif 'linux' in ua.lower():
+        elif 'linux' in ua_lower:
             device = 'linux'
 
         return {
             'fingerprint': fp_hash,
             'user_agent': ua[:200],
             'is_bot': is_bot,
+            'bot_type': bot_type,
+            'is_suspicious_ua': is_suspicious_ua,
             'device': device
         }
+
+    def _detect_bot_behavior(self, request: http.Request) -> dict:
+        """Detect bot-like behavior based on request patterns"""
+        path = request.path.lower()
+
+        for pattern in BOT_BEHAVIOR_PATHS:
+            if re.search(pattern, path, re.IGNORECASE):
+                # Categorize the behavior
+                if any(p in pattern for p in [r'\.git', r'\.env', r'\.aws', r'config', r'credential']):
+                    return {
+                        'is_bot_behavior': True,
+                        'behavior_type': 'config_hunting',
+                        'pattern': pattern,
+                        'severity': 'high'
+                    }
+                elif any(p in pattern for p in ['admin', 'login', 'cpanel', 'phpmyadmin']):
+                    return {
+                        'is_bot_behavior': True,
+                        'behavior_type': 'admin_hunting',
+                        'pattern': pattern,
+                        'severity': 'medium'
+                    }
+                elif any(p in pattern for p in ['backup', r'\.sql', r'\.tar', r'\.zip', 'dump']):
+                    return {
+                        'is_bot_behavior': True,
+                        'behavior_type': 'backup_hunting',
+                        'pattern': pattern,
+                        'severity': 'high'
+                    }
+                elif any(p in pattern for p in ['shell', 'cmd', 'exec', 'backdoor', 'c99', 'r57']):
+                    return {
+                        'is_bot_behavior': True,
+                        'behavior_type': 'shell_hunting',
+                        'pattern': pattern,
+                        'severity': 'critical'
+                    }
+                elif any(p in pattern for p in ['api', 'swagger', 'graphql', 'actuator']):
+                    return {
+                        'is_bot_behavior': True,
+                        'behavior_type': 'api_discovery',
+                        'pattern': pattern,
+                        'severity': 'low'
+                    }
+
+        return {'is_bot_behavior': False, 'behavior_type': None, 'pattern': None, 'severity': None}
 
     def _detect_scan(self, request: http.Request) -> dict:
         """Comprehensive threat detection with categorized patterns"""
@@ -337,6 +637,18 @@ class SecuBoxAnalytics:
         full_url = request.pretty_url.lower()
         query = request.query
         body = request.content.decode('utf-8', errors='ignore').lower() if request.content else ''
+        content_type = request.headers.get('content-type', '').lower()
+
+        # === CVE-2025-15467 CHECK FIRST (Content-Type based) ===
+        # OpenSSL CMS AuthEnvelopedData stack overflow - must check before SSRF
+        if any(ct in content_type for ct in CMS_CONTENT_TYPES):
+            body_len = len(body) if body else 0
+            severity = 'critical' if body_len > 1024 else 'high'
+            return {
+                'is_scan': True, 'pattern': 'CVE-2025-15467', 'type': 'cve_exploit',
+                'severity': severity, 'category': 'cms_attack',
+                'cve': 'CVE-2025-15467'
+            }
 
         # Build combined search string
         search_targets = [path, full_url, body]
@@ -398,7 +710,6 @@ class SecuBoxAnalytics:
                 }
 
         # Check XXE (in body/headers for XML)
-        content_type = request.headers.get('content-type', '').lower()
         if 'xml' in content_type or body.startswith('<?xml'):
             for pattern in XXE_PATTERNS:
                 if re.search(pattern, body, re.IGNORECASE):
@@ -553,25 +864,63 @@ class SecuBoxAnalytics:
 
         # CrowdSec compatible log (enhanced format)
         scan_data = entry.get('scan', {})
-        if scan_data.get('is_scan') or entry.get('is_auth_attempt') or entry.get('suspicious_headers') or entry.get('rate_limit', {}).get('is_limited'):
+        bot_behavior_data = entry.get('bot_behavior', {})
+        client_data = entry.get('client', {})
+
+        # Log to CrowdSec if any threat indicator is present
+        should_log = (
+            scan_data.get('is_scan') or
+            bot_behavior_data.get('is_bot_behavior') or
+            client_data.get('is_bot') or
+            entry.get('is_auth_attempt') or
+            entry.get('suspicious_headers') or
+            entry.get('rate_limit', {}).get('is_limited')
+        )
+
+        if should_log:
             try:
+                # Determine the primary threat type for categorization
+                threat_type = 'suspicious'
+                if scan_data.get('is_scan'):
+                    threat_type = scan_data.get('type', 'scan')
+                elif bot_behavior_data.get('is_bot_behavior'):
+                    threat_type = bot_behavior_data.get('behavior_type', 'bot_behavior')
+                elif client_data.get('is_bot'):
+                    threat_type = client_data.get('bot_type', 'bot')
+                elif entry.get('is_auth_attempt'):
+                    threat_type = 'auth_attempt'
+
+                # Determine severity
+                severity = 'low'
+                if scan_data.get('severity'):
+                    severity = scan_data.get('severity')
+                elif bot_behavior_data.get('severity'):
+                    severity = bot_behavior_data.get('severity')
+                elif client_data.get('bot_type') in ['exploitation_tool', 'injection_tool']:
+                    severity = 'high'
+                elif client_data.get('bot_type') in ['vulnerability_scanner', 'directory_scanner']:
+                    severity = 'medium'
+
                 cs_entry = {
                     'timestamp': entry['timestamp'],
                     'source_ip': entry['client_ip'],
                     'country': entry['country'],
                     'request': f"{entry['method']} {entry['path']}",
                     'host': entry.get('host', ''),
-                    'user_agent': entry['client'].get('user_agent', ''),
-                    'type': scan_data.get('type') or ('auth_attempt' if entry['is_auth_attempt'] else 'suspicious'),
-                    'pattern': scan_data.get('pattern', ''),
-                    'category': scan_data.get('category', ''),
-                    'severity': scan_data.get('severity', 'low'),
+                    'user_agent': client_data.get('user_agent', ''),
+                    'type': threat_type,
+                    'pattern': scan_data.get('pattern') or bot_behavior_data.get('pattern', ''),
+                    'category': scan_data.get('category') or bot_behavior_data.get('behavior_type', ''),
+                    'severity': severity,
                     'cve': scan_data.get('cve', ''),
                     'response_code': entry.get('response', {}).get('status', 0),
-                    'fingerprint': entry['client'].get('fingerprint', ''),
-                    'is_bot': entry['client'].get('is_bot', False),
+                    'fingerprint': client_data.get('fingerprint', ''),
+                    'is_bot': client_data.get('is_bot', False),
+                    'bot_type': client_data.get('bot_type', ''),
+                    'bot_behavior': bot_behavior_data.get('behavior_type', ''),
                     'rate_limited': entry.get('rate_limit', {}).get('is_limited', False),
                     'suspicious_headers': len(entry.get('suspicious_headers', [])) > 0,
+                    'suspicious_ua': client_data.get('is_suspicious_ua', False),
                 }
                 with open(CROWDSEC_LOG, 'a') as f:
                     f.write(json.dumps(cs_entry) + '\n')
@@ -644,6 +993,7 @@ class SecuBoxAnalytics:
         suspicious_headers = self._detect_suspicious_headers(request)
         rate_limit = self._check_rate_limit(source_ip)
         client_fp = self._get_client_fingerprint(request)
+        bot_behavior = self._detect_bot_behavior(request)
 
         # Build log entry
         entry = {
@@ -658,6 +1008,7 @@ class SecuBoxAnalytics:
             'query': request.query.get('q', '')[:100] if request.query else '',
             'client': client_fp,
             'scan': scan_result,
+            'bot_behavior': bot_behavior,
             'is_auth_attempt': self._is_auth_attempt(request),
             'content_length': len(request.content) if request.content else 0,
             'routing': routing,
@@ -720,6 +1071,32 @@ class SecuBoxAnalytics:
                 'path': request.path,
                 'method': request.method,
                 'host': request.host
+            })
+
+        # Log bot behavior detection
+        if bot_behavior.get('is_bot_behavior'):
+            behavior_type = bot_behavior.get('behavior_type', 'unknown')
+            severity = bot_behavior.get('severity', 'medium')
+
+            log_msg = f"BOT BEHAVIOR [{severity.upper()}]: {source_ip} ({entry['country']}) - {behavior_type}"
+            log_msg += f" - {request.method} {request.path}"
+
+            if severity in ['critical', 'high']:
+                ctx.log.warn(log_msg)
+            else:
+                ctx.log.info(log_msg)
+
+            self._add_alert({
+                'time': entry['timestamp'],
+                'ip': source_ip,
+                'country': entry['country'],
+                'type': 'bot_behavior',
+                'behavior_type': behavior_type,
+                'severity': severity,
+                'path': request.path,
+                'method': request.method,
+                'host': request.host,
+                'bot_type': client_fp.get('bot_type')
             })
 
         # Log suspicious headers

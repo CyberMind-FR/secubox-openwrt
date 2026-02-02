@@ -3524,7 +3524,7 @@
             async getDecisions() {
                 try {
                     const result = await UBUS.call('luci.crowdsec-dashboard', 'decisions');
-                    return result?.alerts || [];
+                    return result?.decisions || [];
                 } catch (e) {
                     console.warn('CrowdSec decisions error:', e);
                     return [];

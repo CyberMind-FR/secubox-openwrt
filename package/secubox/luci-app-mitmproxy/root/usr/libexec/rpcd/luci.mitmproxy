@@ -20,6 +20,12 @@ get_status() {
 	local haproxy_router_enabled=$(uci_get haproxy_router.enabled)
 	local haproxy_listen_port=$(uci_get haproxy_router.listen_port)
 
+	# WAN Protection settings
+	local wan_protection_enabled=$(uci_get wan_protection.enabled)
+	local wan_interface=$(uci_get wan_protection.wan_interface)
+	local crowdsec_feed=$(uci_get wan_protection.crowdsec_feed)
+	local block_bots=$(uci_get wan_protection.block_bots)
+
 	# Check for LXC availability
 	local lxc_available=0
 	command -v lxc-start >/dev/null 2>&1 && lxc_available=1
@@ -40,6 +46,12 @@ get_status() {
 		nft list table inet mitmproxy >/dev/null 2>&1 && nft_active=1
 	fi
 
+	# Check nftables status for WAN protection mode
+	local nft_wan_active=0
+	if [ "$wan_protection_enabled" = "1" ] && command -v nft >/dev/null 2>&1; then
+		nft list table inet mitmproxy_wan >/dev/null 2>&1 && nft_wan_active=1
+	fi
+
 	# Get authentication token from container data path
 	local token=""
 	local token_file="${data_path:-/srv/mitmproxy}/.mitmproxy_token"
@@ -57,9 +69,14 @@ get_status() {
 	"data_path": "${data_path:-/srv/mitmproxy}",
 	"mode": "${mode:-regular}",
 	"nft_active": $([ "$nft_active" = "1" ] && echo "true" || echo "false"),
+	"nft_wan_active": $([ "$nft_wan_active" = "1" ] && echo "true" || echo "false"),
 	"token": "${token:-}",
 	"haproxy_router_enabled": $([ "$haproxy_router_enabled" = "1" ] && echo "true" || echo "false"),
-	"haproxy_listen_port": ${haproxy_listen_port:-8889}
+	"haproxy_listen_port": ${haproxy_listen_port:-8889},
+	"wan_protection_enabled": $([ "$wan_protection_enabled" = "1" ] && echo "true" || echo "false"),
+	"wan_interface": "${wan_interface:-wan}",
+	"crowdsec_feed": $([ "$crowdsec_feed" = "1" ] && echo "true" || echo "false"),
+	"block_bots": $([ "$block_bots" = "1" ] && echo "true" || echo "false")
 }
 EOFJ
 }
@@ -94,7 +111,24 @@ get_settings() {
 	json_add_boolean "anticache" "${anticache:-0}"
 	json_add_boolean "anticomp" "${anticomp:-0}"
 
-	# Transparent settings
+	# WAN Protection settings
+	local wan_protection_enabled=$(uci_get wan_protection.enabled)
+	local wan_interface=$(uci_get wan_protection.wan_interface)
+	local wan_http_port=$(uci_get wan_protection.wan_http_port)
+	local wan_https_port=$(uci_get wan_protection.wan_https_port)
+	local crowdsec_feed=$(uci_get wan_protection.crowdsec_feed)
+	local block_bots=$(uci_get wan_protection.block_bots)
+	local rate_limit=$(uci_get wan_protection.rate_limit)
+
+	json_add_boolean "wan_protection_enabled" "${wan_protection_enabled:-0}"
+	json_add_string "wan_interface" "${wan_interface:-wan}"
+	json_add_int "wan_http_port" "${wan_http_port:-80}"
+	json_add_int "wan_https_port" "${wan_https_port:-443}"
+	json_add_boolean "crowdsec_feed" "${crowdsec_feed:-1}"
+	json_add_boolean "block_bots" "${block_bots:-0}"
+	json_add_int "rate_limit" "${rate_limit:-0}"
+
+	# Transparent settings (LAN)
 	local transparent_enabled=$(uci_get transparent.enabled)
 	local transparent_iface=$(uci_get transparent.interface)
 	local redirect_http=$(uci_get transparent.redirect_http)
@@ -104,6 +138,17 @@ get_settings() {
 	json_add_string "transparent_interface" "${transparent_iface:-br-lan}"
 	json_add_boolean "redirect_http" "${redirect_http:-1}"
 	json_add_boolean "redirect_https" "${redirect_https:-1}"
+
+	# DPI Mirror settings
+	local dpi_mirror_enabled=$(uci_get dpi_mirror.enabled)
+	local dpi_interface=$(uci_get dpi_mirror.dpi_interface)
+	local mirror_wan=$(uci_get dpi_mirror.mirror_wan)
+	local mirror_lan=$(uci_get dpi_mirror.mirror_lan)
+
+	json_add_boolean "dpi_mirror_enabled" "${dpi_mirror_enabled:-0}"
+	json_add_string "dpi_interface" "${dpi_interface:-br-lan}"
+	json_add_boolean "mirror_wan" "${mirror_wan:-0}"
+	json_add_boolean "mirror_lan" "${mirror_lan:-0}"
 
 	# Filtering settings
 	local filtering_enabled=$(uci_get filtering.enabled)
@@ -128,7 +173,10 @@ save_settings() {
 	# Get values from input
 	local mode enabled proxy_port web_port web_host data_path memory_limit
 	local upstream_proxy reverse_target ssl_insecure anticache anticomp
+	local wan_protection_enabled wan_interface wan_http_port wan_https_port
+	local crowdsec_feed block_bots rate_limit
 	local transparent_enabled transparent_interface redirect_http redirect_https
+	local dpi_mirror_enabled dpi_interface mirror_wan mirror_lan
 	local filtering_enabled log_requests filter_cdn filter_media block_ads
 	local apply_now
 
@@ -144,10 +192,21 @@ save_settings() {
 	json_get_var ssl_insecure ssl_insecure
 	json_get_var anticache anticache
 	json_get_var anticomp anticomp
+	json_get_var wan_protection_enabled wan_protection_enabled
+	json_get_var wan_interface wan_interface
+	json_get_var wan_http_port wan_http_port
+	json_get_var wan_https_port wan_https_port
+	json_get_var crowdsec_feed crowdsec_feed
+	json_get_var block_bots block_bots
+	json_get_var rate_limit rate_limit
 	json_get_var transparent_enabled transparent_enabled
 	json_get_var transparent_interface transparent_interface
 	json_get_var redirect_http redirect_http
 	json_get_var redirect_https redirect_https
+	json_get_var dpi_mirror_enabled dpi_mirror_enabled
+	json_get_var dpi_interface dpi_interface
+	json_get_var mirror_wan mirror_wan
+	json_get_var mirror_lan mirror_lan
 	json_get_var filtering_enabled filtering_enabled
 	json_get_var log_requests log_requests
 	json_get_var filter_cdn filter_cdn
@@ -164,9 +223,17 @@ save_settings() {
 		uci set mitmproxy.main.enabled='0'
 		uci set mitmproxy.main.mode='regular'
 	}
+	uci -q get mitmproxy.wan_protection >/dev/null 2>&1 || {
+		uci set mitmproxy.wan_protection=wan_protection
+		uci set mitmproxy.wan_protection.enabled='0'
+	}
 	uci -q get mitmproxy.transparent >/dev/null 2>&1 || {
 		uci set mitmproxy.transparent=transparent
 		uci set mitmproxy.transparent.enabled='0'
+	}
+	uci -q get mitmproxy.dpi_mirror >/dev/null 2>&1 || {
+		uci set mitmproxy.dpi_mirror=dpi_mirror
+		uci set mitmproxy.dpi_mirror.enabled='0'
 	}
 	uci -q get mitmproxy.filtering >/dev/null 2>&1 || {
 		uci set mitmproxy.filtering=filtering
@@ -187,11 +254,26 @@ save_settings() {
 	[ -n "$anticache" ] && uci_set main.anticache "$anticache"
 	[ -n "$anticomp" ] && uci_set main.anticomp "$anticomp"
 
-	# Apply transparent settings
+	# Apply WAN protection settings
+	[ -n "$wan_protection_enabled" ] && uci_set wan_protection.enabled "$wan_protection_enabled"
+	[ -n "$wan_interface" ] && uci_set wan_protection.wan_interface "$wan_interface"
+	[ -n "$wan_http_port" ] && uci_set wan_protection.wan_http_port "$wan_http_port"
+	[ -n "$wan_https_port" ] && uci_set wan_protection.wan_https_port "$wan_https_port"
+	[ -n "$crowdsec_feed" ] && uci_set wan_protection.crowdsec_feed "$crowdsec_feed"
+	[ -n "$block_bots" ] && uci_set wan_protection.block_bots "$block_bots"
+	[ -n "$rate_limit" ] && uci_set wan_protection.rate_limit "$rate_limit"
+
+	# Apply transparent settings (LAN)
 	[ -n "$transparent_enabled" ] && uci_set transparent.enabled "$transparent_enabled"
 	[ -n "$transparent_interface" ] && uci_set transparent.interface "$transparent_interface"
 	[ -n "$redirect_http" ] && uci_set transparent.redirect_http "$redirect_http"
 	[ -n "$redirect_https" ] && uci_set transparent.redirect_https "$redirect_https"
+
+	# Apply DPI mirror settings
+	[ -n "$dpi_mirror_enabled" ] && uci_set dpi_mirror.enabled "$dpi_mirror_enabled"
+	[ -n "$dpi_interface" ] && uci_set dpi_mirror.dpi_interface "$dpi_interface"
+	[ -n "$mirror_wan" ] && uci_set dpi_mirror.mirror_wan "$mirror_wan"
+	[ -n "$mirror_lan" ] && uci_set dpi_mirror.mirror_lan "$mirror_lan"
 
 	# Apply filtering settings
 	[ -n "$filtering_enabled" ] && uci_set filtering.enabled "$filtering_enabled"
@@ -485,8 +567,58 @@ sync_routes() {
 	json_dump
 }
 
+wan_setup() {
+	json_init
+
+	if ! command -v mitmproxyctl >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "mitmproxyctl not found"
+		json_dump
+		return
+	fi
+
+	mitmproxyctl wan-setup >/tmp/wan-setup.log 2>&1
+	local result=$?
+
+	if [ $result -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "WAN protection rules applied"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to setup WAN protection rules"
+		local log=$(cat /tmp/wan-setup.log 2>/dev/null)
+		[ -n "$log" ] && json_add_string "details" "$log"
+	fi
+
+	json_dump
+}
+
+wan_clear() {
+	json_init
+
+	if ! command -v mitmproxyctl >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "mitmproxyctl not found"
+		json_dump
+		return
+	fi
+
+	mitmproxyctl wan-clear >/tmp/wan-clear.log 2>&1
+	local result=$?
+
+	if [ $result -eq 0 ]; then
+		json_add_boolean "success" 1
+		json_add_string "message" "WAN protection rules cleared"
+	else
+		json_add_boolean "success" 0
+		json_add_string "error" "Failed to clear WAN protection rules"
+	fi
+
+	json_dump
+}
+
 list_methods() { cat <<'EOFM'
-{"status":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"install":{},"start":{},"stop":{},"restart":{},"alerts":{},"threat_stats":{},"clear_alerts":{},"haproxy_enable":{},"haproxy_disable":{},"sync_routes":{}}
+{"status":{},"settings":{},"save_settings":{"mode":"str","enabled":"bool","proxy_port":"int","web_port":"int","apply_now":"bool","wan_protection_enabled":"bool","wan_interface":"str"},"set_mode":{"mode":"str","apply_now":"bool"},"setup_firewall":{},"clear_firewall":{},"wan_setup":{},"wan_clear":{},"install":{},"start":{},"stop":{},"restart":{},"alerts":{},"threat_stats":{},"clear_alerts":{},"haproxy_enable":{},"haproxy_disable":{},"sync_routes":{}}
 EOFM
 }
 
@@ -500,6 +632,8 @@ case "$1" in
 			set_mode) set_mode ;;
 			setup_firewall) setup_firewall ;;
 			clear_firewall) clear_firewall ;;
+			wan_setup) wan_setup ;;
+			wan_clear) wan_clear ;;
 			install) do_install ;;
 			start) do_start ;;
 			stop) do_stop ;;

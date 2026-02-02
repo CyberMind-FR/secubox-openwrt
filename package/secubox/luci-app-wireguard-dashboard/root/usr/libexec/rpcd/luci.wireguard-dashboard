@@ -722,6 +722,13 @@ generate_qr() {
 	# Get DNS servers
 	local dns=$(uci -q get network.$iface.dns || echo "1.1.1.1, 1.0.0.1")
 
+	# Build endpoint - only add port if not already present
+	local full_endpoint="$server_endpoint"
+	case "$server_endpoint" in
+		*:*) ;; # Already has port
+		*) full_endpoint="${server_endpoint}:${server_port}" ;;
+	esac
+
 	# Build configuration
 	local config="[Interface]
 PrivateKey = ${peer_privkey}
@@ -730,7 +737,7 @@ DNS = ${dns}
 
 [Peer]
 PublicKey = ${server_pubkey}
-Endpoint = ${server_endpoint}:${server_port}
+Endpoint = ${full_endpoint}
 AllowedIPs = 0.0.0.0/0, ::/0
 PersistentKeepalive = 25"
 
@@ -739,10 +746,10 @@ PersistentKeepalive = 25"
 PresharedKey = ${psk}"
 	fi
 
-	# Generate QR code PNG and convert to base64
-	local qr_base64=$(echo "$config" | qrencode -t PNG -o - | base64 -w 0)
+	# Generate QR code as SVG (PNG disabled in OpenWrt qrencode) and convert to base64
+	local qr_base64=$(echo "$config" | qrencode -t SVG -o - | base64 -w 0)
 
-	json_add_string "qrcode" "data:image/png;base64,$qr_base64"
+	json_add_string "qrcode" "data:image/svg+xml;base64,$qr_base64"
 	json_add_string "config" "$config"
 
 	json_dump

@@ -58,24 +58,31 @@ get_mesh_ip() {
 
 # Build HAProxy vhost map: domain -> backend
 # Returns: domain|backend|ssl|enabled for each vhost
+# Note: When mitmproxy inspection is enabled, uses original_backend to find real service
 get_haproxy_vhosts() {
 	config_load haproxy 2>/dev/null || return
 
 	# Callback function for each vhost
 	_emit_vhost() {
 		local section="$1"
-		local enabled domain backend ssl ssl_redirect
+		local enabled domain backend original_backend ssl ssl_redirect
 
 		config_get enabled "$section" enabled "0"
 		[ "$enabled" = "1" ] || return
 
 		config_get domain "$section" domain
 		config_get backend "$section" backend
+		config_get original_backend "$section" original_backend
 		config_get ssl "$section" ssl "0"
 		config_get ssl_redirect "$section" ssl_redirect "0"
 
 		[ -n "$domain" ] || return
 		[ -n "$backend" ] || return
+
+		# If backend is mitmproxy_inspector and original_backend exists, use the real backend
+		if [ "$backend" = "mitmproxy_inspector" ] && [ -n "$original_backend" ]; then
+			backend="$original_backend"
+		fi
 
 		# Determine scheme
 		local scheme="http"

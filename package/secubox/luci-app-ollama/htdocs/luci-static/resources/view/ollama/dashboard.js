@@ -1,577 +1,405 @@
 'use strict';
 'require view';
-'require ui';
+'require dom';
+'require poll';
 'require rpc';
 
-var callStatus = rpc.declare({
-	object: 'luci.ollama',
-	method: 'status',
-	expect: { }
-});
+var api = {
+	status: rpc.declare({ object: 'luci.ollama', method: 'status' }),
+	models: rpc.declare({ object: 'luci.ollama', method: 'models' }),
+	health: rpc.declare({ object: 'luci.ollama', method: 'health' }),
+	start: rpc.declare({ object: 'luci.ollama', method: 'start' }),
+	stop: rpc.declare({ object: 'luci.ollama', method: 'stop' }),
+	restart: rpc.declare({ object: 'luci.ollama', method: 'restart' }),
+	pull: rpc.declare({ object: 'luci.ollama', method: 'model_pull', params: ['name'] }),
+	remove: rpc.declare({ object: 'luci.ollama', method: 'model_remove', params: ['name'] }),
+	chat: rpc.declare({ object: 'luci.ollama', method: 'chat', params: ['model', 'message'] })
+};
 
-var callModels = rpc.declare({
-	object: 'luci.ollama',
-	method: 'models',
-	expect: { models: [] }
-});
-
-var callHealth = rpc.declare({
-	object: 'luci.ollama',
-	method: 'health',
-	expect: { healthy: false }
-});
-
-var callStart = rpc.declare({
-	object: 'luci.ollama',
-	method: 'start',
-	expect: { success: false }
-});
-
-var callStop = rpc.declare({
-	object: 'luci.ollama',
-	method: 'stop',
-	expect: { success: false }
-});
-
-var callRestart = rpc.declare({
-	object: 'luci.ollama',
-	method: 'restart',
-	expect: { success: false }
-});
-
-function formatBytes(bytes) {
-	if (!bytes || bytes === 0) return '0 B';
-	var k = 1024;
-	var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-	var i = Math.floor(Math.log(bytes) / Math.log(k));
-	return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+function fmtBytes(b) {
+	if (!b) return '-';
+	var u = ['B', 'KB', 'MB', 'GB'];
+	var i = 0;
+	while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+	return b.toFixed(1) + ' ' + u[i];
 }
 
-function formatUptime(seconds) {
-	if (!seconds) return 'N/A';
-	var days = Math.floor(seconds / 86400);
-	var hours = Math.floor((seconds % 86400) / 3600);
-	var mins = Math.floor((seconds % 3600) / 60);
-	if (days > 0) return days + 'd ' + hours + 'h';
-	if (hours > 0) return hours + 'h ' + mins + 'm';
-	return mins + 'm';
+function fmtUptime(s) {
+	if (!s) return '-';
+	var h = Math.floor(s / 3600);
+	var m = Math.floor((s % 3600) / 60);
+	return h > 0 ? h + 'h ' + m + 'm' : m + 'm';
 }
 
 return view.extend({
-	title: _('Ollama Dashboard'),
-	refreshInterval: 5000,
-	data: null,
+	css: `
+		:root { --ol-bg: #0f172a; --ol-card: #1e293b; --ol-border: #334155; --ol-text: #f1f5f9; --ol-muted: #94a3b8; --ol-accent: #f97316; --ol-success: #22c55e; --ol-danger: #ef4444; }
+		.ol-wrap { font-family: system-ui, sans-serif; background: var(--ol-bg); color: var(--ol-text); min-height: 100vh; padding: 1rem; }
+		.ol-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--ol-border); }
+		.ol-title { font-size: 1.5rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
+		.ol-title span { font-size: 1.75rem; }
+		.ol-badge { padding: 0.25rem 0.75rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 600; }
+		.ol-badge.on { background: rgba(34,197,94,0.2); color: var(--ol-success); }
+		.ol-badge.off { background: rgba(239,68,68,0.2); color: var(--ol-danger); }
+		.ol-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+		.ol-stat { background: var(--ol-card); border: 1px solid var(--ol-border); border-radius: 0.5rem; padding: 1rem; text-align: center; }
+		.ol-stat-val { font-size: 1.5rem; font-weight: 700; color: var(--ol-accent); }
+		.ol-stat-lbl { font-size: 0.7rem; color: var(--ol-muted); text-transform: uppercase; margin-top: 0.25rem; }
+		.ol-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 1rem; }
+		.ol-card { background: var(--ol-card); border: 1px solid var(--ol-border); border-radius: 0.5rem; overflow: hidden; }
+		.ol-card-head { padding: 0.75rem 1rem; background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--ol-border); font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+		.ol-card-body { padding: 1rem; }
+		.ol-btn { padding: 0.5rem 1rem; border: none; border-radius: 0.375rem; font-size: 0.8rem; font-weight: 500; cursor: pointer; transition: opacity 0.2s; }
+		.ol-btn:hover { opacity: 0.8; }
+		.ol-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+		.ol-btn-primary { background: var(--ol-accent); color: #fff; }
+		.ol-btn-success { background: var(--ol-success); color: #fff; }
+		.ol-btn-danger { background: var(--ol-danger); color: #fff; }
+		.ol-btn-sm { padding: 0.25rem 0.5rem; font-size: 0.7rem; }
+		.ol-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+		.ol-input { width: 100%; padding: 0.5rem; border: 1px solid var(--ol-border); border-radius: 0.375rem; background: var(--ol-bg); color: var(--ol-text); font-size: 0.875rem; }
+		.ol-input:focus { outline: none; border-color: var(--ol-accent); }
+		.ol-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--ol-border); font-size: 0.875rem; }
+		.ol-row:last-child { border-bottom: none; }
+		.ol-row-lbl { color: var(--ol-muted); }
+		.ol-model { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem; background: var(--ol-bg); border-radius: 0.375rem; margin-bottom: 0.5rem; }
+		.ol-model:last-child { margin-bottom: 0; }
+		.ol-model-name { font-weight: 500; }
+		.ol-model-size { font-size: 0.75rem; color: var(--ol-muted); }
+		.ol-empty { text-align: center; padding: 2rem; color: var(--ol-muted); }
+		.ol-suggest { margin-top: 1rem; }
+		.ol-suggest-title { font-size: 0.85rem; margin-bottom: 0.75rem; color: var(--ol-text); }
+		.ol-suggest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; }
+		.ol-suggest-item { background: var(--ol-bg); border: 1px solid var(--ol-border); border-radius: 0.375rem; padding: 0.75rem; cursor: pointer; transition: all 0.2s; }
+		.ol-suggest-item:hover { border-color: var(--ol-accent); }
+		.ol-suggest-name { font-weight: 600; font-size: 0.9rem; }
+		.ol-suggest-desc { font-size: 0.75rem; color: var(--ol-muted); margin-top: 0.25rem; }
+		.ol-suggest-size { font-size: 0.7rem; color: var(--ol-accent); margin-top: 0.25rem; }
+		.ol-chat-box { height: 200px; overflow-y: auto; background: var(--ol-bg); border: 1px solid var(--ol-border); border-radius: 0.375rem; padding: 0.75rem; margin-bottom: 0.75rem; font-size: 0.875rem; }
+		.ol-chat-msg { margin-bottom: 0.75rem; }
+		.ol-chat-msg.user { color: var(--ol-accent); }
+		.ol-chat-msg.ai { color: var(--ol-text); white-space: pre-wrap; }
+		.ol-chat-input { display: flex; gap: 0.5rem; }
+		.ol-chat-input input { flex: 1; }
+		.ol-select { padding: 0.5rem; border: 1px solid var(--ol-border); border-radius: 0.375rem; background: var(--ol-bg); color: var(--ol-text); font-size: 0.875rem; margin-bottom: 0.75rem; }
+		.ol-toast { position: fixed; bottom: 1rem; right: 1rem; padding: 0.75rem 1rem; border-radius: 0.375rem; font-size: 0.875rem; z-index: 9999; }
+		.ol-toast.success { background: var(--ol-success); color: #fff; }
+		.ol-toast.error { background: var(--ol-danger); color: #fff; }
+	`,
 
 	load: function() {
 		return Promise.all([
-			callStatus(),
-			callModels(),
-			callHealth()
-		]).then(function(results) {
-			var modelsData = Array.isArray(results[1]) ? results[1] : [];
-			return {
-				status: results[0] || {},
-				models: modelsData,
-				health: results[2] || {}
-			};
-		});
+			api.status().catch(function() { return {}; }),
+			api.models().catch(function() { return { models: [] }; })
+		]);
 	},
 
 	render: function(data) {
 		var self = this;
-		this.data = data;
+		var status = data[0] || {};
+		var models = (data[1] && data[1].models) || [];
+		this.isRunning = status.running;
 
-		var container = E('div', { 'class': 'ollama-dashboard' }, [
+		var view = E('div', { 'class': 'ol-wrap' }, [
+			E('style', {}, this.css),
+
 			// Header
-			E('div', { 'class': 'oll-header' }, [
-				E('div', { 'class': 'oll-logo' }, [
-					E('div', { 'class': 'oll-logo-icon' }, '🦙'),
-					E('div', { 'class': 'oll-logo-text' }, 'Ollama')
+			E('div', { 'class': 'ol-header' }, [
+				E('div', { 'class': 'ol-title' }, [
+					E('span', {}, '\uD83E\uDD99'),
+					'Ollama'
 				]),
-				E('div', { 'class': 'oll-header-info' }, [
-					E('div', {
-						'class': 'oll-status-badge ' + (data.status.running ? '' : 'offline'),
-						'id': 'oll-status-badge'
-					}, [
-						E('span', { 'class': 'oll-status-dot' }),
-						data.status.running ? _('Running') : _('Stopped')
-					])
-				])
+				E('div', { 'class': 'ol-badge ' + (status.running ? 'on' : 'off'), 'id': 'ol-status' },
+					status.running ? 'Running' : 'Stopped')
 			]),
 
-			// Quick Stats
-			E('div', { 'class': 'oll-quick-stats' }, [
-				E('div', { 'class': 'oll-quick-stat', 'style': '--stat-gradient: linear-gradient(135deg, #f97316, #ea580c)' }, [
-					E('div', { 'class': 'oll-quick-stat-header' }, [
-						E('span', { 'class': 'oll-quick-stat-icon' }, '🧠'),
-						E('span', { 'class': 'oll-quick-stat-label' }, _('Models'))
-					]),
-					E('div', { 'class': 'oll-quick-stat-value', 'id': 'models-count' },
-						(data.models || []).length.toString()
-					),
-					E('div', { 'class': 'oll-quick-stat-sub' }, _('Downloaded'))
-				]),
+			// Stats
+			E('div', { 'class': 'ol-stats', 'id': 'ol-stats' }, this.renderStats(status, models)),
 
-				E('div', { 'class': 'oll-quick-stat', 'style': '--stat-gradient: linear-gradient(135deg, #10b981, #059669)' }, [
-					E('div', { 'class': 'oll-quick-stat-header' }, [
-						E('span', { 'class': 'oll-quick-stat-icon' }, '⏱️'),
-						E('span', { 'class': 'oll-quick-stat-label' }, _('Uptime'))
-					]),
-					E('div', { 'class': 'oll-quick-stat-value', 'id': 'uptime' },
-						data.status.running ? formatUptime(data.status.uptime) : '--'
-					),
-					E('div', { 'class': 'oll-quick-stat-sub' }, _('Running'))
-				]),
-
-				E('div', { 'class': 'oll-quick-stat', 'style': '--stat-gradient: linear-gradient(135deg, #06b6d4, #0ea5e9)' }, [
-					E('div', { 'class': 'oll-quick-stat-header' }, [
-						E('span', { 'class': 'oll-quick-stat-icon' }, '🔌'),
-						E('span', { 'class': 'oll-quick-stat-label' }, _('API Port'))
-					]),
-					E('div', { 'class': 'oll-quick-stat-value' }, data.status.api_port || '11434'),
-					E('div', { 'class': 'oll-quick-stat-sub' }, _('Endpoint'))
-				]),
-
-				E('div', { 'class': 'oll-quick-stat', 'style': '--stat-gradient: linear-gradient(135deg, #8b5cf6, #7c3aed)' }, [
-					E('div', { 'class': 'oll-quick-stat-header' }, [
-						E('span', { 'class': 'oll-quick-stat-icon' }, '🐋'),
-						E('span', { 'class': 'oll-quick-stat-label' }, _('Runtime'))
-					]),
-					E('div', { 'class': 'oll-quick-stat-value' }, data.status.runtime || 'none'),
-					E('div', { 'class': 'oll-quick-stat-sub' }, _('Container'))
-				])
-			]),
-
-			// Main Cards Grid
-			E('div', { 'class': 'oll-cards-grid' }, [
-				// Service Control Card
-				E('div', { 'class': 'oll-card' }, [
-					E('div', { 'class': 'oll-card-header' }, [
-						E('div', { 'class': 'oll-card-title' }, [
-							E('span', { 'class': 'oll-card-title-icon' }, '⚙️'),
-							_('Service Control')
-						]),
-						E('div', {
-							'class': 'oll-card-badge ' + (data.status.running ? 'running' : 'stopped')
-						}, data.status.running ? _('Active') : _('Inactive'))
-					]),
-					E('div', { 'class': 'oll-card-body' }, [
-						E('div', { 'class': 'oll-service-info' }, [
-							E('div', { 'class': 'oll-service-row' }, [
-								E('span', { 'class': 'oll-service-label' }, _('Status')),
-								E('span', {
-									'class': 'oll-service-value ' + (data.status.running ? 'running' : 'stopped'),
-									'id': 'service-status'
-								}, data.status.running ? _('Running') : _('Stopped'))
+			// Cards Grid
+			E('div', { 'class': 'ol-grid' }, [
+				// Service Control
+				E('div', { 'class': 'ol-card' }, [
+					E('div', { 'class': 'ol-card-head' }, 'Service Control'),
+					E('div', { 'class': 'ol-card-body' }, [
+						E('div', {}, [
+							E('div', { 'class': 'ol-row' }, [
+								E('span', { 'class': 'ol-row-lbl' }, 'Status'),
+								E('span', { 'id': 'svc-status' }, status.running ? 'Running' : 'Stopped')
 							]),
-							E('div', { 'class': 'oll-service-row' }, [
-								E('span', { 'class': 'oll-service-label' }, _('Memory Limit')),
-								E('span', { 'class': 'oll-service-value' }, data.status.memory_limit || '2g')
+							E('div', { 'class': 'ol-row' }, [
+								E('span', { 'class': 'ol-row-lbl' }, 'Runtime'),
+								E('span', {}, status.runtime || 'none')
 							]),
-							E('div', { 'class': 'oll-service-row' }, [
-								E('span', { 'class': 'oll-service-label' }, _('Data Path')),
-								E('span', { 'class': 'oll-service-value' }, data.status.data_path || '/srv/ollama')
+							E('div', { 'class': 'ol-row' }, [
+								E('span', { 'class': 'ol-row-lbl' }, 'Memory'),
+								E('span', {}, status.memory_limit || '2g')
+							]),
+							E('div', { 'class': 'ol-row' }, [
+								E('span', { 'class': 'ol-row-lbl' }, 'Data Path'),
+								E('span', {}, status.data_path || '/srv/ollama')
 							])
 						]),
-						E('div', { 'class': 'oll-service-controls' }, [
-							E('button', {
-								'class': 'oll-btn oll-btn-success' + (data.status.running ? ' disabled' : ''),
-								'click': function() { self.handleServiceAction('start'); },
-								'disabled': data.status.running
-							}, [E('span', {}, '▶'), _('Start')]),
-							E('button', {
-								'class': 'oll-btn oll-btn-danger' + (!data.status.running ? ' disabled' : ''),
-								'click': function() { self.handleServiceAction('stop'); },
-								'disabled': !data.status.running
-							}, [E('span', {}, '⏹'), _('Stop')]),
-							E('button', {
-								'class': 'oll-btn oll-btn-warning',
-								'click': function() { self.handleServiceAction('restart'); }
-							}, [E('span', {}, '🔄'), _('Restart')])
+						E('div', { 'class': 'ol-btns', 'style': 'margin-top: 1rem;' }, [
+							E('button', { 'class': 'ol-btn ol-btn-success', 'click': function() { self.svcAction('start'); } }, 'Start'),
+							E('button', { 'class': 'ol-btn ol-btn-danger', 'click': function() { self.svcAction('stop'); } }, 'Stop'),
+							E('button', { 'class': 'ol-btn ol-btn-primary', 'click': function() { self.svcAction('restart'); } }, 'Restart')
 						])
 					])
 				]),
 
-				// Models Card
-				E('div', { 'class': 'oll-card' }, [
-					E('div', { 'class': 'oll-card-header' }, [
-						E('div', { 'class': 'oll-card-title' }, [
-							E('span', { 'class': 'oll-card-title-icon' }, '🦙'),
-							_('Downloaded Models')
-						]),
-						E('div', { 'class': 'oll-card-badge' },
-							(data.models || []).length + ' ' + _('models')
-						)
+				// Models
+				E('div', { 'class': 'ol-card' }, [
+					E('div', { 'class': 'ol-card-head' }, [
+						'Models',
+						E('span', { 'id': 'model-count' }, models.length + ' installed')
 					]),
-					E('div', { 'class': 'oll-card-body' }, [
-						this.renderModelsList(data.models || [])
-					])
-				])
-			]),
-
-			// API Info Card
-			E('div', { 'class': 'oll-card', 'style': 'margin-top: 20px' }, [
-				E('div', { 'class': 'oll-card-header' }, [
-					E('div', { 'class': 'oll-card-title' }, [
-						E('span', { 'class': 'oll-card-title-icon' }, '🔗'),
-						_('API Endpoints')
+					E('div', { 'class': 'ol-card-body' }, [
+						E('div', { 'id': 'ol-models' }, this.renderModels(models)),
+						E('div', { 'style': 'margin-top: 1rem; display: flex; gap: 0.5rem;' }, [
+							E('input', { 'type': 'text', 'class': 'ol-input', 'id': 'pull-model', 'placeholder': 'Model name (e.g. tinyllama, llama2)' }),
+							E('button', { 'class': 'ol-btn ol-btn-primary', 'click': function() { self.pullModel(); } }, 'Pull')
+						])
 					])
 				]),
-				E('div', { 'class': 'oll-card-body' }, [
-					E('div', { 'class': 'oll-api-info' }, [
-						E('div', { 'class': 'oll-api-endpoint' }, [
-							E('code', {}, 'http://' + window.location.hostname + ':' + (data.status.api_port || '11434') + '/api/chat'),
-							E('span', { 'class': 'oll-api-method' }, 'POST'),
-							E('span', { 'class': 'oll-api-desc' }, _('Chat completion'))
-						]),
-						E('div', { 'class': 'oll-api-endpoint' }, [
-							E('code', {}, 'http://' + window.location.hostname + ':' + (data.status.api_port || '11434') + '/api/generate'),
-							E('span', { 'class': 'oll-api-method' }, 'POST'),
-							E('span', { 'class': 'oll-api-desc' }, _('Text generation'))
-						]),
-						E('div', { 'class': 'oll-api-endpoint' }, [
-							E('code', {}, 'http://' + window.location.hostname + ':' + (data.status.api_port || '11434') + '/api/tags'),
-							E('span', { 'class': 'oll-api-method get' }, 'GET'),
-							E('span', { 'class': 'oll-api-desc' }, _('List models'))
+
+				// Chat
+				E('div', { 'class': 'ol-card' }, [
+					E('div', { 'class': 'ol-card-head' }, 'Chat'),
+					E('div', { 'class': 'ol-card-body' }, [
+						E('select', { 'class': 'ol-select', 'id': 'chat-model', 'style': 'width: 100%;' },
+							models.length === 0
+								? [E('option', {}, '-- No models --')]
+								: models.map(function(m) { return E('option', { 'value': m.name }, m.name); })
+						),
+						E('div', { 'class': 'ol-chat-box', 'id': 'chat-box' }),
+						E('div', { 'class': 'ol-chat-input' }, [
+							E('input', { 'type': 'text', 'class': 'ol-input', 'id': 'chat-input', 'placeholder': 'Type a message...',
+								'keypress': function(e) { if (e.key === 'Enter') self.sendChat(); }
+							}),
+							E('button', { 'class': 'ol-btn ol-btn-primary', 'id': 'chat-send', 'click': function() { self.sendChat(); } }, 'Send')
 						])
 					])
 				])
 			])
 		]);
 
-		var style = E('style', {}, this.getCSS());
-		container.insertBefore(style, container.firstChild);
-
-		return container;
+		poll.add(L.bind(this.refresh, this), 15);
+		return view;
 	},
 
-	renderModelsList: function(models) {
+	renderStats: function(status, models) {
+		return [
+			E('div', { 'class': 'ol-stat' }, [
+				E('div', { 'class': 'ol-stat-val' }, models.length.toString()),
+				E('div', { 'class': 'ol-stat-lbl' }, 'Models')
+			]),
+			E('div', { 'class': 'ol-stat' }, [
+				E('div', { 'class': 'ol-stat-val' }, status.running ? fmtUptime(status.uptime) : '-'),
+				E('div', { 'class': 'ol-stat-lbl' }, 'Uptime')
+			]),
+			E('div', { 'class': 'ol-stat' }, [
+				E('div', { 'class': 'ol-stat-val' }, (status.api_port || 11434).toString()),
+				E('div', { 'class': 'ol-stat-lbl' }, 'API Port')
+			]),
+			E('div', { 'class': 'ol-stat' }, [
+				E('div', { 'class': 'ol-stat-val' }, status.runtime || '-'),
+				E('div', { 'class': 'ol-stat-lbl' }, 'Runtime')
+			])
+		];
+	},
+
+	suggestedModels: [
+		{ name: 'tinyllama', desc: 'Tiny but capable, fast inference', size: '637 MB' },
+		{ name: 'llama3.2:1b', desc: 'Meta Llama 3.2 1B - lightweight', size: '1.3 GB' },
+		{ name: 'llama3.2:3b', desc: 'Meta Llama 3.2 3B - balanced', size: '2.0 GB' },
+		{ name: 'phi3:mini', desc: 'Microsoft Phi-3 Mini - efficient', size: '2.2 GB' },
+		{ name: 'gemma2:2b', desc: 'Google Gemma 2 2B - compact', size: '1.6 GB' },
+		{ name: 'qwen2.5:1.5b', desc: 'Alibaba Qwen 2.5 - multilingual', size: '986 MB' },
+		{ name: 'mistral', desc: 'Mistral 7B - high quality', size: '4.1 GB' },
+		{ name: 'codellama:7b', desc: 'Meta CodeLlama - coding tasks', size: '3.8 GB' }
+	],
+
+	renderModels: function(models) {
+		var self = this;
 		if (!models || models.length === 0) {
-			return E('div', { 'class': 'oll-empty' }, [
-				E('div', { 'class': 'oll-empty-icon' }, '📦'),
-				E('div', { 'class': 'oll-empty-text' }, _('No models downloaded')),
-				E('div', { 'class': 'oll-empty-hint' }, [
-					_('Download a model with: '),
-					E('code', {}, 'ollamactl pull tinyllama')
+			// If Ollama isn't running, show start prompt instead of suggestions
+			if (!this.isRunning) {
+				return E('div', {}, [
+					E('div', { 'class': 'ol-empty' }, [
+						E('div', { 'style': 'font-size: 2rem; margin-bottom: 0.5rem;' }, '\u26A0\uFE0F'),
+						E('div', {}, 'Ollama is not running'),
+						E('div', { 'style': 'margin-top: 0.5rem; font-size: 0.85rem;' }, 'Click "Start" above to launch Ollama')
+					])
+				]);
+			}
+			return E('div', {}, [
+				E('div', { 'class': 'ol-empty' }, 'No models installed'),
+				E('div', { 'class': 'ol-suggest' }, [
+					E('div', { 'class': 'ol-suggest-title' }, '\uD83D\uDCE5 Click to download a model:'),
+					E('div', { 'class': 'ol-suggest-grid' }, this.suggestedModels.map(function(m) {
+						return E('div', {
+							'class': 'ol-suggest-item',
+							'click': function() { self.pullModel(m.name); }
+						}, [
+							E('div', { 'class': 'ol-suggest-name' }, m.name),
+							E('div', { 'class': 'ol-suggest-desc' }, m.desc),
+							E('div', { 'class': 'ol-suggest-size' }, m.size)
+						]);
+					}))
 				])
 			]);
 		}
-
-		return E('div', { 'class': 'oll-models-list' },
-			models.map(function(model) {
-				return E('div', { 'class': 'oll-model-item' }, [
-					E('div', { 'class': 'oll-model-icon' }, '🦙'),
-					E('div', { 'class': 'oll-model-info' }, [
-						E('div', { 'class': 'oll-model-name' }, model.name),
-						E('div', { 'class': 'oll-model-meta' }, [
-							model.size > 0 ? E('span', { 'class': 'oll-model-size' }, formatBytes(model.size)) : null
-						].filter(Boolean))
-					])
-				]);
-			})
-		);
+		return E('div', {}, models.map(function(m) {
+			return E('div', { 'class': 'ol-model' }, [
+				E('div', {}, [
+					E('div', { 'class': 'ol-model-name' }, m.name),
+					E('div', { 'class': 'ol-model-size' }, fmtBytes(m.size))
+				]),
+				E('button', { 'class': 'ol-btn ol-btn-danger ol-btn-sm', 'click': function() { self.removeModel(m.name); } }, 'Remove')
+			]);
+		}));
 	},
 
-	handleServiceAction: function(action) {
+	refresh: function() {
 		var self = this;
+		return Promise.all([
+			api.status().catch(function() { return {}; }),
+			api.models().catch(function() { return { models: [] }; })
+		]).then(function(data) {
+			var status = data[0] || {};
+			var models = (data[1] && data[1].models) || [];
+			self.isRunning = status.running;
 
-		ui.showModal(_('Service Control'), [
-			E('p', {}, _('Processing...')),
-			E('div', { 'class': 'spinning' })
-		]);
-
-		var actionFn;
-		switch(action) {
-			case 'start': actionFn = callStart(); break;
-			case 'stop': actionFn = callStop(); break;
-			case 'restart': actionFn = callRestart(); break;
-		}
-
-		actionFn.then(function(result) {
-			ui.hideModal();
-			if (result.success) {
-				ui.addNotification(null, E('p', _('Service ' + action + ' successful')), 'success');
-				window.location.reload();
-			} else {
-				ui.addNotification(null, E('p', result.error || _('Operation failed')), 'error');
+			var badge = document.getElementById('ol-status');
+			if (badge) {
+				badge.className = 'ol-badge ' + (status.running ? 'on' : 'off');
+				badge.textContent = status.running ? 'Running' : 'Stopped';
 			}
-		}).catch(function(err) {
-			ui.hideModal();
-			ui.addNotification(null, E('p', err.message), 'error');
+
+			var statsEl = document.getElementById('ol-stats');
+			if (statsEl) dom.content(statsEl, self.renderStats(status, models));
+
+			var modelsEl = document.getElementById('ol-models');
+			if (modelsEl) dom.content(modelsEl, self.renderModels(models));
+
+			var countEl = document.getElementById('model-count');
+			if (countEl) countEl.textContent = models.length + ' installed';
+
+			var svcEl = document.getElementById('svc-status');
+			if (svcEl) svcEl.textContent = status.running ? 'Running' : 'Stopped';
+
+			// Update chat model select
+			var sel = document.getElementById('chat-model');
+			if (sel && models.length > 0) {
+				var current = sel.value;
+				sel.innerHTML = '';
+				models.forEach(function(m) {
+					var opt = document.createElement('option');
+					opt.value = m.name;
+					opt.textContent = m.name;
+					if (m.name === current) opt.selected = true;
+					sel.appendChild(opt);
+				});
+			}
 		});
 	},
 
-	getCSS: function() {
-		return `
-			.ollama-dashboard {
-				font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-				background: #030712;
-				color: #f8fafc;
-				min-height: 100vh;
-				padding: 16px;
+	svcAction: function(action) {
+		var self = this;
+		var fn = action === 'start' ? api.start : action === 'stop' ? api.stop : api.restart;
+		fn().then(function(r) {
+			self.toast(r && r.success ? action + ' OK' : 'Failed: ' + ((r && r.error) || 'Unknown'), r && r.success);
+			if (r && r.success) setTimeout(function() { self.refresh(); }, 2000);
+		}).catch(function(e) { self.toast('Error: ' + e.message, false); });
+	},
+
+	pullModel: function(modelName) {
+		var self = this;
+		var input = document.getElementById('pull-model');
+		var name = modelName || (input ? input.value.trim() : '');
+		if (!name) { self.toast('Enter model name', false); return; }
+
+		self.toast('Pulling ' + name + '... (this may take a while)', true);
+		api.pull(name).then(function(r) {
+			self.toast(r && r.success ? 'Pulled ' + name : 'Failed: ' + ((r && r.error) || 'Unknown'), r && r.success);
+			if (r && r.success) {
+				if (input) input.value = '';
+				self.refresh();
 			}
-			.oll-header {
-				display: flex;
-				align-items: center;
-				justify-content: space-between;
-				padding: 12px 0 20px;
-				border-bottom: 1px solid #334155;
-				margin-bottom: 20px;
+		}).catch(function(e) { self.toast('Error: ' + e.message, false); });
+	},
+
+	removeModel: function(name) {
+		var self = this;
+		if (!confirm('Remove model "' + name + '"?')) return;
+		api.remove(name).then(function(r) {
+			self.toast(r && r.success ? 'Removed ' + name : 'Failed: ' + ((r && r.error) || 'Unknown'), r && r.success);
+			if (r && r.success) self.refresh();
+		}).catch(function(e) { self.toast('Error: ' + e.message, false); });
+	},
+
+	sendChat: function() {
+		var self = this;
+		var modelEl = document.getElementById('chat-model');
+		var inputEl = document.getElementById('chat-input');
+		var boxEl = document.getElementById('chat-box');
+		var btnEl = document.getElementById('chat-send');
+
+		var model = modelEl ? modelEl.value : '';
+		var msg = inputEl ? inputEl.value.trim() : '';
+
+		if (!model || model === '-- No models --') { self.toast('Select a model', false); return; }
+		if (!msg) return;
+
+		// Add user message
+		var userDiv = document.createElement('div');
+		userDiv.className = 'ol-chat-msg user';
+		userDiv.textContent = '> ' + msg;
+		boxEl.appendChild(userDiv);
+
+		inputEl.value = '';
+		inputEl.disabled = true;
+		btnEl.disabled = true;
+		boxEl.scrollTop = boxEl.scrollHeight;
+
+		api.chat(model, msg).then(function(r) {
+			var aiDiv = document.createElement('div');
+			aiDiv.className = 'ol-chat-msg ai';
+			if (r && r.response) {
+				aiDiv.textContent = r.response;
+			} else if (r && r.error) {
+				aiDiv.textContent = 'Error: ' + r.error;
+				aiDiv.style.color = '#ef4444';
+			} else {
+				aiDiv.textContent = 'No response';
 			}
-			.oll-logo {
-				display: flex;
-				align-items: center;
-				gap: 14px;
-			}
-			.oll-logo-icon {
-				width: 46px;
-				height: 46px;
-				background: linear-gradient(135deg, #f97316, #ea580c);
-				border-radius: 12px;
-				display: flex;
-				align-items: center;
-				justify-content: center;
-				font-size: 24px;
-			}
-			.oll-logo-text {
-				font-size: 24px;
-				font-weight: 700;
-				background: linear-gradient(135deg, #f97316, #ea580c);
-				-webkit-background-clip: text;
-				-webkit-text-fill-color: transparent;
-			}
-			.oll-status-badge {
-				display: flex;
-				align-items: center;
-				gap: 8px;
-				padding: 8px 16px;
-				border-radius: 24px;
-				background: rgba(16, 185, 129, 0.15);
-				color: #10b981;
-				border: 1px solid rgba(16, 185, 129, 0.3);
-				font-weight: 600;
-			}
-			.oll-status-badge.offline {
-				background: rgba(239, 68, 68, 0.15);
-				color: #ef4444;
-				border-color: rgba(239, 68, 68, 0.3);
-			}
-			.oll-status-dot {
-				width: 10px;
-				height: 10px;
-				background: currentColor;
-				border-radius: 50%;
-			}
-			.oll-quick-stats {
-				display: grid;
-				grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-				gap: 14px;
-				margin-bottom: 24px;
-			}
-			.oll-quick-stat {
-				background: #0f172a;
-				border: 1px solid #334155;
-				border-radius: 12px;
-				padding: 20px;
-				position: relative;
-				overflow: hidden;
-			}
-			.oll-quick-stat::before {
-				content: '';
-				position: absolute;
-				top: 0;
-				left: 0;
-				right: 0;
-				height: 3px;
-				background: var(--stat-gradient);
-			}
-			.oll-quick-stat-header {
-				display: flex;
-				align-items: center;
-				gap: 10px;
-				margin-bottom: 12px;
-			}
-			.oll-quick-stat-icon { font-size: 22px; }
-			.oll-quick-stat-label {
-				font-size: 11px;
-				text-transform: uppercase;
-				color: #64748b;
-			}
-			.oll-quick-stat-value {
-				font-size: 32px;
-				font-weight: 700;
-				background: var(--stat-gradient);
-				-webkit-background-clip: text;
-				-webkit-text-fill-color: transparent;
-			}
-			.oll-quick-stat-sub {
-				font-size: 11px;
-				color: #64748b;
-				margin-top: 6px;
-			}
-			.oll-cards-grid {
-				display: grid;
-				grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-				gap: 20px;
-			}
-			.oll-card {
-				background: #0f172a;
-				border: 1px solid #334155;
-				border-radius: 12px;
-				overflow: hidden;
-			}
-			.oll-card-header {
-				display: flex;
-				align-items: center;
-				justify-content: space-between;
-				padding: 16px 20px;
-				border-bottom: 1px solid #334155;
-				background: rgba(0, 0, 0, 0.3);
-			}
-			.oll-card-title {
-				display: flex;
-				align-items: center;
-				gap: 12px;
-				font-size: 15px;
-				font-weight: 600;
-			}
-			.oll-card-title-icon { font-size: 20px; }
-			.oll-card-badge {
-				font-size: 12px;
-				padding: 5px 12px;
-				border-radius: 16px;
-				background: linear-gradient(135deg, #f97316, #ea580c);
-				color: white;
-			}
-			.oll-card-badge.running { background: linear-gradient(135deg, #10b981, #059669); }
-			.oll-card-badge.stopped { background: rgba(100, 116, 139, 0.3); color: #94a3b8; }
-			.oll-card-body { padding: 20px; }
-			.oll-service-info {
-				display: flex;
-				flex-direction: column;
-				gap: 12px;
-				margin-bottom: 20px;
-			}
-			.oll-service-row {
-				display: flex;
-				justify-content: space-between;
-				padding: 8px 12px;
-				background: #030712;
-				border-radius: 8px;
-			}
-			.oll-service-label { color: #94a3b8; font-size: 13px; }
-			.oll-service-value { font-size: 13px; }
-			.oll-service-value.running { color: #10b981; }
-			.oll-service-value.stopped { color: #ef4444; }
-			.oll-service-controls {
-				display: flex;
-				gap: 10px;
-			}
-			.oll-btn {
-				display: inline-flex;
-				align-items: center;
-				gap: 6px;
-				padding: 10px 16px;
-				border: none;
-				border-radius: 8px;
-				font-size: 13px;
-				font-weight: 500;
-				cursor: pointer;
-			}
-			.oll-btn-success {
-				background: linear-gradient(135deg, #10b981, #059669);
-				color: white;
-			}
-			.oll-btn-danger {
-				background: linear-gradient(135deg, #ef4444, #dc2626);
-				color: white;
-			}
-			.oll-btn-warning {
-				background: linear-gradient(135deg, #f59e0b, #d97706);
-				color: white;
-			}
-			.oll-btn.disabled {
-				opacity: 0.5;
-				cursor: not-allowed;
-			}
-			.oll-models-list {
-				display: flex;
-				flex-direction: column;
-				gap: 12px;
-			}
-			.oll-model-item {
-				display: flex;
-				align-items: center;
-				gap: 14px;
-				padding: 14px;
-				background: #1e293b;
-				border-radius: 10px;
-			}
-			.oll-model-icon {
-				width: 44px;
-				height: 44px;
-				background: linear-gradient(135deg, #f97316, #ea580c);
-				border-radius: 10px;
-				display: flex;
-				align-items: center;
-				justify-content: center;
-				font-size: 20px;
-			}
-			.oll-model-name {
-				font-weight: 600;
-				margin-bottom: 4px;
-			}
-			.oll-model-meta {
-				display: flex;
-				gap: 12px;
-				font-size: 12px;
-				color: #94a3b8;
-			}
-			.oll-empty {
-				text-align: center;
-				padding: 40px 20px;
-				color: #64748b;
-			}
-			.oll-empty-icon { font-size: 48px; margin-bottom: 12px; }
-			.oll-empty-text { font-size: 16px; margin-bottom: 8px; }
-			.oll-empty-hint { font-size: 13px; }
-			.oll-empty-hint code {
-				background: #1e293b;
-				padding: 4px 8px;
-				border-radius: 4px;
-			}
-			.oll-api-info {
-				display: flex;
-				flex-direction: column;
-				gap: 10px;
-			}
-			.oll-api-endpoint {
-				display: flex;
-				align-items: center;
-				gap: 12px;
-				padding: 12px;
-				background: #030712;
-				border-radius: 8px;
-			}
-			.oll-api-endpoint code {
-				font-size: 12px;
-				color: #f97316;
-				flex: 1;
-			}
-			.oll-api-method {
-				padding: 4px 8px;
-				background: #f97316;
-				color: #030712;
-				border-radius: 4px;
-				font-size: 10px;
-				font-weight: 700;
-			}
-			.oll-api-method.get { background: #10b981; }
-			.oll-api-desc {
-				font-size: 12px;
-				color: #94a3b8;
-				min-width: 120px;
-			}
-		`;
-	}
+			boxEl.appendChild(aiDiv);
+			boxEl.scrollTop = boxEl.scrollHeight;
+		}).catch(function(e) {
+			var errDiv = document.createElement('div');
+			errDiv.className = 'ol-chat-msg ai';
+			errDiv.textContent = 'Error: ' + e.message;
+			errDiv.style.color = '#ef4444';
+			boxEl.appendChild(errDiv);
+		}).finally(function() {
+			inputEl.disabled = false;
+			btnEl.disabled = false;
+			inputEl.focus();
+		});
+	},
+
+	toast: function(msg, success) {
+		var t = document.querySelector('.ol-toast');
+		if (t) t.remove();
+		t = document.createElement('div');
+		t.className = 'ol-toast ' + (success ? 'success' : 'error');
+		t.textContent = msg;
+		document.body.appendChild(t);
+		setTimeout(function() { t.remove(); }, 4000);
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
 });

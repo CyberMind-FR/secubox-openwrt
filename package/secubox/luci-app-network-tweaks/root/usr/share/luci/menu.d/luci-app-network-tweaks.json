@@ -1,5 +1,5 @@
 {
-	"admin/services/network-tweaks": {
+	"admin/network/network-tweaks": {
 		"title": "Network Tweaks",
 		"order": 80,
 		"action": {

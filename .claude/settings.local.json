@@ -210,7 +210,24 @@
       "Bash(pip install:*)",
       "WebFetch(domain:secubox.maegia.tv)",
       "Bash(# Find the built packages echo \"\"=== Built packages ===\"\" ls -la secubox-tools/build/aarch64_cortex-a72/*.ipk)",
-      "Bash(__NEW_LINE_2faeb2c9d4f26aa1__ git diff --cached --stat)"
+      "Bash(__NEW_LINE_2faeb2c9d4f26aa1__ git diff --cached --stat)",
+      "Bash(ip addr:*)",
+      "Bash(ip route:*)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt status --short)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt diff package/secubox/luci-app-dnsguard/root/usr/libexec/rpcd/luci.dnsguard)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt add package/secubox/luci-app-dnsguard/root/usr/libexec/rpcd/luci.dnsguard)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt commit -m \"$\\(cat <<''EOF''\nfix\\(dnsguard\\): Fix subshell issues in provider lookup methods\n\nReplace pipe-to-while loops with grep/cut to avoid subshell variable\nscope issues in method_status, method_get_providers, and method_set_provider.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(IPK_DIR=\"/home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/sdk/bin/packages/aarch64_cortex-a72/secubox\" ls:*)",
+      "Bash(if ssh -o ConnectTimeout=10 root@192.168.255.1 'echo \"\"Router is back!\"\"; df -h / /boot')",
+      "Bash(then exit 0)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt tag --sort=-v:refname)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt commit -m \"$\\(cat <<''EOF''\nfeat\\(mitmproxy\\): Disable LAN transparent proxy by default\n\nLAN transparent mode now requires explicit opt-in via transparent.enabled\nto prevent HTTPS certificate errors for LAN clients.\n\nChanges:\n- mitmproxyctl: Check transparent_enabled before setting up LAN firewall rules\n- LuCI settings: Add warning about certificate requirements for LAN mode\n- Default config already has transparent.enabled=''0''\n\nWAN protection mode remains active for incoming threat detection.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt tag -a v0.18.1 -m \"Release v0.18.1: mitmproxy LAN transparent mode disabled by default\")",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt push)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt push --tags)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt add package/secubox/secubox-app-mitmproxy/root/srv/mitmproxy/addons/secubox_analytics.py package/secubox/luci-app-secubox-security-threats/root/usr/libexec/rpcd/luci.secubox-security-threats)",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt commit -m \"$\\(cat <<''EOF''\nfeat\\(security\\): Add CVE-2025-15467 detection and mitmproxy threat integration\n\n- Add CVE-2025-15467 \\(OpenSSL CMS stack overflow\\) detection patterns\n- Detect S/MIME/CMS content types that may be exploited\n- Integrate mitmproxy threats into security-threats dashboard\n- Security threats page now shows real-time WAF detections\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt tag -a v0.18.2 -m \"Release v0.18.2: CVE-2025-15467 detection and security dashboard integration\")"
     ]
   }
 }

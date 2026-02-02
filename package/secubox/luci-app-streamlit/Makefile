@@ -8,14 +8,14 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-streamlit
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=9
+PKG_RELEASE:=11
 PKG_ARCH:=all
 
 PKG_LICENSE:=Apache-2.0
 PKG_MAINTAINER:=CyberMind <contact@cybermind.fr>
 
 LUCI_TITLE:=LuCI Streamlit Dashboard
-LUCI_DESCRIPTION:=Modern dashboard for Streamlit Platform management on OpenWrt
+LUCI_DESCRIPTION:=Multi-instance Streamlit management with Gitea integration
 LUCI_DEPENDS:=+luci-base +luci-lib-jsonc +rpcd +rpcd-mod-luci +secubox-app-streamlit
 
 LUCI_PKGARCH:=all

@@ -57,6 +57,28 @@ get_crowdsec_alerts() {
 	$CSCLI alerts list -o json --limit 100 2>/dev/null || echo '[]'
 }
 
+# Get mitmproxy threats (last 50 from threats.log)
+get_mitmproxy_threats() {
+	local log_file="/srv/mitmproxy/threats.log"
+	[ ! -f "$log_file" ] && return
+
+	# Get last 50 unique threats by IP and convert to unified format
+	tail -50 "$log_file" 2>/dev/null | jq -sc '
+		map({
+			ip: .source_ip,
+			mac: "N/A",
+			timestamp: .timestamp,
+			risk_score: (if .severity == "critical" then 90 elif .severity == "high" then 70 elif .severity == "medium" then 50 else 30 end),
+			severity: .severity,
+			category: (if .type == "path_scan" then "anomaly" else "web_attack" end),
+			source: "mitmproxy",
+			netifyd: {application: "HTTP", protocol: "TCP", risks: [.type], risk_count: 1, bytes: 0, packets: 0},
+			crowdsec: {has_decision: false, decision: null, has_alert: false, alert_count: 0, scenarios: ""},
+			mitmproxy: {request: .request, host: .host, pattern: .pattern, country: .country, is_bot: .is_bot, bot_type: .bot_type, response_code: .response_code}
+		}) | unique_by(.ip) | .[]
+	' 2>/dev/null
+}
+
 # ==============================================================================
 # CLASSIFICATION
 # ==============================================================================
@@ -493,39 +515,28 @@ case "$1" in
 				;;
 
 			get_active_threats)
-				# Main correlation workflow
-				local netifyd_data=$(get_netifyd_flows)
-				local risky_flows=$(filter_risky_flows "$netifyd_data")
+				# Get mitmproxy threats from threats.log (primary source for WAN protection)
+				_log_file="/srv/mitmproxy/threats.log"
+				_threats_json="[]"
 
-				# Only fetch CrowdSec data if available
-				local decisions='[]'
-				local alerts='[]'
-				if [ -x "$CSCLI" ]; then
-					decisions=$(get_crowdsec_decisions)
-					alerts=$(get_crowdsec_alerts)
+				if [ -f "$_log_file" ]; then
+					_threats_json=$(tail -50 "$_log_file" 2>/dev/null | jq -sc '
+						map({
+							ip: .source_ip,
+							mac: "N/A",
+							timestamp: .timestamp,
+							risk_score: (if .severity == "critical" then 90 elif .severity == "high" then 70 elif .severity == "medium" then 50 else 30 end),
+							severity: .severity,
+							category: (if .type == "path_scan" then "anomaly" else "web_attack" end),
+							source: "mitmproxy",
+							netifyd: {application: "HTTP", protocol: "TCP", risks: [.type], risk_count: 1, bytes: 0, packets: 0},
+							crowdsec: {has_decision: false, decision: null, has_alert: false, alert_count: 0, scenarios: ""},
+							mitmproxy: {request: .request, host: .host, pattern: .pattern, country: .country, is_bot: .is_bot, bot_type: .bot_type, cve: .cve, response_code: .response_code}
+						}) | unique_by(.ip) | sort_by(.risk_score) | reverse
+					' 2>/dev/null || echo "[]")
 				fi
 
-				# Correlate threats
-				local threats=$(correlate_threats "$risky_flows" "$decisions" "$alerts")
-
-				# Check auto-block rules for each threat
-				if [ -n "$threats" ]; then
-					echo "$threats" | while read -r threat; do
-						[ -z "$threat" ] && continue
-						check_block_rules "$threat" >/dev/null 2>&1 || true
-					done
-				fi
-
-				# Output as JSON array
-				json_init
-				json_add_array "threats"
-				if [ -n "$threats" ]; then
-					echo "$threats" | jq -s 'sort_by(.risk_score) | reverse' | jq -c '.[]' | while read -r threat; do
-						echo "$threat"
-					done
-				fi
-				json_close_array
-				json_dump
+				printf '{"threats":%s}\n' "$_threats_json"
 				;;
 
 			get_threat_history)

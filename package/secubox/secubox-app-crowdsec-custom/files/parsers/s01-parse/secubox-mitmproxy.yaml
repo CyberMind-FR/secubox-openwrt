@@ -30,8 +30,18 @@ statics:
     expression: JsonExtract(evt.Line.Raw, "response_code")
   - parsed: is_bot
     expression: JsonExtract(evt.Line.Raw, "is_bot")
+  - parsed: bot_type
+    expression: JsonExtract(evt.Line.Raw, "bot_type")
+  - parsed: bot_behavior
+    expression: JsonExtract(evt.Line.Raw, "bot_behavior")
+  - parsed: suspicious_ua
+    expression: JsonExtract(evt.Line.Raw, "suspicious_ua")
   - parsed: country
     expression: JsonExtract(evt.Line.Raw, "country")
+  - parsed: fingerprint
+    expression: JsonExtract(evt.Line.Raw, "fingerprint")
+  - parsed: rate_limited
+    expression: JsonExtract(evt.Line.Raw, "rate_limited")
   - meta: log_type
     value: mitmproxy_threat
   - meta: service
@@ -51,3 +61,14 @@ statics:
     expression: evt.Parsed.threat_type
   - meta: attack_pattern
     expression: evt.Parsed.pattern
+---
+# Filter for bot scanner activity
+onsuccess: next_stage
+name: secubox/mitmproxy-bot-filter
+description: "Filter bot scanner activity for analysis"
+filter: "evt.Meta.log_type == 'mitmproxy_threat' && (evt.Parsed.is_bot == 'true' || evt.Parsed.bot_behavior != '')"
+statics:
+  - meta: is_bot_activity
+    value: "true"
+  - meta: bot_category
+    expression: evt.Parsed.bot_type

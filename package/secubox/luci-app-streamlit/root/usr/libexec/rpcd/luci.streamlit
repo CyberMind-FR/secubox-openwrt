@@ -712,6 +712,130 @@ upload_zip() {
 	fi
 }
 
+# Get Gitea config
+get_gitea_config() {
+	config_load "$CONFIG"
+	local enabled url user token
+
+	config_get enabled gitea enabled "0"
+	config_get url gitea url ""
+	config_get user gitea user ""
+	config_get token gitea token ""
+
+	json_init_obj
+	json_add_boolean "enabled" "$( [ "$enabled" = "1" ] && echo 1 || echo 0 )"
+	json_add_string "url" "$url"
+	json_add_string "user" "$user"
+	json_add_boolean "has_token" "$( [ -n "$token" ] && echo 1 || echo 0 )"
+	json_close_obj
+}
+
+# Save Gitea config
+save_gitea_config() {
+	read -r input
+	local enabled url user token
+
+	enabled=$(echo "$input" | jsonfilter -e '@.enabled' 2>/dev/null)
+	url=$(echo "$input" | jsonfilter -e '@.url' 2>/dev/null)
+	user=$(echo "$input" | jsonfilter -e '@.user' 2>/dev/null)
+	token=$(echo "$input" | jsonfilter -e '@.token' 2>/dev/null)
+
+	# Ensure gitea section exists
+	uci -q get "${CONFIG}.gitea" >/dev/null || uci set "${CONFIG}.gitea=gitea"
+
+	[ -n "$enabled" ] && uci set "${CONFIG}.gitea.enabled=$enabled"
+	[ -n "$url" ] && uci set "${CONFIG}.gitea.url=$url"
+	[ -n "$user" ] && uci set "${CONFIG}.gitea.user=$user"
+	[ -n "$token" ] && uci set "${CONFIG}.gitea.token=$token"
+
+	uci commit "$CONFIG"
+
+	json_success "Gitea configuration saved"
+}
+
+# Clone app from Gitea
+gitea_clone() {
+	read -r input
+	local name repo
+
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+	repo=$(echo "$input" | jsonfilter -e '@.repo' 2>/dev/null)
+
+	if [ -z "$name" ] || [ -z "$repo" ]; then
+		json_error "Missing name or repo"
+		return
+	fi
+
+	# Run clone in background
+	/usr/sbin/streamlitctl gitea clone "$name" "$repo" >/var/log/streamlit-gitea.log 2>&1 &
+
+	json_init_obj
+	json_add_boolean "success" 1
+	json_add_string "message" "Cloning $repo to $name in background"
+	json_close_obj
+}
+
+# Pull app from Gitea
+gitea_pull() {
+	read -r input
+	local name
+
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	if [ -z "$name" ]; then
+		json_error "Missing app name"
+		return
+	fi
+
+	# Run pull
+	/usr/sbin/streamlitctl gitea pull "$name" >/var/log/streamlit-gitea.log 2>&1
+
+	if [ $? -eq 0 ]; then
+		json_success "App updated from Gitea: $name"
+	else
+		json_error "Failed to pull app from Gitea"
+	fi
+}
+
+# List Gitea repositories
+gitea_list_repos() {
+	config_load "$CONFIG"
+	local enabled url user token
+
+	config_get enabled gitea enabled "0"
+	config_get url gitea url ""
+	config_get user gitea user ""
+	config_get token gitea token ""
+
+	if [ "$enabled" != "1" ] || [ -z "$url" ] || [ -z "$token" ]; then
+		json_error "Gitea not configured"
+		return
+	fi
+
+	# Call Gitea API to list user repos
+	local api_url="${url}/api/v1/user/repos"
+	local response
+
+	response=$(curl -s -H "Authorization: token $token" "$api_url" 2>/dev/null)
+
+	if [ -z "$response" ]; then
+		json_error "Failed to connect to Gitea"
+		return
+	fi
+
+	json_init_obj
+	json_add_array "repos"
+
+	# Parse JSON response (simple extraction)
+	echo "$response" | jsonfilter -e '@[*].full_name' 2>/dev/null | while read -r repo; do
+		[ -z "$repo" ] && continue
+		json_add_string "" "$repo"
+	done
+
+	json_close_array
+	json_close_obj
+}
+
 # Check install progress
 get_install_progress() {
 	local log_file="/var/log/streamlit-install.log"
@@ -793,7 +917,12 @@ case "$1" in
 			"add_instance": {"id": "str", "name": "str", "app": "str", "port": 8501},
 			"remove_instance": {"id": "str"},
 			"enable_instance": {"id": "str"},
-			"disable_instance": {"id": "str"}
+			"disable_instance": {"id": "str"},
+			"get_gitea_config": {},
+			"save_gitea_config": {"enabled": "str", "url": "str", "user": "str", "token": "str"},
+			"gitea_clone": {"name": "str", "repo": "str"},
+			"gitea_pull": {"name": "str"},
+			"gitea_list_repos": {}
 		}
 		EOF
 		;;
@@ -870,6 +999,21 @@ case "$1" in
 				;;
 			disable_instance)
 				disable_instance
+				;;
+			get_gitea_config)
+				get_gitea_config
+				;;
+			save_gitea_config)
+				save_gitea_config
+				;;
+			gitea_clone)
+				gitea_clone
+				;;
+			gitea_pull)
+				gitea_pull
+				;;
+			gitea_list_repos)
+				gitea_list_repos
 				;;
 			*)
 				json_error "Unknown method: $2"
