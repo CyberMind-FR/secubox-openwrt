@@ -308,7 +308,24 @@ CVE_PATTERNS = {
     'screenconnect': [r'/SetupWizard\.aspx'],
     # CVE-2024-27198 (TeamCity)
     'teamcity': [r'/app/rest/users/id:', r'/app/rest/server'],
+    # CVE-2025-15467 (OpenSSL CMS AuthEnvelopedData stack overflow)
+    # Targets S/MIME, CMS endpoints with potentially malicious payloads
+    'CVE-2025-15467': [
+        r'/smime', r'/s-mime', r'/cms/', r'/pkcs7',
+        r'/api/mail', r'/mail/send', r'/email/compose',
+        r'/decrypt', r'/verify-signature', r'/enveloped',
+    ],
 }
+
+# Content-Type patterns for CVE-2025-15467 (CMS/S/MIME attacks)
+CMS_CONTENT_TYPES = [
+    'application/pkcs7-mime',
+    'application/pkcs7-signature',
+    'application/x-pkcs7-mime',
+    'application/x-pkcs7-signature',
+    'application/cms',
+    'multipart/signed',
+]
 
 class SecuBoxAnalytics:
     def __init__(self):
@@ -542,6 +559,18 @@ class SecuBoxAnalytics:
                         'is_scan': True, 'pattern': 'xxe', 'type': 'injection',
                         'severity': 'critical', 'category': 'xml_attack'
                     }
+
+        # Check CVE-2025-15467 (OpenSSL CMS AuthEnvelopedData stack overflow)
+        # Detect potential exploitation attempts via S/MIME/CMS content
+        if any(ct in content_type for ct in CMS_CONTENT_TYPES):
+            # Flag all CMS/S/MIME content as potential CVE-2025-15467 target
+            # Especially suspicious if body is large (oversized IV attack)
+            severity = 'critical' if len(body) > 1024 else 'high'
+            return {
+                'is_scan': True, 'pattern': 'CVE-2025-15467', 'type': 'cve_exploit',
+                'severity': severity, 'category': 'cms_attack',
+                'cve': 'CVE-2025-15467'
+            }
 
         # Check LDAP Injection
         for pattern in LDAP_INJECTION_PATTERNS:
