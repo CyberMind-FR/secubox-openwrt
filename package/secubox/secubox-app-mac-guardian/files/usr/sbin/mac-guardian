@@ -219,21 +219,78 @@ cmd_list() {
 	done < "$MG_DBFILE"
 }
 
+cmd_dhcp_status() {
+	mg_load_config
+	mg_init
+
+	echo "DHCP Lease Protection"
+	echo "====================="
+
+	if [ "$MG_DHCP_ENABLED" != "1" ]; then
+		echo "Status: DISABLED"
+		return
+	fi
+
+	echo "Status: ENABLED"
+
+	local lease_count=0 conflict_count=0 stale_count=0
+
+	if [ -f /tmp/dhcp.leases ] && [ -s /tmp/dhcp.leases ]; then
+		lease_count=$(wc -l < /tmp/dhcp.leases)
+
+		# Count hostname conflicts (hostnames with >1 MAC)
+		conflict_count=$(awk '{print $4}' /tmp/dhcp.leases | grep -v '^\*$' | sort | uniq -d | wc -l)
+
+		# Count stale leases
+		local now
+		now=$(date +%s)
+		local cutoff=$((now - MG_DHCP_STALE_TIMEOUT))
+		stale_count=$(awk -v cutoff="$cutoff" '$1 < cutoff' /tmp/dhcp.leases | wc -l)
+	fi
+
+	echo "Leases:     $lease_count"
+	echo "Conflicts:  $conflict_count"
+	echo "Stale:      $stale_count"
+	echo ""
+	echo "Settings:"
+	echo "  Dedup hostnames: $MG_DHCP_DEDUP_HOSTNAMES"
+	echo "  Cleanup stale:   $MG_DHCP_CLEANUP_STALE"
+	echo "  Stale timeout:   ${MG_DHCP_STALE_TIMEOUT}s"
+	echo "  Flood threshold: $MG_DHCP_FLOOD_THRESHOLD"
+	echo "  Flood window:    ${MG_DHCP_FLOOD_WINDOW}s"
+}
+
+cmd_dhcp_cleanup() {
+	mg_load_config
+	mg_init
+
+	if [ "$MG_DHCP_ENABLED" != "1" ]; then
+		echo "DHCP protection is disabled."
+		exit 1
+	fi
+
+	echo "Running DHCP lease maintenance..."
+	mg_dhcp_maintenance
+	echo "Done."
+}
+
 cmd_version() {
 	echo "mac-guardian v${MG_VERSION}"
 }
 
 # --- Main dispatcher ---
 case "${1:-}" in
-	start)    cmd_start ;;
-	scan)     cmd_scan ;;
-	status)   cmd_status ;;
-	trust)    cmd_trust "$2" ;;
-	block)    cmd_block "$2" ;;
-	list)     cmd_list "$2" ;;
-	version)  cmd_version ;;
+	start)        cmd_start ;;
+	scan)         cmd_scan ;;
+	status)       cmd_status ;;
+	trust)        cmd_trust "$2" ;;
+	block)        cmd_block "$2" ;;
+	list)         cmd_list "$2" ;;
+	dhcp-status)  cmd_dhcp_status ;;
+	dhcp-cleanup) cmd_dhcp_cleanup ;;
+	version)      cmd_version ;;
 	*)
-		echo "Usage: mac-guardian {start|scan|status|trust|block|list|version}"
+		echo "Usage: mac-guardian {start|scan|status|trust|block|list|dhcp-status|dhcp-cleanup|version}"
 		echo ""
 		echo "Commands:"
 		echo "  start              Start the daemon"
@@ -242,6 +299,8 @@ case "${1:-}" in
 		echo "  trust <MAC>        Add MAC to trusted whitelist"
 		echo "  block <MAC>        Block and deauthenticate MAC"
 		echo "  list [filter]      List known clients (trusted|blocked|suspect|unknown|all)"
+		echo "  dhcp-status        Show DHCP lease protection status"
+		echo "  dhcp-cleanup       Run one-shot DHCP lease maintenance"
 		echo "  version            Print version"
 		exit 1
 		;;

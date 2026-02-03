@@ -59,6 +59,12 @@ MG_WL_OUIS=""
 MG_START_TIME=$(date +%s)
 MG_TOTAL_SCANS=0
 MG_TOTAL_ALERTS=0
+MG_DHCP_ENABLED=1
+MG_DHCP_CLEANUP_STALE=1
+MG_DHCP_DEDUP_HOSTNAMES=1
+MG_DHCP_FLOOD_THRESHOLD=3
+MG_DHCP_FLOOD_WINDOW=60
+MG_DHCP_STALE_TIMEOUT=3600
 
 # --- TAP output ---
 TESTS=0
@@ -78,7 +84,7 @@ not_ok() {
 }
 
 echo "TAP version 13"
-echo "1..8"
+echo "1..12"
 
 # --- Test 1: Randomized MAC generates alert ---
 : > "$MG_EVENTS_LOG"
@@ -178,6 +184,65 @@ if [ -f "$MG_STATS_FILE" ] && grep -q '"trusted":1' "$MG_STATS_FILE"; then
 	ok "Stats generation produces valid JSON with correct counts"
 else
 	not_ok "Stats generation produces valid JSON with correct counts"
+fi
+
+# --- DHCP Detection Tests ---
+
+# Override DHCP leases path for testing
+MG_DHCP_LEASES="$TEST_TMPDIR/dhcp.leases"
+
+# --- Test 9: DHCP hostname conflict event logged ---
+: > "$MG_EVENTS_LOG"
+: > "$MG_DBFILE"
+now=$(date +%s)
+cat > "$MG_DHCP_LEASES" <<EOF
+$((now - 50)) 00:aa:bb:cc:01:01 192.168.1.50 duphost *
+$now 00:aa:bb:cc:01:02 192.168.1.51 duphost *
+EOF
+mg_dhcp_find_hostname_dupes
+if grep -q "dhcp_hostname_conflict" "$MG_EVENTS_LOG"; then
+	ok "DHCP hostname conflict event logged"
+else
+	not_ok "DHCP hostname conflict event logged"
+fi
+
+# --- Test 10: DHCP stale removal event logged ---
+: > "$MG_EVENTS_LOG"
+now=$(date +%s)
+cat > "$MG_DHCP_LEASES" <<EOF
+$((now - 7200)) 00:aa:bb:cc:02:01 192.168.1.60 oldhost *
+EOF
+mg_dhcp_cleanup_stale
+if grep -q "dhcp_stale_removed" "$MG_EVENTS_LOG"; then
+	ok "DHCP stale removal event logged"
+else
+	not_ok "DHCP stale removal event logged"
+fi
+
+# --- Test 11: DHCP lease flood event logged ---
+: > "$MG_EVENTS_LOG"
+now=$(date +%s)
+cat > "$MG_DHCP_LEASES" <<EOF
+$now 00:aa:bb:cc:03:01 192.168.1.70 f1 *
+$now 00:aa:bb:cc:03:02 192.168.1.71 f2 *
+$now 00:aa:bb:cc:03:03 192.168.1.72 f3 *
+$now 00:aa:bb:cc:03:04 192.168.1.73 f4 *
+EOF
+mg_dhcp_detect_flood
+if grep -q "dhcp_lease_flood" "$MG_EVENTS_LOG"; then
+	ok "DHCP lease flood event logged"
+else
+	not_ok "DHCP lease flood event logged"
+fi
+
+# --- Test 12: Empty leases file is handled safely ---
+: > "$MG_EVENTS_LOG"
+: > "$MG_DHCP_LEASES"
+mg_dhcp_maintenance
+if [ -f "$MG_DHCP_LEASES" ]; then
+	ok "Empty leases file handled safely by maintenance"
+else
+	not_ok "Empty leases file handled safely by maintenance"
 fi
 
 # --- Summary ---

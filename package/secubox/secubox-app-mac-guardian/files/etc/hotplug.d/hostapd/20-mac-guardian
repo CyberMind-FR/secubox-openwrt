@@ -46,7 +46,7 @@ config_get enabled main enabled 0
 			fi
 			;;
 		AP-STA-DISCONNECTED)
-			# Lightweight: just update last_seen
+			# Update last_seen and clean up stale DHCP lease for this MAC
 			if mg_validate_mac "$mac"; then
 				mg_lock && {
 					local existing
@@ -56,6 +56,7 @@ config_get enabled main enabled 0
 						hostname=$(mg_resolve_hostname "$mac")
 						mg_db_upsert "$mac" "$iface" "$hostname"
 					fi
+					mg_dhcp_cleanup_stale_mac "$mac"
 					mg_unlock
 				}
 			fi

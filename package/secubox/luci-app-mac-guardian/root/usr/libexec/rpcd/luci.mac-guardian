@@ -8,7 +8,7 @@ MG_LOGFILE="/var/log/mac-guardian.log"
 
 case "$1" in
 	list)
-		echo '{"status":{},"get_clients":{},"get_events":{"count":"int"},"scan":{},"start":{},"stop":{},"restart":{},"trust":{"mac":"str"},"block":{"mac":"str"}}'
+		echo '{"status":{},"get_clients":{},"get_events":{"count":"int"},"scan":{},"start":{},"stop":{},"restart":{},"trust":{"mac":"str"},"block":{"mac":"str"},"dhcp_status":{},"dhcp_cleanup":{}}'
 		;;
 	call)
 		case "$2" in
@@ -182,6 +182,46 @@ case "$1" in
 				else
 					echo '{"success":false,"error":"missing mac"}'
 				fi
+				;;
+
+			dhcp_status)
+				json_init
+
+				dhcp_enabled=$(uci -q get mac-guardian.dhcp.enabled)
+				json_add_boolean "enabled" ${dhcp_enabled:-1}
+
+				leases=0
+				conflicts=0
+				stale=0
+
+				if [ -f /tmp/dhcp.leases ] && [ -s /tmp/dhcp.leases ]; then
+					leases=$(wc -l < /tmp/dhcp.leases)
+
+					# Count hostname conflicts
+					conflicts=$(awk '{print $4}' /tmp/dhcp.leases | grep -v '^\*$' | sort | uniq -d | wc -l)
+
+					# Count stale leases
+					now=$(date +%s)
+					stale_timeout=$(uci -q get mac-guardian.dhcp.stale_timeout)
+					stale_timeout=${stale_timeout:-3600}
+					cutoff=$((now - stale_timeout))
+					stale=$(awk -v cutoff="$cutoff" '$1 < cutoff' /tmp/dhcp.leases | wc -l)
+				fi
+
+				json_add_int "leases" $leases
+				json_add_int "conflicts" $conflicts
+				json_add_int "stale" $stale
+				json_dump
+				;;
+
+			dhcp_cleanup)
+				/usr/sbin/mac-guardian dhcp-cleanup >/dev/null 2>&1
+				removed=0
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_int "removed" $removed
+				json_dump
 				;;
 		esac
 		;;

@@ -28,6 +28,14 @@ MG_STATS_FILE="/var/run/mac-guardian/stats.json"
 MG_STATS_INTERVAL=60
 MG_MAX_LOG_SIZE=524288
 
+# DHCP protection config
+MG_DHCP_ENABLED=1
+MG_DHCP_CLEANUP_STALE=1
+MG_DHCP_DEDUP_HOSTNAMES=1
+MG_DHCP_FLOOD_THRESHOLD=10
+MG_DHCP_FLOOD_WINDOW=60
+MG_DHCP_STALE_TIMEOUT=3600
+
 # Whitelist arrays stored as newline-separated strings
 MG_WL_MACS=""
 MG_WL_OUIS=""
@@ -78,6 +86,14 @@ mg_load_config() {
 	config_get MG_STATS_FILE reporting stats_file "/var/run/mac-guardian/stats.json"
 	config_get MG_STATS_INTERVAL reporting stats_interval 60
 	config_get MG_MAX_LOG_SIZE reporting max_log_size 524288
+
+	# dhcp protection section
+	config_get MG_DHCP_ENABLED dhcp enabled 1
+	config_get MG_DHCP_CLEANUP_STALE dhcp cleanup_stale 1
+	config_get MG_DHCP_DEDUP_HOSTNAMES dhcp dedup_hostnames 1
+	config_get MG_DHCP_FLOOD_THRESHOLD dhcp flood_threshold 10
+	config_get MG_DHCP_FLOOD_WINDOW dhcp flood_window 60
+	config_get MG_DHCP_STALE_TIMEOUT dhcp stale_timeout 3600
 
 	# whitelist lists
 	MG_WL_MACS=""
@@ -338,6 +354,146 @@ mg_resolve_hostname() {
 	fi
 
 	echo "$hostname"
+}
+
+# ============================================================
+# DHCP Lease Protection
+# ============================================================
+
+MG_DHCP_LEASES="/tmp/dhcp.leases"
+
+mg_dhcp_read_leases() {
+	local tmpfile="${MG_RUNDIR}/dhcp_leases.$$"
+	if [ -f "$MG_DHCP_LEASES" ] && [ -s "$MG_DHCP_LEASES" ]; then
+		cp "$MG_DHCP_LEASES" "$tmpfile"
+	else
+		: > "$tmpfile"
+	fi
+	echo "$tmpfile"
+}
+
+mg_dhcp_find_hostname_dupes() {
+	[ "$MG_DHCP_DEDUP_HOSTNAMES" != "1" ] && return 0
+	[ ! -f "$MG_DHCP_LEASES" ] || [ ! -s "$MG_DHCP_LEASES" ] && return 0
+
+	local leases_copy
+	leases_copy=$(mg_dhcp_read_leases)
+
+	# Format: timestamp mac ip hostname clientid
+	# Find hostnames that appear with more than one MAC
+	local dupes_file="${MG_RUNDIR}/hostname_dupes.$$"
+	awk '{print $4, $2, $1}' "$leases_copy" | \
+		sort -k1,1 -k3,3n | \
+		awk '
+		{
+			hostname=$1; mac=$2; ts=$3
+			if (hostname != "*" && hostname != "" && hostname == prev_host && mac != prev_mac) {
+				# Duplicate hostname with different MAC - print the older one
+				if (ts < prev_ts) {
+					print mac
+				} else {
+					print prev_mac
+				}
+			}
+			prev_host=hostname; prev_mac=mac; prev_ts=ts
+		}' | sort -u > "$dupes_file"
+
+	if [ -s "$dupes_file" ]; then
+		while read -r dup_mac; do
+			[ -z "$dup_mac" ] && continue
+			local hostname
+			hostname=$(awk -v m="$dup_mac" 'tolower($2)==tolower(m) {print $4; exit}' "$leases_copy")
+			mg_log_event "dhcp_hostname_conflict" "$dup_mac" "" "hostname=${hostname}"
+			mg_dhcp_remove_lease "$dup_mac"
+		done < "$dupes_file"
+	fi
+
+	rm -f "$dupes_file" "$leases_copy"
+}
+
+mg_dhcp_cleanup_stale() {
+	[ "$MG_DHCP_CLEANUP_STALE" != "1" ] && return 0
+	[ ! -f "$MG_DHCP_LEASES" ] || [ ! -s "$MG_DHCP_LEASES" ] && return 0
+
+	local now
+	now=$(date +%s)
+	local cutoff=$((now - MG_DHCP_STALE_TIMEOUT))
+	local stale_file="${MG_RUNDIR}/stale_leases.$$"
+
+	# Find leases with timestamp older than cutoff
+	awk -v cutoff="$cutoff" '$1 < cutoff {print $2}' "$MG_DHCP_LEASES" > "$stale_file"
+
+	if [ -s "$stale_file" ]; then
+		while read -r stale_mac; do
+			[ -z "$stale_mac" ] && continue
+			mg_log_event "dhcp_stale_removed" "$stale_mac" "" "timeout=${MG_DHCP_STALE_TIMEOUT}s"
+			mg_dhcp_remove_lease "$stale_mac"
+		done < "$stale_file"
+	fi
+
+	rm -f "$stale_file"
+}
+
+mg_dhcp_cleanup_stale_mac() {
+	local target_mac="$1"
+	[ "$MG_DHCP_CLEANUP_STALE" != "1" ] && return 0
+	[ ! -f "$MG_DHCP_LEASES" ] || [ ! -s "$MG_DHCP_LEASES" ] && return 0
+
+	local now
+	now=$(date +%s)
+	local cutoff=$((now - MG_DHCP_STALE_TIMEOUT))
+
+	# Check if this specific MAC's lease is stale
+	local lease_ts
+	lease_ts=$(awk -v m="$target_mac" 'tolower($2)==tolower(m) {print $1; exit}' "$MG_DHCP_LEASES")
+	[ -z "$lease_ts" ] && return 0
+
+	if [ "$lease_ts" -lt "$cutoff" ] 2>/dev/null; then
+		mg_log_event "dhcp_stale_removed" "$target_mac" "" "timeout=${MG_DHCP_STALE_TIMEOUT}s"
+		mg_dhcp_remove_lease "$target_mac"
+	fi
+}
+
+mg_dhcp_detect_flood() {
+	[ "$MG_DHCP_ENABLED" != "1" ] && return 0
+	[ ! -f "$MG_DHCP_LEASES" ] || [ ! -s "$MG_DHCP_LEASES" ] && return 0
+
+	local now
+	now=$(date +%s)
+	local window_start=$((now - MG_DHCP_FLOOD_WINDOW))
+
+	local recent_count
+	recent_count=$(awk -v ws="$window_start" '$1 >= ws' "$MG_DHCP_LEASES" | wc -l)
+	recent_count=$((recent_count + 0))
+
+	if [ "$recent_count" -gt "$MG_DHCP_FLOOD_THRESHOLD" ]; then
+		mg_log_event "dhcp_lease_flood" "" "" "leases=${recent_count} window=${MG_DHCP_FLOOD_WINDOW}s threshold=${MG_DHCP_FLOOD_THRESHOLD}"
+	fi
+}
+
+mg_dhcp_remove_lease() {
+	local mac="$1"
+	[ -z "$mac" ] && return 1
+	[ ! -f "$MG_DHCP_LEASES" ] && return 0
+
+	local tmpfile="${MG_DHCP_LEASES}.tmp.$$"
+	grep -iv " ${mac} " "$MG_DHCP_LEASES" > "$tmpfile" 2>/dev/null || : > "$tmpfile"
+	mv "$tmpfile" "$MG_DHCP_LEASES"
+
+	# Signal odhcpd to reload leases
+	local odhcpd_pid
+	odhcpd_pid=$(pgrep odhcpd)
+	if [ -n "$odhcpd_pid" ]; then
+		kill -HUP "$odhcpd_pid" 2>/dev/null
+	fi
+}
+
+mg_dhcp_maintenance() {
+	[ "$MG_DHCP_ENABLED" != "1" ] && return 0
+
+	mg_dhcp_find_hostname_dupes
+	mg_dhcp_cleanup_stale
+	mg_dhcp_detect_flood
 }
 
 # ============================================================
@@ -657,6 +813,8 @@ mg_scan_all() {
 	for iface in $ifaces; do
 		mg_scan_iface "$iface"
 	done
+
+	mg_dhcp_maintenance
 
 	MG_TOTAL_SCANS=$((MG_TOTAL_SCANS + 1))
 

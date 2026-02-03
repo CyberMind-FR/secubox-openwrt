@@ -56,6 +56,18 @@ var callBlock = rpc.declare({
 	params: ['mac']
 });
 
+var callDhcpStatus = rpc.declare({
+	object: 'luci.mac-guardian',
+	method: 'dhcp_status',
+	expect: { '': {} }
+});
+
+var callDhcpCleanup = rpc.declare({
+	object: 'luci.mac-guardian',
+	method: 'dhcp_cleanup',
+	expect: { '': {} }
+});
+
 function formatDate(ts) {
 	if (!ts || ts === 0) return '-';
 	var d = new Date(ts * 1000);
@@ -83,7 +95,8 @@ return view.extend({
 			uci.load('mac-guardian'),
 			callStatus(),
 			callGetClients(),
-			callGetEvents(10)
+			callGetEvents(10),
+			callDhcpStatus()
 		]);
 	},
 
@@ -91,6 +104,7 @@ return view.extend({
 		var status = data[1];
 		var clientData = data[2];
 		var eventData = data[3];
+		var dhcpStatus = data[4] || {};
 		var clients = (clientData && clientData.clients) ? clientData.clients : [];
 		var events = (eventData && eventData.events) ? eventData.events : [];
 		var m, s, o;
@@ -143,6 +157,17 @@ return view.extend({
 			}
 			html += '</div>';
 
+			// DHCP Protection card
+			var dhcpColor = dhcpStatus.enabled ? '#080' : '#888';
+			var dhcpLabel = dhcpStatus.enabled ? 'Enabled' : 'Disabled';
+			html += '<div style="min-width:160px;">';
+			html += '<h4 style="margin:0 0 8px 0;border-bottom:1px solid #ddd;padding-bottom:4px;">DHCP Protection</h4>';
+			html += '<p><b>Status:</b> <span style="color:' + dhcpColor + ';font-weight:bold;">' + dhcpLabel + '</span></p>';
+			html += '<p><b>Leases:</b> ' + (dhcpStatus.leases || 0) + '</p>';
+			html += '<p><b>Conflicts:</b> <span style="color:' + ((dhcpStatus.conflicts || 0) > 0 ? '#c60' : '#080') + ';">' + (dhcpStatus.conflicts || 0) + '</span></p>';
+			html += '<p><b>Stale:</b> <span style="color:' + ((dhcpStatus.stale || 0) > 0 ? '#c60' : '#080') + ';">' + (dhcpStatus.stale || 0) + '</span></p>';
+			html += '</div>';
+
 			html += '</div>';
 			return html;
 		};
@@ -170,6 +195,19 @@ return view.extend({
 				E('p', { 'class': 'spinning' }, _('Scanning WiFi interfaces...'))
 			]);
 			return callScan().then(function() {
+				ui.hideModal();
+				window.location.reload();
+			});
+		};
+
+		o = s.option(form.Button, '_dhcp_cleanup', _('DHCP Cleanup'));
+		o.inputtitle = _('Clean Up');
+		o.inputstyle = 'reload';
+		o.onclick = function() {
+			ui.showModal(_('Cleaning'), [
+				E('p', { 'class': 'spinning' }, _('Running DHCP lease maintenance...'))
+			]);
+			return callDhcpCleanup().then(function() {
 				ui.hideModal();
 				window.location.reload();
 			});
