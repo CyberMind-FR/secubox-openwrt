@@ -1,25 +1,20 @@
 #!/bin/sh
-# Master-Link API - Serve SecuBox IPK bundle
-# POST /api/master-link/ipk
+# Master-Link API - Serve SecuBox IPK (pre-built or generated on-the-fly)
+# GET  /api/master-link/ipk?token=TOKEN  — direct download / opkg install
+# POST /api/master-link/ipk              — download with token in JSON body
 # Auth: Token-validated
 
-# NOTE: Headers are sent by ml_ipk_serve, not here
-# Handle CORS preflight first
+# Handle CORS preflight
 if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
 	echo "Content-Type: text/plain"
 	echo "Access-Control-Allow-Origin: *"
-	echo "Access-Control-Allow-Methods: POST, OPTIONS"
+	echo "Access-Control-Allow-Methods: GET, POST, OPTIONS"
 	echo "Access-Control-Allow-Headers: Content-Type"
 	echo ""
 	exit 0
 fi
 
 if [ "$REQUEST_METHOD" = "GET" ]; then
-	# GET with query string token - for direct download
-	echo "Content-Type: application/json"
-	echo "Access-Control-Allow-Origin: *"
-	echo ""
-
 	# Load library
 	. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
 
@@ -30,10 +25,14 @@ if [ "$REQUEST_METHOD" = "GET" ]; then
 	fi
 
 	if [ -z "$token" ]; then
-		echo '{"error":"missing_token","hint":"POST with {\"token\":\"...\"} or GET with ?token=..."}'
+		echo "Content-Type: application/json"
+		echo "Access-Control-Allow-Origin: *"
+		echo ""
+		echo '{"error":"missing_token","hint":"GET with ?token=TOKEN"}'
 		exit 0
 	fi
 
+	# ml_ipk_serve handles all headers (Content-Type, Content-Length, etc.)
 	ml_ipk_serve "$token"
 	exit 0
 fi
@@ -46,12 +45,10 @@ if [ "$REQUEST_METHOD" != "POST" ]; then
 	exit 0
 fi
 
-# Load library
+# POST: token in JSON body
 . /usr/lib/secubox/master-link.sh >/dev/null 2>&1
 
-# Read POST body
 read -r input
-
 token=$(echo "$input" | jsonfilter -e '@.token' 2>/dev/null)
 
 if [ -z "$token" ]; then

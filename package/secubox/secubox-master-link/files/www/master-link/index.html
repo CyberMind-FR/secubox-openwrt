@@ -61,6 +61,20 @@
         .success-msg { color: var(--success); font-size: 0.85rem; padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border-radius: 0.375rem; margin-top: 0.5rem; }
 
         .hidden { display: none; }
+
+        .ipk-contents { background: var(--bg); padding: 0.6rem 0.8rem; border-radius: 0.375rem; margin-bottom: 0.75rem; font-size: 0.75rem; }
+        .ipk-contents .label { color: var(--muted); margin-bottom: 0.25rem; }
+        .ipk-contents .field { font-family: ui-monospace, monospace; padding: 0.1rem 0; }
+        .ipk-contents .field span { color: var(--accent); }
+
+        .cmd-box { background: var(--bg); padding: 0.5rem 0.8rem; border-radius: 0.375rem; font-family: ui-monospace, monospace; font-size: 0.75rem; word-break: break-all; cursor: pointer; position: relative; border: 1px solid var(--border); transition: border-color 0.2s; }
+        .cmd-box:hover { border-color: var(--accent); }
+        .cmd-box .copy-hint { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 0.65rem; font-family: system-ui, sans-serif; }
+
+        .btn-row { display: flex; gap: 0.5rem; }
+        .btn-row button { flex: 1; }
+        button.secondary { background: var(--border); color: var(--text); }
+        button.secondary:hover { background: #475569; }
     </style>
 </head>
 <body>
@@ -108,9 +122,24 @@
         </div>
 
         <div id="action-download" class="card hidden">
-            <div class="card-title">Download Package</div>
+            <div class="card-title">Join Package</div>
             <div id="ipk-info"></div>
-            <button class="primary" id="btn-download" onclick="downloadIPK()">Download SecuBox IPK</button>
+            <div id="ipk-contents" class="ipk-contents hidden">
+                <div class="label">This package configures your device as:</div>
+                <div class="field">role = <span>peer</span></div>
+                <div class="field">upstream = <span id="ipk-upstream">-</span></div>
+                <div class="field">depth = <span id="ipk-depth">-</span></div>
+            </div>
+            <div id="ipk-cmd" class="hidden" style="margin-bottom:0.75rem;">
+                <div style="color:var(--muted);font-size:0.75rem;margin-bottom:0.25rem;">Install directly via SSH:</div>
+                <div class="cmd-box" id="opkg-cmd" onclick="copyCmd(this)">
+                    <span class="copy-hint">click to copy</span>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="primary" id="btn-download" onclick="downloadIPK()">Download IPK</button>
+                <button class="secondary" id="btn-skip" onclick="showJoinStep()">Skip</button>
+            </div>
         </div>
 
         <div id="action-join" class="card hidden">
@@ -162,21 +191,29 @@
                 '<div class="info-row"><span class="info-label">Fingerprint</span><span class="info-value fingerprint">' + (masterInfo.fingerprint || '-') + '</span></div>' +
                 '<div class="info-row"><span class="info-label">Role</span><span class="info-value">' + (masterInfo.role || '-') + '</span></div>' +
                 '<div class="info-row"><span class="info-label">Depth</span><span class="info-value">' + (masterInfo.depth || 0) + '</span></div>' +
-                (masterInfo.ipk_available ? '<div class="info-row"><span class="info-label">IPK</span><span class="status-badge status-ok">Available</span></div>' : '');
+                '<div class="info-row"><span class="info-label">Join Package</span><span class="status-badge status-ok">Ready</span></div>';
 
             // Move to step 2
             setStep(1);
             document.getElementById('action-download').classList.remove('hidden');
 
-            if (masterInfo.ipk_available) {
-                document.getElementById('ipk-info').innerHTML =
-                    '<p style="color:var(--muted);font-size:0.8rem;margin-bottom:0.75rem;">The SecuBox package is ready for download. Install it on your device with: <code style="background:var(--bg);padding:0.15rem 0.4rem;border-radius:0.2rem;">opkg install secubox*.ipk</code></p>';
-            } else {
-                document.getElementById('ipk-info').innerHTML =
-                    '<p style="color:var(--muted);font-size:0.8rem;margin-bottom:0.75rem;">No IPK bundle available on this master. You can skip to joining if SecuBox is already installed.</p>';
-                document.getElementById('btn-download').textContent = 'Skip to Join';
-                document.getElementById('btn-download').onclick = function() { showJoinStep(); };
-            }
+            // Build IPK download URL and opkg command
+            var ipkUrl = 'http://' + location.host + '/api/master-link/ipk?token=' + encodeURIComponent(token);
+            var opkgCmd = 'opkg install "' + ipkUrl + '"';
+            var peerDepth = (masterInfo.depth || 0) + 1;
+
+            document.getElementById('ipk-info').innerHTML =
+                '<p style="color:var(--muted);font-size:0.8rem;margin-bottom:0.75rem;">' +
+                'Install this package to join <strong>' + (masterInfo.hostname || 'master') + '</strong> as a mesh peer.</p>';
+
+            // Show IPK contents preview
+            document.getElementById('ipk-upstream').textContent = location.hostname || '-';
+            document.getElementById('ipk-depth').textContent = peerDepth;
+            document.getElementById('ipk-contents').classList.remove('hidden');
+
+            // Show opkg install command
+            document.getElementById('opkg-cmd').insertAdjacentHTML('afterbegin', opkgCmd);
+            document.getElementById('ipk-cmd').classList.remove('hidden');
         } catch (e) {
             document.getElementById('master-info').innerHTML =
                 '<div class="error">Could not reach master node: ' + e.message + '</div>';
@@ -283,6 +320,23 @@
         steps.forEach(function(step, i) {
             step.className = 'step ' + (i < activeIndex ? 'done' : (i === activeIndex ? 'active' : 'pending'));
         });
+    }
+
+    function copyCmd(el) {
+        var text = el.textContent.replace('click to copy', '').replace('copied!', '').trim();
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(function() {
+                var hint = el.querySelector('.copy-hint');
+                if (hint) { hint.textContent = 'copied!'; setTimeout(function() { hint.textContent = 'click to copy'; }, 2000); }
+            });
+        } else {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
     }
 
     async function generateFingerprint() {
