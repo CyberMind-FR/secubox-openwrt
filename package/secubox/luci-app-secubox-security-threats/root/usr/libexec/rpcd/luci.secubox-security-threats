@@ -1,385 +1,75 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
-# SecuBox Security Threats Dashboard RPCD backend
+# SecuBox Security Intelligence - RPCD backend
 # Copyright (C) 2026 CyberMind.fr - Gandalf
 #
-# Integrates netifyd DPI security risks with CrowdSec threat intelligence
-# for comprehensive network threat monitoring and automated blocking
+# Combines mitmproxy threat detection, CrowdSec blocking,
+# and P2P mesh threat intelligence sharing
 
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
-HISTORY_FILE="/tmp/secubox-threats-history.json"
 CSCLI="/usr/bin/cscli"
-SECCUBOX_LOG="/usr/sbin/secubox-log"
-
-secubox_log() {
-	[ -x "$SECCUBOX_LOG" ] || return
-	"$SECCUBOX_LOG" --tag "security-threats" --message "$1" >/dev/null 2>&1
-}
-
-# Initialize storage
-init_storage() {
-	[ ! -f "$HISTORY_FILE" ] && echo '[]' > "$HISTORY_FILE"
-}
+THREAT_INTEL="/usr/lib/secubox/threat-intel.sh"
 
 # ==============================================================================
-# DATA COLLECTION
+# HELPERS
 # ==============================================================================
 
-# Get netifyd flows (socket first, fallback to file)
-get_netifyd_flows() {
-	if [ -S /var/run/netifyd/netifyd.sock ]; then
-		echo "status" | nc -U /var/run/netifyd/netifyd.sock 2>/dev/null
-	elif [ -f /var/run/netifyd/status.json ]; then
-		cat /var/run/netifyd/status.json
-	else
-		echo '{}'
-	fi
-}
-
-# Filter flows with security risks
-filter_risky_flows() {
-	local flows="$1"
-	# Extract flows with risks[] array (length > 0)
-	echo "$flows" | jq -c '.flows[]? | select(.risks != null and (.risks | length) > 0)' 2>/dev/null
-}
-
-# Get CrowdSec decisions (active bans)
-get_crowdsec_decisions() {
-	[ ! -x "$CSCLI" ] && echo '[]' && return
-	$CSCLI decisions list -o json 2>/dev/null || echo '[]'
-}
-
-# Get CrowdSec alerts (recent detections)
-get_crowdsec_alerts() {
-	[ ! -x "$CSCLI" ] && echo '[]' && return
-	$CSCLI alerts list -o json --limit 100 2>/dev/null || echo '[]'
-}
-
-# Get mitmproxy threats (last 50 from threats.log)
-get_mitmproxy_threats() {
-	local log_file="/srv/mitmproxy/threats.log"
-	[ ! -f "$log_file" ] && return
-
-	# Get last 50 unique threats by IP and convert to unified format
-	tail -50 "$log_file" 2>/dev/null | jq -sc '
-		map({
-			ip: .source_ip,
-			mac: "N/A",
-			timestamp: .timestamp,
-			risk_score: (if .severity == "critical" then 90 elif .severity == "high" then 70 elif .severity == "medium" then 50 else 30 end),
-			severity: .severity,
-			category: (if .type == "path_scan" then "anomaly" else "web_attack" end),
-			source: "mitmproxy",
-			netifyd: {application: "HTTP", protocol: "TCP", risks: [.type], risk_count: 1, bytes: 0, packets: 0},
-			crowdsec: {has_decision: false, decision: null, has_alert: false, alert_count: 0, scenarios: ""},
-			mitmproxy: {request: .request, host: .host, pattern: .pattern, country: .country, is_bot: .is_bot, bot_type: .bot_type, response_code: .response_code}
-		}) | unique_by(.ip) | .[]
-	' 2>/dev/null
-}
-
-# ==============================================================================
-# CLASSIFICATION
-# ==============================================================================
-
-# Classify netifyd risk by category
-classify_netifyd_risk() {
-	local risk_name="$1"
-
-	# Map ND_RISK_* to categories
-	case "$risk_name" in
-		*MALICIOUS_JA3*|*SUSPICIOUS_DGA*|*SUSPICIOUS_ENTROPY*|*POSSIBLE_EXPLOIT*|*PERIODIC_FLOW*)
-			echo "malware";;
-		*SQL_INJECTION*|*XSS*|*RCE_INJECTION*|*HTTP_SUSPICIOUS*)
-			echo "web_attack";;
-		*DNS_FRAGMENTED*|*DNS_LARGE_PACKET*|*DNS_SUSPICIOUS*|*RISKY_ASN*|*RISKY_DOMAIN*|*UNIDIRECTIONAL*|*MALFORMED_PACKET*)
-			echo "anomaly";;
-		*BitTorrent*|*Mining*|*Tor*|*PROXY*|*SOCKS*)
-			echo "protocol";;
-		*TLS_*|*CERTIFICATE_*)
-			echo "tls_issue";;
-		*)
-			echo "other";;
-	esac
-}
-
-# Calculate risk score (0-100)
-calculate_risk_score() {
-	local risk_count="$1"
-	local has_crowdsec="$2"
-	local risk_types="$3"  # comma-separated
-
-	local score=$((risk_count * 10))  # Base: 10 per risk
-	[ "$score" -gt 50 ] && score=50    # Cap base at 50
-
-	# Severity weights
-	echo "$risk_types" | grep -q "MALICIOUS_JA3\|SUSPICIOUS_DGA\|POSSIBLE_EXPLOIT" && score=$((score + 20))
-	echo "$risk_types" | grep -q "SQL_INJECTION\|XSS\|RCE" && score=$((score + 15))
-	echo "$risk_types" | grep -q "RISKY_ASN\|RISKY_DOMAIN" && score=$((score + 10))
-	echo "$risk_types" | grep -q "BitTorrent\|Mining\|Tor" && score=$((score + 5))
-
-	# CrowdSec correlation bonus
-	[ "$has_crowdsec" = "1" ] && score=$((score + 30))
-
-	# Cap at 100
-	[ "$score" -gt 100 ] && score=100
-	echo "$score"
-}
-
-# Determine severity level
-get_threat_severity() {
-	local score="$1"
-	if [ "$score" -ge 80 ]; then
-		echo "critical"
-	elif [ "$score" -ge 60 ]; then
-		echo "high"
-	elif [ "$score" -ge 40 ]; then
-		echo "medium"
-	else
-		echo "low"
-	fi
-}
-
-# ==============================================================================
-# CORRELATION ENGINE
-# ==============================================================================
-
-# Correlate netifyd risks with CrowdSec data
-correlate_threats() {
-	local netifyd_flows="$1"
-	local crowdsec_decisions="$2"
-	local crowdsec_alerts="$3"
-
-	# Create lookup tables with jq
-	local decisions_by_ip=$(echo "$crowdsec_decisions" | jq -c 'INDEX(.value)' 2>/dev/null || echo '{}')
-	local alerts_by_ip=$(echo "$crowdsec_alerts" | jq -c 'group_by(.source.ip) | map({(.[0].source.ip): .}) | add // {}' 2>/dev/null || echo '{}')
-
-	# Process each risky flow
-	echo "$netifyd_flows" | while read -r flow; do
-		[ -z "$flow" ] && continue
-
-		local ip=$(echo "$flow" | jq -r '.src_ip // "unknown"')
-		[ "$ip" = "unknown" ] && continue
-
-		local mac=$(echo "$flow" | jq -r '.src_mac // "N/A"')
-		local risks=$(echo "$flow" | jq -r '.risks | map(tostring) | join(",")' 2>/dev/null || echo "")
-		local risk_count=$(echo "$flow" | jq '.risks | length' 2>/dev/null || echo 0)
-
-		# Lookup CrowdSec data
-		local decision=$(echo "$decisions_by_ip" | jq -c ".[\"$ip\"] // null")
-		local has_decision=$([[ "$decision" != "null" ]] && echo 1 || echo 0)
-		local alert=$(echo "$alerts_by_ip" | jq -c ".[\"$ip\"] // null")
-
-		# Calculate metrics
-		local risk_score=$(calculate_risk_score "$risk_count" "$has_decision" "$risks")
-		local severity=$(get_threat_severity "$risk_score")
-		local first_risk=$(echo "$risks" | cut -d, -f1)
-		local category=$(classify_netifyd_risk "$first_risk")
-
-		# Build unified threat JSON
-		jq -n \
-			--arg ip "$ip" \
-			--arg mac "$mac" \
-			--arg timestamp "$(date -Iseconds)" \
-			--argjson score "$risk_score" \
-			--arg severity "$severity" \
-			--arg category "$category" \
-			--argjson netifyd "$(echo "$flow" | jq '{
-				application: .detected_application // "unknown",
-				protocol: .detected_protocol // "unknown",
-				risks: [.risks[] | tostring],
-				risk_count: (.risks | length),
-				bytes: .total_bytes // 0,
-				packets: .total_packets // 0
-			}')" \
-			--argjson crowdsec "$(jq -n \
-				--argjson decision "$decision" \
-				--argjson alert "$alert" \
-				'{
-					has_decision: ($decision != null),
-					decision: $decision,
-					has_alert: ($alert != null),
-					alert_count: (if $alert != null then ($alert | length) else 0 end),
-					scenarios: (if $alert != null then ($alert | map(.scenario) | join(",")) else "" end)
-				}')" \
-			'{
-				ip: $ip,
-				mac: $mac,
-				timestamp: $timestamp,
-				risk_score: $score,
-				severity: $severity,
-				category: $category,
-				netifyd: $netifyd,
-				crowdsec: $crowdsec
-			}' 2>/dev/null
-	done
-}
-
-# ==============================================================================
-# AUTO-BLOCKING
-# ==============================================================================
-
-# Execute block via CrowdSec
 execute_block() {
-	local ip="$1"
-	local duration="$2"
-	local reason="$3"
-
-	[ ! -x "$CSCLI" ] && return 1
-
-	# Call cscli to add decision
-	if $CSCLI decisions add --ip "$ip" --duration "$duration" --reason "$reason" >/dev/null 2>&1; then
-		secubox_log "Auto-blocked $ip for $duration ($reason)"
-		return 0
-	else
-		return 1
-	fi
-}
-
-# Check single rule match
-check_rule_match() {
-	local section="$1"
-	local threat_category="$2"
-	local threat_risks="$3"
-	local threat_score="$4"
-	local threat_ip="$5"
-
-	local enabled=$(uci -q get "secubox_security_threats.${section}.enabled")
-	[ "$enabled" != "1" ] && return 1
-
-	local rule_types=$(uci -q get "secubox_security_threats.${section}.threat_types")
-	echo "$rule_types" | grep -qw "$threat_category" || return 1
-
-	local threshold=$(uci -q get "secubox_security_threats.${section}.threshold" 2>/dev/null || echo 1)
-	[ "$threat_score" -lt "$threshold" ] && return 1
-
-	# Rule matched - execute block
-	local duration=$(uci -q get "secubox_security_threats.${section}.duration" || echo "4h")
-	local name=$(uci -q get "secubox_security_threats.${section}.name" || echo "Security threat")
-
-	execute_block "$threat_ip" "$duration" "Auto-blocked: $name"
-	return $?
-}
-
-# Check if threat should be auto-blocked
-check_block_rules() {
-	local threat="$1"
-
-	local ip=$(echo "$threat" | jq -r '.ip')
-	local category=$(echo "$threat" | jq -r '.category')
-	local score=$(echo "$threat" | jq -r '.risk_score')
-	local risks=$(echo "$threat" | jq -r '.netifyd.risks | join(",")')
-
-	# Check whitelist first
-	local whitelist_section="whitelist_${ip//./_}"
-	uci -q get "secubox_security_threats.${whitelist_section}" >/dev/null 2>&1 && return 1
-
-	# Check if auto-blocking is enabled globally
-	local auto_block_enabled=$(uci -q get secubox_security_threats.global.auto_block_enabled 2>/dev/null || echo 1)
-	[ "$auto_block_enabled" != "1" ] && return 1
-
-	# Iterate block rules from UCI
-	config_load secubox_security_threats
-	config_foreach check_rule_match block_rule "$category" "$risks" "$score" "$ip"
+	local ip="$1" duration="$2" reason="$3"
+	[ -x "$CSCLI" ] || return 1
+	$CSCLI decisions add --ip "$ip" --duration "$duration" --reason "$reason" >/dev/null 2>&1
 }
 
 # ==============================================================================
-# SECURITY STATS (Quick Overview)
+# SECURITY STATS (firewall counters)
 # ==============================================================================
 
-# Get overall security statistics from all sources
 get_security_stats() {
-	local wan_drops=0
-	local fw_rejects=0
-	local cs_bans=0
-	local cs_alerts_24h=0
-	local haproxy_conns=0
-	local invalid_conns=0
+	local wan_drops=0 fw_rejects=0 cs_bans=0 cs_alerts_24h=0 haproxy_conns=0 invalid_conns=0
 
-	# Get actual WAN interface from UCI
-	local wan_iface=$(uci -q get network.wan.device || uci -q get network.wan.ifname)
-	[ -z "$wan_iface" ] && wan_iface="eth0"
-
-	# WAN dropped packets from nftables (use counter on drop rules)
+	# WAN dropped packets from nftables
 	if command -v nft >/dev/null 2>&1; then
-		# Get all drop/reject counters from input_wan zone
-		# nft format: "counter packets X bytes Y"
 		wan_drops=$(nft list chain inet fw4 input_wan 2>/dev/null | \
-			grep -E "counter packets" | \
-			grep -oE 'packets [0-9]+' | \
-			awk '{sum+=$2} END {print sum+0}')
-		[ -z "$wan_drops" ] && wan_drops=0
-
-		# Also try reject chain
+			grep -oE 'packets [0-9]+' | awk '{sum+=$2} END {print sum+0}')
 		local reject_drops=$(nft list chain inet fw4 reject_from_wan 2>/dev/null | \
-			grep -E "counter packets" | \
-			grep -oE 'packets [0-9]+' | \
-			awk '{sum+=$2} END {print sum+0}')
-		[ -n "$reject_drops" ] && wan_drops=$((wan_drops + reject_drops))
+			grep -oE 'packets [0-9]+' | awk '{sum+=$2} END {print sum+0}')
+		[ -n "$reject_drops" ] && wan_drops=$((${wan_drops:-0} + reject_drops))
 	fi
-	wan_drops=${wan_drops:-0}
 
-	# Firewall rejects - count from reject-specific chains
+	# Firewall rejects
 	if command -v nft >/dev/null 2>&1; then
-		# Count from handle_reject chain which has actual reject rules
 		fw_rejects=$(nft list chain inet fw4 handle_reject 2>/dev/null | \
-			grep -E "counter packets" | \
-			grep -oE 'packets [0-9]+' | \
-			awk '{sum+=$2} END {print sum+0}')
-		[ -z "$fw_rejects" ] && fw_rejects=0
-
-		# If no handle_reject, try counting reject rules in all chains
-		if [ "$fw_rejects" = "0" ]; then
+			grep -oE 'packets [0-9]+' | awk '{sum+=$2} END {print sum+0}')
+		if [ "${fw_rejects:-0}" = "0" ]; then
 			fw_rejects=$(nft -a list ruleset 2>/dev/null | \
 				grep -E "reject|drop" | grep "counter" | \
-				grep -oE 'packets [0-9]+' | \
-				awk '{sum+=$2} END {print sum+0}')
+				grep -oE 'packets [0-9]+' | awk '{sum+=$2} END {print sum+0}')
 		fi
-	else
-		# Fallback to log parsing
-		fw_rejects=$(logread 2>/dev/null | grep -c "reject\|DROP\|REJECT" || echo 0)
 	fi
-	fw_rejects=${fw_rejects:-0}
 
-	# CrowdSec active bans
+	# CrowdSec bans and alerts
 	if [ -x "$CSCLI" ]; then
-		# Use jq for proper JSON parsing if available, fallback to grep
 		if command -v jq >/dev/null 2>&1; then
 			cs_bans=$($CSCLI decisions list -o json 2>/dev/null | jq 'length' 2>/dev/null)
-			[ -z "$cs_bans" ] && cs_bans=0
-		else
-			# Count JSON array items
-			local cs_json=$($CSCLI decisions list -o json 2>/dev/null)
-			if [ -n "$cs_json" ] && [ "$cs_json" != "null" ] && [ "$cs_json" != "[]" ]; then
-				cs_bans=$(echo "$cs_json" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
-			fi
-		fi
-		cs_bans=${cs_bans:-0}
-
-		# CrowdSec alerts in last 24h
-		if command -v jq >/dev/null 2>&1; then
 			cs_alerts_24h=$($CSCLI alerts list -o json --since 24h 2>/dev/null | jq 'length' 2>/dev/null)
-			[ -z "$cs_alerts_24h" ] && cs_alerts_24h=0
 		else
+			local cs_json=$($CSCLI decisions list -o json 2>/dev/null)
+			[ -n "$cs_json" ] && [ "$cs_json" != "null" ] && [ "$cs_json" != "[]" ] && \
+				cs_bans=$(echo "$cs_json" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
 			local alerts_json=$($CSCLI alerts list -o json --since 24h 2>/dev/null)
-			if [ -n "$alerts_json" ] && [ "$alerts_json" != "null" ] && [ "$alerts_json" != "[]" ]; then
+			[ -n "$alerts_json" ] && [ "$alerts_json" != "null" ] && [ "$alerts_json" != "[]" ] && \
 				cs_alerts_24h=$(echo "$alerts_json" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
-			fi
 		fi
-		cs_alerts_24h=${cs_alerts_24h:-0}
 	fi
 
-	# Invalid connections (conntrack) - only count INVALID, not UNREPLIED
+	# Invalid connections
 	if [ -f /proc/net/nf_conntrack ]; then
-		# grep -c returns 1 exit code when no matches, so we can't use || echo 0
 		invalid_conns=$(grep -c "\[INVALID\]" /proc/net/nf_conntrack 2>/dev/null)
-		[ -z "$invalid_conns" ] && invalid_conns=0
 	fi
-	invalid_conns=${invalid_conns:-0}
 
 	# HAProxy connections
-	# Try local haproxy first, then LXC
 	if [ -S /var/run/haproxy/admin.sock ]; then
 		haproxy_conns=$(echo "show stat" | socat stdio /var/run/haproxy/admin.sock 2>/dev/null | \
 			tail -n+2 | awk -F, '{sum+=$5} END {print sum+0}')
@@ -387,31 +77,20 @@ get_security_stats() {
 		haproxy_conns=$(echo "show stat" | socat stdio /var/lib/haproxy/stats 2>/dev/null | \
 			tail -n+2 | awk -F, '{sum+=$5} END {print sum+0}')
 	elif command -v lxc-info >/dev/null 2>&1 && lxc-info -n haproxy -s 2>/dev/null | grep -q "RUNNING"; then
-		# HAProxy in LXC container
 		haproxy_conns=$(lxc-attach -n haproxy -- sh -c '
 			for sock in /stats /run/haproxy.sock /var/lib/haproxy/stats /var/run/haproxy/admin.sock; do
 				[ -S "$sock" ] && { echo "show stat" | socat stdio "$sock" 2>/dev/null; break; }
 			done' 2>/dev/null | tail -n+2 | awk -F, '{sum+=$5} END {print sum+0}')
 	fi
-	haproxy_conns=${haproxy_conns:-0}
 
-	# Clean up and ensure numeric values (remove all non-digits)
-	wan_drops=$(printf '%s' "$wan_drops" | tr -cd '0-9')
-	fw_rejects=$(printf '%s' "$fw_rejects" | tr -cd '0-9')
-	cs_bans=$(printf '%s' "$cs_bans" | tr -cd '0-9')
-	cs_alerts_24h=$(printf '%s' "$cs_alerts_24h" | tr -cd '0-9')
-	invalid_conns=$(printf '%s' "$invalid_conns" | tr -cd '0-9')
-	haproxy_conns=$(printf '%s' "$haproxy_conns" | tr -cd '0-9')
+	# Sanitize to numeric
+	wan_drops=$(printf '%s' "${wan_drops:-0}" | tr -cd '0-9'); : ${wan_drops:=0}
+	fw_rejects=$(printf '%s' "${fw_rejects:-0}" | tr -cd '0-9'); : ${fw_rejects:=0}
+	cs_bans=$(printf '%s' "${cs_bans:-0}" | tr -cd '0-9'); : ${cs_bans:=0}
+	cs_alerts_24h=$(printf '%s' "${cs_alerts_24h:-0}" | tr -cd '0-9'); : ${cs_alerts_24h:=0}
+	invalid_conns=$(printf '%s' "${invalid_conns:-0}" | tr -cd '0-9'); : ${invalid_conns:=0}
+	haproxy_conns=$(printf '%s' "${haproxy_conns:-0}" | tr -cd '0-9'); : ${haproxy_conns:=0}
 
-	# Default to 0 if empty
-	: ${wan_drops:=0}
-	: ${fw_rejects:=0}
-	: ${cs_bans:=0}
-	: ${cs_alerts_24h:=0}
-	: ${invalid_conns:=0}
-	: ${haproxy_conns:=0}
-
-	# Output JSON
 	cat << EOF
 {
 	"wan_dropped": $wan_drops,
@@ -419,44 +98,9 @@ get_security_stats() {
 	"crowdsec_bans": $cs_bans,
 	"crowdsec_alerts_24h": $cs_alerts_24h,
 	"invalid_connections": $invalid_conns,
-	"haproxy_connections": $haproxy_conns,
-	"timestamp": "$(date -Iseconds)"
+	"haproxy_connections": $haproxy_conns
 }
 EOF
-}
-
-# ==============================================================================
-# STATISTICS
-# ==============================================================================
-
-# Get stats by type (category)
-get_stats_by_type() {
-	local threats="$1"
-
-	echo "$threats" | jq -s '{
-		malware: [.[] | select(.category == "malware")] | length,
-		web_attack: [.[] | select(.category == "web_attack")] | length,
-		anomaly: [.[] | select(.category == "anomaly")] | length,
-		protocol: [.[] | select(.category == "protocol")] | length,
-		tls_issue: [.[] | select(.category == "tls_issue")] | length,
-		other: [.[] | select(.category == "other")] | length
-	}' 2>/dev/null
-}
-
-# Get stats by host (IP)
-get_stats_by_host() {
-	local threats="$1"
-
-	echo "$threats" | jq -s 'group_by(.ip) | map({
-		ip: .[0].ip,
-		mac: .[0].mac,
-		threat_count: length,
-		avg_risk_score: (map(.risk_score) | add / length | floor),
-		highest_severity: (map(.severity) | sort | reverse | .[0]),
-		first_seen: (map(.timestamp) | sort | .[0]),
-		last_seen: (map(.timestamp) | sort | reverse | .[0]),
-		categories: (map(.category) | unique | join(","))
-	})' 2>/dev/null
 }
 
 # ==============================================================================
@@ -465,23 +109,11 @@ get_stats_by_host() {
 
 case "$1" in
 	list)
-		# List available methods
 		json_init
-		json_add_object "get_security_stats"
-		json_close_object
-		json_add_object "status"
-		json_close_object
-		json_add_object "get_active_threats"
-		json_close_object
-		json_add_object "get_threat_history"
-			json_add_string "hours" "int"
-		json_close_object
-		json_add_object "get_stats_by_type"
-		json_close_object
-		json_add_object "get_stats_by_host"
-		json_close_object
-		json_add_object "get_blocked_ips"
-		json_close_object
+		json_add_object "status"; json_close_object
+		json_add_object "get_security_stats"; json_close_object
+		json_add_object "get_active_threats"; json_close_object
+		json_add_object "get_blocked_ips"; json_close_object
 		json_add_object "block_threat"
 			json_add_string "ip" "string"
 			json_add_string "duration" "string"
@@ -494,107 +126,62 @@ case "$1" in
 		json_add_object "remove_whitelist"
 			json_add_string "ip" "string"
 		json_close_object
+		json_add_object "get_threat_intel"; json_close_object
+		json_add_object "get_mesh_iocs"; json_close_object
+		json_add_object "get_mesh_peers"; json_close_object
+		json_add_object "publish_intel"; json_close_object
+		json_add_object "apply_intel"; json_close_object
 		json_dump
 		;;
 
 	call)
 		case "$2" in
+			status)
+				json_init
+				json_add_boolean "netifyd_running" $(pgrep netifyd >/dev/null 2>&1 && echo 1 || echo 0)
+				json_add_boolean "crowdsec_running" $(pgrep crowdsec >/dev/null 2>&1 && echo 1 || echo 0)
+				json_add_boolean "mitmproxy_running" $(pgrep mitmdump >/dev/null 2>&1 && echo 1 || echo 0)
+				json_add_boolean "cscli_available" $([ -x "$CSCLI" ] && echo 1 || echo 0)
+				json_add_boolean "threat_intel_available" $([ -x "$THREAT_INTEL" ] && echo 1 || echo 0)
+				json_dump
+				;;
+
 			get_security_stats)
 				get_security_stats
 				;;
 
-			status)
-				json_init
-				json_add_boolean "enabled" 1
-				json_add_string "module" "secubox-security-threats"
-				json_add_string "version" "1.0.0"
-				json_add_boolean "netifyd_running" $(pgrep netifyd >/dev/null && echo 1 || echo 0)
-				json_add_boolean "crowdsec_running" $(pgrep crowdsec >/dev/null && echo 1 || echo 0)
-				json_add_boolean "cscli_available" $([ -x "$CSCLI" ] && echo 1 || echo 0)
-				json_dump
-				;;
-
 			get_active_threats)
-				# Get mitmproxy threats from threats.log (primary source for WAN protection)
 				_log_file="/srv/mitmproxy/threats.log"
-				_threats_json="[]"
-
 				if [ -f "$_log_file" ]; then
-					_threats_json=$(tail -50 "$_log_file" 2>/dev/null | jq -sc '
+					_threats=$(tail -50 "$_log_file" 2>/dev/null | jq -sc '
 						map({
 							ip: .source_ip,
-							mac: "N/A",
-							timestamp: .timestamp,
-							risk_score: (if .severity == "critical" then 90 elif .severity == "high" then 70 elif .severity == "medium" then 50 else 30 end),
 							severity: .severity,
-							category: (if .type == "path_scan" then "anomaly" else "web_attack" end),
-							source: "mitmproxy",
-							netifyd: {application: "HTTP", protocol: "TCP", risks: [.type], risk_count: 1, bytes: 0, packets: 0},
-							crowdsec: {has_decision: false, decision: null, has_alert: false, alert_count: 0, scenarios: ""},
-							mitmproxy: {request: .request, host: .host, pattern: .pattern, country: .country, is_bot: .is_bot, bot_type: .bot_type, cve: .cve, response_code: .response_code}
-						}) | unique_by(.ip) | sort_by(.risk_score) | reverse
+							score: (if .severity == "critical" then 90
+								elif .severity == "high" then 70
+								elif .severity == "medium" then 50
+								else 30 end),
+							type: .type,
+							pattern: .pattern,
+							host: .host,
+							country: (.country // "??"),
+							timestamp: .timestamp,
+							request: (.request // "-"),
+							is_bot: (.is_bot // false),
+							bot_type: (.bot_type // null),
+							cve: (.cve // null)
+						}) | unique_by(.ip) | sort_by(.score) | reverse
 					' 2>/dev/null || echo "[]")
+					printf '{"threats":%s}\n' "$_threats"
+				else
+					echo '{"threats":[]}'
 				fi
-
-				printf '{"threats":%s}\n' "$_threats_json"
-				;;
-
-			get_threat_history)
-				read -r input
-				json_load "$input"
-				json_get_var hours hours
-				hours=${hours:-24}
-
-				init_storage
-
-				# Filter history by time
-				local cutoff_time=$(date -d "$hours hours ago" -Iseconds 2>/dev/null || date -Iseconds)
-
-				json_init
-				json_add_array "threats"
-				if [ -f "$HISTORY_FILE" ]; then
-					jq -c --arg cutoff "$cutoff_time" '.[] | select(.timestamp >= $cutoff)' "$HISTORY_FILE" 2>/dev/null | while read -r threat; do
-						echo "$threat"
-					done
-				fi
-				json_close_array
-				json_dump
-				;;
-
-			get_stats_by_type)
-				local netifyd_data=$(get_netifyd_flows)
-				local risky_flows=$(filter_risky_flows "$netifyd_data")
-				local decisions=$(get_crowdsec_decisions)
-				local alerts=$(get_crowdsec_alerts)
-				local threats=$(correlate_threats "$risky_flows" "$decisions" "$alerts")
-
-				local stats=$(get_stats_by_type "$threats")
-
-				echo "$stats"
-				;;
-
-			get_stats_by_host)
-				local netifyd_data=$(get_netifyd_flows)
-				local risky_flows=$(filter_risky_flows "$netifyd_data")
-				local decisions=$(get_crowdsec_decisions)
-				local alerts=$(get_crowdsec_alerts)
-				local threats=$(correlate_threats "$risky_flows" "$decisions" "$alerts")
-
-				json_init
-				json_add_array "hosts"
-				if [ -n "$threats" ]; then
-					get_stats_by_host "$threats" | jq -c '.[]' | while read -r host; do
-						echo "$host"
-					done
-				fi
-				json_close_array
-				json_dump
 				;;
 
 			get_blocked_ips)
 				if [ -x "$CSCLI" ]; then
-					local decisions=$(get_crowdsec_decisions)
-					echo "{\"blocked\":$decisions}"
+					_decisions=$($CSCLI decisions list -o json 2>/dev/null || echo "[]")
+					printf '{"blocked":%s}\n' "$_decisions"
 				else
 					echo '{"blocked":[]}'
 				fi
@@ -606,19 +193,15 @@ case "$1" in
 				json_get_var ip ip
 				json_get_var duration duration
 				json_get_var reason reason
+				duration=${duration:-4h}
+				reason=${reason:-"Manual block from Security Dashboard"}
 
 				if [ -z "$ip" ]; then
 					json_init
 					json_add_boolean "success" 0
 					json_add_string "error" "IP address required"
 					json_dump
-					exit 0
-				fi
-
-				duration=${duration:-4h}
-				reason=${reason:-"Manual block from Security Threats Dashboard"}
-
-				if execute_block "$ip" "$duration" "$reason"; then
+				elif execute_block "$ip" "$duration" "$reason"; then
 					json_init
 					json_add_boolean "success" 1
 					json_add_string "message" "IP $ip blocked for $duration"
@@ -626,7 +209,7 @@ case "$1" in
 				else
 					json_init
 					json_add_boolean "success" 0
-					json_add_string "error" "Failed to block IP (check if CrowdSec is running)"
+					json_add_string "error" "Failed to block IP"
 					json_dump
 				fi
 				;;
@@ -636,28 +219,25 @@ case "$1" in
 				json_load "$input"
 				json_get_var ip ip
 				json_get_var reason reason
+				reason=${reason:-"Whitelisted from Security Dashboard"}
 
 				if [ -z "$ip" ]; then
 					json_init
 					json_add_boolean "success" 0
 					json_add_string "error" "IP address required"
 					json_dump
-					exit 0
+				else
+					local section="whitelist_${ip//./_}"
+					uci set "secubox_security_threats.${section}=whitelist"
+					uci set "secubox_security_threats.${section}.ip=$ip"
+					uci set "secubox_security_threats.${section}.reason=$reason"
+					uci set "secubox_security_threats.${section}.added_at=$(date -Iseconds)"
+					uci commit secubox_security_threats
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "IP $ip whitelisted"
+					json_dump
 				fi
-
-				reason=${reason:-"Whitelisted from Security Threats Dashboard"}
-				local section="whitelist_${ip//./_}"
-
-				uci set "secubox_security_threats.${section}=whitelist"
-				uci set "secubox_security_threats.${section}.ip=$ip"
-				uci set "secubox_security_threats.${section}.reason=$reason"
-				uci set "secubox_security_threats.${section}.added_at=$(date -Iseconds)"
-				uci commit secubox_security_threats
-
-				json_init
-				json_add_boolean "success" 1
-				json_add_string "message" "IP $ip added to whitelist"
-				json_dump
 				;;
 
 			remove_whitelist)
@@ -670,23 +250,67 @@ case "$1" in
 					json_add_boolean "success" 0
 					json_add_string "error" "IP address required"
 					json_dump
-					exit 0
+				else
+					local section="whitelist_${ip//./_}"
+					uci delete "secubox_security_threats.${section}" 2>/dev/null
+					uci commit secubox_security_threats
+					json_init
+					json_add_boolean "success" 1
+					json_add_string "message" "IP $ip removed from whitelist"
+					json_dump
 				fi
+				;;
 
-				local section="whitelist_${ip//./_}"
-				uci delete "secubox_security_threats.${section}" 2>/dev/null
-				uci commit secubox_security_threats
+			get_threat_intel)
+				if [ -x "$THREAT_INTEL" ]; then
+					"$THREAT_INTEL" status 2>/dev/null
+				else
+					echo '{"enabled":false,"error":"threat-intel not available"}'
+				fi
+				;;
 
-				json_init
-				json_add_boolean "success" 1
-				json_add_string "message" "IP $ip removed from whitelist"
-				json_dump
+			get_mesh_iocs)
+				if [ -x "$THREAT_INTEL" ]; then
+					_iocs=$("$THREAT_INTEL" list received 2>/dev/null)
+					printf '{"iocs":%s}\n' "${_iocs:-[]}"
+				else
+					echo '{"iocs":[]}'
+				fi
+				;;
+
+			get_mesh_peers)
+				if [ -x "$THREAT_INTEL" ]; then
+					_peers=$("$THREAT_INTEL" peers 2>/dev/null)
+					printf '{"peers":%s}\n' "${_peers:-[]}"
+				else
+					echo '{"peers":[]}'
+				fi
+				;;
+
+			publish_intel)
+				if [ -x "$THREAT_INTEL" ]; then
+					"$THREAT_INTEL" collect-and-publish >/dev/null 2>&1 &
+					json_init
+					json_add_boolean "started" 1
+					json_add_string "message" "Publish started in background"
+					json_dump
+				else
+					echo '{"error":"threat-intel not available"}'
+				fi
+				;;
+
+			apply_intel)
+				if [ -x "$THREAT_INTEL" ]; then
+					"$THREAT_INTEL" apply-pending 2>/dev/null
+					"$THREAT_INTEL" status 2>/dev/null
+				else
+					echo '{"error":"threat-intel not available"}'
+				fi
 				;;
 
 			*)
 				json_init
-				json_add_boolean "error" 1
-				json_add_string "message" "Unknown method: $2"
+				json_add_string "error" "Unknown method: $2"
 				json_dump
 				;;
 		esac
