@@ -21,7 +21,7 @@ if [ "$REQUEST_METHOD" = "GET" ]; then
 	echo ""
 
 	# Load library
-	. /usr/lib/secubox/master-link.sh 2>/dev/null
+	. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
 
 	# Parse token from query string
 	token=""
@@ -47,7 +47,7 @@ if [ "$REQUEST_METHOD" != "POST" ]; then
 fi
 
 # Load library
-. /usr/lib/secubox/master-link.sh 2>/dev/null
+. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
 
 # Read POST body
 read -r input

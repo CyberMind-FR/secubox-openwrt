@@ -20,7 +20,7 @@ if [ "$REQUEST_METHOD" != "POST" ]; then
 fi
 
 # Load library
-. /usr/lib/secubox/master-link.sh 2>/dev/null
+. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
 
 # Auth check - local only
 if ! ml_check_local_auth; then

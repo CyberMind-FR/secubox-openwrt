@@ -230,7 +230,9 @@
       "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt tag -a v0.18.2 -m \"Release v0.18.2: CVE-2025-15467 detection and security dashboard integration\")",
       "WebFetch(domain:simplex.chat)",
       "Bash(# Find usign keys find ~/CyberMindStudio/secubox-openwrt -name \"\"*.key\"\")",
-      "Bash(cd ~/CyberMindStudio/secubox-openwrt/package/secubox/secubox-app-bonus/root/www/secubox-feed ls -la Packages* luci-app-secubox-security-threats*.ipk echo \"\" grep -A3 \"Package: luci-app-secubox-security-threats\" Packages)"
+      "Bash(cd ~/CyberMindStudio/secubox-openwrt/package/secubox/secubox-app-bonus/root/www/secubox-feed ls -la Packages* luci-app-secubox-security-threats*.ipk echo \"\" grep -A3 \"Package: luci-app-secubox-security-threats\" Packages)",
+      "Bash(docker pull:*)",
+      "Bash(do echo \"=== $f ===\")"
     ]
   }
 }

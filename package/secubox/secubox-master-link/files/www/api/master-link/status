@@ -15,7 +15,7 @@ if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
 fi
 
 # Load library
-. /usr/lib/secubox/master-link.sh 2>/dev/null
+. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
 
 # Handle POST for role promotion notifications from upstream
 if [ "$REQUEST_METHOD" = "POST" ]; then

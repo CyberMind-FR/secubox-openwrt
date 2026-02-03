@@ -17,8 +17,8 @@ MESH_PORT="${MESH_PORT:-7331}"
 
 ml_init() {
 	mkdir -p "$ML_DIR" "$ML_TOKENS_DIR" "$ML_REQUESTS_DIR"
-	factory_init_keys 2>/dev/null
-	mesh_init 2>/dev/null
+	factory_init_keys >/dev/null 2>&1
+	mesh_init >/dev/null 2>&1
 }
 
 # ============================================================================
@@ -61,7 +61,7 @@ ml_token_generate() {
 	local fp=$(factory_fingerprint 2>/dev/null)
 	chain_add_block "token_generated" \
 		"{\"token_hash\":\"$token_hash\",\"expires\":$expires,\"created_by\":\"$fp\"}" \
-		"$(echo "token_generated:${token_hash}:${now}" | sha256sum | cut -d' ' -f1)" 2>/dev/null
+		"$(echo "token_generated:${token_hash}:${now}" | sha256sum | cut -d' ' -f1)" >/dev/null 2>&1
 
 	# Build join URL
 	local my_addr=$(uci -q get network.lan.ipaddr)
@@ -232,7 +232,7 @@ ml_join_request() {
 	# Add join_request block to chain
 	chain_add_block "join_request" \
 		"{\"fp\":\"$peer_fp\",\"addr\":\"$peer_addr\",\"hostname\":\"$peer_hostname\",\"token_hash\":\"$token_hash\"}" \
-		"$(echo "join_request:${peer_fp}:${now}" | sha256sum | cut -d' ' -f1)" 2>/dev/null
+		"$(echo "join_request:${peer_fp}:${now}" | sha256sum | cut -d' ' -f1)" >/dev/null 2>&1
 
 	logger -t master-link "Join request from $peer_hostname ($peer_fp) at $peer_addr"
 
@@ -271,10 +271,10 @@ ml_join_approve() {
 	local peer_depth=$((my_depth + 1))
 
 	# Trust peer via factory TOFU
-	factory_trust_peer "$peer_fp" "$peer_addr" 2>/dev/null
+	factory_trust_peer "$peer_fp" "$peer_addr" >/dev/null 2>&1
 
 	# Add peer to mesh
-	peer_add "$peer_addr" "$MESH_PORT" "$peer_fp" 2>/dev/null
+	peer_add "$peer_addr" "$MESH_PORT" "$peer_fp" >/dev/null 2>&1
 
 	# Update request status
 	cat > "$request_file" <<-EOF
@@ -306,10 +306,10 @@ ml_join_approve() {
 	# Add peer_approved block to chain
 	chain_add_block "peer_approved" \
 		"{\"fp\":\"$peer_fp\",\"addr\":\"$peer_addr\",\"depth\":$peer_depth,\"approved_by\":\"$my_fp\"}" \
-		"$(echo "peer_approved:${peer_fp}:${now}" | sha256sum | cut -d' ' -f1)" 2>/dev/null
+		"$(echo "peer_approved:${peer_fp}:${now}" | sha256sum | cut -d' ' -f1)" >/dev/null 2>&1
 
 	# Sync chain with new peer
-	gossip_sync 2>/dev/null &
+	gossip_sync >/dev/null 2>&1 &
 
 	logger -t master-link "Peer approved: $peer_hostname ($peer_fp) at depth $peer_depth"
 
@@ -364,7 +364,7 @@ ml_join_reject() {
 	# Add peer_rejected block to chain
 	chain_add_block "peer_rejected" \
 		"{\"fp\":\"$peer_fp\",\"reason\":\"$reason\",\"rejected_by\":\"$my_fp\"}" \
-		"$(echo "peer_rejected:${peer_fp}:${now}" | sha256sum | cut -d' ' -f1)" 2>/dev/null
+		"$(echo "peer_rejected:${peer_fp}:${now}" | sha256sum | cut -d' ' -f1)" >/dev/null 2>&1
 
 	logger -t master-link "Peer rejected: $peer_fp - $reason"
 
@@ -510,7 +510,7 @@ ml_promote_to_submaster() {
 	# Add peer_promoted block to chain
 	chain_add_block "peer_promoted" \
 		"{\"fp\":\"$peer_fp\",\"new_role\":\"sub-master\",\"new_depth\":$new_depth}" \
-		"$(echo "peer_promoted:${peer_fp}:${now}" | sha256sum | cut -d' ' -f1)" 2>/dev/null
+		"$(echo "peer_promoted:${peer_fp}:${now}" | sha256sum | cut -d' ' -f1)" >/dev/null 2>&1
 
 	# Notify the peer to update its role (via mesh API)
 	curl -s --connect-timeout 5 -X POST \

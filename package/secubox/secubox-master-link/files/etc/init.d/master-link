@@ -12,9 +12,9 @@ start_service() {
 	local enabled=$(uci -q get master-link.main.enabled)
 	[ "$enabled" != "1" ] && return 0
 
-	# Initialize master-link directories
-	. /usr/lib/secubox/master-link.sh
-	ml_init 2>/dev/null
+	# Initialize master-link directories (suppress sourced library output)
+	. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
+	ml_init >/dev/null 2>&1
 
 	# Add cron job for token cleanup every 5 minutes
 	local cron_line="*/5 * * * * /usr/lib/secubox/master-link.sh token-cleanup >/dev/null 2>&1"
