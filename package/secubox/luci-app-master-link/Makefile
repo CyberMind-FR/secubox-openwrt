@@ -23,7 +23,7 @@ define Package/luci-app-master-link/install
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/secubox/master-link.js $(1)/www/luci-static/resources/view/secubox/
 
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
-	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.master-link $(1)/usr/libexec/rpcd/
+	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.master_link $(1)/usr/libexec/rpcd/
 endef
 
 $(eval $(call BuildPackage,luci-app-master-link))

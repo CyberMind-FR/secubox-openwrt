@@ -9,20 +9,20 @@ case "$1" in
 	call)
 		case "$2" in
 			status)
-				. /usr/lib/secubox/master-link.sh 2>/dev/null
-				ml_status
+				. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
+				ml_status | tr -d '\n\t'
 				;;
 			peers)
-				. /usr/lib/secubox/master-link.sh 2>/dev/null
-				ml_peer_list
+				. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
+				ml_peer_list | tr -d '\n\t'
 				;;
 			tree)
-				. /usr/lib/secubox/master-link.sh 2>/dev/null
-				ml_tree
+				. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
+				ml_tree | tr -d '\n\t'
 				;;
 			token_generate)
-				. /usr/lib/secubox/master-link.sh 2>/dev/null
-				ml_token_generate
+				. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
+				ml_token_generate | tr -d '\n\t'
 				;;
 			approve)
 				read -r input
@@ -30,17 +30,17 @@ case "$1" in
 				action=$(echo "$input" | jsonfilter -e '@.action' 2>/dev/null)
 				reason=$(echo "$input" | jsonfilter -e '@.reason' 2>/dev/null)
 
-				. /usr/lib/secubox/master-link.sh 2>/dev/null
+				. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
 
 				case "$action" in
 					approve)
-						ml_join_approve "$fingerprint"
+						ml_join_approve "$fingerprint" | tr -d '\n\t'
 						;;
 					reject)
-						ml_join_reject "$fingerprint" "$reason"
+						ml_join_reject "$fingerprint" "$reason" | tr -d '\n\t'
 						;;
 					promote)
-						ml_promote_to_submaster "$fingerprint"
+						ml_promote_to_submaster "$fingerprint" | tr -d '\n\t'
 						;;
 					*)
 						echo '{"error":"invalid_action"}'
@@ -48,8 +48,8 @@ case "$1" in
 				esac
 				;;
 			token_cleanup)
-				. /usr/lib/secubox/master-link.sh 2>/dev/null
-				ml_token_cleanup
+				. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
+				ml_token_cleanup | tr -d '\n\t'
 				;;
 			*)
 				echo '{"error":"unknown_method"}'

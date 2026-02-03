@@ -8,7 +8,7 @@
 			},
 			"ubus": {
 				"file": ["read", "stat"],
-				"luci.master-link": ["*"]
+				"luci.master_link": ["*"]
 			},
 			"uci": ["master-link"]
 		},
@@ -17,7 +17,7 @@
 				"/etc/config/master-link": ["write"]
 			},
 			"ubus": {
-				"luci.master-link": ["*"]
+				"luci.master_link": ["*"]
 			},
 			"uci": ["master-link"]
 		}

@@ -7,36 +7,36 @@
 'require uci';
 
 var callStatus = rpc.declare({
-	object: 'luci.master-link',
+	object: 'luci.master_link',
 	method: 'status',
 	expect: { '': {} }
 });
 
 var callPeers = rpc.declare({
-	object: 'luci.master-link',
+	object: 'luci.master_link',
 	method: 'peers',
 	expect: { '': {} }
 });
 
 var callTree = rpc.declare({
-	object: 'luci.master-link',
+	object: 'luci.master_link',
 	method: 'tree',
 	expect: { '': {} }
 });
 
 var callTokenGenerate = rpc.declare({
-	object: 'luci.master-link',
+	object: 'luci.master_link',
 	method: 'token_generate'
 });
 
 var callApprove = rpc.declare({
-	object: 'luci.master-link',
+	object: 'luci.master_link',
 	method: 'approve',
 	params: ['fingerprint', 'action', 'reason']
 });
 
 var callTokenCleanup = rpc.declare({
-	object: 'luci.master-link',
+	object: 'luci.master_link',
 	method: 'token_cleanup'
 });
 
