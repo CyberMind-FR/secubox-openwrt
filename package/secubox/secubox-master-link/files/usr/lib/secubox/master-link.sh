@@ -264,6 +264,8 @@ ml_join_approve() {
 	local peer_addr=$(jsonfilter -i "$request_file" -e '@.address' 2>/dev/null)
 	local peer_hostname=$(jsonfilter -i "$request_file" -e '@.hostname' 2>/dev/null)
 	local token_hash=$(jsonfilter -i "$request_file" -e '@.token_hash' 2>/dev/null)
+	local orig_ts=$(jsonfilter -i "$request_file" -e '@.timestamp' 2>/dev/null)
+	[ -z "$orig_ts" ] && orig_ts=0
 	local now=$(date +%s)
 	local my_fp=$(factory_fingerprint 2>/dev/null)
 	local my_depth=$(uci -q get master-link.main.depth)
@@ -283,7 +285,7 @@ ml_join_approve() {
 		"address": "$peer_addr",
 		"hostname": "$peer_hostname",
 		"token_hash": "$token_hash",
-		"timestamp": $(jsonfilter -i "$request_file" -e '@.timestamp' 2>/dev/null),
+		"timestamp": $orig_ts,
 		"approved_at": $now,
 		"approved_by": "$my_fp",
 		"depth": $peer_depth,
@@ -344,16 +346,18 @@ ml_join_reject() {
 	local my_fp=$(factory_fingerprint 2>/dev/null)
 	local now=$(date +%s)
 
-	# Update request status
+	# Read all fields before overwriting
 	local peer_addr=$(jsonfilter -i "$request_file" -e '@.address' 2>/dev/null)
 	local peer_hostname=$(jsonfilter -i "$request_file" -e '@.hostname' 2>/dev/null)
+	local orig_ts=$(jsonfilter -i "$request_file" -e '@.timestamp' 2>/dev/null)
+	[ -z "$orig_ts" ] && orig_ts=0
 
 	cat > "$request_file" <<-EOF
 	{
 		"fingerprint": "$peer_fp",
 		"address": "$peer_addr",
 		"hostname": "$peer_hostname",
-		"timestamp": $(jsonfilter -i "$request_file" -e '@.timestamp' 2>/dev/null),
+		"timestamp": $orig_ts,
 		"rejected_at": $now,
 		"rejected_by": "$my_fp",
 		"reason": "$reason",
@@ -488,9 +492,11 @@ ml_promote_to_submaster() {
 	local new_depth=$((my_depth + 1))
 	local now=$(date +%s)
 
-	# Update request file with new role
+	# Read all fields before truncating the file
 	local peer_hostname=$(jsonfilter -i "$request_file" -e '@.hostname' 2>/dev/null)
 	local token_hash=$(jsonfilter -i "$request_file" -e '@.token_hash' 2>/dev/null)
+	local orig_ts=$(jsonfilter -i "$request_file" -e '@.timestamp' 2>/dev/null)
+	local orig_approved=$(jsonfilter -i "$request_file" -e '@.approved_at' 2>/dev/null)
 
 	cat > "$request_file" <<-EOF
 	{
@@ -498,8 +504,8 @@ ml_promote_to_submaster() {
 		"address": "$peer_addr",
 		"hostname": "$peer_hostname",
 		"token_hash": "$token_hash",
-		"timestamp": $(jsonfilter -i "$request_file" -e '@.timestamp' 2>/dev/null),
-		"approved_at": $(jsonfilter -i "$request_file" -e '@.approved_at' 2>/dev/null),
+		"timestamp": $orig_ts,
+		"approved_at": $orig_approved,
 		"promoted_at": $now,
 		"depth": $new_depth,
 		"role": "sub-master",
