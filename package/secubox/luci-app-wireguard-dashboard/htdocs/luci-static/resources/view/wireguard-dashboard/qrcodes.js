@@ -13,12 +13,14 @@ return view.extend({
 		return Promise.all([
 			api.getConfig(),
 			api.getInterfaces(),
-			api.getPeers()
+			api.getPeers(),
+			api.getEndpoints()
 		]).then(function(results) {
 			return {
 				config: results[0] || {},
 				interfaces: (results[1] || {}).interfaces || [],
-				peers: (results[2] || {}).peers || []
+				peers: (results[2] || {}).peers || [],
+				endpointData: results[3] || {}
 			};
 		});
 	},
@@ -190,11 +192,105 @@ return view.extend({
 		]);
 	},
 
+	showManageEndpointsModal: function() {
+		var self = this;
+
+		api.getEndpoints().then(function(endpointData) {
+			var endpoints = (endpointData || {}).endpoints || [];
+			var defaultId = (endpointData || {})['default'] || '';
+
+			var rows = endpoints.map(function(ep) {
+				return E('tr', {}, [
+					E('td', {}, ep.name || ep.id),
+					E('td', {}, E('code', {}, ep.address)),
+					E('td', {}, ep.id === defaultId ? E('strong', {}, _('Default')) : E('button', {
+						'class': 'cbi-button cbi-button-apply',
+						'style': 'padding: 2px 8px; font-size: 0.85em;',
+						'click': function() {
+							api.setDefaultEndpoint(ep.id).then(function() {
+								ui.hideModal();
+								self.showManageEndpointsModal();
+							});
+						}
+					}, _('Set Default'))),
+					E('td', {}, E('button', {
+						'class': 'cbi-button cbi-button-negative',
+						'style': 'padding: 2px 8px; font-size: 0.85em;',
+						'click': function() {
+							api.deleteEndpoint(ep.id).then(function() {
+								ui.hideModal();
+								self.showManageEndpointsModal();
+							});
+						}
+					}, _('Delete')))
+				]);
+			});
+
+			ui.showModal(_('Manage Endpoints'), [
+				endpoints.length > 0 ?
+				E('table', { 'class': 'table' }, [
+					E('thead', {}, [
+						E('tr', {}, [
+							E('th', {}, _('Name')),
+							E('th', {}, _('Address')),
+							E('th', {}, _('Status')),
+							E('th', {}, _('Actions'))
+						])
+					]),
+					E('tbody', {}, rows)
+				]) :
+				E('p', { 'style': 'color: #666; text-align: center; padding: 1em;' }, _('No saved endpoints')),
+
+				E('h4', { 'style': 'margin-top: 1em;' }, _('Add New Endpoint')),
+				E('div', { 'style': 'display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;' }, [
+					E('input', {
+						'type': 'text',
+						'id': 'new-ep-name',
+						'class': 'cbi-input-text',
+						'placeholder': _('Name (e.g. Home Server)')
+					}),
+					E('input', {
+						'type': 'text',
+						'id': 'new-ep-address',
+						'class': 'cbi-input-text',
+						'placeholder': _('Address (e.g. vpn.example.com)')
+					})
+				]),
+				E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
+					E('button', {
+						'class': 'btn',
+						'click': ui.hideModal
+					}, _('Close')),
+					' ',
+					E('button', {
+						'class': 'btn cbi-button-action',
+						'click': function() {
+							var name = document.getElementById('new-ep-name').value.trim();
+							var address = document.getElementById('new-ep-address').value.trim();
+							if (!address) {
+								ui.addNotification(null, E('p', _('Please enter an address')), 'error');
+								return;
+							}
+							var id = (name || address).toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 20);
+							api.setEndpoint(id, name || address, address).then(function() {
+								ui.hideModal();
+								self.showManageEndpointsModal();
+							});
+						}
+					}, _('Add Endpoint'))
+				])
+			]);
+		});
+	},
+
 	render: function(data) {
 		var self = this;
 		var interfaces = data.interfaces || [];
 		var configData = (data.config || {}).interfaces || [];
 		var peers = data.peers || [];
+		var endpointData = data.endpointData || {};
+
+		this.endpointData = endpointData;
 
 		// Merge interface data with config data
 		interfaces = interfaces.map(function(iface) {
@@ -204,6 +300,8 @@ return view.extend({
 				public_key: cfg.public_key || iface.public_key
 			});
 		});
+
+		var endpointSelector = api.buildEndpointSelector(endpointData, 'wg-server-endpoint');
 
 		var view = E('div', { 'class': 'wireguard-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
@@ -216,35 +314,24 @@ return view.extend({
 				])
 			]),
 
-			// Server endpoint input
+			// Server endpoint selector
 			E('div', { 'class': 'wg-card' }, [
 				E('div', { 'class': 'wg-card-header' }, [
 					E('div', { 'class': 'wg-card-title' }, [
 						E('span', { 'class': 'wg-card-title-icon' }, '🌐'),
 						_('Server Endpoint')
-					])
+					]),
+					E('button', {
+						'class': 'wg-btn',
+						'style': 'font-size: 0.85em;',
+						'click': L.bind(this.showManageEndpointsModal, this)
+					}, _('Manage'))
 				]),
 				E('div', { 'class': 'wg-card-body' }, [
 					E('p', { 'style': 'margin-bottom: 12px; color: var(--wg-text-secondary);' },
-						_('Enter the public IP or hostname of this WireGuard server:')),
+						_('Select or enter the public IP or hostname of this WireGuard server:')),
 					E('div', { 'class': 'wg-form-row' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'wg-server-endpoint',
-							'class': 'cbi-input-text',
-							'placeholder': 'e.g., vpn.example.com or 203.0.113.1',
-							'style': 'flex: 1;'
-						}),
-						E('button', {
-							'class': 'wg-btn wg-btn-primary',
-							'click': function() {
-								var input = document.getElementById('wg-server-endpoint');
-								if (input && input.value.trim()) {
-									sessionStorage.setItem('wg_server_endpoint', input.value.trim());
-									ui.addNotification(null, E('p', {}, _('Server endpoint saved')), 'info');
-								}
-							}
-						}, _('Save'))
+						E('div', { 'style': 'flex: 1;' }, [ endpointSelector ])
 					])
 				])
 			]),
@@ -289,13 +376,9 @@ return view.extend({
 										E('button', {
 											'class': 'wg-btn wg-btn-primary',
 											'click': function() {
-												var endpoint = sessionStorage.getItem('wg_server_endpoint');
+												var endpoint = api.getEndpointValue('wg-server-endpoint');
 												if (!endpoint) {
-													var input = document.getElementById('wg-server-endpoint');
-													endpoint = input ? input.value.trim() : '';
-												}
-												if (!endpoint) {
-													ui.addNotification(null, E('p', {}, _('Please enter the server endpoint first')), 'warning');
+													ui.addNotification(null, E('p', {}, _('Please select or enter the server endpoint first')), 'warning');
 													return;
 												}
 												self.generateQRForPeer(iface, peer, endpoint);
@@ -315,15 +398,6 @@ return view.extend({
 				E('p', {}, _('Create a WireGuard interface to generate QR codes'))
 			])
 		]);
-
-		// Restore saved endpoint
-		setTimeout(function() {
-			var saved = sessionStorage.getItem('wg_server_endpoint');
-			if (saved) {
-				var input = document.getElementById('wg-server-endpoint');
-				if (input) input.value = saved;
-			}
-		}, 100);
 
 		// Add CSS
 		var css = `

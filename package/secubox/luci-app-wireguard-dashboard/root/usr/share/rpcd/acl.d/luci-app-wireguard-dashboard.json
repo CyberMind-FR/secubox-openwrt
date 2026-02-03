@@ -12,14 +12,16 @@
 					"peer_descriptions",
 					"bandwidth_rates",
 					"bandwidth_history",
-					"endpoint_info"
+					"endpoint_info",
+					"get_endpoints"
 				],
 				"system": [ "info", "board" ],
 				"file": [ "read", "stat", "exec" ]
 			},
-			"uci": [ "network", "wireguard-dashboard" ],
+			"uci": [ "network", "wireguard_dashboard" ],
 			"file": {
 				"/etc/config/network": [ "read" ],
+				"/etc/config/wireguard_dashboard": [ "read" ],
 				"/usr/bin/wg": [ "exec" ]
 			}
 		},
@@ -33,10 +35,13 @@
 					"generate_config",
 					"generate_qr",
 					"interface_control",
-					"ping_peer"
+					"ping_peer",
+					"set_endpoint",
+					"set_default_endpoint",
+					"delete_endpoint"
 				]
 			},
-			"uci": [ "wireguard-dashboard", "network" ]
+			"uci": [ "wireguard_dashboard", "network" ]
 		}
 	}
 }

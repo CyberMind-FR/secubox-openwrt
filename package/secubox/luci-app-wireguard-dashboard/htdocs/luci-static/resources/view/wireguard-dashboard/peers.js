@@ -37,7 +37,8 @@ return view.extend({
 	load: function() {
 		return Promise.all([
 			API.getPeers(),
-			API.getInterfaces()
+			API.getInterfaces(),
+			API.getEndpoints()
 		]);
 	},
 
@@ -46,9 +47,12 @@ return view.extend({
 		// Handle RPC expect unwrapping - results may be array or object with .peers/.interfaces
 		var peersData = data[0] || [];
 		var interfacesData = data[1] || [];
+		var endpointData = data[2] || {};
 		var peers = Array.isArray(peersData) ? peersData : (peersData.peers || []);
 		var interfaces = Array.isArray(interfacesData) ? interfacesData : (interfacesData.interfaces || []);
 		var activePeers = peers.filter(function(p) { return p.status === 'active'; }).length;
+
+		this.endpointData = endpointData;
 
 		var view = E('div', { 'class': 'cbi-map' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
@@ -418,20 +422,23 @@ return view.extend({
 
 	promptForEndpointAndShowQR: function(peer, ifaceObj, privateKey) {
 		var self = this;
-		var savedEndpoint = sessionStorage.getItem('wg_server_endpoint') || '';
+		var endpointData = this.endpointData || {};
+		var endpoints = endpointData.endpoints || [];
+
+		// If exactly one endpoint exists, skip the prompt
+		if (endpoints.length === 1) {
+			self.generateAndShowQR(peer, ifaceObj, privateKey, endpoints[0].address);
+			return;
+		}
+
+		var selector = API.buildEndpointSelector(endpointData, 'qr-server-endpoint');
 
 		ui.showModal(_('Server Endpoint'), [
-			E('p', {}, _('Enter the public IP or hostname of this WireGuard server:')),
+			E('p', {}, _('Select or enter the public IP or hostname of this WireGuard server:')),
 			E('div', { 'class': 'cbi-value' }, [
 				E('label', { 'class': 'cbi-value-title' }, _('Server Endpoint')),
 				E('div', { 'class': 'cbi-value-field' }, [
-					E('input', {
-						'type': 'text',
-						'id': 'qr-server-endpoint',
-						'class': 'cbi-input-text',
-						'placeholder': 'vpn.example.com or 203.0.113.1',
-						'value': savedEndpoint
-					})
+					selector
 				])
 			]),
 			E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
@@ -443,12 +450,11 @@ return view.extend({
 				E('button', {
 					'class': 'btn cbi-button-action',
 					'click': function() {
-						var endpoint = document.getElementById('qr-server-endpoint').value.trim();
+						var endpoint = API.getEndpointValue('qr-server-endpoint');
 						if (!endpoint) {
 							ui.addNotification(null, E('p', _('Please enter server endpoint')), 'error');
 							return;
 						}
-						sessionStorage.setItem('wg_server_endpoint', endpoint);
 						ui.hideModal();
 						self.generateAndShowQR(peer, ifaceObj, privateKey, endpoint);
 					}
@@ -636,6 +642,8 @@ return view.extend({
 		var self = this;
 		var privateKey = this.getStoredPrivateKey(peer.public_key);
 		var ifaceObj = interfaces.find(function(i) { return i.name === peer.interface; }) || {};
+		var endpointData = this.endpointData || {};
+		var endpoints = endpointData.endpoints || [];
 
 		var downloadConfig = function(config) {
 			var blob = new Blob([config], { type: 'text/plain' });
@@ -648,21 +656,46 @@ return view.extend({
 			ui.addNotification(null, E('p', _('Configuration file downloaded')), 'info');
 		};
 
+		var doDownload = function(privKey, endpoint) {
+			if (privKey) {
+				var config = '[Interface]\n' +
+					'PrivateKey = ' + privKey + '\n' +
+					'Address = ' + (peer.allowed_ips || '10.0.0.2/32') + '\n' +
+					'DNS = 1.1.1.1, 1.0.0.1\n\n' +
+					'[Peer]\n' +
+					'PublicKey = ' + (ifaceObj.public_key || '') + '\n' +
+					'Endpoint = ' + endpoint + ':' + (ifaceObj.listen_port || 51820) + '\n' +
+					'AllowedIPs = 0.0.0.0/0, ::/0\n' +
+					'PersistentKeepalive = 25';
+				downloadConfig(config);
+			} else {
+				API.generateConfig(peer.interface, peer.public_key, '', endpoint).then(function(result) {
+					if (result && result.config && !result.error) {
+						downloadConfig(result.config);
+					} else {
+						ui.addNotification(null, E('p', result.error || _('Failed to generate config')), 'error');
+					}
+				}).catch(function(err) {
+					ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
+				});
+			}
+		};
+
 		var showConfigModal = function(privKey) {
-			var savedEndpoint = sessionStorage.getItem('wg_server_endpoint') || '';
+			// If exactly one endpoint exists, skip the prompt
+			if (endpoints.length === 1) {
+				doDownload(privKey, endpoints[0].address);
+				return;
+			}
+
+			var selector = API.buildEndpointSelector(endpointData, 'cfg-server-endpoint');
 
 			ui.showModal(_('Download Configuration'), [
-				E('p', {}, _('Enter the server endpoint to generate the client configuration:')),
+				E('p', {}, _('Select or enter the server endpoint to generate the client configuration:')),
 				E('div', { 'class': 'cbi-value' }, [
 					E('label', { 'class': 'cbi-value-title' }, _('Server Endpoint')),
 					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'cfg-server-endpoint',
-							'class': 'cbi-input-text',
-							'placeholder': 'vpn.example.com or 203.0.113.1',
-							'value': savedEndpoint
-						})
+						selector
 					])
 				]),
 				E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
@@ -674,37 +707,13 @@ return view.extend({
 					E('button', {
 						'class': 'btn cbi-button-action',
 						'click': function() {
-							var endpoint = document.getElementById('cfg-server-endpoint').value.trim();
+							var endpoint = API.getEndpointValue('cfg-server-endpoint');
 							if (!endpoint) {
 								ui.addNotification(null, E('p', _('Please enter server endpoint')), 'error');
 								return;
 							}
-							sessionStorage.setItem('wg_server_endpoint', endpoint);
 							ui.hideModal();
-
-							if (privKey) {
-								var config = '[Interface]\n' +
-									'PrivateKey = ' + privKey + '\n' +
-									'Address = ' + (peer.allowed_ips || '10.0.0.2/32') + '\n' +
-									'DNS = 1.1.1.1, 1.0.0.1\n\n' +
-									'[Peer]\n' +
-									'PublicKey = ' + (ifaceObj.public_key || '') + '\n' +
-									'Endpoint = ' + endpoint + ':' + (ifaceObj.listen_port || 51820) + '\n' +
-									'AllowedIPs = 0.0.0.0/0, ::/0\n' +
-									'PersistentKeepalive = 25';
-								downloadConfig(config);
-							} else {
-								// Use backend to generate config (it has the stored key)
-								API.generateConfig(peer.interface, peer.public_key, '', endpoint).then(function(result) {
-									if (result && result.config && !result.error) {
-										downloadConfig(result.config);
-									} else {
-										ui.addNotification(null, E('p', result.error || _('Failed to generate config')), 'error');
-									}
-								}).catch(function(err) {
-									ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
-								});
-							}
+							doDownload(privKey, endpoint);
 						}
 					}, _('Download'))
 				])
@@ -715,10 +724,8 @@ return view.extend({
 			// Try backend first - it may have the stored key
 			API.generateConfig(peer.interface, peer.public_key, '', 'test').then(function(result) {
 				if (result && result.config && !result.error) {
-					// Backend has the key, show config modal with backend-generated config
 					showConfigModal('');
 				} else {
-					// Fallback to manual prompt
 					self.showPrivateKeyPrompt(peer, ifaceObj, function(key) {
 						showConfigModal(key);
 					});
