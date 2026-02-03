@@ -1,367 +1,491 @@
 Package: luci-app-auth-guardian
 Version: 0.4.0-r3
 Depends: luci-base, rpcd, nodogsplash
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-auth-guardian
+SourceName: luci-app-auth-guardian
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 71680
 Description:  Comprehensive authentication and session management with captive portal, OAuth2/OIDC integration, voucher system, and time-based access control
 Filename: luci-app-auth-guardian_0.4.0-r3_all.ipk
-Size: 11733
+Size: 11736
 
 Package: luci-app-bandwidth-manager
 Version: 0.5.0-r2
 Depends: luci-base, rpcd, tc, kmod-sched-core, kmod-sched-cake, kmod-ifb, sqm-scripts, iptables, iptables-mod-conntrack-extra, ip-full
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-bandwidth-manager
+SourceName: luci-app-bandwidth-manager
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 337920
 Description:  Advanced bandwidth management with QoS rules, client quotas, and SQM integration
 Filename: luci-app-bandwidth-manager_0.5.0-r2_all.ipk
-Size: 61537
+Size: 61538
 
 Package: luci-app-cdn-cache
 Version: 0.5.0-r3
 Depends: luci-base, rpcd
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-cdn-cache
+SourceName: luci-app-cdn-cache
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 122880
 Description:  Dashboard for managing local CDN caching proxy on OpenWrt
 Filename: luci-app-cdn-cache_0.5.0-r3_all.ipk
-Size: 23181
+Size: 23184
 
 Package: luci-app-client-guardian
 Version: 0.4.0-r7
 Depends: luci-base, luci-app-secubox, luci-lib-jsonc, rpcd, rpcd-mod-luci, luci-lib-nixio, dnsmasq-full, iptables, uhttpd
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-client-guardian
+SourceName: luci-app-client-guardian
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 286720
 Description:  Network Access Control with client monitoring, zone management, captive portal, parental controls, and SMS/email alerts
 Filename: luci-app-client-guardian_0.4.0-r7_all.ipk
-Size: 54532
+Size: 54536
 
 Package: luci-app-crowdsec-dashboard
 Version: 0.7.0-r32
 Depends: luci-base, luci-lib-jsonc, rpcd, rpcd-mod-luci, crowdsec
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-crowdsec-dashboard
+SourceName: luci-app-crowdsec-dashboard
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 184320
 Description:  Real-time security monitoring dashboard for CrowdSec on OpenWrt
 Filename: luci-app-crowdsec-dashboard_0.7.0-r32_all.ipk
-Size: 33795
+Size: 33798
 
 Package: luci-app-cyberfeed
 Version: 0.1.1-r1
 Depends: secubox-app-cyberfeed, luci-base, luci-compat
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-cyberfeed
+SourceName: luci-app-cyberfeed
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 71680
 Description:  Cyberpunk-themed RSS feed aggregator dashboard with social media support
 Filename: luci-app-cyberfeed_0.1.1-r1_all.ipk
-Size: 12835
+Size: 12836
 
 Package: luci-app-dnsguard
 Version: 1.0.0-r1
 Depends: luci-base
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-dnsguard
+SourceName: luci-app-dnsguard
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 40960
 Description:  SecuBox DNS Guard - Privacy DNS Manager
 Filename: luci-app-dnsguard_1.0.0-r1_all.ipk
-Size: 7551
+Size: 7545
 
 Package: luci-app-exposure
 Version: 1.0.0-r3
 Depends: luci-base, secubox-app-exposure
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-exposure
+SourceName: luci-app-exposure
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 153600
 Description:  LuCI SecuBox Service Exposure Manager
 Filename: luci-app-exposure_1.0.0-r3_all.ipk
-Size: 20533
+Size: 20534
 
 Package: luci-app-gitea
 Version: 1.0.0-r2
 Depends: luci-base, luci-lib-jsonc, rpcd, rpcd-mod-luci, secubox-app-gitea
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-gitea
+SourceName: luci-app-gitea
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 81920
 Description:  Modern dashboard for Gitea Platform management on OpenWrt
 Filename: luci-app-gitea_1.0.0-r2_all.ipk
-Size: 15298
+Size: 15297
 
 Package: luci-app-glances
 Version: 1.0.0-r2
 Depends: luci-base, luci-app-secubox, secubox-app-glances
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-glances
+SourceName: luci-app-glances
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 40960
 Description:  Modern dashboard for Glances system monitoring with SecuBox theme
 Filename: luci-app-glances_1.0.0-r2_all.ipk
-Size: 6966
+Size: 6965
 
 Package: luci-app-haproxy
 Version: 1.0.0-r8
 Depends: secubox-app-haproxy, luci-base, luci-compat
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-haproxy
+SourceName: luci-app-haproxy
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 204800
 Description:  Web interface for managing HAProxy load balancer with vhosts, SSL certificates, and backend routing
 Filename: luci-app-haproxy_1.0.0-r8_all.ipk
-Size: 34558
+Size: 34557
 
 Package: luci-app-hexojs
 Version: 1.0.0-r3
 Depends: luci-base, luci-lib-jsonc, rpcd, rpcd-mod-luci, secubox-app-hexojs
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-hexojs
+SourceName: luci-app-hexojs
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 184320
 Description:  Modern dashboard for Hexo static site generator on OpenWrt
 Filename: luci-app-hexojs_1.0.0-r3_all.ipk
-Size: 30307
+Size: 30306
 
 Package: luci-app-jitsi
 Version: 1.0.0-r1
 Depends: secubox-app-jitsi
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-jitsi
+SourceName: luci-app-jitsi
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 30720
 Description:  LuCI Jitsi Meet Configuration
 Filename: luci-app-jitsi_1.0.0-r1_all.ipk
-Size: 5138
+Size: 5132
 
 Package: luci-app-ksm-manager
 Version: 0.4.0-r2
 Depends: luci-base, rpcd, openssl-util, gnupg2, nitropy, yubikey-manager, opensc, libccid, pcscd, kmod-usb-core, kmod-usb2, kmod-usb3
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-ksm-manager
+SourceName: luci-app-ksm-manager
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 112640
 Description:  Centralized cryptographic key management with hardware security module (HSM) support for Nitrokey and YubiKey devices. Provides secure key storage, certificate management, SSH key handling, and secret storage with audit logging.
 Filename: luci-app-ksm-manager_0.4.0-r2_all.ipk
-Size: 18719
+Size: 18720
 
 Package: luci-app-localai
 Version: 0.1.0-r15
 Depends: luci-base, luci-app-secubox, luci-lib-jsonc, rpcd, rpcd-mod-luci, secubox-app-localai
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-localai
+SourceName: luci-app-localai
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 71680
 Description:  Modern dashboard for LocalAI LLM management on OpenWrt
 Filename: luci-app-localai_0.1.0-r15_all.ipk
-Size: 13179
+Size: 13180
 
 Package: luci-app-lyrion
 Version: 1.0.0-r1
 Depends: luci-base
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-lyrion
+SourceName: luci-app-lyrion
 License: GPL-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 40960
 Description:  LuCI support for Lyrion Music Server
 Filename: luci-app-lyrion_1.0.0-r1_all.ipk
-Size: 6726
+Size: 6727
 
 Package: luci-app-magicmirror2
 Version: 0.4.0-r6
 Depends: luci-base, luci-app-secubox, secubox-app-magicmirror2, jq
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-magicmirror2
+SourceName: luci-app-magicmirror2
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 71680
 Description:  Modern dashboard for MagicMirror2 smart display platform with module manager and SecuBox theme
 Filename: luci-app-magicmirror2_0.4.0-r6_all.ipk
-Size: 12277
+Size: 12274
 
 Package: luci-app-mailinabox
 Version: 1.0.0-r1
 Depends: luci-base
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-mailinabox
+SourceName: luci-app-mailinabox
 License: GPL-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 30720
 Description:  LuCI support for Mail-in-a-Box
 Filename: luci-app-mailinabox_1.0.0-r1_all.ipk
-Size: 5483
+Size: 5485
 
 Package: luci-app-media-flow
 Version: 0.6.4-r1
 Depends: luci-base, rpcd, jq
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-media-flow
+SourceName: luci-app-media-flow
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 133120
 Description:  Real-time detection and monitoring of streaming services (Netflix, YouTube, Spotify, etc.) with quality estimation, history tracking, and alerts. Supports nDPId local DPI and netifyd.
 Filename: luci-app-media-flow_0.6.4-r1_all.ipk
-Size: 25414
+Size: 25416
 
 Package: luci-app-metablogizer
 Version: 1.0.0-r5
 Depends: luci-base, git
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-metablogizer
+SourceName: luci-app-metablogizer
 License: GPL-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 122880
 Description:  LuCI support for MetaBlogizer Static Site Publisher
 Filename: luci-app-metablogizer_1.0.0-r5_all.ipk
-Size: 23344
+Size: 23346
 
 Package: luci-app-metabolizer
 Version: 1.0.0-r2
 Depends: luci-base, secubox-app-metabolizer
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-metabolizer
+SourceName: luci-app-metabolizer
 License: GPL-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 30720
 Description:  LuCI support for Metabolizer CMS
 Filename: luci-app-metabolizer_1.0.0-r2_all.ipk
-Size: 4756
+Size: 4755
 
 Package: luci-app-mitmproxy
 Version: 0.5.0-r2
 Depends: luci-base, luci-app-secubox, secubox-app-mitmproxy, jq
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-mitmproxy
+SourceName: luci-app-mitmproxy
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 61440
 Description:  Modern dashboard for mitmproxy HTTPS traffic inspection with SecuBox theme
 Filename: luci-app-mitmproxy_0.5.0-r2_all.ipk
-Size: 11149
+Size: 11151
 
 Package: luci-app-mmpm
 Version: 0.2.0-r3
 Depends: luci-base, luci-app-secubox, secubox-app-mmpm
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-mmpm
+SourceName: luci-app-mmpm
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 51200
 Description:  Web interface for MMPM - MagicMirror Package Manager
 Filename: luci-app-mmpm_0.2.0-r3_all.ipk
-Size: 7898
+Size: 7901
 
 Package: luci-app-mqtt-bridge
 Version: 0.4.0-r4
 Depends: luci-base, luci-lib-jsonc, luci-lua-runtime
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-mqtt-bridge
+SourceName: luci-app-mqtt-bridge
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 122880
 Description:  USB-to-MQTT IoT hub with SecuBox theme
 Filename: luci-app-mqtt-bridge_0.4.0-r4_all.ipk
-Size: 22776
+Size: 22777
 
 Package: luci-app-ndpid
 Version: 1.1.2-r2
 Depends: luci-base, luci-app-secubox, ndpid, socat, jq
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-ndpid
+SourceName: luci-app-ndpid
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 122880
 Description:  Modern dashboard for nDPId deep packet inspection on OpenWrt
 Filename: luci-app-ndpid_1.1.2-r2_all.ipk
-Size: 22649
+Size: 22653
 
 Package: luci-app-netdata-dashboard
 Version: 0.5.0-r2
 Depends: luci-base, luci-app-secubox, luci-lib-jsonc, rpcd, rpcd-mod-luci
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-netdata-dashboard
+SourceName: luci-app-netdata-dashboard
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 112640
 Description:  Real-time system monitoring dashboard with Netdata integration for OpenWrt
 Filename: luci-app-netdata-dashboard_0.5.0-r2_all.ipk
-Size: 20483
+Size: 20485
 
 Package: luci-app-network-modes
 Version: 0.5.0-r3
 Depends: luci-base, luci-app-secubox, luci-lib-jsonc, rpcd, rpcd-mod-luci, luci-lib-nixio
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-network-modes
+SourceName: luci-app-network-modes
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 286720
 Description:  Configure OpenWrt for different network modes: Sniffer, Access Point, Relay, Router
 Filename: luci-app-network-modes_0.5.0-r3_all.ipk
-Size: 54144
+Size: 54146
 
 Package: luci-app-network-tweaks
 Version: 1.0.0-r7
 Depends: luci-base, rpcd, luci-app-vhost-manager, dnsmasq
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-network-tweaks
+SourceName: luci-app-network-tweaks
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 81920
 Description:  Unified network services dashboard with DNS/hosts sync, CDN cache control, and WPAD auto-proxy configuration
 Filename: luci-app-network-tweaks_1.0.0-r7_all.ipk
-Size: 14958
+Size: 14960
 
 Package: luci-app-nextcloud
 Version: 1.0.0-r1
 Depends: luci-base
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-nextcloud
+SourceName: luci-app-nextcloud
 License: GPL-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 30720
 Description:  LuCI support for Nextcloud
 Filename: luci-app-nextcloud_1.0.0-r1_all.ipk
-Size: 6487
+Size: 6488
 
 Package: luci-app-ollama
 Version: 0.1.0-r1
 Depends: luci-base, luci-app-secubox, luci-lib-jsonc, rpcd, rpcd-mod-luci, secubox-app-ollama
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-ollama
+SourceName: luci-app-ollama
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 61440
 Description:  Modern dashboard for Ollama LLM management on OpenWrt
 Filename: luci-app-ollama_0.1.0-r1_all.ipk
-Size: 12350
+Size: 12352
 
 Package: luci-app-picobrew
 Version: 1.0.0-r1
 Depends: luci-base, luci-lib-jsonc, rpcd, rpcd-mod-luci, secubox-app-picobrew
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-picobrew
+SourceName: luci-app-picobrew
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 51200
@@ -372,8 +496,12 @@ Size: 9458
 Package: luci-app-secubox
 Version: 0.7.1-r4
 Depends: luci-base, rpcd, curl, jq, secubox-core
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-secubox
+SourceName: luci-app-secubox
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 419840
@@ -383,92 +511,124 @@ Size: 77680
 
 Package: luci-app-secubox-admin
 Version: 1.0.0-r19
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-secubox-admin
+SourceName: luci-app-secubox-admin
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 337920
 Description:  Unified admin control center for SecuBox appstore plugins with system monitoring
 Filename: luci-app-secubox-admin_1.0.0-r19_all.ipk
-Size: 57245
+Size: 57247
 
 Package: luci-app-secubox-crowdsec
 Version: 1.0.0-r3
 Depends: luci-base, crowdsec, secubox-app-cs-firewall-bouncer
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-secubox-crowdsec
+SourceName: luci-app-secubox-crowdsec
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 81920
 Description:  LuCI SecuBox CrowdSec Dashboard
 Filename: luci-app-secubox-crowdsec_1.0.0-r3_all.ipk
-Size: 13918
+Size: 13915
 
 Package: luci-app-secubox-netdiag
 Version: 1.0.0-r1
 Depends: luci-base, ethtool
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-secubox-netdiag
+SourceName: luci-app-secubox-netdiag
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 81920
 Description:  Real-time DSA switch port statistics, error monitoring, and network health diagnostics
 Filename: luci-app-secubox-netdiag_1.0.0-r1_all.ipk
-Size: 15305
+Size: 15306
 
 Package: luci-app-secubox-netifyd
 Version: 1.2.1-r1
 Depends: luci-base, rpcd, netifyd, jq, secubox-core, ipset, kmod-nft-compat
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-secubox-netifyd
+SourceName: luci-app-secubox-netifyd
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 194560
 Description:  Complete LuCI interface for netifyd DPI engine with real-time flow monitoring, application detection, network analytics, and flow action plugins
 Filename: luci-app-secubox-netifyd_1.2.1-r1_all.ipk
-Size: 36538
+Size: 36543
 
 Package: luci-app-secubox-p2p
 Version: 0.1.0-r1
 Depends: secubox-p2p, luci-base
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-secubox-p2p
+SourceName: luci-app-secubox-p2p
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 215040
 Description:  LuCI SecuBox P2P Hub
 Filename: luci-app-secubox-p2p_0.1.0-r1_all.ipk
-Size: 39236
+Size: 39234
 
 Package: luci-app-secubox-portal
 Version: 0.7.0-r2
 Depends: luci-base, luci-theme-secubox
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-secubox-portal
+SourceName: luci-app-secubox-portal
 License: GPL-3.0-or-later
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 122880
 Description:  Unified entry point for all SecuBox applications with tabbed navigation
 Filename: luci-app-secubox-portal_0.7.0-r2_all.ipk
-Size: 24643
+Size: 24642
 
 Package: luci-app-secubox-security-threats
 Version: 1.0.0-r4
-Depends: luci-base, rpcd, netifyd, crowdsec, jq, jsonfilter
+Depends: libc, luci-base, rpcd, netifyd, crowdsec, jq, jsonfilter
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-secubox-security-threats
+SourceName: luci-app-secubox-security-threats
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 102400
 Description:  Unified dashboard integrating netifyd DPI threats with CrowdSec intelligence for real-time threat monitoring and automated blocking
 Filename: luci-app-secubox-security-threats_1.0.0-r4_all.ipk
-Size: 21311
+Size: 21857
 
 Package: luci-app-service-registry
 Version: 1.0.0-r1
 Depends: secubox-core, luci-base, luci-compat
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-service-registry
+SourceName: luci-app-service-registry
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 194560
@@ -479,44 +639,60 @@ Size: 39824
 Package: luci-app-simplex
 Version: 1.0.0-r1
 Depends: secubox-app-simplex
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-simplex
+SourceName: luci-app-simplex
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 40960
 Description:  LuCI SimpleX Chat Server Configuration
 Filename: luci-app-simplex_1.0.0-r1_all.ipk
-Size: 6997
+Size: 7000
 
 Package: luci-app-streamlit
 Version: 1.0.0-r11
 Depends: luci-base, luci-lib-jsonc, rpcd, rpcd-mod-luci, secubox-app-streamlit
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-streamlit
+SourceName: luci-app-streamlit
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 81920
 Description:  Multi-instance Streamlit management with Gitea integration
 Filename: luci-app-streamlit_1.0.0-r11_all.ipk
-Size: 14747
+Size: 14749
 
 Package: luci-app-system-hub
 Version: 0.5.1-r4
 Depends: luci-base, rpcd, coreutils, coreutils-base64
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-system-hub
+SourceName: luci-app-system-hub
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 317440
 Description:  Central system control with monitoring, services, logs, and backup
 Filename: luci-app-system-hub_0.5.1-r4_all.ipk
-Size: 61104
+Size: 61101
 
 Package: luci-app-tor-shield
 Version: 1.0.0-r10
 Depends: luci-base, luci-lib-jsonc, rpcd, rpcd-mod-luci, secubox-app-tor
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-tor-shield
+SourceName: luci-app-tor-shield
 License: MIT
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 122880
@@ -527,32 +703,44 @@ Size: 22362
 Package: luci-app-traffic-shaper
 Version: 0.4.0-r2
 Depends: luci-base, rpcd, tc, kmod-sched-core, kmod-sched-cake
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-traffic-shaper
+SourceName: luci-app-traffic-shaper
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 81920
 Description:  Advanced traffic shaping with TC/CAKE for precise bandwidth control
 Filename: luci-app-traffic-shaper_0.4.0-r2_all.ipk
-Size: 14532
+Size: 14531
 
 Package: luci-app-vhost-manager
 Version: 0.5.0-r5
 Depends: luci-base, rpcd, nginx-ssl, acme, curl
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-vhost-manager
+SourceName: luci-app-vhost-manager
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 153600
 Description:  Nginx reverse proxy manager with Let's Encrypt SSL certificates, authentication, and WebSocket support
 Filename: luci-app-vhost-manager_0.5.0-r5_all.ipk
-Size: 26184
+Size: 26186
 
 Package: luci-app-wireguard-dashboard
 Version: 0.7.0-r5
 Depends: luci-base, luci-app-secubox, luci-lib-jsonc, rpcd, rpcd-mod-luci, wireguard-tools
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-wireguard-dashboard
+SourceName: luci-app-wireguard-dashboard
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 204800
@@ -563,43 +751,57 @@ Size: 39607
 Package: luci-app-zigbee2mqtt
 Version: 1.0.0-r2
 Depends: luci-base, luci-lib-jsonc, secubox-app-zigbee2mqtt, luci-lua-runtime
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-app-zigbee2mqtt
+SourceName: luci-app-zigbee2mqtt
 License: GPL-3.0-or-later
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 40960
 Description:  Graphical interface for managing the Zigbee2MQTT docker application.
 Filename: luci-app-zigbee2mqtt_1.0.0-r2_all.ipk
-Size: 6811
+Size: 6817
 
 Package: luci-theme-secubox
 Version: 0.4.7-r1
 Depends: luci-base
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/luci-theme-secubox
+SourceName: luci-theme-secubox
 License: Apache-2.0
 Section: luci
+SourceDateEpoch: 1766005702
+URL: https://github.com/openwrt/luci
 Maintainer: OpenWrt LuCI community
 Architecture: all
 Installed-Size: 450560
 Description:  Global CyberMood design system (CSS/JS/i18n) shared by all SecuBox dashboards.
 Filename: luci-theme-secubox_0.4.7-r1_all.ipk
-Size: 110238
+Size: 110241
 
 Package: secubox-app
 Version: 1.0.0-r2
 Depends: jsonfilter
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app
+SourceName: secubox-app
 Section: utils
+SourceDateEpoch: 1766005702
 Architecture: all
 Installed-Size: 92160
 Description:  Command line helper for SecuBox App Store manifests. Installs /usr/sbin/secubox-app
  and ships the default manifests under /usr/share/secubox/plugins/.
 Filename: secubox-app_1.0.0-r2_all.ipk
-Size: 11182
+Size: 11181
 
 Package: secubox-app-adguardhome
 Version: 1.0.0-r2
 Depends: dockerd, docker, containerd
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-adguardhome
+SourceName: secubox-app-adguardhome
 License: Apache-2.0
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 20480
@@ -607,14 +809,17 @@ Description:  Installer, configuration, and service manager for running AdGuard 
  inside Docker on SecuBox-powered OpenWrt systems. Network-wide ad blocker
  with DNS-over-HTTPS/TLS support and detailed analytics.
 Filename: secubox-app-adguardhome_1.0.0-r2_all.ipk
-Size: 2883
+Size: 2880
 
 Package: secubox-app-auth-logger
 Version: 1.2.2-r1
 Depends: rpcd, uhttpd
 Provides: secubox-auth-logger
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-auth-logger
+SourceName: secubox-app-auth-logger
 License: Apache-2.0
 Section: secubox
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 51200
@@ -625,14 +830,17 @@ Description:  Logs authentication failures from LuCI/rpcd and Dropbear SSH
  - JavaScript hook to intercept login failures
  - CrowdSec parser and bruteforce scenario
 Filename: secubox-app-auth-logger_1.2.2-r1_all.ipk
-Size: 9376
+Size: 9377
 
 Package: secubox-app-crowdsec-custom
 Version: 1.1.0-r1
 Depends: crowdsec, crowdsec-firewall-bouncer
 Provides: secubox-crowdsec-custom
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-crowdsec-custom
+SourceName: secubox-app-crowdsec-custom
 License: Apache-2.0
 Section: secubox
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 40960
@@ -648,16 +856,20 @@ Description:  Custom CrowdSec configurations for SecuBox web interface protectio
  - Webapp generic auth bruteforce protection
  - Whitelist for trusted networks
 Filename: secubox-app-crowdsec-custom_1.1.0-r1_all.ipk
-Size: 5759
+Size: 5762
 
 Package: secubox-app-cs-firewall-bouncer
 Version: 0.0.31-r4
 Depends: nftables
 Conflicts: crowdsec-firewall-bouncer
 Provides: crowdsec-firewall-bouncer
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-cs-firewall-bouncer
+SourceName: secubox-app-cs-firewall-bouncer
 License: MIT
 LicenseFiles: LICENSE
 Section: net
+SourceDateEpoch: 1766005702
+URL: https://github.com/crowdsecurity/cs-firewall-bouncer
 Maintainer: CyberMind <contact@cybermind.fr>
 Architecture: aarch64_cortex-a72
 Installed-Size: 13803520
@@ -675,13 +887,16 @@ Description:  SecuBox CrowdSec Firewall Bouncer for OpenWrt.
  - Automatic restart on firewall reload
  - procd service management
 Filename: secubox-app-cs-firewall-bouncer_0.0.31-r4_aarch64_cortex-a72.ipk
-Size: 5049321
+Size: 5049322
 
 Package: secubox-app-cyberfeed
 Version: 0.2.1-r1
 Depends: wget-ssl, jsonfilter, coreutils-stat
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-cyberfeed
+SourceName: secubox-app-cyberfeed
 License: MIT
 Section: secubox
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 51200
@@ -689,26 +904,32 @@ Description:  Cyberpunk-themed RSS feed aggregator for OpenWrt/SecuBox.
  Features emoji injection, neon styling, and RSS-Bridge support
  for social media feeds (Facebook, Twitter, Mastodon).
 Filename: secubox-app-cyberfeed_0.2.1-r1_all.ipk
-Size: 12448
+Size: 12453
 
 Package: secubox-app-domoticz
 Version: 1.0.0-r2
 Depends: dockerd, docker, containerd
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-domoticz
+SourceName: secubox-app-domoticz
 License: Apache-2.0
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 10240
 Description:  Installer, configuration, and service manager for running Domoticz
  inside Docker on SecuBox-powered OpenWrt systems.
 Filename: secubox-app-domoticz_1.0.0-r2_all.ipk
-Size: 2550
+Size: 2547
 
 Package: secubox-app-exposure
 Version: 1.0.0-r1
 Depends: secubox-core
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-exposure
+SourceName: secubox-app-exposure
 License: MIT
 Section: secubox
+SourceDateEpoch: 1766005702
 Maintainer: SecuBox Team <contact@secubox.dev>
 Architecture: all
 Installed-Size: 40960
@@ -717,13 +938,16 @@ Description:  Unified service exposure manager for SecuBox.
  - Dynamic Tor hidden service management
  - HAProxy SSL reverse proxy configuration
 Filename: secubox-app-exposure_1.0.0-r1_all.ipk
-Size: 6933
+Size: 6934
 
 Package: secubox-app-gitea
 Version: 1.0.0-r5
 Depends: jsonfilter, wget-ssl, tar, lxc, lxc-common, git
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-gitea
+SourceName: secubox-app-gitea
 License: MIT
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 40960
@@ -740,13 +964,16 @@ Description:  Gitea Git Platform - Self-hosted lightweight Git service
  Runs in LXC container with Alpine Linux.
  Configure in /etc/config/gitea.
 Filename: secubox-app-gitea_1.0.0-r5_all.ipk
-Size: 9407
+Size: 9402
 
 Package: secubox-app-glances
 Version: 1.0.0-r1
 Depends: wget, tar
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-glances
+SourceName: secubox-app-glances
 License: LGPL-3.0
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 20480
@@ -763,13 +990,16 @@ Description:  Glances - Cross-platform system monitoring tool for SecuBox.
  Runs in LXC container for isolation and security.
  Configure in /etc/config/glances.
 Filename: secubox-app-glances_1.0.0-r1_all.ipk
-Size: 5530
+Size: 5534
 
 Package: secubox-app-haproxy
 Version: 1.0.0-r23
 Depends: lxc, lxc-common, openssl-util, wget-ssl, tar, jsonfilter, acme, acme-acmesh, socat, uhttpd
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-haproxy
+SourceName: secubox-app-haproxy
 License: MIT
 Section: secubox
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 71680
@@ -783,13 +1013,16 @@ Description:  HAProxy load balancer and reverse proxy running in an LXC containe
  - Stats dashboard
  - Rate limiting and ACLs
 Filename: secubox-app-haproxy_1.0.0-r23_all.ipk
-Size: 15681
+Size: 15683
 
 Package: secubox-app-hexojs
 Version: 1.0.0-r8
 Depends: jsonfilter, wget-ssl, tar, lxc, lxc-common, git, rsync
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-hexojs
+SourceName: secubox-app-hexojs
 License: MIT
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 501760
@@ -807,13 +1040,16 @@ Description:  Hexo CMS - Self-hosted static blog generator for OpenWrt
  Runs in LXC container with Alpine Linux.
  Configure in /etc/config/hexojs.
 Filename: secubox-app-hexojs_1.0.0-r8_all.ipk
-Size: 94931
+Size: 94933
 
 Package: secubox-app-jitsi
 Version: 1.0.0-r1
 Depends: docker, docker-compose, wget, openssl-util
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-jitsi
+SourceName: secubox-app-jitsi
 License: Apache-2.0
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 40960
@@ -832,13 +1068,17 @@ Description:  Jitsi Meet - Secure, fully featured video conferencing for SecuBox
  Integrates with HAProxy for SSL termination.
  Configure in /etc/config/jitsi.
 Filename: secubox-app-jitsi_1.0.0-r1_all.ipk
-Size: 8913
+Size: 8909
 
 Package: secubox-app-localai
 Version: 2.25.0-r1
 Depends: libstdcpp6, libpthread, wget-ssl, ca-certificates
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-localai
+SourceName: secubox-app-localai
 License: MIT
 Section: utils
+SourceDateEpoch: 1766005702
+URL: https://localai.io
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 30720
@@ -854,13 +1094,17 @@ Description:  LocalAI native binary package for OpenWrt.
  
  API: http://<router-ip>:8081/v1
 Filename: secubox-app-localai_2.25.0-r1_all.ipk
-Size: 5723
+Size: 5714
 
 Package: secubox-app-localai-wb
 Version: 2.25.0-r1
 Depends: libstdcpp6, libpthread, wget-ssl, ca-certificates
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-localai-wb
+SourceName: secubox-app-localai-wb
 License: MIT
 Section: utils
+SourceDateEpoch: 1766005702
+URL: https://localai.io
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 30720
@@ -878,13 +1122,16 @@ Description:  LocalAI native binary package for OpenWrt.
  
  API: http://<router-ip>:8080/v1
 Filename: secubox-app-localai-wb_2.25.0-r1_all.ipk
-Size: 7950
+Size: 7953
 
 Package: secubox-app-lyrion
 Version: 2.0.2-r1
 Depends: wget, tar
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-lyrion
+SourceName: secubox-app-lyrion
 License: Apache-2.0
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 30720
@@ -898,13 +1145,16 @@ Description:  Lyrion Media Server (formerly Logitech Media Server / Squeezebox S
  Auto-detects available runtime, preferring LXC for lower resource usage.
  Configure runtime in /etc/config/lyrion.
 Filename: secubox-app-lyrion_2.0.2-r1_all.ipk
-Size: 7285
+Size: 7283
 
 Package: secubox-app-magicmirror2
 Version: 0.4.0-r8
 Depends: wget, tar, jq, zstd
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-magicmirror2
+SourceName: secubox-app-magicmirror2
 License: Apache-2.0
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 40960
@@ -920,12 +1170,15 @@ Description:  MagicMirror² - Open source modular smart mirror platform for Secu
  Runs in LXC container for isolation and security.
  Configure in /etc/config/magicmirror2.
 Filename: secubox-app-magicmirror2_0.4.0-r8_all.ipk
-Size: 9245
+Size: 9249
 
 Package: secubox-app-mailinabox
 Version: 2.0.0-r1
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-mailinabox
+SourceName: secubox-app-mailinabox
 License: CC0-1.0
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 30720
@@ -945,13 +1198,16 @@ Description:  Complete email server solution using docker-mailserver for SecuBox
  
  Commands: mailinaboxctl --help
 Filename: secubox-app-mailinabox_2.0.0-r1_all.ipk
-Size: 7569
+Size: 7572
 
 Package: secubox-app-metabolizer
 Version: 1.0.0-r3
 Depends: secubox-app-gitea, secubox-app-streamlit, secubox-app-hexojs, rsync, git
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-metabolizer
+SourceName: secubox-app-metabolizer
 License: MIT
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 71680
@@ -966,13 +1222,16 @@ Description:  Metabolizer Blog Pipeline - Integrated CMS with Git-based workflow
  
  Pipeline: Edit in Streamlit -> Push to Gitea -> Build with Hexo -> Publish
 Filename: secubox-app-metabolizer_1.0.0-r3_all.ipk
-Size: 13974
+Size: 13973
 
 Package: secubox-app-mitmproxy
 Version: 0.5.0-r19
 Depends: wget, tar
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-mitmproxy
+SourceName: secubox-app-mitmproxy
 License: Apache-2.0
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 92160
@@ -993,13 +1252,16 @@ Description:  mitmproxy - Interactive HTTPS proxy for SecuBox-powered OpenWrt sy
  Runs in LXC container for isolation and security.
  Configure in /etc/config/mitmproxy.
 Filename: secubox-app-mitmproxy_0.5.0-r19_all.ipk
-Size: 22949
+Size: 22955
 
 Package: secubox-app-mmpm
 Version: 0.2.0-r5
 Depends: secubox-app-magicmirror2
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-mmpm
+SourceName: secubox-app-mmpm
 License: MIT
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 20480
@@ -1014,13 +1276,16 @@ Description:  MMPM (MagicMirror Package Manager) for SecuBox.
  
  Runs inside the MagicMirror2 LXC container.
 Filename: secubox-app-mmpm_0.2.0-r5_all.ipk
-Size: 3975
+Size: 3976
 
 Package: secubox-app-nextcloud
 Version: 1.0.0-r2
 Depends: dockerd, docker, containerd
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-nextcloud
+SourceName: secubox-app-nextcloud
 License: Apache-2.0
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 20480
@@ -1028,13 +1293,16 @@ Description:  Installer, configuration, and service manager for running Nextclou
  inside Docker on SecuBox-powered OpenWrt systems. Self-hosted file
  sync and share with calendar, contacts, and collaboration.
 Filename: secubox-app-nextcloud_1.0.0-r2_all.ipk
-Size: 2956
+Size: 2957
 
 Package: secubox-app-ollama
 Version: 0.1.0-r1
 Depends: jsonfilter, wget-ssl
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-ollama
+SourceName: secubox-app-ollama
 License: MIT
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 20480
@@ -1050,13 +1318,16 @@ Description:  Ollama - Simple local LLM runtime for SecuBox-powered OpenWrt syst
  Runs in Docker/Podman container.
  Configure in /etc/config/ollama.
 Filename: secubox-app-ollama_0.1.0-r1_all.ipk
-Size: 5729
+Size: 5734
 
 Package: secubox-app-picobrew
 Version: 1.0.0-r7
 Depends: jsonfilter, wget-ssl, tar, lxc, lxc-common, git
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-picobrew
+SourceName: secubox-app-picobrew
 License: MIT
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 20480
@@ -1077,8 +1348,11 @@ Size: 5539
 Package: secubox-app-simplex
 Version: 1.0.0-r1
 Depends: lxc, lxc-common, wget, openssl-util, tar
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-simplex
+SourceName: secubox-app-simplex
 License: Apache-2.0
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 40960
@@ -1096,13 +1370,16 @@ Description:  SimpleX Chat self-hosted messaging infrastructure for SecuBox.
  Privacy-first messaging relay that you control.
  Configure in /etc/config/simplex.
 Filename: secubox-app-simplex_1.0.0-r1_all.ipk
-Size: 9227
+Size: 9233
 
 Package: secubox-app-streamlit
 Version: 1.0.0-r5
 Depends: jsonfilter, wget-ssl, tar, lxc, lxc-common, git
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-streamlit
+SourceName: secubox-app-streamlit
 License: MIT
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 51200
@@ -1123,13 +1400,16 @@ Description:  Streamlit App Platform - Self-hosted Python data app platform
  
  Configure in /etc/config/streamlit.
 Filename: secubox-app-streamlit_1.0.0-r5_all.ipk
-Size: 11721
+Size: 11717
 
 Package: secubox-app-tor
 Version: 1.0.0-r1
 Depends: iptables, curl, jsonfilter, socat
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-tor
+SourceName: secubox-app-tor
 License: MIT
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 30720
@@ -1151,8 +1431,11 @@ Size: 7371
 Package: secubox-app-webapp
 Version: 1.5.0-r7
 Depends: uhttpd, uhttpd-mod-ubus, rpcd, rpcd-mod-file
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-webapp
+SourceName: secubox-app-webapp
 License: MIT
 Section: secubox
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind.FR <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 256000
@@ -1164,26 +1447,32 @@ Description:  SecuBox Control Center Dashboard - A web-based dashboard for monit
  - Service management
  - Network interface control
 Filename: secubox-app-webapp_1.5.0-r7_all.ipk
-Size: 39171
+Size: 39173
 
 Package: secubox-app-zigbee2mqtt
 Version: 1.0.0-r3
 Depends: kmod-usb-acm, dockerd, docker, containerd
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-app-zigbee2mqtt
+SourceName: secubox-app-zigbee2mqtt
 License: Apache-2.0
 Section: utils
+SourceDateEpoch: 1766005702
 Maintainer: CyberMind Studio <contact@cybermind.fr>
 Architecture: all
 Installed-Size: 20480
 Description:  Installer, configuration, and service manager for running Zigbee2MQTT
  inside Docker on SecuBox-powered OpenWrt systems.
 Filename: secubox-app-zigbee2mqtt_1.0.0-r3_all.ipk
-Size: 3539
+Size: 3541
 
 Package: secubox-core
 Version: 0.10.0-r11
 Depends: jq, jsonfilter
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-core
+SourceName: secubox-core
 License: GPL-2.0
 Section: admin
+SourceDateEpoch: 1766005702
 Maintainer: SecuBox Team
 Architecture: all
 Installed-Size: 481280
@@ -1202,19 +1491,22 @@ Size: 87973
 Package: secubox-p2p
 Version: 0.6.0-r3
 Depends: jsonfilter, curl, avahi-daemon, avahi-utils, uhttpd
+Source: /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/secubox-p2p
+SourceName: secubox-p2p
 License: MIT
 Section: secubox
+SourceDateEpoch: 1766005702
 Maintainer: SecuBox Team
 Architecture: all
 Installed-Size: 204800
-Description:  SecuBox P2P Hub backend providing peer discovery, mesh networking
+Description:  SecuBox P2P Hub backend providing peer discovery, mesh networking,
  DNS federation, and distributed service management. Includes mDNS
- service announcement, REST API on port 7331 for mesh visibility
+ service announcement, REST API on port 7331 for mesh visibility,
  SecuBox Factory unified dashboard with Ed25519 signed Merkle
  snapshots for cryptographic configuration validation, distributed
- mesh services panel for aggregated service discovery across all nodes
+ mesh services panel for aggregated service discovery across all nodes,
  and MirrorBox NetMesh Catalog for cross-chain distributed service
  registry with HAProxy vhost discovery and multi-endpoint access URLs.
 Filename: secubox-p2p_0.6.0-r3_all.ipk
-Size: 42015
+Size: 42014
 

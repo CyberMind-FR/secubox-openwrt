@@ -366,13 +366,22 @@ function getDashboardData() {
 
 		// Build device list from ndpid flows
 		var devicesMap = {};
+		var isLocalIP = function(ip) {
+			return ip && (ip.indexOf('192.168.') === 0 || ip.indexOf('10.') === 0 || ip.indexOf('172.16.') === 0);
+		};
 		ndpidFlows.forEach(function(flow) {
-			var ip = flow.src_ip || flow.local_ip;
-			if (!ip || ip.indexOf('192.168') === -1) return; // Only local devices
+			// Check both src_ip and dst_ip for local devices
+			var localIP = null;
+			if (isLocalIP(flow.src_ip)) {
+				localIP = flow.src_ip;
+			} else if (isLocalIP(flow.dst_ip)) {
+				localIP = flow.dst_ip;
+			}
+			if (!localIP) return; // Skip if no local device involved
 
-			if (!devicesMap[ip]) {
-				devicesMap[ip] = {
-					ip: ip,
+			if (!devicesMap[localIP]) {
+				devicesMap[localIP] = {
+					ip: localIP,
 					mac: flow.src_mac || flow.local_mac || '',
 					hostname: flow.hostname || '',
 					apps: [],
@@ -383,12 +392,16 @@ function getDashboardData() {
 					last_seen: flow.timestamp
 				};
 			}
-			var dev = devicesMap[ip];
-			if (flow.application && dev.apps.indexOf(flow.application) === -1) {
-				dev.apps.push(flow.application);
+			var dev = devicesMap[localIP];
+			// Use 'app' field from ndpid flows (not 'application')
+			var appName = flow.app || flow.application || '';
+			if (appName && dev.apps.indexOf(appName) === -1) {
+				dev.apps.push(appName);
 			}
-			if (flow.protocol && dev.protocols.indexOf(flow.protocol) === -1) {
-				dev.protocols.push(flow.protocol);
+			// Use 'proto' field from ndpid flows (not 'protocol')
+			var protoName = flow.proto || flow.protocol || '';
+			if (protoName && dev.protocols.indexOf(protoName) === -1) {
+				dev.protocols.push(protoName);
 			}
 			dev.bytes_rx += flow.bytes_rx || 0;
 			dev.bytes_tx += flow.bytes_tx || 0;

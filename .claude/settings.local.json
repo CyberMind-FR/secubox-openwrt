@@ -227,7 +227,10 @@
       "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt push --tags)",
       "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt add package/secubox/secubox-app-mitmproxy/root/srv/mitmproxy/addons/secubox_analytics.py package/secubox/luci-app-secubox-security-threats/root/usr/libexec/rpcd/luci.secubox-security-threats)",
       "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt commit -m \"$\\(cat <<''EOF''\nfeat\\(security\\): Add CVE-2025-15467 detection and mitmproxy threat integration\n\n- Add CVE-2025-15467 \\(OpenSSL CMS stack overflow\\) detection patterns\n- Detect S/MIME/CMS content types that may be exploited\n- Integrate mitmproxy threats into security-threats dashboard\n- Security threats page now shows real-time WAF detections\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt tag -a v0.18.2 -m \"Release v0.18.2: CVE-2025-15467 detection and security dashboard integration\")"
+      "Bash(git -C /home/reepost/CyberMindStudio/secubox-openwrt tag -a v0.18.2 -m \"Release v0.18.2: CVE-2025-15467 detection and security dashboard integration\")",
+      "WebFetch(domain:simplex.chat)",
+      "Bash(# Find usign keys find ~/CyberMindStudio/secubox-openwrt -name \"\"*.key\"\")",
+      "Bash(cd ~/CyberMindStudio/secubox-openwrt/package/secubox/secubox-app-bonus/root/www/secubox-feed ls -la Packages* luci-app-secubox-security-threats*.ipk echo \"\" grep -A3 \"Package: luci-app-secubox-security-threats\" Packages)"
     ]
   }
 }
