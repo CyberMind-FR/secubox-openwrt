@@ -1,0 +1,27 @@
+config mac-guardian 'main'
+	option enabled '0'
+	option debug '0'
+	option scan_interval '30'
+
+config detection 'detection'
+	option random_mac '1'
+	option oui_duplicates '1'
+	option oui_dup_threshold '5'
+	option mac_flip '1'
+	option flip_window '300'
+	option flip_threshold '10'
+	option spoof_detection '1'
+
+config enforcement 'enforcement'
+	option policy 'alert'
+	option quarantine_vlan ''
+	option notify_crowdsec '1'
+
+config whitelist 'whitelist'
+	# list mac 'aa:bb:cc:dd:ee:ff'
+	# list oui '00:50:E4'
+
+config reporting 'reporting'
+	option stats_file '/var/run/mac-guardian/stats.json'
+	option stats_interval '60'
+	option max_log_size '524288'

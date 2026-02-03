@@ -1,0 +1,9 @@
+type: trigger
+name: secubox/mac-spoof
+description: "Detect MAC address spoofing on WiFi"
+filter: "evt.Parsed.event_type == 'spoof_detected'"
+groupby: "evt.Meta.source_mac"
+remediation: false
+labels:
+  service: mac-guardian
+  type: wifi_mac_spoof

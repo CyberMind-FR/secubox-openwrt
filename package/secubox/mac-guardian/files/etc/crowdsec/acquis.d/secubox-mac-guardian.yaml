@@ -1,0 +1,4 @@
+filenames:
+  - /var/log/mac-guardian.log
+labels:
+  type: mac-guardian

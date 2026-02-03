@@ -1,0 +1,32 @@
+# OUI	Vendor	Flags
+# Format: first 3 octets (uppercase, colon-separated)	Vendor name	whitelist|iot|suspect
+00:50:E4	Apple	whitelist
+3C:22:FB	Apple	whitelist
+A4:83:E7	Apple	whitelist
+DC:A6:32	Raspberry Pi	whitelist
+B8:27:EB	Raspberry Pi	whitelist
+00:1A:11	Google	whitelist
+F4:F5:D8	Google	whitelist
+94:65:2D	Samsung	whitelist
+8C:F5:A3	Samsung	whitelist
+FC:A1:83	Amazon	whitelist
+44:07:0B	Amazon	whitelist
+40:B0:76	ASUS	whitelist
+18:FE:34	Espressif	iot
+24:0A:C4	Espressif	iot
+30:AE:A4	Espressif	iot
+D8:F1:5B	Tuya	iot
+84:0D:8E	Tuya	iot
+E8:68:E7	Shelly	iot
+98:CD:AC	Shelly	iot
+50:C7:BF	TP-Link	iot
+60:E3:27	TP-Link	iot
+00:C0:CA	Alfa Network	suspect
+00:0E:8E	Ralink	suspect
+00:0C:43	Ralink	suspect
+74:DA:38	MediaTek	suspect
+00:0C:E7	MediaTek	suspect
+48:2C:A0	Xiaomi	whitelist
+64:09:80	Xiaomi	whitelist
+E4:AB:89	Huawei	whitelist
+04:F9:38	Huawei	whitelist

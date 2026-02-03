@@ -1,0 +1,248 @@
+#!/bin/sh
+# mac-guardian -- WiFi MAC Security Monitor for SecuBox
+# Usage: mac-guardian {start|scan|status|trust|block|list|version}
+
+. /usr/lib/secubox/mac-guardian/functions.sh
+
+cmd_start() {
+	mg_load_config
+
+	if [ "$MG_ENABLED" != "1" ]; then
+		echo "mac-guardian is disabled. Enable with: uci set mac-guardian.main.enabled=1"
+		exit 1
+	fi
+
+	mg_init
+	mg_log "info" "mac-guardian v${MG_VERSION} starting (interval=${MG_SCAN_INTERVAL}s policy=${MG_POLICY})"
+
+	trap 'mg_log "info" "Shutting down"; mg_unlock 2>/dev/null; exit 0' INT TERM
+	trap 'mg_load_config; mg_log "info" "Configuration reloaded"' HUP
+
+	local stats_counter=0
+
+	while true; do
+		mg_scan_all
+
+		stats_counter=$((stats_counter + MG_SCAN_INTERVAL))
+		if [ "$stats_counter" -ge "$MG_STATS_INTERVAL" ]; then
+			mg_stats_generate
+			stats_counter=0
+		fi
+
+		mg_log_rotate
+
+		sleep "$MG_SCAN_INTERVAL"
+	done
+}
+
+cmd_scan() {
+	mg_load_config
+	mg_init
+	mg_scan_all
+	echo "Scan complete. $(wc -l < "$MG_DBFILE" 2>/dev/null || echo 0) clients in database."
+}
+
+cmd_status() {
+	mg_load_config
+
+	echo "mac-guardian v${MG_VERSION}"
+	echo "========================="
+
+	if [ "$MG_ENABLED" != "1" ]; then
+		echo "Status: DISABLED"
+		echo ""
+		echo "Enable with: uci set mac-guardian.main.enabled=1 && uci commit mac-guardian"
+		return
+	fi
+
+	local pid
+	pid=$(cat /var/run/mac-guardian.pid 2>/dev/null)
+	if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+		echo "Status: RUNNING (PID $pid)"
+	else
+		echo "Status: STOPPED"
+	fi
+
+	echo "Policy: $MG_POLICY"
+	echo ""
+
+	# Interfaces
+	echo "WiFi Interfaces:"
+	local ifaces
+	ifaces=$(mg_get_wifi_ifaces)
+	if [ -z "$ifaces" ]; then
+		echo "  (none detected)"
+	else
+		for iface in $ifaces; do
+			local essid
+			essid=$(iwinfo "$iface" info 2>/dev/null | grep "ESSID" | sed 's/.*ESSID: "\(.*\)"/\1/')
+			local sta_count
+			sta_count=$(iwinfo "$iface" assoclist 2>/dev/null | grep -cE '[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}')
+			echo "  $iface ($essid) - $sta_count stations"
+		done
+	fi
+
+	echo ""
+
+	# Database stats
+	if [ -f "$MG_DBFILE" ] && [ -s "$MG_DBFILE" ]; then
+		local total trusted suspect blocked unknown
+		total=$(wc -l < "$MG_DBFILE")
+		trusted=$(grep -c '|trusted$' "$MG_DBFILE" 2>/dev/null || echo 0)
+		suspect=$(grep -c '|suspect$' "$MG_DBFILE" 2>/dev/null || echo 0)
+		blocked=$(grep -c '|blocked$' "$MG_DBFILE" 2>/dev/null || echo 0)
+		unknown=$(grep -c '|unknown$' "$MG_DBFILE" 2>/dev/null || echo 0)
+
+		echo "Known Clients: $total"
+		echo "  Trusted:  $trusted"
+		echo "  Unknown:  $unknown"
+		echo "  Suspect:  $suspect"
+		echo "  Blocked:  $blocked"
+	else
+		echo "Known Clients: 0"
+	fi
+
+	echo ""
+
+	# Last alerts
+	if [ -f "$MG_EVENTS_LOG" ] && [ -s "$MG_EVENTS_LOG" ]; then
+		echo "Last 5 Alerts:"
+		tail -5 "$MG_EVENTS_LOG" | while read -r line; do
+			echo "  $line"
+		done
+	else
+		echo "No alerts recorded."
+	fi
+}
+
+cmd_trust() {
+	local mac="$1"
+	if [ -z "$mac" ]; then
+		echo "Usage: mac-guardian trust <MAC>"
+		exit 1
+	fi
+
+	if ! mg_validate_mac "$mac"; then
+		echo "Error: Invalid MAC address format: $mac"
+		exit 1
+	fi
+
+	mac=$(mg_normalize_mac "$mac")
+	mg_load_config
+	mg_init
+
+	# Add to UCI whitelist
+	uci add_list mac-guardian.whitelist.mac="$mac"
+	uci commit mac-guardian
+
+	# Update database
+	mg_db_set_status "$mac" "trusted"
+
+	# Remove any enforcement
+	mg_unenforce "$mac"
+
+	mg_log "notice" "MAC $mac marked as trusted"
+	echo "MAC $mac is now trusted."
+}
+
+cmd_block() {
+	local mac="$1"
+	if [ -z "$mac" ]; then
+		echo "Usage: mac-guardian block <MAC>"
+		exit 1
+	fi
+
+	if ! mg_validate_mac "$mac"; then
+		echo "Error: Invalid MAC address format: $mac"
+		exit 1
+	fi
+
+	mac=$(mg_normalize_mac "$mac")
+	mg_load_config
+	mg_init
+
+	# Get the interface this MAC is on
+	local iface=""
+	local existing
+	existing=$(mg_db_lookup "$mac")
+	if [ -n "$existing" ]; then
+		iface=$(echo "$existing" | cut -d'|' -f5)
+	fi
+
+	# Force deny policy for this action
+	local saved_policy="$MG_POLICY"
+	MG_POLICY="deny"
+	mg_enforce "$mac" "${iface:-unknown}" "manual_block"
+	MG_POLICY="$saved_policy"
+
+	mg_db_set_status "$mac" "blocked"
+	mg_log_event "manual_block" "$mac" "${iface:-unknown}" "blocked_by_admin"
+
+	echo "MAC $mac is now blocked."
+}
+
+cmd_list() {
+	local filter="${1:-all}"
+
+	mg_load_config
+	mg_init
+
+	if [ ! -f "$MG_DBFILE" ] || [ ! -s "$MG_DBFILE" ]; then
+		echo "No clients in database."
+		return
+	fi
+
+	printf "%-19s %-10s %-12s %-8s %-15s %s\n" "MAC" "OUI" "FIRST SEEN" "IFACE" "HOSTNAME" "STATUS"
+	printf "%-19s %-10s %-12s %-8s %-15s %s\n" "---" "---" "----------" "-----" "--------" "------"
+
+	while IFS='|' read -r mac oui first_seen last_seen iface hostname status; do
+		[ -z "$mac" ] && continue
+
+		# Apply filter
+		case "$filter" in
+			all) ;;
+			trusted|blocked|suspect|unknown)
+				[ "$status" != "$filter" ] && continue
+				;;
+			*)
+				echo "Unknown filter: $filter (use: trusted, blocked, suspect, unknown, all)"
+				return 1
+				;;
+		esac
+
+		# Format first_seen as date
+		local date_str
+		date_str=$(date -d "@${first_seen}" "+%Y-%m-%d" 2>/dev/null || echo "$first_seen")
+
+		printf "%-19s %-10s %-12s %-8s %-15s %s\n" \
+			"$mac" "$oui" "$date_str" "$iface" "${hostname:--}" "$status"
+	done < "$MG_DBFILE"
+}
+
+cmd_version() {
+	echo "mac-guardian v${MG_VERSION}"
+}
+
+# --- Main dispatcher ---
+case "${1:-}" in
+	start)    cmd_start ;;
+	scan)     cmd_scan ;;
+	status)   cmd_status ;;
+	trust)    cmd_trust "$2" ;;
+	block)    cmd_block "$2" ;;
+	list)     cmd_list "$2" ;;
+	version)  cmd_version ;;
+	*)
+		echo "Usage: mac-guardian {start|scan|status|trust|block|list|version}"
+		echo ""
+		echo "Commands:"
+		echo "  start              Start the daemon"
+		echo "  scan               Run a single scan pass"
+		echo "  status             Show service status"
+		echo "  trust <MAC>        Add MAC to trusted whitelist"
+		echo "  block <MAC>        Block and deauthenticate MAC"
+		echo "  list [filter]      List known clients (trusted|blocked|suspect|unknown|all)"
+		echo "  version            Print version"
+		exit 1
+		;;
+esac
