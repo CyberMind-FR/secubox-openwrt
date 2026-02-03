@@ -48,4 +48,19 @@ if ! uci show firewall 2>/dev/null | grep -q "mDNS"; then
 	uci commit firewall
 fi
 
+# Add threat-intel cron jobs if not already present
+CRONTAB="/etc/crontabs/root"
+[ -f "$CRONTAB" ] || touch "$CRONTAB"
+
+if ! grep -q "threat-intel.sh collect-and-publish" "$CRONTAB" 2>/dev/null; then
+	echo "*/15 * * * * /usr/lib/secubox/threat-intel.sh collect-and-publish" >> "$CRONTAB"
+fi
+
+if ! grep -q "threat-intel.sh apply-pending" "$CRONTAB" 2>/dev/null; then
+	echo "*/30 * * * * /usr/lib/secubox/threat-intel.sh apply-pending" >> "$CRONTAB"
+fi
+
+# Restart cron if running
+/etc/init.d/cron restart 2>/dev/null || true
+
 exit 0

@@ -1,0 +1,33 @@
+#!/bin/sh
+# Threat Intel API - Apply pending IOCs
+# POST: Triggers processing and applying of received IOCs
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: POST, OPTIONS"
+echo "Access-Control-Allow-Headers: Content-Type"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+if [ "$REQUEST_METHOD" != "POST" ]; then
+	echo '{"success":false,"error":"method_not_allowed","message":"Use POST to trigger apply"}'
+	exit 0
+fi
+
+. /usr/lib/secubox/threat-intel.sh 2>/dev/null
+
+ti_init
+
+result=$(ti_apply_pending 2>/dev/null)
+
+if [ -n "$result" ]; then
+	applied=$(echo "$result" | jsonfilter -e '@.applied' 2>/dev/null || echo "0")
+	skipped=$(echo "$result" | jsonfilter -e '@.skipped' 2>/dev/null || echo "0")
+	echo "{\"success\":true,\"applied\":$applied,\"skipped\":$skipped}"
+else
+	echo '{"success":true,"applied":0,"skipped":0}'
+fi

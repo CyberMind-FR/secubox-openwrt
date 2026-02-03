@@ -1,0 +1,11 @@
+#!/bin/sh
+# Threat Intel API - Peer contribution stats
+# GET: Returns per-peer IOC statistics and trust levels
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo ""
+
+. /usr/lib/secubox/threat-intel.sh 2>/dev/null
+
+ti_peer_stats 2>/dev/null || echo '[]'
