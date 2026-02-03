@@ -23,24 +23,16 @@ return L.view.extend({
 
 		poll.add(L.bind(function() { this.handleRefresh(); }, this), 15);
 
-		return E('div', { 'class': 'si-dash' }, [
+		var sections = [
 			E('style', {}, this.getStyles()),
-
-			// Status bar
 			this.renderStatusBar(status),
-
-			// Firewall stats
 			this.renderFirewallStats(stats),
-
-			// Mesh Intelligence
 			this.renderMeshIntel(intel, meshIocs, meshPeers),
-
-			// Threats table
 			this.renderThreats(threats),
-
-			// Blocked IPs (collapsed)
 			this.renderBlocked(blocked)
-		]);
+		].filter(function(el) { return el != null; });
+
+		return E('div', { 'class': 'si-dash' }, sections);
 	},
 
 	renderStatusBar: function(status) {
@@ -142,8 +134,9 @@ return L.view.extend({
 				)
 			]),
 
+		].concat(
 			// Peer table
-			peers.length > 0 ?
+			peers.length > 0 ? [
 				E('div', { 'class': 'si-subsection' }, [
 					E('h4', {}, 'Peer Contributors'),
 					E('table', { 'class': 'table' }, [
@@ -163,10 +156,11 @@ return L.view.extend({
 							]);
 						})
 					))
-				]) : null,
+				])
+			] : [],
 
 			// Received IOCs table (show top 10)
-			iocs.length > 0 ?
+			iocs.length > 0 ? [
 				E('div', { 'class': 'si-subsection' }, [
 					E('h4', {}, 'Received IOCs (' + iocs.length + ')'),
 					E('table', { 'class': 'table' }, [
@@ -190,8 +184,9 @@ return L.view.extend({
 							]);
 						})
 					))
-				]) : null
-		]);
+				])
+			] : []
+		));
 	},
 
 	renderThreats: function(threats) {
