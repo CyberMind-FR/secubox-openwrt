@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuBox - Join Mesh</title>
+    <style>
+        :root {
+            --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; --muted: #94a3b8;
+            --accent: #6366f1; --success: #22c55e; --warn: #f59e0b; --danger: #ef4444;
+            --border: #334155;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem; }
+
+        .container { max-width: 520px; width: 100%; }
+
+        header { text-align: center; margin-bottom: 2rem; }
+        .logo { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+        .logo svg { width: 28px; height: 28px; }
+        .subtitle { color: var(--muted); font-size: 0.9rem; }
+
+        .card { background: var(--card); padding: 1.5rem; border-radius: 0.75rem; margin-bottom: 1rem; border: 1px solid var(--border); }
+        .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
+
+        .master-info { display: grid; gap: 0.5rem; }
+        .info-row { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { color: var(--muted); font-size: 0.8rem; }
+        .info-value { font-family: ui-monospace, monospace; font-size: 0.85rem; }
+        .fingerprint { color: var(--accent); font-weight: 500; letter-spacing: 0.05em; }
+
+        .steps { counter-reset: step; }
+        .step { display: flex; gap: 1rem; padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
+        .step:last-child { border-bottom: none; }
+        .step-num { counter-increment: step; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
+        .step-num::before { content: counter(step); }
+        .step-content { flex: 1; }
+        .step-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; }
+        .step-desc { color: var(--muted); font-size: 0.8rem; }
+
+        .step.done .step-num { background: var(--success); }
+        .step.active .step-num { background: var(--accent); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3); }
+        .step.pending .step-num { background: var(--border); }
+
+        button { padding: 0.75rem 1.5rem; border: none; border-radius: 0.5rem; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; width: 100%; justify-content: center; }
+        button.primary { background: var(--accent); color: white; }
+        button.primary:hover { background: #818cf8; }
+        button.success { background: var(--success); color: white; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .status-badge { padding: 0.25rem 0.6rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 500; }
+        .status-ok { background: var(--success); }
+        .status-pending { background: var(--warn); color: #000; }
+        .status-error { background: var(--danger); }
+
+        .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error { color: var(--danger); font-size: 0.85rem; padding: 0.75rem; background: rgba(239, 68, 68, 0.1); border-radius: 0.375rem; margin-top: 0.5rem; }
+        .success-msg { color: var(--success); font-size: 0.85rem; padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border-radius: 0.375rem; margin-top: 0.5rem; }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                SecuBox Mesh
+            </div>
+            <div class="subtitle">Secure Node Onboarding</div>
+        </header>
+
+        <div class="card" id="master-card">
+            <div class="card-title">Master Node Identity</div>
+            <div class="master-info" id="master-info">
+                <div style="text-align:center;padding:1rem;"><span class="spinner"></span> Loading...</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Join Steps</div>
+            <div class="steps" id="steps">
+                <div class="step active" id="step-1">
+                    <div class="step-num"></div>
+                    <div class="step-content">
+                        <div class="step-title">Review Master Identity</div>
+                        <div class="step-desc">Verify the master fingerprint matches what you expect</div>
+                    </div>
+                </div>
+                <div class="step pending" id="step-2">
+                    <div class="step-num"></div>
+                    <div class="step-content">
+                        <div class="step-title">Download SecuBox Package</div>
+                        <div class="step-desc">Get the SecuBox IPK for your device</div>
+                    </div>
+                </div>
+                <div class="step pending" id="step-3">
+                    <div class="step-num"></div>
+                    <div class="step-content">
+                        <div class="step-title">Join the Mesh</div>
+                        <div class="step-desc">Send join request and wait for approval</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="action-download" class="card hidden">
+            <div class="card-title">Download Package</div>
+            <div id="ipk-info"></div>
+            <button class="primary" id="btn-download" onclick="downloadIPK()">Download SecuBox IPK</button>
+        </div>
+
+        <div id="action-join" class="card hidden">
+            <div class="card-title">Join Mesh</div>
+            <div style="margin-bottom:0.75rem;">
+                <label style="display:block;color:var(--muted);font-size:0.8rem;margin-bottom:0.25rem;">Your Hostname</label>
+                <input type="text" id="my-hostname" placeholder="my-secubox" style="width:100%;padding:0.5rem;background:var(--bg);border:1px solid var(--border);border-radius:0.375rem;color:var(--text);font-size:0.85rem;">
+            </div>
+            <button class="primary" id="btn-join" onclick="sendJoinRequest()">Join SecuBox Mesh</button>
+            <div id="join-status"></div>
+        </div>
+
+        <div id="action-done" class="card hidden">
+            <div class="card-title" style="color:var(--success);">Join Request Sent</div>
+            <div class="success-msg">Your join request has been submitted. The master node administrator will review and approve your request.</div>
+            <div id="approval-status" style="margin-top:0.75rem;text-align:center;">
+                <span class="status-badge status-pending">Awaiting Approval</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    var token = '';
+    var masterInfo = {};
+
+    // Parse token from URL
+    (function() {
+        var params = new URLSearchParams(window.location.search);
+        token = params.get('token') || '';
+        if (!token) {
+            document.getElementById('master-info').innerHTML =
+                '<div class="error">No join token provided. Please use the link from your mesh administrator.</div>';
+            return;
+        }
+        loadMasterStatus();
+    })();
+
+    function apiBase() {
+        return '/api/master-link/';
+    }
+
+    async function loadMasterStatus() {
+        try {
+            var r = await fetch(apiBase() + 'status');
+            masterInfo = await r.json();
+
+            document.getElementById('master-info').innerHTML =
+                '<div class="info-row"><span class="info-label">Hostname</span><span class="info-value">' + (masterInfo.hostname || '-') + '</span></div>' +
+                '<div class="info-row"><span class="info-label">Fingerprint</span><span class="info-value fingerprint">' + (masterInfo.fingerprint || '-') + '</span></div>' +
+                '<div class="info-row"><span class="info-label">Role</span><span class="info-value">' + (masterInfo.role || '-') + '</span></div>' +
+                '<div class="info-row"><span class="info-label">Depth</span><span class="info-value">' + (masterInfo.depth || 0) + '</span></div>' +
+                (masterInfo.ipk_available ? '<div class="info-row"><span class="info-label">IPK</span><span class="status-badge status-ok">Available</span></div>' : '');
+
+            // Move to step 2
+            setStep(1);
+            document.getElementById('action-download').classList.remove('hidden');
+
+            if (masterInfo.ipk_available) {
+                document.getElementById('ipk-info').innerHTML =
+                    '<p style="color:var(--muted);font-size:0.8rem;margin-bottom:0.75rem;">The SecuBox package is ready for download. Install it on your device with: <code style="background:var(--bg);padding:0.15rem 0.4rem;border-radius:0.2rem;">opkg install secubox*.ipk</code></p>';
+            } else {
+                document.getElementById('ipk-info').innerHTML =
+                    '<p style="color:var(--muted);font-size:0.8rem;margin-bottom:0.75rem;">No IPK bundle available on this master. You can skip to joining if SecuBox is already installed.</p>';
+                document.getElementById('btn-download').textContent = 'Skip to Join';
+                document.getElementById('btn-download').onclick = function() { showJoinStep(); };
+            }
+        } catch (e) {
+            document.getElementById('master-info').innerHTML =
+                '<div class="error">Could not reach master node: ' + e.message + '</div>';
+        }
+    }
+
+    async function downloadIPK() {
+        var btn = document.getElementById('btn-download');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Downloading...';
+
+        try {
+            var r = await fetch(apiBase() + 'ipk?token=' + encodeURIComponent(token));
+            if (!r.ok) {
+                var err = await r.json().catch(function() { return {error: 'download_failed'}; });
+                throw new Error(err.error || 'Download failed');
+            }
+
+            var blob = await r.blob();
+            var filename = 'secubox.ipk';
+            var cd = r.headers.get('Content-Disposition');
+            if (cd) {
+                var match = cd.match(/filename="?([^"]+)"?/);
+                if (match) filename = match[1];
+            }
+
+            // Trigger browser download
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(a.href);
+
+            btn.innerHTML = 'Downloaded';
+            btn.classList.remove('primary');
+            btn.classList.add('success');
+
+            showJoinStep();
+        } catch (e) {
+            btn.disabled = false;
+            btn.innerHTML = 'Download SecuBox IPK';
+            document.getElementById('ipk-info').innerHTML +=
+                '<div class="error">' + e.message + '</div>';
+        }
+    }
+
+    function showJoinStep() {
+        setStep(2);
+        document.getElementById('action-join').classList.remove('hidden');
+
+        // Pre-fill hostname
+        var hostnameInput = document.getElementById('my-hostname');
+        hostnameInput.value = location.hostname || '';
+    }
+
+    async function sendJoinRequest() {
+        var btn = document.getElementById('btn-join');
+        var statusEl = document.getElementById('join-status');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Sending join request...';
+        statusEl.innerHTML = '';
+
+        var myHostname = document.getElementById('my-hostname').value || 'unknown';
+
+        // Generate a simple fingerprint for this node (the real one comes from factory.sh)
+        var myFp = await generateFingerprint();
+
+        try {
+            var r = await fetch(apiBase() + 'join', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token: token,
+                    fingerprint: myFp,
+                    hostname: myHostname
+                })
+            });
+
+            var result = await r.json();
+
+            if (result.error) {
+                throw new Error(result.error + (result.message ? ': ' + result.message : ''));
+            }
+
+            // Success
+            setStep(3);
+            document.getElementById('action-join').classList.add('hidden');
+            document.getElementById('action-done').classList.remove('hidden');
+
+            if (result.status === 'approved') {
+                document.getElementById('approval-status').innerHTML =
+                    '<span class="status-badge status-ok">Approved</span>' +
+                    '<p style="color:var(--success);margin-top:0.5rem;">Your node has been auto-approved. Welcome to the mesh.</p>';
+            }
+        } catch (e) {
+            btn.disabled = false;
+            btn.innerHTML = 'Join SecuBox Mesh';
+            statusEl.innerHTML = '<div class="error">' + e.message + '</div>';
+        }
+    }
+
+    function setStep(activeIndex) {
+        var steps = document.querySelectorAll('.step');
+        steps.forEach(function(step, i) {
+            step.className = 'step ' + (i < activeIndex ? 'done' : (i === activeIndex ? 'active' : 'pending'));
+        });
+    }
+
+    async function generateFingerprint() {
+        // Generate a browser-side fingerprint (temporary; real one comes from installed SecuBox)
+        var data = navigator.userAgent + Date.now() + Math.random();
+        if (window.crypto && window.crypto.subtle) {
+            var encoded = new TextEncoder().encode(data);
+            var hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+            var hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('').substring(0, 16);
+        }
+        // Fallback
+        var hash = 0;
+        for (var i = 0; i < data.length; i++) {
+            var c = data.charCodeAt(i);
+            hash = ((hash << 5) - hash) + c;
+            hash |= 0;
+        }
+        return Math.abs(hash).toString(16).padStart(16, '0').substring(0, 16);
+    }
+    </script>
+</body>
+</html>

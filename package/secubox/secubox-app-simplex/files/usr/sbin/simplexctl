@@ -5,7 +5,9 @@
 VERSION="1.0.0"
 SIMPLEX_DIR="/srv/simplex"
 CONTAINER_NAME="simplex"
-CONTAINER_PATH="/var/lib/lxc/$CONTAINER_NAME"
+# Use LXC's configured path (default: /srv/lxc on OpenWrt)
+LXC_PATH=$(grep -s "lxc.lxcpath" /etc/lxc/lxc.conf 2>/dev/null | cut -d'=' -f2 | tr -d ' ' || echo "/srv/lxc")
+CONTAINER_PATH="$LXC_PATH/$CONTAINER_NAME"
 SMP_DIR="$SIMPLEX_DIR/smp"
 XFTP_DIR="$SIMPLEX_DIR/xftp"
 CERTS_DIR="$SIMPLEX_DIR/certs"
@@ -104,15 +106,19 @@ create_container() {
 	# Create container directory
 	mkdir -p "$CONTAINER_PATH/rootfs"
 
-	# Download Alpine minirootfs
+	# Download Alpine minirootfs (skip if already present)
 	local arch=$(detect_arch)
 	local alpine_version="3.19"
 	local alpine_url="https://dl-cdn.alpinelinux.org/alpine/v${alpine_version}/releases/${arch}/alpine-minirootfs-${alpine_version}.0-${arch}.tar.gz"
 
-	log "Downloading Alpine Linux minirootfs..."
-	if ! wget -q -O /tmp/alpine-rootfs.tar.gz "$alpine_url"; then
-		error "Failed to download Alpine rootfs"
-		return 1
+	if [ -f /tmp/alpine-rootfs.tar.gz ]; then
+		log "Using existing Alpine rootfs from /tmp/alpine-rootfs.tar.gz"
+	else
+		log "Downloading Alpine Linux minirootfs..."
+		if ! wget -q -O /tmp/alpine-rootfs.tar.gz "$alpine_url"; then
+			error "Failed to download Alpine rootfs"
+			return 1
+		fi
 	fi
 
 	# Extract rootfs

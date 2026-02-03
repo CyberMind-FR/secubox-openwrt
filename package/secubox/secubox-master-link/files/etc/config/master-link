@@ -1,0 +1,11 @@
+# SecuBox Master-Link Configuration
+
+config master-link 'main'
+	option enabled '1'
+	option role 'master'
+	option upstream ''
+	option depth '0'
+	option max_depth '3'
+	option token_ttl '3600'
+	option auto_approve '0'
+	option ipk_path '/www/secubox-feed/secubox-master-link_*.ipk'

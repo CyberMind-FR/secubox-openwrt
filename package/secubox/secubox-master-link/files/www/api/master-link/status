@@ -1,0 +1,69 @@
+#!/bin/sh
+# Master-Link API - Node status & mesh info
+# GET /api/master-link/status
+# Auth: Public (limited) / Full (local)
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: GET, POST, OPTIONS"
+echo "Access-Control-Allow-Headers: Content-Type"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Load library
+. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
+
+# Handle POST for role promotion notifications from upstream
+if [ "$REQUEST_METHOD" = "POST" ]; then
+	read -r input
+	action=$(echo "$input" | jsonfilter -e '@.action' 2>/dev/null)
+
+	case "$action" in
+		promote)
+			new_role=$(echo "$input" | jsonfilter -e '@.role' 2>/dev/null)
+			new_depth=$(echo "$input" | jsonfilter -e '@.depth' 2>/dev/null)
+			if [ -n "$new_role" ] && [ -n "$new_depth" ]; then
+				uci -q set master-link.main.role="$new_role"
+				uci -q set master-link.main.depth="$new_depth"
+				uci commit master-link
+				logger -t master-link "Role updated to $new_role at depth $new_depth"
+				echo "{\"success\":true,\"role\":\"$new_role\",\"depth\":$new_depth}"
+			else
+				echo '{"error":"missing_role_or_depth"}'
+			fi
+			;;
+		*)
+			echo '{"error":"unknown_action"}'
+			;;
+	esac
+	exit 0
+fi
+
+# GET - Return status
+if ml_check_local_auth 2>/dev/null; then
+	# Full status for local requests
+	ml_status
+else
+	# Limited public status
+	role=$(uci -q get master-link.main.role)
+	fp=$(factory_fingerprint 2>/dev/null)
+	hostname=$(uci -q get system.@system[0].hostname 2>/dev/null || hostname)
+	depth=$(uci -q get master-link.main.depth)
+	[ -z "$depth" ] && depth=0
+	ipk_info=$(ml_ipk_bundle_info 2>/dev/null)
+	ipk_available=$(echo "$ipk_info" | jsonfilter -e '@.available' 2>/dev/null)
+
+	cat <<-EOF
+	{
+		"role": "${role:-master}",
+		"fingerprint": "$fp",
+		"hostname": "$hostname",
+		"depth": $depth,
+		"ipk_available": ${ipk_available:-false}
+	}
+	EOF
+fi

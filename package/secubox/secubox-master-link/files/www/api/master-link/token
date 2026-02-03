@@ -1,0 +1,42 @@
+#!/bin/sh
+# Master-Link API - Generate join token
+# POST /api/master-link/token
+# Auth: Local only (127.0.0.1 or LuCI session)
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: POST, OPTIONS"
+echo "Access-Control-Allow-Headers: Content-Type"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Load library
+. /usr/lib/secubox/master-link.sh >/dev/null 2>&1
+
+# Auth check - local only
+if ! ml_check_local_auth; then
+	echo '{"error":"unauthorized","message":"Token generation requires local access"}'
+	exit 0
+fi
+
+if [ "$REQUEST_METHOD" != "POST" ]; then
+	echo '{"error":"method_not_allowed"}'
+	exit 0
+fi
+
+# Check role
+local_role=$(uci -q get master-link.main.role)
+case "$local_role" in
+	master|sub-master)
+		;;
+	*)
+		echo '{"error":"not_master","message":"Only master or sub-master nodes can generate tokens"}'
+		exit 0
+		;;
+esac
+
+ml_token_generate
