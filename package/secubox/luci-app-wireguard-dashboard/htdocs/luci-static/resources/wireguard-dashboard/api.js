@@ -44,7 +44,7 @@ var callCreateInterface = rpc.declare({
 var callAddPeer = rpc.declare({
 	object: 'luci.wireguard-dashboard',
 	method: 'add_peer',
-	params: ['interface', 'name', 'allowed_ips', 'public_key', 'preshared_key', 'endpoint', 'persistent_keepalive'],
+	params: ['interface', 'name', 'allowed_ips', 'public_key', 'preshared_key', 'endpoint', 'persistent_keepalive', 'private_key'],
 	expect: { }
 });
 

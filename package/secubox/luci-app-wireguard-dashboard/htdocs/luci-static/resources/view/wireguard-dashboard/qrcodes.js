@@ -34,49 +34,65 @@ return view.extend({
 		return null;
 	},
 
+	showPrivateKeyPrompt: function(iface, peer, serverEndpoint) {
+		var self = this;
+		ui.showModal(_('Private Key Required'), [
+			E('p', {}, _('To generate a QR code, you need the peer\'s private key.')),
+			E('p', {}, _('The private key was not found on the server. This can happen for peers created before key persistence was enabled.')),
+			E('div', { 'class': 'wg-form-group' }, [
+				E('label', {}, _('Enter Private Key:')),
+				E('input', {
+					'type': 'text',
+					'id': 'wg-private-key-input',
+					'class': 'cbi-input-text',
+					'placeholder': 'Base64 private key...',
+					'style': 'width: 100%; font-family: monospace;'
+				})
+			]),
+			E('div', { 'class': 'right' }, [
+				E('button', {
+					'class': 'btn',
+					'click': ui.hideModal
+				}, _('Cancel')),
+				' ',
+				E('button', {
+					'class': 'btn cbi-button-action',
+					'click': function() {
+						var input = document.getElementById('wg-private-key-input');
+						var key = input ? input.value.trim() : '';
+						if (key && key.length === 44) {
+							ui.hideModal();
+							self.showQRCode(iface, peer, key, serverEndpoint);
+						} else {
+							ui.addNotification(null, E('p', {}, _('Please enter a valid private key (44 characters, base64)')), 'error');
+						}
+					}
+				}, _('Generate QR'))
+			])
+		]);
+	},
+
 	generateQRForPeer: function(iface, peer, serverEndpoint) {
 		var self = this;
 		var privateKey = this.getStoredPrivateKey(peer.public_key);
 
-		if (!privateKey) {
-			ui.showModal(_('Private Key Required'), [
-				E('p', {}, _('To generate a QR code, you need the peer\'s private key.')),
-				E('p', {}, _('Private keys are only available immediately after peer creation for security reasons.')),
-				E('div', { 'class': 'wg-form-group' }, [
-					E('label', {}, _('Enter Private Key:')),
-					E('input', {
-						'type': 'text',
-						'id': 'wg-private-key-input',
-						'class': 'cbi-input-text',
-						'placeholder': 'Base64 private key...',
-						'style': 'width: 100%; font-family: monospace;'
-					})
-				]),
-				E('div', { 'class': 'right' }, [
-					E('button', {
-						'class': 'btn',
-						'click': ui.hideModal
-					}, _('Cancel')),
-					' ',
-					E('button', {
-						'class': 'btn cbi-button-action',
-						'click': function() {
-							var input = document.getElementById('wg-private-key-input');
-							var key = input ? input.value.trim() : '';
-							if (key && key.length === 44) {
-								ui.hideModal();
-								self.showQRCode(iface, peer, key, serverEndpoint);
-							} else {
-								ui.addNotification(null, E('p', {}, _('Please enter a valid private key (44 characters, base64)')), 'error');
-							}
-						}
-					}, _('Generate QR'))
-				])
-			]);
+		if (privateKey) {
+			this.showQRCode(iface, peer, privateKey, serverEndpoint);
 			return;
 		}
 
-		this.showQRCode(iface, peer, privateKey, serverEndpoint);
+		// Try backend first with empty private key - it will look up the stored key
+		api.generateQR(iface.name, peer.public_key, '', serverEndpoint).then(function(result) {
+			if (result && result.qrcode && !result.error) {
+				// Backend found the stored key and generated QR
+				self.displayQRModal(iface, peer, result.qrcode, result.config);
+			} else {
+				// Backend doesn't have the key - prompt user
+				self.showPrivateKeyPrompt(iface, peer, serverEndpoint);
+			}
+		}).catch(function() {
+			self.showPrivateKeyPrompt(iface, peer, serverEndpoint);
+		});
 	},
 
 	showQRCode: function(iface, peer, privateKey, serverEndpoint) {

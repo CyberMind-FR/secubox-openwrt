@@ -358,7 +358,7 @@ return view.extend({
 
 							var privkey = document.getElementById('peer-privkey').value;
 
-							API.addPeer(iface, name, allowed_ips, pubkey, psk, endpoint, keepalive).then(function(result) {
+							API.addPeer(iface, name, allowed_ips, pubkey, psk, endpoint, keepalive, privkey).then(function(result) {
 								ui.hideModal();
 								if (result.success) {
 									// Store private key for QR generation
@@ -460,37 +460,47 @@ return view.extend({
 	generateAndShowQR: function(peer, ifaceObj, privateKey, serverEndpoint) {
 		var self = this;
 
-		// Build WireGuard client config
-		var config = '[Interface]\n' +
-			'PrivateKey = ' + privateKey + '\n' +
-			'Address = ' + (peer.allowed_ips || '10.0.0.2/32') + '\n' +
-			'DNS = 1.1.1.1, 1.0.0.1\n\n' +
-			'[Peer]\n' +
-			'PublicKey = ' + (ifaceObj.public_key || '') + '\n' +
-			'Endpoint = ' + serverEndpoint + ':' + (ifaceObj.listen_port || 51820) + '\n' +
-			'AllowedIPs = 0.0.0.0/0, ::/0\n' +
-			'PersistentKeepalive = 25';
+		var buildLocalConfig = function(privKey) {
+			return '[Interface]\n' +
+				'PrivateKey = ' + privKey + '\n' +
+				'Address = ' + (peer.allowed_ips || '10.0.0.2/32') + '\n' +
+				'DNS = 1.1.1.1, 1.0.0.1\n\n' +
+				'[Peer]\n' +
+				'PublicKey = ' + (ifaceObj.public_key || '') + '\n' +
+				'Endpoint = ' + serverEndpoint + ':' + (ifaceObj.listen_port || 51820) + '\n' +
+				'AllowedIPs = 0.0.0.0/0, ::/0\n' +
+				'PersistentKeepalive = 25';
+		};
 
-		// First try backend QR generation
-		API.generateQR(peer.interface, peer.public_key, privateKey, serverEndpoint).then(function(result) {
+		// Try backend QR generation (it will look up stored key if privateKey is empty)
+		API.generateQR(peer.interface, peer.public_key, privateKey || '', serverEndpoint).then(function(result) {
 			if (result && result.qrcode && !result.error) {
+				var config = result.config || buildLocalConfig(privateKey);
 				self.displayQRModal(peer, result.qrcode, config, false);
-			} else {
-				// Fall back to JavaScript QR generation
+			} else if (privateKey) {
+				// Backend failed but we have a key - fall back to JavaScript QR generation
+				var config = buildLocalConfig(privateKey);
 				var svg = qrcode.generateSVG(config, 250);
 				if (svg) {
 					self.displayQRModal(peer, svg, config, true);
 				} else {
 					ui.addNotification(null, E('p', _('Failed to generate QR code')), 'error');
 				}
+			} else {
+				ui.addNotification(null, E('p', result.error || _('Failed to generate QR code')), 'error');
 			}
 		}).catch(function(err) {
-			// Fall back to JavaScript QR generation
-			var svg = qrcode.generateSVG(config, 250);
-			if (svg) {
-				self.displayQRModal(peer, svg, config, true);
+			if (privateKey) {
+				// Fall back to JavaScript QR generation
+				var config = buildLocalConfig(privateKey);
+				var svg = qrcode.generateSVG(config, 250);
+				if (svg) {
+					self.displayQRModal(peer, svg, config, true);
+				} else {
+					ui.addNotification(null, E('p', _('Failed to generate QR code')), 'error');
+				}
 			} else {
-				ui.addNotification(null, E('p', _('Failed to generate QR code')), 'error');
+				ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
 			}
 		});
 	},
@@ -552,61 +562,108 @@ return view.extend({
 		]);
 	},
 
+	showPrivateKeyPrompt: function(peer, ifaceObj, callback) {
+		var self = this;
+		ui.showModal(_('Private Key Required'), [
+			E('p', {}, _('To generate a QR code, the peer\'s private key is needed.')),
+			E('p', { 'style': 'color: #666; font-size: 0.9em;' },
+				_('The private key was not found on the server. This can happen for peers created before key persistence was enabled.')),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Private Key')),
+				E('div', { 'class': 'cbi-value-field' }, [
+					E('input', {
+						'type': 'text',
+						'id': 'manual-private-key',
+						'class': 'cbi-input-text',
+						'placeholder': 'Base64 private key (44 characters)',
+						'style': 'font-family: monospace;'
+					})
+				])
+			]),
+			E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
+				E('button', {
+					'class': 'btn',
+					'click': ui.hideModal
+				}, _('Cancel')),
+				' ',
+				E('button', {
+					'class': 'btn cbi-button-action',
+					'click': function() {
+						var key = document.getElementById('manual-private-key').value.trim();
+						if (!key || key.length !== 44) {
+							ui.addNotification(null, E('p', _('Please enter a valid private key (44 characters)')), 'error');
+							return;
+						}
+						self.storePrivateKey(peer.public_key, key);
+						ui.hideModal();
+						callback(key);
+					}
+				}, _('Continue'))
+			])
+		]);
+	},
+
 	handleShowQR: function(peer, interfaces, ev) {
 		var self = this;
 		var privateKey = this.getStoredPrivateKey(peer.public_key);
 		var ifaceObj = interfaces.find(function(i) { return i.name === peer.interface; }) || {};
 
-		if (!privateKey) {
-			// Private key not stored - ask user to input it
-			ui.showModal(_('Private Key Required'), [
-				E('p', {}, _('To generate a QR code, the peer\'s private key is needed.')),
-				E('p', { 'style': 'color: #666; font-size: 0.9em;' },
-					_('Private keys are only stored in your browser session immediately after peer creation. If you closed or refreshed the page, you\'ll need to enter it manually.')),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Private Key')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'manual-private-key',
-							'class': 'cbi-input-text',
-							'placeholder': 'Base64 private key (44 characters)',
-							'style': 'font-family: monospace;'
-						})
-					])
-				]),
-				E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
-					E('button', {
-						'class': 'btn',
-						'click': ui.hideModal
-					}, _('Cancel')),
-					' ',
-					E('button', {
-						'class': 'btn cbi-button-action',
-						'click': function() {
-							var key = document.getElementById('manual-private-key').value.trim();
-							if (!key || key.length !== 44) {
-								ui.addNotification(null, E('p', _('Please enter a valid private key (44 characters)')), 'error');
-								return;
-							}
-							// Store for future use
-							self.storePrivateKey(peer.public_key, key);
-							ui.hideModal();
-							self.promptForEndpointAndShowQR(peer, ifaceObj, key);
-						}
-					}, _('Continue'))
-				])
-			]);
+		if (privateKey) {
+			this.promptForEndpointAndShowQR(peer, ifaceObj, privateKey);
 			return;
 		}
 
-		this.promptForEndpointAndShowQR(peer, ifaceObj, privateKey);
+		// Try backend with empty private key - it will look up the stored key
+		var savedEndpoint = sessionStorage.getItem('wg_server_endpoint') || '';
+		if (savedEndpoint) {
+			API.generateQR(peer.interface, peer.public_key, '', savedEndpoint).then(function(result) {
+				if (result && result.qrcode && !result.error) {
+					self.displayQRModal(peer, result.qrcode, result.config, false);
+				} else {
+					self.showPrivateKeyPrompt(peer, ifaceObj, function(key) {
+						self.promptForEndpointAndShowQR(peer, ifaceObj, key);
+					});
+				}
+			}).catch(function() {
+				self.showPrivateKeyPrompt(peer, ifaceObj, function(key) {
+					self.promptForEndpointAndShowQR(peer, ifaceObj, key);
+				});
+			});
+		} else {
+			// No saved endpoint yet - need to prompt for endpoint first
+			// Try a test call to see if backend has the key
+			API.generateConfig(peer.interface, peer.public_key, '', 'test').then(function(result) {
+				if (result && result.config && !result.error) {
+					// Backend has the key, proceed with endpoint prompt
+					self.promptForEndpointAndShowQR(peer, ifaceObj, '');
+				} else {
+					self.showPrivateKeyPrompt(peer, ifaceObj, function(key) {
+						self.promptForEndpointAndShowQR(peer, ifaceObj, key);
+					});
+				}
+			}).catch(function() {
+				self.showPrivateKeyPrompt(peer, ifaceObj, function(key) {
+					self.promptForEndpointAndShowQR(peer, ifaceObj, key);
+				});
+			});
+		}
 	},
 
 	handleDownloadConfig: function(peer, interfaces, ev) {
 		var self = this;
 		var privateKey = this.getStoredPrivateKey(peer.public_key);
 		var ifaceObj = interfaces.find(function(i) { return i.name === peer.interface; }) || {};
+
+		var downloadConfig = function(config) {
+			var blob = new Blob([config], { type: 'text/plain' });
+			var url = URL.createObjectURL(blob);
+			var a = document.createElement('a');
+			a.href = url;
+			a.download = peer.interface + '-' + (peer.short_key || 'peer') + '.conf';
+			a.click();
+			URL.revokeObjectURL(url);
+			ui.addNotification(null, E('p', _('Configuration file downloaded')), 'info');
+		};
 
 		var showConfigModal = function(privKey) {
 			var savedEndpoint = sessionStorage.getItem('wg_server_endpoint') || '';
@@ -640,27 +697,31 @@ return view.extend({
 								return;
 							}
 							sessionStorage.setItem('wg_server_endpoint', endpoint);
-
-							var config = '[Interface]\n' +
-								'PrivateKey = ' + privKey + '\n' +
-								'Address = ' + (peer.allowed_ips || '10.0.0.2/32') + '\n' +
-								'DNS = 1.1.1.1, 1.0.0.1\n\n' +
-								'[Peer]\n' +
-								'PublicKey = ' + (ifaceObj.public_key || '') + '\n' +
-								'Endpoint = ' + endpoint + ':' + (ifaceObj.listen_port || 51820) + '\n' +
-								'AllowedIPs = 0.0.0.0/0, ::/0\n' +
-								'PersistentKeepalive = 25';
-
-							var blob = new Blob([config], { type: 'text/plain' });
-							var url = URL.createObjectURL(blob);
-							var a = document.createElement('a');
-							a.href = url;
-							a.download = peer.interface + '-' + (peer.short_key || 'peer') + '.conf';
-							a.click();
-							URL.revokeObjectURL(url);
-
 							ui.hideModal();
-							ui.addNotification(null, E('p', _('Configuration file downloaded')), 'info');
+
+							if (privKey) {
+								var config = '[Interface]\n' +
+									'PrivateKey = ' + privKey + '\n' +
+									'Address = ' + (peer.allowed_ips || '10.0.0.2/32') + '\n' +
+									'DNS = 1.1.1.1, 1.0.0.1\n\n' +
+									'[Peer]\n' +
+									'PublicKey = ' + (ifaceObj.public_key || '') + '\n' +
+									'Endpoint = ' + endpoint + ':' + (ifaceObj.listen_port || 51820) + '\n' +
+									'AllowedIPs = 0.0.0.0/0, ::/0\n' +
+									'PersistentKeepalive = 25';
+								downloadConfig(config);
+							} else {
+								// Use backend to generate config (it has the stored key)
+								API.generateConfig(peer.interface, peer.public_key, '', endpoint).then(function(result) {
+									if (result && result.config && !result.error) {
+										downloadConfig(result.config);
+									} else {
+										ui.addNotification(null, E('p', result.error || _('Failed to generate config')), 'error');
+									}
+								}).catch(function(err) {
+									ui.addNotification(null, E('p', _('Error: %s').format(err.message || err)), 'error');
+								});
+							}
 						}
 					}, _('Download'))
 				])
@@ -668,42 +729,22 @@ return view.extend({
 		};
 
 		if (!privateKey) {
-			// Private key not stored - ask user to input it
-			ui.showModal(_('Private Key Required'), [
-				E('p', {}, _('Enter the peer\'s private key to generate the configuration file:')),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Private Key')),
-					E('div', { 'class': 'cbi-value-field' }, [
-						E('input', {
-							'type': 'text',
-							'id': 'cfg-private-key',
-							'class': 'cbi-input-text',
-							'placeholder': 'Base64 private key (44 characters)',
-							'style': 'font-family: monospace;'
-						})
-					])
-				]),
-				E('div', { 'class': 'right', 'style': 'margin-top: 1em;' }, [
-					E('button', {
-						'class': 'btn',
-						'click': ui.hideModal
-					}, _('Cancel')),
-					' ',
-					E('button', {
-						'class': 'btn cbi-button-action',
-						'click': function() {
-							var key = document.getElementById('cfg-private-key').value.trim();
-							if (!key || key.length !== 44) {
-								ui.addNotification(null, E('p', _('Please enter a valid private key (44 characters)')), 'error');
-								return;
-							}
-							self.storePrivateKey(peer.public_key, key);
-							ui.hideModal();
-							showConfigModal(key);
-						}
-					}, _('Continue'))
-				])
-			]);
+			// Try backend first - it may have the stored key
+			API.generateConfig(peer.interface, peer.public_key, '', 'test').then(function(result) {
+				if (result && result.config && !result.error) {
+					// Backend has the key, show config modal with backend-generated config
+					showConfigModal('');
+				} else {
+					// Fallback to manual prompt
+					self.showPrivateKeyPrompt(peer, ifaceObj, function(key) {
+						showConfigModal(key);
+					});
+				}
+			}).catch(function() {
+				self.showPrivateKeyPrompt(peer, ifaceObj, function(key) {
+					showConfigModal(key);
+				});
+			});
 			return;
 		}
 

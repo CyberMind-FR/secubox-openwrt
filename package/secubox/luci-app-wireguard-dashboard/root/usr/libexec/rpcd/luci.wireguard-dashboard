@@ -506,6 +506,7 @@ add_peer() {
 	json_get_var psk preshared_key
 	json_get_var endpoint endpoint
 	json_get_var keepalive persistent_keepalive
+	json_get_var client_privkey private_key
 
 	json_init
 
@@ -570,6 +571,11 @@ add_peer() {
 	# Persistent keepalive
 	if [ -n "$keepalive" ] && [ "$keepalive" != "0" ]; then
 		uci set network.$section_name.persistent_keepalive="$keepalive"
+	fi
+
+	# Store client private key for QR/config generation
+	if [ -n "$client_privkey" ]; then
+		uci set network.$section_name._client_private_key="$client_privkey"
 	fi
 
 	# Route allowed IPs
@@ -655,6 +661,24 @@ generate_config() {
 
 	json_init
 
+	# If private key not provided, look it up from UCI
+	if [ -z "$peer_privkey" ]; then
+		local sections=$(uci show network 2>/dev/null | grep "=wireguard_$iface$" | cut -d'.' -f2 | cut -d'=' -f1)
+		for section in $sections; do
+			local key=$(uci -q get network.$section.public_key)
+			if [ "$key" = "$peer_key" ]; then
+				peer_privkey=$(uci -q get network.$section._client_private_key)
+				break
+			fi
+		done
+	fi
+
+	if [ -z "$peer_privkey" ]; then
+		json_add_string "error" "Private key not available. Please provide it manually."
+		json_dump
+		return
+	fi
+
 	# Get interface details
 	local server_pubkey=$($WG_CMD show $iface public-key 2>/dev/null)
 	local server_port=$($WG_CMD show $iface listen-port 2>/dev/null)
@@ -705,6 +729,24 @@ generate_qr() {
 
 	if [ ! -x "/usr/bin/qrencode" ]; then
 		json_add_string "error" "qrencode not installed (opkg install qrencode)"
+		json_dump
+		return
+	fi
+
+	# If private key not provided, look it up from UCI
+	if [ -z "$peer_privkey" ]; then
+		local sections=$(uci show network 2>/dev/null | grep "=wireguard_$iface$" | cut -d'.' -f2 | cut -d'=' -f1)
+		for section in $sections; do
+			local key=$(uci -q get network.$section.public_key)
+			if [ "$key" = "$peer_key" ]; then
+				peer_privkey=$(uci -q get network.$section._client_private_key)
+				break
+			fi
+		done
+	fi
+
+	if [ -z "$peer_privkey" ]; then
+		json_add_string "error" "Private key not available. Please provide it manually."
 		json_dump
 		return
 	fi
@@ -1008,7 +1050,7 @@ get_bandwidth_rates() {
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_keys":{},"create_interface":{"name":"str","private_key":"str","listen_port":"str","addresses":"str","mtu":"str"},"add_peer":{"interface":"str","name":"str","allowed_ips":"str","public_key":"str","preshared_key":"str","endpoint":"str","persistent_keepalive":"str"},"remove_peer":{"interface":"str","public_key":"str"},"generate_config":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"generate_qr":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"},"interface_control":{"interface":"str","action":"str"},"peer_descriptions":{},"bandwidth_rates":{}}'
+		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_keys":{},"create_interface":{"name":"str","private_key":"str","listen_port":"str","addresses":"str","mtu":"str"},"add_peer":{"interface":"str","name":"str","allowed_ips":"str","public_key":"str","preshared_key":"str","endpoint":"str","persistent_keepalive":"str","private_key":"str"},"remove_peer":{"interface":"str","public_key":"str"},"generate_config":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"generate_qr":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"},"interface_control":{"interface":"str","action":"str"},"peer_descriptions":{},"bandwidth_rates":{}}'
 		;;
 	call)
 		case "$2" in
