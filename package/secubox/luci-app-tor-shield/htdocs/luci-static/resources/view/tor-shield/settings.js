@@ -18,6 +18,7 @@ return view.extend({
 			mode: form.querySelector('[name="mode"]').value,
 			dns_over_tor: form.querySelector('[name="dns_over_tor"]').checked ? '1' : '0',
 			kill_switch: form.querySelector('[name="kill_switch"]').checked ? '1' : '0',
+			lan_proxy: form.querySelector('[name="lan_proxy"]').checked ? '1' : '0',
 			socks_port: parseInt(form.querySelector('[name="socks_port"]').value) || 9050,
 			trans_port: parseInt(form.querySelector('[name="trans_port"]').value) || 9040,
 			dns_port: parseInt(form.querySelector('[name="dns_port"]').value) || 9053,
@@ -37,6 +38,7 @@ return view.extend({
 			settings.socks_port,
 			settings.trans_port,
 			settings.dns_port,
+			settings.lan_proxy,
 			settings.exit_nodes,
 			settings.exclude_exit_nodes,
 			settings.strict_nodes,
@@ -112,6 +114,20 @@ return view.extend({
 							]),
 							E('p', { 'style': 'font-size: 12px; color: var(--tor-text-muted); margin-top: 4px; margin-left: 24px;' },
 								_('Block all non-Tor traffic if the connection drops. Prevents IP leaks.'))
+						]),
+
+						// LAN Proxy
+						E('div', { 'style': 'margin-bottom: 20px;' }, [
+							E('label', { 'style': 'display: flex; align-items: center; gap: 8px; cursor: pointer;' }, [
+								E('input', {
+									'type': 'checkbox',
+									'name': 'lan_proxy',
+									'checked': data.lan_proxy
+								}),
+								E('span', { 'style': 'font-weight: 600;' }, _('LAN Client Proxy'))
+							]),
+							E('p', { 'style': 'font-size: 12px; color: var(--tor-text-muted); margin-top: 4px; margin-left: 24px;' },
+								_('Route LAN client traffic through Tor via PREROUTING. Used by Server Mode to anonymize outbound traffic while preserving inbound connections.'))
 						])
 					])
 				]),
