@@ -1,0 +1,41 @@
+#!/bin/sh
+# Master-Link API - Join request from new node
+# POST /api/master-link/join
+# Auth: Token-validated
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: POST, OPTIONS"
+echo "Access-Control-Allow-Headers: Content-Type"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+if [ "$REQUEST_METHOD" != "POST" ]; then
+	echo '{"error":"method_not_allowed"}'
+	exit 0
+fi
+
+# Load library
+. /usr/lib/secubox/master-link.sh 2>/dev/null
+
+# Read POST body
+read -r input
+
+token=$(echo "$input" | jsonfilter -e '@.token' 2>/dev/null)
+fingerprint=$(echo "$input" | jsonfilter -e '@.fingerprint' 2>/dev/null)
+address=$(echo "$input" | jsonfilter -e '@.address' 2>/dev/null)
+peer_hostname=$(echo "$input" | jsonfilter -e '@.hostname' 2>/dev/null)
+
+# Use REMOTE_ADDR as fallback for address
+[ -z "$address" ] && address="$REMOTE_ADDR"
+
+if [ -z "$token" ] || [ -z "$fingerprint" ]; then
+	echo '{"error":"missing_fields","required":["token","fingerprint"]}'
+	exit 0
+fi
+
+ml_join_request "$token" "$fingerprint" "$address" "$peer_hostname"

@@ -1,0 +1,42 @@
+#!/bin/sh /etc/rc.common
+# SecuBox Master-Link - Token cleanup cron
+
+START=95
+STOP=15
+USE_PROCD=1
+
+EXTRA_COMMANDS="cleanup"
+EXTRA_HELP="	cleanup	Run token cleanup now"
+
+start_service() {
+	local enabled=$(uci -q get master-link.main.enabled)
+	[ "$enabled" != "1" ] && return 0
+
+	# Initialize master-link directories
+	. /usr/lib/secubox/master-link.sh
+	ml_init 2>/dev/null
+
+	# Add cron job for token cleanup every 5 minutes
+	local cron_line="*/5 * * * * /usr/lib/secubox/master-link.sh token-cleanup >/dev/null 2>&1"
+	local cron_tag="# master-link-cleanup"
+
+	# Remove old entry if exists
+	crontab -l 2>/dev/null | grep -v "master-link" | crontab -
+
+	# Add new entry
+	(crontab -l 2>/dev/null; echo "$cron_line $cron_tag") | crontab -
+
+	logger -t master-link "Master-Link service started (role: $(uci -q get master-link.main.role))"
+}
+
+stop_service() {
+	# Remove cron job
+	crontab -l 2>/dev/null | grep -v "master-link" | crontab -
+
+	logger -t master-link "Master-Link service stopped"
+}
+
+cleanup() {
+	. /usr/lib/secubox/master-link.sh
+	ml_token_cleanup
+}

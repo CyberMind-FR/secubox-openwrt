@@ -1,0 +1,25 @@
+{
+	"luci-app-master-link": {
+		"description": "Grant access to SecuBox Master-Link mesh management",
+		"read": {
+			"file": {
+				"/etc/config/master-link": ["read"],
+				"/var/lib/secubox-master-link/requests/*": ["read"]
+			},
+			"ubus": {
+				"file": ["read", "stat"],
+				"luci.master-link": ["*"]
+			},
+			"uci": ["master-link"]
+		},
+		"write": {
+			"file": {
+				"/etc/config/master-link": ["write"]
+			},
+			"ubus": {
+				"luci.master-link": ["*"]
+			},
+			"uci": ["master-link"]
+		}
+	}
+}

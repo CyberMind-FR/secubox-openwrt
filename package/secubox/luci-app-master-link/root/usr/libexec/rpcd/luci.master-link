@@ -1,0 +1,61 @@
+#!/bin/sh
+
+. /usr/share/libubox/jshn.sh
+
+case "$1" in
+	list)
+		echo '{"status":{},"peers":{},"tree":{},"token_generate":{},"approve":{"fingerprint":"str","action":"str","reason":"str"},"token_cleanup":{}}'
+		;;
+	call)
+		case "$2" in
+			status)
+				. /usr/lib/secubox/master-link.sh 2>/dev/null
+				ml_status
+				;;
+			peers)
+				. /usr/lib/secubox/master-link.sh 2>/dev/null
+				ml_peer_list
+				;;
+			tree)
+				. /usr/lib/secubox/master-link.sh 2>/dev/null
+				ml_tree
+				;;
+			token_generate)
+				. /usr/lib/secubox/master-link.sh 2>/dev/null
+				ml_token_generate
+				;;
+			approve)
+				read -r input
+				fingerprint=$(echo "$input" | jsonfilter -e '@.fingerprint' 2>/dev/null)
+				action=$(echo "$input" | jsonfilter -e '@.action' 2>/dev/null)
+				reason=$(echo "$input" | jsonfilter -e '@.reason' 2>/dev/null)
+
+				. /usr/lib/secubox/master-link.sh 2>/dev/null
+
+				case "$action" in
+					approve)
+						ml_join_approve "$fingerprint"
+						;;
+					reject)
+						ml_join_reject "$fingerprint" "$reason"
+						;;
+					promote)
+						ml_promote_to_submaster "$fingerprint"
+						;;
+					*)
+						echo '{"error":"invalid_action"}'
+						;;
+				esac
+				;;
+			token_cleanup)
+				. /usr/lib/secubox/master-link.sh 2>/dev/null
+				ml_token_cleanup
+				;;
+			*)
+				echo '{"error":"unknown_method"}'
+				;;
+		esac
+		;;
+esac
+
+exit 0

@@ -1,0 +1,14 @@
+{
+	"admin/services/secubox-mesh": {
+		"title": "Mesh Link",
+		"order": 70,
+		"action": {
+			"type": "view",
+			"path": "secubox/master-link"
+		},
+		"depends": {
+			"acl": ["luci-app-master-link"],
+			"uci": {"master-link": true}
+		}
+	}
+}

@@ -1,0 +1,56 @@
+#!/bin/sh
+# Master-Link API - Approve/reject pending peer
+# POST /api/master-link/approve
+# Auth: Local only (127.0.0.1 or LuCI session)
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: POST, OPTIONS"
+echo "Access-Control-Allow-Headers: Content-Type"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+if [ "$REQUEST_METHOD" != "POST" ]; then
+	echo '{"error":"method_not_allowed"}'
+	exit 0
+fi
+
+# Load library
+. /usr/lib/secubox/master-link.sh 2>/dev/null
+
+# Auth check - local only
+if ! ml_check_local_auth; then
+	echo '{"error":"unauthorized","message":"Approval requires local access"}'
+	exit 0
+fi
+
+# Read POST body
+read -r input
+
+fingerprint=$(echo "$input" | jsonfilter -e '@.fingerprint' 2>/dev/null)
+action=$(echo "$input" | jsonfilter -e '@.action' 2>/dev/null)
+reason=$(echo "$input" | jsonfilter -e '@.reason' 2>/dev/null)
+
+if [ -z "$fingerprint" ] || [ -z "$action" ]; then
+	echo '{"error":"missing_fields","required":["fingerprint","action"]}'
+	exit 0
+fi
+
+case "$action" in
+	approve)
+		ml_join_approve "$fingerprint"
+		;;
+	reject)
+		ml_join_reject "$fingerprint" "$reason"
+		;;
+	promote)
+		ml_promote_to_submaster "$fingerprint"
+		;;
+	*)
+		echo '{"error":"invalid_action","valid":["approve","reject","promote"]}'
+		;;
+esac
