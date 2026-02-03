@@ -289,9 +289,9 @@ factory_audit_log() {
 
 	echo "$(date -Iseconds 2>/dev/null || date)|$node_id|$action|$details" >> "$log_file"
 
-	# Push to Gitea if enabled
+	# Push to Gitea if enabled (suppress all output to avoid corrupting CGI responses)
 	if [ "$(uci -q get secubox-p2p.gitea.enabled)" = "1" ]; then
-		ubus call luci.secubox-p2p push_gitea_backup "{\"message\":\"Factory: $action\"}" 2>/dev/null
+		ubus call luci.secubox-p2p push_gitea_backup "{\"message\":\"Factory: $action\"}" >/dev/null 2>&1
 	fi
 }
 
