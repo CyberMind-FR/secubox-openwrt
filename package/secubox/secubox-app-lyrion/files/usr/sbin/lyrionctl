@@ -60,6 +60,69 @@ load_config() {
 
 ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
 
+# Firewall management - open Lyrion ports for LAN device access
+firewall_ensure_rules() {
+	local changed=0
+
+	# Lyrion Web UI (TCP 9000)
+	if ! uci show firewall 2>/dev/null | grep -q "Lyrion-Web"; then
+		log_info "Creating firewall rule for Lyrion Web UI (TCP $port)..."
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='Lyrion-Web'
+		uci set firewall.@rule[-1].src='lan'
+		uci set firewall.@rule[-1].dest_port="$port"
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci set firewall.@rule[-1].enabled='1'
+		changed=1
+	fi
+
+	# Lyrion CLI (TCP 9090)
+	if ! uci show firewall 2>/dev/null | grep -q "Lyrion-CLI"; then
+		log_info "Creating firewall rule for Lyrion CLI (TCP 9090)..."
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='Lyrion-CLI'
+		uci set firewall.@rule[-1].src='lan'
+		uci set firewall.@rule[-1].dest_port='9090'
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci set firewall.@rule[-1].enabled='1'
+		changed=1
+	fi
+
+	# Slim Protocol TCP (TCP 3483) - player control
+	if ! uci show firewall 2>/dev/null | grep -q "Lyrion-Slim-TCP"; then
+		log_info "Creating firewall rule for Slim Protocol (TCP 3483)..."
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='Lyrion-Slim-TCP'
+		uci set firewall.@rule[-1].src='lan'
+		uci set firewall.@rule[-1].dest_port='3483'
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci set firewall.@rule[-1].enabled='1'
+		changed=1
+	fi
+
+	# Slim Protocol UDP (UDP 3483) - player discovery
+	if ! uci show firewall 2>/dev/null | grep -q "Lyrion-Slim-UDP"; then
+		log_info "Creating firewall rule for Slim Discovery (UDP 3483)..."
+		uci add firewall rule
+		uci set firewall.@rule[-1].name='Lyrion-Slim-UDP'
+		uci set firewall.@rule[-1].src='lan'
+		uci set firewall.@rule[-1].dest_port='3483'
+		uci set firewall.@rule[-1].proto='udp'
+		uci set firewall.@rule[-1].target='ACCEPT'
+		uci set firewall.@rule[-1].enabled='1'
+		changed=1
+	fi
+
+	if [ "$changed" = "1" ]; then
+		uci commit firewall
+		/etc/init.d/firewall reload 2>/dev/null || true
+		log_info "Firewall rules updated - Lyrion ports open on LAN"
+	fi
+}
+
 # Check if a runtime is available
 has_docker() {
 	command -v docker >/dev/null 2>&1 && \
@@ -166,6 +229,7 @@ docker_run() {
 	exec docker run --rm \
 		--name "$CONTAINER_NAME" \
 		-p "${port}:9000" \
+		-p "9090:9090" \
 		-p "3483:3483" \
 		-p "3483:3483/udp" \
 		-v "$data_path:/config" \
@@ -453,8 +517,8 @@ lxc.uts.name = $LXC_NAME
 # Root filesystem
 lxc.rootfs.path = dir:$LXC_ROOTFS
 
-# Network - use host network for simplicity
-lxc.net.0.type = none
+# Network - inherit host network (no lxc.net = share host namespace)
+# Needed for Squeezebox UDP 3483 broadcast discovery
 
 # Mounts
 lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
@@ -580,6 +644,9 @@ cmd_install() {
 			;;
 	esac
 
+	# Ensure firewall rules are in place
+	firewall_ensure_rules
+
 	uci_set enabled '1'
 	/etc/init.d/lyrion enable
 
@@ -687,6 +754,9 @@ cmd_shell() {
 cmd_service_run() {
 	require_root
 	load_config
+
+	# Ensure firewall rules on every start
+	firewall_ensure_rules
 
 	local rt=$(detect_runtime) || exit 1
 
