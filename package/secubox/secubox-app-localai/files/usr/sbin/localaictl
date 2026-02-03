@@ -309,9 +309,10 @@ cmd_models() {
 
 	echo ""
 	echo "=== Available Presets ==="
-	echo "  tinyllama    - 669MB  - TinyLlama 1.1B"
-	echo "  phi2         - 1.6GB  - Microsoft Phi-2"
-	echo "  mistral      - 4.1GB  - Mistral 7B Instruct"
+	echo "  tinyllama    - 669MB  - TinyLlama 1.1B (chat)"
+	echo "  phi2         - 1.6GB  - Microsoft Phi-2 (chat)"
+	echo "  mistral      - 4.1GB  - Mistral 7B Instruct (chat)"
+	echo "  gte-small    -  67MB  - GTE Small (embeddings)"
 	echo ""
 	echo "Install: localaictl model-install <name>"
 }
@@ -340,13 +341,17 @@ cmd_model_install() {
 			url="https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 			filename="mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 			;;
+		gte-small)
+			url="https://huggingface.co/ggml-org/gte-small-Q8_0-GGUF/resolve/main/gte-small-q8_0.gguf"
+			filename="gte-small-q8_0.gguf"
+			;;
 		http*)
 			url="$model_name"
 			filename=$(basename "$url")
 			;;
 		*)
 			log_error "Unknown model: $model_name"
-			log_error "Use preset name (tinyllama, phi2, mistral) or full URL"
+			log_error "Use preset name (tinyllama, phi2, mistral, gte-small) or full URL"
 			return 1
 			;;
 	esac
@@ -358,7 +363,22 @@ cmd_model_install() {
 	if wget -L --show-progress -O "$models_path/$filename" "$url"; then
 		# Create YAML config for the model
 		local model_id="${filename%.*}"
-		cat > "$models_path/$model_id.yaml" << EOF
+
+		# Embedding models need different config
+		case "$model_name" in
+			gte-small)
+				cat > "$models_path/$model_id.yaml" << EOF
+name: $model_id
+backend: llama-cpp
+embeddings: true
+parameters:
+  model: $filename
+context_size: 512
+threads: $threads
+EOF
+				;;
+			*)
+				cat > "$models_path/$model_id.yaml" << EOF
 name: $model_id
 backend: llama-cpp
 parameters:
@@ -366,6 +386,8 @@ parameters:
 context_size: $context_size
 threads: $threads
 EOF
+				;;
+		esac
 		log_info "Model installed: $model_id"
 		log_info "Restart service to load: /etc/init.d/localai restart"
 	else

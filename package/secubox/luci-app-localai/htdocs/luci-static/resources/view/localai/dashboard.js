@@ -18,7 +18,7 @@ var callModels = rpc.declare({
 var callHealth = rpc.declare({
 	object: 'luci.localai',
 	method: 'health',
-	expect: { healthy: false }
+	expect: { }
 });
 
 var callMetrics = rpc.declare({
@@ -30,19 +30,19 @@ var callMetrics = rpc.declare({
 var callStart = rpc.declare({
 	object: 'luci.localai',
 	method: 'start',
-	expect: { success: false }
+	expect: { }
 });
 
 var callStop = rpc.declare({
 	object: 'luci.localai',
 	method: 'stop',
-	expect: { success: false }
+	expect: { }
 });
 
 var callRestart = rpc.declare({
 	object: 'luci.localai',
 	method: 'restart',
-	expect: { success: false }
+	expect: { }
 });
 
 function formatBytes(bytes) {

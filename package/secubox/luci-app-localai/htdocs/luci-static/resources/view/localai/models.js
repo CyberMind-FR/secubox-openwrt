@@ -13,14 +13,14 @@ var callModelInstall = rpc.declare({
 	object: 'luci.localai',
 	method: 'model_install',
 	params: ['name'],
-	expect: { success: false }
+	expect: { }
 });
 
 var callModelRemove = rpc.declare({
 	object: 'luci.localai',
 	method: 'model_remove',
 	params: ['name'],
-	expect: { success: false }
+	expect: { }
 });
 
 function formatBytes(bytes) {
