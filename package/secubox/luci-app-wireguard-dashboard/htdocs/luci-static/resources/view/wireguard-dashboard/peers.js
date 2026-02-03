@@ -609,44 +609,27 @@ return view.extend({
 		var ifaceObj = interfaces.find(function(i) { return i.name === peer.interface; }) || {};
 
 		if (privateKey) {
+			// Have key in session - go straight to endpoint prompt
 			this.promptForEndpointAndShowQR(peer, ifaceObj, privateKey);
 			return;
 		}
 
-		// Try backend with empty private key - it will look up the stored key
-		var savedEndpoint = sessionStorage.getItem('wg_server_endpoint') || '';
-		if (savedEndpoint) {
-			API.generateQR(peer.interface, peer.public_key, '', savedEndpoint).then(function(result) {
-				if (result && result.qrcode && !result.error) {
-					self.displayQRModal(peer, result.qrcode, result.config, false);
-				} else {
-					self.showPrivateKeyPrompt(peer, ifaceObj, function(key) {
-						self.promptForEndpointAndShowQR(peer, ifaceObj, key);
-					});
-				}
-			}).catch(function() {
+		// Check if backend has the stored key via a quick generateConfig test
+		API.generateConfig(peer.interface, peer.public_key, '', 'test').then(function(result) {
+			if (result && result.config && !result.error) {
+				// Backend has the key - prompt for endpoint, backend will handle the rest
+				self.promptForEndpointAndShowQR(peer, ifaceObj, '');
+			} else {
+				// No stored key - ask user manually
 				self.showPrivateKeyPrompt(peer, ifaceObj, function(key) {
 					self.promptForEndpointAndShowQR(peer, ifaceObj, key);
 				});
+			}
+		}).catch(function() {
+			self.showPrivateKeyPrompt(peer, ifaceObj, function(key) {
+				self.promptForEndpointAndShowQR(peer, ifaceObj, key);
 			});
-		} else {
-			// No saved endpoint yet - need to prompt for endpoint first
-			// Try a test call to see if backend has the key
-			API.generateConfig(peer.interface, peer.public_key, '', 'test').then(function(result) {
-				if (result && result.config && !result.error) {
-					// Backend has the key, proceed with endpoint prompt
-					self.promptForEndpointAndShowQR(peer, ifaceObj, '');
-				} else {
-					self.showPrivateKeyPrompt(peer, ifaceObj, function(key) {
-						self.promptForEndpointAndShowQR(peer, ifaceObj, key);
-					});
-				}
-			}).catch(function() {
-				self.showPrivateKeyPrompt(peer, ifaceObj, function(key) {
-					self.promptForEndpointAndShowQR(peer, ifaceObj, key);
-				});
-			});
-		}
+		});
 	},
 
 	handleDownloadConfig: function(peer, interfaces, ev) {

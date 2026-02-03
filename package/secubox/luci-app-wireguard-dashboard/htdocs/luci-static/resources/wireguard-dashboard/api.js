@@ -65,14 +65,14 @@ var callGenerateConfig = rpc.declare({
 	object: 'luci.wireguard-dashboard',
 	method: 'generate_config',
 	params: ['interface', 'peer', 'private_key', 'endpoint'],
-	expect: { config: '' }
+	expect: { }
 });
 
 var callGenerateQR = rpc.declare({
 	object: 'luci.wireguard-dashboard',
 	method: 'generate_qr',
 	params: ['interface', 'peer', 'private_key', 'endpoint'],
-	expect: { qrcode: '' }
+	expect: { }
 });
 
 var callGetTraffic = rpc.declare({

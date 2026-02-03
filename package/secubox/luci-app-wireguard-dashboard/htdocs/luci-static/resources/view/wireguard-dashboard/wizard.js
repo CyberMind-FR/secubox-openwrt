@@ -135,6 +135,16 @@ return view.extend({
 		});
 	},
 
+	getNextInterfaceName: function(interfaces) {
+		var existing = interfaces.map(function(i) { return i.name; });
+		for (var i = 0; i < 100; i++) {
+			var name = 'wg' + i;
+			if (existing.indexOf(name) === -1)
+				return name;
+		}
+		return 'wg0';
+	},
+
 	render: function(data) {
 		var self = this;
 		// Handle RPC expect unwrapping - results may be array or object
@@ -145,6 +155,7 @@ return view.extend({
 
 		this.wizardData.publicIP = publicIP;
 		this.wizardData.existingInterfaces = interfaces;
+		this.wizardData.nextIfaceName = this.getNextInterfaceName(interfaces);
 
 		var view = E('div', { 'class': 'wg-wizard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('wireguard-dashboard/dashboard.css') }),
@@ -246,7 +257,7 @@ return view.extend({
 							'type': 'text',
 							'id': 'cfg-iface-name',
 							'class': 'wg-input',
-							'value': 'wg0',
+							'value': this.wizardData.nextIfaceName || 'wg0',
 							'placeholder': 'wg0'
 						}),
 						E('small', {}, _('Name for the WireGuard interface'))
@@ -633,7 +644,7 @@ return view.extend({
 
 					results.push(peerData);
 
-					// Add peer to interface
+					// Add peer to interface (include private key for QR persistence)
 					return api.addPeer(
 						data.ifaceName,
 						zone.name + '_' + (idx + 1),
@@ -641,7 +652,8 @@ return view.extend({
 						keys.public_key,
 						keys.preshared_key,
 						'',
-						zone.keepalive.toString()
+						zone.keepalive.toString(),
+						keys.private_key
 					);
 				})
 			);
