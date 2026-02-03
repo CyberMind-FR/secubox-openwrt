@@ -788,13 +788,17 @@ PersistentKeepalive = 25"
 PresharedKey = ${psk}"
 	fi
 
-	# Generate QR code as SVG (PNG disabled in OpenWrt qrencode) and convert to base64
-	local qr_base64=$(echo "$config" | qrencode -t SVG -o - | base64 -w 0)
+	# Generate QR code as SVG and convert to base64
+	# Build JSON manually to avoid jshn "Argument list too long" with large base64 strings
+	local tmpfile="/tmp/wg_qr_$$.json"
+	local config_escaped=$(printf '%s' "$config" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n", $0}' | sed '$ s/\\n$//')
 
-	json_add_string "qrcode" "data:image/svg+xml;base64,$qr_base64"
-	json_add_string "config" "$config"
+	printf '{"qrcode":"data:image/svg+xml;base64,' > "$tmpfile"
+	echo "$config" | qrencode -t SVG -o - | base64 -w 0 >> "$tmpfile"
+	printf '","config":"%s"}\n' "$config_escaped" >> "$tmpfile"
 
-	json_dump
+	cat "$tmpfile"
+	rm -f "$tmpfile"
 }
 
 # Get bandwidth history (if vnstat available)
