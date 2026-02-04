@@ -8,12 +8,15 @@ _Last updated: 2026-02-04_
 - ~~Glances full system monitoring~~ — Done: LXC host bind mounts, Docker socket, fs plugin patch, hostname/OS identity (2026-02-04).
 - ~~Zigbee2MQTT dongle connection~~ — Done: adapter `ezsp`→`ember`, `ZIGBEE2MQTT_DATA` env var, direct `/dev/ttyUSB0` passthrough (2026-02-04).
 - ~~Metablogizer Upload Failures~~ — Done: Chunked upload to bypass uhttpd 64KB JSON limit (2026-02-04).
+- ~~Chip Header Layout Migration~~ — Done: client-guardian and auth-guardian ported to `sh-page-header` + `renderHeaderChip()` (2026-02-05).
+- ~~SMB/CIFS Shared Remote Directories~~ — Done: `secubox-app-smbfs` (client mount manager) + `secubox-app-ksmbd` (server for mesh sharing) (2026-02-04/05).
+- ~~P2P App Store Emancipation~~ — Done: P2P package distribution, packages.js view, devstatus.js widget (2026-02-04/05).
 
 ## Open
 
-1. **Chip Header Layout Migration**
-   - Port `sh-page-header` + `renderHeaderChip()` pattern to client-guardian and auth-guardian.
-   - Both still use legacy header layouts (`cg-header`, `ag-hdr`).
+1. ~~**Chip Header Layout Migration**~~ — Done (2026-02-05)
+   - ~~Port `sh-page-header` + `renderHeaderChip()` pattern to client-guardian and auth-guardian.~~
+   - ~~Both now use `sh-page-header` with chip stats.~~
 
 2. **Navigation Component**
    - Convert `SecuNav.renderTabs()` into a reusable LuCI widget (avoid duplicating `Theme.init` in each view).
@@ -45,11 +48,10 @@ _Last updated: 2026-02-04_
    - Capture screenshot baselines for dark/light/cyberpunk themes.
    - Automate browser cache busting (append `?v=<git sha>` to view URLs).
 
-10. **SMB/CIFS Shared Remote Directories**
-    - Implement smbfs/cifs mount management for shared remote directories.
-    - Media handling: backups, sources, Lyrion music library, Jellyfin media paths.
-    - UCI config + LuCI UI for mount management (credentials, auto-mount, mount points).
-    - Integration hooks for media apps (Jellyfin, Lyrion, backup scripts).
+10. ~~**SMB/CIFS Shared Remote Directories**~~ — Done (2026-02-04/05)
+    - ~~`secubox-app-smbfs` for client-side mount management (`smbfsctl` CLI, UCI config, init script).~~
+    - ~~`secubox-app-ksmbd` for server-side mesh sharing (`ksmbdctl` CLI, pre-configured shares).~~
+    - ~~Integrates with Jellyfin, Lyrion media paths.~~
 
 11. ~~**Metablogizer Upload Failures**~~ — Done (2026-02-04)
     - ~~Investigate and fix failed file uploads in Metablogizer.~~
@@ -90,22 +92,17 @@ _Last updated: 2026-02-04_
     - Complete startup wizard (media library configuration).
     - ~~README documentation~~ — Done (2026-02-04).
 
-15. **Domoticz IoT Integration & SecuBox Peering**
-    - Create dedicated `luci-app-domoticz` (currently no LuCI app — only generic vhost-manager).
-    - MQTT auto-bridge: auto-configure Domoticz ↔ zigbee2mqtt via Mosquitto broker.
-    - Zigbee device discovery: expose z2m device list in Domoticz setup wizard.
-    - SecuBox P2P mesh: register Domoticz as a mesh service (`secubox-p2p register-service`).
-    - Tor/DNS exposure channels: add to exposure scanner and Punk Exposure model.
-    - USB device passthrough: document `/srv/devices` for additional IoT dongles.
-    - Backup integration: include `/srv/domoticz/config` in secubox-recovery.
-    - Service registry: add Domoticz to `secubox-p2p` catalog and health checks.
+15. ~~**Domoticz IoT Integration & SecuBox Peering**~~ — Done (2026-02-04)
+    - ~~`luci-app-domoticz` created with RPCD handler, LuCI overview.~~
+    - ~~`domoticzctl configure-mqtt` auto-configures Mosquitto + Zigbee2MQTT bridge.~~
+    - ~~P2P mesh registration, HAProxy integration, backup/restore.~~
+    - ~~UCI config extended with mqtt/network/mesh sections.~~
 
-16. **App Store P2P Emancipation**
-    - Emancipate the app store WebUI as a remote P2P/torrent endpoint.
-    - Generative remote IPK distribution (like master-link dynamic join IPK generation).
-    - Decentralized package distribution across mesh nodes.
-    - Compatible with existing bonus-feed and secubox-feed infrastructure.
-    - Torrent-style swarming for large IPK downloads across mesh peers.
+16. ~~**App Store P2P Emancipation**~~ — Done (2026-02-04)
+    - ~~P2P package distribution via mesh peers (CGI API, RPCD, CLI).~~
+    - ~~`packages.js` view with LOCAL/PEER badges, fetch/install actions.~~
+    - ~~`devstatus.js` widget with v1.0 progress tracking.~~
+    - ~~`secubox-content-pkg` for Metablogizer/Streamlit IPK distribution.~~
 
 17. **MirrorNetworking Stack** (ref: `SecuBox_MirrorNetworking_Paradigm_Reversal.html`)
     - EnigmaBox paradigm reversal: zero central authority, each box is the network.
