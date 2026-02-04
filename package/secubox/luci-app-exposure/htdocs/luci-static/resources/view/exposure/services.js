@@ -109,25 +109,15 @@ return view.extend({
 					svc.address.replace(/^.*:/, '').length < 4 ? svc.address : (isExternal ? '0.0.0.0' : '127.0.0.1')),
 				// Tor toggle
 				E('td', { 'style': 'text-align: center;' },
-					isExternal ? E('label', { 'class': 'toggle-switch' }, [
-						E('input', {
-							'type': 'checkbox',
-							'checked': !!torInfo,
-							'change': ui.createHandlerFn(self, 'handleTorToggle', svc, torInfo)
-						}),
-						E('span', { 'class': 'toggle-slider tor-slider' })
-					]) : E('span', { 'class': 'exp-text-muted' }, '-')
+					isExternal ? self.makeToggle(!!torInfo, 'tor-slider',
+						ui.createHandlerFn(self, 'handleTorToggle', svc, torInfo)
+					) : E('span', { 'class': 'exp-text-muted' }, '-')
 				),
 				// SSL toggle
 				E('td', { 'style': 'text-align: center;' },
-					isExternal ? E('label', { 'class': 'toggle-switch' }, [
-						E('input', {
-							'type': 'checkbox',
-							'checked': !!(sslInfo || domains.length > 0),
-							'change': ui.createHandlerFn(self, 'handleSslToggle', svc, sslInfo, domains)
-						}),
-						E('span', { 'class': 'toggle-slider ssl-slider' })
-					]) : E('span', { 'class': 'exp-text-muted' }, '-')
+					isExternal ? self.makeToggle(!!(sslInfo || domains.length > 0), 'ssl-slider',
+						ui.createHandlerFn(self, 'handleSslToggle', svc, sslInfo, domains)
+					) : E('span', { 'class': 'exp-text-muted' }, '-')
 				),
 				// Exposure info
 				E('td', {}, infoItems.length > 0 ? infoItems :
@@ -164,6 +154,15 @@ return view.extend({
 				]) :
 				E('p', { 'class': 'exp-text-muted', 'style': 'text-align: center; padding: 2rem;' },
 					'No listening services detected.')
+		]);
+	},
+
+	makeToggle: function(checked, sliderClass, handler) {
+		var cb = E('input', { 'type': 'checkbox', 'change': handler });
+		cb.checked = checked;
+		return E('label', { 'class': 'toggle-switch' }, [
+			cb,
+			E('span', { 'class': 'toggle-slider ' + sliderClass })
 		]);
 	},
 
