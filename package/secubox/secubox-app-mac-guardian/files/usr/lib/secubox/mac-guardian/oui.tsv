@@ -1,32 +1,130 @@
 # OUI	Vendor	Flags
 # Format: first 3 octets (uppercase, colon-separated)	Vendor name	whitelist|iot|suspect
+# ── Apple ──
 00:50:E4	Apple	whitelist
 3C:22:FB	Apple	whitelist
 A4:83:E7	Apple	whitelist
+F0:18:98	Apple	whitelist
+AC:DE:48	Apple	whitelist
+14:98:77	Apple	whitelist
+78:7B:8A	Apple	whitelist
+BC:D0:74	Apple	whitelist
+C8:69:CD	Apple	whitelist
+# ── Raspberry Pi ──
 DC:A6:32	Raspberry Pi	whitelist
 B8:27:EB	Raspberry Pi	whitelist
+D8:3A:DD	Raspberry Pi	whitelist
+E4:5F:01	Raspberry Pi	whitelist
+28:CD:C1	Raspberry Pi	whitelist
+# ── Google ──
 00:1A:11	Google	whitelist
 F4:F5:D8	Google	whitelist
+54:60:09	Google	whitelist
+# ── Samsung ──
 94:65:2D	Samsung	whitelist
 8C:F5:A3	Samsung	whitelist
+D4:93:90	Samsung	whitelist
+B4:79:A7	Samsung	whitelist
+BC:D1:1F	Samsung	whitelist
+C0:97:27	Samsung	whitelist
+# ── Amazon ──
 FC:A1:83	Amazon	whitelist
 44:07:0B	Amazon	whitelist
+F0:27:2D	Amazon	whitelist
+# ── ASUS ──
 40:B0:76	ASUS	whitelist
+04:D9:F5	ASUS	whitelist
+2C:FD:A1	ASUS	whitelist
+# ── Xiaomi ──
+48:2C:A0	Xiaomi	iot
+64:09:80	Xiaomi	iot
+28:6C:07	Xiaomi	iot
+78:11:DC	Xiaomi	iot
+# ── Huawei / Honor ──
+E4:AB:89	Huawei	whitelist
+04:F9:38	Huawei	whitelist
+48:46:FB	Huawei	whitelist
+CC:A2:23	Huawei	whitelist
+# ── GL.iNet ──
+94:83:C4	GL.iNet	whitelist
+E4:95:6E	GL.iNet	whitelist
+# ── Espressif (ESP8266/ESP32) ──
 18:FE:34	Espressif	iot
 24:0A:C4	Espressif	iot
 30:AE:A4	Espressif	iot
+CC:50:E3	Espressif	iot
+A4:CF:12	Espressif	iot
+# ── Tuya ──
 D8:F1:5B	Tuya	iot
 84:0D:8E	Tuya	iot
+# ── Shelly ──
 E8:68:E7	Shelly	iot
 98:CD:AC	Shelly	iot
+# ── Sonoff / ITEAD ──
+10:C4:EA	Sonoff	iot
+60:01:94	Sonoff	iot
+# ── Silicon Labs (Zigbee dongles) ──
+00:0B:57	Silicon Labs	iot
+# ── TP-Link ──
 50:C7:BF	TP-Link	iot
 60:E3:27	TP-Link	iot
+14:EB:B6	TP-Link	iot
+30:DE:4B	TP-Link	iot
+# ── Netgear ──
+A4:2B:8C	Netgear	whitelist
+28:80:88	Netgear	whitelist
+# ── Intel ──
+00:1B:21	Intel	whitelist
+F4:8C:50	Intel	whitelist
+48:51:B7	Intel	whitelist
+A0:36:9F	Intel	whitelist
+# ── Dell ──
+18:A9:9B	Dell	whitelist
+D4:BE:D9	Dell	whitelist
+# ── HP ──
+10:60:4B	HP	whitelist
+A0:1D:48	HP	whitelist
+# ── Lenovo ──
+28:D2:44	Lenovo	whitelist
+50:5B:C2	Lenovo	whitelist
+# ── Microsoft ──
+7C:1E:52	Microsoft	whitelist
+28:18:78	Microsoft	whitelist
+# ── Bosch / BSH ──
+30:05:5C	Bosch	iot
+# ── Hon Hai / Foxconn ──
+38:07:16	Hon Hai	whitelist
+90:4C:E5	Hon Hai	whitelist
+00:24:D7	Hon Hai	whitelist
+# ── Liteon ──
+2C:D0:5A	Liteon	whitelist
+# ── Realtek ──
+00:E0:4C	Realtek	whitelist
+52:54:00	QEMU/KVM	whitelist
+# ── Synology ──
+00:11:32	Synology	whitelist
+# ── QNAP ──
+00:08:9B	QNAP	whitelist
+# ── Sonos ──
+5C:AA:FD	Sonos	whitelist
+B8:E9:37	Sonos	whitelist
+# ── Docker (locally administered) ──
+02:42:AC	Docker	whitelist
+# ── Ubiquiti ──
+24:5A:4C	Ubiquiti	whitelist
+78:8A:20	Ubiquiti	whitelist
+# ── MikroTik ──
+48:A9:8A	MikroTik	whitelist
+# ── Alfa Network ──
 00:C0:CA	Alfa Network	suspect
+# ── Ralink ──
 00:0E:8E	Ralink	suspect
 00:0C:43	Ralink	suspect
+# ── MediaTek ──
 74:DA:38	MediaTek	suspect
 00:0C:E7	MediaTek	suspect
-48:2C:A0	Xiaomi	whitelist
-64:09:80	Xiaomi	whitelist
-E4:AB:89	Huawei	whitelist
-04:F9:38	Huawei	whitelist
+# ── Canon ──
+00:1E:8F	Canon	whitelist
+# ── Philips Hue ──
+00:17:88	Philips Hue	iot
+EC:B5:FA	Philips Hue	iot

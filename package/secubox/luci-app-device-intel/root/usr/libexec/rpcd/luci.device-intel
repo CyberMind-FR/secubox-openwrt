@@ -84,7 +84,7 @@ case "$1" in
 
 				# Count data sources
 				local mg_available=0
-				[ -f /var/run/mac-guardian/clients.db ] && mg_available=1
+				[ -f /var/run/mac-guardian/known.db ] && mg_available=1
 				local cg_available=0
 				uci -q get client-guardian.@client[0] >/dev/null 2>&1 && cg_available=1
 				local dhcp_available=0

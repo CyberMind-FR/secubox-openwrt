@@ -98,6 +98,38 @@ return view.extend({
 		]);
 	},
 
+	vendorDisplay: function(d) {
+		var vendor = d.vendor || '';
+		var mac = (d.mac || '').toLowerCase();
+
+		// Locally-administered MAC detection (bit 1 of second hex digit)
+		var isLocal = false;
+		if (mac.length >= 2) {
+			var c = mac.charAt(1);
+			if ('2367abef'.indexOf(c) !== -1) isLocal = true;
+		}
+
+		// Emoji by vendor/type
+		if (mac.indexOf('mesh-') === 0)
+			return ['\u{1F310} ', vendor || 'Mesh Peer'];
+		if (vendor === 'Docker')
+			return ['\u{1F4E6} ', vendor];
+		if (vendor === 'QEMU/KVM')
+			return ['\u{1F5A5} ', vendor];
+		if (d.randomized)
+			return ['\u{1F3AD} ', vendor || 'Randomized'];
+		if (isLocal && !vendor)
+			return ['\u{1F47B} ', 'Virtual'];
+
+		// IoT flag from common vendors
+		var iotVendors = ['Espressif', 'Tuya', 'Shelly', 'Sonoff', 'Xiaomi',
+			'Philips Hue', 'TP-Link', 'Silicon Labs', 'Bosch'];
+		if (vendor && iotVendors.indexOf(vendor) !== -1)
+			return ['\u{1F4E1} ', vendor];
+
+		return ['', vendor || '-'];
+	},
+
 	renderDeviceRows: function(tbody, devices, typeMap) {
 		var self = this;
 		dom.content(tbody, devices.map(function(d) {
@@ -116,7 +148,10 @@ return view.extend({
 				].filter(Boolean)),
 				E('td', { 'style': 'font-family:monospace; font-size:0.85em;' }, d.mac || '-'),
 				E('td', {}, d.ip || '-'),
-				E('td', {}, d.vendor || '-'),
+				E('td', {}, (function() {
+					var v = self.vendorDisplay(d);
+					return [v[0], v[1]].join('');
+				})()),
 				E('td', {}, [
 					typeInfo.name
 						? E('span', {

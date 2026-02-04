@@ -43,7 +43,7 @@ di_invalidate_cache() {
 # Collect mac-guardian client data → pipe-delimited lines
 # Format: mac|vendor|iface|hostname|status|randomized|first_seen|last_seen
 di_collect_mac_guardian() {
-	local db="/var/run/mac-guardian/clients.db"
+	local db="/var/run/mac-guardian/known.db"
 	local oui_db="/usr/lib/secubox/mac-guardian/oui.tsv"
 
 	[ ! -f "$db" ] && return
@@ -258,6 +258,15 @@ di_aggregate_devices() {
 		local user_type=$(uci -q get ${DI_CONFIG}.${mac_clean}.type)
 		local user_label=$(uci -q get ${DI_CONFIG}.${mac_clean}.label)
 		[ -n "$user_label" ] && label="$user_label"
+
+		# OUI vendor lookup fallback (for devices not in mac-guardian)
+		if [ -z "$vendor" ]; then
+			local oui_prefix=$(echo "$mac" | cut -d: -f1-3 | tr 'a-f' 'A-F')
+			local oui_file="/usr/lib/secubox/mac-guardian/oui.tsv"
+			if [ -n "$oui_prefix" ] && [ -f "$oui_file" ]; then
+				vendor=$(grep -i "^${oui_prefix}	" "$oui_file" 2>/dev/null | cut -f2 | head -1)
+			fi
+		fi
 
 		# Determine connection type
 		local connection_type="ethernet"

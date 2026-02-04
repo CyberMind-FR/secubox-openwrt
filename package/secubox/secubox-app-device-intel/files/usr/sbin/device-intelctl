@@ -223,7 +223,7 @@ cmd_summary() {
 
 	# Data sources
 	echo "  ── Data Sources ──"
-	[ -f /var/run/mac-guardian/clients.db ] && \
+	[ -f /var/run/mac-guardian/known.db ] && \
 		echo -e "  mac-guardian:     ${GREEN}available${NC}" || \
 		echo -e "  mac-guardian:     ${RED}not found${NC}"
 	uci -q get client-guardian.@client[0] >/dev/null 2>&1 && \
