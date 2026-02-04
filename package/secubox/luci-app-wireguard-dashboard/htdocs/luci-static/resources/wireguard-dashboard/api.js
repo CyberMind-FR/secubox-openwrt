@@ -44,7 +44,7 @@ var callCreateInterface = rpc.declare({
 var callAddPeer = rpc.declare({
 	object: 'luci.wireguard-dashboard',
 	method: 'add_peer',
-	params: ['interface', 'name', 'allowed_ips', 'public_key', 'preshared_key', 'endpoint', 'persistent_keepalive'],
+	params: ['interface', 'name', 'allowed_ips', 'public_key', 'preshared_key', 'endpoint', 'persistent_keepalive', 'private_key'],
 	expect: { }
 });
 
@@ -65,14 +65,14 @@ var callGenerateConfig = rpc.declare({
 	object: 'luci.wireguard-dashboard',
 	method: 'generate_config',
 	params: ['interface', 'peer', 'private_key', 'endpoint'],
-	expect: { config: '' }
+	expect: { }
 });
 
 var callGenerateQR = rpc.declare({
 	object: 'luci.wireguard-dashboard',
 	method: 'generate_qr',
 	params: ['interface', 'peer', 'private_key', 'endpoint'],
-	expect: { qrcode: '' }
+	expect: { }
 });
 
 var callGetTraffic = rpc.declare({
@@ -106,6 +106,106 @@ var callPingPeer = rpc.declare({
 	params: ['ip'],
 	expect: { reachable: false }
 });
+
+var callGetEndpoints = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'get_endpoints',
+	expect: { }
+});
+
+var callSetEndpoint = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'set_endpoint',
+	params: ['id', 'name', 'address'],
+	expect: { }
+});
+
+var callSetDefaultEndpoint = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'set_default_endpoint',
+	params: ['id'],
+	expect: { }
+});
+
+var callDeleteEndpoint = rpc.declare({
+	object: 'luci.wireguard-dashboard',
+	method: 'delete_endpoint',
+	params: ['id'],
+	expect: { }
+});
+
+function buildEndpointSelector(endpointData, inputId) {
+	var endpoints = (endpointData || {}).endpoints || [];
+	var defaultId = (endpointData || {})['default'] || '';
+
+	if (endpoints.length === 0) {
+		// No saved endpoints - return a plain text input
+		return E('input', {
+			'type': 'text',
+			'id': inputId,
+			'class': 'cbi-input-text',
+			'placeholder': 'vpn.example.com or 203.0.113.1',
+			'data-mode': 'text'
+		});
+	}
+
+	var container = E('div', { 'style': 'display: flex; flex-direction: column; gap: 8px;' });
+
+	var options = endpoints.map(function(ep) {
+		return E('option', {
+			'value': ep.address,
+			'selected': (ep.id === defaultId) ? '' : null,
+			'data-id': ep.id
+		}, (ep.name || ep.id) + ' (' + ep.address + ')');
+	});
+
+	options.push(E('option', { 'value': '__custom__' }, _('Custom...')));
+
+	var select = E('select', {
+		'id': inputId,
+		'class': 'cbi-input-select',
+		'data-mode': 'select',
+		'change': function() {
+			var customInput = container.querySelector('.wg-custom-endpoint');
+			if (this.value === '__custom__') {
+				customInput.style.display = '';
+				customInput.focus();
+			} else {
+				customInput.style.display = 'none';
+			}
+		}
+	}, options);
+
+	var customInput = E('input', {
+		'type': 'text',
+		'class': 'cbi-input-text wg-custom-endpoint',
+		'placeholder': 'vpn.example.com or 203.0.113.1',
+		'style': 'display: none; margin-top: 4px;'
+	});
+
+	container.appendChild(select);
+	container.appendChild(customInput);
+
+	return container;
+}
+
+function getEndpointValue(inputId) {
+	var el = document.getElementById(inputId);
+	if (!el) return '';
+
+	if (el.dataset.mode === 'text') {
+		return el.value.trim();
+	}
+
+	// select mode
+	if (el.value === '__custom__') {
+		var container = el.closest('div');
+		var customInput = container ? container.querySelector('.wg-custom-endpoint') : null;
+		return customInput ? customInput.value.trim() : '';
+	}
+
+	return el.value;
+}
 
 function formatBytes(bytes) {
 	if (bytes === 0) return '0 B';
@@ -170,6 +270,12 @@ return baseclass.extend({
 	getPeerDescriptions: callPeerDescriptions,
 	getBandwidthRates: callBandwidthRates,
 	pingPeer: callPingPeer,
+	getEndpoints: callGetEndpoints,
+	setEndpoint: callSetEndpoint,
+	setDefaultEndpoint: callSetDefaultEndpoint,
+	deleteEndpoint: callDeleteEndpoint,
+	buildEndpointSelector: buildEndpointSelector,
+	getEndpointValue: getEndpointValue,
 	formatBytes: formatBytes,
 	formatLastHandshake: formatLastHandshake,
 	getPeerStatusClass: getPeerStatusClass,

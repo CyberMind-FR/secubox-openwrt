@@ -56,6 +56,11 @@ return view.extend({
 		o.default = 'UTC';
 		o.placeholder = 'UTC';
 
+		o = s.option(form.Flag, 'wan_access', _('WAN Access'),
+			_('Also open Lyrion ports on the WAN interface (remote access)'));
+		o.default = '0';
+		o.rmempty = false;
+
 		o = s.option(form.Value, 'image', _('Docker Image'),
 			_('Docker image to use (only for Docker runtime)'));
 		o.default = 'ghcr.io/lms-community/lyrionmusicserver:stable';

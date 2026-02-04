@@ -3,7 +3,7 @@
         "description": "Grant access to SecuBox Service Exposure Manager",
         "read": {
             "ubus": {
-                "luci.exposure": ["scan", "conflicts", "status", "tor_list", "ssl_list", "get_config"]
+                "luci.exposure": ["scan", "conflicts", "status", "tor_list", "ssl_list", "get_config", "vhost_list"]
             },
             "uci": ["secubox-exposure"]
         },

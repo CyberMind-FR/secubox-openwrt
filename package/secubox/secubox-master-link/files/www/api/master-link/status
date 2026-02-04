@@ -56,6 +56,11 @@ else
 	[ -z "$depth" ] && depth=0
 	ipk_info=$(ml_ipk_bundle_info 2>/dev/null)
 	ipk_available=$(echo "$ipk_info" | jsonfilter -e '@.available' 2>/dev/null)
+	ipk_type=$(echo "$ipk_info" | jsonfilter -e '@.type' 2>/dev/null)
+
+	# Detect master IP for IPK URL
+	master_ip=$(echo "${HTTP_HOST:-}" | cut -d: -f1)
+	[ -z "$master_ip" ] && master_ip=$(uci -q get network.lan.ipaddr)
 
 	cat <<-EOF
 	{
@@ -63,7 +68,9 @@ else
 		"fingerprint": "$fp",
 		"hostname": "$hostname",
 		"depth": $depth,
-		"ipk_available": ${ipk_available:-false}
+		"ipk_available": ${ipk_available:-false},
+		"ipk_type": "${ipk_type:-unknown}",
+		"ipk_url_base": "http://${master_ip}:7331/api/master-link/ipk"
 	}
 	EOF
 fi

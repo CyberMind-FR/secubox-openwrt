@@ -1,0 +1,12 @@
+type: leaky
+name: secubox/mac-flood
+description: "Detect MAC address flood on a WiFi interface"
+filter: "evt.Parsed.event_type in ['randomized_mac', 'new_station']"
+groupby: "evt.Parsed.iface"
+capacity: 10
+leakspeed: 15s
+blackhole: 5m
+remediation: false
+labels:
+  service: mac-guardian
+  type: wifi_mac_flood

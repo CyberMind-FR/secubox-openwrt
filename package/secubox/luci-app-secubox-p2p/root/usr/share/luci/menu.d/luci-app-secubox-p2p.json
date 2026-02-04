@@ -66,6 +66,14 @@
 			"path": "secubox-p2p/factory"
 		}
 	},
+	"admin/secubox/mirrorbox/p2p-hub": {
+		"title": "Threat Intel",
+		"order": 25,
+		"action": {
+			"type": "view",
+			"path": "secubox-p2p/threat-hub"
+		}
+	},
 	"admin/secubox/mirrorbox/settings": {
 		"title": "Settings",
 		"order": 90,

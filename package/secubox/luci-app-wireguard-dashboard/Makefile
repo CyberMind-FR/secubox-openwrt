@@ -33,7 +33,7 @@ PKG_FILE_MODES:=/usr/libexec/rpcd/luci.wireguard-dashboard:root:root:755
 include $(TOPDIR)/feeds/luci/luci.mk
 
 define Package/$(PKG_NAME)/conffiles
-/etc/config/wireguard-dashboard
+/etc/config/wireguard_dashboard
 endef
 
 # call BuildPackage - OpenWrt buildroot

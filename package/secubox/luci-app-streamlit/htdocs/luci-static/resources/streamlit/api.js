@@ -110,6 +110,20 @@ var callUploadApp = rpc.declare({
 	expect: { result: {} }
 });
 
+var callUploadChunk = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'upload_chunk',
+	params: ['name', 'data', 'index'],
+	expect: { result: {} }
+});
+
+var callUploadFinalize = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'upload_finalize',
+	params: ['name', 'is_zip'],
+	expect: { result: {} }
+});
+
 var callUploadZip = rpc.declare({
 	object: 'luci.streamlit',
 	method: 'upload_zip',
@@ -161,6 +175,20 @@ var callDisableInstance = rpc.declare({
 	object: 'luci.streamlit',
 	method: 'disable_instance',
 	params: ['id'],
+	expect: { result: {} }
+});
+
+var callRenameApp = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'rename_app',
+	params: ['id', 'name'],
+	expect: { result: {} }
+});
+
+var callRenameInstance = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'rename_instance',
+	params: ['id', 'name'],
 	expect: { result: {} }
 });
 
@@ -281,6 +309,39 @@ return baseclass.extend({
 		return callUploadApp(name, content);
 	},
 
+	uploadChunk: function(name, data, index) {
+		return callUploadChunk(name, data, index);
+	},
+
+	uploadFinalize: function(name, isZip) {
+		return callUploadFinalize(name, isZip || '0');
+	},
+
+	/**
+	 * Chunked upload for files > 40KB.
+	 * Splits base64 into ~40KB chunks, sends each via upload_chunk,
+	 * then calls upload_finalize to decode and save.
+	 */
+	chunkedUpload: function(name, content, isZip) {
+		var self = this;
+		var CHUNK_SIZE = 40000; // ~40KB per chunk, well under 64KB ubus limit
+		var chunks = [];
+		for (var i = 0; i < content.length; i += CHUNK_SIZE) {
+			chunks.push(content.substring(i, i + CHUNK_SIZE));
+		}
+
+		var promise = Promise.resolve();
+		chunks.forEach(function(chunk, idx) {
+			promise = promise.then(function() {
+				return self.uploadChunk(name, chunk, idx);
+			});
+		});
+
+		return promise.then(function() {
+			return self.uploadFinalize(name, isZip ? '1' : '0');
+		});
+	},
+
 	uploadZip: function(name, content, selectedFiles) {
 		return callUploadZip(name, content, selectedFiles);
 	},
@@ -313,6 +374,14 @@ return baseclass.extend({
 
 	disableInstance: function(id) {
 		return callDisableInstance(id);
+	},
+
+	renameApp: function(id, name) {
+		return callRenameApp(id, name);
+	},
+
+	renameInstance: function(id, name) {
+		return callRenameInstance(id, name);
 	},
 
 	getGiteaConfig: function() {

@@ -1,0 +1,252 @@
+#!/bin/sh
+#
+# RPCD backend for SecuBox Device Intelligence
+#
+
+. /usr/share/libubox/jshn.sh
+. /lib/functions.sh
+
+DI_LIB="/usr/lib/secubox/device-intel"
+DI_CACHE="/tmp/device-intel"
+CONFIG="device-intel"
+
+case "$1" in
+	list)
+		json_init
+		json_add_object "get_devices"
+		json_close_object
+		json_add_object "get_device"
+			json_add_string "mac" "string"
+		json_close_object
+		json_add_object "get_summary"
+		json_close_object
+		json_add_object "get_mesh_devices"
+		json_close_object
+		json_add_object "get_emulators"
+		json_close_object
+		json_add_object "get_device_types"
+		json_close_object
+		json_add_object "classify_device"
+			json_add_string "mac" "string"
+		json_close_object
+		json_add_object "set_device_meta"
+			json_add_string "mac" "string"
+			json_add_string "type" "string"
+			json_add_string "label" "string"
+		json_close_object
+		json_add_object "refresh"
+		json_close_object
+		json_dump
+		;;
+
+	call)
+		handle_call() {
+		case "$1" in
+			get_devices)
+				. "${DI_LIB}/functions.sh"
+				local devices=$(di_get_devices)
+
+				# Stream directly — devices is already JSON array
+				printf '{"success":true,"devices":%s}' "$devices"
+				;;
+
+			get_device)
+				read -r input
+				local mac=$(echo "$input" | jsonfilter -e '@.mac' 2>/dev/null)
+
+				if [ -z "$mac" ]; then
+					echo '{"success":false,"error":"mac is required"}'
+					exit 0
+				fi
+
+				. "${DI_LIB}/functions.sh"
+				local devices=$(di_get_devices)
+				local mac_lower=$(echo "$mac" | tr 'A-F' 'a-f')
+
+				# Extract single device from array
+				local device=$(echo "$devices" | jsonfilter -e "@[@.mac='${mac_lower}']" 2>/dev/null)
+
+				if [ -n "$device" ]; then
+					printf '{"success":true,"device":%s}' "$device"
+				else
+					echo '{"success":false,"error":"Device not found"}'
+				fi
+				;;
+
+			get_summary)
+				. "${DI_LIB}/functions.sh"
+				local summary=$(di_get_summary)
+
+				# Add emulator counts
+				local usb_enabled=$(uci -q get ${CONFIG}.usb.enabled)
+				local mqtt_enabled=$(uci -q get ${CONFIG}.mqtt.enabled)
+				local zigbee_enabled=$(uci -q get ${CONFIG}.zigbee.enabled)
+
+				# Count data sources
+				local mg_available=0
+				[ -f /var/run/mac-guardian/known.db ] && mg_available=1
+				local cg_available=0
+				uci -q get client-guardian.@client[0] >/dev/null 2>&1 && cg_available=1
+				local dhcp_available=0
+				[ -f /tmp/dhcp.leases ] && dhcp_available=1
+				local p2p_running=0
+				pgrep -f secubox-p2p >/dev/null 2>&1 && p2p_running=1
+
+				# Build response
+				local total=$(echo "$summary" | jsonfilter -e '@.total' 2>/dev/null)
+				local online=$(echo "$summary" | jsonfilter -e '@.online' 2>/dev/null)
+				local mesh=$(echo "$summary" | jsonfilter -e '@.mesh_peers' 2>/dev/null)
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_int "total" "${total:-0}"
+				json_add_int "online" "${online:-0}"
+				json_add_int "mesh_peers" "${mesh:-0}"
+
+				json_add_object "emulators"
+					json_add_boolean "usb" "$([ "$usb_enabled" = "1" ] && echo 1 || echo 0)"
+					json_add_boolean "mqtt" "$([ "$mqtt_enabled" = "1" ] && echo 1 || echo 0)"
+					json_add_boolean "zigbee" "$([ "$zigbee_enabled" = "1" ] && echo 1 || echo 0)"
+				json_close_object
+
+				json_add_object "sources"
+					json_add_boolean "mac_guardian" "$mg_available"
+					json_add_boolean "client_guardian" "$cg_available"
+					json_add_boolean "dhcp" "$dhcp_available"
+					json_add_boolean "p2p" "$p2p_running"
+				json_close_object
+
+				json_dump
+				;;
+
+			get_mesh_devices)
+				. "${DI_LIB}/functions.sh"
+				local devices=$(di_get_devices)
+
+				# Filter mesh devices
+				printf '{"success":true,"devices":['
+				local first=1
+				echo "$devices" | jsonfilter -e '@[*]' 2>/dev/null | while read -r dev; do
+					local src=$(echo "$dev" | jsonfilter -e '@.source_node' 2>/dev/null)
+					local dtype=$(echo "$dev" | jsonfilter -e '@.device_type' 2>/dev/null)
+					if [ "$src" = "mesh" ] || [ "$dtype" = "mesh_peer" ]; then
+						[ $first -eq 1 ] && first=0 || printf ','
+						echo "$dev"
+					fi
+				done
+				printf ']}'
+				;;
+
+			get_emulators)
+				json_init
+				json_add_boolean "success" 1
+
+				# USB
+				json_add_object "usb"
+					json_add_boolean "enabled" "$([ "$(uci -q get ${CONFIG}.usb.enabled)" = "1" ] && echo 1 || echo 0)"
+					json_add_int "scan_interval" "$(uci -q get ${CONFIG}.usb.scan_interval || echo 120)"
+					local usb_count=$(ls -d /sys/bus/usb/devices/[0-9]* 2>/dev/null | grep -v ':' | wc -l)
+					json_add_int "device_count" "$usb_count"
+				json_close_object
+
+				# MQTT
+				json_add_object "mqtt"
+					json_add_boolean "enabled" "$([ "$(uci -q get ${CONFIG}.mqtt.enabled)" = "1" ] && echo 1 || echo 0)"
+					json_add_string "broker_host" "$(uci -q get ${CONFIG}.mqtt.broker_host)"
+					json_add_int "broker_port" "$(uci -q get ${CONFIG}.mqtt.broker_port || echo 1883)"
+					local mqtt_running=0
+					pgrep mosquitto >/dev/null 2>&1 && mqtt_running=1
+					json_add_boolean "broker_running" "$mqtt_running"
+				json_close_object
+
+				# Zigbee
+				json_add_object "zigbee"
+					json_add_boolean "enabled" "$([ "$(uci -q get ${CONFIG}.zigbee.enabled)" = "1" ] && echo 1 || echo 0)"
+					json_add_string "adapter" "$(uci -q get ${CONFIG}.zigbee.adapter)"
+					json_add_string "coordinator" "$(uci -q get ${CONFIG}.zigbee.coordinator)"
+					local dongle_present=0
+					local coord=$(uci -q get ${CONFIG}.zigbee.coordinator)
+					[ -c "${coord:-/dev/ttyUSB0}" ] 2>/dev/null && dongle_present=1
+					json_add_boolean "dongle_present" "$dongle_present"
+				json_close_object
+
+				json_dump
+				;;
+
+			get_device_types)
+				. "${DI_LIB}/functions.sh"
+				local types=$(di_get_device_types)
+				printf '{"success":true,"types":%s}' "$types"
+				;;
+
+			classify_device)
+				read -r input
+				local mac=$(echo "$input" | jsonfilter -e '@.mac' 2>/dev/null)
+
+				. "${DI_LIB}/functions.sh"
+				. "${DI_LIB}/classify.sh"
+
+				if [ -n "$mac" ]; then
+					local output=$(/usr/sbin/device-intelctl classify "$mac" 2>&1)
+				else
+					local output=$(/usr/sbin/device-intelctl classify 2>&1)
+				fi
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			set_device_meta)
+				read -r input
+				local mac=$(echo "$input" | jsonfilter -e '@.mac' 2>/dev/null)
+				local dtype=$(echo "$input" | jsonfilter -e '@.type' 2>/dev/null)
+				local label=$(echo "$input" | jsonfilter -e '@.label' 2>/dev/null)
+
+				if [ -z "$mac" ]; then
+					echo '{"success":false,"error":"mac is required"}'
+					exit 0
+				fi
+
+				local mac_lower=$(echo "$mac" | tr 'A-F' 'a-f')
+				local mac_clean=$(echo "$mac_lower" | tr -d ':')
+
+				# Create/update UCI section
+				uci set ${CONFIG}.${mac_clean}=device
+				uci set ${CONFIG}.${mac_clean}.mac="$mac_lower"
+				[ -n "$dtype" ] && uci set ${CONFIG}.${mac_clean}.type="$dtype"
+				[ -n "$label" ] && uci set ${CONFIG}.${mac_clean}.label="$label"
+				uci commit "$CONFIG"
+
+				# Invalidate cache
+				rm -f "${DI_CACHE}"/cache*.json 2>/dev/null
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Device metadata updated"
+				json_dump
+				;;
+
+			refresh)
+				rm -f "${DI_CACHE}"/cache*.json 2>/dev/null
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_string "message" "Cache invalidated"
+				json_dump
+				;;
+
+			*)
+				json_init
+				json_add_boolean "error" 1
+				json_add_string "message" "Unknown method: $1"
+				json_dump
+				;;
+		esac
+		}
+		handle_call "$2"
+		;;
+esac
+
+exit 0

@@ -178,13 +178,19 @@ return view.extend({
 					E('span', { 'style': 'margin-left:4px' }, inst.enabled ? _('Enabled') : _('Disabled'))
 				]),
 				E('td', {}, [
+					E('button', {
+						'class': 'cbi-button',
+						'click': function() { self.renameInstance(inst.id, inst.name); }
+					}, _('Rename')),
 					inst.enabled ?
 						E('button', {
 							'class': 'cbi-button',
+							'style': 'margin-left: 4px',
 							'click': function() { self.disableInstance(inst.id); }
 						}, _('Disable')) :
 						E('button', {
 							'class': 'cbi-button cbi-button-positive',
+							'style': 'margin-left: 4px',
 							'click': function() { self.enableInstance(inst.id); }
 						}, _('Enable')),
 					E('button', {
@@ -212,7 +218,9 @@ return view.extend({
 		var appOptions = [E('option', { 'value': '' }, _('-- Select App --'))];
 
 		this.apps.forEach(function(app) {
-			appOptions.push(E('option', { 'value': app.name }, app.name));
+			var appId = app.id || app.name;
+			var label = app.name !== appId ? app.name + ' (' + appId + ')' : app.name;
+			appOptions.push(E('option', { 'value': appId }, label));
 		});
 
 		// Calculate next available port
@@ -260,22 +268,30 @@ return view.extend({
 		}
 
 		var rows = apps.map(function(app) {
-			var isActive = app.name === self.activeApp;
+			var appId = app.id || app.name;
+			var isActive = appId === self.activeApp;
 			return E('tr', { 'class': isActive ? 'cbi-rowstyle-2' : '' }, [
 				E('td', {}, [
 					E('strong', {}, app.name),
+					app.id && app.id !== app.name ?
+						E('span', { 'style': 'color:#666; margin-left:4px' }, '(' + app.id + ')') : '',
 					isActive ? E('span', { 'style': 'color:#0a0; margin-left:8px' }, _('(active)')) : ''
 				]),
 				E('td', {}, app.path ? app.path.split('/').pop() : '-'),
 				E('td', {}, [
+					E('button', {
+						'class': 'cbi-button',
+						'click': function() { self.renameApp(appId, app.name); }
+					}, _('Rename')),
 					!isActive ? E('button', {
 						'class': 'cbi-button cbi-button-action',
-						'click': function() { self.activateApp(app.name); }
+						'style': 'margin-left: 4px',
+						'click': function() { self.activateApp(appId); }
 					}, _('Activate')) : '',
 					E('button', {
 						'class': 'cbi-button cbi-button-remove',
 						'style': 'margin-left: 4px',
-						'click': function() { self.deleteApp(app.name); }
+						'click': function() { self.deleteApp(appId); }
 					}, _('Delete'))
 				])
 			]);
@@ -537,10 +553,23 @@ return view.extend({
 
 	activateApp: function(name) {
 		var self = this;
+		var hasInstance = this.instances.some(function(inst) { return inst.app === name; });
+
 		api.setActiveApp(name).then(function(r) {
 			if (r && r.success) {
-				ui.addNotification(null, E('p', {}, _('App activated: ') + name), 'info');
-				return api.restart();
+				if (!hasInstance) {
+					// Auto-create instance with next available port
+					var usedPorts = self.instances.map(function(i) { return i.port; });
+					var port = 8501;
+					while (usedPorts.indexOf(port) !== -1) { port++; }
+					return api.addInstance(name, name, name, port).then(function() {
+						ui.addNotification(null, E('p', {}, _('App activated with new instance on port ') + port), 'info');
+						return api.restart();
+					});
+				} else {
+					ui.addNotification(null, E('p', {}, _('App activated: ') + name), 'info');
+					return api.restart();
+				}
 			}
 		}).then(function() {
 			self.refresh().then(function() { self.updateStatus(); });
@@ -561,6 +590,8 @@ return view.extend({
 						api.removeApp(name).then(function(r) {
 							if (r && r.success) {
 								ui.addNotification(null, E('p', {}, _('App deleted')), 'info');
+							} else {
+								ui.addNotification(null, E('p', {}, (r && r.message) || _('Delete failed')), 'error');
 							}
 							self.refresh().then(function() { self.updateStatus(); });
 						});
@@ -579,30 +610,117 @@ return view.extend({
 		}
 
 		var file = fileInput.files[0];
-		var name = file.name.replace(/\.(py|zip)$/, '');
+		var name = file.name.replace(/\.(py|zip)$/, '').replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '');
 		var isZip = file.name.endsWith('.zip');
 		var reader = new FileReader();
 
-		reader.onload = function(e) {
-			var content = btoa(e.target.result);
-			var uploadFn = isZip ? api.uploadZip(name, content, null) : api.uploadApp(name, content);
-
-			uploadFn.then(function(r) {
-				if (r && r.success) {
-					ui.addNotification(null, E('p', {}, _('App uploaded: ') + name), 'success');
-					fileInput.value = '';
-					self.refresh().then(function() { self.updateStatus(); });
-				} else {
-					ui.addNotification(null, E('p', {}, r.message || _('Upload failed')), 'error');
-				}
-			});
+		reader.onerror = function() {
+			ui.addNotification(null, E('p', {}, _('Failed to read file')), 'error');
 		};
 
-		if (isZip) {
-			reader.readAsBinaryString(file);
-		} else {
-			reader.readAsText(file);
-		}
+		reader.onload = function(e) {
+			var bytes = new Uint8Array(e.target.result);
+			var chunks = [];
+			for (var i = 0; i < bytes.length; i += 8192) {
+				chunks.push(String.fromCharCode.apply(null, bytes.slice(i, i + 8192)));
+			}
+			var content = btoa(chunks.join(''));
+
+			// Stop polling to prevent RPC batch conflicts
+			poll.stop();
+
+			// Use chunked upload for files > 40KB (uhttpd has 64KB JSON body limit)
+			var useChunked = content.length > 40000;
+
+			setTimeout(function() {
+				var uploadFn;
+
+				if (useChunked) {
+					uploadFn = api.chunkedUpload(name, content, isZip);
+				} else if (isZip) {
+					uploadFn = api.uploadZip(name, content, null);
+				} else {
+					uploadFn = api.uploadApp(name, content);
+				}
+
+				uploadFn.then(function(r) {
+					poll.start();
+					if (r && r.success) {
+						ui.addNotification(null, E('p', {}, _('App uploaded: ') + name), 'success');
+						fileInput.value = '';
+						self.refresh().then(function() { self.updateStatus(); });
+					} else {
+						var msg = (r && r.message) ? r.message : _('Upload failed');
+						ui.addNotification(null, E('p', {}, msg), 'error');
+					}
+				}).catch(function(err) {
+					poll.start();
+					ui.addNotification(null, E('p', {},
+						_('Upload error: ') + (err.message || err)), 'error');
+				});
+			}, 10);
+		};
+
+		reader.readAsArrayBuffer(file);
+	},
+
+	renameApp: function(id, currentName) {
+		var self = this;
+		if (!currentName) currentName = id;
+
+		ui.showModal(_('Rename App'), [
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Name')),
+				E('div', { 'class': 'cbi-value-field' },
+					E('input', { 'type': 'text', 'id': 'rename-input', 'class': 'cbi-input-text', 'value': currentName }))
+			]),
+			E('div', { 'class': 'right' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'style': 'margin-left: 8px',
+					'click': function() {
+						var newName = document.getElementById('rename-input').value.trim();
+						if (!newName) return;
+						ui.hideModal();
+						api.renameApp(id, newName).then(function(r) {
+							if (r && r.success)
+								ui.addNotification(null, E('p', {}, _('App renamed')), 'info');
+							self.refresh().then(function() { self.updateStatus(); });
+						});
+					}
+				}, _('Save'))
+			])
+		]);
+	},
+
+	renameInstance: function(id, currentName) {
+		var self = this;
+
+		ui.showModal(_('Rename Instance'), [
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Name')),
+				E('div', { 'class': 'cbi-value-field' },
+					E('input', { 'type': 'text', 'id': 'rename-input', 'class': 'cbi-input-text', 'value': currentName || id }))
+			]),
+			E('div', { 'class': 'right' }, [
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', {
+					'class': 'cbi-button cbi-button-positive',
+					'style': 'margin-left: 8px',
+					'click': function() {
+						var newName = document.getElementById('rename-input').value.trim();
+						if (!newName) return;
+						ui.hideModal();
+						api.renameInstance(id, newName).then(function(r) {
+							if (r && r.success)
+								ui.addNotification(null, E('p', {}, _('Instance renamed')), 'info');
+							self.refresh().then(function() { self.updateStatus(); });
+						});
+					}
+				}, _('Save'))
+			])
+		]);
 	},
 
 	giteaClone: function() {

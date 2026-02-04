@@ -506,6 +506,7 @@ add_peer() {
 	json_get_var psk preshared_key
 	json_get_var endpoint endpoint
 	json_get_var keepalive persistent_keepalive
+	json_get_var client_privkey private_key
 
 	json_init
 
@@ -570,6 +571,11 @@ add_peer() {
 	# Persistent keepalive
 	if [ -n "$keepalive" ] && [ "$keepalive" != "0" ]; then
 		uci set network.$section_name.persistent_keepalive="$keepalive"
+	fi
+
+	# Store client private key for QR/config generation
+	if [ -n "$client_privkey" ]; then
+		uci set network.$section_name._client_private_key="$client_privkey"
 	fi
 
 	# Route allowed IPs
@@ -655,6 +661,24 @@ generate_config() {
 
 	json_init
 
+	# If private key not provided, look it up from UCI
+	if [ -z "$peer_privkey" ]; then
+		local sections=$(uci show network 2>/dev/null | grep "=wireguard_$iface$" | cut -d'.' -f2 | cut -d'=' -f1)
+		for section in $sections; do
+			local key=$(uci -q get network.$section.public_key)
+			if [ "$key" = "$peer_key" ]; then
+				peer_privkey=$(uci -q get network.$section._client_private_key)
+				break
+			fi
+		done
+	fi
+
+	if [ -z "$peer_privkey" ]; then
+		json_add_string "error" "Private key not available. Please provide it manually."
+		json_dump
+		return
+	fi
+
 	# Get interface details
 	local server_pubkey=$($WG_CMD show $iface public-key 2>/dev/null)
 	local server_port=$($WG_CMD show $iface listen-port 2>/dev/null)
@@ -709,6 +733,24 @@ generate_qr() {
 		return
 	fi
 
+	# If private key not provided, look it up from UCI
+	if [ -z "$peer_privkey" ]; then
+		local sections=$(uci show network 2>/dev/null | grep "=wireguard_$iface$" | cut -d'.' -f2 | cut -d'=' -f1)
+		for section in $sections; do
+			local key=$(uci -q get network.$section.public_key)
+			if [ "$key" = "$peer_key" ]; then
+				peer_privkey=$(uci -q get network.$section._client_private_key)
+				break
+			fi
+		done
+	fi
+
+	if [ -z "$peer_privkey" ]; then
+		json_add_string "error" "Private key not available. Please provide it manually."
+		json_dump
+		return
+	fi
+
 	# Get interface details
 	local server_pubkey=$($WG_CMD show $iface public-key 2>/dev/null)
 	local server_port=$($WG_CMD show $iface listen-port 2>/dev/null)
@@ -746,13 +788,17 @@ PersistentKeepalive = 25"
 PresharedKey = ${psk}"
 	fi
 
-	# Generate QR code as SVG (PNG disabled in OpenWrt qrencode) and convert to base64
-	local qr_base64=$(echo "$config" | qrencode -t SVG -o - | base64 -w 0)
+	# Generate QR code as SVG and convert to base64
+	# Build JSON manually to avoid jshn "Argument list too long" with large base64 strings
+	local tmpfile="/tmp/wg_qr_$$.json"
+	local config_escaped=$(printf '%s' "$config" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n", $0}' | sed '$ s/\\n$//')
 
-	json_add_string "qrcode" "data:image/svg+xml;base64,$qr_base64"
-	json_add_string "config" "$config"
+	printf '{"qrcode":"data:image/svg+xml;base64,' > "$tmpfile"
+	echo "$config" | qrencode -t SVG -o - | base64 -w 0 >> "$tmpfile"
+	printf '","config":"%s"}\n' "$config_escaped" >> "$tmpfile"
 
-	json_dump
+	cat "$tmpfile"
+	rm -f "$tmpfile"
 }
 
 # Get bandwidth history (if vnstat available)
@@ -1005,10 +1051,124 @@ get_bandwidth_rates() {
 	json_dump
 }
 
+# Emit a single endpoint section as JSON object (callback for config_foreach)
+_emit_endpoint() {
+	local section="$1"
+	local name address
+	config_get name "$section" name ""
+	config_get address "$section" address ""
+	json_add_object
+	json_add_string "id" "$section"
+	json_add_string "name" "$name"
+	json_add_string "address" "$address"
+	json_close_object
+}
+
+# Get all saved server endpoints from UCI
+get_endpoints() {
+	json_init
+	local default_ep
+	default_ep=$(uci -q get wireguard_dashboard.globals.default_endpoint)
+	json_add_string "default" "${default_ep:-}"
+	json_add_array "endpoints"
+	config_load wireguard_dashboard
+	config_foreach _emit_endpoint endpoint
+	json_close_array
+	json_dump
+}
+
+# Create or update a server endpoint entry
+set_endpoint() {
+	read input
+	json_load "$input"
+	json_get_var ep_id id
+	json_get_var ep_name name
+	json_get_var ep_address address
+
+	json_init
+
+	if [ -z "$ep_id" ] || [ -z "$ep_address" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing required fields: id and address"
+		json_dump
+		return
+	fi
+
+	# Sanitize id: only allow alphanumeric, underscore, hyphen
+	local safe_id=$(echo "$ep_id" | sed 's/[^a-zA-Z0-9_-]/_/g')
+
+	uci set wireguard_dashboard.${safe_id}=endpoint
+	uci set wireguard_dashboard.${safe_id}.name="${ep_name:-$safe_id}"
+	uci set wireguard_dashboard.${safe_id}.address="$ep_address"
+	uci commit wireguard_dashboard
+
+	json_add_boolean "success" 1
+	json_add_string "id" "$safe_id"
+	json_dump
+}
+
+# Set the default endpoint
+set_default_endpoint() {
+	read input
+	json_load "$input"
+	json_get_var ep_id id
+
+	json_init
+
+	if [ -z "$ep_id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing required field: id"
+		json_dump
+		return
+	fi
+
+	uci set wireguard_dashboard.globals.default_endpoint="$ep_id"
+	uci commit wireguard_dashboard
+
+	json_add_boolean "success" 1
+	json_dump
+}
+
+# Delete a server endpoint entry
+delete_endpoint() {
+	read input
+	json_load "$input"
+	json_get_var ep_id id
+
+	json_init
+
+	if [ -z "$ep_id" ]; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Missing required field: id"
+		json_dump
+		return
+	fi
+
+	# Check if section exists
+	if ! uci -q get wireguard_dashboard.${ep_id} >/dev/null 2>&1; then
+		json_add_boolean "success" 0
+		json_add_string "error" "Endpoint not found: $ep_id"
+		json_dump
+		return
+	fi
+
+	# If deleting the default, clear the default
+	local default_ep=$(uci -q get wireguard_dashboard.globals.default_endpoint)
+	if [ "$default_ep" = "$ep_id" ]; then
+		uci set wireguard_dashboard.globals.default_endpoint=""
+	fi
+
+	uci delete wireguard_dashboard.${ep_id}
+	uci commit wireguard_dashboard
+
+	json_add_boolean "success" 1
+	json_dump
+}
+
 # Main dispatcher
 case "$1" in
 	list)
-		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_keys":{},"create_interface":{"name":"str","private_key":"str","listen_port":"str","addresses":"str","mtu":"str"},"add_peer":{"interface":"str","name":"str","allowed_ips":"str","public_key":"str","preshared_key":"str","endpoint":"str","persistent_keepalive":"str"},"remove_peer":{"interface":"str","public_key":"str"},"generate_config":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"generate_qr":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"},"interface_control":{"interface":"str","action":"str"},"peer_descriptions":{},"bandwidth_rates":{}}'
+		echo '{"status":{},"interfaces":{},"peers":{},"traffic":{},"config":{},"generate_keys":{},"create_interface":{"name":"str","private_key":"str","listen_port":"str","addresses":"str","mtu":"str"},"add_peer":{"interface":"str","name":"str","allowed_ips":"str","public_key":"str","preshared_key":"str","endpoint":"str","persistent_keepalive":"str","private_key":"str"},"remove_peer":{"interface":"str","public_key":"str"},"generate_config":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"generate_qr":{"interface":"str","peer":"str","private_key":"str","endpoint":"str"},"bandwidth_history":{},"endpoint_info":{"endpoint":"str"},"ping_peer":{"ip":"str"},"interface_control":{"interface":"str","action":"str"},"peer_descriptions":{},"bandwidth_rates":{},"get_endpoints":{},"set_endpoint":{"id":"str","name":"str","address":"str"},"set_default_endpoint":{"id":"str"},"delete_endpoint":{"id":"str"}}'
 		;;
 	call)
 		case "$2" in
@@ -1062,6 +1222,18 @@ case "$1" in
 				;;
 			bandwidth_rates)
 				get_bandwidth_rates
+				;;
+			get_endpoints)
+				get_endpoints
+				;;
+			set_endpoint)
+				set_endpoint
+				;;
+			set_default_endpoint)
+				set_default_endpoint
+				;;
+			delete_endpoint)
+				delete_endpoint
 				;;
 			*)
 				echo '{"error": "Unknown method"}'

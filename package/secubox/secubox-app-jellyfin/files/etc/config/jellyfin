@@ -1,0 +1,29 @@
+# Jellyfin Media Server Configuration
+
+config jellyfin 'main'
+	option enabled '0'
+	option image 'jellyfin/jellyfin:latest'
+	option data_path '/srv/jellyfin'
+	option port '8096'
+	option timezone 'Europe/Paris'
+
+config jellyfin 'network'
+	option domain 'jellyfin.secubox.local'
+	option public_url ''
+	option haproxy '0'
+	option haproxy_ssl '1'
+	option haproxy_ssl_redirect '1'
+	option firewall_wan '0'
+
+config jellyfin 'media'
+	# list media_path '/mnt/media/movies'
+	# list media_path '/mnt/media/music'
+	# list media_path '/mnt/media/shows'
+
+config jellyfin 'transcoding'
+	option hw_accel '0'
+	option gpu_device ''
+
+config jellyfin 'mesh'
+	option enabled '0'
+	option announce_service '1'

@@ -1,0 +1,29 @@
+{
+	"admin/secubox/network/dns-provider": {
+		"title": "DNS Providers",
+		"order": 40,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-dns-provider"],
+			"uci": {"dns-provider": true}
+		}
+	},
+	"admin/secubox/network/dns-provider/records": {
+		"title": "Records",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "dns-provider/records"
+		}
+	},
+	"admin/secubox/network/dns-provider/settings": {
+		"title": "Settings",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "dns-provider/settings"
+		}
+	}
+}

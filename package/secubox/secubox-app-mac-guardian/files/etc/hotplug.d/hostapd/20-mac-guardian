@@ -1,0 +1,65 @@
+#!/bin/sh
+# mac-guardian hotplug handler for hostapd events
+# Provides real-time detection on station connect/disconnect
+
+# Exit early for irrelevant events or missing data
+[ -n "$ACTION" ] || exit 0
+[ -n "$MACADDR" ] || exit 0
+
+# Only handle station events
+case "$ACTION" in
+	AP-STA-CONNECTED|AP-STA-DISCONNECTED) ;;
+	*) exit 0 ;;
+esac
+
+# Check if enabled
+. /lib/functions.sh
+config_load mac-guardian
+config_get enabled main enabled 0
+[ "$enabled" = "1" ] || exit 0
+
+# Fork to background for fast return to hostapd
+{
+	. /usr/lib/secubox/mac-guardian/functions.sh
+	mg_load_config
+	mg_init
+
+	mac=$(mg_normalize_mac "$MACADDR")
+	iface="${INTERFACE:-unknown}"
+
+	case "$ACTION" in
+		AP-STA-CONNECTED)
+			if mg_validate_mac "$mac"; then
+				if ! mg_is_whitelisted "$mac"; then
+					mg_lock && {
+						mg_check_station "$mac" "" "$iface"
+						mg_unlock
+					}
+				else
+					mg_lock && {
+						local hostname
+						hostname=$(mg_resolve_hostname "$mac")
+						mg_db_upsert "$mac" "$iface" "$hostname"
+						mg_unlock
+					}
+				fi
+			fi
+			;;
+		AP-STA-DISCONNECTED)
+			# Update last_seen and clean up stale DHCP lease for this MAC
+			if mg_validate_mac "$mac"; then
+				mg_lock && {
+					local existing
+					existing=$(mg_db_lookup "$mac")
+					if [ -n "$existing" ]; then
+						local hostname
+						hostname=$(mg_resolve_hostname "$mac")
+						mg_db_upsert "$mac" "$iface" "$hostname"
+					fi
+					mg_dhcp_cleanup_stale_mac "$mac"
+					mg_unlock
+				}
+			fi
+			;;
+	esac
+} &

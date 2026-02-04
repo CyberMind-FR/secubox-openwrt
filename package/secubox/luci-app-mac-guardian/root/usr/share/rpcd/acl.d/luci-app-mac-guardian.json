@@ -1,0 +1,26 @@
+{
+	"luci-app-mac-guardian": {
+		"description": "Grant access to MAC Guardian WiFi security monitor",
+		"read": {
+			"file": {
+				"/etc/config/mac-guardian": ["read"],
+				"/var/run/mac-guardian/known.db": ["read"],
+				"/var/log/mac-guardian.log": ["read"]
+			},
+			"ubus": {
+				"file": ["read", "stat"],
+				"luci.mac-guardian": ["*"]
+			},
+			"uci": ["mac-guardian"]
+		},
+		"write": {
+			"file": {
+				"/etc/config/mac-guardian": ["write"]
+			},
+			"ubus": {
+				"luci.mac-guardian": ["*"]
+			},
+			"uci": ["mac-guardian"]
+		}
+	}
+}

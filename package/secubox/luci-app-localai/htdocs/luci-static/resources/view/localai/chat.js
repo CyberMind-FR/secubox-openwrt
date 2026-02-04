@@ -9,51 +9,46 @@ var callModels = rpc.declare({
 	expect: { models: [] }
 });
 
-// Custom chat function with longer timeout (LLMs can be slow)
-function callChatWithTimeout(model, messages, timeoutMs) {
+var callStatus = rpc.declare({
+	object: 'luci.localai',
+	method: 'status',
+	expect: { }
+});
+
+// Call LocalAI API directly (bypasses RPCD 30s script timeout)
+function callChatDirect(apiPort, model, messages, timeoutMs) {
 	return new Promise(function(resolve, reject) {
-		var timeout = timeoutMs || 120000; // 2 minutes default
+		var timeout = timeoutMs || 180000; // 3 minutes default for LLM
 		var controller = new AbortController();
 		var timeoutId = setTimeout(function() {
 			controller.abort();
-			reject(new Error('Request timed out - model may need more time'));
+			reject(new Error('Request timed out after ' + (timeout/1000) + 's - model may need more time'));
 		}, timeout);
 
-		// Use ubus RPC endpoint
-		var ubusUrl = L.url('admin/ubus');
-		var payload = JSON.stringify({
-			jsonrpc: '2.0',
-			id: Date.now(),
-			method: 'call',
-			params: [
-				rpc.getSessionID() || '00000000000000000000000000000000',
-				'luci.localai',
-				'chat',
-				{ model: model, messages: messages }
-			]
-		});
+		var apiUrl = window.location.protocol + '//' + window.location.hostname + ':' + apiPort + '/v1/chat/completions';
 
-		fetch(ubusUrl, {
+		fetch(apiUrl, {
 			method: 'POST',
-			credentials: 'same-origin',
 			headers: { 'Content-Type': 'application/json' },
-			body: payload,
+			body: JSON.stringify({ model: model, messages: messages }),
 			signal: controller.signal
 		})
 		.then(function(response) {
+			clearTimeout(timeoutId);
 			if (!response.ok) {
-				throw new Error('HTTP ' + response.status);
+				return response.text().then(function(t) {
+					throw new Error('API error HTTP ' + response.status + ': ' + t.substring(0, 200));
+				});
 			}
 			return response.json();
 		})
 		.then(function(data) {
-			clearTimeout(timeoutId);
-			if (data.result && Array.isArray(data.result) && data.result[1]) {
-				resolve(data.result[1]);
-			} else if (data.error) {
-				reject(new Error(data.error.message || 'RPC error'));
+			if (data.error) {
+				resolve({ response: '', error: data.error.message || JSON.stringify(data.error) });
+			} else if (data.choices && data.choices[0] && data.choices[0].message) {
+				resolve({ response: data.choices[0].message.content || '' });
 			} else {
-				resolve({ response: '', error: 'Unexpected response format' });
+				resolve({ response: '', error: 'Unexpected API response format' });
 			}
 		})
 		.catch(function(err) {
@@ -73,13 +68,19 @@ return view.extend({
 	selectedModel: null,
 
 	load: function() {
-		return callModels();
+		return Promise.all([callModels(), callStatus()]);
 	},
 
 	render: function(data) {
 		var self = this;
+		var modelsData = data[0];
+		var statusData = data[1] || {};
+		this.apiPort = statusData.api_port || 8080;
+
 		// RPC with expect returns array directly
-		var models = Array.isArray(data) ? data : (data && data.models ? data.models : []);
+		var allModels = Array.isArray(modelsData) ? modelsData : (modelsData && modelsData.models ? modelsData.models : []);
+		// Filter out embedding models - they can't do chat completions
+		var models = allModels.filter(function(m) { return !m.embeddings; });
 
 		var container = E('div', { 'class': 'localai-chat' }, [
 			E('style', {}, this.getCSS()),
@@ -101,7 +102,7 @@ return view.extend({
 							var displayName = m.loaded ? modelId + ' ✓' : modelId;
 							return E('option', { 'value': modelId }, displayName);
 						}) :
-						[E('option', { 'value': '' }, _('No models available'))]
+						[E('option', { 'value': '' }, _('No chat models available'))]
 					)
 				])
 			]),
@@ -188,9 +189,8 @@ return view.extend({
 		// Build messages array
 		this.messages.push({ role: 'user', content: message });
 
-		// Send to API (120s timeout for slow models)
-		// Pass messages as array - RPCD will handle JSON serialization
-		callChatWithTimeout(this.selectedModel, this.messages, 120000)
+		// Call LocalAI API directly (bypasses RPCD 30s script timeout)
+		callChatDirect(this.apiPort, this.selectedModel, this.messages, 180000)
 			.then(function(result) {
 				var loading = document.getElementById('loading-msg');
 				if (loading) loading.remove();

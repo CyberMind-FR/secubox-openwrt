@@ -14,13 +14,13 @@ define Package/secubox-app-zigbee2mqtt
   CATEGORY:=Utilities
   PKGARCH:=all
   SUBMENU:=SecuBox Apps
-  TITLE:=SecuBox Zigbee2MQTT docker app
-  DEPENDS:=kmod-usb-acm +dockerd +docker +containerd
+  TITLE:=SecuBox Zigbee2MQTT LXC app
+  DEPENDS:=+lxc +kmod-usb-serial-cp210x
 endef
 
 define Package/secubox-app-zigbee2mqtt/description
 Installer, configuration, and service manager for running Zigbee2MQTT
-inside Docker on SecuBox-powered OpenWrt systems.
+inside an Alpine LXC container on SecuBox-powered OpenWrt systems.
 endef
 
 define Package/secubox-app-zigbee2mqtt/conffiles

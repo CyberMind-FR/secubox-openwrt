@@ -44,46 +44,12 @@ get_status() {
 
 	if is_running; then
 		running="true"
-		# Try to get container/process uptime
-		# LXC container
-		if command -v lxc-info >/dev/null 2>&1 && lxc-info -n localai -s 2>/dev/null | grep -q "RUNNING"; then
-			# Get LXC container PID and calculate uptime
-			local lxc_pid=$(lxc-info -n localai -p 2>/dev/null | awk '{print $2}')
-			if [ -n "$lxc_pid" ] && [ -d "/proc/$lxc_pid" ]; then
-				local start_time=$(stat -c %Y /proc/$lxc_pid 2>/dev/null || echo 0)
-				local now=$(date +%s)
-				uptime=$((now - start_time))
-			fi
-		# Podman container
-		elif command -v podman >/dev/null 2>&1; then
-			local status=$(podman ps --filter "name=localai" --format '{{.Status}}' 2>/dev/null | head -1)
-			if [ -n "$status" ]; then
-				case "$status" in
-					*minute*) uptime=$(($(echo "$status" | grep -oE '[0-9]+' | head -1) * 60)) ;;
-					*hour*) uptime=$(($(echo "$status" | grep -oE '[0-9]+' | head -1) * 3600)) ;;
-					*second*) uptime=$(echo "$status" | grep -oE '[0-9]+' | head -1) ;;
-					*) uptime=0 ;;
-				esac
-			fi
-		# Docker container
-		elif command -v docker >/dev/null 2>&1; then
-			local status=$(docker ps --filter "name=localai" --format '{{.Status}}' 2>/dev/null | head -1)
-			if [ -n "$status" ]; then
-				case "$status" in
-					*minute*) uptime=$(($(echo "$status" | grep -oE '[0-9]+' | head -1) * 60)) ;;
-					*hour*) uptime=$(($(echo "$status" | grep -oE '[0-9]+' | head -1) * 3600)) ;;
-					*second*) uptime=$(echo "$status" | grep -oE '[0-9]+' | head -1) ;;
-					*) uptime=0 ;;
-				esac
-			fi
-		# Native process
-		else
-			local pid=$(pgrep -f "local-ai" | head -1)
-			if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
-				local start_time=$(stat -c %Y /proc/$pid 2>/dev/null || echo 0)
-				local now=$(date +%s)
-				uptime=$((now - start_time))
-			fi
+		# Try to get process/container uptime
+		local pid=$(pgrep -f "local-ai" | head -1)
+		if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+			local start_time=$(stat -c %Y /proc/$pid 2>/dev/null || echo 0)
+			local now=$(date +%s)
+			uptime=$((now - start_time))
 		fi
 	fi
 
@@ -128,13 +94,22 @@ get_models() {
 				[ $first -eq 0 ] && echo ","
 				first=0
 				seen="$seen $model_id"
+				# Check YAML config for embeddings flag
+				local is_embedding="false"
+				for yext in yaml yml; do
+					if [ -f "$MODELS_PATH/$model_id.$yext" ]; then
+						grep -q "^embeddings:.*true" "$MODELS_PATH/$model_id.$yext" 2>/dev/null && is_embedding="true"
+						break
+					fi
+				done
 				cat <<EOF
 {
 	"id": "$model_id",
 	"name": "$model_id",
 	"size": 0,
 	"type": "loaded",
-	"loaded": true
+	"loaded": true,
+	"embeddings": $is_embedding
 }
 EOF
 				i=$((i + 1))
@@ -245,7 +220,7 @@ get_health() {
 	if is_running; then
 		# Check API health endpoint
 		local response=$(wget -q -O - "http://127.0.0.1:$API_PORT/readyz" 2>/dev/null)
-		if echo "$response" | grep -q "ok"; then
+		if echo "$response" | grep -qi "ok"; then
 			healthy="true"
 			api_status="ok"
 		else
@@ -384,41 +359,54 @@ do_chat() {
 	# Log for debugging
 	logger -t localai-chat "Request to model: $model"
 
-	# Call LocalAI API using curl if available, otherwise wget
+	# Call LocalAI API - prefer wget (OpenWrt standard, creates output file reliably)
 	local tmpfile="/tmp/localai_chat_$$"
 	local tmpfile_err="/tmp/localai_chat_err_$$"
 
 	# Use longer timeout for LLM responses (120 seconds)
-	if command -v curl >/dev/null 2>&1; then
-		curl -s -m 120 -X POST "http://127.0.0.1:$API_PORT/v1/chat/completions" \
-			-H "Content-Type: application/json" \
-			-d "$request_body" \
-			-o "$tmpfile" 2>"$tmpfile_err"
-	else
-		wget -q -T 120 -O "$tmpfile" --post-data "$request_body" \
-			--header="Content-Type: application/json" \
-			"http://127.0.0.1:$API_PORT/v1/chat/completions" 2>"$tmpfile_err"
-	fi
+	wget -q -T 120 -O "$tmpfile" --post-data "$request_body" \
+		--header="Content-Type: application/json" \
+		"http://127.0.0.1:$API_PORT/v1/chat/completions" 2>"$tmpfile_err"
 
 	if [ -f "$tmpfile" ] && [ -s "$tmpfile" ]; then
 		# Log raw response for debugging
 		logger -t localai-chat "Raw response: $(head -c 200 "$tmpfile")"
 
-		# Extract message content using jsonfilter
-		local content=$(jsonfilter -i "$tmpfile" -e '@.choices[0].message.content' 2>/dev/null)
+		# Check for API error first
 		local error=$(jsonfilter -i "$tmpfile" -e '@.error.message' 2>/dev/null)
 
 		if [ -n "$error" ]; then
-			# Escape quotes and newlines in error
-			error=$(echo "$error" | sed 's/"/\\"/g' | tr '\n' ' ')
+			error=$(printf '%s' "$error" | tr '\n' ' ' | sed 's/"/\\"/g')
 			echo "{\"response\":\"\",\"error\":\"$error\"}"
-		elif [ -n "$content" ]; then
-			# Properly escape the content for JSON output
-			# Handle quotes, backslashes, and newlines
-			content=$(printf '%s' "$content" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s\\n", $0}' | sed 's/\\n$//')
-			echo "{\"response\":\"$content\"}"
 		else
-			echo '{"response":"","error":"Empty response from LocalAI API - model may not support chat format"}'
+			# Extract content and build JSON via file I/O to handle
+			# large responses and special characters safely
+			local outfile="/tmp/localai_out_$$"
+			local has_content=0
+
+			jsonfilter -i "$tmpfile" -e '@.choices[0].message.content' 2>/dev/null | {
+				printf '{"response":"'
+				awk '
+				BEGIN { ORS="" }
+				{
+					gsub(/\\/, "\\\\")
+					gsub(/"/, "\\\"")
+					gsub(/\t/, "\\t")
+					gsub(/\r/, "")
+					if (NR > 1) printf "\\n"
+					printf "%s", $0
+				}'
+				printf '"}'
+			} > "$outfile"
+
+			# Check if we got actual content (file should be > 17 bytes: {"response":""} )
+			local outsize=$(stat -c %s "$outfile" 2>/dev/null || echo 0)
+			if [ "$outsize" -gt 17 ]; then
+				cat "$outfile"
+			else
+				echo '{"response":"","error":"Empty response from LocalAI API - model may not support chat format"}'
+			fi
+			rm -f "$outfile"
 		fi
 		rm -f "$tmpfile" "$tmpfile_err" 2>/dev/null
 	else
@@ -445,14 +433,38 @@ do_complete() {
 		return
 	fi
 
-	local response=$(wget -q -O - --post-data "{\"model\":\"$model\",\"prompt\":\"$prompt\"}" \
-		--header="Content-Type: application/json" \
-		"http://127.0.0.1:$API_PORT/v1/completions" 2>/dev/null)
+	local tmpfile="/tmp/localai_comp_$$"
 
-	if [ -n "$response" ]; then
-		local text=$(echo "$response" | jsonfilter -e '@.choices[0].text' 2>/dev/null)
-		echo "{\"text\":\"$(echo "$text" | sed 's/"/\\"/g')\"}"
+	wget -q -T 120 -O "$tmpfile" --post-data "{\"model\":\"$model\",\"prompt\":\"$prompt\"}" \
+		--header="Content-Type: application/json" \
+		"http://127.0.0.1:$API_PORT/v1/completions" 2>/dev/null
+
+	if [ -f "$tmpfile" ] && [ -s "$tmpfile" ]; then
+		local outfile="/tmp/localai_compout_$$"
+		jsonfilter -i "$tmpfile" -e '@.choices[0].text' 2>/dev/null | {
+			printf '{"text":"'
+			awk '
+			BEGIN { ORS="" }
+			{
+				gsub(/\\/, "\\\\")
+				gsub(/"/, "\\\"")
+				gsub(/\t/, "\\t")
+				gsub(/\r/, "")
+				if (NR > 1) printf "\\n"
+				printf "%s", $0
+			}'
+			printf '"}'
+		} > "$outfile"
+
+		local outsize=$(stat -c %s "$outfile" 2>/dev/null || echo 0)
+		if [ "$outsize" -gt 11 ]; then
+			cat "$outfile"
+		else
+			echo '{"text":"","error":"Empty response from API"}'
+		fi
+		rm -f "$outfile" "$tmpfile"
 	else
+		rm -f "$tmpfile"
 		echo '{"text":"","error":"API request failed"}'
 	fi
 }

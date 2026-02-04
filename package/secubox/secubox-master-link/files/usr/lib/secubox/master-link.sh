@@ -376,10 +376,92 @@ ml_join_reject() {
 }
 
 # ============================================================================
-# IPK Serving
+# IPK Generation & Serving
 # ============================================================================
 
-# Validate token and serve IPK file
+# Generate a minimal join IPK on-the-fly
+# OpenWrt IPK format: tar.gz containing debian-binary, control.tar.gz, data.tar.gz
+# Args: $1=master_ip  $2=master_depth  $3=master_hostname  $4=token_prefix
+# Output: path to generated IPK file on stdout
+ml_ipk_generate() {
+	local master_ip="$1"
+	local master_depth="${2:-0}"
+	local master_hostname="${3:-secubox}"
+	local token_prefix="${4:-0000}"
+	local peer_depth=$((master_depth + 1))
+	local version="1.0.0-${token_prefix}"
+
+	local work="/tmp/ml-ipk-$$"
+	local ipk_file="/tmp/secubox-mesh-join-$$.ipk"
+
+	rm -rf "$work"
+	mkdir -p "$work/ipk" "$work/control" "$work/data"
+
+	# --- debian-binary ---
+	printf '2.0\n' > "$work/ipk/debian-binary"
+
+	# --- control file ---
+	cat > "$work/control/control" <<-CTRL
+	Package: secubox-mesh-join
+	Version: ${version}
+	Architecture: all
+	Installed-Size: 1
+	Description: SecuBox mesh join - peer of ${master_hostname} (${master_ip})
+	Maintainer: SecuBox
+	Section: admin
+	CTRL
+
+	# --- postinst script ---
+	# Configure master-link via uci instead of shipping config file
+	# (avoids file conflict with secubox-master-link package)
+	cat > "$work/control/postinst" <<-POSTINST
+	#!/bin/sh
+	[ -n "\${IPKG_INSTROOT}" ] || {
+		uci -q set master-link.main=master-link
+		uci -q set master-link.main.enabled='1'
+		uci -q set master-link.main.role='peer'
+		uci -q set master-link.main.upstream='${master_ip}'
+		uci -q set master-link.main.depth='${peer_depth}'
+		uci -q set master-link.main.max_depth='3'
+		uci -q set master-link.main.token_ttl='3600'
+		uci -q set master-link.main.auto_approve='0'
+		uci commit master-link
+		/etc/init.d/master-link enable 2>/dev/null
+		/etc/init.d/master-link start 2>/dev/null
+	}
+	exit 0
+	POSTINST
+	chmod 755 "$work/control/postinst"
+
+	# --- data: empty (config is applied by postinst via uci) ---
+
+	# --- Build inner tar.gz archives ---
+	tar czf "$work/ipk/control.tar.gz" -C "$work/control" . 2>/dev/null
+	tar czf "$work/ipk/data.tar.gz" -C "$work/data" . 2>/dev/null
+
+	# --- Assemble IPK (outer tar.gz) ---
+	tar czf "$ipk_file" -C "$work/ipk" \
+		debian-binary control.tar.gz data.tar.gz 2>/dev/null
+
+	rm -rf "$work"
+	echo "$ipk_file"
+}
+
+# Detect master IP from CGI environment or UCI
+_ml_detect_master_ip() {
+	# Try HTTP_HOST (CGI environment, set by uhttpd)
+	local ip=$(echo "${HTTP_HOST:-}" | cut -d: -f1)
+	[ -n "$ip" ] && { echo "$ip"; return; }
+
+	# Try UCI network config
+	ip=$(uci -q get network.lan.ipaddr)
+	[ -n "$ip" ] && { echo "$ip"; return; }
+
+	# Fallback: parse ip addr
+	ip addr show br-lan 2>/dev/null | grep -o 'inet [0-9.]*' | head -1 | cut -d' ' -f2
+}
+
+# Validate token and serve IPK file (pre-built or generated)
 ml_ipk_serve() {
 	local token="$1"
 
@@ -390,37 +472,58 @@ ml_ipk_serve() {
 	if [ "$valid" != "true" ]; then
 		echo "Status: 403 Forbidden"
 		echo "Content-Type: application/json"
+		echo "Access-Control-Allow-Origin: *"
 		echo ""
 		echo "$validation"
 		return 1
 	fi
 
-	# Find IPK file
+	# Try pre-built IPK first
 	local ipk_path=$(uci -q get master-link.main.ipk_path)
 	[ -z "$ipk_path" ] && ipk_path="/www/secubox-feed/secubox-master-link_*.ipk"
 
-	# Resolve glob
 	local ipk_file=""
 	for f in $ipk_path; do
 		[ -f "$f" ] && ipk_file="$f"
 	done
 
+	# Fallback: generate minimal join IPK on-the-fly
+	local generated=0
 	if [ -z "$ipk_file" ]; then
-		echo "Status: 404 Not Found"
-		echo "Content-Type: application/json"
-		echo ""
-		echo '{"error":"ipk_not_found"}'
-		return 1
+		local master_ip=$(_ml_detect_master_ip)
+		local master_depth=$(uci -q get master-link.main.depth)
+		[ -z "$master_depth" ] && master_depth=0
+		local master_hostname=$(uci -q get system.@system[0].hostname 2>/dev/null)
+		[ -z "$master_hostname" ] && master_hostname="secubox"
+		local token_hash=$(echo "$token" | sha256sum | cut -d' ' -f1)
+		local token_prefix=$(echo "$token_hash" | cut -c1-8)
+
+		ipk_file=$(ml_ipk_generate "$master_ip" "$master_depth" "$master_hostname" "$token_prefix")
+		generated=1
+
+		if [ -z "$ipk_file" ] || [ ! -f "$ipk_file" ]; then
+			echo "Status: 500 Internal Server Error"
+			echo "Content-Type: application/json"
+			echo "Access-Control-Allow-Origin: *"
+			echo ""
+			echo '{"error":"ipk_generation_failed"}'
+			return 1
+		fi
 	fi
 
-	local filename=$(basename "$ipk_file")
+	local filename="secubox-mesh-join.ipk"
+	[ "$generated" = "0" ] && filename=$(basename "$ipk_file")
 	local filesize=$(wc -c < "$ipk_file")
 
 	echo "Content-Type: application/octet-stream"
 	echo "Content-Disposition: attachment; filename=\"$filename\""
 	echo "Content-Length: $filesize"
+	echo "Access-Control-Allow-Origin: *"
 	echo ""
 	cat "$ipk_file"
+
+	# Clean up generated IPK
+	[ "$generated" = "1" ] && rm -f "$ipk_file"
 }
 
 # Return IPK metadata
@@ -433,23 +536,31 @@ ml_ipk_bundle_info() {
 		[ -f "$f" ] && ipk_file="$f"
 	done
 
-	if [ -z "$ipk_file" ]; then
-		echo '{"available":false}'
-		return 1
+	if [ -n "$ipk_file" ]; then
+		local filename=$(basename "$ipk_file")
+		local filesize=$(wc -c < "$ipk_file")
+		local sha256=$(sha256sum "$ipk_file" | cut -d' ' -f1)
+
+		cat <<-EOF
+		{
+			"available": true,
+			"type": "prebuilt",
+			"filename": "$filename",
+			"size": $filesize,
+			"sha256": "$sha256"
+		}
+		EOF
+	else
+		# Dynamic generation always available
+		cat <<-EOF
+		{
+			"available": true,
+			"type": "dynamic",
+			"filename": "secubox-mesh-join.ipk",
+			"description": "Minimal join package (generated on-the-fly)"
+		}
+		EOF
 	fi
-
-	local filename=$(basename "$ipk_file")
-	local filesize=$(wc -c < "$ipk_file")
-	local sha256=$(sha256sum "$ipk_file" | cut -d' ' -f1)
-
-	cat <<-EOF
-	{
-		"available": true,
-		"filename": "$filename",
-		"size": $filesize,
-		"sha256": "$sha256"
-	}
-	EOF
 }
 
 # ============================================================================
@@ -783,6 +894,9 @@ case "${1:-}" in
 		;;
 	ipk-info)
 		ml_ipk_bundle_info
+		;;
+	ipk-generate)
+		ml_ipk_generate "$2" "$3" "$4" "$5"
 		;;
 	init)
 		ml_init

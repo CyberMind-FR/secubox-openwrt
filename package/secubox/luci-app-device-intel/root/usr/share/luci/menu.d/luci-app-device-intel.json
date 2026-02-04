@@ -1,0 +1,53 @@
+{
+	"admin/secubox/device-intel": {
+		"title": "Device Intelligence",
+		"order": 15,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": ["luci-app-device-intel"],
+			"uci": {"device-intel": true}
+		}
+	},
+	"admin/secubox/device-intel/dashboard": {
+		"title": "Dashboard",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "device-intel/dashboard"
+		}
+	},
+	"admin/secubox/device-intel/devices": {
+		"title": "Devices",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "device-intel/devices"
+		}
+	},
+	"admin/secubox/device-intel/emulators": {
+		"title": "Emulators",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "device-intel/emulators"
+		}
+	},
+	"admin/secubox/device-intel/mesh": {
+		"title": "Mesh",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "device-intel/mesh"
+		}
+	},
+	"admin/secubox/device-intel/settings": {
+		"title": "Settings",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "device-intel/settings"
+		}
+	}
+}

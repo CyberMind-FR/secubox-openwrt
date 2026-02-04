@@ -121,7 +121,8 @@ return view.extend({
 		return Promise.all([
 			api.getInterfaces(),
 			api.getStatus(),
-			this.getPublicIP()
+			this.getPublicIP(),
+			api.getEndpoints()
 		]);
 	},
 
@@ -135,6 +136,92 @@ return view.extend({
 		});
 	},
 
+	renderEndpointField: function() {
+		var self = this;
+		var endpointData = this.endpointData || {};
+		var endpoints = (endpointData || {}).endpoints || [];
+		var defaultId = (endpointData || {})['default'] || '';
+		var publicIP = this.wizardData.publicIP || '';
+
+		if (endpoints.length > 0) {
+			// Build a dropdown with saved endpoints + auto-detected IP + custom option
+			var options = [];
+
+			endpoints.forEach(function(ep) {
+				options.push(E('option', {
+					'value': ep.address,
+					'selected': (ep.id === defaultId) ? '' : null
+				}, (ep.name || ep.id) + ' (' + ep.address + ')'));
+			});
+
+			// Add detected IP as an option if not already in the list
+			if (publicIP) {
+				var alreadyExists = endpoints.some(function(ep) { return ep.address === publicIP; });
+				if (!alreadyExists) {
+					options.push(E('option', { 'value': publicIP }, _('Detected IP') + ' (' + publicIP + ')'));
+				}
+			}
+
+			options.push(E('option', { 'value': '__custom__' }, _('Custom...')));
+
+			var container = E('div', { 'class': 'wg-form-group' });
+			container.appendChild(E('label', {}, _('Public IP / Hostname')));
+
+			var select = E('select', {
+				'id': 'cfg-public-endpoint',
+				'class': 'wg-input',
+				'change': function() {
+					var customInput = document.getElementById('cfg-public-endpoint-custom');
+					if (this.value === '__custom__') {
+						customInput.style.display = '';
+						customInput.focus();
+					} else {
+						customInput.style.display = 'none';
+					}
+				}
+			}, options);
+
+			container.appendChild(select);
+			container.appendChild(E('input', {
+				'type': 'text',
+				'id': 'cfg-public-endpoint-custom',
+				'class': 'wg-input',
+				'placeholder': 'vpn.example.com',
+				'style': 'display: none; margin-top: 6px;'
+			}));
+			container.appendChild(E('small', {}, _('How clients will reach this server')));
+
+			return container;
+		}
+
+		// No saved endpoints - show plain text input with auto-detected IP
+		return E('div', { 'class': 'wg-form-group' }, [
+			E('label', {}, _('Public IP / Hostname')),
+			E('input', {
+				'type': 'text',
+				'id': 'cfg-public-endpoint',
+				'class': 'wg-input',
+				'value': publicIP,
+				'placeholder': 'vpn.example.com'
+			}),
+			E('small', {}, _('How clients will reach this server')),
+			publicIP ? E('div', { 'class': 'wg-detected' }, [
+				E('span', {}, '✓ ' + _('Detected: ')),
+				E('code', {}, publicIP)
+			]) : ''
+		]);
+	},
+
+	getNextInterfaceName: function(interfaces) {
+		var existing = interfaces.map(function(i) { return i.name; });
+		for (var i = 0; i < 100; i++) {
+			var name = 'wg' + i;
+			if (existing.indexOf(name) === -1)
+				return name;
+		}
+		return 'wg0';
+	},
+
 	render: function(data) {
 		var self = this;
 		// Handle RPC expect unwrapping - results may be array or object
@@ -142,9 +229,12 @@ return view.extend({
 		var interfaces = Array.isArray(interfacesData) ? interfacesData : (interfacesData.interfaces || []);
 		var status = data[1] || {};
 		var publicIP = data[2] || '';
+		var endpointData = data[3] || {};
 
 		this.wizardData.publicIP = publicIP;
 		this.wizardData.existingInterfaces = interfaces;
+		this.wizardData.nextIfaceName = this.getNextInterfaceName(interfaces);
+		this.endpointData = endpointData;
 
 		var view = E('div', { 'class': 'wg-wizard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('wireguard-dashboard/dashboard.css') }),
@@ -246,7 +336,7 @@ return view.extend({
 							'type': 'text',
 							'id': 'cfg-iface-name',
 							'class': 'wg-input',
-							'value': 'wg0',
+							'value': this.wizardData.nextIfaceName || 'wg0',
 							'placeholder': 'wg0'
 						}),
 						E('small', {}, _('Name for the WireGuard interface'))
@@ -294,21 +384,7 @@ return view.extend({
 				E('div', { 'class': 'wg-config-section' }, [
 					E('h3', {}, '🔗 ' + _('Public Endpoint')),
 
-					E('div', { 'class': 'wg-form-group' }, [
-						E('label', {}, _('Public IP / Hostname')),
-						E('input', {
-							'type': 'text',
-							'id': 'cfg-public-endpoint',
-							'class': 'wg-input',
-							'value': this.wizardData.publicIP || '',
-							'placeholder': 'vpn.example.com'
-						}),
-						E('small', {}, _('How clients will reach this server')),
-						this.wizardData.publicIP ? E('div', { 'class': 'wg-detected' }, [
-							E('span', {}, '✓ ' + _('Detected: ')),
-							E('code', {}, this.wizardData.publicIP)
-						]) : ''
-					]),
+					this.renderEndpointField(),
 
 					E('div', { 'class': 'wg-form-group' }, [
 						E('label', {}, _('MTU')),
@@ -484,8 +560,16 @@ return view.extend({
 			this.wizardData.listenPort = document.getElementById('cfg-listen-port').value;
 			this.wizardData.vpnNetwork = document.getElementById('cfg-vpn-network').value;
 			this.wizardData.serverIP = document.getElementById('cfg-server-ip').value;
-			this.wizardData.publicEndpoint = document.getElementById('cfg-public-endpoint').value;
 			this.wizardData.mtu = document.getElementById('cfg-mtu').value;
+
+			// Handle endpoint - could be a select or text input
+			var endpointEl = document.getElementById('cfg-public-endpoint');
+			var endpointValue = endpointEl ? endpointEl.value : '';
+			if (endpointValue === '__custom__') {
+				var customEl = document.getElementById('cfg-public-endpoint-custom');
+				endpointValue = customEl ? customEl.value.trim() : '';
+			}
+			this.wizardData.publicEndpoint = endpointValue;
 
 			if (!this.wizardData.ifaceName || !this.wizardData.listenPort || !this.wizardData.vpnNetwork) {
 				ui.addNotification(null, E('p', _('Please fill in all required fields')), 'warning');
@@ -557,6 +641,17 @@ return view.extend({
 		}).then(function() {
 			// Create peers
 			return self.createPeers();
+		}).then(function(results) {
+			// Save the public endpoint to UCI for reuse in peers/QR views
+			var data = self.wizardData;
+			if (data.publicEndpoint) {
+				return api.setEndpoint(data.ifaceName, data.ifaceName + ' server', data.publicEndpoint).then(function() {
+					return api.setDefaultEndpoint(data.ifaceName);
+				}).then(function() {
+					return results;
+				});
+			}
+			return results;
 		}).then(function(results) {
 			ui.hideModal();
 
@@ -633,7 +728,7 @@ return view.extend({
 
 					results.push(peerData);
 
-					// Add peer to interface
+					// Add peer to interface (include private key for QR persistence)
 					return api.addPeer(
 						data.ifaceName,
 						zone.name + '_' + (idx + 1),
@@ -641,7 +736,8 @@ return view.extend({
 						keys.public_key,
 						keys.preshared_key,
 						'',
-						zone.keepalive.toString()
+						zone.keepalive.toString(),
+						keys.private_key
 					);
 				})
 			);

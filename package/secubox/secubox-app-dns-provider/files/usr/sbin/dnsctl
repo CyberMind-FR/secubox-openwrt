@@ -1,0 +1,308 @@
+#!/bin/sh
+# SecuBox DNS Provider Controller
+# Programmatic DNS record management via provider APIs
+
+VERSION="1.0.0"
+CONFIG="dns-provider"
+ADAPTER_DIR="/usr/lib/secubox/dns"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[DNS]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+
+# ============================================================================
+# Provider Loading
+# ============================================================================
+
+load_provider() {
+	local provider=$(uci_get main.provider)
+	local zone=$(uci_get main.zone)
+
+	if [ -z "$provider" ]; then
+		error "No DNS provider configured. Set with: uci set dns-provider.main.provider='ovh'"
+		exit 1
+	fi
+
+	if [ -z "$zone" ]; then
+		error "No DNS zone configured. Set with: uci set dns-provider.main.zone='example.com'"
+		exit 1
+	fi
+
+	local adapter="${ADAPTER_DIR}/${provider}.sh"
+	if [ ! -f "$adapter" ]; then
+		error "Unknown provider: $provider (no adapter at $adapter)"
+		exit 1
+	fi
+
+	. "$adapter"
+}
+
+get_zone() {
+	uci_get main.zone
+}
+
+# ============================================================================
+# Commands
+# ============================================================================
+
+cmd_list() {
+	load_provider
+	local zone=$(get_zone)
+	log "Listing records for $zone..."
+	dns_list "$zone"
+}
+
+cmd_add() {
+	local type="$1" subdomain="$2" target="$3" ttl="${4:-3600}"
+
+	if [ -z "$type" ] || [ -z "$subdomain" ] || [ -z "$target" ]; then
+		echo "Usage: dnsctl add <TYPE> <subdomain> <target> [ttl]"
+		echo "  TYPE: A, AAAA, CNAME, TXT, MX, SRV"
+		echo ""
+		echo "Examples:"
+		echo "  dnsctl add A myservice 1.2.3.4"
+		echo "  dnsctl add CNAME www mycdn.net"
+		echo "  dnsctl add TXT _acme-challenge 'validation-token'"
+		return 1
+	fi
+
+	load_provider
+	local zone=$(get_zone)
+	log "Adding $type record: ${subdomain}.${zone} → $target (TTL: $ttl)"
+	dns_add "$zone" "$type" "$subdomain" "$target" "$ttl"
+	echo ""
+	log "Record created. Verify with: dnsctl verify ${subdomain}.${zone}"
+}
+
+cmd_rm() {
+	local type="$1" subdomain="$2"
+
+	if [ -z "$type" ] || [ -z "$subdomain" ]; then
+		echo "Usage: dnsctl rm <TYPE> <subdomain>"
+		echo "  dnsctl rm A myservice"
+		return 1
+	fi
+
+	load_provider
+	local zone=$(get_zone)
+	log "Removing $type record for ${subdomain}.${zone}..."
+	dns_rm "$zone" "$type" "$subdomain"
+	log "Record removed."
+}
+
+cmd_sync() {
+	load_provider
+	local zone=$(get_zone)
+	log "Syncing local vhosts to DNS..."
+
+	# Read HAProxy vhosts
+	local idx=0
+	local synced=0
+	while uci -q get haproxy.@vhost[$idx] >/dev/null 2>&1; do
+		local domain=$(uci -q get haproxy.@vhost[$idx].domain)
+		local enabled=$(uci -q get haproxy.@vhost[$idx].enabled)
+
+		if [ "$enabled" = "1" ] && [ -n "$domain" ]; then
+			# Check if domain is within our zone
+			if echo "$domain" | grep -q "\.${zone}$"; then
+				local subdomain=$(echo "$domain" | sed "s/\.${zone}$//")
+
+				# Get public IP
+				local public_ip=$(curl -s --connect-timeout 5 https://ipv4.icanhazip.com 2>/dev/null | tr -d '\n')
+				if [ -n "$public_ip" ]; then
+					log "  $subdomain → $public_ip"
+					dns_add "$zone" "A" "$subdomain" "$public_ip" 3600
+					synced=$((synced + 1))
+				fi
+			fi
+		fi
+		idx=$((idx + 1))
+	done
+
+	log "Synced $synced record(s)."
+}
+
+cmd_verify() {
+	local fqdn="$1"
+
+	if [ -z "$fqdn" ]; then
+		echo "Usage: dnsctl verify <fqdn>"
+		return 1
+	fi
+
+	log "Checking DNS propagation for $fqdn..."
+
+	# Check with multiple resolvers
+	local resolvers="1.1.1.1 8.8.8.8 9.9.9.9"
+	local resolved=0
+	local failed=0
+
+	for resolver in $resolvers; do
+		local result=$(nslookup "$fqdn" "$resolver" 2>/dev/null | grep "Address:" | tail -1 | awk '{print $2}')
+		if [ -n "$result" ] && [ "$result" != "$resolver" ]; then
+			echo -e "  ${GREEN}$resolver${NC} → $result"
+			resolved=$((resolved + 1))
+		else
+			echo -e "  ${RED}$resolver${NC} → not resolved"
+			failed=$((failed + 1))
+		fi
+	done
+
+	echo ""
+	if [ "$failed" -eq 0 ]; then
+		log "Fully propagated ($resolved/$((resolved + failed)) resolvers)"
+	elif [ "$resolved" -gt 0 ]; then
+		warn "Partially propagated ($resolved/$((resolved + failed)) resolvers)"
+	else
+		error "Not propagated yet. DNS changes may take up to 24 hours."
+	fi
+}
+
+cmd_test() {
+	load_provider
+	local provider=$(uci_get main.provider)
+	log "Testing $provider credentials..."
+	local result=$(dns_test_credentials)
+	if [ "$result" = "ok" ]; then
+		log "Credentials valid."
+	else
+		error "Credential test failed: $result"
+		return 1
+	fi
+}
+
+cmd_status() {
+	local provider=$(uci_get main.provider)
+	local zone=$(uci_get main.zone)
+	local enabled=$(uci_get main.enabled)
+
+	echo ""
+	echo "========================================"
+	echo "  DNS Provider Status v$VERSION"
+	echo "========================================"
+	echo ""
+	echo "  Enabled:   $([ "$enabled" = "1" ] && echo -e "${GREEN}Yes${NC}" || echo -e "${RED}No${NC}")"
+	echo "  Provider:  ${provider:-not set}"
+	echo "  Zone:      ${zone:-not set}"
+
+	if [ -n "$provider" ]; then
+		echo ""
+		echo "Provider Config ($provider):"
+		case "$provider" in
+			ovh)
+				local endpoint=$(uci_get ovh.endpoint)
+				local app_key=$(uci_get ovh.app_key)
+				echo "  Endpoint:    ${endpoint:-ovh-eu}"
+				echo "  App Key:     ${app_key:+configured}${app_key:-NOT SET}"
+				echo "  App Secret:  $([ -n "$(uci_get ovh.app_secret)" ] && echo "configured" || echo "NOT SET")"
+				echo "  Consumer Key:$([ -n "$(uci_get ovh.consumer_key)" ] && echo " configured" || echo " NOT SET")"
+				;;
+			gandi)
+				echo "  API Key:     $([ -n "$(uci_get gandi.api_key)" ] && echo "configured" || echo "NOT SET")"
+				;;
+			cloudflare)
+				echo "  API Token:   $([ -n "$(uci_get cloudflare.api_token)" ] && echo "configured" || echo "NOT SET")"
+				echo "  Zone ID:     $([ -n "$(uci_get cloudflare.zone_id)" ] && echo "configured" || echo "NOT SET")"
+				;;
+		esac
+	fi
+
+	echo ""
+}
+
+# ============================================================================
+# ACME DNS-01 Helper
+# ============================================================================
+
+cmd_acme_dns01() {
+	local domain="$1"
+
+	if [ -z "$domain" ]; then
+		echo "Usage: dnsctl acme-dns01 <domain>"
+		echo "Issues certificate via DNS-01 challenge using configured provider."
+		return 1
+	fi
+
+	load_provider
+	local provider=$(uci_get main.provider)
+
+	log "Issuing certificate for $domain via DNS-01 ($provider)..."
+
+	case "$provider" in
+		ovh)
+			export OVH_END_POINT=$(uci_get ovh.endpoint)
+			export OVH_APPLICATION_KEY=$(uci_get ovh.app_key)
+			export OVH_APPLICATION_SECRET=$(uci_get ovh.app_secret)
+			export OVH_CONSUMER_KEY=$(uci_get ovh.consumer_key)
+			acme.sh --issue -d "$domain" --dns dns_ovh
+			;;
+		gandi)
+			export GANDI_LIVEDNS_KEY=$(uci_get gandi.api_key)
+			acme.sh --issue -d "$domain" --dns dns_gandi_livedns
+			;;
+		cloudflare)
+			export CF_Token=$(uci_get cloudflare.api_token)
+			export CF_Zone_ID=$(uci_get cloudflare.zone_id)
+			acme.sh --issue -d "$domain" --dns dns_cf
+			;;
+		*)
+			error "Unsupported provider for ACME DNS-01: $provider"
+			return 1
+			;;
+	esac
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+show_help() {
+	cat << EOF
+SecuBox DNS Provider Control v$VERSION
+
+Usage: dnsctl <command> [options]
+
+Commands:
+  list                         List all DNS records in zone
+  add <TYPE> <sub> <target>    Create DNS record (A, AAAA, CNAME, TXT, MX)
+  rm <TYPE> <subdomain>        Remove DNS record
+  sync                         Sync HAProxy vhosts → DNS A records
+  verify <fqdn>                Check DNS propagation across resolvers
+  test                         Verify provider API credentials
+  status                       Show provider configuration status
+  acme-dns01 <domain>          Issue SSL cert via DNS-01 challenge
+
+Examples:
+  dnsctl add A gitea 1.2.3.4
+  dnsctl add CNAME www mycdn.example.net
+  dnsctl rm A gitea
+  dnsctl sync
+  dnsctl verify gitea.example.com
+  dnsctl acme-dns01 '*.example.com'
+
+EOF
+}
+
+case "${1:-}" in
+	list)        shift; cmd_list "$@" ;;
+	add)         shift; cmd_add "$@" ;;
+	rm|remove)   shift; cmd_rm "$@" ;;
+	sync)        shift; cmd_sync "$@" ;;
+	verify)      shift; cmd_verify "$@" ;;
+	test)        shift; cmd_test "$@" ;;
+	status)      shift; cmd_status "$@" ;;
+	acme-dns01)  shift; cmd_acme_dns01 "$@" ;;
+	help|--help|-h|'') show_help ;;
+	*)           error "Unknown command: $1"; show_help >&2; exit 1 ;;
+esac
+
+exit 0

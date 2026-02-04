@@ -477,7 +477,8 @@ return view.extend({
 					[
 						{ id: 'anonymous', name: _('Full Anonymity'), icon: '\u{1F6E1}', emoji: '\u{1F9D9}', desc: _('All traffic through Tor'), features: ['\u{2705} ' + _('Kill Switch'), '\u{2705} ' + _('DNS Protection'), '\u{2705} ' + _('Full Routing')] },
 						{ id: 'selective', name: _('Selective Apps'), icon: '\u{1F3AF}', emoji: '\u{1F50D}', desc: _('SOCKS proxy mode'), features: ['\u{26AA} ' + _('No Kill Switch'), '\u{26AA} ' + _('Manual Config'), '\u{2705} ' + _('App Control')] },
-						{ id: 'censored', name: _('Bypass Censorship'), icon: '\u{1F513}', emoji: '\u{1F30D}', desc: _('Bridge connections'), features: ['\u{2705} ' + _('obfs4 Bridges'), '\u{2705} ' + _('Anti-Censorship'), '\u{2705} ' + _('Stealth Mode')] }
+						{ id: 'censored', name: _('Bypass Censorship'), icon: '\u{1F513}', emoji: '\u{1F30D}', desc: _('Bridge connections'), features: ['\u{2705} ' + _('obfs4 Bridges'), '\u{2705} ' + _('Anti-Censorship'), '\u{2705} ' + _('Stealth Mode')] },
+						{ id: 'server', name: _('Server Mode'), icon: '\u{1F5A5}', emoji: '\u{1F5A5}\uFE0F', desc: _('Public IP + Tor outbound'), features: ['\u{2705} ' + _('Public IP Preserved'), '\u{2705} ' + _('Outbound via Tor'), '\u{2705} ' + _('LAN Clients Anonymized')] }
 					].map(function(preset) {
 						var isSelected = self.currentPreset === preset.id;
 						return E('div', {

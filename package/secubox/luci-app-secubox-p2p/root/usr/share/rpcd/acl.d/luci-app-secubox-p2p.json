@@ -23,7 +23,10 @@
 				],
 				"uci": ["get", "state"]
 			},
-			"uci": ["secubox-p2p"]
+			"uci": ["secubox-p2p"],
+			"file": {
+				"/var/lib/secubox/threat-intel/*": ["read"]
+			}
 		},
 		"write": {
 			"ubus": {

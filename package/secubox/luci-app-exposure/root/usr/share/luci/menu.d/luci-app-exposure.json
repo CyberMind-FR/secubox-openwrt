@@ -4,34 +4,10 @@
         "order": 35,
         "action": {
             "type": "view",
-            "path": "exposure/overview"
+            "path": "exposure/services"
         },
         "depends": {
             "acl": ["luci-app-exposure"]
-        }
-    },
-    "admin/secubox/network/exposure/services": {
-        "title": "Services",
-        "order": 1,
-        "action": {
-            "type": "view",
-            "path": "exposure/services"
-        }
-    },
-    "admin/secubox/network/exposure/tor": {
-        "title": "Tor Hidden",
-        "order": 2,
-        "action": {
-            "type": "view",
-            "path": "exposure/tor"
-        }
-    },
-    "admin/secubox/network/exposure/ssl": {
-        "title": "SSL Proxy",
-        "order": 3,
-        "action": {
-            "type": "view",
-            "path": "exposure/ssl"
         }
     }
 }

@@ -1,0 +1,29 @@
+{
+	"luci-app-device-intel": {
+		"description": "Grant access to SecuBox Device Intelligence",
+		"read": {
+			"file": {
+				"/etc/config/device-intel": ["read"],
+				"/tmp/device-intel/*": ["read"]
+			},
+			"ubus": {
+				"file": ["read", "stat"],
+				"luci.device-intel": ["*"],
+				"luci.mac-guardian": ["get_clients", "get_status"],
+				"luci.client-guardian": ["clients", "zones"],
+				"luci.secubox-p2p": ["get_peers", "health"],
+				"luci.exposure": ["scan"]
+			},
+			"uci": ["device-intel", "client-guardian", "mac-guardian"]
+		},
+		"write": {
+			"file": {
+				"/etc/config/device-intel": ["write"]
+			},
+			"ubus": {
+				"luci.device-intel": ["*"]
+			},
+			"uci": ["device-intel"]
+		}
+	}
+}

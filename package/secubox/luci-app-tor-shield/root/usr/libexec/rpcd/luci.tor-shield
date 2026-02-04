@@ -155,11 +155,12 @@ do_enable() {
 	# Load preset configuration
 	config_load "$CONFIG"
 
-	local preset_mode preset_dns preset_kill preset_bridges
+	local preset_mode preset_dns preset_kill preset_bridges preset_lan_proxy
 	config_get preset_mode "$preset" mode 'transparent'
 	config_get preset_dns "$preset" dns_over_tor '1'
 	config_get preset_kill "$preset" kill_switch '1'
 	config_get preset_bridges "$preset" use_bridges '0'
+	config_get preset_lan_proxy "$preset" lan_proxy '0'
 
 	# Apply preset settings
 	uci set tor-shield.main.enabled='1'
@@ -167,6 +168,7 @@ do_enable() {
 	uci set tor-shield.main.dns_over_tor="$preset_dns"
 	uci set tor-shield.main.kill_switch="$preset_kill"
 	uci set tor-shield.main.current_preset="$preset"
+	uci set tor-shield.trans.lan_proxy="$preset_lan_proxy"
 
 	if [ "$preset_bridges" = "1" ]; then
 		uci set tor-shield.bridges.enabled='1'
@@ -599,6 +601,14 @@ get_presets() {
 	json_add_string "description" "Use bridges to bypass network restrictions"
 	json_close_object
 
+	# Server preset
+	json_add_object
+	json_add_string "id" "server"
+	json_add_string "name" "Server Mode"
+	json_add_string "icon" "server"
+	json_add_string "description" "Serve websites publicly while routing outbound through Tor"
+	json_close_object
+
 	json_close_array
 	json_dump
 }
@@ -684,12 +694,14 @@ get_settings() {
 	json_add_string "socks_address" "$socks_addr"
 
 	# Transparent proxy settings
-	local trans_port dns_port
+	local trans_port dns_port lan_proxy
 	config_get trans_port trans port '9040'
 	config_get dns_port trans dns_port '9053'
+	config_get lan_proxy trans lan_proxy '0'
 
 	json_add_int "trans_port" "$trans_port"
 	json_add_int "dns_port" "$dns_port"
+	json_add_boolean "lan_proxy" "$lan_proxy"
 
 	# Security settings
 	local exit_nodes exclude_exit strict_nodes
@@ -841,7 +853,7 @@ save_settings() {
 	json_load "$input"
 
 	# Get values from input BEFORE json_init (which wipes loaded JSON)
-	local mode dns_over_tor kill_switch socks_port trans_port dns_port
+	local mode dns_over_tor kill_switch socks_port trans_port dns_port lan_proxy
 	local exit_nodes exclude_exit strict_nodes apply_now
 	json_get_var mode mode
 	json_get_var dns_over_tor dns_over_tor
@@ -849,6 +861,7 @@ save_settings() {
 	json_get_var socks_port socks_port
 	json_get_var trans_port trans_port
 	json_get_var dns_port dns_port
+	json_get_var lan_proxy lan_proxy
 	json_get_var exit_nodes exit_nodes
 	json_get_var exclude_exit exclude_exit_nodes
 	json_get_var strict_nodes strict_nodes
@@ -886,6 +899,7 @@ save_settings() {
 	[ -n "$socks_port" ] && uci set tor-shield.socks.port="$socks_port"
 	[ -n "$trans_port" ] && uci set tor-shield.trans.port="$trans_port"
 	[ -n "$dns_port" ] && uci set tor-shield.trans.dns_port="$dns_port"
+	[ -n "$lan_proxy" ] && uci set tor-shield.trans.lan_proxy="$lan_proxy"
 	[ -n "$exit_nodes" ] && uci set tor-shield.security.exit_nodes="$exit_nodes"
 	[ -n "$exclude_exit" ] && uci set tor-shield.security.exclude_exit_nodes="$exclude_exit"
 	[ -n "$strict_nodes" ] && uci set tor-shield.security.strict_nodes="$strict_nodes"
@@ -930,7 +944,7 @@ do_restart() {
 
 case "$1" in
 	list)
-		echo '{"status":{},"enable":{"preset":"str"},"disable":{},"restart":{},"circuits":{},"new_identity":{},"check_leaks":{},"hidden_services":{},"add_hidden_service":{"name":"str","local_port":"int","virtual_port":"int"},"remove_hidden_service":{"name":"str"},"exit_ip":{},"refresh_ips":{},"bandwidth":{},"presets":{},"bridges":{},"set_bridges":{"enabled":"bool","type":"str"},"settings":{},"save_settings":{"mode":"str","dns_over_tor":"bool","kill_switch":"bool","socks_port":"int","trans_port":"int","dns_port":"int","exit_nodes":"str","exclude_exit_nodes":"str","strict_nodes":"bool"},"excluded_destinations":{},"add_excluded_destination":{"destination":"str"},"remove_excluded_destination":{"destination":"str"},"apply_exclusions":{}}'
+		echo '{"status":{},"enable":{"preset":"str"},"disable":{},"restart":{},"circuits":{},"new_identity":{},"check_leaks":{},"hidden_services":{},"add_hidden_service":{"name":"str","local_port":"int","virtual_port":"int"},"remove_hidden_service":{"name":"str"},"exit_ip":{},"refresh_ips":{},"bandwidth":{},"presets":{},"bridges":{},"set_bridges":{"enabled":"bool","type":"str"},"settings":{},"save_settings":{"mode":"str","dns_over_tor":"bool","kill_switch":"bool","socks_port":"int","trans_port":"int","dns_port":"int","lan_proxy":"bool","exit_nodes":"str","exclude_exit_nodes":"str","strict_nodes":"bool"},"excluded_destinations":{},"add_excluded_destination":{"destination":"str"},"remove_excluded_destination":{"destination":"str"},"apply_exclusions":{}}'
 		;;
 	call)
 		case "$2" in

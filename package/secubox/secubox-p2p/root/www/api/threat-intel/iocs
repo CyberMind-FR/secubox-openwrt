@@ -1,0 +1,23 @@
+#!/bin/sh
+# Threat Intel API - IOC listing endpoint
+# GET: Returns IOCs (query: type=local|received|applied, default=received)
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo ""
+
+. /usr/lib/secubox/threat-intel.sh 2>/dev/null
+
+# Parse query string for type parameter
+ioc_type="received"
+case "$QUERY_STRING" in
+	*type=local*)    ioc_type="local" ;;
+	*type=received*) ioc_type="received" ;;
+	*type=applied*)  ioc_type="applied" ;;
+esac
+
+case "$ioc_type" in
+	local)    ti_list_local 2>/dev/null ;;
+	received) ti_list_received 2>/dev/null ;;
+	applied)  ti_list_applied 2>/dev/null ;;
+esac || echo '[]'

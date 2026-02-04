@@ -1,0 +1,230 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+MG_DBFILE="/var/run/mac-guardian/known.db"
+MG_LOGFILE="/var/log/mac-guardian.log"
+
+case "$1" in
+	list)
+		echo '{"status":{},"get_clients":{},"get_events":{"count":"int"},"scan":{},"start":{},"stop":{},"restart":{},"trust":{"mac":"str"},"block":{"mac":"str"},"dhcp_status":{},"dhcp_cleanup":{}}'
+		;;
+	call)
+		case "$2" in
+			status)
+				json_init
+
+				enabled=$(uci -q get mac-guardian.main.enabled)
+				policy=$(uci -q get mac-guardian.enforcement.policy)
+				scan_interval=$(uci -q get mac-guardian.main.scan_interval)
+				detect_random=$(uci -q get mac-guardian.detection.random_mac)
+				detect_spoof=$(uci -q get mac-guardian.detection.spoof_detection)
+
+				json_add_boolean "enabled" ${enabled:-0}
+				json_add_string "policy" "${policy:-alert}"
+				json_add_int "scan_interval" ${scan_interval:-30}
+				json_add_boolean "detect_random" ${detect_random:-1}
+				json_add_boolean "detect_spoof" ${detect_spoof:-1}
+
+				# Service running?
+				if pgrep mac-guardian >/dev/null 2>&1; then
+					json_add_string "service_status" "running"
+				else
+					json_add_string "service_status" "stopped"
+				fi
+
+				# WiFi interfaces
+				json_add_array "interfaces"
+				if command -v iwinfo >/dev/null 2>&1; then
+					iwinfo 2>/dev/null | grep "ESSID" | while read -r line; do
+						iface=$(echo "$line" | awk '{print $1}')
+						essid=$(echo "$line" | sed 's/.*ESSID: "\(.*\)"/\1/')
+						sta_count=$(iwinfo "$iface" assoclist 2>/dev/null | grep -cE '[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}')
+						json_add_object ""
+						json_add_string "name" "$iface"
+						json_add_string "essid" "$essid"
+						json_add_int "stations" ${sta_count:-0}
+						json_close_object
+					done
+				fi
+				json_close_array
+
+				# DB stats
+				total=0
+				trusted=0
+				suspect=0
+				blocked=0
+				unknown=0
+				if [ -f "$MG_DBFILE" ] && [ -s "$MG_DBFILE" ]; then
+					total=$(wc -l < "$MG_DBFILE")
+					trusted=$(grep -c '|trusted$' "$MG_DBFILE" 2>/dev/null || echo 0)
+					suspect=$(grep -c '|suspect$' "$MG_DBFILE" 2>/dev/null || echo 0)
+					blocked=$(grep -c '|blocked$' "$MG_DBFILE" 2>/dev/null || echo 0)
+					unknown=$(grep -c '|unknown$' "$MG_DBFILE" 2>/dev/null || echo 0)
+				fi
+				json_add_object "clients"
+				json_add_int "total" $total
+				json_add_int "trusted" $trusted
+				json_add_int "suspect" $suspect
+				json_add_int "blocked" $blocked
+				json_add_int "unknown" $unknown
+				json_close_object
+
+				json_dump
+				;;
+
+			get_clients)
+				json_init
+				json_add_array "clients"
+
+				if [ -f "$MG_DBFILE" ] && [ -s "$MG_DBFILE" ]; then
+					while IFS='|' read -r mac oui first_seen last_seen iface hostname status; do
+						[ -z "$mac" ] && continue
+						json_add_object ""
+						json_add_string "mac" "$mac"
+						json_add_string "oui" "$oui"
+						json_add_int "first_seen" ${first_seen:-0}
+						json_add_int "last_seen" ${last_seen:-0}
+						json_add_string "iface" "$iface"
+						json_add_string "hostname" "${hostname:--}"
+						json_add_string "status" "$status"
+
+						# OUI vendor lookup
+						vendor=""
+						if [ -f /usr/lib/secubox/mac-guardian/oui.tsv ]; then
+							oui_upper=$(echo "$oui" | tr 'a-f' 'A-F')
+							vendor=$(grep -i "^${oui_upper}	" /usr/lib/secubox/mac-guardian/oui.tsv 2>/dev/null | cut -f2 | head -1)
+						fi
+						json_add_string "vendor" "${vendor:--}"
+
+						# Randomized check
+						first_octet=$(echo "$mac" | cut -d: -f1)
+						is_rand=0
+						[ $((0x$first_octet & 0x02)) -ne 0 ] && is_rand=1
+						json_add_boolean "randomized" $is_rand
+
+						json_close_object
+					done < "$MG_DBFILE"
+				fi
+
+				json_close_array
+				json_dump
+				;;
+
+			get_events)
+				read -r input
+				count=$(echo "$input" | jsonfilter -e '@.count' 2>/dev/null)
+				[ -z "$count" ] && count=20
+
+				json_init
+				json_add_array "events"
+
+				if [ -f "$MG_LOGFILE" ] && [ -s "$MG_LOGFILE" ]; then
+					tail -"$count" "$MG_LOGFILE" 2>/dev/null | while read -r line; do
+						json_add_string "" "$line"
+					done
+				fi
+
+				json_close_array
+				json_dump
+				;;
+
+			scan)
+				/usr/sbin/mac-guardian scan >/dev/null 2>&1
+				json_init
+				json_add_boolean "success" 1
+				json_dump
+				;;
+
+			start)
+				/etc/init.d/mac-guardian start >/dev/null 2>&1
+				json_init
+				json_add_boolean "success" 1
+				json_dump
+				;;
+
+			stop)
+				/etc/init.d/mac-guardian stop >/dev/null 2>&1
+				json_init
+				json_add_boolean "success" 1
+				json_dump
+				;;
+
+			restart)
+				/etc/init.d/mac-guardian restart >/dev/null 2>&1
+				json_init
+				json_add_boolean "success" 1
+				json_dump
+				;;
+
+			trust)
+				read -r input
+				mac=$(echo "$input" | jsonfilter -e '@.mac' 2>/dev/null)
+				if [ -n "$mac" ]; then
+					/usr/sbin/mac-guardian trust "$mac" >/dev/null 2>&1
+					json_init
+					json_add_boolean "success" 1
+					json_dump
+				else
+					echo '{"success":false,"error":"missing mac"}'
+				fi
+				;;
+
+			block)
+				read -r input
+				mac=$(echo "$input" | jsonfilter -e '@.mac' 2>/dev/null)
+				if [ -n "$mac" ]; then
+					/usr/sbin/mac-guardian block "$mac" >/dev/null 2>&1
+					json_init
+					json_add_boolean "success" 1
+					json_dump
+				else
+					echo '{"success":false,"error":"missing mac"}'
+				fi
+				;;
+
+			dhcp_status)
+				json_init
+
+				dhcp_enabled=$(uci -q get mac-guardian.dhcp.enabled)
+				json_add_boolean "enabled" ${dhcp_enabled:-1}
+
+				leases=0
+				conflicts=0
+				stale=0
+
+				if [ -f /tmp/dhcp.leases ] && [ -s /tmp/dhcp.leases ]; then
+					leases=$(wc -l < /tmp/dhcp.leases)
+
+					# Count hostname conflicts
+					conflicts=$(awk '{print $4}' /tmp/dhcp.leases | grep -v '^\*$' | sort | uniq -d | wc -l)
+
+					# Count stale leases
+					now=$(date +%s)
+					stale_timeout=$(uci -q get mac-guardian.dhcp.stale_timeout)
+					stale_timeout=${stale_timeout:-3600}
+					cutoff=$((now - stale_timeout))
+					stale=$(awk -v cutoff="$cutoff" '$1 < cutoff' /tmp/dhcp.leases | wc -l)
+				fi
+
+				json_add_int "leases" $leases
+				json_add_int "conflicts" $conflicts
+				json_add_int "stale" $stale
+				json_dump
+				;;
+
+			dhcp_cleanup)
+				/usr/sbin/mac-guardian dhcp-cleanup >/dev/null 2>&1
+				removed=0
+
+				json_init
+				json_add_boolean "success" 1
+				json_add_int "removed" $removed
+				json_dump
+				;;
+		esac
+		;;
+esac
+
+exit 0

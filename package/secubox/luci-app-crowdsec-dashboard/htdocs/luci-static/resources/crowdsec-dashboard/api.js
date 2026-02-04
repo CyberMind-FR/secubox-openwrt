@@ -20,7 +20,7 @@ var callStatus = rpc.declare({
 var callDecisions = rpc.declare({
 	object: 'luci.crowdsec-dashboard',
 	method: 'decisions',
-	expect: { alerts: [] }
+	expect: { decisions: [] }
 });
 
 var callAlerts = rpc.declare({
@@ -387,14 +387,7 @@ function formatRelativeTime(dateStr) {
 
 return baseclass.extend({
 	getStatus: callStatus,
-	getDecisions: function() {
-		return callDecisions().then(function(result) {
-			console.log('[API] getDecisions raw result:', result);
-			console.log('[API] getDecisions result type:', typeof result);
-			console.log('[API] getDecisions is array:', Array.isArray(result));
-			return result;
-		});
-	},
+	getDecisions: callDecisions,
 	getAlerts: callAlerts,
 	getBouncers: callBouncers,
 	getMetrics: callMetrics,

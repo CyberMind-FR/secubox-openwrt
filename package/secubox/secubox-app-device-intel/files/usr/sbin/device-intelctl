@@ -1,0 +1,397 @@
+#!/bin/sh
+# SecuBox Device Intelligence Controller
+# Unified device inventory with aggregation, classification, and emulators
+
+VERSION="1.0.0"
+CONFIG="device-intel"
+LIB_DIR="/usr/lib/secubox/device-intel"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[INTEL]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+di_ctl_get() { uci -q get ${CONFIG}.$1; }
+
+# Load libraries
+. "${LIB_DIR}/functions.sh"
+. "${LIB_DIR}/classify.sh"
+
+# ============================================================================
+# Commands
+# ============================================================================
+
+cmd_list() {
+	local format="${1:-json}"
+
+	log "Aggregating device inventory..."
+	di_invalidate_cache
+
+	local devices=$(di_get_devices)
+
+	case "$format" in
+		json)
+			echo "$devices"
+			;;
+		table)
+			echo ""
+			printf "%-19s %-15s %-20s %-12s %-10s %-8s\n" \
+				"MAC" "IP" "HOSTNAME" "TYPE" "ZONE" "STATUS"
+			echo "────────────────────────────────────────────────────────────────────────────────────"
+
+			echo "$devices" | jsonfilter -e '@[*].mac' 2>/dev/null | while read -r mac; do
+				[ -z "$mac" ] && continue
+				local ip=$(echo "$devices" | jsonfilter -e "@[@.mac='${mac}'].ip" 2>/dev/null)
+				local host=$(echo "$devices" | jsonfilter -e "@[@.mac='${mac}'].hostname" 2>/dev/null)
+				local dtype=$(echo "$devices" | jsonfilter -e "@[@.mac='${mac}'].device_type" 2>/dev/null)
+				local zone=$(echo "$devices" | jsonfilter -e "@[@.mac='${mac}'].cg_zone" 2>/dev/null)
+				local online=$(echo "$devices" | jsonfilter -e "@[@.mac='${mac}'].online" 2>/dev/null)
+
+				local status_sym="?"
+				[ "$online" = "true" ] && status_sym="${GREEN}●${NC}" || status_sym="${RED}○${NC}"
+
+				printf "%-19s %-15s %-20s %-12s %-10s %b\n" \
+					"$mac" "${ip:--}" "${host:--}" "${dtype:--}" "${zone:--}" "$status_sym"
+			done
+			echo ""
+			;;
+	esac
+}
+
+cmd_show() {
+	local mac="$1"
+
+	if [ -z "$mac" ]; then
+		echo "Usage: device-intelctl show <mac>"
+		return 1
+	fi
+
+	local mac_lower=$(echo "$mac" | tr 'A-F' 'a-f')
+	local devices=$(di_get_devices)
+	local device=$(echo "$devices" | jsonfilter -e "@[@.mac='${mac_lower}']" 2>/dev/null)
+
+	if [ -z "$device" ]; then
+		error "Device not found: $mac"
+		return 1
+	fi
+
+	echo ""
+	echo "=========================================="
+	echo "  Device: $mac_lower"
+	echo "=========================================="
+	echo ""
+
+	local ip=$(echo "$device" | jsonfilter -e '@.ip' 2>/dev/null)
+	local hostname=$(echo "$device" | jsonfilter -e '@.hostname' 2>/dev/null)
+	local label=$(echo "$device" | jsonfilter -e '@.label' 2>/dev/null)
+	local vendor=$(echo "$device" | jsonfilter -e '@.vendor' 2>/dev/null)
+	local online=$(echo "$device" | jsonfilter -e '@.online' 2>/dev/null)
+	local conn=$(echo "$device" | jsonfilter -e '@.connection_type' 2>/dev/null)
+	local iface=$(echo "$device" | jsonfilter -e '@.iface' 2>/dev/null)
+	local randomized=$(echo "$device" | jsonfilter -e '@.randomized' 2>/dev/null)
+	local mg_status=$(echo "$device" | jsonfilter -e '@.mg_status' 2>/dev/null)
+	local cg_zone=$(echo "$device" | jsonfilter -e '@.cg_zone' 2>/dev/null)
+	local cg_status=$(echo "$device" | jsonfilter -e '@.cg_status' 2>/dev/null)
+	local dtype=$(echo "$device" | jsonfilter -e '@.device_type' 2>/dev/null)
+	local dsrc=$(echo "$device" | jsonfilter -e '@.device_type_source' 2>/dev/null)
+	local emu=$(echo "$device" | jsonfilter -e '@.emulator_source' 2>/dev/null)
+	local first_seen=$(echo "$device" | jsonfilter -e '@.first_seen' 2>/dev/null)
+	local last_seen=$(echo "$device" | jsonfilter -e '@.last_seen' 2>/dev/null)
+
+	echo "  IP:          ${ip:--}"
+	echo "  Hostname:    ${hostname:--}"
+	[ -n "$label" ] && echo "  Label:       $label"
+	echo "  Vendor:      ${vendor:--}"
+	echo -e "  Online:      $([ "$online" = "true" ] && echo "${GREEN}Yes${NC}" || echo "${RED}No${NC}")"
+	echo "  Connection:  ${conn:--} (${iface:--})"
+	echo -e "  Randomized:  $([ "$randomized" = "true" ] && echo "${YELLOW}Yes${NC}" || echo "No")"
+	echo ""
+	echo "  ── Security ──"
+	echo "  MAC Status:  ${mg_status:--}"
+	echo "  NAC Zone:    ${cg_zone:--}"
+	echo "  NAC Status:  ${cg_status:--}"
+	echo ""
+	echo "  ── Classification ──"
+	echo "  Device Type: ${dtype:--}"
+	echo "  Source:      ${dsrc:--}"
+	[ -n "$emu" ] && echo "  Emulator:    $emu"
+	echo ""
+	echo "  ── Timeline ──"
+	echo "  First Seen:  ${first_seen:--}"
+	echo "  Last Seen:   ${last_seen:--}"
+	echo ""
+}
+
+cmd_classify() {
+	local mac="$1"
+
+	if [ -z "$mac" ]; then
+		log "Running batch classification on all devices..."
+		local devices=$(di_get_devices)
+		di_classify_all "$devices"
+	else
+		local mac_lower=$(echo "$mac" | tr 'A-F' 'a-f')
+		local devices=$(di_get_devices)
+		local ip=$(echo "$devices" | jsonfilter -e "@[@.mac='${mac_lower}'].ip" 2>/dev/null)
+		local hostname=$(echo "$devices" | jsonfilter -e "@[@.mac='${mac_lower}'].hostname" 2>/dev/null)
+		local vendor=$(echo "$devices" | jsonfilter -e "@[@.mac='${mac_lower}'].vendor" 2>/dev/null)
+		local emu=$(echo "$devices" | jsonfilter -e "@[@.mac='${mac_lower}'].emulator_source" 2>/dev/null)
+
+		local result=$(di_classify_device "$mac_lower" "$ip" "$hostname" "$vendor" "$emu")
+		local dtype=$(echo "$result" | cut -d'|' -f1)
+		local dsrc=$(echo "$result" | cut -d'|' -f2)
+
+		log "Device $mac_lower classified as: $dtype (via $dsrc)"
+	fi
+}
+
+cmd_set_type() {
+	local mac="$1" dtype="$2"
+
+	if [ -z "$mac" ] || [ -z "$dtype" ]; then
+		echo "Usage: device-intelctl set-type <mac> <device_type>"
+		echo "Types: iot_sensor, storage, relay_gateway, compute, io_device, mqtt_device, zigbee_device, usb_peripheral"
+		return 1
+	fi
+
+	local mac_lower=$(echo "$mac" | tr 'A-F' 'a-f')
+	local mac_clean=$(echo "$mac_lower" | tr -d ':')
+
+	uci set ${CONFIG}.${mac_clean}=device
+	uci set ${CONFIG}.${mac_clean}.mac="$mac_lower"
+	uci set ${CONFIG}.${mac_clean}.type="$dtype"
+	uci commit "$CONFIG"
+
+	di_invalidate_cache
+	log "Device $mac_lower type set to: $dtype"
+}
+
+cmd_set_label() {
+	local mac="$1" label="$2"
+
+	if [ -z "$mac" ] || [ -z "$label" ]; then
+		echo "Usage: device-intelctl set-label <mac> <label>"
+		return 1
+	fi
+
+	local mac_lower=$(echo "$mac" | tr 'A-F' 'a-f')
+	local mac_clean=$(echo "$mac_lower" | tr -d ':')
+
+	uci set ${CONFIG}.${mac_clean}=device
+	uci set ${CONFIG}.${mac_clean}.mac="$mac_lower"
+	uci set ${CONFIG}.${mac_clean}.label="$label"
+	uci commit "$CONFIG"
+
+	di_invalidate_cache
+	log "Device $mac_lower label set to: $label"
+}
+
+cmd_summary() {
+	local summary=$(di_get_summary)
+
+	local total=$(echo "$summary" | jsonfilter -e '@.total' 2>/dev/null)
+	local online=$(echo "$summary" | jsonfilter -e '@.online' 2>/dev/null)
+	local mesh=$(echo "$summary" | jsonfilter -e '@.mesh_peers' 2>/dev/null)
+
+	echo ""
+	echo "=========================================="
+	echo "  Device Intelligence v$VERSION"
+	echo "=========================================="
+	echo ""
+	echo "  Total Devices:  ${total:-0}"
+	echo -e "  Online:         ${GREEN}${online:-0}${NC}"
+	echo -e "  Mesh Peers:     ${CYAN}${mesh:-0}${NC}"
+	echo ""
+
+	# Emulator status
+	echo "  ── Emulators ──"
+	for emu in usb mqtt zigbee; do
+		local enabled=$(di_ctl_get "${emu}.enabled")
+		if [ "$enabled" = "1" ]; then
+			echo -e "  ${emu}:  ${GREEN}enabled${NC}"
+		else
+			echo -e "  ${emu}:  ${RED}disabled${NC}"
+		fi
+	done
+	echo ""
+
+	# Data sources
+	echo "  ── Data Sources ──"
+	[ -f /var/run/mac-guardian/known.db ] && \
+		echo -e "  mac-guardian:     ${GREEN}available${NC}" || \
+		echo -e "  mac-guardian:     ${RED}not found${NC}"
+	uci -q get client-guardian.@client[0] >/dev/null 2>&1 && \
+		echo -e "  client-guardian:  ${GREEN}available${NC}" || \
+		echo -e "  client-guardian:  ${RED}not found${NC}"
+	[ -f /tmp/dhcp.leases ] && \
+		echo -e "  DHCP leases:     ${GREEN}available${NC}" || \
+		echo -e "  DHCP leases:     ${RED}not found${NC}"
+	pgrep -f secubox-p2p >/dev/null 2>&1 && \
+		echo -e "  P2P mesh:        ${GREEN}running${NC}" || \
+		echo -e "  P2P mesh:        ${RED}stopped${NC}"
+	echo ""
+}
+
+cmd_emulators() {
+	echo ""
+	echo "  ── Emulator Modules ──"
+	echo ""
+
+	for emu in usb mqtt zigbee; do
+		local enabled=$(di_ctl_get "${emu}.enabled")
+		echo -e "  ${CYAN}${emu}${NC}:"
+		echo -e "    Enabled:  $([ "$enabled" = "1" ] && echo "${GREEN}Yes${NC}" || echo "${RED}No${NC}")"
+
+		case "$emu" in
+			usb)
+				echo "    Source:   /sys/bus/usb/devices/"
+				local count=$(ls -d /sys/bus/usb/devices/[0-9]* 2>/dev/null | wc -l)
+				echo "    Devices:  $count USB device(s)"
+				;;
+			mqtt)
+				local host=$(di_ctl_get mqtt.broker_host)
+				local port=$(di_ctl_get mqtt.broker_port)
+				echo "    Broker:   ${host:-127.0.0.1}:${port:-1883}"
+				pgrep mosquitto >/dev/null 2>&1 && \
+					echo -e "    Status:   ${GREEN}broker running${NC}" || \
+					echo -e "    Status:   ${RED}broker not found${NC}"
+				;;
+			zigbee)
+				local adapter=$(di_ctl_get zigbee.adapter)
+				local coord=$(di_ctl_get zigbee.coordinator)
+				echo "    Adapter:  ${adapter:-zigbee2mqtt}"
+				echo "    Dongle:   ${coord:-/dev/ttyUSB0}"
+				[ -c "${coord:-/dev/ttyUSB0}" ] 2>/dev/null && \
+					echo -e "    Status:   ${GREEN}dongle present${NC}" || \
+					echo -e "    Status:   ${RED}dongle not found${NC}"
+				;;
+		esac
+		echo ""
+	done
+}
+
+cmd_mesh_list() {
+	log "Querying mesh peers for device inventories..."
+
+	local peers=$(ubus call luci.secubox-p2p get_peers 2>/dev/null)
+	if [ -z "$peers" ]; then
+		warn "No mesh peers available (P2P not running or no peers)"
+		return
+	fi
+
+	echo "$peers" | jsonfilter -e '@.peers[*]' 2>/dev/null | while read -r peer; do
+		local name=$(echo "$peer" | jsonfilter -e '@.name' 2>/dev/null)
+		local addr=$(echo "$peer" | jsonfilter -e '@.address' 2>/dev/null)
+		local status=$(echo "$peer" | jsonfilter -e '@.status' 2>/dev/null)
+
+		echo -e "\n  ${CYAN}Peer: ${name}${NC} (${addr}) [${status}]"
+
+		if [ "$status" = "online" ]; then
+			local peer_ip=$(echo "$addr" | cut -d: -f1)
+			# Query remote device-intel if available
+			local remote=$(curl -s --connect-timeout 3 \
+				"http://${peer_ip}/api/device-intel/summary" 2>/dev/null)
+			if [ -n "$remote" ]; then
+				local rt=$(echo "$remote" | jsonfilter -e '@.total' 2>/dev/null)
+				local ro=$(echo "$remote" | jsonfilter -e '@.online' 2>/dev/null)
+				echo "    Devices: ${rt:-?} total, ${ro:-?} online"
+			else
+				echo "    (device-intel not available on this peer)"
+			fi
+		fi
+	done
+	echo ""
+}
+
+cmd_export() {
+	local format="${1:-json}"
+
+	log "Exporting full device inventory..."
+	di_invalidate_cache
+
+	local devices=$(di_get_devices)
+	local types=$(di_get_device_types)
+	local summary=$(di_get_summary)
+
+	case "$format" in
+		json)
+			printf '{"version":"%s","timestamp":%d,"summary":%s,"device_types":%s,"devices":%s}' \
+				"$VERSION" "$(date +%s)" "$summary" "$types" "$devices"
+			;;
+		*)
+			error "Unknown format: $format (supported: json)"
+			return 1
+			;;
+	esac
+}
+
+cmd_refresh() {
+	di_invalidate_cache
+	log "Cache invalidated. Next query will fetch fresh data."
+}
+
+cmd_status() {
+	cmd_summary
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+show_help() {
+	cat << EOF
+SecuBox Device Intelligence v$VERSION
+
+Usage: device-intelctl <command> [options]
+
+Commands:
+  list [json|table]        List all devices (default: json)
+  show <mac>               Show detailed info for a device
+  classify [mac]           Run heuristic classification (all or single)
+  set-type <mac> <type>    Override device type
+  set-label <mac> <label>  Set custom label for device
+  summary                  Show overview statistics
+  emulators                Show emulator module status
+  mesh-list                Query mesh peers for device counts
+  export [json]            Export full inventory with metadata
+  refresh                  Invalidate cache
+  status                   Show system status
+
+Device Types:
+  iot_sensor, storage, relay_gateway, compute, io_device,
+  mqtt_device, zigbee_device, usb_peripheral, mesh_peer
+
+Examples:
+  device-intelctl list table
+  device-intelctl show aa:bb:cc:dd:ee:ff
+  device-intelctl set-type aa:bb:cc:dd:ee:ff iot_sensor
+  device-intelctl set-label aa:bb:cc:dd:ee:ff "Living Room Sensor"
+  device-intelctl classify
+  device-intelctl export json > /tmp/inventory.json
+
+EOF
+}
+
+case "${1:-}" in
+	list)       shift; cmd_list "$@" ;;
+	show)       shift; cmd_show "$@" ;;
+	classify)   shift; cmd_classify "$@" ;;
+	set-type)   shift; cmd_set_type "$@" ;;
+	set-label)  shift; cmd_set_label "$@" ;;
+	summary)    shift; cmd_summary "$@" ;;
+	emulators)  shift; cmd_emulators "$@" ;;
+	mesh-list)  shift; cmd_mesh_list "$@" ;;
+	export)     shift; cmd_export "$@" ;;
+	refresh)    shift; cmd_refresh "$@" ;;
+	status)     shift; cmd_status "$@" ;;
+	help|--help|-h|'') show_help ;;
+	*)          error "Unknown command: $1"; show_help >&2; exit 1 ;;
+esac
+
+exit 0

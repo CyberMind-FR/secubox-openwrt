@@ -173,13 +173,16 @@ setup_iptables() {
 	# Get Tor user ID
 	local tor_uid=$(id -u tor 2>/dev/null || echo "tor")
 
-	# Remove from OUTPUT chain first (to allow chain deletion)
+	# Remove from chains first (to allow chain deletion)
 	iptables -t nat -D OUTPUT -j TOR_SHIELD 2>/dev/null
 	iptables -t filter -D OUTPUT -j TOR_SHIELD 2>/dev/null
+	iptables -t nat -D PREROUTING -i br-lan -j TOR_SHIELD_LAN 2>/dev/null
 
 	# Clear existing Tor rules
-	iptables -t nat -F TOR_SHIELD 2>/dev/null
-	iptables -t nat -X TOR_SHIELD 2>/dev/null
+	for chain in TOR_SHIELD TOR_SHIELD_LAN; do
+		iptables -t nat -F $chain 2>/dev/null
+		iptables -t nat -X $chain 2>/dev/null
+	done
 	iptables -t filter -F TOR_SHIELD 2>/dev/null
 	iptables -t filter -X TOR_SHIELD 2>/dev/null
 
@@ -212,9 +215,14 @@ setup_iptables() {
 		iptables -t filter -A TOR_SHIELD -m owner --uid-owner $tor_uid -j ACCEPT
 		iptables -t filter -A TOR_SHIELD -d 127.0.0.0/8 -j ACCEPT
 		config_list_foreach trans excluded_ips add_excluded_filter_ip
+		# Allow response packets for inbound connections (HAProxy, etc)
+		iptables -t filter -A TOR_SHIELD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 		iptables -t filter -A TOR_SHIELD -j REJECT
 		iptables -t filter -A OUTPUT -j TOR_SHIELD
 	fi
+
+	# LAN client Tor routing via PREROUTING
+	setup_lan_proxy
 }
 
 add_excluded_ip() {
@@ -225,14 +233,50 @@ add_excluded_filter_ip() {
 	iptables -t filter -A TOR_SHIELD -d "$1" -j ACCEPT
 }
 
+add_excluded_lan_ip() {
+	iptables -t nat -A TOR_SHIELD_LAN -d "$1" -j RETURN
+}
+
+setup_lan_proxy() {
+	local lan_proxy
+	config_get lan_proxy trans lan_proxy '0'
+	[ "$lan_proxy" = "1" ] || return 0
+
+	local trans_port dns_port dns_over_tor
+	config_get trans_port trans port '9040'
+	config_get dns_port trans dns_port '9053'
+	config_get dns_over_tor main dns_over_tor '1'
+
+	# Create PREROUTING chain
+	iptables -t nat -N TOR_SHIELD_LAN 2>/dev/null || true
+
+	# Exclude local destinations
+	config_list_foreach trans excluded_ips add_excluded_lan_ip
+
+	# Redirect DNS
+	if [ "$dns_over_tor" = "1" ]; then
+		iptables -t nat -A TOR_SHIELD_LAN -p udp --dport 53 -j REDIRECT --to-ports $dns_port
+		iptables -t nat -A TOR_SHIELD_LAN -p tcp --dport 53 -j REDIRECT --to-ports $dns_port
+	fi
+
+	# Redirect TCP to Tor
+	iptables -t nat -A TOR_SHIELD_LAN -p tcp -j REDIRECT --to-ports $trans_port
+
+	# Apply to LAN interface
+	iptables -t nat -A PREROUTING -i br-lan -j TOR_SHIELD_LAN
+}
+
 remove_iptables() {
-	# Remove from OUTPUT chain
+	# Remove from chains
 	iptables -t nat -D OUTPUT -j TOR_SHIELD 2>/dev/null
 	iptables -t filter -D OUTPUT -j TOR_SHIELD 2>/dev/null
+	iptables -t nat -D PREROUTING -i br-lan -j TOR_SHIELD_LAN 2>/dev/null
 
-	# Flush and remove chains
-	iptables -t nat -F TOR_SHIELD 2>/dev/null
-	iptables -t nat -X TOR_SHIELD 2>/dev/null
+	# Flush and remove all chains
+	for chain in TOR_SHIELD TOR_SHIELD_LAN; do
+		iptables -t nat -F $chain 2>/dev/null
+		iptables -t nat -X $chain 2>/dev/null
+	done
 	iptables -t filter -F TOR_SHIELD 2>/dev/null
 	iptables -t filter -X TOR_SHIELD 2>/dev/null
 }

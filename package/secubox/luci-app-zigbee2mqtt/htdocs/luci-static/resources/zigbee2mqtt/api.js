@@ -11,7 +11,9 @@ var callStatus = rpc.declare({
 
 var callApply = rpc.declare({
 	object: 'luci.zigbee2mqtt',
-	method: 'apply'
+	method: 'apply',
+	params: ['enabled', 'serial_port', 'mqtt_host', 'mqtt_username', 'mqtt_password',
+		'base_topic', 'frontend_port', 'channel', 'permit_join', 'data_path']
 });
 
 var callLogs = rpc.declare({

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Threat Intel API - Status endpoint
+# GET: Returns threat intelligence status summary
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo ""
+
+. /usr/lib/secubox/threat-intel.sh 2>/dev/null
+
+ti_status 2>/dev/null || echo '{"error":"threat_intel_unavailable"}'

@@ -1,0 +1,27 @@
+onsuccess: next_stage
+name: secubox/mac-guardian
+description: "Parse SecuBox mac-guardian JSON events"
+filter: "evt.Line.Labels.type == 'mac-guardian'"
+nodes:
+  - grok:
+      apply_on: evt.Line.Raw
+      expression: "^%{GREEDYDATA:json_raw}$"
+    statics:
+      - parsed: json_data
+        expression: "JsonExtract(evt.Parsed.json_raw, '')"
+  - filter: "evt.Parsed.json_data != ''"
+    statics:
+      - meta: log_type
+        value: mac_guardian
+      - meta: service
+        value: mac-guardian
+      - meta: source_mac
+        expression: "JsonExtract(evt.Parsed.json_raw, 'mac')"
+      - parsed: event_type
+        expression: "JsonExtract(evt.Parsed.json_raw, 'event')"
+      - parsed: iface
+        expression: "JsonExtract(evt.Parsed.json_raw, 'iface')"
+      - parsed: details
+        expression: "JsonExtract(evt.Parsed.json_raw, 'details')"
+      - parsed: timestamp
+        expression: "JsonExtract(evt.Parsed.json_raw, 'ts')"

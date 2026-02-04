@@ -1,228 +1,476 @@
 #!/bin/sh
-#
-# SecuBox Zigbee2MQTT manager
-# Handles prerequisite checks, Docker installation, container lifecycle,
-# and configuration generation using UCI.
+# SecuBox Zigbee2MQTT Controller — LXC-based (KISS)
+# Alpine container with Node.js + zigbee2mqtt
+# USB dongle passed through via cgroup device rules
 
 CONFIG="zigbee2mqtt"
-CONTAINER="secbx-zigbee2mqtt"
-OPKG_UPDATED=0
+LXC_NAME="zigbee2mqtt"
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONFIG="$LXC_PATH/$LXC_NAME/config"
+DATA_PATH="/srv/zigbee2mqtt"
+Z2M_VERSION="2.3.0"
 
-warn() { printf '[WARN] %s\n' "$*" >&2; }
-info() { printf '[INFO] %s\n' "$*"; }
-err() { printf '[ERROR] %s\n' "$*" >&2; }
+# Logging
+log_info()  { echo "[INFO] $*"; logger -t zigbee2mqtt "$*"; }
+log_warn()  { echo "[WARN] $*" >&2; logger -t zigbee2mqtt -p warning "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t zigbee2mqtt -p err "$*"; }
+
+# Helpers
+require_root() { [ "$(id -u)" -eq 0 ] || { log_error "Root required"; exit 1; }; }
+ensure_dir()   { [ -d "$1" ] || mkdir -p "$1"; }
+uci_get()      { uci -q get ${CONFIG}.$1; }
+
+load_config() {
+	serial_port=$(uci_get main.serial_port)   || serial_port="/dev/ttyUSB0"
+	mqtt_host=$(uci_get main.mqtt_host)       || mqtt_host="mqtt://127.0.0.1:1883"
+	mqtt_user=$(uci_get main.mqtt_username)
+	mqtt_pass=$(uci_get main.mqtt_password)
+	base_topic=$(uci_get main.base_topic)     || base_topic="zigbee2mqtt"
+	frontend_port=$(uci_get main.frontend_port) || frontend_port="8099"
+	channel=$(uci_get main.channel)           || channel="11"
+	data_path=$(uci_get main.data_path)       || data_path="$DATA_PATH"
+	permit_join=$(uci_get main.permit_join)   || permit_join="0"
+}
 
 usage() {
 	cat <<'EOF'
+SecuBox Zigbee2MQTT Controller (LXC)
+
 Usage: zigbee2mqttctl <command>
 
 Commands:
-  install         Run prerequisite checks, install Docker packages, prepare data dir
-  check           Validate kernel modules, cgroups, storage, and serial access
-  update          Pull the latest Zigbee2MQTT image and restart the service
-  status          Show container and service status
-  logs            Show Docker logs (pass -f to follow)
-  service-run     Internal: invoked by procd to run the container
-  service-stop    Stop the running container
+  install         Create Alpine LXC container with Node.js + zigbee2mqtt
+  uninstall       Remove container (keeps data)
+  update          Update zigbee2mqtt inside container
+  status          Show service status
+  logs [N]        Show last N lines of logs (default 50)
+  check           Validate USB dongle and prerequisites
+  service-run     Internal: invoked by procd
+  service-stop    Stop the container
+  shell           Open shell inside container
   help            Show this message
 EOF
 }
 
-require_root() {
-	if [ "$(id -u)" -ne 0 ]; then
-		echo "This command requires root privileges." >&2
-		exit 1
+# ════════════════════════════════════════════
+# LXC Management
+# ════════════════════════════════════════════
+
+lxc_running() { lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"; }
+lxc_exists()  { [ -f "$LXC_CONFIG" ] && [ -d "$LXC_ROOTFS" ]; }
+lxc_exec()    { lxc-attach -n "$LXC_NAME" -- "$@"; }
+
+lxc_stop() {
+	if lxc_running; then
+		log_info "Stopping zigbee2mqtt container..."
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 2
 	fi
 }
 
-uci_get() {
-	uci -q get "${CONFIG}.main.$1"
-}
+lxc_create_rootfs() {
+	log_info "Creating Alpine rootfs for Zigbee2MQTT..."
+	ensure_dir "$LXC_PATH/$LXC_NAME"
 
-defaults() {
-	serial_port="$(uci_get serial_port || echo /dev/ttyACM0)"
-	mqtt_host="$(uci_get mqtt_host || echo mqtt://127.0.0.1:1883)"
-	mqtt_user="$(uci_get mqtt_username || printf '')"
-	mqtt_pass="$(uci_get mqtt_password || printf '')"
-	base_topic="$(uci_get base_topic || echo zigbee2mqtt)"
-	frontend_port="$(uci_get frontend_port || echo 8080)"
-	channel="$(uci_get channel || echo 11)"
-	image="$(uci_get image || echo ghcr.io/koenkk/zigbee2mqtt:latest)"
-	data_path="$(uci_get data_path || echo /srv/zigbee2mqtt)"
-	timezone="$(uci_get timezone || echo UTC)"
-}
+	local arch="x86_64"
+	case "$(uname -m)" in
+		aarch64) arch="aarch64" ;;
+		armv7l)  arch="armv7" ;;
+	esac
 
-ensure_dir() {
-	local path="$1"
-	[ -d "$path" ] || mkdir -p "$path"
-}
+	local alpine_url="https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/$arch/alpine-minirootfs-3.21.2-$arch.tar.gz"
+	local rootfs_tar="/tmp/alpine-z2m.tar.gz"
 
-ensure_packages() {
-	local pkgs="$*"
-	require_root
-	for pkg in $pkgs; do
-		if ! opkg status "$pkg" >/dev/null 2>&1; then
-			if [ "$OPKG_UPDATED" -eq 0 ]; then
-				opkg update || return 1
-				OPKG_UPDATED=1
-			fi
-			opkg install "$pkg" || return 1
-		fi
-	done
-	return 0
-}
-
-check_storage() {
-	local target="$1"
-	local free_kb
-	free_kb=$(df -Pk "${target:-/overlay}" | awk 'NR==2 {print $4}')
-	[ -z "$free_kb" ] && free_kb=0
-	if [ "$free_kb" -lt 102400 ]; then
-		echo "[WARN] Less than 100MB free on ${target:-overlay}. Docker images may fail." >&2
-	fi
-}
-
-check_cgroups() {
-	if [ ! -d /sys/fs/cgroup ]; then
-		echo "[ERROR] /sys/fs/cgroup missing. Enable cgroups in the kernel." >&2
+	log_info "Downloading Alpine rootfs..."
+	wget -q -O "$rootfs_tar" "$alpine_url" || {
+		log_error "Failed to download Alpine rootfs"
 		return 1
-	fi
-	return 0
+	}
+
+	log_info "Extracting rootfs..."
+	ensure_dir "$LXC_ROOTFS"
+	tar -xzf "$rootfs_tar" -C "$LXC_ROOTFS" || {
+		log_error "Failed to extract rootfs"
+		return 1
+	}
+	rm -f "$rootfs_tar"
+
+	# Configure Alpine
+	cat > "$LXC_ROOTFS/etc/resolv.conf" << 'RESOLVEOF'
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+RESOLVEOF
+
+	cat > "$LXC_ROOTFS/etc/apk/repositories" << 'REPOEOF'
+https://dl-cdn.alpinelinux.org/alpine/v3.21/main
+https://dl-cdn.alpinelinux.org/alpine/v3.21/community
+REPOEOF
+
+	# Install Node.js and dependencies
+	log_info "Installing Node.js and build dependencies..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		apk update
+		apk add --no-cache nodejs npm make gcc g++ linux-headers python3 git
+	" || {
+		log_error "Failed to install Node.js"
+		return 1
+	}
+
+	# Install zigbee2mqtt
+	log_info "Installing zigbee2mqtt (this may take a few minutes)..."
+	ensure_dir "$LXC_ROOTFS/opt/zigbee2mqtt"
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		cd /opt/zigbee2mqtt
+		npm init -y >/dev/null 2>&1
+		npm install zigbee2mqtt@$Z2M_VERSION
+	" || {
+		log_error "Failed to install zigbee2mqtt"
+		return 1
+	}
+
+	# Clean up build deps to save space
+	log_info "Cleaning up build dependencies..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		apk del make gcc g++ linux-headers python3 git 2>/dev/null || true
+		rm -rf /var/cache/apk/*
+	"
+
+	log_info "Rootfs created successfully"
 }
 
-check_serial() {
-	local port="$1"
-	if [ ! -c "$port" ]; then
-		echo "[WARN] Serial device $port not found. Plug the Zigbee coordinator first." >&2
-	fi
-}
+lxc_create_config() {
+	load_config
 
-check_prereqs() {
-	defaults
-	check_storage "$data_path"
-	check_cgroups || return 1
-	check_serial "$serial_port"
-	ensure_packages kmod-usb-acm || return 1
-	if ! lsmod 2>/dev/null | grep -q 'cdc_acm'; then
-		warn "cdc_acm kernel module is not loaded; USB coordinator may not be detected."
-	fi
-	return 0
-}
+	local arch="x86_64"
+	case "$(uname -m)" in
+		aarch64) arch="aarch64" ;;
+		armv7l)  arch="armhf" ;;
+	esac
 
-ensure_docker() {
-	ensure_packages containerd docker dockerd || return 1
-	/etc/init.d/dockerd enable >/dev/null 2>&1
-	/etc/init.d/dockerd start >/dev/null 2>&1
-	if ! docker info >/dev/null 2>&1; then
-		warn "Docker daemon not ready yet. Retry once dockerd has finished starting."
+	# Get USB device major:minor for cgroup passthrough
+	local usb_major usb_minor
+	if [ -c "$serial_port" ]; then
+		usb_major=$(stat -c '%t' "$serial_port" 2>/dev/null)
+		usb_minor=$(stat -c '%T' "$serial_port" 2>/dev/null)
+		# Convert hex to decimal
+		usb_major=$((0x${usb_major:-bc}))
+		usb_minor=$((0x${usb_minor:-0}))
+	else
+		usb_major=188  # ttyUSB default major
+		usb_minor=0
 	fi
-}
 
-generate_configuration() {
-	defaults
-	ensure_dir "$data_path/data"
-	cat > "$data_path/data/configuration.yaml" <<EOF
-homeassistant: true
-permit_join: false
-mqtt:
-  base_topic: "${base_topic}"
-  server: "${mqtt_host}"
-  user: "${mqtt_user}"
-  password: "${mqtt_pass}"
-serial:
-  port: "${serial_port}"
-advanced:
-  channel: ${channel}
-frontend:
-  port: ${frontend_port}
+	cat > "$LXC_CONFIG" << EOF
+# Zigbee2MQTT LXC Configuration
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $arch
+
+# Network: use host network (for MQTT and frontend)
+lxc.net.0.type = none
+
+# Mount points
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+lxc.mount.entry = $data_path/data opt/zigbee2mqtt/data none bind,create=dir 0 0
+
+# USB serial passthrough
+lxc.cgroup2.devices.allow = c $usb_major:* rwm
+lxc.mount.entry = $serial_port dev/$(basename $serial_port) none bind,create=file 0 0
+
+# Security
+lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time
+
+# Resource limits
+lxc.cgroup2.memory.max = 512000000
+
+# Init command
+lxc.init.cmd = /opt/start-zigbee2mqtt.sh
 EOF
+
+	log_info "LXC config created"
+}
+
+generate_config() {
+	load_config
+	ensure_dir "$data_path/data"
+
+	# Generate zigbee2mqtt configuration.yaml
+	cat > "$data_path/data/configuration.yaml" << EOF
+homeassistant: false
+permit_join: $([ "$permit_join" = "1" ] && echo "true" || echo "false")
+mqtt:
+  base_topic: $base_topic
+  server: $mqtt_host
+$([ -n "$mqtt_user" ] && echo "  user: $mqtt_user")
+$([ -n "$mqtt_pass" ] && echo "  password: $mqtt_pass")
+serial:
+  port: /dev/$(basename $serial_port)
+  adapter: ezsp
+advanced:
+  channel: $channel
+  log_level: info
+  log_output:
+    - console
+frontend:
+  port: $frontend_port
+  host: 0.0.0.0
+EOF
+
 	chmod 600 "$data_path/data/configuration.yaml"
+	log_info "Configuration generated"
 }
 
-pull_image() {
-	defaults
-	docker pull "$image"
+generate_start_script() {
+	load_config
+
+	cat > "$LXC_ROOTFS/opt/start-zigbee2mqtt.sh" << 'STARTEOF'
+#!/bin/sh
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export NODE_PATH=/opt/zigbee2mqtt/node_modules
+
+cd /opt/zigbee2mqtt
+
+LOG_FILE="/opt/zigbee2mqtt/data/zigbee2mqtt.log"
+
+echo "=== Zigbee2MQTT startup: $(date) ===" >> "$LOG_FILE"
+
+# Check serial device
+SERIAL=$(grep -o 'port: /dev/[^ ]*' data/configuration.yaml 2>/dev/null | cut -d/ -f2-)
+if [ -n "$SERIAL" ] && [ ! -c "/dev/$SERIAL" ]; then
+    echo "[ERROR] Serial device /dev/$SERIAL not found" >> "$LOG_FILE"
+    sleep 5
+    exit 1
+fi
+
+# Run zigbee2mqtt
+exec node node_modules/zigbee2mqtt/dist/index.js 2>&1 | tee -a "$LOG_FILE"
+STARTEOF
+
+	chmod +x "$LXC_ROOTFS/opt/start-zigbee2mqtt.sh"
 }
 
-stop_container() {
-	docker stop "$CONTAINER" >/dev/null 2>&1 || true
-	docker rm "$CONTAINER" >/dev/null 2>&1 || true
-}
+# ════════════════════════════════════════════
+# Commands
+# ════════════════════════════════════════════
 
 cmd_install() {
 	require_root
-	check_prereqs || exit 1
-	ensure_docker || exit 1
-	ensure_dir "$data_path"
-	generate_configuration
-	pull_image
+	load_config
+
+	# Check USB dongle
+	if [ ! -c "$serial_port" ]; then
+		log_warn "Serial device $serial_port not found."
+		log_warn "Plug in your Zigbee USB dongle and ensure kmod-usb-serial-cp210x is installed."
+	fi
+
+	# Create container if missing
+	if ! lxc_exists; then
+		lxc_create_rootfs || exit 1
+	else
+		log_info "Container already exists, skipping rootfs creation"
+	fi
+
+	# Setup data dir and config
+	ensure_dir "$data_path/data"
+	generate_config
+	lxc_create_config
+	generate_start_script
+
+	# Enable service
 	uci set ${CONFIG}.main.enabled='1'
 	uci commit ${CONFIG}
-	/etc/init.d/zigbee2mqtt enable
-	info "Installation complete. Start with: /etc/init.d/zigbee2mqtt start"
+	/etc/init.d/zigbee2mqtt enable 2>/dev/null
+
+	log_info "Installation complete."
+	log_info "Start with: /etc/init.d/zigbee2mqtt start"
+	log_info "Frontend will be at: http://192.168.255.1:${frontend_port}"
 }
 
-cmd_check() {
-	check_prereqs
-	info "Prerequisite check completed."
+cmd_uninstall() {
+	require_root
+	lxc_stop
+
+	if [ -d "$LXC_PATH/$LXC_NAME" ]; then
+		log_info "Removing container (data at $DATA_PATH preserved)..."
+		rm -rf "$LXC_PATH/$LXC_NAME"
+	fi
+
+	uci set ${CONFIG}.main.enabled='0'
+	uci commit ${CONFIG}
+	/etc/init.d/zigbee2mqtt disable 2>/dev/null
+	log_info "Uninstalled. Data preserved at $DATA_PATH"
 }
 
 cmd_update() {
 	require_root
-	defaults
-	pull_image || exit 1
-	if /etc/init.d/zigbee2mqtt enabled >/dev/null 2>&1; then
-		/etc/init.d/zigbee2mqtt restart
-	else
-		echo "Image updated. Restart manually to apply."
+	load_config
+
+	if ! lxc_exists; then
+		log_error "Container not installed. Run: zigbee2mqttctl install"
+		return 1
 	fi
+
+	lxc_stop
+
+	log_info "Updating zigbee2mqtt..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		cd /opt/zigbee2mqtt
+		npm install zigbee2mqtt@latest
+	" || {
+		log_error "Update failed"
+		return 1
+	}
+
+	log_info "Update complete. Restarting..."
+	/etc/init.d/zigbee2mqtt restart 2>/dev/null
 }
 
 cmd_status() {
-	if ! command -v docker >/dev/null 2>&1; then
-		err "docker command missing. Run zigbee2mqttctl install first."
-		return 1
+	load_config
+
+	echo "Zigbee2MQTT Status"
+	echo "=================="
+
+	local enabled=$(uci_get main.enabled)
+	echo "Enabled:       $([ "$enabled" = "1" ] && echo "yes" || echo "no")"
+
+	if lxc_running; then
+		echo "Running:       yes"
+	else
+		echo "Running:       no"
 	fi
-	docker ps -a --filter "name=$CONTAINER"
+
+	echo "Serial Port:   $serial_port"
+	if [ -c "$serial_port" ]; then
+		echo "Dongle:        detected"
+	else
+		echo "Dongle:        NOT found"
+	fi
+
+	echo "Frontend:      http://192.168.255.1:$frontend_port"
+	echo "MQTT Broker:   $mqtt_host"
+	echo "Base Topic:    $base_topic"
+	echo "Channel:       $channel"
+	echo "Data Path:     $data_path"
+
+	if lxc_exists; then
+		echo "Container:     installed"
+	else
+		echo "Container:     not installed"
+	fi
 }
 
 cmd_logs() {
-	if ! command -v docker >/dev/null 2>&1; then
-		err "docker command missing."
-		return 1
+	local lines="${1:-50}"
+	local logfile="$DATA_PATH/data/zigbee2mqtt.log"
+
+	if [ -f "$logfile" ]; then
+		tail -n "$lines" "$logfile"
+	else
+		echo "No log file found at $logfile"
+		# Try container journal
+		if lxc_running; then
+			lxc_exec tail -n "$lines" /opt/zigbee2mqtt/data/zigbee2mqtt.log 2>/dev/null
+		fi
 	fi
-	docker logs "$@" "$CONTAINER"
+}
+
+cmd_check() {
+	load_config
+
+	echo "Zigbee2MQTT Prerequisites"
+	echo "========================="
+
+	# USB serial module
+	if lsmod 2>/dev/null | grep -q "cp210x"; then
+		echo "[OK] cp210x kernel module loaded"
+	else
+		echo "[!!] cp210x kernel module NOT loaded"
+		echo "     Fix: opkg install kmod-usb-serial-cp210x && modprobe cp210x"
+	fi
+
+	# Serial device
+	if [ -c "$serial_port" ]; then
+		echo "[OK] Serial device $serial_port present"
+	else
+		echo "[!!] Serial device $serial_port NOT found"
+	fi
+
+	# USB devices
+	local usb_count=0
+	for d in /sys/bus/usb/devices/[0-9]*; do
+		local v=$(cat "$d/idVendor" 2>/dev/null)
+		local p=$(cat "$d/idProduct" 2>/dev/null)
+		local n=$(cat "$d/product" 2>/dev/null)
+		[ "$v" = "10c4" ] && {
+			echo "[OK] Sonoff/CP210x USB device: $n ($v:$p)"
+			usb_count=$((usb_count + 1))
+		}
+	done
+	[ "$usb_count" -eq 0 ] && echo "[!!] No Sonoff/CP210x USB devices detected"
+
+	# LXC
+	if command -v lxc-start >/dev/null 2>&1; then
+		echo "[OK] LXC available"
+	else
+		echo "[!!] LXC not installed"
+	fi
+
+	# Container
+	if lxc_exists; then
+		echo "[OK] Container installed"
+	else
+		echo "[--] Container not installed (run: zigbee2mqttctl install)"
+	fi
+
+	# Data directory
+	if [ -d "$data_path/data" ]; then
+		echo "[OK] Data directory exists"
+	else
+		echo "[--] Data directory not created yet"
+	fi
 }
 
 cmd_service_run() {
 	require_root
-	check_prereqs || exit 1
-	ensure_docker || exit 1
-	generate_configuration
-	stop_container
-	defaults
-	exec docker run --rm \
-		--name "$CONTAINER" \
-		--device "$serial_port" \
-		-p "${frontend_port}:8080" \
-		-v "$data_path/data:/app/data" \
-		-e TZ="$timezone" \
-		"$image"
+	load_config
+
+	if ! lxc_exists; then
+		log_error "Container not installed. Run: zigbee2mqttctl install"
+		exit 1
+	fi
+
+	# Regenerate config and start script each run
+	generate_config
+	lxc_create_config
+	generate_start_script
+
+	lxc_stop
+
+	log_info "Starting zigbee2mqtt container..."
+	exec lxc-start -n "$LXC_NAME" -F
 }
 
 cmd_service_stop() {
 	require_root
-	stop_container
+	lxc_stop
 }
 
-case "$1" in
-	install) shift; cmd_install "$@";;
-	check) shift; cmd_check "$@";;
-	update) shift; cmd_update "$@";;
-	status) shift; cmd_status "$@";;
-	logs) shift; cmd_logs "$@";;
-	service-run) shift; cmd_service_run "$@";;
-	service-stop) shift; cmd_service_stop "$@";;
-	help|--help|-h|"") usage;;
-	*) echo "Unknown command: $1" >&2; usage >&2; exit 1;;
+# ════════════════════════════════════════════
+# Main
+# ════════════════════════════════════════════
+
+case "${1:-}" in
+	install)      shift; cmd_install "$@" ;;
+	uninstall)    shift; cmd_uninstall "$@" ;;
+	update)       shift; cmd_update "$@" ;;
+	status)       shift; cmd_status "$@" ;;
+	logs)         shift; cmd_logs "$@" ;;
+	check)        shift; cmd_check "$@" ;;
+	service-run)  shift; cmd_service_run "$@" ;;
+	service-stop) shift; cmd_service_stop "$@" ;;
+	shell)        shift; lxc-attach -n "$LXC_NAME" -- /bin/sh ;;
+	help|--help|-h|'') usage ;;
+	*)            echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
 esac
