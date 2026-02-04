@@ -164,6 +164,20 @@ var callDisableInstance = rpc.declare({
 	expect: { result: {} }
 });
 
+var callRenameApp = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'rename_app',
+	params: ['id', 'name'],
+	expect: { result: {} }
+});
+
+var callRenameInstance = rpc.declare({
+	object: 'luci.streamlit',
+	method: 'rename_instance',
+	params: ['id', 'name'],
+	expect: { result: {} }
+});
+
 var callGetGiteaConfig = rpc.declare({
 	object: 'luci.streamlit',
 	method: 'get_gitea_config',
@@ -313,6 +327,14 @@ return baseclass.extend({
 
 	disableInstance: function(id) {
 		return callDisableInstance(id);
+	},
+
+	renameApp: function(id, name) {
+		return callRenameApp(id, name);
+	},
+
+	renameInstance: function(id, name) {
+		return callRenameInstance(id, name);
 	},
 
 	getGiteaConfig: function() {

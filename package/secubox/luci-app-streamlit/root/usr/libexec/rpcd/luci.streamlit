@@ -306,23 +306,63 @@ list_apps() {
 	config_get active_app main active_app "hello"
 
 	APPS_PATH="$data_path/apps"
+	local seen=""
 
 	json_init_obj
 	json_add_array "apps"
 
 	if [ -d "$APPS_PATH" ]; then
+		# Scan top-level .py files
 		for app in "$APPS_PATH"/*.py; do
 			[ -f "$app" ] || continue
 			local name=$(basename "$app" .py)
+			local display_name=$(uci -q get "${CONFIG}.${name}.name")
+			[ -z "$display_name" ] && display_name="$name"
 			local size=$(ls -la "$app" 2>/dev/null | awk '{print $5}')
 			local mtime=$(stat -c %Y "$app" 2>/dev/null || echo "0")
 
 			local is_active=0
 			[ "$name" = "$active_app" ] && is_active=1
+			seen="$seen $name "
 
 			json_add_object ""
-			json_add_string "name" "$name"
+			json_add_string "id" "$name"
+			json_add_string "name" "$display_name"
 			json_add_string "path" "$app"
+			json_add_string "size" "$size"
+			json_add_int "mtime" "$mtime"
+			json_add_boolean "active" "$is_active"
+			json_close_object
+		done
+
+		# Scan subdirectories (ZIP-uploaded apps)
+		for dir in "$APPS_PATH"/*/; do
+			[ -d "$dir" ] || continue
+			local dirname=$(basename "$dir")
+			# Skip Streamlit multi-page convention dir and hidden dirs
+			case "$dirname" in pages|.*) continue ;; esac
+			# Skip if already seen as a top-level .py
+			case "$seen" in *" $dirname "*) continue ;; esac
+
+			# Prefer app.py as main entry point, fall back to first .py
+			local main_py=""
+			[ -f "$dir/app.py" ] && main_py="$dir/app.py"
+			[ -z "$main_py" ] && main_py=$(find "$dir" -maxdepth 1 -name "*.py" -type f | head -1)
+			[ -z "$main_py" ] && main_py=$(find "$dir" -maxdepth 2 -name "*.py" -type f | head -1)
+			[ -z "$main_py" ] && continue
+
+			local display_name=$(uci -q get "${CONFIG}.${dirname}.name")
+			[ -z "$display_name" ] && display_name="$dirname"
+			local size=$(stat -c %s "$main_py" 2>/dev/null || echo "0")
+			local mtime=$(stat -c %Y "$main_py" 2>/dev/null || echo "0")
+
+			local is_active=0
+			[ "$dirname" = "$active_app" ] && is_active=1
+
+			json_add_object ""
+			json_add_string "id" "$dirname"
+			json_add_string "name" "$display_name"
+			json_add_string "path" "$main_py"
 			json_add_string "size" "$size"
 			json_add_int "mtime" "$mtime"
 			json_add_boolean "active" "$is_active"
@@ -348,12 +388,16 @@ add_app() {
 		return
 	fi
 
-	/usr/sbin/streamlitctl app add "$name" "$path" >/dev/null 2>&1
-	if [ $? -eq 0 ]; then
-		json_success "App added: $name"
-	else
-		json_error "Failed to add app"
-	fi
+	# Sanitize name for UCI
+	name=$(echo "$name" | sed 's/[^a-zA-Z0-9_]/_/g; s/^_*//; s/_*$//')
+
+	uci set "${CONFIG}.${name}=app"
+	uci set "${CONFIG}.${name}.name=$name"
+	uci set "${CONFIG}.${name}.path=$path"
+	uci set "${CONFIG}.${name}.enabled=1"
+	uci commit "$CONFIG"
+
+	json_success "App added: $name"
 }
 
 # Remove app
@@ -367,12 +411,24 @@ remove_app() {
 		return
 	fi
 
-	/usr/sbin/streamlitctl app remove "$name" >/dev/null 2>&1
-	if [ $? -eq 0 ]; then
-		json_success "App removed: $name"
-	else
-		json_error "Failed to remove app"
+	local data_path
+	config_load "$CONFIG"
+	config_get data_path main data_path "/srv/streamlit"
+
+	# Remove app files (top-level .py or subdirectory)
+	if [ -f "$data_path/apps/${name}.py" ]; then
+		rm -f "$data_path/apps/${name}.py"
+		rm -f "$data_path/apps/${name}.requirements.txt"
 	fi
+	if [ -d "$data_path/apps/${name}" ]; then
+		rm -rf "$data_path/apps/${name}"
+	fi
+
+	# Remove UCI config
+	uci -q delete "${CONFIG}.${name}"
+	uci commit "$CONFIG"
+
+	json_success "App removed: $name"
 }
 
 # Set active app
@@ -386,7 +442,9 @@ set_active_app() {
 		return
 	fi
 
-	/usr/sbin/streamlitctl app run "$name" >/dev/null 2>&1
+	uci set "${CONFIG}.main.active_app=$name"
+	uci commit "$CONFIG"
+
 	if [ $? -eq 0 ]; then
 		json_success "Active app set to: $name"
 	else
@@ -440,6 +498,9 @@ upload_app() {
 	local name content
 	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
 	content=$(echo "$input" | jsonfilter -e '@.content' 2>/dev/null)
+
+	# Sanitize name for UCI compatibility
+	name=$(echo "$name" | sed 's/[^a-zA-Z0-9_]/_/g; s/^_*//; s/_*$//')
 
 	if [ -z "$name" ] || [ -z "$content" ]; then
 		json_error "Missing name or content"
@@ -570,6 +631,55 @@ remove_instance() {
 	json_success "Instance removed: $id"
 }
 
+# Rename app
+rename_app() {
+	read -r input
+	local id name
+	id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	if [ -z "$id" ] || [ -z "$name" ]; then
+		json_error "Missing id or name"
+		return
+	fi
+
+	# Create UCI section if it doesn't exist yet
+	local existing
+	existing=$(uci -q get "${CONFIG}.${id}")
+	if [ -z "$existing" ]; then
+		uci set "${CONFIG}.${id}=app"
+		uci set "${CONFIG}.${id}.enabled=1"
+	fi
+
+	uci set "${CONFIG}.${id}.name=$name"
+	uci commit "$CONFIG"
+	json_success "App renamed"
+}
+
+# Rename instance
+rename_instance() {
+	read -r input
+	local id name
+	id=$(echo "$input" | jsonfilter -e '@.id' 2>/dev/null)
+	name=$(echo "$input" | jsonfilter -e '@.name' 2>/dev/null)
+
+	if [ -z "$id" ] || [ -z "$name" ]; then
+		json_error "Missing id or name"
+		return
+	fi
+
+	local existing
+	existing=$(uci -q get "${CONFIG}.${id}")
+	if [ -z "$existing" ]; then
+		json_error "Instance $id not found"
+		return
+	fi
+
+	uci set "${CONFIG}.${id}.name=$name"
+	uci commit "$CONFIG"
+	json_success "Instance renamed"
+}
+
 # Enable instance
 enable_instance() {
 	read -r input
@@ -654,6 +764,9 @@ upload_zip() {
 	content=$(echo "$input" | jsonfilter -e '@.content' 2>/dev/null)
 	selected_files=$(echo "$input" | jsonfilter -e '@.selected_files' 2>/dev/null)
 
+	# Sanitize name for UCI compatibility (alphanumeric and underscores only)
+	name=$(echo "$name" | sed 's/[^a-zA-Z0-9_]/_/g; s/^_*//; s/_*$//')
+
 	if [ -z "$name" ] || [ -z "$content" ]; then
 		json_error "Missing name or content"
 		return
@@ -676,15 +789,16 @@ upload_zip() {
 	mkdir -p "$app_dir"
 
 	# Extract selected files or all if none specified
-	if [ -n "$selected_files" ] && [ "$selected_files" != "[]" ]; then
+	local file_count=$(echo "$selected_files" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+	if [ -n "$selected_files" ] && [ "$file_count" -gt 0 ] 2>/dev/null; then
 		# Parse selected files array and extract each
 		echo "$selected_files" | jsonfilter -e '@[*]' 2>/dev/null | while read -r filepath; do
 			[ -z "$filepath" ] && continue
-			unzip -o "$tmpzip" "$filepath" -d "$app_dir" 2>/dev/null
+			unzip -o "$tmpzip" "$filepath" -d "$app_dir" >/dev/null 2>&1
 		done
 	else
 		# Extract all
-		unzip -o "$tmpzip" -d "$app_dir" 2>/dev/null
+		unzip -o "$tmpzip" -d "$app_dir" >/dev/null 2>&1
 	fi
 
 	rm -f "$tmpzip"
@@ -918,6 +1032,8 @@ case "$1" in
 			"remove_instance": {"id": "str"},
 			"enable_instance": {"id": "str"},
 			"disable_instance": {"id": "str"},
+			"rename_app": {"id": "str", "name": "str"},
+			"rename_instance": {"id": "str", "name": "str"},
 			"get_gitea_config": {},
 			"save_gitea_config": {"enabled": "str", "url": "str", "user": "str", "token": "str"},
 			"gitea_clone": {"name": "str", "repo": "str"},
@@ -999,6 +1115,12 @@ case "$1" in
 				;;
 			disable_instance)
 				disable_instance
+				;;
+			rename_app)
+				rename_app
+				;;
+			rename_instance)
+				rename_instance
 				;;
 			get_gitea_config)
 				get_gitea_config

@@ -255,7 +255,18 @@
       "Bash(do DISPLAY=:1 xdotool getwindowname \"$wid\")",
       "Bash(dpkg:*)",
       "Bash(cosmic-screenshot:*)",
-      "Bash(do bash -n \"$f\")"
+      "Bash(do bash -n \"$f\")",
+      "Bash(scrot:*)",
+      "Bash(gnome-screenshot:*)",
+      "Bash(import:*)",
+      "Bash(grim:*)",
+      "Bash(DISPLAY=:1 import:*)",
+      "Bash(/usr/bin/cosmic-screenshot:*)",
+      "Bash(pip3 install:*)",
+      "Bash(gdbus call:*)",
+      "Bash(git mv:*)",
+      "Bash(DISPLAY=:1 scrot:*)",
+      "Bash(node -c:*)"
     ]
   }
 }

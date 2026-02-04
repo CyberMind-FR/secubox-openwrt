@@ -20,6 +20,7 @@
 					"add_app", "remove_app", "set_active_app", "upload_app",
 					"preview_zip", "upload_zip",
 					"add_instance", "remove_instance", "enable_instance", "disable_instance",
+				"rename_app", "rename_instance",
 					"save_gitea_config", "gitea_clone", "gitea_pull"
 				]
 			},
