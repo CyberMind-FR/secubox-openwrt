@@ -86,7 +86,7 @@ return view.extend({
 		o = s.option(form.DummyValue, '_gandi_info');
 		o.rawhtml = true;
 		o.default = '<em>' + _('Obtain your Personal Access Token from') +
-			' <a href="https://account.gandi.net/en/users/security" target="_blank">account.gandi.net</a></em>';
+			' <a href="https://admin.gandi.net/organizations/account/pat" target="_blank">admin.gandi.net</a></em>';
 
 		o = s.option(form.Value, 'api_key', _('API Key / PAT'));
 		o.password = true;
@@ -151,9 +151,5 @@ return view.extend({
 			var container = E('div', {}, [rendered, testBtn]);
 			return container;
 		});
-	},
-
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	}
 });

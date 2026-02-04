@@ -3,7 +3,7 @@
 		"title": "DNS Providers",
 		"order": 40,
 		"action": {
-			"type": "firstchildview"
+			"type": "firstchild"
 		},
 		"depends": {
 			"acl": ["luci-app-dns-provider"],

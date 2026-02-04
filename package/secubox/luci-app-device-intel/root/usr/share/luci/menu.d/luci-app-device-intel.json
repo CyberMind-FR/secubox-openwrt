@@ -3,7 +3,7 @@
 		"title": "Device Intelligence",
 		"order": 15,
 		"action": {
-			"type": "firstchildview"
+			"type": "firstchild"
 		},
 		"depends": {
 			"acl": ["luci-app-device-intel"],

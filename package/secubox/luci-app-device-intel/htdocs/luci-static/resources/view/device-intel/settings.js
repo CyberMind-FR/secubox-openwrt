@@ -147,9 +147,5 @@ return view.extend({
 		o.depends({ 'enabled': '1', 'adapter': 'zigbee2mqtt' });
 
 		return m.render();
-	},
-
-	handleSaveApply: null,
-	handleSave: null,
-	handleReset: null
+	}
 });
