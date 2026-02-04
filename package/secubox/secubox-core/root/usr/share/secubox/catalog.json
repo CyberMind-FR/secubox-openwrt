@@ -1523,7 +1523,7 @@
       "version": "1.0.0",
       "category": "iot",
       "runtime": "docker",
-      "description": "Home automation system with support for various devices and protocols",
+      "description": "Home automation system with MQTT bridge, Zigbee2MQTT integration, and IoT device management",
       "author": "CyberMind.fr",
       "license": "GPL-3.0",
       "url": "https://www.domoticz.com/",
@@ -1532,34 +1532,56 @@
         "home-automation",
         "iot",
         "smart-home",
-        "docker"
+        "docker",
+        "mqtt",
+        "zigbee",
+        "mesh"
       ],
       "packages": {
         "required": [
           "secubox-app-domoticz",
+          "luci-app-domoticz",
           "docker",
           "dockerd"
+        ],
+        "optional": [
+          "mosquitto-nossl",
+          "secubox-app-zigbee2mqtt"
         ]
       },
       "capabilities": [
         "home-automation",
         "iot",
-        "smart-home"
+        "smart-home",
+        "mqtt-bridge",
+        "zigbee",
+        "mesh-service"
       ],
       "requirements": {
         "min_ram_mb": 256,
         "min_storage_mb": 100
       },
       "status": "stable",
-      "pkg_version": "1.0.0-2",
+      "pkg_version": "1.0.0-3",
       "app_version": "1.0.0",
       "changelog": {
+        "1.0.0-3": {
+          "date": "2026-02-04",
+          "changes": [
+            "LuCI dashboard with IoT integration status",
+            "MQTT auto-bridge for Mosquitto and Zigbee2MQTT",
+            "HAProxy reverse proxy integration",
+            "P2P mesh service registration",
+            "Backup and restore support",
+            "USB device passthrough visibility"
+          ]
+        },
         "1.0.0": {
           "date": "2026-01-04",
           "changes": [
-            "Added support for new devices",
-            "Improved automation rules",
-            "Enhanced device discovery"
+            "Initial Docker-based deployment",
+            "domoticzctl CLI manager",
+            "UCI configuration"
           ]
         }
       },

@@ -5,3 +5,18 @@ config domoticz 'main'
 	option devices_path '/srv/devices'
 	option port '8080'
 	option timezone 'UTC'
+
+config domoticz 'mqtt'
+	option enabled '0'
+	option broker '127.0.0.1'
+	option broker_port '1883'
+	option topic_prefix 'domoticz'
+	option z2m_topic 'zigbee2mqtt'
+
+config domoticz 'network'
+	option domain 'domoticz.secubox.local'
+	option haproxy '0'
+	option firewall_wan '0'
+
+config domoticz 'mesh'
+	option enabled '0'

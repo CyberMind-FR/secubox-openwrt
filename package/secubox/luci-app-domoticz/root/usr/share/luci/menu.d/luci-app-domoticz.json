@@ -1,0 +1,14 @@
+{
+	"admin/services/domoticz": {
+		"title": "Domoticz",
+		"order": 65,
+		"action": {
+			"type": "view",
+			"path": "domoticz/overview"
+		},
+		"depends": {
+			"acl": ["luci-app-domoticz"],
+			"uci": {"domoticz": true}
+		}
+	}
+}

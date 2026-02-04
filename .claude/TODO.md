@@ -105,3 +105,25 @@ _Last updated: 2026-02-04_
     - Decentralized package distribution across mesh nodes.
     - Compatible with existing bonus-feed and secubox-feed infrastructure.
     - Torrent-style swarming for large IPK downloads across mesh peers.
+
+17. **MirrorNetworking Stack** (ref: `SecuBox_MirrorNetworking_Paradigm_Reversal.html`)
+    - EnigmaBox paradigm reversal: zero central authority, each box is the network.
+    - Dual transport: WireGuard (tier 1, known peers) + Yggdrasil (tier 2, discovery/extended mesh, optional).
+    - New packages roadmap:
+      - `secubox-mirrornet` (v0.19): Core mesh orchestration, gossip protocol, peer management.
+      - `secubox-identity` (v0.19): did:plc generation, key rotation, trust scoring.
+      - `secubox-p2p-intel` (v0.19): IoC signed gossip, threat intelligence sharing.
+      - `luci-app-secubox-mirror` (v0.19): Dashboard for peers, trust, services, comms.
+      - `secubox-voip` (v1.0): Asterisk micro-PBX, SIP/SRTP direct over WireGuard mesh.
+      - `secubox-matrix` (v1.0): Conduit Matrix server (Rust, ~15MB RAM), federation on mesh.
+      - `secubox-factory` (v1.0): Auto-provisioning new box via mesh P2P.
+      - `yggdrasil-secubox` (v1.1+): Yggdrasil overlay + meshname DNS.
+    - Mirror concepts: Threat Intel sharing, AI Inference distribution, Reputation scoring, Config & Updates P2P.
+    - Communication: VoIP E2E (Asterisk/SRTP, no exit server), Matrix E2EE, optional mesh email.
+    - ANSSI CSPN: Zero central authority = verifiable sovereignty.
+    - Crowdfunding target: 2027.
+
+18. **Tor Shield / opkg Bug** (deferred)
+    - opkg downloads fail (`wget returned 4`) when Tor Shield is active.
+    - Direct `wget` to full URL works — likely DNS/routing interference.
+    - Investigate: opkg proxy settings, Tor split-routing exclusions for package repos.

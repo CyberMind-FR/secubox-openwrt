@@ -1,5 +1,5 @@
 #!/bin/sh
-# SecuBox Domoticz manager
+# SecuBox Domoticz manager — IoT home automation with MQTT/Zigbee integration
 
 CONFIG="domoticz"
 CONTAINER="secbx-domoticz"
@@ -10,19 +10,28 @@ usage() {
 Usage: domoticzctl <command>
 
 Commands:
-  install         Install prerequisites, prepare directories, pull image
-  check           Run prerequisite checks
-  update          Pull new image and restart
-  status          Show container status
-  logs            Show container logs (use -f to follow)
-  service-run     Internal: run container via procd
-  service-stop    Stop container
+  install           Install prerequisites, prepare directories, pull image
+  uninstall         Remove container (preserves data)
+  check             Run prerequisite checks
+  update            Pull new image and restart
+  status            Show container status
+  logs [-f]         Show container logs (use -f to follow)
+  configure-mqtt    Auto-configure Mosquitto broker and Domoticz MQTT bridge
+  configure-haproxy Register as HAProxy vhost for reverse proxy
+  backup [path]     Backup Domoticz data
+  restore <path>    Restore Domoticz from backup
+  mesh-register     Register Domoticz in P2P mesh service catalog
+  service-run       Internal: run container via procd
+  service-stop      Stop container
 USAGE
 }
 
 require_root() { [ "$(id -u)" -eq 0 ]; }
 
-uci_get() { uci -q get ${CONFIG}.main.$1; }
+uci_get() {
+	local section="${2:-main}"
+	uci -q get ${CONFIG}.${section}.$1
+}
 
 defaults() {
 	image="$(uci_get image || echo domoticz/domoticz:latest)"
@@ -36,7 +45,7 @@ ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
 
 ensure_packages() {
 	for pkg in "$@"; do
-		if ! opkg status "$pkg" >/dev/null 2>&1; then
+		if ! opkg status "$pkg" 2>/dev/null | grep -q "Status:.*installed"; then
 			if [ "$OPKG_UPDATED" -eq 0 ]; then
 				opkg update || return 1
 				OPKG_UPDATED=1
@@ -57,49 +66,268 @@ check_prereqs() {
 
 pull_image() { defaults; docker pull "$image"; }
 
-stop_container() { docker stop "$CONTAINER" >/dev/null 2>&1 || true; docker rm "$CONTAINER" >/dev/null 2>&1 || true; }
+stop_container() {
+	docker stop "$CONTAINER" >/dev/null 2>&1 || true
+	docker rm "$CONTAINER" >/dev/null 2>&1 || true
+}
 
 cmd_install() {
-	require_root || { echo Root required >&2; exit 1; }
+	require_root || { echo "Root required" >&2; exit 1; }
 	check_prereqs || exit 1
 	ensure_dir "$data_path/config"
 	pull_image || exit 1
 	uci set ${CONFIG}.main.enabled='1'
 	uci commit ${CONFIG}
 	/etc/init.d/domoticz enable
-	echo "Domoticz prerequisites installed. Start with /etc/init.d/domoticz start"
+	echo "Domoticz installed. Start with /etc/init.d/domoticz start"
+}
+
+cmd_uninstall() {
+	require_root || { echo "Root required" >&2; exit 1; }
+	/etc/init.d/domoticz stop >/dev/null 2>&1
+	stop_container
+	defaults
+	docker rmi "$image" >/dev/null 2>&1 || true
+	uci set ${CONFIG}.main.enabled='0'
+	uci commit ${CONFIG}
+	/etc/init.d/domoticz disable >/dev/null 2>&1
+	echo "Domoticz uninstalled. Data preserved at ${data_path}."
 }
 
 cmd_check() { check_prereqs; echo "Prerequisite check completed."; }
 
 cmd_update() {
-	require_root || { echo Root required >&2; exit 1; }
+	require_root || { echo "Root required" >&2; exit 1; }
 	pull_image || exit 1
 	/etc/init.d/domoticz restart
+	echo "Domoticz updated and restarted."
 }
 
 cmd_status() { docker ps -a --filter "name=$CONTAINER"; }
 
 cmd_logs() { docker logs "$@" "$CONTAINER"; }
 
+cmd_configure_mqtt() {
+	require_root || { echo "Root required" >&2; exit 1; }
+
+	local broker=$(uci_get broker mqtt)
+	local broker_port=$(uci_get broker_port mqtt)
+	local topic_prefix=$(uci_get topic_prefix mqtt)
+	local z2m_topic=$(uci_get z2m_topic mqtt)
+
+	broker="${broker:-127.0.0.1}"
+	broker_port="${broker_port:-1883}"
+	topic_prefix="${topic_prefix:-domoticz}"
+	z2m_topic="${z2m_topic:-zigbee2mqtt}"
+
+	# Ensure Mosquitto is installed and running
+	if ! command -v mosquitto >/dev/null 2>&1; then
+		echo "Installing mosquitto-nossl..."
+		ensure_packages mosquitto-nossl mosquitto-client-nossl || {
+			echo "[ERROR] Failed to install Mosquitto" >&2
+			return 1
+		}
+	fi
+
+	# Configure Mosquitto listener
+	local mosquitto_conf="/etc/mosquitto/mosquitto.conf"
+	if [ -f "$mosquitto_conf" ]; then
+		# Ensure listener on configured port
+		if ! grep -q "^listener ${broker_port}" "$mosquitto_conf" 2>/dev/null; then
+			echo "" >> "$mosquitto_conf"
+			echo "# Auto-configured by domoticzctl" >> "$mosquitto_conf"
+			echo "listener ${broker_port}" >> "$mosquitto_conf"
+			echo "allow_anonymous true" >> "$mosquitto_conf"
+		fi
+	fi
+
+	# Start Mosquitto
+	/etc/init.d/mosquitto enable >/dev/null 2>&1
+	/etc/init.d/mosquitto start >/dev/null 2>&1
+
+	# Verify broker is listening
+	local retries=0
+	while [ $retries -lt 5 ]; do
+		if netstat -tln 2>/dev/null | grep -q ":${broker_port} "; then
+			break
+		fi
+		retries=$((retries + 1))
+		sleep 1
+	done
+
+	if ! netstat -tln 2>/dev/null | grep -q ":${broker_port} "; then
+		echo "[WARN] Mosquitto may not be listening on port ${broker_port}" >&2
+	fi
+
+	# Check zigbee2mqtt MQTT settings
+	if [ -f /etc/config/zigbee2mqtt ]; then
+		local z2m_mqtt_uri=$(uci -q get zigbee2mqtt.main.mqtt_host)
+		local z2m_base=$(uci -q get zigbee2mqtt.main.base_topic)
+
+		# z2m stores full URI (mqtt://host:port) — extract host and port
+		local z2m_host=$(echo "$z2m_mqtt_uri" | sed 's|^mqtt[s]*://||' | cut -d: -f1)
+		local z2m_port_conf=$(echo "$z2m_mqtt_uri" | sed 's|^mqtt[s]*://||' | cut -d: -f2)
+		z2m_host="${z2m_host:-127.0.0.1}"
+		z2m_port_conf="${z2m_port_conf:-1883}"
+
+		if [ "$z2m_host" = "$broker" ] && [ "$z2m_port_conf" = "$broker_port" ]; then
+			echo "Zigbee2MQTT shares same broker (${broker}:${broker_port})."
+			echo "z2m topic: ${z2m_base:-zigbee2mqtt}"
+		else
+			echo "[INFO] Zigbee2MQTT uses broker ${z2m_host}:${z2m_port_conf}"
+			echo "[INFO] Domoticz will connect to ${broker}:${broker_port}"
+			echo "[INFO] Ensure both use the same Mosquitto broker for device bridging."
+		fi
+	else
+		echo "[INFO] Zigbee2MQTT not installed — MQTT bridge will work with other MQTT publishers."
+	fi
+
+	# Update UCI MQTT settings
+	uci set ${CONFIG}.mqtt.enabled='1'
+	uci set ${CONFIG}.mqtt.broker="$broker"
+	uci set ${CONFIG}.mqtt.broker_port="$broker_port"
+	uci set ${CONFIG}.mqtt.topic_prefix="$topic_prefix"
+	uci set ${CONFIG}.mqtt.z2m_topic="$z2m_topic"
+	uci commit ${CONFIG}
+
+	# Note: Domoticz MQTT configuration happens inside the Domoticz web UI
+	# (Hardware > MQTT Client Gateway). We configure the broker and topic,
+	# but the user must add the MQTT hardware in Domoticz UI.
+	echo ""
+	echo "MQTT bridge configured:"
+	echo "  Broker:    ${broker}:${broker_port}"
+	echo "  Domoticz:  topic_prefix=${topic_prefix}"
+	echo "  Z2M:       topic=${z2m_topic}"
+	echo ""
+	echo "Next step: In Domoticz UI (Setup > Hardware), add:"
+	echo "  Type: MQTT Client Gateway with LAN interface"
+	echo "  Remote Address: ${broker}"
+	echo "  Port: ${broker_port}"
+	echo "  Topic prefix: ${topic_prefix}"
+}
+
+cmd_configure_haproxy() {
+	require_root || { echo "Root required" >&2; exit 1; }
+
+	local domain=$(uci_get domain network)
+	local port_val=$(uci_get port)
+	domain="${domain:-domoticz.secubox.local}"
+	port_val="${port_val:-8080}"
+
+	# Use haproxyctl if available
+	if command -v haproxyctl >/dev/null 2>&1; then
+		haproxyctl add-vhost "$domain" "127.0.0.1:${port_val}" 2>&1
+		local code=$?
+		if [ $code -eq 0 ]; then
+			uci set ${CONFIG}.network.haproxy='1'
+			uci commit ${CONFIG}
+			echo "HAProxy vhost configured for ${domain} -> 127.0.0.1:${port_val}"
+		else
+			echo "[ERROR] haproxyctl add-vhost failed" >&2
+			return 1
+		fi
+	else
+		echo "[ERROR] haproxyctl not found — install secubox-app-haproxy first" >&2
+		return 1
+	fi
+}
+
+cmd_backup() {
+	require_root || { echo "Root required" >&2; exit 1; }
+	defaults
+	local backup_path="${1:-/tmp/domoticz-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
+
+	if [ ! -d "$data_path/config" ]; then
+		echo "[ERROR] No data to backup at ${data_path}/config" >&2
+		return 1
+	fi
+
+	tar czf "$backup_path" -C "$data_path" config 2>&1
+	local code=$?
+	if [ $code -eq 0 ]; then
+		echo "Backup created: ${backup_path}"
+	else
+		echo "[ERROR] Backup failed" >&2
+		return 1
+	fi
+}
+
+cmd_restore() {
+	require_root || { echo "Root required" >&2; exit 1; }
+	defaults
+	local backup_path="$1"
+
+	if [ -z "$backup_path" ] || [ ! -f "$backup_path" ]; then
+		echo "[ERROR] Backup file not found: ${backup_path}" >&2
+		return 1
+	fi
+
+	# Stop service before restore
+	/etc/init.d/domoticz stop >/dev/null 2>&1
+	stop_container
+
+	ensure_dir "$data_path"
+	tar xzf "$backup_path" -C "$data_path" 2>&1
+	local code=$?
+	if [ $code -eq 0 ]; then
+		echo "Restored from ${backup_path}"
+		echo "Restart Domoticz with: /etc/init.d/domoticz start"
+	else
+		echo "[ERROR] Restore failed" >&2
+		return 1
+	fi
+}
+
+cmd_mesh_register() {
+	require_root || { echo "Root required" >&2; exit 1; }
+	defaults
+
+	if command -v secubox-p2p >/dev/null 2>&1; then
+		secubox-p2p register-service domoticz "$port" 2>&1
+		uci set ${CONFIG}.mesh.enabled='1'
+		uci commit ${CONFIG}
+		echo "Domoticz registered in P2P mesh on port ${port}"
+	else
+		echo "[ERROR] secubox-p2p not found — install secubox-p2p first" >&2
+		return 1
+	fi
+}
+
 cmd_service_run() {
-	require_root || { echo Root required >&2; exit 1; }
+	require_root || { echo "Root required" >&2; exit 1; }
 	check_prereqs || exit 1
 	defaults
 	stop_container
+
 	local docker_args="--name $CONTAINER -p ${port}:8080 -v $data_path/config:/config"
 	[ -d "$devices_path" ] && docker_args="$docker_args -v $devices_path:/devices"
+
+	# If MQTT enabled, pass broker info to container network
+	local mqtt_en=$(uci_get enabled mqtt)
+	if [ "${mqtt_en:-0}" = "1" ]; then
+		docker_args="$docker_args --add-host=mqtt-broker:$(uci_get broker mqtt || echo 127.0.0.1)"
+	fi
+
 	exec docker run --rm $docker_args -e TZ="$timezone" "$image"
 }
 
-cmd_service_stop() { require_root || { echo Root required >&2; exit 1; }; stop_container; }
+cmd_service_stop() {
+	require_root || { echo "Root required" >&2; exit 1; }
+	stop_container
+}
 
 case "${1:-}" in
 	install) shift; cmd_install "$@" ;;
+	uninstall) shift; cmd_uninstall "$@" ;;
 	check) shift; cmd_check "$@" ;;
 	update) shift; cmd_update "$@" ;;
 	status) shift; cmd_status "$@" ;;
 	logs) shift; cmd_logs "$@" ;;
+	configure-mqtt) shift; cmd_configure_mqtt "$@" ;;
+	configure-haproxy) shift; cmd_configure_haproxy "$@" ;;
+	backup) shift; cmd_backup "$@" ;;
+	restore) shift; cmd_restore "$@" ;;
+	mesh-register) shift; cmd_mesh_register "$@" ;;
 	service-run) shift; cmd_service_run "$@" ;;
 	service-stop) shift; cmd_service_stop "$@" ;;
 	help|--help|-h|'') usage ;;

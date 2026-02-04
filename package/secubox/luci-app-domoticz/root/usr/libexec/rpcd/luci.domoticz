@@ -1,0 +1,237 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+CONTAINER="secbx-domoticz"
+CONFIG="domoticz"
+
+case "$1" in
+	list)
+		echo '{"status":{},"start":{},"stop":{},"restart":{},"install":{},"uninstall":{},"update":{},"configure_mqtt":{},"configure_haproxy":{},"backup":{},"restore":{"path":"str"},"logs":{"lines":"int"}}'
+		;;
+	call)
+		case "$2" in
+			status)
+				json_init
+
+				enabled=$(uci -q get ${CONFIG}.main.enabled)
+				image=$(uci -q get ${CONFIG}.main.image)
+				port=$(uci -q get ${CONFIG}.main.port)
+				data_path=$(uci -q get ${CONFIG}.main.data_path)
+				devices_path=$(uci -q get ${CONFIG}.main.devices_path)
+				timezone=$(uci -q get ${CONFIG}.main.timezone)
+
+				# MQTT config
+				mqtt_enabled=$(uci -q get ${CONFIG}.mqtt.enabled)
+				mqtt_broker=$(uci -q get ${CONFIG}.mqtt.broker)
+				mqtt_broker_port=$(uci -q get ${CONFIG}.mqtt.broker_port)
+				mqtt_topic_prefix=$(uci -q get ${CONFIG}.mqtt.topic_prefix)
+				mqtt_z2m_topic=$(uci -q get ${CONFIG}.mqtt.z2m_topic)
+
+				# Network/domain config
+				domain=$(uci -q get ${CONFIG}.network.domain)
+				haproxy=$(uci -q get ${CONFIG}.network.haproxy)
+				firewall_wan=$(uci -q get ${CONFIG}.network.firewall_wan)
+
+				# Mesh config
+				mesh_enabled=$(uci -q get ${CONFIG}.mesh.enabled)
+
+				json_add_boolean "enabled" ${enabled:-0}
+				json_add_string "image" "${image:-domoticz/domoticz:latest}"
+				json_add_int "port" ${port:-8080}
+				json_add_string "data_path" "${data_path:-/srv/domoticz}"
+				json_add_string "devices_path" "${devices_path:-/srv/devices}"
+				json_add_string "timezone" "${timezone:-UTC}"
+
+				json_add_boolean "mqtt_enabled" ${mqtt_enabled:-0}
+				json_add_string "mqtt_broker" "${mqtt_broker:-127.0.0.1}"
+				json_add_int "mqtt_broker_port" ${mqtt_broker_port:-1883}
+				json_add_string "mqtt_topic_prefix" "${mqtt_topic_prefix:-domoticz}"
+				json_add_string "mqtt_z2m_topic" "${mqtt_z2m_topic:-zigbee2mqtt}"
+
+				json_add_string "domain" "${domain:-domoticz.secubox.local}"
+				json_add_boolean "haproxy" ${haproxy:-0}
+				json_add_boolean "firewall_wan" ${firewall_wan:-0}
+				json_add_boolean "mesh_enabled" ${mesh_enabled:-0}
+
+				# Docker availability
+				if command -v docker >/dev/null 2>&1; then
+					json_add_boolean "docker_available" 1
+				else
+					json_add_boolean "docker_available" 0
+				fi
+
+				# Container status
+				if docker ps --filter "name=$CONTAINER" --format '{{.Status}}' 2>/dev/null | grep -q .; then
+					json_add_string "container_status" "running"
+					uptime=$(docker ps --filter "name=$CONTAINER" --format '{{.Status}}' 2>/dev/null)
+					json_add_string "container_uptime" "$uptime"
+				elif docker ps -a --filter "name=$CONTAINER" --format '{{.Status}}' 2>/dev/null | grep -q .; then
+					json_add_string "container_status" "stopped"
+					json_add_string "container_uptime" ""
+				else
+					json_add_string "container_status" "not_installed"
+					json_add_string "container_uptime" ""
+				fi
+
+				# Mosquitto broker status
+				if pgrep mosquitto >/dev/null 2>&1; then
+					json_add_string "mosquitto_status" "running"
+				elif command -v mosquitto >/dev/null 2>&1; then
+					json_add_string "mosquitto_status" "stopped"
+				else
+					json_add_string "mosquitto_status" "not_installed"
+				fi
+
+				# Zigbee2MQTT status
+				z2m_running=0
+				if [ -f /srv/zigbee2mqtt/alpine/rootfs/run.pid ]; then
+					z2m_running=1
+				elif pgrep -f zigbee2mqtt >/dev/null 2>&1; then
+					z2m_running=1
+				fi
+				if [ "$z2m_running" = "1" ]; then
+					json_add_string "z2m_status" "running"
+					z2m_port=$(uci -q get zigbee2mqtt.main.frontend_port)
+					json_add_int "z2m_port" ${z2m_port:-8099}
+				elif [ -f /etc/config/zigbee2mqtt ]; then
+					json_add_string "z2m_status" "stopped"
+					json_add_int "z2m_port" 0
+				else
+					json_add_string "z2m_status" "not_installed"
+					json_add_int "z2m_port" 0
+				fi
+
+				# HAProxy vhost status
+				if [ "${haproxy:-0}" = "1" ]; then
+					vhost_exists=$(uci show haproxy 2>/dev/null | grep "\.domain='${domain:-domoticz.secubox.local}'" | head -1)
+					if [ -n "$vhost_exists" ]; then
+						json_add_string "haproxy_status" "configured"
+					else
+						json_add_string "haproxy_status" "pending"
+					fi
+				else
+					json_add_string "haproxy_status" "disabled"
+				fi
+
+				# Disk usage
+				dp="${data_path:-/srv/domoticz}"
+				if [ -d "$dp" ]; then
+					disk_usage=$(du -sh "$dp" 2>/dev/null | cut -f1)
+					json_add_string "disk_usage" "${disk_usage:-0}"
+				else
+					json_add_string "disk_usage" ""
+				fi
+
+				# USB devices
+				json_add_array "usb_devices"
+				for dev in /dev/ttyUSB* /dev/ttyACM*; do
+					[ -e "$dev" ] && json_add_string "" "$dev"
+				done
+				json_close_array
+
+				json_dump
+				;;
+
+			start)
+				/etc/init.d/domoticz start >/dev/null 2>&1
+				echo '{"success":true}'
+				;;
+
+			stop)
+				/etc/init.d/domoticz stop >/dev/null 2>&1
+				echo '{"success":true}'
+				;;
+
+			restart)
+				/etc/init.d/domoticz restart >/dev/null 2>&1
+				echo '{"success":true}'
+				;;
+
+			install)
+				output=$(/usr/sbin/domoticzctl install 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			uninstall)
+				output=$(/usr/sbin/domoticzctl uninstall 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			update)
+				output=$(/usr/sbin/domoticzctl update 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			configure_mqtt)
+				output=$(/usr/sbin/domoticzctl configure-mqtt 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			configure_haproxy)
+				output=$(/usr/sbin/domoticzctl configure-haproxy 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			backup)
+				backup_file="/tmp/domoticz-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+				output=$(/usr/sbin/domoticzctl backup "$backup_file" 2>&1)
+				code=$?
+				json_init
+				json_add_boolean "success" $((code == 0))
+				json_add_string "path" "$backup_file"
+				json_add_string "output" "$output"
+				json_dump
+				;;
+
+			restore)
+				read -r input
+				path=$(echo "$input" | jsonfilter -e '@.path' 2>/dev/null)
+				if [ -z "$path" ]; then
+					echo '{"success":false,"output":"No backup path specified"}'
+				else
+					output=$(/usr/sbin/domoticzctl restore "$path" 2>&1)
+					code=$?
+					json_init
+					json_add_boolean "success" $((code == 0))
+					json_add_string "output" "$output"
+					json_dump
+				fi
+				;;
+
+			logs)
+				read -r input
+				lines=$(echo "$input" | jsonfilter -e '@.lines' 2>/dev/null)
+				[ -z "$lines" ] && lines=50
+
+				logs=$(docker logs --tail "$lines" "$CONTAINER" 2>&1 | tail -100)
+				json_init
+				json_add_string "logs" "$logs"
+				json_dump
+				;;
+		esac
+		;;
+esac
+
+exit 0
