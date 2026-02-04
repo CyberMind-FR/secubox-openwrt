@@ -12,7 +12,7 @@ Requires `secubox-app-domoticz` (installed as dependency).
 
 ## Features
 
-- **Service Status**: Container status, Docker availability, disk usage, USB devices
+- **Service Status**: Container status, LXC availability, memory/disk usage, USB devices
 - **IoT Integration**: Mosquitto broker status, Zigbee2MQTT status, MQTT bridge configuration
 - **MQTT Auto-Setup**: One-click Mosquitto installation and broker configuration
 - **Network**: HAProxy reverse proxy integration, WAN access control, domain configuration
@@ -28,9 +28,9 @@ Requires `secubox-app-domoticz` (installed as dependency).
 | `start` | — | Start Domoticz service |
 | `stop` | — | Stop Domoticz service |
 | `restart` | — | Restart Domoticz service |
-| `install` | — | Pull Docker image and configure |
+| `install` | — | Create LXC container and download Domoticz |
 | `uninstall` | — | Remove container (preserves data) |
-| `update` | — | Pull latest image and restart |
+| `update` | — | Download latest Domoticz and restart |
 | `configure_mqtt` | — | Auto-configure Mosquitto and MQTT bridge |
 | `configure_haproxy` | — | Register HAProxy vhost |
 | `backup` | — | Create data backup |

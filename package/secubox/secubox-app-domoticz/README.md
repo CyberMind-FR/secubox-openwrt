@@ -1,6 +1,6 @@
 # SecuBox Domoticz
 
-Home automation platform running in Docker with MQTT bridge, Zigbee2MQTT integration, and P2P mesh support.
+Home automation platform running in an LXC Alpine container with MQTT bridge, Zigbee2MQTT integration, and P2P mesh support.
 
 ## Installation
 
@@ -17,7 +17,6 @@ UCI config file: `/etc/config/domoticz`
 ```
 config domoticz 'main'
     option enabled '0'
-    option image 'domoticz/domoticz:latest'
     option data_path '/srv/domoticz'
     option devices_path '/srv/devices'
     option port '8080'
@@ -42,9 +41,9 @@ config domoticz 'mesh'
 ## Usage
 
 ```sh
-domoticzctl install           # Pull image, install prerequisites
+domoticzctl install           # Create LXC container, download Domoticz
 domoticzctl uninstall         # Remove container (data preserved)
-domoticzctl update            # Pull latest image, restart
+domoticzctl update            # Download latest Domoticz, restart
 domoticzctl status            # Show container status
 domoticzctl logs [-f]         # Container logs
 domoticzctl configure-mqtt    # Auto-setup Mosquitto + MQTT bridge
@@ -79,7 +78,7 @@ When `secubox-app-zigbee2mqtt` is installed:
 
 ## Dependencies
 
-- `dockerd`, `docker`, `containerd`
+- `lxc`, `lxc-common`
 - Optional: `mosquitto-nossl`, `secubox-app-zigbee2mqtt`
 
 ## License

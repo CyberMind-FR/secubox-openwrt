@@ -3,8 +3,19 @@
 . /lib/functions.sh
 . /usr/share/libubox/jshn.sh
 
-CONTAINER="secbx-domoticz"
+LXC_NAME="domoticz"
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONF="$LXC_PATH/$LXC_NAME/config"
 CONFIG="domoticz"
+
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONF" ] && [ -d "$LXC_ROOTFS" ]
+}
 
 case "$1" in
 	list)
@@ -16,7 +27,6 @@ case "$1" in
 				json_init
 
 				enabled=$(uci -q get ${CONFIG}.main.enabled)
-				image=$(uci -q get ${CONFIG}.main.image)
 				port=$(uci -q get ${CONFIG}.main.port)
 				data_path=$(uci -q get ${CONFIG}.main.data_path)
 				devices_path=$(uci -q get ${CONFIG}.main.devices_path)
@@ -38,7 +48,6 @@ case "$1" in
 				mesh_enabled=$(uci -q get ${CONFIG}.mesh.enabled)
 
 				json_add_boolean "enabled" ${enabled:-0}
-				json_add_string "image" "${image:-domoticz/domoticz:latest}"
 				json_add_int "port" ${port:-8080}
 				json_add_string "data_path" "${data_path:-/srv/domoticz}"
 				json_add_string "devices_path" "${devices_path:-/srv/devices}"
@@ -55,24 +64,36 @@ case "$1" in
 				json_add_boolean "firewall_wan" ${firewall_wan:-0}
 				json_add_boolean "mesh_enabled" ${mesh_enabled:-0}
 
-				# Docker availability
-				if command -v docker >/dev/null 2>&1; then
-					json_add_boolean "docker_available" 1
+				# LXC availability
+				if command -v lxc-start >/dev/null 2>&1; then
+					json_add_boolean "lxc_available" 1
 				else
-					json_add_boolean "docker_available" 0
+					json_add_boolean "lxc_available" 0
 				fi
 
 				# Container status
-				if docker ps --filter "name=$CONTAINER" --format '{{.Status}}' 2>/dev/null | grep -q .; then
+				if lxc_running; then
 					json_add_string "container_status" "running"
-					uptime=$(docker ps --filter "name=$CONTAINER" --format '{{.Status}}' 2>/dev/null)
+					uptime=$(lxc-info -n "$LXC_NAME" -s 2>/dev/null | head -1)
 					json_add_string "container_uptime" "$uptime"
-				elif docker ps -a --filter "name=$CONTAINER" --format '{{.Status}}' 2>/dev/null | grep -q .; then
+					# Memory from cgroup
+					mem_usage=""
+					if [ -f "/sys/fs/cgroup/lxc.payload.$LXC_NAME/memory.current" ]; then
+						mem_bytes=$(cat "/sys/fs/cgroup/lxc.payload.$LXC_NAME/memory.current" 2>/dev/null)
+						if [ -n "$mem_bytes" ] && [ "$mem_bytes" -gt 0 ] 2>/dev/null; then
+							mem_mb=$(( mem_bytes / 1048576 ))
+							mem_usage="${mem_mb} MB"
+						fi
+					fi
+					json_add_string "memory_usage" "$mem_usage"
+				elif lxc_exists; then
 					json_add_string "container_status" "stopped"
 					json_add_string "container_uptime" ""
+					json_add_string "memory_usage" ""
 				else
 					json_add_string "container_status" "not_installed"
 					json_add_string "container_uptime" ""
+					json_add_string "memory_usage" ""
 				fi
 
 				# Mosquitto broker status
@@ -225,7 +246,7 @@ case "$1" in
 				lines=$(echo "$input" | jsonfilter -e '@.lines' 2>/dev/null)
 				[ -z "$lines" ] && lines=50
 
-				logs=$(docker logs --tail "$lines" "$CONTAINER" 2>&1 | tail -100)
+				logs=$(/usr/sbin/domoticzctl logs "$lines" 2>&1)
 				json_init
 				json_add_string "logs" "$logs"
 				json_dump

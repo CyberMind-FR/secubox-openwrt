@@ -1522,7 +1522,7 @@
       "name": "Domoticz",
       "version": "1.0.0",
       "category": "iot",
-      "runtime": "docker",
+      "runtime": "lxc",
       "description": "Home automation system with MQTT bridge, Zigbee2MQTT integration, and IoT device management",
       "author": "CyberMind.fr",
       "license": "GPL-3.0",
@@ -1532,7 +1532,7 @@
         "home-automation",
         "iot",
         "smart-home",
-        "docker",
+        "lxc",
         "mqtt",
         "zigbee",
         "mesh"
@@ -1541,8 +1541,8 @@
         "required": [
           "secubox-app-domoticz",
           "luci-app-domoticz",
-          "docker",
-          "dockerd"
+          "lxc",
+          "lxc-common"
         ],
         "optional": [
           "mosquitto-nossl",
@@ -1562,18 +1562,20 @@
         "min_storage_mb": 100
       },
       "status": "stable",
-      "pkg_version": "1.0.0-3",
+      "pkg_version": "1.0.0-4",
       "app_version": "1.0.0",
       "changelog": {
-        "1.0.0-3": {
+        "1.0.0-4": {
           "date": "2026-02-04",
           "changes": [
+            "Rewrite from Docker to LXC Alpine container",
+            "Native Domoticz binary download from releases.domoticz.com",
+            "LXC config with USB cgroup2 passthrough and memory limits",
             "LuCI dashboard with IoT integration status",
             "MQTT auto-bridge for Mosquitto and Zigbee2MQTT",
             "HAProxy reverse proxy integration",
             "P2P mesh service registration",
-            "Backup and restore support",
-            "USB device passthrough visibility"
+            "Backup and restore support"
           ]
         },
         "1.0.0": {

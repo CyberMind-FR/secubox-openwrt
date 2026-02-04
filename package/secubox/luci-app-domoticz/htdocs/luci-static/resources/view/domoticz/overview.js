@@ -119,10 +119,10 @@ return view.extend({
 			return html;
 		};
 
-		o = s.option(form.DummyValue, '_docker', _('Docker'));
+		o = s.option(form.DummyValue, '_lxc', _('LXC'));
 		o.rawhtml = true;
 		o.cfgvalue = function() {
-			return status.docker_available
+			return status.lxc_available
 				? '<span style="color:#27ae60;">Available</span>'
 				: '<span style="color:#e74c3c;">Not available</span>';
 		};
@@ -132,10 +132,11 @@ return view.extend({
 		o.cfgvalue = function() {
 			var port = status.port || 8080;
 			var html = '<table style="border-collapse:collapse;">';
-			html += '<tr><td style="padding:2px 12px 2px 0;color:#8892b0;">Image:</td><td>' + (status.image || '-') + '</td></tr>';
 			html += '<tr><td style="padding:2px 12px 2px 0;color:#8892b0;">Port:</td><td>' + port + '</td></tr>';
 			html += '<tr><td style="padding:2px 12px 2px 0;color:#8892b0;">Data:</td><td>' + (status.data_path || '-') + '</td></tr>';
 			html += '<tr><td style="padding:2px 12px 2px 0;color:#8892b0;">Domain:</td><td>' + (status.domain || '-') + '</td></tr>';
+			if (status.memory_usage)
+				html += '<tr><td style="padding:2px 12px 2px 0;color:#8892b0;">Memory:</td><td>' + status.memory_usage + '</td></tr>';
 			if (status.disk_usage)
 				html += '<tr><td style="padding:2px 12px 2px 0;color:#8892b0;">Disk:</td><td>' + status.disk_usage + '</td></tr>';
 			if (status.usb_devices && status.usb_devices.length > 0)
@@ -210,7 +211,7 @@ return view.extend({
 			o.inputstyle = 'apply';
 			o.onclick = function() {
 				ui.showModal(_('Installing...'), [
-					E('p', { 'class': 'spinning' }, _('Pulling Docker image and configuring...'))
+					E('p', { 'class': 'spinning' }, _('Creating LXC container and downloading Domoticz...'))
 				]);
 				return callInstall().then(function(res) {
 					ui.hideModal();
@@ -263,11 +264,11 @@ return view.extend({
 			}
 
 			o = s.option(form.Button, '_update', _('Update'));
-			o.inputtitle = _('Pull Latest Image');
+			o.inputtitle = _('Update Domoticz');
 			o.inputstyle = 'action';
 			o.onclick = function() {
 				ui.showModal(_('Updating...'), [
-					E('p', { 'class': 'spinning' }, _('Pulling latest Docker image and restarting...'))
+					E('p', { 'class': 'spinning' }, _('Downloading latest Domoticz and restarting container...'))
 				]);
 				return callUpdate().then(function(res) {
 					ui.hideModal();
@@ -326,10 +327,6 @@ return view.extend({
 			_('HTTP port for the Domoticz web interface.'));
 		o.datatype = 'port';
 		o.placeholder = '8080';
-
-		o = s.option(form.Value, 'image', _('Docker Image'),
-			_('Docker image to use.'));
-		o.placeholder = 'domoticz/domoticz:latest';
 
 		o = s.option(form.Value, 'data_path', _('Data Path'),
 			_('Path for Domoticz config and database.'));

@@ -1,8 +1,13 @@
 #!/bin/sh
-# SecuBox Domoticz manager — IoT home automation with MQTT/Zigbee integration
+# SecuBox Domoticz manager — LXC Alpine container with MQTT/Zigbee integration
 
 CONFIG="domoticz"
-CONTAINER="secbx-domoticz"
+LXC_NAME="domoticz"
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONF="$LXC_PATH/$LXC_NAME/config"
+DATA_PATH_DEFAULT="/srv/domoticz"
+LOG_FILE="/srv/domoticz/domoticz.log"
 OPKG_UPDATED=0
 
 usage() {
@@ -10,13 +15,14 @@ usage() {
 Usage: domoticzctl <command>
 
 Commands:
-  install           Install prerequisites, prepare directories, pull image
+  install           Create LXC container, download Domoticz, configure
   uninstall         Remove container (preserves data)
   check             Run prerequisite checks
-  update            Pull new image and restart
-  status            Show container status
-  logs [-f]         Show container logs (use -f to follow)
-  configure-mqtt    Auto-configure Mosquitto broker and Domoticz MQTT bridge
+  update            Download latest Domoticz release and restart
+  status            Show container and service status
+  logs [N]          Show last N lines of logs (default: 50)
+  shell             Open interactive shell in container
+  configure-mqtt    Auto-configure Mosquitto broker and MQTT bridge
   configure-haproxy Register as HAProxy vhost for reverse proxy
   backup [path]     Backup Domoticz data
   restore <path>    Restore Domoticz from backup
@@ -26,6 +32,8 @@ Commands:
 USAGE
 }
 
+# ---------- helpers ----------
+
 require_root() { [ "$(id -u)" -eq 0 ]; }
 
 uci_get() {
@@ -33,13 +41,8 @@ uci_get() {
 	uci -q get ${CONFIG}.${section}.$1
 }
 
-defaults() {
-	image="$(uci_get image || echo domoticz/domoticz:latest)"
-	data_path="$(uci_get data_path || echo /srv/domoticz)"
-	devices_path="$(uci_get devices_path || echo /srv/devices)"
-	port="$(uci_get port || echo 8080)"
-	timezone="$(uci_get timezone || echo UTC)"
-}
+log_info()  { echo "[INFO] $*"; logger -t domoticzctl "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t domoticzctl -p err "$*"; }
 
 ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
 
@@ -55,60 +58,450 @@ ensure_packages() {
 	done
 }
 
-check_prereqs() {
+defaults() {
+	data_path="$(uci_get data_path || echo $DATA_PATH_DEFAULT)"
+	devices_path="$(uci_get devices_path || echo /srv/devices)"
+	port="$(uci_get port || echo 8080)"
+	timezone="$(uci_get timezone || echo UTC)"
+}
+
+detect_arch() {
+	case "$(uname -m)" in
+		aarch64) echo "aarch64" ;;
+		armv7l)  echo "armv7" ;;
+		x86_64)  echo "x86_64" ;;
+		*)       echo "x86_64" ;;
+	esac
+}
+
+# ---------- LXC helpers ----------
+
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONF" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+lxc_exec() {
+	lxc-attach -n "$LXC_NAME" -- "$@"
+}
+
+lxc_stop() {
+	if lxc_running; then
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 1
+	fi
+}
+
+# ---------- rootfs creation ----------
+
+lxc_create_rootfs() {
+	local arch=$(detect_arch)
+
+	# Map to Debian architecture names
+	local debian_arch
+	case "$arch" in
+		aarch64) debian_arch="arm64" ;;
+		armv7)   debian_arch="armhf" ;;
+		x86_64)  debian_arch="amd64" ;;
+		*)       debian_arch="amd64" ;;
+	esac
+
+	# Use debootstrap if available, otherwise download pre-built rootfs
+	ensure_dir "$LXC_ROOTFS"
+
+	# Minimal Debian rootfs via tarball from LXC image server
+	local rootfs_url="https://images.linuxcontainers.org/images/debian/bookworm/${debian_arch}/default/"
+	log_info "Downloading Debian bookworm rootfs for ${debian_arch}..."
+
+	# Get latest build directory
+	local latest_path
+	latest_path=$(wget -q -O - "$rootfs_url" 2>/dev/null | grep -oE '[0-9]{8}_[0-9]{2}:[0-9]{2}' | tail -1)
+	if [ -z "$latest_path" ]; then
+		log_error "Failed to find latest Debian rootfs build"
+		return 1
+	fi
+
+	local tarball="/tmp/debian-domoticz.tar.xz"
+	local tarball_url="${rootfs_url}${latest_path}/rootfs.tar.xz"
+	wget -q -O "$tarball" "$tarball_url" || {
+		log_error "Failed to download Debian rootfs from $tarball_url"
+		return 1
+	}
+
+	tar -xJf "$tarball" -C "$LXC_ROOTFS" || {
+		log_error "Failed to extract Debian rootfs"
+		return 1
+	}
+	rm -f "$tarball"
+
+	# DNS
+	cp /etc/resolv.conf "$LXC_ROOTFS/etc/resolv.conf" 2>/dev/null || \
+		echo "nameserver 127.0.0.1" > "$LXC_ROOTFS/etc/resolv.conf"
+
+	# Create /dev/null for apt operations
+	[ -c "$LXC_ROOTFS/dev/null" ] || mknod -m 666 "$LXC_ROOTFS/dev/null" c 1 3 2>/dev/null
+
+	# Install runtime dependencies via apt
+	log_info "Installing Domoticz runtime dependencies..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		apt-get -o Acquire::AllowInsecureRepositories=true update -qq 2>/dev/null && \
+		apt-get --allow-unauthenticated install -y -qq --no-install-recommends \
+			libcurl3-gnutls libusb-0.1-4 libusb-1.0-0 \
+			python3-minimal libsqlite3-0 tzdata ca-certificates \
+			2>&1 | tail -5
+	" || {
+		log_error "Failed to install runtime dependencies"
+		return 1
+	}
+
+	# Rebuild linker cache
+	chroot "$LXC_ROOTFS" ldconfig 2>/dev/null
+
+	# Clean apt cache
+	chroot "$LXC_ROOTFS" /bin/sh -c "apt-get clean; rm -rf /var/lib/apt/lists/*" 2>/dev/null
+
+	log_info "Debian rootfs created."
+}
+
+domoticz_download() {
+	local arch=$(detect_arch)
+	local domoticz_arch="$arch"
+
+	# Domoticz release URLs use different arch names
+	case "$arch" in
+		aarch64) domoticz_arch="aarch64" ;;
+		armv7)   domoticz_arch="armv7l" ;;
+		x86_64)  domoticz_arch="x86_64" ;;
+	esac
+
+	local release_url="https://github.com/domoticz/domoticz/releases/latest/download/domoticz_linux_${domoticz_arch}.tgz"
+	local tarball="/tmp/domoticz-release.tgz"
+
+	log_info "Downloading Domoticz release for ${domoticz_arch}..."
+	wget -q -O "$tarball" "$release_url" || {
+		log_error "Failed to download Domoticz release"
+		return 1
+	}
+
+	ensure_dir "$LXC_ROOTFS/opt/domoticz"
+	tar -xzf "$tarball" -C "$LXC_ROOTFS/opt/domoticz" || {
+		log_error "Failed to extract Domoticz"
+		return 1
+	}
+	rm -f "$tarball"
+
+	chmod +x "$LXC_ROOTFS/opt/domoticz/domoticz" 2>/dev/null
+	log_info "Domoticz binary installed."
+}
+
+# ---------- LXC config generation ----------
+
+lxc_create_config() {
 	defaults
-	ensure_dir "$data_path"
-	[ -d /sys/fs/cgroup ] || { echo "[ERROR] /sys/fs/cgroup missing" >&2; return 1; }
-	ensure_packages dockerd docker containerd
-	/etc/init.d/dockerd enable >/dev/null 2>&1
-	/etc/init.d/dockerd start >/dev/null 2>&1
+	local arch=$(detect_arch)
+	local mem_limit=$(uci_get memory_limit || echo "512M")
+
+	# Convert memory limit to bytes
+	local mem_bytes
+	case "$mem_limit" in
+		*M) mem_bytes=$(( ${mem_limit%M} * 1048576 )) ;;
+		*G) mem_bytes=$(( ${mem_limit%G} * 1073741824 )) ;;
+		*)  mem_bytes=536870912 ;;
+	esac
+
+	ensure_dir "$data_path/config"
+	ensure_dir "$data_path/db"
+	ensure_dir "$data_path/scripts"
+	ensure_dir "$data_path/backups"
+
+	cat > "$LXC_CONF" << EOF
+# Domoticz LXC Container
+lxc.uts.name = domoticz
+lxc.rootfs.path = dir:${LXC_ROOTFS}
+lxc.arch = ${arch}
+
+# Host network (no veth isolation)
+lxc.net.0.type = none
+
+# Auto-mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+
+# Data persistence
+lxc.mount.entry = ${data_path}/config opt/domoticz/config none bind,create=dir 0 0
+lxc.mount.entry = ${data_path}/db opt/domoticz/db none bind,create=dir 0 0
+lxc.mount.entry = ${data_path}/scripts opt/domoticz/scripts none bind,create=dir 0 0
+lxc.mount.entry = ${data_path}/backups opt/domoticz/backups none bind,create=dir 0 0
+EOF
+
+	# USB device passthrough
+	if [ -d "$devices_path" ]; then
+		ensure_dir "$LXC_ROOTFS/devices"
+		cat >> "$LXC_CONF" << EOF
+
+# Device passthrough
+lxc.mount.entry = ${devices_path} devices none bind,create=dir 0 0
+EOF
+	fi
+
+	# USB serial device passthrough (for Z-Wave/Zigbee dongles)
+	for dev in /dev/ttyUSB* /dev/ttyACM*; do
+		if [ -c "$dev" ]; then
+			local devname=$(basename "$dev")
+			local major=$(stat -c '%t' "$dev" 2>/dev/null)
+			major=$((0x${major:-bc}))
+			cat >> "$LXC_CONF" << EOF
+lxc.cgroup2.devices.allow = c ${major}:* rwm
+lxc.mount.entry = ${dev} dev/${devname} none bind,create=file 0 0
+EOF
+		fi
+	done
+
+	cat >> "$LXC_CONF" << EOF
+
+# Terminal
+lxc.tty.max = 0
+lxc.pty.max = 256
+
+# Standard character devices
+lxc.cgroup2.devices.allow = c 1:* rwm
+lxc.cgroup2.devices.allow = c 5:* rwm
+lxc.cgroup2.devices.allow = c 136:* rwm
+
+# Security
+lxc.cap.drop = sys_module mac_admin mac_override sys_time
+
+# Disable default seccomp
+lxc.seccomp.profile =
+
+# Resource limits
+lxc.cgroup2.memory.max = ${mem_bytes}
+
+# Init
+lxc.init.cmd = /opt/start-domoticz.sh
+EOF
+
+	log_info "LXC config generated."
 }
 
-pull_image() { defaults; docker pull "$image"; }
+# ---------- startup script ----------
 
-stop_container() {
-	docker stop "$CONTAINER" >/dev/null 2>&1 || true
-	docker rm "$CONTAINER" >/dev/null 2>&1 || true
+generate_start_script() {
+	defaults
+	local tz="$timezone"
+
+	# Write start script - use quoted heredoc to prevent variable expansion,
+	# then sed in the runtime values
+	cat > "$LXC_ROOTFS/opt/start-domoticz.sh" << 'STARTEOF'
+#!/bin/sh
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+cd /opt/domoticz
+
+# Set timezone
+TZ_FILE="/usr/share/zoneinfo/__TZ__"
+if [ -f "$TZ_FILE" ]; then
+	cp "$TZ_FILE" /etc/localtime
+	echo "__TZ__" > /etc/timezone
+fi
+export TZ="__TZ__"
+
+# Ensure database directory exists
+mkdir -p /opt/domoticz/db
+
+# Trap signals and forward to domoticz (PID 1 can't exec directly)
+trap 'kill $CHILD 2>/dev/null; wait $CHILD' TERM INT
+
+# Run Domoticz as child process (not PID 1)
+./domoticz -www __PORT__ -dbase /opt/domoticz/db/domoticz.db \
+	-userdata /opt/domoticz/config/ \
+	-log /opt/domoticz/domoticz.log \
+	-sslwww 0 &
+CHILD=$!
+wait $CHILD
+STARTEOF
+
+	# Replace placeholders with actual values
+	sed -i "s|__TZ__|${tz}|g" "$LXC_ROOTFS/opt/start-domoticz.sh"
+	sed -i "s|__PORT__|${port}|g" "$LXC_ROOTFS/opt/start-domoticz.sh"
+
+	chmod +x "$LXC_ROOTFS/opt/start-domoticz.sh"
 }
+
+# ---------- commands ----------
 
 cmd_install() {
-	require_root || { echo "Root required" >&2; exit 1; }
-	check_prereqs || exit 1
-	ensure_dir "$data_path/config"
-	pull_image || exit 1
+	require_root || { log_error "Root required"; exit 1; }
+
+	if lxc_exists; then
+		log_info "Container already exists. Use 'update' to refresh Domoticz."
+		return 0
+	fi
+
+	# Ensure LXC is available
+	ensure_packages lxc lxc-common || {
+		log_error "Failed to install LXC packages"
+		exit 1
+	}
+
+	defaults
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+	ensure_dir "$data_path"
+
+	lxc_create_rootfs || exit 1
+	domoticz_download || exit 1
+	lxc_create_config
+	generate_start_script
+
 	uci set ${CONFIG}.main.enabled='1'
 	uci commit ${CONFIG}
 	/etc/init.d/domoticz enable
-	echo "Domoticz installed. Start with /etc/init.d/domoticz start"
+
+	log_info "Domoticz installed in LXC container. Start with /etc/init.d/domoticz start"
 }
 
 cmd_uninstall() {
-	require_root || { echo "Root required" >&2; exit 1; }
+	require_root || { log_error "Root required"; exit 1; }
+
 	/etc/init.d/domoticz stop >/dev/null 2>&1
-	stop_container
+	lxc_stop
+
 	defaults
-	docker rmi "$image" >/dev/null 2>&1 || true
+
+	# Remove container rootfs but preserve data
+	rm -rf "$LXC_PATH/$LXC_NAME"
+
 	uci set ${CONFIG}.main.enabled='0'
 	uci commit ${CONFIG}
 	/etc/init.d/domoticz disable >/dev/null 2>&1
-	echo "Domoticz uninstalled. Data preserved at ${data_path}."
+
+	log_info "Domoticz container removed. Data preserved at ${data_path}."
 }
 
-cmd_check() { check_prereqs; echo "Prerequisite check completed."; }
+cmd_check() {
+	require_root || { log_error "Root required"; exit 1; }
+
+	echo "=== Prerequisites ==="
+
+	# LXC
+	if command -v lxc-start >/dev/null 2>&1; then
+		echo "[OK] lxc-start available"
+	else
+		echo "[MISSING] lxc-start — install lxc"
+	fi
+
+	# cgroup
+	if [ -d /sys/fs/cgroup ]; then
+		echo "[OK] /sys/fs/cgroup present"
+	else
+		echo "[MISSING] /sys/fs/cgroup"
+	fi
+
+	# Container
+	if lxc_exists; then
+		echo "[OK] Container rootfs exists"
+	else
+		echo "[MISSING] Container not installed — run 'domoticzctl install'"
+	fi
+
+	# Container state
+	if lxc_running; then
+		echo "[OK] Container is RUNNING"
+	else
+		echo "[STOPPED] Container is not running"
+	fi
+
+	echo ""
+	echo "=== USB Devices ==="
+	for dev in /dev/ttyUSB* /dev/ttyACM*; do
+		[ -e "$dev" ] && echo "  $dev"
+	done
+	[ ! -e /dev/ttyUSB0 ] && [ ! -e /dev/ttyACM0 ] && echo "  (none detected)"
+
+	echo ""
+	echo "=== Mosquitto ==="
+	if pgrep mosquitto >/dev/null 2>&1; then
+		echo "[OK] Mosquitto running"
+	else
+		echo "[STOPPED] Mosquitto not running"
+	fi
+
+	echo ""
+	echo "=== Zigbee2MQTT ==="
+	if [ -f /srv/zigbee2mqtt/alpine/rootfs/run.pid ] || pgrep -f zigbee2mqtt >/dev/null 2>&1; then
+		echo "[OK] Zigbee2MQTT running"
+	else
+		echo "[STOPPED] Zigbee2MQTT not running"
+	fi
+}
 
 cmd_update() {
-	require_root || { echo "Root required" >&2; exit 1; }
-	pull_image || exit 1
+	require_root || { log_error "Root required"; exit 1; }
+
+	if ! lxc_exists; then
+		log_error "Container not installed. Run 'domoticzctl install' first."
+		exit 1
+	fi
+
+	lxc_stop
+	domoticz_download || exit 1
+	generate_start_script
 	/etc/init.d/domoticz restart
-	echo "Domoticz updated and restarted."
+
+	log_info "Domoticz updated and restarted."
 }
 
-cmd_status() { docker ps -a --filter "name=$CONTAINER"; }
+cmd_status() {
+	defaults
+	echo "=== Domoticz Status ==="
 
-cmd_logs() { docker logs "$@" "$CONTAINER"; }
+	if lxc_running; then
+		echo "Container: RUNNING"
+		lxc-info -n "$LXC_NAME" 2>/dev/null | grep -E "PID|Memory|CPU"
+	elif lxc_exists; then
+		echo "Container: STOPPED (installed)"
+	else
+		echo "Container: NOT INSTALLED"
+	fi
+
+	echo ""
+	echo "Port: ${port}"
+	echo "Data: ${data_path}"
+
+	if [ -d "$data_path/db" ]; then
+		local db_size=$(du -sh "$data_path/db" 2>/dev/null | cut -f1)
+		echo "DB size: ${db_size:-0}"
+	fi
+}
+
+cmd_logs() {
+	defaults
+	local lines="${1:-50}"
+	local logfile="$data_path/domoticz.log"
+
+	if [ -f "$logfile" ]; then
+		tail -n "$lines" "$logfile"
+	elif lxc_running; then
+		lxc_exec tail -n "$lines" /opt/domoticz/domoticz.log 2>/dev/null || echo "No logs available."
+	else
+		echo "No logs available."
+	fi
+}
+
+cmd_shell() {
+	require_root || { log_error "Root required"; exit 1; }
+
+	if ! lxc_running; then
+		log_error "Container is not running. Start it first."
+		exit 1
+	fi
+
+	lxc_exec /bin/sh
+}
 
 cmd_configure_mqtt() {
-	require_root || { echo "Root required" >&2; exit 1; }
+	require_root || { log_error "Root required"; exit 1; }
 
 	local broker=$(uci_get broker mqtt)
 	local broker_port=$(uci_get broker_port mqtt)
@@ -122,9 +515,9 @@ cmd_configure_mqtt() {
 
 	# Ensure Mosquitto is installed and running
 	if ! command -v mosquitto >/dev/null 2>&1; then
-		echo "Installing mosquitto-nossl..."
+		log_info "Installing mosquitto-nossl..."
 		ensure_packages mosquitto-nossl mosquitto-client-nossl || {
-			echo "[ERROR] Failed to install Mosquitto" >&2
+			log_error "Failed to install Mosquitto"
 			return 1
 		}
 	fi
@@ -132,7 +525,6 @@ cmd_configure_mqtt() {
 	# Configure Mosquitto listener
 	local mosquitto_conf="/etc/mosquitto/mosquitto.conf"
 	if [ -f "$mosquitto_conf" ]; then
-		# Ensure listener on configured port
 		if ! grep -q "^listener ${broker_port}" "$mosquitto_conf" 2>/dev/null; then
 			echo "" >> "$mosquitto_conf"
 			echo "# Auto-configured by domoticzctl" >> "$mosquitto_conf"
@@ -156,7 +548,7 @@ cmd_configure_mqtt() {
 	done
 
 	if ! netstat -tln 2>/dev/null | grep -q ":${broker_port} "; then
-		echo "[WARN] Mosquitto may not be listening on port ${broker_port}" >&2
+		log_info "Mosquitto may not be listening on port ${broker_port}"
 	fi
 
 	# Check zigbee2mqtt MQTT settings
@@ -164,7 +556,7 @@ cmd_configure_mqtt() {
 		local z2m_mqtt_uri=$(uci -q get zigbee2mqtt.main.mqtt_host)
 		local z2m_base=$(uci -q get zigbee2mqtt.main.base_topic)
 
-		# z2m stores full URI (mqtt://host:port) — extract host and port
+		# z2m stores full URI (mqtt://host:port)
 		local z2m_host=$(echo "$z2m_mqtt_uri" | sed 's|^mqtt[s]*://||' | cut -d: -f1)
 		local z2m_port_conf=$(echo "$z2m_mqtt_uri" | sed 's|^mqtt[s]*://||' | cut -d: -f2)
 		z2m_host="${z2m_host:-127.0.0.1}"
@@ -190,9 +582,6 @@ cmd_configure_mqtt() {
 	uci set ${CONFIG}.mqtt.z2m_topic="$z2m_topic"
 	uci commit ${CONFIG}
 
-	# Note: Domoticz MQTT configuration happens inside the Domoticz web UI
-	# (Hardware > MQTT Client Gateway). We configure the broker and topic,
-	# but the user must add the MQTT hardware in Domoticz UI.
 	echo ""
 	echo "MQTT bridge configured:"
 	echo "  Broker:    ${broker}:${broker_port}"
@@ -207,129 +596,137 @@ cmd_configure_mqtt() {
 }
 
 cmd_configure_haproxy() {
-	require_root || { echo "Root required" >&2; exit 1; }
+	require_root || { log_error "Root required"; exit 1; }
 
 	local domain=$(uci_get domain network)
 	local port_val=$(uci_get port)
 	domain="${domain:-domoticz.secubox.local}"
 	port_val="${port_val:-8080}"
 
-	# Use haproxyctl if available
 	if command -v haproxyctl >/dev/null 2>&1; then
 		haproxyctl add-vhost "$domain" "127.0.0.1:${port_val}" 2>&1
 		local code=$?
 		if [ $code -eq 0 ]; then
 			uci set ${CONFIG}.network.haproxy='1'
 			uci commit ${CONFIG}
-			echo "HAProxy vhost configured for ${domain} -> 127.0.0.1:${port_val}"
+			log_info "HAProxy vhost configured for ${domain} -> 127.0.0.1:${port_val}"
 		else
-			echo "[ERROR] haproxyctl add-vhost failed" >&2
+			log_error "haproxyctl add-vhost failed"
 			return 1
 		fi
 	else
-		echo "[ERROR] haproxyctl not found — install secubox-app-haproxy first" >&2
+		log_error "haproxyctl not found — install secubox-app-haproxy first"
 		return 1
 	fi
 }
 
 cmd_backup() {
-	require_root || { echo "Root required" >&2; exit 1; }
+	require_root || { log_error "Root required"; exit 1; }
 	defaults
 	local backup_path="${1:-/tmp/domoticz-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
 
-	if [ ! -d "$data_path/config" ]; then
-		echo "[ERROR] No data to backup at ${data_path}/config" >&2
+	if [ ! -d "$data_path" ]; then
+		log_error "No data to backup at ${data_path}"
 		return 1
 	fi
 
-	tar czf "$backup_path" -C "$data_path" config 2>&1
+	tar czf "$backup_path" -C "$data_path" . 2>&1
 	local code=$?
 	if [ $code -eq 0 ]; then
-		echo "Backup created: ${backup_path}"
+		log_info "Backup created: ${backup_path}"
 	else
-		echo "[ERROR] Backup failed" >&2
+		log_error "Backup failed"
 		return 1
 	fi
 }
 
 cmd_restore() {
-	require_root || { echo "Root required" >&2; exit 1; }
+	require_root || { log_error "Root required"; exit 1; }
 	defaults
 	local backup_path="$1"
 
 	if [ -z "$backup_path" ] || [ ! -f "$backup_path" ]; then
-		echo "[ERROR] Backup file not found: ${backup_path}" >&2
+		log_error "Backup file not found: ${backup_path}"
 		return 1
 	fi
 
-	# Stop service before restore
 	/etc/init.d/domoticz stop >/dev/null 2>&1
-	stop_container
+	lxc_stop
 
 	ensure_dir "$data_path"
 	tar xzf "$backup_path" -C "$data_path" 2>&1
 	local code=$?
 	if [ $code -eq 0 ]; then
-		echo "Restored from ${backup_path}"
+		log_info "Restored from ${backup_path}"
 		echo "Restart Domoticz with: /etc/init.d/domoticz start"
 	else
-		echo "[ERROR] Restore failed" >&2
+		log_error "Restore failed"
 		return 1
 	fi
 }
 
 cmd_mesh_register() {
-	require_root || { echo "Root required" >&2; exit 1; }
+	require_root || { log_error "Root required"; exit 1; }
 	defaults
 
 	if command -v secubox-p2p >/dev/null 2>&1; then
 		secubox-p2p register-service domoticz "$port" 2>&1
 		uci set ${CONFIG}.mesh.enabled='1'
 		uci commit ${CONFIG}
-		echo "Domoticz registered in P2P mesh on port ${port}"
+		log_info "Domoticz registered in P2P mesh on port ${port}"
 	else
-		echo "[ERROR] secubox-p2p not found — install secubox-p2p first" >&2
+		log_error "secubox-p2p not found — install secubox-p2p first"
 		return 1
 	fi
 }
 
 cmd_service_run() {
-	require_root || { echo "Root required" >&2; exit 1; }
-	check_prereqs || exit 1
-	defaults
-	stop_container
+	require_root || { log_error "Root required"; exit 1; }
 
-	local docker_args="--name $CONTAINER -p ${port}:8080 -v $data_path/config:/config"
-	[ -d "$devices_path" ] && docker_args="$docker_args -v $devices_path:/devices"
-
-	# If MQTT enabled, pass broker info to container network
-	local mqtt_en=$(uci_get enabled mqtt)
-	if [ "${mqtt_en:-0}" = "1" ]; then
-		docker_args="$docker_args --add-host=mqtt-broker:$(uci_get broker mqtt || echo 127.0.0.1)"
+	if ! lxc_exists; then
+		log_error "Container not installed. Run 'domoticzctl install' first."
+		exit 1
 	fi
 
-	exec docker run --rm $docker_args -e TZ="$timezone" "$image"
+	defaults
+
+	# Regenerate config and startup script on each run (picks up UCI changes)
+	lxc_create_config
+	generate_start_script
+
+	# Stop any previous instance
+	lxc_stop
+
+	# Update DNS
+	cp /etc/resolv.conf "$LXC_ROOTFS/etc/resolv.conf" 2>/dev/null
+
+	log_info "Starting Domoticz LXC container..."
+	exec lxc-start -n "$LXC_NAME" -F
 }
 
 cmd_service_stop() {
-	require_root || { echo "Root required" >&2; exit 1; }
-	stop_container
+	require_root || { log_error "Root required"; exit 1; }
+	lxc_stop
+	log_info "Domoticz container stopped."
 }
 
+# ---------- main ----------
+
 case "${1:-}" in
-	install) shift; cmd_install "$@" ;;
-	uninstall) shift; cmd_uninstall "$@" ;;
-	check) shift; cmd_check "$@" ;;
-	update) shift; cmd_update "$@" ;;
-	status) shift; cmd_status "$@" ;;
-	logs) shift; cmd_logs "$@" ;;
-	configure-mqtt) shift; cmd_configure_mqtt "$@" ;;
+	install)           shift; cmd_install "$@" ;;
+	uninstall)         shift; cmd_uninstall "$@" ;;
+	check)             shift; cmd_check "$@" ;;
+	update)            shift; cmd_update "$@" ;;
+	status)            shift; cmd_status "$@" ;;
+	logs)              shift; cmd_logs "$@" ;;
+	shell)             shift; cmd_shell "$@" ;;
+	configure-mqtt)    shift; cmd_configure_mqtt "$@" ;;
 	configure-haproxy) shift; cmd_configure_haproxy "$@" ;;
-	backup) shift; cmd_backup "$@" ;;
-	restore) shift; cmd_restore "$@" ;;
-	mesh-register) shift; cmd_mesh_register "$@" ;;
-	service-run) shift; cmd_service_run "$@" ;;
-	service-stop) shift; cmd_service_stop "$@" ;;
+	backup)            shift; cmd_backup "$@" ;;
+	restore)           shift; cmd_restore "$@" ;;
+	mesh-register)     shift; cmd_mesh_register "$@" ;;
+	service-run)       shift; cmd_service_run "$@" ;;
+	service-stop)      shift; cmd_service_stop "$@" ;;
 	help|--help|-h|'') usage ;;
-	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+	*)                 log_error "Unknown command: $1"; usage >&2; exit 1 ;;
 esac

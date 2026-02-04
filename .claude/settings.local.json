@@ -270,7 +270,8 @@
       "Bash(/home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-build.sh:*)",
       "Bash(do rsync -av --delete /home/reepost/CyberMindStudio/secubox-openwrt/package/secubox/$pkg/ /home/reepost/CyberMindStudio/secubox-openwrt/secubox-tools/local-feed/$pkg/)",
       "Bash(do rsync -av --delete \"package/secubox/$pkg/\" \"secubox-tools/local-feed/$pkg/\")",
-      "Bash(xdg-open:*)"
+      "Bash(xdg-open:*)",
+      "WebFetch(domain:releases.domoticz.com)"
     ]
   }
 }

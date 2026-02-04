@@ -438,11 +438,20 @@ lxc.mount.entry = $data_path/logs srv/logs none bind,create=dir 0 0
 lxc.environment = STREAMLIT_THEME_BASE=$theme_base
 lxc.environment = STREAMLIT_THEME_PRIMARY=$theme_primary
 
+# Terminal
+lxc.tty.max = 0
+lxc.pty.max = 256
+
+# Standard character devices
+lxc.cgroup2.devices.allow = c 1:* rwm
+lxc.cgroup2.devices.allow = c 5:* rwm
+lxc.cgroup2.devices.allow = c 136:* rwm
+
 # Security
 lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_time sys_rawio
 
 # Resource limits
-lxc.cgroup.memory.limit_in_bytes = $mem_bytes
+lxc.cgroup2.memory.max = $mem_bytes
 
 # Init command
 lxc.init.cmd = /opt/start-streamlit.sh

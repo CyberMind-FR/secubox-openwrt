@@ -1,6 +1,5 @@
 config domoticz 'main'
 	option enabled '0'
-	option image 'domoticz/domoticz:latest'
 	option data_path '/srv/domoticz'
 	option devices_path '/srv/devices'
 	option port '8080'
