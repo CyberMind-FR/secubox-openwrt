@@ -1,0 +1,504 @@
+#!/bin/sh
+# SecuBox SMB/CIFS remote mount manager
+# Copyright (C) 2025-2026 CyberMind.fr
+
+CONFIG="smbfs"
+
+usage() {
+	cat <<'EOF'
+Usage: smbfsctl <command> [args]
+
+Share Management:
+  add <name> <server> <mountpoint>   Add a new SMB share
+  remove <name>                      Remove a share definition
+  enable <name>                      Enable auto-mount for a share
+  disable <name>                     Disable auto-mount for a share
+  credentials <name> <user> <pass>   Set credentials for a share
+  set <name> <key> <value>           Set a share option
+  list                               List all configured shares
+
+Mount Operations:
+  mount <name>                       Mount a specific share
+  mount-all                          Mount all enabled shares
+  umount <name>                      Unmount a specific share
+  umount-all                         Unmount all shares
+  status                             Show mount status of all shares
+  test <name>                        Test connectivity to a share
+
+Examples:
+  smbfsctl add movies //nas/movies /mnt/smb/movies
+  smbfsctl credentials movies user mypass
+  smbfsctl set movies read_only 1
+  smbfsctl mount movies
+  smbfsctl enable movies
+EOF
+}
+
+require_root() { [ "$(id -u)" -eq 0 ] || { echo "[ERROR] Root required" >&2; exit 1; }; }
+
+log_info() { echo "[INFO] $*"; }
+log_warn() { echo "[WARN] $*" >&2; }
+log_error() { echo "[ERROR] $*" >&2; }
+
+uci_get() { uci -q get ${CONFIG}.$1; }
+uci_set() { uci set ${CONFIG}.$1="$2" && uci commit ${CONFIG}; }
+
+# Load global config
+load_global() {
+	mount_base="$(uci_get global.mount_base || echo /mnt/smb)"
+	default_vers="$(uci_get global.cifs_version || echo 3.0)"
+	timeout="$(uci_get global.timeout || echo 10)"
+}
+
+# Get list of configured share section names
+get_shares() {
+	uci -q show "$CONFIG" | grep "=${CONFIG}\[" | sed "s/.*\.\(.*\)=.*/\1/" | sort -u
+	uci -q show "$CONFIG" | grep "=mount" | sed "s/${CONFIG}\.\(.*\)=mount/\1/" | sort -u
+}
+
+# Check if share section exists
+share_exists() {
+	local type
+	type="$(uci -q get ${CONFIG}.$1)"
+	[ "$type" = "mount" ]
+}
+
+# Build mount options for a share
+build_mount_opts() {
+	local name="$1"
+	local username password domain vers ro opts
+
+	username="$(uci_get ${name}.username)"
+	password="$(uci_get ${name}._password)"
+	domain="$(uci_get ${name}.domain)"
+	vers="$(uci_get ${name}.cifs_version || echo "$default_vers")"
+	ro="$(uci_get ${name}.read_only)"
+
+	opts="vers=${vers}"
+
+	if [ -n "$username" ] && [ "$username" != "guest" ]; then
+		opts="${opts},username=${username}"
+		[ -n "$password" ] && opts="${opts},password=${password}"
+		[ -n "$domain" ] && opts="${opts},domain=${domain}"
+	else
+		opts="${opts},guest"
+	fi
+
+	[ "$ro" = "1" ] && opts="${opts},ro" || opts="${opts},rw"
+
+	# Reasonable defaults for network mounts
+	opts="${opts},iocharset=utf8,noperm,noserverino"
+
+	echo "$opts"
+}
+
+# Check if a share is currently mounted
+is_mounted() {
+	local mountpoint="$1"
+	grep -q " ${mountpoint} cifs " /proc/mounts 2>/dev/null
+}
+
+# =============================================================================
+# SHARE MANAGEMENT
+# =============================================================================
+
+cmd_add() {
+	local name="$1" server="$2" mountpoint="$3"
+
+	[ -z "$name" ] || [ -z "$server" ] || [ -z "$mountpoint" ] && {
+		echo "Usage: smbfsctl add <name> <server> <mountpoint>" >&2
+		exit 1
+	}
+
+	if share_exists "$name"; then
+		log_error "Share '$name' already exists"
+		exit 1
+	fi
+
+	load_global
+
+	uci add ${CONFIG} mount >/dev/null
+	# Rename the unnamed section to the given name
+	local idx
+	idx=$(uci -q show ${CONFIG} | grep "=mount$" | tail -1 | sed "s/${CONFIG}\.\(.*\)=mount/\1/")
+	uci rename ${CONFIG}.${idx}="${name}"
+
+	uci set ${CONFIG}.${name}.enabled='0'
+	uci set ${CONFIG}.${name}.server="$server"
+	uci set ${CONFIG}.${name}.mountpoint="$mountpoint"
+	uci set ${CONFIG}.${name}.username='guest'
+	uci set ${CONFIG}.${name}._password=''
+	uci set ${CONFIG}.${name}.domain=''
+	uci set ${CONFIG}.${name}.cifs_version="$default_vers"
+	uci set ${CONFIG}.${name}.read_only='1'
+	uci set ${CONFIG}.${name}.auto_mount='0'
+	uci set ${CONFIG}.${name}.description=''
+	uci commit ${CONFIG}
+
+	log_info "Share '$name' added: $server -> $mountpoint"
+	log_info "Set credentials: smbfsctl credentials $name <user> <pass>"
+}
+
+cmd_remove() {
+	local name="$1"
+	[ -z "$name" ] && { echo "Usage: smbfsctl remove <name>" >&2; exit 1; }
+
+	if ! share_exists "$name"; then
+		log_error "Share '$name' not found"
+		exit 1
+	fi
+
+	# Unmount first if mounted
+	local mountpoint
+	mountpoint="$(uci_get ${name}.mountpoint)"
+	if [ -n "$mountpoint" ] && is_mounted "$mountpoint"; then
+		umount "$mountpoint" 2>/dev/null || umount -l "$mountpoint" 2>/dev/null
+	fi
+
+	uci delete ${CONFIG}.${name}
+	uci commit ${CONFIG}
+
+	log_info "Share '$name' removed"
+}
+
+cmd_enable() {
+	local name="$1"
+	[ -z "$name" ] && { echo "Usage: smbfsctl enable <name>" >&2; exit 1; }
+	share_exists "$name" || { log_error "Share '$name' not found"; exit 1; }
+
+	uci_set ${name}.enabled '1'
+	uci_set ${name}.auto_mount '1'
+	log_info "Share '$name' enabled for auto-mount"
+}
+
+cmd_disable() {
+	local name="$1"
+	[ -z "$name" ] && { echo "Usage: smbfsctl disable <name>" >&2; exit 1; }
+	share_exists "$name" || { log_error "Share '$name' not found"; exit 1; }
+
+	uci_set ${name}.enabled '0'
+	uci_set ${name}.auto_mount '0'
+	log_info "Share '$name' disabled"
+}
+
+cmd_credentials() {
+	local name="$1" user="$2" pass="$3"
+
+	[ -z "$name" ] || [ -z "$user" ] && {
+		echo "Usage: smbfsctl credentials <name> <user> <pass>" >&2
+		exit 1
+	}
+
+	share_exists "$name" || { log_error "Share '$name' not found"; exit 1; }
+
+	uci_set ${name}.username "$user"
+	uci_set ${name}._password "$pass"
+
+	log_info "Credentials set for '$name' (user: $user)"
+}
+
+cmd_set() {
+	local name="$1" key="$2" value="$3"
+
+	[ -z "$name" ] || [ -z "$key" ] && {
+		echo "Usage: smbfsctl set <name> <key> <value>" >&2
+		exit 1
+	}
+
+	share_exists "$name" || { log_error "Share '$name' not found"; exit 1; }
+
+	uci_set ${name}.${key} "$value"
+	log_info "Set ${name}.${key} = $value"
+}
+
+cmd_list() {
+	load_global
+
+	local found=0
+	local shares
+	shares="$(get_shares)"
+
+	if [ -z "$shares" ]; then
+		echo "No SMB shares configured."
+		echo "Add one: smbfsctl add <name> //server/share /mnt/smb/name"
+		return
+	fi
+
+	printf "%-12s %-8s %-28s %-24s %s\n" "NAME" "STATUS" "SERVER" "MOUNTPOINT" "USER"
+	printf "%-12s %-8s %-28s %-24s %s\n" "----" "------" "------" "----------" "----"
+
+	for name in $shares; do
+		local enabled server mountpoint username status
+
+		enabled="$(uci_get ${name}.enabled)"
+		server="$(uci_get ${name}.server)"
+		mountpoint="$(uci_get ${name}.mountpoint)"
+		username="$(uci_get ${name}.username)"
+
+		if [ -n "$mountpoint" ] && is_mounted "$mountpoint"; then
+			status="mounted"
+		elif [ "$enabled" = "1" ]; then
+			status="enabled"
+		else
+			status="disabled"
+		fi
+
+		printf "%-12s %-8s %-28s %-24s %s\n" "$name" "$status" "$server" "$mountpoint" "${username:-guest}"
+		found=1
+	done
+}
+
+# =============================================================================
+# MOUNT OPERATIONS
+# =============================================================================
+
+cmd_mount() {
+	require_root
+	local name="$1"
+	[ -z "$name" ] && { echo "Usage: smbfsctl mount <name>" >&2; exit 1; }
+	share_exists "$name" || { log_error "Share '$name' not found"; exit 1; }
+
+	load_global
+
+	local server mountpoint
+	server="$(uci_get ${name}.server)"
+	mountpoint="$(uci_get ${name}.mountpoint)"
+
+	[ -z "$server" ] && { log_error "No server configured for '$name'"; exit 1; }
+	[ -z "$mountpoint" ] && { log_error "No mountpoint configured for '$name'"; exit 1; }
+
+	if is_mounted "$mountpoint"; then
+		log_info "'$name' already mounted at $mountpoint"
+		return 0
+	fi
+
+	# Create mountpoint
+	mkdir -p "$mountpoint"
+
+	local opts
+	opts="$(build_mount_opts "$name")"
+
+	log_info "Mounting $server -> $mountpoint"
+	if mount -t cifs "$server" "$mountpoint" -o "$opts" 2>&1; then
+		log_info "Mounted '$name' successfully"
+	else
+		log_error "Failed to mount '$name'"
+		return 1
+	fi
+}
+
+cmd_mount_all() {
+	require_root
+	load_global
+
+	local shares count=0 fail=0
+	shares="$(get_shares)"
+
+	for name in $shares; do
+		local enabled auto_mount
+		enabled="$(uci_get ${name}.enabled)"
+		auto_mount="$(uci_get ${name}.auto_mount)"
+
+		[ "$enabled" = "1" ] && [ "$auto_mount" = "1" ] || continue
+
+		if cmd_mount_single "$name"; then
+			count=$((count + 1))
+		else
+			fail=$((fail + 1))
+		fi
+	done
+
+	log_info "Mounted $count share(s), $fail failure(s)"
+}
+
+# Internal: mount a single share (no arg validation)
+cmd_mount_single() {
+	local name="$1"
+	local server mountpoint
+
+	server="$(uci_get ${name}.server)"
+	mountpoint="$(uci_get ${name}.mountpoint)"
+
+	[ -z "$server" ] || [ -z "$mountpoint" ] && return 1
+
+	if is_mounted "$mountpoint"; then
+		return 0
+	fi
+
+	mkdir -p "$mountpoint"
+
+	local opts
+	opts="$(build_mount_opts "$name")"
+
+	mount -t cifs "$server" "$mountpoint" -o "$opts" 2>/dev/null
+}
+
+cmd_umount() {
+	require_root
+	local name="$1"
+	[ -z "$name" ] && { echo "Usage: smbfsctl umount <name>" >&2; exit 1; }
+	share_exists "$name" || { log_error "Share '$name' not found"; exit 1; }
+
+	local mountpoint
+	mountpoint="$(uci_get ${name}.mountpoint)"
+
+	if [ -n "$mountpoint" ] && is_mounted "$mountpoint"; then
+		umount "$mountpoint" 2>/dev/null || umount -l "$mountpoint" 2>/dev/null
+		log_info "Unmounted '$name' from $mountpoint"
+	else
+		log_info "'$name' is not mounted"
+	fi
+}
+
+cmd_umount_all() {
+	require_root
+	load_global
+
+	local shares
+	shares="$(get_shares)"
+
+	for name in $shares; do
+		local mountpoint
+		mountpoint="$(uci_get ${name}.mountpoint)"
+		if [ -n "$mountpoint" ] && is_mounted "$mountpoint"; then
+			umount "$mountpoint" 2>/dev/null || umount -l "$mountpoint" 2>/dev/null
+			log_info "Unmounted '$name'"
+		fi
+	done
+}
+
+cmd_status() {
+	load_global
+
+	echo "=== SMB/CIFS Mount Status ==="
+	echo ""
+
+	local shares
+	shares="$(get_shares)"
+
+	if [ -z "$shares" ]; then
+		echo "No shares configured."
+		return
+	fi
+
+	for name in $shares; do
+		local enabled server mountpoint desc
+
+		enabled="$(uci_get ${name}.enabled)"
+		server="$(uci_get ${name}.server)"
+		mountpoint="$(uci_get ${name}.mountpoint)"
+		desc="$(uci_get ${name}.description)"
+
+		printf "Share: %s" "$name"
+		[ -n "$desc" ] && printf " (%s)" "$desc"
+		echo ""
+
+		printf "  Server:     %s\n" "$server"
+		printf "  Mountpoint: %s\n" "$mountpoint"
+		printf "  Enabled:    %s\n" "$([ "$enabled" = "1" ] && echo "yes" || echo "no")"
+
+		if [ -n "$mountpoint" ] && is_mounted "$mountpoint"; then
+			# Get mount stats
+			local usage
+			usage=$(df -h "$mountpoint" 2>/dev/null | tail -1)
+			printf "  Status:     MOUNTED\n"
+			if [ -n "$usage" ]; then
+				local size used avail pct
+				size=$(echo "$usage" | awk '{print $2}')
+				used=$(echo "$usage" | awk '{print $3}')
+				avail=$(echo "$usage" | awk '{print $4}')
+				pct=$(echo "$usage" | awk '{print $5}')
+				printf "  Disk:       %s used / %s total (%s free, %s)\n" "$used" "$size" "$avail" "$pct"
+			fi
+		else
+			printf "  Status:     NOT MOUNTED\n"
+		fi
+		echo ""
+	done
+}
+
+cmd_test() {
+	local name="$1"
+	[ -z "$name" ] && { echo "Usage: smbfsctl test <name>" >&2; exit 1; }
+	share_exists "$name" || { log_error "Share '$name' not found"; exit 1; }
+
+	load_global
+
+	local server
+	server="$(uci_get ${name}.server)"
+
+	# Extract hostname from //host/share
+	local host
+	host=$(echo "$server" | sed 's|^//||; s|/.*||')
+
+	log_info "Testing connectivity to $host..."
+
+	# Test network reachability
+	if ping -c 1 -W "$timeout" "$host" >/dev/null 2>&1; then
+		log_info "Host $host is reachable"
+	else
+		log_error "Host $host is not reachable"
+		return 1
+	fi
+
+	# Test SMB port (445)
+	local smb_ok=0
+	if [ -f /proc/net/tcp ]; then
+		# Try a TCP connection via shell
+		if (echo > /dev/tcp/"$host"/445) 2>/dev/null; then
+			smb_ok=1
+		fi
+	fi
+
+	# Fallback: try netstat or just attempt mount
+	if [ "$smb_ok" = "1" ]; then
+		log_info "SMB port 445 is open on $host"
+	else
+		log_warn "Could not verify SMB port 445 (will attempt mount anyway)"
+	fi
+
+	# Try a test mount
+	require_root
+	local mountpoint="/tmp/smbfs-test-$$"
+	mkdir -p "$mountpoint"
+
+	local opts
+	opts="$(build_mount_opts "$name")"
+
+	if mount -t cifs "$server" "$mountpoint" -o "$opts" 2>&1; then
+		log_info "Test mount successful — share is accessible"
+		local count
+		count=$(ls -1 "$mountpoint" 2>/dev/null | wc -l)
+		log_info "Contents: $count items visible"
+		umount "$mountpoint" 2>/dev/null
+	else
+		log_error "Test mount failed — check server, credentials, or share name"
+		rmdir "$mountpoint" 2>/dev/null
+		return 1
+	fi
+
+	rmdir "$mountpoint" 2>/dev/null
+	log_info "Test complete: share '$name' is working"
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+case "${1:-}" in
+	add) shift; cmd_add "$@" ;;
+	remove) shift; cmd_remove "$@" ;;
+	enable) shift; cmd_enable "$@" ;;
+	disable) shift; cmd_disable "$@" ;;
+	credentials) shift; cmd_credentials "$@" ;;
+	set) shift; cmd_set "$@" ;;
+	list) shift; cmd_list "$@" ;;
+	mount) shift; cmd_mount "$@" ;;
+	mount-all) shift; cmd_mount_all "$@" ;;
+	umount) shift; cmd_umount "$@" ;;
+	umount-all) shift; cmd_umount_all "$@" ;;
+	status) shift; cmd_status "$@" ;;
+	test) shift; cmd_test "$@" ;;
+	help|--help|-h|'') usage ;;
+	*) echo "Unknown command: $1" >&2; usage >&2; exit 1 ;;
+esac

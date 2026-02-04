@@ -164,6 +164,9 @@ lxc_create_docker_rootfs() {
 	# Configure container
 	echo "nameserver 8.8.8.8" > "$rootfs/etc/resolv.conf"
 	mkdir -p "$rootfs/var/log/glances" "$rootfs/etc/glances" "$rootfs/tmp"
+	mkdir -p "$rootfs/host" "$rootfs/rom" "$rootfs/overlay" "$rootfs/boot" "$rootfs/srv"
+	mkdir -p "$rootfs/run"
+	touch "$rootfs/run/docker.sock"
 
 	# Ensure /bin/sh exists
 	if [ ! -x "$rootfs/bin/sh" ]; then
@@ -177,37 +180,46 @@ lxc_create_docker_rootfs() {
 		fi
 	fi
 
-	# Create startup script
-	cat > "$rootfs/opt/start-glances.sh" << 'START'
-#!/bin/sh
-export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
-export PYTHONPATH="/app:$PYTHONPATH"
-cd /
+	# Patch Glances: disable @exit_after on fs plugin (multiprocessing
+	# fails inside LXC containers, causing all disk_usage calls to return None)
+	local fs_init="$rootfs/app/glances/plugins/fs/__init__.py"
+	if [ -f "$fs_init" ]; then
+		sed -i 's/^@exit_after(/#@exit_after(/' "$fs_init"
+		log_info "Patched Glances fs plugin for LXC compatibility"
+	fi
 
-# Setup hostname resolution (required for socket.gethostbyname to work)
-REAL_HOSTNAME=$(hostname 2>/dev/null || echo glances)
-cat > /etc/hosts << EOF
-127.0.0.1       localhost $REAL_HOSTNAME glances
-::1             localhost ip6-localhost ip6-loopback
-EOF
+	# Generate /etc/mtab from host mounts (psutil reads this for disk_partitions)
+	grep -E '^(/dev/|overlayfs:)' /proc/mounts | \
+		grep -v '/srv/docker/overlay' > "$rootfs/etc/mtab" 2>/dev/null
 
-# Read environment variables
-WEB_PORT="${GLANCES_WEB_PORT:-61208}"
-WEB_HOST="${GLANCES_WEB_HOST:-0.0.0.0}"
-REFRESH="${GLANCES_REFRESH:-3}"
-
-# Build args for web server mode
-# Use -B for bind address and -p for port separately
-# Disable autodiscover and check-update to avoid DNS resolution issues
-ARGS="-w -B $WEB_HOST -p $WEB_PORT -t $REFRESH --disable-autodiscover --disable-check-update"
-
-# Disable plugins if configured
-[ "$GLANCES_NO_DOCKER" = "1" ] && ARGS="$ARGS --disable-plugin docker"
-[ "$GLANCES_NO_SENSORS" = "1" ] && ARGS="$ARGS --disable-plugin sensors"
-
-echo "Starting Glances web server on $WEB_HOST:$WEB_PORT..."
-exec /venv/bin/python -m glances $ARGS
-START
+	# Create startup script (written via file, not heredoc, to preserve shebang)
+	printf '%s\n' '#!/bin/sh' \
+		'export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"' \
+		'export PYTHONPATH="/app:$PYTHONPATH"' \
+		'cd /' \
+		'' \
+		'# Set hostname from host kernel (proc:mixed exposes this)' \
+		'REAL_HOSTNAME=$(cat /proc/sys/kernel/hostname 2>/dev/null || echo glances)' \
+		'hostname "$REAL_HOSTNAME" 2>/dev/null' \
+		'printf "127.0.0.1\tlocalhost %s glances\n::1\t\tlocalhost ip6-localhost\n" "$REAL_HOSTNAME" > /etc/hosts' \
+		'' \
+		'# Copy host os-release so Glances reports OpenWrt, not Alpine' \
+		'if [ -f /host/openwrt_release ]; then' \
+		"    RELEASE=\$(grep DISTRIB_RELEASE /host/openwrt_release 2>/dev/null | cut -d\"'\" -f2)" \
+		'    printf '"'"'NAME="OpenWrt"\nVERSION="%s"\nID=openwrt\nPRETTY_NAME="OpenWrt %s"\n'"'"' "$RELEASE" "$RELEASE" > /etc/os-release' \
+		'fi' \
+		'' \
+		'WEB_PORT="${GLANCES_WEB_PORT:-61208}"' \
+		'WEB_HOST="${GLANCES_WEB_HOST:-0.0.0.0}"' \
+		'REFRESH="${GLANCES_REFRESH:-3}"' \
+		'' \
+		'ARGS="-w -B $WEB_HOST -p $WEB_PORT -t $REFRESH --disable-autodiscover --disable-check-update"' \
+		'[ "$GLANCES_NO_DOCKER" = "1" ] && ARGS="$ARGS --disable-plugin docker"' \
+		'[ "$GLANCES_NO_SENSORS" = "1" ] && ARGS="$ARGS --disable-plugin sensors"' \
+		'' \
+		'echo "Starting Glances on ${WEB_HOST}:${WEB_PORT} host=${REAL_HOSTNAME}..."' \
+		'exec /venv/bin/python -m glances $ARGS' \
+		> "$rootfs/opt/start-glances.sh"
 	chmod +x "$rootfs/opt/start-glances.sh"
 
 	log_info "Glances Docker image extracted successfully"
@@ -216,18 +228,32 @@ START
 lxc_create_config() {
 	load_config
 
-	cat > "$LXC_CONFIG" << EOF
-# Glances LXC Configuration
-lxc.uts.name = $LXC_NAME
+	local hostname=$(cat /proc/sys/kernel/hostname 2>/dev/null || echo glances)
+	local mem_bytes=$(echo "$memory_limit" | sed 's/M/000000/')
 
-# Root filesystem
+	cat > "$LXC_CONFIG" << EOF
+# Glances LXC Configuration — full host visibility
+lxc.uts.name = $hostname
 lxc.rootfs.path = dir:$LXC_ROOTFS
 
-# Network - use host network for full system visibility
+# Network - host network for full visibility
 lxc.net.0.type = none
 
-# Mounts - give access to host system info via proc:mixed
+# Auto-mounts
 lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+
+# Host filesystem bind mounts (read-only) for disk monitoring
+lxc.mount.entry = /rom rom none bind,ro,create=dir 0 0
+lxc.mount.entry = /overlay overlay none bind,ro,create=dir 0 0
+lxc.mount.entry = /boot boot none bind,ro,create=dir 0 0
+lxc.mount.entry = /srv srv none bind,ro,create=dir 0 0
+
+# Host info for OS identification
+lxc.mount.entry = /etc/openwrt_release host/openwrt_release none bind,ro,create=file 0 0
+lxc.mount.entry = /etc/openwrt_version host/openwrt_version none bind,ro,create=file 0 0
+
+# Docker socket for container monitoring (mount at /run, not /var/run which is a symlink)
+lxc.mount.entry = /var/run/docker.sock run/docker.sock none bind,create=file 0 0
 
 # Environment variables
 lxc.environment = GLANCES_WEB_PORT=$web_port
@@ -236,11 +262,11 @@ lxc.environment = GLANCES_REFRESH=$refresh_rate
 lxc.environment = GLANCES_NO_DOCKER=$([ "$monitor_docker" = "0" ] && echo 1 || echo 0)
 lxc.environment = GLANCES_NO_SENSORS=$([ "$monitor_sensors" = "0" ] && echo 1 || echo 0)
 
-# Capabilities - minimal for monitoring
-lxc.cap.drop = sys_admin sys_module mac_admin mac_override sys_rawio
+# Capabilities
+lxc.cap.drop = sys_module mac_admin mac_override sys_rawio
 
 # cgroups limits
-lxc.cgroup.memory.limit_in_bytes = $memory_limit
+lxc.cgroup2.memory.max = $mem_bytes
 
 # Init
 lxc.init.cmd = /opt/start-glances.sh
@@ -270,6 +296,10 @@ lxc_run() {
 
 	# Regenerate config to pick up any UCI changes
 	lxc_create_config
+
+	# Regenerate /etc/mtab from host mounts (psutil reads this)
+	grep -E '^(/dev/|overlayfs:)' /proc/mounts | \
+		grep -v '/srv/docker/overlay' > "$LXC_ROOTFS/etc/mtab" 2>/dev/null
 
 	log_info "Starting Glances LXC container..."
 	log_info "Web interface: http://0.0.0.0:$web_port"

@@ -2393,6 +2393,62 @@
         "refresh_interval": 30,
         "metrics": []
       }
+    },
+    {
+      "id": "secubox-app-smbfs",
+      "name": "SMB/CIFS Mounts",
+      "version": "1.0.0",
+      "category": "system",
+      "runtime": "native",
+      "description": "SMB/CIFS remote directory mount manager for media servers, backups, and shared storage",
+      "author": "CyberMind.fr",
+      "license": "Apache-2.0",
+      "icon": "\ud83d\udcc1",
+      "tags": [
+        "storage",
+        "smb",
+        "cifs",
+        "nas",
+        "media",
+        "backup"
+      ],
+      "packages": {
+        "required": [
+          "secubox-app-smbfs",
+          "kmod-fs-cifs",
+          "cifsmount"
+        ]
+      },
+      "capabilities": [
+        "storage",
+        "nas",
+        "media-library"
+      ],
+      "requirements": {
+        "min_ram_mb": 16,
+        "min_storage_mb": 1
+      },
+      "status": "stable",
+      "notes": "Manages SMB/CIFS network mounts. Integrates with Jellyfin and Lyrion media paths.",
+      "pkg_version": "1.0.0-1",
+      "app_version": "1.0.0",
+      "changelog": {
+        "1.0.0": {
+          "date": "2026-02-04",
+          "changes": [
+            "Initial release",
+            "UCI-based share management",
+            "Auto-mount at boot",
+            "Jellyfin and Lyrion integration"
+          ]
+        }
+      },
+      "widget": {
+        "enabled": false,
+        "template": "default",
+        "refresh_interval": 60,
+        "metrics": []
+      }
     }
   ],
   "featured_sections": {
