@@ -18,9 +18,10 @@
 					"save_config", "start", "stop", "restart",
 					"install", "uninstall", "update",
 					"add_app", "remove_app", "set_active_app", "upload_app",
+					"upload_chunk", "upload_finalize",
 					"preview_zip", "upload_zip",
 					"add_instance", "remove_instance", "enable_instance", "disable_instance",
-				"rename_app", "rename_instance",
+					"rename_app", "rename_instance",
 					"save_gitea_config", "gitea_clone", "gitea_pull"
 				]
 			},

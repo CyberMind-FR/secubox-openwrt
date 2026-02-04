@@ -614,6 +614,10 @@ return view.extend({
 		var isZip = file.name.endsWith('.zip');
 		var reader = new FileReader();
 
+		reader.onerror = function() {
+			ui.addNotification(null, E('p', {}, _('Failed to read file')), 'error');
+		};
+
 		reader.onload = function(e) {
 			var bytes = new Uint8Array(e.target.result);
 			var chunks = [];
@@ -622,21 +626,39 @@ return view.extend({
 			}
 			var content = btoa(chunks.join(''));
 
-			var uploadFn = isZip ? api.uploadZip(name, content, null) : api.uploadApp(name, content);
+			// Stop polling to prevent RPC batch conflicts
+			poll.stop();
 
-			uploadFn.then(function(r) {
-				if (r && r.success) {
-					ui.addNotification(null, E('p', {}, _('App uploaded: ') + name), 'success');
-					fileInput.value = '';
-					self.refresh().then(function() { self.updateStatus(); });
+			// Use chunked upload for files > 40KB (uhttpd has 64KB JSON body limit)
+			var useChunked = content.length > 40000;
+
+			setTimeout(function() {
+				var uploadFn;
+
+				if (useChunked) {
+					uploadFn = api.chunkedUpload(name, content, isZip);
+				} else if (isZip) {
+					uploadFn = api.uploadZip(name, content, null);
 				} else {
-					var msg = (r && r.message) ? r.message : _('Upload failed');
-					ui.addNotification(null, E('p', {}, msg), 'error');
+					uploadFn = api.uploadApp(name, content);
 				}
-			}).catch(function(err) {
-				ui.addNotification(null, E('p', {},
-					_('Upload error: ') + (err.message || err)), 'error');
-			});
+
+				uploadFn.then(function(r) {
+					poll.start();
+					if (r && r.success) {
+						ui.addNotification(null, E('p', {}, _('App uploaded: ') + name), 'success');
+						fileInput.value = '';
+						self.refresh().then(function() { self.updateStatus(); });
+					} else {
+						var msg = (r && r.message) ? r.message : _('Upload failed');
+						ui.addNotification(null, E('p', {}, msg), 'error');
+					}
+				}).catch(function(err) {
+					poll.start();
+					ui.addNotification(null, E('p', {},
+						_('Upload error: ') + (err.message || err)), 'error');
+				});
+			}, 10);
 		};
 
 		reader.readAsArrayBuffer(file);
