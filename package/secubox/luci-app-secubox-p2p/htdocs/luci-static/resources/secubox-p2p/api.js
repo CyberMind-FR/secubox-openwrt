@@ -282,6 +282,53 @@ var callRestoreLocalBackup = rpc.declare({
 	expect: { success: false }
 });
 
+// P2P Package Feed
+var callGetFeedPeers = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'get_feed_peers',
+	expect: { success: false, peers: [] }
+});
+
+var callGetPeerPackages = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'get_peer_packages',
+	params: ['peer_addr'],
+	expect: {}
+});
+
+var callGetAllPackages = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'get_all_packages',
+	expect: {}
+});
+
+var callFetchPackage = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'fetch_package',
+	params: ['package', 'peer_addr'],
+	expect: { success: false }
+});
+
+var callSyncPackageCatalog = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'sync_package_catalog',
+	params: ['refresh'],
+	expect: {}
+});
+
+var callGetFeedSettings = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'get_feed_settings',
+	expect: {}
+});
+
+var callSetFeedSettings = rpc.declare({
+	object: 'luci.secubox-p2p',
+	method: 'set_feed_settings',
+	params: ['share_feed', 'auto_sync', 'sync_interval', 'prefer_local'],
+	expect: { success: false }
+});
+
 return baseclass.extend({
 	// Peers
 	getPeers: function() { return callGetPeers(); },
@@ -354,5 +401,16 @@ return baseclass.extend({
 	// Local Backup
 	createLocalBackup: function(name, components) { return callCreateLocalBackup(name, components); },
 	listLocalBackups: function() { return callListLocalBackups(); },
-	restoreLocalBackup: function(backupId) { return callRestoreLocalBackup(backupId); }
+	restoreLocalBackup: function(backupId) { return callRestoreLocalBackup(backupId); },
+
+	// P2P Package Feed
+	getFeedPeers: function() { return callGetFeedPeers(); },
+	getPeerPackages: function(peerAddr) { return callGetPeerPackages(peerAddr); },
+	getAllPackages: function() { return callGetAllPackages(); },
+	fetchPackage: function(pkg, peerAddr) { return callFetchPackage(pkg, peerAddr || ''); },
+	syncPackageCatalog: function(refresh) { return callSyncPackageCatalog(refresh || false); },
+	getFeedSettings: function() { return callGetFeedSettings(); },
+	setFeedSettings: function(shareFeed, autoSync, syncInterval, preferLocal) {
+		return callSetFeedSettings(shareFeed, autoSync, syncInterval, preferLocal);
+	}
 });

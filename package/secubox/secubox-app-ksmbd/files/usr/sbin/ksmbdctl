@@ -1,0 +1,320 @@
+#!/bin/sh
+# SecuBox ksmbd Mesh Media Server Manager
+
+CONFIG="secubox-ksmbd"
+KSMBD_CONFIG="ksmbd"
+
+usage() {
+	cat <<'USAGE'
+Usage: ksmbdctl <command>
+
+Commands:
+  enable              Enable mesh media server
+  disable             Disable mesh media server
+  status              Show server and share status
+  apply               Apply SecuBox shares to ksmbd
+  add-share <name> <path> [--guest] [--readonly]
+                      Add a new share
+  remove-share <name> Remove a share
+  list-shares         List configured shares
+  add-user <name>     Add SMB user (prompts for password)
+  remove-user <name>  Remove SMB user
+  list-users          List SMB users
+  mesh-register       Register with P2P mesh
+  restart             Restart ksmbd service
+USAGE
+}
+
+# ---------- helpers ----------
+
+require_root() { [ "$(id -u)" -eq 0 ]; }
+
+log_info()  { echo "[INFO] $*"; logger -t ksmbdctl "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t ksmbdctl -p err "$*"; }
+
+uci_get() {
+	local key="$1"
+	local section="${2:-main}"
+	uci -q get ${CONFIG}.${section}.$key
+}
+
+uci_set() {
+	local key="$1"
+	local value="$2"
+	local section="${3:-main}"
+	uci set ${CONFIG}.${section}.$key="$value"
+}
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+# ---------- share management ----------
+
+apply_shares() {
+	# Sync SecuBox shares to ksmbd config
+	local workgroup=$(uci_get workgroup)
+	local description=$(uci_get description)
+
+	# Update ksmbd globals
+	uci set ${KSMBD_CONFIG}.@globals[0].workgroup="$workgroup"
+	uci set ${KSMBD_CONFIG}.@globals[0].description="$description"
+
+	# Remove existing ksmbd shares
+	while uci -q delete ${KSMBD_CONFIG}.@share[0]; do :; done
+
+	# Add SecuBox shares
+	. /lib/functions.sh
+	config_load "$CONFIG"
+	config_foreach _add_ksmbd_share share
+
+	uci commit "$KSMBD_CONFIG"
+	log_info "Applied SecuBox shares to ksmbd"
+}
+
+_add_ksmbd_share() {
+	local section="$1"
+	local enabled name path guest_ok read_only comment
+
+	config_get enabled "$section" enabled 0
+	[ "$enabled" = "1" ] || return 0
+
+	config_get name "$section" name "$section"
+	config_get path "$section" path ""
+	config_get guest_ok "$section" guest_ok 0
+	config_get read_only "$section" read_only 0
+	config_get comment "$section" comment ""
+
+	[ -z "$path" ] && return 0
+
+	# Ensure directory exists
+	ensure_dir "$path"
+
+	# Add to ksmbd
+	uci add ${KSMBD_CONFIG} share >/dev/null
+	uci set ${KSMBD_CONFIG}.@share[-1].name="$name"
+	uci set ${KSMBD_CONFIG}.@share[-1].path="$path"
+	uci set ${KSMBD_CONFIG}.@share[-1].guest_ok="$guest_ok"
+	uci set ${KSMBD_CONFIG}.@share[-1].read_only="$read_only"
+	[ -n "$comment" ] && uci set ${KSMBD_CONFIG}.@share[-1].comment="$comment"
+	uci set ${KSMBD_CONFIG}.@share[-1].browseable='1'
+	uci set ${KSMBD_CONFIG}.@share[-1].create_mask='0644'
+	uci set ${KSMBD_CONFIG}.@share[-1].dir_mask='0755'
+
+	log_info "Added share: $name -> $path"
+}
+
+cmd_add_share() {
+	local name="$1"
+	local path="$2"
+	shift 2
+
+	[ -z "$name" ] || [ -z "$path" ] && {
+		echo "Usage: ksmbdctl add-share <name> <path> [--guest] [--readonly]"
+		return 1
+	}
+
+	local guest_ok=0
+	local read_only=0
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			--guest) guest_ok=1 ;;
+			--readonly) read_only=1 ;;
+		esac
+		shift
+	done
+
+	# Sanitize name for UCI section
+	local section=$(echo "$name" | tr '[:upper:] ' '[:lower:]_' | tr -cd 'a-z0-9_')
+
+	uci set ${CONFIG}.${section}=share
+	uci set ${CONFIG}.${section}.enabled='1'
+	uci set ${CONFIG}.${section}.name="$name"
+	uci set ${CONFIG}.${section}.path="$path"
+	uci set ${CONFIG}.${section}.guest_ok="$guest_ok"
+	uci set ${CONFIG}.${section}.read_only="$read_only"
+	uci commit "$CONFIG"
+
+	log_info "Created share: $name -> $path"
+	apply_shares
+	cmd_restart
+}
+
+cmd_remove_share() {
+	local name="$1"
+	[ -z "$name" ] && { echo "Usage: ksmbdctl remove-share <name>"; return 1; }
+
+	local section=$(echo "$name" | tr '[:upper:] ' '[:lower:]_' | tr -cd 'a-z0-9_')
+
+	if uci -q get ${CONFIG}.${section} >/dev/null; then
+		uci delete ${CONFIG}.${section}
+		uci commit "$CONFIG"
+		log_info "Removed share: $name"
+		apply_shares
+		cmd_restart
+	else
+		log_error "Share not found: $name"
+		return 1
+	fi
+}
+
+cmd_list_shares() {
+	echo "Configured Shares:"
+	echo "=================="
+	. /lib/functions.sh
+	config_load "$CONFIG"
+	config_foreach _list_share share
+}
+
+_list_share() {
+	local section="$1"
+	local enabled name path guest_ok read_only
+
+	config_get enabled "$section" enabled 0
+	config_get name "$section" name "$section"
+	config_get path "$section" path ""
+	config_get guest_ok "$section" guest_ok 0
+	config_get read_only "$section" read_only 0
+
+	local status="disabled"
+	[ "$enabled" = "1" ] && status="enabled"
+
+	local flags=""
+	[ "$guest_ok" = "1" ] && flags="${flags}guest "
+	[ "$read_only" = "1" ] && flags="${flags}ro "
+	[ -z "$flags" ] && flags="auth rw"
+
+	printf "  %-12s  %-25s  [%s] %s\n" "$name" "$path" "$status" "$flags"
+}
+
+# ---------- user management ----------
+
+cmd_add_user() {
+	local username="$1"
+	[ -z "$username" ] && { echo "Usage: ksmbdctl add-user <username>"; return 1; }
+
+	echo "Adding SMB user: $username"
+	ksmbd.adduser -a "$username"
+}
+
+cmd_remove_user() {
+	local username="$1"
+	[ -z "$username" ] && { echo "Usage: ksmbdctl remove-user <username>"; return 1; }
+
+	ksmbd.adduser -d "$username"
+	log_info "Removed user: $username"
+}
+
+cmd_list_users() {
+	echo "SMB Users:"
+	echo "=========="
+	if [ -f /etc/ksmbd/ksmbdpwd.db ]; then
+		ksmbd.adduser -l 2>/dev/null || echo "  (none)"
+	else
+		echo "  (no user database)"
+	fi
+}
+
+# ---------- service control ----------
+
+cmd_enable() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	uci_set enabled '1'
+	uci commit "$CONFIG"
+
+	apply_shares
+
+	/etc/init.d/ksmbd enable
+	/etc/init.d/ksmbd start
+
+	log_info "Mesh media server enabled"
+}
+
+cmd_disable() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	/etc/init.d/ksmbd stop
+	/etc/init.d/ksmbd disable
+
+	uci_set enabled '0'
+	uci commit "$CONFIG"
+
+	log_info "Mesh media server disabled"
+}
+
+cmd_restart() {
+	/etc/init.d/ksmbd restart
+	log_info "ksmbd restarted"
+}
+
+cmd_status() {
+	echo "SecuBox Mesh Media Server Status"
+	echo "================================="
+	echo ""
+	echo "Configuration:"
+	echo "  Enabled:      $(uci_get enabled || echo '0')"
+	echo "  Workgroup:    $(uci_get workgroup)"
+	echo "  Description:  $(uci_get description)"
+	echo "  Mesh Announce: $(uci_get mesh_announce)"
+	echo ""
+
+	# Service status
+	if pgrep ksmbd.mountd >/dev/null 2>&1; then
+		echo "Service:        RUNNING"
+	else
+		echo "Service:        STOPPED"
+	fi
+
+	# Show listening port
+	if netstat -tln 2>/dev/null | grep -q ":445 "; then
+		echo "SMB Port:       445 (listening)"
+	else
+		echo "SMB Port:       445 (not listening)"
+	fi
+
+	echo ""
+	echo "Active Shares (from ksmbd):"
+	local idx=0
+	while true; do
+		local share_name=$(uci -q get ksmbd.@share[$idx].name)
+		local share_path=$(uci -q get ksmbd.@share[$idx].path)
+		[ -z "$share_name" ] && break
+		printf "  %-12s -> %s\n" "$share_name" "$share_path"
+		idx=$((idx + 1))
+	done
+	[ "$idx" = "0" ] && echo "  (no shares configured)"
+
+	echo ""
+	echo "Network Access:"
+	local lan_ip=$(uci -q get network.lan.ipaddr || echo '192.168.255.1')
+	echo "  smb://${lan_ip}/"
+	echo "  \\\\\\\\${lan_ip}\\\\"
+}
+
+cmd_mesh_register() {
+	if [ -x /usr/sbin/secubox-p2p ]; then
+		/usr/sbin/secubox-p2p register-service ksmbd 445 2>/dev/null
+		log_info "Registered ksmbd with mesh"
+	else
+		log_error "secubox-p2p not available"
+		return 1
+	fi
+}
+
+# ---------- main ----------
+
+case "$1" in
+	enable)         cmd_enable ;;
+	disable)        cmd_disable ;;
+	status)         cmd_status ;;
+	apply)          apply_shares ;;
+	add-share)      shift; cmd_add_share "$@" ;;
+	remove-share)   shift; cmd_remove_share "$@" ;;
+	list-shares)    cmd_list_shares ;;
+	add-user)       shift; cmd_add_user "$@" ;;
+	remove-user)    shift; cmd_remove_user "$@" ;;
+	list-users)     cmd_list_users ;;
+	mesh-register)  cmd_mesh_register ;;
+	restart)        cmd_restart ;;
+	*)              usage; exit 1 ;;
+esac

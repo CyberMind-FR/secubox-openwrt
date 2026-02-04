@@ -449,23 +449,63 @@ return view.extend({
 		ui.hideModal();
 		ui.showModal(_('Uploading'), [E('p', { 'class': 'spinning' }, _('Uploading files...'))]);
 
-		var sitesRoot = '/srv/metablogizer/sites';
-		Promise.all(this.uploadFiles.map(function(f) {
+		// Process files sequentially to avoid RPC batch conflicts
+		var uploadSequential = function(files, idx, results) {
+			if (idx >= files.length) {
+				return Promise.resolve(results);
+			}
+
+			var f = files[idx];
 			return new Promise(function(resolve) {
 				var reader = new FileReader();
 				reader.onload = function(e) {
+					// Convert ArrayBuffer to base64
+					var bytes = new Uint8Array(e.target.result);
+					var chunks = [];
+					for (var i = 0; i < bytes.length; i += 8192) {
+						chunks.push(String.fromCharCode.apply(null, bytes.slice(i, i + 8192)));
+					}
+					var content = btoa(chunks.join(''));
+
 					var dest = (asIndex && f === firstHtml) ? 'index.html' : f.name;
-					fs.write(sitesRoot + '/' + site.name + '/' + dest, e.target.result)
-						.then(function() { resolve({ ok: true, name: f.name }); })
-						.catch(function() { resolve({ ok: false, name: f.name }); });
+
+					// Use chunked upload for files > 40KB (uhttpd has 64KB JSON body limit)
+					var uploadFn;
+					if (content.length > 40000) {
+						uploadFn = api.chunkedUpload(site.id, dest, content);
+					} else {
+						uploadFn = api.uploadFile(site.id, dest, content);
+					}
+
+					uploadFn
+						.then(function(r) {
+							results.push({ ok: r && r.success, name: f.name });
+							resolve();
+						})
+						.catch(function() {
+							results.push({ ok: false, name: f.name });
+							resolve();
+						});
 				};
-				reader.onerror = function() { resolve({ ok: false, name: f.name }); };
-				reader.readAsText(f);
+				reader.onerror = function() {
+					results.push({ ok: false, name: f.name });
+					resolve();
+				};
+				reader.readAsArrayBuffer(f);
+			}).then(function() {
+				return uploadSequential(files, idx + 1, results);
 			});
-		})).then(function(results) {
+		};
+
+		uploadSequential(this.uploadFiles, 0, []).then(function(results) {
 			ui.hideModal();
 			var ok = results.filter(function(r) { return r.ok; }).length;
-			ui.addNotification(null, E('p', ok + _(' file(s) uploaded successfully')));
+			var failed = results.length - ok;
+			if (failed > 0) {
+				ui.addNotification(null, E('p', ok + _(' file(s) uploaded, ') + failed + _(' failed')), 'warning');
+			} else {
+				ui.addNotification(null, E('p', ok + _(' file(s) uploaded successfully')));
+			}
 			self.uploadFiles = [];
 		});
 	},

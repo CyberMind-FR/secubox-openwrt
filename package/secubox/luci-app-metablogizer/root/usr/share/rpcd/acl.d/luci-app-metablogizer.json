@@ -30,6 +30,8 @@
 					"sync_site",
 					"save_settings",
 					"upload_file",
+					"upload_chunk",
+					"upload_finalize",
 					"list_files",
 					"repair_site",
 					"enable_tor",

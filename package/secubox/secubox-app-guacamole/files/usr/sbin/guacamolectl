@@ -1,0 +1,682 @@
+#!/bin/sh
+# SecuBox Apache Guacamole Manager — LXC Debian container
+
+CONFIG="guacamole"
+LXC_NAME="guacamole"
+LXC_PATH="/srv/lxc"
+LXC_ROOTFS="$LXC_PATH/$LXC_NAME/rootfs"
+LXC_CONF="$LXC_PATH/$LXC_NAME/config"
+DATA_PATH_DEFAULT="/srv/guacamole"
+GUAC_VERSION="1.5.5"
+OPKG_UPDATED=0
+
+usage() {
+	cat <<'USAGE'
+Usage: guacamolectl <command>
+
+Commands:
+  install              Create LXC container with Guacamole
+  uninstall            Remove container (preserves config)
+  update               Update Guacamole to latest version
+  check                Run prerequisite checks
+  status               Show container and service status
+  logs [N]             Show last N lines of logs (default: 50)
+  shell                Open interactive shell in container
+  add-ssh <name> <host> [port] [user]    Add SSH connection
+  add-vnc <name> <host> [port]           Add VNC connection
+  add-rdp <name> <host> [port] [user]    Add RDP connection
+  list-connections     List configured connections
+  configure-haproxy    Register as HAProxy vhost
+  mesh-register        Register in P2P mesh
+  service-run          Internal: run container via procd
+  service-stop         Stop container
+USAGE
+}
+
+# ---------- helpers ----------
+
+require_root() { [ "$(id -u)" -eq 0 ]; }
+
+uci_get() {
+	local key="$1"
+	local section="${2:-main}"
+	uci -q get ${CONFIG}.${section}.$key
+}
+
+uci_set() {
+	local key="$1"
+	local value="$2"
+	local section="${3:-main}"
+	uci set ${CONFIG}.${section}.$key="$value"
+}
+
+log_info()  { echo "[INFO] $*"; logger -t guacamolectl "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t guacamolectl -p err "$*"; }
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+ensure_packages() {
+	for pkg in "$@"; do
+		if ! opkg status "$pkg" 2>/dev/null | grep -q "Status:.*installed"; then
+			if [ "$OPKG_UPDATED" -eq 0 ]; then
+				opkg update || return 1
+				OPKG_UPDATED=1
+			fi
+			opkg install "$pkg" || return 1
+		fi
+	done
+}
+
+defaults() {
+	data_path="$(uci_get data_path || echo $DATA_PATH_DEFAULT)"
+	web_port="$(uci_get web_port || echo 8080)"
+	memory="$(uci_get memory || echo 512)"
+}
+
+detect_arch() {
+	case "$(uname -m)" in
+		aarch64) echo "aarch64" ;;
+		armv7l)  echo "armv7" ;;
+		x86_64)  echo "x86_64" ;;
+		*)       echo "x86_64" ;;
+	esac
+}
+
+# ---------- LXC helpers ----------
+
+lxc_running() {
+	lxc-info -n "$LXC_NAME" -s 2>/dev/null | grep -q "RUNNING"
+}
+
+lxc_exists() {
+	[ -f "$LXC_CONF" ] && [ -d "$LXC_ROOTFS" ]
+}
+
+lxc_exec() {
+	lxc-attach -n "$LXC_NAME" -- "$@"
+}
+
+lxc_stop() {
+	if lxc_running; then
+		lxc-stop -n "$LXC_NAME" -k 2>/dev/null || true
+		sleep 1
+	fi
+}
+
+# ---------- rootfs creation ----------
+
+lxc_create_rootfs() {
+	local arch=$(detect_arch)
+
+	# Map to Debian architecture names
+	local debian_arch
+	case "$arch" in
+		aarch64) debian_arch="arm64" ;;
+		armv7)   debian_arch="armhf" ;;
+		x86_64)  debian_arch="amd64" ;;
+		*)       debian_arch="amd64" ;;
+	esac
+
+	ensure_dir "$LXC_ROOTFS"
+
+	# Minimal Debian rootfs via tarball from LXC image server
+	local rootfs_url="https://images.linuxcontainers.org/images/debian/bookworm/${debian_arch}/default/"
+	log_info "Downloading Debian bookworm rootfs for ${debian_arch}..."
+
+	# Get latest build directory
+	local latest_path
+	latest_path=$(wget -q -O - "$rootfs_url" 2>/dev/null | grep -oE '[0-9]{8}_[0-9]{2}:[0-9]{2}' | tail -1)
+	if [ -z "$latest_path" ]; then
+		log_error "Failed to find latest Debian rootfs build"
+		return 1
+	fi
+
+	local tarball="/tmp/debian-guacamole.tar.xz"
+	local tarball_url="${rootfs_url}${latest_path}/rootfs.tar.xz"
+	wget -q -O "$tarball" "$tarball_url" || {
+		log_error "Failed to download Debian rootfs from $tarball_url"
+		return 1
+	}
+
+	tar -xJf "$tarball" -C "$LXC_ROOTFS" || {
+		log_error "Failed to extract Debian rootfs"
+		return 1
+	}
+	rm -f "$tarball"
+
+	# DNS
+	cp /etc/resolv.conf "$LXC_ROOTFS/etc/resolv.conf" 2>/dev/null || \
+		echo "nameserver 8.8.8.8" > "$LXC_ROOTFS/etc/resolv.conf"
+
+	# Create minimal /dev for chroot operations
+	mkdir -p "$LXC_ROOTFS/dev"
+	[ -c "$LXC_ROOTFS/dev/null" ] || mknod -m 666 "$LXC_ROOTFS/dev/null" c 1 3 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/zero" ] || mknod -m 666 "$LXC_ROOTFS/dev/zero" c 1 5 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/random" ] || mknod -m 666 "$LXC_ROOTFS/dev/random" c 1 8 2>/dev/null
+	[ -c "$LXC_ROOTFS/dev/urandom" ] || mknod -m 666 "$LXC_ROOTFS/dev/urandom" c 1 9 2>/dev/null
+
+	# Configure apt sources explicitly
+	cat > "$LXC_ROOTFS/etc/apt/sources.list" <<'SOURCES'
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+SOURCES
+
+	# Install Guacamole dependencies
+	log_info "Installing Guacamole dependencies (this takes a while)..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		export DEBIAN_FRONTEND=noninteractive
+		apt-get update && \
+		apt-get install -y --no-install-recommends \
+			openjdk-17-jre-headless \
+			tomcat10 \
+			wget \
+			ca-certificates \
+			libcairo2 libpng-dev libjpeg62-turbo-dev libpango1.0-dev \
+			libssh2-1 libvncserver1 freerdp2-dev libfreerdp-client2-2 \
+			libssl-dev libavutil-dev libswscale-dev libvorbis-dev \
+			libpulse-dev uuid-dev libtelnet-dev libwebsockets-dev
+	" || {
+		log_error "Failed to install base dependencies"
+		return 1
+	}
+
+	# Build guacd from source (not in Debian repos)
+	log_info "Building guacd from source..."
+	chroot "$LXC_ROOTFS" /bin/sh -c "
+		export DEBIAN_FRONTEND=noninteractive
+		apt-get install -y --no-install-recommends build-essential autoconf automake libtool pkg-config && \
+		cd /tmp && \
+		wget -q https://apache.org/dyn/closer.lua/guacamole/${GUAC_VERSION}/source/guacamole-server-${GUAC_VERSION}.tar.gz?action=download -O guacamole-server.tar.gz || \
+		wget -q https://dlcdn.apache.org/guacamole/${GUAC_VERSION}/source/guacamole-server-${GUAC_VERSION}.tar.gz -O guacamole-server.tar.gz && \
+		tar xzf guacamole-server.tar.gz && \
+		cd guacamole-server-${GUAC_VERSION} && \
+		autoreconf -fi && \
+		./configure --with-init-dir=/etc/init.d && \
+		make -j\$(nproc) && \
+		make install && \
+		ldconfig && \
+		cd / && rm -rf /tmp/guacamole-server*
+	" || {
+		log_error "Failed to build guacd"
+		return 1
+	}
+
+	# Download Guacamole client WAR
+	log_info "Downloading Guacamole client v${GUAC_VERSION}..."
+	local war_url="https://apache.org/dyn/closer.lua/guacamole/${GUAC_VERSION}/binary/guacamole-${GUAC_VERSION}.war?action=download"
+	wget -q -O "$LXC_ROOTFS/var/lib/tomcat10/webapps/guacamole.war" "$war_url" || {
+		# Try mirror
+		war_url="https://dlcdn.apache.org/guacamole/${GUAC_VERSION}/binary/guacamole-${GUAC_VERSION}.war"
+		wget -q -O "$LXC_ROOTFS/var/lib/tomcat10/webapps/guacamole.war" "$war_url" || {
+			log_error "Failed to download Guacamole WAR"
+			return 1
+		}
+	}
+
+	# Create Guacamole config directory
+	mkdir -p "$LXC_ROOTFS/etc/guacamole"
+
+	# Create guacamole.properties
+	cat > "$LXC_ROOTFS/etc/guacamole/guacamole.properties" <<'EOF'
+guacd-hostname: localhost
+guacd-port: 4822
+user-mapping: /etc/guacamole/user-mapping.xml
+EOF
+
+	# Create startup script
+	cat > "$LXC_ROOTFS/opt/start-guacamole.sh" <<'STARTUP'
+#!/bin/sh
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+# Start guacd
+/usr/sbin/guacd -b 127.0.0.1 -l 4822 &
+GUACD_PID=$!
+
+# Wait for guacd
+sleep 2
+
+# Set GUACAMOLE_HOME
+export GUACAMOLE_HOME=/etc/guacamole
+
+# Start Tomcat in foreground
+cd /var/lib/tomcat10
+exec /usr/share/tomcat10/bin/catalina.sh run
+STARTUP
+	chmod +x "$LXC_ROOTFS/opt/start-guacamole.sh"
+
+	log_info "Rootfs created successfully"
+}
+
+lxc_create_config() {
+	defaults
+	local mem_bytes=$((memory * 1024 * 1024))
+
+	ensure_dir "$LXC_PATH/$LXC_NAME"
+	ensure_dir "$data_path"
+
+	cat > "$LXC_CONF" <<EOF
+# Guacamole LXC Container
+lxc.uts.name = $LXC_NAME
+lxc.rootfs.path = dir:$LXC_ROOTFS
+lxc.arch = $(detect_arch)
+
+# Network: share host network
+lxc.net.0.type = none
+
+# Auto-mounts
+lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+
+# Bind mount for persistent config
+lxc.mount.entry = $data_path etc/guacamole none bind,create=dir 0 0
+
+# Resource limits
+lxc.cgroup2.memory.max = $mem_bytes
+
+# Security
+lxc.cap.drop = sys_module mac_admin mac_override sys_time
+
+# TTY/PTY for cgroup2
+lxc.tty.max = 4
+lxc.pty.max = 16
+lxc.cgroup2.devices.allow = c 1:3 rwm
+lxc.cgroup2.devices.allow = c 1:5 rwm
+lxc.cgroup2.devices.allow = c 1:7 rwm
+lxc.cgroup2.devices.allow = c 1:8 rwm
+lxc.cgroup2.devices.allow = c 1:9 rwm
+lxc.cgroup2.devices.allow = c 5:0 rwm
+lxc.cgroup2.devices.allow = c 5:1 rwm
+lxc.cgroup2.devices.allow = c 5:2 rwm
+lxc.cgroup2.devices.allow = c 136:* rwm
+
+# Startup command
+lxc.init.cmd = /opt/start-guacamole.sh
+EOF
+
+	log_info "LXC config created"
+}
+
+# ---------- user mapping ----------
+
+generate_user_mapping() {
+	defaults
+
+	local mapping_file="$data_path/user-mapping.xml"
+
+	cat > "$mapping_file" <<'HEADER'
+<?xml version="1.0" encoding="UTF-8"?>
+<user-mapping>
+    <authorize username="admin" password="admin">
+HEADER
+
+	# Add connections from UCI
+	config_load "$CONFIG"
+	config_foreach _add_connection_xml connection
+
+	cat >> "$mapping_file" <<'FOOTER'
+    </authorize>
+</user-mapping>
+FOOTER
+
+	log_info "Generated user-mapping.xml with connections"
+}
+
+_add_connection_xml() {
+	local section="$1"
+	local enabled name protocol hostname port username password
+
+	config_get enabled "$section" enabled 1
+	[ "$enabled" = "1" ] || return 0
+
+	config_get name "$section" name "$section"
+	config_get protocol "$section" protocol "ssh"
+	config_get hostname "$section" hostname "127.0.0.1"
+	config_get port "$section" port ""
+	config_get username "$section" username ""
+	config_get password "$section" _password ""
+
+	defaults
+	local mapping_file="$data_path/user-mapping.xml"
+
+	# Default ports
+	[ -z "$port" ] && case "$protocol" in
+		ssh) port=22 ;;
+		vnc) port=5900 ;;
+		rdp) port=3389 ;;
+	esac
+
+	cat >> "$mapping_file" <<EOF
+        <connection name="$name">
+            <protocol>$protocol</protocol>
+            <param name="hostname">$hostname</param>
+            <param name="port">$port</param>
+EOF
+
+	[ -n "$username" ] && echo "            <param name=\"username\">$username</param>" >> "$mapping_file"
+	[ -n "$password" ] && echo "            <param name=\"password\">$password</param>" >> "$mapping_file"
+
+	echo "        </connection>" >> "$mapping_file"
+}
+
+# ---------- commands ----------
+
+cmd_install() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Installing Apache Guacamole..."
+
+	# Check prerequisites
+	ensure_packages lxc lxc-common wget || return 1
+
+	# Create LXC rootfs
+	if ! lxc_exists; then
+		lxc_create_rootfs || return 1
+	fi
+
+	# Create LXC config
+	lxc_create_config
+
+	# Generate user mapping
+	generate_user_mapping
+
+	# Enable and start
+	uci_set enabled '1'
+	uci commit "$CONFIG"
+	/etc/init.d/guacamole enable
+	/etc/init.d/guacamole start
+
+	defaults
+	log_info "Guacamole installed successfully"
+	log_info "Access at: http://$(uci -q get network.lan.ipaddr || echo '192.168.255.1'):${web_port}/guacamole/"
+	log_info "Default credentials: admin / admin"
+}
+
+cmd_uninstall() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Uninstalling Guacamole..."
+
+	# Stop and disable
+	/etc/init.d/guacamole stop 2>/dev/null
+	/etc/init.d/guacamole disable 2>/dev/null
+	lxc_stop
+
+	# Remove container but keep config
+	rm -rf "$LXC_ROOTFS" "$LXC_CONF"
+
+	uci_set enabled '0'
+	uci commit "$CONFIG"
+
+	defaults
+	log_info "Container removed. Config preserved in $data_path"
+}
+
+cmd_update() {
+	require_root || { log_error "Must run as root"; return 1; }
+
+	log_info "Updating Guacamole..."
+	lxc_stop
+
+	# Re-download WAR
+	local war_url="https://dlcdn.apache.org/guacamole/${GUAC_VERSION}/binary/guacamole-${GUAC_VERSION}.war"
+	wget -q -O "$LXC_ROOTFS/var/lib/tomcat10/webapps/guacamole.war" "$war_url" || {
+		log_error "Failed to download new version"
+		return 1
+	}
+
+	# Remove expanded webapp
+	rm -rf "$LXC_ROOTFS/var/lib/tomcat10/webapps/guacamole"
+
+	/etc/init.d/guacamole start
+	log_info "Update complete"
+}
+
+cmd_check() {
+	echo "Guacamole Prerequisites Check"
+	echo "=============================="
+
+	# LXC
+	if command -v lxc-start >/dev/null 2>&1; then
+		echo "[OK] LXC installed"
+	else
+		echo "[FAIL] LXC not installed"
+	fi
+
+	# Container exists
+	if lxc_exists; then
+		echo "[OK] Container exists"
+	else
+		echo "[--] Container not created"
+	fi
+
+	# Container running
+	if lxc_running; then
+		echo "[OK] Container running"
+	else
+		echo "[--] Container not running"
+	fi
+
+	# Tomcat port
+	defaults
+	if netstat -tln 2>/dev/null | grep -q ":${web_port} " || \
+	   grep -q ":$(printf '%04X' $web_port) " /proc/net/tcp 2>/dev/null; then
+		echo "[OK] Tomcat listening on port $web_port"
+	else
+		echo "[--] Tomcat not listening"
+	fi
+}
+
+cmd_status() {
+	defaults
+
+	echo "Guacamole Status"
+	echo "================"
+	echo ""
+	echo "Configuration:"
+	echo "  Enabled:    $(uci_get enabled || echo '0')"
+	echo "  Web Port:   $web_port"
+	echo "  Memory:     ${memory}M"
+	echo "  Data Path:  $data_path"
+	echo ""
+
+	if lxc_exists; then
+		echo "Container:    EXISTS"
+	else
+		echo "Container:    NOT CREATED (run: guacamolectl install)"
+		return 0
+	fi
+
+	if lxc_running; then
+		echo "State:        RUNNING"
+		lxc-info -n "$LXC_NAME" | grep -E "PID|Memory" | sed 's/^/  /'
+	else
+		echo "State:        STOPPED"
+	fi
+
+	echo ""
+	echo "Access URL:   http://$(uci -q get network.lan.ipaddr || echo '192.168.255.1'):${web_port}/guacamole/"
+	echo "Credentials:  admin / admin (change after first login)"
+}
+
+cmd_logs() {
+	local lines="${1:-50}"
+
+	if lxc_running; then
+		echo "=== Tomcat logs ==="
+		lxc_exec tail -n "$lines" /var/log/tomcat10/catalina.out 2>/dev/null || \
+			echo "No Tomcat logs"
+
+		echo ""
+		echo "=== guacd logs ==="
+		lxc_exec tail -n "$lines" /var/log/syslog 2>/dev/null | grep guacd || \
+			echo "No guacd logs"
+	else
+		echo "Container not running"
+	fi
+}
+
+cmd_shell() {
+	if lxc_running; then
+		lxc_exec /bin/bash || lxc_exec /bin/sh
+	else
+		log_error "Container not running"
+		return 1
+	fi
+}
+
+cmd_add_ssh() {
+	local name="$1"
+	local host="$2"
+	local port="${3:-22}"
+	local user="${4:-root}"
+
+	[ -z "$name" ] || [ -z "$host" ] && { echo "Usage: guacamolectl add-ssh <name> <host> [port] [user]"; return 1; }
+
+	uci set ${CONFIG}.${name}=connection
+	uci set ${CONFIG}.${name}.enabled='1'
+	uci set ${CONFIG}.${name}.name="$name"
+	uci set ${CONFIG}.${name}.protocol='ssh'
+	uci set ${CONFIG}.${name}.hostname="$host"
+	uci set ${CONFIG}.${name}.port="$port"
+	uci set ${CONFIG}.${name}.username="$user"
+	uci commit "$CONFIG"
+
+	generate_user_mapping
+	log_info "Added SSH connection: $name -> $host:$port"
+}
+
+cmd_add_vnc() {
+	local name="$1"
+	local host="$2"
+	local port="${3:-5900}"
+
+	[ -z "$name" ] || [ -z "$host" ] && { echo "Usage: guacamolectl add-vnc <name> <host> [port]"; return 1; }
+
+	uci set ${CONFIG}.${name}=connection
+	uci set ${CONFIG}.${name}.enabled='1'
+	uci set ${CONFIG}.${name}.name="$name"
+	uci set ${CONFIG}.${name}.protocol='vnc'
+	uci set ${CONFIG}.${name}.hostname="$host"
+	uci set ${CONFIG}.${name}.port="$port"
+	uci commit "$CONFIG"
+
+	generate_user_mapping
+	log_info "Added VNC connection: $name -> $host:$port"
+}
+
+cmd_add_rdp() {
+	local name="$1"
+	local host="$2"
+	local port="${3:-3389}"
+	local user="$4"
+
+	[ -z "$name" ] || [ -z "$host" ] && { echo "Usage: guacamolectl add-rdp <name> <host> [port] [user]"; return 1; }
+
+	uci set ${CONFIG}.${name}=connection
+	uci set ${CONFIG}.${name}.enabled='1'
+	uci set ${CONFIG}.${name}.name="$name"
+	uci set ${CONFIG}.${name}.protocol='rdp'
+	uci set ${CONFIG}.${name}.hostname="$host"
+	uci set ${CONFIG}.${name}.port="$port"
+	[ -n "$user" ] && uci set ${CONFIG}.${name}.username="$user"
+	uci commit "$CONFIG"
+
+	generate_user_mapping
+	log_info "Added RDP connection: $name -> $host:$port"
+}
+
+cmd_list_connections() {
+	echo "Configured Connections:"
+	echo "======================="
+	config_load "$CONFIG"
+	config_foreach _list_connection connection
+}
+
+_list_connection() {
+	local section="$1"
+	local enabled name protocol hostname port
+
+	config_get enabled "$section" enabled 1
+	config_get name "$section" name "$section"
+	config_get protocol "$section" protocol "?"
+	config_get hostname "$section" hostname "?"
+	config_get port "$section" port ""
+
+	local status="enabled"
+	[ "$enabled" != "1" ] && status="disabled"
+
+	printf "  %-15s  %-5s  %s:%s  [%s]\n" "$name" "$protocol" "$hostname" "$port" "$status"
+}
+
+cmd_configure_haproxy() {
+	require_root || { log_error "Must run as root"; return 1; }
+	defaults
+
+	local domain=$(uci_get domain network)
+
+	if command -v haproxyctl >/dev/null 2>&1; then
+		haproxyctl add-vhost "$domain" "127.0.0.1:${web_port}" 2>&1
+		uci_set haproxy '1' network
+		uci commit "$CONFIG"
+		log_info "HAProxy vhost configured for $domain"
+	else
+		log_error "haproxyctl not available"
+		return 1
+	fi
+}
+
+cmd_mesh_register() {
+	defaults
+
+	if [ -x /usr/sbin/secubox-p2p ]; then
+		/usr/sbin/secubox-p2p register-service guacamole "$web_port" 2>/dev/null
+		log_info "Registered Guacamole with mesh"
+	else
+		log_error "secubox-p2p not available"
+		return 1
+	fi
+}
+
+# ---------- service management ----------
+
+cmd_service_run() {
+	require_root || exit 1
+	defaults
+
+	# Verify container exists
+	lxc_exists || { log_error "Container not found. Run: guacamolectl install"; exit 1; }
+
+	# Regenerate user mapping in case config changed
+	generate_user_mapping
+
+	log_info "Starting Guacamole container..."
+
+	# Start container in foreground
+	exec lxc-start -n "$LXC_NAME" -F -f "$LXC_CONF"
+}
+
+cmd_service_stop() {
+	log_info "Stopping Guacamole container..."
+	lxc_stop
+}
+
+# ---------- main ----------
+
+case "$1" in
+	install)            cmd_install ;;
+	uninstall)          cmd_uninstall ;;
+	update)             cmd_update ;;
+	check)              cmd_check ;;
+	status)             cmd_status ;;
+	logs)               shift; cmd_logs "$@" ;;
+	shell)              cmd_shell ;;
+	add-ssh)            shift; cmd_add_ssh "$@" ;;
+	add-vnc)            shift; cmd_add_vnc "$@" ;;
+	add-rdp)            shift; cmd_add_rdp "$@" ;;
+	list-connections)   cmd_list_connections ;;
+	configure-haproxy)  cmd_configure_haproxy ;;
+	mesh-register)      cmd_mesh_register ;;
+	service-run)        cmd_service_run ;;
+	service-stop)       cmd_service_stop ;;
+	*)                  usage; exit 1 ;;
+esac

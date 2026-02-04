@@ -7,6 +7,7 @@ _Last updated: 2026-02-04_
 - ~~Expose cyberpunk option inside SecuBox Settings~~ — Done: `THEME_CHOICES` now includes `cyberpunk` in `settings.js`.
 - ~~Glances full system monitoring~~ — Done: LXC host bind mounts, Docker socket, fs plugin patch, hostname/OS identity (2026-02-04).
 - ~~Zigbee2MQTT dongle connection~~ — Done: adapter `ezsp`→`ember`, `ZIGBEE2MQTT_DATA` env var, direct `/dev/ttyUSB0` passthrough (2026-02-04).
+- ~~Metablogizer Upload Failures~~ — Done: Chunked upload to bypass uhttpd 64KB JSON limit (2026-02-04).
 
 ## Open
 
@@ -50,9 +51,9 @@ _Last updated: 2026-02-04_
     - UCI config + LuCI UI for mount management (credentials, auto-mount, mount points).
     - Integration hooks for media apps (Jellyfin, Lyrion, backup scripts).
 
-11. **Metablogizer Upload Failures**
-    - Investigate and fix failed file uploads in Metablogizer.
-    - May be related to uhttpd 64KB JSON limit (similar to Streamlit fix).
+11. ~~**Metablogizer Upload Failures**~~ — Done (2026-02-04)
+    - ~~Investigate and fix failed file uploads in Metablogizer.~~
+    - ~~Fixed: Chunked upload to bypass uhttpd 64KB JSON limit (same pattern as Streamlit).~~
 
 12. **SecuBox v2 Roadmap & Objectives**
     - EnigmaBox integration evaluation (community vote?).

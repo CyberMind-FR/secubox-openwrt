@@ -31,13 +31,53 @@
   `domoticzctl` enhanced with `configure-mqtt`, `configure-haproxy`, `backup/restore`, `mesh-register`, `uninstall`.
   UCI config extended with mqtt, network, mesh sections. Catalog updated with LuCI package and IoT tags.
 
+- **P2P App Store Emancipation**
+  Status: DONE (2026-02-04)
+  Notes: HTTP P2P package distribution across mesh peers.
+  CGI endpoints: `/api/factory/packages`, `/api/factory/packages-sync`.
+  RPCD methods: get_feed_peers, get_peer_packages, get_all_packages, fetch_package, sync_package_catalog, get_feed_settings, set_feed_settings.
+  CLI commands: `secubox-feed peers/search/fetch-peer/fetch-any/sync-peers`.
+  LuCI view: `packages.js` under MirrorBox > App Store.
+  UCI config: `p2p_feed` section with share_feed, auto_sync, sync_interval, prefer_local.
+
+- **RustDesk & Guacamole Remote Access**
+  Status: PARTIAL (2026-02-04)
+  Notes: `secubox-app-rustdesk` — WORKING: native hbbs/hbbr binaries from GitHub releases, auto-key generation.
+  `secubox-app-guacamole` — DEFERRED: LXC build-from-source too slow; needs pre-built binaries or Docker approach.
+  RustDesk deployed and tested on router (ports 21116-21117).
+
+- **Development Status Widget**
+  Status: DONE (2026-02-04)
+  Notes: `devstatus.js` view under MirrorBox > Dev Status.
+  - Generative/dynamic dashboard with real-time polling
+  - Gitea commit activity and repository stats
+  - MirrorBox App Store package counts (local/peer/unique)
+  - Progress bar toward v1.0 (0-100%) with milestone tracking
+  - 8 milestone categories with dynamic progress indicators
+  Plan for later: cross-compile RustDesk binaries via toolchain.
+
+- **Content Distribution System**
+  Status: DONE (2026-02-04)
+  Notes: `secubox-content-pkg` — auto-package Metablogizer sites and Streamlit apps as IPKs.
+  Auto-publish hooks in metablogizerctl and streamlitctl.
+  `secubox-feed sync-content` — auto-install content packages from mesh peers.
+  P2P distribution: sites → HAProxy vhosts, Streamlit → service instances.
+
+- **ksmbd Mesh Media Sharing**
+  Status: DONE (2026-02-05)
+  Notes: `secubox-app-ksmbd` package with `ksmbdctl` CLI, UCI config, pre-configured media shares.
+  Commands: enable/disable/status/add-share/remove-share/list-shares/add-user/mesh-register.
+  Default shares: Media, Jellyfin, Lyrion, Backup.
+
+- **Chip Header Layout Port**
+  Status: DONE (2026-02-05)
+  Notes: `client-guardian` and `auth-guardian` overview.js updated to use `sh-page-header` chip layout.
+  Shared CSS from `secubox/common.css`. Consistent with SecuBox dashboard design.
+
 ## Next Up
 
-1. **Metablogizer Upload Fixes** — Investigate failed uploads.
-2. **App Store P2P Emancipation** — Remote P2P/torrent endpoint, generative IPK distribution.
-3. Port chip header layout to client-guardian, auth-guardian.
-4. Rebuild bonus feed with all 2026-02-04 changes.
-5. Commit uncommitted working tree changes.
+1. Rebuild bonus feed with all 2026-02-04/05 changes.
+2. Commit uncommitted working tree changes.
 
 ## Known Bugs (Deferred)
 

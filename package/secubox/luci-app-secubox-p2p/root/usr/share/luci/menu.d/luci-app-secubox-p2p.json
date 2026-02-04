@@ -66,6 +66,22 @@
 			"path": "secubox-p2p/factory"
 		}
 	},
+	"admin/secubox/mirrorbox/devstatus": {
+		"title": "Dev Status",
+		"order": 73,
+		"action": {
+			"type": "view",
+			"path": "secubox-p2p/devstatus"
+		}
+	},
+	"admin/secubox/mirrorbox/packages": {
+		"title": "App Store",
+		"order": 75,
+		"action": {
+			"type": "view",
+			"path": "secubox-p2p/packages"
+		}
+	},
 	"admin/secubox/mirrorbox/p2p-hub": {
 		"title": "Threat Intel",
 		"order": 25,

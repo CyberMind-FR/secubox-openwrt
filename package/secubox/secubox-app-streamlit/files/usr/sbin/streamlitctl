@@ -705,6 +705,13 @@ cmd_app_deploy() {
 	uci commit "$CONFIG"
 
 	log_info "App '$name' deployed to $app_dir"
+
+	# Auto-package for P2P distribution
+	if [ -x /usr/sbin/secubox-content-pkg ]; then
+		log_info "Packaging app for P2P distribution..."
+		/usr/sbin/secubox-content-pkg streamlit "$name" 2>/dev/null && \
+			log_info "App packaged for mesh distribution"
+	fi
 }
 
 # Instance management

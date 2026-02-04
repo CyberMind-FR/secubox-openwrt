@@ -84,33 +84,13 @@ return view.extend({
 
 		var view = E('div', { 'class': 'client-guardian-dashboard' }, [
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox-theme/secubox-theme.css') }),
+			E('link', { 'rel': 'stylesheet', 'href': L.resource('secubox/common.css') }),
 			E('link', { 'rel': 'stylesheet', 'href': L.resource('client-guardian/dashboard.css') }),
 			CgNav.renderTabs('overview'),
 
-			// Header
-			E('div', { 'class': 'cg-header' }, [
-				E('div', { 'class': 'cg-logo' }, [
-					E('div', { 'class': 'cg-logo-icon' }, '🛡️'),
-					E('div', { 'class': 'cg-logo-text' }, [
-						'Client ',
-						E('span', {}, 'Guardian')
-					])
-				]),
-				E('div', { 'class': 'cg-status-badge approved' }, [
-					E('span', { 'class': 'cg-status-dot' }),
-					'Protection Active'
-				])
-			]),
-
-			// Stats Grid
-			E('div', { 'class': 'cg-stats-grid' }, [
-				this.renderStatCard('📱', onlineClients.length, 'Clients En Ligne'),
-				this.renderStatCard('✅', approvedClients.length, 'Approuvés'),
-				this.renderStatCard('⏳', quarantineClients.length, 'Quarantaine'),
-				this.renderStatCard('🚫', bannedClients.length, 'Bannis'),
-				this.renderStatCard('⚠️', clients.filter(function(c) { return c.has_threats; }).length, 'Menaces Actives'),
-				this.renderStatCard('🌐', zones.length, 'Zones')
-			]),
+				// Chip Header
+			this.renderChipHeader(onlineClients.length, approvedClients.length, quarantineClients.length,
+				bannedClients.length, clients.filter(function(c) { return c.has_threats; }).length, zones.length),
 
 			// Recent Clients Card
 			E('div', { 'class': 'cg-card' }, [
@@ -157,6 +137,39 @@ return view.extend({
 
 		wrapper.appendChild(view);
 		return wrapper;
+	},
+
+	renderHeaderChip: function(stat) {
+		return E('div', { 'class': 'sh-header-chip' + (stat.tone ? ' ' + stat.tone : '') }, [
+			E('span', { 'class': 'sh-chip-icon' }, stat.icon || '•'),
+			E('div', { 'class': 'sh-chip-text' }, [
+				E('span', { 'class': 'sh-chip-label' }, stat.label),
+				E('strong', {}, String(stat.value))
+			])
+		]);
+	},
+
+	renderChipHeader: function(online, approved, quarantine, banned, threats, zones) {
+		var stats = [
+			{ icon: '📱', label: _('Online'), value: online, tone: online > 0 ? 'success' : '' },
+			{ icon: '✅', label: _('Approved'), value: approved },
+			{ icon: '⏳', label: _('Quarantine'), value: quarantine, tone: quarantine > 0 ? 'warn' : '' },
+			{ icon: '🚫', label: _('Banned'), value: banned, tone: banned > 0 ? 'error' : '' },
+			{ icon: '⚠️', label: _('Threats'), value: threats, tone: threats > 0 ? 'error' : '' },
+			{ icon: '🌐', label: _('Zones'), value: zones }
+		];
+
+		return E('div', { 'class': 'sh-page-header sh-page-header-lite' }, [
+			E('div', {}, [
+				E('h2', { 'class': 'sh-page-title' }, [
+					E('span', { 'class': 'sh-page-title-icon' }, '🛡️'),
+					_('Client Guardian')
+				]),
+				E('p', { 'class': 'sh-page-subtitle' },
+					_('Device protection · Access control · Threat monitoring'))
+			]),
+			E('div', { 'class': 'sh-header-meta' }, stats.map(L.bind(this.renderHeaderChip, this)))
+		]);
 	},
 
 	renderStatCard: function(icon, value, label) {

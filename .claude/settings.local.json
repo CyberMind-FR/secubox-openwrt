@@ -274,7 +274,11 @@
       "WebFetch(domain:releases.domoticz.com)",
       "WebFetch(domain:www.domoticz.com)",
       "Bash(gh release view:*)",
-      "Bash(gh release list:*)"
+      "Bash(gh release list:*)",
+      "Bash(jsonfilter:*)",
+      "WebFetch(domain:zigbeefordomoticz.github.io)",
+      "WebFetch(domain:rustdesk.com)",
+      "WebFetch(domain:deepwiki.com)"
     ]
   }
 }

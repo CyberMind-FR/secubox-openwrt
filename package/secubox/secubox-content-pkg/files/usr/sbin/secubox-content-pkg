@@ -1,0 +1,417 @@
+#!/bin/sh
+# SecuBox Content Packager
+# Package Metablogizer sites and Streamlit apps as IPKs for P2P distribution
+
+FEED_PATH="/www/secubox-feed"
+SITES_PATH="/srv/metablogizer"
+STREAMLIT_PATH="/srv/streamlit/apps"
+TMP_DIR="/tmp/content-pkg"
+
+usage() {
+	cat <<'USAGE'
+Usage: secubox-content-pkg <command> [args]
+
+Commands:
+  site <name> [domain]       Package Metablogizer site as IPK
+  streamlit <name> [port]    Package Streamlit app as IPK
+  list                       List content packages in feed
+  remove <pkg-name>          Remove content package from feed
+  rebuild-index              Rebuild Packages index
+USAGE
+}
+
+log_info()  { echo "[INFO] $*"; logger -t content-pkg "$*"; }
+log_error() { echo "[ERROR] $*" >&2; logger -t content-pkg -p err "$*"; }
+
+ensure_dir() { [ -d "$1" ] || mkdir -p "$1"; }
+
+# Get next available port for Streamlit
+get_next_port() {
+	local base_port=8501
+	local port=$base_port
+	while [ $port -lt 8600 ]; do
+		if ! uci show streamlit 2>/dev/null | grep -q "port='$port'"; then
+			echo $port
+			return
+		fi
+		port=$((port + 1))
+	done
+	echo $base_port
+}
+
+# Build IPK from directory
+build_ipk() {
+	local pkg_dir="$1"
+	local output_dir="$2"
+	local pkg_name=$(grep "^Package:" "$pkg_dir/CONTROL/control" | cut -d: -f2 | tr -d ' ')
+	local version=$(grep "^Version:" "$pkg_dir/CONTROL/control" | cut -d: -f2 | tr -d ' ')
+	local arch=$(grep "^Architecture:" "$pkg_dir/CONTROL/control" | cut -d: -f2 | tr -d ' ')
+	local ipk_name="${pkg_name}_${version}_${arch}.ipk"
+
+	cd "$pkg_dir" || return 1
+
+	# Create data.tar.gz (exclude CONTROL)
+	tar --exclude='CONTROL' -czf "$TMP_DIR/data.tar.gz" ./* 2>/dev/null
+
+	# Create control.tar.gz
+	tar -czf "$TMP_DIR/control.tar.gz" -C CONTROL . 2>/dev/null
+
+	# Create debian-binary
+	echo "2.0" > "$TMP_DIR/debian-binary"
+
+	# Create IPK (ar archive)
+	cd "$TMP_DIR"
+	tar -czf "$output_dir/$ipk_name" debian-binary control.tar.gz data.tar.gz 2>/dev/null || \
+		ar -r "$output_dir/$ipk_name" debian-binary control.tar.gz data.tar.gz 2>/dev/null
+
+	# Cleanup temp files
+	rm -f "$TMP_DIR/data.tar.gz" "$TMP_DIR/control.tar.gz" "$TMP_DIR/debian-binary"
+
+	echo "$ipk_name"
+}
+
+# Rebuild Packages index
+rebuild_index() {
+	cd "$FEED_PATH" || return 1
+
+	log_info "Rebuilding Packages index..."
+
+	# Generate Packages file
+	> Packages
+	for ipk in *.ipk; do
+		[ -f "$ipk" ] || continue
+
+		# Extract control info
+		local tmpctl="/tmp/ctl-$$"
+		mkdir -p "$tmpctl"
+
+		# Try tar first (our format), then ar (standard opkg)
+		tar -xzf "$ipk" -C "$tmpctl" control.tar.gz 2>/dev/null && \
+			tar -xzf "$tmpctl/control.tar.gz" -C "$tmpctl" 2>/dev/null
+
+		if [ ! -f "$tmpctl/control" ]; then
+			# Standard ar format
+			cd "$tmpctl"
+			ar -x "../$ipk" control.tar.gz 2>/dev/null
+			tar -xzf control.tar.gz 2>/dev/null
+			cd "$FEED_PATH"
+		fi
+
+		if [ -f "$tmpctl/control" ]; then
+			cat "$tmpctl/control" >> Packages
+			echo "Filename: $ipk" >> Packages
+			echo "Size: $(stat -c%s "$ipk" 2>/dev/null || wc -c < "$ipk")" >> Packages
+			echo "SHA256sum: $(sha256sum "$ipk" | cut -d' ' -f1)" >> Packages
+			echo "" >> Packages
+		fi
+
+		rm -rf "$tmpctl"
+	done
+
+	# Compress
+	gzip -kf Packages 2>/dev/null
+
+	log_info "Index rebuilt: $(grep -c "^Package:" Packages) packages"
+}
+
+# ---------- Site Packaging ----------
+
+pkg_site() {
+	local name="$1"
+	local domain="${2:-${name}.secubox.local}"
+	local site_path="$SITES_PATH/$name/public"
+	local version="1.0.0-$(date +%Y%m%d%H%M)"
+	local pkg_name="secubox-site-${name}"
+	local pkg_dir="$TMP_DIR/$pkg_name"
+
+	# Validate
+	if [ ! -d "$site_path" ]; then
+		log_error "Site not found: $site_path"
+		log_error "Run 'metablogizerctl build $name' first"
+		return 1
+	fi
+
+	log_info "Packaging site: $name"
+
+	# Create package structure
+	ensure_dir "$pkg_dir/www/sites/$name"
+	ensure_dir "$pkg_dir/CONTROL"
+	ensure_dir "$FEED_PATH"
+
+	# Copy site files
+	cp -a "$site_path"/* "$pkg_dir/www/sites/$name/" || {
+		log_error "Failed to copy site files"
+		return 1
+	}
+
+	# Calculate installed size
+	local installed_size=$(du -sk "$pkg_dir/www" | cut -f1)
+
+	# Create control file
+	cat > "$pkg_dir/CONTROL/control" <<EOF
+Package: $pkg_name
+Version: $version
+Architecture: all
+Installed-Size: $installed_size
+Description: Metablogizer site: $name
+ Auto-generated content package for P2P distribution.
+ Domain: $domain
+Maintainer: SecuBox Content Packager
+Section: www
+Priority: optional
+Source: secubox-content-pkg
+EOF
+
+	# Create postinst
+	cat > "$pkg_dir/CONTROL/postinst" <<EOF
+#!/bin/sh
+# Auto-configure HAProxy vhost for site
+SITE_NAME="$name"
+SITE_DOMAIN="$domain"
+
+if command -v haproxyctl >/dev/null 2>&1; then
+    # Add vhost pointing to uhttpd
+    haproxyctl add-vhost "\$SITE_DOMAIN" "127.0.0.1:80" "/sites/\$SITE_NAME" 2>/dev/null || true
+fi
+
+# Log installation
+logger -t content-pkg "Installed site: \$SITE_NAME at /www/sites/\$SITE_NAME"
+
+exit 0
+EOF
+	chmod +x "$pkg_dir/CONTROL/postinst"
+
+	# Create prerm
+	cat > "$pkg_dir/CONTROL/prerm" <<EOF
+#!/bin/sh
+SITE_NAME="$name"
+SITE_DOMAIN="$domain"
+
+if command -v haproxyctl >/dev/null 2>&1; then
+    haproxyctl remove-vhost "\$SITE_DOMAIN" 2>/dev/null || true
+fi
+
+exit 0
+EOF
+	chmod +x "$pkg_dir/CONTROL/prerm"
+
+	# Build IPK
+	local ipk_file=$(build_ipk "$pkg_dir" "$FEED_PATH")
+
+	# Cleanup
+	rm -rf "$pkg_dir"
+
+	if [ -n "$ipk_file" ] && [ -f "$FEED_PATH/$ipk_file" ]; then
+		log_info "Created: $FEED_PATH/$ipk_file"
+		rebuild_index
+		return 0
+	else
+		log_error "Failed to create IPK"
+		return 1
+	fi
+}
+
+# ---------- Streamlit Packaging ----------
+
+pkg_streamlit() {
+	local name="$1"
+	local port="${2:-$(get_next_port)}"
+	local app_path="$STREAMLIT_PATH/$name"
+	local version="1.0.0-$(date +%Y%m%d%H%M)"
+	local pkg_name="secubox-streamlit-${name}"
+	local pkg_dir="$TMP_DIR/$pkg_name"
+
+	# Validate
+	if [ ! -d "$app_path" ]; then
+		log_error "Streamlit app not found: $app_path"
+		return 1
+	fi
+
+	# Find main app file
+	local app_file=""
+	for f in "$app_path/app.py" "$app_path/main.py" "$app_path"/*.py; do
+		if [ -f "$f" ]; then
+			app_file=$(basename "$f")
+			break
+		fi
+	done
+
+	if [ -z "$app_file" ]; then
+		log_error "No Python file found in $app_path"
+		return 1
+	fi
+
+	log_info "Packaging Streamlit app: $name (port $port)"
+
+	# Create package structure
+	ensure_dir "$pkg_dir/srv/streamlit/apps/$name"
+	ensure_dir "$pkg_dir/CONTROL"
+	ensure_dir "$FEED_PATH"
+
+	# Copy app files
+	cp -a "$app_path"/* "$pkg_dir/srv/streamlit/apps/$name/" || {
+		log_error "Failed to copy app files"
+		return 1
+	}
+
+	# Calculate installed size
+	local installed_size=$(du -sk "$pkg_dir/srv" | cut -f1)
+
+	# Create control file
+	cat > "$pkg_dir/CONTROL/control" <<EOF
+Package: $pkg_name
+Version: $version
+Architecture: all
+Installed-Size: $installed_size
+Depends: secubox-app-streamlit
+Description: Streamlit app: $name
+ Auto-generated content package for P2P distribution.
+ Port: $port
+Maintainer: SecuBox Content Packager
+Section: utils
+Priority: optional
+Source: secubox-content-pkg
+EOF
+
+	# Create postinst
+	cat > "$pkg_dir/CONTROL/postinst" <<EOF
+#!/bin/sh
+# Register Streamlit instance
+APP_NAME="$name"
+APP_PORT="$port"
+APP_FILE="$app_file"
+
+# Add to UCI
+uci set streamlit.\${APP_NAME}=instance
+uci set streamlit.\${APP_NAME}.enabled='1'
+uci set streamlit.\${APP_NAME}.app="\$APP_NAME"
+uci set streamlit.\${APP_NAME}.port="\$APP_PORT"
+uci set streamlit.\${APP_NAME}.script="\$APP_FILE"
+uci commit streamlit
+
+# Restart Streamlit to pick up new instance
+if [ -x /etc/init.d/streamlit ]; then
+    /etc/init.d/streamlit reload 2>/dev/null || /etc/init.d/streamlit restart 2>/dev/null
+fi
+
+# Log
+logger -t content-pkg "Installed Streamlit app: \$APP_NAME on port \$APP_PORT"
+
+exit 0
+EOF
+	chmod +x "$pkg_dir/CONTROL/postinst"
+
+	# Create prerm
+	cat > "$pkg_dir/CONTROL/prerm" <<EOF
+#!/bin/sh
+APP_NAME="$name"
+
+# Remove from UCI
+uci delete streamlit.\${APP_NAME} 2>/dev/null
+uci commit streamlit
+
+# Restart Streamlit
+if [ -x /etc/init.d/streamlit ]; then
+    /etc/init.d/streamlit reload 2>/dev/null
+fi
+
+exit 0
+EOF
+	chmod +x "$pkg_dir/CONTROL/prerm"
+
+	# Build IPK
+	local ipk_file=$(build_ipk "$pkg_dir" "$FEED_PATH")
+
+	# Cleanup
+	rm -rf "$pkg_dir"
+
+	if [ -n "$ipk_file" ] && [ -f "$FEED_PATH/$ipk_file" ]; then
+		log_info "Created: $FEED_PATH/$ipk_file"
+		rebuild_index
+		return 0
+	else
+		log_error "Failed to create IPK"
+		return 1
+	fi
+}
+
+# ---------- List/Remove ----------
+
+cmd_list() {
+	echo "Content Packages in Feed:"
+	echo "========================="
+
+	cd "$FEED_PATH" 2>/dev/null || { echo "Feed not found"; return 1; }
+
+	local found=0
+	for ipk in secubox-site-*.ipk secubox-streamlit-*.ipk; do
+		[ -f "$ipk" ] || continue
+		found=1
+
+		local name=$(echo "$ipk" | sed 's/_[0-9].*$//')
+		local size=$(ls -lh "$ipk" | awk '{print $5}')
+
+		if echo "$ipk" | grep -q "secubox-site-"; then
+			printf "  [SITE]      %-30s  %s\n" "$name" "$size"
+		else
+			printf "  [STREAMLIT] %-30s  %s\n" "$name" "$size"
+		fi
+	done
+
+	[ "$found" = "0" ] && echo "  (no content packages)"
+}
+
+cmd_remove() {
+	local pkg_name="$1"
+
+	[ -z "$pkg_name" ] && { echo "Usage: secubox-content-pkg remove <pkg-name>"; return 1; }
+
+	cd "$FEED_PATH" 2>/dev/null || { log_error "Feed not found"; return 1; }
+
+	# Find matching IPK
+	local found=""
+	for ipk in "${pkg_name}"*.ipk "${pkg_name}_"*.ipk; do
+		if [ -f "$ipk" ]; then
+			found="$ipk"
+			break
+		fi
+	done
+
+	if [ -z "$found" ]; then
+		log_error "Package not found: $pkg_name"
+		return 1
+	fi
+
+	rm -f "$found"
+	log_info "Removed: $found"
+	rebuild_index
+}
+
+# ---------- Main ----------
+
+ensure_dir "$TMP_DIR"
+
+case "$1" in
+	site)
+		shift
+		pkg_site "$@"
+		;;
+	streamlit)
+		shift
+		pkg_streamlit "$@"
+		;;
+	list)
+		cmd_list
+		;;
+	remove)
+		shift
+		cmd_remove "$@"
+		;;
+	rebuild-index)
+		rebuild_index
+		;;
+	*)
+		usage
+		exit 1
+		;;
+esac

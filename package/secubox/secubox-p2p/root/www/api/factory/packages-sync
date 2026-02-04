@@ -1,0 +1,173 @@
+#!/bin/sh
+# P2P Package Catalog Sync API
+# Aggregates package catalogs from all mesh peers
+
+echo "Content-Type: application/json"
+echo "Access-Control-Allow-Origin: *"
+echo "Access-Control-Allow-Methods: GET, POST, OPTIONS"
+echo ""
+
+# Handle CORS preflight
+if [ "$REQUEST_METHOD" = "OPTIONS" ]; then
+	exit 0
+fi
+
+# Load P2P feed library
+. /usr/lib/secubox/p2p-feed.sh 2>/dev/null
+
+# Parse query string
+parse_query() {
+	local query="$QUERY_STRING"
+	local key value
+
+	PEER_FILTER=""
+	REFRESH=""
+
+	while [ -n "$query" ]; do
+		key="${query%%=*}"
+		query="${query#*=}"
+		value="${query%%&*}"
+		query="${query#*&}"
+		[ "$query" = "$value" ] && query=""
+
+		case "$key" in
+			peer) PEER_FILTER="$value" ;;
+			refresh) REFRESH="$value" ;;
+		esac
+	done
+}
+
+parse_query
+
+# Invalidate cache if refresh requested
+if [ "$REFRESH" = "1" ]; then
+	invalidate_peer_cache
+fi
+
+# Get node info
+NODE_ID=$(get_local_node_id)
+NODE_NAME=$(get_local_node_name)
+UPDATED=$(date -Iseconds 2>/dev/null || date '+%Y-%m-%dT%H:%M:%S')
+
+# Start JSON output
+echo '{'
+echo "\"node_id\":\"$NODE_ID\","
+echo "\"node_name\":\"$NODE_NAME\","
+echo "\"updated\":\"$UPDATED\","
+
+# Sync stats
+PEERS_SYNCED=0
+PEERS_FAILED=0
+TOTAL_PACKAGES=0
+
+echo '"sources":['
+
+FIRST_SOURCE=1
+
+# Include local packages
+if feed_exists; then
+	LOCAL_COUNT=$(get_package_count)
+	TOTAL_PACKAGES=$LOCAL_COUNT
+
+	echo '{'
+	echo "\"node_id\":\"$NODE_ID\","
+	echo "\"node_name\":\"$NODE_NAME\","
+	echo "\"type\":\"local\","
+	echo "\"address\":\"local\","
+	echo "\"status\":\"ok\","
+	echo "\"feed_hash\":\"$(get_feed_hash)\","
+	echo "\"package_count\":$LOCAL_COUNT,"
+	echo "\"packages\":$(packages_to_json)"
+	echo '}'
+	FIRST_SOURCE=0
+fi
+
+# Sync from peers
+PEERS_FILE="/tmp/secubox-p2p-peers.json"
+if [ -f "$PEERS_FILE" ]; then
+	PEER_COUNT=$(jsonfilter -i "$PEERS_FILE" -e '@.peers[*]' 2>/dev/null | wc -l)
+	I=0
+
+	while [ $I -lt $PEER_COUNT ]; do
+		IS_LOCAL=$(jsonfilter -i "$PEERS_FILE" -e "@.peers[$I].is_local" 2>/dev/null)
+		[ "$IS_LOCAL" = "true" ] && { I=$((I + 1)); continue; }
+
+		PEER_ADDR=$(jsonfilter -i "$PEERS_FILE" -e "@.peers[$I].address" 2>/dev/null)
+		PEER_NAME=$(jsonfilter -i "$PEERS_FILE" -e "@.peers[$I].name" 2>/dev/null)
+		PEER_WG=$(jsonfilter -i "$PEERS_FILE" -e "@.peers[$I].wg_addresses" 2>/dev/null | cut -d',' -f1)
+
+		# Prefer WireGuard address
+		USE_ADDR="$PEER_ADDR"
+		[ -n "$PEER_WG" ] && USE_ADDR="$PEER_WG"
+
+		# Skip if filtering for specific peer
+		if [ -n "$PEER_FILTER" ] && [ "$USE_ADDR" != "$PEER_FILTER" ] && [ "$PEER_NAME" != "$PEER_FILTER" ]; then
+			I=$((I + 1))
+			continue
+		fi
+
+		[ -n "$USE_ADDR" ] || { I=$((I + 1)); continue; }
+
+		# Fetch peer's package catalog
+		PEER_CATALOG=$(curl -s --connect-timeout 5 --max-time 30 \
+			"http://${USE_ADDR}:7331/api/factory/packages" 2>/dev/null)
+
+		[ $FIRST_SOURCE -eq 0 ] && echo ','
+		FIRST_SOURCE=0
+
+		if [ -n "$PEER_CATALOG" ]; then
+			PEER_HASH=$(echo "$PEER_CATALOG" | jsonfilter -e '@.feed_hash' 2>/dev/null)
+			PEER_PKG_COUNT=$(echo "$PEER_CATALOG" | jsonfilter -e '@.package_count' 2>/dev/null)
+			PEER_PACKAGES=$(echo "$PEER_CATALOG" | jsonfilter -e '@.packages' 2>/dev/null)
+
+			if [ -n "$PEER_HASH" ]; then
+				PEERS_SYNCED=$((PEERS_SYNCED + 1))
+				TOTAL_PACKAGES=$((TOTAL_PACKAGES + ${PEER_PKG_COUNT:-0}))
+
+				echo '{'
+				echo "\"node_id\":\"$USE_ADDR\","
+				echo "\"node_name\":\"$PEER_NAME\","
+				echo "\"type\":\"peer\","
+				echo "\"address\":\"$USE_ADDR\","
+				echo "\"status\":\"ok\","
+				echo "\"feed_hash\":\"$PEER_HASH\","
+				echo "\"package_count\":${PEER_PKG_COUNT:-0},"
+				echo "\"packages\":${PEER_PACKAGES:-[]}"
+				echo '}'
+			else
+				PEERS_FAILED=$((PEERS_FAILED + 1))
+				echo '{'
+				echo "\"node_id\":\"$USE_ADDR\","
+				echo "\"node_name\":\"$PEER_NAME\","
+				echo "\"type\":\"peer\","
+				echo "\"address\":\"$USE_ADDR\","
+				echo "\"status\":\"error\","
+				echo "\"error\":\"invalid_response\""
+				echo '}'
+			fi
+		else
+			PEERS_FAILED=$((PEERS_FAILED + 1))
+			echo '{'
+			echo "\"node_id\":\"$USE_ADDR\","
+			echo "\"node_name\":\"$PEER_NAME\","
+			echo "\"type\":\"peer\","
+			echo "\"address\":\"$USE_ADDR\","
+			echo "\"status\":\"unreachable\","
+			echo "\"error\":\"connection_failed\""
+			echo '}'
+		fi
+
+		I=$((I + 1))
+	done
+fi
+
+echo '],'
+
+# Summary stats
+echo "\"sync_stats\":{"
+echo "\"peers_synced\":$PEERS_SYNCED,"
+echo "\"peers_failed\":$PEERS_FAILED,"
+echo "\"total_packages\":$TOTAL_PACKAGES"
+echo '}'
+
+echo '}'

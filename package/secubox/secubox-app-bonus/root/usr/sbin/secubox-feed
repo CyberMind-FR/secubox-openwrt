@@ -28,6 +28,14 @@ Commands:
     serve               Start simple HTTP server for WAN access
     export              Export feed URL for sharing
 
+P2P Commands:
+    peers               List mesh peers with active package feeds
+    search <pkg>        Search for package across local and all peers
+    fetch-peer <pkg> <peer>  Fetch package from specific peer
+    fetch-any <pkg>     Fetch package from first available peer
+    sync-peers          Sync package catalogs from all mesh peers
+    sync-content        Auto-install content packages (sites/apps) from peers
+
 Options:
     -h, --help          Show this help
     -v, --verbose       Verbose output
@@ -374,6 +382,230 @@ export_feed() {
     echo "  src/gz secubox $REMOTE_FEED_URL"
 }
 
+# ==================== P2P PEER FUNCTIONS ====================
+
+# List mesh peers with active package feeds
+list_feed_peers() {
+    log "Discovering mesh peers with active feeds..."
+
+    local result=$(curl -s "http://127.0.0.1:7331/api/factory/packages-sync?refresh=0" 2>/dev/null)
+
+    if [ -z "$result" ]; then
+        error "Failed to query P2P API. Is secubox-p2p running?"
+        return 1
+    fi
+
+    local sources=$(echo "$result" | jsonfilter -e '@.sources[*]' 2>/dev/null | wc -l)
+
+    if [ "$sources" -eq 0 ]; then
+        log "No peers with active feeds found"
+        return 0
+    fi
+
+    printf "%-20s %-15s %-10s %s\n" "NAME" "ADDRESS" "PACKAGES" "STATUS"
+    printf "%-20s %-15s %-10s %s\n" "----" "-------" "--------" "------"
+
+    local i=0
+    while [ $i -lt $sources ]; do
+        local node_name=$(echo "$result" | jsonfilter -e "@.sources[$i].node_name" 2>/dev/null)
+        local address=$(echo "$result" | jsonfilter -e "@.sources[$i].address" 2>/dev/null)
+        local pkg_count=$(echo "$result" | jsonfilter -e "@.sources[$i].package_count" 2>/dev/null)
+        local status=$(echo "$result" | jsonfilter -e "@.sources[$i].status" 2>/dev/null)
+        local type=$(echo "$result" | jsonfilter -e "@.sources[$i].type" 2>/dev/null)
+
+        [ "$type" = "local" ] && address="(local)"
+
+        printf "%-20s %-15s %-10s %s\n" "$node_name" "$address" "${pkg_count:-0}" "$status"
+        i=$((i + 1))
+    done
+
+    local total=$(echo "$result" | jsonfilter -e '@.sync_stats.total_packages' 2>/dev/null)
+    echo ""
+    log "Total packages across all sources: ${total:-0}"
+}
+
+# Search for package across local and all peers
+search_package() {
+    local pkg_name="$1"
+    [ -z "$pkg_name" ] && { error "Package name required"; return 1; }
+
+    log "Searching for '$pkg_name' across local and peers..."
+
+    # First check local
+    if [ -f "$FEED_DIR/Packages" ]; then
+        local local_version=$(awk -v pkg="$pkg_name" '
+            /^Package:/ { current_pkg = $2 }
+            /^Version:/ { if (current_pkg == pkg) print $2 }
+        ' "$FEED_DIR/Packages")
+
+        if [ -n "$local_version" ]; then
+            printf "%-15s %-20s %s\n" "LOCAL" "(this node)" "$local_version"
+        fi
+    fi
+
+    # Search peers
+    local result=$(curl -s "http://127.0.0.1:7331/api/factory/packages-sync" 2>/dev/null)
+    local sources=$(echo "$result" | jsonfilter -e '@.sources[*]' 2>/dev/null | wc -l)
+
+    local i=0
+    while [ $i -lt $sources ]; do
+        local type=$(echo "$result" | jsonfilter -e "@.sources[$i].type" 2>/dev/null)
+        [ "$type" = "local" ] && { i=$((i + 1)); continue; }
+
+        local node_name=$(echo "$result" | jsonfilter -e "@.sources[$i].node_name" 2>/dev/null)
+        local address=$(echo "$result" | jsonfilter -e "@.sources[$i].address" 2>/dev/null)
+        local packages=$(echo "$result" | jsonfilter -e "@.sources[$i].packages" 2>/dev/null)
+
+        # Search in packages array
+        local pkg_count=$(echo "$packages" | jsonfilter -e '@[*]' 2>/dev/null | wc -l)
+        local j=0
+        while [ $j -lt $pkg_count ]; do
+            local name=$(echo "$packages" | jsonfilter -e "@[$j].name" 2>/dev/null)
+            if [ "$name" = "$pkg_name" ]; then
+                local version=$(echo "$packages" | jsonfilter -e "@[$j].version" 2>/dev/null)
+                printf "%-15s %-20s %s\n" "PEER" "$address" "$version"
+                break
+            fi
+            j=$((j + 1))
+        done
+
+        i=$((i + 1))
+    done
+}
+
+# Fetch package from specific peer
+fetch_from_peer() {
+    local pkg_name="$1"
+    local peer_addr="$2"
+
+    [ -z "$pkg_name" ] && { error "Package name required"; return 1; }
+    [ -z "$peer_addr" ] && { error "Peer address required"; return 1; }
+
+    log "Fetching '$pkg_name' from $peer_addr..."
+
+    local result=$(ubus call luci.secubox-p2p fetch_package \
+        "{\"package\":\"$pkg_name\",\"peer_addr\":\"$peer_addr\"}" 2>/dev/null)
+
+    if [ -z "$result" ]; then
+        error "Failed to fetch package. Is secubox-p2p running?"
+        return 1
+    fi
+
+    local success=$(echo "$result" | jsonfilter -e '@.success' 2>/dev/null)
+    if [ "$success" = "true" ]; then
+        local filename=$(echo "$result" | jsonfilter -e '@.filename' 2>/dev/null)
+        log "Successfully fetched: $filename"
+        log "Run 'secubox-feed update' to refresh local index"
+        return 0
+    else
+        local err=$(echo "$result" | jsonfilter -e '@.error' 2>/dev/null)
+        error "Failed: ${err:-unknown error}"
+        return 1
+    fi
+}
+
+# Fetch package from first available peer
+fetch_from_any() {
+    local pkg_name="$1"
+    [ -z "$pkg_name" ] && { error "Package name required"; return 1; }
+
+    log "Searching for '$pkg_name' on any peer..."
+
+    local result=$(ubus call luci.secubox-p2p fetch_package \
+        "{\"package\":\"$pkg_name\"}" 2>/dev/null)
+
+    if [ -z "$result" ]; then
+        error "Failed to fetch package. Is secubox-p2p running?"
+        return 1
+    fi
+
+    local success=$(echo "$result" | jsonfilter -e '@.success' 2>/dev/null)
+    if [ "$success" = "true" ]; then
+        local source=$(echo "$result" | jsonfilter -e '@.source' 2>/dev/null)
+        local filename=$(echo "$result" | jsonfilter -e '@.filename' 2>/dev/null)
+        log "Successfully fetched from $source: $filename"
+        return 0
+    else
+        local err=$(echo "$result" | jsonfilter -e '@.error' 2>/dev/null)
+        error "Failed: ${err:-unknown error}"
+        return 1
+    fi
+}
+
+# Sync package catalogs from all peers
+sync_peer_catalogs() {
+    log "Syncing package catalogs from all mesh peers..."
+
+    local result=$(curl -s "http://127.0.0.1:7331/api/factory/packages-sync?refresh=1" 2>/dev/null)
+
+    if [ -z "$result" ]; then
+        error "Failed to sync. Is secubox-p2p running?"
+        return 1
+    fi
+
+    local peers_synced=$(echo "$result" | jsonfilter -e '@.sync_stats.peers_synced' 2>/dev/null)
+    local peers_failed=$(echo "$result" | jsonfilter -e '@.sync_stats.peers_failed' 2>/dev/null)
+    local total=$(echo "$result" | jsonfilter -e '@.sync_stats.total_packages' 2>/dev/null)
+
+    log "Sync complete:"
+    log "  Peers synced: ${peers_synced:-0}"
+    log "  Peers failed: ${peers_failed:-0}"
+    log "  Total packages: ${total:-0}"
+}
+
+# Auto-install content packages from mesh peers
+sync_content() {
+    log "Syncing content packages from mesh..."
+
+    # First sync catalogs
+    sync_peer_catalogs
+
+    # Get list of content packages from peers
+    local result=$(curl -s "http://127.0.0.1:7331/api/factory/packages-sync" 2>/dev/null)
+    [ -z "$result" ] && return 1
+
+    # Extract content packages (secubox-site-* and secubox-streamlit-*)
+    local content_pkgs=$(echo "$result" | jsonfilter -e '@.sources[*].packages[*].name' 2>/dev/null | \
+        grep -E "^secubox-(site|streamlit)-" | sort -u)
+
+    if [ -z "$content_pkgs" ]; then
+        log "No content packages found on mesh peers"
+        return 0
+    fi
+
+    local installed=0
+    local failed=0
+
+    for pkg in $content_pkgs; do
+        # Check if already installed
+        if opkg status "$pkg" 2>/dev/null | grep -q "Status:.*installed"; then
+            [ "$VERBOSE" = "1" ] && log "  Already installed: $pkg"
+            continue
+        fi
+
+        log "  Installing: $pkg"
+
+        # Find which peer has it and fetch
+        if fetch_from_any "$pkg" >/dev/null 2>&1; then
+            # Install
+            opkg install "$FEED_DIR/${pkg}"*.ipk 2>/dev/null && {
+                installed=$((installed + 1))
+                log "  Installed: $pkg"
+            } || {
+                failed=$((failed + 1))
+                error "  Failed to install: $pkg"
+            }
+        else
+            failed=$((failed + 1))
+            error "  Failed to fetch: $pkg"
+        fi
+    done
+
+    log "Content sync complete: $installed installed, $failed failed"
+}
+
+# ==================== END P2P FUNCTIONS ====================
+
 # Main
 main() {
     local cmd=""
@@ -441,6 +673,28 @@ main() {
             ;;
         export|url)
             export_feed
+            ;;
+        peers)
+            list_feed_peers
+            ;;
+        search)
+            [ -z "$1" ] && { error "Package name required"; exit 1; }
+            search_package "$1"
+            ;;
+        fetch-peer)
+            [ -z "$1" ] && { error "Package name required"; exit 1; }
+            [ -z "$2" ] && { error "Peer address required"; exit 1; }
+            fetch_from_peer "$1" "$2"
+            ;;
+        fetch-any)
+            [ -z "$1" ] && { error "Package name required"; exit 1; }
+            fetch_from_any "$1"
+            ;;
+        sync-peers)
+            sync_peer_catalogs
+            ;;
+        sync-content)
+            sync_content
             ;;
         "")
             usage

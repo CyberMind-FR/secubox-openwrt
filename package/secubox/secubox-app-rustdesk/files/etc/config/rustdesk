@@ -1,0 +1,10 @@
+config rustdesk 'server'
+	option enabled '0'
+	option id_port '21116'
+	option relay_port '21117'
+	option key ''
+	option data_path '/srv/rustdesk'
+
+config rustdesk 'network'
+	option firewall_wan '0'
+	option mesh_announce '1'

@@ -1,0 +1,18 @@
+config guacamole 'main'
+	option enabled '0'
+	option data_path '/srv/guacamole'
+	option web_port '8080'
+	option memory '512'
+
+config guacamole 'network'
+	option domain 'remote.secubox.local'
+	option haproxy '0'
+	option firewall_wan '0'
+
+config connection 'router'
+	option enabled '1'
+	option name 'SecuBox Router'
+	option protocol 'ssh'
+	option hostname '127.0.0.1'
+	option port '22'
+	option username 'root'
